@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(sdl3_test VERSION 1.0.0 LANGUAGES C CXX)
+project(SDL3_Template VERSION 1.0.0 LANGUAGES C CXX)
 
 # Set build configurations
 if(NOT CMAKE_BUILD_TYPE)
