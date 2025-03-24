@@ -1,6 +1,7 @@
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_video.h>
 #include <iostream>
+//forgithub
 
 const int WINDOW_WIDTH {1920};
 const int WINDOW_HEIGHT {1080};
