@@ -4,6 +4,7 @@
 
 const int WINDOW_WIDTH {1920};
 const int WINDOW_HEIGHT {1080};
+const char* GAME_NAME = "Galaxy Forge";
 
 int main(int argc, char* argv[]) {
     // Initialize SDL
