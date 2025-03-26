@@ -5,9 +5,9 @@
 
 class Game_State{
   public:
-    virtual void update() = 0;
-    virtual void render() = 0;
-    virtual bool is_Complete() const = 0;
+    virtual void Update() = 0;
+    virtual void Render() = 0;
+    virtual bool IsComplete() const = 0;
     virtual std::unique_ptr<Game_State> getNextState() = 0;
     virtual ~Game_State() = default;
 };
