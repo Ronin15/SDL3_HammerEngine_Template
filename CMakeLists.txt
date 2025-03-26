@@ -37,6 +37,15 @@ set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -s -march=x86-64 -fl
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# Export compile commands for use with tools like clangd
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
+# Copy compile_commands.json to project root after build
+add_custom_target(copy-compile-commands ALL
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+    ${CMAKE_BINARY_DIR}/compile_commands.json
+    ${CMAKE_SOURCE_DIR}/compile_commands.json
+)
 # Include FetchContent module
 include(FetchContent)
 
