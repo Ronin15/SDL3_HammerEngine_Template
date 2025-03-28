@@ -105,7 +105,7 @@ void simulateGameLoop() {
 
 
 int main(int argc, char* argv[]) {
-    // Initialize SDL
+  /*   // Initialize SDL
     if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS)) {
         std::cerr << "SDL could not initialize! SDL_Error: " << SDL_GetError() << std::endl;
         return 1;
@@ -137,7 +137,7 @@ int main(int argc, char* argv[]) {
     // Main loop
     while (!quit) {
 
-        simulateGameLoop();
+        //simulateGameLoop();
         // Handle events on queue
         while (SDL_PollEvent(&event)) {
             // User requests quit
@@ -172,6 +172,10 @@ int main(int argc, char* argv[]) {
     SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(window);
     SDL_Quit();
-
+*/
+    for (int i = 1; i < 100; i++){
+    simulateGameLoop();
+       std::cout << i << " Simulated loop(s) complete..\n" << std::endl;
+    }
     return 0;
 }
