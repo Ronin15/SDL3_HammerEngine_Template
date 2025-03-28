@@ -47,8 +47,8 @@ void GameStateManager::setState(const std::string& stateName) {
 
 void GameStateManager::update() {
     if (currentState) {
-        currentState->handleInput();
         currentState->update();
+        currentState->render();
     }
 }
 
