@@ -94,8 +94,11 @@ set(SDL3TTF_DEPS_SHARED FALSE CACHE BOOL "Use shared dependencies")
 # Make the packages available
 FetchContent_MakeAvailable(SDL3 SDL3_image SDL3_ttf)
 
-# Create executable for your project
-add_executable(${PROJECT_NAME} src/Forge_Main.cpp)
+# Find all source files
+file(GLOB SOURCES "src/*.cpp")
+
+# Create executable for your project//src/Forge_Main.cpp
+add_executable(${PROJECT_NAME} ${SOURCES})
 
 if(UNIX AND NOT APPLE)
   # For Linux targets
