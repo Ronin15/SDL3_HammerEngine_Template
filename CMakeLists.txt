@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.20)
+cmake_minimum_required(VERSION 3.28)
 project(SDL3_Template VERSION 1.0.0 LANGUAGES C CXX)
 
 # Set build configurations
