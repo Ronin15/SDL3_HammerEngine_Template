@@ -3,7 +3,7 @@ project(SDL3_Template VERSION 1.0.0 LANGUAGES C CXX)
 
 # Set build configurations
 if(NOT CMAKE_BUILD_TYPE)
-  set(CMAKE_BUILD_TYPE "Debug" CACHE STRING "Choose the type of build (Debug or Release)" FORCE)
+    set(CMAKE_BUILD_TYPE "Debug" CACHE STRING "Choose the type of build (Debug or Release)" FORCE)
 endif()
 
 # Define available build configurations
@@ -101,73 +101,77 @@ file(GLOB SOURCES "src/*.cpp")
 add_executable(${PROJECT_NAME} ${SOURCES})
 
 if(UNIX AND NOT APPLE)
-  # For Linux targets
-  if(CMAKE_BUILD_TYPE STREQUAL "Debug")
-    # Enable SDL console output for Linux debug builds
-    target_compile_definitions(${PROJECT_NAME} PRIVATE SDL_MAIN_HANDLED)
-    
-    # No need for subsystem flags on Linux - console is the default
-    
-    message(STATUS "SDL console output enabled for debug build")
-  endif()
+    # For Linux targets
+    if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+        # Enable SDL console output for Linux debug builds
+        target_compile_definitions(${PROJECT_NAME} PRIVATE SDL_MAIN_HANDLED)
+
+        # No need for subsystem flags on Linux - console is the default
+
+        message(STATUS "SDL console output enabled for debug build")
+    endif()
 endif()
 
 if(WIN32)
-  # For Windows targets
-  if(CMAKE_BUILD_TYPE STREQUAL "Debug")
-      if(CMAKE_BUILD_TYPE STREQUAL "Debug")
-          set(DLL_DESTINATION ${OUTPUT_DEBUG_DIR})
-      else()
-        set(DLL_DESTINATION ${OUTPUT_RELEASE_DIR})
-      endif()
-    
-    # Enable SDL console output for Windows debug builds
-    target_compile_definitions(${PROJECT_NAME} PRIVATE SDL_MAIN_HANDLED)
-    
-    # Set the subsystem to console for debug builds
-    set_target_properties(${PROJECT_NAME} PROPERTIES
+    # For Windows targets
+    if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+        if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+            set(DLL_DESTINATION ${OUTPUT_DEBUG_DIR})
+        else()
+            set(DLL_DESTINATION ${OUTPUT_RELEASE_DIR})
+        endif()
+
+        # Enable SDL console output for Windows debug builds
+        target_compile_definitions(${PROJECT_NAME} PRIVATE SDL_MAIN_HANDLED)
+
+        # Set the subsystem to console for debug builds
+        set_target_properties(${PROJECT_NAME} PROPERTIES
       WIN32_EXECUTABLE FALSE
     )
-    
-    message(STATUS "SDL console output enabled for debug build")
-  else()
-    # Use Windows subsystem for Release builds (no console)
-    set_target_properties(${PROJECT_NAME} PROPERTIES
+
+        message(STATUS "SDL console output enabled for debug build")
+    else()
+        # Use Windows subsystem for Release builds (no console)
+        set_target_properties(${PROJECT_NAME} PROPERTIES
       WIN32_EXECUTABLE TRUE
     )
-  endif()
+    endif()
 endif()
 
 if(APPLE)
-  # For macOS targets
-  if(CMAKE_BUILD_TYPE STREQUAL "Debug")
-    # Enable SDL console output for macOS debug builds
-    target_compile_definitions(${PROJECT_NAME} PRIVATE SDL_MAIN_HANDLED)
-    
-    # On macOS, applications are bundles by default, but we can ensure
-    # that console output works properly in debug mode
-    set_target_properties(${PROJECT_NAME} PROPERTIES
+    # For macOS targets
+    if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+        # Enable SDL console output for macOS debug builds
+        target_compile_definitions(${PROJECT_NAME} PRIVATE SDL_MAIN_HANDLED)
+
+        # On macOS, applications are bundles by default, but we can ensure
+        # that console output works properly in debug mode
+        set_target_properties(${PROJECT_NAME} PROPERTIES
       MACOSX_BUNDLE FALSE      # Don't create a bundle in debug mode
       BUILD_WITH_INSTALL_RPATH TRUE
+      BUILD_RPATH "@executable_path/../debug"
+      INSTALL_RPATH "@executable_path/../debug"
     )
-    
-    # Add a post-build message
-    add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+
+        # Add a post-build message
+        add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
       COMMAND echo "macOS console output enabled for debug build"
     )
-    
-    message(STATUS "SDL console output enabled for macOS debug build")
-  else()
-    # For release builds, create a proper macOS application bundle
-    set_target_properties(${PROJECT_NAME} PROPERTIES
+
+        message(STATUS "SDL console output enabled for macOS debug build")
+    else()
+        # For release builds, create a proper macOS application bundle
+        set_target_properties(${PROJECT_NAME} PROPERTIES
       MACOSX_BUNDLE TRUE
       BUILD_WITH_INSTALL_RPATH TRUE
+      BUILD_RPATH "@executable_path/../Frameworks"
+      INSTALL_RPATH "@executable_path/../Frameworks"
     )
-  endif()
+    endif()
 endif()
 
 # Link against the SDL3 libraries
-target_link_libraries(${PROJECT_NAME} PRIVATE 
+target_link_libraries(${PROJECT_NAME} PRIVATE
     SDL3::SDL3
     SDL3_image::SDL3_image
     SDL3_ttf::SDL3_ttf
