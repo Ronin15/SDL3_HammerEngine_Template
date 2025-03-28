@@ -2,11 +2,12 @@
 #include <SDL3/SDL_video.h>
 #include <chrono>
 #include <thread>
+#include <iostream>
 #include "GameStateManager.hpp"
 #include "MainMenuState.hpp"
 #include "GamePlayState.hpp"
 #include "PauseState.hpp"
-#include <iostream>
+
 
 const int WINDOW_WIDTH {1920};
 const int WINDOW_HEIGHT {1080};
