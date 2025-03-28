@@ -1,10 +1,77 @@
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_video.h>
+#include <chrono>
+#include <thread>
+#include "GameStateManager.hpp"
+#include "MainMenuState.hpp"
+#include "GamePlayState.hpp"
+#include "PauseState.hpp"
 #include <iostream>
 
 const int WINDOW_WIDTH {1920};
 const int WINDOW_HEIGHT {1080};
 const char* GAME_NAME = "Galaxy Forge";
+
+// Simulated game loop
+void simulateGameLoop() {
+    // Create state manager
+    GameStateManager stateManager;
+
+    // Add all possible states
+    stateManager.addState(std::make_unique<MainMenuState>());
+    stateManager.addState(std::make_unique<GamePlayState>());
+    stateManager.addState(std::make_unique<PauseState>());
+
+    // Simulate game flow
+    std::cout << "Starting game simulation..." << std::endl;
+
+    // Start in Main Menu
+    stateManager.setState("MainMenuState");
+    stateManager.update();
+    std::this_thread::sleep_for(std::chrono::seconds(2));
+
+    // Transition to Gameplay
+    stateManager.setState("GamePlayState");
+    stateManager.update();
+    std::this_thread::sleep_for(std::chrono::seconds(3));
+
+    // Pause the game
+    stateManager.setState("PauseState");
+    stateManager.update();
+    std::this_thread::sleep_for(std::chrono::seconds(2));
+
+    // Resume gameplay
+    stateManager.setState("GamePlayState");
+    stateManager.update();
+    std::this_thread::sleep_for(std::chrono::seconds(3));
+
+    // Return to main menu
+    stateManager.setState("MainMenuState");
+    stateManager.update();
+    std::this_thread::sleep_for(std::chrono::seconds(2));
+
+    // Try changing to a non-existent state to test error handling
+    try {
+        stateManager.setState("NonExistentState");
+    } catch (const std::exception& e) {
+        std::cerr << "Error changing state: " << e.what() << std::endl;
+    }
+
+    // Remove a state and verify
+    std::cout << "Removing PauseState..." << std::endl;
+    stateManager.removeState("PauseState");
+
+    // Verify state removal
+    if (!stateManager.hasState("PauseState")) {
+        std::cout << "PauseState successfully removed." << std::endl;
+    }
+
+    // Final state cleanup
+    stateManager.clearAllStates();
+    std::cout << "Game simulation complete." << std::endl;
+}
+
+
 
 int main(int argc, char* argv[]) {
     // Initialize SDL
@@ -38,6 +105,8 @@ int main(int argc, char* argv[]) {
 
     // Main loop
     while (!quit) {
+
+        simulateGameLoop();
         // Handle events on queue
         while (SDL_PollEvent(&event)) {
             // User requests quit
