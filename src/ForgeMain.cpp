@@ -3,7 +3,12 @@
 #include <chrono>
 #include <thread>
 #include <iostream>
+#include "EntityIdleState.hpp"
+#include "EntityWalkingState.hpp"
+#include "EntityJumpingState.hpp"
+#include "EntityRunningState.hpp"
 #include "GameStateManager.hpp"
+#include "EntityStateManager.hpp"
 #include "MainMenuState.hpp"
 #include "GamePlayState.hpp"
 #include "PauseState.hpp"
@@ -16,59 +21,84 @@ const char* GAME_NAME = "Galaxy Forge";
 // Simulated game loop
 void simulateGameLoop() {
     // Create state manager
-    GameStateManager stateManager;
+    GameStateManager gameStateManager;
+    EntityStateManager entityStateManager;
+
 
     // Add all possible states
-    stateManager.addState(std::make_unique<MainMenuState>());
-    stateManager.addState(std::make_unique<GamePlayState>());
-    stateManager.addState(std::make_unique<PauseState>());
+    gameStateManager.addState(std::make_unique<MainMenuState>());
+    gameStateManager.addState(std::make_unique<GamePlayState>());
+    gameStateManager.addState(std::make_unique<PauseState>());
+
+    //add all possible entitiy states
+    entityStateManager.addState("Idle",std::make_unique<EntityIdleState>());
+    entityStateManager.addState("Walking",std::make_unique<EntityWalkingState>());
+    entityStateManager.addState("Running",std::make_unique<EntityRunningState>());
+    entityStateManager.addState("Jumping",std::make_unique<EntityJumpingState>());
 
     // Simulate game flow
     std::cout << "Starting game simulation..." << std::endl;
 
     // Start in Main Menu
-    stateManager.setState("MainMenuState");
-    stateManager.update();
+    gameStateManager.setState("MainMenuState");
+    gameStateManager.update();
     std::this_thread::sleep_for(std::chrono::seconds(2));
 
     // Transition to Gameplay
-    stateManager.setState("GamePlayState");
-    stateManager.update();
+    gameStateManager.setState("GamePlayState");
+    gameStateManager.update();
+    entityStateManager.setState("Idle");
+    entityStateManager.update();
+    entityStateManager.setState("Walking");
+    entityStateManager.update();
+    entityStateManager.setState("Running");
+    entityStateManager.update();
+    entityStateManager.setState("Jumping");
+    entityStateManager.update();
+
     std::this_thread::sleep_for(std::chrono::seconds(3));
 
     // Pause the game
-    stateManager.setState("PauseState");
-    stateManager.update();
+    gameStateManager.setState("PauseState");
+    gameStateManager.update();
     std::this_thread::sleep_for(std::chrono::seconds(2));
 
     // Resume gameplay
-    stateManager.setState("GamePlayState");
-    stateManager.update();
+    gameStateManager.setState("GamePlayState");
+    gameStateManager.update();
+    entityStateManager.setState("Idle");
+    entityStateManager.update();
+    entityStateManager.setState("Walking");
+    entityStateManager.update();
+    entityStateManager.setState("Running");
+    entityStateManager.update();
+    entityStateManager.setState("Jumping");
+    entityStateManager.update();
     std::this_thread::sleep_for(std::chrono::seconds(3));
 
     // Return to main menu
-    stateManager.setState("MainMenuState");
-    stateManager.update();
+    gameStateManager.setState("MainMenuState");
+    gameStateManager.update();
     std::this_thread::sleep_for(std::chrono::seconds(2));
 
     // Try changing to a non-existent state to test error handling
     try {
-        stateManager.setState("NonExistentState");
+        gameStateManager.setState("NonExistentState");
     } catch (const std::exception& e) {
         std::cerr << "Error changing state: " << e.what() << std::endl;
     }
 
     // Remove a state and verify
     std::cout << "Removing PauseState..." << std::endl;
-    stateManager.removeState("PauseState");
+    gameStateManager.removeState("PauseState");
 
     // Verify state removal
-    if (!stateManager.hasState("PauseState")) {
+    if (!gameStateManager.hasState("PauseState")) {
         std::cout << "PauseState successfully removed." << std::endl;
     }
 
     // Final state cleanup
-    stateManager.clearAllStates();
+    gameStateManager.clearAllStates();
     std::cout << "Game simulation complete." << std::endl;
 }
 
