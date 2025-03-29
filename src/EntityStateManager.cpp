@@ -1,21 +1,22 @@
 #include "EntityStateManager.hpp"
-#include "EntityState.hpp"
 #include <iostream>
 #include <stdexcept>
+#include "EntityState.hpp"
 
 EntityStateManager::EntityStateManager() : currentState(nullptr) {}
 
-EntityStateManager::~EntityStateManager() { currentState = nullptr; }
+EntityStateManager::~EntityStateManager() {
+  currentState = nullptr;
+}
 
-void EntityStateManager::addState(const std::string &stateName,
-                                  std::unique_ptr<EntityState> state) {
+void EntityStateManager::addState(const std::string& stateName,std::unique_ptr<EntityState> state) {
   if (states.find(stateName) != states.end()) {
     throw std::invalid_argument("State already exists" + stateName);
   }
   states[stateName] = std::move(state);
 }
 
-void EntityStateManager::setState(const std::string &stateName) {
+void EntityStateManager::setState(const std::string& stateName) {
   if (currentState) {
     currentState->exit();
   }
@@ -33,7 +34,7 @@ void EntityStateManager::setState(const std::string &stateName) {
 }
 
 std::string EntityStateManager::getCurrentStateName() const {
-  for (const auto &pair : states) {
+  for (const auto& pair : states) {
     if (pair.second.get() == currentState) {
       return pair.first;
     }
@@ -41,14 +42,13 @@ std::string EntityStateManager::getCurrentStateName() const {
   return "";
 }
 
-bool EntityStateManager::hasState(const std::string &stateName) const {
+bool EntityStateManager::hasState(const std::string& stateName) const {
   return states.find(stateName) != states.end();
 }
 
 // TODO: REMOVE THIS FUNCTION later as Entity states will be set and not
 // deleted/removed.
-void EntityStateManager::removeState(const std::string &stateName) {
-
+void EntityStateManager::removeState(const std::string& stateName) {
   // cehck if current state is being removed
   if (currentState) {
     auto it = states.find(stateName);

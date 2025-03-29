@@ -10,4 +10,4 @@ class EntityRunningState : public EntityState {
   void exit() override;
 };
 
-#endif // ENTITY_RUNNING_STATE_HPP
+#endif  // ENTITY_RUNNING_STATE_HPP

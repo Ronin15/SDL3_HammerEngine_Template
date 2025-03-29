@@ -2,7 +2,7 @@
 #define ENTITY_STATE_HPP
 
 class EntityState {
-public:
+ public:
   virtual void enter() = 0;
   virtual void update() = 0;
   virtual void render() = 0;
@@ -10,4 +10,4 @@ public:
   virtual ~EntityState() = default;
 };
 
-#endif // ENTITY_STATE_HPP
+#endif  // ENTITY_STATE_HPP

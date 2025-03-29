@@ -10,4 +10,4 @@ class EntityIdleState : public EntityState {
   void exit() override;
 };
 
-#endif // ENTITY_IDLE_STATE_HPP
+#endif  // ENTITY_IDLE_STATE_HPP

@@ -4,7 +4,7 @@
 #include "GameState.hpp"
 
 class GamePlayState : public GameState {
-public:
+ public:
   void enter() override;
   void update() override;
   void render() override;
@@ -12,4 +12,4 @@ public:
   std::string getName() const override;
 };
 
-#endif // GAME_PLAY_STATE_HPP
+#endif  // GAME_PLAY_STATE_HPP

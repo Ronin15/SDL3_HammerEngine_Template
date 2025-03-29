@@ -10,4 +10,4 @@ class EntityJumpingState : public EntityState {
   void exit() override;
 };
 
-#endif // ENTITY_JUMPING_STATE_HPP
+#endif  // ENTITY_JUMPING_STATE_HPP

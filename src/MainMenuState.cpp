@@ -16,4 +16,6 @@ void MainMenuState::exit() {
   std::cout << "Exiting Main Menu State" << std::endl;
 }
 
-std::string MainMenuState::getName() const { return "MainMenuState"; }
+std::string MainMenuState::getName() const {
+  return "MainMenuState";
+}

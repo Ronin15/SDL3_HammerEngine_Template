@@ -5,7 +5,7 @@
 // pure virtual for inheritance
 
 class GameState {
-public:
+ public:
   virtual void enter() = 0;
   virtual void update() = 0;
   virtual void render() = 0;
@@ -13,4 +13,4 @@ public:
   virtual std::string getName() const = 0;
   virtual ~GameState() = default;
 };
-#endif // GAME_STATE_HPP
+#endif  // GAME_STATE_HPP

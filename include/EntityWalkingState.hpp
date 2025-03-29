@@ -10,4 +10,4 @@ class EntityWalkingState : public EntityState {
   void exit() override;
 };
 
-#endif // ENTITY_WALKING_STATE_HPP
+#endif  // ENTITY_WALKING_STATE_HPP
