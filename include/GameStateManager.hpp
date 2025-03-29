@@ -7,20 +7,20 @@
 class GameState;
 
 class GameStateManager {
-    private:
-        std::vector<std::unique_ptr<GameState>> states;
-        GameState* currentState;  // Pointer to the current state, not owned
+private:
+  std::vector<std::unique_ptr<GameState>> states;
+  GameState *currentState; // Pointer to the current state, not owned
 
-    public:
-        GameStateManager();
+public:
+  GameStateManager();
 
-        void addState(std::unique_ptr<GameState> state);
-        void setState(const std::string& stateName);
-        void update();
-        bool hasState(const std::string& stateName) const;
-        GameState* getState(const std::string& stateName);
-        void removeState(const std::string& stateName);
-        void clearAllStates();
-  };
+  void addState(std::unique_ptr<GameState> state);
+  void setState(const std::string &stateName);
+  void update();
+  bool hasState(const std::string &stateName) const;
+  GameState *getState(const std::string &stateName);
+  void removeState(const std::string &stateName);
+  void clearAllStates();
+};
 
-#endif //GAME_STATE_MANAGER_HPP
+#endif // GAME_STATE_MANAGER_HPP
