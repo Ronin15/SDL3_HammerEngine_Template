@@ -1,7 +1,7 @@
 #include "GameStateManager.hpp"
-#include "GameState.hpp"
 #include <algorithm>
 #include <iostream>
+#include "GameState.hpp"
 
 // GameStateManager Implementation
 GameStateManager::GameStateManager() : currentState(nullptr) {}
@@ -9,16 +9,15 @@ GameStateManager::GameStateManager() : currentState(nullptr) {}
 void GameStateManager::addState(std::unique_ptr<GameState> state) {
   // Check if a state with the same name already exists
   if (hasState(state->getName())) {
-    throw std::runtime_error("State with name " + state->getName() +
-                             " already exists");
+    throw std::runtime_error("State with name " + state->getName() + " already exists");
   }
   states.push_back(std::move(state));
 }
 
-void GameStateManager::setState(const std::string &stateName) {
+void GameStateManager::setState(const std::string& stateName) {
   // Find the new state
   auto it = std::find_if(states.begin(), states.end(),
-                         [&stateName](const std::unique_ptr<GameState> &state) {
+                         [&stateName](const std::unique_ptr<GameState>& state) {
                            return state->getName() == stateName;
                          });
 
@@ -53,23 +52,23 @@ void GameStateManager::update() {
   }
 }
 
-bool GameStateManager::hasState(const std::string &stateName) const {
+bool GameStateManager::hasState(const std::string& stateName) const {
   return std::any_of(states.begin(), states.end(),
-                     [&stateName](const std::unique_ptr<GameState> &state) {
+                     [&stateName](const std::unique_ptr<GameState>& state) {
                        return state->getName() == stateName;
                      });
 }
 
-GameState *GameStateManager::getState(const std::string &stateName) {
+GameState* GameStateManager::getState(const std::string& stateName) {
   auto it = std::find_if(states.begin(), states.end(),
-                         [&stateName](const std::unique_ptr<GameState> &state) {
+                         [&stateName](const std::unique_ptr<GameState>& state) {
                            return state->getName() == stateName;
                          });
 
   return it != states.end() ? it->get() : nullptr;
 }
 
-void GameStateManager::removeState(const std::string &stateName) {
+void GameStateManager::removeState(const std::string& stateName) {
   // If trying to remove the current state, first clear the current state
   if (currentState && currentState->getName() == stateName) {
     currentState->exit();
@@ -79,7 +78,7 @@ void GameStateManager::removeState(const std::string &stateName) {
   // Remove the state from the vector
   auto it =
       std::remove_if(states.begin(), states.end(),
-                     [&stateName](const std::unique_ptr<GameState> &state) {
+                     [&stateName](const std::unique_ptr<GameState>& state) {
                        return state->getName() == stateName;
                      });
 

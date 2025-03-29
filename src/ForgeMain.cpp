@@ -1,3 +1,8 @@
+#include <SDL3/SDL.h>
+#include <SDL3/SDL_video.h>
+#include <chrono>
+#include <iostream>
+#include <thread>
 #include "EntityIdleState.hpp"
 #include "EntityJumpingState.hpp"
 #include "EntityRunningState.hpp"
@@ -7,15 +12,10 @@
 #include "GameStateManager.hpp"
 #include "MainMenuState.hpp"
 #include "PauseState.hpp"
-#include <SDL3/SDL.h>
-#include <SDL3/SDL_video.h>
-#include <chrono>
-#include <iostream>
-#include <thread>
 
 const int WINDOW_WIDTH{1920};
 const int WINDOW_HEIGHT{1080};
-const char *GAME_NAME = "Galaxy Forge";
+const char* GAME_NAME = "Galaxy Forge";
 
 // Simulated game loop
 void simulateGameLoop() {
@@ -30,12 +30,9 @@ void simulateGameLoop() {
 
   // add all possible entitiy states
   entityStateManager.addState("Idle", std::make_unique<EntityIdleState>());
-  entityStateManager.addState("Walking",
-                              std::make_unique<EntityWalkingState>());
-  entityStateManager.addState("Running",
-                              std::make_unique<EntityRunningState>());
-  entityStateManager.addState("Jumping",
-                              std::make_unique<EntityJumpingState>());
+  entityStateManager.addState("Walking",std::make_unique<EntityWalkingState>());
+  entityStateManager.addState("Running",std::make_unique<EntityRunningState>());
+  entityStateManager.addState("Jumping",std::make_unique<EntityJumpingState>());
 
   // Simulate game flow
   std::cout << "Starting game simulation..." << std::endl;
@@ -85,7 +82,7 @@ void simulateGameLoop() {
   // Try changing to a non-existent state to test error handling
   try {
     gameStateManager.setState("NonExistentState");
-  } catch (const std::exception &e) {
+  } catch (const std::exception& e) {
     std::cerr << "Error changing state: " << e.what() << std::endl;
   }
 
@@ -103,7 +100,7 @@ void simulateGameLoop() {
   std::cout << "Game simulation complete." << std::endl;
 }
 
-int main(int argc, char *argv[]) {
+int main(int argc, char* argv[]) {
   /*   // Initialize SDL
     if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS)) {
         std::cerr << "SDL could not initialize! SDL_Error: " << SDL_GetError()
