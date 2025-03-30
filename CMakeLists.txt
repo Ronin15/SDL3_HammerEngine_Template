@@ -94,10 +94,56 @@ set(SDL3TTF_DEPS_SHARED FALSE CACHE BOOL "Use shared dependencies")
 # Make the packages available
 FetchContent_MakeAvailable(SDL3 SDL3_image SDL3_ttf)
 
+# FMOD Configuration
+# Set FMOD API directory - adjust this path to your FMOD installation
+set(FMOD_ROOT_DIR "${CMAKE_SOURCE_DIR}vendor/fmod" CACHE PATH "Path to FMOD API root directory")
+message(STATUS "FMOD_ROOT_DIR: ${FMOD_ROOT_DIR}")
+
+# Set platform-specific variables for FMOD
+if(WIN32)
+    if(CMAKE_SIZEOF_VOID_P EQUAL 8)
+        set(FMOD_LIBRARY_PATH "${FMOD_ROOT_DIR}/api/core/lib/x64")
+    else()
+        set(FMOD_LIBRARY_PATH "${FMOD_ROOT_DIR}/api/core/lib/x86")
+    endif()
+    
+    set(FMOD_LIBRARY "${FMOD_LIBRARY_PATH}/fmod_vc.lib")
+    set(FMOD_DLL "${FMOD_LIBRARY_PATH}/fmod.dll")
+elseif(APPLE)
+    set(FMOD_LIBRARY "${FMOD_ROOT_DIR}/api/core/lib/libfmod.dylib")
+else() # Linux
+    if(CMAKE_SIZEOF_VOID_P EQUAL 8)
+        set(FMOD_LIBRARY_PATH "${FMOD_ROOT_DIR}/api/core/lib/x86_64")
+    else()
+        set(FMOD_LIBRARY_PATH "${FMOD_ROOT_DIR}/api/core/lib/x86")
+    endif()
+endif()
+
+message(STATUS "FMOD_LIBRARY_PATH: ${FMOD_LIBRARY_PATH}")
+
+# Find FMOD library
+find_library(FMOD_LIB 
+    NAMES fmod libfmod fmod_vc
+    PATHS ${FMOD_LIBRARY_PATH}
+    NO_DEFAULT_PATH
+)
+
+# Set FMOD include directories
+set(FMOD_INCLUDE_DIRS
+    "${FMOD_ROOT_DIR}/api/core/inc"
+)
+
+# Check if FMOD library was found
+if(NOT FMOD_LIB)
+    message(WARNING "FMOD core library not found. Please check your FMOD_ROOT_DIR path.")
+else()
+    message(STATUS "Found FMOD core library: ${FMOD_LIB}")
+endif()
+
 # Find all source files
 file(GLOB SOURCES "src/*.cpp")
 
-# Create executable for your project//src/Forge_Main.cpp
+# Create executable for your project
 add_executable(${PROJECT_NAME} ${SOURCES})
 
 if(UNIX AND NOT APPLE)
@@ -170,35 +216,39 @@ if(APPLE)
     endif()
 endif()
 
-# Link against the SDL3 libraries
+# Link against the SDL3 libraries and FMOD
 target_link_libraries(${PROJECT_NAME} PRIVATE
     SDL3::SDL3
     SDL3_image::SDL3_image
     SDL3_ttf::SDL3_ttf
+    ${FMOD_LIB}
 )
 
 # Specify include directories
 target_include_directories(${PROJECT_NAME} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${FMOD_INCLUDE_DIRS}
 )
 
-# Copy SDL3 runtime libraries to build directory (Windows-specific)
+# Copy SDL3 and FMOD runtime libraries to build directory (Windows-specific)
 if(WIN32)
     add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
             $<TARGET_FILE:SDL3::SDL3>
             $<TARGET_FILE:SDL3_image::SDL3_image>
             $<TARGET_FILE:SDL3_ttf::SDL3_ttf>
+            ${FMOD_DLL}
             $<TARGET_FILE_DIR:${PROJECT_NAME}>
     )
 endif()
 
-# Install SDL3 DLLs on Windows
+# Install SDL3 DLLs and FMOD DLLs on Windows
 if(WIN32)
     install(FILES
         $<TARGET_FILE:SDL3::SDL3>
         $<TARGET_FILE:SDL3_image::SDL3_image>
         $<TARGET_FILE:SDL3_ttf::SDL3_ttf>
+        ${FMOD_DLL}
         DESTINATION bin
     )
 endif()
@@ -208,6 +258,6 @@ file(MAKE_DIRECTORY ${OUTPUT_DEBUG_DIR})
 file(MAKE_DIRECTORY ${OUTPUT_RELEASE_DIR})
 
 # Display status message indicating successful configuration
-message(STATUS "SDL3, SDL3_image, and SDL3_ttf have been configured successfully")
+message(STATUS "SDL3, SDL3_image, SDL3_ttf, and FMOD Core have been configured successfully")
 message(STATUS "Debug binaries will be output to: ${OUTPUT_DEBUG_DIR}")
 message(STATUS "Release binaries will be output to: ${OUTPUT_RELEASE_DIR}")
