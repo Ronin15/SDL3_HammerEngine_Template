@@ -1,5 +1,6 @@
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_video.h>
+#include <fmod.hpp>
 #include <chrono>
 #include <iostream>
 #include <thread>
@@ -99,6 +100,32 @@ void simulateGameLoop() {
   gameStateManager.clearAllStates();
   std::cout << "Game simulation complete." << std::endl;
 }
+void fmodTest() {
+        // Initialize FMOD
+        FMOD::System* system = nullptr;
+        FMOD::System_Create(&system);
+        system->init(512, FMOD_INIT_NORMAL, nullptr);
+
+        // Load sound
+        FMOD::Sound* sound = nullptr;
+        system->createSound("res/sfx/level_complete.wav", FMOD_DEFAULT, nullptr, &sound);
+
+        // Play sound
+        FMOD::Channel* channel = nullptr;
+        system->playSound(sound, nullptr, false, &channel);
+
+        // Wait for sound to finish
+        bool isPlaying = true;
+        while (isPlaying) {
+            channel->isPlaying(&isPlaying);
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
+
+        // Clean up
+        sound->release();
+        system->close();
+        system->release();
+    }
 
 int main(int argc, char* argv[]) {
   /*   // Initialize SDL
@@ -166,8 +193,9 @@ int main(int argc, char* argv[]) {
     SDL_DestroyWindow(window);
     SDL_Quit();
 */
-  for (int i = 1; i < 15; i++) {
-    simulateGameLoop();
+  fmodTest();
+  for (int i = 1; i < 5; i++) {
+      simulateGameLoop();
     std::cout << i << " Simulated loop(s) complete..\n" << std::endl;
   }
   return 0;
