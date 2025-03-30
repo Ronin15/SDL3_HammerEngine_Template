@@ -128,7 +128,7 @@ void fmodTest() {
     }
 
 int main(int argc, char* argv[]) {
-  /*   // Initialize SDL
+    // Initialize SDL
     if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS)) {
         std::cerr << "SDL could not initialize! SDL_Error: " << SDL_GetError()
     << std::endl; return 1;
@@ -136,8 +136,8 @@ int main(int argc, char* argv[]) {
 
     // Create window
     SDL_Window* window = SDL_CreateWindow("SDL3 Hello World", WINDOW_WIDTH,
-    WINDOW_HEIGHT,0); if (!window) { std::cerr << "Window could not be created!
-    SDL_Error: " << SDL_GetError() << std::endl; SDL_Quit(); return 1;
+    WINDOW_HEIGHT,0); if (!window) { std::cerr << "Window could not be created! SDL_Error: "
+        << SDL_GetError() << std::endl; SDL_Quit(); return 1;
     }
 
     // Create renderer
@@ -192,11 +192,13 @@ int main(int argc, char* argv[]) {
     SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(window);
     SDL_Quit();
-*/
+
   fmodTest();
-  for (int i = 1; i < 5; i++) {
-      simulateGameLoop();
+  simulateGameLoop();
+  /*for (int i = 1; i < 5; i++) {
+    simulateGameLoop();
     std::cout << i << " Simulated loop(s) complete..\n" << std::endl;
   }
+  */
   return 0;
 }
