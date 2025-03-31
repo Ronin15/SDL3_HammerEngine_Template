@@ -132,6 +132,7 @@ find_library(FMOD_LIB
 set(FMOD_INCLUDE_DIRS
     "${FMOD_ROOT_DIR}/api/core/inc"
 )
+message(STATUS "FMOD_INCLUDE_DIRS:${FMOD_ROOT_DIR}/api/core/inc")
 
 # Check if FMOD library was found
 if(NOT FMOD_LIB)
