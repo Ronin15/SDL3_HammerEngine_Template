@@ -96,7 +96,7 @@ FetchContent_MakeAvailable(SDL3 SDL3_image SDL3_ttf)
 
 # FMOD Configuration
 # Set FMOD API directory - adjust this path to your FMOD installation
-set(FMOD_ROOT_DIR "${CMAKE_SOURCE_DIR}vendor/fmod" CACHE PATH "Path to FMOD API root directory")
+set(FMOD_ROOT_DIR "${CMAKE_SOURCE_DIR}/vendor/fmod" CACHE PATH "Path to FMOD API root directory")
 message(STATUS "FMOD_ROOT_DIR: ${FMOD_ROOT_DIR}")
 
 # Set platform-specific variables for FMOD
@@ -110,10 +110,10 @@ if(WIN32)
     set(FMOD_LIBRARY "${FMOD_LIBRARY_PATH}/fmod_vc.lib")
     set(FMOD_DLL "${FMOD_LIBRARY_PATH}/fmod.dll")
 elseif(APPLE)
-    set(FMOD_LIBRARY "${FMOD_ROOT_DIR}/api/core/lib/libfmod.dylib")
+    set(FMOD_LIBRARY_PATH "${FMOD_ROOT_DIR}/api/core/lib/macOS")
 else() # Linux
     if(CMAKE_SIZEOF_VOID_P EQUAL 8)
-        set(FMOD_LIBRARY_PATH "${FMOD_ROOT_DIR}/api/core/lib/x86_64")
+        set(FMOD_LIBRARY_PATH "${FMOD_ROOT_DIR}/api/core/lib/linux_64")
     else()
         set(FMOD_LIBRARY_PATH "${FMOD_ROOT_DIR}/api/core/lib/x86")
     endif()
