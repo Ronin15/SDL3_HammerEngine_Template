@@ -46,15 +46,18 @@ void simulateGameLoop() {
   // Transition to Gameplay
   gameStateManager.setState("GamePlayState");
   gameStateManager.update();
+  std::this_thread::sleep_for(std::chrono::seconds(2));
   entityStateManager.setState("Idle");
   entityStateManager.update();
+  std::this_thread::sleep_for(std::chrono::seconds(2));
   entityStateManager.setState("Walking");
   entityStateManager.update();
+  std::this_thread::sleep_for(std::chrono::seconds(2));
   entityStateManager.setState("Running");
   entityStateManager.update();
+  std::this_thread::sleep_for(std::chrono::seconds(2));
   entityStateManager.setState("Jumping");
   entityStateManager.update();
-
   std::this_thread::sleep_for(std::chrono::seconds(3));
 
   // Pause the game
@@ -65,12 +68,16 @@ void simulateGameLoop() {
   // Resume gameplay
   gameStateManager.setState("GamePlayState");
   gameStateManager.update();
+  std::this_thread::sleep_for(std::chrono::seconds(2));
   entityStateManager.setState("Idle");
   entityStateManager.update();
+  std::this_thread::sleep_for(std::chrono::seconds(2));
   entityStateManager.setState("Walking");
   entityStateManager.update();
+  std::this_thread::sleep_for(std::chrono::seconds(2));
   entityStateManager.setState("Running");
   entityStateManager.update();
+  std::this_thread::sleep_for(std::chrono::seconds(2));
   entityStateManager.setState("Jumping");
   entityStateManager.update();
   std::this_thread::sleep_for(std::chrono::seconds(3));
