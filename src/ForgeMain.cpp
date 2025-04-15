@@ -1,24 +1,29 @@
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_video.h>
-#include <fmod.hpp>
-#include <chrono>
+//#include <fmod.hpp>
+//#include <chrono>
 #include <iostream>
-#include <thread>
-#include "EntityIdleState.hpp"
-#include "EntityJumpingState.hpp"
-#include "EntityRunningState.hpp"
-#include "EntityStateManager.hpp"
-#include "EntityWalkingState.hpp"
-#include "GamePlayState.hpp"
-#include "GameStateManager.hpp"
-#include "MainMenuState.hpp"
-#include "PauseState.hpp"
+//#include <thread>
+#include "GameEngine.hpp"
+#include<string>
+//#include "EntityIdleState.hpp"
+//#include "EntityJumpingState.hpp"
+//#include "EntityRunningState.hpp"
+//#include "EntityStateManager.hpp"
+//#include "EntityWalkingState.hpp"
+//#include "GamePlayState.hpp"
+//#include "GameStateManager.hpp"
+//#include "MainMenuState.hpp"
+//#include "PauseState.hpp"
 
+const float FPS {60.0f};
+const float DELAY_TIME{ 1000.0f / FPS };
 const int WINDOW_WIDTH{1920};
 const int WINDOW_HEIGHT{1080};
-const char* GAME_NAME = "Galaxy Forge";
+const std::string GAME_NAME{"Galaxy Forge"};
 
-// Simulated game loop
+
+/* Simulated game loop
 void simulateGameLoop() {
   // Create state manager
   GameStateManager gameStateManager;
@@ -133,9 +138,41 @@ void fmodTest() {
         system->close();
         system->release();
     }
-
+*/
 int main(int argc, char* argv[]) {
-    // Initialize SDL
+
+    Uint64 frameStart, frameTime;
+
+    std::cout << "Forge Game Engine initializing " << GAME_NAME <<"...\n";
+
+    if(GameEngine::Instance()->init(GAME_NAME.c_str() ,WINDOW_WIDTH, WINDOW_HEIGHT, false)){
+        while (GameEngine::Instance()->getRunning()) {
+
+            frameStart = SDL_GetTicks();
+
+            GameEngine::Instance()->handleEvents();
+            GameEngine::Instance()->update();
+            GameEngine::Instance()->render();
+
+            frameTime = SDL_GetTicks() - frameStart;
+
+            if (frameTime < DELAY_TIME) {
+                SDL_Delay((int)(DELAY_TIME - frameTime));
+            }
+        }
+    }else{
+        std::cout << "Forge Game init " << GAME_NAME << " Failed!:" << SDL_GetError();
+
+        return -1;
+    }
+
+    std::cout << "Forge Game " << GAME_NAME << " Shutting down...\n";
+
+        GameEngine::Instance()->clean();
+
+        return 0;
+
+    /*/ Initialize SDL
     if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS)) {
         std::cerr << "SDL could not initialize! SDL_Error: " << SDL_GetError()
     << std::endl; return 1;
@@ -202,10 +239,11 @@ int main(int argc, char* argv[]) {
 
   fmodTest();
   simulateGameLoop();
-  /*for (int i = 1; i < 5; i++) {
-    simulateGameLoop();
-    std::cout << i << " Simulated loop(s) complete..\n" << std::endl;
+  //for (int i = 1; i < 5; i++) {
+   // simulateGameLoop();
+   // std::cout << i << " Simulated loop(s) complete..\n" << std::endl;
   }
-  */
+
   return 0;
+  */
 }
