@@ -1,7 +1,7 @@
+#include "GameEngine.hpp"
 #include <SDL3/SDL.h>
 #include <iostream>
-#include "GameEngine.hpp"
-#include<string>
+#include <string>
 
 const float FPS {60.0f};
 const float DELAY_TIME{ 1000.0f / FPS };

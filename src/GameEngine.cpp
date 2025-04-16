@@ -13,7 +13,7 @@ bool GameEngine::init(const char* title, int width, int height, bool fullscreen)
         std::cout << "Forge Game Engine framework online!\n";
         fullscreen = false;
         SDL_Rect display;
-        SDL_GetDisplayBounds(0, &display);
+        SDL_GetDisplayBounds(1, &display);
 
             if (width >= display.w && height >= display.h) {
 
