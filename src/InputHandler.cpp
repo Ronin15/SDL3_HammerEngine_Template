@@ -1,10 +1,13 @@
 #include "InputHandler.hpp"
 #include "GameEngine.hpp"
 #include "SDL3/SDL_gamepad.h"
+#include "SDL3/SDL_joystick.h"
 #include "Vector2D.hpp"
 #include <iostream>
 
+
 InputHandler* InputHandler::sp_Instance{nullptr}; // Initialize static instance
+SDL_JoystickID* gamepadIDs{nullptr};
 
 InputHandler::InputHandler()
     :m_keystates(nullptr),
@@ -33,23 +36,17 @@ void InputHandler::initializeGamePad() {
         return;
     }
 
-    // Initialize SDL gamepad subsystem if not already initialized
-    if (SDL_InitSubSystem(SDL_INIT_GAMEPAD) != 0) {
-        std::cerr << "Failed to initialize SDL Gamepad subsystem: " << SDL_GetError() << std::endl;
-        return;
-    }
-
     // Get all available gamepads
     int numGamepads = 0;
     SDL_JoystickID* gamepadIDs = SDL_GetGamepads(&numGamepads);
 
     if (gamepadIDs == nullptr) {
-        std::cerr << "Failed to get gamepad IDs: " << SDL_GetError() << std::endl;
+        std::cerr << "Forge Game Engine - Failed to get gamepad IDs: " << SDL_GetError() << std::endl;
         return;
     }
 
     if (numGamepads > 0) {
-        std::cout << "Number of Game Pads detected: " << numGamepads << std::endl;
+        std::cout << "Forge Game Engine - Number of Game Pads detected: " << numGamepads << std::endl;
 
         // Open all available gamepads
         for (int i = 0; i < numGamepads; i++) {
@@ -57,7 +54,7 @@ void InputHandler::initializeGamePad() {
                 SDL_Gamepad* gamepad = SDL_OpenGamepad(gamepadIDs[i]);
                 if (gamepad) {
                     m_joysticks.push_back(gamepad);
-                    std::cout << "Gamepad opened: " << SDL_GetGamepadName(gamepad) << std::endl;
+                    std::cout << "Forge Game Engine - Gamepad opened: " << SDL_GetGamepadName(gamepad) << std::endl;
 
                     // Add default joystick values
                     m_joystickValues.push_back(std::make_pair(new Vector2D(0, 0), new Vector2D(0, 0)));
@@ -69,16 +66,13 @@ void InputHandler::initializeGamePad() {
                     }
                     m_buttonStates.push_back(tempButtons);
                 } else {
-                    std::cerr << "Could not open gamepad: " << SDL_GetError() << std::endl;
+                    std::cerr << "Forge Game Engine - Could not open gamepad: " << SDL_GetError() << std::endl;
                 }
             }
         }
     } else {
-        std::cout << "No gamepads connected." << std::endl;
+        std::cout << "Forge Game Engine - No gamepads connected." << std::endl;
     }
-
-    // Free the gamepad ID array
-    SDL_free(gamepadIDs);
 
     m_gamePadInitialized = true;
 }
@@ -150,7 +144,7 @@ void InputHandler::update() {
     while (SDL_PollEvent(&event)) {
         switch (event.type) {
         case SDL_EVENT_QUIT:
-            std::cout << "Forge Game Engine shutting down! Forge Stopping {}===]>\n";
+            std::cout << "Forge Game Engine - Shutting down! Forge Stopping {}===]>\n";
             GameEngine::Instance()->setRunning(false);
             break;
 
@@ -201,9 +195,9 @@ void InputHandler::onKeyDown(SDL_Event& event) {
 
     // You can do key-specific processing here if needed
     // For example:
-    // if (scancode == SDL_SCANCODE_ESCAPE) {
-    //     GameEngine::Instance()->setRunning(false);
-    // }
+    if (scancode == SDL_SCANCODE_ESCAPE) {
+        GameEngine::Instance()->setRunning(false);
+     }
 }
 
 void InputHandler::onKeyUp(SDL_Event& event) {
@@ -228,12 +222,15 @@ void InputHandler::onMouseMove(SDL_Event& event) {
 void InputHandler::onMouseButtonDown(SDL_Event& event) {
     if (event.button.button == SDL_BUTTON_LEFT) {
         m_mouseButtonStates[LEFT] = true;
+         std::cout << "Forge Game Engine - Mouse button Left clicked!\n";
     }
     if (event.button.button == SDL_BUTTON_MIDDLE) {
         m_mouseButtonStates[MIDDLE] = true;
+        std::cout << "Forge Game Engine - Mouse button Middle clicked!\n";
     }
     if (event.button.button == SDL_BUTTON_RIGHT) {
         m_mouseButtonStates[RIGHT] = true;
+        std::cout << "Forge Game Engine - Mouse button Right clicked!\n";
     }
 }
 
@@ -270,8 +267,10 @@ void InputHandler::onGamepadAxisMove(SDL_Event& event) {
     if (event.gaxis.axis == SDL_GAMEPAD_AXIS_LEFTX) {
         if (event.gaxis.value > m_joystickDeadZone) {
             m_joystickValues[whichOne].first->setX(1);
+            std::cout << "Forge Game Engine - Left Stick X moving RIGHT!\n";
         } else if (event.gaxis.value < -m_joystickDeadZone) {
             m_joystickValues[whichOne].first->setX(-1);
+            std::cout << "Forge Game Engine - Left Stick X negative moving LEFT!\n";
         } else {
             m_joystickValues[whichOne].first->setX(0);
         }
@@ -368,5 +367,6 @@ void InputHandler::clean() {
     m_joysticks.clear();
     m_joystickValues.clear();
     m_buttonStates.clear();
+    SDL_free(gamepadIDs);
     m_gamePadInitialized = false;
 }
