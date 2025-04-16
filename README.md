@@ -1,1 +1,1 @@
-SDL3 template with cmake
+SDL3 Game Template with CMAKE and Ninja
