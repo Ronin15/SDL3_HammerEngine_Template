@@ -7,13 +7,13 @@ const float FPS {60.0f};
 const float DELAY_TIME{ 1000.0f / FPS };
 const int WINDOW_WIDTH{1920};
 const int WINDOW_HEIGHT{1080};
-const std::string GAME_NAME{"Galaxy Forge"};
+const std::string GAME_NAME{"Game Template"};
 
 int main(int argc, char* argv[]) {
 
     Uint64 frameStart, frameTime;
 
-    std::cout << "Forge Game Engine initializing " << GAME_NAME <<"...\n";
+    std::cout << "Forge Game Engine - initializing " << GAME_NAME <<"...\n";
 
     if(GameEngine::Instance()->init(GAME_NAME.c_str() ,WINDOW_WIDTH, WINDOW_HEIGHT, false)){
         while (GameEngine::Instance()->getRunning()) {

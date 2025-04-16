@@ -8,9 +8,9 @@ GameEngine* GameEngine::sp_Instance{0};
 bool GameEngine::init(const char* title, int width, int height, bool fullscreen) {
 
     // attempt to initialize SDL
-    if (SDL_Init(SDL_INIT_VIDEO)) {
+    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMEPAD)) {
 
-        std::cout << "Forge Game Engine framework online!\n";
+        std::cout << "Forge Game Engine - Framework SDL3 online!\n";
         fullscreen = false;
         SDL_Rect display;
         SDL_GetDisplayBounds(1, &display);
@@ -19,9 +19,9 @@ bool GameEngine::init(const char* title, int width, int height, bool fullscreen)
 
                 fullscreen = false;//false for Troubleshooting. True for actual full screen.
 
-                std::cout << "Forge Game Engine window size set to full screen!\n";
+                std::cout << "Forge Game Engine - Window size set to full screen!\n";
         }
-                std::cout << "Forge Game Engine detected resolution on monitor 1 : " << display.w << "x" << display.h << "\n";
+                std::cout << "Forge Game Engine - Detected resolution on monitor 1 : " << display.w << "x" << display.h << "\n";
 
         int flags{0};
 
@@ -33,18 +33,18 @@ bool GameEngine::init(const char* title, int width, int height, bool fullscreen)
 
         if (p_Window){
 
-            std::cout << "Forge Game Engine window creation system online!\n";
+            std::cout << "Forge Game Engine - Window creation system online!\n";
             p_Renderer = SDL_CreateRenderer(p_Window,NULL);
 
             if (p_Renderer) {
 
-                std::cout << "Forge Game Engine rendering system online!\n";
+                std::cout << "Forge Game Engine - Rendering system online!\n";
 				SDL_SetRenderDrawColor(p_Renderer, 31, 32, 34, 255); // Forge Game Engine gunmetal dark grey
 
             }
             else {
 
-                std::cout << "Forge Game Engine rendering system creation failed! " << SDL_GetError();
+                std::cout << "Forge Game Engine - Rendering system creation failed! " << SDL_GetError();
                 std::cout << "Press Enter to Continue";
 
                 return false; // Forge renderer fail
@@ -53,21 +53,21 @@ bool GameEngine::init(const char* title, int width, int height, bool fullscreen)
         }
         else {
 
-            std::cout << "Forge Game Engine window system creation failed! Maybe need a window Manager? " << SDL_GetError();
+            std::cout << "Forge Game Engine- Window system creation failed! Maybe need a window Manager? " << SDL_GetError();
             std::cout << "Press Enter to Continue\n";
 
             return false; // Forge window fail
         }
     }
     else {
-        std::cerr << "Forge Game Engine framework creation failed! Make sure you have the SDL3 runtime installed? SDL error: " << SDL_GetError() << std::endl;
+        std::cerr << "Forge Game Engine - Framework creation failed! Make sure you have the SDL3 runtime installed? SDL error: " << SDL_GetError() << std::endl;
         std::cout << "Press Enter to Continue\n";
         return false; // Forge SDL init fail. Make sure you have the SDL2 runtime
         // installed.
     }
 
     InputHandler::Instance()->initializeGamePad(); // aligned here for organization sake.
-    std::cout << "Forge Game Engine creating game constructs.... \n";
+    std::cout << "Forge Game Engine - Creating game constructs.... \n";
     //_______________________________________________________________________________________________________________BEGIN
     // Loading intiial game states and constructs
 
@@ -81,9 +81,9 @@ bool GameEngine::init(const char* title, int width, int height, bool fullscreen)
     //_______________________________________________________________________________________________________________END
 
     setRunning(true); // Forge Game created successfully, start the main loop
-    std::cout << "Forge Game Engine game contructs created successfully!\n";
-    std::cout << "Forge Game Engine game intialized successfully!\n";
-    std::cout << "Forge Game Engine running " << title << " <]==={}\n";
+    std::cout << "Forge Game Engine - Game constructs created successfully!\n";
+    std::cout << "Forge Game Engine - Game initialized successfully!\n";
+    std::cout << "Forge Game Engine - Running " << title << " <]==={}\n";
 
     return true;
 }
@@ -112,5 +112,5 @@ void GameEngine::clean() {
     SDL_DestroyRenderer(p_Renderer);
     SDL_Quit();
 
-    std::cout << "Forge Game Engine shutdown!\n";
+    std::cout << "Forge Game Engine - Shutdown!\n";
 }
