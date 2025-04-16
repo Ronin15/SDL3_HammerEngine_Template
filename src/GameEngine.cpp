@@ -3,7 +3,7 @@
 #include "SDL3/SDL_init.h"
 #include <iostream>
 
-GameEngine* GameEngine::sp_Instance{0};
+GameEngine* GameEngine::sp_Instance{nullptr};
 
 bool GameEngine::init(const char* title, int width, int height, bool fullscreen) {
 
