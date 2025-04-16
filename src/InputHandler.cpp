@@ -270,7 +270,7 @@ void InputHandler::onGamepadAxisMove(SDL_Event& event) {
             std::cout << "Forge Game Engine - Left Stick X moving RIGHT!\n";
         } else if (event.gaxis.value < -m_joystickDeadZone) {
             m_joystickValues[whichOne].first->setX(-1);
-            std::cout << "Forge Game Engine - Left Stick X negative moving LEFT!\n";
+            std::cout << "Forge Game Engine - Left Stick X moving LEFT!\n";
         } else {
             m_joystickValues[whichOne].first->setX(0);
         }
@@ -280,8 +280,10 @@ void InputHandler::onGamepadAxisMove(SDL_Event& event) {
     if (event.gaxis.axis == SDL_GAMEPAD_AXIS_LEFTY) {
         if (event.gaxis.value > m_joystickDeadZone) {
             m_joystickValues[whichOne].first->setY(1);
+             std::cout << "Forge Game Engine - Left Stick Y moving DOWN!\n";
         } else if (event.gaxis.value < -m_joystickDeadZone) {
             m_joystickValues[whichOne].first->setY(-1);
+            std::cout << "Forge Game Engine - Left Stick Y moving UP!\n";
         } else {
             m_joystickValues[whichOne].first->setY(0);
         }

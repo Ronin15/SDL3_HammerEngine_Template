@@ -13,7 +13,7 @@ int main(int argc, char* argv[]) {
 
     Uint64 frameStart, frameTime;
 
-    std::cout << "Forge Game Engine - initializing " << GAME_NAME <<"...\n";
+    std::cout << "Forge Game Engine - Initializing " << GAME_NAME <<"...\n";
 
     if(GameEngine::Instance()->init(GAME_NAME.c_str() ,WINDOW_WIDTH, WINDOW_HEIGHT, false)){
         while (GameEngine::Instance()->getRunning()) {
@@ -31,7 +31,7 @@ int main(int argc, char* argv[]) {
             }
         }
     }else{
-        std::cout << "Forge Game init " << GAME_NAME << " Failed!:" << SDL_GetError();
+        std::cout << "Forge Game - Init " << GAME_NAME << " Failed!:" << SDL_GetError();
 
         return -1;
     }
