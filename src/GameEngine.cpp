@@ -1,8 +1,10 @@
 #include "GameEngine.hpp"
-#include <cstddef>
-#include <iostream>
 #include "InputHandler.hpp"
-#include "SDL3/SDL_init.h"
+#include "GameStateManager.hpp"
+#include "MainMenuState.hpp"
+#include "GamePlayState.hpp"
+
+#include <iostream>
 
 GameEngine* GameEngine::sp_Instance{nullptr};
 
@@ -28,16 +30,15 @@ bool GameEngine::init(const char* title, int width, int height, bool fullscreen)
       flags = SDL_WINDOW_FULLSCREEN;
     }
 
-    p_Window = SDL_CreateWindow(title, width, height, flags);
+    p_window = SDL_CreateWindow(title, width, height, flags);
 
-    if (p_Window) {
+    if (p_window) {
       std::cout << "Forge Game Engine - Window creation system online!\n";
-      p_Renderer = SDL_CreateRenderer(p_Window, NULL);
+      p_renderer = SDL_CreateRenderer(p_window, NULL);
 
-      if (p_Renderer) {
+      if (p_renderer) {
         std::cout << "Forge Game Engine - Rendering system online!\n";
-        SDL_SetRenderDrawColor(p_Renderer, 31, 32, 34,
-                               255);  // Forge Game Engine gunmetal dark grey
+        SDL_SetRenderDrawColor(p_renderer, 31, 32, 34, 255);  // Forge Game Engine gunmetal dark grey
 
       } else {
         std::cout << "Forge Game Engine - Rendering system creation failed! " << SDL_GetError();
@@ -56,7 +57,17 @@ bool GameEngine::init(const char* title, int width, int height, bool fullscreen)
   InputHandler::Instance()->initializeGamePad();  // aligned here for organization sake.
   std::cout << "Forge Game Engine - Creating game constructs.... \n";
   //_______________________________________________________________________________________________________________BEGIN
-  // Loading intiial game states and constructs
+  // Initialize game state manager
+  mp_gameStateManager = new GameStateManager();
+  if (!mp_gameStateManager) {
+    std::cerr << "Forge Game Engine - Failed to create Game State Manager!\n";
+    return false;
+  }
+
+  // Loading initial game states
+   mp_gameStateManager->addState(std::make_unique<MainMenuState>());
+   mp_gameStateManager->addState(std::make_unique<GamePlayState>());
+   mp_gameStateManager->setState("MainMenuState");
 
   //_______________________________________________________________________________________________________________END
 
@@ -72,20 +83,28 @@ void GameEngine::handleEvents() {
   InputHandler::Instance()->update();
 }
 
-void GameEngine::update() {}
+void GameEngine::update() {
+    mp_gameStateManager->update();
+}
 
 void GameEngine::render() {
-  SDL_RenderClear(p_Renderer);
+  SDL_RenderClear(p_renderer);
 
-  // draw hear
+  mp_gameStateManager->render();
 
-  SDL_RenderPresent(p_Renderer);
+  SDL_RenderPresent(p_renderer);
 }
 
 void GameEngine::clean() {
   InputHandler::Instance()->clean();
-  SDL_DestroyWindow(p_Window);
-  SDL_DestroyRenderer(p_Renderer);
+
+  if (mp_gameStateManager) {
+    delete mp_gameStateManager;
+    mp_gameStateManager = nullptr;
+  }
+
+  SDL_DestroyWindow(p_window);
+  SDL_DestroyRenderer(p_renderer);
   SDL_Quit();
   std::cout << "Forge Game Engine - Shutdown!\n";
 }

@@ -1,6 +1,7 @@
 #ifndef GAME_ENGINE_HPP
 #define GAME_ENGINE_HPP
 #include <SDL3/SDL.h>
+#include "GameStateManager.hpp"
 
 class GameEngine {
  public:
@@ -21,13 +22,16 @@ class GameEngine {
   void render();
   void clean();
 
+  GameStateManager* getGameStateManager() { return mp_gameStateManager; }
+
   void setRunning(bool running) { m_isRunning = running; }
   bool getRunning() { return m_isRunning; }
-  SDL_Renderer* getRenderer() { return p_Renderer; }
+  SDL_Renderer* getRenderer() { return p_renderer; }
 
  private:
-  SDL_Window* p_Window{nullptr};
-  SDL_Renderer* p_Renderer{nullptr};
+  GameStateManager* mp_gameStateManager{nullptr};
+  SDL_Window* p_window{nullptr};
+  SDL_Renderer* p_renderer{nullptr};
   static GameEngine* sp_Instance;
   bool m_isRunning{false};
 };

@@ -187,32 +187,18 @@ void InputHandler::update() {
   }
 }
 
-void InputHandler::onKeyDown(SDL_Event& event) {
+void InputHandler::onKeyDown(SDL_Event& /*event*/) {
   // Store the keyboard state
   m_keystates = SDL_GetKeyboardState(0);
 
-  // Now you can also access the specific key that triggered this event
-  SDL_Scancode scancode = event.key.scancode;
-
-  // You can do key-specific processing here if needed
-  // For example:
-  if (scancode == SDL_SCANCODE_ESCAPE) {
-    GameEngine::Instance()->setRunning(false);
-  }
 }
 
-void InputHandler::onKeyUp(SDL_Event& event) {
+void InputHandler::onKeyUp(SDL_Event& /*event*/) {
   // Store the keyboard state
   m_keystates = SDL_GetKeyboardState(0);
 
-  // Now you can also access the specific key that triggered this event
-  SDL_Scancode scancode = event.key.scancode;
-
-  // You can do key-specific processing here if needed
-  // For example:
-  // if (scancode == SDL_SCANCODE_ESCAPE) {
-  //     GameEngine::Instance()->setRunning(false);
-  // }
+  // Key-specific processing can be handled by game states
+  // using the isKeyDown() method
 }
 
 void InputHandler::onMouseMove(SDL_Event& event) {
