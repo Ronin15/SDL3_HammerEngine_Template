@@ -46,21 +46,17 @@ void InputHandler::initializeGamePad() {
   }
 
   if (numGamepads > 0) {
-    std::cout << "Forge Game Engine - Number of Game Pads detected: "
-              << numGamepads << std::endl;
-
+    std::cout << "Forge Game Engine - Number of Game Pads detected: " << numGamepads << std::endl;
     // Open all available gamepads
     for (int i = 0; i < numGamepads; i++) {
       if (SDL_IsGamepad(gamepadIDs[i])) {
         SDL_Gamepad* gamepad = SDL_OpenGamepad(gamepadIDs[i]);
         if (gamepad) {
           m_joysticks.push_back(gamepad);
-          std::cout << "Forge Game Engine - Gamepad opened: "
-                    << SDL_GetGamepadName(gamepad) << std::endl;
+          std::cout << "Forge Game Engine - Gamepad opened: " << SDL_GetGamepadName(gamepad) << std::endl;
 
           // Add default joystick values
-          m_joystickValues.push_back(
-              std::make_pair(new Vector2D(0, 0), new Vector2D(0, 0)));
+          m_joystickValues.push_back(std::make_pair(new Vector2D(0, 0), new Vector2D(0, 0)));
 
           // Add default button states for this joystick
           std::vector<bool> tempButtons;
@@ -69,8 +65,7 @@ void InputHandler::initializeGamePad() {
           }
           m_buttonStates.push_back(tempButtons);
         } else {
-          std::cerr << "Forge Game Engine - Could not open gamepad: "
-                    << SDL_GetError() << std::endl;
+          std::cerr << "Forge Game Engine - Could not open gamepad: " << SDL_GetError() << std::endl;
         }
       }
     }
