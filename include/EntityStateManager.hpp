@@ -8,9 +8,6 @@
 class EntityState;
 
 class EntityStateManager {
- private:
-  std::unordered_map<std::string, std::unique_ptr<EntityState>> states;
-  EntityState* currentState{nullptr};
 
  public:
   EntityStateManager();
@@ -21,6 +18,10 @@ class EntityStateManager {
   void removeState(const std::string& stateName);
   void update();
   ~EntityStateManager();
+
+  private:
+   std::unordered_map<std::string, std::unique_ptr<EntityState>> states;
+   EntityState* currentState{nullptr};
 };
 
 #endif  // ENTITY_STATE_MANAGER_HPP
