@@ -16,14 +16,14 @@ bool GameEngine::init(const char* title, int width, int height, bool fullscreen)
         SDL_Rect display;
         SDL_GetDisplayBounds(1, &display);
 
-            if (width >= display.w && height >= display.h) {
+        std::cout << "Forge Game Engine - Detected resolution on monitor 1 : " << display.w << "x" << display.h << "\n";
 
-                fullscreen = false;//false for Troubleshooting. True for actual full screen.
+            if (width >= display.w || height >= display.h) {
 
-                std::cout << "Forge Game Engine - Window size set to full screen!\n";
+                fullscreen = true;//false for Troubleshooting. True for actual full screen.
+
+                std::cout << "Forge Game Engine - Window size set to Full Screen!\n";
         }
-                std::cout << "Forge Game Engine - Detected resolution on monitor 1 : " << display.w << "x" << display.h << "\n";
-
         int flags{0};
 
         if (fullscreen) {
