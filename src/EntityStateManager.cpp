@@ -1,6 +1,6 @@
+#include "EntityStateManager.hpp"
 #include <iostream>
 #include <stdexcept>
-#include "EntityStateManager.hpp"
 #include "EntityState.hpp"
 
 EntityStateManager::EntityStateManager() : currentState(nullptr) {}
@@ -9,7 +9,7 @@ EntityStateManager::~EntityStateManager() {
   currentState = nullptr;
 }
 
-void EntityStateManager::addState(const std::string& stateName,std::unique_ptr<EntityState> state) {
+void EntityStateManager::addState(const std::string& stateName, std::unique_ptr<EntityState> state) {
   if (states.find(stateName) != states.end()) {
     throw std::invalid_argument("State already exists" + stateName);
   }
