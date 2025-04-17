@@ -4,71 +4,70 @@
 #include <math.h>
 
 class Vector2D {
+ public:
+  Vector2D(float x, float y) : m_x(x), m_y(y) {}
 
-public:
-    Vector2D(float x, float y) : x_(x), y_(y) {}
+  float getX() const { return m_x; }
+  float getY() const { return m_y; }
+  void setX(float x) { m_x = x; }
+  void setY(float y) { m_y = y; }
 
-    float getX() const { return x_; }
-    float getY() const { return y_; }
-    void setX   (float x) { x_ = x; }
-    void setY   (float y) { y_ = y; }
+  float length() const { return sqrt(m_x * m_x + m_y * m_y); }
 
-    float length() const{ return sqrt(x_ * x_ + y_ * y_); }
+  Vector2D operator+(const Vector2D& v2) const {
+    return Vector2D(m_x + v2.m_x, m_y + v2.m_y);
+  }
 
-   Vector2D operator+(const Vector2D& v2) const {
-        return Vector2D(x_ + v2.x_, y_ + v2.y_);
+  friend Vector2D& operator+=(Vector2D& v1, const Vector2D& v2) {
+    v1.m_x += v2.m_x;
+    v1.m_y += v2.m_y;
+
+    return v1;
+  }
+
+  Vector2D operator*(float scalar) {
+    return Vector2D(m_x * scalar, m_y * scalar);
+  }
+
+  Vector2D& operator*=(float scalar) {
+    m_x *= scalar;
+    m_y *= scalar;
+
+    return *this;
+  }
+
+  Vector2D operator-(const Vector2D& v2) const {
+    return Vector2D(m_x - v2.m_x, m_y - v2.m_y);
+  }
+
+  friend Vector2D& operator-=(Vector2D& v1, const Vector2D& v2) {
+    v1.m_x -= v2.m_x;
+    v1.m_y -= v2.m_y;
+
+    return v1;
+  }
+
+  Vector2D operator/(float scalar) {
+    return Vector2D(m_x / scalar, m_y / scalar);
+  }
+
+  Vector2D& operator/=(float scalar) {
+    m_x /= scalar;
+    m_y /= scalar;
+
+    return *this;
+  }
+
+  void normalize() {
+    float l = length();
+    if (l > 0) {
+      (*this) *= 1 / l;
     }
+  }
 
-    friend Vector2D& operator+=(Vector2D& v1, const Vector2D& v2) {
-        v1.x_ += v2.x_;
-        v1.y_ += v2.y_;
-
-        return v1;
-    }
-
-    Vector2D operator*(float scalar) {
-        return Vector2D(x_ * scalar, y_ * scalar);
-    }
-
-    Vector2D& operator*=(float scalar) {
-        x_ *= scalar;
-        y_ *= scalar;
-
-        return *this;
-    }
-
-    Vector2D operator-(const Vector2D& v2) const {
-        return Vector2D(x_ - v2.x_, y_ - v2.y_);
-    }
-
-    friend Vector2D& operator-=(Vector2D& v1, const Vector2D& v2) {
-        v1.x_ -= v2.x_;
-        v1.y_ -= v2.y_;
-
-        return v1;
-    }
-
-    Vector2D operator/(float scalar) {
-        return Vector2D(x_ / scalar, y_ / scalar);
-    }
-
-    Vector2D& operator/=(float scalar) {
-        x_ /= scalar;
-        y_ /= scalar;
-
-        return *this;
-    }
-
-    void normalize() {
-        float l = length();
-        if (l > 0) {
-            (*this) *= 1 / l;
-        }
-    }
-
-private:
-    float x_{ 0.0f };
-    float y_{ 0.0f };
+ private:
+  float m_x{0.0f};
+  float m_y{0.0f};
 };
 
-#endif // VECTOR_2D_HPP
+#endif  // VECTOR_2D_HPP

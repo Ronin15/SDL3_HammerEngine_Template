@@ -1,7 +1,7 @@
-#include <fmod.hpp>
 #include <chrono>
-#include <thread>
+#include <fmod.hpp>
 #include <iostream>
+#include <thread>
 #include "EntityIdleState.hpp"
 #include "EntityJumpingState.hpp"
 #include "EntityRunningState.hpp"
@@ -25,9 +25,9 @@ void simulateGameLoop() {
 
   // add all possible entitiy states
   entityStateManager.addState("Idle", std::make_unique<EntityIdleState>());
-  entityStateManager.addState("Walking",std::make_unique<EntityWalkingState>());
-  entityStateManager.addState("Running",std::make_unique<EntityRunningState>());
-  entityStateManager.addState("Jumping",std::make_unique<EntityJumpingState>());
+  entityStateManager.addState("Walking", std::make_unique<EntityWalkingState>());
+  entityStateManager.addState("Running", std::make_unique<EntityRunningState>());
+  entityStateManager.addState("Jumping", std::make_unique<EntityJumpingState>());
 
   // Simulate game flow
   std::cout << "Starting game simulation..." << std::endl;
@@ -102,32 +102,31 @@ void simulateGameLoop() {
   std::cout << "Game simulation complete." << std::endl;
 }
 void fmodTest() {
-        // Initialize FMOD
-        FMOD::System* system = nullptr;
-        FMOD::System_Create(&system);
-        system->init(512, FMOD_INIT_NORMAL, nullptr);
+  // Initialize FMOD
+  FMOD::System* system = nullptr;
+  FMOD::System_Create(&system);
+  system->init(512, FMOD_INIT_NORMAL, nullptr);
 
-        // Load sound
-        FMOD::Sound* sound = nullptr;
-        system->createSound("res/sfx/level_complete.wav", FMOD_DEFAULT, nullptr, &sound);
+  // Load sound
+  FMOD::Sound* sound = nullptr;
+  system->createSound("res/sfx/level_complete.wav", FMOD_DEFAULT, nullptr, &sound);
 
-        // Play sound
-        FMOD::Channel* channel = nullptr;
-        system->playSound(sound, nullptr, false, &channel);
+  // Play sound
+  FMOD::Channel* channel = nullptr;
+  system->playSound(sound, nullptr, false, &channel);
 
-        // Wait for sound to finish
-        bool isPlaying = true;
-        while (isPlaying) {
-            channel->isPlaying(&isPlaying);
-            std::this_thread::sleep_for(std::chrono::milliseconds(10));
-        }
+  // Wait for sound to finish
+  bool isPlaying = true;
+  while (isPlaying) {
+    channel->isPlaying(&isPlaying);
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
 
-        // Clean up
-        sound->release();
-        system->close();
-        system->release();
-    }
-
+  // Clean up
+  sound->release();
+  system->close();
+  system->release();
+}
 
 void fmodTest();
 void simulateGameLoop();
