@@ -9,7 +9,7 @@ const int WINDOW_WIDTH{1920};
 const int WINDOW_HEIGHT{1080};
 const std::string GAME_NAME{"Game Template"};
 
-int main(int argc, char* argv[]) {
+int main([[maybe_unused]] int argc, [[maybe_unused]] char* argv[]) {
   Uint64 frameStart, frameTime;
 
   std::cout << "Forge Game Engine - Initializing " << GAME_NAME << "...\n";
@@ -29,12 +29,12 @@ int main(int argc, char* argv[]) {
       }
     }
   } else {
-    std::cout << "Forge Game - Init " << GAME_NAME << " Failed!:" << SDL_GetError();
+    std::cout << "Forge Game Engine - Init " << GAME_NAME << " Failed!:" << SDL_GetError();
 
     return -1;
   }
 
-  std::cout << "Forge Game " << GAME_NAME << " Shutting down...\n";
+  std::cout << "Forge Game Engine - Game " << GAME_NAME << " Shutting down...\n";
 
   GameEngine::Instance()->clean();
 

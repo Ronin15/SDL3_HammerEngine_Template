@@ -17,6 +17,7 @@ class EntityStateManager {
   bool hasState(const std::string& stateName) const;
   void removeState(const std::string& stateName);
   void update();
+  //void render();
   ~EntityStateManager();
 
   private:

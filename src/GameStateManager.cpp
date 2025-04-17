@@ -48,6 +48,11 @@ void GameStateManager::setState(const std::string& stateName) {
 void GameStateManager::update() {
   if (currentState) {
     currentState->update();
+  }
+}
+
+void GameStateManager::render() {
+  if (currentState) {
     currentState->render();
   }
 }
