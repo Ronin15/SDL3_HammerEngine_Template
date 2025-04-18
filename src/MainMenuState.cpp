@@ -18,7 +18,6 @@ void MainMenuState::update() {
       if (InputHandler::Instance()->isKeyDown(SDL_SCANCODE_ESCAPE)) {
           GameEngine::Instance()->setRunning(false);
       }
-
   }
 
 void MainMenuState::render() {
