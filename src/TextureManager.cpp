@@ -1,17 +1,84 @@
 #include "TextureManager.hpp"
 #include <iostream>
+#include <filesystem>
+#include <algorithm>
 
 TextureManager* TextureManager::sp_Instance{nullptr};
 
 bool TextureManager::load(std::string fileName,
                           std::string textureID,
                           SDL_Renderer* p_renderer) {
+  // Check if the fileName is a directory
+  if (std::filesystem::exists(fileName) && std::filesystem::is_directory(fileName)) {
+    std::cout << "Forge Game Engine - Loading textures from directory: " << fileName << "\n";
+    
+    bool loadedAny = false;
+    int texturesLoaded = 0;
+    
+    try {
+      // Iterate through all files in the directory
+      for (const auto& entry : std::filesystem::directory_iterator(fileName)) {
+        if (!entry.is_regular_file()) {
+          continue; // Skip directories and special files
+        }
+        
+        // Get file path and extension
+        std::filesystem::path filePath = entry.path();
+        std::string extension = filePath.extension().string();
+        
+        // Convert extension to lowercase for case-insensitive comparison
+        std::transform(extension.begin(), extension.end(), extension.begin(), 
+                      [](unsigned char c) { return std::tolower(c); });
+        
+        // Check if the file is a PNG
+        if (extension == ".png") {
+          std::string fullPath = filePath.string();
+          std::string filename = filePath.stem().string(); // Get filename without extension
+          
+          // Create texture ID by combining the provided prefix and filename
+          std::string combinedID = textureID.empty() ? filename : textureID + "_" + filename;
+          
+          // Load the individual file as a texture
+          // Call the standard loading code directly rather than calling load() recursively
+          SDL_Surface* p_tempSurface = IMG_Load(fullPath.c_str());
+          
+          std::cout << "Forge Game Engine - Loading texture: " << fullPath << "!\n";
+          
+          if (p_tempSurface == 0) {
+            std::cout << "Forge Game Engine - Could not load image: " << SDL_GetError() << "\n";
+            continue;
+          }
+          
+          SDL_Texture* p_texture = SDL_CreateTextureFromSurface(p_renderer, p_tempSurface);
+          
+          SDL_DestroySurface(p_tempSurface);
+          
+          if (p_texture != 0) {
+            m_textureMap[combinedID] = p_texture;
+            loadedAny = true;
+            texturesLoaded++;
+          } else {
+            std::cout << "Forge Game Engine - Could not create texture: " << SDL_GetError() << "\n";
+          }
+        }
+      }
+    } catch (const std::filesystem::filesystem_error& e) {
+      std::cout << "Forge Game Engine - Filesystem error: " << e.what() << "\n";
+    } catch (const std::exception& e) {
+      std::cout << "Forge Game Engine - Error while loading textures: " << e.what() << "\n";
+    }
+    
+    std::cout << "Forge Game Engine - Loaded " << texturesLoaded << " textures from directory: " << fileName << "\n";
+    return loadedAny; // Return true if at least one texture was loaded successfully
+  }
+  
+  // Standard single file loading code
   SDL_Surface* p_tempSurface = IMG_Load(fileName.c_str());
 
   std::cout << "Forge Game Engine - Loading texture: " << fileName << "!\n";
 
   if (p_tempSurface == 0) {
-    std::cout << "Forge Game Engine - Could not load image: " << SDL_GetError();
+    std::cout << "Forge Game Engine - Could not load image: " << SDL_GetError() << "\n";
 
     return false;
   }
@@ -25,7 +92,7 @@ bool TextureManager::load(std::string fileName,
     return true;
   }
 
-  std::cout << "Forge Game Engine - Could not create Texture: " << SDL_GetError();
+  std::cout << "Forge Game Engine - Could not create Texture: " << SDL_GetError() << "\n";
 
   return false;
 }

@@ -20,6 +20,10 @@ class TextureManager {
     return sp_Instance;
   }
 
+  // Loads a texture from a file or all PNG textures from a directory
+  // If fileName is a directory, it loads all PNG files from that directory
+  // Returns true if at least one texture was loaded successfully
+  // When loading a directory, textureID is used as a prefix for filenames
   bool load(std::string fileName,
             std::string textureID,
             SDL_Renderer* p_renderer);

@@ -1,6 +1,7 @@
 #include "GameEngine.hpp"
 #include "InputHandler.hpp"
 #include "GameStateManager.hpp"
+#include "LogoState.hpp"
 #include "MainMenuState.hpp"
 #include "GamePlayState.hpp"
 
@@ -57,13 +58,14 @@ bool GameEngine::init(const char* title, int width, int height, bool fullscreen)
   InputHandler::Instance()->initializeGamePad();  // aligned here for organization sake.
   //_______________________________________________________________________________________________________________BEGIN
   // Initialize game state manager
-  std::cout << "Forge Game Engine - Creating Game State Manager and loading initial game states.... \n";
+  std::cout << "Forge Game Engine - Creating Game State Manager and setting up game states.... \n";
   mp_gameStateManager = new GameStateManager();
   if (!mp_gameStateManager) {
     std::cerr << "Forge Game Engine - Failed to create Game State Manager!\n";
     return false;
   }
-  // Loading initial game states
+  // Setting Up game states
+   mp_gameStateManager->addState(std::make_unique<LogoState>());
    mp_gameStateManager->addState(std::make_unique<MainMenuState>());
    mp_gameStateManager->addState(std::make_unique<GamePlayState>());
 
@@ -74,6 +76,10 @@ bool GameEngine::init(const char* title, int width, int height, bool fullscreen)
     std::cerr << "Forge Game Engine - Failed to create Texture Manager!\n";
     return false;
   }
+  std::cout << "Forge Game Engine - Creating and loading textures.... \n";
+  TextureManager::Instance()->load("res/img", "", p_renderer);
+
+
 
    //_______________________________________________________________________________________________________________END
 
@@ -82,7 +88,7 @@ bool GameEngine::init(const char* title, int width, int height, bool fullscreen)
   std::cout << "Forge Game Engine - Game initialized successfully!\n";
   std::cout << "Forge Game Engine - Running " << title << " <]==={}\n";
 
-  mp_gameStateManager->setState("MainMenuState");
+  mp_gameStateManager->setState("LogoState");
   return true;
 }
 
