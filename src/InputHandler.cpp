@@ -46,14 +46,14 @@ void InputHandler::initializeGamePad() {
   }
 
   if (numGamepads > 0) {
-    std::cout << "Forge Engine - Number of Game Pads detected: " << numGamepads << std::endl;
+    std::cout << "Forge Game Engine - Number of Game Pads detected: " << numGamepads << std::endl;
     // Open all available gamepads
     for (int i = 0; i < numGamepads; i++) {
       if (SDL_IsGamepad(gamepadIDs[i])) {
         SDL_Gamepad* gamepad = SDL_OpenGamepad(gamepadIDs[i]);
         if (gamepad) {
           m_joysticks.push_back(gamepad);
-          std::cout << "Forge Engine - Gamepad opened: " << SDL_GetGamepadName(gamepad) << std::endl;
+          std::cout << "Forge Game Engine - Gamepad opened: " << SDL_GetGamepadName(gamepad) << std::endl;
 
           // Add default joystick values
           m_joystickValues.push_back(std::make_pair(new Vector2D(0, 0), new Vector2D(0, 0)));
@@ -65,12 +65,12 @@ void InputHandler::initializeGamePad() {
           }
           m_buttonStates.push_back(tempButtons);
         } else {
-          std::cerr << "Forge Engine - Could not open gamepad: " << SDL_GetError() << std::endl;
+          std::cerr << "Forge Game Engine - Could not open gamepad: " << SDL_GetError() << std::endl;
         }
       }
     }
   } else {
-    std::cout << "Forge Engine - No gamepads connected." << std::endl;
+    std::cout << "Forge Game Engine - No gamepads connected." << std::endl;
   }
 
   m_gamePadInitialized = true;
@@ -145,7 +145,7 @@ void InputHandler::update() {
   while (SDL_PollEvent(&event)) {
     switch (event.type) {
       case SDL_EVENT_QUIT:
-        std::cout << "Forge Engine - Shutting down! Forge Stopping {}===]>\n";
+        std::cout << "Forge Game Engine - Shutting down! Forge Stopping {}===]>\n";
         GameEngine::Instance()->setRunning(false);
         break;
 
@@ -209,15 +209,15 @@ void InputHandler::onMouseMove(SDL_Event& event) {
 void InputHandler::onMouseButtonDown(SDL_Event& event) {
   if (event.button.button == SDL_BUTTON_LEFT) {
     m_mouseButtonStates[LEFT] = true;
-    std::cout << "Forge Engine - Mouse button Left clicked!\n";
+    std::cout << "Forge Game Engine - Mouse button Left clicked!\n";
   }
   if (event.button.button == SDL_BUTTON_MIDDLE) {
     m_mouseButtonStates[MIDDLE] = true;
-    std::cout << "Forge Engine - Mouse button Middle clicked!\n";
+    std::cout << "Forge Game Engine - Mouse button Middle clicked!\n";
   }
   if (event.button.button == SDL_BUTTON_RIGHT) {
     m_mouseButtonStates[RIGHT] = true;
-    std::cout << "Forge Engine - Mouse button Right clicked!\n";
+    std::cout << "Forge Game Engine - Mouse button Right clicked!\n";
   }
 }
 
@@ -254,10 +254,10 @@ void InputHandler::onGamepadAxisMove(SDL_Event& event) {
   if (event.gaxis.axis == SDL_GAMEPAD_AXIS_LEFTX) {
     if (event.gaxis.value > m_joystickDeadZone) {
       m_joystickValues[whichOne].first->setX(1);
-      std::cout << "Forge Engine - Left Stick X moving RIGHT!\n";
+      std::cout << "Forge Game Engine - Left Stick X moving RIGHT!\n";
     } else if (event.gaxis.value < -m_joystickDeadZone) {
       m_joystickValues[whichOne].first->setX(-1);
-      std::cout << "Forge Engine - Left Stick X moving LEFT!\n";
+      std::cout << "Forge Game Engine - Left Stick X moving LEFT!\n";
     } else {
       m_joystickValues[whichOne].first->setX(0);
     }
@@ -267,10 +267,10 @@ void InputHandler::onGamepadAxisMove(SDL_Event& event) {
   if (event.gaxis.axis == SDL_GAMEPAD_AXIS_LEFTY) {
     if (event.gaxis.value > m_joystickDeadZone) {
       m_joystickValues[whichOne].first->setY(1);
-      std::cout << "Forge Engine - Left Stick Y moving DOWN!\n";
+      std::cout << "Forge Game Engine - Left Stick Y moving DOWN!\n";
     } else if (event.gaxis.value < -m_joystickDeadZone) {
       m_joystickValues[whichOne].first->setY(-1);
-      std::cout << "Forge Engine - Left Stick Y moving UP!\n";
+      std::cout << "Forge Game Engine - Left Stick Y moving UP!\n";
     } else {
       m_joystickValues[whichOne].first->setY(0);
     }

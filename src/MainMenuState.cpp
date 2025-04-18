@@ -4,7 +4,7 @@
 #include <iostream>
 
 bool MainMenuState::enter() {
-  std::cout << "Forge Engine - Entering MAIN MENU State" << std::endl;
+  std::cout << "Forge Game Engine - Entering MAIN MENU State" << std::endl;
   return true;
 }
 
@@ -25,7 +25,7 @@ void MainMenuState::render() {
   //std::cout << "Rendering Main Menu State" << std::endl;
 }
 bool MainMenuState::exit() {
-  std::cout << "Forge Engine - Exiting MAIN MENU State" << std::endl;
+  std::cout << "Forge Game Engine - Exiting MAIN MENU State" << std::endl;
   return true;
 }
 

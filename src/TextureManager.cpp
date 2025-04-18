@@ -8,10 +8,10 @@ bool TextureManager::load(std::string fileName,
                           SDL_Renderer* p_renderer) {
   SDL_Surface* p_tempSurface = IMG_Load(fileName.c_str());
 
-  std::cout << "Forge Engine - Loading texture: " << fileName << "!\n";
+  std::cout << "Forge Game Engine - Loading texture: " << fileName << "!\n";
 
   if (p_tempSurface == 0) {
-    std::cout << "Forge Engine - Could not load image: " << SDL_GetError();
+    std::cout << "Forge Game Engine - Could not load image: " << SDL_GetError();
 
     return false;
   }
@@ -25,7 +25,7 @@ bool TextureManager::load(std::string fileName,
     return true;
   }
 
-  std::cout << "Forge Engine - Could not create Texture: " << SDL_GetError();
+  std::cout << "Forge Game Engine - Could not create Texture: " << SDL_GetError();
 
   return false;
 }
@@ -104,6 +104,10 @@ width, int height, int scroll, SDL_Renderer* pRenderer) {
 }
 */
 void TextureManager::clearFromTexMap(std::string textureID) {
-    std::cout << "Forge Engine - Cleared : " << textureID << " texture" << std::endl;
+    std::cout << "Forge Game Engine - Cleared : " << textureID << " texture" << std::endl;
   m_textureMap.erase(textureID);
+}
+
+bool TextureManager::isTextureInMap(std::string textureID) {
+  return m_textureMap.find(textureID) != m_textureMap.end();
 }
