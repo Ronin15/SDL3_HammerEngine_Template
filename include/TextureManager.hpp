@@ -49,6 +49,7 @@ class TextureManager {
                     int scroll,
                     SDL_Renderer* p_renderer);
   void clearFromTexMap(std::string textureID);
+  bool isTextureInMap(std::string textureID);
 
  private:
   std::string m_textureID{""};

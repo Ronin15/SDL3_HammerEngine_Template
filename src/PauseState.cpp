@@ -4,7 +4,7 @@
 #include <iostream>
 
 bool PauseState::enter() {
-  std::cout << "Forge Engine - Entering PAUSE State" << std::endl;
+  std::cout << "Forge Game Engine - Entering PAUSE State" << std::endl;
   return true;
 }
 
@@ -25,7 +25,7 @@ void PauseState::render() {
     //std::cout << "Rendering PAUSE State" << std::endl;
 }
 bool PauseState::exit() {
-  std::cout << "Forge Engine - Exiting PAUSE State" << std::endl;
+  std::cout << "Forge Game Engine - Exiting PAUSE State" << std::endl;
 
   return true;
 }
