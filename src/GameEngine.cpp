@@ -20,7 +20,7 @@ bool GameEngine::init(const char* title, int width, int height, bool fullscreen)
 
     if (width >= display.w || height >= display.h) {
       fullscreen =
-          true;  // false for Troubleshooting. True for actual full screen.
+          false;  // false for Troubleshooting. True for actual full screen.
 
       std::cout << "Forge Game Engine - Window size set to Full Screen!\n";
     }
@@ -53,29 +53,36 @@ bool GameEngine::init(const char* title, int width, int height, bool fullscreen)
     std::cerr << "Forge Game Engine - Framework creation failed! Make sure you have the SDL3 runtime installed? SDL error: " << SDL_GetError() << std::endl;
     return false;  // Forge SDL init fail. Make sure you have the SDL3 runtime installed.
   }
-
+  std::cout << "Forge Game Engine - Detecting and initializing gamepad/controller.... \n";
   InputHandler::Instance()->initializeGamePad();  // aligned here for organization sake.
-  std::cout << "Forge Game Engine - Creating game constructs.... \n";
   //_______________________________________________________________________________________________________________BEGIN
   // Initialize game state manager
+  std::cout << "Forge Game Engine - Creating Game State Manager and loading initial game states.... \n";
   mp_gameStateManager = new GameStateManager();
   if (!mp_gameStateManager) {
     std::cerr << "Forge Game Engine - Failed to create Game State Manager!\n";
     return false;
   }
-
   // Loading initial game states
    mp_gameStateManager->addState(std::make_unique<MainMenuState>());
    mp_gameStateManager->addState(std::make_unique<GamePlayState>());
-   mp_gameStateManager->setState("MainMenuState");
 
-  //_______________________________________________________________________________________________________________END
+   std::cout << "Forge Game Engine - Creating Texture Manager.... \n";
+  //load textures
+   mp_textureManager = new TextureManager();
+   if (!mp_textureManager) {
+    std::cerr << "Forge Game Engine - Failed to create Texture Manager!\n";
+    return false;
+  }
+
+   //_______________________________________________________________________________________________________________END
 
   setRunning(true);  // Forge Game created successfully, start the main loop
   std::cout << "Forge Game Engine - Game constructs created successfully!\n";
   std::cout << "Forge Game Engine - Game initialized successfully!\n";
   std::cout << "Forge Game Engine - Running " << title << " <]==={}\n";
 
+  mp_gameStateManager->setState("MainMenuState");
   return true;
 }
 
@@ -101,6 +108,11 @@ void GameEngine::clean() {
   if (mp_gameStateManager) {
     delete mp_gameStateManager;
     mp_gameStateManager = nullptr;
+  }
+
+  if (mp_textureManager) {
+    delete mp_textureManager;
+    mp_textureManager = nullptr;
   }
 
   SDL_DestroyWindow(p_window);

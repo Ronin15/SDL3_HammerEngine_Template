@@ -3,12 +3,13 @@
 #include "GameEngine.hpp"
 #include <iostream>
 
-void MainMenuState::enter() {
-  std::cout << "Entering Main Menu State" << std::endl;
+bool MainMenuState::enter() {
+  std::cout << "Forge Engine - Entering MAIN MENU State" << std::endl;
+  return true;
 }
 
 void MainMenuState::update() {
-  std::cout << "Updating Main Menu State" << std::endl;
+  //std::cout << "Updating Main Menu State" << std::endl;
 
       // Handle Play (enter) and ESC key.
       if (InputHandler::Instance()->isKeyDown(SDL_SCANCODE_RETURN)) {
@@ -21,10 +22,11 @@ void MainMenuState::update() {
   }
 
 void MainMenuState::render() {
-  std::cout << "Rendering Main Menu State" << std::endl;
+  //std::cout << "Rendering Main Menu State" << std::endl;
 }
-void MainMenuState::exit() {
-  std::cout << "Exiting Main Menu State" << std::endl;
+bool MainMenuState::exit() {
+  std::cout << "Forge Engine - Exiting MAIN MENU State" << std::endl;
+  return true;
 }
 
 std::string MainMenuState::getName() const {

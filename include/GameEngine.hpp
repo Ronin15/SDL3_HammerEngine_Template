@@ -2,6 +2,7 @@
 #define GAME_ENGINE_HPP
 #include <SDL3/SDL.h>
 #include "GameStateManager.hpp"
+#include "TextureManager.hpp"
 
 class GameEngine {
  public:
@@ -23,6 +24,7 @@ class GameEngine {
   void clean();
 
   GameStateManager* getGameStateManager() { return mp_gameStateManager; }
+  TextureManager* getTextureManager() { return mp_textureManager; }
 
   void setRunning(bool running) { m_isRunning = running; }
   bool getRunning() { return m_isRunning; }
@@ -30,6 +32,7 @@ class GameEngine {
 
  private:
   GameStateManager* mp_gameStateManager{nullptr};
+  TextureManager* mp_textureManager{nullptr};
   SDL_Window* p_window{nullptr};
   SDL_Renderer* p_renderer{nullptr};
   static GameEngine* sp_Instance;

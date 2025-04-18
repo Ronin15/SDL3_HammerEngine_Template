@@ -8,6 +8,9 @@
 
 class TextureManager {
  public:
+ TextureManager() {}
+ ~TextureManager() {}
+
   static TextureManager* Instance() {
     if (sp_Instance == 0) {
       sp_Instance = new TextureManager();
@@ -48,8 +51,6 @@ class TextureManager {
   void clearFromTexMap(std::string textureID);
 
  private:
-  TextureManager() {}
-  ~TextureManager() {}
   std::string m_textureID{""};
   std::map<std::string, SDL_Texture*> m_textureMap;
   static TextureManager* sp_Instance;
