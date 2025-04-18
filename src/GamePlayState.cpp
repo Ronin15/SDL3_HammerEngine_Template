@@ -1,5 +1,4 @@
 #include "GamePlayState.hpp"
-#include "GameState.hpp"
 #include "GameStateManager.hpp"
 #include "InputHandler.hpp"
 #include "GameEngine.hpp"
