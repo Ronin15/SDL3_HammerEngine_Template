@@ -104,5 +104,6 @@ width, int height, int scroll, SDL_Renderer* pRenderer) {
 }
 */
 void TextureManager::clearFromTexMap(std::string textureID) {
+    std::cout << "Forge Engine - Cleared : " << textureID << " texture" << std::endl;
   m_textureMap.erase(textureID);
 }

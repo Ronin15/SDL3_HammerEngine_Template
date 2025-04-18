@@ -5,10 +5,10 @@
 
 class GamePlayState : public GameState {
  public:
-  void enter() override;
+  bool enter() override;
   void update() override;
   void render() override;
-  void exit() override;
+  bool exit() override;
   std::string getName() const override;
 };
 
