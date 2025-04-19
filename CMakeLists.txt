@@ -115,6 +115,34 @@ file(GLOB SOURCES "src/*.cpp")
 # Create executable for your project
 add_executable(${PROJECT_NAME} ${SOURCES})
 
+# Configure window icon
+# Note: The icon is set programmatically via SDL_SetWindowIcon in GameEngine.cpp
+# This section handles platform-specific icon integration
+if(WIN32)
+  # Add the icon to the executable on Windows
+  set(APP_ICON_RESOURCE_WINDOWS "${CMAKE_SOURCE_DIR}/res/img/icon.ico")
+  
+  # Generate a resource file that includes the icon
+  configure_file(
+    "${CMAKE_SOURCE_DIR}/res/windows_icon.rc.in"
+    "${CMAKE_BINARY_DIR}/windows_icon.rc"
+    @ONLY
+  )
+  
+  # Add the resource file to the executable
+  target_sources(${PROJECT_NAME} PRIVATE "${CMAKE_BINARY_DIR}/windows_icon.rc")
+elseif(APPLE)
+  # For macOS, bundle the icon with the application if it exists
+  set(APP_ICON_MACOS "${CMAKE_SOURCE_DIR}/res/img/icon.icns")
+  if(EXISTS "${APP_ICON_MACOS}")
+    set(MACOSX_BUNDLE_ICON_FILE icon.icns)
+    set_source_files_properties(${APP_ICON_MACOS} PROPERTIES MACOSX_PACKAGE_LOCATION "Resources")
+    message(STATUS "Using macOS icon: ${APP_ICON_MACOS}")
+  else()
+    message(STATUS "macOS icon not found at ${APP_ICON_MACOS} - using default icon")
+  endif()
+endif()
+
 if(UNIX AND NOT APPLE)
     # For Linux targets
     if(CMAKE_BUILD_TYPE STREQUAL "Debug")

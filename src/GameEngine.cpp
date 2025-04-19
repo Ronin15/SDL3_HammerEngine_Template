@@ -5,6 +5,7 @@
 #include "LogoState.hpp"
 #include "MainMenuState.hpp"
 #include "SoundManager.hpp"
+#include <SDL3_image/SDL_image.h>
 
 #include <iostream>
 
@@ -36,6 +37,35 @@ bool GameEngine::init(const char* title, int width, int height, bool fullscreen)
 
     if (p_window) {
       std::cout << "Forge Game Engine - Window creation system online!\n";
+      
+      // Set window icon
+      std::cout << "Forge Game Engine - Setting window icon...\n";
+      
+      // Use SDL_image to directly load the icon
+      // Multiple paths are tried to ensure the icon can be found regardless of current directory
+      SDL_Surface* iconSurface = nullptr;
+      const char* iconPaths[] = {
+        "res/img/ForgeEngine.png",               // Relative to executable
+        "../res/img/ForgeEngine.png",            // One level up (for build dirs)
+        "../../res/img/ForgeEngine.png"           // Two levels up (deeper build dirs)
+      };
+      
+      for (const char* path : iconPaths) {
+        iconSurface = IMG_Load(path);
+        if (iconSurface) {
+          std::cout << "Forge Game Engine - Loaded icon from: " << path << "\n";
+          break;
+        }
+      }
+      
+      if (iconSurface) {
+        SDL_SetWindowIcon(p_window, iconSurface);
+        SDL_DestroySurface(iconSurface);
+        std::cout << "Forge Game Engine - Window icon set successfully!\n";
+      } else {
+        std::cout << "Forge Game Engine - Failed to load window icon: " << SDL_GetError() << "\n";
+      }
+      
       p_renderer = SDL_CreateRenderer(p_window, NULL);
 
       if (p_renderer) {
