@@ -37,10 +37,10 @@ bool GameEngine::init(const char* title, int width, int height, bool fullscreen)
 
     if (p_window) {
       std::cout << "Forge Game Engine - Window creation system online!\n";
-      
+
       // Set window icon
       std::cout << "Forge Game Engine - Setting window icon...\n";
-      
+
       // Use SDL_image to directly load the icon
       // Multiple paths are tried to ensure the icon can be found regardless of current directory
       SDL_Surface* iconSurface = nullptr;
@@ -49,7 +49,7 @@ bool GameEngine::init(const char* title, int width, int height, bool fullscreen)
         "../res/img/ForgeEngine.png",            // One level up (for build dirs)
         "../../res/img/ForgeEngine.png"           // Two levels up (deeper build dirs)
       };
-      
+
       for (const char* path : iconPaths) {
         iconSurface = IMG_Load(path);
         if (iconSurface) {
@@ -57,7 +57,7 @@ bool GameEngine::init(const char* title, int width, int height, bool fullscreen)
           break;
         }
       }
-      
+
       if (iconSurface) {
         SDL_SetWindowIcon(p_window, iconSurface);
         SDL_DestroySurface(iconSurface);
@@ -65,7 +65,7 @@ bool GameEngine::init(const char* title, int width, int height, bool fullscreen)
       } else {
         std::cout << "Forge Game Engine - Failed to load window icon: " << SDL_GetError() << "\n";
       }
-      
+
       p_renderer = SDL_CreateRenderer(p_window, NULL);
 
       if (p_renderer) {
@@ -105,7 +105,7 @@ bool GameEngine::init(const char* title, int width, int height, bool fullscreen)
   }
   std::cout << "Forge Game Engine - Creating and loading textures.... \n";
   TextureManager::Instance()->load("res/img", "", p_renderer);
-  std::cout << "Forge Game Engine - Initializing Sound Manager.... \n";
+  std::cout << "Forge Game Engine - Creating Sound Manager.... \n";
   // Initialize the sound manager
   SoundManager::Instance()->init();
 
