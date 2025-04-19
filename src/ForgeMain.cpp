@@ -10,6 +10,7 @@ const int WINDOW_HEIGHT{1080};
 const std::string GAME_NAME{"Game Template"};
 
 int main([[maybe_unused]] int argc, [[maybe_unused]] char* argv[]) {
+
   Uint64 frameStart, frameTime;
 
   std::cout << "Forge Game Engine - Initializing " << GAME_NAME << "...\n";
