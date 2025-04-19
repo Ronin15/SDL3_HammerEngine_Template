@@ -8,8 +8,8 @@
 - Debug and Release build configurations
 - Custom window icon support on all platforms
 - Game state management system
-- Entity state management
-- Input handling
+- Entity state management system
+- Input handling - Keyboard, mouse, and xbox controller
 - Texture management
 - Sound management
 
