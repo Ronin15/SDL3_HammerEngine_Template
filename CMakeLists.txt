@@ -107,8 +107,6 @@ set(SDL3MIXER_DEPS_SHARED FALSE CACHE BOOL "Use shared dependencies")
 # Make the packages available
 FetchContent_MakeAvailable(SDL3 SDL3_image SDL3_ttf SDL3_mixer)
 
-# No FMOD configuration - removed
-
 # Find all source files
 file(GLOB SOURCES "src/*.cpp")
 
