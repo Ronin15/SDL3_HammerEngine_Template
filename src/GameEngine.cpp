@@ -88,19 +88,12 @@ bool GameEngine::init(const char* title, int width, int height, bool fullscreen)
       // Use SDL_image to directly load the icon
       // Multiple paths are tried to ensure the icon can be found regardless of current directory
       SDL_Surface* iconSurface = nullptr;
-      const char* iconPaths[] = {
-        "res/img/icon.ico",               // Relative to executable
-        "../res/img/icon.ico",            // One level up (for build dirs)
-        "../../res/img/icon.ico"           // Two levels up (deeper build dirs)
-      };
+      const char* iconPath = "res/img/icon.ico";
 
-      for (const char* path : iconPaths) {
-        iconSurface = IMG_Load(path);
+        iconSurface = IMG_Load(iconPath);
         if (iconSurface) {
-          std::cout << "Forge Game Engine - Loaded icon from: " << path << "\n";
-          break;
+          std::cout << "Forge Game Engine - Loaded icon from: " << iconPath << "\n";
         }
-      }
 
       if (iconSurface) {
         SDL_SetWindowIcon(p_window, iconSurface);

@@ -15,14 +15,14 @@ SoundManager::~SoundManager() {
 bool SoundManager::init() {
   // Initialize SDL_mixer
   if (!SDL_Init(SDL_INIT_AUDIO)) {
-    std::cerr << "Error initializing SDL Audio: " << SDL_GetError() << std::endl;
+    std::cerr << "Forge Game Engine - Error initializing SDL Audio: " << SDL_GetError() << std::endl;
     return false;
   }
 
   // Initialize SDL3_mixer with default settings
   MIX_InitFlags initFlags = Mix_Init(MIX_INIT_MP3 | MIX_INIT_OGG);
   if (initFlags == 0) {
-    std::cerr << "Error initializing SDL_mixer: " << SDL_GetError() << std::endl;
+    std::cerr << "Forge Game Engine - Error initializing SDL_mixer: " << SDL_GetError() << std::endl;
     SDL_Quit();
     return false;
   }
@@ -36,7 +36,7 @@ bool SoundManager::init() {
 
   m_deviceId = SDL_OpenAudioDevice(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &desired_spec);
   if (!m_deviceId) {
-    std::cerr << "Error opening audio device: " << SDL_GetError() << std::endl;
+    std::cerr << "Forge Game Engine - Error opening audio device: " << SDL_GetError() << std::endl;
     Mix_Quit();
     SDL_Quit();
     return false;
@@ -44,14 +44,14 @@ bool SoundManager::init() {
 
   // Initialize SDL_mixer with the opened audio device
   if (!Mix_OpenAudio(m_deviceId, &desired_spec)) {
-    std::cerr << "Error initializing SDL_mixer: " << SDL_GetError() << std::endl;
+    std::cerr << "Forge Game Engine - Error initializing SDL_mixer: " << SDL_GetError() << std::endl;
     SDL_CloseAudioDevice(m_deviceId);
     Mix_Quit();
     SDL_Quit();
     return false;
   }
 
-  std::cout << "Forge Game Engine - Sound system initialized successfully" << std::endl;
+  std::cout << "Forge Game Engine - Sound system initialized!" << std::endl;
   m_initialized = true;
   return true;
 }
@@ -156,7 +156,7 @@ bool SoundManager::loadMusic(std::string filePath, std::string musicID) {
 
           // Create music ID by combining the provided prefix and filename
           std::string combinedID = musicID.empty() ? filename : musicID + "_" + filename;
-          
+
           // Load the individual file as music
           Mix_Music* p_music = Mix_LoadMUS(fullPath.c_str());
 
