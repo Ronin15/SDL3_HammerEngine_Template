@@ -55,6 +55,9 @@ class TextureManager {
   void clearFromTexMap(std::string textureID);
   bool isTextureInMap(std::string textureID);
   
+  // Get a texture pointer by ID
+  SDL_Texture* getTexture(std::string textureID);
+  
   // Clean up all texture resources
   void clean();
 

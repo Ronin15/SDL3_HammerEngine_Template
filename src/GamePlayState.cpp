@@ -34,6 +34,21 @@ bool GamePlayState::enter() {
   } else {
     std::cout << "Forge Game Engine - Texture already loaded, skipping load" << std::endl;
   }
+  
+  // Player texture should already be loaded by TextureManager during engine initialization
+  // Just verify it's available
+  if (!TextureManager::Instance()->isTextureInMap("player")) {
+    std::cout << "Forge Game Engine - Warning: player texture not found in TextureManager map" << std::endl;
+    // We'll continue anyway, as the Player class will handle missing textures gracefully
+  } else {
+    std::cout << "Forge Game Engine - Found player texture in TextureManager map" << std::endl;
+  }
+  
+  // Create player if not already created
+  if (!m_pPlayer) {
+    m_pPlayer = std::make_unique<Player>(GameEngine::Instance()->getRenderer());
+    std::cout << "Forge Game Engine - Player created in GamePlayState" << std::endl;
+  }
 
   return true;
 }
@@ -53,6 +68,11 @@ void GamePlayState::update() {
   if (InputHandler::Instance()->isKeyDown(SDL_SCANCODE_ESCAPE)) {
       GameEngine::Instance()->setRunning(false);
   }
+  
+  // Update player if it exists
+  if (m_pPlayer) {
+      m_pPlayer->update();
+  }
 }
 
 void GamePlayState::render() {
@@ -61,12 +81,17 @@ void GamePlayState::render() {
 bool GamePlayState::exit() {
   std::cout << "Forge Game Engine - Exiting GAME State" << std::endl;
 
-  // Only clear texture if we're not transitioning to pause state
+  // Only clear specific textures if we're not transitioning to pause state
   if (!m_transitioningToPause) {
     TextureManager::Instance()->clearFromTexMap("ForgeEngine");
-    std::cout << "Forge Game Engine - Cleared texture, not going to pause" << std::endl;
+    // Don't clear the player texture as it's loaded at engine startup
+    
+    // Reset player
+    m_pPlayer = nullptr;
+    
+    std::cout << "Forge Game Engine - Cleared ForgeEngine texture and player, not going to pause" << std::endl;
   } else {
-    std::cout << "Forge Game Engine - Keeping texture, going to pause" << std::endl;
+    std::cout << "Forge Game Engine - Keeping textures and player, going to pause" << std::endl;
     // Reset flag for next time
     m_transitioningToPause = false;
   }
