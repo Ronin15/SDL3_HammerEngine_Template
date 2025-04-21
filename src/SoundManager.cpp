@@ -127,9 +127,65 @@ bool SoundManager::loadSFX(std::string filePath, std::string soundID) {
 }
 
 bool SoundManager::loadMusic(std::string filePath, std::string musicID) {
+  // Check if the filePath is a directory
+  if (std::filesystem::exists(filePath) && std::filesystem::is_directory(filePath)) {
+    std::cout << "Forge Game Engine - Loading music from directory: " << filePath << "\n";
+
+    bool loadedAny = false;
+    int musicLoaded = 0;
+
+    try {
+      // Iterate through all files in the directory
+      for (const auto& entry : std::filesystem::directory_iterator(filePath)) {
+        if (!entry.is_regular_file()) {
+          continue; // Skip directories and special files
+        }
+
+        // Get file path and extension
+        std::filesystem::path path = entry.path();
+        std::string extension = path.extension().string();
+
+        // Convert extension to lowercase for case-insensitive comparison
+        std::transform(extension.begin(), extension.end(), extension.begin(),
+                      [](unsigned char c) { return std::tolower(c); });
+
+        // Check if the file has a supported audio extension
+        if (extension == ".mp3" || extension == ".ogg" || extension == ".wav") {
+          std::string fullPath = path.string();
+          std::string filename = path.stem().string(); // Get filename without extension
+
+          // Create music ID by combining the provided prefix and filename
+          std::string combinedID = musicID.empty() ? filename : musicID + "_" + filename;
+          
+          // Load the individual file as music
+          Mix_Music* p_music = Mix_LoadMUS(fullPath.c_str());
+
+          std::cout << "Forge Game Engine - Loading music: " << fullPath << "!\n";
+
+          if (p_music == nullptr) {
+            std::cout << "Forge Game Engine - Could not load music: " << SDL_GetError() << "\n";
+            continue;
+          }
+
+          m_musicMap[combinedID] = p_music;
+          loadedAny = true;
+          musicLoaded++;
+        }
+      }
+    } catch (const std::filesystem::filesystem_error& e) {
+      std::cout << "Forge Game Engine - Filesystem error: " << e.what() << "\n";
+    } catch (const std::exception& e) {
+      std::cout << "Forge Game Engine - Error while loading music: " << e.what() << "\n";
+    }
+
+    std::cout << "Forge Game Engine - Loaded " << musicLoaded << " music files from directory: " << filePath << "\n";
+    return loadedAny; // Return true if at least one music file was loaded successfully
+  }
+
+  // Standard single file loading code
   Mix_Music* p_music = Mix_LoadMUS(filePath.c_str());
 
-  std::cout << "Forge Game Engine - Loading music: " << filePath << "!\n";
+  std::cout << "Forge Game Engine - Loading music: " << filePath << "! ID: " << musicID << "\n";
 
   if (p_music == nullptr) {
     std::cout << "Forge Game Engine - Could not load music: " << SDL_GetError() << "\n";
