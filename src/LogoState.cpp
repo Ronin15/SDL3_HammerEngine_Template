@@ -23,11 +23,11 @@ void LogoState::update() {
 void LogoState::render() {
   // std::cout << "Rendering Main Menu State" << std::endl;
   TextureManager::Instance()->draw(
-      "HammerForgeBanner", (GameEngine::Instance()->getWindowWidth() / 2) - 450,
+      "HammerForgeBanner", (GameEngine::Instance()->getWindowWidth() / 2) - 350,
       (GameEngine::Instance()->getWindowHeight() / 2) - 352, 727, 352,
       GameEngine::Instance()->getRenderer());
   TextureManager::Instance()->draw(
-      "ForgeEngine", (GameEngine::Instance()->getWindowWidth() / 2) - 150,
+      "ForgeEngine", (GameEngine::Instance()->getWindowWidth() / 2) - 50,
       (GameEngine::Instance()->getWindowHeight() / 2) + 50, 128, 128,
       GameEngine::Instance()->getRenderer());
 }

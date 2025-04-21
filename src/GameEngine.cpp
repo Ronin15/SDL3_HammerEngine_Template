@@ -88,9 +88,9 @@ bool GameEngine::init(const char* title, int width, int height, bool fullscreen)
       // Multiple paths are tried to ensure the icon can be found regardless of current directory
       SDL_Surface* iconSurface = nullptr;
       const char* iconPaths[] = {
-        "res/img/ForgeEngine.png",               // Relative to executable
-        "../res/img/ForgeEngine.png",            // One level up (for build dirs)
-        "../../res/img/ForgeEngine.png"           // Two levels up (deeper build dirs)
+        "res/img/icon.ico",               // Relative to executable
+        "../res/img/icon.ico",            // One level up (for build dirs)
+        "../../res/img/icon.ico"           // Two levels up (deeper build dirs)
       };
 
       for (const char* path : iconPaths) {
