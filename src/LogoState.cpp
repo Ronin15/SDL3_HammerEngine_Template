@@ -1,5 +1,6 @@
 #include "LogoState.hpp"
 #include "GameEngine.hpp"
+#include <cmath>
 #include <iostream>
 
 Uint64 stateTimer{0};
@@ -20,7 +21,10 @@ void LogoState::update() {
 
 void LogoState::render() {
   //std::cout << "Rendering Main Menu State" << std::endl;
+  TextureManager::Instance()->draw("HammerForgeBanner", (GameEngine::Instance()->getWindowWidth() / 2) - 180, (GameEngine::Instance()->getWindowHeight() / 2) - 352, 727, 352, GameEngine::Instance()->getRenderer());
+  TextureManager::Instance()->draw("ForgeEngine", (GameEngine::Instance()->getWindowWidth() / 2) + 130, (GameEngine::Instance()->getWindowHeight() / 2) + 50, 128, 128, GameEngine::Instance()->getRenderer());
 }
+
 bool LogoState::exit() {
   std::cout << "Forge Game Engine - Exiting LOGO State" << std::endl;
   return true;
