@@ -53,10 +53,10 @@ class TextureManager {
                     int scroll,
                     SDL_Renderer* p_renderer);
   void clearFromTexMap(std::string textureID);
-  bool isTextureInMap(std::string textureID);
+  bool isTextureInMap(std::string textureID) const;
   
   // Get a texture pointer by ID
-  SDL_Texture* getTexture(std::string textureID);
+  SDL_Texture* getTexture(std::string textureID) const;
   
   // Clean up all texture resources
   void clean();

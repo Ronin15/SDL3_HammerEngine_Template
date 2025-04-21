@@ -52,7 +52,7 @@ class SoundManager {
   void stopMusic();
 
   // Check if music is playing
-  bool isMusicPlaying();
+  bool isMusicPlaying() const;
 
   // Set music volume (0-128)
   void setMusicVolume(int volume);
@@ -70,10 +70,10 @@ class SoundManager {
   void clearMusic(std::string musicID);
 
   // Check if a sound is loaded
-  bool isSFXLoaded(std::string soundID);
+  bool isSFXLoaded(std::string soundID) const;
 
   // Check if a music is loaded
-  bool isMusicLoaded(std::string musicID);
+  bool isMusicLoaded(std::string musicID) const;
 
  private:
   std::map<std::string, Mix_Chunk*> m_sfxMap;

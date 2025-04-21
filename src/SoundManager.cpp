@@ -252,7 +252,7 @@ void SoundManager::stopMusic() {
   Mix_HaltMusic();
 }
 
-bool SoundManager::isMusicPlaying() {
+bool SoundManager::isMusicPlaying() const {
   return Mix_PlayingMusic() != 0;
 }
 
@@ -308,10 +308,10 @@ void SoundManager::clearMusic(std::string musicID) {
   }
 }
 
-bool SoundManager::isSFXLoaded(std::string soundID) {
+bool SoundManager::isSFXLoaded(std::string soundID) const {
   return m_sfxMap.find(soundID) != m_sfxMap.end();
 }
 
-bool SoundManager::isMusicLoaded(std::string musicID) {
+bool SoundManager::isMusicLoaded(std::string musicID) const {
   return m_musicMap.find(musicID) != m_musicMap.end();
 }

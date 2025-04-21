@@ -64,7 +64,7 @@ bool GameStateManager::hasState(const std::string& stateName) const {
                      });
 }
 
-GameState* GameStateManager::getState(const std::string& stateName) {
+GameState* GameStateManager::getState(const std::string& stateName) const {
   auto it = std::find_if(states.begin(), states.end(),
                          [&stateName](const std::unique_ptr<GameState>& state) {
                            return state->getName() == stateName;

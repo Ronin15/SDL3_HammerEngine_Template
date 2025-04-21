@@ -25,7 +25,7 @@ class Vector2D {
     return v1;
   }
 
-  Vector2D operator*(float scalar) {
+  Vector2D operator*(float scalar) const {
     return Vector2D(m_x * scalar, m_y * scalar);
   }
 
@@ -47,7 +47,7 @@ class Vector2D {
     return v1;
   }
 
-  Vector2D operator/(float scalar) {
+  Vector2D operator/(float scalar) const {
     return Vector2D(m_x / scalar, m_y / scalar);
   }
 
