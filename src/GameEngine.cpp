@@ -1,6 +1,7 @@
 #include "GameEngine.hpp"
 #include "GamePlayState.hpp"
 #include "GameStateManager.hpp"
+#include "FontManager.hpp"
 #include "InputHandler.hpp"
 #include "LogoState.hpp"
 #include "MainMenuState.hpp"
@@ -150,10 +151,14 @@ bool GameEngine::init(const char* title, int width, int height, bool fullscreen)
   std::cout << "Forge Game Engine - Creating Sound Manager.... \n";
   // Initialize the sound manager
   SoundManager::Instance()->init();
-
   std::cout << "Forge Game Engine - Loading sounds and music.... \n";
   SoundManager::Instance()->loadSFX("res/sfx", "sfx");
   SoundManager::Instance()->loadMusic("res/music", "music");
+
+  std::cout << "Forge Game Engine - Creating Font Manager.... \n";
+  // Initialize the font manager
+  FontManager::Instance()->init();
+  FontManager::Instance()->loadFont("res/fonts", "fonts", 24);
 
   // Initialize game state manager
   std::cout << "Forge Game Engine - Creating Game State Manager and setting up initial game states.... \n";
@@ -200,6 +205,7 @@ void GameEngine::clean() {
     mp_gameStateManager = nullptr;
   }
 
+  FontManager::Instance()->clean();
   InputHandler::Instance()->clean();
   SoundManager::Instance()->clean();
   TextureManager::Instance()->clean();
