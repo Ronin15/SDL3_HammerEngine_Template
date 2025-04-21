@@ -14,9 +14,7 @@ class TextureManager {
   static TextureManager* Instance() {
     if (sp_Instance == 0) {
       sp_Instance = new TextureManager();
-      return sp_Instance;
     }
-
     return sp_Instance;
   }
 
@@ -54,10 +52,10 @@ class TextureManager {
                     SDL_Renderer* p_renderer);
   void clearFromTexMap(std::string textureID);
   bool isTextureInMap(std::string textureID) const;
-  
+
   // Get a texture pointer by ID
   SDL_Texture* getTexture(std::string textureID) const;
-  
+
   // Clean up all texture resources
   void clean();
 
