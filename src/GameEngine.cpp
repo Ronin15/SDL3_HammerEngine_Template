@@ -14,26 +14,66 @@ GameEngine* GameEngine::sp_Instance{nullptr};
 bool GameEngine::init(const char* title, int width, int height, bool fullscreen) {
   if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMEPAD)) {
     std::cout << "Forge Game Engine - Framework SDL3 online!\n";
-    fullscreen = false;
+
+    // Get display bounds to determine optimal window size
     SDL_Rect display;
-    SDL_GetDisplayBounds(1, &display);
+    if (SDL_GetDisplayBounds(1, &display) != 0) { // Try display 1 first
+      // Try display 0 as fallback
+      if (SDL_GetDisplayBounds(0, &display) != 0) {
+        std::cout << "Forge Game Engine - Warning: Could not get display bounds: " << SDL_GetError() << "\n";
+        std::cout << "Forge Game Engine - Using default window size: " << width << "x" << height << "\n";
+        // Keep the provided dimensions
+        m_windowWidth = width;
+        m_windowHeight = height;
+      } else {
+        // Success with display 0
+        std::cout << "Forge Game Engine - Detected resolution on primary display: " << display.w << "x" << display.h << "\n";
 
-    std::cout << "Forge Game Engine - Detected resolution on monitor 1 : "
-              << display.w << "x" << display.h << "\n";
+        // Continue with display size logic
+        if (width <= 0 || height <= 0 || width >= display.w || height >= display.h) {
+          m_windowWidth = static_cast<int>(display.w * 0.8f);
+          m_windowHeight = static_cast<int>(display.h * 0.8f);
+          std::cout << "Forge Game Engine - Adjusted window size to: " << m_windowWidth << "x" << m_windowHeight << "\n";
 
-    if (width >= display.w || height >= display.h) {
-      fullscreen =
-          false;  // false for Troubleshooting. True for actual full screen.
+          // If window size was too small, enable fullscreen
+          if (width <= display.w || height <= display.h) {
+            fullscreen = true;
+          }
+        } else {
+          // Use provided dimensions
+          m_windowWidth = width;
+          m_windowHeight = height;
+        }
+      }
+    } else {
+      std::cout << "Forge Game Engine - Detected resolution on display 1: " << display.w << "x" << display.h << "\n";
 
-      std::cout << "Forge Game Engine - Window size set to Full Screen!\n";
+      // Use 80% of display size if no specific size provided or if requested size is too large
+      if (width <= 0 || height <= 0 || width >= display.w || height >= display.h) {
+        m_windowWidth = static_cast<int>(display.w * 0.8f);
+        m_windowHeight = static_cast<int>(display.h * 0.8f);
+        std::cout << "Forge Game Engine - Adjusted window size to: " << m_windowWidth << "x" << m_windowHeight << "\n";
+
+        // If window size was too small, disable fullscreen
+        if (width <= display.w || height <= display.h) {
+          fullscreen = true;
+        }
+      } else {
+        // Use the provided dimensions
+        m_windowWidth = width;
+        m_windowHeight = height;
+        std::cout << "Forge Game Engine - Using requested window size: " << m_windowWidth << "x" << m_windowHeight << "\n";
+      }
     }
+    // Fullscreen handling
     int flags{0};
 
     if (fullscreen) {
       flags = SDL_WINDOW_FULLSCREEN;
+      std::cout << "Forge Game Engine - Window size set to Full Screen!\n";
     }
 
-    p_window = SDL_CreateWindow(title, width, height, flags);
+    p_window = SDL_CreateWindow(title, m_windowWidth, m_windowHeight, flags);
 
     if (p_window) {
       std::cout << "Forge Game Engine - Window creation system online!\n";

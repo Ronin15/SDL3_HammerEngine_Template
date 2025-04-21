@@ -179,6 +179,16 @@ bool TextureManager::isTextureInMap(std::string textureID) {
   return m_textureMap.find(textureID) != m_textureMap.end();
 }
 
+SDL_Texture* TextureManager::getTexture(std::string textureID) {
+  // Check if the texture exists in the map
+  if (m_textureMap.find(textureID) != m_textureMap.end()) {
+    return m_textureMap[textureID];
+  }
+  
+  // Return nullptr if the texture is not found
+  return nullptr;
+}
+
 void TextureManager::clean() {
   std::cout << "Forge Game Engine - Cleaning up TextureManager resources" << std::endl;
 

@@ -6,7 +6,8 @@
 
 class GameEngine {
  public:
-  GameEngine() {}
+  GameEngine() : m_windowWidth(1280), m_windowHeight(720) {}
+  // Default values that will be updated based on display bounds during init()
   ~GameEngine() {}
 
   static GameEngine* Instance() {
@@ -29,6 +30,11 @@ class GameEngine {
   void setRunning(bool running) { m_isRunning = running; }
   bool getRunning() { return m_isRunning; }
   SDL_Renderer* getRenderer() { return p_renderer; }
+  
+  // Window size methods
+  int getWindowWidth() const { return m_windowWidth; }
+  int getWindowHeight() const { return m_windowHeight; }
+  void setWindowSize(int width, int height) { m_windowWidth = width; m_windowHeight = height; }
 
  private:
   GameStateManager* mp_gameStateManager{nullptr};
@@ -37,5 +43,7 @@ class GameEngine {
   SDL_Renderer* p_renderer{nullptr};
   static GameEngine* sp_Instance;
   bool m_isRunning{false};
+  int m_windowWidth;
+  int m_windowHeight;
 };
 #endif  // GAME_ENGINE_HPP
