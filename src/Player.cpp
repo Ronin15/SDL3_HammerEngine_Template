@@ -25,7 +25,7 @@ Player::Player() {
     // Set width and height based on texture dimensions if the texture is loaded
     loadDimensionsFromTexture();
 
-    std::cout << "Forge Game Engine - Player created" << std::endl;
+    //std::cout << "Forge Game Engine - Player created" << std::endl;
 }
 
 // Helper method to get dimensions from the loaded texture
