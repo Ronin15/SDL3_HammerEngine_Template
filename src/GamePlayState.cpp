@@ -77,8 +77,6 @@ void GamePlayState::update() {
 
 void GamePlayState::render() {
   //std::cout << "Rendering GAME State" << std::endl;
-
- // TextureManager::Instance()->drawFrame("ForgeEngine", 0, 0, 128, 128, m_currentFrame, m_currentRow, m_numFrames, m_animSpeed);
   m_pPlayer->render();
 
 }
