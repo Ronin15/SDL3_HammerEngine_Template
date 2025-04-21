@@ -1,10 +1,12 @@
 #include "Player.hpp"
+#include "GameEngine.hpp"
 #include "InputHandler.hpp"
+#include "SDL3/SDL_surface.h"
 #include "TextureManager.hpp"
 #include <SDL3/SDL.h>
 #include <iostream>
 
-Player::Player(SDL_Renderer* renderer) : m_pRenderer(renderer) {
+Player::Player() {
     // Initialize player properties
     m_position = Vector2D(400, 300);  // Start position in the middle of a typical screen
     m_velocity = Vector2D(0, 0);
@@ -12,12 +14,13 @@ Player::Player(SDL_Renderer* renderer) : m_pRenderer(renderer) {
     m_textureID = "player";  // Texture ID as loaded by TextureManager from res/img directory
 
     // Animation properties
-    m_currentFrame = 0;      // Start with first frame
+    m_currentFrame = 1;      // Start with first frame
     m_currentRow = 1;        // In TextureManager::drawFrame, rows start at 1
     m_numFrames = 2;         // Number of frames in the animation
     m_animSpeed = 100;       // Animation speed in milliseconds
-    m_spriteSheetRows = 2;   // Number of rows in the sprite sheet
+    m_spriteSheetRows = 1;   // Number of rows in the sprite sheet
     m_lastFrameTime = SDL_GetTicks(); // Track when we last changed animation frame
+    m_flip = SDL_FLIP_NONE;  // Default flip direction
 
     // Set width and height based on texture dimensions if the texture is loaded
     loadDimensionsFromTexture();
@@ -93,20 +96,22 @@ void Player::update() {
         // Time-based animation - only update frame when enough time has passed
         if (currentTime > m_lastFrameTime + m_animSpeed) {
             // Advance to next frame
-            m_currentFrame = (m_currentFrame + 1) % m_numFrames;
+            m_currentFrame = int(((currentTime / m_animSpeed) % m_numFrames));
             m_lastFrameTime = currentTime; // Reset timer
 
             // Log animation updates for debugging
-            std::cout << "Forge Game Engine - Animation frame: " << m_currentFrame << ", Row: " << m_currentRow << std::endl;
+           // std::cout << "Forge Game Engine - Animation frame: " << m_currentFrame << ", Row: " << m_currentRow << std::endl;
         }
 
         // Determine row based on direction (facing)
         if (m_velocity.getX() > 0) {
             // Moving right
-            m_currentRow = 2; // Second row (right-facing)
+            m_currentRow = 1; // Second row (right-facing)
+            m_flip = SDL_FLIP_NONE;
         } else if (m_velocity.getX() < 0) {
             // Moving left
             m_currentRow = 1; // First row (left-facing)
+            m_flip = SDL_FLIP_HORIZONTAL;
         }
     } else {
         // If standing still, use first frame but keep current direction (row)
@@ -129,7 +134,8 @@ void Player::render() {
         m_height,               // Height stays the same
         m_currentRow,           // Current animation row
         m_currentFrame,         // Current animation frame
-        m_pRenderer
+        GameEngine::Instance()->getRenderer(),
+        m_flip
     );
 
     // Log rendering information (commented out to reduce console spam during animation)
