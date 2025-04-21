@@ -13,7 +13,7 @@ GameEngine* GameEngine::sp_Instance{nullptr};
 #define FORGE_GRAY 31, 32, 34, 255
 
 bool GameEngine::init(const char* title, int width, int height, bool fullscreen) {
-  if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMEPAD)) {
+  if (SDL_Init(SDL_INIT_VIDEO)) {
     std::cout << "Forge Game Engine - Framework SDL3 online!\n";
 
     // Get display bounds to determine optimal window size
