@@ -8,10 +8,9 @@ class Player;
 class PlayerIdleState : public EntityState {
 public:
     PlayerIdleState(Player* player);
-    
+
     void enter() override;
     void update() override;
-    void render() override;
     void exit() override;
 
 private:

@@ -42,9 +42,6 @@ void PlayerRunningState::update() {
     }
 }
 
-void PlayerRunningState::render() {
-    // Actual rendering is handled by the player
-}
 
 void PlayerRunningState::exit() {
     std::cout << "Forge Game Engine - Exiting Player Running State" << std::endl;

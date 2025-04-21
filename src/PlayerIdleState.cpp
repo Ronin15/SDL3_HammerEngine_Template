@@ -16,11 +16,6 @@ void PlayerIdleState::update() {
     // This would be implemented later when you have logic to transition states
 }
 
-void PlayerIdleState::render() {
-    // No special rendering needed in idle state
-    // The player will handle the actual rendering
-}
-
 void PlayerIdleState::exit() {
     std::cout << "Forge Game Engine - Exiting Player Idle State" << std::endl;
 }

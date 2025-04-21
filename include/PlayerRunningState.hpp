@@ -8,10 +8,9 @@ class Player;
 class PlayerRunningState : public EntityState {
 public:
     PlayerRunningState(Player* player);
-    
+
     void enter() override;
     void update() override;
-    void render() override;
     void exit() override;
 
 private:
