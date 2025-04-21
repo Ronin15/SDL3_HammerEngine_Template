@@ -1,6 +1,7 @@
 #ifndef PLAYER_HPP
 #define PLAYER_HPP
 #include "Entity.hpp"
+#include "EntityStateManager.hpp"
 #include "SDL3/SDL_surface.h"
 #include "Vector2D.hpp"
 
@@ -13,15 +14,32 @@ public:
     void render()override;
     void clean()override;
 
+    // State management
+    void changeState(const std::string& stateName);
+    std::string getCurrentStateName() const;
+
     // Accessor methods for protected members
     Vector2D getPosition() const { return m_position; }
+    Vector2D getVelocity() const { return m_velocity; }
     int getWidth() const { return m_width; }
     int getHeight() const { return m_height; }
     std::string getTextureID() const { return m_textureID; }
+    int getCurrentFrame() const { return m_currentFrame; }
+    int getCurrentRow() const { return m_currentRow; }
+    SDL_FlipMode getFlip() const { return m_flip; }
+
+    // Setter methods for state control
+    void setVelocity(const Vector2D& velocity) { m_velocity = velocity; }
+    void setCurrentFrame(int frame) { m_currentFrame = frame; }
+    void setCurrentRow(int row) { m_currentRow = row; }
+    void setFlip(SDL_FlipMode flip) { m_flip = flip; }
 
 private:
     void handleInput();
     void loadDimensionsFromTexture();
+    void setupStates();
+    
+    EntityStateManager m_stateManager;
     int m_frameWidth{0}; // Width of a single animation frame
     int m_spriteSheetRows{0}; // Number of rows in the sprite sheet
     Uint64 m_lastFrameTime{0}; // Time of last animation frame change

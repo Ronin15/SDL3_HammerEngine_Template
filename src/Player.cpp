@@ -1,6 +1,8 @@
 #include "Player.hpp"
 #include "GameEngine.hpp"
 #include "InputHandler.hpp"
+#include "PlayerIdleState.hpp"
+#include "PlayerRunningState.hpp"
 #include "SDL3/SDL_surface.h"
 #include "TextureManager.hpp"
 #include <SDL3/SDL.h>
@@ -24,6 +26,12 @@ Player::Player() {
 
     // Set width and height based on texture dimensions if the texture is loaded
     loadDimensionsFromTexture();
+    
+    // Setup state manager and add states
+    setupStates();
+    
+    // Set default state
+    changeState("idle");
 
     //std::cout << "Forge Game Engine - Player created" << std::endl;
 }
@@ -69,55 +77,43 @@ void Player::loadDimensionsFromTexture() {
     }
 }
 
+void Player::setupStates() {
+    // Create and add states
+    m_stateManager.addState("idle", std::make_unique<PlayerIdleState>(this));
+    m_stateManager.addState("running", std::make_unique<PlayerRunningState>(this));
+}
+
 Player::~Player() {
     clean();
     std::cout << "Forge Game Engine - Player destroyed" << std::endl;
 }
 
-void Player::update() {
-    // Handle input
-    handleInput();
+void Player::changeState(const std::string& stateName) {
+    if (m_stateManager.hasState(stateName)) {
+        m_stateManager.setState(stateName);
+    } else {
+        std::cerr << "Player state not found: " << stateName << std::endl;
+    }
+}
 
-    // Update position based on velocity
+std::string Player::getCurrentStateName() const {
+    return m_stateManager.getCurrentStateName();
+}
+
+void Player::update() {
+    // Handle input and update state
+    handleInput();
+    
+    // Let the current state handle specific behavior
+    m_stateManager.update();
+    
+    // Update position based on velocity (this is common for all states)
     m_velocity += m_acceleration;
     m_position += m_velocity;
-
+    
     // Reset acceleration
     m_acceleration = Vector2D(0, 0);
-
-    // Get current time for animation updates
-    Uint64 currentTime = SDL_GetTicks();
-
-    // Animation handling
-    bool isMoving = (m_velocity.getX() != 0 || m_velocity.getY() != 0);
-
-    // Handle animation based on movement state
-    if (isMoving) {
-        // Time-based animation - only update frame when enough time has passed
-        if (currentTime > m_lastFrameTime + m_animSpeed) {
-            // Advance to next frame
-            m_currentFrame = int(((currentTime / m_animSpeed) % m_numFrames));
-            m_lastFrameTime = currentTime; // Reset timer
-
-            // Log animation updates for debugging
-           // std::cout << "Forge Game Engine - Animation frame: " << m_currentFrame << ", Row: " << m_currentRow << std::endl;
-        }
-
-        // Determine row based on direction (facing)
-        if (m_velocity.getX() > 0) {
-            // Moving right
-            m_currentRow = 1; // Second row (right-facing)
-            m_flip = SDL_FLIP_NONE;
-        } else if (m_velocity.getX() < 0) {
-            // Moving left
-            m_currentRow = 1; // First row (left-facing)
-            m_flip = SDL_FLIP_HORIZONTAL;
-        }
-    } else {
-        // If standing still, use first frame but keep current direction (row)
-        m_currentFrame = 0;
-    }
-
+    
     // If the texture dimensions haven't been loaded yet, try loading them
     if (m_frameWidth == 0 && TextureManager::Instance()->isTextureInMap(m_textureID)) {
         loadDimensionsFromTexture();
@@ -125,7 +121,10 @@ void Player::update() {
 }
 
 void Player::render() {
-    // Render player using the TextureManager with animation frame
+    // The render method in EntityStateManager calls the render method of the current state
+    // Don't call update here to avoid double updates
+    
+    // Do the common rendering for all states
     TextureManager::Instance()->drawFrame(
         m_textureID,
         static_cast<int>(m_position.getX() - m_frameWidth / 2.0f), // Center based on frame width
@@ -150,38 +149,26 @@ void Player::clean() {
 void Player::handleInput() {
     // Get input handler instance
     InputHandler* inputHandler = InputHandler::Instance();
-
-    // Handle keyboard movement
-    if (inputHandler->isKeyDown(SDL_SCANCODE_RIGHT)) {
-        m_velocity.setX(2);
-    } else if (inputHandler->isKeyDown(SDL_SCANCODE_LEFT)) {
-        m_velocity.setX(-2);
-    } else {
-        m_velocity.setX(0);
+    
+    // Check for state transitions based on input
+    bool isMoving = false;
+    
+    // Check keyboard, gamepad, or mouse input that would indicate movement
+    if (inputHandler->isKeyDown(SDL_SCANCODE_RIGHT) ||
+        inputHandler->isKeyDown(SDL_SCANCODE_LEFT) ||
+        inputHandler->isKeyDown(SDL_SCANCODE_UP) ||
+        inputHandler->isKeyDown(SDL_SCANCODE_DOWN) ||
+        inputHandler->getAxisX(0, 1) != 0 ||
+        inputHandler->getAxisY(0, 1) != 0 ||
+        inputHandler->getMouseButtonState(LEFT)) {
+        
+        isMoving = true;
     }
-
-    if (inputHandler->isKeyDown(SDL_SCANCODE_UP)) {
-        m_velocity.setY(-2);
-    } else if (inputHandler->isKeyDown(SDL_SCANCODE_DOWN)) {
-        m_velocity.setY(2);
-    } else {
-        m_velocity.setY(0);
-    }
-
-    // Handle gamepad input if a gamepad is connected
-    if (inputHandler->getAxisX(0, 1) != 0) {
-        m_velocity.setX(2.0f * static_cast<float>(inputHandler->getAxisX(0, 1))); // 32767.0f);
-    }
-
-    if (inputHandler->getAxisY(0, 1) != 0) {
-        m_velocity.setY(2.0f * static_cast<float>(inputHandler->getAxisY(0, 1))); // 32767.0f);
-    }
-
-    // Handle mouse input for direction or actions
-    if (inputHandler->getMouseButtonState(LEFT)) {
-        Vector2D* target = inputHandler->getMousePosition();
-        Vector2D direction = (*target - m_position);
-        direction.normalize(); // Normalize to get direction vector
-        m_velocity = direction * 2; // Move towards clicked position
+    
+    // Change state based on movement
+    if (isMoving && getCurrentStateName() != "running") {
+        changeState("running");
+    } else if (!isMoving && getCurrentStateName() != "idle") {
+        changeState("idle");
     }
 }
