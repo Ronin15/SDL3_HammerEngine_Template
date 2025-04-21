@@ -85,7 +85,7 @@ bool GamePlayState::exit() {
 
   // Only clear specific textures if we're not transitioning to pause state
   if (!m_transitioningToPause) {
-    TextureManager::Instance()->clearFromTexMap("ForgeEngine");
+    //TextureManager::Instance()->clearFromTexMap("ForgeEngine");
     // Don't clear the player texture as it's loaded at engine startup
 
     // Reset player
