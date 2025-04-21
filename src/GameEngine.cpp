@@ -10,6 +10,7 @@
 #include <iostream>
 
 GameEngine* GameEngine::sp_Instance{nullptr};
+#define FORGE_GRAY 31, 32, 34, 255
 
 bool GameEngine::init(const char* title, int width, int height, bool fullscreen) {
   if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMEPAD)) {
@@ -110,8 +111,7 @@ bool GameEngine::init(const char* title, int width, int height, bool fullscreen)
 
       if (p_renderer) {
         std::cout << "Forge Game Engine - Rendering system online!\n";
-        SDL_SetRenderDrawColor(p_renderer, 31, 32, 34,
-                               255);  // Forge Game Engine gunmetal dark grey
+        SDL_SetRenderDrawColor(p_renderer, FORGE_GRAY);  // Forge Game Engine gunmetal dark grey
 
       } else {
         std::cout << "Forge Game Engine - Rendering system creation failed! "
