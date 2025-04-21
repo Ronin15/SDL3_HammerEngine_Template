@@ -131,7 +131,7 @@ bool GameEngine::init(const char* title, int width, int height, bool fullscreen)
     return false;  // Forge SDL init fail. Make sure you have the SDL3 runtime
                    // installed.
   }
-  //_______________________________________________________________________________________________________________BEGIN
+  //INITIALIZING GAME RESOURCE MANAGEMENT_________________________________________________________________________________BEGIN
   std::cout << "Forge Game Engine - Detecting and initializing "
                "gamepad/controller.... \n";
   InputHandler::Instance()->initializeGamePad();  // aligned here for organization sake.
@@ -158,7 +158,7 @@ bool GameEngine::init(const char* title, int width, int height, bool fullscreen)
     std::cerr << "Forge Game Engine - Failed to create Game State Manager!\n";
     return false;
   }
-  // Setting Up game states
+  // Setting Up initial game states
   mp_gameStateManager->addState(std::make_unique<LogoState>());
   mp_gameStateManager->addState(std::make_unique<MainMenuState>());
   mp_gameStateManager->addState(std::make_unique<GamePlayState>());
