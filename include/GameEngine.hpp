@@ -30,7 +30,7 @@ class GameEngine {
   void setRunning(bool running) { m_isRunning = running; }
   bool getRunning() const { return m_isRunning; }
   SDL_Renderer* getRenderer() const { return p_renderer; }
-  
+
   // Window size methods
   int getWindowWidth() const { return m_windowWidth; }
   int getWindowHeight() const { return m_windowHeight; }
