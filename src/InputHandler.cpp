@@ -53,7 +53,7 @@ void InputHandler::initializeGamePad() {
         SDL_Gamepad* gamepad = SDL_OpenGamepad(gamepadIDs[i]);
         if (gamepad) {
           m_joysticks.push_back(gamepad);
-          std::cout << "Forge Game Engine - Gamepad opened: " << SDL_GetGamepadName(gamepad) << std::endl;
+          std::cout << "Forge Game Engine - Gamepad connected: " << SDL_GetGamepadName(gamepad) << std::endl;
 
           // Add default joystick values
           m_joystickValues.push_back(std::make_pair(new Vector2D(0, 0), new Vector2D(0, 0)));
