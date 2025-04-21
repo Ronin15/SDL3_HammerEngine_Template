@@ -304,6 +304,20 @@ void InputHandler::onGamepadAxisMove(SDL_Event& event) {
       m_joystickValues[whichOne].second->setY(0);
     }
   }
+  
+  // Process left trigger (L2/LT)
+  if (event.gaxis.axis == SDL_GAMEPAD_AXIS_LEFT_TRIGGER) {
+    if (event.gaxis.value > m_joystickDeadZone) {
+      std::cout << "Forge Game Engine - Gamepad " << whichOne << " Left Trigger pressed: " << event.gaxis.value << "\n";
+    }
+  }
+  
+  // Process right trigger (R2/RT)
+  if (event.gaxis.axis == SDL_GAMEPAD_AXIS_RIGHT_TRIGGER) {
+    if (event.gaxis.value > m_joystickDeadZone) {
+      std::cout << "Forge Game Engine - Gamepad " << whichOne << " Right Trigger pressed: " << event.gaxis.value << "\n";
+    }
+  }
 }
 
 void InputHandler::onGamepadButtonDown(SDL_Event& event) {
@@ -326,6 +340,9 @@ void InputHandler::onGamepadButtonDown(SDL_Event& event) {
   }
 
   m_buttonStates[whichOne][event.gbutton.button] = true;
+  
+  // Debug message for button press
+  std::cout << "Forge Game Engine - Gamepad " << whichOne << " Button " << static_cast<int>(event.gbutton.button) << " pressed!\n";
 }
 
 void InputHandler::onGamepadButtonUp(SDL_Event& event) {
