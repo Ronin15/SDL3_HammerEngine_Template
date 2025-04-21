@@ -9,7 +9,10 @@
 - Custom window icon support on all platforms
 - Game state management system
 - Entity state management system
-- Input handling - Keyboard, mouse, and xbox controller
+- Input handling :
+  - Keyboard and mouse
+  - Xbox series x controller support
+  - PS4 Controller support
 - Texture management
 - Sound management
 
