@@ -1,17 +1,18 @@
 #ifndef PLAYER_HPP
 #define PLAYER_HPP
 #include "Entity.hpp"
+#include "SDL3/SDL_surface.h"
 #include "Vector2D.hpp"
 
 class Player : public Entity{
 public:
-    Player(SDL_Renderer* renderer);
+    Player();
     ~Player();
 
     void update()override;
     void render()override;
     void clean()override;
-    
+
     // Accessor methods for protected members
     Vector2D getPosition() const { return m_position; }
     int getWidth() const { return m_width; }
@@ -21,11 +22,9 @@ public:
 private:
     void handleInput();
     void loadDimensionsFromTexture();
-    SDL_Renderer* m_pRenderer{nullptr}; // Renderer pointer
     int m_frameWidth{0}; // Width of a single animation frame
-    int m_spriteSheetRows{2}; // Number of rows in the sprite sheet
+    int m_spriteSheetRows{0}; // Number of rows in the sprite sheet
     Uint64 m_lastFrameTime{0}; // Time of last animation frame change
-
+    SDL_FlipMode m_flip{SDL_FLIP_NONE}; // Default flip direction
 };
-
 #endif // PLAYER_HPP

@@ -34,7 +34,7 @@ bool GamePlayState::enter() {
   } else {
     std::cout << "Forge Game Engine - Texture already loaded, skipping load" << std::endl;
   }
-  
+
   // Player texture should already be loaded by TextureManager during engine initialization
   // Just verify it's available
   if (!TextureManager::Instance()->isTextureInMap("player")) {
@@ -43,10 +43,10 @@ bool GamePlayState::enter() {
   } else {
     std::cout << "Forge Game Engine - Found player texture in TextureManager map" << std::endl;
   }
-  
+
   // Create player if not already created
   if (!m_pPlayer) {
-    m_pPlayer = std::make_unique<Player>(GameEngine::Instance()->getRenderer());
+    m_pPlayer = std::make_unique<Player>();
     std::cout << "Forge Game Engine - Player created in GamePlayState" << std::endl;
   }
 
@@ -68,7 +68,7 @@ void GamePlayState::update() {
   if (InputHandler::Instance()->isKeyDown(SDL_SCANCODE_ESCAPE)) {
       GameEngine::Instance()->setRunning(false);
   }
-  
+
   // Update player if it exists
   if (m_pPlayer) {
       m_pPlayer->update();
@@ -77,6 +77,10 @@ void GamePlayState::update() {
 
 void GamePlayState::render() {
   //std::cout << "Rendering GAME State" << std::endl;
+
+ // TextureManager::Instance()->drawFrame("ForgeEngine", 0, 0, 128, 128, m_currentFrame, m_currentRow, m_numFrames, m_animSpeed);
+  m_pPlayer->render();
+
 }
 bool GamePlayState::exit() {
   std::cout << "Forge Game Engine - Exiting GAME State" << std::endl;
@@ -85,10 +89,10 @@ bool GamePlayState::exit() {
   if (!m_transitioningToPause) {
     TextureManager::Instance()->clearFromTexMap("ForgeEngine");
     // Don't clear the player texture as it's loaded at engine startup
-    
+
     // Reset player
     m_pPlayer = nullptr;
-    
+
     std::cout << "Forge Game Engine - Cleared ForgeEngine texture and player, not going to pause" << std::endl;
   } else {
     std::cout << "Forge Game Engine - Keeping textures and player, going to pause" << std::endl;
