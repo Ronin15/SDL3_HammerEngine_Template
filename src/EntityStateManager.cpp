@@ -63,6 +63,5 @@ void EntityStateManager::removeState(const std::string& stateName) {
 void EntityStateManager::update() {
   if (currentState) {
     currentState->update();
-    currentState->render();
   }
 }
