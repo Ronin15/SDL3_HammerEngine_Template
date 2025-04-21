@@ -7,6 +7,7 @@
 #include "SoundManager.hpp"
 #include <SDL3_image/SDL_image.h>
 #include <iostream>
+#include <unistd.h>
 
 GameEngine* GameEngine::sp_Instance{nullptr};
 #define FORGE_GRAY 31, 32, 34, 255
@@ -150,6 +151,7 @@ bool GameEngine::init(const char* title, int width, int height, bool fullscreen)
 
   std::cout << "Forge Game Engine - Loading sounds and music.... \n";
   SoundManager::Instance()->loadSFX("res/sfx", "sfx");
+  SoundManager::Instance()->loadMusic("res/music", "music");
 
   // Initialize game state manager
   std::cout << "Forge Game Engine - Creating Game State Manager and setting up game states.... \n";
