@@ -31,39 +31,41 @@ bool GameEngine::init(const char* title, int width, int height, bool fullscreen)
         std::cout << "Forge Game Engine - Detected resolution on primary display: " << display.w << "x" << display.h << "\n";
 
         // Continue with display size logic
-        if (width <= 0 || height <= 0 || width >= display.w || height >= display.h) {
+        if (width <= 0 || height <= 0) {
           m_windowWidth = static_cast<int>(display.w * 0.8f);
           m_windowHeight = static_cast<int>(display.h * 0.8f);
           std::cout << "Forge Game Engine - Adjusted window size to: " << m_windowWidth << "x" << m_windowHeight << "\n";
-
-          // If window size was too small, enable fullscreen
-          if (width <= display.w || height <= display.h) {
-            fullscreen = true;
-          }
         } else {
           // Use provided dimensions
           m_windowWidth = width;
           m_windowHeight = height;
         }
+
+        // Set fullscreen if requested dimensions are larger than screen
+        if (width > display.w || height > display.h) {
+          fullscreen = true;
+          std::cout << "Forge Game Engine - Window size larger than screen, enabling fullscreen\n";
+        }
       }
     } else {
       std::cout << "Forge Game Engine - Detected resolution on display 1: " << display.w << "x" << display.h << "\n";
 
-      // Use 80% of display size if no specific size provided or if requested size is too large
-      if (width <= 0 || height <= 0 || width >= display.w || height >= display.h) {
+      // Use 80% of display size if no specific size provided
+      if (width <= 0 || height <= 0) {
         m_windowWidth = static_cast<int>(display.w * 0.8f);
         m_windowHeight = static_cast<int>(display.h * 0.8f);
         std::cout << "Forge Game Engine - Adjusted window size to: " << m_windowWidth << "x" << m_windowHeight << "\n";
-
-        // If window size was too small, disable fullscreen
-        if (width <= display.w || height <= display.h) {
-          fullscreen = true;
-        }
       } else {
         // Use the provided dimensions
         m_windowWidth = width;
         m_windowHeight = height;
         std::cout << "Forge Game Engine - Using requested window size: " << m_windowWidth << "x" << m_windowHeight << "\n";
+      }
+
+      // Set fullscreen if requested dimensions are larger than screen
+      if (width > display.w || height > display.h) {
+        fullscreen = true;
+        std::cout << "Forge Game Engine - Window size larger than screen, enabling fullscreen\n";
       }
     }
     // Fullscreen handling
@@ -154,7 +156,7 @@ bool GameEngine::init(const char* title, int width, int height, bool fullscreen)
   SoundManager::Instance()->loadMusic("res/music", "music");
 
   // Initialize game state manager
-  std::cout << "Forge Game Engine - Creating Game State Manager and setting up game states.... \n";
+  std::cout << "Forge Game Engine - Creating Game State Manager and setting up initial game states.... \n";
   mp_gameStateManager = new GameStateManager();
   if (!mp_gameStateManager) {
     std::cerr << "Forge Game Engine - Failed to create Game State Manager!\n";
