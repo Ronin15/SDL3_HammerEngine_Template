@@ -24,12 +24,12 @@ class GameEngine {
   void render();
   void clean();
 
-  GameStateManager* getGameStateManager() { return mp_gameStateManager; }
-  TextureManager* getTextureManager() { return mp_textureManager; }
+  GameStateManager* getGameStateManager() const { return mp_gameStateManager; }
+  TextureManager* getTextureManager() const { return mp_textureManager; }
 
   void setRunning(bool running) { m_isRunning = running; }
-  bool getRunning() { return m_isRunning; }
-  SDL_Renderer* getRenderer() { return p_renderer; }
+  bool getRunning() const { return m_isRunning; }
+  SDL_Renderer* getRenderer() const { return p_renderer; }
   
   // Window size methods
   int getWindowWidth() const { return m_windowWidth; }

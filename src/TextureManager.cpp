@@ -175,14 +175,15 @@ void TextureManager::clearFromTexMap(std::string textureID) {
   m_textureMap.erase(textureID);
 }
 
-bool TextureManager::isTextureInMap(std::string textureID) {
+bool TextureManager::isTextureInMap(std::string textureID) const {
   return m_textureMap.find(textureID) != m_textureMap.end();
 }
 
-SDL_Texture* TextureManager::getTexture(std::string textureID) {
+SDL_Texture* TextureManager::getTexture(std::string textureID) const {
   // Check if the texture exists in the map
-  if (m_textureMap.find(textureID) != m_textureMap.end()) {
-    return m_textureMap[textureID];
+  auto it = m_textureMap.find(textureID);
+  if (it != m_textureMap.end()) {
+    return it->second;
   }
   
   // Return nullptr if the texture is not found

@@ -15,7 +15,7 @@ class GameStateManager {
   void update();
   void render();
   bool hasState(const std::string& stateName) const;
-  GameState* getState(const std::string& stateName);
+  GameState* getState(const std::string& stateName) const;
   void removeState(const std::string& stateName);
   void clearAllStates();
 
