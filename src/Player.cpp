@@ -170,11 +170,11 @@ void Player::handleInput() {
 
     // Handle gamepad input if a gamepad is connected
     if (inputHandler->getAxisX(0, 1) != 0) {
-        m_velocity.setX(2.0f * static_cast<float>(inputHandler->getAxisX(0, 1)) / 32767.0f);
+        m_velocity.setX(2.0f * static_cast<float>(inputHandler->getAxisX(0, 1))); // 32767.0f);
     }
 
     if (inputHandler->getAxisY(0, 1) != 0) {
-        m_velocity.setY(2.0f * static_cast<float>(inputHandler->getAxisY(0, 1)) / 32767.0f);
+        m_velocity.setY(2.0f * static_cast<float>(inputHandler->getAxisY(0, 1))); // 32767.0f);
     }
 
     // Handle mouse input for direction or actions

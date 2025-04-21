@@ -35,6 +35,13 @@ void InputHandler::initializeGamePad() {
     return;
   }
 
+  // Initialize gamepad subsystem
+  if (!SDL_Init(SDL_INIT_GAMEPAD)) {
+    std::cerr << "Forge Game Engine - Failed to initialize gamepad subsystem: "
+              << SDL_GetError() << std::endl;
+    return;
+  }
+
   // Get all available gamepads
   int numGamepads = 0;
   SDL_JoystickID* gamepadIDs = SDL_GetGamepads(&numGamepads);
