@@ -33,7 +33,7 @@ bool SoundManager::init() {
   desired_spec.freq = 44100;
   desired_spec.format = SDL_AUDIO_F32;
   desired_spec.channels = 2;
-  
+
   m_deviceId = SDL_OpenAudioDevice(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &desired_spec);
   if (!m_deviceId) {
     std::cerr << "Error opening audio device: " << SDL_GetError() << std::endl;
@@ -41,7 +41,7 @@ bool SoundManager::init() {
     SDL_Quit();
     return false;
   }
-  
+
   // Initialize SDL_mixer with the opened audio device
   if (!Mix_OpenAudio(m_deviceId, &desired_spec)) {
     std::cerr << "Error initializing SDL_mixer: " << SDL_GetError() << std::endl;
@@ -50,7 +50,7 @@ bool SoundManager::init() {
     SDL_Quit();
     return false;
   }
-  
+
   std::cout << "Forge Game Engine - Sound system initialized successfully" << std::endl;
   m_initialized = true;
   return true;
@@ -60,43 +60,43 @@ bool SoundManager::loadSFX(std::string filePath, std::string soundID) {
   // Check if the filePath is a directory
   if (std::filesystem::exists(filePath) && std::filesystem::is_directory(filePath)) {
     std::cout << "Forge Game Engine - Loading sound effects from directory: " << filePath << "\n";
-    
+
     bool loadedAny = false;
     int soundsLoaded = 0;
-    
+
     try {
       // Iterate through all files in the directory
       for (const auto& entry : std::filesystem::directory_iterator(filePath)) {
         if (!entry.is_regular_file()) {
           continue; // Skip directories and special files
         }
-        
+
         // Get file path and extension
         std::filesystem::path path = entry.path();
         std::string extension = path.extension().string();
-        
+
         // Convert extension to lowercase for case-insensitive comparison
-        std::transform(extension.begin(), extension.end(), extension.begin(), 
+        std::transform(extension.begin(), extension.end(), extension.begin(),
                       [](unsigned char c) { return std::tolower(c); });
-        
+
         // Check if the file has a supported audio extension
         if (extension == ".wav" || extension == ".mp3" || extension == ".ogg") {
           std::string fullPath = path.string();
           std::string filename = path.stem().string(); // Get filename without extension
-          
+
           // Create sound ID by combining the provided prefix and filename
           std::string combinedID = soundID.empty() ? filename : soundID + "_" + filename;
-          
+          //std::cout << "Forge Game Engine - Loading sound ID: " << combinedID << "!\n";
           // Load the individual file as a sound
           Mix_Chunk* p_chunk = Mix_LoadWAV(fullPath.c_str());
-          
+
           std::cout << "Forge Game Engine - Loading sound effect: " << fullPath << "!\n";
-          
+
           if (p_chunk == nullptr) {
             std::cout << "Forge Game Engine - Could not load sound effect: " << SDL_GetError() << "\n";
             continue;
           }
-          
+
           m_sfxMap[combinedID] = p_chunk;
           loadedAny = true;
           soundsLoaded++;
@@ -107,15 +107,15 @@ bool SoundManager::loadSFX(std::string filePath, std::string soundID) {
     } catch (const std::exception& e) {
       std::cout << "Forge Game Engine - Error while loading sound effects: " << e.what() << "\n";
     }
-    
+
     std::cout << "Forge Game Engine - Loaded " << soundsLoaded << " sound effects from directory: " << filePath << "\n";
     return loadedAny; // Return true if at least one sound was loaded successfully
   }
-  
+
   // Standard single file loading code
   Mix_Chunk* p_chunk = Mix_LoadWAV(filePath.c_str());
 
-  std::cout << "Forge Game Engine - Loading sound effect: " << filePath << "!\n";
+  std::cout << "Forge Game Engine - Loading sound effect: " << filePath << "! ID: " << soundID << "\n";
 
   if (p_chunk == nullptr) {
     std::cout << "Forge Game Engine - Could not load sound effect: " << SDL_GetError() << "\n";
@@ -145,7 +145,7 @@ void SoundManager::playSFX(std::string soundID, int loops, int volume) {
     std::cout << "Forge Game Engine - Sound system not initialized!\n";
     return;
   }
-  
+
   if (m_sfxMap.find(soundID) == m_sfxMap.end()) {
     std::cout << "Forge Game Engine - Sound effect not found: " << soundID << "\n";
     return;
@@ -153,7 +153,7 @@ void SoundManager::playSFX(std::string soundID, int loops, int volume) {
 
   // Set volume (0-128)
   Mix_VolumeChunk(m_sfxMap[soundID], volume);
-  
+
   // Play the sound effect (-1 means first available channel)
   if (Mix_PlayChannel(-1, m_sfxMap[soundID], loops) == -1) {
     std::cout << "Forge Game Engine - Could not play sound effect: " << SDL_GetError() << "\n";
@@ -165,7 +165,7 @@ void SoundManager::playMusic(std::string musicID, int loops, int volume) {
     std::cout << "Forge Game Engine - Sound system not initialized!\n";
     return;
   }
-  
+
   if (m_musicMap.find(musicID) == m_musicMap.end()) {
     std::cout << "Forge Game Engine - Music not found: " << musicID << "\n";
     return;
@@ -173,7 +173,7 @@ void SoundManager::playMusic(std::string musicID, int loops, int volume) {
 
   // Set volume (0-128)
   Mix_VolumeMusic(volume);
-  
+
   // Play the music
   if (Mix_PlayMusic(m_musicMap[musicID], loops) != 0) {
     std::cout << "Forge Game Engine - Could not play music: " << SDL_GetError() << "\n";
