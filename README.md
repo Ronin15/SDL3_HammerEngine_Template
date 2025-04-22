@@ -1,4 +1,4 @@
-# SDL3 Game Template with CMAKE and Ninja
+# SDL3 2D Game Template with CMAKE and Ninja
 Based off of my SDL2 template, but updated for SDL3 and more complete. It has simplified Entity management and Entity state management system. Also has a more robust Game state management system and uses cmake and ninja instead of custom build.sh.
 
 I use the Zed IDE with custom cmake and ninja task configurations to build on all platforms.
