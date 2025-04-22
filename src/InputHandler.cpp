@@ -273,10 +273,10 @@ void InputHandler::onGamepadAxisMove(SDL_Event& event) {
   if (event.gaxis.axis == 0) {
     if (event.gaxis.value > m_joystickDeadZone) {
       m_joystickValues[whichOne].first->setX(1);
-      std::cout << "Forge Game Engine - " << axisName << " moving RIGHT!\n";
+      std::cout << "Forge Game Engine - Gamepad " << whichOne << " - " << axisName << " moving RIGHT!\n";
     } else if (event.gaxis.value < -m_joystickDeadZone) {
       m_joystickValues[whichOne].first->setX(-1);
-      std::cout << "Forge Game Engine - " << axisName << " moving LEFT!\n";
+      std::cout << "Forge Game Engine - Gamepad " << whichOne << " - " << axisName << " moving LEFT!\n";
     } else {
       m_joystickValues[whichOne].first->setX(0);
     }
@@ -286,10 +286,10 @@ void InputHandler::onGamepadAxisMove(SDL_Event& event) {
   if (event.gaxis.axis == 1) {
     if (event.gaxis.value > m_joystickDeadZone) {
       m_joystickValues[whichOne].first->setY(1);
-      std::cout << "Forge Game Engine - " << axisName << " moving DOWN!\n";
+      std::cout << "Forge Game Engine - Gamepad " << whichOne << " - " << axisName << " moving DOWN!\n";
     } else if (event.gaxis.value < -m_joystickDeadZone) {
       m_joystickValues[whichOne].first->setY(-1);
-      std::cout << "Forge Game Engine - " << axisName << " moving UP!\n";
+      std::cout << "Forge Game Engine - Gamepad " << whichOne << " - " << axisName << " moving UP!\n";
     } else {
       m_joystickValues[whichOne].first->setY(0);
     }
@@ -299,10 +299,10 @@ void InputHandler::onGamepadAxisMove(SDL_Event& event) {
   if (event.gaxis.axis == 2) {
     if (event.gaxis.value > m_joystickDeadZone) {
       m_joystickValues[whichOne].second->setX(1);
-      std::cout << "Forge Game Engine - " << axisName << " moving RIGHT!\n";
+      std::cout << "Forge Game Engine - Gamepad " << whichOne << " - " << axisName << " moving RIGHT!\n";
     } else if (event.gaxis.value < -m_joystickDeadZone) {
       m_joystickValues[whichOne].second->setX(-1);
-      std::cout << "Forge Game Engine - " << axisName << " moving LEFT!\n";
+      std::cout << "Forge Game Engine - Gamepad " << whichOne << " - " << axisName << " moving LEFT!\n";
     } else {
       m_joystickValues[whichOne].second->setX(0);
     }
@@ -312,10 +312,10 @@ void InputHandler::onGamepadAxisMove(SDL_Event& event) {
   if (event.gaxis.axis == 3) {
     if (event.gaxis.value > m_joystickDeadZone) {
       m_joystickValues[whichOne].second->setY(1);
-      std::cout << "Forge Game Engine - " << axisName << " moving DOWN!\n";
+      std::cout << "Forge Game Engine - Gamepad " << whichOne << " - " << axisName << " moving DOWN!\n";
     } else if (event.gaxis.value < -m_joystickDeadZone) {
       m_joystickValues[whichOne].second->setY(-1);
-      std::cout << "Forge Game Engine - " << axisName << " moving UP!\n";
+      std::cout << "Forge Game Engine - Gamepad " << whichOne << " - " << axisName << " moving UP!\n";
     } else {
       m_joystickValues[whichOne].second->setY(0);
     }
@@ -324,14 +324,14 @@ void InputHandler::onGamepadAxisMove(SDL_Event& event) {
   // Process left trigger (L2/LT)
   if (event.gaxis.axis == 4) {
     if (event.gaxis.value > m_joystickDeadZone) {
-      std::cout << "Forge Game Engine - Gamepad " << whichOne << " " << axisName << " pressed: " << event.gaxis.value << "\n";
+      std::cout << "Forge Game Engine - Gamepad " << whichOne << " - " << axisName << " pressed: " << event.gaxis.value << "\n";
     }
   }
 
   // Process right trigger (R2/RT)
   if (event.gaxis.axis == 5) {
     if (event.gaxis.value > m_joystickDeadZone) {
-      std::cout << "Forge Game Engine - Gamepad " << whichOne << " " << axisName << " pressed: " << event.gaxis.value << "\n";
+      std::cout << "Forge Game Engine - Gamepad " << whichOne << " - " << axisName << " pressed: " << event.gaxis.value << "\n";
     }
   }
 }
