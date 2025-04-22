@@ -30,16 +30,17 @@ I use the Zed IDE with custom cmake and ninja task configurations to build on al
 - Ninja build system (recommended)
 - A C++ compiler with C++23 support
 
-**Windows**
-need to install mysys2 for compiler and SDL3 dependencies like harfbuzz, truetype, freetype etc.
+### Windows
+Need to install mysys2 for compiler and for SDL3 dependencies like harfbuzz, truetype, freetype etc.
 scoop or chocolatey to install Ninja and zed.
 Cmake can be installed from the official website.
+Windows will need some env vars setup.
 
-**Linux**
+### Linux
 Follow the instructions on the official SDL3 website to install SDL3 dependencies.
 https://wiki.libsdl.org/SDL3/README/linux
 
-**macOS**
+### macOS
 Homebrew is recommended for SDL3 dependencies like harfbuzz, truetype, and freetype etc.
 brew install sdl3 sdl3_image sdl3_ttf sdl3_mixer should get you everything you need for SDL3. However, via CMAKE the project will use the SDL3 libraries downloaded from official SDL github via fecthContent.It will not use the SDL3 libraries installed via Homebrew.
 xcode command line tools is needed to compile.
