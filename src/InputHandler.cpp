@@ -360,10 +360,10 @@ void InputHandler::onGamepadButtonDown(SDL_Event& event) {
   // Get button name based on the button index
   std::string buttonName = "Unknown";
   switch (event.gbutton.button) {
-    case 0: buttonName = "A"; break;
-    case 1: buttonName = "B"; break;
-    case 2: buttonName = "X"; break;
-    case 3: buttonName = "Y"; break;
+    case 0: buttonName = "A or CROSS"; break;
+    case 1: buttonName = "B or CIRCLE"; break;
+    case 2: buttonName = "X or SQUARE"; break;
+    case 3: buttonName = "Y or TRIANGLE"; break;
     case 4: buttonName = "Back"; break;
     case 5: buttonName = "Guide"; break;
     case 6: buttonName = "Start"; break;
