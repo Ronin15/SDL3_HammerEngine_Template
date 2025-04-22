@@ -26,10 +26,10 @@ Player::Player() {
 
     // Set width and height based on texture dimensions if the texture is loaded
     loadDimensionsFromTexture();
-    
+
     // Setup state manager and add states
     setupStates();
-    
+
     // Set default state
     changeState("idle");
 
@@ -103,17 +103,17 @@ std::string Player::getCurrentStateName() const {
 void Player::update() {
     // Handle input and update state
     handleInput();
-    
+
     // Let the current state handle specific behavior
     m_stateManager.update();
-    
+
     // Update position based on velocity (this is common for all states)
     m_velocity += m_acceleration;
     m_position += m_velocity;
-    
+
     // Reset acceleration
     m_acceleration = Vector2D(0, 0);
-    
+
     // If the texture dimensions haven't been loaded yet, try loading them
     if (m_frameWidth == 0 && TextureManager::Instance()->isTextureInMap(m_textureID)) {
         loadDimensionsFromTexture();
@@ -123,7 +123,7 @@ void Player::update() {
 void Player::render() {
     // The render method in EntityStateManager calls the render method of the current state
     // Don't call update here to avoid double updates
-    
+
     // Do the common rendering for all states
     TextureManager::Instance()->drawFrame(
         m_textureID,
@@ -147,24 +147,21 @@ void Player::clean() {
 }
 
 void Player::handleInput() {
-    // Get input handler instance
-    InputHandler* inputHandler = InputHandler::Instance();
-    
     // Check for state transitions based on input
     bool isMoving = false;
-    
+
     // Check keyboard, gamepad, or mouse input that would indicate movement
-    if (inputHandler->isKeyDown(SDL_SCANCODE_RIGHT) ||
-        inputHandler->isKeyDown(SDL_SCANCODE_LEFT) ||
-        inputHandler->isKeyDown(SDL_SCANCODE_UP) ||
-        inputHandler->isKeyDown(SDL_SCANCODE_DOWN) ||
-        inputHandler->getAxisX(0, 1) != 0 ||
-        inputHandler->getAxisY(0, 1) != 0 ||
-        inputHandler->getMouseButtonState(LEFT)) {
-        
+    if (InputHandler::Instance()->isKeyDown(SDL_SCANCODE_RIGHT) ||
+        InputHandler::Instance()->isKeyDown(SDL_SCANCODE_LEFT) ||
+        InputHandler::Instance()->isKeyDown(SDL_SCANCODE_UP) ||
+        InputHandler::Instance()->isKeyDown(SDL_SCANCODE_DOWN) ||
+        InputHandler::Instance()->getAxisX(0, 1) != 0 ||
+        InputHandler::Instance()->getAxisY(0, 1) != 0 ||
+        InputHandler::Instance()->getMouseButtonState(LEFT)) {
+
         isMoving = true;
     }
-    
+
     // Change state based on movement
     if (isMoving && getCurrentStateName() != "running") {
         changeState("running");

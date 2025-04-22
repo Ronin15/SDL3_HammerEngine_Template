@@ -2,7 +2,6 @@
 #define PLAYER_HPP
 #include "Entity.hpp"
 #include "EntityStateManager.hpp"
-#include "SDL3/SDL_surface.h"
 #include "Vector2D.hpp"
 
 class Player : public Entity{
@@ -38,7 +37,7 @@ private:
     void handleInput();
     void loadDimensionsFromTexture();
     void setupStates();
-    
+
     EntityStateManager m_stateManager;
     int m_frameWidth{0}; // Width of a single animation frame
     int m_spriteSheetRows{0}; // Number of rows in the sprite sheet

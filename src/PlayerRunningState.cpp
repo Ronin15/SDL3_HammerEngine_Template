@@ -3,10 +3,10 @@
 #include "InputHandler.hpp"
 #include <iostream>
 
-PlayerRunningState::PlayerRunningState(Player* player) : m_player(player) {}
+PlayerRunningState::PlayerRunningState(Player* player) : mp_player(player) {}
 
 void PlayerRunningState::enter() {
-    std::cout << "Entering Player Running State" << std::endl;
+    std::cout << "Forge Game Engine - Entering Player Running State" << std::endl;
 }
 
 void PlayerRunningState::update() {
@@ -16,10 +16,10 @@ void PlayerRunningState::update() {
     // Handle keyboard movement
     if (InputHandler::Instance()->isKeyDown(SDL_SCANCODE_RIGHT)) {
         velocity.setX(2);
-        m_player->setFlip(SDL_FLIP_NONE);
+        mp_player->setFlip(SDL_FLIP_NONE);
     } else if (InputHandler::Instance()->isKeyDown(SDL_SCANCODE_LEFT)) {
         velocity.setX(-2);
-        m_player->setFlip(SDL_FLIP_HORIZONTAL);
+        mp_player->setFlip(SDL_FLIP_HORIZONTAL);
     }
 
     if (InputHandler::Instance()->isKeyDown(SDL_SCANCODE_UP)) {
@@ -29,13 +29,13 @@ void PlayerRunningState::update() {
     }
 
     // Update player velocity
-    m_player->setVelocity(velocity);
+    mp_player->setVelocity(velocity);
 
     // Animate only if moving
     if (velocity.getX() != 0 || velocity.getY() != 0) {
         // Animate running (assumes animation frames are set up)
         Uint64 currentTime = SDL_GetTicks();
-        m_player->setCurrentFrame((currentTime / 100) % 2); // 2 frames animation
+        mp_player->setCurrentFrame((currentTime / 100) % 2); // 2 frames animation
     } else {
         // If not moving, transition back to idle
         // This would be implemented when we add state transitions
