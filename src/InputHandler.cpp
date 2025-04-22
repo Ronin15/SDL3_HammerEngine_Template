@@ -257,65 +257,81 @@ void InputHandler::onGamepadAxisMove(SDL_Event& event) {
     return;
   }
 
+  // Get axis name
+  std::string axisName = "Unknown";
+  switch (event.gaxis.axis) {
+    case 0: axisName = "Left Stick X"; break;
+    case 1: axisName = "Left Stick Y"; break;
+    case 2: axisName = "Right Stick X"; break;
+    case 3: axisName = "Right Stick Y"; break;
+    case 4: axisName = "Left Trigger"; break;
+    case 5: axisName = "Right Trigger"; break;
+    default: axisName = "Unknown Axis";
+  }
+
   // Process left stick X-axis
-  if (event.gaxis.axis == SDL_GAMEPAD_AXIS_LEFTX) {
+  if (event.gaxis.axis == 0) {
     if (event.gaxis.value > m_joystickDeadZone) {
       m_joystickValues[whichOne].first->setX(1);
-      std::cout << "Forge Game Engine - Left Stick X moving RIGHT!\n";
+      std::cout << "Forge Game Engine - " << axisName << " moving RIGHT!\n";
     } else if (event.gaxis.value < -m_joystickDeadZone) {
       m_joystickValues[whichOne].first->setX(-1);
-      std::cout << "Forge Game Engine - Left Stick X moving LEFT!\n";
+      std::cout << "Forge Game Engine - " << axisName << " moving LEFT!\n";
     } else {
       m_joystickValues[whichOne].first->setX(0);
     }
   }
 
   // Process left stick Y-axis
-  if (event.gaxis.axis == SDL_GAMEPAD_AXIS_LEFTY) {
+  if (event.gaxis.axis == 1) {
     if (event.gaxis.value > m_joystickDeadZone) {
       m_joystickValues[whichOne].first->setY(1);
-      std::cout << "Forge Game Engine - Left Stick Y moving DOWN!\n";
+      std::cout << "Forge Game Engine - " << axisName << " moving DOWN!\n";
     } else if (event.gaxis.value < -m_joystickDeadZone) {
       m_joystickValues[whichOne].first->setY(-1);
-      std::cout << "Forge Game Engine - Left Stick Y moving UP!\n";
+      std::cout << "Forge Game Engine - " << axisName << " moving UP!\n";
     } else {
       m_joystickValues[whichOne].first->setY(0);
     }
   }
 
   // Process right stick X-axis
-  if (event.gaxis.axis == SDL_GAMEPAD_AXIS_RIGHTX) {
+  if (event.gaxis.axis == 2) {
     if (event.gaxis.value > m_joystickDeadZone) {
       m_joystickValues[whichOne].second->setX(1);
+      std::cout << "Forge Game Engine - " << axisName << " moving RIGHT!\n";
     } else if (event.gaxis.value < -m_joystickDeadZone) {
       m_joystickValues[whichOne].second->setX(-1);
+      std::cout << "Forge Game Engine - " << axisName << " moving LEFT!\n";
     } else {
       m_joystickValues[whichOne].second->setX(0);
     }
   }
 
   // Process right stick Y-axis
-  if (event.gaxis.axis == SDL_GAMEPAD_AXIS_RIGHTY) {
+  if (event.gaxis.axis == 3) {
     if (event.gaxis.value > m_joystickDeadZone) {
       m_joystickValues[whichOne].second->setY(1);
+      std::cout << "Forge Game Engine - " << axisName << " moving DOWN!\n";
     } else if (event.gaxis.value < -m_joystickDeadZone) {
       m_joystickValues[whichOne].second->setY(-1);
+      std::cout << "Forge Game Engine - " << axisName << " moving UP!\n";
     } else {
       m_joystickValues[whichOne].second->setY(0);
     }
   }
-  
+
   // Process left trigger (L2/LT)
-  if (event.gaxis.axis == SDL_GAMEPAD_AXIS_LEFT_TRIGGER) {
+  if (event.gaxis.axis == 4) {
     if (event.gaxis.value > m_joystickDeadZone) {
-      std::cout << "Forge Game Engine - Gamepad " << whichOne << " Left Trigger pressed: " << event.gaxis.value << "\n";
+      std::cout << "Forge Game Engine - Gamepad " << whichOne << " " << axisName << " pressed: " << event.gaxis.value << "\n";
     }
   }
-  
+
   // Process right trigger (R2/RT)
-  if (event.gaxis.axis == SDL_GAMEPAD_AXIS_RIGHT_TRIGGER) {
+  if (event.gaxis.axis == 5) {
     if (event.gaxis.value > m_joystickDeadZone) {
-      std::cout << "Forge Game Engine - Gamepad " << whichOne << " Right Trigger pressed: " << event.gaxis.value << "\n";
+      std::cout << "Forge Game Engine - Gamepad " << whichOne << " " << axisName << " pressed: " << event.gaxis.value << "\n";
     }
   }
 }
@@ -340,9 +356,31 @@ void InputHandler::onGamepadButtonDown(SDL_Event& event) {
   }
 
   m_buttonStates[whichOne][event.gbutton.button] = true;
-  
-  // Debug message for button press
-  std::cout << "Forge Game Engine - Gamepad " << whichOne << " Button " << static_cast<int>(event.gbutton.button) << " pressed!\n";
+
+  // Get button name based on the button index
+  std::string buttonName = "Unknown";
+  switch (event.gbutton.button) {
+    case 0: buttonName = "A"; break;
+    case 1: buttonName = "B"; break;
+    case 2: buttonName = "X"; break;
+    case 3: buttonName = "Y"; break;
+    case 4: buttonName = "Back"; break;
+    case 5: buttonName = "Guide"; break;
+    case 6: buttonName = "Start"; break;
+    case 7: buttonName = "Left Stick"; break;
+    case 8: buttonName = "Right Stick"; break;
+    case 9: buttonName = "Left Shoulder"; break;
+    case 10: buttonName = "Right Shoulder"; break;
+    case 11: buttonName = "D-Pad Up"; break;
+    case 12: buttonName = "D-Pad Down"; break;
+    case 13: buttonName = "D-Pad Left"; break;
+    case 14: buttonName = "D-Pad Right"; break;
+    default: buttonName = "Unknown";
+  }
+
+  // Debug message for button press with button name
+  std::cout << "Forge Game Engine - Gamepad " << whichOne << " Button '" << buttonName << "' ("
+            << static_cast<int>(event.gbutton.button) << ") pressed!\n";
 }
 
 void InputHandler::onGamepadButtonUp(SDL_Event& event) {
