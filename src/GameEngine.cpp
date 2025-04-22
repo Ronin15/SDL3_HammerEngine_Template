@@ -44,7 +44,7 @@ bool GameEngine::init(const char* title, int width, int height, bool fullscreen)
 
         // Set fullscreen if requested dimensions are larger than screen
         if (width > display.w || height > display.h) {
-          fullscreen = true;
+          fullscreen = true; //true
           std::cout << "Forge Game Engine - Window size larger than screen, enabling fullscreen\n";
         }
       }
@@ -65,7 +65,7 @@ bool GameEngine::init(const char* title, int width, int height, bool fullscreen)
 
       // Set fullscreen if requested dimensions are larger than screen
       if (width > display.w || height > display.h) {
-        fullscreen = true;
+        fullscreen = true; //true
         std::cout << "Forge Game Engine - Window size larger than screen, enabling fullscreen\n";
       }
     }

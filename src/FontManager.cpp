@@ -17,12 +17,6 @@ bool FontManager::init() {
   }
 }
 
-bool FontManager::createTextEngine(SDL_Renderer* /* renderer */) {
-  // In SDL3_ttf, the text engine implementation is different
-  // We'll keep this method for future compatibility but it's not used in this implementation
-  return true;
-}
-
 bool FontManager::loadFont(const std::string& fontFile, const std::string& fontID, int fontSize) {
   // Check if the fontFile is a directory
   if (std::filesystem::exists(fontFile) && std::filesystem::is_directory(fontFile)) {
@@ -83,7 +77,7 @@ bool FontManager::loadFont(const std::string& fontFile, const std::string& fontI
   TTF_Font* font = TTF_OpenFont(fontFile.c_str(), fontSize);
 
   if (font == nullptr) {
-    std::cerr << "Forge Game Engine - Failed to load font '" << fontFile << 
+    std::cerr << "Forge Game Engine - Failed to load font '" << fontFile <<
                  "': " << SDL_GetError() << "\n";
     return false;
   }
