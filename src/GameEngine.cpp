@@ -6,9 +6,8 @@
 #include "LogoState.hpp"
 #include "MainMenuState.hpp"
 #include "SoundManager.hpp"
-#include <SDL3_image/SDL_image.h>
 #include <iostream>
-#include <unistd.h>
+
 
 GameEngine* GameEngine::sp_Instance{nullptr};
 #define FORGE_GRAY 31, 32, 34, 255
@@ -151,10 +150,10 @@ bool GameEngine::init(const char* title, int width, int height, bool fullscreen)
   std::cout << "Forge Game Engine - Creating Font Manager.... \n";
   // Initialize the font manager
   FontManager::Instance()->init();
-  FontManager::Instance()->loadFont("res/fonts", "fonts", 24);
+  FontManager::Instance()->loadFont("res/fonts", "fonts", 20);
 
   // Initialize game state manager
-  std::cout << "Forge Game Engine - Creating Game State Manager and setting up initial game states.... \n";
+  std::cout << "Forge Game Engine - Creating Game State Manager and setting up initial Game States.... \n";
   mp_gameStateManager = new GameStateManager();
   if (!mp_gameStateManager) {
     std::cerr << "Forge Game Engine - Failed to create Game State Manager!\n";

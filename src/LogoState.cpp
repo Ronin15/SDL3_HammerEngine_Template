@@ -28,42 +28,47 @@ void LogoState::render() {
       (GameEngine::Instance()->getWindowHeight() / 2) - 352, 727, 352,
       GameEngine::Instance()->getRenderer());
   TextureManager::Instance()->draw(
-      "ForgeEngine", (GameEngine::Instance()->getWindowWidth() / 2) - 50,
-      (GameEngine::Instance()->getWindowHeight() / 2) + 50, 128, 128,
+      "ForgeEngine", (GameEngine::Instance()->getWindowWidth() / 2) - 45,
+      (GameEngine::Instance()->getWindowHeight() / 2) + 30, 128, 128,
       GameEngine::Instance()->getRenderer());
-  
+
+  TextureManager::Instance()->draw(
+      "sdl", (GameEngine::Instance()->getWindowWidth() / 2) - 80,
+      (GameEngine::Instance()->getWindowHeight() / 2) + 300, 203, 125,
+      GameEngine::Instance()->getRenderer());
+
   // Render text using SDL_TTF
-  SDL_Color titleColor = {255, 255, 255, 255}; // White
-  SDL_Color subtitleColor = {200, 200, 200, 255}; // Light gray
-  
+  SDL_Color titleColor = {185, 71, 0, 200}; // Light gray
+  SDL_Color subtitleColor = {200, 200, 200, 255}; // Forge Orange
+
   // Use existing fonts from the FontManager instead of loading new ones
   // The GameEngine already loads fonts with ID "fonts_Arial" (from "res/fonts/Arial.ttf")
-  
+
   // Draw title text
   FontManager::Instance()->drawText(
-      "FORGE GAME ENGINE", 
-      "fonts_Arial", 
+      "<]==={} FORGE GAME ENGINE {}===]>",
+      "fonts_Arial",
       (GameEngine::Instance()->getWindowWidth() / 2) - 150,
-      (GameEngine::Instance()->getWindowHeight() / 2) + 200, 
-      titleColor, 
+      (GameEngine::Instance()->getWindowHeight() / 2) + 180,
+      titleColor,
       GameEngine::Instance()->getRenderer());
-  
+
   // Draw subtitle text
   FontManager::Instance()->drawText(
-      "Powered by SDL3", 
-      "fonts_Arial", 
-      (GameEngine::Instance()->getWindowWidth() / 2) - 80,
-      (GameEngine::Instance()->getWindowHeight() / 2) + 240, 
-      subtitleColor, 
+      "Powered by SDL3",
+      "fonts_Arial",
+      (GameEngine::Instance()->getWindowWidth() / 2) - 65,
+      (GameEngine::Instance()->getWindowHeight() / 2) + 220,
+      subtitleColor,
       GameEngine::Instance()->getRenderer());
-  
+
   // Draw version text
   FontManager::Instance()->drawText(
-      "v1.0.0", 
-      "fonts_Arial", 
-      (GameEngine::Instance()->getWindowWidth() / 2) - 30,
-      (GameEngine::Instance()->getWindowHeight() / 2) + 280, 
-      subtitleColor, 
+      "v0.0.5",
+      "fonts_Arial",
+      (GameEngine::Instance()->getWindowWidth() / 2) - 15,
+      (GameEngine::Instance()->getWindowHeight() / 2) + 260,
+      subtitleColor,
       GameEngine::Instance()->getRenderer());
 }
 
