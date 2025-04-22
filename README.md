@@ -59,3 +59,7 @@ This project supports window icons across all platforms:
 - **macOS**: Icon is set programmatically and bundled with the application
 - **Linux**: Icon is set programmatically
 The icon is automatically loaded from the `res/img` folder.
+
+### General notes
+
+This is a template and the first player state running "PlayerRunningState.cpp" Contains player move to mouse for point click movemen, Keyboard movement up,down,left,right, and finally controller movement. Keep or delete any combination of controls your want.s
