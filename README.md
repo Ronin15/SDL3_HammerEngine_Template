@@ -3,7 +3,7 @@ Based off of my SDL2 template, but updated for SDL3 and more complete. It has si
 
 I use the Zed IDE with custom cmake and ninja task configurations to build on all platforms.
 
-**Note**: Below in the Prerequisites I mentioned some ways that I used to get the project to compile. You may need some additional tweaks depending on your system and preferences. I assume you are a programmer with some experience and can setup the environment. Questions are always welcome. :)
+### **Note**: Below in the Prerequisites I mentioned some ways that I used to get the project to compile. You may need some additional tweaks depending on your system and preferences. Via Cmake the compile_commands.json file is generated automatically and moved to the project root directory. This will allow Zed, when it automatically installs Clangd, to provide code completion and diagnostics.
 
 ## Features
 
