@@ -31,7 +31,7 @@ I use the Zed IDE with custom cmake and ninja task configurations to build on al
 - A C++ compiler with C++23 support
 
 ### Windows
-Need to install mysys2 for compiler and for SDL3 dependencies like harfbuzz, truetype, freetype etc.
+Need to install mysys2 for compiler and for SDL3 dependencies like harfbuzz, freetype etc.
 scoop or chocolatey to install Ninja and zed.
 Cmake can be installed from the official website.
 Windows will need some env vars setup.

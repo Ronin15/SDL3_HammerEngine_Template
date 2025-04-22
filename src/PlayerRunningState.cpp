@@ -28,6 +28,24 @@ void PlayerRunningState::update() {
         velocity.setY(2);
     }
 
+    // Handle controller joystick movement (if a gamepad is connected)
+    // We'll use the first connected gamepad (joy = 0) and the left stick (stick = 1)
+    int joystickX = InputHandler::Instance()->getAxisX(0, 1);
+    int joystickY = InputHandler::Instance()->getAxisY(0, 1);
+    
+    if (joystickX != 0 || joystickY != 0) {
+        // If joystick is being used, override keyboard input
+        velocity.setX(joystickX * 2);
+        velocity.setY(joystickY * 2);
+        
+        // Set proper flip direction based on horizontal movement
+        if (joystickX > 0) {
+            mp_player->setFlip(SDL_FLIP_NONE);
+        } else if (joystickX < 0) {
+            mp_player->setFlip(SDL_FLIP_HORIZONTAL);
+        }
+    }
+
     // Update player velocity
     mp_player->setVelocity(velocity);
 
