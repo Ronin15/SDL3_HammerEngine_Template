@@ -2,7 +2,6 @@
 #include "Player.hpp"
 #include "InputHandler.hpp"
 #include <iostream>
-
 PlayerRunningState::PlayerRunningState(Player* player) : mp_player(player) {}
 
 void PlayerRunningState::enter() {
@@ -32,17 +31,42 @@ void PlayerRunningState::update() {
     // We'll use the first connected gamepad (joy = 0) and the left stick (stick = 1)
     int joystickX = InputHandler::Instance()->getAxisX(0, 1);
     int joystickY = InputHandler::Instance()->getAxisY(0, 1);
-    
+
     if (joystickX != 0 || joystickY != 0) {
         // If joystick is being used, override keyboard input
         velocity.setX(joystickX * 2);
         velocity.setY(joystickY * 2);
-        
+
         // Set proper flip direction based on horizontal movement
         if (joystickX > 0) {
             mp_player->setFlip(SDL_FLIP_NONE);
         } else if (joystickX < 0) {
             mp_player->setFlip(SDL_FLIP_HORIZONTAL);
+        }
+    }
+
+    // Handle mouse movement (when left mouse button is down)
+    if (InputHandler::Instance()->getMouseButtonState(LEFT)) {
+        // Get mouse position and player position
+        Vector2D* mousePos = InputHandler::Instance()->getMousePosition();
+        Vector2D playerPos = mp_player->getPosition();
+
+        // Calculate direction vector from player to mouse cursor
+        Vector2D direction = Vector2D(mousePos->getX() - playerPos.getX(),
+                                     mousePos->getY() - playerPos.getY());
+
+        // Only move if the mouse is far enough from the player
+        if (direction.length() > 5.0f) {
+            // Normalize direction and set velocity
+            direction.normalize();
+            velocity = direction * 2.0f;
+
+            // Set flip based on horizontal movement direction
+            if (direction.getX() > 0) {
+                mp_player->setFlip(SDL_FLIP_NONE);
+            } else if (direction.getX() < 0) {
+                mp_player->setFlip(SDL_FLIP_HORIZONTAL);
+            }
         }
     }
 
