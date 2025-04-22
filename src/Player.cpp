@@ -111,6 +111,17 @@ void Player::update() {
     m_velocity += m_acceleration;
     m_position += m_velocity;
 
+    // Apply friction for a sliding stop instead of immediate stop
+    // Only apply friction when not actively accelerating (i.e., no input)
+    if (getCurrentStateName() == "idle" && m_velocity.length() > 0.1f) {
+        // Friction coefficient - adjust for desired sliding feel (0.9 means 90% of velocity is retained)
+        const float friction = 0.9f;
+        m_velocity *= friction;
+    } else if (m_velocity.length() < 0.1f) {
+        // If velocity is very small, stop completely to avoid tiny sliding
+        m_velocity = Vector2D(0, 0);
+    }
+
     // Reset acceleration
     m_acceleration = Vector2D(0, 0);
 
