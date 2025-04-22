@@ -22,9 +22,6 @@ class FontManager {
   // Initialize the font system
   bool init();
 
-  // Create a renderer text engine for accelerated text rendering
-  bool createTextEngine(SDL_Renderer* renderer);
-
   // Load a font with a specific size
   // If fontFile is a directory, it loads all TTF/OTF files from that directory
   // Returns true if at least one font was loaded successfully
@@ -37,7 +34,7 @@ class FontManager {
   // Draw text directly to renderer
   void drawText(const std::string& text, const std::string& fontID,
                 int x, int y, SDL_Color color, SDL_Renderer* renderer);
-  
+
   // Check if a font is loaded
   bool isFontLoaded(const std::string& fontID) const;
 
