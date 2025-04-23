@@ -23,7 +23,7 @@ void PauseState::update() {
 }
 
 void PauseState::render() {
-    SDL_Color fontColor = {200, 200, 200, 255};
+    SDL_Color fontColor = {200, 200, 200, 255};//gray
      FontManager::Instance()->drawText(
        "Pause State Place Holder ---- Press R to Return to test Player",
        "fonts_Arial",
