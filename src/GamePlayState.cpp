@@ -1,5 +1,6 @@
 #include "GamePlayState.hpp"
 #include "GameStateManager.hpp"
+#include "FontManager.hpp"
 #include "InputHandler.hpp"
 #include "GameEngine.hpp"
 #include "PauseState.hpp"
@@ -77,6 +78,14 @@ void GamePlayState::update() {
 
 void GamePlayState::render() {
   //std::cout << "Rendering GAME State" << std::endl;
+  SDL_Color fontColor = {200, 200, 200, 255};
+   FontManager::Instance()->drawText(
+     "Game State Place Holder ---- Press P to test Pause State",
+     "fonts_Arial",
+     (GameEngine::Instance()->getWindowWidth() / 2) - 350,
+     (GameEngine::Instance()->getWindowHeight() / 2) - 180,
+     fontColor,
+     GameEngine::Instance()->getRenderer());
   m_pPlayer->render();
 
 }

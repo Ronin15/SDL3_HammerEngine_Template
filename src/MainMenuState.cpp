@@ -1,5 +1,6 @@
 #include "MainMenuState.hpp"
 #include "InputHandler.hpp"
+#include "FontManager.hpp"
 #include "GameEngine.hpp"
 #include <iostream>
 
@@ -21,7 +22,14 @@ void MainMenuState::update() {
   }
 
 void MainMenuState::render() {
-  //std::cout << "Rendering Main Menu State" << std::endl;
+   SDL_Color fontColor = {200, 200, 200, 255};
+    FontManager::Instance()->drawText(
+      "MAIN MENU Place Holder ---- Press Enter to Render test Player",
+      "fonts_Arial",
+      (GameEngine::Instance()->getWindowWidth() / 2) - 350,
+      (GameEngine::Instance()->getWindowHeight() / 2) - 180,
+      fontColor,
+      GameEngine::Instance()->getRenderer());
 }
 bool MainMenuState::exit() {
   std::cout << "Forge Game Engine - Exiting MAIN MENU State" << std::endl;

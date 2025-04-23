@@ -38,8 +38,8 @@ void LogoState::render() {
       GameEngine::Instance()->getRenderer());
 
   // Render text using SDL_TTF
-  SDL_Color titleColor = {185, 71, 0, 200}; // Light gray
-  SDL_Color subtitleColor = {200, 200, 200, 255}; // Forge Orange
+  //SDL_Color titleColor = {185, 71, 0, 200}; // Forge Orange
+  SDL_Color fontColor = {200, 200, 200, 255}; // Light gray
 
   // Use existing fonts from the FontManager instead of loading new ones
   // The GameEngine already loads fonts with ID "fonts_Arial" (from "res/fonts/Arial.ttf")
@@ -50,7 +50,7 @@ void LogoState::render() {
       "fonts_Arial",
       (GameEngine::Instance()->getWindowWidth() / 2) - 150,
       (GameEngine::Instance()->getWindowHeight() / 2) + 180,
-      titleColor,
+      fontColor,
       GameEngine::Instance()->getRenderer());
 
   // Draw subtitle text
@@ -59,7 +59,7 @@ void LogoState::render() {
       "fonts_Arial",
       (GameEngine::Instance()->getWindowWidth() / 2) - 65,
       (GameEngine::Instance()->getWindowHeight() / 2) + 220,
-      subtitleColor,
+      fontColor,
       GameEngine::Instance()->getRenderer());
 
   // Draw version text
@@ -68,7 +68,7 @@ void LogoState::render() {
       "fonts_Arial",
       (GameEngine::Instance()->getWindowWidth() / 2) - 15,
       (GameEngine::Instance()->getWindowHeight() / 2) + 260,
-      subtitleColor,
+      fontColor,
       GameEngine::Instance()->getRenderer());
 }
 

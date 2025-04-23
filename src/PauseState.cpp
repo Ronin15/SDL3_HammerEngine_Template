@@ -1,5 +1,6 @@
 #include "PauseState.hpp"
 #include "InputHandler.hpp"
+#include "FontManager.hpp"
 #include "GameEngine.hpp"
 #include <iostream>
 
@@ -22,7 +23,14 @@ void PauseState::update() {
 }
 
 void PauseState::render() {
-    //std::cout << "Rendering PAUSE State" << std::endl;
+    SDL_Color fontColor = {200, 200, 200, 255};
+     FontManager::Instance()->drawText(
+       "Pause State Place Holder ---- Press R to Return to test Player",
+       "fonts_Arial",
+       (GameEngine::Instance()->getWindowWidth() / 2) - 350,
+       (GameEngine::Instance()->getWindowHeight() / 2) - 180,
+       fontColor,
+       GameEngine::Instance()->getRenderer());
 }
 bool PauseState::exit() {
   std::cout << "Forge Game Engine - Exiting PAUSE State" << std::endl;
