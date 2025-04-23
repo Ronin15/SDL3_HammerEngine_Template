@@ -3,7 +3,7 @@
 
 #include <memory>
 #include <string>
-#include <unordered_map>
+#include <boost/container/flat_map.hpp>
 // forward declaration Entity state base class
 class EntityState;
 
@@ -20,7 +20,7 @@ class EntityStateManager {
   ~EntityStateManager();
 
   private:
-   std::unordered_map<std::string, std::unique_ptr<EntityState>> states;
+   boost::container::flat_map<std::string, std::unique_ptr<EntityState>> states;
    EntityState* currentState{nullptr};
 };
 

@@ -28,7 +28,8 @@ I use the Zed IDE with custom cmake and ninja task configurations to build on al
 
 - CMake 3.28 or higher
 - Ninja build system (recommended)
-- A C++ compiler with C++23 support
+- A C++ compiler with C++20 support
+- boost container lib 1.84.0 - it is added in the cmake file. - using flat_map
 
 ### Windows
 Need to install mysys2 for compiler and for SDL3 dependencies like harfbuzz, freetype etc.

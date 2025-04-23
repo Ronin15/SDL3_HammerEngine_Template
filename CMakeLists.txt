@@ -26,7 +26,7 @@ else() # Release build
 endif()
 
 # Debug build settings
-set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -g3 -O0 -Wall -Wextra")
+set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -g3 -O0")
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -g3 -O0 -Wall -Wextra")
 
 # Release build settings
@@ -48,6 +48,27 @@ add_custom_target(copy-compile-commands ALL
 )
 # Include FetchContent module
 include(FetchContent)
+
+# Add Boost library using FetchContent
+set(BOOST_GIT_TAG "boost-1.84.0")  # Latest stable release as of early 2025
+FetchContent_Declare(
+    Boost
+    GIT_REPOSITORY https://github.com/boostorg/boost.git
+    GIT_TAG ${BOOST_GIT_TAG}
+)
+
+# Configure Boost build options
+set(BOOST_INCLUDE_LIBRARIES
+    container
+    # Add other Boost libraries you need
+)
+set(BOOST_ENABLE_CMAKE ON)
+set(BOOST_ENABLE_MPI OFF)
+set(BUILD_TESTING OFF)
+set(BOOST_INSTALL_LAYOUT "system")
+
+# Make Boost available
+FetchContent_MakeAvailable(Boost)
 
 # Specify the commit hash for each SDL3 component
 # (Update these commit hashes to the latest versions as needed)
@@ -117,28 +138,28 @@ add_executable(${PROJECT_NAME} ${SOURCES})
 # Note: The icon is set programmatically via SDL_SetWindowIcon in GameEngine.cpp
 # This section handles platform-specific icon integration
 if(WIN32)
-  # Add the icon to the executable on Windows
-  set(APP_ICON_RESOURCE_WINDOWS "${CMAKE_SOURCE_DIR}/res/img/icon.ico")
-  
-  # Generate a resource file that includes the icon
-  configure_file(
+    # Add the icon to the executable on Windows
+    set(APP_ICON_RESOURCE_WINDOWS "${CMAKE_SOURCE_DIR}/res/img/icon.ico")
+
+    # Generate a resource file that includes the icon
+    configure_file(
     "${CMAKE_SOURCE_DIR}/res/windows_icon.rc.in"
     "${CMAKE_BINARY_DIR}/windows_icon.rc"
     @ONLY
   )
-  
-  # Add the resource file to the executable
-  target_sources(${PROJECT_NAME} PRIVATE "${CMAKE_BINARY_DIR}/windows_icon.rc")
+
+    # Add the resource file to the executable
+    target_sources(${PROJECT_NAME} PRIVATE "${CMAKE_BINARY_DIR}/windows_icon.rc")
 elseif(APPLE)
-  # For macOS, bundle the icon with the application if it exists
-  set(APP_ICON_MACOS "${CMAKE_SOURCE_DIR}/res/img/icon.icns")
-  if(EXISTS "${APP_ICON_MACOS}")
-    set(MACOSX_BUNDLE_ICON_FILE icon.icns)
-    set_source_files_properties(${APP_ICON_MACOS} PROPERTIES MACOSX_PACKAGE_LOCATION "Resources")
-    message(STATUS "Using macOS icon: ${APP_ICON_MACOS}")
-  else()
-    message(STATUS "macOS icon not found at ${APP_ICON_MACOS} - using default icon")
-  endif()
+    # For macOS, bundle the icon with the application if it exists
+    set(APP_ICON_MACOS "${CMAKE_SOURCE_DIR}/res/img/icon.icns")
+    if(EXISTS "${APP_ICON_MACOS}")
+        set(MACOSX_BUNDLE_ICON_FILE icon.icns)
+        set_source_files_properties(${APP_ICON_MACOS} PROPERTIES MACOSX_PACKAGE_LOCATION "Resources")
+        message(STATUS "Using macOS icon: ${APP_ICON_MACOS}")
+    else()
+        message(STATUS "macOS icon not found at ${APP_ICON_MACOS} - using default icon")
+    endif()
 endif()
 
 if(UNIX AND NOT APPLE)
@@ -211,12 +232,14 @@ if(APPLE)
     endif()
 endif()
 
-# Link against the SDL3 libraries
+# Link against the SDL3 libraries and Boost
 target_link_libraries(${PROJECT_NAME} PRIVATE
     SDL3::SDL3
     SDL3_image::SDL3_image
     SDL3_ttf::SDL3_ttf
     SDL3_mixer::SDL3_mixer
+    Boost::container
+    # Add other Boost libraries as needed
 )
 
 # Specify include directories
@@ -252,6 +275,6 @@ file(MAKE_DIRECTORY ${OUTPUT_DEBUG_DIR})
 file(MAKE_DIRECTORY ${OUTPUT_RELEASE_DIR})
 
 # Display status message indicating successful configuration
-message(STATUS "SDL3, SDL3_image, SDL3_ttf, and SDL3_mixer have been configured successfully")
+message(STATUS "SDL3, SDL3_image, SDL3_ttf, SDL3_mixer, and Boost have been configured successfully")
 message(STATUS "Debug binaries will be output to: ${OUTPUT_DEBUG_DIR}")
 message(STATUS "Release binaries will be output to: ${OUTPUT_RELEASE_DIR}")
