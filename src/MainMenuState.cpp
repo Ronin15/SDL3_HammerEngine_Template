@@ -24,7 +24,7 @@ void MainMenuState::update() {
 void MainMenuState::render() {
    SDL_Color fontColor = {200, 200, 200, 255};
     FontManager::Instance()->drawText(
-      "MAIN MENU Place Holder ---- Press Enter to Render test Player",
+      "Main Menu State Place Holder ---- Press Enter to Render test Player",
       "fonts_Arial",
       (GameEngine::Instance()->getWindowWidth() / 2) - 350,
       (GameEngine::Instance()->getWindowHeight() / 2) - 180,
