@@ -131,29 +131,29 @@ bool GameEngine::init(const char* title, int width, int height, bool fullscreen)
   std::cout << "Forge Game Engine - Detecting and initializing "
                "gamepad/controller.... \n";
   InputHandler::Instance()->initializeGamePad();  // aligned here for organization sake.
-  std::cout << "Forge Game Engine - Creating Texture Manager.... \n";
+  std::cout << "Forge Game Engine - Creating Texture Manager \n";
   // load textures
   mp_textureManager = new TextureManager();
   if (!mp_textureManager) {
     std::cerr << "Forge Game Engine - Failed to create Texture Manager!\n";
     return false;
   }
-  std::cout << "Forge Game Engine - Creating and loading textures.... \n";
+  std::cout << "Forge Game Engine - Creating and loading textures\n";
   TextureManager::Instance()->load("res/img", "", p_renderer);
-  std::cout << "Forge Game Engine - Creating Sound Manager.... \n";
+  std::cout << "Forge Game Engine - Creating Sound Manager\n";
   // Initialize the sound manager
   SoundManager::Instance()->init();
-  std::cout << "Forge Game Engine - Loading sounds and music.... \n";
+  std::cout << "Forge Game Engine - Loading sounds and music\n";
   SoundManager::Instance()->loadSFX("res/sfx", "sfx");
   SoundManager::Instance()->loadMusic("res/music", "music");
 
-  std::cout << "Forge Game Engine - Creating Font Manager.... \n";
+  std::cout << "Forge Game Engine - Creating Font Manager\n";
   // Initialize the font manager
   FontManager::Instance()->init();
   FontManager::Instance()->loadFont("res/fonts", "fonts", 20);
 
   // Initialize game state manager
-  std::cout << "Forge Game Engine - Creating Game State Manager and setting up initial Game States.... \n";
+  std::cout << "Forge Game Engine - Creating Game State Manager and setting up initial Game States\n";
   mp_gameStateManager = new GameStateManager();
   if (!mp_gameStateManager) {
     std::cerr << "Forge Game Engine - Failed to create Game State Manager!\n";

@@ -149,7 +149,7 @@ void FontManager::clearFont(const std::string& fontID) {
 }
 
 void FontManager::clean() {
-  std::cout << "Forge Game Engine - Cleaning up FontManager resources...\n";
+  std::cout << "Forge Game Engine - Cleaning up FontManager resources\n";
 
   // Close all fonts
   for (auto& font : m_fontMap) {
