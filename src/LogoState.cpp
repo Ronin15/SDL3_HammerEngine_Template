@@ -33,7 +33,7 @@ void LogoState::render() {
       GameEngine::Instance()->getRenderer());
 
   TextureManager::Instance()->draw(
-      "sdl", (GameEngine::Instance()->getWindowWidth() / 2) - 80,
+      "sdl", (GameEngine::Instance()->getWindowWidth() / 2) - 70,
       (GameEngine::Instance()->getWindowHeight() / 2) + 300, 203, 125,
       GameEngine::Instance()->getRenderer());
 
