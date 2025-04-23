@@ -128,8 +128,7 @@ bool GameEngine::init(const char* title, int width, int height, bool fullscreen)
                    // installed.
   }
   //INITIALIZING GAME RESOURCE MANAGEMENT_________________________________________________________________________________BEGIN
-  std::cout << "Forge Game Engine - Detecting and initializing "
-               "gamepad/controller.... \n";
+  std::cout << "Forge Game Engine - Detecting and initializing gamepads\n";
   InputHandler::Instance()->initializeGamePad();  // aligned here for organization sake.
   std::cout << "Forge Game Engine - Creating Texture Manager \n";
   // load textures
