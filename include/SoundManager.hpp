@@ -3,7 +3,7 @@
 
 #include <SDL3/SDL.h>
 #include <SDL3_mixer/SDL_mixer.h>
-#include <map>
+#include <boost/container/flat_map.hpp>
 #include <string>
 
 class SoundManager {
@@ -25,21 +25,21 @@ class SoundManager {
   // If dirPath is a directory, it loads all supported sound files from that directory
   // Returns true if at least one sound was loaded successfully
   // When loading a directory, soundID is used as a prefix for filenames
-  bool loadSFX(std::string filePath, 
+  bool loadSFX(std::string filePath,
                std::string soundID);
 
   // Loads a music file
-  bool loadMusic(std::string filePath, 
+  bool loadMusic(std::string filePath,
                  std::string musicID);
 
   // Play a sound effect
-  void playSFX(std::string soundID, 
-               int loops = 0, 
+  void playSFX(std::string soundID,
+               int loops = 0,
                int volume = 128);
 
   // Play music
-  void playMusic(std::string musicID, 
-                 int loops = -1, 
+  void playMusic(std::string musicID,
+                 int loops = -1,
                  int volume = 128);
 
   // Pause music
@@ -76,8 +76,8 @@ class SoundManager {
   bool isMusicLoaded(std::string musicID) const;
 
  private:
-  std::map<std::string, Mix_Chunk*> m_sfxMap;
-  std::map<std::string, Mix_Music*> m_musicMap;
+  boost::container::flat_map<std::string, Mix_Chunk*> m_sfxMap;
+  boost::container::flat_map<std::string, Mix_Music*> m_musicMap;
   SDL_AudioDeviceID m_deviceId;
   static SoundManager* sp_Instance;
   bool m_initialized;

@@ -3,7 +3,7 @@
 
 #include <SDL3/SDL.h>
 #include <SDL3_ttf/SDL_ttf.h>
-#include <map>
+#include <boost/container/flat_map.hpp>
 #include <string>
 // filesystem is used in the implementation file
 
@@ -45,7 +45,7 @@ class FontManager {
   void clean();
 
  private:
-  std::map<std::string, TTF_Font*> m_fontMap;
+  boost::container::flat_map<std::string, TTF_Font*> m_fontMap;
   static FontManager* sp_Instance;
   static TTF_TextEngine* m_rendererTextEngine;
 };

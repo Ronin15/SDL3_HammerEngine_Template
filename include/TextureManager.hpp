@@ -3,7 +3,7 @@
 
 #include <SDL3/SDL.h>
 #include <SDL3_image/SDL_image.h>
-#include <map>
+#include <boost/container/flat_map.hpp>
 #include <string>
 
 class TextureManager {
@@ -61,7 +61,7 @@ class TextureManager {
 
  private:
   std::string m_textureID{""};
-  std::map<std::string, SDL_Texture*> m_textureMap;
+  boost::container::flat_map<std::string, SDL_Texture*> m_textureMap;
   static TextureManager* sp_Instance;
 };
 
