@@ -127,25 +127,29 @@ bool GameEngine::init(const char* title, int width, int height, bool fullscreen)
     return false;  // Forge SDL init fail. Make sure you have the SDL3 runtime
                    // installed.
   }
-  //INITIALIZING GAME RESOURCE MANAGEMENT_________________________________________________________________________________BEGIN
-  std::cout << "Forge Game Engine - Detecting and initializing gamepads\n";
-  InputHandler::Instance()->initializeGamePad();  // aligned here for organization sake.
+  //INITIALIZING GAME RESOURCE LOADING AND MANAGEMENT_________________________________________________________________________________BEGIN
+  //Initialize Input Handling and controller detection and setup.
+  std::cout << "Forge Game Engine - Detecting and initializing gamepads and input handling\n";
+  InputHandler::Instance()->initializeGamePad();
   std::cout << "Forge Game Engine - Creating Texture Manager \n";
-  // load textures
+
+  // // Initialize the Texture manager
   mp_textureManager = new TextureManager();
   if (!mp_textureManager) {
     std::cerr << "Forge Game Engine - Failed to create Texture Manager!\n";
     return false;
   }
+
   std::cout << "Forge Game Engine - Creating and loading textures\n";
   TextureManager::Instance()->load("res/img", "", p_renderer);
   std::cout << "Forge Game Engine - Creating Sound Manager\n";
-  // Initialize the sound manager
 
+  // Initialize the sound manager
   if(!SoundManager::Instance()->init()){
       std::cerr << "Forge Game Engine - Failed to initialize Sound Manager!\n";
       return false;
-  };
+  }
+
   std::cout << "Forge Game Engine - Loading sounds and music\n";
   SoundManager::Instance()->loadSFX("res/sfx", "sfx");
   SoundManager::Instance()->loadMusic("res/music", "music");
@@ -165,11 +169,11 @@ bool GameEngine::init(const char* title, int width, int height, bool fullscreen)
     std::cerr << "Forge Game Engine - Failed to create Game State Manager!\n";
     return false;
   }
+
   // Setting Up initial game states
   mp_gameStateManager->addState(std::make_unique<LogoState>());
   mp_gameStateManager->addState(std::make_unique<MainMenuState>());
   mp_gameStateManager->addState(std::make_unique<GamePlayState>());
-
   //_______________________________________________________________________________________________________________END
 
   std::cout << "Forge Game Engine - Game " << title <<  " initialized successfully!\n";
