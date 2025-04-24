@@ -41,7 +41,7 @@ Windows will need some env vars setup for path:
 - C:\msys64\mingw64\lib
 - C:\msys64\mingw64\include
 - C:\msys64\mingw64\bin
-Windows build tools
+- Windows build tools
 
 ### Linux
 Follow the instructions on the official SDL3 website to install SDL3 dependencies.
