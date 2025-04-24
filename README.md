@@ -15,9 +15,10 @@ I use the Zed IDE with custom cmake and ninja task configurations to build/compi
 - Custom window icon support on all platforms
 - Game state management system (state machine)
 - Entity state management system (state machine)
-- Texture management
-- Sound management
-- Font management
+- Texture management (auto loads all from img dir)
+- Sound & Music management (auto loads all from soud and music dir) stop, start, pause, halt, play sfx.
+- Font management (auto loads all from font dir)
+- test palyer with 2 frame animation.
 - Input handling :
   - Keyboard and mouse
   - Xbox series x controller support
