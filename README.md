@@ -28,14 +28,18 @@ I use the Zed IDE with custom cmake and ninja task configurations to build on al
 
 - CMake 3.28 or higher
 - Ninja build system (recommended)
-- A C++ compiler with C++20 support
+- A C++ compiler with C++20 support. GCC and G++ 13.30 (recomended)
 - boost container lib 1.84.0 - it is added in the cmake file. - using flat_map
 
 ### Windows
 Need to install mysys2 for compiler and for SDL3 dependencies like harfbuzz, freetype etc.
 scoop or chocolatey to install Ninja and zed.
 Cmake can be installed from the official website.
-Windows will need some env vars setup.
+Windows will need some env vars setup for path:
+- C:\msys64\mingw64\lib
+- C:\msys64\mingw64\include
+- C:\msys64\mingw64\bin
+Windows build tools
 
 ### Linux
 Follow the instructions on the official SDL3 website to install SDL3 dependencies.
@@ -50,8 +54,9 @@ xcode command line tools is needed to compile.
 
 1. Clone the repository
 2. Create a build directory: `mkdir build && cd build`
-3. Configure with CMake: `cmake -G Ninja ..`
-4. Build the project: `ninja`
+3. Configure with CMake: `cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Debug` change Debug to release for release.
+4. Build the project: `ninja -C build && .\bin\debug\SDL3_Template.exe`
+5. On Windows use replace the `&&` with a `|` if using powershell.
 
 ## Window Icon
 This project supports window icons across all platforms:
@@ -63,4 +68,5 @@ The icon is automatically loaded from the `res/img` folder.
 
 ### General notes
 
-This is a template and the first player state running "PlayerRunningState.cpp" Contains player move to mouse for point click movemen, Keyboard movement up,down,left,right, and finally controller movement. Keep or delete any combination of controls your want.s
+This is a template and the first player state running "PlayerRunningState.cpp" Contains player move to mouse for point click hold movement, Keyboard movement up,down,left,right, and finally controller movement. Keep or delete any combination of controls your want.
+controller keys are mapped out and detected properly in "InputHandler.cpp"  just need to be applied in code. 
