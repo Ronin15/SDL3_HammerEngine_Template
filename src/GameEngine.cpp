@@ -141,14 +141,21 @@ bool GameEngine::init(const char* title, int width, int height, bool fullscreen)
   TextureManager::Instance()->load("res/img", "", p_renderer);
   std::cout << "Forge Game Engine - Creating Sound Manager\n";
   // Initialize the sound manager
-  SoundManager::Instance()->init();
+
+  if(!SoundManager::Instance()->init()){
+      std::cerr << "Forge Game Engine - Failed to initialize Sound Manager!\n";
+      return false;
+  };
   std::cout << "Forge Game Engine - Loading sounds and music\n";
   SoundManager::Instance()->loadSFX("res/sfx", "sfx");
   SoundManager::Instance()->loadMusic("res/music", "music");
 
   std::cout << "Forge Game Engine - Creating Font Manager\n";
   // Initialize the font manager
-  FontManager::Instance()->init();
+  if(!FontManager::Instance()->init()){
+      std::cerr << "Forge Game Engine - Failed to initialize Font Manager!\n";
+      return false;
+  }
   FontManager::Instance()->loadFont("res/fonts", "fonts", 20);
 
   // Initialize game state manager
@@ -165,12 +172,12 @@ bool GameEngine::init(const char* title, int width, int height, bool fullscreen)
 
   //_______________________________________________________________________________________________________________END
 
-  setRunning(true);  // Forge Game created successfully, start the main loop
-  std::cout << "Forge Game Engine - Game constructs created successfully!\n";
-  std::cout << "Forge Game Engine - Game initialized successfully!\n";
+  std::cout << "Forge Game Engine - Game " << title <<  " initialized successfully!\n";
   std::cout << "Forge Game Engine - Running " << title << " <]==={}\n";
+
   //setting logo state for default state
   mp_gameStateManager->setState("LogoState");
+  setRunning(true);  // Forge Game created successfully, start the main loop
   return true;
 }
 
