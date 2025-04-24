@@ -15,14 +15,14 @@ I use the Zed IDE with custom cmake and ninja task configurations to build/compi
 - Custom window icon support on all platforms
 - Game state management system (state machine)
 - Entity state management system (state machine)
+- Texture management
+- Sound management
+- Font management
 - Input handling :
   - Keyboard and mouse
   - Xbox series x controller support
   - PS4 Controller support
-- Texture management
-- Sound management
-- Font management
-
+  - 
 ## Building the Project
 
 ### Prerequisites
