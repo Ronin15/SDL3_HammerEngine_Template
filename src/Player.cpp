@@ -16,13 +16,13 @@ Player::Player() {
     m_textureID = "player";  // Texture ID as loaded by TextureManager from res/img directory
 
     // Animation properties
-    m_currentFrame = 1;      // Start with first frame
-    m_currentRow = 1;        // In TextureManager::drawFrame, rows start at 1
-    m_numFrames = 2;         // Number of frames in the animation
-    m_animSpeed = 100;       // Animation speed in milliseconds
-    m_spriteSheetRows = 1;   // Number of rows in the sprite sheet
-    m_lastFrameTime = SDL_GetTicks(); // Track when we last changed animation frame
-    m_flip = SDL_FLIP_NONE;  // Default flip direction
+    m_currentFrame = 1;                 // Start with first frame
+    m_currentRow = 1;                   // In TextureManager::drawFrame, rows start at 1
+    m_numFrames = 2;                    // Number of frames in the animation
+    m_animSpeed = 100;                  // Animation speed in milliseconds
+    m_spriteSheetRows = 1;              // Number of rows in the sprite sheet
+    m_lastFrameTime = SDL_GetTicks();   // Track when we last changed animation frame
+    m_flip = SDL_FLIP_NONE;             // Default flip direction
 
     // Set width and height based on texture dimensions if the texture is loaded
     loadDimensionsFromTexture();
@@ -69,7 +69,7 @@ void Player::loadDimensionsFromTexture() {
                 std::cout << "Forge Game Engine - Frame dimensions: " << m_frameWidth << "x" << frameHeight << std::endl;
                 std::cout << "Forge Game Engine - Sprite layout: " << m_numFrames << " columns x " << m_spriteSheetRows << " rows" << std::endl;
             } else {
-                std::cout << "Forge Game Engine - Failed to query texture dimensions: " << SDL_GetError() << std::endl;
+                std::cerr << "Forge Game Engine - Failed to query texture dimensions: " << SDL_GetError() << std::endl;
             }
         }
     } else {

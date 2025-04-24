@@ -22,7 +22,7 @@ void MainMenuState::update() {
   }
 
 void MainMenuState::render() {
-   SDL_Color fontColor = {200, 200, 200, 255};
+   SDL_Color fontColor = {200, 200, 200, 255};//Gray
     FontManager::Instance()->drawText(
       "Main Menu State Place Holder ---- Press Enter to Render test Player",
       "fonts_Arial",

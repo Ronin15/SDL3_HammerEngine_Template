@@ -28,7 +28,7 @@ bool GamePlayState::enter() {
     // Load the game play state asset
     if (!TextureManager::Instance()->load("res/img/ForgeEngine.png", "ForgeEngine", GameEngine::Instance()->getRenderer())) {
       // Failed to load texture
-      std::cout << "Forge Game Engine - Failed to load ForgeEngine texture" << std::endl;
+      std::cerr << "Forge Game Engine - Failed to load ForgeEngine texture" << std::endl;
       return false; // Return false to indicate enter() failed
     }
     std::cout << "Forge Game Engine - Successfully loaded ForgeEngine texture" << std::endl;
@@ -86,7 +86,8 @@ void GamePlayState::render() {
      (GameEngine::Instance()->getWindowHeight() / 2) - 180,
      fontColor,
      GameEngine::Instance()->getRenderer());
-  m_pPlayer->render();
+
+    m_pPlayer->render();
 
 }
 bool GamePlayState::exit() {
@@ -94,13 +95,11 @@ bool GamePlayState::exit() {
 
   // Only clear specific textures if we're not transitioning to pause state
   if (!m_transitioningToPause) {
-    //TextureManager::Instance()->clearFromTexMap("ForgeEngine");
-    // Don't clear the player texture as it's loaded at engine startup
-
     // Reset player
     m_pPlayer = nullptr;
-
-    std::cout << "Forge Game Engine - Cleared ForgeEngine texture and player, not going to pause" << std::endl;
+    //TODO need to evaluate if this entire block is needed. I want to keep all texture in the MAP
+    // and not clear any as they may be needed. left over from testing but not hurting anything currently.
+    std::cout << "Forge Game Engine - reset player pointer to null, not going to pause" << std::endl;
   } else {
     std::cout << "Forge Game Engine - Keeping textures and player, going to pause" << std::endl;
     // Reset flag for next time

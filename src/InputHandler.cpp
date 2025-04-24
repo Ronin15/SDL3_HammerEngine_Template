@@ -201,7 +201,7 @@ void InputHandler::onKeyDown(SDL_Event& /*event*/) {
 }
 
 void InputHandler::onKeyUp(SDL_Event& /*event*/) {
-  // Store the keyboard state
+  // TODO may not bew needed and need to clean upStore the keyboard state
   m_keystates = SDL_GetKeyboardState(0);
 
   // Key-specific processing can be handled by game states

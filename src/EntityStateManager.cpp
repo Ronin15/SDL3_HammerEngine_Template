@@ -11,7 +11,7 @@ EntityStateManager::~EntityStateManager() {
 
 void EntityStateManager::addState(const std::string& stateName, std::unique_ptr<EntityState> state) {
   if (states.find(stateName) != states.end()) {
-    throw std::invalid_argument("State already exists" + stateName);
+    throw std::invalid_argument("Forge Game Engine - State already exists" + stateName);
   }
   states[stateName] = std::move(state);
 }
@@ -28,7 +28,7 @@ void EntityStateManager::setState(const std::string& stateName) {
     currentState->enter();
   } else {
     // state not found set to null
-    std::cerr << "State not found: " << stateName << std::endl;
+    std::cerr << "Forge Game Engine - State not found: " << stateName << std::endl;
     currentState = nullptr;
   }
 }
