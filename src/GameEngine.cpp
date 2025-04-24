@@ -14,7 +14,7 @@ GameEngine* GameEngine::sp_Instance{nullptr};
 
 bool GameEngine::init(const char* title, int width, int height, bool fullscreen) {
   if (SDL_Init(SDL_INIT_VIDEO)) {
-    std::cout << "Forge Game Engine - Framework SDL3 online!\n";
+    std::cout << "Forge Game Engine - Window framework online!\n";
 
     // Get display bounds to determine optimal window size
     SDL_Rect display;
@@ -199,19 +199,21 @@ void GameEngine::render() {
 
 void GameEngine::clean() {
 
-    if (mp_gameStateManager) {
+//game engine cleanup
+if (mp_gameStateManager) {
     delete mp_gameStateManager;
     mp_gameStateManager = nullptr;
   }
-  if (mp_textureManager) {
+//game engine cleanup
+if (mp_textureManager) {
     delete mp_textureManager;
     mp_textureManager = nullptr;
   }
-
+  //instance cleanup
+  TextureManager::Instance()->clean();
   FontManager::Instance()->clean();
   InputHandler::Instance()->clean();
   SoundManager::Instance()->clean();
-  TextureManager::Instance()->clean();
 
   SDL_DestroyWindow(p_window);
   SDL_DestroyRenderer(p_renderer);
