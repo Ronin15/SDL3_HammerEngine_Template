@@ -30,7 +30,7 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char* argv[]) {
       }
     }
   } else {
-    std::cout << "Forge Game Engine - Init " << GAME_NAME << " Failed!:" << SDL_GetError();
+    std::cerr << "Forge Game Engine - Init " << GAME_NAME << " Failed!:" << SDL_GetError();
 
     return -1;
   }

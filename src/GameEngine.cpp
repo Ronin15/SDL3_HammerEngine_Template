@@ -21,7 +21,7 @@ bool GameEngine::init(const char* title, int width, int height, bool fullscreen)
     if (SDL_GetDisplayBounds(1, &display) != 0) { // Try display 1 first
       // Try display 0 as fallback
       if (SDL_GetDisplayBounds(0, &display) != 0) {
-        std::cout << "Forge Game Engine - Warning: Could not get display bounds: " << SDL_GetError() << "\n";
+        std::cerr << "Forge Game Engine - Warning: Could not get display bounds: " << SDL_GetError() << "\n";
         std::cout << "Forge Game Engine - Using default window size: " << width << "x" << height << "\n";
         // Keep the provided dimensions
         m_windowWidth = width;
@@ -99,7 +99,7 @@ bool GameEngine::init(const char* title, int width, int height, bool fullscreen)
         SDL_DestroySurface(iconSurface);
         std::cout << "Forge Game Engine - Window icon set successfully!\n";
       } else {
-        std::cout << "Forge Game Engine - Failed to load window icon: " << SDL_GetError() << "\n";
+        std::cerr << "Forge Game Engine - Failed to load window icon: " << SDL_GetError() << "\n";
       }
 
       p_renderer = SDL_CreateRenderer(p_window, NULL);
@@ -109,13 +109,13 @@ bool GameEngine::init(const char* title, int width, int height, bool fullscreen)
         SDL_SetRenderDrawColor(p_renderer, FORGE_GRAY);  // Forge Game Engine gunmetal dark grey
 
       } else {
-        std::cout << "Forge Game Engine - Rendering system creation failed! "
+        std::cerr << "Forge Game Engine - Rendering system creation failed! "
                   << SDL_GetError();
         return false;  // Forge renderer fail
       }
 
     } else {
-      std::cout << "Forge Game Engine- Window system creation failed! Maybe "
+      std::cerr << "Forge Game Engine- Window system creation failed! Maybe "
                    "need a window Manager?"
                 << SDL_GetError();
       return false;  // Forge window fail
@@ -198,9 +198,14 @@ void GameEngine::render() {
 }
 
 void GameEngine::clean() {
-  if (mp_gameStateManager) {
+
+    if (mp_gameStateManager) {
     delete mp_gameStateManager;
     mp_gameStateManager = nullptr;
+  }
+  if (mp_textureManager) {
+    delete mp_textureManager;
+    mp_textureManager = nullptr;
   }
 
   FontManager::Instance()->clean();

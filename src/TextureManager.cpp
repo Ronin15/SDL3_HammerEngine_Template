@@ -58,14 +58,14 @@ bool TextureManager::load(std::string fileName,
             loadedAny = true;
             texturesLoaded++;
           } else {
-            std::cout << "Forge Game Engine - Could not create texture: " << SDL_GetError() << "\n";
+            std::cerr << "Forge Game Engine - Could not create texture: " << SDL_GetError() << "\n";
           }
         }
       }
     } catch (const std::filesystem::filesystem_error& e) {
-      std::cout << "Forge Game Engine - Filesystem error: " << e.what() << "\n";
+      std::cerr << "Forge Game Engine - Filesystem error: " << e.what() << "\n";
     } catch (const std::exception& e) {
-      std::cout << "Forge Game Engine - Error while loading textures: " << e.what() << "\n";
+      std::cerr << "Forge Game Engine - Error while loading textures: " << e.what() << "\n";
     }
 
     std::cout << "Forge Game Engine - Loaded " << texturesLoaded << " textures from directory: " << fileName << "\n";
@@ -78,7 +78,7 @@ bool TextureManager::load(std::string fileName,
   std::cout << "Forge Game Engine - Loading texture: " << fileName << "!\n";
 
   if (p_tempSurface == 0) {
-    std::cout << "Forge Game Engine - Could not load image: " << SDL_GetError() << "\n";
+    std::cerr << "Forge Game Engine - Could not load image: " << SDL_GetError() << "\n";
 
     return false;
   }
@@ -92,7 +92,7 @@ bool TextureManager::load(std::string fileName,
     return true;
   }
 
-  std::cout << "Forge Game Engine - Could not create Texture: " << SDL_GetError() << "\n";
+  std::cerr << "Forge Game Engine - Could not create Texture: " << SDL_GetError() << "\n";
 
   return false;
 }
@@ -185,7 +185,7 @@ SDL_Texture* TextureManager::getTexture(std::string textureID) const {
   if (it != m_textureMap.end()) {
     return it->second;
   }
-  
+
   // Return nullptr if the texture is not found
   return nullptr;
 }

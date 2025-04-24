@@ -41,9 +41,6 @@ void LogoState::render() {
   //SDL_Color titleColor = {185, 71, 0, 200}; // Forge Orange
   SDL_Color fontColor = {200, 200, 200, 255}; // Light gray
 
-  // Use existing fonts from the FontManager instead of loading new ones
-  // The GameEngine already loads fonts with ID "fonts_Arial" (from "res/fonts/Arial.ttf")
-
   // Draw title text
   FontManager::Instance()->drawText(
       "<]==={} FORGE GAME ENGINE {}===]>",

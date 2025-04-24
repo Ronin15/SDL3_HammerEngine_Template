@@ -9,7 +9,7 @@ GameStateManager::GameStateManager() : currentState(nullptr) {}
 void GameStateManager::addState(std::unique_ptr<GameState> state) {
   // Check if a state with the same name already exists
   if (hasState(state->getName())) {
-    throw std::runtime_error("State with name " + state->getName() + " already exists");
+    throw std::runtime_error("Forge Game Engine - State with name " + state->getName() + " already exists");
   }
   states.push_back(std::move(state));
 }
@@ -35,7 +35,7 @@ void GameStateManager::setState(const std::string& stateName) {
       currentState->enter();
     }
   } else {
-    std::cerr << "State not found: " << stateName << std::endl;
+    std::cerr << "Forge Game Engine - State not found: " << stateName << std::endl;
 
     // Exit current state if it exists
     if (currentState) {
