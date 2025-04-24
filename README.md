@@ -57,7 +57,7 @@ xcode command line tools is needed to compile.
 1. Clone the repository
 2. Create a build directory: `mkdir build` in project root.
 3. Configure with CMake: `cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Debug` change Debug to release for release.
-4. Build the project: `ninja -C build && .\bin\debug\SDL3_Template` or template.exe on windows.
+4. Build the project: `ninja -C build && .\bin\debug\SDL3_Template` or SDL_template.exe on windows.
 5. On Windows use replace the `&&` with a `|` if using powershell.
 
 ## Window Icon
@@ -70,5 +70,4 @@ The icon is automatically loaded from the `res/img` folder.
 
 ### General notes
 
-This is a template and the first player state running "PlayerRunningState.cpp" Contains player move to mouse for point click hold movement, Keyboard movement up,down,left,right, and finally controller movement. Keep or delete any combination of controls your want.
-controller keys are mapped out and detected properly in "InputHandler.cpp"  just need to be applied in code. 
+This is a template and the first player state running "PlayerRunningState.cpp" Contains player move to mouse for point click hold movement, Keyboard movement up, down, left, right, and finally controller movement. Keep or delete any combination of controls your want. Controller keys are mapped out and detected properly in "InputHandler.cpp"  just need to be applied in code. 
