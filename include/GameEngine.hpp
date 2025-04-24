@@ -1,9 +1,11 @@
 #ifndef GAME_ENGINE_HPP
 #define GAME_ENGINE_HPP
-#include <SDL3/SDL.h>
-#include <SDL3_image/SDL_image.h>
+
 #include "GameStateManager.hpp"
 #include "TextureManager.hpp"
+#include <SDL3/SDL.h>
+#include <SDL3_image/SDL_image.h>
+
 
 class GameEngine {
  public:

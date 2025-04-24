@@ -1,7 +1,7 @@
 #include "EntityStateManager.hpp"
+#include "EntityState.hpp"
 #include <iostream>
 #include <stdexcept>
-#include "EntityState.hpp"
 
 EntityStateManager::EntityStateManager() : currentState(nullptr) {}
 
