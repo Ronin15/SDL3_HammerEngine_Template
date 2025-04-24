@@ -1,5 +1,5 @@
-# SDL3 2D Game Template with CMAKE and Ninja
-Based off of my SDL2 template, but updated for SDL3 and more complete. It has simplified Entity management and Entity state management system. Also has a more robust game state management system and uses cmake and ninja instead of a custom build.sh.
+# SDL3 2D Game Template with Cmake and Ninja
+Based off of my SDL2 template, but updated for SDL3 and more complete. It has simplified Entity management and Entity state management system. Also has a more robust game state management system and uses cmake and ninja instead of a custom build.sh. This is designed to be a jump off point for making a game with some of the low level and architecture stuff handled.
 
 I use the Zed IDE with custom cmake and ninja task configurations to build/compile on all platforms. Zed has good documentation check it out at https://zed.dev/docs/
 
@@ -8,9 +8,10 @@ I use the Zed IDE with custom cmake and ninja task configurations to build/compi
 ## Features
 
 - SDL3 integration with SDL_image, SDL_ttf, and SDL_mixer
-- Boost Container lib -> https://www.boost.org/
+- imgui support for SDL3 renderer
+- Boost Container lib -> https://www.boost.org/ 1.84.0
 - Cross-platform support (Windows, macOS, Linux)
-- Automatic dependency management with FetchContent (for SDL3 libs and boost container lib)
+- Automatic dependency management with FetchContent (for SDL3 libs, boost container lib, imgui)
 - Debug and Release build configurations
 - Custom window icon support on all platforms
 - Game state management system (state machine)
@@ -18,7 +19,7 @@ I use the Zed IDE with custom cmake and ninja task configurations to build/compi
 - Texture management (auto loads all from img dir)
 - Sound & Music management (auto loads all from soud and music dir) stop, start, pause, halt, play sfx.
 - Font management (auto loads all from font dir)
-- test palyer with 2 frame animation.
+- test palyer with 2 frame animation. (with Arnie the Armadillo)
 - Input handling :
   - Keyboard and mouse
   - Xbox series x controller support
@@ -31,7 +32,6 @@ I use the Zed IDE with custom cmake and ninja task configurations to build/compi
 - CMake 3.28 or higher
 - Ninja build system (recommended)
 - A C++ compiler with C++20 support. GCC and G++ 13.30 (recomended)
-- boost container lib 1.84.0 - it is added in the cmake file. - using flat_map
 
 ### Windows
 Need to install mysys2 for compiler and for SDL3 dependencies like harfbuzz, freetype etc.
@@ -70,4 +70,4 @@ The icon is automatically loaded from the `res/img` folder.
 
 ### General notes
 
-This is a template and the first player state running "PlayerRunningState.cpp" Contains player move to mouse for point click hold movement, Keyboard movement up, down, left, right, and finally controller movement. Keep or delete any combination of controls your want. Controller keys are mapped out and detected properly in "InputHandler.cpp"  just need to be applied in code. 
+This is a template and the first player state running "PlayerRunningState.cpp" Contains player move to mouse for point click hold movement, Keyboard movement up, down, left, right, and finally controller movement. Keep or delete any combination of controls your want. Controller keys are mapped out and detected properly in "InputHandler.cpp"  just need to be applied in code.

@@ -167,8 +167,20 @@ target_link_libraries(imgui PUBLIC
 # Find all source files
 file(GLOB SOURCES "src/*.cpp")
 
-# Create executable for your project
+# Create executable for your project with proper extensions
+if(WIN32)
+    set(EXE_EXTENSION ".exe")
+elseif(APPLE)
+    set(EXE_EXTENSION "")
+else()
+    set(EXE_EXTENSION "")
+endif()
+
+# Set the output name with proper extension
 add_executable(${PROJECT_NAME} ${SOURCES})
+set_target_properties(${PROJECT_NAME} PROPERTIES
+    OUTPUT_NAME "${PROJECT_NAME}${EXE_EXTENSION}"
+)
 
 # Configure window icon
 # Note: The icon is set programmatically via SDL_SetWindowIcon in GameEngine.cpp
