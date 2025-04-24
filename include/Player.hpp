@@ -1,5 +1,6 @@
 #ifndef PLAYER_HPP
 #define PLAYER_HPP
+
 #include "Entity.hpp"
 #include "EntityStateManager.hpp"
 #include "Vector2D.hpp"

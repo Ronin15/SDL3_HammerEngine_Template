@@ -1,9 +1,9 @@
 #include "InputHandler.hpp"
-#include <iostream>
 #include "GameEngine.hpp"
 #include "SDL3/SDL_gamepad.h"
 #include "SDL3/SDL_joystick.h"
 #include "Vector2D.hpp"
+#include <iostream>
 
 InputHandler* InputHandler::sp_Instance{nullptr};  // Initialize static instance
 SDL_JoystickID* gamepadIDs{nullptr};

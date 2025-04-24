@@ -1,7 +1,7 @@
 #include "GameStateManager.hpp"
+#include "GameState.hpp"
 #include <algorithm>
 #include <iostream>
-#include "GameState.hpp"
 
 // GameStateManager Implementation
 GameStateManager::GameStateManager() : currentState(nullptr) {}

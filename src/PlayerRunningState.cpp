@@ -2,6 +2,7 @@
 #include "Player.hpp"
 #include "InputHandler.hpp"
 #include <iostream>
+
 PlayerRunningState::PlayerRunningState(Player* player) : mp_player(player) {}
 
 void PlayerRunningState::enter() {
