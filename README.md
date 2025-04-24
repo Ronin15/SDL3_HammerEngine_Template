@@ -57,7 +57,7 @@ xcode command line tools is needed to compile.
 1. Clone the repository
 2. Create a build directory: `mkdir build` in project root.
 3. Configure with CMake: `cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Debug` change Debug to release for release.
-4. Build the project: `ninja -C build && .\bin\debug\SDL3_Template.exe`
+4. Build the project: `ninja -C build && .\bin\debug\SDL3_Template` or template.exe on windows.
 5. On Windows use replace the `&&` with a `|` if using powershell.
 
 ## Window Icon
