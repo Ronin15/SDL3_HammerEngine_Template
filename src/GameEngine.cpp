@@ -8,8 +8,6 @@
 #include "SoundManager.hpp"
 #include <iostream>
 
-
-GameEngine* GameEngine::sp_Instance{nullptr};
 #define FORGE_GRAY 31, 32, 34, 255
 
 bool GameEngine::init(const char* title, int width, int height, bool fullscreen) {
