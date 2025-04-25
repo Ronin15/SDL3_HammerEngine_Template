@@ -3,8 +3,6 @@
 #include <filesystem>
 #include <algorithm>
 
-TextureManager* TextureManager::sp_Instance{nullptr};
-
 bool TextureManager::load(std::string fileName,
                           std::string textureID,
                           SDL_Renderer* p_renderer) {

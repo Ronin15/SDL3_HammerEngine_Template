@@ -3,7 +3,6 @@
 #include <filesystem>
 #include <algorithm>
 
-SoundManager* SoundManager::sp_Instance{nullptr};
 SoundManager::SoundManager() : m_deviceId(0), m_initialized(false) {
 }
 

@@ -3,7 +3,6 @@
 #include <algorithm>
 #include <filesystem>
 
-FontManager* FontManager::sp_Instance = nullptr;
 TTF_TextEngine* FontManager::m_rendererTextEngine = nullptr;
 
 bool FontManager::init() {
