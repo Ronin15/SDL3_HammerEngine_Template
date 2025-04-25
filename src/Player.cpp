@@ -44,8 +44,8 @@ void Player::loadDimensionsFromTexture() {
     m_frameWidth = 64;  // Default frame width (width/numFrames)
 
     // Get the texture from TextureManager
-    if (TextureManager::Instance()->isTextureInMap(m_textureID)) {
-        SDL_Texture* texture = TextureManager::Instance()->getTexture(m_textureID);
+    if (TextureManager::Instance().isTextureInMap(m_textureID)) {
+        SDL_Texture* texture = TextureManager::Instance().getTexture(m_textureID);
         if (texture != nullptr) {
             float width = 0.0f;
             float height = 0.0f;
@@ -126,7 +126,7 @@ void Player::update() {
     m_acceleration = Vector2D(0, 0);
 
     // If the texture dimensions haven't been loaded yet, try loading them
-    if (m_frameWidth == 0 && TextureManager::Instance()->isTextureInMap(m_textureID)) {
+    if (m_frameWidth == 0 && TextureManager::Instance().isTextureInMap(m_textureID)) {
         loadDimensionsFromTexture();
     }
 }
@@ -136,7 +136,7 @@ void Player::render() {
     // Don't call update here to avoid double updates
 
     // Do the common rendering for all states
-    TextureManager::Instance()->drawFrame(
+    TextureManager::Instance().drawFrame(
         m_textureID,
         static_cast<int>(m_position.getX() - m_frameWidth / 2.0f), // Center based on frame width
         static_cast<int>(m_position.getY() - m_height / 2.0f),
@@ -144,7 +144,7 @@ void Player::render() {
         m_height,               // Height stays the same
         m_currentRow,           // Current animation row
         m_currentFrame,         // Current animation frame
-        GameEngine::Instance()->getRenderer(),
+        GameEngine::Instance().getRenderer(),
         m_flip
     );
 
@@ -162,13 +162,13 @@ void Player::handleInput() {
     bool isMoving = false;
 
     // Check keyboard, gamepad, or mouse input that would indicate movement
-    if (InputHandler::Instance()->isKeyDown(SDL_SCANCODE_RIGHT) ||
-        InputHandler::Instance()->isKeyDown(SDL_SCANCODE_LEFT) ||
-        InputHandler::Instance()->isKeyDown(SDL_SCANCODE_UP) ||
-        InputHandler::Instance()->isKeyDown(SDL_SCANCODE_DOWN) ||
-        InputHandler::Instance()->getAxisX(0, 1) != 0 ||
-        InputHandler::Instance()->getAxisY(0, 1) != 0 ||
-        InputHandler::Instance()->getMouseButtonState(LEFT)) {
+    if (InputHandler::Instance().isKeyDown(SDL_SCANCODE_RIGHT) ||
+        InputHandler::Instance().isKeyDown(SDL_SCANCODE_LEFT) ||
+        InputHandler::Instance().isKeyDown(SDL_SCANCODE_UP) ||
+        InputHandler::Instance().isKeyDown(SDL_SCANCODE_DOWN) ||
+        InputHandler::Instance().getAxisX(0, 1) != 0 ||
+        InputHandler::Instance().getAxisY(0, 1) != 0 ||
+        InputHandler::Instance().getMouseButtonState(LEFT)) {
 
         isMoving = true;
     }

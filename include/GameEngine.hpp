@@ -13,12 +13,10 @@ class GameEngine {
   // Default values that will be updated based on display bounds during init()
   ~GameEngine() {}
 
-  static GameEngine* Instance() {
-    if (sp_Instance == nullptr) {
-      sp_Instance = new GameEngine();
+  static GameEngine& Instance(){
+        static GameEngine* sp_instance = new GameEngine();
+        return *sp_instance;
     }
-    return sp_Instance;
-  }
 
   bool init(const char* title, int width, int height, bool fullscreen);
 

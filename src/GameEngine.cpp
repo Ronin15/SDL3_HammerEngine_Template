@@ -130,7 +130,7 @@ bool GameEngine::init(const char* title, int width, int height, bool fullscreen)
   //INITIALIZING GAME RESOURCE LOADING AND MANAGEMENT_________________________________________________________________________________BEGIN
   //Initialize Input Handling and controller detection and setup.
   std::cout << "Forge Game Engine - Detecting and initializing gamepads and input handling\n";
-  InputHandler::Instance()->initializeGamePad();
+  InputHandler::Instance().initializeGamePad();
   std::cout << "Forge Game Engine - Creating Texture Manager \n";
 
   // // Initialize the Texture manager
@@ -141,26 +141,26 @@ bool GameEngine::init(const char* title, int width, int height, bool fullscreen)
   }
 
   std::cout << "Forge Game Engine - Creating and loading textures\n";
-  TextureManager::Instance()->load("res/img", "", p_renderer);
+  TextureManager::Instance().load("res/img", "", p_renderer);
   std::cout << "Forge Game Engine - Creating Sound Manager\n";
 
   // Initialize the sound manager
-  if(!SoundManager::Instance()->init()){
+  if(!SoundManager::Instance().init()){
       std::cerr << "Forge Game Engine - Failed to initialize Sound Manager!\n";
       return false;
   }
 
   std::cout << "Forge Game Engine - Loading sounds and music\n";
-  SoundManager::Instance()->loadSFX("res/sfx", "sfx");
-  SoundManager::Instance()->loadMusic("res/music", "music");
+  SoundManager::Instance().loadSFX("res/sfx", "sfx");
+  SoundManager::Instance().loadMusic("res/music", "music");
 
   std::cout << "Forge Game Engine - Creating Font Manager\n";
   // Initialize the font manager
-  if(!FontManager::Instance()->init()){
+  if(!FontManager::Instance().init()){
       std::cerr << "Forge Game Engine - Failed to initialize Font Manager!\n";
       return false;
   }
-  FontManager::Instance()->loadFont("res/fonts", "fonts", 20);
+  FontManager::Instance().loadFont("res/fonts", "fonts", 20);
 
   // Initialize game state manager
   std::cout << "Forge Game Engine - Creating Game State Manager and setting up initial Game States\n";
@@ -186,7 +186,7 @@ bool GameEngine::init(const char* title, int width, int height, bool fullscreen)
 }
 
 void GameEngine::handleEvents() {
-  InputHandler::Instance()->update();
+  InputHandler::Instance().update();
 }
 
 void GameEngine::update() {
@@ -214,10 +214,10 @@ if (mp_textureManager) {
     mp_textureManager = nullptr;
   }
   //instance cleanup
-  TextureManager::Instance()->clean();
-  FontManager::Instance()->clean();
-  InputHandler::Instance()->clean();
-  SoundManager::Instance()->clean();
+  TextureManager::Instance().clean();
+  FontManager::Instance().clean();
+  InputHandler::Instance().clean();
+  SoundManager::Instance().clean();
 
   SDL_DestroyWindow(p_window);
   SDL_DestroyRenderer(p_renderer);

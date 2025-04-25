@@ -12,12 +12,10 @@ class FontManager {
   FontManager() {}
   ~FontManager() {}
 
-  static FontManager* Instance() {
-    if (sp_Instance == nullptr) {
-      sp_Instance = new FontManager();
+  static FontManager& Instance(){
+        static FontManager* sp_instance = new FontManager();
+        return *sp_instance;
     }
-       return sp_Instance;
-  }
 
   // Initialize the font system
   bool init();

@@ -11,12 +11,10 @@ class SoundManager {
   SoundManager();
   ~SoundManager();
 
-  static SoundManager* Instance() {
-    if (sp_Instance == nullptr) {
-      sp_Instance = new SoundManager();
+  static SoundManager& Instance(){
+        static SoundManager* sp_instance = new SoundManager();
+        return *sp_instance;
     }
-    return sp_Instance;
-  }
 
   // Initialize the SoundManager
   bool init();

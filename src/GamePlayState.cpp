@@ -14,19 +14,19 @@ bool GamePlayState::enter() {
   m_transitioningToPause = false;
 
   // Remove PauseState if we're coming from it
-  if (GameEngine::Instance()->getGameStateManager()->hasState("PauseState")) {
-    GameEngine::Instance()->getGameStateManager()->removeState("PauseState");
+  if (GameEngine::Instance().getGameStateManager()->hasState("PauseState")) {
+    GameEngine::Instance().getGameStateManager()->removeState("PauseState");
     std::cout << "Forge Game Engine - Removing PAUSE State" << std::endl;
   }
 
   // Check if ForgeEngine texture is already loaded
   // If we're coming from pause, it should still be in the map
   // Try to load the texture only if it's not already loaded
-  if (!TextureManager::Instance()->isTextureInMap("ForgeEngine")) {
+  if (!TextureManager::Instance().isTextureInMap("ForgeEngine")) {
     std::cout << "Forge Game Engine - Texture not in map, loading it" << std::endl;
 
     // Load the game play state asset
-    if (!TextureManager::Instance()->load("res/img/ForgeEngine.png", "ForgeEngine", GameEngine::Instance()->getRenderer())) {
+    if (!TextureManager::Instance().load("res/img/ForgeEngine.png", "ForgeEngine", GameEngine::Instance().getRenderer())) {
       // Failed to load texture
       std::cerr << "Forge Game Engine - Failed to load ForgeEngine texture" << std::endl;
       return false; // Return false to indicate enter() failed
@@ -38,7 +38,7 @@ bool GamePlayState::enter() {
 
   // Player texture should already be loaded by TextureManager during engine initialization
   // Just verify it's available
-  if (!TextureManager::Instance()->isTextureInMap("player")) {
+  if (!TextureManager::Instance().isTextureInMap("player")) {
     std::cout << "Forge Game Engine - Warning: player texture not found in TextureManager map" << std::endl;
     // We'll continue anyway, as the Player class will handle missing textures gracefully
   } else {
@@ -57,17 +57,17 @@ bool GamePlayState::enter() {
 void GamePlayState::update() {
     //std::cout << "Updating GAME State" << std::endl;
   // Handle pause and ESC key.
-  if (InputHandler::Instance()->isKeyDown(SDL_SCANCODE_P)) {
+  if (InputHandler::Instance().isKeyDown(SDL_SCANCODE_P)) {
       // Create PauseState if it doesn't exist
-      if (!GameEngine::Instance()->getGameStateManager()->hasState("PauseState")) {
-          GameEngine::Instance()->getGameStateManager()->addState(std::make_unique<PauseState>());
+      if (!GameEngine::Instance().getGameStateManager()->hasState("PauseState")) {
+          GameEngine::Instance().getGameStateManager()->addState(std::make_unique<PauseState>());
           std::cout << "Forge Game Engine - Created PAUSE State" << std::endl;
       }
       m_transitioningToPause = true; // Set flag before transitioning
-      GameEngine::Instance()->getGameStateManager()->setState("PauseState");
+      GameEngine::Instance().getGameStateManager()->setState("PauseState");
   }
-  if (InputHandler::Instance()->isKeyDown(SDL_SCANCODE_ESCAPE)) {
-      GameEngine::Instance()->setRunning(false);
+  if (InputHandler::Instance().isKeyDown(SDL_SCANCODE_ESCAPE)) {
+      GameEngine::Instance().setRunning(false);
   }
 
   // Update player if it exists
@@ -79,13 +79,13 @@ void GamePlayState::update() {
 void GamePlayState::render() {
   //std::cout << "Rendering GAME State" << std::endl;
   SDL_Color fontColor = {200, 200, 200, 255};
-   FontManager::Instance()->drawText(
+   FontManager::Instance().drawText(
      "Game State Place Holder <----> Press P to test Pause State",
      "fonts_Arial",
-     (GameEngine::Instance()->getWindowWidth() / 2) - 350,
-     (GameEngine::Instance()->getWindowHeight() / 2) - 180,
+     (GameEngine::Instance().getWindowWidth() / 2) - 350,
+     (GameEngine::Instance().getWindowHeight() / 2) - 180,
      fontColor,
-     GameEngine::Instance()->getRenderer());
+     GameEngine::Instance().getRenderer());
 
     m_pPlayer->render();
 

@@ -153,7 +153,7 @@ void InputHandler::update() {
     switch (event.type) {
       case SDL_EVENT_QUIT:
         std::cout << "Forge Game Engine - Shutting down! Forge Stopping {}===]>\n";
-        GameEngine::Instance()->setRunning(false);
+        GameEngine::Instance().setRunning(false);
         break;
 
       case SDL_EVENT_GAMEPAD_AXIS_MOTION:
