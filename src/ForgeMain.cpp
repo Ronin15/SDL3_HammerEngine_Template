@@ -7,21 +7,22 @@ const float FPS{60.0f};
 const float DELAY_TIME{1000.0f / FPS};
 const int WINDOW_WIDTH{1920};
 const int WINDOW_HEIGHT{1080};
+//Game Name goes here.
 const std::string GAME_NAME{"Game Template"};
-
-int main([[maybe_unused]] int argc, [[maybe_unused]] char* argv[]) {
+//maybe_unused is just a hint to the compiler that the variable is not used. with -Wall -Wextra flags
+[[maybe_unused]] int main([[maybe_unused]] int argc, [[maybe_unused]] char* argv[]) {
 
   Uint64 frameStart, frameTime;
 
   std::cout << "Forge Game Engine - Initializing " << GAME_NAME << "...\n";
 
-  if (GameEngine::Instance()->init(GAME_NAME.c_str(), WINDOW_WIDTH, WINDOW_HEIGHT, false)) {
-    while (GameEngine::Instance()->getRunning()) {
+  if (GameEngine::Instance().init(GAME_NAME.c_str(), WINDOW_WIDTH, WINDOW_HEIGHT, false)) {
+    while (GameEngine::Instance().getRunning()) {
       frameStart = SDL_GetTicks();
 
-      GameEngine::Instance()->handleEvents();
-      GameEngine::Instance()->update();
-      GameEngine::Instance()->render();
+      GameEngine::Instance().handleEvents();
+      GameEngine::Instance().update();
+      GameEngine::Instance().render();
 
       frameTime = SDL_GetTicks() - frameStart;
 
@@ -37,7 +38,7 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char* argv[]) {
 
   std::cout << "Forge Game Engine - Game " << GAME_NAME << " Shutting down...\n";
 
-  GameEngine::Instance()->clean();
+  GameEngine::Instance().clean();
 
   return 0;
 }

@@ -12,25 +12,25 @@ bool PauseState::enter() {
 void PauseState::update() {
   //std::cout << "Updating PAUSE State" << std::endl;
   // Handle pause and ESC key.
-  if (InputHandler::Instance()->isKeyDown(SDL_SCANCODE_R)) {
+  if (InputHandler::Instance().isKeyDown(SDL_SCANCODE_R)) {
       // Flag the GamePlayState transition
       // We'll do the actual removal in GamePlayState::enter()
-      GameEngine::Instance()->getGameStateManager()->setState("GamePlayState");
+      GameEngine::Instance().getGameStateManager()->setState("GamePlayState");
   }
-  if (InputHandler::Instance()->isKeyDown(SDL_SCANCODE_ESCAPE)) {
-      GameEngine::Instance()->setRunning(false);
+  if (InputHandler::Instance().isKeyDown(SDL_SCANCODE_ESCAPE)) {
+      GameEngine::Instance().setRunning(false);
   }
 }
 
 void PauseState::render() {
     SDL_Color fontColor = {200, 200, 200, 255};//gray
-     FontManager::Instance()->drawText(
+     FontManager::Instance().drawText(
        "Pause State Place Holder <----> Press R to Return to test Player",
        "fonts_Arial",
-       (GameEngine::Instance()->getWindowWidth() / 2) - 350,
-       (GameEngine::Instance()->getWindowHeight() / 2) - 180,
+       (GameEngine::Instance().getWindowWidth() / 2) - 350,
+       (GameEngine::Instance().getWindowHeight() / 2) - 180,
        fontColor,
-       GameEngine::Instance()->getRenderer());
+       GameEngine::Instance().getRenderer());
 }
 bool PauseState::exit() {
   std::cout << "Forge Game Engine - Exiting PAUSE State" << std::endl;

@@ -11,12 +11,11 @@ enum mouse_buttons { LEFT = 0, MIDDLE = 1, RIGHT = 2 };
 
 class InputHandler {
  public:
-  static InputHandler* Instance() {
-    if (sp_Instance == nullptr) {
-      sp_Instance = new InputHandler();
-    }
-    return sp_Instance;
-  }
+
+ static InputHandler& Instance(){
+       static InputHandler* sp_instance = new InputHandler();
+       return *sp_instance;
+   }
 
   // Initialize gamepad
   void initializeGamePad();
