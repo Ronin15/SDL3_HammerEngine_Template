@@ -43,7 +43,7 @@ void LogoState::render() {
 
   // Draw title text
   FontManager::Instance()->drawText(
-      "<]==={} FORGE GAME ENGINE {}===]>",
+      "<]==={ }* FORGE GAME ENGINE *{ }===]>",
       "fonts_Arial",
       (GameEngine::Instance()->getWindowWidth() / 2) - 150,
       (GameEngine::Instance()->getWindowHeight() / 2) + 180,
