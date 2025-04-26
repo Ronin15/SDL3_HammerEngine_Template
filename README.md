@@ -19,7 +19,7 @@ I use the Zed IDE with custom cmake and ninja task configurations to build/compi
 - Texture management (auto loads all from img dir)
 - Sound & Music management (auto loads all from soud and music dir) stop, start, pause, halt, play sfx.
 - Font management (auto loads all from font dir)
-- test palyer with 2 frame animation. (with Arnie the Armadillo)
+- test palyer with 2 frame animation. (with Arnie the Armadillo) **Please don't reuse him he is copyrighted 2025 (c) Hammer Forged Games** Thank you.
 - Input handling :
   - Keyboard and mouse
   - Xbox series x controller support
