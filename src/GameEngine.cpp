@@ -293,32 +293,73 @@ void GameEngine::processBackgroundTasks() {
 }
 
 void GameEngine::clean() {
+  std::cout << "Forge Game Engine - Starting shutdown sequence...\n";
+
   // Wait for any pending background tasks to complete
-  while(Forge::ThreadSystem::Instance().isBusy()) {
-    SDL_Delay(10); // Short delay to avoid busy waiting
+  if(!Forge::ThreadSystem::Instance().isShutdown()) {
+    std::cout << "Forge Game Engine - Waiting for background tasks to complete...\n";
+    while(Forge::ThreadSystem::Instance().isBusy()) {
+      SDL_Delay(1); // Short delay to avoid busy waiting
+    }
   }
 
-  //game engine cleanup
+  // Clean up engine managers (non-singletons)
+  std::cout << "Forge Game Engine - Cleaning up GameState manager...\n";
   if (mp_gameStateManager) {
     delete mp_gameStateManager;
     mp_gameStateManager = nullptr;
   }
-  //game engine cleanup
+/*
   if (mp_textureManager) {
     delete mp_textureManager;
     mp_textureManager = nullptr;
   }
-  //instance cleanup
-  TextureManager::Instance().clean();
+*/
+  // Save pointers to resources we'll clean up at the very end
+  SDL_Window* window_to_destroy = p_window;
+  SDL_Renderer* renderer_to_destroy = p_renderer;
+  p_window = nullptr;
+  p_renderer = nullptr;
+
+  // Clean up singletons in reverse order of their initialization
+  std::cout << "Forge Game Engine - Cleaning up Font Manager...\n";
   FontManager::Instance().clean();
-  InputHandler::Instance().clean();
+
+  std::cout << "Forge Game Engine - Cleaning up Sound Manager...\n";
   SoundManager::Instance().clean();
 
-  // Clean up the thread system
-  Forge::ThreadSystem::Instance().clean();
+  std::cout << "Forge Game Engine - Cleaning up Input Handler...\n";
+  InputHandler::Instance().clean();
 
-  SDL_DestroyWindow(p_window);
-  SDL_DestroyRenderer(p_renderer);
+  std::cout << "Forge Game Engine - Cleaning up Texture Manager...\n";
+  TextureManager::Instance().clean();
+
+  // Clean up the thread system
+  std::cout << "Forge Game Engine - Cleaning up Thread System...\n";
+  if (!Forge::ThreadSystem::Instance().isShutdown()) {
+    Forge::ThreadSystem::Instance().clean();
+  }
+
+  // Finally clean up SDL resources
+  std::cout << "Forge Game Engine - Cleaning up SDL resources...\n";
+
+  // Explicitly destroy renderer and window at the end, after all subsystems
+  // are done using them
+  if(renderer_to_destroy) {
+    SDL_DestroyRenderer(renderer_to_destroy);
+  }
+
+  if(window_to_destroy) {
+    SDL_DestroyWindow(window_to_destroy);
+  }
+
+#ifndef __APPLE__
+  // Call SDL_Quit on non-Apple platforms -possibly a bug!!
   SDL_Quit();
-  std::cout << "Forge Game Engine - Shutdown!\n";
+#else
+  // On macOS, skip SDL_Quit() to avoid crash
+  std::cout << "Forge Game Engine - Skipping SDL_Quit() on macOS to prevent crash\n";
+#endif
+
+  std::cout << "Forge Game Engine - Shutdown complete!\n";
 }

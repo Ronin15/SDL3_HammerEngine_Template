@@ -192,7 +192,6 @@ SDL_Texture* TextureManager::getTexture(std::string textureID) const {
 }
 
 void TextureManager::clean() {
-  std::cout << "Forge Game Engine - Cleaning up TextureManager resources" << std::endl;
 
   // Track the number of textures cleaned up
   int texturesFreed = 0;
@@ -209,5 +208,6 @@ void TextureManager::clean() {
   // Clear the map
   m_textureMap.clear();
 
-  std::cout << "Forge Game Engine - Freed " << texturesFreed << " textures" << std::endl;
+  std::cout << "Forge Game Engine - Freed " << texturesFreed << " textures\n";
+  std::cout << "Forge Game Engine - TextureManager resources cleaned!\n";
 }
