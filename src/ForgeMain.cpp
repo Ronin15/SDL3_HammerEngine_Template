@@ -85,7 +85,6 @@ const std::string GAME_NAME{"Game Template"};
 
     std::cout << "Forge Game Engine - Game " << GAME_NAME << " Shutting down...\n";
 
-    Forge::ThreadSystem::Instance().clean();
     GameEngine::Instance().clean();
 
     return 0;
