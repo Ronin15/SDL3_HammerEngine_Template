@@ -165,11 +165,11 @@ bool GameEngine::init(const char* title, int width, int height, bool fullscreen)
     return false;
   }
 
-  // Load textures in a separate thread
-  initTasks.push_back(Forge::ThreadSystem::Instance().enqueueTaskWithResult([this]() -> bool {
-    std::cout << "Forge Game Engine - Creating and loading textures\n";
-    return TextureManager::Instance().load("res/img", "", p_renderer);
-  }));
+  // Load textures in main thread
+  std::cout << "Forge Game Engine - Creating and loading textures\n";
+    TextureManager::Instance().load("res/img", "", p_renderer);
+    std::cout << "Forge Game Engine - Creating Sound Manager\n";
+
 
   // Initialize sound manager in a separate thread
   initTasks.push_back(Forge::ThreadSystem::Instance().enqueueTaskWithResult([]() -> bool {

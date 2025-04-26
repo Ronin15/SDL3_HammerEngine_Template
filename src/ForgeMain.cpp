@@ -119,7 +119,6 @@ public:
     std::mutex updateMutex;
     std::condition_variable updateCondition;
     std::atomic<bool> updateReady{false};
-    std::atomic<bool> renderReady{false};
 
     Uint64 frameStart, frameTime;
 
