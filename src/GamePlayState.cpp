@@ -1,3 +1,6 @@
+// Copyright (c) 2025 Hammer Forged Games
+// Licensed under the MIT License - see LICENSE file for details
+
 #include "GamePlayState.hpp"
 #include "GameStateManager.hpp"
 #include "FontManager.hpp"
