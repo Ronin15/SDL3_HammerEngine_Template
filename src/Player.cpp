@@ -88,7 +88,7 @@ void Player::setupStates() {
 
 Player::~Player() {
     clean();
-    std::cout << "Forge Game Engine - Player destroyed" << std::endl;
+    std::cout << "Forge Game Engine - Player resources cleaned!\n";
 }
 
 void Player::changeState(const std::string& stateName) {
