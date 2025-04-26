@@ -108,6 +108,9 @@ public:
 
 //maybe_unused is just a hint to the compiler that the variable is not used. with -Wall -Wextra flags
 [[maybe_unused]] int main([[maybe_unused]] int argc, [[maybe_unused]] char* argv[]) {
+
+    std::cout << "Forge Game Engine - Initializing " << GAME_NAME << "...\n";
+
     // Determine the optimal number of threads (leave one core for OS/other tasks)
     unsigned int numThreads = std::max(1u, std::thread::hardware_concurrency() - 1);
     std::cout << "Forge Game Engine - Using " << numThreads << " worker threads\n";
@@ -121,8 +124,6 @@ public:
     std::atomic<bool> updateReady{false};
 
     Uint64 frameStart, frameTime;
-
-    std::cout << "Forge Game Engine - Initializing " << GAME_NAME << "...\n";
 
     if (GameEngine::Instance().init(GAME_NAME.c_str(), WINDOW_WIDTH, WINDOW_HEIGHT, false)) {
         while (GameEngine::Instance().getRunning()) {
