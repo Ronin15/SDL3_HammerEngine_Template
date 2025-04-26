@@ -1,3 +1,6 @@
+// Copyright (c) 2025 Hammer Forged Games
+// Licensed under the MIT License - see LICENSE file for details
+//
 #include "GameEngine.hpp"
 #include <SDL3/SDL.h>
 #include <iostream>
