@@ -11,6 +11,7 @@ I use the Zed IDE with custom cmake and ninja task configurations to build/compi
 - imgui support for SDL3 renderer -> https://github.com/ocornut/imgui
 - Boost Container lib -> https://www.boost.org/ 1.84.0
 - Cross-platform support (Windows, macOS, Linux)
+- Multi threaded support
 - Automatic dependency management with FetchContent (for SDL3 libs, boost container lib, imgui)
 - Debug and Release build configurations
 - Custom window icon support on all platforms
