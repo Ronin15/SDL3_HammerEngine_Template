@@ -1,3 +1,6 @@
+// Copyright (c) 2025 Hammer Forged Games
+// Licensed under the MIT License - see LICENSE file for details
+
 #ifndef GAME_ENGINE_HPP
 #define GAME_ENGINE_HPP
 
@@ -5,7 +8,9 @@
 #include "TextureManager.hpp"
 #include <SDL3/SDL.h>
 #include <SDL3_image/SDL_image.h>
-
+#include <atomic>
+#include <condition_variable>
+#include <mutex>
 
 class GameEngine {
  public:
@@ -25,6 +30,16 @@ class GameEngine {
   void render();
   void clean();
 
+  // Multi-threaded task processing
+  void processBackgroundTasks();
+
+  // Thread-safe resource loading
+  bool loadResourcesAsync(const std::string& path);
+
+  // Thread synchronization methods
+  void waitForUpdate();
+  void signalUpdateComplete();
+
   GameStateManager* getGameStateManager() const { return mp_gameStateManager; }
   TextureManager* getTextureManager() const { return mp_textureManager; }
 
@@ -43,8 +58,16 @@ class GameEngine {
   SDL_Window* p_window{nullptr};
   SDL_Renderer* p_renderer{nullptr};
   static GameEngine* sp_Instance;
-  bool m_isRunning{false};
+  std::atomic<bool> m_isRunning{false};
   int m_windowWidth;
   int m_windowHeight;
+
+  // Multithreading synchronization
+  std::mutex m_updateMutex;
+  std::condition_variable m_updateCondition;
+  std::atomic<bool> m_updateCompleted{false};
+
+  // Render synchronization
+  std::mutex m_renderMutex;
 };
 #endif  // GAME_ENGINE_HPP
