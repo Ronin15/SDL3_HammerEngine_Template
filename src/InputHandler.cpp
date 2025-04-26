@@ -409,6 +409,8 @@ void InputHandler::onGamepadButtonUp(SDL_Event& event) {
 }
 
 void InputHandler::clean() {
+    std::cout << "Forge Game Engine - InputHandler resources cleaned!\n";
+
   // Close all gamepads
   for (auto& gamepad : m_joysticks) {
     SDL_CloseGamepad(gamepad);

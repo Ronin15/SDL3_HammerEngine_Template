@@ -12,13 +12,16 @@
 
 class FontManager {
  public:
-  FontManager() {}
-  ~FontManager() {}
-
-  static FontManager& Instance(){
-        static FontManager* sp_instance = new FontManager();
-        return *sp_instance;
+  ~FontManager() {
+    if (!m_isShutdown) {
+      clean();
     }
+  }
+
+  static FontManager& Instance() {
+    static FontManager instance;
+    return instance;
+  }
 
   // Initialize the font system
   bool init();
@@ -44,11 +47,18 @@ class FontManager {
 
   // Clean up all font resources
   void clean();
+  
+  // Check if FontManager has been shut down
+  bool isShutdown() const { return m_isShutdown; }
 
  private:
   boost::container::flat_map<std::string, TTF_Font*> m_fontMap;
-  static FontManager* sp_Instance;
   static TTF_TextEngine* m_rendererTextEngine;
+  bool m_isShutdown = false; // Flag to indicate if FontManager has been shut down
+  
+  FontManager() {} // Private constructor for singleton
+  FontManager(const FontManager&) = delete; // Prevent copying
+  FontManager& operator=(const FontManager&) = delete; // Prevent assignment
 };
 
 #endif  // FONT_MANAGER_HPP
