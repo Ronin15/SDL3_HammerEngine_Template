@@ -309,12 +309,12 @@ void GameEngine::clean() {
     delete mp_gameStateManager;
     mp_gameStateManager = nullptr;
   }
-/*
+
   if (mp_textureManager) {
     delete mp_textureManager;
     mp_textureManager = nullptr;
   }
-*/
+
   // Save pointers to resources we'll clean up at the very end
   SDL_Window* window_to_destroy = p_window;
   SDL_Renderer* renderer_to_destroy = p_renderer;
