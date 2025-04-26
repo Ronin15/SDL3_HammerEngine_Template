@@ -1,3 +1,6 @@
+// Copyright (c) 2025 Hammer Forged Games
+// Licensed under the MIT License - see LICENSE file for details
+
 #ifndef PLAYER_IDLE_STATE_HPP
 #define PLAYER_IDLE_STATE_HPP
 
