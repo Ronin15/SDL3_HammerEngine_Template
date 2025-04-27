@@ -140,7 +140,8 @@ void FontManager::drawText(const std::string& text, const std::string& fontID,
   int height = static_cast<int>(h);
 
   // Create a destination rectangle
-  SDL_FRect dstRect = {static_cast<float>(x), static_cast<float>(y),
+  // Position x,y is considered to be the center of the text
+  SDL_FRect dstRect = {static_cast<float>(x - width/2.0f), static_cast<float>(y - height/2.0f),
                       static_cast<float>(width), static_cast<float>(height)};
 
   // Render the texture

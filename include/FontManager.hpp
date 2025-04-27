@@ -36,6 +36,7 @@ class FontManager {
                           SDL_Color color, SDL_Renderer* renderer);
 
   // Draw text directly to renderer
+  // The x,y coordinates specify the center point of the text
   void drawText(const std::string& text, const std::string& fontID,
                 int x, int y, SDL_Color color, SDL_Renderer* renderer);
 
