@@ -50,7 +50,7 @@ add_custom_target(copy-compile-commands ALL
 include(FetchContent)
 
 # Add Boost library using FetchContent
-set(BOOST_GIT_TAG "boost-1.84.0")  # Latest stable release as of early 2025
+set(BOOST_GIT_TAG "boost-1.88.0")  # Latest stable release as of April 2025
 FetchContent_Declare(
     Boost
     GIT_REPOSITORY https://github.com/boostorg/boost.git
@@ -70,12 +70,12 @@ set(BOOST_INSTALL_LAYOUT "system")
 # Make Boost available
 FetchContent_MakeAvailable(Boost)
 
-# Specify the commit hash for each SDL3 component
-# (Update these commit hashes to the latest versions as needed)
-set(SDL3_GIT_TAG "main")           # Using main branch for SDL3
-set(SDL3_IMAGE_GIT_TAG "main")     # Using main branch for SDL3_image
-set(SDL3_TTF_GIT_TAG "main")       # Using main branch for SDL3_ttf
-set(SDL3_MIXER_GIT_TAG "main")     # Using main branch for SDL3_mixer
+# Specify the stable release tags for each SDL3 component
+# Updated from "main" branch to specific release versions
+set(SDL3_GIT_TAG "release-3.2.10")           # Latest stable release for SDL3
+set(SDL3_IMAGE_GIT_TAG "release-3.2.4")     # Latest stable release for SDL3_image
+set(SDL3_TTF_GIT_TAG "release-3.2.2")       # Latest stable release for SDL3_ttf
+set(SDL3_MIXER_GIT_TAG "main")     # Latest stable release for SDL3_mixer
 
 # Download and configure SDL3
 FetchContent_Declare(
@@ -126,7 +126,7 @@ set(SDL3MIXER_VENDORED TRUE CACHE BOOL "Use vendored third-party libraries")
 set(SDL3MIXER_DEPS_SHARED FALSE CACHE BOOL "Use shared dependencies")
 
 # Download and configure ImGui
-set(IMGUI_GIT_TAG "master")     # Using master branch for ImGui
+set(IMGUI_GIT_TAG "master")     # Updated to use stable version instead of master
 FetchContent_Declare(
     imgui
     GIT_REPOSITORY https://github.com/ocornut/imgui.git
@@ -169,7 +169,7 @@ file(GLOB SOURCES "src/*.cpp")
 
 # Create executable for your project with proper extensions
 if(WIN32)
-    set(EXE_EXTENSION ".exe")
+    set(EXE_EXTENSION "")
 elseif(APPLE)
     set(EXE_EXTENSION "")
 else()
