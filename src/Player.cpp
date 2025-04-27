@@ -163,7 +163,7 @@ void Player::render() {
 
 void Player::clean() {
     // Clean up any resources
-    std::cout << "Forge Game Engine - Cleaning player resources" << "\n";
+    std::cout << "Forge Game Engine - Cleaning up player resources" << "\n";
 }
 
 void Player::handleInput() {
