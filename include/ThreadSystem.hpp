@@ -176,7 +176,7 @@ public:
     bool init() {
         // If already shutdown, don't allow re-initialization
         if (m_isShutdown) {
-            std::cerr << "Forge Game Engine - Error: Attempted to use ThreadSystem after shutdown" << std::endl;
+            std::cerr << "Forge Game Engine - Error: Attempted to use ThreadSystem after shutdown!\n";
             return false;
         }
 
@@ -189,7 +189,7 @@ public:
     void enqueueTask(std::function<void()> task) {
         // If shutdown or no thread pool, reject the task
         if (m_isShutdown || !mp_threadPool) {
-            std::cerr << "Forge Game Engine - Warning: Attempted to enqueue task after ThreadSystem shutdown" << std::endl;
+            std::cerr << "Forge Game Engine - Warning: Attempted to enqueue task after ThreadSystem shutdown!\n";
             return;
         }
         mp_threadPool->enqueue(std::move(task));
@@ -200,7 +200,7 @@ public:
         -> std::future<typename std::invoke_result<F, Args...>::type> {
         // If shutdown or no thread pool, throw an exception
         if (m_isShutdown || !mp_threadPool) {
-            std::cerr << "Forge Game Engine - Warning: Attempted to enqueue task after ThreadSystem shutdown" << std::endl;
+            std::cerr << "Forge Game Engine - Warning: Attempted to enqueue task after ThreadSystem shutdown!\n";
             throw std::runtime_error("ThreadSystem is shut down");
         }
         return mp_threadPool->enqueueWithResult(std::forward<F>(f), std::forward<Args>(args)...);
