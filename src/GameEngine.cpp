@@ -1,3 +1,6 @@
+// Copyright (c) 2025 Hammer Forged Games
+// Licensed under the MIT License - see LICENSE file for details
+
 #include "GameEngine.hpp"
 #include "GamePlayState.hpp"
 #include "GameStateManager.hpp"
@@ -6,11 +9,22 @@
 #include "LogoState.hpp"
 #include "MainMenuState.hpp"
 #include "SoundManager.hpp"
+#include "ThreadSystem.hpp"
 #include <iostream>
+#include <future>
 
 #define FORGE_GRAY 31, 32, 34, 255
 
 bool GameEngine::init(const char* title, int width, int height, bool fullscreen) {
+  // Initialize the thread system first
+  if (!Forge::ThreadSystem::Instance().init()) {
+    std::cerr << "Forge Game Engine - Failed to initialize thread system!\n";
+    return false;
+  }
+
+  std::cout << "Forge Game Engine - Thread system initialized with "
+            << Forge::ThreadSystem::Instance().getThreadCount() << " worker threads\n";
+
   if (SDL_Init(SDL_INIT_VIDEO)) {
     std::cout << "Forge Game Engine - Window framework online!\n";
 
@@ -87,29 +101,35 @@ bool GameEngine::init(const char* title, int width, int height, bool fullscreen)
       SDL_Surface* iconSurface = nullptr;
       const char* iconPath = "res/img/icon.ico";
 
-        iconSurface = IMG_Load(iconPath);
-        if (iconSurface) {
-          std::cout << "Forge Game Engine - Loaded icon from: " << iconPath << "\n";
-        }
+      // Use a separate thread to load the icon
+      auto iconFuture = Forge::ThreadSystem::Instance().enqueueTaskWithResult([iconPath]() -> SDL_Surface* {
+          return IMG_Load(iconPath);
+      });
 
-      if (iconSurface) {
-        SDL_SetWindowIcon(p_window, iconSurface);
-        SDL_DestroySurface(iconSurface);
-        std::cout << "Forge Game Engine - Window icon set successfully!\n";
-      } else {
-        std::cerr << "Forge Game Engine - Failed to load window icon: " << SDL_GetError() << "\n";
-      }
-
+      // Continue with initialization while icon loads
       p_renderer = SDL_CreateRenderer(p_window, NULL);
 
       if (p_renderer) {
         std::cout << "Forge Game Engine - Rendering system online!\n";
         SDL_SetRenderDrawColor(p_renderer, FORGE_GRAY);  // Forge Game Engine gunmetal dark grey
-
       } else {
         std::cerr << "Forge Game Engine - Rendering system creation failed! "
                   << SDL_GetError();
         return false;  // Forge renderer fail
+      }
+
+      // Check if the icon loaded successfully
+      try {
+        iconSurface = iconFuture.get();
+        if (iconSurface) {
+          SDL_SetWindowIcon(p_window, iconSurface);
+          SDL_DestroySurface(iconSurface);
+          std::cout << "Forge Game Engine - Window icon set successfully!\n";
+        } else {
+          std::cerr << "Forge Game Engine - Failed to load window icon: " << SDL_GetError() << "\n";
+        }
+      } catch (const std::exception& e) {
+        std::cerr << "Forge Game Engine - Error loading icon: " << e.what() << "\n";
       }
 
     } else {
@@ -122,45 +142,59 @@ bool GameEngine::init(const char* title, int width, int height, bool fullscreen)
     std::cerr << "Forge Game Engine - Framework creation failed! Make sure you "
                  "have the SDL3 runtime installed? SDL error: "
               << SDL_GetError() << std::endl;
-    return false;  // Forge SDL init fail. Make sure you have the SDL3 runtime
-                   // installed.
+    return false;  // Forge SDL init fail. Make sure you have the SDL3 runtime installed.
   }
-  //INITIALIZING GAME RESOURCE LOADING AND MANAGEMENT_________________________________________________________________________________BEGIN
-  //Initialize Input Handling and controller detection and setup.
-  std::cout << "Forge Game Engine - Detecting and initializing gamepads and input handling\n";
-  InputHandler::Instance().initializeGamePad();
-  std::cout << "Forge Game Engine - Creating Texture Manager \n";
 
-  // // Initialize the Texture manager
+  //INITIALIZING GAME RESOURCE LOADING AND MANAGEMENT_________________________________________________________________________________BEGIN
+
+  // Use multiple threads for initialization
+  std::vector<std::future<bool>> initTasks;
+
+  // Initialize Input Handling in a separate thread
+  initTasks.push_back(Forge::ThreadSystem::Instance().enqueueTaskWithResult([]() -> bool {
+    std::cout << "Forge Game Engine - Detecting and initializing gamepads and input handling\n";
+    InputHandler::Instance().initializeGamePad();
+    return true;
+  }));
+
+  // Create and initialize texture manager
+  std::cout << "Forge Game Engine - Creating Texture Manager\n";
   mp_textureManager = new TextureManager();
   if (!mp_textureManager) {
     std::cerr << "Forge Game Engine - Failed to create Texture Manager!\n";
     return false;
   }
 
+  // Load textures in main thread
   std::cout << "Forge Game Engine - Creating and loading textures\n";
-  TextureManager::Instance().load("res/img", "", p_renderer);
-  std::cout << "Forge Game Engine - Creating Sound Manager\n";
+    TextureManager::Instance().load("res/img", "", p_renderer);
 
-  // Initialize the sound manager
-  if(!SoundManager::Instance().init()){
+  // Initialize sound manager in a separate thread
+  initTasks.push_back(Forge::ThreadSystem::Instance().enqueueTaskWithResult([]() -> bool {
+    std::cout << "Forge Game Engine - Creating Sound Manager\n";
+    if(!SoundManager::Instance().init()) {
       std::cerr << "Forge Game Engine - Failed to initialize Sound Manager!\n";
       return false;
-  }
+    }
 
-  std::cout << "Forge Game Engine - Loading sounds and music\n";
-  SoundManager::Instance().loadSFX("res/sfx", "sfx");
-  SoundManager::Instance().loadMusic("res/music", "music");
+    std::cout << "Forge Game Engine - Loading sounds and music\n";
+    SoundManager::Instance().loadSFX("res/sfx", "sfx");
+    SoundManager::Instance().loadMusic("res/music", "music");
+    return true;
+  }));
 
-  std::cout << "Forge Game Engine - Creating Font Manager\n";
-  // Initialize the font manager
-  if(!FontManager::Instance().init()){
+  // Initialize font manager in a separate thread
+  initTasks.push_back(Forge::ThreadSystem::Instance().enqueueTaskWithResult([]() -> bool {
+    std::cout << "Forge Game Engine - Creating Font Manager\n";
+    if(!FontManager::Instance().init()) {
       std::cerr << "Forge Game Engine - Failed to initialize Font Manager!\n";
       return false;
-  }
-  FontManager::Instance().loadFont("res/fonts", "fonts", 20);
+    }
+    FontManager::Instance().loadFont("res/fonts", "fonts", 20);
+    return true;
+  }));
 
-  // Initialize game state manager
+  // Initialize game state manager (on main thread since it might be closely tied to rendering)
   std::cout << "Forge Game Engine - Creating Game State Manager and setting up initial Game States\n";
   mp_gameStateManager = new GameStateManager();
   if (!mp_gameStateManager) {
@@ -172,6 +206,22 @@ bool GameEngine::init(const char* title, int width, int height, bool fullscreen)
   mp_gameStateManager->addState(std::make_unique<LogoState>());
   mp_gameStateManager->addState(std::make_unique<MainMenuState>());
   mp_gameStateManager->addState(std::make_unique<GamePlayState>());
+
+  // Wait for all initialization tasks to complete
+  bool allTasksSucceeded = true;
+  for (auto& task : initTasks) {
+    try {
+      allTasksSucceeded &= task.get();
+    } catch (const std::exception& e) {
+      std::cerr << "Forge Game Engine - Initialization task failed: " << e.what() << "\n";
+      allTasksSucceeded = false;
+    }
+  }
+
+  if (!allTasksSucceeded) {
+    std::cerr << "Forge Game Engine - One or more initialization tasks failed\n";
+    return false;
+  }
   //_______________________________________________________________________________________________________________END
 
   std::cout << "Forge Game Engine - Game " << title <<  " initialized successfully!\n";
@@ -188,37 +238,126 @@ void GameEngine::handleEvents() {
 }
 
 void GameEngine::update() {
+  // This method is now thread-safe and can be called from a worker thread
+  std::lock_guard<std::mutex> lock(m_updateMutex);
   mp_gameStateManager->update();
+  m_updateCompleted = true;
+  m_updateCondition.notify_all();
 }
 
 void GameEngine::render() {
+  // This should always run on the main thread due to OpenGL/SDL rendering context
+  std::lock_guard<std::mutex> lock(m_renderMutex);
   SDL_RenderClear(p_renderer);
-
   mp_gameStateManager->render();
-
   SDL_RenderPresent(p_renderer);
 }
 
-void GameEngine::clean() {
+void GameEngine::waitForUpdate() {
+  std::unique_lock<std::mutex> lock(m_updateMutex);
+  m_updateCondition.wait(lock, [this]{ return m_updateCompleted.load(); });
+}
 
-//game engine cleanup
-if (mp_gameStateManager) {
+void GameEngine::signalUpdateComplete() {
+  {
+    std::lock_guard<std::mutex> lock(m_updateMutex);
+    m_updateCompleted = false;  // Reset for next frame
+  }
+}
+
+bool GameEngine::loadResourcesAsync(const std::string& path) {
+  auto result = Forge::ThreadSystem::Instance().enqueueTaskWithResult(
+    [this, path]() -> bool {
+      // Example of async resource loading
+      return TextureManager::Instance().load(path, "", p_renderer);
+    }
+  );
+
+  // You can either wait for the result or check it later
+  try {
+    return result.get(); // This blocks until the task completes
+  } catch (const std::exception& e) {
+    std::cerr << "Forge Game Engine - Resource loading failed: " << e.what() << "\n";
+    return false;
+  }
+}
+
+void GameEngine::processBackgroundTasks() {
+  // This method can be used to perform background processing
+  // It should be safe to run on worker threads
+
+  // Example: Process AI, physics, or other non-rendering tasks
+  // These tasks can run while the main thread is handling rendering
+}
+
+void GameEngine::clean() {
+  std::cout << "Forge Game Engine - Starting shutdown sequence...\n";
+
+  // Wait for any pending background tasks to complete
+  if(!Forge::ThreadSystem::Instance().isShutdown()) {
+    std::cout << "Forge Game Engine - Waiting for background tasks to complete...\n";
+    while(Forge::ThreadSystem::Instance().isBusy()) {
+      SDL_Delay(1); // Short delay to avoid busy waiting
+    }
+  }
+
+  // Clean up engine managers (non-singletons)
+  std::cout << "Forge Game Engine - Cleaning up GameState manager...\n";
+  if (mp_gameStateManager) {
     delete mp_gameStateManager;
     mp_gameStateManager = nullptr;
   }
-//game engine cleanup
-if (mp_textureManager) {
+
+  if (mp_textureManager) {
     delete mp_textureManager;
     mp_textureManager = nullptr;
   }
-  //instance cleanup
-  TextureManager::Instance().clean();
+
+  // Save pointers to resources we'll clean up at the very end
+  SDL_Window* window_to_destroy = p_window;
+  SDL_Renderer* renderer_to_destroy = p_renderer;
+  p_window = nullptr;
+  p_renderer = nullptr;
+
+  // Clean up singletons in reverse order of their initialization
+  std::cout << "Forge Game Engine - Cleaning up Font Manager...\n";
   FontManager::Instance().clean();
-  InputHandler::Instance().clean();
+
+  std::cout << "Forge Game Engine - Cleaning up Sound Manager...\n";
   SoundManager::Instance().clean();
 
-  SDL_DestroyWindow(p_window);
-  SDL_DestroyRenderer(p_renderer);
+  std::cout << "Forge Game Engine - Cleaning up Input Handler...\n";
+  InputHandler::Instance().clean();
+
+  std::cout << "Forge Game Engine - Cleaning up Texture Manager...\n";
+  TextureManager::Instance().clean();
+
+  // Clean up the thread system
+  std::cout << "Forge Game Engine - Cleaning up Thread System...\n";
+  if (!Forge::ThreadSystem::Instance().isShutdown()) {
+    Forge::ThreadSystem::Instance().clean();
+  }
+
+  // Finally clean up SDL resources
+  std::cout << "Forge Game Engine - Cleaning up SDL resources...\n";
+
+  // Explicitly destroy renderer and window at the end, after all subsystems
+  // are done using them
+  if(renderer_to_destroy) {
+    SDL_DestroyRenderer(renderer_to_destroy);
+  }
+
+  if(window_to_destroy) {
+    SDL_DestroyWindow(window_to_destroy);
+  }
+
+#ifndef __APPLE__
+  // Call SDL_Quit on non-Apple platforms -possibly a bug!!
   SDL_Quit();
-  std::cout << "Forge Game Engine - Shutdown!\n";
+#else
+  // On macOS, skip SDL_Quit() to avoid crash
+  std::cout << "Forge Game Engine - Skipping SDL_Quit() on macOS to prevent crash\n";
+#endif
+
+  std::cout << "Forge Game Engine - Shutdown complete!\n";
 }

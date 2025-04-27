@@ -6,6 +6,7 @@
 
 #include "GameStateManager.hpp"
 #include "TextureManager.hpp"
+
 #include <SDL3/SDL.h>
 #include <SDL3_image/SDL_image.h>
 #include <atomic>
@@ -19,9 +20,9 @@ class GameEngine {
   ~GameEngine() {}
 
   static GameEngine& Instance(){
-        static GameEngine* sp_instance = new GameEngine();
-        return *sp_instance;
-    }
+      static GameEngine instance;
+      return instance;
+  }
 
   bool init(const char* title, int width, int height, bool fullscreen);
 
@@ -57,7 +58,6 @@ class GameEngine {
   TextureManager* mp_textureManager{nullptr};
   SDL_Window* p_window{nullptr};
   SDL_Renderer* p_renderer{nullptr};
-  static GameEngine* sp_Instance;
   std::atomic<bool> m_isRunning{false};
   int m_windowWidth;
   int m_windowHeight;

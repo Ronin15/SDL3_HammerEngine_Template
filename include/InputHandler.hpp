@@ -16,9 +16,9 @@ class InputHandler {
  public:
 
  static InputHandler& Instance(){
-       static InputHandler* sp_instance = new InputHandler();
-       return *sp_instance;
-   }
+     static InputHandler instance;
+     return instance;
+ }
 
   // Initialize gamepad
   void initializeGamePad();
@@ -47,9 +47,6 @@ class InputHandler {
  private:
   InputHandler();
   ~InputHandler();
-
-  // Singleton instance
-  static InputHandler* sp_Instance;
 
   // Keyboard specific
   const bool* m_keystates;

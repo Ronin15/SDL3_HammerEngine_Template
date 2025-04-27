@@ -14,10 +14,10 @@ class TextureManager {
  TextureManager() {}
  ~TextureManager() {}
 
- static TextureManager& Instance(){
-       static TextureManager* sp_instance = new TextureManager();
-       return *sp_instance;
-   }
+ static TextureManager& Instance() {
+   static TextureManager instance;
+   return instance;
+ }
 
   // Loads a texture from a file or all PNG textures from a directory
   // If fileName is a directory, it loads all PNG files from that directory
@@ -63,7 +63,6 @@ class TextureManager {
  private:
   std::string m_textureID{""};
   boost::container::flat_map<std::string, SDL_Texture*> m_textureMap;
-  static TextureManager* sp_Instance;
 };
 
 #endif  // TEXTURE_MANAGER_HPP

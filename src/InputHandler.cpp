@@ -8,7 +8,6 @@
 #include "Vector2D.hpp"
 #include <iostream>
 
-InputHandler* InputHandler::sp_Instance{nullptr};  // Initialize static instance
 SDL_JoystickID* gamepadIDs{nullptr};
 
 InputHandler::InputHandler()
@@ -409,6 +408,8 @@ void InputHandler::onGamepadButtonUp(SDL_Event& event) {
 }
 
 void InputHandler::clean() {
+    std::cout << "Forge Game Engine - InputHandler resources cleaned!\n";
+
   // Close all gamepads
   for (auto& gamepad : m_joysticks) {
     SDL_CloseGamepad(gamepad);
