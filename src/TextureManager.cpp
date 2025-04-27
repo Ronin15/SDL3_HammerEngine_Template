@@ -107,13 +107,15 @@ void TextureManager::draw(std::string textureID,
                           SDL_FlipMode flip) {
   SDL_FRect srcRect;
   SDL_FRect destRect;
-  SDL_FPoint center = {0, 0};  // Initialize center point
+  SDL_FPoint center = {width / 2.0f, height / 2.0f};  // Center point in the middle of the image
   double angle = 0.0;
 
   srcRect.x = 0;
   srcRect.y = 0;
-  srcRect.w = destRect.w = width;
-  srcRect.h = destRect.h = height;
+  srcRect.w = width;
+  srcRect.h = height;
+  destRect.w = width;
+  destRect.h = height;
   destRect.x = x;
   destRect.y = y;
 
@@ -131,13 +133,15 @@ void TextureManager::drawFrame(std::string textureID,
                                SDL_FlipMode flip) {
   SDL_FRect srcRect;
   SDL_FRect destRect;
-  SDL_FPoint center = {0, 0};  // Initialize center point
+  SDL_FPoint center = {width / 2.0f, height / 2.0f};  // Center point in the middle of the image
   double angle = 0.0;
 
   srcRect.x = width * currentFrame;
   srcRect.y = height * (currentRow - 1);
-  srcRect.w = destRect.w = width;
-  srcRect.h = destRect.h = height;
+  srcRect.w = width;
+  srcRect.h = height;
+  destRect.w = width;
+  destRect.h = height;
   destRect.x = x;
   destRect.y = y;
 
@@ -192,7 +196,6 @@ SDL_Texture* TextureManager::getTexture(std::string textureID) const {
 }
 
 void TextureManager::clean() {
-  std::cout << "Forge Game Engine - Cleaning up TextureManager resources" << std::endl;
 
   // Track the number of textures cleaned up
   int texturesFreed = 0;
@@ -209,5 +212,6 @@ void TextureManager::clean() {
   // Clear the map
   m_textureMap.clear();
 
-  std::cout << "Forge Game Engine - Freed " << texturesFreed << " textures" << std::endl;
+  std::cout << "Forge Game Engine - Freed " << texturesFreed << " textures\n";
+  std::cout << "Forge Game Engine - TextureManager resources cleaned!\n";
 }

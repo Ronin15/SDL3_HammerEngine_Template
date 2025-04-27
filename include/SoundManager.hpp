@@ -14,10 +14,10 @@ class SoundManager {
   SoundManager();
   ~SoundManager();
 
-  static SoundManager& Instance(){
-        static SoundManager* sp_instance = new SoundManager();
-        return *sp_instance;
-    }
+  static SoundManager& Instance() {
+    static SoundManager instance;
+    return instance;
+  }
 
   // Initialize the SoundManager
   bool init();
@@ -80,8 +80,8 @@ class SoundManager {
   boost::container::flat_map<std::string, Mix_Chunk*> m_sfxMap;
   boost::container::flat_map<std::string, Mix_Music*> m_musicMap;
   SDL_AudioDeviceID m_deviceId;
-  static SoundManager* sp_Instance;
   bool m_initialized;
+  bool m_isShutdown = false;
 };
 
 #endif // SOUND_MANAGER_HPP

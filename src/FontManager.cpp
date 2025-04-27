@@ -91,6 +91,12 @@ bool FontManager::loadFont(const std::string& fontFile, const std::string& fontI
 
 SDL_Texture* FontManager::renderText(const std::string& text, const std::string& fontID,
                                      SDL_Color color, SDL_Renderer* renderer) {
+  // Skip if we're shutting down
+  if (m_isShutdown) {
+    std::cerr << "Forge Game Engine - Warning: Attempted to use FontManager after shutdown" << std::endl;
+    return nullptr;
+  }
+
   auto fontIt = m_fontMap.find(fontID);
   if (fontIt == m_fontMap.end()) {
     std::cerr << "Forge Game Engine - Font '" << fontID << "' not found.\n";
@@ -118,6 +124,12 @@ SDL_Texture* FontManager::renderText(const std::string& text, const std::string&
 
 void FontManager::drawText(const std::string& text, const std::string& fontID,
                           int x, int y, SDL_Color color, SDL_Renderer* renderer) {
+  // Skip if we're shutting down
+  if (m_isShutdown) {
+    std::cerr << "Forge Game Engine - Warning: Attempted to use FontManager after shutdown" << std::endl;
+    return;
+  }
+
   SDL_Texture* texture = renderText(text, fontID, color, renderer);
   if (!texture) return;
 
@@ -128,7 +140,8 @@ void FontManager::drawText(const std::string& text, const std::string& fontID,
   int height = static_cast<int>(h);
 
   // Create a destination rectangle
-  SDL_FRect dstRect = {static_cast<float>(x), static_cast<float>(y),
+  // Position x,y is considered to be the center of the text
+  SDL_FRect dstRect = {static_cast<float>(x - width/2.0f), static_cast<float>(y - height/2.0f),
                       static_cast<float>(width), static_cast<float>(height)};
 
   // Render the texture
@@ -151,14 +164,21 @@ void FontManager::clearFont(const std::string& fontID) {
 }
 
 void FontManager::clean() {
-  std::cout << "Forge Game Engine - Cleaning up FontManager resources\n";
+  std::cout << "Forge Game Engine - FontManager resources cleaned!\n";
+
+  // Mark the manager as shutting down before freeing resources
+  m_isShutdown = true;
 
   // Close all fonts
   for (auto& font : m_fontMap) {
-    TTF_CloseFont(font.second);
-    font.second = nullptr;
+    if (font.second) {
+      TTF_CloseFont(font.second);
+      font.second = nullptr;
+    }
   }
 
   m_fontMap.clear();
+
+  // Ensure TTF system is properly shut down
   TTF_Quit();
 }

@@ -36,7 +36,7 @@ Player::Player() {
     // Set default state
     changeState("idle");
 
-    //std::cout << "Forge Game Engine - Player created" << std::endl;
+    //std::cout << "Forge Game Engine - Player created" << "\n";
 }
 
 // Helper method to get dimensions from the loaded texture
@@ -55,7 +55,7 @@ void Player::loadDimensionsFromTexture() {
             // Query the texture to get its width and height
             // SDL3 uses SDL_GetTextureSize which returns float dimensions and returns a bool
             if (SDL_GetTextureSize(texture, &width, &height)) {
-                std::cout << "Forge Game Engine - Original texture dimensions: " << width << "x" << height << std::endl;
+                std::cout << "Forge Game Engine - Original texture dimensions: " << width << "x" << height << "\n";
 
                 // Store original dimensions for full sprite sheet
                 m_width = static_cast<int>(width);
@@ -68,15 +68,15 @@ void Player::loadDimensionsFromTexture() {
                 // Update height to be the height of a single frame
                 m_height = frameHeight;
 
-                std::cout << "Forge Game Engine - Loaded texture dimensions: " << m_width << "x" << height << std::endl;
-                std::cout << "Forge Game Engine - Frame dimensions: " << m_frameWidth << "x" << frameHeight << std::endl;
-                std::cout << "Forge Game Engine - Sprite layout: " << m_numFrames << " columns x " << m_spriteSheetRows << " rows" << std::endl;
+                std::cout << "Forge Game Engine - Loaded texture dimensions: " << m_width << "x" << height << "\n";
+                std::cout << "Forge Game Engine - Frame dimensions: " << m_frameWidth << "x" << frameHeight << "\n";
+                std::cout << "Forge Game Engine - Sprite layout: " << m_numFrames << " columns x " << m_spriteSheetRows << " rows" << "\n";
             } else {
-                std::cerr << "Forge Game Engine - Failed to query texture dimensions: " << SDL_GetError() << std::endl;
+                std::cerr << "Forge Game Engine - Failed to query texture dimensions: " << SDL_GetError() << "\n";
             }
         }
     } else {
-        std::cout << "Forge Game Engine - Texture '" << m_textureID << "' not found in TextureManager" << std::endl;
+        std::cout << "Forge Game Engine - Texture '" << m_textureID << "' not found in TextureManager" << "\n";
     }
 }
 
@@ -88,14 +88,14 @@ void Player::setupStates() {
 
 Player::~Player() {
     clean();
-    std::cout << "Forge Game Engine - Player destroyed" << std::endl;
+    std::cout << "Forge Game Engine - Player resources cleaned!\n";
 }
 
 void Player::changeState(const std::string& stateName) {
     if (m_stateManager.hasState(stateName)) {
         m_stateManager.setState(stateName);
     } else {
-        std::cerr << "Player state not found: " << stateName << std::endl;
+        std::cerr << "Player state not found: " << stateName << "\n";
     }
 }
 
@@ -138,11 +138,16 @@ void Player::render() {
     // The render method in EntityStateManager calls the render method of the current state
     // Don't call update here to avoid double updates
 
+    // Calculate centered position for rendering
+    // This ensures the player is centered at its position coordinates
+    int renderX = static_cast<int>(m_position.getX() - (m_frameWidth / 2.0f));
+    int renderY = static_cast<int>(m_position.getY() - (m_height / 2.0f));
+
     // Do the common rendering for all states
     TextureManager::Instance().drawFrame(
         m_textureID,
-        static_cast<int>(m_position.getX() - m_frameWidth / 2.0f), // Center based on frame width
-        static_cast<int>(m_position.getY() - m_height / 2.0f),
+        renderX,                // Center horizontally
+        renderY,                // Center vertically
         m_frameWidth,           // Use the calculated frame width
         m_height,               // Height stays the same
         m_currentRow,           // Current animation row
@@ -152,12 +157,13 @@ void Player::render() {
     );
 
     // Log rendering information (commented out to reduce console spam during animation)
-    // std::cout << "Forge Game Engine - Rendering player at position: " << m_position.getX() << ", " << m_position.getY() << std::endl;
+    // std::cout << "Forge Game Engine - Rendering player at position: " << m_position.getX() << ", " << m_position.getY()
+    //          << " (render at: " << renderX << ", " << renderY << ")" << "\n";
 }
 
 void Player::clean() {
     // Clean up any resources
-    std::cout << "Forge Game Engine - Cleaning player resources" << std::endl;
+    std::cout << "Forge Game Engine - Cleaning player resources" << "\n";
 }
 
 void Player::handleInput() {

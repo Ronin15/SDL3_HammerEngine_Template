@@ -10,7 +10,10 @@ SoundManager::SoundManager() : m_deviceId(0), m_initialized(false) {
 }
 
 SoundManager::~SoundManager() {
-  clean();
+  // Only clean up if not already shut down
+  if (!m_isShutdown) {
+    clean();
+  }
 }
 
 bool SoundManager::init() {
@@ -58,6 +61,12 @@ bool SoundManager::init() {
 }
 
 bool SoundManager::loadSFX(std::string filePath, std::string soundID) {
+  // Don't load if shutdown
+  if (m_isShutdown) {
+    std::cerr << "Forge Game Engine - Warning: Attempted to use SoundManager after shutdown" << std::endl;
+    return false;
+  }
+
   // Check if the filePath is a directory
   if (std::filesystem::exists(filePath) && std::filesystem::is_directory(filePath)) {
     std::cout << "Forge Game Engine - Loading sound effects from directory: " << filePath << "\n";
@@ -218,6 +227,11 @@ void SoundManager::playSFX(std::string soundID, int loops, int volume) {
 }
 
 void SoundManager::playMusic(std::string musicID, int loops, int volume) {
+  if (m_isShutdown) {
+    std::cerr << "Forge Game Engine - Warning: Attempted to use SoundManager after shutdown" << std::endl;
+    return;
+  }
+
   if (!m_initialized) {
     std::cout << "Forge Game Engine - Sound system not initialized!\n";
     return;
@@ -270,15 +284,26 @@ void SoundManager::setSFXVolume(int volume) {
 }
 
 void SoundManager::clean() {
+  std::cout << "Forge Game Engine - SoundManager resources cleaned!\n";
+
+  // Set shutdown flag first
+  m_isShutdown = true;
+
   // Free all loaded sound effects
   for (auto& sfxPair : m_sfxMap) {
-    Mix_FreeChunk(sfxPair.second);
+    if (sfxPair.second) {
+      Mix_FreeChunk(sfxPair.second);
+      sfxPair.second = nullptr;
+    }
   }
   m_sfxMap.clear();
 
   // Free all loaded music
   for (auto& musicPair : m_musicMap) {
-    Mix_FreeMusic(musicPair.second);
+    if (musicPair.second) {
+      Mix_FreeMusic(musicPair.second);
+      musicPair.second = nullptr;
+    }
   }
   m_musicMap.clear();
 
@@ -288,6 +313,7 @@ void SoundManager::clean() {
     Mix_Quit();
     if (m_deviceId) {
       SDL_CloseAudioDevice(m_deviceId);
+      m_deviceId = 0;
     }
     m_initialized = false;
   }
