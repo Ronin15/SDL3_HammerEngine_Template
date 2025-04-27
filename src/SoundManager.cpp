@@ -284,8 +284,9 @@ void SoundManager::setSFXVolume(int volume) {
 }
 
 void SoundManager::clean() {
-  std::cout << "Forge Game Engine - SoundManager resources cleaned!\n";
 
+  int sfxFreed{0};
+  int musicFreed{0};
   // Set shutdown flag first
   m_isShutdown = true;
 
@@ -294,6 +295,7 @@ void SoundManager::clean() {
     if (sfxPair.second) {
       Mix_FreeChunk(sfxPair.second);
       sfxPair.second = nullptr;
+      sfxFreed++;
     }
   }
   m_sfxMap.clear();
@@ -303,9 +305,15 @@ void SoundManager::clean() {
     if (musicPair.second) {
       Mix_FreeMusic(musicPair.second);
       musicPair.second = nullptr;
+      musicFreed++;
     }
   }
   m_musicMap.clear();
+
+  // Print the number of freed resources
+  std::cout << "Forge Game Engine - " << sfxFreed << " sound effects freed!\n";
+  std::cout << "Forge Game Engine - " << musicFreed << " music tracks freed!\n";
+  std::cout << "Forge Game Engine - SoundManager resources cleaned!\n";
 
   // Close SDL_mixer and SDL audio
   if (m_initialized) {

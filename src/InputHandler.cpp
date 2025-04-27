@@ -408,11 +408,13 @@ void InputHandler::onGamepadButtonUp(SDL_Event& event) {
 }
 
 void InputHandler::clean() {
-    std::cout << "Forge Game Engine - InputHandler resources cleaned!\n";
+
+    int gamepadCount{0};
 
   // Close all gamepads
   for (auto& gamepad : m_joysticks) {
     SDL_CloseGamepad(gamepad);
+    gamepadCount++;
   }
 
   // Free all joystick values
@@ -424,6 +426,8 @@ void InputHandler::clean() {
   m_joysticks.clear();
   m_joystickValues.clear();
   m_buttonStates.clear();
+  std::cout << "Forge Game Engine - " << gamepadCount << " gamepads freed!\n";
+  std::cout << "Forge Game Engine - InputHandler resources cleaned!\n";
   SDL_free(gamepadIDs);
   m_gamePadInitialized = false;
 }

@@ -164,21 +164,25 @@ void FontManager::clearFont(const std::string& fontID) {
 }
 
 void FontManager::clean() {
-  std::cout << "Forge Game Engine - FontManager resources cleaned!\n";
 
-  // Mark the manager as shutting down before freeing resources
-  m_isShutdown = true;
+// Track the number of fonts cleaned up
+int fontsFreed{0};
+// Mark the manager as shutting down before freeing resources
+m_isShutdown = true;
 
   // Close all fonts
   for (auto& font : m_fontMap) {
     if (font.second) {
       TTF_CloseFont(font.second);
       font.second = nullptr;
+      fontsFreed++;
     }
   }
 
   m_fontMap.clear();
 
+  std::cout << "Forge Game Engine - "<< fontsFreed << " fonts Freed!\n";
+  std::cout << "Forge Game Engine - FontManager resources cleaned!\n";
   // Ensure TTF system is properly shut down
   TTF_Quit();
 }
