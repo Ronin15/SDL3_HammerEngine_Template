@@ -21,7 +21,7 @@ const std::string GAME_NAME{"Game Template"};
 [[maybe_unused]] int main([[maybe_unused]] int argc, [[maybe_unused]] char* argv[]) {
 
     std::cout << "Forge Game Engine - Initializing " << GAME_NAME << "...\n";
-    std::cout << "Forge Game Engine - Initializing  Thread System....\n";
+    std::cout << "Forge Game Engine - Initializing Thread System....\n";
     // Initialize the thread system
     if (!Forge::ThreadSystem::Instance().init()) {
         std::cerr << "Forge Game Engine - Failed to initialize thread system\n";
@@ -29,7 +29,7 @@ const std::string GAME_NAME{"Game Template"};
     }
 
     unsigned int numThreads = Forge::ThreadSystem::Instance().getThreadCount();
-    std::cout << "Forge Game Engine - Threads Intialized: " << numThreads << " worker threads!\n";
+    std::cout << "Forge Game Engine - Using -> " << numThreads << " <- worker threads!\n";
 
     // Synchronization primitives for update and render threads
     std::mutex updateMutex;
