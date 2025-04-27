@@ -8,7 +8,7 @@
 #include <iostream>
 
 bool PauseState::enter() {
-  std::cout << "Forge Game Engine - Entering PAUSE State" << std::endl;
+  std::cout << "Forge Game Engine - Entering PAUSE State\n";
   return true;
 }
 
@@ -30,13 +30,13 @@ void PauseState::render() {
      FontManager::Instance().drawText(
        "Pause State Place Holder <----> Press R to Return to test Player",
        "fonts_Arial",
-       (GameEngine::Instance().getWindowWidth() / 2) - 350,
+       GameEngine::Instance().getWindowWidth() / 2 - 100,     // Center horizontally
        (GameEngine::Instance().getWindowHeight() / 2) - 180,
        fontColor,
        GameEngine::Instance().getRenderer());
 }
 bool PauseState::exit() {
-  std::cout << "Forge Game Engine - Exiting PAUSE State" << std::endl;
+  std::cout << "Forge Game Engine - Exiting PAUSE State\n";
 
   return true;
 }

@@ -20,9 +20,9 @@ class GameEngine {
   ~GameEngine() {}
 
   static GameEngine& Instance(){
-        static GameEngine* sp_instance = new GameEngine();
-        return *sp_instance;
-    }
+      static GameEngine instance;
+      return instance;
+  }
 
   bool init(const char* title, int width, int height, bool fullscreen);
 

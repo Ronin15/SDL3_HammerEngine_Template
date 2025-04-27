@@ -8,12 +8,12 @@
 #include <iostream>
 
 bool MainMenuState::enter() {
-  std::cout << "Forge Game Engine - Entering MAIN MENU State" << std::endl;
+  std::cout << "Forge Game Engine - Entering MAIN MENU State\n";
   return true;
 }
 
 void MainMenuState::update() {
-  //std::cout << "Updating Main Menu State" << std::endl;
+  //std::cout << "Updating Main Menu State\n";
 
       // Handle Play (enter) and ESC key.
       if (InputHandler::Instance().isKeyDown(SDL_SCANCODE_RETURN)) {
@@ -29,13 +29,13 @@ void MainMenuState::render() {
     FontManager::Instance().drawText(
       "Main Menu State Place Holder <----> Press Enter to Render test Player",
       "fonts_Arial",
-      (GameEngine::Instance().getWindowWidth() / 2) - 350,
+      GameEngine::Instance().getWindowWidth() / 2 - 100,     // Center horizontally
       (GameEngine::Instance().getWindowHeight() / 2) - 180,
       fontColor,
       GameEngine::Instance().getRenderer());
 }
 bool MainMenuState::exit() {
-  std::cout << "Forge Game Engine - Exiting MAIN MENU State" << std::endl;
+  std::cout << "Forge Game Engine - Exiting MAIN MENU State\n";
   return true;
 }
 
