@@ -14,7 +14,7 @@ bool TextureManager::load(std::string fileName,
     std::cout << "Forge Game Engine - Loading textures from directory: " << fileName << "\n";
 
     bool loadedAny = false;
-    int texturesLoaded = 0;
+    int texturesLoaded{0};
 
     try {
       // Iterate through all files in the directory
@@ -212,6 +212,6 @@ void TextureManager::clean() {
   // Clear the map
   m_textureMap.clear();
 
-  std::cout << "Forge Game Engine - Freed " << texturesFreed << " textures\n";
+  std::cout << "Forge Game Engine - "<< texturesFreed << " textures Freed!\n";
   std::cout << "Forge Game Engine - TextureManager resources cleaned!\n";
 }
