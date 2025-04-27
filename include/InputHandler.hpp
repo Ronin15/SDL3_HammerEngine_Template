@@ -48,9 +48,6 @@ class InputHandler {
   InputHandler();
   ~InputHandler();
 
-  // Singleton instance
-  static InputHandler* sp_Instance;
-
   // Keyboard specific
   const bool* m_keystates;
 

@@ -8,7 +8,6 @@
 #include "Vector2D.hpp"
 #include <iostream>
 
-InputHandler* InputHandler::sp_Instance{nullptr};  // Initialize static instance
 SDL_JoystickID* gamepadIDs{nullptr};
 
 InputHandler::InputHandler()
