@@ -34,14 +34,14 @@ void LogoState::render() {
       GameEngine::Instance().getRenderer());
   TextureManager::Instance().draw(
       "ForgeEngine",
-      GameEngine::Instance().getWindowWidth() / 2 - 150,  // Center horizontally
+      GameEngine::Instance().getWindowWidth() / 2 - 155,  // Center horizontally
       (GameEngine::Instance().getWindowHeight() / 2) + 30,  // Account for image height (128/2 = 64) + 30
       128, 128,
       GameEngine::Instance().getRenderer());
 
   TextureManager::Instance().draw(
       "sdl",
-      GameEngine::Instance().getWindowWidth() / 2 - 165,  // Center horizontally
+      GameEngine::Instance().getWindowWidth() / 2 - 185,  // Center horizontally
       (GameEngine::Instance().getWindowHeight() / 2) + 300,  // Account for image height (125/2 = 62.5) + 300
       203, 125,
       GameEngine::Instance().getRenderer());
