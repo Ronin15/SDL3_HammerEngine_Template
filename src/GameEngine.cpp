@@ -12,6 +12,7 @@
 #include "ThreadSystem.hpp"
 #include <iostream>
 #include <future>
+#include <boost/container/small_vector.hpp>
 
 #define FORGE_GRAY 31, 32, 34, 255
 
@@ -148,7 +149,7 @@ bool GameEngine::init(const char* title, int width, int height, bool fullscreen)
   //INITIALIZING GAME RESOURCE LOADING AND MANAGEMENT_________________________________________________________________________________BEGIN
 
   // Use multiple threads for initialization
-  std::vector<std::future<bool>> initTasks;
+  boost::container::small_vector<std::future<bool>, 4> initTasks; // Store up to 4 tasks without heap allocation
 
   // Initialize Input Handling in a separate thread
   initTasks.push_back(Forge::ThreadSystem::Instance().enqueueTaskWithResult([]() -> bool {

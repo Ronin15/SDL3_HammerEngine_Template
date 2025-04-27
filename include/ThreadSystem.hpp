@@ -14,8 +14,8 @@
 #include <stdexcept>  // For std::runtime_error
 #include <thread>
 #include <type_traits>
-#include <vector>
 #include <SDL3/SDL.h>
+#include <boost/container/small_vector.hpp>
 
 namespace Forge {
 
@@ -71,7 +71,7 @@ public:
 // Thread pool for managing worker threads
 class ThreadPool {
 private:
-    std::vector<std::thread> workers;
+    boost::container::small_vector<std::thread, 16> workers; // Optimized for up to 16 threads without heap allocation
     TaskQueue taskQueue;
     std::atomic<bool> isRunning{true};
 
