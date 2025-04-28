@@ -78,7 +78,7 @@ const std::string GAME_NAME{"Game Template"};
             }
         }
     } else {
-        std::cerr << "Forge Game Engine - Init " << GAME_NAME << " Failed!:" << SDL_GetError() << std::endl;
+        std::cerr << "Forge Game Engine - Init " << GAME_NAME << " Failed!: " << SDL_GetError() << std::endl;
         return -1;
     }
 
