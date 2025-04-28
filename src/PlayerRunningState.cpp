@@ -9,7 +9,7 @@
 PlayerRunningState::PlayerRunningState(Player* player) : mp_player(player) {}
 
 void PlayerRunningState::enter() {
-    std::cout << "Forge Game Engine - Entering Player Running State" << std::endl;
+    std::cout << "Forge Game Engine - Entering Player Running State\n";
 }
 
 void PlayerRunningState::update() {
@@ -90,5 +90,5 @@ void PlayerRunningState::update() {
 
 
 void PlayerRunningState::exit() {
-    std::cout << "Forge Game Engine - Exiting Player Running State" << std::endl;
+    std::cout << "Forge Game Engine - Exiting Player Running State\n";
 }

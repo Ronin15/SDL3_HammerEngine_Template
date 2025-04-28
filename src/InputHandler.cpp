@@ -79,7 +79,7 @@ void InputHandler::initializeGamePad() {
       }
     }
   } else {
-    std::cout << "Forge Game Engine - No gamepads connected." << std::endl;
+    std::cout << "Forge Game Engine - No gamepads connected.\n";
   }
 
   m_gamePadInitialized = true;

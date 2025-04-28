@@ -28,7 +28,7 @@ bool GameEngine::init(const char* title, int width, int height, bool fullscreen)
     if (SDL_GetDisplayBounds(1, &display) != 0) { // Try display 1 first
       // Try display 0 as fallback
       if (SDL_GetDisplayBounds(0, &display) != 0) {
-        std::cerr << "Forge Game Engine - Warning: Could not get display bounds: " << SDL_GetError() << "\n";
+        std::cerr << "Forge Game Engine - Warning: Could not get display bounds: " << SDL_GetError() << std::endl;
         std::cout << "Forge Game Engine - Using default window size: " << width << "x" << height << "\n";
         // Keep the provided dimensions
         m_windowWidth = width;
@@ -109,7 +109,7 @@ bool GameEngine::init(const char* title, int width, int height, bool fullscreen)
         SDL_SetRenderDrawColor(p_renderer, FORGE_GRAY);  // Forge Game Engine gunmetal dark grey
       } else {
         std::cerr << "Forge Game Engine - Rendering system creation failed! "
-                  << SDL_GetError();
+                  << SDL_GetError() << std::endl;
         return false;  // Forge renderer fail
       }
 
@@ -121,20 +121,20 @@ bool GameEngine::init(const char* title, int width, int height, bool fullscreen)
           SDL_DestroySurface(iconSurface);
           std::cout << "Forge Game Engine - Window icon set successfully!\n";
         } else {
-          std::cerr << "Forge Game Engine - Failed to load window icon: " << SDL_GetError() << "\n";
+          std::cerr << "Forge Game Engine - Failed to load window icon: " << SDL_GetError() << std::endl;
         }
       } catch (const std::exception& e) {
-        std::cerr << "Forge Game Engine - Error loading icon: " << e.what() << "\n";
+        std::cerr << "Forge Game Engine - Error loading icon: " << e.what() << std::endl;
       }
 
     } else {
-      std::cerr << "Forge Game Engine- Window system creation failed! " << SDL_GetError() << "\n";
+      std::cerr << "Forge Game Engine- Window system creation failed! " << SDL_GetError() << std::endl;
       return false;
     }
   } else {
     std::cerr << "Forge Game Engine - SDL Video intialization failed! Make sure you "
                  "have the SDL3 runtime installed? SDL error: "
-              << SDL_GetError() << "\n";
+              << SDL_GetError() << std::endl;
     return false;
   }
 
@@ -154,7 +154,7 @@ bool GameEngine::init(const char* title, int width, int height, bool fullscreen)
   std::cout << "Forge Game Engine - Creating Texture Manager\n";
   mp_textureManager = new TextureManager();
   if (!mp_textureManager) {
-    std::cerr << "Forge Game Engine - Failed to create Texture Manager!\n";
+    std::cerr << "Forge Game Engine - Failed to create Texture Manager!" << std::endl;
     return false;
   }
 
@@ -166,7 +166,7 @@ bool GameEngine::init(const char* title, int width, int height, bool fullscreen)
   initTasks.push_back(Forge::ThreadSystem::Instance().enqueueTaskWithResult([]() -> bool {
     std::cout << "Forge Game Engine - Creating Sound Manager\n";
     if(!SoundManager::Instance().init()) {
-      std::cerr << "Forge Game Engine - Failed to initialize Sound Manager!\n";
+      std::cerr << "Forge Game Engine - Failed to initialize Sound Manager!" << std::endl;
       return false;
     }
 
@@ -180,7 +180,7 @@ bool GameEngine::init(const char* title, int width, int height, bool fullscreen)
   initTasks.push_back(Forge::ThreadSystem::Instance().enqueueTaskWithResult([]() -> bool {
     std::cout << "Forge Game Engine - Creating Font Manager\n";
     if(!FontManager::Instance().init()) {
-      std::cerr << "Forge Game Engine - Failed to initialize Font Manager!\n";
+      std::cerr << "Forge Game Engine - Failed to initialize Font Manager!" << std::endl;
       return false;
     }
     FontManager::Instance().loadFont("res/fonts", "fonts", 24);
@@ -191,7 +191,7 @@ bool GameEngine::init(const char* title, int width, int height, bool fullscreen)
   std::cout << "Forge Game Engine - Creating Game State Manager and setting up initial Game States\n";
   mp_gameStateManager = new GameStateManager();
   if (!mp_gameStateManager) {
-    std::cerr << "Forge Game Engine - Failed to create Game State Manager!\n";
+    std::cerr << "Forge Game Engine - Failed to create Game State Manager!" << std::endl;
     return false;
   }
 
@@ -206,13 +206,13 @@ bool GameEngine::init(const char* title, int width, int height, bool fullscreen)
     try {
       allTasksSucceeded &= task.get();
     } catch (const std::exception& e) {
-      std::cerr << "Forge Game Engine - Initialization task failed: " << e.what() << "\n";
+      std::cerr << "Forge Game Engine - Initialization task failed: " << e.what() << std::endl;
       allTasksSucceeded = false;
     }
   }
 
   if (!allTasksSucceeded) {
-    std::cerr << "Forge Game Engine - One or more initialization tasks failed\n";
+    std::cerr << "Forge Game Engine - One or more initialization tasks failed" << std::endl;
     return false;
   }
   //_______________________________________________________________________________________________________________END
@@ -270,7 +270,7 @@ bool GameEngine::loadResourcesAsync(const std::string& path) {
   try {
     return result.get(); // This blocks until the task completes
   } catch (const std::exception& e) {
-    std::cerr << "Forge Game Engine - Resource loading failed: " << e.what() << "\n";
+    std::cerr << "Forge Game Engine - Resource loading failed: " << e.what() << std::endl;
     return false;
   }
 }

@@ -13,7 +13,7 @@ bool PauseState::enter() {
 }
 
 void PauseState::update() {
-  //std::cout << "Updating PAUSE State" << std::endl;
+  //std::cout << "Updating PAUSE State\n";
   // Handle pause and ESC key.
   if (InputHandler::Instance().isKeyDown(SDL_SCANCODE_R)) {
       // Flag the GamePlayState transition
