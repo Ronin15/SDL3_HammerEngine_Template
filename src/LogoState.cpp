@@ -10,13 +10,13 @@
 Uint64 stateTimer{0};
 
 bool LogoState::enter() {
-  std::cout << "Forge Game Engine - Entering LOGO State" << std::endl;
+  std::cout << "Forge Game Engine - Entering LOGO State\n";
   SoundManager::Instance().playSFX("sfx_logo", 0, 5);
   return true;
 }
 
 void LogoState::update() {
-  // std::cout << "Forge Game Engine - Updating LOGO State" << std::endl;
+  // std::cout << "Forge Game Engine - Updating LOGO State\n";
 
   stateTimer = SDL_GetTicks();
   if (stateTimer > 8000) {

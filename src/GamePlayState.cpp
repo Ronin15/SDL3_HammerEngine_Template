@@ -30,13 +30,13 @@ bool GamePlayState::enter() {
 }
 
 void GamePlayState::update() {
-  //std::cout << "Updating GAME State" << std::endl;
+  //std::cout << "Updating GAME State\n";
   // Handle pause and ESC key.
   if (InputHandler::Instance().isKeyDown(SDL_SCANCODE_P)) {
       // Create PauseState if it doesn't exist
       if (!GameEngine::Instance().getGameStateManager()->hasState("PauseState")) {
           GameEngine::Instance().getGameStateManager()->addState(std::make_unique<PauseState>());
-          std::cout << "Forge Game Engine - Created PAUSE State" << std::endl;
+          std::cout << "Forge Game Engine - Created PAUSE State\n";
       }
       m_transitioningToPause = true; // Set flag before transitioning
       GameEngine::Instance().getGameStateManager()->setState("PauseState");

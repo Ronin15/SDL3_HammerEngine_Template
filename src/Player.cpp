@@ -72,7 +72,7 @@ void Player::loadDimensionsFromTexture() {
                 std::cout << "Forge Game Engine - Frame dimensions: " << m_frameWidth << "x" << frameHeight << "\n";
                 std::cout << "Forge Game Engine - Sprite layout: " << m_numFrames << " columns x " << m_spriteSheetRows << " rows" << "\n";
             } else {
-                std::cerr << "Forge Game Engine - Failed to query texture dimensions: " << SDL_GetError() << "\n";
+                std::cerr << "Forge Game Engine - Failed to query texture dimensions: " << SDL_GetError() << std::endl;
             }
         }
     } else {
@@ -95,7 +95,7 @@ void Player::changeState(const std::string& stateName) {
     if (m_stateManager.hasState(stateName)) {
         m_stateManager.setState(stateName);
     } else {
-        std::cerr << "Player state not found: " << stateName << "\n";
+        std::cerr << "Player state not found: " << stateName << std::endl;
     }
 }
 

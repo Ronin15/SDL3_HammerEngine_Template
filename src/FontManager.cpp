@@ -10,7 +10,7 @@ TTF_TextEngine* FontManager::m_rendererTextEngine = nullptr;
 
 bool FontManager::init() {
   if (!TTF_Init()) {
-    std::cerr << "Forge Game Engine - Font system initialization failed: " << SDL_GetError() << "\n";
+    std::cerr << "Forge Game Engine - Font system initialization failed: " << SDL_GetError() << std::endl;
       return false;
   } else {
 
@@ -56,7 +56,7 @@ bool FontManager::loadFont(const std::string& fontFile, const std::string& fontI
           std::cout << "Forge Game Engine - Loading font: " << fullPath << "!\n";
 
           if (font == nullptr) {
-            std::cerr << "Forge Game Engine - Could not load font: " << SDL_GetError() << "\n";
+            std::cerr << "Forge Game Engine - Could not load font: " << SDL_GetError() << std::endl;
             continue;
           }
 
@@ -66,12 +66,12 @@ bool FontManager::loadFont(const std::string& fontFile, const std::string& fontI
         }
       }
     } catch (const std::filesystem::filesystem_error& e) {
-      std::cerr << "Forge Game Engine - Filesystem error: " << e.what() << "\n";
+      std::cerr << "Forge Game Engine - Filesystem error: " << e.what() << std::endl;
     } catch (const std::exception& e) {
-      std::cerr << "Forge Game Engine - Error while loading fonts: " << e.what() << "\n";
+      std::cerr << "Forge Game Engine - Error while loading fonts: " << e.what() << std::endl;
     }
 
-    std::cout << "Forge Game Engine - Loaded " << fontsLoaded << " fonts from directory: " << fontFile << "\n";
+    std::cout << "Forge Game Engine - Loaded " << fontsLoaded << " fonts from directory: " << fontFile << std::endl;
     return loadedAny; // Return true if at least one font was loaded successfully
   }
 
@@ -80,7 +80,7 @@ bool FontManager::loadFont(const std::string& fontFile, const std::string& fontI
 
   if (font == nullptr) {
     std::cerr << "Forge Game Engine - Failed to load font '" << fontFile <<
-                 "': " << SDL_GetError() << "\n";
+                 "': " << SDL_GetError() << std::endl;
     return false;
   }
 
@@ -99,14 +99,14 @@ SDL_Texture* FontManager::renderText(const std::string& text, const std::string&
 
   auto fontIt = m_fontMap.find(fontID);
   if (fontIt == m_fontMap.end()) {
-    std::cerr << "Forge Game Engine - Font '" << fontID << "' not found.\n";
+    std::cerr << "Forge Game Engine - Font '" << fontID << "' not found." << std::endl;
     return nullptr;
   }
 
   // Render the text to a surface using Blended mode (high quality with alpha)
   SDL_Surface* surface = TTF_RenderText_Blended(fontIt->second, text.c_str(), 0, color);
   if (!surface) {
-    std::cerr << "Forge Game Engine - Failed to render text: " << SDL_GetError() << "\n";
+    std::cerr << "Forge Game Engine - Failed to render text: " << SDL_GetError() << std::endl;
     return nullptr;
   }
 
@@ -116,7 +116,7 @@ SDL_Texture* FontManager::renderText(const std::string& text, const std::string&
 
   if (!texture) {
     std::cerr << "Forge Game Engine - Failed to create texture from rendered text: "
-              << SDL_GetError() << "\n";
+              << SDL_GetError() << std::endl;
   }
 
   return texture;
@@ -159,7 +159,7 @@ void FontManager::clearFont(const std::string& fontID) {
   if (m_fontMap.find(fontID) != m_fontMap.end()) {
     TTF_CloseFont(m_fontMap[fontID]);
     m_fontMap.erase(fontID);
-    std::cout << "Forge Game Engine - Cleared font: " << fontID << std::endl;
+    std::cout << "Forge Game Engine - Cleared font: " << fontID << "\n";
   }
 }
 

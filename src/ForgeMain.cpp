@@ -24,7 +24,7 @@ const std::string GAME_NAME{"Game Template"};
     std::cout << "Forge Game Engine - Initializing Thread System....\n";
    // Initialize the thread system first
   if (!Forge::ThreadSystem::Instance().init()) {
-    std::cerr << "Forge Game Engine - Failed to initialize thread system!\n";
+    std::cerr << "Forge Game Engine - Failed to initialize thread system!" << std::endl;
     return -1;
   }
 
@@ -78,7 +78,7 @@ const std::string GAME_NAME{"Game Template"};
             }
         }
     } else {
-        std::cerr << "Forge Game Engine - Init " << GAME_NAME << " Failed!:" << SDL_GetError();
+        std::cerr << "Forge Game Engine - Init " << GAME_NAME << " Failed!:" << SDL_GetError() << std::endl;
         return -1;
     }
 

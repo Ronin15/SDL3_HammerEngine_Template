@@ -40,7 +40,7 @@ bool SoundManager::init() {
 
   m_deviceId = SDL_OpenAudioDevice(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &desired_spec);
   if (!m_deviceId) {
-    std::cerr << "Forge Game Engine - Error opening audio device: " << SDL_GetError() << "\n";
+    std::cerr << "Forge Game Engine - Error opening audio device: " << SDL_GetError() << std::endl;
     Mix_Quit();
     SDL_Quit();
     return false;
@@ -48,7 +48,7 @@ bool SoundManager::init() {
 
   // Initialize SDL_mixer with the opened audio device
   if (!Mix_OpenAudio(m_deviceId, &desired_spec)) {
-    std::cerr << "Forge Game Engine - Error initializing SDL_mixer: " << SDL_GetError() << "\n";
+    std::cerr << "Forge Game Engine - Error initializing SDL_mixer: " << SDL_GetError() << std::endl;
     SDL_CloseAudioDevice(m_deviceId);
     Mix_Quit();
     SDL_Quit();
@@ -103,7 +103,7 @@ bool SoundManager::loadSFX(std::string filePath, std::string soundID) {
           std::cout << "Forge Game Engine - Loading sound effect: " << fullPath << "!\n";
 
           if (p_chunk == nullptr) {
-            std::cerr << "Forge Game Engine - Could not load sound effect: " << SDL_GetError() << "\n";
+            std::cerr << "Forge Game Engine - Could not load sound effect: " << SDL_GetError() << std::endl;
             continue;
           }
 
@@ -113,9 +113,9 @@ bool SoundManager::loadSFX(std::string filePath, std::string soundID) {
         }
       }
     } catch (const std::filesystem::filesystem_error& e) {
-      std::cerr << "Forge Game Engine - Filesystem error: " << e.what() << "\n";
+      std::cerr << "Forge Game Engine - Filesystem error: " << e.what() << std::endl;
     } catch (const std::exception& e) {
-      std::cerr << "Forge Game Engine - Error while loading sound effects: " << e.what() << "\n";
+      std::cerr << "Forge Game Engine - Error while loading sound effects: " << e.what() << std::endl;
     }
 
     std::cout << "Forge Game Engine - Loaded " << soundsLoaded << " sound effects from directory: " << filePath << "\n";
@@ -173,7 +173,7 @@ bool SoundManager::loadMusic(std::string filePath, std::string musicID) {
           std::cout << "Forge Game Engine - Loading music: " << fullPath << "!\n";
 
           if (p_music == nullptr) {
-            std::cerr << "Forge Game Engine - Could not load music: " << SDL_GetError() << "\n";
+            std::cerr << "Forge Game Engine - Could not load music: " << SDL_GetError() << std::endl;
             continue;
           }
 
@@ -183,9 +183,9 @@ bool SoundManager::loadMusic(std::string filePath, std::string musicID) {
         }
       }
     } catch (const std::filesystem::filesystem_error& e) {
-      std::cerr << "Forge Game Engine - Filesystem error: " << e.what() << "\n";
+      std::cerr << "Forge Game Engine - Filesystem error: " << e.what() << std::endl;
     } catch (const std::exception& e) {
-      std::cerr << "Forge Game Engine - Error while loading music: " << e.what() << "\n";
+      std::cerr << "Forge Game Engine - Error while loading music: " << e.what() << std::endl;
     }
 
     std::cout << "Forge Game Engine - Loaded " << musicLoaded << " music files from directory: " << filePath << "\n";
@@ -198,7 +198,7 @@ bool SoundManager::loadMusic(std::string filePath, std::string musicID) {
   std::cout << "Forge Game Engine - Loading music: " << filePath << "! ID: " << musicID << "\n";
 
   if (p_music == nullptr) {
-    std::cerr << "Forge Game Engine - Could not load music: " << SDL_GetError() << "\n";
+    std::cerr << "Forge Game Engine - Could not load music: " << SDL_GetError() << std::endl;
     return false;
   }
 
@@ -222,7 +222,7 @@ void SoundManager::playSFX(std::string soundID, int loops, int volume) {
 
   // Play the sound effect (-1 means first available channel)
   if (Mix_PlayChannel(-1, m_sfxMap[soundID], loops) == -1) {
-    std::cerr << "Forge Game Engine - Could not play sound effect: " << SDL_GetError() << "\n";
+    std::cerr << "Forge Game Engine - Could not play sound effect: " << SDL_GetError() << std::endl;
   }
 }
 
