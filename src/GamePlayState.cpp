@@ -22,8 +22,8 @@ bool GamePlayState::enter() {
   }
 
   // Create player if not already created
-  if (!m_pPlayer) {
-    m_pPlayer = std::make_unique<Player>();
+  if (!mp_Player) {
+    mp_Player = std::make_unique<Player>();
     std::cout << "Forge Game Engine - Player created in GamePlayState\n";
   }
   return true;
@@ -46,8 +46,8 @@ void GamePlayState::update() {
   }
 
   // Update player if it exists
-  if (m_pPlayer) {
-      m_pPlayer->update();
+  if (mp_Player) {
+      mp_Player->update();
   }
 }
 
@@ -62,7 +62,7 @@ void GamePlayState::render() {
      fontColor,
      GameEngine::Instance().getRenderer());
 
-    m_pPlayer->render();
+    mp_Player->render();
 
 }
 bool GamePlayState::exit() {
@@ -71,7 +71,7 @@ bool GamePlayState::exit() {
   // Only clear specific textures if we're not transitioning to pause state
   if (!m_transitioningToPause) {
     // Reset player
-    m_pPlayer = nullptr;
+    mp_Player = nullptr;
     //TODO need to evaluate if this entire block is needed. I want to keep all texture in the MAP
     // and not clear any as they may be needed. left over from testing but not hurting anything currently.
     std::cout << "Forge Game Engine - reset player pointer to null, not going to pause\n";
