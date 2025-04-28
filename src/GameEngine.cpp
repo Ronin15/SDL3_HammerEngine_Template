@@ -8,6 +8,7 @@
 #include "InputHandler.hpp"
 #include "LogoState.hpp"
 #include "MainMenuState.hpp"
+#include "SDL3/SDL_video.h"
 #include "SoundManager.hpp"
 #include "ThreadSystem.hpp"
 #include <cmath>
@@ -131,7 +132,7 @@ bool GameEngine::init(const char* title, int width, int height, bool fullscreen)
       }
 
     } else {
-      std::cerr << "Forge Game Engine- Window system creation failed! " << SDL_GetError() << std::endl;
+      std::cerr << "Forge Game Engine - Window system creation failed! " << SDL_GetError() << std::endl;
       return false;
     }
   } else {

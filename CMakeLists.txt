@@ -125,8 +125,8 @@ set(SDL3MIXER_SAMPLES FALSE CACHE BOOL "Build the SDL3_mixer sample programs")
 set(SDL3MIXER_VENDORED TRUE CACHE BOOL "Use vendored third-party libraries")
 set(SDL3MIXER_DEPS_SHARED FALSE CACHE BOOL "Use shared dependencies")
 
-# Download and configure ImGui
-set(IMGUI_GIT_TAG "master")     # Updated to use stable version instead of master
+# Download and configure ImGui with docking branch
+set(IMGUI_GIT_TAG "docking")     # Changed from "master" to "docking" branch
 FetchContent_Declare(
     imgui
     GIT_REPOSITORY https://github.com/ocornut/imgui.git
@@ -157,6 +157,12 @@ add_library(imgui STATIC
 target_include_directories(imgui PUBLIC
     ${IMGUI_SOURCE_DIR}
     ${IMGUI_SOURCE_DIR}/backends
+)
+
+# Enable ImGui docking features
+target_compile_definitions(imgui PUBLIC
+    IMGUI_ENABLE_DOCKING
+    IMGUI_ENABLE_VIEWPORT
 )
 
 # Link ImGui with SDL3
@@ -291,6 +297,12 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
     # Add other Boost libraries as needed
 )
 
+# Make sure the docking features are available to your project
+target_compile_definitions(${PROJECT_NAME} PRIVATE
+    IMGUI_ENABLE_DOCKING
+    IMGUI_ENABLE_VIEWPORT
+)
+
 # Specify include directories
 target_include_directories(${PROJECT_NAME} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/include
@@ -324,6 +336,6 @@ file(MAKE_DIRECTORY ${OUTPUT_DEBUG_DIR})
 file(MAKE_DIRECTORY ${OUTPUT_RELEASE_DIR})
 
 # Display status message indicating successful configuration
-message(STATUS "SDL3, SDL3_image, SDL3_ttf, SDL3_mixer, ImGui, and Boost have been configured successfully")
+message(STATUS "SDL3, SDL3_image, SDL3_ttf, SDL3_mixer, ImGui (docking branch), and Boost have been configured successfully")
 message(STATUS "Debug binaries will be output to: ${OUTPUT_DEBUG_DIR}")
 message(STATUS "Release binaries will be output to: ${OUTPUT_RELEASE_DIR}")
