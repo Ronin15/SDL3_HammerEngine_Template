@@ -83,9 +83,9 @@ bool GameEngine::init(const char* title, int width, int height, bool fullscreen)
       std::cout << "Forge Game Engine - Window size set to Full Screen!\n";
     }
 
-    p_window = SDL_CreateWindow(title, m_windowWidth, m_windowHeight, flags);
+    mp_window = SDL_CreateWindow(title, m_windowWidth, m_windowHeight, flags);
 
-    if (p_window) {
+    if (mp_window) {
       std::cout << "Forge Game Engine - Window creation system online!\n";
 
       // Set window icon
@@ -102,11 +102,11 @@ bool GameEngine::init(const char* title, int width, int height, bool fullscreen)
       });
 
       // Continue with initialization while icon loads
-      p_renderer = SDL_CreateRenderer(p_window, NULL);
+      mp_renderer = SDL_CreateRenderer(mp_window, NULL);
 
-      if (p_renderer) {
+      if (mp_renderer) {
         std::cout << "Forge Game Engine - Rendering system online!\n";
-        SDL_SetRenderDrawColor(p_renderer, FORGE_GRAY);  // Forge Game Engine gunmetal dark grey
+        SDL_SetRenderDrawColor(mp_renderer, FORGE_GRAY);  // Forge Game Engine gunmetal dark grey
       } else {
         std::cerr << "Forge Game Engine - Rendering system creation failed! "
                   << SDL_GetError() << std::endl;
@@ -117,7 +117,7 @@ bool GameEngine::init(const char* title, int width, int height, bool fullscreen)
       try {
         iconSurface = iconFuture.get();
         if (iconSurface) {
-          SDL_SetWindowIcon(p_window, iconSurface);
+          SDL_SetWindowIcon(mp_window, iconSurface);
           SDL_DestroySurface(iconSurface);
           std::cout << "Forge Game Engine - Window icon set successfully!\n";
         } else {
@@ -160,7 +160,7 @@ bool GameEngine::init(const char* title, int width, int height, bool fullscreen)
 
   // Load textures in main thread
   std::cout << "Forge Game Engine - Creating and loading textures\n";
-    TextureManager::Instance().load("res/img", "", p_renderer);
+    TextureManager::Instance().load("res/img", "", mp_renderer);
 
   // Initialize sound manager in a separate thread
   initTasks.push_back(Forge::ThreadSystem::Instance().enqueueTaskWithResult([]() -> bool {
@@ -241,9 +241,9 @@ void GameEngine::update() {
 void GameEngine::render() {
   // This should always run on the main thread due to OpenGL/SDL rendering context
   std::lock_guard<std::mutex> lock(m_renderMutex);
-  SDL_RenderClear(p_renderer);
+  SDL_RenderClear(mp_renderer);
   mp_gameStateManager->render();
-  SDL_RenderPresent(p_renderer);
+  SDL_RenderPresent(mp_renderer);
 }
 
 void GameEngine::waitForUpdate() {
@@ -262,7 +262,7 @@ bool GameEngine::loadResourcesAsync(const std::string& path) {
   auto result = Forge::ThreadSystem::Instance().enqueueTaskWithResult(
     [this, path]() -> bool {
       // Example of async resource loading
-      return TextureManager::Instance().load(path, "", p_renderer);
+      return TextureManager::Instance().load(path, "", mp_renderer);
     }
   );
 
@@ -307,10 +307,10 @@ void GameEngine::clean() {
   }
 
   // Save pointers to resources we'll clean up at the very end
-  SDL_Window* window_to_destroy = p_window;
-  SDL_Renderer* renderer_to_destroy = p_renderer;
-  p_window = nullptr;
-  p_renderer = nullptr;
+  SDL_Window* window_to_destroy = mp_window;
+  SDL_Renderer* renderer_to_destroy = mp_renderer;
+  mp_window = nullptr;
+  mp_renderer = nullptr;
 
   // Clean up singletons in reverse order of their initialization
   std::cout << "Forge Game Engine - Cleaning up Font Manager...\n";
