@@ -7,6 +7,7 @@
 #include "Entity.hpp"
 #include "EntityStateManager.hpp"
 #include "Vector2D.hpp"
+#include <SDL3/SDL.h>
 
 class Player : public Entity{
 public:

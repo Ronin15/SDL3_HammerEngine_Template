@@ -17,7 +17,7 @@ public:
     void exit() override;
 
 private:
-    Player* m_player;
+    Player* mp_player;
 };
 
 #endif  // PLAYER_IDLE_STATE_HPP

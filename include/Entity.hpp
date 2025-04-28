@@ -5,7 +5,6 @@
 #define ENTITY_HPP
 
 #include "Vector2D.hpp"
-#include <SDL3/SDL.h>
 #include <string>
 
 class Entity {
