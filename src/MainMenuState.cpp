@@ -29,7 +29,7 @@ void MainMenuState::render() {
     FontManager::Instance().drawText(
       "Main Menu State Place Holder <----> Press Enter to Render test Player",
       "fonts_Arial",
-      GameEngine::Instance().getWindowWidth() / 2 - 100,     // Center horizontally
+      GameEngine::Instance().getWindowWidth() / 2,     // Center horizontally
       (GameEngine::Instance().getWindowHeight() / 2) - 180,
       fontColor,
       GameEngine::Instance().getRenderer());
