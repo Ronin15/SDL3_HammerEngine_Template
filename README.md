@@ -72,3 +72,5 @@ The icon is automatically loaded from the `res/img` folder.
 ### General notes
 
 This is a template and the first player state running "PlayerRunningState.cpp" Contains player move to mouse for point click hold movement, Keyboard movement up, down, left, right, and finally controller movement. Keep or delete any combination of controls your want. Controller keys are mapped out and detected properly in "InputHandler.cpp"  just need to be applied in code.
+
+Also, this template can be used for 3D as well. Just focus on replacing SDL_renderer with SDL_GPU in TexureManager::Draw fuctions, and update the init process in GameEngine.cpp and you should be good to go.
