@@ -22,16 +22,15 @@ const std::string GAME_NAME{"Game Template"};
 
     std::cout << "Forge Game Engine - Initializing " << GAME_NAME << "...\n";
     std::cout << "Forge Game Engine - Initializing Thread System....\n";
-    // Initialize the thread system
-    if (!Forge::ThreadSystem::Instance().init()) {
-        std::cerr << "Forge Game Engine - Failed to initialize thread system\n";
-        return -1;
-    }
+   // Initialize the thread system first
+  if (!Forge::ThreadSystem::Instance().init()) {
+    std::cerr << "Forge Game Engine - Failed to initialize thread system!\n";
+    return -1;
+  }
 
-    unsigned int numThreads = Forge::ThreadSystem::Instance().getThreadCount();
-    std::cout << "Forge Game Engine - Using -> " << numThreads << " <- worker threads!\n";
+    std::cout << "Forge Game Engine - Thread system initialized with "
+              << Forge::ThreadSystem::Instance().getThreadCount() << " worker threads!\n";
 
-    // Synchronization primitives for update and render threads
     std::mutex updateMutex;
     std::condition_variable updateCondition;
     std::atomic<bool> updateReady{false};

@@ -17,17 +17,11 @@
 #define FORGE_GRAY 31, 32, 34, 255
 
 bool GameEngine::init(const char* title, int width, int height, bool fullscreen) {
-  // Initialize the thread system first
-  if (!Forge::ThreadSystem::Instance().init()) {
-    std::cerr << "Forge Game Engine - Failed to initialize thread system!\n";
-    return false;
-  }
 
-  std::cout << "Forge Game Engine - Thread system initialized with "
-            << Forge::ThreadSystem::Instance().getThreadCount() << " worker threads\n";
+  std::cout << "Forge Game Engine - Initializing SDL Video....\n";
 
   if (SDL_Init(SDL_INIT_VIDEO)) {
-    std::cout << "Forge Game Engine - Window framework online!\n";
+    std::cout << "Forge Game Engine - SDL Video online!\n";
 
     // Get display bounds to determine optimal window size
     SDL_Rect display;
@@ -134,16 +128,14 @@ bool GameEngine::init(const char* title, int width, int height, bool fullscreen)
       }
 
     } else {
-      std::cerr << "Forge Game Engine- Window system creation failed! Maybe "
-                   "need a window Manager?"
-                << SDL_GetError();
-      return false;  // Forge window fail
+      std::cerr << "Forge Game Engine- Window system creation failed! " << SDL_GetError() << "\n";
+      return false;
     }
   } else {
-    std::cerr << "Forge Game Engine - Framework creation failed! Make sure you "
+    std::cerr << "Forge Game Engine - SDL Video intialization failed! Make sure you "
                  "have the SDL3 runtime installed? SDL error: "
-              << SDL_GetError() << std::endl;
-    return false;  // Forge SDL init fail. Make sure you have the SDL3 runtime installed.
+              << SDL_GetError() << "\n";
+    return false;
   }
 
   //INITIALIZING GAME RESOURCE LOADING AND MANAGEMENT_________________________________________________________________________________BEGIN
@@ -191,11 +183,11 @@ bool GameEngine::init(const char* title, int width, int height, bool fullscreen)
       std::cerr << "Forge Game Engine - Failed to initialize Font Manager!\n";
       return false;
     }
-    FontManager::Instance().loadFont("res/fonts", "fonts", 20);
+    FontManager::Instance().loadFont("res/fonts", "fonts", 24);
     return true;
   }));
 
-  // Initialize game state manager (on main thread since it might be closely tied to rendering)
+  // Initialize game state manager (on main thread because it directly calls rendering)
   std::cout << "Forge Game Engine - Creating Game State Manager and setting up initial Game States\n";
   mp_gameStateManager = new GameStateManager();
   if (!mp_gameStateManager) {
