@@ -16,7 +16,7 @@
 class GameEngine {
  public:
   GameEngine() : m_windowWidth(1280), m_windowHeight(720) {}
-  // Default values that will be updated based on display bounds during init()
+  // Default values that will be updated based on display bounds during init() fail safe.
   ~GameEngine() {}
 
   static GameEngine& Instance(){
@@ -46,7 +46,7 @@ class GameEngine {
 
   void setRunning(bool running) { m_isRunning = running; }
   bool getRunning() const { return m_isRunning; }
-  SDL_Renderer* getRenderer() const { return p_renderer; }
+  SDL_Renderer* getRenderer() const { return mp_renderer; }
 
   // Window size methods
   int getWindowWidth() const { return m_windowWidth; }
@@ -56,8 +56,8 @@ class GameEngine {
  private:
   GameStateManager* mp_gameStateManager{nullptr};
   TextureManager* mp_textureManager{nullptr};
-  SDL_Window* p_window{nullptr};
-  SDL_Renderer* p_renderer{nullptr};
+  SDL_Window* mp_window{nullptr};
+  SDL_Renderer* mp_renderer{nullptr};
   std::atomic<bool> m_isRunning{false};
   int m_windowWidth;
   int m_windowHeight;
