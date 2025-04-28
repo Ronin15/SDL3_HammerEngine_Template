@@ -10,6 +10,7 @@
 #include "MainMenuState.hpp"
 #include "SoundManager.hpp"
 #include "ThreadSystem.hpp"
+#include <cmath>
 #include <iostream>
 #include <future>
 #include <boost/container/small_vector.hpp>
@@ -80,6 +81,8 @@ bool GameEngine::init(const char* title, int width, int height, bool fullscreen)
 
     if (fullscreen) {
       flags = SDL_WINDOW_FULLSCREEN;
+        m_windowWidth = display.w;
+        m_windowHeight = display.h;
       std::cout << "Forge Game Engine - Window size set to Full Screen!\n";
     }
 
