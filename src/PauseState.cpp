@@ -30,7 +30,7 @@ void PauseState::render() {
      FontManager::Instance().drawText(
        "Pause State Place Holder <----> Press R to Return to test Player",
        "fonts_Arial",
-       GameEngine::Instance().getWindowWidth() / 2 - 100,     // Center horizontally
+       GameEngine::Instance().getWindowWidth() / 2,     // Center horizontally
        (GameEngine::Instance().getWindowHeight() / 2) - 180,
        fontColor,
        GameEngine::Instance().getRenderer());

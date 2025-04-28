@@ -28,20 +28,20 @@ void LogoState::render() {
   // std::cout << "Rendering Main Menu State\n";
   TextureManager::Instance().draw(
       "HammerForgeBanner",
-      GameEngine::Instance().getWindowWidth() / 2 - 463,  // Center horizontally
+      GameEngine::Instance().getWindowWidth() / 2 - 363,  // Center horizontally
       (GameEngine::Instance().getWindowHeight() / 2) - 352,  // Centered vertically (352/2 = 176)
       727, 352,
       GameEngine::Instance().getRenderer());
   TextureManager::Instance().draw(
       "ForgeEngine",
-      GameEngine::Instance().getWindowWidth() / 2 - 155,  // Center horizontally
-      (GameEngine::Instance().getWindowHeight() / 2) + 30,  // Account for image height (128/2 = 64) + 30
+      GameEngine::Instance().getWindowWidth() / 2 - 55,  // Center horizontally
+      (GameEngine::Instance().getWindowHeight() / 2) + 10,  // Account for image height (128/2 = 64) + 30
       128, 128,
       GameEngine::Instance().getRenderer());
 
   TextureManager::Instance().draw(
       "sdl",
-      GameEngine::Instance().getWindowWidth() / 2 - 185,  // Center horizontally
+      GameEngine::Instance().getWindowWidth() / 2 - 90,  // Center horizontally
       (GameEngine::Instance().getWindowHeight() / 2) + 300,  // Account for image height (125/2 = 62.5) + 300
       203, 125,
       GameEngine::Instance().getRenderer());
@@ -54,7 +54,7 @@ void LogoState::render() {
   FontManager::Instance().drawText(
       "<]==={ }* FORGE GAME ENGINE *{ }===]>",
       "fonts_Arial",
-      GameEngine::Instance().getWindowWidth() / 2 - 90,  // Center horizontally
+      GameEngine::Instance().getWindowWidth() / 2 + 10,  // Center horizontally
       (GameEngine::Instance().getWindowHeight() / 2) + 180,
       fontColor,
       GameEngine::Instance().getRenderer());
@@ -63,16 +63,17 @@ void LogoState::render() {
   FontManager::Instance().drawText(
       "Powered by SDL3",
       "fonts_Arial",
-      GameEngine::Instance().getWindowWidth() / 2 - 90,  // Center horizontally
+      GameEngine::Instance().getWindowWidth() / 2 + 10,  // Center horizontally
       (GameEngine::Instance().getWindowHeight() / 2) + 220,
       fontColor,
       GameEngine::Instance().getRenderer());
 
   // Draw version text
   FontManager::Instance().drawText(
+
       "v0.0.5",
       "fonts_Arial",
-      GameEngine::Instance().getWindowWidth() / 2 - 90,  // Center horizontally
+      GameEngine::Instance().getWindowWidth() / 2 + 10,  // Center horizontally
       (GameEngine::Instance().getWindowHeight() / 2) + 260,
       fontColor,
       GameEngine::Instance().getRenderer());

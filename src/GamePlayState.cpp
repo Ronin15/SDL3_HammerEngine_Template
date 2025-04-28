@@ -57,7 +57,7 @@ void GamePlayState::render() {
    FontManager::Instance().drawText(
      "Game State Place Holder <----> Press P to test Pause State",
      "fonts_Arial",
-     GameEngine::Instance().getWindowWidth() / 2 - 100,  // Center horizontally
+     GameEngine::Instance().getWindowWidth() / 2,  // Center horizontally
      (GameEngine::Instance().getWindowHeight() / 2) - 180,
      fontColor,
      GameEngine::Instance().getRenderer());
