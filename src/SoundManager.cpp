@@ -27,7 +27,6 @@ bool SoundManager::init() {
   MIX_InitFlags initFlags = Mix_Init(MIX_INIT_MP3 | MIX_INIT_OGG);
   if (initFlags == 0) {
     std::cerr << "Forge Game Engine - Error initializing SDL_mixer: " << SDL_GetError() << "\n";
-    SDL_Quit();
     return false;
   }
 
@@ -42,7 +41,6 @@ bool SoundManager::init() {
   if (!m_deviceId) {
     std::cerr << "Forge Game Engine - Error opening audio device: " << SDL_GetError() << std::endl;
     Mix_Quit();
-    SDL_Quit();
     return false;
   }
 
@@ -51,7 +49,6 @@ bool SoundManager::init() {
     std::cerr << "Forge Game Engine - Error initializing SDL_mixer: " << SDL_GetError() << std::endl;
     SDL_CloseAudioDevice(m_deviceId);
     Mix_Quit();
-    SDL_Quit();
     return false;
   }
 
