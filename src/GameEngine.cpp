@@ -346,7 +346,7 @@ void GameEngine::clean() {
   mp_window = nullptr;
   mp_renderer = nullptr;
 
-  // Clean up singletons in reverse order of their initialization
+  // Clean up Managers in reverse order of their initialization
   std::cout << "Forge Game Engine - Cleaning up Font Manager...\n";
   FontManager::Instance().clean();
 
