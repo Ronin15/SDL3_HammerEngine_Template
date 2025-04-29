@@ -5,6 +5,7 @@
 #include "GameEngine.hpp"
 #include "SoundManager.hpp"
 #include "FontManager.hpp"
+#include "TextureManager.hpp"
 #include <iostream>
 
 Uint64 stateTimer{0};

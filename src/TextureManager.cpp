@@ -6,6 +6,8 @@
 #include <filesystem>
 #include <algorithm>
 
+bool TextureManager::initialized = false; // Initialize the static variable for TextureManager initialization
+
 bool TextureManager::load(std::string fileName,
                           std::string textureID,
                           SDL_Renderer* p_renderer) {

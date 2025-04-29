@@ -11,7 +11,6 @@
 
 class SoundManager {
  public:
-  SoundManager();
   ~SoundManager();
 
   static SoundManager& Instance() {
@@ -82,6 +81,12 @@ class SoundManager {
   SDL_AudioDeviceID m_deviceId;
   bool m_initialized;
   bool m_isShutdown = false;
+
+  // Delete copy constructor and assignment operator
+  SoundManager(const SoundManager&) = delete; // Prevent copying
+  SoundManager& operator=(const SoundManager&) = delete; // Prevent assignment
+
+  SoundManager();
 };
 
 #endif // SOUND_MANAGER_HPP
