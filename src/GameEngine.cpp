@@ -11,7 +11,6 @@
 #include "SDL3/SDL_video.h"
 #include "SoundManager.hpp"
 #include "ThreadSystem.hpp"
-#include <cmath>
 #include <iostream>
 #include <future>
 #include <boost/container/small_vector.hpp>
