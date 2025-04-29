@@ -1,5 +1,6 @@
-# SDL3 2D Game Template with Cmake and Ninja
-Based off of my SDL2 template, but updated for SDL3 and more complete. It has simplified Entity management and Entity state management system. Also has a more robust game state management system and uses cmake and ninja instead of a custom build.sh. This is designed to be a jump off point for making a game with some of the low level and architecture stuff handled.
+# SDL3 2D Game Template with Muliti-Threading - WIP
+
+Based off of my SDL2 template, but updated for SDL3 and more complete. It has simplified Entity management and Entity state management systems. Also has a more robust game state management system and uses cmake and ninja instead of a custom build.sh. This is designed to be a jump off point for making a game with some of the low level and architecture stuff handled. Just add your content and start adding game states
 
 I use the Zed IDE with custom cmake and ninja task configurations to build/compile on all platforms. Zed has good documentation check it out at https://zed.dev/docs/
 
@@ -25,6 +26,12 @@ I use the Zed IDE with custom cmake and ninja task configurations to build/compi
   - Keyboard and mouse
   - Xbox series x controller support
   - PS4 Controller support
+
+-Supports the follwing Image, Sound, and font formats:
+  -Images - png
+  -Sounds - wav, mp3, ogg
+  -fonts - ttf and otf
+  
 
 ## Building the Project
 
