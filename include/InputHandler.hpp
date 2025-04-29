@@ -56,8 +56,7 @@ class InputHandler {
   std::vector<SDL_Gamepad*> m_joysticks;
   std::vector<std::vector<bool>> m_buttonStates;
   const int m_joystickDeadZone = 10000;
-  bool m_gamePadInitialized;
-
+  bool m_gamePadInitialized{false};
   // Mouse specific
   std::vector<bool> m_mouseButtonStates;
   Vector2D* m_mousePosition;
