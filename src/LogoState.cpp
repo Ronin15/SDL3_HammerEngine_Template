@@ -29,22 +29,31 @@ void LogoState::render() {
   TextureManager::Instance().draw(
       "HammerForgeBanner",
       GameEngine::Instance().getWindowWidth() / 2 - 363,  // Center horizontally
-      (GameEngine::Instance().getWindowHeight() / 2) - 352,  // Centered vertically (352/2 = 176)
+      (GameEngine::Instance().getWindowHeight() / 2) - 352,
       727, 352,
       GameEngine::Instance().getRenderer());
   TextureManager::Instance().draw(
       "ForgeEngine",
       GameEngine::Instance().getWindowWidth() / 2 - 55,  // Center horizontally
-      (GameEngine::Instance().getWindowHeight() / 2) + 10,  // Account for image height (128/2 = 64) + 30
+      (GameEngine::Instance().getWindowHeight() / 2) + 10,
       128, 128,
       GameEngine::Instance().getRenderer());
 
   TextureManager::Instance().draw(
       "sdl",
-      GameEngine::Instance().getWindowWidth() / 2 - 90,  // Center horizontally
-      (GameEngine::Instance().getWindowHeight() / 2) + 300,  // Account for image height (125/2 = 62.5) + 300
+      GameEngine::Instance().getWindowWidth() / 2 - 90, // Center horizontally
+      (GameEngine::Instance().getWindowHeight() / 2) + 300,
       203, 125,
       GameEngine::Instance().getRenderer());
+
+  TextureManager::Instance().draw(
+      "cpp",
+      GameEngine::Instance().getWindowWidth() / 2 + 150,  // Center horizontally
+      (GameEngine::Instance().getWindowHeight() / 2) + 215,
+      50, 50,
+      GameEngine::Instance().getRenderer());
+
+
 
   // Render text using SDL_TTF
   //SDL_Color titleColor = {185, 71, 0, 200}; // Forge Orange
