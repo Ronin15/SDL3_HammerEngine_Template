@@ -14,6 +14,7 @@ enum mouse_buttons { LEFT = 0, MIDDLE = 1, RIGHT = 2 };
 
 class InputHandler {
  public:
+    ~InputHandler();
 
  static InputHandler& Instance(){
      static InputHandler instance;
@@ -45,8 +46,6 @@ class InputHandler {
   Vector2D* getMousePosition() const;
 
  private:
-  InputHandler();
-  ~InputHandler();
 
   // Keyboard specific
   const bool* m_keystates;
@@ -74,6 +73,12 @@ class InputHandler {
   void onGamepadAxisMove(SDL_Event& event);
   void onGamepadButtonDown(SDL_Event& event);
   void onGamepadButtonUp(SDL_Event& event);
+
+  // Delete copy constructor and assignment operator
+  InputHandler(const InputHandler&) = delete; // Prevent copying
+  InputHandler& operator=(const InputHandler&) = delete; // Prevent assignment
+
+  InputHandler();
 };
 
 #endif  // INPUT_HANDLER_HPP

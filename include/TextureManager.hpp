@@ -11,13 +11,14 @@
 
 class TextureManager {
  public:
- TextureManager() {}
  ~TextureManager() {}
 
  static TextureManager& Instance() {
    static TextureManager instance;
+   initialized = true;
    return instance;
  }
+ static bool Exists() { return initialized; }
 
   // Loads a texture from a file or all PNG textures from a directory
   // If fileName is a directory, it loads all PNG files from that directory
@@ -63,6 +64,14 @@ class TextureManager {
  private:
   std::string m_textureID{""};
   boost::container::flat_map<std::string, SDL_Texture*> m_textureMap;
+  static bool initialized;
+
+  // Delete copy constructor and assignment operator
+  TextureManager(const TextureManager&) = delete; //prevent copy construction
+  TextureManager& operator=(const TextureManager&) = delete; //prevent assignment
+
+  TextureManager() {}
+
 };
 
 #endif  // TEXTURE_MANAGER_HPP

@@ -21,11 +21,6 @@ namespace Forge {
 
 // Thread-safe task queue for the worker thread pool
 class TaskQueue {
-private:
-    std::queue<std::function<void()>> tasks;
-    std::mutex queueMutex;
-    std::condition_variable condition;
-    std::atomic<bool> stopping{false};
 
 public:
     void push(std::function<void()> task) {
@@ -66,23 +61,15 @@ public:
         std::unique_lock<std::mutex> lock(queueMutex);
         return tasks.empty();
     }
+    private:
+        std::queue<std::function<void()>> tasks;
+        std::mutex queueMutex;
+        std::condition_variable condition;
+        std::atomic<bool> stopping{false};
 };
 
 // Thread pool for managing worker threads
 class ThreadPool {
-private:
-    boost::container::small_vector<std::thread, 16> workers; // Optimized for up to 16 threads without heap allocation
-    TaskQueue taskQueue;
-    std::atomic<bool> isRunning{true};
-
-    void workerThread() {
-        std::function<void()> task;
-        while (isRunning) {
-            if (taskQueue.pop(task)) {
-                task();
-            }
-        }
-    }
 
 public:
     ThreadPool(size_t numThreads) {
@@ -132,21 +119,31 @@ public:
         enqueue([task](){ (*task)(); });
         return result;
     }
+    private:
+        boost::container::small_vector<std::thread, 16> workers; // Optimized for up to 16 threads without heap allocation
+        TaskQueue taskQueue;
+        std::atomic<bool> isRunning{true};
+
+        void workerThread() {
+            std::function<void()> task;
+            while (isRunning) {
+                if (taskQueue.pop(task)) {
+                    task();
+                }
+            }
+        }
 };
 
 // Singleton Thread System Manager
 class ThreadSystem {
-private:
-    ThreadPool* mp_threadPool;
-    unsigned int m_numThreads;
-    std::atomic<bool> m_isShutdown{false}; // Flag to indicate shutdown status
-
-    ThreadSystem() : mp_threadPool(nullptr), m_numThreads(0) {}
-    // Prevent copying and assignment
-    ThreadSystem(const ThreadSystem&) = delete;
-    ThreadSystem& operator=(const ThreadSystem&) = delete;
 
 public:
+
+    static ThreadSystem& Instance() {
+        static ThreadSystem instance; // Properly managed by the language
+        return instance;
+    }
+
     void clean() {
         std::cout << "Forge Game Engine - ThreadSystem resources cleaned!\n";
         // Set shutdown flag first so any new accesses will be rejected
@@ -166,11 +163,6 @@ public:
         if (!m_isShutdown) {
             clean();
         }
-    }
-
-    static ThreadSystem& Instance() {
-        static ThreadSystem instance; // Properly managed by the language
-        return instance;
     }
 
     bool init() {
@@ -221,6 +213,16 @@ public:
     bool isShutdown() const {
         return m_isShutdown;
     }
+    private:
+            ThreadPool* mp_threadPool;
+            unsigned int m_numThreads;
+            std::atomic<bool> m_isShutdown{false}; // Flag to indicate shutdown status
+
+            // Prevent copying and assignment
+            ThreadSystem(const ThreadSystem&) = delete;
+            ThreadSystem& operator=(const ThreadSystem&) = delete;
+
+            ThreadSystem() : mp_threadPool(nullptr), m_numThreads(0) {}
 };
 
 } // namespace Forge

@@ -48,7 +48,7 @@ class FontManager {
 
   // Clean up all font resources
   void clean();
-  
+
   // Check if FontManager has been shut down
   bool isShutdown() const { return m_isShutdown; }
 
@@ -56,10 +56,12 @@ class FontManager {
   boost::container::flat_map<std::string, TTF_Font*> m_fontMap;
   static TTF_TextEngine* m_rendererTextEngine;
   bool m_isShutdown = false; // Flag to indicate if FontManager has been shut down
-  
-  FontManager() {} // Private constructor for singleton
+
+  // Delete copy constructor and assignment operator
   FontManager(const FontManager&) = delete; // Prevent copying
   FontManager& operator=(const FontManager&) = delete; // Prevent assignment
+
+  FontManager() {}
 };
 
 #endif  // FONT_MANAGER_HPP

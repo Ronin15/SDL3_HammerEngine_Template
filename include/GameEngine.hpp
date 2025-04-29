@@ -5,8 +5,6 @@
 #define GAME_ENGINE_HPP
 
 #include "GameStateManager.hpp"
-#include "TextureManager.hpp"
-#include <SDL3/SDL.h>
 #include <SDL3_image/SDL_image.h>
 #include <atomic>
 #include <condition_variable>
@@ -14,7 +12,7 @@
 
 class GameEngine {
  public:
-  GameEngine() : m_windowWidth(1280), m_windowHeight(720) {}
+
   // Default values that will be updated based on display bounds during init() fail safe.
   ~GameEngine() {}
 
@@ -40,10 +38,10 @@ class GameEngine {
   void waitForUpdate();
   void signalUpdateComplete();
 
+  // GameStateManager getter to let game engine access
   GameStateManager* getGameStateManager() const { return mp_gameStateManager; }
-  //TODO Remove TextureManager pointer when its initialization is fixed
-  TextureManager* getTextureManager() const { return mp_textureManager; }
 
+  //TODO Remove TextureManager pointer when its initialization is fixed
   void setRunning(bool running) { m_isRunning = running; }
   bool getRunning() const { return m_isRunning; }
   SDL_Renderer* getRenderer() const { return mp_renderer; }
@@ -55,7 +53,6 @@ class GameEngine {
 
  private:
   GameStateManager* mp_gameStateManager{nullptr};
-  TextureManager* mp_textureManager{nullptr};
   SDL_Window* mp_window{nullptr};
   SDL_Renderer* mp_renderer{nullptr};
   std::atomic<bool> m_isRunning{false};
@@ -69,5 +66,11 @@ class GameEngine {
 
   // Render synchronization
   std::mutex m_renderMutex;
+
+  // Delete copy constructor and assignment operator
+  GameEngine(const GameEngine&) = delete; // Prevent copying
+  GameEngine& operator=(const GameEngine&) = delete; // Prevent assignment
+
+  GameEngine() : m_windowWidth(1280), m_windowHeight(720) {}
 };
 #endif  // GAME_ENGINE_HPP

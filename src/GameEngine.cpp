@@ -14,6 +14,7 @@
 #include "SDL3/SDL_video.h"
 #include "SoundManager.hpp"
 #include "ThreadSystem.hpp"
+#include "TextureManager.hpp"
 
 #define FORGE_GRAY 31, 32, 34, 255
 
@@ -176,10 +177,9 @@ bool GameEngine::init(const char* title,
 
   // Create and initialize texture manager
   std::cout << "Forge Game Engine - Creating Texture Manager\n";
-  mp_textureManager = new TextureManager();
-  if (!mp_textureManager) {
-    std::cerr << "Forge Game Engine - Failed to create Texture Manager!"
-              << std::endl;
+  TextureManager::Instance();
+  if (!TextureManager::Exists()) {
+    std::cerr << "Forge Game Engine - Failed to create Texture Manager!"<< std::endl;
     return false;
   }
 
@@ -192,8 +192,7 @@ bool GameEngine::init(const char* title,
       Forge::ThreadSystem::Instance().enqueueTaskWithResult([]() -> bool {
         std::cout << "Forge Game Engine - Creating Sound Manager\n";
         if (!SoundManager::Instance().init()) {
-          std::cerr << "Forge Game Engine - Failed to initialize Sound Manager!"
-                    << std::endl;
+          std::cerr << "Forge Game Engine - Failed to initialize Sound Manager!" << std::endl;
           return false;
         }
 
@@ -333,11 +332,6 @@ void GameEngine::clean() {
   if (mp_gameStateManager) {
     delete mp_gameStateManager;
     mp_gameStateManager = nullptr;
-  }
-
-  if (mp_textureManager) {
-    delete mp_textureManager;
-    mp_textureManager = nullptr;
   }
 
   // Save pointers to resources we'll clean up at the very end
