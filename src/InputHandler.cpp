@@ -12,7 +12,6 @@ SDL_JoystickID* gamepadIDs{nullptr};
 
 InputHandler::InputHandler()
     : m_keystates(nullptr),
-      m_gamePadInitialized(false),
       m_mousePosition(new Vector2D(0, 0)) {
   // Create button states for the mouse
   for (int i = 0; i < 3; i++) {
@@ -25,8 +24,8 @@ InputHandler::~InputHandler() {
   delete m_mousePosition;
 
   // Clear all vectors
-  m_joystickValues.clear();
-  m_joysticks.clear();
+  //m_joystickValues.clear();
+  //m_joysticks.clear();
   m_buttonStates.clear();
   m_mouseButtonStates.clear();
 }
@@ -75,11 +74,13 @@ void InputHandler::initializeGamePad() {
           m_buttonStates.push_back(tempButtons);
         } else {
           std::cerr << "Forge Game Engine - Could not open gamepad: " << SDL_GetError() << std::endl;
+          return;
         }
       }
     }
   } else {
     std::cout << "Forge Game Engine - No gamepads connected.\n";
+    return; //return without setting m_gamePadInitialized to true.
   }
 
   m_gamePadInitialized = true;
@@ -409,9 +410,9 @@ void InputHandler::onGamepadButtonUp(SDL_Event& event) {
 
 void InputHandler::clean() {
 
-    int gamepadCount{0};
-
-  // Close all gamepads
+int gamepadCount{0};
+if(m_gamePadInitialized) {
+  // Close all gamepads if detected
   for (auto& gamepad : m_joysticks) {
     SDL_CloseGamepad(gamepad);
     gamepadCount++;
@@ -425,9 +426,16 @@ void InputHandler::clean() {
 
   m_joysticks.clear();
   m_joystickValues.clear();
-  m_buttonStates.clear();
-  std::cout << "Forge Game Engine - " << gamepadCount << " gamepads freed!\n";
-  std::cout << "Forge Game Engine - InputHandler resources cleaned!\n";
   SDL_free(gamepadIDs);
   m_gamePadInitialized = false;
+  std::cout << "Forge Game Engine - " << gamepadCount << " gamepads freed!\n";
+  std::cout << "Forge Game Engine - InputHandler resources cleaned!\n";
+
+}else{
+
+    //m_buttonStates.clear(); cleared in destructor
+    std::cout << "Forge Game Engine - no gamepads to free!\n";
+    std::cout << "Forge Game Engine - InputHandler resources cleaned!\n";
+    }
+
 }
