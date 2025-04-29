@@ -377,5 +377,6 @@ void GameEngine::clean() {
     SDL_DestroyWindow(window_to_destroy);
   }
     SDL_Quit();
+  std::cout << "Forge Game Engine - SDL resources cleaned!\n";
   std::cout << "Forge Game Engine - Shutdown complete!\n";
 }
