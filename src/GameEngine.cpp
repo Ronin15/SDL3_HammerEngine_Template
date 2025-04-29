@@ -376,14 +376,6 @@ void GameEngine::clean() {
   if (window_to_destroy) {
     SDL_DestroyWindow(window_to_destroy);
   }
-
-#ifndef __APPLE__
-  // Call SDL_Quit on non-Apple platforms -possibly a bug!!
-  SDL_Quit();
-#else
-  // On macOS, skip SDL_Quit() to avoid crash
-  std::cout << "Forge Game Engine - Skipping SDL_Quit() on macOS to prevent crash\n";
-#endif
-
+    SDL_Quit();
   std::cout << "Forge Game Engine - Shutdown complete!\n";
 }

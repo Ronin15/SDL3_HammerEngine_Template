@@ -428,6 +428,7 @@ if(m_gamePadInitialized) {
   m_joystickValues.clear();
   SDL_free(gamepadIDs);
   m_gamePadInitialized = false;
+  SDL_QuitSubSystem(SDL_INIT_GAMEPAD);
   std::cout << "Forge Game Engine - " << gamepadCount << " gamepads freed!\n";
   std::cout << "Forge Game Engine - InputHandler resources cleaned!\n";
 
@@ -436,6 +437,7 @@ if(m_gamePadInitialized) {
     //m_buttonStates.clear(); cleared in destructor
     std::cout << "Forge Game Engine - no gamepads to free!\n";
     std::cout << "Forge Game Engine - InputHandler resources cleaned!\n";
+    SDL_QuitSubSystem(SDL_INIT_GAMEPAD);
     }
 
 }
