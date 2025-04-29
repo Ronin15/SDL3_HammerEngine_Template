@@ -6,7 +6,6 @@
 
 #include "GameStateManager.hpp"
 #include "TextureManager.hpp"
-
 #include <SDL3/SDL.h>
 #include <SDL3_image/SDL_image.h>
 #include <atomic>
@@ -42,6 +41,7 @@ class GameEngine {
   void signalUpdateComplete();
 
   GameStateManager* getGameStateManager() const { return mp_gameStateManager; }
+  //TODO Remove TextureManager pointer when its initialization is fixed
   TextureManager* getTextureManager() const { return mp_textureManager; }
 
   void setRunning(bool running) { m_isRunning = running; }
