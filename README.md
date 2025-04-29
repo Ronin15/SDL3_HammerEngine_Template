@@ -27,7 +27,7 @@ I use the Zed IDE with custom cmake and ninja task configurations to build/compi
   - Xbox series x controller support
   - PS4 Controller support
 
--Supports the follwing Image, Sound, and font formats:
+- Supports the follwing Image, Sound, and font formats:
   - Images: png
   - Sounds: wav, mp3, ogg
   - fonts: ttf and otf
