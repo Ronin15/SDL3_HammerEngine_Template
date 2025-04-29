@@ -94,6 +94,7 @@ bool GameEngine::init(const char* title,
 
     if (fullscreen) {
       flags = SDL_WINDOW_FULLSCREEN;
+      //setting window width and height to fullscreen dimensions for detected monitor
       m_windowWidth = display.w;
       m_windowHeight = display.h;
       std::cout << "Forge Game Engine - Window size set to Full Screen!\n";
