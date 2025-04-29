@@ -23,6 +23,9 @@ public:
     // State management
     void changeState(const std::string& stateName);
     std::string getCurrentStateName() const;
+    void setPosition(const Vector2D& m_position);
+    //void setVelocity(const Vector2D& m_velocity); for later in save manager
+    //void setFlip(SDL_FlipMode m_flip);
 
     // Accessor methods for protected members
     Vector2D getPosition() const { return m_position; }
