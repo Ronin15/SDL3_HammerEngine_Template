@@ -168,6 +168,10 @@ void Player::clean() {
     std::cout << "Forge Game Engine - Cleaning up player resources" << "\n";
 }
 
+void Player::setPosition(const Vector2D& position) {
+    m_position = position;
+}
+
 void Player::handleInput() {
     // Check for state transitions based on input
     bool isMoving = false;
