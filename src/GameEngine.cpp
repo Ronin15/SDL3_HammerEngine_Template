@@ -33,6 +33,8 @@ bool GameEngine::init(const char* title,
 
     // Get display bounds to determine optimal window size
     SDL_Rect display;
+    float scaleX{1.0f};
+    float scaleY{1.0f};
     if (SDL_GetDisplayBounds(1, &display) != 0) {  // Try display 1 first
       // Try display 0 as fallback
       if (SDL_GetDisplayBounds(0, &display) != 0) {
@@ -65,6 +67,8 @@ bool GameEngine::init(const char* title,
         // Set fullscreen if requested dimensions are larger than screen
         if (width > display.w || height > display.h) {
           fullscreen = true;  // true
+          scaleX = 2.0f;
+          scaleY = 2.0f;
           std::cout << "Forge Game Engine - Window size larger than screen, "
                        "enabling fullscreen\n";
         }
@@ -135,7 +139,7 @@ bool GameEngine::init(const char* title,
         std::cout << "Forge Game Engine - Rendering system online!\n";
         SDL_SetRenderDrawColor(mp_renderer, FORGE_GRAY);  // Forge Game Engine gunmetal dark grey
         SDL_SetRenderLogicalPresentation(mp_renderer, pixelWidth, pixelHeight, SDL_LOGICAL_PRESENTATION_INTEGER_SCALE);
-        SDL_SetRenderScale(mp_renderer, 2.0f, 2.0f);
+        SDL_SetRenderScale(mp_renderer, scaleX, scaleY);
       } else {
         std::cerr << "Forge Game Engine - Rendering system creation failed! " << SDL_GetError() << std::endl;
         return false;  // Forge renderer fail
