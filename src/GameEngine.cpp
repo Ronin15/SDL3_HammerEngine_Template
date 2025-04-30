@@ -14,6 +14,7 @@
 #include "LogoState.hpp"
 #include "MainMenuState.hpp"
 #include "SDL3/SDL_video.h"
+#include "SaveGameManager.hpp"
 #include "SoundManager.hpp"
 #include "ThreadSystem.hpp"
 #include "TextureManager.hpp"
@@ -217,6 +218,22 @@ bool GameEngine::init(const char* title,
         return true;
       }));
 
+  // Initialize SaveGameManager in a separate thread
+  initTasks.push_back(
+      Forge::ThreadSystem::Instance().enqueueTaskWithResult([]() -> bool {
+        std::cout << "Forge Game Engine - Creating Save Game Manager\n";
+        SaveGameManager::Instance();
+        if (!SaveGameManager::Exists()) {
+          std::cerr << "Forge Game Engine - Failed to create Save Game Manager!" << std::endl;
+          return false;
+        }
+        // Set the save directory to "saves" folder
+        SaveGameManager::Instance().setSaveDirectory("saves");
+        // Ensure save directory exists
+        std::cout << "Forge Game Engine - Ensuring save directory exists\n";
+        return true;
+      }));
+
   // Initialize game state manager (on main thread because it directly calls rendering)
   std::cout << "Forge Game Engine - Creating Game State Manager and setting up "
                "initial Game States\n";
@@ -348,6 +365,9 @@ void GameEngine::clean() {
 
   std::cout << "Forge Game Engine - Cleaning up Sound Manager...\n";
   SoundManager::Instance().clean();
+
+  std::cout << "Forge Game Engine - Cleaning up Save Game Manager...\n";
+  SaveGameManager::Instance().clean();
 
   std::cout << "Forge Game Engine - Cleaning up Input Handler...\n";
   InputHandler::Instance().clean();

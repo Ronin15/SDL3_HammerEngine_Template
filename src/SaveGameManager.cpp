@@ -9,7 +9,6 @@
 #include <iostream>
 #include <fstream>
 #include <filesystem>
-#include <vector>
 #include <algorithm>
 #include <ctime>
 #include <cstring>
@@ -123,9 +122,7 @@ bool SaveGameManager::load(const std::string& saveFileName, Player* player) {
         }
 
         // Read player data
-
-        Vector2D position;
-        ;
+        Vector2D position(0.0f, 0.0f);
         if (!readVector2D(file, position)) {
             std::cerr << "Forge Game Engine - SaveGameManager: Error reading player position\n";
             file.close();
@@ -215,8 +212,8 @@ bool SaveGameManager::deleteSlot(int slotNumber) {
     return deleteSave(fileName);
 }
 
-std::vector<std::string> SaveGameManager::getSaveFiles() const {
-    std::vector<std::string> saveFiles;
+boost::container::small_vector<std::string, 10> SaveGameManager::getSaveFiles() const {
+    boost::container::small_vector<std::string, 10> saveFiles;
 
     // Check if the directory exists
     if (!std::filesystem::exists(m_saveDirectory) || !std::filesystem::is_directory(m_saveDirectory)) {
@@ -256,9 +253,9 @@ SaveGameData SaveGameManager::getSaveInfo(const std::string& saveFileName) const
     return extractSaveInfo(saveFileName);
 }
 
-std::vector<SaveGameData> SaveGameManager::getAllSaveInfo() const {
-    std::vector<SaveGameData> saveInfoList;
-    std::vector<std::string> files = getSaveFiles();
+boost::container::small_vector<SaveGameData, 10> SaveGameManager::getAllSaveInfo() const {
+    boost::container::small_vector<SaveGameData, 10> saveInfoList;
+    boost::container::small_vector<std::string, 10> files = getSaveFiles();
 
     for (const auto& file : files) {
         SaveGameData info = extractSaveInfo(file);
@@ -385,7 +382,7 @@ SaveGameData SaveGameManager::extractSaveInfo(const std::string& saveFileName) c
         info.timestamp = buffer;
 
         // Read position (skip the actual data, we just want to read ahead)
-        Vector2D position;
+        Vector2D position(0.0f, 0.0f);
         if (!readVector2D(file, position)) {
             file.close();
             return info;

@@ -7,8 +7,7 @@
 #define SAVE_GAME_MANAGER_HPP
 
 #include <string>
-#include <vector>
-#include <boost/container/flat_map.hpp>
+#include <boost/container/small_vector.hpp>
 #include "Vector2D.hpp"
 #include <ctime>
 
@@ -73,13 +72,13 @@ public:
     bool deleteSlot(int slotNumber);
 
     // Get a list of all save files in the save directory
-    std::vector<std::string> getSaveFiles() const;
+    boost::container::small_vector<std::string, 10> getSaveFiles() const;
 
     // Get information about a specific save file
     SaveGameData getSaveInfo(const std::string& saveFileName) const;
 
     // Get information about all save slots
-    std::vector<SaveGameData> getAllSaveInfo() const;
+    boost::container::small_vector<SaveGameData, 10> getAllSaveInfo() const;
 
     // Check if a save file exists
     bool saveExists(const std::string& saveFileName) const;
