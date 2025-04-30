@@ -125,11 +125,9 @@ bool GameEngine::init(const char* title,
 
       if (mp_renderer) {
         std::cout << "Forge Game Engine - Rendering system online!\n";
-        SDL_SetRenderDrawColor(
-            mp_renderer, FORGE_GRAY);  // Forge Game Engine gunmetal dark grey
+        SDL_SetRenderDrawColor(mp_renderer, FORGE_GRAY);  // Forge Game Engine gunmetal dark grey
       } else {
-        std::cerr << "Forge Game Engine - Rendering system creation failed! "
-                  << SDL_GetError() << std::endl;
+        std::cerr << "Forge Game Engine - Rendering system creation failed! " << SDL_GetError() << std::endl;
         return false;  // Forge renderer fail
       }
 
@@ -166,8 +164,8 @@ bool GameEngine::init(const char* title,
   // MANAGEMENT_________________________________________________________________________________BEGIN
 
   // Use multiple threads for initialization
-  boost::container::small_vector<std::future<bool>, 4>
-      initTasks;  // Store up to 4 tasks without heap allocation
+  boost::container::small_vector<std::future<bool>, 6>
+      initTasks;  // Store up to 6 tasks without heap allocation
 
   // Initialize Input Handling in a separate thread
   initTasks.push_back(
@@ -309,7 +307,7 @@ void GameEngine::signalUpdateComplete() {
     m_updateCompleted = false;  // Reset for next frame
   }
 }
-
+//maybe alternate loading strategy
 bool GameEngine::loadResourcesAsync(const std::string& path) {
   auto result = Forge::ThreadSystem::Instance().enqueueTaskWithResult(
       [this, path]() -> bool {
