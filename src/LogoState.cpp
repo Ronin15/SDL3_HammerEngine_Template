@@ -10,7 +10,7 @@
 #include "TextureManager.hpp"
 #include <iostream>
 
-Uint64 stateTimer{0};
+Uint32 stateTimer{0};
 
 bool LogoState::enter() {
   std::cout << "Forge Game Engine - Entering LOGO State\n";
@@ -31,20 +31,20 @@ void LogoState::render() {
   // std::cout << "Rendering Main Menu State\n";
   TextureManager::Instance().draw(
       "HammerForgeBanner",
-      GameEngine::Instance().getWindowWidth() / 2 - 363,  // Center horizontally
+      GameEngine::Instance().getWindowWidth() / 2 - 373,  // Center horizontally
       (GameEngine::Instance().getWindowHeight() / 2) - 352,
       727, 352,
       GameEngine::Instance().getRenderer());
   TextureManager::Instance().draw(
       "ForgeEngine",
-      GameEngine::Instance().getWindowWidth() / 2 - 55,  // Center horizontally
+      GameEngine::Instance().getWindowWidth() / 2 - 65,  // Center horizontally
       (GameEngine::Instance().getWindowHeight() / 2) + 10,
       128, 128,
       GameEngine::Instance().getRenderer());
 
   TextureManager::Instance().draw(
       "sdl",
-      GameEngine::Instance().getWindowWidth() / 2 - 90, // Center horizontally
+      GameEngine::Instance().getWindowWidth() / 2 - 100, // Center horizontally
       (GameEngine::Instance().getWindowHeight() / 2) + 300,
       203, 125,
       GameEngine::Instance().getRenderer());
@@ -66,7 +66,7 @@ void LogoState::render() {
   FontManager::Instance().drawText(
       "<]==={ }* FORGE GAME ENGINE *{ }===]>",
       "fonts_Arial",
-      GameEngine::Instance().getWindowWidth() / 2 + 10,  // Center horizontally
+      GameEngine::Instance().getWindowWidth() / 2,  // Center horizontally
       (GameEngine::Instance().getWindowHeight() / 2) + 180,
       fontColor,
       GameEngine::Instance().getRenderer());
@@ -75,7 +75,7 @@ void LogoState::render() {
   FontManager::Instance().drawText(
       "Powered by SDL3",
       "fonts_Arial",
-      GameEngine::Instance().getWindowWidth() / 2 + 10,  // Center horizontally
+      GameEngine::Instance().getWindowWidth() / 2 ,  // Center horizontally
       (GameEngine::Instance().getWindowHeight() / 2) + 220,
       fontColor,
       GameEngine::Instance().getRenderer());
@@ -85,7 +85,7 @@ void LogoState::render() {
 
       "v0.0.5",
       "fonts_Arial",
-      GameEngine::Instance().getWindowWidth() / 2 + 10,  // Center horizontally
+      GameEngine::Instance().getWindowWidth() / 2,  // Center horizontally
       (GameEngine::Instance().getWindowHeight() / 2) + 260,
       fontColor,
       GameEngine::Instance().getRenderer());
