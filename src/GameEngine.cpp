@@ -13,6 +13,7 @@
 #include "InputHandler.hpp"
 #include "LogoState.hpp"
 #include "MainMenuState.hpp"
+#include "SDL3/SDL_render.h"
 #include "SDL3/SDL_video.h"
 #include "SaveGameManager.hpp"
 #include "SoundManager.hpp"
@@ -93,15 +94,19 @@ bool GameEngine::init(const char* title,
                      "enabling fullscreen\n";
       }
     }
-    // Fullscreen handling
+    // Window handling
     int flags{0};
+    int flag1 = SDL_WINDOW_FULLSCREEN;
+    int flag2 = SDL_WINDOW_HIGH_PIXEL_DENSITY;
 
     if (fullscreen) {
-      flags = SDL_WINDOW_FULLSCREEN;
+      flags = flag1 | flag2;
       //setting window width and height to fullscreen dimensions for detected monitor
       m_windowWidth = display.w;
       m_windowHeight = display.h;
       std::cout << "Forge Game Engine - Window size set to Full Screen!\n";
+    }else{
+      flags = flag2;
     }
 
     mp_window = SDL_CreateWindow(title, m_windowWidth, m_windowHeight, flags);
@@ -121,11 +126,16 @@ bool GameEngine::init(const char* title,
           [iconPath]() -> SDL_Surface* { return IMG_Load(iconPath); });
 
       // Continue with initialization while icon loads
+      // account for pixel density for rendering
+      int pixelWidth, pixelHeight;
+      SDL_GetWindowSizeInPixels(mp_window, &pixelWidth, &pixelHeight);
       mp_renderer = SDL_CreateRenderer(mp_window, NULL);
 
       if (mp_renderer) {
         std::cout << "Forge Game Engine - Rendering system online!\n";
         SDL_SetRenderDrawColor(mp_renderer, FORGE_GRAY);  // Forge Game Engine gunmetal dark grey
+        SDL_SetRenderLogicalPresentation(mp_renderer, pixelWidth, pixelHeight, SDL_LOGICAL_PRESENTATION_INTEGER_SCALE);
+        SDL_SetRenderScale(mp_renderer, 2.0f, 2.0f);
       } else {
         std::cerr << "Forge Game Engine - Rendering system creation failed! " << SDL_GetError() << std::endl;
         return false;  // Forge renderer fail
