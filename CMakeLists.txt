@@ -339,3 +339,9 @@ file(MAKE_DIRECTORY ${OUTPUT_RELEASE_DIR})
 message(STATUS "SDL3, SDL3_image, SDL3_ttf, SDL3_mixer, ImGui (docking branch), and Boost have been configured successfully")
 message(STATUS "Debug binaries will be output to: ${OUTPUT_DEBUG_DIR}")
 message(STATUS "Release binaries will be output to: ${OUTPUT_RELEASE_DIR}")
+
+# Enable testing
+enable_testing()
+
+# Add the tests subdirectory
+add_subdirectory(tests)
