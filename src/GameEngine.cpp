@@ -240,8 +240,8 @@ bool GameEngine::init(const char* title,
           std::cerr << "Forge Game Engine - Failed to create Save Game Manager!" << std::endl;
           return false;
         }
-        // Set the save directory to "saves" folder
-        SaveGameManager::Instance().setSaveDirectory("saves");
+        // Set the save directory to "game_saves" folder
+        SaveGameManager::Instance().setSaveDirectory("game_saves");
         // Ensure save directory exists
         std::cout << "Forge Game Engine - Ensuring save directory exists\n";
         return true;

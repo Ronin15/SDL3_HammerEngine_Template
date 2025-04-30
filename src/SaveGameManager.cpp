@@ -19,7 +19,7 @@ bool SaveGameManager::initialized = false;
 
 bool SaveGameManager::save(const std::string& saveFileName, const Player* player) {
     if (player == nullptr) {
-        std::cerr << "Forge Game Engine - SaveGameManager: Cannot save null player\n";
+        std::cerr << "Forge Game Engine - SaveGameManager: Cannot save null player!" << std::endl;
         return false;
     }
 
@@ -35,7 +35,7 @@ bool SaveGameManager::save(const std::string& saveFileName, const Player* player
         // Open binary file for writing
         std::ofstream file(fullPath, std::ios::binary | std::ios::out);
         if (!file.is_open()) {
-            std::cerr << "Forge Game Engine - SaveGameManager: Could not open file " << fullPath << " for writing\n";
+            std::cerr << "Forge Game Engine - SaveGameManager: Could not open file " << fullPath << " for writing!" << std::endl;
             return false;
         }
 
@@ -81,7 +81,7 @@ bool SaveGameManager::save(const std::string& saveFileName, const Player* player
 
 bool SaveGameManager::saveToSlot(int slotNumber, const Player* player) {
     if (slotNumber < 1) {
-        std::cerr << "Forge Game Engine - SaveGameManager: Invalid slot number: " << slotNumber << "\n";
+        std::cerr << "Forge Game Engine - SaveGameManager: Invalid slot number: " << slotNumber << std::endl;
         return false;
     }
 
@@ -92,7 +92,7 @@ bool SaveGameManager::saveToSlot(int slotNumber, const Player* player) {
 
 bool SaveGameManager::load(const std::string& saveFileName, Player* player) {
     if (player == nullptr) {
-        std::cerr << "Forge Game Engine - SaveGameManager: Cannot load to null player\n";
+        std::cerr << "Forge Game Engine - SaveGameManager: Cannot load to null player!" << std::endl;
         return false;
     }
 
@@ -101,7 +101,7 @@ bool SaveGameManager::load(const std::string& saveFileName, Player* player) {
 
     // Check if the file exists
     if (!std::filesystem::exists(fullPath)) {
-        std::cerr << "Forge Game Engine - SaveGameManager: Save file does not exist: " << fullPath << "\n";
+        std::cerr << "Forge Game Engine - SaveGameManager: Save file does not exist: " << fullPath << std::endl;
         return false;
     }
 
@@ -109,14 +109,14 @@ bool SaveGameManager::load(const std::string& saveFileName, Player* player) {
         // Open binary file for reading
         std::ifstream file(fullPath, std::ios::binary | std::ios::in);
         if (!file.is_open()) {
-            std::cerr << "Forge Game Engine - SaveGameManager: Could not open file " << fullPath << " for reading\n";
+            std::cerr << "Forge Game Engine - SaveGameManager: Could not open file " << fullPath << " for reading!" << std::endl;
             return false;
         }
 
         // Read and validate header
         SaveGameHeader header;
         if (!readHeader(file, header)) {
-            std::cerr << "Forge Game Engine - SaveGameManager: Invalid save file format\n";
+            std::cerr << "Forge Game Engine - SaveGameManager: Invalid save file format" << std::endl;
             file.close();
             return false;
         }
@@ -124,7 +124,7 @@ bool SaveGameManager::load(const std::string& saveFileName, Player* player) {
         // Read player data
         Vector2D position(0.0f, 0.0f);
         if (!readVector2D(file, position)) {
-            std::cerr << "Forge Game Engine - SaveGameManager: Error reading player position\n";
+            std::cerr << "Forge Game Engine - SaveGameManager: Error reading player position" << std::endl;
             file.close();
             return false;
         }
@@ -136,7 +136,7 @@ bool SaveGameManager::load(const std::string& saveFileName, Player* player) {
         // Read textureID
         std::string textureID;
         if (!readString(file, textureID)) {
-            std::cerr << "Forge Game Engine - SaveGameManager: Error reading player textureID\n";
+            std::cerr << "Forge Game Engine - SaveGameManager: Error reading player textureID!" << std::endl;
             file.close();
             return false;
         }
@@ -144,7 +144,7 @@ bool SaveGameManager::load(const std::string& saveFileName, Player* player) {
         // Read state
         std::string state;
         if (!readString(file, state)) {
-            std::cerr << "Forge Game Engine - SaveGameManager: Error reading player state\n";
+            std::cerr << "Forge Game Engine - SaveGameManager: Error reading player state!" << std::endl;
             file.close();
             return false;
         }
@@ -155,7 +155,7 @@ bool SaveGameManager::load(const std::string& saveFileName, Player* player) {
         // Read level ID (not using it yet, but reading for future use)
         std::string levelID;
         if (!readString(file, levelID)) {
-            std::cerr << "Forge Game Engine - SaveGameManager: Error reading level ID\n";
+            std::cerr << "Forge Game Engine - SaveGameManager: Error reading level ID!" << std::endl;
             file.close();
             return false;
         }
@@ -174,7 +174,7 @@ bool SaveGameManager::load(const std::string& saveFileName, Player* player) {
 
 bool SaveGameManager::loadFromSlot(int slotNumber, Player* player) {
     if (slotNumber < 1) {
-        std::cerr << "Forge Game Engine - SaveGameManager: Invalid slot number: " << slotNumber << "\n";
+        std::cerr << "Forge Game Engine - SaveGameManager: Invalid slot number: " << slotNumber << std::endl;
         return false;
     }
 
@@ -192,7 +192,7 @@ bool SaveGameManager::deleteSave(const std::string& saveFileName) {
             return true;
         }
         else {
-            std::cerr << "Forge Game Engine - SaveGameManager: Save file does not exist: " << fullPath << "\n";
+            std::cerr << "Forge Game Engine - SaveGameManager: Save file does not exist: " << fullPath << std::endl;
             return false;
         }
     }
@@ -204,7 +204,7 @@ bool SaveGameManager::deleteSave(const std::string& saveFileName) {
 
 bool SaveGameManager::deleteSlot(int slotNumber) {
     if (slotNumber < 1) {
-        std::cerr << "Forge Game Engine - SaveGameManager: Invalid slot number: " << slotNumber << "\n";
+        std::cerr << "Forge Game Engine - SaveGameManager: Invalid slot number: " << slotNumber << std::endl;
         return false;
     }
 
@@ -237,6 +237,7 @@ boost::container::small_vector<std::string, 10> SaveGameManager::getSaveFiles() 
                     // Verify it's a valid save file by checking the header
                     if (isValidSaveFile(filePath.filename().string())) {
                         saveFiles.push_back(filePath.filename().string());
+                        std::cout << "Forge Game Engine - SaveGameManager: Forge Valid save file found: " << filePath.filename().string() << "\n";
                     }
                 }
             }
@@ -299,13 +300,15 @@ bool SaveGameManager::isValidSaveFile(const std::string& saveFileName) const {
         SaveGameHeader header;
         if (!readHeader(file, header)) {
             file.close();
+            std::cerr << "Forge Game Engine - Failed to read header from save file: " << fullPath << std::endl;
             return false;
         }
 
         // Check signature
-        const char* expectedSignature = "FORGESAV";
-        if (std::memcmp(header.signature, expectedSignature, 8) != 0) {
+        const char* expectedSignature = "FORGESAVE";
+        if (std::memcmp(header.signature, expectedSignature, 9) != 0) {
             file.close();
+            std::cerr << "Forge Game Engine - Invalid signature in save file: " << fullPath << std::endl;
             return false;
         }
 
@@ -370,7 +373,7 @@ SaveGameData SaveGameManager::extractSaveInfo(const std::string& saveFileName) c
         // Read and validate header
         SaveGameHeader header;
         if (!readHeader(file, header)) {
-            std::cerr << "Forge Game Engine - SaveGameManager: Invalid save file format when extracting info\n";
+            std::cerr << "Forge Game Engine - SaveGameManager: Invalid save file format when extracting info!" << std::endl;
             file.close();
             return info;
         }
@@ -437,8 +440,8 @@ bool SaveGameManager::readHeader(std::ifstream& file, SaveGameHeader& header) co
     file.read(reinterpret_cast<char*>(&header), sizeof(SaveGameHeader));
 
     // Verify header signature
-    const char* expectedSignature = "FORGESAV";
-    if (std::memcmp(header.signature, expectedSignature, 8) != 0) {
+    const char* expectedSignature = "FORGESAVE";
+    if (std::memcmp(header.signature, expectedSignature, 9) != 0) {
         return false;
     }
 
