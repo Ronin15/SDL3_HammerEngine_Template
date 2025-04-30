@@ -17,10 +17,10 @@ class Vector2D;
 
 // SaveGame header structure - used at the beginning of save files
 struct SaveGameHeader {
-    char signature[8] = {'F', 'O', 'R', 'G', 'E', 'S', 'A', 'V'}; // File signature "FORGESAV"
-    uint32_t version = 1;                                         // Save format version
-    time_t timestamp = 0;                                         // Save timestamp
-    uint32_t dataSize = 0;                                        // Size of data section
+    char signature[9] = {'F', 'O', 'R', 'G', 'E', 'S', 'A', 'V', 'E'}; // File signature "FORGESAVE"
+    uint32_t version = 1;                                          // Save format version
+    time_t timestamp = 0;                                          // Save timestamp
+    uint32_t dataSize = 0;                                         // Size of data section
 };
 
 // SaveGame data structure for metadata access
@@ -92,11 +92,13 @@ public:
     // Set the base directory for save files
     void setSaveDirectory(const std::string& directory);
 
+
+
     // Clean up resources
     void clean();
 
 private:
-    std::string m_saveDirectory{"saves"};  // Default save directory
+    std::string m_saveDirectory{"game_saves"};  // Default save directory
     static bool initialized;
 
     // Helper methods
