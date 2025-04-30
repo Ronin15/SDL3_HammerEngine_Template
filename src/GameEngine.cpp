@@ -140,6 +140,7 @@ bool GameEngine::init(const char* title,
         SDL_SetRenderDrawColor(mp_renderer, FORGE_GRAY);  // Forge Game Engine gunmetal dark grey
         SDL_SetRenderLogicalPresentation(mp_renderer, pixelWidth, pixelHeight, SDL_LOGICAL_PRESENTATION_INTEGER_SCALE);
         SDL_SetRenderScale(mp_renderer, scaleX, scaleY);
+        SDL_SetRenderDrawBlendMode(mp_renderer, SDL_BLENDMODE_BLEND);
       } else {
         std::cerr << "Forge Game Engine - Rendering system creation failed! " << SDL_GetError() << std::endl;
         return false;  // Forge renderer fail

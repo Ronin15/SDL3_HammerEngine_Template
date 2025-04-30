@@ -59,6 +59,7 @@ bool TextureManager::load(std::string fileName,
           SDL_DestroySurface(p_tempSurface);
 
           if (p_texture != 0) {
+            //SDL_SetTextureBlendMode(p_texture, SDL_BLENDMODE_ADD); //for lighting // this puts light on by default
             m_textureMap[combinedID] = p_texture;
             loadedAny = true;
             texturesLoaded++;
