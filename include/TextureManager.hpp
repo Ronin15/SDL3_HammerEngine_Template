@@ -50,8 +50,6 @@ class TextureManager {
   void drawParallax(std::string textureID,
                     int x,
                     int y,
-                    int width,
-                    int height,
                     int scroll,
                     SDL_Renderer* p_renderer);
   void clearFromTexMap(std::string textureID);
