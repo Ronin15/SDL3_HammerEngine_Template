@@ -55,7 +55,7 @@ Windows will need some env vars setup for path:
 
 ### Linux
 Follow the instructions on the official SDL3 website to install SDL3 dependencies.
-https://wiki.libsdl.org/SDL3/README/linux
+[https://wiki.libsdl.org/SDL3/README/linux](https://wiki.libsdl.org/SDL3/README-linux)
 
 ### macOS
 Homebrew is recommended for SDL3 dependencies like harfbuzz, truetype, and freetype etc.
