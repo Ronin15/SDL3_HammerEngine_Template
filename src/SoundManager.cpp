@@ -21,14 +21,14 @@ SoundManager::~SoundManager() {
 bool SoundManager::init() {
   // Initialize SDL_mixer
   if (!SDL_Init(SDL_INIT_AUDIO)) {
-    std::cerr << "Forge Game Engine - Error initializing SDL Audio: " << SDL_GetError() << "\n";
+    std::cerr << "Forge Game Engine - Error initializing SDL Audio: " << SDL_GetError() << std::endl;
     return false;
   }
 
   // Initialize SDL3_mixer with default settings
   MIX_InitFlags initFlags = Mix_Init(MIX_INIT_MP3 | MIX_INIT_OGG);
   if (initFlags == 0) {
-    std::cerr << "Forge Game Engine - Error initializing SDL_mixer: " << SDL_GetError() << "\n";
+    std::cerr << "Forge Game Engine - Error initializing SDL_mixer: " << SDL_GetError() << std::endl;
     return false;
   }
 
@@ -127,7 +127,7 @@ bool SoundManager::loadSFX(std::string filePath, std::string soundID) {
   std::cout << "Forge Game Engine - Loading sound effect: " << filePath << "! ID: " << soundID << "\n";
 
   if (p_chunk == nullptr) {
-    std::cerr << "Forge Game Engine - Could not load sound effect: " << SDL_GetError() << "\n";
+    std::cerr << "Forge Game Engine - Could not load sound effect: " << SDL_GetError() << std::endl;
     return false;
   }
 
