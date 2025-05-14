@@ -72,7 +72,7 @@ FetchContent_MakeAvailable(Boost)
 
 # Specify the stable release tags for each SDL3 component
 # Updated from "main" branch to specific release versions
-set(SDL3_GIT_TAG "release-3.2.12")           # Latest stable release for SDL3
+set(SDL3_GIT_TAG "release-3.2.14")           # Latest stable release for SDL3
 set(SDL3_IMAGE_GIT_TAG "release-3.2.4")     # Latest stable release for SDL3_image
 set(SDL3_TTF_GIT_TAG "release-3.2.2")       # Latest stable release for SDL3_ttf
 set(SDL3_MIXER_GIT_TAG "main")     # Latest stable release for SDL3_mixer
