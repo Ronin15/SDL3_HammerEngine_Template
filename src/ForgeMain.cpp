@@ -46,7 +46,7 @@ const std::string GAME_NAME{"Game Template"};
     while (GameEngine::Instance().getRunning()) {
       frameStart = SDL_GetTicks();
 
-      // Handle events on the main thread (this is SDL requirement)
+      // Handle events on the main thread (SDL requirement)
       GameEngine::Instance().handleEvents();
 
       // Run update in a worker thread
@@ -59,14 +59,14 @@ const std::string GAME_NAME{"Game Template"};
         updateCondition.notify_one();
       });
 
-      // Process any background tasks while waiting for update
+      // Process any background tasks when waiting on update
       // This could include asset loading, AI computation, physics, etc.
       Forge::ThreadSystem::Instance().enqueueTask([]() {
         // Example background task
         // GameEngine::Instance().processBackgroundTasks();
       });
 
-      // Wait for update to complete before rendering
+      // Wait on update to complete before rendering
       {
         std::unique_lock<std::mutex> lock(updateMutex);
         updateCondition.wait(lock, [&] { return updateReady.load(); });
