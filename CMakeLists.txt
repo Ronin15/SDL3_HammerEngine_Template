@@ -26,12 +26,13 @@ else() # Release build
 endif()
 
 # Debug build settings
-set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -g3 -O0")
-set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -g3 -O0 -Wall -Wextra")
+set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -g3 -O0 -Og -Wall -Wextra")
+set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -g3 -O0 -Og -Wall -Wextra")
 
 # Release build settings
-set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -O2 -s -mtune=native -flto")
-set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O2 -s -mtune=native -flto")
+set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -O3 -flto -fno-strict-aliasing -fomit-frame-pointer -ffunction-sections -fdata-sections -Wl,--gc-sections -ffast-math -ftree-vectorize -fpeel-loops -funroll-loops -march=x86-64-v3 -mtune=generic -msse4.2 -mavx -mavx2 -mfma")
+set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -flto -fno-strict-aliasing -fomit-frame-pointer -ffunction-sections -fdata-sections -Wl,--gc-sections -ffast-math -ftree-vectorize -fpeel-loops -funroll-loops -march=x86-64-v3 -mtune=generic -msse4.2 -mavx -mavx2 -mfma")
+#mac Os -mcpu=apple-m3 -mtune=generic
 
 # Set C++ standard
 set(CMAKE_CXX_STANDARD 20)
