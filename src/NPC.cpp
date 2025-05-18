@@ -153,15 +153,15 @@ void NPC::updateAnimation() {
             
             // Determine animation row based on dominant direction
             if (std::abs(m_velocity.getX()) > std::abs(m_velocity.getY())) {
-                // Horizontal movement - use row 1 (assuming row 0 is idle)
+                // Horizontal movement - use row 1
                 m_currentRow = 1;
             } else {
                 // Vertical movement - use row 2 or 3 (down or up)
                 m_currentRow = (m_velocity.getY() > 0) ? 2 : 3;
             }
         } else {
-            // Idle animation - typically row 0
-            m_currentRow = 0;
+            // Idle animation - row 1 (since TextureManager uses 1-indexed rows)
+            m_currentRow = 1;
             m_currentFrame = (m_currentFrame + 1) % m_numFrames;
         }
     }

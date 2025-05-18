@@ -197,6 +197,31 @@ The EntityStateManager handles the state machine for individual entities:
 
 See `include/EntityStateManager.hpp` for the full API.
 
+### AIManager
+
+The AIManager provides a comprehensive AI behavior management system:
+
+- Dynamic behavior assignment to game entities
+- Thread-safe behavior updates through the game's thread system
+- Multiple behavior types for different AI patterns:
+  - **WanderBehavior**: Entities move randomly within a defined area, changing direction periodically
+  - **PatrolBehavior**: Entities follow predefined waypoints in sequence, moving along patrol routes
+  - **ChaseBehavior**: Entities pursue a target (like the player) when within detection range
+- Behavior messaging system for pausing, resuming, and controlling AI states
+- Memory-efficient behavior storage with automatic cleanup
+
+Key features include:
+
+- **Centralized AI Management**: Register behaviors once and reuse across many entities
+- **Behavior Switching**: Easily change entity behaviors at runtime
+- **Multi-threaded Updates**: AI processing distributes across available CPU cores
+- **Waypoint System**: Create complex patrol paths with multiple points
+- **Target Tracking**: Chase behavior maintains pursuit even when line of sight is lost
+- **Messaging API**: Control behaviors with messages like "pause", "resume", or "reverse"
+- **Extensible Design**: Create custom behaviors by implementing the AIBehavior interface
+
+See `docs/AIManager.md` for detailed documentation with examples and best practices. Additional API details can be found in `include/AIManager.hpp`, `include/AIBehavior.hpp`, and the specific behavior implementations.
+
 ## Window Icon
 This project supports window icons across all platforms:
 
@@ -216,6 +241,7 @@ Also, this template can be used for 3D as well. Just focus on replacing SDL_rend
 
 Additional documentation can be found in the `docs/` directory:
 
+- `AIManager.md` - Comprehensive guide to the AI system with examples and custom behavior creation
 - `SaveManagerTesting.md` - Details on the SaveGameManager testing framework and how to run the tests
 - `ThreadSystem.md` - Core documentation for the ThreadSystem component with usage examples and best practices
 - `ThreadSystem_API.md` - Complete API reference for the ThreadSystem with method signatures and parameters
