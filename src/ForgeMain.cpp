@@ -36,7 +36,7 @@ const std::string GAME_NAME{"Game Template"};
             << Forge::ThreadSystem::Instance().getThreadCount()
             << " worker threads and capacity for "
             << Forge::ThreadSystem::Instance().getQueueCapacity()
-            << " tasks!\n";
+            << " parallel tasks!\n";
 
   std::mutex updateMutex;
   std::condition_variable updateCondition;
