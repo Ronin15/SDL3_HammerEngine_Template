@@ -8,7 +8,19 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 find_package(Boost REQUIRED COMPONENTS unit_test_framework)
 
 # Include directories
-include_directories(${PROJECT_SOURCE_DIR}/include)
+include_directories(
+    ${PROJECT_SOURCE_DIR}/include
+    ${PROJECT_SOURCE_DIR}/include/core
+    ${PROJECT_SOURCE_DIR}/include/managers
+    ${PROJECT_SOURCE_DIR}/include/states
+    ${PROJECT_SOURCE_DIR}/include/entities
+    ${PROJECT_SOURCE_DIR}/include/entities/states
+    ${PROJECT_SOURCE_DIR}/include/ai
+    ${PROJECT_SOURCE_DIR}/include/ai/behaviors
+    ${PROJECT_SOURCE_DIR}/include/utils
+    ${PROJECT_SOURCE_DIR}/include/io
+    ${PROJECT_SOURCE_DIR}/include/ui
+)
 
 # Add test executables
 add_executable(save_manager_tests 
