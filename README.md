@@ -23,6 +23,7 @@ I use the Zed IDE with custom cmake and ninja task configurations to build/compi
 - Texture management (auto loads all from img dir)
 - Sound & Music management (auto loads all from sound and music dir) stop, start, pause, halt, play sfx
 - Font management (auto loads all from font dir)
+- Simple and Efficient Multi-Threading system.
 - Test player with 2 frame animation (with Arnie the Armadillo) Arnie is copyrighted Hammer Forged Games (C) 2025
 - Input handling:
   - Keyboard and mouse
@@ -93,7 +94,7 @@ or
 
 See `docs/SaveManagerTesting.md` or `docs/ThreadSystem.md` for more details on the testing frameworks.
 
-## Project Components
+## Feature Component Details
 
 ### Game Engine
 
