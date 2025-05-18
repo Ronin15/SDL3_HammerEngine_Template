@@ -325,7 +325,7 @@ void GameEngine::signalUpdateComplete() {
     m_updateCompleted = false;  // Reset for next frame
   }
 }
-//maybe alternate loading strategy
+//maybe alternate loading strategy ------------------------------------- not needed but keeping here for example Remove later TODO!
 bool GameEngine::loadResourcesAsync(const std::string& path) {
   // Reserve capacity for resource loading tasks
   Forge::ThreadSystem::Instance().reserveQueueCapacity(100);
