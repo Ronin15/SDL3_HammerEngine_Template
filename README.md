@@ -215,4 +215,8 @@ Also, this template can be used for 3D as well. Just focus on replacing SDL_rend
 
 Additional documentation can be found in the `docs/` directory:
 
-- `SaveManagerTesting.md` - Details on the SaveGameManager testing framework
+- `SaveManagerTesting.md` - Details on the SaveGameManager testing framework and how to run the tests
+- `ThreadSystem.md` - Core documentation for the ThreadSystem component with usage examples and best practices
+- `ThreadSystem_API.md` - Complete API reference for the ThreadSystem with method signatures and parameters
+- `ThreadSystem_500Tasks.md` - Explanation of what "500 tasks" means in practical game development scenarios
+- `QueueCapacityOptimization.md` - Technical details on memory optimization in the ThreadSystem task queue
