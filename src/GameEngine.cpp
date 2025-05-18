@@ -178,6 +178,9 @@ bool GameEngine::init(const char* title,
   // INITIALIZING GAME RESOURCE LOADING AND
   // MANAGEMENT_________________________________________________________________________________BEGIN
 
+  // Reserve capacity for initialization tasks
+  Forge::ThreadSystem::Instance().reserveQueueCapacity(10);  // Reserve space for all initialization tasks
+  
   // Use multiple threads for initialization
   boost::container::small_vector<std::future<bool>, 6>
       initTasks;  // Store up to 6 tasks without heap allocation
@@ -324,6 +327,9 @@ void GameEngine::signalUpdateComplete() {
 }
 //maybe alternate loading strategy
 bool GameEngine::loadResourcesAsync(const std::string& path) {
+  // Reserve capacity for resource loading tasks
+  Forge::ThreadSystem::Instance().reserveQueueCapacity(100);
+  
   auto result = Forge::ThreadSystem::Instance().enqueueTaskWithResult(
       [this, path]() -> bool {
         // Example of async resource loading
@@ -342,6 +348,9 @@ bool GameEngine::loadResourcesAsync(const std::string& path) {
 void GameEngine::processBackgroundTasks() {
   // This method can be used to perform background processing
   // It should be safe to run on worker threads
+  
+  // Reserve capacity before submitting background tasks
+  Forge::ThreadSystem::Instance().reserveQueueCapacity(200);
 
   // Example: Process AI, physics, or other non-rendering tasks
   // These tasks can run while the main thread is handling rendering
