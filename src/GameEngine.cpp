@@ -7,6 +7,8 @@
 #include <boost/container/small_vector.hpp>
 #include <future>
 #include <iostream>
+#include "AIManager.hpp"
+#include "AIDemoState.hpp"
 #include "FontManager.hpp"
 #include "GamePlayState.hpp"
 #include "GameStateManager.hpp"
@@ -33,8 +35,8 @@ bool GameEngine::init(const char* title,
 
     // Get display bounds to determine optimal window size
     SDL_Rect display;
-    float scaleX{1.0f};
-    float scaleY{1.0f};
+    //float scaleX{1.0f};
+    //float scaleY{1.0f};
     if (SDL_GetDisplayBounds(1, &display) != 0) {  // Try display 1 first
       // Try display 0 as fallback
       if (SDL_GetDisplayBounds(0, &display) != 0) {
@@ -67,8 +69,8 @@ bool GameEngine::init(const char* title,
         // Set fullscreen if requested dimensions are larger than screen
         if (width > display.w || height > display.h) {
           fullscreen = true;  // true
-          scaleX = 2.0f;
-          scaleY = 2.0f;
+         // scaleX = 1.0f;
+         // scaleY = 1.0f;
           std::cout << "Forge Game Engine - Window size larger than screen, "
                        "enabling fullscreen\n";
         }
@@ -101,16 +103,16 @@ bool GameEngine::init(const char* title,
     // Window handling
     int flags{0};
     int flag1 = SDL_WINDOW_FULLSCREEN;
-    int flag2 = SDL_WINDOW_HIGH_PIXEL_DENSITY;
+    //int flag2 = SDL_WINDOW_HIGH_PIXEL_DENSITY;
 
     if (fullscreen) {
-      flags = flag1 | flag2;
+      flags = flag1; //| flag2;
       //setting window width and height to fullscreen dimensions for detected monitor
       m_windowWidth = display.w;
       m_windowHeight = display.h;
       std::cout << "Forge Game Engine - Window size set to Full Screen!\n";
     }else{
-      flags = flag2;
+      //flags = flag2;
     }
 
     mp_window = SDL_CreateWindow(title, m_windowWidth, m_windowHeight, flags);
@@ -138,8 +140,8 @@ bool GameEngine::init(const char* title,
       if (mp_renderer) {
         std::cout << "Forge Game Engine - Rendering system online!\n";
         SDL_SetRenderDrawColor(mp_renderer, FORGE_GRAY);  // Forge Game Engine gunmetal dark grey
-        SDL_SetRenderLogicalPresentation(mp_renderer, pixelWidth, pixelHeight, SDL_LOGICAL_PRESENTATION_INTEGER_SCALE);
-        SDL_SetRenderScale(mp_renderer, scaleX, scaleY);
+       //SDL_SetRenderLogicalPresentation(mp_renderer, pixelWidth, pixelHeight, SDL_LOGICAL_PRESENTATION_INTEGER_SCALE);
+       //SDL_SetRenderScale(mp_renderer, scaleX, scaleY);
         SDL_SetRenderDrawBlendMode(mp_renderer, SDL_BLENDMODE_BLEND);
       } else {
         std::cerr << "Forge Game Engine - Rendering system creation failed! " << SDL_GetError() << std::endl;
@@ -180,7 +182,7 @@ bool GameEngine::init(const char* title,
 
   // Reserve capacity for initialization tasks
   Forge::ThreadSystem::Instance().reserveQueueCapacity(10);  // Reserve space for all initialization tasks
-  
+
   // Use multiple threads for initialization
   boost::container::small_vector<std::future<bool>, 6>
       initTasks;  // Store up to 6 tasks without heap allocation
@@ -250,6 +252,18 @@ bool GameEngine::init(const char* title,
         return true;
       }));
 
+  // Initialize AI Manager in a separate thread
+  initTasks.push_back(
+      Forge::ThreadSystem::Instance().enqueueTaskWithResult([]() -> bool {
+        std::cout << "Forge Game Engine - Creating AI Manager\n";
+        if (!AIManager::Instance().init()) {
+          std::cerr << "Forge Game Engine - Failed to initialize AI Manager!" << std::endl;
+          return false;
+        }
+        std::cout << "Forge Game Engine - AI Manager initialized successfully\n";
+        return true;
+      }));
+
   // Initialize game state manager (on main thread because it directly calls rendering)
   std::cout << "Forge Game Engine - Creating Game State Manager and setting up "
                "initial Game States\n";
@@ -264,6 +278,7 @@ bool GameEngine::init(const char* title,
   mp_gameStateManager->addState(std::make_unique<LogoState>());
   mp_gameStateManager->addState(std::make_unique<MainMenuState>());
   mp_gameStateManager->addState(std::make_unique<GamePlayState>());
+  mp_gameStateManager->addState(std::make_unique<AIDemoState>());
 
   // Wait for all initialization tasks to complete
   bool allTasksSucceeded = true;
@@ -300,7 +315,10 @@ void GameEngine::handleEvents() {
 void GameEngine::update() {
   // This method is now thread-safe and can be called from a worker thread
   std::lock_guard<std::mutex> lock(m_updateMutex);
+
+  // Update game states
   mp_gameStateManager->update();
+
   m_updateCompleted = true;
   m_updateCondition.notify_all();
 }
@@ -329,7 +347,7 @@ void GameEngine::signalUpdateComplete() {
 bool GameEngine::loadResourcesAsync(const std::string& path) {
   // Reserve capacity for resource loading tasks
   Forge::ThreadSystem::Instance().reserveQueueCapacity(100);
-  
+
   auto result = Forge::ThreadSystem::Instance().enqueueTaskWithResult(
       [this, path]() -> bool {
         // Example of async resource loading
@@ -348,7 +366,7 @@ bool GameEngine::loadResourcesAsync(const std::string& path) {
 void GameEngine::processBackgroundTasks() {
   // This method can be used to perform background processing
   // It should be safe to run on worker threads
-  
+
   // Reserve capacity before submitting background tasks
   Forge::ThreadSystem::Instance().reserveQueueCapacity(200);
 
@@ -387,6 +405,9 @@ void GameEngine::clean() {
 
   std::cout << "Forge Game Engine - Cleaning up Sound Manager...\n";
   SoundManager::Instance().clean();
+
+  std::cout << "Forge Game Engine - Cleaning up AI Manager...\n";
+  AIManager::Instance().clean();
 
   std::cout << "Forge Game Engine - Cleaning up Save Game Manager...\n";
   SaveGameManager::Instance().clean();
