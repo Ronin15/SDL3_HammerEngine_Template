@@ -2,7 +2,7 @@
 
 ## Overview
 
-The ThreadSystem is a core component of the Forge Game Engine, providing thread pool management and task-based concurrency. It allows game systems to enqueue work that gets processed by a pool of worker threads, enabling performance benefits from multi-core processors while maintaining a simplified programming model.
+The ThreadSystem is a core component of the Forge Game Engine, providing thread pool management and task-based concurrency. It allows game systems to enqueue work that gets processed by a pool of worker threads, enabling performance benefits from multi-core processors while maintaining a simplified programming model. The system is optimized to efficiently handle up to 500 concurrent tasks (see [Understanding 500 Tasks](ThreadSystem_500Tasks.md) for details).
 
 ## Features
 
@@ -106,7 +106,7 @@ Eliminating dynamic resizing of the task queue helps maintain consistent perform
 
 1. **Set Appropriate Initial Capacity**
    - For most games, set capacity to the maximum expected concurrent task count
-   - The default of 512 is suitable for games with moderate parallelism
+   - The default of 512 is suitable for games with moderate parallelism (around 500 active entities)
 
 2. **Reserve Before Batch Submissions**
    - Before submitting a large batch of tasks, ensure the queue has sufficient capacity
@@ -120,6 +120,12 @@ Eliminating dynamic resizing of the task queue helps maintain consistent perform
    - Setting too large a capacity wastes memory
    - Setting too small a capacity causes reallocations
    - Aim for 1.5-2x your typical peak usage
+
+5. **Consider Task Granularity**
+   - Optimal task size is typically 0.1-1ms per task
+   - Too small tasks (<0.05ms) create excessive overhead
+   - Too large tasks (>5ms) can cause load imbalance
+   - See [ThreadSystem 500 Tasks](ThreadSystem_500Tasks.md) for detailed guidance
 
 ## Example Scenarios
 
@@ -174,6 +180,10 @@ void loadAssets(const std::vector<std::string>& assetPaths) {
 The ThreadSystem uses a vector-based task queue with pre-allocation support, enabling better memory management than the standard queue implementation. All operations are thread-safe with proper synchronization to ensure correct behavior in a multi-threaded environment.
 
 The implementation efficiently handles task creation, dispatch, and completion, with special care taken to ensure proper propagation of exceptions and return values.
+
+## Performance Characteristics
+
+The system is designed to handle approximately 500 concurrent tasks with optimal memory usage and processing efficiency. This capacity supports rich game worlds with hundreds of active entities and complex simulations. For a detailed explanation of what "500 tasks" means in practice and how it translates to game features, see the [ThreadSystem 500 Tasks](ThreadSystem_500Tasks.md) document.
 
 ## Thread Safety
 

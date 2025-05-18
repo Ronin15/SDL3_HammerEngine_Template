@@ -25,8 +25,8 @@ const std::string GAME_NAME{"Game Template"};
   std::cout << "Forge Game Engine - Initializing " << GAME_NAME << "...\n";
   std::cout << "Forge Game Engine - Initializing Thread System....\n";
 
-  // Initialize the thread system first
-  if (!Forge::ThreadSystem::Instance().init()) {
+  // Initialize the thread system first with capacity for 500 tasks
+  if (!Forge::ThreadSystem::Instance().init(500)) {
     std::cerr << "Forge Game Engine - Failed to initialize thread system!"
               << std::endl;
     return -1;
@@ -34,7 +34,9 @@ const std::string GAME_NAME{"Game Template"};
 
   std::cout << "Forge Game Engine - Thread system initialized with "
             << Forge::ThreadSystem::Instance().getThreadCount()
-            << " worker threads!\n";
+            << " worker threads and capacity for "
+            << Forge::ThreadSystem::Instance().getQueueCapacity()
+            << " tasks!\n";
 
   std::mutex updateMutex;
   std::condition_variable updateCondition;
@@ -49,6 +51,12 @@ const std::string GAME_NAME{"Game Template"};
       // Handle events on the main thread (SDL requirement)
       GameEngine::Instance().handleEvents();
 
+      // Ensure we have enough capacity for update and background tasks
+      if (Forge::ThreadSystem::Instance().getQueueSize() > Forge::ThreadSystem::Instance().getQueueCapacity() / 2) {
+        // If queue is getting full, reserve more capacity
+        Forge::ThreadSystem::Instance().reserveQueueCapacity(Forge::ThreadSystem::Instance().getQueueCapacity() * 2);
+      }
+      
       // Run update in a worker thread
       Forge::ThreadSystem::Instance().enqueueTask([&]() {
         GameEngine::Instance().update();
