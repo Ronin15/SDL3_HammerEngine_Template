@@ -76,7 +76,7 @@ BOOST_AUTO_TEST_CASE(TestTaskWithResult) {
 
 BOOST_AUTO_TEST_CASE(TestMultipleTasks) {
     // Number of tasks to create
-    const int numTasks = 500;
+    const int numTasks = 3950;
 
     // Atomic counter to be incremented by each task
     std::atomic<int> counter{0};
