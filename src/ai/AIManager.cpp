@@ -28,7 +28,9 @@ bool AIManager::init() {
 }
 
 void AIManager::update() {
-    if (!m_initialized) return;
+    if (!m_initialized) {
+        return;
+    }
     
     // Make a copy of the entity-behavior map to avoid issues if the map changes during iteration
     auto entityBehaviorsCopy = m_entityBehaviors;

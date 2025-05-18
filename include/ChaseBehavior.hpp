@@ -9,6 +9,7 @@
 #include "AIBehavior.hpp"
 #include "Vector2D.hpp"
 
+
 class ChaseBehavior : public AIBehavior {
 public:
     ChaseBehavior(Entity* target = nullptr, float chaseSpeed = 3.0f, float maxRange = 500.0f, float minRange = 50.0f)
@@ -36,7 +37,9 @@ public:
     }
 
     void update(Entity* entity) override {
-        if (!entity || !m_active || !m_target) return;
+        if (!entity || !m_active || !m_target) {
+            return;
+        }
 
         // Get positions
         Vector2D entityPos = entity->getPosition();
@@ -66,6 +69,7 @@ public:
                     Vector2D newVelocity = direction * m_chaseSpeed;
                     entity->setVelocity(newVelocity);
 
+
                     // Handle sprite flipping for visual direction
                     if (direction.getX() < 0) {
                         entity->setFlip(SDL_FLIP_HORIZONTAL);
@@ -75,6 +79,7 @@ public:
                 } else {
                     // Target is within minimum range, stop moving
                     entity->setVelocity(Vector2D(0, 0));
+
                     onTargetReached(entity);
                 }
             } else {
@@ -92,6 +97,7 @@ public:
             if (m_isChasing) {
                 m_isChasing = false;
                 entity->setVelocity(Vector2D(0, 0));
+
                 onTargetLost(entity);
             }
         }
@@ -166,8 +172,8 @@ protected:
 
 private:
     Entity* m_target{nullptr};
-    float m_chaseSpeed{3.0f};
-    float m_maxRange{500.0f};  // Maximum distance to chase target
+    float m_chaseSpeed{10.0f};  // Increased to 10.0 for very visible movement
+    float m_maxRange{1000.0f};  // Maximum distance to chase target - increased to 1000
     float m_minRange{50.0f};   // Minimum distance to maintain from target
 
     bool m_isChasing{false};

@@ -36,7 +36,9 @@ public:
     }
 
     void update(Entity* entity) override {
-        if (!entity || !m_active || m_waypoints.empty()) return;
+        if (!entity || !m_active || m_waypoints.empty()) {
+            return;
+        }
 
         // Safety check for valid waypoint index
         if (m_currentWaypoint >= m_waypoints.size()) {
@@ -72,7 +74,8 @@ public:
         }
 
         // Set entity velocity based on direction and speed
-        entity->setVelocity(direction * m_moveSpeed);
+        Vector2D newVelocity = direction * m_moveSpeed;
+        entity->setVelocity(newVelocity);
 
         // Handle sprite flipping for visual direction
         if (direction.getX() < 0) {
@@ -135,7 +138,7 @@ private:
     std::vector<Vector2D> m_waypoints;
     size_t m_currentWaypoint{0};
     float m_moveSpeed{2.0f};
-    float m_waypointRadius{15.0f}; // How close entity needs to be to "reach" a waypoint
+    float m_waypointRadius{25.0f}; // How close entity needs to be to "reach" a waypoint - increased from 15 to 25
 
     // Check if entity has reached the current waypoint
     bool isAtWaypoint(const Vector2D& position, const Vector2D& waypoint) const {
