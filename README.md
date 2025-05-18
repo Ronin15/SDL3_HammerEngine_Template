@@ -72,20 +72,26 @@ xcode command line tools is needed to compile.
 
 ## Running the Tests
 
-The project includes unit tests for the SaveGameManager component. To run the tests:
+The project includes unit tests for the SaveGameManager component and the Threading System. To run the tests:
 
 ```bash
 # Run the tests
 ./run_save_tests.sh
+or
+./run_thread_tests.sh
 
 # Run with verbose output
 ./run_save_tests.sh --verbose
+or
+./run_thread_tests.sh --verbose
 
 # Clean and rebuild tests
 ./run_save_tests.sh --clean
+or
+./run_thread_tests.sh --clean
 ```
 
-See `docs/SaveManagerTesting.md` for more details on the testing framework.
+See `docs/SaveManagerTesting.md` or `ThreadSystem.md` for more details on the testing frameworks.
 
 ## Project Components
 
