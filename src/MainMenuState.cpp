@@ -17,9 +17,12 @@ bool MainMenuState::enter() {
 void MainMenuState::update() {
   //std::cout << "Updating Main Menu State\n";
 
-      // Handle Play (enter) and ESC key.
+      // Handle menu options
       if (InputHandler::Instance().isKeyDown(SDL_SCANCODE_RETURN)) {
           GameEngine::Instance().getGameStateManager()->setState("GamePlayState");
+      }
+      if (InputHandler::Instance().isKeyDown(SDL_SCANCODE_A)) {
+          GameEngine::Instance().getGameStateManager()->setState("AIDemo");
       }
       if (InputHandler::Instance().isKeyDown(SDL_SCANCODE_ESCAPE)) {
           GameEngine::Instance().setRunning(false);
@@ -28,11 +31,37 @@ void MainMenuState::update() {
 
 void MainMenuState::render() {
    SDL_Color fontColor = {200, 200, 200, 255};//Gray
+    // Title
     FontManager::Instance().drawText(
-      "Main Menu State Place Holder <----> Press Enter to Render test Player",
+      "Main Menu",
       "fonts_Arial",
       GameEngine::Instance().getWindowWidth() / 2,     // Center horizontally
-      (GameEngine::Instance().getWindowHeight() / 2) - 180,
+      (GameEngine::Instance().getWindowHeight() / 2) - 200,
+      fontColor,
+      GameEngine::Instance().getRenderer());
+
+    // Menu options
+    FontManager::Instance().drawText(
+      "Press ENTER - Start Game",
+      "fonts_Arial",
+      GameEngine::Instance().getWindowWidth() / 2,     // Center horizontally
+      (GameEngine::Instance().getWindowHeight() / 2) - 120,
+      fontColor,
+      GameEngine::Instance().getRenderer());
+
+    FontManager::Instance().drawText(
+      "Press A - AI Demo",
+      "fonts_Arial",
+      GameEngine::Instance().getWindowWidth() / 2,     // Center horizontally
+      (GameEngine::Instance().getWindowHeight() / 2) - 70,
+      fontColor,
+      GameEngine::Instance().getRenderer());
+
+    FontManager::Instance().drawText(
+      "Press ESC - Exit",
+      "fonts_Arial",
+      GameEngine::Instance().getWindowWidth() / 2,     // Center horizontally
+      (GameEngine::Instance().getWindowHeight() / 2) - 20,
       fontColor,
       GameEngine::Instance().getRenderer());
 }

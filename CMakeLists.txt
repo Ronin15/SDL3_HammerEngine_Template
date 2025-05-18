@@ -172,7 +172,7 @@ target_link_libraries(imgui PUBLIC
 )
 
 # Find all source files
-file(GLOB SOURCES "src/*.cpp")
+file(GLOB SOURCES "src/*.cpp" "src/ai/*.cpp")
 
 # Create executable for your project with proper extensions
 if(WIN32)

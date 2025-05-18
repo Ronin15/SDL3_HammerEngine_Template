@@ -70,6 +70,15 @@ class Vector2D {
       (*this) *= 1 / l;
     }
   }
+  
+  Vector2D normalize() const {
+    Vector2D v = *this;
+    float l = length();
+    if (l > 0) {
+      v *= 1 / l;
+    }
+    return v;
+  }
 
  private:
   float m_x{0.0f};

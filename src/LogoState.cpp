@@ -22,7 +22,7 @@ void LogoState::update() {
   // std::cout << "Forge Game Engine - Updating LOGO State\n";
 
   stateTimer = SDL_GetTicks();
-  if (stateTimer > 8000) {
+  if (stateTimer > 7000) {
     GameEngine::Instance().getGameStateManager()->setState("MainMenuState");
   }
 }
