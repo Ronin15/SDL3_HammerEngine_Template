@@ -3,9 +3,9 @@
  * Licensed under the MIT License - see LICENSE file for details
 */
 
-#include "AIManager.hpp"
-#include "AIBehavior.hpp"
-#include "ThreadSystem.hpp"
+#include "ai/AIManager.hpp"
+#include "ai/AIBehavior.hpp"
+#include "utils/ThreadSystem.hpp"
 #include <SDL3/SDL.h>
 #include <vector>
 #include <future>
