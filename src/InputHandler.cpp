@@ -157,7 +157,7 @@ void InputHandler::update() {
   while (SDL_PollEvent(&event)) {
     switch (event.type) {
       case SDL_EVENT_QUIT:
-        std::cout << "Forge Game Engine - Shutting down! Forge Stopping {}===]>\n";
+        std::cout << "Forge Game Engine - Shutting down! {}===]>" << std::endl;
         GameEngine::Instance().setRunning(false);
         break;
 
