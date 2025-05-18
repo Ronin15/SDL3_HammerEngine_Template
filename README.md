@@ -7,7 +7,7 @@ I use the Zed IDE with custom cmake and ninja task configurations to build/compi
 
   - **Note**: Below in the Prerequisites I mentioned some ways that I used to get the project to compile on Windows. You may need some additional tweaks depending on your system and preferences. Via Cmake the compile_commands.json file is generated automatically and moved to the project root directory. This will allow Zed, when it automatically installs Clangd, to provide code completion and diagnostics.
 
-## Features
+## Features Overview
 
 - SDL3 integration with SDL_image, SDL_ttf, and SDL_mixer
 - imgui support for SDL3 renderer -> https://github.com/ocornut/imgui
@@ -111,6 +111,85 @@ The SaveGameManager provides functionality to save and load game state. Features
 - File management (listing, deletion, validation)
 
 See `include/SaveGameManager.hpp` for the full API.
+
+### ThreadSystem
+
+The ThreadSystem provides a thread pool implementation for efficient multi-threaded task execution:
+
+- Thread-safe task queue with pre-allocated memory
+- Worker thread pool that automatically scales to hardware capabilities
+- Support for both fire-and-forget tasks and tasks with future results
+- Singleton pattern for easy access throughout the application
+- Queue capacity management to avoid overhead from memory reallocations
+- Graceful shutdown with proper cleanup of resources
+
+See `docs/ThreadSystem_API.md` for the full API, and the other ThreadSystem docs for more information.
+
+### TextureManager
+
+The TextureManager handles all image loading and rendering operations:
+
+- Automatic loading of textures from files or directories
+- Support for drawing static images or sprite animations
+- Parallax scrolling capabilities for background effects
+- Memory-efficient texture management
+
+See `include/TextureManager.hpp` for the full API.
+
+### SoundManager
+
+The SoundManager provides a comprehensive audio system:
+
+- Loading of sound effects and music from files or directories
+- Control for sound effect playback (volume, loops)
+- Music playback control (play, pause, resume, stop)
+- Volume management for different audio types
+
+See `include/SoundManager.hpp` for the full API.
+
+### FontManager
+
+The FontManager handles text rendering throughout the application:
+
+- Loading of TTF and OTF fonts in various sizes
+- Text rendering to textures or directly to the screen
+- Memory-efficient font management
+
+See `include/FontManager.hpp` for the full API.
+
+### InputHandler
+
+The InputHandler manages all user input across different devices:
+
+- Keyboard input detection
+- Mouse position and button state tracking
+- Xbox Series X and PS4 controller support
+- Gamepad axis movement and button states
+- Input state resets and cleanups
+
+See `include/InputHandler.hpp` for the full API.
+
+### GameStateManager
+
+The GameStateManager controls the high-level game states:
+
+- State transitions between gameplay, menu, pause, etc.
+- State addition, removal, and clearance
+- State lookup by name
+- Update and render delegation to the current state
+
+See `include/GameStateManager.hpp` for the full API.
+
+### EntityStateManager
+
+The EntityStateManager handles the state machine for individual entities:
+
+- State transitions for entity behaviors (idle, running, etc.)
+- State addition, removal, and lookup
+- Current state tracking and updates
+- Memory-efficient state storage using flat maps
+
+See `include/EntityStateManager.hpp` for the full API.
 
 ## Window Icon
 This project supports window icons across all platforms:
