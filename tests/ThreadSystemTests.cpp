@@ -76,8 +76,8 @@ BOOST_AUTO_TEST_CASE(TestTaskWithResult) {
 
 BOOST_AUTO_TEST_CASE(TestMultipleTasks) {
     // Number of tasks to create
-    const int numTasks = 100;
-    
+    const int numTasks = 500;
+
     // Atomic counter to be incremented by each task
     std::atomic<int> counter{0};
     
@@ -164,9 +164,10 @@ BOOST_AUTO_TEST_CASE(TestConcurrencyIsolation) {
 }
 
 BOOST_AUTO_TEST_CASE(TestBusyFlag) {
-    // Check initial busy state
+    // Check initial busy state - should typically be false before we add work
     bool initialBusy = Forge::ThreadSystem::Instance().isBusy();
-    
+    BOOST_CHECK(!initialBusy);
+
     // Submit a long-running task
     Forge::ThreadSystem::Instance().enqueueTask([]() {
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
