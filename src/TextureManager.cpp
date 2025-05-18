@@ -152,6 +152,7 @@ void TextureManager::drawFrame(std::string textureID,
 
   SDL_RenderTextureRotated(p_renderer, m_textureMap[textureID], &srcRect, &destRect, angle, &center, flip);
 }
+
 void TextureManager::drawParallax(std::string textureID,
                     int x,
                     int y,
@@ -163,7 +164,7 @@ void TextureManager::drawParallax(std::string textureID,
     std::cerr << "Forge Game Engine - Texture not found: " << textureID << std::endl;
     return;
   }
-  
+
   // Get the texture dimensions
   float width, height;
   if (SDL_GetTextureSize(it->second, &width, &height) != 0) {
@@ -173,39 +174,39 @@ void TextureManager::drawParallax(std::string textureID,
 
   // Calculate scroll offset (make sure it wraps around)
   scroll = scroll % static_cast<int>(width);
-  
-  SDL_FRect srcRect1;
-  SDL_FRect destRect1;
-  SDL_FRect srcRect2;
-  SDL_FRect destRect2;
-  SDL_FPoint center = {width / 2.0f, height / 2.0f};
-  double angle = 0.0;
+  if (scroll < 0) {
+    scroll += static_cast<int>(width); // Handle negative scroll values
+  }
+
+  SDL_FRect srcRect1, destRect1, srcRect2, destRect2;
 
   // First part of the background
   srcRect1.x = static_cast<float>(scroll);
   srcRect1.y = 0;
   srcRect1.w = width - static_cast<float>(scroll);
   srcRect1.h = height;
-  destRect1.w = width - static_cast<float>(scroll);
-  destRect1.h = height;
+
   destRect1.x = static_cast<float>(x);
   destRect1.y = static_cast<float>(y);
+  destRect1.w = srcRect1.w;
+  destRect1.h = height;
 
   // Second part of the background (wrapping around)
   srcRect2.x = 0;
   srcRect2.y = 0;
   srcRect2.w = static_cast<float>(scroll);
   srcRect2.h = height;
-  destRect2.w = static_cast<float>(scroll);
-  destRect2.h = height;
-  destRect2.x = static_cast<float>(x) + width - static_cast<float>(scroll);
+
+  destRect2.x = static_cast<float>(x) + srcRect1.w;
   destRect2.y = static_cast<float>(y);
-  
-  // Draw the two parts of the parallax background
-  // Use RenderTextureRotated for consistency with other methods
-  SDL_RenderTextureRotated(p_renderer, it->second, &srcRect1, &destRect1, angle, &center, SDL_FLIP_NONE);
-  SDL_RenderTextureRotated(p_renderer, it->second, &srcRect2, &destRect2, angle, &center, SDL_FLIP_NONE);
+  destRect2.w = srcRect2.w;
+  destRect2.h = height;
+
+  // Draw the two parts of the parallax background without rotation
+  SDL_RenderTexture(p_renderer, it->second, &srcRect1, &destRect1);
+  SDL_RenderTexture(p_renderer, it->second, &srcRect2, &destRect2);
 }
+
 void TextureManager::clearFromTexMap(std::string textureID) {
     std::cout << "Forge Game Engine - Cleared : " << textureID << " texture\n";
   m_textureMap.erase(textureID);
