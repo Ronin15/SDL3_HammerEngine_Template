@@ -99,7 +99,7 @@ public:
     ThreadPool(size_t numThreads, size_t queueCapacity = 256) {
         // Reserve capacity in the task queue before creating worker threads
         taskQueue.reserve(queueCapacity);
-        
+
         for (size_t i = 0; i < numThreads; ++i) {
             workers.emplace_back([this] { workerThread(); });
         }
@@ -117,7 +117,7 @@ public:
                     worker.join();
                 } catch (const std::exception& e) {
                     // Log the error but continue shutdown
-                    std::cerr << "Error joining thread: " << e.what() << std::endl;
+                    std::cerr << "Forge Game Engine - Error joining thread!: " << e.what() << std::endl;
                 }
             }
         }
@@ -132,12 +132,12 @@ public:
     bool busy() {
         return !taskQueue.isEmpty();
     }
-    
+
     // Access the task queue for capacity management
     TaskQueue& getTaskQueue() {
         return taskQueue;
     }
-    
+
     const TaskQueue& getTaskQueue() const {
         return taskQueue;
     }
@@ -178,7 +178,7 @@ public:
     static constexpr size_t DEFAULT_QUEUE_CAPACITY = 512;
 
     static ThreadSystem& Instance() {
-        static ThreadSystem instance; // Properly managed by the language
+        static ThreadSystem instance;
         return instance;
     }
 
@@ -254,7 +254,7 @@ public:
     bool isShutdown() const {
         return m_isShutdown;
     }
-    
+
     // Get the current task queue capacity
     size_t getQueueCapacity() const {
         if (mp_threadPool) {
@@ -262,7 +262,7 @@ public:
         }
         return m_queueCapacity;
     }
-    
+
     // Get the current number of tasks in the queue
     size_t getQueueSize() const {
         if (mp_threadPool) {
@@ -270,7 +270,7 @@ public:
         }
         return 0;
     }
-    
+
     // Reserve capacity for the task queue
     bool reserveQueueCapacity(size_t capacity) {
         if (m_isShutdown || !mp_threadPool) {
@@ -279,7 +279,7 @@ public:
         mp_threadPool->getTaskQueue().reserve(capacity);
         return true;
     }
-    
+
     private:
             ThreadPool* mp_threadPool;
             unsigned int m_numThreads;
