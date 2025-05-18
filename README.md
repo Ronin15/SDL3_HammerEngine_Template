@@ -125,7 +125,6 @@ The ThreadSystem provides a thread pool implementation for efficient multi-threa
 - Thread-safe task queue with pre-allocated memory
 - Worker thread pool that automatically scales to hardware capabilities
 - Support for both fire-and-forget tasks and tasks with future results
-- Singleton pattern for easy access throughout the application
 - Queue capacity management to avoid overhead from memory reallocations
 - Graceful shutdown with proper cleanup of resources
 
