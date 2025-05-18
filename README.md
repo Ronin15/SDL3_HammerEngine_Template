@@ -91,7 +91,7 @@ or
 ./run_thread_tests.sh --clean
 ```
 
-See `docs/SaveManagerTesting.md` or `ThreadSystem.md` for more details on the testing frameworks.
+See `docs/SaveManagerTesting.md` or `docs/ThreadSystem.md` for more details on the testing frameworks.
 
 ## Project Components
 
