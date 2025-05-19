@@ -9,7 +9,7 @@
 #include <future>
 #include <iostream>
 #include <thread>
-#include "ai/AIManager.hpp"
+#include "managers/AIManager.hpp"
 #include "states/AIDemoState.hpp"
 #include "managers/FontManager.hpp"
 #include "states/GamePlayState.hpp"

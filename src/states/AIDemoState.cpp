@@ -4,7 +4,7 @@
 */
 
 #include "states/AIDemoState.hpp"
-#include "ai/AIManager.hpp"
+#include "managers/AIManager.hpp"
 #include "SDL3/SDL_scancode.h"
 #include "ai/behaviors/WanderBehavior.hpp"
 #include "ai/behaviors/PatrolBehavior.hpp"
@@ -22,7 +22,7 @@ AIDemoState::~AIDemoState() {
 }
 
 bool AIDemoState::enter() {
-    std::cout << "Entering AIDemoState...\n";
+    std::cout << "Forge Game Engine - Entering AIDemoState...\n";
 
     // Setup window size
     m_worldWidth = GameEngine::Instance().getWindowWidth();
@@ -39,13 +39,13 @@ bool AIDemoState::enter() {
     createNPCs();
 
     // Log status
-    std::cout << "Created " << m_npcs.size() << " NPCs with AI behaviors\n";
+    std::cout << "Forge Game Engine - Created " << m_npcs.size() << " NPCs with AI behaviors\n";
 
     return true;
 }
 
 bool AIDemoState::exit() {
-    std::cout << "Exiting AIDemoState...\n";
+    std::cout << "Forge Game Engine - Exiting AIDemoState...\n";
 
     // Clean up NPCs
     m_npcs.clear();
@@ -92,21 +92,21 @@ void AIDemoState::update() {
 
     if (InputHandler::Instance().isKeyDown(SDL_SCANCODE_1) && lastKey != 1) {
         // Assign Wander behavior to all NPCs
-        std::cout << "Switching all NPCs to WANDER behavior\n";
+        std::cout << "Forge Game Engine - Switching all NPCs to WANDER behavior\n";
         for (auto& npc : m_npcs) {
             AIManager::Instance().assignBehaviorToEntity(npc.get(), "Wander");
         }
         lastKey = 1;
     } else if (InputHandler::Instance().isKeyDown(SDL_SCANCODE_2) && lastKey != 2) {
         // Assign Patrol behavior to all NPCs
-        std::cout << "Switching all NPCs to PATROL behavior\n";
+        std::cout << "Forge Game Engine - Switching all NPCs to PATROL behavior\n";
         for (auto& npc : m_npcs) {
             AIManager::Instance().assignBehaviorToEntity(npc.get(), "Patrol");
         }
         lastKey = 2;
     } else if (InputHandler::Instance().isKeyDown(SDL_SCANCODE_3) && lastKey != 3) {
         // Assign Chase behavior to all NPCs
-        std::cout << "Switching all NPCs to CHASE behavior\n";
+        std::cout << "Forge Game Engine - Switching all NPCs to CHASE behavior\n";
 
         // Make sure chase behavior has the current player target
         auto chaseBehavior = dynamic_cast<ChaseBehavior*>(AIManager::Instance().getBehavior("Chase"));
@@ -156,7 +156,7 @@ void AIDemoState::render() {
     }
 
     // Render info panel
-        FontManager::Instance().drawText("AI Demo: Press [B] to exit to main menu\n Press [1-3] to switch behaviors\n Press [SPACE] to pause/resume AI\n [1] Wander [2] Patrol [3] Chase",
+        FontManager::Instance().drawText("AI Demo: Press [B] to exit to main menu. Press [1-3] to switch behaviors. Press [SPACE] to pause/resume AI. [1] Wander [2] Patrol [3] Chase",
                                     "fonts_Arial",
                                     1000,
                                     10,
@@ -165,7 +165,7 @@ void AIDemoState::render() {
 }
 
 void AIDemoState::setupAIBehaviors() {
-    std::cout << "Setting up AI behaviors...\n";
+    std::cout << "Forge Game Engine - Setting up AI behaviors...\n";
 
     // Clean up any existing behaviors first
     AIManager::Instance().resetBehaviors();
@@ -175,7 +175,7 @@ void AIDemoState::setupAIBehaviors() {
     auto wanderBehavior = std::make_unique<WanderBehavior>(2.0f, 3000.0f, 200.0f);
     wanderBehavior->setScreenDimensions(m_worldWidth, m_worldHeight);
     wanderBehavior->setOffscreenProbability(0.2f); // 20% chance to wander offscreen
-    std::cout << "Created WanderBehavior with speed 2.0, interval 3000, radius 200, offscreen probability 0.2\n";
+    std::cout << "Forge Game Engine - Created WanderBehavior with speed 2.0, interval 3000, radius 200, offscreen probability 0.2\n";
     AIManager::Instance().registerBehavior("Wander", std::move(wanderBehavior));
 
     // Create and register patrol behavior with screen-relative coordinates
@@ -188,7 +188,7 @@ void AIDemoState::setupAIBehaviors() {
     // Add one offscreen waypoint to force entities off-screen
     patrolPoints.push_back(Vector2D(-100.0f, m_worldHeight * 0.5f));  // Off the left side
 
-    std::cout << "Created PatrolBehavior with " << patrolPoints.size() << " waypoints at corners and one offscreen\n";
+    std::cout << "Forge Game Engine - Created PatrolBehavior with " << patrolPoints.size() << " waypoints at corners and one offscreen\n";
 
     auto patrolBehavior = std::make_unique<PatrolBehavior>(patrolPoints, 1.5f, true);  // Reduced speed to 1.5, enable offscreen
     patrolBehavior->setScreenDimensions(m_worldWidth, m_worldHeight);
@@ -196,10 +196,10 @@ void AIDemoState::setupAIBehaviors() {
 
     // Create and register chase behavior
     auto chaseBehavior = std::make_unique<ChaseBehavior>(nullptr, 2.0f, 500.0f, 50.0f);  // Reduced speed to 2.0, range to 500
-    std::cout << "Created ChaseBehavior with speed 2.0, max range 500, min range 50\n";
+    std::cout << "Forge Game Engine - Created ChaseBehavior with speed 2.0, max range 500, min range 50\n";
     AIManager::Instance().registerBehavior("Chase", std::move(chaseBehavior));
 
-    std::cout << "AI behaviors setup complete.\n";
+    std::cout << "Forge Game Engine - AI behaviors setup complete.\n";
 }
 
 void AIDemoState::createNPCs() {
@@ -234,10 +234,10 @@ void AIDemoState::createNPCs() {
         if (chaseBehavior && m_player) {
             chaseBehavior->setTarget(m_player.get());
         } else {
-            std::cerr << "Could not set chase target - "
+            std::cerr << "Forge Game Engine - Could not set chase target - "
                       << (chaseBehavior ? "Player is null" : "ChaseBehavior is null") << std::endl;
         }
     } else {
-        std::cerr << "Chase behavior not found when setting target" << std::endl;
+        std::cerr << "Forge Game Engine - Chase behavior not found when setting target" << std::endl;
     }
 }
