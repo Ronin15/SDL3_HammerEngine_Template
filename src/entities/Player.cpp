@@ -5,7 +5,7 @@
 
 #include "entities/Player.hpp"
 #include "core/GameEngine.hpp"
-#include "core/InputHandler.hpp"
+#include "managers/InputManager.hpp"
 #include "entities/states/PlayerIdleState.hpp"
 #include "entities/states/PlayerRunningState.hpp"
 #include "SDL3/SDL_surface.h"

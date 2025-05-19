@@ -10,6 +10,7 @@
 #include <vector>
 #include <future>
 #include <iostream>
+#include <iomanip>
 
 bool AIManager::init() {
     if (m_initialized) {
@@ -53,6 +54,9 @@ void AIManager::update() {
                 // Get the behavior and update the entity
                 AIBehavior* behavior = this->getBehavior(behaviorName);
                 if (behavior && behavior->isActive()) {
+                    std::cout << "[AI Update] Entity at (" << std::fixed << std::setprecision(2) 
+                              << entity->getPosition().getX() << "," << entity->getPosition().getY() 
+                              << ") running behavior: " << behaviorName << std::endl;
                     behavior->update(entity);
                 }
             });
@@ -75,6 +79,9 @@ void AIManager::update() {
 
             AIBehavior* behavior = getBehavior(behaviorName);
             if (behavior && behavior->isActive()) {
+                std::cout << "[AI Update] Entity at (" << std::fixed << std::setprecision(2) 
+                          << entity->getPosition().getX() << "," << entity->getPosition().getY() 
+                          << ") running behavior: " << behaviorName << std::endl;
                 behavior->update(entity);
             }
         }
@@ -90,6 +97,9 @@ void AIManager::clean() {
 
         AIBehavior* behavior = getBehavior(behaviorName);
         if (behavior) {
+            std::cout << "[AI Cleanup] Cleaning behavior '" << behaviorName 
+                      << "' for entity at position (" << entity->getPosition().getX() 
+                      << "," << entity->getPosition().getY() << ")" << std::endl;
             behavior->clean(entity);
         }
     }
@@ -152,6 +162,9 @@ void AIManager::assignBehaviorToEntity(Entity* entity, const std::string& behavi
     // Initialize the behavior for this entity
     AIBehavior* behavior = getBehavior(behaviorName);
     if (behavior) {
+        std::cout << "[AI Init] Initializing behavior '" << behaviorName 
+                  << "' for entity at position (" << entity->getPosition().getX() 
+                  << "," << entity->getPosition().getY() << ")" << std::endl;
         behavior->init(entity);
     }
 
@@ -185,23 +198,35 @@ bool AIManager::entityHasBehavior(Entity* entity) const {
 
 void AIManager::sendMessageToEntity(Entity* entity, const std::string& message) {
     if (!entity) return;
-
+    
     auto it = m_entityBehaviors.find(entity);
     if (it != m_entityBehaviors.end()) {
         AIBehavior* behavior = getBehavior(it->second);
         if (behavior) {
+            std::cout << "[AI Message] Sending message to entity at ("
+                      << entity->getPosition().getX() << "," << entity->getPosition().getY()
+                      << ") with behavior '" << it->second << "': " << message << std::endl;
             behavior->onMessage(entity, message);
         }
     }
 }
 
 void AIManager::broadcastMessage(const std::string& message) {
+    std::cout << "[AI Broadcast] Broadcasting message to all entities: " << message << std::endl;
+    
+    int entityCount = 0;
     for (const auto& [entity, behaviorName] : m_entityBehaviors) {
         if (!entity) continue;
-
+        
         AIBehavior* behavior = getBehavior(behaviorName);
         if (behavior) {
+            std::cout << "  - Entity at (" << entity->getPosition().getX() 
+                      << "," << entity->getPosition().getY() << ") with behavior '"
+                      << behaviorName << "' receiving broadcast" << std::endl;
             behavior->onMessage(entity, message);
+            entityCount++;
         }
     }
+    
+    std::cout << "[AI Broadcast] Message delivered to " << entityCount << " entities" << std::endl;
 }

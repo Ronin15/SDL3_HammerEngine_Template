@@ -12,7 +12,7 @@
 #include "core/GameEngine.hpp"
 #include "managers/TextureManager.hpp"
 #include "managers/FontManager.hpp"
-#include "core/InputHandler.hpp"
+#include "managers/InputManager.hpp"
 #include <SDL3/SDL.h>
 #include <iostream>
 #include <memory>
@@ -74,10 +74,10 @@ bool AIDemoState::exit() {
 
 void AIDemoState::update() {
     // No need to track frame count now that we've removed logging
-    
+
     // Update AI Manager to update all behaviors
     AIManager::Instance().update();
-    
+
     // Update player
     if (m_player) {
         m_player->update();
@@ -202,7 +202,7 @@ void AIDemoState::setupAIBehaviors() {
     patrolPoints.push_back(Vector2D(m_worldWidth * 0.8f, m_worldHeight * 0.2f));
     patrolPoints.push_back(Vector2D(m_worldWidth * 0.8f, m_worldHeight * 0.8f));
     patrolPoints.push_back(Vector2D(m_worldWidth * 0.2f, m_worldHeight * 0.8f));
-    
+
     // Add one offscreen waypoint to force entities off-screen
     patrolPoints.push_back(Vector2D(-100.0f, m_worldHeight * 0.5f));  // Off the left side
 
@@ -252,7 +252,7 @@ void AIDemoState::createNPCs() {
         if (chaseBehavior && m_player) {
             chaseBehavior->setTarget(m_player.get());
         } else {
-            SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Could not set chase target - %s", 
+            SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Could not set chase target - %s",
                       (chaseBehavior ? "Player is null" : "ChaseBehavior is null"));
         }
     } else {

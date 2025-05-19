@@ -4,7 +4,7 @@
 */
 
 #include "states/PauseState.hpp"
-#include "core/InputHandler.hpp"
+#include "managers/InputManager.hpp"
 #include "managers/FontManager.hpp"
 #include "core/GameEngine.hpp"
 #include <iostream>

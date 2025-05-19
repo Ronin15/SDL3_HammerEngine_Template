@@ -5,7 +5,7 @@
 
 #include "entities/states/PlayerRunningState.hpp"
 #include "entities/Player.hpp"
-#include "core/InputHandler.hpp"
+#include "managers/InputManager.hpp"
 #include <iostream>
 
 PlayerRunningState::PlayerRunningState(Player* player) : mp_player(player) {}

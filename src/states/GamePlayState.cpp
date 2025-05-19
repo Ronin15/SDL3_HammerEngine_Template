@@ -6,7 +6,7 @@
 #include "states/GamePlayState.hpp"
 #include "managers/GameStateManager.hpp"
 #include "managers/FontManager.hpp"
-#include "core/InputHandler.hpp"
+#include "managers/InputManager.hpp"
 #include "core/GameEngine.hpp"
 #include "states/PauseState.hpp"
 #include <iostream>
