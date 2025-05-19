@@ -35,6 +35,8 @@ private:
     std::vector<std::unique_ptr<NPC>> m_npcs;
     std::unique_ptr<Player> m_player;
 
+    std::string m_textureID {""};  // Texture ID as loaded by TextureManager from res/img directory
+
     // Demo settings
     int m_npcCount{5};
     float m_worldWidth{800.0f};
