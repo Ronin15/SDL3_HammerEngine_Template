@@ -18,11 +18,6 @@
 #include <memory>
 #include <random>
 
-AIDemoState::AIDemoState() : m_infoPanel{20, 10, 300, 150} {
-    // Initialize with default values
-    m_infoText = "AI Demo: Press [B] to exit to main menu\n Press [1-3] to switch behaviors\n Press [SPACE] to pause/resume AI\n [1] Wander [2] Patrol [3] Chase";
-}
-
 AIDemoState::~AIDemoState() {
     exit();
 }
@@ -169,17 +164,12 @@ void AIDemoState::render() {
     }
 
     // Render info panel
-    if (m_showDebugInfo) {
-        SDL_SetRenderDrawColor(GameEngine::Instance().getRenderer(), 0, 0, 0, 200);
-        SDL_RenderFillRect(GameEngine::Instance().getRenderer(), &m_infoPanel);
-
-        FontManager::Instance().drawText(m_infoText,
+        FontManager::Instance().drawText("AI Demo: Press [B] to exit to main menu\n Press [1-3] to switch behaviors\n Press [SPACE] to pause/resume AI\n [1] Wander [2] Patrol [3] Chase",
                                     "fonts_Arial",
-                                    m_infoPanel.x + 10,
-                                    m_infoPanel.y + 10,
+                                    1000,
+                                    10,
                                     {255, 255, 255, 255},
                                     GameEngine::Instance().getRenderer());
-    }
 }
 
 void AIDemoState::setupAIBehaviors() {
