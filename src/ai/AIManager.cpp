@@ -88,7 +88,7 @@ void AIManager::update() {
     }
 }
 
-void AIManager::clean() {
+void AIManager::resetBehaviors() {
     if (!m_initialized) return;
 
     // Clean up each behavior for each entity
@@ -97,7 +97,7 @@ void AIManager::clean() {
 
         AIBehavior* behavior = getBehavior(behaviorName);
         if (behavior) {
-            std::cout << "[AI Cleanup] Cleaning behavior '" << behaviorName
+            std::cout << "[AI Reset] Cleaning behavior '" << behaviorName
                       << "' for entity at position (" << entity->getPosition().getX()
                       << "," << entity->getPosition().getY() << ")" << "\n";
             behavior->clean(entity);
@@ -108,8 +108,20 @@ void AIManager::clean() {
     m_entityBehaviors.clear();
     m_behaviors.clear();
 
+    std::cout << "Forge Game Engine - AIManager behaviors reset\n";
+}
+
+void AIManager::clean() {
+    if (!m_initialized) return;
+
+    // First reset all behaviors
+    resetBehaviors();
+    
+    // Then perform complete shutdown operations
     m_initialized = false;
-    std::cout << "Forge Game Engine - AIManager cleaned up\n";
+    m_useThreading = false;
+    
+    std::cout << "Forge Game Engine - AIManager completely shut down\n";
 }
 
 void AIManager::registerBehavior(const std::string& behaviorName, std::unique_ptr<AIBehavior> behavior) {

@@ -64,7 +64,19 @@ public:
     void update();
     
     /**
+     * @brief Reset all AI behaviors without shutting down the manager
+     * 
+     * This method clears all registered behaviors and entity assignments
+     * but keeps the manager initialized. Use this when changing game states
+     * or scenes while the game is still running.
+     */
+    void resetBehaviors();
+    
+    /**
      * @brief Clean up resources used by the AI Manager
+     * 
+     * This performs a complete shutdown of the AI system.
+     * Only call this when the game is shutting down.
      */
     void clean();
     
