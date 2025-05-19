@@ -71,7 +71,7 @@ void AIDemoState::update() {
     // No need to track frame count now that we've removed logging
 
     // Update AI Manager to update all behaviors
-    AIManager::Instance().update();
+    //AIManager::Instance().update();
 
     // Update player
     if (m_player) {
