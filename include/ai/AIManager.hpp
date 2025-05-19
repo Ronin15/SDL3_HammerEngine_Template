@@ -74,9 +74,6 @@ public:
     
     /**
      * @brief Clean up resources used by the AI Manager
-     * 
-     * This performs a complete shutdown of the AI system.
-     * Only call this when the game is shutting down.
      */
     void clean();
     
