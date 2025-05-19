@@ -10,7 +10,6 @@
 #include "ai/behaviors/PatrolBehavior.hpp"
 #include "ai/behaviors/ChaseBehavior.hpp"
 #include "core/GameEngine.hpp"
-#include "managers/TextureManager.hpp"
 #include "managers/FontManager.hpp"
 #include "managers/InputManager.hpp"
 #include <SDL3/SDL.h>
@@ -29,14 +28,7 @@ bool AIDemoState::enter() {
     m_worldWidth = GameEngine::Instance().getWindowWidth();
     m_worldHeight = GameEngine::Instance().getWindowHeight();
 
-
-    // If npc_sprite.png doesn't exist, use the player sprite as a fallback
-    // In a real implementation, you should create a dedicated NPC sprite
-    // with multiple animation frames in res/img/npc_sprite.png
-    TextureManager::Instance().load("res/img/player.png", "npc", GameEngine::Instance().getRenderer());
-
-    // Create AI behaviors
-    // Setup AI behaviors
+    //Texture has to be loaded by NPC or Player can't be loaded here
     setupAIBehaviors();
 
     // Create player first (the chase behavior will need it)
