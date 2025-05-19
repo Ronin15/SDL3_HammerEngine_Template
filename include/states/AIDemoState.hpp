@@ -15,32 +15,27 @@
 
 class AIDemoState : public GameState {
 public:
-    AIDemoState();
+
     ~AIDemoState();
-    
+
     void update() override;
     void render() override;
-    
+
     bool enter() override;
     bool exit() override;
-    
+
     std::string getName() const override { return "AIDemo"; }
-    
+
 private:
     // Methods
     void setupAIBehaviors();
     void createNPCs();
-    
+
     // Members
     std::vector<std::unique_ptr<NPC>> m_npcs;
     std::unique_ptr<Player> m_player;
-    
-    // UI elements
-    SDL_FRect m_infoPanel;
-    std::string m_infoText;
-    
+
     // Demo settings
-    bool m_showDebugInfo{true};
     int m_npcCount{5};
     float m_worldWidth{800.0f};
     float m_worldHeight{600.0f};
