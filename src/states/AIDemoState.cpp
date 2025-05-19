@@ -177,7 +177,7 @@ void AIDemoState::setupAIBehaviors() {
 
     // Clean up any existing behaviors first
     AIManager::Instance().clean();
-    AIManager::Instance().init();
+    //AIManager::Instance().init(); // AI manager is setup in game engine init loop.
 
     // Create and register wander behavior
     auto wanderBehavior = std::make_unique<WanderBehavior>(2.0f, 3000.0f, 200.0f);
@@ -242,10 +242,10 @@ void AIDemoState::createNPCs() {
         if (chaseBehavior && m_player) {
             chaseBehavior->setTarget(m_player.get());
         } else {
-            SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Could not set chase target - %s",
-                      (chaseBehavior ? "Player is null" : "ChaseBehavior is null"));
+            std::cerr << "Could not set chase target - "
+                      << (chaseBehavior ? "Player is null" : "ChaseBehavior is null") << std::endl;
         }
     } else {
-        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Chase behavior not found when setting target");
+        std::cerr << "Chase behavior not found when setting target" << std::endl;
     }
 }
