@@ -3,14 +3,14 @@
  * Licensed under the MIT License - see LICENSE file for details
 */
 
-#include "ai/AIManager.hpp"
+#include "managers/AIManager.hpp"
 #include "ai/AIBehavior.hpp"
 #include "utils/ThreadSystem.hpp"
 #include <SDL3/SDL.h>
 #include <vector>
 #include <future>
 #include <iostream>
-#include <iomanip>
+//#include <iomanip>
 
 bool AIManager::init() {
     if (m_initialized) {
@@ -22,7 +22,7 @@ bool AIManager::init() {
     m_useThreading = Forge::ThreadSystem::Instance().getThreadCount() > 0;
 
     // Log initialization
-    std::cout << "Forge Game Engine - AIManager initialized. Threading: " << (m_useThreading ? "Enabled" : "Disabled") << "\n";
+    std::cout << "Forge Game Engine - AI Manager initialized. Threading: " << (m_useThreading ? "Enabled" : "Disabled") << "\n";
 
     m_initialized = true;
     return true;
@@ -54,9 +54,7 @@ void AIManager::update() {
                 // Get the behavior and update the entity
                 AIBehavior* behavior = this->getBehavior(behaviorName);
                 if (behavior && behavior->isActive()) {
-                    std::cout << "[AI Update] Entity at (" << std::fixed << std::setprecision(2)
-                              << entity->getPosition().getX() << "," << entity->getPosition().getY()
-                              << ") running behavior: " << behaviorName << std::endl;
+                   //std::cout << "[AI Update] Entity at (" << std::fixed << std::setprecision(2) << entity->getPosition().getX() << "," << entity->getPosition().getY() << ") running behavior: " << behaviorName << std::endl;
                     behavior->update(entity);
                 }
             });
@@ -69,7 +67,7 @@ void AIManager::update() {
             try {
                 future.get();
             } catch (const std::exception& e) {
-                std::cerr << "Forge Game Engine - Exception in AI update task: " << e.what() << std::endl;
+                std::cerr << "Forge Game Engine - [AI Manager] Exception in AI update task: " << e.what() << std::endl;
             }
         }
     } else {
@@ -79,9 +77,7 @@ void AIManager::update() {
 
             AIBehavior* behavior = getBehavior(behaviorName);
             if (behavior && behavior->isActive()) {
-                std::cout << "[AI Update] Entity at (" << std::fixed << std::setprecision(2)
-                          << entity->getPosition().getX() << "," << entity->getPosition().getY()
-                          << ") running behavior: " << behaviorName << std::endl;
+                //std::cout << "[AI Update] Entity at (" << std::fixed << std::setprecision(2) << entity->getPosition().getX() << "," << entity->getPosition().getY() << ") running behavior: " << behaviorName << std::endl;
                 behavior->update(entity);
             }
         }
@@ -108,7 +104,7 @@ void AIManager::resetBehaviors() {
     m_entityBehaviors.clear();
     m_behaviors.clear();
 
-    std::cout << "Forge Game Engine - AIManager behaviors reset\n";
+    std::cout << "Forge Game Engine - [AI Manager] behaviors reset\n";
 }
 
 void AIManager::clean() {
@@ -116,28 +112,28 @@ void AIManager::clean() {
 
     // First reset all behaviors
     resetBehaviors();
-    
+
     // Then perform complete shutdown operations
     m_initialized = false;
     m_useThreading = false;
-    
+
     std::cout << "Forge Game Engine - AIManager completely shut down\n";
 }
 
 void AIManager::registerBehavior(const std::string& behaviorName, std::unique_ptr<AIBehavior> behavior) {
     if (!behavior) {
-        std::cerr << "Forge Game Engine - Attempted to register null behavior: " << behaviorName << std::endl;
+        std::cerr << "Forge Game Engine - [AI Manager] Attempted to register null behavior: " << behaviorName << std::endl;
         return;
     }
 
     // Check if behavior already exists
     if (m_behaviors.find(behaviorName) != m_behaviors.end()) {
-        std::cout << "Forge Game Engine - Behavior already registered: " << behaviorName << ". Replacing." << "\n";
+        std::cout << "Forge Game Engine - [AI Manager] Behavior already registered: " << behaviorName << ". Replacing." << "\n";
     }
 
     // Store the behavior
     m_behaviors[behaviorName] = std::move(behavior);
-    std::cout << "Forge Game Engine - Behavior registered: " << behaviorName << "\n";
+    std::cout << "Forge Game Engine - [AI Manager] Behavior registered: " << behaviorName << "\n";
 }
 
 bool AIManager::hasBehavior(const std::string& behaviorName) const {
@@ -154,12 +150,12 @@ AIBehavior* AIManager::getBehavior(const std::string& behaviorName) const {
 
 void AIManager::assignBehaviorToEntity(Entity* entity, const std::string& behaviorName) {
     if (!entity) {
-        std::cerr << "Forge Game Engine - Attempted to assign behavior to null entity" << std::endl;
+        std::cerr << "Forge Game Engine - [AI Manager] Attempted to assign behavior to null entity" << std::endl;
         return;
     }
 
     if (!hasBehavior(behaviorName)) {
-        std::cerr << "Forge Game Engine - Behavior not found: " << behaviorName << std::endl;
+        std::cerr << "Forge Game Engine - [AI Manager] Behavior not found: " << behaviorName << std::endl;
         return;
     }
 
@@ -174,18 +170,18 @@ void AIManager::assignBehaviorToEntity(Entity* entity, const std::string& behavi
     // Initialize the behavior for this entity
     AIBehavior* behavior = getBehavior(behaviorName);
     if (behavior) {
-        std::cout << "[AI Init] Initializing behavior '" << behaviorName
+        std::cout << "Forge Game Engine - [AI Init] Initializing behavior '" << behaviorName
                   << "' for entity at position (" << entity->getPosition().getX()
                   << "," << entity->getPosition().getY() << ")" << std::endl;
         behavior->init(entity);
     }
 
-    std::cout << "Forge Game Engine - Behavior '" << behaviorName << "' assigned to entity\n";
+    std::cout << "Forge Game Engine - [AI Manager] Behavior '" << behaviorName << "' assigned to entity\n";
 }
 
 void AIManager::unassignBehaviorFromEntity(Entity* entity) {
     if (!entity) {
-        std::cerr << "Forge Game Engine - Attempted to unassign behavior from null entity" << std::endl;
+        std::cerr << "Forge Game Engine - [AI Manager] Attempted to unassign behavior from null entity" << std::endl;
         return;
     }
 
@@ -215,7 +211,7 @@ void AIManager::sendMessageToEntity(Entity* entity, const std::string& message) 
     if (it != m_entityBehaviors.end()) {
         AIBehavior* behavior = getBehavior(it->second);
         if (behavior) {
-            std::cout << "[AI Message] Sending message to entity at ("
+            std::cout << "Forge Game Engine - [AI Message] Sending message to entity at ("
                       << entity->getPosition().getX() << "," << entity->getPosition().getY()
                       << ") with behavior '" << it->second << "': " << message << std::endl;
             behavior->onMessage(entity, message);
@@ -224,7 +220,7 @@ void AIManager::sendMessageToEntity(Entity* entity, const std::string& message) 
 }
 
 void AIManager::broadcastMessage(const std::string& message) {
-    std::cout << "[AI Broadcast] Broadcasting message to all entities: " << message << std::endl;
+    std::cout << "Forge Game Engine - [AI Broadcast] Broadcasting message to all entities: " << message << std::endl;
 
     int entityCount = 0;
     for (const auto& [entity, behaviorName] : m_entityBehaviors) {
@@ -232,7 +228,7 @@ void AIManager::broadcastMessage(const std::string& message) {
 
         AIBehavior* behavior = getBehavior(behaviorName);
         if (behavior) {
-            std::cout << "  - Entity at (" << entity->getPosition().getX()
+            std::cout << "Forge Game Engine - [AI Broadcast] Entity at (" << entity->getPosition().getX()
                       << "," << entity->getPosition().getY() << ") with behavior '"
                       << behaviorName << "' receiving broadcast" << std::endl;
             behavior->onMessage(entity, message);

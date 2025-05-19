@@ -6,7 +6,7 @@
 #include "entities/NPC.hpp"
 #include "core/GameEngine.hpp"
 #include "managers/TextureManager.hpp"
-#include "ai/AIManager.hpp"
+#include "managers/AIManager.hpp"
 #include <SDL3/SDL.h>
 #include <iostream>
 
@@ -17,7 +17,7 @@ NPC::NPC(const std::string& textureID, const Vector2D& startPosition, int frameW
     m_velocity = Vector2D(0, 0);
     m_acceleration = Vector2D(0, 0);
     m_textureID = textureID;
-    
+
     // Animation properties
     m_currentFrame = 1;                 // Start with first frame
     m_currentRow = 1;                   // In TextureManager::drawFrame, rows start at 1
@@ -26,7 +26,7 @@ NPC::NPC(const std::string& textureID, const Vector2D& startPosition, int frameW
     m_spriteSheetRows = 1;              // Default number of rows in the sprite sheet
     m_lastFrameTime = SDL_GetTicks();   // Track when we last changed animation frame
     m_flip = SDL_FLIP_NONE;             // Default flip direction
-    
+
     // Load dimensions from texture if not provided
     if (m_frameWidth <= 0 || m_frameHeight <= 0) {
         loadDimensionsFromTexture();
@@ -34,15 +34,15 @@ NPC::NPC(const std::string& textureID, const Vector2D& startPosition, int frameW
         m_width = m_frameWidth;
         m_height = m_frameHeight;
     }
-    
+
     // No state setup needed - handled by AI Manager
-    
+
     // Set default wander area (can be changed later via setWanderArea)
     m_minX = 0.0f;
     m_minY = 0.0f;
     m_maxX = 800.0f;
     m_maxY = 600.0f;
-    
+
     //std::cout << "Forge Game Engine - NPC created at position: " << m_position.getX() << ", " << m_position.getY() << "\n";
 }
 
@@ -95,7 +95,7 @@ void NPC::update() {
     // Update position based on velocity and acceleration
     m_velocity += m_acceleration;
     m_position += m_velocity;
-    
+
     // Apply friction for smoother movement
     if (m_velocity.length() > 0.1f) {
         // Friction coefficient - adjust for desired sliding feel (0.95 means 95% of velocity is retained)
@@ -105,13 +105,13 @@ void NPC::update() {
         // If velocity is very small, stop completely to avoid tiny sliding
         m_velocity = Vector2D(0, 0);
     }
-    
+
     // Reset acceleration
     m_acceleration = Vector2D(0, 0);
-    
+
     // Handle bounds checking with bounce behavior if outside permitted area
     const float bounceBuffer = 20.0f; // Buffer zone before bouncing
-    
+
     if (m_position.getX() < m_minX - bounceBuffer) {
         m_position.setX(m_minX);
         m_velocity.setX(std::abs(m_velocity.getX())); // Move right
@@ -121,7 +121,7 @@ void NPC::update() {
         m_velocity.setX(-std::abs(m_velocity.getX())); // Move left
         m_flip = SDL_FLIP_HORIZONTAL;
     }
-    
+
     if (m_position.getY() < m_minY - bounceBuffer) {
         m_position.setY(m_minY);
         m_velocity.setY(std::abs(m_velocity.getY())); // Move down
@@ -129,9 +129,9 @@ void NPC::update() {
         m_position.setY(m_maxY - m_height);
         m_velocity.setY(-std::abs(m_velocity.getY())); // Move up
     }
-    
+
     // No need to update animation - TextureManager handles this
-    
+
     // If the texture dimensions haven't been loaded yet, try loading them
     if (m_frameWidth == 0 && TextureManager::Instance().isTextureInMap(m_textureID)) {
         loadDimensionsFromTexture();
@@ -143,7 +143,7 @@ void NPC::render() {
     // This ensures the NPC is centered at its position coordinates
     int renderX = static_cast<int>(m_position.getX() - (m_frameWidth / 2.0f));
     int renderY = static_cast<int>(m_position.getY() - (m_height / 2.0f));
-    
+
     // Render the NPC with the current animation frame
     TextureManager::Instance().drawFrame(
         m_textureID,
@@ -163,7 +163,7 @@ void NPC::clean() {
     if (AIManager::Instance().entityHasBehavior(this)) {
         AIManager::Instance().unassignBehaviorFromEntity(this);
     }
-    
+
     std::cout << "Forge Game Engine - Cleaning up NPC resources" << "\n";
 }
 
