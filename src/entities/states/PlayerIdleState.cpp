@@ -5,12 +5,12 @@
 
 #include "entities/states/PlayerIdleState.hpp"
 #include "entities/Player.hpp"
-#include <iostream>
+//#include <iostream>
 
 PlayerIdleState::PlayerIdleState(Player* player) : mp_player(player) {}
 
 void PlayerIdleState::enter() {
-    std::cout << "Forge Game Engine - Entering Player Idle State\n";
+    //std::cout << "Forge Game Engine - Entering Player Idle State\n";
     // Set animation for idle
     mp_player->setCurrentFrame(0);
     mp_player->setVelocity(Vector2D(0, 0));
@@ -22,5 +22,5 @@ void PlayerIdleState::update() {
 }
 
 void PlayerIdleState::exit() {
-    std::cout << "Forge Game Engine - Exiting Player Idle State\n";
+    //std::cout << "Forge Game Engine - Exiting Player Idle State\n";
 }

@@ -4,6 +4,7 @@
 */
 
 #include "ai/behaviors/PatrolBehavior.hpp"
+#include "SDL3/SDL_surface.h"
 #include "entities/Entity.hpp"
 #include <algorithm>
 
@@ -57,7 +58,7 @@ void PatrolBehavior::update(Entity* entity) {
         // Move to the next waypoint
         m_currentWaypoint = (m_currentWaypoint + 1) % m_waypoints.size();
         targetWaypoint = m_waypoints[m_currentWaypoint];
-        
+
         // If next waypoint is offscreen, mark for reset when entity goes offscreen
         if (m_includeOffscreenPoints && isOffscreen(targetWaypoint)) {
             m_needsReset = true;
@@ -85,9 +86,9 @@ void PatrolBehavior::update(Entity* entity) {
 
     // Handle sprite flipping for visual direction
     if (direction.getX() < 0) {
-        entity->setFlip(SDL_FLIP_HORIZONTAL);
-    } else if (direction.getX() > 0) {
         entity->setFlip(SDL_FLIP_NONE);
+    } else if (direction.getX() > 0) {
+        entity->setFlip(SDL_FLIP_HORIZONTAL);
     }
 }
 
@@ -152,23 +153,23 @@ bool PatrolBehavior::isAtWaypoint(const Vector2D& position, const Vector2D& wayp
 }
 
 bool PatrolBehavior::isOffscreen(const Vector2D& position) const {
-    return position.getX() < 0 || 
-           position.getX() > m_screenWidth || 
-           position.getY() < 0 || 
+    return position.getX() < 0 ||
+           position.getX() > m_screenWidth ||
+           position.getY() < 0 ||
            position.getY() > m_screenHeight;
 }
 
 bool PatrolBehavior::isWellOffscreen(const Vector2D& position) const {
     const float buffer = 100.0f; // Distance past the edge to consider "well offscreen"
-    return position.getX() < -buffer || 
-           position.getX() > m_screenWidth + buffer || 
-           position.getY() < -buffer || 
+    return position.getX() < -buffer ||
+           position.getX() > m_screenWidth + buffer ||
+           position.getY() < -buffer ||
            position.getY() > m_screenHeight + buffer;
 }
 
 void PatrolBehavior::resetEntityPosition(Entity* entity) {
     if (!entity) return;
-    
+
     // Find an onscreen waypoint to teleport to
     for (size_t i = 0; i < m_waypoints.size(); i++) {
         size_t index = (m_currentWaypoint + i) % m_waypoints.size();
@@ -179,7 +180,7 @@ void PatrolBehavior::resetEntityPosition(Entity* entity) {
             return;
         }
     }
-    
+
     // If no onscreen waypoints found, reset to center of screen
     entity->setPosition(Vector2D(m_screenWidth / 2, m_screenHeight / 2));
 }

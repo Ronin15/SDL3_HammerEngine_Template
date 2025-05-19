@@ -305,7 +305,7 @@ bool GameEngine::init(const char* title,
   std::cout << "Forge Game Engine - Running " << title << " <]==={}\n";
 
   // setting logo state for default state
-  mp_gameStateManager->setState("LogoState");
+  mp_gameStateManager->setState("MainMenuState");//set to "LogoState" for normal operation.
   setRunning(true);  // Forge Game created successfully, start the main loop
   return true;
 }
