@@ -61,8 +61,8 @@ bool AIDemoState::exit() {
     // Clean up player
     m_player.reset();
 
-    // Clean up AI Manager
-    AIManager::Instance().clean();
+    // Reset all AI behaviors, but keep the manager initialized
+    AIManager::Instance().resetBehaviors();
 
     return true;
 }
@@ -175,9 +175,8 @@ void AIDemoState::render() {
 void AIDemoState::setupAIBehaviors() {
     std::cout << "Setting up AI behaviors...\n";
 
-    // Clean up any existing behaviors first
-    AIManager::Instance().clean();
-    //AIManager::Instance().init(); // AI manager is setup in game engine init loop.
+    // Reset any existing behaviors first
+    AIManager::Instance().resetBehaviors();
 
     // Create and register wander behavior
     auto wanderBehavior = std::make_unique<WanderBehavior>(2.0f, 3000.0f, 200.0f);
