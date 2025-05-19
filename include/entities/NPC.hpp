@@ -7,7 +7,7 @@
 #define NPC_HPP
 
 #include "entities/Entity.hpp"
-#include "managers/EntityStateManager.hpp"
+
 #include "utils/Vector2D.hpp"
 #include <SDL3/SDL.h>
 #include <string>
@@ -21,13 +21,13 @@ public:
     void render() override;
     void clean() override;
 
-    // State management
-    void changeState(const std::string& stateName);
-    std::string getCurrentStateName() const;
+    // No state management - handled by AI Manager
+    void setPosition(const Vector2D& position) override;
     
     // Accessor methods for protected members
     Vector2D getPosition() const { return m_position; }
     Vector2D getVelocity() const { return m_velocity; }
+    Vector2D getAcceleration() const { return m_acceleration; }
     int getWidth() const { return m_width; }
     int getHeight() const { return m_height; }
     std::string getTextureID() const { return m_textureID; }
@@ -36,8 +36,8 @@ public:
     SDL_FlipMode getFlip() const { return m_flip; }
     
     // Setter methods for state control
-    void setPosition(const Vector2D& position) override { m_position = position; }
     void setVelocity(const Vector2D& velocity) override { m_velocity = velocity; }
+    void setAcceleration(const Vector2D& acceleration) override { m_acceleration = acceleration; }
     void setCurrentFrame(int frame) override { m_currentFrame = frame; }
     void setCurrentRow(int row) override { m_currentRow = row; }
     void setFlip(SDL_FlipMode flip) override { m_flip = flip; }
@@ -49,10 +49,7 @@ public:
     
 private:
     void loadDimensionsFromTexture();
-    void setupStates();
-    void updateAnimation();
 
-    EntityStateManager m_stateManager;
     int m_frameWidth{0};      // Width of a single animation frame
     int m_frameHeight{0};     // Height of a single animation frame
     int m_spriteSheetRows{0}; // Number of rows in the sprite sheet
