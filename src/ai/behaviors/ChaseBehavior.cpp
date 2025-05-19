@@ -65,9 +65,9 @@ void ChaseBehavior::update(Entity* entity) {
 
                 // Handle sprite flipping for visual direction
                 if (direction.getX() < 0) {
-                    entity->setFlip(SDL_FLIP_HORIZONTAL);
-                } else if (direction.getX() > 0) {
                     entity->setFlip(SDL_FLIP_NONE);
+                } else if (direction.getX() > 0) {
+                    entity->setFlip(SDL_FLIP_HORIZONTAL);
                 }
             } else {
                 // Target is within minimum range, stop moving

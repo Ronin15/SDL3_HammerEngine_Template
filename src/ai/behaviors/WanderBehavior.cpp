@@ -4,6 +4,7 @@
 */
 
 #include "ai/behaviors/WanderBehavior.hpp"
+#include "SDL3/SDL_surface.h"
 #include <algorithm>
 #include <cmath>
 
@@ -45,7 +46,7 @@ void WanderBehavior::update(Entity* entity) {
 
     // Check if entity is outside screen bounds
     Vector2D position = entity->getPosition();
-    
+
     // If we've scheduled a reset and the entity is sufficiently offscreen
     if (m_resetScheduled) {
         // Check if entity is far enough off screen to reset
@@ -81,9 +82,9 @@ void WanderBehavior::update(Entity* entity) {
 
     // Apply current direction and handle sprite flipping
     if (m_currentDirection.getX() < 0) {
-        entity->setFlip(SDL_FLIP_HORIZONTAL);
-    } else if (m_currentDirection.getX() > 0) {
         entity->setFlip(SDL_FLIP_NONE);
+    } else if (m_currentDirection.getX() > 0) {
+        entity->setFlip(SDL_FLIP_HORIZONTAL);
     }
 }
 
@@ -124,7 +125,7 @@ std::string WanderBehavior::getName() const {
 
 void WanderBehavior::setCenterPoint(const Vector2D& centerPoint) {
     m_centerPoint = centerPoint;
-    
+
     // Estimate screen dimensions based on center point
     // (We'll assume the center is roughly in the middle of the screen)
     m_screenWidth = m_centerPoint.getX() * 2.0f;
@@ -154,19 +155,19 @@ void WanderBehavior::setOffscreenProbability(float probability) {
 
 bool WanderBehavior::isWellOffscreen(const Vector2D& position) const {
     const float buffer = 100.0f; // Distance past the edge to consider "well offscreen"
-    return position.getX() < -buffer || 
-           position.getX() > m_screenWidth + buffer || 
-           position.getY() < -buffer || 
+    return position.getX() < -buffer ||
+           position.getX() > m_screenWidth + buffer ||
+           position.getY() < -buffer ||
            position.getY() > m_screenHeight + buffer;
 }
 
 void WanderBehavior::resetEntityPosition(Entity* entity) {
     if (!entity) return;
-    
+
     // Calculate entry point on the opposite side of the screen
     Vector2D position = entity->getPosition();
     Vector2D newPosition(0.0f, 0.0f);
-    
+
     // Determine which side to come in from (opposite of where the entity exited)
     if (position.getX() < 0) {
         // Went off left side, come in from right
@@ -185,7 +186,7 @@ void WanderBehavior::resetEntityPosition(Entity* entity) {
         newPosition.setX(m_wanderOffscreenChance(m_rng) * m_screenWidth);
         newPosition.setY(50.0f);
     }
-    
+
     // Set new position and choose a new direction
     entity->setPosition(newPosition);
     chooseNewDirection(entity, false);
@@ -200,16 +201,16 @@ void WanderBehavior::chooseNewDirection(Entity* entity, bool wanderOffscreen) {
     if (wanderOffscreen) {
         // Start wandering toward edge of screen by picking a direction toward nearest edge
         Vector2D position = entity->getPosition();
-        
+
         // Find closest edge and set direction toward it
         float distToLeft = position.getX();
         float distToRight = m_screenWidth - position.getX();
         float distToTop = position.getY();
         float distToBottom = m_screenHeight - position.getY();
-        
+
         // Find minimum distance to edge
         float minDist = std::min({distToLeft, distToRight, distToTop, distToBottom});
-        
+
         // Set direction toward closest edge
         if (minDist == distToLeft) {
             m_currentDirection = Vector2D(-1.0f, 0.0f);
@@ -220,14 +221,14 @@ void WanderBehavior::chooseNewDirection(Entity* entity, bool wanderOffscreen) {
         } else {
             m_currentDirection = Vector2D(0.0f, 1.0f);
         }
-        
+
         // Add some randomness to the direction
         float randomAngle = (m_angleDistribution(m_rng) - M_PI) * 0.2f; // Small angle variation
         float x = m_currentDirection.getX() * std::cos(randomAngle) - m_currentDirection.getY() * std::sin(randomAngle);
         float y = m_currentDirection.getX() * std::sin(randomAngle) + m_currentDirection.getY() * std::cos(randomAngle);
         m_currentDirection = Vector2D(x, y);
         m_currentDirection.normalize();
-        
+
         // Schedule a reset once we go offscreen
         m_resetScheduled = true;
     } else {

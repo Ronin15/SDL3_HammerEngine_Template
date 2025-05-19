@@ -6,12 +6,12 @@
 #include "entities/states/PlayerRunningState.hpp"
 #include "entities/Player.hpp"
 #include "managers/InputManager.hpp"
-#include <iostream>
+//#include <iostream>
 
 PlayerRunningState::PlayerRunningState(Player* player) : mp_player(player) {}
 
 void PlayerRunningState::enter() {
-    std::cout << "Forge Game Engine - Entering Player Running State\n";
+    //std::cout << "Forge Game Engine - Entering Player Running State\n";
 }
 
 void PlayerRunningState::update() {
@@ -92,5 +92,5 @@ void PlayerRunningState::update() {
 
 
 void PlayerRunningState::exit() {
-    std::cout << "Forge Game Engine - Exiting Player Running State\n";
+    //std::cout << "Forge Game Engine - Exiting Player Running State\n";
 }
