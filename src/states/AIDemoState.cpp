@@ -176,7 +176,7 @@ void AIDemoState::setupAIBehaviors() {
     std::cout << "Setting up AI behaviors...\n";
 
     // Clean up any existing behaviors first
-    AIManager::Instance().clean();
+    AIManager::Instance().resetBehaviors();
     // No need to call init() after clean() anymore as it now preserves initialization state
 
     // Create and register wander behavior
