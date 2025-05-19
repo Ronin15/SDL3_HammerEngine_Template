@@ -315,7 +315,7 @@ void GameEngine::handleEvents() {
 void GameEngine::update() {
   // This method is now thread-safe and can be called from a worker thread
   std::lock_guard<std::mutex> lock(m_updateMutex);
-
+  GameEngine::processBackgroundTasks();
   // Update game states
   mp_gameStateManager->update();
 
@@ -369,7 +369,7 @@ void GameEngine::processBackgroundTasks() {
 
   // Reserve capacity before submitting background tasks
   Forge::ThreadSystem::Instance().reserveQueueCapacity(200);
-
+  AIManager::Instance().update();
   // Example: Process AI, physics, or other non-rendering tasks
   // These tasks can run while the main thread is handling rendering
 }
