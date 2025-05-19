@@ -91,14 +91,8 @@ void AIDemoState::update() {
         // Call the NPC's update method to handle animation and other entity-specific logic
         npc->update();
 
-        // Make sure NPCs stay on screen by checking bounds
-        Vector2D pos = npc->getPosition();
-        if (pos.getX() < 0 || pos.getY() < 0 ||
-            pos.getX() > m_worldWidth || pos.getY() > m_worldHeight) {
-            // Log and reset to center if off-screen
-            std::cout << "NPC " << i << " went off-screen! Resetting position.\n";
-            npc->setPosition(Vector2D(m_worldWidth/2, m_worldHeight/2));
-        }
+        // Note: Letting NPCs go off-screen is now managed by the behaviors
+        // They'll handle the reset logic when they go far enough off-screen
     }
 
     // Handle user input for the demo
@@ -197,7 +191,9 @@ void AIDemoState::setupAIBehaviors() {
 
     // Create and register wander behavior
     auto wanderBehavior = std::make_unique<WanderBehavior>(2.0f, 3000.0f, 200.0f);
-    std::cout << "Created WanderBehavior with speed 2.0, interval 3000, radius 200\n";
+    wanderBehavior->setScreenDimensions(m_worldWidth, m_worldHeight);
+    wanderBehavior->setOffscreenProbability(0.2f); // 20% chance to wander offscreen
+    std::cout << "Created WanderBehavior with speed 2.0, interval 3000, radius 200, offscreen probability 0.2\n";
     AIManager::Instance().registerBehavior("Wander", std::move(wanderBehavior));
 
     // Create and register patrol behavior with screen-relative coordinates
@@ -206,10 +202,14 @@ void AIDemoState::setupAIBehaviors() {
     patrolPoints.push_back(Vector2D(m_worldWidth * 0.8f, m_worldHeight * 0.2f));
     patrolPoints.push_back(Vector2D(m_worldWidth * 0.8f, m_worldHeight * 0.8f));
     patrolPoints.push_back(Vector2D(m_worldWidth * 0.2f, m_worldHeight * 0.8f));
+    
+    // Add one offscreen waypoint to force entities off-screen
+    patrolPoints.push_back(Vector2D(-100.0f, m_worldHeight * 0.5f));  // Off the left side
 
-    std::cout << "Created PatrolBehavior with " << patrolPoints.size() << " waypoints at corners of screen\n";
+    std::cout << "Created PatrolBehavior with " << patrolPoints.size() << " waypoints at corners and one offscreen\n";
 
-    auto patrolBehavior = std::make_unique<PatrolBehavior>(patrolPoints, 1.5f);  // Reduced speed to 1.5
+    auto patrolBehavior = std::make_unique<PatrolBehavior>(patrolPoints, 1.5f, true);  // Reduced speed to 1.5, enable offscreen
+    patrolBehavior->setScreenDimensions(m_worldWidth, m_worldHeight);
     AIManager::Instance().registerBehavior("Patrol", std::move(patrolBehavior));
 
     // Create and register chase behavior
