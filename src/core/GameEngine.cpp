@@ -5,8 +5,10 @@
 
 #include "core/GameEngine.hpp"
 #include <boost/container/small_vector.hpp>
+#include <chrono>
 #include <future>
 #include <iostream>
+#include <thread>
 #include "ai/AIManager.hpp"
 #include "states/AIDemoState.hpp"
 #include "managers/FontManager.hpp"
@@ -314,8 +316,8 @@ void GameEngine::handleEvents() {
 
 void GameEngine::update() {
   // This method is now thread-safe and can be called from a worker thread
-  std::lock_guard<std::mutex> lock(m_updateMutex);
   GameEngine::processBackgroundTasks();
+  std::lock_guard<std::mutex> lock(m_updateMutex);
   // Update game states
   mp_gameStateManager->update();
 
@@ -382,7 +384,7 @@ void GameEngine::clean() {
     std::cout
         << "Forge Game Engine - Waiting for background tasks to complete...\n";
     while (Forge::ThreadSystem::Instance().isBusy()) {
-      SDL_Delay(1);  // Short delay to avoid busy waiting
+      std::this_thread::sleep_for(std::chrono::milliseconds(1));  // Short delay to avoid busy waiting
     }
   }
 
