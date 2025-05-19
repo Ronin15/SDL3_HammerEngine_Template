@@ -3,7 +3,7 @@
  * Licensed under the MIT License - see LICENSE file for details
 */
 
-#include "core/InputHandler.hpp"
+#include "managers/InputManager.hpp"
 #include "core/GameEngine.hpp"
 #include "SDL3/SDL_gamepad.h"
 #include "SDL3/SDL_joystick.h"
