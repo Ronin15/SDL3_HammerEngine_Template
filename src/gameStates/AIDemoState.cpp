@@ -158,8 +158,8 @@ void AIDemoState::render() {
     // Render info panel
         FontManager::Instance().drawText("AI Demo: Press [B] to exit to main menu. Press [1-3] to switch behaviors. Press [SPACE] to pause/resume AI. [1] Wander [2] Patrol [3] Chase",
                                     "fonts_Arial",
-                                    1000,
-                                    10,
+                                    900,
+                                    15,
                                     {255, 255, 255, 255},
                                     GameEngine::Instance().getRenderer());
 }
