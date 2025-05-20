@@ -58,9 +58,9 @@ private:
     float m_offscreenProbability{0.15f}; // 15% chance to wander offscreen when changing direction
 
     // Random number generation
-    std::mt19937 m_rng;
-    std::uniform_real_distribution<float> m_angleDistribution;
-    std::uniform_real_distribution<float> m_wanderOffscreenChance;
+    std::mt19937 m_rng{std::random_device{}()};
+    std::uniform_real_distribution<float> m_angleDistribution{0.0f, 2.0f * M_PI};
+    std::uniform_real_distribution<float> m_wanderOffscreenChance{0.0f, 1.0f};
 
     // Check if entity is well off screen (completely out of view)
     bool isWellOffscreen(const Vector2D& position) const;

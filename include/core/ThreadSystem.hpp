@@ -86,9 +86,9 @@ public:
     }
 
     private:
-        std::vector<std::function<void()>> taskStorage;
-        std::mutex queueMutex;
-        std::condition_variable condition;
+        std::vector<std::function<void()>> taskStorage{};
+        std::mutex queueMutex{};
+        std::condition_variable condition{};
         std::atomic<bool> stopping{false};
 };
 
@@ -156,8 +156,8 @@ public:
         return result;
     }
     private:
-        boost::container::small_vector<std::thread, 16> workers; // Optimized for up to 16 threads without heap allocation
-        TaskQueue taskQueue;
+        boost::container::small_vector<std::thread, 16> workers{}; // Optimized for up to 16 threads without heap allocation
+        TaskQueue taskQueue{};
         std::atomic<bool> isRunning{true};
 
         void workerThread() {
@@ -281,16 +281,16 @@ public:
     }
 
     private:
-            ThreadPool* mp_threadPool;
-            unsigned int m_numThreads;
-            size_t m_queueCapacity;
+            ThreadPool* mp_threadPool{nullptr};
+            unsigned int m_numThreads{};
+            size_t m_queueCapacity{};
             std::atomic<bool> m_isShutdown{false}; // Flag to indicate shutdown status
 
             // Prevent copying and assignment
             ThreadSystem(const ThreadSystem&) = delete;
             ThreadSystem& operator=(const ThreadSystem&) = delete;
 
-            ThreadSystem() : mp_threadPool(nullptr), m_numThreads(0), m_queueCapacity(DEFAULT_QUEUE_CAPACITY) {}
+            ThreadSystem() : m_queueCapacity(DEFAULT_QUEUE_CAPACITY) {}
 };
 
 } // namespace Forge

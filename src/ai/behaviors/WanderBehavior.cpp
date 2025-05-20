@@ -10,11 +10,7 @@
 
 WanderBehavior::WanderBehavior(float speed, float changeDirectionInterval, float areaRadius)
     : m_speed(speed), m_changeDirectionInterval(changeDirectionInterval), m_areaRadius(areaRadius) {
-    // Initialize random number generator
-    std::random_device rd;
-    m_rng = std::mt19937(rd());
-    m_angleDistribution = std::uniform_real_distribution<float>(0.0f, 2.0f * M_PI);
-    m_wanderOffscreenChance = std::uniform_real_distribution<float>(0.0f, 1.0f);
+    // Random number generators are already initialized in class definition
 }
 
 void WanderBehavior::init(Entity* entity) {
