@@ -27,20 +27,10 @@ public:
     //void setVelocity(const Vector2D& m_velocity); for later in save manager
     //void setFlip(SDL_FlipMode m_flip);
 
-    // Accessor methods for protected members
-    Vector2D getPosition() const { return m_position; }
-    Vector2D getVelocity() const { return m_velocity; }
-    int getWidth() const { return m_width; }
-    int getHeight() const { return m_height; }
-    std::string getTextureID() const { return m_textureID; }
-    int getCurrentFrame() const { return m_currentFrame; }
-    int getCurrentRow() const { return m_currentRow; }
+    // Player-specific accessor methods
     SDL_FlipMode getFlip() const { return m_flip; }
-
-    // Setter methods for state control
-    void setVelocity(const Vector2D& velocity) override { m_velocity = velocity; }
-    void setCurrentFrame(int frame) override { m_currentFrame = frame; }
-    void setCurrentRow(int row) override { m_currentRow = row; }
+    
+    // Player-specific setter methods
     void setFlip(SDL_FlipMode flip) override { m_flip = flip; }
 
 private:

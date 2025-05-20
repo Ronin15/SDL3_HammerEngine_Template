@@ -8,7 +8,7 @@
 
 #include "utils/Vector2D.hpp"
 #include <string>
-#include <SDL3/SDL.h>
+#include <SDL3/SDL_surface.h>
 
 class Entity {
  public:
@@ -40,17 +40,16 @@ class Entity {
    virtual void setCurrentRow(int row) { m_currentRow = row; }
    virtual void setNumFrames(int numFrames) { m_numFrames = numFrames; }
    virtual void setAnimSpeed(int speed) { m_animSpeed = speed; }
-   
+
    // Used for rendering flipping - to be implemented by derived classes
    virtual void setFlip(SDL_FlipMode flip) { (void)flip; /* Unused in base class */ }
-
    protected:
     Vector2D m_acceleration{0, 0};
     Vector2D m_velocity{0, 0};
     Vector2D m_position{0, 0};
     int m_width{0};
     int m_height{0};
-    std::string m_textureID{0};
+    std::string m_textureID{};
     int m_currentFrame{0};
     int m_currentRow{0};
     int m_numFrames{0};

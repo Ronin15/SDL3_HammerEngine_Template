@@ -58,16 +58,16 @@ class GameEngine {
   SDL_Window* mp_window{nullptr};
   SDL_Renderer* mp_renderer{nullptr};
   std::atomic<bool> m_isRunning{false};
-  int m_windowWidth;
-  int m_windowHeight;
+  int m_windowWidth{0};
+  int m_windowHeight{0};
 
   // Multithreading synchronization
-  std::mutex m_updateMutex;
-  std::condition_variable m_updateCondition;
+  std::mutex m_updateMutex{};
+  std::condition_variable m_updateCondition{};
   std::atomic<bool> m_updateCompleted{false};
 
   // Render synchronization
-  std::mutex m_renderMutex;
+  std::mutex m_renderMutex{};
 
   // Delete copy constructor and assignment operator
   GameEngine(const GameEngine&) = delete; // Prevent copying
