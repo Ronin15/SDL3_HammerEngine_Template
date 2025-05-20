@@ -18,13 +18,13 @@ void MainMenuState::update() {
   //std::cout << "Updating Main Menu State\n";
 
       // Handle menu options
-      if (InputHandler::Instance().isKeyDown(SDL_SCANCODE_RETURN)) {
+      if (InputManager::Instance().isKeyDown(SDL_SCANCODE_RETURN)) {
           GameEngine::Instance().getGameStateManager()->setState("GamePlayState");
       }
-      if (InputHandler::Instance().isKeyDown(SDL_SCANCODE_A)) {
+      if (InputManager::Instance().isKeyDown(SDL_SCANCODE_A)) {
           GameEngine::Instance().getGameStateManager()->setState("AIDemo");
       }
-      if (InputHandler::Instance().isKeyDown(SDL_SCANCODE_ESCAPE)) {
+      if (InputManager::Instance().isKeyDown(SDL_SCANCODE_ESCAPE)) {
           GameEngine::Instance().setRunning(false);
       }
   }

@@ -177,13 +177,13 @@ void Player::handleInput() {
     bool isMoving = false;
 
     // Check keyboard, gamepad, or mouse input that would indicate movement
-    if (InputHandler::Instance().isKeyDown(SDL_SCANCODE_RIGHT) ||
-        InputHandler::Instance().isKeyDown(SDL_SCANCODE_LEFT) ||
-        InputHandler::Instance().isKeyDown(SDL_SCANCODE_UP) ||
-        InputHandler::Instance().isKeyDown(SDL_SCANCODE_DOWN) ||
-        InputHandler::Instance().getAxisX(0, 1) != 0 ||
-        InputHandler::Instance().getAxisY(0, 1) != 0 ||
-        InputHandler::Instance().getMouseButtonState(LEFT)) {
+    if (InputManager::Instance().isKeyDown(SDL_SCANCODE_RIGHT) ||
+        InputManager::Instance().isKeyDown(SDL_SCANCODE_LEFT) ||
+        InputManager::Instance().isKeyDown(SDL_SCANCODE_UP) ||
+        InputManager::Instance().isKeyDown(SDL_SCANCODE_DOWN) ||
+        InputManager::Instance().getAxisX(0, 1) != 0 ||
+        InputManager::Instance().getAxisY(0, 1) != 0 ||
+        InputManager::Instance().getMouseButtonState(LEFT)) {
 
         isMoving = true;
     }

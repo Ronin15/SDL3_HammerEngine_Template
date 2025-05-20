@@ -34,7 +34,7 @@ bool GamePlayState::enter() {
 void GamePlayState::update() {
   //std::cout << "Updating GAME State\n";
   // Handle pause and ESC key.
-  if (InputHandler::Instance().isKeyDown(SDL_SCANCODE_P)) {
+  if (InputManager::Instance().isKeyDown(SDL_SCANCODE_P)) {
       // Create PauseState if it doesn't exist
       if (!GameEngine::Instance().getGameStateManager()->hasState("PauseState")) {
           GameEngine::Instance().getGameStateManager()->addState(std::make_unique<PauseState>());
@@ -43,7 +43,7 @@ void GamePlayState::update() {
       m_transitioningToPause = true; // Set flag before transitioning
       GameEngine::Instance().getGameStateManager()->setState("PauseState");
   }
-  if (InputHandler::Instance().isKeyDown(SDL_SCANCODE_ESCAPE)) {
+  if (InputManager::Instance().isKeyDown(SDL_SCANCODE_ESCAPE)) {
       GameEngine::Instance().setRunning(false);
   }
 

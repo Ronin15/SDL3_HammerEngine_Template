@@ -83,28 +83,28 @@ void AIDemoState::update() {
     }
 
     // Handle user input for the demo
-    if (InputHandler::Instance().isKeyDown(SDL_SCANCODE_B)) {
+    if (InputManager::Instance().isKeyDown(SDL_SCANCODE_B)) {
         GameEngine::Instance().getGameStateManager()->setState("MainMenuState");
     }
 
     // Toggle AI behaviors
     static int lastKey = 0;
 
-    if (InputHandler::Instance().isKeyDown(SDL_SCANCODE_1) && lastKey != 1) {
+    if (InputManager::Instance().isKeyDown(SDL_SCANCODE_1) && lastKey != 1) {
         // Assign Wander behavior to all NPCs
         std::cout << "Forge Game Engine - Switching all NPCs to WANDER behavior\n";
         for (auto& npc : m_npcs) {
             AIManager::Instance().assignBehaviorToEntity(npc.get(), "Wander");
         }
         lastKey = 1;
-    } else if (InputHandler::Instance().isKeyDown(SDL_SCANCODE_2) && lastKey != 2) {
+    } else if (InputManager::Instance().isKeyDown(SDL_SCANCODE_2) && lastKey != 2) {
         // Assign Patrol behavior to all NPCs
         std::cout << "Forge Game Engine - Switching all NPCs to PATROL behavior\n";
         for (auto& npc : m_npcs) {
             AIManager::Instance().assignBehaviorToEntity(npc.get(), "Patrol");
         }
         lastKey = 2;
-    } else if (InputHandler::Instance().isKeyDown(SDL_SCANCODE_3) && lastKey != 3) {
+    } else if (InputManager::Instance().isKeyDown(SDL_SCANCODE_3) && lastKey != 3) {
         // Assign Chase behavior to all NPCs
         std::cout << "Forge Game Engine - Switching all NPCs to CHASE behavior\n";
 
@@ -122,15 +122,15 @@ void AIDemoState::update() {
     }
 
     // Reset key state if no behavior key is pressed
-    if (!InputHandler::Instance().isKeyDown(SDL_SCANCODE_1) &&
-        !InputHandler::Instance().isKeyDown(SDL_SCANCODE_2) &&
-        !InputHandler::Instance().isKeyDown(SDL_SCANCODE_3)) {
+    if (!InputManager::Instance().isKeyDown(SDL_SCANCODE_1) &&
+        !InputManager::Instance().isKeyDown(SDL_SCANCODE_2) &&
+        !InputManager::Instance().isKeyDown(SDL_SCANCODE_3)) {
         lastKey = 0;
     }
 
     // Pause/Resume AI
     static bool wasSpacePressed = false;
-    bool isSpacePressed = InputHandler::Instance().isKeyDown(SDL_SCANCODE_SPACE);
+    bool isSpacePressed = InputManager::Instance().isKeyDown(SDL_SCANCODE_SPACE);
 
     if (isSpacePressed && !wasSpacePressed) {
         // Toggle pause/resume
@@ -179,7 +179,7 @@ void AIDemoState::setupAIBehaviors() {
     AIManager::Instance().registerBehavior("Wander", std::move(wanderBehavior));
 
     // Create and register patrol behavior with screen-relative coordinates
-    std::vector<Vector2D> patrolPoints;
+    boost::container::small_vector<Vector2D, 10> patrolPoints;
     patrolPoints.push_back(Vector2D(m_worldWidth * 0.2f, m_worldHeight * 0.2f));
     patrolPoints.push_back(Vector2D(m_worldWidth * 0.8f, m_worldHeight * 0.2f));
     patrolPoints.push_back(Vector2D(m_worldWidth * 0.8f, m_worldHeight * 0.8f));
