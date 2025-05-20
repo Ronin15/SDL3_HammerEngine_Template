@@ -67,7 +67,7 @@ private:
     float m_maxY{600.0f};
     
     // Flag to control bounds checking behavior
-    bool m_boundsCheckEnabled{true};
+    bool m_boundsCheckEnabled{false};
 };
 
 #endif // NPC_HPP
