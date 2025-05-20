@@ -46,6 +46,8 @@ private:
     float m_waypointRadius{25.0f}; // How close entity needs to be to "reach" a waypoint - increased from 15 to 25
     bool m_includeOffscreenPoints{false}; // Whether patrol route can include offscreen points
     bool m_needsReset{false}; // Flag to track if entity needs to be reset
+    float m_lastXDirection{0.0f}; // Last significant X direction for sprite flipping
+    int m_directionChangeCount{0}; // Counter to track frequent direction changes
     
     // Screen dimensions - defaults that will be updated by setScreenDimensions
     float m_screenWidth{1280.0f};
