@@ -9,7 +9,8 @@
 #include <cmath>
 
 WanderBehavior::WanderBehavior(float speed, float changeDirectionInterval, float areaRadius)
-    : m_speed(speed), m_changeDirectionInterval(changeDirectionInterval), m_areaRadius(areaRadius) {
+    : m_speed(speed), m_changeDirectionInterval(changeDirectionInterval), m_areaRadius(areaRadius), 
+      m_lastDirectionFlip(0), m_minimumFlipInterval(400) {
     // Random number generators are already initialized in class definition
 }
 
@@ -31,6 +32,9 @@ void WanderBehavior::update(Entity* entity) {
 
     // Get current time
     Uint64 currentTime = SDL_GetTicks();
+
+    // Store the previous velocity for flip stability
+    Vector2D previousVelocity = entity->getVelocity();
 
     // Check if it's time to change direction
     if (currentTime - m_lastDirectionChangeTime > m_changeDirectionInterval) {
@@ -76,7 +80,31 @@ void WanderBehavior::update(Entity* entity) {
         }
     }
 
-    // Apply current direction (NPC class now handles sprite flipping based on velocity)
+    // Control sprite flipping to avoid rapid flips
+    // Only allow direction flips if enough time has passed since the last flip
+    Vector2D currentVelocity = entity->getVelocity();
+    
+    // Check if there was a direction change that would cause a flip
+    bool wouldFlip = (previousVelocity.getX() > 0.5f && currentVelocity.getX() < -0.5f) || 
+                     (previousVelocity.getX() < -0.5f && currentVelocity.getX() > 0.5f);
+    
+    if (wouldFlip && (currentTime - m_lastDirectionFlip < m_minimumFlipInterval)) {
+        // Prevent the flip by maintaining previous direction's sign but with new magnitude
+        float magnitude = currentVelocity.length();
+        float xDir = (previousVelocity.getX() < 0) ? -1.0f : 1.0f;
+        float yVal = currentVelocity.getY();
+        
+        // Create a new direction that doesn't cause a flip
+        Vector2D stableVelocity(xDir * magnitude * 0.8f, yVal);
+        stableVelocity.normalize();
+        stableVelocity = stableVelocity * m_speed;
+        
+        // Apply the stable velocity
+        entity->setVelocity(stableVelocity);
+    } else if (wouldFlip) {
+        // Record the time of this flip
+        m_lastDirectionFlip = currentTime;
+    }
 }
 
 void WanderBehavior::clean(Entity* entity) {
@@ -185,7 +213,7 @@ void WanderBehavior::resetEntityPosition(Entity* entity) {
 
 void WanderBehavior::chooseNewDirection(Entity* entity, bool wanderOffscreen) {
     if (!entity) return;
-
+    
     // Track if we're currently wandering offscreen
     m_currentlyWanderingOffscreen = wanderOffscreen;
 
