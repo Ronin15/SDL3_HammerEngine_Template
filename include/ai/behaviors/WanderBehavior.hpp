@@ -57,6 +57,10 @@ private:
     bool m_resetScheduled{false};
     float m_offscreenProbability{0.15f}; // 15% chance to wander offscreen when changing direction
 
+    // Flip stability properties
+    Uint64 m_lastDirectionFlip{0};     // Time of last direction flip
+    Uint64 m_minimumFlipInterval{400}; // Minimum time between flips (milliseconds)
+
     // Random number generation
     std::mt19937 m_rng{std::random_device{}()};
     std::uniform_real_distribution<float> m_angleDistribution{0.0f, 2.0f * M_PI};
