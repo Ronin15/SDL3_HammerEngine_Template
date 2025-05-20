@@ -6,7 +6,7 @@
 #ifndef MAIN_MENU_STATE_HPP
 #define MAIN_MENU_STATE_HPP
 
-#include "game_states/GameState.hpp"
+#include "gameStates/GameState.hpp"
 
 class MainMenuState : public GameState {
  public:

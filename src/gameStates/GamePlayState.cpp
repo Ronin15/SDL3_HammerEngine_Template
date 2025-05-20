@@ -3,12 +3,12 @@
  * Licensed under the MIT License - see LICENSE file for details
 */
 
-#include "game_states/GamePlayState.hpp"
+#include "gameStates/GamePlayState.hpp"
 #include "managers/GameStateManager.hpp"
 #include "managers/FontManager.hpp"
 #include "managers/InputManager.hpp"
 #include "core/GameEngine.hpp"
-#include "game_states/PauseState.hpp"
+#include "gameStates/PauseState.hpp"
 #include <iostream>
 
 bool GamePlayState::enter() {

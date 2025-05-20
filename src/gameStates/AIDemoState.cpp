@@ -3,7 +3,7 @@
  * Licensed under the MIT License - see LICENSE file for details
 */
 
-#include "game_states/AIDemoState.hpp"
+#include "gameStates/AIDemoState.hpp"
 #include "managers/AIManager.hpp"
 #include "SDL3/SDL_scancode.h"
 #include "ai/behaviors/WanderBehavior.hpp"

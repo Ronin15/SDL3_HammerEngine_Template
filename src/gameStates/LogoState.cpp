@@ -3,7 +3,7 @@
  * Licensed under the MIT License - see LICENSE file for details
 */
 
-#include "game_states/LogoState.hpp"
+#include "gameStates/LogoState.hpp"
 #include "core/GameEngine.hpp"
 #include "managers/SoundManager.hpp"
 #include "managers/FontManager.hpp"

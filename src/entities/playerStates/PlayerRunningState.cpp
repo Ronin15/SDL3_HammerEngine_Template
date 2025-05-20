@@ -3,7 +3,7 @@
  * Licensed under the MIT License - see LICENSE file for details
 */
 
-#include "entities/states/PlayerRunningState.hpp"
+#include "entities/playerStates/PlayerRunningState.hpp"
 #include "entities/Player.hpp"
 #include "managers/InputManager.hpp"
 //#include <iostream>

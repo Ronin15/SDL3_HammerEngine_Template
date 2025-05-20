@@ -6,7 +6,7 @@
 #ifndef AI_DEMO_STATE_HPP
 #define AI_DEMO_STATE_HPP
 
-#include "game_states/GameState.hpp"
+#include "gameStates/GameState.hpp"
 #include "entities/NPC.hpp"
 #include "entities/Player.hpp"
 // AIManager.hpp is included by AIDemoState.cpp

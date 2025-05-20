@@ -6,7 +6,7 @@
 #ifndef PLAYER_IDLE_STATE_HPP
 #define PLAYER_IDLE_STATE_HPP
 
-#include "entities/states/EntityState.hpp"
+#include "entities/EntityState.hpp"
 
 class Player;
 
