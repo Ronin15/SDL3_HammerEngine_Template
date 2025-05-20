@@ -1,6 +1,6 @@
 # Queue Capacity Optimization in ThreadSystem
 
-> **Note:** For a detailed explanation of what "500 tasks" means in practice and how it translates to game features, see the [Task Definition in](ThreadSystem_Optimization.md) document.
+> **Note:** For a detailed explanation of what "500 tasks" means in practice and how it translates to game features, see the [Task Definition](ThreadSystem_Optimization.md) document.
 
 ## Understanding Memory Fragmentation and Cache Locality
 
