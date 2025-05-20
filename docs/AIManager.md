@@ -196,8 +196,8 @@ When threading is enabled, be careful about accessing shared resources from beha
 ## API Reference
 
 For the complete API, see the following header files:
-- `include/AIManager.hpp`
-- `include/AIBehavior.hpp`
-- `include/WanderBehavior.hpp`
-- `include/PatrolBehavior.hpp`
-- `include/ChaseBehavior.hpp`
+- `include/managers/AIManager.hpp`
+- `include/ai/AIBehavior.hpp`
+- `include/ai/behaviors/WanderBehavior.hpp`
+- `include/ai/behaviors/PatrolBehavior.hpp`
+- `include/ai/behaviors/ChaseBehavior.hpp`
