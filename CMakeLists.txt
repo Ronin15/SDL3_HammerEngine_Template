@@ -172,14 +172,12 @@ target_link_libraries(imgui PUBLIC
 )
 
 # Find all source files
-file(GLOB_RECURSE SOURCES 
+file(GLOB_RECURSE SOURCES
     "src/core/*.cpp"
     "src/managers/*.cpp"
-    "src/states/*.cpp"
+    "src/game_states/*.cpp"
     "src/entities/*.cpp"
     "src/ai/*.cpp"
-    "src/utils/*.cpp"
-    "src/io/*.cpp"
     "src/ui/*.cpp"
 )
 
@@ -318,13 +316,12 @@ target_include_directories(${PROJECT_NAME} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_CURRENT_SOURCE_DIR}/include/core
     ${CMAKE_CURRENT_SOURCE_DIR}/include/managers
-    ${CMAKE_CURRENT_SOURCE_DIR}/include/states
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/game_states
     ${CMAKE_CURRENT_SOURCE_DIR}/include/entities
     ${CMAKE_CURRENT_SOURCE_DIR}/include/entities/states
     ${CMAKE_CURRENT_SOURCE_DIR}/include/ai
     ${CMAKE_CURRENT_SOURCE_DIR}/include/ai/behaviors
     ${CMAKE_CURRENT_SOURCE_DIR}/include/utils
-    ${CMAKE_CURRENT_SOURCE_DIR}/include/io
     ${CMAKE_CURRENT_SOURCE_DIR}/include/ui
 )
 
