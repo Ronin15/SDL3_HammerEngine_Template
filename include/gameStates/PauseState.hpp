@@ -6,7 +6,7 @@
 #ifndef PAUSE_STATE_HPP
 #define PAUSE_STATE_HPP
 
-#include "game_states/GameState.hpp"
+#include "gameStates/GameState.hpp"
 
 class PauseState : public GameState {
  public:

@@ -4,7 +4,7 @@
 */
 
 #include "managers/EntityStateManager.hpp"
-#include "entities/states/EntityState.hpp"
+#include "entities/EntityState.hpp"
 #include <iostream>
 #include <stdexcept>
 

@@ -4,7 +4,7 @@
 */
 
 #include "managers/GameStateManager.hpp"
-#include "game_states/GameState.hpp"
+#include "gameStates/GameState.hpp"
 #include <algorithm>
 #include <iostream>
 

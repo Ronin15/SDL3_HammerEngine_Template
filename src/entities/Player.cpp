@@ -6,8 +6,8 @@
 #include "entities/Player.hpp"
 #include "core/GameEngine.hpp"
 #include "managers/InputManager.hpp"
-#include "entities/states/PlayerIdleState.hpp"
-#include "entities/states/PlayerRunningState.hpp"
+#include "entities/playerStates/PlayerIdleState.hpp"
+#include "entities/playerStates/PlayerRunningState.hpp"
 #include "SDL3/SDL_surface.h"
 #include "managers/TextureManager.hpp"
 #include <SDL3/SDL.h>

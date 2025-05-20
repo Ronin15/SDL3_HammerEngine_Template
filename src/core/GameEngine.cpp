@@ -10,13 +10,13 @@
 #include <iostream>
 #include <thread>
 #include "managers/AIManager.hpp"
-#include "game_states/AIDemoState.hpp"
+#include "gameStates/AIDemoState.hpp"
 #include "managers/FontManager.hpp"
-#include "game_states/GamePlayState.hpp"
+#include "gameStates/GamePlayState.hpp"
 #include "managers/GameStateManager.hpp"
 #include "managers/InputManager.hpp"
-#include "game_states/LogoState.hpp"
-#include "game_states/MainMenuState.hpp"
+#include "gameStates/LogoState.hpp"
+#include "gameStates/MainMenuState.hpp"
 #include "SDL3/SDL_render.h"
 #include "SDL3/SDL_video.h"
 #include "managers/SaveGameManager.hpp"

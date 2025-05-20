@@ -3,7 +3,7 @@
  * Licensed under the MIT License - see LICENSE file for details
 */
 
-#include "entities/states/PlayerIdleState.hpp"
+#include "entities/playerStates/PlayerIdleState.hpp"
 #include "entities/Player.hpp"
 //#include <iostream>
 
