@@ -73,7 +73,7 @@ bool FontManager::loadFont(const std::string& fontFile, const std::string& fontI
       std::cerr << "Forge Game Engine - Error while loading fonts: " << e.what() << std::endl;
     }
 
-    std::cout << "Forge Game Engine - Loaded " << fontsLoaded << " fonts from directory: " << fontFile << std::endl;
+    std::cout << "Forge Game Engine - Loaded " << fontsLoaded << " fonts from directory: " << fontFile << "\n";
     return loadedAny; // Return true if at least one font was loaded successfully
   }
 
