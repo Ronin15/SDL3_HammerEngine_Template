@@ -194,7 +194,7 @@ bool GameEngine::init(const char* title,
       Forge::ThreadSystem::Instance().enqueueTaskWithResult([]() -> bool {
         std::cout << "Forge Game Engine - Detecting and initializing gamepads "
                      "and input handling\n";
-        InputHandler::Instance().initializeGamePad();
+        InputManager::Instance().initializeGamePad();
         return true;
       }));
 
@@ -311,7 +311,7 @@ bool GameEngine::init(const char* title,
 }
 
 void GameEngine::handleEvents() {
-  InputHandler::Instance().update();
+  InputManager::Instance().update();
 }
 
 void GameEngine::update() {
@@ -415,7 +415,7 @@ void GameEngine::clean() {
   SaveGameManager::Instance().clean();
 
   std::cout << "Forge Game Engine - Cleaning up Input Handler...\n";
-  InputHandler::Instance().clean();
+  InputManager::Instance().clean();
 
   std::cout << "Forge Game Engine - Cleaning up Texture Manager...\n";
   TextureManager::Instance().clean();

@@ -19,24 +19,24 @@ void PlayerRunningState::update() {
     Vector2D velocity(0, 0);
 
     // Handle keyboard movement
-    if (InputHandler::Instance().isKeyDown(SDL_SCANCODE_RIGHT)) {
+    if (InputManager::Instance().isKeyDown(SDL_SCANCODE_RIGHT)) {
         velocity.setX(2);
         mp_player->setFlip(SDL_FLIP_NONE);
-    } else if (InputHandler::Instance().isKeyDown(SDL_SCANCODE_LEFT)) {
+    } else if (InputManager::Instance().isKeyDown(SDL_SCANCODE_LEFT)) {
         velocity.setX(-2);
         mp_player->setFlip(SDL_FLIP_HORIZONTAL);
     }
 
-    if (InputHandler::Instance().isKeyDown(SDL_SCANCODE_UP)) {
+    if (InputManager::Instance().isKeyDown(SDL_SCANCODE_UP)) {
         velocity.setY(-2);
-    } else if (InputHandler::Instance().isKeyDown(SDL_SCANCODE_DOWN)) {
+    } else if (InputManager::Instance().isKeyDown(SDL_SCANCODE_DOWN)) {
         velocity.setY(2);
     }
 
     // Handle controller joystick movement (if a gamepad is connected)
     // We'll use the first connected gamepad (joy = 0) and the left stick (stick = 1)
-    int joystickX = InputHandler::Instance().getAxisX(0, 1);
-    int joystickY = InputHandler::Instance().getAxisY(0, 1);
+    int joystickX = InputManager::Instance().getAxisX(0, 1);
+    int joystickY = InputManager::Instance().getAxisY(0, 1);
 
     if (joystickX != 0 || joystickY != 0) {
         // If joystick is being used, override keyboard input
@@ -52,9 +52,9 @@ void PlayerRunningState::update() {
     }
 
     // Handle mouse movement (when left mouse button is down)
-    if (InputHandler::Instance().getMouseButtonState(LEFT)) {
+    if (InputManager::Instance().getMouseButtonState(LEFT)) {
         // Get mouse position and player position
-        Vector2D* mousePos = InputHandler::Instance().getMousePosition();
+        Vector2D* mousePos = InputManager::Instance().getMousePosition();
         Vector2D playerPos = mp_player->getPosition();
 
         // Calculate direction vector from player to mouse cursor

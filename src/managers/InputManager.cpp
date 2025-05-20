@@ -12,7 +12,7 @@
 
 SDL_JoystickID* gamepadIDs{nullptr};
 
-InputHandler::InputHandler()
+InputManager::InputManager()
     : m_keystates(nullptr),
       m_mousePosition(new Vector2D(0, 0)) {
   // Create button states for the mouse
@@ -21,7 +21,7 @@ InputHandler::InputHandler()
   }
 }
 
-InputHandler::~InputHandler() {
+InputManager::~InputManager() {
   // Clean up allocated memory
   delete m_mousePosition;
 
@@ -32,7 +32,7 @@ InputHandler::~InputHandler() {
   m_mouseButtonStates.clear();
 }
 
-void InputHandler::initializeGamePad() {
+void InputManager::initializeGamePad() {
   // Check if gamepad subsystem is already initialized
   if (m_gamePadInitialized) {
     return;
@@ -69,7 +69,7 @@ void InputHandler::initializeGamePad() {
           m_joystickValues.push_back(std::make_pair(new Vector2D(0, 0), new Vector2D(0, 0)));
 
           // Add default button states for this joystick
-          std::vector<bool> tempButtons;
+          boost::container::small_vector<bool, 16> tempButtons;
           for (int j = 0; j < SDL_GAMEPAD_BUTTON_COUNT; j++) {
             tempButtons.push_back(false);
           }
@@ -88,20 +88,20 @@ void InputHandler::initializeGamePad() {
   m_gamePadInitialized = true;
 }
 
-void InputHandler::reset() {
+void InputManager::reset() {
   m_mouseButtonStates[LEFT] = false;
   m_mouseButtonStates[RIGHT] = false;
   m_mouseButtonStates[MIDDLE] = false;
 }
 
-bool InputHandler::isKeyDown(SDL_Scancode key) const {
+bool InputManager::isKeyDown(SDL_Scancode key) const {
   if (m_keystates != nullptr) {
     return m_keystates[key] == 1;
   }
   return false;
 }
 
-int InputHandler::getAxisX(int joy, int stick) const {
+int InputManager::getAxisX(int joy, int stick) const {
   if (joy < 0 || joy >= static_cast<int>(m_joystickValues.size())) {
     return 0;
   }
@@ -115,7 +115,7 @@ int InputHandler::getAxisX(int joy, int stick) const {
   return 0;
 }
 
-int InputHandler::getAxisY(int joy, int stick) const {
+int InputManager::getAxisY(int joy, int stick) const {
   if (joy < 0 || joy >= static_cast<int>(m_joystickValues.size())) {
     return 0;
   }
@@ -129,7 +129,7 @@ int InputHandler::getAxisY(int joy, int stick) const {
   return 0;
 }
 
-bool InputHandler::getButtonState(int joy, int buttonNumber) const {
+bool InputManager::getButtonState(int joy, int buttonNumber) const {
   if (joy < 0 || joy >= static_cast<int>(m_buttonStates.size()) ||
       buttonNumber < 0 ||
       buttonNumber >= static_cast<int>(m_buttonStates[joy].size())) {
@@ -139,7 +139,7 @@ bool InputHandler::getButtonState(int joy, int buttonNumber) const {
   return m_buttonStates[joy][buttonNumber];
 }
 
-bool InputHandler::getMouseButtonState(int buttonNumber) const {
+bool InputManager::getMouseButtonState(int buttonNumber) const {
   if (buttonNumber < 0 ||
       buttonNumber >= static_cast<int>(m_mouseButtonStates.size())) {
     return false;
@@ -148,11 +148,11 @@ bool InputHandler::getMouseButtonState(int buttonNumber) const {
   return m_mouseButtonStates[buttonNumber];
 }
 
-Vector2D* InputHandler::getMousePosition() const {
+Vector2D* InputManager::getMousePosition() const {
   return m_mousePosition;
 }
 
-void InputHandler::update() {
+void InputManager::update() {
   SDL_Event event;
   while (SDL_PollEvent(&event)) {
     switch (event.type) {
@@ -199,13 +199,13 @@ void InputHandler::update() {
   }
 }
 
-void InputHandler::onKeyDown(SDL_Event& /*event*/) {
+void InputManager::onKeyDown(SDL_Event& /*event*/) {
   // Store the keyboard state
   m_keystates = SDL_GetKeyboardState(0);
 
 }
 
-void InputHandler::onKeyUp(SDL_Event& /*event*/) {
+void InputManager::onKeyUp(SDL_Event& /*event*/) {
   // TODO may not bew needed and need to clean upStore the keyboard state
   m_keystates = SDL_GetKeyboardState(0);
 
@@ -213,12 +213,12 @@ void InputHandler::onKeyUp(SDL_Event& /*event*/) {
   // using the isKeyDown() method
 }
 
-void InputHandler::onMouseMove(SDL_Event& event) {
+void InputManager::onMouseMove(SDL_Event& event) {
   m_mousePosition->setX(event.motion.x);
   m_mousePosition->setY(event.motion.y);
 }
 
-void InputHandler::onMouseButtonDown(SDL_Event& event) {
+void InputManager::onMouseButtonDown(SDL_Event& event) {
   if (event.button.button == SDL_BUTTON_LEFT) {
     m_mouseButtonStates[LEFT] = true;
     std::cout << "Forge Game Engine - Mouse button Left clicked!\n";
@@ -233,7 +233,7 @@ void InputHandler::onMouseButtonDown(SDL_Event& event) {
   }
 }
 
-void InputHandler::onMouseButtonUp(SDL_Event& event) {
+void InputManager::onMouseButtonUp(SDL_Event& event) {
   if (event.button.button == SDL_BUTTON_LEFT) {
     m_mouseButtonStates[LEFT] = false;
   }
@@ -245,7 +245,7 @@ void InputHandler::onMouseButtonUp(SDL_Event& event) {
   }
 }
 
-void InputHandler::onGamepadAxisMove(SDL_Event& event) {
+void InputManager::onGamepadAxisMove(SDL_Event& event) {
   int whichOne = 0;
 
   // Find which gamepad this event belongs to
@@ -341,7 +341,7 @@ void InputHandler::onGamepadAxisMove(SDL_Event& event) {
   }
 }
 
-void InputHandler::onGamepadButtonDown(SDL_Event& event) {
+void InputManager::onGamepadButtonDown(SDL_Event& event) {
   int whichOne = 0;
 
   // Find which gamepad this event belongs to
@@ -388,7 +388,7 @@ void InputHandler::onGamepadButtonDown(SDL_Event& event) {
             << static_cast<int>(event.gbutton.button) << ") pressed!\n";
 }
 
-void InputHandler::onGamepadButtonUp(SDL_Event& event) {
+void InputManager::onGamepadButtonUp(SDL_Event& event) {
   int whichOne = 0;
 
   // Find which gamepad this event belongs to
@@ -410,7 +410,7 @@ void InputHandler::onGamepadButtonUp(SDL_Event& event) {
   m_buttonStates[whichOne][event.gbutton.button] = false;
 }
 
-void InputHandler::clean() {
+void InputManager::clean() {
 
 int gamepadCount{0};
 if(m_gamePadInitialized) {
@@ -432,13 +432,13 @@ if(m_gamePadInitialized) {
   m_gamePadInitialized = false;
   SDL_QuitSubSystem(SDL_INIT_GAMEPAD);
   std::cout << "Forge Game Engine - " << gamepadCount << " gamepads freed!\n";
-  std::cout << "Forge Game Engine - InputHandler resources cleaned!\n";
+  std::cout << "Forge Game Engine - InputManager resources cleaned!\n";
 
 }else{
 
     //m_buttonStates.clear(); cleared in destructor
     std::cout << "Forge Game Engine - no gamepads to free!\n";
-    std::cout << "Forge Game Engine - InputHandler resources cleaned!\n";
+    std::cout << "Forge Game Engine - InputManager resources cleaned!\n";
     SDL_QuitSubSystem(SDL_INIT_GAMEPAD);
     }
 

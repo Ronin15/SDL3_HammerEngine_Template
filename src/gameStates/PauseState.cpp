@@ -17,12 +17,12 @@ bool PauseState::enter() {
 void PauseState::update() {
   //std::cout << "Updating PAUSE State\n";
   // Handle pause and ESC key.
-  if (InputHandler::Instance().isKeyDown(SDL_SCANCODE_R)) {
+  if (InputManager::Instance().isKeyDown(SDL_SCANCODE_R)) {
       // Flag the GamePlayState transition
       // We'll do the actual removal in GamePlayState::enter()
       GameEngine::Instance().getGameStateManager()->setState("GamePlayState");
   }
-  if (InputHandler::Instance().isKeyDown(SDL_SCANCODE_ESCAPE)) {
+  if (InputManager::Instance().isKeyDown(SDL_SCANCODE_ESCAPE)) {
       GameEngine::Instance().setRunning(false);
   }
 }

@@ -7,7 +7,7 @@
 #define GAME_STATE_MANAGER_HPP
 
 #include <memory>
-#include <vector>
+#include <boost/container/small_vector.hpp>
 
 class GameState;
 
@@ -25,7 +25,7 @@ class GameStateManager {
   void clearAllStates();
 
   private:
-   std::vector<std::unique_ptr<GameState>> states;
+   boost::container::small_vector<std::unique_ptr<GameState>, 8> states; //increase to how many states you expect to have.
    GameState* currentState;  // Pointer to the current state, not owned
 
 };

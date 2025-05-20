@@ -3,84 +3,84 @@
  * Licensed under the MIT License - see LICENSE file for details
 */
 
-#ifndef INPUT_HANDLER_HPP
-#define INPUT_HANDLER_HPP
+#ifndef INPUT_MANAGER_HPP
+#define INPUT_MANAGER_HPP
 
 #include <SDL3/SDL.h>
 #include <utility>
-#include <vector>
+#include <boost/container/small_vector.hpp>
 
 class Vector2D;
 
 enum mouse_buttons { LEFT = 0, MIDDLE = 1, RIGHT = 2 };
 
-class InputHandler {
+class InputManager {
  public:
-    ~InputHandler();
+    ~InputManager();
 
- static InputHandler& Instance(){
-     static InputHandler instance;
-     return instance;
- }
+    static InputManager& Instance(){
+        static InputManager instance;
+        return instance;
+    }
 
-  // Initialize gamepad
-  void initializeGamePad();
+    // Initialize gamepad
+    void initializeGamePad();
 
-  // Update method
-  void update();
+    // Update method
+    void update();
 
-  // Reset mouse button states
-  void reset();
+    // Reset mouse button states
+    void reset();
 
-  // Clean up
-  void clean();
+    // Clean up
+    void clean();
 
-  // Keyboard events
-  bool isKeyDown(SDL_Scancode key) const;
+    // Keyboard events
+    bool isKeyDown(SDL_Scancode key) const;
 
-  // Joystick events
-  int getAxisX(int joy, int stick) const;
-  int getAxisY(int joy, int stick) const;
-  bool getButtonState(int joy, int buttonNumber) const;
+    // Joystick events
+    int getAxisX(int joy, int stick) const;
+    int getAxisY(int joy, int stick) const;
+    bool getButtonState(int joy, int buttonNumber) const;
 
-  // Mouse events
-  bool getMouseButtonState(int buttonNumber) const;
-  Vector2D* getMousePosition() const;
+    // Mouse events
+    bool getMouseButtonState(int buttonNumber) const;
+    Vector2D* getMousePosition() const;
 
  private:
 
-  // Keyboard specific
-  const bool* m_keystates;
+    // Keyboard specific
+    const bool* m_keystates;
 
-  // Gamepad specific
-  std::vector<std::pair<Vector2D*, Vector2D*>> m_joystickValues;
-  std::vector<SDL_Gamepad*> m_joysticks;
-  std::vector<std::vector<bool>> m_buttonStates;
-  const int m_joystickDeadZone = 10000;
-  bool m_gamePadInitialized{false};
-  // Mouse specific
-  std::vector<bool> m_mouseButtonStates;
-  Vector2D* m_mousePosition;
+    // Gamepad specific
+    boost::container::small_vector<std::pair<Vector2D*, Vector2D*>, 4> m_joystickValues;
+    boost::container::small_vector<SDL_Gamepad*, 4> m_joysticks;
+    boost::container::small_vector<boost::container::small_vector<bool, 16>, 4> m_buttonStates;
+    const int m_joystickDeadZone = 10000;
+    bool m_gamePadInitialized{false};
+    // Mouse specific
+    boost::container::small_vector<bool, 3> m_mouseButtonStates;
+    Vector2D* m_mousePosition;
 
-  // Handle keyboard events
-  void onKeyDown(SDL_Event& event);
-  void onKeyUp(SDL_Event& event);
+    // Handle keyboard events
+    void onKeyDown(SDL_Event& event);
+    void onKeyUp(SDL_Event& event);
 
-  // Handle mouse events
-  void onMouseMove(SDL_Event& event);
-  void onMouseButtonDown(SDL_Event& event);
-  void onMouseButtonUp(SDL_Event& event);
+    // Handle mouse events
+    void onMouseMove(SDL_Event& event);
+    void onMouseButtonDown(SDL_Event& event);
+    void onMouseButtonUp(SDL_Event& event);
 
-  // Handle gamepad events
-  void onGamepadAxisMove(SDL_Event& event);
-  void onGamepadButtonDown(SDL_Event& event);
-  void onGamepadButtonUp(SDL_Event& event);
+    // Handle gamepad events
+    void onGamepadAxisMove(SDL_Event& event);
+    void onGamepadButtonDown(SDL_Event& event);
+    void onGamepadButtonUp(SDL_Event& event);
 
-  // Delete copy constructor and assignment operator
-  InputHandler(const InputHandler&) = delete; // Prevent copying
-  InputHandler& operator=(const InputHandler&) = delete; // Prevent assignment
+    // Delete copy constructor and assignment operator
+    InputManager(const InputManager&) = delete; // Prevent copying
+    InputManager& operator=(const InputManager&) = delete; // Prevent assignment
 
-  InputHandler();
-};
+    InputManager();
+};;
 
-#endif  // INPUT_HANDLER_HPP
+#endif  // INPUT_MANAGER_HPP
