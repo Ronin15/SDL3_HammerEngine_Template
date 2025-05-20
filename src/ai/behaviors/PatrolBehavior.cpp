@@ -6,6 +6,7 @@
 #include "ai/behaviors/PatrolBehavior.hpp"
 #include "SDL3/SDL_surface.h"
 #include "entities/Entity.hpp"
+#include "entities/NPC.hpp"
 #include <algorithm>
 
 PatrolBehavior::PatrolBehavior(const std::vector<Vector2D>& waypoints, float moveSpeed, bool includeOffscreenPoints)
@@ -27,6 +28,13 @@ void PatrolBehavior::init(Entity* entity) {
     // If entity is already near the first waypoint, move to the next one
     if (isAtWaypoint(entity->getPosition(), m_waypoints[m_currentWaypoint])) {
         m_currentWaypoint = (m_currentWaypoint + 1) % m_waypoints.size();
+    }
+    
+    // Disable bounds checking when off-screen movement is allowed
+    // Check if entity is an NPC that supports bounds checking control
+    NPC* npc = dynamic_cast<NPC*>(entity);
+    if (npc) {
+        npc->setBoundsCheckEnabled(!m_includeOffscreenPoints);
     }
 }
 
@@ -97,6 +105,12 @@ void PatrolBehavior::clean(Entity* entity) {
 
     // Stop the entity's movement when cleaning up
     entity->setVelocity(Vector2D(0, 0));
+    
+    // Re-enable bounds checking when behavior is cleaned up
+    NPC* npc = dynamic_cast<NPC*>(entity);
+    if (npc) {
+        npc->setBoundsCheckEnabled(true);
+    }
 }
 
 void PatrolBehavior::onMessage(Entity* entity, const std::string& message) {
