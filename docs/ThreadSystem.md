@@ -125,7 +125,7 @@ Eliminating dynamic resizing of the task queue helps maintain consistent perform
    - Optimal task size is typically 0.1-1ms per task
    - Too small tasks (<0.05ms) create excessive overhead
    - Too large tasks (>5ms) can cause load imbalance
-   - See [ThreadSystem 500 Tasks](ThreadSystem_500Tasks.md) for detailed guidance
+   - See [ThreadSystem Task](ThreadSystem_Optimization.md) for detailed guidance
 
 ## Example Scenarios
 
@@ -183,7 +183,7 @@ The implementation efficiently handles task creation, dispatch, and completion, 
 
 ## Performance Characteristics
 
-The system is designed to handle approximately 500 concurrent tasks with optimal memory usage and processing efficiency. This capacity supports rich game worlds with hundreds of active entities and complex simulations. For a detailed explanation of what "500 tasks" means in practice and how it translates to game features, see the [ThreadSystem 500 Tasks](ThreadSystem_500Tasks.md) document.
+The system is designed to handle approximately 500 concurrent tasks with optimal memory usage and processing efficiency. This capacity supports rich game worlds with hundreds of active entities and complex simulations. For a detailed explanation of what "500 tasks" means in practice and how it translates to game features, see the [ThreadSystem Task](ThreadSystem_Optimization.md) document.
 
 ## Thread Safety
 

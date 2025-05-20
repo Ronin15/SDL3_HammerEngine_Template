@@ -117,7 +117,7 @@ The SaveGameManager provides functionality to save and load game state. Features
 - Metadata extraction from save files
 - File management (listing, deletion, validation)
 
-See `include/SaveGameManager.hpp` for the full API.
+See `include/managers/SaveGameManager.hpp` for the full API.
 
 ### ThreadSystem
 
@@ -140,7 +140,7 @@ The TextureManager handles all image loading and rendering operations:
 - Parallax scrolling capabilities for background effects
 - Memory-efficient texture management
 
-See `include/TextureManager.hpp` for the full API.
+See `include/managers/TextureManager.hpp` for the full API.
 
 ### SoundManager
 
@@ -151,7 +151,7 @@ The SoundManager provides a comprehensive audio system:
 - Music playback control (play, pause, resume, stop)
 - Volume management for different audio types
 
-See `include/SoundManager.hpp` for the full API.
+See `include/managers/SoundManager.hpp` for the full API.
 
 ### FontManager
 
@@ -161,7 +161,7 @@ The FontManager handles text rendering throughout the application:
 - Text rendering to textures or directly to the screen
 - Memory-efficient font management
 
-See `include/FontManager.hpp` for the full API.
+See `include/managers/FontManager.hpp` for the full API.
 
 ### InputHandler
 
@@ -173,7 +173,7 @@ The InputHandler manages all user input across different devices:
 - Gamepad axis movement and button states
 - Input state resets and cleanups
 
-See `include/InputHandler.hpp` for the full API.
+See `include/managers/InputManager.hpp` for the full API.
 
 ### GameStateManager
 
@@ -184,7 +184,7 @@ The GameStateManager controls the high-level game states:
 - State lookup by name
 - Update and render delegation to the current state
 
-See `include/GameStateManager.hpp` for the full API.
+See `include/managers/GameStateManager.hpp` for the full API.
 
 ### EntityStateManager
 
@@ -195,7 +195,7 @@ The EntityStateManager handles the state machine for individual entities:
 - Current state tracking and updates
 - Memory-efficient state storage using flat maps
 
-See `include/EntityStateManager.hpp` for the full API.
+See `include/managers/EntityStateManager.hpp` for the full API.
 
 ### AIManager
 
@@ -220,7 +220,7 @@ Key features include:
 - **Messaging API**: Control behaviors with messages like "pause", "resume", or "reverse"
 - **Extensible Design**: Create custom behaviors by implementing the AIBehavior interface
 
-See `docs/AIManager.md` for detailed documentation with examples and best practices. Additional API details can be found in `include/AIManager.hpp`, `include/AIBehavior.hpp`, and the specific behavior implementations.
+See `docs/AIManager.md` for detailed documentation with examples and best practices. Additional API details can be found in `include/managers/AIManager.hpp`, `include/ai/AIBehavior.hpp`, and the specific behavior implementations.
 
 ## Window Icon
 This project supports window icons across all platforms:
