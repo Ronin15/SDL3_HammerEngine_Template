@@ -4,7 +4,7 @@
 */
 
 #include "ai/behaviors/WanderBehavior.hpp"
-#include "SDL3/SDL_surface.h"
+
 #include <algorithm>
 #include <cmath>
 
@@ -80,12 +80,7 @@ void WanderBehavior::update(Entity* entity) {
         }
     }
 
-    // Apply current direction and handle sprite flipping
-    if (m_currentDirection.getX() < 0) {
-        entity->setFlip(SDL_FLIP_NONE);
-    } else if (m_currentDirection.getX() > 0) {
-        entity->setFlip(SDL_FLIP_HORIZONTAL);
-    }
+    // Apply current direction (NPC class now handles sprite flipping based on velocity)
 }
 
 void WanderBehavior::clean(Entity* entity) {
@@ -246,10 +241,5 @@ void WanderBehavior::chooseNewDirection(Entity* entity, bool wanderOffscreen) {
     // Apply the new direction to the entity
     entity->setVelocity(m_currentDirection * m_speed);
 
-    // Update flip direction based on movement
-    if (m_currentDirection.getX() < 0) {
-        entity->setFlip(SDL_FLIP_HORIZONTAL);
-    } else {
-        entity->setFlip(SDL_FLIP_NONE);
-    }
+    // NPC class now handles sprite flipping based on velocity
 }

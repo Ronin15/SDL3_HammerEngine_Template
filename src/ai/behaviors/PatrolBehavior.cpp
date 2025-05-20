@@ -4,14 +4,13 @@
 */
 
 #include "ai/behaviors/PatrolBehavior.hpp"
-#include "SDL3/SDL_surface.h"
 #include "entities/Entity.hpp"
 #include "entities/NPC.hpp"
 #include <algorithm>
 
 PatrolBehavior::PatrolBehavior(const boost::container::small_vector<Vector2D, 10>& waypoints, float moveSpeed, bool includeOffscreenPoints)
     : m_waypoints(waypoints), m_currentWaypoint(0), m_moveSpeed(moveSpeed), m_includeOffscreenPoints(includeOffscreenPoints),
-      m_lastXDirection(0.0f), m_directionChangeCount(0) {
+      m_needsReset(false) {
     // Ensure we have at least two waypoints
     if (m_waypoints.size() < 2) {
         // Add a fallback waypoint if the list is too small
@@ -31,9 +30,7 @@ void PatrolBehavior::init(Entity* entity) {
         m_currentWaypoint = (m_currentWaypoint + 1) % m_waypoints.size();
     }
 
-    // Reset direction tracking values
-    m_lastXDirection = 0.0f;
-    m_directionChangeCount = 0;
+    // No direction tracking needed
 
     // Disable bounds checking when off-screen movement is allowed
     // Check if entity is an NPC that supports bounds checking control
@@ -97,37 +94,7 @@ void PatrolBehavior::update(Entity* entity) {
     Vector2D newVelocity = direction * m_moveSpeed;
     entity->setVelocity(newVelocity);
 
-    // Handle sprite flipping for visual direction with hysteresis to prevent flickering
-    const float directionThreshold = 0.2f;  // Minimum movement in X direction to consider
-    const int directionFlipDelay = 5;       // How many consistent direction readings before flipping
-
-    float currentXDir = direction.getX();
-
-    // Only count significant horizontal movement
-    if (std::abs(currentXDir) > directionThreshold) {
-        // Check if direction has changed from previous significant direction
-        if ((currentXDir > 0 && m_lastXDirection < 0) ||
-            (currentXDir < 0 && m_lastXDirection > 0)) {
-            // Reset counter on direction change
-            m_directionChangeCount = 0;
-            // Don't update m_lastXDirection until counter reaches threshold
-        } else {
-            // Same direction, increment counter
-            m_directionChangeCount++;
-
-            // Only update flip when we've had consistent direction for a while
-            if (m_directionChangeCount >= directionFlipDelay) {
-                if (currentXDir < 0) {
-                    entity->setFlip(SDL_FLIP_NONE);
-                } else if (currentXDir > 0) {
-                    entity->setFlip(SDL_FLIP_HORIZONTAL);
-                }
-                // Remember last significant direction
-                m_lastXDirection = currentXDir;
-            }
-        }
-    }
-    // For very small x movements, keep the existing flip state
+    // NPC class now handles sprite flipping based on velocity
 }
 
 void PatrolBehavior::clean(Entity* entity) {

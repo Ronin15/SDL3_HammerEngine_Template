@@ -104,6 +104,16 @@ void NPC::update() {
         // Friction coefficient - adjust for desired sliding feel (0.95 means 95% of velocity is retained)
         const float friction = 0.95f;
         m_velocity *= friction;
+        
+        // Update flip direction based on horizontal velocity
+        // Only flip if the horizontal speed is significant enough
+        if (std::abs(m_velocity.getX()) > 0.5f) {
+            if (m_velocity.getX() < 0) {
+                m_flip = SDL_FLIP_NONE;
+            } else {
+                m_flip = SDL_FLIP_HORIZONTAL;
+            }
+        }
     } else if (m_velocity.length() < 0.1f) {
         // If velocity is very small, stop completely to avoid tiny sliding
         m_velocity = Vector2D(0, 0);
@@ -120,11 +130,11 @@ void NPC::update() {
         if (m_position.getX() < m_minX - bounceBuffer) {
             m_position.setX(m_minX);
             m_velocity.setX(std::abs(m_velocity.getX())); // Move right
-            m_flip = SDL_FLIP_NONE;
+            // Flip will be updated in the velocity section above
         } else if (m_position.getX() + m_width > m_maxX + bounceBuffer) {
             m_position.setX(m_maxX - m_width);
             m_velocity.setX(-std::abs(m_velocity.getX())); // Move left
-            m_flip = SDL_FLIP_HORIZONTAL;
+            // Flip will be updated in the velocity section above
         }
 
         if (m_position.getY() < m_minY - bounceBuffer) {
@@ -155,6 +165,9 @@ void NPC::update() {
     if (m_frameWidth == 0 && TextureManager::Instance().isTextureInMap(m_textureID)) {
         loadDimensionsFromTexture();
     }
+    
+    // Note: Flip direction is now determined by the NPC's velocity in this update method
+    // AI behavior classes should no longer set flip directly
 }
 
 void NPC::render() {
