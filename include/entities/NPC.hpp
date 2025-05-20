@@ -47,6 +47,10 @@ public:
     void setNumFrames(int numFrames) override { m_numFrames = numFrames; }
     void setWanderArea(float minX, float minY, float maxX, float maxY);
     
+    // Enable or disable screen bounds checking
+    void setBoundsCheckEnabled(bool enabled) { m_boundsCheckEnabled = enabled; }
+    bool isBoundsCheckEnabled() const { return m_boundsCheckEnabled; }
+    
 private:
     void loadDimensionsFromTexture();
 
@@ -61,6 +65,9 @@ private:
     float m_minY{0.0f};
     float m_maxX{800.0f};
     float m_maxY{600.0f};
+    
+    // Flag to control bounds checking behavior
+    bool m_boundsCheckEnabled{true};
 };
 
 #endif // NPC_HPP

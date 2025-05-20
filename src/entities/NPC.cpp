@@ -42,6 +42,9 @@ NPC::NPC(const std::string& textureID, const Vector2D& startPosition, int frameW
     m_minY = 0.0f;
     m_maxX = 800.0f;
     m_maxY = 600.0f;
+    
+    // Enable bounds checking by default
+    m_boundsCheckEnabled = true;
 
     //std::cout << "Forge Game Engine - NPC created at position: " << m_position.getX() << ", " << m_position.getY() << "\n";
 }
@@ -109,25 +112,28 @@ void NPC::update() {
     // Reset acceleration
     m_acceleration = Vector2D(0, 0);
 
-    // Handle bounds checking with bounce behavior if outside permitted area
-    const float bounceBuffer = 20.0f; // Buffer zone before bouncing
+    // Only apply bounds checking if enabled
+    if (m_boundsCheckEnabled) {
+        // Handle bounds checking with bounce behavior if outside permitted area
+        const float bounceBuffer = 20.0f; // Buffer zone before bouncing
 
-    if (m_position.getX() < m_minX - bounceBuffer) {
-        m_position.setX(m_minX);
-        m_velocity.setX(std::abs(m_velocity.getX())); // Move right
-        m_flip = SDL_FLIP_NONE;
-    } else if (m_position.getX() + m_width > m_maxX + bounceBuffer) {
-        m_position.setX(m_maxX - m_width);
-        m_velocity.setX(-std::abs(m_velocity.getX())); // Move left
-        m_flip = SDL_FLIP_HORIZONTAL;
-    }
+        if (m_position.getX() < m_minX - bounceBuffer) {
+            m_position.setX(m_minX);
+            m_velocity.setX(std::abs(m_velocity.getX())); // Move right
+            m_flip = SDL_FLIP_NONE;
+        } else if (m_position.getX() + m_width > m_maxX + bounceBuffer) {
+            m_position.setX(m_maxX - m_width);
+            m_velocity.setX(-std::abs(m_velocity.getX())); // Move left
+            m_flip = SDL_FLIP_HORIZONTAL;
+        }
 
-    if (m_position.getY() < m_minY - bounceBuffer) {
-        m_position.setY(m_minY);
-        m_velocity.setY(std::abs(m_velocity.getY())); // Move down
-    } else if (m_position.getY() + m_height > m_maxY + bounceBuffer) {
-        m_position.setY(m_maxY - m_height);
-        m_velocity.setY(-std::abs(m_velocity.getY())); // Move up
+        if (m_position.getY() < m_minY - bounceBuffer) {
+            m_position.setY(m_minY);
+            m_velocity.setY(std::abs(m_velocity.getY())); // Move down
+        } else if (m_position.getY() + m_height > m_maxY + bounceBuffer) {
+            m_position.setY(m_maxY - m_height);
+            m_velocity.setY(-std::abs(m_velocity.getY())); // Move up
+        }
     }
 
     // No need to update animation - TextureManager handles this
