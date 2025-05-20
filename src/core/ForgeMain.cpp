@@ -10,7 +10,7 @@
 #include <mutex>
 #include <string>
 #include "core/GameEngine.hpp"
-#include "utils/ThreadSystem.hpp"
+#include "core/ThreadSystem.hpp"
 
 const float FPS{60.0f};
 const float DELAY_TIME{1000.0f / FPS};
@@ -56,7 +56,7 @@ const std::string GAME_NAME{"Game Template"};
         // If queue is getting full, reserve more capacity
         Forge::ThreadSystem::Instance().reserveQueueCapacity(Forge::ThreadSystem::Instance().getQueueCapacity() * 2);
       }
-      
+
       // Run update in a worker thread
       Forge::ThreadSystem::Instance().enqueueTask([&]() {
         GameEngine::Instance().update();
