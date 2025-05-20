@@ -62,13 +62,7 @@ void ChaseBehavior::update(Entity* entity) {
                 Vector2D newVelocity = direction * m_chaseSpeed;
                 entity->setVelocity(newVelocity);
 
-
-                // Handle sprite flipping for visual direction
-                if (direction.getX() < 0) {
-                    entity->setFlip(SDL_FLIP_NONE);
-                } else if (direction.getX() > 0) {
-                    entity->setFlip(SDL_FLIP_HORIZONTAL);
-                }
+                // NPC class now handles sprite flipping based on velocity
             } else {
                 // Target is within minimum range, stop moving
                 entity->setVelocity(Vector2D(0, 0));
@@ -198,12 +192,7 @@ void ChaseBehavior::handleNoLineOfSight(Entity* entity) {
             Vector2D newVelocity = direction * (m_chaseSpeed * 0.8f);
             entity->setVelocity(newVelocity);
 
-            // Handle sprite flipping
-            if (direction.getX() < 0) {
-                entity->setFlip(SDL_FLIP_HORIZONTAL);
-            } else if (direction.getX() > 0) {
-                entity->setFlip(SDL_FLIP_NONE);
-            }
+            // NPC class now handles sprite flipping based on velocity
         } else {
             // Reached last known position, stop
             entity->setVelocity(Vector2D(0, 0));
