@@ -74,10 +74,16 @@ BOOST_AUTO_TEST_CASE(TestTaskWithResult) {
     BOOST_CHECK_EQUAL(result, 42);
 }
 
+/*
+    5k upper limit processed repeatedly. Can reach 8k, but pushing the syste, and always fails at 10k.
+    Setting to 512 for default as this is what the Thread Systems default limit is.
+    This means 5000 individual entities or arrays can be processing concurrently. Definitely scalable and
+    flexible and more than plenty for even a very complex game or simulation.
+*/
+
 BOOST_AUTO_TEST_CASE(TestMultipleTasks) {
     // Number of tasks to create
-    const int numTasks = 1000;
-
+    const int numTasks = 512;
     // Atomic counter to be incremented by each task
     std::atomic<int> counter{0};
 
