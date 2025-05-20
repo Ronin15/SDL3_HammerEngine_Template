@@ -136,7 +136,20 @@ void NPC::update() {
         }
     }
 
-    // No need to update animation - TextureManager handles this
+    // Update animation based on movement
+    Uint64 currentTime = SDL_GetTicks();
+    
+    // Check if NPC is moving (velocity not close to zero)
+    if (m_velocity.length() > 0.1f) {
+        // Only update animation frame if enough time has passed
+        if (currentTime > m_lastFrameTime + m_animSpeed) {
+            m_currentFrame = (m_currentFrame + 1) % m_numFrames;
+            m_lastFrameTime = currentTime;
+        }
+    } else {
+        // When not moving, reset to first frame
+        m_currentFrame = 0;
+    }
 
     // If the texture dimensions haven't been loaded yet, try loading them
     if (m_frameWidth == 0 && TextureManager::Instance().isTextureInMap(m_textureID)) {
