@@ -1,6 +1,6 @@
 # Queue Capacity Optimization in ThreadSystem
 
-> **Note:** For a detailed explanation of what "500 tasks" means in practice and how it translates to game features, see the [Task Definition](ThreadSystem_Optimization.md) document.
+> **Note:** For a detailed explanation of what "500 tasks" means in practice and how it translates to game features, see the [Task Definition](ThreadSystem_Optimization.md).
 
 ## Understanding Memory Fragmentation and Cache Locality
 
@@ -90,7 +90,7 @@ size_t queueSize = Forge::ThreadSystem::Instance().getQueueSize();
 
 ### For 500-Task Scenarios
 
-With approximately 500 tasks (see [ThreadSystem 500 Tasks](ThreadSystem_500Tasks.md) for practical examples), the queue capacity optimization provides:
+With approximately 500 tasks (see  [Task Definition](ThreadSystem_Optimization.md) for practical examples), the queue capacity optimization provides:
 
 1. **Memory Benefits**:
    - **Reserved Size**: ~100KB (assuming ~200 bytes per task)
@@ -223,4 +223,4 @@ Forge::ThreadSystem::Instance().init(gameConfig.getMaxEntityCount());
 
 The Queue Capacity Optimization feature provides significant benefits for applications with 500+ tasks, reducing memory fragmentation and improving cache locality. By following the guidelines in this document, you can ensure optimal performance for your multi-threaded game systems.
 
-For a complete understanding of what "500 tasks" represents in terms of game complexity, entity counts, and performance characteristics, refer to the detailed breakdown in [ThreadSystem 500 Tasks](ThreadSystem_500Tasks.md).
+For a complete understanding of what "500 tasks" represents in terms of game complexity, entity counts, and performance characteristics, refer to the detailed breakdown in [Thread System Optimization](ThreadSystem_Optimization.md).
