@@ -2,7 +2,7 @@
 
 ## Overview
 
-The ThreadSystem is a core component of the Forge Game Engine, providing thread pool management and task-based concurrency. It allows game systems to enqueue work that gets processed by a pool of worker threads, enabling performance benefits from multi-core processors while maintaining a simplified programming model. The system is optimized to efficiently handle up to 500 concurrent tasks (see [Understanding 500 Tasks](ThreadSystem_500Tasks.md) for details).
+The ThreadSystem is a core component of the Forge Game Engine, providing thread pool management and task-based concurrency. It allows game systems to enqueue work that gets processed by a pool of worker threads, enabling performance benefits from multi-core processors while maintaining a simplified programming model. The system is optimized to efficiently handle up to 500 concurrent tasks (see [Defining a Task](ThreadSystem_Optimization.md) for details).
 
 ## Features
 
@@ -136,7 +136,7 @@ Eliminating dynamic resizing of the task queue helps maintain consistent perform
 void updateEntities(const std::vector<Entity*>& entities) {
     // Reserve capacity for all entity tasks
     Forge::ThreadSystem::Instance().reserveQueueCapacity(entities.size());
-    
+
     // Submit update tasks
     for (Entity* entity : entities) {
         Forge::ThreadSystem::Instance().enqueueTask([entity]() {
@@ -153,9 +153,9 @@ void updateEntities(const std::vector<Entity*>& entities) {
 void loadAssets(const std::vector<std::string>& assetPaths) {
     // Reserve capacity for all asset loading tasks
     Forge::ThreadSystem::Instance().reserveQueueCapacity(assetPaths.size());
-    
+
     std::vector<std::future<bool>> results;
-    
+
     // Submit asset loading tasks
     for (const auto& path : assetPaths) {
         results.push_back(
@@ -166,7 +166,7 @@ void loadAssets(const std::vector<std::string>& assetPaths) {
             )
         );
     }
-    
+
     // Wait for and process results
     for (auto& future : results) {
         bool success = future.get();

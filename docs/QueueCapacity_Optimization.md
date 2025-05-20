@@ -1,6 +1,6 @@
 # Queue Capacity Optimization in ThreadSystem
 
-> **Note:** For a detailed explanation of what "500 tasks" means in practice and how it translates to game features, see the [ThreadSystem 500 Tasks](ThreadSystem_500Tasks.md) document.
+> **Note:** For a detailed explanation of what "500 tasks" means in practice and how it translates to game features, see the [Task Definition in](ThreadSystem_Optimization.md) document.
 
 ## Understanding Memory Fragmentation and Cache Locality
 
@@ -168,7 +168,7 @@ For systems with occasional large bursts of tasks:
 void createExplosion(const Vector3& position) {
     const int particleCount = 1000;
     Forge::ThreadSystem::Instance().reserveQueueCapacity(particleCount);
-    
+
     for (int i = 0; i < particleCount; i++) {
         Forge::ThreadSystem::Instance().enqueueTask([position, i]() {
             // Create and initialize particle

@@ -57,7 +57,7 @@ Entities pursue a target (typically the player) when within detection range.
 ### Basic Setup
 
 ```cpp
-// Initialize the AI Manager (typically done in your game state's enter() method)
+// AI Manager is initialization happens at the beginning of the starup sequence.
 AIManager::Instance().init();
 
 // Create and register behaviors
@@ -120,7 +120,7 @@ To ensure behaviors are updated each frame, call the AIManager's update method i
 void GamePlayState::update() {
     // Update all AI behaviors
     AIManager::Instance().update();
-    
+
     // Your other game update code...
     player->update();
     checkCollisions();
@@ -136,7 +136,7 @@ When switching game states or shutting down, clean up the AI system:
 void GamePlayState::exit() {
     // Clean up AI Manager
     AIManager::Instance().clean();
-    
+
     // Your other cleanup code...
 }
 ```
@@ -150,23 +150,23 @@ class FlankingBehavior : public AIBehavior {
 public:
     FlankingBehavior(Entity* target, float speed = 2.0f, float flankDistance = 100.0f)
         : m_target(target), m_speed(speed), m_flankDistance(flankDistance) {}
-        
+
     void init(Entity* entity) override {
         // Initialize behavior state
     }
-    
+
     void update(Entity* entity) override {
         // Implement flanking movement logic
     }
-    
+
     void clean(Entity* entity) override {
         // Clean up resources
     }
-    
+
     std::string getName() const override {
         return "Flanking";
     }
-    
+
 private:
     Entity* m_target;
     float m_speed;
