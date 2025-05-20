@@ -17,12 +17,11 @@ bool AIManager::init() {
         return true;  // Already initialized
     }
 
-    // Disable threading temporarily for stability
     // Check if threading is available
     m_useThreading = Forge::ThreadSystem::Instance().getThreadCount() > 0;
 
     // Log initialization
-    std::cout << "Forge Game Engine - AI Manager initialized. Threading: " << (m_useThreading ? "Enabled" : "Disabled") << "\n";
+    std::cout << "Forge Game Engine - AI Manager initialized. Threading: " << (m_useThreading ? "Enabled!" : "Disabled?") << std::endl;
 
     m_initialized = true;
     return true;

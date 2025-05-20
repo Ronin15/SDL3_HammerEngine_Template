@@ -1,4 +1,4 @@
-# Understanding "500 Tasks" in the ThreadSystem
+# Thread System Optimized for "500 Tasks"
 
 ## What Defines a Task
 
