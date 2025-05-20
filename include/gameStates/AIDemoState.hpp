@@ -32,8 +32,8 @@ private:
     void createNPCs();
 
     // Members
-    std::vector<std::unique_ptr<NPC>> m_npcs;
-    std::unique_ptr<Player> m_player;
+    std::vector<std::unique_ptr<NPC>> m_npcs{};
+    std::unique_ptr<Player> m_player{};
 
     std::string m_textureID {""};  // Texture ID as loaded by TextureManager from res/img directory
 

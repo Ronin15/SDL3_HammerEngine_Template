@@ -157,8 +157,8 @@ private:
     AIManager& operator=(const AIManager&) = delete;
 
     // Storage for behaviors and entity assignments
-    boost::container::flat_map<std::string, std::unique_ptr<AIBehavior>> m_behaviors;
-    boost::container::flat_map<Entity*, std::string> m_entityBehaviors;
+    boost::container::flat_map<std::string, std::unique_ptr<AIBehavior>> m_behaviors{};
+    boost::container::flat_map<Entity*, std::string> m_entityBehaviors{};
 
     // Multithreading support
     bool m_initialized{false};

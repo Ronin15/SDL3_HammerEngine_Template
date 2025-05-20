@@ -16,7 +16,7 @@ class GameEngine {
  public:
 
   // Default values that will be updated based on display bounds during init() fail safe.
-  ~GameEngine() {}
+  ~GameEngine() = default;
 
   static GameEngine& Instance(){
       static GameEngine instance;
@@ -73,6 +73,6 @@ class GameEngine {
   GameEngine(const GameEngine&) = delete; // Prevent copying
   GameEngine& operator=(const GameEngine&) = delete; // Prevent assignment
 
-  GameEngine() : m_windowWidth(1280), m_windowHeight(720) {}
+  GameEngine() : m_windowWidth{1280}, m_windowHeight{720} {}
 };
 #endif  // GAME_ENGINE_HPP

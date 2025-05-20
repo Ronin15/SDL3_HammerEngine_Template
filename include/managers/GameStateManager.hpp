@@ -8,8 +8,7 @@
 
 #include <memory>
 #include <boost/container/small_vector.hpp>
-
-class GameState;
+#include "gameStates/GameState.hpp"
 
 class GameStateManager {
 
@@ -25,8 +24,8 @@ class GameStateManager {
   void clearAllStates();
 
   private:
-   boost::container::small_vector<std::unique_ptr<GameState>, 8> states; //increase to how many states you expect to have.
-   GameState* currentState;  // Pointer to the current state, not owned
+   boost::container::small_vector<std::unique_ptr<GameState>, 8> states{}; //increase to how many states you expect to have.
+   GameState* currentState{nullptr};  // Pointer to the current state, not owned
 
 };
 

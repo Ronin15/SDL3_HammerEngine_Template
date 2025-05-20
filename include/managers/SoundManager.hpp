@@ -78,11 +78,11 @@ class SoundManager {
   bool isMusicLoaded(std::string musicID) const;
 
  private:
-  boost::container::flat_map<std::string, Mix_Chunk*> m_sfxMap;
-  boost::container::flat_map<std::string, Mix_Music*> m_musicMap;
-  SDL_AudioDeviceID m_deviceId;
-  bool m_initialized;
-  bool m_isShutdown = false;
+  boost::container::flat_map<std::string, Mix_Chunk*> m_sfxMap{};
+  boost::container::flat_map<std::string, Mix_Music*> m_musicMap{};
+  SDL_AudioDeviceID m_deviceId{};
+  bool m_initialized{false};
+  bool m_isShutdown{false};
 
   // Delete copy constructor and assignment operator
   SoundManager(const SoundManager&) = delete; // Prevent copying
