@@ -3,7 +3,7 @@
  * Licensed under the MIT License - see LICENSE file for details
 */
 
-#include "states/MainMenuState.hpp"
+#include "game_states/MainMenuState.hpp"
 #include "managers/InputManager.hpp"
 #include "managers/FontManager.hpp"
 #include "core/GameEngine.hpp"

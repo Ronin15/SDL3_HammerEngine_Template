@@ -6,7 +6,7 @@
 #ifndef GAME_PLAY_STATE_HPP
 #define GAME_PLAY_STATE_HPP
 
-#include "states/GameState.hpp"
+#include "game_states/GameState.hpp"
 #include "entities/Player.hpp"
 #include <memory>
 

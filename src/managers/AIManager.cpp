@@ -5,7 +5,7 @@
 
 #include "managers/AIManager.hpp"
 #include "ai/AIBehavior.hpp"
-#include "utils/ThreadSystem.hpp"
+#include "core/ThreadSystem.hpp"
 #include <SDL3/SDL.h>
 #include <vector>
 #include <future>

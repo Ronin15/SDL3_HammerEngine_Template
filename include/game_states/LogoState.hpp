@@ -6,7 +6,7 @@
 #ifndef LOGO_STATE_HPP
 #define LOGO_STATE_HPP
 
-#include "states/GameState.hpp"
+#include "game_states/GameState.hpp"
 
 class LogoState : public GameState {
  public:

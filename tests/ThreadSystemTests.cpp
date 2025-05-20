@@ -16,7 +16,7 @@
 #include <unordered_set>
 
 // Include the ThreadSystem header
-#include "utils/ThreadSystem.hpp"
+#include "core/ThreadSystem.hpp"
 
 // Global fixture for test setup and cleanup
 struct ThreadTestFixture {

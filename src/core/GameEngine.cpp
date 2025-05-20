@@ -10,18 +10,18 @@
 #include <iostream>
 #include <thread>
 #include "managers/AIManager.hpp"
-#include "states/AIDemoState.hpp"
+#include "game_states/AIDemoState.hpp"
 #include "managers/FontManager.hpp"
-#include "states/GamePlayState.hpp"
+#include "game_states/GamePlayState.hpp"
 #include "managers/GameStateManager.hpp"
 #include "managers/InputManager.hpp"
-#include "states/LogoState.hpp"
-#include "states/MainMenuState.hpp"
+#include "game_states/LogoState.hpp"
+#include "game_states/MainMenuState.hpp"
 #include "SDL3/SDL_render.h"
 #include "SDL3/SDL_video.h"
-#include "io/SaveGameManager.hpp"
+#include "managers/SaveGameManager.hpp"
 #include "managers/SoundManager.hpp"
-#include "utils/ThreadSystem.hpp"
+#include "core/ThreadSystem.hpp"
 #include "managers/TextureManager.hpp"
 
 #define FORGE_GRAY 31, 32, 34, 255
