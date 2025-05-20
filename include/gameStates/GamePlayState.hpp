@@ -12,7 +12,7 @@
 
 class GamePlayState : public GameState {
  public:
-  GamePlayState() : m_transitioningToPause(false), mp_Player(nullptr) {}
+  GamePlayState() : m_transitioningToPause{false}, mp_Player{nullptr} {}
   bool enter() override;
   void update() override;
   void render() override;
@@ -20,8 +20,8 @@ class GamePlayState : public GameState {
   std::string getName() const override;
 
  private:
-  bool m_transitioningToPause; // Flag to indicate we're transitioning to pause state
-  std::unique_ptr<Player> mp_Player; // Player object
+  bool m_transitioningToPause{false}; // Flag to indicate we're transitioning to pause state
+  std::unique_ptr<Player> mp_Player{nullptr}; // Player object
 };
 
 #endif  // GAME_PLAY_STATE_HPP

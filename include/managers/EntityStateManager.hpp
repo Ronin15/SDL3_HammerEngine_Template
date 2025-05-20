@@ -9,8 +9,7 @@
 #include <memory>
 #include <string>
 #include <boost/container/flat_map.hpp>
-// forward declaration Entity state base class
-class EntityState;
+#include "entities/EntityState.hpp"
 
 class EntityStateManager {
 

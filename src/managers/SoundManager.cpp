@@ -8,7 +8,8 @@
 #include <filesystem>
 #include <algorithm>
 
-SoundManager::SoundManager() : m_deviceId(0), m_initialized(false) {
+SoundManager::SoundManager() {
+    // Member variables are already initialized in the header with brace initialization
 }
 
 SoundManager::~SoundManager() {

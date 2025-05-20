@@ -19,7 +19,7 @@ public:
     void exit() override;
 
 private:
-    Player* mp_player;
+    Player* mp_player{nullptr};
 };
 
 #endif  // PLAYER_RUNNING_STATE_HPP

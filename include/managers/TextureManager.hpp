@@ -13,7 +13,7 @@
 
 class TextureManager {
  public:
- ~TextureManager() {}
+ ~TextureManager() = default;
 
  static TextureManager& Instance() {
    static TextureManager instance;
@@ -63,14 +63,14 @@ class TextureManager {
 
  private:
   std::string m_textureID{""};
-  boost::container::flat_map<std::string, SDL_Texture*> m_textureMap;
+  boost::container::flat_map<std::string, SDL_Texture*> m_textureMap{};
   static bool initialized;
 
   // Delete copy constructor and assignment operator
   TextureManager(const TextureManager&) = delete; //prevent copy construction
   TextureManager& operator=(const TextureManager&) = delete; //prevent assignment
 
-  TextureManager() {}
+  TextureManager() = default;
 
 };
 

@@ -50,17 +50,17 @@ class InputManager {
  private:
 
     // Keyboard specific
-    const bool* m_keystates;
+    const bool* m_keystates{nullptr};
 
     // Gamepad specific
-    boost::container::small_vector<std::pair<Vector2D*, Vector2D*>, 4> m_joystickValues;
-    boost::container::small_vector<SDL_Gamepad*, 4> m_joysticks;
-    boost::container::small_vector<boost::container::small_vector<bool, 16>, 4> m_buttonStates;
-    const int m_joystickDeadZone = 10000;
+    boost::container::small_vector<std::pair<Vector2D*, Vector2D*>, 4> m_joystickValues{};
+    boost::container::small_vector<SDL_Gamepad*, 4> m_joysticks{};
+    boost::container::small_vector<boost::container::small_vector<bool, 16>, 4> m_buttonStates{};
+    const int m_joystickDeadZone{10000};
     bool m_gamePadInitialized{false};
     // Mouse specific
-    boost::container::small_vector<bool, 3> m_mouseButtonStates;
-    Vector2D* m_mousePosition;
+    boost::container::small_vector<bool, 3> m_mouseButtonStates{};
+    Vector2D* m_mousePosition{nullptr};
 
     // Handle keyboard events
     void onKeyDown(SDL_Event& event);
