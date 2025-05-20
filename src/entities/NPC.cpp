@@ -109,9 +109,9 @@ void NPC::update() {
         // Only flip if the horizontal speed is significant enough
         if (std::abs(m_velocity.getX()) > 0.5f) {
             if (m_velocity.getX() < 0) {
-                m_flip = SDL_FLIP_NONE;
-            } else {
                 m_flip = SDL_FLIP_HORIZONTAL;
+            } else {
+                m_flip = SDL_FLIP_NONE;
             }
         }
     } else if (m_velocity.length() < 0.1f) {
