@@ -62,9 +62,6 @@ bool AIDemoState::exit() {
 void AIDemoState::update() {
     // No need to track frame count now that we've removed logging
 
-    // Update AI Manager to update all behaviors
-    //AIManager::Instance().update();
-
     // Update player
     if (m_player) {
         m_player->update();
@@ -158,8 +155,8 @@ void AIDemoState::render() {
     // Render info panel
         FontManager::Instance().drawText("AI Demo: Press [B] to exit to main menu. Press [1-3] to switch behaviors. Press [SPACE] to pause/resume AI. [1] Wander [2] Patrol [3] Chase",
                                     "fonts_Arial",
-                                    900,
-                                    15,
+                                    GameEngine::Instance().getWindowWidth() / 2,     // Center horizontally
+                                    20,
                                     {255, 255, 255, 255},
                                     GameEngine::Instance().getRenderer());
 }
