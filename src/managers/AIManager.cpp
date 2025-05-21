@@ -10,7 +10,6 @@
 #include <vector>
 #include <future>
 #include <iostream>
-//#include <iomanip>
 
 void AIManager::ensureOptimizationCachesValid() {
     if (!m_cacheValid) {
@@ -30,29 +29,46 @@ void AIManager::rebuildEntityBehaviorCache() {
     // Populate cache with entity-behavior pairs
     for (const auto& [entity, behaviorName] : m_entityBehaviors) {
         if (!entity) continue;
-    
+
         AIBehavior* behavior = getBehavior(behaviorName);
         if (behavior) {
-            m_entityBehaviorCache.push_back({entity, behavior, behaviorName});
+            // Using string_view to avoid copying the behavior name string
+            m_entityBehaviorCache.push_back({
+                entity,
+                behavior,
+                std::string_view(behaviorName),
+                0, // lastUpdateTime
+                {} // perfStats
+            });
         }
     }
 
     m_cacheValid = true;
+    AI_LOG("Entity behavior cache rebuilt with " << m_entityBehaviorCache.size() << " entries");
 }
 
 void AIManager::rebuildBehaviorBatches() {
     // Clear existing batches
     m_behaviorBatches.clear();
 
+    // Reserve capacity based on number of behaviors (with a minimum size to reduce reallocations)
+    m_behaviorBatches.reserve(std::max<size_t>(16, m_behaviors.size()));
+
     // Group entities by behavior
     for (const auto& [entity, behaviorName] : m_entityBehaviors) {
         if (!entity) continue;
-    
+
         // Add entity to appropriate batch
         m_behaviorBatches[behaviorName].push_back(entity);
     }
 
+    // Optimize memory usage of each batch
+    for (auto& [behaviorName, batch] : m_behaviorBatches) {
+        batch.shrink_to_fit();
+    }
+
     m_batchesValid = true;
+    AI_LOG("Behavior batches rebuilt with " << m_behaviorBatches.size() << " behavior types");
 }
 
 void AIManager::invalidateOptimizationCaches() {
@@ -60,73 +76,97 @@ void AIManager::invalidateOptimizationCaches() {
     m_batchesValid = false;
 }
 
-void AIManager::updateBehaviorBatch(const std::string& behaviorName, const BehaviorBatch& batch) {
-    AIBehavior* behavior = getBehavior(behaviorName);
+void AIManager::updateBehaviorBatch(const std::string_view& behaviorName, const BehaviorBatch& batch) {
+    // Look up behavior just once, using string_view for efficient comparison
+    AIBehavior* behavior = nullptr;
+    for (const auto& [name, behaviorPtr] : m_behaviors) {
+        if (name == behaviorName) {
+            behavior = behaviorPtr.get();
+            break;
+        }
+    }
+
     if (!behavior || !behavior->isActive() || batch.empty()) {
         return;
     }
-    
+
+    // Start timing for performance tracking
+    auto startTime = getCurrentTimeNanos();
+
     // Update frame counter for behavior
     behavior->m_framesSinceLastUpdate++;
-    
+
     // Apply early exit condition: only update at specified frequency
     if (!behavior->isWithinUpdateFrequency()) {
         return;
     }
-    
+
     // Collect entities that pass the early exit checks
     std::vector<Entity*> entitiesToUpdate;
     entitiesToUpdate.reserve(batch.size());
-    
+
     for (Entity* entity : batch) {
         if (!entity) continue;
-        
+
         // Apply early exit conditions
         if (!behavior->shouldUpdate(entity) || !behavior->isEntityInRange(entity)) {
             continue;
         }
-        
+
         entitiesToUpdate.push_back(entity);
     }
-    
+
     // Reset frame counter after update
     if (behavior->isWithinUpdateFrequency()) {
         behavior->m_framesSinceLastUpdate = 0;
     }
-    
+
     // Skip processing if no entities passed the early exit checks
     if (entitiesToUpdate.empty()) {
         return;
     }
 
-    if (m_useThreading && entitiesToUpdate.size() > 1) {
+    // Use the common helper method to process entities
+    processEntitiesWithBehavior(behavior, entitiesToUpdate, m_useThreading && entitiesToUpdate.size() > 1);
+
+    // Record performance data
+    auto endTime = getCurrentTimeNanos();
+    double elapsedTimeMs = (endTime - startTime) / 1000000.0;
+    recordBehaviorPerformance(behaviorName, elapsedTimeMs);
+}
+
+// New helper method to eliminate code duplication
+void AIManager::processEntitiesWithBehavior(AIBehavior* behavior, const std::vector<Entity*>& entities, bool useThreading) {
+    if (useThreading) {
         // Multithreaded batch processing
         std::vector<std::future<void>> taskFutures;
-        taskFutures.reserve(entitiesToUpdate.size());
+        taskFutures.reserve(entities.size());
 
-        // Reserve capacity in thread system
-        Forge::ThreadSystem::Instance().reserveQueueCapacity(entitiesToUpdate.size());
+        // Ensure the thread tasks have proper exception handling
+        try {
+            for (Entity* entity : entities) {
+                auto future = Forge::ThreadSystem::Instance().enqueueTaskWithResult(
+                    [behavior, entity]() -> void {
+                        behavior->update(entity);
+                    });
 
-        for (Entity* entity : entitiesToUpdate) {
-            auto future = Forge::ThreadSystem::Instance().enqueueTaskWithResult(
-                [behavior, entity]() -> void {
-                    behavior->update(entity);
-                });
-    
-            taskFutures.push_back(std::move(future));
-        }
-
-        // Wait for all tasks to complete
-        for (auto& future : taskFutures) {
-            try {
-                future.get();
-            } catch (const std::exception& e) {
-                std::cerr << "Forge Game Engine - [AI Manager] Exception in batch processing: " << e.what() << std::endl;
+                taskFutures.push_back(std::move(future));
             }
+
+            // Wait for all tasks to complete
+            for (auto& future : taskFutures) {
+                try {
+                    future.get();
+                } catch (const std::exception& e) {
+                    AI_LOG("Exception in batch processing: " << e.what());
+                }
+            }
+        } catch (const std::exception& e) {
+            AI_LOG("Fatal error in thread task submission: " << e.what());
         }
     } else {
         // Single-threaded batch processing
-        for (Entity* entity : entitiesToUpdate) {
+        for (Entity* entity : entities) {
             behavior->update(entity);
         }
     }
@@ -137,71 +177,57 @@ void AIManager::batchProcessEntities(const std::string& behaviorName, const std:
     if (!behavior || !behavior->isActive()) {
         return;
     }
-    
+
+    // Start timing for performance tracking
+    auto startTime = getCurrentTimeNanos();
+
     // Update frame counter for behavior
     behavior->m_framesSinceLastUpdate++;
-    
+
     // Apply early exit condition: only update at specified frequency
     if (!behavior->isWithinUpdateFrequency()) {
         return;
     }
-    
+
     // Collect entities that pass the early exit checks
     std::vector<Entity*> entitiesToUpdate;
     entitiesToUpdate.reserve(entities.size());
-    
+
     for (Entity* entity : entities) {
         if (!entity) continue;
-        
+
         // Apply early exit conditions
         if (!behavior->shouldUpdate(entity) || !behavior->isEntityInRange(entity)) {
             continue;
         }
-        
+
         entitiesToUpdate.push_back(entity);
     }
-    
+
     // Reset frame counter after update
     if (behavior->isWithinUpdateFrequency()) {
         behavior->m_framesSinceLastUpdate = 0;
     }
-    
+
     // Skip processing if no entities passed the early exit checks
     if (entitiesToUpdate.empty()) {
         return;
     }
 
-    if (m_useThreading && entitiesToUpdate.size() > 1) {
-        // Multithreaded batch processing
-        std::vector<std::future<void>> taskFutures;
-        taskFutures.reserve(entitiesToUpdate.size());
+    // Use the common helper method to process entities
+    processEntitiesWithBehavior(behavior, entitiesToUpdate, m_useThreading && entitiesToUpdate.size() > 1);
 
-        // Reserve capacity in thread system
-        Forge::ThreadSystem::Instance().reserveQueueCapacity(entitiesToUpdate.size());
+    // Record performance data
+    auto endTime = getCurrentTimeNanos();
+    double elapsedTimeMs = (endTime - startTime) / 1000000.0;
+    recordBehaviorPerformance(behaviorName, elapsedTimeMs);
+}
+// This code was replaced by the processEntitiesWithBehavior method
 
-        for (Entity* entity : entitiesToUpdate) {
-            auto future = Forge::ThreadSystem::Instance().enqueueTaskWithResult(
-                [behavior, entity]() -> void {
-                    behavior->update(entity);
-                });
-    
-            taskFutures.push_back(std::move(future));
-        }
-
-        // Wait for all tasks to complete
-        for (auto& future : taskFutures) {
-            try {
-                future.get();
-            } catch (const std::exception& e) {
-                std::cerr << "Forge Game Engine - [AI Manager] Exception in batch processing: " << e.what() << std::endl;
-            }
-        }
-    } else {
-        // Single-threaded batch processing
-        for (Entity* entity : entitiesToUpdate) {
-            behavior->update(entity);
-        }
-    }
+void AIManager::recordBehaviorPerformance(const std::string_view& behaviorName, double timeMs) {
+    // Convert string_view to string for map lookup
+    std::string name(behaviorName);
+    m_behaviorPerformanceStats[name].addSample(timeMs);
 }
 
 bool AIManager::init() {
@@ -212,9 +238,17 @@ bool AIManager::init() {
     // Check if threading is available
     m_useThreading = Forge::ThreadSystem::Instance().getThreadCount() > 0;
 
+    // Pre-allocate message queue vectors with a reasonable default capacity
+    m_incomingMessageQueue.reserve(128);
+    m_processingMessageQueue.reserve(128);
+
+    // Reset performance stats
+    m_messageQueueStats.reset();
+    m_behaviorPerformanceStats.clear();
+
     // Log initialization
-    std::cout << "Forge Game Engine - AI Manager initialized!\n";
-    std::cout << "Forge Game Engine - AI Manager Threading: " << (m_useThreading ? "Enabled!" : "Disabled?") << "\n";
+    AI_LOG("AI Manager initialized!");
+    AI_LOG("AI Manager Threading: " << (m_useThreading ? "Enabled!" : "Disabled?"));
 
     m_initialized = true;
     return true;
@@ -225,52 +259,58 @@ void AIManager::update() {
         return;
     }
 
+    auto startTime = getCurrentTimeNanos();
+
     // Process any queued messages before updating behaviors
     processMessageQueue();
 
     // We now use the optimized batch update method
     batchUpdateAllBehaviors();
+
+    auto endTime = getCurrentTimeNanos();
+    double totalUpdateMs = (endTime - startTime) / 1000000.0;
+
+    // Only log in debug builds
+    AI_LOG_DETAIL("Total AI update time: " << totalUpdateMs << "ms");
 }
 
 void AIManager::batchUpdateAllBehaviors() {
     if (!m_initialized) {
         return;
     }
-    
+
     // Ensure our optimization caches are valid
     ensureOptimizationCachesValid();
 
-    // If threading is enabled, distribute AI updates across worker threads
-    if (m_useThreading && m_behaviorBatches.size() > 0) {
-        // Store futures to track task completion
-        std::vector<std::future<void>> taskFutures;
-        size_t totalEntities = 0;
-        
-        // Count total entities to reserve capacity
-        for (const auto& [behaviorName, batch] : m_behaviorBatches) {
-            totalEntities += batch.size();
-        }
-        
-        // Reserve enough capacity for all entities
-        Forge::ThreadSystem::Instance().reserveQueueCapacity(totalEntities);
-        taskFutures.reserve(totalEntities);
+    auto startTime = getCurrentTimeNanos();
 
+    // If threading is enabled, use behavior batches for parallel processing
+    if (m_useThreading && !m_behaviorBatches.empty()) {
         // Process each behavior batch
         for (const auto& [behaviorName, batch] : m_behaviorBatches) {
             if (batch.empty()) continue;
-            
+
             // Update this batch of entities
             updateBehaviorBatch(behaviorName, batch);
         }
     } else {
         // Single-threaded update using cached behavior references for speed
         for (const auto& cache : m_entityBehaviorCache) {
-            if (!cache.entity) continue;
-            if (cache.behavior && cache.behavior->isActive()) {
-                cache.behavior->update(cache.entity);
-            }
+            if (!cache.entity || !cache.behavior || !cache.behavior->isActive()) continue;
+
+            auto entityStartTime = getCurrentTimeNanos();
+            cache.behavior->update(cache.entity);
+            auto entityEndTime = getCurrentTimeNanos();
+
+            double entityUpdateMs = (entityEndTime - entityStartTime) / 1000000.0;
+            recordBehaviorPerformance(cache.behaviorName, entityUpdateMs);
         }
     }
+
+    auto endTime = getCurrentTimeNanos();
+    double batchUpdateMs = (endTime - startTime) / 1000000.0;
+
+    AI_LOG_DETAIL("Batch behavior updates completed in " << batchUpdateMs << "ms");
 }
 
 void AIManager::resetBehaviors() {
@@ -282,9 +322,9 @@ void AIManager::resetBehaviors() {
 
         AIBehavior* behavior = getBehavior(behaviorName);
         if (behavior) {
-            std::cout << "[AI Reset] Cleaning behavior '" << behaviorName
+            AI_LOG_DETAIL("[AI Reset] Cleaning behavior '" << behaviorName
                       << "' for entity at position (" << entity->getPosition().getX()
-                      << "," << entity->getPosition().getY() << ")" << "\n";
+                      << "," << entity->getPosition().getY() << ")");
             behavior->clean(entity);
         }
     }
@@ -292,14 +332,18 @@ void AIManager::resetBehaviors() {
     // Clear collections
     m_entityBehaviors.clear();
     m_behaviors.clear();
-    
+
     // Clear optimization caches
     m_entityBehaviorCache.clear();
     m_behaviorBatches.clear();
     m_cacheValid = false;
     m_batchesValid = false;
 
-    std::cout << "Forge Game Engine - [AI Manager] behaviors reset\n";
+    // Reset performance stats
+    m_behaviorPerformanceStats.clear();
+    m_messageQueueStats.reset();
+
+    AI_LOG("behaviors reset");
 }
 
 void AIManager::clean() {
@@ -314,21 +358,21 @@ void AIManager::clean() {
     // Then perform complete shutdown operations
     m_initialized = false;
     m_useThreading = false;
-    
+
     // Make sure caches are cleared
     m_entityBehaviorCache.clear();
     m_behaviorBatches.clear();
     m_cacheValid = false;
     m_batchesValid = false;
-    
-    // Clear message queue
+
+    // Clear message queues
     {
         std::lock_guard<std::mutex> lock(m_messageQueueMutex);
-        std::queue<QueuedMessage> empty;
-        std::swap(m_messageQueue, empty);
+        m_incomingMessageQueue.clear();
+        m_processingMessageQueue.clear();
     }
 
-    std::cout << "Forge Game Engine - AIManager completely shut down\n";
+    AI_LOG("AIManager completely shut down");
 }
 
 void AIManager::processMessageQueue() {
@@ -336,22 +380,28 @@ void AIManager::processMessageQueue() {
         return;
     }
 
+    auto startTime = getCurrentTimeNanos();
+
     // Set flag to prevent recursive calls during message processing
     m_processingMessages = true;
 
-    std::queue<QueuedMessage> localQueue;
-
-    // Safely get all queued messages
+    // Safely get all queued messages by swapping vectors
     {
         std::lock_guard<std::mutex> lock(m_messageQueueMutex);
-        std::swap(localQueue, m_messageQueue);
+        m_processingMessageQueue.swap(m_incomingMessageQueue);
+        m_incomingMessageQueue.clear();
+
+        // Pre-allocate capacity for next batch based on current usage
+        // (use next power of 2 for better memory allocation)
+        if (!m_processingMessageQueue.empty()) {
+            size_t nextSize = m_processingMessageQueue.size() * 2;
+            m_incomingMessageQueue.reserve(nextSize);
+        }
     }
 
     // Process all queued messages
     int processedCount = 0;
-    while (!localQueue.empty()) {
-        const QueuedMessage& msg = localQueue.front();
-    
+    for (const auto& msg : m_processingMessageQueue) {
         if (msg.targetEntity == nullptr) {
             // This is a broadcast message
             deliverBroadcastMessage(msg.message);
@@ -359,13 +409,19 @@ void AIManager::processMessageQueue() {
             // This is a targeted message
             deliverMessageToEntity(msg.targetEntity, msg.message);
         }
-    
-        localQueue.pop();
         processedCount++;
     }
 
+    // Clear the processing queue for next time
+    m_processingMessageQueue.clear();
+
+    auto endTime = getCurrentTimeNanos();
+    double processingTimeMs = (endTime - startTime) / 1000000.0;
+    m_messageQueueStats.addSample(processingTimeMs);
+
     if (processedCount > 0) {
-        std::cout << "Forge Game Engine - [AI Message Queue] Processed " << processedCount << " messages" << std::endl;
+        AI_LOG("Message Queue: Processed " << processedCount << " messages in "
+              << processingTimeMs << "ms (avg: " << m_messageQueueStats.averageUpdateTimeMs << "ms)");
     }
 
     // Reset processing flag
@@ -377,60 +433,71 @@ void AIManager::deliverMessageToEntity(Entity* entity, const std::string& messag
 
     auto it = m_entityBehaviors.find(entity);
     if (it != m_entityBehaviors.end()) {
-        AIBehavior* behavior = getBehavior(it->second);
+        // Store the behavior name before lookup
+        const std::string& behaviorName = it->second;
+
+        // Look up behavior just once
+        AIBehavior* behavior = getBehavior(behaviorName);
         if (behavior) {
-            std::cout << "Forge Game Engine - [AI Message] Delivering message to entity at ("
+            AI_LOG_DETAIL("[AI Message] Delivering message to entity at ("
                     << entity->getPosition().getX() << "," << entity->getPosition().getY()
-                    << ") with behavior '" << it->second << "': " << message << std::endl;
+                    << ") with behavior '" << behaviorName << "': " << message);
             behavior->onMessage(entity, message);
         }
     }
 }
 
 void AIManager::deliverBroadcastMessage(const std::string& message) {
-    std::cout << "Forge Game Engine - [AI Broadcast] Broadcasting message to all entities: " << message << std::endl;
+    AI_LOG("[AI Broadcast] Broadcasting message to all entities: " << message);
 
+    // Use the entity-behavior cache for faster iteration
     int entityCount = 0;
-    for (const auto& [entity, behaviorName] : m_entityBehaviors) {
-        if (!entity) continue;
 
-        AIBehavior* behavior = getBehavior(behaviorName);
-        if (behavior) {
-            std::cout << "Forge Game Engine - [AI Broadcast] Entity at (" << entity->getPosition().getX()
-                    << "," << entity->getPosition().getY() << ") with behavior '"
-                    << behaviorName << "' receiving broadcast" << std::endl;
-            behavior->onMessage(entity, message);
-            entityCount++;
-        }
+    // Since the cache contains direct pointers to behaviors, we can avoid repeated lookups
+    for (const auto& cache : m_entityBehaviorCache) {
+        if (!cache.entity || !cache.behavior) continue;
+
+        #ifdef AI_LOG_DETAIL
+        AI_LOG_DETAIL("[AI Broadcast] Entity at (" << cache.entity->getPosition().getX()
+                << "," << cache.entity->getPosition().getY() << ") with behavior '"
+                << cache.behaviorName << "' receiving broadcast");
+        #endif
+
+        cache.behavior->onMessage(cache.entity, message);
+        entityCount++;
     }
 
-    std::cout << "[AI Broadcast] Message delivered to " << entityCount << " entities" << std::endl;
+    AI_LOG("[AI Broadcast] Message delivered to " << entityCount << " entities");
 }
 
 // Implementation moved to the end of the file
 
 void AIManager::registerBehavior(const std::string& behaviorName, std::shared_ptr<AIBehavior> behavior) {
     if (!behavior) {
-        std::cerr << "Forge Game Engine - [AI Manager] Attempted to register null behavior: " << behaviorName << std::endl;
+        AI_LOG("Attempted to register null behavior: " << behaviorName);
         return;
     }
 
     // Check if behavior already exists
     if (m_behaviors.find(behaviorName) != m_behaviors.end()) {
-        std::cout << "Forge Game Engine - [AI Manager] Behavior already registered: " << behaviorName << ". Replacing." << "\n";
+        AI_LOG("Behavior already registered: " << behaviorName << ". Replacing.");
     }
 
     // Store the behavior
     m_behaviors[behaviorName] = behavior;
-    
+
+    // Initialize performance stats for this behavior
+    m_behaviorPerformanceStats[behaviorName].reset();
+
     // Invalidate caches since behavior collection changed
     invalidateOptimizationCaches();
-    
-    std::cout << "Forge Game Engine - [AI Manager] Behavior registered: " << behaviorName << "\n";
+
+    AI_LOG("Behavior registered: " << behaviorName);
 }
 
-inline bool AIManager::hasBehavior(const std::string& behaviorName) const {
-    return m_behaviors.find(behaviorName) != m_behaviors.end();
+bool AIManager::hasBehavior(const std::string& behaviorName) const {
+    // Using faster count method instead of find + comparison
+    return m_behaviors.count(behaviorName) > 0;
 }
 
 AIBehavior* AIManager::getBehavior(const std::string& behaviorName) const {
@@ -443,12 +510,20 @@ AIBehavior* AIManager::getBehavior(const std::string& behaviorName) const {
 
 void AIManager::assignBehaviorToEntity(Entity* entity, const std::string& behaviorName) {
     if (!entity) {
-        std::cerr << "Forge Game Engine - [AI Manager] Attempted to assign behavior to null entity" << std::endl;
+        AI_LOG("Attempted to assign behavior to null entity");
         return;
     }
 
-    if (!hasBehavior(behaviorName)) {
-        std::cerr << "Forge Game Engine - [AI Manager] Behavior not found: " << behaviorName << std::endl;
+    // Look up behavior only once
+    auto behaviorIt = m_behaviors.find(behaviorName);
+    if (behaviorIt == m_behaviors.end()) {
+        AI_LOG("Behavior not found: " << behaviorName);
+        return;
+    }
+
+    AIBehavior* behavior = behaviorIt->second.get();
+    if (!behavior) {
+        AI_LOG("Behavior pointer is null: " << behaviorName);
         return;
     }
 
@@ -459,47 +534,47 @@ void AIManager::assignBehaviorToEntity(Entity* entity, const std::string& behavi
 
     // Assign new behavior
     m_entityBehaviors[entity] = behaviorName;
-    
+
     // Invalidate caches since entity-behavior mapping changed
     invalidateOptimizationCaches();
 
     // Initialize the behavior for this entity
-    AIBehavior* behavior = getBehavior(behaviorName);
-    if (behavior) {
-        std::cout << "Forge Game Engine - [AI Init] Initializing behavior '" << behaviorName
-                  << "' for entity at position (" << entity->getPosition().getX()
-                  << "," << entity->getPosition().getY() << ")" << std::endl;
-        behavior->init(entity);
-    }
+    AI_LOG_DETAIL("[AI Init] Initializing behavior '" << behaviorName
+              << "' for entity at position (" << entity->getPosition().getX()
+              << "," << entity->getPosition().getY() << ")");
+    behavior->init(entity);
 
-    std::cout << "Forge Game Engine - [AI Manager] Behavior '" << behaviorName << "' assigned to entity\n";
+    AI_LOG("Behavior '" << behaviorName << "' assigned to entity");
 }
 
 void AIManager::unassignBehaviorFromEntity(Entity* entity) {
     if (!entity) {
-        std::cerr << "Forge Game Engine - [AI Manager] Attempted to unassign behavior from null entity" << std::endl;
+        AI_LOG("Attempted to unassign behavior from null entity");
         return;
     }
 
     auto it = m_entityBehaviors.find(entity);
     if (it != m_entityBehaviors.end()) {
+        // Store behavior name before map modifications
+        const std::string& behaviorName = it->second;
+
         // Clean up the behavior
-        AIBehavior* behavior = getBehavior(it->second);
+        AIBehavior* behavior = getBehavior(behaviorName);
         if (behavior) {
             behavior->clean(entity);
         }
 
         // Remove from map
         m_entityBehaviors.erase(it);
-        
+
         // Invalidate caches since entity-behavior mapping changed
         invalidateOptimizationCaches();
-        
-        std::cout << "Forge Game Engine - Behavior unassigned from entity\n";
+
+        AI_LOG("Behavior '" << behaviorName << "' unassigned from entity");
     }
 }
 
-inline bool AIManager::entityHasBehavior(Entity* entity) const {
+bool AIManager::entityHasBehavior(Entity* entity) const {
     if (!entity) return false;
     return m_entityBehaviors.find(entity) != m_entityBehaviors.end();
 }
@@ -510,18 +585,18 @@ void AIManager::sendMessageToEntity(Entity* entity, const std::string& message, 
     if (immediate) {
         deliverMessageToEntity(entity, message);
     } else {
-        // Queue the message for later processing
-        QueuedMessage queuedMsg;
-        queuedMsg.targetEntity = entity;
-        queuedMsg.message = message;
-        queuedMsg.timestamp = SDL_GetTicks();
+        // Create the message with move semantics for better performance
+        QueuedMessage queuedMsg(entity, message, SDL_GetTicks());
 
-        std::lock_guard<std::mutex> lock(m_messageQueueMutex);
-        m_messageQueue.push(queuedMsg);
-        
-        std::cout << "Forge Game Engine - [AI Message] Queued message for entity at ("
-                  << entity->getPosition().getX() << "," << entity->getPosition().getY()
-                  << "): " << message << std::endl;
+        // Add to incoming queue with minimal lock time
+        {
+            std::lock_guard<std::mutex> lock(m_messageQueueMutex);
+            m_incomingMessageQueue.push_back(std::move(queuedMsg));
+        }
+
+        AI_LOG_DETAIL("[AI Message] Queued message for entity at ("
+                   << entity->getPosition().getX() << "," << entity->getPosition().getY()
+                   << "): " << message);
     }
 }
 
@@ -529,15 +604,15 @@ void AIManager::broadcastMessage(const std::string& message, bool immediate) {
     if (immediate) {
         deliverBroadcastMessage(message);
     } else {
-        // Queue broadcast message
-        QueuedMessage queuedMsg;
-        queuedMsg.targetEntity = nullptr;  // nullptr indicates broadcast
-        queuedMsg.message = message;
-        queuedMsg.timestamp = SDL_GetTicks();
+        // Create the broadcast message with move semantics
+        QueuedMessage queuedMsg(nullptr, message, SDL_GetTicks());
 
-        std::lock_guard<std::mutex> lock(m_messageQueueMutex);
-        m_messageQueue.push(queuedMsg);
-        
-        std::cout << "Forge Game Engine - [AI Broadcast] Queued broadcast message: " << message << std::endl;
+        // Add to incoming queue with minimal lock time
+        {
+            std::lock_guard<std::mutex> lock(m_messageQueueMutex);
+            m_incomingMessageQueue.push_back(std::move(queuedMsg));
+        }
+
+        AI_LOG("[AI Broadcast] Queued broadcast message: " << message);
     }
 }

@@ -2,7 +2,7 @@
 
 ## Class Overview
 
-The Forge engine ThreadSystem provides a robust thread pool implementation with task queuing and synchronization features. This document serves as a complete API reference.
+The Forge engine ThreadSystem provides a robust thread pool implementation with automatic task queue management and synchronization features. This document serves as a complete API reference.
 
 ## Namespace
 
@@ -24,7 +24,7 @@ Singleton class that manages the thread pool and task queue.
 
 | Method | Parameters | Return Type | Description |
 |--------|------------|-------------|-------------|
-| `bool init(size_t queueCapacity = DEFAULT_QUEUE_CAPACITY)` | `queueCapacity`: Initial task queue capacity | `bool` | Initializes the thread system with specified queue capacity |
+| `bool init(size_t queueCapacity = DEFAULT_QUEUE_CAPACITY)` | `queueCapacity`: Initial task queue capacity (optional) | `bool` | Initializes the thread system with automatic capacity management. The initial capacity parameter is optional and rarely needed. |
 | `void clean()` | None | `void` | Cleans up and releases all thread system resources |
 
 #### Task Submission
@@ -48,7 +48,7 @@ Singleton class that manages the thread pool and task queue.
 |--------|------------|-------------|-------------|
 | `size_t getQueueCapacity() const` | None | `size_t` | Returns the current capacity of the task queue |
 | `size_t getQueueSize() const` | None | `size_t` | Returns the current number of tasks in the queue |
-| `bool reserveQueueCapacity(size_t capacity)` | `capacity`: New capacity to reserve | `bool` | Reserves memory for the specified number of tasks |
+| `bool reserveQueueCapacity(size_t capacity)` | `capacity`: New capacity to reserve | `bool` | Reserves memory for the specified number of tasks. Note: This is rarely needed as capacity is managed automatically. |
 
 #### Constants
 
@@ -102,9 +102,14 @@ Internal class that manages the queue of pending tasks.
 ### Basic Initialization and Cleanup
 
 ```cpp
-// Initialize with default settings
-if (!Forge::ThreadSystem::Instance().init()) {
-    std::cerr << "Failed to initialize thread system!" << std::endl;
+// Initialize with default settings (recommended approach)
+try {
+    if (!Forge::ThreadSystem::Instance().init()) {
+        std::cerr << "Failed to initialize thread system!" << std::endl;
+        return -1;
+    }
+} catch (const std::exception& e) {
+    std::cerr << "Exception during thread system initialization: " << e.what() << std::endl;
     return -1;
 }
 
@@ -117,34 +122,58 @@ Forge::ThreadSystem::Instance().clean();
 ### Task Submission
 
 ```cpp
-// Fire-and-forget task
-Forge::ThreadSystem::Instance().enqueueTask([]() {
-    // Perform work that doesn't return a value
-    processData();
-});
+// Fire-and-forget task with error handling
+try {
+    Forge::ThreadSystem::Instance().enqueueTask([]() {
+        try {
+            // Perform work that doesn't return a value
+            processData();
+        } catch (const std::exception& e) {
+            std::cerr << "Task execution error: " << e.what() << std::endl;
+        }
+    });
+} catch (const std::exception& e) {
+    std::cerr << "Failed to enqueue task: " << e.what() << std::endl;
+}
 
-// Task with result
-auto future = Forge::ThreadSystem::Instance().enqueueTaskWithResult([]() -> int {
-    // Perform work and return a value
-    return calculateResult();
-});
+// Task with result and error handling
+try {
+    auto future = Forge::ThreadSystem::Instance().enqueueTaskWithResult([]() -> int {
+        try {
+            // Perform work and return a value
+            return calculateResult();
+        } catch (const std::exception& e) {
+            std::cerr << "Task execution error: " << e.what() << std::endl;
+            return -1; // Return error code
+        }
+    });
 
-// Wait for and use the result
-int result = future.get();
+    // Wait for and use the result
+    try {
+        int result = future.get();
+    } catch (const std::exception& e) {
+        std::cerr << "Exception from task: " << e.what() << std::endl;
+    }
+} catch (const std::exception& e) {
+    std::cerr << "Failed to enqueue task: " << e.what() << std::endl;
+}
 ```
 
 ### Queue Capacity Management
 
 ```cpp
-// Initialize with custom capacity
-Forge::ThreadSystem::Instance().init(1000);
+// Typically, you should use the default capacity (recommended)
+Forge::ThreadSystem::Instance().init();
 
-// Adjust capacity at runtime
-Forge::ThreadSystem::Instance().reserveQueueCapacity(2000);
-
-// Monitor usage
+// Monitor usage (for debugging or performance analysis)
 size_t currentSize = Forge::ThreadSystem::Instance().getQueueSize();
 size_t capacity = Forge::ThreadSystem::Instance().getQueueCapacity();
+
+// Custom capacity is only needed in rare cases with extreme requirements
+// For example, when handling thousands of tasks simultaneously:
+if (tasksToProcess > 5000) {
+    Forge::ThreadSystem::Instance().reserveQueueCapacity(tasksToProcess);
+}
 ```
 
 ## Thread Safety
@@ -159,7 +188,9 @@ All public methods of the ThreadSystem, ThreadPool, and TaskQueue classes are th
 
 ## Performance Considerations
 
-- Use `reserveQueueCapacity()` before submitting large batches of tasks
-- The default capacity (512) is suitable for most applications
-- Avoid creating many small tasks; batch related work when possible
-- Set thread pool size appropriately for your hardware (default is cores-1)
+- The thread system automatically manages capacity for most workloads
+- Manual capacity management with `reserveQueueCapacity()` is rarely needed
+- Always include proper exception handling in your tasks
+- Avoid creating many tiny tasks; batch related work when possible
+- The default thread pool size (cores-1) is optimal for most applications
+- Focus on task design rather than capacity management

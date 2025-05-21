@@ -31,12 +31,23 @@
 
 #include <memory>
 #include <string>
+#include <string_view>
 #include <vector>
-#include <queue>
+
 #include <mutex>
+#include <chrono>
 #include <boost/container/flat_map.hpp>
 #include "entities/Entity.hpp"
 #include "ai/AIBehavior.hpp"
+
+// Conditional debug logging macros
+#ifdef AI_DEBUG_LOGGING
+    #define AI_LOG(x) std::cout << "Forge Game Engine - [AI Manager] " << x << std::endl
+    #define AI_LOG_DETAIL(x) std::cout << x << std::endl
+#else
+    #define AI_LOG(x)
+    #define AI_LOG_DETAIL(x)
+#endif
 
 // AIBehavior is now fully included, not just forward declared
 
@@ -109,7 +120,7 @@ public:
      * @param behaviorName Name of the behavior to assign
      */
     void assignBehaviorToEntity(Entity* entity, const std::string& behaviorName);
-    
+
     /**
      * @brief Process multiple entities with the same behavior type in batches
      * @param behaviorName The behavior to process
@@ -129,7 +140,7 @@ public:
      * @param entity Pointer to the entity
      */
     void unassignBehaviorFromEntity(Entity* entity);
-    
+
     /**
      * @brief Rebuild optimization caches if they're invalid
      * This will be called automatically when needed, but can be called
@@ -159,7 +170,7 @@ public:
      * @param immediate If true, delivers immediately; if false, queues for next update
      */
     void broadcastMessage(const std::string& message, bool immediate = false);
-    
+
     /**
      * @brief Process all queued messages
      * This happens automatically during update() but can be called manually
@@ -191,16 +202,41 @@ private:
     // Storage for behaviors and entity assignments
     boost::container::flat_map<std::string, std::shared_ptr<AIBehavior>> m_behaviors{};
     boost::container::flat_map<Entity*, std::string> m_entityBehaviors{};
-    
+
+    // Performance tracing for AI operations
+    struct PerformanceStats {
+        double totalUpdateTimeMs{0.0};
+        double averageUpdateTimeMs{0.0};
+        uint64_t updateCount{0};
+        double maxUpdateTimeMs{0.0};
+        double minUpdateTimeMs{std::numeric_limits<double>::max()};
+
+        void addSample(double timeMs) {
+            totalUpdateTimeMs += timeMs;
+            updateCount++;
+            averageUpdateTimeMs = totalUpdateTimeMs / updateCount;
+            maxUpdateTimeMs = std::max(maxUpdateTimeMs, timeMs);
+            minUpdateTimeMs = std::min(minUpdateTimeMs, timeMs);
+        }
+
+        void reset() {
+            totalUpdateTimeMs = 0.0;
+            averageUpdateTimeMs = 0.0;
+            updateCount = 0;
+            maxUpdateTimeMs = 0.0;
+            minUpdateTimeMs = std::numeric_limits<double>::max();
+        }
+    };
+
     // Cache for quick lookup of entity-behavior pairs (optimization)
     struct EntityBehaviorCache {
         Entity* entity;
         AIBehavior* behavior;
-        std::string behaviorName;
-        
+        std::string_view behaviorName;  // Using string_view to avoid copies
+
         // Performance statistics
-        Uint64 lastUpdateTime{0};
-        float averageUpdateTimeMs{0.0f};
+        uint64_t lastUpdateTime{0};
+        PerformanceStats perfStats;
     };
     std::vector<EntityBehaviorCache> m_entityBehaviorCache{};
     bool m_cacheValid{false};
@@ -208,28 +244,50 @@ private:
     // Multithreading support
     bool m_initialized{false};
     bool m_useThreading{true}; // Controls whether updates run in parallel
-    
+
     // For batch processing optimization
     using BehaviorBatch = std::vector<Entity*>;
     boost::container::flat_map<std::string, BehaviorBatch> m_behaviorBatches{};
     bool m_batchesValid{false};
-    
+
     // Private helper methods for optimizations
     void rebuildEntityBehaviorCache();
     void rebuildBehaviorBatches();
     void invalidateOptimizationCaches();
-    void updateBehaviorBatch(const std::string& behaviorName, const BehaviorBatch& batch);
-    
-    // Message queue system
+    void updateBehaviorBatch(const std::string_view& behaviorName, const BehaviorBatch& batch);
+
+    // Common helper method to process entities with a behavior (reduces code duplication)
+    void processEntitiesWithBehavior(AIBehavior* behavior, const std::vector<Entity*>& entities, bool useThreading);
+
+    // Performance monitoring
+    boost::container::flat_map<std::string, PerformanceStats> m_behaviorPerformanceStats;
+    void recordBehaviorPerformance(const std::string_view& behaviorName, double timeMs);
+
+    // Utility method to get current high-precision time
+    static inline uint64_t getCurrentTimeNanos() {
+        return std::chrono::duration_cast<std::chrono::nanoseconds>(
+            std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+    }
+
+    // Message queue system with optimized locking
     struct QueuedMessage {
         Entity* targetEntity;  // nullptr for broadcast
         std::string message;
-        Uint64 timestamp;
+        uint64_t timestamp;
+
+        QueuedMessage() = default;
+
+        QueuedMessage(Entity* entity, std::string msg, uint64_t time)
+            : targetEntity(entity), message(std::move(msg)), timestamp(time) {}
     };
-    std::queue<QueuedMessage> m_messageQueue;
+
+    // Double-buffered message queue to reduce lock contention
+    std::vector<QueuedMessage> m_incomingMessageQueue;
+    std::vector<QueuedMessage> m_processingMessageQueue;
     std::mutex m_messageQueueMutex;
     bool m_processingMessages{false};
-    
+    PerformanceStats m_messageQueueStats;
+
     // Message delivery helpers
     void deliverMessageToEntity(Entity* entity, const std::string& message);
     void deliverBroadcastMessage(const std::string& message);
