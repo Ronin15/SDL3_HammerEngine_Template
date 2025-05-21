@@ -6,7 +6,7 @@
 #ifndef MOCK_PLAYER_HPP
 #define MOCK_PLAYER_HPP
 
-#include "Vector2D.hpp"
+#include "utils/Vector2D.hpp"
 #include <string>
 #include <SDL3/SDL.h>
 
