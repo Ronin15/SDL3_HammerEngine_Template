@@ -19,8 +19,8 @@
  * Usage example:
  *
  * 1. Register behaviors:
- *    auto wanderBehavior = std::make_unique<WanderBehavior>();
- *    AIManager::Instance().registerBehavior("Wander", std::move(wanderBehavior));
+ *    auto wanderBehavior = std::make_shared<WanderBehavior>();
+ *    AIManager::Instance().registerBehavior("Wander", wanderBehavior);
  *
  * 2. Assign behavior to entity:
  *    AIManager::Instance().assignBehaviorToEntity(npc, "Wander");
@@ -31,6 +31,7 @@
 
 #include <memory>
 #include <string>
+#include <vector>
 #include <boost/container/flat_map.hpp>
 #include "entities/Entity.hpp"
 #include "ai/AIBehavior.hpp"
@@ -81,9 +82,9 @@ public:
     /**
      * @brief Register a new behavior for use with entities
      * @param behaviorName Unique identifier for the behavior
-     * @param behavior Unique pointer to the behavior implementation
+     * @param behavior Shared pointer to the behavior implementation
      */
-    void registerBehavior(const std::string& behaviorName, std::unique_ptr<AIBehavior> behavior);
+    void registerBehavior(const std::string& behaviorName, std::shared_ptr<AIBehavior> behavior);
 
     /**
      * @brief Check if a behavior exists
@@ -106,12 +107,33 @@ public:
      * @param behaviorName Name of the behavior to assign
      */
     void assignBehaviorToEntity(Entity* entity, const std::string& behaviorName);
+    
+    /**
+     * @brief Process multiple entities with the same behavior type in batches
+     * @param behaviorName The behavior to process
+     * @param entities Vector of entities to process
+     */
+    void batchProcessEntities(const std::string& behaviorName, const std::vector<Entity*>& entities);
+
+    /**
+     * @brief Process all behaviors in batches for maximum performance
+     * This is the most optimized way to update all AI entities.
+     * It will automatically use threading if available.
+     */
+    void batchUpdateAllBehaviors();
 
     /**
      * @brief Remove AI behavior from an entity
      * @param entity Pointer to the entity
      */
     void unassignBehaviorFromEntity(Entity* entity);
+    
+    /**
+     * @brief Rebuild optimization caches if they're invalid
+     * This will be called automatically when needed, but can be called
+     * manually if you know the caches should be refreshed
+     */
+    void ensureOptimizationCachesValid();
 
     /**
      * @brief Check if an entity has an assigned behavior
@@ -157,12 +179,36 @@ private:
     AIManager& operator=(const AIManager&) = delete;
 
     // Storage for behaviors and entity assignments
-    boost::container::flat_map<std::string, std::unique_ptr<AIBehavior>> m_behaviors{};
+    boost::container::flat_map<std::string, std::shared_ptr<AIBehavior>> m_behaviors{};
     boost::container::flat_map<Entity*, std::string> m_entityBehaviors{};
+    
+    // Cache for quick lookup of entity-behavior pairs (optimization)
+    struct EntityBehaviorCache {
+        Entity* entity;
+        AIBehavior* behavior;
+        std::string behaviorName;
+        
+        // Performance statistics
+        Uint64 lastUpdateTime{0};
+        float averageUpdateTimeMs{0.0f};
+    };
+    std::vector<EntityBehaviorCache> m_entityBehaviorCache{};
+    bool m_cacheValid{false};
 
     // Multithreading support
     bool m_initialized{false};
     bool m_useThreading{true}; // Controls whether updates run in parallel
+    
+    // For batch processing optimization
+    using BehaviorBatch = std::vector<Entity*>;
+    boost::container::flat_map<std::string, BehaviorBatch> m_behaviorBatches{};
+    bool m_batchesValid{false};
+    
+    // Private helper methods for optimizations
+    void rebuildEntityBehaviorCache();
+    void rebuildBehaviorBatches();
+    void invalidateOptimizationCaches();
+    void updateBehaviorBatch(const std::string& behaviorName, const BehaviorBatch& batch);
 };
 
 #endif // AI_MANAGER_HPP

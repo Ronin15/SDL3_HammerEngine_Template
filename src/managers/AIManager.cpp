@@ -12,6 +12,138 @@
 #include <iostream>
 //#include <iomanip>
 
+void AIManager::ensureOptimizationCachesValid() {
+    if (!m_cacheValid) {
+        rebuildEntityBehaviorCache();
+    }
+
+    if (!m_batchesValid) {
+        rebuildBehaviorBatches();
+    }
+}
+
+void AIManager::rebuildEntityBehaviorCache() {
+    // Clear existing cache
+    m_entityBehaviorCache.clear();
+    m_entityBehaviorCache.reserve(m_entityBehaviors.size());
+
+    // Populate cache with entity-behavior pairs
+    for (const auto& [entity, behaviorName] : m_entityBehaviors) {
+        if (!entity) continue;
+    
+        AIBehavior* behavior = getBehavior(behaviorName);
+        if (behavior) {
+            m_entityBehaviorCache.push_back({entity, behavior, behaviorName});
+        }
+    }
+
+    m_cacheValid = true;
+}
+
+void AIManager::rebuildBehaviorBatches() {
+    // Clear existing batches
+    m_behaviorBatches.clear();
+
+    // Group entities by behavior
+    for (const auto& [entity, behaviorName] : m_entityBehaviors) {
+        if (!entity) continue;
+    
+        // Add entity to appropriate batch
+        m_behaviorBatches[behaviorName].push_back(entity);
+    }
+
+    m_batchesValid = true;
+}
+
+void AIManager::invalidateOptimizationCaches() {
+    m_cacheValid = false;
+    m_batchesValid = false;
+}
+
+void AIManager::updateBehaviorBatch(const std::string& behaviorName, const BehaviorBatch& batch) {
+    AIBehavior* behavior = getBehavior(behaviorName);
+    if (!behavior || !behavior->isActive() || batch.empty()) {
+        return;
+    }
+
+    if (m_useThreading && batch.size() > 1) {
+        // Multithreaded batch processing
+        std::vector<std::future<void>> taskFutures;
+        taskFutures.reserve(batch.size());
+
+        // Reserve capacity in thread system
+        Forge::ThreadSystem::Instance().reserveQueueCapacity(batch.size());
+
+        for (Entity* entity : batch) {
+            if (!entity) continue;
+    
+            auto future = Forge::ThreadSystem::Instance().enqueueTaskWithResult(
+                [behavior, entity]() -> void {
+                    behavior->update(entity);
+                });
+    
+            taskFutures.push_back(std::move(future));
+        }
+
+        // Wait for all tasks to complete
+        for (auto& future : taskFutures) {
+            try {
+                future.get();
+            } catch (const std::exception& e) {
+                std::cerr << "Forge Game Engine - [AI Manager] Exception in batch processing: " << e.what() << std::endl;
+            }
+        }
+    } else {
+        // Single-threaded batch processing
+        for (Entity* entity : batch) {
+            if (!entity) continue;
+            behavior->update(entity);
+        }
+    }
+}
+
+void AIManager::batchProcessEntities(const std::string& behaviorName, const std::vector<Entity*>& entities) {
+    AIBehavior* behavior = getBehavior(behaviorName);
+    if (!behavior || !behavior->isActive()) {
+        return;
+    }
+
+    if (m_useThreading && entities.size() > 1) {
+        // Multithreaded batch processing
+        std::vector<std::future<void>> taskFutures;
+        taskFutures.reserve(entities.size());
+
+        // Reserve capacity in thread system
+        Forge::ThreadSystem::Instance().reserveQueueCapacity(entities.size());
+
+        for (Entity* entity : entities) {
+            if (!entity) continue;
+    
+            auto future = Forge::ThreadSystem::Instance().enqueueTaskWithResult(
+                [behavior, entity]() -> void {
+                    behavior->update(entity);
+                });
+    
+            taskFutures.push_back(std::move(future));
+        }
+
+        // Wait for all tasks to complete
+        for (auto& future : taskFutures) {
+            try {
+                future.get();
+            } catch (const std::exception& e) {
+                std::cerr << "Forge Game Engine - [AI Manager] Exception in batch processing: " << e.what() << std::endl;
+            }
+        }
+    } else {
+        // Single-threaded batch processing
+        for (Entity* entity : entities) {
+            if (!entity) continue;
+            behavior->update(entity);
+        }
+    }
+}
+
 bool AIManager::init() {
     if (m_initialized) {
         return true;  // Already initialized
@@ -33,52 +165,46 @@ void AIManager::update() {
         return;
     }
 
-    // Make a copy of the entity-behavior map to avoid issues if the map changes during iteration
-    auto entityBehaviorsCopy = m_entityBehaviors;
+    // We now use the optimized batch update method
+    batchUpdateAllBehaviors();
+}
+
+void AIManager::batchUpdateAllBehaviors() {
+    if (!m_initialized) {
+        return;
+    }
+    
+    // Ensure our optimization caches are valid
+    ensureOptimizationCachesValid();
 
     // If threading is enabled, distribute AI updates across worker threads
-    if (m_useThreading && entityBehaviorsCopy.size() > 1) {
-        // Reserve enough capacity for all entities
-        Forge::ThreadSystem::Instance().reserveQueueCapacity(entityBehaviorsCopy.size());
-
+    if (m_useThreading && m_behaviorBatches.size() > 0) {
         // Store futures to track task completion
         std::vector<std::future<void>> taskFutures;
-        taskFutures.reserve(entityBehaviorsCopy.size());
-
-        // Create a task for each entity
-        for (const auto& [entity, behaviorName] : entityBehaviorsCopy) {
-            // Capture by value since we're using a copy of the map
-            auto future = Forge::ThreadSystem::Instance().enqueueTaskWithResult([this, entity, behaviorName]() -> void {
-                if (!entity) return;
-
-                // Get the behavior and update the entity
-                AIBehavior* behavior = this->getBehavior(behaviorName);
-                if (behavior && behavior->isActive()) {
-                   //std::cout << "[AI Update] Entity at (" << std::fixed << std::setprecision(2) << entity->getPosition().getX() << "," << entity->getPosition().getY() << ") running behavior: " << behaviorName << std::endl;
-                    behavior->update(entity);
-                }
-            });
-
-            taskFutures.push_back(std::move(future));
+        size_t totalEntities = 0;
+        
+        // Count total entities to reserve capacity
+        for (const auto& [behaviorName, batch] : m_behaviorBatches) {
+            totalEntities += batch.size();
         }
+        
+        // Reserve enough capacity for all entities
+        Forge::ThreadSystem::Instance().reserveQueueCapacity(totalEntities);
+        taskFutures.reserve(totalEntities);
 
-        // Wait for all tasks to complete
-        for (auto& future : taskFutures) {
-            try {
-                future.get();
-            } catch (const std::exception& e) {
-                std::cerr << "Forge Game Engine - [AI Manager] Exception in AI update task: " << e.what() << std::endl;
-            }
+        // Process each behavior batch
+        for (const auto& [behaviorName, batch] : m_behaviorBatches) {
+            if (batch.empty()) continue;
+            
+            // Update this batch of entities
+            updateBehaviorBatch(behaviorName, batch);
         }
     } else {
-        // Single-threaded update
-        for (const auto& [entity, behaviorName] : entityBehaviorsCopy) {
-            if (!entity) continue;
-
-            AIBehavior* behavior = getBehavior(behaviorName);
-            if (behavior && behavior->isActive()) {
-                //std::cout << "[AI Update] Entity at (" << std::fixed << std::setprecision(2) << entity->getPosition().getX() << "," << entity->getPosition().getY() << ") running behavior: " << behaviorName << std::endl;
-                behavior->update(entity);
+        // Single-threaded update using cached behavior references for speed
+        for (const auto& cache : m_entityBehaviorCache) {
+            if (!cache.entity) continue;
+            if (cache.behavior && cache.behavior->isActive()) {
+                cache.behavior->update(cache.entity);
             }
         }
     }
@@ -103,6 +229,12 @@ void AIManager::resetBehaviors() {
     // Clear collections
     m_entityBehaviors.clear();
     m_behaviors.clear();
+    
+    // Clear optimization caches
+    m_entityBehaviorCache.clear();
+    m_behaviorBatches.clear();
+    m_cacheValid = false;
+    m_batchesValid = false;
 
     std::cout << "Forge Game Engine - [AI Manager] behaviors reset\n";
 }
@@ -116,11 +248,17 @@ void AIManager::clean() {
     // Then perform complete shutdown operations
     m_initialized = false;
     m_useThreading = false;
+    
+    // Make sure caches are cleared
+    m_entityBehaviorCache.clear();
+    m_behaviorBatches.clear();
+    m_cacheValid = false;
+    m_batchesValid = false;
 
     std::cout << "Forge Game Engine - AIManager completely shut down\n";
 }
 
-void AIManager::registerBehavior(const std::string& behaviorName, std::unique_ptr<AIBehavior> behavior) {
+void AIManager::registerBehavior(const std::string& behaviorName, std::shared_ptr<AIBehavior> behavior) {
     if (!behavior) {
         std::cerr << "Forge Game Engine - [AI Manager] Attempted to register null behavior: " << behaviorName << std::endl;
         return;
@@ -132,11 +270,15 @@ void AIManager::registerBehavior(const std::string& behaviorName, std::unique_pt
     }
 
     // Store the behavior
-    m_behaviors[behaviorName] = std::move(behavior);
+    m_behaviors[behaviorName] = behavior;
+    
+    // Invalidate caches since behavior collection changed
+    invalidateOptimizationCaches();
+    
     std::cout << "Forge Game Engine - [AI Manager] Behavior registered: " << behaviorName << "\n";
 }
 
-bool AIManager::hasBehavior(const std::string& behaviorName) const {
+inline bool AIManager::hasBehavior(const std::string& behaviorName) const {
     return m_behaviors.find(behaviorName) != m_behaviors.end();
 }
 
@@ -166,6 +308,9 @@ void AIManager::assignBehaviorToEntity(Entity* entity, const std::string& behavi
 
     // Assign new behavior
     m_entityBehaviors[entity] = behaviorName;
+    
+    // Invalidate caches since entity-behavior mapping changed
+    invalidateOptimizationCaches();
 
     // Initialize the behavior for this entity
     AIBehavior* behavior = getBehavior(behaviorName);
@@ -195,11 +340,15 @@ void AIManager::unassignBehaviorFromEntity(Entity* entity) {
 
         // Remove from map
         m_entityBehaviors.erase(it);
+        
+        // Invalidate caches since entity-behavior mapping changed
+        invalidateOptimizationCaches();
+        
         std::cout << "Forge Game Engine - Behavior unassigned from entity\n";
     }
 }
 
-bool AIManager::entityHasBehavior(Entity* entity) const {
+inline bool AIManager::entityHasBehavior(Entity* entity) const {
     if (!entity) return false;
     return m_entityBehaviors.find(entity) != m_entityBehaviors.end();
 }
