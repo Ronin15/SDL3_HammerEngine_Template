@@ -9,6 +9,7 @@
 #include <future>
 #include <iostream>
 #include <thread>
+#include "SDL3/SDL_surface.h"
 #include "managers/AIManager.hpp"
 #include "gameStates/AIDemoState.hpp"
 #include "managers/FontManager.hpp"
@@ -105,16 +106,14 @@ bool GameEngine::init(const char* title,
     // Window handling
     int flags{0};
     int flag1 = SDL_WINDOW_FULLSCREEN;
-    //int flag2 = SDL_WINDOW_HIGH_PIXEL_DENSITY;
+    int flag2 = SDL_WINDOW_HIGH_PIXEL_DENSITY;
 
     if (fullscreen) {
-      flags = flag1; //| flag2;
+      flags = flag1 | flag2;
       //setting window width and height to fullscreen dimensions for detected monitor
       m_windowWidth = display.w;
       m_windowHeight = display.h;
       std::cout << "Forge Game Engine - Window size set to Full Screen!\n";
-    }else{
-      //flags = flag2;
     }
 
     mp_window = SDL_CreateWindow(title, m_windowWidth, m_windowHeight, flags);
@@ -137,13 +136,18 @@ bool GameEngine::init(const char* title,
       // account for pixel density for rendering
       int pixelWidth, pixelHeight;
       SDL_GetWindowSizeInPixels(mp_window, &pixelWidth, &pixelHeight);
+      // Get logical dimensions
+      int logicalWidth, logicalHeight;
+      SDL_GetWindowSize(mp_window, &logicalWidth, &logicalHeight);
+
       mp_renderer = SDL_CreateRenderer(mp_window, NULL);
 
       if (mp_renderer) {
         std::cout << "Forge Game Engine - Rendering system online!\n";
         SDL_SetRenderDrawColor(mp_renderer, FORGE_GRAY);  // Forge Game Engine gunmetal dark grey
-       //SDL_SetRenderLogicalPresentation(mp_renderer, pixelWidth, pixelHeight, SDL_LOGICAL_PRESENTATION_INTEGER_SCALE);
-       //SDL_SetRenderScale(mp_renderer, scaleX, scaleY);
+        // Set logical rendering size to match our window size
+        SDL_SetRenderLogicalPresentation(mp_renderer, logicalWidth, logicalHeight, SDL_LOGICAL_PRESENTATION_LETTERBOX);
+        //Render Mode.
         SDL_SetRenderDrawBlendMode(mp_renderer, SDL_BLENDMODE_BLEND);
       } else {
         std::cerr << "Forge Game Engine - Rendering system creation failed! " << SDL_GetError() << std::endl;
