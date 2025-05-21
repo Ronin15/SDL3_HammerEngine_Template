@@ -18,8 +18,12 @@
 // Mock WanderBehavior for testing
 class MockWanderBehavior : public AIBehavior {
 public:
-    MockWanderBehavior(float speed = 1.5f, float changeDirectionInterval = 2000.0f, float areaRadius = 300.0f)
-        : m_speed(speed), m_changeInterval(changeDirectionInterval), m_radius(areaRadius) {}
+    MockWanderBehavior(float speed = 1.5f, float changeDirectionInterval = 2000.0f, float areaRadius = 300.0f) {
+        // Parameters not used in this mock implementation
+        (void)speed;
+        (void)changeDirectionInterval;
+        (void)areaRadius;
+    }
 
     void update(Entity* entity) override {
         // Just a simple mock implementation
@@ -30,11 +34,11 @@ public:
         }
     }
 
-    void init(Entity* entity) override {
+    void init([[maybe_unused]] Entity* entity) override {
         // Do nothing in mock
     }
 
-    void clean(Entity* entity) override {
+    void clean([[maybe_unused]] Entity* entity) override {
         // Do nothing in mock
     }
 
@@ -43,14 +47,12 @@ public:
     }
 
     // Add public method to manipulate update frequency for testing
-    void setUpdateFrequency(int freq) {
+    void setUpdateFrequency(int freq) override {
         m_updateFrequency = freq;
     }
 
 private:
-    float m_speed;
-    float m_changeInterval;
-    float m_radius;
+    // No private fields needed for this mock implementation
 };
 
 class TestEntity : public Entity {

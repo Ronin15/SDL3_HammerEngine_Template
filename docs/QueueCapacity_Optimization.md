@@ -1,6 +1,6 @@
 # Queue Capacity Optimization in ThreadSystem
 
-> **Note:** For a detailed explanation of what "500 tasks" means in practice and how it translates to game features, see the [Task Definition](ThreadSystem_Optimization.md).
+> **Note:** The ThreadSystem now automatically manages its own capacity in most cases. This document explains the internal mechanics and when manual adjustment might still be appropriate.
 
 ## Understanding Memory Fragmentation and Cache Locality
 
@@ -40,10 +40,10 @@ The ThreadSystem in Forge Engine now features queue capacity optimization to add
    - Enables pre-allocation of memory with a single allocation
    - Maintains tasks in a contiguous memory region
 
-2. **Capacity Reservation**:
-   - Pre-allocates memory for the expected number of tasks
-   - Prevents reallocations during operation
-   - Reduces memory fragmentation from task submissions
+2. **Automatic Capacity Management**:
+   - Initializes with a reasonable default capacity (512 tasks)
+   - Grows dynamically as needed during operation
+   - Prevents excessive reallocations for typical workloads
 
 3. **Thread-Safe Design**:
    - All capacity operations are protected by appropriate synchronization
@@ -54,23 +54,27 @@ The ThreadSystem in Forge Engine now features queue capacity optimization to add
 #### Initial Capacity Setting
 
 ```cpp
-// Initialize with capacity for 500 tasks
-Forge::ThreadSystem::Instance().init(500);
+// Initialize with default capacity (recommended for most cases)
+Forge::ThreadSystem::Instance().init();
+
+// Or specify custom capacity for special cases
+Forge::ThreadSystem::Instance().init(1000);
 ```
 
 - Sets the initial capacity when creating the thread pool
 - Default value is 512 if not specified
-- Should be set based on expected maximum concurrent task count
+- Manual setting is rarely needed due to automatic management
 
 #### Runtime Capacity Adjustment
 
 ```cpp
-// Dynamically increase capacity before a large operation
-Forge::ThreadSystem::Instance().reserveQueueCapacity(1000);
+// Note: This is rarely needed with the automatic capacity management
+// Only use for extremely large workloads beyond normal usage patterns
+Forge::ThreadSystem::Instance().reserveQueueCapacity(5000);
 ```
 
-- Allows adjusting capacity based on runtime needs
-- Can be called before operations that will generate many tasks
+- Available for special cases but generally not recommended
+- The system efficiently handles most workloads automatically
 - Only increases capacity, never decreases it
 
 #### Monitoring Methods
@@ -111,68 +115,76 @@ With approximately 500 tasks (see  [Task Definition](ThreadSystem_Optimization.m
 
 ### When to Set Initial Capacity
 
-1. **At Engine Initialization**:
+1. **For Most Applications**:
    ```cpp
-   // In your main.cpp or engine initialization
-   Forge::ThreadSystem::Instance().init(expectedMaxTasks);
+   // Simply use the default capacity
+   Forge::ThreadSystem::Instance().init();
    ```
 
-2. **After Configuration Loading**:
+2. **For Specialized Workloads**:
    ```cpp
-   // After loading config data
-   int taskCapacity = config.getThreadTaskCapacity();
-   Forge::ThreadSystem::Instance().init(taskCapacity);
+   // Only if you have a specific reason to use a different capacity
+   Forge::ThreadSystem::Instance().init(specializedCapacity);
    ```
 
-### When to Adjust Capacity
+### When Manual Capacity Adjustment Might Be Appropriate
 
-1. **Before Level Loading**:
+Manual capacity adjustments are rarely needed with the automatic management system, but might be considered in these extreme cases:
+
+1. **Massive Parallel Asset Loading**:
    ```cpp
-   // Before loading a complex level
+   // Only if loading thousands of assets simultaneously
    size_t assetCount = level.getAssetCount();
-   Forge::ThreadSystem::Instance().reserveQueueCapacity(assetCount);
+   if (assetCount > 1000) {
+       Forge::ThreadSystem::Instance().reserveQueueCapacity(assetCount);
+   }
    ```
 
-2. **Before Simulation Phases**:
+2. **Extreme Simulation Scenarios**:
    ```cpp
-   // Before physics or AI update with many entities
-   Forge::ThreadSystem::Instance().reserveQueueCapacity(entities.size());
+   // Only if dealing with unusually large entity counts (thousands)
+   if (entities.size() > 2000) {
+       Forge::ThreadSystem::Instance().reserveQueueCapacity(entities.size());
+   }
    ```
 
-3. **When Scaling Content**:
-   ```cpp
-   // When user settings change to allow more entities
-   Forge::ThreadSystem::Instance().reserveQueueCapacity(newEntityLimit);
-   ```
+### Task System Usage Guidelines
 
-### Capacity Planning Guidelines
-
-| Scenario                            | Recommended Capacity    | Typical Usage                                    |
-|-------------------------------------|-------------------------|--------------------------------------------------|
-| Simple 2D games                     | 100-250 tasks           | Basic sprite updates, minimal physics            |
-| 3D games with moderate entity count | 250-500 tasks           | Character animations, standard physics, basic AI |
-| Complex simulations                 | 500-1000 tasks          | Advanced physics, pathfinding, dynamic systems   |
-| Content-heavy games                 | 1000+ tasks             | Streaming worlds, procedural generation          |
+| Scenario                            | Recommendation                               | Typical Usage                                    |
+|-------------------------------------|----------------------------------------------|--------------------------------------------------|
+| Simple 2D games                     | Use default capacity                         | Basic sprite updates, minimal physics            |
+| 3D games with moderate entity count | Use default capacity                         | Character animations, standard physics, basic AI |
+| Complex simulations                 | Use default capacity & focus on task design  | Advanced physics, pathfinding, dynamic systems   |
+| Content-heavy games                 | Consider custom capacity for extreme cases   | Streaming worlds, procedural generation          |
 
 ## Optimizing for Different Workloads
 
 ### Bursty Workloads
 
 For systems with occasional large bursts of tasks:
-- Set a moderate base capacity (e.g., 250)
-- Dynamically reserve before known bursts
+- The default capacity handles most burst scenarios automatically
+- Focus on designing more efficient tasks rather than capacity management
 - Example: Level loading, explosion effects
 
 ```cpp
-// Before generating particle effects
+// Particle system example with proper error handling
 void createExplosion(const Vector3& position) {
     const int particleCount = 1000;
-    Forge::ThreadSystem::Instance().reserveQueueCapacity(particleCount);
-
+    
+    // Note: No need to manually reserve capacity
+    
     for (int i = 0; i < particleCount; i++) {
-        Forge::ThreadSystem::Instance().enqueueTask([position, i]() {
-            // Create and initialize particle
-        });
+        try {
+            Forge::ThreadSystem::Instance().enqueueTask([position, i]() {
+                try {
+                    // Create and initialize particle
+                } catch (const std::exception& e) {
+                    std::cerr << "Particle processing error: " << e.what() << std::endl;
+                }
+            });
+        } catch (const std::exception& e) {
+            std::cerr << "Failed to enqueue particle task: " << e.what() << std::endl;
+        }
     }
 }
 ```
@@ -180,13 +192,30 @@ void createExplosion(const Vector3& position) {
 ### Steady Workloads
 
 For systems with consistent parallelism:
-- Set initial capacity to maximum expected usage
-- Monitor queue size during development to confirm
+- Use the default capacity settings
+- Focus on proper exception handling and task design
 - Example: Entity component updates, steady-state simulation
 
 ```cpp
-// Set capacity once at startup
-Forge::ThreadSystem::Instance().init(gameConfig.getMaxEntityCount());
+// Initialize the system with default capacity
+Forge::ThreadSystem::Instance().init();
+
+// Use proper exception handling in tasks
+void updateEntities(const std::vector<Entity*>& entities) {
+    for (auto* entity : entities) {
+        try {
+            Forge::ThreadSystem::Instance().enqueueTask([entity]() {
+                try {
+                    entity->update();
+                } catch (const std::exception& e) {
+                    std::cerr << "Entity update error: " << e.what() << std::endl;
+                }
+            });
+        } catch (const std::exception& e) {
+            std::cerr << "Failed to enqueue entity task: " << e.what() << std::endl;
+        }
+    }
+}
 ```
 
 ## Troubleshooting
@@ -221,6 +250,6 @@ Forge::ThreadSystem::Instance().init(gameConfig.getMaxEntityCount());
 
 ## Conclusion
 
-The Queue Capacity Optimization feature provides significant benefits for applications with 500+ tasks, reducing memory fragmentation and improving cache locality. By following the guidelines in this document, you can ensure optimal performance for your multi-threaded game systems.
+The ThreadSystem now features automatic capacity management, providing significant benefits for applications of all sizes by reducing memory fragmentation and improving cache locality. By following the modern task design guidelines in this document and letting the system handle capacity management, you can achieve optimal performance with minimal manual intervention.
 
-For a complete understanding of what "500 tasks" represents in terms of game complexity, entity counts, and performance characteristics, refer to the detailed breakdown in [Thread System Optimization](ThreadSystem_Optimization.md).
+For guidance on effective task design, exception handling, and performance characteristics, refer to the detailed breakdown in [Thread System Optimization](ThreadSystem_Optimization.md).

@@ -2,7 +2,7 @@
 
 ## Overview
 
-The ThreadSystem is a core component of the Forge Game Engine, providing thread pool management and task-based concurrency. It allows game systems to enqueue work that gets processed by a pool of worker threads, enabling performance benefits from multi-core processors while maintaining a simplified programming model. The system is optimized to efficiently handle up to 500 concurrent tasks (see [Defining a Task](ThreadSystem_Optimization.md) for details).
+The ThreadSystem is a core component of the Forge Game Engine, providing thread pool management and task-based concurrency. It allows game systems to enqueue work that gets processed by a pool of worker threads, enabling performance benefits from multi-core processors while maintaining a simplified programming model. The system automatically manages its capacity and is designed to efficiently handle hundreds of concurrent tasks (see [Defining a Task](ThreadSystem_Optimization.md) for details).
 
 ## Features
 
@@ -57,22 +57,29 @@ Forge::ThreadSystem::Instance().clean();
 
 ## Queue Capacity Management
 
-The ThreadSystem supports pre-allocation of memory for the task queue, which improves performance and reduces memory fragmentation.
+The ThreadSystem automatically manages memory for the task queue. In most cases, you shouldn't need to worry about queue capacity as the system handles this internally.
 
-### Setting Initial Capacity
+### Setting Initial Capacity (Optional)
 
 ```cpp
-// Initialize with capacity for 500 tasks
-if (!Forge::ThreadSystem::Instance().init(500)) {
+// Initialize with default capacity (recommended approach)
+if (!Forge::ThreadSystem::Instance().init()) {
+    std::cerr << "Failed to initialize thread system!" << std::endl;
+    return -1;
+}
+
+// Or specify a custom initial capacity if you have specific requirements
+if (!Forge::ThreadSystem::Instance().init(1000)) {
     std::cerr << "Failed to initialize thread system!" << std::endl;
     return -1;
 }
 ```
 
-### Adjusting Capacity at Runtime
+### Adjusting Capacity at Runtime (Rarely Needed)
 
 ```cpp
-// Reserve capacity for upcoming tasks
+// Note: In most cases, this is NOT necessary as the system manages capacity automatically
+// Only use this if you have specific performance requirements
 Forge::ThreadSystem::Instance().reserveQueueCapacity(1000);
 ```
 
@@ -104,22 +111,21 @@ Eliminating dynamic resizing of the task queue helps maintain consistent perform
 
 ## Best Practices
 
-1. **Set Appropriate Initial Capacity**
-   - For most games, set capacity to the maximum expected concurrent task count
-   - The default of 512 is suitable for games with moderate parallelism (around 500 active entities)
+1. **Use Default Capacity When Possible**
+   - For most games, the default capacity (512) works well and adjusts automatically
+   - You rarely need to manually set or adjust the capacity
 
-2. **Reserve Before Batch Submissions**
-   - Before submitting a large batch of tasks, ensure the queue has sufficient capacity
-   - Example: Reserve capacity before level loading or particle system updates
+2. **Focus on Task Design Instead of Capacity Management**
+   - Create appropriately sized tasks that perform meaningful work
+   - Let the thread system worry about queue management
 
-3. **Monitor During Development**
+3. **Add Error Handling to Tasks**
+   - Always wrap task code in try-catch blocks to prevent crashes
+   - Report errors but allow the system to continue running
+
+4. **Monitor During Development**
    - Use `getQueueSize()` and `getQueueCapacity()` during development to understand usage patterns
-   - Adjust capacity based on actual usage
-
-4. **Balance Memory Usage**
-   - Setting too large a capacity wastes memory
-   - Setting too small a capacity causes reallocations
-   - Aim for 1.5-2x your typical peak usage
+   - If queue size regularly approaches capacity, consider optimizing your task design
 
 5. **Consider Task Granularity**
    - Optimal task size is typically 0.1-1ms per task
@@ -127,20 +133,25 @@ Eliminating dynamic resizing of the task queue helps maintain consistent perform
    - Too large tasks (>5ms) can cause load imbalance
    - See [ThreadSystem Task](ThreadSystem_Optimization.md) for detailed guidance
 
+6. **Add Proper Exception Handling**
+   - Always handle exceptions that might occur in threaded tasks
+   - Ensure your code is resilient to thread task failures
+
 ## Example Scenarios
 
 ### Game Entity Updates
 
 ```cpp
-// Process 500 game entities in parallel
+// Process game entities in parallel
 void updateEntities(const std::vector<Entity*>& entities) {
-    // Reserve capacity for all entity tasks
-    Forge::ThreadSystem::Instance().reserveQueueCapacity(entities.size());
-
-    // Submit update tasks
+    // Submit update tasks - no need to manually reserve capacity
     for (Entity* entity : entities) {
         Forge::ThreadSystem::Instance().enqueueTask([entity]() {
-            entity->update();
+            try {
+                entity->update();
+            } catch (const std::exception& e) {
+                std::cerr << "Error updating entity: " << e.what() << std::endl;
+            }
         });
     }
 }
@@ -151,26 +162,39 @@ void updateEntities(const std::vector<Entity*>& entities) {
 ```cpp
 // Load multiple assets in parallel
 void loadAssets(const std::vector<std::string>& assetPaths) {
-    // Reserve capacity for all asset loading tasks
-    Forge::ThreadSystem::Instance().reserveQueueCapacity(assetPaths.size());
-
+    // Pre-reserve the results vector (good practice)
     std::vector<std::future<bool>> results;
+    results.reserve(assetPaths.size());
 
-    // Submit asset loading tasks
+    // Submit asset loading tasks - the ThreadSystem manages queue capacity
     for (const auto& path : assetPaths) {
-        results.push_back(
-            Forge::ThreadSystem::Instance().enqueueTaskWithResult(
-                [path]() -> bool {
-                    return loadAssetFromDisk(path);
-                }
-            )
-        );
+        try {
+            results.push_back(
+                Forge::ThreadSystem::Instance().enqueueTaskWithResult(
+                    [path]() -> bool {
+                        try {
+                            return loadAssetFromDisk(path);
+                        } catch (const std::exception& e) {
+                            std::cerr << "Error loading asset " << path << ": " << e.what() << std::endl;
+                            return false;
+                        }
+                    }
+                )
+            );
+        } catch (const std::exception& e) {
+            std::cerr << "Failed to enqueue task for " << path << ": " << e.what() << std::endl;
+        }
     }
 
     // Wait for and process results
     for (auto& future : results) {
-        bool success = future.get();
-        // Handle result
+        try {
+            bool success = future.get();
+            // Handle result
+        } catch (const std::exception& e) {
+            std::cerr << "Exception during task execution: " << e.what() << std::endl;
+            // Handle failure
+        }
     }
 }
 ```
@@ -183,7 +207,7 @@ The implementation efficiently handles task creation, dispatch, and completion, 
 
 ## Performance Characteristics
 
-The system is designed to handle approximately 500 concurrent tasks with optimal memory usage and processing efficiency. This capacity supports rich game worlds with hundreds of active entities and complex simulations. For a detailed explanation of what "500 tasks" means in practice and how it translates to game features, see the [ThreadSystem Task](ThreadSystem_Optimization.md) document.
+The system is designed to efficiently handle hundreds of concurrent tasks with dynamic memory management for optimal memory usage and processing efficiency. The task queue starts with a default capacity of 512 tasks and can automatically grow as needed. This capacity supports rich game worlds with hundreds of active entities and complex simulations. For a detailed explanation of task design and performance implications, see the [ThreadSystem Task](ThreadSystem_Optimization.md) document.
 
 ## Thread Safety
 

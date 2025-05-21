@@ -203,7 +203,7 @@ The AIManager optionally utilizes the ThreadSystem to distribute AI updates acro
 AIManager::Instance().setUseThreading(false);
 ```
 
-When threading is enabled, be careful about accessing shared resources from behavior update methods. Consider using locks or designing behaviors to be thread-safe.
+When threading is enabled, be careful about accessing shared resources from behavior update methods. Consider using locks or designing behaviors to be thread-safe. The thread system automatically manages task capacity, so you don't need to worry about managing task queue size.
 
 ## Performance Optimizations
 
@@ -240,7 +240,7 @@ patrolBehavior->setUpdateFrequency(3);
 AIManager::Instance().registerBehavior("Patrol", patrolBehavior);
 
 // In your custom behavior class:
-bool YourBehavior::shouldUpdate(Entity* entity) const override {
+bool YourBehavior::shouldUpdate([[maybe_unused]] Entity* entity) const override {
     float distanceToPlayer = entity->getPosition().distance(player->getPosition());
     return distanceToPlayer < 1000.0f; // Skip updates for distant entities
 }
@@ -248,28 +248,39 @@ bool YourBehavior::shouldUpdate(Entity* entity) const override {
 
 ### 4. Message Queue System
 
-Messages can be queued for batch processing instead of immediate delivery:
+Messages can be queued for batch processing instead of immediate delivery. The system uses an optimized double-buffered queue for better performance:
 
 ```cpp
 // Queue a message (default) - processed during next update
-AIManager::Instance().sendMessageToEntity(npc.get(), "patrol");
+try {
+    AIManager::Instance().sendMessageToEntity(npc.get(), "patrol");
+} catch (const std::exception& e) {
+    std::cerr << "Failed to queue message: " << e.what() << std::endl;
+}
 
 // Send message immediately when needed
-AIManager::Instance().sendMessageToEntity(npc.get(), "evade", true);
+try {
+    AIManager::Instance().sendMessageToEntity(npc.get(), "evade", true);
+} catch (const std::exception& e) {
+    std::cerr << "Failed to deliver message: " << e.what() << std::endl;
+}
 
-// Manually process all queued messages
+// Manually process all queued messages (normally done during update)
 AIManager::Instance().processMessageQueue();
 ```
 
 ### Performance Tips
 
-1. **Limit active behaviors**: Only register and assign behaviors you're actively using.
+// Limit active behaviors: Only register and assign behaviors you're actively using.
 2. **Optimize waypoints**: Use fewer waypoints for simple patrol routes.
 3. **Adjust update frequency**: Use the built-in update frequency control for less important entities.
 4. **Cull inactive entities**: Unassign behaviors from entities that are far from the player or inactive.
 5. **Use batch processing**: Leverage the built-in batch processing for entities with the same behavior type.
 6. **Use early exit conditions**: Configure behaviors to skip updates when not necessary.
 7. **Queue non-urgent messages**: Use the message queue system for non-urgent communication.
+8. **Add proper error handling**: Always wrap behavior code in try-catch blocks to prevent crashes.
+9. **Use string_view parameters**: When possible, use std::string_view for string parameters to reduce copying.
+10. **Examine performance statistics**: Use the built-in performance tracking to identify bottlenecks.
 
 ## Implementation Details
 
@@ -282,7 +293,8 @@ The AIManager maintains an optimized cache of entity-behavior pairs:
 struct EntityBehaviorCache {
     Entity* entity;
     AIBehavior* behavior;
-    std::string behaviorName;
+    std::string_view behaviorName;  // Using string_view for better performance
+    PerformanceStats perfStats;     // Performance tracking for each entity-behavior pair
 };
 ```
 
@@ -315,7 +327,9 @@ The AIManager applies three levels of early exit checks:
 The message queue system provides:
 - Deferred message delivery for non-critical communications
 - Batched processing of messages during update cycles
-- Thread-safe message queue implementation
+- Thread-safe message queue implementation with double-buffering
+- Optimized memory handling with move semantics
+- Performance statistics tracking for message processing
 - Optional immediate delivery for time-critical messages
 
 ## API Reference
@@ -361,8 +375,9 @@ virtual void init(Entity* entity) = 0;
 virtual void clean(Entity* entity) = 0;
 virtual std::string getName() const = 0;
 
-// Optional message handling
-virtual void onMessage(Entity* entity, const std::string& message);
+// Optional message handling (with unused parameter attribute)
+virtual void onMessage([[maybe_unused]] Entity* entity, 
+                       [[maybe_unused]] const std::string& message);
 
 // State management
 virtual bool isActive() const;
@@ -370,9 +385,9 @@ virtual void setActive(bool active);
 virtual int getPriority() const;
 virtual void setPriority(int priority);
 
-// Early exit optimizations
-virtual bool shouldUpdate(Entity* entity) const;
-virtual bool isEntityInRange(Entity* entity) const;
+// Early exit optimizations (with unused parameter attribute)
+virtual bool shouldUpdate([[maybe_unused]] Entity* entity) const;
+virtual bool isEntityInRange([[maybe_unused]] Entity* entity) const;
 virtual bool isWithinUpdateFrequency() const;
 virtual void setUpdateFrequency(int framesPerUpdate);
 virtual int getUpdateFrequency() const;

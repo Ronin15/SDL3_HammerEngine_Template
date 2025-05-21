@@ -22,7 +22,7 @@ public:
     virtual std::string getName() const = 0;
 
     // Optional message handling for behavior communication
-    virtual void onMessage(Entity* entity, const std::string& message) { (void)entity; (void)message; }
+    virtual void onMessage([[maybe_unused]] Entity* entity, [[maybe_unused]] const std::string& message) { }
 
     // Behavior state access
     virtual bool isActive() const { return m_active; }
@@ -33,8 +33,8 @@ public:
     virtual void setPriority(int priority) { m_priority = priority; }
     
     // Early exit condition checks
-    virtual bool shouldUpdate(Entity* entity) const { return m_active; }
-    virtual bool isEntityInRange(Entity* entity) const { return true; }
+    virtual bool shouldUpdate([[maybe_unused]] Entity* entity) const { return m_active; }
+    virtual bool isEntityInRange([[maybe_unused]] Entity* entity) const { return true; }
     virtual bool isWithinUpdateFrequency() const;
     
     // Update frequency control
