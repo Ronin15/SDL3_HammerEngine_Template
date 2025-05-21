@@ -23,8 +23,9 @@ I use the Zed IDE with custom cmake and ninja task configurations to build/compi
 - Texture management (auto loads all from img dir)
 - Sound & Music management (auto loads all from sound and music dir) stop, start, pause, halt, play sfx
 - Font management (auto loads all from font dir)
+- AI Manager framework for adding AI behaviors that uses a messaging system.
 - Simple and Efficient Multi-Threading system.
-- Test player with 2 frame animation (with Arnie the Armadillo) Arnie is copyrighted Hammer Forged Games (C) 2025
+- Test player and NPC with 2 frame animations. They both are copyrighted - Hammer Forged Games (C) 2025
 - Input handling:
   - Keyboard and mouse
   - Xbox series x controller support
@@ -117,7 +118,7 @@ The SaveGameManager provides functionality to save and load game state. Features
 - Metadata extraction from save files
 - File management (listing, deletion, validation)
 
-See `include/SaveGameManager.hpp` for the full API.
+See `include/managers/SaveGameManager.hpp` for the full API.
 
 ### ThreadSystem
 
@@ -140,7 +141,7 @@ The TextureManager handles all image loading and rendering operations:
 - Parallax scrolling capabilities for background effects
 - Memory-efficient texture management
 
-See `include/TextureManager.hpp` for the full API.
+See `include/managers/TextureManager.hpp` for the full API.
 
 ### SoundManager
 
@@ -151,7 +152,7 @@ The SoundManager provides a comprehensive audio system:
 - Music playback control (play, pause, resume, stop)
 - Volume management for different audio types
 
-See `include/SoundManager.hpp` for the full API.
+See `include/managers/SoundManager.hpp` for the full API.
 
 ### FontManager
 
@@ -161,7 +162,7 @@ The FontManager handles text rendering throughout the application:
 - Text rendering to textures or directly to the screen
 - Memory-efficient font management
 
-See `include/FontManager.hpp` for the full API.
+See `include/managers/FontManager.hpp` for the full API.
 
 ### InputHandler
 
@@ -173,7 +174,7 @@ The InputHandler manages all user input across different devices:
 - Gamepad axis movement and button states
 - Input state resets and cleanups
 
-See `include/InputHandler.hpp` for the full API.
+See `include/managers/InputManager.hpp` for the full API.
 
 ### GameStateManager
 
@@ -184,7 +185,7 @@ The GameStateManager controls the high-level game states:
 - State lookup by name
 - Update and render delegation to the current state
 
-See `include/GameStateManager.hpp` for the full API.
+See `include/managers/GameStateManager.hpp` for the full API.
 
 ### EntityStateManager
 
@@ -195,7 +196,32 @@ The EntityStateManager handles the state machine for individual entities:
 - Current state tracking and updates
 - Memory-efficient state storage using flat maps
 
-See `include/EntityStateManager.hpp` for the full API.
+See `include/managers/EntityStateManager.hpp` for the full API.
+
+### AIManager
+
+The AIManager provides a comprehensive AI behavior management system:
+
+- Dynamic behavior assignment to game entities
+- Thread-safe behavior updates through the game's thread system
+- Multiple behavior types for different AI patterns:
+  - **WanderBehavior**: Entities move randomly within a defined area, changing direction periodically
+  - **PatrolBehavior**: Entities follow predefined waypoints in sequence, moving along patrol routes
+  - **ChaseBehavior**: Entities pursue a target (like the player) when within detection range
+- Behavior messaging system for pausing, resuming, and controlling AI states
+- Memory-efficient behavior storage with automatic cleanup
+
+Key features include:
+
+- **Centralized AI Management**: Register behaviors once and reuse across many entities
+- **Behavior Switching**: Easily change entity behaviors at runtime
+- **Multi-threaded Updates**: AI processing distributes across available CPU cores
+- **Waypoint System**: Create complex patrol paths with multiple points
+- **Target Tracking**: Chase behavior maintains pursuit even when line of sight is lost
+- **Messaging API**: Control behaviors with messages like "pause", "resume", or "reverse"
+- **Extensible Design**: Create custom behaviors by implementing the AIBehavior interface
+
+See `docs/AIManager.md` for detailed documentation with examples and best practices. Additional API details can be found in `include/managers/AIManager.hpp`, `include/ai/AIBehavior.hpp`, and the specific behavior implementations.
 
 ## Window Icon
 This project supports window icons across all platforms:
@@ -216,8 +242,9 @@ Also, this template can be used for 3D as well. Just focus on replacing SDL_rend
 
 Additional documentation can be found in the `docs/` directory:
 
+- `AIManager.md` - Comprehensive guide to the AI system with examples and custom behavior creation
 - `SaveManagerTesting.md` - Details on the SaveGameManager testing framework and how to run the tests
 - `ThreadSystem.md` - Core documentation for the ThreadSystem component with usage examples and best practices
 - `ThreadSystem_API.md` - Complete API reference for the ThreadSystem with method signatures and parameters
-- `ThreadSystem_500Tasks.md` - Explanation of what "500 tasks" means in practical game development scenarios
-- `QueueCapacityOptimization.md` - Technical details on memory optimization in the ThreadSystem task queue
+- `ThreadSystem_Optimization.md` - Explanation of what "500 tasks" means in practical game development scenarios
+- `QueueCapacity_Optimization.md` - Technical details on memory optimization in the ThreadSystem task queue
