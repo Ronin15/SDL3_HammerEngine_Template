@@ -2,7 +2,12 @@
 
 ## Overview
 
-The AI Manager is a centralized system for creating and managing autonomous behaviors for game entities. It provides a flexible framework for implementing and controlling various AI behaviors, allowing game entities to exhibit different movement patterns and reactions. The system includes optimizations like entity-behavior caching and batch processing for improved performance with large numbers of entities.
+The AI Manager is a centralized system for creating and managing autonomous behaviors for game entities. It provides a flexible framework for implementing and controlling various AI behaviors, allowing game entities to exhibit different movement patterns and reactions. The system includes performance optimizations such as:
+
+1. Entity-behavior caching for faster lookups
+2. Batch processing for entities with the same behavior
+3. Early exit conditions to skip unnecessary updates
+4. Message queue system for efficient communication
 
 ## Core Components
 
@@ -11,10 +16,14 @@ The AI Manager is a centralized system for creating and managing autonomous beha
 The central management class that handles:
 - Registration of behaviors
 - Assignment of behaviors to entities
-- Updating all behaviors during the game loop (with optimization support)
+- Updating all behaviors during the game loop
 - Communication with behaviors via messages
+
+**Performance Optimizations:**
 - Entity-behavior caching for faster lookups
 - Batch processing of entities with the same behavior
+- Early exit conditions to avoid unnecessary updates
+- Message queue system for deferred communication
 
 ### AIBehavior Base Class
 
@@ -23,6 +32,12 @@ The abstract interface that all behaviors must implement:
 - `init(Entity*)`: Called when a behavior is first assigned to an entity
 - `clean(Entity*)`: Called when a behavior is removed from an entity
 - `onMessage(Entity*, const std::string&)`: Handles messages sent to the behavior
+
+**Optimization Methods:**
+- `shouldUpdate(Entity*)`: Early exit condition checking if entity should be updated
+- `isEntityInRange(Entity*)`: Early exit condition checking if entity is in range
+- `isWithinUpdateFrequency()`: Early exit condition for update frequency control
+- `setUpdateFrequency(int)`: Sets how often the behavior should update (1=every frame)
 
 ## Available Behaviors
 
@@ -101,17 +116,20 @@ if (isPlayerDetected) {
 ### Controlling Behaviors with Messages
 
 ```cpp
-// Pause a specific entity's behavior
-AIManager::Instance().sendMessageToEntity(npc.get(), "pause");
+// Pause a specific entity's behavior (immediate delivery)
+AIManager::Instance().sendMessageToEntity(npc.get(), "pause", true);
 
-// Resume a specific entity's behavior
+// Resume a specific entity's behavior (queued for next update)
 AIManager::Instance().sendMessageToEntity(npc.get(), "resume");
 
-// Pause all AI entities
-AIManager::Instance().broadcastMessage("pause");
+// Pause all AI entities (immediate delivery)
+AIManager::Instance().broadcastMessage("pause", true);
 
-// Reverse the patrol route for a specific entity
+// Reverse the patrol route for a specific entity (queued for next update)
 AIManager::Instance().sendMessageToEntity(npc.get(), "reverse");
+
+// Manually process queued messages (normally happens automatically during update())
+AIManager::Instance().processMessageQueue();
 ```
 
 ### Integration with Game Loop
@@ -187,52 +205,182 @@ AIManager::Instance().setUseThreading(false);
 
 When threading is enabled, be careful about accessing shared resources from behavior update methods. Consider using locks or designing behaviors to be thread-safe.
 
-## Performance Tips
+## Performance Optimizations
 
-1. **Limit active behaviors**: Only register and assign behaviors you're actively using.
-2. **Optimize waypoints**: Use fewer waypoints for simple patrol routes.
-3. **Adjust update frequency**: For distant or less important entities, consider updating AI less frequently.
-4. **Cull inactive entities**: Unassign behaviors from entities that are far from the player or inactive.
-5. **Use batch processing**: Leverage the built-in batch processing for entities with the same behavior type.
+### 1. Entity Component Caching
 
-### Batch Processing
-
-For cases where you need to process multiple entities with the same behavior:
+Entity-behavior relationships are cached for faster lookups during updates:
 
 ```cpp
-// Create a vector of entities 
+// The cache is automatically maintained
+// Force a cache rebuild if needed
+AIManager::Instance().ensureOptimizationCachesValid();
+```
+
+### 2. Batch Processing
+
+Entities with the same behavior are processed in batches for better cache coherency:
+
+```cpp
+// Create a vector of entities
 std::vector<Entity*> enemyGroup = getEnemiesInSector();
 
 // Process all entities with the same behavior in one batch
 AIManager::Instance().batchProcessEntities("ChaseBehavior", enemyGroup);
 ```
 
-### Optimization Features
+### 3. Early Exit Conditions
 
-The AIManager includes performance optimizations:
+Set early exit conditions to skip unnecessary updates:
 
-1. **Entity-Behavior Caching**: Speeds up entity-behavior lookups during updates
-2. **Behavior Batching**: Groups entities by behavior type for efficient processing
-3. **Smart Threading**: Distributes batches across available CPU cores
+```cpp
+// Create a behavior that only updates every 3 frames
+auto patrolBehavior = std::make_shared<PatrolBehavior>(patrolPoints, 1.5f);
+patrolBehavior->setUpdateFrequency(3);
+AIManager::Instance().registerBehavior("Patrol", patrolBehavior);
+
+// In your custom behavior class:
+bool YourBehavior::shouldUpdate(Entity* entity) const override {
+    float distanceToPlayer = entity->getPosition().distance(player->getPosition());
+    return distanceToPlayer < 1000.0f; // Skip updates for distant entities
+}
+```
+
+### 4. Message Queue System
+
+Messages can be queued for batch processing instead of immediate delivery:
+
+```cpp
+// Queue a message (default) - processed during next update
+AIManager::Instance().sendMessageToEntity(npc.get(), "patrol");
+
+// Send message immediately when needed
+AIManager::Instance().sendMessageToEntity(npc.get(), "evade", true);
+
+// Manually process all queued messages
+AIManager::Instance().processMessageQueue();
+```
+
+### Performance Tips
+
+1. **Limit active behaviors**: Only register and assign behaviors you're actively using.
+2. **Optimize waypoints**: Use fewer waypoints for simple patrol routes.
+3. **Adjust update frequency**: Use the built-in update frequency control for less important entities.
+4. **Cull inactive entities**: Unassign behaviors from entities that are far from the player or inactive.
+5. **Use batch processing**: Leverage the built-in batch processing for entities with the same behavior type.
+6. **Use early exit conditions**: Configure behaviors to skip updates when not necessary.
+7. **Queue non-urgent messages**: Use the message queue system for non-urgent communication.
+
+## Implementation Details
+
+### Entity-Behavior Caching
+
+The AIManager maintains an optimized cache of entity-behavior pairs:
+
+```cpp
+// Entity-behavior cache structure
+struct EntityBehaviorCache {
+    Entity* entity;
+    AIBehavior* behavior;
+    std::string behaviorName;
+};
+```
+
+This cache is automatically updated when:
+- New behaviors are registered
+- Behaviors are assigned to entities
+- Behaviors are unassigned from entities
+
+### Batch Processing Implementation
+
+Batch processing improves performance by:
+- Grouping entities by behavior type for better cache coherency
+- Reducing per-entity overhead in update loops
+- Enabling more efficient multithreading with similar workloads
+
+```cpp
+// Optimized batched update method
+void AIManager::batchUpdateAllBehaviors();
+```
+
+### Early Exit System
+
+The AIManager applies three levels of early exit checks:
+1. **Update frequency** - Skip updates based on frame count
+2. **Entity range check** - Skip updates for out-of-range entities
+3. **Custom conditions** - Skip updates based on behavior-specific logic
+
+### Message Queue System
+
+The message queue system provides:
+- Deferred message delivery for non-critical communications
+- Batched processing of messages during update cycles
+- Thread-safe message queue implementation
+- Optional immediate delivery for time-critical messages
 
 ## API Reference
 
-For the complete API, see the following header files:
+### Core AIManager Methods
+
+```cpp
+// Basic AIManager methods
+bool init();
+void update();
+void clean();
+void resetBehaviors();
+
+// Behavior management
+void registerBehavior(const std::string& behaviorName, std::shared_ptr<AIBehavior> behavior);
+bool hasBehavior(const std::string& behaviorName) const;
+AIBehavior* getBehavior(const std::string& behaviorName) const;
+size_t getBehaviorCount() const;
+
+// Entity-behavior assignment
+void assignBehaviorToEntity(Entity* entity, const std::string& behaviorName);
+void unassignBehaviorFromEntity(Entity* entity);
+bool entityHasBehavior(Entity* entity) const;
+size_t getManagedEntityCount() const;
+
+// Optimization methods
+void batchProcessEntities(const std::string& behaviorName, const std::vector<Entity*>& entities);
+void batchUpdateAllBehaviors();
+void ensureOptimizationCachesValid();
+
+// Messaging system
+void sendMessageToEntity(Entity* entity, const std::string& message, bool immediate = false);
+void broadcastMessage(const std::string& message, bool immediate = false);
+void processMessageQueue();
+```
+
+### AIBehavior Methods
+
+```cpp
+// Core behavior methods
+virtual void update(Entity* entity) = 0;
+virtual void init(Entity* entity) = 0;
+virtual void clean(Entity* entity) = 0;
+virtual std::string getName() const = 0;
+
+// Optional message handling
+virtual void onMessage(Entity* entity, const std::string& message);
+
+// State management
+virtual bool isActive() const;
+virtual void setActive(bool active);
+virtual int getPriority() const;
+virtual void setPriority(int priority);
+
+// Early exit optimizations
+virtual bool shouldUpdate(Entity* entity) const;
+virtual bool isEntityInRange(Entity* entity) const;
+virtual bool isWithinUpdateFrequency() const;
+virtual void setUpdateFrequency(int framesPerUpdate);
+virtual int getUpdateFrequency() const;
+```
+
+For the complete API details, see:
 - `include/managers/AIManager.hpp`
 - `include/ai/AIBehavior.hpp`
 - `include/ai/behaviors/WanderBehavior.hpp`
 - `include/ai/behaviors/PatrolBehavior.hpp`
 - `include/ai/behaviors/ChaseBehavior.hpp`
-
-### New Optimization Methods
-
-```cpp
-// Manually process multiple entities with the same behavior
-void batchProcessEntities(const std::string& behaviorName, const std::vector<Entity*>& entities);
-
-// Optimized version of update() that processes entities in batches
-void batchUpdateAllBehaviors();
-
-// Force the cache to rebuild if needed
-void ensureOptimizationCachesValid();
-```

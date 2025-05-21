@@ -31,10 +31,24 @@ public:
     // Priority handling for behavior selection
     virtual int getPriority() const { return m_priority; }
     virtual void setPriority(int priority) { m_priority = priority; }
+    
+    // Early exit condition checks
+    virtual bool shouldUpdate(Entity* entity) const { return m_active; }
+    virtual bool isEntityInRange(Entity* entity) const { return true; }
+    virtual bool isWithinUpdateFrequency() const;
+    
+    // Update frequency control
+    virtual void setUpdateFrequency(int framesPerUpdate) { m_updateFrequency = framesPerUpdate; }
+    virtual int getUpdateFrequency() const { return m_updateFrequency; }
+    
+    // Expose frame counter to AIManager
+    friend class AIManager;
 
 protected:
     bool m_active{true};
     int m_priority{0};  // Higher values = higher priority
+    int m_updateFrequency{1}; // How often to update (1 = every frame, 2 = every other frame, etc.)
+    int m_framesSinceLastUpdate{0}; // Frames elapsed since last update
 };
 
 #endif // AI_BEHAVIOR_HPP

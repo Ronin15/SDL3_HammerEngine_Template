@@ -32,6 +32,8 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include <queue>
+#include <mutex>
 #include <boost/container/flat_map.hpp>
 #include "entities/Entity.hpp"
 #include "ai/AIBehavior.hpp"
@@ -147,14 +149,22 @@ public:
      * @brief Send a message to a specific entity's behavior
      * @param entity Target entity
      * @param message Message string (e.g., "pause", "resume", "attack")
+     * @param immediate If true, delivers immediately; if false, queues for next update
      */
-    void sendMessageToEntity(Entity* entity, const std::string& message);
+    void sendMessageToEntity(Entity* entity, const std::string& message, bool immediate = false);
 
     /**
      * @brief Send a message to all entity behaviors
      * @param message Message string to broadcast
+     * @param immediate If true, delivers immediately; if false, queues for next update
      */
-    void broadcastMessage(const std::string& message);
+    void broadcastMessage(const std::string& message, bool immediate = false);
+    
+    /**
+     * @brief Process all queued messages
+     * This happens automatically during update() but can be called manually
+     */
+    void processMessageQueue();
 
     // Utility methods
     /**
@@ -209,6 +219,20 @@ private:
     void rebuildBehaviorBatches();
     void invalidateOptimizationCaches();
     void updateBehaviorBatch(const std::string& behaviorName, const BehaviorBatch& batch);
+    
+    // Message queue system
+    struct QueuedMessage {
+        Entity* targetEntity;  // nullptr for broadcast
+        std::string message;
+        Uint64 timestamp;
+    };
+    std::queue<QueuedMessage> m_messageQueue;
+    std::mutex m_messageQueueMutex;
+    bool m_processingMessages{false};
+    
+    // Message delivery helpers
+    void deliverMessageToEntity(Entity* entity, const std::string& message);
+    void deliverBroadcastMessage(const std::string& message);
 };
 
 #endif // AI_MANAGER_HPP
