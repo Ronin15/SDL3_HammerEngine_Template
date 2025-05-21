@@ -2,7 +2,7 @@
 
 ## Overview
 
-The AI Manager is a centralized system for creating and managing autonomous behaviors for game entities. It provides a flexible framework for implementing and controlling various AI behaviors, allowing game entities to exhibit different movement patterns and reactions.
+The AI Manager is a centralized system for creating and managing autonomous behaviors for game entities. It provides a flexible framework for implementing and controlling various AI behaviors, allowing game entities to exhibit different movement patterns and reactions. The system includes optimizations like entity-behavior caching and batch processing for improved performance with large numbers of entities.
 
 ## Core Components
 
@@ -11,8 +11,10 @@ The AI Manager is a centralized system for creating and managing autonomous beha
 The central management class that handles:
 - Registration of behaviors
 - Assignment of behaviors to entities
-- Updating all behaviors during the game loop
+- Updating all behaviors during the game loop (with optimization support)
 - Communication with behaviors via messages
+- Entity-behavior caching for faster lookups
+- Batch processing of entities with the same behavior
 
 ### AIBehavior Base Class
 
@@ -61,8 +63,8 @@ Entities pursue a target (typically the player) when within detection range.
 AIManager::Instance().init();
 
 // Create and register behaviors
-auto wanderBehavior = std::make_unique<WanderBehavior>(2.0f, 3000.0f, 200.0f);
-AIManager::Instance().registerBehavior("Wander", std::move(wanderBehavior));
+auto wanderBehavior = std::make_shared<WanderBehavior>(2.0f, 3000.0f, 200.0f);
+AIManager::Instance().registerBehavior("Wander", wanderBehavior);
 
 // Create patrol points
 std::vector<Vector2D> patrolPoints;
@@ -70,12 +72,12 @@ patrolPoints.push_back(Vector2D(100, 100));
 patrolPoints.push_back(Vector2D(500, 100));
 patrolPoints.push_back(Vector2D(500, 400));
 patrolPoints.push_back(Vector2D(100, 400));
-auto patrolBehavior = std::make_unique<PatrolBehavior>(patrolPoints, 1.5f);
-AIManager::Instance().registerBehavior("Patrol", std::move(patrolBehavior));
+auto patrolBehavior = std::make_shared<PatrolBehavior>(patrolPoints, 1.5f);
+AIManager::Instance().registerBehavior("Patrol", patrolBehavior);
 
 // Create chase behavior (targeting the player)
-auto chaseBehavior = std::make_unique<ChaseBehavior>(player, 2.0f, 500.0f, 50.0f);
-AIManager::Instance().registerBehavior("Chase", std::move(chaseBehavior));
+auto chaseBehavior = std::make_shared<ChaseBehavior>(player, 2.0f, 500.0f, 50.0f);
+AIManager::Instance().registerBehavior("Chase", chaseBehavior);
 ```
 
 ### Assigning Behaviors to Entities
@@ -191,7 +193,27 @@ When threading is enabled, be careful about accessing shared resources from beha
 2. **Optimize waypoints**: Use fewer waypoints for simple patrol routes.
 3. **Adjust update frequency**: For distant or less important entities, consider updating AI less frequently.
 4. **Cull inactive entities**: Unassign behaviors from entities that are far from the player or inactive.
-5. **Batch similar behaviors**: Group entities with the same behavior type to improve cache coherency.
+5. **Use batch processing**: Leverage the built-in batch processing for entities with the same behavior type.
+
+### Batch Processing
+
+For cases where you need to process multiple entities with the same behavior:
+
+```cpp
+// Create a vector of entities 
+std::vector<Entity*> enemyGroup = getEnemiesInSector();
+
+// Process all entities with the same behavior in one batch
+AIManager::Instance().batchProcessEntities("ChaseBehavior", enemyGroup);
+```
+
+### Optimization Features
+
+The AIManager includes performance optimizations:
+
+1. **Entity-Behavior Caching**: Speeds up entity-behavior lookups during updates
+2. **Behavior Batching**: Groups entities by behavior type for efficient processing
+3. **Smart Threading**: Distributes batches across available CPU cores
 
 ## API Reference
 
@@ -201,3 +223,16 @@ For the complete API, see the following header files:
 - `include/ai/behaviors/WanderBehavior.hpp`
 - `include/ai/behaviors/PatrolBehavior.hpp`
 - `include/ai/behaviors/ChaseBehavior.hpp`
+
+### New Optimization Methods
+
+```cpp
+// Manually process multiple entities with the same behavior
+void batchProcessEntities(const std::string& behaviorName, const std::vector<Entity*>& entities);
+
+// Optimized version of update() that processes entities in batches
+void batchUpdateAllBehaviors();
+
+// Force the cache to rebuild if needed
+void ensureOptimizationCachesValid();
+```
