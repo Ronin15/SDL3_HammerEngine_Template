@@ -290,7 +290,7 @@ private:
 
     // Message delivery helpers
     void deliverMessageToEntity(Entity* entity, const std::string& message);
-    void deliverBroadcastMessage(const std::string& message);
+    size_t deliverBroadcastMessage(const std::string& message);
 };
 
 #endif // AI_MANAGER_HPP

@@ -9,7 +9,7 @@
 #include <SDL3/SDL.h>
 #include <vector>
 #include <future>
-#include <iostream>
+
 
 void AIManager::ensureOptimizationCachesValid() {
     if (!m_cacheValid) {
@@ -117,9 +117,7 @@ void AIManager::updateBehaviorBatch(const std::string_view& behaviorName, const 
     }
 
     // Reset frame counter after update
-    if (behavior->isWithinUpdateFrequency()) {
-        behavior->m_framesSinceLastUpdate = 0;
-    }
+    behavior->m_framesSinceLastUpdate = 0;
 
     // Skip processing if no entities passed the early exit checks
     if (entitiesToUpdate.empty()) {
@@ -205,9 +203,7 @@ void AIManager::batchProcessEntities(const std::string& behaviorName, const std:
     }
 
     // Reset frame counter after update
-    if (behavior->isWithinUpdateFrequency()) {
-        behavior->m_framesSinceLastUpdate = 0;
-    }
+    behavior->m_framesSinceLastUpdate = 0;
 
     // Skip processing if no entities passed the early exit checks
     if (entitiesToUpdate.empty()) {
@@ -270,8 +266,9 @@ void AIManager::update() {
     auto endTime = getCurrentTimeNanos();
     double totalUpdateMs = (endTime - startTime) / 1000000.0;
 
-    // Only log in debug builds
+    // Only log in debug builds and track for performance stats
     AI_LOG_DETAIL("Total AI update time: " << totalUpdateMs << "ms");
+    m_messageQueueStats.addSample(totalUpdateMs);
 }
 
 void AIManager::batchUpdateAllBehaviors() {
@@ -311,6 +308,7 @@ void AIManager::batchUpdateAllBehaviors() {
     double batchUpdateMs = (endTime - startTime) / 1000000.0;
 
     AI_LOG_DETAIL("Batch behavior updates completed in " << batchUpdateMs << "ms");
+    m_messageQueueStats.addSample(batchUpdateMs);
 }
 
 void AIManager::resetBehaviors() {
@@ -447,12 +445,13 @@ void AIManager::deliverMessageToEntity(Entity* entity, const std::string& messag
     }
 }
 
-void AIManager::deliverBroadcastMessage(const std::string& message) {
+size_t AIManager::deliverBroadcastMessage(const std::string& message) {
     AI_LOG("[AI Broadcast] Broadcasting message to all entities: " << message);
 
     // Use the entity-behavior cache for faster iteration
-    int entityCount = 0;
-
+    // Track how many entities receive the message
+    size_t messageReceivedCount = 0;
+    
     // Since the cache contains direct pointers to behaviors, we can avoid repeated lookups
     for (const auto& cache : m_entityBehaviorCache) {
         if (!cache.entity || !cache.behavior) continue;
@@ -464,10 +463,13 @@ void AIManager::deliverBroadcastMessage(const std::string& message) {
         #endif
 
         cache.behavior->onMessage(cache.entity, message);
-        entityCount++;
+        messageReceivedCount++;
     }
 
-    AI_LOG("[AI Broadcast] Message delivered to " << entityCount << " entities");
+    // Log the final count of entities that received the message
+    AI_LOG("[AI Broadcast] Message delivered to " << messageReceivedCount << " entities");
+    
+    return messageReceivedCount;
 }
 
 // Implementation moved to the end of the file
@@ -586,7 +588,7 @@ void AIManager::sendMessageToEntity(Entity* entity, const std::string& message, 
         deliverMessageToEntity(entity, message);
     } else {
         // Create the message with move semantics for better performance
-        QueuedMessage queuedMsg(entity, message, SDL_GetTicks());
+        QueuedMessage queuedMsg(entity, message, getCurrentTimeNanos());
 
         // Add to incoming queue with minimal lock time
         {
@@ -605,7 +607,7 @@ void AIManager::broadcastMessage(const std::string& message, bool immediate) {
         deliverBroadcastMessage(message);
     } else {
         // Create the broadcast message with move semantics
-        QueuedMessage queuedMsg(nullptr, message, SDL_GetTicks());
+        QueuedMessage queuedMsg(nullptr, message, getCurrentTimeNanos());
 
         // Add to incoming queue with minimal lock time
         {
