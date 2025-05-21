@@ -36,7 +36,12 @@ echo -e "${GREEN}Build successful!${NC}"
 
 # Run the tests
 echo -e "${YELLOW}Running AI Optimization Tests...${NC}"
-./bin/debug/ai_optimization_tests.exe
+# Use the appropriate extension based on OS
+if [ "$(uname)" == "Darwin" ] || [ "$(uname)" == "Linux" ]; then
+    ./bin/debug/ai_optimization_tests
+else
+    ./bin/debug/ai_optimization_tests.exe
+fi
 
 # Check if tests were successful
 if [ $? -ne 0 ]; then
