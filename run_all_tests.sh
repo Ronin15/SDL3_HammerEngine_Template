@@ -49,7 +49,12 @@ echo ""
 echo -e "${YELLOW}===============================${NC}"
 echo -e "${YELLOW}Running AI Optimization Tests...${NC}"
 echo -e "${YELLOW}===============================${NC}"
-./bin/debug/ai_optimization_tests > test_results/ai_test_output.txt 2>&1
+# Use appropriate executable name based on platform
+if [ "$(uname)" == "Darwin" ] || [ "$(uname)" == "Linux" ]; then
+    ./bin/debug/ai_optimization_tests > test_results/ai_test_output.txt 2>&1
+else
+    ./bin/debug/ai_optimization_tests.exe > test_results/ai_test_output.txt 2>&1
+fi
 AI_RESULT=$?
 echo ""
 
@@ -118,7 +123,11 @@ echo -e "${YELLOW}Summary saved to ${SUMMARY_FILE}${NC}"
 echo -e "${YELLOW}===============================${NC}"
 
 # Extract performance metrics (for AI tests)
-grep "processing time" test_results/ai_test_output.txt > test_results/performance_metrics.txt
+grep "processing time:" test_results/ai_test_output.txt > test_results/performance_metrics.txt 2>/dev/null
+if [ $? -ne 0 ]; then
+    # Try alternative format
+    grep "processing time" test_results/ai_test_output.txt > test_results/performance_metrics.txt
+fi
 echo "Test completed at $(date)" >> test_results/performance_metrics.txt
 
 # Check if any tests failed

@@ -1,6 +1,6 @@
 # Forge Game Engine Test Suite
 
-This directory contains the tests for the Forge Game Engine, along with scripts to run them.
+This directory contains the tests for the Forge Game Engine, along with scripts to run them. All tests use the Boost Test Framework for consistency.
 
 ## Available Test Suites
 
@@ -67,6 +67,15 @@ When running tests with the `--verbose` flag on Linux/macOS, additional diagnost
 1. Create your test file in this directory
 2. Add it to `tests/CMakeLists.txt`
 3. Create a batch/shell script to run your test suite
+
+## Test Framework
+
+All tests in this project use the Boost Test Framework. This standardization ensures consistency across tests and simplifies maintenance. Key aspects of our test approach:
+
+- Header-only Boost.Test configuration for easier setup
+- Global fixtures for test setup and teardown
+- Standard assertion macros like BOOST_CHECK and BOOST_REQUIRE
+- Consistent reporting format across all test suites
 
 ## Test Suites Details
 

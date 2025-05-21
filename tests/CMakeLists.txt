@@ -7,14 +7,8 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # Find Boost
 find_package(Boost REQUIRED COMPONENTS unit_test_framework)
 
-# Include Catch2
+# We standardize on Boost Test Framework for all tests
 include(FetchContent)
-FetchContent_Declare(
-    Catch2
-    GIT_REPOSITORY https://github.com/catchorg/Catch2.git
-    GIT_TAG v3.4.0
-)
-FetchContent_MakeAvailable(Catch2)
 
 # Include directories
 include_directories(
@@ -54,7 +48,10 @@ target_compile_definitions(thread_system_tests PRIVATE
     BOOST_TEST_NO_LIB
 )
 
-# AI Optimization tests use Catch2, so no Boost define needed
+# AI Optimization tests also use Boost Test
+target_compile_definitions(ai_optimization_tests PRIVATE
+    BOOST_TEST_NO_LIB
+)
 
 # Link with required libraries
 target_link_libraries(save_manager_tests PRIVATE
@@ -96,7 +93,7 @@ target_link_libraries(ai_system PRIVATE
 target_link_libraries(ai_optimization_tests PRIVATE
     SDL3::SDL3
     SDL3_image::SDL3_image
-    Catch2::Catch2WithMain
+    Boost::unit_test_framework
     Boost::container
     ai_system
 )

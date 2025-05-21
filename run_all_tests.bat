@@ -117,7 +117,11 @@ echo Summary saved to %CD%\test_results\summary_report_%timestamp%.txt
 echo ===============================
 
 REM Extract performance metrics (for AI tests)
-findstr "processing time" test_results\ai_test_output.txt > test_results\performance_metrics.txt
+findstr "processing time:" test_results\ai_test_output.txt > test_results\performance_metrics.txt 2>nul
+if %ERRORLEVEL% NEQ 0 (
+    REM Try alternative format used by Boost Test
+    findstr "processing time" test_results\ai_test_output.txt > test_results\performance_metrics.txt
+)
 echo Test completed at %DATE% %TIME% >> test_results\performance_metrics.txt
 
 REM Set final exit code based on all test results
