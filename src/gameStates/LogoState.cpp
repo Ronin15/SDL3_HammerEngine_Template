@@ -83,7 +83,7 @@ void LogoState::render() {
   // Draw version text
   FontManager::Instance().drawText(
 
-      "v0.0.5",
+      "v0.1.0",
       "fonts_Arial",
       GameEngine::Instance().getWindowWidth() / 2,  // Center horizontally
       (GameEngine::Instance().getWindowHeight() / 2) + 260,
