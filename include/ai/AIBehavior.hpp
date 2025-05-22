@@ -8,6 +8,7 @@
 
 #include "entities/Entity.hpp"
 #include <string>
+#include <unordered_map>
 
 class AIBehavior {
 public:
@@ -35,7 +36,13 @@ public:
     // Early exit condition checks
     virtual bool shouldUpdate(Entity* entity) const;
     virtual bool isEntityInRange([[maybe_unused]] Entity* entity) const { return true; }
-    virtual bool isWithinUpdateFrequency() const;
+    virtual bool isWithinUpdateFrequency(Entity* entity) const;
+
+    // Entity cleanup
+    virtual void cleanupEntity(Entity* entity);
+    
+    // Clear all frame counters (primarily for testing/benchmarking)
+    virtual void clearFrameCounters() { m_entityFrameCounters.clear(); }
 
     // Update frequency control
     virtual void setUpdateFrequency(int framesPerUpdate) { m_updateFrequency = framesPerUpdate; }
@@ -65,12 +72,14 @@ protected:
     bool m_active{true};
     int m_priority{0};  // Higher values = higher priority
     int m_updateFrequency{1}; // How often to update (1 = every frame, 2 = every other frame, etc.)
-    int m_framesSinceLastUpdate{0}; // Frames elapsed since last update
+
+    // Per-entity frame counters
+    mutable std::unordered_map<Entity*, int> m_entityFrameCounters{};
 
     // Distance-based update parameters
     float m_maxUpdateDistance{10000.0f}; // Maximum distance at which entity is updated every frame
-    float m_mediumUpdateDistance{20000.0f}; // Medium distance - entity updated less frequently
-    float m_minUpdateDistance{25000.0f}; // Minimum distance - entity updated rarely
+    float m_mediumUpdateDistance{15000.0f}; // Medium distance - entity updated less frequently
+    float m_minUpdateDistance{20000.0f}; // Minimum distance - entity updated rarely
 
     // Helper method to find the player entity in the current game state
     // Implementation varies:
