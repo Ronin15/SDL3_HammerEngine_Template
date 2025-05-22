@@ -10,7 +10,7 @@
 
 WanderBehavior::WanderBehavior(float speed, float changeDirectionInterval, float areaRadius)
     : m_speed(speed), m_changeDirectionInterval(changeDirectionInterval), m_areaRadius(areaRadius), 
-      m_lastDirectionFlip(0), m_minimumFlipInterval(400) {
+      m_minimumFlipInterval(400) {
     // Random number generators are already initialized in class definition
 }
 
@@ -20,43 +20,88 @@ void WanderBehavior::init(Entity* entity) {
     // Store initial position as center point
     m_centerPoint = entity->getPosition();
 
-    // Record start time for direction changes
-    m_lastDirectionChangeTime = SDL_GetTicks();
+    // Create entity state if it doesn't exist
+    if (m_entityStates.find(entity) == m_entityStates.end()) {
+        m_entityStates[entity] = EntityState{};
+        
+        // Generate a random start delay between 0 and 5000 milliseconds
+        std::uniform_int_distribution<Uint64> delayDist(0, 5000);
+        m_entityStates[entity].startDelay = delayDist(m_rng);
+        m_entityStates[entity].movementStarted = false;
+    }
 
-    // Set initial random direction
+    // Record start time for direction changes
+    m_entityStates[entity].lastDirectionChangeTime = SDL_GetTicks();
+
+    // Set initial random direction but with zero velocity until delay expires
     chooseNewDirection(entity);
+    if (m_entityStates[entity].startDelay > 0) {
+        // Set zero velocity until delay expires
+        entity->setVelocity(Vector2D(0, 0));
+    }
 }
 
 void WanderBehavior::update(Entity* entity) {
     if (!entity || !m_active) return;
 
+    // Create entity state if it doesn't exist
+    if (m_entityStates.find(entity) == m_entityStates.end()) {
+        m_entityStates[entity] = EntityState{};
+        m_entityStates[entity].lastDirectionChangeTime = SDL_GetTicks();
+        
+        // Generate a random start delay between 0 and 5000 milliseconds
+        std::uniform_int_distribution<Uint64> delayDist(0, 5000);
+        m_entityStates[entity].startDelay = delayDist(m_rng);
+        m_entityStates[entity].movementStarted = false;
+        
+        chooseNewDirection(entity);
+        // Set zero velocity until delay expires
+        entity->setVelocity(Vector2D(0, 0));
+    }
+    
+    // Get entity-specific state
+    EntityState& state = m_entityStates[entity];
+
     // Get current time
     Uint64 currentTime = SDL_GetTicks();
+    
+    // Check if we need to wait for the start delay
+    if (!state.movementStarted) {
+        if (currentTime >= state.lastDirectionChangeTime + state.startDelay) {
+            // Delay expired, start moving
+            state.movementStarted = true;
+            // Apply the initial direction with proper velocity
+            entity->setVelocity(state.currentDirection * m_speed);
+        } else {
+            // Still waiting for delay to expire
+            return;
+        }
+    }
 
     // Store the previous velocity for flip stability
     Vector2D previousVelocity = entity->getVelocity();
 
     // Check if it's time to change direction
-    if (currentTime - m_lastDirectionChangeTime > m_changeDirectionInterval) {
+    if (currentTime - state.lastDirectionChangeTime > m_changeDirectionInterval) {
         // Decide whether to wander offscreen or stay within bounds
-        bool wanderOffscreen = !m_resetScheduled && m_wanderOffscreenChance(m_rng) < m_offscreenProbability;
+        bool wanderOffscreen = !state.resetScheduled && m_wanderOffscreenChance(m_rng) < m_offscreenProbability;
         chooseNewDirection(entity, wanderOffscreen);
-        m_lastDirectionChangeTime = currentTime;
+        state.lastDirectionChangeTime = currentTime;
     }
 
     // Check if entity is outside screen bounds
     Vector2D position = entity->getPosition();
 
     // If we've scheduled a reset and the entity is sufficiently offscreen
-    if (m_resetScheduled) {
+    if (state.resetScheduled) {
         // Check if entity is far enough off screen to reset
         if (isWellOffscreen(position)) {
             // Reset to a random position near the opposite side of the screen
             resetEntityPosition(entity);
-            m_resetScheduled = false;
+            state.resetScheduled = false;
         }
     }
-    else if (!m_currentlyWanderingOffscreen) {
+    else if (!state.currentlyWanderingOffscreen) {
         // Normal bounded wandering behavior
         Vector2D toCenter = m_centerPoint - position;
         float distanceFromCenter = toCenter.length();
@@ -71,12 +116,12 @@ void WanderBehavior::update(Entity* entity) {
             float blendFactor = (distanceFromCenter - m_areaRadius) / 50.0f;
             blendFactor = std::min(blendFactor, 1.0f);
 
-            m_currentDirection = (m_currentDirection * (1.0f - blendFactor)) +
+            state.currentDirection = (state.currentDirection * (1.0f - blendFactor)) +
                                 (returnDirection * blendFactor);
-            m_currentDirection.normalize();
+            state.currentDirection.normalize();
 
             // Apply the new direction
-            entity->setVelocity(m_currentDirection * m_speed);
+            entity->setVelocity(state.currentDirection * m_speed);
         }
     }
 
@@ -88,7 +133,7 @@ void WanderBehavior::update(Entity* entity) {
     bool wouldFlip = (previousVelocity.getX() > 0.5f && currentVelocity.getX() < -0.5f) || 
                      (previousVelocity.getX() < -0.5f && currentVelocity.getX() > 0.5f);
     
-    if (wouldFlip && (currentTime - m_lastDirectionFlip < m_minimumFlipInterval)) {
+    if (wouldFlip && (currentTime - state.lastDirectionFlip < m_minimumFlipInterval)) {
         // Prevent the flip by maintaining previous direction's sign but with new magnitude
         float magnitude = currentVelocity.length();
         float xDir = (previousVelocity.getX() < 0) ? -1.0f : 1.0f;
@@ -103,7 +148,7 @@ void WanderBehavior::update(Entity* entity) {
         entity->setVelocity(stableVelocity);
     } else if (wouldFlip) {
         // Record the time of this flip
-        m_lastDirectionFlip = currentTime;
+        state.lastDirectionFlip = currentTime;
     }
 }
 
@@ -112,6 +157,9 @@ void WanderBehavior::clean(Entity* entity) {
 
     // Stop the entity when behavior is cleaned up
     entity->setVelocity(Vector2D(0, 0));
+    
+    // Remove entity state
+    m_entityStates.erase(entity);
 }
 
 void WanderBehavior::onMessage(Entity* entity, const std::string& message) {
@@ -127,13 +175,13 @@ void WanderBehavior::onMessage(Entity* entity, const std::string& message) {
         chooseNewDirection(entity);
     } else if (message == "increase_speed") {
         m_speed *= 1.5f;
-        if (entity && m_active) {
-            entity->setVelocity(m_currentDirection * m_speed);
+        if (entity && m_active && m_entityStates.find(entity) != m_entityStates.end()) {
+            entity->setVelocity(m_entityStates[entity].currentDirection * m_speed);
         }
     } else if (message == "decrease_speed") {
         m_speed *= 0.75f;
-        if (entity && m_active) {
-            entity->setVelocity(m_currentDirection * m_speed);
+        if (entity && m_active && m_entityStates.find(entity) != m_entityStates.end()) {
+            entity->setVelocity(m_entityStates[entity].currentDirection * m_speed);
         }
     }
 }
@@ -183,6 +231,11 @@ bool WanderBehavior::isWellOffscreen(const Vector2D& position) const {
 void WanderBehavior::resetEntityPosition(Entity* entity) {
     if (!entity) return;
 
+    // Ensure entity state exists
+    if (m_entityStates.find(entity) == m_entityStates.end()) {
+        m_entityStates[entity] = EntityState{};
+    }
+    
     // Calculate entry point on the opposite side of the screen
     Vector2D position = entity->getPosition();
     Vector2D newPosition(0.0f, 0.0f);
@@ -214,8 +267,14 @@ void WanderBehavior::resetEntityPosition(Entity* entity) {
 void WanderBehavior::chooseNewDirection(Entity* entity, bool wanderOffscreen) {
     if (!entity) return;
     
+    // Get entity-specific state
+    EntityState& state = m_entityStates[entity];
+    
     // Track if we're currently wandering offscreen
-    m_currentlyWanderingOffscreen = wanderOffscreen;
+    state.currentlyWanderingOffscreen = wanderOffscreen;
+
+    // If movement hasn't started yet, just set the direction but don't apply velocity
+    bool applyVelocity = state.movementStarted;
 
     if (wanderOffscreen) {
         // Start wandering toward edge of screen by picking a direction toward nearest edge
@@ -232,24 +291,24 @@ void WanderBehavior::chooseNewDirection(Entity* entity, bool wanderOffscreen) {
 
         // Set direction toward closest edge
         if (minDist == distToLeft) {
-            m_currentDirection = Vector2D(-1.0f, 0.0f);
+            state.currentDirection = Vector2D(-1.0f, 0.0f);
         } else if (minDist == distToRight) {
-            m_currentDirection = Vector2D(1.0f, 0.0f);
+            state.currentDirection = Vector2D(1.0f, 0.0f);
         } else if (minDist == distToTop) {
-            m_currentDirection = Vector2D(0.0f, -1.0f);
+            state.currentDirection = Vector2D(0.0f, -1.0f);
         } else {
-            m_currentDirection = Vector2D(0.0f, 1.0f);
+            state.currentDirection = Vector2D(0.0f, 1.0f);
         }
 
         // Add some randomness to the direction
         float randomAngle = (m_angleDistribution(m_rng) - M_PI) * 0.2f; // Small angle variation
-        float x = m_currentDirection.getX() * std::cos(randomAngle) - m_currentDirection.getY() * std::sin(randomAngle);
-        float y = m_currentDirection.getX() * std::sin(randomAngle) + m_currentDirection.getY() * std::cos(randomAngle);
-        m_currentDirection = Vector2D(x, y);
-        m_currentDirection.normalize();
+        float x = state.currentDirection.getX() * std::cos(randomAngle) - state.currentDirection.getY() * std::sin(randomAngle);
+        float y = state.currentDirection.getX() * std::sin(randomAngle) + state.currentDirection.getY() * std::cos(randomAngle);
+        state.currentDirection = Vector2D(x, y);
+        state.currentDirection.normalize();
 
         // Schedule a reset once we go offscreen
-        m_resetScheduled = true;
+        state.resetScheduled = true;
     } else {
         // Generate a random angle
         float angle = m_angleDistribution(m_rng);
@@ -259,11 +318,13 @@ void WanderBehavior::chooseNewDirection(Entity* entity, bool wanderOffscreen) {
         float y = std::sin(angle);
 
         // Set the new direction
-        m_currentDirection = Vector2D(x, y);
+        state.currentDirection = Vector2D(x, y);
     }
 
-    // Apply the new direction to the entity
-    entity->setVelocity(m_currentDirection * m_speed);
+    // Apply the new direction to the entity only if movement has started
+    if (applyVelocity) {
+        entity->setVelocity(state.currentDirection * m_speed);
+    }
 
     // NPC class now handles sprite flipping based on velocity
 }
