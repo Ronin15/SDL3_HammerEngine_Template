@@ -10,6 +10,7 @@
 #include <SDL3_image/SDL_image.h>
 #include <atomic>
 #include <condition_variable>
+#include <memory>
 #include <mutex>
 
 class GameEngine {
@@ -41,12 +42,12 @@ class GameEngine {
   void signalUpdateComplete();
 
   // GameStateManager getter to let game engine access
-  GameStateManager* getGameStateManager() const { return mp_gameStateManager; }
+  GameStateManager* getGameStateManager() const { return mp_gameStateManager.get(); }
 
   //TODO Remove TextureManager pointer when its initialization is fixed
   void setRunning(bool running) { m_isRunning = running; }
   bool getRunning() const { return m_isRunning; }
-  SDL_Renderer* getRenderer() const { return mp_renderer; }
+  SDL_Renderer* getRenderer() const { return mp_renderer.get(); }
 
   // Window size methods
   int getWindowWidth() const { return m_windowWidth; }
@@ -54,9 +55,9 @@ class GameEngine {
   void setWindowSize(int width, int height) { m_windowWidth = width; m_windowHeight = height; }
 
  private:
-  GameStateManager* mp_gameStateManager{nullptr};
-  SDL_Window* mp_window{nullptr};
-  SDL_Renderer* mp_renderer{nullptr};
+  std::unique_ptr<GameStateManager> mp_gameStateManager{nullptr};
+  std::unique_ptr<SDL_Window, decltype(&SDL_DestroyWindow)> mp_window{nullptr, SDL_DestroyWindow};
+  std::unique_ptr<SDL_Renderer, decltype(&SDL_DestroyRenderer)> mp_renderer{nullptr, SDL_DestroyRenderer};
   std::atomic<bool> m_isRunning{false};
   int m_windowWidth{0};
   int m_windowHeight{0};

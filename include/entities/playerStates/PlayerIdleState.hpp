@@ -19,6 +19,8 @@ public:
     void exit() override;
 
 private:
+    // Non-owning pointer to the player entity
+    // The player entity is owned elsewhere in the application
     Player* mp_player{nullptr};
 };
 

@@ -25,7 +25,9 @@ class GameStateManager {
 
   private:
    boost::container::small_vector<std::unique_ptr<GameState>, 8> states{}; //increase to how many states you expect to have.
-   GameState* currentState{nullptr};  // Pointer to the current state, not owned
+   // Non-owning pointer to the current active state
+   // This state is owned by the 'states' container above
+   GameState* currentState{nullptr};
 
 };
 

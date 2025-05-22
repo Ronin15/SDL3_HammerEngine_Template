@@ -47,6 +47,8 @@ protected:
     virtual void onTargetLost(Entity* entity);
 
 private:
+    // Non-owning pointer to the target entity
+    // The target entity is owned elsewhere in the application
     Entity* m_target{nullptr};
     float m_chaseSpeed{10.0f};  // Increased to 10.0 for very visible movement
     float m_maxRange{1000.0f};  // Maximum distance to chase target - increased to 1000
