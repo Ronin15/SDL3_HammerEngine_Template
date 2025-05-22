@@ -45,7 +45,7 @@ void LogoState::render() {
   TextureManager::Instance().draw(
       "sdl",
       GameEngine::Instance().getWindowWidth() / 2 - 100, // Center horizontally
-      (GameEngine::Instance().getWindowHeight() / 2) + 300,
+      (GameEngine::Instance().getWindowHeight() / 2) + 320,
       203, 125,
       GameEngine::Instance().getRenderer());
 
