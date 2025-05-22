@@ -40,6 +40,27 @@ add_executable(ai_optimization_tests
     AIOptimizationTest.cpp
 )
 
+# AI scaling benchmark
+add_executable(ai_scaling_benchmark
+    AIScalingBenchmark.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/AIManager.cpp
+    mocks/AIBehavior.cpp
+)
+
+# Thread-safe AI Manager tests
+add_executable(thread_safe_ai_manager_tests
+    ThreadSafeAIManagerTest.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/AIManager.cpp
+    mocks/AIBehavior.cpp
+)
+
+# Thread-safe AI Integration tests
+add_executable(thread_safe_ai_integration_tests
+    ThreadSafeAIIntegrationTest.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/AIManager.cpp
+    mocks/AIBehavior.cpp
+)
+
 # Add compile definitions for Boost.Test
 target_compile_definitions(save_manager_tests PRIVATE
     BOOST_TEST_NO_LIB
@@ -51,6 +72,21 @@ target_compile_definitions(thread_system_tests PRIVATE
 
 # AI Optimization tests definitions
 target_compile_definitions(ai_optimization_tests PRIVATE
+    BOOST_TEST_NO_LIB
+)
+
+# AI Scaling benchmark definitions
+target_compile_definitions(ai_scaling_benchmark PRIVATE
+    BOOST_TEST_NO_LIB
+)
+
+# Thread-safe AI Manager tests definitions
+target_compile_definitions(thread_safe_ai_manager_tests PRIVATE
+    BOOST_TEST_NO_LIB
+)
+
+# Thread-safe AI Integration tests definitions
+target_compile_definitions(thread_safe_ai_integration_tests PRIVATE
     BOOST_TEST_NO_LIB
 )
 
@@ -73,7 +109,34 @@ target_link_libraries(ai_optimization_tests PRIVATE
     Boost::container
 )
 
+# Link AI scaling benchmark with required libraries
+target_link_libraries(ai_scaling_benchmark PRIVATE
+    SDL3::SDL3
+    SDL3_image::SDL3_image
+    Boost::unit_test_framework
+    Boost::container
+)
+
+# Link Thread-safe AI Manager tests with required libraries
+target_link_libraries(thread_safe_ai_manager_tests PRIVATE
+    SDL3::SDL3
+    SDL3_image::SDL3_image
+    Boost::unit_test_framework
+    Boost::container
+)
+
+# Link Thread-safe AI Integration tests with required libraries
+target_link_libraries(thread_safe_ai_integration_tests PRIVATE
+    SDL3::SDL3
+    SDL3_image::SDL3_image
+    Boost::unit_test_framework
+    Boost::container
+)
+
 # Add the tests to CTest
 add_test(NAME SaveManagerTests COMMAND save_manager_tests)
 add_test(NAME ThreadSystemTests COMMAND thread_system_tests)
 add_test(NAME AIOptimizationTests COMMAND ai_optimization_tests)
+add_test(NAME AIScalingBenchmark COMMAND ai_scaling_benchmark)
+add_test(NAME ThreadSafeAIManagerTests COMMAND thread_safe_ai_manager_tests)
+add_test(NAME ThreadSafeAIIntegrationTests COMMAND thread_safe_ai_integration_tests)

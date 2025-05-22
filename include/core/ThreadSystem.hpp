@@ -210,6 +210,14 @@ public:
         return instance;
     }
 
+    /**
+     * @brief Check if the ThreadSystem has been initialized
+     * @return True if the ThreadSystem has been initialized, false otherwise
+     */
+    static bool Exists() {
+        return !Instance().isShutdown();
+    }
+
     void clean() {
         std::cout << "Forge Game Engine - ThreadSystem resources cleaned!" << std::endl;
         // Set shutdown flag first so any new accesses will be rejected

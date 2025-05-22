@@ -34,14 +34,48 @@ fi
 
 echo -e "${GREEN}Build successful!${NC}"
 
+# Create test_results directory if it doesn't exist
+mkdir -p test_results
+
 # Run the tests
 echo -e "${YELLOW}Running AI Optimization Tests...${NC}"
 # Use the appropriate extension based on OS
 if [ "$(uname)" == "Darwin" ] || [ "$(uname)" == "Linux" ]; then
-    ./bin/debug/ai_optimization_tests
+    TEST_EXECUTABLE="./bin/debug/ai_optimization_tests"
 else
-    ./bin/debug/ai_optimization_tests.exe
+    TEST_EXECUTABLE="./bin/debug/ai_optimization_tests.exe"
 fi
+
+# Verify executable exists
+if [ ! -f "$TEST_EXECUTABLE" ]; then
+    echo -e "${RED}Error: Test executable not found at '$TEST_EXECUTABLE'${NC}"
+    # Attempt to find the executable
+    echo -e "${YELLOW}Searching for test executable...${NC}"
+    FOUND_EXECUTABLE=$(find ./bin -name ai_optimization_tests*)
+    if [ -n "$FOUND_EXECUTABLE" ]; then
+        echo -e "${GREEN}Found executable at: $FOUND_EXECUTABLE${NC}"
+        TEST_EXECUTABLE="$FOUND_EXECUTABLE"
+    else
+        echo -e "${RED}Could not find the test executable. Build may have failed.${NC}"
+        exit 1
+    fi
+fi
+
+# Create a temporary file for test output
+TEMP_OUTPUT=$(mktemp)
+
+# Run the tests and capture output
+"$TEST_EXECUTABLE" | tee "$TEMP_OUTPUT"
+
+# Save test results
+cp "$TEMP_OUTPUT" "test_results/ai_optimization_test_output.txt"
+
+# Extract performance metrics
+echo -e "${YELLOW}Extracting performance metrics...${NC}"
+grep -E "time:|entities:|processed:|performance" "$TEMP_OUTPUT" > "test_results/ai_optimization_performance_metrics.txt"
+
+# Clean up temporary file
+rm "$TEMP_OUTPUT"
 
 # Check if tests were successful
 if [ $? -ne 0 ]; then

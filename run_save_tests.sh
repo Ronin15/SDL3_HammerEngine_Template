@@ -95,13 +95,26 @@ echo -e "${BLUE}====================================${NC}"
 
 # Run with appropriate options
 if [ "$VERBOSE" = true ]; then
-  "$TEST_EXECUTABLE" --log_level=all
+  "$TEST_EXECUTABLE" --log_level=all | tee test_output.log
 else
-  "$TEST_EXECUTABLE"
+  "$TEST_EXECUTABLE" | tee test_output.log
 fi
 
 TEST_RESULT=$?
 echo -e "${BLUE}====================================${NC}"
+
+# Create test_results directory if it doesn't exist
+mkdir -p ../test_results
+
+# Save test results
+cp test_output.log "../test_results/save_manager_test_output.txt"
+
+# Extract performance metrics if they exist
+echo -e "${YELLOW}Saving test results...${NC}"
+grep -E "time:|performance|saved:|loaded:" test_output.log > "../test_results/save_manager_performance_metrics.txt" || true
+
+# Clean up temporary file
+rm test_output.log
 
 # Report test results
 if [ $TEST_RESULT -eq 0 ]; then

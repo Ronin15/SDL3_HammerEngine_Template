@@ -4,609 +4,438 @@
 */
 
 #include "managers/AIManager.hpp"
-#include "ai/AIBehavior.hpp"
 #include "core/ThreadSystem.hpp"
-#include <SDL3/SDL.h>
-#include <vector>
-#include <future>
+#include <iostream>
+#include <algorithm>
 
+// AIManager constructor
+AIManager::AIManager() 
+    : m_initialized(false),
+      m_useThreading(true),
+      m_maxThreads(0) {
+    AI_LOG("AIManager created");
+}
 
-void AIManager::ensureOptimizationCachesValid() {
-    if (!m_cacheValid) {
-        rebuildEntityBehaviorCache();
+// AIManager destructor
+AIManager::~AIManager() {
+    if (m_initialized.load(std::memory_order_acquire)) {
+        clean();
+    }
+}
+
+bool AIManager::init() {
+    if (m_initialized.load(std::memory_order_acquire)) {
+        std::cout << "Forge Game Engine - AIManager already initialized" << std::endl;
+        return true;
     }
 
-    if (!m_batchesValid) {
-        rebuildBehaviorBatches();
+    try {
+        // Initialize behavior batches
+        m_batchesValid.store(false, std::memory_order_release);
+        m_cacheValid.store(false, std::memory_order_release);
+        
+        // Set threading mode based on ThreadSystem availability
+        m_useThreading.store(Forge::ThreadSystem::Exists(), std::memory_order_release);
+        
+        // Set initialized flag
+        m_initialized.store(true, std::memory_order_release);
+        
+        std::cout << "Forge Game Engine - AIManager initialized" << std::endl;
+        return true;
+    }
+    catch (const std::exception& e) {
+        std::cerr << "Forge Game Engine - AIManager initialization failed: " << e.what() << std::endl;
+        return false;
+    }
+}
+
+void AIManager::clean() {
+    // Only clean once
+    if (!m_initialized.exchange(false)) {
+        return;
+    }
+    
+    // Stop all processing
+    m_processingMessages.store(false, std::memory_order_release);
+    
+    // Clear all message queues
+    m_messageQueue.clear();
+    
+    // Acquire all locks to ensure no operations are in progress
+    std::unique_lock<std::shared_mutex> entityLock(m_entityMutex);
+    std::unique_lock<std::shared_mutex> behaviorsLock(m_behaviorsMutex);
+    std::lock_guard<std::mutex> cacheLock(m_cacheMutex);
+    std::lock_guard<std::mutex> batchesLock(m_batchesMutex);
+    std::lock_guard<std::mutex> perfLock(m_perfStatsMutex);
+    
+    // Clear all data structures
+    m_behaviors.clear();
+    m_entityBehaviors.clear();
+    m_entityBehaviorCache.clear();
+    m_behaviorBatches.clear();
+    m_behaviorPerformanceStats.clear();
+    
+    // Reset flags
+    m_cacheValid.store(false, std::memory_order_release);
+    m_batchesValid.store(false, std::memory_order_release);
+    
+    std::cout << "Forge Game Engine - AIManager resources cleaned!" << std::endl;
+}
+
+void AIManager::configureThreading(bool useThreading, unsigned int maxThreads) {
+    m_useThreading.store(useThreading, std::memory_order_release);
+    m_maxThreads = maxThreads;
+    
+    if (useThreading) {
+        std::cout << "Forge Game Engine - AIManager: Threading enabled" << std::endl;
+        if (maxThreads > 0) {
+            std::cout << "Forge Game Engine - AIManager: Using " << maxThreads << " threads max" << std::endl;
+        } else {
+            std::cout << "Forge Game Engine - AIManager: Using auto thread count" << std::endl;
+        }
+    } else {
+        std::cout << "Forge Game Engine - AIManager: Threading disabled" << std::endl;
+    }
+}
+
+void AIManager::registerBehavior(const std::string& behaviorName, std::shared_ptr<AIBehavior> behavior) {
+    if (!behavior) {
+        std::cerr << "Forge Game Engine - AIManager: Cannot register null behavior" << std::endl;
+        return;
+    }
+    
+    // Lock behaviors map for writing
+    std::unique_lock<std::shared_mutex> lock(m_behaviorsMutex);
+    
+    // Add the behavior
+    m_behaviors[behaviorName] = std::move(behavior);
+    
+    std::cout << "Forge Game Engine - AIManager: Registered behavior '" << behaviorName << "'" << std::endl;
+}
+
+bool AIManager::hasBehavior(const std::string& behaviorName) const {
+    // Read-only access to behaviors
+    std::shared_lock<std::shared_mutex> lock(m_behaviorsMutex);
+    return m_behaviors.find(behaviorName) != m_behaviors.end();
+}
+
+AIBehavior* AIManager::getBehavior(const std::string& behaviorName) const {
+    // Read-only access to behaviors
+    std::shared_lock<std::shared_mutex> lock(m_behaviorsMutex);
+    
+    auto it = m_behaviors.find(behaviorName);
+    if (it != m_behaviors.end()) {
+        return it->second.get();
+    }
+    
+    return nullptr;
+}
+
+void AIManager::assignBehaviorToEntity(Entity* entity, const std::string& behaviorName) {
+    if (!entity) {
+        std::cerr << "Forge Game Engine - AIManager: Cannot assign behavior to null entity" << std::endl;
+        return;
+    }
+    
+    // Check if behavior exists - use read lock
+    {
+        std::shared_lock<std::shared_mutex> lock(m_behaviorsMutex);
+        if (m_behaviors.find(behaviorName) == m_behaviors.end()) {
+            std::cerr << "Forge Game Engine - AIManager: Behavior '" << behaviorName 
+                      << "' not registered" << std::endl;
+            return;
+        }
+    }
+    
+    // Assign behavior to entity - use write lock
+    {
+        std::unique_lock<std::shared_mutex> lock(m_entityMutex);
+        m_entityBehaviors[entity] = behaviorName;
+    }
+    
+    // Invalidate caches - atomic operations
+    invalidateOptimizationCaches();
+    
+    AI_LOG("Assigned behavior '" << behaviorName << "' to entity at " << entity);
+}
+
+void AIManager::unassignBehaviorFromEntity(Entity* entity) {
+    if (!entity) {
+        return;
+    }
+    
+    // Remove entity from behavior map - use write lock
+    {
+        std::unique_lock<std::shared_mutex> lock(m_entityMutex);
+        m_entityBehaviors.erase(entity);
+    }
+    
+    // Invalidate caches - atomic operations
+    invalidateOptimizationCaches();
+    
+    AI_LOG("Unassigned behavior from entity at " << entity);
+}
+
+bool AIManager::entityHasBehavior(Entity* entity) const {
+    if (!entity) {
+        return false;
+    }
+    
+    // Read-only access to entity behaviors
+    std::shared_lock<std::shared_mutex> lock(m_entityMutex);
+    return m_entityBehaviors.find(entity) != m_entityBehaviors.end();
+}
+
+bool AIManager::hasEntityWithBehavior(const std::string& behaviorName) const {
+    // First check if cache is valid - might avoid locking
+    if (m_batchesValid.load(std::memory_order_acquire)) {
+        std::lock_guard<std::mutex> lock(m_batchesMutex);
+        auto it = m_behaviorBatches.find(behaviorName);
+        if (it != m_behaviorBatches.end()) {
+            return !it->second.empty();
+        }
+    }
+    
+    // Fallback to entity check
+    std::shared_lock<std::shared_mutex> lock(m_entityMutex);
+    for (const auto& [entity, behavior] : m_entityBehaviors) {
+        if (behavior == behaviorName) {
+            return true;
+        }
+    }
+    
+    return false;
+}
+
+void AIManager::update() {
+    if (!m_initialized.load(std::memory_order_acquire)) {
+        return;
+    }
+    
+    // First process any pending messages
+    processMessageQueue();
+    
+    // Then update all behaviors in optimized batches
+    batchUpdateAllBehaviors();
+}
+
+void AIManager::invalidateOptimizationCaches() {
+    m_cacheValid.store(false, std::memory_order_release);
+    m_batchesValid.store(false, std::memory_order_release);
+}
+
+void AIManager::ensureOptimizationCachesValid() {
+    // Check entity cache validity
+    if (!m_cacheValid.load(std::memory_order_acquire)) {
+        // Lock and double-check pattern
+        std::lock_guard<std::mutex> lock(m_cacheMutex);
+        if (!m_cacheValid.load(std::memory_order_relaxed)) {
+            rebuildEntityBehaviorCache();
+            m_cacheValid.store(true, std::memory_order_release);
+        }
+    }
+    
+    // Check batch validity
+    if (!m_batchesValid.load(std::memory_order_acquire)) {
+        // Lock and double-check pattern
+        std::lock_guard<std::mutex> lock(m_batchesMutex);
+        if (!m_batchesValid.load(std::memory_order_relaxed)) {
+            rebuildBehaviorBatches();
+            m_batchesValid.store(true, std::memory_order_release);
+        }
     }
 }
 
 void AIManager::rebuildEntityBehaviorCache() {
     // Clear existing cache
     m_entityBehaviorCache.clear();
-    m_entityBehaviorCache.reserve(m_entityBehaviors.size());
-
-    // Populate cache with entity-behavior pairs
+    
+    // Read entity-behavior mappings - read lock
+    std::shared_lock<std::shared_mutex> entityLock(m_entityMutex);
+    std::shared_lock<std::shared_mutex> behaviorsLock(m_behaviorsMutex);
+    
+    // Rebuild cache with latest mappings
     for (const auto& [entity, behaviorName] : m_entityBehaviors) {
-        if (!entity) continue;
-
-        AIBehavior* behavior = getBehavior(behaviorName);
-        if (behavior) {
-            // Using string_view to avoid copying the behavior name string
-            m_entityBehaviorCache.push_back({
-                entity,
-                behavior,
-                std::string_view(behaviorName),
-                0, // lastUpdateTime
-                {} // perfStats
-            });
+        auto behaviorIt = m_behaviors.find(behaviorName);
+        if (behaviorIt != m_behaviors.end()) {
+            EntityBehaviorCache cacheEntry;
+            cacheEntry.entity = entity;
+            cacheEntry.behavior = behaviorIt->second.get();
+            cacheEntry.behaviorName = behaviorName;
+            cacheEntry.lastUpdateTime = getCurrentTimeNanos();
+            
+            m_entityBehaviorCache.push_back(std::move(cacheEntry));
         }
     }
-
-    m_cacheValid = true;
-    AI_LOG("Entity behavior cache rebuilt with " << m_entityBehaviorCache.size() << " entries");
+    
+    AI_LOG("Rebuilt entity behavior cache with " << m_entityBehaviorCache.size() << " entries");
 }
 
 void AIManager::rebuildBehaviorBatches() {
     // Clear existing batches
     m_behaviorBatches.clear();
-
-    // Reserve capacity based on number of behaviors (with a minimum size to reduce reallocations)
-    m_behaviorBatches.reserve(std::max<size_t>(16, m_behaviors.size()));
-
+    
+    // Read entity-behavior mappings - read lock
+    std::shared_lock<std::shared_mutex> lock(m_entityMutex);
+    
     // Group entities by behavior
     for (const auto& [entity, behaviorName] : m_entityBehaviors) {
-        if (!entity) continue;
-
-        // Add entity to appropriate batch
         m_behaviorBatches[behaviorName].push_back(entity);
     }
-
-    // Optimize memory usage of each batch
-    for (auto& [behaviorName, batch] : m_behaviorBatches) {
-        batch.shrink_to_fit();
-    }
-
-    m_batchesValid = true;
-    AI_LOG("Behavior batches rebuilt with " << m_behaviorBatches.size() << " behavior types");
-}
-
-void AIManager::invalidateOptimizationCaches() {
-    m_cacheValid = false;
-    m_batchesValid = false;
-}
-
-void AIManager::updateBehaviorBatch(const std::string_view& behaviorName, const BehaviorBatch& batch) {
-    // Look up behavior just once, using string_view for efficient comparison
-    AIBehavior* behavior = nullptr;
-    for (const auto& [name, behaviorPtr] : m_behaviors) {
-        if (name == behaviorName) {
-            behavior = behaviorPtr.get();
-            break;
-        }
-    }
-
-    if (!behavior || !behavior->isActive() || batch.empty()) {
-        return;
-    }
-
-    // Start timing for performance tracking
-    auto startTime = getCurrentTimeNanos();
-
-    // Update frame counter for behavior
-    behavior->m_framesSinceLastUpdate++;
-
-    // Apply early exit condition: only update at specified frequency
-    if (!behavior->isWithinUpdateFrequency()) {
-        return;
-    }
-
-    // Collect entities that pass the early exit checks
-    std::vector<Entity*> entitiesToUpdate;
-    entitiesToUpdate.reserve(batch.size());
-
-    for (Entity* entity : batch) {
-        if (!entity) continue;
-
-        // Apply early exit conditions
-        if (!behavior->shouldUpdate(entity) || !behavior->isEntityInRange(entity)) {
-            continue;
-        }
-
-        entitiesToUpdate.push_back(entity);
-    }
-
-    // Reset frame counter after update
-    behavior->m_framesSinceLastUpdate = 0;
-
-    // Skip processing if no entities passed the early exit checks
-    if (entitiesToUpdate.empty()) {
-        return;
-    }
-
-    // Use the common helper method to process entities
-    processEntitiesWithBehavior(behavior, entitiesToUpdate, m_useThreading && entitiesToUpdate.size() > 1);
-
-    // Record performance data
-    auto endTime = getCurrentTimeNanos();
-    double elapsedTimeMs = (endTime - startTime) / 1000000.0;
-    recordBehaviorPerformance(behaviorName, elapsedTimeMs);
-}
-
-// New helper method to eliminate code duplication
-void AIManager::processEntitiesWithBehavior(AIBehavior* behavior, const std::vector<Entity*>& entities, bool useThreading) {
-    if (useThreading) {
-        // Multithreaded batch processing
-        std::vector<std::future<void>> taskFutures;
-        taskFutures.reserve(entities.size());
-
-        // Ensure the thread tasks have proper exception handling
-        try {
-            for (Entity* entity : entities) {
-                auto future = Forge::ThreadSystem::Instance().enqueueTaskWithResult(
-                    [behavior, entity]() -> void {
-                        behavior->update(entity);
-                    });
-
-                taskFutures.push_back(std::move(future));
-            }
-
-            // Wait for all tasks to complete
-            for (auto& future : taskFutures) {
-                try {
-                    future.get();
-                } catch (const std::exception& e) {
-                    AI_LOG("Exception in batch processing: " << e.what());
-                }
-            }
-        } catch (const std::exception& e) {
-            AI_LOG("Fatal error in thread task submission: " << e.what());
-        }
-    } else {
-        // Single-threaded batch processing
-        for (Entity* entity : entities) {
-            behavior->update(entity);
-        }
-    }
-}
-
-void AIManager::batchProcessEntities(const std::string& behaviorName, const std::vector<Entity*>& entities) {
-    AIBehavior* behavior = getBehavior(behaviorName);
-    if (!behavior || !behavior->isActive()) {
-        return;
-    }
-
-    // Start timing for performance tracking
-    auto startTime = getCurrentTimeNanos();
-
-    // Update frame counter for behavior
-    behavior->m_framesSinceLastUpdate++;
-
-    // Apply early exit condition: only update at specified frequency
-    if (!behavior->isWithinUpdateFrequency()) {
-        return;
-    }
-
-    // Collect entities that pass the early exit checks
-    std::vector<Entity*> entitiesToUpdate;
-    entitiesToUpdate.reserve(entities.size());
-
-    for (Entity* entity : entities) {
-        if (!entity) continue;
-
-        // Apply early exit conditions
-        if (!behavior->shouldUpdate(entity) || !behavior->isEntityInRange(entity)) {
-            continue;
-        }
-
-        entitiesToUpdate.push_back(entity);
-    }
-
-    // Reset frame counter after update
-    behavior->m_framesSinceLastUpdate = 0;
-
-    // Skip processing if no entities passed the early exit checks
-    if (entitiesToUpdate.empty()) {
-        return;
-    }
-
-    // Use the common helper method to process entities
-    processEntitiesWithBehavior(behavior, entitiesToUpdate, m_useThreading && entitiesToUpdate.size() > 1);
-
-    // Record performance data
-    auto endTime = getCurrentTimeNanos();
-    double elapsedTimeMs = (endTime - startTime) / 1000000.0;
-    recordBehaviorPerformance(behaviorName, elapsedTimeMs);
-}
-// This code was replaced by the processEntitiesWithBehavior method
-
-void AIManager::recordBehaviorPerformance(const std::string_view& behaviorName, double timeMs) {
-    // Convert string_view to string for map lookup
-    std::string name(behaviorName);
-    m_behaviorPerformanceStats[name].addSample(timeMs);
-}
-
-bool AIManager::init() {
-    if (m_initialized) {
-        return true;  // Already initialized
-    }
-
-    // Check if threading is available
-    m_useThreading = Forge::ThreadSystem::Instance().getThreadCount() > 0;
-
-    // Pre-allocate message queue vectors with a reasonable default capacity
-    m_incomingMessageQueue.reserve(128);
-    m_processingMessageQueue.reserve(128);
     
-    // Pre-allocate containers with reasonable capacities to reduce memory reallocations
-    m_behaviors.reserve(20);          // Reserve space for expected number of behavior types
-    m_entityBehaviors.reserve(100);   // Reserve space for expected number of entities
-    m_entityBehaviorCache.reserve(100);
-    m_behaviorBatches.reserve(20);
-    m_behaviorPerformanceStats.reserve(20);
-
-    // Reset performance stats
-    m_messageQueueStats.reset();
-    m_behaviorPerformanceStats.clear();
-
-    // Log initialization
-    AI_LOG("AI Manager initialized!");
-    AI_LOG("AI Manager Threading: " << (m_useThreading ? "Enabled!" : "Disabled?"));
-    AI_LOG("AI Manager Memory: Pre-allocated for 20 behaviors and 100 entities");
-
-    m_initialized = true;
-    return true;
-}
-
-void AIManager::update() {
-    if (!m_initialized) {
-        return;
-    }
-
-    auto startTime = getCurrentTimeNanos();
-
-    // Process any queued messages before updating behaviors
-    processMessageQueue();
-
-    // We now use the optimized batch update method
-    batchUpdateAllBehaviors();
-
-    auto endTime = getCurrentTimeNanos();
-    double totalUpdateMs = (endTime - startTime) / 1000000.0;
-
-    // Only log in debug builds and track for performance stats
-    AI_LOG_DETAIL("Total AI update time: " << totalUpdateMs << "ms");
-    m_messageQueueStats.addSample(totalUpdateMs);
+    AI_LOG("Rebuilt behavior batches with " << m_behaviorBatches.size() << " behavior types");
 }
 
 void AIManager::batchUpdateAllBehaviors() {
-    if (!m_initialized) {
-        return;
-    }
-
-    // Ensure our optimization caches are valid
+    // Ensure caches are valid
     ensureOptimizationCachesValid();
-
-    auto startTime = getCurrentTimeNanos();
-
-    // If threading is enabled, use behavior batches for parallel processing
-    if (m_useThreading && !m_behaviorBatches.empty()) {
-        // Process each behavior batch
-        for (const auto& [behaviorName, batch] : m_behaviorBatches) {
+    
+    // Only use threading if enabled and ThreadSystem is available
+    bool useThreading = m_useThreading.load(std::memory_order_acquire) && 
+                         Forge::ThreadSystem::Exists();
+    
+    if (useThreading) {
+        // Create a copy of behavior batch map to avoid lock contention during processing
+        boost::container::flat_map<std::string, BehaviorBatch> batchesCopy;
+        {
+            std::lock_guard<std::mutex> lock(m_batchesMutex);
+            batchesCopy = m_behaviorBatches;
+        }
+        
+        // Process each behavior type in parallel
+        for (const auto& [behaviorName, batch] : batchesCopy) {
             if (batch.empty()) continue;
-
-            // Update this batch of entities
-            updateBehaviorBatch(behaviorName, batch);
+            
+            // Find the behavior
+            AIBehavior* behavior = getBehavior(behaviorName);
+            if (!behavior) continue;
+            
+            // Queue this batch for parallel processing
+            Forge::ThreadSystem::Instance().enqueueTask([this, behavior, batch, behaviorName]() {
+                auto startTime = getCurrentTimeNanos();
+                
+                // Process all entities with this behavior
+                for (Entity* entity : batch) {
+                    if (entity) behavior->update(entity);
+                }
+                
+                // Record performance stats
+                auto endTime = getCurrentTimeNanos();
+                double timeMs = (endTime - startTime) / 1000000.0;
+                recordBehaviorPerformance(behaviorName, timeMs);
+            });
         }
     } else {
-        // Single-threaded update using cached behavior references for speed
-        for (const auto& cache : m_entityBehaviorCache) {
-            if (!cache.entity || !cache.behavior || !cache.behavior->isActive()) continue;
-
-            auto entityStartTime = getCurrentTimeNanos();
-            cache.behavior->update(cache.entity);
-            auto entityEndTime = getCurrentTimeNanos();
-
-            double entityUpdateMs = (entityEndTime - entityStartTime) / 1000000.0;
-            recordBehaviorPerformance(cache.behaviorName, entityUpdateMs);
+        // Fallback to sequential processing if threading is disabled
+        std::lock_guard<std::mutex> lock(m_batchesMutex);
+        for (const auto& [behaviorName, batch] : m_behaviorBatches) {
+            if (!batch.empty()) {
+                updateBehaviorBatch(behaviorName, batch);
+            }
         }
     }
-
-    auto endTime = getCurrentTimeNanos();
-    double batchUpdateMs = (endTime - startTime) / 1000000.0;
-
-    AI_LOG_DETAIL("Batch behavior updates completed in " << batchUpdateMs << "ms");
-    m_messageQueueStats.addSample(batchUpdateMs);
 }
 
-void AIManager::resetBehaviors() {
-    if (!m_initialized) return;
-
-    // Clean up each behavior for each entity
-    for (const auto& [entity, behaviorName] : m_entityBehaviors) {
-        if (!entity) continue;
-
-        AIBehavior* behavior = getBehavior(behaviorName);
-        if (behavior) {
-            AI_LOG_DETAIL("[AI Reset] Cleaning behavior '" << behaviorName
-                      << "' for entity at position (" << entity->getPosition().getX()
-                      << "," << entity->getPosition().getY() << ")");
-            behavior->clean(entity);
-        }
-    }
-
-    // Clear collections
-    m_entityBehaviors.clear();
-    m_behaviors.clear();
-
-    // Clear optimization caches
-    m_entityBehaviorCache.clear();
-    m_behaviorBatches.clear();
-    m_cacheValid = false;
-    m_batchesValid = false;
-
-    // Reset performance stats
-    m_behaviorPerformanceStats.clear();
-    m_messageQueueStats.reset();
-
-    AI_LOG("behaviors reset");
-}
-
-void AIManager::clean() {
-    if (!m_initialized) return;
-
-    // Process any remaining messages
-    processMessageQueue();
-
-    // First reset all behaviors
-    resetBehaviors();
-
-    // Then perform complete shutdown operations
-    m_initialized = false;
-    m_useThreading = false;
-
-    // Make sure caches are cleared
-    m_entityBehaviorCache.clear();
-    m_behaviorBatches.clear();
-    m_cacheValid = false;
-    m_batchesValid = false;
-
-    // Clear message queues
+void AIManager::updateBehaviorBatch(const std::string_view& behaviorName, const BehaviorBatch& batch) {
+    if (batch.empty()) return;
+    
+    // Get the behavior
+    AIBehavior* behavior = nullptr;
     {
-        std::lock_guard<std::mutex> lock(m_messageQueueMutex);
-        m_incomingMessageQueue.clear();
-        m_processingMessageQueue.clear();
+        std::shared_lock<std::shared_mutex> lock(m_behaviorsMutex);
+        auto it = m_behaviors.find(std::string(behaviorName));
+        if (it != m_behaviors.end()) {
+            behavior = it->second.get();
+        }
     }
-
-    AI_LOG("AIManager completely shut down");
-}
-
-void AIManager::processMessageQueue() {
-    if (!m_initialized || m_processingMessages) {
-        return;
-    }
-
+    
+    if (!behavior) return;
+    
+    // Update all entities with this behavior
     auto startTime = getCurrentTimeNanos();
-
-    // Set flag to prevent recursive calls during message processing
-    m_processingMessages = true;
-
-    // Safely get all queued messages by swapping vectors
-    {
-        std::lock_guard<std::mutex> lock(m_messageQueueMutex);
-        m_processingMessageQueue.swap(m_incomingMessageQueue);
-        m_incomingMessageQueue.clear();
-
-        // Pre-allocate capacity for next batch based on current usage
-        // (use next power of 2 for better memory allocation)
-        if (!m_processingMessageQueue.empty()) {
-            size_t nextSize = m_processingMessageQueue.size() * 2;
-            m_incomingMessageQueue.reserve(nextSize);
+    
+    for (Entity* entity : batch) {
+        if (entity) {
+            behavior->update(entity);
         }
     }
-
-    // Process all queued messages
-    int processedCount = 0;
-    for (const auto& msg : m_processingMessageQueue) {
-        if (msg.targetEntity == nullptr) {
-            // This is a broadcast message
-            deliverBroadcastMessage(msg.message);
-        } else {
-            // This is a targeted message
-            deliverMessageToEntity(msg.targetEntity, msg.message);
-        }
-        processedCount++;
-    }
-
-    // Clear the processing queue for next time
-    m_processingMessageQueue.clear();
-
+    
+    // Record performance metrics
     auto endTime = getCurrentTimeNanos();
-    double processingTimeMs = (endTime - startTime) / 1000000.0;
-    m_messageQueueStats.addSample(processingTimeMs);
-
-    if (processedCount > 0) {
-        AI_LOG("Message Queue: Processed " << processedCount << " messages in "
-              << processingTimeMs << "ms (avg: " << m_messageQueueStats.averageUpdateTimeMs << "ms)");
-    }
-
-    // Reset processing flag
-    m_processingMessages = false;
+    double timeMs = (endTime - startTime) / 1000000.0;
+    recordBehaviorPerformance(behaviorName, timeMs);
 }
 
-void AIManager::deliverMessageToEntity(Entity* entity, const std::string& message) {
-    if (!entity) return;
+void AIManager::batchProcessEntities(const std::string& behaviorName, const std::vector<Entity*>& entities) {
+    if (entities.empty()) return;
+    
+    // Get the behavior
+    AIBehavior* behavior = getBehavior(behaviorName);
+    if (!behavior) return;
+    
+    // Process entities with or without threading
+    bool useThreading = m_useThreading.load(std::memory_order_acquire) && 
+                         Forge::ThreadSystem::Exists();
+    
+    processEntitiesWithBehavior(behavior, entities, useThreading);
+}
 
-    auto it = m_entityBehaviors.find(entity);
-    if (it != m_entityBehaviors.end()) {
-        // Store the behavior name before lookup
-        const std::string& behaviorName = it->second;
-
-        // Look up behavior just once
-        AIBehavior* behavior = getBehavior(behaviorName);
-        if (behavior) {
-            AI_LOG_DETAIL("[AI Message] Delivering message to entity at ("
-                    << entity->getPosition().getX() << "," << entity->getPosition().getY()
-                    << ") with behavior '" << behaviorName << "': " << message);
-            behavior->onMessage(entity, message);
+void AIManager::processEntitiesWithBehavior(AIBehavior* behavior, const std::vector<Entity*>& entities, bool useThreading) {
+    if (!behavior || entities.empty()) return;
+    
+    auto startTime = getCurrentTimeNanos();
+    
+    if (useThreading) {
+        // Split entities into chunks for parallel processing
+        const size_t numEntities = entities.size();
+        const size_t numThreads = std::min(numEntities, static_cast<size_t>(4)); // Use up to 4 threads
+        const size_t chunkSize = (numEntities + numThreads - 1) / numThreads;
+        
+        std::vector<std::future<void>> futures;
+        futures.reserve(numThreads);
+        
+        for (size_t i = 0; i < numThreads; ++i) {
+            size_t startIdx = i * chunkSize;
+            size_t endIdx = std::min(startIdx + chunkSize, numEntities);
+            
+            if (startIdx >= numEntities) break;
+            
+            futures.push_back(Forge::ThreadSystem::Instance().enqueueTaskWithResult([behavior, &entities, startIdx, endIdx]() {
+                for (size_t j = startIdx; j < endIdx; ++j) {
+                    Entity* entity = entities[j];
+                    if (entity) {
+                        behavior->update(entity);
+                    }
+                }
+            }));
+        }
+        
+        // Wait for all tasks to complete
+        for (auto& future : futures) {
+            future.wait();
+        }
+    } else {
+        // Sequential processing
+        for (Entity* entity : entities) {
+            if (entity) {
+                behavior->update(entity);
+            }
         }
     }
-}
-
-size_t AIManager::deliverBroadcastMessage(const std::string& message) {
-    AI_LOG("[AI Broadcast] Broadcasting message to all entities: " << message);
-
-    // Use the entity-behavior cache for faster iteration
-    // Track how many entities receive the message
-    size_t messageReceivedCount = 0;
     
-    // Since the cache contains direct pointers to behaviors, we can avoid repeated lookups
-    for (const auto& cache : m_entityBehaviorCache) {
-        if (!cache.entity || !cache.behavior) continue;
-
-        #ifdef AI_LOG_DETAIL
-        AI_LOG_DETAIL("[AI Broadcast] Entity at (" << cache.entity->getPosition().getX()
-                << "," << cache.entity->getPosition().getY() << ") with behavior '"
-                << cache.behaviorName << "' receiving broadcast");
-        #endif
-
-        cache.behavior->onMessage(cache.entity, message);
-        messageReceivedCount++;
-    }
-
-    // Log the final count of entities that received the message
-    AI_LOG("[AI Broadcast] Message delivered to " << messageReceivedCount << " entities");
-    
-    return messageReceivedCount;
-}
-
-// Implementation moved to the end of the file
-
-void AIManager::registerBehavior(const std::string& behaviorName, std::shared_ptr<AIBehavior> behavior) {
-    if (!behavior) {
-        AI_LOG("Attempted to register null behavior: " << behaviorName);
-        return;
-    }
-
-    // Check if behavior already exists
-    if (m_behaviors.find(behaviorName) != m_behaviors.end()) {
-        AI_LOG("Behavior already registered: " << behaviorName << ". Replacing.");
-    }
-
-    // Store the behavior
-    m_behaviors[behaviorName] = behavior;
-
-    // Initialize performance stats for this behavior
-    m_behaviorPerformanceStats[behaviorName].reset();
-
-    // Invalidate caches since behavior collection changed
-    invalidateOptimizationCaches();
-
-    AI_LOG("Behavior registered: " << behaviorName);
-}
-
-bool AIManager::hasBehavior(const std::string& behaviorName) const {
-    // Using faster count method instead of find + comparison
-    return m_behaviors.count(behaviorName) > 0;
-}
-
-AIBehavior* AIManager::getBehavior(const std::string& behaviorName) const {
-    auto it = m_behaviors.find(behaviorName);
-    if (it != m_behaviors.end()) {
-        return it->second.get();
-    }
-    return nullptr;
-}
-
-void AIManager::assignBehaviorToEntity(Entity* entity, const std::string& behaviorName) {
-    if (!entity) {
-        AI_LOG("Attempted to assign behavior to null entity");
-        return;
-    }
-
-    // Look up behavior only once
-    auto behaviorIt = m_behaviors.find(behaviorName);
-    if (behaviorIt == m_behaviors.end()) {
-        AI_LOG("Behavior not found: " << behaviorName);
-        return;
-    }
-
-    AIBehavior* behavior = behaviorIt->second.get();
-    if (!behavior) {
-        AI_LOG("Behavior pointer is null: " << behaviorName);
-        return;
-    }
-
-    // If entity already has a behavior, clean it up first
-    if (entityHasBehavior(entity)) {
-        unassignBehaviorFromEntity(entity);
-    }
-
-    // Assign new behavior
-    m_entityBehaviors[entity] = behaviorName;
-
-    // Invalidate caches since entity-behavior mapping changed
-    invalidateOptimizationCaches();
-
-    // Initialize the behavior for this entity
-    AI_LOG_DETAIL("[AI Init] Initializing behavior '" << behaviorName
-              << "' for entity at position (" << entity->getPosition().getX()
-              << "," << entity->getPosition().getY() << ")");
-    behavior->init(entity);
-
-    AI_LOG("Behavior '" << behaviorName << "' assigned to entity");
-}
-
-void AIManager::unassignBehaviorFromEntity(Entity* entity) {
-    if (!entity) {
-        AI_LOG("Attempted to unassign behavior from null entity");
-        return;
-    }
-
-    auto it = m_entityBehaviors.find(entity);
-    if (it != m_entityBehaviors.end()) {
-        // Store behavior name before map modifications
-        const std::string& behaviorName = it->second;
-
-        // Clean up the behavior
-        AIBehavior* behavior = getBehavior(behaviorName);
-        if (behavior) {
-            behavior->clean(entity);
-        }
-
-        // Remove from map
-        m_entityBehaviors.erase(it);
-
-        // Invalidate caches since entity-behavior mapping changed
-        invalidateOptimizationCaches();
-
-        AI_LOG("Behavior '" << behaviorName << "' unassigned from entity");
-    }
-}
-
-bool AIManager::entityHasBehavior(Entity* entity) const {
-    if (!entity) return false;
-    return m_entityBehaviors.find(entity) != m_entityBehaviors.end();
+    // Record performance metrics
+    auto endTime = getCurrentTimeNanos();
+    double timeMs = (endTime - startTime) / 1000000.0;
+    recordBehaviorPerformance(behavior->getName(), timeMs);
 }
 
 void AIManager::sendMessageToEntity(Entity* entity, const std::string& message, bool immediate) {
     if (!entity) return;
-
+    
     if (immediate) {
         deliverMessageToEntity(entity, message);
     } else {
-        // Create the message with move semantics for better performance
-        QueuedMessage queuedMsg(entity, message, getCurrentTimeNanos());
-
-        // Add to incoming queue with minimal lock time
-        {
-            std::lock_guard<std::mutex> lock(m_messageQueueMutex);
-            m_incomingMessageQueue.push_back(std::move(queuedMsg));
-        }
-
-        AI_LOG_DETAIL("[AI Message] Queued message for entity at ("
-                   << entity->getPosition().getX() << "," << entity->getPosition().getY()
-                   << "): " << message);
+        m_messageQueue.enqueueMessage(entity, message);
     }
 }
 
@@ -614,15 +443,166 @@ void AIManager::broadcastMessage(const std::string& message, bool immediate) {
     if (immediate) {
         deliverBroadcastMessage(message);
     } else {
-        // Create the broadcast message with move semantics
-        QueuedMessage queuedMsg(nullptr, message, getCurrentTimeNanos());
-
-        // Add to incoming queue with minimal lock time
-        {
-            std::lock_guard<std::mutex> lock(m_messageQueueMutex);
-            m_incomingMessageQueue.push_back(std::move(queuedMsg));
-        }
-
-        AI_LOG("[AI Broadcast] Queued broadcast message: " << message);
+        m_messageQueue.enqueueMessage(nullptr, message);
     }
+}
+
+void AIManager::processMessageQueue() {
+    // Check if we're already processing messages
+    if (m_processingMessages.exchange(true)) return;
+    
+    // Get performance start time
+    auto startTime = getCurrentTimeNanos();
+    
+    // Swap buffers to minimize lock time
+    m_messageQueue.swapBuffers();
+    
+    // Process messages - now lock-free since we're using our own buffer
+    const auto& messages = m_messageQueue.getProcessingQueue();
+    for (const auto& msg : messages) {
+        if (msg.targetEntity) {
+            deliverMessageToEntity(msg.targetEntity, msg.message);
+        } else {
+            deliverBroadcastMessage(msg.message);
+        }
+    }
+    
+    // Record performance metrics
+    auto endTime = getCurrentTimeNanos();
+    double timeMs = (endTime - startTime) / 1000000.0;
+    
+    {
+        std::lock_guard<std::mutex> lock(m_perfStatsMutex);
+        m_messageQueueStats.addSample(timeMs);
+    }
+    
+    // Reset processing flag
+    m_processingMessages.store(false, std::memory_order_release);
+}
+
+void AIManager::deliverMessageToEntity(Entity* entity, const std::string& message) {
+    if (!entity) return;
+    
+    // Get entity's behavior
+    AIBehavior* behavior = nullptr;
+    
+    // First try to find in cache for efficiency
+    if (m_cacheValid.load(std::memory_order_acquire)) {
+        std::lock_guard<std::mutex> cacheLock(m_cacheMutex);
+        auto it = std::find_if(m_entityBehaviorCache.begin(), m_entityBehaviorCache.end(),
+            [entity](const EntityBehaviorCache& cache) { return cache.entity == entity; });
+        
+        if (it != m_entityBehaviorCache.end()) {
+            behavior = it->behavior;
+        }
+    }
+    
+    // If not found in cache, check the map
+    if (!behavior) {
+        std::string behaviorName;
+        
+        {
+            std::shared_lock<std::shared_mutex> entityLock(m_entityMutex);
+            auto it = m_entityBehaviors.find(entity);
+            if (it != m_entityBehaviors.end()) {
+                behaviorName = it->second;
+            }
+        }
+        
+        if (!behaviorName.empty()) {
+            std::shared_lock<std::shared_mutex> behaviorsLock(m_behaviorsMutex);
+            auto it = m_behaviors.find(behaviorName);
+            if (it != m_behaviors.end()) {
+                behavior = it->second.get();
+            }
+        }
+    }
+    
+    // Deliver message if behavior found
+    if (behavior) {
+        behavior->onMessage(entity, message);
+        AI_LOG("Delivered message '" << message << "' to entity at " << entity);
+    }
+}
+
+size_t AIManager::deliverBroadcastMessage(const std::string& message) {
+    size_t deliveredCount = 0;
+    
+    // Use cache if valid for efficiency
+    if (m_cacheValid.load(std::memory_order_acquire)) {
+        std::lock_guard<std::mutex> cacheLock(m_cacheMutex);
+        
+        for (const auto& cache : m_entityBehaviorCache) {
+            if (cache.behavior && cache.entity) {
+                cache.behavior->onMessage(cache.entity, message);
+                deliveredCount++;
+            }
+        }
+    } else {
+        // Otherwise use entity-behavior map
+        std::shared_lock<std::shared_mutex> entityLock(m_entityMutex);
+        std::shared_lock<std::shared_mutex> behaviorsLock(m_behaviorsMutex);
+        
+        for (const auto& [entity, behaviorName] : m_entityBehaviors) {
+            auto it = m_behaviors.find(behaviorName);
+            if (it != m_behaviors.end() && it->second && entity) {
+                it->second->onMessage(entity, message);
+                deliveredCount++;
+            }
+        }
+    }
+    
+    AI_LOG("Broadcast message '" << message << "' to " << deliveredCount << " entities");
+    return deliveredCount;
+}
+
+void AIManager::recordBehaviorPerformance(const std::string_view& behaviorName, double timeMs) {
+    std::lock_guard<std::mutex> lock(m_perfStatsMutex);
+    m_behaviorPerformanceStats[std::string(behaviorName)].addSample(timeMs);
+}
+
+void AIManager::resetBehaviors() {
+    // First, stop message processing
+    m_processingMessages.store(false, std::memory_order_release);
+    m_messageQueue.clear();
+    
+    // Clear entity assignments but keep registered behaviors
+    {
+        std::unique_lock<std::shared_mutex> lock(m_entityMutex);
+        m_entityBehaviors.clear();
+    }
+    
+    // Clear caches
+    {
+        std::lock_guard<std::mutex> cacheLock(m_cacheMutex);
+        m_entityBehaviorCache.clear();
+    }
+    
+    {
+        std::lock_guard<std::mutex> batchesLock(m_batchesMutex);
+        m_behaviorBatches.clear();
+    }
+    
+    // Reset stats
+    {
+        std::lock_guard<std::mutex> perfLock(m_perfStatsMutex);
+        m_behaviorPerformanceStats.clear();
+        m_messageQueueStats.reset();
+    }
+    
+    // Invalidate caches
+    m_cacheValid.store(false, std::memory_order_release);
+    m_batchesValid.store(false, std::memory_order_release);
+    
+    std::cout << "Forge Game Engine - AIManager: Behaviors reset" << std::endl;
+}
+
+size_t AIManager::getBehaviorCount() const {
+    std::shared_lock<std::shared_mutex> lock(m_behaviorsMutex);
+    return m_behaviors.size();
+}
+
+size_t AIManager::getManagedEntityCount() const {
+    std::shared_lock<std::shared_mutex> lock(m_entityMutex);
+    return m_entityBehaviors.size();
 }

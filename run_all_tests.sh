@@ -18,17 +18,14 @@ NC='\033[0m' # No Color
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 cd "$SCRIPT_DIR"
 
-# Create results directory if it doesn't exist
+# Create required directories
 echo -e "Working directory: $(pwd)"
-if [ ! -d "test_results" ]; then
-    echo -e "Creating results directory: $(pwd)/test_results"
-    mkdir -p test_results
-fi
+mkdir -p test_results
+mkdir -p build
 
-# Create build directory if it doesn't exist
-if [ ! -d "build" ]; then
-    echo -e "${YELLOW}Creating build directory...${NC}"
-    mkdir -p build
+# Check if build directory needs configuration
+if [ ! -f "build/build.ninja" ]; then
+    echo -e "${YELLOW}Configuring build directory...${NC}"
     cmake -B build
 fi
 
@@ -50,26 +47,66 @@ echo -e "${YELLOW}===============================${NC}"
 echo -e "${YELLOW}Running AI Optimization Tests...${NC}"
 echo -e "${YELLOW}===============================${NC}"
 # Use appropriate executable name based on platform
-if [ "$(uname)" == "Darwin" ] || [ "$(uname)" == "Linux" ]; then
-    ./bin/debug/ai_optimization_tests > test_results/ai_test_output.txt 2>&1
-else
-    ./bin/debug/ai_optimization_tests.exe > test_results/ai_test_output.txt 2>&1
+AI_TEST_EXECUTABLE="./bin/debug/ai_optimization_tests"
+if [ "$(uname)" != "Darwin" ] && [ "$(uname)" != "Linux" ]; then
+    AI_TEST_EXECUTABLE="./bin/debug/ai_optimization_tests.exe"
 fi
-AI_RESULT=$?
+
+# Verify executable exists
+if [ ! -f "$AI_TEST_EXECUTABLE" ]; then
+    echo -e "${RED}Error: AI test executable not found at '$AI_TEST_EXECUTABLE'${NC}"
+    FOUND_EXECUTABLE=$(find ./bin -name "ai_optimization_tests*")
+    if [ -n "$FOUND_EXECUTABLE" ]; then
+        echo -e "${GREEN}Found executable at: $FOUND_EXECUTABLE${NC}"
+        AI_TEST_EXECUTABLE="$FOUND_EXECUTABLE"
+    else
+        echo -e "${RED}Could not find the AI test executable!${NC}"
+        AI_RESULT=1
+    fi
+else
+    "$AI_TEST_EXECUTABLE" > test_results/ai_test_output.txt 2>&1
+    AI_RESULT=$?
+fi
 echo ""
 
 echo -e "${YELLOW}===============================${NC}"
 echo -e "${YELLOW}Running Save Manager Tests...${NC}"
 echo -e "${YELLOW}===============================${NC}"
-./bin/debug/save_manager_tests > test_results/save_test_output.txt 2>&1
-SAVE_RESULT=$?
+SAVE_TEST_EXECUTABLE="./bin/debug/save_manager_tests"
+if [ ! -f "$SAVE_TEST_EXECUTABLE" ]; then
+    echo -e "${RED}Error: Save test executable not found at '$SAVE_TEST_EXECUTABLE'${NC}"
+    FOUND_EXECUTABLE=$(find ./bin -name "save_manager_tests*")
+    if [ -n "$FOUND_EXECUTABLE" ]; then
+        echo -e "${GREEN}Found executable at: $FOUND_EXECUTABLE${NC}"
+        SAVE_TEST_EXECUTABLE="$FOUND_EXECUTABLE"
+    else
+        echo -e "${RED}Could not find the Save test executable!${NC}"
+        SAVE_RESULT=1
+    fi
+else
+    "$SAVE_TEST_EXECUTABLE" > test_results/save_test_output.txt 2>&1
+    SAVE_RESULT=$?
+fi
 echo ""
 
 echo -e "${YELLOW}===============================${NC}"
 echo -e "${YELLOW}Running Thread System Tests...${NC}"
 echo -e "${YELLOW}===============================${NC}"
-./bin/debug/thread_system_tests > test_results/thread_test_output.txt 2>&1
-THREAD_RESULT=$?
+THREAD_TEST_EXECUTABLE="./bin/debug/thread_system_tests"
+if [ ! -f "$THREAD_TEST_EXECUTABLE" ]; then
+    echo -e "${RED}Error: Thread test executable not found at '$THREAD_TEST_EXECUTABLE'${NC}"
+    FOUND_EXECUTABLE=$(find ./bin -name "thread_system_tests*")
+    if [ -n "$FOUND_EXECUTABLE" ]; then
+        echo -e "${GREEN}Found executable at: $FOUND_EXECUTABLE${NC}"
+        THREAD_TEST_EXECUTABLE="$FOUND_EXECUTABLE"
+    else
+        echo -e "${RED}Could not find the Thread test executable!${NC}"
+        THREAD_RESULT=1
+    fi
+else
+    "$THREAD_TEST_EXECUTABLE" > test_results/thread_test_output.txt 2>&1
+    THREAD_RESULT=$?
+fi
 echo ""
 
 echo -e "${YELLOW}===============================${NC}"
@@ -122,13 +159,21 @@ echo -e "${YELLOW}All test runs complete!${NC}"
 echo -e "${YELLOW}Summary saved to ${SUMMARY_FILE}${NC}"
 echo -e "${YELLOW}===============================${NC}"
 
-# Extract performance metrics (for AI tests)
-grep "processing time:" test_results/ai_test_output.txt > test_results/performance_metrics.txt 2>/dev/null
-if [ $? -ne 0 ]; then
-    # Try alternative format
-    grep "processing time" test_results/ai_test_output.txt > test_results/performance_metrics.txt
-fi
-echo "Test completed at $(date)" >> test_results/performance_metrics.txt
+# Extract performance metrics from all tests
+echo "# Combined Performance Metrics" > test_results/performance_metrics.txt
+echo "Test run completed at $(date)" >> test_results/performance_metrics.txt
+echo "" >> test_results/performance_metrics.txt
+
+echo "## AI Tests Performance" >> test_results/performance_metrics.txt
+grep -E "processing time:|entities:|performance" test_results/ai_test_output.txt >> test_results/performance_metrics.txt 2>/dev/null
+echo "" >> test_results/performance_metrics.txt
+
+echo "## Save Manager Tests Performance" >> test_results/performance_metrics.txt
+grep -E "time:|performance|saved:|loaded:" test_results/save_test_output.txt >> test_results/performance_metrics.txt 2>/dev/null
+echo "" >> test_results/performance_metrics.txt
+
+echo "## Thread System Tests Performance" >> test_results/performance_metrics.txt
+grep -E "time:|performance|tasks:|queue:" test_results/thread_test_output.txt >> test_results/performance_metrics.txt 2>/dev/null
 
 # Check if any tests failed
 if [ $AI_RESULT -ne 0 ] || [ $SAVE_RESULT -ne 0 ] || [ $THREAD_RESULT -ne 0 ]; then
