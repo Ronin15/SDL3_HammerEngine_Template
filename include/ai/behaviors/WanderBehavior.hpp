@@ -10,12 +10,14 @@
 #include "utils/Vector2D.hpp"
 
 #include <random>
+#include <boost/container/flat_map.hpp>
 #include <SDL3/SDL.h>
 
 class WanderBehavior : public AIBehavior {
 public:
     WanderBehavior(float speed = 1.5f, float changeDirectionInterval = 2000.0f, float areaRadius = 300.0f);
 
+    // No state management - handled by AI Manager
     void init(Entity* entity) override;
     void update(Entity* entity) override;
     void clean(Entity* entity) override;
@@ -41,24 +43,34 @@ public:
     void setOffscreenProbability(float probability);
 
 private:
+    // Entity-specific state data
+    struct EntityState {
+        Vector2D currentDirection{0, 0};
+        Uint64 lastDirectionChangeTime{0};
+        bool currentlyWanderingOffscreen{false};
+        bool resetScheduled{false};
+        Uint64 lastDirectionFlip{0};
+        Uint64 startDelay{0};           // Random delay before entity starts moving
+        bool movementStarted{false};    // Flag to track if movement has started
+    };
+
+    // Map to store per-entity state
+    boost::container::flat_map<Entity*, EntityState> m_entityStates;
+
+    // Shared behavior parameters
     float m_speed{1.5f};
     float m_changeDirectionInterval{2000.0f}; // milliseconds
     float m_areaRadius{300.0f};
     Vector2D m_centerPoint{0, 0};
-    Vector2D m_currentDirection{0, 0};
-    Uint64 m_lastDirectionChangeTime{0};
 
     // Screen dimensions - defaults that will be updated in setCenterPoint
     float m_screenWidth{1280.0f};
     float m_screenHeight{720.0f};
 
     // Offscreen wandering properties
-    bool m_currentlyWanderingOffscreen{false};
-    bool m_resetScheduled{false};
     float m_offscreenProbability{0.15f}; // 15% chance to wander offscreen when changing direction
 
     // Flip stability properties
-    Uint64 m_lastDirectionFlip{0};     // Time of last direction flip
     Uint64 m_minimumFlipInterval{400}; // Minimum time between flips (milliseconds)
 
     // Random number generation
