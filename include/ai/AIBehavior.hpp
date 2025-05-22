@@ -31,16 +31,33 @@ public:
     // Priority handling for behavior selection
     virtual int getPriority() const { return m_priority; }
     virtual void setPriority(int priority) { m_priority = priority; }
-    
+
     // Early exit condition checks
-    virtual bool shouldUpdate([[maybe_unused]] Entity* entity) const { return m_active; }
+    virtual bool shouldUpdate(Entity* entity) const;
     virtual bool isEntityInRange([[maybe_unused]] Entity* entity) const { return true; }
     virtual bool isWithinUpdateFrequency() const;
-    
+
     // Update frequency control
     virtual void setUpdateFrequency(int framesPerUpdate) { m_updateFrequency = framesPerUpdate; }
     virtual int getUpdateFrequency() const { return m_updateFrequency; }
-    
+
+    // Distance-based update control
+    virtual void setMaxUpdateDistance(float distance) { m_maxUpdateDistance = distance; }
+    virtual float getMaxUpdateDistance() const { return m_maxUpdateDistance; }
+
+    virtual void setMediumUpdateDistance(float distance) { m_mediumUpdateDistance = distance; }
+    virtual float getMediumUpdateDistance() const { return m_mediumUpdateDistance; }
+
+    virtual void setMinUpdateDistance(float distance) { m_minUpdateDistance = distance; }
+    virtual float getMinUpdateDistance() const { return m_minUpdateDistance; }
+
+    // Set all distance parameters at once
+    virtual void setUpdateDistances(float maxDist, float mediumDist, float minDist) {
+        m_maxUpdateDistance = maxDist;
+        m_mediumUpdateDistance = mediumDist;
+        m_minUpdateDistance = minDist;
+    }
+
     // Expose frame counter to AIManager
     friend class AIManager;
 
@@ -49,6 +66,18 @@ protected:
     int m_priority{0};  // Higher values = higher priority
     int m_updateFrequency{1}; // How often to update (1 = every frame, 2 = every other frame, etc.)
     int m_framesSinceLastUpdate{0}; // Frames elapsed since last update
+
+    // Distance-based update parameters
+    float m_maxUpdateDistance{10000.0f}; // Maximum distance at which entity is updated every frame
+    float m_mediumUpdateDistance{20000.0f}; // Medium distance - entity updated less frequently
+    float m_minUpdateDistance{25000.0f}; // Minimum distance - entity updated rarely
+
+    // Helper method to find the player entity in the current game state
+    // Implementation varies:
+    // - In tests: returns nullptr to use fallback distance-from-origin logic
+    // - In game: returns player entity from active game state
+    // This approach enables unit testing without dependencies on GameState classes
+    Entity* findPlayerEntity() const;
 };
 
 #endif // AI_BEHAVIOR_HPP

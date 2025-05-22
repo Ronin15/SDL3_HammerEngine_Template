@@ -25,6 +25,9 @@ public:
     bool exit() override;
 
     std::string getName() const override { return "AIDemo"; }
+    
+    // Get the player entity for AI behaviors to access
+    Entity* getPlayer() const { return m_player.get(); }
 
 private:
     // Methods
