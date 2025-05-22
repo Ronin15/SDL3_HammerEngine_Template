@@ -10,8 +10,7 @@
 #include <utility>
 #include <memory>
 #include <boost/container/small_vector.hpp>
-
-class Vector2D;
+#include "utils/Vector2D.hpp"
 
 enum mouse_buttons { LEFT = 0, MIDDLE = 1, RIGHT = 2 };
 
