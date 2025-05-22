@@ -114,7 +114,7 @@ bool GameEngine::init(const char* title,
       std::cout << "Forge Game Engine - Window size set to Full Screen!\n";
     }
 
-    mp_window = SDL_CreateWindow(title, m_windowWidth, m_windowHeight, flags);
+    mp_window.reset(SDL_CreateWindow(title, m_windowWidth, m_windowHeight, flags));
 
     if (mp_window) {
       std::cout << "Forge Game Engine - Window creation system online!\n";
@@ -123,49 +123,50 @@ bool GameEngine::init(const char* title,
       std::cout << "Forge Game Engine - Setting window icon...\n";
 
       // Use SDL_image to directly load the icon
-      SDL_Surface* iconSurface = nullptr;
       const char* iconPath = "res/img/icon.ico";
 
       // Use a separate thread to load the icon
       auto iconFuture = Forge::ThreadSystem::Instance().enqueueTaskWithResult(
-          [iconPath]() -> SDL_Surface* { return IMG_Load(iconPath); });
+          [iconPath]() -> std::unique_ptr<SDL_Surface, decltype(&SDL_DestroySurface)> { 
+              return std::unique_ptr<SDL_Surface, decltype(&SDL_DestroySurface)>(IMG_Load(iconPath), SDL_DestroySurface); 
+          });
 
       // Continue with initialization while icon loads
       // account for pixel density for rendering
       int pixelWidth, pixelHeight;
-      SDL_GetWindowSizeInPixels(mp_window, &pixelWidth, &pixelHeight);
+      SDL_GetWindowSizeInPixels(mp_window.get(), &pixelWidth, &pixelHeight);
       // Get logical dimensions
       int logicalWidth, logicalHeight;
-      SDL_GetWindowSize(mp_window, &logicalWidth, &logicalHeight);
+      SDL_GetWindowSize(mp_window.get(), &logicalWidth, &logicalHeight);
 
-      mp_renderer = SDL_CreateRenderer(mp_window, NULL);
+      mp_renderer.reset(SDL_CreateRenderer(mp_window.get(), NULL));
 
       if (mp_renderer) {
         std::cout << "Forge Game Engine - Rendering system online!\n";
-        SDL_SetRenderDrawColor(mp_renderer, FORGE_GRAY);  // Forge Game Engine gunmetal dark grey
+        SDL_SetRenderDrawColor(mp_renderer.get(), FORGE_GRAY);  // Forge Game Engine gunmetal dark grey
         // Set logical rendering size to match our window size
-        SDL_SetRenderLogicalPresentation(mp_renderer, logicalWidth, logicalHeight, SDL_LOGICAL_PRESENTATION_LETTERBOX);
+        SDL_SetRenderLogicalPresentation(mp_renderer.get(), logicalWidth, logicalHeight, SDL_LOGICAL_PRESENTATION_LETTERBOX);
         //Render Mode.
-        SDL_SetRenderDrawBlendMode(mp_renderer, SDL_BLENDMODE_BLEND);
+        SDL_SetRenderDrawBlendMode(mp_renderer.get(), SDL_BLENDMODE_BLEND);
       } else {
         std::cerr << "Forge Game Engine - Rendering system creation failed! " << SDL_GetError() << std::endl;
         return false;  // Forge renderer fail
       }
 
-      // Check if the icon loaded successfully
+      // Now check if the icon was loaded successfully
       try {
-        iconSurface = iconFuture.get();
-        if (iconSurface) {
-          SDL_SetWindowIcon(mp_window, iconSurface);
-          SDL_DestroySurface(iconSurface);
+        auto iconSurfacePtr = iconFuture.get();
+        if (iconSurfacePtr) {
+          SDL_SetWindowIcon(mp_window.get(), iconSurfacePtr.get());
+          // No need to manually destroy the surface, smart pointer will handle it
           std::cout << "Forge Game Engine - Window icon set successfully!\n";
         } else {
           std::cerr << "Forge Game Engine - Failed to load window icon: "
                     << SDL_GetError() << std::endl;
         }
       } catch (const std::exception& e) {
-        std::cerr << "Forge Game Engine - Error loading icon: " << e.what()
-                  << std::endl;
+        std::cerr << "Forge Game Engine - Error loading window icon: "
+                  << e.what() << std::endl;
       }
 
     } else {
@@ -207,7 +208,7 @@ bool GameEngine::init(const char* title,
 
   // Load textures in main thread
   std::cout << "Forge Game Engine - Creating and loading textures\n";
-  TextureManager::Instance().load("res/img", "", mp_renderer);
+  TextureManager::Instance().load("res/img", "", mp_renderer.get());
 
   // Initialize sound manager in a separate thread
   initTasks.push_back(
@@ -268,7 +269,7 @@ bool GameEngine::init(const char* title,
   // Initialize game state manager (on main thread because it directly calls rendering)
   std::cout << "Forge Game Engine - Creating Game State Manager and setting up "
                "initial Game States\n";
-  mp_gameStateManager = new GameStateManager();
+  mp_gameStateManager = std::make_unique<GameStateManager>();
   if (!mp_gameStateManager) {
     std::cerr << "Forge Game Engine - Failed to create Game State Manager!"
               << std::endl;
@@ -328,9 +329,9 @@ void GameEngine::render() {
   // This should always run on the main thread due to OpenGL/SDL rendering
   // context
   std::lock_guard<std::mutex> lock(m_renderMutex);
-  SDL_RenderClear(mp_renderer);
+  SDL_RenderClear(mp_renderer.get());
   mp_gameStateManager->render();
-  SDL_RenderPresent(mp_renderer);
+  SDL_RenderPresent(mp_renderer.get());
 }
 
 void GameEngine::waitForUpdate() {
@@ -349,7 +350,7 @@ bool GameEngine::loadResourcesAsync(const std::string& path) {
   auto result = Forge::ThreadSystem::Instance().enqueueTaskWithResult(
       [this, path]() -> bool {
         // Example of async resource loading
-        return TextureManager::Instance().load(path, "", mp_renderer);
+        return TextureManager::Instance().load(path, "", mp_renderer.get());
       });
 
   // You can either wait for the result or check it later
@@ -384,16 +385,11 @@ void GameEngine::clean() {
 
   // Clean up engine managers (non-singletons)
   std::cout << "Forge Game Engine - Cleaning up GameState manager...\n";
-  if (mp_gameStateManager) {
-    delete mp_gameStateManager;
-    mp_gameStateManager = nullptr;
-  }
+  mp_gameStateManager.reset();
 
-  // Save pointers to resources we'll clean up at the very end
-  SDL_Window* window_to_destroy = mp_window;
-  SDL_Renderer* renderer_to_destroy = mp_renderer;
-  mp_window = nullptr;
-  mp_renderer = nullptr;
+  // Save copies of the smart pointers to resources we'll clean up at the very end
+  auto window_to_destroy = std::move(mp_window);
+  auto renderer_to_destroy = std::move(mp_renderer);
 
   // Clean up Managers in reverse order of their initialization
   std::cout << "Forge Game Engine - Cleaning up Font Manager...\n";
@@ -423,15 +419,10 @@ void GameEngine::clean() {
   // Finally clean up SDL resources
   std::cout << "Forge Game Engine - Cleaning up SDL resources...\n";
 
-  // Explicitly destroy renderer and window at the end, after all subsystems
-  // are done using them
-  if (renderer_to_destroy) {
-    SDL_DestroyRenderer(renderer_to_destroy);
-  }
-
-  if (window_to_destroy) {
-    SDL_DestroyWindow(window_to_destroy);
-  }
+  // Explicitly reset smart pointers at the end, after all subsystems
+  // are done using them - this will trigger their custom deleters
+  renderer_to_destroy.reset();
+  window_to_destroy.reset();
     SDL_Quit();
   std::cout << "Forge Game Engine - SDL resources cleaned!\n";
   std::cout << "Forge Game Engine - Shutdown complete!\n";

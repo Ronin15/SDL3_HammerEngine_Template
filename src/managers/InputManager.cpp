@@ -9,12 +9,13 @@
 #include "SDL3/SDL_joystick.h"
 #include "utils/Vector2D.hpp"
 #include <iostream>
+#include <memory>
 
 SDL_JoystickID* gamepadIDs{nullptr};
 
 InputManager::InputManager()
     : m_keystates(nullptr),
-      m_mousePosition(new Vector2D(0, 0)) {
+      m_mousePosition(std::make_unique<Vector2D>(0, 0)) {
   // Create button states for the mouse
   for (int i = 0; i < 3; i++) {
     m_mouseButtonStates.push_back(false);
@@ -22,8 +23,7 @@ InputManager::InputManager()
 }
 
 InputManager::~InputManager() {
-  // Clean up allocated memory
-  delete m_mousePosition;
+  // No need to delete m_mousePosition - smart pointer handles it
 
   // Clear all vectors
   //m_joystickValues.clear();
@@ -66,7 +66,7 @@ void InputManager::initializeGamePad() {
           std::cout << "Forge Game Engine - Gamepad connected: " << SDL_GetGamepadName(gamepad) << std::endl;
 
           // Add default joystick values
-          m_joystickValues.push_back(std::make_pair(new Vector2D(0, 0), new Vector2D(0, 0)));
+          m_joystickValues.push_back(std::make_pair(std::make_unique<Vector2D>(0, 0), std::make_unique<Vector2D>(0, 0)));
 
           // Add default button states for this joystick
           boost::container::small_vector<bool, 16> tempButtons;
@@ -149,7 +149,7 @@ bool InputManager::getMouseButtonState(int buttonNumber) const {
 }
 
 Vector2D* InputManager::getMousePosition() const {
-  return m_mousePosition;
+  return m_mousePosition.get();
 }
 
 void InputManager::update() {
@@ -420,11 +420,8 @@ if(m_gamePadInitialized) {
     gamepadCount++;
   }
 
-  // Free all joystick values
-  for (auto& joystickPair : m_joystickValues) {
-    delete joystickPair.first;
-    delete joystickPair.second;
-  }
+  // No need to delete joystick values - smart pointers handle it
+  // m_joystickValues will be cleared below
 
   m_joysticks.clear();
   m_joystickValues.clear();

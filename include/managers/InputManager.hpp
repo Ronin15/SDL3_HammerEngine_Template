@@ -8,6 +8,7 @@
 
 #include <SDL3/SDL.h>
 #include <utility>
+#include <memory>
 #include <boost/container/small_vector.hpp>
 
 class Vector2D;
@@ -45,22 +46,23 @@ class InputManager {
 
     // Mouse events
     bool getMouseButtonState(int buttonNumber) const;
-    Vector2D* getMousePosition() const;
+    Vector2D* getMousePosition() const; // Returns raw pointer for backward compatibility
 
  private:
 
     // Keyboard specific
-    const bool* m_keystates{nullptr};
+    const bool* m_keystates{nullptr}; // Owned by SDL, don't delete
 
     // Gamepad specific
-    boost::container::small_vector<std::pair<Vector2D*, Vector2D*>, 4> m_joystickValues{};
+    boost::container::small_vector<std::pair<std::unique_ptr<Vector2D>, std::unique_ptr<Vector2D>>, 4> m_joystickValues{};
+    // Non-owning pointers to SDL_Gamepad objects, which are closed with SDL_CloseGamepad in clean()
     boost::container::small_vector<SDL_Gamepad*, 4> m_joysticks{};
     boost::container::small_vector<boost::container::small_vector<bool, 16>, 4> m_buttonStates{};
     const int m_joystickDeadZone{10000};
     bool m_gamePadInitialized{false};
     // Mouse specific
     boost::container::small_vector<bool, 3> m_mouseButtonStates{};
-    Vector2D* m_mousePosition{nullptr};
+    std::unique_ptr<Vector2D> m_mousePosition{nullptr};
 
     // Handle keyboard events
     void onKeyDown(SDL_Event& event);

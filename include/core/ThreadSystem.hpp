@@ -11,6 +11,7 @@
 #include <functional>
 #include <future>
 #include <iostream>
+#include <memory>
 #include <mutex>
 #include <deque>
 
@@ -238,8 +239,7 @@ public:
                 std::cout << "Forge Game Engine - Warning: ThreadSystem shutdown with pending tasks!" << std::endl;
             }
 
-            delete mp_threadPool;
-            mp_threadPool = nullptr;
+            mp_threadPool.reset();
         }
     }
 
@@ -271,7 +271,7 @@ public:
 
         // Determine optimal thread count (leave one for main thread)
         m_numThreads = std::max(1u, std::thread::hardware_concurrency() - 1);
-        mp_threadPool = new ThreadPool(m_numThreads, m_queueCapacity);
+        mp_threadPool = std::make_unique<ThreadPool>(m_numThreads, m_queueCapacity);
         return mp_threadPool != nullptr;
     }
 
@@ -379,7 +379,7 @@ public:
     }
 
     private:
-            ThreadPool* mp_threadPool{nullptr};
+            std::unique_ptr<ThreadPool> mp_threadPool{nullptr};
             unsigned int m_numThreads{};
             size_t m_queueCapacity{};
             std::atomic<bool> m_isShutdown{false}; // Flag to indicate shutdown status
