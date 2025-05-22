@@ -6,8 +6,19 @@
 #include "ai/AIBehavior.hpp"
 
 // Mock implementation for testing - doesn't rely on game engine components
-bool AIBehavior::isWithinUpdateFrequency() const {
-    // In test environment, always return true to ensure behaviors update
+bool AIBehavior::isWithinUpdateFrequency(Entity* entity) const {
+    // In test environment, handle both cases:
+    // 1. If frequency is 1, always update
+    if (m_updateFrequency <= 1) {
+        return true;
+    }
+    
+    // 2. For benchmarks, respect the frame counter
+    if (entity && m_entityFrameCounters.find(entity) != m_entityFrameCounters.end()) {
+        return m_entityFrameCounters.at(entity) >= m_updateFrequency;
+    }
+    
+    // Default case: allow update
     return true;
 }
 
@@ -16,7 +27,20 @@ Entity* AIBehavior::findPlayerEntity() const {
     return nullptr;
 }
 
-bool AIBehavior::shouldUpdate(Entity* /* entity */) const {
-    // In test environment, always return true to ensure behaviors update
+bool AIBehavior::shouldUpdate(Entity* entity) const {
+    // Base check - if not active, don't update
+    if (!m_active) return false;
+    
+    // For benchmarks, we need to respect the update frequency
+    if (!isWithinUpdateFrequency(entity)) return false;
+    
+    // Otherwise, allow updates for all test entities
     return true;
+}
+
+void AIBehavior::cleanupEntity(Entity* entity) {
+    // Remove entity from frame counter map
+    if (entity) {
+        m_entityFrameCounters.erase(entity);
+    }
 }

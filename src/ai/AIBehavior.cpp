@@ -9,14 +9,28 @@
 #include "gameStates/GameState.hpp"
 #include "gameStates/AIDemoState.hpp"
 
-bool AIBehavior::isWithinUpdateFrequency() const {
+bool AIBehavior::isWithinUpdateFrequency(Entity* entity) const {
+    // No entity check
+    if (!entity) {
+        return true;
+    }
+    
     // Always update if frequency is 1
     if (m_updateFrequency <= 1) {
         return true;
     }
     
     // Update if enough frames have passed
-    return (m_framesSinceLastUpdate % m_updateFrequency == 0);
+    // Get or create frame counter for this entity
+    int& frameCounter = m_entityFrameCounters[entity];
+    return (frameCounter >= m_updateFrequency);
+}
+
+// Remove an entity from the frame counter map
+void AIBehavior::cleanupEntity(Entity* entity) {
+    if (entity) {
+        m_entityFrameCounters.erase(entity);
+    }
 }
 
 Entity* AIBehavior::findPlayerEntity() const {
@@ -44,14 +58,14 @@ bool AIBehavior::shouldUpdate(Entity* entity) const {
     // Base check - if not active, don't update
     if (!m_active) return false;
 
-    // Frequency check - important to respect update frequency
-    if (!isWithinUpdateFrequency()) return false;
-
-    // Always update high priority behaviors
-    if (m_priority > 8) return true;
-
     // If no entity, can't do distance check
     if (!entity) return true;
+
+    // Frequency check - important to respect update frequency
+    if (!isWithinUpdateFrequency(entity)) return false;
+
+    // High priority behaviors still need to respect frequency checks
+    // but will have more frequent updates than lower priority behaviors
 
     // Find the player entity
     Entity* player = findPlayerEntity();
@@ -64,19 +78,23 @@ bool AIBehavior::shouldUpdate(Entity* entity) const {
         // Use priority-based update frequency for fallback
         float priorityMultiplier = (m_priority + 1) / 10.0f;
 
+        // Get the frame counter for this entity
+        int& frameCounter = m_entityFrameCounters[entity];
+        
+        // Determine update frequency based on distance
+        int requiredFrames;
+        
         if (distSq < m_maxUpdateDistance * m_maxUpdateDistance * priorityMultiplier) {
-            return true; // Update every frame
+            requiredFrames = 1; // Every frame for close entities
+        } else if (distSq < m_mediumUpdateDistance * m_mediumUpdateDistance * priorityMultiplier) {
+            requiredFrames = 15; // Every 15 frames for medium distance
+        } else if (distSq < m_minUpdateDistance * m_minUpdateDistance * priorityMultiplier) {
+            requiredFrames = 30; // Every 30 frames for far distance
+        } else {
+            requiredFrames = 60; // Every 60 frames for very distant entities
         }
-
-        if (distSq < m_mediumUpdateDistance * m_mediumUpdateDistance * priorityMultiplier) {
-            return (m_framesSinceLastUpdate % 3 == 0); // Update every 3 frames
-        }
-
-        if (distSq < m_minUpdateDistance * m_minUpdateDistance * priorityMultiplier) {
-            return (m_framesSinceLastUpdate % 5 == 0); // Update every 5 frames
-        }
-
-        return (m_framesSinceLastUpdate % 10 == 0); // Update every 10 frames
+        
+        return (frameCounter >= requiredFrames);
     }
 
     // This section runs when player is found
@@ -88,21 +106,21 @@ bool AIBehavior::shouldUpdate(Entity* entity) const {
     // Determine update frequency based on distance to player and priority
     float priorityMultiplier = (m_priority + 1) / 10.0f; // Convert 0-9 priority to 0.1-1.0 multiplier
 
-    // Close to player - update every frame
+    // Get the frame counter for this entity
+    int& frameCounter = m_entityFrameCounters[entity];
+    
+    // Determine update frequency based on distance from player
+    int requiredFrames;
+    
     if (distSq < m_maxUpdateDistance * m_maxUpdateDistance * priorityMultiplier) {
-        return true;
+        requiredFrames = 1; // Every frame for close entities
+    } else if (distSq < m_mediumUpdateDistance * m_mediumUpdateDistance * priorityMultiplier) {
+        requiredFrames = 15; // Every 15 frames for medium distance
+    } else if (distSq < m_minUpdateDistance * m_minUpdateDistance * priorityMultiplier) {
+        requiredFrames = 30; // Every 30 frames for far distance
+    } else {
+        requiredFrames = 60; // Every 60 frames for very distant entities
     }
-
-    // Medium distance from player - update less frequently
-    if (distSq < m_mediumUpdateDistance * m_mediumUpdateDistance * priorityMultiplier) {
-        return (m_framesSinceLastUpdate % 3 == 0); // Update every 3 frames
-    }
-
-    // Far from player - update rarely
-    if (distSq < m_minUpdateDistance * m_minUpdateDistance * priorityMultiplier) {
-        return (m_framesSinceLastUpdate % 5 == 0); // Update every 5 frames
-    }
-
-    // Very far from player - update very rarely
-    return (m_framesSinceLastUpdate % 10 == 0); // Update every 10 frames
+    
+    return (frameCounter >= requiredFrames);
 }

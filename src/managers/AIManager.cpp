@@ -164,6 +164,25 @@ void AIManager::unassignBehaviorFromEntity(Entity* entity) {
         return;
     }
     
+    // Get the behavior for this entity before removing it
+    AIBehavior* behavior = nullptr;
+    std::string behaviorName;
+    {
+        std::shared_lock<std::shared_mutex> lock(m_entityMutex);
+        auto it = m_entityBehaviors.find(entity);
+        if (it != m_entityBehaviors.end()) {
+            behaviorName = it->second;
+        }
+    }
+    
+    // Clean up the entity's frame counter in the behavior
+    if (!behaviorName.empty()) {
+        behavior = getBehavior(behaviorName);
+        if (behavior) {
+            behavior->cleanupEntity(entity);
+        }
+    }
+    
     // Remove entity from behavior map - use write lock
     {
         std::unique_lock<std::shared_mutex> lock(m_entityMutex);
@@ -316,7 +335,27 @@ void AIManager::batchUpdateAllBehaviors() {
                 
                 // Process all entities with this behavior
                 for (Entity* entity : batch) {
-                    if (entity) behavior->update(entity);
+                    if (entity) {
+                        // Always increment the frame counter before checking if we should update
+                        behavior->m_entityFrameCounters[entity]++;
+                        
+                        // Only update if the behavior's shouldUpdate returns true
+                        // This will check the frame counter internally
+                        if (behavior->shouldUpdate(entity)) {
+                            behavior->update(entity);
+                            // Reset frame counter after update
+                            behavior->m_entityFrameCounters[entity] = 0;
+                        }
+            
+                        // Check if entity has gone off-screen and needs cleanup
+                        if (entity->getPosition().getX() < -2000 || 
+                            entity->getPosition().getX() > 3000 ||
+                            entity->getPosition().getY() < -2000 || 
+                            entity->getPosition().getY() > 3000) {
+                            // Reset frame counter to encourage update
+                            behavior->m_entityFrameCounters[entity] = 999;
+                        }
+                    }
                 }
                 
                 // Record performance stats
@@ -356,7 +395,25 @@ void AIManager::updateBehaviorBatch(const std::string_view& behaviorName, const 
     
     for (Entity* entity : batch) {
         if (entity) {
-            behavior->update(entity);
+            // Always increment the frame counter before checking if we should update
+            behavior->m_entityFrameCounters[entity]++;
+            
+            // Only update if the behavior's shouldUpdate returns true
+            // This will check the frame counter internally
+            if (behavior->shouldUpdate(entity)) {
+                behavior->update(entity);
+                // Reset frame counter after update
+                behavior->m_entityFrameCounters[entity] = 0;
+            }
+            
+            // Check if entity has gone off-screen and needs cleanup
+            if (entity->getPosition().getX() < -2000 || 
+                entity->getPosition().getX() > 3000 ||
+                entity->getPosition().getY() < -2000 || 
+                entity->getPosition().getY() > 3000) {
+                // Reset frame counter to encourage update
+                behavior->m_entityFrameCounters[entity] = 999;
+            }
         }
     }
     

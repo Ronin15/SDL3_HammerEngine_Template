@@ -61,7 +61,14 @@ private:
 class BenchmarkBehavior : public AIBehavior {
 public:
     BenchmarkBehavior(int id, int complexity = 5) // Increased default complexity from 1 to 5
-        : m_id(id), m_complexity(complexity), m_initialized(false) {}
+        : m_id(id), m_complexity(complexity), m_initialized(false) {
+        // For benchmark, use maximum distances to ensure every entity is updated
+        setUpdateDistances(100000.0f, 200000.0f, 300000.0f);
+        // Set update frequency to 1 to ensure every entity is updated every frame
+        setUpdateFrequency(1);
+        // Set high priority to ensure updates happen
+        setPriority(9);
+    }
 
     void update(Entity* entity) override {
         if (!entity) return;
@@ -90,6 +97,11 @@ public:
         // Explicitly update the entity's update count to ensure it's counted
         benchmarkEntity->update();
         m_updateCount++;
+
+        // Print diagnostic info occasionally
+        if (m_updateCount % 1000 == 0) {
+            std::cout << "  Behavior " << m_id << " has updated " << m_updateCount << " times" << std::endl;
+        }
     }
 
     void init(Entity* /* entity */) override { 
@@ -304,23 +316,44 @@ struct AIScalingFixture {
         double updatesPerSecond = (static_cast<double>(numEntities) * numUpdates) / (totalTimeMs / 1000.0);
 
         // Print results
-        std::cout << std::fixed << std::setprecision(3);
-        std::cout << "  Total time: " << totalTimeMs << " ms" << std::endl;
-        std::cout << "  Time per update: " << timePerUpdateMs << " ms" << std::endl;
-        std::cout << "  Time per entity: " << timePerEntityMs << " ms" << std::endl;
-        std::cout << "  Updates per second: " << updatesPerSecond << std::endl;
+            std::cout << std::fixed << std::setprecision(3);
+            std::cout << "  Total time: " << totalTimeMs << " ms" << std::endl;
+            std::cout << "  Time per update: " << timePerUpdateMs << " ms" << std::endl;
+            std::cout << "  Time per entity: " << timePerEntityMs << " ms" << std::endl;
+            std::cout << "  Updates per second: " << updatesPerSecond << std::endl;
 
-        // Verify all entities were updated
-        int notUpdatedCount = 0;
-        
-        for (const auto& entity : entities) {
-            if (entity->getUpdateCount() == 0) {
-                notUpdatedCount++;
+            // Print behavior update counts
+            std::cout << "  Behavior update counts:" << std::endl;
+            for (size_t i = 0; i < behaviors.size(); ++i) {
+                std::cout << "    Behavior " << i << ": " << behaviors[i]->getUpdateCount() << " updates" << std::endl;
             }
-        }
+
+            // Clear all entity frame counters
+            for (const auto& behavior : behaviors) {
+                behavior->clearFrameCounters();
+            }
+
+            // Verify all entities were updated
+            int notUpdatedCount = 0;
+            std::vector<int> notUpdatedIds;
+        
+            for (const auto& entity : entities) {
+                if (entity->getUpdateCount() == 0) {
+                    notUpdatedCount++;
+                    notUpdatedIds.push_back(entity->getId());
+                    if (notUpdatedIds.size() < 10) {  // Limit to first 10 IDs to avoid too much output
+                        std::cout << "    Entity " << entity->getId() << " not updated" << std::endl;
+                    }
+                }
+            }
 
         if (notUpdatedCount > 0) {
             std::cout << "  WARNING: " << notUpdatedCount << " entities not updated!" << std::endl;
+            std::cout << "  First few not updated: ";
+            for (size_t i = 0; i < std::min(notUpdatedIds.size(), size_t(5)); ++i) {
+                std::cout << notUpdatedIds[i] << " ";
+            }
+            std::cout << std::endl;
             
             // If we have missed entities and threading is enabled, try one more update
             if (useThreading && notUpdatedCount > 0) {
@@ -358,6 +391,13 @@ struct AIScalingFixture {
             return;
         }
         
+        // Clear all frame counters
+        for (const auto& behavior : behaviors) {
+            if (behavior) {
+                behavior->clearFrameCounters();
+            }
+        }
+        
         // First unassign all behaviors from entities
         for (auto& entity : entities) {
             if (entity) {
@@ -385,6 +425,7 @@ struct AIScalingFixture {
 
     // Run scalability test with increasing entity counts
     void runScalabilityTest(bool useThreading) {
+        std::cout << "\n===== SCALABILITY TEST (" << (useThreading ? "Threaded" : "Single-Threaded") << ") =====" << std::endl;
         // Skip if shutdown is in progress
         if (g_shutdownInProgress.load()) {
             return;
