@@ -237,6 +237,13 @@ bool AIManager::init() {
     // Pre-allocate message queue vectors with a reasonable default capacity
     m_incomingMessageQueue.reserve(128);
     m_processingMessageQueue.reserve(128);
+    
+    // Pre-allocate containers with reasonable capacities to reduce memory reallocations
+    m_behaviors.reserve(20);          // Reserve space for expected number of behavior types
+    m_entityBehaviors.reserve(100);   // Reserve space for expected number of entities
+    m_entityBehaviorCache.reserve(100);
+    m_behaviorBatches.reserve(20);
+    m_behaviorPerformanceStats.reserve(20);
 
     // Reset performance stats
     m_messageQueueStats.reset();
@@ -245,6 +252,7 @@ bool AIManager::init() {
     // Log initialization
     AI_LOG("AI Manager initialized!");
     AI_LOG("AI Manager Threading: " << (m_useThreading ? "Enabled!" : "Disabled?"));
+    AI_LOG("AI Manager Memory: Pre-allocated for 20 behaviors and 100 entities");
 
     m_initialized = true;
     return true;

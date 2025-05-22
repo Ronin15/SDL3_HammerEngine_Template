@@ -9,7 +9,7 @@
 
 #include "managers/AIManager.hpp"
 // Instead of including real behaviors, we'll use mock behaviors for testing
-#include "ai/AIBehavior.hpp"
+// Note: AIBehavior.hpp is not included to avoid dependencies
 #include "entities/Entity.hpp"
 #include "utils/Vector2D.hpp"
 #include <memory>
@@ -17,6 +17,11 @@
 #include <vector>
 #include <iostream>
 #include <string>
+
+// Note: AIBehavior is already included via AIManager.hpp
+// We're using the real AIBehavior class instead of redefining it
+
+// Test helpers for AI optimization tests
 
 // Mock WanderBehavior for testing
 class MockWanderBehavior : public AIBehavior {
@@ -49,11 +54,6 @@ public:
         return "MockWander";
     }
 
-    // Add public method to manipulate update frequency for testing
-    void setUpdateFrequency(int freq) override {
-        m_updateFrequency = freq;
-    }
-
 private:
     // No private fields needed for this mock implementation
 };
@@ -71,6 +71,8 @@ public:
     void render() override {}
     void clean() override {}
 };
+
+
 
 // Global fixture for test setup and cleanup
 struct AITestFixture {
@@ -172,6 +174,8 @@ BOOST_AUTO_TEST_CASE(TestEarlyExitConditions)
     // Cleanup
     AIManager::Instance().resetBehaviors();
 }
+
+
 
 BOOST_AUTO_TEST_CASE(TestMessageQueueSystem)
 {
