@@ -30,7 +30,7 @@ class TextureManager {
             std::string textureID,
             SDL_Renderer* p_renderer);
 
-  void draw(std::string textureID,
+  void draw(const std::string& textureID,
             int x,
             int y,
             int width,
@@ -38,7 +38,7 @@ class TextureManager {
             SDL_Renderer* p_Renderer,
             SDL_FlipMode flip = SDL_FLIP_NONE);
 
-  void drawFrame(std::string textureID,
+  void drawFrame(const std::string& textureID,
                  int x,
                  int y,
                  int width,
@@ -47,16 +47,16 @@ class TextureManager {
                  int currentFrame,
                  SDL_Renderer* p_renderer,
                  SDL_FlipMode flip = SDL_FLIP_NONE);
-  void drawParallax(std::string textureID,
+  void drawParallax(const std::string& textureID,
                     int x,
                     int y,
                     int scroll,
                     SDL_Renderer* p_renderer);
-  void clearFromTexMap(std::string textureID);
-  bool isTextureInMap(std::string textureID) const;
+  void clearFromTexMap(const std::string& textureID);
+  bool isTextureInMap(const std::string& textureID) const;
 
   // Get a texture pointer by ID
-  SDL_Texture* getTexture(std::string textureID) const;
+  SDL_Texture* getTexture(const std::string& textureID) const;
 
   // Clean up all texture resources
   void clean();

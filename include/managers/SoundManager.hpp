@@ -27,20 +27,20 @@ class SoundManager {
   // If dirPath is a directory, it loads all supported sound files from that directory
   // Returns true if at least one sound was loaded successfully
   // When loading a directory, soundID is used as a prefix for filenames
-  bool loadSFX(std::string filePath,
-               std::string soundID);
+  bool loadSFX(const std::string& fileName,
+                     const std::string& soundID);
 
   // Loads a music file
-  bool loadMusic(std::string filePath,
-                 std::string musicID);
+  bool loadMusic(const std::string& fileName,
+                 const std::string& musicID);
 
   // Play a sound effect
-  void playSFX(std::string soundID,
+  void playSFX(const std::string& soundID,
                int loops = 0,
                int volume = 128);
 
   // Play music
-  void playMusic(std::string musicID,
+  void playMusic(const std::string& musicID,
                  int loops = -1,
                  int volume = 128);
 
@@ -66,16 +66,16 @@ class SoundManager {
   void clean();
 
   // Remove a sound effect from the map
-  void clearSFX(std::string soundID);
+  void clearSFX(const std::string& soundID);
 
   // Remove music from the map
-  void clearMusic(std::string musicID);
+  void clearMusic(const std::string& musicID);
 
   // Check if a sound is loaded
-  bool isSFXLoaded(std::string soundID) const;
+  bool isSFXLoaded(const std::string& soundID) const;
 
-  // Check if a music is loaded
-  bool isMusicLoaded(std::string musicID) const;
+  // Check if music is loaded
+  bool isMusicLoaded(const std::string& musicID) const;
 
  private:
   boost::container::flat_map<std::string, Mix_Chunk*> m_sfxMap{};

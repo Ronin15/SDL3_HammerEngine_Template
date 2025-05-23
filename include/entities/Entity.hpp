@@ -28,7 +28,6 @@ class Entity {
    int getCurrentRow() const { return m_currentRow; }
    int getNumFrames() const { return m_numFrames; }
    int getAnimSpeed() const { return m_animSpeed; }
-   virtual SDL_FlipMode getFlip() const { return SDL_FLIP_NONE; }
 
    // Setter methods
    virtual void setPosition(const Vector2D& position) { m_position = position; }
@@ -44,6 +43,7 @@ class Entity {
 
    // Used for rendering flipping - to be implemented by derived classes
    virtual void setFlip(SDL_FlipMode flip) { (void)flip; /* Unused in base class */ }
+   virtual SDL_FlipMode getFlip() const { return SDL_FLIP_NONE; }
    protected:
     Vector2D m_acceleration{0, 0};
     Vector2D m_velocity{0, 0};
