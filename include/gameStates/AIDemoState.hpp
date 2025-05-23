@@ -16,7 +16,7 @@
 class AIDemoState : public GameState {
 public:
 
-    ~AIDemoState();
+    ~AIDemoState() override;
 
     void update() override;
     void render() override;

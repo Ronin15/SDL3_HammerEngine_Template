@@ -28,7 +28,7 @@ public:
     //void setFlip(SDL_FlipMode m_flip);
 
     // Player-specific accessor methods
-    SDL_FlipMode getFlip() const { return m_flip; }
+    SDL_FlipMode getFlip() const override { return m_flip; }
     
     // Player-specific setter methods
     void setFlip(SDL_FlipMode flip) override { m_flip = flip; }
