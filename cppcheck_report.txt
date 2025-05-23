@@ -1,38 +1,182 @@
-src/ai/AIBehavior.cpp:6:0: information: Include file: "ai/AIBehavior.hpp" not found. [missingInclude]
-#include "ai/AIBehavior.hpp"
+include/utils/Vector2D.hpp:9:0: information: Include file: <math.h> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
+#include <math.h>
 ^
-src/ai/AIBehavior.cpp:7:0: information: Include file: "core/GameEngine.hpp" not found. [missingInclude]
-#include "core/GameEngine.hpp"
+include/entities/Entity.hpp:10:0: information: Include file: <string> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
+#include <string>
 ^
-src/ai/AIBehavior.cpp:8:0: information: Include file: "managers/GameStateManager.hpp" not found. [missingInclude]
-#include "managers/GameStateManager.hpp"
+include/entities/Entity.hpp:11:0: information: Include file: <SDL3/SDL_surface.h> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
+#include <SDL3/SDL_surface.h>
 ^
-src/ai/AIBehavior.cpp:9:0: information: Include file: "gameStates/GameState.hpp" not found. [missingInclude]
-#include "gameStates/GameState.hpp"
+include/ai/AIBehavior.hpp:10:0: information: Include file: <string> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
+#include <string>
 ^
-src/ai/AIBehavior.cpp:10:0: information: Include file: "gameStates/AIDemoState.hpp" not found. [missingInclude]
-#include "gameStates/AIDemoState.hpp"
+include/ai/AIBehavior.hpp:11:0: information: Include file: <unordered_map> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
+#include <unordered_map>
 ^
+include/managers/GameStateManager.hpp:9:0: information: Include file: <memory> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
+#include <memory>
+^
+include/managers/GameStateManager.hpp:10:0: information: Include file: <boost/container/small_vector.hpp> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
+#include <boost/container/small_vector.hpp>
+^
+include/gameStates/GameState.hpp:9:0: information: Include file: <string> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
+#include <string>
+^
+include/core/GameEngine.hpp:10:0: information: Include file: <SDL3_image/SDL_image.h> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
+#include <SDL3_image/SDL_image.h>
+^
+include/core/GameEngine.hpp:11:0: information: Include file: <atomic> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
+#include <atomic>
+^
+include/core/GameEngine.hpp:12:0: information: Include file: <condition_variable> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
+#include <condition_variable>
+^
+include/core/GameEngine.hpp:13:0: information: Include file: <memory> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
+#include <memory>
+^
+include/core/GameEngine.hpp:14:0: information: Include file: <mutex> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
+#include <mutex>
+^
+include/entities/NPC.hpp:12:0: information: Include file: <SDL3/SDL.h> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
+#include <SDL3/SDL.h>
+^
+include/entities/NPC.hpp:13:0: information: Include file: <string> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
+#include <string>
+^
+include/managers/EntityStateManager.hpp:9:0: information: Include file: <memory> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
+#include <memory>
+^
+include/managers/EntityStateManager.hpp:10:0: information: Include file: <string> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
+#include <string>
+^
+include/managers/EntityStateManager.hpp:11:0: information: Include file: <boost/container/flat_map.hpp> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
+#include <boost/container/flat_map.hpp>
+^
+include/entities/Player.hpp:12:0: information: Include file: <SDL3/SDL.h> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
+#include <SDL3/SDL.h>
+^
+include/gameStates/AIDemoState.hpp:13:0: information: Include file: <memory> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
+#include <memory>
+^
+include/gameStates/AIDemoState.hpp:14:0: information: Include file: <vector> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
+#include <vector>
+^
+src/ai/AIBehavior.cpp:0:0: information: Limiting analysis of branches. Use --check-level=exhaustive to analyze all branches. [normalCheckLevelMaxBranches]
+
+^
+include/ai/AIBehavior.hpp:89:13: performance: inconclusive: Technically the member function 'AIBehavior::findPlayerEntity' can be static (but you may consider moving to unnamed namespace). [functionStatic]
+    Entity* findPlayerEntity() const;
+            ^
+src/ai/AIBehavior.cpp:36:21: note: Technically the member function 'AIBehavior::findPlayerEntity' can be static (but you may consider moving to unnamed namespace).
+Entity* AIBehavior::findPlayerEntity() const {
+                    ^
+include/ai/AIBehavior.hpp:89:13: note: Technically the member function 'AIBehavior::findPlayerEntity' can be static (but you may consider moving to unnamed namespace).
+    Entity* findPlayerEntity() const;
+            ^
+include/entities/NPC.hpp:18:6: style: The destructor '~NPC' overrides a destructor in a base class but is not marked with a 'override' specifier. [missingOverride]
+    ~NPC();
+     ^
+include/entities/Entity.hpp:18:13: note: Virtual destructor in base class
+   virtual ~Entity() = default;
+            ^
+include/entities/NPC.hpp:18:6: note: Destructor in derived class
+    ~NPC();
+     ^
+include/entities/Player.hpp:17:6: style: The destructor '~Player' overrides a destructor in a base class but is not marked with a 'override' specifier. [missingOverride]
+    ~Player();
+     ^
+include/entities/Entity.hpp:18:13: note: Virtual destructor in base class
+   virtual ~Entity() = default;
+            ^
+include/entities/Player.hpp:17:6: note: Destructor in derived class
+    ~Player();
+     ^
+include/gameStates/AIDemoState.hpp:19:6: style: The destructor '~AIDemoState' overrides a destructor in a base class but is not marked with a 'override' specifier. [missingOverride]
+    ~AIDemoState();
+     ^
+include/gameStates/GameState.hpp:19:12: note: Virtual destructor in base class
+  virtual ~GameState() = default;
+           ^
+include/gameStates/AIDemoState.hpp:19:6: note: Destructor in derived class
+    ~AIDemoState();
+     ^
+include/entities/NPC.hpp:34:10: style: The function 'setAnimSpeed' overrides a function in a base class but is identical to the overridden function [uselessOverride]
+    void setAnimSpeed(int speed) override { m_animSpeed = speed; }
+         ^
+include/entities/Entity.hpp:42:17: note: Virtual function in base class
+   virtual void setAnimSpeed(int speed) { m_animSpeed = speed; }
+                ^
+include/entities/NPC.hpp:34:10: note: Function in derived class
+    void setAnimSpeed(int speed) override { m_animSpeed = speed; }
+         ^
+include/entities/NPC.hpp:35:10: style: The function 'setNumFrames' overrides a function in a base class but is identical to the overridden function [uselessOverride]
+    void setNumFrames(int numFrames) override { m_numFrames = numFrames; }
+         ^
+include/entities/Entity.hpp:41:17: note: Virtual function in base class
+   virtual void setNumFrames(int numFrames) { m_numFrames = numFrames; }
+                ^
+include/entities/NPC.hpp:35:10: note: Function in derived class
+    void setNumFrames(int numFrames) override { m_numFrames = numFrames; }
+         ^
+include/entities/Entity.hpp:26:16: performance: Function 'getTextureID()' should return member 'm_textureID' by const reference. [returnByReference]
+   std::string getTextureID() const { return m_textureID; }
+               ^
+src/ai/AIBehavior.cpp:25:10: style: Variable 'frameCounter' can be declared as reference to const [constVariableReference]
+    int& frameCounter = m_entityFrameCounters[entity];
+         ^
 src/ai/AIBehavior.cpp:82:14: style: Variable 'frameCounter' can be declared as reference to const [constVariableReference]
         int& frameCounter = m_entityFrameCounters[entity];
              ^
-src/ai/behaviors/ChaseBehavior.cpp:6:0: information: Include file: "ai/behaviors/ChaseBehavior.hpp" not found. [missingInclude]
-#include "ai/behaviors/ChaseBehavior.hpp"
+src/ai/AIBehavior.cpp:110:10: style: Variable 'frameCounter' can be declared as reference to const [constVariableReference]
+    int& frameCounter = m_entityFrameCounters[entity];
+         ^
+src/ai/AIBehavior.cpp:38:23: style: Variable 'gameStateManager' can be declared as pointer to const [constVariablePointer]
+    GameStateManager* gameStateManager = GameEngine::Instance().getGameStateManager();
+                      ^
+src/ai/AIBehavior.cpp:50:18: style: Variable 'aiDemoState' can be declared as pointer to const [constVariablePointer]
+    AIDemoState* aiDemoState = dynamic_cast<AIDemoState*>(currentState);
+                 ^
+src/ai/AIBehavior.cpp:71:13: style: Variable 'player' can be declared as pointer to const [constVariablePointer]
+    Entity* player = findPlayerEntity();
+            ^
+include/ai/behaviors/ChaseBehavior.hpp:65:10: style: inconclusive: Technically the member function 'ChaseBehavior::checkLineOfSight' can be const. [functionConst]
+    bool checkLineOfSight(Entity* entity, Entity* target);
+         ^
+src/ai/behaviors/ChaseBehavior.cpp:166:21: note: Technically the member function 'ChaseBehavior::checkLineOfSight' can be const.
+bool ChaseBehavior::checkLineOfSight(Entity* entity, Entity* target) {
+                    ^
+include/ai/behaviors/ChaseBehavior.hpp:65:10: note: Technically the member function 'ChaseBehavior::checkLineOfSight' can be const.
+    bool checkLineOfSight(Entity* entity, Entity* target);
+         ^
+include/ai/behaviors/ChaseBehavior.hpp:15:5: style: Class 'ChaseBehavior' has a constructor with 1 argument that is not explicit. [noExplicitConstructor]
+    ChaseBehavior(Entity* target = nullptr, float chaseSpeed = 3.0f, float maxRange = 500.0f, float minRange = 50.0f);
+    ^
+src/ai/behaviors/ChaseBehavior.cpp:166:46: style: Parameter 'entity' can be declared as pointer to const [constParameterPointer]
+bool ChaseBehavior::checkLineOfSight(Entity* entity, Entity* target) {
+                                             ^
+src/ai/behaviors/ChaseBehavior.cpp:166:62: style: Parameter 'target' can be declared as pointer to const [constParameterPointer]
+bool ChaseBehavior::checkLineOfSight(Entity* entity, Entity* target) {
+                                                             ^
+include/ai/behaviors/PatrolBehavior.hpp:11:0: information: Include file: <boost/container/small_vector.hpp> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
+#include <boost/container/small_vector.hpp>
 ^
-src/ai/behaviors/PatrolBehavior.cpp:6:0: information: Include file: "ai/behaviors/PatrolBehavior.hpp" not found. [missingInclude]
-#include "ai/behaviors/PatrolBehavior.hpp"
-^
-src/ai/behaviors/PatrolBehavior.cpp:7:0: information: Include file: "entities/Entity.hpp" not found. [missingInclude]
-#include "entities/Entity.hpp"
-^
-src/ai/behaviors/PatrolBehavior.cpp:8:0: information: Include file: "entities/NPC.hpp" not found. [missingInclude]
-#include "entities/NPC.hpp"
+include/ai/behaviors/PatrolBehavior.hpp:12:0: information: Include file: <SDL3/SDL.h> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
+#include <SDL3/SDL.h>
 ^
 src/ai/behaviors/PatrolBehavior.cpp:9:0: information: Include file: <algorithm> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
 #include <algorithm>
 ^
-src/ai/behaviors/WanderBehavior.cpp:6:0: information: Include file: "ai/behaviors/WanderBehavior.hpp" not found. [missingInclude]
-#include "ai/behaviors/WanderBehavior.hpp"
+include/ai/behaviors/PatrolBehavior.hpp:16:5: style: Class 'PatrolBehavior' has a constructor with 1 argument that is not explicit. [noExplicitConstructor]
+    PatrolBehavior(const boost::container::small_vector<Vector2D, 10>& waypoints, float moveSpeed = 2.0f, bool includeOffscreenPoints = false);
+    ^
+include/ai/behaviors/WanderBehavior.hpp:12:0: information: Include file: <random> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
+#include <random>
+^
+include/ai/behaviors/WanderBehavior.hpp:13:0: information: Include file: <boost/container/flat_map.hpp> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
+#include <boost/container/flat_map.hpp>
+^
+include/ai/behaviors/WanderBehavior.hpp:14:0: information: Include file: <SDL3/SDL.h> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
+#include <SDL3/SDL.h>
 ^
 src/ai/behaviors/WanderBehavior.cpp:8:0: information: Include file: <algorithm> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
 #include <algorithm>
@@ -43,6 +187,9 @@ src/ai/behaviors/WanderBehavior.cpp:9:0: information: Include file: <cmath> not 
 src/ai/behaviors/WanderBehavior.cpp:0:0: information: Limiting analysis of branches. Use --check-level=exhaustive to analyze all branches. [normalCheckLevelMaxBranches]
 
 ^
+include/ai/behaviors/WanderBehavior.hpp:18:5: style: Class 'WanderBehavior' has a constructor with 1 argument that is not explicit. [noExplicitConstructor]
+    WanderBehavior(float speed = 1.5f, float changeDirectionInterval = 2000.0f, float areaRadius = 300.0f);
+    ^
 src/core/ForgeMain.cpp:6:0: information: Include file: <SDL3/SDL.h> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
 #include <SDL3/SDL.h>
 ^
@@ -61,15 +208,48 @@ src/core/ForgeMain.cpp:10:0: information: Include file: <mutex> not found. Pleas
 src/core/ForgeMain.cpp:11:0: information: Include file: <string> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
 #include <string>
 ^
-src/core/ForgeMain.cpp:12:0: information: Include file: "core/GameEngine.hpp" not found. [missingInclude]
-#include "core/GameEngine.hpp"
+include/core/ThreadSystem.hpp:9:0: information: Include file: <atomic> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
+#include <atomic>
 ^
-src/core/ForgeMain.cpp:13:0: information: Include file: "core/ThreadSystem.hpp" not found. [missingInclude]
-#include "core/ThreadSystem.hpp"
+include/core/ThreadSystem.hpp:10:0: information: Include file: <condition_variable> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
+#include <condition_variable>
 ^
-src/core/GameEngine.cpp:6:0: information: Include file: "core/GameEngine.hpp" not found. [missingInclude]
-#include "core/GameEngine.hpp"
+include/core/ThreadSystem.hpp:11:0: information: Include file: <functional> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
+#include <functional>
 ^
+include/core/ThreadSystem.hpp:12:0: information: Include file: <future> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
+#include <future>
+^
+include/core/ThreadSystem.hpp:13:0: information: Include file: <iostream> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
+#include <iostream>
+^
+include/core/ThreadSystem.hpp:14:0: information: Include file: <memory> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
+#include <memory>
+^
+include/core/ThreadSystem.hpp:15:0: information: Include file: <mutex> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
+#include <mutex>
+^
+include/core/ThreadSystem.hpp:16:0: information: Include file: <deque> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
+#include <deque>
+^
+include/core/ThreadSystem.hpp:18:0: information: Include file: <thread> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
+#include <thread>
+^
+include/core/ThreadSystem.hpp:20:0: information: Include file: <SDL3/SDL.h> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
+#include <SDL3/SDL.h>
+^
+include/core/ThreadSystem.hpp:21:0: information: Include file: <boost/container/small_vector.hpp> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
+#include <boost/container/small_vector.hpp>
+^
+include/core/ThreadSystem.hpp:44:5: style: Class 'TaskQueue' has a constructor with 1 argument that is not explicit. [noExplicitConstructor]
+    TaskQueue(size_t initialCapacity = 256) {
+    ^
+include/core/ThreadSystem.hpp:120:5: style: Class 'ThreadPool' has a constructor with 1 argument that is not explicit. [noExplicitConstructor]
+    ThreadPool(size_t numThreads, size_t queueCapacity = 256) {
+    ^
+include/core/ThreadSystem.hpp:334:16: style: Return value 'mp_threadPool' is always true [knownConditionTrueFalse]
+        return mp_threadPool && mp_threadPool->busy();
+               ^
 src/core/GameEngine.cpp:7:0: information: Include file: <boost/container/small_vector.hpp> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
 #include <boost/container/small_vector.hpp>
 ^
@@ -88,29 +268,59 @@ src/core/GameEngine.cpp:11:0: information: Include file: <thread> not found. Ple
 src/core/GameEngine.cpp:12:0: information: Include file: "SDL3/SDL_surface.h" not found. [missingInclude]
 #include "SDL3/SDL_surface.h"
 ^
-src/core/GameEngine.cpp:13:0: information: Include file: "managers/AIManager.hpp" not found. [missingInclude]
-#include "managers/AIManager.hpp"
+include/managers/AIManager.hpp:32:0: information: Include file: <memory> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
+#include <memory>
 ^
-src/core/GameEngine.cpp:14:0: information: Include file: "gameStates/AIDemoState.hpp" not found. [missingInclude]
-#include "gameStates/AIDemoState.hpp"
+include/managers/AIManager.hpp:33:0: information: Include file: <string> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
+#include <string>
 ^
-src/core/GameEngine.cpp:15:0: information: Include file: "managers/FontManager.hpp" not found. [missingInclude]
-#include "managers/FontManager.hpp"
+include/managers/AIManager.hpp:34:0: information: Include file: <string_view> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
+#include <string_view>
 ^
-src/core/GameEngine.cpp:16:0: information: Include file: "gameStates/GamePlayState.hpp" not found. [missingInclude]
-#include "gameStates/GamePlayState.hpp"
+include/managers/AIManager.hpp:35:0: information: Include file: <vector> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
+#include <vector>
 ^
-src/core/GameEngine.cpp:17:0: information: Include file: "managers/GameStateManager.hpp" not found. [missingInclude]
-#include "managers/GameStateManager.hpp"
+include/managers/AIManager.hpp:37:0: information: Include file: <mutex> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
+#include <mutex>
 ^
-src/core/GameEngine.cpp:18:0: information: Include file: "managers/InputManager.hpp" not found. [missingInclude]
-#include "managers/InputManager.hpp"
+include/managers/AIManager.hpp:38:0: information: Include file: <shared_mutex> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
+#include <shared_mutex>
 ^
-src/core/GameEngine.cpp:19:0: information: Include file: "gameStates/LogoState.hpp" not found. [missingInclude]
-#include "gameStates/LogoState.hpp"
+include/managers/AIManager.hpp:39:0: information: Include file: <atomic> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
+#include <atomic>
 ^
-src/core/GameEngine.cpp:20:0: information: Include file: "gameStates/MainMenuState.hpp" not found. [missingInclude]
-#include "gameStates/MainMenuState.hpp"
+include/managers/AIManager.hpp:40:0: information: Include file: <chrono> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
+#include <chrono>
+^
+include/managers/AIManager.hpp:41:0: information: Include file: <boost/container/flat_map.hpp> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
+#include <boost/container/flat_map.hpp>
+^
+include/managers/FontManager.hpp:9:0: information: Include file: <SDL3/SDL.h> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
+#include <SDL3/SDL.h>
+^
+include/managers/FontManager.hpp:10:0: information: Include file: <SDL3_ttf/SDL_ttf.h> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
+#include <SDL3_ttf/SDL_ttf.h>
+^
+include/managers/FontManager.hpp:11:0: information: Include file: <boost/container/flat_map.hpp> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
+#include <boost/container/flat_map.hpp>
+^
+include/managers/FontManager.hpp:12:0: information: Include file: <string> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
+#include <string>
+^
+include/gameStates/GamePlayState.hpp:11:0: information: Include file: <memory> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
+#include <memory>
+^
+include/managers/InputManager.hpp:9:0: information: Include file: <SDL3/SDL.h> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
+#include <SDL3/SDL.h>
+^
+include/managers/InputManager.hpp:10:0: information: Include file: <utility> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
+#include <utility>
+^
+include/managers/InputManager.hpp:11:0: information: Include file: <memory> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
+#include <memory>
+^
+include/managers/InputManager.hpp:12:0: information: Include file: <boost/container/small_vector.hpp> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
+#include <boost/container/small_vector.hpp>
 ^
 src/core/GameEngine.cpp:21:0: information: Include file: "SDL3/SDL_render.h" not found. [missingInclude]
 #include "SDL3/SDL_render.h"
@@ -118,56 +328,95 @@ src/core/GameEngine.cpp:21:0: information: Include file: "SDL3/SDL_render.h" not
 src/core/GameEngine.cpp:22:0: information: Include file: "SDL3/SDL_video.h" not found. [missingInclude]
 #include "SDL3/SDL_video.h"
 ^
-src/core/GameEngine.cpp:23:0: information: Include file: "managers/SaveGameManager.hpp" not found. [missingInclude]
-#include "managers/SaveGameManager.hpp"
+include/managers/SaveGameManager.hpp:9:0: information: Include file: <string> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
+#include <string>
 ^
-src/core/GameEngine.cpp:24:0: information: Include file: "managers/SoundManager.hpp" not found. [missingInclude]
-#include "managers/SoundManager.hpp"
+include/managers/SaveGameManager.hpp:10:0: information: Include file: <boost/container/small_vector.hpp> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
+#include <boost/container/small_vector.hpp>
 ^
-src/core/GameEngine.cpp:25:0: information: Include file: "core/ThreadSystem.hpp" not found. [missingInclude]
-#include "core/ThreadSystem.hpp"
+include/managers/SaveGameManager.hpp:12:0: information: Include file: <ctime> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
+#include <ctime>
 ^
-src/core/GameEngine.cpp:26:0: information: Include file: "managers/TextureManager.hpp" not found. [missingInclude]
-#include "managers/TextureManager.hpp"
+include/managers/SoundManager.hpp:9:0: information: Include file: <SDL3/SDL.h> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
+#include <SDL3/SDL.h>
 ^
-src/entities/NPC.cpp:6:0: information: Include file: "entities/NPC.hpp" not found. [missingInclude]
-#include "entities/NPC.hpp"
+include/managers/SoundManager.hpp:10:0: information: Include file: <SDL3_mixer/SDL_mixer.h> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
+#include <SDL3_mixer/SDL_mixer.h>
 ^
-src/entities/NPC.cpp:7:0: information: Include file: "core/GameEngine.hpp" not found. [missingInclude]
-#include "core/GameEngine.hpp"
+include/managers/SoundManager.hpp:11:0: information: Include file: <boost/container/flat_map.hpp> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
+#include <boost/container/flat_map.hpp>
 ^
-src/entities/NPC.cpp:8:0: information: Include file: "managers/TextureManager.hpp" not found. [missingInclude]
-#include "managers/TextureManager.hpp"
+include/managers/SoundManager.hpp:12:0: information: Include file: <string> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
+#include <string>
 ^
-src/entities/NPC.cpp:9:0: information: Include file: "managers/AIManager.hpp" not found. [missingInclude]
-#include "managers/AIManager.hpp"
+include/managers/TextureManager.hpp:9:0: information: Include file: <SDL3/SDL.h> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
+#include <SDL3/SDL.h>
 ^
+include/managers/TextureManager.hpp:10:0: information: Include file: <SDL3_image/SDL_image.h> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
+#include <SDL3_image/SDL_image.h>
+^
+include/managers/TextureManager.hpp:11:0: information: Include file: <boost/container/flat_map.hpp> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
+#include <boost/container/flat_map.hpp>
+^
+include/managers/TextureManager.hpp:12:0: information: Include file: <string> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
+#include <string>
+^
+src/core/GameEngine.cpp:0:0: information: Limiting analysis of branches. Use --check-level=exhaustive to analyze all branches. [normalCheckLevelMaxBranches]
+
+^
+include/managers/AIManager.hpp:338:9: warning: Member variable 'QueuedMessage::targetEntity' is not initialized in the constructor. [uninitMemberVar]
+        QueuedMessage() = default;
+        ^
+include/managers/AIManager.hpp:338:9: warning: Member variable 'QueuedMessage::timestamp' is not initialized in the constructor. [uninitMemberVar]
+        QueuedMessage() = default;
+        ^
+include/core/GameEngine.hpp:29:8: performance: inconclusive: Technically the member function 'GameEngine::handleEvents' can be static (but you may consider moving to unnamed namespace). [functionStatic]
+  void handleEvents();
+       ^
+src/core/GameEngine.cpp:313:18: note: Technically the member function 'GameEngine::handleEvents' can be static (but you may consider moving to unnamed namespace).
+void GameEngine::handleEvents() {
+                 ^
+include/core/GameEngine.hpp:29:8: note: Technically the member function 'GameEngine::handleEvents' can be static (but you may consider moving to unnamed namespace).
+  void handleEvents();
+       ^
+include/core/GameEngine.hpp:35:8: performance: inconclusive: Technically the member function 'GameEngine::processBackgroundTasks' can be static (but you may consider moving to unnamed namespace). [functionStatic]
+  void processBackgroundTasks();
+       ^
+src/core/GameEngine.cpp:365:18: note: Technically the member function 'GameEngine::processBackgroundTasks' can be static (but you may consider moving to unnamed namespace).
+void GameEngine::processBackgroundTasks() {
+                 ^
+include/core/GameEngine.hpp:35:8: note: Technically the member function 'GameEngine::processBackgroundTasks' can be static (but you may consider moving to unnamed namespace).
+  void processBackgroundTasks();
+       ^
+src/core/GameEngine.cpp:273:7: style: Condition '!mp_gameStateManager' is always false [knownConditionTrueFalse]
+  if (!mp_gameStateManager) {
+      ^
 src/entities/NPC.cpp:10:0: information: Include file: <SDL3/SDL.h> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
 #include <SDL3/SDL.h>
 ^
 src/entities/NPC.cpp:11:0: information: Include file: <iostream> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
 #include <iostream>
 ^
-src/entities/Player.cpp:6:0: information: Include file: "entities/Player.hpp" not found. [missingInclude]
-#include "entities/Player.hpp"
-^
-src/entities/Player.cpp:7:0: information: Include file: "core/GameEngine.hpp" not found. [missingInclude]
-#include "core/GameEngine.hpp"
-^
-src/entities/Player.cpp:8:0: information: Include file: "managers/InputManager.hpp" not found. [missingInclude]
-#include "managers/InputManager.hpp"
-^
-src/entities/Player.cpp:9:0: information: Include file: "entities/playerStates/PlayerIdleState.hpp" not found. [missingInclude]
-#include "entities/playerStates/PlayerIdleState.hpp"
-^
-src/entities/Player.cpp:10:0: information: Include file: "entities/playerStates/PlayerRunningState.hpp" not found. [missingInclude]
-#include "entities/playerStates/PlayerRunningState.hpp"
-^
+include/entities/NPC.hpp:22:10: style: Virtual function 'clean' is called from destructor '~NPC()' at line 53. Dynamic binding is not used. [virtualCallInConstructor]
+    void clean() override;
+         ^
+src/entities/NPC.cpp:53:5: note: Calling clean
+    clean();
+    ^
+include/entities/NPC.hpp:22:10: note: clean is a virtual function
+    void clean() override;
+         ^
+include/entities/NPC.hpp:25:10: style: The function 'setPosition' overrides a function in a base class but is identical to the overridden function [uselessOverride]
+    void setPosition(const Vector2D& position) override;
+         ^
+include/entities/Entity.hpp:33:17: note: Virtual function in base class
+   virtual void setPosition(const Vector2D& position) { m_position = position; }
+                ^
+include/entities/NPC.hpp:25:10: note: Function in derived class
+    void setPosition(const Vector2D& position) override;
+         ^
 src/entities/Player.cpp:11:0: information: Include file: "SDL3/SDL_surface.h" not found. [missingInclude]
 #include "SDL3/SDL_surface.h"
-^
-src/entities/Player.cpp:12:0: information: Include file: "managers/TextureManager.hpp" not found. [missingInclude]
-#include "managers/TextureManager.hpp"
 ^
 src/entities/Player.cpp:13:0: information: Include file: <SDL3/SDL.h> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
 #include <SDL3/SDL.h>
@@ -175,47 +424,35 @@ src/entities/Player.cpp:13:0: information: Include file: <SDL3/SDL.h> not found.
 src/entities/Player.cpp:14:0: information: Include file: <iostream> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
 #include <iostream>
 ^
-src/entities/playerStates/PlayerIdleState.cpp:6:0: information: Include file: "entities/playerStates/PlayerIdleState.hpp" not found. [missingInclude]
-#include "entities/playerStates/PlayerIdleState.hpp"
-^
-src/entities/playerStates/PlayerIdleState.cpp:7:0: information: Include file: "entities/Player.hpp" not found. [missingInclude]
-#include "entities/Player.hpp"
-^
-src/entities/playerStates/PlayerRunningState.cpp:6:0: information: Include file: "entities/playerStates/PlayerRunningState.hpp" not found. [missingInclude]
-#include "entities/playerStates/PlayerRunningState.hpp"
-^
-src/entities/playerStates/PlayerRunningState.cpp:7:0: information: Include file: "entities/Player.hpp" not found. [missingInclude]
-#include "entities/Player.hpp"
-^
-src/entities/playerStates/PlayerRunningState.cpp:8:0: information: Include file: "managers/InputManager.hpp" not found. [missingInclude]
-#include "managers/InputManager.hpp"
-^
-src/gameStates/AIDemoState.cpp:6:0: information: Include file: "gameStates/AIDemoState.hpp" not found. [missingInclude]
-#include "gameStates/AIDemoState.hpp"
-^
-src/gameStates/AIDemoState.cpp:7:0: information: Include file: "managers/AIManager.hpp" not found. [missingInclude]
-#include "managers/AIManager.hpp"
-^
+include/entities/Player.hpp:21:10: style: Virtual function 'clean' is called from destructor '~Player()' at line 92. Dynamic binding is not used. [virtualCallInConstructor]
+    void clean()override;
+         ^
+src/entities/Player.cpp:92:5: note: Calling clean
+    clean();
+    ^
+include/entities/Player.hpp:21:10: note: clean is a virtual function
+    void clean()override;
+         ^
+include/entities/playerStates/PlayerIdleState.hpp:15:5: style: Class 'PlayerIdleState' has a constructor with 1 argument that is not explicit. [noExplicitConstructor]
+    PlayerIdleState(Player* player);
+    ^
+include/entities/playerStates/PlayerRunningState.hpp:15:5: style: Class 'PlayerRunningState' has a constructor with 1 argument that is not explicit. [noExplicitConstructor]
+    PlayerRunningState(Player* player);
+    ^
+src/entities/Player.cpp:171:42: style: inconclusive: Function 'setPosition' argument 1 names different: declaration 'm_position' definition 'position'. [funcArgNamesDifferent]
+void Player::setPosition(const Vector2D& position) {
+                                         ^
+include/entities/Player.hpp:26:38: note: Function 'setPosition' argument 1 names different: declaration 'm_position' definition 'position'.
+    void setPosition(const Vector2D& m_position) override;
+                                     ^
+src/entities/Player.cpp:171:42: note: Function 'setPosition' argument 1 names different: declaration 'm_position' definition 'position'.
+void Player::setPosition(const Vector2D& position) {
+                                         ^
+src/entities/playerStates/PlayerRunningState.cpp:57:19: style: Variable 'mousePos' can be declared as pointer to const [constVariablePointer]
+        Vector2D* mousePos = InputManager::Instance().getMousePosition();
+                  ^
 src/gameStates/AIDemoState.cpp:8:0: information: Include file: "SDL3/SDL_scancode.h" not found. [missingInclude]
 #include "SDL3/SDL_scancode.h"
-^
-src/gameStates/AIDemoState.cpp:9:0: information: Include file: "ai/behaviors/WanderBehavior.hpp" not found. [missingInclude]
-#include "ai/behaviors/WanderBehavior.hpp"
-^
-src/gameStates/AIDemoState.cpp:10:0: information: Include file: "ai/behaviors/PatrolBehavior.hpp" not found. [missingInclude]
-#include "ai/behaviors/PatrolBehavior.hpp"
-^
-src/gameStates/AIDemoState.cpp:11:0: information: Include file: "ai/behaviors/ChaseBehavior.hpp" not found. [missingInclude]
-#include "ai/behaviors/ChaseBehavior.hpp"
-^
-src/gameStates/AIDemoState.cpp:12:0: information: Include file: "core/GameEngine.hpp" not found. [missingInclude]
-#include "core/GameEngine.hpp"
-^
-src/gameStates/AIDemoState.cpp:13:0: information: Include file: "managers/FontManager.hpp" not found. [missingInclude]
-#include "managers/FontManager.hpp"
-^
-src/gameStates/AIDemoState.cpp:14:0: information: Include file: "managers/InputManager.hpp" not found. [missingInclude]
-#include "managers/InputManager.hpp"
 ^
 src/gameStates/AIDemoState.cpp:15:0: information: Include file: <SDL3/SDL.h> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
 #include <SDL3/SDL.h>
@@ -229,80 +466,29 @@ src/gameStates/AIDemoState.cpp:17:0: information: Include file: <memory> not fou
 src/gameStates/AIDemoState.cpp:18:0: information: Include file: <random> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
 #include <random>
 ^
-src/gameStates/GamePlayState.cpp:6:0: information: Include file: "gameStates/GamePlayState.hpp" not found. [missingInclude]
-#include "gameStates/GamePlayState.hpp"
+src/gameStates/AIDemoState.cpp:0:0: information: Limiting analysis of branches. Use --check-level=exhaustive to analyze all branches. [normalCheckLevelMaxBranches]
+
 ^
-src/gameStates/GamePlayState.cpp:7:0: information: Include file: "managers/GameStateManager.hpp" not found. [missingInclude]
-#include "managers/GameStateManager.hpp"
-^
-src/gameStates/GamePlayState.cpp:8:0: information: Include file: "managers/FontManager.hpp" not found. [missingInclude]
-#include "managers/FontManager.hpp"
-^
-src/gameStates/GamePlayState.cpp:9:0: information: Include file: "managers/InputManager.hpp" not found. [missingInclude]
-#include "managers/InputManager.hpp"
-^
-src/gameStates/GamePlayState.cpp:10:0: information: Include file: "core/GameEngine.hpp" not found. [missingInclude]
-#include "core/GameEngine.hpp"
-^
-src/gameStates/GamePlayState.cpp:11:0: information: Include file: "gameStates/PauseState.hpp" not found. [missingInclude]
-#include "gameStates/PauseState.hpp"
-^
+include/gameStates/AIDemoState.hpp:25:10: style: Virtual function 'exit' is called from destructor '~AIDemoState()' at line 21. Dynamic binding is not used. [virtualCallInConstructor]
+    bool exit() override;
+         ^
+src/gameStates/AIDemoState.cpp:21:5: note: Calling exit
+    exit();
+    ^
+include/gameStates/AIDemoState.hpp:25:10: note: exit is a virtual function
+    bool exit() override;
+         ^
 src/gameStates/GamePlayState.cpp:12:0: information: Include file: <iostream> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
 #include <iostream>
-^
-src/gameStates/LogoState.cpp:6:0: information: Include file: "gameStates/LogoState.hpp" not found. [missingInclude]
-#include "gameStates/LogoState.hpp"
-^
-src/gameStates/LogoState.cpp:7:0: information: Include file: "core/GameEngine.hpp" not found. [missingInclude]
-#include "core/GameEngine.hpp"
-^
-src/gameStates/LogoState.cpp:8:0: information: Include file: "managers/SoundManager.hpp" not found. [missingInclude]
-#include "managers/SoundManager.hpp"
-^
-src/gameStates/LogoState.cpp:9:0: information: Include file: "managers/FontManager.hpp" not found. [missingInclude]
-#include "managers/FontManager.hpp"
-^
-src/gameStates/LogoState.cpp:10:0: information: Include file: "managers/TextureManager.hpp" not found. [missingInclude]
-#include "managers/TextureManager.hpp"
 ^
 src/gameStates/LogoState.cpp:11:0: information: Include file: <iostream> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
 #include <iostream>
 ^
-src/gameStates/MainMenuState.cpp:6:0: information: Include file: "gameStates/MainMenuState.hpp" not found. [missingInclude]
-#include "gameStates/MainMenuState.hpp"
-^
-src/gameStates/MainMenuState.cpp:7:0: information: Include file: "managers/InputManager.hpp" not found. [missingInclude]
-#include "managers/InputManager.hpp"
-^
-src/gameStates/MainMenuState.cpp:8:0: information: Include file: "managers/FontManager.hpp" not found. [missingInclude]
-#include "managers/FontManager.hpp"
-^
-src/gameStates/MainMenuState.cpp:9:0: information: Include file: "core/GameEngine.hpp" not found. [missingInclude]
-#include "core/GameEngine.hpp"
-^
 src/gameStates/MainMenuState.cpp:10:0: information: Include file: <iostream> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
 #include <iostream>
 ^
-src/gameStates/PauseState.cpp:6:0: information: Include file: "gameStates/PauseState.hpp" not found. [missingInclude]
-#include "gameStates/PauseState.hpp"
-^
-src/gameStates/PauseState.cpp:7:0: information: Include file: "managers/InputManager.hpp" not found. [missingInclude]
-#include "managers/InputManager.hpp"
-^
-src/gameStates/PauseState.cpp:8:0: information: Include file: "managers/FontManager.hpp" not found. [missingInclude]
-#include "managers/FontManager.hpp"
-^
-src/gameStates/PauseState.cpp:9:0: information: Include file: "core/GameEngine.hpp" not found. [missingInclude]
-#include "core/GameEngine.hpp"
-^
 src/gameStates/PauseState.cpp:10:0: information: Include file: <iostream> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
 #include <iostream>
-^
-src/managers/AIManager.cpp:6:0: information: Include file: "managers/AIManager.hpp" not found. [missingInclude]
-#include "managers/AIManager.hpp"
-^
-src/managers/AIManager.cpp:7:0: information: Include file: "core/ThreadSystem.hpp" not found. [missingInclude]
-#include "core/ThreadSystem.hpp"
 ^
 src/managers/AIManager.cpp:8:0: information: Include file: <iostream> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
 #include <iostream>
@@ -313,21 +499,15 @@ src/managers/AIManager.cpp:9:0: information: Include file: <algorithm> not found
 src/managers/AIManager.cpp:529:12: style: The scope of the variable 'timeMs' can be reduced. [variableScope]
     double timeMs = (endTime - startTime) / 1000000.0;
            ^
-src/managers/EntityStateManager.cpp:6:0: information: Include file: "managers/EntityStateManager.hpp" not found. [missingInclude]
-#include "managers/EntityStateManager.hpp"
-^
-src/managers/EntityStateManager.cpp:7:0: information: Include file: "entities/EntityState.hpp" not found. [missingInclude]
-#include "entities/EntityState.hpp"
-^
 src/managers/EntityStateManager.cpp:8:0: information: Include file: <iostream> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
 #include <iostream>
 ^
 src/managers/EntityStateManager.cpp:9:0: information: Include file: <stdexcept> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
 #include <stdexcept>
 ^
-src/managers/FontManager.cpp:6:0: information: Include file: "managers/FontManager.hpp" not found. [missingInclude]
-#include "managers/FontManager.hpp"
-^
+src/managers/EntityStateManager.cpp:43:44: style: Consider using std::find_if algorithm instead of a raw loop. [useStlAlgorithm]
+    if (pair.second.get() == currentState) {
+                                           ^
 src/managers/FontManager.cpp:7:0: information: Include file: <iostream> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
 #include <iostream>
 ^
@@ -337,32 +517,26 @@ src/managers/FontManager.cpp:8:0: information: Include file: <algorithm> not fou
 src/managers/FontManager.cpp:9:0: information: Include file: <filesystem> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
 #include <filesystem>
 ^
-src/managers/GameStateManager.cpp:6:0: information: Include file: "managers/GameStateManager.hpp" not found. [missingInclude]
-#include "managers/GameStateManager.hpp"
-^
-src/managers/GameStateManager.cpp:7:0: information: Include file: "gameStates/GameState.hpp" not found. [missingInclude]
-#include "gameStates/GameState.hpp"
-^
+include/managers/FontManager.hpp:29:8: performance: inconclusive: Technically the member function 'FontManager::init' can be static (but you may consider moving to unnamed namespace). [functionStatic]
+  bool init();
+       ^
+src/managers/FontManager.cpp:13:19: note: Technically the member function 'FontManager::init' can be static (but you may consider moving to unnamed namespace).
+bool FontManager::init() {
+                  ^
+include/managers/FontManager.hpp:29:8: note: Technically the member function 'FontManager::init' can be static (but you may consider moving to unnamed namespace).
+  bool init();
+       ^
 src/managers/GameStateManager.cpp:8:0: information: Include file: <algorithm> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
 #include <algorithm>
 ^
 src/managers/GameStateManager.cpp:9:0: information: Include file: <iostream> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
 #include <iostream>
 ^
-src/managers/InputManager.cpp:6:0: information: Include file: "managers/InputManager.hpp" not found. [missingInclude]
-#include "managers/InputManager.hpp"
-^
-src/managers/InputManager.cpp:7:0: information: Include file: "core/GameEngine.hpp" not found. [missingInclude]
-#include "core/GameEngine.hpp"
-^
 src/managers/InputManager.cpp:8:0: information: Include file: "SDL3/SDL_gamepad.h" not found. [missingInclude]
 #include "SDL3/SDL_gamepad.h"
 ^
 src/managers/InputManager.cpp:9:0: information: Include file: "SDL3/SDL_joystick.h" not found. [missingInclude]
 #include "SDL3/SDL_joystick.h"
-^
-src/managers/InputManager.cpp:10:0: information: Include file: "utils/Vector2D.hpp" not found. [missingInclude]
-#include "utils/Vector2D.hpp"
 ^
 src/managers/InputManager.cpp:11:0: information: Include file: <iostream> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
 #include <iostream>
@@ -385,15 +559,24 @@ SDL_JoystickID* gamepadIDs{nullptr};
 src/managers/InputManager.cpp:50:19: note: Shadow variable
   SDL_JoystickID* gamepadIDs = SDL_GetGamepads(&numGamepads);
                   ^
-src/managers/SaveGameManager.cpp:6:0: information: Include file: "managers/SaveGameManager.hpp" not found. [missingInclude]
-#include "managers/SaveGameManager.hpp"
-^
-src/managers/SaveGameManager.cpp:7:0: information: Include file: "entities/Player.hpp" not found. [missingInclude]
-#include "entities/Player.hpp"
-^
-src/managers/SaveGameManager.cpp:8:0: information: Include file: "utils/Vector2D.hpp" not found. [missingInclude]
-#include "utils/Vector2D.hpp"
-^
+src/managers/InputManager.cpp:216:43: style: Parameter 'event' can be declared as reference to const [constParameterReference]
+void InputManager::onMouseMove(SDL_Event& event) {
+                                          ^
+src/managers/InputManager.cpp:221:49: style: Parameter 'event' can be declared as reference to const [constParameterReference]
+void InputManager::onMouseButtonDown(SDL_Event& event) {
+                                                ^
+src/managers/InputManager.cpp:236:47: style: Parameter 'event' can be declared as reference to const [constParameterReference]
+void InputManager::onMouseButtonUp(SDL_Event& event) {
+                                              ^
+src/managers/InputManager.cpp:248:49: style: Parameter 'event' can be declared as reference to const [constParameterReference]
+void InputManager::onGamepadAxisMove(SDL_Event& event) {
+                                                ^
+src/managers/InputManager.cpp:344:51: style: Parameter 'event' can be declared as reference to const [constParameterReference]
+void InputManager::onGamepadButtonDown(SDL_Event& event) {
+                                                  ^
+src/managers/InputManager.cpp:391:49: style: Parameter 'event' can be declared as reference to const [constParameterReference]
+void InputManager::onGamepadButtonUp(SDL_Event& event) {
+                                                ^
 src/managers/SaveGameManager.cpp:9:0: information: Include file: <iostream> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
 #include <iostream>
 ^
@@ -412,6 +595,108 @@ src/managers/SaveGameManager.cpp:13:0: information: Include file: <ctime> not fo
 src/managers/SaveGameManager.cpp:14:0: information: Include file: <cstring> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
 #include <cstring>
 ^
+src/managers/SaveGameManager.cpp:0:0: information: Limiting analysis of branches. Use --check-level=exhaustive to analyze all branches. [normalCheckLevelMaxBranches]
+
+^
+include/managers/SaveGameManager.hpp:52:10: style: inconclusive: Technically the member function 'SaveGameManager::save' can be const. [functionConst]
+    bool save(const std::string& saveFileName, const Player* player);
+         ^
+src/managers/SaveGameManager.cpp:20:23: note: Technically the member function 'SaveGameManager::save' can be const.
+bool SaveGameManager::save(const std::string& saveFileName, const Player* player) {
+                      ^
+include/managers/SaveGameManager.hpp:52:10: note: Technically the member function 'SaveGameManager::save' can be const.
+    bool save(const std::string& saveFileName, const Player* player);
+         ^
+include/managers/SaveGameManager.hpp:60:10: style: inconclusive: Technically the member function 'SaveGameManager::load' can be const. [functionConst]
+    bool load(const std::string& saveFileName, Player* player);
+         ^
+src/managers/SaveGameManager.cpp:93:23: note: Technically the member function 'SaveGameManager::load' can be const.
+bool SaveGameManager::load(const std::string& saveFileName, Player* player) {
+                      ^
+include/managers/SaveGameManager.hpp:60:10: note: Technically the member function 'SaveGameManager::load' can be const.
+    bool load(const std::string& saveFileName, Player* player);
+         ^
+include/managers/SaveGameManager.hpp:68:10: style: inconclusive: Technically the member function 'SaveGameManager::deleteSave' can be const. [functionConst]
+    bool deleteSave(const std::string& saveFileName);
+         ^
+src/managers/SaveGameManager.cpp:185:23: note: Technically the member function 'SaveGameManager::deleteSave' can be const.
+bool SaveGameManager::deleteSave(const std::string& saveFileName) {
+                      ^
+include/managers/SaveGameManager.hpp:68:10: note: Technically the member function 'SaveGameManager::deleteSave' can be const.
+    bool deleteSave(const std::string& saveFileName);
+         ^
+include/managers/SaveGameManager.hpp:98:10: performance: inconclusive: Technically the member function 'SaveGameManager::clean' can be static (but you may consider moving to unnamed namespace). [functionStatic]
+    void clean();
+         ^
+src/managers/SaveGameManager.cpp:328:23: note: Technically the member function 'SaveGameManager::clean' can be static (but you may consider moving to unnamed namespace).
+void SaveGameManager::clean() {
+                      ^
+include/managers/SaveGameManager.hpp:98:10: note: Technically the member function 'SaveGameManager::clean' can be static (but you may consider moving to unnamed namespace).
+    void clean();
+         ^
+include/managers/SaveGameManager.hpp:105:17: performance: inconclusive: Technically the member function 'SaveGameManager::getSlotFileName' can be static (but you may consider moving to unnamed namespace). [functionStatic]
+    std::string getSlotFileName(int slotNumber) const;
+                ^
+src/managers/SaveGameManager.cpp:333:30: note: Technically the member function 'SaveGameManager::getSlotFileName' can be static (but you may consider moving to unnamed namespace).
+std::string SaveGameManager::getSlotFileName(int slotNumber) const {
+                             ^
+include/managers/SaveGameManager.hpp:105:17: note: Technically the member function 'SaveGameManager::getSlotFileName' can be static (but you may consider moving to unnamed namespace).
+    std::string getSlotFileName(int slotNumber) const;
+                ^
+include/managers/SaveGameManager.hpp:111:10: performance: inconclusive: Technically the member function 'SaveGameManager::writeHeader' can be static (but you may consider moving to unnamed namespace). [functionStatic]
+    bool writeHeader(std::ofstream& file, uint32_t dataSize) const;
+         ^
+src/managers/SaveGameManager.cpp:430:23: note: Technically the member function 'SaveGameManager::writeHeader' can be static (but you may consider moving to unnamed namespace).
+bool SaveGameManager::writeHeader(std::ofstream& file, uint32_t dataSize) const {
+                      ^
+include/managers/SaveGameManager.hpp:111:10: note: Technically the member function 'SaveGameManager::writeHeader' can be static (but you may consider moving to unnamed namespace).
+    bool writeHeader(std::ofstream& file, uint32_t dataSize) const;
+         ^
+include/managers/SaveGameManager.hpp:112:10: performance: inconclusive: Technically the member function 'SaveGameManager::readHeader' can be static (but you may consider moving to unnamed namespace). [functionStatic]
+    bool readHeader(std::ifstream& file, SaveGameHeader& header) const;
+         ^
+src/managers/SaveGameManager.cpp:439:23: note: Technically the member function 'SaveGameManager::readHeader' can be static (but you may consider moving to unnamed namespace).
+bool SaveGameManager::readHeader(std::ifstream& file, SaveGameHeader& header) const {
+                      ^
+include/managers/SaveGameManager.hpp:112:10: note: Technically the member function 'SaveGameManager::readHeader' can be static (but you may consider moving to unnamed namespace).
+    bool readHeader(std::ifstream& file, SaveGameHeader& header) const;
+         ^
+include/managers/SaveGameManager.hpp:113:10: performance: inconclusive: Technically the member function 'SaveGameManager::writeString' can be static (but you may consider moving to unnamed namespace). [functionStatic]
+    bool writeString(std::ofstream& file, const std::string& str) const;
+         ^
+src/managers/SaveGameManager.cpp:451:23: note: Technically the member function 'SaveGameManager::writeString' can be static (but you may consider moving to unnamed namespace).
+bool SaveGameManager::writeString(std::ofstream& file, const std::string& str) const {
+                      ^
+include/managers/SaveGameManager.hpp:113:10: note: Technically the member function 'SaveGameManager::writeString' can be static (but you may consider moving to unnamed namespace).
+    bool writeString(std::ofstream& file, const std::string& str) const;
+         ^
+include/managers/SaveGameManager.hpp:114:10: performance: inconclusive: Technically the member function 'SaveGameManager::readString' can be static (but you may consider moving to unnamed namespace). [functionStatic]
+    bool readString(std::ifstream& file, std::string& str) const;
+         ^
+src/managers/SaveGameManager.cpp:458:23: note: Technically the member function 'SaveGameManager::readString' can be static (but you may consider moving to unnamed namespace).
+bool SaveGameManager::readString(std::ifstream& file, std::string& str) const {
+                      ^
+include/managers/SaveGameManager.hpp:114:10: note: Technically the member function 'SaveGameManager::readString' can be static (but you may consider moving to unnamed namespace).
+    bool readString(std::ifstream& file, std::string& str) const;
+         ^
+include/managers/SaveGameManager.hpp:115:10: performance: inconclusive: Technically the member function 'SaveGameManager::writeVector2D' can be static (but you may consider moving to unnamed namespace). [functionStatic]
+    bool writeVector2D(std::ofstream& file, const Vector2D& vec) const;
+         ^
+src/managers/SaveGameManager.cpp:471:23: note: Technically the member function 'SaveGameManager::writeVector2D' can be static (but you may consider moving to unnamed namespace).
+bool SaveGameManager::writeVector2D(std::ofstream& file, const Vector2D& vec) const {
+                      ^
+include/managers/SaveGameManager.hpp:115:10: note: Technically the member function 'SaveGameManager::writeVector2D' can be static (but you may consider moving to unnamed namespace).
+    bool writeVector2D(std::ofstream& file, const Vector2D& vec) const;
+         ^
+include/managers/SaveGameManager.hpp:116:10: performance: inconclusive: Technically the member function 'SaveGameManager::readVector2D' can be static (but you may consider moving to unnamed namespace). [functionStatic]
+    bool readVector2D(std::ifstream& file, Vector2D& vec) const;
+         ^
+src/managers/SaveGameManager.cpp:479:23: note: Technically the member function 'SaveGameManager::readVector2D' can be static (but you may consider moving to unnamed namespace).
+bool SaveGameManager::readVector2D(std::ifstream& file, Vector2D& vec) const {
+                      ^
+include/managers/SaveGameManager.hpp:116:10: note: Technically the member function 'SaveGameManager::readVector2D' can be static (but you may consider moving to unnamed namespace).
+    bool readVector2D(std::ifstream& file, Vector2D& vec) const;
+         ^
 src/managers/SaveGameManager.cpp:474:16: portability: inconclusive: Casting from float * to const signed char * is not portable due to different binary data representations on different platforms. [invalidPointerCast]
     file.write(reinterpret_cast<const char*>(&x), sizeof(float));
                ^
@@ -424,9 +709,15 @@ src/managers/SaveGameManager.cpp:481:15: portability: inconclusive: Casting from
 src/managers/SaveGameManager.cpp:482:15: portability: inconclusive: Casting from float * to signed char * is not portable due to different binary data representations on different platforms. [invalidPointerCast]
     file.read(reinterpret_cast<char*>(&y), sizeof(float));
               ^
-src/managers/SoundManager.cpp:6:0: information: Include file: "managers/SoundManager.hpp" not found. [missingInclude]
-#include "managers/SoundManager.hpp"
-^
+src/managers/SaveGameManager.cpp:32:17: style: The scope of the variable 'fullPath' can be reduced. [variableScope]
+    std::string fullPath = getFullSavePath(saveFileName);
+                ^
+src/managers/SaveGameManager.cpp:186:17: style: The scope of the variable 'fullPath' can be reduced. [variableScope]
+    std::string fullPath = getFullSavePath(saveFileName);
+                ^
+src/managers/SaveGameManager.cpp:382:18: style: Variable 'timeinfo' can be declared as pointer to const [constVariablePointer]
+        std::tm* timeinfo = std::localtime(&header.timestamp);
+                 ^
 src/managers/SoundManager.cpp:7:0: information: Include file: <iostream> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
 #include <iostream>
 ^
@@ -436,9 +727,69 @@ src/managers/SoundManager.cpp:8:0: information: Include file: <filesystem> not f
 src/managers/SoundManager.cpp:9:0: information: Include file: <algorithm> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
 #include <algorithm>
 ^
-src/managers/TextureManager.cpp:6:0: information: Include file: "managers/TextureManager.hpp" not found. [missingInclude]
-#include "managers/TextureManager.hpp"
+src/managers/SoundManager.cpp:0:0: information: Limiting analysis of branches. Use --check-level=exhaustive to analyze all branches. [normalCheckLevelMaxBranches]
+
 ^
+include/managers/SoundManager.hpp:48:8: performance: inconclusive: Technically the member function 'SoundManager::pauseMusic' can be static (but you may consider moving to unnamed namespace). [functionStatic]
+  void pauseMusic();
+       ^
+src/managers/SoundManager.cpp:254:20: note: Technically the member function 'SoundManager::pauseMusic' can be static (but you may consider moving to unnamed namespace).
+void SoundManager::pauseMusic() {
+                   ^
+include/managers/SoundManager.hpp:48:8: note: Technically the member function 'SoundManager::pauseMusic' can be static (but you may consider moving to unnamed namespace).
+  void pauseMusic();
+       ^
+include/managers/SoundManager.hpp:51:8: performance: inconclusive: Technically the member function 'SoundManager::resumeMusic' can be static (but you may consider moving to unnamed namespace). [functionStatic]
+  void resumeMusic();
+       ^
+src/managers/SoundManager.cpp:260:20: note: Technically the member function 'SoundManager::resumeMusic' can be static (but you may consider moving to unnamed namespace).
+void SoundManager::resumeMusic() {
+                   ^
+include/managers/SoundManager.hpp:51:8: note: Technically the member function 'SoundManager::resumeMusic' can be static (but you may consider moving to unnamed namespace).
+  void resumeMusic();
+       ^
+include/managers/SoundManager.hpp:54:8: performance: inconclusive: Technically the member function 'SoundManager::stopMusic' can be static (but you may consider moving to unnamed namespace). [functionStatic]
+  void stopMusic();
+       ^
+src/managers/SoundManager.cpp:266:20: note: Technically the member function 'SoundManager::stopMusic' can be static (but you may consider moving to unnamed namespace).
+void SoundManager::stopMusic() {
+                   ^
+include/managers/SoundManager.hpp:54:8: note: Technically the member function 'SoundManager::stopMusic' can be static (but you may consider moving to unnamed namespace).
+  void stopMusic();
+       ^
+include/managers/SoundManager.hpp:57:8: performance: inconclusive: Technically the member function 'SoundManager::isMusicPlaying' can be static (but you may consider moving to unnamed namespace). [functionStatic]
+  bool isMusicPlaying() const;
+       ^
+src/managers/SoundManager.cpp:270:20: note: Technically the member function 'SoundManager::isMusicPlaying' can be static (but you may consider moving to unnamed namespace).
+bool SoundManager::isMusicPlaying() const {
+                   ^
+include/managers/SoundManager.hpp:57:8: note: Technically the member function 'SoundManager::isMusicPlaying' can be static (but you may consider moving to unnamed namespace).
+  bool isMusicPlaying() const;
+       ^
+include/managers/SoundManager.hpp:60:8: performance: inconclusive: Technically the member function 'SoundManager::setMusicVolume' can be static (but you may consider moving to unnamed namespace). [functionStatic]
+  void setMusicVolume(int volume);
+       ^
+src/managers/SoundManager.cpp:274:20: note: Technically the member function 'SoundManager::setMusicVolume' can be static (but you may consider moving to unnamed namespace).
+void SoundManager::setMusicVolume(int volume) {
+                   ^
+include/managers/SoundManager.hpp:60:8: note: Technically the member function 'SoundManager::setMusicVolume' can be static (but you may consider moving to unnamed namespace).
+  void setMusicVolume(int volume);
+       ^
+include/managers/SoundManager.hpp:63:8: performance: inconclusive: Technically the member function 'SoundManager::setSFXVolume' can be static (but you may consider moving to unnamed namespace). [functionStatic]
+  void setSFXVolume(int volume);
+       ^
+src/managers/SoundManager.cpp:280:20: note: Technically the member function 'SoundManager::setSFXVolume' can be static (but you may consider moving to unnamed namespace).
+void SoundManager::setSFXVolume(int volume) {
+                   ^
+include/managers/SoundManager.hpp:63:8: note: Technically the member function 'SoundManager::setSFXVolume' can be static (but you may consider moving to unnamed namespace).
+  void setSFXVolume(int volume);
+       ^
+src/managers/SoundManager.cpp:63:62: performance: Function parameter 'soundID' should be passed by const reference. [passedByValue]
+bool SoundManager::loadSFX(std::string filePath, std::string soundID) {
+                                                             ^
+src/managers/SoundManager.cpp:139:64: performance: Function parameter 'musicID' should be passed by const reference. [passedByValue]
+bool SoundManager::loadMusic(std::string filePath, std::string musicID) {
+                                                               ^
 src/managers/TextureManager.cpp:7:0: information: Include file: <iostream> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
 #include <iostream>
 ^
@@ -447,6 +798,198 @@ src/managers/TextureManager.cpp:8:0: information: Include file: <filesystem> not
 ^
 src/managers/TextureManager.cpp:9:0: information: Include file: <algorithm> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
 #include <algorithm>
+^
+src/managers/TextureManager.cpp:111:41: style: inconclusive: Function 'draw' argument 6 names different: declaration 'p_Renderer' definition 'p_renderer'. [funcArgNamesDifferent]
+                          SDL_Renderer* p_renderer,
+                                        ^
+include/managers/TextureManager.hpp:38:27: note: Function 'draw' argument 6 names different: declaration 'p_Renderer' definition 'p_renderer'.
+            SDL_Renderer* p_Renderer,
+                          ^
+src/managers/TextureManager.cpp:111:41: note: Function 'draw' argument 6 names different: declaration 'p_Renderer' definition 'p_renderer'.
+                          SDL_Renderer* p_renderer,
+                                        ^
+src/managers/TextureManager.cpp:14:39: performance: Function parameter 'textureID' should be passed by const reference. [passedByValue]
+                          std::string textureID,
+                                      ^
+include/core/GameEngine.hpp:55:0: style: The function 'setWindowSize' is never used. [unusedFunction]
+  void setWindowSize(int width, int height) { m_windowWidth = width; m_windowHeight = height; }
+^
+include/core/ThreadSystem.hpp:354:0: style: The function 'getQueueSize' is never used. [unusedFunction]
+    size_t getQueueSize() const {
+^
+include/core/ThreadSystem.hpp:373:0: style: The function 'reserveQueueCapacity' is never used. [unusedFunction]
+    bool reserveQueueCapacity(size_t capacity) {
+^
+include/entities/Entity.hpp:23:0: style: The function 'getAcceleration' is never used. [unusedFunction]
+   Vector2D getAcceleration() const { return m_acceleration; }
+^
+include/entities/Entity.hpp:24:0: style: The function 'getWidth' is never used. [unusedFunction]
+   int getWidth() const { return m_width; }
+^
+include/entities/Entity.hpp:25:0: style: The function 'getHeight' is never used. [unusedFunction]
+   int getHeight() const { return m_height; }
+^
+include/entities/Entity.hpp:27:0: style: The function 'getCurrentFrame' is never used. [unusedFunction]
+   int getCurrentFrame() const { return m_currentFrame; }
+^
+include/entities/Entity.hpp:28:0: style: The function 'getCurrentRow' is never used. [unusedFunction]
+   int getCurrentRow() const { return m_currentRow; }
+^
+include/entities/Entity.hpp:29:0: style: The function 'getNumFrames' is never used. [unusedFunction]
+   int getNumFrames() const { return m_numFrames; }
+^
+include/entities/Entity.hpp:30:0: style: The function 'getAnimSpeed' is never used. [unusedFunction]
+   int getAnimSpeed() const { return m_animSpeed; }
+^
+include/entities/NPC.hpp:28:0: style: The function 'getFlip' is never used. [unusedFunction]
+    SDL_FlipMode getFlip() const { return m_flip; }
+^
+include/entities/NPC.hpp:35:0: style: The function 'setNumFrames' is never used. [unusedFunction]
+    void setNumFrames(int numFrames) override { m_numFrames = numFrames; }
+^
+include/entities/NPC.hpp:40:0: style: The function 'isBoundsCheckEnabled' is never used. [unusedFunction]
+    bool isBoundsCheckEnabled() const { return m_boundsCheckEnabled; }
+^
+src/ai/behaviors/ChaseBehavior.cpp:130:0: style: The function 'getTarget' is never used. [unusedFunction]
+Entity* ChaseBehavior::getTarget() const {
+^
+src/ai/behaviors/ChaseBehavior.cpp:134:0: style: The function 'setChaseSpeed' is never used. [unusedFunction]
+void ChaseBehavior::setChaseSpeed(float speed) {
+^
+src/ai/behaviors/ChaseBehavior.cpp:138:0: style: The function 'setMaxRange' is never used. [unusedFunction]
+void ChaseBehavior::setMaxRange(float range) {
+^
+src/ai/behaviors/ChaseBehavior.cpp:142:0: style: The function 'setMinRange' is never used. [unusedFunction]
+void ChaseBehavior::setMinRange(float range) {
+^
+src/ai/behaviors/ChaseBehavior.cpp:146:0: style: The function 'isChasing' is never used. [unusedFunction]
+bool ChaseBehavior::isChasing() const {
+^
+src/ai/behaviors/ChaseBehavior.cpp:150:0: style: The function 'hasLineOfSight' is never used. [unusedFunction]
+bool ChaseBehavior::hasLineOfSight() const {
+^
+src/ai/behaviors/PatrolBehavior.cpp:132:0: style: The function 'addWaypoint' is never used. [unusedFunction]
+void PatrolBehavior::addWaypoint(const Vector2D& waypoint) {
+^
+src/ai/behaviors/PatrolBehavior.cpp:136:0: style: The function 'setWaypoints' is never used. [unusedFunction]
+void PatrolBehavior::setWaypoints(const boost::container::small_vector<Vector2D, 10>& waypoints) {
+^
+src/ai/behaviors/PatrolBehavior.cpp:143:0: style: The function 'setIncludeOffscreenPoints' is never used. [unusedFunction]
+void PatrolBehavior::setIncludeOffscreenPoints(bool include) {
+^
+src/ai/behaviors/PatrolBehavior.cpp:152:0: style: The function 'getWaypoints' is never used. [unusedFunction]
+const boost::container::small_vector<Vector2D, 10>& PatrolBehavior::getWaypoints() const {
+^
+src/ai/behaviors/PatrolBehavior.cpp:156:0: style: The function 'setMoveSpeed' is never used. [unusedFunction]
+void PatrolBehavior::setMoveSpeed(float speed) {
+^
+src/ai/behaviors/WanderBehavior.cpp:193:0: style: The function 'setCenterPoint' is never used. [unusedFunction]
+void WanderBehavior::setCenterPoint(const Vector2D& centerPoint) {
+^
+src/ai/behaviors/WanderBehavior.cpp:202:0: style: The function 'setAreaRadius' is never used. [unusedFunction]
+void WanderBehavior::setAreaRadius(float radius) {
+^
+src/ai/behaviors/WanderBehavior.cpp:206:0: style: The function 'setSpeed' is never used. [unusedFunction]
+void WanderBehavior::setSpeed(float speed) {
+^
+src/ai/behaviors/WanderBehavior.cpp:210:0: style: The function 'setChangeDirectionInterval' is never used. [unusedFunction]
+void WanderBehavior::setChangeDirectionInterval(float interval) {
+^
+src/core/GameEngine.cpp:337:0: style: The function 'waitForUpdate' is never used. [unusedFunction]
+void GameEngine::waitForUpdate() {
+^
+src/core/GameEngine.cpp:342:0: style: The function 'signalUpdateComplete' is never used. [unusedFunction]
+void GameEngine::signalUpdateComplete() {
+^
+src/core/GameEngine.cpp:349:0: style: The function 'loadResourcesAsync' is never used. [unusedFunction]
+bool GameEngine::loadResourcesAsync(const std::string& path) {
+^
+src/managers/AIManager.cpp:85:0: style: The function 'configureThreading' is never used. [unusedFunction]
+void AIManager::configureThreading(bool useThreading, unsigned int maxThreads) {
+^
+src/managers/AIManager.cpp:208:0: style: The function 'hasEntityWithBehavior' is never used. [unusedFunction]
+bool AIManager::hasEntityWithBehavior(const std::string& behaviorName) const {
+^
+src/managers/AIManager.cpp:426:0: style: The function 'batchProcessEntities' is never used. [unusedFunction]
+void AIManager::batchProcessEntities(const std::string& behaviorName, const std::vector<Entity*>& entities) {
+^
+src/managers/AIManager.cpp:489:0: style: The function 'sendMessageToEntity' is never used. [unusedFunction]
+void AIManager::sendMessageToEntity(Entity* entity, const std::string& message, bool immediate) {
+^
+src/managers/AIManager.cpp:657:0: style: The function 'getBehaviorCount' is never used. [unusedFunction]
+size_t AIManager::getBehaviorCount() const {
+^
+src/managers/AIManager.cpp:662:0: style: The function 'getManagedEntityCount' is never used. [unusedFunction]
+size_t AIManager::getManagedEntityCount() const {
+^
+src/managers/FontManager.cpp:156:0: style: The function 'isFontLoaded' is never used. [unusedFunction]
+bool FontManager::isFontLoaded(const std::string& fontID) const {
+^
+src/managers/FontManager.cpp:160:0: style: The function 'clearFont' is never used. [unusedFunction]
+void FontManager::clearFont(const std::string& fontID) {
+^
+src/managers/GameStateManager.cpp:98:0: style: The function 'clearAllStates' is never used. [unusedFunction]
+void GameStateManager::clearAllStates() {
+^
+src/managers/InputManager.cpp:132:0: style: The function 'getButtonState' is never used. [unusedFunction]
+bool InputManager::getButtonState(int joy, int buttonNumber) const {
+^
+src/managers/SaveGameManager.cpp:82:0: style: The function 'saveToSlot' is never used. [unusedFunction]
+bool SaveGameManager::saveToSlot(int slotNumber, const Player* player) {
+^
+src/managers/SaveGameManager.cpp:175:0: style: The function 'loadFromSlot' is never used. [unusedFunction]
+bool SaveGameManager::loadFromSlot(int slotNumber, Player* player) {
+^
+src/managers/SaveGameManager.cpp:205:0: style: The function 'deleteSlot' is never used. [unusedFunction]
+bool SaveGameManager::deleteSlot(int slotNumber) {
+^
+src/managers/SaveGameManager.cpp:253:0: style: The function 'getSaveInfo' is never used. [unusedFunction]
+SaveGameData SaveGameManager::getSaveInfo(const std::string& saveFileName) const {
+^
+src/managers/SaveGameManager.cpp:257:0: style: The function 'getAllSaveInfo' is never used. [unusedFunction]
+boost::container::small_vector<SaveGameData, 10> SaveGameManager::getAllSaveInfo() const {
+^
+src/managers/SaveGameManager.cpp:274:0: style: The function 'slotExists' is never used. [unusedFunction]
+bool SaveGameManager::slotExists(int slotNumber) const {
+^
+src/managers/SoundManager.cpp:229:0: style: The function 'playMusic' is never used. [unusedFunction]
+void SoundManager::playMusic(std::string musicID, int loops, int volume) {
+^
+src/managers/SoundManager.cpp:254:0: style: The function 'pauseMusic' is never used. [unusedFunction]
+void SoundManager::pauseMusic() {
+^
+src/managers/SoundManager.cpp:260:0: style: The function 'resumeMusic' is never used. [unusedFunction]
+void SoundManager::resumeMusic() {
+^
+src/managers/SoundManager.cpp:266:0: style: The function 'stopMusic' is never used. [unusedFunction]
+void SoundManager::stopMusic() {
+^
+src/managers/SoundManager.cpp:270:0: style: The function 'isMusicPlaying' is never used. [unusedFunction]
+bool SoundManager::isMusicPlaying() const {
+^
+src/managers/SoundManager.cpp:274:0: style: The function 'setMusicVolume' is never used. [unusedFunction]
+void SoundManager::setMusicVolume(int volume) {
+^
+src/managers/SoundManager.cpp:280:0: style: The function 'setSFXVolume' is never used. [unusedFunction]
+void SoundManager::setSFXVolume(int volume) {
+^
+src/managers/SoundManager.cpp:330:0: style: The function 'clearSFX' is never used. [unusedFunction]
+void SoundManager::clearSFX(std::string soundID) {
+^
+src/managers/SoundManager.cpp:338:0: style: The function 'clearMusic' is never used. [unusedFunction]
+void SoundManager::clearMusic(std::string musicID) {
+^
+src/managers/SoundManager.cpp:346:0: style: The function 'isSFXLoaded' is never used. [unusedFunction]
+bool SoundManager::isSFXLoaded(std::string soundID) const {
+^
+src/managers/SoundManager.cpp:350:0: style: The function 'isMusicLoaded' is never used. [unusedFunction]
+bool SoundManager::isMusicLoaded(std::string musicID) const {
+^
+src/managers/TextureManager.cpp:156:0: style: The function 'drawParallax' is never used. [unusedFunction]
+void TextureManager::drawParallax(std::string textureID,
+^
+src/managers/TextureManager.cpp:210:0: style: The function 'clearFromTexMap' is never used. [unusedFunction]
+void TextureManager::clearFromTexMap(std::string textureID) {
 ^
 nofile:0:0: information: Active checkers: 179/856 (use --checkers-report=<filename> to see details) [checkersReport]
 
