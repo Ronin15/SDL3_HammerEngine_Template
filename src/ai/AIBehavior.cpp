@@ -22,7 +22,7 @@ bool AIBehavior::isWithinUpdateFrequency(Entity* entity) const {
     
     // Update if enough frames have passed
     // Get or create frame counter for this entity
-    int& frameCounter = m_entityFrameCounters[entity];
+    const int& frameCounter = m_entityFrameCounters[entity];
     return (frameCounter >= m_updateFrequency);
 }
 
@@ -79,7 +79,7 @@ bool AIBehavior::shouldUpdate(Entity* entity) const {
         float priorityMultiplier = (m_priority + 1) / 10.0f;
 
         // Get the frame counter for this entity
-        int& frameCounter = m_entityFrameCounters[entity];
+        const int& frameCounter = m_entityFrameCounters[entity];
         
         // Determine update frequency based on distance
         int requiredFrames;
@@ -107,7 +107,7 @@ bool AIBehavior::shouldUpdate(Entity* entity) const {
     float priorityMultiplier = (m_priority + 1) / 10.0f; // Convert 0-9 priority to 0.1-1.0 multiplier
 
     // Get the frame counter for this entity
-    int& frameCounter = m_entityFrameCounters[entity];
+    const int& frameCounter = m_entityFrameCounters[entity];
     
     // Determine update frequency based on distance from player
     int requiredFrames;
