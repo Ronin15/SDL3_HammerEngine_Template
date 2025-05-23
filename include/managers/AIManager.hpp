@@ -331,9 +331,9 @@ private:
 
     // Message structure for AI communication
     struct QueuedMessage {
-        Entity* targetEntity;  // nullptr for broadcast
+        Entity* targetEntity{nullptr};  // nullptr for broadcast
         std::string message;
-        uint64_t timestamp;
+        uint64_t timestamp{0};
 
         QueuedMessage() = default;
 
