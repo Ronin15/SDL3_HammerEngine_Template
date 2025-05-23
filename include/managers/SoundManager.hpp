@@ -37,12 +37,12 @@ class SoundManager {
   // Play a sound effect
   void playSFX(const std::string& soundID,
                int loops = 0,
-               int volume = 128);
+               int volume = 100);
 
   // Play music
   void playMusic(const std::string& musicID,
                  int loops = -1,
-                 int volume = 128);
+                 int volume = 100);
 
   // Pause music
   void pauseMusic();
@@ -76,13 +76,21 @@ class SoundManager {
 
   // Check if music is loaded
   bool isMusicLoaded(const std::string& musicID) const;
+  
+  // Get current music volume
+  int getMusicVolume() const { return m_musicVolume; }
+  
+  // Get current SFX volume
+  int getSFXVolume() const { return m_sfxVolume; }
 
  private:
   boost::container::flat_map<std::string, Mix_Chunk*> m_sfxMap{};
   boost::container::flat_map<std::string, Mix_Music*> m_musicMap{};
-  SDL_AudioDeviceID m_deviceId{};
+  SDL_AudioDeviceID m_deviceId{0};
   bool m_initialized{false};
-  bool m_isShutdown{false};
+  std::atomic<bool> m_isShutdown{false};
+  int m_musicVolume{100};
+  int m_sfxVolume{100};
 
   // Delete copy constructor and assignment operator
   SoundManager(const SoundManager&) = delete; // Prevent copying

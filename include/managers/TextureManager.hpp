@@ -26,8 +26,8 @@ class TextureManager {
   // If fileName is a directory, it loads all PNG files from that directory
   // Returns true if at least one texture was loaded successfully
   // When loading a directory, textureID is used as a prefix for filenames
-  bool load(std::string fileName,
-            std::string textureID,
+  bool load(const std::string& fileName,
+            const std::string& textureID,
             SDL_Renderer* p_renderer);
 
   void draw(const std::string& textureID,

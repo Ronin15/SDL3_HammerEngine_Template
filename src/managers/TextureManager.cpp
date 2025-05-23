@@ -10,8 +10,8 @@
 
 bool TextureManager::initialized = false; // Initialize the static variable for TextureManager initialization
 
-bool TextureManager::load(std::string fileName,
-                          std::string textureID,
+bool TextureManager::load(const std::string& fileName,
+                          const std::string& textureID,
                           SDL_Renderer* p_renderer) {
   // Check if the fileName is a directory
   if (std::filesystem::exists(fileName) && std::filesystem::is_directory(fileName)) {
@@ -103,7 +103,7 @@ bool TextureManager::load(std::string fileName,
   return false;
 }
 
-void TextureManager::draw(std::string textureID,
+void TextureManager::draw(const std::string& textureID,
                           int x,
                           int y,
                           int width,
@@ -127,7 +127,7 @@ void TextureManager::draw(std::string textureID,
   SDL_RenderTextureRotated(p_renderer, m_textureMap[textureID], &srcRect, &destRect, angle, &center, flip);
 }
 
-void TextureManager::drawFrame(std::string textureID,
+void TextureManager::drawFrame(const std::string& textureID,
                                int x,
                                int y,
                                int width,
@@ -153,7 +153,7 @@ void TextureManager::drawFrame(std::string textureID,
   SDL_RenderTextureRotated(p_renderer, m_textureMap[textureID], &srcRect, &destRect, angle, &center, flip);
 }
 
-void TextureManager::drawParallax(std::string textureID,
+void TextureManager::drawParallax(const std::string& textureID,
                     int x,
                     int y,
                     int scroll,
@@ -207,16 +207,16 @@ void TextureManager::drawParallax(std::string textureID,
   SDL_RenderTexture(p_renderer, it->second, &srcRect2, &destRect2);
 }
 
-void TextureManager::clearFromTexMap(std::string textureID) {
+void TextureManager::clearFromTexMap(const std::string& textureID) {
     std::cout << "Forge Game Engine - Cleared : " << textureID << " texture\n";
   m_textureMap.erase(textureID);
 }
 
-bool TextureManager::isTextureInMap(std::string textureID) const {
+bool TextureManager::isTextureInMap(const std::string& textureID) const {
   return m_textureMap.find(textureID) != m_textureMap.end();
 }
 
-SDL_Texture* TextureManager::getTexture(std::string textureID) const {
+SDL_Texture* TextureManager::getTexture(const std::string& textureID) const {
   // Check if the texture exists in the map
   auto it = m_textureMap.find(textureID);
   if (it != m_textureMap.end()) {

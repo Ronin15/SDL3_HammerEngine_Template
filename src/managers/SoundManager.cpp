@@ -60,7 +60,7 @@ bool SoundManager::init() {
   return true;
 }
 
-bool SoundManager::loadSFX(std::string filePath, std::string soundID) {
+bool SoundManager::loadSFX(const std::string& filePath, const std::string& soundID) {
   // Don't load if shutdown
   if (m_isShutdown) {
     std::cerr << "Forge Game Engine - Warning: Attempted to use SoundManager after shutdown" << std::endl;
@@ -136,7 +136,7 @@ bool SoundManager::loadSFX(std::string filePath, std::string soundID) {
   return true;
 }
 
-bool SoundManager::loadMusic(std::string filePath, std::string musicID) {
+bool SoundManager::loadMusic(const std::string& filePath, const std::string& musicID) {
   // Check if the filePath is a directory
   if (std::filesystem::exists(filePath) && std::filesystem::is_directory(filePath)) {
     std::cout << "Forge Game Engine - Loading music from directory: " << filePath << "\n";
@@ -206,7 +206,7 @@ bool SoundManager::loadMusic(std::string filePath, std::string musicID) {
   return true;
 }
 
-void SoundManager::playSFX(std::string soundID, int loops, int volume) {
+void SoundManager::playSFX(const std::string& soundID, int loops, int volume) {
   if (!m_initialized) {
     std::cout << "Forge Game Engine - Sound system not initialized!\n";
     return;
@@ -226,7 +226,7 @@ void SoundManager::playSFX(std::string soundID, int loops, int volume) {
   }
 }
 
-void SoundManager::playMusic(std::string musicID, int loops, int volume) {
+void SoundManager::playMusic(const std::string& musicID, int loops, int volume) {
   if (m_isShutdown) {
     std::cerr << "Forge Game Engine - Warning: Attempted to use SoundManager after shutdown" << std::endl;
     return;
@@ -327,7 +327,7 @@ void SoundManager::clean() {
   }
 }
 
-void SoundManager::clearSFX(std::string soundID) {
+void SoundManager::clearSFX(const std::string& soundID) {
   if (m_sfxMap.find(soundID) != m_sfxMap.end()) {
     Mix_FreeChunk(m_sfxMap[soundID]);
     m_sfxMap.erase(soundID);
@@ -335,7 +335,7 @@ void SoundManager::clearSFX(std::string soundID) {
   }
 }
 
-void SoundManager::clearMusic(std::string musicID) {
+void SoundManager::clearMusic(const std::string& musicID) {
   if (m_musicMap.find(musicID) != m_musicMap.end()) {
     Mix_FreeMusic(m_musicMap[musicID]);
     m_musicMap.erase(musicID);
@@ -343,10 +343,10 @@ void SoundManager::clearMusic(std::string musicID) {
   }
 }
 
-bool SoundManager::isSFXLoaded(std::string soundID) const {
+bool SoundManager::isSFXLoaded(const std::string& soundID) const {
   return m_sfxMap.find(soundID) != m_sfxMap.end();
 }
 
-bool SoundManager::isMusicLoaded(std::string musicID) const {
+bool SoundManager::isMusicLoaded(const std::string& musicID) const {
   return m_musicMap.find(musicID) != m_musicMap.end();
 }
