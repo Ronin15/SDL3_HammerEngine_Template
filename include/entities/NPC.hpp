@@ -25,7 +25,7 @@ public:
     void setPosition(const Vector2D& position) override;
     
     // NPC-specific accessor methods
-    SDL_FlipMode getFlip() const { return m_flip; }
+    SDL_FlipMode getFlip() const override { return m_flip; }
     
     // NPC-specific setter methods
     void setFlip(SDL_FlipMode flip) override { m_flip = flip; }

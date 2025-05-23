@@ -28,6 +28,7 @@ class Entity {
    int getCurrentRow() const { return m_currentRow; }
    int getNumFrames() const { return m_numFrames; }
    int getAnimSpeed() const { return m_animSpeed; }
+   virtual SDL_FlipMode getFlip() const { return SDL_FLIP_NONE; }
 
    // Setter methods
    virtual void setPosition(const Vector2D& position) { m_position = position; }
