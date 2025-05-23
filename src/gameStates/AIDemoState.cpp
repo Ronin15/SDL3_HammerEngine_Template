@@ -18,7 +18,18 @@
 #include <random>
 
 AIDemoState::~AIDemoState() {
-    exit();
+    // Don't call virtual functions from destructors
+    
+    // Clean up NPCs
+    m_npcs.clear();
+
+    // Clean up player
+    m_player.reset();
+
+    // Reset all AI behaviors, but keep the manager initialized
+    AIManager::Instance().resetBehaviors();
+    
+    std::cout << "Forge Game Engine - Exiting AIDemoState in destructor...\n";
 }
 
 bool AIDemoState::enter() {
