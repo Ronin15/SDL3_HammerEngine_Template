@@ -1,0 +1,452 @@
+src/ai/AIBehavior.cpp:6:0: information: Include file: "ai/AIBehavior.hpp" not found. [missingInclude]
+#include "ai/AIBehavior.hpp"
+^
+src/ai/AIBehavior.cpp:7:0: information: Include file: "core/GameEngine.hpp" not found. [missingInclude]
+#include "core/GameEngine.hpp"
+^
+src/ai/AIBehavior.cpp:8:0: information: Include file: "managers/GameStateManager.hpp" not found. [missingInclude]
+#include "managers/GameStateManager.hpp"
+^
+src/ai/AIBehavior.cpp:9:0: information: Include file: "gameStates/GameState.hpp" not found. [missingInclude]
+#include "gameStates/GameState.hpp"
+^
+src/ai/AIBehavior.cpp:10:0: information: Include file: "gameStates/AIDemoState.hpp" not found. [missingInclude]
+#include "gameStates/AIDemoState.hpp"
+^
+src/ai/AIBehavior.cpp:82:14: style: Variable 'frameCounter' can be declared as reference to const [constVariableReference]
+        int& frameCounter = m_entityFrameCounters[entity];
+             ^
+src/ai/behaviors/ChaseBehavior.cpp:6:0: information: Include file: "ai/behaviors/ChaseBehavior.hpp" not found. [missingInclude]
+#include "ai/behaviors/ChaseBehavior.hpp"
+^
+src/ai/behaviors/PatrolBehavior.cpp:6:0: information: Include file: "ai/behaviors/PatrolBehavior.hpp" not found. [missingInclude]
+#include "ai/behaviors/PatrolBehavior.hpp"
+^
+src/ai/behaviors/PatrolBehavior.cpp:7:0: information: Include file: "entities/Entity.hpp" not found. [missingInclude]
+#include "entities/Entity.hpp"
+^
+src/ai/behaviors/PatrolBehavior.cpp:8:0: information: Include file: "entities/NPC.hpp" not found. [missingInclude]
+#include "entities/NPC.hpp"
+^
+src/ai/behaviors/PatrolBehavior.cpp:9:0: information: Include file: <algorithm> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
+#include <algorithm>
+^
+src/ai/behaviors/WanderBehavior.cpp:6:0: information: Include file: "ai/behaviors/WanderBehavior.hpp" not found. [missingInclude]
+#include "ai/behaviors/WanderBehavior.hpp"
+^
+src/ai/behaviors/WanderBehavior.cpp:8:0: information: Include file: <algorithm> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
+#include <algorithm>
+^
+src/ai/behaviors/WanderBehavior.cpp:9:0: information: Include file: <cmath> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
+#include <cmath>
+^
+src/ai/behaviors/WanderBehavior.cpp:0:0: information: Limiting analysis of branches. Use --check-level=exhaustive to analyze all branches. [normalCheckLevelMaxBranches]
+
+^
+src/core/ForgeMain.cpp:6:0: information: Include file: <SDL3/SDL.h> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
+#include <SDL3/SDL.h>
+^
+src/core/ForgeMain.cpp:7:0: information: Include file: <atomic> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
+#include <atomic>
+^
+src/core/ForgeMain.cpp:8:0: information: Include file: <condition_variable> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
+#include <condition_variable>
+^
+src/core/ForgeMain.cpp:9:0: information: Include file: <iostream> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
+#include <iostream>
+^
+src/core/ForgeMain.cpp:10:0: information: Include file: <mutex> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
+#include <mutex>
+^
+src/core/ForgeMain.cpp:11:0: information: Include file: <string> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
+#include <string>
+^
+src/core/ForgeMain.cpp:12:0: information: Include file: "core/GameEngine.hpp" not found. [missingInclude]
+#include "core/GameEngine.hpp"
+^
+src/core/ForgeMain.cpp:13:0: information: Include file: "core/ThreadSystem.hpp" not found. [missingInclude]
+#include "core/ThreadSystem.hpp"
+^
+src/core/GameEngine.cpp:6:0: information: Include file: "core/GameEngine.hpp" not found. [missingInclude]
+#include "core/GameEngine.hpp"
+^
+src/core/GameEngine.cpp:7:0: information: Include file: <boost/container/small_vector.hpp> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
+#include <boost/container/small_vector.hpp>
+^
+src/core/GameEngine.cpp:8:0: information: Include file: <chrono> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
+#include <chrono>
+^
+src/core/GameEngine.cpp:9:0: information: Include file: <future> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
+#include <future>
+^
+src/core/GameEngine.cpp:10:0: information: Include file: <iostream> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
+#include <iostream>
+^
+src/core/GameEngine.cpp:11:0: information: Include file: <thread> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
+#include <thread>
+^
+src/core/GameEngine.cpp:12:0: information: Include file: "SDL3/SDL_surface.h" not found. [missingInclude]
+#include "SDL3/SDL_surface.h"
+^
+src/core/GameEngine.cpp:13:0: information: Include file: "managers/AIManager.hpp" not found. [missingInclude]
+#include "managers/AIManager.hpp"
+^
+src/core/GameEngine.cpp:14:0: information: Include file: "gameStates/AIDemoState.hpp" not found. [missingInclude]
+#include "gameStates/AIDemoState.hpp"
+^
+src/core/GameEngine.cpp:15:0: information: Include file: "managers/FontManager.hpp" not found. [missingInclude]
+#include "managers/FontManager.hpp"
+^
+src/core/GameEngine.cpp:16:0: information: Include file: "gameStates/GamePlayState.hpp" not found. [missingInclude]
+#include "gameStates/GamePlayState.hpp"
+^
+src/core/GameEngine.cpp:17:0: information: Include file: "managers/GameStateManager.hpp" not found. [missingInclude]
+#include "managers/GameStateManager.hpp"
+^
+src/core/GameEngine.cpp:18:0: information: Include file: "managers/InputManager.hpp" not found. [missingInclude]
+#include "managers/InputManager.hpp"
+^
+src/core/GameEngine.cpp:19:0: information: Include file: "gameStates/LogoState.hpp" not found. [missingInclude]
+#include "gameStates/LogoState.hpp"
+^
+src/core/GameEngine.cpp:20:0: information: Include file: "gameStates/MainMenuState.hpp" not found. [missingInclude]
+#include "gameStates/MainMenuState.hpp"
+^
+src/core/GameEngine.cpp:21:0: information: Include file: "SDL3/SDL_render.h" not found. [missingInclude]
+#include "SDL3/SDL_render.h"
+^
+src/core/GameEngine.cpp:22:0: information: Include file: "SDL3/SDL_video.h" not found. [missingInclude]
+#include "SDL3/SDL_video.h"
+^
+src/core/GameEngine.cpp:23:0: information: Include file: "managers/SaveGameManager.hpp" not found. [missingInclude]
+#include "managers/SaveGameManager.hpp"
+^
+src/core/GameEngine.cpp:24:0: information: Include file: "managers/SoundManager.hpp" not found. [missingInclude]
+#include "managers/SoundManager.hpp"
+^
+src/core/GameEngine.cpp:25:0: information: Include file: "core/ThreadSystem.hpp" not found. [missingInclude]
+#include "core/ThreadSystem.hpp"
+^
+src/core/GameEngine.cpp:26:0: information: Include file: "managers/TextureManager.hpp" not found. [missingInclude]
+#include "managers/TextureManager.hpp"
+^
+src/entities/NPC.cpp:6:0: information: Include file: "entities/NPC.hpp" not found. [missingInclude]
+#include "entities/NPC.hpp"
+^
+src/entities/NPC.cpp:7:0: information: Include file: "core/GameEngine.hpp" not found. [missingInclude]
+#include "core/GameEngine.hpp"
+^
+src/entities/NPC.cpp:8:0: information: Include file: "managers/TextureManager.hpp" not found. [missingInclude]
+#include "managers/TextureManager.hpp"
+^
+src/entities/NPC.cpp:9:0: information: Include file: "managers/AIManager.hpp" not found. [missingInclude]
+#include "managers/AIManager.hpp"
+^
+src/entities/NPC.cpp:10:0: information: Include file: <SDL3/SDL.h> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
+#include <SDL3/SDL.h>
+^
+src/entities/NPC.cpp:11:0: information: Include file: <iostream> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
+#include <iostream>
+^
+src/entities/Player.cpp:6:0: information: Include file: "entities/Player.hpp" not found. [missingInclude]
+#include "entities/Player.hpp"
+^
+src/entities/Player.cpp:7:0: information: Include file: "core/GameEngine.hpp" not found. [missingInclude]
+#include "core/GameEngine.hpp"
+^
+src/entities/Player.cpp:8:0: information: Include file: "managers/InputManager.hpp" not found. [missingInclude]
+#include "managers/InputManager.hpp"
+^
+src/entities/Player.cpp:9:0: information: Include file: "entities/playerStates/PlayerIdleState.hpp" not found. [missingInclude]
+#include "entities/playerStates/PlayerIdleState.hpp"
+^
+src/entities/Player.cpp:10:0: information: Include file: "entities/playerStates/PlayerRunningState.hpp" not found. [missingInclude]
+#include "entities/playerStates/PlayerRunningState.hpp"
+^
+src/entities/Player.cpp:11:0: information: Include file: "SDL3/SDL_surface.h" not found. [missingInclude]
+#include "SDL3/SDL_surface.h"
+^
+src/entities/Player.cpp:12:0: information: Include file: "managers/TextureManager.hpp" not found. [missingInclude]
+#include "managers/TextureManager.hpp"
+^
+src/entities/Player.cpp:13:0: information: Include file: <SDL3/SDL.h> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
+#include <SDL3/SDL.h>
+^
+src/entities/Player.cpp:14:0: information: Include file: <iostream> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
+#include <iostream>
+^
+src/entities/playerStates/PlayerIdleState.cpp:6:0: information: Include file: "entities/playerStates/PlayerIdleState.hpp" not found. [missingInclude]
+#include "entities/playerStates/PlayerIdleState.hpp"
+^
+src/entities/playerStates/PlayerIdleState.cpp:7:0: information: Include file: "entities/Player.hpp" not found. [missingInclude]
+#include "entities/Player.hpp"
+^
+src/entities/playerStates/PlayerRunningState.cpp:6:0: information: Include file: "entities/playerStates/PlayerRunningState.hpp" not found. [missingInclude]
+#include "entities/playerStates/PlayerRunningState.hpp"
+^
+src/entities/playerStates/PlayerRunningState.cpp:7:0: information: Include file: "entities/Player.hpp" not found. [missingInclude]
+#include "entities/Player.hpp"
+^
+src/entities/playerStates/PlayerRunningState.cpp:8:0: information: Include file: "managers/InputManager.hpp" not found. [missingInclude]
+#include "managers/InputManager.hpp"
+^
+src/gameStates/AIDemoState.cpp:6:0: information: Include file: "gameStates/AIDemoState.hpp" not found. [missingInclude]
+#include "gameStates/AIDemoState.hpp"
+^
+src/gameStates/AIDemoState.cpp:7:0: information: Include file: "managers/AIManager.hpp" not found. [missingInclude]
+#include "managers/AIManager.hpp"
+^
+src/gameStates/AIDemoState.cpp:8:0: information: Include file: "SDL3/SDL_scancode.h" not found. [missingInclude]
+#include "SDL3/SDL_scancode.h"
+^
+src/gameStates/AIDemoState.cpp:9:0: information: Include file: "ai/behaviors/WanderBehavior.hpp" not found. [missingInclude]
+#include "ai/behaviors/WanderBehavior.hpp"
+^
+src/gameStates/AIDemoState.cpp:10:0: information: Include file: "ai/behaviors/PatrolBehavior.hpp" not found. [missingInclude]
+#include "ai/behaviors/PatrolBehavior.hpp"
+^
+src/gameStates/AIDemoState.cpp:11:0: information: Include file: "ai/behaviors/ChaseBehavior.hpp" not found. [missingInclude]
+#include "ai/behaviors/ChaseBehavior.hpp"
+^
+src/gameStates/AIDemoState.cpp:12:0: information: Include file: "core/GameEngine.hpp" not found. [missingInclude]
+#include "core/GameEngine.hpp"
+^
+src/gameStates/AIDemoState.cpp:13:0: information: Include file: "managers/FontManager.hpp" not found. [missingInclude]
+#include "managers/FontManager.hpp"
+^
+src/gameStates/AIDemoState.cpp:14:0: information: Include file: "managers/InputManager.hpp" not found. [missingInclude]
+#include "managers/InputManager.hpp"
+^
+src/gameStates/AIDemoState.cpp:15:0: information: Include file: <SDL3/SDL.h> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
+#include <SDL3/SDL.h>
+^
+src/gameStates/AIDemoState.cpp:16:0: information: Include file: <iostream> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
+#include <iostream>
+^
+src/gameStates/AIDemoState.cpp:17:0: information: Include file: <memory> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
+#include <memory>
+^
+src/gameStates/AIDemoState.cpp:18:0: information: Include file: <random> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
+#include <random>
+^
+src/gameStates/GamePlayState.cpp:6:0: information: Include file: "gameStates/GamePlayState.hpp" not found. [missingInclude]
+#include "gameStates/GamePlayState.hpp"
+^
+src/gameStates/GamePlayState.cpp:7:0: information: Include file: "managers/GameStateManager.hpp" not found. [missingInclude]
+#include "managers/GameStateManager.hpp"
+^
+src/gameStates/GamePlayState.cpp:8:0: information: Include file: "managers/FontManager.hpp" not found. [missingInclude]
+#include "managers/FontManager.hpp"
+^
+src/gameStates/GamePlayState.cpp:9:0: information: Include file: "managers/InputManager.hpp" not found. [missingInclude]
+#include "managers/InputManager.hpp"
+^
+src/gameStates/GamePlayState.cpp:10:0: information: Include file: "core/GameEngine.hpp" not found. [missingInclude]
+#include "core/GameEngine.hpp"
+^
+src/gameStates/GamePlayState.cpp:11:0: information: Include file: "gameStates/PauseState.hpp" not found. [missingInclude]
+#include "gameStates/PauseState.hpp"
+^
+src/gameStates/GamePlayState.cpp:12:0: information: Include file: <iostream> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
+#include <iostream>
+^
+src/gameStates/LogoState.cpp:6:0: information: Include file: "gameStates/LogoState.hpp" not found. [missingInclude]
+#include "gameStates/LogoState.hpp"
+^
+src/gameStates/LogoState.cpp:7:0: information: Include file: "core/GameEngine.hpp" not found. [missingInclude]
+#include "core/GameEngine.hpp"
+^
+src/gameStates/LogoState.cpp:8:0: information: Include file: "managers/SoundManager.hpp" not found. [missingInclude]
+#include "managers/SoundManager.hpp"
+^
+src/gameStates/LogoState.cpp:9:0: information: Include file: "managers/FontManager.hpp" not found. [missingInclude]
+#include "managers/FontManager.hpp"
+^
+src/gameStates/LogoState.cpp:10:0: information: Include file: "managers/TextureManager.hpp" not found. [missingInclude]
+#include "managers/TextureManager.hpp"
+^
+src/gameStates/LogoState.cpp:11:0: information: Include file: <iostream> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
+#include <iostream>
+^
+src/gameStates/MainMenuState.cpp:6:0: information: Include file: "gameStates/MainMenuState.hpp" not found. [missingInclude]
+#include "gameStates/MainMenuState.hpp"
+^
+src/gameStates/MainMenuState.cpp:7:0: information: Include file: "managers/InputManager.hpp" not found. [missingInclude]
+#include "managers/InputManager.hpp"
+^
+src/gameStates/MainMenuState.cpp:8:0: information: Include file: "managers/FontManager.hpp" not found. [missingInclude]
+#include "managers/FontManager.hpp"
+^
+src/gameStates/MainMenuState.cpp:9:0: information: Include file: "core/GameEngine.hpp" not found. [missingInclude]
+#include "core/GameEngine.hpp"
+^
+src/gameStates/MainMenuState.cpp:10:0: information: Include file: <iostream> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
+#include <iostream>
+^
+src/gameStates/PauseState.cpp:6:0: information: Include file: "gameStates/PauseState.hpp" not found. [missingInclude]
+#include "gameStates/PauseState.hpp"
+^
+src/gameStates/PauseState.cpp:7:0: information: Include file: "managers/InputManager.hpp" not found. [missingInclude]
+#include "managers/InputManager.hpp"
+^
+src/gameStates/PauseState.cpp:8:0: information: Include file: "managers/FontManager.hpp" not found. [missingInclude]
+#include "managers/FontManager.hpp"
+^
+src/gameStates/PauseState.cpp:9:0: information: Include file: "core/GameEngine.hpp" not found. [missingInclude]
+#include "core/GameEngine.hpp"
+^
+src/gameStates/PauseState.cpp:10:0: information: Include file: <iostream> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
+#include <iostream>
+^
+src/managers/AIManager.cpp:6:0: information: Include file: "managers/AIManager.hpp" not found. [missingInclude]
+#include "managers/AIManager.hpp"
+^
+src/managers/AIManager.cpp:7:0: information: Include file: "core/ThreadSystem.hpp" not found. [missingInclude]
+#include "core/ThreadSystem.hpp"
+^
+src/managers/AIManager.cpp:8:0: information: Include file: <iostream> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
+#include <iostream>
+^
+src/managers/AIManager.cpp:9:0: information: Include file: <algorithm> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
+#include <algorithm>
+^
+src/managers/AIManager.cpp:529:12: style: The scope of the variable 'timeMs' can be reduced. [variableScope]
+    double timeMs = (endTime - startTime) / 1000000.0;
+           ^
+src/managers/EntityStateManager.cpp:6:0: information: Include file: "managers/EntityStateManager.hpp" not found. [missingInclude]
+#include "managers/EntityStateManager.hpp"
+^
+src/managers/EntityStateManager.cpp:7:0: information: Include file: "entities/EntityState.hpp" not found. [missingInclude]
+#include "entities/EntityState.hpp"
+^
+src/managers/EntityStateManager.cpp:8:0: information: Include file: <iostream> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
+#include <iostream>
+^
+src/managers/EntityStateManager.cpp:9:0: information: Include file: <stdexcept> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
+#include <stdexcept>
+^
+src/managers/FontManager.cpp:6:0: information: Include file: "managers/FontManager.hpp" not found. [missingInclude]
+#include "managers/FontManager.hpp"
+^
+src/managers/FontManager.cpp:7:0: information: Include file: <iostream> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
+#include <iostream>
+^
+src/managers/FontManager.cpp:8:0: information: Include file: <algorithm> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
+#include <algorithm>
+^
+src/managers/FontManager.cpp:9:0: information: Include file: <filesystem> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
+#include <filesystem>
+^
+src/managers/GameStateManager.cpp:6:0: information: Include file: "managers/GameStateManager.hpp" not found. [missingInclude]
+#include "managers/GameStateManager.hpp"
+^
+src/managers/GameStateManager.cpp:7:0: information: Include file: "gameStates/GameState.hpp" not found. [missingInclude]
+#include "gameStates/GameState.hpp"
+^
+src/managers/GameStateManager.cpp:8:0: information: Include file: <algorithm> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
+#include <algorithm>
+^
+src/managers/GameStateManager.cpp:9:0: information: Include file: <iostream> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
+#include <iostream>
+^
+src/managers/InputManager.cpp:6:0: information: Include file: "managers/InputManager.hpp" not found. [missingInclude]
+#include "managers/InputManager.hpp"
+^
+src/managers/InputManager.cpp:7:0: information: Include file: "core/GameEngine.hpp" not found. [missingInclude]
+#include "core/GameEngine.hpp"
+^
+src/managers/InputManager.cpp:8:0: information: Include file: "SDL3/SDL_gamepad.h" not found. [missingInclude]
+#include "SDL3/SDL_gamepad.h"
+^
+src/managers/InputManager.cpp:9:0: information: Include file: "SDL3/SDL_joystick.h" not found. [missingInclude]
+#include "SDL3/SDL_joystick.h"
+^
+src/managers/InputManager.cpp:10:0: information: Include file: "utils/Vector2D.hpp" not found. [missingInclude]
+#include "utils/Vector2D.hpp"
+^
+src/managers/InputManager.cpp:11:0: information: Include file: <iostream> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
+#include <iostream>
+^
+src/managers/InputManager.cpp:12:0: information: Include file: <memory> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
+#include <memory>
+^
+src/managers/InputManager.cpp:0:0: information: Limiting analysis of branches. Use --check-level=exhaustive to analyze all branches. [normalCheckLevelMaxBranches]
+
+^
+src/managers/InputManager.cpp:415:5: style: The scope of the variable 'gamepadCount' can be reduced. [variableScope]
+int gamepadCount{0};
+    ^
+src/managers/InputManager.cpp:50:19: style: Local variable 'gamepadIDs' shadows outer variable [shadowVariable]
+  SDL_JoystickID* gamepadIDs = SDL_GetGamepads(&numGamepads);
+                  ^
+src/managers/InputManager.cpp:14:17: note: Shadowed declaration
+SDL_JoystickID* gamepadIDs{nullptr};
+                ^
+src/managers/InputManager.cpp:50:19: note: Shadow variable
+  SDL_JoystickID* gamepadIDs = SDL_GetGamepads(&numGamepads);
+                  ^
+src/managers/SaveGameManager.cpp:6:0: information: Include file: "managers/SaveGameManager.hpp" not found. [missingInclude]
+#include "managers/SaveGameManager.hpp"
+^
+src/managers/SaveGameManager.cpp:7:0: information: Include file: "entities/Player.hpp" not found. [missingInclude]
+#include "entities/Player.hpp"
+^
+src/managers/SaveGameManager.cpp:8:0: information: Include file: "utils/Vector2D.hpp" not found. [missingInclude]
+#include "utils/Vector2D.hpp"
+^
+src/managers/SaveGameManager.cpp:9:0: information: Include file: <iostream> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
+#include <iostream>
+^
+src/managers/SaveGameManager.cpp:10:0: information: Include file: <fstream> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
+#include <fstream>
+^
+src/managers/SaveGameManager.cpp:11:0: information: Include file: <filesystem> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
+#include <filesystem>
+^
+src/managers/SaveGameManager.cpp:12:0: information: Include file: <algorithm> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
+#include <algorithm>
+^
+src/managers/SaveGameManager.cpp:13:0: information: Include file: <ctime> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
+#include <ctime>
+^
+src/managers/SaveGameManager.cpp:14:0: information: Include file: <cstring> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
+#include <cstring>
+^
+src/managers/SaveGameManager.cpp:474:16: portability: inconclusive: Casting from float * to const signed char * is not portable due to different binary data representations on different platforms. [invalidPointerCast]
+    file.write(reinterpret_cast<const char*>(&x), sizeof(float));
+               ^
+src/managers/SaveGameManager.cpp:475:16: portability: inconclusive: Casting from float * to const signed char * is not portable due to different binary data representations on different platforms. [invalidPointerCast]
+    file.write(reinterpret_cast<const char*>(&y), sizeof(float));
+               ^
+src/managers/SaveGameManager.cpp:481:15: portability: inconclusive: Casting from float * to signed char * is not portable due to different binary data representations on different platforms. [invalidPointerCast]
+    file.read(reinterpret_cast<char*>(&x), sizeof(float));
+              ^
+src/managers/SaveGameManager.cpp:482:15: portability: inconclusive: Casting from float * to signed char * is not portable due to different binary data representations on different platforms. [invalidPointerCast]
+    file.read(reinterpret_cast<char*>(&y), sizeof(float));
+              ^
+src/managers/SoundManager.cpp:6:0: information: Include file: "managers/SoundManager.hpp" not found. [missingInclude]
+#include "managers/SoundManager.hpp"
+^
+src/managers/SoundManager.cpp:7:0: information: Include file: <iostream> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
+#include <iostream>
+^
+src/managers/SoundManager.cpp:8:0: information: Include file: <filesystem> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
+#include <filesystem>
+^
+src/managers/SoundManager.cpp:9:0: information: Include file: <algorithm> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
+#include <algorithm>
+^
+src/managers/TextureManager.cpp:6:0: information: Include file: "managers/TextureManager.hpp" not found. [missingInclude]
+#include "managers/TextureManager.hpp"
+^
+src/managers/TextureManager.cpp:7:0: information: Include file: <iostream> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
+#include <iostream>
+^
+src/managers/TextureManager.cpp:8:0: information: Include file: <filesystem> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
+#include <filesystem>
+^
+src/managers/TextureManager.cpp:9:0: information: Include file: <algorithm> not found. Please note: Cppcheck does not need standard library headers to get proper results. [missingIncludeSystem]
+#include <algorithm>
+^
+nofile:0:0: information: Active checkers: 179/856 (use --checkers-report=<filename> to see details) [checkersReport]
+
