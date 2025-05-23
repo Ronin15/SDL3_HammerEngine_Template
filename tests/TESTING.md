@@ -30,6 +30,7 @@ Each test suite has dedicated scripts in the project root directory:
 ./run_ai_benchmark.sh                # AI scaling benchmark
 ./run_save_tests.sh                  # Save manager tests
 ./run_thread_tests.sh                # Thread system tests
+./run_all_tests.sh                   # Run all test scripts sequentially
 ```
 
 #### Windows
@@ -40,6 +41,7 @@ run_thread_safe_ai_integration_tests.bat  # Thread-safe AI integration tests
 run_ai_benchmark.bat                 # AI scaling benchmark
 run_save_tests.bat                   # Save manager tests
 run_thread_tests.bat                 # Thread system tests
+run_all_tests.bat                    # Run all test scripts sequentially
 ```
 
 ### Common Command-Line Options
@@ -51,9 +53,11 @@ All test scripts support these options:
 | `--clean` | Clean build artifacts before running tests |
 | `--verbose` | Show detailed test output |
 | `--release` | Run tests in release mode (optimized) |
+| `--help` | Show help message for the script |
 
 Special options:
 - `--extreme` for AI benchmark (runs extended benchmarks)
+- `--clean-all` for the run_all_tests scripts (removes entire build directory)
 
 ## Test Output
 
@@ -66,6 +70,10 @@ Test results are saved in the `test_results` directory:
 - `ai_scaling_benchmark_[timestamp].txt` - AI scaling benchmark results
 - `save_test_output.txt` - Output from save manager tests
 - `thread_test_output.txt` - Output from thread system tests
+
+When using the `run_all_tests` scripts, combined results are also saved:
+
+- `combined/all_tests_results.txt` - Summary of all test script results
 
 ## Test Implementation Details
 
@@ -214,6 +222,27 @@ For thread-safety tests, follow these guidelines:
 - Run with `--clean` to ensure clean rebuilding
 - Check that all required libraries are installed and linked in CMakeLists.txt
 - Check proper include paths are set in CMakeLists.txt
+
+## Running All Tests
+
+The `run_all_tests` scripts provide a convenient way to run all test suites sequentially:
+
+### Linux/macOS
+```bash
+./run_all_tests.sh [options]
+```
+
+### Windows
+```
+run_all_tests.bat [options]
+```
+
+These scripts:
+1. Run each test script one by one, giving them time to complete
+2. Pass along any command-line options to each individual test script
+3. Generate a summary showing which tests passed or failed
+4. Save combined results to `test_results/combined/all_tests_results.txt`
+5. Return a non-zero exit code if any tests fail
 
 ## CMake Configuration
 
