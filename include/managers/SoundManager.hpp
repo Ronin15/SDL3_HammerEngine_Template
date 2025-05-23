@@ -9,6 +9,7 @@
 #include <SDL3/SDL.h>
 #include <SDL3_mixer/SDL_mixer.h>
 #include <boost/container/flat_map.hpp>
+#include <atomic>
 #include <string>
 
 class SoundManager {
