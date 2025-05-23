@@ -52,6 +52,17 @@ private:
         Uint64 lastDirectionFlip{0};
         Uint64 startDelay{0};           // Random delay before entity starts moving
         bool movementStarted{false};    // Flag to track if movement has started
+
+        // Constructor to ensure proper initialization
+        EntityState() 
+            : currentDirection(0, 0)
+            , lastDirectionChangeTime(0)
+            , currentlyWanderingOffscreen(false)
+            , resetScheduled(false)
+            , lastDirectionFlip(0)
+            , startDelay(0)
+            , movementStarted(false)
+        {}
     };
 
     // Map to store per-entity state

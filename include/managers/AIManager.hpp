@@ -267,6 +267,15 @@ private:
         double maxUpdateTimeMs{0.0};
         double minUpdateTimeMs{std::numeric_limits<double>::max()};
 
+        // Constructor to ensure proper initialization
+        PerformanceStats() 
+            : totalUpdateTimeMs(0.0)
+            , averageUpdateTimeMs(0.0)
+            , updateCount(0)
+            , maxUpdateTimeMs(0.0)
+            , minUpdateTimeMs(std::numeric_limits<double>::max())
+        {}
+
         void addSample(double timeMs) {
             totalUpdateTimeMs += timeMs;
             updateCount++;
@@ -286,13 +295,22 @@ private:
 
     // Cache for quick lookup of entity-behavior pairs (optimization)
     struct EntityBehaviorCache {
-        Entity* entity;
-        AIBehavior* behavior;
+        Entity* entity{nullptr};
+        AIBehavior* behavior{nullptr};
         std::string_view behaviorName;  // Using string_view to avoid copies
 
         // Performance statistics
         uint64_t lastUpdateTime{0};
         PerformanceStats perfStats;
+
+        // Constructor to ensure proper initialization
+        EntityBehaviorCache() 
+            : entity(nullptr)
+            , behavior(nullptr)
+            , behaviorName()
+            , lastUpdateTime(0)
+            , perfStats()
+        {}
     };
     std::vector<EntityBehaviorCache> m_entityBehaviorCache{};
     std::atomic<bool> m_cacheValid{false};
@@ -335,7 +353,8 @@ private:
         std::string message;
         uint64_t timestamp{0};
 
-        QueuedMessage() = default;
+        // Explicitly initialize all members
+        QueuedMessage() : targetEntity(nullptr), message(), timestamp(0) {}
 
         QueuedMessage(Entity* entity, const std::string& msg, uint64_t time)
             : targetEntity(entity), message(msg), timestamp(time) {}
