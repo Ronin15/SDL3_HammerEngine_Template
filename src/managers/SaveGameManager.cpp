@@ -469,21 +469,23 @@ bool SaveGameManager::readString(std::ifstream& file, std::string& str) const {
 }
 
 bool SaveGameManager::writeVector2D(std::ofstream& file, const Vector2D& vec) const {
-    float x = vec.getX();
-    float y = vec.getY();
-    file.write(reinterpret_cast<const char*>(&x), sizeof(float));
-    file.write(reinterpret_cast<const char*>(&y), sizeof(float));
-    return file.good();
+    try {
+        boost::archive::binary_oarchive oa(file);
+        oa << vec;
+        return file.good();
+    } catch (const std::exception& e) {
+        std::cerr << "Error serializing Vector2D: " << e.what() << std::endl;
+        return false;
+    }
 }
 
 bool SaveGameManager::readVector2D(std::ifstream& file, Vector2D& vec) const {
-    float x, y;
-    file.read(reinterpret_cast<char*>(&x), sizeof(float));
-    file.read(reinterpret_cast<char*>(&y), sizeof(float));
-
-    if (file.good()) {
-        vec = Vector2D(x, y);
-        return true;
+    try {
+        boost::archive::binary_iarchive ia(file);
+        ia >> vec;
+        return file.good();
+    } catch (const std::exception& e) {
+        std::cerr << "Error deserializing Vector2D: " << e.what() << std::endl;
+        return false;
     }
-    return false;
 }

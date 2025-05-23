@@ -11,7 +11,8 @@
 #include <iostream>
 #include <memory>
 
-SDL_JoystickID* gamepadIDs{nullptr};
+// Global pointer to store gamepad IDs
+SDL_JoystickID* g_gamepadIDs{nullptr};
 
 InputManager::InputManager()
     : m_keystates(nullptr),
@@ -47,9 +48,9 @@ void InputManager::initializeGamePad() {
 
   // Get all available gamepads
   int numGamepads = 0;
-  SDL_JoystickID* gamepadIDs = SDL_GetGamepads(&numGamepads);
+  g_gamepadIDs = SDL_GetGamepads(&numGamepads);
 
-  if (gamepadIDs == nullptr) {
+  if (g_gamepadIDs == nullptr) {
     std::cerr << "Forge Game Engine - Failed to get gamepad IDs: "
               << SDL_GetError() << std::endl;
     return;
@@ -59,8 +60,8 @@ void InputManager::initializeGamePad() {
     std::cout << "Forge Game Engine - Number of Game Pads detected: " << numGamepads << std::endl;
     // Open all available gamepads
     for (int i = 0; i < numGamepads; i++) {
-      if (SDL_IsGamepad(gamepadIDs[i])) {
-        SDL_Gamepad* gamepad = SDL_OpenGamepad(gamepadIDs[i]);
+      if (SDL_IsGamepad(g_gamepadIDs[i])) {
+        SDL_Gamepad* gamepad = SDL_OpenGamepad(g_gamepadIDs[i]);
         if (gamepad) {
           m_joysticks.push_back(gamepad);
           std::cout << "Forge Game Engine - Gamepad connected: " << SDL_GetGamepadName(gamepad) << std::endl;
@@ -425,7 +426,8 @@ if(m_gamePadInitialized) {
 
   m_joysticks.clear();
   m_joystickValues.clear();
-  SDL_free(gamepadIDs);
+  SDL_free(g_gamepadIDs);
+  g_gamepadIDs = nullptr;
   m_gamePadInitialized = false;
   SDL_QuitSubSystem(SDL_INIT_GAMEPAD);
   std::cout << "Forge Game Engine - " << gamepadCount << " gamepads freed!\n";

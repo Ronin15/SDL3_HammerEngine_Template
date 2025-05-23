@@ -5,7 +5,7 @@ set(CMAKE_CXX_STANDARD 20) # Match the main project's C++ standard
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # Find Boost
-find_package(Boost REQUIRED COMPONENTS unit_test_framework)
+find_package(Boost REQUIRED COMPONENTS unit_test_framework serialization)
 
 # We standardize on Boost Test Framework for all tests
 include(FetchContent)
@@ -96,6 +96,7 @@ target_compile_definitions(thread_safe_ai_integration_tests PRIVATE
 target_link_libraries(save_manager_tests PRIVATE
     SDL3::SDL3
     Boost::unit_test_framework
+    Boost::serialization
 )
 
 target_link_libraries(thread_system_tests PRIVATE
