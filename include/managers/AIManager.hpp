@@ -337,8 +337,8 @@ private:
 
         QueuedMessage() = default;
 
-        QueuedMessage(Entity* entity, std::string msg, uint64_t time)
-            : targetEntity(entity), message(std::move(msg)), timestamp(time) {}
+        QueuedMessage(Entity* entity, const std::string& msg, uint64_t time)
+            : targetEntity(entity), message(msg), timestamp(time) {}
     };
 
     // Message queue system with thread-safe double-buffering
