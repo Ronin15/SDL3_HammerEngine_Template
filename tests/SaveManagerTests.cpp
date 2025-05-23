@@ -6,6 +6,9 @@
 // Define this to make Boost.Test a header-only library
 #define BOOST_TEST_MODULE SaveManagerTests
 #include <boost/test/included/unit_test.hpp>
+#include <boost/serialization/serialization.hpp>
+#include <boost/archive/binary_oarchive.hpp>
+#include <boost/archive/binary_iarchive.hpp>
 #include <filesystem>
 #include <fstream>
 
@@ -51,14 +54,17 @@ public:
             
             // Create a simple save format: Position(x, y), TextureID, StateName
             Vector2D pos = player->getPosition();
-            float x = pos.getX();
-            float y = pos.getY();
             std::string textureID = player->getTextureID();
             std::string stateName = player->getCurrentStateName();
             
-            // Write position
-            file.write(reinterpret_cast<const char*>(&x), sizeof(float));
-            file.write(reinterpret_cast<const char*>(&y), sizeof(float));
+            // Use Boost.Serialization to write position
+            try {
+                boost::archive::binary_oarchive oa(file);
+                oa << pos;
+            } catch (const std::exception& e) {
+                std::cerr << "Error serializing Vector2D: " << e.what() << std::endl;
+                return false;
+            }
             
             // Write textureID (size + string)
             uint32_t textureSize = static_cast<uint32_t>(textureID.size());
@@ -99,11 +105,16 @@ public:
                 return false;
             }
             
-            // Read position
-            float x, y;
-            file.read(reinterpret_cast<char*>(&x), sizeof(float));
-            file.read(reinterpret_cast<char*>(&y), sizeof(float));
-            player->setPosition(Vector2D(x, y));
+            // Read position using Boost.Serialization
+            Vector2D pos(0.0f, 0.0f);
+            try {
+                boost::archive::binary_iarchive ia(file);
+                ia >> pos;
+                player->setPosition(pos);
+            } catch (const std::exception& e) {
+                std::cerr << "Error deserializing Vector2D: " << e.what() << std::endl;
+                return false;
+            }
             
             // Read textureID
             uint32_t textureSize;

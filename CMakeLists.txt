@@ -61,6 +61,7 @@ FetchContent_Declare(
 # Configure Boost build options
 set(BOOST_INCLUDE_LIBRARIES
     container
+    serialization
     # Add other Boost libraries you need
 )
 set(BOOST_ENABLE_CMAKE ON)
@@ -261,6 +262,7 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
     SDL3_ttf::SDL3_ttf
     SDL3_mixer::SDL3_mixer
     Boost::container
+    Boost::serialization
     # Add other Boost libraries as needed
 )
 

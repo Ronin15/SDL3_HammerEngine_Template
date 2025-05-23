@@ -8,6 +8,9 @@
 
 #include <string>
 #include <boost/container/small_vector.hpp>
+#include <boost/serialization/serialization.hpp>
+#include <boost/archive/binary_oarchive.hpp>
+#include <boost/archive/binary_iarchive.hpp>
 #include "utils/Vector2D.hpp"
 #include <ctime>
 
@@ -112,6 +115,7 @@ private:
     bool readHeader(std::ifstream& file, SaveGameHeader& header) const;
     bool writeString(std::ofstream& file, const std::string& str) const;
     bool readString(std::ifstream& file, std::string& str) const;
+    // Binary serialization using Boost
     bool writeVector2D(std::ofstream& file, const Vector2D& vec) const;
     bool readVector2D(std::ifstream& file, Vector2D& vec) const;
 

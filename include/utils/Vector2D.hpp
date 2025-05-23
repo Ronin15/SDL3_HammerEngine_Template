@@ -7,6 +7,7 @@
 #define VECTOR_2D_HPP
 
 #include <math.h>
+#include <boost/serialization/access.hpp>
 
 // helper class commonly implemented was
 class Vector2D {
@@ -84,6 +85,16 @@ class Vector2D {
  private:
   float m_x{0.0f};
   float m_y{0.0f};
+
+  // Allow serialization access to private members
+  friend class boost::serialization::access;
+  
+  // Serialization method
+  template<class Archive>
+  void serialize(Archive & ar, const unsigned int /*version*/) {
+    ar & m_x;
+    ar & m_y;
+  }
 };
 
 #endif  // VECTOR_2D_HPP
