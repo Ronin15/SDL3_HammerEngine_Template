@@ -9,8 +9,14 @@
 #include <algorithm>
 
 PatrolBehavior::PatrolBehavior(const boost::container::small_vector<Vector2D, 10>& waypoints, float moveSpeed, bool includeOffscreenPoints)
-    : m_waypoints(waypoints), m_currentWaypoint(0), m_moveSpeed(moveSpeed), m_includeOffscreenPoints(includeOffscreenPoints),
-      m_needsReset(false) {
+    : m_waypoints(waypoints), 
+      m_currentWaypoint(0), 
+      m_moveSpeed(moveSpeed), 
+      m_waypointRadius(25.0f),
+      m_includeOffscreenPoints(includeOffscreenPoints),
+      m_needsReset(false),
+      m_screenWidth(1280.0f),
+      m_screenHeight(720.0f) {
     // Ensure we have at least two waypoints
     if (m_waypoints.size() < 2) {
         // Add a fallback waypoint if the list is too small

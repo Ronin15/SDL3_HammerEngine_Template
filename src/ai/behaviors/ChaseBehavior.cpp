@@ -6,8 +6,15 @@
 #include "ai/behaviors/ChaseBehavior.hpp"
 
 ChaseBehavior::ChaseBehavior(Entity* target, float chaseSpeed, float maxRange, float minRange)
-    : m_target(target), m_chaseSpeed(chaseSpeed), m_maxRange(maxRange), m_minRange(minRange),
-      m_isChasing(false), m_hasLineOfSight(false), m_lastKnownTargetPos(0, 0), m_timeWithoutSight(0),
+    : m_target(target), 
+      m_chaseSpeed(chaseSpeed), 
+      m_maxRange(maxRange), 
+      m_minRange(minRange),
+      m_isChasing(false), 
+      m_hasLineOfSight(false), 
+      m_lastKnownTargetPos(0, 0), 
+      m_timeWithoutSight(0),
+      m_maxTimeWithoutSight(60),
       m_currentDirection(0, 0) {
 }
 
