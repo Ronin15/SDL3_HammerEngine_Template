@@ -73,26 +73,38 @@ xcode command line tools is needed to compile.
 
 ## Running the Tests
 
-The project includes unit tests for the SaveGameManager component and the Threading System. To run the tests:
+The project includes unit tests for the SaveGameManager, Threading System, and AI components. To run the tests:
 
 ```bash
-# Run the tests
+# Run the Save Manager tests
 ./run_save_tests.sh
-or
+
+# Run the Thread System tests
 ./run_thread_tests.sh
 
-# Run with verbose output
-./run_save_tests.sh --verbose
-or
-./run_thread_tests.sh --verbose
+# Run the AI Optimization tests
+./run_ai_optimization_tests.sh
 
-# Clean and rebuild tests
-./run_save_tests.sh --clean
-or
-./run_thread_tests.sh --clean
+# Run the Thread-Safe AI tests
+./run_thread_safe_ai_tests.sh
+
+# Run the Thread-Safe AI Integration tests
+./run_thread_safe_ai_integration_tests.sh
+
+# Run the AI Scaling Benchmark
+./run_ai_benchmark.sh
+
+# Run with verbose output (example)
+./run_ai_optimization_tests.sh --verbose
+
+# Clean and rebuild tests (example)
+./run_thread_safe_ai_tests.sh --clean
+
+# Run in release mode (example)
+./run_ai_benchmark.sh --release
 ```
 
-See `docs/SaveManagerTesting.md` or `docs/ThreadSystem.md` for more details on the testing frameworks.
+See `tests/TESTING.md` for comprehensive documentation on all testing frameworks, or `docs/ThreadSystem.md` for component-specific details.
 
 ## Feature Component Details
 

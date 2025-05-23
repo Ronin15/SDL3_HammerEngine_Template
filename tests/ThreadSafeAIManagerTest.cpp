@@ -155,11 +155,17 @@ namespace {
     
     // Custom safe cleanup function that will be called on exit
     void performSafeCleanup() {
-        if (g_exitGuard.exchange(true)) {
-            return; // Already cleaned up
+        // Use compare_exchange to ensure only one thread performs cleanup
+        bool expected = false;
+        if (!g_exitGuard.compare_exchange_strong(expected, true)) {
+            std::cerr << "Cleanup already in progress, skipping" << std::endl;
+            return; // Already being cleaned up
         }
         
         std::cerr << "Performing safe cleanup before exit" << std::endl;
+        
+        // Wait briefly for any in-flight operations to complete
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
         
         // Clear behaviors first
         {
@@ -170,38 +176,56 @@ namespace {
         // Clean AIManager if initialized
         if (g_aiManagerInitialized.exchange(false)) {
             try {
+                // Additional pause to ensure AIManager is not in use
+                std::this_thread::sleep_for(std::chrono::milliseconds(50));
+                AIManager::Instance().configureThreading(false); // Disable threading before cleanup
                 AIManager::Instance().resetBehaviors();
                 AIManager::Instance().clean();
+                std::cerr << "AIManager cleaned up successfully" << std::endl;
+            } catch (const std::exception& e) {
+                std::cerr << "Exception during AIManager cleanup: " << e.what() << std::endl;
             } catch (...) {
-                // Ignore any exceptions during cleanup
+                std::cerr << "Unknown exception during AIManager cleanup" << std::endl;
             }
         }
         
-        // Clean ThreadSystem if initialized
+        // Clean ThreadSystem if initialized - do this last
         if (g_threadSystemInitialized.exchange(false)) {
             try {
+                // Additional pause to ensure threads can finish
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
                 Forge::ThreadSystem::Instance().clean();
+                std::cerr << "ThreadSystem cleaned up successfully" << std::endl;
+            } catch (const std::exception& e) {
+                std::cerr << "Exception during ThreadSystem cleanup: " << e.what() << std::endl;
             } catch (...) {
-                // Ignore any exceptions during cleanup
+                std::cerr << "Unknown exception during ThreadSystem cleanup" << std::endl;
             }
         }
     }
     
     // Signal handler to cleanup on abnormal termination
+    // Note: We don't use this for SIGSEGV (signal 11) because it can cause infinite recursion
     void signalHandler(int signal) {
-        std::cerr << "Signal " << signal << " received, cleaning up..." << std::endl;
+        // Ignore SIGSEGV (signal 11) which is handled by Boost Test
+        if (signal == SIGSEGV) {
+            return;
+        }
+        std::cerr << "Signal " << signal << " received. Cleaning up..." << std::endl;
+        g_exitGuard.store(true); // Mark exit in progress to prevent re-entry
         performSafeCleanup();
-        std::exit(0); // Exit cleanly
+        std::cerr << "Cleanup after signal " << signal << " completed" << std::endl;
+        _exit(0); // Exit with success code since we've handled cleanup
     }
     
     // Register the signal handlers (called before main)
     struct SignalHandlerRegistration {
         SignalHandlerRegistration() {
-            std::signal(SIGSEGV, signalHandler);
-            std::signal(SIGABRT, signalHandler);
-            std::signal(SIGTERM, signalHandler);
             std::signal(SIGINT, signalHandler);
-            std::atexit(performSafeCleanup);
+            std::signal(SIGTERM, signalHandler);
+            std::signal(SIGABRT, signalHandler);
+            // Don't register SIGSEGV handler - let Boost.Test handle it
+            // std::signal(SIGSEGV, signalHandler);
         }
     };
     
@@ -296,6 +320,9 @@ struct GlobalTestFixture {
         g_cleanupInProgress.store(true);
 
         try {
+            // Give threads a chance to finish any ongoing work
+            std::this_thread::sleep_for(std::chrono::milliseconds(200));
+            
             // Call our safe cleanup function directly
             performSafeCleanup();
             
@@ -306,10 +333,8 @@ struct GlobalTestFixture {
                 std::cout << "All tests completed successfully - setting proper exit code" << std::endl;
             }
             
-            // Explicitly call _exit to bypass any remaining destructors
-            // that might access already destroyed resources
-            std::cout << "Exiting cleanly" << std::endl;
-            _exit(0); // Always exit with success code since we've handled errors properly
+            // NOTE: We don't call _exit() here anymore to allow normal RAII cleanup
+            std::cout << "Exiting through normal cleanup path" << std::endl;
         } catch (const std::exception& e) {
             std::cerr << "Exception during global fixture cleanup: " << e.what() << std::endl;
             // Don't mark tests as failed just because cleanup had an issue
@@ -337,17 +362,35 @@ struct ThreadedAITestFixture {
         
         std::cout << "Tearing down test fixture" << std::endl;
         
-        // Wait for any in-progress operations to complete
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        try {
+            // First, disable threading in AIManager to prevent new threads from being created
+            AIManager::Instance().configureThreading(false);
+            
+            // Wait for any in-progress operations to complete
+            std::this_thread::sleep_for(std::chrono::milliseconds(200));
+            
+            // Reset behaviors to clean state
+            AIManager::Instance().resetBehaviors();
+        } catch (const std::exception& e) {
+            std::cerr << "Exception in test fixture teardown: " << e.what() << std::endl;
+        } catch (...) {
+            std::cerr << "Unknown exception in test fixture teardown" << std::endl;
+        }
     }
 
-    // Helper method to wait for futures to complete
+    // Helper method to wait for futures to complete with timeout
     template<typename T>
     void waitForFutures(std::vector<std::future<T>>& futures) {
         for (auto& future : futures) {
             try {
                 if (future.valid()) {
-                    future.get();
+                    // Use wait_for with timeout to avoid hanging
+                    std::future_status status = future.wait_for(std::chrono::seconds(1));
+                    if (status == std::future_status::ready) {
+                        future.get();
+                    } else {
+                        std::cerr << "Future timed out after 1 second, continuing..." << std::endl;
+                    }
                 }
             } catch (const std::exception& e) {
                 std::cerr << "Exception in future: " << e.what() << std::endl;

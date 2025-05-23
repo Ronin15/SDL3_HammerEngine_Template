@@ -35,7 +35,7 @@ add_executable(thread_system_tests
     ThreadSystemTests.cpp
 )
 
-# AI tests enabled
+# AI Optimization tests
 add_executable(ai_optimization_tests
     AIOptimizationTest.cpp
 )
@@ -83,11 +83,13 @@ target_compile_definitions(ai_scaling_benchmark PRIVATE
 # Thread-safe AI Manager tests definitions
 target_compile_definitions(thread_safe_ai_manager_tests PRIVATE
     BOOST_TEST_NO_LIB
+    BOOST_TEST_NO_SIGNAL_HANDLING
 )
 
 # Thread-safe AI Integration tests definitions
 target_compile_definitions(thread_safe_ai_integration_tests PRIVATE
     BOOST_TEST_NO_LIB
+    BOOST_TEST_NO_SIGNAL_HANDLING
 )
 
 # Link with required libraries
