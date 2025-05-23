@@ -153,5 +153,3 @@ If tests fail:
 
 - `TESTING.md` - **Comprehensive guide** to all test suites, setup, and troubleshooting
 - `TROUBLESHOOTING.md` - Common issues and their solutions
-
-**Note**: The previous separate documentation files (`AI_TESTING.md`, `THREAD_TESTING.md`, and `SAVEGAME_TESTING.md`) have been consolidated into the comprehensive `TESTING.md` guide.
