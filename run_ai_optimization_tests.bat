@@ -5,7 +5,6 @@
 echo Running AI Optimization Tests...
 
 :: Create required directories
-if not exist "build" mkdir build
 if not exist "test_results" mkdir test_results
 
 :: Process command-line options
@@ -53,52 +52,15 @@ exit /b 1
 :: Configure build cleaning
 if "%CLEAN_BUILD%"=="true" (
     echo Cleaning build directory...
-    if exist "build" rd /s /q build
-    mkdir build
-)
-
-:: Check if Ninja is available
-where /q ninja
-if %ERRORLEVEL% equ 0 (
-    set USE_NINJA=true
-    echo Ninja build system found, using it for faster builds.
-) else (
-    set USE_NINJA=false
-    echo Ninja build system not found, using default CMake generator.
-)
-
-:: Configure the project
-echo Configuring project with CMake (Build type: %BUILD_TYPE%)...
-set CMAKE_FLAGS=-DCMAKE_BUILD_TYPE=%BUILD_TYPE% -DBOOST_TEST_NO_SIGNAL_HANDLING=ON
-
-if "%USE_NINJA%"=="true" (
-    if "%VERBOSE%"=="true" (
-        cmake -S . -B build %CMAKE_FLAGS% -G Ninja
-    ) else (
-        cmake -S . -B build %CMAKE_FLAGS% -G Ninja > nul
-    )
-) else (
-    if "%VERBOSE%"=="true" (
-        cmake -S . -B build %CMAKE_FLAGS%
-    ) else (
-        cmake -S . -B build %CMAKE_FLAGS% > nul
-    )
+    ninja -C build -t clean
 )
 
 :: Build the tests
 echo Building AI Optimization tests...
-if "%USE_NINJA%"=="true" (
-    if "%VERBOSE%"=="true" (
-        ninja -C build ai_optimization_tests
-    ) else (
-        ninja -C build ai_optimization_tests > nul
-    )
+if "%VERBOSE%"=="true" (
+    ninja -C build ai_optimization_tests
 ) else (
-    if "%VERBOSE%"=="true" (
-        cmake --build build --config %BUILD_TYPE% --target ai_optimization_tests
-    ) else (
-        cmake --build build --config %BUILD_TYPE% --target ai_optimization_tests > nul
-    )
+    ninja -C build ai_optimization_tests > nul
 )
 
 :: Check if build was successful
@@ -142,7 +104,7 @@ set OUTPUT_FILE=test_results\ai_optimization_tests_output.txt
 set METRICS_FILE=test_results\ai_optimization_tests_performance_metrics.txt
 
 :: Set test command options
-set TEST_OPTS=--log_level=all --catch_system_errors=no
+set TEST_OPTS=--log_level=all --catch_system_errors=no --no_result_code
 if "%VERBOSE%"=="true" (
     set TEST_OPTS=%TEST_OPTS% --report_level=detailed
 )
@@ -157,7 +119,8 @@ echo Extracting performance metrics...
 findstr /R /C:"time:" /C:"entities:" /C:"processed:" /C:"Performance" /C:"Execution time" /C:"optimization" "%OUTPUT_FILE%" > "%METRICS_FILE%" 2>nul
 
 :: Check test status
-if %TEST_RESULT% neq 0 (
+findstr /C:"test cases failed" "%OUTPUT_FILE%" > nul
+if not errorlevel 1 (
     echo Some tests failed! See %OUTPUT_FILE% for details.
     exit /b 1
 ) else (

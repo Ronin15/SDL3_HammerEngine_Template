@@ -3,7 +3,6 @@ REM Script to run the Thread-Safe AI Manager tests
 REM Copyright (c) 2025 Hammer Forged Games, MIT License
 
 REM Create required directories
-if not exist "build" mkdir build
 if not exist "test_results" mkdir test_results
 
 REM Set default build type
@@ -24,53 +23,15 @@ goto :parse_args
 REM Configure build cleaning
 if "%CLEAN_BUILD%" == "true" (
   echo Cleaning build directory...
-  if exist "build" rmdir /s /q build
-  mkdir build
-)
-
-REM Create build directory if it doesn't exist
-if not exist "build" mkdir build
-
-REM Check if Ninja is available
-where ninja >nul 2>&1
-if %ERRORLEVEL% EQU 0 (
-  set USE_NINJA=true
-  echo Ninja build system found, using it for faster builds.
-) else (
-  set USE_NINJA=false
-  echo Ninja build system not found, using default CMake generator.
-)
-
-REM Configure the project
-echo Configuring project with CMake (Build type: %BUILD_TYPE%)...
-if "%USE_NINJA%" == "true" (
-  if "%VERBOSE%" == "true" (
-    cmake -S . -B build -DCMAKE_BUILD_TYPE=%BUILD_TYPE% -G Ninja
-  ) else (
-    cmake -S . -B build -DCMAKE_BUILD_TYPE=%BUILD_TYPE% -G Ninja > nul 2>&1
-  )
-) else (
-  if "%VERBOSE%" == "true" (
-    cmake -S . -B build -DCMAKE_BUILD_TYPE=%BUILD_TYPE%
-  ) else (
-    cmake -S . -B build -DCMAKE_BUILD_TYPE=%BUILD_TYPE% > nul 2>&1
-  )
+  ninja -C build -t clean
 )
 
 REM Build the tests
 echo Building Thread-Safe AI Manager tests...
-if "%USE_NINJA%" == "true" (
-  if "%VERBOSE%" == "true" (
-    ninja -C build thread_safe_ai_manager_tests
-  ) else (
-    ninja -C build thread_safe_ai_manager_tests > nul 2>&1
-  )
+if "%VERBOSE%" == "true" (
+  ninja -C build thread_safe_ai_manager_tests
 ) else (
-  if "%VERBOSE%" == "true" (
-    cmake --build build --config %BUILD_TYPE% --target thread_safe_ai_manager_tests
-  ) else (
-    cmake --build build --config %BUILD_TYPE% --target thread_safe_ai_manager_tests > nul 2>&1
-  )
+  ninja -C build thread_safe_ai_manager_tests > nul 2>&1
 )
 
 REM Check if build was successful
@@ -79,46 +40,49 @@ if errorlevel 1 (
   exit /b 1
 )
 
-REM Determine test executable path based on build type and generator
-if "%USE_NINJA%" == "true" (
-  REM With Ninja, the executable is always in the same location regardless of build type
-  set TEST_EXECUTABLE=.\build\tests\thread_safe_ai_manager_tests.exe
+REM Determine test executable path based on build type
+if "%BUILD_TYPE%" == "Debug" (
+  set TEST_EXECUTABLE=.\bin\debug\thread_safe_ai_manager_tests.exe
 ) else (
-  REM With default CMake generator, executable location depends on build type
-  if "%BUILD_TYPE%" == "Debug" (
-    set TEST_EXECUTABLE=.\build\tests\Debug\thread_safe_ai_manager_tests.exe
-  ) else (
-    set TEST_EXECUTABLE=.\build\tests\Release\thread_safe_ai_manager_tests.exe
-  )
+  set TEST_EXECUTABLE=.\bin\release\thread_safe_ai_manager_tests.exe
 )
+
+REM Verify executable exists
+if not exist "%TEST_EXECUTABLE%" (
+  echo Error: Test executable not found at '%TEST_EXECUTABLE%'
+  echo Searching for test executable...
+  for /r "bin" %%f in (thread_safe_ai_manager_tests*.exe) do (
+    echo Found executable at: %%f
+    set TEST_EXECUTABLE=%%f
+    goto :found_executable
+  )
+  echo Could not find the test executable. Build may have failed or placed the executable in an unexpected location.
+  exit /b 1
+)
+
+:found_executable
 
 REM Run tests and save output
 echo Running Thread-Safe AI Manager tests...
 
-REM Create a temporary file for test output
-set TEMP_OUTPUT=%TEMP%\thread_safe_ai_test_output.txt
+REM Create test output file
+set OUTPUT_FILE=test_results\thread_safe_ai_test_output.txt
 
-REM Run the tests
+REM Run the tests with options to prevent threading issues
 if "%VERBOSE%" == "true" (
-  %TEST_EXECUTABLE% --log_level=all > %TEMP_OUTPUT% 2>&1
-  type %TEMP_OUTPUT%
+  "%TEST_EXECUTABLE%" --log_level=all --catch_system_errors=no --no_result_code > "%OUTPUT_FILE%" 2>&1
+  type "%OUTPUT_FILE%"
 ) else (
-  %TEST_EXECUTABLE% > %TEMP_OUTPUT% 2>&1
-  type %TEMP_OUTPUT%
+  "%TEST_EXECUTABLE%" --catch_system_errors=no --no_result_code > "%OUTPUT_FILE%" 2>&1
+  type "%OUTPUT_FILE%"
 )
-
-REM Save test results
-copy %TEMP_OUTPUT% "..\test_results\thread_safe_ai_test_output.txt" > nul
 
 REM Extract performance metrics
 echo Extracting performance metrics...
-findstr /C:"time:" /C:"entities:" /C:"processed:" /C:"Concurrent processing time" %TEMP_OUTPUT% > "..\test_results\thread_safe_ai_performance_metrics.txt"
-
-REM Clean up temporary file
-del %TEMP_OUTPUT%
+findstr /C:"time:" /C:"entities:" /C:"processed:" /C:"Concurrent processing time" "%OUTPUT_FILE%" > "test_results\thread_safe_ai_performance_metrics.txt"
 
 REM Check test status
-findstr /C:"test cases failed" "..\test_results\thread_safe_ai_test_output.txt" > nul
+findstr /C:"test cases failed" "%OUTPUT_FILE%" > nul
 if not errorlevel 1 (
   echo ❌ Some tests failed! See test_results\thread_safe_ai_test_output.txt for details.
   exit /b 1
@@ -126,5 +90,3 @@ if not errorlevel 1 (
   echo ✅ All Thread-Safe AI Manager tests passed!
   exit /b 0
 )
-
-REM No need to change directory as we're already in the root

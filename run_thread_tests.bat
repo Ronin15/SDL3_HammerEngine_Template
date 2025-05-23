@@ -13,13 +13,6 @@ if not exist "test_results" (
     mkdir test_results
 )
 
-REM Create build directory if it doesn't exist
-if not exist "build" (
-    echo Creating build directory...
-    mkdir build
-    cmake -B build
-)
-
 REM Build the thread system tests
 echo Compiling tests...
 ninja -C build thread_system_tests
