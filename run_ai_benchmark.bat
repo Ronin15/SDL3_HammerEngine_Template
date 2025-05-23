@@ -50,57 +50,15 @@ exit /b 1
 :: Configure build cleaning
 if "%CLEAN_BUILD%"=="true" (
     echo Cleaning build directory...
-    if exist "build" rd /s /q build
-    mkdir build
-)
-
-:: Check if Ninja is available
-where /q ninja
-if %ERRORLEVEL% equ 0 (
-    set USE_NINJA=true
-    echo Ninja build system found, using it for faster builds.
-) else (
-    set USE_NINJA=false
-    echo Ninja build system not found, using default CMake generator.
-)
-
-:: Configure the project
-echo Configuring project with CMake (Build type: %BUILD_TYPE%)...
-
-:: Add extreme tests flag if requested and disable signal handling
-set CMAKE_FLAGS=-DCMAKE_BUILD_TYPE=%BUILD_TYPE% -DBOOST_TEST_NO_SIGNAL_HANDLING=ON
-if "%EXTREME_TEST%"=="true" (
-    set CMAKE_FLAGS=%CMAKE_FLAGS% -DENABLE_EXTREME_TESTS=ON
-)
-
-if "%USE_NINJA%"=="true" (
-    if "%VERBOSE%"=="true" (
-        cmake -S . -B build %CMAKE_FLAGS% -G Ninja
-    ) else (
-        cmake -S . -B build %CMAKE_FLAGS% -G Ninja > nul
-    )
-) else (
-    if "%VERBOSE%"=="true" (
-        cmake -S . -B build %CMAKE_FLAGS%
-    ) else (
-        cmake -S . -B build %CMAKE_FLAGS% > nul
-    )
+    ninja -C build -t clean
 )
 
 :: Build the benchmark
 echo Building AI Scaling Benchmark...
-if "%USE_NINJA%"=="true" (
-    if "%VERBOSE%"=="true" (
-        ninja -C build ai_scaling_benchmark
-    ) else (
-        ninja -C build ai_scaling_benchmark > nul
-    )
+if "%VERBOSE%"=="true" (
+    ninja -C build ai_scaling_benchmark
 ) else (
-    if "%VERBOSE%"=="true" (
-        cmake --build build --config %BUILD_TYPE% --target ai_scaling_benchmark
-    ) else (
-        cmake --build build --config %BUILD_TYPE% --target ai_scaling_benchmark > nul
-    )
+    ninja -C build ai_scaling_benchmark > nul
 )
 
 :: Check if build was successful
@@ -154,11 +112,14 @@ echo.
 echo Benchmark complete!
 echo Results saved to %RESULTS_FILE%
 
-:: Even if there are errors in the benchmark, we consider it successful if it produced output
-if exist "%RESULTS_FILE%" if %~z"%RESULTS_FILE%" gtr 0 (
-    echo Benchmark generated results successfully.
-    exit /b 0
-) else (
-    echo Benchmark may have failed. Check the output for errors.
-    exit /b 1
+:: Check if the results file exists and has content
+if exist "%RESULTS_FILE%" (
+    for %%A in ("%RESULTS_FILE%") do if %%~zA gtr 0 (
+        echo Benchmark generated results successfully.
+        exit /b 0
+    )
 )
+
+:: If we get here, either the file doesn't exist or is empty
+echo Benchmark may have failed. Check the output for errors.
+exit /b 1
