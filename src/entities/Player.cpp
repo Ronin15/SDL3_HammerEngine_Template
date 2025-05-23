@@ -89,7 +89,10 @@ void Player::setupStates() {
 }
 
 Player::~Player() {
-    clean();
+    // Don't call virtual functions from destructors
+    // Instead of calling clean(), directly handle cleanup here
+    
+    std::cout << "Forge Game Engine - Cleaning up player resources" << "\n";
     std::cout << "Forge Game Engine - Player resources cleaned!\n";
 }
 

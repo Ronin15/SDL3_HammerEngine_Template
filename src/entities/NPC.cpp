@@ -50,7 +50,14 @@ NPC::NPC(const std::string& textureID, const Vector2D& startPosition, int frameW
 }
 
 NPC::~NPC() {
-    clean();
+    // Don't call virtual functions from destructors
+    // Instead of calling clean(), directly handle cleanup here
+    
+    // Remove from AI Manager if it has a behavior
+    if (AIManager::Instance().entityHasBehavior(this)) {
+        AIManager::Instance().unassignBehaviorFromEntity(this);
+    }
+    
     std::cout << "Forge Game Engine - NPC resources cleaned!\n";
 }
 
