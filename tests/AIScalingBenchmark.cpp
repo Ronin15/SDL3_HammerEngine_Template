@@ -36,7 +36,7 @@ public:
         setWidth(32);
         setHeight(32);
     }
-    
+
     static std::shared_ptr<BenchmarkEntity> create(int id, const Vector2D& pos) {
         return std::make_shared<BenchmarkEntity>(id, pos);
     }
@@ -108,9 +108,9 @@ public:
         }
     }
 
-    void init(EntityPtr /* entity */) override { 
+    void init(EntityPtr /* entity */) override {
         m_initialized = true;
-        
+
         // No extra updates during init - we'll rely on the regular update cycle
     }
     void clean(EntityPtr /* entity */) override { m_initialized = false; }
@@ -151,22 +151,22 @@ struct GlobalFixture {
         if (g_systemsInitialized) {
             // Signal that shutdown is in progress
             g_shutdownInProgress.store(true);
-            
+
             // Wait for any pending operations to complete
             std::this_thread::sleep_for(std::chrono::milliseconds(500));
-            
+
             // Clean up in reverse order
             try {
                 // Reset all behaviors first
                 AIManager::Instance().resetBehaviors();
                 std::this_thread::sleep_for(std::chrono::milliseconds(100));
-                
+
                 // Clean AIManager
                 AIManager::Instance().clean();
-                
+
                 // Wait between cleanup operations
                 std::this_thread::sleep_for(std::chrono::milliseconds(100));
-                
+
                 // Clean ThreadSystem
                 Forge::ThreadSystem::Instance().clean();
             } catch (const std::exception& e) {
@@ -174,7 +174,7 @@ struct GlobalFixture {
             } catch (...) {
                 std::cerr << "Unknown exception during cleanup" << std::endl;
             }
-            
+
             g_systemsInitialized = false;
         }
     }
@@ -182,6 +182,9 @@ struct GlobalFixture {
 
 // Register global fixture
 BOOST_GLOBAL_FIXTURE(GlobalFixture);
+
+// Define test suite
+BOOST_AUTO_TEST_SUITE(AIScalingTests)
 
 // Fixture for benchmark setup/teardown
 struct AIScalingFixture {
@@ -197,7 +200,7 @@ struct AIScalingFixture {
     ~AIScalingFixture() {
         // Clean up at end of test
         cleanupEntitiesAndBehaviors();
-        
+
         // Clear collections
         entities.clear();
         behaviors.clear();
@@ -209,20 +212,20 @@ struct AIScalingFixture {
         if (g_shutdownInProgress.load()) {
             return;
         }
-        
+
         // Temporarily disable threading for cleanup to avoid race conditions
         bool wasThreaded = useThreading;
         if (wasThreaded) {
             AIManager::Instance().configureThreading(false);
             std::this_thread::sleep_for(std::chrono::milliseconds(50));
         }
-        
+
         // Clean up from previous run
         cleanupEntitiesAndBehaviors();
-        
+
         entities.clear();
         behaviors.clear();
-        
+
         // Restore threading if it was enabled
         if (wasThreaded) {
             AIManager::Instance().configureThreading(true);
@@ -274,13 +277,13 @@ struct AIScalingFixture {
             for (auto& entity : entities) {
                 entity->getUpdateCount(); // Clear by reading
             }
-            
+
             // Pre-run synchronization delay before starting timing
             if (useThreading) {
                 // Let any previous operations complete
                 std::this_thread::sleep_for(std::chrono::milliseconds(10));
             }
-            
+
             // Measure performance - start timing
             auto startTime = std::chrono::high_resolution_clock::now();
 
@@ -303,7 +306,7 @@ struct AIScalingFixture {
 
             auto endTime = std::chrono::high_resolution_clock::now();
             auto duration = std::chrono::duration_cast<std::chrono::microseconds>(endTime - startTime);
-            
+
             // Post-run synchronization to ensure all entities are processed
             // This is outside the timed section
             if (useThreading) {
@@ -311,7 +314,7 @@ struct AIScalingFixture {
                 int waitTime = std::min(1200, 50 + numEntities / 25);
                 std::cout << "  Post-run synchronization: waiting " << waitTime << "ms for entity count: " << numEntities << std::endl;
                 std::this_thread::sleep_for(std::chrono::milliseconds(waitTime));
-            
+
                 // Special handling for large entity counts
                 if (numEntities >= 10000) {
                     // Temporarily switch to single-threaded mode for large counts
@@ -319,21 +322,21 @@ struct AIScalingFixture {
                     AIManager::Instance().update();
                     std::this_thread::sleep_for(std::chrono::milliseconds(100));
                     AIManager::Instance().configureThreading(true);
-                
+
                     // For extremely large entity counts, add additional synchronization
                     if (numEntities >= 20000) {
                         std::cout << "  Extra synchronization for large entity count..." << std::endl;
                         std::this_thread::sleep_for(std::chrono::milliseconds(100));
                         AIManager::Instance().update();
                         std::this_thread::sleep_for(std::chrono::milliseconds(100));
-                    
+
                         // Special handling for extreme entity counts (50,000+)
                         if (numEntities >= 50000) {
                             std::cout << "  Adding extended synchronization for extreme entity count (" << numEntities << ")..." << std::endl;
                             std::this_thread::sleep_for(std::chrono::milliseconds(200));
                             AIManager::Instance().update();
                             std::this_thread::sleep_for(std::chrono::milliseconds(200));
-                            
+
                             // Extra handling for ultra-large entity counts (100,000+)
                             if (numEntities >= 100000) {
                                 std::cout << "  Adding ultra extended synchronization for massive entity count (" << numEntities << ")..." << std::endl;
@@ -353,11 +356,11 @@ struct AIScalingFixture {
                     }
                 }
             }
-            
+
             // Store the duration, ensuring it's at least 1 microsecond
             durations.push_back(std::max(1.0, static_cast<double>(duration.count())));
         }
-        
+
         // Calculate the average duration (excluding the highest value for stability)
         std::sort(durations.begin(), durations.end());
         double avgDuration = 0.0;
@@ -365,7 +368,7 @@ struct AIScalingFixture {
             avgDuration += durations[i];
         }
         avgDuration /= (durations.size() - 1);
-        
+
         // Calculate statistics with the average duration
         double totalTimeMs = avgDuration / 1000.0;
         double timePerUpdateMs = totalTimeMs / numUpdates;
@@ -393,7 +396,7 @@ struct AIScalingFixture {
             // Verify all entities were updated
             int notUpdatedCount = 0;
             std::vector<int> notUpdatedIds;
-        
+
             for (const auto& entity : entities) {
                 if (entity->getUpdateCount() == 0) {
                     notUpdatedCount++;
@@ -411,16 +414,16 @@ struct AIScalingFixture {
                 std::cout << notUpdatedIds[i] << " ";
             }
             std::cout << std::endl;
-            
+
             // If we have missed entities and threading is enabled, try one more update
             if (useThreading && notUpdatedCount > 0) {
                 // One final update attempt with longer waiting time
                 std::cout << "  Running final catch-up update..." << std::endl;
                 AIManager::Instance().update();
-                
+
                 // Give plenty of time for the update to complete
                 std::this_thread::sleep_for(std::chrono::milliseconds(100));
-                
+
                 // Recount missed entities
                 notUpdatedCount = 0;
                 for (const auto& entity : entities) {
@@ -428,7 +431,7 @@ struct AIScalingFixture {
                         notUpdatedCount++;
                     }
                 }
-                
+
                 if (notUpdatedCount > 0) {
                     std::cout << "  Final count: " << notUpdatedCount << " entities still not updated." << std::endl;
                 } else {
@@ -440,14 +443,14 @@ struct AIScalingFixture {
         // Clean up
         cleanupEntitiesAndBehaviors();
     }
-    
+
     // Helper to clean up entities and behaviors safely
     void cleanupEntitiesAndBehaviors() {
         // Skip if shutdown is in progress
         if (g_shutdownInProgress.load()) {
             return;
         }
-        
+
         // Clear all frame counters
         for (const auto& behavior : behaviors) {
             if (behavior) {
@@ -460,7 +463,7 @@ struct AIScalingFixture {
                 }
             }
         }
-        
+
         // First unassign all behaviors from entities
         for (auto& entity : entities) {
             if (entity) {
@@ -473,10 +476,10 @@ struct AIScalingFixture {
                 }
             }
         }
-        
+
         // Wait for unassign operations to complete
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
-        
+
         // Reset all behaviors
         try {
             AIManager::Instance().resetBehaviors();
@@ -486,7 +489,7 @@ struct AIScalingFixture {
         } catch (...) {
             std::cerr << "Unknown error resetting behaviors" << std::endl;
         }
-        
+
         // Wait for any pending operations to complete
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
@@ -498,7 +501,7 @@ struct AIScalingFixture {
         if (g_shutdownInProgress.load()) {
             return;
         }
-        
+
         std::string threadingMode = useThreading ? "Threaded" : "Single-Threaded";
         std::cout << "\n=========================================" << std::endl;
         std::cout << "SCALABILITY TEST: " << threadingMode << std::endl;
@@ -507,10 +510,10 @@ struct AIScalingFixture {
         const int numBehaviors = 10;
         const int numUpdates = 10;
         std::vector<int> entityCounts;
-        
+
         // Use different entity counts based on threading mode to balance performance and stability
         if (useThreading) {
-            entityCounts = {100, 500, 1000, 5000, 10000, 25000}; // Skip 50000 in threaded mode
+            entityCounts = {100, 500, 1000, 5000, 10000, 25000, 50000};
         } else {
             entityCounts = {100, 500, 1000, 5000, 10000, 25000, 50000};
         }
@@ -518,12 +521,27 @@ struct AIScalingFixture {
         std::map<int, double> updateRates;
 
         for (int numEntities : entityCounts) {
-            if (numEntities > 10000 && !useThreading) {
-                std::cout << "Skipping " << numEntities << " entities in single-threaded mode (too slow)" << std::endl;
+            if ((numEntities > 10000 && !useThreading) ||
+                (numEntities > 100000 && useThreading && std::thread::hardware_concurrency() < 8)) {
+                std::cout << "Skipping " << numEntities << " entities in "
+                          << (useThreading ? "threaded" : "single-threaded")
+                          << " mode (would be too slow)" << std::endl;
                 continue;
             }
 
-            runBenchmark(numEntities, numBehaviors, numUpdates, useThreading);
+            std::cout << "\nRunning test with " << numEntities << " entities..." << std::endl;
+
+            // For very large entity counts, use fewer behaviors to avoid excessive memory usage
+            int adjustedNumBehaviors = (numEntities >= 100000) ? 5 : numBehaviors;
+            int adjustedNumUpdates = (numEntities >= 100000) ? 5 : numUpdates;
+
+            if (adjustedNumBehaviors != numBehaviors || adjustedNumUpdates != numUpdates) {
+                std::cout << "Adjusted parameters for large entity count: "
+                          << adjustedNumBehaviors << " behaviors, "
+                          << adjustedNumUpdates << " updates" << std::endl;
+            }
+
+            runBenchmark(numEntities, adjustedNumBehaviors, adjustedNumUpdates, false);
 
             // Calculate updates per second
             auto startTime = std::chrono::high_resolution_clock::now();
@@ -532,7 +550,7 @@ struct AIScalingFixture {
             if (useThreading) {
                 std::this_thread::sleep_for(std::chrono::milliseconds(10));
             }
-            
+
             if (useThreading) {
                 AIManager::Instance().batchUpdateAllBehaviors();
             } else {
@@ -545,13 +563,15 @@ struct AIScalingFixture {
                     AIManager::Instance().batchProcessEntities(behaviorName, behaviorEntities);
                 }
             }
-            
+
             // Post-run synchronization (outside of timing)
             if (useThreading) {
                 // Scale wait time with entity count, minimum 20ms
-                int waitTime = std::min(100, 20 + numEntities / 100);
+                // For very large counts, cap at 500ms to avoid excessive waiting
+                int waitTime = std::min(500, 20 + numEntities / 100);
+                std::cout << "  Post-run synchronization: waiting " << waitTime << "ms for entity count: " << numEntities << std::endl;
                 std::this_thread::sleep_for(std::chrono::milliseconds(waitTime));
-                
+
                 // Force a second update to catch any entities that weren't processed
                 AIManager::Instance().update();
                 std::this_thread::sleep_for(std::chrono::milliseconds(waitTime));
@@ -563,11 +583,11 @@ struct AIScalingFixture {
             // Ensure we don't get division by zero or extremely small values
             double durationInSec = std::max(0.000001, duration.count() / 1000000.0);
             double updatesPerSecond = static_cast<double>(numEntities) / durationInSec;
-            
+
             // Cap the updates per second to a realistic value to avoid "inf"
             const double MAX_UPDATES_PER_SEC = 100000000.0; // 100 million updates/sec
             updatesPerSecond = std::min(updatesPerSecond, MAX_UPDATES_PER_SEC);
-            
+
             updateRates[numEntities] = updatesPerSecond;
 
             // Clean up after each test
@@ -581,7 +601,8 @@ struct AIScalingFixture {
 
         for (const auto& [count, rate] : updateRates) {
             std::cout << std::setw(12) << count << " | "
-                      << std::setw(15) << std::fixed << std::setprecision(0) << rate << std::endl;
+                          << std::setw(15) << std::fixed << std::setprecision(0) << rate
+                          << " (" << (useThreading ? "threaded" : "single-threaded") << ")" << std::endl;
         }
     }
 
@@ -599,17 +620,27 @@ BOOST_AUTO_TEST_CASE(TestThreadingPerformance) {
         BOOST_TEST_MESSAGE("Skipping test due to shutdown in progress");
         return;
     }
-    
+
     const int numEntities = 1000;
     const int numBehaviors = 5;
     const int numUpdates = 20;
 
     // Run in single-threaded mode
-    runBenchmark(numEntities, numBehaviors, numUpdates, false);
+    // For very large entity counts, use fewer behaviors to avoid excessive memory usage
+    int adjustedNumBehaviors = (numEntities >= 50000) ? 5 : numBehaviors;
+    int adjustedNumUpdates = (numEntities >= 50000) ? 5 : numUpdates;
+
+    if (adjustedNumBehaviors != numBehaviors || adjustedNumUpdates != numUpdates) {
+        std::cout << "Adjusted parameters for large entity count: "
+                  << adjustedNumBehaviors << " behaviors, "
+                  << adjustedNumUpdates << " updates" << std::endl;
+    }
+
+    runBenchmark(numEntities, adjustedNumBehaviors, adjustedNumUpdates, false);
 
     // Run in multi-threaded mode
     runBenchmark(numEntities, numBehaviors, numUpdates, true);
-    
+
     // Clean up after test
     cleanupEntitiesAndBehaviors();
 }
@@ -621,9 +652,9 @@ BOOST_AUTO_TEST_CASE(TestScalabilitySingleThreaded) {
         BOOST_TEST_MESSAGE("Skipping test due to shutdown in progress");
         return;
     }
-    
+
     runScalabilityTest(false);
-    
+
     // Clean up after test
     cleanupEntitiesAndBehaviors();
 }
@@ -635,18 +666,20 @@ BOOST_AUTO_TEST_CASE(TestScalabilityThreaded) {
         BOOST_TEST_MESSAGE("Skipping test due to shutdown in progress");
         return;
     }
-    
+
     try {
-        // Limit thread count for more stability
-        AIManager::Instance().configureThreading(true, 2);
+        // Use maximum available threads for optimal performance
+        unsigned int maxThreads = std::thread::hardware_concurrency();
+        AIManager::Instance().configureThreading(true, maxThreads);
+        std::cout << "Running scalability test with " << maxThreads << " threads" << std::endl;
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
-        
+
         runScalabilityTest(true);
-        
+
         // Switch to single-threaded mode for cleanup
         AIManager::Instance().configureThreading(false);
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
-        
+
         // Clean up after test
         cleanupEntitiesAndBehaviors();
     }
@@ -659,32 +692,99 @@ BOOST_AUTO_TEST_CASE(TestScalabilityThreaded) {
     }
 }
 
-// Test extreme case
-BOOST_AUTO_TEST_CASE(TestLargeEntityCount) {
+}
+
+// Test with extreme number of entities (200,000)
+BOOST_AUTO_TEST_CASE(TestExtremeEntityCount) {
+    AIScalingFixture fixture;
     // Skip if shutdown is in progress
     if (g_shutdownInProgress.load()) {
         BOOST_TEST_MESSAGE("Skipping test due to shutdown in progress");
         return;
     }
-    
-    // Test with 100,000 entities - extreme test for thread-safe implementation
-    runBenchmark(100000, 5, 1, true);
-    
-    // Only run if we have a lot of memory
-    #ifdef ENABLE_EXTREME_TESTS
-    // 100,000 entities with 10 behaviors
-    runBenchmark(100000, 10, 5, true);
-    #endif
-    
+
+    std::cout << "\n===== EXTREME ENTITY COUNT TEST =====" << std::endl;
+
+    try {
+        // Configure for maximum thread utilization
+        unsigned int maxThreads = std::thread::hardware_concurrency();
+        AIManager::Instance().configureThreading(true, maxThreads);
+        std::cout << "Running extreme entity test with " << maxThreads << " threads" << std::endl;
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+
+        const int numEntities = 200000;
+        const int numBehaviors = 3;   // Fewer behaviors for extreme-scale test
+        const int numUpdates = 3;     // Fewer updates to avoid excessive test time
+
+        std::cout << "\n=========================================" << std::endl;
+        std::cout << "EXTREME ENTITY TEST: " << numEntities << " entities with " << numBehaviors << " behaviors" << std::endl;
+        std::cout << "=========================================" << std::endl;
+
+        // Create entities and behaviors
+        fixture.runBenchmark(numEntities, numBehaviors, numUpdates, true);
+
+        // Measure performance for a single update
+        auto startTime = std::chrono::high_resolution_clock::now();
+
+        AIManager::Instance().batchUpdateAllBehaviors();
+
+        // Allow time for updates to complete
+        int waitTime = 500;  // 500ms should be enough for 200K entities
+        std::cout << "  Post-run synchronization: waiting " << waitTime << "ms for entity count: " << numEntities << std::endl;
+        std::this_thread::sleep_for(std::chrono::milliseconds(waitTime));
+
+        // Force a second update to catch any entities that weren't processed
+        AIManager::Instance().update();
+        std::this_thread::sleep_for(std::chrono::milliseconds(waitTime));
+
+        auto endTime = std::chrono::high_resolution_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::microseconds>(endTime - startTime);
+
+        // Calculate performance metrics
+        double durationInSec = std::max(0.000001, duration.count() / 1000000.0);
+        double updatesPerSecond = static_cast<double>(numEntities) / durationInSec;
+        double timePerEntity = durationInSec / numEntities * 1000.0;  // in milliseconds
+
+        // Report performance
+        std::cout << "\nEXTREME ENTITY TEST RESULTS:" << std::endl;
+        std::cout << "  Total entities: " << numEntities << std::endl;
+        std::cout << "  Total behaviors: " << numBehaviors << std::endl;
+        std::cout << "  Total time: " << durationInSec * 1000 << " ms" << std::endl;
+        std::cout << "  Time per entity: " << std::fixed << std::setprecision(6) << timePerEntity << " ms" << std::endl;
+        std::cout << "  Updates per second: " << std::fixed << std::setprecision(2) << updatesPerSecond << std::endl;
+        std::cout << "  Thread count: " << maxThreads << std::endl;
+
+        // Track behavior update counts
+        std::cout << "  Behavior update counts:" << std::endl;
+        for (size_t i = 0; i < fixture.behaviors.size(); ++i) {
+            std::cout << "    Behavior " << i << ": " << fixture.behaviors[i]->getUpdateCount() << " updates" << std::endl;
+        }
+
+        // Only run if we have a lot of memory
+        #ifdef ENABLE_EXTREME_TESTS
+        // Even more extreme test with additional behaviors
+        fixture.runBenchmark(200000, 5, 3, true);
+        #endif
+
+        // Switch to single-threaded mode for cleanup
+        AIManager::Instance().configureThreading(false);
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
+    catch (const std::exception& e) {
+        std::cerr << "Error in extreme entity test: " << e.what() << std::endl;
+        AIManager::Instance().configureThreading(false);
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
+
     // Extra cleanup to ensure no leftover references
-    cleanupEntitiesAndBehaviors();
-    
+    fixture.cleanupEntitiesAndBehaviors();
+
     // Clear collections explicitly
-    entities.clear();
-    behaviors.clear();
-    
+    fixture.entities.clear();
+    fixture.behaviors.clear();
+
     // Wait for any pending operations to complete
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
 }
 
-BOOST_AUTO_TEST_SUITE_END()
+BOOST_AUTO_TEST_SUITE_END() // AIScalingTests

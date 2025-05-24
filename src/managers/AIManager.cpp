@@ -84,15 +84,29 @@ void AIManager::clean() {
 
 void AIManager::configureThreading(bool useThreading, unsigned int maxThreads) {
     m_useThreading.store(useThreading, std::memory_order_release);
+    
+    // If maxThreads is 0 (auto), set it to optimal thread count based on hardware
+    if (maxThreads == 0) {
+        // Get available hardware threads
+        unsigned int hwThreads = std::thread::hardware_concurrency();
+        
+        // If we couldn't determine the number, default to 4
+        if (hwThreads == 0) hwThreads = 4;
+        
+        // Reserve 1 thread for main game thread on systems with ≤ 4 cores
+        // Reserve 2 threads for main game thread and other systems on systems with > 4 cores
+        maxThreads = (hwThreads <= 4) ? hwThreads - 1 : hwThreads - 2;
+        
+        // Ensure we have at least 1 thread
+        maxThreads = std::max(1u, maxThreads);
+    }
+    
     m_maxThreads = maxThreads;
     
     if (useThreading) {
         std::cout << "Forge Game Engine - AIManager: Threading enabled" << std::endl;
-        if (maxThreads > 0) {
-            std::cout << "Forge Game Engine - AIManager: Using " << maxThreads << " threads max" << std::endl;
-        } else {
-            std::cout << "Forge Game Engine - AIManager: Using auto thread count" << std::endl;
-        }
+        std::cout << "Forge Game Engine - AIManager: Using " << m_maxThreads 
+                  << " threads (hardware concurrency: " << std::thread::hardware_concurrency() << ")" << std::endl;
     } else {
         std::cout << "Forge Game Engine - AIManager: Threading disabled" << std::endl;
     }
@@ -356,6 +370,26 @@ void AIManager::batchUpdateAllBehaviors() {
             batchesCopy = m_behaviorBatches;
         }
         
+        // Prepare for multi-level parallelism - parallelize across behaviors and within each behavior
+        
+        // Reserve capacity in ThreadSystem for maximum efficiency
+        const size_t totalBatches = batchesCopy.size();
+        if (totalBatches > 16) {
+            // If we have many behavior types, ensure the queue has enough capacity
+            Forge::ThreadSystem::Instance().reserveQueueCapacity(totalBatches * 2);
+        }
+        
+        // Determine if we should sub-divide larger batches for better parallelism
+        const unsigned int availableThreads = m_maxThreads;
+        const unsigned int behaviorsCount = static_cast<unsigned int>(batchesCopy.size());
+        
+        // If we have more threads than behaviors, we can parallelize within batches too
+        const bool useIntraBatchParallelism = (availableThreads > behaviorsCount);
+        
+        // Create a vector to store futures for all batches
+        std::vector<std::future<void>> batchFutures;
+        batchFutures.reserve(totalBatches);
+        
         // Process each behavior type in parallel
         for (const auto& [behaviorName, batch] : batchesCopy) {
             if (batch.empty()) continue;
@@ -364,45 +398,85 @@ void AIManager::batchUpdateAllBehaviors() {
             AIBehavior* behavior = getBehavior(behaviorName);
             if (!behavior) continue;
             
-            // Queue this batch for parallel processing
-            Forge::ThreadSystem::Instance().enqueueTask([this, behavior, batch, behaviorName]() {
-                auto startTime = getCurrentTimeNanos();
+            if (useIntraBatchParallelism && batch.size() >= 100) {
+                // For large batches, use processEntitiesWithBehavior which applies internal parallelism
+                auto future = Forge::ThreadSystem::Instance().enqueueTaskWithResult(
+                    [this, behavior, batch, behaviorName]() {
+                        auto startTime = getCurrentTimeNanos();
+                        
+                        // Use multi-threaded processing within this batch 
+                        this->processEntitiesWithBehavior(behavior, batch, true);
+                        
+                        auto endTime = getCurrentTimeNanos();
+                        double timeMs = (endTime - startTime) / 1000000.0;
+                        recordBehaviorPerformance(behaviorName, timeMs);
+                    });
                 
-                // Process all entities with this behavior
-                for (const EntityPtr& entity : batch) {
-                    if (entity) {
-                        try {
-                            // Always increment the frame counter before checking if we should update
-                            behavior->incrementFrameCounter(entity);
+                batchFutures.push_back(std::move(future));
+            } else {
+                // For smaller batches, use standard single-threaded processing
+                auto future = Forge::ThreadSystem::Instance().enqueueTaskWithResult(
+                    [this, behavior, batch, behaviorName]() {
+                        auto startTime = getCurrentTimeNanos();
+                        
+                        // Process all entities with this behavior
+                        for (const EntityPtr& entity : batch) {
+                            if (entity) {
+                                try {
+                                    // Always increment the frame counter before checking if we should update
+                                    behavior->incrementFrameCounter(entity);
+                                    
+                                    // Only update if the behavior's shouldUpdate returns true
+                                    // This will check the frame counter internally
+                                    if (behavior->shouldUpdate(entity)) {
+                                        behavior->update(entity);
+                                        // Reset frame counter after update
+                                        behavior->resetFrameCounter(entity);
+                                    }
                             
-                            // Only update if the behavior's shouldUpdate returns true
-                            // This will check the frame counter internally
-                            if (behavior->shouldUpdate(entity)) {
-                                behavior->update(entity);
-                                // Reset frame counter after update
-                                behavior->resetFrameCounter(entity);
+                                    // Check if entity has gone off-screen and needs cleanup
+                                    if (entity->getPosition().getX() < -2000 || 
+                                        entity->getPosition().getX() > 3000 ||
+                                        entity->getPosition().getY() < -2000 || 
+                                        entity->getPosition().getY() > 3000) {
+                                        // Reset frame counter to encourage update
+                                        behavior->setFrameCounter(entity, 999);
+                                    }
+                                } catch (const std::exception& e) {
+                                    // Log exception details but continue processing other entities
+                                    std::cerr << "Exception updating entity with " << behaviorName 
+                                              << ": " << e.what() << std::endl;
+                                    continue;
+                                } catch (...) {
+                                    // Catch any exceptions to prevent thread crashes
+                                    std::cerr << "Unknown exception updating entity with " 
+                                              << behaviorName << std::endl;
+                                    continue;
+                                }
                             }
-                
-                            // Check if entity has gone off-screen and needs cleanup
-                            if (entity->getPosition().getX() < -2000 || 
-                                entity->getPosition().getX() > 3000 ||
-                                entity->getPosition().getY() < -2000 || 
-                                entity->getPosition().getY() > 3000) {
-                                // Reset frame counter to encourage update
-                                behavior->setFrameCounter(entity, 999);
-                            }
-                        } catch (...) {
-                            // Catch any exceptions to prevent thread crashes
-                            continue;
                         }
-                    }
-                }
+                        
+                        // Record performance stats
+                        auto endTime = getCurrentTimeNanos();
+                        double timeMs = (endTime - startTime) / 1000000.0;
+                        recordBehaviorPerformance(behaviorName, timeMs);
+                    });
                 
-                // Record performance stats
-                auto endTime = getCurrentTimeNanos();
-                double timeMs = (endTime - startTime) / 1000000.0;
-                recordBehaviorPerformance(behaviorName, timeMs);
-            });
+                batchFutures.push_back(std::move(future));
+            }
+        }
+        
+        // Wait for all batch updates to complete
+        for (auto& future : batchFutures) {
+            try {
+                future.get();
+            } catch (const std::exception& e) {
+                // Log the exception but continue processing other batches
+                std::cerr << "Exception in AI batch update: " << e.what() << std::endl;
+            } catch (...) {
+                // Catch any other exceptions
+                std::cerr << "Unknown exception in AI batch update" << std::endl;
+            }
         }
     } else {
         // Fallback to sequential processing if threading is disabled
@@ -418,7 +492,9 @@ void AIManager::batchUpdateAllBehaviors() {
 void AIManager::updateBehaviorBatch(const std::string_view& behaviorName, const BehaviorBatch& batch) {
     if (batch.empty()) return;
     
-    // Get the behavior
+    auto startTime = getCurrentTimeNanos();
+    
+    // Find the behavior
     AIBehavior* behavior = nullptr;
     {
         std::shared_lock<std::shared_mutex> lock(m_behaviorsMutex);
@@ -430,40 +506,52 @@ void AIManager::updateBehaviorBatch(const std::string_view& behaviorName, const 
     
     if (!behavior) return;
     
-    // Update all entities with this behavior
-    auto startTime = getCurrentTimeNanos();
-    
-    // Simple single-threaded processing
-    for (const EntityPtr& entity : batch) {
-        if (entity) {
-            try {
-                // Always increment the frame counter before checking if we should update
-                behavior->incrementFrameCounter(entity);
-                        
-                // Only update if the behavior's shouldUpdate returns true
-                // This will check the frame counter internally
-                if (behavior->shouldUpdate(entity)) {
-                    behavior->update(entity);
-                    // Reset frame counter after update
-                    behavior->resetFrameCounter(entity);
+    // Check if we should use threading even for a single batch
+    // Only thread if we have a lot of entities in this batch and threading is enabled
+    const bool useThreadingForBatch = m_useThreading.load(std::memory_order_acquire) && 
+                                      Forge::ThreadSystem::Exists() &&
+                                      batch.size() > 200; // Threshold for threading a single batch
+                                      
+    if (useThreadingForBatch) {
+        // Use processEntitiesWithBehavior with threading enabled
+        processEntitiesWithBehavior(behavior, batch, true);
+    } else {
+        // Sequential processing - original implementation
+        for (const EntityPtr& entity : batch) {
+            if (entity) {
+                try {
+                    // Always increment the frame counter before checking if we should update
+                    behavior->incrementFrameCounter(entity);
+                    
+                    // Only update if the behavior's shouldUpdate returns true
+                    // This will check the frame counter internally
+                    if (behavior->shouldUpdate(entity)) {
+                        behavior->update(entity);
+                        behavior->resetFrameCounter(entity);
+                    }
+                    
+                    // Check if entity has gone off-screen and needs cleanup
+                    if (entity->getPosition().getX() < -2000 || 
+                        entity->getPosition().getX() > 3000 ||
+                        entity->getPosition().getY() < -2000 || 
+                        entity->getPosition().getY() > 3000) {
+                        // Reset frame counter to encourage update
+                        behavior->setFrameCounter(entity, 999);
+                    }
+                } catch (const std::exception& e) {
+                    // Log exception details
+                    std::cerr << "Exception in AI behavior update: " << e.what() << std::endl;
+                    continue;
+                } catch (...) {
+                    // Catch any exceptions to prevent crashes
+                    std::cerr << "Unknown exception in AI behavior update" << std::endl;
+                    continue;
                 }
-                
-                // Check if entity has gone off-screen and needs cleanup
-                if (entity->getPosition().getX() < -2000 || 
-                    entity->getPosition().getX() > 3000 ||
-                    entity->getPosition().getY() < -2000 || 
-                    entity->getPosition().getY() > 3000) {
-                    // Reset frame counter to encourage update
-                    behavior->setFrameCounter(entity, 999);
-                }
-            } catch (...) {
-                // Catch any exceptions to prevent crashes
-                continue;
             }
         }
     }
     
-    // Record performance metrics
+    // Record performance stats
     auto endTime = getCurrentTimeNanos();
     double timeMs = (endTime - startTime) / 1000000.0;
     recordBehaviorPerformance(behaviorName, timeMs);
@@ -491,43 +579,114 @@ void AIManager::processEntitiesWithBehavior(AIBehavior* behavior, const std::vec
     if (useThreading) {
         // Split entities into chunks for parallel processing
         const size_t numEntities = entities.size();
-        // Limit threads based on entity count for better stability
-        const size_t maxThreads = numEntities > 10000 ? 2 : 4; // Use fewer threads for large entity counts
-        const size_t numThreads = std::min(numEntities, static_cast<size_t>(maxThreads));
-        const size_t chunkSize = (numEntities + numThreads - 1) / numThreads;
+        
+        // Determine optimal thread count based on workload characteristics
+        const unsigned int configuredMaxThreads = m_maxThreads;
+        
+        // Adaptive thread allocation based on workload size and characteristics
+        // Fine-tune thread count based on entity count for optimal performance
+        unsigned int effectiveThreadCount;
+        
+        // Determine optimal chunk size based on entity count
+        // Small entity counts: use more threads with smaller chunks for responsiveness
+        // Large entity counts: use fewer threads with larger chunks for efficiency
+        size_t targetChunkSize;
+        
+        if (numEntities < 50) {
+            // Very small batches - use minimal threading to avoid overhead
+            effectiveThreadCount = 2;
+            targetChunkSize = 10;
+        } else if (numEntities < 200) {
+            // Small batches - use moderate threading
+            effectiveThreadCount = std::min(4u, configuredMaxThreads);
+            targetChunkSize = 25;
+        } else if (numEntities < 1000) {
+            // Medium batches - scale up threading
+            effectiveThreadCount = std::min(configuredMaxThreads, 8u);
+            targetChunkSize = 50;
+        } else if (numEntities < 5000) {
+            // Large batches - use most available threads
+            effectiveThreadCount = configuredMaxThreads;
+            targetChunkSize = 100;
+        } else {
+            // Very large batches - use all threads but larger chunks
+            effectiveThreadCount = configuredMaxThreads;
+            targetChunkSize = 250;
+        }
+        
+        // Calculate optimal number of threads based on entity count and target chunk size
+        const size_t calculatedThreads = (numEntities + targetChunkSize - 1) / targetChunkSize;
+        
+        // Use the lower of calculated or effective thread count to avoid creating too many tiny tasks
+        const size_t numThreads = std::min(calculatedThreads, static_cast<size_t>(effectiveThreadCount));
+        
+        // Ensure we have at least one thread and no more than the entity count
+        const size_t finalNumThreads = std::max(1ul, std::min(numThreads, numEntities));
+        
+        // Recalculate chunk size to ensure even distribution
+        const size_t chunkSize = (numEntities + finalNumThreads - 1) / finalNumThreads;
+        
+        // Reserve thread system capacity if we're creating a lot of tasks
+        if (finalNumThreads > 16) {
+            Forge::ThreadSystem::Instance().reserveQueueCapacity(finalNumThreads);
+        }
         
         std::vector<std::future<void>> futures;
-        futures.reserve(numThreads);
+        futures.reserve(finalNumThreads);
         
-        // Create a copy of the entities vector to avoid race conditions
-        auto entitiesCopy = entities;
-        
-        for (size_t i = 0; i < numThreads; ++i) {
+        // Submit tasks in chunks
+        for (size_t i = 0; i < finalNumThreads; ++i) {
             size_t startIdx = i * chunkSize;
             size_t endIdx = std::min(startIdx + chunkSize, numEntities);
             
             if (startIdx >= numEntities) break;
             
-            futures.push_back(Forge::ThreadSystem::Instance().enqueueTaskWithResult([behavior, entitiesCopy, startIdx, endIdx]() {
-                try {
-                    for (size_t j = startIdx; j < endIdx; ++j) {
-                        const EntityPtr& entity = entitiesCopy[j];
-                        if (entity) {
-                            behavior->update(entity);
+            futures.push_back(Forge::ThreadSystem::Instance().enqueueTaskWithResult(
+                [behavior, &entities, startIdx, endIdx]() {
+                    try {
+                        for (size_t j = startIdx; j < endIdx; ++j) {
+                            const EntityPtr& entity = entities[j];
+                            if (entity) {
+                                // Always increment the frame counter before checking if we should update
+                                behavior->incrementFrameCounter(entity);
+                                
+                                // Only update if the behavior's shouldUpdate returns true
+                                if (behavior->shouldUpdate(entity)) {
+                                    behavior->update(entity);
+                                    behavior->resetFrameCounter(entity);
+                                }
+                                
+                                // Check if entity has gone off-screen and needs cleanup
+                                if (entity->getPosition().getX() < -2000 || 
+                                    entity->getPosition().getX() > 3000 ||
+                                    entity->getPosition().getY() < -2000 || 
+                                    entity->getPosition().getY() > 3000) {
+                                    // Reset frame counter to encourage update
+                                    behavior->setFrameCounter(entity, 999);
+                                }
+                            }
                         }
+                    } catch (const std::exception& e) {
+                        // Log exception details
+                        std::cerr << "Exception in AI thread: " << e.what() << std::endl;
+                    } catch (...) {
+                        // Catch any exceptions to prevent thread crashes
+                        std::cerr << "Unknown exception in AI thread" << std::endl;
                     }
-                } catch (...) {
-                    // Catch any exceptions to prevent thread crashes
                 }
-            }));
+            ));
         }
         
-        // Wait for all tasks to complete
+        // Wait for all tasks to complete and handle exceptions
         for (auto& future : futures) {
             try {
-                future.wait();
+                future.get();
+            } catch (const std::exception& e) {
+                // Log the exception but continue processing
+                std::cerr << "Exception in AI thread: " << e.what() << std::endl;
             } catch (...) {
-                // Catch any exceptions during wait
+                // Catch any other exceptions during execution
+                std::cerr << "Unknown exception in AI thread" << std::endl;
             }
         }
     } else {
@@ -535,9 +694,30 @@ void AIManager::processEntitiesWithBehavior(AIBehavior* behavior, const std::vec
         for (const EntityPtr& entity : entities) {
             if (entity) {
                 try {
-                    behavior->update(entity);
+                    // Always increment the frame counter before checking if we should update
+                    behavior->incrementFrameCounter(entity);
+                    
+                    // Only update if the behavior's shouldUpdate returns true
+                    if (behavior->shouldUpdate(entity)) {
+                        behavior->update(entity);
+                        behavior->resetFrameCounter(entity);
+                    }
+                    
+                    // Check if entity has gone off-screen and needs cleanup
+                    if (entity->getPosition().getX() < -2000 || 
+                        entity->getPosition().getX() > 3000 ||
+                        entity->getPosition().getY() < -2000 || 
+                        entity->getPosition().getY() > 3000) {
+                        // Reset frame counter to encourage update
+                        behavior->setFrameCounter(entity, 999);
+                    }
+                } catch (const std::exception& e) {
+                    // Log exception details
+                    std::cerr << "Exception in AI update: " << e.what() << std::endl;
+                    continue;
                 } catch (...) {
                     // Catch any exceptions during update
+                    std::cerr << "Unknown exception in AI update" << std::endl;
                     continue;
                 }
             }
