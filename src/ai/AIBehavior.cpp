@@ -33,9 +33,9 @@ void AIBehavior::cleanupEntity(Entity* entity) {
     }
 }
 
-Entity* AIBehavior::findPlayerEntity() const {
+Entity* AIBehavior::findPlayerEntity() {
     // Get the game state manager
-    GameStateManager* gameStateManager = GameEngine::Instance().getGameStateManager();
+    const GameStateManager* gameStateManager = GameEngine::Instance().getGameStateManager();
     if (!gameStateManager) return nullptr;
     
     // Try to get the AIDemoState which contains the player
@@ -68,7 +68,7 @@ bool AIBehavior::shouldUpdate(Entity* entity) const {
     // but will have more frequent updates than lower priority behaviors
 
     // Find the player entity
-    Entity* player = findPlayerEntity();
+    Entity* player = AIBehavior::findPlayerEntity();
 
     // If no player was found, fall back to distance from origin
     if (!player) {

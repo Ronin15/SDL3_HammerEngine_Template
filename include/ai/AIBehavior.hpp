@@ -86,7 +86,7 @@ protected:
     // - In tests: returns nullptr to use fallback distance-from-origin logic
     // - In game: returns player entity from active game state
     // This approach enables unit testing without dependencies on GameState classes
-    Entity* findPlayerEntity() const;
+    static Entity* findPlayerEntity();
 };
 
 #endif // AI_BEHAVIOR_HPP
