@@ -136,13 +136,26 @@ if "%BUILD_TYPE%"=="Debug" (
 if not exist "%BENCHMARK_EXECUTABLE%" (
     echo !RED!Error: Benchmark executable not found at '%BENCHMARK_EXECUTABLE%'!NC!
     echo !YELLOW!Searching for benchmark executable...!NC!
+    
+    :: Check if bin directory exists
+    if not exist "bin" (
+        echo !RED!Error: bin directory not found!NC!
+        echo !RED!Build may have failed or used a different output directory!NC!
+        exit /b 1
+    )
+    
+    set FOUND_EXECUTABLE=false
     for /r "bin" %%f in (ai_scaling_benchmark*.exe) do (
         echo !GREEN!Found executable at: %%f!NC!
         set BENCHMARK_EXECUTABLE=%%f
+        set FOUND_EXECUTABLE=true
         goto :found_executable
     )
-    echo !RED!Could not find the benchmark executable. Build may have failed.!NC!
-    exit /b 1
+    
+    if "%FOUND_EXECUTABLE%"=="false" (
+        echo !RED!Could not find the benchmark executable. Build may have failed.!NC!
+        exit /b 1
+    )
 )
 
 :found_executable
@@ -176,13 +189,22 @@ echo Command: %BENCHMARK_EXECUTABLE% %TEST_OPTS%>> "%RESULTS_FILE%"
 echo =========================================>> "%RESULTS_FILE%"
 echo.>> "%RESULTS_FILE%"
 
-:: Windows doesn't have a direct timeout equivalent, so we'll use a simple approach
+:: Run the benchmark with proper error handling
 if "%VERBOSE%"=="true" (
+    echo !YELLOW!Running benchmark with verbose output...!NC!
     "%BENCHMARK_EXECUTABLE%" %TEST_OPTS% 2>&1 | findstr /v "^$" >> "%RESULTS_FILE%"
 ) else (
+    echo !YELLOW!Running benchmark...!NC!
     "%BENCHMARK_EXECUTABLE%" %TEST_OPTS% 2>&1 | findstr /v "^$" >> "%RESULTS_FILE%"
 )
 set TEST_RESULT=%ERRORLEVEL%
+
+:: Check if executable was actually found/run
+if %TEST_RESULT% equ 9009 (
+    echo !RED!Error: Benchmark executable failed to run. Check the path: %BENCHMARK_EXECUTABLE%!NC!
+    echo Error: Benchmark executable failed to run >> "%RESULTS_FILE%"
+    set TEST_RESULT=1
+)
 
 echo.>> "%RESULTS_FILE%"
 echo ============ BENCHMARK END =============>> "%RESULTS_FILE%"
@@ -204,10 +226,19 @@ if %TEST_RESULT% equ 0 (
     echo !GREEN!Benchmark completed successfully!!NC!
 ) else (
     echo !YELLOW!Benchmark exited with code %TEST_RESULT%!NC!
-    findstr /c:"Total time: " /c:"Benchmark: " "%RESULTS_FILE%" >nul 2>&1
-    if %ERRORLEVEL% equ 0 (
-        echo !GREEN!Results were captured despite abnormal termination.!NC!
-        set TEST_RESULT=0
+    
+    :: Check if results file exists
+    if not exist "%RESULTS_FILE%" (
+        echo !RED!Results file not found after benchmark execution!NC!
+    ) else (
+        :: Check if we have useful output despite error code
+        findstr /c:"Total time: " /c:"Benchmark: " "%RESULTS_FILE%" >nul 2>&1
+        if %ERRORLEVEL% equ 0 (
+            echo !GREEN!Results were captured despite abnormal termination.!NC!
+            set TEST_RESULT=0
+        ) else (
+            echo !RED!No useful results were captured in the output file.!NC!
+        )
     )
 )
 
@@ -235,11 +266,17 @@ echo Build type: %BUILD_TYPE%>> "%METRICS_FILE%"
 echo ===========================================>> "%METRICS_FILE%"
 echo.>> "%METRICS_FILE%"
 
-:: Windows alternative to grep for extracting metrics
-findstr /c:"time:" /c:"entities:" /c:"processed:" /c:"Performance" /c:"Execution time" ^
-       /c:"optimization" /c:"Total time:" /c:"Time per update:" /c:"Updates per second:" ^
-       /c:"Batch size" /c:"Thread" /c:"entities processed" /c:"AI behavior" ^
-       /c:"entities assigned" "%RESULTS_FILE%" >> "%METRICS_FILE%" 2>nul
+:: Check if results file exists before extracting
+if not exist "%RESULTS_FILE%" (
+    echo !RED!Results file not found: %RESULTS_FILE%!NC!
+    echo Error: Results file not found>> "%METRICS_FILE%"
+) else (
+    :: Windows alternative to grep for extracting metrics
+    findstr /c:"time:" /c:"entities:" /c:"processed:" /c:"Performance" /c:"Execution time" ^
+           /c:"optimization" /c:"Total time:" /c:"Time per update:" /c:"Updates per second:" ^
+           /c:"Batch size" /c:"Thread" /c:"entities processed" /c:"AI behavior" ^
+           /c:"entities assigned" "%RESULTS_FILE%" >> "%METRICS_FILE%" 2>nul
+)
 
 :: Add summary footer
 echo.>> "%METRICS_FILE%"

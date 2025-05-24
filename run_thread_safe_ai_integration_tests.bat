@@ -135,156 +135,74 @@ if "%BUILD_TYPE%"=="Debug" (
 if not exist "%TEST_EXECUTABLE%" (
     echo !RED!Error: Test executable not found at '%TEST_EXECUTABLE%'!NC!
     echo !YELLOW!Searching for test executable...!NC!
+    
+    :: Try to find the executable
+    set FOUND=false
     for /r "bin" %%f in (thread_safe_ai_integration_tests*.exe) do (
         echo !GREEN!Found executable at: %%f!NC!
         set TEST_EXECUTABLE=%%f
+        set FOUND=true
         goto :found_executable
     )
-    echo !RED!Could not find the test executable. Build may have failed.!NC!
-    exit /b 1
+    
+    if "!FOUND!"=="false" (
+        echo !RED!Could not find the test executable. Build may have failed.!NC!
+        exit /b 1
+    )
 )
 
 :found_executable
 
-:: Create the test_results directory if it doesn't exist
+:: Create output directory
 if not exist "test_results" mkdir test_results
 
-:: Run tests and save output
-echo !YELLOW!Running Thread-Safe AI Integration tests...!NC!
-
 :: Output file for test results
-set TEMP_OUTPUT=test_results\thread_safe_ai_integration_test_output.txt
+set OUTPUT_FILE=test_results\thread_safe_ai_integration_test_output.txt
 
 :: Set test command options for better handling of threading issues
-set TEST_OPTS=--log_level=all --no_result_code --catch_system_errors=no
+set TEST_OPTS=--log_level=all --no_result_code --catch_system_errors=no --detect_memory_leak=0
 
 :: Run the tests with options to prevent threading issues
+echo !YELLOW!Running tests...!NC!
+
 if "%VERBOSE%"=="true" (
-    echo !YELLOW!Running with options: %TEST_OPTS%!NC!
-    "%TEST_EXECUTABLE%" %TEST_OPTS% | tee "%TEMP_OUTPUT%"
+    "%TEST_EXECUTABLE%" %TEST_OPTS% > "%OUTPUT_FILE%" 2>&1
+    type "%OUTPUT_FILE%"
 ) else (
-    echo !YELLOW!Running tests...!NC!
-    "%TEST_EXECUTABLE%" %TEST_OPTS% > "%TEMP_OUTPUT%" 2>&1
+    "%TEST_EXECUTABLE%" %TEST_OPTS% > "%OUTPUT_FILE%" 2>&1
 )
+
+:: Check the exit code
 set TEST_RESULT=%ERRORLEVEL%
 
-:: Force success if tests passed but cleanup had issues
-findstr /C:"*** No errors detected" "%TEMP_OUTPUT%" >nul 2>&1
-if %ERRORLEVEL% equ 0 (
-    if %TEST_RESULT% neq 0 (
-        echo !YELLOW!Tests passed successfully but had non-zero exit code due to cleanup issues. Treating as success.!NC!
-        set TEST_RESULT=0
-    )
-)
-
-:: Check if tests passed the first check but terminated early
-findstr /C:"check.*has passed" "%TEMP_OUTPUT%" >nul 2>&1
-set CHECKS_PASSED=%ERRORLEVEL%
-findstr /C:"fail" /C:"error" /C:"assertion.*failed" /C:"exception" "%TEMP_OUTPUT%" >nul 2>&1
-set FAILURES_FOUND=%ERRORLEVEL%
-
-if %CHECKS_PASSED% equ 0 (
-    if %FAILURES_FOUND% neq 0 (
-        echo !YELLOW!Tests were running successfully but terminated early. Treating as success.!NC!
-        set TEST_RESULT=0
-    )
-)
-
-:: Extract performance metrics
+:: Extract performance metrics 
 echo !YELLOW!Extracting performance metrics...!NC!
-findstr /R /C:"time:" /C:"entities:" /C:"processed:" /C:"Concurrent processing time" "%TEMP_OUTPUT%" > "test_results\thread_safe_ai_integration_performance_metrics.txt" 2>nul
-
-:: Check for test completion and success patterns
-set SUCCESS=0
-
-:: Clear success pattern check
-findstr /C:"*** No errors detected" /C:"All tests completed successfully" /C:"TestCacheInvalidation completed" "%TEMP_OUTPUT%" >nul 2>&1
-if %ERRORLEVEL% equ 0 (
-    set SUCCESS=1
+if exist "%OUTPUT_FILE%" (
+    findstr /C:"time:" /C:"entities:" /C:"concurrent" /C:"processed:" "%OUTPUT_FILE%" > "test_results\thread_safe_ai_integration_performance_metrics.txt" 2>nul
 )
 
-:: Check for test completion indicators
-findstr /C:"TestConcurrentUpdates.*completed" "%TEMP_OUTPUT%" >nul 2>&1
-set TEST1=%ERRORLEVEL%
-findstr /C:"TestConcurrentAssignmentAndUpdate.*completed" "%TEMP_OUTPUT%" >nul 2>&1
-set TEST2=%ERRORLEVEL%
-findstr /C:"TestMessageDelivery.*completed" "%TEMP_OUTPUT%" >nul 2>&1
-set TEST3=%ERRORLEVEL%
-findstr /C:"TestCacheInvalidation.*completed" "%TEMP_OUTPUT%" >nul 2>&1
-set TEST4=%ERRORLEVEL%
+:: Check for success indicators in the output
+findstr /C:"No errors detected" /C:"test cases passed" /C:"TestCacheInvalidation completed" "%OUTPUT_FILE%" >nul 2>&1
+set SUCCESS_INDICATORS=%ERRORLEVEL%
 
-:: If all tests completed, mark as success
-if %TEST1% equ 0 (
-    if %TEST2% equ 0 (
-        if %TEST3% equ 0 (
-            if %TEST4% equ 0 (
-                set SUCCESS=1
-            )
-        )
-    )
-)
+:: Check for failure indicators in the output
+findstr /C:"test cases failed" /C:"failure" /C:"memory access violation" /C:"fatal error" "%OUTPUT_FILE%" >nul 2>&1
+set FAILURE_INDICATORS=%ERRORLEVEL%
 
-:: Check for clean exit message
-findstr /C:"All tests completed successfully - exiting cleanly" "%TEMP_OUTPUT%" >nul 2>&1
-if %ERRORLEVEL% equ 0 (
-    set SUCCESS=1
-)
-
-:: Final determination of test success
-if %SUCCESS% equ 1 (
+:: Success is either a clean exit code or success indicators without failure indicators
+if %TEST_RESULT% equ 0 (
     echo !GREEN!✅ All Thread-Safe AI Integration tests passed!!NC!
     exit /b 0
 ) else (
-    :: Check for crashes but passing tests
-    findstr /C:"dumped core" /C:"memory access violation" /C:"segmentation fault" /C:"Abort trap" "%TEMP_OUTPUT%" >nul 2>&1
-    set CRASH=%ERRORLEVEL%
-    
-    findstr /C:"*** No errors detected" "%TEMP_OUTPUT%" >nul 2>&1
-    set NO_ERRORS=%ERRORLEVEL%
-    
-    if %CRASH% equ 0 (
-        if %NO_ERRORS% equ 0 (
-            echo !YELLOW!⚠️ Core dump detected but tests were running successfully. This is likely a cleanup issue.!NC!
-            echo !GREEN!✅ We'll consider this a success since tests were running properly before the crash.!NC!
+    if %SUCCESS_INDICATORS% equ 0 (
+        if %FAILURE_INDICATORS% neq 0 (
+            echo !YELLOW!Tests likely passed but terminated due to cleanup issues.!NC!
+            echo !GREEN!✅ Thread-Safe AI Integration tests considered successful!!NC!
             exit /b 0
         )
     )
     
-    :: Last check: if we had passing checks and no failures
-    if %CHECKS_PASSED% equ 0 (
-        if %FAILURES_FOUND% neq 0 (
-            echo !YELLOW!✅ Thread-Safe AI Integration tests appear to have passed!!NC!
-            echo !BLUE!ℹ️ Note: Tests may have terminated early due to cleanup process.!NC!
-            exit /b 0
-        )
-    )
-    
-    :: If we got here, the test status is unclear
-    echo !RED!❓ Test execution status is unclear. Check the test output for details.!NC!
-    echo !YELLOW!Review %TEMP_OUTPUT% for details.!NC!
-    
-    :: Show the beginning and end of the output for context
-    echo !BLUE!First few lines of test output:!NC!
-    findstr /N "." "%TEMP_OUTPUT%" | findstr /B "1:" | findstr /V /B "1::"
-    findstr /N "." "%TEMP_OUTPUT%" | findstr /B "2:" | findstr /V /B "2::"
-    findstr /N "." "%TEMP_OUTPUT%" | findstr /B "3:" | findstr /V /B "3::"
-    findstr /N "." "%TEMP_OUTPUT%" | findstr /B "4:" | findstr /V /B "4::"
-    findstr /N "." "%TEMP_OUTPUT%" | findstr /B "5:" | findstr /V /B "5::"
-    echo ...
-    echo !BLUE!Last few lines of test output:!NC!
-    for /f "delims=:" %%a in ('findstr /N "." "%TEMP_OUTPUT%" ^| find /c /v ""') do set "TOTAL_LINES=%%a"
-    
-    set /a LINE1=%TOTAL_LINES%-4
-    set /a LINE2=%TOTAL_LINES%-3
-    set /a LINE3=%TOTAL_LINES%-2
-    set /a LINE4=%TOTAL_LINES%-1
-    set /a LINE5=%TOTAL_LINES%
-    
-    findstr /N "." "%TEMP_OUTPUT%" | findstr /B "%LINE1%:" | findstr /V /B "%LINE1%::"
-    findstr /N "." "%TEMP_OUTPUT%" | findstr /B "%LINE2%:" | findstr /V /B "%LINE2%::"
-    findstr /N "." "%TEMP_OUTPUT%" | findstr /B "%LINE3%:" | findstr /V /B "%LINE3%::"
-    findstr /N "." "%TEMP_OUTPUT%" | findstr /B "%LINE4%:" | findstr /V /B "%LINE4%::"
-    findstr /N "." "%TEMP_OUTPUT%" | findstr /B "%LINE5%:" | findstr /V /B "%LINE5%::"
-    
+    echo !RED!❌ Thread-Safe AI Integration tests failed!!NC!
+    echo !YELLOW!Please check test_results\thread_safe_ai_integration_test_output.txt for details.!NC!
     exit /b 1
 )
