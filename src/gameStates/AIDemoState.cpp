@@ -21,17 +21,20 @@ AIDemoState::~AIDemoState() {
     // Don't call virtual functions from destructors
     
     try {
-        // Clear target pointer from chase behavior first
+        // Note: Proper cleanup should already have happened in exit()
+        // This destructor is just a safety measure in case exit() wasn't called
+        
+        // Safe cleanup for any remaining chase behavior references
         if (m_chaseBehavior) {
             m_chaseBehavior->setTarget(nullptr);
             m_chaseBehavior = nullptr;
         }
         
-        // Reset all AI behaviors first to clear entity references
-        // This ensures behaviors release their entity references before the entities are destroyed
+        // Reset AI behaviors first to clear entity references
+        // Don't call unassignBehaviorFromEntity here - it uses shared_from_this()
         AIManager::Instance().resetBehaviors();
         
-        // Clean up NPCs
+        // Clear NPCs without calling clean() on them
         m_npcs.clear();
 
         // Clean up player
@@ -56,7 +59,7 @@ bool AIDemoState::enter() {
     setupAIBehaviors();
 
     // Create player first (the chase behavior will need it)
-    m_player = std::make_unique<Player>();
+    m_player = std::make_shared<Player>();
     m_player->setPosition(Vector2D(m_worldWidth / 2, m_worldHeight / 2));
 
     // Create NPCs with AI behaviors
@@ -79,10 +82,12 @@ bool AIDemoState::exit() {
         }
     }
     
-    // Unassign behaviors from all entities
+    // First properly clean all NPCs (this will also unassign behaviors)
+    std::cout << "Forge Game Engine - Explicitly calling clean() on all NPCs before destruction\n";
     for (auto& npc : m_npcs) {
         if (npc) {
-            AIManager::Instance().unassignBehaviorFromEntity(npc.get());
+            // Explicitly call clean() while the shared_ptr is still valid
+            npc->clean();
             npc->setVelocity(Vector2D(0, 0));
         }
     }
@@ -99,7 +104,10 @@ bool AIDemoState::exit() {
     m_npcs.clear();
 
     // Clean up player
-    m_player.reset();
+    if (m_player) {
+        m_player->clean();  // Explicitly clean the player too
+        m_player.reset();
+    }
     
     // Null out our behavior reference
     m_chaseBehavior = nullptr;
@@ -132,11 +140,11 @@ void AIDemoState::update() {
     if (InputManager::Instance().isKeyDown(SDL_SCANCODE_B)) {
         std::cout << "Forge Game Engine - Preparing to exit AIDemoState...\n";
         
-        // First unassign all behaviors from entities before state change
-        // This prevents dangling entity pointers in behaviors
+        // First call clean() on all NPCs to properly handle unassignment
         for (auto& npc : m_npcs) {
             if (npc) {
-                AIManager::Instance().unassignBehaviorFromEntity(npc.get());
+                // Call clean() which will handle unassignment safely
+                npc->clean();
                 // Also stop the entity's movement
                 npc->setVelocity(Vector2D(0, 0));
             }
@@ -171,14 +179,20 @@ void AIDemoState::update() {
         // Assign Wander behavior to all NPCs
         std::cout << "Forge Game Engine - Switching all NPCs to WANDER behavior\n";
         for (auto& npc : m_npcs) {
-            AIManager::Instance().assignBehaviorToEntity(npc.get(), "Wander");
+            // First make sure we call clean() to properly unassign any existing behavior
+            npc->clean();
+            // Then assign the new behavior
+            AIManager::Instance().assignBehaviorToEntity(npc, "Wander");
         }
         lastKey = 1;
     } else if (InputManager::Instance().isKeyDown(SDL_SCANCODE_2) && lastKey != 2) {
         // Assign Patrol behavior to all NPCs
         std::cout << "Forge Game Engine - Switching all NPCs to PATROL behavior\n";
         for (auto& npc : m_npcs) {
-            AIManager::Instance().assignBehaviorToEntity(npc.get(), "Patrol");
+            // First make sure we call clean() to properly unassign any existing behavior
+            npc->clean();
+            // Then assign the new behavior
+            AIManager::Instance().assignBehaviorToEntity(npc, "Patrol");
         }
         lastKey = 2;
     } else if (InputManager::Instance().isKeyDown(SDL_SCANCODE_3) && lastKey != 3) {
@@ -188,12 +202,14 @@ void AIDemoState::update() {
         // Make sure chase behavior has the current player target
         auto chaseBehavior = dynamic_cast<ChaseBehavior*>(AIManager::Instance().getBehavior("Chase"));
         if (chaseBehavior && m_player) {
-            chaseBehavior->setTarget(m_player.get());
-
+            chaseBehavior->setTarget(m_player);
         }
 
         for (auto& npc : m_npcs) {
-            AIManager::Instance().assignBehaviorToEntity(npc.get(), "Chase");
+            // First make sure we call clean() to properly unassign any existing behavior
+            npc->clean();
+            // Then assign the new behavior
+            AIManager::Instance().assignBehaviorToEntity(npc, "Chase");
         }
         lastKey = 3;
     }
@@ -290,7 +306,7 @@ void AIDemoState::createNPCs() {
     for (int i = 0; i < m_npcCount; ++i) {
         // Create NPC with random position
         Vector2D position(xDist(gen), yDist(gen));
-        auto npc = std::make_unique<NPC>("npc", position, 64, 64);
+        auto npc = std::make_shared<NPC>("npc", position, 64, 64);
 
         // Set animation properties (adjust based on your actual sprite sheet)
         npc->setAnimSpeed(150);
@@ -299,10 +315,10 @@ void AIDemoState::createNPCs() {
         npc->setWanderArea(0, 0, m_worldWidth, m_worldHeight);
 
         // Assign default behavior (Wander)
-        AIManager::Instance().assignBehaviorToEntity(npc.get(), "Wander");
+        AIManager::Instance().assignBehaviorToEntity(npc, "Wander");
 
         // Add to collection
-        m_npcs.push_back(std::move(npc));
+        m_npcs.push_back(npc);
     }
 
     // Set player as the chase target for the chase behavior - do this last
@@ -312,7 +328,7 @@ void AIDemoState::createNPCs() {
         if (chaseBehavior && m_player) {
             // Store the behavior for easier cleanup BEFORE setting target
             m_chaseBehavior = chaseBehavior;
-            chaseBehavior->setTarget(m_player.get());
+            chaseBehavior->setTarget(m_player);
             std::cout << "Forge Game Engine - Chase behavior target set to player\n";
         } else {
             std::cerr << "Forge Game Engine - Could not set chase target - "

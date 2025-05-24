@@ -9,7 +9,7 @@
 #include "gameStates/GameState.hpp"
 #include "gameStates/AIDemoState.hpp"
 
-bool AIBehavior::isWithinUpdateFrequency(Entity* entity) const {
+bool AIBehavior::isWithinUpdateFrequency(EntityPtr entity) const {
     // No entity check
     if (!entity) {
         return true;
@@ -27,14 +27,14 @@ bool AIBehavior::isWithinUpdateFrequency(Entity* entity) const {
 }
 
 // Remove an entity from the frame counter map
-void AIBehavior::cleanupEntity(Entity* entity) {
+void AIBehavior::cleanupEntity(EntityPtr entity) {
     if (entity) {
         std::lock_guard<std::mutex> lock(m_frameCounterMutex);
         m_entityFrameCounters.erase(entity);
     }
 }
 
-Entity* AIBehavior::findPlayerEntity() {
+EntityPtr AIBehavior::findPlayerEntity() {
     // Get the game state manager
     const GameStateManager* gameStateManager = GameEngine::Instance().getGameStateManager();
     if (!gameStateManager) return nullptr;
@@ -55,7 +55,7 @@ Entity* AIBehavior::findPlayerEntity() {
     return aiDemoState->getPlayer();
 }
 
-bool AIBehavior::shouldUpdate(Entity* entity) const {
+bool AIBehavior::shouldUpdate(EntityPtr entity) const {
     // Base check - if not active, don't update
     if (!m_active) return false;
 
@@ -69,7 +69,7 @@ bool AIBehavior::shouldUpdate(Entity* entity) const {
     // but will have more frequent updates than lower priority behaviors
 
     // Find the player entity
-    Entity* player = AIBehavior::findPlayerEntity();
+    EntityPtr player = AIBehavior::findPlayerEntity();
 
     // If no player was found, fall back to distance from origin
     if (!player) {

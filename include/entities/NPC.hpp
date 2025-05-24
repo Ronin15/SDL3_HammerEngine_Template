@@ -11,11 +11,18 @@
 #include "utils/Vector2D.hpp"
 #include <SDL3/SDL.h>
 #include <string>
+#include <memory>
 
 class NPC : public Entity {
 public:
     NPC(const std::string& textureID, const Vector2D& startPosition, int frameWidth, int frameHeight);
     ~NPC() override;
+
+    // Factory method to ensure proper shared_ptr creation
+    // Factory method to ensure NPCs are always created with shared_ptr
+    static std::shared_ptr<NPC> create(const std::string& textureID, const Vector2D& startPosition, int frameWidth = 0, int frameHeight = 0) {
+        return std::make_shared<NPC>(textureID, startPosition, frameWidth, frameHeight);
+    }
 
     void update() override;
     void render() override;

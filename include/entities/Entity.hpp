@@ -8,14 +8,69 @@
 
 #include "utils/Vector2D.hpp"
 #include <string>
+#include <memory>
 #include <SDL3/SDL_surface.h>
 
-class Entity {
+// Forward declaration for Entity shared_ptr typedef
+class Entity;
+
+// Define standard smart pointer types for Entity
+using EntityPtr = std::shared_ptr<Entity>;
+using EntityWeakPtr = std::weak_ptr<Entity>;
+
+class Entity : public std::enable_shared_from_this<Entity> {
  public:
    virtual void update() = 0;
    virtual void render() = 0;
+   
+   /**
+    * @brief Clean up the entity's resources before destruction
+    * 
+    * This method is called explicitly before an entity is destroyed.
+    * It's safe to use shared_from_this() here.
+    * 
+    * IMPORTANT: All entity management operations (such as unassigning from AIManager)
+    * should happen here, NOT in the destructor.
+    */
    virtual void clean() = 0;
+   
+   /**
+    * @brief Virtual destructor
+    * 
+    * IMPORTANT: Do NOT call shared_from_this() or any method that uses it
+    * (like shared_this()) in the destructor. By the time the destructor runs,
+    * all shared_ptrs to this object have been destroyed, and calling
+    * shared_from_this() will throw std::bad_weak_ptr.
+    */
    virtual ~Entity() = default;
+   
+   /**
+    * @brief Helper to get a shared_ptr to this object
+    * 
+    * IMPORTANT: Never call this in constructors or destructors!
+    * Only use this when the object is managed by a std::shared_ptr.
+    * 
+    * @return A shared_ptr to this object
+    * @throws std::bad_weak_ptr if called from constructor/destructor or if the object
+    *         is not managed by a std::shared_ptr
+    */
+   EntityPtr shared_this() {
+     return shared_from_this();
+   }
+   
+   /**
+    * @brief Helper to get a weak_ptr to this object
+    * 
+    * IMPORTANT: Never call this in constructors or destructors!
+    * Only use this when the object is managed by a std::shared_ptr.
+    * 
+    * @return A weak_ptr to this object
+    * @throws std::bad_weak_ptr if called from constructor/destructor or if the object
+    *         is not managed by a std::shared_ptr
+    */
+   EntityWeakPtr weak_this() {
+     return shared_from_this();
+   }
 
    // Accessor methods
    Vector2D getPosition() const { return m_position; }

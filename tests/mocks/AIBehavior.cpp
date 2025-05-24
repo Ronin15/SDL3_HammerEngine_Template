@@ -6,7 +6,7 @@
 #include "ai/AIBehavior.hpp"
 
 // Mock implementation for testing - doesn't rely on game engine components
-bool AIBehavior::isWithinUpdateFrequency(Entity* entity) const {
+bool AIBehavior::isWithinUpdateFrequency(EntityPtr entity) const {
     // In test environment, handle both cases:
     // 1. If frequency is 1, always update
     if (m_updateFrequency <= 1) {
@@ -23,12 +23,12 @@ bool AIBehavior::isWithinUpdateFrequency(Entity* entity) const {
     return true;
 }
 
-Entity* AIBehavior::findPlayerEntity() {
+EntityPtr AIBehavior::findPlayerEntity() {
     // For tests, we don't need to find a real player entity
     return nullptr;
 }
 
-bool AIBehavior::shouldUpdate(Entity* entity) const {
+bool AIBehavior::shouldUpdate(EntityPtr entity) const {
     // Base check - if not active, don't update
     if (!m_active) return false;
     
@@ -39,7 +39,7 @@ bool AIBehavior::shouldUpdate(Entity* entity) const {
     return true;
 }
 
-void AIBehavior::cleanupEntity(Entity* entity) {
+void AIBehavior::cleanupEntity(EntityPtr entity) {
     // Remove entity from frame counter map with proper locking
     if (entity) {
         std::lock_guard<std::mutex> lock(m_frameCounterMutex);

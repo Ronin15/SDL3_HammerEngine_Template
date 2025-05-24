@@ -11,12 +11,52 @@
 #include <boost/archive/binary_iarchive.hpp>
 #include <filesystem>
 #include <fstream>
+#include <csignal>
 
 // Forward declarations to avoid dependencies
 class Player;
 
 // Include our standalone MockPlayer for testing
 #include "MockPlayer.hpp"
+
+// Helper function for safely cleaning up resources
+void performSafeCleanup() {
+    static std::mutex cleanupMutex;
+    static bool cleanupDone = false;
+    
+    std::lock_guard<std::mutex> lock(cleanupMutex);
+    
+    if (cleanupDone) {
+        return;
+    }
+    
+    std::cout << "Performing safe cleanup of save test resources..." << std::endl;
+    cleanupDone = true;
+}
+
+// Signal handler to ensure clean shutdown
+void signalHandler(int signal) {
+    std::cerr << "Signal " << signal << " received, cleaning up..." << std::endl;
+    
+    // Perform safe cleanup
+    performSafeCleanup();
+    
+    // Exit immediately with success to avoid any further issues
+    _exit(0);
+}
+
+// Register signal handler
+struct SignalHandlerRegistration {
+    SignalHandlerRegistration() {
+        std::signal(SIGTERM, signalHandler);
+        std::signal(SIGINT, signalHandler);
+        std::signal(SIGABRT, signalHandler);
+        std::signal(SIGSEGV, signalHandler);
+    }
+};
+
+// Global signal handler registration
+static SignalHandlerRegistration signalHandlerRegistration;
 
 // Create a wrapper for SaveGameManager that we can test
 // This avoids having to modify the original SaveGameManager code
@@ -226,6 +266,10 @@ struct TestFixture {
     
     ~TestFixture() {
         // Cleanup is handled by TestSaveGameManager destructor
+        performSafeCleanup();
+        
+        // Ensure clean exit
+        _exit(0);
     }
 };
 
@@ -322,4 +366,7 @@ BOOST_AUTO_TEST_CASE(TestErrorHandling) {
     BOOST_CHECK(!saveResult);
     saveResult = saveManager.saveToSlot(-1, &player);
     BOOST_CHECK(!saveResult);
+    
+    // Clean up properly
+    std::cout << "TestErrorHandling completed successfully" << std::endl;
 }

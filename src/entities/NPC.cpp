@@ -42,7 +42,7 @@ NPC::NPC(const std::string& textureID, const Vector2D& startPosition, int frameW
     m_minY = 0.0f;
     m_maxX = 800.0f;
     m_maxY = 600.0f;
-    
+
     // Disable bounds checking by default
     m_boundsCheckEnabled = false;
 
@@ -50,15 +50,11 @@ NPC::NPC(const std::string& textureID, const Vector2D& startPosition, int frameW
 }
 
 NPC::~NPC() {
-    // Don't call virtual functions from destructors
-    // Instead of calling clean(), directly handle cleanup here
+    // IMPORTANT: Do not call shared_from_this() or any methods that use it in a destructor
+    // The AIManager unassignment should happen in clean() or beforeDestruction(), not here
     
-    // Remove from AI Manager if it has a behavior
-    if (AIManager::Instance().entityHasBehavior(this)) {
-        AIManager::Instance().unassignBehaviorFromEntity(this);
-    }
-    
-    std::cout << "Forge Game Engine - NPC resources cleaned!\n";
+    // Note: Entity pointers should already be unassigned from AIManager
+    // in AIDemoState::exit() or via the clean() method before destruction
 }
 
 void NPC::loadDimensionsFromTexture() {
@@ -76,8 +72,6 @@ void NPC::loadDimensionsFromTexture() {
             // Query the texture to get its width and height
             // SDL3 uses SDL_GetTextureSize which returns float dimensions and returns a bool
             if (SDL_GetTextureSize(texture, &width, &height)) {
-                std::cout << "Forge Game Engine - NPC texture dimensions: " << width << "x" << height << "\n";
-
                 // Store original dimensions for full sprite sheet
                 m_width = static_cast<int>(width);
                 m_height = static_cast<int>(height);
@@ -88,14 +82,12 @@ void NPC::loadDimensionsFromTexture() {
 
                 // Update height to be the height of a single frame
                 m_height = frameHeight;
-
-                std::cout << "Forge Game Engine - NPC frame dimensions: " << m_frameWidth << "x" << m_height << "\n";
             } else {
                 std::cerr << "Forge Game Engine - Failed to query NPC texture dimensions: " << SDL_GetError() << std::endl;
             }
         }
     } else {
-        std::cout << "Forge Game Engine - NPC texture '" << m_textureID << "' not found in TextureManager" << "\n";
+        std::cerr << "Forge Game Engine - NPC texture '" << m_textureID << "' not found in TextureManager" << std::endl;
     }
 }
 
@@ -111,7 +103,7 @@ void NPC::update() {
         // Friction coefficient - adjust for desired sliding feel (0.95 means 95% of velocity is retained)
         const float friction = 0.95f;
         m_velocity *= friction;
-        
+
         // Update flip direction based on horizontal velocity
         // Only flip if the horizontal speed is significant enough
         if (std::abs(m_velocity.getX()) > 0.5f) {
@@ -155,7 +147,7 @@ void NPC::update() {
 
     // Update animation based on movement
     Uint64 currentTime = SDL_GetTicks();
-    
+
     // Check if NPC is moving (velocity not close to zero)
     if (m_velocity.length() > 0.1f) {
         // Only update animation frame if enough time has passed
@@ -172,7 +164,7 @@ void NPC::update() {
     if (m_frameWidth == 0 && TextureManager::Instance().isTextureInMap(m_textureID)) {
         loadDimensionsFromTexture();
     }
-    
+
     // Note: Flip direction is now determined by the NPC's velocity in this update method
     // AI behavior classes should no longer set flip directly
 }
@@ -198,12 +190,25 @@ void NPC::render() {
 }
 
 void NPC::clean() {
+    // This method is called before the object is destroyed,
+    // so it's safe to use shared_from_this() here
+    
     // Remove from AI Manager if it has a behavior
-    if (AIManager::Instance().entityHasBehavior(this)) {
-        AIManager::Instance().unassignBehaviorFromEntity(this);
+    try {
+        // Only attempt to use shared_this() when we know the object
+        // is managed by a shared_ptr (i.e., not during destruction)
+        auto ptr = shared_this();
+        
+        // Remove from AIManager
+        if (AIManager::Instance().entityHasBehavior(ptr)) {
+            AIManager::Instance().unassignBehaviorFromEntity(ptr);
+        }
+    } catch (const std::bad_weak_ptr& e) {
+        // This should only happen if clean() is called after the shared_ptr ref count drops to 0
+        // or if the object was not created with std::make_shared
+        std::cerr << "Forge Game Engine - ERROR: Could not create shared_ptr from NPC in clean(): "
+                  << this << ", reason: " << e.what() << std::endl;
     }
-
-    std::cout << "Forge Game Engine - Cleaning up NPC resources" << "\n";
 }
 
 // Animation handling removed - TextureManager handles this functionality

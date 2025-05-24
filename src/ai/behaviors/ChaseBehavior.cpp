@@ -5,8 +5,8 @@
 
 #include "ai/behaviors/ChaseBehavior.hpp"
 
-ChaseBehavior::ChaseBehavior(Entity* target, float chaseSpeed, float maxRange, float minRange)
-    : m_target(target), 
+ChaseBehavior::ChaseBehavior(EntityPtr target, float chaseSpeed, float maxRange, float minRange)
+    : m_targetWeak(target), 
       m_chaseSpeed(chaseSpeed), 
       m_maxRange(maxRange), 
       m_minRange(minRange),
@@ -18,7 +18,7 @@ ChaseBehavior::ChaseBehavior(Entity* target, float chaseSpeed, float maxRange, f
       m_currentDirection(0, 0) {
 }
 
-void ChaseBehavior::init(Entity* entity) {
+void ChaseBehavior::init(EntityPtr entity) {
     if (!entity) return;
 
     // Initialize the entity's state for chasing
@@ -26,23 +26,25 @@ void ChaseBehavior::init(Entity* entity) {
     m_hasLineOfSight = false;
 
     // If we have a target, check if it's in range
-    if (m_target) {
+    auto target = m_targetWeak.lock();
+    if (target) {
         Vector2D entityPos = entity->getPosition();
-        Vector2D targetPos = m_target->getPosition();
+        Vector2D targetPos = target->getPosition();
         float distance = (targetPos - entityPos).length();
 
         m_isChasing = (distance <= m_maxRange);
-        m_hasLineOfSight = checkLineOfSight(entity, m_target);
+        m_hasLineOfSight = checkLineOfSight(entity, target);
     }
 }
 
-void ChaseBehavior::update(Entity* entity) {
+void ChaseBehavior::update(EntityPtr entity) {
     if (!entity || !m_active) {
         return;
     }
     
     // Handle null target safely
-    if (!m_target) {
+    auto target = m_targetWeak.lock();
+    if (!target) {
         // No target, so stop chasing
         if (entity) {
             entity->setVelocity(Vector2D(0, 0));
@@ -53,7 +55,7 @@ void ChaseBehavior::update(Entity* entity) {
 
     // Get positions
     Vector2D entityPos = entity->getPosition();
-    Vector2D targetPos = m_target->getPosition();
+    Vector2D targetPos = target->getPosition();
 
     // Calculate distance to target and ensure we have a valid target position
     Vector2D toTarget = targetPos - entityPos;
@@ -65,7 +67,7 @@ void ChaseBehavior::update(Entity* entity) {
     // Check if target is in chase range
     if (distance <= m_maxRange) {
         // Check line of sight (simplified)
-        m_hasLineOfSight = checkLineOfSight(entity, m_target);
+        m_hasLineOfSight = checkLineOfSight(entity, target);
 
         if (m_hasLineOfSight) {
             m_isChasing = true;
@@ -107,7 +109,7 @@ void ChaseBehavior::update(Entity* entity) {
     }
 }
 
-void ChaseBehavior::clean(Entity* entity) {
+void ChaseBehavior::clean(EntityPtr entity) {
     // Stop the entity's movement when cleaning up
     if (entity) {
         entity->setVelocity(Vector2D(0, 0));
@@ -120,10 +122,10 @@ void ChaseBehavior::clean(Entity* entity) {
     m_timeWithoutSight = 0;
     
     // Important: don't hold onto the target after clean
-    m_target = nullptr;
+    m_targetWeak.reset();
 }
 
-void ChaseBehavior::onMessage(Entity* entity, const std::string& message) {
+void ChaseBehavior::onMessage(EntityPtr entity, const std::string& message) {
     if (message == "pause") {
         setActive(false);
         if (entity) {
@@ -132,7 +134,7 @@ void ChaseBehavior::onMessage(Entity* entity, const std::string& message) {
     } else if (message == "resume") {
         setActive(true);
         // Reinitialize chase state when resuming
-        if (entity && m_target) {
+        if (entity && !m_targetWeak.expired()) {
             init(entity);
         }
     } else if (message == "lose_target") {
@@ -143,7 +145,7 @@ void ChaseBehavior::onMessage(Entity* entity, const std::string& message) {
         }
     } else if (message == "release_entities") {
         // Clear target and reset state when asked to release entities
-        m_target = nullptr;
+        m_targetWeak.reset();
         m_isChasing = false;
         m_hasLineOfSight = false;
         m_lastKnownTargetPos = Vector2D(0, 0);
@@ -158,7 +160,7 @@ std::string ChaseBehavior::getName() const {
     return "Chase";
 }
 
-void ChaseBehavior::setTarget(Entity* target) {
+void ChaseBehavior::setTarget(EntityPtr target) {
     // Always reset chase state when target changes
     m_isChasing = false;
     m_hasLineOfSight = false;
@@ -166,11 +168,11 @@ void ChaseBehavior::setTarget(Entity* target) {
     m_timeWithoutSight = 0;
     
     // Set new target
-    m_target = target;
+    m_targetWeak = target;
 }
 
-Entity* ChaseBehavior::getTarget() const {
-    return m_target;
+EntityPtr ChaseBehavior::getTarget() const {
+    return m_targetWeak.lock();
 }
 
 void ChaseBehavior::setChaseSpeed(float speed) {
@@ -193,19 +195,19 @@ bool ChaseBehavior::hasLineOfSight() const {
     return m_hasLineOfSight;
 }
 
-void ChaseBehavior::onTargetReached(Entity* entity) {
+void ChaseBehavior::onTargetReached(EntityPtr entity) {
     // Base implementation does nothing
     // Override in derived behaviors for specific actions
     (void)entity; // Mark parameter as intentionally unused
 }
 
-void ChaseBehavior::onTargetLost(Entity* entity) {
+void ChaseBehavior::onTargetLost(EntityPtr entity) {
     // Base implementation does nothing
     // Override in derived behaviors for specific actions
     (void)entity; // Mark parameter as intentionally unused
 }
 
-bool ChaseBehavior::checkLineOfSight(Entity* entity, Entity* target) {
+bool ChaseBehavior::checkLineOfSight(EntityPtr entity, EntityPtr target) {
     // For a more complex implementation, you would do raycasting here
     // This simplified version just checks distance
     if (!entity || !target) return false;
@@ -219,7 +221,7 @@ bool ChaseBehavior::checkLineOfSight(Entity* entity, Entity* target) {
     return distance <= m_maxRange;
 }
 
-void ChaseBehavior::handleNoLineOfSight(Entity* entity) {
+void ChaseBehavior::handleNoLineOfSight(EntityPtr entity) {
     if (m_timeWithoutSight < m_maxTimeWithoutSight) {
         // Move toward last known position for a while
         Vector2D entityPos = entity->getPosition();

@@ -25,7 +25,7 @@ PatrolBehavior::PatrolBehavior(const boost::container::small_vector<Vector2D, 10
     }
 }
 
-void PatrolBehavior::init(Entity* entity) {
+void PatrolBehavior::init(EntityPtr entity) {
     if (!entity) return;
 
     // Set initial target to the first waypoint
@@ -40,13 +40,13 @@ void PatrolBehavior::init(Entity* entity) {
 
     // Disable bounds checking when off-screen movement is allowed
     // Check if entity is an NPC that supports bounds checking control
-    NPC* npc = dynamic_cast<NPC*>(entity);
+    NPC* npc = dynamic_cast<NPC*>(entity.get());
     if (npc) {
         npc->setBoundsCheckEnabled(!m_includeOffscreenPoints);
     }
 }
 
-void PatrolBehavior::update(Entity* entity) {
+void PatrolBehavior::update(EntityPtr entity) {
     if (!entity || !m_active || m_waypoints.empty()) {
         return;
     }
@@ -103,13 +103,13 @@ void PatrolBehavior::update(Entity* entity) {
     // NPC class now handles sprite flipping based on velocity
 }
 
-void PatrolBehavior::clean(Entity* entity) {
+void PatrolBehavior::clean(EntityPtr entity) {
     if (entity) {
         // Stop the entity's movement when cleaning up
         entity->setVelocity(Vector2D(0, 0));
 
         // Re-enable bounds checking when behavior is cleaned up
-        NPC* npc = dynamic_cast<NPC*>(entity);
+        NPC* npc = dynamic_cast<NPC*>(entity.get());
         if (npc) {
             npc->setBoundsCheckEnabled(true);
         }
@@ -119,7 +119,7 @@ void PatrolBehavior::clean(Entity* entity) {
     m_needsReset = false;
 }
 
-void PatrolBehavior::onMessage(Entity* entity, const std::string& message) {
+void PatrolBehavior::onMessage(EntityPtr entity, const std::string& message) {
     if (message == "pause") {
         setActive(false);
         if (entity) {
@@ -135,7 +135,7 @@ void PatrolBehavior::onMessage(Entity* entity, const std::string& message) {
             entity->setVelocity(Vector2D(0, 0));
             
             // Re-enable bounds checking
-            NPC* npc = dynamic_cast<NPC*>(entity);
+            NPC* npc = dynamic_cast<NPC*>(entity.get());
             if (npc) {
                 npc->setBoundsCheckEnabled(true);
             }
@@ -199,7 +199,7 @@ bool PatrolBehavior::isWellOffscreen(const Vector2D& position) const {
            position.getY() > m_screenHeight + buffer;
 }
 
-void PatrolBehavior::resetEntityPosition(Entity* entity) {
+void PatrolBehavior::resetEntityPosition(EntityPtr entity) {
     if (!entity) return;
 
     // Find an onscreen waypoint to teleport to

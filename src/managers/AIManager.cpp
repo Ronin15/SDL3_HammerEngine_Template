@@ -131,7 +131,7 @@ AIBehavior* AIManager::getBehavior(const std::string& behaviorName) const {
     return nullptr;
 }
 
-void AIManager::assignBehaviorToEntity(Entity* entity, const std::string& behaviorName) {
+void AIManager::assignBehaviorToEntity(EntityPtr entity, const std::string& behaviorName) {
     if (!entity) {
         std::cerr << "Forge Game Engine - AIManager: Cannot assign behavior to null entity" << std::endl;
         return;
@@ -147,30 +147,45 @@ void AIManager::assignBehaviorToEntity(Entity* entity, const std::string& behavi
         }
     }
     
+    // Create weak pointer from shared pointer
+    EntityWeakPtr entityWeak = entity;
+    
     // Assign behavior to entity - use write lock
     {
         std::unique_lock<std::shared_mutex> lock(m_entityMutex);
-        m_entityBehaviors[entity] = behaviorName;
+        m_entityBehaviors[entityWeak] = behaviorName;
     }
     
     // Invalidate caches - atomic operations
     invalidateOptimizationCaches();
     
-    AI_LOG("Assigned behavior '" << behaviorName << "' to entity at " << entity);
+    // Initialize the entity with this behavior
+    {
+        std::shared_lock<std::shared_mutex> lock(m_behaviorsMutex);
+        auto it = m_behaviors.find(behaviorName);
+        if (it != m_behaviors.end() && it->second) {
+            it->second->init(entity);
+        }
+    }
+    
+    AI_LOG("Assigned behavior '" << behaviorName << "' to entity at " << entity.get());
 }
 
-void AIManager::unassignBehaviorFromEntity(Entity* entity) {
+void AIManager::unassignBehaviorFromEntity(EntityPtr entity) {
     if (!entity) {
         return;
     }
     
     try {
+        // Create weak pointer from shared pointer
+        EntityWeakPtr entityWeak = entity;
+        
         // Get the behavior for this entity before removing it
         AIBehavior* behavior = nullptr;
         std::string behaviorName;
         {
-            std::shared_lock<std::shared_mutex> lock(m_entityMutex);
-            auto it = m_entityBehaviors.find(entity);
+            std::shared_lock<std::shared_mutex> entityLock(m_entityMutex);
+            auto it = m_entityBehaviors.find(entityWeak);
             if (it != m_entityBehaviors.end()) {
                 behaviorName = it->second;
             }
@@ -191,27 +206,29 @@ void AIManager::unassignBehaviorFromEntity(Entity* entity) {
         // Remove entity from behavior map - use write lock
         {
             std::unique_lock<std::shared_mutex> lock(m_entityMutex);
-            m_entityBehaviors.erase(entity);
+            m_entityBehaviors.erase(entityWeak);
         }
         
         // Invalidate caches - atomic operations
         invalidateOptimizationCaches();
         
-        AI_LOG("Unassigned behavior from entity at " << entity);
+        AI_LOG("Unassigned behavior from entity at " << entity.get());
     } catch (...) {
         // Catch any exceptions to prevent crashes
         std::cerr << "Forge Game Engine - AIManager: Error unassigning behavior from entity" << std::endl;
     }
 }
 
-bool AIManager::entityHasBehavior(Entity* entity) const {
+bool AIManager::entityHasBehavior(EntityPtr entity) const {
     if (!entity) {
         return false;
     }
-    
-    // Read-only access to entity behaviors
+
+    EntityWeakPtr entityWeak = entity;
+
+    // Check for entity in map - read lock
     std::shared_lock<std::shared_mutex> lock(m_entityMutex);
-    return m_entityBehaviors.find(entity) != m_entityBehaviors.end();
+    return m_entityBehaviors.find(entityWeak) != m_entityBehaviors.end();
 }
 
 bool AIManager::hasEntityWithBehavior(const std::string& behaviorName) const {
@@ -283,11 +300,14 @@ void AIManager::rebuildEntityBehaviorCache() {
     std::shared_lock<std::shared_mutex> behaviorsLock(m_behaviorsMutex);
     
     // Rebuild cache with latest mappings
-    for (const auto& [entity, behaviorName] : m_entityBehaviors) {
+    for (const auto& [entityWeak, behaviorName] : m_entityBehaviors) {
+        // Skip expired entity references
+        if (entityWeak.expired()) continue;
+        
         auto behaviorIt = m_behaviors.find(behaviorName);
         if (behaviorIt != m_behaviors.end()) {
             EntityBehaviorCache cacheEntry;
-            cacheEntry.entity = entity;
+            cacheEntry.entityWeak = entityWeak;
             cacheEntry.behavior = behaviorIt->second.get();
             cacheEntry.behaviorName = behaviorName;
             cacheEntry.lastUpdateTime = getCurrentTimeNanos();
@@ -307,7 +327,13 @@ void AIManager::rebuildBehaviorBatches() {
     std::shared_lock<std::shared_mutex> lock(m_entityMutex);
     
     // Group entities by behavior
-    for (const auto& [entity, behaviorName] : m_entityBehaviors) {
+    for (const auto& [entityWeak, behaviorName] : m_entityBehaviors) {
+        // Skip expired entity references
+        if (entityWeak.expired()) continue;
+        
+        // Get the shared pointer from the weak pointer
+        EntityPtr entity = entityWeak.lock();
+        if (!entity) continue;
         m_behaviorBatches[behaviorName].push_back(entity);
     }
     
@@ -343,7 +369,7 @@ void AIManager::batchUpdateAllBehaviors() {
                 auto startTime = getCurrentTimeNanos();
                 
                 // Process all entities with this behavior
-                for (Entity* entity : batch) {
+                for (const EntityPtr& entity : batch) {
                     if (entity) {
                         try {
                             // Always increment the frame counter before checking if we should update
@@ -407,12 +433,13 @@ void AIManager::updateBehaviorBatch(const std::string_view& behaviorName, const 
     // Update all entities with this behavior
     auto startTime = getCurrentTimeNanos();
     
-    for (Entity* entity : batch) {
+    // Simple single-threaded processing
+    for (const EntityPtr& entity : batch) {
         if (entity) {
             try {
                 // Always increment the frame counter before checking if we should update
                 behavior->incrementFrameCounter(entity);
-                
+                        
                 // Only update if the behavior's shouldUpdate returns true
                 // This will check the frame counter internally
                 if (behavior->shouldUpdate(entity)) {
@@ -442,7 +469,7 @@ void AIManager::updateBehaviorBatch(const std::string_view& behaviorName, const 
     recordBehaviorPerformance(behaviorName, timeMs);
 }
 
-void AIManager::batchProcessEntities(const std::string& behaviorName, const std::vector<Entity*>& entities) {
+void AIManager::batchProcessEntities(const std::string& behaviorName, const std::vector<EntityPtr>& entities) {
     if (entities.empty()) return;
     
     // Get the behavior
@@ -456,7 +483,7 @@ void AIManager::batchProcessEntities(const std::string& behaviorName, const std:
     processEntitiesWithBehavior(behavior, entities, useThreading);
 }
 
-void AIManager::processEntitiesWithBehavior(AIBehavior* behavior, const std::vector<Entity*>& entities, bool useThreading) {
+void AIManager::processEntitiesWithBehavior(AIBehavior* behavior, const std::vector<EntityPtr>& entities, bool useThreading) {
     if (!behavior || entities.empty()) return;
     
     auto startTime = getCurrentTimeNanos();
@@ -484,7 +511,7 @@ void AIManager::processEntitiesWithBehavior(AIBehavior* behavior, const std::vec
             futures.push_back(Forge::ThreadSystem::Instance().enqueueTaskWithResult([behavior, entitiesCopy, startIdx, endIdx]() {
                 try {
                     for (size_t j = startIdx; j < endIdx; ++j) {
-                        Entity* entity = entitiesCopy[j];
+                        const EntityPtr& entity = entitiesCopy[j];
                         if (entity) {
                             behavior->update(entity);
                         }
@@ -505,7 +532,7 @@ void AIManager::processEntitiesWithBehavior(AIBehavior* behavior, const std::vec
         }
     } else {
         // Sequential processing
-        for (Entity* entity : entities) {
+        for (const EntityPtr& entity : entities) {
             if (entity) {
                 try {
                     behavior->update(entity);
@@ -523,13 +550,16 @@ void AIManager::processEntitiesWithBehavior(AIBehavior* behavior, const std::vec
     recordBehaviorPerformance(behavior->getName(), timeMs);
 }
 
-void AIManager::sendMessageToEntity(Entity* entity, const std::string& message, bool immediate) {
+void AIManager::sendMessageToEntity(EntityPtr entity, const std::string& message, bool immediate) {
     if (!entity) return;
+    
+    // Create weak pointer from shared pointer
+    EntityWeakPtr entityWeak = entity;
     
     if (immediate) {
         deliverMessageToEntity(entity, message);
     } else {
-        m_messageQueue.enqueueMessage(entity, message);
+        m_messageQueue.enqueueMessage(entityWeak, message);
     }
 }
 
@@ -537,7 +567,8 @@ void AIManager::broadcastMessage(const std::string& message, bool immediate) {
     if (immediate) {
         deliverBroadcastMessage(message);
     } else {
-        m_messageQueue.enqueueMessage(nullptr, message);
+        EntityWeakPtr nullEntity; // Empty weak_ptr for broadcast
+        m_messageQueue.enqueueMessage(nullEntity, message);
     }
 }
 
@@ -554,9 +585,14 @@ void AIManager::processMessageQueue() {
     // Process messages - now lock-free since we're using our own buffer
     const auto& messages = m_messageQueue.getProcessingQueue();
     for (const auto& msg : messages) {
-        if (msg.targetEntity) {
-            deliverMessageToEntity(msg.targetEntity, msg.message);
+        if (!msg.targetEntity.expired()) {
+            // If the target entity still exists, deliver the message
+            EntityPtr entity = msg.targetEntity.lock();
+            if (entity) {
+                deliverMessageToEntity(entity, msg.message);
+            }
         } else {
+            // Empty weak_ptr indicates broadcast
             deliverBroadcastMessage(msg.message);
         }
     }
@@ -574,8 +610,11 @@ void AIManager::processMessageQueue() {
     m_processingMessages.store(false, std::memory_order_release);
 }
 
-void AIManager::deliverMessageToEntity(Entity* entity, const std::string& message) {
+void AIManager::deliverMessageToEntity(EntityPtr entity, const std::string& message) {
     if (!entity) return;
+    
+    // Create weak pointer from shared pointer
+    EntityWeakPtr entityWeak = entity;
     
     // Get entity's behavior
     AIBehavior* behavior = nullptr;
@@ -584,7 +623,10 @@ void AIManager::deliverMessageToEntity(Entity* entity, const std::string& messag
     if (m_cacheValid.load(std::memory_order_acquire)) {
         std::lock_guard<std::mutex> cacheLock(m_cacheMutex);
         auto it = std::find_if(m_entityBehaviorCache.begin(), m_entityBehaviorCache.end(),
-            [entity](const EntityBehaviorCache& cache) { return cache.entity == entity; });
+            [&entityWeak](const EntityBehaviorCache& cache) { 
+                return !cache.entityWeak.expired() && !entityWeak.expired() && 
+                       cache.entityWeak.lock() == entityWeak.lock(); 
+            });
         
         if (it != m_entityBehaviorCache.end()) {
             behavior = it->behavior;
@@ -597,7 +639,7 @@ void AIManager::deliverMessageToEntity(Entity* entity, const std::string& messag
         
         {
             std::shared_lock<std::shared_mutex> entityLock(m_entityMutex);
-            auto it = m_entityBehaviors.find(entity);
+            auto it = m_entityBehaviors.find(entityWeak);
             if (it != m_entityBehaviors.end()) {
                 behaviorName = it->second;
             }
@@ -615,7 +657,7 @@ void AIManager::deliverMessageToEntity(Entity* entity, const std::string& messag
     // Deliver message if behavior found
     if (behavior) {
         behavior->onMessage(entity, message);
-        AI_LOG("Delivered message '" << message << "' to entity at " << entity);
+        AI_LOG("Delivered message '" << message << "' to entity at " << entity.get());
     }
 }
 
@@ -627,9 +669,12 @@ size_t AIManager::deliverBroadcastMessage(const std::string& message) {
         std::lock_guard<std::mutex> cacheLock(m_cacheMutex);
         
         for (const auto& cache : m_entityBehaviorCache) {
-            if (cache.behavior && cache.entity) {
-                cache.behavior->onMessage(cache.entity, message);
-                deliveredCount++;
+            if (cache.behavior && !cache.entityWeak.expired()) {
+                EntityPtr entity = cache.entityWeak.lock();
+                if (entity) {
+                    cache.behavior->onMessage(entity, message);
+                    deliveredCount++;
+                }
             }
         }
     } else {
@@ -637,11 +682,14 @@ size_t AIManager::deliverBroadcastMessage(const std::string& message) {
         std::shared_lock<std::shared_mutex> entityLock(m_entityMutex);
         std::shared_lock<std::shared_mutex> behaviorsLock(m_behaviorsMutex);
         
-        for (const auto& [entity, behaviorName] : m_entityBehaviors) {
-            auto it = m_behaviors.find(behaviorName);
-            if (it != m_behaviors.end() && it->second && entity) {
-                it->second->onMessage(entity, message);
-                deliveredCount++;
+        for (const auto& [entityWeak, behaviorName] : m_entityBehaviors) {
+            if (!entityWeak.expired()) {
+                EntityPtr entity = entityWeak.lock();
+                auto it = m_behaviors.find(behaviorName);
+                if (it != m_behaviors.end() && it->second && entity) {
+                    it->second->onMessage(entity, message);
+                    deliveredCount++;
+                }
             }
         }
     }
