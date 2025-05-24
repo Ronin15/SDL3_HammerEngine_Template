@@ -9,6 +9,7 @@
 #include "entities/Entity.hpp"
 #include <string>
 #include <unordered_map>
+#include <mutex>
 
 class AIBehavior {
 public:
@@ -42,7 +43,36 @@ public:
     virtual void cleanupEntity(Entity* entity);
     
     // Clear all frame counters (primarily for testing/benchmarking)
-    virtual void clearFrameCounters() { m_entityFrameCounters.clear(); }
+    virtual void clearFrameCounters() { 
+        std::lock_guard<std::mutex> lock(m_frameCounterMutex);
+        m_entityFrameCounters.clear(); 
+    }
+    
+    // Thread-safe access to frame counters
+    void incrementFrameCounter(Entity* entity) const {
+        if (!entity) return;
+        std::lock_guard<std::mutex> lock(m_frameCounterMutex);
+        m_entityFrameCounters[entity]++;
+    }
+    
+    int getFrameCounter(Entity* entity) const {
+        if (!entity) return 0;
+        std::lock_guard<std::mutex> lock(m_frameCounterMutex);
+        auto it = m_entityFrameCounters.find(entity);
+        return (it != m_entityFrameCounters.end()) ? it->second : 0;
+    }
+    
+    void resetFrameCounter(Entity* entity) const {
+        if (!entity) return;
+        std::lock_guard<std::mutex> lock(m_frameCounterMutex);
+        m_entityFrameCounters[entity] = 0;
+    }
+    
+    void setFrameCounter(Entity* entity, int value) const {
+        if (!entity) return;
+        std::lock_guard<std::mutex> lock(m_frameCounterMutex);
+        m_entityFrameCounters[entity] = value;
+    }
 
     // Update frequency control
     virtual void setUpdateFrequency(int framesPerUpdate) { m_updateFrequency = framesPerUpdate; }
@@ -73,8 +103,9 @@ protected:
     int m_priority{0};  // Higher values = higher priority
     int m_updateFrequency{1}; // How often to update (1 = every frame, 2 = every other frame, etc.)
 
-    // Per-entity frame counters
+    // Per-entity frame counters protected by mutex for thread safety
     mutable std::unordered_map<Entity*, int> m_entityFrameCounters{};
+    mutable std::mutex m_frameCounterMutex{};
 
     // Distance-based update parameters
     float m_maxUpdateDistance{10000.0f}; // Maximum distance at which entity is updated every frame
