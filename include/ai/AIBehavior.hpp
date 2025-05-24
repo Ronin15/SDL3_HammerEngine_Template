@@ -108,9 +108,9 @@ protected:
     mutable std::mutex m_frameCounterMutex{};
 
     // Distance-based update parameters
-    float m_maxUpdateDistance{10000.0f}; // Maximum distance at which entity is updated every frame
-    float m_mediumUpdateDistance{15000.0f}; // Medium distance - entity updated less frequently
-    float m_minUpdateDistance{20000.0f}; // Minimum distance - entity updated rarely
+    float m_maxUpdateDistance{8000.0f}; // Maximum distance at which entity is updated every frame
+    float m_mediumUpdateDistance{10000.0f}; // Medium distance - entity updated less frequently
+    float m_minUpdateDistance{25000.0f}; // Minimum distance - entity updated rarely
 
     // Helper method to find the player entity in the current game state
     // Implementation varies:
