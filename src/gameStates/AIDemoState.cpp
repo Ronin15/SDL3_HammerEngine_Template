@@ -20,16 +20,29 @@
 AIDemoState::~AIDemoState() {
     // Don't call virtual functions from destructors
     
-    // Clean up NPCs
-    m_npcs.clear();
+    try {
+        // Clear target pointer from chase behavior first
+        if (m_chaseBehavior) {
+            m_chaseBehavior->setTarget(nullptr);
+            m_chaseBehavior = nullptr;
+        }
+        
+        // Reset all AI behaviors first to clear entity references
+        // This ensures behaviors release their entity references before the entities are destroyed
+        AIManager::Instance().resetBehaviors();
+        
+        // Clean up NPCs
+        m_npcs.clear();
 
-    // Clean up player
-    m_player.reset();
-
-    // Reset all AI behaviors, but keep the manager initialized
-    AIManager::Instance().resetBehaviors();
-    
-    std::cout << "Forge Game Engine - Exiting AIDemoState in destructor...\n";
+        // Clean up player
+        m_player.reset();
+        
+        std::cout << "Forge Game Engine - Exiting AIDemoState in destructor...\n";
+    } catch (const std::exception& e) {
+        std::cerr << "Forge Game Engine - Exception in AIDemoState destructor: " << e.what() << std::endl;
+    } catch (...) {
+        std::cerr << "Forge Game Engine - Unknown exception in AIDemoState destructor" << std::endl;
+    }
 }
 
 bool AIDemoState::enter() {
@@ -58,15 +71,40 @@ bool AIDemoState::enter() {
 bool AIDemoState::exit() {
     std::cout << "Forge Game Engine - Exiting AIDemoState...\n";
 
+    // First clear entity references from behaviors
+    if (AIManager::Instance().hasBehavior("Chase")) {
+        auto chaseBehavior = dynamic_cast<ChaseBehavior*>(AIManager::Instance().getBehavior("Chase"));
+        if (chaseBehavior) {
+            chaseBehavior->setTarget(nullptr);
+        }
+    }
+    
+    // Unassign behaviors from all entities
+    for (auto& npc : m_npcs) {
+        if (npc) {
+            AIManager::Instance().unassignBehaviorFromEntity(npc.get());
+            npc->setVelocity(Vector2D(0, 0));
+        }
+    }
+    
+    // Send release message to all behaviors
+    AIManager::Instance().broadcastMessage("release_entities", true);
+    AIManager::Instance().processMessageQueue();
+    
+    // Reset all AI behaviors to clear entity references
+    // This ensures behaviors release their entity references before the entities are destroyed
+    AIManager::Instance().resetBehaviors();
+
     // Clean up NPCs
     m_npcs.clear();
 
     // Clean up player
     m_player.reset();
-
-    // Reset all AI behaviors, but keep the manager initialized
-    AIManager::Instance().resetBehaviors();
-
+    
+    // Null out our behavior reference
+    m_chaseBehavior = nullptr;
+    
+    std::cout << "Forge Game Engine - AIDemoState exit complete\n";
     return true;
 }
 
@@ -92,6 +130,37 @@ void AIDemoState::update() {
 
     // Handle user input for the demo
     if (InputManager::Instance().isKeyDown(SDL_SCANCODE_B)) {
+        std::cout << "Forge Game Engine - Preparing to exit AIDemoState...\n";
+        
+        // First unassign all behaviors from entities before state change
+        // This prevents dangling entity pointers in behaviors
+        for (auto& npc : m_npcs) {
+            if (npc) {
+                AIManager::Instance().unassignBehaviorFromEntity(npc.get());
+                // Also stop the entity's movement
+                npc->setVelocity(Vector2D(0, 0));
+            }
+        }
+        
+        // Set chase behavior target to nullptr to avoid dangling reference
+        if (AIManager::Instance().hasBehavior("Chase")) {
+            auto chaseBehavior = dynamic_cast<ChaseBehavior*>(AIManager::Instance().getBehavior("Chase"));
+            if (chaseBehavior) {
+                std::cout << "Forge Game Engine - Clearing chase behavior target...\n";
+                chaseBehavior->setTarget(nullptr);
+                
+                // Ensure chase behavior has no references to any entities
+                chaseBehavior->clean(nullptr);
+            }
+        }
+        
+        // Make sure all AI behavior references are cleared
+        AIManager::Instance().broadcastMessage("release_entities", true);
+        
+        // Force a flush of the message queue to ensure all messages are processed
+        AIManager::Instance().processMessageQueue();
+        
+        std::cout << "Forge Game Engine - Transitioning to MainMenuState...\n";
         GameEngine::Instance().getGameStateManager()->setState("MainMenuState");
     }
 
@@ -236,11 +305,15 @@ void AIDemoState::createNPCs() {
         m_npcs.push_back(std::move(npc));
     }
 
+    // Set player as the chase target for the chase behavior - do this last
     // Set player as the chase target for the chase behavior
     if (AIManager::Instance().hasBehavior("Chase")) {
         auto chaseBehavior = dynamic_cast<ChaseBehavior*>(AIManager::Instance().getBehavior("Chase"));
         if (chaseBehavior && m_player) {
+            // Store the behavior for easier cleanup BEFORE setting target
+            m_chaseBehavior = chaseBehavior;
             chaseBehavior->setTarget(m_player.get());
+            std::cout << "Forge Game Engine - Chase behavior target set to player\n";
         } else {
             std::cerr << "Forge Game Engine - Could not set chase target - "
                       << (chaseBehavior ? "Player is null" : "ChaseBehavior is null") << std::endl;
