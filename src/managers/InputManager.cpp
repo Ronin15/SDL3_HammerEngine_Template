@@ -412,12 +412,11 @@ void InputManager::onGamepadButtonUp(SDL_Event& event) {
 }
 
 void InputManager::clean() {
-
-int gamepadCount{0};
-if(m_gamePadInitialized) {
-  // Close all gamepads if detected
-  for (auto& gamepad : m_joysticks) {
-    SDL_CloseGamepad(gamepad);
+  if(m_gamePadInitialized) {
+    int gamepadCount{0};
+    // Close all gamepads if detected
+    for (auto& gamepad : m_joysticks) {
+      SDL_CloseGamepad(gamepad);
     gamepadCount++;
   }
 
