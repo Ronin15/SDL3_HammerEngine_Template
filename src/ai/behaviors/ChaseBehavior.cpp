@@ -37,7 +37,17 @@ void ChaseBehavior::init(Entity* entity) {
 }
 
 void ChaseBehavior::update(Entity* entity) {
-    if (!entity || !m_active || !m_target) {
+    if (!entity || !m_active) {
+        return;
+    }
+    
+    // Handle null target safely
+    if (!m_target) {
+        // No target, so stop chasing
+        if (entity) {
+            entity->setVelocity(Vector2D(0, 0));
+        }
+        m_isChasing = false;
         return;
     }
 
@@ -98,11 +108,19 @@ void ChaseBehavior::update(Entity* entity) {
 }
 
 void ChaseBehavior::clean(Entity* entity) {
-    if (!entity) return;
-
     // Stop the entity's movement when cleaning up
-    entity->setVelocity(Vector2D(0, 0));
+    if (entity) {
+        entity->setVelocity(Vector2D(0, 0));
+    }
+    
+    // Reset all state
     m_isChasing = false;
+    m_hasLineOfSight = false;
+    m_lastKnownTargetPos = Vector2D(0, 0);
+    m_timeWithoutSight = 0;
+    
+    // Important: don't hold onto the target after clean
+    m_target = nullptr;
 }
 
 void ChaseBehavior::onMessage(Entity* entity, const std::string& message) {
@@ -123,6 +141,16 @@ void ChaseBehavior::onMessage(Entity* entity, const std::string& message) {
         if (entity) {
             entity->setVelocity(Vector2D(0, 0));
         }
+    } else if (message == "release_entities") {
+        // Clear target and reset state when asked to release entities
+        m_target = nullptr;
+        m_isChasing = false;
+        m_hasLineOfSight = false;
+        m_lastKnownTargetPos = Vector2D(0, 0);
+        m_timeWithoutSight = 0;
+        if (entity) {
+            entity->setVelocity(Vector2D(0, 0));
+        }
     }
 }
 
@@ -131,6 +159,13 @@ std::string ChaseBehavior::getName() const {
 }
 
 void ChaseBehavior::setTarget(Entity* target) {
+    // Always reset chase state when target changes
+    m_isChasing = false;
+    m_hasLineOfSight = false;
+    m_lastKnownTargetPos = Vector2D(0, 0);
+    m_timeWithoutSight = 0;
+    
+    // Set new target
     m_target = target;
 }
 

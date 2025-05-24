@@ -37,6 +37,8 @@ private:
     // Members
     std::vector<std::unique_ptr<NPC>> m_npcs{};
     std::unique_ptr<Player> m_player{};
+    // Non-owning pointer to the chase behavior for cleanup
+    class ChaseBehavior* m_chaseBehavior{nullptr};
 
     std::string m_textureID {""};  // Texture ID as loaded by TextureManager from res/img directory
 

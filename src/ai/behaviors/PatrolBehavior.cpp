@@ -104,21 +104,22 @@ void PatrolBehavior::update(Entity* entity) {
 }
 
 void PatrolBehavior::clean(Entity* entity) {
-    if (!entity) return;
+    if (entity) {
+        // Stop the entity's movement when cleaning up
+        entity->setVelocity(Vector2D(0, 0));
 
-    // Stop the entity's movement when cleaning up
-    entity->setVelocity(Vector2D(0, 0));
-
-    // Re-enable bounds checking when behavior is cleaned up
-    NPC* npc = dynamic_cast<NPC*>(entity);
-    if (npc) {
-        npc->setBoundsCheckEnabled(true);
+        // Re-enable bounds checking when behavior is cleaned up
+        NPC* npc = dynamic_cast<NPC*>(entity);
+        if (npc) {
+            npc->setBoundsCheckEnabled(true);
+        }
     }
+    
+    // Reset internal state
+    m_needsReset = false;
 }
 
 void PatrolBehavior::onMessage(Entity* entity, const std::string& message) {
-    (void)entity; // Mark parameter as intentionally unused
-
     if (message == "pause") {
         setActive(false);
         if (entity) {
@@ -128,6 +129,20 @@ void PatrolBehavior::onMessage(Entity* entity, const std::string& message) {
         setActive(true);
     } else if (message == "reverse") {
         reverseWaypoints();
+    } else if (message == "release_entities") {
+        // Stop the entity and clean up when asked to release entities
+        if (entity) {
+            entity->setVelocity(Vector2D(0, 0));
+            
+            // Re-enable bounds checking
+            NPC* npc = dynamic_cast<NPC*>(entity);
+            if (npc) {
+                npc->setBoundsCheckEnabled(true);
+            }
+        }
+        
+        // Reset internal state
+        m_needsReset = false;
     }
 }
 

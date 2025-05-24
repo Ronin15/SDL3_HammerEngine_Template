@@ -27,24 +27,50 @@ void GameStateManager::setState(const std::string& stateName) {
                          });
 
   if (it != states.end()) {
-    // Exit current state if exists
-    if (currentState) {
-      currentState->exit();
-    }
+    // Store the current state before changing
+    GameState* previousState = currentState;
+    std::string prevStateName = previousState ? previousState->getName() : "None";
+    
+    try {
+      // Exit current state if exists
+      if (currentState) {
+        std::cout << "Forge Game Engine - Exiting state: " << prevStateName << std::endl;
+        bool exitSuccess = currentState->exit();
+        if (!exitSuccess) {
+          std::cerr << "Forge Game Engine - Warning: Exit for state " << prevStateName << " returned false" << std::endl;
+        }
+        currentState = nullptr; // Clear pointer before entering new state
+      }
 
-    // Transfer ownership correctly
-    currentState = it->get();
+      // Transfer ownership correctly
+      currentState = it->get();
 
-    // Trigger enter of new state
-    if (currentState) {
-      currentState->enter();
+      // Trigger enter of new state
+      if (currentState) {
+        std::cout << "Forge Game Engine - Entering state: " << stateName << std::endl;
+        bool enterSuccess = currentState->enter();
+        if (!enterSuccess) {
+          std::cerr << "Forge Game Engine - Error: Enter for state " << stateName << " failed" << std::endl;
+          currentState = nullptr; // Clear invalid state
+        }
+      }
+    } catch (const std::exception& e) {
+      std::cerr << "Forge Game Engine - Exception during state transition: " << e.what() << std::endl;
+      currentState = nullptr; // Safety measure
+    } catch (...) {
+      std::cerr << "Forge Game Engine - Unknown exception during state transition" << std::endl;
+      currentState = nullptr; // Safety measure
     }
   } else {
     std::cerr << "Forge Game Engine - State not found: " << stateName << std::endl;
 
     // Exit current state if it exists
     if (currentState) {
-      currentState->exit();
+      try {
+        currentState->exit();
+      } catch (...) {
+        std::cerr << "Forge Game Engine - Exception while exiting state" << std::endl;
+      }
       currentState = nullptr;
     }
   }

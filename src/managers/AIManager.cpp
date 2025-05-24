@@ -656,7 +656,17 @@ void AIManager::recordBehaviorPerformance(const std::string_view& behaviorName, 
 }
 
 void AIManager::resetBehaviors() {
-    // First, stop message processing
+    // First, send release_entities message to all behaviors
+    try {
+        broadcastMessage("release_entities", true);
+        processMessageQueue();
+    } catch (const std::exception& e) {
+        std::cerr << "Forge Game Engine - Exception during behavior release: " << e.what() << std::endl;
+    } catch (...) {
+        std::cerr << "Forge Game Engine - Unknown exception during behavior release" << std::endl;
+    }
+    
+    // Stop message processing
     m_processingMessages.store(false, std::memory_order_release);
     m_messageQueue.clear();
     

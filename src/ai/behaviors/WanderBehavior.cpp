@@ -153,13 +153,16 @@ void WanderBehavior::update(Entity* entity) {
 }
 
 void WanderBehavior::clean(Entity* entity) {
-    if (!entity) return;
-
-    // Stop the entity when behavior is cleaned up
-    entity->setVelocity(Vector2D(0, 0));
-    
-    // Remove entity state
-    m_entityStates.erase(entity);
+    if (entity) {
+        // Stop the entity when behavior is cleaned up
+        entity->setVelocity(Vector2D(0, 0));
+        
+        // Remove entity state
+        m_entityStates.erase(entity);
+    } else {
+        // If entity is null, clean up all entity states
+        m_entityStates.clear();
+    }
 }
 
 void WanderBehavior::onMessage(Entity* entity, const std::string& message) {
@@ -183,6 +186,13 @@ void WanderBehavior::onMessage(Entity* entity, const std::string& message) {
         if (entity && m_active && m_entityStates.find(entity) != m_entityStates.end()) {
             entity->setVelocity(m_entityStates[entity].currentDirection * m_speed);
         }
+    } else if (message == "release_entities") {
+        // Clear all entity state when asked to release entities
+        if (entity) {
+            entity->setVelocity(Vector2D(0, 0));
+        }
+        // Clean up entity state for this specific entity
+        m_entityStates.erase(entity);
     }
 }
 
