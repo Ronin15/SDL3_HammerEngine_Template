@@ -1,18 +1,25 @@
 @echo off
-:: Helper script to build and run SaveGameManager tests
+:: Script to build and run SaveGameManager Tests
+:: Copyright (c) 2025 Hammer Forged Games, MIT License
+
+:: Enable color output on Windows 10+ terminals
 setlocal EnableDelayedExpansion
 
-:: Set up colored output
-set "RED=[91m"
+:: Color codes for Windows
 set "GREEN=[92m"
 set "YELLOW=[93m"
+set "RED=[91m"
 set "BLUE=[94m"
 set "NC=[0m"
 
-:: Process command line arguments
+:: Navigate to project root directory (in case script is run from elsewhere)
+cd /d "%~dp0"
+
+:: Process command-line options
 set CLEAN=false
 set CLEAN_ALL=false
 set VERBOSE=false
+set USE_NINJA=false
 
 :parse_args
 if "%~1"=="" goto :done_parsing
@@ -33,7 +40,7 @@ if /i "%~1"=="--verbose" (
 )
 if /i "%~1"=="--help" (
     echo !BLUE!SaveGameManager Test Runner!NC!
-    echo Usage: run_save_tests.bat [options]
+    echo Usage: %0 [options]
     echo.
     echo Options:
     echo   --clean      Clean test artifacts before building
@@ -42,11 +49,11 @@ if /i "%~1"=="--help" (
     echo   --help       Show this help message
     exit /b 0
 )
-goto :parse_args
-:done_parsing
+echo !RED!Unknown option: %1!NC!
+echo Usage: %0 [--clean] [--clean-all] [--verbose] [--help]
+exit /b 1
 
-:: Navigate to the script's directory
-cd /d "%~dp0"
+:done_parsing
 
 :: Handle clean-all case
 if "%CLEAN_ALL%"=="true" (
@@ -56,6 +63,16 @@ if "%CLEAN_ALL%"=="true" (
 
 echo !BLUE!Building SaveGameManager tests...!NC!
 
+:: Check if Ninja is available
+where ninja >nul 2>&1
+if %ERRORLEVEL% equ 0 (
+    set USE_NINJA=true
+    echo !GREEN!Ninja build system found, using it for faster builds.!NC!
+) else (
+    set USE_NINJA=false
+    echo !YELLOW!Ninja build system not found, using default CMake generator.!NC!
+)
+
 :: Ensure build directory exists
 if not exist "build" (
     mkdir build
@@ -63,95 +80,103 @@ if not exist "build" (
 )
 
 :: Navigate to build directory
-cd build
-if %ERRORLEVEL% neq 0 (
+cd build || (
     echo !RED!Failed to enter build directory!!NC!
     exit /b 1
 )
 
 :: Configure with CMake if needed
 if not exist "build.ninja" (
-    echo !YELLOW!Configuring project with CMake and Ninja...!NC!
-    cmake -G Ninja ..
-    if %ERRORLEVEL% neq 0 (
-        echo !RED!CMake configuration failed!!NC!
-        exit /b 1
+    echo !YELLOW!Configuring project with CMake...!NC!
+    if "%USE_NINJA%"=="true" (
+        cmake -G Ninja .. || (
+            echo !RED!CMake configuration failed!!NC!
+            exit /b 1
+        )
+    ) else (
+        cmake .. || (
+            echo !RED!CMake configuration failed!!NC!
+            exit /b 1
+        )
     )
 )
 
 :: Clean tests if requested
 if "%CLEAN%"=="true" (
     echo !YELLOW!Cleaning test artifacts...!NC!
-    ninja -t clean save_manager_tests
+    if "%USE_NINJA%"=="true" (
+        ninja -t clean save_manager_tests
+    ) else (
+        cmake --build . --target clean --config Debug
+    )
 )
 
 :: Build the tests
 echo !YELLOW!Building tests...!NC!
-ninja save_manager_tests
-if %ERRORLEVEL% neq 0 (
-    echo !RED!Build failed!!NC!
-    exit /b 1
+if "%USE_NINJA%"=="true" (
+    ninja save_manager_tests || (
+        echo !RED!Build failed!!NC!
+        exit /b 1
+    )
+) else (
+    cmake --build . --target save_manager_tests --config Debug || (
+        echo !RED!Build failed!!NC!
+        exit /b 1
+    )
 )
 
+:: Return to project root
+cd ..
+
 :: Check if test executable exists
-set "TEST_EXECUTABLE=..\bin\debug\save_manager_tests.exe"
+set TEST_EXECUTABLE=bin\debug\save_manager_tests.exe
 if not exist "%TEST_EXECUTABLE%" (
     echo !RED!Test executable not found at %TEST_EXECUTABLE%!NC!
     echo !YELLOW!Searching for test executable...!NC!
-    
-    :: Find the executable (Windows equivalent of find command)
-    for /r ".." %%f in (save_manager_tests*.exe) do (
-        set "TEST_EXECUTABLE=%%f"
-        echo !GREEN!Found test executable at %%f!NC!
+    for /r "bin" %%f in (save_manager_tests*.exe) do (
+        echo !GREEN!Found executable at: %%f!NC!
+        set TEST_EXECUTABLE=%%f
         goto :found_executable
     )
-    
     echo !RED!Could not find test executable!!NC!
     exit /b 1
 )
 
 :found_executable
 
+:: Create test_results directory if it doesn't exist
+if not exist "test_results" mkdir test_results
+
 :: Run the tests
 echo !GREEN!Build successful. Running tests...!NC!
 echo !BLUE!====================================!NC!
 
-:: Create a temporary file for output
-set "TEMP_OUTPUT=test_output.log"
-
-:: Run with appropriate options and display output in real-time
-:: Windows doesn't have a built-in tee equivalent, so we'll use this approach
+:: Set test command options
+set TEST_OPTS=--catch_system_errors=no --no_result_code
 if "%VERBOSE%"=="true" (
-    "%TEST_EXECUTABLE%" --log_level=all > "%TEMP_OUTPUT%" 2>&1
+    set TEST_OPTS=%TEST_OPTS% --log_level=all
+)
+
+:: Run the tests and save output to a temporary file
+echo !YELLOW!Running with options: %TEST_OPTS%!NC!
+set TEMP_OUTPUT=test_output.log
+
+if "%VERBOSE%"=="true" (
+    "%TEST_EXECUTABLE%" %TEST_OPTS% > "%TEMP_OUTPUT%" 2>&1
     type "%TEMP_OUTPUT%"
 ) else (
-    "%TEST_EXECUTABLE%" > "%TEMP_OUTPUT%" 2>&1
-    type "%TEMP_OUTPUT%"
+    "%TEST_EXECUTABLE%" %TEST_OPTS% > "%TEMP_OUTPUT%" 2>&1
 )
-
-:: Save the exit code
 set TEST_RESULT=%ERRORLEVEL%
-
-:: If we got a non-zero exit code but also have valid results, consider it successful
-if %TEST_RESULT% neq 0 (
-    findstr /C:"*** No errors detected" "%TEMP_OUTPUT%" >nul
-    if %ERRORLEVEL% equ 0 (
-        echo !YELLOW!Test had non-zero exit code but appears to have passed. Treating as success.!NC!
-        set TEST_RESULT=0
-    )
-)
 
 echo !BLUE!====================================!NC!
 
-:: Create test_results directory if it doesn't exist
-if not exist "..\test_results" mkdir "..\test_results"
-
 :: Save test results
-copy /y "%TEMP_OUTPUT%" "..\test_results\save_manager_test_output.txt" > nul
+copy "%TEMP_OUTPUT%" "test_results\save_manager_test_output.txt" >nul
 
-:: Extract performance metrics if they exist
+:: Extract performance metrics
 echo !YELLOW!Saving test results...!NC!
-findstr /C:"time:" /C:"performance" /C:"saved:" /C:"loaded:" "%TEMP_OUTPUT%" > "..\test_results\save_manager_performance_metrics.txt" 2>nul
+findstr /R /C:"time:" /C:"performance" /C:"saved:" /C:"loaded:" "%TEMP_OUTPUT%" > "test_results\save_manager_performance_metrics.txt" 2>nul
 
 :: Clean up temporary file
 del "%TEMP_OUTPUT%"
@@ -160,7 +185,7 @@ del "%TEMP_OUTPUT%"
 if %TEST_RESULT% equ 0 (
     echo !GREEN!All tests passed!!NC!
 ) else (
-    echo !RED!Some tests failed. Please check the output above.!NC!
+    echo !RED!Some tests failed. Please check test_results\save_manager_test_output.txt for details.!NC!
 )
 
 exit /b %TEST_RESULT%
