@@ -21,14 +21,15 @@ bool AIBehavior::isWithinUpdateFrequency(Entity* entity) const {
     }
     
     // Update if enough frames have passed
-    // Get or create frame counter for this entity
-    const int& frameCounter = m_entityFrameCounters[entity];
+    // Get frame counter for this entity using thread-safe method
+    const int frameCounter = getFrameCounter(entity);
     return (frameCounter >= m_updateFrequency);
 }
 
 // Remove an entity from the frame counter map
 void AIBehavior::cleanupEntity(Entity* entity) {
     if (entity) {
+        std::lock_guard<std::mutex> lock(m_frameCounterMutex);
         m_entityFrameCounters.erase(entity);
     }
 }
@@ -78,8 +79,8 @@ bool AIBehavior::shouldUpdate(Entity* entity) const {
         // Use priority-based update frequency for fallback
         float priorityMultiplier = (m_priority + 1) / 10.0f;
 
-        // Get the frame counter for this entity
-        const int& frameCounter = m_entityFrameCounters[entity];
+        // Get the frame counter for this entity using thread-safe method
+        const int frameCounter = getFrameCounter(entity);
         
         // Determine update frequency based on distance
         int requiredFrames;
@@ -106,8 +107,8 @@ bool AIBehavior::shouldUpdate(Entity* entity) const {
     // Determine update frequency based on distance to player and priority
     float priorityMultiplier = (m_priority + 1) / 10.0f; // Convert 0-9 priority to 0.1-1.0 multiplier
 
-    // Get the frame counter for this entity
-    const int& frameCounter = m_entityFrameCounters[entity];
+    // Get the frame counter for this entity using thread-safe method
+    const int frameCounter = getFrameCounter(entity);
     
     // Determine update frequency based on distance from player
     int requiredFrames;

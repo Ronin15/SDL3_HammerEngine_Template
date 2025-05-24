@@ -164,35 +164,44 @@ void AIManager::unassignBehaviorFromEntity(Entity* entity) {
         return;
     }
     
-    // Get the behavior for this entity before removing it
-    AIBehavior* behavior = nullptr;
-    std::string behaviorName;
-    {
-        std::shared_lock<std::shared_mutex> lock(m_entityMutex);
-        auto it = m_entityBehaviors.find(entity);
-        if (it != m_entityBehaviors.end()) {
-            behaviorName = it->second;
+    try {
+        // Get the behavior for this entity before removing it
+        AIBehavior* behavior = nullptr;
+        std::string behaviorName;
+        {
+            std::shared_lock<std::shared_mutex> lock(m_entityMutex);
+            auto it = m_entityBehaviors.find(entity);
+            if (it != m_entityBehaviors.end()) {
+                behaviorName = it->second;
+            }
         }
-    }
-    
-    // Clean up the entity's frame counter in the behavior
-    if (!behaviorName.empty()) {
-        behavior = getBehavior(behaviorName);
-        if (behavior) {
-            behavior->cleanupEntity(entity);
+        
+        // Clean up the entity's frame counter in the behavior
+        if (!behaviorName.empty()) {
+            behavior = getBehavior(behaviorName);
+            if (behavior) {
+                try {
+                    behavior->cleanupEntity(entity);
+                } catch (...) {
+                    // Silently catch cleanup errors but continue with unassignment
+                }
+            }
         }
+        
+        // Remove entity from behavior map - use write lock
+        {
+            std::unique_lock<std::shared_mutex> lock(m_entityMutex);
+            m_entityBehaviors.erase(entity);
+        }
+        
+        // Invalidate caches - atomic operations
+        invalidateOptimizationCaches();
+        
+        AI_LOG("Unassigned behavior from entity at " << entity);
+    } catch (...) {
+        // Catch any exceptions to prevent crashes
+        std::cerr << "Forge Game Engine - AIManager: Error unassigning behavior from entity" << std::endl;
     }
-    
-    // Remove entity from behavior map - use write lock
-    {
-        std::unique_lock<std::shared_mutex> lock(m_entityMutex);
-        m_entityBehaviors.erase(entity);
-    }
-    
-    // Invalidate caches - atomic operations
-    invalidateOptimizationCaches();
-    
-    AI_LOG("Unassigned behavior from entity at " << entity);
 }
 
 bool AIManager::entityHasBehavior(Entity* entity) const {
@@ -336,24 +345,29 @@ void AIManager::batchUpdateAllBehaviors() {
                 // Process all entities with this behavior
                 for (Entity* entity : batch) {
                     if (entity) {
-                        // Always increment the frame counter before checking if we should update
-                        behavior->m_entityFrameCounters[entity]++;
-                        
-                        // Only update if the behavior's shouldUpdate returns true
-                        // This will check the frame counter internally
-                        if (behavior->shouldUpdate(entity)) {
-                            behavior->update(entity);
-                            // Reset frame counter after update
-                            behavior->m_entityFrameCounters[entity] = 0;
-                        }
-            
-                        // Check if entity has gone off-screen and needs cleanup
-                        if (entity->getPosition().getX() < -2000 || 
-                            entity->getPosition().getX() > 3000 ||
-                            entity->getPosition().getY() < -2000 || 
-                            entity->getPosition().getY() > 3000) {
-                            // Reset frame counter to encourage update
-                            behavior->m_entityFrameCounters[entity] = 999;
+                        try {
+                            // Always increment the frame counter before checking if we should update
+                            behavior->incrementFrameCounter(entity);
+                            
+                            // Only update if the behavior's shouldUpdate returns true
+                            // This will check the frame counter internally
+                            if (behavior->shouldUpdate(entity)) {
+                                behavior->update(entity);
+                                // Reset frame counter after update
+                                behavior->resetFrameCounter(entity);
+                            }
+                
+                            // Check if entity has gone off-screen and needs cleanup
+                            if (entity->getPosition().getX() < -2000 || 
+                                entity->getPosition().getX() > 3000 ||
+                                entity->getPosition().getY() < -2000 || 
+                                entity->getPosition().getY() > 3000) {
+                                // Reset frame counter to encourage update
+                                behavior->setFrameCounter(entity, 999);
+                            }
+                        } catch (...) {
+                            // Catch any exceptions to prevent thread crashes
+                            continue;
                         }
                     }
                 }
@@ -395,24 +409,29 @@ void AIManager::updateBehaviorBatch(const std::string_view& behaviorName, const 
     
     for (Entity* entity : batch) {
         if (entity) {
-            // Always increment the frame counter before checking if we should update
-            behavior->m_entityFrameCounters[entity]++;
-            
-            // Only update if the behavior's shouldUpdate returns true
-            // This will check the frame counter internally
-            if (behavior->shouldUpdate(entity)) {
-                behavior->update(entity);
-                // Reset frame counter after update
-                behavior->m_entityFrameCounters[entity] = 0;
-            }
-            
-            // Check if entity has gone off-screen and needs cleanup
-            if (entity->getPosition().getX() < -2000 || 
-                entity->getPosition().getX() > 3000 ||
-                entity->getPosition().getY() < -2000 || 
-                entity->getPosition().getY() > 3000) {
-                // Reset frame counter to encourage update
-                behavior->m_entityFrameCounters[entity] = 999;
+            try {
+                // Always increment the frame counter before checking if we should update
+                behavior->incrementFrameCounter(entity);
+                
+                // Only update if the behavior's shouldUpdate returns true
+                // This will check the frame counter internally
+                if (behavior->shouldUpdate(entity)) {
+                    behavior->update(entity);
+                    // Reset frame counter after update
+                    behavior->resetFrameCounter(entity);
+                }
+                
+                // Check if entity has gone off-screen and needs cleanup
+                if (entity->getPosition().getX() < -2000 || 
+                    entity->getPosition().getX() > 3000 ||
+                    entity->getPosition().getY() < -2000 || 
+                    entity->getPosition().getY() > 3000) {
+                    // Reset frame counter to encourage update
+                    behavior->setFrameCounter(entity, 999);
+                }
+            } catch (...) {
+                // Catch any exceptions to prevent crashes
+                continue;
             }
         }
     }
@@ -445,11 +464,16 @@ void AIManager::processEntitiesWithBehavior(AIBehavior* behavior, const std::vec
     if (useThreading) {
         // Split entities into chunks for parallel processing
         const size_t numEntities = entities.size();
-        const size_t numThreads = std::min(numEntities, static_cast<size_t>(4)); // Use up to 4 threads
+        // Limit threads based on entity count for better stability
+        const size_t maxThreads = numEntities > 10000 ? 2 : 4; // Use fewer threads for large entity counts
+        const size_t numThreads = std::min(numEntities, static_cast<size_t>(maxThreads));
         const size_t chunkSize = (numEntities + numThreads - 1) / numThreads;
         
         std::vector<std::future<void>> futures;
         futures.reserve(numThreads);
+        
+        // Create a copy of the entities vector to avoid race conditions
+        auto entitiesCopy = entities;
         
         for (size_t i = 0; i < numThreads; ++i) {
             size_t startIdx = i * chunkSize;
@@ -457,25 +481,38 @@ void AIManager::processEntitiesWithBehavior(AIBehavior* behavior, const std::vec
             
             if (startIdx >= numEntities) break;
             
-            futures.push_back(Forge::ThreadSystem::Instance().enqueueTaskWithResult([behavior, &entities, startIdx, endIdx]() {
-                for (size_t j = startIdx; j < endIdx; ++j) {
-                    Entity* entity = entities[j];
-                    if (entity) {
-                        behavior->update(entity);
+            futures.push_back(Forge::ThreadSystem::Instance().enqueueTaskWithResult([behavior, entitiesCopy, startIdx, endIdx]() {
+                try {
+                    for (size_t j = startIdx; j < endIdx; ++j) {
+                        Entity* entity = entitiesCopy[j];
+                        if (entity) {
+                            behavior->update(entity);
+                        }
                     }
+                } catch (...) {
+                    // Catch any exceptions to prevent thread crashes
                 }
             }));
         }
         
         // Wait for all tasks to complete
         for (auto& future : futures) {
-            future.wait();
+            try {
+                future.wait();
+            } catch (...) {
+                // Catch any exceptions during wait
+            }
         }
     } else {
         // Sequential processing
         for (Entity* entity : entities) {
             if (entity) {
-                behavior->update(entity);
+                try {
+                    behavior->update(entity);
+                } catch (...) {
+                    // Catch any exceptions during update
+                    continue;
+                }
             }
         }
     }

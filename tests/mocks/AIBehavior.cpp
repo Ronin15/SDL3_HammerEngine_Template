@@ -13,9 +13,10 @@ bool AIBehavior::isWithinUpdateFrequency(Entity* entity) const {
         return true;
     }
     
-    // 2. For benchmarks, respect the frame counter
-    if (entity && m_entityFrameCounters.find(entity) != m_entityFrameCounters.end()) {
-        return m_entityFrameCounters.at(entity) >= m_updateFrequency;
+    // 2. For benchmarks, respect the frame counter using thread-safe method
+    if (entity) {
+        int frameCounter = getFrameCounter(entity);
+        return frameCounter >= m_updateFrequency;
     }
     
     // Default case: allow update
@@ -39,8 +40,9 @@ bool AIBehavior::shouldUpdate(Entity* entity) const {
 }
 
 void AIBehavior::cleanupEntity(Entity* entity) {
-    // Remove entity from frame counter map
+    // Remove entity from frame counter map with proper locking
     if (entity) {
+        std::lock_guard<std::mutex> lock(m_frameCounterMutex);
         m_entityFrameCounters.erase(entity);
     }
 }
