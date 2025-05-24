@@ -50,14 +50,12 @@ All test scripts support these options:
 
 | Option | Description |
 |--------|-------------|
-| `--clean` | Clean build artifacts before running tests |
 | `--verbose` | Show detailed test output |
 | `--release` | Run tests in release mode (optimized) |
 | `--help` | Show help message for the script |
 
 Special options:
 - `--extreme` for AI benchmark (runs extended benchmarks)
-- `--clean-all` for the run_all_tests scripts (removes entire build directory)
 
 ## Test Output
 
@@ -239,7 +237,7 @@ run_all_tests.bat [options]
 
 These scripts:
 1. Run each test script one by one, giving them time to complete
-2. Pass along any command-line options to each individual test script
+2. Pass along the `--verbose` option to individual test scripts if specified
 3. Generate a summary showing which tests passed or failed
 4. Save combined results to `test_results/combined/all_tests_results.txt`
 5. Return a non-zero exit code if any tests fail

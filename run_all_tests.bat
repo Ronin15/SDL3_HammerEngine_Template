@@ -16,22 +16,10 @@ set NC=[0m
 set SCRIPT_DIR=%~dp0
 
 :: Process command line arguments
-set CLEAN=false
-set CLEAN_ALL=false
 set VERBOSE=false
 
 :parse_args
 if "%~1"=="" goto :end_parse_args
-if /i "%~1"=="--clean" (
-    set CLEAN=true
-    shift
-    goto :parse_args
-)
-if /i "%~1"=="--clean-all" (
-    set CLEAN_ALL=true
-    shift
-    goto :parse_args
-)
 if /i "%~1"=="--verbose" (
     set VERBOSE=true
     shift
@@ -42,8 +30,6 @@ if /i "%~1"=="--help" (
     echo Usage: run_all_tests.bat [options]
     echo.
     echo Options:
-    echo   --clean      Clean test artifacts before building
-    echo   --clean-all  Remove entire build directory and rebuild
     echo   --verbose    Run tests with verbose output
     echo   --help       Show this help message
     exit /b 0
@@ -123,8 +109,6 @@ for %%F in (%script%) do set script_name=%%~nxF
 set args=
 
 :: Pass along relevant flags
-if "%CLEAN%"=="true" set args=%args% --clean
-if "%CLEAN_ALL%"=="true" set args=%args% --clean-all
 if "%VERBOSE%"=="true" set args=%args% --verbose
 
 echo.

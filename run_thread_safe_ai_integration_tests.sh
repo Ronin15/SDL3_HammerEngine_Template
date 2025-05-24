@@ -3,21 +3,15 @@
 # Copyright (c) 2025 Hammer Forged Games, MIT License
 
 # Create required directories
-mkdir -p build
 mkdir -p test_results
 
 # Set default build type
 BUILD_TYPE="Debug"
-CLEAN_BUILD=false
 VERBOSE=false
 
 # Process command-line options
 while [[ $# -gt 0 ]]; do
   case $1 in
-    --clean)
-      CLEAN_BUILD=true
-      shift
-      ;;
     --release)
       BUILD_TYPE="Release"
       shift
@@ -26,72 +20,28 @@ while [[ $# -gt 0 ]]; do
       VERBOSE=true
       shift
       ;;
+    --help)
+      echo "Usage: $0 [--release] [--verbose] [--help]"
+      echo "  --release   Run the release build of the tests"
+      echo "  --verbose   Show detailed test output"
+      echo "  --help      Show this help message"
+      exit 0
+      ;;
     *)
       echo "Unknown option: $1"
-      echo "Usage: $0 [--clean] [--release] [--verbose]"
+      echo "Usage: $0 [--release] [--verbose] [--help]"
       exit 1
       ;;
   esac
 done
 
-# Configure build cleaning
-if [ "$CLEAN_BUILD" = true ]; then
-  echo "Cleaning build directory..."
-  rm -rf build/*
-fi
-
-# Check if Ninja is available
-if command -v ninja &> /dev/null; then
-  USE_NINJA=true
-  echo "Ninja build system found, using it for faster builds."
-else
-  USE_NINJA=false
-  echo "Ninja build system not found, using default CMake generator."
-fi
-
-# Configure the project
-echo "Configuring project with CMake (Build type: $BUILD_TYPE)..."
-if [ "$USE_NINJA" = true ]; then
-  if [ "$VERBOSE" = true ]; then
-    cmake -S . -B build -DCMAKE_BUILD_TYPE=$BUILD_TYPE -G Ninja -DBOOST_TEST_NO_SIGNAL_HANDLING=ON
-  else
-    cmake -S . -B build -DCMAKE_BUILD_TYPE=$BUILD_TYPE -G Ninja -DBOOST_TEST_NO_SIGNAL_HANDLING=ON > /dev/null
-  fi
-else
-  if [ "$VERBOSE" = true ]; then
-    cmake -S . -B build -DCMAKE_BUILD_TYPE=$BUILD_TYPE -DBOOST_TEST_NO_SIGNAL_HANDLING=ON
-  else
-    cmake -S . -B build -DCMAKE_BUILD_TYPE=$BUILD_TYPE -DBOOST_TEST_NO_SIGNAL_HANDLING=ON > /dev/null
-  fi
-fi
-
-# Build the tests
-echo "Building Thread-Safe AI Integration tests..."
-if [ "$USE_NINJA" = true ]; then
-  if [ "$VERBOSE" = true ]; then
-    ninja -C build thread_safe_ai_integration_tests
-  else
-    ninja -C build thread_safe_ai_integration_tests > /dev/null
-  fi
-else
-  if [ "$VERBOSE" = true ]; then
-    cmake --build build --config $BUILD_TYPE --target thread_safe_ai_integration_tests
-  else
-    cmake --build build --config $BUILD_TYPE --target thread_safe_ai_integration_tests > /dev/null
-  fi
-fi
-
-# Check if build was successful
-if [ $? -ne 0 ]; then
-  echo "Build failed. See output for details."
-  exit 1
-fi
+echo "Running Thread-Safe AI Integration tests..."
 
 # Determine test executable path based on build type
 if [ "$BUILD_TYPE" = "Debug" ]; then
-  TEST_EXECUTABLE="./bin/debug/thread_safe_ai_integration_tests"
+  TEST_EXECUTABLE="bin/debug/thread_safe_ai_integration_tests"
 else
-  TEST_EXECUTABLE="./bin/release/thread_safe_ai_integration_tests"
+  TEST_EXECUTABLE="bin/release/thread_safe_ai_integration_tests"
 fi
 
 # Verify executable exists
@@ -137,12 +87,22 @@ TEST_OPTS="--log_level=all --no_result_code"
 
 # Run the tests with a clean environment and timeout
 if [ -n "$TIMEOUT_CMD" ]; then
-  echo "Running with options: $TEST_OPTS --catch_system_errors=no"
-  $TIMEOUT_CMD 300s "$TEST_EXECUTABLE" $TEST_OPTS --catch_system_errors=no 2>&1 | tee "$TEMP_OUTPUT"
+  if [ "$VERBOSE" = true ]; then
+    echo "Running with options: $TEST_OPTS --catch_system_errors=no"
+    $TIMEOUT_CMD 300s "$TEST_EXECUTABLE" $TEST_OPTS --catch_system_errors=no 2>&1 | tee "$TEMP_OUTPUT"
+  else
+    echo "Running tests..."
+    $TIMEOUT_CMD 300s "$TEST_EXECUTABLE" --catch_system_errors=no 2>&1 | tee "$TEMP_OUTPUT"
+  fi
   TEST_RESULT=$?
 else
-  echo "Running with options: $TEST_OPTS --catch_system_errors=no"
-  "$TEST_EXECUTABLE" $TEST_OPTS --catch_system_errors=no 2>&1 | tee "$TEMP_OUTPUT"
+  if [ "$VERBOSE" = true ]; then
+    echo "Running with options: $TEST_OPTS --catch_system_errors=no"
+    "$TEST_EXECUTABLE" $TEST_OPTS --catch_system_errors=no 2>&1 | tee "$TEMP_OUTPUT"
+  else
+    echo "Running tests..."
+    "$TEST_EXECUTABLE" --catch_system_errors=no 2>&1 | tee "$TEMP_OUTPUT"
+  fi
   TEST_RESULT=$?
 fi
 

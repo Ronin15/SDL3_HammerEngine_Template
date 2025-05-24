@@ -15,20 +15,10 @@ NC='\033[0m' # No Color
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Process command line arguments
-CLEAN=false
-CLEAN_ALL=false
 VERBOSE=false
 
 for arg in "$@"; do
   case $arg in
-    --clean)
-      CLEAN=true
-      shift
-      ;;
-    --clean-all)
-      CLEAN_ALL=true
-      shift
-      ;;
     --verbose)
       VERBOSE=true
       shift
@@ -37,8 +27,6 @@ for arg in "$@"; do
       echo -e "${BLUE}All Tests Runner${NC}"
       echo -e "Usage: ./run_all_tests.sh [options]"
       echo -e "\nOptions:"
-      echo -e "  --clean      Clean test artifacts before building"
-      echo -e "  --clean-all  Remove entire build directory and rebuild"
       echo -e "  --verbose    Run tests with verbose output"
       echo -e "  --help       Show this help message"
       exit 0
@@ -74,12 +62,6 @@ run_test_script() {
   local args=""
   
   # Pass along relevant flags
-  if [ "$CLEAN" = true ]; then
-    args="$args --clean"
-  fi
-  if [ "$CLEAN_ALL" = true ]; then
-    args="$args --clean-all"
-  fi
   if [ "$VERBOSE" = true ]; then
     args="$args --verbose"
   fi

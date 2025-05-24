@@ -14,22 +14,16 @@ echo -e "${YELLOW}Running AI Optimization Tests...${NC}"
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 cd "$SCRIPT_DIR"
 
-# Create required directories
-mkdir -p build
+# Create directory for test results
 mkdir -p test_results
 
 # Set default build type
 BUILD_TYPE="Debug"
-CLEAN_BUILD=false
 VERBOSE=false
 
 # Process command-line options
 while [[ $# -gt 0 ]]; do
   case $1 in
-    --clean)
-      CLEAN_BUILD=true
-      shift
-      ;;
     --debug)
       BUILD_TYPE="Debug"
       shift
@@ -43,84 +37,29 @@ while [[ $# -gt 0 ]]; do
       shift
       ;;
     --help)
-      echo "Usage: $0 [--clean] [--debug] [--release] [--verbose] [--help]"
-      echo "  --clean     Clean build directory before building"
-      echo "  --debug     Build in Debug mode (default)"
-      echo "  --release   Build in Release mode"
+      echo "Usage: $0 [--debug] [--release] [--verbose] [--help]"
+      echo "  --debug     Run in Debug mode (default)"
+      echo "  --release   Run in Release mode"
       echo "  --verbose   Show verbose output"
       echo "  --help      Show this help message"
       exit 0
       ;;
     *)
       echo "Unknown option: $1"
-      echo "Usage: $0 [--clean] [--debug] [--release] [--verbose] [--help]"
+      echo "Usage: $0 [--debug] [--release] [--verbose] [--help]"
       exit 1
       ;;
   esac
 done
 
-# Configure build cleaning
-if [ "$CLEAN_BUILD" = true ]; then
-  echo -e "${YELLOW}Cleaning build directory...${NC}"
-  rm -rf build/*
-fi
-
-# Check if Ninja is available
-if command -v ninja &> /dev/null; then
-  USE_NINJA=true
-  echo -e "${GREEN}Ninja build system found, using it for faster builds.${NC}"
-else
-  USE_NINJA=false
-  echo -e "${YELLOW}Ninja build system not found, using default CMake generator.${NC}"
-fi
-
-# Configure the project
-echo -e "${YELLOW}Configuring project with CMake (Build type: $BUILD_TYPE)...${NC}"
-CMAKE_FLAGS="-DCMAKE_BUILD_TYPE=$BUILD_TYPE -DBOOST_TEST_NO_SIGNAL_HANDLING=ON"
-
-if [ "$USE_NINJA" = true ]; then
-  if [ "$VERBOSE" = true ]; then
-    cmake -S . -B build $CMAKE_FLAGS -G Ninja
-  else
-    cmake -S . -B build $CMAKE_FLAGS -G Ninja > /dev/null
-  fi
-else
-  if [ "$VERBOSE" = true ]; then
-    cmake -S . -B build $CMAKE_FLAGS
-  else
-    cmake -S . -B build $CMAKE_FLAGS > /dev/null
-  fi
-fi
-
-# Build the tests
-echo -e "${YELLOW}Building AI Optimization tests...${NC}"
-if [ "$USE_NINJA" = true ]; then
-  if [ "$VERBOSE" = true ]; then
-    ninja -C build ai_optimization_tests
-  else
-    ninja -C build ai_optimization_tests > /dev/null
-  fi
-else
-  if [ "$VERBOSE" = true ]; then
-    cmake --build build --config $BUILD_TYPE --target ai_optimization_tests
-  else
-    cmake --build build --config $BUILD_TYPE --target ai_optimization_tests > /dev/null
-  fi
-fi
-
-# Check if build was successful
-if [ $? -ne 0 ]; then
-  echo -e "${RED}Build failed. See output for details.${NC}"
-  exit 1
-fi
-
-echo -e "${GREEN}Build successful!${NC}"
+# Prepare to run tests
+echo -e "${YELLOW}Preparing to run AI Optimization tests...${NC}"
 
 # Determine the correct path to the test executable
 if [ "$BUILD_TYPE" = "Debug" ]; then
-  TEST_EXECUTABLE="./bin/debug/ai_optimization_tests"
+  TEST_EXECUTABLE="bin/debug/ai_optimization_tests"
 else
-  TEST_EXECUTABLE="./bin/release/ai_optimization_tests"
+  TEST_EXECUTABLE="bin/release/ai_optimization_tests"
 fi
 
 # Verify executable exists
@@ -128,7 +67,7 @@ if [ ! -f "$TEST_EXECUTABLE" ]; then
   echo -e "${RED}Error: Test executable not found at '$TEST_EXECUTABLE'${NC}"
   # Attempt to find the executable
   echo -e "${YELLOW}Searching for test executable...${NC}"
-  FOUND_EXECUTABLE=$(find ./bin -name "ai_optimization_tests")
+  FOUND_EXECUTABLE=$(find bin -name "ai_optimization_tests")
   if [ -n "$FOUND_EXECUTABLE" ]; then
     echo -e "${GREEN}Found executable at: $FOUND_EXECUTABLE${NC}"
     TEST_EXECUTABLE="$FOUND_EXECUTABLE"
