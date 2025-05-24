@@ -35,8 +35,6 @@ NPC::NPC(const std::string& textureID, const Vector2D& startPosition, int frameW
         m_height = m_frameHeight;
     }
 
-    // No state setup needed - handled by AI Manager
-
     // Set default wander area (can be changed later via setWanderArea)
     m_minX = 0.0f;
     m_minY = 0.0f;
@@ -52,7 +50,7 @@ NPC::NPC(const std::string& textureID, const Vector2D& startPosition, int frameW
 NPC::~NPC() {
     // IMPORTANT: Do not call shared_from_this() or any methods that use it in a destructor
     // The AIManager unassignment should happen in clean() or beforeDestruction(), not here
-    
+
     // Note: Entity pointers should already be unassigned from AIManager
     // in AIDemoState::exit() or via the clean() method before destruction
 }
@@ -192,13 +190,13 @@ void NPC::render() {
 void NPC::clean() {
     // This method is called before the object is destroyed,
     // so it's safe to use shared_from_this() here
-    
+
     // Remove from AI Manager if it has a behavior
     try {
         // Only attempt to use shared_this() when we know the object
         // is managed by a shared_ptr (i.e., not during destruction)
         auto ptr = shared_this();
-        
+
         // Remove from AIManager
         if (AIManager::Instance().entityHasBehavior(ptr)) {
             AIManager::Instance().unassignBehaviorFromEntity(ptr);
