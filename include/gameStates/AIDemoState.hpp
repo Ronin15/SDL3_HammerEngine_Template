@@ -50,7 +50,7 @@ private:
     std::string m_textureID {""};  // Texture ID as loaded by TextureManager from res/img directory
 
     // Demo settings
-    int m_npcCount{5};
+    int m_npcCount{10};  // Number of NPCs to create for the demo
     float m_worldWidth{800.0f};
     float m_worldHeight{600.0f};
 };
