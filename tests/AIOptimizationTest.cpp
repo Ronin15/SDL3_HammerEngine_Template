@@ -267,7 +267,7 @@ public:
         auto behavior = m_behaviors[behaviorName];
 
         // Process all entities with this behavior
-        for (auto entity : entities) {
+        for (const auto& entity : entities) {
             behavior->update(entity);
         }
     }
@@ -432,7 +432,7 @@ BOOST_AUTO_TEST_CASE(TestBatchProcessing)
 
     // Time individual processing
     startTime = std::chrono::high_resolution_clock::now();
-    for (auto entity : entityPtrs) {
+    for (const auto& entity : entityPtrs) {
         AIManager::Instance().assignBehaviorToEntity(entity, "BatchWander");
     }
     AIManager::Instance().update();

@@ -62,8 +62,7 @@ static SignalHandlerRegistration signalHandlerRegistration;
 // This avoids having to modify the original SaveGameManager code
 class TestSaveGameManager {
 public:
-    TestSaveGameManager() {
-        m_saveDirectory = "test_saves";
+    TestSaveGameManager() : m_saveDirectory("test_saves") {
         ensureSaveDirectoryExists();
     }
     

@@ -183,19 +183,17 @@ void WanderBehavior::onMessage(EntityPtr entity, const std::string& message) {
         chooseNewDirection(entity);
     } else if (message == "increase_speed") {
         m_speed *= 1.5f;
-        if (entity && m_active && m_entityStates.find(entityWeak) != m_entityStates.end()) {
+        if (m_active && m_entityStates.find(entityWeak) != m_entityStates.end()) {
             entity->setVelocity(m_entityStates[entityWeak].currentDirection * m_speed);
         }
     } else if (message == "decrease_speed") {
         m_speed *= 0.75f;
-        if (entity && m_active && m_entityStates.find(entityWeak) != m_entityStates.end()) {
+        if (m_active && m_entityStates.find(entityWeak) != m_entityStates.end()) {
             entity->setVelocity(m_entityStates[entityWeak].currentDirection * m_speed);
         }
     } else if (message == "release_entities") {
         // Clear all entity state when asked to release entities
-        if (entity) {
-            entity->setVelocity(Vector2D(0, 0));
-        }
+        entity->setVelocity(Vector2D(0, 0));
         // Clean up entity state for this specific entity
         m_entityStates.erase(entityWeak);
     }

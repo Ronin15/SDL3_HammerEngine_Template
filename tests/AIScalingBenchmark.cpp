@@ -692,8 +692,6 @@ BOOST_AUTO_TEST_CASE(TestScalabilityThreaded) {
     }
 }
 
-}
-
 // Test with extreme number of entities (200,000)
 BOOST_AUTO_TEST_CASE(TestExtremeEntityCount) {
     AIScalingFixture fixture;
@@ -788,3 +786,4 @@ BOOST_AUTO_TEST_CASE(TestExtremeEntityCount) {
 }
 
 BOOST_AUTO_TEST_SUITE_END() // AIScalingTests
+}
