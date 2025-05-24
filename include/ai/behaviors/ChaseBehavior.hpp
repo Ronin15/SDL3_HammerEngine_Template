@@ -12,23 +12,23 @@
 
 class ChaseBehavior : public AIBehavior {
 public:
-    ChaseBehavior(Entity* target = nullptr, float chaseSpeed = 3.0f, float maxRange = 500.0f, float minRange = 50.0f);
+    ChaseBehavior(EntityPtr target = nullptr, float chaseSpeed = 3.0f, float maxRange = 500.0f, float minRange = 50.0f);
 
-    void init(Entity* entity) override;
+    void init(EntityPtr entity) override;
 
-    void update(Entity* entity) override;
+    void update(EntityPtr entity) override;
 
-    void clean(Entity* entity) override;
+    void clean(EntityPtr entity) override;
 
-    void onMessage(Entity* entity, const std::string& message) override;
+    void onMessage(EntityPtr entity, const std::string& message) override;
 
     std::string getName() const override;
 
     // Set a new target to chase
-    void setTarget(Entity* target);
+    void setTarget(EntityPtr target);
 
     // Get current target
-    Entity* getTarget() const;
+    EntityPtr getTarget() const;
 
     // Set chase parameters
     void setChaseSpeed(float speed);
@@ -41,15 +41,15 @@ public:
 
 protected:
     // Called when target is reached (within minimum range)
-    virtual void onTargetReached(Entity* entity);
+    virtual void onTargetReached(EntityPtr entity);
 
     // Called when target is lost (out of max range)
-    virtual void onTargetLost(Entity* entity);
+    virtual void onTargetLost(EntityPtr entity);
 
 private:
-    // Non-owning pointer to the target entity
+    // Weak pointer to the target entity
     // The target entity is owned elsewhere in the application
-    Entity* m_target{nullptr};
+    EntityWeakPtr m_targetWeak{};
     float m_chaseSpeed{10.0f};  // Increased to 10.0 for very visible movement
     float m_maxRange{1000.0f};  // Maximum distance to chase target - increased to 1000
     float m_minRange{50.0f};   // Minimum distance to maintain from target
@@ -62,10 +62,10 @@ private:
     Vector2D m_currentDirection{0, 0};
 
     // Check if entity has line of sight to target (simplified)
-    bool checkLineOfSight(Entity* entity, Entity* target);
+    bool checkLineOfSight(EntityPtr entity, EntityPtr target);
 
     // Handle behavior when line of sight is lost
-    void handleNoLineOfSight(Entity* entity);
+    void handleNoLineOfSight(EntityPtr entity);
 };
 
 #endif // CHASE_BEHAVIOR_HPP

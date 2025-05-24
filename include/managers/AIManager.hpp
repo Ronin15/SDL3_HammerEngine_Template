@@ -147,11 +147,11 @@ public:
     // Entity-behavior assignment
     /**
      * @brief Assign an AI behavior to an entity
-     * @param entity Pointer to the entity
+     * @param entity Shared pointer to the entity
      * @param behaviorName Name of the behavior to assign
      * @thread_safety Thread-safe, can be called from any thread
      */
-    void assignBehaviorToEntity(Entity* entity, const std::string& behaviorName);
+    void assignBehaviorToEntity(EntityPtr entity, const std::string& behaviorName);
 
     /**
      * @brief Process multiple entities with the same behavior type in batches
@@ -159,7 +159,7 @@ public:
      * @param entities Vector of entities to process
      * @thread_safety Thread-safe, can be called from any thread
      */
-    void batchProcessEntities(const std::string& behaviorName, const std::vector<Entity*>& entities);
+    void batchProcessEntities(const std::string& behaviorName, const std::vector<EntityPtr>& entities);
 
     /**
      * @brief Process all behaviors in batches for maximum performance
@@ -171,10 +171,10 @@ public:
 
     /**
      * @brief Remove AI behavior from an entity
-     * @param entity Pointer to the entity
+     * @param entity Shared pointer to the entity
      * @thread_safety Thread-safe, can be called from any thread
      */
-    void unassignBehaviorFromEntity(Entity* entity);
+    void unassignBehaviorFromEntity(EntityPtr entity);
 
     /**
      * @brief Rebuild optimization caches if they're invalid
@@ -186,11 +186,11 @@ public:
 
     /**
      * @brief Check if an entity has an assigned behavior
-     * @param entity Pointer to the entity
+     * @param entity Shared pointer to the entity
      * @return True if the entity has a behavior, false otherwise
      * @thread_safety Thread-safe, can be called from any thread
      */
-    bool entityHasBehavior(Entity* entity) const;
+    bool entityHasBehavior(EntityPtr entity) const;
 
     /**
      * @brief Check if there's any entity with a specific behavior
@@ -203,12 +203,12 @@ public:
     // Advanced features
     /**
      * @brief Send a message to a specific entity's behavior
-     * @param entity Target entity
+     * @param entity Target entity shared pointer
      * @param message Message string (e.g., "pause", "resume", "attack")
      * @param immediate If true, delivers immediately; if false, queues for next update
      * @thread_safety Thread-safe, can be called from any thread
      */
-    void sendMessageToEntity(Entity* entity, const std::string& message, bool immediate = false);
+    void sendMessageToEntity(EntityPtr entity, const std::string& message, bool immediate = false);
 
     /**
      * @brief Send a message to all entity behaviors
@@ -253,7 +253,7 @@ private:
     // ThreadAccess: ReadOnly after initialization for m_behaviors
     // ThreadAccess: Concurrent for m_entityBehaviors
     boost::container::flat_map<std::string, std::shared_ptr<AIBehavior>> m_behaviors{};
-    boost::container::flat_map<Entity*, std::string> m_entityBehaviors{};
+    boost::container::flat_map<EntityWeakPtr, std::string, std::owner_less<EntityWeakPtr>> m_entityBehaviors{};
 
     // Thread synchronization for entity-behavior map
     mutable std::shared_mutex m_entityMutex{};
@@ -295,7 +295,7 @@ private:
 
     // Cache for quick lookup of entity-behavior pairs (optimization)
     struct EntityBehaviorCache {
-        Entity* entity{nullptr};
+        EntityWeakPtr entityWeak{};
         AIBehavior* behavior{nullptr};
         std::string_view behaviorName;  // Using string_view to avoid copies
 
@@ -305,7 +305,7 @@ private:
 
         // Constructor to ensure proper initialization
         EntityBehaviorCache() 
-            : entity(nullptr)
+            : entityWeak()
             , behavior(nullptr)
             , behaviorName()
             , lastUpdateTime(0)
@@ -322,7 +322,7 @@ private:
     unsigned int m_maxThreads{0}; // 0 = auto (use ThreadSystem default)
 
     // For batch processing optimization
-    using BehaviorBatch = std::vector<Entity*>;
+    using BehaviorBatch = std::vector<EntityPtr>;
     boost::container::flat_map<std::string, BehaviorBatch> m_behaviorBatches{};
     std::atomic<bool> m_batchesValid{false};
     mutable std::mutex m_batchesMutex{};
@@ -334,7 +334,7 @@ private:
     void updateBehaviorBatch(const std::string_view& behaviorName, const BehaviorBatch& batch);
 
     // Common helper method to process entities with a behavior (reduces code duplication)
-    void processEntitiesWithBehavior(AIBehavior* behavior, const std::vector<Entity*>& entities, bool useThreading);
+    void processEntitiesWithBehavior(AIBehavior* behavior, const std::vector<EntityPtr>& entities, bool useThreading);
 
     // Performance monitoring
     boost::container::flat_map<std::string, PerformanceStats> m_behaviorPerformanceStats;
@@ -349,21 +349,21 @@ private:
 
     // Message structure for AI communication
     struct QueuedMessage {
-        Entity* targetEntity{nullptr};  // nullptr for broadcast
+        EntityWeakPtr targetEntity{};  // empty weak_ptr for broadcast
         std::string message;
         uint64_t timestamp{0};
 
         // Explicitly initialize all members
-        QueuedMessage() : targetEntity(nullptr), message(), timestamp(0) {}
+        QueuedMessage() : targetEntity(), message(), timestamp(0) {}
 
-        QueuedMessage(Entity* entity, const std::string& msg, uint64_t time)
+        QueuedMessage(EntityWeakPtr entity, const std::string& msg, uint64_t time)
             : targetEntity(entity), message(msg), timestamp(time) {}
     };
 
     // Message queue system with thread-safe double-buffering
     class ThreadSafeMessageQueue {
     public:
-        void enqueueMessage(Entity* target, const std::string& message) {
+        void enqueueMessage(EntityWeakPtr target, const std::string& message) {
             std::lock_guard<std::mutex> lock(m_incomingMutex);
             m_incomingQueue.emplace_back(target, message, AIManager::getCurrentTimeNanos());
         }
@@ -406,7 +406,7 @@ private:
     std::atomic<bool> m_processingMessages{false};
 
     // Message delivery helpers
-    void deliverMessageToEntity(Entity* entity, const std::string& message);
+    void deliverMessageToEntity(EntityPtr entity, const std::string& message);
     size_t deliverBroadcastMessage(const std::string& message);
 };
 

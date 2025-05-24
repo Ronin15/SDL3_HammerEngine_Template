@@ -16,15 +16,15 @@ public:
     virtual ~AIBehavior() = default;
 
     // Core behavior methods
-    virtual void update(Entity* entity) = 0;
-    virtual void init(Entity* entity) = 0;
-    virtual void clean(Entity* entity) = 0;
+    virtual void update(EntityPtr entity) = 0;
+    virtual void init(EntityPtr entity) = 0;
+    virtual void clean(EntityPtr entity) = 0;
 
     // Behavior identification
     virtual std::string getName() const = 0;
 
     // Optional message handling for behavior communication
-    virtual void onMessage([[maybe_unused]] Entity* entity, [[maybe_unused]] const std::string& message) { }
+    virtual void onMessage([[maybe_unused]] EntityPtr entity, [[maybe_unused]] const std::string& message) { }
 
     // Behavior state access
     virtual bool isActive() const { return m_active; }
@@ -35,40 +35,40 @@ public:
     virtual void setPriority(int priority) { m_priority = priority; }
 
     // Early exit condition checks
-    virtual bool shouldUpdate(Entity* entity) const;
-    virtual bool isEntityInRange([[maybe_unused]] Entity* entity) const { return true; }
-    virtual bool isWithinUpdateFrequency(Entity* entity) const;
+    virtual bool shouldUpdate(EntityPtr entity) const;
+    virtual bool isEntityInRange([[maybe_unused]] EntityPtr entity) const { return true; }
+    virtual bool isWithinUpdateFrequency(EntityPtr entity) const;
 
     // Entity cleanup
-    virtual void cleanupEntity(Entity* entity);
-    
+    virtual void cleanupEntity(EntityPtr entity);
+
     // Clear all frame counters (primarily for testing/benchmarking)
-    virtual void clearFrameCounters() { 
+    virtual void clearFrameCounters() {
         std::lock_guard<std::mutex> lock(m_frameCounterMutex);
-        m_entityFrameCounters.clear(); 
+        m_entityFrameCounters.clear();
     }
-    
+
     // Thread-safe access to frame counters
-    void incrementFrameCounter(Entity* entity) const {
+    void incrementFrameCounter(EntityPtr entity) const {
         if (!entity) return;
         std::lock_guard<std::mutex> lock(m_frameCounterMutex);
         m_entityFrameCounters[entity]++;
     }
-    
-    int getFrameCounter(Entity* entity) const {
+
+    int getFrameCounter(EntityPtr entity) const {
         if (!entity) return 0;
         std::lock_guard<std::mutex> lock(m_frameCounterMutex);
         auto it = m_entityFrameCounters.find(entity);
         return (it != m_entityFrameCounters.end()) ? it->second : 0;
     }
-    
-    void resetFrameCounter(Entity* entity) const {
+
+    void resetFrameCounter(EntityPtr entity) const {
         if (!entity) return;
         std::lock_guard<std::mutex> lock(m_frameCounterMutex);
         m_entityFrameCounters[entity] = 0;
     }
-    
-    void setFrameCounter(Entity* entity, int value) const {
+
+    void setFrameCounter(EntityPtr entity, int value) const {
         if (!entity) return;
         std::lock_guard<std::mutex> lock(m_frameCounterMutex);
         m_entityFrameCounters[entity] = value;
@@ -104,7 +104,7 @@ protected:
     int m_updateFrequency{1}; // How often to update (1 = every frame, 2 = every other frame, etc.)
 
     // Per-entity frame counters protected by mutex for thread safety
-    mutable std::unordered_map<Entity*, int> m_entityFrameCounters{};
+    mutable std::unordered_map<EntityPtr, int, std::hash<EntityPtr>> m_entityFrameCounters{};
     mutable std::mutex m_frameCounterMutex{};
 
     // Distance-based update parameters
@@ -117,7 +117,7 @@ protected:
     // - In tests: returns nullptr to use fallback distance-from-origin logic
     // - In game: returns player entity from active game state
     // This approach enables unit testing without dependencies on GameState classes
-    static Entity* findPlayerEntity();
+    static EntityPtr findPlayerEntity();
 };
 
 #endif // AI_BEHAVIOR_HPP

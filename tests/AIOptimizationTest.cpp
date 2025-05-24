@@ -13,6 +13,7 @@
 #include <iostream>
 #include <string>
 #include <map>
+#include <functional>
 
 // Basic Vector2D implementation for tests
 class Vector2D {
@@ -29,12 +30,17 @@ private:
 };
 
 // Simplified Entity class for tests
-class Entity {
+class Entity : public std::enable_shared_from_this<Entity> {
 public:
     virtual void update() = 0;
     virtual void render() = 0;
     virtual void clean() = 0;
     virtual ~Entity() = default;
+
+    // Get shared pointer to this entity - NEVER call in constructor or destructor
+    std::shared_ptr<Entity> shared_this() {
+        return shared_from_this();
+    }
 
     // Accessor methods
     Vector2D getPosition() const { return m_position; }
@@ -58,6 +64,10 @@ protected:
     std::string m_textureID{};
 };
 
+// Define standard smart pointer types for Entity
+using EntityPtr = std::shared_ptr<Entity>;
+using EntityWeakPtr = std::weak_ptr<Entity>;
+
 // TestEntity implementation
 class TestEntity : public Entity {
 public:
@@ -68,9 +78,16 @@ public:
         setHeight(32);
     }
 
+    // Factory method for proper shared_ptr initialization
+    static std::shared_ptr<TestEntity> create(const Vector2D& pos) {
+        return std::make_shared<TestEntity>(pos);
+    }
+
     void update() override {}
     void render() override {}
-    void clean() override {}
+    void clean() override {
+        // Safe cleanup - we're not calling shared_from_this() here
+    }
 };
 
 // AIBehavior base class
@@ -79,15 +96,15 @@ public:
     virtual ~AIBehavior() = default;
 
     // Core behavior methods
-    virtual void update(Entity* entity) = 0;
-    virtual void init(Entity* entity) = 0;
-    virtual void clean(Entity* entity) = 0;
+    virtual void update(EntityPtr entity) = 0;
+    virtual void init(EntityPtr entity) = 0;
+    virtual void clean(EntityPtr entity) = 0;
 
     // Behavior identification
     virtual std::string getName() const = 0;
 
     // Optional message handling for behavior communication
-    virtual void onMessage([[maybe_unused]] Entity* entity, [[maybe_unused]] const std::string& message) {}
+    virtual void onMessage([[maybe_unused]] EntityPtr entity, [[maybe_unused]] const std::string& message) {}
 
     // Behavior state access
     bool isActive() const { return m_active; }
@@ -103,7 +120,7 @@ public:
     void resetFrameCounter() { m_framesSinceLastUpdate = 0; }
 
     // Early exit conditions
-    bool shouldUpdate([[maybe_unused]] Entity* entity) const {
+    bool shouldUpdate([[maybe_unused]] EntityPtr entity) const {
         if (!m_active) return false;
         if (!isWithinUpdateFrequency()) return false;
         return true;
@@ -114,7 +131,7 @@ public:
         return (m_framesSinceLastUpdate % m_updateFrequency == 0);
     }
 
-    bool isEntityInRange([[maybe_unused]] Entity* entity) const { return true; }
+    bool isEntityInRange([[maybe_unused]] EntityPtr entity) const { return true; }
 
 protected:
     bool m_active{true};
@@ -132,7 +149,7 @@ public:
         (void)areaRadius;
     }
 
-    void update(Entity* entity) override {
+    void update(EntityPtr entity) override {
         // Just a simple mock implementation
         if (entity) {
             Vector2D pos = entity->getPosition();
@@ -141,11 +158,11 @@ public:
         }
     }
 
-    void init([[maybe_unused]] Entity* entity) override {
+    void init([[maybe_unused]] EntityPtr entity) override {
         // Do nothing in mock
     }
 
-    void clean([[maybe_unused]] Entity* entity) override {
+    void clean([[maybe_unused]] EntityPtr entity) override {
         // Do nothing in mock
     }
 
@@ -183,7 +200,7 @@ public:
     }
 
     // Assign behavior to entity
-    void assignBehaviorToEntity(Entity* entity, const std::string& behaviorName) {
+    void assignBehaviorToEntity(EntityPtr entity, const std::string& behaviorName) {
         m_entityBehaviors[entity] = behaviorName;
         m_cacheValid = false;
     }
@@ -197,7 +214,7 @@ public:
     }
 
     // Check if entity has behavior
-    bool entityHasBehavior(Entity* entity) const {
+    bool entityHasBehavior(EntityPtr entity) const {
         return m_entityBehaviors.find(entity) != m_entityBehaviors.end();
     }
 
@@ -221,7 +238,9 @@ public:
         processMessageQueue();
 
         // Update each entity with its behavior
-        for (auto& [entity, behaviorName] : m_entityBehaviors) {
+        for (const auto& pair : m_entityBehaviors) {
+            auto entity = pair.first;
+            auto& behaviorName = pair.second;
             if (m_behaviors.find(behaviorName) != m_behaviors.end()) {
                 auto behavior = m_behaviors[behaviorName];
 
@@ -240,7 +259,7 @@ public:
     }
 
     // Process entities in batches for optimization
-    void batchProcessEntities(const std::string& behaviorName, const std::vector<Entity*>& entities) {
+    void batchProcessEntities(const std::string& behaviorName, const std::vector<EntityPtr>& entities) {
         if (!m_initialized || entities.empty()) return;
 
         // Get the behavior
@@ -254,7 +273,7 @@ public:
     }
 
     // Send message to entity
-    void sendMessageToEntity(Entity* entity, const std::string& message, [[maybe_unused]] bool immediate = false) {
+    void sendMessageToEntity(EntityPtr entity, const std::string& message, [[maybe_unused]] bool immediate = false) {
         if (immediate) {
             deliverMessageToEntity(entity, message);
         } else {
@@ -282,7 +301,9 @@ public:
                 deliverMessageToEntity(msg.entity, msg.message);
             } else {
                 // Broadcast
-                for (auto& [entity, behaviorName] : m_entityBehaviors) {
+                for (const auto& pair : m_entityBehaviors) {
+                    auto entity = pair.first;
+                    auto& behaviorName = pair.second;
                     if (m_behaviors.find(behaviorName) != m_behaviors.end()) {
                         m_behaviors[behaviorName]->onMessage(entity, msg.message);
                     }
@@ -295,35 +316,46 @@ public:
 private:
     bool m_initialized{false};
     bool m_cacheValid{false};
+    // Storage for behaviors and entity assignments
     std::map<std::string, std::shared_ptr<AIBehavior>> m_behaviors;
-    std::map<Entity*, std::string> m_entityBehaviors;
+    std::map<EntityPtr, std::string, std::owner_less<EntityPtr>> m_entityBehaviors;
 
     // Optimization cache
-    struct EntityBehaviorCache {
-        Entity* entity;
-        AIBehavior* behavior;
-    };
-    std::vector<EntityBehaviorCache> m_entityBehaviorCache;
+    // Cache for quick lookup of entity-behavior pairs (optimization)
+        struct EntityBehaviorCache {
+            EntityPtr entity{};
+            AIBehavior* behavior{nullptr};
+        };
+        std::vector<EntityBehaviorCache> m_entityBehaviorCache{};
 
     // Message queue
     struct QueuedMessage {
-        Entity* entity;  // nullptr for broadcast
-        std::string message;
+        EntityPtr entity{};  // nullptr for broadcast
+        std::string message{};
     };
-    std::vector<QueuedMessage> m_messageQueue;
+    std::vector<QueuedMessage> m_messageQueue{};
+    
+    // Custom hash for EntityPtr
+    struct EntityPtrHash {
+        size_t operator()(const EntityPtr& entity) const {
+            return std::hash<Entity*>()(entity.get());
+        }
+    };
 
     // Helper methods
     void rebuildEntityBehaviorCache() {
-        m_entityBehaviorCache.clear();
-        for (auto& [entity, behaviorName] : m_entityBehaviors) {
-            if (m_behaviors.find(behaviorName) != m_behaviors.end()) {
-                m_entityBehaviorCache.push_back({entity, m_behaviors[behaviorName].get()});
+            m_entityBehaviorCache.clear();
+            for (const auto& pair : m_entityBehaviors) {
+                auto entity = pair.first;
+                auto& behaviorName = pair.second;
+                if (m_behaviors.find(behaviorName) != m_behaviors.end()) {
+                    m_entityBehaviorCache.push_back({entity, m_behaviors[behaviorName].get()});
+                }
             }
+            m_cacheValid = true;
         }
-        m_cacheValid = true;
-    }
 
-    void deliverMessageToEntity(Entity* entity, const std::string& message) {
+    void deliverMessageToEntity(EntityPtr entity, const std::string& message) {
         if (entityHasBehavior(entity)) {
             auto behaviorName = m_entityBehaviors[entity];
             if (m_behaviors.find(behaviorName) != m_behaviors.end()) {
@@ -333,9 +365,10 @@ private:
     }
 
     // Prevent copying
-    AIManager() = default;
-    AIManager(const AIManager&) = delete;
-    AIManager& operator=(const AIManager&) = delete;
+        AIManager() = default;
+        ~AIManager() = default;
+        AIManager(const AIManager&) = delete;
+        AIManager& operator=(const AIManager&) = delete;
 };
 
 // Global fixture for test setup and cleanup
@@ -361,10 +394,10 @@ BOOST_AUTO_TEST_CASE(TestEntityComponentCaching)
     AIManager::Instance().registerBehavior("TestWander", wanderBehavior);
 
     // Create test entities
-    std::vector<std::unique_ptr<TestEntity>> entities;
+    std::vector<EntityPtr> entities;
     for (int i = 0; i < 10; ++i) {
-        entities.push_back(std::make_unique<TestEntity>(Vector2D(i * 100.0f, i * 100.0f)));
-        AIManager::Instance().assignBehaviorToEntity(entities.back().get(), "TestWander");
+        entities.push_back(TestEntity::create(Vector2D(i * 100.0f, i * 100.0f)));
+        AIManager::Instance().assignBehaviorToEntity(entities.back(), "TestWander");
     }
 
     // Force cache validation
@@ -386,11 +419,9 @@ BOOST_AUTO_TEST_CASE(TestBatchProcessing)
     AIManager::Instance().registerBehavior("BatchWander", wanderBehavior);
 
     // Create test entities
-    std::vector<Entity*> entityPtrs;
-    std::vector<std::unique_ptr<TestEntity>> entities;
+    std::vector<EntityPtr> entityPtrs;
     for (int i = 0; i < 100; ++i) {
-        entities.push_back(std::make_unique<TestEntity>(Vector2D(i * 10.0f, i * 10.0f)));
-        entityPtrs.push_back(entities.back().get());
+        entityPtrs.push_back(TestEntity::create(Vector2D(i * 10.0f, i * 10.0f)));
     }
 
     // Time the batch processing
@@ -416,7 +447,7 @@ BOOST_AUTO_TEST_CASE(TestBatchProcessing)
     BOOST_CHECK_LE(batchDuration.count(), individualDuration.count());
 
     // Cleanup
-    entities.clear();
+    entityPtrs.clear();
     AIManager::Instance().resetBehaviors();
 }
 
@@ -429,11 +460,11 @@ BOOST_AUTO_TEST_CASE(TestEarlyExitConditions)
     AIManager::Instance().registerBehavior("LazyWander", wanderBehavior);
 
     // Create test entity
-    auto entity = std::make_unique<TestEntity>(Vector2D(100.0f, 100.0f));
-    AIManager::Instance().assignBehaviorToEntity(entity.get(), "LazyWander");
+    auto entity = TestEntity::create(Vector2D(100.0f, 100.0f));
+    AIManager::Instance().assignBehaviorToEntity(entity, "LazyWander");
 
     // Test that behavior is assigned
-    BOOST_CHECK(AIManager::Instance().entityHasBehavior(entity.get()));
+    BOOST_CHECK(AIManager::Instance().entityHasBehavior(entity));
 
     // Cleanup
     AIManager::Instance().resetBehaviors();
@@ -447,26 +478,26 @@ BOOST_AUTO_TEST_CASE(TestMessageQueueSystem)
     AIManager::Instance().registerBehavior("MsgWander", wanderBehavior);
 
     // Create test entity
-    auto entity = std::make_unique<TestEntity>(Vector2D(100.0f, 100.0f));
-    AIManager::Instance().assignBehaviorToEntity(entity.get(), "MsgWander");
+    auto entity = TestEntity::create(Vector2D(100.0f, 100.0f));
+    AIManager::Instance().assignBehaviorToEntity(entity, "MsgWander");
 
     // Queue several messages
-    AIManager::Instance().sendMessageToEntity(entity.get(), "test1");
-    AIManager::Instance().sendMessageToEntity(entity.get(), "test2");
-    AIManager::Instance().sendMessageToEntity(entity.get(), "test3");
+    AIManager::Instance().sendMessageToEntity(entity, "test1");
+    AIManager::Instance().sendMessageToEntity(entity, "test2");
+    AIManager::Instance().sendMessageToEntity(entity, "test3");
 
     // Process the message queue explicitly
     AIManager::Instance().processMessageQueue();
 
     // Test immediate delivery
-    AIManager::Instance().sendMessageToEntity(entity.get(), "immediate", true);
+    AIManager::Instance().sendMessageToEntity(entity, "immediate", true);
 
     // Test broadcast
     AIManager::Instance().broadcastMessage("broadcast");
     AIManager::Instance().processMessageQueue();
 
     // Entity should still have behavior after all messages
-    BOOST_CHECK(AIManager::Instance().entityHasBehavior(entity.get()));
+    BOOST_CHECK(AIManager::Instance().entityHasBehavior(entity));
 
     // Cleanup
     AIManager::Instance().resetBehaviors();

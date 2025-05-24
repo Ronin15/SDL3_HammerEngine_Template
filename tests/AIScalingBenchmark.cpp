@@ -36,6 +36,10 @@ public:
         setWidth(32);
         setHeight(32);
     }
+    
+    static std::shared_ptr<BenchmarkEntity> create(int id, const Vector2D& pos) {
+        return std::make_shared<BenchmarkEntity>(id, pos);
+    }
 
     void update() override { m_updateCount++; }
     void render() override {}
@@ -70,10 +74,10 @@ public:
         setPriority(9);
     }
 
-    void update(Entity* entity) override {
+    void update(EntityPtr entity) override {
         if (!entity) return;
 
-        auto* benchmarkEntity = static_cast<BenchmarkEntity*>(entity);
+        auto benchmarkEntity = std::dynamic_pointer_cast<BenchmarkEntity>(entity);
 
         // Simulate work based on complexity (5-15) - Increased work amount
         float tempResult = 0.0f;
@@ -104,18 +108,18 @@ public:
         }
     }
 
-    void init(Entity* /* entity */) override { 
+    void init(EntityPtr /* entity */) override { 
         m_initialized = true;
         
         // No extra updates during init - we'll rely on the regular update cycle
     }
-    void clean(Entity* /* entity */) override { m_initialized = false; }
+    void clean(EntityPtr /* entity */) override { m_initialized = false; }
 
     std::string getName() const override {
         return "BenchmarkBehavior" + std::to_string(m_id);
     }
 
-    void onMessage(Entity* /* entity */, const std::string& /* message */) override {
+    void onMessage(EntityPtr /* entity */, const std::string& /* message */) override {
         m_messageCount++;
     }
 
@@ -244,19 +248,21 @@ struct AIScalingFixture {
 
         // Create entities
         for (int i = 0; i < numEntities; ++i) {
-            entities.push_back(std::make_unique<BenchmarkEntity>(
-                i, Vector2D(i % 1000, static_cast<float>(i) / 1000.0f)));
+            auto entity = BenchmarkEntity::create(
+                i, Vector2D(i % 1000, static_cast<float>(i) / 1000.0f));
+            entities.push_back(entity);
 
             // Assign behaviors in a round-robin fashion
             std::string behaviorName = "Behavior" + std::to_string(i % numBehaviors);
-            AIManager::Instance().assignBehaviorToEntity(entities.back().get(), behaviorName);
+            AIManager::Instance().assignBehaviorToEntity(entity, behaviorName);
         }
 
         // Organize entities by behavior for batch updates
-        std::vector<std::vector<Entity*>> behaviorEntities(numBehaviors);
+        // Organize entities by behavior
+        std::vector<std::vector<EntityPtr>> behaviorEntities(numBehaviors);
         for (size_t i = 0; i < entities.size(); ++i) {
             int behaviorIdx = i % numBehaviors;
-            behaviorEntities[behaviorIdx].push_back(entities[i].get());
+            behaviorEntities[behaviorIdx].push_back(entities[i]);
         }
 
         // Run multiple times to get more accurate measurements
@@ -459,7 +465,7 @@ struct AIScalingFixture {
         for (auto& entity : entities) {
             if (entity) {
                 try {
-                    AIManager::Instance().unassignBehaviorFromEntity(entity.get());
+                    AIManager::Instance().unassignBehaviorFromEntity(entity);
                 } catch (const std::exception& e) {
                     std::cerr << "Error unassigning behavior: " << e.what() << std::endl;
                 } catch (...) {
@@ -532,9 +538,9 @@ struct AIScalingFixture {
             } else {
                 for (int i = 0; i < numBehaviors; ++i) {
                     std::string behaviorName = "Behavior" + std::to_string(i);
-                    std::vector<Entity*> behaviorEntities;
+                    std::vector<EntityPtr> behaviorEntities;
                     for (size_t j = i; j < entities.size(); j += numBehaviors) {
-                        behaviorEntities.push_back(entities[j].get());
+                        behaviorEntities.push_back(entities[j]);
                     }
                     AIManager::Instance().batchProcessEntities(behaviorName, behaviorEntities);
                 }
@@ -579,7 +585,7 @@ struct AIScalingFixture {
         }
     }
 
-    std::vector<std::unique_ptr<BenchmarkEntity>> entities;
+    std::vector<std::shared_ptr<BenchmarkEntity>> entities;
     std::vector<std::shared_ptr<BenchmarkBehavior>> behaviors;
 
 };

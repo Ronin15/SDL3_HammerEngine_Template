@@ -13,6 +13,13 @@
 #include <memory>
 #include <vector>
 
+// Forward declarations with smart pointer types
+class NPC;
+using NPCPtr = std::shared_ptr<NPC>;
+
+class Player;
+using PlayerPtr = std::shared_ptr<Player>;
+
 class AIDemoState : public GameState {
 public:
 
@@ -27,7 +34,7 @@ public:
     std::string getName() const override { return "AIDemo"; }
     
     // Get the player entity for AI behaviors to access
-    Entity* getPlayer() const { return m_player.get(); }
+    EntityPtr getPlayer() const { return m_player; }
 
 private:
     // Methods
@@ -35,8 +42,8 @@ private:
     void createNPCs();
 
     // Members
-    std::vector<std::unique_ptr<NPC>> m_npcs{};
-    std::unique_ptr<Player> m_player{};
+    std::vector<NPCPtr> m_npcs{};
+    PlayerPtr m_player{};
     // Non-owning pointer to the chase behavior for cleanup
     class ChaseBehavior* m_chaseBehavior{nullptr};
 

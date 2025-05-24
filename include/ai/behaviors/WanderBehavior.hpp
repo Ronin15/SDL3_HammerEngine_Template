@@ -12,16 +12,17 @@
 #include <random>
 #include <boost/container/flat_map.hpp>
 #include <SDL3/SDL.h>
+#include <memory>
 
 class WanderBehavior : public AIBehavior {
 public:
     WanderBehavior(float speed = 1.5f, float changeDirectionInterval = 2000.0f, float areaRadius = 300.0f);
 
     // No state management - handled by AI Manager
-    void init(Entity* entity) override;
-    void update(Entity* entity) override;
-    void clean(Entity* entity) override;
-    void onMessage(Entity* entity, const std::string& message) override;
+    void init(EntityPtr entity) override;
+    void update(EntityPtr entity) override;
+    void clean(EntityPtr entity) override;
+    void onMessage(EntityPtr entity, const std::string& message) override;
     std::string getName() const override;
 
     // Set a new center point for wandering
@@ -66,7 +67,7 @@ private:
     };
 
     // Map to store per-entity state
-    boost::container::flat_map<Entity*, EntityState> m_entityStates;
+    boost::container::flat_map<EntityWeakPtr, EntityState, std::owner_less<EntityWeakPtr>> m_entityStates;
 
     // Shared behavior parameters
     float m_speed{1.5f};
@@ -93,10 +94,10 @@ private:
     bool isWellOffscreen(const Vector2D& position) const;
 
     // Reset entity to a new position on the opposite side of the screen
-    void resetEntityPosition(Entity* entity);
+    void resetEntityPosition(EntityPtr entity);
 
     // Choose a new random direction for the entity
-    void chooseNewDirection(Entity* entity, bool wanderOffscreen = false);
+    void chooseNewDirection(EntityPtr entity, bool wanderOffscreen = false);
 };
 
 #endif // WANDER_BEHAVIOR_HPP

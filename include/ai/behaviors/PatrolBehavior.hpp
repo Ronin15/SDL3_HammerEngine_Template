@@ -15,10 +15,10 @@ class PatrolBehavior : public AIBehavior {
 public:
     PatrolBehavior(const boost::container::small_vector<Vector2D, 10>& waypoints, float moveSpeed = 2.0f, bool includeOffscreenPoints = false);
 
-    void init(Entity* entity) override;
-    void update(Entity* entity) override;
-    void clean(Entity* entity) override;
-    void onMessage(Entity* entity, const std::string& message) override;
+    void init(EntityPtr entity) override;
+    void update(EntityPtr entity) override;
+    void clean(EntityPtr entity) override;
+    void onMessage(EntityPtr entity, const std::string& message) override;
     std::string getName() const override;
 
     // Add a new waypoint to the patrol route
@@ -61,7 +61,7 @@ private:
     bool isWellOffscreen(const Vector2D& position) const;
 
     // Reset entity to a new position on screen edge
-    void resetEntityPosition(Entity* entity);
+    void resetEntityPosition(EntityPtr entity);
 
     // Reverse the order of waypoints
     void reverseWaypoints();
