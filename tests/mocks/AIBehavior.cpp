@@ -22,7 +22,7 @@ bool AIBehavior::isWithinUpdateFrequency(Entity* entity) const {
     return true;
 }
 
-Entity* AIBehavior::findPlayerEntity() const {
+Entity* AIBehavior::findPlayerEntity() {
     // For tests, we don't need to find a real player entity
     return nullptr;
 }

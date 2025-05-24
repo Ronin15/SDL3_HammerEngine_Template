@@ -14,7 +14,7 @@
 class Player : public Entity{
 public:
     Player();
-    ~Player();
+    ~Player() override;
 
     void update()override;
     void render()override;

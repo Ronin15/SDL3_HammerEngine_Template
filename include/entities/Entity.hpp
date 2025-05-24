@@ -23,7 +23,7 @@ class Entity {
    Vector2D getAcceleration() const { return m_acceleration; }
    int getWidth() const { return m_width; }
    int getHeight() const { return m_height; }
-   std::string getTextureID() const { return m_textureID; }
+   const std::string& getTextureID() const { return m_textureID; }
    int getCurrentFrame() const { return m_currentFrame; }
    int getCurrentRow() const { return m_currentRow; }
    int getNumFrames() const { return m_numFrames; }

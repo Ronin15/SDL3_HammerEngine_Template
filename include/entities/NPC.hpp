@@ -15,7 +15,7 @@
 class NPC : public Entity {
 public:
     NPC(const std::string& textureID, const Vector2D& startPosition, int frameWidth, int frameHeight);
-    ~NPC();
+    ~NPC() override;
 
     void update() override;
     void render() override;
@@ -31,8 +31,6 @@ public:
     void setFlip(SDL_FlipMode flip) override { m_flip = flip; }
     
     // AI-specific methods
-    void setAnimSpeed(int speed) override { m_animSpeed = speed; }
-    void setNumFrames(int numFrames) override { m_numFrames = numFrames; }
     void setWanderArea(float minX, float minY, float maxX, float maxY);
     
     // Enable or disable screen bounds checking
