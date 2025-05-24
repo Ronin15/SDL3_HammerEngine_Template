@@ -621,7 +621,7 @@ void AIManager::processEntitiesWithBehavior(AIBehavior* behavior, const std::vec
         const size_t numThreads = std::min(calculatedThreads, static_cast<size_t>(effectiveThreadCount));
         
         // Ensure we have at least one thread and no more than the entity count
-        const size_t finalNumThreads = std::max(1ul, std::min(numThreads, numEntities));
+        const size_t finalNumThreads = std::max(static_cast<size_t>(1), std::min(numThreads, numEntities));
         
         // Recalculate chunk size to ensure even distribution
         const size_t chunkSize = (numEntities + finalNumThreads - 1) / finalNumThreads;
