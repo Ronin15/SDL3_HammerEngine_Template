@@ -1,8 +1,31 @@
 @echo off
-REM run_thread_tests.bat - Script to build and run the thread system tests
+REM run_thread_tests.bat - Script to run the thread system tests
 REM Copyright (c) 2025 Hammer Forged Games
 
-echo Building Thread System Tests...
+REM Process command line arguments
+set VERBOSE=false
+
+:parse_args
+if "%~1"=="" goto :end_parse_args
+if /i "%~1"=="--verbose" (
+    set VERBOSE=true
+    shift
+    goto :parse_args
+)
+if /i "%~1"=="--help" (
+    echo ThreadSystem Test Runner
+    echo Usage: run_thread_tests.bat [options]
+    echo.
+    echo Options:
+    echo   --verbose    Run tests with verbose output
+    echo   --help       Show this help message
+    exit /b 0
+)
+shift
+goto :parse_args
+:end_parse_args
+
+echo Running Thread System Tests...
 
 REM Navigate to project root directory (in case script is run from elsewhere)
 cd /d "%~dp0"
@@ -13,21 +36,12 @@ if not exist "test_results" (
     mkdir test_results
 )
 
-REM Build the thread system tests
-echo Compiling tests...
-ninja -C build thread_system_tests
-
-REM Check if build was successful
-if %ERRORLEVEL% neq 0 (
-    echo Build failed! Please fix compilation errors.
-    exit /b 1
-)
-
-echo Build successful!
-
 REM Run the tests and save output to file
-echo Running Thread System Tests...
-bin\debug\thread_system_tests.exe > test_results\thread_test_output.txt 2>&1
+if "%VERBOSE%"=="true" (
+    bin\debug\thread_system_tests.exe --log_level=all > test_results\thread_test_output.txt 2>&1
+) else (
+    bin\debug\thread_system_tests.exe > test_results\thread_test_output.txt 2>&1
+)
 
 REM Check if tests were successful
 if %ERRORLEVEL% neq 0 (

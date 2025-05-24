@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Helper script to build and run ThreadSystem tests
+# Helper script to run ThreadSystem tests
 
 # Set up colored output
 RED='\033[0;31m'
@@ -10,20 +10,10 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # Process command line arguments
-CLEAN=false
-CLEAN_ALL=false
 VERBOSE=false
 
 for arg in "$@"; do
   case $arg in
-    --clean)
-      CLEAN=true
-      shift
-      ;;
-    --clean-all)
-      CLEAN_ALL=true
-      shift
-      ;;
     --verbose)
       VERBOSE=true
       shift
@@ -32,8 +22,6 @@ for arg in "$@"; do
       echo -e "${BLUE}ThreadSystem Test Runner${NC}"
       echo -e "Usage: ./run_thread_tests.sh [options]"
       echo -e "\nOptions:"
-      echo -e "  --clean      Clean test artifacts before building"
-      echo -e "  --clean-all  Remove entire build directory and rebuild"
       echo -e "  --verbose    Run tests with verbose output"
       echo -e "  --help       Show this help message"
       exit 0
@@ -41,45 +29,14 @@ for arg in "$@"; do
   esac
 done
 
-# Handle clean-all case
-if [ "$CLEAN_ALL" = true ]; then
-  echo -e "${YELLOW}Removing entire build directory...${NC}"
-  rm -rf build
-fi
-
-echo -e "${BLUE}Building ThreadSystem tests...${NC}"
-
-# Ensure build directory exists
-if [ ! -d "build" ]; then
-  mkdir -p build
-  echo -e "${YELLOW}Created build directory${NC}"
-fi
-
-# Navigate to build directory
-cd build || { echo -e "${RED}Failed to enter build directory!${NC}"; exit 1; }
-
-# Configure with CMake if needed
-if [ ! -f "build.ninja" ]; then
-  echo -e "${YELLOW}Configuring project with CMake and Ninja...${NC}"
-  cmake -G Ninja .. || { echo -e "${RED}CMake configuration failed!${NC}"; exit 1; }
-fi
-
-# Clean tests if requested
-if [ "$CLEAN" = true ]; then
-  echo -e "${YELLOW}Cleaning test artifacts...${NC}"
-  ninja -t clean thread_system_tests
-fi
-
-# Build the tests
-echo -e "${YELLOW}Building tests...${NC}"
-ninja thread_system_tests || { echo -e "${RED}Build failed!${NC}"; exit 1; }
+echo -e "${BLUE}Running ThreadSystem tests...${NC}"
 
 # Check if test executable exists
-TEST_EXECUTABLE="../bin/debug/thread_system_tests"
+TEST_EXECUTABLE="bin/debug/thread_system_tests"
 if [ ! -f "$TEST_EXECUTABLE" ]; then
   echo -e "${RED}Test executable not found at $TEST_EXECUTABLE${NC}"
   echo -e "${YELLOW}Searching for test executable...${NC}"
-  FOUND_EXECUTABLE=$(find .. -name "thread_system_tests" -type f -executable | head -n 1)
+  FOUND_EXECUTABLE=$(find . -name "thread_system_tests" -type f -executable | head -n 1)
   if [ -n "$FOUND_EXECUTABLE" ]; then
     TEST_EXECUTABLE="$FOUND_EXECUTABLE"
     echo -e "${GREEN}Found test executable at $TEST_EXECUTABLE${NC}"
@@ -90,7 +47,7 @@ if [ ! -f "$TEST_EXECUTABLE" ]; then
 fi
 
 # Run the tests
-echo -e "${GREEN}Build successful. Running tests...${NC}"
+echo -e "${GREEN}Running tests...${NC}"
 echo -e "${BLUE}====================================${NC}"
 
 # Run with appropriate options
@@ -104,14 +61,14 @@ TEST_RESULT=$?
 echo -e "${BLUE}====================================${NC}"
 
 # Create test_results directory if it doesn't exist
-mkdir -p ../test_results
+mkdir -p test_results
 
 # Save test results
-cp test_output.log "../test_results/thread_system_test_output.txt"
+cp test_output.log "test_results/thread_system_test_output.txt"
 
 # Extract performance metrics if they exist
 echo -e "${YELLOW}Saving test results...${NC}"
-grep -E "time:|performance|tasks:|queue:" test_output.log > "../test_results/thread_system_performance_metrics.txt" || true
+grep -E "time:|performance|tasks:|queue:" test_output.log > "test_results/thread_system_performance_metrics.txt" || true
 
 # Clean up temporary file
 rm test_output.log

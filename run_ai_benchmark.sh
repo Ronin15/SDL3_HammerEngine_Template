@@ -15,23 +15,17 @@ echo -e "${YELLOW}Running AI Scaling Benchmark...${NC}"
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 cd "$SCRIPT_DIR"
 
-# Create build directory if it doesn't exist
-mkdir -p build
+# Create directory for test results
 mkdir -p test_results
 
 # Set default build type
 BUILD_TYPE="Debug"
-CLEAN_BUILD=false
 VERBOSE=false
 EXTREME_TEST=false
 
 # Process command-line options
 while [[ $# -gt 0 ]]; do
   case $1 in
-    --clean)
-      CLEAN_BUILD=true
-      shift
-      ;;
     --debug)
       BUILD_TYPE="Debug"
       shift
@@ -48,82 +42,36 @@ while [[ $# -gt 0 ]]; do
       BUILD_TYPE="Release"
       shift
       ;;
+    --help)
+      echo "Usage: $0 [--debug] [--verbose] [--extreme] [--release] [--help]"
+      echo "  --debug     Run debug build (default)"
+      echo "  --release   Run release build"
+      echo "  --verbose   Show detailed output"
+      echo "  --extreme   Run extended benchmarks"
+      echo "  --help      Show this help message"
+      exit 0
+      ;;
     *)
       echo "Unknown option: $1"
-      echo "Usage: $0 [--clean] [--debug] [--verbose] [--extreme] [--release]"
+      echo "Usage: $0 [--debug] [--verbose] [--extreme] [--release] [--help]"
       exit 1
       ;;
   esac
 done
 
-# Configure build cleaning
-if [ "$CLEAN_BUILD" = true ]; then
-  echo -e "${YELLOW}Cleaning build directory...${NC}"
-  rm -rf build/*
-fi
+echo -e "${YELLOW}Running AI Scaling Benchmark...${NC}"
 
-# Check if Ninja is available
-if command -v ninja &> /dev/null; then
-  USE_NINJA=true
-  echo -e "${GREEN}Ninja build system found, using it for faster builds.${NC}"
-else
-  USE_NINJA=false
-  echo -e "${YELLOW}Ninja build system not found, using default CMake generator.${NC}"
-fi
-
-# Configure the project
-echo -e "${YELLOW}Configuring project with CMake (Build type: $BUILD_TYPE)...${NC}"
-
-# Add extreme tests flag if requested and disable signal handling to avoid threading issues
-CMAKE_FLAGS="-DCMAKE_BUILD_TYPE=$BUILD_TYPE -DBOOST_TEST_NO_SIGNAL_HANDLING=ON"
+# Pass extreme test option to the benchmark if requested
+BENCHMARK_OPTS=""
 if [ "$EXTREME_TEST" = true ]; then
-  CMAKE_FLAGS="$CMAKE_FLAGS -DENABLE_EXTREME_TESTS=ON"
+  BENCHMARK_OPTS="$BENCHMARK_OPTS --extreme"
 fi
-
-
-if [ "$USE_NINJA" = true ]; then
-  if [ "$VERBOSE" = true ]; then
-    cmake -S . -B build $CMAKE_FLAGS -G Ninja
-  else
-    cmake -S . -B build $CMAKE_FLAGS -G Ninja > /dev/null
-  fi
-else
-  if [ "$VERBOSE" = true ]; then
-    cmake -S . -B build $CMAKE_FLAGS
-  else
-    cmake -S . -B build $CMAKE_FLAGS > /dev/null
-  fi
-fi
-
-# Build the benchmark
-echo -e "${YELLOW}Building AI Scaling Benchmark...${NC}"
-if [ "$USE_NINJA" = true ]; then
-  if [ "$VERBOSE" = true ]; then
-    ninja -C build ai_scaling_benchmark
-  else
-    ninja -C build ai_scaling_benchmark > /dev/null
-  fi
-else
-  if [ "$VERBOSE" = true ]; then
-    cmake --build build --config $BUILD_TYPE --target ai_scaling_benchmark
-  else
-    cmake --build build --config $BUILD_TYPE --target ai_scaling_benchmark > /dev/null
-  fi
-fi
-
-# Check if build was successful
-if [ $? -ne 0 ]; then
-  echo -e "${RED}Build failed. See output for details.${NC}"
-  exit 1
-fi
-
-echo -e "${GREEN}Build successful!${NC}"
 
 # Determine the correct path to the benchmark executable
 if [ "$BUILD_TYPE" = "Debug" ]; then
-  BENCHMARK_EXECUTABLE="./bin/debug/ai_scaling_benchmark"
+  BENCHMARK_EXECUTABLE="bin/debug/ai_scaling_benchmark"
 else
-  BENCHMARK_EXECUTABLE="./bin/release/ai_scaling_benchmark"
+  BENCHMARK_EXECUTABLE="bin/release/ai_scaling_benchmark"
 fi
 
 # Verify executable exists
@@ -131,7 +79,7 @@ if [ ! -f "$BENCHMARK_EXECUTABLE" ]; then
   echo -e "${RED}Error: Benchmark executable not found at '$BENCHMARK_EXECUTABLE'${NC}"
   # Attempt to find the executable
   echo -e "${YELLOW}Searching for benchmark executable...${NC}"
-  FOUND_EXECUTABLE=$(find ./bin -name "ai_scaling_benchmark*")
+  FOUND_EXECUTABLE=$(find bin -name "ai_scaling_benchmark*")
   if [ -n "$FOUND_EXECUTABLE" ]; then
     echo -e "${GREEN}Found executable at: $FOUND_EXECUTABLE${NC}"
     BENCHMARK_EXECUTABLE="$FOUND_EXECUTABLE"
@@ -141,8 +89,7 @@ if [ ! -f "$BENCHMARK_EXECUTABLE" ]; then
   fi
 fi
 
-# Run the benchmark
-echo -e "${YELLOW}Running AI Scaling Benchmark...${NC}"
+# Prepare to run the benchmark
 echo -e "${YELLOW}This may take several minutes depending on your hardware.${NC}"
 echo
 
@@ -169,6 +116,11 @@ if [ "$VERBOSE" = true ]; then
   TEST_OPTS="$TEST_OPTS --log_level=all"
 else
   TEST_OPTS="$TEST_OPTS --log_level=test_suite"
+fi
+
+# Add extreme test flag if requested
+if [ "$EXTREME_TEST" = true ]; then
+  TEST_OPTS="$TEST_OPTS --extreme"
 fi
 
 # Set up trap handlers for various signals
