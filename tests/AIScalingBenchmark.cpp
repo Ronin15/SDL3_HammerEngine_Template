@@ -302,7 +302,7 @@ struct AIScalingFixture {
             // This is outside the timed section
             if (useThreading) {
                 // Wait with time proportional to entity count to ensure all tasks complete
-                int waitTime = std::min(800, 50 + numEntities / 30);
+                int waitTime = std::min(1200, 50 + numEntities / 25);
                 std::cout << "  Post-run synchronization: waiting " << waitTime << "ms for entity count: " << numEntities << std::endl;
                 std::this_thread::sleep_for(std::chrono::milliseconds(waitTime));
             
@@ -327,6 +327,16 @@ struct AIScalingFixture {
                             std::this_thread::sleep_for(std::chrono::milliseconds(200));
                             AIManager::Instance().update();
                             std::this_thread::sleep_for(std::chrono::milliseconds(200));
+                            
+                            // Extra handling for ultra-large entity counts (100,000+)
+                            if (numEntities >= 100000) {
+                                std::cout << "  Adding ultra extended synchronization for massive entity count (" << numEntities << ")..." << std::endl;
+                                std::this_thread::sleep_for(std::chrono::milliseconds(300));
+                                AIManager::Instance().update();
+                                std::this_thread::sleep_for(std::chrono::milliseconds(300));
+                                AIManager::Instance().update();
+                                std::this_thread::sleep_for(std::chrono::milliseconds(300));
+                            }
                         }
                     }
                 } else {
@@ -651,8 +661,8 @@ BOOST_AUTO_TEST_CASE(TestLargeEntityCount) {
         return;
     }
     
-    // Test with 50,000 entities - extreme test for thread-safe implementation
-    runBenchmark(50000, 5, 1, true);
+    // Test with 100,000 entities - extreme test for thread-safe implementation
+    runBenchmark(100000, 5, 1, true);
     
     // Only run if we have a lot of memory
     #ifdef ENABLE_EXTREME_TESTS
