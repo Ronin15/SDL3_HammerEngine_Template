@@ -153,7 +153,7 @@ echo !MAGENTA!=====================================================!NC!
 
 :: Run the script with provided arguments
 echo !YELLOW!Command: %script% %args%!NC!
-call %script% %args%
+call .\%script% %args%
 set result=%ERRORLEVEL%
 
 :: Handle case where script doesn't exist or isn't executable
