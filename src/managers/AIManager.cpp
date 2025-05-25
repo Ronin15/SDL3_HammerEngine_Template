@@ -779,9 +779,9 @@ void AIManager::processMessageQueue() {
     
     // Record performance metrics
     auto endTime = getCurrentTimeNanos();
-    double timeMs = (endTime - startTime) / 1000000.0;
     
     {
+        double timeMs = (endTime - startTime) / 1000000.0;
         std::lock_guard<std::mutex> lock(m_perfStatsMutex);
         m_messageQueueStats.addSample(timeMs);
     }

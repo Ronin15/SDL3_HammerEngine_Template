@@ -6,8 +6,8 @@
 #include "events/NPCSpawnEvent.hpp"
 #include "utils/Vector2D.hpp"
 #include <iostream>
-#include <cmath>
 #include <random>
+#include <chrono>
 #include <algorithm>
 
 // Helper function to get player position
@@ -181,11 +181,10 @@ bool NPCSpawnEvent::checkConditions() {
         return false;
     }
 
-    // Check all custom conditions
-    for (const auto& condition : m_conditions) {
-        if (!condition()) {
-            return false; // If any condition fails, return false
-        }
+    // Check all custom conditions using STL algorithm
+    if (!std::all_of(m_conditions.begin(), m_conditions.end(), 
+                     [](const auto& condition) { return condition(); })) {
+        return false;
     }
 
     // Check proximity if enabled
@@ -242,16 +241,11 @@ bool NPCSpawnEvent::areAllEntitiesDead() const {
         return true;
     }
 
-    // Check if any spawned entity is still alive
-    for (const auto& weakEntity : m_spawnedEntities) {
-        auto entity = weakEntity.lock();
-        if (entity) {
-            return false; // At least one entity still exists
-        }
-    }
-
-    // All entities are dead (or their weak_ptrs expired)
-    return true;
+    // Check if all spawned entities are gone using STL algorithm
+    return std::none_of(m_spawnedEntities.begin(), m_spawnedEntities.end(),
+                      [](const auto& weakEntity) { 
+                          return weakEntity.lock() != nullptr; 
+                      });
 }
 
 EntityPtr NPCSpawnEvent::forceSpawnNPC(const std::string& npcType, float x, float y) {

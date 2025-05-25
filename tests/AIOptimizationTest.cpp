@@ -68,10 +68,10 @@ protected:
 using EntityPtr = std::shared_ptr<Entity>;
 using EntityWeakPtr = std::weak_ptr<Entity>;
 
-// TestEntity implementation
-class TestEntity : public Entity {
+// OptimizationTestEntity implementation
+class OptimizationTestEntity : public Entity {
 public:
-    TestEntity(const Vector2D& pos) {
+    OptimizationTestEntity(const Vector2D& pos) {
         setTextureID("test");
         setPosition(pos);
         setWidth(32);
@@ -79,8 +79,8 @@ public:
     }
 
     // Factory method for proper shared_ptr initialization
-    static std::shared_ptr<TestEntity> create(const Vector2D& pos) {
-        return std::make_shared<TestEntity>(pos);
+    static std::shared_ptr<OptimizationTestEntity> create(const Vector2D& pos) {
+        return std::make_shared<OptimizationTestEntity>(pos);
     }
 
     void update() override {}
@@ -396,7 +396,7 @@ BOOST_AUTO_TEST_CASE(TestEntityComponentCaching)
     // Create test entities
     std::vector<EntityPtr> entities;
     for (int i = 0; i < 10; ++i) {
-        entities.push_back(TestEntity::create(Vector2D(i * 100.0f, i * 100.0f)));
+        entities.push_back(OptimizationTestEntity::create(Vector2D(i * 100.0f, i * 100.0f)));
         AIManager::Instance().assignBehaviorToEntity(entities.back(), "TestWander");
     }
 
@@ -421,7 +421,7 @@ BOOST_AUTO_TEST_CASE(TestBatchProcessing)
     // Create test entities
     std::vector<EntityPtr> entityPtrs;
     for (int i = 0; i < 100; ++i) {
-        entityPtrs.push_back(TestEntity::create(Vector2D(i * 10.0f, i * 10.0f)));
+        entityPtrs.push_back(OptimizationTestEntity::create(Vector2D(i * 10.0f, i * 10.0f)));
     }
 
     // Time the batch processing
@@ -460,7 +460,7 @@ BOOST_AUTO_TEST_CASE(TestEarlyExitConditions)
     AIManager::Instance().registerBehavior("LazyWander", wanderBehavior);
 
     // Create test entity
-    auto entity = TestEntity::create(Vector2D(100.0f, 100.0f));
+    auto entity = OptimizationTestEntity::create(Vector2D(100.0f, 100.0f));
     AIManager::Instance().assignBehaviorToEntity(entity, "LazyWander");
 
     // Test that behavior is assigned
@@ -478,7 +478,7 @@ BOOST_AUTO_TEST_CASE(TestMessageQueueSystem)
     AIManager::Instance().registerBehavior("MsgWander", wanderBehavior);
 
     // Create test entity
-    auto entity = TestEntity::create(Vector2D(100.0f, 100.0f));
+    auto entity = OptimizationTestEntity::create(Vector2D(100.0f, 100.0f));
     AIManager::Instance().assignBehaviorToEntity(entity, "MsgWander");
 
     // Queue several messages

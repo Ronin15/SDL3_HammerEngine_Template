@@ -8,6 +8,7 @@
 #include <iostream>
 #include <random>
 #include <chrono>
+#include <algorithm>
 
 // Helper for getting current game time (hour of day)
 static float getCurrentGameTime() {
@@ -15,7 +16,7 @@ static float getCurrentGameTime() {
     // For now, return a placeholder value between 0-24
     auto now = std::chrono::system_clock::now();
     auto time = std::chrono::system_clock::to_time_t(now);
-    std::tm* localTime = std::localtime(&time);
+    const std::tm* localTime = std::localtime(&time);
 
     return static_cast<float>(localTime->tm_hour) +
            static_cast<float>(localTime->tm_min) / 60.0f;
@@ -34,7 +35,7 @@ static int getCurrentSeason() {
     // For now, determine season based on real-world month
     auto now = std::chrono::system_clock::now();
     auto time = std::chrono::system_clock::to_time_t(now);
-    std::tm* localTime = std::localtime(&time);
+    const std::tm* localTime = std::localtime(&time);
 
     int month = localTime->tm_mon; // 0-11
 
@@ -223,10 +224,9 @@ bool WeatherEvent::checkConditions() {
     }
 
     // Check custom conditions first - if any fail, return false
-    for (const auto& condition : m_conditions) {
-        if (!condition()) {
-            return false;
-        }
+    if (!std::all_of(m_conditions.begin(), m_conditions.end(), 
+                     [](const auto& condition) { return condition(); })) {
+        return false;
     }
 
     // If we only have custom conditions (no environmental ones),
