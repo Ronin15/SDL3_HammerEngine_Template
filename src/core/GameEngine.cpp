@@ -70,8 +70,6 @@ bool GameEngine::init(const char* title,
         // Set fullscreen if requested dimensions are larger than screen
         if (width > display.w || height > display.h) {
           fullscreen = true;  // true
-         // scaleX = 1.0f;
-         // scaleY = 1.0f;
           std::cout << "Forge Game Engine - Window size larger than screen, "
                        "enabling fullscreen\n";
         }
@@ -186,10 +184,10 @@ bool GameEngine::init(const char* title,
   // MANAGEMENT_________________________________________________________________________________BEGIN
 
   // Use multiple threads for initialization
-  boost::container::small_vector<std::future<bool>, 6>
+  boost::container::small_vector<std::future<bool>, 8>
       initTasks;  // Store up to 6 tasks without heap allocation
 
-  // Initialize Input Handling in a separate thread
+  // Initialize Input Handling in a separate thread - #1
   initTasks.push_back(
       Forge::ThreadSystem::Instance().enqueueTaskWithResult([]() -> bool {
         std::cout << "Forge Game Engine - Detecting and initializing gamepads "
@@ -198,7 +196,7 @@ bool GameEngine::init(const char* title,
         return true;
       }));
 
-  // Create and initialize texture manager
+  // Create and initialize texture manager - MAIN THREAD
   std::cout << "Forge Game Engine - Creating Texture Manager\n";
   TextureManager::Instance();
   if (!TextureManager::Exists()) {
@@ -210,7 +208,7 @@ bool GameEngine::init(const char* title,
   std::cout << "Forge Game Engine - Creating and loading textures\n";
   TextureManager::Instance().load("res/img", "", mp_renderer.get());
 
-  // Initialize sound manager in a separate thread
+  // Initialize sound manager in a separate thread - #2
   initTasks.push_back(
       Forge::ThreadSystem::Instance().enqueueTaskWithResult([]() -> bool {
         std::cout << "Forge Game Engine - Creating Sound Manager\n";
@@ -225,7 +223,7 @@ bool GameEngine::init(const char* title,
         return true;
       }));
 
-  // Initialize font manager in a separate thread
+  // Initialize font manager in a separate thread - #3
   initTasks.push_back(
       Forge::ThreadSystem::Instance().enqueueTaskWithResult([]() -> bool {
         std::cout << "Forge Game Engine - Creating Font Manager\n";
@@ -238,7 +236,7 @@ bool GameEngine::init(const char* title,
         return true;
       }));
 
-  // Initialize SaveGameManager in a separate thread
+  // Initialize SaveGameManager in a separate thread - #4
   initTasks.push_back(
       Forge::ThreadSystem::Instance().enqueueTaskWithResult([]() -> bool {
         std::cout << "Forge Game Engine - Creating Save Game Manager\n";
@@ -254,7 +252,7 @@ bool GameEngine::init(const char* title,
         return true;
       }));
 
-  // Initialize AI Manager in a separate thread
+  // Initialize AI Manager in a separate thread - #5
   initTasks.push_back(
       Forge::ThreadSystem::Instance().enqueueTaskWithResult([]() -> bool {
         std::cout << "Forge Game Engine - Creating AI Manager\n";
@@ -266,7 +264,7 @@ bool GameEngine::init(const char* title,
         return true;
       }));
 
-  // Initialize game state manager (on main thread because it directly calls rendering)
+  // Initialize game state manager (on main thread because it directly calls rendering) - MAIN THREAD
   std::cout << "Forge Game Engine - Creating Game State Manager and setting up "
                "initial Game States\n";
   mp_gameStateManager = std::make_unique<GameStateManager>();
@@ -316,8 +314,8 @@ void GameEngine::handleEvents() {
 
 void GameEngine::update() {
   // This method is now thread-safe and can be called from a worker thread
-  GameEngine::processBackgroundTasks();
   std::lock_guard<std::mutex> lock(m_updateMutex);
+  GameEngine::processBackgroundTasks(); // Process background tasks like AI updates and need to be before the lock_guard to avoid redering blocks.
   // Update game states
   mp_gameStateManager->update();
 
@@ -326,8 +324,7 @@ void GameEngine::update() {
 }
 
 void GameEngine::render() {
-  // This should always run on the main thread due to OpenGL/SDL rendering
-  // context
+  // Always on MAIN thread as its an - SDL REQUIREMENT
   std::lock_guard<std::mutex> lock(m_renderMutex);
   SDL_RenderClear(mp_renderer.get());
   mp_gameStateManager->render();
@@ -423,7 +420,7 @@ void GameEngine::clean() {
   // are done using them - this will trigger their custom deleters
   renderer_to_destroy.reset();
   window_to_destroy.reset();
-    SDL_Quit();
+  SDL_Quit();
   std::cout << "Forge Game Engine - SDL resources cleaned!\n";
   std::cout << "Forge Game Engine - Shutdown complete!\n";
 }
