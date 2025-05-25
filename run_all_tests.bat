@@ -43,13 +43,14 @@ exit /b 1
 :done_parsing
 
 :: Define all test scripts to run
-set SCRIPT_COUNT=6
+set SCRIPT_COUNT=7
 set TEST_SCRIPT_1=run_thread_tests.bat
 set TEST_SCRIPT_2=run_thread_safe_ai_tests.bat
 set TEST_SCRIPT_3=run_thread_safe_ai_integration_tests.bat
 set TEST_SCRIPT_4=run_ai_benchmark.bat
 set TEST_SCRIPT_5=run_ai_optimization_tests.bat
 set TEST_SCRIPT_6=run_save_tests.bat
+set TEST_SCRIPT_7=run_event_tests.bat
 
 :: Create a directory for the combined test results
 if not exist "test_results\combined" mkdir test_results\combined
