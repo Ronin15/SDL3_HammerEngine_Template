@@ -177,7 +177,7 @@ void EventSystem::triggerWeatherChange(const std::string& weatherType, float tra
 
     // Also notify any registered handlers for weather events
     if (m_eventHandlers.find("WeatherChange") != m_eventHandlers.end()) {
-        for (auto& handler : m_eventHandlers["WeatherChange"]) {
+        for (const auto& handler : m_eventHandlers["WeatherChange"]) {
             handler(weatherType);
         }
     }
@@ -187,9 +187,9 @@ void EventSystem::triggerSceneChange(const std::string& sceneId, const std::stri
     // Forward to EventManager's specialized method
     EventManager::Instance().changeScene(sceneId, transitionType, duration);
 
-    // Also notify any registered handlers for scene change events
+    // Notify any registered handlers for scene change events
     if (m_eventHandlers.find("SceneChange") != m_eventHandlers.end()) {
-        for (auto& handler : m_eventHandlers["SceneChange"]) {
+        for (const auto& handler : m_eventHandlers["SceneChange"]) {
             handler(sceneId);
         }
     }
@@ -201,7 +201,7 @@ void EventSystem::triggerNPCSpawn(const std::string& npcType, float x, float y) 
 
     // Also notify any registered handlers for NPC spawn events
     if (m_eventHandlers.find("NPCSpawn") != m_eventHandlers.end()) {
-        for (auto& handler : m_eventHandlers["NPCSpawn"]) {
+        for (const auto& handler : m_eventHandlers["NPCSpawn"]) {
             handler(npcType);
         }
     }

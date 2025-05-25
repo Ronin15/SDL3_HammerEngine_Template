@@ -630,16 +630,15 @@ void EventManager::updateEvent(Event* event, const std::string_view& /* eventNam
     executeEventIfConditionsMet(event);
 
     auto endTime = getCurrentTimeNanos();
-    double timeMs = (endTime - startTime) / 1000000.0;
 
     // Record performance metrics in a thread-safe way
     std::lock_guard<std::mutex> lock(m_cacheMutex);
-    for (auto& cacheEntry : m_activeEventCache) {
-        if (cacheEntry.event == event) {
-            cacheEntry.lastUpdateTime = endTime;
-            cacheEntry.perfStats.addSample(timeMs);
-            break;
-        }
+    auto it = std::find_if(m_activeEventCache.begin(), m_activeEventCache.end(),
+                          [&event](const auto& cacheEntry) { return cacheEntry.event == event; });
+    if (it != m_activeEventCache.end()) {
+        it->lastUpdateTime = endTime;
+        double timeMs = (endTime - startTime) / 1000000.0;
+        it->perfStats.addSample(timeMs);
     }
 }
 

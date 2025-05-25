@@ -411,8 +411,8 @@ bool SaveGameManager::ensureSaveDirectoryExists() const {
         }
         
         // Verify directory is writable by attempting to create a test file
-        std::string testFilePath = savePath + "/test_write.tmp";
         {
+            std::string testFilePath = savePath + "/test_write.tmp";
             std::ofstream testFile(testFilePath);
             if (!testFile.is_open()) {
                 std::cerr << "Forge Game Engine - SaveGameManager: Directory exists but is not writable\n";
