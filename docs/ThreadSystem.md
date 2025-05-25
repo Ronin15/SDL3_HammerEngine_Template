@@ -2,7 +2,7 @@
 
 ## Overview
 
-The ThreadSystem is a core component of the Forge Game Engine, providing thread pool management and task-based concurrency. It allows game systems to enqueue work that gets processed by a pool of worker threads, enabling performance benefits from multi-core processors while maintaining a simplified programming model. The system automatically manages its capacity and is designed to efficiently handle hundreds of concurrent tasks (see [Defining a Task](ThreadSystem_Optimization.md) for details).
+The ThreadSystem is a core component of the Forge Game Engine, providing thread pool management and task-based concurrency. It allows game systems to enqueue work that gets processed by a pool of worker threads, enabling performance benefits from multi-core processors while maintaining a simplified programming model. The system automatically manages its capacity and is designed to efficiently handle hundreds of concurrent tasks (see [Defining a Task](ThreadSystem_Optimization.md) for details). ThreadSystem serves as the unified threading framework used by various engine components, including the [EventManager](EventManager.md).
 
 ## Features
 
@@ -12,6 +12,7 @@ The ThreadSystem is a core component of the Forge Game Engine, providing thread 
 - Thread-safe operations with proper synchronization
 - Queue capacity reservation for memory optimization
 - Clean shutdown with proper resource management
+- Integration with engine components such as EventManager and AIManager
 
 ## Basic Usage
 
@@ -47,6 +48,32 @@ auto future = Forge::ThreadSystem::Instance().enqueueTaskWithResult([]() -> int 
 // Wait for and use the result
 int result = future.get();  // Blocks until the task completes
 ```
+
+## Integration with Engine Components
+
+ThreadSystem is designed to be the unified thread management solution for the Forge Game Engine. Multiple engine components integrate with ThreadSystem:
+
+### EventManager Integration
+
+The EventManager uses ThreadSystem for parallel event processing:
+
+```cpp
+// Initialize both systems
+Forge::ThreadSystem::Instance().init();
+EventManager::Instance().init();
+
+// Configure EventManager to use ThreadSystem
+EventManager::Instance().configureThreading(true);
+
+// EventManager will now process events in parallel through ThreadSystem
+EventManager::Instance().update();
+```
+
+See [EventManager_ThreadSystem.md](EventManager_ThreadSystem.md) for detailed integration documentation.
+
+### AIManager Integration
+
+The AIManager similarly uses ThreadSystem for parallel AI behavior processing, allowing efficient scaling across available CPU cores.
 
 ### Shutdown
 

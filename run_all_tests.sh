@@ -42,6 +42,7 @@ TEST_SCRIPTS=(
   "$SCRIPT_DIR/run_ai_benchmark.sh"
   "$SCRIPT_DIR/run_ai_optimization_tests.sh"
   "$SCRIPT_DIR/run_save_tests.sh"
+  "$SCRIPT_DIR/run_event_tests.sh"
 )
 
 # Create a directory for the combined test results
