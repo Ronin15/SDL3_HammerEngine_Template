@@ -262,7 +262,6 @@ void AIDemoState::setupAIBehaviors() {
 
     // Clean up any existing behaviors first
     AIManager::Instance().resetBehaviors();
-    // No need to call init() after clean() anymore as it now preserves initialization state
 
     // Create and register wander behavior
     auto wanderBehavior = std::make_unique<WanderBehavior>(2.0f, 3000.0f, 200.0f);
