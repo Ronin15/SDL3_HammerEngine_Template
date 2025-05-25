@@ -63,12 +63,17 @@ static SignalHandlerRegistration signalHandlerRegistration;
 class TestSaveGameManager {
 public:
     TestSaveGameManager() : m_saveDirectory("test_saves") {
-        ensureSaveDirectoryExists();
+        std::cout << "TestSaveGameManager: Current working directory: " 
+                  << std::filesystem::current_path().string() << std::endl;
+        bool success = ensureSaveDirectoryExists();
+        std::cout << "TestSaveGameManager: Directory initialization " 
+                  << (success ? "succeeded" : "failed") << std::endl;
     }
     
     ~TestSaveGameManager() {
         if (std::filesystem::exists(m_saveDirectory)) {
             std::filesystem::remove_all(m_saveDirectory);
+            std::cout << "TestSaveGameManager: Removed directory: " << m_saveDirectory << std::endl;
         }
     }
     
@@ -236,25 +241,47 @@ private:
     std::string m_saveDirectory;
     
     // Helper methods
-    std::string getSlotFileName(int slotNumber) const {
-        return "save_slot_" + std::to_string(slotNumber) + ".dat";
-    }
+        std::string getSlotFileName(int slotNumber) const {
+            return "save_slot_" + std::to_string(slotNumber) + ".dat";
+        }
     
-    std::string getFullSavePath(const std::string& saveFileName) const {
-        return m_saveDirectory + "/" + saveFileName;
-    }
+        std::string getFullSavePath(const std::string& saveFileName) const {
+            return m_saveDirectory + "/" + saveFileName;
+        }
     
-    bool ensureSaveDirectoryExists() const {
-        try {
-            if (!std::filesystem::exists(m_saveDirectory)) {
-                std::filesystem::create_directories(m_saveDirectory);
+        bool ensureSaveDirectoryExists() const {
+            try {
+                std::cout << "TestSaveGameManager: Checking directory: " << m_saveDirectory << std::endl;
+                if (!std::filesystem::exists(m_saveDirectory)) {
+                    std::cout << "TestSaveGameManager: Creating directory: " << m_saveDirectory << std::endl;
+                    bool created = std::filesystem::create_directories(m_saveDirectory);
+                    std::cout << "TestSaveGameManager: Directory creation " 
+                              << (created ? "succeeded" : "failed") << std::endl;
+                
+                    if (!created) {
+                        std::cerr << "TestSaveGameManager: Failed to create directory: " << m_saveDirectory << std::endl;
+                        return false;
+                    }
+                }
+            
+                // Verify it's writable
+                std::string testFile = m_saveDirectory + "/test_write.tmp";
+                std::ofstream file(testFile);
+                if (!file.is_open()) {
+                    std::cerr << "TestSaveGameManager: Directory exists but is not writable" << std::endl;
+                    return false;
+                }
+                file << "Test";
+                file.close();
+                std::filesystem::remove(testFile);
+            
+                return true;
             }
-            return true;
+            catch (const std::filesystem::filesystem_error& e) {
+                std::cerr << "TestSaveGameManager: Error creating directory: " << e.what() << std::endl;
+                return false;
+            }
         }
-        catch (const std::filesystem::filesystem_error& e) {
-            return false;
-        }
-    }
 };
 
 // Global fixture for test setup and cleanup
@@ -368,4 +395,74 @@ BOOST_AUTO_TEST_CASE(TestErrorHandling) {
     
     // Clean up properly
     std::cout << "TestErrorHandling completed successfully" << std::endl;
+}
+
+BOOST_AUTO_TEST_CASE(TestDirectoryCreation) {
+    // Test creating directory in a custom location
+    std::string testBaseDir = "test_base_dir";
+    std::string testSaveDir = testBaseDir + "/game_saves";
+    
+    // Remove the test directory if it already exists
+    if (std::filesystem::exists(testBaseDir)) {
+        std::filesystem::remove_all(testBaseDir);
+        std::cout << "Removed existing test directory: " << testBaseDir << std::endl;
+    }
+    
+    // Create a custom TestSaveGameManager with our test path
+    class CustomPathTestManager : public TestSaveGameManager {
+    public:
+        CustomPathTestManager(const std::string& dir) : m_customDir(dir) {}
+        
+        bool ensureDirectoryExists() {
+            try {
+                // Create the base directory
+                if (!std::filesystem::exists(m_customDir)) {
+                    std::cout << "Creating base directory: " << m_customDir << std::endl;
+                    BOOST_CHECK(std::filesystem::create_directories(m_customDir));
+                }
+                
+                // Create the game_saves subdirectory
+                std::string saveDir = m_customDir + "/game_saves";
+                if (!std::filesystem::exists(saveDir)) {
+                    std::cout << "Creating save directory: " << saveDir << std::endl;
+                    BOOST_CHECK(std::filesystem::create_directories(saveDir));
+                }
+                
+                // Test writing to the directory
+                std::string testFile = saveDir + "/test_write.tmp";
+                std::ofstream file(testFile);
+                BOOST_CHECK(file.is_open());
+                file << "Test data";
+                file.close();
+                
+                // Verify file was created
+                BOOST_CHECK(std::filesystem::exists(testFile));
+                
+                // Clean up test file
+                std::filesystem::remove(testFile);
+                return true;
+            }
+            catch (const std::exception& e) {
+                std::cerr << "Error in directory test: " << e.what() << std::endl;
+                return false;
+            }
+        }
+    private:
+        std::string m_customDir;
+    };
+    
+    // Create and test our custom manager
+    CustomPathTestManager customManager(testBaseDir);
+    bool dirCreated = customManager.ensureDirectoryExists();
+    BOOST_CHECK(dirCreated);
+    
+    // Verify the directory exists after the test
+    BOOST_CHECK(std::filesystem::exists(testBaseDir));
+    BOOST_CHECK(std::filesystem::exists(testSaveDir));
+    
+    // Clean up
+    if (std::filesystem::exists(testBaseDir)) {
+        std::filesystem::remove_all(testBaseDir);
+        std::cout << "Cleaned up test directory: " << testBaseDir << std::endl;
+    }
 }

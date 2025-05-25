@@ -23,8 +23,27 @@ bool SaveGameManager::save(const std::string& saveFileName, const Player* player
         return false;
     }
 
+    // Ensure player is valid and proceed with save
+    
+    // Make sure base directory exists
+    if (!std::filesystem::exists(m_saveDirectory)) {
+        std::cerr << "Forge Game Engine - SaveGameManager: Base directory doesn't exist: '" << m_saveDirectory << "'\n";
+        try {
+            if (std::filesystem::create_directories(m_saveDirectory)) {
+                // Base directory created successfully
+            } else {
+                std::cerr << "Forge Game Engine - SaveGameManager: Failed to create base directory\n";
+                return false;
+            }
+        } catch (const std::exception& e) {
+            std::cerr << "Forge Game Engine - SaveGameManager: Error creating base directory: " << e.what() << "\n";
+            return false;
+        }
+    }
+    
     // Ensure the save directory exists
     if (!ensureSaveDirectoryExists()) {
+        std::cerr << "Forge Game Engine - SaveGameManager: Failed to ensure save directory exists!" << std::endl;
         return false;
     }
 
@@ -32,12 +51,25 @@ bool SaveGameManager::save(const std::string& saveFileName, const Player* player
     std::string fullPath = getFullSavePath(saveFileName);
 
     try {
+        // Make sure parent directory exists once more
+        std::filesystem::path filePath(fullPath);
+        std::filesystem::path parentPath = filePath.parent_path();
+        if (!std::filesystem::exists(parentPath)) {
+            // Create parent directory if it doesn't exist
+            std::filesystem::create_directories(parentPath);
+        }
+        
         // Open binary file for writing
         std::ofstream file(fullPath, std::ios::binary | std::ios::out);
         if (!file.is_open()) {
             std::cerr << "Forge Game Engine - SaveGameManager: Could not open file " << fullPath << " for writing!" << std::endl;
+            // Check if parent directory exists and is writable
+            std::cerr << "Forge Game Engine - SaveGameManager: Parent directory " 
+                     << parentPath.string() << " exists: " 
+                     << (std::filesystem::exists(parentPath) ? "yes" : "no") << std::endl;
             return false;
         }
+        // File opened successfully
 
         // We'll write the header at the end once we know the data size
         // For now, just skip past where the header will be
@@ -70,7 +102,7 @@ bool SaveGameManager::save(const std::string& saveFileName, const Player* player
 
         file.close();
 
-        std::cout << "Forge Game Engine - SaveGameManager: Game saved to " << fullPath << "\n";
+        std::cout << "Forge Game Engine - Save successful: " << saveFileName << "\n";
         return true;
     }
     catch (const std::exception& e) {
@@ -101,7 +133,7 @@ bool SaveGameManager::load(const std::string& saveFileName, Player* player) {
 
     // Check if the file exists
     if (!std::filesystem::exists(fullPath)) {
-        std::cerr << "Forge Game Engine - SaveGameManager: Save file does not exist: " << fullPath << std::endl;
+        std::cerr << "Forge Game Engine - SaveGameManager: Save file does not exist: " << saveFileName << std::endl;
         return false;
     }
 
@@ -109,7 +141,7 @@ bool SaveGameManager::load(const std::string& saveFileName, Player* player) {
         // Open binary file for reading
         std::ifstream file(fullPath, std::ios::binary | std::ios::in);
         if (!file.is_open()) {
-            std::cerr << "Forge Game Engine - SaveGameManager: Could not open file " << fullPath << " for reading!" << std::endl;
+            std::cerr << "Forge Game Engine - SaveGameManager: Could not open file for reading!" << std::endl;
             return false;
         }
 
@@ -162,7 +194,7 @@ bool SaveGameManager::load(const std::string& saveFileName, Player* player) {
 
         file.close();
 
-        std::cout << "Forge Game Engine - SaveGameManager: Game loaded from " << fullPath << "\n";
+        std::cout << "Forge Game Engine - Game loaded: " << saveFileName << "\n";
         return true;
     }
     catch (const std::exception& e) {
@@ -188,7 +220,7 @@ bool SaveGameManager::deleteSave(const std::string& saveFileName) {
     try {
         if (std::filesystem::exists(fullPath)) {
             std::filesystem::remove(fullPath);
-            std::cout << "Forge Game Engine - SaveGameManager: Deleted save file: " << fullPath << "\n";
+            std::cout << "Forge Game Engine - Save successful: " << saveFileName << "\n";
             return true;
         }
         else {
@@ -214,15 +246,16 @@ bool SaveGameManager::deleteSlot(int slotNumber) {
 
 boost::container::small_vector<std::string, 10> SaveGameManager::getSaveFiles() const {
     boost::container::small_vector<std::string, 10> saveFiles;
+    std::string savePath = m_saveDirectory + "/game_saves";
 
     // Check if the directory exists
-    if (!std::filesystem::exists(m_saveDirectory) || !std::filesystem::is_directory(m_saveDirectory)) {
+    if (!std::filesystem::exists(savePath) || !std::filesystem::is_directory(savePath)) {
         return saveFiles; // Return empty vector
     }
 
     try {
         // Iterate through all files in the directory
-        for (const auto& entry : std::filesystem::directory_iterator(m_saveDirectory)) {
+        for (const auto& entry : std::filesystem::directory_iterator(savePath)) {
             if (entry.is_regular_file()) {
                 // Get file path and extension
                 std::filesystem::path filePath = entry.path();
@@ -237,7 +270,6 @@ boost::container::small_vector<std::string, 10> SaveGameManager::getSaveFiles() 
                     // Verify it's a valid save file by checking the header
                     if (isValidSaveFile(filePath.filename().string())) {
                         saveFiles.push_back(filePath.filename().string());
-                        std::cout << "Forge Game Engine - SaveGameManager: Forge Valid save file found: " << filePath.filename().string() << "\n";
                     }
                 }
             }
@@ -300,7 +332,6 @@ bool SaveGameManager::isValidSaveFile(const std::string& saveFileName) const {
         SaveGameHeader header;
         if (!readHeader(file, header)) {
             file.close();
-            std::cerr << "Forge Game Engine - Failed to read header from save file: " << fullPath << std::endl;
             return false;
         }
 
@@ -308,7 +339,6 @@ bool SaveGameManager::isValidSaveFile(const std::string& saveFileName) const {
         const char* expectedSignature = "FORGESAVE";
         if (std::memcmp(header.signature, expectedSignature, 9) != 0) {
             file.close();
-            std::cerr << "Forge Game Engine - Invalid signature in save file: " << fullPath << std::endl;
             return false;
         }
 
@@ -321,8 +351,22 @@ bool SaveGameManager::isValidSaveFile(const std::string& saveFileName) const {
 }
 
 void SaveGameManager::setSaveDirectory(const std::string& directory) {
+    // Check if directory exists
+    if (!std::filesystem::exists(directory)) {
+        // Try to create it
+        try {
+            if (!std::filesystem::create_directories(directory)) {
+                std::cerr << "Forge Game Engine - SaveGameManager: Failed to create directory: " << directory << "\n";
+            }
+        } catch (const std::exception& e) {
+            std::cerr << "Forge Game Engine - SaveGameManager: Error creating directory: " << e.what() << "\n";
+        }
+    }
+    
     m_saveDirectory = directory;
-    std::cout << "Forge Game Engine - SaveGameManager: Save directory set to " << m_saveDirectory << "\n";
+    
+    // Ensure the game_saves subdirectory exists right away
+    ensureSaveDirectoryExists();
 }
 
 void SaveGameManager::clean() {
@@ -335,18 +379,58 @@ std::string SaveGameManager::getSlotFileName(int slotNumber) const {
 }
 
 std::string SaveGameManager::getFullSavePath(const std::string& saveFileName) const {
-    return m_saveDirectory + "/" + saveFileName;
+    return m_saveDirectory + "/game_saves/" + saveFileName;
 }
 
 bool SaveGameManager::ensureSaveDirectoryExists() const {
     try {
+        // First ensure the base directory exists (which should be "res")
         if (!std::filesystem::exists(m_saveDirectory)) {
-            std::filesystem::create_directories(m_saveDirectory);
-            std::cout << "Forge Game Engine - SaveGameManager: Created save directory: " << m_saveDirectory << "\n";
+            // Try to create the base directory
+            if (!std::filesystem::create_directories(m_saveDirectory)) {
+                std::cerr << "Forge Game Engine - SaveGameManager: Failed to create base directory\n";
+                return false;
+            }
         }
+        
+        // Create the game_saves directory inside the base directory
+        std::string savePath = m_saveDirectory + "/game_saves";
+        
+        if (!std::filesystem::exists(savePath)) {
+            // Create the directory and all parent directories
+            if (!std::filesystem::create_directories(savePath)) {
+                std::cerr << "Forge Game Engine - SaveGameManager: Failed to create save directory\n";
+                return false;
+            }
+        }
+        
+        // Verify directory exists after creation attempt
+        if (!std::filesystem::exists(savePath)) {
+            std::cerr << "Forge Game Engine - SaveGameManager: Directory still doesn't exist after creation attempt\n";
+            return false;
+        }
+        
+        // Verify directory is writable by attempting to create a test file
+        std::string testFilePath = savePath + "/test_write.tmp";
+        {
+            std::ofstream testFile(testFilePath);
+            if (!testFile.is_open()) {
+                std::cerr << "Forge Game Engine - SaveGameManager: Directory exists but is not writable\n";
+                return false;
+            }
+            testFile << "Test"; // Actually write something
+            testFile.close();
+            if (std::filesystem::exists(testFilePath)) {
+                std::filesystem::remove(testFilePath);
+            } else {
+                std::cerr << "Forge Game Engine - SaveGameManager: Test file was not created properly\n";
+                return false;
+            }
+        }
+        
         return true;
     }
-    catch (const std::filesystem::filesystem_error& e) {
+    catch (const std::exception& e) {
         std::cerr << "Forge Game Engine - SaveGameManager: Error creating save directory: " << e.what() << std::endl;
         return false;
     }
@@ -474,7 +558,7 @@ bool SaveGameManager::writeVector2D(std::ofstream& file, const Vector2D& vec) co
         oa << vec;
         return file.good();
     } catch (const std::exception& e) {
-        std::cerr << "Error serializing Vector2D: " << e.what() << std::endl;
+        std::cerr << "Forge Game Engine - SaveGameManager: Error serializing Vector2D: " << e.what() << std::endl;
         return false;
     }
 }
@@ -485,7 +569,7 @@ bool SaveGameManager::readVector2D(std::ifstream& file, Vector2D& vec) const {
         ia >> vec;
         return file.good();
     } catch (const std::exception& e) {
-        std::cerr << "Error deserializing Vector2D: " << e.what() << std::endl;
+        std::cerr << "Forge Game Engine - SaveGameManager: Error deserializing Vector2D: " << e.what() << std::endl;
         return false;
     }
 }

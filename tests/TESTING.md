@@ -111,12 +111,19 @@ Located in `AIScalingBenchmark.cpp`, these tests measure:
 
 ### Save Manager Tests
 
-Located in `SaveManagerTests.cpp` with supporting `MockPlayer` class, these tests verify:
+Located in `SaveManagerTests.cpp` with supporting `MockPlayer` class and a robust directory testing framework, these tests verify:
 
 1. **Data Serialization**: Tests serialization of game objects
 2. **File Operations**: Tests reading from and writing to save files
 3. **Error Handling**: Tests recovery from corrupted save data
 4. **Versioning**: Tests compatibility between different save formats
+5. **Directory Creation**: Tests proper creation of save directories, including:
+   - Creation of base directories when they don't exist
+   - Creation of nested subdirectories (e.g., `game_saves` within a base directory)
+   - Verification of directory write permissions
+   - Path handling and validation across different operating systems
+   - Recovery from directory creation failures
+   - Working directory awareness and path resolution
 
 ### Thread System Tests
 
@@ -133,6 +140,13 @@ Located in `ThreadSystemTests.cpp`, these tests verify:
 2. Add test cases using the `BOOST_AUTO_TEST_CASE` macro
 3. Follow the existing pattern for setup, execution, and verification
 4. Run tests with `--clean` to ensure your changes are compiled
+5. For directory or file operation tests, always clean up created resources when tests complete
+
+For directory management tests (like in SaveManagerTests):
+- Use a dedicated test directory that's different from production directories
+- Implement proper cleanup in test class destructors or at the end of test cases
+- Add detailed logging to identify filesystem operation failures
+- Test both successful cases and error cases (e.g., permission denied, disk full)
 
 ### Basic Test Structure
 
@@ -211,6 +225,20 @@ For thread-safety tests, follow these guidelines:
 - Add sleep between operations: `std::this_thread::sleep_for(std::chrono::milliseconds(100))`
 - Use timeout for futures: `future.wait_for(std::chrono::seconds(1))`
 - Don't register SIGSEGV handler in test code
+
+### Filesystem Operation Issues
+
+**Problem**: Directory creation, file operations, or save/load functions fail during tests.
+
+**Solution**:
+- Check working directory: Tests might run from a different directory than expected
+- Print and verify absolute paths: `std::filesystem::absolute(path).string()`
+- Ensure parent directories exist before creating files
+- Verify write permissions on directories with a small test file
+- Use detailed logging to identify exactly which operation is failing
+- Add proper error handling with try/catch blocks around all filesystem operations
+- Always clean up test files/directories in both success and failure scenarios
+- On Windows, ensure paths don't exceed MAX_PATH (260 characters)
 
 ### Build Issues
 

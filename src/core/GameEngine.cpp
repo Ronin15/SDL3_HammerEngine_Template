@@ -180,9 +180,7 @@ bool GameEngine::init(const char* title,
     return false;
   }
 
-  // INITIALIZING GAME RESOURCE LOADING AND
-  // MANAGEMENT_________________________________________________________________________________BEGIN
-
+  // INITIALIZING GAME RESOURCE LOADING AND MANAGEMENT_________________________BEGIN
   // Use multiple threads for initialization
   boost::container::small_vector<std::future<bool>, 8>
       initTasks;  // Store up to 6 tasks without heap allocation
@@ -245,10 +243,9 @@ bool GameEngine::init(const char* title,
           std::cerr << "Forge Game Engine - Failed to create Save Game Manager!" << std::endl;
           return false;
         }
-        // Set the save directory to "game_saves" folder
-        SaveGameManager::Instance().setSaveDirectory("game_saves");
-        // Ensure save directory exists
-        std::cout << "Forge Game Engine - Ensuring save directory exists\n";
+        
+        // Set the save directory to "res" folder
+        SaveGameManager::Instance().setSaveDirectory("res");
         return true;
       }));
 

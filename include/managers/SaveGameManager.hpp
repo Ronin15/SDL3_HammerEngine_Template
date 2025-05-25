@@ -101,7 +101,7 @@ public:
     void clean();
 
 private:
-    std::string m_saveDirectory{"game_saves"};  // Default save directory
+    std::string m_saveDirectory{"res"};  // Default save directory
     static bool initialized;
 
     // Helper methods
