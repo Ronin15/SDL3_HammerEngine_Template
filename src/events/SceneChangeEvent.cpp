@@ -3,8 +3,8 @@
  * Licensed under the MIT License - see LICENSE file for details
 */
 
-#include "../../include/events/SceneChangeEvent.hpp"
-#include "../../include/utils/Vector2D.hpp"
+#include "events/SceneChangeEvent.hpp"
+#include "utils/Vector2D.hpp"
 #include <iostream>
 
 // Helper function to get player position
@@ -23,7 +23,7 @@ static bool isKeyPressed(const std::string& /* keyName */) {
 
 SceneChangeEvent::SceneChangeEvent(const std::string& name, const std::string& targetSceneID)
     : m_name(name), m_targetSceneID(targetSceneID) {
-    
+
     // Default transition parameters
     m_transitionType = TransitionType::Fade;
     m_transitionParams.duration = 1.0f;
@@ -38,31 +38,31 @@ void SceneChangeEvent::update() {
     if (!m_active || m_onCooldown) {
         return;
     }
-    
+
     // Update transition if in progress
     if (m_inTransition) {
         m_transitionProgress += 0.016f; // Assume ~60fps for now
-        
+
         if (m_transitionProgress >= m_transitionParams.duration) {
             m_inTransition = false;
             m_transitionProgress = 0.0f;
-            
+
             // Transition complete, scene should be fully changed now
             std::cout << "Scene transition to " << m_targetSceneID << " complete" << std::endl;
         }
     }
-    
+
     // Update timer if active
     if (m_useTimer && m_timerActive) {
         m_timerElapsed += 0.016f; // Assume ~60fps for now
     }
-    
+
     // Update frame counter for frequency control
     m_frameCounter++;
     if (m_updateFrequency > 1 && m_frameCounter % m_updateFrequency != 0) {
         return;
     }
-    
+
     // Reset frame counter to prevent overflow
     if (m_frameCounter >= 10000) {
         m_frameCounter = 0;
@@ -72,28 +72,28 @@ void SceneChangeEvent::update() {
 void SceneChangeEvent::execute() {
     // Mark as triggered
     m_hasTriggered = true;
-    
+
     // Start cooldown if set
     if (m_cooldownTime > 0.0f) {
         m_onCooldown = true;
         m_cooldownTimer = 0.0f;
     }
-    
+
     // Begin transition to new scene
     m_inTransition = true;
     m_transitionProgress = 0.0f;
-    
+
     // Log the scene change
-    std::cout << "Changing scene to: " << m_targetSceneID 
+    std::cout << "Changing scene to: " << m_targetSceneID
               << " using transition: " << static_cast<int>(m_transitionType)
               << " (duration: " << m_transitionParams.duration << "s)" << std::endl;
-              
+
     // Play transition sound if enabled
     if (m_transitionParams.playSound && !m_transitionParams.soundEffect.empty()) {
-        std::cout << "Playing transition sound: " << m_transitionParams.soundEffect 
+        std::cout << "Playing transition sound: " << m_transitionParams.soundEffect
                   << " at volume: " << m_transitionParams.soundVolume << std::endl;
     }
-    
+
     // In a real implementation, this would trigger the actual scene change
     // in the game engine, possibly via the GameStateManager
 }
@@ -104,7 +104,7 @@ void SceneChangeEvent::reset() {
     m_inTransition = false;
     m_transitionProgress = 0.0f;
     m_hasTriggered = false;
-    
+
     // Reset timer
     m_timerActive = false;
     m_timerElapsed = 0.0f;
@@ -117,7 +117,7 @@ void SceneChangeEvent::clean() {
 
 void SceneChangeEvent::setTransitionType(TransitionType type) {
     m_transitionType = type;
-    
+
     // Update transition effect based on type
     switch (type) {
         case TransitionType::Fade:
@@ -147,29 +147,29 @@ bool SceneChangeEvent::checkConditions() {
     if (m_oneTimeEvent && m_hasTriggered) {
         return false;
     }
-    
+
     // Check all custom conditions
     for (const auto& condition : m_conditions) {
         if (!condition()) {
             return false; // If any condition fails, return false
         }
     }
-    
+
     // Check trigger zone if specified
     if (m_zoneType != ZoneType::None && !checkZoneCondition()) {
         return false;
     }
-    
+
     // Check input if required
     if (m_requirePlayerInput && !checkInputCondition()) {
         return false;
     }
-    
+
     // Check timer if used
     if (m_useTimer && !checkTimerCondition()) {
         return false;
     }
-    
+
     // All conditions passed
     return true;
 }
@@ -222,16 +222,16 @@ bool SceneChangeEvent::isTimerComplete() const {
     if (!m_useTimer || !m_timerActive) {
         return false;
     }
-    
+
     return m_timerElapsed >= m_timerDuration;
 }
 
 void SceneChangeEvent::forceSceneChange(const std::string& sceneID, TransitionType type, float duration) {
     // Static method that would interact with a central scene management system
-    std::cout << "Forcing scene change to: " << sceneID 
+    std::cout << "Forcing scene change to: " << sceneID
               << " with transition type: " << static_cast<int>(type)
               << " and duration: " << duration << "s" << std::endl;
-    
+
     // This would typically call into a game system that manages scenes/states
 }
 
@@ -239,15 +239,15 @@ bool SceneChangeEvent::checkZoneCondition() const {
     if (m_zoneType == ZoneType::None) {
         return true; // No zone restriction
     }
-    
+
     Vector2D playerPos = getPlayerPosition();
-    
+
     if (m_zoneType == ZoneType::Circle) {
         // Calculate distance from player to zone center
         float dx = playerPos.getX() - m_zoneCenter.getX();
         float dy = playerPos.getY() - m_zoneCenter.getY();
         float distSquared = dx * dx + dy * dy;
-        
+
         return distSquared <= (m_zoneRadius * m_zoneRadius);
     }
     else if (m_zoneType == ZoneType::Rectangle) {
@@ -255,7 +255,7 @@ bool SceneChangeEvent::checkZoneCondition() const {
         return playerPos.getX() >= m_zoneX1 && playerPos.getX() <= m_zoneX2 &&
                playerPos.getY() >= m_zoneY1 && playerPos.getY() <= m_zoneY2;
     }
-    
+
     return false;
 }
 
@@ -263,11 +263,11 @@ bool SceneChangeEvent::checkInputCondition() const {
     if (!m_requirePlayerInput) {
         return true; // No input required
     }
-    
+
     if (m_inputKeyName.empty()) {
         return false; // Input required but no key specified
     }
-    
+
     return isKeyPressed(m_inputKeyName);
 }
 
@@ -275,11 +275,11 @@ bool SceneChangeEvent::checkTimerCondition() {
     if (!m_useTimer) {
         return true; // No timer condition
     }
-    
+
     if (!m_timerActive) {
         return false; // Timer not started
     }
-    
+
     return m_timerElapsed >= m_timerDuration;
 }
 

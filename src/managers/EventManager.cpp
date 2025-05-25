@@ -3,9 +3,9 @@
  * Licensed under the MIT License - see LICENSE file for details
 */
 
-#include "../include/managers/EventManager.hpp"
-#include "../include/events/Event.hpp"
-#include "../include/core/ThreadSystem.hpp"
+#include "managers/EventManager.hpp"
+#include "events/Event.hpp"
+#include "core/ThreadSystem.hpp"
 #include <algorithm>
 #include <utility>
 #include <thread>
@@ -13,8 +13,6 @@
 
 // Uncomment to enable debug logging for EventManager
 // #define EVENT_DEBUG_LOGGING
-
-using namespace Forge;
 
 // Constructor
 EventManager::EventManager() {
@@ -409,7 +407,7 @@ void EventManager::update() {
         #ifdef EVENT_DEBUG_LOGGING
         auto startTime = std::chrono::steady_clock::now();
         #endif
-        
+
         // Process each batch through the ThreadSystem
         for (const auto& [eventType, batch] : localBatches) {
             // Skip empty batches

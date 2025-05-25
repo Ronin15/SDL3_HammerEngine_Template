@@ -3,13 +3,13 @@
  * Licensed under the MIT License - see LICENSE file for details
 */
 
-#include "../../include/events/EventSystem.hpp"
-#include "../../include/managers/EventManager.hpp"
-#include "../../include/core/GameTime.hpp"
-#include "../../include/events/Event.hpp"
-#include "../../include/events/WeatherEvent.hpp"
-#include "../../include/events/SceneChangeEvent.hpp"
-#include "../../include/events/NPCSpawnEvent.hpp"
+#include "events/EventSystem.hpp"
+#include "managers/EventManager.hpp"
+#include "core/GameTime.hpp"
+#include "events/Event.hpp"
+#include "events/WeatherEvent.hpp"
+#include "events/SceneChangeEvent.hpp"
+#include "events/NPCSpawnEvent.hpp"
 #include <iostream>
 #include <memory>
 #include <chrono>
@@ -24,7 +24,7 @@ class Camera;
 // Static instance management
 EventSystem* EventSystem::s_instance = nullptr;
 
-EventSystem::EventSystem() : 
+EventSystem::EventSystem() :
     m_initialized(false),
     m_lastUpdateTime(0) {
     EVENT_SYSTEM_LOG("EventSystem created");
@@ -118,27 +118,27 @@ void EventSystem::registerEventHandler(const std::string& eventType, EventHandle
 void EventSystem::registerWeatherEvent(const std::string& name, const std::string& weatherType, float intensity) {
     // Create the weather event
     auto weatherEvent = std::make_shared<WeatherEvent>(name, weatherType);
-    
+
     // Configure the weather parameters
     WeatherParams params;
     params.intensity = intensity;
     params.transitionTime = 3.0f;
     weatherEvent->setWeatherParams(params);
-    
+
     // Register the event with the EventManager
     EventManager::Instance().registerEvent(name, std::static_pointer_cast<Event>(weatherEvent));
-    
+
     std::cout << "Registered weather event: " << name << " of type: " << weatherType << std::endl;
 }
 
-void EventSystem::registerSceneChangeEvent(const std::string& name, const std::string& targetScene, 
+void EventSystem::registerSceneChangeEvent(const std::string& name, const std::string& targetScene,
                                            const std::string& transitionType) {
     // Create the scene change event
     auto sceneEvent = std::make_shared<SceneChangeEvent>(name, targetScene);
-    
+
     // Configure transition type
     TransitionType type = TransitionType::Fade; // Default
-    
+
     if (transitionType == "dissolve") {
         type = TransitionType::Dissolve;
     } else if (transitionType == "wipe") {
@@ -148,33 +148,33 @@ void EventSystem::registerSceneChangeEvent(const std::string& name, const std::s
     } else if (transitionType == "instant") {
         type = TransitionType::Instant;
     }
-    
+
     sceneEvent->setTransitionType(type);
-    
+
     // Register the event with the EventManager
     EventManager::Instance().registerEvent(name, std::static_pointer_cast<Event>(sceneEvent));
-    
+
     std::cout << "Registered scene change event: " << name << " targeting scene: " << targetScene << std::endl;
 }
 
-void EventSystem::registerNPCSpawnEvent(const std::string& name, const std::string& npcType, 
+void EventSystem::registerNPCSpawnEvent(const std::string& name, const std::string& npcType,
                                        int count, float spawnRadius) {
     // Create the NPC spawn parameters
     SpawnParameters params(npcType, count, spawnRadius);
-    
+
     // Create the NPC spawn event
     auto spawnEvent = std::make_shared<NPCSpawnEvent>(name, params);
-    
+
     // Register the event with the EventManager
     EventManager::Instance().registerEvent(name, std::static_pointer_cast<Event>(spawnEvent));
-    
+
     std::cout << "Registered NPC spawn event: " << name << " for NPC type: " << npcType << std::endl;
 }
 
 void EventSystem::triggerWeatherChange(const std::string& weatherType, float transitionTime) {
     // Forward to EventManager's specialized method
     EventManager::Instance().changeWeather(weatherType, transitionTime);
-    
+
     // Also notify any registered handlers for weather events
     if (m_eventHandlers.find("WeatherChange") != m_eventHandlers.end()) {
         for (auto& handler : m_eventHandlers["WeatherChange"]) {
@@ -186,7 +186,7 @@ void EventSystem::triggerWeatherChange(const std::string& weatherType, float tra
 void EventSystem::triggerSceneChange(const std::string& sceneId, const std::string& transitionType, float duration) {
     // Forward to EventManager's specialized method
     EventManager::Instance().changeScene(sceneId, transitionType, duration);
-    
+
     // Also notify any registered handlers for scene change events
     if (m_eventHandlers.find("SceneChange") != m_eventHandlers.end()) {
         for (auto& handler : m_eventHandlers["SceneChange"]) {
@@ -198,7 +198,7 @@ void EventSystem::triggerSceneChange(const std::string& sceneId, const std::stri
 void EventSystem::triggerNPCSpawn(const std::string& npcType, float x, float y) {
     // Forward to EventManager's specialized method
     EventManager::Instance().spawnNPC(npcType, x, y);
-    
+
     // Also notify any registered handlers for NPC spawn events
     if (m_eventHandlers.find("NPCSpawn") != m_eventHandlers.end()) {
         for (auto& handler : m_eventHandlers["NPCSpawn"]) {
@@ -217,13 +217,13 @@ void EventSystem::registerDefaultEvents() {
     registerWeatherEvent("DenseFog", "Foggy", 0.8f);
     registerWeatherEvent("LightSnow", "Snowy", 0.3f);
     registerWeatherEvent("Blizzard", "Snowy", 0.9f);
-    
+
     // Set up some random weather transitions based on time
     auto sunnyWeather = EventManager::Instance().getEvent("SunnyDay");
     if (sunnyWeather) {
         dynamic_cast<WeatherEvent*>(sunnyWeather)->setTimeOfDay(6.0f, 18.0f); // Daytime
     }
-    
+
     auto foggyMorning = EventManager::Instance().getEvent("LightFog");
     if (foggyMorning) {
         dynamic_cast<WeatherEvent*>(foggyMorning)->setTimeOfDay(5.0f, 9.0f); // Early morning
@@ -232,14 +232,14 @@ void EventSystem::registerDefaultEvents() {
 
 void EventSystem::registerSystemEventHandlers() {
     // Register handlers for system events
-    
+
     // Weather change handler
     registerEventHandler("WeatherChange", [](const std::string& params) {
         std::cout << "System handling weather change: " << params << std::endl;
-        
+
         // Here we would update graphics settings, particle systems, etc.
         // For example, adjust ambient lighting, fog settings, etc.
-        
+
         // Play appropriate ambient sounds
         if (params == "Rainy" || params == "Stormy") {
             // Would play rain sound if SoundManager was implemented
@@ -249,19 +249,19 @@ void EventSystem::registerSystemEventHandlers() {
             std::cout << "Playing wind ambient sound" << std::endl;
         }
     });
-    
+
     // Scene change handler
     registerEventHandler("SceneChange", [](const std::string& params) {
         std::cout << "System handling scene change: " << params << std::endl;
-        
+
         // Here we would notify the GameStateManager to change the scene
         std::cout << "Changing game state to: " << params << std::endl;
     });
-    
+
     // NPC spawn handler
     registerEventHandler("NPCSpawn", [](const std::string& params) {
         std::cout << "System handling NPC spawn: " << params << std::endl;
-        
+
         // Here we would request entity creation
         std::cout << "Creating NPC of type: " << params << std::endl;
     });
@@ -270,17 +270,17 @@ void EventSystem::registerSystemEventHandlers() {
 void EventSystem::updateEventTimers(float deltaTime) {
     // Get all events from EventManager
     std::vector<Event*> allEvents;
-    
+
     // Get events of each major type
     auto weatherEvents = EventManager::Instance().getEventsByType("Weather");
     auto sceneEvents = EventManager::Instance().getEventsByType("SceneChange");
     auto spawnEvents = EventManager::Instance().getEventsByType("NPCSpawn");
-    
+
     // Combine all events
     allEvents.insert(allEvents.end(), weatherEvents.begin(), weatherEvents.end());
     allEvents.insert(allEvents.end(), sceneEvents.begin(), sceneEvents.end());
     allEvents.insert(allEvents.end(), spawnEvents.begin(), spawnEvents.end());
-    
+
     // Update cooldown timers for all events
     for (auto event : allEvents) {
         if (event) {
@@ -293,7 +293,7 @@ void EventSystem::updateEventTimers(float deltaTime) {
 void EventSystem::processSystemEvents() {
     // This would process any system-level events like SDL events, window events, etc.
     // that might trigger game events
-    
+
     // Example: Check for day/night cycle changes
     // Use a placeholder value since GameTime might not be fully implemented
     float gameTime = 12.0f; // Noon
@@ -301,11 +301,11 @@ void EventSystem::processSystemEvents() {
         gameTime = GameTime::Instance().getGameHour();
     }
     static float lastCheckedHour = -1.0f;
-    
+
     // Check if hour has changed
     if (static_cast<int>(gameTime) != static_cast<int>(lastCheckedHour)) {
         lastCheckedHour = gameTime;
-        
+
         // Dawn
         if (gameTime >= 6.0f && gameTime < 7.0f) {
             EventManager::Instance().broadcastMessage("TIME_DAWN");

@@ -13,12 +13,12 @@
 #include <chrono>
 #include <vector>
 
-#include "../../include/core/ThreadSystem.hpp"
-#include "../../include/managers/EventManager.hpp"
-#include "../../include/events/Event.hpp"
-#include "../../include/events/WeatherEvent.hpp"
-#include "../../include/events/SceneChangeEvent.hpp"
-#include "../../include/events/NPCSpawnEvent.hpp"
+#include "core/ThreadSystem.hpp"
+#include "managers/EventManager.hpp"
+#include "events/Event.hpp"
+#include "events/WeatherEvent.hpp"
+#include "events/SceneChangeEvent.hpp"
+#include "events/NPCSpawnEvent.hpp"
 
 
 // Mock Event class for testing
@@ -75,7 +75,7 @@ struct EventManagerFixture {
         // Ensure threading is disabled before cleanup to avoid potential issues
         EventManager::Instance().configureThreading(false, 0);
         std::this_thread::sleep_for(std::chrono::milliseconds(20));
-        
+
         // Clean up the EventManager
         EventManager::Instance().clean();
 
@@ -334,7 +334,7 @@ BOOST_FIXTURE_TEST_CASE(ThreadSafety, EventManagerFixture) {
     // Make sure threading is disabled before cleanup
     EventManager::Instance().configureThreading(false, 0);
     std::this_thread::sleep_for(std::chrono::milliseconds(50));
-    
+
     // Clean up
     EventManager::Instance().removeEvent("ThreadTest");
 
