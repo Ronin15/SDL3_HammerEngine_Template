@@ -28,7 +28,7 @@ include_directories(
 # Add test executables
 add_executable(save_manager_tests 
     SaveManagerTests.cpp
-    MockPlayer.cpp
+    mocks/MockPlayer.cpp
 )
 
 add_executable(thread_system_tests
