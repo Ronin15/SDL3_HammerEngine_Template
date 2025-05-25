@@ -26,7 +26,7 @@ else() # Release build
 endif()
 
 # Debug build settings
-set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -g3 -O0 -Og -Wall -Wextra")
+set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -g3 -O0 -Og")
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -g3 -O0 -Og -Wall -Wextra")
 
 # Release build settings
@@ -138,6 +138,7 @@ file(GLOB_RECURSE SOURCES
     "src/managers/*.cpp"
     "src/gameStates/*.cpp"
     "src/entities/*.cpp"
+    "src/events/*.cpp"
     "src/ai/*.cpp"
     "src/ui/*.cpp"
 )
@@ -273,6 +274,7 @@ target_include_directories(${PROJECT_NAME} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/include/managers
     ${CMAKE_CURRENT_SOURCE_DIR}/include/gameStates
     ${CMAKE_CURRENT_SOURCE_DIR}/include/entities
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/events
     ${CMAKE_CURRENT_SOURCE_DIR}/include/entities/playerStates
     ${CMAKE_CURRENT_SOURCE_DIR}/include/ai
     ${CMAKE_CURRENT_SOURCE_DIR}/include/ai/behaviors
