@@ -17,7 +17,7 @@
 class Player;
 
 // Include our standalone MockPlayer for testing
-#include "MockPlayer.hpp"
+#include "mocks/MockPlayer.hpp"
 
 // Helper function for safely cleaning up resources
 void performSafeCleanup() {
