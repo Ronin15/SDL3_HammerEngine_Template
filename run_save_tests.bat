@@ -242,8 +242,12 @@ if exist "%TEMP_OUTPUT%" (
     findstr /R /C:"Entering test case" "%TEMP_OUTPUT%" > "test_results\save_test_cases_run.txt" 2>nul
     if exist "test_results\save_test_cases_run.txt" (
         type nul > "test_results\save_test_names.txt"
-        for /f "tokens=3 delims=^"" %%i in (test_results\save_test_cases_run.txt) do (
-            echo %%i >> "test_results\save_test_names.txt"
+        for /f "tokens=* usebackq" %%i in ("test_results\save_test_cases_run.txt") do (
+            set "line=%%i"
+            set "testcase=!line:*Entering test case =!"
+            set "testcase=!testcase:"=!"
+            set "testcase=!testcase:~0,-1!"
+            echo !testcase! >> "test_results\save_test_names.txt"
         )
     )
     
