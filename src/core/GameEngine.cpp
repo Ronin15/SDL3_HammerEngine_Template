@@ -312,19 +312,35 @@ void GameEngine::handleEvents() {
 void GameEngine::update() {
   // This method is now thread-safe and can be called from a worker thread
   std::lock_guard<std::mutex> lock(m_updateMutex);
+
+  // Mark update as running
+  m_updateRunning = true;
+
   // Update game states
   mp_gameStateManager->update();
 
+  // Increment the frame counter
+  m_lastUpdateFrame++;
+
+  // Mark update as completed
   m_updateCompleted = true;
+  m_updateRunning = false;
   m_updateCondition.notify_all();
 }
 
 void GameEngine::render() {
   // Always on MAIN thread as its an - SDL REQUIREMENT
   std::lock_guard<std::mutex> lock(m_renderMutex);
-  SDL_RenderClear(mp_renderer.get());
-  mp_gameStateManager->render();
-  SDL_RenderPresent(mp_renderer.get());
+
+  // Only update the last rendered frame if we actually render
+  if (hasNewFrameToRender()) {
+    SDL_RenderClear(mp_renderer.get());
+    mp_gameStateManager->render();
+    SDL_RenderPresent(mp_renderer.get());
+
+    // Update the last rendered frame counter
+    m_lastRenderedFrame.store(m_lastUpdateFrame.load());
+  }
 }
 
 void GameEngine::waitForUpdate() {
@@ -338,21 +354,14 @@ void GameEngine::signalUpdateComplete() {
     m_updateCompleted = false;  // Reset for next frame
   }
 }
-//maybe alternate loading strategy ------------------------------------- not needed but keeping here for example Remove later TODO!
-bool GameEngine::loadResourcesAsync(const std::string& path) {
-  auto result = Forge::ThreadSystem::Instance().enqueueTaskWithResult(
-      [this, path]() -> bool {
-        // Example of async resource loading
-        return TextureManager::Instance().load(path, "", mp_renderer.get());
-      });
 
-  // You can either wait for the result or check it later
-  try {
-    return result.get();  // This blocks until the task completes
-  } catch (const std::exception& e) {
-    std::cerr << "Forge Game Engine - Resource loading failed: " << e.what() << std::endl;
-    return false;
-  }
+bool GameEngine::hasNewFrameToRender() const {
+  // We have a new frame to render if the last update frame is newer than the last rendered frame
+  return m_lastUpdateFrame.load() > m_lastRenderedFrame.load();
+}
+
+bool GameEngine::isUpdateRunning() const {
+  return m_updateRunning.load();
 }
 
 void GameEngine::processBackgroundTasks() {
@@ -361,7 +370,7 @@ void GameEngine::processBackgroundTasks() {
 
   // AI updates run asynchronously and won't block the main thread
   AIManager::Instance().update();
-  
+
   // Example: Process AI, physics, or other non-rendering tasks
   // These tasks can run while the main thread is handling rendering
 }
