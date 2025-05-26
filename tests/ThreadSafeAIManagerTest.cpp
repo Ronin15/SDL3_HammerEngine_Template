@@ -117,15 +117,15 @@ public:
 
     void onMessage(EntityPtr entity, const std::string& message) override {
         // Debugging output - no lock needed for cout as we only care about seeing something
-        std::cout << "ThreadTestBehavior[" << m_id << "] received message: '" << message 
+        std::cout << "ThreadTestBehavior[" << m_id << "] received message: '" << message
                   << "' for entity " << (entity ? "valid" : "nullptr") << std::endl;
-        
+
         // First make a local copy of the message under the lock
         {
             std::lock_guard<std::mutex> lock(m_messageMutex);
             m_lastMessage = message;
         }
-        
+
         // Then increment the counter after everything else is done
         // This ensures the counter reflects successfully processed messages
         m_messageCount.fetch_add(1, std::memory_order_relaxed);
@@ -134,7 +134,7 @@ public:
     int getMessageCount() const {
         return m_messageCount.load();
     }
-    
+
     void resetMessageCount() {
         m_messageCount.store(0);
     }
@@ -231,13 +231,13 @@ namespace {
             return;
         }
         std::cerr << "\nSignal " << signal << " caught. Cleaning up..." << std::endl;
-    
+
         // Only perform cleanup if not already in progress
         if (!g_exitGuard.exchange(true)) {
             performSafeCleanup();
             std::cerr << "Cleanup after signal " << signal << " completed" << std::endl;
         }
-    
+
         _exit(0); // Exit with success code since we've handled cleanup
     }
 
@@ -348,7 +348,7 @@ struct GlobalTestFixture {
             performSafeCleanup();
 
             std::cout << "Global fixture cleanup completed successfully" << std::endl;
-            
+
             // Skip any further destructors to avoid segfaults in Boost Test framework
             _exit(0);
         } catch (const std::exception& e) {
@@ -505,6 +505,7 @@ BOOST_FIXTURE_TEST_CASE(TestThreadSafeBehaviorAssignment, ThreadedAITestFixture)
         auto entity = std::make_shared<TestEntity>(Vector2D(i * 10.0f, i * 10.0f));
         entities.push_back(entity);
         entityPtrs.push_back(entity);
+        // Note: The error messages about MessageTest not existing are expected since we're testing error handling
         AIManager::Instance().assignBehaviorToEntity(entity, "MessageTest");
     }
 
@@ -525,7 +526,9 @@ BOOST_FIXTURE_TEST_CASE(TestThreadSafeBehaviorAssignment, ThreadedAITestFixture)
     }
 
     // Cleanup
-    safelyUnassignBehaviors(entities);
+    for (auto& entity : entities) {
+        AIManager::Instance().unassignBehaviorFromEntity(entity);
+    }
     // Wait before resetting behaviors
     std::this_thread::sleep_for(std::chrono::milliseconds(20));
     AIManager::Instance().resetBehaviors();
@@ -546,14 +549,16 @@ BOOST_FIXTURE_TEST_CASE(TestThreadSafeBatchUpdates, ThreadedAITestFixture) {
     std::vector<std::shared_ptr<ThreadTestBehavior>> behaviors;
 
     // Register behaviors
+    // Simulate random behavior changes
     for (int i = 0; i < NUM_BEHAVIORS; ++i) {
         behaviors.push_back(std::make_shared<ThreadTestBehavior>(i));
+        AIManager::Instance().registerBehavior("Behavior" + std::to_string(i), behaviors.back());
         {
-            // Track this behavior globally to prevent premature destruction
+            // Track this behavior globally
             std::lock_guard<std::mutex> lock(g_behaviorMutex);
             g_allBehaviors.push_back(behaviors.back());
+            // Store the behavior in the global map - not using g_behaviors here
         }
-        AIManager::Instance().registerBehavior("Behavior" + std::to_string(i), behaviors.back());
     }
 
     // Create entities and assign behaviors
@@ -602,7 +607,10 @@ BOOST_FIXTURE_TEST_CASE(TestThreadSafeBatchUpdates, ThreadedAITestFixture) {
     }
 
     // Cleanup
-    safelyUnassignBehaviors(entities);
+    // Unassign behaviors individually
+    for (auto& entity : entities) {
+        AIManager::Instance().unassignBehaviorFromEntity(entity);
+    }
     // Wait before resetting behaviors
     std::this_thread::sleep_for(std::chrono::milliseconds(20));
     AIManager::Instance().resetBehaviors();
@@ -614,22 +622,22 @@ BOOST_FIXTURE_TEST_CASE(TestThreadSafeBatchUpdates, ThreadedAITestFixture) {
 }
 
 // Test case for thread-safe message passing
-BOOST_FIXTURE_TEST_CASE(TestThreadSafeMessagePassing, ThreadedAITestFixture) {
-    std::cout << "\n====== Starting TestThreadSafeMessagePassing ======\n" << std::endl;
-    // Use smaller numbers for a more focused test
-    const int NUM_ENTITIES = 5;
-    const int NUM_MESSAGES = 10;
-
+BOOST_FIXTURE_TEST_CASE(TestThreadSafeMessaging, ThreadedAITestFixture) {
+    std::cout << "Starting TestThreadSafeMessaging..." << std::endl;
+    const int NUM_ENTITIES = 100;
+    const int NUM_MESSAGES = 200;
+    
     // Create a single behavior instance that we'll use for all entities
     auto behavior = std::make_shared<ThreadTestBehavior>(42);
     behavior->m_messageCount.store(0); // Ensure counter starts at 0
     
     // Register and track the behavior
+    AIManager::Instance().registerBehavior("MessageTest", behavior);
     {
         std::lock_guard<std::mutex> lock(g_behaviorMutex);
-        g_allBehaviors.push_back(behavior);
+        // Store in the global vector only
+        g_allBehaviors.push_back(behavior); // Also add to all behaviors list
     }
-    AIManager::Instance().registerBehavior("MessageTest", behavior);
     std::cout << "Registered MessageTest behavior" << std::endl;
 
     // Create entities with IDs for easier tracking
@@ -637,12 +645,12 @@ BOOST_FIXTURE_TEST_CASE(TestThreadSafeMessagePassing, ThreadedAITestFixture) {
     for (int i = 0; i < NUM_ENTITIES; ++i) {
         auto entity = std::make_shared<TestEntity>(Vector2D(i * 10.0f, i * 10.0f));
         entities.push_back(entity);
-        
+
         // Explicitly assign the behavior to each entity
         AIManager::Instance().assignBehaviorToEntity(entity, "MessageTest");
         std::cout << "Assigned behavior to entity " << i << std::endl;
     }
-    
+
     // Verify the behavior assignment worked
     for (size_t i = 0; i < entities.size(); ++i) {
         bool hasAssigned = AIManager::Instance().entityHasBehavior(entities[i]);
@@ -652,13 +660,13 @@ BOOST_FIXTURE_TEST_CASE(TestThreadSafeMessagePassing, ThreadedAITestFixture) {
 
     // SIMPLER TEST APPROACH: Just do a single, direct message test
     std::cout << "\nSending a single direct message..." << std::endl;
-    
+
     // Use the first entity for a simple test
     AIManager::Instance().sendMessageToEntity(entities[0], "TEST_DIRECT_MESSAGE", true);
-    
+
     // Sleep a bit to give time for processing
     std::this_thread::sleep_for(std::chrono::milliseconds(50));
-    
+
     // Check if message was received
     int msgCount = behavior->getMessageCount();
     std::cout << "Message count after direct test: " << msgCount << std::endl;
@@ -666,31 +674,31 @@ BOOST_FIXTURE_TEST_CASE(TestThreadSafeMessagePassing, ThreadedAITestFixture) {
     // If first test failed, try a second approach with broadcast
     if (msgCount == 0) {
         std::cout << "Direct message failed, trying broadcast..." << std::endl;
-        
+
         // Try with broadcast message
         AIManager::Instance().broadcastMessage("TEST_BROADCAST_MESSAGE", true);
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
-        
+
         msgCount = behavior->getMessageCount();
         std::cout << "Message count after broadcast: " << msgCount << std::endl;
     }
-    
+
     // Verify at least one message was received
     BOOST_CHECK_GT(behavior->getMessageCount(), 0);
-    
+
     // If we've succeeded, no need for the more complex test
     if (behavior->getMessageCount() > 0) {
         std::cout << "Basic message test passed, skipping complex multi-threaded test" << std::endl;
     }
     else {
         std::cout << "\nRunning multi-threaded message test..." << std::endl;
-        
+
         // Send a mix of direct and broadcast messages from multiple threads
         std::vector<std::future<void>> futures;
         for (int i = 0; i < NUM_MESSAGES; ++i) {
             futures.push_back(std::async(std::launch::async, [i, &entities]() {
                 std::string message = "ThreadMessage_" + std::to_string(i);
-                
+
                 if (i % 2 == 0) {
                     // Broadcast message
                     AIManager::Instance().broadcastMessage(message, true);
@@ -699,18 +707,18 @@ BOOST_FIXTURE_TEST_CASE(TestThreadSafeMessagePassing, ThreadedAITestFixture) {
                     int entityIdx = i % entities.size();
                     AIManager::Instance().sendMessageToEntity(entities[entityIdx], message, true);
                 }
-                
+
                 // Small delay
                 std::this_thread::sleep_for(std::chrono::milliseconds(10));
             }));
         }
-        
+
         // Wait for all messages to be sent
         waitForFutures(futures);
-        
+
         // Allow time for messages to be processed
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
-        
+
         // Check message count
         std::cout << "Final message count: " << behavior->getMessageCount() << std::endl;
         BOOST_CHECK_GT(behavior->getMessageCount(), 0);
@@ -720,7 +728,7 @@ BOOST_FIXTURE_TEST_CASE(TestThreadSafeMessagePassing, ThreadedAITestFixture) {
     for (auto& entity : entities) {
         AIManager::Instance().unassignBehaviorFromEntity(entity);
     }
-    
+
     AIManager::Instance().resetBehaviors();
     std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
@@ -734,9 +742,10 @@ BOOST_FIXTURE_TEST_CASE(TestThreadSafeCacheInvalidation, ThreadedAITestFixture) 
     const int NUM_ENTITIES = 100; // Define NUM_ENTITIES
 
     // Register a behavior
+    std::string behaviorName = "CacheTest";
     auto behavior = std::make_shared<ThreadTestBehavior>(0);
+    AIManager::Instance().registerBehavior(behaviorName, behavior);
     {
-        // Track this behavior globally to prevent premature destruction
         std::lock_guard<std::mutex> lock(g_behaviorMutex);
         g_allBehaviors.push_back(behavior);
     }
@@ -744,23 +753,24 @@ BOOST_FIXTURE_TEST_CASE(TestThreadSafeCacheInvalidation, ThreadedAITestFixture) 
 
     // Create a pool of entities
     std::vector<std::shared_ptr<TestEntity>> entities;
-    std::vector<std::shared_ptr<TestEntity>> entityPtrs;
-
+    std::vector<EntityPtr> entityPtrs;
     for (int i = 0; i < NUM_ENTITIES; ++i) {
         auto entity = std::make_shared<TestEntity>(Vector2D(i * 10.0f, i * 10.0f));
         entities.push_back(entity);
         entityPtrs.push_back(entity);
     }
-
-    // Repeatedly assign and unassign behaviors to test cache invalidation
+    
+    // Run a mix of operations
     std::vector<std::future<void>> futures;
     for (int i = 0; i < NUM_OPERATIONS; ++i) {
         futures.push_back(std::async(std::launch::async, [i, &entityPtrs]() {
+            int entityIndex = i % entityPtrs.size();
             if (i % 2 == 0) {
-                AIManager::Instance().assignBehaviorToEntity(entityPtrs[i], "CacheTest");
+                AIManager::Instance().assignBehaviorToEntity(entityPtrs[entityIndex], "CacheTest");
             } else {
-                AIManager::Instance().assignBehaviorToEntity(entityPtrs[i], "CacheTest");
-                AIManager::Instance().unassignBehaviorFromEntity(entityPtrs[i]);
+                AIManager::Instance().assignBehaviorToEntity(entityPtrs[entityIndex], "CacheTest");
+                // Unassign the behavior
+                AIManager::Instance().unassignBehaviorFromEntity(entityPtrs[entityIndex]);
             }
         }));
     }

@@ -40,6 +40,7 @@
 #include <chrono>
 #include <limits>
 #include <boost/container/flat_map.hpp>
+#include "core/ThreadSystem.hpp"
 
 
 // Conditional debug logging macros
@@ -115,10 +116,12 @@ public:
      * @brief Configure threading options for event processing
      * @param useThreading Whether to use ThreadSystem for parallel event updates
      * @param maxThreads Maximum number of concurrent tasks (0 = use ThreadSystem default)
+     * @param priority Priority level for event processing tasks (default: Normal)
      * @thread_safety Must be called before any event updates begin
      * @note This method will initialize ThreadSystem if needed when enabling threading
      */
-    void configureThreading(bool useThreading, unsigned int maxThreads = 0);
+    void configureThreading(bool useThreading, unsigned int maxThreads = 0, 
+                           Forge::TaskPriority priority = Forge::TaskPriority::Normal);
 
     // Event management
     /**
@@ -355,6 +358,7 @@ private:
     std::atomic<bool> m_initialized{false};
     std::atomic<bool> m_useThreading{true}; // Controls whether updates use ThreadSystem
     unsigned int m_maxThreads{0}; // 0 = use ThreadSystem default thread count
+    Forge::TaskPriority m_eventTaskPriority{Forge::TaskPriority::Normal}; // Default priority for event tasks
 
     // For batch processing optimization
     using EventBatch = std::vector<Event*>;
