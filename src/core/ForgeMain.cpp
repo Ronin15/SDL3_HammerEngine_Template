@@ -33,7 +33,7 @@ const std::string GAME_NAME{"Game Template"};
       return -1;
     }
   } catch (const std::exception& e) {
-    std::cerr << "Forge Game Engine - Exception during thread system initialization: " 
+    std::cerr << "Forge Game Engine - Exception during thread system initialization: "
               << e.what() << std::endl;
     return -1;
   }
@@ -92,7 +92,7 @@ const std::string GAME_NAME{"Game Template"};
         Forge::ThreadSystem::Instance().enqueueTask([]() {
           try {
             // Example background task
-            // GameEngine::Instance().processBackgroundTasks();
+            GameEngine::Instance().processBackgroundTasks();
           } catch (const std::exception& e) {
             std::cerr << "Forge Game Engine - Exception in background task: " << e.what() << std::endl;
           }
