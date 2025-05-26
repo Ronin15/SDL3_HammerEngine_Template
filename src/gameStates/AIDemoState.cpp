@@ -16,6 +16,8 @@
 #include <iostream>
 #include <memory>
 #include <random>
+#include <sstream>
+#include <iomanip>
 
 AIDemoState::~AIDemoState() {
     // Don't call virtual functions from destructors
@@ -64,6 +66,13 @@ bool AIDemoState::enter() {
 
     // Create NPCs with AI behaviors
     createNPCs();
+
+    // Initialize frame rate counter
+    m_lastFrameTime = std::chrono::steady_clock::now();
+    m_frameTimes.clear();
+    m_frameCount = 0;
+    m_currentFPS = 0.0f;
+    m_averageFPS = 0.0f;
 
     // Log status
     std::cout << "Forge Game Engine - Created " << m_npcs.size() << " NPCs with AI behaviors\n";
@@ -117,7 +126,8 @@ bool AIDemoState::exit() {
 }
 
 void AIDemoState::update() {
-    // No need to track frame count now that we've removed logging
+    // Update frame rate counter
+    updateFrameRate();
 
     // Update player
     if (m_player) {
@@ -255,6 +265,19 @@ void AIDemoState::render() {
                                     20,
                                     {255, 255, 255, 255},
                                     GameEngine::Instance().getRenderer());
+                                    
+    // Render frame rate
+    std::stringstream fpsText;
+    fpsText << "FPS: " << std::fixed << std::setprecision(1) << m_currentFPS 
+            << " (Avg: " << std::setprecision(1) << m_averageFPS << ")"
+            << " - Entity Count: " << m_npcs.size();
+    
+    FontManager::Instance().drawText(fpsText.str(), 
+                                "fonts_Arial",
+                                GameEngine::Instance().getWindowWidth() / 2,     // Center horizontally
+                                50,
+                                {255, 255, 0, 255},  // Yellow color for better visibility
+                                GameEngine::Instance().getRenderer());
 }
 
 void AIDemoState::setupAIBehaviors() {
@@ -292,6 +315,40 @@ void AIDemoState::setupAIBehaviors() {
     AIManager::Instance().registerBehavior("Chase", std::move(chaseBehavior));
 
     std::cout << "Forge Game Engine - AI behaviors setup complete.\n";
+}
+
+void AIDemoState::updateFrameRate() {
+    // Calculate time since last frame
+    auto currentTime = std::chrono::steady_clock::now();
+    float deltaTime = std::chrono::duration<float, std::chrono::milliseconds::period>(currentTime - m_lastFrameTime).count();
+    m_lastFrameTime = currentTime;
+    
+    // Convert to seconds for FPS calculation
+    float deltaTimeSeconds = deltaTime / 1000.0f;
+    
+    // Skip extreme values that might be from debugging pauses
+    if (deltaTimeSeconds > 0.0f && deltaTimeSeconds < 1.0f) {
+        // Calculate current FPS
+        m_currentFPS = 1.0f / deltaTimeSeconds;
+        
+        // Add to rolling average
+        m_frameTimes.push_back(m_currentFPS);
+        
+        // Keep only the last MAX_FRAME_SAMPLES frames
+        if (m_frameTimes.size() > MAX_FRAME_SAMPLES) {
+            m_frameTimes.pop_front();
+        }
+        
+        // Calculate average FPS
+        float sum = 0.0f;
+        for (float fps : m_frameTimes) {
+            sum += fps;
+        }
+        m_averageFPS = sum / m_frameTimes.size();
+    }
+    
+    // Increment frame counter
+    m_frameCount++;
 }
 
 void AIDemoState::createNPCs() {

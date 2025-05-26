@@ -9,6 +9,7 @@
 #include "managers/GameStateManager.hpp"
 #include <SDL3_image/SDL_image.h>
 #include <atomic>
+#include <chrono>
 #include <condition_variable>
 #include <memory>
 #include <mutex>
@@ -44,6 +45,11 @@ class GameEngine {
   // Frame management methods
   bool hasNewFrameToRender() const;
   bool isUpdateRunning() const;
+  
+  // Double buffering
+  void swapBuffers();
+  size_t getCurrentBufferIndex() const;
+  size_t getRenderBufferIndex() const;
 
   // GameStateManager getter to let game engine access
   GameStateManager* getGameStateManager() const { return mp_gameStateManager.get(); }
@@ -69,13 +75,32 @@ class GameEngine {
   // Multithreading synchronization
   std::mutex m_updateMutex{};
   std::condition_variable m_updateCondition{};
+  // Using memory_order for thread synchronization
   std::atomic<bool> m_updateCompleted{false};
   std::atomic<bool> m_updateRunning{false};
   std::atomic<uint64_t> m_lastUpdateFrame{0};
   std::atomic<uint64_t> m_lastRenderedFrame{0};
+  
+  // Double buffering (ping-pong buffers)
+  static constexpr size_t BUFFER_COUNT = 2;
+  std::atomic<size_t> m_currentBufferIndex{0};
+  std::atomic<size_t> m_renderBufferIndex{0};
+  std::atomic<bool> m_bufferReady[BUFFER_COUNT]{false, false};
+  
+  // Synchronization barriers
+  std::mutex m_bufferMutex{};
+  std::condition_variable m_bufferCondition{};
+  
+  // Protection for high entity counts
+  std::atomic<size_t> m_entityProcessingCount{0};
+  std::atomic<bool> m_skipFrame{false};
 
   // Render synchronization
   std::mutex m_renderMutex{};
+  
+  // Thread safety
+  std::chrono::steady_clock::time_point m_lastFrameTime{};
+  std::atomic<uint32_t> m_frameTimeMs{0};
 
   // Delete copy constructor and assignment operator
   GameEngine(const GameEngine&) = delete; // Prevent copying
