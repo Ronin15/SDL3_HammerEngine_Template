@@ -1,6 +1,8 @@
 /* Copyright (c) 2025 Hammer Forged Games
  * All rights reserved.
  * Licensed under the MIT License - see LICENSE file for details
+ *
+ * Thread System: Handles task scheduling, thread pooling and task prioritization
 */
 
 #ifndef THREAD_SYSTEM_HPP
@@ -13,8 +15,10 @@
 #include <iostream>
 #include <memory>
 #include <mutex>
-#include <deque>
-
+#include <queue>
+#include <chrono>
+#include <map>
+#include <string>
 #include <thread>
 
 #include <SDL3/SDL.h>
@@ -22,12 +26,46 @@
 
 namespace Forge {
 
+// Task priority levels
+enum class TaskPriority {
+    Critical = 0,   // Must execute ASAP (e.g., rendering, input handling)
+    High = 1,       // Important tasks (e.g., physics, animation)
+    Normal = 2,     // Default priority for most tasks
+    Low = 3,        // Background tasks (e.g., asset loading)
+    Idle = 4        // Only execute when nothing else is pending
+};
+
+// Task wrapper with priority information
+struct PrioritizedTask {
+    std::function<void()> task;
+    TaskPriority priority;
+    std::chrono::steady_clock::time_point enqueueTime;
+    std::string description;
+    
+    // Constructor
+    PrioritizedTask(std::function<void()> t, TaskPriority p, std::string desc = "")
+        : task(std::move(t)), 
+          priority(p), 
+          enqueueTime(std::chrono::steady_clock::now()),
+          description(std::move(desc)) {}
+    
+    // Comparison operator for priority queue
+    bool operator<(const PrioritizedTask& other) const {
+        // Higher priority (lower enum value) comes first
+        if (priority != other.priority) {
+            return priority > other.priority;
+        }
+        // If same priority, older tasks come first (FIFO)
+        return enqueueTime > other.enqueueTime;
+    }
+};
+
 /**
- * @brief Thread-safe task queue for the worker thread pool
+ * @brief Thread-safe prioritized task queue for the worker thread pool
  *
  * This class provides a thread-safe queue for tasks to be executed by
  * the worker threads. It handles synchronization and provides methods
- * to push, pop, and manage tasks.
+ * to push, pop, and manage tasks with priority levels.
  *
  * The queue automatically grows as needed, but can also have capacity
  * reserved in advance for better performance when submitting large
@@ -40,61 +78,147 @@ public:
      * @brief Construct a new Task Queue
      *
      * @param initialCapacity Initial capacity to reserve (default: 256)
+     * @param enableProfiling Enable detailed task profiling (default: false)
      */
-    TaskQueue(size_t initialCapacity = 256) {
-        // Store the desired capacity
-        m_desiredCapacity = initialCapacity;
-        // std::deque doesn't support reserve, so we just track the capacity ourselves
+    TaskQueue(size_t initialCapacity = 256, bool enableProfiling = false) 
+        : m_desiredCapacity(initialCapacity),
+          m_enableProfiling(enableProfiling) {
+        // Initialize task execution statistics
+        for (int i = 0; i <= static_cast<int>(TaskPriority::Idle); ++i) {
+            m_taskStats[static_cast<TaskPriority>(i)] = {0, 0, 0};
+        }
     }
 
-    void push(std::function<void()> task) {
+    void push(std::function<void()> task, TaskPriority priority = TaskPriority::Normal, const std::string& description = "") {
         {
             std::unique_lock<std::mutex> lock(queueMutex);
-            taskStorage.push_back(std::move(task));
+            taskQueue.emplace(std::move(task), priority, description);
+            
+            // Update statistics
+            m_taskStats[priority].enqueued++;
+            m_totalTasksEnqueued.fetch_add(1, std::memory_order_relaxed);
+            
+            // If profiling is enabled and this is a high priority task, log it
+            if (m_enableProfiling && priority <= TaskPriority::High && !description.empty()) {
+                std::cout << "Forge Game Engine - High priority task enqueued: " 
+                          << description << " (Priority: " 
+                          << static_cast<int>(priority) << ")" << std::endl;
+            }
         }
         condition.notify_one();
     }
 
     bool pop(std::function<void()>& task) {
         std::unique_lock<std::mutex> lock(queueMutex);
-        condition.wait(lock, [this] { return stopping || !taskStorage.empty(); });
-
-        if (stopping && taskStorage.empty()) {
+        
+        // Use a timeout to periodically check stopping
+        bool result = condition.wait_for(lock, 
+            std::chrono::milliseconds(100), 
+            [this] { return stopping.load(std::memory_order_acquire) || !taskQueue.empty(); });
+            
+        // If we're stopping and there are no tasks, return false
+        if (stopping.load(std::memory_order_acquire) && taskQueue.empty()) {
             return false;
         }
-
-        task = std::move(taskStorage.front());
-        taskStorage.pop_front();
-        return true;
+        
+        // If we timed out but don't have tasks yet, return false without assigning task
+        if (!result && taskQueue.empty()) {
+            return false;
+        }
+        
+        // Only try to get a task if we actually have one
+        if (!taskQueue.empty()) {
+            // Get highest priority task
+            PrioritizedTask prioritizedTask = taskQueue.top();
+            taskQueue.pop();
+            
+            // Calculate wait time for metrics
+            auto now = std::chrono::steady_clock::now();
+            auto waitTime = std::chrono::duration_cast<std::chrono::milliseconds>(
+                now - prioritizedTask.enqueueTime).count();
+                
+            // Update statistics
+            if (m_enableProfiling) {
+                m_taskStats[prioritizedTask.priority].completed++;
+                m_taskStats[prioritizedTask.priority].totalWaitTimeMs += waitTime;
+                
+                // Log long wait times for high priority tasks
+                if (prioritizedTask.priority <= TaskPriority::High && waitTime > 100 && !prioritizedTask.description.empty()) {
+                    std::cout << "Forge Game Engine - High priority task delayed: " 
+                              << prioritizedTask.description
+                              << " waited " << waitTime << "ms" << std::endl;
+                }
+            }
+            
+            // Return the actual task
+            task = std::move(prioritizedTask.task);
+            m_totalTasksProcessed.fetch_add(1, std::memory_order_relaxed);
+            return true;
+        }
+        
+        return false;
     }
 
     void stop() {
         {
             std::unique_lock<std::mutex> lock(queueMutex);
-            stopping = true;
-            // Clear any remaining tasks to avoid processing them during shutdown
-            taskStorage.clear();
+            
+            // Log statistics if any tasks are still in the queue
+            if (m_enableProfiling && !taskQueue.empty()) {
+                std::cout << "Forge Game Engine - Stopping task queue with " 
+                          << taskQueue.size() << " pending tasks" << std::endl;
+                
+                // Count tasks by priority
+                std::map<TaskPriority, int> pendingByPriority;
+                std::priority_queue<PrioritizedTask> tempQueue = taskQueue; // Copy to count
+                
+                while (!tempQueue.empty()) {
+                    pendingByPriority[tempQueue.top().priority]++;
+                    tempQueue.pop();
+                }
+                
+                // Log pending tasks by priority
+                for (const auto& [priority, count] : pendingByPriority) {
+                    std::cout << "  Priority " << static_cast<int>(priority) 
+                              << ": " << count << " tasks" << std::endl;
+                }
+            }
+            
+            // Clear the queue
+            while (!taskQueue.empty()) {
+                taskQueue.pop();
+            }
+            
+            // Set the stopping flag with proper memory ordering
+            stopping.store(true, std::memory_order_release);
         }
+        // Memory fence to ensure visibility
+        std::atomic_thread_fence(std::memory_order_seq_cst);
         // Wake up all waiting threads to check the stopping flag
         condition.notify_all();
     }
 
     bool isEmpty() const {
         std::unique_lock<std::mutex> lock(queueMutex);
-        return taskStorage.empty();
+        return taskQueue.empty();
+    }
+    
+    // Directly check if stopping without acquiring lock
+    bool isStopping() const {
+        return stopping.load(std::memory_order_acquire);
     }
 
     // Reserve capacity for the task queue to reduce memory reallocations
     void reserve(size_t capacity) {
-        // std::deque doesn't have reserve, so we'll just save the desired capacity
-        // and potentially pre-allocate in the future
+        // We're using a priority_queue which doesn't support reserve directly
+        // Just save the desired capacity for reporting purposes
         std::unique_lock<std::mutex> lock(queueMutex);
         m_desiredCapacity = capacity;
     }
 
     // Get the current capacity of the task queue
     size_t capacity() const {
-        // std::deque doesn't have capacity(), return our desired capacity instead
+        // Return our tracked desired capacity
         std::unique_lock<std::mutex> lock(queueMutex);
         return m_desiredCapacity;
     }
@@ -102,41 +226,141 @@ public:
     // Get the current size of the task queue
     size_t size() const {
         std::unique_lock<std::mutex> lock(queueMutex);
-        return taskStorage.size();
+        return taskQueue.size();
+    }
+    
+    // Enable or disable profiling
+    void setProfilingEnabled(bool enabled) {
+        std::unique_lock<std::mutex> lock(queueMutex);
+        m_enableProfiling = enabled;
+    }
+    
+    // Get task statistics
+    struct TaskStats {
+        size_t enqueued{0};
+        size_t completed{0};
+        size_t totalWaitTimeMs{0};
+        
+        double getAverageWaitTimeMs() const {
+            return completed > 0 ? static_cast<double>(totalWaitTimeMs) / completed : 0.0;
+        }
+    };
+    
+    // Get statistics for a specific priority level
+    TaskStats getTaskStats(TaskPriority priority) const {
+        std::unique_lock<std::mutex> lock(queueMutex);
+        auto it = m_taskStats.find(priority);
+        if (it != m_taskStats.end()) {
+            return it->second;
+        }
+        return TaskStats{};
+    }
+    
+    // Get total tasks processed and enqueued
+    size_t getTotalTasksProcessed() const {
+        return m_totalTasksProcessed.load(std::memory_order_relaxed);
+    }
+    
+    size_t getTotalTasksEnqueued() const {
+        return m_totalTasksEnqueued.load(std::memory_order_relaxed);
     }
 
-    private:
-        std::deque<std::function<void()>> taskStorage{};
-        mutable std::mutex queueMutex{};  // Must use std::mutex with condition_variable
-        std::condition_variable condition{};
-        std::atomic<bool> stopping{false};
-        size_t m_desiredCapacity{256}; // Track desired capacity ourselves
+private:
+    // Priority queue for tasks, sorted by priority and then by enqueue time
+    std::priority_queue<PrioritizedTask> taskQueue{};
+    mutable std::mutex queueMutex{};  // Must use std::mutex with condition_variable
+    std::condition_variable condition{};
+    std::atomic<bool> stopping{false};
+    
+    // Statistics tracking
+    std::map<TaskPriority, TaskStats> m_taskStats{};
+    std::atomic<size_t> m_totalTasksProcessed{0};
+    std::atomic<size_t> m_totalTasksEnqueued{0};
+    
+    size_t m_desiredCapacity{256}; // Track desired capacity ourselves
+    bool m_enableProfiling{false}; // Enable detailed performance metrics
+    
+    // Memory fences for better cross-thread visibility
+    void notifyStop() {
+        stopping.store(true, std::memory_order_release);
+        std::atomic_thread_fence(std::memory_order_seq_cst);
+        condition.notify_all();
+    }
 };
 
 // Thread pool for managing worker threads
 class ThreadPool {
 
 public:
-    ThreadPool(size_t numThreads, size_t queueCapacity = 256) {
-        // Reserve capacity in the task queue before creating worker threads
-        taskQueue.reserve(queueCapacity);
-
+    /**
+     * @brief Construct a new Thread Pool
+     * 
+     * @param numThreads Number of worker threads to create
+     * @param queueCapacity Initial capacity for the task queue
+     * @param enableProfiling Enable detailed task profiling
+     */
+    ThreadPool(size_t numThreads, size_t queueCapacity = 256, bool enableProfiling = false) 
+        : taskQueue(queueCapacity, enableProfiling) {
+        
+        // Set up worker threads
         m_workers.reserve(numThreads);
         for (size_t i = 0; i < numThreads; ++i) {
-            m_workers.emplace_back([this] { workerThread(); });
+            m_workers.emplace_back([this, i] { 
+                // Name the thread for easier debugging
+                std::string threadName = "Worker-" + std::to_string(i);
+                
+                // Set thread name if platform supports it
+                #ifdef _GNU_SOURCE
+                pthread_setname_np(pthread_self(), threadName.c_str());
+                #endif
+                
+                // Run the worker
+                workerThread(i); 
+            });
+        }
+        
+        if (enableProfiling) {
+            std::cout << "Forge Game Engine - Thread pool created with " 
+                      << numThreads << " threads and profiling enabled" << std::endl;
         }
     }
 
     ~ThreadPool() {
         // Signal all threads to stop after finishing current tasks
         isRunning.store(false, std::memory_order_release);
+        // Ensure all threads see the update immediately
+        std::atomic_thread_fence(std::memory_order_seq_cst);
         taskQueue.stop();
 
         // Wait for all worker threads to finish and join them
         for (auto& worker : m_workers) {
             if (worker.joinable()) {
                 try {
-                    worker.join();
+                    // Add a timeout for joining threads to prevent hanging on shutdown
+                    auto start = std::chrono::steady_clock::now();
+                    bool joined = false;
+                    
+                    // Try a non-blocking join first
+                    while (!joined && 
+                           std::chrono::duration_cast<std::chrono::milliseconds>(
+                               std::chrono::steady_clock::now() - start).count() < 1000) {
+                        // Give the thread a chance to exit naturally
+                        SDL_Delay(10);
+                        
+                        std::thread::id id = worker.get_id();
+                        if (!worker.joinable()) {
+                            joined = true;
+                            std::cout << "Forge Game Engine - Thread " << id << " exited" << std::endl;
+                            break;
+                        }
+                    }
+                    
+                    // If we couldn't join nicely, force it
+                    if (!joined && worker.joinable()) {
+                        std::cout << "Forge Game Engine - Warning: Thread " << worker.get_id() 
+                                  << " did not exit naturally, forcing..." << std::endl;
+                        worker.join(); // This will block until the thread completes
+                    }
                 } catch (const std::exception& e) {
                     // Log the error but continue shutdown
                     std::cout << "Forge Game Engine - Error joining thread!: " << e.what() << std::endl;
@@ -147,8 +371,17 @@ public:
         m_workers.clear();
     }
 
-    void enqueue(std::function<void()> task) {
-        taskQueue.push(std::move(task));
+    /**
+     * @brief Enqueue a task with specified priority
+     * 
+     * @param task The task to execute
+     * @param priority The priority level (default: Normal)
+     * @param description Optional description for debugging
+     */
+    void enqueue(std::function<void()> task, 
+                 TaskPriority priority = TaskPriority::Normal,
+                 const std::string& description = "") {
+        taskQueue.push(std::move(task), priority, description);
     }
 
     bool busy() const {
@@ -164,8 +397,20 @@ public:
         return taskQueue;
     }
 
+    /**
+     * @brief Enqueue a task that returns a result with specified priority
+     * 
+     * @param f The function to execute
+     * @param priority The priority level (default: Normal)
+     * @param description Optional description for debugging
+     * @param args Function arguments
+     * @return A future containing the result
+     */
     template<class F, class... Args>
-    auto enqueueWithResult(F&& f, Args&&... args)
+    auto enqueueWithResult(F&& f, 
+                          TaskPriority priority = TaskPriority::Normal,
+                          const std::string& description = "",
+                          Args&&... args)
         -> std::future<typename std::invoke_result<F, Args...>::type> {
         using return_type = typename std::invoke_result<F, Args...>::type;
 
@@ -174,29 +419,71 @@ public:
         );
 
         std::future<return_type> result = task->get_future();
-        enqueue([task](){ (*task)(); });
+        enqueue([task](){ (*task)(); }, priority, description);
         return result;
     }
-    private:
-            boost::container::small_vector<std::thread, 16> m_workers{}; // Optimized for up to 16 threads without heap allocation
-            TaskQueue taskQueue{};
-            std::atomic<bool> isRunning{true};
-            mutable std::mutex m_mutex{}; // For thread-safe access to members
+private:
+    boost::container::small_vector<std::thread, 16> m_workers{}; // Optimized for up to 16 threads without heap allocation
+    TaskQueue taskQueue{};
+    std::atomic<bool> isRunning{true};
+    mutable std::mutex m_mutex{}; // For thread-safe access to members
 
-        void workerThread() {
-            std::function<void()> task;
-            while (isRunning.load(std::memory_order_acquire)) {
-                if (taskQueue.pop(task)) {
-                    try {
-                        task();
-                    } catch (const std::exception& e) {
-                        std::cout << "Forge Game Engine - Error in worker thread: " << e.what() << std::endl;
-                                } catch (...) {
-                                    std::cout << "Forge Game Engine - Unknown error in worker thread" << std::endl;
-                    }
+    void workerThread(size_t threadIndex = 0) {
+        std::function<void()> task;
+    
+        // For statistics tracking
+        auto startTime = std::chrono::steady_clock::now();
+        size_t tasksProcessed = 0;
+    
+        while (isRunning.load(std::memory_order_acquire)) {
+            // Use a timeout on task pop to periodically check isRunning
+            bool gotTask = taskQueue.pop(task);
+        
+            // Early exit if shutdown was requested while waiting
+            if (!isRunning.load(std::memory_order_acquire)) {
+                break;
+            }
+        
+            if (gotTask) {
+                // Track execution time for profiling
+                auto taskStartTime = std::chrono::steady_clock::now();
+            
+                try {
+                    task();
+                    tasksProcessed++;
+                } catch (const std::exception& e) {
+                    std::cout << "Forge Game Engine - Error in worker thread " << threadIndex 
+                              << ": " << e.what() << std::endl;
+                } catch (...) {
+                    std::cout << "Forge Game Engine - Unknown error in worker thread " 
+                              << threadIndex << std::endl;
                 }
+            
+                // Track execution time
+                auto taskEndTime = std::chrono::steady_clock::now();
+                auto taskDuration = std::chrono::duration_cast<std::chrono::milliseconds>(
+                    taskEndTime - taskStartTime).count();
+            
+                // Log slow tasks if profiling is enabled
+                if (taskDuration > 16) { // 16ms = 60fps frame time
+                    std::cout << "Forge Game Engine - Worker " << threadIndex 
+                              << " - Slow task: " << taskDuration << "ms" << std::endl;
+                }
+            
+                // Clear task after execution to free resources
+                task = nullptr;
             }
         }
+    
+        // Log worker thread statistics on exit
+        auto endTime = std::chrono::steady_clock::now();
+        auto totalDuration = std::chrono::duration_cast<std::chrono::milliseconds>(
+            endTime - startTime).count();
+    
+        std::cout << "Forge Game Engine - Worker " << threadIndex 
+                  << " exiting after processing " << tasksProcessed << " tasks over "
+                  << totalDuration << "ms" << std::endl;
+    }
 };
 
 // Singleton Thread System Manager
@@ -205,6 +492,10 @@ class ThreadSystem {
 public:
     // Task queue settings
     static constexpr size_t DEFAULT_QUEUE_CAPACITY = 512;
+    
+    // Timeout settings
+    static constexpr int DEFAULT_SHUTDOWN_TIMEOUT_MS = 5000; // 5 seconds
+    static constexpr int DEFAULT_TASK_TIMEOUT_MS = 30000;    // 30 seconds
 
     static ThreadSystem& Instance() {
         static ThreadSystem instance;
@@ -216,30 +507,44 @@ public:
      * @return True if the ThreadSystem has been initialized, false otherwise
      */
     static bool Exists() {
-        return !Instance().isShutdown();
+        return !Instance().m_isShutdown.load(std::memory_order_acquire);
     }
 
     void clean() {
         std::cout << "Forge Game Engine - ThreadSystem resources cleaned!" << std::endl;
+        
         // Set shutdown flag first so any new accesses will be rejected
         m_isShutdown.store(true, std::memory_order_release);
+        // Ensure visibility across all threads
+        std::atomic_thread_fence(std::memory_order_seq_cst);
 
-        if (mp_threadPool) {
+        if (m_threadPool) {
             // Avoid potential deadlock by using a timeout
             const int MAX_WAIT_MS = 5000; // 5 seconds max wait
+            const int WAIT_INTERVAL_MS = 10; // Check interval
             int waited = 0;
 
-            while (mp_threadPool->busy() && waited < MAX_WAIT_MS) {
-                SDL_Delay(10); // Short delay to avoid busy waiting
-                waited += 10;
+            // Log the number of pending tasks
+            size_t pendingTasks = m_threadPool->getTaskQueue().size();
+            if (pendingTasks > 0) {
+                std::cout << "Forge Game Engine - Waiting for " << pendingTasks 
+                          << " pending tasks to complete during shutdown..." << std::endl;
+            }
+
+            while (m_threadPool->busy() && waited < MAX_WAIT_MS) {
+                SDL_Delay(WAIT_INTERVAL_MS); // Short delay to avoid busy waiting
+                waited += WAIT_INTERVAL_MS;
             }
 
             // If still busy after timeout, log a warning
-            if (mp_threadPool->busy()) {
-                std::cout << "Forge Game Engine - Warning: ThreadSystem shutdown with pending tasks!" << std::endl;
+            if (m_threadPool->busy()) {
+                pendingTasks = m_threadPool->getTaskQueue().size();
+                std::cout << "Forge Game Engine - Warning: ThreadSystem shutdown with " 
+                          << pendingTasks << " pending tasks!" << std::endl;
             }
 
-            mp_threadPool.reset();
+            // Ensure thread pool is destroyed
+            m_threadPool.reset();
         }
     }
 
@@ -257,9 +562,13 @@ public:
      * After initialization, the task queue can grow dynamically as needed.
      *
      * @param queueCapacity Initial capacity for the task queue (default: 512)
+     * @param customThreadCount Optional parameter to specify exact thread count (0 for auto-detect)
+     * @param enableProfiling Enable detailed task profiling (default: false)
      * @return true if initialization succeeded, false otherwise
      */
-    bool init(size_t queueCapacity = DEFAULT_QUEUE_CAPACITY) {
+    bool init(size_t queueCapacity = DEFAULT_QUEUE_CAPACITY, 
+              unsigned int customThreadCount = 0,
+              bool enableProfiling = false) {
         // If already shutdown, don't allow re-initialization
         if (m_isShutdown.load(std::memory_order_acquire)) {
             std::cout << "Forge Game Engine - Error: Attempted to use ThreadSystem after shutdown!" << std::endl;
@@ -268,11 +577,31 @@ public:
 
         // Set queue capacity
         m_queueCapacity = queueCapacity;
+        m_enableProfiling = enableProfiling;
 
-        // Determine optimal thread count (leave one for main thread)
-        m_numThreads = std::max(1u, std::thread::hardware_concurrency() - 1);
-        mp_threadPool = std::make_unique<ThreadPool>(m_numThreads, m_queueCapacity);
-        return mp_threadPool != nullptr;
+        // Determine optimal thread count based on hardware
+        if (customThreadCount > 0) {
+            m_numThreads = customThreadCount;
+        } else {
+            unsigned int hardwareThreads = std::thread::hardware_concurrency();
+            // Ensure we have at least one thread and leave one for main thread
+            m_numThreads = (hardwareThreads > 1) ? (hardwareThreads - 1) : 1;
+        }
+        
+        // Create thread pool with profiling if enabled
+        try {
+            m_threadPool = std::make_unique<ThreadPool>(m_numThreads, m_queueCapacity, m_enableProfiling);
+            
+            std::cout << "Forge Game Engine - ThreadSystem initialized with " 
+                      << m_numThreads << " worker threads" 
+                      << (m_enableProfiling ? " (profiling enabled)" : "") << std::endl;
+                      
+            return m_threadPool != nullptr;
+        } catch (const std::exception& e) {
+            std::cout << "Forge Game Engine - Failed to initialize ThreadSystem: " 
+                      << e.what() << std::endl;
+            return false;
+        }
     }
 
     /**
@@ -284,39 +613,65 @@ public:
      * the order they are submitted.
      *
      * @param task The task to execute
+     * @param priority The priority level for the task
+     * @param description Optional description for debugging and monitoring
      */
-    void enqueueTask(std::function<void()> task) {
+    void enqueueTask(std::function<void()> task, 
+                     TaskPriority priority = TaskPriority::Normal, 
+                     const std::string& description = "") {
         // If shutdown or no thread pool, reject the task
-        if (m_isShutdown.load(std::memory_order_acquire) || !mp_threadPool) {
-            std::cerr << "Forge Game Engine - Warning: Attempted to enqueue task after ThreadSystem shutdown!" << std::endl;
+        if (m_isShutdown.load(std::memory_order_acquire) || !m_threadPool) {
+            std::cerr << "Forge Game Engine - Warning: Attempted to enqueue task";
+            if (!description.empty()) {
+                std::cerr << " (" << description << ")";
+            }
+            std::cerr << " after ThreadSystem shutdown!" << std::endl;
             return;
         }
-        mp_threadPool->enqueue(std::move(task));
+        
+        // If debug logging is enabled and we have a description, log it
+        if (!description.empty() && m_enableDebugLogging) {
+            std::cout << "Forge Game Engine - Enqueuing task: " << description << std::endl;
+        }
+        
+        m_threadPool->enqueue(std::move(task), priority, description);
     }
 
     /**
-     * @brief Enqueue a task that returns a result
+     * @brief Enqueue a task that returns a result with priority
      *
      * This method adds a task to the thread pool and returns a future that
      * can be used to retrieve the result. The task will be executed by one
-     * of the worker threads as soon as a thread becomes available.
+     * of the worker threads according to its priority level.
      *
      * @param f The function to execute
+     * @param priority Priority level for the task (default: Normal)
+     * @param description Optional description for debugging and monitoring
      * @param args The arguments to pass to the function
      * @return A future that will contain the result of the function call
      * @throws std::runtime_error if the ThreadSystem is shut down
      */
     template<class F, class... Args>
-    auto enqueueTaskWithResult(F&& f, Args&&... args)
+    auto enqueueTaskWithResult(F&& f, 
+                              TaskPriority priority = TaskPriority::Normal,
+                              const std::string& description = "",
+                              Args&&... args)
         -> std::future<typename std::invoke_result<F, Args...>::type> {
         // If shutdown or no thread pool, throw an exception
-        if (m_isShutdown.load(std::memory_order_acquire) || !mp_threadPool) {
-            std::cout << "Forge Game Engine - Warning: Attempted to enqueue task after ThreadSystem shutdown!" << std::endl;
+        if (m_isShutdown.load(std::memory_order_acquire) || !m_threadPool) {
+            std::cout << "Forge Game Engine - Warning: Attempted to enqueue task";
+            if (!description.empty()) {
+                std::cout << " (" << description << ")";
+            }
+            std::cout << " after ThreadSystem shutdown!" << std::endl;
             throw std::runtime_error("ThreadSystem is shut down");
         }
 
         try {
-            return mp_threadPool->enqueueWithResult(std::forward<F>(f), std::forward<Args>(args)...);
+            return m_threadPool->enqueueWithResult(std::forward<F>(f), 
+                                                  priority, 
+                                                  description,
+                                                  std::forward<Args>(args)...);
         } catch (const std::exception& e) {
             std::cout << "Forge Game Engine - Error enqueueing task: " << e.what() << std::endl;
             throw;
@@ -325,13 +680,13 @@ public:
 
     bool isBusy() const {
         // If shutdown or no thread pool, not busy anymore
-        if (m_isShutdown.load(std::memory_order_acquire) || !mp_threadPool) {
+        if (m_isShutdown.load(std::memory_order_acquire) || !m_threadPool) {
             return false;
         }
 
         // Lock for thread safety when accessing mp_threadPool
         std::lock_guard<std::mutex> lock(m_mutex);
-        return mp_threadPool && mp_threadPool->busy();
+        return m_threadPool && m_threadPool->busy();
     }
 
     unsigned int getThreadCount() const {
@@ -344,16 +699,16 @@ public:
 
     // Get the current task queue capacity
     size_t getQueueCapacity() const {
-        if (mp_threadPool) {
-            return mp_threadPool->getTaskQueue().capacity();
+        if (m_threadPool) {
+            return m_threadPool->getTaskQueue().capacity();
         }
         return m_queueCapacity;
     }
 
     // Get the current number of tasks in the queue
     size_t getQueueSize() const {
-        if (mp_threadPool) {
-            return mp_threadPool->getTaskQueue().size();
+        if (m_threadPool) {
+            return m_threadPool->getTaskQueue().size();
         }
         return 0;
     }
@@ -371,25 +726,51 @@ public:
      * @return true if capacity was reserved, false if ThreadSystem is shut down
      */
     bool reserveQueueCapacity(size_t capacity) {
-        if (m_isShutdown.load(std::memory_order_acquire) || !mp_threadPool) {
+        if (m_isShutdown.load(std::memory_order_acquire) || !m_threadPool) {
             return false;
         }
-        mp_threadPool->getTaskQueue().reserve(capacity);
+        m_threadPool->getTaskQueue().reserve(capacity);
         return true;
     }
 
-    private:
-            std::unique_ptr<ThreadPool> mp_threadPool{nullptr};
-            unsigned int m_numThreads{};
-            size_t m_queueCapacity{};
-            std::atomic<bool> m_isShutdown{false}; // Flag to indicate shutdown status
-            mutable std::mutex m_mutex{}; // For thread-safe access to members
+    // Get task statistics
+    size_t getTotalTasksProcessed() const {
+        if (m_threadPool) {
+            return m_threadPool->getTaskQueue().getTotalTasksProcessed();
+        }
+        return 0;
+    }
+    
+    size_t getTotalTasksEnqueued() const {
+        if (m_threadPool) {
+            return m_threadPool->getTaskQueue().getTotalTasksEnqueued();
+        }
+        return 0;
+    }
+    
+    // Enable or disable debug logging
+    void setDebugLogging(bool enable) {
+        m_enableDebugLogging = enable;
+    }
+    
+    bool isDebugLoggingEnabled() const {
+        return m_enableDebugLogging;
+    }
 
-            // Prevent copying and assignment
-            ThreadSystem(const ThreadSystem&) = delete;
-            ThreadSystem& operator=(const ThreadSystem&) = delete;
+private:
+    std::unique_ptr<ThreadPool> m_threadPool{nullptr};
+    unsigned int m_numThreads{};
+    size_t m_queueCapacity{DEFAULT_QUEUE_CAPACITY};
+    std::atomic<bool> m_isShutdown{false}; // Flag to indicate shutdown status
+    mutable std::mutex m_mutex{}; // For thread-safe access to members
+    bool m_enableDebugLogging{false}; // Flag to control debug logging
+    bool m_enableProfiling{false}; // Flag for detailed performance metrics
 
-            ThreadSystem() : m_queueCapacity(DEFAULT_QUEUE_CAPACITY) {}
+    // Prevent copying and assignment
+    ThreadSystem(const ThreadSystem&) = delete;
+    ThreadSystem& operator=(const ThreadSystem&) = delete;
+
+    ThreadSystem() = default;
 };
 
 } // namespace Forge
