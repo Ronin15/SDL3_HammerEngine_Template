@@ -40,6 +40,10 @@ class GameEngine {
   // Thread synchronization methods
   void waitForUpdate();
   void signalUpdateComplete();
+  
+  // Frame management methods
+  bool hasNewFrameToRender() const;
+  bool isUpdateRunning() const;
 
   // GameStateManager getter to let game engine access
   GameStateManager* getGameStateManager() const { return mp_gameStateManager.get(); }
@@ -66,6 +70,9 @@ class GameEngine {
   std::mutex m_updateMutex{};
   std::condition_variable m_updateCondition{};
   std::atomic<bool> m_updateCompleted{false};
+  std::atomic<bool> m_updateRunning{false};
+  std::atomic<uint64_t> m_lastUpdateFrame{0};
+  std::atomic<uint64_t> m_lastRenderedFrame{0};
 
   // Render synchronization
   std::mutex m_renderMutex{};

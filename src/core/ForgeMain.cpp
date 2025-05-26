@@ -4,6 +4,7 @@
 */
 
 #include <SDL3/SDL.h>
+#include <atomic>
 #include <iostream>
 #include <string>
 #include "core/GameEngine.hpp"
@@ -41,9 +42,10 @@ const std::string GAME_NAME{"Game Template"};
             << Forge::ThreadSystem::Instance().getQueueCapacity()
             << " parallel tasks!\n";
 
-  // Using GameEngine's built-in synchronization
+  // Using GameEngine's optimized frame synchronization
 
   Uint64 frameStart, frameTime;
+  std::atomic<bool> updateInProgress{false};
 
   if (GameEngine::Instance().init(GAME_NAME.c_str(), WINDOW_WIDTH, WINDOW_HEIGHT, false)) {
     while (GameEngine::Instance().getRunning()) {
@@ -55,25 +57,38 @@ const std::string GAME_NAME{"Game Template"};
       // Let the ThreadSystem manage its own capacity internally
       // The capacity management is handled internally by the thread system
 
-      // Run update in a worker thread
-      try {
-        Forge::ThreadSystem::Instance().enqueueTask([&]() {
-          try {
-            GameEngine::Instance().update();
-            // Update method internally handles synchronization
-          } catch (const std::exception& e) {
-            std::cerr << "Forge Game Engine - Exception in update task: " << e.what() << std::endl;
-            // The GameEngine's update method will handle the synchronization
-            // even in case of exception since it uses RAII
-          }
-        });
-      } catch (const std::exception& e) {
-        std::cerr << "Forge Game Engine - Failed to enqueue update task: " << e.what() << std::endl;
-        // Even if we can't enqueue the task, let the GameEngine handle synchronization
-        // to maintain consistency across the system
+      // Always try to render first, using the most recent game state
+      // This allows rendering to proceed immediately without waiting for an update
+      GameEngine::Instance().render();
+
+      // Only queue a new update if we're not already updating
+      if (!updateInProgress.load() && !GameEngine::Instance().isUpdateRunning()) {
+        // Reset update completion flag for next frame if needed
+        if (GameEngine::Instance().hasNewFrameToRender()) {
+          GameEngine::Instance().signalUpdateComplete();
+        }
+        
+        // Queue a new update
+        try {
+          updateInProgress.store(true);
+          Forge::ThreadSystem::Instance().enqueueTask([&]() {
+            try {
+              GameEngine::Instance().update();
+              // Update method internally handles synchronization
+            } catch (const std::exception& e) {
+              std::cerr << "Forge Game Engine - Exception in update task: " << e.what() << std::endl;
+              // The GameEngine's update method will handle the synchronization
+              // even in case of exception since it uses RAII
+            }
+            updateInProgress.store(false);
+          });
+        } catch (const std::exception& e) {
+          std::cerr << "Forge Game Engine - Failed to enqueue update task: " << e.what() << std::endl;
+          updateInProgress.store(false);
+        }
       }
 
-      // Process any background tasks when waiting on update
+      // Process any background tasks in parallel with update
       // This could include asset loading, AI computation, physics, etc.
       try {
         Forge::ThreadSystem::Instance().enqueueTask([]() {
@@ -88,16 +103,8 @@ const std::string GAME_NAME{"Game Template"};
         std::cerr << "Forge Game Engine - Failed to enqueue background task: " << e.what() << std::endl;
       }
 
-      // Wait on update to complete before rendering
-      // Using GameEngine's built-in synchronization mechanism
-      GameEngine::Instance().waitForUpdate();
-
-      // Render on main thread (OpenGL/SDL rendering context is bound to main
-      // thread)
-      GameEngine::Instance().render();
-      
-      // Reset update completion flag for next frame
-      GameEngine::Instance().signalUpdateComplete();
+      // We've already rendered at the beginning of the frame,
+      // so we don't need to wait for update or render again here
 
       frameTime = SDL_GetTicks() - frameStart;
 
