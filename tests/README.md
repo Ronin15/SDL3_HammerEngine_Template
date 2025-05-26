@@ -12,6 +12,7 @@ This directory contains the tests for the Forge Game Engine, along with scripts 
 4. **AI Benchmark Tests**: Performance benchmarking for AI scaling capabilities
 5. **Save Manager Tests**: Tests save game functionality
 6. **Thread System Tests**: Tests the multi-threading system
+7. **Event Manager Tests**: Tests the event management system
 
 ## Running Tests
 
@@ -25,6 +26,7 @@ The following batch files are available to run tests:
 - `run_ai_benchmark.bat` - Runs the AI scaling benchmark tests
 - `run_save_tests.bat` - Runs only the save manager tests
 - `run_thread_tests.bat` - Runs only the thread system tests
+- `run_event_tests.bat` - Runs only the event manager tests
 
 These scripts are located in the project root directory.
 
@@ -43,6 +45,7 @@ Shell scripts are also available:
 - `run_ai_benchmark.sh` - Runs the AI scaling benchmark tests
 - `run_save_tests.sh` - Runs only the save manager tests
 - `run_thread_tests.sh` - Runs only the thread system tests
+- `run_event_tests.sh` - Runs only the event manager tests
 
 To run a shell script, make it executable first:
 
@@ -72,6 +75,7 @@ All test reports are saved in the `test_results` directory:
 - `ai_scaling_benchmark_[timestamp].txt` - Results from AI scaling benchmark
 - `save_test_output.txt` - Full output from save manager tests
 - `thread_test_output.txt` - Full output from thread system tests
+- `event_test_output.txt` - Full output from event manager tests
 
 When running tests with the `--verbose` flag on Linux/macOS, additional diagnostic information will be displayed but not saved to these files.
 
@@ -100,6 +104,17 @@ The AI optimization tests verify the following features:
 2. **Batch Processing**: Tests efficient batch processing of entities
 3. **Early Exit Conditions**: Tests skipping unnecessary updates
 4. **Message Queue System**: Tests batched message processing
+5. **Priority-Based Task Scheduling**: Tests the task priority system for AI behaviors
+
+### Event Manager Tests
+
+The event manager tests verify the following features:
+
+1. **Event Registration**: Tests registering various event types
+2. **Event Triggering**: Tests triggering events based on conditions
+3. **Event Processing**: Tests correct execution of event sequences
+4. **Thread-Safe Operation**: Tests concurrent event processing
+5. **Priority-Based Scheduling**: Tests task priority for event handling
 
 ### Thread-Safe AI Tests
 
@@ -137,6 +152,7 @@ The thread system tests verify the following features:
 2. **Thread Safety**: Tests synchronization mechanisms
 3. **Performance**: Tests scaling with different numbers of threads
 4. **Error Handling**: Tests recovery from failed tasks
+5. **Priority System**: Tests task priority scheduling (Critical, High, Normal, Low, Idle)
 
 ## Troubleshooting
 

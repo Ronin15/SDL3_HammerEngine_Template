@@ -2,12 +2,13 @@
 
 ## Overview
 
-The AI Manager is a centralized system for creating and managing autonomous behaviors for game entities. It provides a flexible framework for implementing and controlling various AI behaviors, allowing game entities to exhibit different movement patterns and reactions. The system includes performance optimizations such as:
+The AI Manager is a centralized system for creating and managing autonomous behaviors for game entities. It provides a flexible framework for implementing and controlling various AI behaviors, allowing game entities to exhibit different movement patterns and reactions. The system integrates with ThreadSystem for efficient parallel processing with priority-based scheduling. It includes performance optimizations such as:
 
 1. Entity-behavior caching for faster lookups
 2. Batch processing for entities with the same behavior
 3. Early exit conditions to skip unnecessary updates
 4. Message queue system for efficient communication
+5. Priority-based task scheduling for critical AI behaviors
 
 ## Core Components
 
@@ -16,14 +17,16 @@ The AI Manager is a centralized system for creating and managing autonomous beha
 The central management class that handles:
 - Registration of behaviors
 - Assignment of behaviors to entities
-- Updating all behaviors during the game loop
+- Updating all behaviors during the game loop using ThreadSystem
 - Communication with behaviors via messages
+- Priority-based scheduling of AI tasks
 
 **Performance Optimizations:**
 - Entity-behavior caching for faster lookups
 - Batch processing of entities with the same behavior
 - Early exit conditions to avoid unnecessary updates
 - Message queue system for deferred communication
+- Priority-based task scheduling for optimal CPU utilization
 
 ### AIBehavior Base Class
 
@@ -199,11 +202,27 @@ private:
 The AIManager optionally utilizes the ThreadSystem to distribute AI updates across multiple CPU cores. This is enabled by default but can be controlled through the AIManager's initialization:
 
 ```cpp
-// Disable threading for AI updates (if needed for debugging)
-AIManager::Instance().setUseThreading(false);
+// First ensure ThreadSystem is initialized
+Forge::ThreadSystem::Instance().init();
+
+// Initialize AIManager
+AIManager::Instance().init();
+
+// Disable threading or customize for AI updates
+AIManager::Instance().configureThreading(false); // Disable threading
+AIManager::Instance().configureThreading(true, 4); // Enable with 4 threads
+AIManager::Instance().configureThreading(true, 0, Forge::TaskPriority::High); // Enable with default threads and high priority
 ```
 
-When threading is enabled, be careful about accessing shared resources from behavior update methods. Consider using locks or designing behaviors to be thread-safe. The thread system automatically manages task capacity, so you don't need to worry about managing task queue size.
+When threading is enabled, be careful about accessing shared resources from behavior update methods. Consider using locks or designing behaviors to be thread-safe. The ThreadSystem supports task priorities, allowing you to control which AI tasks get processed first:
+
+- `Forge::TaskPriority::Critical` (0) - For mission-critical AI (e.g., boss behaviors, player-interacting NPCs)
+- `Forge::TaskPriority::High` (1) - For important AI that needs quick responses (e.g., combat enemies)
+- `Forge::TaskPriority::Normal` (2) - Default for most AI behaviors
+- `Forge::TaskPriority::Low` (3) - For background AI that isn't time-sensitive
+- `Forge::TaskPriority::Idle` (4) - For very low-priority AI tasks
+
+The ThreadSystem automatically manages task capacity and scheduling based on priorities, ensuring critical AI behaviors receive CPU time before less important ones.
 
 ## Performance Optimizations
 
@@ -271,7 +290,7 @@ AIManager::Instance().processMessageQueue();
 
 ### Performance Tips
 
-// Limit active behaviors: Only register and assign behaviors you're actively using.
+1. **Limit active behaviors**: Only register and assign behaviors you're actively using.
 2. **Optimize waypoints**: Use fewer waypoints for simple patrol routes.
 3. **Adjust update frequency**: Use the built-in update frequency control for less important entities.
 4. **Cull inactive entities**: Unassign behaviors from entities that are far from the player or inactive.
@@ -322,7 +341,7 @@ The AIManager applies three levels of early exit checks:
 2. **Entity range check** - Skip updates for out-of-range entities
 3. **Custom conditions** - Skip updates based on behavior-specific logic
 
-### Message Queue System
+### 4. Message Queue System
 
 The message queue system provides:
 - Deferred message delivery for non-critical communications
@@ -331,6 +350,9 @@ The message queue system provides:
 - Optimized memory handling with move semantics
 - Performance statistics tracking for message processing
 - Optional immediate delivery for time-critical messages
+- Improved thread safety with enhanced synchronization
+
+Messages are now prioritized alongside other tasks when using the updated ThreadSystem, ensuring critical messages are processed before lower-priority ones.
 
 ## API Reference
 
@@ -348,6 +370,7 @@ void registerBehavior(const std::string& behaviorName, std::shared_ptr<AIBehavio
 bool hasBehavior(const std::string& behaviorName) const;
 AIBehavior* getBehavior(const std::string& behaviorName) const;
 size_t getBehaviorCount() const;
+void setPriorityForBehavior(const std::string& behaviorName, Forge::TaskPriority priority);
 
 // Entity-behavior assignment
 void assignBehaviorToEntity(Entity* entity, const std::string& behaviorName);

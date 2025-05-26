@@ -15,6 +15,7 @@ The Forge Game Engine has the following test suites:
 2. **Core Systems Tests**
    - Save Manager Tests: Validate save/load functionality
    - Thread System Tests: Verify multi-threading capabilities
+   - Event Manager Tests: Validate event handling and integration with threading
 
 ## Running Tests
 
@@ -30,6 +31,7 @@ Each test suite has dedicated scripts in the project root directory:
 ./run_ai_benchmark.sh                # AI scaling benchmark
 ./run_save_tests.sh                  # Save manager tests
 ./run_thread_tests.sh                # Thread system tests
+./run_event_tests.sh                 # Event manager tests
 ./run_all_tests.sh                   # Run all test scripts sequentially
 ```
 
@@ -41,6 +43,7 @@ run_thread_safe_ai_integration_tests.bat  # Thread-safe AI integration tests
 run_ai_benchmark.bat                 # AI scaling benchmark
 run_save_tests.bat                   # Save manager tests
 run_thread_tests.bat                 # Thread system tests
+run_event_tests.bat                  # Event manager tests
 run_all_tests.bat                    # Run all test scripts sequentially
 ```
 
@@ -68,6 +71,7 @@ Test results are saved in the `test_results` directory:
 - `ai_scaling_benchmark_[timestamp].txt` - AI scaling benchmark results
 - `save_test_output.txt` - Output from save manager tests
 - `thread_test_output.txt` - Output from thread system tests
+- `event_test_output.txt` - Output from event manager tests
 
 When using the `run_all_tests` scripts, combined results are also saved:
 
@@ -83,6 +87,7 @@ Located in `AIOptimizationTest.cpp`, these tests verify:
 2. **Batch Processing**: Validates efficient batch processing of entities with similar behaviors
 3. **Early Exit Conditions**: Tests optimizations that skip unnecessary updates
 4. **Message Queue System**: Verifies batched message processing for efficient AI communication
+5. **Priority-Based Scheduling**: Tests the task priority system integration with AI behaviors
 
 ### Thread-Safe AI Tests
 
@@ -133,6 +138,19 @@ Located in `ThreadSystemTests.cpp`, these tests verify:
 2. **Thread Safety**: Tests synchronization mechanisms
 3. **Performance**: Tests scaling with different numbers of threads
 4. **Error Handling**: Tests recovery from failed tasks
+5. **Priority System**: Tests the task priority levels (Critical, High, Normal, Low, Idle)
+6. **Priority Scheduling**: Verifies that higher priority tasks execute before lower priority ones
+
+### Event Manager Tests
+
+Located in `events/EventManagerTest.cpp`, `events/EventTypesTest.cpp`, and `events/WeatherEventTest.cpp`, these tests verify:
+
+1. **Event Registration**: Tests registering different types of events with the EventManager
+2. **Event Conditions**: Tests condition-based event triggering
+3. **Event Execution**: Validates proper execution of event sequences
+4. **Thread-Safe Processing**: Tests concurrent event processing using ThreadSystem
+5. **Message System**: Tests the event messaging system for communication between events
+6. **Priority-Based Scheduling**: Tests task priority integration with event processing
 
 ## Adding New Tests
 
@@ -186,6 +204,7 @@ For thread-safety tests, follow these guidelines:
 1. **Test Initialization Order**
    - Initialize ThreadSystem first, then other systems
    - Enable threading only after initialization is complete
+   - Configure task priorities during initialization if needed
 
 2. **Test Cleanup Order**
    - Disable threading before cleanup
@@ -197,6 +216,7 @@ For thread-safety tests, follow these guidelines:
    - Add sleep between operations to allow threads to complete
    - Use timeouts when waiting for futures instead of blocking calls
    - Use `compare_exchange_strong` instead of simple `exchange` for atomics
+   - Be careful about task priority assignments to avoid priority inversion
 
 4. **Boost Test Options**
    - Add `#define BOOST_TEST_NO_SIGNAL_HANDLING` before including Boost.Test

@@ -12,18 +12,19 @@ I use the Zed IDE with custom cmake and ninja task configurations to build/compi
 - SDL3 integration with SDL_image, SDL_ttf, and SDL_mixer
 - Boost Container lib for efficient memory management (keeping things on the stack) -> https://www.boost.org https://github.com/boostorg/boost
 - Cross-platform support (Windows, macOS, Linux)
-- Multi-threading support
+- Multi-threading support with priority-based task scheduling
 - Automatic dependency management with FetchContent (for SDL3 libs, boost container lib)
 - Debug and Release build configurations
 - Custom window icon support on all platforms
 - Game state management system (state machine)
 - Entity state management system (state machine)
+- Event management system for game events (weather, scene transitions, NPC spawning)
 - Save game system (for saving and loading game state)
 - Texture management (auto loads all from img dir)
 - Sound & Music management (auto loads all from sound and music dir) stop, start, pause, halt, play sfx
 - Font management (auto loads all from font dir)
 - AI Manager framework for adding AI behaviors that uses a messaging system.
-- Simple and Efficient Multi-Threading system.
+- Simple and Efficient Multi-Threading system with task priorities
 - Test player and NPC with 2 frame animations. They both are copyrighted - Hammer Forged Games (C) 2025
 - Input handling:
   - Keyboard and mouse
@@ -43,6 +44,7 @@ I use the Zed IDE with custom cmake and ninja task configurations to build/compi
 - CMake 3.28 or higher
 - Ninja build system (recommended)
 - A C++ compiler with C++20 support. GCC and G++ 13.30 (recommended)
+- Boost libraries (automatically downloaded via FetchContent)
 
 ### Windows
 Need to install mysys2 for compiler and for SDL3 dependencies like harfbuzz, freetype etc.
@@ -76,11 +78,17 @@ xcode command line tools is needed to compile.
 The project includes unit tests for the SaveGameManager, Threading System, and AI components. To run the tests:
 
 ```bash
+#Run all tests - run of the scripts below.
+./run_all_tests.sh
+
 # Run the Save Manager tests
 ./run_save_tests.sh
 
 # Run the Thread System tests
 ./run_thread_tests.sh
+
+# Run the Event Manager tests
+./run_event_tests.sh
 
 # Run the AI Optimization tests
 ./run_ai_optimization_tests.sh
@@ -104,7 +112,7 @@ The project includes unit tests for the SaveGameManager, Threading System, and A
 ./run_ai_benchmark.sh --release
 ```
 
-See `tests/TESTING.md` for comprehensive documentation on all testing frameworks, or `docs/ThreadSystem.md` for component-specific details.
+See `tests/TESTING.md` for comprehensive documentation on all testing frameworks, `tests/TROUBLESHOOTING.md` for common issues and solutions, or component-specific documentation like `docs/ThreadSystem.md` and `docs/EventManager.md` for detailed information.
 
 ## Feature Component Details
 
@@ -137,9 +145,11 @@ The ThreadSystem provides a thread pool implementation for efficient multi-threa
 
 - Thread-safe task queue with pre-allocated memory
 - Worker thread pool that automatically scales to hardware capabilities
+- Priority-based task scheduling (Critical, High, Normal, Low, Idle)
 - Support for both fire-and-forget tasks and tasks with future results
 - Queue capacity management to avoid overhead from memory reallocations
 - Graceful shutdown with proper cleanup of resources
+- Automatic capacity management for different workloads
 
 See `docs/ThreadSystem_API.md` for the full API, and the other ThreadSystem docs for more information.
 
@@ -195,6 +205,7 @@ The GameStateManager controls the high-level game states:
 - State addition, removal, and clearance
 - State lookup by name
 - Update and render delegation to the current state
+- State stacking for overlay states (like pause menus)
 
 See `include/managers/GameStateManager.hpp` for the full API.
 
@@ -206,8 +217,22 @@ The EntityStateManager handles the state machine for individual entities:
 - State addition, removal, and lookup
 - Current state tracking and updates
 - Memory-efficient state storage using flat maps
+- Seamless transitions between entity states
 
 See `include/managers/EntityStateManager.hpp` for the full API.
+
+### EventManager
+
+The EventManager provides a condition-based event system for game events:
+
+- Registration and management of different event types (weather, scene transitions, NPC spawning)
+- Condition-based event triggering for dynamic game worlds
+- Sequence-based events for creating complex scenarios
+- Thread-safe event processing with priority-based scheduling
+- Event messaging system for communication between events
+- Integration with the ThreadSystem for parallel event processing
+
+See `docs/EventManager.md` and `docs/EventManager_ThreadSystem.md` for detailed documentation and usage examples.
 
 ### AIManager
 
@@ -215,18 +240,21 @@ The AIManager provides a comprehensive AI behavior management system:
 
 - Dynamic behavior assignment to game entities
 - Thread-safe behavior updates through the game's thread system
+- Priority-based task scheduling for critical AI behaviors
 - Multiple behavior types for different AI patterns:
   - **WanderBehavior**: Entities move randomly within a defined area, changing direction periodically
   - **PatrolBehavior**: Entities follow predefined waypoints in sequence, moving along patrol routes
   - **ChaseBehavior**: Entities pursue a target (like the player) when within detection range
 - Behavior messaging system for pausing, resuming, and controlling AI states
 - Memory-efficient behavior storage with automatic cleanup
+- Distance-based update frequency optimization
 
 Key features include:
 
 - **Centralized AI Management**: Register behaviors once and reuse across many entities
 - **Behavior Switching**: Easily change entity behaviors at runtime
 - **Multi-threaded Updates**: AI processing distributes across available CPU cores
+- **Priority-Based Processing**: Critical AI behaviors receive processing time before less important ones
 - **Waypoint System**: Create complex patrol paths with multiple points
 - **Target Tracking**: Chase behavior maintains pursuit even when line of sight is lost
 - **Messaging API**: Control behaviors with messages like "pause", "resume", or "reverse"
@@ -249,11 +277,17 @@ This is a template and the first player state running "PlayerRunningState.cpp" c
 
 Also, this template can be used for 3D as well. Just focus on replacing SDL_renderer with SDL_GPU in TexureManager::Draw functions, and update the init process in GameEngine.cpp and you should be good to go.
 
+For more complex games, consider using the EventManager system for handling game events, scene transitions, and dynamic world interactions. The ThreadSystem priority-based task scheduling is particularly useful for managing complex AI behaviors in games with many entities.
+
 ## Documentation
 
 Additional documentation can be found in the `docs/` directory:
 
 - `AIManager.md` - Comprehensive guide to the AI system with examples and custom behavior creation
+- `OPTIMIZATIONS.md` - Technical details on AI system performance optimizations
+- `EventManager.md` - Guide to the event management system with examples and integration details
+- `EventManager_ThreadSystem.md` - Details on EventManager and ThreadSystem integration
+- `EventManagerExamples.cpp` - Code examples for using the EventManager system
 - `SaveManagerTesting.md` - Details on the SaveGameManager testing framework and how to run the tests
 - `ThreadSystem.md` - Core documentation for the ThreadSystem component with usage examples and best practices
 - `ThreadSystem_API.md` - Complete API reference for the ThreadSystem with method signatures and parameters

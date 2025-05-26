@@ -2,7 +2,7 @@
 
 ## Class Overview
 
-The Forge engine ThreadSystem provides a robust thread pool implementation with automatic task queue management and synchronization features. This document serves as a complete API reference.
+The Forge engine ThreadSystem provides a robust thread pool implementation with automatic task queue management, priority-based task scheduling, and synchronization features. This document serves as a complete API reference.
 
 ## Namespace
 
@@ -31,8 +31,8 @@ Singleton class that manages the thread pool and task queue.
 
 | Method | Parameters | Return Type | Description |
 |--------|------------|-------------|-------------|
-| `void enqueueTask(std::function<void()> task)` | `task`: Function to execute | `void` | Adds a fire-and-forget task to the queue |
-| `template<class F, class... Args> auto enqueueTaskWithResult(F&& f, Args&&... args) -> std::future<typename std::invoke_result<F, Args...>::type>` | `f`: Function to execute<br>`args`: Arguments to pass to the function | `std::future<T>` | Adds a task that returns a result |
+| `void enqueueTask(std::function<void()> task, TaskPriority priority = TaskPriority::Normal)` | `task`: Function to execute<br>`priority`: Task priority level (optional) | `void` | Adds a fire-and-forget task to the queue with specified priority |
+| `template<class F, class... Args> auto enqueueTaskWithResult(F&& f, Args&&... args, TaskPriority priority = TaskPriority::Normal) -> std::future<typename std::invoke_result<F, Args...>::type>` | `f`: Function to execute<br>`args`: Arguments to pass to the function<br>`priority`: Task priority level (optional) | `std::future<T>` | Adds a task that returns a result with specified priority |
 
 #### Status and Information
 
@@ -55,6 +55,12 @@ Singleton class that manages the thread pool and task queue.
 | Constant | Type | Value | Description |
 |----------|------|-------|-------------|
 | `DEFAULT_QUEUE_CAPACITY` | `static constexpr size_t` | 512 | Default capacity for the task queue |
+
+#### Enumerations
+
+| Enumeration | Values | Description |
+|------------|--------|-------------|
+| `TaskPriority` | `Critical` (0)<br>`High` (1)<br>`Normal` (2)<br>`Low` (3)<br>`Idle` (4) | Priority levels for task execution |
 
 ### ThreadPool
 
@@ -122,8 +128,9 @@ Forge::ThreadSystem::Instance().clean();
 ### Task Submission
 
 ```cpp
-// Fire-and-forget task with error handling
+### Fire-and-forget task with error handling and priority
 try {
+    // Normal priority (default)
     Forge::ThreadSystem::Instance().enqueueTask([]() {
         try {
             // Perform work that doesn't return a value
@@ -132,11 +139,21 @@ try {
             std::cerr << "Task execution error: " << e.what() << std::endl;
         }
     });
+    
+    // High priority for critical operations
+    Forge::ThreadSystem::Instance().enqueueTask([]() {
+        try {
+            // Perform critical work
+            processImportantData();
+        } catch (const std::exception& e) {
+            std::cerr << "Critical task execution error: " << e.what() << std::endl;
+        }
+    }, Forge::TaskPriority::High);
 } catch (const std::exception& e) {
     std::cerr << "Failed to enqueue task: " << e.what() << std::endl;
 }
 
-// Task with result and error handling
+// Task with result, error handling, and priority
 try {
     auto future = Forge::ThreadSystem::Instance().enqueueTaskWithResult([]() -> int {
         try {
@@ -146,7 +163,7 @@ try {
             std::cerr << "Task execution error: " << e.what() << std::endl;
             return -1; // Return error code
         }
-    });
+    }, Forge::TaskPriority::High); // Set high priority for this task
 
     // Wait for and use the result
     try {
@@ -194,3 +211,10 @@ All public methods of the ThreadSystem, ThreadPool, and TaskQueue classes are th
 - Avoid creating many tiny tasks; batch related work when possible
 - The default thread pool size (cores-1) is optimal for most applications
 - Focus on task design rather than capacity management
+- Use task priorities appropriately:
+  - `Critical`: Only for vital system operations that must not be delayed
+  - `High`: For important operations needing quick responses
+  - `Normal`: For standard operations (default)
+  - `Low`: For background operations
+  - `Idle`: For non-essential operations
+- Avoid creating too many high-priority tasks that could starve lower-priority tasks
