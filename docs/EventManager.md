@@ -2,7 +2,7 @@
 
 ## Overview
 
-The EventManager system provides a powerful, thread-safe way to manage game events such as weather changes, scene transitions, and NPC spawning. It follows a condition-based execution model where events are triggered when specific conditions are met. The EventManager integrates with the ThreadSystem component for efficient multi-threaded event processing.
+The EventManager system provides a powerful, thread-safe way to manage game events such as weather changes, scene transitions, and NPC spawning. It follows a condition-based execution model where events are triggered when specific conditions are met. The EventManager integrates with the ThreadSystem component for efficient multi-threaded event processing with priority-based scheduling.
 
 ## Key Components
 
@@ -186,23 +186,39 @@ EventSystem::Instance()->registerEventHandler("NPCSpawn", [](const std::string& 
 - For large numbers of events, the EventManager uses ThreadSystem for parallel processing
 - The EventManager automatically optimizes thread usage based on available hardware
 - Use batch processing for optimal cache utilization and thread efficiency
+- Assign appropriate task priorities for different event types:
+  - Use `Critical` for vital game progression events
+  - Use `High` for player-facing and immediate response events
+  - Use `Normal` for standard game events (default)
+  - Use `Low` for background or cosmetic events
+  - Use `Idle` for debugging or non-essential events
 
 ## Thread Safety
 
 The EventManager is designed to be thread-safe and integrates with the ThreadSystem for efficient multi-threaded event processing:
 
 ```cpp
+// Initialize ThreadSystem first
+Forge::ThreadSystem::Instance().init();
+
+// Then initialize EventManager
+EventManager::Instance().init();
+
 // Enable multi-threaded event processing with ThreadSystem
 EventManager::Instance().configureThreading(true, 4);
+
+// Enable multi-threaded event processing with specific priority
+EventManager::Instance().configureThreading(true, 4, Forge::TaskPriority::High);
 ```
 
 The EventManager uses ThreadSystem internally to:
 - Process event batches in parallel
 - Ensure proper synchronization of shared resources
 - Optimize thread usage based on system capabilities
-- Handle task scheduling and completion
+- Handle task scheduling and completion with priority-based execution
+- Manage error handling and recovery for failed tasks
 
-See [ThreadSystem Documentation](ThreadSystem.md) for more details on the underlying thread pool implementation.
+See [ThreadSystem Documentation](ThreadSystem.md) for more details on the underlying thread pool implementation and [EventManager_ThreadSystem.md](EventManager_ThreadSystem.md) for the specific integration details.
 
 ## Best Practices
 
@@ -232,11 +248,17 @@ To debug event issues:
 The EventManager leverages the ThreadSystem component for efficient parallel processing:
 
 ```cpp
+// Initialize the ThreadSystem first
+Forge::ThreadSystem::Instance().init();
+
 // Initialize the EventManager with ThreadSystem support
 EventManager::Instance().init();
 
 // Enable threading with a specific number of concurrent tasks
 EventManager::Instance().configureThreading(true, 4);
+
+// Enable threading with specific priority
+EventManager::Instance().configureThreading(true, 4, Forge::TaskPriority::High);
 
 // Disable threading for debugging or shutdown
 EventManager::Instance().configureThreading(false);
@@ -247,8 +269,15 @@ EventManager::Instance().configureThreading(false);
 
 When threading is enabled, the EventManager:
 1. Groups events by type into batches for better cache locality
-2. Submits batches as tasks to the ThreadSystem thread pool
+2. Submits batches as tasks to the ThreadSystem thread pool with appropriate priorities
 3. Waits for all tasks to complete with proper error handling
 4. Provides detailed performance metrics in debug mode
 
-See [ThreadSystem_API.md](ThreadSystem_API.md) for details on the underlying thread pool API.
+Available priority levels (from highest to lowest):
+- `Forge::TaskPriority::Critical` (0): For mission-critical events
+- `Forge::TaskPriority::High` (1): For important events needing quick responses
+- `Forge::TaskPriority::Normal` (2): Default for standard events
+- `Forge::TaskPriority::Low` (3): For background events
+- `Forge::TaskPriority::Idle` (4): For non-essential events
+
+See [ThreadSystem_API.md](ThreadSystem_API.md) for details on the underlying thread pool API and [EventManager_ThreadSystem.md](EventManager_ThreadSystem.md) for more details on this integration.

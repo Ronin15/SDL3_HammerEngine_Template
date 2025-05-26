@@ -2,7 +2,7 @@
 
 ## Overview
 
-The ThreadSystem is a core component of the Forge Game Engine, providing thread pool management and task-based concurrency. It allows game systems to enqueue work that gets processed by a pool of worker threads, enabling performance benefits from multi-core processors while maintaining a simplified programming model. The system automatically manages its capacity and is designed to efficiently handle hundreds of concurrent tasks (see [Defining a Task](ThreadSystem_Optimization.md) for details). ThreadSystem serves as the unified threading framework used by various engine components, including the [EventManager](EventManager.md).
+The ThreadSystem is a core component of the Forge Game Engine, providing thread pool management and task-based concurrency. It allows game systems to enqueue work that gets processed by a pool of worker threads, enabling performance benefits from multi-core processors while maintaining a simplified programming model. The system automatically manages its capacity and is designed to efficiently handle hundreds of concurrent tasks (see [Defining a Task](ThreadSystem_Optimization.md) for details). ThreadSystem serves as the unified threading framework used by various engine components, including the [EventManager](EventManager.md) and [AIManager](ai/AIManager.md). It supports priority-based task scheduling to ensure critical operations receive appropriate processing time.
 
 ## Features
 
@@ -11,6 +11,7 @@ The ThreadSystem is a core component of the Forge Game Engine, providing thread 
 - Support for fire-and-forget tasks and tasks with return values
 - Thread-safe operations with proper synchronization
 - Queue capacity reservation for memory optimization
+- Priority-based task scheduling (Critical, High, Normal, Low, Idle)
 - Clean shutdown with proper resource management
 - Integration with engine components such as EventManager and AIManager
 
@@ -33,17 +34,23 @@ std::cout << "Thread system initialized with " << threadCount << " threads" << s
 ### Submitting Tasks
 
 ```cpp
-// Simple fire-and-forget task
+// Simple fire-and-forget task with default (Normal) priority
 Forge::ThreadSystem::Instance().enqueueTask([]() {
     // Task logic here
     std::cout << "Executing task on thread pool" << std::endl;
 });
 
-// Task with a return value
+// Task with high priority
+Forge::ThreadSystem::Instance().enqueueTask([]() {
+    // High-priority task logic
+    std::cout << "Executing high-priority task" << std::endl;
+}, Forge::TaskPriority::High);
+
+// Task with a return value and specific priority
 auto future = Forge::ThreadSystem::Instance().enqueueTaskWithResult([]() -> int {
     // Task logic here
     return 42;
-});
+}, Forge::TaskPriority::Normal);
 
 // Wait for and use the result
 int result = future.get();  // Blocks until the task completes
@@ -62,8 +69,11 @@ The EventManager uses ThreadSystem for parallel event processing:
 Forge::ThreadSystem::Instance().init();
 EventManager::Instance().init();
 
-// Configure EventManager to use ThreadSystem
+// Configure EventManager to use ThreadSystem with default priority
 EventManager::Instance().configureThreading(true);
+
+// Or with specific priority
+EventManager::Instance().configureThreading(true, 0, Forge::TaskPriority::High);
 
 // EventManager will now process events in parallel through ThreadSystem
 EventManager::Instance().update();
@@ -73,7 +83,24 @@ See [EventManager_ThreadSystem.md](EventManager_ThreadSystem.md) for detailed in
 
 ### AIManager Integration
 
-The AIManager similarly uses ThreadSystem for parallel AI behavior processing, allowing efficient scaling across available CPU cores.
+The AIManager similarly uses ThreadSystem for parallel AI behavior processing, allowing efficient scaling across available CPU cores:
+
+```cpp
+// Initialize both systems
+Forge::ThreadSystem::Instance().init();
+AIManager::Instance().init();
+
+// Configure AIManager to use ThreadSystem with default priority
+AIManager::Instance().configureThreading(true);
+
+// Or with specific priority for AI tasks
+AIManager::Instance().configureThreading(true, 0, Forge::TaskPriority::High);
+
+// AIManager will now process AI behaviors in parallel through ThreadSystem
+AIManager::Instance().update();
+```
+
+See [AIManager.md](ai/AIManager.md) for detailed integration documentation.
 
 ### Shutdown
 
@@ -173,13 +200,25 @@ Eliminating dynamic resizing of the task queue helps maintain consistent perform
 void updateEntities(const std::vector<Entity*>& entities) {
     // Submit update tasks - no need to manually reserve capacity
     for (Entity* entity : entities) {
+        // Assign appropriate priority based on entity importance
+        Forge::TaskPriority priority = Forge::TaskPriority::Normal;
+        
+        // Prioritize player-interactive entities
+        if (entity->isInteractingWithPlayer()) {
+            priority = Forge::TaskPriority::High;
+        }
+        // Use lower priority for distant/background entities
+        else if (entity->isDistantFromPlayer()) {
+            priority = Forge::TaskPriority::Low;
+        }
+        
         Forge::ThreadSystem::Instance().enqueueTask([entity]() {
             try {
                 entity->update();
             } catch (const std::exception& e) {
                 std::cerr << "Error updating entity: " << e.what() << std::endl;
             }
-        });
+        }, priority);
     }
 }
 ```
@@ -230,11 +269,23 @@ void loadAssets(const std::vector<std::string>& assetPaths) {
 
 The ThreadSystem uses a vector-based task queue with pre-allocation support, enabling better memory management than the standard queue implementation. All operations are thread-safe with proper synchronization to ensure correct behavior in a multi-threaded environment.
 
-The implementation efficiently handles task creation, dispatch, and completion, with special care taken to ensure proper propagation of exceptions and return values.
+The implementation efficiently handles task creation, dispatch, and completion, with special care taken to ensure proper propagation of exceptions and return values. Tasks are processed according to their priority level, with higher-priority tasks being executed before lower-priority ones.
+
+### Priority Levels
+
+The ThreadSystem supports five priority levels for tasks:
+
+- `Forge::TaskPriority::Critical` (0): For mission-critical operations that must execute immediately
+- `Forge::TaskPriority::High` (1): For important tasks that need quick responses
+- `Forge::TaskPriority::Normal` (2): Default priority for standard tasks
+- `Forge::TaskPriority::Low` (3): For background or non-time-sensitive tasks
+- `Forge::TaskPriority::Idle` (4): For very low-priority tasks that should only run when the system is idle
 
 ## Performance Characteristics
 
 The system is designed to efficiently handle hundreds of concurrent tasks with dynamic memory management for optimal memory usage and processing efficiency. The task queue starts with a default capacity of 512 tasks and can automatically grow as needed. This capacity supports rich game worlds with hundreds of active entities and complex simulations. For a detailed explanation of task design and performance implications, see the [ThreadSystem Task](ThreadSystem_Optimization.md) document.
+
+The priority-based scheduling ensures that critical tasks receive timely execution without being delayed by lower-priority work. This is especially important in games where some operations (like player input handling or AI for nearby enemies) need faster response times than others (like distant entity updates or background calculations).
 
 ## Thread Safety
 

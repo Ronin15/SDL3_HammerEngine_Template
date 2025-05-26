@@ -2,7 +2,7 @@
 
 ## Overview
 
-The AI system in the Forge Game Engine provides a flexible, high-performance framework for creating and managing AI behaviors for game entities. The system is designed to be modular, extensible, and efficient, with optimizations for handling large numbers of AI-controlled entities.
+The AI system in the Forge Game Engine provides a flexible, high-performance framework for creating and managing AI behaviors for game entities. The system is designed to be modular, extensible, and efficient, with optimizations for handling large numbers of AI-controlled entities. It integrates with the ThreadSystem component for efficient parallel processing with priority-based task scheduling.
 
 ## Key Components
 
@@ -14,10 +14,14 @@ The `AIManager` is the central controller for all AI behaviors in the game. It h
 - Assignment of behaviors to entities
 - Efficient updating of all AI-controlled entities
 - Message passing between components and behaviors
+- Priority-based multithreaded AI processing
 
 #### Usage Example
 
 ```cpp
+// Initialize ThreadSystem first
+Forge::ThreadSystem::Instance().init();
+
 // Initialize the AI system
 AIManager::Instance().init();
 
@@ -30,6 +34,9 @@ AIManager::Instance().assignBehaviorToEntity(enemy, "Chase");
 
 // Send a message to the entity's behavior
 AIManager::Instance().sendMessageToEntity(enemy, "pause");
+
+// Configure threading with priorities
+AIManager::Instance().configureThreading(true, 0, Forge::TaskPriority::High);
 ```
 
 ### AIBehavior
@@ -116,13 +123,20 @@ Entities with the same behavior type are processed in batches, improving cache l
 AIManager::Instance().batchProcessEntities("Patrol", patrollingEntities);
 ```
 
-### 4. Multi-threading Support
+### 4. Multi-threading Support with Task Priorities
 
-When multiple CPU cores are available, the AI system can update behaviors in parallel for better performance:
+When multiple CPU cores are available, the AI system can update behaviors in parallel with configurable priorities:
 
 - The system automatically detects available cores
-- Batch updates are distributed across worker threads
-- Threading can be disabled if needed for debugging
+- Tasks are scheduled based on priority levels (Critical, High, Normal, Low, Idle)
+- Batch updates are distributed across worker threads with appropriate priorities
+- Critical AI behaviors are processed before lower-priority ones
+- Threading can be configured or disabled as needed
+
+```cpp
+// Configure AI threading with custom settings
+AIManager::Instance().configureThreading(true, 4, Forge::TaskPriority::High);
+```
 
 ## Behavior Messaging System
 
@@ -196,6 +210,13 @@ AIManager::Instance().registerBehavior("RandomWander", wander);
 5. **Use messages for coordination**:
    The messaging system allows behaviors to communicate without tight coupling.
 
+6. **Configure appropriate thread priorities**:
+   - Use `Forge::TaskPriority::Critical` for mission-critical AI (boss behaviors, player-interacting NPCs)
+   - Use `Forge::TaskPriority::High` for important AI that needs quick responses (combat enemies)
+   - Use `Forge::TaskPriority::Normal` for standard NPCs and ambient creatures (default)
+   - Use `Forge::TaskPriority::Low` for background or distant NPCs
+   - Use `Forge::TaskPriority::Idle` for cosmetic entities and very low-priority behaviors
+
 ## Debugging
 
 The AI system includes built-in performance monitoring:
@@ -206,6 +227,74 @@ size_t entityCount = AIManager::Instance().getManagedEntityCount();
 
 // Check how many behaviors are registered
 size_t behaviorCount = AIManager::Instance().getBehaviorCount();
+
+// Configure threading for debugging
+AIManager::Instance().configureThreading(false); // Disable threading
+AIManager::Instance().configureThreading(true, 1); // Single worker thread
+AIManager::Instance().configureThreading(true, 0, Forge::TaskPriority::Normal); // Default threads with normal priority
 ```
 
-Enable AI debug logging by defining `AI_DEBUG_LOGGING` in your build configuration to see detailed logs of AI system operation.
+Enable AI debug logging by defining `AI_DEBUG_LOGGING` in your build configuration to see detailed logs of AI system operation. The ThreadSystem component provides additional diagnostics for troubleshooting task scheduling and thread usage patterns.
+
+## ThreadSystem Integration
+
+The AI system has been fully integrated with the updated ThreadSystem, providing several key improvements:
+
+### Priority-Based Task Scheduling
+
+AI tasks are scheduled based on priority levels:
+
+```cpp
+// Configure priority for AI tasks
+AIManager::Instance().configureThreading(true, 0, Forge::TaskPriority::High);
+
+// Set priority for specific behavior
+AIManager::Instance().setPriorityForBehavior("Chase", Forge::TaskPriority::Critical);
+```
+
+Available priority levels (from highest to lowest):
+- `Forge::TaskPriority::Critical` (0): For mission-critical AI (bosses, key NPCs)
+- `Forge::TaskPriority::High` (1): For important AI needing quick responses
+- `Forge::TaskPriority::Normal` (2): Default for standard AI behaviors
+- `Forge::TaskPriority::Low` (3): For background/distant AI entities
+- `Forge::TaskPriority::Idle` (4): For cosmetic/non-essential AI
+
+### Improved Thread Management
+
+The updated ThreadSystem provides:
+
+- **Better Thread Shutdown**: Clean shutdown with proper task completion
+- **Task Descriptions**: Descriptive task names for easier debugging
+- **Performance Monitoring**: Built-in tracking of task execution times
+- **Auto-Capacity Management**: Automatic queue capacity adjustment
+- **Consistent Timing**: Uses std::chrono for precise timing control
+
+### Implementation Example
+
+```cpp
+// Initialize AI with specific threading configuration
+bool MyGameState::init() {
+    // Initialize ThreadSystem first
+    Forge::ThreadSystem::Instance().init();
+    
+    // Initialize AIManager
+    AIManager::Instance().init();
+    
+    // Configure AIManager with high priority and 4 worker threads
+    AIManager::Instance().configureThreading(true, 4, Forge::TaskPriority::High);
+    
+    // Register behaviors
+    auto chaseBehavior = std::make_shared<ChaseBehavior>(player, 3.0f);
+    AIManager::Instance().registerBehavior("Chase", chaseBehavior);
+    
+    // Create NPCs with AI
+    for (int i = 0; i < 100; i++) {
+        auto npc = createNPC();
+        AIManager::Instance().assignBehaviorToEntity(npc, "Chase");
+    }
+    
+    return true;
+}
+```
+
+For more details on the ThreadSystem, see the [ThreadSystem documentation](../ThreadSystem.md) and [ThreadSystem API Reference](../ThreadSystem_API.md).
