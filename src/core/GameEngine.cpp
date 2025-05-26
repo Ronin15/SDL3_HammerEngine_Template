@@ -313,55 +313,153 @@ void GameEngine::update() {
   // This method is now thread-safe and can be called from a worker thread
   std::lock_guard<std::mutex> lock(m_updateMutex);
 
+  // If we have too many entities and performance is suffering, consider skipping frames
+  if (m_skipFrame.load(std::memory_order_acquire)) {
+    m_skipFrame.store(false, std::memory_order_release);
+    m_updateRunning = false;
+    m_updateCondition.notify_all();
+    return;
+  }
+
   // Mark update as running
   m_updateRunning = true;
+  
+  // Get the buffer for the current update
+  const size_t updateBufferIndex = m_currentBufferIndex.load(std::memory_order_acquire);
 
-  // Update game states
-  mp_gameStateManager->update();
+  auto startTime = std::chrono::steady_clock::now();
+  try {
+    // Update game states - make sure GameStateManager knows which buffer to update
+    mp_gameStateManager->update();
 
-  // Increment the frame counter
-  m_lastUpdateFrame++;
+    // Increment the frame counter
+    m_lastUpdateFrame++;
 
-  // Mark update as completed
-  m_updateCompleted = true;
+    // Mark this buffer as ready for rendering
+    m_bufferReady[updateBufferIndex].store(true, std::memory_order_release);
+    
+    // Mark update as completed
+    m_updateCompleted = true;
+  } catch (const std::exception& e) {
+    std::cerr << "Forge Game Engine - Exception in update: " << e.what() << std::endl;
+  } catch (...) {
+    std::cerr << "Forge Game Engine - Unknown exception in update" << std::endl;
+  }
+  
+  // Calculate frame time
+  auto endTime = std::chrono::steady_clock::now();
+  m_frameTimeMs.store(static_cast<uint32_t>(
+    std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime).count()
+  ));
+  
+  // If update took too long, consider skipping the next frame
+  if (m_frameTimeMs.load() > 16) {  // 16ms = target for 60 FPS
+    m_skipFrame.store(true, std::memory_order_release);
+  }
+  
   m_updateRunning = false;
+  
+  // Notify anyone waiting on this update
   m_updateCondition.notify_all();
+  m_bufferCondition.notify_all();
 }
 
 void GameEngine::render() {
   // Always on MAIN thread as its an - SDL REQUIREMENT
   std::lock_guard<std::mutex> lock(m_renderMutex);
 
-  // Only update the last rendered frame if we actually render
-  if (hasNewFrameToRender()) {
-    SDL_RenderClear(mp_renderer.get());
-    mp_gameStateManager->render();
-    SDL_RenderPresent(mp_renderer.get());
+  // Get the current render buffer index
+  const size_t renderBufferIndex = m_renderBufferIndex.load(std::memory_order_acquire);
+  
+  // Only render if the buffer is ready
+  if (m_bufferReady[renderBufferIndex].load(std::memory_order_acquire)) {
+    try {
+      SDL_RenderClear(mp_renderer.get());
+      
+      // Make sure GameStateManager knows which buffer to render from
+      mp_gameStateManager->render();
+      
+      SDL_RenderPresent(mp_renderer.get());
 
-    // Update the last rendered frame counter
-    m_lastRenderedFrame.store(m_lastUpdateFrame.load());
+      // Update the last rendered frame counter with memory ordering
+      m_lastRenderedFrame.store(m_lastUpdateFrame.load(std::memory_order_acquire), 
+                                std::memory_order_release);
+    } catch (const std::exception& e) {
+      std::cerr << "Forge Game Engine - Exception in render: " << e.what() << std::endl;
+    } catch (...) {
+      std::cerr << "Forge Game Engine - Unknown exception in render" << std::endl;
+    }
   }
 }
 
 void GameEngine::waitForUpdate() {
   std::unique_lock<std::mutex> lock(m_updateMutex);
-  m_updateCondition.wait(lock, [this] { return m_updateCompleted.load(); });
+  // Set a timeout to avoid deadlocks with extremely high entity counts
+  if (!m_updateCondition.wait_for(lock, std::chrono::milliseconds(100), 
+      [this] { return m_updateCompleted.load(std::memory_order_acquire); })) {
+    // If timeout occurs, log a warning but continue
+    std::cerr << "Forge Game Engine - Warning: Update wait timeout with high entity count" << std::endl;
+    // Force the update completed flag to true to avoid deadlock
+    m_updateCompleted.store(true, std::memory_order_release);
+  }
 }
 
 void GameEngine::signalUpdateComplete() {
   {
     std::lock_guard<std::mutex> lock(m_updateMutex);
-    m_updateCompleted = false;  // Reset for next frame
+    m_updateCompleted.store(false, std::memory_order_release);  // Reset for next frame
+  }
+}
+
+void GameEngine::swapBuffers() {
+  std::lock_guard<std::mutex> lock(m_bufferMutex);
+  
+  // Get current index
+  size_t currentIndex = m_currentBufferIndex.load(std::memory_order_acquire);
+  
+  // Calculate next buffer index
+  size_t nextUpdateIndex = (currentIndex + 1) % BUFFER_COUNT;
+  
+  // Only swap if the current update buffer is ready
+  if (m_bufferReady[currentIndex].load(std::memory_order_acquire)) {
+    // Update buffer is ready, make it the render buffer
+    m_renderBufferIndex.store(currentIndex, std::memory_order_release);
+    
+    // Mark the next update buffer as not ready
+    m_bufferReady[nextUpdateIndex].store(false, std::memory_order_release);
+    
+    // Switch to the next buffer for updates
+    m_currentBufferIndex.store(nextUpdateIndex, std::memory_order_release);
   }
 }
 
 bool GameEngine::hasNewFrameToRender() const {
-  // We have a new frame to render if the last update frame is newer than the last rendered frame
-  return m_lastUpdateFrame.load() > m_lastRenderedFrame.load();
+  // We have a new frame to render if any buffer is ready that isn't the current render buffer
+  size_t renderIndex = m_renderBufferIndex.load(std::memory_order_acquire);
+  
+  // Check if there's a buffer ready for rendering
+  for (size_t i = 0; i < BUFFER_COUNT; ++i) {
+    if (i != renderIndex && m_bufferReady[i].load(std::memory_order_acquire)) {
+      return true;
+    }
+  }
+  
+  // Also check frame counters as a fallback
+  uint64_t lastUpdate = m_lastUpdateFrame.load(std::memory_order_acquire);
+  uint64_t lastRendered = m_lastRenderedFrame.load(std::memory_order_acquire);
+  return lastUpdate > lastRendered;
 }
 
 bool GameEngine::isUpdateRunning() const {
-  return m_updateRunning.load();
+  return m_updateRunning.load(std::memory_order_acquire);
+}
+
+size_t GameEngine::getCurrentBufferIndex() const {
+  return m_currentBufferIndex.load(std::memory_order_acquire);
+}
+
+size_t GameEngine::getRenderBufferIndex() const {
+  return m_renderBufferIndex.load(std::memory_order_acquire);
 }
 
 void GameEngine::processBackgroundTasks() {

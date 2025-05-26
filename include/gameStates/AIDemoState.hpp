@@ -9,6 +9,8 @@
 #include "gameStates/GameState.hpp"
 #include "entities/NPC.hpp"
 #include "entities/Player.hpp"
+#include <chrono>
+#include <deque>
 #include <memory>
 #include <vector>
 
@@ -39,6 +41,7 @@ private:
     // Methods
     void setupAIBehaviors();
     void createNPCs();
+    void updateFrameRate();  // FPS counter update method
 
     // Members
     std::vector<NPCPtr> m_npcs{};
@@ -49,9 +52,17 @@ private:
     std::string m_textureID {""};  // Texture ID as loaded by TextureManager from res/img directory
 
     // Demo settings
-    int m_npcCount{1000};  // Number of NPCs to create for the demo
+    int m_npcCount{2000};  // Number of NPCs to create for the demo
     float m_worldWidth{800.0f};
     float m_worldHeight{600.0f};
+
+    // Frame rate counter
+    std::chrono::steady_clock::time_point m_lastFrameTime{};
+    std::deque<float> m_frameTimes{};
+    int m_frameCount{0};
+    float m_currentFPS{0.0f};
+    float m_averageFPS{0.0f};
+    static constexpr int MAX_FRAME_SAMPLES{60}; // Number of frames to average
 };
 
 #endif // AI_DEMO_STATE_HPP

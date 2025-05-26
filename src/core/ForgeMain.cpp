@@ -45,7 +45,7 @@ const std::string GAME_NAME{"Game Template"};
   // Using GameEngine's optimized frame synchronization
 
   Uint64 frameStart, frameTime;
-  std::atomic<bool> updateInProgress{false};
+  static std::atomic<bool> updateInProgress{false};
 
   if (GameEngine::Instance().init(GAME_NAME.c_str(), WINDOW_WIDTH, WINDOW_HEIGHT, false)) {
     while (GameEngine::Instance().getRunning()) {
@@ -57,40 +57,50 @@ const std::string GAME_NAME{"Game Template"};
       // Let the ThreadSystem manage its own capacity internally
       // The capacity management is handled internally by the thread system
 
-      // Always try to render first, using the most recent game state
-      // This allows rendering to proceed immediately without waiting for an update
+      // Swap buffers if we have a new frame ready for rendering
+      if (GameEngine::Instance().hasNewFrameToRender()) {
+        GameEngine::Instance().swapBuffers();
+      }
+
+      // Always render from the current render buffer
+      // The buffer will only be rendered if it's ready
       GameEngine::Instance().render();
 
       // Only queue a new update if we're not already updating
-      if (!updateInProgress.load() && !GameEngine::Instance().isUpdateRunning()) {
-        // Reset update completion flag for next frame if needed
-        if (GameEngine::Instance().hasNewFrameToRender()) {
-          GameEngine::Instance().signalUpdateComplete();
-        }
+      if (!updateInProgress.load(std::memory_order_acquire) && 
+          !GameEngine::Instance().isUpdateRunning()) {
+        
+        // Reset update completion flag for next frame
+        GameEngine::Instance().signalUpdateComplete();
         
         // Queue a new update
         try {
-          updateInProgress.store(true);
-          Forge::ThreadSystem::Instance().enqueueTask([&]() {
+          updateInProgress.store(true, std::memory_order_release);
+          
+          // Copy any needed state - don't capture by reference
+          Forge::ThreadSystem::Instance().enqueueTask([]() {
             try {
               GameEngine::Instance().update();
               // Update method internally handles synchronization
             } catch (const std::exception& e) {
               std::cerr << "Forge Game Engine - Exception in update task: " << e.what() << std::endl;
-              // The GameEngine's update method will handle the synchronization
-              // even in case of exception since it uses RAII
+            } catch (...) {
+              std::cerr << "Forge Game Engine - Unknown exception in update task" << std::endl;
             }
-            updateInProgress.store(false);
+            
+            // Mark update as complete
+            updateInProgress.store(false, std::memory_order_release);
           });
         } catch (const std::exception& e) {
           std::cerr << "Forge Game Engine - Failed to enqueue update task: " << e.what() << std::endl;
-          updateInProgress.store(false);
+          updateInProgress.store(false, std::memory_order_release);
         }
       }
 
       // Process any background tasks in parallel with update
       // This could include asset loading, AI computation, physics, etc.
       try {
+        // Copy any needed data rather than capturing by reference
         Forge::ThreadSystem::Instance().enqueueTask([]() {
           try {
             // Example background task
@@ -103,13 +113,17 @@ const std::string GAME_NAME{"Game Template"};
         std::cerr << "Forge Game Engine - Failed to enqueue background task: " << e.what() << std::endl;
       }
 
-      // We've already rendered at the beginning of the frame,
-      // so we don't need to wait for update or render again here
-
+      // Calculate frame time
       frameTime = SDL_GetTicks() - frameStart;
 
+      // Limit frame rate to target FPS
       if (frameTime < DELAY_TIME) {
+        // We have time to spare, delay to meet target frame rate
         SDL_Delay((int)(DELAY_TIME - frameTime));
+      } else if (frameTime > DELAY_TIME * 2) {
+        // Frame took too long, might need to skip updates
+        std::cerr << "Forge Game Engine - Warning: Frame time exceeds threshold: " 
+                  << frameTime << "ms" << std::endl;
       }
     }
   } else {
