@@ -93,26 +93,53 @@ void EventManager::clean() {
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
 
-    // If we were using ThreadSystem, wait for any pending event tasks to complete
+    // If we were using ThreadSystem, handle pending tasks properly
     if (wasThreadingEnabled && Forge::ThreadSystem::Exists()) {
-        // Wait for pending tasks with timeout
+        // Log that we're waiting for tasks to complete
+        EVENT_LOG("Waiting for pending event tasks to complete");
+        
+        // Wait for any remaining tasks with timeout
         int waitTime = 0;
         const int maxWaitTime = 2000; // 2 seconds
+        const int checkInterval = 10; // milliseconds
+        
         while (Forge::ThreadSystem::Instance().isBusy() && waitTime < maxWaitTime) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(10));
-            waitTime += 10;
+            std::this_thread::sleep_for(std::chrono::milliseconds(checkInterval));
+            waitTime += checkInterval;
+            
+            // Log progress for long waits
+            if (waitTime % 500 == 0) {
+                EVENT_LOG_DETAIL("Still waiting for ThreadSystem tasks to complete: " << waitTime << "ms elapsed");
+            }
         }
 
         if (waitTime >= maxWaitTime) {
-            EVENT_LOG("Warning: Timed out waiting for ThreadSystem tasks to complete");
+            EVENT_LOG("Warning: Timed out waiting for ThreadSystem tasks to complete after " << waitTime << "ms");
+        } else if (waitTime > 0) {
+            EVENT_LOG_DETAIL("ThreadSystem tasks completed after " << waitTime << "ms wait");
         }
     }
 
-    // Acquire all locks to ensure thread safety during cleanup
-    std::unique_lock<std::shared_mutex> eventLock(m_eventsMutex);
-    std::lock_guard<std::mutex> cacheLock(m_cacheMutex);
-    std::lock_guard<std::mutex> batchesLock(m_batchesMutex);
-    std::lock_guard<std::mutex> perfLock(m_perfStatsMutex);
+    // Use a more structured approach to lock acquisition to avoid potential deadlocks
+    EVENT_LOG_DETAIL("Acquiring locks for cleanup");
+    
+    // Try to acquire all locks with timeouts to avoid potential deadlocks
+    std::unique_lock<std::shared_mutex> eventLock(m_eventsMutex, std::defer_lock);
+    std::unique_lock<std::mutex> cacheLock(m_cacheMutex, std::defer_lock);
+    std::unique_lock<std::mutex> batchesLock(m_batchesMutex, std::defer_lock);
+    std::unique_lock<std::mutex> perfLock(m_perfStatsMutex, std::defer_lock);
+    
+    // Try to lock them all at once to avoid deadlocks
+    try {
+        std::lock(eventLock, cacheLock, batchesLock, perfLock);
+    } catch (const std::exception& e) {
+        EVENT_LOG("Error acquiring locks during cleanup: " << e.what());
+        // Try again with individual locks in a consistent order
+        if (!eventLock.owns_lock()) eventLock.lock();
+        if (!cacheLock.owns_lock()) cacheLock.lock();
+        if (!batchesLock.owns_lock()) batchesLock.lock();
+        if (!perfLock.owns_lock()) perfLock.lock();
+    }
 
     // Clean up all events
     for (auto& [name, event] : m_events) {
@@ -122,24 +149,39 @@ void EventManager::clean() {
         }
     }
 
-    // Clear all containers
+    // Clear all containers in a controlled manner
+    EVENT_LOG_DETAIL("Clearing event containers");
+    
     m_events.clear();
     m_eventTypeIndex.clear();
     m_activeEventCache.clear();
     m_eventTypeBatches.clear();
     m_eventTypePerformanceStats.clear();
 
-    m_cacheValid.store(false);
-    m_batchesValid.store(false);
+    // Update atomic states
+    m_cacheValid.store(false, std::memory_order_release);
+    m_batchesValid.store(false, std::memory_order_release);
+    
+    // Reset performance stats
+    m_messageQueueStats = PerformanceStats();
 
     EVENT_LOG("Event Manager cleaned successfully");
 
+    // Notify any waiting threads that cleanup is complete
+    m_messageQueue.clear();
+    
+    // Final check to ensure ThreadSystem is in a good state
+    if (Forge::ThreadSystem::Exists() && !Forge::ThreadSystem::Instance().isShutdown()) {
+        EVENT_LOG_DETAIL("ThreadSystem remains active for other components");
+    }
+    
     // Note: We don't clean up the ThreadSystem here as other components might still be using it.
     // ThreadSystem cleanup is handled at application shutdown.
 }
 
-void EventManager::configureThreading(bool useThreading, unsigned int maxThreads) {
-    EVENT_LOG("Configuring threading: useThreading=" << useThreading << ", maxThreads=" << maxThreads);
+void EventManager::configureThreading(bool useThreading, unsigned int maxThreads, Forge::TaskPriority priority) {
+    EVENT_LOG("Configuring threading: useThreading=" << useThreading << ", maxThreads=" << maxThreads
+              << ", priority=" << static_cast<int>(priority));
 
     if (!m_initialized.load()) {
         EVENT_LOG("Warning: Configuring threading before initialization");
@@ -147,7 +189,7 @@ void EventManager::configureThreading(bool useThreading, unsigned int maxThreads
 
     // Check if we're changing the threading state
     bool currentThreadingState = m_useThreading.load();
-    if (currentThreadingState == useThreading && m_maxThreads == maxThreads) {
+    if (currentThreadingState == useThreading && m_maxThreads == maxThreads && m_eventTaskPriority == priority) {
         EVENT_LOG_DETAIL("Threading configuration unchanged, skipping");
         return;
     }
@@ -156,6 +198,11 @@ void EventManager::configureThreading(bool useThreading, unsigned int maxThreads
     if (currentThreadingState && !useThreading) {
         if (Forge::ThreadSystem::Exists()) {
             EVENT_LOG("Waiting for pending ThreadSystem tasks to complete before disabling threading");
+
+            // Try to cancel pending event tasks
+            // Note: Task cancellation is not currently supported by ThreadSystem
+            // This would be a good feature to add in the future
+            EVENT_LOG_DETAIL("Waiting for pending event tasks to complete");
 
             // Wait for pending tasks with a reasonable timeout
             int waitTime = 0;
@@ -175,6 +222,7 @@ void EventManager::configureThreading(bool useThreading, unsigned int maxThreads
 
     m_useThreading.store(useThreading);
     m_maxThreads = maxThreads;
+    m_eventTaskPriority = priority;
 
     if (useThreading) {
         // Check if ThreadSystem is initialized and initialize it if needed
@@ -187,6 +235,9 @@ void EventManager::configureThreading(bool useThreading, unsigned int maxThreads
             }
         } else {
             // Ensure ThreadSystem is properly configured for our needs
+            Forge::ThreadSystem::Instance().reserveQueueCapacity(256);
+
+            // Reserve capacity for better performance
             Forge::ThreadSystem::Instance().reserveQueueCapacity(256);
         }
 
@@ -381,6 +432,13 @@ void EventManager::update() {
     // Process any pending messages first
     processMessageQueue();
 
+    // Check if the ThreadSystem is available
+    if (!Forge::ThreadSystem::Exists()) {
+        // Fall back to single-threaded mode if ThreadSystem is not available
+        EVENT_LOG_DETAIL("ThreadSystem is not available, falling back to single-threaded mode");
+        m_useThreading.store(false);
+    }
+
     // Ensure optimization caches are valid
     ensureOptimizationCachesValid();
 
@@ -419,12 +477,41 @@ void EventManager::update() {
             std::string typeStr = std::string(eventType);
             EventBatch batchCopy = batch;
 
-            // Submit task to ThreadSystem
+            // Determine priority for specific event types
+            Forge::TaskPriority batchPriority = m_eventTaskPriority;
+
+            // Prioritize critical event types (this could be made configurable)
+            if (typeStr == "Input" || typeStr == "Physics" || typeStr == "Rendering") {
+                batchPriority = Forge::TaskPriority::Critical;
+            }
+            // Handle special event types that should run at high priority
+            else if (typeStr == "Animation" || typeStr == "Audio") {
+                batchPriority = Forge::TaskPriority::High;
+            }
+            // Background tasks should run at lower priority
+            else if (typeStr == "Background" || typeStr == "Analytics" || typeStr == "AutoSave") {
+                batchPriority = Forge::TaskPriority::Low;
+            }
+
+            // Create a meaningful task description for debugging
+            std::string taskDescription = "EventManager: Update " + typeStr + " events (" +
+                                         std::to_string(batchCopy.size()) + " events)";
+
+            // Submit task to ThreadSystem with appropriate priority
             try {
+                // Create a task that handles proper shutdown gracefully
                 auto future = Forge::ThreadSystem::Instance().enqueueTaskWithResult(
                     [this, typeStr, batchCopy]() {
-                        updateEventTypeBatch(typeStr, batchCopy);
-                    }
+                        // Check if we're still initialized before processing
+                        if (m_initialized.load(std::memory_order_acquire)) {
+                            updateEventTypeBatch(typeStr, batchCopy);
+                        } else {
+                            // Skip processing if we're shutting down
+                            EVENT_LOG_DETAIL("Skipping " << typeStr << " event batch - system shutting down");
+                        }
+                    },
+                    batchPriority,
+                    taskDescription
                 );
                 futures.push_back(std::move(future));
             } catch (const std::exception& e) {
@@ -452,16 +539,29 @@ void EventManager::update() {
         auto waitStartTime = std::chrono::steady_clock::now();
         #endif
 
+        // Use a more reliable wait strategy with better timeout handling
+        const int DEFAULT_TIMEOUT_MS = 500;  // Default timeout per task in milliseconds
+        const int EXTENDED_TIMEOUT_MS = 2000;  // Extended timeout for slow tasks
+
         for (auto& future : futures) {
             try {
-                // Use a timeout to prevent hanging
-                auto status = future.wait_for(std::chrono::seconds(1));
+                // Use a reasonable timeout to prevent hanging
+                auto status = future.wait_for(std::chrono::milliseconds(DEFAULT_TIMEOUT_MS));
                 if (status != std::future_status::ready) {
                     // Try again with a longer timeout
-                    status = future.wait_for(std::chrono::seconds(1));
+                    EVENT_LOG_DETAIL("Event task taking longer than expected, extending timeout");
+                    status = future.wait_for(std::chrono::milliseconds(EXTENDED_TIMEOUT_MS));
                     if (status != std::future_status::ready) {
-                        EVENT_LOG("Warning: Event batch processing timed out");
+                        EVENT_LOG("Warning: Event batch processing timed out after extended wait");
                         timedOutTasks++;
+                        
+                        // We can't cancel tasks, but log the issue
+                        if (Forge::ThreadSystem::Exists()) {
+                            EVENT_LOG_DETAIL("Task appears to be hung, but cancellation is not supported");
+                        }
+                        
+                        // Continue to next task instead of potentially hanging
+                        continue;
                     } else {
                         future.get(); // Get the result to propagate any exceptions
                         #ifdef EVENT_DEBUG_LOGGING
@@ -476,6 +576,8 @@ void EventManager::update() {
                 }
             } catch (const std::exception& e) {
                 EVENT_LOG("Error in event batch processing: " << e.what());
+            } catch (...) {
+                EVENT_LOG("Unknown error in event batch processing");
             }
         }
 
