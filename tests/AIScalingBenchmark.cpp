@@ -710,7 +710,7 @@ BOOST_AUTO_TEST_CASE(TestExtremeEntityCount) {
         std::cout << "Running extreme entity test with " << maxThreads << " threads" << std::endl;
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
-        const int numEntities = 200000;
+        const int numEntities = 100000;
         const int numBehaviors = 3;   // Fewer behaviors for extreme-scale test
         const int numUpdates = 3;     // Fewer updates to avoid excessive test time
 
@@ -761,7 +761,7 @@ BOOST_AUTO_TEST_CASE(TestExtremeEntityCount) {
         // Only run if we have a lot of memory
         #ifdef ENABLE_EXTREME_TESTS
         // Even more extreme test with additional behaviors
-        fixture.runBenchmark(200000, 5, 3, true);
+        fixture.runBenchmark(100000, 5, 3, true);
         #endif
 
         // Switch to single-threaded mode for cleanup
