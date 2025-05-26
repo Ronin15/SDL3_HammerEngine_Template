@@ -4,10 +4,7 @@
 */
 
 #include <SDL3/SDL.h>
-#include <atomic>
-#include <condition_variable>
 #include <iostream>
-#include <mutex>
 #include <string>
 #include "core/GameEngine.hpp"
 #include "core/ThreadSystem.hpp"
@@ -44,9 +41,7 @@ const std::string GAME_NAME{"Game Template"};
             << Forge::ThreadSystem::Instance().getQueueCapacity()
             << " parallel tasks!\n";
 
-  std::mutex updateMutex;
-  std::condition_variable updateCondition;
-  std::atomic<bool> updateReady{false};
+  // Using GameEngine's built-in synchronization
 
   Uint64 frameStart, frameTime;
 
@@ -65,25 +60,17 @@ const std::string GAME_NAME{"Game Template"};
         Forge::ThreadSystem::Instance().enqueueTask([&]() {
           try {
             GameEngine::Instance().update();
-            {
-              std::lock_guard<std::mutex> lock(updateMutex);
-              updateReady = true;
-            }
-            updateCondition.notify_one();
+            // Update method internally handles synchronization
           } catch (const std::exception& e) {
             std::cerr << "Forge Game Engine - Exception in update task: " << e.what() << std::endl;
-            // Still signal completion even if there was an error
-            std::lock_guard<std::mutex> lock(updateMutex);
-            updateReady = true;
-            updateCondition.notify_one();
+            // The GameEngine's update method will handle the synchronization
+            // even in case of exception since it uses RAII
           }
         });
       } catch (const std::exception& e) {
         std::cerr << "Forge Game Engine - Failed to enqueue update task: " << e.what() << std::endl;
-        // If we can't enqueue the task, mark update as ready to avoid deadlock
-        std::lock_guard<std::mutex> lock(updateMutex);
-        updateReady = true;
-        updateCondition.notify_one();
+        // Even if we can't enqueue the task, let the GameEngine handle synchronization
+        // to maintain consistency across the system
       }
 
       // Process any background tasks when waiting on update
@@ -102,15 +89,15 @@ const std::string GAME_NAME{"Game Template"};
       }
 
       // Wait on update to complete before rendering
-      {
-        std::unique_lock<std::mutex> lock(updateMutex);
-        updateCondition.wait(lock, [&] { return updateReady.load(); });
-      }
+      // Using GameEngine's built-in synchronization mechanism
+      GameEngine::Instance().waitForUpdate();
 
       // Render on main thread (OpenGL/SDL rendering context is bound to main
       // thread)
       GameEngine::Instance().render();
-      updateReady = false;
+      
+      // Reset update completion flag for next frame
+      GameEngine::Instance().signalUpdateComplete();
 
       frameTime = SDL_GetTicks() - frameStart;
 
