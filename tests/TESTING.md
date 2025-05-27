@@ -12,10 +12,12 @@ The Forge Game Engine has the following test suites:
    - Thread-Safe AI Integration Tests: Test integration of AI components with threading
    - AI Benchmark Tests: Measure performance characteristics and scaling capabilities
 
-2. **Core Systems Tests**
+3. **Core Systems Tests**
    - Save Manager Tests: Validate save/load functionality
    - Thread System Tests: Verify multi-threading capabilities
    - Event Manager Tests: Validate event handling and integration with threading
+   - Event Types Tests: Test specific event type implementations (Weather, Scene Change, NPC Spawn)
+   - Weather Event Tests: Focused tests for weather event functionality
 
 ## Running Tests
 
@@ -72,6 +74,8 @@ Test results are saved in the `test_results` directory:
 - `save_test_output.txt` - Output from save manager tests
 - `thread_test_output.txt` - Output from thread system tests
 - `event_test_output.txt` - Output from event manager tests
+- `event_types_test_output.txt` - Output from event types tests
+- `weather_event_test_output.txt` - Output from weather event tests
 
 When using the `run_all_tests` scripts, combined results are also saved:
 
@@ -151,6 +155,56 @@ Located in `events/EventManagerTest.cpp`, `events/EventTypesTest.cpp`, and `even
 4. **Thread-Safe Processing**: Tests concurrent event processing using ThreadSystem
 5. **Message System**: Tests the event messaging system for communication between events
 6. **Priority-Based Scheduling**: Tests task priority integration with event processing
+7. **NPCSpawnEvent Integration**: Tests NPC spawning functionality with mocked dependencies
+
+#### Event Manager Test Details
+
+**EventManagerTest.cpp** focuses on EventManager integration:
+- Event registration and retrieval
+- Event activation/deactivation
+- Event messaging system
+- Thread-safe event processing
+- NPCSpawnEvent integration with EventManager
+
+**EventTypesTest.cpp** tests specific event type implementations:
+- WeatherEvent creation and parameter setting
+- SceneChangeEvent functionality
+- NPCSpawnEvent creation, spawn parameters, conditions, and limits
+- EventFactory event creation methods
+- Event sequences and cooldown functionality
+
+**WeatherEventTest.cpp** provides focused weather event testing:
+- Weather state transitions
+- Particle effect integration
+- Sound effect integration
+- Time-based weather conditions
+
+#### Mock Infrastructure for NPCSpawnEvent Tests
+
+The NPCSpawnEvent tests use a comprehensive mocking infrastructure to avoid dependencies on the full game engine:
+
+**Mock Components:**
+- `MockNPC.hpp/cpp`: Mock NPC class implementing Entity interface without game engine dependencies
+- `MockGameEngine.hpp/cpp`: Mock GameEngine providing basic window dimensions for testing
+- `NPCSpawnEventTest.cpp`: Test-specific NPCSpawnEvent implementation using mocks
+
+**Mock Features:**
+- Complete NPCSpawnEvent functionality testing without real game engine
+- Proper Vector2D usage with `getX()/getY()` and `setX()/setY()` methods
+- Correct Event base class implementation
+- Mock entity creation and management
+- Spawn parameter validation and condition testing
+- Respawn logic and timer functionality
+- Proximity and area-based spawning tests
+
+**Test Coverage:**
+- Spawn parameters (count, radius, positioning)
+- Spawn conditions (proximity, time of day, custom conditions)
+- Spawn limits and counting
+- Respawn functionality and timing
+- Spawn area management (points, rectangles, circles)
+- Entity lifecycle and cleanup
+- Message-based spawn requests
 
 ## Adding New Tests
 
@@ -159,6 +213,42 @@ Located in `events/EventManagerTest.cpp`, `events/EventTypesTest.cpp`, and `even
 3. Follow the existing pattern for setup, execution, and verification
 4. Run tests with `--clean` to ensure your changes are compiled
 5. For directory or file operation tests, always clean up created resources when tests complete
+6. For tests requiring game engine dependencies, consider creating mock implementations
+
+### Creating Mock Dependencies
+
+When testing components that depend on complex systems (like NPCSpawnEvent depending on NPC and GameEngine):
+
+1. **Create Mock Headers**: Define mock classes that implement the same interface as real dependencies
+2. **Mock Implementation**: Provide minimal functionality needed for testing
+3. **Test-Specific Compilation**: Create test-specific source files that use mocks instead of real implementations
+4. **CMake Integration**: Update `tests/CMakeLists.txt` to include mock files and dependencies
+
+**Example Mock Structure:**
+```cpp
+// MockNPC.hpp - Mock implementation of NPC for testing
+class MockNPC : public Entity {
+public:
+    MockNPC(const std::string& textureID, const Vector2D& position, int width, int height);
+    
+    // Mock the required interface methods
+    void setWanderArea(float x1, float y1, float x2, float y2);
+    void setBoundsCheckEnabled(bool enabled);
+    
+    // Factory method like real class
+    static std::shared_ptr<MockNPC> create(const std::string& textureID, const Vector2D& position, int width, int height);
+};
+
+// Define alias for testing
+using NPC = MockNPC;
+```
+
+**Benefits of Mocking:**
+- Tests run faster without full game engine initialization
+- Tests are more focused and isolated
+- Easier to reproduce specific conditions
+- No external dependencies like graphics, audio, or file systems
+- Better test reliability and maintainability
 
 For directory management tests (like in SaveManagerTests):
 - Use a dedicated test directory that's different from production directories

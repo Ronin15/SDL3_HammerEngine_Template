@@ -18,8 +18,8 @@
 #include "managers/EventManager.hpp"
 #include "events/Event.hpp"
 #include "events/WeatherEvent.hpp"
-#include "events/SceneChangeEvent.hpp"
 #include "events/NPCSpawnEvent.hpp"
+#include "events/SceneChangeEvent.hpp"
 
 
 // Mock Event class for testing

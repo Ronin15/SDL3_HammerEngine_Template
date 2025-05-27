@@ -119,12 +119,161 @@ Events can communicate with each other through messages:
 // Send message to specific event
 EventManager::Instance().sendMessageToEvent("RainEvent", "intensify");
 
+// Send message immediately (bypass queue)
+EventManager::Instance().sendMessageToEvent("RainEvent", "intensify", true);
+
 // Send message to all events of a type
 EventManager::Instance().broadcastMessageToType("Weather", "stop");
 
 // Send message to all events
 EventManager::Instance().broadcastMessage("reset");
+
+// Send immediate broadcast (useful for critical events)
+EventManager::Instance().broadcastMessage("emergency_stop", true);
 ```
+
+### Message Queuing System
+
+The EventManager uses a sophisticated message queuing system that supports both immediate and queued message delivery:
+
+```cpp
+// Queued messages (default) - processed during next update cycle
+EventManager::Instance().sendMessageToEvent("RainEvent", "start");
+EventManager::Instance().broadcastMessageToType("Weather", "pause");
+EventManager::Instance().broadcastMessage("save_state");
+
+// Immediate messages - delivered synchronously, bypassing the queue
+EventManager::Instance().sendMessageToEvent("CriticalEvent", "abort", true);
+EventManager::Instance().broadcastMessageToType("Combat", "emergency_stop", true);
+EventManager::Instance().broadcastMessage("system_shutdown", true);
+
+// Manual queue processing (automatically called during update)
+EventManager::Instance().processMessageQueue();
+```
+
+**Key Features:**
+- **Thread-Safe Double Buffering**: Messages are queued in one buffer while another is being processed
+- **Timestamp Tracking**: All queued messages include high-precision timestamps
+- **Priority Handling**: Immediate messages bypass the queue for critical scenarios
+- **Automatic Processing**: Message queue is processed automatically during each update cycle
+- **Performance Monitoring**: Built-in performance statistics for message processing
+
+**When to Use Immediate vs Queued:**
+- **Queued (default)**: Standard game events, UI updates, non-critical notifications
+- **Immediate**: Emergency stops, critical state changes, system shutdowns, debug commands
+
+## Performance Monitoring
+
+The EventManager includes comprehensive performance monitoring capabilities for optimization and debugging:
+
+### Built-in Performance Statistics
+
+```cpp
+// Performance data is automatically collected for:
+// - Individual event execution times
+// - Event type batch processing times
+// - Message queue processing performance
+// - Cache hit/miss ratios for optimization systems
+
+// Access event count metrics
+size_t totalEvents = EventManager::Instance().getEventCount();
+size_t activeEvents = EventManager::Instance().getActiveEventCount();
+
+// Performance data is logged in debug builds and available for profiling
+```
+
+**Tracked Metrics:**
+- **Total Update Time**: Cumulative time spent processing events
+- **Average Update Time**: Mean execution time per update cycle
+- **Max/Min Update Times**: Performance bounds for optimization analysis
+- **Update Count**: Total number of update cycles processed
+- **Event Type Performance**: Per-type execution statistics for batch optimization
+- **Message Queue Stats**: Processing time and throughput metrics
+
+### Performance Optimization Features
+
+**Event Caching System:**
+- Active events are cached for faster iteration
+- Event type batches are pre-computed for efficient parallel processing
+- String views are used to avoid unnecessary string copies
+- Cache invalidation occurs only when events are added/removed
+
+**Threading Optimizations:**
+- Events are grouped by type into batches for better cache locality
+- ThreadSystem integration provides parallel processing with priority scheduling
+- Automatic fallback to single-threaded mode if ThreadSystem is unavailable
+- Thread-safe double buffering for message queues reduces contention
+
+**Memory Management:**
+- Flat maps used for O(log n) lookup performance
+- Weak pointers prevent memory leaks in event references
+- High-precision timing using nanosecond resolution
+- Minimal memory allocations during runtime execution
+
+## Utility Methods and Event Management
+
+### Event Query and Management
+
+```cpp
+// Check if specific events exist
+bool hasWeatherEvent = EventManager::Instance().hasEvent("RainStorm");
+
+// Get specific events for direct manipulation
+auto weatherEvent = EventManager::Instance().getEvent("RainStorm");
+if (weatherEvent) {
+    weatherEvent->setActive(true);
+}
+
+// Get all events of a specific type
+auto allWeatherEvents = EventManager::Instance().getEventsByType("Weather");
+for (auto& event : allWeatherEvents) {
+    event->setActive(false);  // Disable all weather events
+}
+
+// Get event counts for monitoring
+size_t totalEvents = EventManager::Instance().getEventCount();
+size_t activeEvents = EventManager::Instance().getActiveEventCount();
+```
+
+### Event State Management
+
+```cpp
+// Activate/deactivate specific events
+EventManager::Instance().setEventActive("RainStorm", true);
+bool isActive = EventManager::Instance().isEventActive("RainStorm");
+
+// Remove events that are no longer needed
+EventManager::Instance().removeEvent("TemporaryEvent");
+
+// Reset all events without shutting down the manager
+// Useful for scene transitions or game state changes
+EventManager::Instance().resetEvents();
+
+// Force execute events regardless of conditions
+EventManager::Instance().executeEvent("EmergencyEvent");
+int executed = EventManager::Instance().executeEventsByType("Combat");
+```
+
+### Bulk Event Operations
+
+```cpp
+// Execute all events of a specific type
+int weatherEventsExecuted = EventManager::Instance().executeEventsByType("Weather");
+
+// Send messages to multiple events efficiently
+EventManager::Instance().broadcastMessageToType("Combat", "end_combat");
+
+// Reset all events while keeping the manager running
+EventManager::Instance().resetEvents();  // Clears events but keeps system initialized
+```
+
+**Key Methods:**
+- `hasEvent(name)`: Check if an event exists
+- `getEvent(name)`: Retrieve a specific event for direct access
+- `getEventsByType(type)`: Get all events of a particular type
+- `resetEvents()`: Clear all events while keeping the manager initialized
+- `executeEventsByType(type)`: Force execute all events of a type
+- `getEventCount()` / `getActiveEventCount()`: Monitor event system usage
 
 ### Custom Event Types
 
