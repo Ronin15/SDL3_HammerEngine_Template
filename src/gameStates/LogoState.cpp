@@ -43,20 +43,11 @@ void LogoState::render() {
       GameEngine::Instance().getRenderer());
 
   TextureManager::Instance().draw(
-      "sdl",
-      GameEngine::Instance().getWindowWidth() / 2 - 100, // Center horizontally
-      (GameEngine::Instance().getWindowHeight() / 2) + 320,
-      203, 125,
-      GameEngine::Instance().getRenderer());
-
-  TextureManager::Instance().draw(
       "cpp",
       GameEngine::Instance().getWindowWidth() / 2 + 150,  // Center horizontally
       (GameEngine::Instance().getWindowHeight() / 2) + 215,
       50, 50,
       GameEngine::Instance().getRenderer());
-
-
 
   // Render text using SDL_TTF
   //SDL_Color titleColor = {185, 71, 0, 200}; // Forge Orange
