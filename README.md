@@ -221,7 +221,7 @@ The EntityStateManager handles the state machine for individual entities:
 
 See `include/managers/EntityStateManager.hpp` for the full API.
 
-### EventManager
+### EventManager & EventSystem
 
 The EventManager provides a condition-based event system for game events:
 
@@ -231,8 +231,20 @@ The EventManager provides a condition-based event system for game events:
 - Thread-safe event processing with priority-based scheduling
 - Event messaging system for communication between events
 - Integration with the ThreadSystem for parallel event processing
+- Full GameEngine lifecycle integration (automatic initialization, update, and cleanup)
 
-See `docs/EventManager.md` and `docs/EventManager_ThreadSystem.md` for detailed documentation and usage examples.
+#### EventDemoState
+A comprehensive demonstration and testing framework for the event system:
+- **Access**: From main menu, press 'E' to enter Event Demo
+- **Visual SDL UI**: Real-time display with centered text layout showing phase, timer, FPS, weather, NPC count
+- **Automatic Mode**: Cycles through all event types automatically (Weather → NPC Spawn → Scene Transition → Custom Events)
+- **Manual Mode**: Use number keys 1-5 to trigger specific event types
+- **Event Log**: Visual display of last 6 triggered events with timestamps
+- **Performance Monitoring**: Real-time FPS tracking and system status
+
+The EventDemoState serves as both documentation and testing platform for developers to understand event system integration.
+
+See `docs/EventManager.md`, `docs/EventDemo.md`, and `docs/EventManager_ThreadSystem.md` for detailed documentation and usage examples.
 
 ### AIManager
 
@@ -286,6 +298,8 @@ Additional documentation can be found in the `docs/` directory:
 - `AIManager.md` - Comprehensive guide to the AI system with examples and custom behavior creation
 - `OPTIMIZATIONS.md` - Technical details on AI system performance optimizations
 - `EventManager.md` - Guide to the event management system with examples and integration details
+- `EventDemo.md` - Complete documentation for the EventDemoState testing framework
+- `EventSystem_Integration.md` - Quick reference guide for EventSystem integration and usage patterns
 - `EventManager_ThreadSystem.md` - Details on EventManager and ThreadSystem integration
 - `EventManagerExamples.cpp` - Code examples for using the EventManager system
 - `SaveManagerTesting.md` - Details on the SaveGameManager testing framework and how to run the tests
