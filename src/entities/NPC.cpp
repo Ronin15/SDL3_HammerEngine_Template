@@ -63,13 +63,13 @@ void NPC::loadDimensionsFromTexture() {
 
     // Get the texture from TextureManager
     if (TextureManager::Instance().isTextureInMap(m_textureID)) {
-        SDL_Texture* texture = TextureManager::Instance().getTexture(m_textureID);
+        auto texture = TextureManager::Instance().getTexture(m_textureID);
         if (texture != nullptr) {
             float width = 0.0f;
             float height = 0.0f;
             // Query the texture to get its width and height
             // SDL3 uses SDL_GetTextureSize which returns float dimensions and returns a bool
-            if (SDL_GetTextureSize(texture, &width, &height)) {
+            if (SDL_GetTextureSize(texture.get(), &width, &height)) {
                 // Store original dimensions for full sprite sheet
                 m_width = static_cast<int>(width);
                 m_height = static_cast<int>(height);

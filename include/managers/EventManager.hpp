@@ -141,20 +141,20 @@ public:
     bool hasEvent(const std::string& eventName) const;
 
     /**
-     * @brief Get a pointer to an event
+     * @brief Get a shared pointer to an event
      * @param eventName Name of the event to retrieve
-     * @return Pointer to the event, or nullptr if not found
+     * @return Shared pointer to the event, or nullptr if not found
      * @thread_safety Thread-safe, can be called from any thread
      */
-    Event* getEvent(const std::string& eventName) const;
+    EventPtr getEvent(const std::string& eventName) const;
 
     /**
      * @brief Get all events of a specific type
      * @param eventType Type of events to retrieve (e.g., "Weather", "SceneChange")
-     * @return Vector of event pointers
+     * @return Vector of event shared pointers
      * @thread_safety Thread-safe, can be called from any thread
      */
-    std::vector<Event*> getEventsByType(const std::string& eventType) const;
+    std::vector<EventPtr> getEventsByType(const std::string& eventType) const;
 
     /**
      * @brief Remove a registered event
@@ -333,7 +333,7 @@ private:
 
     // Cache for quick lookup of active events (optimization)
     struct EventCache {
-        Event* event{nullptr};
+        EventWeakPtr event;
         std::string_view eventName;  // Using string_view to avoid copies
         std::string_view eventType;  // Type of the event
 
@@ -343,7 +343,7 @@ private:
 
         // Constructor to ensure proper initialization
         EventCache()
-            : event(nullptr)
+            : event()
             , eventName()
             , eventType()
             , lastUpdateTime(0)
@@ -361,7 +361,7 @@ private:
     Forge::TaskPriority m_eventTaskPriority{Forge::TaskPriority::Normal}; // Default priority for event tasks
 
     // For batch processing optimization
-    using EventBatch = std::vector<Event*>;
+    using EventBatch = std::vector<EventPtr>;
     boost::container::flat_map<std::string, EventBatch> m_eventTypeBatches{};
     std::atomic<bool> m_batchesValid{false};
     mutable std::mutex m_batchesMutex{};
@@ -459,9 +459,9 @@ private:
     size_t deliverBroadcastMessage(const std::string& message);
 
     // Helper methods for event processing
-    void updateEvent(Event* event, const std::string_view& eventName);
-    bool checkEventConditions(Event* event);
-    void executeEventIfConditionsMet(Event* event);
+    void updateEvent(const EventPtr& event, const std::string_view& eventName);
+    bool checkEventConditions(const EventPtr& event);
+    void executeEventIfConditionsMet(const EventPtr& event);
 };
 
 #endif // EVENT_MANAGER_HPP

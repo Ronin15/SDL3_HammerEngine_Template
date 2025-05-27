@@ -291,20 +291,20 @@ bool EventManager::hasEvent(const std::string& eventName) const {
     return m_events.find(eventName) != m_events.end();
 }
 
-Event* EventManager::getEvent(const std::string& eventName) const {
+EventPtr EventManager::getEvent(const std::string& eventName) const {
     std::shared_lock<std::shared_mutex> lock(m_eventsMutex);
 
     auto it = m_events.find(eventName);
     if (it != m_events.end()) {
-        return it->second.get();
+        return it->second;
     }
 
     EVENT_LOG("Warning: Event not found: " << eventName);
     return nullptr;
 }
 
-std::vector<Event*> EventManager::getEventsByType(const std::string& eventType) const {
-    std::vector<Event*> result;
+std::vector<EventPtr> EventManager::getEventsByType(const std::string& eventType) const {
+    std::vector<EventPtr> result;
 
     std::shared_lock<std::shared_mutex> lock(m_eventsMutex);
 
@@ -321,7 +321,7 @@ std::vector<Event*> EventManager::getEventsByType(const std::string& eventType) 
     for (const auto& name : eventNames) {
         auto eventIt = m_events.find(name);
         if (eventIt != m_events.end()) {
-            result.push_back(eventIt->second.get());
+            result.push_back(eventIt->second);
         }
     }
 
@@ -604,8 +604,9 @@ void EventManager::update() {
         }
 
         for (auto& cacheEntry : localCache) {
-            if (cacheEntry.event) {
-                updateEvent(cacheEntry.event, cacheEntry.eventName);
+            // Lock the weak_ptr to get a shared_ptr
+            if (auto eventPtr = cacheEntry.event.lock()) {
+                updateEvent(eventPtr, cacheEntry.eventName);
             }
         }
     }
@@ -656,7 +657,7 @@ void EventManager::rebuildActiveEventCache() {
     for (const auto& [name, eventPtr] : m_events) {
         if (eventPtr && eventPtr->isActive()) {
             EventCache cacheEntry;
-            cacheEntry.event = eventPtr.get();
+            cacheEntry.event = eventPtr;
             cacheEntry.eventName = name;
             cacheEntry.eventType = eventPtr->getType();
             cacheEntry.lastUpdateTime = getCurrentTimeNanos();
@@ -683,7 +684,7 @@ void EventManager::rebuildEventTypeBatches() {
         for (const auto& name : eventNames) {
             auto it = m_events.find(name);
             if (it != m_events.end() && it->second && it->second->isActive()) {
-                batch.push_back(it->second.get());
+                batch.push_back(it->second);
             }
         }
 
@@ -718,7 +719,7 @@ void EventManager::updateEventTypeBatch(const std::string_view& eventType, const
     recordEventTypePerformance(eventType, batchTimeMs);
 }
 
-void EventManager::updateEvent(Event* event, const std::string_view& /* eventName */) {
+void EventManager::updateEvent(const EventPtr& event, const std::string_view& /* eventName */) {
     if (!event) {
         return;
     }
@@ -736,7 +737,12 @@ void EventManager::updateEvent(Event* event, const std::string_view& /* eventNam
     // Record performance metrics in a thread-safe way
     std::lock_guard<std::mutex> lock(m_cacheMutex);
     auto it = std::find_if(m_activeEventCache.begin(), m_activeEventCache.end(),
-                          [&event](const auto& cacheEntry) { return cacheEntry.event == event; });
+                          [&event](const auto& cacheEntry) {
+                              if (auto cachedEvent = cacheEntry.event.lock()) {
+                                  return cachedEvent == event;
+                              }
+                              return false;
+                          });
     if (it != m_activeEventCache.end()) {
         it->lastUpdateTime = endTime;
         double timeMs = (endTime - startTime) / 1000000.0;
@@ -744,7 +750,7 @@ void EventManager::updateEvent(Event* event, const std::string_view& /* eventNam
     }
 }
 
-bool EventManager::checkEventConditions(Event* event) {
+bool EventManager::checkEventConditions(const EventPtr& event) {
     if (!event || !event->isActive()) {
         return false;
     }
@@ -752,13 +758,12 @@ bool EventManager::checkEventConditions(Event* event) {
     return event->checkConditions();
 }
 
-void EventManager::executeEventIfConditionsMet(Event* event) {
+void EventManager::executeEventIfConditionsMet(const EventPtr& event) {
     if (!event || !event->isActive()) {
         return;
     }
 
     if (event->checkConditions()) {
-        EVENT_LOG("Event conditions met, executing: " << event->getName());
         event->execute();
     }
 }

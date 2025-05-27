@@ -9,6 +9,7 @@
 #include <SDL3/SDL.h>
 #include <SDL3_image/SDL_image.h>
 #include <boost/container/flat_map.hpp>
+#include <memory>
 #include <string>
 
 class TextureManager {
@@ -56,14 +57,14 @@ class TextureManager {
   bool isTextureInMap(const std::string& textureID) const;
 
   // Get a texture pointer by ID
-  SDL_Texture* getTexture(const std::string& textureID) const;
+  std::shared_ptr<SDL_Texture> getTexture(const std::string& textureID) const;
 
   // Clean up all texture resources
   void clean();
 
  private:
   std::string m_textureID{""};
-  boost::container::flat_map<std::string, SDL_Texture*> m_textureMap{};
+  boost::container::flat_map<std::string, std::shared_ptr<SDL_Texture>> m_textureMap{};
   static bool initialized;
 
   // Delete copy constructor and assignment operator

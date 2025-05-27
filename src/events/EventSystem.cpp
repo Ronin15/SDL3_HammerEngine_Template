@@ -221,12 +221,12 @@ void EventSystem::registerDefaultEvents() {
     // Set up some random weather transitions based on time
     auto sunnyWeather = EventManager::Instance().getEvent("SunnyDay");
     if (sunnyWeather) {
-        dynamic_cast<WeatherEvent*>(sunnyWeather)->setTimeOfDay(6.0f, 18.0f); // Daytime
+        std::dynamic_pointer_cast<WeatherEvent>(sunnyWeather)->setTimeOfDay(6.0f, 18.0f); // Daytime
     }
 
     auto foggyMorning = EventManager::Instance().getEvent("LightFog");
     if (foggyMorning) {
-        dynamic_cast<WeatherEvent*>(foggyMorning)->setTimeOfDay(5.0f, 9.0f); // Early morning
+        std::dynamic_pointer_cast<WeatherEvent>(foggyMorning)->setTimeOfDay(5.0f, 9.0f); // Early morning
     }
 }
 
@@ -269,7 +269,7 @@ void EventSystem::registerSystemEventHandlers() {
 
 void EventSystem::updateEventTimers(float deltaTime) {
     // Get all events from EventManager
-    std::vector<Event*> allEvents;
+    std::vector<EventPtr> allEvents;
 
     // Get events of each major type
     auto weatherEvents = EventManager::Instance().getEventsByType("Weather");
@@ -277,15 +277,16 @@ void EventSystem::updateEventTimers(float deltaTime) {
     auto spawnEvents = EventManager::Instance().getEventsByType("NPCSpawn");
 
     // Combine all events
-    allEvents.insert(allEvents.end(), weatherEvents.begin(), weatherEvents.end());
-    allEvents.insert(allEvents.end(), sceneEvents.begin(), sceneEvents.end());
-    allEvents.insert(allEvents.end(), spawnEvents.begin(), spawnEvents.end());
+    allEvents.reserve(allEvents.size() + weatherEvents.size() + sceneEvents.size() + spawnEvents.size());
+    std::copy(weatherEvents.begin(), weatherEvents.end(), std::back_inserter(allEvents));
+    std::copy(sceneEvents.begin(), sceneEvents.end(), std::back_inserter(allEvents));
+    std::copy(spawnEvents.begin(), spawnEvents.end(), std::back_inserter(allEvents));
 
     // Update cooldown timers for all events
     for (auto event : allEvents) {
         if (event) {
-            // Cast to base Event class which has the updateCooldown method
-            static_cast<Event*>(event)->updateCooldown(deltaTime);
+            // Use shared_ptr directly since it already points to an Event
+            event->updateCooldown(deltaTime);
         }
     }
 }
