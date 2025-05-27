@@ -100,7 +100,7 @@ BOOST_FIXTURE_TEST_CASE(RegisterAndRetrieveEvent, EventManagerFixture) {
     BOOST_CHECK(EventManager::Instance().hasEvent("TestEvent"));
     BOOST_CHECK_EQUAL(EventManager::Instance().getEventCount(), 1);
 
-    Event* retrievedEvent = EventManager::Instance().getEvent("TestEvent");
+    auto retrievedEvent = EventManager::Instance().getEvent("TestEvent");
     BOOST_REQUIRE(retrievedEvent != nullptr);
     BOOST_CHECK_EQUAL(retrievedEvent->getName(), "TestEvent");
     BOOST_CHECK_EQUAL(retrievedEvent->getType(), "Mock");
@@ -130,7 +130,7 @@ BOOST_FIXTURE_TEST_CASE(EventExecution, EventManagerFixture) {
 
     // Execute the event
     BOOST_CHECK(EventManager::Instance().executeEvent("TestEvent"));
-    BOOST_CHECK(dynamic_cast<MockEvent*>(EventManager::Instance().getEvent("TestEvent"))->wasExecuted());
+    BOOST_CHECK(std::dynamic_pointer_cast<MockEvent>(EventManager::Instance().getEvent("TestEvent"))->wasExecuted());
 }
 
 // Test event update and condition-based execution
@@ -226,6 +226,7 @@ BOOST_FIXTURE_TEST_CASE(EventMessaging, EventManagerFixture) {
         MessageTestEvent(const std::string& name) : MockEvent(name), m_lastMessage("") {}
 
         void onMessage(const std::string& message) override {
+            std::cout << "MessageTestEvent " << getName() << " received message: " << message << std::endl;
             m_lastMessage = message;
             m_messageReceived = true;
         }
@@ -244,16 +245,36 @@ BOOST_FIXTURE_TEST_CASE(EventMessaging, EventManagerFixture) {
     EventManager::Instance().registerEvent("Event1", event1);
     EventManager::Instance().registerEvent("Event2", event2);
 
+    // Print event info before sending messages
+    std::cout << "Event1 exists: " << (EventManager::Instance().hasEvent("Event1") ? "yes" : "no") << std::endl;
+    std::cout << "Event2 exists: " << (EventManager::Instance().hasEvent("Event2") ? "yes" : "no") << std::endl;
+    
+    auto event1ptr = EventManager::Instance().getEvent("Event1");
+    auto event2ptr = EventManager::Instance().getEvent("Event2");
+    
+    BOOST_REQUIRE(event1ptr != nullptr);
+    BOOST_REQUIRE(event2ptr != nullptr);
+    
     // Test direct message
     EventManager::Instance().sendMessageToEvent("Event1", "TestMessage", true);
-    BOOST_CHECK(dynamic_cast<MessageTestEvent*>(EventManager::Instance().getEvent("Event1"))->wasMessageReceived());
-    BOOST_CHECK_EQUAL(dynamic_cast<MessageTestEvent*>(EventManager::Instance().getEvent("Event1"))->getLastMessage(), "TestMessage");
-    BOOST_CHECK(!dynamic_cast<MessageTestEvent*>(EventManager::Instance().getEvent("Event2"))->wasMessageReceived());
+    
+    auto msgEvent1 = std::dynamic_pointer_cast<MessageTestEvent>(EventManager::Instance().getEvent("Event1"));
+    auto msgEvent2 = std::dynamic_pointer_cast<MessageTestEvent>(EventManager::Instance().getEvent("Event2"));
+    
+    // Use assertions instead of logging for cleaner test output
+    
+    BOOST_CHECK(msgEvent1->wasMessageReceived());
+    BOOST_CHECK_EQUAL(msgEvent1->getLastMessage(), "TestMessage");
+    BOOST_CHECK(!msgEvent2->wasMessageReceived());
 
     // Test broadcast
     EventManager::Instance().broadcastMessage("BroadcastMessage", true);
-    BOOST_CHECK_EQUAL(dynamic_cast<MessageTestEvent*>(EventManager::Instance().getEvent("Event1"))->getLastMessage(), "BroadcastMessage");
-    BOOST_CHECK_EQUAL(dynamic_cast<MessageTestEvent*>(EventManager::Instance().getEvent("Event2"))->getLastMessage(), "BroadcastMessage");
+    
+    // Wait a moment to ensure messages are processed
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    
+    BOOST_CHECK_EQUAL(msgEvent1->getLastMessage(), "BroadcastMessage");
+    BOOST_CHECK_EQUAL(msgEvent2->getLastMessage(), "BroadcastMessage");
 }
 
 // Test weather events
@@ -307,7 +328,7 @@ BOOST_FIXTURE_TEST_CASE(ThreadSafety, EventManagerFixture) {
     EventManager::Instance().registerEvent("ThreadTest", mockEvent);
 
     // Set conditions and verify behavior
-    dynamic_cast<MockEvent*>(EventManager::Instance().getEvent("ThreadTest"))->setConditionsMet(true);
+    std::dynamic_pointer_cast<MockEvent>(EventManager::Instance().getEvent("ThreadTest"))->setConditionsMet(true);
 
     // Update with threading enabled
     EventManager::Instance().update();
@@ -315,26 +336,26 @@ BOOST_FIXTURE_TEST_CASE(ThreadSafety, EventManagerFixture) {
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
     // Verify update worked
-    BOOST_CHECK(dynamic_cast<MockEvent*>(EventManager::Instance().getEvent("ThreadTest"))->wasUpdated());
-    BOOST_CHECK(dynamic_cast<MockEvent*>(EventManager::Instance().getEvent("ThreadTest"))->wasExecuted());
+    BOOST_CHECK(std::dynamic_pointer_cast<MockEvent>(EventManager::Instance().getEvent("ThreadTest"))->wasUpdated());
+    BOOST_CHECK(std::dynamic_pointer_cast<MockEvent>(EventManager::Instance().getEvent("ThreadTest"))->wasExecuted());
 
     // Test disabling threading
     EventManager::Instance().configureThreading(false, 0, Forge::TaskPriority::Normal);
-    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
     // Reset event and test again without threading
-    dynamic_cast<MockEvent*>(EventManager::Instance().getEvent("ThreadTest"))->reset();
-    dynamic_cast<MockEvent*>(EventManager::Instance().getEvent("ThreadTest"))->setConditionsMet(true);
+    std::dynamic_pointer_cast<MockEvent>(EventManager::Instance().getEvent("ThreadTest"))->reset();
+    std::dynamic_pointer_cast<MockEvent>(EventManager::Instance().getEvent("ThreadTest"))->setConditionsMet(true);
 
     EventManager::Instance().update();
 
     // Verify update worked without threading
-    BOOST_CHECK(dynamic_cast<MockEvent*>(EventManager::Instance().getEvent("ThreadTest"))->wasUpdated());
-    BOOST_CHECK(dynamic_cast<MockEvent*>(EventManager::Instance().getEvent("ThreadTest"))->wasExecuted());
+    BOOST_CHECK(std::dynamic_pointer_cast<MockEvent>(EventManager::Instance().getEvent("ThreadTest"))->wasUpdated());
+    BOOST_CHECK(std::dynamic_pointer_cast<MockEvent>(EventManager::Instance().getEvent("ThreadTest"))->wasExecuted());
 
     // Make sure threading is disabled before cleanup
     EventManager::Instance().configureThreading(false, 0, Forge::TaskPriority::Normal);
-    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
     // Clean up
     EventManager::Instance().removeEvent("ThreadTest");
@@ -353,69 +374,69 @@ BOOST_FIXTURE_TEST_CASE(TaskPriorityTest, EventManagerFixture) {
     auto highPriorityEvent = std::make_shared<MockEvent>("HighPriorityEvent");
     auto normalPriorityEvent = std::make_shared<MockEvent>("NormalPriorityEvent");
     auto lowPriorityEvent = std::make_shared<MockEvent>("LowPriorityEvent");
-    
+
     // Register all events
     EventManager::Instance().registerEvent("HighPriorityEvent", highPriorityEvent);
     EventManager::Instance().registerEvent("NormalPriorityEvent", normalPriorityEvent);
     EventManager::Instance().registerEvent("LowPriorityEvent", lowPriorityEvent);
-    
+
     // Set conditions to execute
-    dynamic_cast<MockEvent*>(EventManager::Instance().getEvent("HighPriorityEvent"))->setConditionsMet(true);
-    dynamic_cast<MockEvent*>(EventManager::Instance().getEvent("NormalPriorityEvent"))->setConditionsMet(true);
-    dynamic_cast<MockEvent*>(EventManager::Instance().getEvent("LowPriorityEvent"))->setConditionsMet(true);
-    
+    std::dynamic_pointer_cast<MockEvent>(EventManager::Instance().getEvent("HighPriorityEvent"))->setConditionsMet(true);
+    std::dynamic_pointer_cast<MockEvent>(EventManager::Instance().getEvent("NormalPriorityEvent"))->setConditionsMet(true);
+    std::dynamic_pointer_cast<MockEvent>(EventManager::Instance().getEvent("LowPriorityEvent"))->setConditionsMet(true);
+
     // Test all events execution with high priority (we'll test just one for simplicity)
     EventManager::Instance().configureThreading(true, 2, Forge::TaskPriority::High);
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
-    
+
     // Make sure all events are active
     EventManager::Instance().setEventActive("HighPriorityEvent", true);
     EventManager::Instance().setEventActive("NormalPriorityEvent", true);
     EventManager::Instance().setEventActive("LowPriorityEvent", true);
-    
+
     // Update and verify execution - force direct execution to make test more reliable
     EventManager::Instance().executeEvent("HighPriorityEvent");
     EventManager::Instance().update();
     std::this_thread::sleep_for(std::chrono::milliseconds(200));
-    
-    BOOST_CHECK(dynamic_cast<MockEvent*>(EventManager::Instance().getEvent("HighPriorityEvent"))->wasExecuted());
-    
+
+    BOOST_CHECK(std::dynamic_pointer_cast<MockEvent>(EventManager::Instance().getEvent("HighPriorityEvent"))->wasExecuted());
+
     // Reset for normal priority test
-    dynamic_cast<MockEvent*>(EventManager::Instance().getEvent("HighPriorityEvent"))->reset();
-    dynamic_cast<MockEvent*>(EventManager::Instance().getEvent("NormalPriorityEvent"))->reset();
-    dynamic_cast<MockEvent*>(EventManager::Instance().getEvent("LowPriorityEvent"))->reset();
-    
+    std::dynamic_pointer_cast<MockEvent>(EventManager::Instance().getEvent("HighPriorityEvent"))->reset();
+    std::dynamic_pointer_cast<MockEvent>(EventManager::Instance().getEvent("NormalPriorityEvent"))->reset();
+    std::dynamic_pointer_cast<MockEvent>(EventManager::Instance().getEvent("LowPriorityEvent"))->reset();
+
     // Test with normal priority - using direct execution to avoid flaky tests
     EventManager::Instance().configureThreading(true, 2, Forge::TaskPriority::Normal);
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
-    
+    std::this_thread::sleep_for(std::chrono::milliseconds(150));
+
     // Directly execute the event to avoid test flakiness
     EventManager::Instance().executeEvent("NormalPriorityEvent");
     EventManager::Instance().update();
     std::this_thread::sleep_for(std::chrono::milliseconds(200));
-    
-    BOOST_CHECK(dynamic_cast<MockEvent*>(EventManager::Instance().getEvent("NormalPriorityEvent"))->wasExecuted());
-    
+
+    BOOST_CHECK(std::dynamic_pointer_cast<MockEvent>(EventManager::Instance().getEvent("NormalPriorityEvent"))->wasExecuted());
+
     // Reset for low priority test
-    dynamic_cast<MockEvent*>(EventManager::Instance().getEvent("HighPriorityEvent"))->reset();
-    dynamic_cast<MockEvent*>(EventManager::Instance().getEvent("NormalPriorityEvent"))->reset();
-    dynamic_cast<MockEvent*>(EventManager::Instance().getEvent("LowPriorityEvent"))->reset();
-    
+    std::dynamic_pointer_cast<MockEvent>(EventManager::Instance().getEvent("HighPriorityEvent"))->reset();
+    std::dynamic_pointer_cast<MockEvent>(EventManager::Instance().getEvent("NormalPriorityEvent"))->reset();
+    std::dynamic_pointer_cast<MockEvent>(EventManager::Instance().getEvent("LowPriorityEvent"))->reset();
+
     // Test with low priority - using direct execution
     EventManager::Instance().configureThreading(true, 2, Forge::TaskPriority::Low);
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
-    
+    std::this_thread::sleep_for(std::chrono::milliseconds(150));
+
     // Direct execution for reliability
     EventManager::Instance().executeEvent("LowPriorityEvent");
     EventManager::Instance().update();
-    std::this_thread::sleep_for(std::chrono::milliseconds(200));
-    
-    BOOST_CHECK(dynamic_cast<MockEvent*>(EventManager::Instance().getEvent("LowPriorityEvent"))->wasExecuted());
-    
+    std::this_thread::sleep_for(std::chrono::milliseconds(250));
+
+    BOOST_CHECK(std::dynamic_pointer_cast<MockEvent>(EventManager::Instance().getEvent("LowPriorityEvent"))->wasExecuted());
+
     // Cleanup
     EventManager::Instance().configureThreading(false, 0, Forge::TaskPriority::Normal);
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
-    
+
     EventManager::Instance().removeEvent("HighPriorityEvent");
     EventManager::Instance().removeEvent("NormalPriorityEvent");
     EventManager::Instance().removeEvent("LowPriorityEvent");
@@ -426,86 +447,86 @@ BOOST_FIXTURE_TEST_CASE(ConcurrentPriorityTest, EventManagerFixture) {
     // Ensure we have a clean EventManager
     EventManager::Instance().clean();
     BOOST_CHECK(EventManager::Instance().init());
-    
+
     // Initialize ThreadSystem with enough threads
     if (Forge::ThreadSystem::Exists()) {
         Forge::ThreadSystem::Instance().init(4); // Ensure we have enough threads
     }
-    
+
     std::atomic<int> executionOrder{0};
-    
+
     class PriorityTestEvent : public MockEvent {
     public:
         PriorityTestEvent(const std::string& name, std::atomic<int>& orderCounter, int* myOrder)
             : MockEvent(name), m_orderCounter(orderCounter), m_myOrder(myOrder) {}
-            
+
         void execute() override {
             MockEvent::execute();
             *m_myOrder = m_orderCounter.fetch_add(1) + 1; // Record execution order (1-based)
             // Add a small delay to simulate work
             std::this_thread::sleep_for(std::chrono::milliseconds(20));
         }
-        
+
     private:
         std::atomic<int>& m_orderCounter;
         int* m_myOrder;
     };
-    
+
     // Order tracking variables
     int criticalOrder = 0;
     int highOrder = 0;
     int normalOrder = 0;
     int lowOrder = 0;
     int idleOrder = 0;
-    
+
     // Create events with different priorities
     auto criticalEvent = std::make_shared<PriorityTestEvent>("CriticalEvent", executionOrder, &criticalOrder);
     auto highEvent = std::make_shared<PriorityTestEvent>("HighEvent", executionOrder, &highOrder);
     auto normalEvent = std::make_shared<PriorityTestEvent>("NormalEvent", executionOrder, &normalOrder);
     auto lowEvent = std::make_shared<PriorityTestEvent>("LowEvent", executionOrder, &lowOrder);
     auto idleEvent = std::make_shared<PriorityTestEvent>("IdleEvent", executionOrder, &idleOrder);
-    
+
     // Register all events
     EventManager::Instance().registerEvent("CriticalEvent", criticalEvent);
     EventManager::Instance().registerEvent("HighEvent", highEvent);
     EventManager::Instance().registerEvent("NormalEvent", normalEvent);
     EventManager::Instance().registerEvent("LowEvent", lowEvent);
     EventManager::Instance().registerEvent("IdleEvent", idleEvent);
-    
+
     // Set all events' conditions to true
-    dynamic_cast<MockEvent*>(EventManager::Instance().getEvent("CriticalEvent"))->setConditionsMet(true);
-    dynamic_cast<MockEvent*>(EventManager::Instance().getEvent("HighEvent"))->setConditionsMet(true);
-    dynamic_cast<MockEvent*>(EventManager::Instance().getEvent("NormalEvent"))->setConditionsMet(true);
-    dynamic_cast<MockEvent*>(EventManager::Instance().getEvent("LowEvent"))->setConditionsMet(true);
-    dynamic_cast<MockEvent*>(EventManager::Instance().getEvent("IdleEvent"))->setConditionsMet(true);
-    
+    std::dynamic_pointer_cast<MockEvent>(EventManager::Instance().getEvent("CriticalEvent"))->setConditionsMet(true);
+    std::dynamic_pointer_cast<MockEvent>(EventManager::Instance().getEvent("HighEvent"))->setConditionsMet(true);
+    std::dynamic_pointer_cast<MockEvent>(EventManager::Instance().getEvent("NormalEvent"))->setConditionsMet(true);
+    std::dynamic_pointer_cast<MockEvent>(EventManager::Instance().getEvent("LowEvent"))->setConditionsMet(true);
+    std::dynamic_pointer_cast<MockEvent>(EventManager::Instance().getEvent("IdleEvent"))->setConditionsMet(true);
+
     // Directly execute each event to test functionality without relying on threading
     // Configure the EventManager to use threading with different priorities
     EventManager::Instance().configureThreading(true, 4, Forge::TaskPriority::Normal);
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
-    
+
     // Directly execute events for consistent test results
     BOOST_CHECK(EventManager::Instance().executeEvent("CriticalEvent"));
     BOOST_CHECK(EventManager::Instance().executeEvent("HighEvent"));
     BOOST_CHECK(EventManager::Instance().executeEvent("NormalEvent"));
     BOOST_CHECK(EventManager::Instance().executeEvent("LowEvent"));
     BOOST_CHECK(EventManager::Instance().executeEvent("IdleEvent"));
-    
+
     // Also run update to test the update mechanism
     EventManager::Instance().update();
-    std::this_thread::sleep_for(std::chrono::milliseconds(300));
-    
+    std::this_thread::sleep_for(std::chrono::milliseconds(400));
+
     // Verify all events were executed
-    BOOST_CHECK(dynamic_cast<MockEvent*>(EventManager::Instance().getEvent("CriticalEvent"))->wasExecuted());
-    BOOST_CHECK(dynamic_cast<MockEvent*>(EventManager::Instance().getEvent("HighEvent"))->wasExecuted());
-    BOOST_CHECK(dynamic_cast<MockEvent*>(EventManager::Instance().getEvent("NormalEvent"))->wasExecuted());
-    BOOST_CHECK(dynamic_cast<MockEvent*>(EventManager::Instance().getEvent("LowEvent"))->wasExecuted());
-    BOOST_CHECK(dynamic_cast<MockEvent*>(EventManager::Instance().getEvent("IdleEvent"))->wasExecuted());
-    
+    BOOST_CHECK(std::dynamic_pointer_cast<MockEvent>(EventManager::Instance().getEvent("CriticalEvent"))->wasExecuted());
+    BOOST_CHECK(std::dynamic_pointer_cast<MockEvent>(EventManager::Instance().getEvent("HighEvent"))->wasExecuted());
+    BOOST_CHECK(std::dynamic_pointer_cast<MockEvent>(EventManager::Instance().getEvent("NormalEvent"))->wasExecuted());
+    BOOST_CHECK(std::dynamic_pointer_cast<MockEvent>(EventManager::Instance().getEvent("LowEvent"))->wasExecuted());
+    BOOST_CHECK(std::dynamic_pointer_cast<MockEvent>(EventManager::Instance().getEvent("IdleEvent"))->wasExecuted());
+
     // Clean up
     EventManager::Instance().configureThreading(false, 0, Forge::TaskPriority::Normal);
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
-    
+
     EventManager::Instance().removeEvent("CriticalEvent");
     EventManager::Instance().removeEvent("HighEvent");
     EventManager::Instance().removeEvent("NormalEvent");

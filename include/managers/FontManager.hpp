@@ -9,6 +9,7 @@
 #include <SDL3/SDL.h>
 #include <SDL3_ttf/SDL_ttf.h>
 #include <boost/container/flat_map.hpp>
+#include <memory>
 #include <string>
 // filesystem is used in the implementation file
 
@@ -34,7 +35,8 @@ class FontManager {
   bool loadFont(const std::string& fontFile, const std::string& fontID, int fontSize);
 
   // Render text to a texture
-  SDL_Texture* renderText(const std::string& text, const std::string& fontID,
+  std::shared_ptr<SDL_Texture> renderText(
+                          const std::string& text, const std::string& fontID,
                           SDL_Color color, SDL_Renderer* renderer);
 
   // Draw text directly to renderer
@@ -55,7 +57,7 @@ class FontManager {
   bool isShutdown() const { return m_isShutdown; }
 
  private:
-  boost::container::flat_map<std::string, TTF_Font*> m_fontMap{};
+  boost::container::flat_map<std::string, std::shared_ptr<TTF_Font>> m_fontMap{};
   static TTF_TextEngine* m_rendererTextEngine;
   bool m_isShutdown{false}; // Flag to indicate if FontManager has been shut down
 
