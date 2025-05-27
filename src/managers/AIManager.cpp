@@ -128,11 +128,12 @@ bool AIManager::hasBehavior(const std::string& name) const {
     return m_behaviors.find(name) != m_behaviors.end();
 }
 
-AIBehavior* AIManager::getBehavior(const std::string& behaviorName) const {
+std::shared_ptr<AIBehavior> AIManager::getBehavior(const std::string& behaviorName) const {
     std::shared_lock<std::shared_mutex> lock(m_behaviorsMutex);
+    
     auto it = m_behaviors.find(behaviorName);
     if (it != m_behaviors.end()) {
-        return it->second.get();
+        return it->second;
     }
     return nullptr;
 }
@@ -186,7 +187,7 @@ void AIManager::unassignBehaviorFromEntity(EntityPtr entity) {
         EntityWeakPtr entityWeak = entity;
         
         // Get the behavior for this entity before removing it
-        AIBehavior* behavior = nullptr;
+        std::shared_ptr<AIBehavior> behavior = nullptr;
         std::string behaviorName;
         {
             std::shared_lock<std::shared_mutex> entityLock(m_entityMutex);
@@ -316,7 +317,7 @@ void AIManager::rebuildEntityBehaviorCache() {
         if (behaviorIt != m_behaviors.end()) {
             EntityBehaviorCache cacheEntry;
             cacheEntry.entityWeak = entityWeak;
-            cacheEntry.behavior = behaviorIt->second.get();
+            cacheEntry.behaviorWeak = behaviorIt->second;
             cacheEntry.behaviorName = behaviorName;
             cacheEntry.lastUpdateTime = getCurrentTimeNanos();
             
@@ -394,7 +395,7 @@ void AIManager::batchUpdateAllBehaviors() {
             if (batch.empty()) continue;
 
             // Find the behavior
-            AIBehavior* behavior = getBehavior(behaviorName);
+            auto behavior = getBehavior(behaviorName);
             if (!behavior) continue;
 
             if (useIntraBatchParallelism && batch.size() >= 100) {
@@ -498,14 +499,14 @@ void AIManager::updateBehaviorBatch(const std::string_view& behaviorName, const 
     }
 
     // Get the behavior
-    AIBehavior* behavior = nullptr;
+    std::shared_ptr<AIBehavior> behavior = nullptr;
     {
         std::shared_lock<std::shared_mutex> lock(m_behaviorsMutex);
         auto it = m_behaviors.find(std::string(behaviorName));
         if (it == m_behaviors.end() || !it->second) {
             return;
         }
-        behavior = it->second.get();
+        behavior = it->second;
     }
 
     // Determine if we should use threading for this batch
@@ -560,7 +561,7 @@ void AIManager::batchProcessEntities(const std::string& behaviorName, const std:
     if (entities.empty()) return;
     
     // Get the behavior
-    AIBehavior* behavior = getBehavior(behaviorName);
+    auto behavior = getBehavior(behaviorName);
     if (!behavior) return;
     
     // Process entities with or without threading
@@ -570,7 +571,7 @@ void AIManager::batchProcessEntities(const std::string& behaviorName, const std:
     processEntitiesWithBehavior(behavior, entities, useThreading);
 }
 
-void AIManager::processEntitiesWithBehavior(AIBehavior* behavior, const std::vector<EntityPtr>& entities, bool useThreading) {
+void AIManager::processEntitiesWithBehavior(std::shared_ptr<AIBehavior> behavior, const std::vector<EntityPtr>& entities, bool useThreading) {
     if (!behavior || entities.empty()) return;
     
     auto startTime = getCurrentTimeNanos();
@@ -806,7 +807,7 @@ void AIManager::deliverMessageToEntity(EntityPtr entity, const std::string& mess
     EntityWeakPtr entityWeak = entity;
     
     // Get entity's behavior
-    AIBehavior* behavior = nullptr;
+    std::shared_ptr<AIBehavior> behavior = nullptr;
     
     // First try to find in cache for efficiency
     if (m_cacheValid.load(std::memory_order_acquire)) {
@@ -818,7 +819,7 @@ void AIManager::deliverMessageToEntity(EntityPtr entity, const std::string& mess
             });
         
         if (it != m_entityBehaviorCache.end()) {
-            behavior = it->behavior;
+            behavior = it->behaviorWeak.lock();
         }
     }
     
@@ -835,10 +836,10 @@ void AIManager::deliverMessageToEntity(EntityPtr entity, const std::string& mess
         }
         
         if (!behaviorName.empty()) {
-            std::shared_lock<std::shared_mutex> behaviorsLock(m_behaviorsMutex);
+            std::shared_lock<std::shared_mutex> lock(m_behaviorsMutex);
             auto it = m_behaviors.find(behaviorName);
             if (it != m_behaviors.end()) {
-                behavior = it->second.get();
+                behavior = it->second;
             }
         }
     }
@@ -858,10 +859,11 @@ size_t AIManager::deliverBroadcastMessage(const std::string& message) {
         std::lock_guard<std::mutex> cacheLock(m_cacheMutex);
         
         for (const auto& cache : m_entityBehaviorCache) {
-            if (cache.behavior && !cache.entityWeak.expired()) {
+            if (!cache.behaviorWeak.expired() && !cache.entityWeak.expired()) {
                 EntityPtr entity = cache.entityWeak.lock();
-                if (entity) {
-                    cache.behavior->onMessage(entity, message);
+                std::shared_ptr<AIBehavior> behavior = cache.behaviorWeak.lock();
+                if (entity && behavior) {
+                    behavior->onMessage(entity, message);
                     deliveredCount++;
                 }
             }

@@ -53,31 +53,43 @@ AIDemoState::~AIDemoState() {
 bool AIDemoState::enter() {
     std::cout << "Forge Game Engine - Entering AIDemoState...\n";
 
-    // Setup window size
-    m_worldWidth = GameEngine::Instance().getWindowWidth();
-    m_worldHeight = GameEngine::Instance().getWindowHeight();
+    try {
+        // Setup window size
+        m_worldWidth = GameEngine::Instance().getWindowWidth();
+        m_worldHeight = GameEngine::Instance().getWindowHeight();
 
-    //Texture has to be loaded by NPC or Player can't be loaded here
-    setupAIBehaviors();
+        //Texture has to be loaded by NPC or Player can't be loaded here
+        setupAIBehaviors();
 
-    // Create player first (the chase behavior will need it)
-    m_player = std::make_shared<Player>();
-    m_player->setPosition(Vector2D(m_worldWidth / 2, m_worldHeight / 2));
+        // Create player first (the chase behavior will need it)
+        m_player = std::make_shared<Player>();
+        if (!m_player) {
+            std::cerr << "Forge Game Engine - ERROR: Failed to create player!\n";
+            return false;
+        }
+        m_player->setPosition(Vector2D(m_worldWidth / 2, m_worldHeight / 2));
 
-    // Create NPCs with AI behaviors
-    createNPCs();
+        // Create NPCs with AI behaviors
+        createNPCs();
 
-    // Initialize frame rate counter
-    m_lastFrameTime = std::chrono::steady_clock::now();
-    m_frameTimes.clear();
-    m_frameCount = 0;
-    m_currentFPS = 0.0f;
-    m_averageFPS = 0.0f;
+        // Initialize frame rate counter
+        m_lastFrameTime = std::chrono::steady_clock::now();
+        m_frameTimes.clear();
+        m_frameCount = 0;
+        m_currentFPS = 0.0f;
+        m_averageFPS = 0.0f;
 
-    // Log status
-    std::cout << "Forge Game Engine - Created " << m_npcs.size() << " NPCs with AI behaviors\n";
+        // Log status
+        std::cout << "Forge Game Engine - Created " << m_npcs.size() << " NPCs with AI behaviors\n";
 
-    return true;
+        return true;
+    } catch (const std::exception& e) {
+        std::cerr << "Forge Game Engine - ERROR: Exception in AIDemoState::enter(): " << e.what() << std::endl;
+        return false;
+    } catch (...) {
+        std::cerr << "Forge Game Engine - ERROR: Unknown exception in AIDemoState::enter()" << std::endl;
+        return false;
+    }
 }
 
 bool AIDemoState::exit() {
@@ -85,7 +97,8 @@ bool AIDemoState::exit() {
 
     // First clear entity references from behaviors
     if (AIManager::Instance().hasBehavior("Chase")) {
-        auto chaseBehavior = dynamic_cast<ChaseBehavior*>(AIManager::Instance().getBehavior("Chase"));
+        auto chaseBehaviorPtr = AIManager::Instance().getBehavior("Chase");
+        auto chaseBehavior = std::dynamic_pointer_cast<ChaseBehavior>(chaseBehaviorPtr);
         if (chaseBehavior) {
             chaseBehavior->setTarget(nullptr);
         }
@@ -126,27 +139,38 @@ bool AIDemoState::exit() {
 }
 
 void AIDemoState::update() {
-    // Update frame rate counter
-    updateFrameRate();
+    try {
+        // Update frame rate counter
+        updateFrameRate();
 
-    // Update player
-    if (m_player) {
-        m_player->update();
+        // Update player
+        if (m_player) {
+            m_player->update();
+        }
+
+        // NPCs are updated through AIManager, but we still check for removals or other status changes here
+        for (size_t i = 0; i < m_npcs.size(); i++) {
+            auto& npc = m_npcs[i];
+            if (!npc) continue;
+
+            try {
+                // Call the NPC's update method to handle animation and other entity-specific logic
+                npc->update();
+            } catch (const std::exception& e) {
+                std::cerr << "Forge Game Engine - ERROR: Exception updating NPC " << i << ": " << e.what() << std::endl;
+                continue;
+            }
+
+            // Note: Letting NPCs go off-screen is now managed by the behaviors
+            // They'll handle the reset logic when they go far enough off-screen
+        }
+
+        // Handle user input for the demo
+    } catch (const std::exception& e) {
+        std::cerr << "Forge Game Engine - ERROR: Exception in AIDemoState::update(): " << e.what() << std::endl;
+    } catch (...) {
+        std::cerr << "Forge Game Engine - ERROR: Unknown exception in AIDemoState::update()" << std::endl;
     }
-
-    // NPCs are updated through AIManager, but we still check for removals or other status changes here
-    for (size_t i = 0; i < m_npcs.size(); i++) {
-        auto& npc = m_npcs[i];
-        if (!npc) continue;
-
-        // Call the NPC's update method to handle animation and other entity-specific logic
-        npc->update();
-
-        // Note: Letting NPCs go off-screen is now managed by the behaviors
-        // They'll handle the reset logic when they go far enough off-screen
-    }
-
-    // Handle user input for the demo
     if (InputManager::Instance().isKeyDown(SDL_SCANCODE_B)) {
         std::cout << "Forge Game Engine - Preparing to exit AIDemoState...\n";
         
@@ -162,7 +186,8 @@ void AIDemoState::update() {
         
         // Set chase behavior target to nullptr to avoid dangling reference
         if (AIManager::Instance().hasBehavior("Chase")) {
-            auto chaseBehavior = dynamic_cast<ChaseBehavior*>(AIManager::Instance().getBehavior("Chase"));
+            auto chaseBehaviorPtr = AIManager::Instance().getBehavior("Chase");
+            auto chaseBehavior = std::dynamic_pointer_cast<ChaseBehavior>(chaseBehaviorPtr);
             if (chaseBehavior) {
                 std::cout << "Forge Game Engine - Clearing chase behavior target...\n";
                 chaseBehavior->setTarget(nullptr);
@@ -210,7 +235,8 @@ void AIDemoState::update() {
         std::cout << "Forge Game Engine - Switching all NPCs to CHASE behavior\n";
 
         // Make sure chase behavior has the current player target
-        auto chaseBehavior = dynamic_cast<ChaseBehavior*>(AIManager::Instance().getBehavior("Chase"));
+        auto chaseBehaviorPtr = AIManager::Instance().getBehavior("Chase");
+        auto chaseBehavior = std::dynamic_pointer_cast<ChaseBehavior>(chaseBehaviorPtr);
         if (chaseBehavior && m_player) {
             chaseBehavior->setTarget(m_player);
         }
@@ -352,45 +378,61 @@ void AIDemoState::updateFrameRate() {
 }
 
 void AIDemoState::createNPCs() {
-    // Random number generation for positioning
-    std::random_device rd;
-    std::mt19937 gen(rd());
-    std::uniform_real_distribution<float> xDist(50.0f, m_worldWidth - 50.0f);
-    std::uniform_real_distribution<float> yDist(50.0f, m_worldHeight - 50.0f);
+    try {
+        // Random number generation for positioning
+        std::random_device rd;
+        std::mt19937 gen(rd());
+        std::uniform_real_distribution<float> xDist(50.0f, m_worldWidth - 50.0f);
+        std::uniform_real_distribution<float> yDist(50.0f, m_worldHeight - 50.0f);
 
-    // Create NPCs
-    for (int i = 0; i < m_npcCount; ++i) {
-        // Create NPC with random position
-        Vector2D position(xDist(gen), yDist(gen));
-        auto npc = std::make_shared<NPC>("npc", position, 64, 64);
+        // Create NPCs
+        for (int i = 0; i < m_npcCount; ++i) {
+            try {
+                // Create NPC with random position
+                Vector2D position(xDist(gen), yDist(gen));
+                auto npc = std::make_shared<NPC>("npc", position, 64, 64);
 
-        // Set animation properties (adjust based on your actual sprite sheet)
-        npc->setAnimSpeed(150);
+                if (!npc) {
+                    std::cerr << "Forge Game Engine - ERROR: Failed to create NPC " << i << "\n";
+                    continue;
+                }
 
-        // Set wander area to keep NPCs on screen
-        npc->setWanderArea(0, 0, m_worldWidth, m_worldHeight);
+                // Set animation properties (adjust based on your actual sprite sheet)
+                npc->setAnimSpeed(150);
 
-        // Assign default behavior (Wander)
-        AIManager::Instance().assignBehaviorToEntity(npc, "Wander");
+                // Set wander area to keep NPCs on screen
+                npc->setWanderArea(0, 0, m_worldWidth, m_worldHeight);
 
-        // Add to collection
-        m_npcs.push_back(npc);
-    }
+                // Assign default behavior (Wander)
+                AIManager::Instance().assignBehaviorToEntity(npc, "Wander");
 
-    // Set player as the chase target for the chase behavior - do this last
-    // Set player as the chase target for the chase behavior
-    if (AIManager::Instance().hasBehavior("Chase")) {
-        auto chaseBehavior = dynamic_cast<ChaseBehavior*>(AIManager::Instance().getBehavior("Chase"));
-        if (chaseBehavior && m_player) {
-            // Store the behavior for easier cleanup BEFORE setting target
-            m_chaseBehavior = chaseBehavior;
-            chaseBehavior->setTarget(m_player);
-            std::cout << "Forge Game Engine - Chase behavior target set to player\n";
-        } else {
-            std::cerr << "Forge Game Engine - Could not set chase target - "
-                      << (chaseBehavior ? "Player is null" : "ChaseBehavior is null") << std::endl;
+                // Add to collection
+                m_npcs.push_back(npc);
+            } catch (const std::exception& e) {
+                std::cerr << "Forge Game Engine - ERROR: Exception creating NPC " << i << ": " << e.what() << std::endl;
+                continue;
+            }
         }
-    } else {
-        std::cerr << "Forge Game Engine - Chase behavior not found when setting target" << std::endl;
+
+        // Set player as the chase target for the chase behavior - do this last
+        if (AIManager::Instance().hasBehavior("Chase")) {
+            auto chaseBehaviorPtr = AIManager::Instance().getBehavior("Chase");
+            auto chaseBehavior = std::dynamic_pointer_cast<ChaseBehavior>(chaseBehaviorPtr);
+            if (chaseBehavior && m_player) {
+                // Store the behavior for easier cleanup BEFORE setting target
+                m_chaseBehavior = chaseBehavior;
+                chaseBehavior->setTarget(m_player);
+                std::cout << "Forge Game Engine - Chase behavior target set to player\n";
+            } else {
+                std::cerr << "Forge Game Engine - Could not set chase target - "
+                          << (chaseBehavior ? "Player is null" : "ChaseBehavior is null") << std::endl;
+            }
+        } else {
+            std::cerr << "Forge Game Engine - Chase behavior not found when setting target" << std::endl;
+        }
+    } catch (const std::exception& e) {
+        std::cerr << "Forge Game Engine - ERROR: Exception in createNPCs(): " << e.what() << std::endl;
+    } catch (...) {
+        std::cerr << "Forge Game Engine - ERROR: Unknown exception in createNPCs()" << std::endl;
     }
 }
