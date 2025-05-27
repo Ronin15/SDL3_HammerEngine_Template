@@ -15,7 +15,7 @@
 #include <iostream>
 #include <memory>
 #include <mutex>
-#include <queue>
+#include <array>
 #include <chrono>
 #include <map>
 #include <string>
@@ -61,13 +61,13 @@ struct PrioritizedTask {
 };
 
 /**
- * @brief Thread-safe prioritized task queue for the worker thread pool
+ * @brief Thread-safe prioritized task queue using separate queues per priority
  *
  * This class provides a thread-safe queue for tasks to be executed by
- * the worker threads. It handles synchronization and provides methods
- * to push, pop, and manage tasks with priority levels.
+ * the worker threads. Uses separate queues for each priority level to
+ * reduce lock contention and improve performance.
  *
- * The queue automatically grows as needed, but can also have capacity
+ * The queues automatically grow as needed, but can also have capacity
  * reserved in advance for better performance when submitting large
  * numbers of tasks at once.
  */
@@ -77,71 +77,40 @@ public:
     /**
      * @brief Construct a new Task Queue
      *
-     * @param initialCapacity Initial capacity to reserve (default: 256)
+     * @param initialCapacity Initial capacity to reserve per priority (default: 256)
      * @param enableProfiling Enable detailed task profiling (default: false)
      */
     TaskQueue(size_t initialCapacity = 256, bool enableProfiling = false)
         : m_desiredCapacity(initialCapacity),
           m_enableProfiling(enableProfiling) {
-        // Actually pre-allocate memory for the container
-        m_container.reserve(initialCapacity);
-
-        // Create priority queue using our pre-allocated container
-        taskQueue = std::priority_queue<PrioritizedTask,
-                                       std::vector<PrioritizedTask>,
-                                       std::less<PrioritizedTask>>(
-                                       std::less<PrioritizedTask>(),
-                                       m_container);
-
-        // Initialize task execution statistics
+        
+        // Initialize separate queues for each priority level
         for (int i = 0; i <= static_cast<int>(TaskPriority::Idle); ++i) {
+            m_priorityQueues[i].reserve(initialCapacity / 5); // Distribute capacity
             m_taskStats[static_cast<TaskPriority>(i)] = {0, 0, 0};
         }
     }
 
     void push(std::function<void()> task, TaskPriority priority = TaskPriority::Normal, const std::string& description = "") {
+        int priorityIndex = static_cast<int>(priority);
+        
         {
-            std::unique_lock<std::mutex> lock(queueMutex);
+            std::unique_lock<std::mutex> lock(m_priorityMutexes[priorityIndex]);
 
-            // Check if we need to increase capacity
-            if (taskQueue.size() >= m_desiredCapacity * 0.9) { // Increase at 90% capacity
-                // Store current tasks
-                std::vector<PrioritizedTask> tasks;
-                tasks.reserve(taskQueue.size());
-
-                // Extract all current tasks
-                while (!taskQueue.empty()) {
-                    tasks.push_back(taskQueue.top());
-                    taskQueue.pop();
-                }
-
-                // Double the capacity
-                size_t newCapacity = m_desiredCapacity * 2;
-                m_container.clear();
-                m_container.reserve(newCapacity);
-
-                // Recreate priority queue with new capacity
-                taskQueue = std::priority_queue<PrioritizedTask,
-                                              std::vector<PrioritizedTask>,
-                                              std::less<PrioritizedTask>>(
-                                              std::less<PrioritizedTask>(),
-                                              m_container);
-
-                // Restore all tasks
-                for (const auto& t : tasks) {
-                    taskQueue.push(t);
-                }
-
-                m_desiredCapacity = newCapacity;
+            // Check if we need to increase capacity for this priority level
+            auto& queue = m_priorityQueues[priorityIndex];
+            if (queue.size() >= static_cast<size_t>((m_desiredCapacity / 5) * 9 / 10)) { // 90% of allocated capacity per priority
+                size_t newCapacity = queue.capacity() * 2;
+                queue.reserve(newCapacity);
 
                 if (m_enableProfiling) {
-                    std::cout << "Forge Game Engine - Task queue capacity increased to "
-                              << newCapacity << std::endl;
+                    std::cout << "Forge Game Engine - Priority " << priorityIndex 
+                              << " queue capacity increased to " << newCapacity << std::endl;
                 }
             }
 
             // Add the new task
-            taskQueue.emplace(std::move(task), priority, description);
+            queue.emplace_back(std::move(task), priority, description);
 
             // Update statistics
             m_taskStats[priority].enqueued++;
@@ -150,10 +119,11 @@ public:
             // If profiling is enabled and this is a high priority task, log it
             if (m_enableProfiling && priority <= TaskPriority::High && !description.empty()) {
                 std::cout << "Forge Game Engine - High priority task enqueued: "
-                          << description << " (Priority: "
-                          << static_cast<int>(priority) << ")" << std::endl;
+                          << description << " (Priority: " << priorityIndex << ")" << std::endl;
             }
         }
+        
+        // Notify waiting threads
         condition.notify_one();
     }
 
@@ -163,55 +133,27 @@ public:
             return false;
         }
 
-        std::unique_lock<std::mutex> lock(queueMutex);
-
-        // Use a very short timeout for quick shutdown response
-        bool result = condition.wait_for(lock,
-            std::chrono::milliseconds(10),
-            [this] { return stopping.load(std::memory_order_acquire) || !taskQueue.empty(); });
-
-        // Check stopping flag first with higher priority than tasks
-        if (stopping.load(std::memory_order_acquire)) {
-            // If we're stopping, release lock immediately
-            return false;
-        }
-
-        // If we timed out without tasks, return false quickly
-        if (!result && taskQueue.empty()) {
-            return false;
-        }
-
-        // Only process tasks if queue is not empty
-        if (!taskQueue.empty()) {
-            // Get highest priority task
-            PrioritizedTask prioritizedTask = taskQueue.top();
-            taskQueue.pop();
-
-            // Calculate wait time for metrics
-            auto now = std::chrono::steady_clock::now();
-            auto waitTime = std::chrono::duration_cast<std::chrono::milliseconds>(
-                now - prioritizedTask.enqueueTime).count();
-
-            // Update statistics if profiling is enabled
-            if (m_enableProfiling) {
-                m_taskStats[prioritizedTask.priority].completed++;
-                m_taskStats[prioritizedTask.priority].totalWaitTimeMs += waitTime;
-
-                // Log long wait times for high priority tasks
-                if (prioritizedTask.priority <= TaskPriority::High && waitTime > 100 && !prioritizedTask.description.empty()) {
-                    std::cout << "Forge Game Engine - High priority task delayed: "
-                              << prioritizedTask.description
-                              << " waited " << waitTime << "ms" << std::endl;
-                }
-            }
-
-            // Return the actual task
-            task = std::move(prioritizedTask.task);
-            m_totalTasksProcessed.fetch_add(1, std::memory_order_relaxed);
+        // First try to get a task without waiting
+        if (tryPopTask(task)) {
             return true;
         }
 
-        return false;
+        // If no task available, wait for notification
+        std::unique_lock<std::mutex> lock(queueMutex);
+        
+        // Use a very short timeout for quick shutdown response
+        condition.wait_for(lock,
+            std::chrono::milliseconds(10),
+            [this] { return stopping.load(std::memory_order_acquire) || hasAnyTasksLockFree(); });
+
+        // Check stopping flag first with higher priority than tasks
+        if (stopping.load(std::memory_order_acquire)) {
+            return false;
+        }
+
+        // Release lock and try to get task again
+        lock.unlock();
+        return tryPopTask(task);
     }
 
     void stop() {
@@ -221,41 +163,43 @@ public:
         // Wake up all threads immediately
         notifyAllThreads();
 
-        // Now take the lock to clear the queue
-        {
-            std::unique_lock<std::mutex> lock(queueMutex);
-
-            // Log statistics if any tasks are still in the queue and profiling is enabled
-            if (m_enableProfiling && !taskQueue.empty()) {
-                std::cout << "Forge Game Engine - Stopping task queue with "
-                          << taskQueue.size() << " pending tasks" << std::endl;
-
-                // Count tasks by priority
-                std::map<TaskPriority, int> pendingByPriority;
-                std::priority_queue<PrioritizedTask> tempQueue = taskQueue; // Copy to count
-
-                while (!tempQueue.empty()) {
-                    pendingByPriority[tempQueue.top().priority]++;
-                    tempQueue.pop();
-                }
-
-                // Log pending tasks by priority
-                for (const auto& [priority, count] : pendingByPriority) {
-                    std::cout << "  Priority " << static_cast<int>(priority)
-                              << ": " << count << " tasks" << std::endl;
-                }
+        // Now take locks to clear all priority queues
+        std::unique_lock<std::mutex> lock(queueMutex);
+        
+        // Count and clear all priority queues
+        size_t totalPending = 0;
+        std::map<TaskPriority, int> pendingByPriority;
+        
+        for (int i = 0; i <= static_cast<int>(TaskPriority::Idle); ++i) {
+            std::unique_lock<std::mutex> priorityLock(m_priorityMutexes[i]);
+            auto& queue = m_priorityQueues[i];
+            
+            if (m_enableProfiling && !queue.empty()) {
+                TaskPriority priority = static_cast<TaskPriority>(i);
+                pendingByPriority[priority] = queue.size();
+                totalPending += queue.size();
             }
+            
+            // Clear the queue
+            queue.clear();
+        }
 
-            // Clear the queue to prevent any thread from getting stuck in a task
-            while (!taskQueue.empty()) {
-                taskQueue.pop();
+        // Log statistics if any tasks were pending
+        if (m_enableProfiling && totalPending > 0) {
+            std::cout << "Forge Game Engine - Stopping task queues with "
+                      << totalPending << " pending tasks" << std::endl;
+
+            // Log pending tasks by priority
+            for (const auto& [priority, count] : pendingByPriority) {
+                std::cout << "  Priority " << static_cast<int>(priority)
+                          << ": " << count << " tasks" << std::endl;
             }
         }
 
         // Memory fence for maximum visibility across all threads
         std::atomic_thread_fence(std::memory_order_seq_cst);
 
-        // Wake all waiting threads again after clearing queue
+        // Wake all waiting threads again after clearing queues
         notifyAllThreads();
 
         // Small delay to let threads notice the stop signal
@@ -263,8 +207,13 @@ public:
     }
 
     bool isEmpty() const {
-        std::unique_lock<std::mutex> lock(queueMutex);
-        return taskQueue.empty();
+        for (int i = 0; i <= static_cast<int>(TaskPriority::Idle); ++i) {
+            std::unique_lock<std::mutex> priorityLock(m_priorityMutexes[i]);
+            if (!m_priorityQueues[i].empty()) {
+                return false;
+            }
+        }
+        return true;
     }
 
     // Directly check if stopping without acquiring lock
@@ -272,64 +221,46 @@ public:
         return stopping.load(std::memory_order_acquire);
     }
 
-    // Reserve capacity for the task queue to reduce memory reallocations
+    // Reserve capacity for all priority queues to reduce memory reallocations
     void reserve(size_t capacity) {
-        std::unique_lock<std::mutex> lock(queueMutex);
-
         // Only proceed if we're actually increasing capacity
         if (capacity <= m_desiredCapacity) {
             return;
         }
 
-        // Store the current tasks
-        std::vector<PrioritizedTask> tasks;
-        tasks.reserve(taskQueue.size());
-
-        while (!taskQueue.empty()) {
-            tasks.push_back(taskQueue.top());
-            taskQueue.pop();
-        }
-
-        // Recreate the container with new capacity
-        m_container.clear();
-        m_container.reserve(capacity);
-
-        // Recreate the priority queue with the new container
-        taskQueue = std::priority_queue<PrioritizedTask,
-                                       std::vector<PrioritizedTask>,
-                                       std::less<PrioritizedTask>>(
-                                       std::less<PrioritizedTask>(),
-                                       m_container);
-
-        // Put back all the tasks
-        for (const auto& task : tasks) {
-            taskQueue.push(task);
+        // Reserve capacity for each priority queue
+        size_t capacityPerQueue = capacity / 5;
+        for (int i = 0; i <= static_cast<int>(TaskPriority::Idle); ++i) {
+            std::unique_lock<std::mutex> priorityLock(m_priorityMutexes[i]);
+            m_priorityQueues[i].reserve(capacityPerQueue);
         }
 
         m_desiredCapacity = capacity;
 
         if (m_enableProfiling) {
             std::cout << "Forge Game Engine - Task queue capacity manually set to "
-                      << capacity << std::endl;
+                      << capacity << " (" << capacityPerQueue << " per priority)" << std::endl;
         }
     }
 
     // Get the current capacity of the task queue
     size_t capacity() const {
         // Return our tracked desired capacity
-        std::unique_lock<std::mutex> lock(queueMutex);
         return m_desiredCapacity;
     }
 
-    // Get the current size of the task queue
+    // Get the current size of all task queues combined
     size_t size() const {
-        std::unique_lock<std::mutex> lock(queueMutex);
-        return taskQueue.size();
+        size_t totalSize = 0;
+        for (int i = 0; i <= static_cast<int>(TaskPriority::Idle); ++i) {
+            std::unique_lock<std::mutex> priorityLock(m_priorityMutexes[i]);
+            totalSize += m_priorityQueues[i].size();
+        }
+        return totalSize;
     }
 
     // Enable or disable profiling
     void setProfilingEnabled(bool enabled) {
-        std::unique_lock<std::mutex> lock(queueMutex);
         m_enableProfiling = enabled;
     }
 
@@ -346,7 +277,6 @@ public:
 
     // Get statistics for a specific priority level
     TaskStats getTaskStats(TaskPriority priority) const {
-        std::unique_lock<std::mutex> lock(queueMutex);
         auto it = m_taskStats.find(priority);
         if (it != m_taskStats.end()) {
             return it->second;
@@ -364,15 +294,11 @@ public:
     }
 
 private:
-    // Container to store tasks with pre-allocation
-    std::vector<PrioritizedTask> m_container{};
+    // Separate queues for each priority level (reduces lock contention)
+    mutable std::array<std::vector<PrioritizedTask>, 5> m_priorityQueues{};
+    mutable std::array<std::mutex, 5> m_priorityMutexes{};
 
-    // Priority queue for tasks, sorted by priority and then by enqueue time
-    std::priority_queue<PrioritizedTask,
-                        std::vector<PrioritizedTask>,
-                        std::less<PrioritizedTask>> taskQueue{};
-
-    mutable std::mutex queueMutex{};  // Must use std::mutex with condition_variable
+    mutable std::mutex queueMutex{};  // Main mutex for condition variable
     std::condition_variable condition{};
     std::atomic<bool> stopping{false};
 
@@ -383,6 +309,63 @@ private:
 
     size_t m_desiredCapacity{256}; // Track desired capacity ourselves
     bool m_enableProfiling{false}; // Enable detailed performance metrics
+    
+    // Lock-free check for any tasks
+    bool hasAnyTasksLockFree() const {
+        for (int i = 0; i <= static_cast<int>(TaskPriority::Idle); ++i) {
+            std::unique_lock<std::mutex> priorityLock(m_priorityMutexes[i], std::try_to_lock);
+            if (!priorityLock.owns_lock()) {
+                continue; // Skip if mutex is locked
+            }
+            if (!m_priorityQueues[i].empty()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // Try to pop a task without blocking
+    bool tryPopTask(std::function<void()>& task) {
+        // Try to get task from highest priority queues first
+        for (int priorityIndex = 0; priorityIndex <= static_cast<int>(TaskPriority::Idle); ++priorityIndex) {
+            std::unique_lock<std::mutex> priorityLock(m_priorityMutexes[priorityIndex], std::try_to_lock);
+            if (!priorityLock.owns_lock()) {
+                continue; // Skip if we can't get the lock immediately
+            }
+            
+            auto& queue = m_priorityQueues[priorityIndex];
+            if (!queue.empty()) {
+                // Get the oldest task from this priority level (FIFO within priority)
+                PrioritizedTask prioritizedTask = std::move(queue.front());
+                queue.erase(queue.begin());
+
+                // Calculate wait time for metrics
+                auto now = std::chrono::steady_clock::now();
+                auto waitTime = std::chrono::duration_cast<std::chrono::milliseconds>(
+                    now - prioritizedTask.enqueueTime).count();
+
+                // Update statistics if profiling is enabled
+                if (m_enableProfiling) {
+                    TaskPriority priority = static_cast<TaskPriority>(priorityIndex);
+                    m_taskStats[priority].completed++;
+                    m_taskStats[priority].totalWaitTimeMs += waitTime;
+
+                    // Log long wait times for high priority tasks
+                    if (priorityIndex <= static_cast<int>(TaskPriority::High) && waitTime > 100 && !prioritizedTask.description.empty()) {
+                        std::cout << "Forge Game Engine - High priority task delayed: "
+                                  << prioritizedTask.description
+                                  << " waited " << waitTime << "ms" << std::endl;
+                    }
+                }
+
+                // Return the actual task
+                task = std::move(prioritizedTask.task);
+                m_totalTasksProcessed.fetch_add(1, std::memory_order_relaxed);
+                return true;
+            }
+        }
+        return false;
+    }
 
     // Memory fences for better cross-thread visibility
     void notifyStop() {
