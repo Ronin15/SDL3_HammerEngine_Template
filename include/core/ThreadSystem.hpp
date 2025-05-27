@@ -83,6 +83,16 @@ public:
     TaskQueue(size_t initialCapacity = 256, bool enableProfiling = false)
         : m_desiredCapacity(initialCapacity),
           m_enableProfiling(enableProfiling) {
+        // Actually pre-allocate memory for the container
+        m_container.reserve(initialCapacity);
+
+        // Create priority queue using our pre-allocated container
+        taskQueue = std::priority_queue<PrioritizedTask,
+                                       std::vector<PrioritizedTask>,
+                                       std::less<PrioritizedTask>>(
+                                       std::less<PrioritizedTask>(),
+                                       m_container);
+
         // Initialize task execution statistics
         for (int i = 0; i <= static_cast<int>(TaskPriority::Idle); ++i) {
             m_taskStats[static_cast<TaskPriority>(i)] = {0, 0, 0};
@@ -92,6 +102,45 @@ public:
     void push(std::function<void()> task, TaskPriority priority = TaskPriority::Normal, const std::string& description = "") {
         {
             std::unique_lock<std::mutex> lock(queueMutex);
+
+            // Check if we need to increase capacity
+            if (taskQueue.size() >= m_desiredCapacity * 0.9) { // Increase at 90% capacity
+                // Store current tasks
+                std::vector<PrioritizedTask> tasks;
+                tasks.reserve(taskQueue.size());
+
+                // Extract all current tasks
+                while (!taskQueue.empty()) {
+                    tasks.push_back(taskQueue.top());
+                    taskQueue.pop();
+                }
+
+                // Double the capacity
+                size_t newCapacity = m_desiredCapacity * 2;
+                m_container.clear();
+                m_container.reserve(newCapacity);
+
+                // Recreate priority queue with new capacity
+                taskQueue = std::priority_queue<PrioritizedTask,
+                                              std::vector<PrioritizedTask>,
+                                              std::less<PrioritizedTask>>(
+                                              std::less<PrioritizedTask>(),
+                                              m_container);
+
+                // Restore all tasks
+                for (const auto& t : tasks) {
+                    taskQueue.push(t);
+                }
+
+                m_desiredCapacity = newCapacity;
+
+                if (m_enableProfiling) {
+                    std::cout << "Forge Game Engine - Task queue capacity increased to "
+                              << newCapacity << std::endl;
+                }
+            }
+
+            // Add the new task
             taskQueue.emplace(std::move(task), priority, description);
 
             // Update statistics
@@ -113,7 +162,7 @@ public:
         if (stopping.load(std::memory_order_acquire)) {
             return false;
         }
-        
+
         std::unique_lock<std::mutex> lock(queueMutex);
 
         // Use a very short timeout for quick shutdown response
@@ -168,10 +217,10 @@ public:
     void stop() {
         // First set the stopping flag before locking to indicate shutdown quickly
         stopping.store(true, std::memory_order_release);
-        
+
         // Wake up all threads immediately
         notifyAllThreads();
-        
+
         // Now take the lock to clear the queue
         {
             std::unique_lock<std::mutex> lock(queueMutex);
@@ -202,13 +251,13 @@ public:
                 taskQueue.pop();
             }
         }
-        
+
         // Memory fence for maximum visibility across all threads
         std::atomic_thread_fence(std::memory_order_seq_cst);
-        
+
         // Wake all waiting threads again after clearing queue
         notifyAllThreads();
-        
+
         // Small delay to let threads notice the stop signal
         std::this_thread::sleep_for(std::chrono::milliseconds(5));
     }
@@ -225,10 +274,44 @@ public:
 
     // Reserve capacity for the task queue to reduce memory reallocations
     void reserve(size_t capacity) {
-        // We're using a priority_queue which doesn't support reserve directly
-        // Just save the desired capacity for reporting purposes
         std::unique_lock<std::mutex> lock(queueMutex);
+
+        // Only proceed if we're actually increasing capacity
+        if (capacity <= m_desiredCapacity) {
+            return;
+        }
+
+        // Store the current tasks
+        std::vector<PrioritizedTask> tasks;
+        tasks.reserve(taskQueue.size());
+
+        while (!taskQueue.empty()) {
+            tasks.push_back(taskQueue.top());
+            taskQueue.pop();
+        }
+
+        // Recreate the container with new capacity
+        m_container.clear();
+        m_container.reserve(capacity);
+
+        // Recreate the priority queue with the new container
+        taskQueue = std::priority_queue<PrioritizedTask,
+                                       std::vector<PrioritizedTask>,
+                                       std::less<PrioritizedTask>>(
+                                       std::less<PrioritizedTask>(),
+                                       m_container);
+
+        // Put back all the tasks
+        for (const auto& task : tasks) {
+            taskQueue.push(task);
+        }
+
         m_desiredCapacity = capacity;
+
+        if (m_enableProfiling) {
+            std::cout << "Forge Game Engine - Task queue capacity manually set to "
+                      << capacity << std::endl;
+        }
     }
 
     // Get the current capacity of the task queue
@@ -281,8 +364,14 @@ public:
     }
 
 private:
+    // Container to store tasks with pre-allocation
+    std::vector<PrioritizedTask> m_container{};
+
     // Priority queue for tasks, sorted by priority and then by enqueue time
-    std::priority_queue<PrioritizedTask> taskQueue{};
+    std::priority_queue<PrioritizedTask,
+                        std::vector<PrioritizedTask>,
+                        std::less<PrioritizedTask>> taskQueue{};
+
     mutable std::mutex queueMutex{};  // Must use std::mutex with condition_variable
     std::condition_variable condition{};
     std::atomic<bool> stopping{false};
@@ -301,13 +390,13 @@ private:
         std::atomic_thread_fence(std::memory_order_seq_cst);
         condition.notify_all();
     }
-    
+
 public:
     // Wake up all waiting threads without clearing the queue
     void notifyAllThreads() {
         condition.notify_all();
     }
-    
+
 private:
 };
 
@@ -319,8 +408,8 @@ public:
      * @brief Construct a new Thread Pool
      *
      * @param numThreads Number of worker threads to create
-     * @param queueCapacity Initial capacity for the task queue
-     * @param enableProfiling Enable detailed task profiling
+     * @param initialQueueCapacity Initial capacity for the task queue (memory is pre-allocated)
+     * @param enableProfiling Enable detailed task performance metrics
      */
     ThreadPool(size_t numThreads, size_t queueCapacity = 256, bool enableProfiling = false)
         : taskQueue(queueCapacity, enableProfiling) {
@@ -351,25 +440,25 @@ public:
     ~ThreadPool() {
         // Signal all threads to stop
         isRunning.store(false, std::memory_order_release);
-        
+
         // Ensure all threads see the update immediately
         std::atomic_thread_fence(std::memory_order_seq_cst);
-        
+
         // First notify all threads without clearing the queue
         taskQueue.notifyAllThreads();
-        
+
         // Small delay to allow threads to notice the shutdown signal
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
-        
+
         // Then stop and clear the queue
         taskQueue.stop();
-        
+
         // Notify again after stopping
         taskQueue.notifyAllThreads();
-        
+
         // A short delay to allow threads to exit naturally
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
-        
+
         // Join all worker threads
         for (auto& worker : m_workers) {
             if (worker.joinable()) {
@@ -383,9 +472,9 @@ public:
                 }
             }
         }
-        
+
         std::cout << "Forge Game Engine - ThreadPool shutdown completed" << std::endl;
-        
+
         // Clear the worker threads
         m_workers.clear();
     }
@@ -453,7 +542,7 @@ private:
         // For statistics tracking
         auto startTime = std::chrono::steady_clock::now();
         size_t tasksProcessed = 0;
-        
+
         // Set thread as interruptible (platform-specific if needed)
         try {
             // Main worker loop
@@ -514,7 +603,7 @@ private:
                     if (!isRunning.load(std::memory_order_acquire)) {
                         break;
                     }
-                    
+
                     // Short sleep to avoid CPU spinning but remain responsive
                     std::this_thread::sleep_for(std::chrono::milliseconds(1));
                 }
@@ -543,7 +632,7 @@ class ThreadSystem {
 
 public:
     // Task queue settings
-    static constexpr size_t DEFAULT_QUEUE_CAPACITY = 512;
+    static constexpr size_t DEFAULT_QUEUE_CAPACITY = 1024;
 
     // Timeout settings
     static constexpr int DEFAULT_SHUTDOWN_TIMEOUT_MS = 5000; // 5 seconds
@@ -564,7 +653,7 @@ public:
 
     void clean() {
         std::cout << "Forge Game Engine - ThreadSystem resources cleaned!" << std::endl;
-        
+
         // Set shutdown flag first so any new accesses will be rejected
         m_isShutdown.store(true, std::memory_order_release);
         // Ensure visibility across all threads
@@ -574,24 +663,24 @@ public:
             // First signal the pool to stop accepting new tasks
             // We don't actually need to wait for pending tasks to complete here
             m_threadPool->getTaskQueue().notifyAllThreads();
-            
+
             // Allow a very brief delay for threads to notice shutdown signal
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
-            
+
             // Log the number of pending tasks
             size_t pendingTasks = m_threadPool->getTaskQueue().size();
             if (pendingTasks > 0) {
-                std::cout << "Forge Game Engine - Canceling " << pendingTasks 
+                std::cout << "Forge Game Engine - Canceling " << pendingTasks
                           << " pending tasks during shutdown..." << std::endl;
             }
 
             // Reset the thread pool - this will trigger its destructor
             // which handles thread cleanup gracefully
             m_threadPool.reset();
-            
+
             // Add a small delay to allow any final thread messages to print
             std::this_thread::sleep_for(std::chrono::milliseconds(50));
-            
+
             std::cout << "Forge Game Engine - Thread pool successfully shut down" << std::endl;
         }
     }
@@ -714,7 +803,7 @@ public:
             // Create a promise/future pair with a default-constructed result
             using ResultType = typename std::invoke_result<F, Args...>::type;
             std::promise<ResultType> promise;
-            
+
             if (m_enableDebugLogging) {
                 std::cout << "Forge Game Engine - Returning default value for task after shutdown";
                 if (!description.empty()) {
@@ -727,7 +816,7 @@ public:
             try {
                 if constexpr (std::is_void_v<ResultType>) {
                     promise.set_value();
-                } 
+                }
                 else if constexpr (std::is_default_constructible_v<ResultType>) {
                     promise.set_value(ResultType{});
                 }
@@ -743,7 +832,7 @@ public:
             } catch (...) {
                 promise.set_exception(std::current_exception());
             }
-            
+
             return promise.get_future();
         }
 

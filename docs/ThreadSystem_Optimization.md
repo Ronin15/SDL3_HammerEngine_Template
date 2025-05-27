@@ -119,7 +119,8 @@ With the optimized queue capacity:
 
 - Approximately 200 bytes per task (function object + captures)
 - 500 tasks × 200 bytes = ~100 KB of memory
-- Pre-allocated in a contiguous block for better cache performance
+- Actually pre-allocated in a contiguous block for better cache performance
+- Memory is reserved at initialization and managed throughout system lifetime
 
 ## Game Scenarios That Benefit from 500 Tasks
 
@@ -178,6 +179,8 @@ The ability to efficiently handle 500 tasks allows the Forge Engine to:
 1. **Support Rich, Dynamic Worlds**: Maintain hundreds of active, independently updated entities
 2. **Provide Responsive Gameplay**: Process many game systems in parallel without stalling
 3. **Efficiently Use Modern Hardware**: Scale across multiple CPU cores for better performance
-4. **Manage Memory Effectively**: Handle substantial workloads without memory fragmentation
+4. **Manage Memory Effectively**: Handle substantial workloads without memory fragmentation through true pre-allocation
 
-For modern games, this processing capacity enables complex simulations and rich game worlds while maintaining good performance and memory efficiency.
+The implementation uses explicit memory pre-allocation with a custom priority queue that provides significantly better memory characteristics than standard containers.
+
+For modern games, this processing capacity enables complex simulations and rich game worlds while maintaining good performance and memory efficiency. The system's automatic capacity expansion (doubling at 90% utilization) ensures that even unexpected bursts of tasks are handled smoothly without compromising memory efficiency.

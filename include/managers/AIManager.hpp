@@ -137,12 +137,12 @@ public:
     bool hasBehavior(const std::string& behaviorName) const;
 
     /**
-     * @brief Get a pointer to a behavior
+     * @brief Get a shared pointer to a behavior
      * @param behaviorName Name of the behavior to retrieve
-     * @return Pointer to the behavior, or nullptr if not found
+     * @return Shared pointer to the behavior, or nullptr if not found
      * @thread_safety Thread-safe, can be called from any thread
      */
-    AIBehavior* getBehavior(const std::string& behaviorName) const;
+    std::shared_ptr<AIBehavior> getBehavior(const std::string& behaviorName) const;
 
     // Entity-behavior assignment
     /**
@@ -296,8 +296,8 @@ private:
     // Cache for quick lookup of entity-behavior pairs (optimization)
     struct EntityBehaviorCache {
         EntityWeakPtr entityWeak{};
-        AIBehavior* behavior{nullptr};
-        std::string_view behaviorName;  // Using string_view to avoid copies
+        std::weak_ptr<AIBehavior> behaviorWeak{};  // Using weak_ptr to avoid ownership issues
+        std::string behaviorName;  // Using string to ensure lifetime beyond the behavior
 
         // Performance statistics
         uint64_t lastUpdateTime{0};
@@ -306,7 +306,7 @@ private:
         // Constructor to ensure proper initialization
         EntityBehaviorCache() 
             : entityWeak()
-            , behavior(nullptr)
+            , behaviorWeak()
             , behaviorName()
             , lastUpdateTime(0)
             , perfStats()
@@ -334,7 +334,7 @@ private:
     void updateBehaviorBatch(const std::string_view& behaviorName, const BehaviorBatch& batch);
 
     // Common helper method to process entities with a behavior (reduces code duplication)
-    void processEntitiesWithBehavior(AIBehavior* behavior, const std::vector<EntityPtr>& entities, bool useThreading);
+    void processEntitiesWithBehavior(std::shared_ptr<AIBehavior> behavior, const std::vector<EntityPtr>& entities, bool useThreading);
 
     // Performance monitoring
     boost::container::flat_map<std::string, PerformanceStats> m_behaviorPerformanceStats;

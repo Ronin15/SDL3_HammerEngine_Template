@@ -111,12 +111,12 @@ Forge::ThreadSystem::Instance().clean();
 
 ## Queue Capacity Management
 
-The ThreadSystem automatically manages memory for the task queue. In most cases, you shouldn't need to worry about queue capacity as the system handles this internally.
+The ThreadSystem actively pre-allocates and manages memory for the task queue. This provides significant performance benefits by reducing memory fragmentation and eliminating allocation pauses during gameplay.
 
 ### Setting Initial Capacity (Optional)
 
 ```cpp
-// Initialize with default capacity (recommended approach)
+// Initialize with default capacity (recommended approach - 512 tasks)
 if (!Forge::ThreadSystem::Instance().init()) {
     std::cerr << "Failed to initialize thread system!" << std::endl;
     return -1;
@@ -131,11 +131,13 @@ if (!Forge::ThreadSystem::Instance().init(1000)) {
 
 ### Adjusting Capacity at Runtime (Rarely Needed)
 
-```cpp
-// Note: In most cases, this is NOT necessary as the system manages capacity automatically
-// Only use this if you have specific performance requirements
-Forge::ThreadSystem::Instance().reserveQueueCapacity(1000);
-```
+### Automatic Capacity Expansion
+
+The queue automatically expands its capacity when it reaches 90% of the current limit. When this happens:
+- The system temporarily stores existing tasks
+- Doubles the capacity
+- Reinserts the tasks in their proper priority order
+- This happens without any task loss or API interruption
 
 ### Monitoring Queue Status
 
@@ -153,15 +155,20 @@ std::cout << "Queue usage: " << queueSize << "/" << capacity << std::endl;
 
 ### Reduced Fragmentation
 
-By pre-allocating the task queue, the system reduces memory fragmentation that would otherwise occur from frequent allocations and deallocations. This is particularly important for long-running applications like games.
+By pre-allocating the task queue's memory, the system significantly reduces memory fragmentation that would otherwise occur from frequent allocations and deallocations. This is particularly important for long-running applications like games.
 
 ### Improved Cache Locality
 
-The contiguous memory layout of the reserved queue improves cache performance when worker threads access tasks, leading to better throughput and reduced cache misses.
+The contiguous memory layout of the pre-allocated queue improves cache performance when worker threads access tasks, leading to better throughput and reduced cache misses. The implementation specifically manages the underlying container to maintain this benefit.
 
 ### Consistent Performance
 
-Eliminating dynamic resizing of the task queue helps maintain consistent performance during gameplay, avoiding hitches that might otherwise occur during memory reallocation.
+The system eliminates unexpected memory allocation during normal operation by:
+1. Pre-allocating memory during initialization
+2. Performing controlled growth when needed (doubling capacity)
+3. Managing reallocations during low-activity periods rather than during peak demand
+
+This helps maintain consistent performance during gameplay, avoiding hitches that would otherwise occur during unpredictable memory reallocation.
 
 ## Best Practices
 
@@ -202,7 +209,7 @@ void updateEntities(const std::vector<Entity*>& entities) {
     for (Entity* entity : entities) {
         // Assign appropriate priority based on entity importance
         Forge::TaskPriority priority = Forge::TaskPriority::Normal;
-        
+
         // Prioritize player-interactive entities
         if (entity->isInteractingWithPlayer()) {
             priority = Forge::TaskPriority::High;
@@ -211,7 +218,7 @@ void updateEntities(const std::vector<Entity*>& entities) {
         else if (entity->isDistantFromPlayer()) {
             priority = Forge::TaskPriority::Low;
         }
-        
+
         Forge::ThreadSystem::Instance().enqueueTask([entity]() {
             try {
                 entity->update();
@@ -267,9 +274,15 @@ void loadAssets(const std::vector<std::string>& assetPaths) {
 
 ## Technical Details
 
-The ThreadSystem uses a vector-based task queue with pre-allocation support, enabling better memory management than the standard queue implementation. All operations are thread-safe with proper synchronization to ensure correct behavior in a multi-threaded environment.
+The ThreadSystem uses a custom priority queue implementation with explicit pre-allocation of the underlying memory. This implementation provides significantly better memory management than standard containers. All operations are thread-safe with proper synchronization to ensure correct behavior in a multi-threaded environment.
 
-The implementation efficiently handles task creation, dispatch, and completion, with special care taken to ensure proper propagation of exceptions and return values. Tasks are processed according to their priority level, with higher-priority tasks being executed before lower-priority ones.
+The implementation efficiently handles:
+- Task creation and enqueueing with priority-based ordering
+- Intelligent memory pre-allocation and growth
+- Thread-safe access to the task queue
+- Proper propagation of exceptions and return values
+
+Tasks are processed according to their priority level, with higher-priority tasks being executed before lower-priority ones, all while maintaining memory efficiency.
 
 ### Priority Levels
 

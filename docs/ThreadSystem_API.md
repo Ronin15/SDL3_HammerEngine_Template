@@ -24,7 +24,7 @@ Singleton class that manages the thread pool and task queue.
 
 | Method | Parameters | Return Type | Description |
 |--------|------------|-------------|-------------|
-| `bool init(size_t queueCapacity = DEFAULT_QUEUE_CAPACITY)` | `queueCapacity`: Initial task queue capacity (optional) | `bool` | Initializes the thread system with automatic capacity management. The initial capacity parameter is optional and rarely needed. |
+| `bool init(size_t queueCapacity = DEFAULT_QUEUE_CAPACITY)` | `queueCapacity`: Initial task queue capacity (optional) | `bool` | Initializes the thread system and pre-allocates memory for the task queue. The initial capacity determines how many tasks can be stored before requiring reallocation. |
 | `void clean()` | None | `void` | Cleans up and releases all thread system resources |
 
 #### Task Submission
@@ -48,7 +48,7 @@ Singleton class that manages the thread pool and task queue.
 |--------|------------|-------------|-------------|
 | `size_t getQueueCapacity() const` | None | `size_t` | Returns the current capacity of the task queue |
 | `size_t getQueueSize() const` | None | `size_t` | Returns the current number of tasks in the queue |
-| `bool reserveQueueCapacity(size_t capacity)` | `capacity`: New capacity to reserve | `bool` | Reserves memory for the specified number of tasks. Note: This is rarely needed as capacity is managed automatically. |
+| `bool reserveQueueCapacity(size_t capacity)` | `capacity`: New capacity to reserve | `bool` | Actually pre-allocates memory for the specified number of tasks. This operation will safely migrate existing tasks to the newly allocated memory. |
 
 #### Constants
 
@@ -70,7 +70,7 @@ Internal class that manages the pool of worker threads.
 
 | Method | Parameters | Description |
 |--------|------------|-------------|
-| `ThreadPool(size_t numThreads, size_t queueCapacity = 256)` | `numThreads`: Number of worker threads<br>`queueCapacity`: Initial task queue capacity | Constructs a thread pool with specified thread count and queue capacity |
+| `ThreadPool(size_t numThreads, size_t queueCapacity = 256, bool enableProfiling = false)` | `numThreads`: Number of worker threads<br>`queueCapacity`: Initial task queue capacity<br>`enableProfiling`: Enable detailed performance metrics | Constructs a thread pool with specified thread count and pre-allocates memory for the task queue |
 | `~ThreadPool()` | None | Cleans up the thread pool and joins all worker threads |
 
 #### Methods
@@ -89,7 +89,7 @@ Internal class that manages the queue of pending tasks.
 
 | Method | Parameters | Description |
 |--------|------------|-------------|
-| `TaskQueue(size_t initialCapacity = 256)` | `initialCapacity`: Initial capacity for the task queue | Constructs a task queue with the specified initial capacity |
+| `TaskQueue(size_t initialCapacity = 256, bool enableProfiling = false)` | `initialCapacity`: Initial capacity for the task queue<br>`enableProfiling`: Enable detailed performance metrics | Constructs a task queue with the specified initial capacity and pre-allocates memory for efficient task storage |
 
 #### Methods
 
@@ -99,7 +99,7 @@ Internal class that manages the queue of pending tasks.
 | `bool pop(std::function<void()>& task)` | `task`: Reference to store the popped task | `bool` | Removes a task from the queue |
 | `void stop()` | None | `void` | Stops the queue and clears all pending tasks |
 | `bool isEmpty()` | None | `bool` | Returns true if the queue is empty |
-| `void reserve(size_t capacity)` | `capacity`: New capacity to reserve | `void` | Reserves memory for the specified number of tasks |
+| `void reserve(size_t capacity)` | `capacity`: New capacity to reserve | `void` | Pre-allocates memory for the specified number of tasks, migrating existing tasks to the new memory allocation |
 | `size_t capacity() const` | None | `size_t` | Returns the current capacity of the queue |
 | `size_t size() const` | None | `size_t` | Returns the current number of tasks in the queue |
 
@@ -186,9 +186,10 @@ Forge::ThreadSystem::Instance().init();
 size_t currentSize = Forge::ThreadSystem::Instance().getQueueSize();
 size_t capacity = Forge::ThreadSystem::Instance().getQueueCapacity();
 
-// Custom capacity is only needed in rare cases with extreme requirements
-// For example, when handling thousands of tasks simultaneously:
-if (tasksToProcess > 5000) {
+// The system automatically expands capacity when needed (at 90% utilization)
+// Custom capacity is only needed when you know a large burst is coming:
+if (tasksToProcess > 1000 && tasksToProcess > capacity) {
+    // Pre-allocate memory for all tasks to avoid mid-burst reallocation
     Forge::ThreadSystem::Instance().reserveQueueCapacity(tasksToProcess);
 }
 ```
@@ -205,8 +206,8 @@ All public methods of the ThreadSystem, ThreadPool, and TaskQueue classes are th
 
 ## Performance Considerations
 
-- The thread system automatically manages capacity for most workloads
-- Manual capacity management with `reserveQueueCapacity()` is rarely needed
+- The thread system pre-allocates memory and manages capacity for optimal performance
+- Manual capacity management with `reserveQueueCapacity()` is only needed for anticipating large bursts of tasks
 - Always include proper exception handling in your tasks
 - Avoid creating many tiny tasks; batch related work when possible
 - The default thread pool size (cores-1) is optimal for most applications
