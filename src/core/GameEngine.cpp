@@ -12,6 +12,8 @@
 #include "SDL3/SDL_surface.h"
 #include "managers/AIManager.hpp"
 #include "gameStates/AIDemoState.hpp"
+#include "gameStates/EventDemoState.hpp"
+#include "events/EventSystem.hpp"
 #include "managers/FontManager.hpp"
 #include "gameStates/GamePlayState.hpp"
 #include "managers/GameStateManager.hpp"
@@ -261,6 +263,18 @@ bool GameEngine::init(const char* title,
         return true;
       }));
 
+  // Initialize Event System in a separate thread - #6
+  initTasks.push_back(
+      Forge::ThreadSystem::Instance().enqueueTaskWithResult([]() -> bool {
+        std::cout << "Forge Game Engine - Creating Event System\n";
+        if (!EventSystem::Instance()->init()) {
+          std::cerr << "Forge Game Engine - Failed to initialize Event System!" << std::endl;
+          return false;
+        }
+        std::cout << "Forge Game Engine - Event System initialized successfully\n";
+        return true;
+      }));
+
   // Initialize game state manager (on main thread because it directly calls rendering) - MAIN THREAD
   std::cout << "Forge Game Engine - Creating Game State Manager and setting up "
                "initial Game States\n";
@@ -276,6 +290,7 @@ bool GameEngine::init(const char* title,
   mp_gameStateManager->addState(std::make_unique<MainMenuState>());
   mp_gameStateManager->addState(std::make_unique<GamePlayState>());
   mp_gameStateManager->addState(std::make_unique<AIDemoState>());
+  mp_gameStateManager->addState(std::make_unique<EventDemoState>());
 
   // Wait for all initialization tasks to complete
   bool allTasksSucceeded = true;
@@ -323,12 +338,13 @@ void GameEngine::update() {
 
   // Mark update as running
   m_updateRunning = true;
-  
+
   // Get the buffer for the current update
   const size_t updateBufferIndex = m_currentBufferIndex.load(std::memory_order_acquire);
 
   auto startTime = std::chrono::steady_clock::now();
   try {
+
     // Update game states - make sure GameStateManager knows which buffer to update
     mp_gameStateManager->update();
 
@@ -337,7 +353,7 @@ void GameEngine::update() {
 
     // Mark this buffer as ready for rendering
     m_bufferReady[updateBufferIndex].store(true, std::memory_order_release);
-    
+
     // Mark update as completed
     m_updateCompleted = true;
   } catch (const std::exception& e) {
@@ -345,20 +361,20 @@ void GameEngine::update() {
   } catch (...) {
     std::cerr << "Forge Game Engine - Unknown exception in update" << std::endl;
   }
-  
+
   // Calculate frame time
   auto endTime = std::chrono::steady_clock::now();
   m_frameTimeMs.store(static_cast<uint32_t>(
     std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime).count()
   ));
-  
+
   // If update took too long, consider skipping the next frame
   if (m_frameTimeMs.load() > 16) {  // 16ms = target for 60 FPS
     m_skipFrame.store(true, std::memory_order_release);
   }
-  
+
   m_updateRunning = false;
-  
+
   // Notify anyone waiting on this update
   m_updateCondition.notify_all();
   m_bufferCondition.notify_all();
@@ -370,19 +386,19 @@ void GameEngine::render() {
 
   // Get the current render buffer index
   const size_t renderBufferIndex = m_renderBufferIndex.load(std::memory_order_acquire);
-  
+
   // Only render if the buffer is ready
   if (m_bufferReady[renderBufferIndex].load(std::memory_order_acquire)) {
     try {
       SDL_RenderClear(mp_renderer.get());
-      
+
       // Make sure GameStateManager knows which buffer to render from
       mp_gameStateManager->render();
-      
+
       SDL_RenderPresent(mp_renderer.get());
 
       // Update the last rendered frame counter with memory ordering
-      m_lastRenderedFrame.store(m_lastUpdateFrame.load(std::memory_order_acquire), 
+      m_lastRenderedFrame.store(m_lastUpdateFrame.load(std::memory_order_acquire),
                                 std::memory_order_release);
     } catch (const std::exception& e) {
       std::cerr << "Forge Game Engine - Exception in render: " << e.what() << std::endl;
@@ -395,7 +411,7 @@ void GameEngine::render() {
 void GameEngine::waitForUpdate() {
   std::unique_lock<std::mutex> lock(m_updateMutex);
   // Set a timeout to avoid deadlocks with extremely high entity counts
-  if (!m_updateCondition.wait_for(lock, std::chrono::milliseconds(100), 
+  if (!m_updateCondition.wait_for(lock, std::chrono::milliseconds(100),
       [this] { return m_updateCompleted.load(std::memory_order_acquire); })) {
     // If timeout occurs, log a warning but continue
     std::cerr << "Forge Game Engine - Warning: Update wait timeout with high entity count" << std::endl;
@@ -413,21 +429,21 @@ void GameEngine::signalUpdateComplete() {
 
 void GameEngine::swapBuffers() {
   std::lock_guard<std::mutex> lock(m_bufferMutex);
-  
+
   // Get current index
   size_t currentIndex = m_currentBufferIndex.load(std::memory_order_acquire);
-  
+
   // Calculate next buffer index
   size_t nextUpdateIndex = (currentIndex + 1) % BUFFER_COUNT;
-  
+
   // Only swap if the current update buffer is ready
   if (m_bufferReady[currentIndex].load(std::memory_order_acquire)) {
     // Update buffer is ready, make it the render buffer
     m_renderBufferIndex.store(currentIndex, std::memory_order_release);
-    
+
     // Mark the next update buffer as not ready
     m_bufferReady[nextUpdateIndex].store(false, std::memory_order_release);
-    
+
     // Switch to the next buffer for updates
     m_currentBufferIndex.store(nextUpdateIndex, std::memory_order_release);
   }
@@ -436,14 +452,14 @@ void GameEngine::swapBuffers() {
 bool GameEngine::hasNewFrameToRender() const {
   // We have a new frame to render if any buffer is ready that isn't the current render buffer
   size_t renderIndex = m_renderBufferIndex.load(std::memory_order_acquire);
-  
+
   // Check if there's a buffer ready for rendering
   for (size_t i = 0; i < BUFFER_COUNT; ++i) {
     if (i != renderIndex && m_bufferReady[i].load(std::memory_order_acquire)) {
       return true;
     }
   }
-  
+
   // Also check frame counters as a fallback
   uint64_t lastUpdate = m_lastUpdateFrame.load(std::memory_order_acquire);
   uint64_t lastRendered = m_lastRenderedFrame.load(std::memory_order_acquire);
@@ -468,6 +484,8 @@ void GameEngine::processBackgroundTasks() {
 
   // AI updates run asynchronously and won't block the main thread
   AIManager::Instance().update();
+  // Update Event System
+  EventSystem::Instance()->update();
 
   // Example: Process AI, physics, or other non-rendering tasks
   // These tasks can run while the main thread is handling rendering
@@ -499,6 +517,9 @@ void GameEngine::clean() {
 
   std::cout << "Forge Game Engine - Cleaning up Sound Manager...\n";
   SoundManager::Instance().clean();
+
+  std::cout << "Forge Game Engine - Cleaning up Event System...\n";
+  EventSystem::Instance()->clean();
 
   std::cout << "Forge Game Engine - Cleaning up AI Manager...\n";
   AIManager::Instance().clean();

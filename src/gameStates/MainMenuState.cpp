@@ -24,6 +24,9 @@ void MainMenuState::update() {
       if (InputManager::Instance().isKeyDown(SDL_SCANCODE_A)) {
           GameEngine::Instance().getGameStateManager()->setState("AIDemo");
       }
+      if (InputManager::Instance().isKeyDown(SDL_SCANCODE_E)) {
+          GameEngine::Instance().getGameStateManager()->setState("EventDemo");
+      }
       if (InputManager::Instance().isKeyDown(SDL_SCANCODE_ESCAPE)) {
           GameEngine::Instance().setRunning(false);
       }
@@ -58,10 +61,18 @@ void MainMenuState::render() {
       GameEngine::Instance().getRenderer());
 
     FontManager::Instance().drawText(
-      "Press ESC - Exit",
+      "Press E - Event Demo",
       "fonts_Arial",
       GameEngine::Instance().getWindowWidth() / 2,     // Center horizontally
       (GameEngine::Instance().getWindowHeight() / 2) - 20,
+      fontColor,
+      GameEngine::Instance().getRenderer());
+
+    FontManager::Instance().drawText(
+      "Press ESC - Exit",
+      "fonts_Arial",
+      GameEngine::Instance().getWindowWidth() / 2,     // Center horizontally
+      (GameEngine::Instance().getWindowHeight() / 2) + 30,
       fontColor,
       GameEngine::Instance().getRenderer());
 }

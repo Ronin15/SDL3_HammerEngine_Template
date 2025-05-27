@@ -1000,11 +1000,12 @@ bool EventManager::changeScene(const std::string& sceneId, const std::string& tr
     return true;
 }
 
+
 // NPC spawn methods
 bool EventManager::spawnNPC(const std::string& npcType, float x, float y) {
     EVENT_LOG("Spawning NPC of type: " << npcType << " at position (" << x << ", " << y << ")");
 
-    // Find NPC spawn events
+    // Send spawn request to NPCSpawn events for handling
     auto spawnEvents = getEventsByType("NPCSpawn");
     if (spawnEvents.empty()) {
         EVENT_LOG("Warning: No NPC spawn events registered");
@@ -1012,7 +1013,7 @@ bool EventManager::spawnNPC(const std::string& npcType, float x, float y) {
     }
 
     // Send a special formatted message to all NPC spawn events
-    std::string message = "SPAWN:" + npcType + ":" + std::to_string(x) + ":" + std::to_string(y);
+    std::string message = "SPAWN_REQUEST:" + npcType + ":" + std::to_string(x) + ":" + std::to_string(y);
     for (auto event : spawnEvents) {
         if (event) {
             event->onMessage(message);
