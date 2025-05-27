@@ -24,10 +24,11 @@ include_directories(
     ${PROJECT_SOURCE_DIR}/include/io
     ${PROJECT_SOURCE_DIR}/include/ui
     ${PROJECT_SOURCE_DIR}/include/events
+    ${CMAKE_CURRENT_SOURCE_DIR}/mocks
 )
 
 # Add test executables
-add_executable(save_manager_tests 
+add_executable(save_manager_tests
     SaveManagerTests.cpp
     mocks/MockPlayer.cpp
 )
@@ -69,7 +70,9 @@ add_executable(event_manager_tests
     ${PROJECT_SOURCE_DIR}/src/events/Event.cpp
     ${PROJECT_SOURCE_DIR}/src/events/WeatherEvent.cpp
     ${PROJECT_SOURCE_DIR}/src/events/SceneChangeEvent.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/NPCSpawnEvent.cpp
+    mocks/NPCSpawnEventTest.cpp
+    mocks/MockNPC.cpp
+    mocks/MockGameEngine.cpp
 )
 
 # Event Types tests
@@ -78,8 +81,10 @@ add_executable(event_types_tests
     ${PROJECT_SOURCE_DIR}/src/events/Event.cpp
     ${PROJECT_SOURCE_DIR}/src/events/WeatherEvent.cpp
     ${PROJECT_SOURCE_DIR}/src/events/SceneChangeEvent.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/NPCSpawnEvent.cpp
     ${PROJECT_SOURCE_DIR}/src/events/EventFactory.cpp
+    mocks/NPCSpawnEventTest.cpp
+    mocks/MockNPC.cpp
+    mocks/MockGameEngine.cpp
 )
 
 # Weather Event tests
@@ -124,12 +129,14 @@ target_compile_definitions(thread_safe_ai_integration_tests PRIVATE
 target_compile_definitions(event_manager_tests PRIVATE
     BOOST_TEST_NO_LIB
     BOOST_TEST_NO_SIGNAL_HANDLING
+    RUNNING_TESTS
 )
 
 # Event Types tests definitions
 target_compile_definitions(event_types_tests PRIVATE
     BOOST_TEST_NO_LIB
     BOOST_TEST_NO_SIGNAL_HANDLING
+    RUNNING_TESTS
 )
 
 # Weather Event tests definitions
