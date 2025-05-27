@@ -1,14 +1,15 @@
 # SDL3 2D Game Template with Multi-Threading
   -Work in progress.... Features do work and are implemented! Also, learning all the features of github will implement more as I figure it out.
 
-### Generative AI useage
- - This proeject has turned into a large scale simulation engine. Not like, unity or unreal, but a framework or engine that drives the game you want to make. I'm using AI to help me accelerate development on this project. No, AI can't come upwith the architecture and glue it all together. I have designed the shell and the core of the game and using AI to help me fill it out and focus on things like memeory safety. One of the goals of this project is safety, so there are no raw pointers, and no new or deletes. There are maybe one or two in some SDL subsytems that I can't convert. There are only like two. I also use AI to help me sync up threading issues and solve crashes. I'm using it like a really cool sword or tool so to speak to help me make games! I hope you find it usefull or cool!
-
 Based off of my SDL2 template, but updated for SDL3 and more complete. It has simplified Entity management and Entity state management systems. Also has a more robust game state management system and uses CMake and Ninja instead of a custom build.sh. This is designed to be a jump off point for making a game with some of the low level and architecture stuff handled. Just add your content and start modifing the managers and add states. Demo's included to show how the systems integrate.
 
 I use the Zed IDE with custom cmake and ninja task configurations to build/compile on all platforms. Zed has good documentation check it out at https://zed.dev/docs/
 
   - **Note**: Below in the Prerequisites I mentioned some ways that I used to get the project to compile on Windows. You may need some additional tweaks depending on your system and preferences. Via Cmake the compile_commands.json file is generated automatically and moved to the project root directory. This will allow Zed, when it automatically installs Clangd, to provide code completion and diagnostics.
+
+
+### Generative AI useage
+ - This proeject has turned into a large scale simulation engine. Not like, unity or unreal, but a framework or engine that drives the game you want to make. I'm using AI to help me accelerate development on this project. No, AI can't come upwith the architecture and glue it all together. I have designed the shell and the core of the game and using AI to help me fill it out and focus on things like memeory safety. One of the goals of this project is safety, so there are no raw pointers, and no new or deletes. There are maybe one or two in some SDL subsytems that I can't convert. There are only like two. I also use AI to help me sync up threading issues and solve crashes. I'm using it like a really cool sword or tool so to speak to help me make games! I hope you find it usefull or cool!
 
 ## Features Overview
 
