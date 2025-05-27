@@ -681,7 +681,7 @@ public:
      * threads based on the hardware and a default task queue capacity.
      * After initialization, the task queue can grow dynamically as needed.
      *
-     * @param queueCapacity Initial capacity for the task queue (default: 512)
+     * @param queueCapacity Initial capacity for the task queue (default: 1024)
      * @param customThreadCount Optional parameter to specify exact thread count (0 for auto-detect)
      * @param enableProfiling Enable detailed task profiling (default: false)
      * @return true if initialization succeeded, false otherwise

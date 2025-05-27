@@ -72,8 +72,9 @@ static SignalHandlerRegistration signalHandlerRegistration;
 // Global fixture for test setup and cleanup
 struct ThreadTestFixture {
     ThreadTestFixture() {
-        // Initialize the thread system before tests with default settings
-        Forge::ThreadSystem::Instance().init();
+        // Initialize the thread system before tests with higher capacity to handle test load
+        // Use 4096 capacity to handle multiple tests with many tasks
+        Forge::ThreadSystem::Instance().init(4096);
     }
 
     ~ThreadTestFixture() {
@@ -103,9 +104,8 @@ BOOST_AUTO_TEST_CASE(TestThreadPoolInitialization) {
     // Output the thread count for information
     std::cout << "Thread system initialized with " << threadCount << " threads." << std::endl;
     
-    // Check that the queue capacity is set to the default value
-    BOOST_CHECK_EQUAL(Forge::ThreadSystem::Instance().getQueueCapacity(), 
-                     Forge::ThreadSystem::DEFAULT_QUEUE_CAPACITY);
+    // Check that the queue capacity is set to the test value (4096)
+    BOOST_CHECK_EQUAL(Forge::ThreadSystem::Instance().getQueueCapacity(), 4096);
 }
 
 BOOST_AUTO_TEST_CASE(TestSimpleTaskExecution) {
