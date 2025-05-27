@@ -737,7 +737,18 @@ void EventDemoState::onNPCSpawned(const std::string& message) {
     spawnY = std::max(100.0f, std::min(spawnY, m_worldHeight - 100.0f));
     
     // Create NPC directly with proper shared_ptr management
-    std::string textureID = (npcType == "Guard") ? "guard" : "villager";
+    std::string textureID;
+    if (npcType == "Guard") {
+        textureID = "guard";
+    } else if (npcType == "Villager") {
+        textureID = "villager";
+    } else if (npcType == "Merchant") {
+        textureID = "merchant";
+    } else if (npcType == "Warrior") {
+        textureID = "warrior";
+    } else {
+        textureID = "npc"; // Default fallback
+    }
     auto npc = NPC::create(textureID, Vector2D(spawnX, spawnY), 64, 64);
     
     if (npc) {

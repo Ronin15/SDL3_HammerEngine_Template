@@ -16,8 +16,8 @@
 static std::string getTextureForNPCType(const std::string& npcType) {
     if (npcType == "Guard") return "guard";
     if (npcType == "Villager") return "villager";
-    if (npcType == "Merchant") return "npc";
-    if (npcType == "Warrior") return "npc";
+    if (npcType == "Merchant") return "merchant";
+    if (npcType == "Warrior") return "warrior";
     return "npc"; // Default fallback
 }
 
@@ -25,7 +25,7 @@ static std::string getTextureForNPCType(const std::string& npcType) {
 static Vector2D getPlayerPosition() {
     // Try to get player position from current game state
     // For now, return center of screen as placeholder
-    return Vector2D(GameEngine::Instance().getWindowWidth() / 2.0f, 
+    return Vector2D(GameEngine::Instance().getWindowWidth() / 2.0f,
                    GameEngine::Instance().getWindowHeight() / 2.0f);
 }
 
@@ -150,45 +150,45 @@ void NPCSpawnEvent::onMessage(const std::string& message) {
             std::cout << "NPC spawn limit reached (50), ignoring spawn request" << std::endl;
             return;
         }
-        
+
         // Parse the message to extract NPC type and position
         // Format: "SPAWN_REQUEST:NPCType:x:y"
         // Parse spawn request message
-        
+
         size_t firstColon = message.find(':', 14); // Skip "SPAWN_REQUEST:"
         size_t secondColon = message.find(':', firstColon + 1);
-        
+
         if (firstColon != std::string::npos && secondColon != std::string::npos) {
             std::string requestedNpcType = message.substr(14, firstColon - 14);
             std::string xStr = message.substr(firstColon + 1, secondColon - firstColon - 1);
             std::string yStr = message.substr(secondColon + 1);
-            
+
             float x = std::stof(xStr);
             float y = std::stof(yStr);
-            
+
             // Parsed spawn request successfully
-            
+
             // Only respond if this event is configured for the requested NPC type
             if (requestedNpcType != m_spawnParams.npcType) {
                 return; // This event doesn't handle this NPC type
             }
-            
+
             // Create the NPC directly
             try {
                 std::string textureID = getTextureForNPCType(requestedNpcType);
                 Vector2D position(x, y);
                 auto npc = NPC::create(textureID, position, 64, 64);
-                
+
                 if (npc) {
                     // Set wander area around spawn point
                     npc->setWanderArea(x - 100.0f, y - 100.0f, x + 100.0f, y + 100.0f);
                     npc->setBoundsCheckEnabled(true);
-                    
+
                     // Track the spawned NPC
                     m_spawnedEntities.push_back(std::static_pointer_cast<Entity>(npc));
                     m_currentSpawnCount++;
                     m_totalSpawned++;
-                    
+
                     // NPC created successfully
                 } else {
                     std::cerr << "Failed to create NPC: " << requestedNpcType << std::endl;
@@ -259,7 +259,7 @@ bool NPCSpawnEvent::checkConditions() {
     }
 
     // Check all custom conditions using STL algorithm
-    if (!std::all_of(m_conditions.begin(), m_conditions.end(), 
+    if (!std::all_of(m_conditions.begin(), m_conditions.end(),
                      [](const auto& condition) { return condition(); })) {
         return false;
     }
@@ -319,8 +319,8 @@ bool NPCSpawnEvent::areAllEntitiesDead() const {
 
     // Check if all spawned entities are gone using STL algorithm
     return std::none_of(m_spawnedEntities.begin(), m_spawnedEntities.end(),
-                      [](const auto& weakEntity) { 
-                          return weakEntity.lock() != nullptr; 
+                      [](const auto& weakEntity) {
+                          return weakEntity.lock() != nullptr;
                       });
 }
 
@@ -331,23 +331,23 @@ EntityPtr NPCSpawnEvent::forceSpawnNPC(const std::string& npcType, float x, floa
     try {
         // Get the texture ID for this NPC type
         std::string textureID = getTextureForNPCType(npcType);
-        
+
         // Create the NPC
         Vector2D position(x, y);
         auto npc = NPC::create(textureID, position, 64, 64);
-        
+
         if (npc) {
             // Set basic wander area around spawn point
             npc->setWanderArea(x - 50.0f, y - 50.0f, x + 50.0f, y + 50.0f);
             npc->setBoundsCheckEnabled(true);
-            
+
             std::cout << "Force-spawned " << npcType << " at (" << x << ", " << y << ")" << std::endl;
             return std::static_pointer_cast<Entity>(npc);
         }
-        
+
         // Return nullptr if NPC creation failed
         return nullptr;
-        
+
     } catch (const std::exception& e) {
         std::cerr << "Exception while force-spawning NPC: " << e.what() << std::endl;
         return nullptr;
@@ -359,19 +359,19 @@ std::vector<EntityPtr> NPCSpawnEvent::forceSpawnNPCs(const SpawnParameters& para
               << " at position (" << x << ", " << y << ")" << std::endl;
 
     std::vector<EntityPtr> spawnedNPCs;
-    
+
     try {
         std::string textureID = getTextureForNPCType(params.npcType);
-        
+
         for (int i = 0; i < params.count; ++i) {
             // Calculate spawn position with some random offset
             std::uniform_real_distribution<float> offsetDist(-params.spawnRadius, params.spawnRadius);
             float offsetX = params.spawnRadius > 0 ? offsetDist(gen) : 0.0f;
             float offsetY = params.spawnRadius > 0 ? offsetDist(gen) : 0.0f;
-            
+
             Vector2D spawnPos(x + offsetX, y + offsetY);
             auto npc = NPC::create(textureID, spawnPos, 64, 64);
-            
+
             if (npc) {
                 // Configure wander area
                 float wanderRadius = params.spawnRadius > 0 ? params.spawnRadius : 50.0f;
@@ -380,16 +380,16 @@ std::vector<EntityPtr> NPCSpawnEvent::forceSpawnNPCs(const SpawnParameters& para
                     x + wanderRadius, y + wanderRadius
                 );
                 npc->setBoundsCheckEnabled(true);
-                
+
                 spawnedNPCs.push_back(std::static_pointer_cast<Entity>(npc));
                 std::cout << "  - NPC " << (i+1) << " spawned successfully" << std::endl;
             }
         }
-        
+
     } catch (const std::exception& e) {
         std::cerr << "Exception while force-spawning NPCs: " << e.what() << std::endl;
     }
-    
+
     return spawnedNPCs;
 }
 
@@ -539,11 +539,11 @@ EntityPtr NPCSpawnEvent::spawnSingleNPC(const Vector2D& position) {
     try {
         // Get the texture ID for this NPC type
         std::string textureID = getTextureForNPCType(m_spawnParams.npcType);
-        
+
         // Create the NPC with appropriate frame dimensions
         // Most NPC sprites are 64x64 pixels per frame
         auto npc = NPC::create(textureID, position, 64, 64);
-        
+
         if (!npc) {
             std::cerr << "Failed to create NPC of type: " << m_spawnParams.npcType << std::endl;
             return nullptr;
