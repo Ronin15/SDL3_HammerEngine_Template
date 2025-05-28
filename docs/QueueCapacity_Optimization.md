@@ -41,7 +41,7 @@ The ThreadSystem in Forge Engine now features queue capacity optimization to add
    - Maintains tasks in a contiguous memory region
 
 2. **Automatic Capacity Management**:
-   - Initializes with a reasonable default capacity (512 tasks)
+   - Initializes with a reasonable default capacity (1024 tasks)
    - Grows dynamically as needed during operation
    - Prevents excessive reallocations for typical workloads
 
@@ -62,7 +62,7 @@ Forge::ThreadSystem::Instance().init(1000);
 ```
 
 - Sets the initial capacity when creating the thread pool
-- Default value is 512 if not specified
+- Default value is 1024 if not specified
 - Manual setting is rarely needed due to automatic management
 
 #### Runtime Capacity Adjustment
@@ -201,8 +201,8 @@ For systems with consistent parallelism:
 Forge::ThreadSystem::Instance().init();
 
 // Use proper exception handling in tasks
-void updateEntities(const std::vector<Entity*>& entities) {
-    for (auto* entity : entities) {
+void updateEntities(const std::vector<std::shared_ptr<Entity>>& entities) {
+    for (auto entity : entities) {
         try {
             Forge::ThreadSystem::Instance().enqueueTask([entity]() {
                 try {
