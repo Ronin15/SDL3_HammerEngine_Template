@@ -296,7 +296,11 @@ void EventDemoState::createTestEvents() {
     EventManager::Instance().registerWeatherEvent("demo_rainy", "Rainy", 0.8f);
     EventManager::Instance().registerWeatherEvent("demo_stormy", "Stormy", 1.0f);
 
-    // NPC spawn events removed - handlers now manage all NPC creation directly
+    // Register NPC spawn events with limits to prevent runaway spawning
+    EventManager::Instance().registerNPCSpawnEvent("demo_guard_spawn", "Guard", 1, 25.0f);
+    EventManager::Instance().registerNPCSpawnEvent("demo_villager_spawn", "Villager", 1, 25.0f);
+    EventManager::Instance().registerNPCSpawnEvent("demo_merchant_spawn", "Merchant", 1, 25.0f);
+    EventManager::Instance().registerNPCSpawnEvent("demo_warrior_spawn", "Warrior", 1, 25.0f);
 
     // Register scene change events
     EventManager::Instance().registerSceneChangeEvent("demo_forest", "Forest", "fade");
@@ -648,9 +652,24 @@ void EventDemoState::triggerNPCSpawnDemo() {
     std::string npcType = m_npcTypes[m_currentNPCTypeIndex];
     m_currentNPCTypeIndex = (m_currentNPCTypeIndex + 1) % m_npcTypes.size();
 
-    EventManager::Instance().triggerNPCSpawn(npcType);
+    // Calculate spawn position
+    Vector2D playerPos = m_player->getPosition();
+    static int spawnCounter = 0;
+    spawnCounter++;
 
-    addLogEntry("Triggered spawn: " + npcType);
+    float offsetX = 200.0f + (spawnCounter * 120.0f);
+    float offsetY = 100.0f;
+
+    float spawnX = playerPos.getX() + offsetX;
+    float spawnY = playerPos.getY() + offsetY;
+
+    // Ensure spawn position is within window bounds
+    spawnX = std::max(100.0f, std::min(spawnX, m_worldWidth - 100.0f));
+    spawnY = std::max(100.0f, std::min(spawnY, m_worldHeight - 100.0f));
+
+    EventManager::Instance().triggerNPCSpawn(npcType, spawnX, spawnY);
+
+    addLogEntry("Triggered spawn: " + npcType + " at (" + std::to_string((int)spawnX) + ", " + std::to_string((int)spawnY) + ")");
 }
 
 void EventDemoState::triggerSceneTransitionDemo() {
@@ -677,8 +696,23 @@ void EventDemoState::triggerCustomEventDemo() {
     std::string npcType2 = m_npcTypes[m_currentNPCTypeIndex];
     m_currentNPCTypeIndex = (m_currentNPCTypeIndex + 1) % m_npcTypes.size();
 
-    EventManager::Instance().triggerNPCSpawn(npcType1);
-    EventManager::Instance().triggerNPCSpawn(npcType2);
+    // Calculate spawn positions for custom event
+    Vector2D playerPos = m_player->getPosition();
+    static int customSpawnCounter = 0;
+    
+    float offsetX1 = 150.0f + (customSpawnCounter * 80.0f);
+    float offsetY1 = 80.0f;
+    float offsetX2 = 250.0f + (customSpawnCounter * 80.0f);
+    float offsetY2 = 150.0f;
+    customSpawnCounter++;
+    
+    float spawnX1 = std::max(100.0f, std::min(playerPos.getX() + offsetX1, m_worldWidth - 100.0f));
+    float spawnY1 = std::max(100.0f, std::min(playerPos.getY() + offsetY1, m_worldHeight - 100.0f));
+    float spawnX2 = std::max(100.0f, std::min(playerPos.getX() + offsetX2, m_worldWidth - 100.0f));
+    float spawnY2 = std::max(100.0f, std::min(playerPos.getY() + offsetY2, m_worldHeight - 100.0f));
+
+    EventManager::Instance().triggerNPCSpawn(npcType1, spawnX1, spawnY1);
+    EventManager::Instance().triggerNPCSpawn(npcType2, spawnX2, spawnY2);
 
     addLogEntry("Multiple events triggered: " + npcType1 + " and " + npcType2);
 }
@@ -728,60 +762,10 @@ void EventDemoState::onWeatherChanged(const std::string& message) {
 
 void EventDemoState::onNPCSpawned(const std::string& message) {
     addLogEntry("NPC Spawn Event: " + message);
-
-    // Clean architecture: Handler has single responsibility for ALL NPC creation and management
-    std::string npcType = message;
-
-    // Calculate spawn position relative to player
-    Vector2D playerPos = m_player->getPosition();
-    static int spawnCounter = 0;
-    spawnCounter++;
-
-    float offsetX = 200.0f + (spawnCounter * 120.0f);
-    float offsetY = 100.0f;
-
-    float spawnX = playerPos.getX() + offsetX;
-    float spawnY = playerPos.getY() + offsetY;
-
-    // Ensure spawn position is within window bounds
-    spawnX = std::max(100.0f, std::min(spawnX, m_worldWidth - 100.0f));
-    spawnY = std::max(100.0f, std::min(spawnY, m_worldHeight - 100.0f));
-
-    // Create NPC with appropriate texture
-    std::string textureID;
-    if (npcType == "Guard") {
-        textureID = "guard";
-    } else if (npcType == "Villager") {
-        textureID = "villager";
-    } else if (npcType == "Merchant") {
-        textureID = "merchant";
-    } else if (npcType == "Warrior") {
-        textureID = "warrior";
-    } else {
-        textureID = "npc"; // Default fallback
-    }
-
-    auto npc = NPC::create(textureID, Vector2D(spawnX, spawnY), 64, 64);
-
-    if (npc) {
-        // Configure NPC behavior area
-        npc->setWanderArea(0.0f, 0.0f, m_worldWidth, m_worldHeight);
-        npc->setBoundsCheckEnabled(false); // Let AI behaviors handle movement boundaries
-
-        // Assign AI behavior based on NPC type
-        assignAIBehaviorToNPC(npc, npcType);
-
-        // Track the spawned NPC
-        m_spawnedNPCs.push_back(npc);
-
-        addLogEntry("Created " + npcType + " at (" + std::to_string((int)spawnX) +
-                   ", " + std::to_string((int)spawnY) + ") with AI");
-        
-        std::cout << "System handling NPC spawn: " << npcType << std::endl;
-        std::cout << "Creating NPC of type: " << npcType << std::endl;
-    } else {
-        std::cerr << "Failed to create NPC: " << npcType << std::endl;
-    }
+    
+    // NPCSpawnEvent now handles creation - this handler just responds to notifications
+    // Could be used for game-specific responses like UI updates, sound effects, etc.
+    std::cout << "EventDemoState received NPC spawn notification: " << message << std::endl;
 }
 
 void EventDemoState::onSceneChanged(const std::string& message) {

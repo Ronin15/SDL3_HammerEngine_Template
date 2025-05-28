@@ -12,14 +12,7 @@
 #include <chrono>
 #include <algorithm>
 
-// Helper function to map NPC types to texture IDs
-static std::string getTextureForNPCType(const std::string& npcType) {
-    if (npcType == "Guard") return "guard";
-    if (npcType == "Villager") return "villager";
-    if (npcType == "Merchant") return "merchant";
-    if (npcType == "Warrior") return "warrior";
-    return "npc"; // Default fallback
-}
+
 
 // Helper function to get player position
 static Vector2D getPlayerPosition() {
@@ -158,15 +151,41 @@ void NPCSpawnEvent::onMessage(const std::string& message) {
 
         if (firstColon != std::string::npos && secondColon != std::string::npos) {
             std::string requestedNpcType = message.substr(14, firstColon - 14);
+            std::string xStr = message.substr(firstColon + 1, secondColon - firstColon - 1);
+            std::string yStr = message.substr(secondColon + 1);
+            
+            float x = std::stof(xStr);
+            float y = std::stof(yStr);
             
             // Only respond if this event is configured for the requested NPC type
             if (requestedNpcType != m_spawnParams.npcType) {
                 return; // This event doesn't handle this NPC type
             }
 
-            // Just track that a spawn was requested - handlers will do the actual creation
-            m_totalSpawned++;
-            std::cout << "NPCSpawnEvent validated spawn request for " << requestedNpcType << std::endl;
+            // Create the NPC with full functionality
+            try {
+                std::string textureID = NPCSpawnEvent::getTextureForNPCType(requestedNpcType);
+                Vector2D position(x, y);
+                auto npc = NPC::create(textureID, position, 64, 64);
+
+                if (npc) {
+                    // Configure NPC with appropriate settings
+                    npc->setWanderArea(0.0f, 0.0f, 1800.0f, 1200.0f); // Use reasonable world bounds
+                    npc->setBoundsCheckEnabled(false); // Let AI behaviors handle movement
+                    
+                    // Track the spawned NPC
+                    m_spawnedEntities.push_back(std::static_pointer_cast<Entity>(npc));
+                    m_currentSpawnCount++;
+                    m_totalSpawned++;
+
+                    std::cout << "NPCSpawnEvent created " << requestedNpcType 
+                             << " at (" << x << ", " << y << ")" << std::endl;
+                } else {
+                    std::cerr << "Failed to create NPC: " << requestedNpcType << std::endl;
+                }
+            } catch (const std::exception& e) {
+                std::cerr << "Exception spawning NPC: " << e.what() << std::endl;
+            }
         }
     }
 }
@@ -295,13 +314,27 @@ bool NPCSpawnEvent::areAllEntitiesDead() const {
                       });
 }
 
+std::string NPCSpawnEvent::getTextureForNPCType(const std::string& npcType) {
+    if (npcType == "Guard") {
+        return "guard";
+    } else if (npcType == "Villager") {
+        return "villager";
+    } else if (npcType == "Merchant") {
+        return "merchant";
+    } else if (npcType == "Warrior") {
+        return "warrior";
+    } else {
+        return "npc"; // Default fallback
+    }
+}
+
 EntityPtr NPCSpawnEvent::forceSpawnNPC(const std::string& npcType, float x, float y) {
     std::cout << "Forcing spawn of NPC type: " << npcType
               << " at position (" << x << ", " << y << ")" << std::endl;
 
     try {
         // Get the texture ID for this NPC type
-        std::string textureID = getTextureForNPCType(npcType);
+        std::string textureID = NPCSpawnEvent::getTextureForNPCType(npcType);
 
         // Create the NPC
         Vector2D position(x, y);
@@ -332,7 +365,7 @@ std::vector<EntityPtr> NPCSpawnEvent::forceSpawnNPCs(const SpawnParameters& para
     std::vector<EntityPtr> spawnedNPCs;
 
     try {
-        std::string textureID = getTextureForNPCType(params.npcType);
+        std::string textureID = NPCSpawnEvent::getTextureForNPCType(params.npcType);
 
         for (int i = 0; i < params.count; ++i) {
             // Calculate spawn position with some random offset
