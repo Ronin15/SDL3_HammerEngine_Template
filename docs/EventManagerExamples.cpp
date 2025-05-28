@@ -55,14 +55,15 @@ void sceneChangeEventExample() {
     );
     
     // Configure a trigger zone (rectangular area)
-    static_cast<SceneChangeEvent*>(sceneEvent.get())->setTriggerZone(
+    auto sceneChangePtr = std::static_pointer_cast<SceneChangeEvent>(sceneEvent);
+    sceneChangePtr->setTriggerZone(
         100.0f, 100.0f,      // Top-left corner
         200.0f, 200.0f       // Bottom-right corner
     );
     
     // Require player to press a key when in zone
-    static_cast<SceneChangeEvent*>(sceneEvent.get())->setRequirePlayerInput(true);
-    static_cast<SceneChangeEvent*>(sceneEvent.get())->setInputKey("E");
+    sceneChangePtr->setRequirePlayerInput(true);
+    sceneChangePtr->setInputKey("E");
     
     // Register the event
     EventManager::Instance().registerEvent("ToMainMenu", sceneEvent);
@@ -165,11 +166,12 @@ void customEventConditionsExample() {
     auto stormEvent = EventFactory::Instance().createWeatherEvent("ThunderStorm", "Stormy", 1.0f);
     
     // Add a random chance condition (30% chance of storm when conditions are checked)
-    static_cast<WeatherEvent*>(stormEvent.get())->addRandomChanceCondition(0.3f);
+    auto weatherPtr = std::static_pointer_cast<WeatherEvent>(stormEvent);
+    weatherPtr->addRandomChanceCondition(0.3f);
     
     // Add a custom condition based on player health
     int playerHealth = 50; // Placeholder value
-    static_cast<WeatherEvent*>(stormEvent.get())->addTimeCondition([playerHealth]() {
+    weatherPtr->addTimeCondition([playerHealth]() {
         // This would typically check the player's health from the game state
         return playerHealth < 30; // Storm only happens when player health is low
     });

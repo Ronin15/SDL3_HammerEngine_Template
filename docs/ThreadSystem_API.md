@@ -24,15 +24,15 @@ Singleton class that manages the thread pool and task queue.
 
 | Method | Parameters | Return Type | Description |
 |--------|------------|-------------|-------------|
-| `bool init(size_t queueCapacity = DEFAULT_QUEUE_CAPACITY)` | `queueCapacity`: Initial task queue capacity (optional) | `bool` | Initializes the thread system and pre-allocates memory for the task queue. The initial capacity determines how many tasks can be stored before requiring reallocation. |
+| `bool init(size_t queueCapacity = DEFAULT_QUEUE_CAPACITY, unsigned int customThreadCount = 0, bool enableProfiling = false)` | `queueCapacity`: Initial task queue capacity (optional)<br>`customThreadCount`: Custom thread count (0 for auto-detect)<br>`enableProfiling`: Enable detailed task profiling | `bool` | Initializes the thread system and pre-allocates memory for the task queue. The initial capacity determines how many tasks can be stored before requiring reallocation. |
 | `void clean()` | None | `void` | Cleans up and releases all thread system resources |
 
 #### Task Submission
 
 | Method | Parameters | Return Type | Description |
 |--------|------------|-------------|-------------|
-| `void enqueueTask(std::function<void()> task, TaskPriority priority = TaskPriority::Normal)` | `task`: Function to execute<br>`priority`: Task priority level (optional) | `void` | Adds a fire-and-forget task to the queue with specified priority |
-| `template<class F, class... Args> auto enqueueTaskWithResult(F&& f, Args&&... args, TaskPriority priority = TaskPriority::Normal) -> std::future<typename std::invoke_result<F, Args...>::type>` | `f`: Function to execute<br>`args`: Arguments to pass to the function<br>`priority`: Task priority level (optional) | `std::future<T>` | Adds a task that returns a result with specified priority |
+| `void enqueueTask(std::function<void()> task, TaskPriority priority = TaskPriority::Normal, const std::string& description = "")` | `task`: Function to execute<br>`priority`: Task priority level (optional)<br>`description`: Optional description for debugging | `void` | Adds a fire-and-forget task to the queue with specified priority |
+| `template<class F, class... Args> auto enqueueTaskWithResult(F&& f, TaskPriority priority = TaskPriority::Normal, const std::string& description = "", Args&&... args) -> std::future<typename std::invoke_result<F, Args...>::type>` | `f`: Function to execute<br>`priority`: Task priority level (optional)<br>`description`: Optional description for debugging<br>`args`: Arguments to pass to the function | `std::future<T>` | Adds a task that returns a result with specified priority |
 
 #### Status and Information
 
@@ -54,7 +54,7 @@ Singleton class that manages the thread pool and task queue.
 
 | Constant | Type | Value | Description |
 |----------|------|-------|-------------|
-| `DEFAULT_QUEUE_CAPACITY` | `static constexpr size_t` | 512 | Default capacity for the task queue |
+| `DEFAULT_QUEUE_CAPACITY` | `static constexpr size_t` | 1024 | Default capacity for the task queue |
 
 #### Enumerations
 
@@ -128,9 +128,9 @@ Forge::ThreadSystem::Instance().clean();
 ### Task Submission
 
 ```cpp
-### Fire-and-forget task with error handling and priority
+// Fire-and-forget task with error handling and priority
 try {
-    // Normal priority (default)
+    // Normal priority (default) with description
     Forge::ThreadSystem::Instance().enqueueTask([]() {
         try {
             // Perform work that doesn't return a value
@@ -138,7 +138,7 @@ try {
         } catch (const std::exception& e) {
             std::cerr << "Task execution error: " << e.what() << std::endl;
         }
-    });
+    }, Forge::TaskPriority::Normal, "ProcessData");
     
     // High priority for critical operations
     Forge::ThreadSystem::Instance().enqueueTask([]() {
@@ -148,22 +148,26 @@ try {
         } catch (const std::exception& e) {
             std::cerr << "Critical task execution error: " << e.what() << std::endl;
         }
-    }, Forge::TaskPriority::High);
+    }, Forge::TaskPriority::High, "ProcessCriticalData");
 } catch (const std::exception& e) {
     std::cerr << "Failed to enqueue task: " << e.what() << std::endl;
 }
 
 // Task with result, error handling, and priority
 try {
-    auto future = Forge::ThreadSystem::Instance().enqueueTaskWithResult([]() -> int {
-        try {
-            // Perform work and return a value
-            return calculateResult();
-        } catch (const std::exception& e) {
-            std::cerr << "Task execution error: " << e.what() << std::endl;
-            return -1; // Return error code
-        }
-    }, Forge::TaskPriority::High); // Set high priority for this task
+    auto future = Forge::ThreadSystem::Instance().enqueueTaskWithResult(
+        []() -> int {
+            try {
+                // Perform work and return a value
+                return calculateResult();
+            } catch (const std::exception& e) {
+                std::cerr << "Task execution error: " << e.what() << std::endl;
+                return -1; // Return error code
+            }
+        }, 
+        Forge::TaskPriority::High, 
+        "CalculateResult"
+    );
 
     // Wait for and use the result
     try {
@@ -173,6 +177,56 @@ try {
     }
 } catch (const std::exception& e) {
     std::cerr << "Failed to enqueue task: " << e.what() << std::endl;
+}
+```
+
+### Smart Pointer Usage with ThreadSystem
+
+```cpp
+// Example with smart pointers (recommended for thread safety)
+void updateEntities(const std::vector<std::shared_ptr<Entity>>& entities) {
+    for (auto entity : entities) {
+        try {
+            Forge::ThreadSystem::Instance().enqueueTask([entity]() {
+                try {
+                    entity->update();
+                } catch (const std::exception& e) {
+                    std::cerr << "Entity update error: " << e.what() << std::endl;
+                }
+            }, Forge::TaskPriority::Normal, "EntityUpdate");
+        } catch (const std::exception& e) {
+            std::cerr << "Failed to enqueue entity task: " << e.what() << std::endl;
+        }
+    }
+}
+
+// Task with smart pointer result
+try {
+    auto future = Forge::ThreadSystem::Instance().enqueueTaskWithResult(
+        []() -> std::shared_ptr<GameData> {
+            try {
+                return std::make_shared<GameData>(loadGameData());
+            } catch (const std::exception& e) {
+                std::cerr << "Data loading error: " << e.what() << std::endl;
+                return nullptr;
+            }
+        },
+        Forge::TaskPriority::High,
+        "LoadGameData"
+    );
+
+    // Use the smart pointer result
+    try {
+        auto gameData = future.get();
+        if (gameData) {
+            // Use the loaded data
+            gameData->process();
+        }
+    } catch (const std::exception& e) {
+        std::cerr << "Exception from data loading task: " << e.what() << std::endl;
+    }
+} catch (const std::exception& e) {
+    std::cerr << "Failed to enqueue data loading task: " << e.what() << std::endl;
 }
 ```
 

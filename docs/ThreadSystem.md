@@ -116,7 +116,7 @@ The ThreadSystem actively pre-allocates and manages memory for the task queue. T
 ### Setting Initial Capacity (Optional)
 
 ```cpp
-// Initialize with default capacity (recommended approach - 512 tasks)
+// Initialize with default capacity (recommended approach - 1024 tasks)
 if (!Forge::ThreadSystem::Instance().init()) {
     std::cerr << "Failed to initialize thread system!" << std::endl;
     return -1;
@@ -173,7 +173,7 @@ This helps maintain consistent performance during gameplay, avoiding hitches tha
 ## Best Practices
 
 1. **Use Default Capacity When Possible**
-   - For most games, the default capacity (512) works well and adjusts automatically
+   - For most games, the default capacity (1024) works well and adjusts automatically
    - You rarely need to manually set or adjust the capacity
 
 2. **Focus on Task Design Instead of Capacity Management**
@@ -204,9 +204,9 @@ This helps maintain consistent performance during gameplay, avoiding hitches tha
 
 ```cpp
 // Process game entities in parallel
-void updateEntities(const std::vector<Entity*>& entities) {
+void updateEntities(const std::vector<std::shared_ptr<Entity>>& entities) {
     // Submit update tasks - no need to manually reserve capacity
-    for (Entity* entity : entities) {
+    for (auto entity : entities) {
         // Assign appropriate priority based on entity importance
         Forge::TaskPriority priority = Forge::TaskPriority::Normal;
 
@@ -296,7 +296,7 @@ The ThreadSystem supports five priority levels for tasks:
 
 ## Performance Characteristics
 
-The system is designed to efficiently handle hundreds of concurrent tasks with dynamic memory management for optimal memory usage and processing efficiency. The task queue starts with a default capacity of 512 tasks and can automatically grow as needed. This capacity supports rich game worlds with hundreds of active entities and complex simulations. For a detailed explanation of task design and performance implications, see the [ThreadSystem Task](ThreadSystem_Optimization.md) document.
+The system is designed to efficiently handle hundreds of concurrent tasks with dynamic memory management for optimal memory usage and processing efficiency. The task queue starts with a default capacity of 1024 tasks and can automatically grow as needed.
 
 The priority-based scheduling ensures that critical tasks receive timely execution without being delayed by lower-priority work. This is especially important in games where some operations (like player input handling or AI for nearby enemies) need faster response times than others (like distant entity updates or background calculations).
 
