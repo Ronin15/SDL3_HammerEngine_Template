@@ -57,6 +57,7 @@ All test scripts support these options:
 |--------|-------------|
 | `--verbose` | Show detailed test output |
 | `--release` | Run tests in release mode (optimized) |
+| `--clean` | Clean test artifacts before building |
 | `--help` | Show help message for the script |
 
 Special options:
@@ -390,3 +391,10 @@ Tests are configured in `tests/CMakeLists.txt` with the following structure:
 4. Register tests with CTest
 
 For thread-safe tests, ensure `BOOST_TEST_NO_SIGNAL_HANDLING` is defined.
+
+## Additional Documentation
+
+For specific testing scenarios and troubleshooting, refer to these additional documents:
+
+- `AI_TESTING.md` - Specific guidance for AI thread testing scenarios
+- `TROUBLESHOOTING.md` - Common issues and their solutions across all components
