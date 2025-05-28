@@ -1,4 +1,4 @@
-# EventSystem Integration Guide
+# EventManager Integration Guide
 
 ## Quick Reference
 
@@ -11,14 +11,15 @@ The EventSystem is automatically managed by the GameEngine with no additional se
 ### Initialization
 ```cpp
 // GameEngine.cpp - Thread #6 during startup
+// GameEngine.cpp - Initialization (Thread #6)
 initTasks.push_back(
     Forge::ThreadSystem::Instance().enqueueTaskWithResult([]() -> bool {
-        std::cout << "Forge Game Engine - Creating Event System\n";
-        if (!EventSystem::Instance()->init()) {
-            std::cerr << "Forge Game Engine - Failed to initialize Event System!" << std::endl;
+        std::cout << "Forge Game Engine - Creating Event Manager\n";
+        if (!EventManager::Instance().init()) {
+            std::cerr << "Forge Game Engine - Failed to initialize Event Manager!" << std::endl;
             return false;
         }
-        std::cout << "Forge Game Engine - Event System initialized successfully\n";
+        std::cout << "Forge Game Engine - Event Manager initialized successfully\n";
         return true;
     }));
 ```
@@ -26,8 +27,9 @@ initTasks.push_back(
 ### Update Loop
 ```cpp
 // GameEngine.cpp - Every frame before game state updates
+// GameEngine.cpp - Update (Every Frame)
 void GameEngine::update() {
-    EventSystem::Instance()->update();  // Events processed first
+    EventManager::Instance().update();  // Events processed first
     mp_gameStateManager->update();      // Then game states
 }
 ```
@@ -36,8 +38,8 @@ void GameEngine::update() {
 ```cpp
 // GameEngine.cpp - During shutdown, before AI Manager cleanup
 void GameEngine::clean() {
-    std::cout << "Forge Game Engine - Cleaning up Event System...\n";
-    EventSystem::Instance()->clean();
+    std::cout << "Forge Game Engine - Cleaning up Event Manager...\n";
+    EventManager::Instance().clean();
 }
 ```
 
@@ -63,16 +65,16 @@ public:
 ```cpp
 // In your GameState implementation
 bool MyGameState::enter() {
-    // Get EventSystem instance (already initialized by GameEngine)
-    m_eventSystem = EventSystem::Instance();
+    // Get EventManager instance (already initialized by GameEngine)
+    m_eventManager = &EventManager::Instance();
     
     // Register event handlers
-    m_eventSystem->registerEventHandler("Weather", 
+    m_eventManager->registerEventHandler("Weather", 
         [this](const std::string& message) { onWeatherChanged(message); });
     
     // Register specific events
-    m_eventSystem->registerWeatherEvent("rain_event", "Rainy", 0.8f);
-    m_eventSystem->registerNPCSpawnEvent("guard_spawn", "Guard", 2, 100.0f);
+    m_eventManager->registerWeatherEvent("rain_event", "Rainy", 0.8f);
+    m_eventManager->registerNPCSpawnEvent("guard_spawn", "Guard", 2, 100.0f);
     
     return true;
 }
@@ -132,17 +134,19 @@ m_eventSystem->triggerSceneChange("Forest", "fade", 2.0f);  // 2 second fade
 
 ## Architecture Overview
 
+The event system follows this hierarchy in the Forge Game Engine:
+
 ```
 GameEngine Lifecycle:
-├── init() → EventSystem::init() → EventManager::init()
-├── update() → EventSystem::update() → EventManager::update() → Event::execute()
-└── clean() → EventSystem::clean() → EventManager::clean()
+├── init() → EventManager::init()
+├── update() → EventManager::update() → Event::execute()
+└── clean() → EventManager::clean()
 
 Event Flow:
-GameState → EventSystem → EventManager → Individual Events
-    ↓           ↓              ↓              ↓
-Register    Configure      Process      Execute/Trigger
-Events      Handlers       Queue        Actions
+GameState → EventManager → Individual Events
+    ↓              ↓              ↓
+Register      Process      Execute/Trigger
+Events        Queue        Actions
 ```
 
 ## Thread Safety

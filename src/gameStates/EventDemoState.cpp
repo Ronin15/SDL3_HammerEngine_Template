@@ -9,6 +9,7 @@
 #include "managers/InputManager.hpp"
 #include "managers/FontManager.hpp"
 #include "managers/AIManager.hpp"
+#include "managers/EventManager.hpp"
 #include "ai/behaviors/WanderBehavior.hpp"
 #include "ai/behaviors/PatrolBehavior.hpp"
 #include "ai/behaviors/ChaseBehavior.hpp"
@@ -17,7 +18,7 @@
 #include <sstream>
 
 EventDemoState::EventDemoState() {
-    m_eventSystem = EventSystem::Instance();
+    // EventManager accessed via singleton - no initialization needed
 }
 
 EventDemoState::~EventDemoState() {
@@ -145,9 +146,7 @@ void EventDemoState::update() {
     }
 
     // Update event system
-    if (m_eventSystem) {
-        m_eventSystem->update();
-    }
+    EventManager::Instance().update();
 
     // Handle demo phases (separate from event rate limiting)
     if (m_autoMode) {
@@ -183,7 +182,7 @@ void EventDemoState::update() {
 
             case DemoPhase::NPCSpawnDemo:
                 // Only spawn if we haven't reached the limit and enough time has passed
-                if (m_spawnedNPCs.size() < 5 && m_phaseTimer >= 2.0f && 
+                if (m_spawnedNPCs.size() < 5 && m_phaseTimer >= 2.0f &&
                     (m_totalDemoTime - m_lastEventTriggerTime) >= m_eventFireInterval) {
                     triggerNPCSpawnDemo();
                     m_lastEventTriggerTime = m_totalDemoTime;
@@ -250,34 +249,28 @@ void EventDemoState::render() {
 }
 
 void EventDemoState::setupEventSystem() {
-    if (!m_eventSystem) {
-        std::cerr << "Forge Game Engine - ERROR: EventSystem not available!\n";
-        addLogEntry("ERROR: EventSystem singleton not available");
-        return;
-    }
+    std::cout << "Forge Game Engine - EventDemoState: EventManager instance obtained\n";
+    addLogEntry("EventManager singleton obtained");
 
-    std::cout << "Forge Game Engine - EventDemoState: EventSystem instance obtained\n";
-    addLogEntry("EventSystem singleton obtained");
-
-    // The EventSystem should already be initialized by GameEngine
+    // The EventManager should already be initialized by GameEngine
     // But we'll verify and initialize if needed
-    if (!m_eventSystem->init()) {
-        std::cerr << "Forge Game Engine - ERROR: Failed to initialize EventSystem!\n";
-        addLogEntry("ERROR: EventSystem initialization failed");
+    if (!EventManager::Instance().init()) {
+        std::cerr << "Forge Game Engine - ERROR: Failed to initialize EventManager!\n";
+        addLogEntry("ERROR: EventManager initialization failed");
         return;
     }
 
-    std::cout << "Forge Game Engine - EventDemoState: EventSystem initialized successfully\n";
-    addLogEntry("EventSystem initialization verified");
+    std::cout << "Forge Game Engine - EventDemoState: EventManager initialized successfully\n";
+    addLogEntry("EventManager initialized");
 
     // Register event handlers
-    m_eventSystem->registerEventHandler("Weather",
+    EventManager::Instance().registerEventHandler("Weather",
         [this](const std::string& message) { onWeatherChanged(message); });
 
-    m_eventSystem->registerEventHandler("NPCSpawn",
+    EventManager::Instance().registerEventHandler("NPCSpawn",
         [this](const std::string& message) { onNPCSpawned(message); });
 
-    m_eventSystem->registerEventHandler("SceneChange",
+    EventManager::Instance().registerEventHandler("SceneChange",
         [this](const std::string& message) { onSceneChanged(message); });
 
     std::cout << "Forge Game Engine - EventDemoState: Event handlers registered\n";
@@ -285,20 +278,18 @@ void EventDemoState::setupEventSystem() {
 }
 
 void EventDemoState::createTestEvents() {
-    if (!m_eventSystem) return;
-
     // Register weather events
-    m_eventSystem->registerWeatherEvent("demo_clear", "Clear", 1.0f);
-    m_eventSystem->registerWeatherEvent("demo_rainy", "Rainy", 0.8f);
-    m_eventSystem->registerWeatherEvent("demo_stormy", "Stormy", 1.0f);
+    EventManager::Instance().registerWeatherEvent("demo_clear", "Clear", 1.0f);
+    EventManager::Instance().registerWeatherEvent("demo_rainy", "Rainy", 0.8f);
+    EventManager::Instance().registerWeatherEvent("demo_stormy", "Stormy", 1.0f);
 
     // Register NPC spawn events with limits to prevent runaway spawning
-    m_eventSystem->registerNPCSpawnEvent("demo_guard_spawn", "Guard", 1, 25.0f);
-    m_eventSystem->registerNPCSpawnEvent("demo_villager_spawn", "Villager", 1, 25.0f);
+    EventManager::Instance().registerNPCSpawnEvent("demo_guard_spawn", "Guard", 1, 25.0f);
+    EventManager::Instance().registerNPCSpawnEvent("demo_villager_spawn", "Villager", 1, 25.0f);
 
     // Register scene change events
-    m_eventSystem->registerSceneChangeEvent("demo_forest", "Forest", "fade");
-    m_eventSystem->registerSceneChangeEvent("demo_village", "Village", "dissolve");
+    EventManager::Instance().registerSceneChangeEvent("demo_forest", "Forest", "fade");
+    EventManager::Instance().registerSceneChangeEvent("demo_village", "Village", "dissolve");
 
     addLogEntry("Test Events Created - Ready for manual triggering");
 }
@@ -349,14 +340,14 @@ void EventDemoState::handleInput() {
         m_phaseTimer = 0.0f;
     }
 
-    if (isKeyPressed(m_input.num1, m_lastInput.num1) && 
+    if (isKeyPressed(m_input.num1, m_lastInput.num1) &&
         (m_totalDemoTime - m_lastEventTriggerTime) >= 1.0f) {
         triggerWeatherDemo();
         addLogEntry("Manual weather event triggered");
         m_lastEventTriggerTime = m_totalDemoTime;
     }
 
-    if (isKeyPressed(m_input.num2, m_lastInput.num2) && 
+    if (isKeyPressed(m_input.num2, m_lastInput.num2) &&
         (m_totalDemoTime - m_lastEventTriggerTime) >= 1.0f) {
         // Check NPC limit before spawning
         if (m_spawnedNPCs.size() >= 10) {
@@ -368,14 +359,14 @@ void EventDemoState::handleInput() {
         m_lastEventTriggerTime = m_totalDemoTime;
     }
 
-    if (isKeyPressed(m_input.num3, m_lastInput.num3) && 
+    if (isKeyPressed(m_input.num3, m_lastInput.num3) &&
         (m_totalDemoTime - m_lastEventTriggerTime) >= 1.0f) {
         triggerSceneTransitionDemo();
         addLogEntry("Manual scene transition event triggered");
         m_lastEventTriggerTime = m_totalDemoTime;
     }
 
-    if (isKeyPressed(m_input.num4, m_lastInput.num4) && 
+    if (isKeyPressed(m_input.num4, m_lastInput.num4) &&
         (m_totalDemoTime - m_lastEventTriggerTime) >= 1.0f) {
         triggerCustomEventDemo();
         addLogEntry("Manual custom event triggered");
@@ -423,23 +414,23 @@ void EventDemoState::updateFrameRate() {
     auto currentTime = std::chrono::steady_clock::now();
     float deltaTime = std::chrono::duration<float, std::chrono::milliseconds::period>(currentTime - m_lastFrameTime).count();
     m_lastFrameTime = currentTime;
-    
+
     // Convert to seconds for FPS calculation
     float deltaTimeSeconds = deltaTime / 1000.0f;
-    
+
     // Skip extreme values that might be from debugging pauses
     if (deltaTimeSeconds > 0.0f && deltaTimeSeconds < 1.0f) {
         // Calculate current FPS
         m_currentFPS = 1.0f / deltaTimeSeconds;
-        
+
         // Add to rolling average
         m_frameTimes.push_back(m_currentFPS);
-        
+
         // Keep only the last MAX_FRAME_SAMPLES frames
         if (m_frameTimes.size() > MAX_FRAME_SAMPLES) {
             m_frameTimes.pop_front();
         }
-        
+
         // Calculate average FPS
         float sum = 0.0f;
         for (float fps : m_frameTimes) {
@@ -447,7 +438,7 @@ void EventDemoState::updateFrameRate() {
         }
         m_averageFPS = sum / m_frameTimes.size();
     }
-    
+
     m_frameCount++;
 }
 
@@ -602,32 +593,34 @@ void EventDemoState::renderControls() {
 }
 
 void EventDemoState::triggerWeatherDemo() {
-    if (!m_eventSystem) return;
-
     // Cycle through weather types
     WeatherType newWeather = m_weatherSequence[m_currentWeatherIndex];
     m_currentWeatherIndex = (m_currentWeatherIndex + 1) % m_weatherSequence.size();
 
     switch (newWeather) {
         case WeatherType::Clear:
-            m_eventSystem->triggerWeatherChange("Clear", m_weatherTransitionTime);
+            EventManager::Instance().triggerWeatherChange("Clear", m_weatherTransitionTime);
             break;
         case WeatherType::Cloudy:
-            m_eventSystem->triggerWeatherChange("Cloudy", m_weatherTransitionTime);
+            EventManager::Instance().triggerWeatherChange("Cloudy", m_weatherTransitionTime);
             break;
         case WeatherType::Rainy:
-            m_eventSystem->triggerWeatherChange("Rainy", m_weatherTransitionTime);
+            EventManager::Instance().triggerWeatherChange("Rainy", m_weatherTransitionTime);
             break;
         case WeatherType::Stormy:
-            m_eventSystem->triggerWeatherChange("Stormy", m_weatherTransitionTime);
+            EventManager::Instance().triggerWeatherChange("Stormy", m_weatherTransitionTime);
             break;
         case WeatherType::Foggy:
-            m_eventSystem->triggerWeatherChange("Foggy", m_weatherTransitionTime);
+            EventManager::Instance().triggerWeatherChange("Foggy", m_weatherTransitionTime);
             break;
         case WeatherType::Snowy:
-            m_eventSystem->triggerWeatherChange("Snowy", m_weatherTransitionTime);
+            EventManager::Instance().triggerWeatherChange("Snowy", m_weatherTransitionTime);
             break;
-        default:
+        case WeatherType::Windy:
+            EventManager::Instance().triggerWeatherChange("Windy", m_weatherTransitionTime);
+            break;
+        case WeatherType::Custom:
+            EventManager::Instance().triggerWeatherChange("Custom", m_weatherTransitionTime);
             break;
     }
 
@@ -636,38 +629,31 @@ void EventDemoState::triggerWeatherDemo() {
 }
 
 void EventDemoState::triggerNPCSpawnDemo() {
-    if (!m_eventSystem) return;
-    
     Vector2D playerPos = m_player->getPosition();
     static int spawnCounter = 0;
-    
+
     float offsetX = 200.0f + (spawnCounter * 100.0f);
     float offsetY = 100.0f;
     spawnCounter++;
-    
+
     float spawnX = playerPos.getX() + offsetX;
     float spawnY = playerPos.getY() + offsetY;
-    
-    spawnX = std::max(100.0f, std::min(spawnX, m_worldWidth - 100.0f));
-    spawnY = std::max(100.0f, std::min(spawnY, m_worldHeight - 100.0f));
-    
+
     std::string npcType = m_npcTypes[m_currentNPCTypeIndex];
     m_currentNPCTypeIndex = (m_currentNPCTypeIndex + 1) % m_npcTypes.size();
-    
-    m_eventSystem->triggerNPCSpawn(npcType, spawnX, spawnY);
-    
-    addLogEntry("Triggered spawn: " + npcType + " at (" + 
+
+    EventManager::Instance().triggerNPCSpawn(npcType, spawnX, spawnY);
+
+    addLogEntry("Triggered spawn: " + npcType + " at (" +
                 std::to_string((int)spawnX) + ", " + std::to_string((int)spawnY) + ")");
 }
 
 void EventDemoState::triggerSceneTransitionDemo() {
-    if (!m_eventSystem) return;
-
     // Cycle through scene names
     std::string sceneName = m_sceneNames[m_currentSceneIndex];
     m_currentSceneIndex = (m_currentSceneIndex + 1) % m_sceneNames.size();
 
-    m_eventSystem->triggerSceneChange(sceneName, "fade", 2.0f);
+    EventManager::Instance().triggerSceneChange(sceneName, "fade", 2.0f);
 
     addLogEntry("Scene transition to: " + sceneName);
 }
@@ -675,16 +661,14 @@ void EventDemoState::triggerSceneTransitionDemo() {
 void EventDemoState::triggerCustomEventDemo() {
     // Demonstrate custom event handling
     addLogEntry("Custom event demo - showing event system flexibility");
-    
+
     // Example: trigger multiple events in sequence
-    if (m_eventSystem) {
-        m_eventSystem->triggerWeatherChange("Stormy", 1.0f);
-        
-        // Spawn one Guard and one Villager for custom demo
-        m_eventSystem->triggerNPCSpawn("Guard", m_worldWidth * 0.3f, m_worldHeight * 0.3f);
-        m_eventSystem->triggerNPCSpawn("Villager", m_worldWidth * 0.7f, m_worldHeight * 0.7f);
-    }
-    
+    EventManager::Instance().triggerWeatherChange("Stormy", 1.0f);
+
+    // Spawn one Guard and one Villager for custom demo
+    EventManager::Instance().triggerNPCSpawn("Guard", m_worldWidth * 0.3f, m_worldHeight * 0.3f);
+    EventManager::Instance().triggerNPCSpawn("Villager", m_worldWidth * 0.7f, m_worldHeight * 0.7f);
+
     addLogEntry("Multiple events triggered simultaneously");
 }
 
@@ -693,9 +677,7 @@ void EventDemoState::resetAllEvents() {
     cleanupSpawnedNPCs();
 
     // Reset weather to clear
-    if (m_eventSystem) {
-        m_eventSystem->triggerWeatherChange("Clear", 1.0f);
-    }
+    EventManager::Instance().triggerWeatherChange("Clear", 1.0f);
     m_currentWeather = WeatherType::Clear;
 
     // Reset indices
@@ -716,26 +698,26 @@ void EventDemoState::onWeatherChanged(const std::string& message) {
 
 void EventDemoState::onNPCSpawned(const std::string& message) {
     addLogEntry("NPC Spawn Event: " + message);
-    
+
     // Parse the message to get NPC type and position, then create NPC directly
-    // Format: "Guard" or "Villager" 
+    // Format: "Guard" or "Villager"
     std::string npcType = message;
-    
+
     // Get the last spawn position from our trigger method
     Vector2D playerPos = m_player->getPosition();
     static int directSpawnCounter = 0;
     directSpawnCounter++;
-    
+
     float offsetX = 200.0f + (directSpawnCounter * 120.0f);
     float offsetY = 100.0f;
-    
+
     float spawnX = playerPos.getX() + offsetX;
     float spawnY = playerPos.getY() + offsetY;
-    
+
     // Ensure spawn position is within window bounds
     spawnX = std::max(100.0f, std::min(spawnX, m_worldWidth - 100.0f));
     spawnY = std::max(100.0f, std::min(spawnY, m_worldHeight - 100.0f));
-    
+
     // Create NPC directly with proper shared_ptr management
     std::string textureID;
     if (npcType == "Guard") {
@@ -750,19 +732,19 @@ void EventDemoState::onNPCSpawned(const std::string& message) {
         textureID = "npc"; // Default fallback
     }
     auto npc = NPC::create(textureID, Vector2D(spawnX, spawnY), 64, 64);
-    
+
     if (npc) {
         // Set larger wander area to avoid bouncing with AI behaviors
         npc->setWanderArea(0.0f, 0.0f, m_worldWidth, m_worldHeight);
         npc->setBoundsCheckEnabled(false); // Let AI behaviors handle movement boundaries
-        
+
         // Assign AI behavior based on NPC type and current behavior cycle
         assignAIBehaviorToNPC(npc, npcType);
-        
+
         // Add to our tracking list
         m_spawnedNPCs.push_back(npc);
-        
-        addLogEntry("Created " + npcType + " at (" + std::to_string((int)spawnX) + 
+
+        addLogEntry("Created " + npcType + " at (" + std::to_string((int)spawnX) +
                    ", " + std::to_string((int)spawnY) + ") with AI");
     }
 }
@@ -773,7 +755,7 @@ void EventDemoState::onSceneChanged(const std::string& message) {
 
 void EventDemoState::setupAIBehaviors() {
     std::cout << "EventDemoState: Setting up AI behaviors for NPC integration...\n";
-    
+
     // Only set up if AIManager doesn't already have these behaviors
     if (!AIManager::Instance().hasBehavior("Wander")) {
         // Create and register wander behavior matching AIDemoState settings
@@ -783,7 +765,7 @@ void EventDemoState::setupAIBehaviors() {
         AIManager::Instance().registerBehavior("Wander", std::move(wanderBehavior));
         std::cout << "EventDemoState: Registered Wander behavior\n";
     }
-    
+
     if (!AIManager::Instance().hasBehavior("Patrol")) {
         // Create patrol points well within screen boundaries to avoid edge bouncing
         boost::container::small_vector<Vector2D, 10> patrolPoints;
@@ -792,28 +774,28 @@ void EventDemoState::setupAIBehaviors() {
         patrolPoints.push_back(Vector2D(m_worldWidth - margin, margin));
         patrolPoints.push_back(Vector2D(m_worldWidth - margin, m_worldHeight - margin));
         patrolPoints.push_back(Vector2D(margin, m_worldHeight - margin));
-        
+
         auto patrolBehavior = std::make_unique<PatrolBehavior>(patrolPoints, 1.5f, true);
         patrolBehavior->setScreenDimensions(m_worldWidth, m_worldHeight);
         AIManager::Instance().registerBehavior("Patrol", std::move(patrolBehavior));
         std::cout << "EventDemoState: Registered Patrol behavior\n";
     }
-    
+
     if (!AIManager::Instance().hasBehavior("Chase")) {
         // Create chase behavior matching AIDemoState settings
         auto chaseBehavior = std::make_unique<ChaseBehavior>(m_player, 2.0f, 500.0f, 50.0f);
         AIManager::Instance().registerBehavior("Chase", std::move(chaseBehavior));
         std::cout << "EventDemoState: Registered Chase behavior\n";
     }
-    
+
     addLogEntry("AI Behaviors configured for NPC integration");
 }
 
 void EventDemoState::assignAIBehaviorToNPC(std::shared_ptr<NPC> npc, const std::string& npcType) {
     if (!npc) return;
-    
+
     std::string behaviorName;
-    
+
     // Assign different default behaviors based on NPC type
     if (npcType == "Guard") {
         // Guards patrol by default, but cycle through behaviors
@@ -831,10 +813,10 @@ void EventDemoState::assignAIBehaviorToNPC(std::shared_ptr<NPC> npc, const std::
         // Default to wander for unknown types
         behaviorName = "Wander";
     }
-    
+
     // Assign the behavior
     AIManager::Instance().assignBehaviorToEntity(npc, behaviorName);
-    
+
     std::cout << "EventDemoState: Assigned " << behaviorName << " behavior to " << npcType << std::endl;
     addLogEntry(npcType + " assigned " + behaviorName + " behavior");
 }

@@ -91,7 +91,7 @@ The EventSystem is fully integrated into the game engine lifecycle:
 // GameEngine.cpp - Initialization (Thread #6)
 initTasks.push_back(
     Forge::ThreadSystem::Instance().enqueueTaskWithResult([]() -> bool {
-        if (!EventSystem::Instance()->init()) {
+        if (!EventSystem::Instance().init()) {
             return false;
         }
         return true;
@@ -99,13 +99,13 @@ initTasks.push_back(
 
 // GameEngine.cpp - Update (Every Frame)
 void GameEngine::update() {
-    EventSystem::Instance()->update();
+    EventSystem::Instance().update();
     mp_gameStateManager->update();
 }
 
 // GameEngine.cpp - Cleanup (Shutdown)
 void GameEngine::clean() {
-    EventSystem::Instance()->clean();
+    EventSystem::Instance().clean();
 }
 ```
 

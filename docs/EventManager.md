@@ -27,11 +27,11 @@ The system includes several built-in event types:
 ### Initialization
 
 ```cpp
-// Initialize the event system
-EventSystem::Instance()->init();
+// Initialize the event manager
+EventManager::Instance().init();
 
 // Register default events (optional)
-EventSystem::Instance()->registerDefaultEvents();
+EventManager::Instance().registerDefaultEvents();
 ```
 
 ### Creating Events
@@ -51,13 +51,13 @@ EventManager::Instance().registerEvent("ToMainMenu", sceneEvent);
 
 ```cpp
 // Trigger weather change
-EventSystem::Instance()->triggerWeatherChange("Rainy", 3.0f);
+EventManager::Instance().triggerWeatherChange("Rainy", 3.0f);
 
 // Trigger scene change
-EventSystem::Instance()->triggerSceneChange("MainMenu", "fade", 2.0f);
+EventManager::Instance().triggerSceneChange("MainMenu", "fade", 2.0f);
 
 // Spawn NPC at position
-EventSystem::Instance()->triggerNPCSpawn("Guard", 100.0f, 200.0f);
+EventManager::Instance().triggerNPCSpawn("Guard", 100.0f, 200.0f);
 ```
 
 ### Condition-Based Events
@@ -86,8 +86,8 @@ Ensure that the event system is updated each frame:
 void update(float deltaTime) {
     // Update other systems...
     
-    // Update event system
-    EventSystem::Instance()->update();
+    // Update event manager
+    EventManager::Instance().update();
 }
 ```
 
@@ -315,15 +315,15 @@ The EventSystem class provides integration with other game systems:
 
 ```cpp
 // Register event handlers for system events
-EventSystem::Instance()->registerEventHandler("WeatherChange", [](const std::string& params) {
+EventManager::Instance().registerEventHandler("WeatherChange", [](const std::string& params) {
     // Update particle systems, lighting, etc.
 });
 
-EventSystem::Instance()->registerEventHandler("SceneChange", [](const std::string& params) {
+EventManager::Instance().registerEventHandler("SceneChange", [](const std::string& params) {
     // Notify the GameStateManager
 });
 
-EventSystem::Instance()->registerEventHandler("NPCSpawn", [](const std::string& params) {
+EventManager::Instance().registerEventHandler("NPCSpawn", [](const std::string& params) {
     // Create entities through EntityFactory
 });
 ```

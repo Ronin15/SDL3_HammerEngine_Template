@@ -13,7 +13,7 @@
 #include "managers/AIManager.hpp"
 #include "gameStates/AIDemoState.hpp"
 #include "gameStates/EventDemoState.hpp"
-#include "events/EventSystem.hpp"
+#include "managers/EventManager.hpp"
 #include "managers/FontManager.hpp"
 #include "gameStates/GamePlayState.hpp"
 #include "managers/GameStateManager.hpp"
@@ -263,15 +263,15 @@ bool GameEngine::init(const char* title,
         return true;
       }));
 
-  // Initialize Event System in a separate thread - #6
+  // Initialize Event Manager in a separate thread - #6
   initTasks.push_back(
       Forge::ThreadSystem::Instance().enqueueTaskWithResult([]() -> bool {
-        std::cout << "Forge Game Engine - Creating Event System\n";
-        if (!EventSystem::Instance()->init()) {
-          std::cerr << "Forge Game Engine - Failed to initialize Event System!" << std::endl;
+        std::cout << "Forge Game Engine - Creating Event Manager\n";
+        if (!EventManager::Instance().init()) {
+          std::cerr << "Forge Game Engine - Failed to initialize Event Manager!" << std::endl;
           return false;
         }
-        std::cout << "Forge Game Engine - Event System initialized successfully\n";
+        std::cout << "Forge Game Engine - Event Manager initialized successfully\n";
         return true;
       }));
 
@@ -484,8 +484,8 @@ void GameEngine::processBackgroundTasks() {
 
   // AI updates run asynchronously and won't block the main thread
   AIManager::Instance().update();
-  // Update Event System
-  EventSystem::Instance()->update();
+  // Update Event Manager
+  EventManager::Instance().update();
 
   // Example: Process AI, physics, or other non-rendering tasks
   // These tasks can run while the main thread is handling rendering
@@ -518,8 +518,8 @@ void GameEngine::clean() {
   std::cout << "Forge Game Engine - Cleaning up Sound Manager...\n";
   SoundManager::Instance().clean();
 
-  std::cout << "Forge Game Engine - Cleaning up Event System...\n";
-  EventSystem::Instance()->clean();
+  std::cout << "Forge Game Engine - Cleaning up Event Manager...\n";
+  EventManager::Instance().clean();
 
   std::cout << "Forge Game Engine - Cleaning up AI Manager...\n";
   AIManager::Instance().clean();
@@ -527,7 +527,7 @@ void GameEngine::clean() {
   std::cout << "Forge Game Engine - Cleaning up Save Game Manager...\n";
   SaveGameManager::Instance().clean();
 
-  std::cout << "Forge Game Engine - Cleaning up Input Handler...\n";
+  std::cout << "Forge Game Engine - Cleaning up Input Manager...\n";
   InputManager::Instance().clean();
 
   std::cout << "Forge Game Engine - Cleaning up Texture Manager...\n";

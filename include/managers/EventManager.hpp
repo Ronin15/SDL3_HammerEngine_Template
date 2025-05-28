@@ -54,16 +54,17 @@
 
 // Forward declarations
 class Event;
+class WeatherEvent;
+class SceneChangeEvent;
+class NPCSpawnEvent;
+
 using EventPtr = std::shared_ptr<Event>;
 using EventWeakPtr = std::weak_ptr<Event>;
 
-// Thread access model for documentation
-enum class ThreadAccess {
-    MainThreadOnly,      // Only the main thread can access
-    WorkerThreadsOnly,   // Only worker threads can access
-    Concurrent,          // Concurrent read/write requires synchronization
-    ReadOnly             // Multiple threads can read, no writes after init
-};
+// Event handler function type
+using EventHandlerFunc = std::function<void(const std::string&)>;
+
+
 
 class EventManager {
 public:
@@ -111,6 +112,72 @@ public:
      * @thread_safety Must be called from main thread during shutdown
      */
     void clean();
+
+    // Convenience methods for creating common event types
+    /**
+     * @brief Register a weather event
+     * @param name Unique name for the event
+     * @param weatherType Type of weather (Clear, Rainy, Stormy, etc.)
+     * @param intensity Intensity of the weather (0.0-1.0)
+     */
+    void registerWeatherEvent(const std::string& name, const std::string& weatherType, float intensity);
+    
+    /**
+     * @brief Register a scene change event
+     * @param name Unique name for the event
+     * @param targetScene ID of the target scene
+     * @param transitionType Type of transition (fade, dissolve, etc.)
+     */
+    void registerSceneChangeEvent(const std::string& name, const std::string& targetScene, 
+                                 const std::string& transitionType = "fade");
+    
+    /**
+     * @brief Register an NPC spawn event
+     * @param name Unique name for the event
+     * @param npcType Type of NPC to spawn
+     * @param count Number of NPCs to spawn
+     * @param spawnRadius Radius around spawn point
+     */
+    void registerNPCSpawnEvent(const std::string& name, const std::string& npcType, 
+                              int count = 1, float spawnRadius = 0.0f);
+
+    /**
+     * @brief Register default events for common game scenarios
+     * This creates a set of common events that can be used in most games
+     */
+    void registerDefaultEvents();
+
+    /**
+     * @brief Register an event handler for a specific event type
+     * @param eventType Type of event to handle
+     * @param handler Function to call when event occurs
+     */
+    void registerEventHandler(const std::string& eventType, EventHandlerFunc handler);
+    
+    // Direct trigger methods
+    /**
+     * @brief Trigger an immediate weather change
+     * @param weatherType Type of weather to change to
+     * @param transitionTime Time in seconds for the transition
+     */
+    void triggerWeatherChange(const std::string& weatherType, float transitionTime = 5.0f);
+    
+    /**
+     * @brief Trigger an immediate scene change
+     * @param sceneId ID of the scene to change to
+     * @param transitionType Type of transition to use
+     * @param duration Duration of the transition in seconds
+     */
+    void triggerSceneChange(const std::string& sceneId, const std::string& transitionType = "fade", 
+                           float duration = 1.0f);
+    
+    /**
+     * @brief Trigger an immediate NPC spawn
+     * @param npcType Type of NPC to spawn
+     * @param x X coordinate for spawn position
+     * @param y Y coordinate for spawn position
+     */
+    void triggerNPCSpawn(const std::string& npcType, float x, float y);
 
     /**
      * @brief Configure threading options for event processing
@@ -372,6 +439,19 @@ private:
     void invalidateOptimizationCaches();
     void ensureOptimizationCachesValid();
     void updateEventTypeBatch(const std::string_view& eventType, const EventBatch& batch);
+
+    // State tracking for EventSystem functionality
+    uint64_t m_lastUpdateTime{0};
+    
+    // Event handlers for different event types
+    std::unordered_map<std::string, std::vector<EventHandlerFunc>> m_eventHandlers{};
+    mutable std::mutex m_eventHandlersMutex{};
+    
+    // Helper methods for EventSystem functionality
+    void registerSystemEventHandlers();
+    void updateEventTimers(float deltaTime);
+    void processSystemEvents();
+    static uint64_t getCurrentTimeMs();
 
     // Performance monitoring
     boost::container::flat_map<std::string, PerformanceStats> m_eventTypePerformanceStats;

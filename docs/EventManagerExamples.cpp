@@ -17,7 +17,7 @@
 #include "events/SceneChangeEvent.hpp"
 #include "events/NPCSpawnEvent.hpp"
 #include "events/EventFactory.hpp"
-#include "events/EventSystem.hpp"
+#include "managers/EventManager.hpp"
 #include "core/ThreadSystem.hpp"
 
 // Example 1: Basic Weather Event
@@ -107,29 +107,29 @@ void npcSpawnEventExample() {
     EventManager::Instance().spawnNPC("Guard", 100.0f, 200.0f);
 }
 
-// Example 4: Using EventSystem for simplified integration
-void eventSystemExample() {
-    // Initialize the event system
-    EventSystem::Instance()->init();
+// Example 4: Using EventManager for simplified integration
+void eventManagerExample() {
+    // Initialize the event manager
+    EventManager::Instance().init();
     
     // Register common event types with simplified API
-    EventSystem::Instance()->registerWeatherEvent("Rain", "Rainy", 0.7f);
-    EventSystem::Instance()->registerSceneChangeEvent("ToMainMenu", "MainMenu", "fade");
-    EventSystem::Instance()->registerNPCSpawnEvent("GuardSpawn", "Guard", 3, 10.0f);
+    EventManager::Instance().registerWeatherEvent("Rain", "Rainy", 0.7f);
+    EventManager::Instance().registerSceneChangeEvent("ToMainMenu", "MainMenu", "fade");
+    EventManager::Instance().registerNPCSpawnEvent("GuardSpawn", "Guard", 3, 10.0f);
     
     // Register event handlers for system integration
-    EventSystem::Instance()->registerEventHandler("WeatherChange", [](const std::string& weatherType) {
+    EventManager::Instance().registerEventHandler("WeatherChange", [](const std::string& weatherType) {
         // Update particle systems, lighting, etc.
         std::cout << "Weather changed to: " << weatherType << std::endl;
     });
     
     // Trigger events directly
-    EventSystem::Instance()->triggerWeatherChange("Rainy", 3.0f);
-    EventSystem::Instance()->triggerSceneChange("MainMenu", "fade", 1.0f);
-    EventSystem::Instance()->triggerNPCSpawn("Guard", 100.0f, 200.0f);
+    EventManager::Instance().triggerWeatherChange("Rainy", 3.0f);
+    EventManager::Instance().triggerSceneChange("MainMenu", "fade", 1.0f);
+    EventManager::Instance().triggerNPCSpawn("Guard", 100.0f, 200.0f);
     
-    // Don't forget to update the event system each frame
-    EventSystem::Instance()->update();
+    // Don't forget to update the event manager each frame
+    EventManager::Instance().update();
 }
 
 // Example 5: Creating an event sequence
