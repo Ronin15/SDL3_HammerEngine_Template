@@ -18,7 +18,6 @@
 #include "managers/EventManager.hpp"
 #include "events/Event.hpp"
 #include "events/WeatherEvent.hpp"
-#include "events/NPCSpawnEvent.hpp"
 #include "events/SceneChangeEvent.hpp"
 
 
@@ -303,14 +302,16 @@ BOOST_FIXTURE_TEST_CASE(SceneChangeEvents, EventManagerFixture) {
 
 // Test NPC spawn events
 BOOST_FIXTURE_TEST_CASE(NPCSpawnEvents, EventManagerFixture) {
-    auto spawnEvent = std::make_shared<NPCSpawnEvent>("SpawnGuard", "Guard");
-    EventManager::Instance().registerEvent("SpawnGuard", std::static_pointer_cast<Event>(spawnEvent));
+    // Test simplified NPC spawn trigger (handlers do the work now)
+    bool handlerCalled = false;
+    EventManager::Instance().registerEventHandler("NPCSpawn", [&handlerCalled](const std::string& npcType) {
+        handlerCalled = true;
+        BOOST_CHECK_EQUAL(npcType, "Guard");
+    });
 
-    // Test direct NPC spawn
-    BOOST_CHECK(EventManager::Instance().spawnNPC("Guard", 100.0f, 200.0f));
-
-    // Test spawn event execution
-    BOOST_CHECK(EventManager::Instance().executeEvent("SpawnGuard"));
+    // Test NPC spawn trigger
+    EventManager::Instance().triggerNPCSpawn("Guard");
+    BOOST_CHECK(handlerCalled);
 }
 
 // Test thread safety with minimal concurrent operations

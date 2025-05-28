@@ -142,8 +142,9 @@ void NPCSpawnEvent::clean() {
 }
 
 void NPCSpawnEvent::onMessage(const std::string& message) {
-    // Handle spawn requests from EventManager
-    // Note: We handle spawn requests even when inactive to allow manual triggering
+    // Simplified: NPCSpawnEvent now only validates and tracks spawn requests
+    // Actual NPC creation is handled by event handlers for cleaner architecture
+    
     if (message.find("SPAWN_REQUEST:") == 0) {
         // Check if we've reached the maximum NPC limit
         if (m_totalSpawned >= 50) { // Limit to 50 total NPCs to prevent memory issues
@@ -152,50 +153,20 @@ void NPCSpawnEvent::onMessage(const std::string& message) {
         }
 
         // Parse the message to extract NPC type and position
-        // Format: "SPAWN_REQUEST:NPCType:x:y"
-        // Parse spawn request message
-
         size_t firstColon = message.find(':', 14); // Skip "SPAWN_REQUEST:"
         size_t secondColon = message.find(':', firstColon + 1);
 
         if (firstColon != std::string::npos && secondColon != std::string::npos) {
             std::string requestedNpcType = message.substr(14, firstColon - 14);
-            std::string xStr = message.substr(firstColon + 1, secondColon - firstColon - 1);
-            std::string yStr = message.substr(secondColon + 1);
-
-            float x = std::stof(xStr);
-            float y = std::stof(yStr);
-
-            // Parsed spawn request successfully
-
+            
             // Only respond if this event is configured for the requested NPC type
             if (requestedNpcType != m_spawnParams.npcType) {
                 return; // This event doesn't handle this NPC type
             }
 
-            // Create the NPC directly
-            try {
-                std::string textureID = getTextureForNPCType(requestedNpcType);
-                Vector2D position(x, y);
-                auto npc = NPC::create(textureID, position, 64, 64);
-
-                if (npc) {
-                    // Set wander area around spawn point
-                    npc->setWanderArea(x - 100.0f, y - 100.0f, x + 100.0f, y + 100.0f);
-                    npc->setBoundsCheckEnabled(true);
-
-                    // Track the spawned NPC
-                    m_spawnedEntities.push_back(std::static_pointer_cast<Entity>(npc));
-                    m_currentSpawnCount++;
-                    m_totalSpawned++;
-
-                    // NPC created successfully
-                } else {
-                    std::cerr << "Failed to create NPC: " << requestedNpcType << std::endl;
-                }
-            } catch (const std::exception& e) {
-                std::cerr << "Exception spawning NPC: " << e.what() << std::endl;
-            }
+            // Just track that a spawn was requested - handlers will do the actual creation
+            m_totalSpawned++;
+            std::cout << "NPCSpawnEvent validated spawn request for " << requestedNpcType << std::endl;
         }
     }
 }
