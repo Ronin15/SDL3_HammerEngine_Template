@@ -177,6 +177,9 @@ private:
     // Helper to get player position
     Vector2D getPlayerPosition() const;
 
+    // Helper to map NPC type to texture ID
+    static std::string getTextureForNPCType(const std::string& npcType);
+
     // Spawn implementation
     EntityPtr spawnSingleNPC(const Vector2D& position);
     void cleanDeadEntities();

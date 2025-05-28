@@ -310,7 +310,7 @@ BOOST_FIXTURE_TEST_CASE(NPCSpawnEvents, EventManagerFixture) {
     });
 
     // Test NPC spawn trigger
-    EventManager::Instance().triggerNPCSpawn("Guard");
+    EventManager::Instance().triggerNPCSpawn("Guard", 100.0f, 200.0f);
     BOOST_CHECK(handlerCalled);
 }
 

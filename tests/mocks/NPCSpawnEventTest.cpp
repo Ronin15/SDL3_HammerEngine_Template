@@ -13,20 +13,28 @@
 #include <algorithm>
 #include <cmath>
 
-// Helper function to map NPC types to texture IDs
-static std::string getTextureForNPCType(const std::string& npcType) {
-    if (npcType == "Guard") return "guard";
-    if (npcType == "Villager") return "villager";
-    if (npcType == "Merchant") return "npc";
-    if (npcType == "Warrior") return "npc";
-    return "npc"; // Default fallback
-}
+
 
 // Helper function to get player position for tests
 static Vector2D getPlayerPosition() {
     // Return center of mock screen for testing
     return Vector2D(GameEngine::Instance().getWindowWidth() / 2.0f, 
                    GameEngine::Instance().getWindowHeight() / 2.0f);
+}
+
+// Static method implementation for tests
+std::string NPCSpawnEvent::getTextureForNPCType(const std::string& npcType) {
+    if (npcType == "Guard") {
+        return "guard";
+    } else if (npcType == "Villager") {
+        return "villager";
+    } else if (npcType == "Merchant") {
+        return "merchant";
+    } else if (npcType == "Warrior") {
+        return "warrior";
+    } else {
+        return "npc"; // Default fallback
+    }
 }
 
 // Random number generator for testing
@@ -281,7 +289,7 @@ EntityPtr NPCSpawnEvent::forceSpawnNPC(const std::string& npcType, float x, floa
 
     try {
         // Get the texture ID for this NPC type
-        std::string textureID = getTextureForNPCType(npcType);
+        std::string textureID = NPCSpawnEvent::getTextureForNPCType(npcType);
         
         // Create the NPC using mock
         Vector2D position(x, y);
@@ -466,7 +474,7 @@ Vector2D NPCSpawnEvent::getPlayerPosition() const {
 
 EntityPtr NPCSpawnEvent::spawnSingleNPC(const Vector2D& position) {
     try {
-        std::string textureID = getTextureForNPCType(m_spawnParams.npcType);
+        std::string textureID = NPCSpawnEvent::getTextureForNPCType(m_spawnParams.npcType);
         
         auto npc = MockNPC::create(textureID, position, 64, 64);
         
