@@ -19,31 +19,31 @@ bool SaveGameManager::initialized = false;
 
 bool SaveGameManager::save(const std::string& saveFileName, const Player* player) {
     if (player == nullptr) {
-        std::cerr << "Forge Game Engine - SaveGameManager: Cannot save null player!" << std::endl;
+        std::cerr << "Forge Game Engine - Save Game Manager: Cannot save null player!" << std::endl;
         return false;
     }
 
     // Ensure player is valid and proceed with save
-    
+
     // Make sure base directory exists
     if (!std::filesystem::exists(m_saveDirectory)) {
-        std::cerr << "Forge Game Engine - SaveGameManager: Base directory doesn't exist: '" << m_saveDirectory << "'\n";
+        std::cerr << "Forge Game Engine - Save Game Manager: Base directory doesn't exist: '" << m_saveDirectory << "'\n";
         try {
             if (std::filesystem::create_directories(m_saveDirectory)) {
                 // Base directory created successfully
             } else {
-                std::cerr << "Forge Game Engine - SaveGameManager: Failed to create base directory\n";
+                std::cerr << "Forge Game Engine - Save Game Manager: Failed to create base directory\n";
                 return false;
             }
         } catch (const std::exception& e) {
-            std::cerr << "Forge Game Engine - SaveGameManager: Error creating base directory: " << e.what() << "\n";
+            std::cerr << "Forge Game Engine - Save Game Manager: Error creating base directory: " << e.what() << "\n";
             return false;
         }
     }
-    
+
     // Ensure the save directory exists
     if (!ensureSaveDirectoryExists()) {
-        std::cerr << "Forge Game Engine - SaveGameManager: Failed to ensure save directory exists!" << std::endl;
+        std::cerr << "Forge Game Engine - Save Game Manager: Failed to ensure save directory exists!" << std::endl;
         return false;
     }
 
@@ -58,14 +58,14 @@ bool SaveGameManager::save(const std::string& saveFileName, const Player* player
             // Create parent directory if it doesn't exist
             std::filesystem::create_directories(parentPath);
         }
-        
+
         // Open binary file for writing
         std::ofstream file(fullPath, std::ios::binary | std::ios::out);
         if (!file.is_open()) {
-            std::cerr << "Forge Game Engine - SaveGameManager: Could not open file " << fullPath << " for writing!" << std::endl;
+            std::cerr << "Forge Game Engine - Save Game Manager: Could not open file " << fullPath << " for writing!" << std::endl;
             // Check if parent directory exists and is writable
-            std::cerr << "Forge Game Engine - SaveGameManager: Parent directory " 
-                     << parentPath.string() << " exists: " 
+            std::cerr << "Forge Game Engine - Save Game Manager: Parent directory "
+                     << parentPath.string() << " exists: "
                      << (std::filesystem::exists(parentPath) ? "yes" : "no") << std::endl;
             return false;
         }
@@ -106,14 +106,14 @@ bool SaveGameManager::save(const std::string& saveFileName, const Player* player
         return true;
     }
     catch (const std::exception& e) {
-        std::cerr << "Forge Game Engine - SaveGameManager: Error saving game: " << e.what() << std::endl;
+        std::cerr << "Forge Game Engine - Save Game Manager: Error saving game: " << e.what() << std::endl;
         return false;
     }
 }
 
 bool SaveGameManager::saveToSlot(int slotNumber, const Player* player) {
     if (slotNumber < 1) {
-        std::cerr << "Forge Game Engine - SaveGameManager: Invalid slot number: " << slotNumber << std::endl;
+        std::cerr << "Forge Game Engine - Save Game Manager: Invalid slot number: " << slotNumber << std::endl;
         return false;
     }
 
@@ -124,7 +124,7 @@ bool SaveGameManager::saveToSlot(int slotNumber, const Player* player) {
 
 bool SaveGameManager::load(const std::string& saveFileName, Player* player) {
     if (player == nullptr) {
-        std::cerr << "Forge Game Engine - SaveGameManager: Cannot load to null player!" << std::endl;
+        std::cerr << "Forge Game Engine - Save Game Manager: Cannot load to null player!" << std::endl;
         return false;
     }
 
@@ -133,7 +133,7 @@ bool SaveGameManager::load(const std::string& saveFileName, Player* player) {
 
     // Check if the file exists
     if (!std::filesystem::exists(fullPath)) {
-        std::cerr << "Forge Game Engine - SaveGameManager: Save file does not exist: " << saveFileName << std::endl;
+        std::cerr << "Forge Game Engine - Save Game Manager: Save file does not exist: " << saveFileName << std::endl;
         return false;
     }
 
@@ -141,14 +141,14 @@ bool SaveGameManager::load(const std::string& saveFileName, Player* player) {
         // Open binary file for reading
         std::ifstream file(fullPath, std::ios::binary | std::ios::in);
         if (!file.is_open()) {
-            std::cerr << "Forge Game Engine - SaveGameManager: Could not open file for reading!" << std::endl;
+            std::cerr << "Forge Game Engine - Save Game Manager: Could not open file for reading!" << std::endl;
             return false;
         }
 
         // Read and validate header
         SaveGameHeader header;
         if (!readHeader(file, header)) {
-            std::cerr << "Forge Game Engine - SaveGameManager: Invalid save file format" << std::endl;
+            std::cerr << "Forge Game Engine - Save Game Manager: Invalid save file format" << std::endl;
             file.close();
             return false;
         }
@@ -156,7 +156,7 @@ bool SaveGameManager::load(const std::string& saveFileName, Player* player) {
         // Read player data
         Vector2D position(0.0f, 0.0f);
         if (!readVector2D(file, position)) {
-            std::cerr << "Forge Game Engine - SaveGameManager: Error reading player position" << std::endl;
+            std::cerr << "Forge Game Engine - Save Game Manager: Error reading player position" << std::endl;
             file.close();
             return false;
         }
@@ -168,7 +168,7 @@ bool SaveGameManager::load(const std::string& saveFileName, Player* player) {
         // Read textureID
         std::string textureID;
         if (!readString(file, textureID)) {
-            std::cerr << "Forge Game Engine - SaveGameManager: Error reading player textureID!" << std::endl;
+            std::cerr << "Forge Game Engine - Save Game Manager: Error reading player textureID!" << std::endl;
             file.close();
             return false;
         }
@@ -176,7 +176,7 @@ bool SaveGameManager::load(const std::string& saveFileName, Player* player) {
         // Read state
         std::string state;
         if (!readString(file, state)) {
-            std::cerr << "Forge Game Engine - SaveGameManager: Error reading player state!" << std::endl;
+            std::cerr << "Forge Game Engine - Save Game Manager: Error reading player state!" << std::endl;
             file.close();
             return false;
         }
@@ -187,7 +187,7 @@ bool SaveGameManager::load(const std::string& saveFileName, Player* player) {
         // Read level ID (not using it yet, but reading for future use)
         std::string levelID;
         if (!readString(file, levelID)) {
-            std::cerr << "Forge Game Engine - SaveGameManager: Error reading level ID!" << std::endl;
+            std::cerr << "Forge Game Engine - Save Game Manager: Error reading level ID!" << std::endl;
             file.close();
             return false;
         }
@@ -198,7 +198,7 @@ bool SaveGameManager::load(const std::string& saveFileName, Player* player) {
         return true;
     }
     catch (const std::exception& e) {
-        std::cerr << "Forge Game Engine - SaveGameManager: Error loading game: " << e.what() << std::endl;
+        std::cerr << "Forge Game Engine - Save Game Manager: Error loading game: " << e.what() << std::endl;
         return false;
     }
 }
@@ -206,7 +206,7 @@ bool SaveGameManager::load(const std::string& saveFileName, Player* player) {
 
 bool SaveGameManager::loadFromSlot(int slotNumber, Player* player) {
     if (slotNumber < 1) {
-        std::cerr << "Forge Game Engine - SaveGameManager: Invalid slot number: " << slotNumber << std::endl;
+        std::cerr << "Forge Game Engine - Save Game Manager: Invalid slot number: " << slotNumber << std::endl;
         return false;
     }
 
@@ -224,19 +224,19 @@ bool SaveGameManager::deleteSave(const std::string& saveFileName) {
             return true;
         }
         else {
-            std::cerr << "Forge Game Engine - SaveGameManager: Save file does not exist: " << fullPath << std::endl;
+            std::cerr << "Forge Game Engine - Save Game Manager: Save file does not exist: " << fullPath << std::endl;
             return false;
         }
     }
     catch (const std::filesystem::filesystem_error& e) {
-        std::cerr << "Forge Game Engine - SaveGameManager: Error deleting save file: " << e.what() << std::endl;
+        std::cerr << "Forge Game Engine - Save Game Manager: Error deleting save file: " << e.what() << std::endl;
         return false;
     }
 }
 
 bool SaveGameManager::deleteSlot(int slotNumber) {
     if (slotNumber < 1) {
-        std::cerr << "Forge Game Engine - SaveGameManager: Invalid slot number: " << slotNumber << std::endl;
+        std::cerr << "Forge Game Engine - Save Game Manager: Invalid slot number: " << slotNumber << std::endl;
         return false;
     }
 
@@ -276,7 +276,7 @@ boost::container::small_vector<std::string, 10> SaveGameManager::getSaveFiles() 
         }
     }
     catch (const std::filesystem::filesystem_error& e) {
-        std::cerr << "Forge Game Engine - SaveGameManager: Error listing save files: " << e.what() << std::endl;
+        std::cerr << "Forge Game Engine - Save Game Manager: Error listing save files: " << e.what() << std::endl;
     }
 
     return saveFiles;
@@ -356,21 +356,21 @@ void SaveGameManager::setSaveDirectory(const std::string& directory) {
         // Try to create it
         try {
             if (!std::filesystem::create_directories(directory)) {
-                std::cerr << "Forge Game Engine - SaveGameManager: Failed to create directory: " << directory << "\n";
+                std::cerr << "Forge Game Engine - Save Game Manager: Failed to create directory: " << directory << "\n";
             }
         } catch (const std::exception& e) {
-            std::cerr << "Forge Game Engine - SaveGameManager: Error creating directory: " << e.what() << "\n";
+            std::cerr << "Forge Game Engine - Save Game Manager: Error creating directory: " << e.what() << "\n";
         }
     }
-    
+
     m_saveDirectory = directory;
-    
+
     // Ensure the game_saves subdirectory exists right away
     ensureSaveDirectoryExists();
 }
 
 void SaveGameManager::clean() {
-    std::cout << "Forge Game Engine - SaveGameManager resources cleaned!\n";
+    std::cout << "Forge Game Engine - Save Game Manager resources cleaned!\n";
 }
 
 // Private helper methods
@@ -388,34 +388,34 @@ bool SaveGameManager::ensureSaveDirectoryExists() const {
         if (!std::filesystem::exists(m_saveDirectory)) {
             // Try to create the base directory
             if (!std::filesystem::create_directories(m_saveDirectory)) {
-                std::cerr << "Forge Game Engine - SaveGameManager: Failed to create base directory\n";
+                std::cerr << "Forge Game Engine - Save Game Manager: Failed to create base directory\n";
                 return false;
             }
         }
-        
+
         // Create the game_saves directory inside the base directory
         std::string savePath = m_saveDirectory + "/game_saves";
-        
+
         if (!std::filesystem::exists(savePath)) {
             // Create the directory and all parent directories
             if (!std::filesystem::create_directories(savePath)) {
-                std::cerr << "Forge Game Engine - SaveGameManager: Failed to create save directory\n";
+                std::cerr << "Forge Game Engine - Save Game Manager: Failed to create save directory\n";
                 return false;
             }
         }
-        
+
         // Verify directory exists after creation attempt
         if (!std::filesystem::exists(savePath)) {
-            std::cerr << "Forge Game Engine - SaveGameManager: Directory still doesn't exist after creation attempt\n";
+            std::cerr << "Forge Game Engine - Save Game Manager: Directory still doesn't exist after creation attempt\n";
             return false;
         }
-        
+
         // Verify directory is writable by attempting to create a test file
         {
             std::string testFilePath = savePath + "/test_write.tmp";
             std::ofstream testFile(testFilePath);
             if (!testFile.is_open()) {
-                std::cerr << "Forge Game Engine - SaveGameManager: Directory exists but is not writable\n";
+                std::cerr << "Forge Game Engine - Save Game Manager: Directory exists but is not writable\n";
                 return false;
             }
             testFile << "Test"; // Actually write something
@@ -423,15 +423,15 @@ bool SaveGameManager::ensureSaveDirectoryExists() const {
             if (std::filesystem::exists(testFilePath)) {
                 std::filesystem::remove(testFilePath);
             } else {
-                std::cerr << "Forge Game Engine - SaveGameManager: Test file was not created properly\n";
+                std::cerr << "Forge Game Engine - Save Game Manager: Test file was not created properly\n";
                 return false;
             }
         }
-        
+
         return true;
     }
     catch (const std::exception& e) {
-        std::cerr << "Forge Game Engine - SaveGameManager: Error creating save directory: " << e.what() << std::endl;
+        std::cerr << "Forge Game Engine - Save Game Manager: Error creating save directory: " << e.what() << std::endl;
         return false;
     }
 }
@@ -457,7 +457,7 @@ SaveGameData SaveGameManager::extractSaveInfo(const std::string& saveFileName) c
         // Read and validate header
         SaveGameHeader header;
         if (!readHeader(file, header)) {
-            std::cerr << "Forge Game Engine - SaveGameManager: Invalid save file format when extracting info!" << std::endl;
+            std::cerr << "Forge Game Engine - Save Game Manager: Invalid save file format when extracting info!" << std::endl;
             file.close();
             return info;
         }
@@ -504,7 +504,7 @@ SaveGameData SaveGameManager::extractSaveInfo(const std::string& saveFileName) c
         file.close();
     }
     catch (const std::exception& e) {
-        std::cerr << "Forge Game Engine - SaveGameManager: Error extracting save info: " << e.what() << std::endl;
+        std::cerr << "Forge Game Engine - Save Game Manager: Error extracting save info: " << e.what() << std::endl;
     }
 
     return info;
@@ -558,7 +558,7 @@ bool SaveGameManager::writeVector2D(std::ofstream& file, const Vector2D& vec) co
         oa << vec;
         return file.good();
     } catch (const std::exception& e) {
-        std::cerr << "Forge Game Engine - SaveGameManager: Error serializing Vector2D: " << e.what() << std::endl;
+        std::cerr << "Forge Game Engine - Save Game Manager: Error serializing Vector2D: " << e.what() << std::endl;
         return false;
     }
 }
@@ -569,7 +569,7 @@ bool SaveGameManager::readVector2D(std::ifstream& file, Vector2D& vec) const {
         ia >> vec;
         return file.good();
     } catch (const std::exception& e) {
-        std::cerr << "Forge Game Engine - SaveGameManager: Error deserializing Vector2D: " << e.what() << std::endl;
+        std::cerr << "Forge Game Engine - Save Game Manager: Error deserializing Vector2D: " << e.what() << std::endl;
         return false;
     }
 }
