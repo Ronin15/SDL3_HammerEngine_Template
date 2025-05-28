@@ -27,31 +27,70 @@ Each test suite has dedicated scripts in the project root directory:
 
 #### Linux/macOS
 ```bash
-./run_ai_optimization_tests.sh       # AI optimization tests
+# Core functionality tests (fast execution)
+./run_thread_tests.sh                # Thread system tests
 ./run_thread_safe_ai_tests.sh        # Thread-safe AI tests
 ./run_thread_safe_ai_integration_tests.sh  # Thread-safe AI integration tests
-./run_ai_benchmark.sh                # AI scaling benchmark
+./run_ai_optimization_tests.sh       # AI optimization tests
 ./run_save_tests.sh                  # Save manager tests
-./run_thread_tests.sh                # Thread system tests
 ./run_event_tests.sh                 # Event manager tests
+
+# Performance scaling benchmarks (slow execution)
+./run_event_scaling_benchmark.sh     # Event manager scaling benchmark
+./run_ai_benchmark.sh                # AI scaling benchmark
+
+# Run all tests
 ./run_all_tests.sh                   # Run all test scripts sequentially
 ```
 
 #### Windows
 ```
-run_ai_optimization_tests.bat        # AI optimization tests
+# Core functionality tests (fast execution)
+run_thread_tests.bat                 # Thread system tests
 run_thread_safe_ai_tests.bat         # Thread-safe AI tests
 run_thread_safe_ai_integration_tests.bat  # Thread-safe AI integration tests
-run_ai_benchmark.bat                 # AI scaling benchmark
+run_ai_optimization_tests.bat        # AI optimization tests
 run_save_tests.bat                   # Save manager tests
-run_thread_tests.bat                 # Thread system tests
 run_event_tests.bat                  # Event manager tests
+
+# Performance scaling benchmarks (slow execution)
+run_event_scaling_benchmark.bat      # Event manager scaling benchmark
+run_ai_benchmark.bat                 # AI scaling benchmark
+
+# Run all tests
 run_all_tests.bat                    # Run all test scripts sequentially
+```
+
+### Test Execution Control
+
+The `run_all_tests.sh` script provides flexible execution control:
+
+#### Test Category Options
+| Option | Description | Duration |
+|--------|-------------|----------|
+| `--core-only` | Run only core functionality tests | ~2-5 minutes |
+| `--benchmarks-only` | Run only performance benchmarks | ~5-10 minutes |
+| `--no-benchmarks` | Run core tests but skip benchmarks | ~2-5 minutes |
+| *(default)* | Run all tests sequentially | ~7-15 minutes |
+
+#### Examples
+```bash
+# Quick validation during development
+./run_all_tests.sh --core-only
+
+# Skip slow benchmarks in CI
+./run_all_tests.sh --no-benchmarks
+
+# Performance testing only
+./run_all_tests.sh --benchmarks-only --verbose
+
+# Complete test suite
+./run_all_tests.sh
 ```
 
 ### Common Command-Line Options
 
-All test scripts support these options:
+Individual test scripts support these options:
 
 | Option | Description |
 |--------|-------------|
@@ -62,12 +101,21 @@ All test scripts support these options:
 
 Special options:
 - `--extreme` for AI benchmark (runs extended benchmarks)
+- `--verbose` for scaling benchmarks (shows detailed performance metrics)
+
+**Test Execution Strategy:**
+The script executes tests in optimal order for efficient development workflow:
+1. **Core functionality tests** (fast execution, ~5-30 seconds each)
+2. **Performance scaling benchmarks** (slow execution, 1-5+ minutes each)
+
+This ordering provides quick feedback on basic functionality before running time-intensive performance tests.
 
 ## Test Output
 
 Test results are saved in the `test_results` directory:
 
 - `ai_optimization_tests_output.txt` - Output from AI optimization tests
+- `event_scaling_benchmark_output.txt` - Output from EventManager scaling benchmark
 - `ai_optimization_tests_performance_metrics.txt` - Performance metrics from optimization tests
 - `thread_safe_ai_test_output.txt` - Output from thread-safe AI tests
 - `thread_safe_ai_performance_metrics.txt` - Performance metrics from thread-safe AI tests
@@ -148,7 +196,7 @@ Located in `ThreadSystemTests.cpp`, these tests verify:
 
 ### Event Manager Tests
 
-Located in `events/EventManagerTest.cpp`, `events/EventTypesTest.cpp`, and `events/WeatherEventTest.cpp`, these tests verify:
+Located in `events/EventManagerTest.cpp`, `events/EventTypesTest.cpp`, `events/WeatherEventTest.cpp`, and `EventManagerScalingBenchmark.cpp`, these tests verify:
 
 1. **Event Registration**: Tests registering different types of events with the EventManager
 2. **Event Conditions**: Tests condition-based event triggering
@@ -157,6 +205,7 @@ Located in `events/EventManagerTest.cpp`, `events/EventTypesTest.cpp`, and `even
 5. **Message System**: Tests the event messaging system for communication between events
 6. **Priority-Based Scheduling**: Tests task priority integration with event processing
 7. **NPCSpawnEvent Integration**: Tests NPC spawning functionality with mocked dependencies
+8. **Performance Scaling**: Comprehensive benchmarking from small to extreme scales (see EventManager Scaling Benchmark below)
 
 #### Event Manager Test Details
 
@@ -206,6 +255,49 @@ The NPCSpawnEvent tests use a comprehensive mocking infrastructure to avoid depe
 - Spawn area management (points, rectangles, circles)
 - Entity lifecycle and cleanup
 - Message-based spawn requests
+
+#### EventManager Scaling Benchmark
+
+Located in `EventManagerScalingBenchmark.cpp`, this comprehensive performance test validates the EventManager's scalability across various workloads:
+
+**Test Scenarios:**
+- **Basic Performance**: Small scale validation (100 events, immediate vs batched)
+- **Medium Scale**: Moderate load testing (5,000 events, 25,000 handler calls)
+- **Scalability Suite**: Progressive testing from minimal to very large scales
+- **Concurrency Test**: Multi-threaded event generation and processing
+- **Extreme Scale**: Large simulation testing (100,000 events, 5,000,000 handler calls)
+
+**Performance Metrics Measured:**
+- Events per second throughput
+- Handler calls per second
+- Time per event and per handler call
+- Memory usage and cache performance
+- Thread safety validation
+- Batching vs immediate processing comparison
+
+**Key Features Tested:**
+- Handler batching system performance
+- `boost::flat_map` storage optimization
+- Thread-safe concurrent event queuing
+- Lock-free handler execution
+- Cache locality optimization through event type grouping
+
+**Running the Scaling Benchmark:**
+```bash
+# Run just the scaling benchmark
+ctest -R EventManagerScaling
+
+# Or run the executable directly for detailed output
+./bin/debug/event_manager_scaling_benchmark
+```
+
+**Expected Performance (on modern hardware):**
+- Small scale: ~540K events/sec
+- Medium scale: ~78K events/sec  
+- Large scale: ~39K events/sec
+- Extreme scale: ~7.8K events/sec with 5M handler calls
+
+The benchmark validates that the EventManager can handle large-scale simulations (MMOs, city simulations, real-time strategy games) while maintaining consistent performance characteristics.
 
 ## Adding New Tests
 

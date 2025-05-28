@@ -49,6 +49,18 @@ add_executable(ai_scaling_benchmark
     mocks/AIBehavior.cpp
 )
 
+# EventManager scaling benchmark
+add_executable(event_manager_scaling_benchmark
+    EventManagerScalingBenchmark.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/EventManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/events/Event.cpp
+    ${PROJECT_SOURCE_DIR}/src/events/WeatherEvent.cpp
+    ${PROJECT_SOURCE_DIR}/src/events/SceneChangeEvent.cpp
+    mocks/NPCSpawnEventTest.cpp
+    mocks/MockNPC.cpp
+    mocks/MockGameEngine.cpp
+)
+
 # Thread-safe AI Manager tests
 add_executable(thread_safe_ai_manager_tests
     ThreadSafeAIManagerTest.cpp
@@ -113,6 +125,10 @@ target_compile_definitions(ai_scaling_benchmark PRIVATE
     BOOST_TEST_NO_LIB
 )
 
+target_compile_definitions(event_manager_scaling_benchmark PRIVATE
+    BOOST_TEST_NO_LIB
+)
+
 # Thread-safe AI Manager tests definitions
 target_compile_definitions(thread_safe_ai_manager_tests PRIVATE
     BOOST_TEST_NO_LIB
@@ -173,6 +189,13 @@ target_link_libraries(ai_scaling_benchmark PRIVATE
     Boost::container
 )
 
+target_link_libraries(event_manager_scaling_benchmark PRIVATE
+    SDL3::SDL3
+    SDL3_image::SDL3_image
+    Boost::unit_test_framework
+    Boost::container
+)
+
 # Link Thread-safe AI Manager tests with required libraries
 target_link_libraries(thread_safe_ai_manager_tests PRIVATE
     SDL3::SDL3
@@ -218,6 +241,7 @@ add_test(NAME SaveManagerTests COMMAND save_manager_tests)
 add_test(NAME ThreadSystemTests COMMAND thread_system_tests)
 add_test(NAME AIOptimizationTests COMMAND ai_optimization_tests)
 add_test(NAME AIScalingBenchmark COMMAND ai_scaling_benchmark)
+add_test(NAME EventManagerScalingBenchmark COMMAND event_manager_scaling_benchmark)
 add_test(NAME ThreadSafeAIManagerTests COMMAND thread_safe_ai_manager_tests)
 add_test(NAME ThreadSafeAIIntegrationTests COMMAND thread_safe_ai_integration_tests)
 add_test(NAME EventManagerTests COMMAND event_manager_tests)

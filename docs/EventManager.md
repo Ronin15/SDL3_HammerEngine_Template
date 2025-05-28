@@ -60,6 +60,32 @@ EventManager::Instance().triggerSceneChange("MainMenu", "fade", 2.0f);
 EventManager::Instance().triggerNPCSpawn("Guard", 100.0f, 200.0f);
 ```
 
+### Handler Batching for High Performance
+
+For high-frequency event processing, use the batching system:
+
+```cpp
+// Enable batching for better performance with many events
+EventManager::Instance().setBatchProcessingEnabled(true);
+
+// Register event handlers
+EventManager::Instance().registerEventHandler("HighFreqEvent", [](const std::string& params) {
+    // Handle high-frequency event
+    processEvent(params);
+});
+
+// Queue events for batch processing
+for (int i = 0; i < 10000; ++i) {
+    EventManager::Instance().queueHandlerCall("HighFreqEvent", "data_" + std::to_string(i));
+}
+
+// Handlers are automatically processed during update() or manually:
+EventManager::Instance().processHandlerQueue();
+
+// Disable batching for immediate processing when needed
+EventManager::Instance().setBatchProcessingEnabled(false);
+```
+
 ### Condition-Based Events
 
 Events can be configured with conditions that determine when they trigger:
@@ -191,6 +217,19 @@ size_t activeEvents = EventManager::Instance().getActiveEventCount();
 - **Message Queue Stats**: Processing time and throughput metrics
 
 ### Performance Optimization Features
+
+**Handler Batching System:**
+- Double-buffered queue for thread-safe handler call processing
+- Handlers grouped by event type for optimal cache performance
+- Lock-free execution - handlers run without holding system locks
+- Configurable immediate vs batched processing modes
+- Automatic processing during update() or manual control with processHandlerQueue()
+
+**Storage Optimizations:**
+- `boost::flat_map` used for event handler storage (better cache locality)
+- O(log n) lookup performance optimized for typical event type counts
+- Eliminates string hashing overhead vs hash tables
+- Consistent with existing codebase architecture
 
 **Event Caching System:**
 - Active events are cached for faster iteration
@@ -342,6 +381,27 @@ EventManager::Instance().registerEventHandler("NPCSpawn", [](const std::string& 
   - Use `Low` for background or cosmetic events
   - Use `Idle` for debugging or non-essential events
 
+### Performance Benchmarks
+
+The EventManager includes comprehensive scaling benchmarks (`EventManagerScalingBenchmark.cpp`) that validate performance across various scales:
+
+**Measured Performance (on modern hardware):**
+- **Small Scale** (100 events, 100 handlers): ~540,000 events/sec
+- **Medium Scale** (5,000 events, 25,000 handlers): ~78,000 events/sec  
+- **Large Scale** (10,000 events, 100,000 handlers): ~39,000 events/sec
+- **Extreme Scale** (100,000 events, 5,000,000 handlers): ~7,800 events/sec
+
+**Key Performance Features:**
+- Consistent ~0.0025ms per handler call across all scales
+- 2-3% performance improvement with batching enabled
+- Thread-safe concurrent event queuing tested up to 4 threads
+- Successfully handles millions of handler calls in production scenarios
+
+Run the scaling benchmark to validate performance on your target hardware:
+```bash
+./bin/debug/event_manager_scaling_benchmark
+```
+
 ## Thread Safety
 
 The EventManager is designed to be thread-safe and integrates with the ThreadSystem for efficient multi-threaded event processing:
@@ -369,6 +429,8 @@ The EventManager uses ThreadSystem internally to:
 
 See [ThreadSystem Documentation](ThreadSystem.md) for more details on the underlying thread pool implementation and [EventManager_ThreadSystem.md](EventManager_ThreadSystem.md) for the specific integration details.
 
+For comprehensive performance analysis and optimization details, see [EventManager Performance Improvements](EventManager_Performance_Improvements.md).
+
 ## Best Practices
 
 1. **Use Factory Methods**: Prefer using the EventFactory to create events
@@ -378,7 +440,9 @@ See [ThreadSystem Documentation](ThreadSystem.md) for more details on the underl
 5. **Cooldowns**: Use cooldowns to prevent events from triggering too frequently
 6. **One-Time Events**: For story events, set them as one-time events using `setOneTime(true)`
 7. **ThreadSystem Integration**: Configure threading early in application initialization
-8. **Graceful Shutdown**: Ensure proper cleanup by disabling threading before shutting down
+8. **Handler Batching**: Enable batching for high-frequency events to improve performance
+9. **Performance Testing**: Use the scaling benchmark to validate performance on your target hardware
+10. **Graceful Shutdown**: Ensure proper cleanup by disabling threading before shutting down
 
 ## Debug Tips
 

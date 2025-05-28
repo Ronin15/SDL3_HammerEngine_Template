@@ -163,6 +163,7 @@ private:
 
     // Tracking spawned entities
     std::vector<EntityWeakPtr> m_spawnedEntities;
+    std::vector<EntityPtr> m_strongEntityRefs; // Keep NPCs alive
 
     // Helper methods
     bool checkProximityCondition() const;
