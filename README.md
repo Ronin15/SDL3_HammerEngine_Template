@@ -291,14 +291,6 @@ A full-featured demonstration and benchmarking framework for the AI system:
 - Extensible AI Behaviors: Easily add or extend behaviors (e.g., Wander, Patrol with offscreen waypoints, Chase) with AIManager’s plugin-like architecture.
 - Lifecycle Management: Handles initialization (enter()), per-frame updates (update()), rendering (render()), and resource cleanup (exit()) cleanly as a GameState.
 - Thread-Safe AI: Integrates with the ThreadSystem for scalable, multi-threaded AI updates.
-
-- Demo Controls:
-  - **[1]**: Switch all NPCs to Wander
-  - **[2]**: Switch all NPCs to Patrol
-  - **[3]**: Switch all NPCs to Chase
-  - **[SPACE]**: Pause/Resume all AI
-  - **[B]**: Exit to Main Menu
-
 - The AIDemoState serves as a reference and stress test for AI scalability, behavior switching, and real-time control, mirroring the structure and purpose of EventDemoState for the event system.
 
 See docs/AIManager.md, include/gameStates/AIDemoState.hpp, and src/gameStates/AIDemoState.cpp for full API and code examples.
