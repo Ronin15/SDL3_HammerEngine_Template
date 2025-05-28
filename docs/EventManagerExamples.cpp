@@ -104,7 +104,7 @@ void npcSpawnEventExample() {
     EventManager::Instance().registerEvent("GuardSpawn", spawnEvent);
     
     // Later, to spawn an NPC immediately:
-    EventManager::Instance().spawnNPC("Guard", 100.0f, 200.0f);
+    EventManager::Instance().triggerNPCSpawn("Guard");
 }
 
 // Example 4: Using EventManager for simplified integration
@@ -115,7 +115,7 @@ void eventManagerExample() {
     // Register common event types with simplified API
     EventManager::Instance().registerWeatherEvent("Rain", "Rainy", 0.7f);
     EventManager::Instance().registerSceneChangeEvent("ToMainMenu", "MainMenu", "fade");
-    EventManager::Instance().registerNPCSpawnEvent("GuardSpawn", "Guard", 3, 10.0f);
+    // registerNPCSpawnEvent removed - handlers now manage all NPC creation directly
     
     // Register event handlers for system integration
     EventManager::Instance().registerEventHandler("WeatherChange", [](const std::string& weatherType) {
@@ -126,7 +126,7 @@ void eventManagerExample() {
     // Trigger events directly
     EventManager::Instance().triggerWeatherChange("Rainy", 3.0f);
     EventManager::Instance().triggerSceneChange("MainMenu", "fade", 1.0f);
-    EventManager::Instance().triggerNPCSpawn("Guard", 100.0f, 200.0f);
+    EventManager::Instance().triggerNPCSpawn("Guard");
     
     // Don't forget to update the event manager each frame
     EventManager::Instance().update();

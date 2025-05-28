@@ -74,7 +74,7 @@ private:
 
     DemoPhase m_currentPhase{DemoPhase::Initialization};
     float m_phaseTimer{0.0f};
-    float m_phaseDuration{5.0f}; // 5 seconds per phase
+    float m_phaseDuration{8.0f}; // 8 seconds per phase for better pacing
     bool m_autoMode{true}; // Auto-advance through demos - enabled for testing
 
     // Entities
@@ -102,6 +102,8 @@ private:
         WeatherType::Snowy
     };
     size_t m_currentWeatherIndex{0};
+    float m_weatherChangeInterval{4.0f}; // Time between weather changes
+    size_t m_weatherChangesShown{0}; // Track how many weather types shown
 
     // NPC spawn demo variables
     std::vector<std::string> m_npcTypes{"Guard", "Villager", "Merchant", "Warrior"};
@@ -145,7 +147,7 @@ private:
     std::chrono::steady_clock::time_point m_demoLastTime{};
     float m_totalDemoTime{0.0f};
     float m_lastEventTriggerTime{0.0f};
-    float m_eventFireInterval{3.0f}; // Minimum seconds between event triggers
+    float m_eventFireInterval{4.0f}; // Minimum seconds between event triggers - slower for better visibility
     bool m_limitMessageShown{false}; // Track if limit message has been shown
 
     // Event manager accessed via singleton - no raw pointer needed

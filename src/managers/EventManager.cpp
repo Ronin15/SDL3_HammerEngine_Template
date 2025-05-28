@@ -4,10 +4,8 @@
 */
 
 #include "managers/EventManager.hpp"
-#include "events/Event.hpp"
 #include "events/WeatherEvent.hpp"
 #include "events/SceneChangeEvent.hpp"
-#include "events/NPCSpawnEvent.hpp"
 #include "core/ThreadSystem.hpp"
 #include <algorithm>
 #include <utility>
@@ -393,19 +391,7 @@ void EventManager::registerSceneChangeEvent(const std::string& name, const std::
     std::cout << "Registered scene change event: " << name << " targeting scene: " << targetScene << std::endl;
 }
 
-void EventManager::registerNPCSpawnEvent(const std::string& name, const std::string& npcType,
-                                       int count, float spawnRadius) {
-    // Create the NPC spawn parameters
-    SpawnParameters params(npcType, count, spawnRadius);
-
-    // Create the NPC spawn event
-    auto spawnEvent = std::make_shared<NPCSpawnEvent>(name, params);
-
-    // Register the event
-    registerEvent(name, std::static_pointer_cast<Event>(spawnEvent));
-
-    std::cout << "Registered NPC spawn event: " << name << " for NPC type: " << npcType << std::endl;
-}
+// registerNPCSpawnEvent method removed - handlers now manage all NPC creation directly
 
 void EventManager::triggerWeatherChange(const std::string& weatherType, float transitionTime) {
     // Use specialized method
@@ -439,18 +425,21 @@ void EventManager::triggerSceneChange(const std::string& sceneId, const std::str
     }
 }
 
-void EventManager::triggerNPCSpawn(const std::string& npcType, float x, float y) {
-    // Use specialized method
-    spawnNPC(npcType, x, y);
-
-    // Also notify any registered handlers for NPC spawn events
+void EventManager::triggerNPCSpawn(const std::string& npcType) {
+    EVENT_LOG("Triggering NPC spawn: " << npcType);
+    
+    // Simplified single-path: only call handlers for clean architecture
+    // Handlers have full responsibility for NPC creation and positioning
     {
         std::lock_guard<std::mutex> lock(m_eventHandlersMutex);
         auto it = m_eventHandlers.find("NPCSpawn");
         if (it != m_eventHandlers.end()) {
+            // Pass only NPC type - handlers determine positioning
             for (const auto& handler : it->second) {
                 handler(npcType);
             }
+        } else {
+            EVENT_LOG("Warning: No NPC spawn handlers registered");
         }
     }
 }
@@ -506,13 +495,8 @@ void EventManager::registerSystemEventHandlers() {
         std::cout << "Changing game state to: " << params << std::endl;
     });
 
-    // NPC spawn handler
-    registerEventHandler("NPCSpawn", [](const std::string& params) {
-        std::cout << "System handling NPC spawn: " << params << std::endl;
-
-        // Here we would request entity creation
-        std::cout << "Creating NPC of type: " << params << std::endl;
-    });
+    // NPC spawn handler removed - game states handle NPC creation directly
+    // This prevents duplicate NPC creation and maintains clean architecture
 }
 
 void EventManager::updateEventTimers(float deltaTime) {
@@ -1268,24 +1252,4 @@ bool EventManager::changeScene(const std::string& sceneId, const std::string& tr
 }
 
 
-// NPC spawn methods
-bool EventManager::spawnNPC(const std::string& npcType, float x, float y) {
-    EVENT_LOG("Spawning NPC of type: " << npcType << " at position (" << x << ", " << y << ")");
-
-    // Send spawn request to NPCSpawn events for handling
-    auto spawnEvents = getEventsByType("NPCSpawn");
-    if (spawnEvents.empty()) {
-        EVENT_LOG("Warning: No NPC spawn events registered");
-        return false;
-    }
-
-    // Send a special formatted message to all NPC spawn events
-    std::string message = "SPAWN_REQUEST:" + npcType + ":" + std::to_string(x) + ":" + std::to_string(y);
-    for (auto event : spawnEvents) {
-        if (event) {
-            event->onMessage(message);
-        }
-    }
-
-    return true;
-}
+// NPC spawn methods removed - handlers now manage all NPC creation directly

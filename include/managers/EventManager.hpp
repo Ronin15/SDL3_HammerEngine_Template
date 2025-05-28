@@ -131,15 +131,7 @@ public:
     void registerSceneChangeEvent(const std::string& name, const std::string& targetScene, 
                                  const std::string& transitionType = "fade");
     
-    /**
-     * @brief Register an NPC spawn event
-     * @param name Unique name for the event
-     * @param npcType Type of NPC to spawn
-     * @param count Number of NPCs to spawn
-     * @param spawnRadius Radius around spawn point
-     */
-    void registerNPCSpawnEvent(const std::string& name, const std::string& npcType, 
-                              int count = 1, float spawnRadius = 0.0f);
+    // registerNPCSpawnEvent removed - handlers now manage all NPC creation directly
 
     /**
      * @brief Register default events for common game scenarios
@@ -174,10 +166,8 @@ public:
     /**
      * @brief Trigger an immediate NPC spawn
      * @param npcType Type of NPC to spawn
-     * @param x X coordinate for spawn position
-     * @param y Y coordinate for spawn position
      */
-    void triggerNPCSpawn(const std::string& npcType, float x, float y);
+    void triggerNPCSpawn(const std::string& npcType);
 
     /**
      * @brief Configure threading options for event processing
@@ -319,16 +309,7 @@ public:
      */
     bool changeScene(const std::string& sceneId, const std::string& transitionType = "fade", float transitionTime = 1.0f);
 
-    // NPC spawn methods
-    /**
-     * @brief Spawn an NPC at a specific position
-     * @param npcType Type of NPC to spawn
-     * @param x X coordinate
-     * @param y Y coordinate
-     * @return True if successful, false otherwise
-     * @thread_safety Thread-safe, can be called from any thread
-     */
-    bool spawnNPC(const std::string& npcType, float x, float y);
+    // NPC spawn methods removed - handlers now manage all NPC creation directly
 
     // Utility methods
     /**
