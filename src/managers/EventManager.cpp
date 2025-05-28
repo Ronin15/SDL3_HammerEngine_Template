@@ -350,6 +350,80 @@ void EventManager::registerEventHandler(const std::string& eventType, EventHandl
     EVENT_LOG("Registered event handler for event type: " << eventType);
 }
 
+void EventManager::setBatchProcessingEnabled(bool enabled) {
+    m_batchProcessingEnabled.store(enabled);
+    EVENT_LOG("Handler batch processing " << (enabled ? "enabled" : "disabled"));
+}
+
+void EventManager::queueHandlerCall(const std::string& eventType, const std::string& params) {
+    if (m_batchProcessingEnabled.load()) {
+        m_handlerQueue.enqueueHandlerCall(eventType, params);
+    } else {
+        // Process immediately if batching is disabled
+        std::vector<EventHandlerFunc> handlersToCall;
+        {
+            std::lock_guard<std::mutex> lock(m_eventHandlersMutex);
+            auto it = m_eventHandlers.find(eventType);
+            if (it != m_eventHandlers.end()) {
+                handlersToCall = it->second;
+            }
+        }
+        for (const auto& handler : handlersToCall) {
+            handler(params);
+        }
+    }
+}
+
+void EventManager::processHandlerQueue() {
+    auto startTime = getCurrentTimeNanos();
+    
+    // Swap buffers to get current processing queue
+    m_handlerQueue.swapBuffers();
+    
+    const auto& handlerCalls = m_handlerQueue.getProcessingQueue();
+    if (handlerCalls.empty()) {
+        return;
+    }
+    
+    // Group handler calls by event type for better cache performance
+    boost::container::flat_map<std::string, std::vector<std::string>> batchedCalls;
+    for (const auto& call : handlerCalls) {
+        batchedCalls[call.eventType].push_back(call.params);
+    }
+    
+    // Process each event type's handlers in batch
+    size_t totalHandlersCalled = 0;
+    for (const auto& [eventType, paramsList] : batchedCalls) {
+        std::vector<EventHandlerFunc> handlersToCall;
+        {
+            std::lock_guard<std::mutex> lock(m_eventHandlersMutex);
+            auto it = m_eventHandlers.find(eventType);
+            if (it != m_eventHandlers.end()) {
+                handlersToCall = it->second;
+            }
+        }
+        
+        // Execute all handlers for this event type with all queued params
+        for (const auto& handler : handlersToCall) {
+            for (const auto& params : paramsList) {
+                handler(params);
+                totalHandlersCalled++;
+            }
+        }
+    }
+    
+    // Update performance stats
+    auto endTime = getCurrentTimeNanos();
+    double processingTimeMs = (endTime - startTime) / 1000000.0;
+    m_handlerBatchStats.addSample(processingTimeMs);
+    
+    EVENT_LOG("Processed " << handlerCalls.size() << " queued handler calls (" 
+              << totalHandlersCalled << " total handler executions) in " 
+              << processingTimeMs << "ms");
+    
+    (void)totalHandlersCalled; // Suppress unused variable warning
+}
+
 void EventManager::registerWeatherEvent(const std::string& name, const std::string& weatherType, float intensity) {
     // Create the weather event
     auto weatherEvent = std::make_shared<WeatherEvent>(name, weatherType);
@@ -410,14 +484,21 @@ void EventManager::triggerWeatherChange(const std::string& weatherType, float tr
     // Use specialized method
     changeWeather(weatherType, transitionTime);
 
-    // Also notify any registered handlers for weather events
-    {
-        std::lock_guard<std::mutex> lock(m_eventHandlersMutex);
-        auto it = m_eventHandlers.find("WeatherChange");
-        if (it != m_eventHandlers.end()) {
-            for (const auto& handler : it->second) {
-                handler(weatherType);
+    // Notify handlers (batched or immediate based on settings)
+    if (m_batchProcessingEnabled.load()) {
+        queueHandlerCall("WeatherChange", weatherType);
+    } else {
+        std::vector<EventHandlerFunc> handlersToCall;
+        {
+            std::lock_guard<std::mutex> lock(m_eventHandlersMutex);
+            auto it = m_eventHandlers.find("WeatherChange");
+            if (it != m_eventHandlers.end()) {
+                handlersToCall = it->second;  // Copy handlers
             }
+        }
+        // Execute handlers without holding lock
+        for (const auto& handler : handlersToCall) {
+            handler(weatherType);
         }
     }
 }
@@ -426,14 +507,21 @@ void EventManager::triggerSceneChange(const std::string& sceneId, const std::str
     // Use specialized method
     changeScene(sceneId, transitionType, duration);
 
-    // Notify any registered handlers for scene change events
-    {
-        std::lock_guard<std::mutex> lock(m_eventHandlersMutex);
-        auto it = m_eventHandlers.find("SceneChange");
-        if (it != m_eventHandlers.end()) {
-            for (const auto& handler : it->second) {
-                handler(sceneId);
+    // Notify handlers (batched or immediate based on settings)
+    if (m_batchProcessingEnabled.load()) {
+        queueHandlerCall("SceneChange", sceneId);
+    } else {
+        std::vector<EventHandlerFunc> handlersToCall;
+        {
+            std::lock_guard<std::mutex> lock(m_eventHandlersMutex);
+            auto it = m_eventHandlers.find("SceneChange");
+            if (it != m_eventHandlers.end()) {
+                handlersToCall = it->second;  // Copy handlers
             }
+        }
+        // Execute handlers without holding lock
+        for (const auto& handler : handlersToCall) {
+            handler(sceneId);
         }
     }
 }
@@ -445,13 +533,21 @@ void EventManager::triggerNPCSpawn(const std::string& npcType, float x, float y)
     spawnNPC(npcType, x, y);
     
     // Also notify any registered handlers for compatibility
-    {
-        std::lock_guard<std::mutex> lock(m_eventHandlersMutex);
-        auto it = m_eventHandlers.find("NPCSpawn");
-        if (it != m_eventHandlers.end()) {
-            for (const auto& handler : it->second) {
-                handler(npcType);
+    // Notify handlers (batched or immediate based on settings)
+    if (m_batchProcessingEnabled.load()) {
+        queueHandlerCall("NPCSpawn", npcType);
+    } else {
+        std::vector<EventHandlerFunc> handlersToCall;
+        {
+            std::lock_guard<std::mutex> lock(m_eventHandlersMutex);
+            auto it = m_eventHandlers.find("NPCSpawn");
+            if (it != m_eventHandlers.end()) {
+                handlersToCall = it->second;  // Copy handlers
             }
+        }
+        // Execute handlers without holding lock
+        for (const auto& handler : handlersToCall) {
+            handler(npcType);
         }
     }
 }
@@ -712,6 +808,9 @@ void EventManager::update() {
 
     // Process any pending messages first
     processMessageQueue();
+
+    // Process any queued handler calls in batches
+    processHandlerQueue();
 
     // Process system-level events
     processSystemEvents();

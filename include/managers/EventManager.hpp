@@ -154,6 +154,28 @@ public:
      */
     void registerEventHandler(const std::string& eventType, EventHandlerFunc handler);
     
+    // Handler batching methods
+    /**
+     * @brief Enable or disable batched handler processing
+     * @param enabled If true, handlers are queued and processed in batches
+     */
+    void setBatchProcessingEnabled(bool enabled);
+    
+    /**
+     * @brief Process all queued handler calls in batches
+     * This happens automatically during update() but can be called manually
+     * @thread_safety Thread-safe, can be called from any thread
+     */
+    void processHandlerQueue();
+    
+    /**
+     * @brief Queue a handler call for batch processing
+     * @param eventType Type of event
+     * @param params Parameters to pass to handlers
+     * @thread_safety Thread-safe, can be called from any thread
+     */
+    void queueHandlerCall(const std::string& eventType, const std::string& params);
+    
     // Direct trigger methods
     /**
      * @brief Trigger an immediate weather change
@@ -444,8 +466,63 @@ private:
     uint64_t m_lastUpdateTime{0};
     
     // Event handlers for different event types
-    std::unordered_map<std::string, std::vector<EventHandlerFunc>> m_eventHandlers{};
+    boost::container::flat_map<std::string, std::vector<EventHandlerFunc>> m_eventHandlers{};
     mutable std::mutex m_eventHandlersMutex{};
+    
+    // Handler batching system for performance
+    struct QueuedHandlerCall {
+        std::string eventType;
+        std::string params;
+        uint64_t timestamp{0};
+        
+        QueuedHandlerCall() = default;
+        QueuedHandlerCall(const std::string& type, const std::string& parameters, uint64_t time)
+            : eventType(type), params(parameters), timestamp(time) {}
+    };
+    
+    // Thread-safe handler queue with double-buffering
+    class ThreadSafeHandlerQueue {
+    public:
+        void enqueueHandlerCall(const std::string& eventType, const std::string& params) {
+            std::lock_guard<std::mutex> lock(m_incomingMutex);
+            m_incomingQueue.emplace_back(eventType, params, getCurrentTimeNanos());
+        }
+        
+        void swapBuffers() {
+            if (m_swapInProgress.exchange(true)) return;
+            
+            std::lock_guard<std::mutex> lock(m_incomingMutex);
+            m_processingQueue.clear();
+            m_processingQueue.swap(m_incomingQueue);
+            
+            m_swapInProgress.store(false);
+        }
+        
+        const std::vector<QueuedHandlerCall>& getProcessingQueue() const {
+            return m_processingQueue;
+        }
+        
+        bool isEmpty() const {
+            std::lock_guard<std::mutex> lock(m_incomingMutex);
+            return m_incomingQueue.empty() && m_processingQueue.empty();
+        }
+        
+        void clear() {
+            std::lock_guard<std::mutex> lock(m_incomingMutex);
+            m_incomingQueue.clear();
+            m_processingQueue.clear();
+        }
+        
+    private:
+        std::vector<QueuedHandlerCall> m_incomingQueue;
+        std::vector<QueuedHandlerCall> m_processingQueue;
+        mutable std::mutex m_incomingMutex;
+        std::atomic<bool> m_swapInProgress{false};
+    };
+    
+    ThreadSafeHandlerQueue m_handlerQueue;
+    std::atomic<bool> m_batchProcessingEnabled{true};
+    PerformanceStats m_handlerBatchStats;
     
     // Helper methods for EventSystem functionality
     void registerSystemEventHandlers();

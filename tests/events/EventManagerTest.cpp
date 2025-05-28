@@ -311,6 +311,11 @@ BOOST_FIXTURE_TEST_CASE(NPCSpawnEvents, EventManagerFixture) {
 
     // Test NPC spawn trigger
     EventManager::Instance().triggerNPCSpawn("Guard", 100.0f, 200.0f);
+    
+    // Process queued handler calls
+    EventManager::Instance().update();
+    std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    
     BOOST_CHECK(handlerCalled);
 }
 

@@ -10,6 +10,7 @@
 #include "managers/FontManager.hpp"
 #include "managers/AIManager.hpp"
 #include "managers/EventManager.hpp"
+#include "events/NPCSpawnEvent.hpp"
 #include "ai/behaviors/WanderBehavior.hpp"
 #include "ai/behaviors/PatrolBehavior.hpp"
 #include "ai/behaviors/ChaseBehavior.hpp"
@@ -763,9 +764,46 @@ void EventDemoState::onWeatherChanged(const std::string& message) {
 void EventDemoState::onNPCSpawned(const std::string& message) {
     addLogEntry("NPC Spawn Event: " + message);
     
-    // NPCSpawnEvent now handles creation - this handler just responds to notifications
-    // Could be used for game-specific responses like UI updates, sound effects, etc.
-    std::cout << "EventDemoState received NPC spawn notification: " << message << std::endl;
+    // NPCSpawnEvent creates the NPC, but we need to track it for rendering and AI assignment
+    std::string npcType = message;
+    
+    // Get recently spawned NPCs from the event system
+    auto spawnEvents = EventManager::Instance().getEventsByType("NPCSpawn");
+    
+    for (auto event : spawnEvents) {
+        auto npcSpawnEvent = std::dynamic_pointer_cast<NPCSpawnEvent>(event);
+        if (npcSpawnEvent) {
+            auto spawnedEntities = npcSpawnEvent->getSpawnedEntities();
+            
+            // Find the most recently spawned NPC that matches our type and add it to tracking
+            for (auto it = spawnedEntities.rbegin(); it != spawnedEntities.rend(); ++it) {
+                if (auto entityPtr = it->lock()) {
+                    auto npc = std::dynamic_pointer_cast<NPC>(entityPtr);
+                    if (npc) {
+                        // Check if we already have this NPC tracked
+                        bool alreadyTracked = false;
+                        for (const auto& trackedNpc : m_spawnedNPCs) {
+                            if (trackedNpc == npc) {
+                                alreadyTracked = true;
+                                break;
+                            }
+                        }
+                        
+                        if (!alreadyTracked) {
+                            // Assign AI behavior based on NPC type
+                            assignAIBehaviorToNPC(npc, npcType);
+                            
+                            // Add to our tracking list for rendering
+                            m_spawnedNPCs.push_back(npc);
+                            
+                            std::cout << "EventDemoState tracked and assigned AI to " << npcType << std::endl;
+                            return; // Only track the most recent one
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 void EventDemoState::onSceneChanged(const std::string& message) {

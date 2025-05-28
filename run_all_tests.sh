@@ -16,6 +16,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Process command line arguments
 VERBOSE=false
+RUN_CORE=true
+RUN_BENCHMARKS=true
 
 for arg in "$@"; do
   case $arg in
@@ -23,27 +25,72 @@ for arg in "$@"; do
       VERBOSE=true
       shift
       ;;
+    --core-only)
+      RUN_CORE=true
+      RUN_BENCHMARKS=false
+      shift
+      ;;
+    --benchmarks-only)
+      RUN_CORE=false
+      RUN_BENCHMARKS=true
+      shift
+      ;;
+    --no-benchmarks)
+      RUN_CORE=true
+      RUN_BENCHMARKS=false
+      shift
+      ;;
     --help)
       echo -e "${BLUE}All Tests Runner${NC}"
       echo -e "Usage: ./run_all_tests.sh [options]"
       echo -e "\nOptions:"
-      echo -e "  --verbose    Run tests with verbose output"
-      echo -e "  --help       Show this help message"
+      echo -e "  --verbose         Run tests with verbose output"
+      echo -e "  --core-only       Run only core functionality tests (fast)"
+      echo -e "  --benchmarks-only Run only performance benchmarks (slow)"
+      echo -e "  --no-benchmarks   Run core tests but skip benchmarks"
+      echo -e "  --help            Show this help message"
+      echo -e "\nTest Categories:"
+      echo -e "  Core Tests:       Thread, AI, Save, Event functionality tests"
+      echo -e "  Benchmarks:       AI scaling and EventManager scaling benchmarks"
+      echo -e "\nExecution Time:"
+      echo -e "  Core tests:       ~2-5 minutes total"
+      echo -e "  Benchmarks:       ~5-10 minutes total"
+      echo -e "  All tests:        ~7-15 minutes total"
+      echo -e "\nExamples:"
+      echo -e "  ./run_all_tests.sh                 # Run all tests"
+      echo -e "  ./run_all_tests.sh --core-only     # Quick validation"
+      echo -e "  ./run_all_tests.sh --no-benchmarks # Skip slow benchmarks"
+      echo -e "  ./run_all_tests.sh --benchmarks-only --verbose # Performance testing"
       exit 0
       ;;
   esac
 done
 
-# Find all test shell scripts in the directory
-TEST_SCRIPTS=(
+# Define test categories
+# Core functionality tests (fast execution)
+CORE_TEST_SCRIPTS=(
   "$SCRIPT_DIR/run_thread_tests.sh"
   "$SCRIPT_DIR/run_thread_safe_ai_tests.sh"
   "$SCRIPT_DIR/run_thread_safe_ai_integration_tests.sh"
-  "$SCRIPT_DIR/run_ai_benchmark.sh"
   "$SCRIPT_DIR/run_ai_optimization_tests.sh"
   "$SCRIPT_DIR/run_save_tests.sh"
   "$SCRIPT_DIR/run_event_tests.sh"
 )
+
+# Performance scaling benchmarks (slow execution)
+BENCHMARK_TEST_SCRIPTS=(
+  "$SCRIPT_DIR/run_event_scaling_benchmark.sh"
+  "$SCRIPT_DIR/run_ai_benchmark.sh"
+)
+
+# Build the test scripts array based on user selection
+TEST_SCRIPTS=()
+if [ "$RUN_CORE" = true ]; then
+  TEST_SCRIPTS+=("${CORE_TEST_SCRIPTS[@]}")
+fi
+if [ "$RUN_BENCHMARKS" = true ]; then
+  TEST_SCRIPTS+=("${BENCHMARK_TEST_SCRIPTS[@]}")
+fi
 
 # Create a directory for the combined test results
 mkdir -p "$SCRIPT_DIR/test_results/combined"
@@ -67,9 +114,19 @@ run_test_script() {
     args="$args --verbose"
   fi
   
-  echo -e "\n${MAGENTA}=====================================================${NC}"
-  echo -e "${CYAN}Running test script: ${YELLOW}$script_name${NC}"
-  echo -e "${MAGENTA}=====================================================${NC}"
+  # Special handling for scaling benchmarks
+  local is_benchmark=false
+  if [[ "$script_name" == *"benchmark"* ]] || [[ "$script_name" == *"scaling"* ]]; then
+    is_benchmark=true
+    echo -e "\n${MAGENTA}=====================================================${NC}"
+    echo -e "${CYAN}Running performance benchmark: ${YELLOW}$script_name${NC}"
+    echo -e "${MAGENTA}This may take several minutes...${NC}"
+    echo -e "${MAGENTA}=====================================================${NC}"
+  else
+    echo -e "\n${MAGENTA}=====================================================${NC}"
+    echo -e "${CYAN}Running test script: ${YELLOW}$script_name${NC}"
+    echo -e "${MAGENTA}=====================================================${NC}"
+  fi
   
   # Check if the script exists and is executable
   if [ ! -f "$script" ]; then
@@ -88,12 +145,20 @@ run_test_script() {
   local result=$?
   
   if [ $result -eq 0 ]; then
-    echo -e "\n${GREEN}✓ Test script $script_name completed successfully${NC}"
+    if [ "$is_benchmark" = true ]; then
+      echo -e "\n${GREEN}✓ Performance benchmark $script_name completed successfully${NC}"
+    else
+      echo -e "\n${GREEN}✓ Test script $script_name completed successfully${NC}"
+    fi
     echo "PASSED: $script_name" >> "$COMBINED_RESULTS"
     ((PASSED_COUNT++))
     return 0
   else
-    echo -e "\n${RED}✗ Test script $script_name failed with exit code $result${NC}"
+    if [ "$is_benchmark" = true ]; then
+      echo -e "\n${RED}✗ Performance benchmark $script_name failed with exit code $result${NC}"
+    else
+      echo -e "\n${RED}✗ Test script $script_name failed with exit code $result${NC}"
+    fi
     echo "FAILED: $script_name (exit code: $result)" >> "$COMBINED_RESULTS"
     OVERALL_SUCCESS=false
     ((FAILED_COUNT++))
@@ -101,18 +166,40 @@ run_test_script() {
   fi
 }
 
-# Print header
+# Print header with execution plan
 echo -e "${BLUE}======================================================${NC}"
-echo -e "${BLUE}              Running All Test Scripts                ${NC}"
+echo -e "${BLUE}              Running Test Scripts                    ${NC}"
 echo -e "${BLUE}======================================================${NC}"
-echo -e "${YELLOW}Found ${#TEST_SCRIPTS[@]} test scripts to run${NC}"
+
+# Show execution plan
+if [ "$RUN_CORE" = true ] && [ "$RUN_BENCHMARKS" = true ]; then
+  echo -e "${YELLOW}Execution Plan: All tests (${#CORE_TEST_SCRIPTS[@]} core + ${#BENCHMARK_TEST_SCRIPTS[@]} benchmarks)${NC}"
+  echo -e "${YELLOW}Note: Performance benchmarks will run last and may take several minutes${NC}"
+elif [ "$RUN_CORE" = true ]; then
+  echo -e "${YELLOW}Execution Plan: Core functionality tests only (${#CORE_TEST_SCRIPTS[@]} tests)${NC}"
+  echo -e "${GREEN}Fast execution mode - skipping performance benchmarks${NC}"
+elif [ "$RUN_BENCHMARKS" = true ]; then
+  echo -e "${YELLOW}Execution Plan: Performance benchmarks only (${#BENCHMARK_TEST_SCRIPTS[@]} benchmarks)${NC}"
+  echo -e "${YELLOW}Note: This will take several minutes to complete${NC}"
+else
+  echo -e "${RED}Error: No test categories selected${NC}"
+  exit 1
+fi
+
+echo -e "${CYAN}Found ${#TEST_SCRIPTS[@]} test scripts to run${NC}"
 
 # Run each test script
 for script in "${TEST_SCRIPTS[@]}"; do
   run_test_script "$script"
   
-  # Add a small delay between tests to ensure resources are released
-  sleep 2
+  # Add longer delay for benchmarks to ensure proper resource cleanup
+  if [[ "$(basename "$script")" == *"benchmark"* ]] || [[ "$(basename "$script")" == *"scaling"* ]]; then
+    echo -e "${YELLOW}Allowing extra time for resource cleanup after benchmark...${NC}"
+    sleep 5
+  else
+    # Add a small delay between tests to ensure resources are released
+    sleep 2
+  fi
 done
 
 # Print summary
@@ -130,12 +217,25 @@ echo "Passed: $PASSED_COUNT" >> "$COMBINED_RESULTS"
 echo "Failed: $FAILED_COUNT" >> "$COMBINED_RESULTS"
 echo "Completed at: $(date)" >> "$COMBINED_RESULTS"
 
-# Exit with appropriate status code
+# Exit with appropriate status code and summary
 if [ "$OVERALL_SUCCESS" = true ]; then
-  echo -e "\n${GREEN}All test scripts completed successfully!${NC}"
+  if [ "$RUN_CORE" = true ] && [ "$RUN_BENCHMARKS" = true ]; then
+    echo -e "\n${GREEN}All test scripts completed successfully!${NC}"
+  elif [ "$RUN_CORE" = true ]; then
+    echo -e "\n${GREEN}All core functionality tests completed successfully!${NC}"
+    echo -e "${CYAN}To run performance benchmarks: ./run_all_tests.sh --benchmarks-only${NC}"
+  elif [ "$RUN_BENCHMARKS" = true ]; then
+    echo -e "\n${GREEN}All performance benchmarks completed successfully!${NC}"
+  fi
   exit 0
 else
-  echo -e "\n${RED}Some test scripts failed. Please check the individual test results.${NC}"
+  if [ "$RUN_CORE" = true ] && [ "$RUN_BENCHMARKS" = true ]; then
+    echo -e "\n${RED}Some test scripts failed. Please check the individual test results.${NC}"
+  elif [ "$RUN_CORE" = true ]; then
+    echo -e "\n${RED}Some core functionality tests failed. Please check the individual test results.${NC}"
+  elif [ "$RUN_BENCHMARKS" = true ]; then
+    echo -e "\n${RED}Some performance benchmarks failed. Please check the individual test results.${NC}"
+  fi
   echo -e "Combined results saved to: ${YELLOW}$COMBINED_RESULTS${NC}"
   exit 1
 fi

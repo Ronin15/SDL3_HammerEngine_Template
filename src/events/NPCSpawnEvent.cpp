@@ -173,8 +173,9 @@ void NPCSpawnEvent::onMessage(const std::string& message) {
                     npc->setWanderArea(0.0f, 0.0f, 1800.0f, 1200.0f); // Use reasonable world bounds
                     npc->setBoundsCheckEnabled(false); // Let AI behaviors handle movement
                     
-                    // Track the spawned NPC
+                    // Track the spawned NPC with both weak and strong references
                     m_spawnedEntities.push_back(std::static_pointer_cast<Entity>(npc));
+                    m_strongEntityRefs.push_back(std::static_pointer_cast<Entity>(npc));
                     m_currentSpawnCount++;
                     m_totalSpawned++;
 
@@ -298,6 +299,7 @@ bool NPCSpawnEvent::canRespawn() const {
 
 void NPCSpawnEvent::clearSpawnedEntities() {
     m_spawnedEntities.clear();
+    m_strongEntityRefs.clear();
     m_currentSpawnCount = 0;
 }
 
