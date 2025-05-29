@@ -37,7 +37,7 @@ void ChaseBehavior::init(EntityPtr entity) {
     }
 }
 
-void ChaseBehavior::update(EntityPtr entity) {
+void ChaseBehavior::executeLogic(EntityPtr entity) {
     if (!entity || !m_active) {
         return;
     }
@@ -167,8 +167,6 @@ std::shared_ptr<AIBehavior> ChaseBehavior::clone() const {
     auto cloned = std::make_shared<ChaseBehavior>(target, m_chaseSpeed, m_maxRange, m_minRange);
     cloned->setActive(m_active);
     cloned->setPriority(m_priority);
-    cloned->setUpdateFrequency(m_updateFrequency);
-    cloned->setUpdateDistances(m_maxUpdateDistance, m_mediumUpdateDistance, m_minUpdateDistance);
     return cloned;
 }
 

@@ -69,6 +69,9 @@ bool AIDemoState::enter() {
         }
         m_player->setPosition(Vector2D(m_worldWidth / 2, m_worldHeight / 2));
 
+        // Set player reference in AIManager for distance optimization
+        AIManager::Instance().setPlayerForDistanceOptimization(m_player);
+
         // Create NPCs with AI behaviors
         createNPCs();
 
@@ -148,16 +151,18 @@ void AIDemoState::update() {
             m_player->update();
         }
 
-        // NPCs are updated through AIManager, but we still check for removals or other status changes here
+        // Let AIManager handle all NPC updates (movement + AI logic with distance optimization)
+        AIManager::Instance().updateManagedEntities();
+
+        // Check for any NPC-specific status changes if needed
         for (size_t i = 0; i < m_npcs.size(); i++) {
             auto& npc = m_npcs[i];
             if (!npc) continue;
 
             try {
-                // Call the NPC's update method to handle animation and other entity-specific logic
-                npc->update();
+                // Entity updates now handled by AIManager - just check status here if needed
             } catch (const std::exception& e) {
-                std::cerr << "Forge Game Engine - ERROR: Exception updating NPC " << i << ": " << e.what() << std::endl;
+                std::cerr << "Forge Game Engine - ERROR: Exception checking NPC " << i << ": " << e.what() << std::endl;
                 continue;
             }
 
@@ -177,6 +182,8 @@ void AIDemoState::update() {
         // First call clean() on all NPCs to properly handle unassignment
         for (auto& npc : m_npcs) {
             if (npc) {
+                // Unregister from AIManager entity updates
+                AIManager::Instance().unregisterEntityFromUpdates(npc);
                 // Call clean() which will handle unassignment safely
                 npc->clean();
                 // Also stop the entity's movement
@@ -216,7 +223,8 @@ void AIDemoState::update() {
         for (auto& npc : m_npcs) {
             // First make sure we call clean() to properly unassign any existing behavior
             npc->clean();
-            // Then assign the new behavior
+            // Register with AIManager for entity updates and assign the new behavior
+            AIManager::Instance().registerEntityForUpdates(npc, m_player);
             AIManager::Instance().assignBehaviorToEntity(npc, "Wander");
         }
         lastKey = 1;
@@ -226,7 +234,8 @@ void AIDemoState::update() {
         for (auto& npc : m_npcs) {
             // First make sure we call clean() to properly unassign any existing behavior
             npc->clean();
-            // Then assign the new behavior
+            // Register with AIManager for entity updates and assign the new behavior
+            AIManager::Instance().registerEntityForUpdates(npc, m_player);
             AIManager::Instance().assignBehaviorToEntity(npc, "Patrol");
         }
         lastKey = 2;
@@ -244,7 +253,8 @@ void AIDemoState::update() {
         for (auto& npc : m_npcs) {
             // First make sure we call clean() to properly unassign any existing behavior
             npc->clean();
-            // Then assign the new behavior
+            // Register with AIManager for entity updates and assign the new behavior
+            AIManager::Instance().registerEntityForUpdates(npc, m_player);
             AIManager::Instance().assignBehaviorToEntity(npc, "Chase");
         }
         lastKey = 3;
@@ -403,6 +413,9 @@ void AIDemoState::createNPCs() {
                 // Set wander area to keep NPCs on screen
                 npc->setWanderArea(0, 0, m_worldWidth, m_worldHeight);
 
+                // Register with AIManager for centralized entity updates
+                AIManager::Instance().registerEntityForUpdates(npc, m_player);
+                
                 // Assign default behavior (Wander)
                 AIManager::Instance().assignBehaviorToEntity(npc, "Wander");
 

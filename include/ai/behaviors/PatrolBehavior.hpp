@@ -16,7 +16,7 @@ public:
     PatrolBehavior(const boost::container::small_vector<Vector2D, 10>& waypoints, float moveSpeed = 2.0f, bool includeOffscreenPoints = false);
 
     void init(EntityPtr entity) override;
-    void update(EntityPtr entity) override;
+    void executeLogic(EntityPtr entity) override;
     void clean(EntityPtr entity) override;
     void onMessage(EntityPtr entity, const std::string& message) override;
     std::string getName() const override;

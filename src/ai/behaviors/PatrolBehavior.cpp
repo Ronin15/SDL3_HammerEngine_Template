@@ -46,7 +46,7 @@ void PatrolBehavior::init(EntityPtr entity) {
     }
 }
 
-void PatrolBehavior::update(EntityPtr entity) {
+void PatrolBehavior::executeLogic(EntityPtr entity) {
     if (!entity || !m_active || m_waypoints.empty()) {
         return;
     }
@@ -155,8 +155,6 @@ std::shared_ptr<AIBehavior> PatrolBehavior::clone() const {
     cloned->setScreenDimensions(m_screenWidth, m_screenHeight);
     cloned->setActive(m_active);
     cloned->setPriority(m_priority);
-    cloned->setUpdateFrequency(m_updateFrequency);
-    cloned->setUpdateDistances(m_maxUpdateDistance, m_mediumUpdateDistance, m_minUpdateDistance);
     return cloned;
 }
 

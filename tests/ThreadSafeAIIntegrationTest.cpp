@@ -62,7 +62,7 @@ class IntegrationTestBehavior : public AIBehavior {
 public:
     IntegrationTestBehavior(const std::string& name) : m_name(name) {}
 
-    void update(EntityPtr entity) override {
+    void executeLogic(EntityPtr entity) override {
             if (!entity) return;
 
             try {
@@ -109,8 +109,6 @@ public:
         auto cloned = std::make_shared<IntegrationTestBehavior>(m_name);
         cloned->setActive(m_active);
         cloned->setPriority(m_priority);
-        cloned->setUpdateFrequency(m_updateFrequency);
-        cloned->setUpdateDistances(m_maxUpdateDistance, m_mediumUpdateDistance, m_minUpdateDistance);
         return cloned;
     }
 

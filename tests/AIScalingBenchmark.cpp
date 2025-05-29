@@ -66,15 +66,11 @@ class BenchmarkBehavior : public AIBehavior {
 public:
     BenchmarkBehavior(int id, int complexity = 5) // Increased default complexity from 1 to 5
         : m_id(id), m_complexity(complexity), m_initialized(false) {
-        // For benchmark, use maximum distances to ensure every entity is updated
-        setUpdateDistances(100000.0f, 200000.0f, 300000.0f);
-        // Set update frequency to 1 to ensure every entity is updated every frame
-        setUpdateFrequency(1);
-        // Set high priority to ensure updates happen
+        // Set high priority for benchmark
         setPriority(9);
     }
 
-    void update(EntityPtr entity) override {
+    void executeLogic(EntityPtr entity) override {
         if (!entity) return;
 
         auto benchmarkEntity = std::dynamic_pointer_cast<BenchmarkEntity>(entity);
@@ -120,8 +116,6 @@ public:
         auto cloned = std::make_shared<BenchmarkBehavior>(m_id, m_complexity);
         cloned->setActive(m_active);
         cloned->setPriority(m_priority);
-        cloned->setUpdateFrequency(m_updateFrequency);
-        cloned->setUpdateDistances(m_maxUpdateDistance, m_mediumUpdateDistance, m_minUpdateDistance);
         return cloned;
     }
 
@@ -430,9 +424,7 @@ struct AIScalingFixture {
         }
 
         // Clear all entity frame counters
-        for (const auto& behavior : behaviors) {
-            behavior->clearFrameCounters();
-        }
+        // clearFrameCounters no longer needed - AIManager controls all update timing
 
         // Clean up
         cleanupEntitiesAndBehaviors();
@@ -449,7 +441,7 @@ struct AIScalingFixture {
         for (const auto& behavior : behaviors) {
             if (behavior) {
                 try {
-                    behavior->clearFrameCounters();
+                    // clearFrameCounters no longer needed - AIManager controls all update timing
                 } catch (const std::exception& e) {
                     std::cerr << "Error clearing frame counters: " << e.what() << std::endl;
                 } catch (...) {

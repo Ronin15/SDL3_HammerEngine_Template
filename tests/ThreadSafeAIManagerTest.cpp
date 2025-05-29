@@ -70,7 +70,7 @@ class ThreadTestBehavior : public AIBehavior {
 public:
     ThreadTestBehavior(int id) : m_id(id) {}
 
-    void update(EntityPtr entity) override {
+    void executeLogic(EntityPtr entity) override {
         if (!entity) return;
 
         try {
@@ -119,8 +119,6 @@ public:
         auto cloned = std::make_shared<ThreadTestBehavior>(m_id);
         cloned->setActive(m_active);
         cloned->setPriority(m_priority);
-        cloned->setUpdateFrequency(m_updateFrequency);
-        cloned->setUpdateDistances(m_maxUpdateDistance, m_mediumUpdateDistance, m_minUpdateDistance);
         return cloned;
     }
 

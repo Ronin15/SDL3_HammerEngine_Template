@@ -20,7 +20,7 @@ public:
 
     // No state management - handled by AI Manager
     void init(EntityPtr entity) override;
-    void update(EntityPtr entity) override;
+    void executeLogic(EntityPtr entity) override;
     void clean(EntityPtr entity) override;
     void onMessage(EntityPtr entity, const std::string& message) override;
     std::string getName() const override;
