@@ -106,24 +106,8 @@ print_status "Starting EventManager Scaling Benchmark..."
 print_status "Build type: $BUILD_TYPE"
 print_status "Results will be saved to: $OUTPUT_FILE"
 
-# Build the project
-print_status "Building project..."
+# Navigate to script directory
 cd "$SCRIPT_DIR"
-
-if [ "$BUILD_TYPE" = "release" ]; then
-    cmake -B build -DCMAKE_BUILD_TYPE=Release
-else
-    cmake -B build -DCMAKE_BUILD_TYPE=Debug
-fi
-
-ninja -C build event_manager_scaling_benchmark
-
-if [ $? -ne 0 ]; then
-    print_error "Build failed!"
-    exit 1
-fi
-
-print_success "Build completed successfully"
 
 # Check if benchmark executable exists
 BENCHMARK_EXEC="$SCRIPT_DIR/bin/$BUILD_TYPE/event_manager_scaling_benchmark"
