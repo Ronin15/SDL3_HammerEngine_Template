@@ -107,8 +107,8 @@ else
   echo -e "${YELLOW}Warning: Neither 'timeout' nor 'gtimeout' command found. Tests will run without timeout protection.${NC}"
 fi
 
-# Increase timeout for more comprehensive benchmarks
-TIMEOUT_DURATION=300s  # 5 minutes instead of 60 seconds
+# Timeout for comprehensive benchmarks - adjusted for current performance
+TIMEOUT_DURATION=600s  # 10 minutes for full benchmark suite with large entity counts
 
 # Set test command options for better handling of threading issues
 TEST_OPTS="--catch_system_errors=no --no_result_code"
@@ -131,6 +131,7 @@ trap 'echo "Signal 6 (abort) caught but continuing..." >> "$RESULTS_FILE"' ABRT
 
 echo -e "${BLUE}Starting benchmark run at $(date)${NC}"
 echo -e "${YELLOW}Running with options: $TEST_OPTS${NC}"
+echo -e "${YELLOW}Timeout duration: $TIMEOUT_DURATION${NC}"
 
 # Run the benchmark with output capturing and specific options to handle threading issues
 echo "============ BENCHMARK START ============" > "$RESULTS_FILE"

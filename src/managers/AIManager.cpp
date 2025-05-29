@@ -28,8 +28,7 @@ bool AIManager::init() {
     }
 
     try {
-        // Initialize behavior batches
-        m_batchesValid.store(false, std::memory_order_release);
+        // Initialize caches
         m_cacheValid.store(false, std::memory_order_release);
 
         // Set threading mode based on ThreadSystem availability
@@ -68,7 +67,6 @@ void AIManager::clean() {
         std::unique_lock<std::shared_mutex> entityLock(m_entityMutex);
         std::unique_lock<std::shared_mutex> behaviorsLock(m_behaviorsMutex);
         std::lock_guard<std::mutex> cacheLock(m_cacheMutex);
-        std::lock_guard<std::mutex> batchesLock(m_batchesMutex);
         std::lock_guard<std::mutex> perfLock(m_perfStatsMutex);
         std::lock_guard<std::mutex> pendingLock(m_pendingAssignmentsMutex);
 
@@ -76,7 +74,6 @@ void AIManager::clean() {
         m_entityBehaviors.clear();
         m_entityBehaviorInstances.clear();
         m_entityBehaviorCache.clear();
-        m_behaviorBatches.clear();
         m_behaviorPerformanceStats.clear();
         m_pendingBehaviorAssignments.clear();
         m_pendingAssignmentCount.store(0, std::memory_order_release);
@@ -345,16 +342,7 @@ bool AIManager::entityHasBehavior(EntityPtr entity) const {
 }
 
 bool AIManager::hasEntityWithBehavior(const std::string& behaviorName) const {
-    // First check if cache is valid - might avoid locking
-    if (m_batchesValid.load(std::memory_order_acquire)) {
-        std::lock_guard<std::mutex> lock(m_batchesMutex);
-        auto it = m_behaviorBatches.find(behaviorName);
-        if (it != m_behaviorBatches.end()) {
-            return !it->second.empty();
-        }
-    }
-
-    // Fallback to entity check
+    // Check entity mappings directly
     std::shared_lock<std::shared_mutex> lock(m_entityMutex);
     for (const auto& [entity, behavior] : m_entityBehaviors) {
         if (behavior == behaviorName) {
@@ -413,7 +401,6 @@ bool AIManager::isUpdateSafe() const {
 
 void AIManager::invalidateOptimizationCaches() {
     m_cacheValid.store(false, std::memory_order_release);
-    m_batchesValid.store(false, std::memory_order_release);
 }
 
 void AIManager::ensureOptimizationCachesValid() {
@@ -424,16 +411,6 @@ void AIManager::ensureOptimizationCachesValid() {
         if (!m_cacheValid.load(std::memory_order_acquire)) {
             rebuildEntityBehaviorCache();
             m_cacheValid.store(true, std::memory_order_release);
-        }
-    }
-
-    // Then check if batches need rebuilding
-    if (!m_batchesValid.load(std::memory_order_acquire)) {
-        std::lock_guard<std::mutex> lock(m_batchesMutex);
-        // Double-check after acquiring lock
-        if (!m_batchesValid.load(std::memory_order_acquire)) {
-            rebuildBehaviorBatches();
-            m_batchesValid.store(true, std::memory_order_release);
         }
     }
 }
@@ -469,96 +446,9 @@ void AIManager::rebuildEntityBehaviorCache() {
     AI_LOG("Rebuilt entity behavior cache with " << m_entityBehaviorCache.size() << " entries");
 }
 
-void AIManager::rebuildBehaviorBatches() {
-    // Clear existing batches
-    m_behaviorBatches.clear();
 
-    // Read entity-behavior mappings - read lock
-    std::shared_lock<std::shared_mutex> lock(m_entityMutex);
 
-    // Group entities by behavior
-    for (const auto& [entityWeak, behaviorName] : m_entityBehaviors) {
-        // Skip expired entity references
-        if (entityWeak.expired()) continue;
 
-        // Get the shared pointer from the weak pointer
-        EntityPtr entity = entityWeak.lock();
-        if (!entity) continue;
-        m_behaviorBatches[behaviorName].push_back(entity);
-    }
-
-    AI_LOG("Rebuilt behavior batches with " << m_behaviorBatches.size() << " behavior types");
-}
-
-void AIManager::batchUpdateAllBehaviors() {
-    // Ensure caches are valid
-    ensureOptimizationCachesValid();
-
-    // Only use threading if enabled and ThreadSystem is available
-    bool useThreading = m_useThreading.load(std::memory_order_acquire) && 
-                         Forge::ThreadSystem::Exists();
-
-    if (useThreading) {
-        // Create a copy of behavior batch map to avoid lock contention during processing
-        boost::container::flat_map<std::string, BehaviorBatch> batchesCopy;
-        {
-            std::lock_guard<std::mutex> lock(m_batchesMutex);
-            batchesCopy = m_behaviorBatches;
-        }
-
-        // Create a vector to store futures for all batches
-        std::vector<std::future<void>> batchFutures;
-        batchFutures.reserve(batchesCopy.size());
-
-        // Process each behavior type in parallel
-        for (const auto& [behaviorName, batch] : batchesCopy) {
-            if (batch.empty()) continue;
-
-            auto future = Forge::ThreadSystem::Instance().enqueueTaskWithResult(
-                [this, behaviorName, batch]() {
-                    updateBehaviorBatch(behaviorName, batch);
-                },
-                Forge::TaskPriority::Normal,
-                "AI Batch Update: " + behaviorName + " (" + std::to_string(batch.size()) + " entities)");
-
-            batchFutures.push_back(std::move(future));
-        }
-
-        // Wait for all batch updates to complete
-        for (auto& future : batchFutures) {
-            try {
-                future.get();
-            } catch (const std::exception& e) {
-                std::cerr << "Exception in AI batch update: " << e.what() << std::endl;
-            } catch (...) {
-                std::cerr << "Unknown exception in AI batch update" << std::endl;
-            }
-        }
-    } else {
-        // Fallback to sequential processing if threading is disabled
-        std::lock_guard<std::mutex> lock(m_batchesMutex);
-        for (const auto& [behaviorName, batch] : m_behaviorBatches) {
-            if (!batch.empty()) {
-                updateBehaviorBatch(behaviorName, batch);
-            }
-        }
-    }
-}
-
-void AIManager::updateBehaviorBatch(const std::string_view& behaviorName, const BehaviorBatch& batch) {
-    // This method is now deprecated since AIManager handles all update timing
-    // through updateManagedEntities(). Keeping for compatibility but doing nothing.
-    // TODO: Remove this method entirely after confirming no external dependencies
-    (void)behaviorName; // Unused parameter
-    (void)batch; // Unused parameter
-}
-
-void AIManager::batchProcessEntities(const std::string& behaviorName, const std::vector<EntityPtr>& entities) {
-    // This method is now deprecated since AIManager handles all update timing
-    // through updateManagedEntities(). Keeping for compatibility but doing nothing.
-    (void)behaviorName; // Unused parameter
-    (void)entities; // Unused parameter
-}
 
 void AIManager::processEntitiesWithBehavior(std::shared_ptr<AIBehavior> behavior, const std::vector<EntityPtr>& entities, bool useThreading) {
     // This method is now deprecated since AIManager handles all update timing
@@ -749,10 +639,7 @@ void AIManager::resetBehaviors() {
         m_entityBehaviorCache.clear();
     }
 
-    {
-        std::lock_guard<std::mutex> batchesLock(m_batchesMutex);
-        m_behaviorBatches.clear();
-    }
+
 
     // Reset stats
     {
@@ -763,7 +650,6 @@ void AIManager::resetBehaviors() {
 
     // Invalidate caches
     m_cacheValid.store(false, std::memory_order_release);
-    m_batchesValid.store(false, std::memory_order_release);
 
     std::cout << "Forge Game Engine - AIManager: Behaviors reset" << std::endl;
 }

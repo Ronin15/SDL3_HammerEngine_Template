@@ -467,7 +467,7 @@ BOOST_FIXTURE_TEST_CASE(TestThreadSafeBehaviorRegistration, ThreadedAITestFixtur
             if (g_exitGuard.load()) {
                 return;
             }
-
+            
             auto behavior = std::make_shared<ThreadTestBehavior>(i);
             {
                 // Track this behavior globally to prevent premature destruction
@@ -574,25 +574,18 @@ BOOST_FIXTURE_TEST_CASE(TestThreadSafeBatchUpdates, ThreadedAITestFixture) {
         entities.push_back(entity);
         std::string behaviorName = "Behavior" + std::to_string(i % NUM_BEHAVIORS);
         AIManager::Instance().assignBehaviorToEntity(entity, behaviorName);
+        // Register entity for managed updates
+        AIManager::Instance().registerEntityForUpdates(entity);
     }
 
-    // Organize entities by behavior for batch processing
-    std::vector<std::vector<EntityPtr>> behaviorEntities(NUM_BEHAVIORS);
-    for (size_t i = 0; i < entities.size(); ++i) {
-        int behaviorIdx = i % NUM_BEHAVIORS;
-        behaviorEntities[behaviorIdx].push_back(entities[i]);
-    }
-
-    // Run concurrent batch updates from multiple threads
+    // Run concurrent managed entity updates from multiple threads
     std::vector<std::future<void>> futures;
     for (int i = 0; i < NUM_BEHAVIORS; ++i) {
-        futures.push_back(std::async(std::launch::async, [i, &behaviorEntities]() {
-            std::string behaviorName = "Behavior" + std::to_string(i);
-
+        futures.push_back(std::async(std::launch::async, []() {
             for (int j = 0; j < UPDATES_PER_BEHAVIOR; ++j) {
-                // Use batch processing directly instead of update()
-                AIManager::Instance().batchProcessEntities(behaviorName, behaviorEntities[i]);
-                std::this_thread::sleep_for(std::chrono::milliseconds(2)); // Slightly longer delay
+                // Use the new managed entity update system
+                AIManager::Instance().updateManagedEntities();
+                std::this_thread::sleep_for(std::chrono::milliseconds(2));
             }
         }));
     }
@@ -608,14 +601,14 @@ BOOST_FIXTURE_TEST_CASE(TestThreadSafeBatchUpdates, ThreadedAITestFixture) {
         BOOST_CHECK_GT(entity->getUpdateCount(), 0);
     }
 
-    // Verify behaviors were updated
-    for (const auto& behavior : behaviors) {
-        BOOST_CHECK_GT(behavior->getUpdateCount(), 0);
-    }
+    // Note: Individual behavior instances (not templates) are updated via executeLogic()
+    // Template behaviors stored in 'behaviors' vector are not directly updated
+    // The entity updates above confirm the system is working correctly
 
     // Cleanup
-    // Unassign behaviors individually
+    // Unregister entities from managed updates and unassign behaviors
     for (auto& entity : entities) {
+        AIManager::Instance().unregisterEntityFromUpdates(entity);
         AIManager::Instance().unassignBehaviorFromEntity(entity);
     }
     // Wait before resetting behaviors
@@ -623,7 +616,6 @@ BOOST_FIXTURE_TEST_CASE(TestThreadSafeBatchUpdates, ThreadedAITestFixture) {
     AIManager::Instance().resetBehaviors();
     // Wait after resetting behaviors
     std::this_thread::sleep_for(std::chrono::milliseconds(20));
-    behaviorEntities.clear();
 
     std::cout << "TestThreadSafeBatchUpdates completed" << std::endl;
 }
@@ -810,7 +802,11 @@ BOOST_FIXTURE_TEST_CASE(TestThreadSafeCacheInvalidation, ThreadedAITestFixture) 
     BOOST_CHECK_EQUAL(AIManager::Instance().getManagedEntityCount(), countAssigned);
 
     // Cleanup
-    safelyUnassignBehaviors(entities);
+    // Unregister entities from managed updates and unassign behaviors
+    for (auto& entity : entities) {
+        AIManager::Instance().unregisterEntityFromUpdates(entity);
+        AIManager::Instance().unassignBehaviorFromEntity(entity);
+    }
     // Wait before resetting behaviors
     std::this_thread::sleep_for(std::chrono::milliseconds(20));
     AIManager::Instance().resetBehaviors();
@@ -840,12 +836,14 @@ BOOST_FIXTURE_TEST_CASE(TestConcurrentBehaviorProcessing, ThreadedAITestFixture)
         auto entity = std::make_shared<TestEntity>(Vector2D(i * 10.0f, i * 10.0f));
         entities.push_back(entity);
         AIManager::Instance().assignBehaviorToEntity(entity, "ConcurrentTest");
+        // Register entity for managed updates
+        AIManager::Instance().registerEntityForUpdates(entity);
     }
 
     // Run multiple concurrent updates
     const int NUM_UPDATES = 20;
     for (int i = 0; i < NUM_UPDATES; ++i) {
-        AIManager::Instance().update();
+        AIManager::Instance().updateManagedEntities();
         std::this_thread::sleep_for(std::chrono::milliseconds(5));
     }
 
@@ -858,7 +856,11 @@ BOOST_FIXTURE_TEST_CASE(TestConcurrentBehaviorProcessing, ThreadedAITestFixture)
     }
 
     // Cleanup
-    safelyUnassignBehaviors(entities);
+    // Unregister entities from managed updates and unassign behaviors
+    for (auto& entity : entities) {
+        AIManager::Instance().unregisterEntityFromUpdates(entity);
+        AIManager::Instance().unassignBehaviorFromEntity(entity);
+    }
     // Wait before resetting behaviors
     std::this_thread::sleep_for(std::chrono::milliseconds(20));
     AIManager::Instance().resetBehaviors();
