@@ -42,7 +42,7 @@ void WanderBehavior::init(EntityPtr entity) {
     }
 }
 
-void WanderBehavior::update(EntityPtr entity) {
+void WanderBehavior::executeLogic(EntityPtr entity) {
     if (!entity || !m_active) return;
 
     // Create entity state if it doesn't exist
@@ -210,8 +210,6 @@ std::shared_ptr<AIBehavior> WanderBehavior::clone() const {
     cloned->setOffscreenProbability(m_offscreenProbability);
     cloned->setActive(m_active);
     cloned->setPriority(m_priority);
-    cloned->setUpdateFrequency(m_updateFrequency);
-    cloned->setUpdateDistances(m_maxUpdateDistance, m_mediumUpdateDistance, m_minUpdateDistance);
     return cloned;
 }
 

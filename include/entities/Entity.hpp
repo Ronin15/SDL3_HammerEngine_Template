@@ -99,6 +99,7 @@ class Entity : public std::enable_shared_from_this<Entity> {
    // Used for rendering flipping - to be implemented by derived classes
    virtual void setFlip(SDL_FlipMode flip) { (void)flip; /* Unused in base class */ }
    virtual SDL_FlipMode getFlip() const { return SDL_FLIP_NONE; }
+
    protected:
     Vector2D m_acceleration{0, 0};
     Vector2D m_velocity{0, 0};

@@ -46,6 +46,9 @@ bool EventDemoState::enter() {
         }
         m_player->setPosition(Vector2D(m_worldWidth / 2, m_worldHeight / 2));
 
+        // Set player reference in AIManager for distance optimization
+        AIManager::Instance().setPlayerForDistanceOptimization(m_player);
+
         // Initialize timing
         m_lastFrameTime = std::chrono::steady_clock::now();
         m_demoLastTime = std::chrono::steady_clock::now();
@@ -134,26 +137,24 @@ void EventDemoState::update() {
         m_player->update();
     }
 
-    // Update spawned NPCs (remove any that are no longer valid)
+    // Let AIManager handle all NPC updates (movement + AI logic with distance optimization)
+    AIManager::Instance().updateManagedEntities();
+
+    // Clean up invalid NPCs
     auto it = m_spawnedNPCs.begin();
     while (it != m_spawnedNPCs.end()) {
-        if (*it) { // Check if NPC is valid
-            try {
-                (*it)->update();
-                ++it;
-            } catch (...) {
-                // If update fails, remove the NPC safely
-                try {
-                    if (AIManager::Instance().entityHasBehavior(*it)) {
-                        AIManager::Instance().unassignBehaviorFromEntity(*it);
-                    }
-                } catch (...) {
-                    // Ignore errors during cleanup
-                }
-                it = m_spawnedNPCs.erase(it);
-            }
+        if (*it) {
+            ++it; // Entity updates handled by AIManager above
         } else {
             // Remove dead/invalid NPCs
+            try {
+                if (AIManager::Instance().entityHasBehavior(*it)) {
+                    AIManager::Instance().unassignBehaviorFromEntity(*it);
+                }
+                AIManager::Instance().unregisterEntityFromUpdates(*it);
+            } catch (...) {
+                // Ignore errors during cleanup
+            }
             it = m_spawnedNPCs.erase(it);
         }
     }
@@ -867,14 +868,16 @@ auto npc2 = createNPCAtPositionWithoutBehavior(npcType2, spawnX2, spawnY2);
 // Queue behavior assignments for batch processing using global system
 if (npc1) {
     std::string behaviorName1 = determineBehaviorForNPCType(npcType1);
+    AIManager::Instance().registerEntityForUpdates(npc1, m_player);
     AIManager::Instance().queueBehaviorAssignment(npc1, behaviorName1);
-    addLogEntry("Queued " + behaviorName1 + " behavior for " + npcType1 + " (global batch)");
+    addLogEntry("Registered " + npcType1 + " for updates and queued " + behaviorName1 + " behavior (global batch)");
 }
 
 if (npc2) {
     std::string behaviorName2 = determineBehaviorForNPCType(npcType2);
+    AIManager::Instance().registerEntityForUpdates(npc2, m_player);
     AIManager::Instance().queueBehaviorAssignment(npc2, behaviorName2);
-    addLogEntry("Queued " + behaviorName2 + " behavior for " + npcType2 + " (global batch)");
+    addLogEntry("Registered " + npcType2 + " for updates and queued " + behaviorName2 + " behavior (global batch)");
 }
 
     addLogEntry("Multiple NPCs spawned: " + npcType1 + " and " + npcType2);
@@ -1037,9 +1040,10 @@ void EventDemoState::assignAIBehaviorToNPC(std::shared_ptr<NPC> npc, const std::
             behaviorName = "Wander";
         }
 
-        // Assign the behavior
+        // Register entity for updates and assign the behavior
+        AIManager::Instance().registerEntityForUpdates(npc, m_player);
         AIManager::Instance().assignBehaviorToEntity(npc, behaviorName);
-        addLogEntry(npcType + " assigned " + behaviorName + " behavior");
+        addLogEntry(npcType + " registered for updates and assigned " + behaviorName + " behavior");
 
     } catch (const std::exception& e) {
         std::cerr << "EXCEPTION in assignAIBehaviorToNPC: " << e.what() << std::endl;
@@ -1133,6 +1137,7 @@ void EventDemoState::cleanupSpawnedNPCs() {
                 if (AIManager::Instance().entityHasBehavior(npc)) {
                     AIManager::Instance().unassignBehaviorFromEntity(npc);
                 }
+                AIManager::Instance().unregisterEntityFromUpdates(npc);
             } catch (...) {
                 // Ignore errors during cleanup to prevent double-free issues
             }
@@ -1174,9 +1179,10 @@ void EventDemoState::createNPCAtPosition(const std::string& npcType, float x, fl
             // Determine behavior for this NPC type
             std::string behaviorName = determineBehaviorForNPCType(npcType);
 
-            // Queue behavior assignment using global batching system (critical for stability)
+            // Register entity with AIManager for centralized updates and queue behavior assignment
+            AIManager::Instance().registerEntityForUpdates(npc, m_player);
             AIManager::Instance().queueBehaviorAssignment(npc, behaviorName);
-            addLogEntry("Queued " + behaviorName + " behavior assignment (global batch)");
+            addLogEntry("Registered entity for updates and queued " + behaviorName + " behavior assignment (global batch)");
 
             // EventDemoState owns this NPC
             m_spawnedNPCs.push_back(npc);

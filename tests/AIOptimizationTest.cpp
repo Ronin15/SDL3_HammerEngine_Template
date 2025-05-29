@@ -95,8 +95,8 @@ class AIBehavior {
 public:
     virtual ~AIBehavior() = default;
 
-    // Core behavior methods
-    virtual void update(EntityPtr entity) = 0;
+    // Core behavior methods - pure logic only
+    virtual void executeLogic(EntityPtr entity) = 0;
     virtual void init(EntityPtr entity) = 0;
     virtual void clean(EntityPtr entity) = 0;
 
@@ -110,33 +110,15 @@ public:
     bool isActive() const { return m_active; }
     void setActive(bool active) { m_active = active; }
 
-    // Update frequency control
-    void setUpdateFrequency(int framesPerUpdate) { m_updateFrequency = framesPerUpdate; }
-    int getUpdateFrequency() const { return m_updateFrequency; }
+    // Priority handling (used by AIManager)
+    int getPriority() const { return m_priority; }
+    void setPriority(int priority) { m_priority = priority; }
 
-    // Frame tracking
-    int getFramesSinceLastUpdate() const { return m_framesSinceLastUpdate; }
-    void incrementFrameCounter() { m_framesSinceLastUpdate++; }
-    void resetFrameCounter() { m_framesSinceLastUpdate = 0; }
+    std::shared_ptr<AIBehavior> clone() const { return nullptr; }
 
-    // Early exit conditions
-    bool shouldUpdate([[maybe_unused]] EntityPtr entity) const {
-        if (!m_active) return false;
-        if (!isWithinUpdateFrequency()) return false;
-        return true;
-    }
-
-    bool isWithinUpdateFrequency() const {
-        if (m_updateFrequency <= 1) return true;
-        return (m_framesSinceLastUpdate % m_updateFrequency == 0);
-    }
-
-    bool isEntityInRange([[maybe_unused]] EntityPtr entity) const { return true; }
-
-protected:
-    bool m_active{true};
-    int m_updateFrequency{1};
-    int m_framesSinceLastUpdate{0};
+private:
+    bool m_active = true;
+    int m_priority = 0;
 };
 
 // MockWanderBehavior for testing
@@ -149,7 +131,7 @@ public:
         (void)areaRadius;
     }
 
-    void update(EntityPtr entity) override {
+    void executeLogic(EntityPtr entity) override {
         // Just a simple mock implementation
         if (entity) {
             Vector2D pos = entity->getPosition();
@@ -248,16 +230,8 @@ public:
             if (m_behaviors.find(behaviorName) != m_behaviors.end()) {
                 auto behavior = m_behaviors[behaviorName];
 
-                // Increment frame counter for behavior
-                behavior->incrementFrameCounter();
-
-                // Check if behavior should update this frame
-                if (behavior->shouldUpdate(entity)) {
-                    behavior->update(entity);
-
-                    // Reset frame counter after update
-                    behavior->resetFrameCounter();
-                }
+                // AIManager now controls all update timing - just execute behavior logic
+                behavior->executeLogic(entity);
             }
         }
     }
@@ -272,7 +246,7 @@ public:
 
         // Process all entities with this behavior
         for (const auto& entity : entities) {
-            behavior->update(entity);
+            behavior->executeLogic(entity);
         }
     }
 
@@ -460,7 +434,7 @@ BOOST_AUTO_TEST_CASE(TestEarlyExitConditions)
 {
     // Register a test behavior with update frequency of 3 frames
     auto wanderBehavior = std::make_shared<MockWanderBehavior>(2.0f, 1000.0f, 200.0f);
-    wanderBehavior->setUpdateFrequency(3);  // Only update every 3 frames
+    // Update frequency is now controlled by AIManager, not individual behaviors
     AIManager::Instance().registerBehavior("LazyWander", wanderBehavior);
 
     // Create test entity

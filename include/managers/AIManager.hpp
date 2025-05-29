@@ -83,10 +83,11 @@ public:
     bool init();
 
     /**
-     * @brief Update all AI-controlled entities
+     * @brief Update all AI-controlled entities and managed entities
      *
      * This method is automatically called by the game engine
-     * and updates all entities with assigned AI behaviors.
+     * and updates all entities with assigned AI behaviors as well as
+     * entities registered for general updates with distance optimization.
      * Updates can run in parallel using the ThreadSystem if available.
      *
      * @thread_safety Thread-safe, can be called from any thread
@@ -284,6 +285,62 @@ public:
      */
     size_t getManagedEntityCount() const;
 
+    // Entity update management (centralized distance-based optimization)
+    /**
+     * @brief Register an entity for centralized update management
+     * @param entity Shared pointer to the entity to manage
+     * @param player Optional player entity for distance calculations (can be null)
+     * @thread_safety Thread-safe, can be called from any thread
+     */
+    void registerEntityForUpdates(EntityPtr entity, EntityPtr player = nullptr);
+
+    /**
+     * @brief Unregister an entity from update management
+     * @param entity Shared pointer to the entity to unregister
+     * @thread_safety Thread-safe, can be called from any thread
+     */
+    void unregisterEntityFromUpdates(EntityPtr entity);
+
+    /**
+     * @brief Set the player entity for distance-based optimization
+     * @param player Shared pointer to the player entity (can be null)
+     * @thread_safety Thread-safe, can be called from any thread
+     */
+    void setPlayerForDistanceOptimization(EntityPtr player);
+
+    /**
+     * @brief Update all registered entities with distance-based optimization
+     * Called automatically by update() but can be called separately
+     * @thread_safety Thread-safe, can be called from any thread
+     */
+    void updateManagedEntities();
+
+    /**
+     * @brief Configure distance thresholds for entity update optimization
+     * @param maxUpdateDist Close distance - entities update every frame
+     * @param mediumUpdateDist Medium distance - entities update every 15 frames
+     * @param minUpdateDist Far distance - entities update every 30 frames
+     * @thread_safety Thread-safe, can be called from any thread
+     */
+    void configureDistanceThresholds(float maxUpdateDist = 8000.0f, 
+                                   float mediumUpdateDist = 10000.0f, 
+                                   float minUpdateDist = 25000.0f);
+
+    /**
+     * @brief Get the number of entities registered for updates
+     * @return Count of entities managed for updates
+     * @thread_safety Thread-safe, can be called from any thread
+     */
+    size_t getRegisteredEntityCount() const;
+
+    /**
+     * @brief Update AI behavior for a specific entity
+     * Called internally by updateManagedEntities()
+     * @param entity Entity to update behavior for
+     * @thread_safety Thread-safe, can be called from any thread
+     */
+    void updateEntityBehavior(EntityPtr entity);
+
 private:
     // Singleton constructor
     AIManager();
@@ -354,7 +411,7 @@ private:
             , behaviorWeak()
             , behaviorName()
             , lastUpdateTime(0)
-            , perfStats()
+            , perfStats{}
         {}
     };
     std::vector<EntityBehaviorCache> m_entityBehaviorCache{};
@@ -448,7 +505,7 @@ private:
 
     // Thread-safe message queue implementation
     ThreadSafeMessageQueue m_messageQueue;
-    PerformanceStats m_messageQueueStats;
+    PerformanceStats m_messageQueueStats{};
     std::atomic<bool> m_processingMessages{false};
 
     // Batched behavior assignment system
@@ -468,6 +525,27 @@ private:
     // Message delivery helpers
     void deliverMessageToEntity(EntityPtr entity, const std::string& message);
     size_t deliverBroadcastMessage(const std::string& message);
+
+    // Entity update management
+    struct EntityUpdateInfo {
+        EntityWeakPtr entityWeak;
+        int frameCounter{0};
+        uint64_t lastUpdateTime{0};
+        
+        EntityUpdateInfo(EntityPtr entity) : entityWeak(entity) {}
+    };
+    
+    std::vector<EntityUpdateInfo> m_managedEntities{};
+    EntityWeakPtr m_playerEntity{};
+    mutable std::shared_mutex m_managedEntitiesMutex{};
+    
+    // Distance thresholds for entity update optimization (match AIBehavior defaults)
+    std::atomic<float> m_maxUpdateDistance{8000.0f};      // Close: every frame
+    std::atomic<float> m_mediumUpdateDistance{10000.0f};  // Medium: every 15 frames  
+    std::atomic<float> m_minUpdateDistance{25000.0f};     // Far: every 30 frames
+    
+    // Helper method for distance-based entity updates
+    bool shouldUpdateEntity(EntityPtr entity, EntityPtr player, int& frameCounter);
 };
 
 #endif // AI_MANAGER_HPP

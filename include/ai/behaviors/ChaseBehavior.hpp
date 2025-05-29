@@ -16,7 +16,7 @@ public:
 
     void init(EntityPtr entity) override;
 
-    void update(EntityPtr entity) override;
+    void executeLogic(EntityPtr entity) override;
 
     void clean(EntityPtr entity) override;
 
