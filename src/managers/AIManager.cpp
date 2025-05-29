@@ -165,8 +165,8 @@ void AIManager::assignBehaviorToEntity(EntityPtr entity, const std::string& beha
         m_entityBehaviors[entityWeak] = behaviorName;
     }
 
-    // Invalidate caches - atomic operations
-    invalidateOptimizationCaches();
+    // Mark caches for deferred invalidation instead of immediate invalidation
+    m_cacheInvalidationPending.store(true, std::memory_order_release);
     
     // Initialize the entity with this behavior
     try {
@@ -215,8 +215,8 @@ void AIManager::unassignBehaviorFromEntity(EntityPtr entity) {
             m_entityBehaviors.erase(entityWeak);
         }
         
-        // Invalidate caches - atomic operations
-        invalidateOptimizationCaches();
+        // Mark caches for deferred invalidation instead of immediate invalidation
+        m_cacheInvalidationPending.store(true, std::memory_order_release);
         
         AI_LOG("Unassigned behavior from entity at " << entity.get());
     } catch (...) {
@@ -263,6 +263,13 @@ void AIManager::update() {
         return;
     }
 
+    // Check for pending cache invalidation and handle it here in the update thread
+    if (m_cacheInvalidationPending.load(std::memory_order_acquire)) {
+        // Safely invalidate caches during update cycle when no other operations are in progress
+        invalidateOptimizationCaches();
+        m_cacheInvalidationPending.store(false, std::memory_order_release);
+    }
+
     // First ensure caches are valid
     ensureOptimizationCachesValid();
 
@@ -271,6 +278,25 @@ void AIManager::update() {
 
     // Process any pending messages
     processMessageQueue();
+}
+
+bool AIManager::isUpdateSafe() const {
+    // Don't update if not initialized
+    if (!m_initialized.load(std::memory_order_acquire)) {
+        return false;
+    }
+    
+    // Don't update if cache invalidation is pending (rapid behavior assignments in progress)
+    if (m_cacheInvalidationPending.load(std::memory_order_acquire)) {
+        return false;
+    }
+    
+    // Don't update if already processing messages to avoid recursion
+    if (m_processingMessages.load(std::memory_order_acquire)) {
+        return false;
+    }
+    
+    return true;
 }
 
 void AIManager::invalidateOptimizationCaches() {
@@ -301,6 +327,9 @@ void AIManager::ensureOptimizationCachesValid() {
 }
 
 void AIManager::rebuildEntityBehaviorCache() {
+    // NOTE: This method assumes m_cacheMutex is already held by caller
+    // (specifically ensureOptimizationCachesValid)
+    
     // Clear existing cache
     m_entityBehaviorCache.clear();
     

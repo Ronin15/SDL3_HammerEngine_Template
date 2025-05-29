@@ -484,6 +484,7 @@ void GameEngine::processBackgroundTasks() {
 
   // AI updates run asynchronously and won't block the main thread
   AIManager::Instance().update();
+  
   // Update Event Manager
   EventManager::Instance().update();
 

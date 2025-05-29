@@ -51,6 +51,8 @@ private:
 
     // Event demonstration methods
     void triggerWeatherDemo();
+    void triggerWeatherDemoAuto();     // Auto demo progression version
+    void triggerWeatherDemoManual();   // Manual trigger version
     void triggerNPCSpawnDemo();
     void triggerSceneTransitionDemo();
     void triggerCustomEventDemo();
@@ -75,7 +77,7 @@ private:
     DemoPhase m_currentPhase{DemoPhase::Initialization};
     float m_phaseTimer{0.0f};
     float m_phaseDuration{8.0f}; // 8 seconds per phase for better pacing
-    bool m_autoMode{true}; // Auto-advance through demos - enabled for testing
+    bool m_autoMode{true}; // Auto-advance through demos - enabled by default
 
     // Entities
     std::vector<NPCPtr> m_spawnedNPCs{};
@@ -104,6 +106,7 @@ private:
     size_t m_currentWeatherIndex{0};
     float m_weatherChangeInterval{4.0f}; // Time between weather changes
     size_t m_weatherChangesShown{0}; // Track how many weather types shown
+    bool m_weatherDemoComplete{false}; // Flag to prevent infinite weather cycling
 
     // NPC spawn demo variables
     std::vector<std::string> m_npcTypes{"Guard", "Villager", "Merchant", "Warrior"};
@@ -149,6 +152,9 @@ private:
     float m_lastEventTriggerTime{0.0f};
     float m_eventFireInterval{4.0f}; // Minimum seconds between event triggers - slower for better visibility
     bool m_limitMessageShown{false}; // Track if limit message has been shown
+    
+    // Batch behavior assignment
+    std::vector<std::pair<std::shared_ptr<NPC>, std::string>> m_pendingBehaviorAssignments{};
 
     // Event manager accessed via singleton - no raw pointer needed
 
@@ -159,6 +165,12 @@ private:
     std::string getCurrentWeatherString() const;
     void updateInstructions();
     void cleanupSpawnedNPCs();
+    void createNPCAtPosition(const std::string& npcType, float x, float y);
+    
+    // Batch behavior assignment methods
+    std::shared_ptr<NPC> createNPCAtPositionWithoutBehavior(const std::string& npcType, float x, float y);
+    std::string determineBehaviorForNPCType(const std::string& npcType);
+    void batchAssignBehaviors(const std::vector<std::pair<std::shared_ptr<NPC>, std::string>>& assignments);
 
     // AI behavior integration methods
     void setupAIBehaviors();

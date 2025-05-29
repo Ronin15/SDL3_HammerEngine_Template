@@ -18,6 +18,7 @@
 #include <iomanip>
 #include <sstream>
 
+
 EventDemoState::EventDemoState() {
     // EventManager accessed via singleton - no initialization needed
 }
@@ -58,8 +59,10 @@ bool EventDemoState::enter() {
         m_currentPhase = DemoPhase::Initialization;
         m_phaseTimer = 0.0f;
         m_totalDemoTime = 0.0f;
+        m_lastEventTriggerTime = -1.0f; // Allow immediate key presses
         m_limitMessageShown = false;
         m_weatherChangesShown = 0;
+        m_weatherDemoComplete = false;
 
         // Setup AI behaviors for integration demo
         setupAIBehaviors();
@@ -140,26 +143,14 @@ void EventDemoState::update() {
         } else {
             // Remove dead/invalid NPCs
             it = m_spawnedNPCs.erase(it);
-            // Reset limit message flag if NPCs were removed
-            if (m_spawnedNPCs.size() < 10) {
-                m_limitMessageShown = false;
-            }
         }
     }
-
     // Update event system
     EventManager::Instance().update();
 
     // Handle demo phases (separate from event rate limiting)
     if (m_autoMode) {
-        // Check if we have too many NPCs already spawned
-        if (m_spawnedNPCs.size() >= 10) {
-            if (!m_limitMessageShown) {
-                addLogEntry("NPC limit reached (10), pausing auto spawning");
-                m_limitMessageShown = true;
-            }
-            // Don't return here - allow phase transitions to continue
-        }
+        // Auto mode processing (no artificial limits)
 
         switch (m_currentPhase) {
             case DemoPhase::Initialization:
@@ -167,33 +158,48 @@ void EventDemoState::update() {
                     m_currentPhase = DemoPhase::WeatherDemo;
                     m_phaseTimer = 0.0f;
                     // Always trigger first weather demo immediately
-                    triggerWeatherDemo();
+                    triggerWeatherDemoAuto(); // Use auto version for phase progression
                     m_lastEventTriggerTime = m_totalDemoTime;
                     m_weatherChangesShown = 1; // Count the first weather change
+                    addLogEntry("Starting weather demo - changes shown: 1/" + std::to_string(m_weatherSequence.size()));
                 }
                 break;
 
             case DemoPhase::WeatherDemo:
-                // Trigger weather changes at regular intervals
-                if ((m_totalDemoTime - m_lastEventTriggerTime) >= m_weatherChangeInterval) {
-                    triggerWeatherDemo();
-                    m_lastEventTriggerTime = m_totalDemoTime;
-                    m_weatherChangesShown++;
-                    m_phaseTimer = 0.0f; // Reset timer for each weather change to show progress
+                // Trigger weather changes at regular intervals (auto mode only)
+                if (!m_weatherDemoComplete && (m_totalDemoTime - m_lastEventTriggerTime) >= m_weatherChangeInterval) {
+                    // Ensure we don't exceed the weather sequence length
+                    if (m_weatherChangesShown < m_weatherSequence.size()) {
+                        triggerWeatherDemoAuto(); // Use separate method for auto progression
+                        m_lastEventTriggerTime = m_totalDemoTime;
+                        m_weatherChangesShown++;
+                        m_phaseTimer = 0.0f; // Reset timer for each weather change to show progress
+
+                        // Debug logging
+                        addLogEntry("Weather changes shown: " + std::to_string(m_weatherChangesShown) + "/" + std::to_string(m_weatherSequence.size()));
+
+                        // Check if we've shown all weather types
+                        if (m_weatherChangesShown >= m_weatherSequence.size()) {
+                            m_weatherDemoComplete = true;
+                            addLogEntry("Weather demo complete - All weather types shown!");
+                        }
+                    } else {
+                        // Safety: Mark complete if counter somehow exceeded
+                        m_weatherDemoComplete = true;
+                        addLogEntry("Weather demo force completed - counter exceeded limit");
+                    }
                 }
-                // Only advance after showing all weather types (6 total)
-                if (m_weatherChangesShown >= m_weatherSequence.size()) {
+                // Only advance after showing all weather types and some time has passed
+                if (m_weatherDemoComplete && m_phaseTimer >= 2.0f) {
                     m_currentPhase = DemoPhase::NPCSpawnDemo;
                     m_phaseTimer = 0.0f;
-                    m_weatherChangesShown = 0; // Reset for next time
-                    addLogEntry("Weather demo complete - All weather types shown!");
+                    addLogEntry("Advancing to NPC Spawn Demo Phase");
                 }
                 break;
 
             case DemoPhase::NPCSpawnDemo:
-                // Only spawn if we haven't reached the limit and enough time has passed
-                if (m_spawnedNPCs.size() < 5 && 
-                    (m_totalDemoTime - m_lastEventTriggerTime) >= m_eventFireInterval) {
+                // Spawn NPCs at regular intervals
+                if ((m_totalDemoTime - m_lastEventTriggerTime) >= m_eventFireInterval) {
                     triggerNPCSpawnDemo();
                     m_lastEventTriggerTime = m_totalDemoTime;
                 }
@@ -243,12 +249,108 @@ void EventDemoState::update() {
 
     // Update instructions
     updateInstructions();
+    
+    // Process pending behavior assignments in batches
+    if (!m_pendingBehaviorAssignments.empty()) {
+        batchAssignBehaviors(m_pendingBehaviorAssignments);
+        m_pendingBehaviorAssignments.clear();
+    }
+}
+
+std::shared_ptr<NPC> EventDemoState::createNPCAtPositionWithoutBehavior(const std::string& npcType, float x, float y) {
+
+    try {
+        // Get the texture ID for this NPC type
+        std::string textureID;
+        if (npcType == "Guard") {
+            textureID = "guard";
+        } else if (npcType == "Villager") {
+            textureID = "villager";
+        } else if (npcType == "Merchant") {
+            textureID = "merchant";
+        } else if (npcType == "Warrior") {
+            textureID = "warrior";
+        } else {
+            textureID = "npc";
+        }
+
+        Vector2D position(x, y);
+        auto npc = std::make_shared<NPC>(textureID, position, 64, 64);
+
+        if (npc) {
+            npc->setWanderArea(0.0f, 0.0f, m_worldWidth, m_worldHeight);
+            npc->setBoundsCheckEnabled(false);
+
+            // Add to collection
+            m_spawnedNPCs.push_back(npc);
+
+
+            return npc;
+        } else {
+            std::cerr << "ERROR: Failed to create NPC object of type: " << npcType << std::endl;
+            return nullptr;
+        }
+    } catch (const std::exception& e) {
+        std::cerr << "EXCEPTION in createNPCAtPositionWithoutBehavior: " << e.what() << std::endl;
+        return nullptr;
+    } catch (...) {
+        std::cerr << "UNKNOWN EXCEPTION in createNPCAtPositionWithoutBehavior" << std::endl;
+        return nullptr;
+    }
+}
+
+std::string EventDemoState::determineBehaviorForNPCType(const std::string& npcType) {
+    std::string behaviorName;
+
+    if (npcType == "Guard") {
+        size_t npcCount = m_spawnedNPCs.size();
+        std::vector<std::string> guardBehaviors = {"Patrol", "Wander", "Chase"};
+        behaviorName = guardBehaviors[npcCount % guardBehaviors.size()];
+    } else if (npcType == "Villager") {
+        size_t npcCount = m_spawnedNPCs.size();
+        std::vector<std::string> villagerBehaviors = {"Wander", "Patrol"};
+        behaviorName = villagerBehaviors[npcCount % villagerBehaviors.size()];
+    } else {
+        behaviorName = "Wander";
+    }
+
+    return behaviorName;
+}
+
+void EventDemoState::batchAssignBehaviors(const std::vector<std::pair<std::shared_ptr<NPC>, std::string>>& assignments) {
+    try {
+        for (const auto& assignment : assignments) {
+            auto npc = assignment.first;
+            const std::string& behaviorName = assignment.second;
+            
+            if (npc) {
+                AIManager::Instance().assignBehaviorToEntity(npc, behaviorName);
+                addLogEntry("Assigned " + behaviorName + " behavior (batched)");
+            }
+        }
+    } catch (const std::exception& e) {
+        std::cerr << "EXCEPTION in batchAssignBehaviors: " << e.what() << std::endl;
+    } catch (...) {
+        std::cerr << "UNKNOWN EXCEPTION in batchAssignBehaviors" << std::endl;
+    }
 }
 
 void EventDemoState::render() {
     // Render player
     if (m_player) {
         m_player->render();
+    }
+
+    // Render spawned NPCs with debugging
+    static int renderFrameCount = 0;
+    renderFrameCount++;
+
+    // Only log every 60 frames to avoid spam (roughly once per second at 60 FPS)
+    bool shouldLog = (renderFrameCount % 60 == 0);
+
+    if (shouldLog) {
+        std::cout << "=== RENDER DEBUG (Frame " << renderFrameCount << ") ===" << std::endl;
+        std::cout << "Total NPCs to render: " << m_spawnedNPCs.size() << std::endl;
     }
 
     // Render spawned NPCs
@@ -357,33 +459,46 @@ void EventDemoState::handleInput() {
     }
 
     if (isKeyPressed(m_input.num1, m_lastInput.num1) &&
-        (m_totalDemoTime - m_lastEventTriggerTime) >= 1.0f) {
-        triggerWeatherDemo();
+        (m_totalDemoTime - m_lastEventTriggerTime) >= 0.2f) {
+        // Reset phase timer if we're in auto mode weather phase
+        if (m_autoMode && m_currentPhase == DemoPhase::WeatherDemo) {
+            m_phaseTimer = 0.0f;
+        }
+        triggerWeatherDemoManual(); // Use manual version that doesn't affect phase counter
         addLogEntry("Manual weather event triggered");
         m_lastEventTriggerTime = m_totalDemoTime;
     }
 
     if (isKeyPressed(m_input.num2, m_lastInput.num2) &&
-        (m_totalDemoTime - m_lastEventTriggerTime) >= 1.0f) {
-        // Check NPC limit before spawning
-        if (m_spawnedNPCs.size() >= 10) {
-            addLogEntry("Cannot spawn - NPC limit reached (10)");
-        } else {
-            triggerNPCSpawnDemo();
-            addLogEntry("Manual NPC spawn event triggered");
+        (m_totalDemoTime - m_lastEventTriggerTime) >= 0.2f) {
+        // NPC limits removed for debugging - always spawn
+        // Reset phase timer if we're in auto mode NPC spawn phase
+        if (m_autoMode && m_currentPhase == DemoPhase::NPCSpawnDemo) {
+            m_phaseTimer = 0.0f;
         }
+        triggerNPCSpawnDemo();
+        addLogEntry("Manual NPC spawn event triggered");
         m_lastEventTriggerTime = m_totalDemoTime;
     }
 
     if (isKeyPressed(m_input.num3, m_lastInput.num3) &&
-        (m_totalDemoTime - m_lastEventTriggerTime) >= 1.0f) {
+        (m_totalDemoTime - m_lastEventTriggerTime) >= 0.2f) {
+        // Reset phase timer if we're in auto mode scene transition phase
+        if (m_autoMode && m_currentPhase == DemoPhase::SceneTransitionDemo) {
+            m_phaseTimer = 0.0f;
+        }
         triggerSceneTransitionDemo();
         addLogEntry("Manual scene transition event triggered");
         m_lastEventTriggerTime = m_totalDemoTime;
     }
 
     if (isKeyPressed(m_input.num4, m_lastInput.num4) &&
-        (m_totalDemoTime - m_lastEventTriggerTime) >= 1.0f) {
+        (m_totalDemoTime - m_lastEventTriggerTime) >= 0.2f) {
+        // Prevent conflicts with auto mode phase progression
+        if (m_autoMode && m_currentPhase == DemoPhase::CustomEventDemo) {
+            m_phaseTimer = 0.0f; // Reset phase timer to prevent auto conflicts
+        }
+        
         triggerCustomEventDemo();
         addLogEntry("Manual custom event triggered");
         m_lastEventTriggerTime = m_totalDemoTime;
@@ -401,6 +516,8 @@ void EventDemoState::handleInput() {
         m_totalDemoTime = 0.0f;
         m_lastEventTriggerTime = 0.0f;
         m_limitMessageShown = false;
+        m_weatherChangesShown = 0;
+        m_weatherDemoComplete = false;
         addLogEntry("Demo reset to beginning");
     }
 
@@ -419,7 +536,10 @@ void EventDemoState::updateDemoTimer() {
     auto duration = std::chrono::duration_cast<std::chrono::microseconds>(now - m_demoLastTime);
     float deltaTime = duration.count() / 1000000.0f; // Convert to seconds
 
-    m_phaseTimer += deltaTime;
+    // Only update phase timer if auto mode is enabled, otherwise it just counts indefinitely
+    if (m_autoMode) {
+        m_phaseTimer += deltaTime;
+    }
     m_totalDemoTime += deltaTime;
 
     m_demoLastTime = now;
@@ -614,7 +734,13 @@ void EventDemoState::renderControls() {
 }
 
 void EventDemoState::triggerWeatherDemo() {
-    // Cycle through weather types
+    // Manual weather trigger - doesn't affect auto demo progression
+    triggerWeatherDemoManual();
+}
+
+void EventDemoState::triggerWeatherDemoAuto() {
+    // Auto demo weather progression - affects phase counter
+    size_t currentIndex = m_currentWeatherIndex;  // Store current index before incrementing
     WeatherType newWeather = m_weatherSequence[m_currentWeatherIndex];
     m_currentWeatherIndex = (m_currentWeatherIndex + 1) % m_weatherSequence.size();
 
@@ -646,20 +772,58 @@ void EventDemoState::triggerWeatherDemo() {
     }
 
     m_currentWeather = newWeather;
-    addLogEntry("Weather changed to: " + getCurrentWeatherString());
+    addLogEntry("Weather changed to: " + getCurrentWeatherString() + " (Auto - Index: " + std::to_string(currentIndex) + ")");
+}
+
+void EventDemoState::triggerWeatherDemoManual() {
+    // Manual weather trigger - cycles through weather types but doesn't affect auto demo phase progression
+    static size_t manualWeatherIndex = 0;
+
+    size_t currentIndex = manualWeatherIndex;  // Store current index before incrementing
+    WeatherType newWeather = m_weatherSequence[manualWeatherIndex];
+    manualWeatherIndex = (manualWeatherIndex + 1) % m_weatherSequence.size();
+
+    switch (newWeather) {
+        case WeatherType::Clear:
+            EventManager::Instance().triggerWeatherChange("Clear", m_weatherTransitionTime);
+            break;
+        case WeatherType::Cloudy:
+            EventManager::Instance().triggerWeatherChange("Cloudy", m_weatherTransitionTime);
+            break;
+        case WeatherType::Rainy:
+            EventManager::Instance().triggerWeatherChange("Rainy", m_weatherTransitionTime);
+            break;
+        case WeatherType::Stormy:
+            EventManager::Instance().triggerWeatherChange("Stormy", m_weatherTransitionTime);
+            break;
+        case WeatherType::Foggy:
+            EventManager::Instance().triggerWeatherChange("Foggy", m_weatherTransitionTime);
+            break;
+        case WeatherType::Snowy:
+            EventManager::Instance().triggerWeatherChange("Snowy", m_weatherTransitionTime);
+            break;
+        case WeatherType::Windy:
+            EventManager::Instance().triggerWeatherChange("Windy", m_weatherTransitionTime);
+            break;
+        case WeatherType::Custom:
+            EventManager::Instance().triggerWeatherChange("Custom", m_weatherTransitionTime);
+            break;
+    }
+
+    m_currentWeather = newWeather;
+    addLogEntry("Weather changed to: " + getCurrentWeatherString() + " (Manual - Index: " + std::to_string(currentIndex) + ")");
 }
 
 void EventDemoState::triggerNPCSpawnDemo() {
     std::string npcType = m_npcTypes[m_currentNPCTypeIndex];
     m_currentNPCTypeIndex = (m_currentNPCTypeIndex + 1) % m_npcTypes.size();
 
-    // Calculate spawn position
+    // Calculate spawn position using existing NPC count for safety
     Vector2D playerPos = m_player->getPosition();
-    static int spawnCounter = 0;
-    spawnCounter++;
 
-    float offsetX = 200.0f + (spawnCounter * 120.0f);
-    float offsetY = 100.0f;
+    size_t npcCount = m_spawnedNPCs.size();
+    float offsetX = 200.0f + ((npcCount % 8) * 120.0f);  // Cycle every 8 NPCs
+    float offsetY = 100.0f + ((npcCount % 5) * 80.0f);   // Cycle every 5 NPCs
 
     float spawnX = playerPos.getX() + offsetX;
     float spawnY = playerPos.getY() + offsetY;
@@ -668,9 +832,10 @@ void EventDemoState::triggerNPCSpawnDemo() {
     spawnX = std::max(100.0f, std::min(spawnX, m_worldWidth - 100.0f));
     spawnY = std::max(100.0f, std::min(spawnY, m_worldHeight - 100.0f));
 
-    EventManager::Instance().triggerNPCSpawn(npcType, spawnX, spawnY);
+    // EventDemoState creates and owns the NPC directly
+    createNPCAtPosition(npcType, spawnX, spawnY);
 
-    addLogEntry("Triggered spawn: " + npcType + " at (" + std::to_string((int)spawnX) + ", " + std::to_string((int)spawnY) + ")");
+    addLogEntry("Created NPC: " + npcType + " at (" + std::to_string((int)spawnX) + ", " + std::to_string((int)spawnY) + ")");
 }
 
 void EventDemoState::triggerSceneTransitionDemo() {
@@ -687,35 +852,46 @@ void EventDemoState::triggerCustomEventDemo() {
     // Demonstrate custom event handling
     addLogEntry("Custom event demo - showing event system flexibility");
 
-    // Example: trigger multiple events in sequence - use proper weather cycling
-    triggerWeatherDemo();
+    // Example: demonstrate custom event handling
+    triggerWeatherDemoManual();
+// Spawn NPCs without artificial limits
+std::string npcType1 = m_npcTypes[m_currentNPCTypeIndex];
+m_currentNPCTypeIndex = (m_currentNPCTypeIndex + 1) % m_npcTypes.size();
 
-    // Spawn two NPCs using cycling NPC types
-    std::string npcType1 = m_npcTypes[m_currentNPCTypeIndex];
-    m_currentNPCTypeIndex = (m_currentNPCTypeIndex + 1) % m_npcTypes.size();
+std::string npcType2 = m_npcTypes[m_currentNPCTypeIndex];
+m_currentNPCTypeIndex = (m_currentNPCTypeIndex + 1) % m_npcTypes.size();
+
+// Calculate spawn positions for custom event
+Vector2D playerPos = m_player->getPosition();
+
+// Use existing NPC count for safe, bounded offset calculation
+size_t npcCount = m_spawnedNPCs.size();
+float offsetX1 = 150.0f + ((npcCount % 10) * 80.0f);  // Cycle every 10 positions
+float offsetY1 = 80.0f + ((npcCount % 6) * 50.0f);   // Cycle every 6 positions
+float offsetX2 = 250.0f + (((npcCount + 1) % 10) * 80.0f);
+float offsetY2 = 150.0f + (((npcCount + 1) % 6) * 50.0f);
+
+float spawnX1 = std::max(100.0f, std::min(playerPos.getX() + offsetX1, m_worldWidth - 100.0f));
+float spawnY1 = std::max(100.0f, std::min(playerPos.getY() + offsetY1, m_worldHeight - 100.0f));
+float spawnX2 = std::max(100.0f, std::min(playerPos.getX() + offsetX2, m_worldWidth - 100.0f));
+float spawnY2 = std::max(100.0f, std::min(playerPos.getY() + offsetY2, m_worldHeight - 100.0f));
+
+// Create NPCs without AI behavior assignment first
+auto npc1 = createNPCAtPositionWithoutBehavior(npcType1, spawnX1, spawnY1);
+auto npc2 = createNPCAtPositionWithoutBehavior(npcType2, spawnX2, spawnY2);
     
-    std::string npcType2 = m_npcTypes[m_currentNPCTypeIndex];
-    m_currentNPCTypeIndex = (m_currentNPCTypeIndex + 1) % m_npcTypes.size();
-
-    // Calculate spawn positions for custom event
-    Vector2D playerPos = m_player->getPosition();
-    static int customSpawnCounter = 0;
+// Queue behavior assignments for batch processing
+if (npc1) {
+    std::string behaviorName1 = determineBehaviorForNPCType(npcType1);
+    m_pendingBehaviorAssignments.push_back({npc1, behaviorName1});
+}
     
-    float offsetX1 = 150.0f + (customSpawnCounter * 80.0f);
-    float offsetY1 = 80.0f;
-    float offsetX2 = 250.0f + (customSpawnCounter * 80.0f);
-    float offsetY2 = 150.0f;
-    customSpawnCounter++;
-    
-    float spawnX1 = std::max(100.0f, std::min(playerPos.getX() + offsetX1, m_worldWidth - 100.0f));
-    float spawnY1 = std::max(100.0f, std::min(playerPos.getY() + offsetY1, m_worldHeight - 100.0f));
-    float spawnX2 = std::max(100.0f, std::min(playerPos.getX() + offsetX2, m_worldWidth - 100.0f));
-    float spawnY2 = std::max(100.0f, std::min(playerPos.getY() + offsetY2, m_worldHeight - 100.0f));
+if (npc2) {
+    std::string behaviorName2 = determineBehaviorForNPCType(npcType2);
+    m_pendingBehaviorAssignments.push_back({npc2, behaviorName2});
+}
 
-    EventManager::Instance().triggerNPCSpawn(npcType1, spawnX1, spawnY1);
-    EventManager::Instance().triggerNPCSpawn(npcType2, spawnX2, spawnY2);
-
-    addLogEntry("Multiple events triggered: " + npcType1 + " and " + npcType2);
+    addLogEntry("Multiple NPCs spawned: " + npcType1 + " and " + npcType2);
 }
 
 void EventDemoState::resetAllEvents() {
@@ -740,7 +916,7 @@ void EventDemoState::resetAllEvents() {
 
 void EventDemoState::onWeatherChanged(const std::string& message) {
     addLogEntry("Weather Event: " + message);
-    
+
     // Update current weather state for UI display
     if (message == "Clear") {
         m_currentWeather = WeatherType::Clear;
@@ -763,18 +939,18 @@ void EventDemoState::onWeatherChanged(const std::string& message) {
 
 void EventDemoState::onNPCSpawned(const std::string& message) {
     addLogEntry("NPC Spawn Event: " + message);
-    
+
     // NPCSpawnEvent creates the NPC, but we need to track it for rendering and AI assignment
     std::string npcType = message;
-    
+
     // Get recently spawned NPCs from the event system
     auto spawnEvents = EventManager::Instance().getEventsByType("NPCSpawn");
-    
+
     for (auto event : spawnEvents) {
         auto npcSpawnEvent = std::dynamic_pointer_cast<NPCSpawnEvent>(event);
         if (npcSpawnEvent) {
             auto spawnedEntities = npcSpawnEvent->getSpawnedEntities();
-            
+
             // Find the most recently spawned NPC that matches our type and add it to tracking
             for (auto it = spawnedEntities.rbegin(); it != spawnedEntities.rend(); ++it) {
                 if (auto entityPtr = it->lock()) {
@@ -788,14 +964,14 @@ void EventDemoState::onNPCSpawned(const std::string& message) {
                                 break;
                             }
                         }
-                        
+
                         if (!alreadyTracked) {
                             // Assign AI behavior based on NPC type
                             assignAIBehaviorToNPC(npc, npcType);
-                            
+
                             // Add to our tracking list for rendering
                             m_spawnedNPCs.push_back(npc);
-                            
+
                             std::cout << "EventDemoState tracked and assigned AI to " << npcType << std::endl;
                             return; // Only track the most recent one
                         }
@@ -849,33 +1025,43 @@ void EventDemoState::setupAIBehaviors() {
 }
 
 void EventDemoState::assignAIBehaviorToNPC(std::shared_ptr<NPC> npc, const std::string& npcType) {
-    if (!npc) return;
+    if (!npc) {
+        std::cerr << "ERROR: assignAIBehaviorToNPC called with null NPC!" << std::endl;
+        return;
+    }
 
     std::string behaviorName;
 
-    // Assign different default behaviors based on NPC type
-    if (npcType == "Guard") {
-        // Guards patrol by default, but cycle through behaviors
-        static int guardBehaviorIndex = 0;
-        std::vector<std::string> guardBehaviors = {"Patrol", "Wander", "Chase"};
-        behaviorName = guardBehaviors[guardBehaviorIndex % guardBehaviors.size()];
-        guardBehaviorIndex++;
-    } else if (npcType == "Villager") {
-        // Villagers wander by default, but also cycle
-        static int villagerBehaviorIndex = 0;
-        std::vector<std::string> villagerBehaviors = {"Wander", "Patrol"};
-        behaviorName = villagerBehaviors[villagerBehaviorIndex % villagerBehaviors.size()];
-        villagerBehaviorIndex++;
-    } else {
-        // Default to wander for unknown types
-        behaviorName = "Wander";
+    try {
+        // Assign different default behaviors based on NPC type
+        if (npcType == "Guard") {
+            // Guards patrol by default, but cycle through behaviors
+            // FIXED: Use NPC count instead of static variable to prevent infinite growth
+            size_t npcCount = m_spawnedNPCs.size();
+            std::vector<std::string> guardBehaviors = {"Patrol", "Wander", "Chase"};
+            behaviorName = guardBehaviors[npcCount % guardBehaviors.size()];
+        } else if (npcType == "Villager") {
+            // Villagers wander by default, but also cycle
+            // FIXED: Use NPC count instead of static variable to prevent infinite growth
+            size_t npcCount = m_spawnedNPCs.size();
+            std::vector<std::string> villagerBehaviors = {"Wander", "Patrol"};
+            behaviorName = villagerBehaviors[npcCount % villagerBehaviors.size()];
+        } else {
+            // Default to wander for unknown types
+            behaviorName = "Wander";
+        }
+
+        // Assign the behavior
+        AIManager::Instance().assignBehaviorToEntity(npc, behaviorName);
+        addLogEntry(npcType + " assigned " + behaviorName + " behavior");
+        
+    } catch (const std::exception& e) {
+        std::cerr << "EXCEPTION in assignAIBehaviorToNPC: " << e.what() << std::endl;
+        std::cerr << "NPC type: " << npcType << ", behavior: " << behaviorName << std::endl;
+    } catch (...) {
+        std::cerr << "UNKNOWN EXCEPTION in assignAIBehaviorToNPC" << std::endl;
+        std::cerr << "NPC type: " << npcType << ", behavior: " << behaviorName << std::endl;
     }
-
-    // Assign the behavior
-    AIManager::Instance().assignBehaviorToEntity(npc, behaviorName);
-
-    std::cout << "EventDemoState: Assigned " << behaviorName << " behavior to " << npcType << std::endl;
-    addLogEntry(npcType + " assigned " + behaviorName + " behavior");
 }
 
 
@@ -961,4 +1147,56 @@ void EventDemoState::cleanupSpawnedNPCs() {
     }
     m_spawnedNPCs.clear();
     m_limitMessageShown = false; // Reset limit message flag when NPCs are cleaned
+}
+
+void EventDemoState::createNPCAtPosition(const std::string& npcType, float x, float y) {
+    std::cout << "DEBUG: Creating NPC " << npcType << " at (" << x << ", " << y << ")" << std::endl;
+    std::cout << "DEBUG: Current spawned NPCs count: " << m_spawnedNPCs.size() << std::endl;
+
+    try {
+        // Get the texture ID for this NPC type (match actual loaded texture names)
+        std::string textureID;
+        if (npcType == "Guard") {
+            textureID = "guard";
+        } else if (npcType == "Villager") {
+            textureID = "villager";
+        } else if (npcType == "Merchant") {
+            textureID = "merchant";
+        } else if (npcType == "Warrior") {
+            textureID = "warrior";
+        } else {
+            textureID = "npc"; // Default fallback to working texture
+        }
+
+        // EventDemoState creates and owns the NPC directly like AIDemoState
+        Vector2D position(x, y);
+        auto npc = std::make_shared<NPC>(textureID, position, 64, 64);
+
+        if (npc) {
+
+
+            // Configure NPC properties
+            npc->setWanderArea(0.0f, 0.0f, m_worldWidth, m_worldHeight);
+            npc->setBoundsCheckEnabled(false); // Let AI behaviors handle movement
+
+            // Determine behavior for this NPC type
+            std::string behaviorName = determineBehaviorForNPCType(npcType);
+            
+            // Add to pending behavior assignment list instead of immediate assignment
+            m_pendingBehaviorAssignments.push_back({npc, behaviorName});
+
+            // EventDemoState owns this NPC
+            m_spawnedNPCs.push_back(npc);
+
+
+        } else {
+            std::cerr << "ERROR: Failed to create NPC object of type: " << npcType << std::endl;
+        }
+    } catch (const std::exception& e) {
+        std::cerr << "EXCEPTION in createNPCAtPosition: " << e.what() << std::endl;
+        std::cerr << "NPC type: " << npcType << ", position: (" << x << ", " << y << ")" << std::endl;
+    } catch (...) {
+        std::cerr << "UNKNOWN EXCEPTION in createNPCAtPosition" << std::endl;
+        std::cerr << "NPC type: " << npcType << ", position: (" << x << ", " << y << ")" << std::endl;
+    }
 }
