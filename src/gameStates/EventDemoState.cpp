@@ -157,8 +157,7 @@ void EventDemoState::update() {
             it = m_spawnedNPCs.erase(it);
         }
     }
-    // Update event system
-    //EventManager::Instance().update();
+    // Update event system -- Moved to GameEngine processBackgroudTasks
 
     // Handle demo phases (separate from event rate limiting)
     if (m_autoMode) {
