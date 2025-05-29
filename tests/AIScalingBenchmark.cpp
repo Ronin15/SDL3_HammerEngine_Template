@@ -102,10 +102,7 @@ public:
         benchmarkEntity->update();
         m_updateCount++;
 
-        // Print diagnostic info occasionally
-        if (m_updateCount % 1000 == 0) {
-            std::cout << "  Behavior " << m_id << " has updated " << m_updateCount << " times" << std::endl;
-        }
+        // Diagnostic info removed to reduce console spam
     }
 
     void init(EntityPtr /* entity */) override {
@@ -287,7 +284,7 @@ struct AIScalingFixture {
                 entity->getUpdateCount(); // Clear by reading
             }
 
-            // Pre-run synchronization delay before starting timing
+            // Post-run synchronization delay before starting timing
             if (useThreading) {
                 // Let any previous operations complete
                 std::this_thread::sleep_for(std::chrono::milliseconds(10));
@@ -321,7 +318,6 @@ struct AIScalingFixture {
             if (useThreading) {
                 // Wait with time proportional to entity count to ensure all tasks complete
                 int waitTime = std::min(1200, 50 + numEntities / 25);
-                std::cout << "  Post-run synchronization: waiting " << waitTime << "ms for entity count: " << numEntities << std::endl;
                 std::this_thread::sleep_for(std::chrono::milliseconds(waitTime));
 
                 // Special handling for large entity counts
@@ -334,21 +330,18 @@ struct AIScalingFixture {
 
                     // For extremely large entity counts, add additional synchronization
                     if (numEntities >= 20000) {
-                        std::cout << "  Extra synchronization for large entity count..." << std::endl;
                         std::this_thread::sleep_for(std::chrono::milliseconds(100));
                         AIManager::Instance().update();
                         std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
                         // Special handling for extreme entity counts (50,000+)
                         if (numEntities >= 50000) {
-                            std::cout << "  Adding extended synchronization for extreme entity count (" << numEntities << ")..." << std::endl;
                             std::this_thread::sleep_for(std::chrono::milliseconds(200));
                             AIManager::Instance().update();
                             std::this_thread::sleep_for(std::chrono::milliseconds(200));
 
                             // Extra handling for ultra-large entity counts (100,000+)
                             if (numEntities >= 100000) {
-                                std::cout << "  Adding ultra extended synchronization for massive entity count (" << numEntities << ")..." << std::endl;
                                 std::this_thread::sleep_for(std::chrono::milliseconds(300));
                                 AIManager::Instance().update();
                                 std::this_thread::sleep_for(std::chrono::milliseconds(300));
@@ -382,71 +375,63 @@ struct AIScalingFixture {
         double totalTimeMs = avgDuration / 1000.0;
         double timePerUpdateMs = totalTimeMs / numUpdates;
         double timePerEntityMs = totalTimeMs / (static_cast<double>(numEntities) * numUpdates);
-        double updatesPerSecond = (static_cast<double>(numEntities) * numUpdates) / (totalTimeMs / 1000.0);
-
-        // Print results
-            std::cout << std::fixed << std::setprecision(3);
-            std::cout << "  Total time: " << totalTimeMs << " ms" << std::endl;
-            std::cout << "  Time per update: " << timePerUpdateMs << " ms" << std::endl;
-            std::cout << "  Time per entity: " << timePerEntityMs << " ms" << std::endl;
-            std::cout << "  Updates per second: " << updatesPerSecond << std::endl;
-
-            // Print behavior update counts
-            std::cout << "  Behavior update counts:" << std::endl;
-            for (size_t i = 0; i < behaviors.size(); ++i) {
-                std::cout << "    Behavior " << i << ": " << behaviors[i]->getUpdateCount() << " updates" << std::endl;
+        // Calculate derived metrics
+        double entitiesPerSecond = (static_cast<double>(numEntities) * numUpdates) / (totalTimeMs / 1000.0);
+        
+        // Calculate total behavior updates
+        int totalBehaviorUpdates = 0;
+        for (const auto& behavior : behaviors) {
+            totalBehaviorUpdates += behavior->getUpdateCount();
+        }
+        
+        // Verify all entities were updated
+        int notUpdatedCount = 0;
+        for (const auto& entity : entities) {
+            if (entity->getUpdateCount() == 0) {
+                notUpdatedCount++;
             }
+        }
 
-            // Clear all entity frame counters
-            for (const auto& behavior : behaviors) {
-                behavior->clearFrameCounters();
-            }
-
-            // Verify all entities were updated
-            int notUpdatedCount = 0;
-            std::vector<int> notUpdatedIds;
-
-            for (const auto& entity : entities) {
-                if (entity->getUpdateCount() == 0) {
-                    notUpdatedCount++;
-                    notUpdatedIds.push_back(entity->getId());
-                    if (notUpdatedIds.size() < 10) {  // Limit to first 10 IDs to avoid too much output
-                        std::cout << "    Entity " << entity->getId() << " not updated" << std::endl;
-                    }
-                }
-            }
-
-        if (notUpdatedCount > 0) {
-            std::cout << "  WARNING: " << notUpdatedCount << " entities not updated!" << std::endl;
-            std::cout << "  First few not updated: ";
-            for (size_t i = 0; i < std::min(notUpdatedIds.size(), size_t(5)); ++i) {
-                std::cout << notUpdatedIds[i] << " ";
-            }
-            std::cout << std::endl;
-
+        // Print results in clean format matching event benchmark
+        std::cout << "\nPerformance Results (avg of " << numMeasurements << " runs):" << std::endl;
+        std::cout << std::fixed << std::setprecision(2);
+        std::cout << "  Total time: " << totalTimeMs << " ms" << std::endl;
+        std::cout << "  Time per update cycle: " << timePerUpdateMs << " ms" << std::endl;
+        std::cout << std::setprecision(6);
+        std::cout << "  Time per entity: " << timePerEntityMs << " ms" << std::endl;
+        std::cout << std::setprecision(0);
+        std::cout << "  Entity updates per second: " << entitiesPerSecond << std::endl;
+        std::cout << "  Total behavior updates: " << totalBehaviorUpdates << std::endl;
+        
+        // Verification status with checkmark/X like event benchmark
+        std::cout << "  Entity updates: " << (numEntities - notUpdatedCount) << "/" << numEntities;
+        if (notUpdatedCount == 0) {
+            std::cout << " ✓" << std::endl;
+        } else {
+            std::cout << " ✗ (Missing: " << notUpdatedCount << ")" << std::endl;
+            
             // If we have missed entities and threading is enabled, try one more update
             if (useThreading && notUpdatedCount > 0) {
-                // One final update attempt with longer waiting time
-                std::cout << "  Running final catch-up update..." << std::endl;
                 AIManager::Instance().update();
-
-                // Give plenty of time for the update to complete
                 std::this_thread::sleep_for(std::chrono::milliseconds(100));
-
+                
                 // Recount missed entities
-                notUpdatedCount = 0;
+                int finalNotUpdatedCount = 0;
                 for (const auto& entity : entities) {
                     if (entity->getUpdateCount() == 0) {
-                        notUpdatedCount++;
+                        finalNotUpdatedCount++;
                     }
                 }
-
-                if (notUpdatedCount > 0) {
-                    std::cout << "  Final count: " << notUpdatedCount << " entities still not updated." << std::endl;
-                } else {
-                    std::cout << "  All entities successfully updated after catch-up." << std::endl;
+                
+                if (finalNotUpdatedCount == 0) {
+                    std::cout << "  ✓ All entities updated after recovery" << std::endl;
                 }
             }
+        }
+
+        // Clear all entity frame counters
+        for (const auto& behavior : behaviors) {
+            behavior->clearFrameCounters();
         }
 
         // Clean up
@@ -505,16 +490,11 @@ struct AIScalingFixture {
 
     // Run scalability test with increasing entity counts
     void runScalabilityTest(bool useThreading) {
-        std::cout << "\n===== SCALABILITY TEST (" << (useThreading ? "Threaded" : "Single-Threaded") << ") =====" << std::endl;
+        std::cout << "\n===== AI SCALABILITY TEST SUITE (" << (useThreading ? "Threaded" : "Single-Threaded") << ") =====" << std::endl;
         // Skip if shutdown is in progress
         if (g_shutdownInProgress.load()) {
             return;
         }
-
-        std::string threadingMode = useThreading ? "Threaded" : "Single-Threaded";
-        std::cout << "\n=========================================" << std::endl;
-        std::cout << "SCALABILITY TEST: " << threadingMode << std::endl;
-        std::cout << "=========================================" << std::endl;
 
         const int numBehaviors = 10;
         const int numUpdates = 10;
@@ -532,23 +512,16 @@ struct AIScalingFixture {
         for (int numEntities : entityCounts) {
             if ((numEntities > 10000 && !useThreading) ||
                 (numEntities > 100000 && useThreading && std::thread::hardware_concurrency() < 8)) {
-                std::cout << "Skipping " << numEntities << " entities in "
-                          << (useThreading ? "threaded" : "single-threaded")
-                          << " mode (would be too slow)" << std::endl;
                 continue;
             }
-
-            std::cout << "\nRunning test with " << numEntities << " entities..." << std::endl;
 
             // For very large entity counts, use fewer behaviors to avoid excessive memory usage
             int adjustedNumBehaviors = (numEntities >= 100000) ? 5 : numBehaviors;
             int adjustedNumUpdates = (numEntities >= 100000) ? 5 : numUpdates;
 
-            if (adjustedNumBehaviors != numBehaviors || adjustedNumUpdates != numUpdates) {
-                std::cout << "Adjusted parameters for large entity count: "
-                          << adjustedNumBehaviors << " behaviors, "
-                          << adjustedNumUpdates << " updates" << std::endl;
-            }
+            std::cout << "\n--- Test Case: " << numEntities << " entities, " 
+                      << adjustedNumBehaviors << " behaviors, " << adjustedNumUpdates << " updates ---" << std::endl;
+
 
             runBenchmark(numEntities, adjustedNumBehaviors, adjustedNumUpdates, false);
 
@@ -578,7 +551,6 @@ struct AIScalingFixture {
                 // Scale wait time with entity count, minimum 20ms
                 // For very large counts, cap at 500ms to avoid excessive waiting
                 int waitTime = std::min(500, 20 + numEntities / 100);
-                std::cout << "  Post-run synchronization: waiting " << waitTime << "ms for entity count: " << numEntities << std::endl;
                 std::this_thread::sleep_for(std::chrono::milliseconds(waitTime));
 
                 // Force a second update to catch any entities that weren't processed
@@ -604,14 +576,14 @@ struct AIScalingFixture {
         }
 
         // Print summary
+        std::string threadingMode = useThreading ? "Threaded" : "Single-Threaded";
         std::cout << "\nSCALABILITY SUMMARY (" << threadingMode << "):" << std::endl;
         std::cout << "Entity Count | Updates Per Second" << std::endl;
         std::cout << "-------------|-----------------" << std::endl;
 
         for (const auto& [count, rate] : updateRates) {
             std::cout << std::setw(12) << count << " | "
-                          << std::setw(15) << std::fixed << std::setprecision(0) << rate
-                          << " (" << (useThreading ? "threaded" : "single-threaded") << ")" << std::endl;
+                          << std::setw(15) << std::fixed << std::setprecision(0) << rate << std::endl;
         }
     }
 
@@ -737,7 +709,6 @@ BOOST_AUTO_TEST_CASE(TestExtremeEntityCount) {
 
         // Allow time for updates to complete
         int waitTime = 500;  // 500ms should be enough for 200K entities
-        std::cout << "  Post-run synchronization: waiting " << waitTime << "ms for entity count: " << numEntities << std::endl;
         std::this_thread::sleep_for(std::chrono::milliseconds(waitTime));
 
         // Force a second update to catch any entities that weren't processed
@@ -753,19 +724,20 @@ BOOST_AUTO_TEST_CASE(TestExtremeEntityCount) {
         double timePerEntity = durationInSec / numEntities * 1000.0;  // in milliseconds
 
         // Report performance
-        std::cout << "\nEXTREME ENTITY TEST RESULTS:" << std::endl;
+        std::cout << "\nPerformance Results:" << std::endl;
         std::cout << "  Total entities: " << numEntities << std::endl;
         std::cout << "  Total behaviors: " << numBehaviors << std::endl;
-        std::cout << "  Total time: " << durationInSec * 1000 << " ms" << std::endl;
-        std::cout << "  Time per entity: " << std::fixed << std::setprecision(6) << timePerEntity << " ms" << std::endl;
-        std::cout << "  Updates per second: " << std::fixed << std::setprecision(2) << updatesPerSecond << std::endl;
+        std::cout << "  Total time: " << std::fixed << std::setprecision(2) << durationInSec * 1000 << " ms" << std::endl;
+        std::cout << "  Time per entity: " << std::setprecision(6) << timePerEntity << " ms" << std::endl;
+        std::cout << "  Updates per second: " << std::setprecision(0) << updatesPerSecond << std::endl;
         std::cout << "  Thread count: " << maxThreads << std::endl;
-
-        // Track behavior update counts
-        std::cout << "  Behavior update counts:" << std::endl;
+        
+        // Calculate total behavior updates
+        int totalBehaviorUpdates = 0;
         for (size_t i = 0; i < fixture.behaviors.size(); ++i) {
-            std::cout << "    Behavior " << i << ": " << fixture.behaviors[i]->getUpdateCount() << " updates" << std::endl;
+            totalBehaviorUpdates += fixture.behaviors[i]->getUpdateCount();
         }
+        std::cout << "  Total behavior updates: " << totalBehaviorUpdates << std::endl;
 
         // Only run if we have a lot of memory
         #ifdef ENABLE_EXTREME_TESTS
