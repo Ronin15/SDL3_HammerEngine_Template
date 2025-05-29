@@ -198,21 +198,7 @@ public:
      */
     size_t getPendingBehaviorAssignmentCount() const;
 
-    /**
-     * @brief Process multiple entities with the same behavior type in batches
-     * @param behaviorName The behavior to process
-     * @param entities Vector of entities to process
-     * @thread_safety Thread-safe, can be called from any thread
-     */
-    void batchProcessEntities(const std::string& behaviorName, const std::vector<EntityPtr>& entities);
 
-    /**
-     * @brief Process all behaviors in batches for maximum performance
-     * This is the most optimized way to update all AI entities.
-     * It will automatically use threading if available.
-     * @thread_safety Thread-safe, can be called from any thread
-     */
-    void batchUpdateAllBehaviors();
 
     /**
      * @brief Remove AI behavior from an entity
@@ -424,17 +410,12 @@ private:
     std::atomic<bool> m_useThreading{true}; // Controls whether updates run in parallel
     unsigned int m_maxThreads{0}; // 0 = auto (use ThreadSystem default)
 
-    // For batch processing optimization
-    using BehaviorBatch = std::vector<EntityPtr>;
-    boost::container::flat_map<std::string, BehaviorBatch> m_behaviorBatches{};
-    std::atomic<bool> m_batchesValid{false};
-    mutable std::mutex m_batchesMutex{};
+
 
     // Private helper methods for optimizations
     void rebuildEntityBehaviorCache();
-    void rebuildBehaviorBatches();
     void invalidateOptimizationCaches();
-    void updateBehaviorBatch(const std::string_view& behaviorName, const BehaviorBatch& batch);
+
 
     // Common helper method to process entities with a behavior (reduces code duplication)
     void processEntitiesWithBehavior(std::shared_ptr<AIBehavior> behavior, const std::vector<EntityPtr>& entities, bool useThreading);

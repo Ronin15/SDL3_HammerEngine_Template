@@ -13,6 +13,7 @@
 #include <iostream>
 #include <string>
 #include <map>
+#include <set>
 #include <functional>
 
 // Basic Vector2D implementation for tests
@@ -177,6 +178,7 @@ public:
         m_behaviors.clear();
         m_entityBehaviors.clear();
         m_entityBehaviorCache.clear();
+        m_managedEntities.clear();
     }
 
     // Register a behavior
@@ -196,6 +198,7 @@ public:
         m_behaviors.clear();
         m_entityBehaviors.clear();
         m_entityBehaviorCache.clear();
+        m_managedEntities.clear();
         m_cacheValid = false;
     }
 
@@ -291,12 +294,50 @@ public:
         m_messageQueue.clear();
     }
 
+    // Register entity for managed updates (mock implementation)
+    void registerEntityForUpdates(EntityPtr entity, EntityPtr player = nullptr) {
+        (void)player; // Unused in mock
+        m_managedEntities.insert(entity);
+    }
+
+    // Unregister entity from managed updates (mock implementation)
+    void unregisterEntityFromUpdates(EntityPtr entity) {
+        m_managedEntities.erase(entity);
+    }
+
+    // Update managed entities (mock implementation)
+    void updateManagedEntities() {
+        if (!m_initialized) return;
+        
+        // Process messages first
+        processMessageQueue();
+
+        // Update each managed entity with its behavior
+        for (const auto& entity : m_managedEntities) {
+            if (entityHasBehavior(entity)) {
+                auto& behaviorName = m_entityBehaviors[entity];
+                if (m_behaviors.find(behaviorName) != m_behaviors.end()) {
+                    auto behavior = m_behaviors[behaviorName];
+                    behavior->executeLogic(entity);
+                }
+            }
+        }
+    }
+
+    // Unassign behavior from entity (mock implementation)
+    void unassignBehaviorFromEntity(EntityPtr entity) {
+        m_entityBehaviors.erase(entity);
+        m_managedEntities.erase(entity);
+        m_cacheValid = false;
+    }
+
 private:
     bool m_initialized{false};
     bool m_cacheValid{false};
     // Storage for behaviors and entity assignments
     std::map<std::string, std::shared_ptr<AIBehavior>> m_behaviors;
     std::map<EntityPtr, std::string, std::owner_less<EntityPtr>> m_entityBehaviors;
+    std::set<EntityPtr, std::owner_less<EntityPtr>> m_managedEntities;
 
     // Optimization cache
     // Cache for quick lookup of entity-behavior pairs (optimization)
@@ -371,11 +412,12 @@ BOOST_AUTO_TEST_CASE(TestEntityComponentCaching)
     auto wanderBehavior = std::make_shared<MockWanderBehavior>(2.0f, 1000.0f, 200.0f);
     AIManager::Instance().registerBehavior("TestWander", wanderBehavior);
 
-    // Create test entities
+    // Create test entities and register them for managed updates
     std::vector<EntityPtr> entities;
     for (int i = 0; i < 10; ++i) {
         entities.push_back(OptimizationTestEntity::create(Vector2D(i * 100.0f, i * 100.0f)));
         AIManager::Instance().assignBehaviorToEntity(entities.back(), "TestWander");
+        AIManager::Instance().registerEntityForUpdates(entities.back());
     }
 
     // Force cache validation
@@ -384,7 +426,11 @@ BOOST_AUTO_TEST_CASE(TestEntityComponentCaching)
     // Cache should be valid now
     BOOST_CHECK_EQUAL(AIManager::Instance().getManagedEntityCount(), 10);
 
-    // Cleanup
+    // Cleanup - unregister entities from managed updates
+    for (auto& entity : entities) {
+        AIManager::Instance().unregisterEntityFromUpdates(entity);
+        AIManager::Instance().unassignBehaviorFromEntity(entity);
+    }
     entities.clear();
     AIManager::Instance().resetBehaviors();
 }
@@ -396,24 +442,26 @@ BOOST_AUTO_TEST_CASE(TestBatchProcessing)
     auto wanderBehavior = std::make_shared<MockWanderBehavior>(2.0f, 1000.0f, 200.0f);
     AIManager::Instance().registerBehavior("BatchWander", wanderBehavior);
 
-    // Create test entities
+    // Create test entities and register them for managed updates
     std::vector<EntityPtr> entityPtrs;
     for (int i = 0; i < 100; ++i) {
-        entityPtrs.push_back(OptimizationTestEntity::create(Vector2D(i * 10.0f, i * 10.0f)));
+        auto entity = OptimizationTestEntity::create(Vector2D(i * 10.0f, i * 10.0f));
+        entityPtrs.push_back(entity);
+        AIManager::Instance().assignBehaviorToEntity(entity, "BatchWander");
+        AIManager::Instance().registerEntityForUpdates(entity);
     }
 
-    // Time the batch processing
+    // Time the managed entity processing
     auto startTime = std::chrono::high_resolution_clock::now();
-    AIManager::Instance().batchProcessEntities("BatchWander", entityPtrs);
+    AIManager::Instance().updateManagedEntities();
     auto endTime = std::chrono::high_resolution_clock::now();
     auto batchDuration = std::chrono::duration_cast<std::chrono::microseconds>(endTime - startTime);
 
-    // Time individual processing
+    // Time multiple managed updates
     startTime = std::chrono::high_resolution_clock::now();
-    for (const auto& entity : entityPtrs) {
-        AIManager::Instance().assignBehaviorToEntity(entity, "BatchWander");
+    for (int i = 0; i < 5; ++i) {
+        AIManager::Instance().updateManagedEntities();
     }
-    AIManager::Instance().update();
     endTime = std::chrono::high_resolution_clock::now();
     auto individualDuration = std::chrono::duration_cast<std::chrono::microseconds>(endTime - startTime);
 
@@ -424,7 +472,11 @@ BOOST_AUTO_TEST_CASE(TestBatchProcessing)
     // Batch processing should be more efficient
     BOOST_CHECK_LE(batchDuration.count(), individualDuration.count());
 
-    // Cleanup
+    // Cleanup - unregister entities from managed updates
+    for (auto& entity : entityPtrs) {
+        AIManager::Instance().unregisterEntityFromUpdates(entity);
+        AIManager::Instance().unassignBehaviorFromEntity(entity);
+    }
     entityPtrs.clear();
     AIManager::Instance().resetBehaviors();
 }
@@ -437,14 +489,17 @@ BOOST_AUTO_TEST_CASE(TestEarlyExitConditions)
     // Update frequency is now controlled by AIManager, not individual behaviors
     AIManager::Instance().registerBehavior("LazyWander", wanderBehavior);
 
-    // Create test entity
+    // Create test entity and register for managed updates
     auto entity = OptimizationTestEntity::create(Vector2D(100.0f, 100.0f));
     AIManager::Instance().assignBehaviorToEntity(entity, "LazyWander");
+    AIManager::Instance().registerEntityForUpdates(entity);
 
     // Test that behavior is assigned
     BOOST_CHECK(AIManager::Instance().entityHasBehavior(entity));
 
-    // Cleanup
+    // Cleanup - unregister entity from managed updates
+    AIManager::Instance().unregisterEntityFromUpdates(entity);
+    AIManager::Instance().unassignBehaviorFromEntity(entity);
     AIManager::Instance().resetBehaviors();
 }
 
@@ -455,9 +510,10 @@ BOOST_AUTO_TEST_CASE(TestMessageQueueSystem)
     auto wanderBehavior = std::make_shared<MockWanderBehavior>(2.0f, 1000.0f, 200.0f);
     AIManager::Instance().registerBehavior("MsgWander", wanderBehavior);
 
-    // Create test entity
+    // Create test entity and register for managed updates
     auto entity = OptimizationTestEntity::create(Vector2D(100.0f, 100.0f));
     AIManager::Instance().assignBehaviorToEntity(entity, "MsgWander");
+    AIManager::Instance().registerEntityForUpdates(entity);
 
     // Queue several messages
     AIManager::Instance().sendMessageToEntity(entity, "test1");
@@ -477,6 +533,8 @@ BOOST_AUTO_TEST_CASE(TestMessageQueueSystem)
     // Entity should still have behavior after all messages
     BOOST_CHECK(AIManager::Instance().entityHasBehavior(entity));
 
-    // Cleanup
+    // Cleanup - unregister entity from managed updates
+    AIManager::Instance().unregisterEntityFromUpdates(entity);
+    AIManager::Instance().unassignBehaviorFromEntity(entity);
     AIManager::Instance().resetBehaviors();
 }

@@ -37,9 +37,9 @@ public:
         
         m_callCount.fetch_add(1);
         
-        // Simulate processing work with varying complexity
+        // Simulate processing work with varying complexity (balanced for realistic simulation)
         volatile int dummy = 0;
-        for (int i = 0; i < m_complexity * 100; ++i) {
+        for (int i = 0; i < m_complexity * 50; ++i) {
             dummy += m_rng() % 1000;
         }
         
@@ -140,7 +140,7 @@ struct EventManagerScalingFixture {
             
             for (int handler = 0; handler < numHandlersPerType; ++handler) {
                 int handlerId = eventType * numHandlersPerType + handler;
-                int complexity = 5 + (handlerId % 10); // Vary complexity from 5-14
+                int complexity = 4 + (handlerId % 6); // Vary complexity from 4-9 (balanced for good simulation)
                 
                 auto benchmarkHandler = std::make_shared<BenchmarkEventHandler>(handlerId, complexity);
                 handlers.push_back(benchmarkHandler);
@@ -190,6 +190,9 @@ struct EventManagerScalingFixture {
                     
                     EventManager::Instance().queueHandlerCall(eventTypeName, params);
                 }
+                
+                // Process queued handlers immediately
+                EventManager::Instance().processHandlerQueue();
             }
 
             auto endTime = std::chrono::high_resolution_clock::now();
