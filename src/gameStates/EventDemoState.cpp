@@ -158,7 +158,7 @@ void EventDemoState::update() {
         }
     }
     // Update event system
-    EventManager::Instance().update();
+    //EventManager::Instance().update();
 
     // Handle demo phases (separate from event rate limiting)
     if (m_autoMode) {
@@ -891,7 +891,7 @@ if (npc1) {
     std::string behaviorName1 = determineBehaviorForNPCType(npcType1);
     m_pendingBehaviorAssignments.push_back({npc1, behaviorName1});
 }
-    
+
 if (npc2) {
     std::string behaviorName2 = determineBehaviorForNPCType(npcType2);
     m_pendingBehaviorAssignments.push_back({npc2, behaviorName2});
