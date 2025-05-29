@@ -264,13 +264,8 @@ void EventDemoState::update() {
     // Update instructions
     updateInstructions();
 
-    // Process pending behavior assignments in batches
-    if (!m_pendingBehaviorAssignments.empty()) {
-        // Make a copy to avoid concurrent modification issues
-        auto assignments = m_pendingBehaviorAssignments;
-        m_pendingBehaviorAssignments.clear();
-        batchAssignBehaviors(assignments);
-    }
+    // Note: Pending behavior assignments are now processed globally by GameEngine
+    // via AIManager::processPendingBehaviorAssignments() in processBackgroundTasks()
 }
 
 std::shared_ptr<NPC> EventDemoState::createNPCAtPositionWithoutBehavior(const std::string& npcType, float x, float y) {
@@ -333,23 +328,7 @@ std::string EventDemoState::determineBehaviorForNPCType(const std::string& npcTy
     return behaviorName;
 }
 
-void EventDemoState::batchAssignBehaviors(const std::vector<std::pair<std::shared_ptr<NPC>, std::string>>& assignments) {
-    try {
-        for (const auto& assignment : assignments) {
-            auto npc = assignment.first;
-            const std::string& behaviorName = assignment.second;
 
-            if (npc) {
-                AIManager::Instance().assignBehaviorToEntity(npc, behaviorName);
-                addLogEntry("Assigned " + behaviorName + " behavior (batched)");
-            }
-        }
-    } catch (const std::exception& e) {
-        std::cerr << "EXCEPTION in batchAssignBehaviors: " << e.what() << std::endl;
-    } catch (...) {
-        std::cerr << "UNKNOWN EXCEPTION in batchAssignBehaviors" << std::endl;
-    }
-}
 
 void EventDemoState::render() {
     // Render player
@@ -885,15 +864,17 @@ float spawnY2 = std::max(100.0f, std::min(playerPos.getY() + offsetY2, m_worldHe
 auto npc1 = createNPCAtPositionWithoutBehavior(npcType1, spawnX1, spawnY1);
 auto npc2 = createNPCAtPositionWithoutBehavior(npcType2, spawnX2, spawnY2);
 
-// Queue behavior assignments for batch processing
+// Queue behavior assignments for batch processing using global system
 if (npc1) {
     std::string behaviorName1 = determineBehaviorForNPCType(npcType1);
-    m_pendingBehaviorAssignments.push_back({npc1, behaviorName1});
+    AIManager::Instance().queueBehaviorAssignment(npc1, behaviorName1);
+    addLogEntry("Queued " + behaviorName1 + " behavior for " + npcType1 + " (global batch)");
 }
 
 if (npc2) {
     std::string behaviorName2 = determineBehaviorForNPCType(npcType2);
-    m_pendingBehaviorAssignments.push_back({npc2, behaviorName2});
+    AIManager::Instance().queueBehaviorAssignment(npc2, behaviorName2);
+    addLogEntry("Queued " + behaviorName2 + " behavior for " + npcType2 + " (global batch)");
 }
 
     addLogEntry("Multiple NPCs spawned: " + npcType1 + " and " + npcType2);
@@ -1193,8 +1174,9 @@ void EventDemoState::createNPCAtPosition(const std::string& npcType, float x, fl
             // Determine behavior for this NPC type
             std::string behaviorName = determineBehaviorForNPCType(npcType);
 
-            // Add to pending behavior assignment list instead of immediate assignment
-            m_pendingBehaviorAssignments.push_back({npc, behaviorName});
+            // Queue behavior assignment using global batching system (critical for stability)
+            AIManager::Instance().queueBehaviorAssignment(npc, behaviorName);
+            addLogEntry("Queued " + behaviorName + " behavior assignment (global batch)");
 
             // EventDemoState owns this NPC
             m_spawnedNPCs.push_back(npc);

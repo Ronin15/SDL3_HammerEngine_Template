@@ -274,6 +274,78 @@ When threading is enabled, be careful about accessing shared resources from beha
 
 The ThreadSystem automatically manages task capacity and scheduling based on priorities, ensuring critical AI behaviors receive CPU time before less important ones.
 
+## 🔥 Global Batched Behavior Assignment System
+
+### Overview
+
+**NEW in v2.2+**: AIManager now includes a global batched behavior assignment system that provides critical stability and performance benefits across all game states. This system replaces the need for individual game states to implement their own batching logic.
+
+### Why Batched Assignment is Critical
+
+**Problem**: Individual behavior assignments can cause:
+- Race conditions during entity creation
+- Performance degradation with many entities
+- Thread safety issues in multi-threaded environments
+- Inconsistent behavior across different game states
+
+**Solution**: Global batching provides:
+- ✅ **Cross-state persistence**: Works consistently across ALL game states
+- ✅ **Thread safety**: Built-in synchronization prevents race conditions  
+- ✅ **Performance optimization**: Bulk processing reduces overhead
+- ✅ **Automatic processing**: GameEngine handles batch processing each frame
+- ✅ **Error resilience**: Centralized exception handling with detailed logging
+
+### Usage Pattern
+
+```cpp
+// RECOMMENDED: Queue assignments during entity creation
+for (int i = 0; i < numNPCs; ++i) {
+    auto npc = createNPC();
+    
+    // Queue the assignment (thread-safe, high-performance)
+    AIManager::Instance().queueBehaviorAssignment(npc, "Wander");
+    
+    // Assignments will be processed automatically by GameEngine each frame
+}
+
+// Optional: Manual processing (usually not needed)
+size_t processed = AIManager::Instance().processPendingBehaviorAssignments();
+
+// Optional: Check queue status
+size_t pending = AIManager::Instance().getPendingBehaviorAssignmentCount();
+```
+
+### Implementation Details
+
+The batched assignment system consists of:
+
+1. **Thread-safe queue**: `queueBehaviorAssignment()` adds to a mutex-protected vector
+2. **Bulk processing**: `processPendingBehaviorAssignments()` moves all pending assignments to local storage and processes them
+3. **Automatic integration**: GameEngine calls the processor every frame in `processBackgroundTasks()`
+4. **Error handling**: Comprehensive exception handling with statistics and logging
+
+### Performance Benefits
+
+- **Reduced lock contention**: Batch processing minimizes mutex lock time
+- **Memory efficiency**: Single global queue vs multiple per-state queues  
+- **CPU optimization**: Bulk processing is more cache-friendly
+- **Scalability**: Handles thousands of entities efficiently
+
+### Migration from Local Batching
+
+If you have existing local batching code:
+
+```cpp
+// OLD: Local batching (deprecated)
+std::vector<std::pair<EntityPtr, std::string>> localQueue;
+localQueue.push_back({entity, behaviorName});
+// ... process locally
+
+// NEW: Global batching (recommended)
+AIManager::Instance().queueBehaviorAssignment(entity, behaviorName);
+// Automatically processed by GameEngine
+```
+
 ## Performance Optimizations
 
 ### 1. Entity Component Caching
@@ -424,6 +496,12 @@ void setPriorityForBehavior(const std::string& behaviorName, Forge::TaskPriority
 
 // Entity-behavior assignment
 void assignBehaviorToEntity(Entity* entity, const std::string& behaviorName);
+
+// 🔥 NEW: Global Batched Behavior Assignment System (v2.2+)
+void queueBehaviorAssignment(EntityPtr entity, const std::string& behaviorName);
+size_t processPendingBehaviorAssignments();
+size_t getPendingBehaviorAssignmentCount() const;
+
 void unassignBehaviorFromEntity(Entity* entity);
 bool entityHasBehavior(Entity* entity) const;
 size_t getManagedEntityCount() const;
