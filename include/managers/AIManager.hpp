@@ -265,6 +265,7 @@ private:
     // ThreadAccess: Concurrent for m_entityBehaviors
     boost::container::flat_map<std::string, std::shared_ptr<AIBehavior>> m_behaviors{};
     boost::container::flat_map<EntityWeakPtr, std::string, std::owner_less<EntityWeakPtr>> m_entityBehaviors{};
+    boost::container::flat_map<EntityWeakPtr, std::shared_ptr<AIBehavior>, std::owner_less<EntityWeakPtr>> m_entityBehaviorInstances{};
 
     // Thread synchronization for entity-behavior map
     mutable std::shared_mutex m_entityMutex{};

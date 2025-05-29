@@ -160,6 +160,18 @@ std::string ChaseBehavior::getName() const {
     return "Chase";
 }
 
+std::shared_ptr<AIBehavior> ChaseBehavior::clone() const {
+    // Get the target entity from weak pointer
+    auto target = m_targetWeak.lock();
+    
+    auto cloned = std::make_shared<ChaseBehavior>(target, m_chaseSpeed, m_maxRange, m_minRange);
+    cloned->setActive(m_active);
+    cloned->setPriority(m_priority);
+    cloned->setUpdateFrequency(m_updateFrequency);
+    cloned->setUpdateDistances(m_maxUpdateDistance, m_mediumUpdateDistance, m_minUpdateDistance);
+    return cloned;
+}
+
 void ChaseBehavior::setTarget(EntityPtr target) {
     // Always reset chase state when target changes
     m_isChasing = false;

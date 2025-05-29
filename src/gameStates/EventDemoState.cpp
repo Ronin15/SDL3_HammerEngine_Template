@@ -137,9 +137,21 @@ void EventDemoState::update() {
     // Update spawned NPCs (remove any that are no longer valid)
     auto it = m_spawnedNPCs.begin();
     while (it != m_spawnedNPCs.end()) {
-        if (*it) {
-            (*it)->update();
-            ++it;
+        if (*it) { // Check if NPC is valid
+            try {
+                (*it)->update();
+                ++it;
+            } catch (...) {
+                // If update fails, remove the NPC safely
+                try {
+                    if (AIManager::Instance().entityHasBehavior(*it)) {
+                        AIManager::Instance().unassignBehaviorFromEntity(*it);
+                    }
+                } catch (...) {
+                    // Ignore errors during cleanup
+                }
+                it = m_spawnedNPCs.erase(it);
+            }
         } else {
             // Remove dead/invalid NPCs
             it = m_spawnedNPCs.erase(it);
@@ -198,8 +210,9 @@ void EventDemoState::update() {
                 break;
 
             case DemoPhase::NPCSpawnDemo:
-                // Spawn NPCs at regular intervals
-                if ((m_totalDemoTime - m_lastEventTriggerTime) >= m_eventFireInterval) {
+                // Spawn NPCs at regular intervals but limit total spawns in this phase
+                if ((m_totalDemoTime - m_lastEventTriggerTime) >= m_eventFireInterval &&
+                    m_spawnedNPCs.size() < 5000) { // Limit to 5000 NPCs in this phase
                     triggerNPCSpawnDemo();
                     m_lastEventTriggerTime = m_totalDemoTime;
                 }
@@ -223,8 +236,10 @@ void EventDemoState::update() {
                 break;
 
             case DemoPhase::CustomEventDemo:
+                // Only trigger custom event demo a few times, not continuously
                 if (m_phaseTimer >= 3.0f &&
-                    (m_totalDemoTime - m_lastEventTriggerTime) >= m_eventFireInterval) {
+                    (m_totalDemoTime - m_lastEventTriggerTime) >= m_eventFireInterval &&
+                    m_spawnedNPCs.size() < 5000) { // Limit to 5000 total NPCs
                     triggerCustomEventDemo();
                     m_lastEventTriggerTime = m_totalDemoTime;
                 }
@@ -249,11 +264,13 @@ void EventDemoState::update() {
 
     // Update instructions
     updateInstructions();
-    
+
     // Process pending behavior assignments in batches
     if (!m_pendingBehaviorAssignments.empty()) {
-        batchAssignBehaviors(m_pendingBehaviorAssignments);
+        // Make a copy to avoid concurrent modification issues
+        auto assignments = m_pendingBehaviorAssignments;
         m_pendingBehaviorAssignments.clear();
+        batchAssignBehaviors(assignments);
     }
 }
 
@@ -322,7 +339,7 @@ void EventDemoState::batchAssignBehaviors(const std::vector<std::pair<std::share
         for (const auto& assignment : assignments) {
             auto npc = assignment.first;
             const std::string& behaviorName = assignment.second;
-            
+
             if (npc) {
                 AIManager::Instance().assignBehaviorToEntity(npc, behaviorName);
                 addLogEntry("Assigned " + behaviorName + " behavior (batched)");
@@ -339,18 +356,6 @@ void EventDemoState::render() {
     // Render player
     if (m_player) {
         m_player->render();
-    }
-
-    // Render spawned NPCs with debugging
-    static int renderFrameCount = 0;
-    renderFrameCount++;
-
-    // Only log every 60 frames to avoid spam (roughly once per second at 60 FPS)
-    bool shouldLog = (renderFrameCount % 60 == 0);
-
-    if (shouldLog) {
-        std::cout << "=== RENDER DEBUG (Frame " << renderFrameCount << ") ===" << std::endl;
-        std::cout << "Total NPCs to render: " << m_spawnedNPCs.size() << std::endl;
     }
 
     // Render spawned NPCs
@@ -470,8 +475,8 @@ void EventDemoState::handleInput() {
     }
 
     if (isKeyPressed(m_input.num2, m_lastInput.num2) &&
-        (m_totalDemoTime - m_lastEventTriggerTime) >= 0.2f) {
-        // NPC limits removed for debugging - always spawn
+        (m_totalDemoTime - m_lastEventTriggerTime) >= 0.2f &&
+        m_spawnedNPCs.size() < 5000) { // Limit manual spawning to 5000 NPCs total
         // Reset phase timer if we're in auto mode NPC spawn phase
         if (m_autoMode && m_currentPhase == DemoPhase::NPCSpawnDemo) {
             m_phaseTimer = 0.0f;
@@ -493,12 +498,13 @@ void EventDemoState::handleInput() {
     }
 
     if (isKeyPressed(m_input.num4, m_lastInput.num4) &&
-        (m_totalDemoTime - m_lastEventTriggerTime) >= 0.2f) {
+        (m_totalDemoTime - m_lastEventTriggerTime) >= 0.2f &&
+        m_spawnedNPCs.size() < 5000) { // Limit manual custom events to 5000 NPCs total
         // Prevent conflicts with auto mode phase progression
         if (m_autoMode && m_currentPhase == DemoPhase::CustomEventDemo) {
             m_phaseTimer = 0.0f; // Reset phase timer to prevent auto conflicts
         }
-        
+
         triggerCustomEventDemo();
         addLogEntry("Manual custom event triggered");
         m_lastEventTriggerTime = m_totalDemoTime;
@@ -879,7 +885,7 @@ float spawnY2 = std::max(100.0f, std::min(playerPos.getY() + offsetY2, m_worldHe
 // Create NPCs without AI behavior assignment first
 auto npc1 = createNPCAtPositionWithoutBehavior(npcType1, spawnX1, spawnY1);
 auto npc2 = createNPCAtPositionWithoutBehavior(npcType2, spawnX2, spawnY2);
-    
+
 // Queue behavior assignments for batch processing
 if (npc1) {
     std::string behaviorName1 = determineBehaviorForNPCType(npcType1);
@@ -1054,7 +1060,7 @@ void EventDemoState::assignAIBehaviorToNPC(std::shared_ptr<NPC> npc, const std::
         // Assign the behavior
         AIManager::Instance().assignBehaviorToEntity(npc, behaviorName);
         addLogEntry(npcType + " assigned " + behaviorName + " behavior");
-        
+
     } catch (const std::exception& e) {
         std::cerr << "EXCEPTION in assignAIBehaviorToNPC: " << e.what() << std::endl;
         std::cerr << "NPC type: " << npcType << ", behavior: " << behaviorName << std::endl;
@@ -1140,19 +1146,25 @@ void EventDemoState::updateInstructions() {
 }
 
 void EventDemoState::cleanupSpawnedNPCs() {
+    // First, unassign all behaviors from AI Manager to prevent race conditions
     for (auto& npc : m_spawnedNPCs) {
         if (npc) {
-            npc->clean();
+            try {
+                if (AIManager::Instance().entityHasBehavior(npc)) {
+                    AIManager::Instance().unassignBehaviorFromEntity(npc);
+                }
+            } catch (...) {
+                // Ignore errors during cleanup to prevent double-free issues
+            }
         }
     }
+
+    // Then clear the vector - this will trigger NPC destructors safely
     m_spawnedNPCs.clear();
     m_limitMessageShown = false; // Reset limit message flag when NPCs are cleaned
 }
 
 void EventDemoState::createNPCAtPosition(const std::string& npcType, float x, float y) {
-    std::cout << "DEBUG: Creating NPC " << npcType << " at (" << x << ", " << y << ")" << std::endl;
-    std::cout << "DEBUG: Current spawned NPCs count: " << m_spawnedNPCs.size() << std::endl;
-
     try {
         // Get the texture ID for this NPC type (match actual loaded texture names)
         std::string textureID;
@@ -1181,7 +1193,7 @@ void EventDemoState::createNPCAtPosition(const std::string& npcType, float x, fl
 
             // Determine behavior for this NPC type
             std::string behaviorName = determineBehaviorForNPCType(npcType);
-            
+
             // Add to pending behavior assignment list instead of immediate assignment
             m_pendingBehaviorAssignments.push_back({npc, behaviorName});
 

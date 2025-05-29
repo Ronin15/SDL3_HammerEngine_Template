@@ -73,6 +73,7 @@ void AIManager::clean() {
         
         m_behaviors.clear();
         m_entityBehaviors.clear();
+        m_entityBehaviorInstances.clear();
         m_entityBehaviorCache.clear();
         m_behaviorBatches.clear();
         m_behaviorPerformanceStats.clear();
@@ -144,8 +145,8 @@ void AIManager::assignBehaviorToEntity(EntityPtr entity, const std::string& beha
         return;
     }
 
-    // First check if behavior exists
-    AIBehavior* behavior = nullptr;
+    // First check if behavior template exists
+    std::shared_ptr<AIBehavior> behaviorTemplate = nullptr;
     {
         std::shared_lock<std::shared_mutex> lock(m_behaviorsMutex);
         auto it = m_behaviors.find(behaviorName);
@@ -153,24 +154,40 @@ void AIManager::assignBehaviorToEntity(EntityPtr entity, const std::string& beha
             std::cerr << "Forge Game Engine - Behavior '" << behaviorName << "' not registered" << std::endl;
             return;
         }
-        behavior = it->second.get();
+        behaviorTemplate = it->second;
+    }
+
+    // Create a unique instance of the behavior for this entity
+    std::shared_ptr<AIBehavior> behaviorInstance = nullptr;
+    try {
+        behaviorInstance = behaviorTemplate->clone();
+    } catch (const std::exception& e) {
+        std::cerr << "Forge Game Engine - Error cloning behavior " << behaviorName 
+                  << " for entity: " << e.what() << std::endl;
+        return;
+    }
+
+    if (!behaviorInstance) {
+        std::cerr << "Forge Game Engine - Failed to clone behavior " << behaviorName << std::endl;
+        return;
     }
 
     // Create weak pointer from shared pointer
     EntityWeakPtr entityWeak = entity;
     
-    // Assign behavior to entity - use write lock
+    // Store the unique behavior instance for this entity
     {
         std::unique_lock<std::shared_mutex> lock(m_entityMutex);
         m_entityBehaviors[entityWeak] = behaviorName;
+        m_entityBehaviorInstances[entityWeak] = behaviorInstance;
     }
 
     // Mark caches for deferred invalidation instead of immediate invalidation
     m_cacheInvalidationPending.store(true, std::memory_order_release);
     
-    // Initialize the entity with this behavior
+    // Initialize the entity with its unique behavior instance
     try {
-        behavior->init(entity);
+        behaviorInstance->init(entity);
     } catch (const std::exception& e) {
         std::cerr << "Forge Game Engine - Error initializing " << behaviorName 
                   << " for entity: " << e.what() << std::endl;
@@ -197,22 +214,31 @@ void AIManager::unassignBehaviorFromEntity(EntityPtr entity) {
             }
         }
         
-        // Clean up the entity's frame counter in the behavior
+        // Clean up the entity's behavior instance
         if (!behaviorName.empty()) {
-            behavior = getBehavior(behaviorName);
-            if (behavior) {
+            std::shared_ptr<AIBehavior> behaviorInstance = nullptr;
+            {
+                std::shared_lock<std::shared_mutex> entityLock2(m_entityMutex);
+                auto instanceIt = m_entityBehaviorInstances.find(entityWeak);
+                if (instanceIt != m_entityBehaviorInstances.end()) {
+                    behaviorInstance = instanceIt->second;
+                }
+            }
+            
+            if (behaviorInstance) {
                 try {
-                    behavior->cleanupEntity(entity);
+                    behaviorInstance->cleanupEntity(entity);
                 } catch (...) {
                     // Silently catch cleanup errors but continue with unassignment
                 }
             }
         }
-        
-        // Remove entity from behavior map - use write lock
+
+        // Remove entity from behavior maps - use write lock
         {
             std::unique_lock<std::shared_mutex> lock(m_entityMutex);
             m_entityBehaviors.erase(entityWeak);
+            m_entityBehaviorInstances.erase(entityWeak);
         }
         
         // Mark caches for deferred invalidation instead of immediate invalidation
@@ -527,39 +553,31 @@ void AIManager::updateBehaviorBatch(const std::string_view& behaviorName, const 
         return;
     }
 
-    // Get the behavior
-    std::shared_ptr<AIBehavior> behavior = nullptr;
-    {
-        std::shared_lock<std::shared_mutex> lock(m_behaviorsMutex);
-        auto it = m_behaviors.find(std::string(behaviorName));
-        if (it == m_behaviors.end() || !it->second) {
-            return;
-        }
-        behavior = it->second;
-    }
-
-    // Determine if we should use threading for this batch
-    const bool useThreadingForBatch = m_useThreading.load(std::memory_order_acquire) &&
-                                      Forge::ThreadSystem::Exists() &&
-                                      batch.size() > 200; // Threshold for threading a single batch
-
     auto startTime = getCurrentTimeNanos();
 
-    if (useThreadingForBatch) {
-        // Process the batch in parallel
-        processEntitiesWithBehavior(behavior, batch, true);
-    } else {
-        // Process the batch sequentially
-        for (const EntityPtr& entity : batch) {
-            if (entity) {
-                try {
+    // Process the batch sequentially using individual behavior instances
+    for (const EntityPtr& entity : batch) {
+        if (entity) {
+            try {
+                // Get the unique behavior instance for this entity
+                std::shared_ptr<AIBehavior> behaviorInstance = nullptr;
+                {
+                    std::shared_lock<std::shared_mutex> lock(m_entityMutex);
+                    EntityWeakPtr entityWeak = entity;
+                    auto instanceIt = m_entityBehaviorInstances.find(entityWeak);
+                    if (instanceIt != m_entityBehaviorInstances.end()) {
+                        behaviorInstance = instanceIt->second;
+                    }
+                }
+
+                if (behaviorInstance) {
                     // Always increment the frame counter
-                    behavior->incrementFrameCounter(entity);
+                    behaviorInstance->incrementFrameCounter(entity);
 
                     // Only update if behavior's shouldUpdate returns true
-                    if (behavior->shouldUpdate(entity)) {
-                        behavior->update(entity);
-                        behavior->resetFrameCounter(entity);
+                    if (behaviorInstance->shouldUpdate(entity)) {
+                        behaviorInstance->update(entity);
+                        behaviorInstance->resetFrameCounter(entity);
                     }
 
                     // Check if entity has gone off-screen and needs cleanup
@@ -568,14 +586,14 @@ void AIManager::updateBehaviorBatch(const std::string_view& behaviorName, const 
                         entity->getPosition().getY() < -2000 ||
                         entity->getPosition().getY() > 3000) {
                         // Reset frame counter to encourage update
-                        behavior->setFrameCounter(entity, 999);
+                        behaviorInstance->setFrameCounter(entity, 999);
                     }
-                } catch (const std::exception& e) {
-                    std::cerr << "Exception updating entity with " << behaviorName
-                              << ": " << e.what() << std::endl;
-                } catch (...) {
-                    std::cerr << "Unknown exception updating entity with " << behaviorName << std::endl;
                 }
+            } catch (const std::exception& e) {
+                std::cerr << "Exception updating entity with " << behaviorName
+                          << ": " << e.what() << std::endl;
+            } catch (...) {
+                std::cerr << "Unknown exception updating entity with " << behaviorName << std::endl;
             }
         }
     }

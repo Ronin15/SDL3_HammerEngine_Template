@@ -43,6 +43,9 @@ public:
     // Set the probability of wandering offscreen
     void setOffscreenProbability(float probability);
 
+    // Clone method for creating unique behavior instances
+    std::shared_ptr<AIBehavior> clone() const override;
+
 private:
     // Entity-specific state data
     struct EntityState {

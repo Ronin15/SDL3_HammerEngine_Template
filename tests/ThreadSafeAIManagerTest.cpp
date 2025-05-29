@@ -115,6 +115,15 @@ public:
         return "ThreadTestBehavior" + std::to_string(m_id);
     }
 
+    std::shared_ptr<AIBehavior> clone() const override {
+        auto cloned = std::make_shared<ThreadTestBehavior>(m_id);
+        cloned->setActive(m_active);
+        cloned->setPriority(m_priority);
+        cloned->setUpdateFrequency(m_updateFrequency);
+        cloned->setUpdateDistances(m_maxUpdateDistance, m_mediumUpdateDistance, m_minUpdateDistance);
+        return cloned;
+    }
+
     void onMessage(EntityPtr entity, const std::string& message) override {
         // Debugging output - no lock needed for cout as we only care about seeing something
         std::cout << "ThreadTestBehavior[" << m_id << "] received message: '" << message

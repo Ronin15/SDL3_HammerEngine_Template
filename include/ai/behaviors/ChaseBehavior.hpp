@@ -39,6 +39,9 @@ public:
     bool isChasing() const;
     bool hasLineOfSight() const;
 
+    // Clone method for creating unique behavior instances
+    std::shared_ptr<AIBehavior> clone() const override;
+
 protected:
     // Called when target is reached (within minimum range)
     virtual void onTargetReached(EntityPtr entity);

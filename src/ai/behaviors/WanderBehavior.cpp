@@ -203,6 +203,18 @@ std::string WanderBehavior::getName() const {
     return "Wander";
 }
 
+std::shared_ptr<AIBehavior> WanderBehavior::clone() const {
+    auto cloned = std::make_shared<WanderBehavior>(m_speed, m_changeDirectionInterval, m_areaRadius);
+    cloned->setCenterPoint(m_centerPoint);
+    cloned->setScreenDimensions(m_screenWidth, m_screenHeight);
+    cloned->setOffscreenProbability(m_offscreenProbability);
+    cloned->setActive(m_active);
+    cloned->setPriority(m_priority);
+    cloned->setUpdateFrequency(m_updateFrequency);
+    cloned->setUpdateDistances(m_maxUpdateDistance, m_mediumUpdateDistance, m_minUpdateDistance);
+    return cloned;
+}
+
 void WanderBehavior::setCenterPoint(const Vector2D& centerPoint) {
     m_centerPoint = centerPoint;
 

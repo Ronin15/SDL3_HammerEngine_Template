@@ -9,6 +9,7 @@
 #include "managers/AIManager.hpp"
 #include <SDL3/SDL.h>
 #include <iostream>
+#include <set>
 
 NPC::NPC(const std::string& textureID, const Vector2D& startPosition, int frameWidth, int frameHeight)
     : m_frameWidth(frameWidth), m_frameHeight(frameHeight) {
@@ -50,6 +51,8 @@ NPC::NPC(const std::string& textureID, const Vector2D& startPosition, int frameW
 NPC::~NPC() {
     // IMPORTANT: Do not call shared_from_this() or any methods that use it in a destructor
     // The AIManager unassignment should happen in clean() or beforeDestruction(), not here
+
+    // Destructor - avoid any cleanup that might cause double-free
 
     // Note: Entity pointers should already be unassigned from AIManager
     // in AIDemoState::exit() or via the clean() method before destruction
@@ -189,7 +192,17 @@ void NPC::render() {
 
 void NPC::clean() {
     // This method is called before the object is destroyed,
-    // so it's safe to use shared_from_this() here
+    // but we need to be very careful about double-cleanup
+
+    static std::set<void*> cleanedNPCs;
+    
+    // Check if this NPC has already been cleaned
+    if (cleanedNPCs.find(this) != cleanedNPCs.end()) {
+        return; // Already cleaned, avoid double-free
+    }
+    
+    // Mark this NPC as cleaned
+    cleanedNPCs.insert(this);
 
     // Remove from AI Manager if it has a behavior
     try {
@@ -204,8 +217,10 @@ void NPC::clean() {
     } catch (const std::bad_weak_ptr& e) {
         // This should only happen if clean() is called after the shared_ptr ref count drops to 0
         // or if the object was not created with std::make_shared
-        std::cerr << "Forge Game Engine - ERROR: Could not create shared_ptr from NPC in clean(): "
-                  << this << ", reason: " << e.what() << std::endl;
+        // Silently ignore to prevent spam
+    } catch (...) {
+        // Catch any other exceptions during cleanup
+        // Silently ignore to prevent crashes during cleanup
     }
 }
 
