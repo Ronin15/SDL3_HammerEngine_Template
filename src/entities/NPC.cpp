@@ -6,7 +6,6 @@
 #include "entities/NPC.hpp"
 #include "core/GameEngine.hpp"
 #include "managers/TextureManager.hpp"
-#include "managers/AIManager.hpp"
 #include <SDL3/SDL.h>
 #include <iostream>
 #include <set>
@@ -195,33 +194,22 @@ void NPC::clean() {
     // but we need to be very careful about double-cleanup
 
     static std::set<void*> cleanedNPCs;
-    
+
     // Check if this NPC has already been cleaned
     if (cleanedNPCs.find(this) != cleanedNPCs.end()) {
         return; // Already cleaned, avoid double-free
     }
-    
+
     // Mark this NPC as cleaned
     cleanedNPCs.insert(this);
 
-    // Remove from AI Manager if it has a behavior
-    try {
-        // Only attempt to use shared_this() when we know the object
-        // is managed by a shared_ptr (i.e., not during destruction)
-        auto ptr = shared_this();
+    // Note: AIManager cleanup (unregisterEntityFromUpdates, unassignBehaviorFromEntity)
+    // should be handled externally before calling clean() to avoid shared_from_this() issues
+    // during destruction. This method now only handles internal NPC state cleanup.
 
-        // Remove from AIManager
-        if (AIManager::Instance().entityHasBehavior(ptr)) {
-            AIManager::Instance().unassignBehaviorFromEntity(ptr);
-        }
-    } catch (const std::bad_weak_ptr& e) {
-        // This should only happen if clean() is called after the shared_ptr ref count drops to 0
-        // or if the object was not created with std::make_shared
-        // Silently ignore to prevent spam
-    } catch (...) {
-        // Catch any other exceptions during cleanup
-        // Silently ignore to prevent crashes during cleanup
-    }
+    // Reset velocity and internal state
+    m_velocity = Vector2D(0, 0);
+    m_acceleration = Vector2D(0, 0);
 }
 
 // Animation handling removed - TextureManager handles this functionality

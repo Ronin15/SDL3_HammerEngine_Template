@@ -108,7 +108,6 @@ public:
     std::shared_ptr<AIBehavior> clone() const override {
         auto cloned = std::make_shared<IntegrationTestBehavior>(m_name);
         cloned->setActive(m_active);
-        cloned->setPriority(m_priority);
         return cloned;
     }
 

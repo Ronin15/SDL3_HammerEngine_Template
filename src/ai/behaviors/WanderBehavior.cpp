@@ -209,7 +209,6 @@ std::shared_ptr<AIBehavior> WanderBehavior::clone() const {
     cloned->setScreenDimensions(m_screenWidth, m_screenHeight);
     cloned->setOffscreenProbability(m_offscreenProbability);
     cloned->setActive(m_active);
-    cloned->setPriority(m_priority);
     return cloned;
 }
 

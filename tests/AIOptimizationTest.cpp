@@ -295,8 +295,8 @@ public:
     }
 
     // Register entity for managed updates (mock implementation)
-    void registerEntityForUpdates(EntityPtr entity, EntityPtr player = nullptr) {
-        (void)player; // Unused in mock
+    void registerEntityForUpdates(EntityPtr entity, int priority = 5) {
+        (void)priority; // Unused in mock
         m_managedEntities.insert(entity);
     }
 

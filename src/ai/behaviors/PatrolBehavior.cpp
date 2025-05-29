@@ -154,7 +154,6 @@ std::shared_ptr<AIBehavior> PatrolBehavior::clone() const {
     auto cloned = std::make_shared<PatrolBehavior>(m_waypoints, m_moveSpeed, m_includeOffscreenPoints);
     cloned->setScreenDimensions(m_screenWidth, m_screenHeight);
     cloned->setActive(m_active);
-    cloned->setPriority(m_priority);
     return cloned;
 }
 

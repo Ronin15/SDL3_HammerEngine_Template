@@ -665,27 +665,29 @@ size_t AIManager::getManagedEntityCount() const {
 }
 
 // Entity update management implementation
-void AIManager::registerEntityForUpdates(EntityPtr entity, EntityPtr player) {
+void AIManager::registerEntityForUpdates(EntityPtr entity, int priority) {
     if (!entity) return;
+
+    // Clamp priority to valid range
+    priority = std::max(0, std::min(9, priority));
 
     {
         std::lock_guard<std::shared_mutex> lock(m_managedEntitiesMutex);
 
         // Check if entity is already registered
         EntityWeakPtr entityWeak = entity;
-        for (const auto& info : m_managedEntities) {
+        for (auto& info : m_managedEntities) {
             if (!info.entityWeak.expired() && info.entityWeak.lock() == entity) {
-                return; // Already registered
+                // Update priority if already registered
+                info.priority = priority;
+                return;
             }
         }
 
-        // Add new entity
-        m_managedEntities.emplace_back(entity);
-    }
-
-    // Set player if provided
-    if (player) {
-        setPlayerForDistanceOptimization(player);
+        // Add new entity with priority
+        EntityUpdateInfo info(entity);
+        info.priority = priority;
+        m_managedEntities.push_back(info);
     }
 }
 
@@ -730,7 +732,7 @@ void AIManager::updateManagedEntities() {
         if (!entity) continue; // Entity was destroyed
 
         try {
-            if (shouldUpdateEntity(entity, player, info.frameCounter)) {
+            if (shouldUpdateEntity(entity, player, info.frameCounter, info.priority)) {
                 // Update entity movement/animation
                 entity->update();
 
@@ -766,12 +768,18 @@ void AIManager::configureDistanceThresholds(float maxUpdateDist, float mediumUpd
     m_minUpdateDistance.store(minUpdateDist, std::memory_order_release);
 }
 
+void AIManager::configurePriorityMultiplier(float multiplier) {
+    m_priorityMultiplier.store(multiplier, std::memory_order_release);
+}
+
+
+
 size_t AIManager::getRegisteredEntityCount() const {
     std::shared_lock<std::shared_mutex> lock(m_managedEntitiesMutex);
     return m_managedEntities.size();
 }
 
-bool AIManager::shouldUpdateEntity(EntityPtr entity, EntityPtr player, int& frameCounter) {
+bool AIManager::shouldUpdateEntity(EntityPtr entity, EntityPtr player, int& frameCounter, int entityPriority) {
     if (!entity) return false;
 
     frameCounter++;
@@ -783,19 +791,10 @@ bool AIManager::shouldUpdateEntity(EntityPtr entity, EntityPtr player, int& fram
     Vector2D toPlayer = player->getPosition() - entity->getPosition();
     float distSq = toPlayer.lengthSquared();
 
-    // Get priority from entity's AI behavior (if it has one) for tiered frame limiting
-    int priority = 0; // Default priority for entities without AI behaviors
-    {
-        std::shared_lock<std::shared_mutex> lock(m_entityMutex);
-        EntityWeakPtr entityWeak = entity;
-        auto behaviorIt = m_entityBehaviorInstances.find(entityWeak);
-        if (behaviorIt != m_entityBehaviorInstances.end() && behaviorIt->second) {
-            priority = behaviorIt->second->getPriority();
-        }
-    }
-
-    // Apply priority multiplier like original AIBehavior system
-    float priorityMultiplier = (priority + 1) / 10.0f; // Convert 0-9 priority to 0.1-1.0 multiplier
+    // Apply priority multiplier exactly as documented
+    // Priority 0 = 0.1x, Priority 1 = 0.2x, ..., Priority 9 = 1.0x
+    float globalMultiplier = m_priorityMultiplier.load(std::memory_order_acquire);
+    float priorityMultiplier = globalMultiplier * ((entityPriority + 1) / 10.0f);
 
     // Load distance thresholds
     float maxDist = m_maxUpdateDistance.load(std::memory_order_acquire);
