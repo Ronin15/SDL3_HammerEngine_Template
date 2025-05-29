@@ -832,28 +832,11 @@ void AIManager::updateManagedEntities() {
     
     // Early return if no entities to manage
     if (m_managedEntities.empty()) {
-        std::cout << "Forge Game Engine - DEBUG: No managed entities to update\n";
         return;
     }
 
     // Get player entity for distance calculations
     EntityPtr player = m_playerEntity.lock();
-    
-    static int debugCounter = 0;
-    debugCounter++;
-    
-    // Debug logging every 60 frames (roughly once per second at 60fps)
-    bool shouldDebug = (debugCounter % 60 == 0);
-    
-    if (shouldDebug) {
-        std::cout << "Forge Game Engine - DEBUG: Updating " << m_managedEntities.size() << " managed entities\n";
-        if (!player) {
-            std::cout << "Forge Game Engine - DEBUG: No player reference for distance calculations\n";
-        }
-    }
-
-    int updatedCount = 0;
-    int skippedCount = 0;
 
     // Update entities with distance-based optimization
     for (auto& info : m_managedEntities) {
@@ -869,19 +852,12 @@ void AIManager::updateManagedEntities() {
                 updateEntityBehavior(entity);
 
                 info.lastUpdateTime = getCurrentTimeNanos();
-                updatedCount++;
-            } else {
-                skippedCount++;
             }
         } catch (const std::exception& e) {
             std::cerr << "Forge Game Engine - ERROR: Exception updating managed entity: " << e.what() << std::endl;
         } catch (...) {
             std::cerr << "Forge Game Engine - ERROR: Unknown exception updating managed entity" << std::endl;
         }
-    }
-    
-    if (shouldDebug) {
-        std::cout << "Forge Game Engine - DEBUG: Updated " << updatedCount << " entities, skipped " << skippedCount << " entities\n";
     }
 
     // Clean up expired entities (upgrade to exclusive lock for cleanup)
