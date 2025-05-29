@@ -868,14 +868,16 @@ auto npc2 = createNPCAtPositionWithoutBehavior(npcType2, spawnX2, spawnY2);
 // Queue behavior assignments for batch processing using global system
 if (npc1) {
     std::string behaviorName1 = determineBehaviorForNPCType(npcType1);
-    AIManager::Instance().registerEntityForUpdates(npc1, m_player);
+    int priority1 = (npcType1 == "Guard") ? 7 : (npcType1 == "Warrior") ? 8 : (npcType1 == "Merchant") ? 5 : 2;
+    AIManager::Instance().registerEntityForUpdates(npc1, priority1);
     AIManager::Instance().queueBehaviorAssignment(npc1, behaviorName1);
     addLogEntry("Registered " + npcType1 + " for updates and queued " + behaviorName1 + " behavior (global batch)");
 }
 
 if (npc2) {
     std::string behaviorName2 = determineBehaviorForNPCType(npcType2);
-    AIManager::Instance().registerEntityForUpdates(npc2, m_player);
+    int priority2 = (npcType2 == "Guard") ? 7 : (npcType2 == "Warrior") ? 8 : (npcType2 == "Merchant") ? 5 : 2;
+    AIManager::Instance().registerEntityForUpdates(npc2, priority2);
     AIManager::Instance().queueBehaviorAssignment(npc2, behaviorName2);
     addLogEntry("Registered " + npcType2 + " for updates and queued " + behaviorName2 + " behavior (global batch)");
 }
@@ -1041,7 +1043,8 @@ void EventDemoState::assignAIBehaviorToNPC(std::shared_ptr<NPC> npc, const std::
         }
 
         // Register entity for updates and assign the behavior
-        AIManager::Instance().registerEntityForUpdates(npc, m_player);
+        int priority = (npcType == "Guard") ? 7 : (npcType == "Warrior") ? 8 : (npcType == "Merchant") ? 5 : 2;
+        AIManager::Instance().registerEntityForUpdates(npc, priority);
         AIManager::Instance().assignBehaviorToEntity(npc, behaviorName);
         addLogEntry(npcType + " registered for updates and assigned " + behaviorName + " behavior");
 
@@ -1179,10 +1182,23 @@ void EventDemoState::createNPCAtPosition(const std::string& npcType, float x, fl
             // Determine behavior for this NPC type
             std::string behaviorName = determineBehaviorForNPCType(npcType);
 
-            // Register entity with AIManager for centralized updates and queue behavior assignment
-            AIManager::Instance().registerEntityForUpdates(npc, m_player);
+            // Determine priority based on NPC type
+            int priority = 5; // Default priority
+            if (npcType == "Guard") {
+                priority = 7; // High priority - larger update ranges
+            } else if (npcType == "Merchant") {
+                priority = 5; // Medium priority
+            } else if (npcType == "Warrior") {
+                priority = 8; // High priority
+            } else {
+                priority = 2; // Low priority for villagers
+            }
+
+            // Register entity with AIManager for centralized updates with priority
+            AIManager::Instance().registerEntityForUpdates(npc, priority);
             AIManager::Instance().queueBehaviorAssignment(npc, behaviorName);
-            addLogEntry("Registered entity for updates and queued " + behaviorName + " behavior assignment (global batch)");
+            
+            addLogEntry("Registered entity for updates and queued " + behaviorName + " behavior assignment (priority " + std::to_string(priority) + ")");
 
             // EventDemoState owns this NPC
             m_spawnedNPCs.push_back(npc);

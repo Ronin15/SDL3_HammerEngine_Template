@@ -28,9 +28,7 @@ public:
     virtual bool isActive() const { return m_active; }
     virtual void setActive(bool active) { m_active = active; }
 
-    // Priority handling (used by AIManager for other purposes)
-    virtual int getPriority() const { return m_priority; }
-    virtual void setPriority(int priority) { m_priority = priority; }
+
 
     // Entity range checks (behavior-specific logic)
     virtual bool isEntityInRange([[maybe_unused]] EntityPtr entity) const { return true; }
@@ -46,7 +44,6 @@ public:
 
 protected:
     bool m_active{true};
-    int m_priority{0};  // Higher values = higher priority (used by AIManager)
 };
 
 #endif // AI_BEHAVIOR_HPP

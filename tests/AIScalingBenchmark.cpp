@@ -66,8 +66,6 @@ class BenchmarkBehavior : public AIBehavior {
 public:
     BenchmarkBehavior(int id, int complexity = 5) // Increased default complexity from 1 to 5
         : m_id(id), m_complexity(complexity), m_initialized(false) {
-        // Set high priority for benchmark
-        setPriority(9);
     }
 
     void executeLogic(EntityPtr entity) override {
@@ -115,7 +113,6 @@ public:
     std::shared_ptr<AIBehavior> clone() const override {
         auto cloned = std::make_shared<BenchmarkBehavior>(m_id, m_complexity);
         cloned->setActive(m_active);
-        cloned->setPriority(m_priority);
         return cloned;
     }
 

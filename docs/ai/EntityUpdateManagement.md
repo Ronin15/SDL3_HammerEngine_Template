@@ -53,8 +53,8 @@ AIManager::Instance().updateManagedEntities();
 ### Entity Registration
 
 ```cpp
-// Register an entity for centralized updates
-void registerEntityForUpdates(EntityPtr entity, EntityPtr player = nullptr);
+// Register an entity for centralized updates with priority
+void registerEntityForUpdates(EntityPtr entity, int priority = 5);
 
 // Unregister an entity from updates
 void unregisterEntityFromUpdates(EntityPtr entity);
@@ -91,29 +91,29 @@ bool MyGameState::enter() {
     // Create player
     m_player = std::make_shared<Player>();
     
-    // Set player reference for distance optimization
+    // Set player reference for distance optimization (once per state)
     AIManager::Instance().setPlayerForDistanceOptimization(m_player);
     
     // Create and register NPCs with different priorities
     for (int i = 0; i < npcCount; ++i) {
         auto npc = std::make_shared<NPC>();
         
-        // Register with AIManager for centralized updates
-        AIManager::Instance().registerEntityForUpdates(npc, m_player);
+        // Determine priority based on NPC importance
+        int priority = 5; // Default priority
+        if (isImportantNPC(npc)) {
+            priority = 9;  // High priority - large update ranges
+        } else if (isGuardNPC(npc)) {
+            priority = 5;  // Medium priority
+        } else {
+            priority = 2;  // Low priority - small update ranges
+        }
         
-        // Assign AI behavior with priority
+        // Register with AIManager for centralized updates with priority
+        AIManager::Instance().registerEntityForUpdates(npc, priority);
+        
+        // Assign AI behavior (behaviors have no priority - only define logic)
         std::string behaviorName = determineBehaviorType(npc);
         AIManager::Instance().assignBehaviorToEntity(npc, behaviorName);
-        
-        // Set priority based on NPC importance
-        auto behavior = AIManager::Instance().getBehavior(behaviorName);
-        if (isImportantNPC(npc)) {
-            behavior->setPriority(9);  // High priority - large update ranges
-        } else if (isGuardNPC(npc)) {
-            behavior->setPriority(5);  // Medium priority
-        } else {
-            behavior->setPriority(0);  // Default priority - small update ranges
-        }
         
         m_npcs.push_back(npc);
     }
@@ -143,24 +143,44 @@ void MyGameState::update() {
 }
 ```
 
-### Setting NPC Priorities
+### Setting Entity Priorities
 
 ```cpp
-void setupNPCBehaviors() {
+void createNPCs() {
+    // Create different types of NPCs with appropriate priorities
+    
     // Background villagers (low priority)
-    auto wanderBehavior = std::make_shared<WanderBehavior>();
-    wanderBehavior->setPriority(0);  // Small update ranges
-    AIManager::Instance().registerBehavior("VillagerWander", wanderBehavior);
+    for (int i = 0; i < villagerCount; ++i) {
+        auto villager = std::make_shared<NPC>();
+        AIManager::Instance().registerEntityForUpdates(villager, 2);  // Low priority
+        AIManager::Instance().assignBehaviorToEntity(villager, "Wander");
+    }
     
     // Guard patrols (medium priority)  
-    auto patrolBehavior = std::make_shared<PatrolBehavior>(waypoints);
-    patrolBehavior->setPriority(5);  // Medium update ranges
-    AIManager::Instance().registerBehavior("GuardPatrol", patrolBehavior);
+    for (int i = 0; i < guardCount; ++i) {
+        auto guard = std::make_shared<NPC>();
+        AIManager::Instance().registerEntityForUpdates(guard, 5);  // Medium priority
+        AIManager::Instance().assignBehaviorToEntity(guard, "Patrol");
+    }
     
     // Boss enemies (high priority)
+    for (int i = 0; i < bossCount; ++i) {
+        auto boss = std::make_shared<NPC>();
+        AIManager::Instance().registerEntityForUpdates(boss, 9);  // High priority
+        AIManager::Instance().assignBehaviorToEntity(boss, "Chase");
+    }
+}
+
+void setupBehaviorTemplates() {
+    // Behaviors only define logic - no priorities
+    auto wanderBehavior = std::make_shared<WanderBehavior>();
+    AIManager::Instance().registerBehavior("Wander", wanderBehavior);
+    
+    auto patrolBehavior = std::make_shared<PatrolBehavior>(waypoints);
+    AIManager::Instance().registerBehavior("Patrol", patrolBehavior);
+    
     auto chaseBehavior = std::make_shared<ChaseBehavior>();
-    chaseBehavior->setPriority(9);  // Large update ranges
-    AIManager::Instance().registerBehavior("BossChase", chaseBehavior);
+    AIManager::Instance().registerBehavior("Chase", chaseBehavior);
 }
 ```
 
@@ -191,10 +211,10 @@ bool MyGameState::exit() {
 
 ### Priority System Algorithm
 ```cpp
-// Priority multiplier calculation
-float priorityMultiplier = (priority + 1) / 10.0f; // 0.1 to 1.0 range
+// Entity priority multiplier calculation (priority stored per entity in AIManager)
+float priorityMultiplier = globalMultiplier * ((entityPriority + 1) / 10.0f); // 0.1 to 1.0 range
 
-// Effective distance calculation
+// Effective distance calculation using entity's priority
 if (distSq < maxDist * maxDist * priorityMultiplier) {
     requiredFrames = 1;  // Every frame for close entities
 } else if (distSq < mediumDist * mediumDist * priorityMultiplier) {
@@ -236,17 +256,19 @@ if (distSq < maxDist * maxDist * priorityMultiplier) {
 ### From Manual Entity Updates
 
 1. **Remove manual update loops** from game states
-2. **Register entities** with `registerEntityForUpdates()`
-3. **Set player reference** with `setPlayerForDistanceOptimization()`
+2. **Set player reference** with `setPlayerForDistanceOptimization()` (once per state)
+3. **Register entities** with `registerEntityForUpdates(entity, priority)`
 4. **Call updateManagedEntities()** in game state update
-5. **Set behavior priorities** based on NPC importance
+5. **Set entity priorities** during registration based on NPC importance
 6. **Unregister entities** in cleanup/exit methods
 
-### Priority Configuration Guidelines
+### Entity Priority Configuration Guidelines
 
-- **Priority 0-2**: Background NPCs, ambient creatures, distant objects
-- **Priority 3-6**: Guards, merchants, interactive NPCs
-- **Priority 7-9**: Bosses, main characters, critical gameplay elements
+- **Priority 0-2**: Background NPCs, ambient creatures, distant objects (small update ranges)
+- **Priority 3-6**: Guards, merchants, interactive NPCs (medium update ranges)
+- **Priority 7-9**: Bosses, main characters, critical gameplay elements (large update ranges)
+
+Note: Priorities are set per entity during registration, not on behavior templates.
 
 ### Performance Tuning
 

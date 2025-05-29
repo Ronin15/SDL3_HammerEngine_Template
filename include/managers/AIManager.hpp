@@ -273,12 +273,16 @@ public:
 
     // Entity update management (centralized distance-based optimization)
     /**
-     * @brief Register an entity for centralized update management
-     * @param entity Shared pointer to the entity to manage
-     * @param player Optional player entity for distance calculations (can be null)
+     * @brief Register an entity for centralized update management with priority
+     * @param entity Shared pointer to the entity to register
+     * @param priority Entity priority level (0-9) controlling update frequency at distance
+     *                 Priority 0-2: Small update ranges (background NPCs)
+     *                 Priority 3-6: Medium update ranges (interactive NPCs)  
+     *                 Priority 7-9: Large update ranges (important NPCs)
+     * @note Player reference for distance calculations should be set separately via setPlayerForDistanceOptimization()
      * @thread_safety Thread-safe, can be called from any thread
      */
-    void registerEntityForUpdates(EntityPtr entity, EntityPtr player = nullptr);
+    void registerEntityForUpdates(EntityPtr entity, int priority = 5);
 
     /**
      * @brief Unregister an entity from update management
@@ -311,6 +315,14 @@ public:
     void configureDistanceThresholds(float maxUpdateDist = 8000.0f, 
                                    float mediumUpdateDist = 10000.0f, 
                                    float minUpdateDist = 25000.0f);
+
+    /**
+     * @brief Configure the global priority multiplier for distance thresholds
+     * @param multiplier Global multiplier applied to all distance calculations (1.0 = normal)
+     * @note This affects the base calculation before entity priorities are applied
+     * @thread_safety Thread-safe, can be called from any thread
+     */
+    void configurePriorityMultiplier(float multiplier = 1.0f);
 
     /**
      * @brief Get the number of entities registered for updates
@@ -509,9 +521,10 @@ private:
 
     // Entity update management
     struct EntityUpdateInfo {
-        EntityWeakPtr entityWeak;
+        EntityWeakPtr entityWeak{};
         int frameCounter{0};
         uint64_t lastUpdateTime{0};
+        int priority{5}; // Entity priority (0-9) for distance-based updates
         
         EntityUpdateInfo(EntityPtr entity) : entityWeak(entity) {}
     };
@@ -520,13 +533,16 @@ private:
     EntityWeakPtr m_playerEntity{};
     mutable std::shared_mutex m_managedEntitiesMutex{};
     
-    // Distance thresholds for entity update optimization (match AIBehavior defaults)
-    std::atomic<float> m_maxUpdateDistance{8000.0f};      // Close: every frame
-    std::atomic<float> m_mediumUpdateDistance{10000.0f};  // Medium: every 15 frames  
-    std::atomic<float> m_minUpdateDistance{25000.0f};     // Far: every 30 frames
+    // Distance thresholds for entity update optimization
+    std::atomic<float> m_maxUpdateDistance{8000.0f};      // Base close distance: every frame
+    std::atomic<float> m_mediumUpdateDistance{10000.0f};  // Base medium distance: every 15 frames  
+    std::atomic<float> m_minUpdateDistance{25000.0f};     // Base far distance: every 30 frames
     
-    // Helper method for distance-based entity updates
-    bool shouldUpdateEntity(EntityPtr entity, EntityPtr player, int& frameCounter);
+    // Global multiplier for distance calculations (applied before entity priority)
+    std::atomic<float> m_priorityMultiplier{1.0f};        // Global priority multiplier
+    
+    // Helper method for distance-based entity updates using entity priority
+    bool shouldUpdateEntity(EntityPtr entity, EntityPtr player, int& frameCounter, int entityPriority);
 };
 
 #endif // AI_MANAGER_HPP

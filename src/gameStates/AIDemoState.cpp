@@ -21,27 +21,27 @@
 
 AIDemoState::~AIDemoState() {
     // Don't call virtual functions from destructors
-    
+
     try {
         // Note: Proper cleanup should already have happened in exit()
         // This destructor is just a safety measure in case exit() wasn't called
-        
+
         // Safe cleanup for any remaining chase behavior references
         if (m_chaseBehavior) {
             m_chaseBehavior->setTarget(nullptr);
             m_chaseBehavior = nullptr;
         }
-        
+
         // Reset AI behaviors first to clear entity references
         // Don't call unassignBehaviorFromEntity here - it uses shared_from_this()
         AIManager::Instance().resetBehaviors();
-        
+
         // Clear NPCs without calling clean() on them
         m_npcs.clear();
 
         // Clean up player
         m_player.reset();
-        
+
         std::cout << "Forge Game Engine - Exiting AIDemoState in destructor...\n";
     } catch (const std::exception& e) {
         std::cerr << "Forge Game Engine - Exception in AIDemoState destructor: " << e.what() << std::endl;
@@ -71,6 +71,9 @@ bool AIDemoState::enter() {
 
         // Set player reference in AIManager for distance optimization
         AIManager::Instance().setPlayerForDistanceOptimization(m_player);
+
+        // Configure priority multiplier for proper distance progression (1.0 = full distance thresholds)
+        AIManager::Instance().configurePriorityMultiplier(1.0f);
 
         // Create NPCs with AI behaviors
         createNPCs();
@@ -106,21 +109,29 @@ bool AIDemoState::exit() {
             chaseBehavior->setTarget(nullptr);
         }
     }
-    
-    // First properly clean all NPCs (this will also unassign behaviors)
-    std::cout << "Forge Game Engine - Explicitly calling clean() on all NPCs before destruction\n";
+
+    // First unregister all NPCs from AIManager before calling clean()
+    std::cout << "Forge Game Engine - Unregistering NPCs from AIManager before cleanup\n";
     for (auto& npc : m_npcs) {
         if (npc) {
-            // Explicitly call clean() while the shared_ptr is still valid
+            // Unregister from AIManager first to avoid shared_from_this() issues
+            AIManager::Instance().unregisterEntityFromUpdates(npc);
+
+            // Unassign behavior if it has one
+            if (AIManager::Instance().entityHasBehavior(npc)) {
+                AIManager::Instance().unassignBehaviorFromEntity(npc);
+            }
+
+            // Now safe to call clean() and stop movement
             npc->clean();
             npc->setVelocity(Vector2D(0, 0));
         }
     }
-    
+
     // Send release message to all behaviors
     AIManager::Instance().broadcastMessage("release_entities", true);
     AIManager::Instance().processMessageQueue();
-    
+
     // Reset all AI behaviors to clear entity references
     // This ensures behaviors release their entity references before the entities are destroyed
     AIManager::Instance().resetBehaviors();
@@ -133,10 +144,10 @@ bool AIDemoState::exit() {
         m_player->clean();  // Explicitly clean the player too
         m_player.reset();
     }
-    
+
     // Null out our behavior reference
     m_chaseBehavior = nullptr;
-    
+
     std::cout << "Forge Game Engine - AIDemoState exit complete\n";
     return true;
 }
@@ -178,7 +189,7 @@ void AIDemoState::update() {
     }
     if (InputManager::Instance().isKeyDown(SDL_SCANCODE_B)) {
         std::cout << "Forge Game Engine - Preparing to exit AIDemoState...\n";
-        
+
         // First call clean() on all NPCs to properly handle unassignment
         for (auto& npc : m_npcs) {
             if (npc) {
@@ -190,7 +201,7 @@ void AIDemoState::update() {
                 npc->setVelocity(Vector2D(0, 0));
             }
         }
-        
+
         // Set chase behavior target to nullptr to avoid dangling reference
         if (AIManager::Instance().hasBehavior("Chase")) {
             auto chaseBehaviorPtr = AIManager::Instance().getBehavior("Chase");
@@ -198,18 +209,18 @@ void AIDemoState::update() {
             if (chaseBehavior) {
                 std::cout << "Forge Game Engine - Clearing chase behavior target...\n";
                 chaseBehavior->setTarget(nullptr);
-                
+
                 // Ensure chase behavior has no references to any entities
                 chaseBehavior->clean(nullptr);
             }
         }
-        
+
         // Make sure all AI behavior references are cleared
         AIManager::Instance().broadcastMessage("release_entities", true);
-        
+
         // Force a flush of the message queue to ensure all messages are processed
         AIManager::Instance().processMessageQueue();
-        
+
         std::cout << "Forge Game Engine - Transitioning to MainMenuState...\n";
         GameEngine::Instance().getGameStateManager()->setState("MainMenuState");
     }
@@ -224,7 +235,7 @@ void AIDemoState::update() {
             // First make sure we call clean() to properly unassign any existing behavior
             npc->clean();
             // Register with AIManager for entity updates and assign the new behavior
-            AIManager::Instance().registerEntityForUpdates(npc, m_player);
+            AIManager::Instance().registerEntityForUpdates(npc, 5);
             AIManager::Instance().assignBehaviorToEntity(npc, "Wander");
         }
         lastKey = 1;
@@ -235,7 +246,7 @@ void AIDemoState::update() {
             // First make sure we call clean() to properly unassign any existing behavior
             npc->clean();
             // Register with AIManager for entity updates and assign the new behavior
-            AIManager::Instance().registerEntityForUpdates(npc, m_player);
+            AIManager::Instance().registerEntityForUpdates(npc, 5);
             AIManager::Instance().assignBehaviorToEntity(npc, "Patrol");
         }
         lastKey = 2;
@@ -254,7 +265,7 @@ void AIDemoState::update() {
             // First make sure we call clean() to properly unassign any existing behavior
             npc->clean();
             // Register with AIManager for entity updates and assign the new behavior
-            AIManager::Instance().registerEntityForUpdates(npc, m_player);
+            AIManager::Instance().registerEntityForUpdates(npc, 5);
             AIManager::Instance().assignBehaviorToEntity(npc, "Chase");
         }
         lastKey = 3;
@@ -301,14 +312,14 @@ void AIDemoState::render() {
                                     20,
                                     {255, 255, 255, 255},
                                     GameEngine::Instance().getRenderer());
-                                    
+
     // Render frame rate
     std::stringstream fpsText;
-    fpsText << "FPS: " << std::fixed << std::setprecision(1) << m_currentFPS 
+    fpsText << "FPS: " << std::fixed << std::setprecision(1) << m_currentFPS
             << " (Avg: " << std::setprecision(1) << m_averageFPS << ")"
             << " - Entity Count: " << m_npcs.size();
-    
-    FontManager::Instance().drawText(fpsText.str(), 
+
+    FontManager::Instance().drawText(fpsText.str(),
                                 "fonts_Arial",
                                 GameEngine::Instance().getWindowWidth() / 2,     // Center horizontally
                                 50,
@@ -358,23 +369,23 @@ void AIDemoState::updateFrameRate() {
     auto currentTime = std::chrono::steady_clock::now();
     float deltaTime = std::chrono::duration<float, std::chrono::milliseconds::period>(currentTime - m_lastFrameTime).count();
     m_lastFrameTime = currentTime;
-    
+
     // Convert to seconds for FPS calculation
     float deltaTimeSeconds = deltaTime / 1000.0f;
-    
+
     // Skip extreme values that might be from debugging pauses
     if (deltaTimeSeconds > 0.0f && deltaTimeSeconds < 1.0f) {
         // Calculate current FPS
         m_currentFPS = 1.0f / deltaTimeSeconds;
-        
+
         // Add to rolling average
         m_frameTimes.push_back(m_currentFPS);
-        
+
         // Keep only the last MAX_FRAME_SAMPLES frames
         if (m_frameTimes.size() > MAX_FRAME_SAMPLES) {
             m_frameTimes.pop_front();
         }
-        
+
         // Calculate average FPS
         float sum = 0.0f;
         for (float fps : m_frameTimes) {
@@ -382,7 +393,7 @@ void AIDemoState::updateFrameRate() {
         }
         m_averageFPS = sum / m_frameTimes.size();
     }
-    
+
     // Increment frame counter
     m_frameCount++;
 }
@@ -413,9 +424,9 @@ void AIDemoState::createNPCs() {
                 // Set wander area to keep NPCs on screen
                 npc->setWanderArea(0, 0, m_worldWidth, m_worldHeight);
 
-                // Register with AIManager for centralized entity updates
-                AIManager::Instance().registerEntityForUpdates(npc, m_player);
-                
+                // Register with AIManager for centralized entity updates with priority
+                AIManager::Instance().registerEntityForUpdates(npc, 5);
+
                 // Assign default behavior (Wander)
                 AIManager::Instance().assignBehaviorToEntity(npc, "Wander");
 
