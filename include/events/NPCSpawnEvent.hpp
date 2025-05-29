@@ -161,9 +161,8 @@ private:
     int m_currentSpawnCount{0};
     int m_totalSpawned{0};
 
-    // Tracking spawned entities
+    // Tracking spawned entities (for counting/statistics only - not ownership)
     std::vector<EntityWeakPtr> m_spawnedEntities;
-    std::vector<EntityPtr> m_strongEntityRefs; // Keep NPCs alive
 
     // Helper methods
     bool checkProximityCondition() const;

@@ -352,6 +352,8 @@ public:
      */
     bool spawnNPC(const std::string& npcType, float x, float y);
 
+
+
     // Utility methods
     /**
      * @brief Get the number of registered events

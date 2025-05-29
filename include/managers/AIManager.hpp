@@ -94,6 +94,17 @@ public:
     void update();
 
     /**
+     * @brief Check if it's safe to run AI Manager update
+     *
+     * Returns false if behaviors are being assigned rapidly to prevent
+     * race conditions in batch processing.
+     *
+     * @return true if update is safe to run, false otherwise
+     * @thread_safety Thread-safe, can be called from any thread
+     */
+    bool isUpdateSafe() const;
+
+    /**
      * @brief Reset all AI behaviors without shutting down the manager
      *
      * This method clears all registered behaviors and entity assignments
@@ -314,6 +325,7 @@ private:
     };
     std::vector<EntityBehaviorCache> m_entityBehaviorCache{};
     std::atomic<bool> m_cacheValid{false};
+    std::atomic<bool> m_cacheInvalidationPending{false};
     mutable std::mutex m_cacheMutex{};
 
     // Multithreading support

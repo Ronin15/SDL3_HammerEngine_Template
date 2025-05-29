@@ -573,6 +573,8 @@ bool EventManager::spawnNPC(const std::string& npcType, float x, float y) {
     return true;
 }
 
+
+
 void EventManager::registerDefaultEvents() {
     // Register some common weather events
     registerWeatherEvent("SunnyDay", "Clear", 0.0f);
