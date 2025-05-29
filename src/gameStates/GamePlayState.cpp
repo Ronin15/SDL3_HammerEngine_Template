@@ -33,7 +33,7 @@ bool GamePlayState::enter() {
 
 void GamePlayState::update() {
   //std::cout << "Updating GAME State\n";
-  // Handle pause and ESC key.
+  // Handle pause, ESC, and back to main menu keys.
   if (InputManager::Instance().isKeyDown(SDL_SCANCODE_P)) {
       // Create PauseState if it doesn't exist
       if (!GameEngine::Instance().getGameStateManager()->hasState("PauseState")) {
@@ -42,6 +42,10 @@ void GamePlayState::update() {
       }
       m_transitioningToPause = true; // Set flag before transitioning
       GameEngine::Instance().getGameStateManager()->setState("PauseState");
+  }
+  if (InputManager::Instance().isKeyDown(SDL_SCANCODE_B)) {
+      std::cout << "Forge Game Engine - Transitioning to MainMenuState...\n";
+      GameEngine::Instance().getGameStateManager()->setState("MainMenuState");
   }
   if (InputManager::Instance().isKeyDown(SDL_SCANCODE_ESCAPE)) {
       GameEngine::Instance().setRunning(false);
@@ -57,10 +61,10 @@ void GamePlayState::render() {
   //std::cout << "Rendering GAME State\n";
   SDL_Color fontColor = {200, 200, 200, 255};
    FontManager::Instance().drawText(
-     "Game State Place Holder <----> Press P to test Pause State",
+     "Game State Place Holder <----> Press [P] to test Pause State <----> Press [B] to return to Main Menu",
      "fonts_Arial",
      GameEngine::Instance().getWindowWidth() / 2,  // Center horizontally
-     (GameEngine::Instance().getWindowHeight() / 2) - 180,
+     20,
      fontColor,
      GameEngine::Instance().getRenderer());
 
