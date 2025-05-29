@@ -105,6 +105,15 @@ public:
         return m_name;
     }
 
+    std::shared_ptr<AIBehavior> clone() const override {
+        auto cloned = std::make_shared<IntegrationTestBehavior>(m_name);
+        cloned->setActive(m_active);
+        cloned->setPriority(m_priority);
+        cloned->setUpdateFrequency(m_updateFrequency);
+        cloned->setUpdateDistances(m_maxUpdateDistance, m_mediumUpdateDistance, m_minUpdateDistance);
+        return cloned;
+    }
+
     void onMessage(EntityPtr /* entity */, const std::string& /* message */) override {
         m_messageCount++;
     }

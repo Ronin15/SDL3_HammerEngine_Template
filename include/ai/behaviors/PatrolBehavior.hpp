@@ -39,6 +39,9 @@ public:
     // Set movement speed
     void setMoveSpeed(float speed);
 
+    // Clone method for creating unique behavior instances
+    std::shared_ptr<AIBehavior> clone() const override;
+
 private:
     boost::container::small_vector<Vector2D, 10> m_waypoints;
     size_t m_currentWaypoint{0};

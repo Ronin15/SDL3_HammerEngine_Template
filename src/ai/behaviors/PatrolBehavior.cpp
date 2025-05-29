@@ -150,6 +150,16 @@ std::string PatrolBehavior::getName() const {
     return "Patrol";
 }
 
+std::shared_ptr<AIBehavior> PatrolBehavior::clone() const {
+    auto cloned = std::make_shared<PatrolBehavior>(m_waypoints, m_moveSpeed, m_includeOffscreenPoints);
+    cloned->setScreenDimensions(m_screenWidth, m_screenHeight);
+    cloned->setActive(m_active);
+    cloned->setPriority(m_priority);
+    cloned->setUpdateFrequency(m_updateFrequency);
+    cloned->setUpdateDistances(m_maxUpdateDistance, m_mediumUpdateDistance, m_minUpdateDistance);
+    return cloned;
+}
+
 void PatrolBehavior::addWaypoint(const Vector2D& waypoint) {
     m_waypoints.push_back(waypoint);
 }

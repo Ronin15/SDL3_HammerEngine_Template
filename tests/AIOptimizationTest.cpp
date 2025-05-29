@@ -169,6 +169,10 @@ public:
     std::string getName() const override {
         return "MockWander";
     }
+
+    std::shared_ptr<AIBehavior> clone() const {
+        return std::make_shared<MockWanderBehavior>();
+    }
 };
 
 // Simple AIManager implementation for tests

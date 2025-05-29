@@ -42,6 +42,9 @@ public:
     // Entity cleanup
     virtual void cleanupEntity(EntityPtr entity);
 
+    // Clone method for creating unique behavior instances
+    virtual std::shared_ptr<AIBehavior> clone() const = 0;
+
     // Clear all frame counters (primarily for testing/benchmarking)
     virtual void clearFrameCounters() {
         std::lock_guard<std::mutex> lock(m_frameCounterMutex);

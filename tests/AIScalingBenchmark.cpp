@@ -119,6 +119,15 @@ public:
         return "BenchmarkBehavior" + std::to_string(m_id);
     }
 
+    std::shared_ptr<AIBehavior> clone() const override {
+        auto cloned = std::make_shared<BenchmarkBehavior>(m_id, m_complexity);
+        cloned->setActive(m_active);
+        cloned->setPriority(m_priority);
+        cloned->setUpdateFrequency(m_updateFrequency);
+        cloned->setUpdateDistances(m_maxUpdateDistance, m_mediumUpdateDistance, m_minUpdateDistance);
+        return cloned;
+    }
+
     void onMessage(EntityPtr /* entity */, const std::string& /* message */) override {
         m_messageCount++;
     }
