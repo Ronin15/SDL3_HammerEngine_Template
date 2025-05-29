@@ -482,6 +482,9 @@ void GameEngine::processBackgroundTasks() {
   // This method can be used to perform background processing
   // It should be safe to run on worker threads
 
+  // Process pending behavior assignments first (critical for stability)
+  AIManager::Instance().processPendingBehaviorAssignments();
+
   // AI updates run asynchronously and won't block the main thread
   AIManager::Instance().update();
   

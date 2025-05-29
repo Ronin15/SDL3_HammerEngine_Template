@@ -164,6 +164,39 @@ public:
      */
     void assignBehaviorToEntity(EntityPtr entity, const std::string& behaviorName);
 
+    // Batched behavior assignment system (critical for stability across all game states)
+    /**
+     * @brief Queue a behavior assignment for batch processing
+     * @param entity Shared pointer to the entity
+     * @param behaviorName Name of the behavior to assign
+     * 
+     * This is the preferred method for assigning behaviors when creating multiple entities
+     * as it provides better performance and stability than individual assignments.
+     * Call processPendingBehaviorAssignments() to execute all queued assignments.
+     * 
+     * @thread_safety Thread-safe, can be called from any thread
+     */
+    void queueBehaviorAssignment(EntityPtr entity, const std::string& behaviorName);
+
+    /**
+     * @brief Process all queued behavior assignments in a single batch
+     * 
+     * This method should be called periodically (typically each frame) to process
+     * any behavior assignments that were queued via queueBehaviorAssignment().
+     * It provides better performance and thread safety than individual assignments.
+     * 
+     * @return Number of assignments processed
+     * @thread_safety Thread-safe, can be called from any thread
+     */
+    size_t processPendingBehaviorAssignments();
+
+    /**
+     * @brief Get the number of pending behavior assignments in the queue
+     * @return Number of queued assignments waiting to be processed
+     * @thread_safety Thread-safe, can be called from any thread
+     */
+    size_t getPendingBehaviorAssignmentCount() const;
+
     /**
      * @brief Process multiple entities with the same behavior type in batches
      * @param behaviorName The behavior to process
@@ -417,6 +450,20 @@ private:
     ThreadSafeMessageQueue m_messageQueue;
     PerformanceStats m_messageQueueStats;
     std::atomic<bool> m_processingMessages{false};
+
+    // Batched behavior assignment system
+    struct PendingBehaviorAssignment {
+        EntityPtr entity;
+        std::string behaviorName;
+        uint64_t queueTime;
+
+        PendingBehaviorAssignment(EntityPtr e, const std::string& name)
+            : entity(e), behaviorName(name), queueTime(getCurrentTimeNanos()) {}
+    };
+
+    std::vector<PendingBehaviorAssignment> m_pendingBehaviorAssignments{};
+    mutable std::mutex m_pendingAssignmentsMutex{};
+    std::atomic<size_t> m_pendingAssignmentCount{0};
 
     // Message delivery helpers
     void deliverMessageToEntity(EntityPtr entity, const std::string& message);

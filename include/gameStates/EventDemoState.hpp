@@ -153,9 +153,6 @@ private:
     float m_eventFireInterval{4.0f}; // Minimum seconds between event triggers - slower for better visibility
     bool m_limitMessageShown{false}; // Track if limit message has been shown
     
-    // Batch behavior assignment
-    std::vector<std::pair<std::shared_ptr<NPC>, std::string>> m_pendingBehaviorAssignments{};
-
     // Event manager accessed via singleton - no raw pointer needed
 
     // Helper methods
@@ -167,10 +164,9 @@ private:
     void cleanupSpawnedNPCs();
     void createNPCAtPosition(const std::string& npcType, float x, float y);
     
-    // Batch behavior assignment methods
+    // Helper methods for NPC creation with global batched behavior assignment
     std::shared_ptr<NPC> createNPCAtPositionWithoutBehavior(const std::string& npcType, float x, float y);
     std::string determineBehaviorForNPCType(const std::string& npcType);
-    void batchAssignBehaviors(const std::vector<std::pair<std::shared_ptr<NPC>, std::string>>& assignments);
 
     // AI behavior integration methods
     void setupAIBehaviors();

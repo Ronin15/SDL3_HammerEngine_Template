@@ -70,6 +70,7 @@ void AIManager::clean() {
         std::lock_guard<std::mutex> cacheLock(m_cacheMutex);
         std::lock_guard<std::mutex> batchesLock(m_batchesMutex);
         std::lock_guard<std::mutex> perfLock(m_perfStatsMutex);
+        std::lock_guard<std::mutex> pendingLock(m_pendingAssignmentsMutex);
         
         m_behaviors.clear();
         m_entityBehaviors.clear();
@@ -77,6 +78,8 @@ void AIManager::clean() {
         m_entityBehaviorCache.clear();
         m_behaviorBatches.clear();
         m_behaviorPerformanceStats.clear();
+        m_pendingBehaviorAssignments.clear();
+        m_pendingAssignmentCount.store(0, std::memory_order_release);
     }
 
     m_initialized.store(false, std::memory_order_release);
@@ -192,6 +195,84 @@ void AIManager::assignBehaviorToEntity(EntityPtr entity, const std::string& beha
         std::cerr << "Forge Game Engine - Error initializing " << behaviorName 
                   << " for entity: " << e.what() << std::endl;
     }
+}
+
+// Batched behavior assignment system implementations
+void AIManager::queueBehaviorAssignment(EntityPtr entity, const std::string& behaviorName) {
+    if (!entity) {
+        std::cerr << "Forge Game Engine - Error: Attempted to queue behavior assignment for null entity" << std::endl;
+        return;
+    }
+
+    if (!m_initialized.load(std::memory_order_acquire)) {
+        std::cerr << "Forge Game Engine - Error: AIManager not initialized" << std::endl;
+        return;
+    }
+
+    try {
+        std::lock_guard<std::mutex> lock(m_pendingAssignmentsMutex);
+        m_pendingBehaviorAssignments.emplace_back(entity, behaviorName);
+        m_pendingAssignmentCount.store(m_pendingBehaviorAssignments.size(), std::memory_order_release);
+        
+        AI_LOG("Queued behavior assignment: " << behaviorName << " for entity (queue size: " << m_pendingBehaviorAssignments.size() << ")");
+    } catch (const std::exception& e) {
+        std::cerr << "Forge Game Engine - Exception in queueBehaviorAssignment: " << e.what() << std::endl;
+    }
+}
+
+size_t AIManager::processPendingBehaviorAssignments() {
+    if (!m_initialized.load(std::memory_order_acquire)) {
+        return 0;
+    }
+
+    std::vector<PendingBehaviorAssignment> assignmentsToProcess;
+    
+    // Move pending assignments to local vector to minimize lock time
+    {
+        std::lock_guard<std::mutex> lock(m_pendingAssignmentsMutex);
+        if (m_pendingBehaviorAssignments.empty()) {
+            return 0;
+        }
+        
+        assignmentsToProcess = std::move(m_pendingBehaviorAssignments);
+        m_pendingBehaviorAssignments.clear();
+        m_pendingAssignmentCount.store(0, std::memory_order_release);
+    }
+
+    size_t processedCount = 0;
+    size_t failedCount = 0;
+
+    AI_LOG("Processing " << assignmentsToProcess.size() << " batched behavior assignments");
+
+    for (const auto& assignment : assignmentsToProcess) {
+        try {
+            // Check if entity is still valid
+            if (assignment.entity) {
+                assignBehaviorToEntity(assignment.entity, assignment.behaviorName);
+                processedCount++;
+            } else {
+                failedCount++;
+                AI_LOG("Skipped assignment for expired entity: " << assignment.behaviorName);
+            }
+        } catch (const std::exception& e) {
+            failedCount++;
+            std::cerr << "Forge Game Engine - Exception processing batched assignment for " 
+                      << assignment.behaviorName << ": " << e.what() << std::endl;
+        }
+    }
+
+    if (failedCount > 0) {
+        std::cerr << "Forge Game Engine - Warning: " << failedCount 
+                  << " out of " << assignmentsToProcess.size() 
+                  << " batched behavior assignments failed" << std::endl;
+    }
+
+    AI_LOG("Processed " << processedCount << " behavior assignments (" << failedCount << " failed)");
+    return processedCount;
+}
+
+size_t AIManager::getPendingBehaviorAssignmentCount() const {
+    return m_pendingAssignmentCount.load(std::memory_order_acquire);
 }
 
 void AIManager::unassignBehaviorFromEntity(EntityPtr entity) {

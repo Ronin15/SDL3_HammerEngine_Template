@@ -9,6 +9,7 @@ The AI system in the Forge Game Engine provides a flexible, high-performance fra
 - ✅ **Individual Behavior Instances**: Each NPC gets its own behavior state (no sharing conflicts)
 - ✅ **Thread-Safe Architecture**: Parallel processing without race conditions  
 - ✅ **Clone Pattern**: Automatic behavior instance creation from templates
+- ✅ **🔥 Global Batched Assignment (v2.2+)**: Cross-state behavior assignment for enhanced stability
 - ✅ **Linear Performance**: Stable scaling up to 5000+ NPCs
 - ✅ **Memory Efficient**: ~0.5KB overhead per NPC for major stability gains
 
@@ -53,9 +54,16 @@ AIManager::Instance().init();
 auto chaseTemplate = std::make_shared<ChaseBehavior>();
 AIManager::Instance().registerBehavior("Chase", chaseTemplate);
 
-// Assign to NPCs (AIManager automatically clones the template)
+// 🔥 NEW: Batched assignment (recommended for multiple entities)
+for (int i = 0; i < numEnemies; ++i) {
+    auto enemy = createEnemy();
+    // Queue assignment for batch processing (thread-safe, high-performance)
+    AIManager::Instance().queueBehaviorAssignment(enemy, "Chase");
+}
+// Assignments processed automatically by GameEngine each frame
+
+// Alternative: Direct assignment (for single entities)
 AIManager::Instance().assignBehaviorToEntity(enemy1, "Chase"); // → Creates unique instance
-AIManager::Instance().assignBehaviorToEntity(enemy2, "Chase"); // → Creates another unique instance
 
 // Each enemy now has independent chase behavior state
 // Send a message to the entity's behavior
@@ -251,30 +259,39 @@ AIManager::Instance().registerBehavior("RandomWander", wanderTemplate);
 
 ## Best Practices
 
-1. **Register behavior templates once, assign many times**:
+1. **🔥 Use batched assignment for multiple entities (v2.2+)**:
+   ```cpp
+   // RECOMMENDED: Queue assignments during entity creation
+   for (auto& entity : newEntities) {
+       AIManager::Instance().queueBehaviorAssignment(entity, behaviorName);
+   }
+   // Processed automatically by GameEngine each frame
+   ```
+
+2. **Register behavior templates once, assign many times**:
    Create behavior templates once and register them with unique names, then assign to multiple entities (automatic cloning).
 
-2. **Implement clone() method properly**:
+3. **Implement clone() method properly**:
    - Copy configuration settings, not runtime state
    - Let each instance start with fresh state
    - Include all necessary initialization parameters
 
-3. **Use appropriate update frequencies and priorities**:
+4. **Use appropriate update frequencies and priorities**:
    - Set priority > 8 for critical behaviors that must update every frame
    - Use lower priorities for behaviors that can update less frequently based on distance to player
    - Adjust update distances based on your game's scale and expected player movement speed
    - Consider the fallback mechanism (distance from origin) for game states without a player
 
-4. **Leverage batch processing**:
+5. **Leverage batch processing**:
    Group similar entities and process them together for better performance.
 
-5. **Clean up properly**:
+6. **Clean up properly**:
    Call `AIManager::Instance().unassignBehaviorFromEntity()` when entities are destroyed.
 
-6. **Use messages for coordination**:
+7. **Use messages for coordination**:
    The messaging system allows behaviors to communicate without tight coupling.
 
-7. **Configure appropriate thread priorities**:
+8. **Configure appropriate thread priorities**:
    - Use `Forge::TaskPriority::Critical` for mission-critical AI (boss behaviors, player-interacting NPCs)
    - Use `Forge::TaskPriority::High` for important AI that needs quick responses (combat enemies)
    - Use `Forge::TaskPriority::Normal` for standard NPCs and ambient creatures (default)
@@ -383,7 +400,9 @@ No other code changes required - the AIManager handles cloning automatically.
 ## Documentation Files
 
 - [`AIManager.md`](AIManager.md) - Complete API reference and usage guide
+- [`BATCHED_BEHAVIOR_ASSIGNMENT.md`](BATCHED_BEHAVIOR_ASSIGNMENT.md) - 🔥 Global batched assignment system (v2.2+)
 - [`OPTIMIZATIONS.md`](OPTIMIZATIONS.md) - Performance optimization techniques  
 - [`SHARED_BEHAVIOR_ISSUE_RESOLVED.md`](SHARED_BEHAVIOR_ISSUE_RESOLVED.md) - Architecture change details
 
 For more details on the ThreadSystem, see the [ThreadSystem documentation](../ThreadSystem.md) and [ThreadSystem API Reference](../ThreadSystem_API.md).
+</edits>
