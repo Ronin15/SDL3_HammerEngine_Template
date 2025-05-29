@@ -388,12 +388,6 @@ void AIManager::update() {
         m_cacheInvalidationPending.store(false, std::memory_order_release);
     }
 
-    // First ensure caches are valid
-    ensureOptimizationCachesValid();
-
-    // Process all behaviors in optimized batches
-    batchUpdateAllBehaviors();
-
     // Process any pending messages
     processMessageQueue();
 }
@@ -838,11 +832,28 @@ void AIManager::updateManagedEntities() {
     
     // Early return if no entities to manage
     if (m_managedEntities.empty()) {
+        std::cout << "Forge Game Engine - DEBUG: No managed entities to update\n";
         return;
     }
 
     // Get player entity for distance calculations
     EntityPtr player = m_playerEntity.lock();
+    
+    static int debugCounter = 0;
+    debugCounter++;
+    
+    // Debug logging every 60 frames (roughly once per second at 60fps)
+    bool shouldDebug = (debugCounter % 60 == 0);
+    
+    if (shouldDebug) {
+        std::cout << "Forge Game Engine - DEBUG: Updating " << m_managedEntities.size() << " managed entities\n";
+        if (!player) {
+            std::cout << "Forge Game Engine - DEBUG: No player reference for distance calculations\n";
+        }
+    }
+
+    int updatedCount = 0;
+    int skippedCount = 0;
 
     // Update entities with distance-based optimization
     for (auto& info : m_managedEntities) {
@@ -858,12 +869,19 @@ void AIManager::updateManagedEntities() {
                 updateEntityBehavior(entity);
 
                 info.lastUpdateTime = getCurrentTimeNanos();
+                updatedCount++;
+            } else {
+                skippedCount++;
             }
         } catch (const std::exception& e) {
             std::cerr << "Forge Game Engine - ERROR: Exception updating managed entity: " << e.what() << std::endl;
         } catch (...) {
             std::cerr << "Forge Game Engine - ERROR: Unknown exception updating managed entity" << std::endl;
         }
+    }
+    
+    if (shouldDebug) {
+        std::cout << "Forge Game Engine - DEBUG: Updated " << updatedCount << " entities, skipped " << skippedCount << " entities\n";
     }
 
     // Clean up expired entities (upgrade to exclusive lock for cleanup)
@@ -903,17 +921,31 @@ bool AIManager::shouldUpdateEntity(EntityPtr entity, EntityPtr player, int& fram
     Vector2D toPlayer = player->getPosition() - entity->getPosition();
     float distSq = toPlayer.lengthSquared();
 
+    // Get priority from entity's AI behavior (if it has one) for tiered frame limiting
+    int priority = 0; // Default priority for entities without AI behaviors
+    {
+        std::shared_lock<std::shared_mutex> lock(m_entityMutex);
+        EntityWeakPtr entityWeak = entity;
+        auto behaviorIt = m_entityBehaviorInstances.find(entityWeak);
+        if (behaviorIt != m_entityBehaviorInstances.end() && behaviorIt->second) {
+            priority = behaviorIt->second->getPriority();
+        }
+    }
+
+    // Apply priority multiplier like original AIBehavior system
+    float priorityMultiplier = (priority + 1) / 10.0f; // Convert 0-9 priority to 0.1-1.0 multiplier
+
     // Load distance thresholds
     float maxDist = m_maxUpdateDistance.load(std::memory_order_acquire);
     float mediumDist = m_mediumUpdateDistance.load(std::memory_order_acquire);
     float minDist = m_minUpdateDistance.load(std::memory_order_acquire);
 
     int requiredFrames;
-    if (distSq < maxDist * maxDist) {
+    if (distSq < maxDist * maxDist * priorityMultiplier) {
         requiredFrames = 1;  // Every frame for close entities
-    } else if (distSq < mediumDist * mediumDist) {
+    } else if (distSq < mediumDist * mediumDist * priorityMultiplier) {
         requiredFrames = 15; // Every 15 frames for medium distance
-    } else if (distSq < minDist * minDist) {
+    } else if (distSq < minDist * minDist * priorityMultiplier) {
         requiredFrames = 30; // Every 30 frames for far distance
     } else {
         requiredFrames = 60; // Every 60 frames for very distant entities
