@@ -319,27 +319,27 @@ std::string EventDemoState::determineBehaviorForNPCType(const std::string& npcTy
     std::string behaviorName;
 
     if (npcType == "Guard") {
-        // Guards cycle through patrol behaviors including new random ones
-        std::vector<std::string> guardBehaviors = {"Patrol", "RandomPatrol", "CirclePatrol", "EventTarget", "Chase"};
+        // Guards cycle through patrol behaviors and small area wander (patrol posts)
+        std::vector<std::string> guardBehaviors = {"Patrol", "RandomPatrol", "CirclePatrol", "SmallWander", "EventTarget"};
         behaviorName = guardBehaviors[npcCount % guardBehaviors.size()];
 
     } else if (npcType == "Villager") {
-        // Villagers use more peaceful behaviors including new random patrol
-        std::vector<std::string> villagerBehaviors = {"Wander", "RandomPatrol", "CirclePatrol"};
+        // Villagers use small/medium wander and some patrol behaviors (stay local)
+        std::vector<std::string> villagerBehaviors = {"SmallWander", "Wander", "RandomPatrol", "CirclePatrol"};
         behaviorName = villagerBehaviors[npcCount % villagerBehaviors.size()];
 
     } else if (npcType == "Merchant") {
-        // Merchants use area patrol behaviors to simulate market movement
-        std::vector<std::string> merchantBehaviors = {"RandomPatrol", "CirclePatrol", "Patrol"};
+        // Merchants use medium/large wander and area patrols (market movement)
+        std::vector<std::string> merchantBehaviors = {"Wander", "LargeWander", "RandomPatrol", "CirclePatrol"};
         behaviorName = merchantBehaviors[npcCount % merchantBehaviors.size()];
 
     } else if (npcType == "Warrior") {
-        // Warriors use more aggressive behaviors including event targeting
-        std::vector<std::string> warriorBehaviors = {"EventTarget", "Chase", "Patrol"};
+        // Warriors use event targeting and large area movement (objectives)
+        std::vector<std::string> warriorBehaviors = {"EventWander", "EventTarget", "LargeWander", "Chase"};
         behaviorName = warriorBehaviors[npcCount % warriorBehaviors.size()];
 
     } else {
-        // Default to wander for unknown types
+        // Default to medium wander for unknown types
         behaviorName = "Wander";
 
     }
@@ -957,14 +957,33 @@ void EventDemoState::onSceneChanged(const std::string& message) {
 void EventDemoState::setupAIBehaviors() {
     std::cout << "EventDemoState: Setting up AI behaviors for NPC integration...\n";
 
-    // Only set up if AIManager doesn't already have these behaviors
+    // Register different wander behavior variants
     if (!AIManager::Instance().hasBehavior("Wander")) {
-        // Create and register wander behavior matching AIDemoState settings
-        auto wanderBehavior = std::make_unique<WanderBehavior>(2.0f, 3000.0f, 200.0f);
+        auto wanderBehavior = std::make_unique<WanderBehavior>(WanderBehavior::WanderMode::MEDIUM_AREA, 2.0f);
         wanderBehavior->setScreenDimensions(m_worldWidth, m_worldHeight);
-        wanderBehavior->setOffscreenProbability(0.2f); // Match AIDemoState: 20% chance to wander offscreen
         AIManager::Instance().registerBehavior("Wander", std::move(wanderBehavior));
         std::cout << "EventDemoState: Registered Wander behavior\n";
+    }
+
+    if (!AIManager::Instance().hasBehavior("SmallWander")) {
+        auto smallWanderBehavior = std::make_unique<WanderBehavior>(WanderBehavior::WanderMode::SMALL_AREA, 1.5f);
+        smallWanderBehavior->setScreenDimensions(m_worldWidth, m_worldHeight);
+        AIManager::Instance().registerBehavior("SmallWander", std::move(smallWanderBehavior));
+        std::cout << "EventDemoState: Registered SmallWander behavior\n";
+    }
+
+    if (!AIManager::Instance().hasBehavior("LargeWander")) {
+        auto largeWanderBehavior = std::make_unique<WanderBehavior>(WanderBehavior::WanderMode::LARGE_AREA, 2.5f);
+        largeWanderBehavior->setScreenDimensions(m_worldWidth, m_worldHeight);
+        AIManager::Instance().registerBehavior("LargeWander", std::move(largeWanderBehavior));
+        std::cout << "EventDemoState: Registered LargeWander behavior\n";
+    }
+
+    if (!AIManager::Instance().hasBehavior("EventWander")) {
+        auto eventWanderBehavior = std::make_unique<WanderBehavior>(WanderBehavior::WanderMode::EVENT_TARGET, 2.0f);
+        eventWanderBehavior->setScreenDimensions(m_worldWidth, m_worldHeight);
+        AIManager::Instance().registerBehavior("EventWander", std::move(eventWanderBehavior));
+        std::cout << "EventDemoState: Registered EventWander behavior\n";
     }
 
     if (!AIManager::Instance().hasBehavior("Patrol")) {

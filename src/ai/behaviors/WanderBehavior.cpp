@@ -14,6 +14,12 @@ WanderBehavior::WanderBehavior(float speed, float changeDirectionInterval, float
     // Random number generators are already initialized in class definition
 }
 
+WanderBehavior::WanderBehavior(WanderMode mode, float speed)
+    : m_speed(speed), m_minimumFlipInterval(400) {
+    // Set up the behavior based on the mode
+    setupModeDefaults(mode, m_screenWidth, m_screenHeight);
+}
+
 void WanderBehavior::init(EntityPtr entity) {
     if (!entity) return;
 
@@ -351,4 +357,42 @@ void WanderBehavior::chooseNewDirection(EntityPtr entity, bool wanderOffscreen) 
     }
 
     // NPC class now handles sprite flipping based on velocity
+}
+
+void WanderBehavior::setupModeDefaults(WanderMode mode, float screenWidth, float screenHeight) {
+    m_screenWidth = screenWidth;
+    m_screenHeight = screenHeight;
+    
+    // Set center point to screen center by default
+    m_centerPoint = Vector2D(screenWidth * 0.5f, screenHeight * 0.5f);
+    
+    switch (mode) {
+        case WanderMode::SMALL_AREA:
+            // Small wander area - personal space around position
+            m_areaRadius = 75.0f;
+            m_changeDirectionInterval = 1500.0f; // Change direction more frequently
+            m_offscreenProbability = 0.05f; // Very low chance to go offscreen
+            break;
+            
+        case WanderMode::MEDIUM_AREA:
+            // Medium wander area - room/building sized
+            m_areaRadius = 200.0f;
+            m_changeDirectionInterval = 2500.0f; // Moderate direction changes
+            m_offscreenProbability = 0.10f; // Low chance to go offscreen
+            break;
+            
+        case WanderMode::LARGE_AREA:
+            // Large wander area - village/district sized
+            m_areaRadius = 450.0f;
+            m_changeDirectionInterval = 3500.0f; // Less frequent direction changes
+            m_offscreenProbability = 0.20f; // Higher chance to explore offscreen
+            break;
+            
+        case WanderMode::EVENT_TARGET:
+            // Wander around a specific target location (will be set later)
+            m_areaRadius = 150.0f;
+            m_changeDirectionInterval = 2000.0f; // Standard direction changes
+            m_offscreenProbability = 0.05f; // Stay near the target
+            break;
+    }
 }
