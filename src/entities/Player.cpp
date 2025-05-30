@@ -84,8 +84,8 @@ void Player::loadDimensionsFromTexture() {
 
 void Player::setupStates() {
     // Create and add states
-    m_stateManager.addState("idle", std::make_unique<PlayerIdleState>(this));
-    m_stateManager.addState("running", std::make_unique<PlayerRunningState>(this));
+    m_stateManager.addState("idle", std::make_unique<PlayerIdleState>(*this));
+    m_stateManager.addState("running", std::make_unique<PlayerRunningState>(*this));
 }
 
 Player::~Player() {

@@ -8,7 +8,7 @@
 #include "managers/InputManager.hpp"
 //#include <iostream>
 
-PlayerRunningState::PlayerRunningState(Player* player) : mp_player(player) {}
+PlayerRunningState::PlayerRunningState(Player& player) : m_player(player) {}
 
 void PlayerRunningState::enter() {
     //std::cout << "Forge Game Engine - Entering Player Running State\n";
@@ -21,10 +21,10 @@ void PlayerRunningState::update() {
     // Handle keyboard movement
     if (InputManager::Instance().isKeyDown(SDL_SCANCODE_RIGHT)) {
         velocity.setX(2);
-        mp_player->setFlip(SDL_FLIP_NONE);
+        m_player.get().setFlip(SDL_FLIP_NONE);
     } else if (InputManager::Instance().isKeyDown(SDL_SCANCODE_LEFT)) {
         velocity.setX(-2);
-        mp_player->setFlip(SDL_FLIP_HORIZONTAL);
+        m_player.get().setFlip(SDL_FLIP_HORIZONTAL);
     }
 
     if (InputManager::Instance().isKeyDown(SDL_SCANCODE_UP)) {
@@ -45,9 +45,9 @@ void PlayerRunningState::update() {
 
         // Set proper flip direction based on horizontal movement
         if (joystickX > 0) {
-            mp_player->setFlip(SDL_FLIP_NONE);
+            m_player.get().setFlip(SDL_FLIP_NONE);
         } else if (joystickX < 0) {
-            mp_player->setFlip(SDL_FLIP_HORIZONTAL);
+            m_player.get().setFlip(SDL_FLIP_HORIZONTAL);
         }
     }
 
@@ -55,7 +55,7 @@ void PlayerRunningState::update() {
     if (InputManager::Instance().getMouseButtonState(LEFT)) {
         // Get mouse position and player position
         Vector2D* mousePos = InputManager::Instance().getMousePosition();
-        Vector2D playerPos = mp_player->getPosition();
+        Vector2D playerPos = m_player.get().getPosition();
 
         // Calculate direction vector from player to mouse cursor
         Vector2D direction = Vector2D(mousePos->getX() - playerPos.getX(),
@@ -69,21 +69,21 @@ void PlayerRunningState::update() {
 
             // Set flip based on horizontal movement direction
             if (direction.getX() > 0) {
-                mp_player->setFlip(SDL_FLIP_NONE);
+                m_player.get().setFlip(SDL_FLIP_NONE);
             } else if (direction.getX() < 0) {
-                mp_player->setFlip(SDL_FLIP_HORIZONTAL);
+                m_player.get().setFlip(SDL_FLIP_HORIZONTAL);
             }
         }
     }
 
     // Update player velocity
-    mp_player->setVelocity(velocity);
+    m_player.get().setVelocity(velocity);
 
     // Animate only if moving
     if (velocity.getX() != 0 || velocity.getY() != 0) {
         // Animate running (assumes animation frames are set up)
         Uint64 currentTime = SDL_GetTicks();
-        mp_player->setCurrentFrame((currentTime / 100) % 2); // 2 frames animation
+        m_player.get().setCurrentFrame((currentTime / 100) % 2); // 2 frames animation
     } else {
         // If not moving, transition back to idle
         // This would be implemented when we add state transitions
