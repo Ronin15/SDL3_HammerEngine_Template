@@ -21,10 +21,10 @@ public:
         EVENT_TARGET        // Generate waypoints around an event target
     };
 
-    PatrolBehavior(const boost::container::small_vector<Vector2D, 10>& waypoints, float moveSpeed = 2.0f, bool includeOffscreenPoints = false);
+    explicit PatrolBehavior(const boost::container::small_vector<Vector2D, 10>& waypoints, float moveSpeed = 2.0f, bool includeOffscreenPoints = false);
     
     // Constructor with mode - automatically configures behavior based on mode
-    PatrolBehavior(PatrolMode mode, float moveSpeed = 2.0f, bool includeOffscreenPoints = false);
+    explicit PatrolBehavior(PatrolMode mode, float moveSpeed = 2.0f, bool includeOffscreenPoints = false);
 
     void init(EntityPtr entity) override;
     void executeLogic(EntityPtr entity) override;

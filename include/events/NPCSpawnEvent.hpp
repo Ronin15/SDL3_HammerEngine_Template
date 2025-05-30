@@ -59,7 +59,7 @@ struct SpawnParameters {
     SpawnParameters() = default;
 
     // Constructor with commonly used parameters
-    SpawnParameters(const std::string& type, int count = 1, float radius = 0.0f)
+    explicit SpawnParameters(const std::string& type, int count = 1, float radius = 0.0f)
         : npcType(type), count(count), spawnRadius(radius) {}
 };
 

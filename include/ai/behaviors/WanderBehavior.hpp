@@ -23,10 +23,10 @@ public:
         EVENT_TARGET    // Wander around a specific target location
     };
 
-    WanderBehavior(float speed = 1.5f, float changeDirectionInterval = 2000.0f, float areaRadius = 300.0f);
+    explicit WanderBehavior(float speed = 1.5f, float changeDirectionInterval = 2000.0f, float areaRadius = 300.0f);
     
     // Constructor with mode - automatically configures behavior based on mode
-    WanderBehavior(WanderMode mode, float speed = 2.0f);
+    explicit WanderBehavior(WanderMode mode, float speed = 2.0f);
 
     // No state management - handled by AI Manager
     void init(EntityPtr entity) override;

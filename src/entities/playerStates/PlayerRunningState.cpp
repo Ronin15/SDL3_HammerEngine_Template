@@ -54,12 +54,12 @@ void PlayerRunningState::update() {
     // Handle mouse movement (when left mouse button is down)
     if (InputManager::Instance().getMouseButtonState(LEFT)) {
         // Get mouse position and player position
-        Vector2D* mousePos = InputManager::Instance().getMousePosition();
+        const Vector2D& mousePos = InputManager::Instance().getMousePosition();
         Vector2D playerPos = m_player.get().getPosition();
 
         // Calculate direction vector from player to mouse cursor
-        Vector2D direction = Vector2D(mousePos->getX() - playerPos.getX(),
-                                     mousePos->getY() - playerPos.getY());
+        Vector2D direction = Vector2D(mousePos.getX() - playerPos.getX(),
+                                     mousePos.getY() - playerPos.getY());
 
         // Only move if the mouse is far enough from the player
         if (direction.length() > 5.0f) {

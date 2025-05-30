@@ -166,7 +166,7 @@ void AIDemoState::update() {
 
         // Check for any NPC-specific status changes if needed
         for (size_t i = 0; i < m_npcs.size(); i++) {
-            auto& npc = m_npcs[i];
+            const auto& npc = m_npcs[i];
             if (!npc) continue;
 
             try {

@@ -252,9 +252,6 @@ void EventManager::configureThreading(bool useThreading, unsigned int maxThreads
         } else {
             // Ensure ThreadSystem is properly configured for our needs
             Forge::ThreadSystem::Instance().reserveQueueCapacity(256);
-
-            // Reserve capacity for better performance
-            Forge::ThreadSystem::Instance().reserveQueueCapacity(256);
         }
 
         if (maxThreads == 0) {

@@ -80,7 +80,7 @@ public:
      * @param initialCapacity Initial capacity to reserve per priority (default: 256)
      * @param enableProfiling Enable detailed task profiling (default: false)
      */
-    TaskQueue(size_t initialCapacity = 256, bool enableProfiling = false)
+    explicit TaskQueue(size_t initialCapacity = 256, bool enableProfiling = false)
         : m_desiredCapacity(initialCapacity),
           m_enableProfiling(enableProfiling) {
         
@@ -367,12 +367,7 @@ private:
         return false;
     }
 
-    // Memory fences for better cross-thread visibility
-    void notifyStop() {
-        stopping.store(true, std::memory_order_release);
-        std::atomic_thread_fence(std::memory_order_seq_cst);
-        condition.notify_all();
-    }
+
 
 public:
     // Wake up all waiting threads without clearing the queue
@@ -394,7 +389,7 @@ public:
      * @param initialQueueCapacity Initial capacity for the task queue (memory is pre-allocated)
      * @param enableProfiling Enable detailed task performance metrics
      */
-    ThreadPool(size_t numThreads, size_t queueCapacity = 256, bool enableProfiling = false)
+    explicit ThreadPool(size_t numThreads, size_t queueCapacity = 256, bool enableProfiling = false)
         : taskQueue(queueCapacity, enableProfiling) {
 
         // Set up worker threads

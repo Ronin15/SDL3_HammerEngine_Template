@@ -356,7 +356,7 @@ void EventDemoState::render() {
     }
 
     // Render spawned NPCs
-    for (auto& npc : m_spawnedNPCs) {
+    for (const auto& npc : m_spawnedNPCs) {
         if (npc) {
             npc->render();
         }
@@ -658,7 +658,6 @@ void EventDemoState::renderUI() {
         yPos,
         whiteColor,
         GameEngine::Instance().getRenderer());
-    yPos += lineHeight * 2;
 
     renderControls();
     renderEventStatus();

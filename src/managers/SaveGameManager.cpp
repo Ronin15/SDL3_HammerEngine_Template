@@ -463,7 +463,7 @@ SaveGameData SaveGameManager::extractSaveInfo(const std::string& saveFileName) c
         }
 
         // Set timestamp from header
-        std::tm* timeinfo = std::localtime(&header.timestamp);
+        const std::tm* timeinfo = std::localtime(&header.timestamp);
         char buffer[80];
         std::strftime(buffer, sizeof(buffer), "%Y-%m-%d %H:%M:%S", timeinfo);
         info.timestamp = buffer;
