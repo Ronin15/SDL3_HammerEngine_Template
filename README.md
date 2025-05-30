@@ -61,21 +61,6 @@ I use the Zed IDE with custom cmake and ninja task configurations to build/compi
 - **ChaseBehavior**: Target pursuit with detection ranges
 - **Custom Behaviors**: Easy extension via clone pattern
 
-## 🔧 Recent Major Fixes
-
-### EventDemoState Crash Resolution
-- ✅ **Fixed shared behavior state issues** causing system crashes
-- ✅ **Eliminated debug output overhead** (7000+ console outputs per frame)
-- ✅ **Added NPC spawn limits** (5000 NPC capacity)
-- ✅ **Resolved double-free memory errors** in cleanup process
-- ✅ **Implemented defensive NPC lifecycle management**
-
-### Architecture Improvements  
-- ✅ **Individual behavior instances** prevent state interference
-- ✅ **Batch behavior assignment** eliminates race conditions
-- ✅ **Enhanced memory management** with defensive cleanup
-- ✅ **Thread-safe AI processing** with parallel updates
-
 ## Building the Project
 
 ### Prerequisites
