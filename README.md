@@ -245,7 +245,7 @@ The EntityStateManager handles the state machine for individual entities:
 
 See `include/managers/EntityStateManager.hpp` for the full API.
 
-### EventManager & EventSystem
+### EventManager
 
 The EventManager provides a condition-based event system for game events:
 
