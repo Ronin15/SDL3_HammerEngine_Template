@@ -312,18 +312,36 @@ std::shared_ptr<NPC> EventDemoState::createNPCAtPositionWithoutBehavior(const st
 }
 
 std::string EventDemoState::determineBehaviorForNPCType(const std::string& npcType) {
+    // Create a static counter per NPC type to fix the behavior cycling
+    static std::unordered_map<std::string, size_t> npcTypeCounters;
+    size_t npcCount = npcTypeCounters[npcType]++;
+    
     std::string behaviorName;
 
     if (npcType == "Guard") {
-        size_t npcCount = m_spawnedNPCs.size();
-        std::vector<std::string> guardBehaviors = {"Patrol", "Wander", "Chase"};
+        // Guards cycle through patrol behaviors including new random ones
+        std::vector<std::string> guardBehaviors = {"Patrol", "RandomPatrol", "CirclePatrol", "EventTarget", "Chase"};
         behaviorName = guardBehaviors[npcCount % guardBehaviors.size()];
+
     } else if (npcType == "Villager") {
-        size_t npcCount = m_spawnedNPCs.size();
-        std::vector<std::string> villagerBehaviors = {"Wander", "Patrol"};
+        // Villagers use more peaceful behaviors including new random patrol
+        std::vector<std::string> villagerBehaviors = {"Wander", "RandomPatrol", "CirclePatrol"};
         behaviorName = villagerBehaviors[npcCount % villagerBehaviors.size()];
+
+    } else if (npcType == "Merchant") {
+        // Merchants use area patrol behaviors to simulate market movement
+        std::vector<std::string> merchantBehaviors = {"RandomPatrol", "CirclePatrol", "Patrol"};
+        behaviorName = merchantBehaviors[npcCount % merchantBehaviors.size()];
+
+    } else if (npcType == "Warrior") {
+        // Warriors use more aggressive behaviors including event targeting
+        std::vector<std::string> warriorBehaviors = {"EventTarget", "Chase", "Patrol"};
+        behaviorName = warriorBehaviors[npcCount % warriorBehaviors.size()];
+
     } else {
+        // Default to wander for unknown types
         behaviorName = "Wander";
+
     }
 
     return behaviorName;
@@ -930,47 +948,6 @@ void EventDemoState::onWeatherChanged(const std::string& message) {
 
 void EventDemoState::onNPCSpawned(const std::string& message) {
     addLogEntry("NPC Spawn Event: " + message);
-
-    // NPCSpawnEvent creates the NPC, but we need to track it for rendering and AI assignment
-    std::string npcType = message;
-
-    // Get recently spawned NPCs from the event system
-    auto spawnEvents = EventManager::Instance().getEventsByType("NPCSpawn");
-
-    for (auto event : spawnEvents) {
-        auto npcSpawnEvent = std::dynamic_pointer_cast<NPCSpawnEvent>(event);
-        if (npcSpawnEvent) {
-            auto spawnedEntities = npcSpawnEvent->getSpawnedEntities();
-
-            // Find the most recently spawned NPC that matches our type and add it to tracking
-            for (auto it = spawnedEntities.rbegin(); it != spawnedEntities.rend(); ++it) {
-                if (auto entityPtr = it->lock()) {
-                    auto npc = std::dynamic_pointer_cast<NPC>(entityPtr);
-                    if (npc) {
-                        // Check if we already have this NPC tracked
-                        bool alreadyTracked = false;
-                        for (const auto& trackedNpc : m_spawnedNPCs) {
-                            if (trackedNpc == npc) {
-                                alreadyTracked = true;
-                                break;
-                            }
-                        }
-
-                        if (!alreadyTracked) {
-                            // Assign AI behavior based on NPC type
-                            assignAIBehaviorToNPC(npc, npcType);
-
-                            // Add to our tracking list for rendering
-                            m_spawnedNPCs.push_back(npc);
-
-                            std::cout << "EventDemoState tracked and assigned AI to " << npcType << std::endl;
-                            return; // Only track the most recent one
-                        }
-                    }
-                }
-            }
-        }
-    }
 }
 
 void EventDemoState::onSceneChanged(const std::string& message) {
@@ -1005,6 +982,58 @@ void EventDemoState::setupAIBehaviors() {
         std::cout << "EventDemoState: Registered Patrol behavior\n";
     }
 
+    // NEW: Random Area Patrol Behavior (rectangular area)
+    if (!AIManager::Instance().hasBehavior("RandomPatrol")) {
+        boost::container::small_vector<Vector2D, 10> dummyPoints;
+        dummyPoints.push_back(Vector2D(0, 0));
+        dummyPoints.push_back(Vector2D(100, 100));
+        
+        auto randomPatrolBehavior = std::make_unique<PatrolBehavior>(dummyPoints, 2.0f, false);
+        randomPatrolBehavior->setScreenDimensions(m_worldWidth, m_worldHeight);
+        // Set random patrol area in the left half of screen
+        randomPatrolBehavior->setRandomPatrolArea(
+            Vector2D(50, 50), 
+            Vector2D(m_worldWidth * 0.4f, m_worldHeight - 50), 
+            6
+        );
+        randomPatrolBehavior->setAutoRegenerate(true);
+        randomPatrolBehavior->setMinWaypointDistance(80.0f);
+        AIManager::Instance().registerBehavior("RandomPatrol", std::move(randomPatrolBehavior));
+        std::cout << "EventDemoState: Registered RandomPatrol behavior\n";
+    }
+
+    // NEW: Circular Area Patrol Behavior
+    if (!AIManager::Instance().hasBehavior("CirclePatrol")) {
+        boost::container::small_vector<Vector2D, 10> dummyPoints;
+        dummyPoints.push_back(Vector2D(0, 0));
+        dummyPoints.push_back(Vector2D(100, 100));
+        
+        auto circlePatrolBehavior = std::make_unique<PatrolBehavior>(dummyPoints, 1.8f, false);
+        circlePatrolBehavior->setScreenDimensions(m_worldWidth, m_worldHeight);
+        // Set circular patrol area in the right half of screen
+        Vector2D circleCenter(m_worldWidth * 0.75f, m_worldHeight * 0.5f);
+        circlePatrolBehavior->setRandomPatrolArea(circleCenter, 120.0f, 5);
+        circlePatrolBehavior->setAutoRegenerate(true);
+        circlePatrolBehavior->setMinWaypointDistance(60.0f);
+        AIManager::Instance().registerBehavior("CirclePatrol", std::move(circlePatrolBehavior));
+        std::cout << "EventDemoState: Registered CirclePatrol behavior\n";
+    }
+
+    // NEW: Event Target Patrol Behavior (will patrol around player)
+    if (!AIManager::Instance().hasBehavior("EventTarget")) {
+        boost::container::small_vector<Vector2D, 10> dummyPoints;
+        dummyPoints.push_back(Vector2D(0, 0));
+        dummyPoints.push_back(Vector2D(100, 100));
+        
+        auto eventTargetBehavior = std::make_unique<PatrolBehavior>(dummyPoints, 2.2f, false);
+        eventTargetBehavior->setScreenDimensions(m_worldWidth, m_worldHeight);
+        // Set initial event target at screen center (will be updated to player position)
+        Vector2D initialTarget(m_worldWidth * 0.5f, m_worldHeight * 0.5f);
+        eventTargetBehavior->setEventTarget(initialTarget, 150.0f, 8);
+        AIManager::Instance().registerBehavior("EventTarget", std::move(eventTargetBehavior));
+        std::cout << "EventDemoState: Registered EventTarget behavior\n";
+    }
+
     if (!AIManager::Instance().hasBehavior("Chase")) {
         // Create chase behavior matching AIDemoState settings
         auto chaseBehavior = std::make_unique<ChaseBehavior>(m_player, 2.0f, 500.0f, 50.0f);
@@ -1015,47 +1044,7 @@ void EventDemoState::setupAIBehaviors() {
     addLogEntry("AI Behaviors configured for NPC integration");
 }
 
-void EventDemoState::assignAIBehaviorToNPC(std::shared_ptr<NPC> npc, const std::string& npcType) {
-    if (!npc) {
-        std::cerr << "ERROR: assignAIBehaviorToNPC called with null NPC!" << std::endl;
-        return;
-    }
 
-    std::string behaviorName;
-
-    try {
-        // Assign different default behaviors based on NPC type
-        if (npcType == "Guard") {
-            // Guards patrol by default, but cycle through behaviors
-            // FIXED: Use NPC count instead of static variable to prevent infinite growth
-            size_t npcCount = m_spawnedNPCs.size();
-            std::vector<std::string> guardBehaviors = {"Patrol", "Wander", "Chase"};
-            behaviorName = guardBehaviors[npcCount % guardBehaviors.size()];
-        } else if (npcType == "Villager") {
-            // Villagers wander by default, but also cycle
-            // FIXED: Use NPC count instead of static variable to prevent infinite growth
-            size_t npcCount = m_spawnedNPCs.size();
-            std::vector<std::string> villagerBehaviors = {"Wander", "Patrol"};
-            behaviorName = villagerBehaviors[npcCount % villagerBehaviors.size()];
-        } else {
-            // Default to wander for unknown types
-            behaviorName = "Wander";
-        }
-
-        // Register entity for updates and assign the behavior
-        int priority = (npcType == "Guard") ? 7 : (npcType == "Warrior") ? 8 : (npcType == "Merchant") ? 5 : 2;
-        AIManager::Instance().registerEntityForUpdates(npc, priority);
-        AIManager::Instance().assignBehaviorToEntity(npc, behaviorName);
-        addLogEntry(npcType + " registered for updates and assigned " + behaviorName + " behavior");
-
-    } catch (const std::exception& e) {
-        std::cerr << "EXCEPTION in assignAIBehaviorToNPC: " << e.what() << std::endl;
-        std::cerr << "NPC type: " << npcType << ", behavior: " << behaviorName << std::endl;
-    } catch (...) {
-        std::cerr << "UNKNOWN EXCEPTION in assignAIBehaviorToNPC" << std::endl;
-        std::cerr << "NPC type: " << npcType << ", behavior: " << behaviorName << std::endl;
-    }
-}
 
 
 

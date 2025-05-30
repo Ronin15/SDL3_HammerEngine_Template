@@ -170,7 +170,6 @@ private:
 
     // AI behavior integration methods
     void setupAIBehaviors();
-    void assignAIBehaviorToNPC(std::shared_ptr<NPC> npc, const std::string& npcType);
 };
 
 #endif // EVENT_DEMO_STATE_HPP
