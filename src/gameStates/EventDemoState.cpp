@@ -18,15 +18,6 @@
 #include <iomanip>
 #include <sstream>
 
-
-EventDemoState::EventDemoState() {
-    // EventManager accessed via singleton - no initialization needed
-}
-
-EventDemoState::~EventDemoState() {
-    // Cleanup will be handled in exit()
-}
-
 bool EventDemoState::enter() {
     std::cout << "Forge Game Engine - Entering EventDemoState...\n";
 
@@ -47,7 +38,7 @@ bool EventDemoState::enter() {
         m_player->setPosition(Vector2D(m_worldWidth / 2, m_worldHeight / 2));
 
         // Set player reference in AIManager for distance optimization
-        AIManager::Instance().setPlayerForDistanceOptimization(m_player);
+        AIManager::Instance().setPlayerForDistanceOptimization(m_player); //critical for normal State operation ON-ENTER
 
         // Initialize timing
         m_lastFrameTime = std::chrono::steady_clock::now();
@@ -138,7 +129,7 @@ void EventDemoState::update() {
     }
 
     // Let AIManager handle all NPC updates (movement + AI logic with distance optimization)
-    AIManager::Instance().updateManagedEntities();
+    AIManager::Instance().updateManagedEntities(); //Critical to be in the update loop to ensure smooth AI behavior -ON-UPDATE
 
     // Clean up invalid NPCs
     auto it = m_spawnedNPCs.begin();
@@ -158,9 +149,7 @@ void EventDemoState::update() {
             it = m_spawnedNPCs.erase(it);
         }
     }
-    // Update event system -- Moved to GameEngine processBackgroudTasks
 
-    // Handle demo phases (separate from event rate limiting)
     if (m_autoMode) {
         // Auto mode processing (no artificial limits)
 
@@ -315,7 +304,7 @@ std::string EventDemoState::determineBehaviorForNPCType(const std::string& npcTy
     // Create a static counter per NPC type to fix the behavior cycling
     static std::unordered_map<std::string, size_t> npcTypeCounters;
     size_t npcCount = npcTypeCounters[npcType]++;
-    
+
     std::string behaviorName;
 
     if (npcType == "Guard") {
@@ -1168,7 +1157,7 @@ void EventDemoState::createNPCAtPosition(const std::string& npcType, float x, fl
             // Register entity with AIManager for centralized updates with priority
             AIManager::Instance().registerEntityForUpdates(npc, priority);
             AIManager::Instance().queueBehaviorAssignment(npc, behaviorName);
-            
+
             addLogEntry("Registered entity for updates and queued " + behaviorName + " behavior assignment (priority " + std::to_string(priority) + ")");
 
             // EventDemoState owns this NPC

@@ -20,8 +20,14 @@ The ThreadSystem is a core component of the Forge Game Engine, providing thread 
 ### Initialization
 
 ```cpp
-// Initialize the thread system with default settings
+// Initialize the thread system with default settings (1024 queue capacity, auto thread count)
 if (!Forge::ThreadSystem::Instance().init()) {
+    std::cerr << "Failed to initialize thread system!" << std::endl;
+    return -1;
+}
+
+// Initialize with custom parameters
+if (!Forge::ThreadSystem::Instance().init(2048, 4, true)) {  // 2048 queue capacity, 4 threads, profiling enabled
     std::cerr << "Failed to initialize thread system!" << std::endl;
     return -1;
 }
@@ -69,11 +75,8 @@ The EventManager uses ThreadSystem for parallel event processing:
 Forge::ThreadSystem::Instance().init();
 EventManager::Instance().init();
 
-// Configure EventManager to use ThreadSystem with default priority
-EventManager::Instance().configureThreading(true);
-
-// Or with specific priority
-EventManager::Instance().configureThreading(true, 0, Forge::TaskPriority::High);
+// EventManager automatically uses ThreadSystem when available
+// No explicit configuration needed - it detects ThreadSystem automatically
 
 // EventManager will now process events in parallel through ThreadSystem
 EventManager::Instance().update();
@@ -90,14 +93,11 @@ The AIManager similarly uses ThreadSystem for parallel AI behavior processing, a
 Forge::ThreadSystem::Instance().init();
 AIManager::Instance().init();
 
-// Configure AIManager to use ThreadSystem with default priority
-AIManager::Instance().configureThreading(true);
-
-// Or with specific priority for AI tasks
-AIManager::Instance().configureThreading(true, 0, Forge::TaskPriority::High);
+// AIManager automatically uses ThreadSystem when available
+// No explicit configuration needed - it detects ThreadSystem automatically
 
 // AIManager will now process AI behaviors in parallel through ThreadSystem
-AIManager::Instance().update();
+AIManager::Instance().updateManagedEntities();
 ```
 
 See [AIManager.md](ai/AIManager.md) for detailed integration documentation.
@@ -122,14 +122,28 @@ if (!Forge::ThreadSystem::Instance().init()) {
     return -1;
 }
 
-// Or specify a custom initial capacity if you have specific requirements
-if (!Forge::ThreadSystem::Instance().init(1000)) {
+// Specify custom initial capacity, thread count, and profiling
+if (!Forge::ThreadSystem::Instance().init(2048, 0, false)) {  // 2048 capacity, auto threads, no profiling
+    std::cerr << "Failed to initialize thread system!" << std::endl;
+    return -1;
+}
+
+// Initialize with specific thread count
+if (!Forge::ThreadSystem::Instance().init(1024, 6, true)) {  // 1024 capacity, 6 threads, profiling enabled
     std::cerr << "Failed to initialize thread system!" << std::endl;
     return -1;
 }
 ```
 
 ### Adjusting Capacity at Runtime (Rarely Needed)
+
+```cpp
+// Reserve additional capacity if you know you'll submit many tasks
+bool success = Forge::ThreadSystem::Instance().reserveQueueCapacity(2048);
+if (!success) {
+    std::cerr << "Failed to reserve queue capacity (system may be shut down)" << std::endl;
+}
+```
 
 ### Automatic Capacity Expansion
 
@@ -148,7 +162,32 @@ size_t capacity = Forge::ThreadSystem::Instance().getQueueCapacity();
 // Check current queue size
 size_t queueSize = Forge::ThreadSystem::Instance().getQueueSize();
 
+// Get task processing statistics
+size_t processed = Forge::ThreadSystem::Instance().getTotalTasksProcessed();
+size_t enqueued = Forge::ThreadSystem::Instance().getTotalTasksEnqueued();
+
+// Enable debug logging for detailed task information
+Forge::ThreadSystem::Instance().setDebugLogging(true);
+
 std::cout << "Queue usage: " << queueSize << "/" << capacity << std::endl;
+std::cout << "Tasks processed: " << processed << ", enqueued: " << enqueued << std::endl;
+```
+
+### Debug Logging
+
+```cpp
+// Enable debug logging during development
+Forge::ThreadSystem::Instance().setDebugLogging(true);
+
+// Now all task enqueuing will be logged with descriptions
+Forge::ThreadSystem::Instance().enqueueTask([]() {
+    // Task logic
+}, Forge::TaskPriority::High, "Update player AI");
+
+// Output: "Forge Game Engine - Enqueuing task: Update player AI"
+
+// Disable for production
+Forge::ThreadSystem::Instance().setDebugLogging(false);
 ```
 
 ## Memory Management Benefits
@@ -185,8 +224,9 @@ This helps maintain consistent performance during gameplay, avoiding hitches tha
    - Report errors but allow the system to continue running
 
 4. **Monitor During Development**
-   - Use `getQueueSize()` and `getQueueCapacity()` during development to understand usage patterns
+   - Use `getQueueSize()`, `getQueueCapacity()`, `getTotalTasksProcessed()`, and `getTotalTasksEnqueued()` during development to understand usage patterns
    - If queue size regularly approaches capacity, consider optimizing your task design
+   - Enable profiling during development with `init(capacity, threadCount, true)` for detailed performance insights
 
 5. **Consider Task Granularity**
    - Optimal task size is typically 0.1-1ms per task
@@ -197,6 +237,15 @@ This helps maintain consistent performance during gameplay, avoiding hitches tha
 6. **Add Proper Exception Handling**
    - Always handle exceptions that might occur in threaded tasks
    - Ensure your code is resilient to thread task failures
+
+7. **Use Debug Logging for Development**
+   - Enable debug logging with `Forge::ThreadSystem::Instance().setDebugLogging(true)` during development
+   - Provides detailed information about task enqueueing and execution
+   - Remember to disable in production builds for performance
+
+8. **Check System Status**
+   - Use `Forge::ThreadSystem::Exists()` to verify ThreadSystem is available before enqueueing tasks
+   - Useful for systems that may operate both with and without ThreadSystem
 
 ## Example Scenarios
 
@@ -274,15 +323,23 @@ void loadAssets(const std::vector<std::string>& assetPaths) {
 
 ## Technical Details
 
-The ThreadSystem uses a custom priority queue implementation with explicit pre-allocation of the underlying memory. This implementation provides significantly better memory management than standard containers. All operations are thread-safe with proper synchronization to ensure correct behavior in a multi-threaded environment.
+The ThreadSystem uses a custom priority queue implementation with separate queues for each priority level. This design reduces lock contention and provides better memory management than standard containers. All operations are thread-safe with proper synchronization to ensure correct behavior in a multi-threaded environment.
+
+### Architecture Features
+- **Separate Priority Queues**: Each priority level has its own queue to minimize lock contention
+- **Automatic Thread Detection**: Uses `std::thread::hardware_concurrency() - 1` threads by default
+- **Graceful Shutdown**: Proper cleanup with timeout handling and pending task reporting
+- **Memory Pre-allocation**: Each priority queue reserves capacity to reduce runtime allocations
+- **Lock-free Checks**: Fast existence and shutdown detection without acquiring locks
 
 The implementation efficiently handles:
-- Task creation and enqueueing with priority-based ordering
-- Intelligent memory pre-allocation and growth
-- Thread-safe access to the task queue
+- Task creation and enqueueing with priority-based ordering using separate priority queues
+- Intelligent memory pre-allocation and automatic growth when reaching 90% capacity
+- Thread-safe access to the task queue with minimal lock contention
 - Proper propagation of exceptions and return values
+- Automatic thread pool scaling based on available CPU cores
 
-Tasks are processed according to their priority level, with higher-priority tasks being executed before lower-priority ones, all while maintaining memory efficiency.
+Tasks are processed according to their priority level, with higher-priority tasks being executed before lower-priority ones. The system uses separate queues for each priority level to improve performance and reduce lock contention.
 
 ### Priority Levels
 
@@ -296,10 +353,36 @@ The ThreadSystem supports five priority levels for tasks:
 
 ## Performance Characteristics
 
-The system is designed to efficiently handle hundreds of concurrent tasks with dynamic memory management for optimal memory usage and processing efficiency. The task queue starts with a default capacity of 1024 tasks and can automatically grow as needed.
+The system is designed to efficiently handle hundreds of concurrent tasks with dynamic memory management for optimal memory usage and processing efficiency. The task queue starts with a default capacity of 1024 tasks distributed across priority levels and can automatically grow as needed.
 
-The priority-based scheduling ensures that critical tasks receive timely execution without being delayed by lower-priority work. This is especially important in games where some operations (like player input handling or AI for nearby enemies) need faster response times than others (like distant entity updates or background calculations).
+The priority-based scheduling with separate queues ensures that critical tasks receive timely execution without being delayed by lower-priority work. This is especially important in games where some operations (like player input handling or AI for nearby enemies) need faster response times than others (like distant entity updates or background calculations).
+
+Key performance features:
+- Separate priority queues reduce lock contention
+- Automatic capacity expansion at 90% utilization
+- Lock-free existence checks for shutdown detection
+- Efficient memory pre-allocation per priority level
+- Thread pool sizing based on available CPU cores (hardware_concurrency - 1)
 
 ## Thread Safety
 
 All public methods of the ThreadSystem are thread-safe and can be called from any thread. The system handles proper synchronization internally, allowing game systems to enqueue tasks without additional synchronization.
+
+### Safe Shutdown Handling
+The ThreadSystem gracefully handles shutdown scenarios:
+- Tasks enqueued after shutdown are silently ignored (no crashes)
+- Pending tasks are reported during cleanup
+- Worker threads are properly joined with timeout protection
+- The system can be safely destroyed at application exit
+
+### Available Methods Summary
+- `init(queueCapacity, customThreadCount, enableProfiling)` - Initialize with custom parameters
+- `enqueueTask(task, priority, description)` - Submit fire-and-forget tasks
+- `enqueueTaskWithResult(function, priority, description, args...)` - Submit tasks with return values
+- `getThreadCount()` - Get number of worker threads
+- `getQueueSize()` / `getQueueCapacity()` - Monitor queue status
+- `getTotalTasksProcessed()` / `getTotalTasksEnqueued()` - Get processing statistics
+- `reserveQueueCapacity(capacity)` - Pre-allocate additional queue space
+- `setDebugLogging(enabled)` - Enable/disable detailed logging
+- `clean()` - Explicit cleanup (automatic in destructor)
+- `Exists()` - Check if system is available and not shut down
