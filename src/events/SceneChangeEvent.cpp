@@ -146,7 +146,7 @@ void SceneChangeEvent::setTransitionType(TransitionType type) {
 bool SceneChangeEvent::checkConditions() {
     // For demo events, only allow triggering through explicit requests
     // This prevents auto-triggering while still allowing manual triggers
-    if (m_name.find("demo_") == 0) {
+    if (m_name.starts_with("demo_")) {
         return false; // Demo events should only respond to onMessage, not auto-trigger
     }
 

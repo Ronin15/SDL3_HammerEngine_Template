@@ -198,22 +198,22 @@ public:
      * @brief Queue a behavior assignment for batch processing
      * @param entity Shared pointer to the entity
      * @param behaviorName Name of the behavior to assign
-     * 
+     *
      * This is the preferred method for assigning behaviors when creating multiple entities
      * as it provides better performance and stability than individual assignments.
      * Call processPendingBehaviorAssignments() to execute all queued assignments.
-     * 
+     *
      * @thread_safety Thread-safe, can be called from any thread
      */
     void queueBehaviorAssignment(EntityPtr entity, const std::string& behaviorName);
 
     /**
      * @brief Process all queued behavior assignments in a single batch
-     * 
+     *
      * This method should be called periodically (typically each frame) to process
      * any behavior assignments that were queued via queueBehaviorAssignment().
      * It provides better performance and thread safety than individual assignments.
-     * 
+     *
      * @return Number of assignments processed
      * @thread_safety Thread-safe, can be called from any thread
      */
@@ -305,7 +305,7 @@ public:
      * @param entity Shared pointer to the entity to register
      * @param priority Entity priority level (0-9) controlling update frequency at distance
      *                 Priority 0-2: Small update ranges (background NPCs)
-     *                 Priority 3-6: Medium update ranges (interactive NPCs)  
+     *                 Priority 3-6: Medium update ranges (interactive NPCs)
      *                 Priority 7-9: Large update ranges (important NPCs)
      * @note Player reference for distance calculations should be set separately via setPlayerForDistanceOptimization()
      * @thread_safety Thread-safe, can be called from any thread
@@ -340,8 +340,8 @@ public:
      * @param minUpdateDist Far distance - entities update every 30 frames
      * @thread_safety Thread-safe, can be called from any thread
      */
-    void configureDistanceThresholds(float maxUpdateDist = 8000.0f, 
-                                   float mediumUpdateDist = 10000.0f, 
+    void configureDistanceThresholds(float maxUpdateDist = 8000.0f,
+                                   float mediumUpdateDist = 10000.0f,
                                    float minUpdateDist = 25000.0f);
 
     /**
@@ -398,7 +398,7 @@ private:
         double minUpdateTimeMs{std::numeric_limits<double>::max()};
 
         // Constructor to ensure proper initialization
-        PerformanceStats() 
+        PerformanceStats()
             : totalUpdateTimeMs(0.0)
             , averageUpdateTimeMs(0.0)
             , updateCount(0)
@@ -434,7 +434,7 @@ private:
         PerformanceStats perfStats;
 
         // Constructor to ensure proper initialization
-        EntityBehaviorCache() 
+        EntityBehaviorCache()
             : entityWeak()
             , behaviorWeak()
             , behaviorName()
@@ -555,22 +555,22 @@ private:
         int frameCounter{0};
         uint64_t lastUpdateTime{0};
         int priority{5}; // Entity priority (0-9) for distance-based updates
-        
-        EntityUpdateInfo(EntityPtr entity) : entityWeak(entity) {}
+
+        explicit EntityUpdateInfo(EntityPtr entity) : entityWeak(entity) {}
     };
-    
+
     std::vector<EntityUpdateInfo> m_managedEntities{};
     EntityWeakPtr m_playerEntity{};
     mutable std::shared_mutex m_managedEntitiesMutex{};
-    
+
     // Distance thresholds for entity update optimization
     std::atomic<float> m_maxUpdateDistance{8000.0f};      // Base close distance: every frame
-    std::atomic<float> m_mediumUpdateDistance{10000.0f};  // Base medium distance: every 15 frames  
+    std::atomic<float> m_mediumUpdateDistance{10000.0f};  // Base medium distance: every 15 frames
     std::atomic<float> m_minUpdateDistance{25000.0f};     // Base far distance: every 30 frames
-    
+
     // Global multiplier for distance calculations (applied before entity priority)
     std::atomic<float> m_priorityMultiplier{1.0f};        // Global priority multiplier
-    
+
     // Helper method for distance-based entity updates using entity priority
     bool shouldUpdateEntity(EntityPtr entity, EntityPtr player, int& frameCounter, int entityPriority);
 };

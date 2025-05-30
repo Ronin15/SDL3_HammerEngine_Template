@@ -149,8 +149,8 @@ bool InputManager::getMouseButtonState(int buttonNumber) const {
   return m_mouseButtonStates[buttonNumber];
 }
 
-Vector2D* InputManager::getMousePosition() const {
-  return m_mousePosition.get();
+const Vector2D& InputManager::getMousePosition() const {
+  return *m_mousePosition;
 }
 
 void InputManager::update() {
@@ -200,13 +200,13 @@ void InputManager::update() {
   }
 }
 
-void InputManager::onKeyDown(SDL_Event& /*event*/) {
+void InputManager::onKeyDown(const SDL_Event& /*event*/) {
   // Store the keyboard state
   m_keystates = SDL_GetKeyboardState(0);
 
 }
 
-void InputManager::onKeyUp(SDL_Event& /*event*/) {
+void InputManager::onKeyUp(const SDL_Event& /*event*/) {
   // TODO may not bew needed and need to clean upStore the keyboard state
   m_keystates = SDL_GetKeyboardState(0);
 
@@ -214,12 +214,12 @@ void InputManager::onKeyUp(SDL_Event& /*event*/) {
   // using the isKeyDown() method
 }
 
-void InputManager::onMouseMove(SDL_Event& event) {
+void InputManager::onMouseMove(const SDL_Event& event) {
   m_mousePosition->setX(event.motion.x);
   m_mousePosition->setY(event.motion.y);
 }
 
-void InputManager::onMouseButtonDown(SDL_Event& event) {
+void InputManager::onMouseButtonDown(const SDL_Event& event) {
   if (event.button.button == SDL_BUTTON_LEFT) {
     m_mouseButtonStates[LEFT] = true;
     std::cout << "Forge Game Engine - Mouse button Left clicked!\n";
@@ -234,7 +234,7 @@ void InputManager::onMouseButtonDown(SDL_Event& event) {
   }
 }
 
-void InputManager::onMouseButtonUp(SDL_Event& event) {
+void InputManager::onMouseButtonUp(const SDL_Event& event) {
   if (event.button.button == SDL_BUTTON_LEFT) {
     m_mouseButtonStates[LEFT] = false;
   }
@@ -246,7 +246,7 @@ void InputManager::onMouseButtonUp(SDL_Event& event) {
   }
 }
 
-void InputManager::onGamepadAxisMove(SDL_Event& event) {
+void InputManager::onGamepadAxisMove(const SDL_Event& event) {
   int whichOne = 0;
 
   // Find which gamepad this event belongs to
@@ -342,7 +342,7 @@ void InputManager::onGamepadAxisMove(SDL_Event& event) {
   }
 }
 
-void InputManager::onGamepadButtonDown(SDL_Event& event) {
+void InputManager::onGamepadButtonDown(const SDL_Event& event) {
   int whichOne = 0;
 
   // Find which gamepad this event belongs to
@@ -389,7 +389,7 @@ void InputManager::onGamepadButtonDown(SDL_Event& event) {
             << static_cast<int>(event.gbutton.button) << ") pressed!\n";
 }
 
-void InputManager::onGamepadButtonUp(SDL_Event& event) {
+void InputManager::onGamepadButtonUp(const SDL_Event& event) {
   int whichOne = 0;
 
   // Find which gamepad this event belongs to

@@ -251,7 +251,6 @@ size_t AIManager::processPendingBehaviorAssignments() {
         }
 
         assignmentsToProcess = std::move(m_pendingBehaviorAssignments);
-        m_pendingBehaviorAssignments.clear();
         m_pendingAssignmentCount.store(0, std::memory_order_release);
     }
 
@@ -301,7 +300,6 @@ void AIManager::unassignBehaviorFromEntity(EntityPtr entity) {
         EntityWeakPtr entityWeak = entity;
 
         // Get the behavior for this entity before removing it
-        std::shared_ptr<AIBehavior> behavior = nullptr;
         std::string behaviorName;
         {
             std::shared_lock<std::shared_mutex> entityLock(m_entityMutex);
@@ -469,13 +467,7 @@ void AIManager::rebuildEntityBehaviorCache() {
 
 
 
-void AIManager::processEntitiesWithBehavior(std::shared_ptr<AIBehavior> behavior, const std::vector<EntityPtr>& entities, bool useThreading) {
-    // This method is now deprecated since AIManager handles all update timing
-    // through updateManagedEntities(). Keeping for compatibility but doing nothing.
-    (void)behavior; // Unused parameter
-    (void)entities; // Unused parameter
-    (void)useThreading; // Unused parameter
-}
+
 
 void AIManager::sendMessageToEntity(EntityPtr entity, const std::string& message, bool immediate) {
     if (!entity) return;
@@ -626,10 +618,7 @@ size_t AIManager::deliverBroadcastMessage(const std::string& message) {
     return deliveredCount;
 }
 
-void AIManager::recordBehaviorPerformance(const std::string_view& behaviorName, double timeMs) {
-    std::lock_guard<std::mutex> lock(m_perfStatsMutex);
-    m_behaviorPerformanceStats[std::string(behaviorName)].addSample(timeMs);
-}
+
 
 void AIManager::resetBehaviors() {
     // First, send release_entities message to all behaviors
@@ -694,7 +683,6 @@ void AIManager::registerEntityForUpdates(EntityPtr entity, int priority) {
         std::lock_guard<std::shared_mutex> lock(m_managedEntitiesMutex);
 
         // Check if entity is already registered
-        EntityWeakPtr entityWeak = entity;
         for (auto& info : m_managedEntities) {
             if (!info.entityWeak.expired() && info.entityWeak.lock() == entity) {
                 // Update priority if already registered

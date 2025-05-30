@@ -12,7 +12,7 @@
 
 class ChaseBehavior : public AIBehavior {
 public:
-    ChaseBehavior(float chaseSpeed = 3.0f, float maxRange = 500.0f, float minRange = 50.0f);
+    explicit ChaseBehavior(float chaseSpeed = 3.0f, float maxRange = 500.0f, float minRange = 50.0f);
 
     void init(EntityPtr entity) override;
 

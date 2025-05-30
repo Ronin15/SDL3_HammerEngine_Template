@@ -71,7 +71,7 @@ struct TransitionParams {
     TransitionParams() = default;
     
     // Constructor with commonly used parameters
-    TransitionParams(float duration, TransitionType type = TransitionType::Fade) 
+    explicit TransitionParams(float duration, TransitionType type = TransitionType::Fade) 
         : duration(duration) {
         // Set default params based on type
         switch(type) {
