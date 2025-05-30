@@ -61,6 +61,10 @@ private:
     float m_currentFPS{0.0f};
     float m_averageFPS{0.0f};
     static constexpr int MAX_FRAME_SAMPLES{60}; // Number of frames to average
+
+    // AI pause state
+    bool m_aiPaused{false};
+    bool m_wasSpacePressed{false};
 };
 
 #endif // AI_DEMO_STATE_HPP
