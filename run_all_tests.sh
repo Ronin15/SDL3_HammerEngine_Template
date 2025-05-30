@@ -192,10 +192,10 @@ echo -e "${CYAN}Found ${#TEST_SCRIPTS[@]} test scripts to run${NC}"
 for script in "${TEST_SCRIPTS[@]}"; do
   run_test_script "$script"
   
-  # Add longer delay for benchmarks to ensure proper resource cleanup
+  # Add delay for benchmarks to ensure proper resource cleanup
   if [[ "$(basename "$script")" == *"benchmark"* ]] || [[ "$(basename "$script")" == *"scaling"* ]]; then
-    echo -e "${YELLOW}Allowing extra time for resource cleanup after benchmark...${NC}"
-    sleep 5
+    echo -e "${YELLOW}Allowing time for resource cleanup after benchmark...${NC}"
+    sleep 2
   else
     # Add a small delay between tests to ensure resources are released
     sleep 2
