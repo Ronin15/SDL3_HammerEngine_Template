@@ -273,19 +273,24 @@ void AIDemoState::update() {
     }
 
     // Pause/Resume AI
-    static bool wasSpacePressed = false;
     bool isSpacePressed = InputManager::Instance().isKeyDown(SDL_SCANCODE_SPACE);
 
-    if (isSpacePressed && !wasSpacePressed) {
+    if (isSpacePressed && !m_wasSpacePressed) {
         // Toggle pause/resume
-        static bool aiPaused = false;
-        aiPaused = !aiPaused;
+        m_aiPaused = !m_aiPaused;
 
-        // Send appropriate message to all entities
-        AIManager::Instance().broadcastMessage(aiPaused ? "pause" : "resume");
+        // Set global AI pause state in AIManager
+        AIManager::Instance().setGlobalPause(m_aiPaused);
+        
+        // Also send messages for behaviors that need them
+        std::string message = m_aiPaused ? "pause" : "resume";
+        AIManager::Instance().broadcastMessage(message, true);
+        
+        // Simple feedback
+        std::cout << "Forge Game Engine - AI " << (m_aiPaused ? "PAUSED" : "RESUMED") << std::endl;
     }
 
-    wasSpacePressed = isSpacePressed;
+    m_wasSpacePressed = isSpacePressed;
 }
 
 void AIDemoState::render() {
@@ -307,17 +312,19 @@ void AIDemoState::render() {
                                     {255, 255, 255, 255},
                                     GameEngine::Instance().getRenderer());
 
-    // Render frame rate
+    // Render frame rate and AI status
+    bool globallyPaused = AIManager::Instance().isGloballyPaused();
     std::stringstream fpsText;
     fpsText << "FPS: " << std::fixed << std::setprecision(1) << m_currentFPS
             << " (Avg: " << std::setprecision(1) << m_averageFPS << ")"
-            << " - Entity Count: " << m_npcs.size();
+            << " - Entity Count: " << m_npcs.size()
+            << " - AI: " << (globallyPaused ? "PAUSED" : "RUNNING");
 
     FontManager::Instance().drawText(fpsText.str(),
                                 "fonts_Arial",
                                 GameEngine::Instance().getWindowWidth() / 2,     // Center horizontally
                                 50,
-                                {255, 255, 0, 255},  // Yellow color for better visibility
+                                globallyPaused ? SDL_Color{255, 100, 100, 255} : SDL_Color{255, 255, 255, 255},
                                 GameEngine::Instance().getRenderer());
 }
 

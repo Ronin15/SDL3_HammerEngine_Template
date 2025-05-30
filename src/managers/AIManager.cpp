@@ -491,6 +491,14 @@ void AIManager::broadcastMessage(const std::string& message, bool immediate) {
     }
 }
 
+void AIManager::setGlobalPause(bool paused) {
+    m_globallyPaused.store(paused, std::memory_order_release);
+}
+
+bool AIManager::isGloballyPaused() const {
+    return m_globallyPaused.load(std::memory_order_acquire);
+}
+
 void AIManager::processMessageQueue() {
     // Check if we're already processing messages
     if (m_processingMessages.exchange(true)) return;
@@ -720,6 +728,11 @@ void AIManager::setPlayerForDistanceOptimization(EntityPtr player) {
 
 void AIManager::updateManagedEntities() {
     if (!m_initialized.load(std::memory_order_acquire)) {
+        return;
+    }
+
+    // Early return if AI is globally paused
+    if (m_globallyPaused.load(std::memory_order_acquire)) {
         return;
     }
 

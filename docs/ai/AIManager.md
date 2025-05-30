@@ -3,9 +3,10 @@
 ## ⚠️ IMPORTANT: Architecture Updates (v3.0+)
 
 **Major Changes from Previous Versions:**
-- **NEW**: Distance-based entity optimization system with player reference
+**NEW**: Distance-based entity optimization system with player reference
 - **NEW**: `updateManagedEntities()` replaces old `update()` method
 - **NEW**: `registerEntityForUpdates()` with priority-based management
+- **NEW**: Global AI pause/resume system with `setGlobalPause()` and `isGloballyPaused()`
 - **REMOVED**: `batchUpdateAllBehaviors()`, `batchProcessEntities()`, `setPriorityForBehavior()`
 - **CHANGED**: All entity parameters now use `EntityPtr` (shared_ptr) instead of raw pointers
 
@@ -19,6 +20,7 @@ The AI Manager is a centralized system for creating and managing autonomous beha
 4. **Batched behavior assignment** - Queue and process assignments efficiently
 5. **Message queue system** - Asynchronous communication with behaviors
 6. **Automatic entity lifecycle management** - Register once, update automatically
+7. **Global AI pause/resume system** - Complete halt of all AI processing with thread-safe controls
 
 ## ⚠️ CRITICAL: Individual Behavior Instances Architecture
 
@@ -200,6 +202,84 @@ AIManager::Instance().sendMessageToEntity(npc, "reverse");
 // Manually process queued messages (normally happens automatically during updateManagedEntities())
 AIManager::Instance().processMessageQueue();
 ```
+
+**Note**: For game-wide pause functionality (like pause menus or debugging), use the Global AI Pause System instead of broadcasting pause messages. Message-based pausing is better for gameplay mechanics affecting specific entities or groups.
+
+### Global AI Pause/Resume System
+
+The AIManager provides a global pause system that completely halts all AI processing, including entity updates and behavior execution. This is more effective than just sending pause messages to individual behaviors.
+
+#### Why Global Pause?
+
+The traditional approach of sending "pause" messages to behaviors only stops the AI logic but still allows `entity->update()` calls to continue, which can result in continued movement due to physics, friction, or other entity systems. The global pause system addresses this by preventing `updateManagedEntities()` from executing entirely when paused.
+
+#### Usage
+
+```cpp
+// Pause all AI processing globally
+AIManager::Instance().setGlobalPause(true);
+
+// Resume all AI processing
+AIManager::Instance().setGlobalPause(false);
+
+// Check current pause state
+bool isPaused = AIManager::Instance().isGloballyPaused();
+```
+
+#### Example Implementation in Game State
+
+```cpp
+void AIDemoState::update() {
+    // Handle spacebar for AI pause/resume
+    static bool wasSpacePressed = false;
+    bool isSpacePressed = InputManager::Instance().isKeyDown(SDL_SCANCODE_SPACE);
+    
+    if (isSpacePressed && !wasSpacePressed) {
+        // Toggle global pause state
+        bool currentlyPaused = AIManager::Instance().isGloballyPaused();
+        AIManager::Instance().setGlobalPause(!currentlyPaused);
+        
+        // Optional: Also send messages for behaviors that need them
+        std::string message = !currentlyPaused ? "pause" : "resume";
+        AIManager::Instance().broadcastMessage(message, true);
+        
+        std::cout << "AI " << (!currentlyPaused ? "PAUSED" : "RESUMED") << std::endl;
+    }
+    wasSpacePressed = isSpacePressed;
+    
+    // Your other update logic...
+}
+```
+
+#### Benefits
+
+- **Complete AI Halt**: When paused, no entity updates or AI behavior processing occurs
+- **Thread-Safe**: Uses atomic operations for safe concurrent access
+- **Performance**: Minimal overhead when checking pause state
+- **Visual Consistency**: NPCs immediately stop moving and animating when paused
+- **Debugging**: Perfect for debugging AI systems or examining specific game states
+
+#### When to Use Global Pause vs Message-Based Pause
+
+**Use Global Pause (`setGlobalPause()`) for:**
+- Game pause menus
+- Debug/development modes
+- Cutscenes or dialogue sequences
+- Performance profiling
+- Any scenario where ALL AI should stop completely
+
+**Use Message-Based Pause (`broadcastMessage("pause")`) for:**
+- Specific gameplay mechanics (e.g., time-stop spells)
+- Individual entity control
+- Behavior-specific pause logic
+- When you need entities to continue physics updates but stop AI decisions
+
+#### Technical Details
+
+- Uses `std::atomic<bool>` for thread-safe access across multiple threads
+- Early return in `updateManagedEntities()` prevents all AI processing when paused
+- Combines with message system for behaviors that need specific pause/resume handling
+- Memory order semantics ensure proper synchronization across CPU cores
 
 ### Integration with Game Loop
 
@@ -565,6 +645,10 @@ void ensureOptimizationCachesValid();
 void sendMessageToEntity(EntityPtr entity, const std::string& message, bool immediate = false);
 void broadcastMessage(const std::string& message, bool immediate = false);
 size_t processMessageQueue();
+
+// 🆕 Global AI Pause/Resume System (v3.1+)
+void setGlobalPause(bool paused);
+bool isGloballyPaused() const;
 ```
 
 ### AIBehavior Methods

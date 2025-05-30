@@ -284,6 +284,21 @@ public:
      */
     void processMessageQueue();
 
+    // Global AI pause/resume functionality
+    /**
+     * @brief Set global AI pause state
+     * @param paused True to pause all AI, false to resume
+     * @thread_safety Thread-safe, can be called from any thread
+     */
+    void setGlobalPause(bool paused);
+
+    /**
+     * @brief Get current global AI pause state
+     * @return True if AI is globally paused, false otherwise
+     * @thread_safety Thread-safe, can be called from any thread
+     */
+    bool isGloballyPaused() const;
+
     // Utility methods
     /**
      * @brief Get the number of registered behaviors
@@ -451,6 +466,9 @@ private:
     std::atomic<bool> m_initialized{false};
     std::atomic<bool> m_useThreading{true}; // Controls whether updates run in parallel
     unsigned int m_maxThreads{0}; // 0 = auto (use ThreadSystem default)
+
+    // Global AI pause state
+    std::atomic<bool> m_globallyPaused{false};
 
 
 
