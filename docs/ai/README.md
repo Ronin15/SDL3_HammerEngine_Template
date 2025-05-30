@@ -201,13 +201,13 @@ Common messages include:
 
 ## Pre-built Behaviors
 
-The engine includes several pre-built behaviors with individual instance support:
+The engine includes several pre-built behaviors with individual instance support and advanced mode-based configuration:
 
-| Behavior | Description | Memory per Instance |
-|----------|-------------|-------------------|
-| **WanderBehavior** | Random movement within area | ~150-250 bytes |
-| **PatrolBehavior** | Follow waypoint sequence | ~200-300 bytes |
-| **ChaseBehavior** | Pursue target entity | ~100-150 bytes |
+| Behavior | Description | Memory per Instance | Modes Available |
+|----------|-------------|-------------------|----------------|
+| **WanderBehavior** | Random movement within area | ~150-250 bytes | SMALL_AREA, MEDIUM_AREA, LARGE_AREA, EVENT_TARGET |
+| **PatrolBehavior** | Follow waypoint sequence | ~200-300 bytes | FIXED_WAYPOINTS, RANDOM_AREA, CIRCULAR_AREA, EVENT_TARGET |
+| **ChaseBehavior** | Pursue target entity | ~100-150 bytes | N/A |
 
 ### ChaseBehavior
 
@@ -221,27 +221,59 @@ AIManager::Instance().registerBehavior("ChasePlayer", chaseTemplate);
 
 ### PatrolBehavior
 
-Makes an entity patrol between a series of waypoints.
+Makes an entity patrol between waypoints with multiple mode options for automatic configuration.
 
 ```cpp
-auto patrolTemplate = std::make_shared<PatrolBehavior>();
-patrolTemplate->addWaypoint(Vector2D(100, 100));
-patrolTemplate->addWaypoint(Vector2D(400, 100));
-patrolTemplate->addWaypoint(Vector2D(400, 400));
-patrolTemplate->addWaypoint(Vector2D(100, 400));
-AIManager::Instance().registerBehavior("GuardPatrol", patrolTemplate);
-// Each guard gets independent waypoint progression
+// Mode-based patrol (recommended)
+auto fixedPatrol = std::make_unique<PatrolBehavior>(
+    PatrolBehavior::PatrolMode::FIXED_WAYPOINTS, 1.5f
+);
+AIManager::Instance().registerBehavior("GuardPatrol", std::move(fixedPatrol));
+
+auto randomPatrol = std::make_unique<PatrolBehavior>(
+    PatrolBehavior::PatrolMode::RANDOM_AREA, 2.0f
+);
+AIManager::Instance().registerBehavior("AreaPatrol", std::move(randomPatrol));
+
+// Traditional manual setup (still supported)
+auto manualPatrol = std::make_shared<PatrolBehavior>();
+manualPatrol->addWaypoint(Vector2D(100, 100));
+manualPatrol->addWaypoint(Vector2D(400, 400));
+AIManager::Instance().registerBehavior("ManualPatrol", manualPatrol);
 ```
+
+**Available Patrol Modes:**
+- `FIXED_WAYPOINTS`: Traditional waypoint sequences
+- `RANDOM_AREA`: Dynamic patrol within rectangular area
+- `CIRCULAR_AREA`: Patrol around central location
+- `EVENT_TARGET`: Patrol around specific objectives
 
 ### WanderBehavior
 
-Creates random movement within a specified area.
+Creates random movement with configurable area sizes and behaviors.
 
 ```cpp
-auto wanderTemplate = std::make_shared<WanderBehavior>(300.0f, 2.0f);  // radius, speed
-AIManager::Instance().registerBehavior("RandomWander", wanderTemplate);
-// Each NPC gets its own random movement pattern
+// Mode-based wander (recommended)
+auto smallWander = std::make_unique<WanderBehavior>(
+    WanderBehavior::WanderMode::SMALL_AREA, 1.5f
+);
+AIManager::Instance().registerBehavior("LocalWander", std::move(smallWander));
+
+auto largeWander = std::make_unique<WanderBehavior>(
+    WanderBehavior::WanderMode::LARGE_AREA, 2.5f
+);
+AIManager::Instance().registerBehavior("RoamingWander", std::move(largeWander));
+
+// Traditional manual setup (still supported)
+auto manualWander = std::make_shared<WanderBehavior>(300.0f, 2.0f);  // radius, speed
+AIManager::Instance().registerBehavior("CustomWander", manualWander);
 ```
+
+**Available Wander Modes:**
+- `SMALL_AREA`: 75px radius, local movement
+- `MEDIUM_AREA`: 200px radius, standard NPCs
+- `LARGE_AREA`: 450px radius, roaming NPCs
+- `EVENT_TARGET`: 150px radius around targets
 
 ## Performance Characteristics
 
@@ -400,9 +432,22 @@ No other code changes required - the AIManager handles cloning automatically.
 ## Documentation Files
 
 - [`AIManager.md`](AIManager.md) - Complete API reference and usage guide
+- [`BehaviorModes.md`](BehaviorModes.md) - 🔥 **NEW**: Comprehensive guide to PatrolBehavior and WanderBehavior mode system
 - [`BATCHED_BEHAVIOR_ASSIGNMENT.md`](BATCHED_BEHAVIOR_ASSIGNMENT.md) - 🔥 Global batched assignment system (v2.2+)
 - [`OPTIMIZATIONS.md`](OPTIMIZATIONS.md) - Performance optimization techniques  
 - [`SHARED_BEHAVIOR_ISSUE_RESOLVED.md`](SHARED_BEHAVIOR_ISSUE_RESOLVED.md) - Architecture change details
 
 For more details on the ThreadSystem, see the [ThreadSystem documentation](../ThreadSystem.md) and [ThreadSystem API Reference](../ThreadSystem_API.md).
+
+### 🔥 NEW: Behavior Mode System
+
+The latest update introduces **mode-based behavior configuration** for PatrolBehavior and WanderBehavior. This system provides:
+
+- **Automatic Configuration**: No manual setup required for common patterns
+- **Clean Architecture**: Behavior logic stays in behavior classes
+- **Easy Integration**: Simple mode parameter selects appropriate settings
+- **Reusable Patterns**: Use the same modes across different game states
+
+See [`BehaviorModes.md`](BehaviorModes.md) for complete documentation on using the new mode system.
+</edits></file_text>
 </edits>
