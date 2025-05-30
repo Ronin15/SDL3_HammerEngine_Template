@@ -316,17 +316,26 @@ For more complex games, consider using the EventManager system for handling game
 
 ## Documentation
 
+**📚 [Complete Documentation Hub](docs/README.md)** - Comprehensive documentation overview with quick start guides, architecture details, and best practices.
+
 Additional documentation can be found in the `docs/` directory:
 
-- `AIManager.md` - Comprehensive guide to the AI system with examples and custom behavior creation
-- `OPTIMIZATIONS.md` - Technical details on AI system performance optimizations
-- `EventManager.md` - Guide to the event management system with examples and integration details
-- `EventDemo.md` - Complete documentation for the EventDemoState testing framework
-- `EventSystem_Integration.md` - Quick reference guide for EventSystem integration and usage patterns
-- `EventManager_ThreadSystem.md` - Details on EventManager and ThreadSystem integration
-- `EventManagerExamples.cpp` - Code examples for using the EventManager system
-- `SaveManagerTesting.md` - Details on the SaveGameManager testing framework and how to run the tests
-- `ThreadSystem.md` - Core documentation for the ThreadSystem component with usage examples and best practices
-- `ThreadSystem_API.md` - Complete API reference for the ThreadSystem with method signatures and parameters
-- `ThreadSystem_Optimization.md` - Explanation of what "500 tasks" means in practical game development scenarios
-- `QueueCapacity_Optimization.md` - Technical details on memory optimization in the ThreadSystem task queue
+### AI System Documentation
+- **[AI System Overview](docs/ai/AIManager.md)** - Complete API reference and usage guide
+- **[Behavior Modes](docs/ai/BehaviorModes.md)** - PatrolBehavior and WanderBehavior mode-based system
+- **[Behavior Modes Quick Reference](docs/ai/BehaviorModes_QuickReference.md)** - Quick setup guide for behavior modes
+- **[Batched Behavior Assignment](docs/ai/BATCHED_BEHAVIOR_ASSIGNMENT.md)** - Global batched assignment system
+- **[Entity Update Management](docs/ai/EntityUpdateManagement.md)** - Entity update system details
+- **[AI Developer Guide](docs/ai/DeveloperGuide.md)** - Advanced AI development patterns and techniques
+
+### Event System Documentation
+- **[Event Manager](docs/EventManager.md)** - Guide to the event management system with examples and integration details
+- **[Event System Integration](docs/EventSystem_Integration.md)** - Quick reference guide for EventSystem integration and usage patterns
+- **[Event Manager Threading](docs/EventManager_ThreadSystem.md)** - Details on EventManager and ThreadSystem integration
+- **[Event Manager Performance](docs/EventManager_Performance_Improvements.md)** - Performance optimization techniques
+- **[Event Manager Examples](docs/EventManagerExamples.cpp)** - Code examples for using the EventManager system
+
+### Threading System Documentation
+- **[ThreadSystem Overview](docs/ThreadSystem.md)** - Core documentation for the ThreadSystem component with usage examples and best practices
+- **[ThreadSystem API](docs/ThreadSystem_API.md)** - Complete API reference for the ThreadSystem with method signatures and parameters
+- **[ThreadSystem Optimization](docs/ThreadSystem_Optimization.md)** - Performance tuning guide and optimization techniques
