@@ -108,7 +108,7 @@ else
 fi
 
 # Timeout for comprehensive benchmarks - adjusted for current performance
-TIMEOUT_DURATION=600s  # 10 minutes for full benchmark suite with large entity counts
+TIMEOUT_DURATION=180s  # 3 minutes for full benchmark suite with optimized delays
 
 # Set test command options for better handling of threading issues
 TEST_OPTS="--catch_system_errors=no --no_result_code"
