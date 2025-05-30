@@ -18,6 +18,18 @@
 #include <iomanip>
 #include <sstream>
 
+EventDemoState::EventDemoState() {
+    // Initialize member variables that need explicit initialization
+    m_demoStartTime = std::chrono::steady_clock::now();
+    m_demoLastTime = m_demoStartTime;
+    m_lastFrameTime = m_demoStartTime;
+}
+
+EventDemoState::~EventDemoState() {
+    // Cleanup any resources if needed
+    cleanupSpawnedNPCs();
+}
+
 bool EventDemoState::enter() {
     std::cout << "Forge Game Engine - Entering EventDemoState...\n";
 
