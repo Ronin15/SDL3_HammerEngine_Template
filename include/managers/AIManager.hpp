@@ -548,6 +548,11 @@ private:
     ThreadSafeMessageQueue m_messageQueue;
     PerformanceStats m_messageQueueStats{};
     std::atomic<bool> m_processingMessages{false};
+ 
+    // Thread synchronization for safe state transitions
+    std::atomic<bool> m_updateInProgress{false};
+    std::atomic<bool> m_resetInProgress{false};
+    mutable std::mutex m_updateResetMutex;
 
     // Batched behavior assignment system
     struct PendingBehaviorAssignment {
