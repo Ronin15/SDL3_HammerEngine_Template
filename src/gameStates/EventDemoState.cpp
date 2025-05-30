@@ -968,68 +968,32 @@ void EventDemoState::setupAIBehaviors() {
     }
 
     if (!AIManager::Instance().hasBehavior("Patrol")) {
-        // Create patrol points well within screen boundaries to avoid edge bouncing
-        boost::container::small_vector<Vector2D, 10> patrolPoints;
-        float margin = 100.0f; // Stay away from edges
-        patrolPoints.push_back(Vector2D(margin, margin));
-        patrolPoints.push_back(Vector2D(m_worldWidth - margin, margin));
-        patrolPoints.push_back(Vector2D(m_worldWidth - margin, m_worldHeight - margin));
-        patrolPoints.push_back(Vector2D(margin, m_worldHeight - margin));
-
-        auto patrolBehavior = std::make_unique<PatrolBehavior>(patrolPoints, 1.5f, true);
+        auto patrolBehavior = std::make_unique<PatrolBehavior>(PatrolBehavior::PatrolMode::FIXED_WAYPOINTS, 1.5f, true);
         patrolBehavior->setScreenDimensions(m_worldWidth, m_worldHeight);
         AIManager::Instance().registerBehavior("Patrol", std::move(patrolBehavior));
         std::cout << "EventDemoState: Registered Patrol behavior\n";
     }
 
-    // NEW: Random Area Patrol Behavior (rectangular area)
+    // Random Area Patrol Behavior (rectangular area)
     if (!AIManager::Instance().hasBehavior("RandomPatrol")) {
-        boost::container::small_vector<Vector2D, 10> dummyPoints;
-        dummyPoints.push_back(Vector2D(0, 0));
-        dummyPoints.push_back(Vector2D(100, 100));
-        
-        auto randomPatrolBehavior = std::make_unique<PatrolBehavior>(dummyPoints, 2.0f, false);
+        auto randomPatrolBehavior = std::make_unique<PatrolBehavior>(PatrolBehavior::PatrolMode::RANDOM_AREA, 2.0f, false);
         randomPatrolBehavior->setScreenDimensions(m_worldWidth, m_worldHeight);
-        // Set random patrol area in the left half of screen
-        randomPatrolBehavior->setRandomPatrolArea(
-            Vector2D(50, 50), 
-            Vector2D(m_worldWidth * 0.4f, m_worldHeight - 50), 
-            6
-        );
-        randomPatrolBehavior->setAutoRegenerate(true);
-        randomPatrolBehavior->setMinWaypointDistance(80.0f);
         AIManager::Instance().registerBehavior("RandomPatrol", std::move(randomPatrolBehavior));
         std::cout << "EventDemoState: Registered RandomPatrol behavior\n";
     }
 
-    // NEW: Circular Area Patrol Behavior
+    // Circular Area Patrol Behavior
     if (!AIManager::Instance().hasBehavior("CirclePatrol")) {
-        boost::container::small_vector<Vector2D, 10> dummyPoints;
-        dummyPoints.push_back(Vector2D(0, 0));
-        dummyPoints.push_back(Vector2D(100, 100));
-        
-        auto circlePatrolBehavior = std::make_unique<PatrolBehavior>(dummyPoints, 1.8f, false);
+        auto circlePatrolBehavior = std::make_unique<PatrolBehavior>(PatrolBehavior::PatrolMode::CIRCULAR_AREA, 1.8f, false);
         circlePatrolBehavior->setScreenDimensions(m_worldWidth, m_worldHeight);
-        // Set circular patrol area in the right half of screen
-        Vector2D circleCenter(m_worldWidth * 0.75f, m_worldHeight * 0.5f);
-        circlePatrolBehavior->setRandomPatrolArea(circleCenter, 120.0f, 5);
-        circlePatrolBehavior->setAutoRegenerate(true);
-        circlePatrolBehavior->setMinWaypointDistance(60.0f);
         AIManager::Instance().registerBehavior("CirclePatrol", std::move(circlePatrolBehavior));
         std::cout << "EventDemoState: Registered CirclePatrol behavior\n";
     }
 
-    // NEW: Event Target Patrol Behavior (will patrol around player)
+    // Event Target Patrol Behavior
     if (!AIManager::Instance().hasBehavior("EventTarget")) {
-        boost::container::small_vector<Vector2D, 10> dummyPoints;
-        dummyPoints.push_back(Vector2D(0, 0));
-        dummyPoints.push_back(Vector2D(100, 100));
-        
-        auto eventTargetBehavior = std::make_unique<PatrolBehavior>(dummyPoints, 2.2f, false);
+        auto eventTargetBehavior = std::make_unique<PatrolBehavior>(PatrolBehavior::PatrolMode::EVENT_TARGET, 2.2f, false);
         eventTargetBehavior->setScreenDimensions(m_worldWidth, m_worldHeight);
-        // Set initial event target at screen center (will be updated to player position)
-        Vector2D initialTarget(m_worldWidth * 0.5f, m_worldHeight * 0.5f);
-        eventTargetBehavior->setEventTarget(initialTarget, 150.0f, 8);
         AIManager::Instance().registerBehavior("EventTarget", std::move(eventTargetBehavior));
         std::cout << "EventDemoState: Registered EventTarget behavior\n";
     }

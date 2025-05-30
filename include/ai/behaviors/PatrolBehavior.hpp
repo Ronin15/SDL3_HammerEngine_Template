@@ -16,11 +16,15 @@ class PatrolBehavior : public AIBehavior {
 public:
     enum class PatrolMode {
         FIXED_WAYPOINTS,    // Use predefined waypoints (default behavior)
-        RANDOM_AREA,        // Generate random waypoints within an area
+        RANDOM_AREA,        // Generate random waypoints within a rectangular area
+        CIRCULAR_AREA,      // Generate random waypoints within a circular area
         EVENT_TARGET        // Generate waypoints around an event target
     };
 
     PatrolBehavior(const boost::container::small_vector<Vector2D, 10>& waypoints, float moveSpeed = 2.0f, bool includeOffscreenPoints = false);
+    
+    // Constructor with mode - automatically configures behavior based on mode
+    PatrolBehavior(PatrolMode mode, float moveSpeed = 2.0f, bool includeOffscreenPoints = false);
 
     void init(EntityPtr entity) override;
     void executeLogic(EntityPtr entity) override;
@@ -120,6 +124,9 @@ private:
     Vector2D generateRandomPointInCircle() const;
     bool isValidWaypointDistance(const Vector2D& newPoint) const;
     void ensureRandomSeed() const;
+    
+    // Mode setup helper
+    void setupModeDefaults(PatrolMode mode, float screenWidth = 1280.0f, float screenHeight = 720.0f);
 };
 
 #endif // PATROL_BEHAVIOR_HPP
