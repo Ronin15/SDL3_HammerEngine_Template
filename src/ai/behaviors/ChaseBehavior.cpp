@@ -4,10 +4,10 @@
 */
 
 #include "ai/behaviors/ChaseBehavior.hpp"
+#include "managers/AIManager.hpp"
 
-ChaseBehavior::ChaseBehavior(EntityPtr target, float chaseSpeed, float maxRange, float minRange)
-    : m_targetWeak(target), 
-      m_chaseSpeed(chaseSpeed), 
+ChaseBehavior::ChaseBehavior(float chaseSpeed, float maxRange, float minRange)
+    : m_chaseSpeed(chaseSpeed), 
       m_maxRange(maxRange), 
       m_minRange(minRange),
       m_isChasing(false), 
@@ -25,8 +25,8 @@ void ChaseBehavior::init(EntityPtr entity) {
     m_isChasing = false;
     m_hasLineOfSight = false;
 
-    // If we have a target, check if it's in range
-    auto target = m_targetWeak.lock();
+    // Get player target from AIManager and check if it's in range
+    auto target = AIManager::Instance().getPlayerReference();
     if (target) {
         Vector2D entityPos = entity->getPosition();
         Vector2D targetPos = target->getPosition();
@@ -42,8 +42,8 @@ void ChaseBehavior::executeLogic(EntityPtr entity) {
         return;
     }
     
-    // Handle null target safely
-    auto target = m_targetWeak.lock();
+    // Get player target from AIManager
+    auto target = AIManager::Instance().getPlayerReference();
     if (!target) {
         // No target, so stop chasing
         if (entity) {
@@ -120,9 +120,6 @@ void ChaseBehavior::clean(EntityPtr entity) {
     m_hasLineOfSight = false;
     m_lastKnownTargetPos = Vector2D(0, 0);
     m_timeWithoutSight = 0;
-    
-    // Important: don't hold onto the target after clean
-    m_targetWeak.reset();
 }
 
 void ChaseBehavior::onMessage(EntityPtr entity, const std::string& message) {
@@ -134,7 +131,7 @@ void ChaseBehavior::onMessage(EntityPtr entity, const std::string& message) {
     } else if (message == "resume") {
         setActive(true);
         // Reinitialize chase state when resuming
-        if (entity && !m_targetWeak.expired()) {
+        if (entity && AIManager::Instance().isPlayerValid()) {
             init(entity);
         }
     } else if (message == "lose_target") {
@@ -144,8 +141,7 @@ void ChaseBehavior::onMessage(EntityPtr entity, const std::string& message) {
             entity->setVelocity(Vector2D(0, 0));
         }
     } else if (message == "release_entities") {
-        // Clear target and reset state when asked to release entities
-        m_targetWeak.reset();
+        // Reset state when asked to release entities
         m_isChasing = false;
         m_hasLineOfSight = false;
         m_lastKnownTargetPos = Vector2D(0, 0);
@@ -161,27 +157,16 @@ std::string ChaseBehavior::getName() const {
 }
 
 std::shared_ptr<AIBehavior> ChaseBehavior::clone() const {
-    // Get the target entity from weak pointer
-    auto target = m_targetWeak.lock();
-    
-    auto cloned = std::make_shared<ChaseBehavior>(target, m_chaseSpeed, m_maxRange, m_minRange);
+    // Clone with same parameters - will use AIManager::getPlayerReference()
+    auto cloned = std::make_shared<ChaseBehavior>(m_chaseSpeed, m_maxRange, m_minRange);
     cloned->setActive(m_active);
     return cloned;
 }
 
-void ChaseBehavior::setTarget(EntityPtr target) {
-    // Always reset chase state when target changes
-    m_isChasing = false;
-    m_hasLineOfSight = false;
-    m_lastKnownTargetPos = Vector2D(0, 0);
-    m_timeWithoutSight = 0;
-    
-    // Set new target
-    m_targetWeak = target;
-}
+
 
 EntityPtr ChaseBehavior::getTarget() const {
-    return m_targetWeak.lock();
+    return AIManager::Instance().getPlayerReference();
 }
 
 void ChaseBehavior::setChaseSpeed(float speed) {

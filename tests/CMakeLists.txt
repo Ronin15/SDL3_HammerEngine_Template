@@ -46,6 +46,7 @@ add_executable(ai_optimization_tests
 add_executable(ai_scaling_benchmark
     AIScalingBenchmark.cpp
     ${PROJECT_SOURCE_DIR}/src/managers/AIManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/ai/behaviors/ChaseBehavior.cpp
     mocks/AIBehavior.cpp
 )
 
@@ -65,6 +66,7 @@ add_executable(event_manager_scaling_benchmark
 add_executable(thread_safe_ai_manager_tests
     ThreadSafeAIManagerTest.cpp
     ${PROJECT_SOURCE_DIR}/src/managers/AIManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/ai/behaviors/ChaseBehavior.cpp
     mocks/AIBehavior.cpp
 )
 
@@ -72,6 +74,7 @@ add_executable(thread_safe_ai_manager_tests
 add_executable(thread_safe_ai_integration_tests
     ThreadSafeAIIntegrationTest.cpp
     ${PROJECT_SOURCE_DIR}/src/managers/AIManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/ai/behaviors/ChaseBehavior.cpp
     mocks/AIBehavior.cpp
 )
 
