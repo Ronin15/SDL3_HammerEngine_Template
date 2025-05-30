@@ -1,14 +1,24 @@
 # AI Manager System Documentation
 
+## ⚠️ IMPORTANT: Architecture Updates (v3.0+)
+
+**Major Changes from Previous Versions:**
+- **NEW**: Distance-based entity optimization system with player reference
+- **NEW**: `updateManagedEntities()` replaces old `update()` method
+- **NEW**: `registerEntityForUpdates()` with priority-based management
+- **REMOVED**: `batchUpdateAllBehaviors()`, `batchProcessEntities()`, `setPriorityForBehavior()`
+- **CHANGED**: All entity parameters now use `EntityPtr` (shared_ptr) instead of raw pointers
+
 ## Overview
 
-The AI Manager is a centralized system for creating and managing autonomous behaviors for game entities. It provides a flexible framework for implementing and controlling various AI behaviors, allowing game entities to exhibit different movement patterns and reactions. The system integrates with ThreadSystem for efficient parallel processing with priority-based scheduling. It includes performance optimizations such as:
+The AI Manager is a centralized system for creating and managing autonomous behaviors for game entities. It provides a flexible framework for implementing and controlling various AI behaviors, allowing game entities to exhibit different movement patterns and reactions. The system integrates with ThreadSystem for efficient parallel processing and includes advanced performance optimizations:
 
-1. Entity-behavior caching for faster lookups
-2. Batch processing for entities with the same behavior
-3. Early exit conditions to skip unnecessary updates
-4. Message queue system for efficient communication
-5. Priority-based task scheduling for critical AI behaviors
+1. **Distance-based optimization** - Updates entities based on distance from player
+2. **Priority-based entity management** - High-priority entities get more frequent updates
+3. **Individual behavior instances** - Each entity gets its own behavior state via clone()
+4. **Batched behavior assignment** - Queue and process assignments efficiently
+5. **Message queue system** - Asynchronous communication with behaviors
+6. **Automatic entity lifecycle management** - Register once, update automatically
 
 ## ⚠️ CRITICAL: Individual Behavior Instances Architecture
 
@@ -151,18 +161,24 @@ AIManager::Instance().registerBehavior("Chase", chaseBehavior);
 ### Assigning Behaviors to Entities
 
 ```cpp
-// Create an NPC
-auto npc = std::make_unique<NPC>("npc_sprite", Vector2D(250, 250), 64, 64);
+// Create an NPC (using shared_ptr for EntityPtr)
+auto npc = std::make_shared<NPC>("npc_sprite", Vector2D(250, 250), 64, 64);
 
-// Assign an initial behavior
-AIManager::Instance().assignBehaviorToEntity(npc.get(), "Wander");
+// Register entity for automatic updates with priority
+AIManager::Instance().registerEntityForUpdates(npc, 5);  // Medium priority
 
-// Later, switch to a different behavior
-AIManager::Instance().assignBehaviorToEntity(npc.get(), "Patrol");
+// Queue behavior assignment (preferred for performance)
+AIManager::Instance().queueBehaviorAssignment(npc, "Wander");
 
-// Respond to player detection by switching to chase
+// Process queued assignments (typically called once per frame)
+AIManager::Instance().processPendingBehaviorAssignments();
+
+// For immediate assignment (use sparingly)
+AIManager::Instance().assignBehaviorToEntity(npc, "Chase");
+
+// Respond to player detection by switching behavior
 if (isPlayerDetected) {
-    AIManager::Instance().assignBehaviorToEntity(npc.get(), "Chase");
+    AIManager::Instance().queueBehaviorAssignment(npc, "Chase");
 }
 ```
 
@@ -170,29 +186,41 @@ if (isPlayerDetected) {
 
 ```cpp
 // Pause a specific entity's behavior (immediate delivery)
-AIManager::Instance().sendMessageToEntity(npc.get(), "pause", true);
+AIManager::Instance().sendMessageToEntity(npc, "pause", true);
 
 // Resume a specific entity's behavior (queued for next update)
-AIManager::Instance().sendMessageToEntity(npc.get(), "resume");
+AIManager::Instance().sendMessageToEntity(npc, "resume");
 
 // Pause all AI entities (immediate delivery)
 AIManager::Instance().broadcastMessage("pause", true);
 
 // Reverse the patrol route for a specific entity (queued for next update)
-AIManager::Instance().sendMessageToEntity(npc.get(), "reverse");
+AIManager::Instance().sendMessageToEntity(npc, "reverse");
 
-// Manually process queued messages (normally happens automatically during update())
+// Manually process queued messages (normally happens automatically during updateManagedEntities())
 AIManager::Instance().processMessageQueue();
 ```
 
 ### Integration with Game Loop
 
-To ensure behaviors are updated each frame, call the AIManager's update method in your game state's update method:
+The AIManager now uses a centralized entity management system. Entities are registered once and automatically updated:
 
 ```cpp
+void GamePlayState::enter() {
+    // Register entities for automatic updates with priority-based optimization
+    AIManager::Instance().registerEntityForUpdates(npc, 7);  // High priority
+    AIManager::Instance().setPlayerForDistanceOptimization(player);
+    
+    // Queue behavior assignments (processed in batches for performance)
+    AIManager::Instance().queueBehaviorAssignment(npc, "Chase");
+}
+
 void GamePlayState::update() {
-    // Update all AI behaviors
-    AIManager::Instance().update();
+    // Single call updates all registered entities with distance-based optimization
+    AIManager::Instance().updateManagedEntities();
+    
+    // Process any pending behavior assignments
+    AIManager::Instance().processPendingBehaviorAssignments();
 
     // Your other game update code...
     player->update();
@@ -203,11 +231,17 @@ void GamePlayState::update() {
 
 ### Cleanup
 
-When switching game states or shutting down, clean up the AI system:
+When switching game states or shutting down, clean up entities and AI system:
 
 ```cpp
 void GamePlayState::exit() {
-    // Clean up AI Manager
+    // Unregister entities from AI updates (prevents accessing destroyed entities)
+    for (auto& npc : m_npcs) {
+        AIManager::Instance().unregisterEntityFromUpdates(npc);
+        AIManager::Instance().unassignBehaviorFromEntity(npc);
+    }
+    
+    // Clean up AI Manager (only if shutting down completely)
     AIManager::Instance().clean();
 
     // Your other cleanup code...
@@ -221,27 +255,31 @@ To create a custom behavior, inherit from the AIBehavior base class and implemen
 ```cpp
 class FlankingBehavior : public AIBehavior {
 public:
-    FlankingBehavior(Entity* target, float speed = 2.0f, float flankDistance = 100.0f)
-        : m_target(target), m_speed(speed), m_flankDistance(flankDistance) {}
+    FlankingBehavior(EntityPtr target, float speed = 2.0f, float flankDistance = 100.0f);
 
-    void init(Entity* entity) override {
-        // Initialize behavior state
+    void init(EntityPtr entity) override {
+        // Initialize flanking behavior
     }
 
-    void update(Entity* entity) override {
-        // Implement flanking movement logic
+    void executeLogic(EntityPtr entity) override {
+        // Implement flanking logic
     }
 
-    void clean(Entity* entity) override {
-        // Clean up resources
+    void clean(EntityPtr entity) override {
+        // Clean up flanking behavior
     }
 
     std::string getName() const override {
         return "Flanking";
     }
 
+    // REQUIRED: Clone method for individual instances
+    std::shared_ptr<AIBehavior> clone() const override {
+        return std::make_shared<FlankingBehavior>(m_target, m_speed, m_flankDistance);
+    }
+
 private:
-    Entity* m_target;
+    EntityPtr m_target;
     float m_speed;
     float m_flankDistance;
 };
@@ -425,46 +463,50 @@ AIManager::Instance().processMessageQueue();
 
 ## Implementation Details
 
-### Entity-Behavior Caching
+### Distance-Based Entity Optimization System
 
-The AIManager maintains an optimized cache of entity-behavior pairs:
+The AIManager uses a sophisticated distance-based optimization system for managing entities:
 
 ```cpp
-// Entity-behavior cache structure
-struct EntityBehaviorCache {
-    Entity* entity;
-    AIBehavior* behavior;
-    std::string_view behaviorName;  // Using string_view for better performance
-    PerformanceStats perfStats;     // Performance tracking for each entity-behavior pair
+// Entity update info structure
+struct EntityUpdateInfo {
+    EntityWeakPtr entityWeak;      // Weak reference to prevent circular dependencies
+    int frameCounter{0};           // Frame counting for update frequency
+    uint64_t lastUpdateTime{0};    // High-precision timing
+    int priority{5};               // Entity priority (0-9) for distance-based updates
 };
 ```
 
-This cache is automatically updated when:
-- New behaviors are registered
-- Behaviors are assigned to entities
-- Behaviors are unassigned from entities
+#### Distance Thresholds:
+- **Close Distance** (≤8000 units): Update every frame
+- **Medium Distance** (≤10000 units): Update every 15 frames  
+- **Far Distance** (≤25000 units): Update every 30 frames
+- **Out of Range** (>25000 units): Minimal updates
 
-### Batch Processing Implementation
+#### Priority System:
+- **High Priority (7-9)**: Guards, Warriors - larger update ranges
+- **Medium Priority (4-6)**: Merchants, important NPCs
+- **Low Priority (0-3)**: Villagers, background entities
 
-Batch processing improves performance by:
-- Grouping entities by behavior type for better cache coherency
-- Reducing per-entity overhead in update loops
-- Enabling more efficient multithreading with similar workloads
+### Individual Behavior Instances
+
+Each entity gets its own behavior instance via the `clone()` method:
 
 ```cpp
-// Optimized batched update method
-void AIManager::batchUpdateAllBehaviors();
+// When assigning behavior to entity
+std::shared_ptr<AIBehavior> behaviorTemplate = getBehavior(behaviorName);
+std::shared_ptr<AIBehavior> behaviorInstance = behaviorTemplate->clone();
+// Each entity has unique state
 ```
 
-### Early Exit System
+This prevents state interference between entities using the same behavior type.
 
-The AIManager applies three levels of early exit checks:
-1. **Update frequency** - Skip updates based on frame count
-2. **Entity range check** - Skip updates for out-of-range entities
-3. **Custom conditions** - Skip updates based on behavior-specific logic
+### Message Queue System
 
-### 4. Message Queue System
-
+The AIManager uses an asynchronous message queue for entity communication:
+- Messages are queued and processed during the next update cycle
+- Prevents immediate state changes that could cause race conditions
+- Allows for batched message processing for better performance
 The message queue system provides:
 - Deferred message delivery for non-critical communications
 - Batched processing of messages during update cycles
@@ -490,58 +532,66 @@ void resetBehaviors();
 // Behavior management
 void registerBehavior(const std::string& behaviorName, std::shared_ptr<AIBehavior> behavior);
 bool hasBehavior(const std::string& behaviorName) const;
-AIBehavior* getBehavior(const std::string& behaviorName) const;
+std::shared_ptr<AIBehavior> getBehavior(const std::string& behaviorName) const;
 size_t getBehaviorCount() const;
-void setPriorityForBehavior(const std::string& behaviorName, Forge::TaskPriority priority);
 
 // Entity-behavior assignment
-void assignBehaviorToEntity(Entity* entity, const std::string& behaviorName);
+void assignBehaviorToEntity(EntityPtr entity, const std::string& behaviorName);
 
-// 🔥 NEW: Global Batched Behavior Assignment System (v2.2+)
+// 🔥 Global Batched Behavior Assignment System (v2.2+)
 void queueBehaviorAssignment(EntityPtr entity, const std::string& behaviorName);
 size_t processPendingBehaviorAssignments();
 size_t getPendingBehaviorAssignmentCount() const;
 
-void unassignBehaviorFromEntity(Entity* entity);
-bool entityHasBehavior(Entity* entity) const;
+void unassignBehaviorFromEntity(EntityPtr entity);
+bool entityHasBehavior(EntityPtr entity) const;
+
+// 🆕 Entity Management System (v3.0+) - Replaces old batch processing
+void registerEntityForUpdates(EntityPtr entity, int priority = 5);
+void unregisterEntityFromUpdates(EntityPtr entity);
+void updateManagedEntities();
+void updateEntityBehavior(EntityPtr entity);
 size_t getManagedEntityCount() const;
 
-// Optimization methods
-void batchProcessEntities(const std::string& behaviorName, const std::vector<Entity*>& entities);
-void batchUpdateAllBehaviors();
+// Player reference for distance optimization
+void setPlayerForDistanceOptimization(EntityPtr player);
+EntityPtr getPlayerReference() const;
+bool isPlayerValid() const;
+
+// Cache validation (replaces ensureOptimizationCachesValid)
 void ensureOptimizationCachesValid();
 
 // Messaging system
-void sendMessageToEntity(Entity* entity, const std::string& message, bool immediate = false);
+void sendMessageToEntity(EntityPtr entity, const std::string& message, bool immediate = false);
 void broadcastMessage(const std::string& message, bool immediate = false);
-void processMessageQueue();
+size_t processMessageQueue();
 ```
 
 ### AIBehavior Methods
 
 ```cpp
 // Core behavior methods
-virtual void update(Entity* entity) = 0;
-virtual void init(Entity* entity) = 0;
-virtual void clean(Entity* entity) = 0;
+virtual void executeLogic(EntityPtr entity) = 0;
+virtual void init(EntityPtr entity) = 0;
+virtual void clean(EntityPtr entity) = 0;
 virtual std::string getName() const = 0;
 
+// Individual instance creation (REQUIRED for v2.1+ architecture)
+virtual std::shared_ptr<AIBehavior> clone() const = 0;
+
 // Optional message handling (with unused parameter attribute)
-virtual void onMessage([[maybe_unused]] Entity* entity, 
+virtual void onMessage([[maybe_unused]] EntityPtr entity, 
                        [[maybe_unused]] const std::string& message);
 
 // State management
 virtual bool isActive() const;
 virtual void setActive(bool active);
-virtual int getPriority() const;
-virtual void setPriority(int priority);
 
-// Early exit optimizations (with unused parameter attribute)
-virtual bool shouldUpdate([[maybe_unused]] Entity* entity) const;
-virtual bool isEntityInRange([[maybe_unused]] Entity* entity) const;
-virtual bool isWithinUpdateFrequency() const;
-virtual void setUpdateFrequency(int framesPerUpdate);
-virtual int getUpdateFrequency() const;
+// Entity range checks (behavior-specific logic)
+virtual bool isEntityInRange([[maybe_unused]] EntityPtr entity) const;
+
+// Entity cleanup
+virtual void cleanupEntity(EntityPtr entity);
 ```
 
 For the complete API details, see:

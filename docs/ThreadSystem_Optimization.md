@@ -19,13 +19,15 @@ Forge::ThreadSystem::Instance().enqueueTask([entity]() {
 When we discuss handling 1000+ tasks, we're addressing two distinct aspects:
 
 1. **Queue Capacity** - The ability to store 1000+ tasks in the queue at once
-   - Optimized with queue capacity reservation feature (default: 1024)
+   - Uses separate priority queues (default: 1024 total capacity distributed across 5 priority levels)
+   - Each priority level gets ~205 initial slots (1024 ÷ 5)
    - Relates to memory allocation and management
    - Prevents fragmentation and reallocation pauses
 
 2. **Processing Throughput** - The ability to execute 1000+ tasks efficiently
-   - Determined by thread count and task complexity
-   - Relates to CPU processing power and scheduling
+   - Determined by thread count (auto-detects as hardware_concurrency - 1)
+   - Task complexity and priority-based scheduling
+   - Relates to CPU processing power and lock contention reduction
 
 ## Practical Examples in a Game Context
 
@@ -110,31 +112,34 @@ Task Queue: [Tasks waiting to be processed... up to 1000+ at peak load]
 
 ### Processing Time Estimates
 
-With a modern CPU with 4 worker threads (5 cores with 1 reserved for the main thread):
+With a modern CPU with 4 worker threads (auto-detected as hardware_concurrency - 1):
 
 1. **Simple Tasks (0.1ms each)**:
-   - 1000 tasks ÷ 4 threads = ~250 tasks per thread
-   - 250 tasks × 0.1ms = ~25ms total processing time
+   - 1000 tasks distributed by priority across 4 threads
+   - High-priority tasks execute first, then normal, then low priority
+   - ~25ms total processing time for uniform distribution
    - Completes within two frames at 60 FPS (16.7ms per frame)
 
 2. **Medium Tasks (0.5ms each)**:
-   - 1000 tasks ÷ 4 threads = ~250 tasks per thread
-   - 250 tasks × 0.5ms = ~125ms total processing time
-   - Spans approximately 7-8 frames at 60 FPS
+   - Priority-based scheduling ensures critical tasks finish first
+   - ~125ms total processing time
+   - Critical/High priority tasks complete in first few frames
 
 3. **Complex Tasks (2ms each)**:
-   - 1000 tasks ÷ 4 threads = ~250 tasks per thread
-   - 250 tasks × 2ms = ~500ms total processing time
-   - Best used for background processing or spread across multiple frames
+   - ~500ms total processing time
+   - Best scheduled as Low or Idle priority to avoid blocking important tasks
+   - System automatically balances load across worker threads
 
 ### Memory Usage
 
-With the optimized queue capacity:
+With the separate priority queues architecture:
 
-- Approximately 200 bytes per task (function object + captures)
-- 1000 tasks × 200 bytes = ~200 KB of memory
-- Actually pre-allocated in a contiguous block for better cache performance
-- Memory is reserved at initialization and managed throughout system lifetime
+- Approximately 200 bytes per task (function object + captures + priority info)
+- 1000 tasks × 200 bytes = ~200 KB of memory total
+- Memory pre-allocated per priority level (~40 KB per priority initially)
+- Each priority queue expands independently when reaching 90% capacity
+- Better cache locality due to separate queues reducing lock contention
+- Memory managed throughout system lifetime with automatic expansion
 
 ## Game Scenarios That Benefit from 1000+ Tasks
 
@@ -172,13 +177,16 @@ std::vector<std::shared_ptr<Entity>> entities;
 
 // Safe capture by value - increments reference count
 for (auto entity : entities) {
-    Forge::ThreadSystem::Instance().enqueueTask([entity]() {
-        try {
-            entity->update();  // Entity guaranteed to be alive
-        } catch (const std::exception& e) {
-            std::cerr << "Entity update error: " << e.what() << std::endl;
-        }
-    }, Forge::TaskPriority::Normal, "EntityUpdate");
+    // Check if ThreadSystem is available before enqueueing
+    if (Forge::ThreadSystem::Exists()) {
+        Forge::ThreadSystem::Instance().enqueueTask([entity]() {
+            try {
+                entity->update();  // Entity guaranteed to be alive
+            } catch (const std::exception& e) {
+                std::cerr << "Entity update error: " << e.what() << std::endl;
+            }
+        }, Forge::TaskPriority::Normal, "EntityUpdate");
+    }
 }
 ```
 
@@ -192,11 +200,17 @@ for (auto& entity : entities) {
     });
 }
 
-// SAFE: Capture smart pointer by value
+// SAFE: Capture smart pointer by value with proper error handling
 for (auto entity : entities) {
-    Forge::ThreadSystem::Instance().enqueueTask([entity]() {
-        entity->update();  // Safe: shared_ptr keeps object alive
-    });
+    if (Forge::ThreadSystem::Exists()) {
+        Forge::ThreadSystem::Instance().enqueueTask([entity]() {
+            try {
+                entity->update();  // Safe: shared_ptr keeps object alive
+            } catch (const std::exception& e) {
+                std::cerr << "Entity update error: " << e.what() << std::endl;
+            }
+        }, Forge::TaskPriority::Normal, "EntityUpdate");
+    }
 }
 ```
 
@@ -237,8 +251,15 @@ When tasks depend on each other, consider:
 - Using `enqueueTaskWithResult()` and futures to establish clear dependencies
 - Batching related tasks together when appropriate
 - Using continuation-style patterns for task chains
+- Priority-based scheduling to ensure important dependencies execute first
 
 ```cpp
+// Check system availability before creating task chains
+if (!Forge::ThreadSystem::Exists()) {
+    std::cerr << "ThreadSystem not available for task dependencies!" << std::endl;
+    return;
+}
+
 auto future = Forge::ThreadSystem::Instance().enqueueTaskWithResult([]() {
     try {
         return loadLevel();
@@ -264,10 +285,160 @@ Forge::ThreadSystem::Instance().enqueueTask([future]() {
 The ability to efficiently handle 1000+ tasks allows the Forge Engine to:
 
 1. **Support Rich, Dynamic Worlds**: Maintain hundreds of active, independently updated entities
-2. **Provide Responsive Gameplay**: Process many game systems in parallel without stalling
-3. **Efficiently Use Modern Hardware**: Scale across multiple CPU cores for better performance
-4. **Manage Memory Effectively**: Handle substantial workloads without memory fragmentation through true pre-allocation
+2. **Provide Responsive Gameplay**: Priority-based scheduling ensures critical tasks execute first
+3. **Efficiently Use Modern Hardware**: Automatic thread detection and separate priority queues reduce contention
+4. **Manage Memory Effectively**: Per-priority pre-allocation with automatic expansion prevents fragmentation
+5. **Graceful Degradation**: Safe shutdown handling and existence checks prevent crashes
 
-The implementation uses explicit memory pre-allocation with a custom priority queue that provides significantly better memory characteristics than standard containers.
+The implementation uses separate priority queues with individual memory pre-allocation that provides significantly better performance characteristics than single-queue systems by reducing lock contention.
 
-For modern games, this processing capacity enables complex simulations and rich game worlds while maintaining good performance and memory efficiency. The system's automatic capacity expansion (doubling at 90% utilization) ensures that even unexpected bursts of tasks are handled smoothly without compromising memory efficiency.
+Key architectural advantages:
+- **Separate Priority Queues**: Each priority level has its own queue and memory allocation
+- **Automatic Scaling**: Thread count auto-detected as hardware_concurrency - 1
+- **Lock-Free Checks**: Fast existence and shutdown detection without acquiring locks
+- **Safe Shutdown**: Tasks enqueued after shutdown are silently ignored instead of crashing
+
+For modern games, this processing capacity enables complex simulations and rich game worlds while maintaining excellent performance and memory efficiency. The system's per-priority automatic capacity expansion (at 90% utilization) ensures that even unexpected bursts of tasks are handled smoothly without compromising overall system performance.
+
+## Monitoring and Debugging
+
+### Real-time Performance Monitoring
+
+```cpp
+// Function to monitor ThreadSystem performance during gameplay
+void monitorThreadSystemPerformance() {
+    if (!Forge::ThreadSystem::Exists()) {
+        std::cout << "ThreadSystem not available for monitoring" << std::endl;
+        return;
+    }
+    
+    auto& ts = Forge::ThreadSystem::Instance();
+    
+    // Get basic queue information
+    size_t queueSize = ts.getQueueSize();
+    size_t queueCapacity = ts.getQueueCapacity();
+    size_t processed = ts.getTotalTasksProcessed();
+    size_t enqueued = ts.getTotalTasksEnqueued();
+    
+    // Calculate utilization percentages
+    double queueUtilization = (static_cast<double>(queueSize) / queueCapacity) * 100.0;
+    double processingEfficiency = queueSize > 0 ? 
+        (static_cast<double>(processed) / enqueued) * 100.0 : 100.0;
+    
+    std::cout << "=== ThreadSystem Performance ===" << std::endl;
+    std::cout << "Threads: " << ts.getThreadCount() << std::endl;
+    std::cout << "Queue: " << queueSize << "/" << queueCapacity 
+              << " (" << std::fixed << std::setprecision(1) << queueUtilization << "% full)" << std::endl;
+    std::cout << "Tasks Processed: " << processed << std::endl;
+    std::cout << "Tasks Enqueued: " << enqueued << std::endl;
+    std::cout << "Busy: " << (ts.isBusy() ? "Yes" : "No") << std::endl;
+    std::cout << "=================================" << std::endl;
+}
+```
+
+### Development-time Debugging
+
+```cpp
+// Enable detailed logging during development
+void enableThreadSystemDebugging() {
+    if (Forge::ThreadSystem::Exists()) {
+        Forge::ThreadSystem::Instance().setDebugLogging(true);
+        std::cout << "ThreadSystem debug logging enabled" << std::endl;
+    }
+}
+
+// Example of detailed task submission with monitoring
+void submitTasksWithMonitoring(const std::vector<std::shared_ptr<Entity>>& entities) {
+    if (!Forge::ThreadSystem::Exists()) {
+        std::cerr << "Cannot submit tasks - ThreadSystem not available" << std::endl;
+        return;
+    }
+    
+    auto& ts = Forge::ThreadSystem::Instance();
+    
+    // Get initial state
+    size_t initialQueueSize = ts.getQueueSize();
+    size_t initialEnqueued = ts.getTotalTasksEnqueued();
+    
+    // Submit tasks with priority and descriptions
+    for (size_t i = 0; i < entities.size(); ++i) {
+        auto entity = entities[i];
+        
+        // Determine priority based on entity importance
+        Forge::TaskPriority priority = Forge::TaskPriority::Normal;
+        if (entity->isPlayerControlled()) {
+            priority = Forge::TaskPriority::High;
+        } else if (entity->isDistantFromPlayer()) {
+            priority = Forge::TaskPriority::Low;
+        }
+        
+        // Create descriptive task name for debugging
+        std::string taskDescription = "EntityUpdate_" + std::to_string(i) + "_" + entity->getType();
+        
+        ts.enqueueTask([entity]() {
+            try {
+                entity->update();
+            } catch (const std::exception& e) {
+                std::cerr << "Entity update failed: " << e.what() << std::endl;
+            }
+        }, priority, taskDescription);
+    }
+    
+    // Report submission results
+    size_t finalEnqueued = ts.getTotalTasksEnqueued();
+    size_t tasksSubmitted = finalEnqueued - initialEnqueued;
+    
+    std::cout << "Submitted " << tasksSubmitted << " entity update tasks" << std::endl;
+    std::cout << "Queue size increased from " << initialQueueSize 
+              << " to " << ts.getQueueSize() << std::endl;
+}
+```
+
+### Capacity Planning
+
+```cpp
+// Function to determine if queue capacity needs adjustment
+bool shouldIncreaseQueueCapacity() {
+    if (!Forge::ThreadSystem::Exists()) {
+        return false;
+    }
+    
+    auto& ts = Forge::ThreadSystem::Instance();
+    size_t queueSize = ts.getQueueSize();
+    size_t queueCapacity = ts.getQueueCapacity();
+    
+    // Check if we're consistently using > 80% capacity
+    double utilization = static_cast<double>(queueSize) / queueCapacity;
+    
+    if (utilization > 0.8) {
+        std::cout << "WARNING: Queue utilization at " 
+                  << (utilization * 100.0) << "% - consider reserving more capacity" << std::endl;
+        return true;
+    }
+    
+    return false;
+}
+
+// Pre-allocate capacity for known heavy workloads
+void prepareForHeavyWorkload(size_t expectedTasks) {
+    if (!Forge::ThreadSystem::Exists()) {
+        std::cerr << "Cannot prepare capacity - ThreadSystem not available" << std::endl;
+        return;
+    }
+    
+    auto& ts = Forge::ThreadSystem::Instance();
+    size_t currentCapacity = ts.getQueueCapacity();
+    
+    if (expectedTasks > currentCapacity) {
+        // Reserve 25% more than expected for safety margin
+        size_t newCapacity = static_cast<size_t>(expectedTasks * 1.25);
+        
+        if (ts.reserveQueueCapacity(newCapacity)) {
+            std::cout << "Reserved capacity increased from " << currentCapacity 
+                      << " to " << ts.getQueueCapacity() << " for heavy workload" << std::endl;
+        } else {
+            std::cerr << "Failed to reserve additional capacity" << std::endl;
+        }
+    }
+}
+```
