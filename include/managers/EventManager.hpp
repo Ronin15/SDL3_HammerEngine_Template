@@ -380,10 +380,10 @@ private:
 
     // Storage for events
     // ThreadAccess: ReadOnly after initialization for m_events
-    boost::container::flat_map<std::string, EventPtr> m_events{};
+    std::unordered_map<std::string, EventPtr> m_events{};
 
     // Index for event types (for fast lookup by type)
-    boost::container::flat_map<std::string, std::vector<std::string>> m_eventTypeIndex{};
+    std::unordered_map<std::string, std::vector<std::string>> m_eventTypeIndex{};
 
     // Thread synchronization for event map
     mutable std::shared_mutex m_eventsMutex{};
@@ -453,7 +453,7 @@ private:
 
     // For batch processing optimization
     using EventBatch = std::vector<EventPtr>;
-    boost::container::flat_map<std::string, EventBatch> m_eventTypeBatches{};
+    std::unordered_map<std::string, EventBatch> m_eventTypeBatches{};
     std::atomic<bool> m_batchesValid{false};
     mutable std::mutex m_batchesMutex{};
 
@@ -468,7 +468,7 @@ private:
     uint64_t m_lastUpdateTime{0};
     
     // Event handlers for different event types
-    boost::container::flat_map<std::string, std::vector<EventHandlerFunc>> m_eventHandlers{};
+    std::unordered_map<std::string, std::vector<EventHandlerFunc>> m_eventHandlers{};
     mutable std::mutex m_eventHandlersMutex{};
     
     // Handler batching system for performance
@@ -533,7 +533,7 @@ private:
     static uint64_t getCurrentTimeMs();
 
     // Performance monitoring
-    boost::container::flat_map<std::string, PerformanceStats> m_eventTypePerformanceStats;
+    std::unordered_map<std::string, PerformanceStats> m_eventTypePerformanceStats{};
     mutable std::mutex m_perfStatsMutex{};
     void recordEventTypePerformance(const std::string_view& eventType, double timeMs);
 

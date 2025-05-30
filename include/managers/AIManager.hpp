@@ -33,6 +33,8 @@
 #include <string>
 #include <string_view>
 #include <vector>
+#include <map>
+#include <unordered_map>
 
 #include <mutex>
 #include <shared_mutex>
@@ -351,9 +353,9 @@ private:
     // Storage for behaviors and entity assignments
     // ThreadAccess: ReadOnly after initialization for m_behaviors
     // ThreadAccess: Concurrent for m_entityBehaviors
-    boost::container::flat_map<std::string, std::shared_ptr<AIBehavior>> m_behaviors{};
-    boost::container::flat_map<EntityWeakPtr, std::string, std::owner_less<EntityWeakPtr>> m_entityBehaviors{};
-    boost::container::flat_map<EntityWeakPtr, std::shared_ptr<AIBehavior>, std::owner_less<EntityWeakPtr>> m_entityBehaviorInstances{};
+    std::unordered_map<std::string, std::shared_ptr<AIBehavior>> m_behaviors{};
+    std::map<EntityWeakPtr, std::string, std::owner_less<EntityWeakPtr>> m_entityBehaviors{};
+    std::map<EntityWeakPtr, std::shared_ptr<AIBehavior>, std::owner_less<EntityWeakPtr>> m_entityBehaviorInstances{};
 
     // Thread synchronization for entity-behavior map
     mutable std::shared_mutex m_entityMutex{};
@@ -433,7 +435,7 @@ private:
     void processEntitiesWithBehavior(std::shared_ptr<AIBehavior> behavior, const std::vector<EntityPtr>& entities, bool useThreading);
 
     // Performance monitoring
-    boost::container::flat_map<std::string, PerformanceStats> m_behaviorPerformanceStats;
+    std::unordered_map<std::string, PerformanceStats> m_behaviorPerformanceStats{};
     mutable std::mutex m_perfStatsMutex{};
     void recordBehaviorPerformance(const std::string_view& behaviorName, double timeMs);
 

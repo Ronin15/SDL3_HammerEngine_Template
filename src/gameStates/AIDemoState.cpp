@@ -141,7 +141,6 @@ bool AIDemoState::exit() {
 
     // Clean up player
     if (m_player) {
-        m_player->clean();  // Explicitly clean the player too
         m_player.reset();
     }
 

@@ -564,9 +564,16 @@ bool EventManager::spawnNPC(const std::string& npcType, float x, float y) {
 
     // Send a special formatted message to all NPC spawn events
     std::string message = "SPAWN_REQUEST:" + npcType + ":" + std::to_string(x) + ":" + std::to_string(y);
-    for (auto event : spawnEvents) {
-        if (event) {
-            event->onMessage(message);
+    for (size_t i = 0; i < spawnEvents.size(); ++i) {
+        try {
+            auto event = spawnEvents[i];
+            if (event && event.use_count() > 0) {
+                event->onMessage(message);
+            }
+        } catch (const std::exception& e) {
+            EVENT_LOG("Error processing NPC spawn event " << i << ": " << e.what());
+        } catch (...) {
+            EVENT_LOG("Unknown error processing NPC spawn event " << i);
         }
     }
 
@@ -646,9 +653,16 @@ void EventManager::updateEventTimers(float deltaTime) {
     std::copy(spawnEvents.begin(), spawnEvents.end(), std::back_inserter(allEvents));
 
     // Update cooldown timers for all events
-    for (auto event : allEvents) {
-        if (event) {
-            event->updateCooldown(deltaTime);
+    for (size_t i = 0; i < allEvents.size(); ++i) {
+        try {
+            auto event = allEvents[i];
+            if (event && event.use_count() > 0) {
+                event->updateCooldown(deltaTime);
+            }
+        } catch (const std::exception& e) {
+            EVENT_LOG("Error updating cooldown for event " << i << ": " << e.what());
+        } catch (...) {
+            EVENT_LOG("Unknown error updating cooldown for event " << i);
         }
     }
 }
@@ -783,10 +797,17 @@ int EventManager::executeEventsByType(const std::string& eventType) {
     auto events = getEventsByType(eventType);
     int count = 0;
 
-    for (auto event : events) {
-        if (event) {
-            event->execute();
-            count++;
+    for (size_t i = 0; i < events.size(); ++i) {
+        try {
+            auto event = events[i];
+            if (event && event.use_count() > 0) {
+                event->execute();
+                count++;
+            }
+        } catch (const std::exception& e) {
+            EVENT_LOG("Error executing event " << i << " of type " << eventType << ": " << e.what());
+        } catch (...) {
+            EVENT_LOG("Unknown error executing event " << i << " of type " << eventType);
         }
     }
 
@@ -1295,7 +1316,7 @@ void EventManager::resetEvents() {
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
 
-    // Reset all events
+    // Reset all events by type
     {
         std::shared_lock<std::shared_mutex> lock(m_eventsMutex);
         for (const auto& [name, event] : m_events) {
@@ -1353,9 +1374,16 @@ bool EventManager::changeWeather(const std::string& weatherType, float transitio
 
     // Send a special formatted message to all weather events
     std::string message = "CHANGE:" + weatherType + ":" + std::to_string(transitionTime);
-    for (auto event : weatherEvents) {
-        if (event) {
-            event->onMessage(message);
+    for (size_t i = 0; i < weatherEvents.size(); ++i) {
+        try {
+            auto event = weatherEvents[i];
+            if (event && event.use_count() > 0) {
+                event->onMessage(message);
+            }
+        } catch (const std::exception& e) {
+            EVENT_LOG("Error processing weather event " << i << ": " << e.what());
+        } catch (...) {
+            EVENT_LOG("Unknown error processing weather event " << i);
         }
     }
 
@@ -1376,9 +1404,16 @@ bool EventManager::changeScene(const std::string& sceneId, const std::string& tr
 
     // Send a special formatted message to all scene change events
     std::string message = "CHANGE:" + sceneId + ":" + transitionType + ":" + std::to_string(transitionTime);
-    for (auto event : sceneEvents) {
-        if (event) {
-            event->onMessage(message);
+    for (size_t i = 0; i < sceneEvents.size(); ++i) {
+        try {
+            auto event = sceneEvents[i];
+            if (event && event.use_count() > 0) {
+                event->onMessage(message);
+            }
+        } catch (const std::exception& e) {
+            EVENT_LOG("Error processing scene change event " << i << ": " << e.what());
+        } catch (...) {
+            EVENT_LOG("Unknown error processing scene change event " << i);
         }
     }
 
