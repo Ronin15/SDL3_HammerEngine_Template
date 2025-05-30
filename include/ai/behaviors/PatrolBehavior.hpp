@@ -10,9 +10,16 @@
 #include "utils/Vector2D.hpp"
 #include <boost/container/small_vector.hpp>
 #include <SDL3/SDL.h>
+#include <random>
 
 class PatrolBehavior : public AIBehavior {
 public:
+    enum class PatrolMode {
+        FIXED_WAYPOINTS,    // Use predefined waypoints (default behavior)
+        RANDOM_AREA,        // Generate random waypoints within an area
+        EVENT_TARGET        // Generate waypoints around an event target
+    };
+
     PatrolBehavior(const boost::container::small_vector<Vector2D, 10>& waypoints, float moveSpeed = 2.0f, bool includeOffscreenPoints = false);
 
     void init(EntityPtr entity) override;
@@ -42,6 +49,21 @@ public:
     // Clone method for creating unique behavior instances
     std::shared_ptr<AIBehavior> clone() const override;
 
+    // Random area patrol methods
+    void setRandomPatrolArea(const Vector2D& topLeft, const Vector2D& bottomRight, int waypointCount = 5);
+    void setRandomPatrolArea(const Vector2D& center, float radius, int waypointCount = 5);
+
+    // Event target patrol methods
+    void setEventTarget(const Vector2D& target, float radius = 100.0f, int waypointCount = 6);
+    void updateEventTarget(const Vector2D& newTarget);
+
+    // Utility methods
+    void regenerateRandomWaypoints();
+    PatrolMode getPatrolMode() const;
+    void setAutoRegenerate(bool autoRegen);
+    void setMinWaypointDistance(float distance);
+    void setRandomSeed(unsigned int seed);
+
 private:
     boost::container::small_vector<Vector2D, 10> m_waypoints;
     size_t m_currentWaypoint{0};
@@ -53,6 +75,27 @@ private:
     // Screen dimensions - defaults that will be updated by setScreenDimensions
     float m_screenWidth{1280.0f};
     float m_screenHeight{720.0f};
+
+    // Random patrol and event target system
+    PatrolMode m_patrolMode{PatrolMode::FIXED_WAYPOINTS};
+    
+    // Random area patrol variables
+    Vector2D m_areaTopLeft{0, 0};
+    Vector2D m_areaBottomRight{0, 0};
+    Vector2D m_areaCenter{0, 0};
+    float m_areaRadius{0.0f};
+    bool m_useCircularArea{false};
+    int m_waypointCount{5};
+    bool m_autoRegenerate{false};
+    float m_minWaypointDistance{50.0f};
+    
+    // Event target patrol variables
+    Vector2D m_eventTarget{0, 0};
+    float m_eventTargetRadius{100.0f};
+    
+    // Random number generation
+    mutable std::mt19937 m_rng;
+    bool m_seedSet{false};
 
     // Check if entity has reached the current waypoint
     bool isAtWaypoint(const Vector2D& position, const Vector2D& waypoint) const;
@@ -68,6 +111,15 @@ private:
 
     // Reverse the order of waypoints
     void reverseWaypoints();
+
+    // Random waypoint generation helpers
+    void generateRandomWaypointsInRectangle();
+    void generateRandomWaypointsInCircle();
+    void generateWaypointsAroundTarget();
+    Vector2D generateRandomPointInRectangle() const;
+    Vector2D generateRandomPointInCircle() const;
+    bool isValidWaypointDistance(const Vector2D& newPoint) const;
+    void ensureRandomSeed() const;
 };
 
 #endif // PATROL_BEHAVIOR_HPP
