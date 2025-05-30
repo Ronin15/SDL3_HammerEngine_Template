@@ -26,11 +26,7 @@ AIDemoState::~AIDemoState() {
         // Note: Proper cleanup should already have happened in exit()
         // This destructor is just a safety measure in case exit() wasn't called
 
-        // Safe cleanup for any remaining chase behavior references
-        if (m_chaseBehavior) {
-            m_chaseBehavior->setTarget(nullptr);
-            m_chaseBehavior = nullptr;
-        }
+        // Chase behavior cleanup is now handled by AIManager
 
         // Reset AI behaviors first to clear entity references
         // Don't call unassignBehaviorFromEntity here - it uses shared_from_this()
@@ -72,6 +68,11 @@ bool AIDemoState::enter() {
         // Set player reference in AIManager for distance optimization
         AIManager::Instance().setPlayerForDistanceOptimization(m_player);
 
+        // Create and register chase behavior - behaviors can get player via getPlayerReference()
+        auto chaseBehavior = std::make_unique<ChaseBehavior>(2.0f, 500.0f, 50.0f);
+        AIManager::Instance().registerBehavior("Chase", std::move(chaseBehavior));
+        std::cout << "Forge Game Engine - Chase behavior registered (will use AIManager::getPlayerReference())\n";
+
         // Configure priority multiplier for proper distance progression (1.0 = full distance thresholds)
         AIManager::Instance().configurePriorityMultiplier(1.0f);
 
@@ -106,7 +107,7 @@ bool AIDemoState::exit() {
         auto chaseBehaviorPtr = AIManager::Instance().getBehavior("Chase");
         auto chaseBehavior = std::dynamic_pointer_cast<ChaseBehavior>(chaseBehaviorPtr);
         if (chaseBehavior) {
-            chaseBehavior->setTarget(nullptr);
+            // Chase behavior cleanup handled by AIManager
         }
     }
 
@@ -144,8 +145,7 @@ bool AIDemoState::exit() {
         m_player.reset();
     }
 
-    // Null out our behavior reference
-    m_chaseBehavior = nullptr;
+    // Chase behavior cleanup is now handled by AIManager
 
     std::cout << "Forge Game Engine - AIDemoState exit complete\n";
     return true;
@@ -206,8 +206,7 @@ void AIDemoState::update() {
             auto chaseBehaviorPtr = AIManager::Instance().getBehavior("Chase");
             auto chaseBehavior = std::dynamic_pointer_cast<ChaseBehavior>(chaseBehaviorPtr);
             if (chaseBehavior) {
-                std::cout << "Forge Game Engine - Clearing chase behavior target...\n";
-                chaseBehavior->setTarget(nullptr);
+                std::cout << "Forge Game Engine - Chase behavior cleanup handled by AIManager...\n";
 
                 // Ensure chase behavior has no references to any entities
                 chaseBehavior->clean(nullptr);
@@ -253,12 +252,8 @@ void AIDemoState::update() {
         // Assign Chase behavior to all NPCs
         std::cout << "Forge Game Engine - Switching all NPCs to CHASE behavior\n";
 
-        // Make sure chase behavior has the current player target
-        auto chaseBehaviorPtr = AIManager::Instance().getBehavior("Chase");
-        auto chaseBehavior = std::dynamic_pointer_cast<ChaseBehavior>(chaseBehaviorPtr);
-        if (chaseBehavior && m_player) {
-            chaseBehavior->setTarget(m_player);
-        }
+        // Chase behavior target is automatically maintained by AIManager
+        // No manual target updates needed
 
         for (auto& npc : m_npcs) {
             // First make sure we call clean() to properly unassign any existing behavior
@@ -355,10 +350,8 @@ void AIDemoState::setupAIBehaviors() {
     patrolBehavior->setScreenDimensions(m_worldWidth, m_worldHeight);
     AIManager::Instance().registerBehavior("Patrol", std::move(patrolBehavior));
 
-    // Create and register chase behavior
-    auto chaseBehavior = std::make_unique<ChaseBehavior>(nullptr, 2.0f, 500.0f, 50.0f);  // Reduced speed to 2.0, range to 500
-    std::cout << "Forge Game Engine - Created ChaseBehavior with speed 2.0, max range 500, min range 50\n";
-    AIManager::Instance().registerBehavior("Chase", std::move(chaseBehavior));
+    // Chase behavior will be set up after player is created in enter() method
+    // This ensures the player reference is available for behaviors to use
 
     std::cout << "Forge Game Engine - AI behaviors setup complete.\n";
 }
@@ -437,22 +430,8 @@ void AIDemoState::createNPCs() {
             }
         }
 
-        // Set player as the chase target for the chase behavior - do this last
-        if (AIManager::Instance().hasBehavior("Chase")) {
-            auto chaseBehaviorPtr = AIManager::Instance().getBehavior("Chase");
-            auto chaseBehavior = std::dynamic_pointer_cast<ChaseBehavior>(chaseBehaviorPtr);
-            if (chaseBehavior && m_player) {
-                // Store the behavior for easier cleanup BEFORE setting target
-                m_chaseBehavior = chaseBehavior;
-                chaseBehavior->setTarget(m_player);
-                std::cout << "Forge Game Engine - Chase behavior target set to player\n";
-            } else {
-                std::cerr << "Forge Game Engine - Could not set chase target - "
-                          << (chaseBehavior ? "Player is null" : "ChaseBehavior is null") << std::endl;
-            }
-        } else {
-            std::cerr << "Forge Game Engine - Chase behavior not found when setting target" << std::endl;
-        }
+        // Chase behavior target is now automatically handled by AIManager
+        // No manual setup needed - target is set during setupChaseBehaviorWithTarget()
     } catch (const std::exception& e) {
         std::cerr << "Forge Game Engine - ERROR: Exception in createNPCs(): " << e.what() << std::endl;
     } catch (...) {

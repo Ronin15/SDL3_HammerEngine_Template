@@ -139,6 +139,23 @@ std::shared_ptr<AIBehavior> AIManager::getBehavior(const std::string& behaviorNa
     return nullptr;
 }
 
+
+
+EntityPtr AIManager::getPlayerReference() const {
+    std::shared_lock<std::shared_mutex> lock(m_managedEntitiesMutex);
+    return m_playerEntity.lock();
+}
+
+Vector2D AIManager::getPlayerPosition() const {
+    auto player = getPlayerReference();
+    return player ? player->getPosition() : Vector2D(0, 0);
+}
+
+bool AIManager::isPlayerValid() const {
+    std::shared_lock<std::shared_mutex> lock(m_managedEntitiesMutex);
+    return !m_playerEntity.expired();
+}
+
 void AIManager::assignBehaviorToEntity(EntityPtr entity, const std::string& behaviorName) {
     if (!entity) {
         std::cerr << "Forge Game Engine - Error: Attempted to assign behavior to null entity" << std::endl;
@@ -156,6 +173,8 @@ void AIManager::assignBehaviorToEntity(EntityPtr entity, const std::string& beha
         }
         behaviorTemplate = it->second;
     }
+
+
 
     // Create a unique instance of the behavior for this entity
     std::shared_ptr<AIBehavior> behaviorInstance = nullptr;

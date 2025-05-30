@@ -1018,10 +1018,10 @@ void EventDemoState::setupAIBehaviors() {
     }
 
     if (!AIManager::Instance().hasBehavior("Chase")) {
-        // Create chase behavior matching AIDemoState settings
-        auto chaseBehavior = std::make_unique<ChaseBehavior>(m_player, 2.0f, 500.0f, 50.0f);
+        // Create and register chase behavior - behaviors can get player via getPlayerReference()
+        auto chaseBehavior = std::make_unique<ChaseBehavior>(2.0f, 500.0f, 50.0f);
         AIManager::Instance().registerBehavior("Chase", std::move(chaseBehavior));
-        std::cout << "EventDemoState: Registered Chase behavior\n";
+        std::cout << "EventDemoState: Chase behavior registered (will use AIManager::getPlayerReference())\n";
     }
 
     addLogEntry("AI Behaviors configured for NPC integration");

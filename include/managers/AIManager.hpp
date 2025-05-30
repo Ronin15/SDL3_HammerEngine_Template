@@ -46,6 +46,8 @@
 
 
 
+
+
 // Conditional debug logging macros
 #ifdef AI_DEBUG_LOGGING
     #define AI_LOG(x) std::cout << "Forge Game Engine - [AI Manager] " << x << std::endl
@@ -157,6 +159,30 @@ public:
      * @thread_safety Thread-safe, can be called from any thread
      */
     std::shared_ptr<AIBehavior> getBehavior(const std::string& behaviorName) const;
+
+
+
+    // Player reference access (for any system needing player info)
+    /**
+     * @brief Get the current player reference
+     * @return Shared pointer to the player entity, or nullptr if not set/expired
+     * @thread_safety Thread-safe, can be called from any thread
+     */
+    EntityPtr getPlayerReference() const;
+
+    /**
+     * @brief Get the current player position
+     * @return Player position as Vector2D, or (0,0) if player is not valid
+     * @thread_safety Thread-safe, can be called from any thread
+     */
+    Vector2D getPlayerPosition() const;
+
+    /**
+     * @brief Check if the player reference is valid
+     * @return True if player exists and is valid, false otherwise
+     * @thread_safety Thread-safe, can be called from any thread
+     */
+    bool isPlayerValid() const;
 
     // Entity-behavior assignment
     /**
@@ -360,6 +386,8 @@ private:
     // Thread synchronization for entity-behavior map
     mutable std::shared_mutex m_entityMutex{};
     mutable std::shared_mutex m_behaviorsMutex{};
+
+
 
     // Performance tracing for AI operations
     struct PerformanceStats {

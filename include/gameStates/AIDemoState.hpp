@@ -46,8 +46,6 @@ private:
     // Members
     std::vector<NPCPtr> m_npcs{};
     PlayerPtr m_player{};
-    // Shared pointer to the chase behavior for cleanup
-    std::shared_ptr<class ChaseBehavior> m_chaseBehavior{nullptr};
 
     std::string m_textureID {""};  // Texture ID as loaded by TextureManager from res/img directory
 
