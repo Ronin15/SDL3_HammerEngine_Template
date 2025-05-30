@@ -33,6 +33,19 @@ PatrolBehavior::PatrolBehavior(const boost::container::small_vector<Vector2D, 10
     }
 }
 
+PatrolBehavior::PatrolBehavior(PatrolMode mode, float moveSpeed, bool includeOffscreenPoints)
+    : m_currentWaypoint(0), 
+      m_moveSpeed(moveSpeed), 
+      m_waypointRadius(25.0f),
+      m_includeOffscreenPoints(includeOffscreenPoints),
+      m_needsReset(false),
+      m_screenWidth(1280.0f),
+      m_screenHeight(720.0f),
+      m_rng(std::random_device{}()) {
+    // Set up the behavior based on the mode
+    setupModeDefaults(mode, m_screenWidth, m_screenHeight);
+}
+
 void PatrolBehavior::init(EntityPtr entity) {
     if (!entity) return;
 
@@ -456,5 +469,54 @@ void PatrolBehavior::ensureRandomSeed() const {
     if (!m_seedSet) {
         // Use a more deterministic seed for testing, but still random
         m_rng.seed(std::chrono::steady_clock::now().time_since_epoch().count());
+    }
+}
+
+void PatrolBehavior::setupModeDefaults(PatrolMode mode, float screenWidth, float screenHeight) {
+    m_patrolMode = mode;
+    m_screenWidth = screenWidth;
+    m_screenHeight = screenHeight;
+    
+    switch (mode) {
+        case PatrolMode::FIXED_WAYPOINTS:
+            // Create default fixed waypoints if none exist
+            if (m_waypoints.empty()) {
+                float margin = 100.0f;
+                m_waypoints.push_back(Vector2D(margin, margin));
+                m_waypoints.push_back(Vector2D(screenWidth - margin, margin));
+                m_waypoints.push_back(Vector2D(screenWidth - margin, screenHeight - margin));
+                m_waypoints.push_back(Vector2D(margin, screenHeight - margin));
+            }
+            break;
+            
+        case PatrolMode::RANDOM_AREA:
+            // Set up random rectangular area in left half of screen
+            m_useCircularArea = false;
+            m_areaTopLeft = Vector2D(50, 50);
+            m_areaBottomRight = Vector2D(screenWidth * 0.4f, screenHeight - 50);
+            m_waypointCount = 6;
+            m_autoRegenerate = true;
+            m_minWaypointDistance = 80.0f;
+            generateRandomWaypointsInRectangle();
+            break;
+            
+        case PatrolMode::EVENT_TARGET:
+            // Set up event target at screen center
+            m_eventTarget = Vector2D(screenWidth * 0.5f, screenHeight * 0.5f);
+            m_eventTargetRadius = 150.0f;
+            m_waypointCount = 8;
+            generateWaypointsAroundTarget();
+            break;
+            
+        case PatrolMode::CIRCULAR_AREA:
+            // Set up circular area in right half of screen
+            m_useCircularArea = true;
+            m_areaCenter = Vector2D(screenWidth * 0.75f, screenHeight * 0.5f);
+            m_areaRadius = 120.0f;
+            m_waypointCount = 5;
+            m_autoRegenerate = true;
+            m_minWaypointDistance = 60.0f;
+            generateRandomWaypointsInCircle();
+            break;
     }
 }
