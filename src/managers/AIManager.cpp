@@ -6,13 +6,17 @@
 #include "managers/AIManager.hpp"
 #include "core/ThreadSystem.hpp"
 #include <SDL3/SDL.h>
+#include <thread>
+#include <chrono>
 
 // AIManager implementation
 
 AIManager::AIManager()
     : m_initialized(false)
     , m_useThreading(true)
-    , m_maxThreads(0) {
+    , m_maxThreads(0)
+    , m_updateInProgress(false)
+    , m_resetInProgress(false) {
 }
 
 AIManager::~AIManager() {
@@ -386,15 +390,38 @@ void AIManager::update() {
         return;
     }
 
-    // Check for pending cache invalidation and handle it here in the update thread
-    if (m_cacheInvalidationPending.load(std::memory_order_acquire)) {
-        // Safely invalidate caches during update cycle when no other operations are in progress
-        invalidateOptimizationCaches();
-        m_cacheInvalidationPending.store(false, std::memory_order_release);
+    // Quick check if reset is in progress - avoid expensive operations
+    if (m_resetInProgress.load(std::memory_order_acquire)) {
+        return;
     }
 
-    // Process any pending messages
-    processMessageQueue();
+    // Mark update as in progress
+    m_updateInProgress.store(true, std::memory_order_release);
+
+    // Double-check reset isn't starting while we were setting update flag
+    if (m_resetInProgress.load(std::memory_order_acquire)) {
+        m_updateInProgress.store(false, std::memory_order_release);
+        return;
+    }
+
+    try {
+        // Check for pending cache invalidation and handle it here in the update thread
+        if (m_cacheInvalidationPending.load(std::memory_order_acquire)) {
+            // Safely invalidate caches during update cycle when no other operations are in progress
+            invalidateOptimizationCaches();
+            m_cacheInvalidationPending.store(false, std::memory_order_release);
+        }
+
+        // Process any pending messages
+        processMessageQueue();
+    } catch (const std::exception& e) {
+        std::cerr << "Forge Game Engine - Exception in AIManager::update: " << e.what() << std::endl;
+    } catch (...) {
+        std::cerr << "Forge Game Engine - Unknown exception in AIManager::update" << std::endl;
+    }
+
+    // Mark update as complete
+    m_updateInProgress.store(false, std::memory_order_release);
 }
 
 bool AIManager::isUpdateSafe() const {
@@ -629,45 +656,67 @@ size_t AIManager::deliverBroadcastMessage(const std::string& message) {
 
 
 void AIManager::resetBehaviors() {
-    // First, send release_entities message to all behaviors
+    // Signal that reset is starting
+    m_resetInProgress.store(true, std::memory_order_release);
+
+    // Wait for any ongoing update to complete (with timeout for safety)
+    auto startWait = std::chrono::steady_clock::now();
+    const auto maxWait = std::chrono::milliseconds(100); // 100ms timeout
+    
+    while (m_updateInProgress.load(std::memory_order_acquire)) {
+        if (std::chrono::steady_clock::now() - startWait > maxWait) {
+            std::cerr << "Forge Game Engine - Warning: AIManager update timeout during reset" << std::endl;
+            break;
+        }
+        std::this_thread::yield();
+    }
+
     try {
-        broadcastMessage("release_entities", true);
-        processMessageQueue();
+        // First, send release_entities message to all behaviors
+        try {
+            broadcastMessage("release_entities", true);
+            processMessageQueue();
+        } catch (const std::exception& e) {
+            std::cerr << "Forge Game Engine - Exception during behavior release: " << e.what() << std::endl;
+        } catch (...) {
+            std::cerr << "Forge Game Engine - Unknown exception during behavior release" << std::endl;
+        }
+
+        // Stop message processing
+        m_processingMessages.store(false, std::memory_order_release);
+        m_messageQueue.clear();
+
+        // Clear entity assignments but keep registered behaviors
+        {
+            std::unique_lock<std::shared_mutex> lock(m_entityMutex);
+            m_entityBehaviors.clear();
+        }
+
+        // Clear caches
+        {
+            std::lock_guard<std::mutex> cacheLock(m_cacheMutex);
+            m_entityBehaviorCache.clear();
+        }
+
+        // Reset stats
+        {
+            std::lock_guard<std::mutex> perfLock(m_perfStatsMutex);
+            m_behaviorPerformanceStats.clear();
+            m_messageQueueStats.reset();
+        }
+
+        // Invalidate caches
+        m_cacheValid.store(false, std::memory_order_release);
+
+        std::cout << "Forge Game Engine - AIManager: Behaviors reset" << std::endl;
     } catch (const std::exception& e) {
-        std::cerr << "Forge Game Engine - Exception during behavior release: " << e.what() << std::endl;
+        std::cerr << "Forge Game Engine - Exception during resetBehaviors: " << e.what() << std::endl;
     } catch (...) {
-        std::cerr << "Forge Game Engine - Unknown exception during behavior release" << std::endl;
+        std::cerr << "Forge Game Engine - Unknown exception during resetBehaviors" << std::endl;
     }
 
-    // Stop message processing
-    m_processingMessages.store(false, std::memory_order_release);
-    m_messageQueue.clear();
-
-    // Clear entity assignments but keep registered behaviors
-    {
-        std::unique_lock<std::shared_mutex> lock(m_entityMutex);
-        m_entityBehaviors.clear();
-    }
-
-    // Clear caches
-    {
-        std::lock_guard<std::mutex> cacheLock(m_cacheMutex);
-        m_entityBehaviorCache.clear();
-    }
-
-
-
-    // Reset stats
-    {
-        std::lock_guard<std::mutex> perfLock(m_perfStatsMutex);
-        m_behaviorPerformanceStats.clear();
-        m_messageQueueStats.reset();
-    }
-
-    // Invalidate caches
-    m_cacheValid.store(false, std::memory_order_release);
-
-    std::cout << "Forge Game Engine - AIManager: Behaviors reset" << std::endl;
+    // Signal that reset is complete
+    m_resetInProgress.store(false, std::memory_order_release);
 }
 
 size_t AIManager::getBehaviorCount() const {
