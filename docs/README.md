@@ -22,7 +22,7 @@ Robust event management system supporting weather events, NPC spawning, scene tr
 
 - **[Event Manager](EventManager.md)** - Core event management system
 - **[🔥 NEW: EventManager Quick Reference](EventManager_QuickReference.md)** - Convenience methods guide
-- **[Event Demo](EventDemo.md)** - Interactive event system demonstration
+- **[EventDemoState](EventSystem_Integration.md#debugging-and-monitoring)** - Interactive event system demonstration
 - **[Event System Integration](EventSystem_Integration.md)** - Integration guidelines
 - **[Event Manager Performance](EventManager_Performance_Improvements.md)** - Performance optimizations
 - **[Event Manager Threading](EventManager_ThreadSystem.md)** - Threading integration
@@ -30,6 +30,12 @@ Robust event management system supporting weather events, NPC spawning, scene tr
 ### Threading System
 High-performance multithreading framework with priority-based task scheduling.
 
+### Manager System Documentation
+- **[FontManager](FontManager.md)** - Font loading and text rendering system
+- **[TextureManager](TextureManager.md)** - Texture loading and sprite rendering system  
+- **[SoundManager](SoundManager.md)** - Audio playback and sound management system
+
+### Threading System Documentation
 - **[ThreadSystem Overview](ThreadSystem.md)** - Core threading system
 - **[ThreadSystem API](ThreadSystem_API.md)** - Complete API reference
 - **[ThreadSystem Optimization](ThreadSystem_Optimization.md)** - Performance tuning guide
