@@ -470,7 +470,7 @@ Vector2D NPCSpawnEvent::getPlayerPosition() const {
 }
 
 EntityPtr NPCSpawnEvent::spawnSingleNPC(const Vector2D& position) {
-    // Base implementation returns nullptr - should be overridden in test mocks
+    // Base implementation returns nullptr - override in test mocks for actual spawning
     (void)position; // Suppress unused parameter warning
     return nullptr;
 }
