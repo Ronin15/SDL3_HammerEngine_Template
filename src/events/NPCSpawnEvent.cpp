@@ -470,10 +470,8 @@ Vector2D NPCSpawnEvent::getPlayerPosition() const {
 }
 
 EntityPtr NPCSpawnEvent::spawnSingleNPC(const Vector2D& position) {
-    // NPCSpawnEvent no longer creates entities - this method is deprecated
-    std::cout << "NPCSpawnEvent::spawnSingleNPC called (deprecated)" << std::endl;
-    std::cout << "  - NPCs should be created directly by GameStates" << std::endl;
-    std::cout << "  - Position would have been: (" << position.getX() << ", " << position.getY() << ")" << std::endl;
+    // Base implementation returns nullptr - should be overridden in test mocks
+    (void)position; // Suppress unused parameter warning
     return nullptr;
 }
 

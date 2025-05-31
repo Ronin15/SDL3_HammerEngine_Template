@@ -56,6 +56,7 @@ private:
     void triggerNPCSpawnDemo();
     void triggerSceneTransitionDemo();
     void triggerCustomEventDemo();
+    void triggerConvenienceMethodsDemo();  // NEW: Demonstrate convenience methods
     void resetAllEvents();
 
     // Event handler methods
@@ -129,6 +130,7 @@ private:
         bool escape{false};
         bool r{false}; // Reset
         bool a{false}; // Auto mode toggle
+        bool c{false}; // Convenience methods demo
     };
     InputState m_input{};
     InputState m_lastInput{};

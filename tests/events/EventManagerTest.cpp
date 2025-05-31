@@ -17,8 +17,7 @@
 #include "core/ThreadSystem.hpp"
 #include "managers/EventManager.hpp"
 #include "events/Event.hpp"
-#include "events/WeatherEvent.hpp"
-#include "events/SceneChangeEvent.hpp"
+
 
 
 // Mock Event class for testing
@@ -205,11 +204,10 @@ BOOST_FIXTURE_TEST_CASE(EventRemoval, EventManagerFixture) {
 BOOST_FIXTURE_TEST_CASE(EventTypeRetrieval, EventManagerFixture) {
     auto mockEvent1 = std::make_shared<MockEvent>("TestEvent1");
     auto mockEvent2 = std::make_shared<MockEvent>("TestEvent2");
-    auto rainEvent = std::make_shared<WeatherEvent>("RainEvent", WeatherType::Rainy);
 
     EventManager::Instance().registerEvent("TestEvent1", mockEvent1);
     EventManager::Instance().registerEvent("TestEvent2", mockEvent2);
-    EventManager::Instance().registerEvent("RainEvent", std::static_pointer_cast<Event>(rainEvent));
+    EventManager::Instance().createWeatherEvent("RainEvent", "Rainy", 0.8f);
 
     auto mockEvents = EventManager::Instance().getEventsByType("Mock");
     BOOST_CHECK_EQUAL(mockEvents.size(), 2);
@@ -278,8 +276,8 @@ BOOST_FIXTURE_TEST_CASE(EventMessaging, EventManagerFixture) {
 
 // Test weather events
 BOOST_FIXTURE_TEST_CASE(WeatherEvents, EventManagerFixture) {
-    auto rainEvent = std::make_shared<WeatherEvent>("Rain", WeatherType::Rainy);
-    EventManager::Instance().registerEvent("Rain", std::static_pointer_cast<Event>(rainEvent));
+    // Test convenience method for weather event creation
+    BOOST_CHECK(EventManager::Instance().createWeatherEvent("Rain", "Rainy", 0.8f));
 
     // Test direct weather change
     BOOST_CHECK(EventManager::Instance().changeWeather("Rainy", 2.0f));
@@ -290,8 +288,8 @@ BOOST_FIXTURE_TEST_CASE(WeatherEvents, EventManagerFixture) {
 
 // Test scene change events
 BOOST_FIXTURE_TEST_CASE(SceneChangeEvents, EventManagerFixture) {
-    auto sceneEvent = std::make_shared<SceneChangeEvent>("ToMainMenu", "MainMenu");
-    EventManager::Instance().registerEvent("ToMainMenu", std::static_pointer_cast<Event>(sceneEvent));
+    // Test convenience method for scene change event creation
+    BOOST_CHECK(EventManager::Instance().createSceneChangeEvent("ToMainMenu", "MainMenu", "fade"));
 
     // Test direct scene change
     BOOST_CHECK(EventManager::Instance().changeScene("MainMenu", "fade", 1.0f));

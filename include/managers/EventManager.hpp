@@ -115,32 +115,7 @@ public:
     void clean();
 
     // Convenience methods for creating common event types
-    /**
-     * @brief Register a weather event
-     * @param name Unique name for the event
-     * @param weatherType Type of weather (Clear, Rainy, Stormy, etc.)
-     * @param intensity Intensity of the weather (0.0-1.0)
-     */
-    void registerWeatherEvent(const std::string& name, const std::string& weatherType, float intensity);
-    
-    /**
-     * @brief Register a scene change event
-     * @param name Unique name for the event
-     * @param targetScene ID of the target scene
-     * @param transitionType Type of transition (fade, dissolve, etc.)
-     */
-    void registerSceneChangeEvent(const std::string& name, const std::string& targetScene, 
-                                 const std::string& transitionType = "fade");
-    
-    /**
-     * @brief Register an NPC spawn event
-     * @param name Unique name for the event
-     * @param npcType Type of NPC to spawn
-     * @param count Number of NPCs to spawn
-     * @param spawnRadius Radius around spawn point
-     */
-    void registerNPCSpawnEvent(const std::string& name, const std::string& npcType, 
-                              int count = 1, float spawnRadius = 0.0f);
+
 
     /**
      * @brief Register default events for common game scenarios
@@ -171,6 +146,17 @@ public:
      */
     bool createSceneChangeEvent(const std::string& name, const std::string& targetScene,
                               const std::string& transitionType = "fade", float duration = 1.0f);
+
+    /**
+     * @brief Create and register an NPC spawn event
+     * @param name Unique name for the event
+     * @param npcType Type of NPC to spawn
+     * @param count Number of NPCs to spawn
+     * @param spawnRadius Radius around spawn point
+     * @return True if event was created and registered successfully
+     */
+    bool createNPCSpawnEvent(const std::string& name, const std::string& npcType,
+                           int count = 1, float spawnRadius = 0.0f);
 
     /**
      * @brief Register an event handler for a specific event type
