@@ -477,14 +477,20 @@ void GameEngine::processBackgroundTasks() {
   // This method can be used to perform background processing
   // It should be safe to run on worker threads
 
-  // Process pending behavior assignments first (critical for stability)
-  AIManager::Instance().processPendingBehaviorAssignments();
+  try {
+    // Process pending behavior assignments first (critical for stability)
+    AIManager::Instance().processPendingBehaviorAssignments();
 
-  // AI updates run asynchronously and won't block the main thread
-  AIManager::Instance().update();
-  
-  // Update Event Manager
-  EventManager::Instance().update();
+    // AI updates run asynchronously and won't block the main thread
+    AIManager::Instance().update();
+    
+    // Update Event Manager
+    EventManager::Instance().update();
+  } catch (const std::exception& e) {
+    std::cerr << "Forge Game Engine - Exception in background tasks: " << e.what() << std::endl;
+  } catch (...) {
+    std::cerr << "Forge Game Engine - Unknown exception in background tasks" << std::endl;
+  }
 
   // Example: Process AI, physics, or other non-rendering tasks
   // These tasks can run while the main thread is handling rendering

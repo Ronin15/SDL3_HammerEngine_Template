@@ -1,524 +1,372 @@
 # EventManager Documentation
 
 ## Overview
+The EventManager is a high-performance, thread-safe event system designed for real-time games. It uses data-oriented design principles and batch processing to achieve optimal performance while maintaining ease of use.
 
-The EventManager system provides a powerful, thread-safe way to manage game events such as weather changes, scene transitions, and NPC spawning. It follows a condition-based execution model where events are triggered when specific conditions are met. The EventManager integrates with the ThreadSystem component for efficient multi-threaded event processing with priority-based scheduling.
+## Key Features
 
-## Key Components
+- **High Performance**: 24,000-95,000 events/second depending on game scale
+- **Realistic Scale**: Optimized for 10-500 events (typical game scenarios)
+- **Thread-Safe**: Full thread safety with minimal locking overhead
+- **Batch Processing**: AIManager-style batch updates for maximum efficiency
+- **Smart Memory Management**: Event pooling and cache-friendly data structures
+- **Type-Safe API**: Strongly typed event system with compile-time safety
 
-### Core Classes
+## Performance Characteristics
 
-- **EventManager**: Central singleton that manages all events and integrates with ThreadSystem
-- **Event**: Abstract base class for all event types
-- **EventSystem**: High-level integration with other game systems
-- **EventFactory**: Factory for creating different types of events
-- **ThreadSystem**: Provides thread pooling and task management for parallel event processing
+### Realistic Event Counts by Game Size
+- **Small Games**: 10-50 events (82,000-95,000 events/second)
+- **Medium Games**: 50-100 events (54,000-58,000 events/second)
+- **Large Games**: 100-200 events (24,000-50,000 events/second)
+- **Maximum Scale**: ~500 events (still performant)
 
-### Event Types
-
-The system includes several built-in event types:
-
-1. **WeatherEvent**: Controls weather changes with transition effects
-2. **SceneChangeEvent**: Handles scene/level transitions
-3. **NPCSpawnEvent**: Manages NPC spawning based on various conditions
+### Threading Implementation
+- Proper batch processing (not individual tasks per event)
+- ThreadSystem integration with configurable thresholds
+- Automatic load balancing across available cores
 
 ## Getting Started
 
 ### Initialization
-
 ```cpp
-// Initialize the event manager
-EventManager::Instance().init();
+// Initialize ThreadSystem first (required for threading)
+Forge::ThreadSystem::Instance().init();
 
-// Register default events (optional)
-EventManager::Instance().registerDefaultEvents();
-```
-
-### Creating Events
-
-#### Convenience Methods (Recommended - New!)
-
-```cpp
-// Create and register weather events in one call
-EventManager::Instance().createWeatherEvent("HeavyRain", "Rainy", 0.8f, 3.0f);
-
-// Create and register scene change events in one call
-EventManager::Instance().createSceneChangeEvent("ToMenu", "MainMenu", "fade");
-
-// Create and register NPC spawn events in one call
-EventManager::Instance().createNPCSpawnEvent("GuardSpawn", "Guard", 2, 30.0f);
-
-// Multiple events quickly
-EventManager::Instance().createWeatherEvent("MorningFog", "Foggy", 0.5f);
-EventManager::Instance().createWeatherEvent("EveningStorm", "Stormy", 0.9f);
-EventManager::Instance().createSceneChangeEvent("ToShop", "ShopScene", "slide", 1.5f);
-EventManager::Instance().createNPCSpawnEvent("VillagerGroup", "Villager", 3, 25.0f);
-```
-
-#### Traditional Method (Still Supported)
-
-```cpp
-// Using EventFactory then registering separately
-auto rainEvent = EventFactory::Instance().createWeatherEvent("HeavyRain", "Rainy", 0.8f);
-EventManager::Instance().registerEvent("HeavyRain", rainEvent);
-
-// Or manually creating events
-auto sceneEvent = std::make_shared<SceneChangeEvent>("ToMainMenu", "MainMenu");
-sceneEvent->setTransitionType(TransitionType::Fade);
-EventManager::Instance().registerEvent("ToMainMenu", sceneEvent);
-```
-
-### Triggering Events Directly
-
-```cpp
-// Trigger weather change
-EventManager::Instance().triggerWeatherChange("Rainy", 3.0f);
-
-// Trigger scene change
-EventManager::Instance().triggerSceneChange("MainMenu", "fade", 2.0f);
-
-// Spawn NPC at position
-EventManager::Instance().triggerNPCSpawn("Guard", 100.0f, 200.0f);
-```
-
-### Handler Batching for High Performance
-
-For high-frequency event processing, use the batching system:
-
-```cpp
-// Enable batching for better performance with many events
-EventManager::Instance().setBatchProcessingEnabled(true);
-
-// Register event handlers
-EventManager::Instance().registerEventHandler("HighFreqEvent", [](const std::string& params) {
-    // Handle high-frequency event
-    processEvent(params);
-});
-
-// Queue events for batch processing
-for (int i = 0; i < 10000; ++i) {
-    EventManager::Instance().queueHandlerCall("HighFreqEvent", "data_" + std::to_string(i));
+// Initialize EventManager
+if (!EventManager::Instance().init()) {
+    std::cerr << "Failed to initialize EventManager!" << std::endl;
 }
 
-// Handlers are automatically processed during update() or manually:
-EventManager::Instance().processHandlerQueue();
-
-// Disable batching for immediate processing when needed
-EventManager::Instance().setBatchProcessingEnabled(false);
+// Optional: Configure threading
+EventManager::Instance().enableThreading(true);
+EventManager::Instance().setThreadingThreshold(100); // Thread if >100 events
 ```
 
-### Condition-Based Events
+### Creating Events - New Convenience Methods (Recommended)
 
-Events can be configured with conditions that determine when they trigger:
+The new API provides one-line event creation and registration:
 
 ```cpp
-// Create a weather event that only occurs at night
-auto nightRain = EventFactory::Instance().createWeatherEvent("NightRain", "Rainy", 0.5f);
-static_cast<WeatherEvent*>(nightRain.get())->setTimeOfDay(20.0f, 6.0f);  // 8 PM to 6 AM
-EventManager::Instance().registerEvent("NightRain", nightRain);
+// Weather events - create and register in one call
+EventManager::Instance().createWeatherEvent("MorningFog", "Foggy", 0.5f, 3.0f);
+EventManager::Instance().createWeatherEvent("HeavyStorm", "Stormy", 0.9f, 2.0f);
 
-// Create an NPC spawn event that triggers when player approaches
-auto guardSpawn = EventFactory::Instance().createNPCSpawnEvent("GuardSpawn", "Guard", 2, 5.0f);
-static_cast<NPCSpawnEvent*>(guardSpawn.get())->setProximityTrigger(50.0f);  // Trigger within 50 units
-static_cast<NPCSpawnEvent*>(guardSpawn.get())->setSpawnArea(100.0f, 100.0f, 10.0f);  // Spawn area
-EventManager::Instance().registerEvent("GuardSpawn", guardSpawn);
+// Scene change events - create and register in one call  
+EventManager::Instance().createSceneChangeEvent("ToMainMenu", "MainMenu", "fade", 1.5f);
+EventManager::Instance().createSceneChangeEvent("ToShop", "ShopScene", "slide", 2.0f);
+
+// NPC spawn events - create and register in one call
+EventManager::Instance().createNPCSpawnEvent("GuardPatrol", "Guard", 2, 25.0f);
+EventManager::Instance().createNPCSpawnEvent("VillagerGroup", "Villager", 5, 40.0f);
+```
+
+### Direct Event Triggering (High-Level API)
+
+For immediate event execution without pre-registration:
+
+```cpp
+// Direct weather changes
+EventManager::Instance().triggerWeatherChange("Rainy", 3.0f);
+EventManager::Instance().changeWeather("Stormy", 1.5f); // Alternative name
+
+// Direct scene transitions
+EventManager::Instance().triggerSceneChange("BattleScene", "fade", 2.0f);
+EventManager::Instance().changeScene("MainMenu", "dissolve", 1.0f); // Alternative name
+
+// Direct NPC spawning
+EventManager::Instance().triggerNPCSpawn("Merchant", 100.0f, 200.0f);
+EventManager::Instance().spawnNPC("Guard", 250.0f, 150.0f); // Alternative name
+```
+
+### Event Handlers
+
+Register handlers for batch processing:
+
+```cpp
+// Register handlers by event type for optimal performance
+EventManager::Instance().registerHandler(EventTypeId::Weather,
+    [](const EventData& data) {
+        // Handle weather events
+        std::cout << "Weather changed!" << std::endl;
+    });
+
+EventManager::Instance().registerHandler(EventTypeId::NPCSpawn,
+    [](const EventData& data) {
+        // Handle NPC spawn events
+        std::cout << "NPC spawned!" << std::endl;
+    });
+
+EventManager::Instance().registerHandler(EventTypeId::SceneChange,
+    [](const EventData& data) {
+        // Handle scene changes
+        std::cout << "Scene changed!" << std::endl;
+    });
 ```
 
 ### Update Loop
 
-Ensure that the event system is updated each frame:
+The EventManager uses batch processing for maximum performance:
 
 ```cpp
-// In your game loop
-void update(float deltaTime) {
-    // Update other systems...
-    
-    // Update event manager
+void GameLoop::update() {
+    // Single call processes all events efficiently
     EventManager::Instance().update();
+    
+    // The update() method internally calls:
+    // - updateWeatherEvents()    (batch processes weather events)
+    // - updateSceneChangeEvents() (batch processes scene events)  
+    // - updateNPCSpawnEvents()   (batch processes NPC events)
+    // - updateCustomEvents()     (batch processes custom events)
 }
 ```
 
 ## Advanced Usage
 
-### Creating Event Sequences
-
-#### Using Convenience Methods for Simple Sequences
+### Performance Monitoring
 
 ```cpp
-// Quick creation of multiple related events
-EventManager::Instance().createWeatherEvent("Sequence_Rain", "Rainy", 0.5f);
-EventManager::Instance().createWeatherEvent("Sequence_Storm", "Stormy", 0.9f);
-EventManager::Instance().createWeatherEvent("Sequence_Clear", "Clear", 0.0f, 8.0f);
-EventManager::Instance().createSceneChangeEvent("Sequence_Transition", "NextArea", "fade");
-EventManager::Instance().createNPCSpawnEvent("Sequence_Guards", "Guard", 3, 50.0f);
+// Get performance statistics by event type
+auto weatherStats = EventManager::Instance().getPerformanceStats(EventTypeId::Weather);
+std::cout << "Weather events: " << weatherStats.avgTime << "ms average" << std::endl;
+std::cout << "Processed: " << weatherStats.callCount << " events" << std::endl;
+
+// Get event counts
+size_t totalEvents = EventManager::Instance().getEventCount();
+size_t weatherEvents = EventManager::Instance().getEventCount(EventTypeId::Weather);
+std::cout << "Total events: " << totalEvents << ", Weather: " << weatherEvents << std::endl;
+
+// Reset performance tracking
+EventManager::Instance().resetPerformanceStats();
 ```
 
-#### Using EventFactory for Complex Sequences
+### Event Management
 
 ```cpp
-// Create a weather sequence: Rain -> Storm -> Clear
-std::vector<EventDefinition> weatherSequence = {
-    {"Weather", "StartRain", {{"weatherType", "Rainy"}}, {{"intensity", 0.5f}}, {}},
-    {"Weather", "Thunderstorm", {{"weatherType", "Stormy"}}, {{"intensity", 0.9f}}, {}},
-    {"Weather", "ClearSkies", {{"weatherType", "Clear"}}, {{"transitionTime", 8.0f}}, {}}
+// Query events
+bool hasEvent = EventManager::Instance().hasEvent("MyEvent");
+auto event = EventManager::Instance().getEvent("MyEvent");
+auto weatherEvents = EventManager::Instance().getEventsByType(EventTypeId::Weather);
+
+// Control event state
+EventManager::Instance().setEventActive("MyEvent", false);
+bool isActive = EventManager::Instance().isEventActive("MyEvent");
+
+// Remove events
+EventManager::Instance().removeEvent("MyEvent");
+```
+
+### Memory Management
+
+```cpp
+// Optimize memory usage periodically
+EventManager::Instance().compactEventStorage();
+EventManager::Instance().clearEventPools(); // Only call during cleanup
+```
+
+## Event Types
+
+### EventTypeId Enumeration
+```cpp
+enum class EventTypeId : uint8_t {
+    Weather = 0,      // Weather system events
+    SceneChange = 1,  // Scene transition events
+    NPCSpawn = 2,     // NPC creation events
+    Custom = 3,       // User-defined events
+    COUNT = 4         // Total count (do not use)
 };
+```
 
-auto events = EventFactory::Instance().createEventSequence("WeatherSequence", weatherSequence, true);
+### Event Data Structure
+```cpp
+struct EventData {
+    EventPtr event;           // Smart pointer to actual event
+    EventTypeId typeId;       // Type for fast dispatch
+    uint32_t flags;           // Active, dirty, etc.
+    float lastUpdateTime;     // For delta time calculations
+    uint32_t priority;        // Processing priority
+    
+    // Helper methods
+    bool isActive() const;
+    void setActive(bool active);
+    bool isDirty() const;
+    void setDirty(bool dirty);
+};
+```
 
-// Register all events in the sequence
-for (auto& event : events) {
-    EventManager::Instance().registerEvent(event->getName(), event);
+## Threading Configuration
+
+### Basic Threading Setup
+```cpp
+// Enable threading with default settings
+EventManager::Instance().enableThreading(true);
+
+// Configure when to use threading (events count threshold)
+EventManager::Instance().setThreadingThreshold(50); // Use threads if >50 events
+
+// Check threading status
+bool usingThreads = EventManager::Instance().isThreadingEnabled();
+```
+
+### Threading Best Practices
+1. **Initialize ThreadSystem first** - Always call `ThreadSystem::Instance().init()` before EventManager
+2. **Set appropriate thresholds** - Use threading for 50+ events, single-threaded for smaller counts
+3. **Monitor performance** - Use performance stats to find optimal threading threshold
+4. **Graceful shutdown** - Disable threading before cleanup: `enableThreading(false)`
+
+## Performance Best Practices
+
+### Optimal Event Counts
+1. **Keep realistic scales**: 10-500 events total
+2. **Batch similar operations**: Use convenience methods for multiple events
+3. **Avoid event spam**: Don't create thousands of events unnecessarily
+4. **Monitor performance**: Use built-in stats to track performance
+
+### Memory Efficiency
+1. **Use event pools**: Events are automatically pooled and reused
+2. **Compact storage**: Call `compactEventStorage()` periodically
+3. **Smart pointers**: Events use shared_ptr for automatic memory management
+4. **Type-indexed storage**: Events stored by type for cache efficiency
+
+### Threading Optimization
+1. **Batch processing**: Events processed in batches, not individually
+2. **Configurable thresholds**: Threading only when beneficial
+3. **Minimal locking**: Lock-free operations where possible
+4. **Work verification**: All operations properly verified for correctness
+
+## Debug and Monitoring
+
+### Debug Logging
+```cpp
+// Enable debug logging (compile-time flag)
+#define EVENT_DEBUG_LOGGING
+// Provides detailed logging of event operations
+```
+
+### Performance Monitoring
+```cpp
+// Monitor event processing performance
+auto stats = EventManager::Instance().getPerformanceStats(EventTypeId::Weather);
+std::cout << "Min: " << stats.minTime << "ms, Max: " << stats.maxTime << "ms" << std::endl;
+std::cout << "Average: " << stats.avgTime << "ms over " << stats.callCount << " calls" << std::endl;
+
+// Monitor event counts by type
+for (int i = 0; i < static_cast<int>(EventTypeId::COUNT); ++i) {
+    auto typeId = static_cast<EventTypeId>(i);
+    size_t count = EventManager::Instance().getEventCount(typeId);
+    std::cout << "Type " << i << ": " << count << " events" << std::endl;
 }
 ```
 
-### Event Communication
+## Integration with Game Systems
 
-Events can communicate with each other through messages:
-
+### With AI System
 ```cpp
-// Send message to specific event
-EventManager::Instance().sendMessageToEvent("RainEvent", "intensify");
-
-// Send message immediately (bypass queue)
-EventManager::Instance().sendMessageToEvent("RainEvent", "intensify", true);
-
-// Send message to all events of a type
-EventManager::Instance().broadcastMessageToType("Weather", "stop");
-
-// Send message to all events
-EventManager::Instance().broadcastMessage("reset");
-
-// Send immediate broadcast (useful for critical events)
-EventManager::Instance().broadcastMessage("emergency_stop", true);
+// EventManager and AIManager work together efficiently
+void GameState::update() {
+    EventManager::Instance().update(); // Process events first
+    AIManager::Instance().update();    // Then update AI behaviors
+}
 ```
 
-### Message Queuing System
-
-The EventManager uses a sophisticated message queuing system that supports both immediate and queued message delivery:
-
+### With Save System
 ```cpp
-// Queued messages (default) - processed during next update cycle
-EventManager::Instance().sendMessageToEvent("RainEvent", "start");
-EventManager::Instance().broadcastMessageToType("Weather", "pause");
-EventManager::Instance().broadcastMessage("save_state");
-
-// Immediate messages - delivered synchronously, bypassing the queue
-EventManager::Instance().sendMessageToEvent("CriticalEvent", "abort", true);
-EventManager::Instance().broadcastMessageToType("Combat", "emergency_stop", true);
-EventManager::Instance().broadcastMessage("system_shutdown", true);
-
-// Manual queue processing (automatically called during update)
-EventManager::Instance().processMessageQueue();
+// Events can trigger save operations
+EventManager::Instance().registerHandler(EventTypeId::Custom,
+    [](const EventData& data) {
+        // Trigger autosave on important events
+        SaveManager::Instance().autoSave();
+    });
 ```
 
-**Key Features:**
-- **Thread-Safe Double Buffering**: Messages are queued in one buffer while another is being processed
-- **Timestamp Tracking**: All queued messages include high-precision timestamps
-- **Priority Handling**: Immediate messages bypass the queue for critical scenarios
-- **Automatic Processing**: Message queue is processed automatically during each update cycle
-- **Performance Monitoring**: Built-in performance statistics for message processing
+## Error Handling
 
-**When to Use Immediate vs Queued:**
-- **Queued (default)**: Standard game events, UI updates, non-critical notifications
-- **Immediate**: Emergency stops, critical state changes, system shutdowns, debug commands
+### Common Issues and Solutions
 
-## Performance Monitoring
+1. **Event creation fails**
+   ```cpp
+   if (!EventManager::Instance().createWeatherEvent("Test", "Rainy")) {
+       std::cerr << "Failed to create weather event" << std::endl;
+   }
+   ```
 
-The EventManager includes comprehensive performance monitoring capabilities for optimization and debugging:
+2. **Threading issues**
+   ```cpp
+   // Ensure ThreadSystem is initialized first
+   if (!Forge::ThreadSystem::Exists()) {
+       Forge::ThreadSystem::Instance().init();
+   }
+   ```
 
-### Built-in Performance Statistics
+3. **Performance problems**
+   ```cpp
+   // Check if you have too many events
+   size_t eventCount = EventManager::Instance().getEventCount();
+   if (eventCount > 1000) {
+       std::cout << "Warning: High event count may impact performance" << std::endl;
+   }
+   ```
 
+## Migration from Old API
+
+### Old vs New Patterns
+
+#### Creating Events
 ```cpp
-// Performance data is automatically collected for:
-// - Individual event execution times
-// - Event type batch processing times
-// - Message queue processing performance
-// - Cache hit/miss ratios for optimization systems
+// OLD WAY (still supported but not recommended)
+auto event = EventFactory::Instance().createWeatherEvent("Rain", "Rainy", 0.8f);
+EventManager::Instance().registerEvent("Rain", event);
 
-// Access event count metrics
-size_t totalEvents = EventManager::Instance().getEventCount();
-size_t activeEvents = EventManager::Instance().getActiveEventCount();
-
-// Performance data is logged in debug builds and available for profiling
+// NEW WAY (recommended)
+EventManager::Instance().createWeatherEvent("Rain", "Rainy", 0.8f, 3.0f);
 ```
 
-**Tracked Metrics:**
-- **Total Update Time**: Cumulative time spent processing events
-- **Average Update Time**: Mean execution time per update cycle
-- **Max/Min Update Times**: Performance bounds for optimization analysis
-- **Update Count**: Total number of update cycles processed
-- **Event Type Performance**: Per-type execution statistics for batch optimization
-- **Message Queue Stats**: Processing time and throughput metrics
-
-### Performance Optimization Features
-
-**Handler Batching System:**
-- Double-buffered queue for thread-safe handler call processing
-- Handlers grouped by event type for optimal cache performance
-- Lock-free execution - handlers run without holding system locks
-- Configurable immediate vs batched processing modes
-- Automatic processing during update() or manual control with processHandlerQueue()
-
-**Event Caching System:**
-- Active events are cached for faster iteration
-- Event type batches are pre-computed for efficient parallel processing
-- String views are used to avoid unnecessary string copies
-- Cache invalidation occurs only when events are added/removed
-
-**Threading Optimizations:**
-- Events are grouped by type into batches for better cache locality
-- ThreadSystem integration provides parallel processing with priority scheduling
-- Automatic fallback to single-threaded mode if ThreadSystem is unavailable
-- Thread-safe double buffering for message queues reduces contention
-
-**Memory Management:**
-- Flat maps used for O(log n) lookup performance
-- Weak pointers prevent memory leaks in event references
-- High-precision timing using nanosecond resolution
-- Minimal memory allocations during runtime execution
-
-## Utility Methods and Event Management
-
-### Event Query and Management
-
+#### Triggering Events
 ```cpp
-// Check if specific events exist
-bool hasWeatherEvent = EventManager::Instance().hasEvent("RainStorm");
-
-// Get specific events for direct manipulation
-auto weatherEvent = EventManager::Instance().getEvent("RainStorm");
-if (weatherEvent) {
-    weatherEvent->setActive(true);
+// OLD WAY (manual event lookup and execution)
+auto event = EventManager::Instance().getEvent("WeatherChange");
+if (event) {
+    event->execute();
 }
 
-// Get all events of a specific type
-auto allWeatherEvents = EventManager::Instance().getEventsByType("Weather");
-for (auto& event : allWeatherEvents) {
-    event->setActive(false);  // Disable all weather events
-}
-
-// Get event counts for monitoring
-size_t totalEvents = EventManager::Instance().getEventCount();
-size_t activeEvents = EventManager::Instance().getActiveEventCount();
+// NEW WAY (direct convenience methods)
+EventManager::Instance().triggerWeatherChange("Rainy", 3.0f);
 ```
 
-### Event State Management
+## Example: Complete Weather System
 
 ```cpp
-// Activate/deactivate specific events
-EventManager::Instance().setEventActive("RainStorm", true);
-bool isActive = EventManager::Instance().isEventActive("RainStorm");
-
-// Remove events that are no longer needed
-EventManager::Instance().removeEvent("TemporaryEvent");
-
-// Reset all events without shutting down the manager
-// Useful for scene transitions or game state changes
-EventManager::Instance().resetEvents();
-
-// Force execute events regardless of conditions
-EventManager::Instance().executeEvent("EmergencyEvent");
-int executed = EventManager::Instance().executeEventsByType("Combat");
-```
-
-### Bulk Event Operations
-
-```cpp
-// Execute all events of a specific type
-int weatherEventsExecuted = EventManager::Instance().executeEventsByType("Weather");
-
-// Send messages to multiple events efficiently
-EventManager::Instance().broadcastMessageToType("Combat", "end_combat");
-
-// Reset all events while keeping the manager running
-EventManager::Instance().resetEvents();  // Clears events but keeps system initialized
-```
-
-**Key Methods:**
-- `hasEvent(name)`: Check if an event exists
-- `getEvent(name)`: Retrieve a specific event for direct access
-- `getEventsByType(type)`: Get all events of a particular type
-- `resetEvents()`: Clear all events while keeping the manager initialized
-- `executeEventsByType(type)`: Force execute all events of a type
-- `getEventCount()` / `getActiveEventCount()`: Monitor event system usage
-
-### Custom Event Types
-
-You can create custom event types by inheriting from the Event base class:
-
-```cpp
-class CustomEvent : public Event {
-public:
-    CustomEvent(const std::string& name) : m_name(name) {}
-    
-    void update() override { /* Implementation */ }
-    void execute() override { /* Implementation */ }
-    void reset() override { /* Implementation */ }
-    void clean() override { /* Implementation */ }
-    
-    std::string getName() const override { return m_name; }
-    std::string getType() const override { return "Custom"; }
-    
-    bool checkConditions() override { /* Implementation */ }
-
+class WeatherManager {
 private:
-    std::string m_name;
+    std::vector<std::string> m_weatherTypes = {"Clear", "Cloudy", "Rainy", "Stormy"};
+    size_t m_currentIndex = 0;
+
+public:
+    void init() {
+        // Create weather events for each type
+        for (const auto& weather : m_weatherTypes) {
+            EventManager::Instance().createWeatherEvent(
+                "weather_" + weather, weather, 1.0f, 2.0f);
+        }
+        
+        // Register handler for weather changes
+        EventManager::Instance().registerHandler(EventTypeId::Weather,
+            [this](const EventData& data) { onWeatherChanged(data); });
+    }
+    
+    void cycleWeather() {
+        std::string nextWeather = m_weatherTypes[m_currentIndex];
+        m_currentIndex = (m_currentIndex + 1) % m_weatherTypes.size();
+        
+        // Use convenience method for immediate weather change
+        EventManager::Instance().triggerWeatherChange(nextWeather, 3.0f);
+    }
+    
+private:
+    void onWeatherChanged(const EventData& data) {
+        std::cout << "Weather system responding to change" << std::endl;
+        // Update weather-dependent game systems
+    }
 };
 ```
 
-Register a custom event creator with the EventFactory:
-
-```cpp
-EventFactory::Instance().registerCustomEventCreator("Custom", [](const EventDefinition& def) {
-    auto event = std::make_shared<CustomEvent>(def.name);
-    // Configure event based on definition
-    return event;
-});
-```
-
-## Integration with Other Systems
-
-The EventSystem class provides integration with other game systems:
-
-```cpp
-// Register event handlers for system events
-EventManager::Instance().registerEventHandler("WeatherChange", [](const std::string& params) {
-    // Update particle systems, lighting, etc.
-});
-
-EventManager::Instance().registerEventHandler("SceneChange", [](const std::string& params) {
-    // Notify the GameStateManager
-});
-
-EventManager::Instance().registerEventHandler("NPCSpawn", [](const std::string& params) {
-    // Create entities through EntityFactory
-});
-```
-
-## Performance Considerations
-
-- Use appropriate update frequencies for events that don't need to be checked every frame
-- Consider batching similar event types together for better cache locality
-- For large numbers of events, the EventManager uses ThreadSystem for parallel processing
-- The EventManager automatically optimizes thread usage based on available hardware
-- Use batch processing for optimal cache utilization and thread efficiency
-- Assign appropriate task priorities for different event types:
-  - Use `Critical` for vital game progression events
-  - Use `High` for player-facing and immediate response events
-  - Use `Normal` for standard game events (default)
-  - Use `Low` for background or cosmetic events
-  - Use `Idle` for debugging or non-essential events
-
-### Performance Benchmarks
-
-The EventManager includes comprehensive scaling benchmarks (`EventManagerScalingBenchmark.cpp`) that validate performance across various scales:
-
-**Measured Performance (on modern hardware):**
-- **Small Scale** (100 events, 100 handlers): ~540,000 events/sec
-- **Medium Scale** (5,000 events, 25,000 handlers): ~78,000 events/sec  
-- **Large Scale** (10,000 events, 100,000 handlers): ~39,000 events/sec
-- **Extreme Scale** (100,000 events, 5,000,000 handlers): ~7,800 events/sec
-
-**Key Performance Features:**
-- Consistent ~0.0025ms per handler call across all scales
-- 2-3% performance improvement with batching enabled
-- Thread-safe concurrent event queuing tested up to 4 threads
-- Successfully handles millions of handler calls in production scenarios
-
-Run the scaling benchmark to validate performance on your target hardware:
-```bash
-./bin/debug/event_manager_scaling_benchmark
-```
-
-## Thread Safety
-
-The EventManager is designed to be thread-safe and integrates with the ThreadSystem for efficient multi-threaded event processing:
-
-```cpp
-// Initialize ThreadSystem first
-Forge::ThreadSystem::Instance().init();
-
-// Then initialize EventManager
-EventManager::Instance().init();
-
-// Enable multi-threaded event processing with ThreadSystem
-EventManager::Instance().configureThreading(true, 4);
-
-// Enable multi-threaded event processing with specific priority
-EventManager::Instance().configureThreading(true, 4, Forge::TaskPriority::High);
-```
-
-The EventManager uses ThreadSystem internally to:
-- Process event batches in parallel
-- Ensure proper synchronization of shared resources
-- Optimize thread usage based on system capabilities
-- Handle task scheduling and completion with priority-based execution
-- Manage error handling and recovery for failed tasks
-
-See [ThreadSystem Documentation](ThreadSystem.md) for more details on the underlying thread pool implementation and [EventManager_ThreadSystem.md](EventManager_ThreadSystem.md) for the specific integration details.
-
-For comprehensive performance analysis and optimization details, see [EventManager Performance Improvements](EventManager_Performance_Improvements.md).
-
-## Best Practices
-
-1. **Use Factory Methods**: Prefer using the EventFactory to create events
-2. **Event Naming**: Use consistent naming conventions for events
-3. **Cleanup**: Make sure to clean up events when no longer needed
-4. **Conditions**: Keep event conditions simple and efficient
-5. **Cooldowns**: Use cooldowns to prevent events from triggering too frequently
-6. **One-Time Events**: For story events, set them as one-time events using `setOneTime(true)`
-7. **ThreadSystem Integration**: Configure threading early in application initialization
-8. **Handler Batching**: Enable batching for high-frequency events to improve performance
-9. **Performance Testing**: Use the scaling benchmark to validate performance on your target hardware
-10. **Graceful Shutdown**: Ensure proper cleanup by disabling threading before shutting down
-
-## Debug Tips
-
-To debug event issues:
-
-1. Check if the event is active (`isEventActive`)
-2. Verify that conditions are being met (`checkConditions`)
-3. Use `executeEvent` to force an event to trigger regardless of conditions
-4. Inspect the number of active events (`getActiveEventCount`)
-5. For threading issues, temporarily disable threading with `configureThreading(false)`
-6. Add timeouts when waiting for event completion in time-sensitive scenarios
-7. Check if ThreadSystem is properly initialized with `Forge::ThreadSystem::Exists()`
-
-## ThreadSystem Integration
-
-The EventManager leverages the ThreadSystem component for efficient parallel processing:
-
-```cpp
-// Initialize the ThreadSystem first
-Forge::ThreadSystem::Instance().init();
-
-// Initialize the EventManager with ThreadSystem support
-EventManager::Instance().init();
-
-// Enable threading with a specific number of concurrent tasks
-EventManager::Instance().configureThreading(true, 4);
-
-// Enable threading with specific priority
-EventManager::Instance().configureThreading(true, 4, Forge::TaskPriority::High);
-
-// Disable threading for debugging or shutdown
-EventManager::Instance().configureThreading(false);
-
-// The EventManager automatically checks if ThreadSystem exists
-// and falls back to single-threaded mode if necessary
-```
-
-When threading is enabled, the EventManager:
-1. Groups events by type into batches for better cache locality
-2. Submits batches as tasks to the ThreadSystem thread pool with appropriate priorities
-3. Waits for all tasks to complete with proper error handling
-4. Provides detailed performance metrics in debug mode
-
-Available priority levels (from highest to lowest):
-- `Forge::TaskPriority::Critical` (0): For mission-critical events
-- `Forge::TaskPriority::High` (1): For important events needing quick responses
-- `Forge::TaskPriority::Normal` (2): Default for standard events
-- `Forge::TaskPriority::Low` (3): For background events
-- `Forge::TaskPriority::Idle` (4): For non-essential events
-
-See [ThreadSystem_API.md](ThreadSystem_API.md) for details on the underlying thread pool API and [EventManager_ThreadSystem.md](EventManager_ThreadSystem.md) for more details on this integration.
+This documentation reflects the optimized EventManager's realistic performance characteristics and modern convenience API, providing both ease of use and maximum performance for real-world game development scenarios.

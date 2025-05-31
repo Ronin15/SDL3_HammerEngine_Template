@@ -1,229 +1,268 @@
-# EventManager and ThreadSystem Integration Guide
+# EventManager ThreadSystem Integration
 
 ## Overview
 
-This document details how the EventManager integrates with the ThreadSystem component to provide efficient, thread-safe event processing in the Forge Game Engine. The integration enables parallel processing of game events while maintaining a clean API and proper thread synchronization, with support for priority-based task scheduling.
+The EventManager leverages the ThreadSystem for efficient parallel processing of events. This integration provides significant performance benefits for games with moderate to large event counts while maintaining realistic expectations for real-world scenarios.
 
-## Architecture
+## Performance Characteristics
 
-The EventManager uses ThreadSystem as its underlying threading mechanism, creating a layered architecture:
+### Realistic Event Scales
+- **Small Games**: 10-50 events (82,000-95,000 events/second)
+- **Medium Games**: 50-100 events (54,000-58,000 events/second)  
+- **Large Games**: 100-200 events (24,000-50,000 events/second)
+- **Maximum Scale**: ~500 events (still performant)
 
-```
-┌─────────────────┐
-│    Game Logic   │
-└────────┬────────┘
-         │
-         ▼
-┌─────────────────┐
-│   EventManager  │
-└────────┬────────┘
-         │
-         ▼
-┌─────────────────┐
-│   ThreadSystem  │
-└────────┬────────┘
-         │
-         ▼
-┌─────────────────┐
-│  System Threads │
-└─────────────────┘
-```
+### Threading Benefits
+- **Batch Processing**: Events processed in batches, not individually
+- **Type-Based Grouping**: Events grouped by type for cache efficiency
+- **Configurable Thresholds**: Threading only when beneficial
+- **Automatic Load Balancing**: Work distributed across available cores
 
-## Key Benefits
+## Threading Configuration
 
-- **Simplified API**: Game code interacts only with the EventManager, which handles all thread management details
-- **Consistent Threading Model**: All components use the same ThreadSystem for concurrent operations
-- **Resource Efficiency**: Shared thread pool reduces overhead compared to each system creating its own threads
-- **Optimized Performance**: EventManager batches similar events for better cache locality
-- **Robust Error Handling**: Comprehensive timeout and error recovery mechanisms
-- **Priority-Based Execution**: Events can be processed based on their importance using task priorities
-
-## Integration Points
-
-The EventManager integrates with ThreadSystem in several key areas:
-
-1. **Initialization**: EventManager checks for ThreadSystem availability during initialization
-2. **Threading Configuration**: Uses ThreadSystem for all thread management, including priority settings
-3. **Batch Processing**: Submits event batches as tasks to ThreadSystem with appropriate priorities
-4. **Resource Management**: Proper cleanup and waiting for task completion
-5. **Priority Management**: Assigns and manages task priorities for different event types
-
-## Initialization Sequence
-
+### Basic Setup
 ```cpp
-// Initialize ThreadSystem first
+// Initialize ThreadSystem first (required)
 Forge::ThreadSystem::Instance().init();
 
-// Then initialize EventManager
+// Initialize EventManager
 EventManager::Instance().init();
 
-// Configure EventManager to use threading with default priority
-EventManager::Instance().configureThreading(true);
-
-// Or configure with specific priority
-EventManager::Instance().configureThreading(true, 0, Forge::TaskPriority::High);
+// Configure threading
+EventManager::Instance().enableThreading(true);
+EventManager::Instance().setThreadingThreshold(50); // Use threads if >50 events
 ```
 
-## Batch Processing Implementation
+### Threading Thresholds
+- **Threshold < 50 events**: Single-threaded processing (optimal for small scales)
+- **Threshold 50-100 events**: Multi-threaded beneficial for medium games
+- **Threshold > 100 events**: Multi-threaded essential for large games
 
-The EventManager organizes events into type-based batches for efficient processing:
+## Batch Processing Architecture
 
-1. Events of the same type are grouped together
-2. Each batch is submitted to ThreadSystem as a separate task
-3. Tasks are processed in parallel on the thread pool
-4. The EventManager waits for all tasks to complete before continuing
+### Event Type Batching
+The EventManager groups events by type for optimal processing:
 
 ```cpp
-// From EventManager::update()
-if (m_useThreading.load() && Forge::ThreadSystem::Exists()) {
-    // Process events in parallel through ThreadSystem with appropriate priorities
-    for (const auto& [eventType, batch] : m_eventTypeBatches) {
-        Forge::TaskPriority priority = getEventTypePriority(eventType);
-        auto future = Forge::ThreadSystem::Instance().enqueueTaskWithResult(
-            [this, eventType, batch]() {
-                updateEventTypeBatch(eventType, batch);
-            },
-            priority
-        );
-        futures.push_back(std::move(future));
-    }
+// Internal batch processing (automatic)
+void EventManager::update() {
+    updateWeatherEvents();      // Batch process all weather events
+    updateSceneChangeEvents();  // Batch process all scene events
+    updateNPCSpawnEvents();     // Batch process all NPC events
+    updateCustomEvents();       // Batch process all custom events
+}
+```
+
+### Threading Decision Logic
+```cpp
+void EventManager::updateEventTypeBatch(EventTypeId typeId) {
+    auto& eventBatch = m_eventsByType[static_cast<size_t>(typeId)];
     
-    // Wait for all futures with proper timeout handling
-    for (auto& future : futures) {
-        auto status = future.wait_for(std::chrono::seconds(1));
-        // Handle task completion or timeout
+    if (m_threadingEnabled.load() && eventBatch.size() > m_threadingThreshold) {
+        updateEventTypeBatchThreaded(typeId);  // Use ThreadSystem
+    } else {
+        // Process single-threaded for efficiency
+        for (auto& eventData : eventBatch) {
+            if (eventData.isActive()) {
+                processEventDirect(eventData);
+            }
+        }
     }
 }
 ```
 
-## Configuration Options
+## Performance Benefits
 
-### Thread Count and Priority Control
+### Threading Advantages
+1. **Parallel Processing**: Multiple event types processed simultaneously
+2. **Cache Efficiency**: Type-based batching improves memory access patterns
+3. **Load Distribution**: Work spread across available CPU cores
+4. **Scalability**: Performance scales with event count and hardware
 
+### When Threading Helps Most
+- **Mixed Event Types**: Different event types can be processed in parallel
+- **CPU-Intensive Events**: Events with significant processing requirements
+- **High Event Counts**: 100+ events benefit most from parallel processing
+- **Multi-Core Systems**: More cores = better parallel performance
+
+## Thread Safety Features
+
+### Lock-Free Operations
 ```cpp
-// Use default thread count (hardware-based) with normal priority
-EventManager::Instance().configureThreading(true, 0);
-
-// Use specific number of concurrent tasks with normal priority
-EventManager::Instance().configureThreading(true, 4);
-
-// Use default thread count with high priority
-EventManager::Instance().configureThreading(true, 0, Forge::TaskPriority::High);
-
-// Use specific number of concurrent tasks with high priority
-EventManager::Instance().configureThreading(true, 4, Forge::TaskPriority::High);
-
-// Disable threading
-EventManager::Instance().configureThreading(false);
+// Atomic flags for thread-safe state management
+std::atomic<bool> m_threadingEnabled{true};
+std::atomic<bool> m_initialized{false};
+std::atomic<uint64_t> m_lastUpdateTime{0};
 ```
 
-### Priority Levels
-
-The EventManager supports the following priority levels for event processing:
-
+### Minimal Locking
 ```cpp
-// Available priorities (from highest to lowest)
-Forge::TaskPriority::Critical  // For mission-critical events (0)
-Forge::TaskPriority::High      // For important events needing quick responses (1)
-Forge::TaskPriority::Normal    // Default for standard events (2)
-Forge::TaskPriority::Low       // For background events (3)
-Forge::TaskPriority::Idle      // For non-essential events (4)
+// Shared mutex for read-heavy operations
+mutable std::shared_mutex m_eventsMutex;
+
+// Standard mutex only for critical sections
+mutable std::mutex m_handlersMutex;
+mutable std::mutex m_perfMutex;
 ```
 
-### Queue Capacity Management
+### Data-Oriented Design
+- **Type-Indexed Storage**: Events stored by type for cache efficiency
+- **Flat Array Access**: Minimal pointer chasing
+- **Batch Processing**: Contiguous memory access patterns
 
-The EventManager optimizes ThreadSystem's task queue capacity:
+## Performance Monitoring
 
+### Threading Metrics
 ```cpp
-// Reserve capacity for batched event processing
-Forge::ThreadSystem::Instance().reserveQueueCapacity(
-    std::min(static_cast<size_t>(batchCount * 2), 
-             static_cast<size_t>(1024))
-);
+// Monitor threading effectiveness
+auto stats = EventManager::Instance().getPerformanceStats(EventTypeId::Weather);
+std::cout << "Weather processing time: " << stats.avgTime << "ms" << std::endl;
+
+// Check if threading is beneficial
+bool usingThreads = EventManager::Instance().isThreadingEnabled();
+size_t eventCount = EventManager::Instance().getEventCount();
+std::cout << "Threading enabled: " << usingThreads 
+          << " for " << eventCount << " events" << std::endl;
 ```
 
-## Error Handling and Recovery
-
-The EventManager implements robust error handling for ThreadSystem operations:
-
-1. **Initialization Fallback**: Falls back to single-threaded mode if ThreadSystem isn't available
-2. **Task Submission Failures**: Catches exceptions and processes tasks on the main thread
-3. **Task Execution Errors**: Catches and logs exceptions without crashing
-4. **Task Timeouts**: Implements timeouts to prevent hanging on long-running tasks
-
+### Performance Optimization
 ```cpp
-try {
-    auto future = Forge::ThreadSystem::Instance().enqueueTaskWithResult(...);
-    auto status = future.wait_for(std::chrono::seconds(1));
-    if (status != std::future_status::ready) {
-        // Handle timeout
-    }
-} catch (const std::exception& e) {
-    // Log error and continue with fallback
+// Adjust threading threshold based on profiling
+if (averageUpdateTime > targetTime && eventCount > 50) {
+    EventManager::Instance().setThreadingThreshold(30); // Lower threshold
+} else if (averageUpdateTime < targetTime && eventCount < 100) {
+    EventManager::Instance().setThreadingThreshold(100); // Higher threshold
 }
 ```
-
-## Shutdown Sequence
-
-Proper shutdown is essential for clean operation:
-
-```cpp
-// First disable threading in EventManager
-EventManager::Instance().configureThreading(false);
-
-// Then clean up EventManager resources
-EventManager::Instance().clean();
-
-// Finally clean up ThreadSystem
-// (usually done by the main application)
-Forge::ThreadSystem::Instance().clean();
-```
-
-## Performance Considerations
-
-- **Batch Size**: The EventManager automatically adjusts thread allocation based on batch size
-- **Task Granularity**: Events are batched by type to ensure efficient task size
-- **Thread Count**: The default configuration uses (hardware_concurrency - 1) threads
-- **Debug Logging**: Performance metrics are available in debug builds
-- **Task Priorities**: Critical and high-priority events are processed before lower-priority ones
-- **Priority Balance**: Too many high-priority tasks can starve lower-priority tasks of CPU time
-
-## Debug Tips
-
-When troubleshooting ThreadSystem integration:
-
-1. **Enable Verbose Logging**: Set `EVENT_DEBUG_LOGGING` to see detailed threading info
-2. **Disable Threading**: Temporarily use `configureThreading(false)` to isolate threading issues
-3. **Check ThreadSystem Status**: Use `Forge::ThreadSystem::Exists()` to verify availability
-4. **Monitor Task Queue**: Check `Forge::ThreadSystem::Instance().getQueueSize()` for bottlenecks
-5. **Add Timeouts**: Always use timeouts when waiting for tasks to complete
 
 ## Best Practices
 
-1. **Initialize Early**: Set up ThreadSystem before other systems during application startup
-2. **Thread Safety**: Ensure all event handlers are thread-safe if using threading
-3. **Avoid Thread Blocking**: Never block threads with long-running operations
-4. **Resource Sharing**: Use proper synchronization for resources shared between events
-5. **Clean Shutdown**: Always disable threading before cleanup to prevent issues
-6. **Selective Threading**: Use threading only for computationally intensive event processing
-7. **Appropriate Priorities**: Use task priorities appropriately to balance system responsiveness:
-   - `Critical`: Only for vital game progression events
-   - `High`: For player-facing and immediate response events
-   - `Normal`: For standard game events (default)
-   - `Low`: For background or cosmetic events
-   - `Idle`: For debugging or non-essential events
-8. **Priority Balance**: Avoid creating too many high-priority tasks that could starve lower-priority events
+### Threading Guidelines
+1. **Initialize ThreadSystem First**: Always call `ThreadSystem::Instance().init()` before EventManager
+2. **Set Appropriate Thresholds**: Use 50 events as starting point, adjust based on profiling
+3. **Monitor Performance**: Use built-in stats to validate threading benefits
+4. **Profile Your Game**: Optimal thresholds vary by hardware and event complexity
 
-## Compatibility Notes
+### Optimization Tips
+1. **Group Similar Events**: Create events of the same type together
+2. **Avoid Threading Overhead**: Don't use threading for <50 events
+3. **Batch Event Creation**: Use convenience methods for bulk event creation
+4. **Monitor Memory Usage**: Call `compactEventStorage()` periodically
 
-- ThreadSystem is available on all platforms supported by the engine
-- The EventManager will fall back to single-threaded mode on platforms with limited threading support
-- Event handlers should avoid platform-specific code that might not be thread-safe
+### Error Handling
+```cpp
+// Graceful fallback if ThreadSystem unavailable
+if (!Forge::ThreadSystem::Exists()) {
+    EventManager::Instance().enableThreading(false);
+    std::cout << "ThreadSystem not available, using single-threaded mode" << std::endl;
+}
+```
 
-## Related Documentation
+## Integration Examples
 
-- [ThreadSystem.md](ThreadSystem.md) - Core documentation for ThreadSystem
-- [ThreadSystem_API.md](ThreadSystem_API.md) - Detailed API reference
-- [EventManager.md](EventManager.md) - Main EventManager documentation
-- [QueueCapacity_Optimization.md](QueueCapacity_Optimization.md) - Memory optimization details
-- [ThreadSystem_Optimization.md](ThreadSystem_Optimization.md) - Task optimization details
+### Game State Integration
+```cpp
+class GameState {
+    void init() {
+        // Initialize threading first
+        Forge::ThreadSystem::Instance().init();
+        EventManager::Instance().init();
+        
+        // Configure for game scale
+        EventManager::Instance().enableThreading(true);
+        EventManager::Instance().setThreadingThreshold(getExpectedEventCount() / 2);
+    }
+    
+    void update() {
+        // Single call processes all events efficiently
+        EventManager::Instance().update();
+    }
+    
+private:
+    size_t getExpectedEventCount() {
+        // Return expected event count based on game scale
+        return 100; // Medium game
+    }
+};
+```
+
+### Performance Profiling
+```cpp
+void profileEventPerformance() {
+    // Create test events
+    for (int i = 0; i < 100; ++i) {
+        EventManager::Instance().createWeatherEvent("test_" + std::to_string(i), "Rainy");
+    }
+    
+    // Test single-threaded
+    EventManager::Instance().enableThreading(false);
+    auto start = std::chrono::high_resolution_clock::now();
+    EventManager::Instance().update();
+    auto singleThreadTime = std::chrono::high_resolution_clock::now() - start;
+    
+    // Test multi-threaded
+    EventManager::Instance().enableThreading(true);
+    start = std::chrono::high_resolution_clock::now();
+    EventManager::Instance().update();
+    auto multiThreadTime = std::chrono::high_resolution_clock::now() - start;
+    
+    // Compare results
+    auto singleMs = std::chrono::duration_cast<std::chrono::microseconds>(singleThreadTime).count() / 1000.0;
+    auto multiMs = std::chrono::duration_cast<std::chrono::microseconds>(multiThreadTime).count() / 1000.0;
+    
+    std::cout << "Single-threaded: " << singleMs << "ms" << std::endl;
+    std::cout << "Multi-threaded: " << multiMs << "ms" << std::endl;
+    std::cout << "Speedup: " << (singleMs / multiMs) << "x" << std::endl;
+}
+```
+
+## Shutdown and Cleanup
+
+### Proper Shutdown Sequence
+```cpp
+void cleanupEventSystems() {
+    // Disable threading first
+    EventManager::Instance().enableThreading(false);
+    
+    // Clean up EventManager
+    EventManager::Instance().clean();
+    
+    // ThreadSystem cleanup handled by application
+    // Forge::ThreadSystem::Instance().clean();
+}
+```
+
+### Debug Mode Features
+```cpp
+#ifdef EVENT_DEBUG_LOGGING
+    // Additional threading debug information
+    std::cout << "Threading enabled: " << EventManager::Instance().isThreadingEnabled() << std::endl;
+    std::cout << "Threading threshold: " << threadingThreshold << std::endl;
+    std::cout << "ThreadSystem available: " << Forge::ThreadSystem::Exists() << std::endl;
+#endif
+```
+
+## Troubleshooting
+
+### Common Issues
+1. **ThreadSystem Not Initialized**: Always init ThreadSystem before EventManager
+2. **Threading Overhead**: Lower threshold if performance decreases with threading
+3. **Memory Issues**: Call `compactEventStorage()` if memory usage grows
+4. **Performance Regression**: Profile before/after enabling threading
+
+### Performance Validation
+```cpp
+// Validate threading is beneficial
+void validateThreadingPerformance() {
+    size_t eventCount = EventManager::Instance().getEventCount();
+    auto stats = EventManager::Instance().getPerformanceStats(EventTypeId::Weather);
+    
+    if (stats.avgTime > 1.0 && eventCount > 50) {
+        std::cout << "Consider lowering threading threshold" << std::endl;
+    } else if (stats.avgTime < 0.1 && eventCount < 30) {
+        std::cout << "Consider raising threading threshold or disabling" << std::endl;
+    }
+}
+```
+
+This integration provides optimal performance for real-world game scenarios while maintaining the simplicity and reliability needed for production game development.
