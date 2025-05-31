@@ -1,8 +1,6 @@
 # SDL3 2D Game Template with Multi-Threading
   -Work in progress.... Features do work and are implemented! Also, learning all the features of github will implement more as I figure it out. Please strongly consider donating if you use this or like it! Its most appreciated!
 
-![Forge Engine](./Forge_Engine.png)
-
 Based off of my SDL2 template, but updated for SDL3 and more complete. It has simplified Entity management and Entity state management systems. Also has a more robust game state management system and uses CMake and Ninja instead of a custom build.sh. This is designed to be a jump off point for making a game with some of the low level and architecture stuff handled. Just add your content and start modifing the managers and add states. Demo's included to show how the systems integrate.
 
 I use the Zed IDE with custom cmake and ninja task configurations to build/compile on all platforms. Zed has good documentation check it out at https://zed.dev/docs/
@@ -282,7 +280,7 @@ Key features include:
 
 A full-featured demonstration and benchmarking framework for the AI system:
 
-- Mass AI Entity Handling: Spawns and manages thousands of NPCs (default: 5000), each with dynamic, hot-swappable AI behaviors.
+- Mass AI Entity Handling: Spawns and manages thousands of NPCs (default: 10,000), each with dynamic, hot-swappable AI behaviors.
 - Live Behavior Switching: Instantly switch all NPCs between Wander, Patrol, and Chase behaviors using keys [1], [2], and [3], leveraging the AIManager’s registration and assignment system.
 - Player Targeting: The Chase AI behavior dynamically targets the player entity for real-time pursuit demonstrations.
 - Pause/Resume: Pause and resume all AI updates with [SPACE] via broadcast messaging.
@@ -298,6 +296,8 @@ A full-featured demonstration and benchmarking framework for the AI system:
 See docs/AIManager.md, include/gameStates/AIDemoState.hpp, and src/gameStates/AIDemoState.cpp for full API and code examples.
 
 See `docs/AIManager.md` for detailed documentation with examples and best practices. Additional API details can be found in `include/managers/AIManager.hpp`, `include/ai/AIBehavior.hpp`, and the specific behavior implementations.
+
+![Forge Engine](./Forge_Engine.png)
 
 ## Window Icon
 This project supports window icons across all platforms:
