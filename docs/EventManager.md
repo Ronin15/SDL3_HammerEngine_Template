@@ -36,12 +36,29 @@ EventManager::Instance().registerDefaultEvents();
 
 ### Creating Events
 
+#### Convenience Methods (Recommended - New!)
+
 ```cpp
-// Using EventFactory (recommended)
+// Create and register weather events in one call
+EventManager::Instance().createWeatherEvent("HeavyRain", "Rainy", 0.8f, 3.0f);
+
+// Create and register scene change events in one call
+EventManager::Instance().createSceneChangeEvent("ToMainMenu", "MainMenu", "fade", 2.0f);
+
+// Multiple events quickly
+EventManager::Instance().createWeatherEvent("MorningFog", "Foggy", 0.5f);
+EventManager::Instance().createWeatherEvent("EveningStorm", "Stormy", 0.9f);
+EventManager::Instance().createSceneChangeEvent("ToShop", "ShopScene", "slide", 1.5f);
+```
+
+#### Traditional Method (Still Supported)
+
+```cpp
+// Using EventFactory then registering separately
 auto rainEvent = EventFactory::Instance().createWeatherEvent("HeavyRain", "Rainy", 0.8f);
 EventManager::Instance().registerEvent("HeavyRain", rainEvent);
 
-// Or manually
+// Or manually creating events
 auto sceneEvent = std::make_shared<SceneChangeEvent>("ToMainMenu", "MainMenu");
 sceneEvent->setTransitionType(TransitionType::Fade);
 EventManager::Instance().registerEvent("ToMainMenu", sceneEvent);
@@ -120,6 +137,18 @@ void update(float deltaTime) {
 ## Advanced Usage
 
 ### Creating Event Sequences
+
+#### Using Convenience Methods for Simple Sequences
+
+```cpp
+// Quick creation of multiple related events
+EventManager::Instance().createWeatherEvent("Sequence_Rain", "Rainy", 0.5f);
+EventManager::Instance().createWeatherEvent("Sequence_Storm", "Stormy", 0.9f);
+EventManager::Instance().createWeatherEvent("Sequence_Clear", "Clear", 0.0f, 8.0f);
+EventManager::Instance().createSceneChangeEvent("Sequence_Transition", "NextArea", "fade");
+```
+
+#### Using EventFactory for Complex Sequences
 
 ```cpp
 // Create a weather sequence: Rain -> Storm -> Clear

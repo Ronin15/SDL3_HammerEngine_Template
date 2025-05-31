@@ -109,18 +109,32 @@ m_eventSystem->registerEventHandler("SceneChange",
 
 ### Creating Events
 
+#### Convenience Methods (Recommended - New!)
+
 ```cpp
-// Weather events
+// Create and register events in one call
+EventManager::Instance().createWeatherEvent("sunny_day", "Clear", 1.0f);
+EventManager::Instance().createWeatherEvent("storm", "Stormy", 1.0f);
+EventManager::Instance().createSceneChangeEvent("enter_dungeon", "Dungeon", "fade");
+EventManager::Instance().createSceneChangeEvent("exit_forest", "Village", "dissolve");
+
+// Multiple events quickly
+EventManager::Instance().createWeatherEvent("morning_rain", "Rainy", 0.6f, 2.0f);
+EventManager::Instance().createWeatherEvent("evening_fog", "Foggy", 0.8f);
+EventManager::Instance().createSceneChangeEvent("quick_exit", "Town", "instant");
+```
+
+#### Traditional Method (Still Supported)
+
+```cpp
+// Using EventFactory then registering separately
+auto rainEvent = EventFactory::Instance().createWeatherEvent("heavy_rain", "Rainy", 0.8f);
+EventManager::Instance().registerEvent("heavy_rain", rainEvent);
+
+// Or legacy registration methods
 m_eventSystem->registerWeatherEvent("sunny_day", "Clear", 1.0f);
-m_eventSystem->registerWeatherEvent("storm", "Stormy", 1.0f);
-
-// NPC spawn events
 m_eventSystem->registerNPCSpawnEvent("village_guards", "Guard", 3, 50.0f);
-m_eventSystem->registerNPCSpawnEvent("random_encounter", "Bandit", 1, 0.0f);
-
-// Scene transition events
 m_eventSystem->registerSceneChangeEvent("enter_dungeon", "Dungeon", "fade");
-m_eventSystem->registerSceneChangeEvent("exit_forest", "Village", "dissolve");
 ```
 
 ### Triggering Events
@@ -169,12 +183,12 @@ bool MyGameState::enter() {
 
 ### 2. Use Descriptive Event Names
 ```cpp
-// Good
-m_eventSystem->registerWeatherEvent("morning_fog", "Foggy", 0.6f);
-m_eventSystem->registerNPCSpawnEvent("tavern_encounter", "Villager", 2, 25.0f);
+// Good - using convenience methods
+EventManager::Instance().createWeatherEvent("morning_fog", "Foggy", 0.6f);
+EventManager::Instance().createSceneChangeEvent("tavern_entrance", "TavernInterior", "fade");
 
 // Avoid
-m_eventSystem->registerWeatherEvent("event1", "Foggy", 0.6f);
+EventManager::Instance().createWeatherEvent("event1", "Foggy", 0.6f);
 ```
 
 ### 3. Handle Events Gracefully
@@ -203,14 +217,14 @@ bool MyGameState::exit() {
 ### Weather System Integration
 ```cpp
 void setupWeatherSystem() {
-    // Register weather events for different times/conditions
-    m_eventSystem->registerWeatherEvent("dawn_clear", "Clear", 1.0f);
-    m_eventSystem->registerWeatherEvent("midday_sun", "Clear", 1.0f);
-    m_eventSystem->registerWeatherEvent("evening_fog", "Foggy", 0.7f);
-    m_eventSystem->registerWeatherEvent("night_storm", "Stormy", 0.9f);
+    // Register weather events for different times/conditions using convenience methods
+    EventManager::Instance().createWeatherEvent("dawn_clear", "Clear", 1.0f);
+    EventManager::Instance().createWeatherEvent("midday_sun", "Clear", 1.0f);
+    EventManager::Instance().createWeatherEvent("evening_fog", "Foggy", 0.7f);
+    EventManager::Instance().createWeatherEvent("night_storm", "Stormy", 0.9f);
     
     // Handler updates game environment
-    m_eventSystem->registerEventHandler("Weather", 
+    EventManager::Instance().registerEventHandler("Weather", 
         [this](const std::string& weatherType) {
             updateEnvironment(weatherType);
             updateLighting(weatherType);
@@ -238,12 +252,13 @@ void setupDynamicSpawning() {
 ### Scene Transition Management
 ```cpp
 void setupSceneTransitions() {
-    // Pre-configured scene transitions
-    m_eventSystem->registerSceneChangeEvent("enter_boss_room", "BossArena", "fade");
-    m_eventSystem->registerSceneChangeEvent("return_to_town", "Town", "dissolve");
+    // Pre-configured scene transitions using convenience methods
+    EventManager::Instance().createSceneChangeEvent("enter_boss_room", "BossArena", "fade");
+    EventManager::Instance().createSceneChangeEvent("return_to_town", "Town", "dissolve");
+    EventManager::Instance().createSceneChangeEvent("quick_escape", "SafeHouse", "instant");
     
     // Handler prepares new scene
-    m_eventSystem->registerEventHandler("SceneChange",
+    EventManager::Instance().registerEventHandler("SceneChange",
         [this](const std::string& sceneName) {
             saveGameState();
             preloadSceneAssets(sceneName);
