@@ -279,7 +279,7 @@ Use it as a reference for implementing events in your own game states.
 
 ## See Also
 
-- `docs/EventDemo.md` - Complete EventDemoState documentation
+- `docs/EventManager_QuickReference.md` - Complete convenience methods documentation
 - `docs/EventManager.md` - EventManager API and usage
 - `docs/EventManager_ThreadSystem.md` - Threading integration details
 - `docs/EventManagerExamples.cpp` - Code examples and patterns

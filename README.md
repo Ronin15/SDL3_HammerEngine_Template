@@ -62,7 +62,7 @@ Windows will need some env vars setup for path:
 
 ### Linux
 Follow the instructions on the official SDL3 website to install SDL3 dependencies.
-[https://wiki.libsdl.org/SDL3/README/linux](https://wiki.libsdl.org/SDL3/README-linux)
+[https://wiki.libsdl.org/SDL3/README-linux](https://wiki.libsdl.org/SDL3/README-linux)
 
 ### macOS
 Homebrew is recommended for SDL3 dependencies like harfbuzz, truetype, and freetype etc.
@@ -155,7 +155,7 @@ The ThreadSystem provides a thread pool implementation for efficient multi-threa
 - Graceful shutdown with proper cleanup of resources
 - Automatic capacity management for different workloads
 
-See `docs/ThreadSystem_API.md` for the full API, and the other ThreadSystem docs for more information.
+See `docs/ThreadSystem.md` for the full API and detailed documentation.
 
 ### TextureManager
 
@@ -166,7 +166,7 @@ The TextureManager handles all image loading and rendering operations:
 - Parallax scrolling capabilities for background effects
 - Memory-efficient texture management
 
-See `include/managers/TextureManager.hpp` for the full API.
+See `include/managers/TextureManager.hpp` for the full API and `docs/TextureManager.md` for detailed documentation.
 
 ### SoundManager
 
@@ -177,7 +177,7 @@ The SoundManager provides a comprehensive audio system:
 - Music playback control (play, pause, resume, stop)
 - Volume management for different audio types
 
-See `include/managers/SoundManager.hpp` for the full API.
+See `include/managers/SoundManager.hpp` for the full API and `docs/SoundManager.md` for detailed documentation.
 
 ### FontManager
 
@@ -187,11 +187,11 @@ The FontManager handles text rendering throughout the application:
 - Text rendering to textures or directly to the screen
 - Memory-efficient font management
 
-See `include/managers/FontManager.hpp` for the full API.
+See `include/managers/FontManager.hpp` for the full API and `docs/FontManager.md` for detailed documentation.
 
-### InputHandler
+### InputManager
 
-The InputHandler manages all user input across different devices:
+The InputManager manages all user input across different devices:
 
 - Keyboard input detection
 - Mouse position and button state tracking
@@ -229,7 +229,8 @@ See `include/managers/EntityStateManager.hpp` for the full API.
 
 The EventManager provides a condition-based event system for game events:
 
-- Registration and management of different event types (weather, scene transitions, NPC spawning)
+- **One-line convenience methods** for creating and registering events (Weather, Scene Change, NPC Spawn)
+- Registration and management of different event types with streamlined API
 - Condition-based event triggering for dynamic game worlds
 - Sequence-based events for creating complex scenarios
 - Thread-safe event processing with priority-based scheduling
@@ -243,12 +244,13 @@ A comprehensive demonstration and testing framework for the event system:
 - **Visual SDL UI**: Real-time display with centered text layout showing phase, timer, FPS, weather, NPC count
 - **Automatic Mode**: Cycles through all event types automatically (Weather → NPC Spawn → Scene Transition → Custom Events)
 - **Manual Mode**: Use number keys 1-5 to trigger specific event types
+- **🔥 NEW: Convenience Methods Demo**: Press 'C' to see one-line event creation in action
 - **Event Log**: Visual display of last 6 triggered events with timestamps
 - **Performance Monitoring**: Real-time FPS tracking and system status
 
-The EventDemoState serves as both documentation and testing platform for developers to understand event system integration.
+The EventDemoState serves as both documentation and testing platform for developers to understand event system integration and showcases the new convenience methods API.
 
-See `docs/EventManager.md`, `docs/EventDemo.md`, and `docs/EventManager_ThreadSystem.md` for detailed documentation and usage examples.
+See `docs/EventManager.md`, `docs/EventManager_QuickReference.md`, and `docs/EventManager_ThreadSystem.md` for detailed documentation and usage examples.
 
 ### AIManager
 
@@ -308,9 +310,9 @@ The icon is automatically loaded from the `res/img` folder.
 
 ## General Notes
 
-This is a template and the first player state running "PlayerRunningState.cpp" contains player move to mouse for point click hold movement, keyboard movement (up, down, left, right), and controller movement. Keep or delete any combination of controls you want. Controller keys are mapped out and detected properly in "InputHandler.cpp" - just need to be applied in code.
+This is a template and the first player state running "PlayerRunningState.cpp" contains player move to mouse for point click hold movement, keyboard movement (up, down, left, right), and controller movement. Keep or delete any combination of controls you want. Controller keys are mapped out and detected properly in "InputManager.cpp" - just need to be applied in code.
 
-Also, this template can be used for 3D as well. Just focus on replacing SDL_renderer with SDL_GPU in TexureManager::Draw functions, and update the init process in GameEngine.cpp and you should be good to go.
+Also, this template can be used for 3D as well. Just focus on replacing SDL_renderer with SDL_GPU in TextureManager::Draw functions, and update the init process in GameEngine.cpp and you should be good to go.
 
 For more complex games, consider using the EventManager system for handling game events, scene transitions, and dynamic world interactions. The ThreadSystem priority-based task scheduling is particularly useful for managing complex AI behaviors in games with many entities.
 
@@ -330,12 +332,16 @@ Additional documentation can be found in the `docs/` directory:
 
 ### Event System Documentation
 - **[Event Manager](docs/EventManager.md)** - Guide to the event management system with examples and integration details
+- **[🔥 NEW: EventManager Quick Reference](docs/EventManager_QuickReference.md)** - Convenience methods guide and quick reference
 - **[Event System Integration](docs/EventSystem_Integration.md)** - Quick reference guide for EventSystem integration and usage patterns
 - **[Event Manager Threading](docs/EventManager_ThreadSystem.md)** - Details on EventManager and ThreadSystem integration
 - **[Event Manager Performance](docs/EventManager_Performance_Improvements.md)** - Performance optimization techniques
 - **[Event Manager Examples](docs/EventManagerExamples.cpp)** - Code examples for using the EventManager system
 
+### Manager System Documentation
+- **[FontManager](docs/FontManager.md)** - Font loading and text rendering system with TTF/OTF support
+- **[TextureManager](docs/TextureManager.md)** - Texture loading and sprite rendering with animation support
+- **[SoundManager](docs/SoundManager.md)** - Audio playback and sound management with volume control
+
 ### Threading System Documentation
 - **[ThreadSystem Overview](docs/ThreadSystem.md)** - Core documentation for the ThreadSystem component with usage examples and best practices
-- **[ThreadSystem API](docs/ThreadSystem_API.md)** - Complete API reference for the ThreadSystem with method signatures and parameters
-- **[ThreadSystem Optimization](docs/ThreadSystem_Optimization.md)** - Performance tuning guide and optimization techniques
