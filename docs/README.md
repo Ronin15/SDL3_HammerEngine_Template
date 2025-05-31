@@ -21,6 +21,7 @@ The AI system provides flexible, thread-safe behavior management for game entiti
 Robust event management system supporting weather events, NPC spawning, scene transitions, and custom events.
 
 - **[Event Manager](EventManager.md)** - Core event management system
+- **[🔥 NEW: EventManager Quick Reference](EventManager_QuickReference.md)** - Convenience methods guide
 - **[Event Demo](EventDemo.md)** - Interactive event system demonstration
 - **[Event System Integration](EventSystem_Integration.md)** - Integration guidelines
 - **[Event Manager Performance](EventManager_Performance_Improvements.md)** - Performance optimizations
@@ -51,12 +52,13 @@ AIManager::Instance().queueBehaviorAssignment(npc, "RandomPatrol");
 
 ### Event System Setup
 ```cpp
+// Create and register events in one call (NEW convenience methods)
+EventManager::Instance().createWeatherEvent("MorningRain", "Rainy", 0.8f);
+EventManager::Instance().createSceneChangeEvent("ToMenu", "MainMenu", "fade");
+
 // Register event handlers
 EventManager::Instance().registerEventHandler("Weather", 
     [](const std::string& message) { handleWeatherChange(message); });
-
-// Trigger events
-EventManager::Instance().fireEvent("Weather", "Rainy");
 ```
 
 ### Threading Setup
@@ -67,6 +69,12 @@ AIManager::Instance().configureThreading(true, 4, TaskPriority::High);
 ```
 
 ## New Features (Latest Updates)
+
+### 🔥 EventManager Convenience Methods
+- **One-Line Event Creation**: Create and register events with a single call
+- **50% Less Boilerplate**: Streamlined API for common use cases
+- **Backward Compatible**: Traditional methods still fully supported
+- **Built-in Error Handling**: Automatic validation and logging
 
 ### 🔥 AI Behavior Modes System
 - **PatrolBehavior Modes**: FIXED_WAYPOINTS, RANDOM_AREA, CIRCULAR_AREA, EVENT_TARGET

@@ -20,22 +20,37 @@
 #include "managers/EventManager.hpp"
 #include "core/ThreadSystem.hpp"
 
-// Example 1: Basic Weather Event
+// Example 1: Using Convenience Methods (RECOMMENDED - New!)
+void convenienceMethodsExample() {
+    // NEW WAY: Create and register events in one call - much cleaner!
+    EventManager::Instance().createWeatherEvent("MorningRain", "Rainy", 0.7f, 5.0f);
+    EventManager::Instance().createSceneChangeEvent("QuickExit", "MainMenu", "fade", 2.0f);
+    
+    // Create multiple events quickly
+    EventManager::Instance().createWeatherEvent("MorningFog", "Foggy", 0.5f);
+    EventManager::Instance().createWeatherEvent("EveningStorm", "Stormy", 0.9f);
+    EventManager::Instance().createSceneChangeEvent("ToShop", "ShopScene", "slide", 1.5f);
+    EventManager::Instance().createSceneChangeEvent("ToInventory", "InventoryScene", "dissolve");
+    
+    std::cout << "Created and registered 6 events with minimal code!" << std::endl;
+    
+    // Later, to force a weather change immediately:
+    EventManager::Instance().changeWeather("Rainy", 3.0f);
+}
+
+// Example 2: Traditional Method (Still Supported)
 void weatherEventExample() {
-    // Create a weather event
+    // OLD WAY: Create then register separately
     auto rainEvent = std::make_shared<WeatherEvent>("Rain", WeatherType::Rainy);
     
     // Configure weather parameters
     WeatherParams params;
     params.intensity = 0.7f;
-    params.visibility = 0.6f;
     params.transitionTime = 5.0f;
+    params.visibility = 0.6f;
     params.particleEffect = "rain";
     params.soundEffect = "rain_ambient";
     rainEvent->setWeatherParams(params);
-    
-    // Add a time-of-day condition (only rain during morning)
-    rainEvent->setTimeOfDay(5.0f, 10.0f); // 5 AM to 10 AM
     
     // Register the event with the EventManager
     EventManager::Instance().registerEvent("MorningRain", rainEvent);
@@ -44,7 +59,7 @@ void weatherEventExample() {
     EventManager::Instance().changeWeather("Rainy", 3.0f);
 }
 
-// Example 2: Scene Change Event
+// Example 3: Scene Change Event (Traditional Method)
 void sceneChangeEventExample() {
     // Create a scene change event using EventFactory
     auto sceneEvent = EventFactory::Instance().createSceneChangeEvent(
@@ -72,7 +87,7 @@ void sceneChangeEventExample() {
     EventManager::Instance().changeScene("MainMenu", "dissolve", 2.0f);
 }
 
-// Example 3: NPC Spawn Event
+// Example 4: NPC Spawn Event
 void npcSpawnEventExample() {
     // Create an NPC spawn event
     auto spawnEvent = std::make_shared<NPCSpawnEvent>("GuardSpawn", "Guard");
@@ -180,7 +195,7 @@ void customEventConditionsExample() {
     EventManager::Instance().registerEvent("ThunderStorm", stormEvent);
 }
 
-// Example 7: Message-based event communication
+// Example 8: Message-based event communication
 void eventMessagingExample() {
     // Create events that respond to messages
     auto weatherSystem = EventFactory::Instance().createWeatherEvent("WeatherSystem", "Clear");
@@ -199,7 +214,7 @@ void eventMessagingExample() {
     EventManager::Instance().broadcastMessageToType("Weather", "RESET");
 }
 
-// Example 8: Thread-safe event processing with ThreadSystem
+// Example 9: Thread-safe event processing with ThreadSystem
 void threadSafeEventProcessingExample() {
     // First, ensure ThreadSystem is initialized
     if (!Forge::ThreadSystem::Exists()) {

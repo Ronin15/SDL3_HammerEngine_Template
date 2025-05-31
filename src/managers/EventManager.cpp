@@ -4,6 +4,7 @@
 */
 
 #include "managers/EventManager.hpp"
+#include "events/EventFactory.hpp"
 #include "events/WeatherEvent.hpp"
 #include "events/SceneChangeEvent.hpp"
 #include "events/NPCSpawnEvent.hpp"
@@ -577,7 +578,39 @@ bool EventManager::spawnNPC(const std::string& npcType, float x, float y) {
     return true;
 }
 
+// === CONVENIENCE METHODS - Create and Register in One Call ===
 
+bool EventManager::createWeatherEvent(const std::string& name, const std::string& weatherType,
+                                     float intensity, float transitionTime) {
+    // Create event using factory
+    auto event = EventFactory::Instance().createWeatherEvent(name, weatherType, intensity, transitionTime);
+    
+    if (!event) {
+        EVENT_LOG("Failed to create weather event: " << name);
+        return false;
+    }
+    
+    // Register with manager
+    registerEvent(name, event);
+    EVENT_LOG_DETAIL("Created and registered weather event: " << name << " (" << weatherType << ")");
+    return true;
+}
+
+bool EventManager::createSceneChangeEvent(const std::string& name, const std::string& targetScene,
+                                        const std::string& transitionType, float duration) {
+    // Create event using factory
+    auto event = EventFactory::Instance().createSceneChangeEvent(name, targetScene, transitionType, duration);
+    
+    if (!event) {
+        EVENT_LOG("Failed to create scene change event: " << name);
+        return false;
+    }
+    
+    // Register with manager
+    registerEvent(name, event);
+    EVENT_LOG_DETAIL("Created and registered scene change event: " << name << " -> " << targetScene);
+    return true;
+}
 
 void EventManager::registerDefaultEvents() {
     // Register some common weather events

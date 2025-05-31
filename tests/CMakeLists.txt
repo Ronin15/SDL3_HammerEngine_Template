@@ -57,6 +57,7 @@ add_executable(event_manager_scaling_benchmark
     ${PROJECT_SOURCE_DIR}/src/events/Event.cpp
     ${PROJECT_SOURCE_DIR}/src/events/WeatherEvent.cpp
     ${PROJECT_SOURCE_DIR}/src/events/SceneChangeEvent.cpp
+    ${PROJECT_SOURCE_DIR}/src/events/EventFactory.cpp
     mocks/NPCSpawnEventTest.cpp
     mocks/MockNPC.cpp
     mocks/MockGameEngine.cpp
@@ -85,6 +86,7 @@ add_executable(event_manager_tests
     ${PROJECT_SOURCE_DIR}/src/events/Event.cpp
     ${PROJECT_SOURCE_DIR}/src/events/WeatherEvent.cpp
     ${PROJECT_SOURCE_DIR}/src/events/SceneChangeEvent.cpp
+    ${PROJECT_SOURCE_DIR}/src/events/EventFactory.cpp
     mocks/NPCSpawnEventTest.cpp
     mocks/MockNPC.cpp
     mocks/MockGameEngine.cpp
@@ -245,8 +247,10 @@ add_test(NAME ThreadSystemTests COMMAND thread_system_tests)
 add_test(NAME AIOptimizationTests COMMAND ai_optimization_tests)
 add_test(NAME AIScalingBenchmark COMMAND ai_scaling_benchmark)
 add_test(NAME EventManagerScalingBenchmark COMMAND event_manager_scaling_benchmark)
-add_test(NAME ThreadSafeAIManagerTests COMMAND thread_safe_ai_manager_tests)
-add_test(NAME ThreadSafeAIIntegrationTests COMMAND thread_safe_ai_integration_tests)
+add_test(NAME ThreadSafeAIManagerTests 
+    COMMAND thread_safe_ai_manager_tests)
+add_test(NAME ThreadSafeAIIntegrationTests 
+    COMMAND thread_safe_ai_integration_tests)
 add_test(NAME EventManagerTests COMMAND event_manager_tests)
 add_test(NAME EventTypesTests COMMAND event_types_tests)
 add_test(NAME WeatherEventTests COMMAND weather_event_tests)

@@ -57,6 +57,7 @@ class Event;
 class WeatherEvent;
 class SceneChangeEvent;
 class NPCSpawnEvent;
+class EventFactory;
 
 using EventPtr = std::shared_ptr<Event>;
 using EventWeakPtr = std::weak_ptr<Event>;
@@ -146,6 +147,30 @@ public:
      * This creates a set of common events that can be used in most games
      */
     void registerDefaultEvents();
+
+    // === CONVENIENCE METHODS - Create and Register in One Call ===
+    
+    /**
+     * @brief Create and register a weather event
+     * @param name Unique name for the event
+     * @param weatherType Type of weather (Clear, Rainy, Stormy, etc.)
+     * @param intensity Weather intensity (0.0-1.0)
+     * @param transitionTime Transition duration in seconds
+     * @return True if event was created and registered successfully
+     */
+    bool createWeatherEvent(const std::string& name, const std::string& weatherType,
+                           float intensity = 0.5f, float transitionTime = 5.0f);
+
+    /**
+     * @brief Create and register a scene change event
+     * @param name Unique name for the event  
+     * @param targetScene Target scene ID
+     * @param transitionType Transition type (fade, dissolve, etc.)
+     * @param duration Transition duration in seconds
+     * @return True if event was created and registered successfully
+     */
+    bool createSceneChangeEvent(const std::string& name, const std::string& targetScene,
+                              const std::string& transitionType = "fade", float duration = 1.0f);
 
     /**
      * @brief Register an event handler for a specific event type

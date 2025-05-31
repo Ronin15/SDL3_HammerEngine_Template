@@ -9,7 +9,31 @@ The EventManager has been enhanced with significant performance improvements to 
 
 ## Performance Improvements
 
-### 1. Storage Optimization (`boost::flat_map`)
+### 1. Convenience Methods API
+
+**Change**: Added `createWeatherEvent()` and `createSceneChangeEvent()` convenience methods that combine EventFactory creation with EventManager registration.
+
+**Benefits**:
+- **Reduced function calls** - Single call instead of factory + register
+- **Lower overhead** - Eliminates intermediate EventPtr storage
+- **Better code locality** - Factory and registration happen in same scope
+- **50% less boilerplate** - Streamlined API for common use cases
+
+**Performance Impact**:
+- **Faster event creation** - Direct creation without temporary storage
+- **Reduced memory allocations** - No intermediate shared_ptr copies
+- **Better compiler optimization** - Inlined factory calls when possible
+
+```cpp
+// OLD: 2 function calls + temporary storage
+auto event = EventFactory::Instance().createWeatherEvent("Rain", "Rainy", 0.8f);
+EventManager::Instance().registerEvent("Rain", event);
+
+// NEW: 1 function call, direct registration
+EventManager::Instance().createWeatherEvent("Rain", "Rainy", 0.8f);
+```
+
+### 2. Storage Optimization (`boost::flat_map`)
 
 **Change**: Replaced `std::unordered_map` with `boost::container::flat_map` for event handler storage.
 
@@ -24,7 +48,7 @@ The EventManager has been enhanced with significant performance improvements to 
 - **O(log n) lookup** vs O(1) average but with better constants
 - **Optimal for small to medium datasets** which is typical for game event systems
 
-### 2. Handler Batching System
+### 3. Handler Batching System
 
 **Change**: Added double-buffered queue system for batched handler execution.
 
