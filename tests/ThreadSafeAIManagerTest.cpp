@@ -600,8 +600,8 @@ BOOST_FIXTURE_TEST_CASE(TestThreadSafeBatchUpdates, ThreadedAITestFixture) {
     for (int i = 0; i < NUM_BEHAVIORS; ++i) {
         futures.push_back(std::async(std::launch::async, []() {
             for (int j = 0; j < UPDATES_PER_BEHAVIOR; ++j) {
-                // Use the new managed entity update system
-                AIManager::Instance().updateManagedEntities();
+                // Use the unified entity update system
+                AIManager::Instance().update();
                 std::this_thread::sleep_for(std::chrono::milliseconds(2));
             }
         }));
@@ -858,7 +858,7 @@ BOOST_FIXTURE_TEST_CASE(TestConcurrentBehaviorProcessing, ThreadedAITestFixture)
     // Run multiple concurrent updates
     const int NUM_UPDATES = 20;
     for (int i = 0; i < NUM_UPDATES; ++i) {
-        AIManager::Instance().updateManagedEntities();
+        AIManager::Instance().update();
         std::this_thread::sleep_for(std::chrono::milliseconds(5));
     }
 

@@ -63,14 +63,13 @@ void AIManager::clean() {
     {
         std::unique_lock<std::shared_mutex> entitiesLock(m_entitiesMutex);
         std::unique_lock<std::shared_mutex> behaviorsLock(m_behaviorsMutex);
-        std::unique_lock<std::shared_mutex> managedLock(m_managedEntitiesMutex);
         std::lock_guard<std::mutex> assignmentsLock(m_assignmentsMutex);
         std::lock_guard<std::mutex> messagesLock(m_messagesMutex);
 
         m_entities.clear();
         m_entityToIndex.clear();
         m_behaviorTemplates.clear();
-        m_managedEntities.clear();
+
         m_pendingAssignments.clear();
         m_messageQueue.clear();
         
@@ -219,27 +218,30 @@ void AIManager::assignBehaviorToEntity(EntityPtr entity, const std::string& beha
         return;
     }
 
-    // Add to optimized storage
+    // Add to unified spatial system
     {
         std::unique_lock<std::shared_mutex> lock(m_entitiesMutex);
         
-        // Check if entity already has a behavior
+        // Check if entity already exists
         auto it = m_entityToIndex.find(entity);
         if (it != m_entityToIndex.end()) {
-            // Update existing entry
+            // Update existing entry - preserve existing priority
             size_t index = it->second;
             if (index < m_entities.size()) {
                 m_entities[index].behavior = behaviorInstance;
                 m_entities[index].behaviorType = inferBehaviorType(behaviorName);
                 m_entities[index].active = true;
+                // Keep existing priority, frameCounter, etc.
             }
         } else {
-            // Create new entry
+            // Create new entry with default priority (should be set by registerEntityForUpdates first)
             AIEntityData entityData;
             entityData.entity = entity;
             entityData.behavior = behaviorInstance;
             entityData.behaviorType = inferBehaviorType(behaviorName);
             entityData.lastPosition = entity->getPosition();
+            entityData.frameCounter = 0;
+            entityData.priority = 5; // Default priority matching AIDemoState
             entityData.active = true;
             
             size_t index = m_entities.size();
@@ -257,6 +259,8 @@ void AIManager::assignBehaviorToEntity(EntityPtr entity, const std::string& beha
                   << " for entity: " << e.what() << std::endl;
     }
 }
+
+
 
 void AIManager::unassignBehaviorFromEntity(EntityPtr entity) {
     if (!entity) return;
@@ -313,12 +317,12 @@ size_t AIManager::processPendingBehaviorAssignments() {
 }
 
 void AIManager::setPlayerForDistanceOptimization(EntityPtr player) {
-    std::unique_lock<std::shared_mutex> lock(m_managedEntitiesMutex);
+    std::unique_lock<std::shared_mutex> lock(m_entitiesMutex);
     m_playerEntity = player;
 }
 
 EntityPtr AIManager::getPlayerReference() const {
-    std::shared_lock<std::shared_mutex> lock(m_managedEntitiesMutex);
+    std::shared_lock<std::shared_mutex> lock(m_entitiesMutex);
     return m_playerEntity.lock();
 }
 
@@ -328,69 +332,56 @@ Vector2D AIManager::getPlayerPosition() const {
 }
 
 bool AIManager::isPlayerValid() const {
-    std::shared_lock<std::shared_mutex> lock(m_managedEntitiesMutex);
+    std::shared_lock<std::shared_mutex> lock(m_entitiesMutex);
     return !m_playerEntity.expired();
 }
 
 void AIManager::registerEntityForUpdates(EntityPtr entity, int priority) {
     if (!entity) return;
 
-    std::unique_lock<std::shared_mutex> lock(m_managedEntitiesMutex);
+    std::unique_lock<std::shared_mutex> lock(m_entitiesMutex);
     
     // Check if already registered
-    for (const auto& info : m_managedEntities) {
-        if (!info.entityWeak.expired() && info.entityWeak.lock() == entity) {
-            return; // Already registered
+    auto it = m_entityToIndex.find(entity);
+    if (it != m_entityToIndex.end()) {
+        // Update priority if already exists
+        size_t index = it->second;
+        if (index < m_entities.size()) {
+            m_entities[index].priority = priority;
         }
+        return;
     }
 
-    EntityUpdateInfo info;
-    info.entityWeak = entity;
-    info.priority = priority;
-    info.frameCounter = 0;
-    info.lastUpdateTime = getCurrentTimeNanos();
+    // Create new entry - behavior will be assigned separately
+    AIEntityData entityData;
+    entityData.entity = entity;
+    entityData.priority = priority;
+    entityData.frameCounter = 0;
+    entityData.lastPosition = entity->getPosition();
+    entityData.lastUpdateTime = std::chrono::duration<float, std::milli>(
+        std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+    entityData.active = true;
     
-    m_managedEntities.push_back(std::move(info));
+    size_t index = m_entities.size();
+    m_entities.push_back(std::move(entityData));
+    m_entityToIndex[entity] = index;
 }
 
 void AIManager::unregisterEntityFromUpdates(EntityPtr entity) {
     if (!entity) return;
 
-    std::unique_lock<std::shared_mutex> lock(m_managedEntitiesMutex);
-    m_managedEntities.erase(
-        std::remove_if(m_managedEntities.begin(), m_managedEntities.end(),
-            [entity](const EntityUpdateInfo& info) {
-                auto locked = info.entityWeak.lock();
-                return !locked || locked == entity;
-            }),
-        m_managedEntities.end()
-    );
-}
-
-void AIManager::updateManagedEntities() {
-    if (!m_initialized.load(std::memory_order_acquire) || 
-        m_globallyPaused.load(std::memory_order_acquire)) {
-        return;
-    }
-
-    std::shared_lock<std::shared_mutex> lock(m_managedEntitiesMutex);
-    EntityPtr player = m_playerEntity.lock();
-
-    for (auto& info : m_managedEntities) {
-        EntityPtr entity = info.entityWeak.lock();
-        if (!entity) continue;
-
-        try {
-            if (shouldUpdateEntity(entity, player, info.frameCounter, info.priority)) {
-                entity->update();
-                updateEntityBehavior(entity);
-                info.lastUpdateTime = getCurrentTimeNanos();
-            }
-        } catch (const std::exception& e) {
-            std::cerr << "Forge Game Engine - Error updating managed entity: " << e.what() << std::endl;
+    std::unique_lock<std::shared_mutex> lock(m_entitiesMutex);
+    auto it = m_entityToIndex.find(entity);
+    if (it != m_entityToIndex.end()) {
+        size_t index = it->second;
+        if (index < m_entities.size()) {
+            m_entities[index].active = false;
         }
+        m_entityToIndex.erase(it);
     }
 }
+
+
 
 void AIManager::setGlobalPause(bool paused) {
     m_globallyPaused.store(paused, std::memory_order_release);
@@ -547,6 +538,7 @@ BehaviorType AIManager::inferBehaviorType(const std::string& behaviorName) const
 
 void AIManager::processBatch(size_t start, size_t end) {
     auto batchStart = std::chrono::high_resolution_clock::now();
+    EntityPtr player = m_playerEntity.lock();
     
     for (size_t i = start; i < end; ++i) {
         if (i >= m_entities.size()) break;
@@ -557,18 +549,19 @@ void AIManager::processBatch(size_t start, size_t end) {
         }
 
         try {
-            // Update spatial tracking
-            entityData.lastPosition = entityData.entity->getPosition();
-            entityData.lastUpdateTime = std::chrono::duration<float, std::milli>(
-                std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+            if (shouldUpdateEntity(entityData.entity, player, entityData.frameCounter, entityData.priority)) {
+                // Update spatial tracking
+                entityData.lastPosition = entityData.entity->getPosition();
+                entityData.lastUpdateTime = std::chrono::duration<float, std::milli>(
+                    std::chrono::high_resolution_clock::now().time_since_epoch()).count();
 
-            // Execute behavior logic
-            entityData.behavior->executeLogic(entityData.entity);
-            m_totalBehaviorExecutions.fetch_add(1, std::memory_order_relaxed);
+                // Execute behavior logic
+                entityData.behavior->executeLogic(entityData.entity);
+                m_totalBehaviorExecutions.fetch_add(1, std::memory_order_relaxed);
 
-            // Update entity
-            entityData.entity->update();
-
+                // Update entity
+                entityData.entity->update();
+            }
         } catch (const std::exception& e) {
             AI_LOG("Error in batch processing entity: " << e.what());
             entityData.active = false;

@@ -363,7 +363,7 @@ BOOST_FIXTURE_TEST_SUITE(AIIntegrationTests, AIIntegrationTestFixture)
 BOOST_AUTO_TEST_CASE(TestConcurrentUpdates) {
     // Update the AI system multiple times - with shorter sleep time
     for (int i = 0; i < NUM_UPDATES; ++i) {
-        AIManager::Instance().updateManagedEntities();
+        AIManager::Instance().update();
 
         // Let ThreadSystem process tasks, but don't sleep too long
         std::this_thread::sleep_for(std::chrono::milliseconds(2));
