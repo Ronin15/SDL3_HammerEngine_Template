@@ -181,8 +181,11 @@ private:
     static std::string getTextureForNPCType(const std::string& npcType);
 
     // Spawn implementation
-    EntityPtr spawnSingleNPC(const Vector2D& position);
     void cleanDeadEntities();
+
+protected:
+    // Virtual method for test overrides - base implementation returns nullptr
+    virtual EntityPtr spawnSingleNPC(const Vector2D& position);
 };
 
 #endif // NPC_SPAWN_EVENT_HPP
