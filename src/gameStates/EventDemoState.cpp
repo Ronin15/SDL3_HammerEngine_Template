@@ -141,8 +141,8 @@ void EventDemoState::update() {
         m_player->update();
     }
 
-    // Let AIManager handle all NPC updates
-    AIManager::Instance().updateManagedEntities();
+    // Entity updates now handled by GameEngine's AIManager::update() call
+    // No need to call any update methods here
 
     // Clean up invalid NPCs
     auto it = m_spawnedNPCs.begin();
@@ -799,7 +799,7 @@ void EventDemoState::triggerCustomEventDemo() {
         std::string behaviorName1 = determineBehaviorForNPCType(npcType1);
         int priority1 = (npcType1 == "Guard") ? 7 : (npcType1 == "Warrior") ? 8 : (npcType1 == "Merchant") ? 5 : 2;
         AIManager::Instance().registerEntityForUpdates(npc1, priority1);
-        AIManager::Instance().queueBehaviorAssignment(npc1, behaviorName1);
+        AIManager::Instance().assignBehaviorToEntity(npc1, behaviorName1);
         addLogEntry("Registered " + npcType1 + " for updates and queued " + behaviorName1 + " behavior (global batch)");
     }
 
@@ -807,7 +807,7 @@ void EventDemoState::triggerCustomEventDemo() {
         std::string behaviorName2 = determineBehaviorForNPCType(npcType2);
         int priority2 = (npcType2 == "Guard") ? 7 : (npcType2 == "Warrior") ? 8 : (npcType2 == "Merchant") ? 5 : 2;
         AIManager::Instance().registerEntityForUpdates(npc2, priority2);
-        AIManager::Instance().queueBehaviorAssignment(npc2, behaviorName2);
+        AIManager::Instance().assignBehaviorToEntity(npc2, behaviorName2);
         addLogEntry("Registered " + npcType2 + " for updates and queued " + behaviorName2 + " behavior (global batch)");
     }
 
@@ -1158,7 +1158,7 @@ void EventDemoState::createNPCAtPosition(const std::string& npcType, float x, fl
         }
 
         AIManager::Instance().registerEntityForUpdates(npc, priority);
-        AIManager::Instance().queueBehaviorAssignment(npc, behaviorName);
+        AIManager::Instance().assignBehaviorToEntity(npc, behaviorName);
 
         addLogEntry("Registered entity for updates and queued " + behaviorName + " behavior assignment (priority " + std::to_string(priority) + ")");
 

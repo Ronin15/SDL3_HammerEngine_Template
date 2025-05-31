@@ -451,16 +451,16 @@ BOOST_AUTO_TEST_CASE(TestBatchProcessing)
         AIManager::Instance().registerEntityForUpdates(entity);
     }
 
-    // Time the managed entity processing
+    // Time the unified entity processing
     auto startTime = std::chrono::high_resolution_clock::now();
-    AIManager::Instance().updateManagedEntities();
+    AIManager::Instance().update();
     auto endTime = std::chrono::high_resolution_clock::now();
     auto batchDuration = std::chrono::duration_cast<std::chrono::microseconds>(endTime - startTime);
 
     // Time multiple managed updates
     startTime = std::chrono::high_resolution_clock::now();
     for (int i = 0; i < 5; ++i) {
-        AIManager::Instance().updateManagedEntities();
+        AIManager::Instance().update();
     }
     endTime = std::chrono::high_resolution_clock::now();
     auto individualDuration = std::chrono::duration_cast<std::chrono::microseconds>(endTime - startTime);

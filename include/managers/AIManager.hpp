@@ -61,10 +61,12 @@ struct AIEntityData {
     BehaviorType behaviorType;
     Vector2D lastPosition;
     float lastUpdateTime;
+    int frameCounter;
+    int priority;
     bool active;
     
     AIEntityData() : behaviorType(BehaviorType::Custom), lastPosition{0.0f, 0.0f}, 
-                     lastUpdateTime(0.0f), active(true) {}
+                     lastUpdateTime(0.0f), frameCounter(0), priority(0), active(true) {}
 };
 
 /**
@@ -128,10 +130,9 @@ public:
     Vector2D getPlayerPosition() const;
     bool isPlayerValid() const;
 
-    // Entity management
+    // Entity management (now unified with spatial system)
     void registerEntityForUpdates(EntityPtr entity, int priority = 0);
     void unregisterEntityFromUpdates(EntityPtr entity);
-    void updateManagedEntities();
 
     // Global controls
     void setGlobalPause(bool paused);
@@ -222,7 +223,6 @@ private:
     // Thread synchronization
     mutable std::shared_mutex m_entitiesMutex;
     mutable std::shared_mutex m_behaviorsMutex;
-    mutable std::shared_mutex m_managedEntitiesMutex;
     mutable std::mutex m_assignmentsMutex;
     mutable std::mutex m_messagesMutex;
     mutable std::mutex m_statsMutex;

@@ -66,7 +66,7 @@ bool AIDemoState::enter() {
         AIManager::Instance().setPlayerForDistanceOptimization(m_player);
 
         // Create and register chase behavior - behaviors can get player via getPlayerReference()
-        auto chaseBehavior = std::make_unique<ChaseBehavior>(0.6f, 500.0f, 50.0f);
+        auto chaseBehavior = std::make_unique<ChaseBehavior>(2.0f, 500.0f, 50.0f);
         AIManager::Instance().registerBehavior("Chase", std::move(chaseBehavior));
         std::cout << "Forge Game Engine - Chase behavior registered (will use AIManager::getPlayerReference())\n";
 
@@ -158,8 +158,8 @@ void AIDemoState::update() {
             m_player->update();
         }
 
-        // Let AIManager handle all NPC updates (movement + AI logic with distance optimization)
-        AIManager::Instance().updateManagedEntities();
+        // Entity updates now handled by GameEngine's AIManager::update() call
+        // No need to call any update methods here
 
         // Check for any NPC-specific status changes if needed
         for (size_t i = 0; i < m_npcs.size(); i++) {
@@ -227,10 +227,7 @@ void AIDemoState::update() {
         // Assign Wander behavior to all NPCs
         std::cout << "Forge Game Engine - Switching all NPCs to WANDER behavior\n";
         for (auto& npc : m_npcs) {
-            // First make sure we call clean() to properly unassign any existing behavior
-            npc->clean();
-            // Register with AIManager for entity updates and assign the new behavior
-            AIManager::Instance().registerEntityForUpdates(npc, 5);
+            // Assign the new behavior - entity already registered with priority
             AIManager::Instance().assignBehaviorToEntity(npc, "Wander");
         }
         lastKey = 1;
@@ -238,10 +235,7 @@ void AIDemoState::update() {
         // Assign Patrol behavior to all NPCs
         std::cout << "Forge Game Engine - Switching all NPCs to PATROL behavior\n";
         for (auto& npc : m_npcs) {
-            // First make sure we call clean() to properly unassign any existing behavior
-            npc->clean();
-            // Register with AIManager for entity updates and assign the new behavior
-            AIManager::Instance().registerEntityForUpdates(npc, 5);
+            // Assign the new behavior - entity already registered with priority
             AIManager::Instance().assignBehaviorToEntity(npc, "Patrol");
         }
         lastKey = 2;
@@ -253,10 +247,7 @@ void AIDemoState::update() {
         // No manual target updates needed
 
         for (auto& npc : m_npcs) {
-            // First make sure we call clean() to properly unassign any existing behavior
-            npc->clean();
-            // Register with AIManager for entity updates and assign the new behavior
-            AIManager::Instance().registerEntityForUpdates(npc, 5);
+            // Assign the new behavior - entity already registered with priority
             AIManager::Instance().assignBehaviorToEntity(npc, "Chase");
         }
         lastKey = 3;
@@ -326,38 +317,68 @@ void AIDemoState::render() {
 }
 
 void AIDemoState::setupAIBehaviors() {
-    std::cout << "Forge Game Engine - Setting up AI behaviors...\n";
+    std::cout << "AIDemoState: Setting up AI behaviors using EventDemoState implementation...\n";
 
-    // Clean up any existing behaviors first
-    AIManager::Instance().resetBehaviors();
+    if (!AIManager::Instance().hasBehavior("Wander")) {
+        auto wanderBehavior = std::make_unique<WanderBehavior>(WanderBehavior::WanderMode::MEDIUM_AREA, 2.0f);
+        wanderBehavior->setScreenDimensions(m_worldWidth, m_worldHeight);
+        AIManager::Instance().registerBehavior("Wander", std::move(wanderBehavior));
+        std::cout << "AIDemoState: Registered Wander behavior\n";
+    }
 
-    // Create and register wander behavior
-    auto wanderBehavior = std::make_unique<WanderBehavior>(0.5f, 3000.0f, 200.0f);
-    wanderBehavior->setScreenDimensions(m_worldWidth, m_worldHeight);
-    wanderBehavior->setOffscreenProbability(0.2f); // 20% chance to wander offscreen
-    std::cout << "Forge Game Engine - Created WanderBehavior with speed 0.5, interval 3000, radius 200, offscreen probability 0.2\n";
-    AIManager::Instance().registerBehavior("Wander", std::move(wanderBehavior));
+    if (!AIManager::Instance().hasBehavior("SmallWander")) {
+        auto smallWanderBehavior = std::make_unique<WanderBehavior>(WanderBehavior::WanderMode::SMALL_AREA, 1.5f);
+        smallWanderBehavior->setScreenDimensions(m_worldWidth, m_worldHeight);
+        AIManager::Instance().registerBehavior("SmallWander", std::move(smallWanderBehavior));
+        std::cout << "AIDemoState: Registered SmallWander behavior\n";
+    }
 
-    // Create and register patrol behavior with screen-relative coordinates
-    boost::container::small_vector<Vector2D, 10> patrolPoints;
-    patrolPoints.push_back(Vector2D(m_worldWidth * 0.2f, m_worldHeight * 0.2f));
-    patrolPoints.push_back(Vector2D(m_worldWidth * 0.8f, m_worldHeight * 0.2f));
-    patrolPoints.push_back(Vector2D(m_worldWidth * 0.8f, m_worldHeight * 0.8f));
-    patrolPoints.push_back(Vector2D(m_worldWidth * 0.2f, m_worldHeight * 0.8f));
+    if (!AIManager::Instance().hasBehavior("LargeWander")) {
+        auto largeWanderBehavior = std::make_unique<WanderBehavior>(WanderBehavior::WanderMode::LARGE_AREA, 2.5f);
+        largeWanderBehavior->setScreenDimensions(m_worldWidth, m_worldHeight);
+        AIManager::Instance().registerBehavior("LargeWander", std::move(largeWanderBehavior));
+        std::cout << "AIDemoState: Registered LargeWander behavior\n";
+    }
 
-    // Add one offscreen waypoint to force entities off-screen
-    patrolPoints.push_back(Vector2D(-100.0f, m_worldHeight * 0.5f));  // Off the left side
+    if (!AIManager::Instance().hasBehavior("EventWander")) {
+        auto eventWanderBehavior = std::make_unique<WanderBehavior>(WanderBehavior::WanderMode::EVENT_TARGET, 2.0f);
+        eventWanderBehavior->setScreenDimensions(m_worldWidth, m_worldHeight);
+        AIManager::Instance().registerBehavior("EventWander", std::move(eventWanderBehavior));
+        std::cout << "AIDemoState: Registered EventWander behavior\n";
+    }
 
-    std::cout << "Forge Game Engine - Created PatrolBehavior with " << patrolPoints.size() << " waypoints at corners and one offscreen\n";
+    if (!AIManager::Instance().hasBehavior("Patrol")) {
+        auto patrolBehavior = std::make_unique<PatrolBehavior>(PatrolBehavior::PatrolMode::FIXED_WAYPOINTS, 1.5f, true);
+        patrolBehavior->setScreenDimensions(m_worldWidth, m_worldHeight);
+        AIManager::Instance().registerBehavior("Patrol", std::move(patrolBehavior));
+        std::cout << "AIDemoState: Registered Patrol behavior\n";
+    }
 
-    auto patrolBehavior = std::make_unique<PatrolBehavior>(patrolPoints, 0.4f, true);  // Reduced speed to 0.4, enable offscreen
-    patrolBehavior->setScreenDimensions(m_worldWidth, m_worldHeight);
-    AIManager::Instance().registerBehavior("Patrol", std::move(patrolBehavior));
+    if (!AIManager::Instance().hasBehavior("RandomPatrol")) {
+        auto randomPatrolBehavior = std::make_unique<PatrolBehavior>(PatrolBehavior::PatrolMode::RANDOM_AREA, 2.0f, false);
+        randomPatrolBehavior->setScreenDimensions(m_worldWidth, m_worldHeight);
+        AIManager::Instance().registerBehavior("RandomPatrol", std::move(randomPatrolBehavior));
+        std::cout << "AIDemoState: Registered RandomPatrol behavior\n";
+    }
+
+    if (!AIManager::Instance().hasBehavior("CirclePatrol")) {
+        auto circlePatrolBehavior = std::make_unique<PatrolBehavior>(PatrolBehavior::PatrolMode::CIRCULAR_AREA, 1.8f, false);
+        circlePatrolBehavior->setScreenDimensions(m_worldWidth, m_worldHeight);
+        AIManager::Instance().registerBehavior("CirclePatrol", std::move(circlePatrolBehavior));
+        std::cout << "AIDemoState: Registered CirclePatrol behavior\n";
+    }
+
+    if (!AIManager::Instance().hasBehavior("EventTarget")) {
+        auto eventTargetBehavior = std::make_unique<PatrolBehavior>(PatrolBehavior::PatrolMode::EVENT_TARGET, 2.2f, false);
+        eventTargetBehavior->setScreenDimensions(m_worldWidth, m_worldHeight);
+        AIManager::Instance().registerBehavior("EventTarget", std::move(eventTargetBehavior));
+        std::cout << "AIDemoState: Registered EventTarget behavior\n";
+    }
 
     // Chase behavior will be set up after player is created in enter() method
     // This ensures the player reference is available for behaviors to use
 
-    std::cout << "Forge Game Engine - AI behaviors setup complete.\n";
+    std::cout << "AIDemoState: AI behaviors setup complete.\n";
 }
 
 void AIDemoState::updateFrameRate() {

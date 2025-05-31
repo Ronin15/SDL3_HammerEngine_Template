@@ -1,26 +1,29 @@
 # AI Manager System Documentation
 
-## ⚠️ IMPORTANT: Architecture Updates (v3.0+)
+## ⚠️ IMPORTANT: Architecture Updates (v4.0+)
 
-**Major Changes from Previous Versions:**
-**NEW**: Distance-based entity optimization system with player reference
-- **NEW**: `updateManagedEntities()` replaces old `update()` method
-- **NEW**: `registerEntityForUpdates()` with priority-based management
-- **NEW**: Global AI pause/resume system with `setGlobalPause()` and `isGloballyPaused()`
-- **REMOVED**: `batchUpdateAllBehaviors()`, `batchProcessEntities()`, `setPriorityForBehavior()`
-- **CHANGED**: All entity parameters now use `EntityPtr` (shared_ptr) instead of raw pointers
+**Major Changes - Unified System Architecture:**
+- **UNIFIED**: Single high-performance spatial system using `AIEntityData` with all optimizations
+- **ENHANCED**: Distance-based optimization integrated into main `update()` method
+- **SIMPLIFIED**: One registration flow: `registerEntityForUpdates()` + `assignBehaviorToEntity()`
+- **PERFORMANCE**: Batch processing with threading, cache-friendly data structures, type-indexed behaviors
+- **MAINTAINED**: All existing features: global pause, messaging, player reference, priority support
+- **REMOVED**: Dual entity management system (managed entities vs main entities)
+- **CHANGED**: All processing now through single `AIManager::update()` called from GameEngine
 
 ## Overview
 
-The AI Manager is a centralized system for creating and managing autonomous behaviors for game entities. It provides a flexible framework for implementing and controlling various AI behaviors, allowing game entities to exhibit different movement patterns and reactions. The system integrates with ThreadSystem for efficient parallel processing and includes advanced performance optimizations:
+The AI Manager is a high-performance, unified system for managing autonomous behaviors for game entities. It provides a single, optimized framework for implementing and controlling various AI behaviors with advanced performance features:
 
-1. **Distance-based optimization** - Updates entities based on distance from player
-2. **Priority-based entity management** - High-priority entities get more frequent updates
-3. **Individual behavior instances** - Each entity gets its own behavior state via clone()
-4. **Batched behavior assignment** - Queue and process assignments efficiently
-5. **Message queue system** - Asynchronous communication with behaviors
-6. **Automatic entity lifecycle management** - Register once, update automatically
-7. **Global AI pause/resume system** - Complete halt of all AI processing with thread-safe controls
+1. **Unified Spatial System** - Single `AIEntityData` structure with cache-friendly batch processing
+2. **Distance-based optimization** - Frame skipping for distant entities based on player distance
+3. **Priority-based management** - Higher priority entities get larger distance thresholds
+4. **Individual behavior instances** - Each entity gets its own behavior state via clone()
+5. **Threading & Batching** - Automatic batch processing with ThreadSystem integration
+6. **Type-indexed behaviors** - Fast behavior dispatch using enumerated types
+7. **Message queue system** - Asynchronous communication with behaviors
+8. **Global AI pause/resume** - Complete halt of all AI processing with thread-safe controls
+9. **Performance monitoring** - Built-in statistics and performance tracking
 
 ## ⚠️ CRITICAL: Individual Behavior Instances Architecture
 
@@ -199,7 +202,7 @@ AIManager::Instance().broadcastMessage("pause", true);
 // Reverse the patrol route for a specific entity (queued for next update)
 AIManager::Instance().sendMessageToEntity(npc, "reverse");
 
-// Manually process queued messages (normally happens automatically during updateManagedEntities())
+// Manually process queued messages (normally happens automatically during update())
 AIManager::Instance().processMessageQueue();
 ```
 
@@ -211,7 +214,7 @@ The AIManager provides a global pause system that completely halts all AI proces
 
 #### Why Global Pause?
 
-The traditional approach of sending "pause" messages to behaviors only stops the AI logic but still allows `entity->update()` calls to continue, which can result in continued movement due to physics, friction, or other entity systems. The global pause system addresses this by preventing `updateManagedEntities()` from executing entirely when paused.
+The traditional approach of sending "pause" messages to behaviors only stops the AI logic but still allows `entity->update()` calls to continue, which can result in continued movement due to physics, friction, or other entity systems. The global pause system addresses this by preventing `update()` from executing entirely when paused.
 
 #### Usage
 
@@ -277,13 +280,13 @@ void AIDemoState::update() {
 #### Technical Details
 
 - Uses `std::atomic<bool>` for thread-safe access across multiple threads
-- Early return in `updateManagedEntities()` prevents all AI processing when paused
+- Early return in `update()` prevents all AI processing when paused
 - Combines with message system for behaviors that need specific pause/resume handling
 - Memory order semantics ensure proper synchronization across CPU cores
 
 ### Integration with Game Loop
 
-The AIManager now uses a centralized entity management system. Entities are registered once and automatically updated:
+The AIManager uses a unified spatial system. Entities are registered once and automatically updated by GameEngine:
 
 ```cpp
 void GamePlayState::enter() {
@@ -291,18 +294,15 @@ void GamePlayState::enter() {
     AIManager::Instance().registerEntityForUpdates(npc, 7);  // High priority
     AIManager::Instance().setPlayerForDistanceOptimization(player);
     
-    // Queue behavior assignments (processed in batches for performance)
-    AIManager::Instance().queueBehaviorAssignment(npc, "Chase");
+    // Assign behaviors directly (or queue for batch processing)
+    AIManager::Instance().assignBehaviorToEntity(npc, "Chase");
 }
 
 void GamePlayState::update() {
-    // Single call updates all registered entities with distance-based optimization
-    AIManager::Instance().updateManagedEntities();
+    // No need to call AIManager updates - handled by GameEngine::processBackgroundTasks()
+    // GameEngine calls: AIManager::Instance().update();
     
-    // Process any pending behavior assignments
-    AIManager::Instance().processPendingBehaviorAssignments();
-
-    // Your other game update code...
+    // Your game-specific update code...
     player->update();
     checkCollisions();
     updateUI();
@@ -626,11 +626,9 @@ size_t getPendingBehaviorAssignmentCount() const;
 void unassignBehaviorFromEntity(EntityPtr entity);
 bool entityHasBehavior(EntityPtr entity) const;
 
-// 🆕 Entity Management System (v3.0+) - Replaces old batch processing
-void registerEntityForUpdates(EntityPtr entity, int priority = 5);
+// Unified Entity Management System
+void registerEntityForUpdates(EntityPtr entity, int priority = 0);
 void unregisterEntityFromUpdates(EntityPtr entity);
-void updateManagedEntities();
-void updateEntityBehavior(EntityPtr entity);
 size_t getManagedEntityCount() const;
 
 // Player reference for distance optimization
@@ -638,8 +636,9 @@ void setPlayerForDistanceOptimization(EntityPtr player);
 EntityPtr getPlayerReference() const;
 bool isPlayerValid() const;
 
-// Cache validation (replaces ensureOptimizationCachesValid)
-void ensureOptimizationCachesValid();
+// Performance monitoring
+AIPerformanceStats getPerformanceStats() const;
+size_t getBehaviorUpdateCount() const;
 
 // Messaging system
 void sendMessageToEntity(EntityPtr entity, const std::string& message, bool immediate = false);

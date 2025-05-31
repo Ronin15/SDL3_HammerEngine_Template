@@ -289,13 +289,13 @@ struct AIScalingFixture {
                 // Run update with threading
                 for (int update = 0; update < numUpdates; ++update) {
                     // Use managed entity updates
-                    AIManager::Instance().updateManagedEntities();
+                    AIManager::Instance().update();
                 }
             } else {
                 // Run update in single-threaded mode
                 for (int update = 0; update < numUpdates; ++update) {
                     // Use managed entity updates once per update cycle
-                    AIManager::Instance().updateManagedEntities();
+                    AIManager::Instance().update();
                 }
             }
 
@@ -313,28 +313,28 @@ struct AIScalingFixture {
                 if (numEntities >= 10000) {
                     // Temporarily switch to single-threaded mode for large counts
                     AIManager::Instance().configureThreading(false);
-                    AIManager::Instance().updateManagedEntities();
+                    AIManager::Instance().update();
                     std::this_thread::sleep_for(std::chrono::milliseconds(20));
                     AIManager::Instance().configureThreading(true);
 
                     // For extremely large entity counts, add minimal additional synchronization
                     if (numEntities >= 20000) {
                         std::this_thread::sleep_for(std::chrono::milliseconds(20));
-                        AIManager::Instance().updateManagedEntities();
+                        AIManager::Instance().update();
                         std::this_thread::sleep_for(std::chrono::milliseconds(20));
 
                         // Special handling for extreme entity counts (50,000+)
                         if (numEntities >= 50000) {
                             std::this_thread::sleep_for(std::chrono::milliseconds(30));
-                            AIManager::Instance().updateManagedEntities();
+                            AIManager::Instance().update();
                             std::this_thread::sleep_for(std::chrono::milliseconds(30));
 
                             // Extra handling for ultra-large entity counts (100,000+)
                             if (numEntities >= 100000) {
                                 std::this_thread::sleep_for(std::chrono::milliseconds(50));
-                                AIManager::Instance().updateManagedEntities();
+                                AIManager::Instance().update();
                                 std::this_thread::sleep_for(std::chrono::milliseconds(50));
-                                AIManager::Instance().updateManagedEntities();
+                                AIManager::Instance().update();
                                 std::this_thread::sleep_for(std::chrono::milliseconds(50));
                             }
                         }
@@ -342,7 +342,7 @@ struct AIScalingFixture {
                 } else {
                     // Multiple updates for better coverage
                     for (int i = 0; i < 3; i++) {
-                        AIManager::Instance().updateManagedEntities();
+                        AIManager::Instance().update();
                         std::this_thread::sleep_for(std::chrono::milliseconds(10));
                     }
                 }
@@ -403,7 +403,7 @@ struct AIScalingFixture {
             
             // If we have missed entities and threading is enabled, try one more update
             if (useThreading && notUpdatedCount > 0) {
-                AIManager::Instance().updateManagedEntities();
+                AIManager::Instance().update();
                 std::this_thread::sleep_for(std::chrono::milliseconds(20));
                 
                 // Recount missed entities
@@ -524,7 +524,7 @@ struct AIScalingFixture {
             }
 
             // Use managed entity updates for both threading modes
-            AIManager::Instance().updateManagedEntities();
+            AIManager::Instance().update();
 
             // Post-run synchronization (outside of timing)
             if (useThreading) {
@@ -534,7 +534,7 @@ struct AIScalingFixture {
                 std::this_thread::sleep_for(std::chrono::milliseconds(waitTime));
 
                 // Force a second update to catch any entities that weren't processed
-                AIManager::Instance().updateManagedEntities();
+                AIManager::Instance().update();
                 std::this_thread::sleep_for(std::chrono::milliseconds(waitTime));
             }
 
