@@ -28,11 +28,11 @@ class SoundManager {
   // If dirPath is a directory, it loads all supported sound files from that directory
   // Returns true if at least one sound was loaded successfully
   // When loading a directory, soundID is used as a prefix for filenames
-  bool loadSFX(const std::string& fileName,
+  bool loadSFX(const std::string& filePath,
                      const std::string& soundID);
 
   // Loads a music file
-  bool loadMusic(const std::string& fileName,
+  bool loadMusic(const std::string& filePath,
                  const std::string& musicID);
 
   // Play a sound effect

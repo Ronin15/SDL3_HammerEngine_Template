@@ -277,7 +277,7 @@ bool SceneChangeEvent::checkInputCondition() const {
     return isKeyPressed(m_inputKeyName);
 }
 
-bool SceneChangeEvent::checkTimerCondition() {
+bool SceneChangeEvent::checkTimerCondition() const {
     if (!m_useTimer) {
         return true; // No timer condition
     }

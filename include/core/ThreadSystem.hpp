@@ -833,7 +833,7 @@ public:
 
         // Lock for thread safety when accessing mp_threadPool
         std::lock_guard<std::mutex> lock(m_mutex);
-        return m_threadPool && m_threadPool->busy();
+        return m_threadPool->busy();
     }
 
     unsigned int getThreadCount() const {

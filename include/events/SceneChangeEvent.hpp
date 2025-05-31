@@ -97,7 +97,7 @@ struct TransitionParams {
 class SceneChangeEvent : public Event {
 public:
     SceneChangeEvent(const std::string& name, const std::string& targetSceneID);
-    virtual ~SceneChangeEvent() = default;
+    virtual ~SceneChangeEvent() override = default;
     
     // Core event methods implementation
     void update() override;
@@ -183,7 +183,7 @@ private:
     // Helper methods
     bool checkZoneCondition() const;
     bool checkInputCondition() const;
-    bool checkTimerCondition();
+    bool checkTimerCondition() const;
     
     // Helper to get player position
     Vector2D getPlayerPosition() const;

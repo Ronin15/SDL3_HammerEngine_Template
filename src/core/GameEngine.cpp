@@ -279,11 +279,6 @@ bool GameEngine::init(const char* title,
   std::cout << "Forge Game Engine - Creating Game State Manager and setting up "
                "initial Game States\n";
   mp_gameStateManager = std::make_unique<GameStateManager>();
-  if (!mp_gameStateManager) {
-    std::cerr << "Forge Game Engine - Failed to create Game State Manager!"
-              << std::endl;
-    return false;
-  }
 
   // Setting Up initial game states
   mp_gameStateManager->addState(std::make_unique<LogoState>());

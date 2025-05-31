@@ -36,7 +36,7 @@ class TextureManager {
             int y,
             int width,
             int height,
-            SDL_Renderer* p_Renderer,
+            SDL_Renderer* p_renderer,
             SDL_FlipMode flip = SDL_FLIP_NONE);
 
   void drawFrame(const std::string& textureID,

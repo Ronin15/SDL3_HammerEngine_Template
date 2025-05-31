@@ -13,6 +13,7 @@
 #include "managers/FontManager.hpp"
 #include "managers/InputManager.hpp"
 #include <SDL3/SDL.h>
+#include <numeric>
 #include <iostream>
 #include <memory>
 #include <random>
@@ -59,10 +60,6 @@ bool AIDemoState::enter() {
 
         // Create player first (the chase behavior will need it)
         m_player = std::make_shared<Player>();
-        if (!m_player) {
-            std::cerr << "Forge Game Engine - ERROR: Failed to create player!\n";
-            return false;
-        }
         m_player->setPosition(Vector2D(m_worldWidth / 2, m_worldHeight / 2));
 
         // Set player reference in AIManager for distance optimization
@@ -385,11 +382,8 @@ void AIDemoState::updateFrameRate() {
             m_frameTimes.pop_front();
         }
 
-        // Calculate average FPS
-        float sum = 0.0f;
-        for (float fps : m_frameTimes) {
-            sum += fps;
-        }
+        // Calculate average FPS using std::accumulate
+        float sum = std::accumulate(m_frameTimes.begin(), m_frameTimes.end(), 0.0f);
         m_averageFPS = sum / m_frameTimes.size();
     }
 
@@ -411,11 +405,6 @@ void AIDemoState::createNPCs() {
                 // Create NPC with random position
                 Vector2D position(xDist(gen), yDist(gen));
                 auto npc = std::make_shared<NPC>("npc", position, 64, 64);
-
-                if (!npc) {
-                    std::cerr << "Forge Game Engine - ERROR: Failed to create NPC " << i << "\n";
-                    continue;
-                }
 
                 // Set animation properties (adjust based on your actual sprite sheet)
                 npc->setAnimSpeed(150);

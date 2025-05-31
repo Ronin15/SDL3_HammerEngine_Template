@@ -67,7 +67,7 @@ class NPCSpawnEvent : public Event {
 public:
     NPCSpawnEvent(const std::string& name, const std::string& npcType);
     NPCSpawnEvent(const std::string& name, const SpawnParameters& params);
-    virtual ~NPCSpawnEvent() = default;
+    virtual ~NPCSpawnEvent() override = default;
 
     // Core event methods implementation
     void update() override;

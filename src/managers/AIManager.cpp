@@ -128,9 +128,9 @@ void AIManager::registerBehavior(const std::string& behaviorName, std::shared_pt
     invalidateOptimizationCaches();
 }
 
-bool AIManager::hasBehavior(const std::string& name) const {
+bool AIManager::hasBehavior(const std::string& behaviorName) const {
     std::shared_lock<std::shared_mutex> lock(m_behaviorsMutex);
-    return m_behaviors.find(name) != m_behaviors.end();
+    return m_behaviors.find(behaviorName) != m_behaviors.end();
 }
 
 std::shared_ptr<AIBehavior> AIManager::getBehavior(const std::string& behaviorName) const {

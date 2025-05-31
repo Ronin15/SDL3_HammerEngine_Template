@@ -201,7 +201,7 @@ void ChaseBehavior::onTargetLost(EntityPtr entity) {
     (void)entity; // Mark parameter as intentionally unused
 }
 
-bool ChaseBehavior::checkLineOfSight(EntityPtr entity, EntityPtr target) {
+bool ChaseBehavior::checkLineOfSight(EntityPtr entity, EntityPtr target) const {
     // For a more complex implementation, you would do raycasting here
     // This simplified version just checks distance
     if (!entity || !target) return false;

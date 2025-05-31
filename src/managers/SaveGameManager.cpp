@@ -47,10 +47,10 @@ bool SaveGameManager::save(const std::string& saveFileName, const Player* player
         return false;
     }
 
-    // Create full path for the save file
-    std::string fullPath = getFullSavePath(saveFileName);
-
     try {
+        // Create full path for the save file
+        std::string fullPath = getFullSavePath(saveFileName);
+        
         // Make sure parent directory exists once more
         std::filesystem::path filePath(fullPath);
         std::filesystem::path parentPath = filePath.parent_path();
@@ -122,16 +122,14 @@ bool SaveGameManager::saveToSlot(int slotNumber, const Player* player) {
 }
 
 
-bool SaveGameManager::load(const std::string& saveFileName, Player* player) {
+bool SaveGameManager::load(const std::string& saveFileName, Player* player) const {
     if (player == nullptr) {
         std::cerr << "Forge Game Engine - Save Game Manager: Cannot load to null player!" << std::endl;
         return false;
     }
 
-    // Create full path for the save file
-    std::string fullPath = getFullSavePath(saveFileName);
-
     // Check if the file exists
+    std::string fullPath = getFullSavePath(saveFileName);
     if (!std::filesystem::exists(fullPath)) {
         std::cerr << "Forge Game Engine - Save Game Manager: Save file does not exist: " << saveFileName << std::endl;
         return false;
@@ -214,10 +212,9 @@ bool SaveGameManager::loadFromSlot(int slotNumber, Player* player) {
     return load(fileName, player);
 }
 
-bool SaveGameManager::deleteSave(const std::string& saveFileName) {
-    std::string fullPath = getFullSavePath(saveFileName);
-
+bool SaveGameManager::deleteSave(const std::string& saveFileName) const {
     try {
+        std::string fullPath = getFullSavePath(saveFileName);
         if (std::filesystem::exists(fullPath)) {
             std::filesystem::remove(fullPath);
             std::cout << "Forge Game Engine - Save successful: " << saveFileName << "\n";
@@ -299,8 +296,7 @@ boost::container::small_vector<SaveGameData, 10> SaveGameManager::getAllSaveInfo
 }
 
 bool SaveGameManager::saveExists(const std::string& saveFileName) const {
-    std::string fullPath = getFullSavePath(saveFileName);
-    return std::filesystem::exists(fullPath);
+    return std::filesystem::exists(getFullSavePath(saveFileName));
 }
 
 bool SaveGameManager::slotExists(int slotNumber) const {
@@ -313,10 +309,8 @@ bool SaveGameManager::slotExists(int slotNumber) const {
 }
 
 bool SaveGameManager::isValidSaveFile(const std::string& saveFileName) const {
-    // Implementation for isValidSaveFile was missing!
-    std::string fullPath = getFullSavePath(saveFileName);
-
     // Check if file exists
+    std::string fullPath = getFullSavePath(saveFileName);
     if (!std::filesystem::exists(fullPath)) {
         return false;
     }
@@ -440,9 +434,8 @@ SaveGameData SaveGameManager::extractSaveInfo(const std::string& saveFileName) c
     SaveGameData info;
     info.saveName = saveFileName;
 
-    std::string fullPath = getFullSavePath(saveFileName);
-
     // Check if the file exists
+    std::string fullPath = getFullSavePath(saveFileName);
     if (!std::filesystem::exists(fullPath)) {
         return info; // Return empty info
     }
