@@ -133,7 +133,36 @@ EventManager::Instance().createNPCSpawnEvent("villager_group", "Villager", 3, 25
 auto rainEvent = EventFactory::Instance().createWeatherEvent("heavy_rain", "Rainy", 0.8f);
 EventManager::Instance().registerEvent("heavy_rain", rainEvent);
 
+// Advanced EventFactory with EventDefinition (most flexible)
+EventDefinition stormDef;
+stormDef.type = "Weather";
+stormDef.name = "epic_storm";
+stormDef.params["weatherType"] = "Stormy";
+stormDef.numParams["intensity"] = 0.95f;
+stormDef.numParams["transitionTime"] = 1.5f;
+stormDef.numParams["priority"] = 8;
+stormDef.boolParams["oneTime"] = false;
 
+auto stormEvent = EventFactory::Instance().createEvent(stormDef);
+EventManager::Instance().registerEvent("epic_storm", stormEvent);
+
+// Event sequences for complex scenarios
+std::vector<EventDefinition> stormSequence = {
+    {
+        .type = "Weather",
+        .name = "approaching_storm",
+        .params = {{"weatherType", "Cloudy"}},
+        .numParams = {{"intensity", 0.3f}, {"transitionTime", 3.0f}}
+    },
+    {
+        .type = "Weather",
+        .name = "full_storm",
+        .params = {{"weatherType", "Stormy"}},
+        .numParams = {{"intensity", 0.9f}, {"transitionTime", 1.5f}}
+    }
+};
+
+auto stormEvents = EventFactory::Instance().createEventSequence("storm_progression", stormSequence, true);
 ```
 
 ### Triggering Events
@@ -283,3 +312,5 @@ Use it as a reference for implementing events in your own game states.
 - `docs/EventManager.md` - EventManager API and usage
 - `docs/EventManager_ThreadSystem.md` - Threading integration details
 - `docs/EventManagerExamples.cpp` - Code examples and patterns
+- `docs/EventFactory.md` - Complete EventFactory documentation with advanced features
+- `docs/EventFactory_QuickReference.md` - EventFactory quick reference and API lookup

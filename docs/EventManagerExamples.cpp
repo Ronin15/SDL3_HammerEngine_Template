@@ -5,279 +5,564 @@
 
 /**
  * @file EventManagerExamples.cpp
- * @brief Examples of how to use the EventManager system
+ * @brief Comprehensive examples of the optimized EventManager API
  * 
- * This file contains code snippets demonstrating common usage patterns
- * for the EventManager system. These are examples only and not meant to
- * be compiled directly.
+ * This file demonstrates the new high-performance EventManager with:
+ * - Convenience methods for one-line event creation
+ * - Direct triggering methods for immediate events
+ * - Realistic performance patterns for games
+ * - Proper threading configuration
+ * - Performance monitoring examples
  */
 
 #include "managers/EventManager.hpp"
-#include "events/WeatherEvent.hpp"
-#include "events/SceneChangeEvent.hpp"
-#include "events/NPCSpawnEvent.hpp"
-#include "events/EventFactory.hpp"
-#include "managers/EventManager.hpp"
 #include "core/ThreadSystem.hpp"
+#include <iostream>
+#include <vector>
+#include <string>
+#include <chrono>
 
-// Example 1: Using Convenience Methods (RECOMMENDED - New!)
-void convenienceMethodsExample() {
-    // NEW WAY: Create and register in one call - much cleaner!
-    EventManager::Instance().createWeatherEvent("MorningRain", "Rainy", 0.7f, 5.0f);
-    EventManager::Instance().createSceneChangeEvent("QuickExit", "MainMenu", "fade", 2.0f);
-    EventManager::Instance().createNPCSpawnEvent("GuardPatrol", "Guard", 2, 30.0f);
+//=============================================================================
+// Example 1: Basic Setup and Initialization
+//=============================================================================
+
+void example1_BasicSetup() {
+    std::cout << "=== Example 1: Basic Setup ===" << std::endl;
     
-    // Create multiple events quickly
-    EventManager::Instance().createWeatherEvent("MorningFog", "Foggy", 0.5f);
-    EventManager::Instance().createWeatherEvent("EveningStorm", "Stormy", 0.9f);
-    EventManager::Instance().createSceneChangeEvent("ToShop", "ShopScene", "slide", 1.5f);
-    EventManager::Instance().createSceneChangeEvent("ToInventory", "InventoryScene", "dissolve");
-    EventManager::Instance().createNPCSpawnEvent("VillagerGroup", "Villager", 3, 25.0f);
-    EventManager::Instance().createNPCSpawnEvent("MerchantStand", "Merchant", 1, 15.0f);
+    // Initialize ThreadSystem first (required for threading)
+    if (!Forge::ThreadSystem::Instance().init()) {
+        std::cerr << "Failed to initialize ThreadSystem!" << std::endl;
+        return;
+    }
     
-    std::cout << "Created and registered 9 events with minimal code!" << std::endl;
+    // Initialize EventManager
+    if (!EventManager::Instance().init()) {
+        std::cerr << "Failed to initialize EventManager!" << std::endl;
+        return;
+    }
     
-    // Later, to force a weather change immediately:
-    EventManager::Instance().changeWeather("Rainy", 3.0f);
+    // Configure threading for optimal performance
+    EventManager::Instance().enableThreading(true);
+    EventManager::Instance().setThreadingThreshold(50); // Use threading for 50+ events
+    
+    std::cout << "EventManager initialized with threading enabled" << std::endl;
+    std::cout << "Threading threshold: 50 events" << std::endl;
 }
 
-// Example 2: Traditional Method (Still Supported)
-void weatherEventExample() {
-    // OLD WAY: Create then register separately
-    auto rainEvent = std::make_shared<WeatherEvent>("Rain", WeatherType::Rainy);
+//=============================================================================
+// Example 2: Creating Events with New Convenience Methods
+//=============================================================================
+
+void example2_ConvenienceMethodsCreation() {
+    std::cout << "\n=== Example 2: New Convenience Methods ===" << std::endl;
     
-    // Configure weather parameters
-    WeatherParams params;
-    params.intensity = 0.7f;
-    params.transitionTime = 5.0f;
-    params.visibility = 0.6f;
-    params.particleEffect = "rain";
-    params.soundEffect = "rain_ambient";
-    rainEvent->setWeatherParams(params);
+    // Weather events - create and register in one call
+    bool success1 = EventManager::Instance().createWeatherEvent("MorningFog", "Foggy", 0.5f, 3.0f);
+    bool success2 = EventManager::Instance().createWeatherEvent("HeavyStorm", "Stormy", 0.9f, 2.0f);
+    bool success3 = EventManager::Instance().createWeatherEvent("ClearSkies", "Clear", 1.0f, 1.0f);
     
-    // Register the event with the EventManager
-    EventManager::Instance().registerEvent("MorningRain", rainEvent);
+    // Scene change events - create and register in one call
+    bool success4 = EventManager::Instance().createSceneChangeEvent("ToMainMenu", "MainMenu", "fade", 1.5f);
+    bool success5 = EventManager::Instance().createSceneChangeEvent("ToShop", "ShopScene", "slide", 2.0f);
+    bool success6 = EventManager::Instance().createSceneChangeEvent("ToBattle", "BattleScene", "dissolve", 2.5f);
     
-    // Later, to force a weather change immediately:
-    EventManager::Instance().changeWeather("Rainy", 3.0f);
+    // NPC spawn events - create and register in one call
+    bool success7 = EventManager::Instance().createNPCSpawnEvent("GuardPatrol", "Guard", 2, 25.0f);
+    bool success8 = EventManager::Instance().createNPCSpawnEvent("VillagerGroup", "Villager", 5, 40.0f);
+    bool success9 = EventManager::Instance().createNPCSpawnEvent("MerchantSpawn", "Merchant", 1, 15.0f);
+    
+    // Report results
+    int successCount = success1 + success2 + success3 + success4 + success5 + success6 + success7 + success8 + success9;
+    std::cout << "Created " << successCount << "/9 events using convenience methods" << std::endl;
+    
+    // Show event counts by type
+    size_t weatherCount = EventManager::Instance().getEventCount(EventTypeId::Weather);
+    size_t sceneCount = EventManager::Instance().getEventCount(EventTypeId::SceneChange);
+    size_t npcCount = EventManager::Instance().getEventCount(EventTypeId::NPCSpawn);
+    
+    std::cout << "Event counts - Weather: " << weatherCount 
+              << ", Scene: " << sceneCount 
+              << ", NPC: " << npcCount << std::endl;
 }
 
-// Example 3: Scene Change Event (Traditional Method)
-void sceneChangeEventExample() {
-    // Create a scene change event using EventFactory
-    auto sceneEvent = EventFactory::Instance().createSceneChangeEvent(
-        "ToMainMenu",        // Event name
-        "MainMenu",          // Target scene
-        "fade",              // Transition type
-        1.5f                 // Duration in seconds
-    );
+//=============================================================================
+// Example 3: Direct Event Triggering
+//=============================================================================
+
+void example3_DirectTriggering() {
+    std::cout << "\n=== Example 3: Direct Event Triggering ===" << std::endl;
     
-    // Configure a trigger zone (rectangular area)
-    auto sceneChangePtr = std::static_pointer_cast<SceneChangeEvent>(sceneEvent);
-    sceneChangePtr->setTriggerZone(
-        100.0f, 100.0f,      // Top-left corner
-        200.0f, 200.0f       // Bottom-right corner
-    );
+    // Direct weather changes (no pre-registration needed)
+    bool weatherSuccess1 = EventManager::Instance().triggerWeatherChange("Rainy", 3.0f);
+    bool weatherSuccess2 = EventManager::Instance().changeWeather("Stormy", 1.5f); // Alternative method name
     
-    // Require player to press a key when in zone
-    sceneChangePtr->setRequirePlayerInput(true);
-    sceneChangePtr->setInputKey("E");
+    // Direct scene transitions
+    bool sceneSuccess1 = EventManager::Instance().triggerSceneChange("BattleScene", "fade", 2.0f);
+    bool sceneSuccess2 = EventManager::Instance().changeScene("MainMenu", "dissolve", 1.0f); // Alternative method name
     
-    // Register the event
-    EventManager::Instance().registerEvent("ToMainMenu", sceneEvent);
+    // Direct NPC spawning
+    bool npcSuccess1 = EventManager::Instance().triggerNPCSpawn("Merchant", 100.0f, 200.0f);
+    bool npcSuccess2 = EventManager::Instance().spawnNPC("Guard", 250.0f, 150.0f); // Alternative method name
     
-    // Later, to trigger a scene change immediately:
-    EventManager::Instance().changeScene("MainMenu", "dissolve", 2.0f);
+    std::cout << "Direct triggering results:" << std::endl;
+    std::cout << "Weather changes: " << (weatherSuccess1 + weatherSuccess2) << "/2" << std::endl;
+    std::cout << "Scene changes: " << (sceneSuccess1 + sceneSuccess2) << "/2" << std::endl;
+    std::cout << "NPC spawns: " << (npcSuccess1 + npcSuccess2) << "/2" << std::endl;
 }
 
-// Example 4: NPC Spawn Event
-void npcSpawnEventExample() {
-    // Create an NPC spawn event
-    auto spawnEvent = std::make_shared<NPCSpawnEvent>("GuardSpawn", "Guard");
-    
-    // Configure spawn parameters
-    SpawnParameters params;
-    params.npcType = "Guard";
-    params.count = 3;
-    params.spawnRadius = 10.0f;
-    params.facingPlayer = true;
-    params.fadeIn = true;
-    params.fadeTime = 1.0f;
-    params.playSpawnEffect = true;
-    params.spawnEffectID = "smoke";
-    params.spawnSoundID = "spawn_sound";
-    params.aiBehavior = "patrol";
-    spawnEvent->setSpawnParameters(params);
-    
-    // Set spawn area (circular area)
-    spawnEvent->setSpawnArea(150.0f, 150.0f, 20.0f);
-    
-    // Add proximity trigger (spawn when player gets close)
-    spawnEvent->setProximityTrigger(50.0f);
-    
-    // Set respawn time if all NPCs are defeated
-    spawnEvent->setRespawnTime(60.0f); // 1 minute cooldown
-    
-    // Register the event
-    EventManager::Instance().registerEvent("GuardSpawn", spawnEvent);
-    
-    // Later, to spawn an NPC immediately:
-    EventManager::Instance().triggerNPCSpawn("Guard", 100.0f, 200.0f);
-}
+//=============================================================================
+// Example 4: Event Handlers and Batch Processing
+//=============================================================================
 
-// Example 4: Using EventManager for simplified integration
-void eventManagerExample() {
-    // Initialize the event manager
-    EventManager::Instance().init();
+void example4_HandlersAndBatching() {
+    std::cout << "\n=== Example 4: Event Handlers and Batch Processing ===" << std::endl;
     
-    // Create and register common event types with new convenience methods
-    EventManager::Instance().createWeatherEvent("Rain", "Rainy", 0.7f);
-    EventManager::Instance().createSceneChangeEvent("ToMainMenu", "MainMenu", "fade");
-    EventManager::Instance().createNPCSpawnEvent("GuardSpawn", "Guard", 3, 10.0f);
+    // Register handlers by event type for optimal performance
+    EventManager::Instance().registerHandler(EventTypeId::Weather,
+        [](const EventData& /*data*/) {
+            std::cout << "Weather event processed (batch)" << std::endl;
+            // Handle weather changes here
+        });
     
-    // Register event handlers for system integration
-    EventManager::Instance().registerEventHandler("WeatherChange", [](const std::string& weatherType) {
-        std::cout << "Weather changed to: " << weatherType << std::endl;
-    });
+    EventManager::Instance().registerHandler(EventTypeId::NPCSpawn,
+        [](const EventData& /*data*/) {
+            std::cout << "NPC spawn event processed (batch)" << std::endl;
+            // Handle NPC spawning here
+        });
     
-    // Trigger events directly
-    EventManager::Instance().triggerWeatherChange("Rainy", 3.0f);
-    EventManager::Instance().triggerSceneChange("MainMenu", "fade", 1.0f);
-    EventManager::Instance().triggerNPCSpawn("Guard", 100.0f, 200.0f);
+    EventManager::Instance().registerHandler(EventTypeId::SceneChange,
+        [](const EventData& /*data*/) {
+            std::cout << "Scene change event processed (batch)" << std::endl;
+            // Handle scene transitions here
+        });
     
-    std::cout << "EventManager configured with " << EventManager::Instance().getEventCount() << " events" << std::endl;
+    std::cout << "Event handlers registered for batch processing" << std::endl;
     
-    // Don't forget to update the event manager each frame
+    // Process all events efficiently
     EventManager::Instance().update();
+    std::cout << "Batch update completed" << std::endl;
 }
 
-// Example 5: Creating an event sequence
-void eventSequenceExample() {
-    // Define a sequence of events
-    std::vector<EventDefinition> dungeonEntranceSequence = {
-        // First: Weather changes to foggy
-        {"Weather", "DungeonFog", {{"weatherType", "Foggy"}}, {{"intensity", 0.8f}, {"transitionTime", 3.0f}}, {}},
+//=============================================================================
+// Example 5: Performance Monitoring
+//=============================================================================
+
+void example5_PerformanceMonitoring() {
+    std::cout << "\n=== Example 5: Performance Monitoring ===" << std::endl;
+    
+    // Create some events for testing
+    for (int i = 0; i < 10; ++i) {
+        EventManager::Instance().createWeatherEvent("test_weather_" + std::to_string(i), "Rainy", 0.5f, 1.0f);
+        EventManager::Instance().createNPCSpawnEvent("test_npc_" + std::to_string(i), "Guard", 1, 10.0f);
+    }
+    
+    // Process events to generate performance data
+    EventManager::Instance().update();
+    
+    // Get performance statistics by event type
+    auto weatherStats = EventManager::Instance().getPerformanceStats(EventTypeId::Weather);
+    auto npcStats = EventManager::Instance().getPerformanceStats(EventTypeId::NPCSpawn);
+    
+    std::cout << "Performance Statistics:" << std::endl;
+    std::cout << "Weather Events:" << std::endl;
+    std::cout << "  Average time: " << weatherStats.avgTime << "ms" << std::endl;
+    std::cout << "  Min time: " << weatherStats.minTime << "ms" << std::endl;
+    std::cout << "  Max time: " << weatherStats.maxTime << "ms" << std::endl;
+    std::cout << "  Total calls: " << weatherStats.callCount << std::endl;
+    
+    std::cout << "NPC Events:" << std::endl;
+    std::cout << "  Average time: " << npcStats.avgTime << "ms" << std::endl;
+    std::cout << "  Min time: " << npcStats.minTime << "ms" << std::endl;
+    std::cout << "  Max time: " << npcStats.maxTime << "ms" << std::endl;
+    std::cout << "  Total calls: " << npcStats.callCount << std::endl;
+    
+    // Get event counts
+    size_t totalEvents = EventManager::Instance().getEventCount();
+    size_t weatherEvents = EventManager::Instance().getEventCount(EventTypeId::Weather);
+    size_t npcEvents = EventManager::Instance().getEventCount(EventTypeId::NPCSpawn);
+    
+    std::cout << "Event Counts:" << std::endl;
+    std::cout << "  Total: " << totalEvents << std::endl;
+    std::cout << "  Weather: " << weatherEvents << std::endl;
+    std::cout << "  NPC: " << npcEvents << std::endl;
+    
+    // Reset performance statistics for fresh monitoring
+    EventManager::Instance().resetPerformanceStats();
+    std::cout << "Performance statistics reset" << std::endl;
+}
+
+//=============================================================================
+// Example 6: Event Management and Control
+//=============================================================================
+
+void example6_EventManagement() {
+    std::cout << "\n=== Example 6: Event Management and Control ===" << std::endl;
+    
+    // Create a test event
+    bool created = EventManager::Instance().createWeatherEvent("TestEvent", "Rainy", 0.8f, 2.0f);
+    std::cout << "Created test event: " << (created ? "Success" : "Failed") << std::endl;
+    
+    // Query events
+    bool hasEvent = EventManager::Instance().hasEvent("TestEvent");
+    std::cout << "Has TestEvent: " << (hasEvent ? "Yes" : "No") << std::endl;
+    
+    // Get specific event
+    auto event = EventManager::Instance().getEvent("TestEvent");
+    std::cout << "Retrieved TestEvent: " << (event ? "Success" : "Failed") << std::endl;
+    
+    // Get events by type
+    auto weatherEvents = EventManager::Instance().getEventsByType(EventTypeId::Weather);
+    std::cout << "Weather events count: " << weatherEvents.size() << std::endl;
+    
+    // Control event state
+    EventManager::Instance().setEventActive("TestEvent", false);
+    bool isActive = EventManager::Instance().isEventActive("TestEvent");
+    std::cout << "TestEvent active after disable: " << (isActive ? "Yes" : "No") << std::endl;
+    
+    // Re-enable event
+    EventManager::Instance().setEventActive("TestEvent", true);
+    isActive = EventManager::Instance().isEventActive("TestEvent");
+    std::cout << "TestEvent active after enable: " << (isActive ? "Yes" : "No") << std::endl;
+    
+    // Remove event
+    bool removed = EventManager::Instance().removeEvent("TestEvent");
+    std::cout << "Removed TestEvent: " << (removed ? "Success" : "Failed") << std::endl;
+    
+    // Verify removal
+    hasEvent = EventManager::Instance().hasEvent("TestEvent");
+    std::cout << "Has TestEvent after removal: " << (hasEvent ? "Yes" : "No") << std::endl;
+}
+
+//=============================================================================
+// Example 7: Realistic Game Scenario - Weather System
+//=============================================================================
+
+class WeatherSystem {
+private:
+    std::vector<std::string> m_weatherTypes = {"Clear", "Cloudy", "Rainy", "Stormy", "Foggy"};
+    size_t m_currentIndex = 0;
+
+public:
+    void init() {
+        std::cout << "\n=== Example 7: Realistic Weather System ===" << std::endl;
         
-        // Second: Spawn guardian NPC
-        {"NPCSpawn", "DungeonGuardian", {{"npcType", "DungeonGuard"}}, {{"count", 1.0f}, {"spawnRadius", 0.0f}}, {}},
+        // Create weather events for each type with realistic parameters
+        for (size_t i = 0; i < m_weatherTypes.size(); ++i) {
+            const auto& weather = m_weatherTypes[i];
+            float intensity = (weather == "Clear") ? 0.0f : 0.5f + (i * 0.1f);
+            float duration = 2.0f + (i * 0.5f); // Varying transition times
+            
+            bool success = EventManager::Instance().createWeatherEvent(
+                "weather_" + weather, weather, intensity, duration);
+            
+            std::cout << "Created " << weather << " weather event: " 
+                      << (success ? "Success" : "Failed") << std::endl;
+        }
         
-        // Third: Scene change to dungeon interior
-        {"SceneChange", "EnterDungeon", {{"targetScene", "DungeonInterior"}, {"transitionType", "fade"}}, 
-         {{"duration", 2.0f}}, {}}
-    };
-    
-    // Create the sequence (true = sequential execution)
-    auto sequenceEvents = EventFactory::Instance().createEventSequence(
-        "DungeonEntrance", dungeonEntranceSequence, true);
-    
-    // Register all events in the sequence
-    for (auto& event : sequenceEvents) {
-        EventManager::Instance().registerEvent(event->getName(), event);
+        // Register weather change handler
+        EventManager::Instance().registerHandler(EventTypeId::Weather,
+            [this](const EventData& /*data*/) { 
+                onWeatherChanged(); 
+            });
+        
+        std::cout << "Weather system initialized with " << m_weatherTypes.size() << " weather types" << std::endl;
     }
     
-    // Later, to start the sequence, execute the first event
-    EventManager::Instance().executeEvent("DungeonFog");
-}
-
-// Example 6: Custom event conditions
-void customEventConditionsExample() {
-    // Create a weather event with custom conditions
-    auto stormEvent = EventFactory::Instance().createWeatherEvent("ThunderStorm", "Stormy", 1.0f);
-    
-    // Add a random chance condition (30% chance of storm when conditions are checked)
-    auto weatherPtr = std::static_pointer_cast<WeatherEvent>(stormEvent);
-    weatherPtr->addRandomChanceCondition(0.3f);
-    
-    // Add a custom condition based on player health
-    int playerHealth = 50; // Placeholder value
-    weatherPtr->addTimeCondition([playerHealth]() {
-        // This would typically check the player's health from the game state
-        return playerHealth < 30; // Storm only happens when player health is low
-    });
-    
-    // Register the event
-    EventManager::Instance().registerEvent("ThunderStorm", stormEvent);
-}
-
-// Example 8: Message-based event communication
-void eventMessagingExample() {
-    // Create events that respond to messages
-    auto weatherSystem = EventFactory::Instance().createWeatherEvent("WeatherSystem", "Clear");
-    
-    // Register the event
-    EventManager::Instance().registerEvent("WeatherSystem", weatherSystem);
-    
-    // Later, send messages to control the weather
-    EventManager::Instance().sendMessageToEvent("WeatherSystem", "SET_RAINY");
-    EventManager::Instance().sendMessageToEvent("WeatherSystem", "SET_INTENSITY:0.8");
-    
-    // Broadcast a message to all events
-    EventManager::Instance().broadcastMessage("GAME_PAUSED");
-    
-    // Send a message to all events of a certain type
-    EventManager::Instance().broadcastMessageToType("Weather", "RESET");
-}
-
-// Example 9: Thread-safe event processing with ThreadSystem
-void threadSafeEventProcessingExample() {
-    // First, ensure ThreadSystem is initialized
-    if (!Forge::ThreadSystem::Exists()) {
-        Forge::ThreadSystem::Instance().init();
+    void cycleWeather() {
+        std::string nextWeather = m_weatherTypes[m_currentIndex];
+        m_currentIndex = (m_currentIndex + 1) % m_weatherTypes.size();
+        
+        // Use convenience method for immediate weather change
+        float transitionTime = 2.0f + (m_currentIndex * 0.3f); // Varying transition times
+        bool success = EventManager::Instance().triggerWeatherChange(nextWeather, transitionTime);
+        
+        std::cout << "Triggered weather change to " << nextWeather 
+                  << " (transition: " << transitionTime << "s): " 
+                  << (success ? "Success" : "Failed") << std::endl;
     }
     
-    // Configure EventManager to use ThreadSystem for multi-threaded processing
-    EventManager::Instance().configureThreading(true, 4); // Use up to 4 concurrent tasks
-    
-    // Register events as usual - EventManager handles thread safety internally
-    auto event1 = EventFactory::Instance().createWeatherEvent("Rain", "Rainy");
-    auto event2 = EventFactory::Instance().createWeatherEvent("Fog", "Foggy");
-    auto event3 = EventFactory::Instance().createWeatherEvent("Snow", "Snowy");
-    auto event4 = EventFactory::Instance().createWeatherEvent("Storm", "Stormy");
-    
-    EventManager::Instance().registerEvent("Rain", event1);
-    EventManager::Instance().registerEvent("Fog", event2);
-    EventManager::Instance().registerEvent("Snow", event3);
-    EventManager::Instance().registerEvent("Storm", event4);
-    
-    // Events will be processed in parallel through ThreadSystem during update
-    EventManager::Instance().update();
-    
-    // For cleanup during shutdown
-    EventManager::Instance().configureThreading(false);
-    
-    // ThreadSystem cleanup should be handled by the application's main shutdown sequence
-    // Forge::ThreadSystem::Instance().clean();
-}
-
-// Example 9: Advanced ThreadSystem integration with EventManager
-void advancedThreadingExample() {
-    // Initialize both systems early in your application startup
-    Forge::ThreadSystem::Instance().init(512); // Initialize with custom queue capacity
-    EventManager::Instance().init();
-    
-    // Configure threading options
-    EventManager::Instance().configureThreading(true);
-    
-    // Create many events for batch processing
-    for (int i = 0; i < 100; i++) {
-        auto event = EventFactory::Instance().createWeatherEvent(
-            "Weather" + std::to_string(i), 
-            i % 4 == 0 ? "Rainy" : i % 4 == 1 ? "Foggy" : i % 4 == 2 ? "Snowy" : "Stormy"
-        );
-        EventManager::Instance().registerEvent("Weather" + std::to_string(i), event);
+    void getWeatherStats() {
+        auto stats = EventManager::Instance().getPerformanceStats(EventTypeId::Weather);
+        size_t weatherCount = EventManager::Instance().getEventCount(EventTypeId::Weather);
+        
+        std::cout << "Weather System Stats:" << std::endl;
+        std::cout << "  Registered weather events: " << weatherCount << std::endl;
+        std::cout << "  Average processing time: " << stats.avgTime << "ms" << std::endl;
+        std::cout << "  Total weather changes: " << stats.callCount << std::endl;
     }
     
-    // EventManager automatically organizes events into type-based batches
-    // for optimal thread utilization
-    EventManager::Instance().update();
+private:
+    void onWeatherChanged() {
+        std::cout << "Weather system responding to weather change event" << std::endl;
+        // Update weather-dependent game systems:
+        // - Particle effects
+        // - Lighting systems
+        // - NPC behavior
+        // - Player visibility
+        // - Sound effects
+    }
+};
+
+//=============================================================================
+// Example 8: Performance Scaling Demonstration
+//=============================================================================
+
+void example8_PerformanceScaling() {
+    std::cout << "\n=== Example 8: Performance Scaling Demonstration ===" << std::endl;
     
-    // For testing and debugging scenarios, you can disable threading
-    EventManager::Instance().configureThreading(false);
+    // Test different event counts to show scaling
+    std::vector<size_t> testSizes = {10, 50, 100, 200}; // Realistic game scales
     
-    // Always clean up properly during application shutdown
-    EventManager::Instance().clean();
-    // Forge::ThreadSystem::Instance().clean(); // Done by the application
+    for (size_t testSize : testSizes) {
+        std::cout << "\nTesting with " << testSize << " events:" << std::endl;
+        
+        // Reset performance stats for clean measurement
+        EventManager::Instance().resetPerformanceStats();
+        
+        // Create test events (realistic mix)
+        size_t weatherEvents = testSize / 3;      // ~33% weather events
+        size_t npcEvents = testSize / 2;          // ~50% NPC events  
+        size_t sceneEvents = testSize - weatherEvents - npcEvents; // Remaining scene events
+        
+        // Create weather events
+        for (size_t i = 0; i < weatherEvents; ++i) {
+            std::string weatherType = (i % 2 == 0) ? "Rainy" : "Clear";
+            EventManager::Instance().createWeatherEvent(
+                "scale_weather_" + std::to_string(i), weatherType, 0.5f, 1.0f);
+        }
+        
+        // Create NPC events
+        for (size_t i = 0; i < npcEvents; ++i) {
+            std::string npcType = (i % 2 == 0) ? "Guard" : "Villager";
+            EventManager::Instance().createNPCSpawnEvent(
+                "scale_npc_" + std::to_string(i), npcType, 1, 20.0f);
+        }
+        
+        // Create scene events
+        for (size_t i = 0; i < sceneEvents; ++i) {
+            EventManager::Instance().createSceneChangeEvent(
+                "scale_scene_" + std::to_string(i), "TestScene", "fade", 1.0f);
+        }
+        
+        // Measure update performance
+        auto startTime = std::chrono::high_resolution_clock::now();
+        EventManager::Instance().update();
+        auto endTime = std::chrono::high_resolution_clock::now();
+        
+        auto duration = std::chrono::duration_cast<std::chrono::microseconds>(endTime - startTime);
+        double updateTimeMs = duration.count() / 1000.0;
+        
+        // Get final counts
+        size_t finalTotal = EventManager::Instance().getEventCount();
+        
+        std::cout << "  Created events: " << finalTotal << std::endl;
+        std::cout << "  Update time: " << updateTimeMs << "ms" << std::endl;
+        std::cout << "  Events/second: " << (finalTotal / (updateTimeMs / 1000.0)) << std::endl;
+        std::cout << "  Threading enabled: " << (EventManager::Instance().isThreadingEnabled() ? "Yes" : "No") << std::endl;
+        
+        // Clean up for next test
+        EventManager::Instance().compactEventStorage();
+    }
 }
 
-// Note: These examples are meant to be instructional, not functional code.
-// In a real application, you would integrate these patterns into your game architecture.
+//=============================================================================
+// Example 9: Memory Management
+//=============================================================================
+
+void example9_MemoryManagement() {
+    std::cout << "\n=== Example 9: Memory Management ===" << std::endl;
+    
+    // Create many events to demonstrate memory management
+    std::cout << "Creating 100 temporary events..." << std::endl;
+    for (int i = 0; i < 100; ++i) {
+        EventManager::Instance().createWeatherEvent("temp_" + std::to_string(i), "Rainy", 0.5f, 1.0f);
+    }
+    
+    size_t beforeCount = EventManager::Instance().getEventCount();
+    std::cout << "Events before cleanup: " << beforeCount << std::endl;
+    
+    // Remove temporary events
+    std::cout << "Removing temporary events..." << std::endl;
+    for (int i = 0; i < 100; ++i) {
+        EventManager::Instance().removeEvent("temp_" + std::to_string(i));
+    }
+    
+    size_t afterRemoval = EventManager::Instance().getEventCount();
+    std::cout << "Events after removal: " << afterRemoval << std::endl;
+    
+    // Compact storage to reclaim memory
+    std::cout << "Compacting event storage..." << std::endl;
+    EventManager::Instance().compactEventStorage();
+    
+    size_t afterCompact = EventManager::Instance().getEventCount();
+    std::cout << "Events after compaction: " << afterCompact << std::endl;
+    
+    std::cout << "Memory management complete" << std::endl;
+}
+
+//=============================================================================
+// Example 10: Complete Game Integration Example
+//=============================================================================
+
+class GameState {
+private:
+    WeatherSystem m_weatherSystem;
+    bool m_initialized = false;
+
+public:
+    bool init() {
+        std::cout << "\n=== Example 10: Complete Game Integration ===" << std::endl;
+        
+        // Initialize core systems
+        if (!Forge::ThreadSystem::Instance().init()) {
+            std::cerr << "Failed to initialize ThreadSystem!" << std::endl;
+            return false;
+        }
+        
+        if (!EventManager::Instance().init()) {
+            std::cerr << "Failed to initialize EventManager!" << std::endl;
+            return false;
+        }
+        
+        // Configure for game-scale performance
+        EventManager::Instance().enableThreading(true);
+        EventManager::Instance().setThreadingThreshold(50);
+        
+        // Initialize weather system
+        m_weatherSystem.init();
+        
+        // Create initial game events
+        createGameEvents();
+        
+        // Register global game handlers
+        registerGameHandlers();
+        
+        m_initialized = true;
+        std::cout << "Game state initialized successfully" << std::endl;
+        return true;
+    }
+    
+    void update() {
+        if (!m_initialized) return;
+        
+        // Single efficient update call processes all events
+        EventManager::Instance().update();
+        
+        // Example: Cycle weather every few seconds in demo
+        static int updateCount = 0;
+        if (++updateCount % 300 == 0) { // Every ~5 seconds at 60 FPS
+            m_weatherSystem.cycleWeather();
+        }
+    }
+    
+    void showStats() {
+        if (!m_initialized) return;
+        
+        std::cout << "\n=== Game State Statistics ===" << std::endl;
+        
+        // Show event counts by type
+        size_t total = EventManager::Instance().getEventCount();
+        size_t weather = EventManager::Instance().getEventCount(EventTypeId::Weather);
+        size_t npcs = EventManager::Instance().getEventCount(EventTypeId::NPCSpawn);
+        size_t scenes = EventManager::Instance().getEventCount(EventTypeId::SceneChange);
+        
+        std::cout << "Event Counts:" << std::endl;
+        std::cout << "  Total: " << total << std::endl;
+        std::cout << "  Weather: " << weather << std::endl;
+        std::cout << "  NPC Spawn: " << npcs << std::endl;
+        std::cout << "  Scene Change: " << scenes << std::endl;
+        
+        // Show performance stats
+        m_weatherSystem.getWeatherStats();
+        
+        // Show threading status
+        std::cout << "Threading: " << (EventManager::Instance().isThreadingEnabled() ? "Enabled" : "Disabled") << std::endl;
+    }
+    
+    void cleanup() {
+        std::cout << "Cleaning up game state..." << std::endl;
+        EventManager::Instance().clean();
+        m_initialized = false;
+    }
+
+private:
+    void createGameEvents() {
+        // Create level-specific events
+        EventManager::Instance().createSceneChangeEvent("level_complete", "NextLevel", "fade", 2.0f);
+        EventManager::Instance().createSceneChangeEvent("game_over", "MainMenu", "dissolve", 3.0f);
+        EventManager::Instance().createSceneChangeEvent("pause_game", "PauseMenu", "instant", 0.0f);
+        
+        // Create gameplay events
+        EventManager::Instance().createNPCSpawnEvent("enemy_wave", "Enemy", 5, 50.0f);
+        EventManager::Instance().createNPCSpawnEvent("friendly_npcs", "Villager", 3, 30.0f);
+        
+        std::cout << "Created initial game events" << std::endl;
+    }
+    
+    void registerGameHandlers() {
+        // Register scene change handler
+        EventManager::Instance().registerHandler(EventTypeId::SceneChange,
+            [](const EventData& /*data*/) {
+                std::cout << "Game: Scene change detected, updating game state" << std::endl;
+                // Handle scene transitions:
+                // - Save player progress
+                // - Update UI
+                // - Load new assets
+            });
+        
+        // Register NPC spawn handler
+        EventManager::Instance().registerHandler(EventTypeId::NPCSpawn,
+            [](const EventData& /*data*/) {
+                std::cout << "Game: NPC spawn detected, updating entity systems" << std::endl;
+                // Handle NPC spawning:
+                // - Create entity
+                // - Assign AI behavior
+                // - Update spatial systems
+            });
+        
+        std::cout << "Registered game event handlers" << std::endl;
+    }
+};
+
+//=============================================================================
+// Main Example Runner
+//=============================================================================
+
+int main() {
+    std::cout << "EventManager Optimized API Examples" << std::endl;
+    std::cout << "====================================" << std::endl;
+    
+    // Run all examples
+    example1_BasicSetup();
+    example2_ConvenienceMethodsCreation();
+    example3_DirectTriggering();
+    example4_HandlersAndBatching();
+    example5_PerformanceMonitoring();
+    example6_EventManagement();
+    
+    // Run weather system example
+    WeatherSystem weatherSystem;
+    weatherSystem.init();
+    weatherSystem.cycleWeather();
+    weatherSystem.cycleWeather();
+    weatherSystem.getWeatherStats();
+    
+    example8_PerformanceScaling();
+    example9_MemoryManagement();
+    
+    // Run complete game integration example
+    GameState gameState;
+    if (gameState.init()) {
+        // Simulate a few update cycles
+        for (int i = 0; i < 5; ++i) {
+            gameState.update();
+        }
+        gameState.showStats();
+        gameState.cleanup();
+    }
+    
+    std::cout << "\n====================================" << std::endl;
+    std::cout << "All examples completed successfully!" << std::endl;
+    
+    return 0;
+}

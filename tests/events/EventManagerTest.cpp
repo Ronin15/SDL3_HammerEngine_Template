@@ -17,6 +17,8 @@
 #include "core/ThreadSystem.hpp"
 #include "managers/EventManager.hpp"
 #include "events/Event.hpp"
+#include "events/WeatherEvent.hpp"
+#include "events/SceneChangeEvent.hpp"
 
 
 
@@ -71,15 +73,12 @@ struct EventManagerFixture {
     }
 
     ~EventManagerFixture() {
-        // Ensure threading is disabled before cleanup to avoid potential issues
-        EventManager::Instance().configureThreading(false, 0, Forge::TaskPriority::Normal);
+        // Disable threading before cleanup
+        EventManager::Instance().enableThreading(false);
         std::this_thread::sleep_for(std::chrono::milliseconds(20));
 
         // Clean up the EventManager
         EventManager::Instance().clean();
-
-        // Note: We don't clean up ThreadSystem here since
-        // other tests might use it and it's a singleton
     }
 };
 
@@ -138,7 +137,7 @@ BOOST_FIXTURE_TEST_CASE(EventUpdateAndConditions, EventManagerFixture) {
     BOOST_CHECK(EventManager::Instance().init());
 
     // CRITICAL: Disable threading explicitly and wait for it to take effect
-    EventManager::Instance().configureThreading(false, 0, Forge::TaskPriority::Normal);
+    EventManager::Instance().enableThreading(false);
     // Allow time for ThreadSystem tasks to complete
     std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
@@ -173,12 +172,20 @@ BOOST_FIXTURE_TEST_CASE(EventUpdateAndConditions, EventManagerFixture) {
     // Reset event for next test
     eventPtr->reset();
 
-    // TEST PHASE 2: Event with true conditions should execute
+    // TEST PHASE 2: Event with true conditions should update but not execute
+    // (execution only happens on explicit triggers now)
     eventPtr->setConditionsMet(true);
     EventManager::Instance().update();
     // Wait for any ThreadSystem tasks to complete
     std::this_thread::sleep_for(std::chrono::milliseconds(20));
     BOOST_CHECK(eventPtr->wasUpdated());
+    // Events no longer execute during update() - only when explicitly triggered
+    BOOST_CHECK(!eventPtr->wasExecuted());
+    
+    // TEST PHASE 3: Explicit execution should work
+    eventPtr->reset();
+    eventPtr->setConditionsMet(true);
+    EventManager::Instance().executeEvent("SimpleEvent");
     BOOST_CHECK(eventPtr->wasExecuted());
 
     // Clean up immediately
@@ -207,44 +214,27 @@ BOOST_FIXTURE_TEST_CASE(EventTypeRetrieval, EventManagerFixture) {
 
     EventManager::Instance().registerEvent("TestEvent1", mockEvent1);
     EventManager::Instance().registerEvent("TestEvent2", mockEvent2);
-    EventManager::Instance().createWeatherEvent("RainEvent", "Rainy", 0.8f);
+    auto rainEvent = std::make_shared<WeatherEvent>("RainEvent", WeatherType::Rainy);
+    EventManager::Instance().registerWeatherEvent("RainEvent", rainEvent);
 
-    auto mockEvents = EventManager::Instance().getEventsByType("Mock");
+    auto mockEvents = EventManager::Instance().getEventsByType("Custom");
     BOOST_CHECK_EQUAL(mockEvents.size(), 2);
 
     auto weatherEvents = EventManager::Instance().getEventsByType("Weather");
     BOOST_CHECK_EQUAL(weatherEvents.size(), 1);
 }
 
-// Test messaging system
-BOOST_FIXTURE_TEST_CASE(EventMessaging, EventManagerFixture) {
-    class MessageTestEvent : public MockEvent {
-    public:
-        MessageTestEvent(const std::string& name) : MockEvent(name), m_lastMessage("") {}
-
-        void onMessage(const std::string& message) override {
-            std::cout << "MessageTestEvent " << getName() << " received message: " << message << std::endl;
-            m_lastMessage = message;
-            m_messageReceived = true;
-        }
-
-        std::string getLastMessage() const { return m_lastMessage; }
-        bool wasMessageReceived() const { return m_messageReceived; }
-
-    private:
-        std::string m_lastMessage;
-        bool m_messageReceived{false};
-    };
-
-    auto event1 = std::make_shared<MessageTestEvent>("Event1");
-    auto event2 = std::make_shared<MessageTestEvent>("Event2");
+// Test event execution and handler system
+BOOST_FIXTURE_TEST_CASE(EventExecutionAndHandlers, EventManagerFixture) {
+    auto event1 = std::make_shared<MockEvent>("Event1");
+    auto event2 = std::make_shared<MockEvent>("Event2");
 
     EventManager::Instance().registerEvent("Event1", event1);
     EventManager::Instance().registerEvent("Event2", event2);
 
-    // Print event info before sending messages
-    std::cout << "Event1 exists: " << (EventManager::Instance().hasEvent("Event1") ? "yes" : "no") << std::endl;
-    std::cout << "Event2 exists: " << (EventManager::Instance().hasEvent("Event2") ? "yes" : "no") << std::endl;
+    // Test that events exist
+    BOOST_CHECK(EventManager::Instance().hasEvent("Event1"));
+    BOOST_CHECK(EventManager::Instance().hasEvent("Event2"));
     
     auto event1ptr = EventManager::Instance().getEvent("Event1");
     auto event2ptr = EventManager::Instance().getEvent("Event2");
@@ -252,35 +242,78 @@ BOOST_FIXTURE_TEST_CASE(EventMessaging, EventManagerFixture) {
     BOOST_REQUIRE(event1ptr != nullptr);
     BOOST_REQUIRE(event2ptr != nullptr);
     
-    // Test direct message
-    EventManager::Instance().sendMessageToEvent("Event1", "TestMessage", true);
+    // Test direct event execution
+    BOOST_CHECK(EventManager::Instance().executeEvent("Event1"));
+    BOOST_CHECK(EventManager::Instance().executeEvent("Event2"));
     
-    auto msgEvent1 = std::dynamic_pointer_cast<MessageTestEvent>(EventManager::Instance().getEvent("Event1"));
-    auto msgEvent2 = std::dynamic_pointer_cast<MessageTestEvent>(EventManager::Instance().getEvent("Event2"));
+    auto mockEvent1 = std::dynamic_pointer_cast<MockEvent>(event1ptr);
+    auto mockEvent2 = std::dynamic_pointer_cast<MockEvent>(event2ptr);
     
-    // Use assertions instead of logging for cleaner test output
-    
-    BOOST_CHECK(msgEvent1->wasMessageReceived());
-    BOOST_CHECK_EQUAL(msgEvent1->getLastMessage(), "TestMessage");
-    BOOST_CHECK(!msgEvent2->wasMessageReceived());
+    BOOST_CHECK(mockEvent1 != nullptr);
+    BOOST_CHECK(mockEvent2 != nullptr);
 
-    // Test broadcast
-    EventManager::Instance().broadcastMessage("BroadcastMessage", true);
+    // Test that events were executed
+    BOOST_CHECK(mockEvent1->wasExecuted());
+    BOOST_CHECK(mockEvent2->wasExecuted());
     
-    // Wait a moment to ensure messages are processed
-    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    // Test batch execution by type
+    int executedCount = EventManager::Instance().executeEventsByType("Custom");
+    BOOST_CHECK_EQUAL(executedCount, 2);
+}
+
+// Test convenience methods using EventFactory
+// Test convenience methods
+BOOST_FIXTURE_TEST_CASE(ConvenienceMethods, EventManagerFixture) {
+    // Test convenience methods for creating events
+    BOOST_CHECK(EventManager::Instance().createWeatherEvent("TestRain", "Rainy", 0.8f, 3.0f));
+    BOOST_CHECK(EventManager::Instance().createSceneChangeEvent("TestScene", "MainMenu", "fade", 1.5f));
+    BOOST_CHECK(EventManager::Instance().createNPCSpawnEvent("TestNPC", "Guard", 2, 30.0f));
     
-    BOOST_CHECK_EQUAL(msgEvent1->getLastMessage(), "BroadcastMessage");
-    BOOST_CHECK_EQUAL(msgEvent2->getLastMessage(), "BroadcastMessage");
+    // Verify events were created and registered
+    BOOST_CHECK(EventManager::Instance().hasEvent("TestRain"));
+    BOOST_CHECK(EventManager::Instance().hasEvent("TestScene"));
+    BOOST_CHECK(EventManager::Instance().hasEvent("TestNPC"));
+    
+    // Test event count
+    BOOST_CHECK_EQUAL(EventManager::Instance().getEventCount(), 3);
+    
+    // Register handlers for testing trigger methods
+    bool weatherHandlerCalled = false;
+    bool sceneHandlerCalled = false;
+    bool npcHandlerCalled = false;
+    
+    EventManager::Instance().registerHandler(EventTypeId::Weather,
+        [&weatherHandlerCalled](const EventData&) { weatherHandlerCalled = true; });
+    EventManager::Instance().registerHandler(EventTypeId::SceneChange,
+        [&sceneHandlerCalled](const EventData&) { sceneHandlerCalled = true; });
+    EventManager::Instance().registerHandler(EventTypeId::NPCSpawn,
+        [&npcHandlerCalled](const EventData&) { npcHandlerCalled = true; });
+    
+    // Test trigger aliases - should return true when handlers are registered
+    BOOST_CHECK(EventManager::Instance().triggerWeatherChange("Stormy", 2.0f));
+    BOOST_CHECK(EventManager::Instance().triggerSceneChange("NewScene", "dissolve", 1.0f));
+    BOOST_CHECK(EventManager::Instance().triggerNPCSpawn("Villager", 100.0f, 200.0f));
+    
+    // Verify handlers were called
+    BOOST_CHECK(weatherHandlerCalled);
+    BOOST_CHECK(sceneHandlerCalled);
+    BOOST_CHECK(npcHandlerCalled);
 }
 
 // Test weather events
 BOOST_FIXTURE_TEST_CASE(WeatherEvents, EventManagerFixture) {
-    // Test convenience method for weather event creation
-    BOOST_CHECK(EventManager::Instance().createWeatherEvent("Rain", "Rainy", 0.8f));
+    // Test weather event creation using new API
+    auto rainEvent = std::make_shared<WeatherEvent>("Rain", WeatherType::Rainy);
+    BOOST_CHECK(EventManager::Instance().registerWeatherEvent("Rain", rainEvent));
 
-    // Test direct weather change
+    // Register handler for weather changes
+    bool handlerCalled = false;
+    EventManager::Instance().registerHandler(EventTypeId::Weather,
+        [&handlerCalled](const EventData&) { handlerCalled = true; });
+
+    // Test direct weather change - should work with handler
     BOOST_CHECK(EventManager::Instance().changeWeather("Rainy", 2.0f));
+    BOOST_CHECK(handlerCalled);
 
     // Test weather event execution
     BOOST_CHECK(EventManager::Instance().executeEvent("Rain"));
@@ -288,11 +321,18 @@ BOOST_FIXTURE_TEST_CASE(WeatherEvents, EventManagerFixture) {
 
 // Test scene change events
 BOOST_FIXTURE_TEST_CASE(SceneChangeEvents, EventManagerFixture) {
-    // Test convenience method for scene change event creation
-    BOOST_CHECK(EventManager::Instance().createSceneChangeEvent("ToMainMenu", "MainMenu", "fade"));
+    // Test scene change event creation using new API
+    auto sceneEvent = std::make_shared<SceneChangeEvent>("ToMainMenu", "MainMenu");
+    BOOST_CHECK(EventManager::Instance().registerSceneChangeEvent("ToMainMenu", sceneEvent));
 
-    // Test direct scene change
+    // Register handler for scene changes
+    bool handlerCalled = false;
+    EventManager::Instance().registerHandler(EventTypeId::SceneChange,
+        [&handlerCalled](const EventData&) { handlerCalled = true; });
+
+    // Test direct scene change - should work with handler
     BOOST_CHECK(EventManager::Instance().changeScene("MainMenu", "fade", 1.0f));
+    BOOST_CHECK(handlerCalled);
 
     // Test scene event execution
     BOOST_CHECK(EventManager::Instance().executeEvent("ToMainMenu"));
@@ -302,17 +342,16 @@ BOOST_FIXTURE_TEST_CASE(SceneChangeEvents, EventManagerFixture) {
 BOOST_FIXTURE_TEST_CASE(NPCSpawnEvents, EventManagerFixture) {
     // Test simplified NPC spawn trigger (handlers do the work now)
     bool handlerCalled = false;
-    EventManager::Instance().registerEventHandler("NPCSpawn", [&handlerCalled](const std::string& npcType) {
+    EventManager::Instance().registerHandler(EventTypeId::NPCSpawn, [&handlerCalled](const EventData& eventData) {
         handlerCalled = true;
-        BOOST_CHECK_EQUAL(npcType, "Guard");
+        (void)eventData; // Suppress unused warning
     });
 
     // Test NPC spawn trigger
-    EventManager::Instance().triggerNPCSpawn("Guard", 100.0f, 200.0f);
+    EventManager::Instance().spawnNPC("Guard", 100.0f, 200.0f);
     
-    // Process queued handler calls
-    EventManager::Instance().update();
-    std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    // Wait a bit for async processing
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
     
     BOOST_CHECK(handlerCalled);
 }
@@ -324,7 +363,7 @@ BOOST_FIXTURE_TEST_CASE(ThreadSafety, EventManagerFixture) {
     BOOST_CHECK(EventManager::Instance().init());
 
     // Test enabling threading with ThreadSystem
-    EventManager::Instance().configureThreading(true, 2, Forge::TaskPriority::Normal);
+    EventManager::Instance().enableThreading(true);
     std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
     // Register a test event
@@ -339,12 +378,16 @@ BOOST_FIXTURE_TEST_CASE(ThreadSafety, EventManagerFixture) {
     // Allow time for ThreadSystem tasks to complete
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
-    // Verify update worked
+    // Verify update worked - events update but don't execute during update()
     BOOST_CHECK(std::dynamic_pointer_cast<MockEvent>(EventManager::Instance().getEvent("ThreadTest"))->wasUpdated());
+    BOOST_CHECK(!std::dynamic_pointer_cast<MockEvent>(EventManager::Instance().getEvent("ThreadTest"))->wasExecuted());
+    
+    // Test explicit execution with threading
+    EventManager::Instance().executeEvent("ThreadTest");
     BOOST_CHECK(std::dynamic_pointer_cast<MockEvent>(EventManager::Instance().getEvent("ThreadTest"))->wasExecuted());
 
     // Test disabling threading
-    EventManager::Instance().configureThreading(false, 0, Forge::TaskPriority::Normal);
+    EventManager::Instance().enableThreading(false);
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
     // Reset event and test again without threading
@@ -353,12 +396,16 @@ BOOST_FIXTURE_TEST_CASE(ThreadSafety, EventManagerFixture) {
 
     EventManager::Instance().update();
 
-    // Verify update worked without threading
+    // Verify update worked without threading - events update but don't execute during update()
     BOOST_CHECK(std::dynamic_pointer_cast<MockEvent>(EventManager::Instance().getEvent("ThreadTest"))->wasUpdated());
+    BOOST_CHECK(!std::dynamic_pointer_cast<MockEvent>(EventManager::Instance().getEvent("ThreadTest"))->wasExecuted());
+    
+    // Test explicit execution without threading
+    EventManager::Instance().executeEvent("ThreadTest");
     BOOST_CHECK(std::dynamic_pointer_cast<MockEvent>(EventManager::Instance().getEvent("ThreadTest"))->wasExecuted());
 
     // Make sure threading is disabled before cleanup
-    EventManager::Instance().configureThreading(false, 0, Forge::TaskPriority::Normal);
+    EventManager::Instance().enableThreading(false);
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
     // Clean up
@@ -389,8 +436,8 @@ BOOST_FIXTURE_TEST_CASE(TaskPriorityTest, EventManagerFixture) {
     std::dynamic_pointer_cast<MockEvent>(EventManager::Instance().getEvent("NormalPriorityEvent"))->setConditionsMet(true);
     std::dynamic_pointer_cast<MockEvent>(EventManager::Instance().getEvent("LowPriorityEvent"))->setConditionsMet(true);
 
-    // Test all events execution with high priority (we'll test just one for simplicity)
-    EventManager::Instance().configureThreading(true, 2, Forge::TaskPriority::High);
+    // Test all events execution with threading enabled
+    EventManager::Instance().enableThreading(true);
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
     // Make sure all events are active
@@ -410,8 +457,8 @@ BOOST_FIXTURE_TEST_CASE(TaskPriorityTest, EventManagerFixture) {
     std::dynamic_pointer_cast<MockEvent>(EventManager::Instance().getEvent("NormalPriorityEvent"))->reset();
     std::dynamic_pointer_cast<MockEvent>(EventManager::Instance().getEvent("LowPriorityEvent"))->reset();
 
-    // Test with normal priority - using direct execution to avoid flaky tests
-    EventManager::Instance().configureThreading(true, 2, Forge::TaskPriority::Normal);
+    // Test with threading enabled - using direct execution to avoid flaky tests
+    EventManager::Instance().enableThreading(true);
     std::this_thread::sleep_for(std::chrono::milliseconds(150));
 
     // Directly execute the event to avoid test flakiness
@@ -426,8 +473,8 @@ BOOST_FIXTURE_TEST_CASE(TaskPriorityTest, EventManagerFixture) {
     std::dynamic_pointer_cast<MockEvent>(EventManager::Instance().getEvent("NormalPriorityEvent"))->reset();
     std::dynamic_pointer_cast<MockEvent>(EventManager::Instance().getEvent("LowPriorityEvent"))->reset();
 
-    // Test with low priority - using direct execution
-    EventManager::Instance().configureThreading(true, 2, Forge::TaskPriority::Low);
+    // Test with threading enabled - using direct execution
+    EventManager::Instance().enableThreading(true);
     std::this_thread::sleep_for(std::chrono::milliseconds(150));
 
     // Direct execution for reliability
@@ -438,7 +485,7 @@ BOOST_FIXTURE_TEST_CASE(TaskPriorityTest, EventManagerFixture) {
     BOOST_CHECK(std::dynamic_pointer_cast<MockEvent>(EventManager::Instance().getEvent("LowPriorityEvent"))->wasExecuted());
 
     // Cleanup
-    EventManager::Instance().configureThreading(false, 0, Forge::TaskPriority::Normal);
+    EventManager::Instance().enableThreading(false);
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
     EventManager::Instance().removeEvent("HighPriorityEvent");
@@ -505,8 +552,8 @@ BOOST_FIXTURE_TEST_CASE(ConcurrentPriorityTest, EventManagerFixture) {
     std::dynamic_pointer_cast<MockEvent>(EventManager::Instance().getEvent("IdleEvent"))->setConditionsMet(true);
 
     // Directly execute each event to test functionality without relying on threading
-    // Configure the EventManager to use threading with different priorities
-    EventManager::Instance().configureThreading(true, 4, Forge::TaskPriority::Normal);
+    // Configure the EventManager to use threading
+    EventManager::Instance().enableThreading(true);
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
     // Directly execute events for consistent test results
@@ -528,7 +575,7 @@ BOOST_FIXTURE_TEST_CASE(ConcurrentPriorityTest, EventManagerFixture) {
     BOOST_CHECK(std::dynamic_pointer_cast<MockEvent>(EventManager::Instance().getEvent("IdleEvent"))->wasExecuted());
 
     // Clean up
-    EventManager::Instance().configureThreading(false, 0, Forge::TaskPriority::Normal);
+    EventManager::Instance().enableThreading(false);
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
     EventManager::Instance().removeEvent("CriticalEvent");

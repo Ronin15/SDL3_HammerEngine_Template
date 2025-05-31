@@ -22,6 +22,8 @@ Robust event management system supporting weather events, NPC spawning, scene tr
 
 - **[Event Manager](EventManager.md)** - Core event management system
 - **[🔥 NEW: EventManager Quick Reference](EventManager_QuickReference.md)** - Convenience methods guide
+- **[🔥 NEW: EventFactory Complete Guide](EventFactory.md)** - Advanced event creation with EventDefinition, sequences, and custom creators
+- **[🔥 NEW: EventFactory Quick Reference](EventFactory_QuickReference.md)** - Fast API lookup and examples
 - **[EventDemoState](EventSystem_Integration.md#debugging-and-monitoring)** - Interactive event system demonstration
 - **[Event System Integration](EventSystem_Integration.md)** - Integration guidelines
 - **[Event Manager Performance](EventManager_Performance_Improvements.md)** - Performance optimizations
