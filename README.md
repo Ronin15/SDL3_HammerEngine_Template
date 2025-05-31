@@ -282,7 +282,7 @@ Key features include:
 
 A full-featured demonstration and benchmarking framework for the AI system:
 
-- Mass AI Entity Handling: Spawns and manages thousands of NPCs (default: 5000), each with dynamic, hot-swappable AI behaviors.
+- Mass AI Entity Handling: Spawns and manages thousands of NPCs (default: 10,000), each with dynamic, hot-swappable AI behaviors.
 - Live Behavior Switching: Instantly switch all NPCs between Wander, Patrol, and Chase behaviors using keys [1], [2], and [3], leveraging the AIManager’s registration and assignment system.
 - Player Targeting: The Chase AI behavior dynamically targets the player entity for real-time pursuit demonstrations.
 - Pause/Resume: Pause and resume all AI updates with [SPACE] via broadcast messaging.
@@ -298,6 +298,8 @@ A full-featured demonstration and benchmarking framework for the AI system:
 See docs/AIManager.md, include/gameStates/AIDemoState.hpp, and src/gameStates/AIDemoState.cpp for full API and code examples.
 
 See `docs/AIManager.md` for detailed documentation with examples and best practices. Additional API details can be found in `include/managers/AIManager.hpp`, `include/ai/AIBehavior.hpp`, and the specific behavior implementations.
+
+![Forge Engine](./Forge_Engine.png)
 
 ## Window Icon
 This project supports window icons across all platforms:
