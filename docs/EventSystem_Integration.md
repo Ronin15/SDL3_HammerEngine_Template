@@ -72,9 +72,9 @@ bool MyGameState::enter() {
     m_eventManager->registerEventHandler("Weather", 
         [this](const std::string& message) { onWeatherChanged(message); });
     
-    // Register specific events
-    m_eventManager->registerWeatherEvent("rain_event", "Rainy", 0.8f);
-    m_eventManager->registerNPCSpawnEvent("guard_spawn", "Guard", 2, 100.0f);
+    // Create and register specific events using convenience methods
+    EventManager::Instance().createWeatherEvent("rain_event", "Rainy", 0.8f);
+    EventManager::Instance().createNPCSpawnEvent("guard_spawn", "Guard", 2, 100.0f);
     
     return true;
 }
@@ -117,11 +117,13 @@ EventManager::Instance().createWeatherEvent("sunny_day", "Clear", 1.0f);
 EventManager::Instance().createWeatherEvent("storm", "Stormy", 1.0f);
 EventManager::Instance().createSceneChangeEvent("enter_dungeon", "Dungeon", "fade");
 EventManager::Instance().createSceneChangeEvent("exit_forest", "Village", "dissolve");
+EventManager::Instance().createNPCSpawnEvent("guard_patrol", "Guard", 2, 30.0f);
 
 // Multiple events quickly
 EventManager::Instance().createWeatherEvent("morning_rain", "Rainy", 0.6f, 2.0f);
 EventManager::Instance().createWeatherEvent("evening_fog", "Foggy", 0.8f);
 EventManager::Instance().createSceneChangeEvent("quick_exit", "Town", "instant");
+EventManager::Instance().createNPCSpawnEvent("villager_group", "Villager", 3, 25.0f);
 ```
 
 #### Traditional Method (Still Supported)
@@ -131,10 +133,7 @@ EventManager::Instance().createSceneChangeEvent("quick_exit", "Town", "instant")
 auto rainEvent = EventFactory::Instance().createWeatherEvent("heavy_rain", "Rainy", 0.8f);
 EventManager::Instance().registerEvent("heavy_rain", rainEvent);
 
-// Or legacy registration methods
-m_eventSystem->registerWeatherEvent("sunny_day", "Clear", 1.0f);
-m_eventSystem->registerNPCSpawnEvent("village_guards", "Guard", 3, 50.0f);
-m_eventSystem->registerSceneChangeEvent("enter_dungeon", "Dungeon", "fade");
+
 ```
 
 ### Triggering Events
@@ -236,12 +235,12 @@ void setupWeatherSystem() {
 ### Dynamic NPC Spawning
 ```cpp
 void setupDynamicSpawning() {
-    // Different spawn types for different situations
-    m_eventSystem->registerNPCSpawnEvent("combat_reinforcements", "Guard", 5, 200.0f);
-    m_eventSystem->registerNPCSpawnEvent("peaceful_travelers", "Villager", 2, 150.0f);
+    // Different spawn types for different situations using convenience methods
+    EventManager::Instance().createNPCSpawnEvent("combat_reinforcements", "Guard", 5, 200.0f);
+    EventManager::Instance().createNPCSpawnEvent("peaceful_travelers", "Villager", 2, 150.0f);
     
     // Handler manages NPC lifecycle
-    m_eventSystem->registerEventHandler("NPCSpawn",
+    EventManager::Instance().registerEventHandler("NPCSpawn",
         [this](const std::string& npcType) {
             trackSpawnedNPC(npcType);
             updateGameDifficulty();

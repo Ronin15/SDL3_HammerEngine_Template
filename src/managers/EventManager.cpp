@@ -6,8 +6,6 @@
 #include "managers/EventManager.hpp"
 #include "events/EventFactory.hpp"
 #include "events/WeatherEvent.hpp"
-#include "events/SceneChangeEvent.hpp"
-#include "events/NPCSpawnEvent.hpp"
 #include "core/ThreadSystem.hpp"
 #include <algorithm>
 #include <utility>
@@ -422,61 +420,11 @@ void EventManager::processHandlerQueue() {
     (void)totalHandlersCalled; // Suppress unused variable warning
 }
 
-void EventManager::registerWeatherEvent(const std::string& name, const std::string& weatherType, float intensity) {
-    // Create the weather event
-    auto weatherEvent = std::make_shared<WeatherEvent>(name, weatherType);
 
-    // Configure the weather parameters
-    WeatherParams params;
-    params.intensity = intensity;
-    params.transitionTime = 3.0f;
-    weatherEvent->setWeatherParams(params);
 
-    // Register the event
-    registerEvent(name, std::static_pointer_cast<Event>(weatherEvent));
 
-    std::cout << "Registered weather event: " << name << " of type: " << weatherType << std::endl;
-}
 
-void EventManager::registerSceneChangeEvent(const std::string& name, const std::string& targetScene,
-                                           const std::string& transitionType) {
-    // Create the scene change event
-    auto sceneEvent = std::make_shared<SceneChangeEvent>(name, targetScene);
 
-    // Configure transition type
-    TransitionType type = TransitionType::Fade; // Default
-
-    if (transitionType == "dissolve") {
-        type = TransitionType::Dissolve;
-    } else if (transitionType == "wipe") {
-        type = TransitionType::Wipe;
-    } else if (transitionType == "slide") {
-        type = TransitionType::Slide;
-    } else if (transitionType == "instant") {
-        type = TransitionType::Instant;
-    }
-
-    sceneEvent->setTransitionType(type);
-
-    // Register the event
-    registerEvent(name, std::static_pointer_cast<Event>(sceneEvent));
-
-    std::cout << "Registered scene change event: " << name << " targeting scene: " << targetScene << std::endl;
-}
-
-void EventManager::registerNPCSpawnEvent(const std::string& name, const std::string& npcType,
-                                       int count, float spawnRadius) {
-    // Create the NPC spawn parameters
-    SpawnParameters params(npcType, count, spawnRadius);
-
-    // Create the NPC spawn event
-    auto spawnEvent = std::make_shared<NPCSpawnEvent>(name, params);
-
-    // Register the event
-    registerEvent(name, std::static_pointer_cast<Event>(spawnEvent));
-
-    std::cout << "Registered NPC spawn event: " << name << " for NPC type: " << npcType << std::endl;
-}
 
 void EventManager::triggerWeatherChange(const std::string& weatherType, float transitionTime) {
     // Use specialized method
@@ -612,16 +560,32 @@ bool EventManager::createSceneChangeEvent(const std::string& name, const std::st
     return true;
 }
 
+bool EventManager::createNPCSpawnEvent(const std::string& name, const std::string& npcType,
+                                     int count, float spawnRadius) {
+    // Create event using factory
+    auto event = EventFactory::Instance().createNPCSpawnEvent(name, npcType, count, spawnRadius);
+    
+    if (!event) {
+        EVENT_LOG("Failed to create NPC spawn event: " << name);
+        return false;
+    }
+    
+    // Register with manager
+    registerEvent(name, event);
+    EVENT_LOG_DETAIL("Created and registered NPC spawn event: " << name << " (" << npcType << " x" << count << ")");
+    return true;
+}
+
 void EventManager::registerDefaultEvents() {
-    // Register some common weather events
-    registerWeatherEvent("SunnyDay", "Clear", 0.0f);
-    registerWeatherEvent("LightRain", "Rainy", 0.4f);
-    registerWeatherEvent("HeavyRain", "Rainy", 0.8f);
-    registerWeatherEvent("ThunderStorm", "Stormy", 1.0f);
-    registerWeatherEvent("LightFog", "Foggy", 0.3f);
-    registerWeatherEvent("DenseFog", "Foggy", 0.8f);
-    registerWeatherEvent("LightSnow", "Snowy", 0.3f);
-    registerWeatherEvent("Blizzard", "Snowy", 0.9f);
+    // Register some common weather events using convenience methods
+    createWeatherEvent("SunnyDay", "Clear", 0.0f);
+    createWeatherEvent("LightRain", "Rainy", 0.4f);
+    createWeatherEvent("HeavyRain", "Rainy", 0.8f);
+    createWeatherEvent("ThunderStorm", "Stormy", 1.0f);
+    createWeatherEvent("LightFog", "Foggy", 0.3f);
+    createWeatherEvent("DenseFog", "Foggy", 0.8f);
+    createWeatherEvent("LightSnow", "Snowy", 0.3f);
+    createWeatherEvent("Blizzard", "Snowy", 0.9f);
 
     // Set up some random weather transitions based on time
     auto sunnyWeather = getEvent("SunnyDay");

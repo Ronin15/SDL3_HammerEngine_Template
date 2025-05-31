@@ -43,12 +43,16 @@ EventManager::Instance().registerDefaultEvents();
 EventManager::Instance().createWeatherEvent("HeavyRain", "Rainy", 0.8f, 3.0f);
 
 // Create and register scene change events in one call
-EventManager::Instance().createSceneChangeEvent("ToMainMenu", "MainMenu", "fade", 2.0f);
+EventManager::Instance().createSceneChangeEvent("ToMenu", "MainMenu", "fade");
+
+// Create and register NPC spawn events in one call
+EventManager::Instance().createNPCSpawnEvent("GuardSpawn", "Guard", 2, 30.0f);
 
 // Multiple events quickly
 EventManager::Instance().createWeatherEvent("MorningFog", "Foggy", 0.5f);
 EventManager::Instance().createWeatherEvent("EveningStorm", "Stormy", 0.9f);
 EventManager::Instance().createSceneChangeEvent("ToShop", "ShopScene", "slide", 1.5f);
+EventManager::Instance().createNPCSpawnEvent("VillagerGroup", "Villager", 3, 25.0f);
 ```
 
 #### Traditional Method (Still Supported)
@@ -146,6 +150,7 @@ EventManager::Instance().createWeatherEvent("Sequence_Rain", "Rainy", 0.5f);
 EventManager::Instance().createWeatherEvent("Sequence_Storm", "Stormy", 0.9f);
 EventManager::Instance().createWeatherEvent("Sequence_Clear", "Clear", 0.0f, 8.0f);
 EventManager::Instance().createSceneChangeEvent("Sequence_Transition", "NextArea", "fade");
+EventManager::Instance().createNPCSpawnEvent("Sequence_Guards", "Guard", 3, 50.0f);
 ```
 
 #### Using EventFactory for Complex Sequences

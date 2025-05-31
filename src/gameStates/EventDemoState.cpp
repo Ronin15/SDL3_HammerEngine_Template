@@ -397,22 +397,27 @@ void EventDemoState::setupEventSystem() {
 }
 
 void EventDemoState::createTestEvents() {
-    // Register weather events
-    EventManager::Instance().registerWeatherEvent("demo_clear", "Clear", 1.0f);
-    EventManager::Instance().registerWeatherEvent("demo_rainy", "Rainy", 0.8f);
-    EventManager::Instance().registerWeatherEvent("demo_stormy", "Stormy", 1.0f);
+    // === DEMONSTRATING NEW CONVENIENCE METHODS ===
+    // These methods combine EventFactory creation + EventManager registration in one call
+    // OLD WAY: auto event = EventFactory::Instance().createWeatherEvent(...); EventManager::Instance().registerEvent(...);
+    // NEW WAY: EventManager::Instance().createWeatherEvent(...); // Done in one line!
+    
+    // Create and register weather events using new convenience methods
+    EventManager::Instance().createWeatherEvent("demo_clear", "Clear", 1.0f);
+    EventManager::Instance().createWeatherEvent("demo_rainy", "Rainy", 0.8f);
+    EventManager::Instance().createWeatherEvent("demo_stormy", "Stormy", 1.0f);
 
-    // Register NPC spawn events with limits to prevent runaway spawning
-    EventManager::Instance().registerNPCSpawnEvent("demo_guard_spawn", "Guard", 1, 25.0f);
-    EventManager::Instance().registerNPCSpawnEvent("demo_villager_spawn", "Villager", 1, 25.0f);
-    EventManager::Instance().registerNPCSpawnEvent("demo_merchant_spawn", "Merchant", 1, 25.0f);
-    EventManager::Instance().registerNPCSpawnEvent("demo_warrior_spawn", "Warrior", 1, 25.0f);
+    // Create and register NPC spawn events using new convenience methods
+    EventManager::Instance().createNPCSpawnEvent("demo_guard_spawn", "Guard", 1, 25.0f);
+    EventManager::Instance().createNPCSpawnEvent("demo_villager_spawn", "Villager", 1, 25.0f);
+    EventManager::Instance().createNPCSpawnEvent("demo_merchant_spawn", "Merchant", 1, 25.0f);
+    EventManager::Instance().createNPCSpawnEvent("demo_warrior_spawn", "Warrior", 1, 25.0f);
 
-    // Register scene change events
-    EventManager::Instance().registerSceneChangeEvent("demo_forest", "Forest", "fade");
-    EventManager::Instance().registerSceneChangeEvent("demo_village", "Village", "dissolve");
+    // Create and register scene change events using new convenience methods
+    EventManager::Instance().createSceneChangeEvent("demo_forest", "Forest", "fade");
+    EventManager::Instance().createSceneChangeEvent("demo_village", "Village", "dissolve");
 
-    addLogEntry("Test Events Created - Ready for manual triggering");
+    addLogEntry("Test Events Created - Using new convenience methods for Weather, Scene & NPC events");
 }
 
 void EventDemoState::handleInput() {
@@ -431,6 +436,7 @@ void EventDemoState::handleInput() {
     m_input.escape = InputManager::Instance().isKeyDown(SDL_SCANCODE_B);
     m_input.r = InputManager::Instance().isKeyDown(SDL_SCANCODE_R);
     m_input.a = InputManager::Instance().isKeyDown(SDL_SCANCODE_A);
+    m_input.c = InputManager::Instance().isKeyDown(SDL_SCANCODE_C);
 
     // Handle key presses (only on press, not hold)
     if (isKeyPressed(m_input.space, m_lastInput.space)) {
@@ -523,6 +529,13 @@ void EventDemoState::handleInput() {
         m_weatherChangesShown = 0;
         m_weatherDemoComplete = false;
         addLogEntry("Demo reset to beginning");
+    }
+
+    if (isKeyPressed(m_input.c, m_lastInput.c) &&
+        (m_totalDemoTime - m_lastEventTriggerTime) >= 0.2f) {
+        triggerConvenienceMethodsDemo();
+        addLogEntry("Convenience methods demo triggered");
+        m_lastEventTriggerTime = m_totalDemoTime;
     }
 
     if (isKeyPressed(m_input.a, m_lastInput.a)) {
@@ -721,7 +734,8 @@ void EventDemoState::renderControls() {
     // Control instructions
     std::vector<std::string> controls = {
         "SPACE: Next phase | 1: Weather | 2: NPC spawn | 3: Scene change",
-        "4: Custom event | 5: Reset | R: Restart | A: Auto toggle | B: Exit"
+        "4: Custom event | 5: Reset | C: Convenience methods | R: Restart",
+        "A: Auto toggle | B: Exit"
     };
 
     for (const auto& control : controls) {
@@ -901,6 +915,58 @@ if (npc2) {
 }
 
     addLogEntry("Multiple NPCs spawned: " + npcType1 + " and " + npcType2);
+}
+
+void EventDemoState::triggerConvenienceMethodsDemo() {
+    // Demonstrate the new convenience methods (one-line event creation and registration)
+    addLogEntry("=== CONVENIENCE METHODS DEMO ===");
+    addLogEntry("Creating events with new one-line methods");
+
+    // Generate unique event names using timestamp-like suffix
+    static int demoCounter = 0;
+    demoCounter++;
+    std::string suffix = std::to_string(demoCounter);
+
+    // Create weather events using convenience methods
+    bool success1 = EventManager::Instance().createWeatherEvent(
+        "conv_fog_" + suffix, "Foggy", 0.7f, 2.5f);
+    bool success2 = EventManager::Instance().createWeatherEvent(
+        "conv_storm_" + suffix, "Stormy", 0.9f, 1.5f);
+    
+    // Create scene change events using convenience methods  
+    bool success3 = EventManager::Instance().createSceneChangeEvent(
+        "conv_dungeon_" + suffix, "DungeonDemo", "dissolve", 2.0f);
+    bool success4 = EventManager::Instance().createSceneChangeEvent(
+        "conv_town_" + suffix, "TownDemo", "slide", 1.0f);
+    
+    // Create NPC spawn events using convenience methods
+    bool success5 = EventManager::Instance().createNPCSpawnEvent(
+        "conv_guards_" + suffix, "Guard", 2, 30.0f);
+    bool success6 = EventManager::Instance().createNPCSpawnEvent(
+        "conv_merchants_" + suffix, "Merchant", 1, 15.0f);
+
+    // Report results
+    if (success1 && success2 && success3 && success4 && success5 && success6) {
+        addLogEntry("✓ All 6 events created successfully with convenience methods");
+        addLogEntry("  - Fog weather (intensity: 0.7, transition: 2.5s)");
+        addLogEntry("  - Storm weather (intensity: 0.9, transition: 1.5s)");
+        addLogEntry("  - Dungeon scene (dissolve transition, 2.0s)");
+        addLogEntry("  - Town scene (slide transition, 1.0s)");
+        addLogEntry("  - Guard spawn (2 NPCs, radius: 30.0f)");
+        addLogEntry("  - Merchant spawn (1 NPC, radius: 15.0f)");
+        
+        // Show event count
+        size_t totalEvents = EventManager::Instance().getEventCount();
+        addLogEntry("Total registered events: " + std::to_string(totalEvents));
+        
+        // Trigger one of the created weather events to show it works
+        EventManager::Instance().triggerWeatherChange("Foggy", 2.5f);
+        addLogEntry("Triggered fog weather to demonstrate functionality");
+    } else {
+        addLogEntry("✗ Some events failed to create - check logs");
+    }
+    
+    addLogEntry("=== CONVENIENCE DEMO COMPLETE ===");
 }
 
 void EventDemoState::resetAllEvents() {
@@ -1096,6 +1162,7 @@ void EventDemoState::updateInstructions() {
         case DemoPhase::InteractiveMode:
             m_instructions.push_back("Interactive Mode - Manual Control (Permanent)");
             m_instructions.push_back("Use number keys 1-5 to trigger events");
+            m_instructions.push_back("Press 'C' for convenience methods demo");
             m_instructions.push_back("Press 'A' to toggle auto mode on/off");
             m_instructions.push_back("Press 'R' to reset all events");
             break;

@@ -55,6 +55,7 @@ AIManager::Instance().queueBehaviorAssignment(npc, "RandomPatrol");
 // Create and register events in one call (NEW convenience methods)
 EventManager::Instance().createWeatherEvent("MorningRain", "Rainy", 0.8f);
 EventManager::Instance().createSceneChangeEvent("ToMenu", "MainMenu", "fade");
+EventManager::Instance().createNPCSpawnEvent("GuardPatrol", "Guard", 2, 30.0f);
 
 // Register event handlers
 EventManager::Instance().registerEventHandler("Weather", 
@@ -72,6 +73,7 @@ AIManager::Instance().configureThreading(true, 4, TaskPriority::High);
 
 ### 🔥 EventManager Convenience Methods
 - **One-Line Event Creation**: Create and register events with a single call
+- **Complete Coverage**: Weather, Scene Change, and NPC Spawn events supported
 - **50% Less Boilerplate**: Streamlined API for common use cases
 - **Backward Compatible**: Traditional methods still fully supported
 - **Built-in Error Handling**: Automatic validation and logging

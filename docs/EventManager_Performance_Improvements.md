@@ -29,8 +29,12 @@ The EventManager has been enhanced with significant performance improvements to 
 auto event = EventFactory::Instance().createWeatherEvent("Rain", "Rainy", 0.8f);
 EventManager::Instance().registerEvent("Rain", event);
 
+auto npcEvent = EventFactory::Instance().createNPCSpawnEvent("Guards", "Guard", 2, 30.0f);
+EventManager::Instance().registerEvent("Guards", npcEvent);
+
 // NEW: 1 function call, direct registration
 EventManager::Instance().createWeatherEvent("Rain", "Rainy", 0.8f);
+EventManager::Instance().createNPCSpawnEvent("Guards", "Guard", 2, 30.0f);
 ```
 
 ### 2. Storage Optimization (`boost::flat_map`)

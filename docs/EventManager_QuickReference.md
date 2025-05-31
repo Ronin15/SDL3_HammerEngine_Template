@@ -38,6 +38,24 @@ EventManager::Instance().createSceneChangeEvent("SlideTransition", "NewArea", "s
 - `transitionType`: "fade", "dissolve", "wipe", "slide", "instant" (default: "fade")
 - `duration`: Transition duration in seconds (default: 1.0)
 
+### NPC Spawn Events
+```cpp
+// Create and register NPC spawn events in one call
+EventManager::Instance().createNPCSpawnEvent("EventName", "NPCType", count, spawnRadius);
+
+// Examples
+EventManager::Instance().createNPCSpawnEvent("GuardSpawn", "Guard", 2, 30.0f);
+EventManager::Instance().createNPCSpawnEvent("VillagerGroup", "Villager", 3, 25.0f);
+EventManager::Instance().createNPCSpawnEvent("SingleMerchant", "Merchant", 1, 15.0f);
+EventManager::Instance().createNPCSpawnEvent("WarriorSquad", "Warrior", 4, 40.0f);
+```
+
+**Parameters:**
+- `name`: Unique event identifier
+- `npcType`: Type of NPC ("Guard", "Villager", "Merchant", "Warrior", etc.)
+- `count`: Number of NPCs to spawn (default: 1)
+- `spawnRadius`: Spawn area radius in pixels (default: 0.0)
+
 ## Quick Comparison
 
 ### Old Way (Still Supported)
@@ -45,12 +63,15 @@ EventManager::Instance().createSceneChangeEvent("SlideTransition", "NewArea", "s
 // 2-3 lines per event
 auto event = EventFactory::Instance().createWeatherEvent("Rain", "Rainy", 0.8f);
 EventManager::Instance().registerEvent("Rain", event);
+
+
 ```
 
 ### New Way (Recommended)
 ```cpp
 // 1 line per event
 EventManager::Instance().createWeatherEvent("Rain", "Rainy", 0.8f);
+EventManager::Instance().createNPCSpawnEvent("Guards", "Guard", 2, 30.0f);
 ```
 
 **Result: 50% less code for common use cases!**
@@ -65,6 +86,16 @@ void setupWeatherSystem() {
     EventManager::Instance().createWeatherEvent("afternoon_rain", "Rainy", 0.8f, 4.0f);
     EventManager::Instance().createWeatherEvent("evening_storm", "Stormy", 0.9f, 3.0f);
     EventManager::Instance().createWeatherEvent("night_clear", "Clear", 0.0f, 6.0f);
+}
+```
+
+### NPC Population Setup
+```cpp
+void setupNPCSpawns() {
+    EventManager::Instance().createNPCSpawnEvent("town_guards", "Guard", 4, 50.0f);
+    EventManager::Instance().createNPCSpawnEvent("market_vendors", "Merchant", 3, 30.0f);
+    EventManager::Instance().createNPCSpawnEvent("village_folk", "Villager", 6, 40.0f);
+    EventManager::Instance().createNPCSpawnEvent("patrol_squad", "Warrior", 2, 25.0f);
 }
 ```
 
@@ -84,6 +115,7 @@ bool GameState::enter() {
     // Quick setup of state-specific events
     EventManager::Instance().createWeatherEvent("state_weather", "Clear", 0.5f);
     EventManager::Instance().createSceneChangeEvent("state_exit", "MainMenu", "fade");
+    EventManager::Instance().createNPCSpawnEvent("state_npcs", "Villager", 2, 35.0f);
     
     // Register handlers
     EventManager::Instance().registerEventHandler("Weather", 
@@ -108,6 +140,11 @@ void createEventBatch() {
     EventManager::Instance().createSceneChangeEvent("seq_1", "Area1", "fade", 1.0f);
     EventManager::Instance().createSceneChangeEvent("seq_2", "Area2", "slide", 1.5f);
     EventManager::Instance().createSceneChangeEvent("seq_3", "Area3", "dissolve", 2.0f);
+    
+    // NPC population
+    EventManager::Instance().createNPCSpawnEvent("area1_guards", "Guard", 2, 40.0f);
+    EventManager::Instance().createNPCSpawnEvent("area2_merchants", "Merchant", 1, 20.0f);
+    EventManager::Instance().createNPCSpawnEvent("area3_villagers", "Villager", 4, 30.0f);
 }
 ```
 
@@ -127,7 +164,7 @@ if (EventManager::Instance().hasEvent("test")) {
 ## When to Use Each Method
 
 ### Use Convenience Methods When:
-- ✅ Creating standard weather/scene events
+- ✅ Creating standard weather/scene/NPC events
 - ✅ Rapid prototyping
 - ✅ Simple event setups
 - ✅ Learning the system
@@ -152,6 +189,7 @@ EventManager::Instance().registerEvent("exit", scene);
 // NEW (drop-in replacement)
 EventManager::Instance().createWeatherEvent("rain", "Rainy", 0.8f);
 EventManager::Instance().createSceneChangeEvent("exit", "Menu", "fade");
+EventManager::Instance().createNPCSpawnEvent("guards", "Guard", 2, 30.0f);
 ```
 
 ## See Also

@@ -22,17 +22,20 @@
 
 // Example 1: Using Convenience Methods (RECOMMENDED - New!)
 void convenienceMethodsExample() {
-    // NEW WAY: Create and register events in one call - much cleaner!
+    // NEW WAY: Create and register in one call - much cleaner!
     EventManager::Instance().createWeatherEvent("MorningRain", "Rainy", 0.7f, 5.0f);
     EventManager::Instance().createSceneChangeEvent("QuickExit", "MainMenu", "fade", 2.0f);
+    EventManager::Instance().createNPCSpawnEvent("GuardPatrol", "Guard", 2, 30.0f);
     
     // Create multiple events quickly
     EventManager::Instance().createWeatherEvent("MorningFog", "Foggy", 0.5f);
     EventManager::Instance().createWeatherEvent("EveningStorm", "Stormy", 0.9f);
     EventManager::Instance().createSceneChangeEvent("ToShop", "ShopScene", "slide", 1.5f);
     EventManager::Instance().createSceneChangeEvent("ToInventory", "InventoryScene", "dissolve");
+    EventManager::Instance().createNPCSpawnEvent("VillagerGroup", "Villager", 3, 25.0f);
+    EventManager::Instance().createNPCSpawnEvent("MerchantStand", "Merchant", 1, 15.0f);
     
-    std::cout << "Created and registered 6 events with minimal code!" << std::endl;
+    std::cout << "Created and registered 9 events with minimal code!" << std::endl;
     
     // Later, to force a weather change immediately:
     EventManager::Instance().changeWeather("Rainy", 3.0f);
@@ -127,14 +130,13 @@ void eventManagerExample() {
     // Initialize the event manager
     EventManager::Instance().init();
     
-    // Register common event types with simplified API
-    EventManager::Instance().registerWeatherEvent("Rain", "Rainy", 0.7f);
-    EventManager::Instance().registerSceneChangeEvent("ToMainMenu", "MainMenu", "fade");
-    EventManager::Instance().registerNPCSpawnEvent("GuardSpawn", "Guard", 3, 10.0f);
+    // Create and register common event types with new convenience methods
+    EventManager::Instance().createWeatherEvent("Rain", "Rainy", 0.7f);
+    EventManager::Instance().createSceneChangeEvent("ToMainMenu", "MainMenu", "fade");
+    EventManager::Instance().createNPCSpawnEvent("GuardSpawn", "Guard", 3, 10.0f);
     
     // Register event handlers for system integration
     EventManager::Instance().registerEventHandler("WeatherChange", [](const std::string& weatherType) {
-        // Update particle systems, lighting, etc.
         std::cout << "Weather changed to: " << weatherType << std::endl;
     });
     
@@ -142,6 +144,8 @@ void eventManagerExample() {
     EventManager::Instance().triggerWeatherChange("Rainy", 3.0f);
     EventManager::Instance().triggerSceneChange("MainMenu", "fade", 1.0f);
     EventManager::Instance().triggerNPCSpawn("Guard", 100.0f, 200.0f);
+    
+    std::cout << "EventManager configured with " << EventManager::Instance().getEventCount() << " events" << std::endl;
     
     // Don't forget to update the event manager each frame
     EventManager::Instance().update();
