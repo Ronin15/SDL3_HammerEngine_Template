@@ -60,7 +60,7 @@ private:
     Vector2D m_currentDirection{0, 0};
 
     // Check if entity has line of sight to target (simplified)
-    bool checkLineOfSight(EntityPtr entity, EntityPtr target);
+    bool checkLineOfSight(EntityPtr entity, EntityPtr target) const;
 
     // Handle behavior when line of sight is lost
     void handleNoLineOfSight(EntityPtr entity);

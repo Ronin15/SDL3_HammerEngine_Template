@@ -17,6 +17,7 @@
 #include <iostream>
 #include <iomanip>
 #include <sstream>
+#include <numeric>
 
 EventDemoState::EventDemoState() {
     // Initialize member variables that need explicit initialization
@@ -43,10 +44,6 @@ bool EventDemoState::enter() {
 
         // Create player
         m_player = std::make_shared<Player>();
-        if (!m_player) {
-            std::cerr << "Forge Game Engine - ERROR: Failed to create player!\n";
-            return false;
-        }
         m_player->setPosition(Vector2D(m_worldWidth / 2, m_worldHeight / 2));
 
         // Set player reference in AIManager for distance optimization
@@ -290,19 +287,13 @@ std::shared_ptr<NPC> EventDemoState::createNPCAtPositionWithoutBehavior(const st
         Vector2D position(x, y);
         auto npc = std::make_shared<NPC>(textureID, position, 64, 64);
 
-        if (npc) {
-            npc->setWanderArea(0.0f, 0.0f, m_worldWidth, m_worldHeight);
-            npc->setBoundsCheckEnabled(false);
+        npc->setWanderArea(0.0f, 0.0f, m_worldWidth, m_worldHeight);
+        npc->setBoundsCheckEnabled(false);
 
-            // Add to collection
-            m_spawnedNPCs.push_back(npc);
+        // Add to collection
+        m_spawnedNPCs.push_back(npc);
 
-
-            return npc;
-        } else {
-            std::cerr << "ERROR: Failed to create NPC object of type: " << npcType << std::endl;
-            return nullptr;
-        }
+        return npc;
     } catch (const std::exception& e) {
         std::cerr << "EXCEPTION in createNPCAtPositionWithoutBehavior: " << e.what() << std::endl;
         return nullptr;
@@ -584,11 +575,8 @@ void EventDemoState::updateFrameRate() {
             m_frameTimes.pop_front();
         }
 
-        // Calculate average FPS
-        float sum = 0.0f;
-        for (float fps : m_frameTimes) {
-            sum += fps;
-        }
+        // Calculate average FPS using std::accumulate
+        float sum = std::accumulate(m_frameTimes.begin(), m_frameTimes.end(), 0.0f);
         m_averageFPS = sum / m_frameTimes.size();
     }
 
@@ -677,7 +665,7 @@ void EventDemoState::renderUI() {
     renderEventStatus();
 }
 
-void EventDemoState::renderEventStatus() {
+void EventDemoState::renderEventStatus() const {
     SDL_Color cyanColor = {0, 255, 255, 255};
     SDL_Color whiteColor = {255, 255, 255, 255};
 
@@ -1173,7 +1161,7 @@ void EventDemoState::updateInstructions() {
 
 void EventDemoState::cleanupSpawnedNPCs() {
     // First, unassign all behaviors from AI Manager to prevent race conditions
-    for (auto& npc : m_spawnedNPCs) {
+    for (const auto& npc : m_spawnedNPCs) {
         if (npc) {
             try {
                 if (AIManager::Instance().entityHasBehavior(npc)) {
@@ -1211,10 +1199,7 @@ void EventDemoState::createNPCAtPosition(const std::string& npcType, float x, fl
         Vector2D position(x, y);
         auto npc = std::make_shared<NPC>(textureID, position, 64, 64);
 
-        if (npc) {
-
-
-            // Configure NPC properties
+        // Configure NPC properties
             npc->setWanderArea(0.0f, 0.0f, m_worldWidth, m_worldHeight);
             npc->setBoundsCheckEnabled(false); // Let AI behaviors handle movement
 
@@ -1241,11 +1226,6 @@ void EventDemoState::createNPCAtPosition(const std::string& npcType, float x, fl
 
             // EventDemoState owns this NPC
             m_spawnedNPCs.push_back(npc);
-
-
-        } else {
-            std::cerr << "ERROR: Failed to create NPC object of type: " << npcType << std::endl;
-        }
     } catch (const std::exception& e) {
         std::cerr << "EXCEPTION in createNPCAtPosition: " << e.what() << std::endl;
         std::cerr << "NPC type: " << npcType << ", position: (" << x << ", " << y << ")" << std::endl;

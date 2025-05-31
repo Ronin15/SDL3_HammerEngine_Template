@@ -334,9 +334,11 @@ bool WeatherEvent::checkLocationCondition() const {
     }
 
     // Check region first
-    if (!m_regionName.empty() && !isInRegion()) {
-        return false;
-    }
+    // TODO: Implement proper region checking when region system is available
+    // Currently region checking is disabled (placeholder always returns true)
+    // if (!m_regionName.empty() && !isInRegion()) {
+    //     return false;
+    // }
 
     // Then check bounding area
     if (m_useGeographicBounds && !isInBounds()) {
@@ -347,14 +349,9 @@ bool WeatherEvent::checkLocationCondition() const {
 }
 
 bool WeatherEvent::isInRegion() const {
-    if (m_regionName.empty()) {
-        return true; // No region restriction
-    }
-
-    // In a real implementation, this would check the player's current region
-    // against the specified region name
-
-    // Placeholder implementation always returns true
+    // TODO: Implement proper region checking when region system is available
+    // This should check the player's current region against m_regionName
+    // For now, always return true to allow all weather events
     return true;
 }
 

@@ -60,7 +60,7 @@ public:
 
     // Load game data from a file
     // Returns true if load was successful
-    bool load(const std::string& saveFileName, Player* player);
+    bool load(const std::string& saveFileName, Player* player) const;
 
     // Load game data from a slot
     // Returns true if load was successful
@@ -68,7 +68,7 @@ public:
 
     // Delete a save file
     // Returns true if deletion was successful
-    bool deleteSave(const std::string& saveFileName);
+    bool deleteSave(const std::string& saveFileName) const;
 
     // Delete a save slot
     // Returns true if deletion was successful

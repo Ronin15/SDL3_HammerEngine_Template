@@ -46,7 +46,7 @@ private:
     void updateDemoTimer();
     void updateFrameRate();
     void renderUI();
-    void renderEventStatus();
+    void renderEventStatus() const;
     void renderControls();
 
     // Event demonstration methods

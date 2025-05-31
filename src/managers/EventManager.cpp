@@ -253,15 +253,15 @@ void EventManager::configureThreading(bool useThreading, unsigned int maxThreads
             Forge::ThreadSystem::Instance().reserveQueueCapacity(256);
         }
 
+        // Log the thread configuration (auto-detect vs specified)
         if (maxThreads == 0) {
-            // Auto-detect: ThreadSystem already handles this optimally
             EVENT_LOG("Event processing will use ThreadSystem with default thread count ("
                      << Forge::ThreadSystem::Instance().getThreadCount() << " threads)");
         } else {
             EVENT_LOG("Event processing will use ThreadSystem with up to " << maxThreads << " concurrent tasks");
-            // Note: We don't directly control thread count in ThreadSystem,
-            // but we'll use this value to limit our concurrent tasks
         }
+        // Note: We don't directly control thread count in ThreadSystem,
+        // but maxThreads value will be used to limit our concurrent tasks
     } else {
         EVENT_LOG("Event processing will run on the main thread only");
     }
@@ -498,7 +498,7 @@ void EventManager::triggerNPCSpawn(const std::string& npcType, float x, float y)
     }
 }
 
-bool EventManager::spawnNPC(const std::string& npcType, float x, float y) {
+bool EventManager::spawnNPC(const std::string& npcType, float x, float y) const {
     EVENT_LOG("Spawning NPC of type: " << npcType << " at position (" << x << ", " << y << ")");
 
     // Send spawn request to NPCSpawn events for handling
@@ -631,7 +631,7 @@ void EventManager::registerSystemEventHandlers() {
     // This prevents duplicate NPC creation and maintains clean architecture
 }
 
-void EventManager::updateEventTimers(float deltaTime) {
+void EventManager::updateEventTimers(float deltaTime) const {
     // Get all events
     std::vector<EventPtr> allEvents;
 
@@ -771,7 +771,7 @@ bool EventManager::isEventActive(const std::string& eventName) const {
     return event->isActive();
 }
 
-bool EventManager::executeEvent(const std::string& eventName) {
+bool EventManager::executeEvent(const std::string& eventName) const {
     EVENT_LOG("Executing event: " << eventName);
 
     auto event = getEvent(eventName);
@@ -785,7 +785,7 @@ bool EventManager::executeEvent(const std::string& eventName) {
     return true;
 }
 
-int EventManager::executeEventsByType(const std::string& eventType) {
+int EventManager::executeEventsByType(const std::string& eventType) const {
     EVENT_LOG("Executing all events of type: " << eventType);
 
     auto events = getEventsByType(eventType);
@@ -1228,23 +1228,23 @@ void EventManager::processMessageQueue() {
     }
 
     auto endTime = getCurrentTimeNanos();
-    double timeMs = (endTime - startTime) / 1000000.0;
 
     // Record performance stats for message processing
     {
         std::lock_guard<std::mutex> lock(m_perfStatsMutex);
+        double timeMs = (endTime - startTime) / 1000000.0;
         m_messageQueueStats.addSample(timeMs);
-    }
 
-    if (processedCount > 0) {
-        EVENT_LOG_DETAIL("Processed " << processedCount << " messages in " << timeMs << "ms");
+        if (processedCount > 0) {
+            EVENT_LOG_DETAIL("Processed " << processedCount << " messages in " << timeMs << "ms");
+        }
     }
 
     // Always reset the processing flag, even if an exception occurred
     m_processingMessages.store(false);
 }
 
-void EventManager::deliverMessageToEvent(const std::string& eventName, const std::string& message) {
+void EventManager::deliverMessageToEvent(const std::string& eventName, const std::string& message) const {
     auto event = getEvent(eventName);
     if (!event) {
         EVENT_LOG("Warning: Cannot deliver message to non-existent event: " << eventName);
@@ -1276,7 +1276,7 @@ size_t EventManager::deliverMessageToEventType(const std::string& eventType, con
     return count;
 }
 
-size_t EventManager::deliverBroadcastMessage(const std::string& message) {
+size_t EventManager::deliverBroadcastMessage(const std::string& message) const {
     size_t count = 0;
 
     std::shared_lock<std::shared_mutex> lock(m_eventsMutex);
@@ -1356,7 +1356,7 @@ size_t EventManager::getActiveEventCount() const {
 }
 
 // Weather-specific methods
-bool EventManager::changeWeather(const std::string& weatherType, float transitionTime) {
+bool EventManager::changeWeather(const std::string& weatherType, float transitionTime) const {
     EVENT_LOG("Forcing weather change to: " << weatherType << " (transition: " << transitionTime << "s)");
 
     // Find weather events
@@ -1385,7 +1385,7 @@ bool EventManager::changeWeather(const std::string& weatherType, float transitio
 }
 
 // Scene-specific methods
-bool EventManager::changeScene(const std::string& sceneId, const std::string& transitionType, float transitionTime) {
+bool EventManager::changeScene(const std::string& sceneId, const std::string& transitionType, float transitionTime) const {
     EVENT_LOG("Forcing scene change to: " << sceneId << " (transition: " << transitionType
               << ", duration: " << transitionTime << "s)");
 

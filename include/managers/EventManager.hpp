@@ -287,7 +287,7 @@ public:
      * @return True if the event was found and executed, false otherwise
      * @thread_safety Thread-safe, can be called from any thread
      */
-    bool executeEvent(const std::string& eventName);
+    bool executeEvent(const std::string& eventName) const;
 
     /**
      * @brief Execute all events of a specific type
@@ -295,7 +295,7 @@ public:
      * @return Number of events executed
      * @thread_safety Thread-safe, can be called from any thread
      */
-    int executeEventsByType(const std::string& eventType);
+    int executeEventsByType(const std::string& eventType) const;
 
     // Advanced features
     /**
@@ -339,7 +339,7 @@ public:
      * @return True if successful, false otherwise
      * @thread_safety Thread-safe, can be called from any thread
      */
-    bool changeWeather(const std::string& weatherType, float transitionTime = 5.0f);
+    bool changeWeather(const std::string& weatherType, float transitionTime = 5.0f) const;
 
     // Scene-specific methods
     /**
@@ -350,7 +350,7 @@ public:
      * @return True if successful, false otherwise
      * @thread_safety Thread-safe, can be called from any thread
      */
-    bool changeScene(const std::string& sceneId, const std::string& transitionType = "fade", float transitionTime = 1.0f);
+    bool changeScene(const std::string& sceneId, const std::string& transitionType = "fade", float transitionTime = 1.0f) const;
 
     // NPC spawn methods
     /**
@@ -361,7 +361,7 @@ public:
      * @return True if successful, false otherwise
      * @thread_safety Thread-safe, can be called from any thread
      */
-    bool spawnNPC(const std::string& npcType, float x, float y);
+    bool spawnNPC(const std::string& npcType, float x, float y) const;
 
 
 
@@ -539,7 +539,7 @@ private:
     
     // Helper methods for EventSystem functionality
     void registerSystemEventHandlers();
-    void updateEventTimers(float deltaTime);
+    void updateEventTimers(float deltaTime) const;
     void processSystemEvents();
     static uint64_t getCurrentTimeMs();
 
@@ -624,9 +624,9 @@ private:
     std::atomic<bool> m_processingMessages{false};
 
     // Message delivery helpers
-    void deliverMessageToEvent(const std::string& eventName, const std::string& message);
+    void deliverMessageToEvent(const std::string& eventName, const std::string& message) const;
     size_t deliverMessageToEventType(const std::string& eventType, const std::string& message);
-    size_t deliverBroadcastMessage(const std::string& message);
+    size_t deliverBroadcastMessage(const std::string& message) const;
 
     // Helper methods for event processing
     void updateEvent(const EventPtr& event, const std::string_view& eventName);

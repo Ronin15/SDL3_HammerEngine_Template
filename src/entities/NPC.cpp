@@ -221,6 +221,4 @@ void NPC::setWanderArea(float minX, float minY, float maxX, float maxY) {
     m_maxY = maxY;
 }
 
-void NPC::setPosition(const Vector2D& position) {
-    m_position = position;
-}
+
