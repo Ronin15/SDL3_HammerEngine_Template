@@ -259,12 +259,6 @@ size_t activeEvents = EventManager::Instance().getActiveEventCount();
 - Configurable immediate vs batched processing modes
 - Automatic processing during update() or manual control with processHandlerQueue()
 
-**Storage Optimizations:**
-- `boost::flat_map` used for event handler storage (better cache locality)
-- O(log n) lookup performance optimized for typical event type counts
-- Eliminates string hashing overhead vs hash tables
-- Consistent with existing codebase architecture
-
 **Event Caching System:**
 - Active events are cached for faster iteration
 - Event type batches are pre-computed for efficient parallel processing
