@@ -66,7 +66,7 @@ bool AIDemoState::enter() {
         AIManager::Instance().setPlayerForDistanceOptimization(m_player);
 
         // Create and register chase behavior - behaviors can get player via getPlayerReference()
-        auto chaseBehavior = std::make_unique<ChaseBehavior>(2.0f, 500.0f, 50.0f);
+        auto chaseBehavior = std::make_unique<ChaseBehavior>(0.6f, 500.0f, 50.0f);
         AIManager::Instance().registerBehavior("Chase", std::move(chaseBehavior));
         std::cout << "Forge Game Engine - Chase behavior registered (will use AIManager::getPlayerReference())\n";
 
@@ -278,11 +278,11 @@ void AIDemoState::update() {
 
         // Set global AI pause state in AIManager
         AIManager::Instance().setGlobalPause(m_aiPaused);
-        
+
         // Also send messages for behaviors that need them
         std::string message = m_aiPaused ? "pause" : "resume";
         AIManager::Instance().broadcastMessage(message, true);
-        
+
         // Simple feedback
         std::cout << "Forge Game Engine - AI " << (m_aiPaused ? "PAUSED" : "RESUMED") << std::endl;
     }
@@ -332,10 +332,10 @@ void AIDemoState::setupAIBehaviors() {
     AIManager::Instance().resetBehaviors();
 
     // Create and register wander behavior
-    auto wanderBehavior = std::make_unique<WanderBehavior>(2.0f, 3000.0f, 200.0f);
+    auto wanderBehavior = std::make_unique<WanderBehavior>(0.5f, 3000.0f, 200.0f);
     wanderBehavior->setScreenDimensions(m_worldWidth, m_worldHeight);
     wanderBehavior->setOffscreenProbability(0.2f); // 20% chance to wander offscreen
-    std::cout << "Forge Game Engine - Created WanderBehavior with speed 2.0, interval 3000, radius 200, offscreen probability 0.2\n";
+    std::cout << "Forge Game Engine - Created WanderBehavior with speed 0.5, interval 3000, radius 200, offscreen probability 0.2\n";
     AIManager::Instance().registerBehavior("Wander", std::move(wanderBehavior));
 
     // Create and register patrol behavior with screen-relative coordinates
@@ -350,7 +350,7 @@ void AIDemoState::setupAIBehaviors() {
 
     std::cout << "Forge Game Engine - Created PatrolBehavior with " << patrolPoints.size() << " waypoints at corners and one offscreen\n";
 
-    auto patrolBehavior = std::make_unique<PatrolBehavior>(patrolPoints, 1.5f, true);  // Reduced speed to 1.5, enable offscreen
+    auto patrolBehavior = std::make_unique<PatrolBehavior>(patrolPoints, 0.4f, true);  // Reduced speed to 0.4, enable offscreen
     patrolBehavior->setScreenDimensions(m_worldWidth, m_worldHeight);
     AIManager::Instance().registerBehavior("Patrol", std::move(patrolBehavior));
 
