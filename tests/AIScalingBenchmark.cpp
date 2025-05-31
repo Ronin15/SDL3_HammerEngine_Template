@@ -372,9 +372,8 @@ struct AIScalingFixture {
         // Calculate derived metrics
         double entitiesPerSecond = (static_cast<double>(numEntities) * numUpdates) / (totalTimeMs / 1000.0);
         
-        // Note: Individual behavior instances (not templates) are updated via executeLogic()
-        // Template behaviors stored in 'behaviors' vector are not directly updated
-        int totalBehaviorUpdates = 0; // Keep for output format compatibility
+        // Get actual behavior update count from AIManager
+        int totalBehaviorUpdates = static_cast<int>(AIManager::Instance().getBehaviorUpdateCount());
         
         // Verify all entities were updated
         int notUpdatedCount = 0;
@@ -493,9 +492,9 @@ struct AIScalingFixture {
 
         // Use different entity counts based on threading mode to balance performance and stability
         if (useThreading) {
-            entityCounts = {100, 500, 1000, 5000, 10000, 25000, 50000};
+            entityCounts = {100, 500, 1000, 5000, 10000, 25000, 50000, 100000};
         } else {
-            entityCounts = {100, 500, 1000, 5000, 10000, 25000, 50000};
+            entityCounts = {100, 500, 1000, 5000, 10000}; // Exclude extreme scales for single-threaded
         }
 
         std::map<int, double> updateRates;
@@ -514,7 +513,7 @@ struct AIScalingFixture {
                       << adjustedNumBehaviors << " behaviors, " << adjustedNumUpdates << " updates ---" << std::endl;
 
 
-            runBenchmark(numEntities, adjustedNumBehaviors, adjustedNumUpdates, false);
+            runBenchmark(numEntities, adjustedNumBehaviors, adjustedNumUpdates, useThreading);
 
             // Calculate updates per second
             auto startTime = std::chrono::high_resolution_clock::now();
@@ -656,93 +655,59 @@ BOOST_AUTO_TEST_CASE(TestScalabilityThreaded) {
 
 // Test with extreme number of entities (200,000)
 BOOST_AUTO_TEST_CASE(TestExtremeEntityCount) {
-    AIScalingFixture fixture;
     // Skip if shutdown is in progress
     if (g_shutdownInProgress.load()) {
         BOOST_TEST_MESSAGE("Skipping test due to shutdown in progress");
         return;
     }
 
-    std::cout << "\n===== EXTREME ENTITY COUNT TEST =====" << std::endl;
+    std::cout << "\n===== EXTREME ENTITY COUNT TEST (THREADED ONLY) =====" << std::endl;
+    std::cout << "Testing 100K entities - requires threading for proper performance" << std::endl;
 
     try {
-        // Configure for maximum thread utilization
+        // Configure threading for extreme scale test
         unsigned int maxThreads = std::thread::hardware_concurrency();
         AIManager::Instance().configureThreading(true, maxThreads);
         std::cout << "Running extreme entity test with " << maxThreads << " threads" << std::endl;
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
+        // Test 100K entities - only in threaded mode for performance
         const int numEntities = 100000;
-        const int numBehaviors = 3;   // Fewer behaviors for extreme-scale test
-        const int numUpdates = 3;     // Fewer updates to avoid excessive test time
-
-        std::cout << "\n=========================================" << std::endl;
-        std::cout << "EXTREME ENTITY TEST: " << numEntities << " entities with " << numBehaviors << " behaviors" << std::endl;
-        std::cout << "=========================================" << std::endl;
-
-        // Create entities and behaviors (single run for extreme test)
-        fixture.runBenchmark(numEntities, numBehaviors, numUpdates, true, 1);
-
-        // Measure performance for a single update
-        auto startTime = std::chrono::high_resolution_clock::now();
-
-        AIManager::Instance().updateManagedEntities();
-
-        // Allow time for updates to complete
-        int waitTime = 100;  // 100ms should be enough for large entity counts
-        std::this_thread::sleep_for(std::chrono::milliseconds(waitTime));
-
-        // Force a second update to catch any entities that weren't processed
-        AIManager::Instance().updateManagedEntities();
-        std::this_thread::sleep_for(std::chrono::milliseconds(waitTime));
-
-        auto endTime = std::chrono::high_resolution_clock::now();
-        auto duration = std::chrono::duration_cast<std::chrono::microseconds>(endTime - startTime);
-
-        // Calculate performance metrics
-        double durationInSec = std::max(0.000001, duration.count() / 1000000.0);
-        double updatesPerSecond = static_cast<double>(numEntities) / durationInSec;
-        double timePerEntity = durationInSec / numEntities * 1000.0;  // in milliseconds
-
-        // Report performance
-        std::cout << "\nPerformance Results:" << std::endl;
-        std::cout << "  Total entities: " << numEntities << std::endl;
-        std::cout << "  Total behaviors: " << numBehaviors << std::endl;
-        std::cout << "  Total time: " << std::fixed << std::setprecision(2) << durationInSec * 1000 << " ms" << std::endl;
-        std::cout << "  Time per entity: " << std::setprecision(6) << timePerEntity << " ms" << std::endl;
-        std::cout << "  Updates per second: " << std::setprecision(0) << updatesPerSecond << std::endl;
-        std::cout << "  Thread count: " << maxThreads << std::endl;
         
-        // Note: Individual behavior instances (not templates) are updated via executeLogic()
-        // Template behaviors stored in fixture.behaviors are not directly updated
-        int totalBehaviorUpdates = 0; // Keep for output format compatibility
-        std::cout << "  Total behavior updates: " << totalBehaviorUpdates << std::endl;
+        // Use fewer behaviors and updates for extreme scale to avoid memory issues
+        int adjustedNumBehaviors = 5;
+        int adjustedNumUpdates = 5;
 
-        // Only run if we have a lot of memory
-        #ifdef ENABLE_EXTREME_TESTS
-        // Even more extreme test with additional behaviors
-        fixture.runBenchmark(100000, 5, 3, true);
-        #endif
+        std::cout << "\n--- Test Case: " << numEntities << " entities, " 
+                  << adjustedNumBehaviors << " behaviors, " << adjustedNumUpdates << " updates (THREADED ONLY) ---" << std::endl;
 
-        // Switch to single-threaded mode for cleanup
+        AIScalingFixture fixture;
+        // Run benchmark in threaded mode only (true parameter)
+        fixture.runBenchmark(numEntities, adjustedNumBehaviors, adjustedNumUpdates, true);
+
+        // Verify entities were actually created and processed
+        size_t actualEntityCount = fixture.entities.size();
+        std::cout << "\nVerification - Created entities: " << actualEntityCount << "/" << numEntities;
+        if (actualEntityCount == numEntities) {
+            std::cout << " ✓" << std::endl;
+        } else {
+            std::cout << " ✗" << std::endl;
+        }
+
+        std::cout << "\n===== EXTREME ENTITY COUNT TEST COMPLETED =====\n" << std::endl;
+
+        // Clean up after test
+        fixture.cleanupEntitiesAndBehaviors();
+
+    } catch (const std::exception& e) {
+        std::cerr << "Exception in extreme entity test: " << e.what() << std::endl;
         AIManager::Instance().configureThreading(false);
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
-    }
-    catch (const std::exception& e) {
-        std::cerr << "Error in extreme entity test: " << e.what() << std::endl;
-        AIManager::Instance().configureThreading(false);
-        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+        throw;
     }
 
-    // Extra cleanup to ensure no leftover references
-    fixture.cleanupEntitiesAndBehaviors();
-
-    // Clear collections explicitly
-    fixture.entities.clear();
-    fixture.behaviors.clear();
-
-    // Wait for any pending operations to complete
-    std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    // Switch to single-threaded mode for cleanup
+    AIManager::Instance().configureThreading(false);
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
 }
 
 BOOST_AUTO_TEST_SUITE_END() // AIScalingTests
