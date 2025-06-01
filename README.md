@@ -21,19 +21,19 @@ I use the Zed IDE with custom cmake and ninja task configurations to build/compi
 - Custom window icon support on all platforms
 - Game state management system (state machine)
 - Entity state management system (state machine)
-- Event management system for game events (weather, scene transitions, NPC spawning)
+- Event management system for game events (weather, scene transitions, NPC spawning, Quests)
 - Save game system (for saving and loading game state)
 - Texture management (auto loads all from img dir)
 - Sound & Music management (auto loads all from sound and music dir) stop, start, pause, halt, play sfx
 - Font management (auto loads all from font dir)
-- AI Manager framework for adding AI behaviors that uses a messaging system.
+- AI Manager framework for adding AI behaviors that uses a messaging system.(Manages 10K objects easily)
 - Simple and Efficient Multi-Threading system with task priorities
-- Test player and NPC with 2 frame animations. They both are copyrighted - Hammer Forged Games (C) 2025
+- Test player and NPC sprites with 2 frame animations. They are all copyrighted - Hammer Forged Games (C) 2025
 - Input handling:
   - Keyboard and mouse
   - Xbox series x controller support
   - PS4 Controller support
-- Unit testing framework for core components
+- Boost Unit testing framework for core components
 
 - Supports the following Image, Sound, and font formats:
   - Images: png
@@ -129,7 +129,7 @@ The game uses a state machine to manage different game states (logo, menu, gamep
 
 ### Entity System
 
-Entities like the player character have their own state machines to manage different behaviors (idle, running).
+Player character has their own state machines to manage different behaviors (idle, running) other Non-Player characters have behviours controlled by the AI Manager.
 
 ### SaveGameManager
 
@@ -208,19 +208,18 @@ The GameStateManager controls the high-level game states:
 - State addition, removal, and clearance
 - State lookup by name
 - Update and render delegation to the current state
-- State stacking for overlay states (like pause menus)
+- State stacking for overlay states (like pause menus. inventories etc)
 
 See `include/managers/GameStateManager.hpp` for the full API.
 
 ### EntityStateManager
 
-The EntityStateManager handles the state machine for individual entities:
+The EntityStateManager handles the state machine for the Player:
 
-- State transitions for entity behaviors (idle, running, etc.)
 - State addition, removal, and lookup
 - Current state tracking and updates
 - Memory-efficient state storage using flat maps
-- Seamless transitions between entity states
+- Seamless transitions between Player states(running, jumping, shooting, idle, walking)
 
 See `include/managers/EntityStateManager.hpp` for the full API.
 
@@ -243,7 +242,7 @@ A comprehensive demonstration and testing framework for the event system:
 - **Visual SDL UI**: Real-time display with centered text layout showing phase, timer, FPS, weather, NPC count
 - **Automatic Mode**: Cycles through all event types automatically (Weather → NPC Spawn → Scene Transition → Custom Events)
 - **Manual Mode**: Use number keys 1-5 to trigger specific event types
-- **🔥 NEW: Convenience Methods Demo**: Press 'C' to see one-line event creation in action
+- **Convenience Methods Demo**: Press 'C' to see one-line event creation in action
 - **Event Log**: Visual display of last 6 triggered events with timestamps
 - **Performance Monitoring**: Real-time FPS tracking and system status
 
@@ -257,7 +256,7 @@ The AIManager provides a comprehensive AI behavior management system:
 
 - Dynamic behavior assignment to game entities
 - Thread-safe behavior updates through the game's thread system
-- Priority-based task scheduling for critical AI behaviors
+- Priority-based task scheduling for critical AI entities/behaviors
 - Multiple behavior types for different AI patterns:
   - **WanderBehavior**: Entities move randomly within a defined area, changing direction periodically
   - **PatrolBehavior**: Entities follow predefined waypoints in sequence, moving along patrol routes
