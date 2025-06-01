@@ -797,15 +797,13 @@ void EventDemoState::triggerCustomEventDemo() {
 
     if (npc1) {
         std::string behaviorName1 = determineBehaviorForNPCType(npcType1);
-        AIManager::Instance().registerEntityForUpdates(npc1, 5);
-        AIManager::Instance().queueBehaviorAssignment(npc1, behaviorName1);
+        AIManager::Instance().registerEntityForUpdates(npc1, 5, behaviorName1);
         addLogEntry("Registered " + npcType1 + " for updates and queued " + behaviorName1 + " behavior (global batch)");
     }
 
     if (npc2) {
         std::string behaviorName2 = determineBehaviorForNPCType(npcType2);
-        AIManager::Instance().registerEntityForUpdates(npc2, 5);
-        AIManager::Instance().queueBehaviorAssignment(npc2, behaviorName2);
+        AIManager::Instance().registerEntityForUpdates(npc2, 5, behaviorName2);
         addLogEntry("Registered " + npcType2 + " for updates and queued " + behaviorName2 + " behavior (global batch)");
     }
 
@@ -1144,8 +1142,7 @@ void EventDemoState::createNPCAtPosition(const std::string& npcType, float x, fl
 
         std::string behaviorName = determineBehaviorForNPCType(npcType);
 
-        AIManager::Instance().registerEntityForUpdates(npc, 5);
-        AIManager::Instance().queueBehaviorAssignment(npc, behaviorName);
+        AIManager::Instance().registerEntityForUpdates(npc, 5, behaviorName);
 
         addLogEntry("Registered entity for updates and queued " + behaviorName + " behavior assignment (priority 5)");
 

@@ -682,3 +682,11 @@ float AIManager::getUpdateRangeMultiplier(int priority) const {
     // Higher priority = larger update range multiplier
     return 1.0f + (std::max(0, std::min(9, priority)) * 0.1f);
 }
+
+void AIManager::registerEntityForUpdates(EntityPtr entity, int priority, const std::string& behaviorName) {
+    // Register for updates
+    registerEntityForUpdates(entity, priority);
+    
+    // Queue behavior assignment internally
+    queueBehaviorAssignment(entity, behaviorName);
+}

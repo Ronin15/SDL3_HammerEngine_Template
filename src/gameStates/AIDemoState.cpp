@@ -420,11 +420,8 @@ void AIDemoState::createNPCs() {
                 // Set wander area to keep NPCs on screen
                 npc->setWanderArea(0, 0, m_worldWidth, m_worldHeight);
 
-                // Register with AIManager for centralized entity updates with priority
-                AIManager::Instance().registerEntityForUpdates(npc, 5);
-
-                // Assign default behavior (Wander)
-                AIManager::Instance().assignBehaviorToEntity(npc, "Wander");
+                // Register with AIManager for centralized entity updates with priority and behavior
+                AIManager::Instance().registerEntityForUpdates(npc, 5, "Wander");
 
                 // Add to collection
                 m_npcs.push_back(npc);
