@@ -478,9 +478,6 @@ void GameEngine::processBackgroundTasks() {
   // It should be safe to run on worker threads
 
   try {
-    // Process pending behavior assignments first (critical for stability)
-    AIManager::Instance().processPendingBehaviorAssignments();
-
     // Update Event Manager
     EventManager::Instance().update();
   } catch (const std::exception& e) {

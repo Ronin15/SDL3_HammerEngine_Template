@@ -9,7 +9,7 @@
 - **PERFORMANCE**: Batch processing with threading, cache-friendly data structures, type-indexed behaviors
 - **MAINTAINED**: All existing features: global pause, messaging, player reference, priority support
 - **REMOVED**: Dual entity management system (managed entities vs main entities)
-- **CHANGED**: All processing now through single `AIManager::update()` called from GameEngine
+- **CHANGED**: All processing now through single `AIManager::update()` called from game states
 
 ## Overview
 
@@ -294,16 +294,18 @@ void GamePlayState::enter() {
     AIManager::Instance().registerEntityForUpdates(npc, 7);  // High priority
     AIManager::Instance().setPlayerForDistanceOptimization(player);
     
-    // Assign behaviors directly (or queue for batch processing)
-    AIManager::Instance().assignBehaviorToEntity(npc, "Chase");
+    // Queue behaviors for batch processing (recommended)
+    AIManager::Instance().queueBehaviorAssignment(npc, "Chase");
 }
 
 void GamePlayState::update() {
-    // No need to call AIManager updates - handled by GameEngine::processBackgroundTasks()
-    // GameEngine calls: AIManager::Instance().update();
-    
-    // Your game-specific update code...
+    // Update player first
     player->update();
+    
+    // Update AI Manager - processes queued assignments and updates all entities
+    AIManager::Instance().update();
+    
+    // Your other game-specific update code...
     checkCollisions();
     updateUI();
 }
@@ -410,7 +412,7 @@ The ThreadSystem automatically manages task capacity and scheduling based on pri
 - ✅ **Cross-state persistence**: Works consistently across ALL game states
 - ✅ **Thread safety**: Built-in synchronization prevents race conditions  
 - ✅ **Performance optimization**: Bulk processing reduces overhead
-- ✅ **Automatic processing**: GameEngine handles batch processing each frame
+- ✅ **Automatic processing**: Game states handle batch processing each frame
 - ✅ **Error resilience**: Centralized exception handling with detailed logging
 
 ### Usage Pattern
@@ -423,7 +425,7 @@ for (int i = 0; i < numNPCs; ++i) {
     // Queue the assignment (thread-safe, high-performance)
     AIManager::Instance().queueBehaviorAssignment(npc, "Wander");
     
-    // Assignments will be processed automatically by GameEngine each frame
+    // Assignments will be processed automatically when AIManager::update() is called
 }
 
 // Optional: Manual processing (usually not needed)
@@ -439,7 +441,7 @@ The batched assignment system consists of:
 
 1. **Thread-safe queue**: `queueBehaviorAssignment()` adds to a mutex-protected vector
 2. **Bulk processing**: `processPendingBehaviorAssignments()` moves all pending assignments to local storage and processes them
-3. **Automatic integration**: GameEngine calls the processor every frame in `processBackgroundTasks()`
+3. **Automatic integration**: Game states call `AIManager::update()` which processes assignments first
 4. **Error handling**: Comprehensive exception handling with statistics and logging
 
 ### Performance Benefits
@@ -461,8 +463,45 @@ localQueue.push_back({entity, behaviorName});
 
 // NEW: Global batching (recommended)
 AIManager::Instance().queueBehaviorAssignment(entity, behaviorName);
-// Automatically processed by GameEngine
+// Automatically processed when AIManager::update() is called
 ```
+
+## Current Processing Flow (v4.0+)
+
+The AIManager processing flow has been optimized for performance and thread safety:
+
+### Game State Integration
+
+```cpp
+void YourGameState::update() {
+    // 1. Update player first
+    m_player->update();
+    
+    // 2. Process AI system - handles queued assignments and entity updates
+    AIManager::Instance().update();
+    
+    // 3. Your other game logic
+    checkCollisions();
+    updateUI();
+}
+```
+
+### Internal Processing Order
+
+When `AIManager::update()` is called, it processes in this order:
+
+1. **Process Queued Assignments**: `processPendingBehaviorAssignments()` - handles all queued behavior changes
+2. **Distance Calculations**: Get player reference and calculate entity distances  
+3. **Frame Limiting**: Apply priority-based frame limiting based on distance thresholds
+4. **Batch Processing**: Execute behavior logic for active entities using threading
+5. **Cleanup**: Remove inactive entities and update performance statistics
+
+### Key Benefits
+
+- **Thread Safety**: All processing on main thread eliminates race conditions
+- **Performance**: Batch processing with distance-based frame limiting
+- **Flexibility**: Queued assignments allow behavior changes from any context
+- **Reliability**: Centralized processing ensures consistent behavior
 
 ## Performance Optimizations
 
@@ -558,10 +597,10 @@ struct EntityUpdateInfo {
 ```
 
 #### Distance Thresholds:
-- **Close Distance** (≤8000 units): Update every frame
-- **Medium Distance** (≤10000 units): Update every 15 frames  
-- **Far Distance** (≤25000 units): Update every 30 frames
-- **Out of Range** (>25000 units): Minimal updates
+- **Close Distance** (≤7000 units): Update every frame
+- **Medium Distance** (≤9000 units): Update every 15 frames  
+- **Far Distance** (≤24000 units): Update every 30 frames
+- **Out of Range** (>24000 units): Minimal updates
 
 #### Priority System:
 - **High Priority (7-9)**: Guards, Warriors - larger update ranges
