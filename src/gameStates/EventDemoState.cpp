@@ -797,16 +797,14 @@ void EventDemoState::triggerCustomEventDemo() {
 
     if (npc1) {
         std::string behaviorName1 = determineBehaviorForNPCType(npcType1);
-        int priority1 = (npcType1 == "Guard") ? 7 : (npcType1 == "Warrior") ? 8 : (npcType1 == "Merchant") ? 5 : 2;
-        AIManager::Instance().registerEntityForUpdates(npc1, priority1);
+        AIManager::Instance().registerEntityForUpdates(npc1, 5);
         AIManager::Instance().queueBehaviorAssignment(npc1, behaviorName1);
         addLogEntry("Registered " + npcType1 + " for updates and queued " + behaviorName1 + " behavior (global batch)");
     }
 
     if (npc2) {
         std::string behaviorName2 = determineBehaviorForNPCType(npcType2);
-        int priority2 = (npcType2 == "Guard") ? 7 : (npcType2 == "Warrior") ? 8 : (npcType2 == "Merchant") ? 5 : 2;
-        AIManager::Instance().registerEntityForUpdates(npc2, priority2);
+        AIManager::Instance().registerEntityForUpdates(npc2, 5);
         AIManager::Instance().queueBehaviorAssignment(npc2, behaviorName2);
         addLogEntry("Registered " + npcType2 + " for updates and queued " + behaviorName2 + " behavior (global batch)");
     }
@@ -1146,21 +1144,10 @@ void EventDemoState::createNPCAtPosition(const std::string& npcType, float x, fl
 
         std::string behaviorName = determineBehaviorForNPCType(npcType);
 
-        int priority = 5;
-        if (npcType == "Guard") {
-            priority = 7;
-        } else if (npcType == "Merchant") {
-            priority = 5;
-        } else if (npcType == "Warrior") {
-            priority = 8;
-        } else {
-            priority = 2;
-        }
-
-        AIManager::Instance().registerEntityForUpdates(npc, priority);
+        AIManager::Instance().registerEntityForUpdates(npc, 5);
         AIManager::Instance().queueBehaviorAssignment(npc, behaviorName);
 
-        addLogEntry("Registered entity for updates and queued " + behaviorName + " behavior assignment (priority " + std::to_string(priority) + ")");
+        addLogEntry("Registered entity for updates and queued " + behaviorName + " behavior assignment (priority 5)");
 
         m_spawnedNPCs.push_back(npc);
     } catch (const std::exception& e) {

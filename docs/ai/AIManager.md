@@ -597,15 +597,20 @@ struct EntityUpdateInfo {
 ```
 
 #### Distance Thresholds:
-- **Close Distance** (≤7000 units): Update every frame
-- **Medium Distance** (≤9000 units): Update every 15 frames  
-- **Far Distance** (≤24000 units): Update every 30 frames
-- **Out of Range** (>24000 units): Minimal updates
+- **Close Distance** (≤6000 units): Update every frame
+- **Medium Distance** (≤8000 units): Update every 15 frames  
+- **Far Distance** (≤20000 units): Update every 30 frames
+- **Out of Range** (>20000 units): Minimal updates
 
 #### Priority System:
-- **High Priority (7-9)**: Guards, Warriors - larger update ranges
-- **Medium Priority (4-6)**: Merchants, important NPCs
-- **Low Priority (0-3)**: Villagers, background entities
+**Priority Multiplier**: `1.0 + (priority × 0.1)`
+
+**Example**: Priority 1 NPC gets 1.1x range multiplier:
+- Close range: 6000 × 1.1 = 6,600 units (every frame)
+- Medium range: 8000 × 1.1 = 8,800 units (every 15 frames)
+- Far range: 20000 × 1.1 = 22,000 units (every 30 frames)
+
+**Priority 0-2**: Background entities | **Priority 3-5**: Standard entities | **Priority 6-9**: Important/Critical entities
 
 ### Individual Behavior Instances
 

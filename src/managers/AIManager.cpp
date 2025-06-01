@@ -338,6 +338,9 @@ bool AIManager::isPlayerValid() const {
 
 void AIManager::registerEntityForUpdates(EntityPtr entity, int priority) {
     if (!entity) return;
+    
+    // Clamp priority to valid range (0-9)
+    priority = std::max(0, std::min(9, priority));
 
     std::unique_lock<std::shared_mutex> lock(m_entitiesMutex);
     
@@ -662,4 +665,20 @@ void AIManager::recordPerformance(BehaviorType type, double timeMs, uint64_t ent
 uint64_t AIManager::getCurrentTimeNanos() {
     return std::chrono::duration_cast<std::chrono::nanoseconds>(
         std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+}
+
+int AIManager::getEntityPriority(EntityPtr entity) const {
+    if (!entity) return DEFAULT_PRIORITY;
+    
+    std::shared_lock<std::shared_mutex> lock(m_entitiesMutex);
+    auto it = m_entityToIndex.find(entity);
+    if (it != m_entityToIndex.end() && it->second < m_entities.size()) {
+        return m_entities[it->second].priority;
+    }
+    return DEFAULT_PRIORITY;
+}
+
+float AIManager::getUpdateRangeMultiplier(int priority) const {
+    // Higher priority = larger update range multiplier
+    return 1.0f + (std::max(0, std::min(9, priority)) * 0.1f);
 }

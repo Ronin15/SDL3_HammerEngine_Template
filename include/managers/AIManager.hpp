@@ -131,12 +131,29 @@ public:
     bool isPlayerValid() const;
 
     // Entity management (now unified with spatial system)
-    void registerEntityForUpdates(EntityPtr entity, int priority = 0);
+    /**
+     * @brief Register entity for AI updates with priority-based distance optimization
+     * @param entity The entity to register
+     * @param priority Priority level (0-9):
+     *   - 0-2: Background entities (1.0x-1.2x update range)
+     *   - 3-5: Standard entities (1.3x-1.5x update range) 
+     *   - 6-8: Important entities (1.6x-1.8x update range)
+     *   - 9: Critical entities (1.9x update range)
+     * Higher priority = larger update distances = more responsive AI
+     */
+    void registerEntityForUpdates(EntityPtr entity, int priority = 5);
     void unregisterEntityFromUpdates(EntityPtr entity);
 
     // Global controls
     void setGlobalPause(bool paused);
     bool isGloballyPaused() const;
+
+    // Priority system utilities
+    int getEntityPriority(EntityPtr entity) const;
+    float getUpdateRangeMultiplier(int priority) const;
+    static constexpr int MIN_PRIORITY = 0;
+    static constexpr int MAX_PRIORITY = 9;
+    static constexpr int DEFAULT_PRIORITY = 5;
     void resetBehaviors();
 
     // Threading configuration
@@ -215,9 +232,9 @@ private:
     std::atomic<size_t> m_totalBehaviorExecutions{0};
 
     // Distance optimization settings
-    std::atomic<float> m_maxUpdateDistance{7000.0f};
-    std::atomic<float> m_mediumUpdateDistance{9000.0f};
-    std::atomic<float> m_minUpdateDistance{24000.0f};
+    std::atomic<float> m_maxUpdateDistance{6000.0f};
+    std::atomic<float> m_mediumUpdateDistance{8000.0f};
+    std::atomic<float> m_minUpdateDistance{20000.0f};
     std::atomic<float> m_priorityMultiplier{1.0f};
 
     // Thread synchronization
