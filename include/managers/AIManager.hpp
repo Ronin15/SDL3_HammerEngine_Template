@@ -64,8 +64,8 @@ struct AIEntityData {
     int frameCounter;
     int priority;
     bool active;
-    
-    AIEntityData() : behaviorType(BehaviorType::Custom), lastPosition{0.0f, 0.0f}, 
+
+    AIEntityData() : behaviorType(BehaviorType::Custom), lastPosition{0.0f, 0.0f},
                      lastUpdateTime(0.0f), frameCounter(0), priority(0), active(true) {}
 };
 
@@ -77,7 +77,7 @@ struct AIPerformanceStats {
     uint64_t updateCount{0};
     uint64_t entitiesProcessed{0};
     double entitiesPerSecond{0.0};
-    
+
     void addSample(double timeMs, uint64_t entities) {
         totalUpdateTime += timeMs;
         updateCount++;
@@ -86,7 +86,7 @@ struct AIPerformanceStats {
             entitiesPerSecond = (entitiesProcessed * 1000.0) / totalUpdateTime;
         }
     }
-    
+
     void reset() {
         totalUpdateTime = 0.0;
         updateCount = 0;
@@ -136,13 +136,13 @@ public:
      * @param entity The entity to register
      * @param priority Priority level (0-9):
      *   - 0-2: Background entities (1.0x-1.2x update range)
-     *   - 3-5: Standard entities (1.3x-1.5x update range) 
+     *   - 3-5: Standard entities (1.3x-1.5x update range)
      *   - 6-8: Important entities (1.6x-1.8x update range)
      *   - 9: Critical entities (1.9x update range)
      * Higher priority = larger update distances = more responsive AI
      */
     void registerEntityForUpdates(EntityPtr entity, int priority = 5);
-    
+
     /**
      * @brief Register entity for AI updates and assign behavior in one call
      * @param entity The entity to register
@@ -159,8 +159,8 @@ public:
     // Priority system utilities
     int getEntityPriority(EntityPtr entity) const;
     float getUpdateRangeMultiplier(int priority) const;
-    static constexpr int MIN_PRIORITY = 0;
-    static constexpr int MAX_PRIORITY = 9;
+    static constexpr int AI_MIN_PRIORITY = 0;
+    static constexpr int AI_MAX_PRIORITY = 9;
     static constexpr int DEFAULT_PRIORITY = 5;
     void resetBehaviors();
 
@@ -204,7 +204,7 @@ private:
         int priority;
         int frameCounter;
         uint64_t lastUpdateTime;
-        
+
         EntityUpdateInfo() : priority(0), frameCounter(0), lastUpdateTime(0) {}
     };
     std::vector<EntityUpdateInfo> m_managedEntities;
@@ -213,7 +213,7 @@ private:
     struct PendingAssignment {
         EntityPtr entity;
         std::string behaviorName;
-        
+
         PendingAssignment(EntityPtr e, const std::string& b) : entity(e), behaviorName(b) {}
     };
     std::vector<PendingAssignment> m_pendingAssignments;
@@ -223,8 +223,8 @@ private:
         EntityWeakPtr targetEntity;  // empty for broadcast
         std::string message;
         uint64_t timestamp;
-        
-        QueuedMessage(EntityPtr target, const std::string& msg) 
+
+        QueuedMessage(EntityPtr target, const std::string& msg)
             : targetEntity(target), message(msg), timestamp(getCurrentTimeNanos()) {}
     };
     std::vector<QueuedMessage> m_messageQueue;
@@ -235,7 +235,7 @@ private:
     std::atomic<bool> m_globallyPaused{false};
     std::atomic<bool> m_processingMessages{false};
     unsigned int m_maxThreads{0};
-    
+
     // Behavior execution tracking
     std::atomic<size_t> m_totalBehaviorExecutions{0};
 
