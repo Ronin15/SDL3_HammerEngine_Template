@@ -17,8 +17,7 @@ I use the Zed IDE with custom cmake and ninja task configurations to build/compi
 - Boost Container lib for efficient memory management -> https://www.boost.org https://github.com/boostorg/boost
 - Cross-platform support (Windows, macOS, Linux)
 - Multi-threading support with priority-based task scheduling
-- Automatic dependency management with FetchContent (for SDL3 libs, boost container lib)
-- Debug and Release build configurations
+- Automatic dependency management with FetchContent
 - Custom window icon support on all platforms
 - Game state management system (state machine)
 - Entity state management system (state machine)
