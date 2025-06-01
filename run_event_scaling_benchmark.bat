@@ -3,10 +3,9 @@
 :: Copyright (c) 2025 Hammer Forged Games
 :: Licensed under the MIT License
 
-:: Enable color output on Windows 10+ terminals
 setlocal EnableDelayedExpansion
 
-:: Color codes for Windows
+:: Colors for output
 set "RED=[91m"
 set "GREEN=[92m"
 set "YELLOW=[93m"
@@ -43,7 +42,7 @@ goto :eof
 :show_help
 echo EventManager Scaling Benchmark Test Script
 echo.
-echo Usage: %0 [options]
+echo Usage: run_event_scaling_benchmark.bat [options]
 echo.
 echo Options:
 echo   --release     Run benchmark in release mode ^(optimized^)
@@ -52,10 +51,10 @@ echo   --clean       Clean build artifacts before building
 echo   --help        Show this help message
 echo.
 echo Examples:
-echo   %0                    # Run benchmark with default settings
-echo   %0 --release         # Run optimized benchmark
-echo   %0 --verbose         # Show detailed performance metrics
-echo   %0 --clean --release # Clean build and run optimized benchmark
+echo   run_event_scaling_benchmark.bat                    # Run benchmark with default settings
+echo   run_event_scaling_benchmark.bat --release         # Run optimized benchmark
+echo   run_event_scaling_benchmark.bat --verbose         # Show detailed performance metrics
+echo   run_event_scaling_benchmark.bat --clean --release # Clean build and run optimized benchmark
 echo.
 echo Output:
 echo   Results are saved to: !OUTPUT_FILE!
@@ -99,7 +98,7 @@ if /i "%~1"=="--help" (
     call :show_help
     exit /b 0
 )
-echo Unknown option: %1
+call :print_error "Unknown option: %1"
 echo Use --help for usage information
 exit /b 1
 
@@ -112,11 +111,17 @@ call :print_status "Starting EventManager Scaling Benchmark..."
 call :print_status "Build type: !BUILD_TYPE!"
 call :print_status "Results will be saved to: !OUTPUT_FILE!"
 
+:: Navigate to script directory
+cd /d "%SCRIPT_DIR%"
+
 :: Check if benchmark executable exists
 set "BENCHMARK_EXEC=!SCRIPT_DIR!bin\!BUILD_TYPE!\event_manager_scaling_benchmark.exe"
 if not exist "!BENCHMARK_EXEC!" (
-    call :print_error "Benchmark executable not found: !BENCHMARK_EXEC!"
-    exit /b 1
+    set "BENCHMARK_EXEC=!SCRIPT_DIR!bin\!BUILD_TYPE!\event_manager_scaling_benchmark"
+    if not exist "!BENCHMARK_EXEC!" (
+        call :print_error "Benchmark executable not found: !BENCHMARK_EXEC!"
+        exit /b 1
+    )
 )
 
 :: Prepare output file
@@ -134,8 +139,9 @@ call :print_status "This may take several minutes for comprehensive testing..."
 if "!VERBOSE!"=="true" (
     call :print_status "Running with verbose output..."
     :: Run with verbose output and save to file
-    "!BENCHMARK_EXEC!" 2>&1 | findstr /v "^$" >> "!OUTPUT_FILE!"
+    "!BENCHMARK_EXEC!" 2>&1 > "!OUTPUT_FILE!"
     set BENCHMARK_RESULT=!ERRORLEVEL!
+    type "!OUTPUT_FILE!"
 ) else (
     :: Run quietly and save to file, show progress
     call :print_status "Running benchmark tests (use --verbose for detailed output)..."
@@ -153,16 +159,11 @@ if !BENCHMARK_RESULT! equ 0 (
         call :print_status "Performance Summary:"
         echo.
         
-        :: Extract key metrics from the output (Windows equivalent of grep)
+        :: Extract key metrics from the output (simplified)
         findstr /c:"EXTREME SCALE TEST" "!OUTPUT_FILE!" >nul 2>&1
         if !ERRORLEVEL! equ 0 (
-            :: Show last 15 lines after finding EXTREME SCALE TEST
-            for /f "skip=5 tokens=*" %%a in ('findstr /n /c:"EXTREME SCALE TEST" "!OUTPUT_FILE!"') do (
-                for /f "tokens=1 delims=:" %%b in ("%%a") do set "START_LINE=%%b"
-            )
-            if defined START_LINE (
-                for /f "skip=!START_LINE! tokens=*" %%a in ('type "!OUTPUT_FILE!"') do echo %%a
-            )
+            :: Show performance summary
+            findstr /c:"Performance" /c:"events" /c:"handlers" /c:"time" "!OUTPUT_FILE!" 2>nul
         )
         
         echo.
@@ -191,7 +192,7 @@ if !BENCHMARK_RESULT! equ 0 (
         :: Show last few lines of output for immediate debugging
         echo.
         call :print_status "Last few lines of output:"
-        for /f "skip=1 tokens=*" %%a in ('powershell -Command "Get-Content '!OUTPUT_FILE!' | Select-Object -Last 10"') do echo %%a
+        powershell -Command "Get-Content '!OUTPUT_FILE!' | Select-Object -Last 10" 2>nul
     )
     
     exit /b !BENCHMARK_RESULT!

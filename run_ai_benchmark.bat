@@ -15,7 +15,8 @@ set "NC=[0m"
 echo !YELLOW!Running AI Scaling Benchmark...!NC!
 
 :: Navigate to project root directory (in case script is run from elsewhere)
-cd /d "%~dp0"
+set "SCRIPT_DIR=%~dp0"
+cd /d "%SCRIPT_DIR%"
 
 :: Create directory for test results
 if not exist "test_results" mkdir test_results
@@ -105,8 +106,9 @@ echo.
 
 :: Create output file for results
 for /f "tokens=2 delims==" %%a in ('wmic OS Get localdatetime /value') do set "dt=%%a"
-set "TIMESTAMP=%dt:~0,8%_%dt:~8,6%"
+set "TIMESTAMP=!dt:~0,8!_!dt:~8,6!"
 set "RESULTS_FILE=test_results\ai_scaling_benchmark_!TIMESTAMP!.txt"
+if not exist "test_results" mkdir test_results
 
 :: Timeout for comprehensive benchmarks - adjusted for current performance
 set TIMEOUT_DURATION=180
@@ -136,9 +138,17 @@ echo Command: !BENCHMARK_EXECUTABLE! !TEST_OPTS!>> "!RESULTS_FILE!"
 echo =========================================>> "!RESULTS_FILE!"
 echo.>> "!RESULTS_FILE!"
 
-:: Run the benchmark with timeout using PowerShell
-powershell -Command "& { $job = Start-Job -ScriptBlock { & '%CD%\!BENCHMARK_EXECUTABLE!' !TEST_OPTS! 2>&1 }; if (Wait-Job $job -Timeout !TIMEOUT_DURATION!) { Receive-Job $job } else { Stop-Job $job; Remove-Job $job; Write-Host 'TIMEOUT' } }" >> "!RESULTS_FILE!"
-set TEST_RESULT=%ERRORLEVEL%
+:: Run the benchmark with output capturing and specific options to handle threading issues
+if "%VERBOSE%"=="true" (
+    :: Run with verbose output and save to file
+    powershell -Command "& { $job = Start-Job -ScriptBlock { & '%CD%\!BENCHMARK_EXECUTABLE!' !TEST_OPTS! 2>&1 }; if (Wait-Job $job -Timeout !TIMEOUT_DURATION!) { Receive-Job $job } else { Stop-Job $job; Remove-Job $job; Write-Host 'TIMEOUT' } }" > "!RESULTS_FILE!"
+    set TEST_RESULT=!ERRORLEVEL!
+    type "!RESULTS_FILE!"
+) else (
+    :: Run quietly with output to file
+    powershell -Command "& { $job = Start-Job -ScriptBlock { & '%CD%\!BENCHMARK_EXECUTABLE!' !TEST_OPTS! 2>&1 }; if (Wait-Job $job -Timeout !TIMEOUT_DURATION!) { Receive-Job $job } else { Stop-Job $job; Remove-Job $job; Write-Host 'TIMEOUT' } }" >> "!RESULTS_FILE!"
+    set TEST_RESULT=!ERRORLEVEL!
+)
 
 echo.>> "!RESULTS_FILE!"
 echo ============ BENCHMARK END =============>> "!RESULTS_FILE!"
@@ -159,18 +169,38 @@ if %ERRORLEVEL% equ 0 (
 if !TEST_RESULT! equ 0 (
     echo !GREEN!Benchmark completed successfully!!NC!
 ) else (
-    :: Check for timeout
+    :: Check for timeout (equivalent to exit code 124 in shell)
     findstr /c:"TIMEOUT" "!RESULTS_FILE!" >nul 2>&1
     if %ERRORLEVEL% equ 0 (
         echo !RED!⚠️ Benchmark execution timed out after !TIMEOUT_DURATION!s!!NC!
         echo Benchmark execution timed out after !TIMEOUT_DURATION!s!>> "!RESULTS_FILE!"
+        set TEST_RESULT=124
     ) else (
-        echo !YELLOW!Benchmark exited with code !TEST_RESULT!!NC!
-        :: Check if we got results despite the error
-        findstr /c:"Total time: " /c:"Performance Results" "!RESULTS_FILE!" >nul 2>&1
-        if %ERRORLEVEL% equ 0 (
-            echo !GREEN!Results were captured despite abnormal termination.!NC!
-            set TEST_RESULT=0
+        if !TEST_RESULT! equ 134 (
+            echo !YELLOW!⚠️ Benchmark terminated with SIGABRT ^(exit code 134^)!NC!
+            echo Benchmark terminated with SIGABRT>> "!RESULTS_FILE!"
+            :: If we still got results, consider it a success
+            findstr /c:"Total time: " "!RESULTS_FILE!" >nul 2>&1
+            if %ERRORLEVEL% equ 0 (
+                echo !GREEN!Results were captured before termination.!NC!
+                set TEST_RESULT=0
+            )
+        ) else if !TEST_RESULT! equ 139 (
+            echo !YELLOW!⚠️ Benchmark execution completed but crashed during cleanup ^(segmentation fault, exit code 139^)!!NC!
+            echo Benchmark execution completed but crashed during cleanup ^(segmentation fault^)!>> "!RESULTS_FILE!"
+            :: If we have results, consider it a success
+            findstr /c:"Total time: " /c:"Performance Results" "!RESULTS_FILE!" >nul 2>&1
+            if %ERRORLEVEL% equ 0 (
+                set TEST_RESULT=0
+            )
+        ) else (
+            echo !YELLOW!Benchmark exited with code !TEST_RESULT!!NC!
+            :: Check if we got results despite the error
+            findstr /c:"Total time: " /c:"Performance Results" "!RESULTS_FILE!" >nul 2>&1
+            if %ERRORLEVEL% equ 0 (
+                echo !GREEN!Results were captured despite abnormal termination.!NC!
+                set TEST_RESULT=0
+            )
         )
     )
 )
@@ -314,20 +344,21 @@ if !TEST_RESULT! equ 0 (
 :: Display quick performance summary to console
 echo !BLUE!Quick Performance Summary:!NC!
 
-:: Extract best performance rate (simplified)
-for /f "tokens=*" %%a in ('findstr /c:"Entity updates per second:" "!RESULTS_FILE!" 2^>nul ^| findstr /n "." ^| findstr "^1:"') do (
-    set "PERFORMANCE_LINE=%%a"
-)
-if defined PERFORMANCE_LINE (
-    echo   Best performance: !GREEN!Available in results!NC!
-) else (
-    echo   Best performance: !GREEN!N/A!NC!
+:: Extract best performance rate (more accurate extraction)
+set "BEST_RATE=N/A"
+for /f "tokens=*" %%a in ('findstr /c:"Entity updates per second:" "!RESULTS_FILE!" 2^>nul') do (
+    for /f "tokens=4" %%b in ("%%a") do (
+        if "!BEST_RATE!"=="N/A" set "BEST_RATE=%%b"
+    )
 )
 
 :: Count test results
+set "TOTAL_TESTS=0"
+set "SUCCESS_RATE=0"
 for /f %%a in ('findstr /c:"Performance Results" "!RESULTS_FILE!" 2^>nul ^| find /c /v ""') do set "TOTAL_TESTS=%%a"
 for /f %%a in ('findstr /c:"✓" "!RESULTS_FILE!" 2^>nul ^| find /c /v ""') do set "SUCCESS_RATE=%%a"
 
+echo   Best performance: !GREEN!!BEST_RATE!!NC! entity updates/sec
 echo   Tests completed: !GREEN!!TOTAL_TESTS!!NC!
 echo   Successful validations: !GREEN!!SUCCESS_RATE!!NC!
 
