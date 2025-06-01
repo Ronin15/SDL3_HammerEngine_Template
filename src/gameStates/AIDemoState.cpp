@@ -161,21 +161,8 @@ void AIDemoState::update() {
         // Update AI Manager
         AIManager::Instance().update();
 
-        // Check for any NPC-specific status changes if needed
-        for (size_t i = 0; i < m_npcs.size(); i++) {
-            const auto& npc = m_npcs[i];
-            if (!npc) continue;
-
-            try {
-                // Entity updates now handled by AIManager - just check status here if needed
-            } catch (const std::exception& e) {
-                std::cerr << "Forge Game Engine - ERROR: Exception checking NPC " << i << ": " << e.what() << std::endl;
-                continue;
-            }
-
-            // Note: Letting NPCs go off-screen is now managed by the behaviors
-            // They'll handle the reset logic when they go far enough off-screen
-        }
+        // Entity updates are now handled by AIManager::update()
+        // No need to manually update NPCs here
 
         // Handle user input for the demo
     } catch (const std::exception& e) {

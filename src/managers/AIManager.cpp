@@ -617,15 +617,15 @@ bool AIManager::shouldUpdateEntity(EntityPtr entity, EntityPtr player, int& fram
     float multiplier = m_priorityMultiplier.load(std::memory_order_acquire);
     float priorityFactor = 1.0f + (entityPriority * 0.1f);
     
-    float adjustedMaxDist = m_maxUpdateDistance.load(std::memory_order_acquire) * multiplier * priorityFactor;
+    float adjustedCloseDist = m_maxUpdateDistance.load(std::memory_order_acquire) * multiplier * priorityFactor;
     float adjustedMediumDist = m_mediumUpdateDistance.load(std::memory_order_acquire) * multiplier * priorityFactor;
-    float adjustedMinDist = m_minUpdateDistance.load(std::memory_order_acquire) * multiplier * priorityFactor;
+    float adjustedFarDist = m_minUpdateDistance.load(std::memory_order_acquire) * multiplier * priorityFactor;
     
-    if (distance <= adjustedMaxDist) {
+    if (distance <= adjustedCloseDist) {
         return true; // Close: every frame
     } else if (distance <= adjustedMediumDist) {
         return frameCounter % 15 == 0; // Medium: every 15 frames
-    } else if (distance <= adjustedMinDist) {
+    } else if (distance <= adjustedFarDist) {
         return frameCounter % 30 == 0; // Far: every 30 frames
     }
     
