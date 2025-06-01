@@ -158,8 +158,8 @@ void AIDemoState::update() {
             m_player->update();
         }
 
-        // Entity updates now handled by GameEngine's AIManager::update() call
-        // No need to call any update methods here
+        // Update AI Manager
+        AIManager::Instance().update();
 
         // Check for any NPC-specific status changes if needed
         for (size_t i = 0; i < m_npcs.size(); i++) {
@@ -227,16 +227,16 @@ void AIDemoState::update() {
         // Assign Wander behavior to all NPCs
         std::cout << "Forge Game Engine - Switching all NPCs to WANDER behavior\n";
         for (auto& npc : m_npcs) {
-            // Assign the new behavior - entity already registered with priority
-            AIManager::Instance().assignBehaviorToEntity(npc, "Wander");
+            // Queue the behavior assignment for batch processing
+            AIManager::Instance().queueBehaviorAssignment(npc, "Wander");
         }
         lastKey = 1;
     } else if (InputManager::Instance().isKeyDown(SDL_SCANCODE_2) && lastKey != 2) {
         // Assign Patrol behavior to all NPCs
         std::cout << "Forge Game Engine - Switching all NPCs to PATROL behavior\n";
         for (auto& npc : m_npcs) {
-            // Assign the new behavior - entity already registered with priority
-            AIManager::Instance().assignBehaviorToEntity(npc, "Patrol");
+            // Queue the behavior assignment for batch processing
+            AIManager::Instance().queueBehaviorAssignment(npc, "Patrol");
         }
         lastKey = 2;
     } else if (InputManager::Instance().isKeyDown(SDL_SCANCODE_3) && lastKey != 3) {
@@ -247,8 +247,8 @@ void AIDemoState::update() {
         // No manual target updates needed
 
         for (auto& npc : m_npcs) {
-            // Assign the new behavior - entity already registered with priority
-            AIManager::Instance().assignBehaviorToEntity(npc, "Chase");
+            // Queue the behavior assignment for batch processing
+            AIManager::Instance().queueBehaviorAssignment(npc, "Chase");
         }
         lastKey = 3;
     }

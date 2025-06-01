@@ -481,9 +481,6 @@ void GameEngine::processBackgroundTasks() {
     // Process pending behavior assignments first (critical for stability)
     AIManager::Instance().processPendingBehaviorAssignments();
 
-    // AI updates run with unified spatial system
-    AIManager::Instance().update();
-    
     // Update Event Manager
     EventManager::Instance().update();
   } catch (const std::exception& e) {
