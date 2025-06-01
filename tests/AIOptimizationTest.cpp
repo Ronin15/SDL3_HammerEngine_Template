@@ -300,6 +300,13 @@ public:
         m_managedEntities.insert(entity);
     }
 
+    // Consolidated registration with behavior (mock implementation)
+    void registerEntityForUpdates(EntityPtr entity, int priority, const std::string& behaviorName) {
+        (void)priority; // Unused in mock
+        m_managedEntities.insert(entity);
+        assignBehaviorToEntity(entity, behaviorName);
+    }
+
     // Unregister entity from managed updates (mock implementation)
     void unregisterEntityFromUpdates(EntityPtr entity) {
         m_managedEntities.erase(entity);
@@ -510,10 +517,9 @@ BOOST_AUTO_TEST_CASE(TestMessageQueueSystem)
     auto wanderBehavior = std::make_shared<MockWanderBehavior>(2.0f, 1000.0f, 200.0f);
     AIManager::Instance().registerBehavior("MsgWander", wanderBehavior);
 
-    // Create test entity and register for managed updates
+    // Create test entity and register with consolidated method
     auto entity = OptimizationTestEntity::create(Vector2D(100.0f, 100.0f));
-    AIManager::Instance().assignBehaviorToEntity(entity, "MsgWander");
-    AIManager::Instance().registerEntityForUpdates(entity);
+    AIManager::Instance().registerEntityForUpdates(entity, 5, "MsgWander");
 
     // Queue several messages
     AIManager::Instance().sendMessageToEntity(entity, "test1");

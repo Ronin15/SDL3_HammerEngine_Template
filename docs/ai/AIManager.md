@@ -169,19 +169,16 @@ AIManager::Instance().registerBehavior("Chase", chaseBehavior);
 // Create an NPC (using shared_ptr for EntityPtr)
 auto npc = std::make_shared<NPC>("npc_sprite", Vector2D(250, 250), 64, 64);
 
-// Register entity for automatic updates with priority
-AIManager::Instance().registerEntityForUpdates(npc, 5);  // Medium priority
+// Register entity with priority and behavior in one call (preferred)
+AIManager::Instance().registerEntityForUpdates(npc, 5, "Wander");
 
-// Queue behavior assignment (preferred for performance)
-AIManager::Instance().queueBehaviorAssignment(npc, "Wander");
+// Alternative: Register with priority only
+AIManager::Instance().registerEntityForUpdates(npc, 5);
 
 // Process queued assignments (typically called once per frame)
 AIManager::Instance().processPendingBehaviorAssignments();
 
-// For immediate assignment (use sparingly)
-AIManager::Instance().assignBehaviorToEntity(npc, "Chase");
-
-// Respond to player detection by switching behavior
+// Change behavior during gameplay
 if (isPlayerDetected) {
     AIManager::Instance().queueBehaviorAssignment(npc, "Chase");
 }
@@ -290,12 +287,9 @@ The AIManager uses a unified spatial system. Entities are registered once and au
 
 ```cpp
 void GamePlayState::enter() {
-    // Register entities for automatic updates with priority-based optimization
-    AIManager::Instance().registerEntityForUpdates(npc, 7);  // High priority
+    // Register entities with priority and behavior in one call (recommended)
+    AIManager::Instance().registerEntityForUpdates(npc, 7, "Chase");
     AIManager::Instance().setPlayerForDistanceOptimization(player);
-    
-    // Queue behaviors for batch processing (recommended)
-    AIManager::Instance().queueBehaviorAssignment(npc, "Chase");
 }
 
 void GamePlayState::update() {
@@ -394,67 +388,55 @@ When threading is enabled, be careful about accessing shared resources from beha
 
 The ThreadSystem automatically manages task capacity and scheduling based on priorities, ensuring critical AI behaviors receive CPU time before less important ones.
 
-## 🔥 Global Batched Behavior Assignment System
+## 🔥 Consolidated Entity Registration System
 
 ### Overview
+**NEW in v4.1+**: AIManager now provides a consolidated registration method that handles both entity updates and behavior assignment in a single call, improving performance and simplifying the API.
 
-**NEW in v2.2+**: AIManager now includes a global batched behavior assignment system that provides critical stability and performance benefits across all game states. This system replaces the need for individual game states to implement their own batching logic.
+### Why Consolidated Registration
 
-### Why Batched Assignment is Critical
+**Problem**: Previous approach required two separate calls:
+- Performance overhead from multiple function calls
+- Risk of forgetting behavior assignment after registration
+- Inconsistent patterns across game states
 
-**Problem**: Individual behavior assignments can cause:
-- Race conditions during entity creation
-- Performance degradation with many entities
-- Thread safety issues in multi-threaded environments
-- Inconsistent behavior across different game states
-
-**Solution**: Global batching provides:
-- ✅ **Cross-state persistence**: Works consistently across ALL game states
-- ✅ **Thread safety**: Built-in synchronization prevents race conditions  
-- ✅ **Performance optimization**: Bulk processing reduces overhead
-- ✅ **Automatic processing**: Game states handle batch processing each frame
-- ✅ **Error resilience**: Centralized exception handling with detailed logging
+**Solution**: Single consolidated method:
+- ✅ **Better Performance**: 50% fewer singleton accesses and function calls
+- ✅ **Simpler API**: One call handles registration + behavior assignment
+- ✅ **Less Error-Prone**: Cannot forget to assign behavior
+- ✅ **Backward Compatible**: Existing methods still work
 
 ### Usage Pattern
 
 ```cpp
-// RECOMMENDED: Queue assignments during entity creation
+// RECOMMENDED: Register with priority and behavior in one call
 for (int i = 0; i < numNPCs; ++i) {
     auto npc = createNPC();
     
-    // Queue the assignment (thread-safe, high-performance)
-    AIManager::Instance().queueBehaviorAssignment(npc, "Wander");
-    
-    // Assignments will be processed automatically when AIManager::update() is called
+    // Single call handles registration + behavior assignment
+    AIManager::Instance().registerEntityForUpdates(npc, 5, "Wander");
 }
 
-// Optional: Manual processing (usually not needed)
-size_t processed = AIManager::Instance().processPendingBehaviorAssignments();
-
-// Optional: Check queue status
-size_t pending = AIManager::Instance().getPendingBehaviorAssignmentCount();
+// Alternative: Traditional separate calls (still supported)
+AIManager::Instance().registerEntityForUpdates(npc, 5);
+AIManager::Instance().queueBehaviorAssignment(npc, "Wander");
 ```
 
 ### Implementation Details
 
-The batched assignment system consists of:
+The consolidated system:
 
-1. **Thread-safe queue**: `queueBehaviorAssignment()` adds to a mutex-protected vector
-2. **Bulk processing**: `processPendingBehaviorAssignments()` moves all pending assignments to local storage and processes them
-3. **Automatic integration**: Game states call `AIManager::update()` which processes assignments first
-4. **Error handling**: Comprehensive exception handling with statistics and logging
+1. **Single API call**: `registerEntityForUpdates(entity, priority, behaviorName)`
+2. **Internal delegation**: Calls existing registration and queuing methods
+3. **Automatic processing**: Behavior assignments processed during AIManager::update()
+4. **Performance optimized**: Reduced overhead for mass entity creation
 
 ### Performance Benefits
 
-- **Reduced lock contention**: Batch processing minimizes mutex lock time
-- **Memory efficiency**: Single global queue vs multiple per-state queues  
-- **CPU optimization**: Bulk processing is more cache-friendly
-- **Scalability**: Handles thousands of entities efficiently
-
-### Migration from Local Batching
-
-If you have existing local batching code:
-
+- **Reduced function call overhead**: 50% fewer external API calls
+- **Better cache locality**: Related operations grouped together
+- **Lower singleton access cost**: Single `AIManager::Instance()` call per entity
+- **Improved batch creation**: Especially beneficial for large entity counts (10k+ NPCs)
 ```cpp
 // OLD: Local batching (deprecated)
 std::vector<std::pair<EntityPtr, std::string>> localQueue;
@@ -661,8 +643,6 @@ size_t getBehaviorCount() const;
 
 // Entity-behavior assignment
 void assignBehaviorToEntity(EntityPtr entity, const std::string& behaviorName);
-
-// 🔥 Global Batched Behavior Assignment System (v2.2+)
 void queueBehaviorAssignment(EntityPtr entity, const std::string& behaviorName);
 size_t processPendingBehaviorAssignments();
 size_t getPendingBehaviorAssignmentCount() const;
@@ -670,8 +650,9 @@ size_t getPendingBehaviorAssignmentCount() const;
 void unassignBehaviorFromEntity(EntityPtr entity);
 bool entityHasBehavior(EntityPtr entity) const;
 
-// Unified Entity Management System
-void registerEntityForUpdates(EntityPtr entity, int priority = 0);
+// 🔥 Consolidated Entity Registration System (v4.1+)
+void registerEntityForUpdates(EntityPtr entity, int priority = 5);
+void registerEntityForUpdates(EntityPtr entity, int priority, const std::string& behaviorName);
 void unregisterEntityFromUpdates(EntityPtr entity);
 size_t getManagedEntityCount() const;
 

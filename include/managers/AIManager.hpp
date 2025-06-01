@@ -142,6 +142,14 @@ public:
      * Higher priority = larger update distances = more responsive AI
      */
     void registerEntityForUpdates(EntityPtr entity, int priority = 5);
+    
+    /**
+     * @brief Register entity for AI updates and assign behavior in one call
+     * @param entity The entity to register
+     * @param priority Priority level (0-9) - see above for ranges
+     * @param behaviorName Name of the behavior to assign
+     */
+    void registerEntityForUpdates(EntityPtr entity, int priority, const std::string& behaviorName);
     void unregisterEntityFromUpdates(EntityPtr entity);
 
     // Global controls
