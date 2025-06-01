@@ -36,7 +36,7 @@ The AI Manager is a high-performance, unified system for managing autonomous beh
 **Current Architecture (REQUIRED)**: 
 - Each NPC receives its own cloned behavior instance
 - Complete state isolation and thread safety
-- Stable performance up to 5000+ NPCs
+- Stable performance up to 10,000+ NPCs on screen at once.
 
 ### Implementation
 
@@ -63,7 +63,7 @@ public:
 - ✅ **Thread Safety**: No race conditions between NPCs
 - ✅ **Performance**: Linear scaling instead of exponential degradation
 - ✅ **Stability**: Eliminates cache invalidation thrashing
-- ✅ **Memory Cost**: ~2.5MB for 5000 NPCs (negligible vs. system crashes)
+- ✅ **Memory Cost**: ~5.5MB for 10,000 NPCs (negligible vs. system crashes)
 
 ### Memory Impact Analysis
 
@@ -74,7 +74,6 @@ public:
 | 5000 | 1.5KB       | 2.5MB           | 2.5MB    |
 
 **Trade-off**: 2.5MB memory cost eliminates system crashes and provides stable performance.
-
 ## Core Components
 
 ### AIManager
@@ -207,11 +206,7 @@ AIManager::Instance().processMessageQueue();
 
 ### Global AI Pause/Resume System
 
-The AIManager provides a global pause system that completely halts all AI processing, including entity updates and behavior execution. This is more effective than just sending pause messages to individual behaviors.
-
-#### Why Global Pause?
-
-The traditional approach of sending "pause" messages to behaviors only stops the AI logic but still allows `entity->update()` calls to continue, which can result in continued movement due to physics, friction, or other entity systems. The global pause system addresses this by preventing `update()` from executing entirely when paused.
+The AIManager provides a global pause system that completely halts all AI processing, including entity updates and behavior execution.
 
 #### Usage
 
@@ -388,23 +383,7 @@ When threading is enabled, be careful about accessing shared resources from beha
 
 The ThreadSystem automatically manages task capacity and scheduling based on priorities, ensuring critical AI behaviors receive CPU time before less important ones.
 
-## 🔥 Consolidated Entity Registration System
-
-### Overview
-**NEW in v4.1+**: AIManager now provides a consolidated registration method that handles both entity updates and behavior assignment in a single call, improving performance and simplifying the API.
-
-### Why Consolidated Registration
-
-**Problem**: Previous approach required two separate calls:
-- Performance overhead from multiple function calls
-- Risk of forgetting behavior assignment after registration
-- Inconsistent patterns across game states
-
-**Solution**: Single consolidated method:
-- ✅ **Better Performance**: 50% fewer singleton accesses and function calls
-- ✅ **Simpler API**: One call handles registration + behavior assignment
-- ✅ **Less Error-Prone**: Cannot forget to assign behavior
-- ✅ **Backward Compatible**: Existing methods still work
+## Entity Registration System
 
 ### Usage Pattern
 
