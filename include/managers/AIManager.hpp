@@ -240,9 +240,9 @@ private:
     std::atomic<size_t> m_totalBehaviorExecutions{0};
 
     // Distance optimization settings
-    std::atomic<float> m_maxUpdateDistance{6000.0f};
-    std::atomic<float> m_mediumUpdateDistance{8000.0f};
-    std::atomic<float> m_minUpdateDistance{20000.0f};
+    std::atomic<float> m_maxUpdateDistance{4000.0f};
+    std::atomic<float> m_mediumUpdateDistance{6000.0f};
+    std::atomic<float> m_minUpdateDistance{12000.0f};
     std::atomic<float> m_priorityMultiplier{1.0f};
 
     // Thread synchronization
