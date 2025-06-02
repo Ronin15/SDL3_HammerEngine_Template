@@ -24,8 +24,8 @@ void PlayerIdleState::update(float deltaTime) {
         return;
     }
     
-    // Set acceleration to zero (no input = no acceleration)
-    // Let Player::update() handle friction like NPCs
+    // Stop movement immediately when in idle (no input)
+    m_player.get().setVelocity(Vector2D(0, 0));
     m_player.get().setAcceleration(Vector2D(0, 0));
     
     // Keep idle animation frame

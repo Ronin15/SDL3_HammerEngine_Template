@@ -112,23 +112,8 @@ void Player::update(float deltaTime) {
     // Let the state machine handle ALL movement and input logic
     m_stateManager.update(deltaTime);
 
-    // Apply acceleration to velocity (IDENTICAL to NPCs)
-    m_velocity += m_acceleration * deltaTime;
-    
-    // Apply velocity to position (IDENTICAL to NPCs)
+    // Apply velocity to position
     m_position += m_velocity * deltaTime;
-
-    // Apply friction for smooth deceleration (IDENTICAL to NPCs)
-    if (m_velocity.length() > 0.1f) {
-        const float frictionRate = 0.05f;  // Same as NPCs
-        float frictionFactor = std::pow(frictionRate, deltaTime);
-        m_velocity *= frictionFactor;
-    } else if (m_velocity.length() < 0.1f) {
-        m_velocity = Vector2D(0, 0);
-    }
-
-    // Reset acceleration (IDENTICAL to NPCs)
-    m_acceleration = Vector2D(0, 0);
 
     // If the texture dimensions haven't been loaded yet, try loading them
     if (m_frameWidth == 0 && TextureManager::Instance().isTextureInMap(m_textureID)) {

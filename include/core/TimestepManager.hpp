@@ -6,8 +6,8 @@
 #ifndef TIMESTEP_MANAGER_HPP
 #define TIMESTEP_MANAGER_HPP
 
-#include <chrono>
 #include <cstdint>
+#include <SDL3/SDL.h>
 
 /**
  * TimestepManager implements the industry-standard "Fix Your Timestep" pattern.
@@ -108,9 +108,9 @@ private:
     float m_fixedTimestep;               // Fixed timestep for updates (seconds)
     float m_targetFrameTime;             // Target frame time (1/targetFPS)
     
-    // Frame timing
-    std::chrono::steady_clock::time_point m_frameStart;
-    std::chrono::steady_clock::time_point m_lastFrameTime;
+    // Frame timing (SDL_GetTicks() returns Uint64 milliseconds)
+    Uint64 m_frameStart;
+    Uint64 m_lastFrameTime;
     
     // Fixed timestep accumulator pattern
     double m_accumulator;                // Accumulated time for fixed updates
@@ -120,7 +120,7 @@ private:
     uint32_t m_lastFrameTimeMs;         // Last frame duration in milliseconds
     float m_currentFPS;                 // Current measured FPS
     uint32_t m_frameCount;              // Frame counter for FPS calculation
-    std::chrono::steady_clock::time_point m_fpsLastUpdate;
+    Uint64 m_fpsLastUpdate;             // Last FPS update time in milliseconds
     
     // State flags
     bool m_shouldRender;                // True when render should happen this frame
@@ -129,7 +129,7 @@ private:
     // Helper methods
     void updateFPS();
     void limitFrameRate();
-    double getCurrentTimeSeconds() const;
+    Uint64 getCurrentTimeMs() const;
 };
 
 #endif // TIMESTEP_MANAGER_HPP
