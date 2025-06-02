@@ -20,6 +20,10 @@ public:
     void exit() override;
 
 private:
+    void handleMovementInput(float deltaTime);
+    void handleRunningAnimation(float deltaTime);
+    bool hasInputDetected() const;
+    
     // Non-owning reference to the player entity
     // The player entity is owned elsewhere in the application
     std::reference_wrapper<Player> m_player;

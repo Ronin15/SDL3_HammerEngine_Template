@@ -32,6 +32,10 @@ public:
     
     // Player-specific setter methods
     void setFlip(SDL_FlipMode flip) override { m_flip = flip; }
+    
+    // Animation timing methods (needed for state machine)
+    Uint64 getLastFrameTime() const { return m_lastFrameTime; }
+    void setLastFrameTime(Uint64 time) { m_lastFrameTime = time; }
 
 private:
     void handleMovementInput(float deltaTime);

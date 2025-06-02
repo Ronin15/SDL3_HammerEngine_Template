@@ -65,6 +65,8 @@ class GameEngine {
   // Get current FPS from GameLoop's TimestepManager
   float getCurrentFPS() const;
 
+
+
   // Window size methods
   int getWindowWidth() const { return m_windowWidth; }
   int getWindowHeight() const { return m_windowHeight; }
@@ -102,6 +104,8 @@ class GameEngine {
 
   // Render synchronization
   std::mutex m_renderMutex{};
+
+
 
   // Delete copy constructor and assignment operator
   GameEngine(const GameEngine&) = delete; // Prevent copying
