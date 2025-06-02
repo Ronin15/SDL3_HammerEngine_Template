@@ -34,7 +34,8 @@ public:
     void setFlip(SDL_FlipMode flip) override { m_flip = flip; }
 
 private:
-    void handleInput();
+    void handleMovementInput(float deltaTime);
+    void handleStateTransitions();
     void loadDimensionsFromTexture();
     void setupStates();
 
