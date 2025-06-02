@@ -378,7 +378,7 @@ void AIDemoState::createNPCs() {
                 auto npc = std::make_shared<NPC>("npc", position, 64, 64);
 
                 // Set animation properties (adjust based on your actual sprite sheet)
-                npc->setAnimSpeed(150);
+                // Use default 100ms animation timing
 
                 // Set wander area to keep NPCs on screen
                 npc->setWanderArea(0, 0, m_worldWidth, m_worldHeight);

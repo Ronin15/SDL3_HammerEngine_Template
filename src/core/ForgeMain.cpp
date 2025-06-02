@@ -19,7 +19,7 @@ const std::string GAME_NAME{"Game Template"};
 
 // maybe_unused is just a hint to the compiler that the variable is not used.
 // with -Wall -Wextra flags
-[[maybe_unused]] int main([[maybe_unused]] int argc, [[maybe_unused]] char* argv[]) {
+int main([[maybe_unused]] int argc, [[maybe_unused]] char* argv[]) {
   std::cout << "Forge Game Engine - Initializing " << GAME_NAME << "...\n";
   std::cout << "Forge Game Engine - Initializing Thread System....\n";
 
