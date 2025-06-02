@@ -41,7 +41,10 @@ bool AIManager::init() {
         
         AI_LOG("AIManager initialized");
         if (threadSystemExists) {
-            AI_LOG("Threading enabled with " << Forge::ThreadSystem::Instance().getThreadCount() << " threads");
+            // Cache ThreadSystem reference for better performance
+            Forge::ThreadSystem& threadSystem = Forge::ThreadSystem::Instance();
+            (void)threadSystem; // Mark as intentionally used for logging
+            AI_LOG("Threading enabled with " << threadSystem.getThreadCount() << " threads");
         }
         
         return true;
@@ -100,20 +103,24 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
             std::shared_lock<std::shared_mutex> lock(m_entitiesMutex);
             
             if (m_entities.size() >= THREADING_THRESHOLD && m_useThreading.load(std::memory_order_acquire)) {
+                // Cache ThreadSystem reference for better performance and avoid redundant existence checks
+                bool threadSystemExists = Forge::ThreadSystem::Exists();
+                Forge::ThreadSystem* threadSystem = threadSystemExists ? &Forge::ThreadSystem::Instance() : nullptr;
+            
                 // Use threaded processing - submit optimal-sized batches, let ThreadSystem distribute
                 // Calculate optimal batch size for ThreadSystem (around 1K-10K entities per batch)
                 size_t optimalBatchSize = std::max(size_t(1000), m_entities.size() / 20);
                 optimalBatchSize = std::min(optimalBatchSize, size_t(10000));
-                
+            
                 std::atomic<size_t> completedTasks{0};
                 size_t tasksSubmitted = 0;
-                
+            
                 // Submit batches to ThreadSystem - it will distribute among workers
                 for (size_t i = 0; i < m_entities.size(); i += optimalBatchSize) {
                     size_t batchEnd = std::min(i + optimalBatchSize, m_entities.size());
-                    
-                    if (Forge::ThreadSystem::Exists()) {
-                        Forge::ThreadSystem::Instance().enqueueTask([this, i, batchEnd, &completedTasks, deltaTime]() {
+                
+                    if (threadSystem) {
+                        threadSystem->enqueueTask([this, i, batchEnd, &completedTasks, deltaTime]() {
                             processBatch(i, batchEnd, deltaTime);
                             completedTasks.fetch_add(1, std::memory_order_relaxed);
                         }, Forge::TaskPriority::Normal, "AI_Batch_Update");
@@ -122,13 +129,13 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
                         processBatch(i, batchEnd, deltaTime);
                     }
                 }
-                
+            
                 // Wait for all tasks to complete if using ThreadSystem
-                if (Forge::ThreadSystem::Exists() && tasksSubmitted > 0) {
+                if (threadSystem && tasksSubmitted > 0) {
                     auto waitStart = std::chrono::high_resolution_clock::now();
                     while (completedTasks.load(std::memory_order_relaxed) < tasksSubmitted) {
                         std::this_thread::sleep_for(std::chrono::microseconds(100));
-                        
+                    
                         // Timeout protection
                         auto elapsed = std::chrono::high_resolution_clock::now() - waitStart;
                         if (elapsed > std::chrono::seconds(10)) {

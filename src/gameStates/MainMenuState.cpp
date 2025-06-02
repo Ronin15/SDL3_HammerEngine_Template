@@ -17,64 +17,76 @@ bool MainMenuState::enter() {
 void MainMenuState::update([[maybe_unused]] float deltaTime) {
   //std::cout << "Updating Main Menu State\n";
 
+      // Cache manager references for better performance
+      InputManager& inputMgr = InputManager::Instance();
+      GameEngine& gameEngine = GameEngine::Instance();
+      auto* gameStateManager = gameEngine.getGameStateManager();
+
       // Handle menu options
-      if (InputManager::Instance().isKeyDown(SDL_SCANCODE_RETURN)) {
-          GameEngine::Instance().getGameStateManager()->setState("GamePlayState");
+      if (inputMgr.isKeyDown(SDL_SCANCODE_RETURN)) {
+          gameStateManager->setState("GamePlayState");
       }
-      if (InputManager::Instance().isKeyDown(SDL_SCANCODE_A)) {
-          GameEngine::Instance().getGameStateManager()->setState("AIDemo");
+      if (inputMgr.isKeyDown(SDL_SCANCODE_A)) {
+          gameStateManager->setState("AIDemo");
       }
-      if (InputManager::Instance().isKeyDown(SDL_SCANCODE_E)) {
-          GameEngine::Instance().getGameStateManager()->setState("EventDemo");
+      if (inputMgr.isKeyDown(SDL_SCANCODE_E)) {
+          gameStateManager->setState("EventDemo");
       }
-      if (InputManager::Instance().isKeyDown(SDL_SCANCODE_ESCAPE)) {
-          GameEngine::Instance().setRunning(false);
+      if (inputMgr.isKeyDown(SDL_SCANCODE_ESCAPE)) {
+          gameEngine.setRunning(false);
       }
   }
 
 void MainMenuState::render() {
+   // Cache manager references for better performance
+   FontManager& fontMgr = FontManager::Instance();
+   GameEngine& gameEngine = GameEngine::Instance();
+   SDL_Renderer* renderer = gameEngine.getRenderer();
+   int windowWidth = gameEngine.getWindowWidth();
+   int windowHeight = gameEngine.getWindowHeight();
+
    SDL_Color fontColor = {200, 200, 200, 255};//Gray
     // Title
-    FontManager::Instance().drawText(
+    fontMgr.drawText(
       "Main Menu",
       "fonts_Arial",
-      GameEngine::Instance().getWindowWidth() / 2,     // Center horizontally
-      (GameEngine::Instance().getWindowHeight() / 2) - 200,
+      windowWidth / 2,     // Center horizontally
+      (windowHeight / 2) - 200,
       fontColor,
-      GameEngine::Instance().getRenderer());
+      renderer);
 
     // Menu options
-    FontManager::Instance().drawText(
+    fontMgr.drawText(
       "Press ENTER - Start Game",
       "fonts_Arial",
-      GameEngine::Instance().getWindowWidth() / 2,     // Center horizontally
-      (GameEngine::Instance().getWindowHeight() / 2) - 120,
+      windowWidth / 2,     // Center horizontally
+      (windowHeight / 2) - 120,
       fontColor,
-      GameEngine::Instance().getRenderer());
+      renderer);
 
-    FontManager::Instance().drawText(
+    fontMgr.drawText(
       "Press A - AI Demo",
       "fonts_Arial",
-      GameEngine::Instance().getWindowWidth() / 2,     // Center horizontally
-      (GameEngine::Instance().getWindowHeight() / 2) - 70,
+      windowWidth / 2,     // Center horizontally
+      (windowHeight / 2) - 70,
       fontColor,
-      GameEngine::Instance().getRenderer());
+      renderer);
 
-    FontManager::Instance().drawText(
+    fontMgr.drawText(
       "Press E - Event Demo",
       "fonts_Arial",
-      GameEngine::Instance().getWindowWidth() / 2,     // Center horizontally
-      (GameEngine::Instance().getWindowHeight() / 2) - 20,
+      windowWidth / 2,     // Center horizontally
+      (windowHeight / 2) - 20,
       fontColor,
-      GameEngine::Instance().getRenderer());
+      renderer);
 
-    FontManager::Instance().drawText(
+    fontMgr.drawText(
       "Press ESC - Exit",
       "fonts_Arial",
-      GameEngine::Instance().getWindowWidth() / 2,     // Center horizontally
-      (GameEngine::Instance().getWindowHeight() / 2) + 30,
+      windowWidth / 2,     // Center horizontally
+      (windowHeight / 2) + 30,
       fontColor,
-      GameEngine::Instance().getRenderer());
+      renderer);
 }
 bool MainMenuState::exit() {
   std::cout << "Forge Game Engine - Exiting MAIN MENU State\n";

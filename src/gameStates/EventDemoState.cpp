@@ -34,9 +34,12 @@ bool EventDemoState::enter() {
     std::cout << "Forge Game Engine - Entering EventDemoState...\n";
 
     try {
+        // Cache GameEngine reference for better performance
+        GameEngine& gameEngine = GameEngine::Instance();
+        
         // Setup window dimensions
-        m_worldWidth = GameEngine::Instance().getWindowWidth();
-        m_worldHeight = GameEngine::Instance().getWindowHeight();
+        m_worldWidth = gameEngine.getWindowWidth();
+        m_worldHeight = gameEngine.getWindowHeight();
 
         // Initialize event system
         setupEventSystem();
@@ -45,8 +48,11 @@ bool EventDemoState::enter() {
         m_player = std::make_shared<Player>();
         m_player->setPosition(Vector2D(m_worldWidth / 2, m_worldHeight / 2));
 
+        // Cache AIManager reference for better performance  
+        AIManager& aiMgr = AIManager::Instance();
+        
         // Set player reference in AIManager for distance optimization
-        AIManager::Instance().setPlayerForDistanceOptimization(m_player);
+        aiMgr.setPlayerForDistanceOptimization(m_player);
 
         // Initialize timing
 
@@ -101,10 +107,13 @@ bool EventDemoState::exit() {
         m_currentPhase = DemoPhase::Initialization;
         m_phaseTimer = 0.0f;
 
+        // Cache EventManager reference for better performance
+        EventManager& eventMgr = EventManager::Instance();
+        
         // Clean up event handlers
-        EventManager::Instance().removeHandlers(EventTypeId::Weather);
-        EventManager::Instance().removeHandlers(EventTypeId::NPCSpawn);
-        EventManager::Instance().removeHandlers(EventTypeId::SceneChange);
+        eventMgr.removeHandlers(EventTypeId::Weather);
+        eventMgr.removeHandlers(EventTypeId::NPCSpawn);
+        eventMgr.removeHandlers(EventTypeId::SceneChange);
 
         std::cout << "Forge Game Engine - EventDemoState cleanup complete\n";
         return true;
@@ -119,6 +128,9 @@ bool EventDemoState::exit() {
 }
 
 void EventDemoState::update(float deltaTime) {
+    // Cache AIManager reference for better performance
+    AIManager& aiMgr = AIManager::Instance();
+    
     // Update timing
     updateDemoTimer(deltaTime);
 
@@ -131,7 +143,7 @@ void EventDemoState::update(float deltaTime) {
     }
 
     // Update AI Manager
-    AIManager::Instance().update(deltaTime);
+    aiMgr.update(deltaTime);
 
     // Clean up invalid NPCs
     auto it = m_spawnedNPCs.begin();
@@ -141,10 +153,10 @@ void EventDemoState::update(float deltaTime) {
         } else {
             // Remove dead/invalid NPCs
             try {
-                if (AIManager::Instance().entityHasBehavior(*it)) {
-                    AIManager::Instance().unassignBehaviorFromEntity(*it);
+                if (aiMgr.entityHasBehavior(*it)) {
+                    aiMgr.unassignBehaviorFromEntity(*it);
                 }
-                AIManager::Instance().unregisterEntityFromUpdates(*it);
+                aiMgr.unregisterEntityFromUpdates(*it);
             } catch (...) {
                 // Ignore errors during cleanup
             }
@@ -267,7 +279,10 @@ void EventDemoState::setupEventSystem() {
     std::cout << "Forge Game Engine - EventDemoState: EventManager instance obtained\n";
     addLogEntry("EventManager singleton obtained");
 
-    if (!EventManager::Instance().init()) {
+    // Cache EventManager reference for better performance
+    EventManager& eventMgr = EventManager::Instance();
+
+    if (!eventMgr.init()) {
         std::cerr << "Forge Game Engine - ERROR: Failed to initialize EventManager!\n";
         addLogEntry("ERROR: EventManager initialization failed");
         return;
@@ -277,21 +292,21 @@ void EventDemoState::setupEventSystem() {
     addLogEntry("EventManager initialized");
 
     // Register event handlers using new optimized API
-    EventManager::Instance().registerHandler(EventTypeId::Weather,
+    eventMgr.registerHandler(EventTypeId::Weather,
         [this](const EventData& data) {
             if (data.isActive()) {
                 onWeatherChanged("weather_changed");
             }
         });
 
-    EventManager::Instance().registerHandler(EventTypeId::NPCSpawn,
+    eventMgr.registerHandler(EventTypeId::NPCSpawn,
         [this](const EventData& data) {
             if (data.isActive()) {
                 onNPCSpawned("npc_spawned");
             }
         });
 
-    EventManager::Instance().registerHandler(EventTypeId::SceneChange,
+    eventMgr.registerHandler(EventTypeId::SceneChange,
         [this](const EventData& data) {
             if (data.isActive()) {
                 onSceneChanged("scene_changed");
@@ -305,22 +320,25 @@ void EventDemoState::setupEventSystem() {
 void EventDemoState::createTestEvents() {
     addLogEntry("=== Using New Convenience Methods ===");
 
+    // Cache EventManager reference for better performance
+    EventManager& eventMgr = EventManager::Instance();
+
     // Create and register weather events using new convenience methods
-    bool success1 = EventManager::Instance().createWeatherEvent("demo_clear", "Clear", 1.0f, 2.0f);
-    bool success2 = EventManager::Instance().createWeatherEvent("demo_rainy", "Rainy", 0.8f, 3.0f);
-    bool success3 = EventManager::Instance().createWeatherEvent("demo_stormy", "Stormy", 0.9f, 1.5f);
-    bool success4 = EventManager::Instance().createWeatherEvent("demo_foggy", "Foggy", 0.6f, 4.0f);
+    bool success1 = eventMgr.createWeatherEvent("demo_clear", "Clear", 1.0f, 2.0f);
+    bool success2 = eventMgr.createWeatherEvent("demo_rainy", "Rainy", 0.8f, 3.0f);
+    bool success3 = eventMgr.createWeatherEvent("demo_stormy", "Stormy", 0.9f, 1.5f);
+    bool success4 = eventMgr.createWeatherEvent("demo_foggy", "Foggy", 0.6f, 4.0f);
 
     // Create and register NPC spawn events using new convenience methods
-    bool success5 = EventManager::Instance().createNPCSpawnEvent("demo_guard_spawn", "Guard", 1, 20.0f);
-    bool success6 = EventManager::Instance().createNPCSpawnEvent("demo_villager_spawn", "Villager", 2, 15.0f);
-    bool success7 = EventManager::Instance().createNPCSpawnEvent("demo_merchant_spawn", "Merchant", 1, 25.0f);
-    bool success8 = EventManager::Instance().createNPCSpawnEvent("demo_warrior_spawn", "Warrior", 1, 30.0f);
+    bool success5 = eventMgr.createNPCSpawnEvent("demo_guard_spawn", "Guard", 1, 20.0f);
+    bool success6 = eventMgr.createNPCSpawnEvent("demo_villager_spawn", "Villager", 2, 15.0f);
+    bool success7 = eventMgr.createNPCSpawnEvent("demo_merchant_spawn", "Merchant", 1, 25.0f);
+    bool success8 = eventMgr.createNPCSpawnEvent("demo_warrior_spawn", "Warrior", 1, 30.0f);
 
     // Create and register scene change events using new convenience methods
-    bool success9 = EventManager::Instance().createSceneChangeEvent("demo_forest", "Forest", "fade", 2.0f);
-    bool success10 = EventManager::Instance().createSceneChangeEvent("demo_village", "Village", "slide", 1.5f);
-    bool success11 = EventManager::Instance().createSceneChangeEvent("demo_castle", "Castle", "dissolve", 2.5f);
+    bool success9 = eventMgr.createSceneChangeEvent("demo_forest", "Forest", "fade", 2.0f);
+    bool success10 = eventMgr.createSceneChangeEvent("demo_village", "Village", "slide", 1.5f);
+    bool success11 = eventMgr.createSceneChangeEvent("demo_castle", "Castle", "dissolve", 2.5f);
 
     // Report creation results
     int successCount = success1 + success2 + success3 + success4 + success5 + success6 + success7 + success8 + success9 + success10 + success11;
@@ -333,9 +351,9 @@ void EventDemoState::createTestEvents() {
     }
 
     // Show current event counts by type for monitoring
-    size_t weatherCount = EventManager::Instance().getEventCount(EventTypeId::Weather);
-    size_t npcCount = EventManager::Instance().getEventCount(EventTypeId::NPCSpawn);
-    size_t sceneCount = EventManager::Instance().getEventCount(EventTypeId::SceneChange);
+    size_t weatherCount = eventMgr.getEventCount(EventTypeId::Weather);
+    size_t npcCount = eventMgr.getEventCount(EventTypeId::NPCSpawn);
+    size_t sceneCount = eventMgr.getEventCount(EventTypeId::SceneChange);
 
     addLogEntry("Event counts - Weather: " + std::to_string(weatherCount) +
                 ", NPC: " + std::to_string(npcCount) +
@@ -343,22 +361,26 @@ void EventDemoState::createTestEvents() {
 }
 
 void EventDemoState::handleInput() {
+    // Cache manager references for better performance
+    InputManager& inputMgr = InputManager::Instance();
+    GameEngine& gameEngine = GameEngine::Instance();
+    
     // Store previous input state
     m_lastInput = m_input;
 
     // Get current input state
-    m_input.space = InputManager::Instance().isKeyDown(SDL_SCANCODE_SPACE);
-    m_input.enter = InputManager::Instance().isKeyDown(SDL_SCANCODE_RETURN);
-    m_input.tab = InputManager::Instance().isKeyDown(SDL_SCANCODE_TAB);
-    m_input.num1 = InputManager::Instance().isKeyDown(SDL_SCANCODE_1);
-    m_input.num2 = InputManager::Instance().isKeyDown(SDL_SCANCODE_2);
-    m_input.num3 = InputManager::Instance().isKeyDown(SDL_SCANCODE_3);
-    m_input.num4 = InputManager::Instance().isKeyDown(SDL_SCANCODE_4);
-    m_input.num5 = InputManager::Instance().isKeyDown(SDL_SCANCODE_5);
-    m_input.escape = InputManager::Instance().isKeyDown(SDL_SCANCODE_B);
-    m_input.r = InputManager::Instance().isKeyDown(SDL_SCANCODE_R);
-    m_input.a = InputManager::Instance().isKeyDown(SDL_SCANCODE_A);
-    m_input.c = InputManager::Instance().isKeyDown(SDL_SCANCODE_C);
+    m_input.space = inputMgr.isKeyDown(SDL_SCANCODE_SPACE);
+    m_input.enter = inputMgr.isKeyDown(SDL_SCANCODE_RETURN);
+    m_input.tab = inputMgr.isKeyDown(SDL_SCANCODE_TAB);
+    m_input.num1 = inputMgr.isKeyDown(SDL_SCANCODE_1);
+    m_input.num2 = inputMgr.isKeyDown(SDL_SCANCODE_2);
+    m_input.num3 = inputMgr.isKeyDown(SDL_SCANCODE_3);
+    m_input.num4 = inputMgr.isKeyDown(SDL_SCANCODE_4);
+    m_input.num5 = inputMgr.isKeyDown(SDL_SCANCODE_5);
+    m_input.escape = inputMgr.isKeyDown(SDL_SCANCODE_B);
+    m_input.r = inputMgr.isKeyDown(SDL_SCANCODE_R);
+    m_input.a = inputMgr.isKeyDown(SDL_SCANCODE_A);
+    m_input.c = inputMgr.isKeyDown(SDL_SCANCODE_C);
 
     // Handle key presses (only on press, not hold)
     if (isKeyPressed(m_input.space, m_lastInput.space)) {
@@ -475,7 +497,7 @@ void EventDemoState::handleInput() {
     }
 
     if (isKeyPressed(m_input.escape, m_lastInput.escape)) {
-        GameEngine::Instance().getGameStateManager()->setState("MainMenuState");
+        gameEngine.getGameStateManager()->setState("MainMenuState");
     }
 }
 
@@ -489,22 +511,27 @@ void EventDemoState::updateDemoTimer(float deltaTime) {
 
 
 void EventDemoState::renderUI() {
+    // Cache manager references for better performance
+    GameEngine& gameEngine = GameEngine::Instance();
+    FontManager& fontMgr = FontManager::Instance();
+    SDL_Renderer* renderer = gameEngine.getRenderer();
+    
     SDL_Color whiteColor = {255, 255, 255, 255};
     SDL_Color yellowColor = {255, 255, 0, 255};
     SDL_Color greenColor = {0, 255, 0, 255};
 
-    int windowWidth = GameEngine::Instance().getWindowWidth();
+    int windowWidth = gameEngine.getWindowWidth();
     int yPos = 20;
     int lineHeight = 25;
 
     // Title
-    FontManager::Instance().drawText(
+    fontMgr.drawText(
         "=== EVENT DEMO STATE ===",
         "fonts_Arial",
         windowWidth / 2,
         yPos,
         yellowColor,
-        GameEngine::Instance().getRenderer());
+        renderer);
     yPos += lineHeight * 2;
 
     // Phase information
@@ -521,72 +548,77 @@ void EventDemoState::renderUI() {
                   << std::fixed << std::setprecision(1) << m_phaseTimer << "s / "
                   << m_phaseDuration << "s)";
     }
-    FontManager::Instance().drawText(
+    fontMgr.drawText(
         phaseInfo.str(),
         "fonts_Arial",
         windowWidth / 2,
         yPos,
         whiteColor,
-        GameEngine::Instance().getRenderer());
+        renderer);
     yPos += lineHeight;
 
     // Auto mode status
     std::string autoModeText = "Auto Mode: " + std::string(m_autoMode ? "ON" : "OFF");
-    FontManager::Instance().drawText(
+    fontMgr.drawText(
         autoModeText,
         "fonts_Arial",
         windowWidth / 2,
         yPos,
         greenColor,
-        GameEngine::Instance().getRenderer());
+        renderer);
     yPos += lineHeight;
 
     // FPS information
-    float currentFPS = GameEngine::Instance().getCurrentFPS();
+    float currentFPS = gameEngine.getCurrentFPS();
     std::stringstream fpsInfo;
     fpsInfo << "FPS: " << std::fixed << std::setprecision(1) << currentFPS;
-    FontManager::Instance().drawText(
+    fontMgr.drawText(
         fpsInfo.str(),
         "fonts_Arial",
         windowWidth / 2,
         yPos,
         yellowColor,
-        GameEngine::Instance().getRenderer());
+        renderer);
     yPos += lineHeight;
 
     // Weather and NPC info
     std::stringstream statusInfo;
     statusInfo << "Weather: " << getCurrentWeatherString()
                << " | Spawned NPCs: " << m_spawnedNPCs.size();
-    FontManager::Instance().drawText(
+    fontMgr.drawText(
         statusInfo.str(),
         "fonts_Arial",
         windowWidth / 2,
         yPos,
         whiteColor,
-        GameEngine::Instance().getRenderer());
+        renderer);
 
     renderControls();
     renderEventStatus();
 }
 
 void EventDemoState::renderEventStatus() const {
+    // Cache manager references for better performance
+    GameEngine& gameEngine = GameEngine::Instance();
+    FontManager& fontMgr = FontManager::Instance();
+    SDL_Renderer* renderer = gameEngine.getRenderer();
+    
     SDL_Color cyanColor = {0, 255, 255, 255};
     SDL_Color whiteColor = {255, 255, 255, 255};
 
-    int windowWidth = GameEngine::Instance().getWindowWidth();
-    int windowHeight = GameEngine::Instance().getWindowHeight();
+    int windowWidth = gameEngine.getWindowWidth();
+    int windowHeight = gameEngine.getWindowHeight();
     int yPos = windowHeight - 250;
     int lineHeight = 22;
 
     // Event log title
-    FontManager::Instance().drawText(
+    fontMgr.drawText(
         "=== EVENT LOG ===",
         "fonts_Arial",
         windowWidth / 2,
         yPos,
         cyanColor,
-        GameEngine::Instance().getRenderer());
+        renderer);
     yPos += lineHeight + 10;
 
     // Render last few log entries
@@ -595,33 +627,38 @@ void EventDemoState::renderEventStatus() const {
 
     for (int i = startIndex; i < static_cast<int>(m_eventLog.size()); ++i) {
         std::string logEntry = "• " + m_eventLog[i];
-        FontManager::Instance().drawText(
+        fontMgr.drawText(
             logEntry,
             "fonts_Arial",
             windowWidth / 2,
             yPos,
             whiteColor,
-            GameEngine::Instance().getRenderer());
+            renderer);
         yPos += lineHeight;
     }
 }
 
 void EventDemoState::renderControls() {
+    // Cache manager references for better performance
+    GameEngine& gameEngine = GameEngine::Instance();
+    FontManager& fontMgr = FontManager::Instance();
+    SDL_Renderer* renderer = gameEngine.getRenderer();
+    
     SDL_Color cyanColor = {0, 255, 255, 255};
     SDL_Color whiteColor = {255, 255, 255, 255};
 
-    int windowWidth = GameEngine::Instance().getWindowWidth();
+    int windowWidth = gameEngine.getWindowWidth();
     int yPos = 180;
     int lineHeight = 22;
 
     // Controls title
-    FontManager::Instance().drawText(
+    fontMgr.drawText(
         "=== CONTROLS ===",
         "fonts_Arial",
         windowWidth / 2,
         yPos,
         cyanColor,
-        GameEngine::Instance().getRenderer());
+        renderer);
     yPos += lineHeight + 10;
 
     // Control instructions
@@ -632,13 +669,13 @@ void EventDemoState::renderControls() {
     };
 
     for (const auto& control : controls) {
-        FontManager::Instance().drawText(
+        fontMgr.drawText(
             control,
             "fonts_Arial",
             windowWidth / 2,
             yPos,
             whiteColor,
-            GameEngine::Instance().getRenderer());
+            renderer);
         yPos += lineHeight;
     }
 }
@@ -757,15 +794,18 @@ void EventDemoState::triggerCustomEventDemo() {
     auto npc1 = createNPCAtPositionWithoutBehavior(npcType1, spawnX1, spawnY1);
     auto npc2 = createNPCAtPositionWithoutBehavior(npcType2, spawnX2, spawnY2);
 
+    // Cache AIManager reference for better performance
+    AIManager& aiMgr = AIManager::Instance();
+
     if (npc1) {
         std::string behaviorName1 = determineBehaviorForNPCType(npcType1);
-        AIManager::Instance().registerEntityForUpdates(npc1, rand() % 9 + 1, behaviorName1);
+        aiMgr.registerEntityForUpdates(npc1, rand() % 9 + 1, behaviorName1);
         addLogEntry("Registered " + npcType1 + " for updates and queued " + behaviorName1 + " behavior (global batch)");
     }
 
     if (npc2) {
         std::string behaviorName2 = determineBehaviorForNPCType(npcType2);
-        AIManager::Instance().registerEntityForUpdates(npc2, rand() % 9 + 1, behaviorName2);
+        aiMgr.registerEntityForUpdates(npc2, rand() % 9 + 1, behaviorName2);
         addLogEntry("Registered " + npcType2 + " for updates and queued " + behaviorName2 + " behavior (global batch)");
     }
 
@@ -780,12 +820,15 @@ void EventDemoState::triggerConvenienceMethodsDemo() {
     demoCounter++;
     std::string suffix = std::to_string(demoCounter);
 
-    bool success1 = EventManager::Instance().createWeatherEvent("conv_fog_" + suffix, "Foggy", 0.7f, 2.5f);
-    bool success2 = EventManager::Instance().createWeatherEvent("conv_storm_" + suffix, "Stormy", 0.9f, 1.5f);
-    bool success3 = EventManager::Instance().createSceneChangeEvent("conv_dungeon_" + suffix, "DungeonDemo", "dissolve", 2.0f);
-    bool success4 = EventManager::Instance().createSceneChangeEvent("conv_town_" + suffix, "TownDemo", "slide", 1.0f);
-    bool success5 = EventManager::Instance().createNPCSpawnEvent("conv_guards_" + suffix, "Guard", 2, 30.0f);
-    bool success6 = EventManager::Instance().createNPCSpawnEvent("conv_merchants_" + suffix, "Merchant", 1, 15.0f);
+    // Cache EventManager reference for better performance
+    EventManager& eventMgr = EventManager::Instance();
+
+    bool success1 = eventMgr.createWeatherEvent("conv_fog_" + suffix, "Foggy", 0.7f, 2.5f);
+    bool success2 = eventMgr.createWeatherEvent("conv_storm_" + suffix, "Stormy", 0.9f, 1.5f);
+    bool success3 = eventMgr.createSceneChangeEvent("conv_dungeon_" + suffix, "DungeonDemo", "dissolve", 2.0f);
+    bool success4 = eventMgr.createSceneChangeEvent("conv_town_" + suffix, "TownDemo", "slide", 1.0f);
+    bool success5 = eventMgr.createNPCSpawnEvent("conv_guards_" + suffix, "Guard", 2, 30.0f);
+    bool success6 = eventMgr.createNPCSpawnEvent("conv_merchants_" + suffix, "Merchant", 1, 15.0f);
 
     int successCount = success1 + success2 + success3 + success4 + success5 + success6;
     if (successCount == 6) {
@@ -797,8 +840,8 @@ void EventDemoState::triggerConvenienceMethodsDemo() {
         addLogEntry("  - Guard spawn (2 NPCs, radius: 30.0f)");
         addLogEntry("  - Merchant spawn (1 NPC, radius: 15.0f)");
 
-        size_t totalEvents = EventManager::Instance().getEventCount();
-        size_t weatherEvents = EventManager::Instance().getEventCount(EventTypeId::Weather);
+        size_t totalEvents = eventMgr.getEventCount();
+        size_t weatherEvents = eventMgr.getEventCount(EventTypeId::Weather);
         addLogEntry("Total events: " + std::to_string(totalEvents) + " (Weather: " + std::to_string(weatherEvents) + ")");
 
         // Create and execute weather event directly for demonstration
@@ -856,65 +899,68 @@ void EventDemoState::onSceneChanged(const std::string& message) {
 void EventDemoState::setupAIBehaviors() {
     std::cout << "EventDemoState: Setting up AI behaviors for NPC integration...\n";
 
-    if (!AIManager::Instance().hasBehavior("Wander")) {
+    // Cache AIManager reference for better performance
+    AIManager& aiMgr = AIManager::Instance();
+
+    if (!aiMgr.hasBehavior("Wander")) {
         auto wanderBehavior = std::make_unique<WanderBehavior>(WanderBehavior::WanderMode::MEDIUM_AREA, 80.0f);
         wanderBehavior->setScreenDimensions(m_worldWidth, m_worldHeight);
-        AIManager::Instance().registerBehavior("Wander", std::move(wanderBehavior));
+        aiMgr.registerBehavior("Wander", std::move(wanderBehavior));
         std::cout << "EventDemoState: Registered Wander behavior\n";
     }
 
-    if (!AIManager::Instance().hasBehavior("SmallWander")) {
+    if (!aiMgr.hasBehavior("SmallWander")) {
         auto smallWanderBehavior = std::make_unique<WanderBehavior>(WanderBehavior::WanderMode::SMALL_AREA, 60.0f);
         smallWanderBehavior->setScreenDimensions(m_worldWidth, m_worldHeight);
-        AIManager::Instance().registerBehavior("SmallWander", std::move(smallWanderBehavior));
+        aiMgr.registerBehavior("SmallWander", std::move(smallWanderBehavior));
         std::cout << "EventDemoState: Registered SmallWander behavior\n";
     }
 
-    if (!AIManager::Instance().hasBehavior("LargeWander")) {
+    if (!aiMgr.hasBehavior("LargeWander")) {
         auto largeWanderBehavior = std::make_unique<WanderBehavior>(WanderBehavior::WanderMode::LARGE_AREA, 100.0f);
         largeWanderBehavior->setScreenDimensions(m_worldWidth, m_worldHeight);
-        AIManager::Instance().registerBehavior("LargeWander", std::move(largeWanderBehavior));
+        aiMgr.registerBehavior("LargeWander", std::move(largeWanderBehavior));
         std::cout << "EventDemoState: Registered LargeWander behavior\n";
     }
 
-    if (!AIManager::Instance().hasBehavior("EventWander")) {
+    if (!aiMgr.hasBehavior("EventWander")) {
         auto eventWanderBehavior = std::make_unique<WanderBehavior>(WanderBehavior::WanderMode::EVENT_TARGET, 70.0f);
         eventWanderBehavior->setScreenDimensions(m_worldWidth, m_worldHeight);
-        AIManager::Instance().registerBehavior("EventWander", std::move(eventWanderBehavior));
+        aiMgr.registerBehavior("EventWander", std::move(eventWanderBehavior));
         std::cout << "EventDemoState: Registered EventWander behavior\n";
     }
 
-    if (!AIManager::Instance().hasBehavior("Patrol")) {
+    if (!aiMgr.hasBehavior("Patrol")) {
         auto patrolBehavior = std::make_unique<PatrolBehavior>(PatrolBehavior::PatrolMode::FIXED_WAYPOINTS, 75.0f, true);
         patrolBehavior->setScreenDimensions(m_worldWidth, m_worldHeight);
-        AIManager::Instance().registerBehavior("Patrol", std::move(patrolBehavior));
+        aiMgr.registerBehavior("Patrol", std::move(patrolBehavior));
         std::cout << "EventDemoState: Registered Patrol behavior\n";
     }
 
-    if (!AIManager::Instance().hasBehavior("RandomPatrol")) {
+    if (!aiMgr.hasBehavior("RandomPatrol")) {
         auto randomPatrolBehavior = std::make_unique<PatrolBehavior>(PatrolBehavior::PatrolMode::RANDOM_AREA, 85.0f, false);
         randomPatrolBehavior->setScreenDimensions(m_worldWidth, m_worldHeight);
-        AIManager::Instance().registerBehavior("RandomPatrol", std::move(randomPatrolBehavior));
+        aiMgr.registerBehavior("RandomPatrol", std::move(randomPatrolBehavior));
         std::cout << "EventDemoState: Registered RandomPatrol behavior\n";
     }
 
-    if (!AIManager::Instance().hasBehavior("CirclePatrol")) {
+    if (!aiMgr.hasBehavior("CirclePatrol")) {
         auto circlePatrolBehavior = std::make_unique<PatrolBehavior>(PatrolBehavior::PatrolMode::CIRCULAR_AREA, 90.0f, false);
         circlePatrolBehavior->setScreenDimensions(m_worldWidth, m_worldHeight);
-        AIManager::Instance().registerBehavior("CirclePatrol", std::move(circlePatrolBehavior));
+        aiMgr.registerBehavior("CirclePatrol", std::move(circlePatrolBehavior));
         std::cout << "EventDemoState: Registered CirclePatrol behavior\n";
     }
 
-    if (!AIManager::Instance().hasBehavior("EventTarget")) {
+    if (!aiMgr.hasBehavior("EventTarget")) {
         auto eventTargetBehavior = std::make_unique<PatrolBehavior>(PatrolBehavior::PatrolMode::EVENT_TARGET, 95.0f, false);
         eventTargetBehavior->setScreenDimensions(m_worldWidth, m_worldHeight);
-        AIManager::Instance().registerBehavior("EventTarget", std::move(eventTargetBehavior));
+        aiMgr.registerBehavior("EventTarget", std::move(eventTargetBehavior));
         std::cout << "EventDemoState: Registered EventTarget behavior\n";
     }
 
-    if (!AIManager::Instance().hasBehavior("Chase")) {
+    if (!aiMgr.hasBehavior("Chase")) {
         auto chaseBehavior = std::make_unique<ChaseBehavior>(120.0f, 500.0f, 50.0f);
-        AIManager::Instance().registerBehavior("Chase", std::move(chaseBehavior));
+        aiMgr.registerBehavior("Chase", std::move(chaseBehavior));
         std::cout << "EventDemoState: Chase behavior registered (will use AIManager::getPlayerReference())\n";
     }
 
@@ -1067,10 +1113,13 @@ void EventDemoState::cleanupSpawnedNPCs() {
     for (const auto& npc : m_spawnedNPCs) {
         if (npc) {
             try {
-                if (AIManager::Instance().entityHasBehavior(npc)) {
-                    AIManager::Instance().unassignBehaviorFromEntity(npc);
+                // Cache AIManager reference for better performance
+                AIManager& aiMgr = AIManager::Instance();
+                
+                if (aiMgr.entityHasBehavior(npc)) {
+                    aiMgr.unassignBehaviorFromEntity(npc);
                 }
-                AIManager::Instance().unregisterEntityFromUpdates(npc);
+                aiMgr.unregisterEntityFromUpdates(npc);
             } catch (...) {
                 // Ignore errors during cleanup to prevent double-free issues
             }
@@ -1104,7 +1153,9 @@ void EventDemoState::createNPCAtPosition(const std::string& npcType, float x, fl
 
         std::string behaviorName = determineBehaviorForNPCType(npcType);
 
-        AIManager::Instance().registerEntityForUpdates(npc, rand() % 9 + 1, behaviorName);
+        // Cache AIManager reference for better performance
+        AIManager& aiMgr = AIManager::Instance();
+        aiMgr.registerEntityForUpdates(npc, rand() % 9 + 1, behaviorName);
 
         addLogEntry("Registered entity for updates and queued " + behaviorName + " behavior assignment (random priority)");
 

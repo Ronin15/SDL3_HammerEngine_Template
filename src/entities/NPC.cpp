@@ -64,9 +64,12 @@ void NPC::loadDimensionsFromTexture() {
     m_height = 128;  // Set height equal to the sprite sheet row height
     m_frameWidth = 64;  // Default frame width (width/numFrames)
 
+    // Cache TextureManager reference for better performance
+    TextureManager& texMgr = TextureManager::Instance();
+    
     // Get the texture from TextureManager
-    if (TextureManager::Instance().isTextureInMap(m_textureID)) {
-        auto texture = TextureManager::Instance().getTexture(m_textureID);
+    if (texMgr.isTextureInMap(m_textureID)) {
+        auto texture = texMgr.getTexture(m_textureID);
         if (texture != nullptr) {
             float width = 0.0f;
             float height = 0.0f;
@@ -172,13 +175,17 @@ void NPC::update(float deltaTime) {
 }
 
 void NPC::render() {
+    // Cache manager references for better performance
+    TextureManager& texMgr = TextureManager::Instance();
+    SDL_Renderer* renderer = GameEngine::Instance().getRenderer();
+    
     // Calculate centered position for rendering
     // This ensures the NPC is centered at its position coordinates
     int renderX = static_cast<int>(m_position.getX() - (m_frameWidth / 2.0f));
     int renderY = static_cast<int>(m_position.getY() - (m_height / 2.0f));
 
     // Render the NPC with the current animation frame
-    TextureManager::Instance().drawFrame(
+    texMgr.drawFrame(
         m_textureID,
         renderX,
         renderY,
@@ -186,7 +193,7 @@ void NPC::render() {
         m_height,
         m_currentRow,
         m_currentFrame,
-        GameEngine::Instance().getRenderer(),
+        renderer,
         m_flip
     );
 }

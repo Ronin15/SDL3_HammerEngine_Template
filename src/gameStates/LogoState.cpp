@@ -14,7 +14,10 @@ Uint32 stateTimer{0};
 
 bool LogoState::enter() {
   std::cout << "Forge Game Engine - Entering LOGO State\n";
-  SoundManager::Instance().playSFX("sfx_logo", 0, 5);
+  
+  // Cache SoundManager reference for better performance
+  SoundManager& soundMgr = SoundManager::Instance();
+  soundMgr.playSFX("sfx_logo", 0, 5);
   return true;
 }
 
@@ -23,63 +26,73 @@ void LogoState::update([[maybe_unused]] float deltaTime) {
 
   stateTimer = SDL_GetTicks();
   if (stateTimer > 7000) {
-    GameEngine::Instance().getGameStateManager()->setState("MainMenuState");
+    // Cache GameEngine reference for better performance
+    GameEngine& gameEngine = GameEngine::Instance();
+    gameEngine.getGameStateManager()->setState("MainMenuState");
   }
 }
 
 void LogoState::render() {
-  // std::cout << "Rendering Main Menu State\n";
-  TextureManager::Instance().draw(
-      "HammerForgeBanner",
-      GameEngine::Instance().getWindowWidth() / 2 - 373,  // Center horizontally
-      (GameEngine::Instance().getWindowHeight() / 2) - 352,
-      727, 352,
-      GameEngine::Instance().getRenderer());
-  TextureManager::Instance().draw(
-      "ForgeEngine",
-      GameEngine::Instance().getWindowWidth() / 2 - 65,  // Center horizontally
-      (GameEngine::Instance().getWindowHeight() / 2) + 10,
-      128, 128,
-      GameEngine::Instance().getRenderer());
+  // Cache manager references for better performance
+  TextureManager& texMgr = TextureManager::Instance();
+  GameEngine& gameEngine = GameEngine::Instance();
+  FontManager& fontMgr = FontManager::Instance();
+  SDL_Renderer* renderer = gameEngine.getRenderer();
+  int windowWidth = gameEngine.getWindowWidth();
+  int windowHeight = gameEngine.getWindowHeight();
 
-  TextureManager::Instance().draw(
+  // std::cout << "Rendering Main Menu State\n";
+  texMgr.draw(
+      "HammerForgeBanner",
+      windowWidth / 2 - 373,  // Center horizontally
+      (windowHeight / 2) - 352,
+      727, 352,
+      renderer);
+  texMgr.draw(
+      "ForgeEngine",
+      windowWidth / 2 - 65,  // Center horizontally
+      (windowHeight / 2) + 10,
+      128, 128,
+      renderer);
+
+  texMgr.draw(
       "cpp",
-      GameEngine::Instance().getWindowWidth() / 2 + 150,  // Center horizontally
-      (GameEngine::Instance().getWindowHeight() / 2) + 215,
+      windowWidth / 2 + 150,  // Center horizontally
+      (windowHeight / 2) + 215,
       50, 50,
-      GameEngine::Instance().getRenderer());
+      renderer);
 
   // Render text using SDL_TTF
   //SDL_Color titleColor = {185, 71, 0, 200}; // Forge Orange
   SDL_Color fontColor = {200, 200, 200, 255}; // Light gray
 
   // Draw title text
-  FontManager::Instance().drawText(
+  fontMgr.drawText(
       "<]==={ }* FORGE GAME ENGINE *{ }===]>",
       "fonts_Arial",
-      GameEngine::Instance().getWindowWidth() / 2,  // Center horizontally
-      (GameEngine::Instance().getWindowHeight() / 2) + 180,
+      windowWidth / 2,  // Center horizontally
+      (windowHeight / 2) + 180,
       fontColor,
-      GameEngine::Instance().getRenderer());
+      renderer);
 
   // Draw subtitle text
-  FontManager::Instance().drawText(
+  fontMgr.drawText(
       "Powered by SDL3",
       "fonts_Arial",
-      GameEngine::Instance().getWindowWidth() / 2 ,  // Center horizontally
-      (GameEngine::Instance().getWindowHeight() / 2) + 220,
+      windowWidth / 2 ,  // Center horizontally
+      (windowHeight / 2) + 220,
       fontColor,
-      GameEngine::Instance().getRenderer());
+      renderer);
 
   // Draw version text
-  FontManager::Instance().drawText(
+  fontMgr.drawText(
 
       "v0.1.0",
       "fonts_Arial",
-      GameEngine::Instance().getWindowWidth() / 2,  // Center horizontally
-      (GameEngine::Instance().getWindowHeight() / 2) + 260,
+      windowWidth / 2,  // Center horizontally
+      (windowHeight / 2) + 260,
       fontColor,
-      GameEngine::Instance().getRenderer());
+      renderer);
 }
 
 bool LogoState::exit() {

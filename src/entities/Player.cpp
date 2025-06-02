@@ -48,9 +48,12 @@ void Player::loadDimensionsFromTexture() {
     m_height = 128;  // Set height equal to the sprite sheet row height
     m_frameWidth = 64;  // Default frame width (width/numFrames)
 
+    // Cache TextureManager reference for better performance
+    TextureManager& texMgr = TextureManager::Instance();
+    
     // Get the texture from TextureManager
-    if (TextureManager::Instance().isTextureInMap(m_textureID)) {
-        auto texture = TextureManager::Instance().getTexture(m_textureID);
+    if (texMgr.isTextureInMap(m_textureID)) {
+        auto texture = texMgr.getTexture(m_textureID);
         if (texture != nullptr) {
             float width = 0.0f;
             float height = 0.0f;
@@ -122,12 +125,16 @@ void Player::update(float deltaTime) {
 }
 
 void Player::render() {
+    // Cache manager references for better performance
+    TextureManager& texMgr = TextureManager::Instance();
+    SDL_Renderer* renderer = GameEngine::Instance().getRenderer();
+    
     // Calculate centered position for rendering (IDENTICAL to NPCs)
     int renderX = static_cast<int>(m_position.getX() - (m_frameWidth / 2.0f));
     int renderY = static_cast<int>(m_position.getY() - (m_height / 2.0f));
 
     // Render the Player with the current animation frame (IDENTICAL to NPCs)
-    TextureManager::Instance().drawFrame(
+    texMgr.drawFrame(
         m_textureID,
         renderX,                // Center horizontally
         renderY,                // Center vertically
@@ -135,7 +142,7 @@ void Player::render() {
         m_height,               // Height stays the same
         m_currentRow,           // Current animation row
         m_currentFrame,         // Current animation frame
-        GameEngine::Instance().getRenderer(),
+        renderer,
         m_flip
     );
 }

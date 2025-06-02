@@ -514,7 +514,9 @@ bool EventManager::spawnNPC(const std::string& npcType, float x, float y) const 
 }
 
 bool EventManager::createWeatherEvent(const std::string& name, const std::string& weatherType, float intensity, float transitionTime) {
-    auto event = EventFactory::Instance().createWeatherEvent(name, weatherType, intensity, transitionTime);
+    // Cache EventFactory reference for better performance
+    EventFactory& eventFactory = EventFactory::Instance();
+    auto event = eventFactory.createWeatherEvent(name, weatherType, intensity, transitionTime);
     if (!event) {
         return false;
     }
@@ -528,7 +530,9 @@ bool EventManager::createWeatherEvent(const std::string& name, const std::string
 }
 
 bool EventManager::createSceneChangeEvent(const std::string& name, const std::string& targetScene, const std::string& transitionType, float transitionTime) {
-    auto event = EventFactory::Instance().createSceneChangeEvent(name, targetScene, transitionType, transitionTime);
+    // Cache EventFactory reference for better performance
+    EventFactory& eventFactory = EventFactory::Instance();
+    auto event = eventFactory.createSceneChangeEvent(name, targetScene, transitionType, transitionTime);
     if (!event) {
         return false;
     }
@@ -542,7 +546,9 @@ bool EventManager::createSceneChangeEvent(const std::string& name, const std::st
 }
 
 bool EventManager::createNPCSpawnEvent(const std::string& name, const std::string& npcType, int count, float spawnRadius) {
-    auto event = EventFactory::Instance().createNPCSpawnEvent(name, npcType, count, spawnRadius);
+    // Cache EventFactory reference for better performance
+    EventFactory& eventFactory = EventFactory::Instance();
+    auto event = eventFactory.createNPCSpawnEvent(name, npcType, count, spawnRadius);
     if (!event) {
         return false;
     }

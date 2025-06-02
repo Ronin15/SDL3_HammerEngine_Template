@@ -34,13 +34,14 @@ void PlayerIdleState::update(float deltaTime) {
 
 bool PlayerIdleState::hasInputDetected() const {
     // Check for any movement input
-    return (InputManager::Instance().isKeyDown(SDL_SCANCODE_RIGHT) ||
-            InputManager::Instance().isKeyDown(SDL_SCANCODE_LEFT) ||
-            InputManager::Instance().isKeyDown(SDL_SCANCODE_UP) ||
-            InputManager::Instance().isKeyDown(SDL_SCANCODE_DOWN) ||
-            InputManager::Instance().getAxisX(0, 1) != 0 ||
-            InputManager::Instance().getAxisY(0, 1) != 0 ||
-            InputManager::Instance().getMouseButtonState(LEFT));
+    const InputManager& input = InputManager::Instance();
+    return (input.isKeyDown(SDL_SCANCODE_RIGHT) ||
+            input.isKeyDown(SDL_SCANCODE_LEFT) ||
+            input.isKeyDown(SDL_SCANCODE_UP) ||
+            input.isKeyDown(SDL_SCANCODE_DOWN) ||
+            input.getAxisX(0, 1) != 0 ||
+            input.getAxisY(0, 1) != 0 ||
+            input.getMouseButtonState(LEFT));
 }
 
 void PlayerIdleState::exit() {
