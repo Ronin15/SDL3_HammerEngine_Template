@@ -122,10 +122,10 @@ void Player::update(float deltaTime) {
     // Update position based on velocity (physics)
     m_position += m_velocity * deltaTime;
 
-    // Apply smooth friction for deceleration
+    // Apply frame-rate independent friction for smoother movement (same as NPCs)
     if (m_velocity.length() > 0.1f) {
         // Frame-rate independent friction using exponential decay
-        const float frictionRate = 0.08f;  // Gentle friction for smooth stops
+        const float frictionRate = 0.05f;  // Friction strength (higher = more friction)
         float frictionFactor = std::pow(frictionRate, deltaTime);
         m_velocity *= frictionFactor;
     } else if (m_velocity.length() < 0.1f) {
@@ -143,20 +143,24 @@ void Player::render() {
     // The render method in EntityStateManager calls the render method of the current state
     // Don't call update here to avoid double updates
 
-    // Calculate centered position for rendering
+    // Calculate centered position for rendering with sub-pixel compensation
     // This ensures the player is centered at its position coordinates
-    int renderX = std::lround(m_position.getX() - (m_frameWidth / 2.0f));
-    int renderY = std::lround(m_position.getY() - (m_height / 2.0f));
+    float renderX = m_position.getX() - (m_frameWidth / 2.0f);
+    float renderY = m_position.getY() - (m_height / 2.0f);
+
+    // Use truncation like NPCs for consistent behavior
+    int pixelX = static_cast<int>(renderX);
+    int pixelY = static_cast<int>(renderY);
 
     // Do the common rendering for all states
     TextureManager::Instance().drawFrame(
         m_textureID,
-        renderX,                // Center horizontally
-        renderY,                // Center vertically
-        m_frameWidth,           // Use the calculated frame width
-        m_height,               // Height stays the same
-        m_currentRow,           // Current animation row
-        m_currentFrame,         // Current animation frame
+        pixelX,                     // Center horizontally with perfect pixel alignment
+        pixelY,                     // Center vertically with perfect pixel alignment
+        m_frameWidth,               // Use the calculated frame width
+        m_height,                   // Height stays the same
+        m_currentRow,               // Current animation row
+        m_currentFrame,             // Current animation frame
         GameEngine::Instance().getRenderer(),
         m_flip
     );
@@ -176,8 +180,7 @@ void Player::setPosition(const Vector2D& position) {
 }
 
 void Player::handleMovementInput(float deltaTime) {
-    const float maxSpeed = 120.0f; // Maximum pixels per second
-    const float acceleration = 400.0f; // Acceleration in pixels per second squared
+    const float maxSpeed = 200.0f; // Maximum pixels per second - doubled for better responsiveness
 
     Vector2D inputDirection(0, 0);
 
@@ -235,21 +238,17 @@ void Player::handleMovementInput(float deltaTime) {
         }
     }
 
-    // Apply smooth acceleration towards target velocity
-    Vector2D targetVelocity = inputDirection * maxSpeed;
-    Vector2D velocityDifference = targetVelocity - m_velocity;
-
-    // Calculate acceleration vector
-    Vector2D accelerationVector = velocityDifference;
-
-    // Limit acceleration magnitude for smooth movement
-    if (accelerationVector.length() > acceleration * deltaTime) {
-        accelerationVector.normalize();
-        accelerationVector = accelerationVector * acceleration * deltaTime;
+    // Apply smooth movement like NPCs with gradual acceleration
+    Vector2D targetVelocity(0, 0);
+    if (inputDirection.length() > 0.0f) {
+        inputDirection.normalize();
+        targetVelocity = inputDirection * maxSpeed;
     }
 
-    // Apply acceleration to velocity
-    m_velocity += accelerationVector;
+    // Smooth interpolation toward target velocity
+    const float smoothing = 8.0f; // Lower = smoother, higher = more responsive
+    Vector2D velocityDiff = targetVelocity - m_velocity;
+    m_velocity += velocityDiff * (smoothing * deltaTime);
 }
 
 void Player::handleStateTransitions() {
