@@ -12,9 +12,12 @@ The Forge Game Engine has the following test suites:
    - Thread-Safe AI Integration Tests: Test integration of AI components with threading
    - AI Benchmark Tests: Measure performance characteristics and scaling capabilities
 
-2. **Core Systems Tests**
+3. **Core Systems Tests**
    - Save Manager Tests: Validate save/load functionality
    - Thread System Tests: Verify multi-threading capabilities
+   - Event Manager Tests: Validate event handling and integration with threading
+   - Event Types Tests: Test specific event type implementations (Weather, Scene Change, NPC Spawn)
+   - Weather Event Tests: Focused tests for weather event functionality
 
 ## Running Tests
 
@@ -24,50 +27,104 @@ Each test suite has dedicated scripts in the project root directory:
 
 #### Linux/macOS
 ```bash
-./run_ai_optimization_tests.sh       # AI optimization tests
+# Core functionality tests (fast execution)
+./run_thread_tests.sh                # Thread system tests
 ./run_thread_safe_ai_tests.sh        # Thread-safe AI tests
 ./run_thread_safe_ai_integration_tests.sh  # Thread-safe AI integration tests
-./run_ai_benchmark.sh                # AI scaling benchmark
+./run_ai_optimization_tests.sh       # AI optimization tests
 ./run_save_tests.sh                  # Save manager tests
-./run_thread_tests.sh                # Thread system tests
+./run_event_tests.sh                 # Event manager tests
+
+# Performance scaling benchmarks (slow execution)
+./run_event_scaling_benchmark.sh     # Event manager scaling benchmark
+./run_ai_benchmark.sh                # AI scaling benchmark
+
+# Run all tests
 ./run_all_tests.sh                   # Run all test scripts sequentially
 ```
 
 #### Windows
 ```
-run_ai_optimization_tests.bat        # AI optimization tests
+# Core functionality tests (fast execution)
+run_thread_tests.bat                 # Thread system tests
 run_thread_safe_ai_tests.bat         # Thread-safe AI tests
 run_thread_safe_ai_integration_tests.bat  # Thread-safe AI integration tests
-run_ai_benchmark.bat                 # AI scaling benchmark
+run_ai_optimization_tests.bat        # AI optimization tests
 run_save_tests.bat                   # Save manager tests
-run_thread_tests.bat                 # Thread system tests
+run_event_tests.bat                  # Event manager tests
+
+# Performance scaling benchmarks (slow execution)
+run_event_scaling_benchmark.bat      # Event manager scaling benchmark
+run_ai_benchmark.bat                 # AI scaling benchmark
+
+# Run all tests
 run_all_tests.bat                    # Run all test scripts sequentially
+```
+
+### Test Execution Control
+
+The `run_all_tests.sh` script provides flexible execution control:
+
+#### Test Category Options
+| Option | Description | Duration |
+|--------|-------------|----------|
+| `--core-only` | Run only core functionality tests | ~2-5 minutes |
+| `--benchmarks-only` | Run only performance benchmarks | ~5-10 minutes |
+| `--no-benchmarks` | Run core tests but skip benchmarks | ~2-5 minutes |
+| *(default)* | Run all tests sequentially | ~7-15 minutes |
+
+#### Examples
+```bash
+# Quick validation during development
+./run_all_tests.sh --core-only
+
+# Skip slow benchmarks in CI
+./run_all_tests.sh --no-benchmarks
+
+# Performance testing only
+./run_all_tests.sh --benchmarks-only --verbose
+
+# Complete test suite
+./run_all_tests.sh
 ```
 
 ### Common Command-Line Options
 
-All test scripts support these options:
+Individual test scripts support these options:
 
 | Option | Description |
 |--------|-------------|
 | `--verbose` | Show detailed test output |
 | `--release` | Run tests in release mode (optimized) |
+| `--clean` | Clean test artifacts before building |
 | `--help` | Show help message for the script |
 
 Special options:
 - `--extreme` for AI benchmark (runs extended benchmarks)
+- `--verbose` for scaling benchmarks (shows detailed performance metrics)
+
+**Test Execution Strategy:**
+The script executes tests in optimal order for efficient development workflow:
+1. **Core functionality tests** (fast execution, ~5-30 seconds each)
+2. **Performance scaling benchmarks** (slow execution, 1-5+ minutes each)
+
+This ordering provides quick feedback on basic functionality before running time-intensive performance tests.
 
 ## Test Output
 
 Test results are saved in the `test_results` directory:
 
 - `ai_optimization_tests_output.txt` - Output from AI optimization tests
+- `event_scaling_benchmark_output.txt` - Output from EventManager scaling benchmark
 - `ai_optimization_tests_performance_metrics.txt` - Performance metrics from optimization tests
 - `thread_safe_ai_test_output.txt` - Output from thread-safe AI tests
 - `thread_safe_ai_performance_metrics.txt` - Performance metrics from thread-safe AI tests
 - `ai_scaling_benchmark_[timestamp].txt` - AI scaling benchmark results
 - `save_test_output.txt` - Output from save manager tests
 - `thread_test_output.txt` - Output from thread system tests
+- `event_test_output.txt` - Output from event manager tests
+- `event_types_test_output.txt` - Output from event types tests
+- `weather_event_test_output.txt` - Output from weather event tests
 
 When using the `run_all_tests` scripts, combined results are also saved:
 
@@ -83,6 +140,7 @@ Located in `AIOptimizationTest.cpp`, these tests verify:
 2. **Batch Processing**: Validates efficient batch processing of entities with similar behaviors
 3. **Early Exit Conditions**: Tests optimizations that skip unnecessary updates
 4. **Message Queue System**: Verifies batched message processing for efficient AI communication
+5. **Priority-Based Scheduling**: Tests the task priority system integration with AI behaviors
 
 ### Thread-Safe AI Tests
 
@@ -133,6 +191,113 @@ Located in `ThreadSystemTests.cpp`, these tests verify:
 2. **Thread Safety**: Tests synchronization mechanisms
 3. **Performance**: Tests scaling with different numbers of threads
 4. **Error Handling**: Tests recovery from failed tasks
+5. **Priority System**: Tests the task priority levels (Critical, High, Normal, Low, Idle)
+6. **Priority Scheduling**: Verifies that higher priority tasks execute before lower priority ones
+
+### Event Manager Tests
+
+Located in `events/EventManagerTest.cpp`, `events/EventTypesTest.cpp`, `events/WeatherEventTest.cpp`, and `EventManagerScalingBenchmark.cpp`, these tests verify:
+
+1. **Event Registration**: Tests registering different types of events with the EventManager
+2. **Event Conditions**: Tests condition-based event triggering
+3. **Event Execution**: Validates proper execution of event sequences
+4. **Thread-Safe Processing**: Tests concurrent event processing using ThreadSystem
+5. **Message System**: Tests the event messaging system for communication between events
+6. **Priority-Based Scheduling**: Tests task priority integration with event processing
+7. **NPCSpawnEvent Integration**: Tests NPC spawning functionality with mocked dependencies
+8. **Performance Scaling**: Comprehensive benchmarking from small to extreme scales (see EventManager Scaling Benchmark below)
+
+#### Event Manager Test Details
+
+**EventManagerTest.cpp** focuses on EventManager integration:
+- Event registration and retrieval
+- Event activation/deactivation
+- Event messaging system
+- Thread-safe event processing
+- NPCSpawnEvent integration with EventManager
+
+**EventTypesTest.cpp** tests specific event type implementations:
+- WeatherEvent creation and parameter setting
+- SceneChangeEvent functionality
+- NPCSpawnEvent creation, spawn parameters, conditions, and limits
+- EventFactory event creation methods
+- Event sequences and cooldown functionality
+
+**WeatherEventTest.cpp** provides focused weather event testing:
+- Weather state transitions
+- Particle effect integration
+- Sound effect integration
+- Time-based weather conditions
+
+#### Mock Infrastructure for NPCSpawnEvent Tests
+
+The NPCSpawnEvent tests use a comprehensive mocking infrastructure to avoid dependencies on the full game engine:
+
+**Mock Components:**
+- `MockNPC.hpp/cpp`: Mock NPC class implementing Entity interface without game engine dependencies
+- `MockGameEngine.hpp/cpp`: Mock GameEngine providing basic window dimensions for testing
+- `NPCSpawnEventTest.cpp`: Test-specific NPCSpawnEvent implementation using mocks
+
+**Mock Features:**
+- Complete NPCSpawnEvent functionality testing without real game engine
+- Proper Vector2D usage with `getX()/getY()` and `setX()/setY()` methods
+- Correct Event base class implementation
+- Mock entity creation and management
+- Spawn parameter validation and condition testing
+- Respawn logic and timer functionality
+- Proximity and area-based spawning tests
+
+**Test Coverage:**
+- Spawn parameters (count, radius, positioning)
+- Spawn conditions (proximity, time of day, custom conditions)
+- Spawn limits and counting
+- Respawn functionality and timing
+- Spawn area management (points, rectangles, circles)
+- Entity lifecycle and cleanup
+- Message-based spawn requests
+
+#### EventManager Scaling Benchmark
+
+Located in `EventManagerScalingBenchmark.cpp`, this comprehensive performance test validates the EventManager's scalability across various workloads:
+
+**Test Scenarios:**
+- **Basic Performance**: Small scale validation (100 events, immediate vs batched)
+- **Medium Scale**: Moderate load testing (5,000 events, 25,000 handler calls)
+- **Scalability Suite**: Progressive testing from minimal to very large scales
+- **Concurrency Test**: Multi-threaded event generation and processing
+- **Extreme Scale**: Large simulation testing (100,000 events, 5,000,000 handler calls)
+
+**Performance Metrics Measured:**
+- Events per second throughput
+- Handler calls per second
+- Time per event and per handler call
+- Memory usage and cache performance
+- Thread safety validation
+- Batching vs immediate processing comparison
+
+**Key Features Tested:**
+- Handler batching system performance
+- `boost::flat_map` storage optimization
+- Thread-safe concurrent event queuing
+- Lock-free handler execution
+- Cache locality optimization through event type grouping
+
+**Running the Scaling Benchmark:**
+```bash
+# Run just the scaling benchmark
+ctest -R EventManagerScaling
+
+# Or run the executable directly for detailed output
+./bin/debug/event_manager_scaling_benchmark
+```
+
+**Expected Performance (on modern hardware):**
+- Small scale: ~540K events/sec
+- Medium scale: ~78K events/sec  
+- Large scale: ~39K events/sec
+- Extreme scale: ~7.8K events/sec with 5M handler calls
+
+The benchmark validates that the EventManager can handle large-scale simulations (MMOs, city simulations, real-time strategy games) while maintaining consistent performance characteristics.
 
 ## Adding New Tests
 
@@ -141,6 +306,42 @@ Located in `ThreadSystemTests.cpp`, these tests verify:
 3. Follow the existing pattern for setup, execution, and verification
 4. Run tests with `--clean` to ensure your changes are compiled
 5. For directory or file operation tests, always clean up created resources when tests complete
+6. For tests requiring game engine dependencies, consider creating mock implementations
+
+### Creating Mock Dependencies
+
+When testing components that depend on complex systems (like NPCSpawnEvent depending on NPC and GameEngine):
+
+1. **Create Mock Headers**: Define mock classes that implement the same interface as real dependencies
+2. **Mock Implementation**: Provide minimal functionality needed for testing
+3. **Test-Specific Compilation**: Create test-specific source files that use mocks instead of real implementations
+4. **CMake Integration**: Update `tests/CMakeLists.txt` to include mock files and dependencies
+
+**Example Mock Structure:**
+```cpp
+// MockNPC.hpp - Mock implementation of NPC for testing
+class MockNPC : public Entity {
+public:
+    MockNPC(const std::string& textureID, const Vector2D& position, int width, int height);
+    
+    // Mock the required interface methods
+    void setWanderArea(float x1, float y1, float x2, float y2);
+    void setBoundsCheckEnabled(bool enabled);
+    
+    // Factory method like real class
+    static std::shared_ptr<MockNPC> create(const std::string& textureID, const Vector2D& position, int width, int height);
+};
+
+// Define alias for testing
+using NPC = MockNPC;
+```
+
+**Benefits of Mocking:**
+- Tests run faster without full game engine initialization
+- Tests are more focused and isolated
+- Easier to reproduce specific conditions
+- No external dependencies like graphics, audio, or file systems
+- Better test reliability and maintainability
 
 For directory management tests (like in SaveManagerTests):
 - Use a dedicated test directory that's different from production directories
@@ -186,6 +387,7 @@ For thread-safety tests, follow these guidelines:
 1. **Test Initialization Order**
    - Initialize ThreadSystem first, then other systems
    - Enable threading only after initialization is complete
+   - Configure task priorities during initialization if needed
 
 2. **Test Cleanup Order**
    - Disable threading before cleanup
@@ -197,6 +399,7 @@ For thread-safety tests, follow these guidelines:
    - Add sleep between operations to allow threads to complete
    - Use timeouts when waiting for futures instead of blocking calls
    - Use `compare_exchange_strong` instead of simple `exchange` for atomics
+   - Be careful about task priority assignments to avoid priority inversion
 
 4. **Boost Test Options**
    - Add `#define BOOST_TEST_NO_SIGNAL_HANDLING` before including Boost.Test
@@ -280,3 +483,10 @@ Tests are configured in `tests/CMakeLists.txt` with the following structure:
 4. Register tests with CTest
 
 For thread-safe tests, ensure `BOOST_TEST_NO_SIGNAL_HANDLING` is defined.
+
+## Additional Documentation
+
+For specific testing scenarios and troubleshooting, refer to these additional documents:
+
+- `AI_TESTING.md` - Specific guidance for AI thread testing scenarios
+- `TROUBLESHOOTING.md` - Common issues and their solutions across all components

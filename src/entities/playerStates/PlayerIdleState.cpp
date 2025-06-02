@@ -5,20 +5,43 @@
 
 #include "entities/playerStates/PlayerIdleState.hpp"
 #include "entities/Player.hpp"
-//#include <iostream>
+#include "managers/InputManager.hpp"
 
-PlayerIdleState::PlayerIdleState(Player* player) : mp_player(player) {}
+PlayerIdleState::PlayerIdleState(Player& player) : m_player(player) {}
 
 void PlayerIdleState::enter() {
-    //std::cout << "Forge Game Engine - Entering Player Idle State\n";
     // Set animation for idle
-    mp_player->setCurrentFrame(0);
-    mp_player->setVelocity(Vector2D(0, 0));
+    m_player.get().setCurrentFrame(0);
+    // Let velocity naturally decelerate instead of immediate stop
 }
 
-void PlayerIdleState::update() {
-    // Check for state transitions based on player input
-    // This would be implemented later when you have logic to transition states
+void PlayerIdleState::update(float deltaTime) {
+    (void)deltaTime; // Mark as unused
+    
+    // Check for input to transition to running
+    if (hasInputDetected()) {
+        m_player.get().changeState("running");
+        return;
+    }
+    
+    // Stop movement immediately when in idle (no input)
+    m_player.get().setVelocity(Vector2D(0, 0));
+    m_player.get().setAcceleration(Vector2D(0, 0));
+    
+    // Keep idle animation frame
+    m_player.get().setCurrentFrame(0);
+}
+
+bool PlayerIdleState::hasInputDetected() const {
+    // Check for any movement input
+    const InputManager& input = InputManager::Instance();
+    return (input.isKeyDown(SDL_SCANCODE_RIGHT) ||
+            input.isKeyDown(SDL_SCANCODE_LEFT) ||
+            input.isKeyDown(SDL_SCANCODE_UP) ||
+            input.isKeyDown(SDL_SCANCODE_DOWN) ||
+            input.getAxisX(0, 1) != 0 ||
+            input.getAxisY(0, 1) != 0 ||
+            input.getMouseButtonState(LEFT));
 }
 
 void PlayerIdleState::exit() {

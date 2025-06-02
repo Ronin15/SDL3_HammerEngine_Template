@@ -16,7 +16,7 @@ class GameStateManager {
   GameStateManager();
   void addState(std::unique_ptr<GameState> state);
   void setState(const std::string& stateName);
-  void update();
+  void update(float deltaTime);
   void render();
   bool hasState(const std::string& stateName) const;
   GameState* getState(const std::string& stateName) const;

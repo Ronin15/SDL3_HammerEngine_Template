@@ -16,11 +16,21 @@
 
 class WanderBehavior : public AIBehavior {
 public:
-    WanderBehavior(float speed = 1.5f, float changeDirectionInterval = 2000.0f, float areaRadius = 300.0f);
+    enum class WanderMode {
+        SMALL_AREA,     // Small wander area (around current position)
+        MEDIUM_AREA,    // Medium wander area (room/building sized)
+        LARGE_AREA,     // Large wander area (village/district sized)
+        EVENT_TARGET    // Wander around a specific target location
+    };
+
+    explicit WanderBehavior(float speed = 1.5f, float changeDirectionInterval = 2000.0f, float areaRadius = 300.0f);
+    
+    // Constructor with mode - automatically configures behavior based on mode
+    explicit WanderBehavior(WanderMode mode, float speed = 2.0f);
 
     // No state management - handled by AI Manager
     void init(EntityPtr entity) override;
-    void update(EntityPtr entity) override;
+    void executeLogic(EntityPtr entity) override;
     void clean(EntityPtr entity) override;
     void onMessage(EntityPtr entity, const std::string& message) override;
     std::string getName() const override;
@@ -42,6 +52,9 @@ public:
 
     // Set the probability of wandering offscreen
     void setOffscreenProbability(float probability);
+
+    // Clone method for creating unique behavior instances
+    std::shared_ptr<AIBehavior> clone() const override;
 
 private:
     // Entity-specific state data
@@ -98,6 +111,9 @@ private:
 
     // Choose a new random direction for the entity
     void chooseNewDirection(EntityPtr entity, bool wanderOffscreen = false);
+    
+    // Mode setup helper
+    void setupModeDefaults(WanderMode mode, float screenWidth = 1280.0f, float screenHeight = 720.0f);
 };
 
 #endif // WANDER_BEHAVIOR_HPP

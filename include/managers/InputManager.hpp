@@ -45,7 +45,7 @@ class InputManager {
 
     // Mouse events
     bool getMouseButtonState(int buttonNumber) const;
-    Vector2D* getMousePosition() const; // Returns raw pointer for backward compatibility
+    const Vector2D& getMousePosition() const; // Returns const reference for safety
 
  private:
 
@@ -64,18 +64,18 @@ class InputManager {
     std::unique_ptr<Vector2D> m_mousePosition{nullptr};
 
     // Handle keyboard events
-    void onKeyDown(SDL_Event& event);
-    void onKeyUp(SDL_Event& event);
+    void onKeyDown(const SDL_Event& event);
+    void onKeyUp(const SDL_Event& event);
 
     // Handle mouse events
-    void onMouseMove(SDL_Event& event);
-    void onMouseButtonDown(SDL_Event& event);
-    void onMouseButtonUp(SDL_Event& event);
+    void onMouseMove(const SDL_Event& event);
+    void onMouseButtonDown(const SDL_Event& event);
+    void onMouseButtonUp(const SDL_Event& event);
 
     // Handle gamepad events
-    void onGamepadAxisMove(SDL_Event& event);
-    void onGamepadButtonDown(SDL_Event& event);
-    void onGamepadButtonUp(SDL_Event& event);
+    void onGamepadAxisMove(const SDL_Event& event);
+    void onGamepadButtonDown(const SDL_Event& event);
+    void onGamepadButtonUp(const SDL_Event& event);
 
     // Delete copy constructor and assignment operator
     InputManager(const InputManager&) = delete; // Prevent copying

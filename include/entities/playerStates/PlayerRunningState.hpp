@@ -7,21 +7,26 @@
 #define PLAYER_RUNNING_STATE_HPP
 
 #include "entities/EntityState.hpp"
+#include <functional>
 
 class Player;
 
 class PlayerRunningState : public EntityState {
 public:
-    PlayerRunningState(Player* player);
+    explicit PlayerRunningState(Player& player);
 
     void enter() override;
-    void update() override;
+    void update(float deltaTime) override;
     void exit() override;
 
 private:
-    // Non-owning pointer to the player entity
+    void handleMovementInput(float deltaTime);
+    void handleRunningAnimation(float deltaTime);
+    bool hasInputDetected() const;
+    
+    // Non-owning reference to the player entity
     // The player entity is owned elsewhere in the application
-    Player* mp_player{nullptr};
+    std::reference_wrapper<Player> m_player;
 };
 
 #endif  // PLAYER_RUNNING_STATE_HPP

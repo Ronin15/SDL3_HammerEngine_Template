@@ -60,7 +60,7 @@ bool TextureManager::load(const std::string& fileName,
 
           if (p_texture != 0) {
             //SDL_SetTextureBlendMode(p_texture, SDL_BLENDMODE_ADD); //for lighting // this puts light on by default
-            m_textureMap[combinedID] = p_texture;
+            m_textureMap[combinedID] = std::shared_ptr<SDL_Texture>(p_texture, SDL_DestroyTexture);
             loadedAny = true;
             texturesLoaded++;
           } else {
@@ -94,7 +94,7 @@ bool TextureManager::load(const std::string& fileName,
   SDL_DestroySurface(p_tempSurface);
 
   if (p_texture != 0) {
-    m_textureMap[textureID] = p_texture;
+    m_textureMap[textureID] = std::shared_ptr<SDL_Texture>(p_texture, SDL_DestroyTexture);
     return true;
   }
 
@@ -124,7 +124,7 @@ void TextureManager::draw(const std::string& textureID,
   destRect.x = x;
   destRect.y = y;
 
-  SDL_RenderTextureRotated(p_renderer, m_textureMap[textureID], &srcRect, &destRect, angle, &center, flip);
+  SDL_RenderTextureRotated(p_renderer, m_textureMap[textureID].get(), &srcRect, &destRect, angle, &center, flip);
 }
 
 void TextureManager::drawFrame(const std::string& textureID,
@@ -150,7 +150,7 @@ void TextureManager::drawFrame(const std::string& textureID,
   destRect.x = x;
   destRect.y = y;
 
-  SDL_RenderTextureRotated(p_renderer, m_textureMap[textureID], &srcRect, &destRect, angle, &center, flip);
+  SDL_RenderTextureRotated(p_renderer, m_textureMap[textureID].get(), &srcRect, &destRect, angle, &center, flip);
 }
 
 void TextureManager::drawParallax(const std::string& textureID,
@@ -167,7 +167,7 @@ void TextureManager::drawParallax(const std::string& textureID,
 
   // Get the texture dimensions
   float width, height;
-  if (SDL_GetTextureSize(it->second, &width, &height) != 0) {
+  if (SDL_GetTextureSize(it->second.get(), &width, &height) != 0) {
     std::cerr << "Forge Game Engine - Failed to get texture size: " << SDL_GetError() << std::endl;
     return;
   }
@@ -203,8 +203,8 @@ void TextureManager::drawParallax(const std::string& textureID,
   destRect2.h = height;
 
   // Draw the two parts of the parallax background without rotation
-  SDL_RenderTexture(p_renderer, it->second, &srcRect1, &destRect1);
-  SDL_RenderTexture(p_renderer, it->second, &srcRect2, &destRect2);
+  SDL_RenderTexture(p_renderer, it->second.get(), &srcRect1, &destRect1);
+  SDL_RenderTexture(p_renderer, it->second.get(), &srcRect2, &destRect2);
 }
 
 void TextureManager::clearFromTexMap(const std::string& textureID) {
@@ -216,7 +216,7 @@ bool TextureManager::isTextureInMap(const std::string& textureID) const {
   return m_textureMap.find(textureID) != m_textureMap.end();
 }
 
-SDL_Texture* TextureManager::getTexture(const std::string& textureID) const {
+std::shared_ptr<SDL_Texture> TextureManager::getTexture(const std::string& textureID) const {
   // Check if the texture exists in the map
   auto it = m_textureMap.find(textureID);
   if (it != m_textureMap.end()) {
@@ -230,18 +230,9 @@ SDL_Texture* TextureManager::getTexture(const std::string& textureID) const {
 void TextureManager::clean() {
 
   // Track the number of textures cleaned up
-  int texturesFreed = 0;
+  int texturesFreed = m_textureMap.size();
 
-  // Destroy all textures in the map
-  for (auto& texturePair : m_textureMap) {
-    if (texturePair.second != nullptr) {
-      SDL_DestroyTexture(texturePair.second);
-      texturePair.second = nullptr;
-      texturesFreed++;
-    }
-  }
-
-  // Clear the map
+  // Clear the map - shared_ptr will automatically destroy the textures
   m_textureMap.clear();
 
   std::cout << "Forge Game Engine - "<< texturesFreed << " textures Freed!\n";

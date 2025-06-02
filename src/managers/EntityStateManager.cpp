@@ -7,6 +7,7 @@
 #include "entities/EntityState.hpp"
 #include <iostream>
 #include <stdexcept>
+#include <algorithm>
 
 EntityStateManager::EntityStateManager() : currentState(nullptr) {}
 
@@ -39,12 +40,11 @@ void EntityStateManager::setState(const std::string& stateName) {
 }
 
 std::string EntityStateManager::getCurrentStateName() const {
-  for (const auto& pair : states) {
-    if (pair.second.get() == currentState) {
-      return pair.first;
-    }
-  }
-  return "";
+  auto it = std::find_if(states.begin(), states.end(),
+                        [this](const auto& pair) {
+                          return pair.second.get() == currentState;
+                        });
+  return (it != states.end()) ? it->first : "";
 }
 
 bool EntityStateManager::hasState(const std::string& stateName) const {
@@ -65,8 +65,8 @@ void EntityStateManager::removeState(const std::string& stateName) {
   states.erase(stateName);
 }
 
-void EntityStateManager::update() {
+void EntityStateManager::update(float deltaTime) {
   if (currentState) {
-    currentState->update();
+    currentState->update(deltaTime);
   }
 }

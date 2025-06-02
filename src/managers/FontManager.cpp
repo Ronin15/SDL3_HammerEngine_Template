@@ -53,16 +53,16 @@ bool FontManager::loadFont(const std::string& fontFile, const std::string& fontI
           std::string combinedID = fontID.empty() ? filename : fontID + "_" + filename;
 
           // Load the individual file as a font
-          TTF_Font* font = TTF_OpenFont(fullPath.c_str(), fontSize);
+          TTF_Font* rawFont = TTF_OpenFont(fullPath.c_str(), fontSize);
 
           std::cout << "Forge Game Engine - Loading font: " << fullPath << "!\n";
 
-          if (font == nullptr) {
+          if (rawFont == nullptr) {
             std::cerr << "Forge Game Engine - Could not load font: " << SDL_GetError() << std::endl;
             continue;
           }
 
-          m_fontMap[combinedID] = font;
+          m_fontMap[combinedID] = std::shared_ptr<TTF_Font>(rawFont, TTF_CloseFont);
           loadedAny = true;
           fontsLoaded++;
         }
@@ -78,20 +78,21 @@ bool FontManager::loadFont(const std::string& fontFile, const std::string& fontI
   }
 
   // Standard single file loading code
-  TTF_Font* font = TTF_OpenFont(fontFile.c_str(), fontSize);
+  TTF_Font* rawFont = TTF_OpenFont(fontFile.c_str(), fontSize);
 
-  if (font == nullptr) {
+  if (rawFont == nullptr) {
     std::cerr << "Forge Game Engine - Failed to load font '" << fontFile <<
                  "': " << SDL_GetError() << std::endl;
     return false;
   }
 
-  m_fontMap[fontID] = font;
+  m_fontMap[fontID] = std::shared_ptr<TTF_Font>(rawFont, TTF_CloseFont);
   std::cout << "Forge Game Engine - Loaded font '" << fontID << "' from '" << fontFile << "'\n";
   return true;
 }
 
-SDL_Texture* FontManager::renderText(const std::string& text, const std::string& fontID,
+std::shared_ptr<SDL_Texture> FontManager::renderText(
+                                     const std::string& text, const std::string& fontID,
                                      SDL_Color color, SDL_Renderer* renderer) {
   // Skip if we're shutting down
   if (m_isShutdown) {
@@ -106,22 +107,23 @@ SDL_Texture* FontManager::renderText(const std::string& text, const std::string&
   }
 
   // Render the text to a surface using Blended mode (high quality with alpha)
-  SDL_Surface* surface = TTF_RenderText_Blended(fontIt->second, text.c_str(), 0, color);
+  SDL_Surface* surface = TTF_RenderText_Blended(fontIt->second.get(), text.c_str(), 0, color);
   if (!surface) {
     std::cerr << "Forge Game Engine - Failed to render text: " << SDL_GetError() << std::endl;
     return nullptr;
   }
 
   // Create texture from surface
-  SDL_Texture* texture = SDL_CreateTextureFromSurface(renderer, surface);
+  SDL_Texture* rawTexture = SDL_CreateTextureFromSurface(renderer, surface);
   SDL_DestroySurface(surface);
 
-  if (!texture) {
+  if (!rawTexture) {
     std::cerr << "Forge Game Engine - Failed to create texture from rendered text: "
               << SDL_GetError() << std::endl;
+    return nullptr;
   }
 
-  return texture;
+  return std::shared_ptr<SDL_Texture>(rawTexture, SDL_DestroyTexture);
 }
 
 void FontManager::drawText(const std::string& text, const std::string& fontID,
@@ -132,12 +134,12 @@ void FontManager::drawText(const std::string& text, const std::string& fontID,
     return;
   }
 
-  SDL_Texture* texture = renderText(text, fontID, color, renderer);
+  auto texture = renderText(text, fontID, color, renderer);
   if (!texture) return;
 
   // Get the texture size
   float w, h;
-  SDL_GetTextureSize(texture, &w, &h);
+  SDL_GetTextureSize(texture.get(), &w, &h);
   int width = static_cast<int>(w);
   int height = static_cast<int>(h);
 
@@ -147,10 +149,9 @@ void FontManager::drawText(const std::string& text, const std::string& fontID,
                       static_cast<float>(width), static_cast<float>(height)};
 
   // Render the texture
-  SDL_RenderTexture(renderer, texture, nullptr, &dstRect);
+  SDL_RenderTexture(renderer, texture.get(), nullptr, &dstRect);
 
-  // Clean up
-  SDL_DestroyTexture(texture);
+  // The texture will be automatically cleaned up when the unique_ptr goes out of scope
 }
 
 bool FontManager::isFontLoaded(const std::string& fontID) const {
@@ -159,7 +160,7 @@ bool FontManager::isFontLoaded(const std::string& fontID) const {
 
 void FontManager::clearFont(const std::string& fontID) {
   if (m_fontMap.find(fontID) != m_fontMap.end()) {
-    TTF_CloseFont(m_fontMap[fontID]);
+    // No need to manually call TTF_CloseFont as the unique_ptr will handle it
     m_fontMap.erase(fontID);
     std::cout << "Forge Game Engine - Cleared font: " << fontID << "\n";
   }
@@ -168,19 +169,11 @@ void FontManager::clearFont(const std::string& fontID) {
 void FontManager::clean() {
 
 // Track the number of fonts cleaned up
-int fontsFreed{0};
+int fontsFreed = m_fontMap.size();
 // Mark the manager as shutting down before freeing resources
 m_isShutdown = true;
 
-  // Close all fonts
-  for (auto& font : m_fontMap) {
-    if (font.second) {
-      TTF_CloseFont(font.second);
-      font.second = nullptr;
-      fontsFreed++;
-    }
-  }
-
+  // No need to manually close fonts as the unique_ptr will handle it
   m_fontMap.clear();
 
   std::cout << "Forge Game Engine - "<< fontsFreed << " fonts Freed!\n";
