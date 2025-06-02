@@ -15,13 +15,13 @@ void PlayerRunningState::enter() {
 }
 
 void PlayerRunningState::update(float deltaTime) {
-    // Handle all movement input and physics
+    // Process input and calculate movement velocity
     handleMovementInput(deltaTime);
 
-    // Handle running animation using EXACT same timing as NPCs
+    // Update animation frames based on movement
     handleRunningAnimation(deltaTime);
 
-    // Check for transition to idle (when no input)
+    // Transition to idle state when no input is detected
     if (!hasInputDetected()) {
         m_player.get().changeState("idle");
     }
@@ -32,37 +32,44 @@ void PlayerRunningState::exit() {
 }
 
 void PlayerRunningState::handleMovementInput(float deltaTime) {
-    (void)deltaTime; // Mark as unused
-
-    const float speed = 150.0f; // Fixed speed, no calculations
-
+    (void)deltaTime; // Movement uses direct velocity setting, not acceleration
+    
+    const float speed = m_player.get().getMovementSpeed();
+    const InputManager& input = InputManager::Instance();
+    
     Vector2D velocity(0.0f, 0.0f);
+    bool hasInput = false;
 
-    // Handle keyboard movement (primary input)
-    if (InputManager::Instance().isKeyDown(SDL_SCANCODE_RIGHT)) {
+    // Keyboard input (highest priority - most responsive)
+    if (input.isKeyDown(SDL_SCANCODE_RIGHT)) {
         velocity.setX(speed);
         m_player.get().setFlip(SDL_FLIP_NONE);
+        hasInput = true;
     }
-    if (InputManager::Instance().isKeyDown(SDL_SCANCODE_LEFT)) {
+    if (input.isKeyDown(SDL_SCANCODE_LEFT)) {
         velocity.setX(-speed);
         m_player.get().setFlip(SDL_FLIP_HORIZONTAL);
+        hasInput = true;
     }
-    if (InputManager::Instance().isKeyDown(SDL_SCANCODE_UP)) {
+    if (input.isKeyDown(SDL_SCANCODE_UP)) {
         velocity.setY(-speed);
+        hasInput = true;
     }
-    if (InputManager::Instance().isKeyDown(SDL_SCANCODE_DOWN)) {
+    if (input.isKeyDown(SDL_SCANCODE_DOWN)) {
         velocity.setY(speed);
+        hasInput = true;
     }
 
-    // Handle controller joystick (if no keyboard input)
-    if (velocity.length() == 0.0f) {
-        int joystickX = InputManager::Instance().getAxisX(0, 1);
-        int joystickY = InputManager::Instance().getAxisY(0, 1);
+    // Controller input (secondary priority - only when no keyboard input)
+    if (!hasInput) {
+        int joystickX = input.getAxisX(0, 1);
+        int joystickY = input.getAxisY(0, 1);
 
-        // InputManager returns normalized values (-1, 0, 1)
+        // InputManager provides pre-normalized directional values: -1 (left/up), 0 (center), 1 (right/down)
         if (joystickX != 0 || joystickY != 0) {
             velocity.setX(static_cast<float>(joystickX) * speed);
             velocity.setY(static_cast<float>(joystickY) * speed);
+            hasInput = true;
 
             if (joystickX > 0) {
                 m_player.get().setFlip(SDL_FLIP_NONE);
@@ -72,15 +79,16 @@ void PlayerRunningState::handleMovementInput(float deltaTime) {
         }
     }
 
-    // Handle mouse movement (if no other input)
-    if (velocity.length() == 0.0f && InputManager::Instance().getMouseButtonState(LEFT)) {
-        const Vector2D& mousePos = InputManager::Instance().getMousePosition();
+    // Mouse input (lowest priority - only when no keyboard or controller input)
+    if (!hasInput && input.getMouseButtonState(LEFT)) {
+        const Vector2D& mousePos = input.getMousePosition();
         Vector2D playerPos = m_player.get().getPosition();
         Vector2D direction = mousePos - playerPos;
 
         if (direction.length() > 5.0f) {
             direction.normalize();
             velocity = direction * speed;
+            hasInput = true;
 
             if (direction.getX() > 0) {
                 m_player.get().setFlip(SDL_FLIP_NONE);
@@ -90,8 +98,8 @@ void PlayerRunningState::handleMovementInput(float deltaTime) {
         }
     }
 
-    // Normalize diagonal movement for consistent speed
-    if (velocity.length() > speed) {
+    // Normalize diagonal movement for consistent speed (only if we have input)
+    if (hasInput && velocity.length() > speed) {
         velocity.normalize();
         velocity = velocity * speed;
     }
@@ -101,15 +109,15 @@ void PlayerRunningState::handleMovementInput(float deltaTime) {
 }
 
 void PlayerRunningState::handleRunningAnimation(float deltaTime) {
-    (void)deltaTime; // Mark as unused since we're using SDL_GetTicks()
-
-    // Simple, fixed animation timing
+    (void)deltaTime; // Animation uses SDL_GetTicks() for consistent timing
+    
     Vector2D velocity = m_player.get().getVelocity();
 
+    // Only animate when player is moving
     if (velocity.length() > 1.0f) {
         Uint64 currentTime = SDL_GetTicks();
 
-        // Use player's animation speed setting
+        // Advance frame based on player's configurable animation speed
         if (currentTime > m_player.get().getLastFrameTime() + static_cast<Uint64>(m_player.get().getAnimSpeed())) {
             int currentFrame = m_player.get().getCurrentFrame();
             m_player.get().setCurrentFrame((currentFrame + 1) % 2);
@@ -121,12 +129,13 @@ void PlayerRunningState::handleRunningAnimation(float deltaTime) {
 }
 
 bool PlayerRunningState::hasInputDetected() const {
-    // Check for any movement input
-    return (InputManager::Instance().isKeyDown(SDL_SCANCODE_RIGHT) ||
-            InputManager::Instance().isKeyDown(SDL_SCANCODE_LEFT) ||
-            InputManager::Instance().isKeyDown(SDL_SCANCODE_UP) ||
-            InputManager::Instance().isKeyDown(SDL_SCANCODE_DOWN) ||
-            InputManager::Instance().getAxisX(0, 1) != 0 ||
-            InputManager::Instance().getAxisY(0, 1) != 0 ||
-            InputManager::Instance().getMouseButtonState(LEFT));
+    // Returns true if any movement input is currently active
+    const InputManager& input = InputManager::Instance();
+    return (input.isKeyDown(SDL_SCANCODE_RIGHT) ||
+            input.isKeyDown(SDL_SCANCODE_LEFT) ||
+            input.isKeyDown(SDL_SCANCODE_UP) ||
+            input.isKeyDown(SDL_SCANCODE_DOWN) ||
+            input.getAxisX(0, 1) != 0 ||
+            input.getAxisY(0, 1) != 0 ||
+            input.getMouseButtonState(LEFT));
 }
