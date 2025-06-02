@@ -154,12 +154,15 @@ const Vector2D& InputManager::getMousePosition() const {
 }
 
 void InputManager::update() {
+  // Cache GameEngine reference for better performance
+  GameEngine& gameEngine = GameEngine::Instance();
+  
   SDL_Event event;
   while (SDL_PollEvent(&event)) {
     switch (event.type) {
       case SDL_EVENT_QUIT:
         std::cout << "Forge Game Engine - Shutting down! {}===]>" << std::endl;
-        GameEngine::Instance().setRunning(false);
+        gameEngine.setRunning(false);
         break;
 
       case SDL_EVENT_GAMEPAD_AXIS_MOTION:

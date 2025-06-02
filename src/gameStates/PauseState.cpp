@@ -16,26 +16,35 @@ bool PauseState::enter() {
 
 void PauseState::update([[maybe_unused]] float deltaTime) {
   //std::cout << "Updating PAUSE State\n";
+  
+  // Cache manager references for better performance
+  InputManager& inputMgr = InputManager::Instance();
+  GameEngine& gameEngine = GameEngine::Instance();
+  
   // Handle pause and ESC key.
-  if (InputManager::Instance().isKeyDown(SDL_SCANCODE_R)) {
+  if (inputMgr.isKeyDown(SDL_SCANCODE_R)) {
       // Flag the GamePlayState transition
       // We'll do the actual removal in GamePlayState::enter()
-      GameEngine::Instance().getGameStateManager()->setState("GamePlayState");
+      gameEngine.getGameStateManager()->setState("GamePlayState");
   }
-  if (InputManager::Instance().isKeyDown(SDL_SCANCODE_ESCAPE)) {
-      GameEngine::Instance().setRunning(false);
+  if (inputMgr.isKeyDown(SDL_SCANCODE_ESCAPE)) {
+      gameEngine.setRunning(false);
   }
 }
 
 void PauseState::render() {
+    // Cache manager references for better performance
+    FontManager& fontMgr = FontManager::Instance();
+    GameEngine& gameEngine = GameEngine::Instance();
+    
     SDL_Color fontColor = {200, 200, 200, 255};//gray
-     FontManager::Instance().drawText(
+     fontMgr.drawText(
        "Pause State Place Holder <----> Press R to Return to test Player",
        "fonts_Arial",
-       GameEngine::Instance().getWindowWidth() / 2,     // Center horizontally
+       gameEngine.getWindowWidth() / 2,     // Center horizontally
        20,
        fontColor,
-       GameEngine::Instance().getRenderer());
+       gameEngine.getRenderer());
 }
 bool PauseState::exit() {
   std::cout << "Forge Game Engine - Exiting PAUSE State\n";

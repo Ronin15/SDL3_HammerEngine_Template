@@ -31,7 +31,9 @@ AIDemoState::~AIDemoState() {
 
         // Reset AI behaviors first to clear entity references
         // Don't call unassignBehaviorFromEntity here - it uses shared_from_this()
-        AIManager::Instance().resetBehaviors();
+        // Cache AIManager reference for better performance
+        AIManager& aiMgr = AIManager::Instance();
+        aiMgr.resetBehaviors();
 
         // Clear NPCs without calling clean() on them
         m_npcs.clear();
@@ -51,9 +53,12 @@ bool AIDemoState::enter() {
     std::cout << "Forge Game Engine - Entering AIDemoState...\n";
 
     try {
+        // Cache GameEngine reference for better performance
+        GameEngine& gameEngine = GameEngine::Instance();
+        
         // Setup window size
-        m_worldWidth = GameEngine::Instance().getWindowWidth();
-        m_worldHeight = GameEngine::Instance().getWindowHeight();
+        m_worldWidth = gameEngine.getWindowWidth();
+        m_worldHeight = gameEngine.getWindowHeight();
 
         //Texture has to be loaded by NPC or Player can't be loaded here
         setupAIBehaviors();
@@ -62,16 +67,19 @@ bool AIDemoState::enter() {
         m_player = std::make_shared<Player>();
         m_player->setPosition(Vector2D(m_worldWidth / 2, m_worldHeight / 2));
 
+        // Cache AIManager reference for better performance
+        AIManager& aiMgr = AIManager::Instance();
+        
         // Set player reference in AIManager for distance optimization
-        AIManager::Instance().setPlayerForDistanceOptimization(m_player);
+        aiMgr.setPlayerForDistanceOptimization(m_player);
 
         // Create and register chase behavior - behaviors can get player via getPlayerReference()
         auto chaseBehavior = std::make_unique<ChaseBehavior>(120.0f, 500.0f, 50.0f);
-        AIManager::Instance().registerBehavior("Chase", std::move(chaseBehavior));
+        aiMgr.registerBehavior("Chase", std::move(chaseBehavior));
         std::cout << "Forge Game Engine - Chase behavior registered (will use AIManager::getPlayerReference())\n";
 
         // Configure priority multiplier for proper distance progression (1.0 = full distance thresholds)
-        AIManager::Instance().configurePriorityMultiplier(1.0f);
+        aiMgr.configurePriorityMultiplier(1.0f);
 
         // Create NPCs with AI behaviors
         createNPCs();
@@ -94,9 +102,12 @@ bool AIDemoState::enter() {
 bool AIDemoState::exit() {
     std::cout << "Forge Game Engine - Exiting AIDemoState...\n";
 
+    // Cache AIManager reference for better performance
+    AIManager& aiMgr = AIManager::Instance();
+    
     // First clear entity references from behaviors
-    if (AIManager::Instance().hasBehavior("Chase")) {
-        auto chaseBehaviorPtr = AIManager::Instance().getBehavior("Chase");
+    if (aiMgr.hasBehavior("Chase")) {
+        auto chaseBehaviorPtr = aiMgr.getBehavior("Chase");
         auto chaseBehavior = std::dynamic_pointer_cast<ChaseBehavior>(chaseBehaviorPtr);
         if (chaseBehavior) {
             // Chase behavior cleanup handled by AIManager
@@ -108,11 +119,11 @@ bool AIDemoState::exit() {
     for (auto& npc : m_npcs) {
         if (npc) {
             // Unregister from AIManager first to avoid shared_from_this() issues
-            AIManager::Instance().unregisterEntityFromUpdates(npc);
+            aiMgr.unregisterEntityFromUpdates(npc);
 
             // Unassign behavior if it has one
-            if (AIManager::Instance().entityHasBehavior(npc)) {
-                AIManager::Instance().unassignBehaviorFromEntity(npc);
+            if (aiMgr.entityHasBehavior(npc)) {
+                aiMgr.unassignBehaviorFromEntity(npc);
             }
 
             // Now safe to call clean() and stop movement
@@ -122,12 +133,12 @@ bool AIDemoState::exit() {
     }
 
     // Send release message to all behaviors
-    AIManager::Instance().broadcastMessage("release_entities", true);
-    AIManager::Instance().processMessageQueue();
+    aiMgr.broadcastMessage("release_entities", true);
+    aiMgr.processMessageQueue();
 
     // Reset all AI behaviors to clear entity references
     // This ensures behaviors release their entity references before the entities are destroyed
-    AIManager::Instance().resetBehaviors();
+    aiMgr.resetBehaviors();
 
     // Clean up NPCs
     m_npcs.clear();
@@ -144,6 +155,9 @@ bool AIDemoState::exit() {
 }
 
 void AIDemoState::update([[maybe_unused]] float deltaTime) {
+    // Cache AIManager reference for better performance
+    AIManager& aiMgr = AIManager::Instance();
+    
     try {
         // Update player
         if (m_player) {
@@ -151,7 +165,7 @@ void AIDemoState::update([[maybe_unused]] float deltaTime) {
         }
 
         // Update AI Manager
-        AIManager::Instance().update(deltaTime);
+        aiMgr.update(deltaTime);
 
         // Entity updates are now handled by AIManager::update()
         // No need to manually update NPCs here
@@ -162,14 +176,17 @@ void AIDemoState::update([[maybe_unused]] float deltaTime) {
     } catch (...) {
         std::cerr << "Forge Game Engine - ERROR: Unknown exception in AIDemoState::update()" << std::endl;
     }
-    if (InputManager::Instance().isKeyDown(SDL_SCANCODE_B)) {
+    // Cache InputManager reference for better performance
+    InputManager& inputMgr = InputManager::Instance();
+    
+    if (inputMgr.isKeyDown(SDL_SCANCODE_B)) {
         std::cout << "Forge Game Engine - Preparing to exit AIDemoState...\n";
 
         // First call clean() on all NPCs to properly handle unassignment
         for (auto& npc : m_npcs) {
             if (npc) {
                 // Unregister from AIManager entity updates
-                AIManager::Instance().unregisterEntityFromUpdates(npc);
+                aiMgr.unregisterEntityFromUpdates(npc);
                 // Call clean() which will handle unassignment safely
                 npc->clean();
                 // Also stop the entity's movement
@@ -178,8 +195,8 @@ void AIDemoState::update([[maybe_unused]] float deltaTime) {
         }
 
         // Set chase behavior target to nullptr to avoid dangling reference
-        if (AIManager::Instance().hasBehavior("Chase")) {
-            auto chaseBehaviorPtr = AIManager::Instance().getBehavior("Chase");
+        if (aiMgr.hasBehavior("Chase")) {
+            auto chaseBehaviorPtr = aiMgr.getBehavior("Chase");
             auto chaseBehavior = std::dynamic_pointer_cast<ChaseBehavior>(chaseBehaviorPtr);
             if (chaseBehavior) {
                 std::cout << "Forge Game Engine - Chase behavior cleanup handled by AIManager...\n";
@@ -190,35 +207,37 @@ void AIDemoState::update([[maybe_unused]] float deltaTime) {
         }
 
         // Make sure all AI behavior references are cleared
-        AIManager::Instance().broadcastMessage("release_entities", true);
+        aiMgr.broadcastMessage("release_entities", true);
 
         // Force a flush of the message queue to ensure all messages are processed
-        AIManager::Instance().processMessageQueue();
+        aiMgr.processMessageQueue();
 
         std::cout << "Forge Game Engine - Transitioning to MainMenuState...\n";
-        GameEngine::Instance().getGameStateManager()->setState("MainMenuState");
+        // Cache GameEngine reference for better performance
+        GameEngine& gameEngine = GameEngine::Instance();
+        gameEngine.getGameStateManager()->setState("MainMenuState");
     }
 
     // Toggle AI behaviors
     static int lastKey = 0;
 
-    if (InputManager::Instance().isKeyDown(SDL_SCANCODE_1) && lastKey != 1) {
+    if (inputMgr.isKeyDown(SDL_SCANCODE_1) && lastKey != 1) {
         // Assign Wander behavior to all NPCs
         std::cout << "Forge Game Engine - Switching all NPCs to WANDER behavior\n";
         for (auto& npc : m_npcs) {
             // Queue the behavior assignment for batch processing
-            AIManager::Instance().queueBehaviorAssignment(npc, "Wander");
+            aiMgr.queueBehaviorAssignment(npc, "Wander");
         }
         lastKey = 1;
-    } else if (InputManager::Instance().isKeyDown(SDL_SCANCODE_2) && lastKey != 2) {
+    } else if (inputMgr.isKeyDown(SDL_SCANCODE_2) && lastKey != 2) {
         // Assign Patrol behavior to all NPCs
         std::cout << "Forge Game Engine - Switching all NPCs to PATROL behavior\n";
         for (auto& npc : m_npcs) {
             // Queue the behavior assignment for batch processing
-            AIManager::Instance().queueBehaviorAssignment(npc, "Patrol");
+            aiMgr.queueBehaviorAssignment(npc, "Patrol");
         }
         lastKey = 2;
-    } else if (InputManager::Instance().isKeyDown(SDL_SCANCODE_3) && lastKey != 3) {
+    } else if (inputMgr.isKeyDown(SDL_SCANCODE_3) && lastKey != 3) {
         // Assign Chase behavior to all NPCs
         std::cout << "Forge Game Engine - Switching all NPCs to CHASE behavior\n";
 
@@ -227,31 +246,31 @@ void AIDemoState::update([[maybe_unused]] float deltaTime) {
 
         for (auto& npc : m_npcs) {
             // Queue the behavior assignment for batch processing
-            AIManager::Instance().queueBehaviorAssignment(npc, "Chase");
+            aiMgr.queueBehaviorAssignment(npc, "Chase");
         }
         lastKey = 3;
     }
 
     // Reset key state if no behavior key is pressed
-    if (!InputManager::Instance().isKeyDown(SDL_SCANCODE_1) &&
-        !InputManager::Instance().isKeyDown(SDL_SCANCODE_2) &&
-        !InputManager::Instance().isKeyDown(SDL_SCANCODE_3)) {
+    if (!inputMgr.isKeyDown(SDL_SCANCODE_1) &&
+        !inputMgr.isKeyDown(SDL_SCANCODE_2) &&
+        !inputMgr.isKeyDown(SDL_SCANCODE_3)) {
         lastKey = 0;
     }
 
     // Pause/Resume AI
-    bool isSpacePressed = InputManager::Instance().isKeyDown(SDL_SCANCODE_SPACE);
+    bool isSpacePressed = inputMgr.isKeyDown(SDL_SCANCODE_SPACE);
 
     if (isSpacePressed && !m_wasSpacePressed) {
         // Toggle pause/resume
         m_aiPaused = !m_aiPaused;
 
         // Set global AI pause state in AIManager
-        AIManager::Instance().setGlobalPause(m_aiPaused);
+        aiMgr.setGlobalPause(m_aiPaused);
 
         // Also send messages for behaviors that need them
         std::string message = m_aiPaused ? "pause" : "resume";
-        AIManager::Instance().broadcastMessage(message, true);
+        aiMgr.broadcastMessage(message, true);
 
         // Simple feedback
         std::cout << "Forge Game Engine - AI " << (m_aiPaused ? "PAUSED" : "RESUMED") << std::endl;
@@ -271,86 +290,95 @@ void AIDemoState::render() {
         m_player->render();
     }
 
+    // Cache manager references for better performance
+    FontManager& fontMgr = FontManager::Instance();
+    GameEngine& gameEngine = GameEngine::Instance();
+    AIManager& aiMgr = AIManager::Instance();
+    SDL_Renderer* renderer = gameEngine.getRenderer();
+    
     // Render info panel
-        FontManager::Instance().drawText("AI Demo: Press [B] to exit to main menu. Press [1-3] to switch behaviors. Press [SPACE] to pause/resume AI. [1] Wander [2] Patrol [3] Chase",
+        fontMgr.drawText("AI Demo: Press [B] to exit to main menu. Press [1-3] to switch behaviors. Press [SPACE] to pause/resume AI. [1] Wander [2] Patrol [3] Chase",
                                     "fonts_Arial",
-                                    GameEngine::Instance().getWindowWidth() / 2,     // Center horizontally
+                                    gameEngine.getWindowWidth() / 2,     // Center horizontally
                                     20,
                                     {255, 255, 255, 255},
-                                    GameEngine::Instance().getRenderer());
+                                    renderer);
 
     // Render frame rate and AI status
-    bool globallyPaused = AIManager::Instance().isGloballyPaused();
+    bool globallyPaused = aiMgr.isGloballyPaused();
     std::stringstream fpsText;
-    float currentFPS = GameEngine::Instance().getCurrentFPS();
+    float currentFPS = gameEngine.getCurrentFPS();
     fpsText << "FPS: " << std::fixed << std::setprecision(1) << currentFPS
             << " - Entity Count: " << m_npcs.size()
             << " - AI: " << (globallyPaused ? "PAUSED" : "RUNNING");
 
-    FontManager::Instance().drawText(fpsText.str(),
+    fontMgr.drawText(fpsText.str(),
                                 "fonts_Arial",
-                                GameEngine::Instance().getWindowWidth() / 2,     // Center horizontally
+                                gameEngine.getWindowWidth() / 2,     // Center horizontally
                                 50,
                                 globallyPaused ? SDL_Color{255, 100, 100, 255} : SDL_Color{255, 255, 255, 255},
-                                GameEngine::Instance().getRenderer());
+                                renderer);
 }
 
 void AIDemoState::setupAIBehaviors() {
     std::cout << "AIDemoState: Setting up AI behaviors using EventDemoState implementation...\n";
 
-    if (!AIManager::Instance().hasBehavior("Wander")) {
+    // Cache AIManager reference for better performance
+    AIManager& aiMgr = AIManager::Instance();
+    
+    if (!aiMgr.hasBehavior("Wander")) {
         auto wanderBehavior = std::make_unique<WanderBehavior>(WanderBehavior::WanderMode::MEDIUM_AREA, 80.0f);
         wanderBehavior->setScreenDimensions(m_worldWidth, m_worldHeight);
-        AIManager::Instance().registerBehavior("Wander", std::move(wanderBehavior));
+        aiMgr.registerBehavior("Wander", std::move(wanderBehavior));
         std::cout << "AIDemoState: Registered Wander behavior\n";
     }
 
-    if (!AIManager::Instance().hasBehavior("SmallWander")) {
+    if (!aiMgr.hasBehavior("SmallWander")) {
         auto smallWanderBehavior = std::make_unique<WanderBehavior>(WanderBehavior::WanderMode::SMALL_AREA, 60.0f);
         smallWanderBehavior->setScreenDimensions(m_worldWidth, m_worldHeight);
-        AIManager::Instance().registerBehavior("SmallWander", std::move(smallWanderBehavior));
+        aiMgr.registerBehavior("SmallWander", std::move(smallWanderBehavior));
         std::cout << "AIDemoState: Registered SmallWander behavior\n";
     }
 
-    if (!AIManager::Instance().hasBehavior("LargeWander")) {
+    if (!aiMgr.hasBehavior("LargeWander")) {
         auto largeWanderBehavior = std::make_unique<WanderBehavior>(WanderBehavior::WanderMode::LARGE_AREA, 100.0f);
         largeWanderBehavior->setScreenDimensions(m_worldWidth, m_worldHeight);
-        AIManager::Instance().registerBehavior("LargeWander", std::move(largeWanderBehavior));
+        aiMgr.registerBehavior("LargeWander", std::move(largeWanderBehavior));
         std::cout << "AIDemoState: Registered LargeWander behavior\n";
     }
 
-    if (!AIManager::Instance().hasBehavior("EventWander")) {
+    if (!aiMgr.hasBehavior("EventWander")) {
         auto eventWanderBehavior = std::make_unique<WanderBehavior>(WanderBehavior::WanderMode::EVENT_TARGET, 70.0f);
         eventWanderBehavior->setScreenDimensions(m_worldWidth, m_worldHeight);
-        AIManager::Instance().registerBehavior("EventWander", std::move(eventWanderBehavior));
+        aiMgr.registerBehavior("EventWander", std::move(eventWanderBehavior));
         std::cout << "AIDemoState: Registered EventWander behavior\n";
     }
 
-    if (!AIManager::Instance().hasBehavior("Patrol")) {
+    if (!aiMgr.hasBehavior("Patrol")) {
         auto patrolBehavior = std::make_unique<PatrolBehavior>(PatrolBehavior::PatrolMode::FIXED_WAYPOINTS, 75.0f, true);
         patrolBehavior->setScreenDimensions(m_worldWidth, m_worldHeight);
-        AIManager::Instance().registerBehavior("Patrol", std::move(patrolBehavior));
+        aiMgr.registerBehavior("Patrol", std::move(patrolBehavior));
         std::cout << "AIDemoState: Registered Patrol behavior\n";
     }
 
-    if (!AIManager::Instance().hasBehavior("RandomPatrol")) {
+    if (!aiMgr.hasBehavior("RandomPatrol")) {
         auto randomPatrolBehavior = std::make_unique<PatrolBehavior>(PatrolBehavior::PatrolMode::RANDOM_AREA, 85.0f, false);
         randomPatrolBehavior->setScreenDimensions(m_worldWidth, m_worldHeight);
-        AIManager::Instance().registerBehavior("RandomPatrol", std::move(randomPatrolBehavior));
+        aiMgr.registerBehavior("RandomPatrol", std::move(randomPatrolBehavior));
         std::cout << "AIDemoState: Registered RandomPatrol behavior\n";
     }
 
-    if (!AIManager::Instance().hasBehavior("CirclePatrol")) {
+    if (!aiMgr.hasBehavior("CirclePatrol")) {
         auto circlePatrolBehavior = std::make_unique<PatrolBehavior>(PatrolBehavior::PatrolMode::CIRCULAR_AREA, 90.0f, false);
         circlePatrolBehavior->setScreenDimensions(m_worldWidth, m_worldHeight);
-        AIManager::Instance().registerBehavior("CirclePatrol", std::move(circlePatrolBehavior));
+        aiMgr.registerBehavior("CirclePatrol", std::move(circlePatrolBehavior));
         std::cout << "AIDemoState: Registered CirclePatrol behavior\n";
     }
 
-    if (!AIManager::Instance().hasBehavior("EventTarget")) {
+    if (!aiMgr.hasBehavior("EventTarget")) {
         auto eventTargetBehavior = std::make_unique<PatrolBehavior>(PatrolBehavior::PatrolMode::EVENT_TARGET, 95.0f, false);
         eventTargetBehavior->setScreenDimensions(m_worldWidth, m_worldHeight);
-        AIManager::Instance().registerBehavior("EventTarget", std::move(eventTargetBehavior));
+        aiMgr.registerBehavior("EventTarget", std::move(eventTargetBehavior));
         std::cout << "AIDemoState: Registered EventTarget behavior\n";
     }
 
@@ -363,6 +391,9 @@ void AIDemoState::setupAIBehaviors() {
 
 
 void AIDemoState::createNPCs() {
+    // Cache AIManager reference for better performance
+    AIManager& aiMgr = AIManager::Instance();
+    
     try {
         // Random number generation for positioning
         std::random_device rd;
@@ -384,7 +415,7 @@ void AIDemoState::createNPCs() {
                 npc->setWanderArea(0, 0, m_worldWidth, m_worldHeight);
 
                 // Register with AIManager for centralized entity updates with priority and behavior
-                AIManager::Instance().registerEntityForUpdates(npc, 5, "Wander");
+                aiMgr.registerEntityForUpdates(npc, 5, "Wander");
 
                 // Add to collection
                 m_npcs.push_back(npc);

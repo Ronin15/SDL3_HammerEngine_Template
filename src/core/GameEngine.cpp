@@ -193,13 +193,14 @@ bool GameEngine::init(const char* title,
       Forge::ThreadSystem::Instance().enqueueTaskWithResult([]() -> bool {
         std::cout << "Forge Game Engine - Detecting and initializing gamepads "
                      "and input handling\n";
-        InputManager::Instance().initializeGamePad();
+        InputManager& inputMgr = InputManager::Instance();
+        inputMgr.initializeGamePad();
         return true;
       }));
 
   // Create and initialize texture manager - MAIN THREAD
   std::cout << "Forge Game Engine - Creating Texture Manager\n";
-  TextureManager::Instance();
+  TextureManager& texMgr = TextureManager::Instance();
   if (!TextureManager::Exists()) {
     std::cerr << "Forge Game Engine - Failed to create Texture Manager!"<< std::endl;
     return false;
@@ -207,20 +208,21 @@ bool GameEngine::init(const char* title,
 
   // Load textures in main thread
   std::cout << "Forge Game Engine - Creating and loading textures\n";
-  TextureManager::Instance().load("res/img", "", mp_renderer.get());
+  texMgr.load("res/img", "", mp_renderer.get());
 
   // Initialize sound manager in a separate thread - #2
   initTasks.push_back(
       Forge::ThreadSystem::Instance().enqueueTaskWithResult([]() -> bool {
         std::cout << "Forge Game Engine - Creating Sound Manager\n";
-        if (!SoundManager::Instance().init()) {
+        SoundManager& soundMgr = SoundManager::Instance();
+        if (!soundMgr.init()) {
           std::cerr << "Forge Game Engine - Failed to initialize Sound Manager!" << std::endl;
           return false;
         }
 
         std::cout << "Forge Game Engine - Loading sounds and music\n";
-        SoundManager::Instance().loadSFX("res/sfx", "sfx");
-        SoundManager::Instance().loadMusic("res/music", "music");
+        soundMgr.loadSFX("res/sfx", "sfx");
+        soundMgr.loadMusic("res/music", "music");
         return true;
       }));
 
@@ -228,12 +230,13 @@ bool GameEngine::init(const char* title,
   initTasks.push_back(
       Forge::ThreadSystem::Instance().enqueueTaskWithResult([]() -> bool {
         std::cout << "Forge Game Engine - Creating Font Manager\n";
-        if (!FontManager::Instance().init()) {
+        FontManager& fontMgr = FontManager::Instance();
+        if (!fontMgr.init()) {
           std::cerr << "Forge Game Engine - Failed to initialize Font Manager!"
                     << std::endl;
           return false;
         }
-        FontManager::Instance().loadFont("res/fonts", "fonts", 24);
+        fontMgr.loadFont("res/fonts", "fonts", 24);
         return true;
       }));
 
@@ -241,14 +244,14 @@ bool GameEngine::init(const char* title,
   initTasks.push_back(
       Forge::ThreadSystem::Instance().enqueueTaskWithResult([]() -> bool {
         std::cout << "Forge Game Engine - Creating Save Game Manager\n";
-        SaveGameManager::Instance();
+        SaveGameManager& saveMgr = SaveGameManager::Instance();
         if (!SaveGameManager::Exists()) {
           std::cerr << "Forge Game Engine - Failed to create Save Game Manager!" << std::endl;
           return false;
         }
 
         // Set the save directory to "res" folder
-        SaveGameManager::Instance().setSaveDirectory("res");
+        saveMgr.setSaveDirectory("res");
         return true;
       }));
 
@@ -256,7 +259,8 @@ bool GameEngine::init(const char* title,
   initTasks.push_back(
       Forge::ThreadSystem::Instance().enqueueTaskWithResult([]() -> bool {
         std::cout << "Forge Game Engine - Creating AI Manager\n";
-        if (!AIManager::Instance().init()) {
+        AIManager& aiMgr = AIManager::Instance();
+        if (!aiMgr.init()) {
           std::cerr << "Forge Game Engine - Failed to initialize AI Manager!" << std::endl;
           return false;
         }
@@ -268,7 +272,8 @@ bool GameEngine::init(const char* title,
   initTasks.push_back(
       Forge::ThreadSystem::Instance().enqueueTaskWithResult([]() -> bool {
         std::cout << "Forge Game Engine - Creating Event Manager\n";
-        if (!EventManager::Instance().init()) {
+        EventManager& eventMgr = EventManager::Instance();
+        if (!eventMgr.init()) {
           std::cerr << "Forge Game Engine - Failed to initialize Event Manager!" << std::endl;
           return false;
         }
@@ -317,7 +322,9 @@ bool GameEngine::init(const char* title,
 }
 
 void GameEngine::handleEvents() {
-  InputManager::Instance().update();
+  // Cache InputManager reference for better performance
+  InputManager& inputMgr = InputManager::Instance();
+  inputMgr.update();
 }
 
 void GameEngine::setRunning(bool running) {
@@ -485,8 +492,11 @@ void GameEngine::processBackgroundTasks() {
   // It should be safe to run on worker threads
 
   try {
+    // Cache EventManager reference for better performance
+    EventManager& eventMgr = EventManager::Instance();
+    
     // Update Event Manager
-    EventManager::Instance().update();
+    eventMgr.update();
   } catch (const std::exception& e) {
     std::cerr << "Forge Game Engine - Exception in background tasks: " << e.what() << std::endl;
   } catch (...) {
@@ -500,11 +510,21 @@ void GameEngine::processBackgroundTasks() {
 void GameEngine::clean() {
   std::cout << "Forge Game Engine - Starting shutdown sequence...\n";
 
+  // Cache manager references for better performance
+  Forge::ThreadSystem& threadSystem = Forge::ThreadSystem::Instance();
+  FontManager& fontMgr = FontManager::Instance();
+  SoundManager& soundMgr = SoundManager::Instance();
+  EventManager& eventMgr = EventManager::Instance();
+  AIManager& aiMgr = AIManager::Instance();
+  SaveGameManager& saveMgr = SaveGameManager::Instance();
+  InputManager& inputMgr = InputManager::Instance();
+  TextureManager& texMgr = TextureManager::Instance();
+
   // Wait for any pending background tasks to complete
-  if (!Forge::ThreadSystem::Instance().isShutdown()) {
+  if (!threadSystem.isShutdown()) {
     std::cout
         << "Forge Game Engine - Waiting for background tasks to complete...\n";
-    while (Forge::ThreadSystem::Instance().isBusy()) {
+    while (threadSystem.isBusy()) {
       std::this_thread::sleep_for(std::chrono::milliseconds(1));  // Short delay to avoid busy waiting
     }
   }
@@ -519,30 +539,30 @@ void GameEngine::clean() {
 
   // Clean up Managers in reverse order of their initialization
   std::cout << "Forge Game Engine - Cleaning up Font Manager...\n";
-  FontManager::Instance().clean();
+  fontMgr.clean();
 
   std::cout << "Forge Game Engine - Cleaning up Sound Manager...\n";
-  SoundManager::Instance().clean();
+  soundMgr.clean();
 
   std::cout << "Forge Game Engine - Cleaning up Event Manager...\n";
-  EventManager::Instance().clean();
+  eventMgr.clean();
 
   std::cout << "Forge Game Engine - Cleaning up AI Manager...\n";
-  AIManager::Instance().clean();
+  aiMgr.clean();
 
   std::cout << "Forge Game Engine - Cleaning up Save Game Manager...\n";
-  SaveGameManager::Instance().clean();
+  saveMgr.clean();
 
   std::cout << "Forge Game Engine - Cleaning up Input Manager...\n";
-  InputManager::Instance().clean();
+  inputMgr.clean();
 
   std::cout << "Forge Game Engine - Cleaning up Texture Manager...\n";
-  TextureManager::Instance().clean();
+  texMgr.clean();
 
   // Clean up the thread system
   std::cout << "Forge Game Engine - Cleaning up Thread System...\n";
-  if (!Forge::ThreadSystem::Instance().isShutdown()) {
-    Forge::ThreadSystem::Instance().clean();
+  if (!threadSystem.isShutdown()) {
+    threadSystem.clean();
   }
 
   // Finally clean up SDL resources

@@ -24,22 +24,25 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char* argv[]) {
   std::cout << "Forge Game Engine - Initializing Thread System....\n";
 
   // Initialize the thread system with default capacity
+  // Cache ThreadSystem reference for better performance
+  Forge::ThreadSystem& threadSystem = Forge::ThreadSystem::Instance();
+
+  // Initialize thread system first
   try {
-    if (!Forge::ThreadSystem::Instance().init()) {
+    if (!threadSystem.init()) {
       std::cerr << "Forge Game Engine - Failed to initialize thread system!"
                 << std::endl;
       return -1;
     }
   } catch (const std::exception& e) {
-    std::cerr << "Forge Game Engine - Exception during thread system initialization: "
-              << e.what() << std::endl;
+    std::cerr << "Forge Game Engine - Exception during thread system init: " << e.what() << std::endl;
     return -1;
   }
 
   std::cout << "Forge Game Engine - Thread system initialized with "
-            << Forge::ThreadSystem::Instance().getThreadCount()
+            << threadSystem.getThreadCount()
             << " worker threads and capacity for "
-            << Forge::ThreadSystem::Instance().getQueueCapacity()
+            << threadSystem.getQueueCapacity()
             << " parallel tasks!\n";
 
   // Initialize GameEngine
@@ -57,32 +60,35 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char* argv[]) {
   // Set GameLoop reference in GameEngine for delegation
   GameEngine::Instance().setGameLoop(gameLoop);
 
+  // Cache GameEngine reference for better performance in game loop
+  GameEngine& gameEngine = GameEngine::Instance();
+
   // Register event handler (always on main thread - SDL requirement)
-  gameLoop->setEventHandler([]() {
-    GameEngine::Instance().handleEvents();
+  gameLoop->setEventHandler([&gameEngine]() {
+    gameEngine.handleEvents();
   });
 
   // Register update handler (fixed timestep for consistent game logic)
-  gameLoop->setUpdateHandler([](float deltaTime) {
+  gameLoop->setUpdateHandler([&gameEngine, &threadSystem](float deltaTime) {
     // Swap buffers if we have a new frame ready for rendering
-    if (GameEngine::Instance().hasNewFrameToRender()) {
-      GameEngine::Instance().swapBuffers();
+    if (gameEngine.hasNewFrameToRender()) {
+      gameEngine.swapBuffers();
     }
 
     // Update game logic with fixed timestep
-    GameEngine::Instance().update(deltaTime);
+    gameEngine.update(deltaTime);
 
     // Process background tasks using thread system
     try {
-      Forge::ThreadSystem::Instance().enqueueTask([]() {
+      threadSystem.enqueueTask([&gameEngine]() {
         try {
-          GameEngine::Instance().processBackgroundTasks();
+          gameEngine.processBackgroundTasks();
         } catch (const std::exception& e) {
-          std::cerr << "Forge Game Engine - Exception in background task: " << e.what() << std::endl;
+          std::cerr << "Forge Game Engine - ERROR: Exception in background task: " << e.what() << std::endl;
         }
       });
     } catch (const std::exception& e) {
-      std::cerr << "Forge Game Engine - Failed to enqueue background task: " << e.what() << std::endl;
+      std::cerr << "Forge Game Engine - ERROR: Exception enqueuing background task: " << e.what() << std::endl;
     }
   });
 
@@ -101,7 +107,7 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char* argv[]) {
 
   std::cout << "Forge Game Engine - Game " << GAME_NAME << " Shutting down...\n";
 
-  GameEngine::Instance().clean();
+  gameEngine.clean();
 
   return 0;
 }
