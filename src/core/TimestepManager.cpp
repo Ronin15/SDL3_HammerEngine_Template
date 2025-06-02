@@ -4,7 +4,6 @@
 */
 
 #include "core/TimestepManager.hpp"
-#include <SDL3/SDL.h>
 #include <algorithm>
 
 TimestepManager::TimestepManager(float targetFPS, float fixedTimestep)
@@ -18,13 +17,14 @@ TimestepManager::TimestepManager(float targetFPS, float fixedTimestep)
     , m_shouldRender(true)
     , m_firstFrame(true)
 {
-    m_frameStart = std::chrono::steady_clock::now();
-    m_lastFrameTime = m_frameStart;
-    m_fpsLastUpdate = m_frameStart;
+    Uint64 currentTime = SDL_GetTicks();
+    m_frameStart = currentTime;
+    m_lastFrameTime = currentTime;
+    m_fpsLastUpdate = currentTime;
 }
 
 void TimestepManager::startFrame() {
-    auto currentTime = std::chrono::steady_clock::now();
+    Uint64 currentTime = SDL_GetTicks();
     
     if (m_firstFrame) {
         m_firstFrame = false;
@@ -33,13 +33,14 @@ void TimestepManager::startFrame() {
         return;
     }
     
-    // Calculate frame delta time
-    auto deltaTime = std::chrono::duration<double>(currentTime - m_lastFrameTime).count();
+    // Calculate frame delta time in seconds
+    double deltaTimeMs = static_cast<double>(currentTime - m_lastFrameTime);
+    double deltaTime = deltaTimeMs / 1000.0; // Convert milliseconds to seconds
     m_lastFrameTime = currentTime;
     m_frameStart = currentTime;
     
     // Update frame time in milliseconds
-    m_lastFrameTimeMs = static_cast<uint32_t>(deltaTime * 1000.0);
+    m_lastFrameTimeMs = static_cast<uint32_t>(deltaTimeMs);
     
     // Add to accumulator, clamping to prevent spiral of death
     m_accumulator += std::min(deltaTime, MAX_ACCUMULATOR);
@@ -114,15 +115,16 @@ void TimestepManager::reset() {
     m_shouldRender = true;
     m_currentFPS = 0.0f;
     
-    auto currentTime = std::chrono::steady_clock::now();
+    Uint64 currentTime = SDL_GetTicks();
     m_frameStart = currentTime;
     m_lastFrameTime = currentTime;
     m_fpsLastUpdate = currentTime;
 }
 
 void TimestepManager::updateFPS() {
-    auto currentTime = std::chrono::steady_clock::now();
-    auto timeSinceLastUpdate = std::chrono::duration<double>(currentTime - m_fpsLastUpdate).count();
+    Uint64 currentTime = SDL_GetTicks();
+    double timeSinceLastUpdateMs = static_cast<double>(currentTime - m_fpsLastUpdate);
+    double timeSinceLastUpdate = timeSinceLastUpdateMs / 1000.0; // Convert to seconds
     
     // Update FPS calculation every second
     if (timeSinceLastUpdate >= 1.0) {
@@ -133,8 +135,9 @@ void TimestepManager::updateFPS() {
 }
 
 void TimestepManager::limitFrameRate() {
-    auto currentTime = std::chrono::steady_clock::now();
-    auto frameTime = std::chrono::duration<double>(currentTime - m_frameStart).count();
+    Uint64 currentTime = SDL_GetTicks();
+    double frameTimeMs = static_cast<double>(currentTime - m_frameStart);
+    double frameTime = frameTimeMs / 1000.0; // Convert to seconds
     
     // If we finished early, delay to meet target frame rate
     if (frameTime < m_targetFrameTime) {
@@ -147,8 +150,6 @@ void TimestepManager::limitFrameRate() {
     }
 }
 
-double TimestepManager::getCurrentTimeSeconds() const {
-    auto now = std::chrono::steady_clock::now();
-    auto duration = now.time_since_epoch();
-    return std::chrono::duration<double>(duration).count();
+Uint64 TimestepManager::getCurrentTimeMs() const {
+    return SDL_GetTicks();
 }
