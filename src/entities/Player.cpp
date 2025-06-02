@@ -177,7 +177,7 @@ void Player::setPosition(const Vector2D& position) {
 
 void Player::handleMovementInput(float deltaTime) {
     const float maxSpeed = 120.0f; // Maximum pixels per second
-    const float acceleration = 300.0f; // Acceleration in pixels per second squared
+    const float acceleration = 400.0f; // Acceleration in pixels per second squared
 
     Vector2D inputDirection(0, 0);
 
