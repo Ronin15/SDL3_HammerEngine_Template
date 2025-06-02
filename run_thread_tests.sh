@@ -63,21 +63,32 @@ echo -e "${BLUE}====================================${NC}"
 # Create test_results directory if it doesn't exist
 mkdir -p test_results
 
+# Check if there were any failures in the output
+FAILURES=$(grep -o "[0-9]\+ failure" test_output.log 2>/dev/null | grep -o "[0-9]\+" || echo "0")
+
 # Save test results
-cp test_output.log "test_results/thread_system_test_output.txt"
+if [ -f test_output.log ]; then
+  cp test_output.log "test_results/thread_system_test_output.txt"
+fi
 
 # Extract performance metrics if they exist
 echo -e "${YELLOW}Saving test results...${NC}"
-grep -E "time:|performance|tasks:|queue:" test_output.log > "test_results/thread_system_performance_metrics.txt" || true
-
-# Clean up temporary file
-rm test_output.log
+if [ -f test_output.log ]; then
+  grep -E "time:|performance|tasks:|queue:" test_output.log > "test_results/thread_system_performance_metrics.txt" || true
+  # Clean up temporary file
+  rm test_output.log
+fi
 
 # Report test results
-if [ $TEST_RESULT -eq 0 ]; then
+if [ $TEST_RESULT -eq 0 ] && [ "$FAILURES" = "0" ]; then
   echo -e "${GREEN}All tests passed!${NC}"
 else
-  echo -e "${RED}Some tests failed. Please check the output above.${NC}"
+  if [ "$FAILURES" = "0" ]; then
+    echo -e "${RED}Tests failed with exit code $TEST_RESULT. Please check the output above.${NC}"
+  else
+    echo -e "${RED}Tests failed! Found $FAILURES failure(s). Please check the output above.${NC}"
+  fi
+  TEST_RESULT=1
 fi
 
 exit $TEST_RESULT

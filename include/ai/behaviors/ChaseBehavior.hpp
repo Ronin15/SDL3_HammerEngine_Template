@@ -12,11 +12,11 @@
 
 class ChaseBehavior : public AIBehavior {
 public:
-    ChaseBehavior(EntityPtr target = nullptr, float chaseSpeed = 3.0f, float maxRange = 500.0f, float minRange = 50.0f);
+    explicit ChaseBehavior(float chaseSpeed = 3.0f, float maxRange = 500.0f, float minRange = 50.0f);
 
     void init(EntityPtr entity) override;
 
-    void update(EntityPtr entity) override;
+    void executeLogic(EntityPtr entity) override;
 
     void clean(EntityPtr entity) override;
 
@@ -24,10 +24,7 @@ public:
 
     std::string getName() const override;
 
-    // Set a new target to chase
-    void setTarget(EntityPtr target);
-
-    // Get current target
+    // Get current target (returns AIManager::getPlayerReference())
     EntityPtr getTarget() const;
 
     // Set chase parameters
@@ -39,6 +36,9 @@ public:
     bool isChasing() const;
     bool hasLineOfSight() const;
 
+    // Clone method for creating unique behavior instances
+    std::shared_ptr<AIBehavior> clone() const override;
+
 protected:
     // Called when target is reached (within minimum range)
     virtual void onTargetReached(EntityPtr entity);
@@ -47,9 +47,7 @@ protected:
     virtual void onTargetLost(EntityPtr entity);
 
 private:
-    // Weak pointer to the target entity
-    // The target entity is owned elsewhere in the application
-    EntityWeakPtr m_targetWeak{};
+    // Note: Target is now obtained via AIManager::getPlayerReference()
     float m_chaseSpeed{10.0f};  // Increased to 10.0 for very visible movement
     float m_maxRange{1000.0f};  // Maximum distance to chase target - increased to 1000
     float m_minRange{50.0f};   // Minimum distance to maintain from target
@@ -62,7 +60,7 @@ private:
     Vector2D m_currentDirection{0, 0};
 
     // Check if entity has line of sight to target (simplified)
-    bool checkLineOfSight(EntityPtr entity, EntityPtr target);
+    bool checkLineOfSight(EntityPtr entity, EntityPtr target) const;
 
     // Handle behavior when line of sight is lost
     void handleNoLineOfSight(EntityPtr entity);

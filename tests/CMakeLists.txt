@@ -23,10 +23,12 @@ include_directories(
     ${PROJECT_SOURCE_DIR}/include/utils
     ${PROJECT_SOURCE_DIR}/include/io
     ${PROJECT_SOURCE_DIR}/include/ui
+    ${PROJECT_SOURCE_DIR}/include/events
+    ${CMAKE_CURRENT_SOURCE_DIR}/mocks
 )
 
 # Add test executables
-add_executable(save_manager_tests 
+add_executable(save_manager_tests
     SaveManagerTests.cpp
     mocks/MockPlayer.cpp
 )
@@ -44,13 +46,28 @@ add_executable(ai_optimization_tests
 add_executable(ai_scaling_benchmark
     AIScalingBenchmark.cpp
     ${PROJECT_SOURCE_DIR}/src/managers/AIManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/ai/behaviors/ChaseBehavior.cpp
     mocks/AIBehavior.cpp
+)
+
+# EventManager scaling benchmark
+add_executable(event_manager_scaling_benchmark
+    EventManagerScalingBenchmark.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/EventManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/events/Event.cpp
+    ${PROJECT_SOURCE_DIR}/src/events/WeatherEvent.cpp
+    ${PROJECT_SOURCE_DIR}/src/events/SceneChangeEvent.cpp
+    ${PROJECT_SOURCE_DIR}/src/events/EventFactory.cpp
+    mocks/NPCSpawnEventTest.cpp
+    mocks/MockNPC.cpp
+    mocks/MockGameEngine.cpp
 )
 
 # Thread-safe AI Manager tests
 add_executable(thread_safe_ai_manager_tests
     ThreadSafeAIManagerTest.cpp
     ${PROJECT_SOURCE_DIR}/src/managers/AIManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/ai/behaviors/ChaseBehavior.cpp
     mocks/AIBehavior.cpp
 )
 
@@ -58,7 +75,40 @@ add_executable(thread_safe_ai_manager_tests
 add_executable(thread_safe_ai_integration_tests
     ThreadSafeAIIntegrationTest.cpp
     ${PROJECT_SOURCE_DIR}/src/managers/AIManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/ai/behaviors/ChaseBehavior.cpp
     mocks/AIBehavior.cpp
+)
+
+# Event Manager tests
+add_executable(event_manager_tests
+    events/EventManagerTest.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/EventManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/events/Event.cpp
+    ${PROJECT_SOURCE_DIR}/src/events/WeatherEvent.cpp
+    ${PROJECT_SOURCE_DIR}/src/events/SceneChangeEvent.cpp
+    ${PROJECT_SOURCE_DIR}/src/events/EventFactory.cpp
+    mocks/NPCSpawnEventTest.cpp
+    mocks/MockNPC.cpp
+    mocks/MockGameEngine.cpp
+)
+
+# Event Types tests
+add_executable(event_types_tests
+    events/EventTypesTest.cpp
+    ${PROJECT_SOURCE_DIR}/src/events/Event.cpp
+    ${PROJECT_SOURCE_DIR}/src/events/WeatherEvent.cpp
+    ${PROJECT_SOURCE_DIR}/src/events/SceneChangeEvent.cpp
+    ${PROJECT_SOURCE_DIR}/src/events/EventFactory.cpp
+    mocks/NPCSpawnEventTest.cpp
+    mocks/MockNPC.cpp
+    mocks/MockGameEngine.cpp
+)
+
+# Weather Event tests
+add_executable(weather_event_tests
+    events/WeatherEventTest.cpp
+    ${PROJECT_SOURCE_DIR}/src/events/Event.cpp
+    ${PROJECT_SOURCE_DIR}/src/events/WeatherEvent.cpp
 )
 
 # Add compile definitions for Boost.Test
@@ -80,6 +130,10 @@ target_compile_definitions(ai_scaling_benchmark PRIVATE
     BOOST_TEST_NO_LIB
 )
 
+target_compile_definitions(event_manager_scaling_benchmark PRIVATE
+    BOOST_TEST_NO_LIB
+)
+
 # Thread-safe AI Manager tests definitions
 target_compile_definitions(thread_safe_ai_manager_tests PRIVATE
     BOOST_TEST_NO_LIB
@@ -88,6 +142,26 @@ target_compile_definitions(thread_safe_ai_manager_tests PRIVATE
 
 # Thread-safe AI Integration tests definitions
 target_compile_definitions(thread_safe_ai_integration_tests PRIVATE
+    BOOST_TEST_NO_LIB
+    BOOST_TEST_NO_SIGNAL_HANDLING
+)
+
+# Event Manager tests definitions
+target_compile_definitions(event_manager_tests PRIVATE
+    BOOST_TEST_NO_LIB
+    BOOST_TEST_NO_SIGNAL_HANDLING
+    RUNNING_TESTS
+)
+
+# Event Types tests definitions
+target_compile_definitions(event_types_tests PRIVATE
+    BOOST_TEST_NO_LIB
+    BOOST_TEST_NO_SIGNAL_HANDLING
+    RUNNING_TESTS
+)
+
+# Weather Event tests definitions
+target_compile_definitions(weather_event_tests PRIVATE
     BOOST_TEST_NO_LIB
     BOOST_TEST_NO_SIGNAL_HANDLING
 )
@@ -120,6 +194,13 @@ target_link_libraries(ai_scaling_benchmark PRIVATE
     Boost::container
 )
 
+target_link_libraries(event_manager_scaling_benchmark PRIVATE
+    SDL3::SDL3
+    SDL3_image::SDL3_image
+    Boost::unit_test_framework
+    Boost::container
+)
+
 # Link Thread-safe AI Manager tests with required libraries
 target_link_libraries(thread_safe_ai_manager_tests PRIVATE
     SDL3::SDL3
@@ -136,10 +217,40 @@ target_link_libraries(thread_safe_ai_integration_tests PRIVATE
     Boost::container
 )
 
+# Link Event Manager tests with required libraries
+target_link_libraries(event_manager_tests PRIVATE
+    SDL3::SDL3
+    SDL3_image::SDL3_image
+    Boost::unit_test_framework
+    Boost::container
+)
+
+# Link Event Types tests with required libraries
+target_link_libraries(event_types_tests PRIVATE
+    SDL3::SDL3
+    SDL3_image::SDL3_image
+    Boost::unit_test_framework
+    Boost::container
+)
+
+# Link Weather Event tests with required libraries
+target_link_libraries(weather_event_tests PRIVATE
+    SDL3::SDL3
+    SDL3_image::SDL3_image
+    Boost::unit_test_framework
+    Boost::container
+)
+
 # Add the tests to CTest
 add_test(NAME SaveManagerTests COMMAND save_manager_tests)
 add_test(NAME ThreadSystemTests COMMAND thread_system_tests)
 add_test(NAME AIOptimizationTests COMMAND ai_optimization_tests)
 add_test(NAME AIScalingBenchmark COMMAND ai_scaling_benchmark)
-add_test(NAME ThreadSafeAIManagerTests COMMAND thread_safe_ai_manager_tests)
-add_test(NAME ThreadSafeAIIntegrationTests COMMAND thread_safe_ai_integration_tests)
+add_test(NAME EventManagerScalingBenchmark COMMAND event_manager_scaling_benchmark)
+add_test(NAME ThreadSafeAIManagerTests 
+    COMMAND thread_safe_ai_manager_tests)
+add_test(NAME ThreadSafeAIIntegrationTests 
+    COMMAND thread_safe_ai_integration_tests)
+add_test(NAME EventManagerTests COMMAND event_manager_tests)
+add_test(NAME EventTypesTests COMMAND event_types_tests)
+add_test(NAME WeatherEventTests COMMAND weather_event_tests)

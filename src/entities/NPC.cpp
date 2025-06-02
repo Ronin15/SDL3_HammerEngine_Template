@@ -6,9 +6,10 @@
 #include "entities/NPC.hpp"
 #include "core/GameEngine.hpp"
 #include "managers/TextureManager.hpp"
-#include "managers/AIManager.hpp"
 #include <SDL3/SDL.h>
 #include <iostream>
+#include <cmath>
+#include <set>
 
 NPC::NPC(const std::string& textureID, const Vector2D& startPosition, int frameWidth, int frameHeight)
     : m_frameWidth(frameWidth), m_frameHeight(frameHeight) {
@@ -51,6 +52,8 @@ NPC::~NPC() {
     // IMPORTANT: Do not call shared_from_this() or any methods that use it in a destructor
     // The AIManager unassignment should happen in clean() or beforeDestruction(), not here
 
+    // Destructor - avoid any cleanup that might cause double-free
+
     // Note: Entity pointers should already be unassigned from AIManager
     // in AIDemoState::exit() or via the clean() method before destruction
 }
@@ -61,15 +64,18 @@ void NPC::loadDimensionsFromTexture() {
     m_height = 128;  // Set height equal to the sprite sheet row height
     m_frameWidth = 64;  // Default frame width (width/numFrames)
 
+    // Cache TextureManager reference for better performance
+    TextureManager& texMgr = TextureManager::Instance();
+    
     // Get the texture from TextureManager
-    if (TextureManager::Instance().isTextureInMap(m_textureID)) {
-        SDL_Texture* texture = TextureManager::Instance().getTexture(m_textureID);
+    if (texMgr.isTextureInMap(m_textureID)) {
+        auto texture = texMgr.getTexture(m_textureID);
         if (texture != nullptr) {
             float width = 0.0f;
             float height = 0.0f;
             // Query the texture to get its width and height
             // SDL3 uses SDL_GetTextureSize which returns float dimensions and returns a bool
-            if (SDL_GetTextureSize(texture, &width, &height)) {
+            if (SDL_GetTextureSize(texture.get(), &width, &height)) {
                 // Store original dimensions for full sprite sheet
                 m_width = static_cast<int>(width);
                 m_height = static_cast<int>(height);
@@ -91,16 +97,17 @@ void NPC::loadDimensionsFromTexture() {
 
 // State management removed - handled by AI Manager
 
-void NPC::update() {
-    // Update position based on velocity and acceleration
-    m_velocity += m_acceleration;
-    m_position += m_velocity;
+void NPC::update(float deltaTime) {
+    // Update position based on velocity and acceleration using deltaTime
+    m_velocity += m_acceleration * deltaTime;
+    m_position += m_velocity * deltaTime;
 
-    // Apply friction for smoother movement
+    // Apply frame-rate independent friction for smoother movement
     if (m_velocity.length() > 0.1f) {
-        // Friction coefficient - adjust for desired sliding feel (0.95 means 95% of velocity is retained)
-        const float friction = 0.95f;
-        m_velocity *= friction;
+        // Frame-rate independent friction using exponential decay
+        const float frictionRate = 0.05f;  // Friction strength (higher = more friction)
+        float frictionFactor = std::pow(frictionRate, deltaTime);
+        m_velocity *= frictionFactor;
 
         // Update flip direction based on horizontal velocity
         // Only flip if the horizontal speed is significant enough
@@ -168,13 +175,17 @@ void NPC::update() {
 }
 
 void NPC::render() {
+    // Cache manager references for better performance
+    TextureManager& texMgr = TextureManager::Instance();
+    SDL_Renderer* renderer = GameEngine::Instance().getRenderer();
+    
     // Calculate centered position for rendering
     // This ensures the NPC is centered at its position coordinates
     int renderX = static_cast<int>(m_position.getX() - (m_frameWidth / 2.0f));
     int renderY = static_cast<int>(m_position.getY() - (m_height / 2.0f));
 
     // Render the NPC with the current animation frame
-    TextureManager::Instance().drawFrame(
+    texMgr.drawFrame(
         m_textureID,
         renderX,
         renderY,
@@ -182,31 +193,32 @@ void NPC::render() {
         m_height,
         m_currentRow,
         m_currentFrame,
-        GameEngine::Instance().getRenderer(),
+        renderer,
         m_flip
     );
 }
 
 void NPC::clean() {
     // This method is called before the object is destroyed,
-    // so it's safe to use shared_from_this() here
+    // but we need to be very careful about double-cleanup
 
-    // Remove from AI Manager if it has a behavior
-    try {
-        // Only attempt to use shared_this() when we know the object
-        // is managed by a shared_ptr (i.e., not during destruction)
-        auto ptr = shared_this();
+    static std::set<void*> cleanedNPCs;
 
-        // Remove from AIManager
-        if (AIManager::Instance().entityHasBehavior(ptr)) {
-            AIManager::Instance().unassignBehaviorFromEntity(ptr);
-        }
-    } catch (const std::bad_weak_ptr& e) {
-        // This should only happen if clean() is called after the shared_ptr ref count drops to 0
-        // or if the object was not created with std::make_shared
-        std::cerr << "Forge Game Engine - ERROR: Could not create shared_ptr from NPC in clean(): "
-                  << this << ", reason: " << e.what() << std::endl;
+    // Check if this NPC has already been cleaned
+    if (cleanedNPCs.find(this) != cleanedNPCs.end()) {
+        return; // Already cleaned, avoid double-free
     }
+
+    // Mark this NPC as cleaned
+    cleanedNPCs.insert(this);
+
+    // Note: AIManager cleanup (unregisterEntityFromUpdates, unassignBehaviorFromEntity)
+    // should be handled externally before calling clean() to avoid shared_from_this() issues
+    // during destruction. This method now only handles internal NPC state cleanup.
+
+    // Reset velocity and internal state
+    m_velocity = Vector2D(0, 0);
+    m_acceleration = Vector2D(0, 0);
 }
 
 // Animation handling removed - TextureManager handles this functionality
@@ -218,6 +230,4 @@ void NPC::setWanderArea(float minX, float minY, float maxX, float maxY) {
     m_maxY = maxY;
 }
 
-void NPC::setPosition(const Vector2D& position) {
-    m_position = position;
-}
+

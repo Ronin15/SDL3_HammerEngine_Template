@@ -8,406 +8,262 @@
 
 /**
  * @file AIManager.hpp
- * @brief Central manager for AI behaviors and entity AI assignments
+ * @brief High-performance AI manager with optimized storage and processing
  *
- * The AIManager provides a centralized system for:
- * - Registering reusable AI behaviors
- * - Assigning behaviors to game entities
- * - Updating all AI-controlled entities efficiently
- * - Communicating with AI behaviors via messages
- *
- * Usage example:
- *
- * 1. Register behaviors:
- *    auto wanderBehavior = std::make_shared<WanderBehavior>();
- *    AIManager::Instance().registerBehavior("Wander", wanderBehavior);
- *
- * 2. Assign behavior to entity:
- *    AIManager::Instance().assignBehaviorToEntity(npc, "Wander");
- *
- * 3. Send message to entity's behavior:
- *    AIManager::Instance().sendMessageToEntity(npc, "pause");
+ * Enhanced AIManager with:
+ * - Type-indexed behavior storage for fast lookups
+ * - Cache-friendly data structures
+ * - Batch processing for better performance
+ * - Smart pointer usage throughout
+ * - Minimal API surface
  */
 
-#include <memory>
 #include <string>
-#include <string_view>
 #include <vector>
-
+#include <array>
+#include <unordered_map>
+#include <memory>
 #include <mutex>
 #include <shared_mutex>
 #include <atomic>
-#include <chrono>
-#include <boost/container/flat_map.hpp>
 #include "entities/Entity.hpp"
 #include "ai/AIBehavior.hpp"
 
-
-
-// Conditional debug logging macros
+// Conditional debug logging
 #ifdef AI_DEBUG_LOGGING
     #define AI_LOG(x) std::cout << "Forge Game Engine - [AI Manager] " << x << std::endl
-    #define AI_LOG_DETAIL(x) std::cout << x << std::endl
 #else
     #define AI_LOG(x)
-    #define AI_LOG_DETAIL(x)
 #endif
 
-// Thread access model for documentation
-enum class ThreadAccess {
-    MainThreadOnly,      // Only the main thread can access
-    WorkerThreadsOnly,   // Only worker threads can access
-    Concurrent,          // Concurrent read/write requires synchronization
-    ReadOnly             // Multiple threads can read, no writes after init
+/**
+ * @brief Behavior type enumeration for fast dispatch
+ */
+enum class BehaviorType : uint8_t {
+    Wander = 0,
+    Guard = 1,
+    Patrol = 2,
+    Follow = 3,
+    Chase = 4,
+    Attack = 5,
+    Flee = 6,
+    Idle = 7,
+    Custom = 8,
+    COUNT = 9
 };
 
-// AIBehavior is now fully included, not just forward declared
+/**
+ * @brief Optimized AI entity data structure
+ */
+struct AIEntityData {
+    EntityPtr entity;
+    std::shared_ptr<AIBehavior> behavior;
+    BehaviorType behaviorType;
+    Vector2D lastPosition;
+    float lastUpdateTime;
+    int frameCounter;
+    int priority;
+    bool active;
 
+    AIEntityData() : behaviorType(BehaviorType::Custom), lastPosition{0.0f, 0.0f},
+                     lastUpdateTime(0.0f), frameCounter(0), priority(0), active(true) {}
+};
+
+/**
+ * @brief AI Performance statistics
+ */
+struct AIPerformanceStats {
+    double totalUpdateTime{0.0};
+    uint64_t updateCount{0};
+    uint64_t entitiesProcessed{0};
+    double entitiesPerSecond{0.0};
+
+    void addSample(double timeMs, uint64_t entities) {
+        totalUpdateTime += timeMs;
+        updateCount++;
+        entitiesProcessed += entities;
+        if (totalUpdateTime > 0) {
+            entitiesPerSecond = (entitiesProcessed * 1000.0) / totalUpdateTime;
+        }
+    }
+
+    void reset() {
+        totalUpdateTime = 0.0;
+        updateCount = 0;
+        entitiesProcessed = 0;
+        entitiesPerSecond = 0.0;
+    }
+};
+
+/**
+ * @brief High-performance AI Manager
+ */
 class AIManager {
 public:
-    /**
-     * @brief Get the singleton instance of AIManager
-     * @return Reference to the AIManager instance
-     * @thread_safety Thread-safe, can be called from any thread
-     */
     static AIManager& Instance() {
         static AIManager instance;
         return instance;
     }
 
-    /**
-     * @brief Initialize the AI Manager
-     * @return True if initialization succeeded, false otherwise
-     * @thread_safety Should be called from main thread during initialization
-     */
+    // Core lifecycle
     bool init();
-
-    /**
-     * @brief Update all AI-controlled entities
-     *
-     * This method is automatically called by the game engine
-     * and updates all entities with assigned AI behaviors.
-     * Updates can run in parallel using the ThreadSystem if available.
-     *
-     * @thread_safety Thread-safe, can be called from any thread
-     */
-    void update();
-
-    /**
-     * @brief Reset all AI behaviors without shutting down the manager
-     *
-     * This method clears all registered behaviors and entity assignments
-     * but keeps the manager initialized. Use this when changing game states
-     * or scenes while the game is still running.
-     *
-     * @thread_safety Must be called when no AI updates are in progress
-     */
-    void resetBehaviors();
-
-    /**
-     * @brief Clean up resources used by the AI Manager
-     *
-     * @thread_safety Must be called from main thread during shutdown
-     */
     void clean();
+    void update(float deltaTime);
 
-    /**
-     * @brief Configure threading options for AI processing
-     * @param useThreading Whether to use background threads for AI updates
-     * @param maxThreads Maximum number of threads to use for AI (0 = auto)
-     * @thread_safety Must be called before any AI updates begin
-     */
-    void configureThreading(bool useThreading, unsigned int maxThreads = 0);
-
-    // AI behavior management
-    /**
-     * @brief Register a new behavior for use with entities
-     * @param behaviorName Unique identifier for the behavior
-     * @param behavior Shared pointer to the behavior implementation
-     * @thread_safety Thread-safe, but behaviors should ideally be registered at startup
-     */
-    void registerBehavior(const std::string& behaviorName, std::shared_ptr<AIBehavior> behavior);
-
-    /**
-     * @brief Check if a behavior exists
-     * @param behaviorName Name of the behavior to check
-     * @return True if the behavior exists, false otherwise
-     * @thread_safety Thread-safe, can be called from any thread
-     */
-    bool hasBehavior(const std::string& behaviorName) const;
-
-    /**
-     * @brief Get a pointer to a behavior
-     * @param behaviorName Name of the behavior to retrieve
-     * @return Pointer to the behavior, or nullptr if not found
-     * @thread_safety Thread-safe, can be called from any thread
-     */
-    AIBehavior* getBehavior(const std::string& behaviorName) const;
+    // Behavior management
+    void registerBehavior(const std::string& name, std::shared_ptr<AIBehavior> behavior);
+    bool hasBehavior(const std::string& name) const;
+    std::shared_ptr<AIBehavior> getBehavior(const std::string& name) const;
 
     // Entity-behavior assignment
-    /**
-     * @brief Assign an AI behavior to an entity
-     * @param entity Shared pointer to the entity
-     * @param behaviorName Name of the behavior to assign
-     * @thread_safety Thread-safe, can be called from any thread
-     */
     void assignBehaviorToEntity(EntityPtr entity, const std::string& behaviorName);
-
-    /**
-     * @brief Process multiple entities with the same behavior type in batches
-     * @param behaviorName The behavior to process
-     * @param entities Vector of entities to process
-     * @thread_safety Thread-safe, can be called from any thread
-     */
-    void batchProcessEntities(const std::string& behaviorName, const std::vector<EntityPtr>& entities);
-
-    /**
-     * @brief Process all behaviors in batches for maximum performance
-     * This is the most optimized way to update all AI entities.
-     * It will automatically use threading if available.
-     * @thread_safety Thread-safe, can be called from any thread
-     */
-    void batchUpdateAllBehaviors();
-
-    /**
-     * @brief Remove AI behavior from an entity
-     * @param entity Shared pointer to the entity
-     * @thread_safety Thread-safe, can be called from any thread
-     */
     void unassignBehaviorFromEntity(EntityPtr entity);
-
-    /**
-     * @brief Rebuild optimization caches if they're invalid
-     * This will be called automatically when needed, but can be called
-     * manually if you know the caches should be refreshed
-     * @thread_safety Thread-safe, can be called from any thread
-     */
-    void ensureOptimizationCachesValid();
-
-    /**
-     * @brief Check if an entity has an assigned behavior
-     * @param entity Shared pointer to the entity
-     * @return True if the entity has a behavior, false otherwise
-     * @thread_safety Thread-safe, can be called from any thread
-     */
     bool entityHasBehavior(EntityPtr entity) const;
 
-    /**
-     * @brief Check if there's any entity with a specific behavior
-     * @param behaviorName Name of the behavior to check for
-     * @return True if any entity has this behavior, false otherwise
-     * @thread_safety Thread-safe, can be called from any thread
-     */
-    bool hasEntityWithBehavior(const std::string& behaviorName) const;
+    // Batch operations
+    void queueBehaviorAssignment(EntityPtr entity, const std::string& behaviorName);
+    size_t processPendingBehaviorAssignments();
 
-    // Advanced features
+    // Player reference for AI targeting
+    void setPlayerForDistanceOptimization(EntityPtr player);
+    EntityPtr getPlayerReference() const;
+    Vector2D getPlayerPosition() const;
+    bool isPlayerValid() const;
+
+    // Entity management (now unified with spatial system)
     /**
-     * @brief Send a message to a specific entity's behavior
-     * @param entity Target entity shared pointer
-     * @param message Message string (e.g., "pause", "resume", "attack")
-     * @param immediate If true, delivers immediately; if false, queues for next update
-     * @thread_safety Thread-safe, can be called from any thread
+     * @brief Register entity for AI updates with priority-based distance optimization
+     * @param entity The entity to register
+     * @param priority Priority level (0-9):
+     *   - 0-2: Background entities (1.0x-1.2x update range)
+     *   - 3-5: Standard entities (1.3x-1.5x update range)
+     *   - 6-8: Important entities (1.6x-1.8x update range)
+     *   - 9: Critical entities (1.9x update range)
+     * Higher priority = larger update distances = more responsive AI
      */
+    void registerEntityForUpdates(EntityPtr entity, int priority = 5);
+
+    /**
+     * @brief Register entity for AI updates and assign behavior in one call
+     * @param entity The entity to register
+     * @param priority Priority level (0-9) - see above for ranges
+     * @param behaviorName Name of the behavior to assign
+     */
+    void registerEntityForUpdates(EntityPtr entity, int priority, const std::string& behaviorName);
+    void unregisterEntityFromUpdates(EntityPtr entity);
+
+    // Global controls
+    void setGlobalPause(bool paused);
+    bool isGloballyPaused() const;
+
+    // Priority system utilities
+    int getEntityPriority(EntityPtr entity) const;
+    float getUpdateRangeMultiplier(int priority) const;
+    static constexpr int AI_MIN_PRIORITY = 0;
+    static constexpr int AI_MAX_PRIORITY = 9;
+    static constexpr int DEFAULT_PRIORITY = 5;
+    void resetBehaviors();
+
+    // Threading configuration
+    void configureThreading(bool useThreading, unsigned int maxThreads = 0);
+    void configurePriorityMultiplier(float multiplier = 1.0f);
+
+    // Performance monitoring
+    AIPerformanceStats getPerformanceStats() const;
+    size_t getBehaviorCount() const;
+    size_t getManagedEntityCount() const;
+    size_t getBehaviorUpdateCount() const;
+
+    // Message system
     void sendMessageToEntity(EntityPtr entity, const std::string& message, bool immediate = false);
-
-    /**
-     * @brief Send a message to all entity behaviors
-     * @param message Message string to broadcast
-     * @param immediate If true, delivers immediately; if false, queues for next update
-     * @thread_safety Thread-safe, can be called from any thread
-     */
     void broadcastMessage(const std::string& message, bool immediate = false);
-
-    /**
-     * @brief Process all queued messages
-     * This happens automatically during update() but can be called manually
-     * @thread_safety Thread-safe, can be called from any thread
-     */
     void processMessageQueue();
 
-    // Utility methods
-    /**
-     * @brief Get the number of registered behaviors
-     * @return Count of behaviors
-     * @thread_safety Thread-safe, can be called from any thread
-     */
-    size_t getBehaviorCount() const;
-
-    /**
-     * @brief Get the number of entities with AI behaviors
-     * @return Count of managed entities
-     * @thread_safety Thread-safe, can be called from any thread
-     */
-    size_t getManagedEntityCount() const;
-
 private:
-    // Singleton constructor
-    AIManager();
-    ~AIManager();
-
-    // Delete copy constructor and assignment operator
+    AIManager() = default;
+    ~AIManager() = default;
     AIManager(const AIManager&) = delete;
     AIManager& operator=(const AIManager&) = delete;
 
-    // Storage for behaviors and entity assignments
-    // ThreadAccess: ReadOnly after initialization for m_behaviors
-    // ThreadAccess: Concurrent for m_entityBehaviors
-    boost::container::flat_map<std::string, std::shared_ptr<AIBehavior>> m_behaviors{};
-    boost::container::flat_map<EntityWeakPtr, std::string, std::owner_less<EntityWeakPtr>> m_entityBehaviors{};
+    // Core storage - single optimized approach
+    std::vector<AIEntityData> m_entities;
+    std::unordered_map<EntityPtr, size_t> m_entityToIndex;
+    std::unordered_map<std::string, std::shared_ptr<AIBehavior>> m_behaviorTemplates;
+    std::unordered_map<std::string, BehaviorType> m_behaviorTypeMap;
 
-    // Thread synchronization for entity-behavior map
-    mutable std::shared_mutex m_entityMutex{};
-    mutable std::shared_mutex m_behaviorsMutex{};
+    // Performance stats per behavior type
+    std::array<AIPerformanceStats, static_cast<size_t>(BehaviorType::COUNT)> m_behaviorStats;
+    AIPerformanceStats m_globalStats;
 
-    // Performance tracing for AI operations
-    struct PerformanceStats {
-        double totalUpdateTimeMs{0.0};
-        double averageUpdateTimeMs{0.0};
-        uint64_t updateCount{0};
-        double maxUpdateTimeMs{0.0};
-        double minUpdateTimeMs{std::numeric_limits<double>::max()};
+    // Player reference
+    EntityWeakPtr m_playerEntity;
 
-        // Constructor to ensure proper initialization
-        PerformanceStats() 
-            : totalUpdateTimeMs(0.0)
-            , averageUpdateTimeMs(0.0)
-            , updateCount(0)
-            , maxUpdateTimeMs(0.0)
-            , minUpdateTimeMs(std::numeric_limits<double>::max())
-        {}
+    // Entity management for distance optimization
+    struct EntityUpdateInfo {
+        EntityWeakPtr entityWeak;
+        int priority;
+        int frameCounter;
+        uint64_t lastUpdateTime;
 
-        void addSample(double timeMs) {
-            totalUpdateTimeMs += timeMs;
-            updateCount++;
-            averageUpdateTimeMs = totalUpdateTimeMs / updateCount;
-            maxUpdateTimeMs = std::max(maxUpdateTimeMs, timeMs);
-            minUpdateTimeMs = std::min(minUpdateTimeMs, timeMs);
-        }
-
-        void reset() {
-            totalUpdateTimeMs = 0.0;
-            averageUpdateTimeMs = 0.0;
-            updateCount = 0;
-            maxUpdateTimeMs = 0.0;
-            minUpdateTimeMs = std::numeric_limits<double>::max();
-        }
+        EntityUpdateInfo() : priority(0), frameCounter(0), lastUpdateTime(0) {}
     };
+    std::vector<EntityUpdateInfo> m_managedEntities;
 
-    // Cache for quick lookup of entity-behavior pairs (optimization)
-    struct EntityBehaviorCache {
-        EntityWeakPtr entityWeak{};
-        AIBehavior* behavior{nullptr};
-        std::string_view behaviorName;  // Using string_view to avoid copies
+    // Batch assignment queue
+    struct PendingAssignment {
+        EntityPtr entity;
+        std::string behaviorName;
 
-        // Performance statistics
-        uint64_t lastUpdateTime{0};
-        PerformanceStats perfStats;
-
-        // Constructor to ensure proper initialization
-        EntityBehaviorCache() 
-            : entityWeak()
-            , behavior(nullptr)
-            , behaviorName()
-            , lastUpdateTime(0)
-            , perfStats()
-        {}
+        PendingAssignment(EntityPtr e, const std::string& b) : entity(e), behaviorName(b) {}
     };
-    std::vector<EntityBehaviorCache> m_entityBehaviorCache{};
-    std::atomic<bool> m_cacheValid{false};
-    mutable std::mutex m_cacheMutex{};
+    std::vector<PendingAssignment> m_pendingAssignments;
 
-    // Multithreading support
-    std::atomic<bool> m_initialized{false};
-    std::atomic<bool> m_useThreading{true}; // Controls whether updates run in parallel
-    unsigned int m_maxThreads{0}; // 0 = auto (use ThreadSystem default)
-
-    // For batch processing optimization
-    using BehaviorBatch = std::vector<EntityPtr>;
-    boost::container::flat_map<std::string, BehaviorBatch> m_behaviorBatches{};
-    std::atomic<bool> m_batchesValid{false};
-    mutable std::mutex m_batchesMutex{};
-
-    // Private helper methods for optimizations
-    void rebuildEntityBehaviorCache();
-    void rebuildBehaviorBatches();
-    void invalidateOptimizationCaches();
-    void updateBehaviorBatch(const std::string_view& behaviorName, const BehaviorBatch& batch);
-
-    // Common helper method to process entities with a behavior (reduces code duplication)
-    void processEntitiesWithBehavior(AIBehavior* behavior, const std::vector<EntityPtr>& entities, bool useThreading);
-
-    // Performance monitoring
-    boost::container::flat_map<std::string, PerformanceStats> m_behaviorPerformanceStats;
-    mutable std::mutex m_perfStatsMutex{};
-    void recordBehaviorPerformance(const std::string_view& behaviorName, double timeMs);
-
-    // Utility method to get current high-precision time
-    static inline uint64_t getCurrentTimeNanos() {
-        return std::chrono::duration_cast<std::chrono::nanoseconds>(
-            std::chrono::high_resolution_clock::now().time_since_epoch()).count();
-    }
-
-    // Message structure for AI communication
+    // Message queue
     struct QueuedMessage {
-        EntityWeakPtr targetEntity{};  // empty weak_ptr for broadcast
+        EntityWeakPtr targetEntity;  // empty for broadcast
         std::string message;
-        uint64_t timestamp{0};
+        uint64_t timestamp;
 
-        // Explicitly initialize all members
-        QueuedMessage() : targetEntity(), message(), timestamp(0) {}
-
-        QueuedMessage(EntityWeakPtr entity, const std::string& msg, uint64_t time)
-            : targetEntity(entity), message(msg), timestamp(time) {}
+        QueuedMessage(EntityPtr target, const std::string& msg)
+            : targetEntity(target), message(msg), timestamp(getCurrentTimeNanos()) {}
     };
+    std::vector<QueuedMessage> m_messageQueue;
 
-    // Message queue system with thread-safe double-buffering
-    class ThreadSafeMessageQueue {
-    public:
-        void enqueueMessage(EntityWeakPtr target, const std::string& message) {
-            std::lock_guard<std::mutex> lock(m_incomingMutex);
-            m_incomingQueue.emplace_back(target, message, AIManager::getCurrentTimeNanos());
-        }
-
-        void swapBuffers() {
-            if (m_swapInProgress.exchange(true)) return;
-
-            std::lock_guard<std::mutex> lock(m_incomingMutex);
-            m_processingQueue.clear();
-            m_processingQueue.swap(m_incomingQueue);
-
-            m_swapInProgress.store(false);
-        }
-
-        const std::vector<QueuedMessage>& getProcessingQueue() const {
-            return m_processingQueue;
-        }
-
-        bool isEmpty() const {
-            std::lock_guard<std::mutex> lock(m_incomingMutex);
-            return m_incomingQueue.empty() && m_processingQueue.empty();
-        }
-
-        void clear() {
-            std::lock_guard<std::mutex> lock(m_incomingMutex);
-            m_incomingQueue.clear();
-            m_processingQueue.clear();
-        }
-
-    private:
-        std::vector<QueuedMessage> m_incomingQueue;
-        std::vector<QueuedMessage> m_processingQueue;
-        mutable std::mutex m_incomingMutex;
-        std::atomic<bool> m_swapInProgress{false};
-    };
-
-    // Thread-safe message queue implementation
-    ThreadSafeMessageQueue m_messageQueue;
-    PerformanceStats m_messageQueueStats;
+    // Threading and state
+    std::atomic<bool> m_initialized{false};
+    std::atomic<bool> m_useThreading{true};
+    std::atomic<bool> m_globallyPaused{false};
     std::atomic<bool> m_processingMessages{false};
+    unsigned int m_maxThreads{0};
 
-    // Message delivery helpers
-    void deliverMessageToEntity(EntityPtr entity, const std::string& message);
-    size_t deliverBroadcastMessage(const std::string& message);
+    // Behavior execution tracking
+    std::atomic<size_t> m_totalBehaviorExecutions{0};
+
+    // Distance optimization settings
+    std::atomic<float> m_maxUpdateDistance{4000.0f};
+    std::atomic<float> m_mediumUpdateDistance{6000.0f};
+    std::atomic<float> m_minUpdateDistance{12000.0f};
+    std::atomic<float> m_priorityMultiplier{1.0f};
+
+    // Thread synchronization
+    mutable std::shared_mutex m_entitiesMutex;
+    mutable std::shared_mutex m_behaviorsMutex;
+    mutable std::mutex m_assignmentsMutex;
+    mutable std::mutex m_messagesMutex;
+    mutable std::mutex m_statsMutex;
+
+    // Batch processing constants
+    static constexpr size_t BATCH_SIZE = 64;
+    static constexpr size_t THREADING_THRESHOLD = 100;
+
+    // Helper methods
+    BehaviorType inferBehaviorType(const std::string& behaviorName) const;
+    void processBatch(size_t start, size_t end, float deltaTime);
+    void cleanupInactiveEntities();
+    bool shouldUpdateEntity(EntityPtr entity, EntityPtr player, int& frameCounter, int entityPriority);
+    void updateEntityBehavior(EntityPtr entity);
+    void recordPerformance(BehaviorType type, double timeMs, uint64_t entities);
+    static uint64_t getCurrentTimeNanos();
 };
 
 #endif // AI_MANAGER_HPP

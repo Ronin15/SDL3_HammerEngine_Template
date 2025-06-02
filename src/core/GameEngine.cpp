@@ -4,6 +4,7 @@
 */
 
 #include "core/GameEngine.hpp"
+#include "core/GameLoop.hpp" // IWYU pragma: keep - Required for GameLoop weak_ptr declaration
 #include <boost/container/small_vector.hpp>
 #include <chrono>
 #include <future>
@@ -12,6 +13,8 @@
 #include "SDL3/SDL_surface.h"
 #include "managers/AIManager.hpp"
 #include "gameStates/AIDemoState.hpp"
+#include "gameStates/EventDemoState.hpp"
+#include "managers/EventManager.hpp"
 #include "managers/FontManager.hpp"
 #include "gameStates/GamePlayState.hpp"
 #include "managers/GameStateManager.hpp"
@@ -125,8 +128,8 @@ bool GameEngine::init(const char* title,
 
       // Use a separate thread to load the icon
       auto iconFuture = Forge::ThreadSystem::Instance().enqueueTaskWithResult(
-          [iconPath]() -> std::unique_ptr<SDL_Surface, decltype(&SDL_DestroySurface)> { 
-              return std::unique_ptr<SDL_Surface, decltype(&SDL_DestroySurface)>(IMG_Load(iconPath), SDL_DestroySurface); 
+          [iconPath]() -> std::unique_ptr<SDL_Surface, decltype(&SDL_DestroySurface)> {
+              return std::unique_ptr<SDL_Surface, decltype(&SDL_DestroySurface)>(IMG_Load(iconPath), SDL_DestroySurface);
           });
 
       // Continue with initialization while icon loads
@@ -190,13 +193,14 @@ bool GameEngine::init(const char* title,
       Forge::ThreadSystem::Instance().enqueueTaskWithResult([]() -> bool {
         std::cout << "Forge Game Engine - Detecting and initializing gamepads "
                      "and input handling\n";
-        InputManager::Instance().initializeGamePad();
+        InputManager& inputMgr = InputManager::Instance();
+        inputMgr.initializeGamePad();
         return true;
       }));
 
   // Create and initialize texture manager - MAIN THREAD
   std::cout << "Forge Game Engine - Creating Texture Manager\n";
-  TextureManager::Instance();
+  TextureManager& texMgr = TextureManager::Instance();
   if (!TextureManager::Exists()) {
     std::cerr << "Forge Game Engine - Failed to create Texture Manager!"<< std::endl;
     return false;
@@ -204,20 +208,21 @@ bool GameEngine::init(const char* title,
 
   // Load textures in main thread
   std::cout << "Forge Game Engine - Creating and loading textures\n";
-  TextureManager::Instance().load("res/img", "", mp_renderer.get());
+  texMgr.load("res/img", "", mp_renderer.get());
 
   // Initialize sound manager in a separate thread - #2
   initTasks.push_back(
       Forge::ThreadSystem::Instance().enqueueTaskWithResult([]() -> bool {
         std::cout << "Forge Game Engine - Creating Sound Manager\n";
-        if (!SoundManager::Instance().init()) {
+        SoundManager& soundMgr = SoundManager::Instance();
+        if (!soundMgr.init()) {
           std::cerr << "Forge Game Engine - Failed to initialize Sound Manager!" << std::endl;
           return false;
         }
 
         std::cout << "Forge Game Engine - Loading sounds and music\n";
-        SoundManager::Instance().loadSFX("res/sfx", "sfx");
-        SoundManager::Instance().loadMusic("res/music", "music");
+        soundMgr.loadSFX("res/sfx", "sfx");
+        soundMgr.loadMusic("res/music", "music");
         return true;
       }));
 
@@ -225,12 +230,13 @@ bool GameEngine::init(const char* title,
   initTasks.push_back(
       Forge::ThreadSystem::Instance().enqueueTaskWithResult([]() -> bool {
         std::cout << "Forge Game Engine - Creating Font Manager\n";
-        if (!FontManager::Instance().init()) {
+        FontManager& fontMgr = FontManager::Instance();
+        if (!fontMgr.init()) {
           std::cerr << "Forge Game Engine - Failed to initialize Font Manager!"
                     << std::endl;
           return false;
         }
-        FontManager::Instance().loadFont("res/fonts", "fonts", 24);
+        fontMgr.loadFont("res/fonts", "fonts", 24);
         return true;
       }));
 
@@ -238,14 +244,14 @@ bool GameEngine::init(const char* title,
   initTasks.push_back(
       Forge::ThreadSystem::Instance().enqueueTaskWithResult([]() -> bool {
         std::cout << "Forge Game Engine - Creating Save Game Manager\n";
-        SaveGameManager::Instance();
+        SaveGameManager& saveMgr = SaveGameManager::Instance();
         if (!SaveGameManager::Exists()) {
           std::cerr << "Forge Game Engine - Failed to create Save Game Manager!" << std::endl;
           return false;
         }
-        
+
         // Set the save directory to "res" folder
-        SaveGameManager::Instance().setSaveDirectory("res");
+        saveMgr.setSaveDirectory("res");
         return true;
       }));
 
@@ -253,7 +259,8 @@ bool GameEngine::init(const char* title,
   initTasks.push_back(
       Forge::ThreadSystem::Instance().enqueueTaskWithResult([]() -> bool {
         std::cout << "Forge Game Engine - Creating AI Manager\n";
-        if (!AIManager::Instance().init()) {
+        AIManager& aiMgr = AIManager::Instance();
+        if (!aiMgr.init()) {
           std::cerr << "Forge Game Engine - Failed to initialize AI Manager!" << std::endl;
           return false;
         }
@@ -261,21 +268,30 @@ bool GameEngine::init(const char* title,
         return true;
       }));
 
+  // Initialize Event Manager in a separate thread - #6
+  initTasks.push_back(
+      Forge::ThreadSystem::Instance().enqueueTaskWithResult([]() -> bool {
+        std::cout << "Forge Game Engine - Creating Event Manager\n";
+        EventManager& eventMgr = EventManager::Instance();
+        if (!eventMgr.init()) {
+          std::cerr << "Forge Game Engine - Failed to initialize Event Manager!" << std::endl;
+          return false;
+        }
+        std::cout << "Forge Game Engine - Event Manager initialized successfully\n";
+        return true;
+      }));
+
   // Initialize game state manager (on main thread because it directly calls rendering) - MAIN THREAD
   std::cout << "Forge Game Engine - Creating Game State Manager and setting up "
                "initial Game States\n";
   mp_gameStateManager = std::make_unique<GameStateManager>();
-  if (!mp_gameStateManager) {
-    std::cerr << "Forge Game Engine - Failed to create Game State Manager!"
-              << std::endl;
-    return false;
-  }
 
   // Setting Up initial game states
   mp_gameStateManager->addState(std::make_unique<LogoState>());
   mp_gameStateManager->addState(std::make_unique<MainMenuState>());
   mp_gameStateManager->addState(std::make_unique<GamePlayState>());
   mp_gameStateManager->addState(std::make_unique<AIDemoState>());
+  mp_gameStateManager->addState(std::make_unique<EventDemoState>());
 
   // Wait for all initialization tasks to complete
   bool allTasksSucceeded = true;
@@ -301,66 +317,192 @@ bool GameEngine::init(const char* title,
 
   // setting logo state for default state
   mp_gameStateManager->setState("LogoState");//set to "LogoState" for normal operation.
-  setRunning(true);  // Forge Game created successfully, start the main loop
+  // Note: GameLoop will be started by ForgeMain, not here
   return true;
 }
 
 void GameEngine::handleEvents() {
-  InputManager::Instance().update();
+  // Cache InputManager reference for better performance
+  InputManager& inputMgr = InputManager::Instance();
+  inputMgr.update();
 }
 
-void GameEngine::update() {
+void GameEngine::setRunning(bool running) {
+  if (auto gameLoop = m_gameLoop.lock()) {
+    if (running) {
+      // Can't restart GameLoop from GameEngine - this might be an error case
+      std::cerr << "Warning: Cannot start GameLoop from GameEngine - use GameLoop::run() instead" << std::endl;
+    } else {
+      gameLoop->stop();
+    }
+  } else {
+    std::cerr << "Warning: No GameLoop set - cannot change running state" << std::endl;
+  }
+}
+
+bool GameEngine::getRunning() const {
+  if (auto gameLoop = m_gameLoop.lock()) {
+    return gameLoop->isRunning();
+  }
+  return false;
+}
+
+float GameEngine::getCurrentFPS() const {
+  if (auto gameLoop = m_gameLoop.lock()) {
+    return gameLoop->getCurrentFPS();
+  }
+  return 0.0f;
+}
+
+void GameEngine::update([[maybe_unused]] float deltaTime) {
   // This method is now thread-safe and can be called from a worker thread
   std::lock_guard<std::mutex> lock(m_updateMutex);
-  GameEngine::processBackgroundTasks(); // Process background tasks like AI updates and need to be before the lock_guard to avoid redering blocks.
-  // Update game states
-  mp_gameStateManager->update();
 
-  m_updateCompleted = true;
+  // Mark update as running
+  m_updateRunning = true;
+
+  // Get the buffer for the current update
+  const size_t updateBufferIndex = m_currentBufferIndex.load(std::memory_order_acquire);
+
+  try {
+    // Update game states with fixed timestep - make sure GameStateManager knows which buffer to update
+    mp_gameStateManager->update(deltaTime);
+
+    // Increment the frame counter
+    m_lastUpdateFrame++;
+
+    // Mark this buffer as ready for rendering
+    m_bufferReady[updateBufferIndex].store(true, std::memory_order_release);
+
+    // Mark update as completed
+    m_updateCompleted = true;
+  } catch (const std::exception& e) {
+    std::cerr << "Forge Game Engine - Exception in update: " << e.what() << std::endl;
+  } catch (...) {
+    std::cerr << "Forge Game Engine - Unknown exception in update" << std::endl;
+  }
+
+  m_updateRunning = false;
+
+  // Notify anyone waiting on this update
   m_updateCondition.notify_all();
+  m_bufferCondition.notify_all();
 }
 
-void GameEngine::render() {
+void GameEngine::render([[maybe_unused]] float interpolation) {
   // Always on MAIN thread as its an - SDL REQUIREMENT
   std::lock_guard<std::mutex> lock(m_renderMutex);
-  SDL_RenderClear(mp_renderer.get());
-  mp_gameStateManager->render();
-  SDL_RenderPresent(mp_renderer.get());
+
+  // Get the current render buffer index
+  const size_t renderBufferIndex = m_renderBufferIndex.load(std::memory_order_acquire);
+
+  // Only render if the buffer is ready
+  if (m_bufferReady[renderBufferIndex].load(std::memory_order_acquire)) {
+    try {
+      SDL_RenderClear(mp_renderer.get());
+
+      // Make sure GameStateManager knows which buffer to render from
+      mp_gameStateManager->render();
+
+      SDL_RenderPresent(mp_renderer.get());
+
+      // Update the last rendered frame counter with memory ordering
+      m_lastRenderedFrame.store(m_lastUpdateFrame.load(std::memory_order_acquire),
+                                std::memory_order_release);
+    } catch (const std::exception& e) {
+      std::cerr << "Forge Game Engine - Exception in render: " << e.what() << std::endl;
+    } catch (...) {
+      std::cerr << "Forge Game Engine - Unknown exception in render" << std::endl;
+    }
+  }
 }
 
 void GameEngine::waitForUpdate() {
   std::unique_lock<std::mutex> lock(m_updateMutex);
-  m_updateCondition.wait(lock, [this] { return m_updateCompleted.load(); });
+  // Set a timeout to avoid deadlocks with extremely high entity counts
+  if (!m_updateCondition.wait_for(lock, std::chrono::milliseconds(100),
+      [this] { return m_updateCompleted.load(std::memory_order_acquire); })) {
+    // If timeout occurs, log a warning but continue
+    std::cerr << "Forge Game Engine - Warning: Update wait timeout with high entity count" << std::endl;
+    // Force the update completed flag to true to avoid deadlock
+    m_updateCompleted.store(true, std::memory_order_release);
+  }
 }
 
 void GameEngine::signalUpdateComplete() {
   {
     std::lock_guard<std::mutex> lock(m_updateMutex);
-    m_updateCompleted = false;  // Reset for next frame
+    m_updateCompleted.store(false, std::memory_order_release);  // Reset for next frame
   }
 }
-//maybe alternate loading strategy ------------------------------------- not needed but keeping here for example Remove later TODO!
-bool GameEngine::loadResourcesAsync(const std::string& path) {
-  auto result = Forge::ThreadSystem::Instance().enqueueTaskWithResult(
-      [this, path]() -> bool {
-        // Example of async resource loading
-        return TextureManager::Instance().load(path, "", mp_renderer.get());
-      });
 
-  // You can either wait for the result or check it later
-  try {
-    return result.get();  // This blocks until the task completes
-  } catch (const std::exception& e) {
-    std::cerr << "Forge Game Engine - Resource loading failed: " << e.what() << std::endl;
-    return false;
+void GameEngine::swapBuffers() {
+  std::lock_guard<std::mutex> lock(m_bufferMutex);
+
+  // Get current index
+  size_t currentIndex = m_currentBufferIndex.load(std::memory_order_acquire);
+
+  // Calculate next buffer index
+  size_t nextUpdateIndex = (currentIndex + 1) % BUFFER_COUNT;
+
+  // Only swap if the current update buffer is ready
+  if (m_bufferReady[currentIndex].load(std::memory_order_acquire)) {
+    // Update buffer is ready, make it the render buffer
+    m_renderBufferIndex.store(currentIndex, std::memory_order_release);
+
+    // Mark the next update buffer as not ready
+    m_bufferReady[nextUpdateIndex].store(false, std::memory_order_release);
+
+    // Switch to the next buffer for updates
+    m_currentBufferIndex.store(nextUpdateIndex, std::memory_order_release);
   }
+}
+
+bool GameEngine::hasNewFrameToRender() const {
+  // We have a new frame to render if any buffer is ready that isn't the current render buffer
+  size_t renderIndex = m_renderBufferIndex.load(std::memory_order_acquire);
+
+  // Check if there's a buffer ready for rendering
+  for (size_t i = 0; i < BUFFER_COUNT; ++i) {
+    if (i != renderIndex && m_bufferReady[i].load(std::memory_order_acquire)) {
+      return true;
+    }
+  }
+
+  // Also check frame counters as a fallback
+  uint64_t lastUpdate = m_lastUpdateFrame.load(std::memory_order_acquire);
+  uint64_t lastRendered = m_lastRenderedFrame.load(std::memory_order_acquire);
+  return lastUpdate > lastRendered;
+}
+
+bool GameEngine::isUpdateRunning() const {
+  return m_updateRunning.load(std::memory_order_acquire);
+}
+
+size_t GameEngine::getCurrentBufferIndex() const {
+  return m_currentBufferIndex.load(std::memory_order_acquire);
+}
+
+size_t GameEngine::getRenderBufferIndex() const {
+  return m_renderBufferIndex.load(std::memory_order_acquire);
 }
 
 void GameEngine::processBackgroundTasks() {
   // This method can be used to perform background processing
   // It should be safe to run on worker threads
 
-  AIManager::Instance().update();
+  try {
+    // Cache EventManager reference for better performance
+    EventManager& eventMgr = EventManager::Instance();
+    
+    // Update Event Manager
+    eventMgr.update();
+  } catch (const std::exception& e) {
+    std::cerr << "Forge Game Engine - Exception in background tasks: " << e.what() << std::endl;
+  } catch (...) {
+    std::cerr << "Forge Game Engine - Unknown exception in background tasks" << std::endl;
+  }
+
   // Example: Process AI, physics, or other non-rendering tasks
   // These tasks can run while the main thread is handling rendering
 }
@@ -368,11 +510,21 @@ void GameEngine::processBackgroundTasks() {
 void GameEngine::clean() {
   std::cout << "Forge Game Engine - Starting shutdown sequence...\n";
 
+  // Cache manager references for better performance
+  Forge::ThreadSystem& threadSystem = Forge::ThreadSystem::Instance();
+  FontManager& fontMgr = FontManager::Instance();
+  SoundManager& soundMgr = SoundManager::Instance();
+  EventManager& eventMgr = EventManager::Instance();
+  AIManager& aiMgr = AIManager::Instance();
+  SaveGameManager& saveMgr = SaveGameManager::Instance();
+  InputManager& inputMgr = InputManager::Instance();
+  TextureManager& texMgr = TextureManager::Instance();
+
   // Wait for any pending background tasks to complete
-  if (!Forge::ThreadSystem::Instance().isShutdown()) {
+  if (!threadSystem.isShutdown()) {
     std::cout
         << "Forge Game Engine - Waiting for background tasks to complete...\n";
-    while (Forge::ThreadSystem::Instance().isBusy()) {
+    while (threadSystem.isBusy()) {
       std::this_thread::sleep_for(std::chrono::milliseconds(1));  // Short delay to avoid busy waiting
     }
   }
@@ -387,27 +539,30 @@ void GameEngine::clean() {
 
   // Clean up Managers in reverse order of their initialization
   std::cout << "Forge Game Engine - Cleaning up Font Manager...\n";
-  FontManager::Instance().clean();
+  fontMgr.clean();
 
   std::cout << "Forge Game Engine - Cleaning up Sound Manager...\n";
-  SoundManager::Instance().clean();
+  soundMgr.clean();
+
+  std::cout << "Forge Game Engine - Cleaning up Event Manager...\n";
+  eventMgr.clean();
 
   std::cout << "Forge Game Engine - Cleaning up AI Manager...\n";
-  AIManager::Instance().clean();
+  aiMgr.clean();
 
   std::cout << "Forge Game Engine - Cleaning up Save Game Manager...\n";
-  SaveGameManager::Instance().clean();
+  saveMgr.clean();
 
-  std::cout << "Forge Game Engine - Cleaning up Input Handler...\n";
-  InputManager::Instance().clean();
+  std::cout << "Forge Game Engine - Cleaning up Input Manager...\n";
+  inputMgr.clean();
 
   std::cout << "Forge Game Engine - Cleaning up Texture Manager...\n";
-  TextureManager::Instance().clean();
+  texMgr.clean();
 
   // Clean up the thread system
   std::cout << "Forge Game Engine - Cleaning up Thread System...\n";
-  if (!Forge::ThreadSystem::Instance().isShutdown()) {
-    Forge::ThreadSystem::Instance().clean();
+  if (!threadSystem.isShutdown()) {
+    threadSystem.clean();
   }
 
   // Finally clean up SDL resources

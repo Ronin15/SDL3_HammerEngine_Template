@@ -14,12 +14,16 @@
 bool GamePlayState::enter() {
   std::cout << "Forge Game Engine - Entering GAME State\n";
 
+  // Cache GameEngine reference for better performance
+  GameEngine& gameEngine = GameEngine::Instance();
+  auto* gameStateManager = gameEngine.getGameStateManager();
+
   // Reset transition flag when entering
   m_transitioningToPause = false;
 
   // Remove PauseState if we're coming from it
-  if (GameEngine::Instance().getGameStateManager()->hasState("PauseState")) {
-    GameEngine::Instance().getGameStateManager()->removeState("PauseState");
+  if (gameStateManager->hasState("PauseState")) {
+    gameStateManager->removeState("PauseState");
     std::cout << "Forge Game Engine - Removing PAUSE State\n";
   }
 
@@ -31,38 +35,53 @@ bool GamePlayState::enter() {
   return true;
 }
 
-void GamePlayState::update() {
+void GamePlayState::update([[maybe_unused]] float deltaTime) {
   //std::cout << "Updating GAME State\n";
-  // Handle pause and ESC key.
-  if (InputManager::Instance().isKeyDown(SDL_SCANCODE_P)) {
+  
+  // Cache manager references for better performance
+  InputManager& inputMgr = InputManager::Instance();
+  GameEngine& gameEngine = GameEngine::Instance();
+  auto* gameStateManager = gameEngine.getGameStateManager();
+  
+  // Handle pause, ESC, and back to main menu keys.
+  if (inputMgr.isKeyDown(SDL_SCANCODE_P)) {
       // Create PauseState if it doesn't exist
-      if (!GameEngine::Instance().getGameStateManager()->hasState("PauseState")) {
-          GameEngine::Instance().getGameStateManager()->addState(std::make_unique<PauseState>());
+      if (!gameStateManager->hasState("PauseState")) {
+          gameStateManager->addState(std::make_unique<PauseState>());
           std::cout << "Forge Game Engine - Created PAUSE State\n";
       }
       m_transitioningToPause = true; // Set flag before transitioning
-      GameEngine::Instance().getGameStateManager()->setState("PauseState");
+      gameStateManager->setState("PauseState");
   }
-  if (InputManager::Instance().isKeyDown(SDL_SCANCODE_ESCAPE)) {
-      GameEngine::Instance().setRunning(false);
+  if (inputMgr.isKeyDown(SDL_SCANCODE_B)) {
+      std::cout << "Forge Game Engine - Transitioning to MainMenuState...\n";
+      gameStateManager->setState("MainMenuState");
+  }
+  if (inputMgr.isKeyDown(SDL_SCANCODE_ESCAPE)) {
+      gameEngine.setRunning(false);
   }
 
   // Update player if it exists
   if (mp_Player) {
-      mp_Player->update();
+      mp_Player->update(deltaTime);
   }
 }
 
 void GamePlayState::render() {
   //std::cout << "Rendering GAME State\n";
+  
+  // Cache manager references for better performance
+  FontManager& fontMgr = FontManager::Instance();
+  GameEngine& gameEngine = GameEngine::Instance();
+  
   SDL_Color fontColor = {200, 200, 200, 255};
-   FontManager::Instance().drawText(
-     "Game State Place Holder <----> Press P to test Pause State",
+   fontMgr.drawText(
+     "Game State Place Holder <----> Press [P] to test Pause State <----> Press [B] to return to Main Menu",
      "fonts_Arial",
-     GameEngine::Instance().getWindowWidth() / 2,  // Center horizontally
-     (GameEngine::Instance().getWindowHeight() / 2) - 180,
+     gameEngine.getWindowWidth() / 2,  // Center horizontally
+     20,
      fontColor,
-     GameEngine::Instance().getRenderer());
+     gameEngine.getRenderer());
 
     mp_Player->render();
 

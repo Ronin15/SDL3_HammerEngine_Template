@@ -7,21 +7,24 @@
 #define PLAYER_IDLE_STATE_HPP
 
 #include "entities/EntityState.hpp"
+#include <functional>
 
 class Player;
 
 class PlayerIdleState : public EntityState {
 public:
-    PlayerIdleState(Player* player);
+    explicit PlayerIdleState(Player& player);
 
     void enter() override;
-    void update() override;
+    void update(float deltaTime) override;
     void exit() override;
 
 private:
-    // Non-owning pointer to the player entity
+    bool hasInputDetected() const;
+    
+    // Non-owning reference to the player entity
     // The player entity is owned elsewhere in the application
-    Player* mp_player{nullptr};
+    std::reference_wrapper<Player> m_player;
 };
 
 #endif  // PLAYER_IDLE_STATE_HPP

@@ -2,7 +2,7 @@
 
 ## Common Issues and Solutions
 
-This guide addresses common issues you might encounter when working with our test suite. All tests now use the Boost Test Framework for consistency. Special attention is given to thread safety and proper cleanup of multithreaded tests.
+This guide addresses common issues you might encounter when working with our test suite. All tests now use the Boost Test Framework for consistency. Special attention is given to thread safety, proper cleanup of multithreaded tests, and task priority management in ThreadSystem-integrated components like AIManager and EventManager.
 
 ### 1. "Multiple definition" or "Duplicate symbol" errors
 
@@ -59,11 +59,12 @@ This guide addresses common issues you might encounter when working with our tes
 **Solution**:
 - Add `#define BOOST_TEST_NO_SIGNAL_HANDLING` before including Boost.Test headers
 - Use `--catch_system_errors=no --no_result_code --detect_memory_leak=0` options when running tests
-- Disable threading before cleanup: `AIManager::Instance().configureThreading(false)`
+- Disable threading before cleanup: `AIManager::Instance().configureThreading(false)` or `EventManager::Instance().configureThreading(false)`
 - Add sleep between operations: `std::this_thread::sleep_for(std::chrono::milliseconds(100))`
 - Use timeout when waiting for futures: `future.wait_for(std::chrono::seconds(1))` instead of blocking `get()`
 - Always clean up resources in reverse order of initialization
 - Don't register SIGSEGV handler in your test code (let Boost.Test handle it)
+- Ensure proper initialization order: ThreadSystem first, then other systems
 
 ## If you still have issues:
 
@@ -74,6 +75,8 @@ This guide addresses common issues you might encounter when working with our tes
 5. For thread-safety tests, run with additional options: `--catch_system_errors=no --no_result_code`
 6. Add diagnostic logging to your test code to trace resource creation and destruction
 7. Ensure atomic operations use proper synchronization with `compare_exchange_strong` instead of simple `exchange`
+8. For priority-based task issues, check that tasks are being assigned correct priorities
+9. For event tests, ensure events are properly cleaned up after each test case
 
 ## Making Changes to the Tests
 
@@ -101,15 +104,16 @@ struct TestFixture {
         // Setup code
         // For threaded tests, initialize in this order:
         // 1. ThreadSystem
-        // 2. AIManager or other managers
-        // 3. Enable threading
+        // 2. AIManager, EventManager or other managers
+        // 3. Configure task priorities if needed
+        // 4. Enable threading
     }
     
     ~TestFixture() {
         // Cleanup code in reverse order:
-        // 1. Disable threading
+        // 1. Disable threading for all managers
         // 2. Wait for threads to complete
-        // 3. Clean up managers
+        // 3. Clean up EventManager, AIManager or other managers
         // 4. Clean up ThreadSystem
     }
 };
@@ -130,3 +134,35 @@ Common assertions:
 - `BOOST_CHECK_EQUAL(a, b)` - Check if a == b
 - `BOOST_CHECK_NE(a, b)` - Check if a != b
 - `BOOST_CHECK_CLOSE(a, b, tolerance)` - Check floating point approximate equality
+
+## Task Priority Testing
+
+When testing components that use ThreadSystem's priority-based scheduling (AIManager, EventManager):
+
+1. **Initialization with Priorities**:
+   ```cpp
+   // Initialize ThreadSystem first
+   Forge::ThreadSystem::Instance().init();
+   
+   // Initialize manager
+   AIManager::Instance().init();
+   
+   // Configure with specific priority
+   AIManager::Instance().configureThreading(true, 0, Forge::TaskPriority::High);
+   ```
+
+2. **Testing Priority Levels**:
+   - Create tasks with different priorities
+   - Verify high-priority tasks complete before lower-priority ones
+   - Test all five priority levels: Critical, High, Normal, Low, Idle
+   - Check that appropriate priority is used for different operations
+
+3. **Common Priority-Related Issues**:
+   - **Priority Inversion**: High-priority tasks waiting for low-priority ones
+   - **Priority Starvation**: Low-priority tasks never running due to continuous high-priority tasks
+   - **Task Duration Imbalance**: Tasks with inappropriate priorities taking too long
+
+4. **Thread-Safe Priority Tests**:
+   - Change priorities concurrently from multiple threads
+   - Mix tasks with different priorities in the same test
+   - Verify priority changes take effect correctly
