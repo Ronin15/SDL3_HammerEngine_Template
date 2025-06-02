@@ -92,7 +92,7 @@ void Player::setupStates() {
 Player::~Player() {
     // Don't call virtual functions from destructors
     // Instead of calling clean(), directly handle cleanup here
-    
+
     std::cout << "Forge Game Engine - Cleaning up player resources" << "\n";
     std::cout << "Forge Game Engine - Player resources cleaned!\n";
 }
@@ -110,31 +110,28 @@ std::string Player::getCurrentStateName() const {
 }
 
 void Player::update(float deltaTime) {
-    // Handle input and update state
-    handleInput();
+    // Handle all movement physics directly in Player class
+    handleMovementInput(deltaTime);
 
-    // Let the current state handle specific behavior
+    // Handle state transitions for visuals only
+    handleStateTransitions();
+
+    // Let the current state handle visual/animation behavior only
     m_stateManager.update(deltaTime);
 
-    // Update position based on velocity (this is common for all states)
-    // Physics calculations using deltaTime for frame-rate independence
-    m_velocity += m_acceleration * deltaTime;
+    // Update position based on velocity (physics)
     m_position += m_velocity * deltaTime;
 
-    // Apply friction for smooth deceleration
+    // Apply smooth friction for deceleration
     if (m_velocity.length() > 0.1f) {
         // Frame-rate independent friction using exponential decay
-        // Different friction rates for idle vs running state
-        const float frictionRate = (getCurrentStateName() == "idle") ? 0.05f : 0.3f;
+        const float frictionRate = 0.08f;  // Gentle friction for smooth stops
         float frictionFactor = std::pow(frictionRate, deltaTime);
         m_velocity *= frictionFactor;
     } else if (m_velocity.length() < 0.1f) {
         // If velocity is very small, stop completely to avoid tiny sliding
         m_velocity = Vector2D(0, 0);
     }
-
-    // Reset acceleration
-    m_acceleration = Vector2D(0, 0);
 
     // If the texture dimensions haven't been loaded yet, try loading them
     if (m_frameWidth == 0 && TextureManager::Instance().isTextureInMap(m_textureID)) {
@@ -148,8 +145,8 @@ void Player::render() {
 
     // Calculate centered position for rendering
     // This ensures the player is centered at its position coordinates
-    int renderX = static_cast<int>(m_position.getX() - (m_frameWidth / 2.0f));
-    int renderY = static_cast<int>(m_position.getY() - (m_height / 2.0f));
+    int renderX = std::lround(m_position.getX() - (m_frameWidth / 2.0f));
+    int renderY = std::lround(m_position.getY() - (m_height / 2.0f));
 
     // Do the common rendering for all states
     TextureManager::Instance().drawFrame(
@@ -178,26 +175,90 @@ void Player::setPosition(const Vector2D& position) {
     m_position = position;
 }
 
-void Player::handleInput() {
-    // Check for state transitions based on input
-    bool isMoving = false;
+void Player::handleMovementInput(float deltaTime) {
+    const float maxSpeed = 120.0f; // Maximum pixels per second
+    const float acceleration = 300.0f; // Acceleration in pixels per second squared
 
-    // Check keyboard, gamepad, or mouse input that would indicate movement
-    if (InputManager::Instance().isKeyDown(SDL_SCANCODE_RIGHT) ||
-        InputManager::Instance().isKeyDown(SDL_SCANCODE_LEFT) ||
-        InputManager::Instance().isKeyDown(SDL_SCANCODE_UP) ||
-        InputManager::Instance().isKeyDown(SDL_SCANCODE_DOWN) ||
-        InputManager::Instance().getAxisX(0, 1) != 0 ||
-        InputManager::Instance().getAxisY(0, 1) != 0 ||
-        InputManager::Instance().getMouseButtonState(LEFT)) {
+    Vector2D inputDirection(0, 0);
 
-        isMoving = true;
+    // Handle keyboard movement
+    if (InputManager::Instance().isKeyDown(SDL_SCANCODE_RIGHT)) {
+        inputDirection.setX(1.0f);
+        m_flip = SDL_FLIP_NONE;
+    } else if (InputManager::Instance().isKeyDown(SDL_SCANCODE_LEFT)) {
+        inputDirection.setX(-1.0f);
+        m_flip = SDL_FLIP_HORIZONTAL;
     }
 
-    // Change state based on movement
-    if (isMoving && getCurrentStateName() != "running") {
+    if (InputManager::Instance().isKeyDown(SDL_SCANCODE_UP)) {
+        inputDirection.setY(-1.0f);
+    } else if (InputManager::Instance().isKeyDown(SDL_SCANCODE_DOWN)) {
+        inputDirection.setY(1.0f);
+    }
+
+    // Handle controller joystick movement
+    int joystickX = InputManager::Instance().getAxisX(0, 1);
+    int joystickY = InputManager::Instance().getAxisY(0, 1);
+
+    if (joystickX != 0 || joystickY != 0) {
+        // Convert joystick values to normalized direction (-1 to 1)
+        inputDirection.setX(joystickX / 32767.0f);
+        inputDirection.setY(joystickY / 32767.0f);
+
+        // Set proper flip direction based on horizontal movement
+        if (joystickX > 0) {
+            m_flip = SDL_FLIP_NONE;
+        } else if (joystickX < 0) {
+            m_flip = SDL_FLIP_HORIZONTAL;
+        }
+    }
+
+    // Handle mouse movement (when left mouse button is down)
+    if (InputManager::Instance().getMouseButtonState(LEFT)) {
+        const Vector2D& mousePos = InputManager::Instance().getMousePosition();
+        Vector2D playerPos = getPosition();
+
+        Vector2D direction = Vector2D(mousePos.getX() - playerPos.getX(),
+                                     mousePos.getY() - playerPos.getY());
+
+        // Only move if the mouse is far enough from the player
+        if (direction.length() > 5.0f) {
+            direction.normalize();
+            inputDirection = direction;
+
+            // Set flip based on horizontal movement direction
+            if (direction.getX() > 0) {
+                m_flip = SDL_FLIP_NONE;
+            } else if (direction.getX() < 0) {
+                m_flip = SDL_FLIP_HORIZONTAL;
+            }
+        }
+    }
+
+    // Apply smooth acceleration towards target velocity
+    Vector2D targetVelocity = inputDirection * maxSpeed;
+    Vector2D velocityDifference = targetVelocity - m_velocity;
+
+    // Calculate acceleration vector
+    Vector2D accelerationVector = velocityDifference;
+
+    // Limit acceleration magnitude for smooth movement
+    if (accelerationVector.length() > acceleration * deltaTime) {
+        accelerationVector.normalize();
+        accelerationVector = accelerationVector * acceleration * deltaTime;
+    }
+
+    // Apply acceleration to velocity
+    m_velocity += accelerationVector;
+}
+
+void Player::handleStateTransitions() {
+    // Simple state transitions based on movement for visuals only
+    bool hasVelocity = m_velocity.length() > 10.0f; // Moving with reasonable speed
+
+    if (hasVelocity && getCurrentStateName() != "running") {
         changeState("running");
-    } else if (!isMoving && getCurrentStateName() != "idle") {
+    } else if (!hasVelocity && getCurrentStateName() != "idle") {
         changeState("idle");
     }
 }

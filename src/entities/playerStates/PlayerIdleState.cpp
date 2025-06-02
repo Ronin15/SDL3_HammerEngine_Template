@@ -13,7 +13,7 @@ void PlayerIdleState::enter() {
     //std::cout << "Forge Game Engine - Entering Player Idle State\n";
     // Set animation for idle
     m_player.get().setCurrentFrame(0);
-    m_player.get().setVelocity(Vector2D(0, 0));
+    // Let friction handle smooth deceleration instead of immediate stop
 }
 
 void PlayerIdleState::update([[maybe_unused]] float deltaTime) {

@@ -4,7 +4,7 @@
 */
 
 #include "core/GameEngine.hpp"
-#include "core/GameLoop.hpp"
+#include "core/GameLoop.hpp" // IWYU pragma: keep - Required for GameLoop weak_ptr declaration
 #include <boost/container/small_vector.hpp>
 #include <chrono>
 #include <future>

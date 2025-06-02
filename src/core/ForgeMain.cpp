@@ -13,7 +13,7 @@
 const int WINDOW_WIDTH{1920};
 const int WINDOW_HEIGHT{1080};
 const float TARGET_FPS{60.0f};
-const float FIXED_TIMESTEP{1.0f / 60.0f}; // 60Hz fixed update rate
+const float FIXED_TIMESTEP{1.0f / 75.0f}; // 75Hz fixed update rate for responsive gameplay
 // Game Name goes here.
 const std::string GAME_NAME{"Game Template"};
 
@@ -51,8 +51,8 @@ const std::string GAME_NAME{"Game Template"};
   std::cout << "Forge Game Engine - Initializing Game Loop...\n";
 
   // Create game loop with industry-standard timing
-  // Use single-threaded mode for now (can enable threading later)
-  auto gameLoop = std::make_shared<GameLoop>(TARGET_FPS, FIXED_TIMESTEP, false);
+  // Multi-threading enabled for better performance
+  auto gameLoop = std::make_shared<GameLoop>(TARGET_FPS, FIXED_TIMESTEP, true);
 
   // Set GameLoop reference in GameEngine for delegation
   GameEngine::Instance().setGameLoop(gameLoop);
@@ -68,10 +68,10 @@ const std::string GAME_NAME{"Game Template"};
     if (GameEngine::Instance().hasNewFrameToRender()) {
       GameEngine::Instance().swapBuffers();
     }
-    
+
     // Update game logic with fixed timestep
     GameEngine::Instance().update(deltaTime);
-    
+
     // Process background tasks using thread system
     try {
       Forge::ThreadSystem::Instance().enqueueTask([]() {
