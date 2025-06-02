@@ -76,9 +76,9 @@ void GameStateManager::setState(const std::string& stateName) {
   }
 }
 
-void GameStateManager::update() {
+void GameStateManager::update(float deltaTime) {
   if (currentState) {
-    currentState->update();
+    currentState->update(deltaTime);
   }
 }
 

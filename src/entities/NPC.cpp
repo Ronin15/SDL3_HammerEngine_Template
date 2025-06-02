@@ -8,6 +8,7 @@
 #include "managers/TextureManager.hpp"
 #include <SDL3/SDL.h>
 #include <iostream>
+#include <cmath>
 #include <set>
 
 NPC::NPC(const std::string& textureID, const Vector2D& startPosition, int frameWidth, int frameHeight)
@@ -93,16 +94,17 @@ void NPC::loadDimensionsFromTexture() {
 
 // State management removed - handled by AI Manager
 
-void NPC::update() {
-    // Update position based on velocity and acceleration
-    m_velocity += m_acceleration;
-    m_position += m_velocity;
+void NPC::update(float deltaTime) {
+    // Update position based on velocity and acceleration using deltaTime
+    m_velocity += m_acceleration * deltaTime;
+    m_position += m_velocity * deltaTime;
 
-    // Apply friction for smoother movement
+    // Apply frame-rate independent friction for smoother movement
     if (m_velocity.length() > 0.1f) {
-        // Friction coefficient - adjust for desired sliding feel (0.95 means 95% of velocity is retained)
-        const float friction = 0.95f;
-        m_velocity *= friction;
+        // Frame-rate independent friction using exponential decay
+        const float frictionRate = 0.05f;  // Friction strength (higher = more friction)
+        float frictionFactor = std::pow(frictionRate, deltaTime);
+        m_velocity *= frictionFactor;
 
         // Update flip direction based on horizontal velocity
         // Only flip if the horizontal speed is significant enough

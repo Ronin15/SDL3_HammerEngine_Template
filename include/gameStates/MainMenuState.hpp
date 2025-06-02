@@ -11,7 +11,7 @@
 class MainMenuState : public GameState {
  public:
   bool enter() override;
-  void update() override;
+  void update(float deltaTime) override;
   void render() override;
   bool exit() override;
   std::string getName() const override;

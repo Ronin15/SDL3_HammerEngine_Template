@@ -4,6 +4,7 @@
 */
 
 #include "core/GameEngine.hpp"
+#include "core/GameLoop.hpp"
 #include <boost/container/small_vector.hpp>
 #include <chrono>
 #include <future>
@@ -311,7 +312,7 @@ bool GameEngine::init(const char* title,
 
   // setting logo state for default state
   mp_gameStateManager->setState("LogoState");//set to "LogoState" for normal operation.
-  setRunning(true);  // Forge Game created successfully, start the main loop
+  // Note: GameLoop will be started by ForgeMain, not here
   return true;
 }
 
@@ -319,17 +320,36 @@ void GameEngine::handleEvents() {
   InputManager::Instance().update();
 }
 
-void GameEngine::update() {
+void GameEngine::setRunning(bool running) {
+  if (auto gameLoop = m_gameLoop.lock()) {
+    if (running) {
+      // Can't restart GameLoop from GameEngine - this might be an error case
+      std::cerr << "Warning: Cannot start GameLoop from GameEngine - use GameLoop::run() instead" << std::endl;
+    } else {
+      gameLoop->stop();
+    }
+  } else {
+    std::cerr << "Warning: No GameLoop set - cannot change running state" << std::endl;
+  }
+}
+
+bool GameEngine::getRunning() const {
+  if (auto gameLoop = m_gameLoop.lock()) {
+    return gameLoop->isRunning();
+  }
+  return false;
+}
+
+float GameEngine::getCurrentFPS() const {
+  if (auto gameLoop = m_gameLoop.lock()) {
+    return gameLoop->getCurrentFPS();
+  }
+  return 0.0f;
+}
+
+void GameEngine::update([[maybe_unused]] float deltaTime) {
   // This method is now thread-safe and can be called from a worker thread
   std::lock_guard<std::mutex> lock(m_updateMutex);
-
-  // If we have too many entities and performance is suffering, consider skipping frames
-  if (m_skipFrame.load(std::memory_order_acquire)) {
-    m_skipFrame.store(false, std::memory_order_release);
-    m_updateRunning = false;
-    m_updateCondition.notify_all();
-    return;
-  }
 
   // Mark update as running
   m_updateRunning = true;
@@ -337,11 +357,9 @@ void GameEngine::update() {
   // Get the buffer for the current update
   const size_t updateBufferIndex = m_currentBufferIndex.load(std::memory_order_acquire);
 
-  auto startTime = std::chrono::steady_clock::now();
   try {
-
-    // Update game states - make sure GameStateManager knows which buffer to update
-    mp_gameStateManager->update();
+    // Update game states with fixed timestep - make sure GameStateManager knows which buffer to update
+    mp_gameStateManager->update(deltaTime);
 
     // Increment the frame counter
     m_lastUpdateFrame++;
@@ -357,17 +375,6 @@ void GameEngine::update() {
     std::cerr << "Forge Game Engine - Unknown exception in update" << std::endl;
   }
 
-  // Calculate frame time
-  auto endTime = std::chrono::steady_clock::now();
-  m_frameTimeMs.store(static_cast<uint32_t>(
-    std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime).count()
-  ));
-
-  // If update took too long, consider skipping the next frame
-  if (m_frameTimeMs.load() > 16) {  // 16ms = target for 60 FPS
-    m_skipFrame.store(true, std::memory_order_release);
-  }
-
   m_updateRunning = false;
 
   // Notify anyone waiting on this update
@@ -375,7 +382,7 @@ void GameEngine::update() {
   m_bufferCondition.notify_all();
 }
 
-void GameEngine::render() {
+void GameEngine::render([[maybe_unused]] float interpolation) {
   // Always on MAIN thread as its an - SDL REQUIREMENT
   std::lock_guard<std::mutex> lock(m_renderMutex);
 

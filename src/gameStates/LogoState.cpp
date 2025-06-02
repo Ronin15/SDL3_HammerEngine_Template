@@ -18,7 +18,7 @@ bool LogoState::enter() {
   return true;
 }
 
-void LogoState::update() {
+void LogoState::update([[maybe_unused]] float deltaTime) {
   // std::cout << "Forge Game Engine - Updating LOGO State\n";
 
   stateTimer = SDL_GetTicks();

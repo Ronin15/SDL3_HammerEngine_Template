@@ -14,34 +14,35 @@ void PlayerRunningState::enter() {
     //std::cout << "Forge Game Engine - Entering Player Running State\n";
 }
 
-void PlayerRunningState::update() {
+void PlayerRunningState::update(float deltaTime) {
+    const float maxSpeed = 120.0f; // Maximum pixels per second
+    const float acceleration = 400.0f; // Acceleration in pixels per second squared
 
-    Vector2D velocity(0, 0);
+    Vector2D inputDirection(0, 0);
 
     // Handle keyboard movement
     if (InputManager::Instance().isKeyDown(SDL_SCANCODE_RIGHT)) {
-        velocity.setX(2);
+        inputDirection.setX(1.0f);
         m_player.get().setFlip(SDL_FLIP_NONE);
     } else if (InputManager::Instance().isKeyDown(SDL_SCANCODE_LEFT)) {
-        velocity.setX(-2);
+        inputDirection.setX(-1.0f);
         m_player.get().setFlip(SDL_FLIP_HORIZONTAL);
     }
 
     if (InputManager::Instance().isKeyDown(SDL_SCANCODE_UP)) {
-        velocity.setY(-2);
+        inputDirection.setY(-1.0f);
     } else if (InputManager::Instance().isKeyDown(SDL_SCANCODE_DOWN)) {
-        velocity.setY(2);
+        inputDirection.setY(1.0f);
     }
 
     // Handle controller joystick movement (if a gamepad is connected)
-    // We'll use the first connected gamepad (joy = 0) and the left stick (stick = 1)
     int joystickX = InputManager::Instance().getAxisX(0, 1);
     int joystickY = InputManager::Instance().getAxisY(0, 1);
 
     if (joystickX != 0 || joystickY != 0) {
-        // If joystick is being used, override keyboard input
-        velocity.setX(joystickX * 2);
-        velocity.setY(joystickY * 2);
+        // Convert joystick values to normalized direction (-1 to 1)
+        inputDirection.setX(joystickX / 32767.0f);
+        inputDirection.setY(joystickY / 32767.0f);
 
         // Set proper flip direction based on horizontal movement
         if (joystickX > 0) {
@@ -53,19 +54,16 @@ void PlayerRunningState::update() {
 
     // Handle mouse movement (when left mouse button is down)
     if (InputManager::Instance().getMouseButtonState(LEFT)) {
-        // Get mouse position and player position
         const Vector2D& mousePos = InputManager::Instance().getMousePosition();
         Vector2D playerPos = m_player.get().getPosition();
 
-        // Calculate direction vector from player to mouse cursor
         Vector2D direction = Vector2D(mousePos.getX() - playerPos.getX(),
                                      mousePos.getY() - playerPos.getY());
 
         // Only move if the mouse is far enough from the player
         if (direction.length() > 5.0f) {
-            // Normalize direction and set velocity
             direction.normalize();
-            velocity = direction * 2.0f;
+            inputDirection = direction;
 
             // Set flip based on horizontal movement direction
             if (direction.getX() > 0) {
@@ -76,17 +74,34 @@ void PlayerRunningState::update() {
         }
     }
 
-    // Update player velocity
-    m_player.get().setVelocity(velocity);
+    // Apply acceleration based on input
+    Vector2D currentVelocity = m_player.get().getVelocity();
+    Vector2D targetVelocity = inputDirection * maxSpeed;
+    
+    // Smooth acceleration towards target velocity
+    Vector2D velocityDifference = targetVelocity - currentVelocity;
+    Vector2D accelerationVector = velocityDifference;
+    
+    // Limit acceleration magnitude
+    if (accelerationVector.length() > acceleration * deltaTime) {
+        accelerationVector.normalize();
+        accelerationVector = accelerationVector * acceleration * deltaTime;
+    }
+    
+    Vector2D newVelocity = currentVelocity + accelerationVector;
+    m_player.get().setVelocity(newVelocity);
 
-    // Animate only if moving
-    if (velocity.getX() != 0 || velocity.getY() != 0) {
-        // Animate running (assumes animation frames are set up)
-        Uint64 currentTime = SDL_GetTicks();
-        m_player.get().setCurrentFrame((currentTime / 100) % 2); // 2 frames animation
-    } else {
-        // If not moving, transition back to idle
-        // This would be implemented when we add state transitions
+    // Frame-rate independent animation
+    if (newVelocity.length() > 10.0f) { // Only animate if moving with reasonable speed
+        static float animationTime = 0.0f;
+        animationTime += deltaTime;
+        
+        // Change frame every 200ms
+        if (animationTime >= 0.2f) {
+            int currentFrame = m_player.get().getCurrentFrame();
+            m_player.get().setCurrentFrame((currentFrame + 1) % 2);
+            animationTime = 0.0f;
+        }
     }
 }
 

@@ -19,13 +19,10 @@
 #include <iostream>
 #include <iomanip>
 #include <sstream>
-#include <numeric>
+
 
 EventDemoState::EventDemoState() {
     // Initialize member variables that need explicit initialization
-    m_demoStartTime = std::chrono::steady_clock::now();
-    m_demoLastTime = m_demoStartTime;
-    m_lastFrameTime = m_demoStartTime;
 }
 
 EventDemoState::~EventDemoState() {
@@ -52,13 +49,6 @@ bool EventDemoState::enter() {
         AIManager::Instance().setPlayerForDistanceOptimization(m_player);
 
         // Initialize timing
-        m_lastFrameTime = std::chrono::steady_clock::now();
-        m_demoLastTime = std::chrono::steady_clock::now();
-        m_demoStartTime = std::chrono::steady_clock::now();
-        m_frameTimes.clear();
-        m_frameCount = 0;
-        m_currentFPS = 0.0f;
-        m_averageFPS = 0.0f;
 
         // Setup initial demo state
         m_currentPhase = DemoPhase::Initialization;
@@ -128,21 +118,20 @@ bool EventDemoState::exit() {
     }
 }
 
-void EventDemoState::update() {
+void EventDemoState::update(float deltaTime) {
     // Update timing
-    updateDemoTimer();
-    updateFrameRate();
+    updateDemoTimer(deltaTime);
 
     // Handle input
     handleInput();
 
     // Update player
     if (m_player) {
-        m_player->update();
+        m_player->update(deltaTime);
     }
 
     // Update AI Manager
-    AIManager::Instance().update();
+    AIManager::Instance().update(deltaTime);
 
     // Clean up invalid NPCs
     auto it = m_spawnedNPCs.begin();
@@ -490,41 +479,14 @@ void EventDemoState::handleInput() {
     }
 }
 
-void EventDemoState::updateDemoTimer() {
-    auto now = std::chrono::steady_clock::now();
-    auto duration = std::chrono::duration_cast<std::chrono::microseconds>(now - m_demoLastTime);
-    float deltaTime = duration.count() / 1000000.0f;
-
+void EventDemoState::updateDemoTimer(float deltaTime) {
     if (m_autoMode) {
         m_phaseTimer += deltaTime;
     }
     m_totalDemoTime += deltaTime;
-
-    m_demoLastTime = now;
 }
 
-void EventDemoState::updateFrameRate() {
-    auto currentTime = std::chrono::steady_clock::now();
-    float deltaTime = std::chrono::duration<float, std::chrono::milliseconds::period>(currentTime - m_lastFrameTime).count();
-    m_lastFrameTime = currentTime;
 
-    float deltaTimeSeconds = deltaTime / 1000.0f;
-
-    if (deltaTimeSeconds > 0.0f && deltaTimeSeconds < 1.0f) {
-        m_currentFPS = 1.0f / deltaTimeSeconds;
-
-        m_frameTimes.push_back(m_currentFPS);
-
-        if (m_frameTimes.size() > MAX_FRAME_SAMPLES) {
-            m_frameTimes.pop_front();
-        }
-
-        float sum = std::accumulate(m_frameTimes.begin(), m_frameTimes.end(), 0.0f);
-        m_averageFPS = sum / m_frameTimes.size();
-    }
-
-    m_frameCount++;
-}
 
 void EventDemoState::renderUI() {
     SDL_Color whiteColor = {255, 255, 255, 255};
@@ -580,9 +542,9 @@ void EventDemoState::renderUI() {
     yPos += lineHeight;
 
     // FPS information
+    float currentFPS = GameEngine::Instance().getCurrentFPS();
     std::stringstream fpsInfo;
-    fpsInfo << "FPS: " << std::fixed << std::setprecision(1) << m_currentFPS
-            << " (Avg: " << m_averageFPS << ")";
+    fpsInfo << "FPS: " << std::fixed << std::setprecision(1) << currentFPS;
     FontManager::Instance().drawText(
         fpsInfo.str(),
         "fonts_Arial",
@@ -895,63 +857,63 @@ void EventDemoState::setupAIBehaviors() {
     std::cout << "EventDemoState: Setting up AI behaviors for NPC integration...\n";
 
     if (!AIManager::Instance().hasBehavior("Wander")) {
-        auto wanderBehavior = std::make_unique<WanderBehavior>(WanderBehavior::WanderMode::MEDIUM_AREA, 2.0f);
+        auto wanderBehavior = std::make_unique<WanderBehavior>(WanderBehavior::WanderMode::MEDIUM_AREA, 80.0f);
         wanderBehavior->setScreenDimensions(m_worldWidth, m_worldHeight);
         AIManager::Instance().registerBehavior("Wander", std::move(wanderBehavior));
         std::cout << "EventDemoState: Registered Wander behavior\n";
     }
 
     if (!AIManager::Instance().hasBehavior("SmallWander")) {
-        auto smallWanderBehavior = std::make_unique<WanderBehavior>(WanderBehavior::WanderMode::SMALL_AREA, 1.5f);
+        auto smallWanderBehavior = std::make_unique<WanderBehavior>(WanderBehavior::WanderMode::SMALL_AREA, 60.0f);
         smallWanderBehavior->setScreenDimensions(m_worldWidth, m_worldHeight);
         AIManager::Instance().registerBehavior("SmallWander", std::move(smallWanderBehavior));
         std::cout << "EventDemoState: Registered SmallWander behavior\n";
     }
 
     if (!AIManager::Instance().hasBehavior("LargeWander")) {
-        auto largeWanderBehavior = std::make_unique<WanderBehavior>(WanderBehavior::WanderMode::LARGE_AREA, 2.5f);
+        auto largeWanderBehavior = std::make_unique<WanderBehavior>(WanderBehavior::WanderMode::LARGE_AREA, 100.0f);
         largeWanderBehavior->setScreenDimensions(m_worldWidth, m_worldHeight);
         AIManager::Instance().registerBehavior("LargeWander", std::move(largeWanderBehavior));
         std::cout << "EventDemoState: Registered LargeWander behavior\n";
     }
 
     if (!AIManager::Instance().hasBehavior("EventWander")) {
-        auto eventWanderBehavior = std::make_unique<WanderBehavior>(WanderBehavior::WanderMode::EVENT_TARGET, 2.0f);
+        auto eventWanderBehavior = std::make_unique<WanderBehavior>(WanderBehavior::WanderMode::EVENT_TARGET, 70.0f);
         eventWanderBehavior->setScreenDimensions(m_worldWidth, m_worldHeight);
         AIManager::Instance().registerBehavior("EventWander", std::move(eventWanderBehavior));
         std::cout << "EventDemoState: Registered EventWander behavior\n";
     }
 
     if (!AIManager::Instance().hasBehavior("Patrol")) {
-        auto patrolBehavior = std::make_unique<PatrolBehavior>(PatrolBehavior::PatrolMode::FIXED_WAYPOINTS, 1.5f, true);
+        auto patrolBehavior = std::make_unique<PatrolBehavior>(PatrolBehavior::PatrolMode::FIXED_WAYPOINTS, 75.0f, true);
         patrolBehavior->setScreenDimensions(m_worldWidth, m_worldHeight);
         AIManager::Instance().registerBehavior("Patrol", std::move(patrolBehavior));
         std::cout << "EventDemoState: Registered Patrol behavior\n";
     }
 
     if (!AIManager::Instance().hasBehavior("RandomPatrol")) {
-        auto randomPatrolBehavior = std::make_unique<PatrolBehavior>(PatrolBehavior::PatrolMode::RANDOM_AREA, 2.0f, false);
+        auto randomPatrolBehavior = std::make_unique<PatrolBehavior>(PatrolBehavior::PatrolMode::RANDOM_AREA, 85.0f, false);
         randomPatrolBehavior->setScreenDimensions(m_worldWidth, m_worldHeight);
         AIManager::Instance().registerBehavior("RandomPatrol", std::move(randomPatrolBehavior));
         std::cout << "EventDemoState: Registered RandomPatrol behavior\n";
     }
 
     if (!AIManager::Instance().hasBehavior("CirclePatrol")) {
-        auto circlePatrolBehavior = std::make_unique<PatrolBehavior>(PatrolBehavior::PatrolMode::CIRCULAR_AREA, 1.8f, false);
+        auto circlePatrolBehavior = std::make_unique<PatrolBehavior>(PatrolBehavior::PatrolMode::CIRCULAR_AREA, 90.0f, false);
         circlePatrolBehavior->setScreenDimensions(m_worldWidth, m_worldHeight);
         AIManager::Instance().registerBehavior("CirclePatrol", std::move(circlePatrolBehavior));
         std::cout << "EventDemoState: Registered CirclePatrol behavior\n";
     }
 
     if (!AIManager::Instance().hasBehavior("EventTarget")) {
-        auto eventTargetBehavior = std::make_unique<PatrolBehavior>(PatrolBehavior::PatrolMode::EVENT_TARGET, 2.2f, false);
+        auto eventTargetBehavior = std::make_unique<PatrolBehavior>(PatrolBehavior::PatrolMode::EVENT_TARGET, 95.0f, false);
         eventTargetBehavior->setScreenDimensions(m_worldWidth, m_worldHeight);
         AIManager::Instance().registerBehavior("EventTarget", std::move(eventTargetBehavior));
         std::cout << "EventDemoState: Registered EventTarget behavior\n";
     }
 
     if (!AIManager::Instance().hasBehavior("Chase")) {
-        auto chaseBehavior = std::make_unique<ChaseBehavior>(2.0f, 500.0f, 50.0f);
+        auto chaseBehavior = std::make_unique<ChaseBehavior>(120.0f, 500.0f, 50.0f);
         AIManager::Instance().registerBehavior("Chase", std::move(chaseBehavior));
         std::cout << "EventDemoState: Chase behavior registered (will use AIManager::getPlayerReference())\n";
     }

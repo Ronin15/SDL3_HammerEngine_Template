@@ -20,7 +20,7 @@ class EntityStateManager {
   std::string getCurrentStateName() const;
   bool hasState(const std::string& stateName) const;
   void removeState(const std::string& stateName);
-  void update();
+  void update(float deltaTime);
   ~EntityStateManager();
 
   private:

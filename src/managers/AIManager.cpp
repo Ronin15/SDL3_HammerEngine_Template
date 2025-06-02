@@ -83,7 +83,7 @@ void AIManager::clean() {
     AI_LOG("AIManager cleaned up");
 }
 
-void AIManager::update() {
+void AIManager::update([[maybe_unused]] float deltaTime) {
     if (!m_initialized.load(std::memory_order_acquire) || 
         m_globallyPaused.load(std::memory_order_acquire)) {
         return;
@@ -113,13 +113,13 @@ void AIManager::update() {
                     size_t batchEnd = std::min(i + optimalBatchSize, m_entities.size());
                     
                     if (Forge::ThreadSystem::Exists()) {
-                        Forge::ThreadSystem::Instance().enqueueTask([this, i, batchEnd, &completedTasks]() {
-                            processBatch(i, batchEnd);
+                        Forge::ThreadSystem::Instance().enqueueTask([this, i, batchEnd, &completedTasks, deltaTime]() {
+                            processBatch(i, batchEnd, deltaTime);
                             completedTasks.fetch_add(1, std::memory_order_relaxed);
                         }, Forge::TaskPriority::Normal, "AI_Batch_Update");
                         tasksSubmitted++;
                     } else {
-                        processBatch(i, batchEnd);
+                        processBatch(i, batchEnd, deltaTime);
                     }
                 }
                 
@@ -140,7 +140,7 @@ void AIManager::update() {
                 }
             } else {
                 // Single-threaded processing for smaller counts
-                processBatch(0, m_entities.size());
+                processBatch(0, m_entities.size(), deltaTime);
             }
         }
 
@@ -539,7 +539,7 @@ BehaviorType AIManager::inferBehaviorType(const std::string& behaviorName) const
     return (it != m_behaviorTypeMap.end()) ? it->second : BehaviorType::Custom;
 }
 
-void AIManager::processBatch(size_t start, size_t end) {
+void AIManager::processBatch(size_t start, size_t end, float deltaTime) {
     auto batchStart = std::chrono::high_resolution_clock::now();
     EntityPtr player = m_playerEntity.lock();
     
@@ -563,7 +563,7 @@ void AIManager::processBatch(size_t start, size_t end) {
                 m_totalBehaviorExecutions.fetch_add(1, std::memory_order_relaxed);
 
                 // Update entity
-                entityData.entity->update();
+                entityData.entity->update(deltaTime);
             }
         } catch (const std::exception& e) {
             AI_LOG("Error in batch processing entity: " << e.what());

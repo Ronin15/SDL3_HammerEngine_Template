@@ -33,7 +33,7 @@ private:
 // Simplified Entity class for tests
 class Entity : public std::enable_shared_from_this<Entity> {
 public:
-    virtual void update() = 0;
+    virtual void update(float deltaTime) = 0;
     virtual void render() = 0;
     virtual void clean() = 0;
     virtual ~Entity() = default;
@@ -84,7 +84,9 @@ public:
         return std::make_shared<OptimizationTestEntity>(pos);
     }
 
-    void update() override {}
+    void update(float deltaTime) override {
+        (void)deltaTime; // Suppress unused parameter warning
+    }
     void render() override {}
     void clean() override {
         // Safe cleanup - we're not calling shared_from_this() here
@@ -220,8 +222,9 @@ public:
     }
 
     // Update all behaviors
-    void update() {
+    void update(float deltaTime) {
         if (!m_initialized) return;
+        (void)deltaTime; // Suppress unused parameter warning
 
         // Process messages first
         processMessageQueue();
@@ -460,14 +463,14 @@ BOOST_AUTO_TEST_CASE(TestBatchProcessing)
 
     // Time the unified entity processing
     auto startTime = std::chrono::high_resolution_clock::now();
-    AIManager::Instance().update();
+    AIManager::Instance().update(0.016f);
     auto endTime = std::chrono::high_resolution_clock::now();
     auto batchDuration = std::chrono::duration_cast<std::chrono::microseconds>(endTime - startTime);
 
     // Time multiple managed updates
     startTime = std::chrono::high_resolution_clock::now();
     for (int i = 0; i < 5; ++i) {
-        AIManager::Instance().update();
+        AIManager::Instance().update(0.016f);
     }
     endTime = std::chrono::high_resolution_clock::now();
     auto individualDuration = std::chrono::duration_cast<std::chrono::microseconds>(endTime - startTime);

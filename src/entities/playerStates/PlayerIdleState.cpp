@@ -16,7 +16,7 @@ void PlayerIdleState::enter() {
     m_player.get().setVelocity(Vector2D(0, 0));
 }
 
-void PlayerIdleState::update() {
+void PlayerIdleState::update([[maybe_unused]] float deltaTime) {
     // Check for state transitions based on player input
     // This would be implemented later when you have logic to transition states
 }

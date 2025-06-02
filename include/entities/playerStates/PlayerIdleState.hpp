@@ -16,7 +16,7 @@ public:
     explicit PlayerIdleState(Player& player);
 
     void enter() override;
-    void update() override;
+    void update(float deltaTime) override;
     void exit() override;
 
 private:

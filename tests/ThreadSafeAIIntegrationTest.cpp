@@ -36,7 +36,10 @@ public:
         return std::make_shared<IntegrationTestEntity>(id, pos);
     }
 
-    void update() override { m_updateCount++; }
+    void update(float deltaTime) override {
+        m_updateCount++;
+        (void)deltaTime; // Suppress unused parameter warning
+    }
     void render() override {}
     void clean() override {
         // Proper cleanup to avoid bad_weak_ptr exceptions
@@ -72,7 +75,7 @@ public:
 
                 // Update the entity - simulate some work (minimal sleep to avoid timeouts)
                 std::this_thread::sleep_for(std::chrono::microseconds(1));
-                testEntity->update();
+                testEntity->update(0.016f); // ~60 FPS deltaTime
 
                 // Update our counter
                 m_updateCount++;
@@ -95,7 +98,7 @@ public:
 
     void clean(EntityPtr entity) override {
         if (!entity) return;
-        
+
         // Avoid using shared_from_this() on the entity
         // Just mark as uninitialized
         m_initialized = false;
@@ -129,34 +132,34 @@ private:
 void performSafeCleanup() {
     static std::mutex cleanupMutex;
     static bool cleanupDone = false;
-    
+
     std::lock_guard<std::mutex> lock(cleanupMutex);
-    
+
     if (cleanupDone) {
         return;
     }
-    
+
     std::cout << "Performing safe cleanup of AI resources..." << std::endl;
-    
+
     try {
         // Properly clean up resources in the correct order
         std::cout << "Cleaning up resources in correct order" << std::endl;
-        
+
         // Wait longer to ensure all pending tasks complete
         std::cout << "Waiting for pending tasks to complete..." << std::endl;
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
-        
+
         // First clean AIManager since it depends on ThreadSystem
         std::cout << "Cleaning AIManager..." << std::endl;
         AIManager::Instance().clean();
-        
+
         // Wait for AIManager to finish any potential cleanup tasks
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
-        
+
         // Then clean ThreadSystem
         std::cout << "Cleaning ThreadSystem..." << std::endl;
         Forge::ThreadSystem::Instance().clean();
-        
+
         std::cout << "Test fixture cleanup completed successfully" << std::endl;
         cleanupDone = true;
     } catch (const std::exception& e) {
@@ -167,10 +170,10 @@ void performSafeCleanup() {
 // Signal handler to ensure clean shutdown
 void signalHandler(int signal) {
     std::cerr << "Signal " << signal << " received, cleaning up..." << std::endl;
-    
+
     // Perform safe cleanup
     performSafeCleanup();
-    
+
     // Exit immediately with success to avoid any further issues
     _exit(0);
 }
@@ -243,7 +246,7 @@ struct AIIntegrationTestFixture {
     // Each test will have its own exit detector but only the last test
     // will trigger the exit process
     TerminationGuard m_terminationGuard;
-    
+
     AIIntegrationTestFixture() {
         std::cout << "Setting up test fixture" << std::endl;
 
@@ -276,7 +279,7 @@ struct AIIntegrationTestFixture {
         std::lock_guard<std::mutex> lock(m_entityMutex);
 
         std::cout << "Safely unassigning behaviors from entities..." << std::endl;
-        
+
         try {
             // First wait for any in-progress operations to complete
             std::this_thread::sleep_for(std::chrono::milliseconds(50));
@@ -306,7 +309,7 @@ struct AIIntegrationTestFixture {
 
             // Wait for any pending unassign operations to complete
             std::this_thread::sleep_for(std::chrono::milliseconds(50));
-            
+
             std::cout << "Behavior unassignment completed successfully" << std::endl;
         } catch (const std::exception& e) {
             std::cerr << "Exception during behavior unassignment: " << e.what() << std::endl;
@@ -328,7 +331,7 @@ struct AIIntegrationTestFixture {
             // Then clear collections with proper synchronization
             {
                 std::lock_guard<std::mutex> lock(m_entityMutex);
-                
+
                 // Clear behaviors collection
                 behaviors.clear();
 
@@ -363,7 +366,7 @@ BOOST_FIXTURE_TEST_SUITE(AIIntegrationTests, AIIntegrationTestFixture)
 BOOST_AUTO_TEST_CASE(TestConcurrentUpdates) {
     // Update the AI system multiple times - with shorter sleep time
     for (int i = 0; i < NUM_UPDATES; ++i) {
-        AIManager::Instance().update();
+        AIManager::Instance().update(0.016f); // ~60 FPS
 
         // Let ThreadSystem process tasks, but don't sleep too long
         std::this_thread::sleep_for(std::chrono::milliseconds(2));
@@ -404,7 +407,7 @@ BOOST_AUTO_TEST_CASE(TestConcurrentAssignmentAndUpdate) {
     // If we have an entity, assign a behavior to it
     if (entity) {
         AIManager::Instance().assignBehaviorToEntity(entity, "Behavior0");
-        AIManager::Instance().update();
+        AIManager::Instance().update(0.016f); // ~60 FPS
     }
 
     // Success criteria is simply not crashing
@@ -424,21 +427,21 @@ BOOST_AUTO_TEST_CASE(TestMessageDelivery) {
             testEntity = entities[0];
         }
     }
-    
+
     // Make sure we have a valid entity
     BOOST_REQUIRE(testEntity);
-    
+
     // Now send an actual message with proper safeguards
     try {
         // Ensure the behavior is assigned before messaging
         BOOST_REQUIRE(AIManager::Instance().entityHasBehavior(testEntity));
-        
+
         // Send message immediately to avoid async issues
         AIManager::Instance().sendMessageToEntity(testEntity, "test_message", true);
-        
+
         // Give a small delay to ensure processing
         std::this_thread::sleep_for(std::chrono::milliseconds(5));
-        
+
         // Success if we get here without crashing
         BOOST_CHECK(true);
     }
@@ -466,10 +469,10 @@ BOOST_AUTO_TEST_CASE(TestCacheInvalidation) {
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
     std::cout << "TestCacheInvalidation completed" << std::endl;
-    
+
     // Set flag to indicate all tests have completed before test exit
     g_allTestsCompleted.store(true);
-    
+
     // Add a slight delay to allow the flag to propagate
     std::this_thread::sleep_for(std::chrono::milliseconds(10));
 }
@@ -483,15 +486,15 @@ struct TestCompletionMarker {
         g_allTestsCompleted.store(false);
         std::cout << "TestCompletionMarker initialized" << std::endl;
     }
-    
+
     ~TestCompletionMarker() {
         // Set the flag to indicate all tests are done
         g_allTestsCompleted.store(true);
         std::cout << "TestCompletionMarker: All tests completed" << std::endl;
-        
+
         // Perform final cleanup
         performSafeCleanup();
-        
+
         // Force exit if we haven't already
         if (!g_exitInProgress.exchange(true)) {
             std::cout << "TestCompletionMarker: Final exit" << std::endl;

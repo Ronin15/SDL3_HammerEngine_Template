@@ -20,7 +20,7 @@ using EntityWeakPtr = std::weak_ptr<Entity>;
 
 class Entity : public std::enable_shared_from_this<Entity> {
  public:
-   virtual void update() = 0;
+   virtual void update(float deltaTime) = 0;
    virtual void render() = 0;
    
    /**

@@ -108,7 +108,7 @@ public:
     // Core lifecycle
     bool init();
     void clean();
-    void update();
+    void update(float deltaTime);
 
     // Behavior management
     void registerBehavior(const std::string& name, std::shared_ptr<AIBehavior> behavior);
@@ -258,7 +258,7 @@ private:
 
     // Helper methods
     BehaviorType inferBehaviorType(const std::string& behaviorName) const;
-    void processBatch(size_t start, size_t end);
+    void processBatch(size_t start, size_t end, float deltaTime);
     void cleanupInactiveEntities();
     bool shouldUpdateEntity(EntityPtr entity, EntityPtr player, int& frameCounter, int entityPriority);
     void updateEntityBehavior(EntityPtr entity);

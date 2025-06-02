@@ -13,7 +13,7 @@
 #include "managers/FontManager.hpp"
 #include "managers/InputManager.hpp"
 #include <SDL3/SDL.h>
-#include <numeric>
+
 #include <iostream>
 #include <memory>
 #include <random>
@@ -66,7 +66,7 @@ bool AIDemoState::enter() {
         AIManager::Instance().setPlayerForDistanceOptimization(m_player);
 
         // Create and register chase behavior - behaviors can get player via getPlayerReference()
-        auto chaseBehavior = std::make_unique<ChaseBehavior>(2.0f, 500.0f, 50.0f);
+        auto chaseBehavior = std::make_unique<ChaseBehavior>(120.0f, 500.0f, 50.0f);
         AIManager::Instance().registerBehavior("Chase", std::move(chaseBehavior));
         std::cout << "Forge Game Engine - Chase behavior registered (will use AIManager::getPlayerReference())\n";
 
@@ -76,12 +76,7 @@ bool AIDemoState::enter() {
         // Create NPCs with AI behaviors
         createNPCs();
 
-        // Initialize frame rate counter
-        m_lastFrameTime = std::chrono::steady_clock::now();
-        m_frameTimes.clear();
-        m_frameCount = 0;
-        m_currentFPS = 0.0f;
-        m_averageFPS = 0.0f;
+
 
         // Log status
         std::cout << "Forge Game Engine - Created " << m_npcs.size() << " NPCs with AI behaviors\n";
@@ -148,18 +143,15 @@ bool AIDemoState::exit() {
     return true;
 }
 
-void AIDemoState::update() {
+void AIDemoState::update([[maybe_unused]] float deltaTime) {
     try {
-        // Update frame rate counter
-        updateFrameRate();
-
         // Update player
         if (m_player) {
-            m_player->update();
+            m_player->update(deltaTime);
         }
 
         // Update AI Manager
-        AIManager::Instance().update();
+        AIManager::Instance().update(deltaTime);
 
         // Entity updates are now handled by AIManager::update()
         // No need to manually update NPCs here
@@ -290,8 +282,8 @@ void AIDemoState::render() {
     // Render frame rate and AI status
     bool globallyPaused = AIManager::Instance().isGloballyPaused();
     std::stringstream fpsText;
-    fpsText << "FPS: " << std::fixed << std::setprecision(1) << m_currentFPS
-            << " (Avg: " << std::setprecision(1) << m_averageFPS << ")"
+    float currentFPS = GameEngine::Instance().getCurrentFPS();
+    fpsText << "FPS: " << std::fixed << std::setprecision(1) << currentFPS
             << " - Entity Count: " << m_npcs.size()
             << " - AI: " << (globallyPaused ? "PAUSED" : "RUNNING");
 
@@ -307,56 +299,56 @@ void AIDemoState::setupAIBehaviors() {
     std::cout << "AIDemoState: Setting up AI behaviors using EventDemoState implementation...\n";
 
     if (!AIManager::Instance().hasBehavior("Wander")) {
-        auto wanderBehavior = std::make_unique<WanderBehavior>(WanderBehavior::WanderMode::MEDIUM_AREA, 2.0f);
+        auto wanderBehavior = std::make_unique<WanderBehavior>(WanderBehavior::WanderMode::MEDIUM_AREA, 80.0f);
         wanderBehavior->setScreenDimensions(m_worldWidth, m_worldHeight);
         AIManager::Instance().registerBehavior("Wander", std::move(wanderBehavior));
         std::cout << "AIDemoState: Registered Wander behavior\n";
     }
 
     if (!AIManager::Instance().hasBehavior("SmallWander")) {
-        auto smallWanderBehavior = std::make_unique<WanderBehavior>(WanderBehavior::WanderMode::SMALL_AREA, 1.5f);
+        auto smallWanderBehavior = std::make_unique<WanderBehavior>(WanderBehavior::WanderMode::SMALL_AREA, 60.0f);
         smallWanderBehavior->setScreenDimensions(m_worldWidth, m_worldHeight);
         AIManager::Instance().registerBehavior("SmallWander", std::move(smallWanderBehavior));
         std::cout << "AIDemoState: Registered SmallWander behavior\n";
     }
 
     if (!AIManager::Instance().hasBehavior("LargeWander")) {
-        auto largeWanderBehavior = std::make_unique<WanderBehavior>(WanderBehavior::WanderMode::LARGE_AREA, 2.5f);
+        auto largeWanderBehavior = std::make_unique<WanderBehavior>(WanderBehavior::WanderMode::LARGE_AREA, 100.0f);
         largeWanderBehavior->setScreenDimensions(m_worldWidth, m_worldHeight);
         AIManager::Instance().registerBehavior("LargeWander", std::move(largeWanderBehavior));
         std::cout << "AIDemoState: Registered LargeWander behavior\n";
     }
 
     if (!AIManager::Instance().hasBehavior("EventWander")) {
-        auto eventWanderBehavior = std::make_unique<WanderBehavior>(WanderBehavior::WanderMode::EVENT_TARGET, 2.0f);
+        auto eventWanderBehavior = std::make_unique<WanderBehavior>(WanderBehavior::WanderMode::EVENT_TARGET, 70.0f);
         eventWanderBehavior->setScreenDimensions(m_worldWidth, m_worldHeight);
         AIManager::Instance().registerBehavior("EventWander", std::move(eventWanderBehavior));
         std::cout << "AIDemoState: Registered EventWander behavior\n";
     }
 
     if (!AIManager::Instance().hasBehavior("Patrol")) {
-        auto patrolBehavior = std::make_unique<PatrolBehavior>(PatrolBehavior::PatrolMode::FIXED_WAYPOINTS, 1.5f, true);
+        auto patrolBehavior = std::make_unique<PatrolBehavior>(PatrolBehavior::PatrolMode::FIXED_WAYPOINTS, 75.0f, true);
         patrolBehavior->setScreenDimensions(m_worldWidth, m_worldHeight);
         AIManager::Instance().registerBehavior("Patrol", std::move(patrolBehavior));
         std::cout << "AIDemoState: Registered Patrol behavior\n";
     }
 
     if (!AIManager::Instance().hasBehavior("RandomPatrol")) {
-        auto randomPatrolBehavior = std::make_unique<PatrolBehavior>(PatrolBehavior::PatrolMode::RANDOM_AREA, 2.0f, false);
+        auto randomPatrolBehavior = std::make_unique<PatrolBehavior>(PatrolBehavior::PatrolMode::RANDOM_AREA, 85.0f, false);
         randomPatrolBehavior->setScreenDimensions(m_worldWidth, m_worldHeight);
         AIManager::Instance().registerBehavior("RandomPatrol", std::move(randomPatrolBehavior));
         std::cout << "AIDemoState: Registered RandomPatrol behavior\n";
     }
 
     if (!AIManager::Instance().hasBehavior("CirclePatrol")) {
-        auto circlePatrolBehavior = std::make_unique<PatrolBehavior>(PatrolBehavior::PatrolMode::CIRCULAR_AREA, 1.8f, false);
+        auto circlePatrolBehavior = std::make_unique<PatrolBehavior>(PatrolBehavior::PatrolMode::CIRCULAR_AREA, 90.0f, false);
         circlePatrolBehavior->setScreenDimensions(m_worldWidth, m_worldHeight);
         AIManager::Instance().registerBehavior("CirclePatrol", std::move(circlePatrolBehavior));
         std::cout << "AIDemoState: Registered CirclePatrol behavior\n";
     }
 
     if (!AIManager::Instance().hasBehavior("EventTarget")) {
-        auto eventTargetBehavior = std::make_unique<PatrolBehavior>(PatrolBehavior::PatrolMode::EVENT_TARGET, 2.2f, false);
+        auto eventTargetBehavior = std::make_unique<PatrolBehavior>(PatrolBehavior::PatrolMode::EVENT_TARGET, 95.0f, false);
         eventTargetBehavior->setScreenDimensions(m_worldWidth, m_worldHeight);
         AIManager::Instance().registerBehavior("EventTarget", std::move(eventTargetBehavior));
         std::cout << "AIDemoState: Registered EventTarget behavior\n";
@@ -368,36 +360,7 @@ void AIDemoState::setupAIBehaviors() {
     std::cout << "AIDemoState: AI behaviors setup complete.\n";
 }
 
-void AIDemoState::updateFrameRate() {
-    // Calculate time since last frame
-    auto currentTime = std::chrono::steady_clock::now();
-    float deltaTime = std::chrono::duration<float, std::chrono::milliseconds::period>(currentTime - m_lastFrameTime).count();
-    m_lastFrameTime = currentTime;
 
-    // Convert to seconds for FPS calculation
-    float deltaTimeSeconds = deltaTime / 1000.0f;
-
-    // Skip extreme values that might be from debugging pauses
-    if (deltaTimeSeconds > 0.0f && deltaTimeSeconds < 1.0f) {
-        // Calculate current FPS
-        m_currentFPS = 1.0f / deltaTimeSeconds;
-
-        // Add to rolling average
-        m_frameTimes.push_back(m_currentFPS);
-
-        // Keep only the last MAX_FRAME_SAMPLES frames
-        if (m_frameTimes.size() > MAX_FRAME_SAMPLES) {
-            m_frameTimes.pop_front();
-        }
-
-        // Calculate average FPS using std::accumulate
-        float sum = std::accumulate(m_frameTimes.begin(), m_frameTimes.end(), 0.0f);
-        m_averageFPS = sum / m_frameTimes.size();
-    }
-
-    // Increment frame counter
-    m_frameCount++;
-}
 
 void AIDemoState::createNPCs() {
     try {

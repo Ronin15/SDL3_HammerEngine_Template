@@ -9,7 +9,7 @@
 #include <cmath>
 
 WanderBehavior::WanderBehavior(float speed, float changeDirectionInterval, float areaRadius)
-    : m_speed(speed), m_changeDirectionInterval(changeDirectionInterval), m_areaRadius(areaRadius), 
+    : m_speed(speed), m_changeDirectionInterval(changeDirectionInterval), m_areaRadius(areaRadius),
       m_minimumFlipInterval(400) {
     // Random number generators are already initialized in class definition
 }
@@ -30,7 +30,7 @@ void WanderBehavior::init(EntityPtr entity) {
     EntityWeakPtr entityWeak = entity;
     if (m_entityStates.find(entityWeak) == m_entityStates.end()) {
         m_entityStates[entityWeak] = EntityState{};
-        
+
         // Generate a random start delay between 0 and 5000 milliseconds
         std::uniform_int_distribution<Uint64> delayDist(0, 5000);
         m_entityStates[entityWeak].startDelay = delayDist(m_rng);
@@ -51,28 +51,31 @@ void WanderBehavior::init(EntityPtr entity) {
 void WanderBehavior::executeLogic(EntityPtr entity) {
     if (!entity || !m_active) return;
 
+
+
     // Create entity state if it doesn't exist
     EntityWeakPtr entityWeak = entity;
     if (m_entityStates.find(entityWeak) == m_entityStates.end()) {
         m_entityStates[entityWeak] = EntityState{};
         m_entityStates[entityWeak].lastDirectionChangeTime = SDL_GetTicks();
-        
+
         // Generate a random start delay between 0 and 5000 milliseconds
         std::uniform_int_distribution<Uint64> delayDist(0, 5000);
         m_entityStates[entityWeak].startDelay = delayDist(m_rng);
         m_entityStates[entityWeak].movementStarted = false;
-        
+
         chooseNewDirection(entity);
         // Set zero velocity until delay expires
         entity->setVelocity(Vector2D(0, 0));
+
     }
-    
+
     // Get entity-specific state
     EntityState& state = m_entityStates[entityWeak];
 
     // Get current time
     Uint64 currentTime = SDL_GetTicks();
-    
+
     // Check if we need to wait for the start delay
     if (!state.movementStarted) {
         if (currentTime >= state.lastDirectionChangeTime + state.startDelay) {
@@ -136,22 +139,22 @@ void WanderBehavior::executeLogic(EntityPtr entity) {
     // Control sprite flipping to avoid rapid flips
     // Only allow direction flips if enough time has passed since the last flip
     Vector2D currentVelocity = entity->getVelocity();
-    
+
     // Check if there was a direction change that would cause a flip
-    bool wouldFlip = (previousVelocity.getX() > 0.5f && currentVelocity.getX() < -0.5f) || 
+    bool wouldFlip = (previousVelocity.getX() > 0.5f && currentVelocity.getX() < -0.5f) ||
                      (previousVelocity.getX() < -0.5f && currentVelocity.getX() > 0.5f);
-    
+
     if (wouldFlip && (currentTime - state.lastDirectionFlip < m_minimumFlipInterval)) {
         // Prevent the flip by maintaining previous direction's sign but with new magnitude
         float magnitude = currentVelocity.length();
         float xDir = (previousVelocity.getX() < 0) ? -1.0f : 1.0f;
         float yVal = currentVelocity.getY();
-        
+
         // Create a new direction that doesn't cause a flip
         Vector2D stableVelocity(xDir * magnitude * 0.8f, yVal);
         stableVelocity.normalize();
         stableVelocity = stableVelocity * m_speed;
-        
+
         // Apply the stable velocity
         entity->setVelocity(stableVelocity);
     } else if (wouldFlip) {
@@ -164,7 +167,7 @@ void WanderBehavior::clean(EntityPtr entity) {
     if (entity) {
         // Stop the entity when behavior is cleaned up
         entity->setVelocity(Vector2D(0, 0));
-        
+
         // Remove entity state
         EntityWeakPtr entityWeak = entity;
         m_entityStates.erase(entityWeak);
@@ -178,7 +181,7 @@ void WanderBehavior::onMessage(EntityPtr entity, const std::string& message) {
     if (!entity) return;
 
     EntityWeakPtr entityWeak = entity;
-    
+
     if (message == "pause"){
         setActive(false);
         entity->setVelocity(Vector2D(0, 0));
@@ -264,7 +267,7 @@ void WanderBehavior::resetEntityPosition(EntityPtr entity) {
     if (m_entityStates.find(entityWeak) == m_entityStates.end()) {
         m_entityStates[entityWeak] = EntityState{};
     }
-    
+
     // Calculate entry point on the opposite side of the screen
     Vector2D position = entity->getPosition();
     Vector2D newPosition(0.0f, 0.0f);
@@ -295,11 +298,11 @@ void WanderBehavior::resetEntityPosition(EntityPtr entity) {
 
 void WanderBehavior::chooseNewDirection(EntityPtr entity, bool wanderOffscreen) {
     if (!entity) return;
-    
+
     // Get entity-specific state
     EntityWeakPtr entityWeak = entity;
     EntityState& state = m_entityStates[entityWeak];
-    
+
     // Track if we're currently wandering offscreen
     state.currentlyWanderingOffscreen = wanderOffscreen;
 
@@ -362,10 +365,10 @@ void WanderBehavior::chooseNewDirection(EntityPtr entity, bool wanderOffscreen) 
 void WanderBehavior::setupModeDefaults(WanderMode mode, float screenWidth, float screenHeight) {
     m_screenWidth = screenWidth;
     m_screenHeight = screenHeight;
-    
+
     // Set center point to screen center by default
     m_centerPoint = Vector2D(screenWidth * 0.5f, screenHeight * 0.5f);
-    
+
     switch (mode) {
         case WanderMode::SMALL_AREA:
             // Small wander area - personal space around position
@@ -373,21 +376,21 @@ void WanderBehavior::setupModeDefaults(WanderMode mode, float screenWidth, float
             m_changeDirectionInterval = 1500.0f; // Change direction more frequently
             m_offscreenProbability = 0.05f; // Very low chance to go offscreen
             break;
-            
+
         case WanderMode::MEDIUM_AREA:
             // Medium wander area - room/building sized
             m_areaRadius = 200.0f;
             m_changeDirectionInterval = 2500.0f; // Moderate direction changes
             m_offscreenProbability = 0.10f; // Low chance to go offscreen
             break;
-            
+
         case WanderMode::LARGE_AREA:
             // Large wander area - village/district sized
             m_areaRadius = 450.0f;
             m_changeDirectionInterval = 3500.0f; // Less frequent direction changes
             m_offscreenProbability = 0.20f; // Higher chance to explore offscreen
             break;
-            
+
         case WanderMode::EVENT_TARGET:
             // Wander around a specific target location (will be set later)
             m_areaRadius = 150.0f;

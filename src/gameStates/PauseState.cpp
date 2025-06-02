@@ -14,7 +14,7 @@ bool PauseState::enter() {
   return true;
 }
 
-void PauseState::update() {
+void PauseState::update([[maybe_unused]] float deltaTime) {
   //std::cout << "Updating PAUSE State\n";
   // Handle pause and ESC key.
   if (InputManager::Instance().isKeyDown(SDL_SCANCODE_R)) {

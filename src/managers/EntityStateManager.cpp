@@ -65,8 +65,8 @@ void EntityStateManager::removeState(const std::string& stateName) {
   states.erase(stateName);
 }
 
-void EntityStateManager::update() {
+void EntityStateManager::update(float deltaTime) {
   if (currentState) {
-    currentState->update();
+    currentState->update(deltaTime);
   }
 }
