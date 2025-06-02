@@ -12,6 +12,7 @@
 #include "managers/TextureManager.hpp"
 #include <SDL3/SDL.h>
 #include <iostream>
+#include <cmath>
 
 Player::Player() {
     // Initialize player properties
@@ -108,23 +109,25 @@ std::string Player::getCurrentStateName() const {
     return m_stateManager.getCurrentStateName();
 }
 
-void Player::update() {
+void Player::update(float deltaTime) {
     // Handle input and update state
     handleInput();
 
     // Let the current state handle specific behavior
-    m_stateManager.update();
+    m_stateManager.update(deltaTime);
 
     // Update position based on velocity (this is common for all states)
-    m_velocity += m_acceleration;
-    m_position += m_velocity;
+    // Physics calculations using deltaTime for frame-rate independence
+    m_velocity += m_acceleration * deltaTime;
+    m_position += m_velocity * deltaTime;
 
-    // Apply friction for a sliding stop instead of immediate stop
-    // Only apply friction when not actively accelerating (i.e., no input)
-    if (getCurrentStateName() == "idle" && m_velocity.length() > 0.1f) {
-        // Friction coefficient - adjust for desired sliding feel (0.9 means 90% of velocity is retained)
-        const float friction = 0.9f;
-        m_velocity *= friction;
+    // Apply friction for smooth deceleration
+    if (m_velocity.length() > 0.1f) {
+        // Frame-rate independent friction using exponential decay
+        // Different friction rates for idle vs running state
+        const float frictionRate = (getCurrentStateName() == "idle") ? 0.05f : 0.3f;
+        float frictionFactor = std::pow(frictionRate, deltaTime);
+        m_velocity *= frictionFactor;
     } else if (m_velocity.length() < 0.1f) {
         // If velocity is very small, stop completely to avoid tiny sliding
         m_velocity = Vector2D(0, 0);

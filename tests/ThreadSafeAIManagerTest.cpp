@@ -42,8 +42,9 @@ public:
         return std::make_shared<TestEntity>(pos);
     }
 
-    void update() override {
+    void update(float deltaTime) override {
         updateCount++;
+        (void)deltaTime; // Suppress unused parameter warning
     }
 
     void render() override {}
@@ -82,7 +83,7 @@ public:
             if (!testEntity) return;
 
             // Update the entity - simulate some work
-            testEntity->update();
+            testEntity->update(0.016f); // ~60 FPS deltaTime
 
             // Generate a random movement vector for the entity
             thread_local std::mt19937 localRng(std::hash<std::thread::id>{}(std::this_thread::get_id()));
@@ -601,7 +602,7 @@ BOOST_FIXTURE_TEST_CASE(TestThreadSafeBatchUpdates, ThreadedAITestFixture) {
         futures.push_back(std::async(std::launch::async, []() {
             for (int j = 0; j < UPDATES_PER_BEHAVIOR; ++j) {
                 // Use the unified entity update system
-                AIManager::Instance().update();
+                AIManager::Instance().update(0.016f);
                 std::this_thread::sleep_for(std::chrono::milliseconds(2));
             }
         }));
@@ -796,7 +797,7 @@ BOOST_FIXTURE_TEST_CASE(TestThreadSafeCacheInvalidation, ThreadedAITestFixture) 
     for (int i = 0; i < 10; ++i) {
         futures.push_back(std::async(std::launch::async, []() {
             for (int j = 0; j < 5; ++j) {
-                AIManager::Instance().update();
+                AIManager::Instance().update(0.016f);
                 std::this_thread::sleep_for(std::chrono::milliseconds(2));
             }
         }));
@@ -858,7 +859,7 @@ BOOST_FIXTURE_TEST_CASE(TestConcurrentBehaviorProcessing, ThreadedAITestFixture)
     // Run multiple concurrent updates
     const int NUM_UPDATES = 20;
     for (int i = 0; i < NUM_UPDATES; ++i) {
-        AIManager::Instance().update();
+        AIManager::Instance().update(0.016f);
         std::this_thread::sleep_for(std::chrono::milliseconds(5));
     }
 
@@ -955,7 +956,7 @@ BOOST_FIXTURE_TEST_CASE(StressTestThreadSafeAIManager, ThreadedAITestFixture) {
                                 }
                                 case 2: {
                                     // Update entities
-                                    AIManager::Instance().update();
+                                    AIManager::Instance().update(0.016f);
                                     break;
                                 }
                                 case 3: {
@@ -1006,7 +1007,7 @@ BOOST_FIXTURE_TEST_CASE(StressTestThreadSafeAIManager, ThreadedAITestFixture) {
         }
 
         // Force final update to process any pending operations
-        AIManager::Instance().update();
+        AIManager::Instance().update(0.016f);
 
         // Verify the system is still in a consistent state
         // Just check that we can still query entity-behavior associations
@@ -1016,7 +1017,7 @@ BOOST_FIXTURE_TEST_CASE(StressTestThreadSafeAIManager, ThreadedAITestFixture) {
         }
 
         // Check that we can still update without crashing
-        AIManager::Instance().update();
+        AIManager::Instance().update(0.016f);
 
         // Pass the test if we got this far without crashes
         BOOST_CHECK(true);

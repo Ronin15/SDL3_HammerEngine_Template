@@ -14,7 +14,7 @@ bool MainMenuState::enter() {
   return true;
 }
 
-void MainMenuState::update() {
+void MainMenuState::update([[maybe_unused]] float deltaTime) {
   //std::cout << "Updating Main Menu State\n";
 
       // Handle menu options

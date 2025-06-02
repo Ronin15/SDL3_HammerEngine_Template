@@ -11,8 +11,7 @@
 
 #include "entities/NPC.hpp"
 #include "entities/Player.hpp"
-#include <chrono>
-#include <deque>
+
 #include <memory>
 #include <vector>
 #include <string>
@@ -30,7 +29,7 @@ public:
     EventDemoState();
     ~EventDemoState() override;
 
-    void update() override;
+    void update(float deltaTime) override;
     void render() override;
 
     bool enter() override;
@@ -43,8 +42,8 @@ private:
     void setupEventSystem();
     void createTestEvents();
     void handleInput();
-    void updateDemoTimer();
-    void updateFrameRate();
+    void updateDemoTimer(float deltaTime);
+
     void renderUI();
     void renderEventStatus() const;
     void renderControls();
@@ -139,17 +138,9 @@ private:
     std::string m_statusText{};
     std::vector<std::string> m_instructions{};
 
-    // Frame rate counter
-    std::chrono::steady_clock::time_point m_lastFrameTime{};
-    std::deque<float> m_frameTimes{};
-    int m_frameCount{0};
-    float m_currentFPS{0.0f};
-    float m_averageFPS{0.0f};
-    static constexpr int MAX_FRAME_SAMPLES{60};
 
-    // Demo timing (separate from FPS timing)
-    std::chrono::steady_clock::time_point m_demoStartTime{};
-    std::chrono::steady_clock::time_point m_demoLastTime{};
+
+    // Demo timing using accumulated deltaTime
     float m_totalDemoTime{0.0f};
     float m_lastEventTriggerTime{0.0f};
     float m_eventFireInterval{4.0f}; // Minimum seconds between event triggers - slower for better visibility

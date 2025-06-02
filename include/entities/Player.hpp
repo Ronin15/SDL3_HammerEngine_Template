@@ -16,7 +16,7 @@ public:
     Player();
     ~Player() override;
 
-    void update()override;
+    void update(float deltaTime) override;
     void render()override;
     void clean()override;
 

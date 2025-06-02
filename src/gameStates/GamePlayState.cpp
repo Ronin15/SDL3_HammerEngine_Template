@@ -31,7 +31,7 @@ bool GamePlayState::enter() {
   return true;
 }
 
-void GamePlayState::update() {
+void GamePlayState::update([[maybe_unused]] float deltaTime) {
   //std::cout << "Updating GAME State\n";
   // Handle pause, ESC, and back to main menu keys.
   if (InputManager::Instance().isKeyDown(SDL_SCANCODE_P)) {
@@ -53,7 +53,7 @@ void GamePlayState::update() {
 
   // Update player if it exists
   if (mp_Player) {
-      mp_Player->update();
+      mp_Player->update(deltaTime);
   }
 }
 

@@ -9,8 +9,7 @@
 #include "gameStates/GameState.hpp"
 #include "entities/NPC.hpp"
 #include "entities/Player.hpp"
-#include <chrono>
-#include <deque>
+
 #include <memory>
 #include <vector>
 
@@ -26,7 +25,7 @@ public:
 
     ~AIDemoState() override;
 
-    void update() override;
+    void update(float deltaTime) override;
     void render() override;
 
     bool enter() override;
@@ -41,7 +40,7 @@ private:
     // Methods
     void setupAIBehaviors();
     void createNPCs();
-    void updateFrameRate();  // FPS counter update method
+
 
     // Members
     std::vector<NPCPtr> m_npcs{};
@@ -54,13 +53,7 @@ private:
     float m_worldWidth{800.0f};
     float m_worldHeight{600.0f};
 
-    // Frame rate counter
-    std::chrono::steady_clock::time_point m_lastFrameTime{};
-    std::deque<float> m_frameTimes{};
-    int m_frameCount{0};
-    float m_currentFPS{0.0f};
-    float m_averageFPS{0.0f};
-    static constexpr int MAX_FRAME_SAMPLES{60}; // Number of frames to average
+
 
     // AI pause state
     bool m_aiPaused{false};

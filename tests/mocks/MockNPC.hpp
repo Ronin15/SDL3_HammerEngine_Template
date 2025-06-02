@@ -57,8 +57,9 @@ public:
     }
 
     // Override Entity methods for testing
-    void update() override {
+    void update(float deltaTime) override {
         // Mock update - do nothing
+        (void)deltaTime; // Suppress unused parameter warning
     }
     
     void render() override {
