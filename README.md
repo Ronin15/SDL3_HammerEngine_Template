@@ -249,6 +249,7 @@ A comprehensive demonstration and testing framework for the event system:
 
 The EventDemoState serves as both documentation and testing platform for developers to understand event system integration.
 ![Forge Engine](./Event_Demo.png)
+![Forge Engine](./Event_Demo_resources.png)
 
 See `docs/EventManager.md`, `docs/EventManager_QuickReference.md`, and `docs/EventManager_ThreadSystem.md` for detailed documentation and usage examples.
 
@@ -300,6 +301,7 @@ See docs/AIManager.md, include/gameStates/AIDemoState.hpp, and src/gameStates/AI
 See `docs/AIManager.md` for detailed documentation with examples and best practices. Additional API details can be found in `include/managers/AIManager.hpp`, `include/ai/AIBehavior.hpp`, and the specific behavior implementations.
 
 ![Forge Engine](./Forge_Engine.png)
+![Forge Engine](./AIDemo_resources.png)
 
 ## Window Icon
 This project supports window icons across all platforms:
