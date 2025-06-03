@@ -333,7 +333,7 @@ Additional documentation can be found in the `docs/` directory:
 
 ### Event System Documentation
 - **[Event Manager](docs/EventManager.md)** - Guide to the event management system with examples and integration details
-- **[🔥 NEW: EventManager Quick Reference](docs/EventManager_QuickReference.md)** - Convenience methods guide and quick reference
+- **[EventManager Quick Reference](docs/EventManager_QuickReference.md)** - Convenience methods guide and quick reference
 - **[Event System Integration](docs/EventSystem_Integration.md)** - Quick reference guide for EventSystem integration and usage patterns
 - **[Event Manager Threading](docs/EventManager_ThreadSystem.md)** - Details on EventManager and ThreadSystem integration
 - **[Event Manager Performance](docs/EventManager_Performance_Improvements.md)** - Performance optimization techniques
