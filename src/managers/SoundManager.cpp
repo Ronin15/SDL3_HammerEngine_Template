@@ -97,17 +97,18 @@ bool SoundManager::loadSFX(const std::string& filePath, const std::string& sound
           // Create sound ID by combining the provided prefix and filename
           std::string combinedID = soundID.empty() ? filename : soundID + "_" + filename;
           //std::cout << "Forge Game Engine - Loading sound ID: " << combinedID << "!\n";
-          // Load the individual file as a sound
-          Mix_Chunk* p_chunk = Mix_LoadWAV(fullPath.c_str());
+          // Load the individual file as a sound with immediate RAII
+          auto chunk = std::unique_ptr<Mix_Chunk, decltype(&Mix_FreeChunk)>(
+              Mix_LoadWAV(fullPath.c_str()), Mix_FreeChunk);
 
           std::cout << "Forge Game Engine - Loading sound effect: " << fullPath << "!\n";
 
-          if (p_chunk == nullptr) {
+          if (!chunk) {
             std::cerr << "Forge Game Engine - Could not load sound effect: " << SDL_GetError() << std::endl;
             continue;
           }
 
-          m_sfxMap[combinedID] = p_chunk;
+          m_sfxMap[combinedID] = chunk.release();
           loadedAny = true;
           soundsLoaded++;
         }
@@ -122,17 +123,18 @@ bool SoundManager::loadSFX(const std::string& filePath, const std::string& sound
     return loadedAny; // Return true if at least one sound was loaded successfully
   }
 
-  // Standard single file loading code
-  Mix_Chunk* p_chunk = Mix_LoadWAV(filePath.c_str());
+  // Standard single file loading with immediate RAII
+  auto chunk = std::unique_ptr<Mix_Chunk, decltype(&Mix_FreeChunk)>(
+      Mix_LoadWAV(filePath.c_str()), Mix_FreeChunk);
 
   std::cout << "Forge Game Engine - Loading sound effect: " << filePath << "! ID: " << soundID << "\n";
 
-  if (p_chunk == nullptr) {
+  if (!chunk) {
     std::cerr << "Forge Game Engine - Could not load sound effect: " << SDL_GetError() << std::endl;
     return false;
   }
 
-  m_sfxMap[soundID] = p_chunk;
+  m_sfxMap[soundID] = chunk.release();
   return true;
 }
 
@@ -167,17 +169,18 @@ bool SoundManager::loadMusic(const std::string& filePath, const std::string& mus
           // Create music ID by combining the provided prefix and filename
           std::string combinedID = musicID.empty() ? filename : musicID + "_" + filename;
 
-          // Load the individual file as music
-          Mix_Music* p_music = Mix_LoadMUS(fullPath.c_str());
+          // Load the individual file as music with immediate RAII
+          auto music = std::unique_ptr<Mix_Music, decltype(&Mix_FreeMusic)>(
+              Mix_LoadMUS(fullPath.c_str()), Mix_FreeMusic);
 
           std::cout << "Forge Game Engine - Loading music: " << fullPath << "!\n";
 
-          if (p_music == nullptr) {
+          if (!music) {
             std::cerr << "Forge Game Engine - Could not load music: " << SDL_GetError() << std::endl;
             continue;
           }
 
-          m_musicMap[combinedID] = p_music;
+          m_musicMap[combinedID] = music.release();
           loadedAny = true;
           musicLoaded++;
         }
@@ -192,17 +195,18 @@ bool SoundManager::loadMusic(const std::string& filePath, const std::string& mus
     return loadedAny; // Return true if at least one music file was loaded successfully
   }
 
-  // Standard single file loading code
-  Mix_Music* p_music = Mix_LoadMUS(filePath.c_str());
+  // Standard single file loading with immediate RAII
+  auto music = std::unique_ptr<Mix_Music, decltype(&Mix_FreeMusic)>(
+      Mix_LoadMUS(filePath.c_str()), Mix_FreeMusic);
 
   std::cout << "Forge Game Engine - Loading music: " << filePath << "! ID: " << musicID << "\n";
 
-  if (p_music == nullptr) {
+  if (!music) {
     std::cerr << "Forge Game Engine - Could not load music: " << SDL_GetError() << std::endl;
     return false;
   }
 
-  m_musicMap[musicID] = p_music;
+  m_musicMap[musicID] = music.release();
   return true;
 }
 

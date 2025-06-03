@@ -43,24 +43,23 @@ bool TextureManager::load(const std::string& fileName,
           // Create texture ID by combining the provided prefix and filename
           std::string combinedID = textureID.empty() ? filename : textureID + "_" + filename;
 
-          // Load the individual file as a texture
-          // Call the standard loading code directly rather than calling load() recursively
-          SDL_Surface* p_tempSurface = IMG_Load(fullPath.c_str());
+          // Load the individual file as a texture with immediate RAII
+          auto surface = std::unique_ptr<SDL_Surface, decltype(&SDL_DestroySurface)>(
+              IMG_Load(fullPath.c_str()), SDL_DestroySurface);
 
           std::cout << "Forge Game Engine - Loading texture: " << fullPath << "!\n";
 
-          if (p_tempSurface == 0) {
+          if (!surface) {
             std::cout << "Forge Game Engine - Could not load image: " << SDL_GetError() << "\n";
             continue;
           }
 
-          SDL_Texture* p_texture = SDL_CreateTextureFromSurface(p_renderer, p_tempSurface);
+          auto texture = std::unique_ptr<SDL_Texture, decltype(&SDL_DestroyTexture)>(
+              SDL_CreateTextureFromSurface(p_renderer, surface.get()), SDL_DestroyTexture);
 
-          SDL_DestroySurface(p_tempSurface);
-
-          if (p_texture != 0) {
-            //SDL_SetTextureBlendMode(p_texture, SDL_BLENDMODE_ADD); //for lighting // this puts light on by default
-            m_textureMap[combinedID] = std::shared_ptr<SDL_Texture>(p_texture, SDL_DestroyTexture);
+          if (texture) {
+            //SDL_SetTextureBlendMode(texture.get(), SDL_BLENDMODE_ADD); //for lighting // this puts light on by default
+            m_textureMap[combinedID] = std::shared_ptr<SDL_Texture>(texture.release(), SDL_DestroyTexture);
             loadedAny = true;
             texturesLoaded++;
           } else {
@@ -78,23 +77,23 @@ bool TextureManager::load(const std::string& fileName,
     return loadedAny; // Return true if at least one texture was loaded successfully
   }
 
-  // Standard single file loading code
-  SDL_Surface* p_tempSurface = IMG_Load(fileName.c_str());
+  // Standard single file loading with immediate RAII
+  auto surface = std::unique_ptr<SDL_Surface, decltype(&SDL_DestroySurface)>(
+      IMG_Load(fileName.c_str()), SDL_DestroySurface);
 
   std::cout << "Forge Game Engine - Loading texture: " << fileName << "!\n";
 
-  if (p_tempSurface == 0) {
+  if (!surface) {
     std::cerr << "Forge Game Engine - Could not load image: " << SDL_GetError() << std::endl;
 
     return false;
   }
 
-  SDL_Texture* p_texture = SDL_CreateTextureFromSurface(p_renderer, p_tempSurface);
+  auto texture = std::unique_ptr<SDL_Texture, decltype(&SDL_DestroyTexture)>(
+      SDL_CreateTextureFromSurface(p_renderer, surface.get()), SDL_DestroyTexture);
 
-  SDL_DestroySurface(p_tempSurface);
-
-  if (p_texture != 0) {
-    m_textureMap[textureID] = std::shared_ptr<SDL_Texture>(p_texture, SDL_DestroyTexture);
+  if (texture) {
+    m_textureMap[textureID] = std::shared_ptr<SDL_Texture>(texture.release(), SDL_DestroyTexture);
     return true;
   }
 

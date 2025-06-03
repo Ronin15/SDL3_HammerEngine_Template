@@ -24,10 +24,10 @@ class EntityStateManager {
   ~EntityStateManager();
 
   private:
-   boost::container::flat_map<std::string, std::unique_ptr<EntityState>> states;
-   // Non-owning pointer to the current active state
+   boost::container::flat_map<std::string, std::shared_ptr<EntityState>> states;
+   // Non-owning observer to the current active state
    // This state is owned by the 'states' container above
-   EntityState* currentState{nullptr};
+   std::weak_ptr<EntityState> currentState;
 };
 
 #endif  // ENTITY_STATE_MANAGER_HPP

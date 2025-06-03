@@ -9,42 +9,48 @@
 #include <stdexcept>
 #include <algorithm>
 
-EntityStateManager::EntityStateManager() : currentState(nullptr) {}
+EntityStateManager::EntityStateManager() : currentState() {}
 
 EntityStateManager::~EntityStateManager() {
-  currentState = nullptr;
+  currentState.reset();
 }
 
 void EntityStateManager::addState(const std::string& stateName, std::unique_ptr<EntityState> state) {
   if (states.find(stateName) != states.end()) {
     throw std::invalid_argument("Forge Game Engine - State already exists" + stateName);
   }
-  states[stateName] = std::move(state);
+  // Convert unique_ptr to shared_ptr and add to container
+  states[stateName] = std::shared_ptr<EntityState>(state.release());
 }
 
 void EntityStateManager::setState(const std::string& stateName) {
-  if (currentState) {
-    currentState->exit();
+  if (auto current = currentState.lock()) {
+    current->exit();
   }
   // find new state
   auto it = states.find(stateName);
   if (it != states.end()) {
-    // set current state and enter
-    currentState = it->second.get();
-    currentState->enter();
+    // set current state and enter (non-owning observer via weak_ptr)
+    currentState = it->second;
+    if (auto current = currentState.lock()) {
+      current->enter();
+    }
   } else {
-    // state not found set to null
+    // state not found, reset weak_ptr
     std::cerr << "Forge Game Engine - State not found: " << stateName << std::endl;
-    currentState = nullptr;
+    currentState.reset();
   }
 }
 
 std::string EntityStateManager::getCurrentStateName() const {
-  auto it = std::find_if(states.begin(), states.end(),
-                        [this](const auto& pair) {
-                          return pair.second.get() == currentState;
-                        });
-  return (it != states.end()) ? it->first : "";
+  if (auto current = currentState.lock()) {
+    auto it = std::find_if(states.begin(), states.end(),
+                          [&current](const auto& pair) {
+                            return pair.second == current;
+                          });
+    return (it != states.end()) ? it->first : "";
+  }
+  return "";
 }
 
 bool EntityStateManager::hasState(const std::string& stateName) const {
@@ -54,11 +60,11 @@ bool EntityStateManager::hasState(const std::string& stateName) const {
 // TODO: REMOVE THIS FUNCTION later as Entity states will be set and not
 // deleted/removed.
 void EntityStateManager::removeState(const std::string& stateName) {
-  // cehck if current state is being removed
-  if (currentState) {
+  // check if current state is being removed
+  if (auto current = currentState.lock()) {
     auto it = states.find(stateName);
-    if (it != states.end() && it->second.get() == currentState) {
-      currentState = nullptr;
+    if (it != states.end() && it->second == current) {
+      currentState.reset();
     }
   }
   // remove state
@@ -66,7 +72,7 @@ void EntityStateManager::removeState(const std::string& stateName) {
 }
 
 void EntityStateManager::update(float deltaTime) {
-  if (currentState) {
-    currentState->update(deltaTime);
+  if (auto current = currentState.lock()) {
+    current->update(deltaTime);
   }
 }

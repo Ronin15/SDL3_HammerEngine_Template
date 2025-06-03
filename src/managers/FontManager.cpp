@@ -50,17 +50,17 @@ bool FontManager::loadFont(const std::string& fontFile, const std::string& fontI
           // Create font ID by combining the provided prefix and filename
           std::string combinedID = fontID.empty() ? filename : fontID + "_" + filename;
 
-          // Load the individual file as a font
-          TTF_Font* rawFont = TTF_OpenFont(fullPath.c_str(), fontSize);
+          // Load the individual file as a font with immediate RAII
+          auto font = std::shared_ptr<TTF_Font>(TTF_OpenFont(fullPath.c_str(), fontSize), TTF_CloseFont);
 
           std::cout << "Forge Game Engine - Loading font: " << fullPath << "!\n";
 
-          if (rawFont == nullptr) {
+          if (!font) {
             std::cerr << "Forge Game Engine - Could not load font: " << SDL_GetError() << std::endl;
             continue;
           }
 
-          m_fontMap[combinedID] = std::shared_ptr<TTF_Font>(rawFont, TTF_CloseFont);
+          m_fontMap[combinedID] = std::move(font);
           loadedAny = true;
           fontsLoaded++;
         }
@@ -75,16 +75,16 @@ bool FontManager::loadFont(const std::string& fontFile, const std::string& fontI
     return loadedAny; // Return true if at least one font was loaded successfully
   }
 
-  // Standard single file loading code
-  TTF_Font* rawFont = TTF_OpenFont(fontFile.c_str(), fontSize);
+  // Standard single file loading with immediate RAII
+  auto font = std::shared_ptr<TTF_Font>(TTF_OpenFont(fontFile.c_str(), fontSize), TTF_CloseFont);
 
-  if (rawFont == nullptr) {
+  if (!font) {
     std::cerr << "Forge Game Engine - Failed to load font '" << fontFile <<
                  "': " << SDL_GetError() << std::endl;
     return false;
   }
 
-  m_fontMap[fontID] = std::shared_ptr<TTF_Font>(rawFont, TTF_CloseFont);
+  m_fontMap[fontID] = std::move(font);
   std::cout << "Forge Game Engine - Loaded font '" << fontID << "' from '" << fontFile << "'\n";
   return true;
 }
@@ -104,24 +104,25 @@ std::shared_ptr<SDL_Texture> FontManager::renderText(
     return nullptr;
   }
 
-  // Render the text to a surface using Blended mode (high quality with alpha)
-  SDL_Surface* surface = TTF_RenderText_Blended(fontIt->second.get(), text.c_str(), 0, color);
+  // Render the text to a surface using Blended mode (high quality with alpha) with immediate RAII
+  auto surface = std::unique_ptr<SDL_Surface, decltype(&SDL_DestroySurface)>(
+      TTF_RenderText_Blended(fontIt->second.get(), text.c_str(), 0, color), SDL_DestroySurface);
   if (!surface) {
     std::cerr << "Forge Game Engine - Failed to render text: " << SDL_GetError() << std::endl;
     return nullptr;
   }
 
-  // Create texture from surface
-  SDL_Texture* rawTexture = SDL_CreateTextureFromSurface(renderer, surface);
-  SDL_DestroySurface(surface);
+  // Create texture from surface with immediate RAII
+  auto texture = std::shared_ptr<SDL_Texture>(
+      SDL_CreateTextureFromSurface(renderer, surface.get()), SDL_DestroyTexture);
 
-  if (!rawTexture) {
+  if (!texture) {
     std::cerr << "Forge Game Engine - Failed to create texture from rendered text: "
               << SDL_GetError() << std::endl;
     return nullptr;
   }
 
-  return std::shared_ptr<SDL_Texture>(rawTexture, SDL_DestroyTexture);
+  return texture;
 }
 
 void FontManager::drawText(const std::string& text, const std::string& fontID,

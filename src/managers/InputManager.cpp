@@ -11,8 +11,7 @@
 #include <iostream>
 #include <memory>
 
-// Global pointer to store gamepad IDs
-SDL_JoystickID* g_gamepadIDs{nullptr};
+// Removed global pointer - now managed as member variable
 
 InputManager::InputManager()
     : m_keystates(nullptr),
@@ -46,11 +45,12 @@ void InputManager::initializeGamePad() {
     return;
   }
 
-  // Get all available gamepads
+  // Get all available gamepads with RAII management
   int numGamepads = 0;
-  g_gamepadIDs = SDL_GetGamepads(&numGamepads);
+  auto gamepadIDs = std::unique_ptr<SDL_JoystickID[], decltype(&SDL_free)>(
+      SDL_GetGamepads(&numGamepads), SDL_free);
 
-  if (g_gamepadIDs == nullptr) {
+  if (!gamepadIDs) {
     std::cerr << "Forge Game Engine - Failed to get gamepad IDs: "
               << SDL_GetError() << std::endl;
     return;
@@ -60,8 +60,8 @@ void InputManager::initializeGamePad() {
     std::cout << "Forge Game Engine - Number of Game Pads detected: " << numGamepads << std::endl;
     // Open all available gamepads
     for (int i = 0; i < numGamepads; i++) {
-      if (SDL_IsGamepad(g_gamepadIDs[i])) {
-        SDL_Gamepad* gamepad = SDL_OpenGamepad(g_gamepadIDs[i]);
+      if (SDL_IsGamepad(gamepadIDs[i])) {
+        SDL_Gamepad* gamepad = SDL_OpenGamepad(gamepadIDs[i]);
         if (gamepad) {
           m_joysticks.push_back(gamepad);
           std::cout << "Forge Game Engine - Gamepad connected: " << SDL_GetGamepadName(gamepad) << std::endl;
@@ -156,7 +156,7 @@ const Vector2D& InputManager::getMousePosition() const {
 void InputManager::update() {
   // Cache GameEngine reference for better performance
   GameEngine& gameEngine = GameEngine::Instance();
-  
+
   SDL_Event event;
   while (SDL_PollEvent(&event)) {
     switch (event.type) {
@@ -210,7 +210,7 @@ void InputManager::onKeyDown(const SDL_Event& /*event*/) {
 }
 
 void InputManager::onKeyUp(const SDL_Event& /*event*/) {
-  // TODO may not bew needed and need to clean upStore the keyboard state
+  // TODO may not be needed and need to clean upStore the keyboard state
   m_keystates = SDL_GetKeyboardState(0);
 
   // Key-specific processing can be handled by game states
@@ -428,8 +428,6 @@ void InputManager::clean() {
 
   m_joysticks.clear();
   m_joystickValues.clear();
-  SDL_free(g_gamepadIDs);
-  g_gamepadIDs = nullptr;
   m_gamePadInitialized = false;
   SDL_QuitSubSystem(SDL_INIT_GAMEPAD);
   std::cout << "Forge Game Engine - " << gamepadCount << " gamepads freed!\n";
