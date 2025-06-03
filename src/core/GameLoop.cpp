@@ -159,8 +159,14 @@ void GameLoop::runUpdateThread() {
                 processUpdates();
             }
 
-            // Small sleep to prevent busy waiting when no updates needed
-            std::this_thread::sleep_for(std::chrono::microseconds(100));
+            // Calculate smart sleep time based on target FPS for reliable behavior
+            // Sleep for approximately half the target frame time to balance responsiveness and CPU usage
+            float targetFPS = m_timestepManager->getTargetFPS();
+            float targetFrameTimeMs = 1000.0f / targetFPS;
+            
+            // Ensure minimum 1ms sleep, maximum 8ms for responsiveness
+            uint32_t sleepTimeMs = static_cast<uint32_t>(std::max(1.0f, std::min(8.0f, targetFrameTimeMs * 0.5f)));
+            std::this_thread::sleep_for(std::chrono::milliseconds(sleepTimeMs));
 
         } catch (const std::exception& e) {
             std::cerr << "GameLoop: Exception in update thread: " << e.what() << std::endl;

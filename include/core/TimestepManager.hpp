@@ -74,6 +74,12 @@ public:
     float getCurrentFPS() const;
 
     /**
+     * Get target FPS
+     * @return target frames per second
+     */
+    float getTargetFPS() const;
+
+    /**
      * Get last frame time in milliseconds
      * @return frame time in ms
      */

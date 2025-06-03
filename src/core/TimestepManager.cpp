@@ -86,6 +86,10 @@ float TimestepManager::getCurrentFPS() const {
     return m_currentFPS;
 }
 
+float TimestepManager::getTargetFPS() const {
+    return m_targetFPS;
+}
+
 uint32_t TimestepManager::getFrameTimeMs() const {
     return m_lastFrameTimeMs;
 }
