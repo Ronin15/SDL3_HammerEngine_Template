@@ -17,13 +17,8 @@
 // Initialize the static variable
 bool SaveGameManager::initialized = false;
 
-bool SaveGameManager::save(const std::string& saveFileName, const Player* player) {
-    if (player == nullptr) {
-        std::cerr << "Forge Game Engine - Save Game Manager: Cannot save null player!" << std::endl;
-        return false;
-    }
-
-    // Ensure player is valid and proceed with save
+bool SaveGameManager::save(const std::string& saveFileName, const Player& player) {
+    // No need for null check with references - they're always valid
 
     // Make sure base directory exists
     if (!std::filesystem::exists(m_saveDirectory)) {
@@ -81,13 +76,13 @@ bool SaveGameManager::save(const std::string& saveFileName, const Player* player
         // Write player data
 
         // Write position
-        writeVector2D(file, player->getPosition());
+        writeVector2D(file, player.getPosition());
 
         // Write textureID
-        writeString(file, player->getTextureID());
+        writeString(file, player.getTextureID());
 
         // Write current state
-        writeString(file, player->getCurrentStateName());
+        writeString(file, player.getCurrentStateName());
 
         // Write current level (this would come from your game state)
         writeString(file, "current_level_id"); // Replace with actual level ID
@@ -111,7 +106,7 @@ bool SaveGameManager::save(const std::string& saveFileName, const Player* player
     }
 }
 
-bool SaveGameManager::saveToSlot(int slotNumber, const Player* player) {
+bool SaveGameManager::saveToSlot(int slotNumber, const Player& player) {
     if (slotNumber < 1) {
         std::cerr << "Forge Game Engine - Save Game Manager: Invalid slot number: " << slotNumber << std::endl;
         return false;
@@ -122,11 +117,8 @@ bool SaveGameManager::saveToSlot(int slotNumber, const Player* player) {
 }
 
 
-bool SaveGameManager::load(const std::string& saveFileName, Player* player) const {
-    if (player == nullptr) {
-        std::cerr << "Forge Game Engine - Save Game Manager: Cannot load to null player!" << std::endl;
-        return false;
-    }
+bool SaveGameManager::load(const std::string& saveFileName, Player& player) const {
+    // No need for null check with references - they're always valid
 
     // Check if the file exists
     std::string fullPath = getFullSavePath(saveFileName);
@@ -160,8 +152,8 @@ bool SaveGameManager::load(const std::string& saveFileName, Player* player) cons
         }
 
         // Apply position to player
-        player->setVelocity(Vector2D(0, 0)); // Reset velocity
-        player->setPosition(position);
+        player.setVelocity(Vector2D(0, 0)); // Reset velocity
+        player.setPosition(position);
 
         // Read textureID
         std::string textureID;
@@ -180,7 +172,7 @@ bool SaveGameManager::load(const std::string& saveFileName, Player* player) cons
         }
 
         // Apply state to player
-        player->changeState(state);
+        player.changeState(state);
 
         // Read level ID (not using it yet, but reading for future use)
         std::string levelID;
@@ -202,7 +194,7 @@ bool SaveGameManager::load(const std::string& saveFileName, Player* player) cons
 }
 
 
-bool SaveGameManager::loadFromSlot(int slotNumber, Player* player) {
+bool SaveGameManager::loadFromSlot(int slotNumber, Player& player) {
     if (slotNumber < 1) {
         std::cerr << "Forge Game Engine - Save Game Manager: Invalid slot number: " << slotNumber << std::endl;
         return false;

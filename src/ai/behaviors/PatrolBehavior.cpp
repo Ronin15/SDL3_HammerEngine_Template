@@ -456,13 +456,11 @@ Vector2D PatrolBehavior::generateRandomPointInCircle() const {
 }
 
 bool PatrolBehavior::isValidWaypointDistance(const Vector2D& newPoint) const {
-    for (const auto& existingPoint : m_waypoints) {
-        Vector2D diff = newPoint - existingPoint;
-        if (diff.length() < m_minWaypointDistance) {
-            return false;
-        }
-    }
-    return true;
+    return std::all_of(m_waypoints.begin(), m_waypoints.end(), 
+        [this, &newPoint](const Vector2D& existingPoint) {
+            Vector2D diff = newPoint - existingPoint;
+            return diff.length() >= m_minWaypointDistance;
+        });
 }
 
 void PatrolBehavior::ensureRandomSeed() const {

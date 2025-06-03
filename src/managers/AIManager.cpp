@@ -42,7 +42,7 @@ bool AIManager::init() {
         AI_LOG("AIManager initialized");
         if (threadSystemExists) {
             // Cache ThreadSystem reference for better performance
-            Forge::ThreadSystem& threadSystem = Forge::ThreadSystem::Instance();
+            const Forge::ThreadSystem& threadSystem = Forge::ThreadSystem::Instance();
             (void)threadSystem; // Mark as intentionally used for logging
             AI_LOG("Threading enabled with " << threadSystem.getThreadCount() << " threads");
         }

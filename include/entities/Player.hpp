@@ -8,7 +8,6 @@
 
 #include "entities/Entity.hpp"
 #include "managers/EntityStateManager.hpp"
-#include "utils/Vector2D.hpp"
 #include <SDL3/SDL.h>
 
 class Player : public Entity{
@@ -23,7 +22,6 @@ public:
     // State management
     void changeState(const std::string& stateName);
     std::string getCurrentStateName() const;
-    void setPosition(const Vector2D& position) override;
     //void setVelocity(const Vector2D& m_velocity); for later in save manager
     //void setFlip(SDL_FlipMode m_flip);
 

@@ -11,7 +11,6 @@
 #include "managers/TextureManager.hpp"
 #include <SDL3/SDL.h>
 #include <iostream>
-#include <cmath>
 
 Player::Player() {
     // Initialize player properties
@@ -49,8 +48,8 @@ void Player::loadDimensionsFromTexture() {
     m_frameWidth = 64;  // Default frame width (width/numFrames)
 
     // Cache TextureManager reference for better performance
-    TextureManager& texMgr = TextureManager::Instance();
-    
+    const TextureManager& texMgr = TextureManager::Instance();
+
     // Get the texture from TextureManager
     if (texMgr.isTextureInMap(m_textureID)) {
         auto texture = texMgr.getTexture(m_textureID);
@@ -128,7 +127,7 @@ void Player::render() {
     // Cache manager references for better performance
     TextureManager& texMgr = TextureManager::Instance();
     SDL_Renderer* renderer = GameEngine::Instance().getRenderer();
-    
+
     // Calculate centered position for rendering (IDENTICAL to NPCs)
     int renderX = static_cast<int>(m_position.getX() - (m_frameWidth / 2.0f));
     int renderY = static_cast<int>(m_position.getY() - (m_height / 2.0f));
@@ -150,10 +149,6 @@ void Player::render() {
 void Player::clean() {
     // Clean up any resources
     std::cout << "Forge Game Engine - Cleaning up player resources" << "\n";
-}
-
-void Player::setPosition(const Vector2D& position) {
-    m_position = position;
 }
 
 

@@ -273,17 +273,12 @@ EntityPtr NPCSpawnEvent::forceSpawnNPC(const std::string& npcType, float x, floa
         Vector2D position(x, y);
         auto npc = NPC::create(textureID, position, 64, 64);
 
-        if (npc) {
-            // Set basic wander area around spawn point
-            npc->setWanderArea(x - 50.0f, y - 50.0f, x + 50.0f, y + 50.0f);
-            npc->setBoundsCheckEnabled(true);
+        // Set basic wander area around spawn point
+        npc->setWanderArea(x - 50.0f, y - 50.0f, x + 50.0f, y + 50.0f);
+        npc->setBoundsCheckEnabled(true);
 
-            std::cout << "Force-spawned " << npcType << " at (" << x << ", " << y << ")" << std::endl;
-            return std::static_pointer_cast<Entity>(npc);
-        }
-
-        // Return nullptr if NPC creation failed
-        return nullptr;
+        std::cout << "Force-spawned " << npcType << " at (" << x << ", " << y << ")" << std::endl;
+        return std::static_pointer_cast<Entity>(npc);
 
     } catch (const std::exception& e) {
         std::cerr << "Exception while force-spawning NPC: " << e.what() << std::endl;
@@ -309,18 +304,16 @@ std::vector<EntityPtr> NPCSpawnEvent::forceSpawnNPCs(const SpawnParameters& para
             Vector2D spawnPos(x + offsetX, y + offsetY);
             auto npc = NPC::create(textureID, spawnPos, 64, 64);
 
-            if (npc) {
-                // Configure wander area
-                float wanderRadius = params.spawnRadius > 0 ? params.spawnRadius : 50.0f;
-                npc->setWanderArea(
-                    x - wanderRadius, y - wanderRadius,
-                    x + wanderRadius, y + wanderRadius
-                );
-                npc->setBoundsCheckEnabled(true);
+            // Configure wander area
+            float wanderRadius = params.spawnRadius > 0 ? params.spawnRadius : 50.0f;
+            npc->setWanderArea(
+                x - wanderRadius, y - wanderRadius,
+                x + wanderRadius, y + wanderRadius
+            );
+            npc->setBoundsCheckEnabled(true);
 
-                spawnedNPCs.push_back(std::static_pointer_cast<Entity>(npc));
-                std::cout << "  - NPC " << (i+1) << " spawned successfully" << std::endl;
-            }
+            spawnedNPCs.push_back(std::static_pointer_cast<Entity>(npc));
+            std::cout << "  - NPC " << (i+1) << " spawned successfully" << std::endl;
         }
 
     } catch (const std::exception& e) {

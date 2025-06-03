@@ -52,19 +52,19 @@ public:
 
     // Save game data to a file
     // Returns true if save was successful
-    bool save(const std::string& saveFileName, const Player* player);
+    bool save(const std::string& saveFileName, const Player& player);
 
     // Save game data to a slot (creates a file with a standard naming convention)
     // Returns true if save was successful
-    bool saveToSlot(int slotNumber, const Player* player);
+    bool saveToSlot(int slotNumber, const Player& player);
 
     // Load game data from a file
     // Returns true if load was successful
-    bool load(const std::string& saveFileName, Player* player) const;
+    bool load(const std::string& saveFileName, Player& player) const;
 
     // Load game data from a slot
     // Returns true if load was successful
-    bool loadFromSlot(int slotNumber, Player* player);
+    bool loadFromSlot(int slotNumber, Player& player);
 
     // Delete a save file
     // Returns true if deletion was successful

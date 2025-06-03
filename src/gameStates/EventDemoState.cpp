@@ -362,7 +362,7 @@ void EventDemoState::createTestEvents() {
 
 void EventDemoState::handleInput() {
     // Cache manager references for better performance
-    InputManager& inputMgr = InputManager::Instance();
+    const InputManager& inputMgr = InputManager::Instance();
     GameEngine& gameEngine = GameEngine::Instance();
     
     // Store previous input state
@@ -599,7 +599,7 @@ void EventDemoState::renderUI() {
 
 void EventDemoState::renderEventStatus() const {
     // Cache manager references for better performance
-    GameEngine& gameEngine = GameEngine::Instance();
+    const GameEngine& gameEngine = GameEngine::Instance();
     FontManager& fontMgr = FontManager::Instance();
     SDL_Renderer* renderer = gameEngine.getRenderer();
     

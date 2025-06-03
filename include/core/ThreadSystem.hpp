@@ -396,11 +396,9 @@ public:
         m_workers.reserve(numThreads);
         for (size_t i = 0; i < numThreads; ++i) {
             m_workers.emplace_back([this, i] {
-                // Name the thread for easier debugging
-                std::string threadName = "Worker-" + std::to_string(i);
-
                 // Set thread name if platform supports it
                 #ifdef _GNU_SOURCE
+                std::string threadName = "Worker-" + std::to_string(i);
                 pthread_setname_np(pthread_self(), threadName.c_str());
                 #endif
 

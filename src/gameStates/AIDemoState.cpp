@@ -54,7 +54,7 @@ bool AIDemoState::enter() {
 
     try {
         // Cache GameEngine reference for better performance
-        GameEngine& gameEngine = GameEngine::Instance();
+        const GameEngine& gameEngine = GameEngine::Instance();
         
         // Setup window size
         m_worldWidth = gameEngine.getWindowWidth();
