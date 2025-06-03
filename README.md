@@ -247,7 +247,8 @@ A comprehensive demonstration and testing framework for the event system:
 - **Event Log**: Visual display of last 6 triggered events with timestamps
 - **Performance Monitoring**: Real-time FPS tracking and system status
 
-The EventDemoState serves as both documentation and testing platform for developers to understand event system integration and showcases the new convenience methods API.
+The EventDemoState serves as both documentation and testing platform for developers to understand event system integration.
+![Forge Engine](./Event_Demo.png)
 
 See `docs/EventManager.md`, `docs/EventManager_QuickReference.md`, and `docs/EventManager_ThreadSystem.md` for detailed documentation and usage examples.
 
