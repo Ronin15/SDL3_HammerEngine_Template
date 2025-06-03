@@ -232,10 +232,12 @@ grep -E "Performance Results|Total time:|Time per update cycle:|Time per entity:
 echo >> "test_results/ai_benchmark_performance_metrics.txt"
 echo "============ DETAILED ANALYSIS ============" >> "test_results/ai_benchmark_performance_metrics.txt"
 
-# Extract threading mode comparisons
+# Extract threading mode comparisons with better pattern matching
 echo "Threading Mode Comparisons:" >> "test_results/ai_benchmark_performance_metrics.txt"
-grep -A 10 "Single-Threaded mode" "$RESULTS_FILE" | grep -E "Total time:|Entity updates per second:" >> "test_results/ai_benchmark_performance_metrics.txt" 2>/dev/null || true
-grep -A 10 "Threaded mode" "$RESULTS_FILE" | grep -E "Total time:|Entity updates per second:" >> "test_results/ai_benchmark_performance_metrics.txt" 2>/dev/null || true
+echo "Single-Threaded Results:" >> "test_results/ai_benchmark_performance_metrics.txt"
+grep -A 15 "Single-Threaded mode" "$RESULTS_FILE" | grep -E "Total time:|Entity updates per second:|Time per entity:|Performance Results" >> "test_results/ai_benchmark_performance_metrics.txt" 2>/dev/null || true
+echo "Multi-Threaded Results:" >> "test_results/ai_benchmark_performance_metrics.txt"
+grep -A 15 "Threaded mode" "$RESULTS_FILE" | grep -E "Total time:|Entity updates per second:|Time per entity:|Performance Results" >> "test_results/ai_benchmark_performance_metrics.txt" 2>/dev/null || true
 
 # Extract scalability test results
 echo >> "test_results/ai_benchmark_performance_metrics.txt"
@@ -268,18 +270,25 @@ grep -E "Total time:|Time per update cycle:|Entity updates per second:|Total beh
 # Add threading performance comparison if available
 echo >> "$SUMMARY_FILE"
 echo "Threading Performance Analysis:" >> "$SUMMARY_FILE"
-SINGLE_THREADED_RATE=$(grep -A 6 "Single-Threaded mode" "$RESULTS_FILE" | grep "Entity updates per second:" | head -1 | awk '{print $NF}' 2>/dev/null || echo "N/A")
-THREADED_RATE=$(grep -A 6 "Threaded mode" "$RESULTS_FILE" | grep "Entity updates per second:" | head -1 | awk '{print $NF}' 2>/dev/null || echo "N/A")
+SINGLE_THREADED_RATE=$(grep -A 15 "Single-Threaded mode" "$RESULTS_FILE" | grep "Entity updates per second:" | tail -1 | awk '{print $NF}' 2>/dev/null || echo "N/A")
+THREADED_RATE=$(grep -A 15 "Threaded mode" "$RESULTS_FILE" | grep "Entity updates per second:" | tail -1 | awk '{print $NF}' 2>/dev/null || echo "N/A")
 
 if [ "$SINGLE_THREADED_RATE" != "N/A" ] && [ "$THREADED_RATE" != "N/A" ]; then
   echo "Single-threaded rate: $SINGLE_THREADED_RATE updates/sec" >> "$SUMMARY_FILE"
   echo "Multi-threaded rate: $THREADED_RATE updates/sec" >> "$SUMMARY_FILE"
   if command -v bc >/dev/null 2>&1; then
-    SPEEDUP=$(echo "scale=2; $THREADED_RATE / $SINGLE_THREADED_RATE" | bc 2>/dev/null || echo "N/A")
-    if [ "$SPEEDUP" != "N/A" ]; then
-      echo "Threading speedup: ${SPEEDUP}x" >> "$SUMMARY_FILE"
+    # Only calculate speedup if both rates are valid numbers
+    if [[ "$SINGLE_THREADED_RATE" =~ ^[0-9]+(\.[0-9]+)?$ ]] && [[ "$THREADED_RATE" =~ ^[0-9]+(\.[0-9]+)?$ ]]; then
+      SPEEDUP=$(echo "scale=2; $THREADED_RATE / $SINGLE_THREADED_RATE" | bc 2>/dev/null || echo "N/A")
+      if [ "$SPEEDUP" != "N/A" ] && [ "$(echo "$SPEEDUP > 0" | bc)" = "1" ]; then
+        echo "Threading speedup: ${SPEEDUP}x" >> "$SUMMARY_FILE"
+      fi
     fi
   fi
+else
+  echo "Threading comparison: Unable to extract valid performance rates" >> "$SUMMARY_FILE"
+  echo "Single-threaded: $SINGLE_THREADED_RATE" >> "$SUMMARY_FILE"
+  echo "Multi-threaded: $THREADED_RATE" >> "$SUMMARY_FILE"
 fi
 
 echo >> "$SUMMARY_FILE"
@@ -311,6 +320,15 @@ SUCCESS_RATE=$(grep -c "✓" "$RESULTS_FILE" 2>/dev/null || echo "0")
 echo -e "  Best performance: ${GREEN}$BEST_RATE${NC} entity updates/sec"
 echo -e "  Tests completed: ${GREEN}$TOTAL_TESTS${NC}"
 echo -e "  Successful validations: ${GREEN}$SUCCESS_RATE${NC}"
+
+# Debug performance extraction
+echo -e "${YELLOW}Debug: Performance extraction analysis${NC}"
+echo "Single-threaded patterns found:"
+grep -n "Single-Threaded mode" "$RESULTS_FILE" | head -3
+echo "Multi-threaded patterns found:"
+grep -n "Threaded mode" "$RESULTS_FILE" | head -3
+echo "All performance rates found:"
+grep -n "Entity updates per second:" "$RESULTS_FILE" | head -10
 
 # Final output
 echo -e "${GREEN}Results saved to:${NC}"

@@ -108,9 +108,42 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
                     auto& threadSystem = Forge::ThreadSystem::Instance();
                 
                     // Use threaded processing - submit optimal-sized batches, let ThreadSystem distribute
-                    // Calculate optimal batch size for ThreadSystem (around 1K-10K entities per batch)
-                    size_t optimalBatchSize = std::max(size_t(1000), m_entities.size() / 20);
-                    optimalBatchSize = std::min(optimalBatchSize, size_t(10000));
+                    // Dynamic threading strategy based on ThreadSystem's actual worker capacity
+                    
+                    // Get ThreadSystem's actual worker thread count (already optimized for this hardware)
+                    size_t availableWorkers = static_cast<size_t>(threadSystem.getThreadCount());
+                    
+                    // Calculate optimal thread usage based on entity count and ThreadSystem capacity
+                    size_t targetThreads;
+                    if (m_entities.size() < 500) {
+                        // Small workloads: Use fewer threads to avoid overhead
+                        targetThreads = std::min(size_t(4), availableWorkers / 3);
+                    } else if (m_entities.size() < 5000) {
+                        // Medium workloads: Use most workers but leave some for responsiveness
+                        targetThreads = std::max(size_t(4), (availableWorkers * 3) / 4); // Use 75% of workers
+                    } else {
+                        // Large workloads: Use nearly all available workers
+                        targetThreads = std::max(size_t(8), availableWorkers - 2); // Leave 2 workers free
+                    }
+                    
+                    // Ensure we don't exceed ThreadSystem capacity
+                    targetThreads = std::min(targetThreads, availableWorkers);
+                    
+                    // Calculate optimal batch size for the target thread count
+                    size_t targetBatches = targetThreads;
+                    size_t optimalBatchSize = std::max(size_t(25), m_entities.size() / targetBatches);
+                    
+                    // Apply cache-friendly limits based on entity count
+                    if (m_entities.size() < 1000) {
+                        optimalBatchSize = std::min(optimalBatchSize, size_t(250));  // Small cache-friendly batches
+                    } else if (m_entities.size() < 10000) {
+                        optimalBatchSize = std::min(optimalBatchSize, size_t(500));  // Medium batches
+                    } else {
+                        optimalBatchSize = std::min(optimalBatchSize, size_t(1000)); // Larger batches for big workloads
+                    }
+                    
+                    AI_LOG("Batch Strategy - Batch Size: " << optimalBatchSize 
+                           << ", Expected Batches: " << (m_entities.size() + optimalBatchSize - 1) / optimalBatchSize);
                 
                     std::atomic<size_t> completedTasks{0};
                     size_t tasksSubmitted = 0;
