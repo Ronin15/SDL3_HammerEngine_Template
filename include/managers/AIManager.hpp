@@ -242,7 +242,7 @@ private:
     // Distance optimization settings
     std::atomic<float> m_maxUpdateDistance{4000.0f};
     std::atomic<float> m_mediumUpdateDistance{6000.0f};
-    std::atomic<float> m_minUpdateDistance{12000.0f};
+    std::atomic<float> m_minUpdateDistance{10000.0f};
     std::atomic<float> m_priorityMultiplier{1.0f};
 
     // Thread synchronization
