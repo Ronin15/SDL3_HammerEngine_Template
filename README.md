@@ -119,6 +119,7 @@ See `tests/TESTING.md` for comprehensive documentation on all testing frameworks
 
 ## Feature Component Details
 
+![Forge Engine](./Forge_Engine_0.1.5.png)
 ### Game Engine
 
 The core engine manages the game loop, rendering, and resource management. It's designed to be thread-safe and efficient.
