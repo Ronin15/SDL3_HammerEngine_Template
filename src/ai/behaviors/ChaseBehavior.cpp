@@ -25,8 +25,8 @@ void ChaseBehavior::init(EntityPtr entity) {
     m_isChasing = false;
     m_hasLineOfSight = false;
 
-    // Cache AIManager reference for better performance
-    AIManager& aiMgr = AIManager::Instance();
+    // Cache AIManager reference for performance
+    const AIManager& aiMgr = AIManager::Instance();
     
     // Get player target from AIManager and check if it's in range
     auto target = aiMgr.getPlayerReference();
@@ -46,15 +46,13 @@ void ChaseBehavior::executeLogic(EntityPtr entity) {
     }
     
     // Cache AIManager reference for better performance
-    AIManager& aiMgr = AIManager::Instance();
+    const AIManager& aiMgr = AIManager::Instance();
     
     // Get player target from AIManager
     auto target = aiMgr.getPlayerReference();
     if (!target) {
         // No target, so stop chasing
-        if (entity) {
-            entity->setVelocity(Vector2D(0, 0));
-        }
+        entity->setVelocity(Vector2D(0, 0));
         m_isChasing = false;
         return;
     }
@@ -137,7 +135,7 @@ void ChaseBehavior::onMessage(EntityPtr entity, const std::string& message) {
     } else if (message == "resume") {
         setActive(true);
         // Cache AIManager reference for better performance
-        AIManager& aiMgr = AIManager::Instance();
+        const AIManager& aiMgr = AIManager::Instance();
         
         // Reinitialize chase state when resuming
         if (entity && aiMgr.isPlayerValid()) {
@@ -176,7 +174,7 @@ std::shared_ptr<AIBehavior> ChaseBehavior::clone() const {
 
 EntityPtr ChaseBehavior::getTarget() const {
     // Cache AIManager reference for better performance
-    AIManager& aiMgr = AIManager::Instance();
+    const AIManager& aiMgr = AIManager::Instance();
     return aiMgr.getPlayerReference();
 }
 

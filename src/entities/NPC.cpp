@@ -65,7 +65,7 @@ void NPC::loadDimensionsFromTexture() {
     m_frameWidth = 64;  // Default frame width (width/numFrames)
 
     // Cache TextureManager reference for better performance
-    TextureManager& texMgr = TextureManager::Instance();
+    const TextureManager& texMgr = TextureManager::Instance();
     
     // Get the texture from TextureManager
     if (texMgr.isTextureInMap(m_textureID)) {

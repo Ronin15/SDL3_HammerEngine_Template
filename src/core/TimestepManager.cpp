@@ -150,6 +150,3 @@ void TimestepManager::limitFrameRate() {
     }
 }
 
-Uint64 TimestepManager::getCurrentTimeMs() const {
-    return SDL_GetTicks();
-}

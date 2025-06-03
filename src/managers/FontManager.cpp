@@ -8,8 +8,6 @@
 #include <algorithm>
 #include <filesystem>
 
-TTF_TextEngine* FontManager::m_rendererTextEngine = nullptr;
-
 bool FontManager::init() {
   if (!TTF_Init()) {
     std::cerr << "Forge Game Engine - Font system initialization failed: " << SDL_GetError() << std::endl;
@@ -159,9 +157,8 @@ bool FontManager::isFontLoaded(const std::string& fontID) const {
 }
 
 void FontManager::clearFont(const std::string& fontID) {
-  if (m_fontMap.find(fontID) != m_fontMap.end()) {
-    // No need to manually call TTF_CloseFont as the unique_ptr will handle it
-    m_fontMap.erase(fontID);
+  // No need to manually call TTF_CloseFont as the unique_ptr will handle it
+  if (m_fontMap.erase(fontID) > 0) {
     std::cout << "Forge Game Engine - Cleared font: " << fontID << "\n";
   }
 }

@@ -577,25 +577,21 @@ size_t EventManager::getEventCount() const {
     std::shared_lock<std::shared_mutex> lock(m_eventsMutex);
     size_t total = 0;
     for (const auto& container : m_eventsByType) {
-        for (const auto& eventData : container) {
-            if (!(eventData.flags & EventData::FLAG_PENDING_REMOVAL)) {
-                total++;
-            }
-        }
+        total += std::count_if(container.begin(), container.end(),
+            [](const EventData& eventData) {
+                return !(eventData.flags & EventData::FLAG_PENDING_REMOVAL);
+            });
     }
     return total;
 }
 
 size_t EventManager::getEventCount(EventTypeId typeId) const {
     std::shared_lock<std::shared_mutex> lock(m_eventsMutex);
-    size_t count = 0;
     const auto& container = m_eventsByType[static_cast<size_t>(typeId)];
-    for (const auto& eventData : container) {
-        if (!(eventData.flags & EventData::FLAG_PENDING_REMOVAL)) {
-            count++;
-        }
-    }
-    return count;
+    return std::count_if(container.begin(), container.end(),
+        [](const EventData& eventData) {
+            return !(eventData.flags & EventData::FLAG_PENDING_REMOVAL);
+        });
 }
 
 void EventManager::compactEventStorage() {

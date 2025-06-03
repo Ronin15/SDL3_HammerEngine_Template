@@ -58,7 +58,6 @@ class FontManager {
 
  private:
   boost::container::flat_map<std::string, std::shared_ptr<TTF_Font>> m_fontMap{};
-  static TTF_TextEngine* m_rendererTextEngine;
   bool m_isShutdown{false}; // Flag to indicate if FontManager has been shut down
 
   // Delete copy constructor and assignment operator

@@ -129,7 +129,6 @@ private:
     // Helper methods
     void updateFPS();
     void limitFrameRate();
-    Uint64 getCurrentTimeMs() const;
 };
 
 #endif // TIMESTEP_MANAGER_HPP
