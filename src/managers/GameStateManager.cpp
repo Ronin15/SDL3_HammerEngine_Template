@@ -9,112 +9,117 @@
 #include <iostream>
 
 // GameStateManager Implementation
-GameStateManager::GameStateManager() : currentState(nullptr) {}
+GameStateManager::GameStateManager() : currentState() {}
 
 void GameStateManager::addState(std::unique_ptr<GameState> state) {
   // Check if a state with the same name already exists
   if (hasState(state->getName())) {
     throw std::runtime_error("Forge Game Engine - State with name " + state->getName() + " already exists");
   }
-  states.push_back(std::move(state));
+  // Convert unique_ptr to shared_ptr and add to container
+  states.push_back(std::shared_ptr<GameState>(state.release()));
 }
 
 void GameStateManager::setState(const std::string& stateName) {
   // Find the new state
   auto it = std::find_if(states.begin(), states.end(),
-                         [&stateName](const std::unique_ptr<GameState>& state) {
+                         [&stateName](const std::shared_ptr<GameState>& state) {
                            return state->getName() == stateName;
                          });
 
   if (it != states.end()) {
-    // Store the current state before changing
-    GameState* previousState = currentState;
-    std::string prevStateName = previousState ? previousState->getName() : "None";
+    // Store the previous state name before changing (safe access via weak_ptr)
+    std::string prevStateName = "None";
+    if (auto current = currentState.lock()) {
+      prevStateName = current->getName();
+    }
     
     try {
       // Exit current state if exists
-      if (currentState) {
+      if (auto current = currentState.lock()) {
         std::cout << "Forge Game Engine - Exiting state: " << prevStateName << std::endl;
-        bool exitSuccess = currentState->exit();
+        bool exitSuccess = current->exit();
         if (!exitSuccess) {
           std::cerr << "Forge Game Engine - Warning: Exit for state " << prevStateName << " returned false" << std::endl;
         }
-        currentState = nullptr; // Clear pointer before entering new state
+        currentState.reset(); // Clear weak_ptr before entering new state
       }
 
-      // Transfer ownership correctly
-      currentState = it->get();
+      // Set new current state (non-owning observer via weak_ptr)
+      currentState = *it;
 
       // Trigger enter of new state
-      if (currentState) {
+      if (auto current = currentState.lock()) {
         std::cout << "Forge Game Engine - Entering state: " << stateName << std::endl;
-        bool enterSuccess = currentState->enter();
+        bool enterSuccess = current->enter();
         if (!enterSuccess) {
           std::cerr << "Forge Game Engine - Error: Enter for state " << stateName << " failed" << std::endl;
-          currentState = nullptr; // Clear invalid state
+          currentState.reset(); // Clear invalid state
         }
       }
     } catch (const std::exception& e) {
       std::cerr << "Forge Game Engine - Exception during state transition: " << e.what() << std::endl;
-      currentState = nullptr; // Safety measure
+      currentState.reset(); // Safety measure
     } catch (...) {
       std::cerr << "Forge Game Engine - Unknown exception during state transition" << std::endl;
-      currentState = nullptr; // Safety measure
+      currentState.reset(); // Safety measure
     }
   } else {
     std::cerr << "Forge Game Engine - State not found: " << stateName << std::endl;
 
     // Exit current state if it exists
-    if (currentState) {
+    if (auto current = currentState.lock()) {
       try {
-        currentState->exit();
+        current->exit();
       } catch (...) {
         std::cerr << "Forge Game Engine - Exception while exiting state" << std::endl;
       }
-      currentState = nullptr;
+      currentState.reset();
     }
   }
 }
 
 void GameStateManager::update(float deltaTime) {
-  if (currentState) {
-    currentState->update(deltaTime);
+  if (auto current = currentState.lock()) {
+    current->update(deltaTime);
   }
 }
 
 void GameStateManager::render() {
-  if (currentState) {
-    currentState->render();
+  if (auto current = currentState.lock()) {
+    current->render();
   }
 }
 
 bool GameStateManager::hasState(const std::string& stateName) const {
   return std::any_of(states.begin(), states.end(),
-                     [&stateName](const std::unique_ptr<GameState>& state) {
+                     [&stateName](const std::shared_ptr<GameState>& state) {
                        return state->getName() == stateName;
                      });
 }
 
-GameState* GameStateManager::getState(const std::string& stateName) const {
+std::shared_ptr<GameState> GameStateManager::getState(const std::string& stateName) const {
   auto it = std::find_if(states.begin(), states.end(),
-                         [&stateName](const std::unique_ptr<GameState>& state) {
+                         [&stateName](const std::shared_ptr<GameState>& state) {
                            return state->getName() == stateName;
                          });
 
-  return it != states.end() ? it->get() : nullptr;
+  return it != states.end() ? *it : nullptr;
 }
 
 void GameStateManager::removeState(const std::string& stateName) {
   // If trying to remove the current state, first clear the current state
-  if (currentState && currentState->getName() == stateName) {
-    currentState->exit();
-    currentState = nullptr;
+  if (auto current = currentState.lock()) {
+    if (current->getName() == stateName) {
+      current->exit();
+      currentState.reset();
+    }
   }
 
   // Remove the state from the vector
   auto it =
       std::remove_if(states.begin(), states.end(),
-                     [&stateName](const std::unique_ptr<GameState>& state) {
+                     [&stateName](const std::shared_ptr<GameState>& state) {
                        return state->getName() == stateName;
                      });
 
@@ -123,9 +128,9 @@ void GameStateManager::removeState(const std::string& stateName) {
 
 void GameStateManager::clearAllStates() {
   // Exit current state if exists
-  if (currentState) {
-    currentState->exit();
-    currentState = nullptr;
+  if (auto current = currentState.lock()) {
+    current->exit();
+    currentState.reset();
   }
 
   // Clear all states

@@ -12,7 +12,11 @@
 #include <algorithm>
 #include <ctime>
 #include <cstring>
+#include <chrono>
 
+// File signature constant
+constexpr char FORGE_SAVE_SIGNATURE[9] = {'F', 'O', 'R', 'G', 'E', 'S', 'A', 'V', 'E'};
+constexpr size_t FORGE_SAVE_SIGNATURE_SIZE = sizeof(FORGE_SAVE_SIGNATURE);
 
 // Initialize the static variable
 bool SaveGameManager::initialized = false;
@@ -321,9 +325,8 @@ bool SaveGameManager::isValidSaveFile(const std::string& saveFileName) const {
             return false;
         }
 
-        // Check signature
-        const char* expectedSignature = "FORGESAVE";
-        if (std::memcmp(header.signature, expectedSignature, 9) != 0) {
+        // Check signature using constexpr array
+        if (std::memcmp(header.signature, FORGE_SAVE_SIGNATURE, FORGE_SAVE_SIGNATURE_SIZE) != 0) {
             file.close();
             return false;
         }
@@ -498,7 +501,9 @@ SaveGameData SaveGameManager::extractSaveInfo(const std::string& saveFileName) c
 // Add the missing binary file operations
 bool SaveGameManager::writeHeader(std::ofstream& file, uint32_t dataSize) const {
     SaveGameHeader header;
-    header.timestamp = std::time(nullptr);
+    // Initialize signature using the same constant
+    std::memcpy(header.signature, FORGE_SAVE_SIGNATURE, FORGE_SAVE_SIGNATURE_SIZE);
+    header.timestamp = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
     header.dataSize = dataSize;
 
     file.write(reinterpret_cast<const char*>(&header), sizeof(SaveGameHeader));
@@ -508,9 +513,8 @@ bool SaveGameManager::writeHeader(std::ofstream& file, uint32_t dataSize) const 
 bool SaveGameManager::readHeader(std::ifstream& file, SaveGameHeader& header) const {
     file.read(reinterpret_cast<char*>(&header), sizeof(SaveGameHeader));
 
-    // Verify header signature
-    const char* expectedSignature = "FORGESAVE";
-    if (std::memcmp(header.signature, expectedSignature, 9) != 0) {
+    // Verify header signature using constexpr array
+    if (std::memcmp(header.signature, FORGE_SAVE_SIGNATURE, FORGE_SAVE_SIGNATURE_SIZE) != 0) {
         return false;
     }
 

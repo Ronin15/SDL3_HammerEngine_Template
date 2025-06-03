@@ -19,15 +19,15 @@ class GameStateManager {
   void update(float deltaTime);
   void render();
   bool hasState(const std::string& stateName) const;
-  GameState* getState(const std::string& stateName) const;
+  std::shared_ptr<GameState> getState(const std::string& stateName) const;
   void removeState(const std::string& stateName);
   void clearAllStates();
 
   private:
-   boost::container::small_vector<std::unique_ptr<GameState>, 8> states{}; //increase to how many states you expect to have.
-   // Non-owning pointer to the current active state
-   // This state is owned by the 'states' container above
-   GameState* currentState{nullptr};
+    boost::container::small_vector<std::shared_ptr<GameState>, 8> states{}; //increase to how many states you expect to have.
+    // Non-owning observer to the current active state
+    // This state is owned by the 'states' container above
+    std::weak_ptr<GameState> currentState;
 
 };
 
