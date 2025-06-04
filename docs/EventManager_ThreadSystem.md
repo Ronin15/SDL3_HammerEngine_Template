@@ -38,6 +38,84 @@ EventManager::Instance().setThreadingThreshold(50); // Use threads if >50 events
 - **Threshold 50-100 events**: Multi-threaded beneficial for medium games
 - **Threshold > 100 events**: Multi-threaded essential for large games
 
+## Worker Budget System
+
+The EventManager now implements a sophisticated worker budget allocation system to coordinate thread usage with other engine subsystems and prevent ThreadSystem overload.
+
+### Budget Allocation Strategy
+
+The EventManager receives **30% of available workers** after the GameEngine reserves its minimum allocation:
+
+- **GameEngine**: Always reserves minimum 2 workers for critical operations
+- **AIManager**: Gets 60% of remaining workers for entity behavior processing  
+- **EventManager**: Gets 30% of remaining workers for event processing
+- **Buffer**: 10% left free for system responsiveness
+
+### Example Allocations by Core Count
+
+| Total Cores | Available Workers | Engine Reserved | Event Allocated | Max Event Batches |
+|-------------|-------------------|-----------------|-----------------|-------------------|
+| 4           | 3                 | 2               | 1               | 1                 |
+| 8           | 7                 | 2               | 1               | 1                 |
+| 12          | 11                | 2               | 2               | 2                 |
+| 24          | 23                | 2               | 6               | 6                 |
+
+### Implementation Details
+
+The system automatically calculates optimal batch distribution:
+
+```cpp
+// Worker budget is calculated automatically
+size_t availableWorkers = threadSystem.getThreadCount();
+Forge::WorkerBudget budget = Forge::calculateWorkerBudget(availableWorkers);
+size_t eventWorkerBudget = budget.eventAllocated;
+
+// Event batches limited to worker budget
+size_t maxEventBatches = eventWorkerBudget;
+size_t eventsPerBatch = eventContainer.size() / maxEventBatches;
+```
+
+### Queue Pressure Management
+
+The system monitors ThreadSystem queue pressure to prevent overload:
+
+```cpp
+// Check queue pressure before submitting batches
+size_t currentQueueSize = threadSystem.getQueueSize();
+size_t maxQueuePressure = availableWorkers * 2;
+
+if (currentQueueSize < maxQueuePressure && eventContainer.size() > 10) {
+    // Safe to use threaded processing with worker budget
+    submitEventBatches();
+} else {
+    // Fall back to single-threaded processing
+    processSingleThreaded();
+}
+```
+
+### Performance Benefits
+
+- **Prevents Thread Starvation**: EventManager respects its allocated worker budget
+- **Hardware Adaptive**: Automatically scales with processor count
+- **System Stability**: Eliminates ThreadSystem queue overflow
+- **Coordinated Processing**: Works harmoniously with AIManager and GameEngine
+- **Graceful Degradation**: Falls back to single-threaded under pressure
+
+### Integration with WorkerBudget Utility
+
+```cpp
+#include "utils/WorkerBudget.hpp"
+
+// Calculate budget allocation
+Forge::WorkerBudget budget = Forge::calculateWorkerBudget(availableWorkers);
+size_t eventWorkerBudget = budget.eventAllocated;
+
+// Use budget for batch sizing
+size_t maxConcurrentBatches = eventWorkerBudget;
+```
+
+This system ensures that EventManager threading works efficiently alongside other engine subsystems without overwhelming the ThreadSystem.
+
 ## Batch Processing Architecture
 
 ### Event Type Batching
