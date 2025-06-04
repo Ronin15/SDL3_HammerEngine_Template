@@ -301,20 +301,20 @@ if exist "%LOG_FILE%" (
     echo.
     
     REM Extract key metrics from log file
-    findstr /C:"=== UI Stress Test Results ===" "%LOG_FILE%" >nul
+    findstr /C:"=== UI Stress Test Results (Headless) ===" "%LOG_FILE%" >nul
     if !errorlevel! equ 0 (
         echo Test Results Found:
         REM Show first 16 lines after the results header
-        for /f "skip=1 tokens=*" %%a in ('findstr /n /C:"=== UI Stress Test Results ===" "%LOG_FILE%"') do (
+        for /f "skip=1 tokens=*" %%a in ('findstr /n /C:"=== UI Stress Test Results (Headless) ===" "%LOG_FILE%"') do (
             set LINE_NUM=%%a
             goto :show_results
         )
     ) else (
-        findstr /C:"=== UI Performance Benchmark Results ===" "%LOG_FILE%" >nul
+        findstr /C:"=== UI Performance Benchmark Results (Headless) ===" "%LOG_FILE%" >nul
         if !errorlevel! equ 0 (
             echo Benchmark Results Found:
             REM Show first 11 lines after the benchmark header
-            for /f "skip=1 tokens=*" %%a in ('findstr /n /C:"=== UI Performance Benchmark Results ===" "%LOG_FILE%"') do (
+            for /f "skip=1 tokens=*" %%a in ('findstr /n /C:"=== UI Performance Benchmark Results (Headless) ===" "%LOG_FILE%"') do (
                 set LINE_NUM=%%a
                 goto :show_benchmark_results
             )
@@ -325,12 +325,12 @@ if exist "%LOG_FILE%" (
     
     :show_results
     REM This is simplified - in a real implementation you'd extract specific lines
-    findstr /A:16 "Duration\|Frames\|FPS\|Memory\|Components" "%LOG_FILE%" 2>nul
+    findstr /A:16 "Duration\|Iterations\|Throughput\|Memory\|Performance\|Layout\|Collision\|Components" "%LOG_FILE%" 2>nul
     goto :results_done
     
     :show_benchmark_results
     REM This is simplified - in a real implementation you'd extract specific lines
-    findstr /A:11 "Test Name\|PASS\|FAIL\|FPS" "%LOG_FILE%" 2>nul
+    findstr /A:11 "Test Name\|PASS\|FAIL\|Throughput" "%LOG_FILE%" 2>nul
     goto :results_done
     
     :results_done

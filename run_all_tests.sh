@@ -54,8 +54,8 @@ for arg in "$@"; do
       echo -e "  Benchmarks:       AI scaling, EventManager scaling, and UI stress benchmarks"
       echo -e "\nExecution Time:"
       echo -e "  Core tests:       ~2-5 minutes total"
-      echo -e "  Benchmarks:       ~5-10 minutes total"
-      echo -e "  All tests:        ~7-15 minutes total"
+      echo -e "  Benchmarks:       ~5-15 minutes total"
+      echo -e "  All tests:        ~7-20 minutes total"
       echo -e "\nExamples:"
       echo -e "  ./run_all_tests.sh                 # Run all tests"
       echo -e "  ./run_all_tests.sh --core-only     # Quick validation"
@@ -115,9 +115,9 @@ run_test_script() {
     args="$args --verbose"
   fi
   
-  # Special handling for scaling benchmarks
+  # Special handling for scaling benchmarks and stress tests
   local is_benchmark=false
-  if [[ "$script_name" == *"benchmark"* ]] || [[ "$script_name" == *"scaling"* ]]; then
+  if [[ "$script_name" == *"benchmark"* ]] || [[ "$script_name" == *"scaling"* ]] || [[ "$script_name" == *"stress"* ]]; then
     is_benchmark=true
     echo -e "\n${MAGENTA}=====================================================${NC}"
     echo -e "${CYAN}Running performance benchmark: ${YELLOW}$script_name${NC}"
@@ -193,8 +193,8 @@ echo -e "${CYAN}Found ${#TEST_SCRIPTS[@]} test scripts to run${NC}"
 for script in "${TEST_SCRIPTS[@]}"; do
   run_test_script "$script"
   
-  # Add delay for benchmarks to ensure proper resource cleanup
-  if [[ "$(basename "$script")" == *"benchmark"* ]] || [[ "$(basename "$script")" == *"scaling"* ]]; then
+  # Add delay for benchmarks and stress tests to ensure proper resource cleanup
+  if [[ "$(basename "$script")" == *"benchmark"* ]] || [[ "$(basename "$script")" == *"scaling"* ]] || [[ "$(basename "$script")" == *"stress"* ]]; then
     echo -e "${YELLOW}Allowing time for resource cleanup after benchmark...${NC}"
     sleep 2
   else
