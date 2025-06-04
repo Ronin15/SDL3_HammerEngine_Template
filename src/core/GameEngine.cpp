@@ -393,11 +393,9 @@ void GameEngine::update([[maybe_unused]] float deltaTime) {
     // Update game states with fixed timestep - make sure GameStateManager knows which buffer to update
     mp_gameStateManager->update(deltaTime);
     
-    // Update UI Manager
-    UIManager& uiMgr = UIManager::Instance();
-    if (!uiMgr.isShutdown()) {
-      uiMgr.update(deltaTime);
-    }
+    // NOTE: UIManager updates are handled by individual game states that use UI components
+    // This ensures UI is only updated when needed and gives states full control over their UI lifecycle
+    // See UIExampleState::update() for proper UIManager integration pattern
 
     // Increment the frame counter
     m_lastUpdateFrame++;
