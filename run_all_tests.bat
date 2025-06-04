@@ -66,8 +66,8 @@ if /i "%~1"=="--help" (
     echo.
     echo Execution Time:
     echo   Core tests:       ~2-5 minutes total
-    echo   Benchmarks:       ~5-10 minutes total
-    echo   All tests:        ~7-15 minutes total
+    echo   Benchmarks:       ~5-15 minutes total
+    echo   All tests:        ~7-20 minutes total
     echo.
     echo Examples:
     echo   run_all_tests.bat                 # Run all tests

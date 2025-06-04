@@ -2,6 +2,8 @@
 
 This document provides a comprehensive guide to the testing framework used in the Forge Game Engine project. All tests use the Boost Test Framework for consistency and are organized by component.
 
+**Current Test Coverage:** 15+ individual test suites covering AI systems, UI performance, core systems, and event management with both functional validation and performance benchmarking.
+
 ## Test Suites Overview
 
 The Forge Game Engine has the following test suites:
@@ -12,12 +14,22 @@ The Forge Game Engine has the following test suites:
    - Thread-Safe AI Integration Tests: Test integration of AI components with threading
    - AI Benchmark Tests: Measure performance characteristics and scaling capabilities
 
+2. **UI System Tests**
+   - UI Stress Tests: Validate UI performance and scalability in headless mode
+   - UI Benchmark Tests: Measure UI component processing throughput and memory efficiency
+
 3. **Core Systems Tests**
-   - Save Manager Tests: Validate save/load functionality
-   - Thread System Tests: Verify multi-threading capabilities
+   - Save Manager Tests: Validate save/load functionality with directory creation and file operations
+   - Thread System Tests: Verify multi-threading capabilities and priority scheduling
    - Event Manager Tests: Validate event handling and integration with threading
    - Event Types Tests: Test specific event type implementations (Weather, Scene Change, NPC Spawn)
    - Weather Event Tests: Focused tests for weather event functionality
+   - Event Manager Scaling Benchmark: Performance testing for event system scalability
+
+**Test Execution Categories:**
+- **Core Tests** (6 suites): Fast functional validation (~2-5 minutes total)
+- **Benchmarks** (3 suites): Performance and scalability testing (~5-15 minutes total)
+- **Total Coverage**: 15+ test executables with comprehensive automation scripts
 
 ## Running Tests
 
@@ -38,9 +50,16 @@ Each test suite has dedicated scripts in the project root directory:
 # Performance scaling benchmarks (slow execution)
 ./run_event_scaling_benchmark.sh     # Event manager scaling benchmark
 ./run_ai_benchmark.sh                # AI scaling benchmark
+./run_ui_stress_tests.sh             # UI stress and performance tests
 
 # Run all tests
 ./run_all_tests.sh                   # Run all test scripts sequentially
+
+# Individual UI stress test examples
+./run_ui_stress_tests.sh --level light --duration 30    # Quick UI test
+./run_ui_stress_tests.sh --level heavy --duration 60    # Heavy load test
+./run_ui_stress_tests.sh --benchmark                    # UI benchmark suite
+./run_ui_stress_tests.sh --level medium --verbose       # Detailed output
 ```
 
 #### Windows
@@ -56,9 +75,16 @@ run_event_tests.bat                  # Event manager tests
 # Performance scaling benchmarks (slow execution)
 run_event_scaling_benchmark.bat      # Event manager scaling benchmark
 run_ai_benchmark.bat                 # AI scaling benchmark
+run_ui_stress_tests.bat              # UI stress and performance tests
 
 # Run all tests
 run_all_tests.bat                    # Run all test scripts sequentially
+
+# Individual UI stress test examples
+run_ui_stress_tests.bat /l light /d 30    # Quick UI test
+run_ui_stress_tests.bat /l heavy /d 60    # Heavy load test
+run_ui_stress_tests.bat /b                # UI benchmark suite
+run_ui_stress_tests.bat /l medium /v      # Detailed output
 ```
 
 ### Test Execution Control
@@ -69,9 +95,9 @@ The `run_all_tests.sh` script provides flexible execution control:
 | Option | Description | Duration |
 |--------|-------------|----------|
 | `--core-only` | Run only core functionality tests | ~2-5 minutes |
-| `--benchmarks-only` | Run only performance benchmarks | ~5-10 minutes |
+| `--benchmarks-only` | Run only performance benchmarks (AI, Event, UI) | ~5-15 minutes |
 | `--no-benchmarks` | Run core tests but skip benchmarks | ~2-5 minutes |
-| *(default)* | Run all tests sequentially | ~7-15 minutes |
+| *(default)* | Run all tests sequentially | ~7-20 minutes |
 
 #### Examples
 ```bash
@@ -102,6 +128,9 @@ Individual test scripts support these options:
 Special options:
 - `--extreme` for AI benchmark (runs extended benchmarks)
 - `--verbose` for scaling benchmarks (shows detailed performance metrics)
+- `--level LEVEL` for UI stress tests (light|medium|heavy|extreme)
+- `--duration SECONDS` for UI stress tests (custom test duration)
+- `--benchmark` for UI stress tests (runs benchmark suite instead of stress tests)
 
 **Test Execution Strategy:**
 The script executes tests in optimal order for efficient development workflow:
@@ -120,6 +149,7 @@ Test results are saved in the `test_results` directory:
 - `thread_safe_ai_test_output.txt` - Output from thread-safe AI tests
 - `thread_safe_ai_performance_metrics.txt` - Performance metrics from thread-safe AI tests
 - `ai_scaling_benchmark_[timestamp].txt` - AI scaling benchmark results
+- `ui_stress/ui_stress_test_[timestamp].log` - UI stress test results with performance metrics
 - `save_test_output.txt` - Output from save manager tests
 - `thread_test_output.txt` - Output from thread system tests
 - `event_test_output.txt` - Output from event manager tests
@@ -166,6 +196,61 @@ Located in `AIScalingBenchmark.cpp`, these tests measure:
 2. **Scalability**: Tests how AI performance scales with different entity counts
 3. **Behavior Complexity**: Measures impact of behavior complexity on performance
 4. **Thread Count Impact**: Evaluates performance with different numbers of worker threads
+
+### UI Stress Tests
+
+Located in `ui/ui_stress_test_main.cpp`, these tests run in headless mode and measure:
+
+1. **Processing Throughput**: Components processed per second (real UI workload capacity)
+2. **Memory Efficiency**: Memory usage per component and total consumption
+3. **Scalability**: Performance degradation as component count increases
+4. **Layout Performance**: Layout calculations per second for responsive UI
+5. **Input Responsiveness**: Collision detection rate for mouse/touch interaction
+6. **Iteration Performance**: Time to process all UI components once
+
+**Key Metrics Measured:**
+- **Processing Throughput**: ~100k-400k components/sec (indicates UI system capacity)
+- **Average Iteration Time**: ~0.25ms (UI overhead per frame, should be <1ms for 60fps)
+- **Memory Usage**: Tracks peak memory consumption and growth per component
+- **Performance Degradation**: How performance scales with component count (<2x ideal)
+- **Layout Calculations/sec**: Algorithm performance for responsive layouts
+- **Collision Checks/sec**: Input system responsiveness capacity
+
+**Test Modes:**
+- **Stress Test**: Creates components over time while measuring performance
+- **Benchmark Suite**: Runs multiple test scenarios and compares results
+- **Headless Operation**: No SDL video initialization - perfect for CI/automation
+
+**Real-World Application:**
+- Mobile games: Validate UI memory stays under 50MB
+- Desktop games: Ensure UI uses <1% of 60fps frame budget
+- Complex UIs: Test thousands of interactive elements
+- Performance regression: Detect UI optimization regressions
+
+**Meaningful Headless Metrics:**
+The UI stress tests run in headless mode and provide meaningful performance metrics instead of artificially high FPS numbers:
+- **Processing Throughput** replaces meaningless FPS - shows actual UI workload capacity
+- **Average Iteration Time** shows real UI system overhead per frame
+- **Memory per Component** tracks actual resource consumption
+- **Performance Degradation** measures scalability characteristics
+- **Layout/Collision rates** show algorithm performance for real UI operations
+
+This approach provides actionable insights for UI system optimization rather than misleading FPS metrics that don't reflect real rendering constraints.
+
+**Usage Examples:**
+```bash
+# Quick development validation
+./run_ui_stress_tests.sh --level light --duration 10
+
+# CI/CD pipeline validation
+./run_ui_stress_tests.sh --level medium --duration 30
+
+# Performance profiling
+./run_ui_stress_tests.sh --benchmark --verbose
+
+# Stress testing with custom parameters
+./run_ui_stress_tests.sh --level extreme --duration 120 --max-components 2000
+```
 
 ### Save Manager Tests
 

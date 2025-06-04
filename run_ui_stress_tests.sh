@@ -286,12 +286,12 @@ display_results_summary() {
         echo ""
         
         # Extract key metrics from log file
-        if grep -q "=== UI Stress Test Results ===" "$LOG_FILE"; then
+        if grep -q "=== UI Stress Test Results (Headless) ===" "$LOG_FILE"; then
             echo "Test Results Found:"
-            grep -A 15 "=== UI Stress Test Results ===" "$LOG_FILE" | head -16
-        elif grep -q "=== UI Performance Benchmark Results ===" "$LOG_FILE"; then
+            grep -A 15 "=== UI Stress Test Results (Headless) ===" "$LOG_FILE" | head -16
+        elif grep -q "=== UI Performance Benchmark Results (Headless) ===" "$LOG_FILE"; then
             echo "Benchmark Results Found:"
-            grep -A 10 "=== UI Performance Benchmark Results ===" "$LOG_FILE" | head -11
+            grep -A 10 "=== UI Performance Benchmark Results (Headless) ===" "$LOG_FILE" | head -11
         else
             print_warning "No formatted results found in log file"
         fi
