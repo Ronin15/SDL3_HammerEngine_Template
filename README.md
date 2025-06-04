@@ -466,7 +466,7 @@ The icon is automatically loaded from the `res/img` folder.
 
 This is a template and the first player state running "PlayerRunningState.cpp" contains player move to mouse for point click hold movement, keyboard movement (up, down, left, right), and controller movement. Keep or delete any combination of controls you want. Controller keys are mapped out and detected properly in "InputManager.cpp" - just need to be applied in code.
 
-Also, this template can be used for 3D as well. Just focus on replacing SDL_renderer creation in the GameEngine.cpp with SDL_GPU. Then change the drwa functions in TextureManager::Draw and you should be good to go. There is only two Places that SDL_renderer is used in the UI MAnager for draw colors and rects and then all the GameStates funnel the render calls back through GameEngines Render fucntion via the GameState Manager.
+Also, this template can be used for 3D as well. Just focus on replacing SDL_renderer creation in the GameEngine.cpp with SDL_GPU. Then change the draw functions in TextureManager and you should be good to go. There are only two Places that SDL_renderer is used/called. Frist, in the UI MAnager for draw colors and rects and then all the GameStates funnel their render calls back through GameEngines Render fucntion via the GameState Manager!
 
 For more complex games, consider using the EventManager system for handling game events, scene transitions, and dynamic world interactions. The ThreadSystem priority-based task scheduling is particularly useful for managing complex AI behaviors in games with many entities.
 
