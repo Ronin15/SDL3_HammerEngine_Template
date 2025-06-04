@@ -41,9 +41,9 @@ goto :parse_args
 echo !BLUE!Running ThreadSystem tests...!NC!
 
 :: Check if test executable exists
-set TEST_EXECUTABLE=bin\debug\thread_system_tests.exe
+set TEST_EXECUTABLE=..\..\bin\debug\thread_system_tests.exe
 if not exist "!TEST_EXECUTABLE!" (
-    set TEST_EXECUTABLE=bin\debug\thread_system_tests
+    set TEST_EXECUTABLE=..\..\bin\debug\thread_system_tests
     if not exist "!TEST_EXECUTABLE!" (
         echo !RED!Test executable not found at !TEST_EXECUTABLE!!NC!
         echo !YELLOW!Searching for test executable...!NC!
@@ -85,7 +85,7 @@ set TEST_RESULT=!ERRORLEVEL!
 echo !BLUE!====================================!NC!
 
 :: Create test_results directory if it doesn't exist
-if not exist "test_results" mkdir "test_results"
+if not exist "..\..\test_results" mkdir "..\..\test_results"
 
 :: Check if there were any failures in the output
 set FAILURES=0
@@ -93,13 +93,13 @@ for /f %%a in ('findstr /c:" failure" "!LOG_FILE!" 2^>nul ^| find /c /v ""') do 
 
 :: Save test results
 if exist "!LOG_FILE!" (
-    copy "!LOG_FILE!" "test_results\thread_system_test_output.txt" > nul
+    copy "!LOG_FILE!" "..\..\test_results\thread_system_test_output.txt" > nul
 )
 
 :: Extract performance metrics if they exist
 echo !YELLOW!Saving test results...!NC!
 if exist "!LOG_FILE!" (
-    findstr /r /c:"time:" /c:"performance" /c:"tasks:" /c:"queue:" "!LOG_FILE!" > "test_results\thread_system_performance_metrics.txt" 2>nul
+    findstr /r /c:"time:" /c:"performance" /c:"tasks:" /c:"queue:" "!LOG_FILE!" > "..\..\test_results\thread_system_performance_metrics.txt" 2>nul
     :: Clean up temporary file
     del "!LOG_FILE!"
 )

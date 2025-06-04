@@ -7,6 +7,10 @@
 
 set -e  # Exit on any error
 
+# Navigate to script directory (in case script is run from elsewhere)
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+cd "$SCRIPT_DIR"
+
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -15,9 +19,9 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # Script configuration
-BUILD_DIR="build"
-TEST_EXECUTABLE="bin/debug/ui_stress_test"
-LOG_DIR="test_results/ui_stress"
+BUILD_DIR="../../build"
+TEST_EXECUTABLE="../../bin/debug/ui_stress_test"
+LOG_DIR="../../test_results/ui_stress"
 TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
 LOG_FILE="$LOG_DIR/ui_stress_test_$TIMESTAMP.log"
 

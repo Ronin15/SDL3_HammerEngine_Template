@@ -7,9 +7,9 @@ REM Licensed under the MIT License - see LICENSE file for details
 setlocal enabledelayedexpansion
 
 REM Script configuration
-set BUILD_DIR=build
-set TEST_EXECUTABLE=bin\debug\ui_stress_test.exe
-set LOG_DIR=test_results\ui_stress
+set BUILD_DIR=..\..\build
+set TEST_EXECUTABLE=..\..\bin\debug\ui_stress_test.exe
+set LOG_DIR=..\..\test_results\ui_stress
 set TIMESTAMP=%date:~-4,4%%date:~-10,2%%date:~-7,2%_%time:~0,2%%time:~3,2%%time:~6,2%
 set TIMESTAMP=!TIMESTAMP: =0!
 set LOG_FILE=%LOG_DIR%\ui_stress_test_!TIMESTAMP!.log

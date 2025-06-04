@@ -16,7 +16,7 @@ set "NC=[0m"
 cd /d "%~dp0"
 
 :: Create required directories
-if not exist "test_results" mkdir test_results
+if not exist "..\..\test_results" mkdir "..\..\test_results"
 
 :: Set default build type
 set BUILD_TYPE=Debug
@@ -52,9 +52,9 @@ echo Running Thread-Safe AI Integration tests...
 
 :: Determine test executable path based on build type
 if "%BUILD_TYPE%"=="Debug" (
-    set TEST_EXECUTABLE=bin\debug\thread_safe_ai_integration_tests.exe
+    set TEST_EXECUTABLE=..\..\bin\debug\thread_safe_ai_integration_tests.exe
 ) else (
-    set TEST_EXECUTABLE=bin\release\thread_safe_ai_integration_tests.exe
+    set TEST_EXECUTABLE=..\..\bin\release\thread_safe_ai_integration_tests.exe
 )
 
 :: Verify executable exists
@@ -82,10 +82,10 @@ if not exist "!TEST_EXECUTABLE!" (
 echo Running Thread-Safe AI Integration tests...
 
 :: Create the test_results directory if it doesn't exist
-if not exist "test_results" mkdir test_results
+if not exist "..\..\test_results" mkdir "..\..\test_results"
 
 :: Create a temporary file for test output
-set TEMP_OUTPUT=test_results\thread_safe_ai_integration_test_output.txt
+set TEMP_OUTPUT=..\..\test_results\thread_safe_ai_integration_test_output.txt
 
 :: Clear any existing output file
 type nul > "!TEMP_OUTPUT!"
@@ -126,7 +126,7 @@ if %ERRORLEVEL% equ 0 (
 
 :: Extract performance metrics
 echo Extracting performance metrics...
-findstr /r /c:"time:" /c:"entities:" /c:"processed:" /c:"Concurrent processing time" "!TEMP_OUTPUT!" > "test_results\thread_safe_ai_integration_performance_metrics.txt" 2>nul
+findstr /r /c:"time:" /c:"entities:" /c:"processed:" /c:"Concurrent processing time" "!TEMP_OUTPUT!" > "..\..\test_results\thread_safe_ai_integration_performance_metrics.txt" 2>nul
 
 :: Check for timeout
 findstr /c:"Operation timed out" "!TEMP_OUTPUT!" >nul 2>&1
@@ -189,7 +189,7 @@ findstr /c:"memory access violation" /c:"segmentation fault" /c:"Segmentation fa
 if %ERRORLEVEL% equ 0 (
     findstr /c:"*** No errors detected" /c:"Tests completed successfully with known cleanup issue" "!TEMP_OUTPUT!" >nul 2>&1
     if %ERRORLEVEL% neq 0 (
-        echo ❌ Tests crashed! See test_results\thread_safe_ai_integration_test_output.txt for details.
+        echo ❌ Tests crashed! See ..\..\test_results\thread_safe_ai_integration_test_output.txt for details.
         exit /b 1
     )
 )
@@ -197,7 +197,7 @@ if %ERRORLEVEL% equ 0 (
 :: Check for any failed assertions, but exclude "Test is aborted" as a fatal error
 findstr /v /c:"Test is aborted" "!TEMP_OUTPUT!" | findstr /c:"fail" /c:"error" /c:"assertion.*failed" /c:"exception" >nul 2>&1
 if %ERRORLEVEL% equ 0 (
-    echo ❌ Some tests failed! See test_results\thread_safe_ai_integration_test_output.txt for details.
+    echo ❌ Some tests failed! See ..\..\test_results\thread_safe_ai_integration_test_output.txt for details.
     exit /b 1
 )
 
@@ -267,7 +267,7 @@ if %ERRORLEVEL% equ 0 (
 )
 
 echo ❓ Test execution status is unclear. Check the test output for details.
-echo Review test_results\thread_safe_ai_integration_test_output.txt for details.
+echo Review ..\..\test_results\thread_safe_ai_integration_test_output.txt for details.
 
 :: Show the beginning and end of the output for context
 echo First few lines of test output:
