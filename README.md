@@ -119,7 +119,7 @@ See `tests/TESTING.md` for comprehensive documentation on all testing frameworks
 
 ## Feature Component Details
 
-![Forge Engine](./Forge_Engine_0.1.5.png)
+![Forge Engine](./md_imgs/Forge_Engine_0.1.5.png)
 ### Game Engine
 
 The core engine manages the game loop, rendering, and resource management. It's designed to be thread-safe and efficient.
@@ -248,8 +248,8 @@ A comprehensive demonstration and testing framework for the event system:
 - **Performance Monitoring**: Real-time FPS tracking and system status
 
 The EventDemoState serves as both documentation and testing platform for developers to understand event system integration.
-![Forge Engine](./Event_Demo.png)
-![Forge Engine](./Event_Demo_resources.png)
+![Forge Engine](./md_imgs/Event_Demo.png)
+![Forge Engine](./md_imgs/Event_Demo_resources.png)
 
 See `docs/EventManager.md`, `docs/EventManager_QuickReference.md`, and `docs/EventManager_ThreadSystem.md` for detailed documentation and usage examples.
 
@@ -300,8 +300,8 @@ See docs/AIManager.md, include/gameStates/AIDemoState.hpp, and src/gameStates/AI
 
 See `docs/AIManager.md` for detailed documentation with examples and best practices. Additional API details can be found in `include/managers/AIManager.hpp`, `include/ai/AIBehavior.hpp`, and the specific behavior implementations.
 
-![Forge Engine](./Forge_Engine.png)
-![Forge Engine](./AIDemo_resources.png)
+![Forge Engine](./md_imgs/Forge_Engine.png)
+![Forge Engine](./md_imgs/AIDemo_resources.png)
 
 ## Window Icon
 This project supports window icons across all platforms:

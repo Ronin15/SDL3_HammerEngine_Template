@@ -16,7 +16,7 @@ set "NC=[0m"
 cd /d "%~dp0"
 
 :: Create required directories
-if not exist "test_results" mkdir test_results
+if not exist "..\..\test_results" mkdir "..\..\test_results"
 
 :: Set default build type
 set BUILD_TYPE=Debug
@@ -53,9 +53,9 @@ echo Running Thread-Safe AI Manager tests...
 
 :: Determine test executable path based on build type
 if "%BUILD_TYPE%"=="Debug" (
-    set TEST_EXECUTABLE=bin\debug\thread_safe_ai_manager_tests.exe
+    set TEST_EXECUTABLE=..\..\bin\debug\thread_safe_ai_manager_tests.exe
 ) else (
-    set TEST_EXECUTABLE=bin\release\thread_safe_ai_manager_tests.exe
+    set TEST_EXECUTABLE=..\..\bin\release\thread_safe_ai_manager_tests.exe
 )
 
 :: Verify executable exists
@@ -82,10 +82,10 @@ if not exist "!TEST_EXECUTABLE!" (
 :: Run tests and save output
 
 :: Ensure test_results directory exists
-if not exist "test_results" mkdir test_results
+if not exist "..\..\test_results" mkdir "..\..\test_results"
 
 :: Use the output file directly instead of a temporary file
-set TEMP_OUTPUT=test_results\thread_safe_ai_test_output.txt
+set TEMP_OUTPUT=..\..\test_results\thread_safe_ai_test_output.txt
 
 :: Set test command options
 :: no_result_code ensures proper exit code even with thread cleanup issues
@@ -159,11 +159,11 @@ if %ERRORLEVEL% equ 0 (
 
 :: Extract performance metrics
 echo Extracting performance metrics...
-findstr /r /c:"time:" /c:"entities:" /c:"processed:" /c:"Concurrent processing time" "!TEMP_OUTPUT!" > "test_results\thread_safe_ai_performance_metrics.txt" 2>nul
+findstr /r /c:"time:" /c:"entities:" /c:"processed:" /c:"Concurrent processing time" "!TEMP_OUTPUT!" > "..\..\test_results\thread_safe_ai_performance_metrics.txt" 2>nul
 
 :: Check test status
 if !TEST_RESULT! equ 124 (
-    echo ❌ Tests timed out! See test_results\thread_safe_ai_test_output.txt for details.
+    echo ❌ Tests timed out! See ..\..\test_results\thread_safe_ai_test_output.txt for details.
     exit /b !TEST_RESULT!
 ) else (
     if !TEST_RESULT! equ 139 (
@@ -193,7 +193,7 @@ if !TEST_RESULT! equ 124 (
                 exit /b 0
             )
         )
-        echo ❌ Some tests failed! See test_results\thread_safe_ai_test_output.txt for details.
+        echo ❌ Some tests failed! See ..\..\test_results\thread_safe_ai_test_output.txt for details.
         exit /b 1
     ) else (
         if !TEST_RESULT! neq 0 (
@@ -206,7 +206,7 @@ if !TEST_RESULT! equ 124 (
                     exit /b 0
                 )
             )
-            echo ❌ Some tests failed! See test_results\thread_safe_ai_test_output.txt for details.
+            echo ❌ Some tests failed! See ..\..\test_results\thread_safe_ai_test_output.txt for details.
             exit /b 1
         ) else (
             echo ✅ All Thread-Safe AI Manager tests passed!

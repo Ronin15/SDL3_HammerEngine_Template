@@ -8,8 +8,8 @@ set -e  # Exit on any error
 
 # Script configuration
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-BUILD_DIR="$SCRIPT_DIR/build"
-RESULTS_DIR="$SCRIPT_DIR/test_results"
+BUILD_DIR="$SCRIPT_DIR/../../build"
+RESULTS_DIR="$SCRIPT_DIR/../../test_results"
 OUTPUT_FILE="$RESULTS_DIR/event_scaling_benchmark_output.txt"
 BUILD_TYPE="debug"
 VERBOSE=false
@@ -110,7 +110,7 @@ print_status "Results will be saved to: $OUTPUT_FILE"
 cd "$SCRIPT_DIR"
 
 # Check if benchmark executable exists
-BENCHMARK_EXEC="$SCRIPT_DIR/bin/$BUILD_TYPE/event_manager_scaling_benchmark"
+BENCHMARK_EXEC="$SCRIPT_DIR/../../bin/$BUILD_TYPE/event_manager_scaling_benchmark"
 if [ ! -f "$BENCHMARK_EXEC" ]; then
     print_error "Benchmark executable not found: $BENCHMARK_EXEC"
     exit 1

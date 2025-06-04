@@ -58,30 +58,9 @@ for arg in "$@"; do
   esac
 done
 
-# Handle clean-all case
-if [ "$CLEAN_ALL" = true ]; then
-  echo -e "${YELLOW}Removing entire build directory...${NC}"
-  rm -rf build
-fi
+echo -e "${BLUE}Running Event system tests...${NC}"
 
-echo -e "${BLUE}Building Event System tests...${NC}"
-
-# Ensure build directory exists
-if [ ! -d "build" ]; then
-  mkdir -p build
-  echo -e "${YELLOW}Created build directory${NC}"
-fi
-
-# Navigate to build directory
-cd build || { echo -e "${RED}Failed to enter build directory!${NC}"; exit 1; }
-
-# Configure with CMake if needed
-if [ ! -f "build.ninja" ]; then
-  echo -e "${YELLOW}Configuring project with CMake and Ninja...${NC}"
-  cmake -G Ninja .. || { echo -e "${RED}CMake configuration failed!${NC}"; exit 1; }
-fi
-
-# Define the test executables to build and run
+# Define the test executables to run
 EXECUTABLES=()
 
 if [ "$RUN_ALL" = true ] || [ "$RUN_MANAGER" = true ]; then
@@ -92,28 +71,18 @@ if [ "$RUN_ALL" = true ] || [ "$RUN_TYPES" = true ]; then
   EXECUTABLES+=("event_types_tests")
 fi
 
-# Clean tests if requested
-if [ "$CLEAN" = true ]; then
-  echo -e "${YELLOW}Cleaning test artifacts...${NC}"
-  for EXEC in "${EXECUTABLES[@]}"; do
-    ninja -t clean "$EXEC"
-  done
-fi
-
 # Track the final result
 FINAL_RESULT=0
 
-# Build and run the tests
+# Run the tests
 for EXEC in "${EXECUTABLES[@]}"; do
-  echo -e "${YELLOW}Building $EXEC...${NC}"
-  ninja "$EXEC" || { echo -e "${RED}Build failed for $EXEC!${NC}"; exit 1; }
   
   # Check if test executable exists
-  TEST_EXECUTABLE="../bin/debug/$EXEC"
+  TEST_EXECUTABLE="../../bin/debug/$EXEC"
   if [ ! -f "$TEST_EXECUTABLE" ]; then
     echo -e "${RED}Test executable not found at $TEST_EXECUTABLE${NC}"
     echo -e "${YELLOW}Searching for test executable...${NC}"
-    FOUND_EXECUTABLE=$(find .. -name "$EXEC" -type f -executable | head -n 1)
+    FOUND_EXECUTABLE=$(find ../.. -name "$EXEC" -type f -perm +111 | head -n 1)
     if [ -n "$FOUND_EXECUTABLE" ]; then
       TEST_EXECUTABLE="$FOUND_EXECUTABLE"
       echo -e "${GREEN}Found test executable at $TEST_EXECUTABLE${NC}"
@@ -198,24 +167,24 @@ for EXEC in "${EXECUTABLES[@]}"; do
   echo -e "${BLUE}====================================${NC}"
   
   # Create test_results directory if it doesn't exist
-  mkdir -p ../test_results
+  mkdir -p ../../test_results
   
   # Save test results with timestamp
   TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
-  cp "${EXEC}_output.log" "../test_results/${EXEC}_output_${TIMESTAMP}.txt"
+  cp "${EXEC}_output.log" "../../test_results/${EXEC}_output_${TIMESTAMP}.txt"
   # Also save to the standard location for compatibility
-  cp "${EXEC}_output.log" "../test_results/${EXEC}_output.txt"
+  cp "${EXEC}_output.log" "../../test_results/${EXEC}_output.txt"
   
   # Extract performance metrics and test cases run
   echo -e "${YELLOW}Saving test results for $EXEC...${NC}"
-  grep -E "time:|performance|TestEvent|TestWeatherEvent|TestSceneChange|TestNPCSpawn|TestEventFactory|TestEventManager" "${EXEC}_output.log" > "../test_results/${EXEC}_performance_metrics.txt" || true
+  grep -E "time:|performance|TestEvent|TestWeatherEvent|TestSceneChange|TestNPCSpawn|TestEventFactory|TestEventManager" "${EXEC}_output.log" > "../../test_results/${EXEC}_performance_metrics.txt" || true
   
   # Extract test cases that were run
-  echo -e "\n=== Test Cases Executed ===" > "../test_results/${EXEC}_test_cases.txt"
-  grep -E "Entering test case|Test case.*passed" "${EXEC}_output.log" >> "../test_results/${EXEC}_test_cases.txt" || true
+  echo -e "\n=== Test Cases Executed ===" > "../../test_results/${EXEC}_test_cases.txt"
+  grep -E "Entering test case|Test case.*passed" "${EXEC}_output.log" >> "../../test_results/${EXEC}_test_cases.txt" || true
   
   # Extract just the test case names for easy reporting
-  grep -E "Entering test case" "${EXEC}_output.log" | sed 's/.*Entering test case "\([^"]*\)".*/\1/' > "../test_results/${EXEC}_test_cases_run.txt" || true
+  grep -E "Entering test case" "${EXEC}_output.log" | sed 's/.*Entering test case "\([^"]*\)".*/\1/' > "../../test_results/${EXEC}_test_cases_run.txt" || true
   
   # Report test results
   if [ $TEST_RESULT -eq 0 ]; then
@@ -224,10 +193,10 @@ for EXEC in "${EXECUTABLES[@]}"; do
     
     # Print summary of test cases run
     echo -e "\n${BLUE}Test Cases Run:${NC}"
-    if [ -f "../test_results/${EXEC}_test_cases_run.txt" ] && [ -s "../test_results/${EXEC}_test_cases_run.txt" ]; then
+    if [ -f "../../test_results/${EXEC}_test_cases_run.txt" ] && [ -s "../../test_results/${EXEC}_test_cases_run.txt" ]; then
       while read -r testcase; do
         echo -e "  - ${testcase}"
-      done < "../test_results/${EXEC}_test_cases_run.txt"
+      done < "../../test_results/${EXEC}_test_cases_run.txt"
     else
       echo -e "${YELLOW}  No test case details found.${NC}"
     fi
@@ -237,14 +206,14 @@ for EXEC in "${EXECUTABLES[@]}"; do
     
     # Print a summary of failed tests if available
     echo -e "\n${YELLOW}Failed Test Summary:${NC}"
-    grep -E "FAILED|ASSERT" "../test_results/${EXEC}_output.txt" || echo -e "${YELLOW}No specific failure details found.${NC}"
+    grep -E "FAILED|ASSERT" "../../test_results/${EXEC}_output.txt" || echo -e "${YELLOW}No specific failure details found.${NC}"
     
     # Print summary of test cases run
     echo -e "\n${BLUE}Test Cases Run:${NC}"
-    if [ -f "../test_results/${EXEC}_test_cases_run.txt" ] && [ -s "../test_results/${EXEC}_test_cases_run.txt" ]; then
+    if [ -f "../../test_results/${EXEC}_test_cases_run.txt" ] && [ -s "../../test_results/${EXEC}_test_cases_run.txt" ]; then
       while read -r testcase; do
         echo -e "  - ${testcase}"
-      done < "../test_results/${EXEC}_test_cases_run.txt"
+      done < "../../test_results/${EXEC}_test_cases_run.txt"
     else
       echo -e "${YELLOW}  No test case details found.${NC}"
     fi

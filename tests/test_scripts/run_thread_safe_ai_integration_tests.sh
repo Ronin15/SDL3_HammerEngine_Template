@@ -2,8 +2,12 @@
 # Script to run the Thread-Safe AI Integration tests
 # Copyright (c) 2025 Hammer Forged Games, MIT License
 
+# Navigate to script directory (in case script is run from elsewhere)
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+cd "$SCRIPT_DIR"
+
 # Create required directories
-mkdir -p test_results
+mkdir -p ../../test_results
 
 # Set default build type
 BUILD_TYPE="Debug"
@@ -39,9 +43,9 @@ echo "Running Thread-Safe AI Integration tests..."
 
 # Determine test executable path based on build type
 if [ "$BUILD_TYPE" = "Debug" ]; then
-  TEST_EXECUTABLE="bin/debug/thread_safe_ai_integration_tests"
+  TEST_EXECUTABLE="../../bin/debug/thread_safe_ai_integration_tests"
 else
-  TEST_EXECUTABLE="bin/release/thread_safe_ai_integration_tests"
+  TEST_EXECUTABLE="../../bin/release/thread_safe_ai_integration_tests"
 fi
 
 # Verify executable exists
@@ -49,7 +53,7 @@ if [ ! -f "$TEST_EXECUTABLE" ]; then
   echo "Error: Test executable not found at '$TEST_EXECUTABLE'"
   # Attempt to find the executable
   echo "Searching for test executable..."
-  FOUND_EXECUTABLE=$(find ./bin -name thread_safe_ai_integration_tests)
+  FOUND_EXECUTABLE=$(find ../../bin -name thread_safe_ai_integration_tests)
   if [ -n "$FOUND_EXECUTABLE" ]; then
     echo "Found executable at: $FOUND_EXECUTABLE"
     TEST_EXECUTABLE="$FOUND_EXECUTABLE"
@@ -63,10 +67,10 @@ fi
 echo "Running Thread-Safe AI Integration tests..."
 
 # Create the test_results directory if it doesn't exist
-mkdir -p test_results
+mkdir -p ../../test_results
 
 # Create a temporary file for test output
-TEMP_OUTPUT="test_results/thread_safe_ai_integration_test_output.txt"
+TEMP_OUTPUT="../../test_results/thread_safe_ai_integration_test_output.txt"
   
 # Clear any existing output file
 > "$TEMP_OUTPUT"
@@ -120,7 +124,7 @@ fi
 
 # Extract performance metrics
 echo "Extracting performance metrics..."
-grep -E "time:|entities:|processed:|Concurrent processing time" "$TEMP_OUTPUT" > "test_results/thread_safe_ai_integration_performance_metrics.txt" || true
+grep -E "time:|entities:|processed:|Concurrent processing time" "$TEMP_OUTPUT" > "../../test_results/thread_safe_ai_integration_performance_metrics.txt" || true
 
 # Check for timeout
 if [ -n "$TIMEOUT_CMD" ] && grep -q "Operation timed out" "$TEMP_OUTPUT"; then
@@ -166,13 +170,13 @@ fi
 # Only if no success pattern was found, check for errors
 # Check for crash indicators during test execution (not after all tests passed)
 if grep -q "memory access violation\|segmentation fault\|Segmentation fault\|Abort trap" "$TEMP_OUTPUT" && ! grep -q "\*\*\* No errors detected\|Tests completed successfully with known cleanup issue" "$TEMP_OUTPUT"; then
-  echo "❌ Tests crashed! See test_results/thread_safe_ai_integration_test_output.txt for details."
+  echo "❌ Tests crashed! See ../../test_results/thread_safe_ai_integration_test_output.txt for details."
   exit 1
 fi
 
 # Check for any failed assertions, but exclude "Test is aborted" as a fatal error
 if grep -v "Test is aborted" "$TEMP_OUTPUT" | grep -q "fail\|error\|assertion.*failed\|exception"; then
-  echo "❌ Some tests failed! See test_results/thread_safe_ai_integration_test_output.txt for details."
+  echo "❌ Some tests failed! See ../../test_results/thread_safe_ai_integration_test_output.txt for details."
   exit 1
 fi
 
@@ -220,7 +224,7 @@ else
     exit 0
   else
     echo "❓ Test execution status is unclear. Check the test output for details."
-    echo "Review test_results/thread_safe_ai_integration_test_output.txt for details."
+    echo "Review ../../test_results/thread_safe_ai_integration_test_output.txt for details."
     
     # Show the beginning and end of the output for context
     echo "First few lines of test output:"
