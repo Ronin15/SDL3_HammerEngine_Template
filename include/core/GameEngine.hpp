@@ -72,6 +72,10 @@ class GameEngine {
   int getWindowHeight() const { return m_windowHeight; }
   void setWindowSize(int width, int height) { m_windowWidth = width; m_windowHeight = height; }
 
+  // Logical presentation methods
+  void setLogicalPresentationMode(SDL_RendererLogicalPresentation mode);
+  SDL_RendererLogicalPresentation getLogicalPresentationMode() const;
+
  private:
   std::unique_ptr<GameStateManager> mp_gameStateManager{nullptr};
   std::unique_ptr<SDL_Window, decltype(&SDL_DestroyWindow)> mp_window{nullptr, SDL_DestroyWindow};
@@ -79,6 +83,9 @@ class GameEngine {
   std::weak_ptr<GameLoop> m_gameLoop{};  // Non-owning weak reference to GameLoop
   int m_windowWidth{0};
   int m_windowHeight{0};
+  
+  // Logical presentation settings
+  SDL_RendererLogicalPresentation m_logicalPresentationMode{SDL_LOGICAL_PRESENTATION_LETTERBOX};
 
   // Multithreading synchronization
   std::mutex m_updateMutex{};

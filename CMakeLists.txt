@@ -38,6 +38,8 @@ set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -flto -fno-strict-al
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+
+
 # Export compile commands for use with tools like clangd
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 

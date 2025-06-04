@@ -21,6 +21,8 @@
 #include "managers/InputManager.hpp"
 #include "gameStates/LogoState.hpp"
 #include "gameStates/MainMenuState.hpp"
+#include "gameStates/UIExampleState.hpp"
+#include "managers/UIManager.hpp"
 #include "SDL3/SDL_render.h"
 #include "SDL3/SDL_video.h"
 #include "managers/SaveGameManager.hpp"
@@ -146,7 +148,7 @@ bool GameEngine::init(const char* title,
         std::cout << "Forge Game Engine - Rendering system online!\n";
         SDL_SetRenderDrawColor(mp_renderer.get(), FORGE_GRAY);  // Forge Game Engine gunmetal dark grey
         // Set logical rendering size to match our window size
-        SDL_SetRenderLogicalPresentation(mp_renderer.get(), logicalWidth, logicalHeight, SDL_LOGICAL_PRESENTATION_LETTERBOX);
+        SDL_SetRenderLogicalPresentation(mp_renderer.get(), logicalWidth, logicalHeight, m_logicalPresentationMode);
         //Render Mode.
         SDL_SetRenderDrawBlendMode(mp_renderer.get(), SDL_BLENDMODE_BLEND);
       } else {
@@ -237,6 +239,8 @@ bool GameEngine::init(const char* title,
           return false;
         }
         fontMgr.loadFont("res/fonts", "fonts", 24);
+        // Load UI-specific font with optimal size for UI elements
+        fontMgr.loadFont("res/fonts", "fonts_UI", 16);
         return true;
       }));
 
@@ -286,12 +290,22 @@ bool GameEngine::init(const char* title,
                "initial Game States\n";
   mp_gameStateManager = std::make_unique<GameStateManager>();
 
+  // Initialize UI Manager (on main thread because it uses font/text rendering) - MAIN THREAD
+  std::cout << "Forge Game Engine - Creating UI Manager\n";
+  UIManager& uiMgr = UIManager::Instance();
+  if (!uiMgr.init()) {
+    std::cerr << "Forge Game Engine - Failed to initialize UI Manager!" << std::endl;
+    return false;
+  }
+  std::cout << "Forge Game Engine - UI Manager initialized successfully\n";
+
   // Setting Up initial game states
   mp_gameStateManager->addState(std::make_unique<LogoState>());
   mp_gameStateManager->addState(std::make_unique<MainMenuState>());
   mp_gameStateManager->addState(std::make_unique<GamePlayState>());
   mp_gameStateManager->addState(std::make_unique<AIDemoState>());
   mp_gameStateManager->addState(std::make_unique<EventDemoState>());
+  mp_gameStateManager->addState(std::make_unique<UIExampleState>());
 
   // Wait for all initialization tasks to complete
   bool allTasksSucceeded = true;
@@ -378,6 +392,12 @@ void GameEngine::update([[maybe_unused]] float deltaTime) {
   try {
     // Update game states with fixed timestep - make sure GameStateManager knows which buffer to update
     mp_gameStateManager->update(deltaTime);
+    
+    // Update UI Manager
+    UIManager& uiMgr = UIManager::Instance();
+    if (!uiMgr.isShutdown()) {
+      uiMgr.update(deltaTime);
+    }
 
     // Increment the frame counter
     m_lastUpdateFrame++;
@@ -518,6 +538,19 @@ void GameEngine::processBackgroundTasks() {
   // These tasks can run while the main thread is handling rendering
 }
 
+void GameEngine::setLogicalPresentationMode(SDL_RendererLogicalPresentation mode) {
+  m_logicalPresentationMode = mode;
+  if (mp_renderer) {
+    int width, height;
+    SDL_GetWindowSize(mp_window.get(), &width, &height);
+    SDL_SetRenderLogicalPresentation(mp_renderer.get(), width, height, mode);
+  }
+}
+
+SDL_RendererLogicalPresentation GameEngine::getLogicalPresentationMode() const {
+  return m_logicalPresentationMode;
+}
+
 void GameEngine::clean() {
   std::cout << "Forge Game Engine - Starting shutdown sequence...\n";
 
@@ -554,6 +587,10 @@ void GameEngine::clean() {
 
   std::cout << "Forge Game Engine - Cleaning up Sound Manager...\n";
   soundMgr.clean();
+
+  std::cout << "Forge Game Engine - Cleaning up UI Manager...\n";
+  UIManager& uiMgr = UIManager::Instance();
+  uiMgr.clean();
 
   std::cout << "Forge Game Engine - Cleaning up Event Manager...\n";
   eventMgr.clean();

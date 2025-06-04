@@ -32,6 +32,9 @@ void MainMenuState::update([[maybe_unused]] float deltaTime) {
       if (inputMgr.isKeyDown(SDL_SCANCODE_E)) {
           gameStateManager->setState("EventDemo");
       }
+      if (inputMgr.isKeyDown(SDL_SCANCODE_U)) {
+          gameStateManager->setState("UIExampleState");
+      }
       if (inputMgr.isKeyDown(SDL_SCANCODE_ESCAPE)) {
           gameEngine.setRunning(false);
       }
@@ -81,10 +84,18 @@ void MainMenuState::render() {
       renderer);
 
     fontMgr.drawText(
-      "Press ESC - Exit",
+      "Press U - UI Demo",
       "fonts_Arial",
       windowWidth / 2,     // Center horizontally
       (windowHeight / 2) + 30,
+      fontColor,
+      renderer);
+
+    fontMgr.drawText(
+      "Press ESC - Exit",
+      "fonts_Arial",
+      windowWidth / 2,     // Center horizontally
+      (windowHeight / 2) + 80,
       fontColor,
       renderer);
 }
