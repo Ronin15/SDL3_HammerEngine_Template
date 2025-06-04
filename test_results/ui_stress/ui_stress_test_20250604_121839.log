@@ -1,0 +1,25 @@
+=== UI Stress Test Runner v1.0 ===
+
+Configuration:
+  Stress Level: light
+  Duration: 3s
+  Max Components: 500
+
+Running stress test for 3 seconds...
+
+=== UI Stress Test Results ===
+Duration: 3.00s
+Total Frames: 362
+Average FPS: 120.6
+Average Frame Time: 8.29ms
+Min Frame Time: 0.00ms
+Max Frame Time: 9.34ms
+Total Components: 28
+Components Created: 28
+Components Destroyed: 0
+Animations Triggered: 5
+Input Events Simulated: 14
+===============================
+Results saved to: test_results/ui_stress/ui_stress_test_20250604_121839.log
+
+=== STRESS TEST PASSED ===

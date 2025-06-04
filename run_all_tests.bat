@@ -62,7 +62,7 @@ if /i "%~1"=="--help" (
     echo.
     echo Test Categories:
     echo   Core Tests:       Thread, AI, Save, Event functionality tests
-    echo   Benchmarks:       AI scaling and EventManager scaling benchmarks
+    echo   Benchmarks:       AI scaling, EventManager scaling, and UI stress benchmarks
     echo.
     echo Execution Time:
     echo   Core tests:       ~2-5 minutes total
@@ -92,9 +92,10 @@ set CORE_TEST_5=run_save_tests.bat
 set CORE_TEST_6=run_event_tests.bat
 
 :: Performance scaling benchmarks (slow execution)
-set BENCHMARK_TEST_COUNT=2
+set BENCHMARK_TEST_COUNT=3
 set BENCHMARK_TEST_1=run_event_scaling_benchmark.bat
 set BENCHMARK_TEST_2=run_ai_benchmark.bat
+set BENCHMARK_TEST_3=run_ui_stress_tests.bat
 
 :: Build the test scripts array based on user selection
 set TOTAL_COUNT=0

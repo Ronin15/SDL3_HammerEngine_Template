@@ -153,6 +153,63 @@ void FontManager::drawText(const std::string& text, const std::string& fontID,
   // The texture will be automatically cleaned up when the unique_ptr goes out of scope
 }
 
+void FontManager::drawTextAligned(const std::string& text, const std::string& fontID,
+                                 int x, int y, SDL_Color color, SDL_Renderer* renderer,
+                                 int alignment) {
+  // Skip if we're shutting down
+  if (m_isShutdown) {
+    std::cerr << "Forge Game Engine - Warning: Attempted to use FontManager after shutdown" << std::endl;
+    return;
+  }
+
+  auto texture = renderText(text, fontID, color, renderer);
+  if (!texture) return;
+
+  // Get the texture size
+  float w, h;
+  SDL_GetTextureSize(texture.get(), &w, &h);
+  int width = static_cast<int>(w);
+  int height = static_cast<int>(h);
+
+  // Calculate position based on alignment
+  float destX, destY;
+  
+  switch (alignment) {
+    case 1: // Left alignment
+      destX = static_cast<float>(x);
+      destY = static_cast<float>(y - height/2.0f);
+      break;
+    case 2: // Right alignment
+      destX = static_cast<float>(x - width);
+      destY = static_cast<float>(y - height/2.0f);
+      break;
+    case 3: // Top-left alignment
+      destX = static_cast<float>(x);
+      destY = static_cast<float>(y);
+      break;
+    case 4: // Top-center alignment
+      destX = static_cast<float>(x - width/2.0f);
+      destY = static_cast<float>(y);
+      break;
+    case 5: // Top-right alignment
+      destX = static_cast<float>(x - width);
+      destY = static_cast<float>(y);
+      break;
+    default: // Center alignment (0)
+      destX = static_cast<float>(x - width/2.0f);
+      destY = static_cast<float>(y - height/2.0f);
+      break;
+  }
+
+  // Create a destination rectangle
+  SDL_FRect dstRect = {destX, destY, static_cast<float>(width), static_cast<float>(height)};
+
+  // Render the texture
+  SDL_RenderTexture(renderer, texture.get(), nullptr, &dstRect);
+
+  // The texture will be automatically cleaned up when the unique_ptr goes out of scope
+}
+
 bool FontManager::isFontLoaded(const std::string& fontID) const {
   return m_fontMap.find(fontID) != m_fontMap.end();
 }

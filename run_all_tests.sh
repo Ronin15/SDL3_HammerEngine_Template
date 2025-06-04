@@ -51,7 +51,7 @@ for arg in "$@"; do
       echo -e "  --help            Show this help message"
       echo -e "\nTest Categories:"
       echo -e "  Core Tests:       Thread, AI, Save, Event functionality tests"
-      echo -e "  Benchmarks:       AI scaling and EventManager scaling benchmarks"
+      echo -e "  Benchmarks:       AI scaling, EventManager scaling, and UI stress benchmarks"
       echo -e "\nExecution Time:"
       echo -e "  Core tests:       ~2-5 minutes total"
       echo -e "  Benchmarks:       ~5-10 minutes total"
@@ -81,6 +81,7 @@ CORE_TEST_SCRIPTS=(
 BENCHMARK_TEST_SCRIPTS=(
   "$SCRIPT_DIR/run_event_scaling_benchmark.sh"
   "$SCRIPT_DIR/run_ai_benchmark.sh"
+  "$SCRIPT_DIR/run_ui_stress_tests.sh"
 )
 
 # Build the test scripts array based on user selection

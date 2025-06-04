@@ -44,6 +44,12 @@ class FontManager {
   void drawText(const std::string& text, const std::string& fontID,
                 int x, int y, SDL_Color color, SDL_Renderer* renderer);
 
+  // Draw text with alignment control for UI elements
+  // The x,y coordinates and alignment determine positioning
+  void drawTextAligned(const std::string& text, const std::string& fontID,
+                      int x, int y, SDL_Color color, SDL_Renderer* renderer,
+                      int alignment = 0); // 0=center, 1=left, 2=right, 3=top-left, 4=top-center, 5=top-right
+
   // Check if a font is loaded
   bool isFontLoaded(const std::string& fontID) const;
 

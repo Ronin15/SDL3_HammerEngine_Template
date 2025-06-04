@@ -111,6 +111,11 @@ add_executable(weather_event_tests
     ${PROJECT_SOURCE_DIR}/src/events/WeatherEvent.cpp
 )
 
+# UI Stress Test executable (minimal dependencies)
+add_executable(ui_stress_test
+    ui/ui_stress_test_main.cpp
+)
+
 # Add compile definitions for Boost.Test
 target_compile_definitions(save_manager_tests PRIVATE
     BOOST_TEST_NO_LIB
@@ -164,6 +169,12 @@ target_compile_definitions(event_types_tests PRIVATE
 target_compile_definitions(weather_event_tests PRIVATE
     BOOST_TEST_NO_LIB
     BOOST_TEST_NO_SIGNAL_HANDLING
+)
+
+# UI Stress Test definitions
+target_compile_definitions(ui_stress_test PRIVATE
+    UI_STRESS_TEST_BUILD
+    BOOST_TEST_NO_LIB
 )
 
 # Link with required libraries
@@ -241,12 +252,20 @@ target_link_libraries(weather_event_tests PRIVATE
     Boost::container
 )
 
+# Link UI Stress Test with minimal libraries
+target_link_libraries(ui_stress_test PRIVATE
+    SDL3::SDL3
+    Boost::container
+    Boost::serialization
+)
+
 # Add the tests to CTest
 add_test(NAME SaveManagerTests COMMAND save_manager_tests)
 add_test(NAME ThreadSystemTests COMMAND thread_system_tests)
 add_test(NAME AIOptimizationTests COMMAND ai_optimization_tests)
 add_test(NAME AIScalingBenchmark COMMAND ai_scaling_benchmark)
-add_test(NAME EventManagerScalingBenchmark COMMAND event_manager_scaling_benchmark)
+add_test(NAME EventManagerScalingBenchmark 
+    COMMAND event_manager_scaling_benchmark)
 add_test(NAME ThreadSafeAIManagerTests 
     COMMAND thread_safe_ai_manager_tests)
 add_test(NAME ThreadSafeAIIntegrationTests 
