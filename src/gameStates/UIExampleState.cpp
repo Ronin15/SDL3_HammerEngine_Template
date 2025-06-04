@@ -59,6 +59,17 @@ bool UIExampleState::enter() {
 }
 
 void UIExampleState::update(float deltaTime) {
+    // Update UI Manager - each state that uses UI is responsible for updating it
+    // This architectural pattern ensures:
+    // 1. UI is only updated when needed (performance optimization)
+    // 2. States have full control over their UI lifecycle
+    // 3. No global UI updates that might interfere with state-specific behavior
+    // 4. Clean separation of concerns between engine and game logic
+    auto& uiManager = UIManager::Instance();
+    if (!uiManager.isShutdown()) {
+        uiManager.update(deltaTime);
+    }
+    
     if (m_uiScreen) {
         m_uiScreen->update(deltaTime);
     }
@@ -77,6 +88,8 @@ void UIExampleState::update(float deltaTime) {
 
 void UIExampleState::render() {
     // Render UI components through UIManager
+    // Each state that uses UI is responsible for rendering its own UI components
+    // This ensures proper render order and state-specific UI management
     auto& gameEngine = GameEngine::Instance();
     auto& ui = UIManager::Instance();
     ui.render(gameEngine.getRenderer());
