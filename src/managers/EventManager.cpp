@@ -10,6 +10,7 @@
 #include "events/NPCSpawnEvent.hpp"
 #include "events/EventFactory.hpp"
 #include "core/ThreadSystem.hpp"
+#include "utils/WorkerBudget.hpp"
 #include <algorithm>
 #include <chrono>
 
@@ -381,6 +382,7 @@ void EventManager::updateEventTypeBatchThreaded(EventTypeId typeId) {
         return;
     }
 
+    auto& threadSystem = Forge::ThreadSystem::Instance();
     auto startTime = getCurrentTimeNanos();
 
     std::shared_lock<std::shared_mutex> lock(m_eventsMutex);
@@ -390,23 +392,64 @@ void EventManager::updateEventTypeBatchThreaded(EventTypeId typeId) {
         return;
     }
 
-    // Just update events in parallel, don't execute them
-    // Events should only execute when explicitly triggered
-    for (auto& eventData : container) {
-        if (eventData.isActive() && eventData.event) {
-            eventData.event->update();
+    // Calculate EventManager's worker budget using centralized calculation
+    size_t availableWorkers = static_cast<size_t>(threadSystem.getThreadCount());
+    Forge::WorkerBudget budget = Forge::calculateWorkerBudget(availableWorkers);
+    size_t eventWorkerBudget = budget.eventAllocated;
+    
+    // Check if we should use threading based on our budget and current queue pressure
+    size_t currentQueueSize = threadSystem.getQueueSize();
+    size_t maxQueuePressure = availableWorkers * 2; // Allow 2x worker count in queue
+    
+    if (currentQueueSize < maxQueuePressure && container.size() > 10) {
+        // Use threaded processing - split events into batches based on our budget
+        size_t eventsPerBatch = std::max(size_t(1), container.size() / eventWorkerBudget);
+        std::atomic<size_t> completedBatches{0};
+        size_t batchesSubmitted = 0;
+        
+        for (size_t i = 0; i < container.size(); i += eventsPerBatch) {
+            size_t batchEnd = std::min(i + eventsPerBatch, container.size());
+            
+            threadSystem.enqueueTask([&container, i, batchEnd, &completedBatches]() {
+                for (size_t j = i; j < batchEnd; ++j) {
+                    if (container[j].isActive() && container[j].event) {
+                        container[j].event->update();
+                    }
+                }
+                completedBatches.fetch_add(1, std::memory_order_relaxed);
+            }, Forge::TaskPriority::Normal, "Event_Batch_Update");
+            
+            batchesSubmitted++;
+            
+            // Respect our worker budget
+            if (batchesSubmitted >= eventWorkerBudget) {
+                break;
+            }
         }
+        
+        // Wait for all batches to complete
+        while (completedBatches.load(std::memory_order_relaxed) < batchesSubmitted) {
+            std::this_thread::sleep_for(std::chrono::microseconds(50));
+        }
+        
+        EVENT_LOG_DETAIL("Updated " << container.size() << " events of type "
+                        << getEventTypeName(typeId) << " using " << batchesSubmitted 
+                        << " batches (budget: " << eventWorkerBudget << ")");
+    } else {
+        // Fall back to single-threaded processing
+        for (auto& eventData : container) {
+            if (eventData.isActive() && eventData.event) {
+                eventData.event->update();
+            }
+        }
+        
+        EVENT_LOG_DETAIL("Updated " << container.size() << " events of type "
+                        << getEventTypeName(typeId) << " (single-threaded fallback)");
     }
 
     auto endTime = getCurrentTimeNanos();
     double timeMs = (endTime - startTime) / 1000000.0;
     recordPerformance(typeId, timeMs);
-
-    EVENT_LOG_DETAIL("Updated " << container.size() << " events of type "
-                    << getEventTypeName(typeId) << " in " << timeMs << "ms (threaded)");
-
-    // Threaded method now just updates events like the non-threaded version
-    // No batch processing needed since we're not executing events continuously
 }
 
 void EventManager::processEventDirect(EventData& eventData) {

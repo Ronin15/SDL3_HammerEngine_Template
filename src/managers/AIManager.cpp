@@ -5,6 +5,7 @@
 
 #include "managers/AIManager.hpp"
 #include "core/ThreadSystem.hpp"
+#include "utils/WorkerBudget.hpp"
 #include <SDL3/SDL.h>
 #include <algorithm>
 #include <chrono>
@@ -107,30 +108,27 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
                 if (Forge::ThreadSystem::Exists()) {
                     auto& threadSystem = Forge::ThreadSystem::Instance();
                 
-                    // Use threaded processing - submit optimal-sized batches, let ThreadSystem distribute
-                    // Dynamic threading strategy based on ThreadSystem's actual worker capacity
+                    // Use threaded processing with percentage-based worker budget system
                     
-                    // Get ThreadSystem's actual worker thread count (already optimized for this hardware)
+                    // Get ThreadSystem's actual worker thread count and calculate budget
                     size_t availableWorkers = static_cast<size_t>(threadSystem.getThreadCount());
+                    Forge::WorkerBudget budget = Forge::calculateWorkerBudget(availableWorkers);
+                    size_t aiWorkerBudget = budget.aiAllocated;
                     
-                    // Calculate optimal thread usage based on entity count and ThreadSystem capacity
-                    size_t targetThreads;
-                    if (m_entities.size() < 500) {
-                        // Small workloads: Use fewer threads to avoid overhead
-                        targetThreads = std::min(size_t(4), availableWorkers / 3);
-                    } else if (m_entities.size() < 5000) {
-                        // Medium workloads: Use most workers but leave some for responsiveness
-                        targetThreads = std::max(size_t(4), (availableWorkers * 3) / 4); // Use 75% of workers
-                    } else {
-                        // Large workloads: Use nearly all available workers
-                        targetThreads = std::max(size_t(8), availableWorkers - 2); // Leave 2 workers free
-                    }
+                    // Limit concurrent batches to our worker budget
+                    size_t maxAIBatches = aiWorkerBudget;
                     
-                    // Ensure we don't exceed ThreadSystem capacity
-                    targetThreads = std::min(targetThreads, availableWorkers);
+                    // Debug output for worker budget strategy
+                    AI_LOG("Worker Budget - Total: " << budget.totalWorkers 
+                           << ", Engine: " << budget.engineReserved
+                           << ", AI: " << budget.aiAllocated
+                           << ", Events: " << budget.eventAllocated
+                           << ", Buffer: " << budget.remaining
+                           << ", Max Batches: " << maxAIBatches 
+                           << ", Entities: " << m_entities.size());
                     
-                    // Calculate optimal batch size for the target thread count
-                    size_t targetBatches = targetThreads;
+                    // Calculate optimal batch size based on our budget
+                    size_t targetBatches = maxAIBatches;
                     size_t optimalBatchSize = std::max(size_t(25), m_entities.size() / targetBatches);
                     
                     // Apply cache-friendly limits based on entity count
@@ -706,6 +704,8 @@ uint64_t AIManager::getCurrentTimeNanos() {
     return std::chrono::duration_cast<std::chrono::nanoseconds>(
         std::chrono::high_resolution_clock::now().time_since_epoch()).count();
 }
+
+
 
 int AIManager::getEntityPriority(EntityPtr entity) const {
     if (!entity) return DEFAULT_PRIORITY;

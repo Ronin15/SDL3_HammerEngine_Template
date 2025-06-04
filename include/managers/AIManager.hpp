@@ -173,6 +173,8 @@ public:
     size_t getBehaviorCount() const;
     size_t getManagedEntityCount() const;
     size_t getBehaviorUpdateCount() const;
+    
+
 
     // Message system
     void sendMessageToEntity(EntityPtr entity, const std::string& message, bool immediate = false);

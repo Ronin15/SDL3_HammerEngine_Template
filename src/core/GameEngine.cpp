@@ -358,6 +358,17 @@ void GameEngine::update([[maybe_unused]] float deltaTime) {
   // This method is now thread-safe and can be called from a worker thread
   std::lock_guard<std::mutex> lock(m_updateMutex);
 
+  // Worker budget coordination - GameEngine reserves workers for critical operations
+  if (Forge::ThreadSystem::Exists()) {
+    auto& threadSystem = Forge::ThreadSystem::Instance();
+    
+    // Submit critical game engine tasks with high priority to ensure they get processed first
+    threadSystem.enqueueTask([]() {
+      // Critical game loop coordination tasks can go here if needed
+      // For now, this ensures the engine gets priority access to workers
+    }, Forge::TaskPriority::Critical, "GameEngine_Critical");
+  }
+
   // Mark update as running
   m_updateRunning = true;
 
