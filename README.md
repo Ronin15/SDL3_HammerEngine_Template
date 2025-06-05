@@ -155,9 +155,9 @@ flowchart TD
     Init --> GameLoop[Game Loop]
     GameLoop -->|Input| InputUpdate[Update Input State]
     GameLoop -->|Events| EventUpdate[Process Events]
-    GameLoop -->|AI| AIUpdate[Update AI (AIManager, ThreadSystem)]
-    GameLoop -->|Entities| EntityUpdate[Update Entities (EntityStateManager)]
-    GameLoop -->|State| StateUpdate[Update Game State (GameStateManager)]
+    GameLoop -->|AI| AIUpdate[Update AI AIManager, ThreadSystem]
+    GameLoop -->|Entities| EntityUpdate[Update Entities - EntityStateManager]
+    GameLoop -->|State| StateUpdate[Update Game State - GameStateManager]
     GameLoop -->|Rendering| Render[Render Frame]
     GameLoop -->|Audio| AudioUpdate[Update Sound]
     GameLoop --> SaveCheck{Save/Load?}
