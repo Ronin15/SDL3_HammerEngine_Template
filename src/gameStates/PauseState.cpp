@@ -6,11 +6,20 @@
 #include "gameStates/PauseState.hpp"
 #include "managers/InputManager.hpp"
 #include "managers/FontManager.hpp"
+#include "managers/UIManager.hpp"
 #include "core/GameEngine.hpp"
 #include <iostream>
 
 bool PauseState::enter() {
   std::cout << "Forge Game Engine - Entering PAUSE State\n";
+  
+  // Create pause state UI
+  auto& gameEngine = GameEngine::Instance();
+  auto& ui = UIManager::Instance();
+  
+  ui.createTitle("pause_title", {0, 100, gameEngine.getWindowWidth(), 40}, "Game Paused");
+  ui.setTitleAlignment("pause_title", UIAlignment::CENTER_CENTER);
+  
   return true;
 }
 
@@ -25,18 +34,27 @@ void PauseState::render() {
     // Cache manager references for better performance
     FontManager& fontMgr = FontManager::Instance();
     GameEngine& gameEngine = GameEngine::Instance();
+    auto& ui = UIManager::Instance();
     
+    // Render UI components through UIManager
+    ui.render(gameEngine.getRenderer());
+    
+    // Additional instruction text below title
     SDL_Color fontColor = {200, 200, 200, 255};//gray
      fontMgr.drawText(
-       "Pause State Place Holder <----> Press R to Return to test Player",
+       "Press R to Return to Game",
        "fonts_Arial",
        gameEngine.getWindowWidth() / 2,     // Center horizontally
-       20,
+       160,
        fontColor,
        gameEngine.getRenderer());
 }
 bool PauseState::exit() {
   std::cout << "Forge Game Engine - Exiting PAUSE State\n";
+  
+  // Clean up UI
+  auto& ui = UIManager::Instance();
+  ui.removeComponent("pause_title");
 
   return true;
 }

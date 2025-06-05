@@ -147,9 +147,11 @@ bool AIDemoState::enter() {
 
         // Create simple HUD UI
         auto& ui = UIManager::Instance();
-        ui.createLabel("ai_instructions", {10, 10, gameEngine.getWindowWidth() - 20, 25}, 
+        ui.createTitle("ai_title", {0, 10, gameEngine.getWindowWidth(), 30}, "AI Demo State");
+        ui.setTitleAlignment("ai_title", UIAlignment::CENTER_CENTER);
+        ui.createLabel("ai_instructions", {10, 50, gameEngine.getWindowWidth() - 20, 25}, 
                        "AI Demo: [B] Exit | [1] Wander | [2] Patrol | [3] Chase | [SPACE] Pause/Resume");
-        ui.createLabel("ai_status", {10, 45, 400, 25}, "FPS: -- | Entities: -- | AI: RUNNING");
+        ui.createLabel("ai_status", {10, 85, 400, 25}, "FPS: -- | Entities: -- | AI: RUNNING");
 
         // Log status
         std::cout << "Forge Game Engine - Created " << m_npcs.size() << " NPCs with AI behaviors\n";
@@ -215,6 +217,7 @@ bool AIDemoState::exit() {
 
     // Clean up UI
     auto& ui = UIManager::Instance();
+    ui.removeComponent("ai_title");
     ui.removeComponent("ai_instructions");
     ui.removeComponent("ai_status");
 

@@ -15,11 +15,13 @@ bool UIManager::init() {
         return false;
     }
 
-    // Initialize with enhanced light theme
-    setLightTheme();
+    // Initialize with enhanced dark theme
+    setDarkTheme();
 
-    // Set global font to match what's loaded for UI
+    // Set global fonts to match what's loaded
     m_globalFontID = "fonts_UI_Arial";
+    m_titleFontID = "fonts_Arial";
+    m_uiFontID = "fonts_UI_Arial";
 
     // Clear any existing data
     m_components.clear();
@@ -134,6 +136,17 @@ void UIManager::createLabel(const std::string& id, const UIRect& bounds, const s
     component->bounds = bounds;
     component->text = text;
     component->style = m_currentTheme.getStyle(UIComponentType::LABEL);
+
+    m_components[id] = component;
+}
+
+void UIManager::createTitle(const std::string& id, const UIRect& bounds, const std::string& text) {
+    auto component = std::make_shared<UIComponent>();
+    component->id = id;
+    component->type = UIComponentType::TITLE;
+    component->bounds = bounds;
+    component->text = text;
+    component->style = m_currentTheme.getStyle(UIComponentType::TITLE);
 
     m_components[id] = component;
 }
@@ -637,13 +650,20 @@ void UIManager::setEventLogMaxEntries(const std::string& logID, int maxEntries) 
     auto component = getComponent(logID);
     if (component && component->type == UIComponentType::EVENT_LOG) {
         component->maxLength = maxEntries;
-
+        
         // Trim existing entries if needed
         if (static_cast<int>(component->listItems.size()) > maxEntries) {
             while (static_cast<int>(component->listItems.size()) > maxEntries) {
                 component->listItems.erase(component->listItems.begin());
             }
         }
+    }
+}
+
+void UIManager::setTitleAlignment(const std::string& titleID, UIAlignment alignment) {
+    auto component = getComponent(titleID);
+    if (component && component->type == UIComponentType::TITLE) {
+        component->style.textAlign = alignment;
     }
 }
 
@@ -795,8 +815,8 @@ void UIManager::loadTheme(const UITheme& theme) {
 }
 
 void UIManager::setDefaultTheme() {
-    // Default theme now uses light theme as the base
-    setLightTheme();
+    // Default theme now uses dark theme as the base
+    setDarkTheme();
 }
 
 void UIManager::setLightTheme() {
@@ -903,6 +923,15 @@ void UIManager::setLightTheme() {
     eventLogStyle.textColor = {0, 0, 0, 255}; // Black text for maximum contrast
     eventLogStyle.borderColor = {120, 120, 140, 180}; // Less transparent border
     lightTheme.componentStyles[UIComponentType::EVENT_LOG] = eventLogStyle;
+
+    // Title style - large, prominent text for headings
+    UIStyle titleStyle;
+    titleStyle.backgroundColor = {0, 0, 0, 0}; // Transparent background
+    titleStyle.textColor = {255, 245, 120, 255}; // Gold color for titles
+    titleStyle.fontSize = 24; // Use native 24px font size
+    titleStyle.textAlign = UIAlignment::CENTER_LEFT;
+    titleStyle.fontID = m_titleFontID; // Use larger font
+    lightTheme.componentStyles[UIComponentType::TITLE] = titleStyle;
 
     m_currentTheme = lightTheme;
 
@@ -1019,6 +1048,15 @@ void UIManager::setDarkTheme() {
     eventLogStyle.borderColor = {100, 120, 140, 100}; // Highly transparent blue-gray border
     darkTheme.componentStyles[UIComponentType::EVENT_LOG] = eventLogStyle;
 
+    // Title style - large, prominent text for headings
+    UIStyle titleStyle;
+    titleStyle.backgroundColor = {0, 0, 0, 0}; // Transparent background
+    titleStyle.textColor = {255, 245, 120, 255}; // Gold color for titles
+    titleStyle.fontSize = 24; // Use native 24px font size
+    titleStyle.textAlign = UIAlignment::CENTER_LEFT;
+    titleStyle.fontID = m_titleFontID; // Use larger font
+    darkTheme.componentStyles[UIComponentType::TITLE] = titleStyle;
+
     m_currentTheme = darkTheme;
 
     // Apply theme to all existing components
@@ -1035,8 +1073,8 @@ void UIManager::setThemeMode(const std::string& mode) {
     } else if (mode == "dark") {
         setDarkTheme();
     } else if (mode == "default") {
-        // For backward compatibility, default now uses light theme
-        setLightTheme();
+        // For backward compatibility, default now uses dark theme
+        setDarkTheme();
     }
 }
 
@@ -1098,9 +1136,9 @@ void UIManager::clearAllComponents() {
 }
 
 void UIManager::resetToDefaultTheme() {
-    // Reset to light theme and clear any theme contamination
-    setLightTheme();
-    m_currentThemeMode = "light";
+    // Reset to dark theme and clear any theme contamination
+    setDarkTheme();
+    m_currentThemeMode = "dark";
 }
 
 void UIManager::applyThemeToComponent(const std::string& id, UIComponentType type) {
@@ -1396,6 +1434,9 @@ void UIManager::renderComponent(SDL_Renderer* renderer, const std::shared_ptr<UI
             break;
         case UIComponentType::EVENT_LOG:
             renderEventLog(renderer, component);
+            break;
+        case UIComponentType::TITLE:
+            renderLabel(renderer, component); // Titles render like labels but with different styling
             break;
         case UIComponentType::TOOLTIP:
             // Tooltips are rendered separately
