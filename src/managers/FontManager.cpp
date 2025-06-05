@@ -7,6 +7,7 @@
 #include <iostream>
 #include <algorithm>
 #include <filesystem>
+#include <vector>
 
 bool FontManager::init() {
   if (!TTF_Init()) {
