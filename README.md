@@ -142,34 +142,6 @@ See `tests/TESTING.md` for comprehensive documentation on all testing frameworks
 
 ## Feature Component Details
 
-```mermaid
-flowchart TD
-    Start([Start])
-    Start --> Init[Initialize Core Systems]
-    Init -->|ThreadSystem| Threads[Init Thread Pool]
-    Init -->|Managers| Managers[Init Managers]
-    Init -->|Input| Input[Init InputManager]
-    Init -->|Audio| Audio[Init SoundManager]
-    Init -->|Graphics| Graphics[Init TextureManager]
-    Init -->|Fonts| Fonts[Init FontManager]
-    Init --> GameLoop[Game Loop]
-    GameLoop -->|Input| InputUpdate[Update Input State]
-    GameLoop -->|Events| EventUpdate[Process Events]
-    GameLoop -->|AI| AIUpdate[Update AI AIManager, ThreadSystem]
-    GameLoop -->|Entities| EntityUpdate[Update Entities - EntityStateManager]
-    GameLoop -->|State| StateUpdate[Update Game State - GameStateManager]
-    GameLoop -->|Rendering| Render[Render Frame]
-    GameLoop -->|Audio| AudioUpdate[Update Sound]
-    GameLoop --> SaveCheck{Save/Load?}
-    SaveCheck -- Yes --> SaveLoad[SaveGameManager: Save/Load Game]
-    SaveCheck -- No --> GameLoop
-    Render --> GameLoop
-    SaveLoad --> GameLoop
-    GameLoop --> Exit{Exit Condition?}
-    Exit -- Yes --> Shutdown[Cleanup and Exit]
-    Exit -- No --> GameLoop
-```
-
 ### Game Engine
 
 The core engine manages the game loop, rendering, and resource management. It's designed to be thread-safe and efficient.
