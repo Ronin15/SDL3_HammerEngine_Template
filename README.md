@@ -169,6 +169,7 @@ flowchart TD
     Exit -- Yes --> Shutdown[Cleanup and Exit]
     Exit -- No --> GameLoop
 ```
+
 ### Game Engine
 
 The core engine manages the game loop, rendering, and resource management. It's designed to be thread-safe and efficient.
