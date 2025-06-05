@@ -4,6 +4,7 @@
 */
 
 #include "UIStressTest.hpp"
+#include "managers/UIManager.hpp"
 #include <iostream>
 #include <fstream>
 
@@ -20,7 +21,7 @@
     #include <unistd.h>
 #endif
 
-UIStressTest::UIStressTest() 
+UIStressTest::UIStressTest()
     : m_rng(std::chrono::steady_clock::now().time_since_epoch().count()) {
     m_uiManager = &UIManager::Instance();
     m_currentMetrics = std::make_unique<PerformanceMetrics>();
@@ -832,21 +833,23 @@ UIStressTest::ComponentType UIStressTest::selectRandomComponentType(const Stress
 
 void UIStressTest::backupRendererState() {
     if (!m_renderer) return;
-    
-    auto& gameEngine = GameEngine::Instance();
-    m_originalState.windowWidth = gameEngine.getWindowWidth();
-    m_originalState.windowHeight = gameEngine.getWindowHeight();
-    
+
+    // Get window dimensions directly from SDL instead of GameEngine
+    SDL_Window* window = SDL_GetRenderWindow(m_renderer);
+    if (window) {
+        SDL_GetWindowSize(window, &m_originalState.windowWidth, &m_originalState.windowHeight);
+    }
+
     m_originalState.wasLogicalPresentation = SDL_GetRenderLogicalPresentation(
-        m_renderer, 
-        &m_originalState.logicalWidth, 
+        m_renderer,
+        &m_originalState.logicalWidth,
         &m_originalState.logicalHeight,
         &m_originalState.presentation);
 }
 
 void UIStressTest::restoreRendererState() {
     if (!m_renderer) return;
-    
+
     if (m_originalState.wasLogicalPresentation) {
         SDL_SetRenderLogicalPresentation(
             m_renderer,
