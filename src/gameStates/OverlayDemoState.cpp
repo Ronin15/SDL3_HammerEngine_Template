@@ -145,14 +145,14 @@ void OverlayDemoState::setupNoOverlayMode() {
     // This shows how HUD elements look without any background interference
     
     // Mode indicator
-    ui.createLabel(MODE_LABEL, {20, 20, 400, 30}, "Mode: HUD Elements (No Overlay)");
-    ui.createLabel(DESCRIPTION_LABEL, {20, 55, 600, 50}, 
+    ui.createLabel(MODE_LABEL, {20, 50, 400, 30}, "Mode: HUD Elements (No Overlay)");
+    ui.createLabel(DESCRIPTION_LABEL, {20, 85, 600, 50}, 
                    "Perfect for: Health bars, Score, Minimap, Chat\nGame content remains fully visible");
     
     // Simulate HUD elements
-    ui.createProgressBar(HEALTH_BAR, {20, 120, 200, 25}, 0.0f, 100.0f);
+    ui.createProgressBar(HEALTH_BAR, {20, 150, 200, 25}, 0.0f, 100.0f);
     ui.setValue(HEALTH_BAR, 75.0f);
-    ui.createLabel(SCORE_LABEL, {20, 155, 150, 20}, "Score: 12,450");
+    ui.createLabel(SCORE_LABEL, {20, 185, 150, 20}, "Score: 12,450");
     
     // Minimap simulation
     ui.createPanel(MINIMAP_PANEL, {windowWidth - 160, 20, 140, 140});
@@ -185,8 +185,8 @@ void OverlayDemoState::setupLightOverlayMode() {
     ui.createThemeBackground(windowWidth, windowHeight);
     
     // Mode indicator
-    ui.createLabel(MODE_LABEL, {20, 20, 400, 30}, "Mode: Main Menu (Light Theme)");
-    ui.createLabel(DESCRIPTION_LABEL, {20, 55, 600, 50}, 
+    ui.createLabel(MODE_LABEL, {20, 50, 400, 30}, "Mode: Main Menu (Light Theme)");
+    ui.createLabel(DESCRIPTION_LABEL, {20, 85, 600, 50}, 
                    "Perfect for: Main menus, Settings screens\nSubtle separation from background");
     
     // Simulate menu buttons
@@ -206,8 +206,8 @@ void OverlayDemoState::setupDarkOverlayMode() {
     ui.createThemeBackground(windowWidth, windowHeight);
     
     // Mode indicator
-    ui.createLabel(MODE_LABEL, {20, 20, 400, 30}, "Mode: Pause Menu (Dark Theme)");
-    ui.createLabel(DESCRIPTION_LABEL, {20, 55, 600, 50}, 
+    ui.createLabel(MODE_LABEL, {20, 50, 400, 30}, "Mode: Pause Menu (Dark Theme)");
+    ui.createLabel(DESCRIPTION_LABEL, {20, 85, 600, 50}, 
                    "Perfect for: Pause menus, In-game menus\nDarker theme for focus during gameplay");
     
     // Simulate pause menu
@@ -227,8 +227,8 @@ void OverlayDemoState::setupModalOverlayMode() {
     ui.createThemeBackground(windowWidth, windowHeight);
     
     // Mode indicator
-    ui.createLabel(MODE_LABEL, {20, 20, 400, 30}, "Mode: Modal Dialog (Strong Overlay)");
-    ui.createLabel(DESCRIPTION_LABEL, {20, 55, 600, 50}, 
+    ui.createLabel(MODE_LABEL, {20, 50, 400, 30}, "Mode: Modal Dialog (Strong Overlay)");
+    ui.createLabel(DESCRIPTION_LABEL, {20, 85, 600, 50}, 
                    "Perfect for: Confirmation dialogs, Settings panels\nStrong overlay demands attention");
     
     // Simulate modal dialog

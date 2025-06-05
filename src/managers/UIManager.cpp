@@ -806,10 +806,12 @@ bool UIManager::isAnimating(const std::string& id) const {
 void UIManager::loadTheme(const UITheme& theme) {
     m_currentTheme = theme;
 
-    // Apply theme to all existing components
+    // Apply theme to all existing components, preserving custom alignment
     for (const auto& [id, component] : m_components) {
         if (component) {
+            UIAlignment preservedAlignment = component->style.textAlign;
             component->style = m_currentTheme.getStyle(component->type);
+            component->style.textAlign = preservedAlignment;
         }
     }
 }
@@ -935,10 +937,12 @@ void UIManager::setLightTheme() {
 
     m_currentTheme = lightTheme;
 
-    // Apply theme to all existing components
+    // Apply theme to all existing components, preserving custom alignment
     for (const auto& [id, component] : m_components) {
         if (component) {
+            UIAlignment preservedAlignment = component->style.textAlign;
             component->style = m_currentTheme.getStyle(component->type);
+            component->style.textAlign = preservedAlignment;
         }
     }
 }
@@ -1059,10 +1063,12 @@ void UIManager::setDarkTheme() {
 
     m_currentTheme = darkTheme;
 
-    // Apply theme to all existing components
+    // Apply theme to all existing components, preserving custom alignment
     for (const auto& [id, component] : m_components) {
         if (component) {
+            UIAlignment preservedAlignment = component->style.textAlign;
             component->style = m_currentTheme.getStyle(component->type);
+            component->style.textAlign = preservedAlignment;
         }
     }
 }
@@ -1741,6 +1747,11 @@ void UIManager::renderTooltip(SDL_Renderer* renderer) {
 
     auto component = getComponent(m_hoveredTooltip);
     if (!component || component->text.empty()) {
+        return;
+    }
+
+    // Skip tooltips for multi-line text (contains newlines)
+    if (component->text.find('\n') != std::string::npos) {
         return;
     }
 
