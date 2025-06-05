@@ -22,6 +22,7 @@
 #include "gameStates/LogoState.hpp"
 #include "gameStates/MainMenuState.hpp"
 #include "gameStates/UIExampleState.hpp"
+#include "gameStates/OverlayDemoState.hpp"
 #include "managers/UIManager.hpp"
 #include "SDL3/SDL_render.h"
 #include "SDL3/SDL_video.h"
@@ -306,6 +307,7 @@ bool GameEngine::init(const char* title,
   mp_gameStateManager->addState(std::make_unique<AIDemoState>());
   mp_gameStateManager->addState(std::make_unique<EventDemoState>());
   mp_gameStateManager->addState(std::make_unique<UIExampleState>());
+  mp_gameStateManager->addState(std::make_unique<OverlayDemoState>());
 
   // Wait for all initialization tasks to complete
   bool allTasksSucceeded = true;

@@ -4,103 +4,83 @@
 */
 
 #include "gameStates/MainMenuState.hpp"
-#include "managers/InputManager.hpp"
-#include "managers/FontManager.hpp"
+#include "managers/UIManager.hpp"
 #include "core/GameEngine.hpp"
+#include "ui/MainMenuScreen.hpp"
 #include <iostream>
 
 bool MainMenuState::enter() {
   std::cout << "Forge Game Engine - Entering MAIN MENU State\n";
+  
+  // Create and show the main menu screen
+  m_uiScreen = std::make_unique<MainMenuScreen>();
+  m_uiScreen->show();
+  
+  // Set up callbacks
+  auto screen = static_cast<MainMenuScreen*>(m_uiScreen.get());
+  screen->setOnStartGame([]() {
+    auto& gameEngine = GameEngine::Instance();
+    auto* gameStateManager = gameEngine.getGameStateManager();
+    gameStateManager->setState("GamePlayState");
+  });
+  
+  screen->setOnAIDemo([]() {
+    auto& gameEngine = GameEngine::Instance();
+    auto* gameStateManager = gameEngine.getGameStateManager();
+    gameStateManager->setState("AIDemo");
+  });
+  
+  screen->setOnEventDemo([]() {
+    auto& gameEngine = GameEngine::Instance();
+    auto* gameStateManager = gameEngine.getGameStateManager();
+    gameStateManager->setState("EventDemo");
+  });
+  
+  screen->setOnUIExample([]() {
+    auto& gameEngine = GameEngine::Instance();
+    auto* gameStateManager = gameEngine.getGameStateManager();
+    gameStateManager->setState("UIExampleState");
+  });
+  
+  screen->setOnOverlayDemo([]() {
+    auto& gameEngine = GameEngine::Instance();
+    auto* gameStateManager = gameEngine.getGameStateManager();
+    gameStateManager->setState("OverlayDemoState");
+  });
+  
+  screen->setOnExit([]() {
+    auto& gameEngine = GameEngine::Instance();
+    gameEngine.setRunning(false);
+  });
+  
   return true;
 }
 
-void MainMenuState::update([[maybe_unused]] float deltaTime) {
-  //std::cout << "Updating Main Menu State\n";
-
-      // Cache manager references for better performance
-      InputManager& inputMgr = InputManager::Instance();
-      GameEngine& gameEngine = GameEngine::Instance();
-      auto* gameStateManager = gameEngine.getGameStateManager();
-
-      // Handle menu options
-      if (inputMgr.isKeyDown(SDL_SCANCODE_RETURN)) {
-          gameStateManager->setState("GamePlayState");
-      }
-      if (inputMgr.isKeyDown(SDL_SCANCODE_A)) {
-          gameStateManager->setState("AIDemo");
-      }
-      if (inputMgr.isKeyDown(SDL_SCANCODE_E)) {
-          gameStateManager->setState("EventDemo");
-      }
-      if (inputMgr.isKeyDown(SDL_SCANCODE_U)) {
-          gameStateManager->setState("UIExampleState");
-      }
-      if (inputMgr.isKeyDown(SDL_SCANCODE_ESCAPE)) {
-          gameEngine.setRunning(false);
-      }
+void MainMenuState::update(float deltaTime) {
+  // Update UI Manager
+  auto& uiManager = UIManager::Instance();
+  if (!uiManager.isShutdown()) {
+      uiManager.update(deltaTime);
   }
+  
+  if (m_uiScreen) {
+      m_uiScreen->update(deltaTime);
+  }
+}
 
 void MainMenuState::render() {
-   // Cache manager references for better performance
-   FontManager& fontMgr = FontManager::Instance();
-   GameEngine& gameEngine = GameEngine::Instance();
-   SDL_Renderer* renderer = gameEngine.getRenderer();
-   int windowWidth = gameEngine.getWindowWidth();
-   int windowHeight = gameEngine.getWindowHeight();
-
-   SDL_Color fontColor = {200, 200, 200, 255};//Gray
-    // Title
-    fontMgr.drawText(
-      "Main Menu",
-      "fonts_Arial",
-      windowWidth / 2,     // Center horizontally
-      (windowHeight / 2) - 200,
-      fontColor,
-      renderer);
-
-    // Menu options
-    fontMgr.drawText(
-      "Press ENTER - Start Game",
-      "fonts_Arial",
-      windowWidth / 2,     // Center horizontally
-      (windowHeight / 2) - 120,
-      fontColor,
-      renderer);
-
-    fontMgr.drawText(
-      "Press A - AI Demo",
-      "fonts_Arial",
-      windowWidth / 2,     // Center horizontally
-      (windowHeight / 2) - 70,
-      fontColor,
-      renderer);
-
-    fontMgr.drawText(
-      "Press E - Event Demo",
-      "fonts_Arial",
-      windowWidth / 2,     // Center horizontally
-      (windowHeight / 2) - 20,
-      fontColor,
-      renderer);
-
-    fontMgr.drawText(
-      "Press U - UI Demo",
-      "fonts_Arial",
-      windowWidth / 2,     // Center horizontally
-      (windowHeight / 2) + 30,
-      fontColor,
-      renderer);
-
-    fontMgr.drawText(
-      "Press ESC - Exit",
-      "fonts_Arial",
-      windowWidth / 2,     // Center horizontally
-      (windowHeight / 2) + 80,
-      fontColor,
-      renderer);
+  // Render UI components through UIManager
+  auto& gameEngine = GameEngine::Instance();
+  auto& ui = UIManager::Instance();
+  ui.render(gameEngine.getRenderer());
 }
 bool MainMenuState::exit() {
   std::cout << "Forge Game Engine - Exiting MAIN MENU State\n";
+  
+  if (m_uiScreen) {
+      m_uiScreen->hide();
+  }
+  
   return true;
 }
 

@@ -15,8 +15,8 @@ bool UIManager::init() {
         return false;
     }
 
-    // Initialize default theme
-    setDefaultTheme();
+    // Initialize with enhanced light theme
+    setLightTheme();
 
     // Set global font to match what's loaded for UI
     m_globalFontID = "fonts_UI_Arial";
@@ -242,13 +242,6 @@ void UIManager::removeComponent(const std::string& id) {
     if (m_focusedComponent == id) {
         m_focusedComponent.clear();
     }
-}
-
-void UIManager::clearAllComponents() {
-    m_components.clear();
-    m_layouts.clear();
-    m_focusedComponent.clear();
-    m_hoveredTooltip.clear();
 }
 
 bool UIManager::hasComponent(const std::string& id) const {
@@ -634,61 +627,296 @@ void UIManager::loadTheme(const UITheme& theme) {
 }
 
 void UIManager::setDefaultTheme() {
-    UITheme defaultTheme;
-    defaultTheme.name = "default";
+    // Default theme now uses light theme as the base
+    setLightTheme();
+}
 
-    // Button style
+void UIManager::setLightTheme() {
+    UITheme lightTheme;
+    lightTheme.name = "light";
+    m_currentThemeMode = "light";
+
+    // Button style - improved contrast and professional appearance
     UIStyle buttonStyle;
-    buttonStyle.backgroundColor = {70, 70, 70, 255};
-    buttonStyle.borderColor = {100, 100, 100, 255};
+    buttonStyle.backgroundColor = {60, 120, 180, 255};
+    buttonStyle.borderColor = {255, 255, 255, 255};
     buttonStyle.textColor = {255, 255, 255, 255};
-    buttonStyle.hoverColor = {90, 90, 90, 255};
-    buttonStyle.pressedColor = {50, 50, 50, 255};
+    buttonStyle.hoverColor = {80, 140, 200, 255};
+    buttonStyle.pressedColor = {40, 100, 160, 255};
+    buttonStyle.borderWidth = 1;
     buttonStyle.textAlign = UIAlignment::CENTER_CENTER;
     buttonStyle.fontID = "fonts_UI_Arial";
-    defaultTheme.componentStyles[UIComponentType::BUTTON] = buttonStyle;
+    lightTheme.componentStyles[UIComponentType::BUTTON] = buttonStyle;
 
-    // Label style
+    // Label style - enhanced contrast
     UIStyle labelStyle;
     labelStyle.backgroundColor = {0, 0, 0, 0}; // Transparent
-    labelStyle.textColor = {255, 255, 255, 255};
+    labelStyle.textColor = {255, 255, 255, 255}; // Pure white for maximum contrast
     labelStyle.textAlign = UIAlignment::CENTER_LEFT;
     labelStyle.fontID = "fonts_UI_Arial";
-    defaultTheme.componentStyles[UIComponentType::LABEL] = labelStyle;
+    lightTheme.componentStyles[UIComponentType::LABEL] = labelStyle;
 
-    // Panel style
+    // Panel style - light overlay for subtle UI separation
     UIStyle panelStyle;
-    panelStyle.backgroundColor = {40, 40, 40, 200};
-    panelStyle.borderColor = {80, 80, 80, 255};
-    defaultTheme.componentStyles[UIComponentType::PANEL] = panelStyle;
+    panelStyle.backgroundColor = {0, 0, 0, 40}; // Very light overlay (15% opacity)
+    panelStyle.borderWidth = 0;
+    panelStyle.fontID = "fonts_UI_Arial";
+    lightTheme.componentStyles[UIComponentType::PANEL] = panelStyle;
+
+    // Progress bar style - enhanced visibility
+    UIStyle progressStyle;
+    progressStyle.backgroundColor = {40, 40, 40, 255};
+    progressStyle.borderColor = {180, 180, 180, 255}; // Stronger borders
+    progressStyle.hoverColor = {0, 180, 0, 255}; // Green fill
+    progressStyle.borderWidth = 1;
+    progressStyle.fontID = "fonts_UI_Arial";
+    lightTheme.componentStyles[UIComponentType::PROGRESS_BAR] = progressStyle;
+
+    // Input field style - light background with dark text
+    UIStyle inputStyle;
+    inputStyle.backgroundColor = {245, 245, 245, 255};
+    inputStyle.textColor = {20, 20, 20, 255}; // Dark text for good contrast
+    inputStyle.borderColor = {180, 180, 180, 255};
+    inputStyle.hoverColor = {235, 245, 255, 255};
+    inputStyle.borderWidth = 1;
+    inputStyle.textAlign = UIAlignment::CENTER_LEFT;
+    inputStyle.fontID = "fonts_UI_Arial";
+    lightTheme.componentStyles[UIComponentType::INPUT_FIELD] = inputStyle;
+
+    // List style - light background with enhanced item height
+    UIStyle listStyle;
+    listStyle.backgroundColor = {240, 240, 240, 255};
+    listStyle.borderColor = {180, 180, 180, 255};
+    listStyle.textColor = {20, 20, 20, 255}; // Dark text on light background
+    listStyle.hoverColor = {180, 200, 255, 255}; // Light blue selection
+    listStyle.borderWidth = 1;
+    listStyle.listItemHeight = 36; // Enhanced mouse accuracy
+    listStyle.fontID = "fonts_UI_Arial";
+    lightTheme.componentStyles[UIComponentType::LIST] = listStyle;
+
+    // Slider style - enhanced borders
+    UIStyle sliderStyle;
+    sliderStyle.backgroundColor = {100, 100, 100, 255};
+    sliderStyle.borderColor = {180, 180, 180, 255};
+    sliderStyle.hoverColor = {60, 120, 180, 255}; // Blue handle
+    sliderStyle.pressedColor = {40, 100, 160, 255};
+    sliderStyle.borderWidth = 1;
+    sliderStyle.fontID = "fonts_UI_Arial";
+    lightTheme.componentStyles[UIComponentType::SLIDER] = sliderStyle;
+
+    // Checkbox style - enhanced visibility
+    UIStyle checkboxStyle = buttonStyle;
+    checkboxStyle.backgroundColor = {180, 180, 180, 255};
+    checkboxStyle.hoverColor = {200, 200, 200, 255};
+    checkboxStyle.textColor = {255, 255, 255, 255}; // Pure white text
+    checkboxStyle.textAlign = UIAlignment::CENTER_LEFT;
+    checkboxStyle.fontID = "fonts_UI_Arial";
+    lightTheme.componentStyles[UIComponentType::CHECKBOX] = checkboxStyle;
+
+    // Tooltip style
+    UIStyle tooltipStyle = panelStyle;
+    tooltipStyle.backgroundColor = {40, 40, 40, 230}; // More opaque for tooltips
+    tooltipStyle.borderColor = {180, 180, 180, 255};
+    tooltipStyle.borderWidth = 1;
+    tooltipStyle.textColor = {255, 255, 255, 255};
+    tooltipStyle.fontID = "fonts_UI_Arial";
+    lightTheme.componentStyles[UIComponentType::TOOLTIP] = tooltipStyle;
+
+    // Image component uses transparent background
+    UIStyle imageStyle;
+    imageStyle.backgroundColor = {0, 0, 0, 0};
+    imageStyle.fontID = "fonts_UI_Arial";
+    lightTheme.componentStyles[UIComponentType::IMAGE] = imageStyle;
+
+    m_currentTheme = lightTheme;
+    
+    // Apply theme to all existing components
+    for (const auto& [id, component] : m_components) {
+        if (component) {
+            component->style = m_currentTheme.getStyle(component->type);
+        }
+    }
+}
+
+void UIManager::setDarkTheme() {
+    UITheme darkTheme;
+    darkTheme.name = "dark";
+    m_currentThemeMode = "dark";
+
+    // Button style - enhanced contrast for dark theme
+    UIStyle buttonStyle;
+    buttonStyle.backgroundColor = {50, 50, 60, 255};
+    buttonStyle.borderColor = {180, 180, 180, 255}; // Brighter borders
+    buttonStyle.textColor = {255, 255, 255, 255};
+    buttonStyle.hoverColor = {70, 70, 80, 255};
+    buttonStyle.pressedColor = {30, 30, 40, 255};
+    buttonStyle.borderWidth = 1;
+    buttonStyle.textAlign = UIAlignment::CENTER_CENTER;
+    buttonStyle.fontID = "fonts_UI_Arial";
+    darkTheme.componentStyles[UIComponentType::BUTTON] = buttonStyle;
+
+    // Label style - pure white text for maximum contrast
+    UIStyle labelStyle;
+    labelStyle.backgroundColor = {0, 0, 0, 0}; // Transparent
+    labelStyle.textColor = {255, 255, 255, 255}; // Pure white
+    labelStyle.textAlign = UIAlignment::CENTER_LEFT;
+    labelStyle.fontID = "fonts_UI_Arial";
+    darkTheme.componentStyles[UIComponentType::LABEL] = labelStyle;
+
+    // Panel style - slightly more overlay for dark theme
+    UIStyle panelStyle;
+    panelStyle.backgroundColor = {0, 0, 0, 50}; // 19% opacity
+    panelStyle.borderWidth = 0;
+    panelStyle.fontID = "fonts_UI_Arial";
+    darkTheme.componentStyles[UIComponentType::PANEL] = panelStyle;
 
     // Progress bar style
     UIStyle progressStyle;
-    progressStyle.backgroundColor = {30, 30, 30, 255};
-    progressStyle.borderColor = {100, 100, 100, 255};
-    progressStyle.hoverColor = {0, 150, 0, 255}; // Green fill
-    defaultTheme.componentStyles[UIComponentType::PROGRESS_BAR] = progressStyle;
+    progressStyle.backgroundColor = {20, 20, 20, 255};
+    progressStyle.borderColor = {180, 180, 180, 255};
+    progressStyle.hoverColor = {0, 180, 0, 255}; // Green fill
+    progressStyle.borderWidth = 1;
+    progressStyle.fontID = "fonts_UI_Arial";
+    darkTheme.componentStyles[UIComponentType::PROGRESS_BAR] = progressStyle;
 
-    // Set default styles for other components
-    UIStyle inputStyle = buttonStyle;
+    // Input field style - dark theme
+    UIStyle inputStyle;
+    inputStyle.backgroundColor = {40, 40, 40, 255};
+    inputStyle.textColor = {255, 255, 255, 255}; // White text
+    inputStyle.borderColor = {180, 180, 180, 255};
+    inputStyle.hoverColor = {50, 50, 50, 255};
+    inputStyle.borderWidth = 1;
+    inputStyle.textAlign = UIAlignment::CENTER_LEFT;
     inputStyle.fontID = "fonts_UI_Arial";
-    UIStyle sliderStyle = buttonStyle;
-    sliderStyle.fontID = "fonts_UI_Arial";
-    UIStyle checkboxStyle = buttonStyle;
-    checkboxStyle.fontID = "fonts_UI_Arial";
-    UIStyle listStyle = panelStyle;
+    darkTheme.componentStyles[UIComponentType::INPUT_FIELD] = inputStyle;
+
+    // List style - dark theme
+    UIStyle listStyle;
+    listStyle.backgroundColor = {35, 35, 35, 255};
+    listStyle.borderColor = {180, 180, 180, 255};
+    listStyle.textColor = {255, 255, 255, 255}; // White text
+    listStyle.hoverColor = {60, 80, 150, 255}; // Blue selection
+    listStyle.borderWidth = 1;
+    listStyle.listItemHeight = 36; // Enhanced mouse accuracy
     listStyle.fontID = "fonts_UI_Arial";
-    UIStyle tooltipStyle = panelStyle;
+    darkTheme.componentStyles[UIComponentType::LIST] = listStyle;
+
+    // Slider style
+    UIStyle sliderStyle;
+    sliderStyle.backgroundColor = {30, 30, 30, 255};
+    sliderStyle.borderColor = {180, 180, 180, 255};
+    sliderStyle.hoverColor = {60, 120, 180, 255}; // Blue handle
+    sliderStyle.pressedColor = {40, 100, 160, 255};
+    sliderStyle.borderWidth = 1;
+    sliderStyle.fontID = "fonts_UI_Arial";
+    darkTheme.componentStyles[UIComponentType::SLIDER] = sliderStyle;
+
+    // Checkbox style
+    UIStyle checkboxStyle = buttonStyle;
+    checkboxStyle.backgroundColor = {60, 60, 60, 255};
+    checkboxStyle.hoverColor = {80, 80, 80, 255};
+    checkboxStyle.textColor = {255, 255, 255, 255};
+    checkboxStyle.textAlign = UIAlignment::CENTER_LEFT;
+    checkboxStyle.fontID = "fonts_UI_Arial";
+    darkTheme.componentStyles[UIComponentType::CHECKBOX] = checkboxStyle;
+
+    // Tooltip style
+    UIStyle tooltipStyle;
+    tooltipStyle.backgroundColor = {20, 20, 20, 240};
+    tooltipStyle.borderColor = {180, 180, 180, 255};
+    tooltipStyle.borderWidth = 1;
+    tooltipStyle.textColor = {255, 255, 255, 255};
     tooltipStyle.fontID = "fonts_UI_Arial";
+    darkTheme.componentStyles[UIComponentType::TOOLTIP] = tooltipStyle;
 
-    defaultTheme.componentStyles[UIComponentType::INPUT_FIELD] = inputStyle;
-    defaultTheme.componentStyles[UIComponentType::IMAGE] = panelStyle;
-    defaultTheme.componentStyles[UIComponentType::SLIDER] = sliderStyle;
-    defaultTheme.componentStyles[UIComponentType::CHECKBOX] = checkboxStyle;
-    defaultTheme.componentStyles[UIComponentType::LIST] = listStyle;
-    defaultTheme.componentStyles[UIComponentType::TOOLTIP] = tooltipStyle;
+    // Image component uses transparent background
+    UIStyle imageStyle;
+    imageStyle.backgroundColor = {0, 0, 0, 0};
+    imageStyle.fontID = "fonts_UI_Arial";
+    darkTheme.componentStyles[UIComponentType::IMAGE] = imageStyle;
 
-    m_currentTheme = defaultTheme;
+    m_currentTheme = darkTheme;
+    
+    // Apply theme to all existing components
+    for (const auto& [id, component] : m_components) {
+        if (component) {
+            component->style = m_currentTheme.getStyle(component->type);
+        }
+    }
+}
+
+void UIManager::setThemeMode(const std::string& mode) {
+    if (mode == "light") {
+        setLightTheme();
+    } else if (mode == "dark") {
+        setDarkTheme();
+    } else if (mode == "default") {
+        // For backward compatibility, default now uses light theme
+        setLightTheme();
+    }
+}
+
+std::string UIManager::getCurrentThemeMode() const {
+    return m_currentThemeMode;
+}
+
+void UIManager::createThemeBackground(int windowWidth, int windowHeight) {
+    // Remove existing theme background if it exists
+    removeThemeBackground();
+    
+    // Create main background panel with current theme styling
+    createPanel("__theme_background", {0, 0, windowWidth, windowHeight});
+}
+
+void UIManager::removeThemeBackground() {
+    if (hasComponent("__theme_background")) {
+        removeComponent("__theme_background");
+    }
+}
+
+void UIManager::removeComponentsWithPrefix(const std::string& prefix) {
+    // Collect components to remove (can't modify map while iterating)
+    boost::container::small_vector<std::string, 32> componentsToRemove;
+    
+    for (const auto& [id, component] : m_components) {
+        if (id.substr(0, prefix.length()) == prefix) {
+            componentsToRemove.push_back(id);
+        }
+    }
+    
+    // Remove collected components
+    for (const auto& id : componentsToRemove) {
+        removeComponent(id);
+    }
+}
+
+void UIManager::clearAllComponents() {
+    // Enhanced clearAllComponents - preserve theme background but clear everything else
+    boost::container::small_vector<std::string, 64> componentsToRemove;
+    
+    for (const auto& [id, component] : m_components) {
+        if (id != "__theme_background") {
+            componentsToRemove.push_back(id);
+        }
+    }
+    
+    for (const auto& id : componentsToRemove) {
+        removeComponent(id);
+    }
+    
+    // Clear other collections
+    m_layouts.clear();
+    m_animations.clear();
+    m_clickedButtons.clear();
+    m_hoveredComponents.clear();
+    m_focusedComponent.clear();
+    m_hoveredTooltip.clear();
+}
+
+void UIManager::resetToDefaultTheme() {
+    // Reset to light theme and clear any theme contamination
+    setLightTheme();
+    m_currentThemeMode = "light";
 }
 
 void UIManager::applyThemeToComponent(const std::string& id, UIComponentType type) {

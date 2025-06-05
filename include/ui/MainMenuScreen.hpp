@@ -25,6 +25,8 @@ public:
     void setOnStartGame(std::function<void()> callback) { m_onStartGame = callback; }
     void setOnAIDemo(std::function<void()> callback) { m_onAIDemo = callback; }
     void setOnEventDemo(std::function<void()> callback) { m_onEventDemo = callback; }
+    void setOnUIExample(std::function<void()> callback) { m_onUIExample = callback; }
+    void setOnOverlayDemo(std::function<void()> callback) { m_onOverlayDemo = callback; }
     void setOnExit(std::function<void()> callback) { m_onExit = callback; }
 
 private:
@@ -32,6 +34,8 @@ private:
     std::function<void()> m_onStartGame{};
     std::function<void()> m_onAIDemo{};
     std::function<void()> m_onEventDemo{};
+    std::function<void()> m_onUIExample{};
+    std::function<void()> m_onOverlayDemo{};
     std::function<void()> m_onExit{};
 
     // Component IDs
@@ -39,6 +43,8 @@ private:
     static constexpr const char* START_BUTTON = "start_game_btn";
     static constexpr const char* AI_DEMO_BUTTON = "ai_demo_btn";
     static constexpr const char* EVENT_DEMO_BUTTON = "event_demo_btn";
+    static constexpr const char* UI_EXAMPLE_BUTTON = "ui_example_btn";
+    static constexpr const char* OVERLAY_DEMO_BUTTON = "overlay_demo_btn";
     static constexpr const char* EXIT_BUTTON = "exit_btn";
     static constexpr const char* MAIN_PANEL = "main_menu_panel";
     static constexpr const char* BUTTON_LAYOUT = "menu_button_layout";
