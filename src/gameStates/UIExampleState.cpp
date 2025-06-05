@@ -219,7 +219,7 @@ void UIExampleScreen::setupComponents() {
     int windowWidth = gameEngine.getWindowWidth();
     int windowHeight = gameEngine.getWindowHeight();
     
-    // Main background panel
+    // Main background panel with subtle overlay
     createPanel("main_panel", {0, 0, windowWidth, windowHeight});
     
     // Title
@@ -247,7 +247,7 @@ void UIExampleScreen::setupComponents() {
     createLabel("progress_label", {260, 270, 200, 20}, "Auto Progress");
     
     // List demo
-    ui.createList("demo_list", {50, 320, 200, 120});
+    ui.createList("demo_list", {50, 320, 200, 180});
     
     // Animation button
     createButton("animate_btn", {300, 320, 120, 40}, "Animate");
@@ -288,9 +288,9 @@ void UIExampleScreen::setupLayout() {
 void UIExampleScreen::setupStyling() {
     auto& ui = getUIManager();
     
-    // Main panel style
+    // Main panel style - very light overlay for subtle UI separation
     UIStyle panelStyle;
-    panelStyle.backgroundColor = {30, 30, 40, 220};
+    panelStyle.backgroundColor = {0, 0, 0, 40}; // Very light dark tint (15% opacity)
     panelStyle.borderWidth = 0;
     panelStyle.fontID = "fonts_UI_Arial";
     ui.setStyle("main_panel", panelStyle);
@@ -346,6 +346,7 @@ void UIExampleScreen::setupStyling() {
     listStyle.textColor = {20, 20, 20, 255}; // Dark text for good contrast on light background
     listStyle.hoverColor = {180, 200, 255, 255}; // Light blue selection
     listStyle.borderWidth = 1;
+    listStyle.listItemHeight = 36; // Increased from default 32 for better mouse accuracy
     listStyle.fontID = "fonts_UI_Arial";
     ui.setStyle("demo_list", listStyle);
     
@@ -413,9 +414,9 @@ void UIExampleScreen::applyDarkTheme(bool dark) {
     auto& ui = getUIManager();
     
     if (dark) {
-        // Dark theme
+        // Dark theme with subtle overlay
         UIStyle panelStyle;
-        panelStyle.backgroundColor = {20, 20, 25, 240};
+        panelStyle.backgroundColor = {0, 0, 0, 50}; // Slightly more overlay for dark theme
         panelStyle.fontID = "fonts_UI_Arial";
         ui.setStyle("main_panel", panelStyle);
         
@@ -432,6 +433,7 @@ void UIExampleScreen::applyDarkTheme(bool dark) {
         ui.setStyle("back_btn", buttonStyle);
         ui.setStyle("animate_btn", buttonStyle);
         ui.setStyle("theme_btn", buttonStyle);
+
         
         ui.setText("theme_btn", "Light Theme");
     } else {

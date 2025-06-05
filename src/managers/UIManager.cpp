@@ -867,8 +867,8 @@ void UIManager::handleInput() {
 
             // Handle list selection
             if (component->type == UIComponentType::LIST && mouseJustPressed) {
-                // Calculate which item was clicked
-                int itemHeight = 20; // TODO: Make this configurable
+                // Calculate which item was clicked using configurable item height
+                int itemHeight = component->style.listItemHeight;
                 int itemIndex = static_cast<int>((mousePos.getY() - component->bounds.y) / itemHeight);
                 if (itemIndex >= 0 && itemIndex < static_cast<int>(component->listItems.size())) {
                     component->selectedIndex = itemIndex;
@@ -1226,8 +1226,8 @@ void UIManager::renderList(SDL_Renderer* renderer, const std::shared_ptr<UICompo
     drawRect(renderer, component->bounds, component->style.backgroundColor, true);
     drawBorder(renderer, component->bounds, component->style.borderColor, 1);
 
-    // Draw items
-    int itemHeight = 20;
+    // Draw items using configurable item height for better mouse accuracy
+    int itemHeight = component->style.listItemHeight;
     int y = component->bounds.y;
 
     for (size_t i = 0; i < component->listItems.size(); ++i) {
