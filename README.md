@@ -142,6 +142,7 @@ See `tests/TESTING.md` for comprehensive documentation on all testing frameworks
 
 ## Feature Component Details
 
+```mermaid
 flowchart TD
     Start([Start])
     Start --> Init[Initialize Core Systems]
@@ -167,7 +168,7 @@ flowchart TD
     GameLoop --> Exit{Exit Condition?}
     Exit -- Yes --> Shutdown[Cleanup and Exit]
     Exit -- No --> GameLoop
-
+```
 ### Game Engine
 
 The core engine manages the game loop, rendering, and resource management. It's designed to be thread-safe and efficient.
