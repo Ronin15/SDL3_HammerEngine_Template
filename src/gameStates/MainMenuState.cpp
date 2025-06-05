@@ -5,53 +5,85 @@
 
 #include "gameStates/MainMenuState.hpp"
 #include "managers/UIManager.hpp"
+#include "managers/InputManager.hpp"
 #include "core/GameEngine.hpp"
-#include "ui/MainMenuScreen.hpp"
 #include <iostream>
 
 bool MainMenuState::enter() {
   std::cout << "Forge Game Engine - Entering MAIN MENU State\n";
   
-  // Create and show the main menu screen
-  m_uiScreen = std::make_unique<MainMenuScreen>();
-  m_uiScreen->show();
-  
-  // Set up callbacks
-  auto screen = static_cast<MainMenuScreen*>(m_uiScreen.get());
-  screen->setOnStartGame([]() {
+  auto& gameEngine = GameEngine::Instance();
+  auto& ui = UIManager::Instance();
+  int windowWidth = gameEngine.getWindowWidth();
+  int windowHeight = gameEngine.getWindowHeight();
+
+  // Create theme background
+  ui.createThemeBackground(windowWidth, windowHeight);
+
+  // Create title
+  ui.createTitle("main_menu_title", {0, 100, windowWidth, 60}, "Forge Game Engine - Main Menu");
+  ui.setTitleAlignment("main_menu_title", UIAlignment::CENTER_CENTER);
+
+  // Create menu buttons
+  int buttonWidth = 300;
+  int buttonHeight = 50;
+  int buttonSpacing = 20;
+  int startY = windowHeight / 2 - 100;
+
+  ui.createButton("start_game_btn", {windowWidth/2 - buttonWidth/2, startY, buttonWidth, buttonHeight}, "Start Game");
+  ui.createButton("ai_demo_btn", {windowWidth/2 - buttonWidth/2, startY + (buttonHeight + buttonSpacing), buttonWidth, buttonHeight}, "AI Demo");
+  ui.createButton("event_demo_btn", {windowWidth/2 - buttonWidth/2, startY + 2 * (buttonHeight + buttonSpacing), buttonWidth, buttonHeight}, "Event Demo");
+  ui.createButton("ui_example_btn", {windowWidth/2 - buttonWidth/2, startY + 3 * (buttonHeight + buttonSpacing), buttonWidth, buttonHeight}, "UI Example");
+  ui.createButton("overlay_demo_btn", {windowWidth/2 - buttonWidth/2, startY + 4 * (buttonHeight + buttonSpacing), buttonWidth, buttonHeight}, "Overlay Demo");
+  ui.createButton("exit_btn", {windowWidth/2 - buttonWidth/2, startY + 5 * (buttonHeight + buttonSpacing), buttonWidth, buttonHeight}, "Exit");
+
+  // Set up button callbacks
+  ui.setOnClick("start_game_btn", []() {
     auto& gameEngine = GameEngine::Instance();
     auto* gameStateManager = gameEngine.getGameStateManager();
     gameStateManager->setState("GamePlayState");
   });
-  
-  screen->setOnAIDemo([]() {
+
+  ui.setOnClick("ai_demo_btn", []() {
     auto& gameEngine = GameEngine::Instance();
     auto* gameStateManager = gameEngine.getGameStateManager();
     gameStateManager->setState("AIDemo");
   });
-  
-  screen->setOnEventDemo([]() {
+
+  ui.setOnClick("event_demo_btn", []() {
     auto& gameEngine = GameEngine::Instance();
     auto* gameStateManager = gameEngine.getGameStateManager();
     gameStateManager->setState("EventDemo");
   });
-  
-  screen->setOnUIExample([]() {
+
+  ui.setOnClick("ui_example_btn", []() {
     auto& gameEngine = GameEngine::Instance();
     auto* gameStateManager = gameEngine.getGameStateManager();
     gameStateManager->setState("UIExampleState");
   });
-  
-  screen->setOnOverlayDemo([]() {
+
+  ui.setOnClick("overlay_demo_btn", []() {
     auto& gameEngine = GameEngine::Instance();
     auto* gameStateManager = gameEngine.getGameStateManager();
     gameStateManager->setState("OverlayDemoState");
   });
-  
-  screen->setOnExit([]() {
+
+  ui.setOnClick("exit_btn", []() {
     auto& gameEngine = GameEngine::Instance();
     gameEngine.setRunning(false);
   });
+
+  // Style the exit button red for distinction
+  UIStyle exitStyle;
+  exitStyle.backgroundColor = {180, 70, 70, 255}; // Dark red
+  exitStyle.hoverColor = {220, 100, 100, 255}; // Light red
+  exitStyle.pressedColor = {120, 50, 50, 255}; // Darker red
+  exitStyle.borderColor = {255, 255, 255, 255}; // White border
+  exitStyle.textColor = {255, 255, 255, 255}; // White text
+  exitStyle.borderWidth = 1;
+  exitStyle.textAlign = UIAlignment::CENTER_CENTER;
+  exitStyle.fontID = "fonts_UI_Arial";
+  ui.setStyle("exit_btn", exitStyle);
   
   return true;
 }
@@ -63,8 +95,42 @@ void MainMenuState::update(float deltaTime) {
       uiManager.update(deltaTime);
   }
   
-  if (m_uiScreen) {
-      m_uiScreen->update(deltaTime);
+  // Handle keyboard shortcuts with event-driven approach
+  auto& inputManager = InputManager::Instance();
+  
+  if (inputManager.wasKeyPressed(SDL_SCANCODE_RETURN)) {
+      auto& gameEngine = GameEngine::Instance();
+      auto* gameStateManager = gameEngine.getGameStateManager();
+      gameStateManager->setState("GamePlayState");
+  }
+  
+  if (inputManager.wasKeyPressed(SDL_SCANCODE_A)) {
+      auto& gameEngine = GameEngine::Instance();
+      auto* gameStateManager = gameEngine.getGameStateManager();
+      gameStateManager->setState("AIDemo");
+  }
+  
+  if (inputManager.wasKeyPressed(SDL_SCANCODE_E)) {
+      auto& gameEngine = GameEngine::Instance();
+      auto* gameStateManager = gameEngine.getGameStateManager();
+      gameStateManager->setState("EventDemo");
+  }
+  
+  if (inputManager.wasKeyPressed(SDL_SCANCODE_U)) {
+      auto& gameEngine = GameEngine::Instance();
+      auto* gameStateManager = gameEngine.getGameStateManager();
+      gameStateManager->setState("UIExampleState");
+  }
+  
+  if (inputManager.wasKeyPressed(SDL_SCANCODE_O)) {
+      auto& gameEngine = GameEngine::Instance();
+      auto* gameStateManager = gameEngine.getGameStateManager();
+      gameStateManager->setState("OverlayDemoState");
+  }
+  
+  if (inputManager.wasKeyPressed(SDL_SCANCODE_ESCAPE)) {
+      auto& gameEngine = GameEngine::Instance();
+      gameEngine.setRunning(false);
   }
 }
 
@@ -77,9 +143,16 @@ void MainMenuState::render() {
 bool MainMenuState::exit() {
   std::cout << "Forge Game Engine - Exiting MAIN MENU State\n";
   
-  if (m_uiScreen) {
-      m_uiScreen->hide();
-  }
+  // Clean up all UI components
+  auto& ui = UIManager::Instance();
+  ui.removeComponent("main_menu_title");
+  ui.removeComponent("start_game_btn");
+  ui.removeComponent("ai_demo_btn");
+  ui.removeComponent("event_demo_btn");
+  ui.removeComponent("ui_example_btn");
+  ui.removeComponent("overlay_demo_btn");
+  ui.removeComponent("exit_btn");
+  ui.removeThemeBackground();
   
   return true;
 }

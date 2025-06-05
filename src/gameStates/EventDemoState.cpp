@@ -79,7 +79,8 @@ bool EventDemoState::enter() {
 
         // Create simple UI components
         auto& ui = UIManager::Instance();
-        ui.createLabel("event_title", {10, 10, gameEngine.getWindowWidth() - 20, 25}, "Event Demo State");
+        ui.createTitle("event_title", {10, 10, gameEngine.getWindowWidth() - 20, 25}, "Event Demo State");
+        ui.setTitleAlignment("event_title", UIAlignment::CENTER_CENTER);
         ui.createLabel("event_phase", {10, 40, 300, 20}, "Phase: Initialization");
         ui.createLabel("event_status", {10, 65, 400, 20}, "FPS: -- | Weather: Clear | NPCs: 0");
         ui.createLabel("event_controls", {10, 90, gameEngine.getWindowWidth() - 20, 20},

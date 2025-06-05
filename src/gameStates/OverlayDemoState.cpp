@@ -12,7 +12,7 @@
 
 // OverlayDemoState Implementation
 OverlayDemoState::OverlayDemoState() {
-    m_uiScreen = std::make_unique<OverlayDemoScreen>();
+    // Pure UIManager approach - no UIScreen
 }
 
 bool OverlayDemoState::enter() {
@@ -22,16 +22,26 @@ bool OverlayDemoState::enter() {
     auto& ui = UIManager::Instance();
     ui.resetToDefaultTheme();
     
-    // Initialize and show the UI screen
-    m_uiScreen->show();
+    // Create persistent control components
+    auto& gameEngine = GameEngine::Instance();
+    int windowWidth = gameEngine.getWindowWidth();
+    int windowHeight = gameEngine.getWindowHeight();
     
-    // Set up callbacks
-    auto screen = static_cast<OverlayDemoScreen*>(m_uiScreen.get());
-    screen->setOnBack([this]() {
+    // Add title
+    ui.createTitle("overlay_control_title", {0, 10, windowWidth, 30}, "Overlay Demo State");
+    ui.setTitleAlignment("overlay_control_title", UIAlignment::CENTER_CENTER);
+    
+    // Control buttons that persist across all modes
+    ui.createButton("overlay_control_back_btn", {20, windowHeight - 60, 100, 40}, "Back");
+    ui.createButton("overlay_control_next_mode_btn", {140, windowHeight - 60, 150, 40}, "Next Mode");
+    ui.createLabel("overlay_control_instructions", {310, windowHeight - 55, 400, 30}, "Space = Next Mode, B = Back");
+    
+    // Set up button callbacks
+    ui.setOnClick("overlay_control_back_btn", [this]() {
         handleBackButton();
     });
     
-    screen->setOnModeSwitch([this]() {
+    ui.setOnClick("overlay_control_next_mode_btn", [this]() {
         handleModeSwitch();
     });
     
@@ -47,10 +57,6 @@ void OverlayDemoState::update(float deltaTime) {
     auto& uiManager = UIManager::Instance();
     if (!uiManager.isShutdown()) {
         uiManager.update(deltaTime);
-    }
-    
-    if (m_uiScreen) {
-        m_uiScreen->update(deltaTime);
     }
     
     // Handle input with proper key press detection
@@ -70,13 +76,9 @@ void OverlayDemoState::render() {
 bool OverlayDemoState::exit() {
     std::cout << "Exiting Overlay Demo State\n";
     
-    if (m_uiScreen) {
-        m_uiScreen->hide();
-    }
-    
-    // Use new UIManager cleanup methods
+    // Clean up all components using UIManager
     auto& ui = UIManager::Instance();
-    ui.removeComponentsWithPrefix("overlay_demo_"); // Remove all overlay demo components
+    ui.removeComponentsWithPrefix("overlay_demo_"); // Remove all demo components
     ui.removeComponentsWithPrefix("overlay_control_"); // Remove all control components
     ui.removeThemeBackground();
     ui.resetToDefaultTheme(); // Reset theme state
@@ -297,50 +299,4 @@ void OverlayDemoState::handleBackButton() {
     gameStateManager->setState("MainMenuState");
 }
 
-// OverlayDemoScreen Implementation
-OverlayDemoScreen::OverlayDemoScreen() : UIScreen("OverlayDemoScreen") {
-}
-
-void OverlayDemoScreen::create() {
-    setupBaseComponents();
-}
-
-void OverlayDemoScreen::update(float deltaTime) {
-    UIScreen::update(deltaTime);
-}
-
-void OverlayDemoScreen::hide() {
-    cleanupAllComponents();
-    UIScreen::hide();
-}
-
-void OverlayDemoScreen::onButtonClicked(const std::string& buttonID) {
-    if (buttonID == "overlay_control_back_btn" && m_onBack) {
-        m_onBack();
-    } else if (buttonID == "overlay_control_next_mode_btn" && m_onModeSwitch) {
-        m_onModeSwitch();
-    }
-}
-
-void OverlayDemoScreen::setupBaseComponents() {
-    auto& gameEngine = GameEngine::Instance();
-    int windowHeight = gameEngine.getWindowHeight();
-    
-    // Control buttons that persist across all modes (use different prefix)
-    createButton("overlay_control_back_btn", {20, windowHeight - 60, 100, 40}, "Back");
-    createButton("overlay_control_next_mode_btn", {140, windowHeight - 60, 150, 40}, "Next Mode");
-    createLabel("overlay_control_instructions", {310, windowHeight - 55, 400, 30}, "Space = Next Mode, B = Back");
-    
-    // Add components to tracking
-    addComponent("overlay_control_back_btn");
-    addComponent("overlay_control_next_mode_btn");
-    addComponent("overlay_control_instructions");
-}
-
-void OverlayDemoScreen::cleanupAllComponents() {
-    auto& ui = getUIManager();
-    
-    // Remove both demo and control components
-    ui.removeComponentsWithPrefix("overlay_demo_");
-    ui.removeComponentsWithPrefix("overlay_control_");
-}
+// Pure UIManager implementation - no UIScreen needed

@@ -7,8 +7,6 @@
 #define OVERLAY_DEMO_STATE_HPP
 
 #include "gameStates/GameState.hpp"
-#include "ui/UIScreen.hpp"
-#include <memory>
 
 // Demo state to showcase different overlay usage scenarios
 class OverlayDemoState : public GameState {
@@ -24,7 +22,6 @@ public:
     std::string getName() const override { return "OverlayDemoState"; }
 
 private:
-    std::unique_ptr<UIScreen> m_uiScreen{nullptr};
     
     // Demo modes
     enum class DemoMode {
@@ -61,30 +58,6 @@ private:
     void handleModeSwitch();
     void handleBackButton();
     void handleInput();
-};
-
-// Custom UIScreen for overlay demonstrations
-class OverlayDemoScreen : public UIScreen {
-public:
-    OverlayDemoScreen();
-    ~OverlayDemoScreen() override = default;
-
-    // UIScreen interface
-    void create() override;
-    void update(float deltaTime) override;
-    void hide() override;
-    void onButtonClicked(const std::string& buttonID) override;
-
-    // Callback setters
-    void setOnBack(std::function<void()> callback) { m_onBack = callback; }
-    void setOnModeSwitch(std::function<void()> callback) { m_onModeSwitch = callback; }
-
-private:
-    std::function<void()> m_onBack{};
-    std::function<void()> m_onModeSwitch{};
-    
-    void setupBaseComponents();
-    void cleanupAllComponents();
 };
 
 #endif // OVERLAY_DEMO_STATE_HPP

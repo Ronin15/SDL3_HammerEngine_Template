@@ -7,8 +7,6 @@
 #define MAIN_MENU_STATE_HPP
 
 #include "gameStates/GameState.hpp"
-#include "ui/UIScreen.hpp"
-#include <memory>
 
 class MainMenuState : public GameState {
  public:
@@ -19,7 +17,7 @@ class MainMenuState : public GameState {
   std::string getName() const override;
 
  private:
-  std::unique_ptr<UIScreen> m_uiScreen{nullptr};
+  // Pure UIManager approach - no UIScreen needed
 };
 
 #endif  // MAIN_MENU_STATE_HPP

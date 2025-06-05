@@ -23,6 +23,7 @@ class TextureManager;
 enum class UIComponentType {
     BUTTON,
     LABEL,
+    TITLE,
     PANEL,
     PROGRESS_BAR,
     INPUT_FIELD,
@@ -211,9 +212,10 @@ public:
     void clean();
     bool isShutdown() const { return m_isShutdown; }
 
-    // Component creation methods
-    void createButton(const std::string& id, const UIRect& bounds, const std::string& text = "");
-    void createLabel(const std::string& id, const UIRect& bounds, const std::string& text = "");
+    // Component creation methods  
+    void createButton(const std::string& id, const UIRect& bounds, const std::string& text);
+    void createLabel(const std::string& id, const UIRect& bounds, const std::string& text);
+    void createTitle(const std::string& id, const UIRect& bounds, const std::string& text);
     void createPanel(const std::string& id, const UIRect& bounds);
     void createProgressBar(const std::string& id, const UIRect& bounds, float minVal = 0.0f, float maxVal = 1.0f);
     void createInputField(const std::string& id, const UIRect& bounds, const std::string& placeholder = "");
@@ -292,6 +294,9 @@ public:
     void setupDemoEventLog(const std::string& logID);
     void enableEventLogAutoUpdate(const std::string& logID, float interval = 2.0f);
     void disableEventLogAutoUpdate(const std::string& logID);
+    
+    // Title specific methods
+    void setTitleAlignment(const std::string& titleID, UIAlignment alignment);
 
     // Input field specific methods
     void setInputFieldPlaceholder(const std::string& id, const std::string& placeholder);
@@ -350,6 +355,8 @@ private:
     UITheme m_currentTheme{};
     UIStyle m_globalStyle{};
     std::string m_globalFontID{"default"};
+    std::string m_titleFontID{"fonts_Arial"};
+    std::string m_uiFontID{"fonts_UI_Arial"};
     float m_globalScale{1.0f};
     std::string m_currentThemeMode{"light"};
     
