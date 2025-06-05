@@ -2,7 +2,7 @@
 
 ## Overview
 
-The UIManager follows a **hybrid architecture** where core world systems are managed globally by GameEngine for optimal performance, while UI systems are managed by individual game states for flexibility. This design ensures optimal performance, clear separation of concerns, and maximum flexibility for both world simulation and state-specific UI behavior.
+The UIManager follows a **hybrid architecture** with **centralized theme management** where core world systems are managed globally by GameEngine for optimal performance, while UI systems are managed by individual game states for flexibility. The centralized theme system provides professional, consistent styling across all UI while maintaining state-specific control. This design ensures optimal performance, clear separation of concerns, and maximum flexibility for both world simulation and state-specific UI behavior.
 
 ## Hybrid Architecture Principles
 
@@ -17,9 +17,15 @@ The UIManager follows a **hybrid architecture** where core world systems are man
 - **UIManager**: Optional, state-specific, only updated when UI is actually used
 - **Audio/Visual effects**: State-specific requirements and lifecycle
 
+**Centralized Theme Management:**
+- **Automatic styling**: Components use professional themes without manual styling
+- **Theme switching**: Easy light/dark mode switching across entire application
+- **Consistent appearance**: No style conflicts between states
+- **Enhanced UX**: Improved contrast and mouse accuracy built-in
+
 ### 2. State-Managed UI Updates
 
-**✅ Correct Pattern:**
+**✅ Correct Pattern with Centralized Themes:**
 ```cpp
 void UIExampleState::update(float deltaTime) {
     // Each state that uses UI is responsible for updating it
@@ -29,6 +35,29 @@ void UIExampleState::update(float deltaTime) {
     }
     
     // Continue with state-specific updates...
+}
+
+void UIExampleState::enter() {
+    auto& ui = UIManager::Instance();
+    
+    // Create theme background for full-screen UI
+    ui.createThemeBackground(windowWidth, windowHeight);
+    
+    // Components automatically use professional theme styling
+    ui.createButton("play_btn", {x, y, w, h}, "Play Game");
+    ui.createList("options_list", {x, y, w, h});
+    
+    // Optional: Switch themes easily
+    // ui.setThemeMode("dark");
+}
+
+void UIExampleState::exit() {
+    auto& ui = UIManager::Instance();
+    
+    // Clean up using centralized methods
+    ui.removeComponentsWithPrefix("mystate_");
+    ui.removeThemeBackground();
+    ui.resetToDefaultTheme();
 }
 ```
 
@@ -45,6 +74,21 @@ void SomeGameState::update(float deltaTime) {
     AIManager::Instance().update(deltaTime);
     EventManager::Instance().update();
     // These are now handled globally by GameEngine
+}
+
+void BadUIState::create() {
+    // DON'T DO THIS - Manual styling fights centralized themes
+    UIStyle buttonStyle;
+    buttonStyle.backgroundColor = {70, 130, 180, 255};
+    buttonStyle.hoverColor = {100, 149, 237, 255};
+    // ... lots of manual styling code
+    ui.setStyle("my_button", buttonStyle);
+    
+    // DON'T DO THIS - Manual component cleanup
+    ui.removeComponent("comp1");
+    ui.removeComponent("comp2");
+    ui.removeComponent("comp3");
+    // ... dozens of manual removals
 }
 ```
 

@@ -219,8 +219,8 @@ void UIExampleScreen::setupComponents() {
     int windowWidth = gameEngine.getWindowWidth();
     int windowHeight = gameEngine.getWindowHeight();
     
-    // Main background panel with subtle overlay
-    createPanel("main_panel", {0, 0, windowWidth, windowHeight});
+    // Background panel now handled by theme system
+    // createPanel("main_panel", {0, 0, windowWidth, windowHeight});
     
     // Title
     createLabel("title_label", {0, 30, windowWidth, 40}, "UIManager Feature Demo");
@@ -260,7 +260,7 @@ void UIExampleScreen::setupComponents() {
                 "Controls:\n- Click buttons and UI elements\n- Type in input field\n- Select list items\n- B key to go back");
     
     // Add all components to tracking
-    addComponent("main_panel");
+    // addComponent("main_panel"); // Now handled by theme system
     addComponent("title_label");
     addComponent("back_btn");
     addComponent("back_instruction");
@@ -288,98 +288,21 @@ void UIExampleScreen::setupLayout() {
 void UIExampleScreen::setupStyling() {
     auto& ui = getUIManager();
     
-    // Main panel style - very light overlay for subtle UI separation
-    UIStyle panelStyle;
-    panelStyle.backgroundColor = {0, 0, 0, 40}; // Very light dark tint (15% opacity)
-    panelStyle.borderWidth = 0;
-    panelStyle.fontID = "fonts_UI_Arial";
-    ui.setStyle("main_panel", panelStyle);
+    // Create theme background with automatic styling
+    auto& gameEngine = GameEngine::Instance();
+    ui.createThemeBackground(gameEngine.getWindowWidth(), gameEngine.getWindowHeight());
     
-    // Title style
+    // Only customize the title style - everything else uses theme defaults
     UIStyle titleStyle;
     titleStyle.backgroundColor = {0, 0, 0, 0};
-    titleStyle.textColor = {255, 245, 120, 255}; // Brighter gold for better contrast
+    titleStyle.textColor = {255, 245, 120, 255}; // Special gold color for the title
     titleStyle.fontSize = 28;
     titleStyle.textAlign = UIAlignment::CENTER_CENTER;
     titleStyle.fontID = "fonts_UI_Arial";
     ui.setStyle("title_label", titleStyle);
     
-    // Button styles
-    UIStyle buttonStyle;
-    buttonStyle.backgroundColor = {60, 120, 180, 255};
-    buttonStyle.hoverColor = {80, 140, 200, 255};
-    buttonStyle.pressedColor = {40, 100, 160, 255};
-    buttonStyle.borderColor = {255, 255, 255, 255};
-    buttonStyle.textColor = {255, 255, 255, 255};
-    buttonStyle.borderWidth = 1;
-    buttonStyle.textAlign = UIAlignment::CENTER_CENTER;
-    buttonStyle.fontID = "fonts_UI_Arial";
-    
-    ui.setStyle("back_btn", buttonStyle);
-    ui.setStyle("animate_btn", buttonStyle);
-    ui.setStyle("theme_btn", buttonStyle);
-    
-    // Progress bar style
-    UIStyle progressStyle;
-    progressStyle.backgroundColor = {40, 40, 40, 255};
-    progressStyle.borderColor = {100, 100, 100, 255};
-    progressStyle.hoverColor = {0, 180, 0, 255}; // Green fill
-    progressStyle.borderWidth = 1;
-    progressStyle.fontID = "fonts_UI_Arial";
-    ui.setStyle("demo_progress", progressStyle);
-    
-    // Input field style
-    UIStyle inputStyle;
-    inputStyle.backgroundColor = {245, 245, 245, 255};
-    inputStyle.textColor = {20, 20, 20, 255}; // Dark text for good contrast
-    inputStyle.borderColor = {128, 128, 128, 255};
-    inputStyle.hoverColor = {235, 245, 255, 255};
-    inputStyle.borderWidth = 1;
-    inputStyle.textAlign = UIAlignment::CENTER_LEFT;
-    inputStyle.fontID = "fonts_UI_Arial";
-    ui.setStyle("demo_input", inputStyle);
-    
-    // List style
-    UIStyle listStyle;
-    listStyle.backgroundColor = {240, 240, 240, 255};
-    listStyle.borderColor = {128, 128, 128, 255};
-    listStyle.textColor = {20, 20, 20, 255}; // Dark text for good contrast on light background
-    listStyle.hoverColor = {180, 200, 255, 255}; // Light blue selection
-    listStyle.borderWidth = 1;
-    listStyle.listItemHeight = 36; // Increased from default 32 for better mouse accuracy
-    listStyle.fontID = "fonts_UI_Arial";
-    ui.setStyle("demo_list", listStyle);
-    
-    // Label styles
-    UIStyle labelStyle;
-    labelStyle.backgroundColor = {0, 0, 0, 0};
-    labelStyle.textColor = {220, 220, 220, 255}; // Light gray for better contrast
-    labelStyle.textAlign = UIAlignment::CENTER_LEFT;
-    labelStyle.fontID = "fonts_UI_Arial";
-    ui.setStyle("slider_label", labelStyle);
-    ui.setStyle("input_label", labelStyle);
-    ui.setStyle("progress_label", labelStyle);
-    ui.setStyle("back_instruction", labelStyle);
-    ui.setStyle("instructions", labelStyle);
-    
-    // Checkbox style
-    UIStyle checkboxStyle = buttonStyle;
-    checkboxStyle.backgroundColor = {180, 180, 180, 255};
-    checkboxStyle.hoverColor = {200, 200, 200, 255};
-    checkboxStyle.textColor = {220, 220, 220, 255}; // Light text for label on dark background
-    checkboxStyle.textAlign = UIAlignment::CENTER_LEFT;
-    checkboxStyle.fontID = "fonts_UI_Arial";
-    ui.setStyle("demo_checkbox", checkboxStyle);
-    
-    // Slider style
-    UIStyle sliderStyle;
-    sliderStyle.backgroundColor = {100, 100, 100, 255};
-    sliderStyle.borderColor = {150, 150, 150, 255};
-    sliderStyle.hoverColor = {60, 120, 180, 255}; // Blue handle
-    sliderStyle.pressedColor = {40, 100, 160, 255};
-    sliderStyle.borderWidth = 1;
-    sliderStyle.fontID = "fonts_UI_Arial";
-    ui.setStyle("demo_slider", sliderStyle);
+    // All other components automatically use the current theme (light theme by default)
+    // No manual styling needed - UIManager handles everything!
 }
 
 void UIExampleScreen::populateList() {
@@ -414,31 +337,30 @@ void UIExampleScreen::applyDarkTheme(bool dark) {
     auto& ui = getUIManager();
     
     if (dark) {
-        // Dark theme with subtle overlay
-        UIStyle panelStyle;
-        panelStyle.backgroundColor = {0, 0, 0, 50}; // Slightly more overlay for dark theme
-        panelStyle.fontID = "fonts_UI_Arial";
-        ui.setStyle("main_panel", panelStyle);
-        
-        UIStyle buttonStyle;
-        buttonStyle.backgroundColor = {50, 50, 60, 255};
-        buttonStyle.hoverColor = {70, 70, 80, 255};
-        buttonStyle.pressedColor = {30, 30, 40, 255};
-        buttonStyle.borderColor = {150, 150, 150, 255};
-        buttonStyle.textColor = {255, 255, 255, 255};
-        buttonStyle.borderWidth = 1;
-        buttonStyle.textAlign = UIAlignment::CENTER_CENTER;
-        buttonStyle.fontID = "fonts_UI_Arial";
-        
-        ui.setStyle("back_btn", buttonStyle);
-        ui.setStyle("animate_btn", buttonStyle);
-        ui.setStyle("theme_btn", buttonStyle);
-
-        
+        // Use centralized dark theme
+        ui.setThemeMode("dark");
         ui.setText("theme_btn", "Light Theme");
+        
+        // Reapply custom title styling for dark theme
+        UIStyle titleStyle;
+        titleStyle.backgroundColor = {0, 0, 0, 0};
+        titleStyle.textColor = {255, 245, 120, 255}; // Keep gold title
+        titleStyle.fontSize = 28;
+        titleStyle.textAlign = UIAlignment::CENTER_CENTER;
+        titleStyle.fontID = "fonts_UI_Arial";
+        ui.setStyle("title_label", titleStyle);
     } else {
-        // Light theme - restore original styles
-        setupStyling();
+        // Use centralized light theme
+        ui.setThemeMode("light");
         ui.setText("theme_btn", "Dark Theme");
+        
+        // Reapply custom title styling for light theme
+        UIStyle titleStyle;
+        titleStyle.backgroundColor = {0, 0, 0, 0};
+        titleStyle.textColor = {255, 245, 120, 255}; // Keep gold title
+        titleStyle.fontSize = 28;
+        titleStyle.textAlign = UIAlignment::CENTER_CENTER;
+        titleStyle.fontID = "fonts_UI_Arial";
+        ui.setStyle("title_label", titleStyle);
     }
 }

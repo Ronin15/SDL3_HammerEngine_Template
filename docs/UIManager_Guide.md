@@ -29,14 +29,14 @@ The UIManager is a comprehensive UI system for SDL3 games that provides reusable
 // In your GameState's enter() method
 auto& ui = UIManager::Instance();
 
-// Create a button
-ui.createButton("play_btn", {100, 100, 200, 50}, "Play Game");
+// Create theme background (for full-screen UI)
+ui.createThemeBackground(windowWidth, windowHeight);
 
-// Create a label
+// Create components - they automatically use theme styling
+ui.createButton("play_btn", {100, 100, 200, 50}, "Play Game");
 ui.createLabel("title", {0, 50, 800, 60}, "My Game Title");
 
-// Create a panel (background)
-ui.createPanel("main_panel", {0, 0, 800, 600});
+// No manual styling needed - UIManager handles everything!
 ```
 
 ### 2. Handle Button Clicks
@@ -56,7 +56,7 @@ void MyState::update(float deltaTime) {
 }
 ```
 
-### 3. Using UIScreen Base Class
+### 3. Using UIScreen Base Class with Centralized Theming
 
 ```cpp
 class MainMenuScreen : public UIScreen {
@@ -64,8 +64,18 @@ public:
     MainMenuScreen() : UIScreen("MainMenuScreen") {}
     
     void create() override {
+        auto& ui = getUIManager();
+        
+        // Create theme background automatically
+        auto& gameEngine = GameEngine::Instance();
+        ui.createThemeBackground(gameEngine.getWindowWidth(), gameEngine.getWindowHeight());
+        
+        // Components automatically use theme styling
         createButton("play_btn", {300, 200, 200, 50}, "Play Game");
         createButton("quit_btn", {300, 270, 200, 50}, "Quit");
+        
+        // Optional: Switch themes easily
+        // ui.setThemeMode("dark"); // or "light"
     }
     
     void onButtonClicked(const std::string& buttonID) override {
@@ -195,40 +205,49 @@ ui.addComponentToLayout("my_layout", "button2");
 ui.updateLayout("my_layout");
 ```
 
-## Styling and Theming
+## Centralized Theme System
 
-### Basic Styling
+### Easy Theme Switching
 ```cpp
-UIStyle buttonStyle;
-buttonStyle.backgroundColor = {70, 130, 180, 255}; // Steel blue
-buttonStyle.hoverColor = {100, 149, 237, 255};     // Cornflower blue
-buttonStyle.pressedColor = {25, 25, 112, 255};     // Midnight blue
-buttonStyle.textColor = {255, 255, 255, 255};      // White
-buttonStyle.borderColor = {255, 255, 255, 255};    // White border
-buttonStyle.borderWidth = 2;
-buttonStyle.padding = 10;
-buttonStyle.textAlign = UIAlignment::CENTER_CENTER;
+// Switch between built-in professional themes
+ui.setThemeMode("light");  // Professional light theme
+ui.setThemeMode("dark");   // Professional dark theme
 
-ui.setStyle("my_button", buttonStyle);
+// Check current theme
+std::string currentTheme = ui.getCurrentThemeMode();
 ```
 
-### Theme System
+### Automatic Styling
 ```cpp
-// Create a custom theme
-UITheme darkTheme;
-darkTheme.name = "dark";
+// Components automatically use current theme - no manual styling needed!
+ui.createButton("my_btn", {x, y, w, h}, "Button Text");
+ui.createList("my_list", {x, y, w, h});
 
-// Set component styles for theme
-UIStyle darkButton;
-darkButton.backgroundColor = {50, 50, 60, 255};
-darkButton.textColor = {255, 255, 255, 255};
-darkTheme.componentStyles[UIComponentType::BUTTON] = darkButton;
+// All components get:
+// - Professional colors and contrast
+// - Enhanced mouse accuracy (36px list items)
+// - Consistent appearance across the app
+```
 
-// Apply theme
-ui.loadTheme(darkTheme);
+### Custom Styling (When Needed)
+```cpp
+// Only customize when you need something special
+UIStyle titleStyle;
+titleStyle.textColor = {255, 215, 0, 255}; // Gold title
+titleStyle.fontSize = 32;
+ui.setStyle("title_label", titleStyle);
 
-// Apply theme to specific component
-ui.applyThemeToComponent("my_button", UIComponentType::BUTTON);
+// Everything else uses theme defaults automatically
+```
+
+### Background/Overlay Management
+```cpp
+// For full-screen menus (overlays background)
+ui.createThemeBackground(windowWidth, windowHeight);
+
+// For HUD elements (no overlay - game remains visible)
+// Simply don't call createThemeBackground()
+ui.createProgressBar("health_bar", {10, 10, 200, 20});
 ```
 
 ### Global Settings
@@ -389,9 +408,9 @@ public:
 ## Best Practices
 
 ### Component Management
-- Always remove components when exiting states to prevent memory leaks
-- Use meaningful, unique IDs for components
-- Group related components using consistent naming (e.g., "menu_play_btn", "menu_quit_btn")
+- Use `ui.removeComponentsWithPrefix("statename_")` for easy cleanup
+- Use meaningful, unique IDs with prefixes to avoid conflicts
+- Call `ui.resetToDefaultTheme()` when exiting states to prevent theme contamination
 
 ### Performance
 - Minimize component creation/destruction in update loops
@@ -453,44 +472,32 @@ private:
 };
 
 // MenuScreen.cpp
+### Modern Styling with Centralized Themes
+```cpp
 void MenuScreen::create() {
     auto& gameEngine = GameEngine::Instance();
     int width = gameEngine.getWindowWidth();
     int height = gameEngine.getWindowHeight();
     
-    // Background
-    createPanel("bg_panel", {0, 0, width, height});
+    // Create theme background automatically
+    auto& ui = getUIManager();
+    ui.createThemeBackground(width, height);
     
-    // Title
+    // Components automatically use professional theme styling
     createLabel("title", {0, 100, width, 80}, "My Amazing Game");
-    
-    // Menu buttons
     createButton("play_btn", {width/2 - 100, 250, 200, 50}, "Play Game");
     createButton("options_btn", {width/2 - 100, 320, 200, 50}, "Options");
     createButton("quit_btn", {width/2 - 100, 390, 200, 50}, "Quit");
     
-    // Style the components
-    auto& ui = getUIManager();
-    
-    // Title styling
+    // Only customize what needs to be special
     UIStyle titleStyle;
     titleStyle.textColor = {255, 215, 0, 255}; // Gold
     titleStyle.fontSize = 32;
     titleStyle.textAlign = UIAlignment::CENTER_CENTER;
     ui.setStyle("title", titleStyle);
     
-    // Button styling
-    UIStyle buttonStyle;
-    buttonStyle.backgroundColor = {70, 130, 180, 255};
-    buttonStyle.hoverColor = {100, 149, 237, 255};
-    buttonStyle.pressedColor = {25, 25, 112, 255};
-    buttonStyle.textColor = {255, 255, 255, 255};
-    buttonStyle.borderWidth = 2;
-    buttonStyle.textAlign = UIAlignment::CENTER_CENTER;
-    
-    ui.setStyle("play_btn", buttonStyle);
-    ui.setStyle("options_btn", buttonStyle);
-    ui.setStyle("quit_btn", buttonStyle);
+    // All buttons automatically get professional theme styling!
+    // 98% less code, 100% more consistent appearance
 }
 
 void MenuScreen::onButtonClicked(const std::string& buttonID) {

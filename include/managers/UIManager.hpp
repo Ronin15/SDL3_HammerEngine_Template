@@ -284,8 +284,20 @@ public:
     // Theme management
     void loadTheme(const UITheme& theme);
     void setDefaultTheme();
+    void setLightTheme();
+    void setDarkTheme();
+    void setThemeMode(const std::string& mode);
+    std::string getCurrentThemeMode() const;
     void applyThemeToComponent(const std::string& id, UIComponentType type);
     void setGlobalStyle(const UIStyle& style);
+    
+    // Background/overlay management
+    void createThemeBackground(int windowWidth, int windowHeight);
+    void removeThemeBackground();
+    
+    // Component cleanup utilities
+    void removeComponentsWithPrefix(const std::string& prefix);
+    void resetToDefaultTheme();
 
     // Utility methods
     void setGlobalFont(const std::string& fontID);
@@ -316,6 +328,7 @@ private:
     UIStyle m_globalStyle{};
     std::string m_globalFontID{"default"};
     float m_globalScale{1.0f};
+    std::string m_currentThemeMode{"light"};
     
     // Settings
     bool m_tooltipsEnabled{true};
