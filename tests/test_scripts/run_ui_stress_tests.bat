@@ -63,6 +63,7 @@ echo   /m              Enable memory pressure testing [default: false]
 echo   /r              Skip resolution scaling tests [default: false]
 echo   /p              Skip presentation mode tests [default: false]
 echo   /v              Enable verbose output [default: false]
+echo   /noverbose      Disable verbose output [default: false]
 echo   /s              Save results to file [default: true]
 echo   /b              Run benchmark suite instead of stress tests [default: false]
 echo   /h              Show this help message
@@ -84,7 +85,19 @@ if "%~1"=="/l" (
     shift
     goto :parse_loop
 )
+if "%~1"=="--stress-level" (
+    set STRESS_LEVEL=%~2
+    shift
+    shift
+    goto :parse_loop
+)
 if "%~1"=="/d" (
+    set TEST_DURATION=%~2
+    shift
+    shift
+    goto :parse_loop
+)
+if "%~1"=="--duration" (
     set TEST_DURATION=%~2
     shift
     shift
@@ -96,7 +109,18 @@ if "%~1"=="/c" (
     shift
     goto :parse_loop
 )
+if "%~1"=="--max-components" (
+    set MAX_COMPONENTS=%~2
+    shift
+    shift
+    goto :parse_loop
+)
 if "%~1"=="/m" (
+    set ENABLE_MEMORY_STRESS=true
+    shift
+    goto :parse_loop
+)
+if "%~1"=="--memory-stress" (
     set ENABLE_MEMORY_STRESS=true
     shift
     goto :parse_loop
@@ -106,7 +130,17 @@ if "%~1"=="/r" (
     shift
     goto :parse_loop
 )
+if "%~1"=="--skip-resolutions" (
+    set TEST_RESOLUTIONS=false
+    shift
+    goto :parse_loop
+)
 if "%~1"=="/p" (
+    set TEST_PRESENTATION_MODES=false
+    shift
+    goto :parse_loop
+)
+if "%~1"=="--skip-presentation" (
     set TEST_PRESENTATION_MODES=false
     shift
     goto :parse_loop
@@ -116,7 +150,27 @@ if "%~1"=="/v" (
     shift
     goto :parse_loop
 )
+if "%~1"=="--verbose" (
+    set VERBOSE=true
+    shift
+    goto :parse_loop
+)
+if "%~1"=="/noverbose" (
+    set VERBOSE=false
+    shift
+    goto :parse_loop
+)
+if "%~1"=="--noverbose" (
+    set VERBOSE=false
+    shift
+    goto :parse_loop
+)
 if "%~1"=="/s" (
+    set SAVE_RESULTS=true
+    shift
+    goto :parse_loop
+)
+if "%~1"=="--save-results" (
     set SAVE_RESULTS=true
     shift
     goto :parse_loop
@@ -126,7 +180,16 @@ if "%~1"=="/b" (
     shift
     goto :parse_loop
 )
+if "%~1"=="--benchmark" (
+    set BENCHMARK_MODE=true
+    shift
+    goto :parse_loop
+)
 if "%~1"=="/h" (
+    call :show_usage
+    exit /b 0
+)
+if "%~1"=="--help" (
     call :show_usage
     exit /b 0
 )
