@@ -87,7 +87,7 @@ void LogoState::render() {
   // Draw version text
   fontMgr.drawText(
 
-      "v0.1.0",
+      "v0.1.5",
       "fonts_Arial",
       windowWidth / 2,  // Center horizontally
       (windowHeight / 2) + 260,
