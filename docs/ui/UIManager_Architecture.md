@@ -2,11 +2,22 @@
 
 ## Overview
 
-The UIManager follows a **state-managed architecture** where individual game states are responsible for managing their own UI lifecycle. This design ensures optimal performance, clear separation of concerns, and maximum flexibility for state-specific UI behavior.
+The UIManager follows a **hybrid architecture** where core world systems are managed globally by GameEngine for optimal performance, while UI systems are managed by individual game states for flexibility. This design ensures optimal performance, clear separation of concerns, and maximum flexibility for both world simulation and state-specific UI behavior.
 
-## Architecture Principles
+## Hybrid Architecture Principles
 
-### 1. State-Managed UI Updates
+### 1. Global vs State-Managed Systems
+
+**Global Systems (Updated by GameEngine):**
+- **InputManager**: Fundamental to all states, minimal overhead, always needed
+- **AIManager**: World simulation with 10K+ entities, benefits from consistent global updates and threading
+- **EventManager**: Global game events (weather, scene changes), batch processing optimization
+
+**State-Managed Systems (Updated by individual states):**
+- **UIManager**: Optional, state-specific, only updated when UI is actually used
+- **Audio/Visual effects**: State-specific requirements and lifecycle
+
+### 2. State-Managed UI Updates
 
 **✅ Correct Pattern:**
 ```cpp
@@ -28,6 +39,13 @@ void GameEngine::update(float deltaTime) {
     UIManager::Instance().update(deltaTime);
     mp_gameStateManager->update(deltaTime);
 }
+
+void SomeGameState::update(float deltaTime) {
+    // DON'T DO THIS - Redundant manager updates in states
+    AIManager::Instance().update(deltaTime);
+    EventManager::Instance().update();
+    // These are now handled globally by GameEngine
+}
 ```
 
 ### 2. State-Managed UI Rendering
@@ -42,22 +60,24 @@ void UIExampleState::render() {
 }
 ```
 
-## Benefits of This Architecture
+## Benefits of This Hybrid Architecture
 
 ### Performance Optimization
+- **Global Systems**: World simulation systems (AI, Events) benefit from consistent updates and threading optimization
 - **Conditional Updates**: UI is only updated when states actually use UI components
-- **Selective Rendering**: Only active UI states perform expensive UI operations
+- **Manager Caching**: GameEngine caches manager references for optimal performance
 - **Memory Efficiency**: No unnecessary UI processing in non-UI game states
 
 ### Clean Separation of Concerns
-- **Engine Responsibility**: GameEngine focuses on core game loop, threading, and resource management
-- **State Responsibility**: Game states handle their specific UI needs and lifecycle
-- **Manager Responsibility**: UIManager provides the UI framework without dictating usage patterns
+- **Engine Responsibility**: GameEngine handles world simulation, core systems, threading, and resource management
+- **State Responsibility**: Game states handle their specific UI needs and state-specific systems
+- **Manager Responsibility**: Each manager provides its framework without dictating usage patterns
 
 ### Maximum Flexibility
-- **State-Specific Behavior**: Each state can customize UI update frequency, rendering order, and component management
-- **Conditional UI**: States can easily enable/disable UI based on game conditions
-- **Independent Lifecycle**: UI components lifecycle is tied to state lifecycle, preventing resource leaks
+- **World Consistency**: Global systems ensure consistent world state across all game states
+- **State-Specific Behavior**: Each state can customize UI and other optional systems
+- **Conditional Systems**: States can opt-in to systems like UI without affecting global performance
+- **Independent Lifecycle**: Optional system lifecycle is tied to state lifecycle, preventing resource leaks
 
 ## Implementation Guidelines
 
@@ -66,13 +86,14 @@ void UIExampleState::render() {
 1. **Include UIManager Update in State Update:**
 ```cpp
 void YourGameState::update(float deltaTime) {
-    // Always update UIManager first if using UI
+    // Update UIManager for states that use UI components
     auto& uiManager = UIManager::Instance();
     if (!uiManager.isShutdown()) {
         uiManager.update(deltaTime);
     }
     
     // Your state-specific updates...
+    // DO NOT update global systems (AI, Events, Input) - they're handled by GameEngine
 }
 ```
 
@@ -96,11 +117,26 @@ Simply omit the UIManager calls - the pattern is self-selecting:
 void NonUIGameState::update(float deltaTime) {
     // No UIManager updates needed
     // State-specific updates only...
+    // Global systems (AI, Events, Input) are handled by GameEngine
 }
 
 void NonUIGameState::render() {
     // No UIManager rendering needed
     // State-specific rendering only...
+}
+```
+
+### GameEngine Implementation (Reference)
+
+```cpp
+void GameEngine::update(float deltaTime) {
+    // Global systems updated by GameEngine for optimal performance
+    mp_inputManager->update();                    // Always needed
+    mp_aiManager->update(deltaTime);             // World simulation
+    mp_eventManager->update();                   // Global events
+    
+    // State-specific systems handled by states
+    mp_gameStateManager->update(deltaTime);     // Delegates to current state
 }
 ```
 
@@ -154,26 +190,39 @@ private:
 
 ### From Global UI Updates
 
-If you have existing code with global UIManager updates in GameEngine:
+If you have existing code with inappropriate manager updates:
 
-1. **Remove from GameEngine:**
+1. **Remove Redundant Updates from States:**
 ```cpp
-// Remove this from GameEngine::update()
-UIManager& uiMgr = UIManager::Instance();
-if (!uiMgr.isShutdown()) {
-    uiMgr.update(deltaTime);
+// Remove these from individual game states (now handled globally)
+void AIDemoState::update(float deltaTime) {
+    // DON'T DO THIS - AIManager is updated globally
+    // AIManager::Instance().update(deltaTime);
+    
+    // State-specific logic only
 }
 ```
 
-2. **Add to Each UI State:**
+2. **Add UI Updates to UI States Only:**
 ```cpp
-// Add this to each state that uses UI
+// Add this only to states that use UI components
 void YourUIState::update(float deltaTime) {
     auto& uiManager = UIManager::Instance();
     if (!uiManager.isShutdown()) {
         uiManager.update(deltaTime);
     }
     // ... rest of state update
+}
+```
+
+3. **GameEngine Handles Global Systems:**
+```cpp
+// This is now handled automatically by GameEngine
+void GameEngine::update(float deltaTime) {
+    mp_inputManager->update();        // Cached reference
+    mp_aiManager->update(deltaTime);  // Cached reference  
+    mp_eventManager->update();        // Cached reference
+    mp_gameStateManager->update(deltaTime);
 }
 ```
 
@@ -227,19 +276,27 @@ public:
 - [SDL3 Logical Presentation Modes](SDL3_Logical_Presentation_Modes.md)
 - [UI Stress Testing Guide](UI_Stress_Testing_Guide.md)
 - [Game State Management](../GameStateManager.md)
+- [AIManager Documentation](../ai/AIManager.md)
+- [EventManager Documentation](../EventManager.md)
 
 ## Troubleshooting
 
 ### Common Issues
 
 **Issue**: UI not updating or responding
-**Solution**: Ensure UIManager::update() is called in your state's update method
+**Solution**: Ensure UIManager::update() is called in your UI state's update method
 
 **Issue**: UI not rendering
-**Solution**: Ensure UIManager::render() is called in your state's render method
+**Solution**: Ensure UIManager::render() is called in your UI state's render method
 
 **Issue**: UI components persist between states
 **Solution**: Properly clean up UI components in state's exit() method
 
-**Issue**: Performance degradation
-**Solution**: Verify only UI-using states are calling UIManager updates
+**Issue**: Redundant manager updates causing performance issues
+**Solution**: Remove AI/Event/Input manager updates from states - they're handled globally
+
+**Issue**: Global systems not working in states
+**Solution**: Verify GameEngine is properly updating global systems before state updates
+
+**Issue**: Manager caching errors
+**Solution**: Ensure GameEngine::init() completes successfully before using cached references

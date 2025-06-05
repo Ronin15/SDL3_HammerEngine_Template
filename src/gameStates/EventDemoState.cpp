@@ -142,8 +142,10 @@ void EventDemoState::update(float deltaTime) {
         m_player->update(deltaTime);
     }
 
-    // Update AI Manager
-    aiMgr.update(deltaTime);
+    // AI Manager is updated globally by GameEngine for optimal performance
+    // This prevents double-updating AI entities which was causing them to move twice as fast
+    // Entity updates are handled by AIManager::update() in GameEngine
+    // No need to manually update AIManager here
 
     // Clean up invalid NPCs
     auto it = m_spawnedNPCs.begin();
@@ -255,7 +257,8 @@ void EventDemoState::update(float deltaTime) {
     // Update instructions
     updateInstructions();
 
-    // Note: EventManager is updated by GameEngine in processBackgroundTasks()
+    // Note: EventManager is updated globally by GameEngine in the main update loop
+    // for optimal performance and consistency with other global systems (AI, Input)
 }
 
 void EventDemoState::render() {
