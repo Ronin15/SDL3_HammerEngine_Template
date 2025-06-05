@@ -39,6 +39,11 @@ class FontManager {
                           const std::string& text, const std::string& fontID,
                           SDL_Color color, SDL_Renderer* renderer);
 
+  // Render multi-line text to a texture (handles newlines)
+  std::shared_ptr<SDL_Texture> renderMultiLineText(
+                          const std::string& text, TTF_Font* font,
+                          SDL_Color color, SDL_Renderer* renderer);
+
   // Draw text directly to renderer
   // The x,y coordinates specify the center point of the text
   void drawText(const std::string& text, const std::string& fontID,

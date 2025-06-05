@@ -701,7 +701,7 @@ void EventDemoState::triggerConvenienceMethodsDemo() {
 
     int successCount = success1 + success2 + success3 + success4 + success5 + success6;
     if (successCount == 6) {
-        addLogEntry("✓ All 6 events created successfully with convenience methods");
+        addLogEntry("[OK] All 6 events created successfully with convenience methods");
         addLogEntry("  - Fog weather (intensity: 0.7, transition: 2.5s)");
         addLogEntry("  - Storm weather (intensity: 0.9, transition: 1.5s)");
         addLogEntry("  - Dungeon scene (dissolve transition, 2.0s)");
@@ -724,7 +724,7 @@ void EventDemoState::triggerConvenienceMethodsDemo() {
         m_currentWeather = WeatherType::Foggy;
         addLogEntry("Triggered fog weather to demonstrate functionality");
     } else {
-        addLogEntry("✗ Created " + std::to_string(successCount) + "/6 events - some failed");
+        addLogEntry("[FAIL] Created " + std::to_string(successCount) + "/6 events - some failed");
     }
 
     addLogEntry("=== CONVENIENCE DEMO COMPLETE ===");
