@@ -100,6 +100,7 @@ struct UIStyle {
     int borderWidth{1};
     int padding{8};
     int margin{4};
+    int listItemHeight{32}; // Configurable height for list items (increased from 20 for better mouse accuracy)
     
     std::string fontID{"fonts_UI_Arial"};
     int fontSize{16};
