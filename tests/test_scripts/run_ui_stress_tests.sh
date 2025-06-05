@@ -7,10 +7,6 @@
 
 set -e  # Exit on any error
 
-# Navigate to script directory (in case script is run from elsewhere)
-SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-cd "$SCRIPT_DIR"
-
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -18,10 +14,14 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
+# Get the directory where this script is located and find project root
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+
 # Script configuration
-BUILD_DIR="../../build"
-TEST_EXECUTABLE="../../bin/debug/ui_stress_test"
-LOG_DIR="../../test_results/ui_stress"
+BUILD_DIR="$PROJECT_ROOT/build"
+TEST_EXECUTABLE="$PROJECT_ROOT/bin/debug/ui_stress_test"
+LOG_DIR="$PROJECT_ROOT/test_results/ui_stress"
 TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
 LOG_FILE="$LOG_DIR/ui_stress_test_$TIMESTAMP.log"
 
@@ -185,8 +185,8 @@ build_project() {
         exit 1
     fi
     
-    # Return to original directory
-    cd ..
+    # Return to project root directory
+    cd "$PROJECT_ROOT"
 }
 
 # Function to run stress tests
@@ -229,11 +229,11 @@ run_stress_tests() {
     
     if [ "$VERBOSE" = true ]; then
         # Run with output to both console and log file
-        ./"$TEST_EXECUTABLE" $TEST_ARGS 2>&1 | tee "$LOG_FILE"
+        "$TEST_EXECUTABLE" $TEST_ARGS 2>&1 | tee "$LOG_FILE"
         TEST_RESULT=${PIPESTATUS[0]}
     else
         # Run with output only to log file
-        ./"$TEST_EXECUTABLE" $TEST_ARGS > "$LOG_FILE" 2>&1
+        "$TEST_EXECUTABLE" $TEST_ARGS > "$LOG_FILE" 2>&1
         TEST_RESULT=$?
     fi
     
@@ -266,11 +266,11 @@ run_benchmark_suite() {
     
     if [ "$VERBOSE" = true ]; then
         # Run with output to both console and log file
-        ./"$TEST_EXECUTABLE" $BENCHMARK_ARGS 2>&1 | tee "$LOG_FILE"
+        "$TEST_EXECUTABLE" $BENCHMARK_ARGS 2>&1 | tee "$LOG_FILE"
         BENCHMARK_RESULT=${PIPESTATUS[0]}
     else
         # Run with output only to log file
-        ./"$TEST_EXECUTABLE" $BENCHMARK_ARGS > "$LOG_FILE" 2>&1
+        "$TEST_EXECUTABLE" $BENCHMARK_ARGS > "$LOG_FILE" 2>&1
         BENCHMARK_RESULT=$?
     fi
     
@@ -327,14 +327,47 @@ check_system_resources() {
     fi
     
     # Get GPU info if available
+    GPU_DETECTED=false
+    
+    # Try NVIDIA first
     if command -v nvidia-smi >/dev/null 2>&1; then
-        echo "GPU: $(nvidia-smi --query-gpu=name --format=csv,noheader,nounits | head -1)"
-    elif command -v system_profiler >/dev/null 2>&1; then
-        # macOS
-        GPU_INFO=$(system_profiler SPDisplaysDataType | grep "Chipset Model" | head -1 | cut -d: -f2 | xargs)
+        GPU_INFO=$(nvidia-smi --query-gpu=name --format=csv,noheader,nounits 2>/dev/null | head -1)
         if [ ! -z "$GPU_INFO" ]; then
             echo "GPU: $GPU_INFO"
+            GPU_DETECTED=true
         fi
+    fi
+    
+    # Try glxinfo for Linux (works with AMD, Intel, NVIDIA)
+    if [ "$GPU_DETECTED" = false ] && command -v glxinfo >/dev/null 2>&1; then
+        GPU_INFO=$(glxinfo 2>/dev/null | grep "OpenGL renderer" | cut -d: -f2 | sed 's/^ *//' | sed 's/ (.*$//' | head -1)
+        if [ ! -z "$GPU_INFO" ]; then
+            echo "GPU: $GPU_INFO"
+            GPU_DETECTED=true
+        fi
+    fi
+    
+    # Try lspci as fallback for Linux
+    if [ "$GPU_DETECTED" = false ] && command -v lspci >/dev/null 2>&1; then
+        GPU_INFO=$(lspci 2>/dev/null | grep -E "(VGA|3D|Display)" | head -1 | cut -d: -f3 | sed 's/^ *//')
+        if [ ! -z "$GPU_INFO" ]; then
+            echo "GPU: $GPU_INFO"
+            GPU_DETECTED=true
+        fi
+    fi
+    
+    # Try macOS detection
+    if [ "$GPU_DETECTED" = false ] && command -v system_profiler >/dev/null 2>&1; then
+        GPU_INFO=$(system_profiler SPDisplaysDataType 2>/dev/null | grep "Chipset Model" | head -1 | cut -d: -f2 | xargs)
+        if [ ! -z "$GPU_INFO" ]; then
+            echo "GPU: $GPU_INFO"
+            GPU_DETECTED=true
+        fi
+    fi
+    
+    # If no GPU detected, show message
+    if [ "$GPU_DETECTED" = false ]; then
+        echo "GPU: Not detected"
     fi
     
     echo ""

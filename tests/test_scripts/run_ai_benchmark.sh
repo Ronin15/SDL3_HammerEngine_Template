@@ -61,6 +61,10 @@ done
 
 echo -e "${YELLOW}Running AI Scaling Benchmark...${NC}"
 
+# Get the directory where this script is located and find project root
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+
 # Pass extreme test option to the benchmark if requested
 BENCHMARK_OPTS=""
 if [ "$EXTREME_TEST" = true ]; then
@@ -69,9 +73,9 @@ fi
 
 # Determine the correct path to the benchmark executable
 if [ "$BUILD_TYPE" = "Debug" ]; then
-  BENCHMARK_EXECUTABLE="../../bin/debug/ai_scaling_benchmark"
+  BENCHMARK_EXECUTABLE="$PROJECT_ROOT/bin/debug/ai_scaling_benchmark"
 else
-  BENCHMARK_EXECUTABLE="../../bin/release/ai_scaling_benchmark"
+  BENCHMARK_EXECUTABLE="$PROJECT_ROOT/bin/release/ai_scaling_benchmark"
 fi
 
 # Verify executable exists
@@ -79,7 +83,7 @@ if [ ! -f "$BENCHMARK_EXECUTABLE" ]; then
   echo -e "${RED}Error: Benchmark executable not found at '$BENCHMARK_EXECUTABLE'${NC}"
   # Attempt to find the executable
   echo -e "${YELLOW}Searching for benchmark executable...${NC}"
-  FOUND_EXECUTABLE=$(find ../../bin -name "ai_scaling_benchmark*")
+  FOUND_EXECUTABLE=$(find "$PROJECT_ROOT/bin" -name "ai_scaling_benchmark*" -type f -executable | head -n 1)
   if [ -n "$FOUND_EXECUTABLE" ]; then
     echo -e "${GREEN}Found executable at: $FOUND_EXECUTABLE${NC}"
     BENCHMARK_EXECUTABLE="$FOUND_EXECUTABLE"

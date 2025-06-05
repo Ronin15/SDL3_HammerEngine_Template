@@ -15,6 +15,7 @@
 #include <random>
 #include <algorithm>
 #include <thread>
+#include <filesystem>
 #include <boost/container/small_vector.hpp>
 #include <boost/container/flat_map.hpp>
 
@@ -556,7 +557,11 @@ int main(int argc, char* argv[]) {
         
         if (options.saveResults && !options.resultsPath.empty()) {
             // Create directory if needed
-            system("mkdir -p test_results/ui_stress");
+            std::error_code ec;
+            std::filesystem::create_directories("test_results/ui_stress", ec);
+            if (ec) {
+                std::cerr << "Warning: Failed to create directory test_results/ui_stress: " << ec.message() << "\n";
+            }
             saveResults(options.resultsPath, tester.getResults());
             std::cout << "Results saved to: " << options.resultsPath << "\n";
         }

@@ -42,11 +42,15 @@ done
 # Run the tests
 echo "Running Thread-Safe AI Manager tests..."
 
+# Get the directory where this script is located and find project root
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+
 # Determine test executable path based on build type
 if [ "$BUILD_TYPE" = "Debug" ]; then
-  TEST_EXECUTABLE="../../bin/debug/thread_safe_ai_manager_tests"
+  TEST_EXECUTABLE="$PROJECT_ROOT/bin/debug/thread_safe_ai_manager_tests"
 else
-  TEST_EXECUTABLE="../../bin/release/thread_safe_ai_manager_tests"
+  TEST_EXECUTABLE="$PROJECT_ROOT/bin/release/thread_safe_ai_manager_tests"
 fi
 
 # Verify executable exists
@@ -54,7 +58,7 @@ if [ ! -f "$TEST_EXECUTABLE" ]; then
   echo "Error: Test executable not found at '$TEST_EXECUTABLE'"
   # Attempt to find the executable
   echo "Searching for test executable..."
-  FOUND_EXECUTABLE=$(find ../../bin -name thread_safe_ai_manager_tests)
+  FOUND_EXECUTABLE=$(find "$PROJECT_ROOT/bin" -name "thread_safe_ai_manager_tests" -type f -executable | head -n 1)
   if [ -n "$FOUND_EXECUTABLE" ]; then
     echo "Found executable at: $FOUND_EXECUTABLE"
     TEST_EXECUTABLE="$FOUND_EXECUTABLE"
