@@ -164,11 +164,14 @@ void AIDemoState::update([[maybe_unused]] float deltaTime) {
             m_player->update(deltaTime);
         }
 
-        // Update AI Manager
-        aiMgr.update(deltaTime);
-
-        // Entity updates are now handled by AIManager::update()
-        // No need to manually update NPCs here
+        // AI Manager is updated globally by GameEngine for optimal performance
+        // This hybrid architecture provides several benefits:
+        // 1. Consistent 60 FPS updates for all 10K+ AI entities across all states
+        // 2. Optimized threading with worker budget allocation
+        // 3. No redundant updates when switching between states
+        // 4. Better cache performance from centralized batch processing
+        // Entity updates are handled by AIManager::update() in GameEngine
+        // No need to manually update NPCs or AIManager here
 
         // Handle user input for the demo
     } catch (const std::exception& e) {
