@@ -7,7 +7,6 @@ REM Licensed under the MIT License - see LICENSE file for details
 setlocal enabledelayedexpansion
 
 REM Script configuration
-set BUILD_DIR=..\..\build
 set TEST_EXECUTABLE=..\..\bin\debug\ui_stress_test.exe
 set LOG_DIR=..\..\test_results\ui_stress
 set TIMESTAMP=%date:~-4,4%%date:~-10,2%%date:~-7,2%_%time:~0,2%%time:~3,2%%time:~6,2%
@@ -152,16 +151,9 @@ goto :eof
 :check_prerequisites
 call :print_status "Checking prerequisites..."
 
-REM Check if build directory exists
-if not exist "%BUILD_DIR%" (
-    call :print_error "Build directory not found: %BUILD_DIR%"
-    call :print_error "Please run cmake and build the project first"
-    exit /b 1
-)
-
 REM Check if test executable exists
-if not exist "%BUILD_DIR%\%TEST_EXECUTABLE%" (
-    call :print_error "Test executable not found: %BUILD_DIR%\%TEST_EXECUTABLE%"
+if not exist "%TEST_EXECUTABLE%" (
+    call :print_error "Test executable not found: %TEST_EXECUTABLE%"
     call :print_error "Please build the project first (make sure UI stress test target is built)"
     exit /b 1
 )
@@ -172,36 +164,7 @@ if not exist "%LOG_DIR%" mkdir "%LOG_DIR%"
 call :print_success "Prerequisites check passed"
 goto :eof
 
-:build_project
-call :print_status "Building project..."
 
-REM Change to build directory
-pushd "%BUILD_DIR%"
-
-REM Build the project using MSBuild or make
-if exist "*.sln" (
-    REM Visual Studio solution found
-    msbuild /p:Configuration=Release > build.log 2>&1
-) else if exist "Makefile" (
-    REM Makefile found
-    make -j%NUMBER_OF_PROCESSORS% > build.log 2>&1
-) else (
-    call :print_error "No build system found (no .sln or Makefile)"
-    popd
-    exit /b 1
-)
-
-if !errorlevel! equ 0 (
-    call :print_success "Project built successfully"
-) else (
-    call :print_error "Build failed. Check %BUILD_DIR%\build.log for details"
-    popd
-    exit /b 1
-)
-
-REM Return to original directory
-popd
-goto :eof
 
 :run_stress_tests
 call :print_status "Starting UI stress tests..."
@@ -234,19 +197,20 @@ if "%VERBOSE%"=="true" (
 )
 
 if "%SAVE_RESULTS%"=="true" (
-    set TEST_ARGS=%TEST_ARGS% --save-results %LOG_FILE%
+    set TEST_ARGS=%TEST_ARGS% --save-results "%LOG_FILE%"
 )
 
 REM Run the tests
-call :print_status "Executing: %BUILD_DIR%\%TEST_EXECUTABLE% %TEST_ARGS%"
+call :print_status "Executing: %TEST_EXECUTABLE% %TEST_ARGS%"
 
 if "%VERBOSE%"=="true" (
     REM Run with output to both console and log file
-    "%BUILD_DIR%\%TEST_EXECUTABLE%" %TEST_ARGS% 2>&1 | tee "%LOG_FILE%"
+    "%TEST_EXECUTABLE%" %TEST_ARGS% 2>&1 > "%LOG_FILE%"
     set TEST_RESULT=!errorlevel!
+    type "%LOG_FILE%"
 ) else (
     REM Run with output only to log file
-    "%BUILD_DIR%\%TEST_EXECUTABLE%" %TEST_ARGS% > "%LOG_FILE%" 2>&1
+    "%TEST_EXECUTABLE%" %TEST_ARGS% > "%LOG_FILE%" 2>&1
     set TEST_RESULT=!errorlevel!
 )
 
@@ -270,19 +234,20 @@ if "%VERBOSE%"=="true" (
 )
 
 if "%SAVE_RESULTS%"=="true" (
-    set BENCHMARK_ARGS=!BENCHMARK_ARGS! --save-results %LOG_FILE%
+    set BENCHMARK_ARGS=!BENCHMARK_ARGS! --save-results "%LOG_FILE%"
 )
 
 REM Run the benchmarks
-call :print_status "Executing: %BUILD_DIR%\%TEST_EXECUTABLE% %BENCHMARK_ARGS%"
+call :print_status "Executing: %TEST_EXECUTABLE% %BENCHMARK_ARGS%"
 
 if "%VERBOSE%"=="true" (
     REM Run with output to both console and log file
-    "%BUILD_DIR%\%TEST_EXECUTABLE%" !BENCHMARK_ARGS! 2>&1 | tee "%LOG_FILE%"
+    "%TEST_EXECUTABLE%" !BENCHMARK_ARGS! 2>&1 > "%LOG_FILE%"
     set BENCHMARK_RESULT=!errorlevel!
+    type "%LOG_FILE%"
 ) else (
     REM Run with output only to log file
-    "%BUILD_DIR%\%TEST_EXECUTABLE%" !BENCHMARK_ARGS! > "%LOG_FILE%" 2>&1
+    "%TEST_EXECUTABLE%" !BENCHMARK_ARGS! > "%LOG_FILE%" 2>&1
     set BENCHMARK_RESULT=!errorlevel!
 )
 
@@ -353,9 +318,9 @@ for /f "tokens=2 delims=:" %%a in ('systeminfo ^| findstr /C:"Total Physical Mem
 )
 
 REM Get GPU info if available
-nvidia-smi --query-gpu=name --format=csv,noheader,nounits >nul 2>&1
+nvidia-smi --query-gpu=name --format=csv >nul 2>&1
 if !errorlevel! equ 0 (
-    for /f "tokens=*" %%a in ('nvidia-smi --query-gpu=name --format=csv,noheader,nounits') do (
+    for /f "skip=1 tokens=*" %%a in ('nvidia-smi --query-gpu=name --format=csv') do (
         echo GPU: %%a
         goto :gpu_done
     )
@@ -396,9 +361,7 @@ if !errorlevel! neq 0 exit /b !errorlevel!
 REM Clean up old results
 call :cleanup_old_results
 
-REM Build project if needed
-REM call :build_project
-REM if !errorlevel! neq 0 exit /b !errorlevel!
+
 
 REM Run tests or benchmarks
 if "%BENCHMARK_MODE%"=="true" (

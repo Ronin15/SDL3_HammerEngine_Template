@@ -77,47 +77,7 @@ goto :parse_args
 
 :done_parsing
 
-:: Handle clean-all case
-if "%CLEAN_ALL%"=="true" (
-    echo !YELLOW!Removing entire build directory...!NC!
-    if exist build rmdir /s /q build
-)
-
-echo !BLUE!Building SaveGameManager tests...!NC!
-
-:: Ensure build directory exists
-if not exist "build" (
-    mkdir build
-    echo !YELLOW!Created build directory!NC!
-)
-
-:: Navigate to build directory
-cd build || (
-    echo !RED!Failed to enter build directory!!NC!
-    exit /b 1
-)
-
-:: Configure with CMake if needed
-if not exist "build.ninja" (
-    echo !YELLOW!Configuring project with CMake and Ninja...!NC!
-    cmake -G Ninja .. || (
-        echo !RED!CMake configuration failed!!NC!
-        exit /b 1
-    )
-)
-
-:: Clean tests if requested
-if "%CLEAN%"=="true" (
-    echo !YELLOW!Cleaning test artifacts...!NC!
-    ninja -t clean save_manager_tests
-)
-
-:: Build the tests
-echo !YELLOW!Building tests...!NC!
-ninja save_manager_tests || (
-    echo !RED!Build failed!!NC!
-    exit /b 1
-)
+echo !BLUE!Running SaveGameManager tests...!NC!
 
 :: Check if test executable exists
 set "TEST_EXECUTABLE=..\..\bin\debug\save_manager_tests.exe"
@@ -145,7 +105,7 @@ if not exist "!TEST_EXECUTABLE!" (
 :found_executable
 
 :: Run the tests
-echo !GREEN!Build successful. Running tests...!NC!
+echo !GREEN!Running tests...!NC!
 echo !BLUE!====================================!NC!
 
 :: Run with appropriate options
@@ -187,8 +147,7 @@ findstr /r /c:"Entering test case" test_output.log > "..\..\test_results\save_ma
 :: Clean up temporary file
 del "!LOG_FILE!"
 
-:: Return to project root
-cd ..
+
 
 :: Report test results
 if !TEST_RESULT! equ 0 (
