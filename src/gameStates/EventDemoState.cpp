@@ -7,7 +7,7 @@
 #include "SDL3/SDL_scancode.h"
 #include "core/GameEngine.hpp"
 #include "managers/InputManager.hpp"
-#include "managers/FontManager.hpp"
+#include "managers/UIManager.hpp"
 #include "managers/AIManager.hpp"
 #include "managers/EventManager.hpp"
 #include "events/WeatherEvent.hpp"
@@ -36,7 +36,7 @@ bool EventDemoState::enter() {
     try {
         // Cache GameEngine reference for better performance
         GameEngine& gameEngine = GameEngine::Instance();
-        
+
         // Setup window dimensions
         m_worldWidth = gameEngine.getWindowWidth();
         m_worldHeight = gameEngine.getWindowHeight();
@@ -48,9 +48,9 @@ bool EventDemoState::enter() {
         m_player = std::make_shared<Player>();
         m_player->setPosition(Vector2D(m_worldWidth / 2, m_worldHeight / 2));
 
-        // Cache AIManager reference for better performance  
+        // Cache AIManager reference for better performance
         AIManager& aiMgr = AIManager::Instance();
-        
+
         // Set player reference in AIManager for distance optimization
         aiMgr.setPlayerForDistanceOptimization(m_player);
 
@@ -76,6 +76,18 @@ bool EventDemoState::enter() {
 
         // Add initial log entry
         addLogEntry("Event Demo System Initialized");
+
+        // Create simple UI components
+        auto& ui = UIManager::Instance();
+        ui.createLabel("event_title", {10, 10, gameEngine.getWindowWidth() - 20, 25}, "Event Demo State");
+        ui.createLabel("event_phase", {10, 40, 300, 20}, "Phase: Initialization");
+        ui.createLabel("event_status", {10, 65, 400, 20}, "FPS: -- | Weather: Clear | NPCs: 0");
+        ui.createLabel("event_controls", {10, 90, gameEngine.getWindowWidth() - 20, 20},
+                       "[B] Exit | [SPACE] Manual | [1-5] Events | [A] Auto Mode | [R] Reset");
+
+        // Create event log component
+        ui.createEventLog("event_log", {10, gameEngine.getWindowHeight() - 200, 730, 180}, 6);
+        ui.addEventLogEntry("event_log", "Event Demo System Initialized");
 
         std::cout << "Forge Game Engine - EventDemoState initialized successfully\n";
         return true;
@@ -109,11 +121,19 @@ bool EventDemoState::exit() {
 
         // Cache EventManager reference for better performance
         EventManager& eventMgr = EventManager::Instance();
-        
+
         // Clean up event handlers
         eventMgr.removeHandlers(EventTypeId::Weather);
         eventMgr.removeHandlers(EventTypeId::NPCSpawn);
         eventMgr.removeHandlers(EventTypeId::SceneChange);
+
+        // Clean up UI components
+        auto& ui = UIManager::Instance();
+        ui.removeComponent("event_title");
+        ui.removeComponent("event_phase");
+        ui.removeComponent("event_status");
+        ui.removeComponent("event_controls");
+        ui.removeComponent("event_log");
 
         std::cout << "Forge Game Engine - EventDemoState cleanup complete\n";
         return true;
@@ -130,7 +150,7 @@ bool EventDemoState::exit() {
 void EventDemoState::update(float deltaTime) {
     // Cache AIManager reference for better performance
     AIManager& aiMgr = AIManager::Instance();
-    
+
     // Update timing
     updateDemoTimer(deltaTime);
 
@@ -257,6 +277,24 @@ void EventDemoState::update(float deltaTime) {
     // Update instructions
     updateInstructions();
 
+    // Update UI Manager
+    auto& uiManager = UIManager::Instance();
+    if (!uiManager.isShutdown()) {
+        uiManager.update(deltaTime);
+
+        // Update UI displays
+        auto& gameEngine = GameEngine::Instance();
+        std::stringstream phaseText;
+        phaseText << "Phase: " << getCurrentPhaseString();
+        uiManager.setText("event_phase", phaseText.str());
+
+        std::stringstream statusText;
+        statusText << "FPS: " << std::fixed << std::setprecision(1) << gameEngine.getCurrentFPS()
+                   << " | Weather: " << getCurrentWeatherString()
+                   << " | NPCs: " << m_spawnedNPCs.size();
+        uiManager.setText("event_status", statusText.str());
+    }
+
     // Note: EventManager is updated globally by GameEngine in the main update loop
     // for optimal performance and consistency with other global systems (AI, Input)
 }
@@ -274,8 +312,10 @@ void EventDemoState::render() {
         }
     }
 
-    // Render UI
-    renderUI();
+    // Render UI components through UIManager
+    auto& gameEngine = GameEngine::Instance();
+    auto& ui = UIManager::Instance();
+    ui.render(gameEngine.getRenderer());
 }
 
 void EventDemoState::setupEventSystem() {
@@ -367,26 +407,9 @@ void EventDemoState::handleInput() {
     // Cache manager references for better performance
     const InputManager& inputMgr = InputManager::Instance();
     GameEngine& gameEngine = GameEngine::Instance();
-    
-    // Store previous input state
-    m_lastInput = m_input;
 
-    // Get current input state
-    m_input.space = inputMgr.isKeyDown(SDL_SCANCODE_SPACE);
-    m_input.enter = inputMgr.isKeyDown(SDL_SCANCODE_RETURN);
-    m_input.tab = inputMgr.isKeyDown(SDL_SCANCODE_TAB);
-    m_input.num1 = inputMgr.isKeyDown(SDL_SCANCODE_1);
-    m_input.num2 = inputMgr.isKeyDown(SDL_SCANCODE_2);
-    m_input.num3 = inputMgr.isKeyDown(SDL_SCANCODE_3);
-    m_input.num4 = inputMgr.isKeyDown(SDL_SCANCODE_4);
-    m_input.num5 = inputMgr.isKeyDown(SDL_SCANCODE_5);
-    m_input.escape = inputMgr.isKeyDown(SDL_SCANCODE_B);
-    m_input.r = inputMgr.isKeyDown(SDL_SCANCODE_R);
-    m_input.a = inputMgr.isKeyDown(SDL_SCANCODE_A);
-    m_input.c = inputMgr.isKeyDown(SDL_SCANCODE_C);
-
-    // Handle key presses (only on press, not hold)
-    if (isKeyPressed(m_input.space, m_lastInput.space)) {
+    // Use InputManager's new event-driven key press detection
+    if (inputMgr.wasKeyPressed(SDL_SCANCODE_SPACE)) {
         // Advance to next phase manually
         switch (m_currentPhase) {
             case DemoPhase::Initialization:
@@ -414,7 +437,7 @@ void EventDemoState::handleInput() {
         m_phaseTimer = 0.0f;
     }
 
-    if (isKeyPressed(m_input.num1, m_lastInput.num1) &&
+    if (inputMgr.wasKeyPressed(SDL_SCANCODE_1) &&
         (m_totalDemoTime - m_lastEventTriggerTime) >= 0.2f) {
         if (m_autoMode && m_currentPhase == DemoPhase::WeatherDemo) {
             m_phaseTimer = 0.0f;
@@ -424,7 +447,7 @@ void EventDemoState::handleInput() {
         m_lastEventTriggerTime = m_totalDemoTime;
     }
 
-    if (isKeyPressed(m_input.num2, m_lastInput.num2) &&
+    if (inputMgr.wasKeyPressed(SDL_SCANCODE_2) &&
         (m_totalDemoTime - m_lastEventTriggerTime) >= 0.2f &&
         m_spawnedNPCs.size() < 5000) {
         if (m_autoMode && m_currentPhase == DemoPhase::NPCSpawnDemo) {
@@ -435,7 +458,7 @@ void EventDemoState::handleInput() {
         m_lastEventTriggerTime = m_totalDemoTime;
     }
 
-    if (isKeyPressed(m_input.num3, m_lastInput.num3) &&
+    if (inputMgr.wasKeyPressed(SDL_SCANCODE_3) &&
         (m_totalDemoTime - m_lastEventTriggerTime) >= 0.2f) {
         if (m_autoMode && m_currentPhase == DemoPhase::SceneTransitionDemo) {
             m_phaseTimer = 0.0f;
@@ -445,7 +468,7 @@ void EventDemoState::handleInput() {
         m_lastEventTriggerTime = m_totalDemoTime;
     }
 
-    if (isKeyPressed(m_input.num4, m_lastInput.num4) &&
+    if (inputMgr.wasKeyPressed(SDL_SCANCODE_4) &&
         (m_totalDemoTime - m_lastEventTriggerTime) >= 0.2f &&
         m_spawnedNPCs.size() < 5000) {
         if (m_autoMode && m_currentPhase == DemoPhase::CustomEventDemo) {
@@ -456,7 +479,7 @@ void EventDemoState::handleInput() {
         m_lastEventTriggerTime = m_totalDemoTime;
     }
 
-    if (isKeyPressed(m_input.num4, m_lastInput.num4) &&
+    if (inputMgr.wasKeyPressed(SDL_SCANCODE_4) &&
         (m_totalDemoTime - m_lastEventTriggerTime) >= 0.2f) {
         if (m_spawnedNPCs.size() < 100) {
             if (m_autoMode && m_currentPhase == DemoPhase::CustomEventDemo) {
@@ -470,12 +493,12 @@ void EventDemoState::handleInput() {
         }
     }
 
-    if (isKeyPressed(m_input.num5, m_lastInput.num5)) {
+    if (inputMgr.wasKeyPressed(SDL_SCANCODE_5)) {
         resetAllEvents();
         addLogEntry("All events reset");
     }
 
-    if (isKeyPressed(m_input.r, m_lastInput.r)) {
+    if (inputMgr.wasKeyPressed(SDL_SCANCODE_R)) {
         resetAllEvents();
         m_currentPhase = DemoPhase::Initialization;
         m_phaseTimer = 0.0f;
@@ -487,19 +510,19 @@ void EventDemoState::handleInput() {
         addLogEntry("Demo reset to beginning");
     }
 
-    if (isKeyPressed(m_input.c, m_lastInput.c) &&
+    if (inputMgr.wasKeyPressed(SDL_SCANCODE_C) &&
         (m_totalDemoTime - m_lastEventTriggerTime) >= 0.2f) {
         triggerConvenienceMethodsDemo();
         addLogEntry("Convenience methods demo triggered");
         m_lastEventTriggerTime = m_totalDemoTime;
     }
 
-    if (isKeyPressed(m_input.a, m_lastInput.a)) {
+    if (inputMgr.wasKeyPressed(SDL_SCANCODE_A)) {
         m_autoMode = !m_autoMode;
         addLogEntry(m_autoMode ? "Auto mode enabled" : "Auto mode disabled");
     }
 
-    if (isKeyPressed(m_input.escape, m_lastInput.escape)) {
+    if (inputMgr.wasKeyPressed(SDL_SCANCODE_B)) {
         gameEngine.getGameStateManager()->setState("MainMenuState");
     }
 }
@@ -513,174 +536,16 @@ void EventDemoState::updateDemoTimer(float deltaTime) {
 
 
 
-void EventDemoState::renderUI() {
-    // Cache manager references for better performance
-    GameEngine& gameEngine = GameEngine::Instance();
-    FontManager& fontMgr = FontManager::Instance();
-    SDL_Renderer* renderer = gameEngine.getRenderer();
-    
-    SDL_Color whiteColor = {255, 255, 255, 255};
-    SDL_Color yellowColor = {255, 255, 0, 255};
-    SDL_Color greenColor = {0, 255, 0, 255};
-
-    int windowWidth = gameEngine.getWindowWidth();
-    int yPos = 20;
-    int lineHeight = 25;
-
-    // Title
-    fontMgr.drawText(
-        "=== EVENT DEMO STATE ===",
-        "fonts_Arial",
-        windowWidth / 2,
-        yPos,
-        yellowColor,
-        renderer);
-    yPos += lineHeight * 2;
-
-    // Phase information
-    std::stringstream phaseInfo;
-    if (m_currentPhase == DemoPhase::InteractiveMode) {
-        phaseInfo << "Phase: " << getCurrentPhaseString() << " (Manual Control)";
-    } else if (m_currentPhase == DemoPhase::WeatherDemo) {
-        phaseInfo << "Phase: " << getCurrentPhaseString() << " ("
-                  << m_weatherChangesShown << " / " << m_weatherSequence.size() << " weather types, "
-                  << std::fixed << std::setprecision(1) << m_phaseTimer << "s / "
-                  << m_weatherChangeInterval << "s)";
-    } else {
-        phaseInfo << "Phase: " << getCurrentPhaseString() << " ("
-                  << std::fixed << std::setprecision(1) << m_phaseTimer << "s / "
-                  << m_phaseDuration << "s)";
-    }
-    fontMgr.drawText(
-        phaseInfo.str(),
-        "fonts_Arial",
-        windowWidth / 2,
-        yPos,
-        whiteColor,
-        renderer);
-    yPos += lineHeight;
-
-    // Auto mode status
-    std::string autoModeText = "Auto Mode: " + std::string(m_autoMode ? "ON" : "OFF");
-    fontMgr.drawText(
-        autoModeText,
-        "fonts_Arial",
-        windowWidth / 2,
-        yPos,
-        greenColor,
-        renderer);
-    yPos += lineHeight;
-
-    // FPS information
-    float currentFPS = gameEngine.getCurrentFPS();
-    std::stringstream fpsInfo;
-    fpsInfo << "FPS: " << std::fixed << std::setprecision(1) << currentFPS;
-    fontMgr.drawText(
-        fpsInfo.str(),
-        "fonts_Arial",
-        windowWidth / 2,
-        yPos,
-        yellowColor,
-        renderer);
-    yPos += lineHeight;
-
-    // Weather and NPC info
-    std::stringstream statusInfo;
-    statusInfo << "Weather: " << getCurrentWeatherString()
-               << " | Spawned NPCs: " << m_spawnedNPCs.size();
-    fontMgr.drawText(
-        statusInfo.str(),
-        "fonts_Arial",
-        windowWidth / 2,
-        yPos,
-        whiteColor,
-        renderer);
-
-    renderControls();
-    renderEventStatus();
-}
+// UI now handled by UIManager components
 
 void EventDemoState::renderEventStatus() const {
-    // Cache manager references for better performance
-    const GameEngine& gameEngine = GameEngine::Instance();
-    FontManager& fontMgr = FontManager::Instance();
-    SDL_Renderer* renderer = gameEngine.getRenderer();
-    
-    SDL_Color cyanColor = {0, 255, 255, 255};
-    SDL_Color whiteColor = {255, 255, 255, 255};
-
-    int windowWidth = gameEngine.getWindowWidth();
-    int windowHeight = gameEngine.getWindowHeight();
-    int yPos = windowHeight - 250;
-    int lineHeight = 22;
-
-    // Event log title
-    fontMgr.drawText(
-        "=== EVENT LOG ===",
-        "fonts_Arial",
-        windowWidth / 2,
-        yPos,
-        cyanColor,
-        renderer);
-    yPos += lineHeight + 10;
-
-    // Render last few log entries
-    int maxEntries = 6;
-    int startIndex = std::max(0, static_cast<int>(m_eventLog.size()) - maxEntries);
-
-    for (int i = startIndex; i < static_cast<int>(m_eventLog.size()); ++i) {
-        std::string logEntry = "• " + m_eventLog[i];
-        fontMgr.drawText(
-            logEntry,
-            "fonts_Arial",
-            windowWidth / 2,
-            yPos,
-            whiteColor,
-            renderer);
-        yPos += lineHeight;
-    }
+    // Event status now displayed through UIManager components
+    // Event log functionality could be added as a list component if needed
 }
 
 void EventDemoState::renderControls() {
-    // Cache manager references for better performance
-    GameEngine& gameEngine = GameEngine::Instance();
-    FontManager& fontMgr = FontManager::Instance();
-    SDL_Renderer* renderer = gameEngine.getRenderer();
-    
-    SDL_Color cyanColor = {0, 255, 255, 255};
-    SDL_Color whiteColor = {255, 255, 255, 255};
-
-    int windowWidth = gameEngine.getWindowWidth();
-    int yPos = 180;
-    int lineHeight = 22;
-
-    // Controls title
-    fontMgr.drawText(
-        "=== CONTROLS ===",
-        "fonts_Arial",
-        windowWidth / 2,
-        yPos,
-        cyanColor,
-        renderer);
-    yPos += lineHeight + 10;
-
-    // Control instructions
-    std::vector<std::string> controls = {
-        "SPACE: Next phase | 1: Weather | 2: NPC spawn | 3: Scene change",
-        "4: Custom event | 5: Reset | C: Convenience methods | R: Restart",
-        "A: Auto toggle | B: Exit"
-    };
-
-    for (const auto& control : controls) {
-        fontMgr.drawText(
-            control,
-            "fonts_Arial",
-            windowWidth / 2,
-            yPos,
-            whiteColor,
-            renderer);
-        yPos += lineHeight;
-    }
+    // Controls now displayed through UIManager components
+    // Control instructions are shown in the event_controls label
 }
 
 void EventDemoState::triggerWeatherDemo() {
@@ -1028,21 +893,18 @@ std::string EventDemoState::determineBehaviorForNPCType(const std::string& npcTy
     return behaviorName;
 }
 
-bool EventDemoState::isKeyPressed(bool current, bool previous) const {
-    return current && !previous;
-}
+
 
 void EventDemoState::addLogEntry(const std::string& entry) {
     if (entry.empty()) return;
 
     try {
+        // Add timestamp and send to UI event log component
         std::string timestampedEntry = "[" + std::to_string((int)m_totalDemoTime) + "s] " + entry;
-        m_eventLog.push_back(timestampedEntry);
+        auto& ui = UIManager::Instance();
+        ui.addEventLogEntry("event_log", timestampedEntry);
 
-        if (m_eventLog.size() > m_maxLogEntries) {
-            m_eventLog.erase(m_eventLog.begin());
-        }
-
+        // Also log to console for debugging
         std::cout << "EventDemo: " << timestampedEntry << std::endl;
     } catch (const std::exception& e) {
         std::cerr << "Error adding log entry: " << e.what() << std::endl;
@@ -1118,7 +980,7 @@ void EventDemoState::cleanupSpawnedNPCs() {
             try {
                 // Cache AIManager reference for better performance
                 AIManager& aiMgr = AIManager::Instance();
-                
+
                 if (aiMgr.entityHasBehavior(npc)) {
                     aiMgr.unassignBehaviorFromEntity(npc);
                 }

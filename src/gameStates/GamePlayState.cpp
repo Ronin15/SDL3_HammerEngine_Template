@@ -38,28 +38,8 @@ bool GamePlayState::enter() {
 void GamePlayState::update([[maybe_unused]] float deltaTime) {
   //std::cout << "Updating GAME State\n";
   
-  // Cache manager references for better performance
-  InputManager& inputMgr = InputManager::Instance();
-  GameEngine& gameEngine = GameEngine::Instance();
-  auto* gameStateManager = gameEngine.getGameStateManager();
-  
-  // Handle pause, ESC, and back to main menu keys.
-  if (inputMgr.isKeyDown(SDL_SCANCODE_P)) {
-      // Create PauseState if it doesn't exist
-      if (!gameStateManager->hasState("PauseState")) {
-          gameStateManager->addState(std::make_unique<PauseState>());
-          std::cout << "Forge Game Engine - Created PAUSE State\n";
-      }
-      m_transitioningToPause = true; // Set flag before transitioning
-      gameStateManager->setState("PauseState");
-  }
-  if (inputMgr.isKeyDown(SDL_SCANCODE_B)) {
-      std::cout << "Forge Game Engine - Transitioning to MainMenuState...\n";
-      gameStateManager->setState("MainMenuState");
-  }
-  if (inputMgr.isKeyDown(SDL_SCANCODE_ESCAPE)) {
-      gameEngine.setRunning(false);
-  }
+  // Handle input with proper key press detection
+  handleInput();
 
   // Update player if it exists
   if (mp_Player) {
@@ -107,4 +87,32 @@ bool GamePlayState::exit() {
 
 std::string GamePlayState::getName() const {
   return "GamePlayState";
+}
+
+void GamePlayState::handleInput() {
+  InputManager& inputMgr = InputManager::Instance();
+  
+  // Use InputManager's new event-driven key press detection
+  if (inputMgr.wasKeyPressed(SDL_SCANCODE_P)) {
+      // Create PauseState if it doesn't exist
+      GameEngine& gameEngine = GameEngine::Instance();
+      auto* gameStateManager = gameEngine.getGameStateManager();
+      if (!gameStateManager->hasState("PauseState")) {
+          gameStateManager->addState(std::make_unique<PauseState>());
+          std::cout << "Forge Game Engine - Created PAUSE State\n";
+      }
+      m_transitioningToPause = true; // Set flag before transitioning
+      gameStateManager->setState("PauseState");
+  }
+  
+  if (inputMgr.wasKeyPressed(SDL_SCANCODE_B)) {
+      std::cout << "Forge Game Engine - Transitioning to MainMenuState...\n";
+      GameEngine& gameEngine = GameEngine::Instance();
+      gameEngine.getGameStateManager()->setState("MainMenuState");
+  }
+  
+  if (inputMgr.wasKeyPressed(SDL_SCANCODE_ESCAPE)) {
+      GameEngine& gameEngine = GameEngine::Instance();
+      gameEngine.setRunning(false);
+  }
 }

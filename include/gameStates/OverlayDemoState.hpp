@@ -60,6 +60,7 @@ private:
     std::string getModeDescription() const;
     void handleModeSwitch();
     void handleBackButton();
+    void handleInput();
 };
 
 // Custom UIScreen for overlay demonstrations

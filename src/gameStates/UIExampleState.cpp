@@ -79,7 +79,7 @@ void UIExampleState::update(float deltaTime) {
     
     // Handle B key to go back
     auto& inputManager = InputManager::Instance();
-    if (inputManager.isKeyDown(SDL_SCANCODE_B)) {
+    if (inputManager.wasKeyPressed(SDL_SCANCODE_B)) {
         auto& gameEngine = GameEngine::Instance();
         auto* gameStateManager = gameEngine.getGameStateManager();
         gameStateManager->setState("MainMenuState");
@@ -101,6 +101,10 @@ bool UIExampleState::exit() {
     if (m_uiScreen) {
         m_uiScreen->hide();
     }
+    
+    // Reset theme to prevent contamination of other states
+    auto& ui = UIManager::Instance();
+    ui.resetToDefaultTheme();
     
     return true;
 }
@@ -172,6 +176,8 @@ void UIExampleState::updateProgressBar(float deltaTime) {
     auto screen = static_cast<UIExampleScreen*>(m_uiScreen.get());
     screen->updateProgressBar(m_progressValue);
 }
+
+
 
 // UIExampleScreen Implementation
 UIExampleScreen::UIExampleScreen() : UIScreen("UIExampleScreen") {
@@ -249,6 +255,11 @@ void UIExampleScreen::setupComponents() {
     // List demo
     ui.createList("demo_list", {50, 320, 200, 180});
     
+    // Event Log demo
+    ui.createEventLog("demo_event_log", {300, 450, 400, 180}, 6);
+    createLabel("event_log_label", {300, 430, 200, 20}, "Event Log (Auto-updating):");
+    ui.setupDemoEventLog("demo_event_log");
+    
     // Animation button
     createButton("animate_btn", {300, 320, 120, 40}, "Animate");
     
@@ -272,6 +283,8 @@ void UIExampleScreen::setupComponents() {
     addComponent("demo_progress");
     addComponent("progress_label");
     addComponent("demo_list");
+    addComponent("demo_event_log");
+    addComponent("event_log_label");
     addComponent("animate_btn");
     addComponent("theme_btn");
     addComponent("instructions");

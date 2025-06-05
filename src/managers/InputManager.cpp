@@ -153,7 +153,26 @@ const Vector2D& InputManager::getMousePosition() const {
   return *m_mousePosition;
 }
 
+bool InputManager::wasKeyPressed(SDL_Scancode key) const {
+  // Check if this key was pressed this frame
+  for (const auto& pressedKey : m_pressedThisFrame) {
+    if (pressedKey == key) {
+      return true;
+    }
+  }
+  return false;
+}
+
+void InputManager::clearFrameInput() {
+  // This is now handled automatically in update()
+  // but keeping for backward compatibility
+  m_pressedThisFrame.clear();
+}
+
 void InputManager::update() {
+  // Clear previous frame's pressed keys
+  m_pressedThisFrame.clear();
+  
   // Cache GameEngine reference for better performance
   GameEngine& gameEngine = GameEngine::Instance();
 
@@ -203,10 +222,23 @@ void InputManager::update() {
   }
 }
 
-void InputManager::onKeyDown(const SDL_Event& /*event*/) {
+void InputManager::onKeyDown(const SDL_Event& event) {
   // Store the keyboard state
   m_keystates = SDL_GetKeyboardState(0);
-
+  
+  // Track this key as pressed this frame (for wasKeyPressed)
+  // Check for duplicates to avoid multiple entries for the same key in one frame
+  bool alreadyTracked = false;
+  for (const auto& pressedKey : m_pressedThisFrame) {
+    if (pressedKey == event.key.scancode) {
+      alreadyTracked = true;
+      break;
+    }
+  }
+  
+  if (!alreadyTracked) {
+    m_pressedThisFrame.push_back(event.key.scancode);
+  }
 }
 
 void InputManager::onKeyUp(const SDL_Event& /*event*/) {
