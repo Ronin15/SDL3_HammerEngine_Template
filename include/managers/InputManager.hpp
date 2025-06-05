@@ -37,6 +37,8 @@ class InputManager {
 
     // Keyboard events
     bool isKeyDown(SDL_Scancode key) const;
+    bool wasKeyPressed(SDL_Scancode key) const;  // True once per press
+    void clearFrameInput();  // Call once per frame to clear pressed keys
 
     // Joystick events
     int getAxisX(int joy, int stick) const;
@@ -51,6 +53,7 @@ class InputManager {
 
     // Keyboard specific
     const bool* m_keystates{nullptr}; // Owned by SDL, don't delete
+    boost::container::small_vector<SDL_Scancode, 16> m_pressedThisFrame{}; // Keys pressed this frame
 
     // Gamepad specific
     boost::container::small_vector<std::pair<std::unique_ptr<Vector2D>, std::unique_ptr<Vector2D>>, 4> m_joystickValues{};

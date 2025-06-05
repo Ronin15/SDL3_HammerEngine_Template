@@ -30,7 +30,8 @@ enum class UIComponentType {
     SLIDER,
     CHECKBOX,
     LIST,
-    TOOLTIP
+    TOOLTIP,
+    EVENT_LOG
 };
 
 // Layout Types
@@ -182,6 +183,14 @@ struct UIAnimation {
     std::function<void()> onComplete{};
 };
 
+// Event log state for auto-updating
+struct EventLogState {
+    float timer{0.0f};
+    int messageIndex{0};
+    float updateInterval{2.0f};
+    bool autoUpdate{false};
+};
+
 class UIManager {
 public:
     ~UIManager() {
@@ -213,6 +222,7 @@ public:
     void createCheckbox(const std::string& id, const UIRect& bounds, const std::string& text = "");
     void createList(const std::string& id, const UIRect& bounds);
     void createTooltip(const std::string& id, const std::string& text = "");
+    void createEventLog(const std::string& id, const UIRect& bounds, int maxEntries = 10);
 
     // Component manipulation
     void removeComponent(const std::string& id);
@@ -269,6 +279,19 @@ public:
     void clearList(const std::string& listID);
     int getSelectedListItem(const std::string& listID) const;
     void setSelectedListItem(const std::string& listID, int index);
+    
+    // Enhanced list methods for auto-scrolling and management
+    void setListMaxItems(const std::string& listID, int maxItems);
+    void addListItemWithAutoScroll(const std::string& listID, const std::string& item);
+    void clearListItems(const std::string& listID);
+    
+    // Event log specific methods
+    void addEventLogEntry(const std::string& logID, const std::string& entry);
+    void clearEventLog(const std::string& logID);
+    void setEventLogMaxEntries(const std::string& logID, int maxEntries);
+    void setupDemoEventLog(const std::string& logID);
+    void enableEventLogAutoUpdate(const std::string& logID, float interval = 2.0f);
+    void disableEventLogAutoUpdate(const std::string& logID);
 
     // Input field specific methods
     void setInputFieldPlaceholder(const std::string& id, const std::string& placeholder);
@@ -335,6 +358,9 @@ private:
     float m_tooltipDelay{1.0f};
     bool m_debugMode{false};
     bool m_drawDebugBounds{false};
+    
+    // Event log state tracking
+    boost::container::flat_map<std::string, EventLogState> m_eventLogStates{};
     bool m_isShutdown{false};
     
     // Input state
@@ -349,6 +375,7 @@ private:
     void handleInput();
     void updateAnimations(float deltaTime);
     void updateTooltips(float deltaTime);
+    void updateEventLogs(float deltaTime);
     void renderComponent(SDL_Renderer* renderer, const std::shared_ptr<UIComponent>& component);
     void renderTooltip(SDL_Renderer* renderer);
     void sortComponentsByZOrder();
@@ -363,6 +390,7 @@ private:
     void renderSlider(SDL_Renderer* renderer, const std::shared_ptr<UIComponent>& component);
     void renderCheckbox(SDL_Renderer* renderer, const std::shared_ptr<UIComponent>& component);
     void renderList(SDL_Renderer* renderer, const std::shared_ptr<UIComponent>& component);
+    void renderEventLog(SDL_Renderer* renderer, const std::shared_ptr<UIComponent>& component);
     
     // Layout helpers
     void applyAbsoluteLayout(const std::shared_ptr<UILayout>& layout);

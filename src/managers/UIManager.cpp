@@ -55,6 +55,9 @@ void UIManager::update(float deltaTime) {
     // Update tooltips
     updateTooltips(deltaTime);
 
+    // Update event logs
+    updateEventLogs(deltaTime);
+
     // Sort components by z-order for proper rendering
     sortComponentsByZOrder();
 }
@@ -224,6 +227,17 @@ void UIManager::createTooltip(const std::string& id, const std::string& text) {
     component->visible = false;
     component->style = m_currentTheme.getStyle(UIComponentType::TOOLTIP);
     component->zOrder = 1000; // Always on top
+
+    m_components[id] = component;
+}
+
+void UIManager::createEventLog(const std::string& id, const UIRect& bounds, int maxEntries) {
+    auto component = std::make_shared<UIComponent>();
+    component->id = id;
+    component->type = UIComponentType::EVENT_LOG;
+    component->bounds = bounds;
+    component->maxLength = maxEntries; // Store max entries in maxLength field
+    component->style = m_currentTheme.getStyle(UIComponentType::EVENT_LOG); // Use event log styling
 
     m_components[id] = component;
 }
@@ -529,9 +543,163 @@ int UIManager::getSelectedListItem(const std::string& listID) const {
 
 void UIManager::setSelectedListItem(const std::string& listID, int index) {
     auto component = getComponent(listID);
-    if (component && component->type == UIComponentType::LIST &&
-        index >= -1 && index < static_cast<int>(component->listItems.size())) {
-        component->selectedIndex = index;
+    if (component && component->type == UIComponentType::LIST) {
+        if (index >= 0 && index < static_cast<int>(component->listItems.size())) {
+            component->selectedIndex = index;
+        }
+    }
+}
+
+void UIManager::setListMaxItems(const std::string& listID, int maxItems) {
+    auto component = getComponent(listID);
+    if (component && component->type == UIComponentType::LIST) {
+        // Store max items in a custom property (we'll use the maxLength field for this)
+        component->maxLength = maxItems;
+
+        // Trim existing items if they exceed the new limit
+        if (static_cast<int>(component->listItems.size()) > maxItems) {
+            // Keep only the last maxItems entries
+            auto& items = component->listItems;
+            auto startIt = items.end() - maxItems;
+            items.erase(items.begin(), startIt);
+
+            // Adjust selected index if needed
+            if (component->selectedIndex >= maxItems) {
+                component->selectedIndex = -1; // Clear selection if it's now out of bounds
+            }
+        }
+    }
+}
+
+void UIManager::addListItemWithAutoScroll(const std::string& listID, const std::string& item) {
+    auto component = getComponent(listID);
+    if (component && component->type == UIComponentType::LIST) {
+        // Add the new item
+        component->listItems.push_back(item);
+
+        // Check if we need to enforce max items limit
+        int maxItems = component->maxLength; // Using maxLength field to store max items
+        if (maxItems > 0 && static_cast<int>(component->listItems.size()) > maxItems) {
+            // Remove the oldest item
+            component->listItems.erase(component->listItems.begin());
+
+            // Adjust selected index if needed
+            if (component->selectedIndex > 0) {
+                component->selectedIndex--;
+            } else if (component->selectedIndex == 0) {
+                component->selectedIndex = -1; // Clear selection if first item was removed
+            }
+        }
+
+        // Auto-scroll by selecting the last item (optional behavior)
+        // Comment this out if you don't want auto-selection
+        // component->selectedIndex = static_cast<int>(component->listItems.size()) - 1;
+    }
+}
+
+void UIManager::clearListItems(const std::string& listID) {
+    auto component = getComponent(listID);
+    if (component && component->type == UIComponentType::LIST) {
+        component->listItems.clear();
+        component->selectedIndex = -1;
+    }
+}
+
+void UIManager::addEventLogEntry(const std::string& logID, const std::string& entry) {
+    auto component = getComponent(logID);
+    if (component && component->type == UIComponentType::EVENT_LOG) {
+        // Add the entry directly (let the caller handle timestamps if needed)
+        component->listItems.push_back(entry);
+
+        // Enforce max entries limit
+        int maxEntries = component->maxLength;
+        if (maxEntries > 0 && static_cast<int>(component->listItems.size()) > maxEntries) {
+            // Remove oldest entries
+            while (static_cast<int>(component->listItems.size()) > maxEntries) {
+                component->listItems.erase(component->listItems.begin());
+            }
+        }
+
+        // No selection for event logs (they're display-only)
+        component->selectedIndex = -1;
+    }
+}
+
+void UIManager::clearEventLog(const std::string& logID) {
+    auto component = getComponent(logID);
+    if (component && component->type == UIComponentType::EVENT_LOG) {
+        component->listItems.clear();
+        component->selectedIndex = -1;
+    }
+}
+
+void UIManager::setEventLogMaxEntries(const std::string& logID, int maxEntries) {
+    auto component = getComponent(logID);
+    if (component && component->type == UIComponentType::EVENT_LOG) {
+        component->maxLength = maxEntries;
+
+        // Trim existing entries if needed
+        if (static_cast<int>(component->listItems.size()) > maxEntries) {
+            while (static_cast<int>(component->listItems.size()) > maxEntries) {
+                component->listItems.erase(component->listItems.begin());
+            }
+        }
+    }
+}
+
+void UIManager::setupDemoEventLog(const std::string& logID) {
+    addEventLogEntry(logID, "Event log initialized");
+    addEventLogEntry(logID, "Demo components created");
+
+    // Enable auto-updates for this event log
+    enableEventLogAutoUpdate(logID, 2.0f); // 2 second interval
+}
+
+void UIManager::enableEventLogAutoUpdate(const std::string& logID, float interval) {
+    auto component = getComponent(logID);
+    if (component && component->type == UIComponentType::EVENT_LOG) {
+        EventLogState state;
+        state.timer = 0.0f;
+        state.messageIndex = 0;
+        state.updateInterval = interval;
+        state.autoUpdate = true;
+        m_eventLogStates[logID] = state;
+    }
+}
+
+void UIManager::disableEventLogAutoUpdate(const std::string& logID) {
+    auto it = m_eventLogStates.find(logID);
+    if (it != m_eventLogStates.end()) {
+        it->second.autoUpdate = false;
+    }
+}
+
+void UIManager::updateEventLogs(float deltaTime) {
+    for (auto& [logID, state] : m_eventLogStates) {
+        if (!state.autoUpdate) continue;
+
+        state.timer += deltaTime;
+
+        // Add a new log entry based on the interval
+        if (state.timer >= state.updateInterval) {
+            state.timer = 0.0f;
+
+            std::vector<std::string> sampleMessages = {
+                "System initialized successfully",
+                "User interface components loaded",
+                "Database connection established",
+                "Configuration files validated",
+                "Network module started",
+                "Audio system ready",
+                "Graphics renderer initialized",
+                "Input handlers registered",
+                "Memory pools allocated",
+                "Security protocols activated"
+            };
+
+            addEventLogEntry(logID, sampleMessages[state.messageIndex % sampleMessages.size()]);
+            state.messageIndex++;
+        }
     }
 }
 
@@ -728,8 +896,16 @@ void UIManager::setLightTheme() {
     imageStyle.fontID = "fonts_UI_Arial";
     lightTheme.componentStyles[UIComponentType::IMAGE] = imageStyle;
 
+    // Event log style - similar to list but optimized for display-only
+    UIStyle eventLogStyle = listStyle;
+    eventLogStyle.listItemHeight = 28; // Better spacing for event log
+    eventLogStyle.backgroundColor = {245, 245, 250, 160}; // Semi-transparent light background
+    eventLogStyle.textColor = {0, 0, 0, 255}; // Black text for maximum contrast
+    eventLogStyle.borderColor = {120, 120, 140, 180}; // Less transparent border
+    lightTheme.componentStyles[UIComponentType::EVENT_LOG] = eventLogStyle;
+
     m_currentTheme = lightTheme;
-    
+
     // Apply theme to all existing components
     for (const auto& [id, component] : m_components) {
         if (component) {
@@ -835,8 +1011,16 @@ void UIManager::setDarkTheme() {
     imageStyle.fontID = "fonts_UI_Arial";
     darkTheme.componentStyles[UIComponentType::IMAGE] = imageStyle;
 
+    // Event log style - similar to list but optimized for display-only
+    UIStyle eventLogStyle = listStyle;
+    eventLogStyle.listItemHeight = 28; // Better spacing for event log
+    eventLogStyle.backgroundColor = {25, 30, 35, 80}; // Highly transparent dark background
+    eventLogStyle.textColor = {255, 255, 255, 255}; // Pure white text for maximum contrast
+    eventLogStyle.borderColor = {100, 120, 140, 100}; // Highly transparent blue-gray border
+    darkTheme.componentStyles[UIComponentType::EVENT_LOG] = eventLogStyle;
+
     m_currentTheme = darkTheme;
-    
+
     // Apply theme to all existing components
     for (const auto& [id, component] : m_components) {
         if (component) {
@@ -863,7 +1047,7 @@ std::string UIManager::getCurrentThemeMode() const {
 void UIManager::createThemeBackground(int windowWidth, int windowHeight) {
     // Remove existing theme background if it exists
     removeThemeBackground();
-    
+
     // Create main background panel with current theme styling
     createPanel("__theme_background", {0, 0, windowWidth, windowHeight});
 }
@@ -877,13 +1061,13 @@ void UIManager::removeThemeBackground() {
 void UIManager::removeComponentsWithPrefix(const std::string& prefix) {
     // Collect components to remove (can't modify map while iterating)
     boost::container::small_vector<std::string, 32> componentsToRemove;
-    
+
     for (const auto& [id, component] : m_components) {
         if (id.substr(0, prefix.length()) == prefix) {
             componentsToRemove.push_back(id);
         }
     }
-    
+
     // Remove collected components
     for (const auto& id : componentsToRemove) {
         removeComponent(id);
@@ -893,17 +1077,17 @@ void UIManager::removeComponentsWithPrefix(const std::string& prefix) {
 void UIManager::clearAllComponents() {
     // Enhanced clearAllComponents - preserve theme background but clear everything else
     boost::container::small_vector<std::string, 64> componentsToRemove;
-    
+
     for (const auto& [id, component] : m_components) {
         if (id != "__theme_background") {
             componentsToRemove.push_back(id);
         }
     }
-    
+
     for (const auto& id : componentsToRemove) {
         removeComponent(id);
     }
-    
+
     // Clear other collections
     m_layouts.clear();
     m_animations.clear();
@@ -1210,6 +1394,9 @@ void UIManager::renderComponent(SDL_Renderer* renderer, const std::shared_ptr<UI
         case UIComponentType::LIST:
             renderList(renderer, component);
             break;
+        case UIComponentType::EVENT_LOG:
+            renderEventLog(renderer, component);
+            break;
         case UIComponentType::TOOLTIP:
             // Tooltips are rendered separately
             break;
@@ -1472,6 +1659,34 @@ void UIManager::renderList(SDL_Renderer* renderer, const std::shared_ptr<UICompo
         auto& fontManager = FontManager::Instance();
         fontManager.drawTextAligned(component->listItems[i], component->style.fontID,
                                    itemRect.x + component->style.padding, itemRect.y + itemHeight / 2,
+                                   component->style.textColor, renderer, 1); // 1 = left alignment
+
+        y += itemHeight;
+    }
+}
+
+void UIManager::renderEventLog(SDL_Renderer* renderer, const std::shared_ptr<UIComponent>& component) {
+    if (!component) return;
+
+    // Draw background
+    drawRect(renderer, component->bounds, component->style.backgroundColor, true);
+    drawBorder(renderer, component->bounds, component->style.borderColor, 1);
+
+    // Draw event log entries (no selection, just display)
+    int itemHeight = component->style.listItemHeight;
+    int y = component->bounds.y;
+
+    for (size_t i = 0; i < component->listItems.size(); ++i) {
+        if (y >= component->bounds.y + component->bounds.height) break;
+
+        UIRect itemRect = {component->bounds.x, y, component->bounds.width, itemHeight};
+
+        // No selection highlighting for event logs (display-only)
+
+        // Draw event entry text
+        auto& fontManager = FontManager::Instance();
+        fontManager.drawTextAligned(component->listItems[i], component->style.fontID,
+                                   itemRect.x + component->style.padding + 8, itemRect.y + (itemHeight / 2) + 2,
                                    component->style.textColor, renderer, 1); // 1 = left alignment
 
         y += itemHeight;

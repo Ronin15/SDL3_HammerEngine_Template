@@ -18,6 +18,10 @@ OverlayDemoState::OverlayDemoState() {
 bool OverlayDemoState::enter() {
     std::cout << "Entering Overlay Demo State\n";
     
+    // Reset theme to prevent contamination from other states
+    auto& ui = UIManager::Instance();
+    ui.resetToDefaultTheme();
+    
     // Initialize and show the UI screen
     m_uiScreen->show();
     
@@ -49,16 +53,8 @@ void OverlayDemoState::update(float deltaTime) {
         m_uiScreen->update(deltaTime);
     }
     
-    // Handle B key to go back
-    auto& inputManager = InputManager::Instance();
-    if (inputManager.isKeyDown(SDL_SCANCODE_B)) {
-        handleBackButton();
-    }
-    
-    // Handle Space key to switch modes
-    if (inputManager.isKeyDown(SDL_SCANCODE_SPACE)) {
-        handleModeSwitch();
-    }
+    // Handle input with proper key press detection
+    handleInput();
     
     // Update transition timer
     m_transitionTimer += deltaTime;
@@ -81,6 +77,7 @@ bool OverlayDemoState::exit() {
     // Use new UIManager cleanup methods
     auto& ui = UIManager::Instance();
     ui.removeComponentsWithPrefix("overlay_demo_"); // Remove all overlay demo components
+    ui.removeComponentsWithPrefix("overlay_control_"); // Remove all control components
     ui.removeThemeBackground();
     ui.resetToDefaultTheme(); // Reset theme state
     
@@ -133,7 +130,7 @@ void OverlayDemoState::clearCurrentUI() {
     // Remove overlay
     ui.removeThemeBackground();
     
-    // Use new UIManager method to remove all demo components efficiently
+    // Only remove demo components, not control components
     ui.removeComponentsWithPrefix("overlay_demo_");
 }
 
@@ -281,6 +278,19 @@ void OverlayDemoState::handleModeSwitch() {
     std::cout << "Switched to: " << getModeDescription() << "\n";
 }
 
+void OverlayDemoState::handleInput() {
+    auto& inputManager = InputManager::Instance();
+    
+    // Use InputManager's new event-driven key press detection
+    if (inputManager.wasKeyPressed(SDL_SCANCODE_SPACE)) {
+        handleModeSwitch();
+    }
+    
+    if (inputManager.wasKeyPressed(SDL_SCANCODE_B)) {
+        handleBackButton();
+    }
+}
+
 void OverlayDemoState::handleBackButton() {
     auto& gameEngine = GameEngine::Instance();
     auto* gameStateManager = gameEngine.getGameStateManager();
@@ -305,9 +315,9 @@ void OverlayDemoScreen::hide() {
 }
 
 void OverlayDemoScreen::onButtonClicked(const std::string& buttonID) {
-    if (buttonID == "overlay_demo_back_btn" && m_onBack) {
+    if (buttonID == "overlay_control_back_btn" && m_onBack) {
         m_onBack();
-    } else if (buttonID == "overlay_demo_next_mode_btn" && m_onModeSwitch) {
+    } else if (buttonID == "overlay_control_next_mode_btn" && m_onModeSwitch) {
         m_onModeSwitch();
     }
 }
@@ -316,20 +326,21 @@ void OverlayDemoScreen::setupBaseComponents() {
     auto& gameEngine = GameEngine::Instance();
     int windowHeight = gameEngine.getWindowHeight();
     
-    // Control buttons that persist across all modes
-    createButton("overlay_demo_back_btn", {20, windowHeight - 60, 100, 40}, "Back");
-    createButton("overlay_demo_next_mode_btn", {140, windowHeight - 60, 150, 40}, "Next Mode");
-    createLabel("overlay_demo_instructions", {310, windowHeight - 55, 400, 30}, "Space = Next Mode, B = Back");
+    // Control buttons that persist across all modes (use different prefix)
+    createButton("overlay_control_back_btn", {20, windowHeight - 60, 100, 40}, "Back");
+    createButton("overlay_control_next_mode_btn", {140, windowHeight - 60, 150, 40}, "Next Mode");
+    createLabel("overlay_control_instructions", {310, windowHeight - 55, 400, 30}, "Space = Next Mode, B = Back");
     
     // Add components to tracking
-    addComponent("overlay_demo_back_btn");
-    addComponent("overlay_demo_next_mode_btn");
-    addComponent("overlay_demo_instructions");
+    addComponent("overlay_control_back_btn");
+    addComponent("overlay_control_next_mode_btn");
+    addComponent("overlay_control_instructions");
 }
 
 void OverlayDemoScreen::cleanupAllComponents() {
     auto& ui = getUIManager();
     
-    // Use UIManager method to remove all overlay demo components
+    // Remove both demo and control components
     ui.removeComponentsWithPrefix("overlay_demo_");
+    ui.removeComponentsWithPrefix("overlay_control_");
 }

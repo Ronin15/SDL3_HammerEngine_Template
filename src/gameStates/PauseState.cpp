@@ -17,19 +17,8 @@ bool PauseState::enter() {
 void PauseState::update([[maybe_unused]] float deltaTime) {
   //std::cout << "Updating PAUSE State\n";
   
-  // Cache manager references for better performance
-  InputManager& inputMgr = InputManager::Instance();
-  GameEngine& gameEngine = GameEngine::Instance();
-  
-  // Handle pause and ESC key.
-  if (inputMgr.isKeyDown(SDL_SCANCODE_R)) {
-      // Flag the GamePlayState transition
-      // We'll do the actual removal in GamePlayState::enter()
-      gameEngine.getGameStateManager()->setState("GamePlayState");
-  }
-  if (inputMgr.isKeyDown(SDL_SCANCODE_ESCAPE)) {
-      gameEngine.setRunning(false);
-  }
+  // Handle input with proper key press detection
+  handleInput();
 }
 
 void PauseState::render() {
@@ -54,4 +43,21 @@ bool PauseState::exit() {
 
 std::string PauseState::getName() const {
   return "PauseState";
+}
+
+void PauseState::handleInput() {
+  InputManager& inputMgr = InputManager::Instance();
+  
+  // Use InputManager's new event-driven key press detection
+  if (inputMgr.wasKeyPressed(SDL_SCANCODE_R)) {
+      // Flag the GamePlayState transition
+      // We'll do the actual removal in GamePlayState::enter()
+      GameEngine& gameEngine = GameEngine::Instance();
+      gameEngine.getGameStateManager()->setState("GamePlayState");
+  }
+  
+  if (inputMgr.wasKeyPressed(SDL_SCANCODE_ESCAPE)) {
+      GameEngine& gameEngine = GameEngine::Instance();
+      gameEngine.setRunning(false);
+  }
 }

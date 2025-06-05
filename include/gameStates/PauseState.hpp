@@ -15,6 +15,10 @@ class PauseState : public GameState {
   void render() override;
   bool exit() override;
   std::string getName() const override;
+
+ private:
+  // Helper methods
+  void handleInput();
 };
 
 #endif  // PAUSE_STATE_HPP
