@@ -21,8 +21,8 @@ bool MainMenuState::enter() {
   ui.createThemeBackground(windowWidth, windowHeight);
 
   // Create title
-  ui.createTitle("main_menu_title", {0, 100, windowWidth, 60}, "Forge Game Engine - Main Menu");
-  ui.setTitleAlignment("main_menu_title", UIAlignment::CENTER_CENTER);
+  ui.createTitle("mainmenu_title", {0, 100, windowWidth, 60}, "Forge Game Engine - Main Menu");
+  ui.setTitleAlignment("mainmenu_title", UIAlignment::CENTER_CENTER);
 
   // Create menu buttons
   int buttonWidth = 300;
@@ -30,45 +30,45 @@ bool MainMenuState::enter() {
   int buttonSpacing = 20;
   int startY = windowHeight / 2 - 100;
 
-  ui.createButton("start_game_btn", {windowWidth/2 - buttonWidth/2, startY, buttonWidth, buttonHeight}, "Start Game");
-  ui.createButton("ai_demo_btn", {windowWidth/2 - buttonWidth/2, startY + (buttonHeight + buttonSpacing), buttonWidth, buttonHeight}, "AI Demo");
-  ui.createButton("event_demo_btn", {windowWidth/2 - buttonWidth/2, startY + 2 * (buttonHeight + buttonSpacing), buttonWidth, buttonHeight}, "Event Demo");
-  ui.createButton("ui_example_btn", {windowWidth/2 - buttonWidth/2, startY + 3 * (buttonHeight + buttonSpacing), buttonWidth, buttonHeight}, "UI Example");
-  ui.createButton("overlay_demo_btn", {windowWidth/2 - buttonWidth/2, startY + 4 * (buttonHeight + buttonSpacing), buttonWidth, buttonHeight}, "Overlay Demo");
-  ui.createButton("exit_btn", {windowWidth/2 - buttonWidth/2, startY + 5 * (buttonHeight + buttonSpacing), buttonWidth, buttonHeight}, "Exit");
+  ui.createButton("mainmenu_start_game_btn", {windowWidth/2 - buttonWidth/2, startY, buttonWidth, buttonHeight}, "Start Game");
+  ui.createButton("mainmenu_ai_demo_btn", {windowWidth/2 - buttonWidth/2, startY + (buttonHeight + buttonSpacing), buttonWidth, buttonHeight}, "AI Demo");
+  ui.createButton("mainmenu_event_demo_btn", {windowWidth/2 - buttonWidth/2, startY + 2 * (buttonHeight + buttonSpacing), buttonWidth, buttonHeight}, "Event Demo");
+  ui.createButton("mainmenu_ui_example_btn", {windowWidth/2 - buttonWidth/2, startY + 3 * (buttonHeight + buttonSpacing), buttonWidth, buttonHeight}, "UI Example");
+  ui.createButton("mainmenu_overlay_demo_btn", {windowWidth/2 - buttonWidth/2, startY + 4 * (buttonHeight + buttonSpacing), buttonWidth, buttonHeight}, "Overlay Demo");
+  ui.createButton("mainmenu_exit_btn", {windowWidth/2 - buttonWidth/2, startY + 5 * (buttonHeight + buttonSpacing), buttonWidth, buttonHeight}, "Exit");
 
   // Set up button callbacks
-  ui.setOnClick("start_game_btn", []() {
+  ui.setOnClick("mainmenu_start_game_btn", []() {
     auto& gameEngine = GameEngine::Instance();
     auto* gameStateManager = gameEngine.getGameStateManager();
     gameStateManager->setState("GamePlayState");
   });
 
-  ui.setOnClick("ai_demo_btn", []() {
+  ui.setOnClick("mainmenu_ai_demo_btn", []() {
     auto& gameEngine = GameEngine::Instance();
     auto* gameStateManager = gameEngine.getGameStateManager();
     gameStateManager->setState("AIDemo");
   });
 
-  ui.setOnClick("event_demo_btn", []() {
+  ui.setOnClick("mainmenu_event_demo_btn", []() {
     auto& gameEngine = GameEngine::Instance();
     auto* gameStateManager = gameEngine.getGameStateManager();
     gameStateManager->setState("EventDemo");
   });
 
-  ui.setOnClick("ui_example_btn", []() {
+  ui.setOnClick("mainmenu_ui_example_btn", []() {
     auto& gameEngine = GameEngine::Instance();
     auto* gameStateManager = gameEngine.getGameStateManager();
     gameStateManager->setState("UIExampleState");
   });
 
-  ui.setOnClick("overlay_demo_btn", []() {
+  ui.setOnClick("mainmenu_overlay_demo_btn", []() {
     auto& gameEngine = GameEngine::Instance();
     auto* gameStateManager = gameEngine.getGameStateManager();
     gameStateManager->setState("OverlayDemoState");
   });
 
-  ui.setOnClick("exit_btn", []() {
+  ui.setOnClick("mainmenu_exit_btn", []() {
     auto& gameEngine = GameEngine::Instance();
     gameEngine.setRunning(false);
   });
@@ -83,7 +83,7 @@ bool MainMenuState::enter() {
   exitStyle.borderWidth = 1;
   exitStyle.textAlign = UIAlignment::CENTER_CENTER;
   exitStyle.fontID = "fonts_UI_Arial";
-  ui.setStyle("exit_btn", exitStyle);
+  ui.setStyle("mainmenu_exit_btn", exitStyle);
   
   return true;
 }
@@ -143,16 +143,11 @@ void MainMenuState::render() {
 bool MainMenuState::exit() {
   std::cout << "Forge Game Engine - Exiting MAIN MENU State\n";
   
-  // Clean up all UI components
+  // Clean up all UI components efficiently
   auto& ui = UIManager::Instance();
-  ui.removeComponent("main_menu_title");
-  ui.removeComponent("start_game_btn");
-  ui.removeComponent("ai_demo_btn");
-  ui.removeComponent("event_demo_btn");
-  ui.removeComponent("ui_example_btn");
-  ui.removeComponent("overlay_demo_btn");
-  ui.removeComponent("exit_btn");
+  ui.removeComponentsWithPrefix("mainmenu_");
   ui.removeThemeBackground();
+  ui.resetToDefaultTheme();
   
   return true;
 }

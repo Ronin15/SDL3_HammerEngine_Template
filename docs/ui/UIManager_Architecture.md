@@ -2,176 +2,184 @@
 
 ## Overview
 
-The UIManager follows a **hybrid architecture** with **centralized theme management** where core world systems are managed globally by GameEngine for optimal performance, while UI systems are managed by individual game states for flexibility. The centralized theme system provides professional, consistent styling across all UI while maintaining state-specific control. This design ensures optimal performance, clear separation of concerns, and maximum flexibility for both world simulation and state-specific UI behavior.
+The UIManager follows a **hybrid architecture** with **centralized theme management** that balances performance, flexibility, and ease of use. This design ensures optimal performance for world simulation systems while providing state-specific UI control with consistent professional styling.
 
-## Hybrid Architecture Principles
+## Architectural Principles
 
-### 1. Global vs State-Managed Systems
+### 1. Hybrid System Management
 
 **Global Systems (Updated by GameEngine):**
-- **InputManager**: Fundamental to all states, minimal overhead, always needed
-- **AIManager**: World simulation with 10K+ entities, benefits from consistent global updates and threading
-- **EventManager**: Global game events (weather, scene changes), batch processing optimization
+- **InputManager**: Core input handling, always needed across states
+- **AIManager**: World simulation with thousands of entities, benefits from consistent updates
+- **EventManager**: Global game events, batch processing optimization
 
 **State-Managed Systems (Updated by individual states):**
 - **UIManager**: Optional, state-specific, only updated when UI is actually used
 - **Audio/Visual effects**: State-specific requirements and lifecycle
 
-**Centralized Theme Management:**
-- **Automatic styling**: Components use professional themes without manual styling
-- **Theme switching**: Easy light/dark mode switching across entire application
-- **Consistent appearance**: No style conflicts between states
-- **Enhanced UX**: Improved contrast and mouse accuracy built-in
+### 2. Centralized Theme Management
 
-### 2. State-Managed UI Updates
+**Professional Styling Out-of-the-Box:**
+```cpp
+// Components automatically use professional themes
+ui.createButton("my_btn", bounds, "Text");     // Gets professional styling
+ui.createList("my_list", bounds);              // 36px items for mouse accuracy
+ui.setThemeMode("dark");                       // Switch themes instantly
+```
 
-**✅ Correct Pattern with Centralized Themes:**
+**Benefits:**
+- No manual styling required for 98% of components
+- Consistent appearance across entire application
+- Enhanced UX with improved contrast and usability
+- Easy theme switching (light/dark modes)
+
+### 3. State-Driven UI Updates
+
+**Correct Implementation Pattern:**
 ```cpp
 void UIExampleState::update(float deltaTime) {
     // Each state that uses UI is responsible for updating it
-    auto& uiManager = UIManager::Instance();
-    if (!uiManager.isShutdown()) {
-        uiManager.update(deltaTime);
+    auto& ui = UIManager::Instance();
+    if (!ui.isShutdown()) {
+        ui.update(deltaTime);
     }
     
-    // Continue with state-specific updates...
+    // State-specific logic...
 }
 
-void UIExampleState::enter() {
+void UIExampleState::render() {
+    // Each state renders its UI components
+    auto& gameEngine = GameEngine::Instance();
     auto& ui = UIManager::Instance();
-    
-    // Create theme background for full-screen UI
-    ui.createThemeBackground(windowWidth, windowHeight);
-    
-    // Components automatically use professional theme styling
-    ui.createButton("play_btn", {x, y, w, h}, "Play Game");
-    ui.createList("options_list", {x, y, w, h});
-    
-    // Optional: Switch themes easily
-    // ui.setThemeMode("dark");
+    ui.render(gameEngine.getRenderer());
 }
 
 void UIExampleState::exit() {
-    auto& ui = UIManager::Instance();
-    
     // Clean up using centralized methods
+    auto& ui = UIManager::Instance();
     ui.removeComponentsWithPrefix("mystate_");
     ui.removeThemeBackground();
     ui.resetToDefaultTheme();
 }
 ```
 
-**❌ Incorrect Pattern:**
-```cpp
-void GameEngine::update(float deltaTime) {
-    // DON'T DO THIS - Global UI updates in GameEngine
-    UIManager::Instance().update(deltaTime);
-    mp_gameStateManager->update(deltaTime);
-}
-
-void SomeGameState::update(float deltaTime) {
-    // DON'T DO THIS - Redundant manager updates in states
-    AIManager::Instance().update(deltaTime);
-    EventManager::Instance().update();
-    // These are now handled globally by GameEngine
-}
-
-void BadUIState::create() {
-    // DON'T DO THIS - Manual styling fights centralized themes
-    UIStyle buttonStyle;
-    buttonStyle.backgroundColor = {70, 130, 180, 255};
-    buttonStyle.hoverColor = {100, 149, 237, 255};
-    // ... lots of manual styling code
-    ui.setStyle("my_button", buttonStyle);
-    
-    // DON'T DO THIS - Manual component cleanup
-    ui.removeComponent("comp1");
-    ui.removeComponent("comp2");
-    ui.removeComponent("comp3");
-    // ... dozens of manual removals
-}
-```
-
-### 2. State-Managed UI Rendering
-
-**✅ Correct Pattern:**
-```cpp
-void UIExampleState::render() {
-    // Each state renders its own UI components
-    auto& gameEngine = GameEngine::Instance();
-    auto& ui = UIManager::Instance();
-    ui.render(gameEngine.getRenderer());
-}
-```
-
-## Benefits of This Hybrid Architecture
+## Key Architectural Benefits
 
 ### Performance Optimization
-- **Global Systems**: World simulation systems (AI, Events) benefit from consistent updates and threading optimization
-- **Conditional Updates**: UI is only updated when states actually use UI components
+- **Conditional Updates**: UI only processed when states actually use UI components
+- **Global World Systems**: AI/Events benefit from consistent updates and threading
 - **Manager Caching**: GameEngine caches manager references for optimal performance
 - **Memory Efficiency**: No unnecessary UI processing in non-UI game states
 
 ### Clean Separation of Concerns
-- **Engine Responsibility**: GameEngine handles world simulation, core systems, threading, and resource management
-- **State Responsibility**: Game states handle their specific UI needs and state-specific systems
-- **Manager Responsibility**: Each manager provides its framework without dictating usage patterns
+- **Engine Responsibility**: Handles world simulation, core systems, and resource management
+- **State Responsibility**: Manages state-specific UI needs and optional systems
+- **Manager Responsibility**: Provides framework without dictating usage patterns
 
 ### Maximum Flexibility
-- **World Consistency**: Global systems ensure consistent world state across all game states
-- **State-Specific Behavior**: Each state can customize UI and other optional systems
-- **Conditional Systems**: States can opt-in to systems like UI without affecting global performance
-- **Independent Lifecycle**: Optional system lifecycle is tied to state lifecycle, preventing resource leaks
+- **World Consistency**: Global systems ensure consistent world state across states
+- **State-Specific Behavior**: Each state customizes UI without affecting global performance
+- **Conditional Systems**: States opt-in to UI without affecting global performance
+- **Independent Lifecycle**: UI lifecycle tied to state lifecycle, preventing resource leaks
 
 ## Implementation Guidelines
 
-### For New Game States Using UI
+### For States Using UI
 
-1. **Include UIManager Update in State Update:**
 ```cpp
-void YourGameState::update(float deltaTime) {
-    // Update UIManager for states that use UI components
-    auto& uiManager = UIManager::Instance();
-    if (!uiManager.isShutdown()) {
-        uiManager.update(deltaTime);
+class YourGameState : public GameState {
+public:
+    void update(float deltaTime) override {
+        // REQUIRED: Update UIManager for states using UI
+        auto& ui = UIManager::Instance();
+        if (!ui.isShutdown()) {
+            ui.update(deltaTime);
+        }
+        
+        // Your state logic...
+        // DO NOT update global systems (AI, Events, Input) - handled by GameEngine
     }
     
-    // Your state-specific updates...
-    // DO NOT update global systems (AI, Events, Input) - they're handled by GameEngine
-}
-```
-
-2. **Include UIManager Rendering in State Render:**
-```cpp
-void YourGameState::render() {
-    // Render your UI components
-    auto& gameEngine = GameEngine::Instance();
-    auto& ui = UIManager::Instance();
-    ui.render(gameEngine.getRenderer());
+    void render() override {
+        // REQUIRED: Render UI components
+        auto& gameEngine = GameEngine::Instance();
+        auto& ui = UIManager::Instance();
+        ui.render(gameEngine.getRenderer());
+    }
     
-    // Additional state-specific rendering...
-}
+    bool exit() override {
+        // REQUIRED: Clean up UI state
+        auto& ui = UIManager::Instance();
+        ui.removeComponentsWithPrefix("yourstate_");
+        ui.removeThemeBackground();
+        ui.resetToDefaultTheme();
+        return true;
+    }
+};
 ```
 
-### For Game States Not Using UI
-
-Simply omit the UIManager calls - the pattern is self-selecting:
+### For States Not Using UI
 
 ```cpp
-void NonUIGameState::update(float deltaTime) {
-    // No UIManager updates needed
-    // State-specific updates only...
-    // Global systems (AI, Events, Input) are handled by GameEngine
-}
-
-void NonUIGameState::render() {
-    // No UIManager rendering needed
-    // State-specific rendering only...
-}
+class NonUIGameState : public GameState {
+    void update(float deltaTime) override {
+        // No UIManager calls needed - pattern is self-selecting
+        // State-specific updates only
+        // Global systems handled by GameEngine
+    }
+    
+    void render() override {
+        // State-specific rendering only
+        // No UIManager rendering needed
+    }
+};
 ```
 
-### GameEngine Implementation (Reference)
+## Component Lifecycle Management
 
+### Efficient Cleanup Patterns
+
+```cpp
+// Bulk cleanup by prefix (recommended)
+ui.removeComponentsWithPrefix("menustate_");
+
+// Theme management
+ui.createThemeBackground(width, height);  // Full-screen overlay
+ui.removeThemeBackground();               // Clean removal
+ui.resetToDefaultTheme();                 // Prevent theme contamination
+
+// Nuclear cleanup (preserves theme background)
+ui.clearAllComponents();
+```
+
+### Background Management Strategies
+
+```cpp
+// Full-screen menus (with background overlay)
+ui.createThemeBackground(windowWidth, windowHeight);
+ui.createButton("menu_play", bounds, "Play Game");
+
+// HUD elements (no overlay - game visible)
+ui.createProgressBar("hud_health", bounds, 0.0f, 1.0f);
+ui.createLabel("hud_score", bounds, "Score: 0");
+// No background creation - game remains visible
+```
+
+## Threading Considerations
+
+### Thread Safety
+- UIManager designed for main thread only (OpenGL/SDL rendering thread)
+- State updates occur on main thread, ensuring thread safety
+- No additional synchronization needed for UIManager operations
+
+### Performance with Threading
+- UI updates don't block background thread operations
+- Game logic threading remains independent of UI operations
+- ThreadSystem continues processing while UI renders
+
+## Integration with GameEngine
+
+### GameEngine Responsibilities
 ```cpp
 void GameEngine::update(float deltaTime) {
     // Global systems updated by GameEngine for optimal performance
@@ -184,163 +192,89 @@ void GameEngine::update(float deltaTime) {
 }
 ```
 
-## Example State Integration
-
-See `UIExampleState` for a complete example of proper UIManager integration:
-
-```cpp
-class UIExampleState : public GameState {
-public:
-    void update(float deltaTime) override {
-        // Update UI Manager - architectural pattern
-        auto& uiManager = UIManager::Instance();
-        if (!uiManager.isShutdown()) {
-            uiManager.update(deltaTime);
-        }
-        
-        // UI screen updates
-        if (m_uiScreen) {
-            m_uiScreen->update(deltaTime);
-        }
-        
-        // State-specific logic...
-    }
-    
-    void render() override {
-        // Render UI components
-        auto& gameEngine = GameEngine::Instance();
-        auto& ui = UIManager::Instance();
-        ui.render(gameEngine.getRenderer());
-    }
-    
-private:
-    std::unique_ptr<UIScreen> m_uiScreen;
-};
-```
-
-## Threading Considerations
-
-### Thread Safety
-- UIManager is designed to be called from the main thread only (OpenGL/SDL rendering thread)
-- State updates and renders occur on the main thread, ensuring thread safety
-- No additional synchronization needed for UIManager calls
-
-### Performance with Threading
-- UI updates don't block background thread operations
-- Game logic threading remains independent of UI operations
-- ThreadSystem can continue processing while UI renders
-
-## Migration Notes
-
-### From Global UI Updates
-
-If you have existing code with inappropriate manager updates:
-
-1. **Remove Redundant Updates from States:**
-```cpp
-// Remove these from individual game states (now handled globally)
-void AIDemoState::update(float deltaTime) {
-    // DON'T DO THIS - AIManager is updated globally
-    // AIManager::Instance().update(deltaTime);
-    
-    // State-specific logic only
-}
-```
-
-2. **Add UI Updates to UI States Only:**
-```cpp
-// Add this only to states that use UI components
-void YourUIState::update(float deltaTime) {
-    auto& uiManager = UIManager::Instance();
-    if (!uiManager.isShutdown()) {
-        uiManager.update(deltaTime);
-    }
-    // ... rest of state update
-}
-```
-
-3. **GameEngine Handles Global Systems:**
-```cpp
-// This is now handled automatically by GameEngine
-void GameEngine::update(float deltaTime) {
-    mp_inputManager->update();        // Cached reference
-    mp_aiManager->update(deltaTime);  // Cached reference  
-    mp_eventManager->update();        // Cached reference
-    mp_gameStateManager->update(deltaTime);
-}
-```
+### Manager Dependencies
+- **FontManager**: Text rendering for all UI components
+- **InputManager**: Mouse and keyboard input handling
+- **TextureManager**: Image loading for UI graphics
+- **GameEngine**: Window dimensions and renderer access
 
 ## Best Practices
 
-### UI State Design
-- Keep UI component creation in state `enter()` method
-- Handle UI cleanup in state `exit()` method
-- Use UIScreen classes for complex UI hierarchies
-- Implement proper callback handling for UI interactions
+### Component Naming Convention
+```cpp
+// Use state prefixes for efficient cleanup
+ui.createButton("mainmenu_play_btn", bounds, "Play");
+ui.createSlider("options_volume_slider", bounds, 0.0f, 100.0f);
+ui.createProgressBar("hud_health_bar", bounds, 0.0f, 1.0f);
+```
 
 ### Error Handling
 ```cpp
 void YourState::update(float deltaTime) {
-    auto& uiManager = UIManager::Instance();
-    if (!uiManager.isShutdown()) {
+    auto& ui = UIManager::Instance();
+    if (!ui.isShutdown()) {
         try {
-            uiManager.update(deltaTime);
+            ui.update(deltaTime);
         } catch (const std::exception& e) {
             std::cerr << "UI update error: " << e.what() << std::endl;
-            // Handle gracefully
         }
     }
 }
 ```
 
-### Component Management
+### State Lifecycle Best Practices
 ```cpp
 class YourUIState : public GameState {
 public:
     bool enter() override {
         // Create UI components when entering state
         auto& ui = UIManager::Instance();
-        ui.createButton("my_button", {100, 100, 200, 50}, "Click Me");
-        ui.setOnClick("my_button", [this]() { handleButtonClick(); });
+        ui.createThemeBackground(windowWidth, windowHeight);
+        ui.createButton("mystate_button", bounds, "Click Me");
+        ui.setOnClick("mystate_button", [this]() { handleClick(); });
         return true;
     }
     
     bool exit() override {
         // Clean up UI components when exiting state
         auto& ui = UIManager::Instance();
-        ui.removeComponent("my_button");
+        ui.removeComponentsWithPrefix("mystate_");
+        ui.removeThemeBackground();
+        ui.resetToDefaultTheme();
         return true;
     }
 };
 ```
 
-## Related Documentation
-
-- [UIManager API Reference](../managers/UIManager.hpp)
-- [SDL3 Logical Presentation Modes](SDL3_Logical_Presentation_Modes.md)
-- [UI Stress Testing Guide](UI_Stress_Testing_Guide.md)
-- [Game State Management](../GameStateManager.md)
-- [AIManager Documentation](../ai/AIManager.md)
-- [EventManager Documentation](../EventManager.md)
-
 ## Troubleshooting
 
-### Common Issues
+### Common Issues & Solutions
 
-**Issue**: UI not updating or responding
-**Solution**: Ensure UIManager::update() is called in your UI state's update method
+**UI not updating/responding:**
+- Ensure `UIManager::update()` is called in your UI state's update method
 
-**Issue**: UI not rendering
-**Solution**: Ensure UIManager::render() is called in your UI state's render method
+**UI not rendering:**
+- Ensure `UIManager::render()` is called in your UI state's render method
 
-**Issue**: UI components persist between states
-**Solution**: Properly clean up UI components in state's exit() method
+**Components persist between states:**
+- Use `removeComponentsWithPrefix()` or `clearAllComponents()` in state exit
 
-**Issue**: Redundant manager updates causing performance issues
-**Solution**: Remove AI/Event/Input manager updates from states - they're handled globally
+**Inconsistent styling across states:**
+- Use `resetToDefaultTheme()` when exiting states
+- Avoid manual styling unless necessary for special cases
 
-**Issue**: Global systems not working in states
-**Solution**: Verify GameEngine is properly updating global systems before state updates
+**Performance issues:**
+- Remove redundant manager updates from states (AI/Event/Input handled globally)
+- Verify GameEngine properly updates global systems before state updates
 
-**Issue**: Manager caching errors
-**Solution**: Ensure GameEngine::init() completes successfully before using cached references
+## Architecture Decision Summary
+
+This hybrid architecture provides:
+
+1. **Optimal Performance**: Global systems updated efficiently, UI only when needed
+2. **Clean Code**: Clear separation between world simulation and UI concerns
+3. **Flexibility**: States control their specific UI needs without affecting others
+4. **Professional Appearance**: Centralized themes provide consistent, polished look
+5. **Easy Maintenance**: Bulk cleanup methods and theme management simplify state transitions
+
+The design successfully balances performance, maintainability, and ease of use while following established patterns in the existing codebase.
