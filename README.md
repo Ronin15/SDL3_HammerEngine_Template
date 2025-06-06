@@ -484,12 +484,12 @@ Additional documentation can be found in the `docs/` directory:
 - **[AI Developer Guide](docs/ai/DeveloperGuide.md)** - Advanced AI development patterns and techniques
 
 ### Event System Documentation
-- **[Event Manager](docs/EventManager.md)** - Guide to the event management system with examples and integration details
-- **[EventManager Quick Reference](docs/EventManager_QuickReference.md)** - Convenience methods guide and quick reference
-- **[Event System Integration](docs/EventSystem_Integration.md)** - Quick reference guide for EventSystem integration and usage patterns
-- **[Event Manager Threading](docs/EventManager_ThreadSystem.md)** - Details on EventManager and ThreadSystem integration
-- **[Event Manager Performance](docs/EventManager_Performance_Improvements.md)** - Performance optimization techniques
-- **[Event Manager Examples](docs/EventManagerExamples.cpp)** - Code examples for using the EventManager system
+- **[Event Manager](docs/events/EventManager.md)** - Guide to the event management system with examples and integration details
+- **[EventManager Quick Reference](docs/events/EventManager_QuickReference.md)** - Convenience methods guide and quick reference
+- **[Event System Integration](docs/events/EventSystem_Integration.md)** - Quick reference guide for EventSystem integration and usage patterns
+- **[Event Manager Threading](docs/events/EventManager_ThreadSystem.md)** - Details on EventManager and ThreadSystem integration
+- **[Event Factory](docs/events/EventFactory.md)** - Advanced event creation with EventDefinition and sequences
+- **[Event Factory Quick Reference](docs/events/EventFactory_QuickReference.md)** - Fast API lookup and examples
 
 ### Manager System Documentation
 - **[FontManager](docs/FontManager.md)** - Font loading and text rendering system with TTF/OTF support
@@ -497,8 +497,14 @@ Additional documentation can be found in the `docs/` directory:
 - **[SoundManager](docs/SoundManager.md)** - Audio playback and sound management with volume control
 
 ### UI System Documentation
+- **[UIManager Guide](docs/ui/UIManager_Guide.md)** - Complete user guide with examples and best practices
+- **[UIManager Architecture](docs/ui/UIManager_Architecture.md)** - System architecture and integration patterns
+- **[UIManager Implementation Summary](docs/ui/UIManager_Implementation_Summary.md)** - Technical implementation details
 - **[SDL3 Logical Presentation Modes](docs/ui/SDL3_Logical_Presentation_Modes.md)** - Comprehensive guide to SDL3's logical presentation system and UIManager compatibility
 - **[UI Stress Testing Guide](docs/ui/UI_Stress_Testing_Guide.md)** - Complete documentation for the integrated UI performance testing framework
 
 ### Threading System Documentation
 - **[ThreadSystem Overview](docs/ThreadSystem.md)** - Core documentation for the ThreadSystem component with usage examples and best practices
+- **[ThreadSystem API](docs/ThreadSystem_API.md)** - Complete API reference for ThreadSystem components
+- **[ThreadSystem Optimization](docs/ThreadSystem_Optimization.md)** - Performance tuning and optimization guide
+- **[Worker Budget System](docs/WorkerBudget_System.md)** - Memory optimization and budget management
