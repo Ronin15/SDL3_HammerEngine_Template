@@ -22,6 +22,9 @@ class GamePlayState : public GameState {
  private:
   bool m_transitioningToPause{false}; // Flag to indicate we're transitioning to pause state
   std::unique_ptr<Player> mp_Player{nullptr}; // Player object
+  
+  // Helper methods
+  void handleInput();
 };
 
 #endif  // GAME_PLAY_STATE_HPP

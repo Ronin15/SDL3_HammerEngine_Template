@@ -31,12 +31,16 @@ done
 
 echo -e "${BLUE}Running ThreadSystem tests...${NC}"
 
+# Get the directory where this script is located and find project root
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+
 # Check if test executable exists
-TEST_EXECUTABLE="bin/debug/thread_system_tests"
+TEST_EXECUTABLE="$PROJECT_ROOT/bin/debug/thread_system_tests"
 if [ ! -f "$TEST_EXECUTABLE" ]; then
   echo -e "${RED}Test executable not found at $TEST_EXECUTABLE${NC}"
   echo -e "${YELLOW}Searching for test executable...${NC}"
-  FOUND_EXECUTABLE=$(find . -name "thread_system_tests" -type f -executable | head -n 1)
+  FOUND_EXECUTABLE=$(find "$PROJECT_ROOT" -name "thread_system_tests" -type f -executable | head -n 1)
   if [ -n "$FOUND_EXECUTABLE" ]; then
     TEST_EXECUTABLE="$FOUND_EXECUTABLE"
     echo -e "${GREEN}Found test executable at $TEST_EXECUTABLE${NC}"
@@ -61,20 +65,20 @@ TEST_RESULT=$?
 echo -e "${BLUE}====================================${NC}"
 
 # Create test_results directory if it doesn't exist
-mkdir -p test_results
+mkdir -p "$PROJECT_ROOT/test_results"
 
 # Check if there were any failures in the output
 FAILURES=$(grep -o "[0-9]\+ failure" test_output.log 2>/dev/null | grep -o "[0-9]\+" || echo "0")
 
 # Save test results
 if [ -f test_output.log ]; then
-  cp test_output.log "test_results/thread_system_test_output.txt"
+  cp test_output.log "$PROJECT_ROOT/test_results/thread_system_test_output.txt"
 fi
 
 # Extract performance metrics if they exist
 echo -e "${YELLOW}Saving test results...${NC}"
 if [ -f test_output.log ]; then
-  grep -E "time:|performance|tasks:|queue:" test_output.log > "test_results/thread_system_performance_metrics.txt" || true
+  grep -E "time:|performance|tasks:|queue:" test_output.log > "$PROJECT_ROOT/test_results/thread_system_performance_metrics.txt" || true
   # Clean up temporary file
   rm test_output.log
 fi

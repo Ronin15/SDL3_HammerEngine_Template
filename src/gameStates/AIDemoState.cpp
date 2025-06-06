@@ -10,7 +10,7 @@
 #include "ai/behaviors/PatrolBehavior.hpp"
 #include "ai/behaviors/ChaseBehavior.hpp"
 #include "core/GameEngine.hpp"
-#include "managers/FontManager.hpp"
+#include "managers/UIManager.hpp"
 #include "managers/InputManager.hpp"
 #include <SDL3/SDL.h>
 
@@ -49,6 +49,67 @@ AIDemoState::~AIDemoState() {
     }
 }
 
+void AIDemoState::handleInput() {
+    InputManager& inputMgr = InputManager::Instance();
+    
+    // Use InputManager's new event-driven key press detection
+    if (inputMgr.wasKeyPressed(SDL_SCANCODE_SPACE)) {
+        // Toggle pause/resume
+        m_aiPaused = !m_aiPaused;
+
+        // Set global AI pause state in AIManager
+        AIManager& aiMgr = AIManager::Instance();
+        aiMgr.setGlobalPause(m_aiPaused);
+
+        // Also send messages for behaviors that need them
+        std::string message = m_aiPaused ? "pause" : "resume";
+        aiMgr.broadcastMessage(message, true);
+
+        // Simple feedback
+        std::cout << "Forge Game Engine - AI " << (m_aiPaused ? "PAUSED" : "RESUMED") << std::endl;
+    }
+    
+    if (inputMgr.wasKeyPressed(SDL_SCANCODE_B)) {
+        std::cout << "Forge Game Engine - Preparing to exit AIDemoState...\n";
+        GameEngine& gameEngine = GameEngine::Instance();
+        gameEngine.getGameStateManager()->setState("MainMenuState");
+    }
+    
+    if (inputMgr.wasKeyPressed(SDL_SCANCODE_1)) {
+        // Assign Wander behavior to all NPCs
+        std::cout << "Forge Game Engine - Switching all NPCs to WANDER behavior\n";
+        AIManager& aiMgr = AIManager::Instance();
+        for (auto& npc : m_npcs) {
+            // Queue the behavior assignment for batch processing
+            aiMgr.queueBehaviorAssignment(npc, "Wander");
+        }
+    }
+    
+    if (inputMgr.wasKeyPressed(SDL_SCANCODE_2)) {
+        // Assign Patrol behavior to all NPCs
+        std::cout << "Forge Game Engine - Switching all NPCs to PATROL behavior\n";
+        AIManager& aiMgr = AIManager::Instance();
+        for (auto& npc : m_npcs) {
+            // Queue the behavior assignment for batch processing
+            aiMgr.queueBehaviorAssignment(npc, "Patrol");
+        }
+    }
+    
+    if (inputMgr.wasKeyPressed(SDL_SCANCODE_3)) {
+        // Assign Chase behavior to all NPCs
+        std::cout << "Forge Game Engine - Switching all NPCs to CHASE behavior\n";
+
+        // Chase behavior target is automatically maintained by AIManager
+        // No manual target updates needed
+        AIManager& aiMgr = AIManager::Instance();
+        for (auto& npc : m_npcs) {
+            // Queue the behavior assignment for batch processing
+            aiMgr.queueBehaviorAssignment(npc, "Chase");
+        }
+    }
+}
+
+
 bool AIDemoState::enter() {
     std::cout << "Forge Game Engine - Entering AIDemoState...\n";
 
@@ -84,7 +145,13 @@ bool AIDemoState::enter() {
         // Create NPCs with AI behaviors
         createNPCs();
 
-
+        // Create simple HUD UI
+        auto& ui = UIManager::Instance();
+        ui.createTitle("ai_title", {0, 10, gameEngine.getWindowWidth(), 30}, "AI Demo State");
+        ui.setTitleAlignment("ai_title", UIAlignment::CENTER_CENTER);
+        ui.createLabel("ai_instructions", {10, 50, gameEngine.getWindowWidth() - 20, 25}, 
+                       "AI Demo: [B] Exit | [1] Wander | [2] Patrol | [3] Chase | [SPACE] Pause/Resume");
+        ui.createLabel("ai_status", {10, 85, 400, 25}, "FPS: -- | Entities: -- | AI: RUNNING");
 
         // Log status
         std::cout << "Forge Game Engine - Created " << m_npcs.size() << " NPCs with AI behaviors\n";
@@ -148,6 +215,12 @@ bool AIDemoState::exit() {
         m_player.reset();
     }
 
+    // Clean up UI
+    auto& ui = UIManager::Instance();
+    ui.removeComponent("ai_title");
+    ui.removeComponent("ai_instructions");
+    ui.removeComponent("ai_status");
+
     // Chase behavior cleanup is now handled by AIManager
 
     std::cout << "Forge Game Engine - AIDemoState exit complete\n";
@@ -164,11 +237,14 @@ void AIDemoState::update([[maybe_unused]] float deltaTime) {
             m_player->update(deltaTime);
         }
 
-        // Update AI Manager
-        aiMgr.update(deltaTime);
-
-        // Entity updates are now handled by AIManager::update()
-        // No need to manually update NPCs here
+        // AI Manager is updated globally by GameEngine for optimal performance
+        // This hybrid architecture provides several benefits:
+        // 1. Consistent 60 FPS updates for all 10K+ AI entities across all states
+        // 2. Optimized threading with worker budget allocation
+        // 3. No redundant updates when switching between states
+        // 4. Better cache performance from centralized batch processing
+        // Entity updates are handled by AIManager::update() in GameEngine
+        // No need to manually update NPCs or AIManager here
 
         // Handle user input for the demo
     } catch (const std::exception& e) {
@@ -218,65 +294,23 @@ void AIDemoState::update([[maybe_unused]] float deltaTime) {
         gameEngine.getGameStateManager()->setState("MainMenuState");
     }
 
-    // Toggle AI behaviors
-    static int lastKey = 0;
-
-    if (inputMgr.isKeyDown(SDL_SCANCODE_1) && lastKey != 1) {
-        // Assign Wander behavior to all NPCs
-        std::cout << "Forge Game Engine - Switching all NPCs to WANDER behavior\n";
-        for (auto& npc : m_npcs) {
-            // Queue the behavior assignment for batch processing
-            aiMgr.queueBehaviorAssignment(npc, "Wander");
-        }
-        lastKey = 1;
-    } else if (inputMgr.isKeyDown(SDL_SCANCODE_2) && lastKey != 2) {
-        // Assign Patrol behavior to all NPCs
-        std::cout << "Forge Game Engine - Switching all NPCs to PATROL behavior\n";
-        for (auto& npc : m_npcs) {
-            // Queue the behavior assignment for batch processing
-            aiMgr.queueBehaviorAssignment(npc, "Patrol");
-        }
-        lastKey = 2;
-    } else if (inputMgr.isKeyDown(SDL_SCANCODE_3) && lastKey != 3) {
-        // Assign Chase behavior to all NPCs
-        std::cout << "Forge Game Engine - Switching all NPCs to CHASE behavior\n";
-
-        // Chase behavior target is automatically maintained by AIManager
-        // No manual target updates needed
-
-        for (auto& npc : m_npcs) {
-            // Queue the behavior assignment for batch processing
-            aiMgr.queueBehaviorAssignment(npc, "Chase");
-        }
-        lastKey = 3;
+    // Handle input with proper key press detection
+    handleInput();
+    
+    // Update UI Manager
+    auto& uiManager = UIManager::Instance();
+    if (!uiManager.isShutdown()) {
+        uiManager.update(deltaTime);
+        
+        // Update status display
+        auto& gameEngine = GameEngine::Instance();
+        auto& aiMgr = AIManager::Instance();
+        std::stringstream status;
+        status << "FPS: " << std::fixed << std::setprecision(1) << gameEngine.getCurrentFPS()
+               << " | Entities: " << m_npcs.size() 
+               << " | AI: " << (aiMgr.isGloballyPaused() ? "PAUSED" : "RUNNING");
+        uiManager.setText("ai_status", status.str());
     }
-
-    // Reset key state if no behavior key is pressed
-    if (!inputMgr.isKeyDown(SDL_SCANCODE_1) &&
-        !inputMgr.isKeyDown(SDL_SCANCODE_2) &&
-        !inputMgr.isKeyDown(SDL_SCANCODE_3)) {
-        lastKey = 0;
-    }
-
-    // Pause/Resume AI
-    bool isSpacePressed = inputMgr.isKeyDown(SDL_SCANCODE_SPACE);
-
-    if (isSpacePressed && !m_wasSpacePressed) {
-        // Toggle pause/resume
-        m_aiPaused = !m_aiPaused;
-
-        // Set global AI pause state in AIManager
-        aiMgr.setGlobalPause(m_aiPaused);
-
-        // Also send messages for behaviors that need them
-        std::string message = m_aiPaused ? "pause" : "resume";
-        aiMgr.broadcastMessage(message, true);
-
-        // Simple feedback
-        std::cout << "Forge Game Engine - AI " << (m_aiPaused ? "PAUSED" : "RESUMED") << std::endl;
-    }
-
-    m_wasSpacePressed = isSpacePressed;
 }
 
 void AIDemoState::render() {
@@ -290,34 +324,10 @@ void AIDemoState::render() {
         m_player->render();
     }
 
-    // Cache manager references for better performance
-    FontManager& fontMgr = FontManager::Instance();
-    GameEngine& gameEngine = GameEngine::Instance();
-    AIManager& aiMgr = AIManager::Instance();
-    SDL_Renderer* renderer = gameEngine.getRenderer();
-    
-    // Render info panel
-        fontMgr.drawText("AI Demo: Press [B] to exit to main menu. Press [1-3] to switch behaviors. Press [SPACE] to pause/resume AI. [1] Wander [2] Patrol [3] Chase",
-                                    "fonts_Arial",
-                                    gameEngine.getWindowWidth() / 2,     // Center horizontally
-                                    20,
-                                    {255, 255, 255, 255},
-                                    renderer);
-
-    // Render frame rate and AI status
-    bool globallyPaused = aiMgr.isGloballyPaused();
-    std::stringstream fpsText;
-    float currentFPS = gameEngine.getCurrentFPS();
-    fpsText << "FPS: " << std::fixed << std::setprecision(1) << currentFPS
-            << " - Entity Count: " << m_npcs.size()
-            << " - AI: " << (globallyPaused ? "PAUSED" : "RUNNING");
-
-    fontMgr.drawText(fpsText.str(),
-                                "fonts_Arial",
-                                gameEngine.getWindowWidth() / 2,     // Center horizontally
-                                50,
-                                globallyPaused ? SDL_Color{255, 100, 100, 255} : SDL_Color{255, 255, 255, 255},
-                                renderer);
+    // Render UI components through UIManager
+    auto& gameEngine = GameEngine::Instance();
+    auto& ui = UIManager::Instance();
+    ui.render(gameEngine.getRenderer());
 }
 
 void AIDemoState::setupAIBehaviors() {
@@ -433,3 +443,5 @@ void AIDemoState::createNPCs() {
         std::cerr << "Forge Game Engine - ERROR: Unknown exception in createNPCs()" << std::endl;
     }
 }
+
+

@@ -15,7 +15,7 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 cd "$SCRIPT_DIR"
 
 # Create directory for test results
-mkdir -p test_results
+mkdir -p ../../test_results
 
 # Set default build type
 BUILD_TYPE="Debug"
@@ -55,11 +55,15 @@ done
 # Prepare to run tests
 echo -e "${YELLOW}Preparing to run AI Optimization tests...${NC}"
 
+# Get the directory where this script is located and find project root
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+
 # Determine the correct path to the test executable
 if [ "$BUILD_TYPE" = "Debug" ]; then
-  TEST_EXECUTABLE="bin/debug/ai_optimization_tests"
+  TEST_EXECUTABLE="$PROJECT_ROOT/bin/debug/ai_optimization_tests"
 else
-  TEST_EXECUTABLE="bin/release/ai_optimization_tests"
+  TEST_EXECUTABLE="$PROJECT_ROOT/bin/release/ai_optimization_tests"
 fi
 
 # Verify executable exists
@@ -67,7 +71,7 @@ if [ ! -f "$TEST_EXECUTABLE" ]; then
   echo -e "${RED}Error: Test executable not found at '$TEST_EXECUTABLE'${NC}"
   # Attempt to find the executable
   echo -e "${YELLOW}Searching for test executable...${NC}"
-  FOUND_EXECUTABLE=$(find bin -name "ai_optimization_tests")
+  FOUND_EXECUTABLE=$(find "$PROJECT_ROOT/bin" -name "ai_optimization_tests" -type f -executable | head -n 1)
   if [ -n "$FOUND_EXECUTABLE" ]; then
     echo -e "${GREEN}Found executable at: $FOUND_EXECUTABLE${NC}"
     TEST_EXECUTABLE="$FOUND_EXECUTABLE"
@@ -81,11 +85,11 @@ fi
 echo -e "${YELLOW}Running AI Optimization tests...${NC}"
 
 # Ensure test_results directory exists
-mkdir -p test_results
+mkdir -p ../../test_results
 
 # Output file
-OUTPUT_FILE="test_results/ai_optimization_tests_output.txt"
-METRICS_FILE="test_results/ai_optimization_tests_performance_metrics.txt"
+OUTPUT_FILE="../../test_results/ai_optimization_tests_output.txt"
+METRICS_FILE="../../test_results/ai_optimization_tests_performance_metrics.txt"
 
 # Set test command options
 TEST_OPTS="--log_level=all --catch_system_errors=no"

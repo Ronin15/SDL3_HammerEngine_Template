@@ -116,23 +116,7 @@ private:
     std::vector<std::string> m_sceneNames{"Forest", "Village", "Castle", "Dungeon"};
     size_t m_currentSceneIndex{0};
 
-    // Input handling
-    struct InputState {
-        bool space{false};
-        bool enter{false};
-        bool tab{false};
-        bool num1{false};
-        bool num2{false};
-        bool num3{false};
-        bool num4{false};
-        bool num5{false};
-        bool escape{false};
-        bool r{false}; // Reset
-        bool a{false}; // Auto mode toggle
-        bool c{false}; // Convenience methods demo
-    };
-    InputState m_input{};
-    InputState m_lastInput{};
+
 
     // UI and display
     std::string m_statusText{};
@@ -149,7 +133,6 @@ private:
     // Event manager accessed via singleton - no raw pointer needed
 
     // Helper methods
-    bool isKeyPressed(bool current, bool previous) const;
     void addLogEntry(const std::string& entry);
     std::string getCurrentPhaseString() const;
     std::string getCurrentWeatherString() const;

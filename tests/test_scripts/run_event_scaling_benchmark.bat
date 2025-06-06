@@ -14,8 +14,8 @@ set "NC=[0m"
 
 :: Script configuration
 set "SCRIPT_DIR=%~dp0"
-set "BUILD_DIR=%SCRIPT_DIR%build"
-set "RESULTS_DIR=%SCRIPT_DIR%test_results"
+set "BUILD_DIR=%SCRIPT_DIR%..\..\build"
+set "RESULTS_DIR=%SCRIPT_DIR%..\..\test_results"
 set "OUTPUT_FILE=%RESULTS_DIR%\event_scaling_benchmark_output.txt"
 set "BUILD_TYPE=debug"
 set "VERBOSE=false"
@@ -115,9 +115,9 @@ call :print_status "Results will be saved to: !OUTPUT_FILE!"
 cd /d "%SCRIPT_DIR%"
 
 :: Check if benchmark executable exists
-set "BENCHMARK_EXEC=!SCRIPT_DIR!bin\!BUILD_TYPE!\event_manager_scaling_benchmark.exe"
+set "BENCHMARK_EXEC=!SCRIPT_DIR!..\..\bin\!BUILD_TYPE!\event_manager_scaling_benchmark.exe"
 if not exist "!BENCHMARK_EXEC!" (
-    set "BENCHMARK_EXEC=!SCRIPT_DIR!bin\!BUILD_TYPE!\event_manager_scaling_benchmark"
+    set "BENCHMARK_EXEC=!SCRIPT_DIR!..\..\bin\!BUILD_TYPE!\event_manager_scaling_benchmark"
     if not exist "!BENCHMARK_EXEC!" (
         call :print_error "Benchmark executable not found: !BENCHMARK_EXEC!"
         exit /b 1
