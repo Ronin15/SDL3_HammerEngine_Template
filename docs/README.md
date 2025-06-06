@@ -3,6 +3,8 @@
 ## Table of Contents
 
 - [Core Systems](#core-systems)
+  - [Logger System](#logger-system)
+  - [Core Engine Systems](#core-engine-systems)
   - [AI System](#ai-system)
   - [Event System](#event-system) 
   - [UI System](#ui-system)
@@ -18,6 +20,12 @@
 The Forge Game Engine is a high-performance game development framework built on SDL3, featuring advanced AI systems, event management, threading capabilities, and more.
 
 ## Core Systems
+
+### Core Engine Systems
+Foundation systems that power the game engine architecture.
+
+- **[GameEngine Documentation](core/GameEngine.md)** - Central engine singleton managing all systems
+- **[GameLoop Documentation](core/GameLoop.md)** - Industry-standard timing with fixed/variable timestep
 
 ### AI System
 The AI system provides flexible, thread-safe behavior management for game entities with individual behavior instances and mode-based configuration.
@@ -57,10 +65,20 @@ High-performance multithreading framework with priority-based task scheduling.
 - **[ThreadSystem Optimization](ThreadSystem_Optimization.md)** - Performance tuning guide
 - **[Worker Budget System](WorkerBudget_System.md)** - Memory optimization and budget management
 
+### Utility Systems
+Core utility classes and helper systems used throughout the engine.
+
+- **[Logger System](Logger.md)** - High-performance logging with zero release overhead and system-specific macros
+- **[Worker Budget System](WorkerBudget_System.md)** - Memory optimization and budget management for threading
+
 ### Manager System Documentation
+- **[AIManager](ai/AIManager.md)** - AI behavior management and entity processing
+- **[EventManager](events/EventManager.md)** - High-performance event system with type-indexed storage
+- **[UIManager](ui/UIManager_Guide.md)** - Professional UI system with theming and animations
 - **[FontManager](FontManager.md)** - Font loading and text rendering system
 - **[TextureManager](TextureManager.md)** - Texture loading and sprite rendering system  
 - **[SoundManager](SoundManager.md)** - Audio playback and sound management system
+- **SaveGameManager** - Game save/load system with slot management and binary serialization
 
 
 
@@ -68,6 +86,8 @@ High-performance multithreading framework with priority-based task scheduling.
 
 ### System Overview
 The Forge Game Engine provides several core systems that work together:
+- **Core Engine**: GameEngine singleton and GameLoop timing systems
+- **Utility Systems**: Logger, Worker Budget, and core utility classes
 - **AI System**: Behavior management for NPCs with threading support
 - **Event System**: Global event handling for weather, spawning, and custom events
 - **UI System**: Professional interface components with theming and animations
@@ -75,6 +95,9 @@ The Forge Game Engine provides several core systems that work together:
 - **Manager Systems**: Resource management for fonts, textures, audio, and more
 
 ### Quick Links
+- **[GameEngine Setup](core/GameEngine.md#quick-start)** - Initialize the engine
+- **[GameLoop Setup](core/GameLoop.md#quick-start)** - Configure main game loop
+- **[Logger Quick Start](Logger.md#quick-start)** - Essential logging setup
 - **[AI Quick Start](ai/BehaviorModes_QuickReference.md)** - Set up AI behaviors in minutes
 - **[Event Quick Start](events/EventManager_QuickReference.md)** - Event system essentials
 - **[UI Quick Start](ui/UIManager_Guide.md#quick-start)** - Create UI components instantly
@@ -83,6 +106,9 @@ The Forge Game Engine provides several core systems that work together:
 ## Key Features
 
 ### Modern Architecture
+- **Singleton Engine Management**: Centralized system coordination
+- **Fixed/Variable Timestep**: Deterministic updates with smooth rendering
+- **Zero-Overhead Utilities**: Debug logging and memory management without release impact
 - **Individual Behavior Instances**: Each NPC gets isolated behavior state
 - **Mode-Based Configuration**: Automatic setup for common patterns
 - **Professional UI Theming**: Consistent appearance without manual styling
@@ -114,6 +140,9 @@ The Forge Game Engine provides several core systems that work together:
 ## Support and Troubleshooting
 
 For issues with specific systems, see the troubleshooting sections in each system's documentation:
+- Core engine issues: See [GameEngine API Reference](core/GameEngine.md#api-reference)
+- Game loop issues: See [GameLoop Best Practices](core/GameLoop.md#best-practices)
+- Logger issues: See [Logger Best Practices](Logger.md#best-practices)
 - AI issues: See [AI Developer Guide](ai/DeveloperGuide.md)
 - Event issues: See [Event System Integration](events/EventSystem_Integration.md)
 - UI issues: See [UIManager Architecture](ui/UIManager_Architecture.md#troubleshooting)
