@@ -4,6 +4,7 @@
 */
 
 #include "managers/EventManager.hpp"
+#include "utils/Logger.hpp"
 #include "events/Event.hpp"
 #include "events/WeatherEvent.hpp"
 #include "events/SceneChangeEvent.hpp"
@@ -16,11 +17,11 @@
 
 bool EventManager::init() {
     if (m_initialized.load()) {
-        EVENT_LOG("Warning: EventManager already initialized");
+        EVENT_WARN("EventManager already initialized");
         return true;
     }
 
-    EVENT_LOG("Initializing EventManager with performance optimizations");
+    EVENT_INFO("Initializing EventManager with performance optimizations");
 
     // Initialize all event type containers
     for (auto& eventContainer : m_eventsByType) {
@@ -47,7 +48,7 @@ bool EventManager::init() {
     m_lastUpdateTime.store(getCurrentTimeNanos());
     m_initialized.store(true);
 
-    EVENT_LOG("EventManager initialized successfully with type-indexed storage");
+    EVENT_INFO("EventManager initialized successfully with type-indexed storage");
     return true;
 }
 
@@ -56,7 +57,7 @@ void EventManager::clean() {
         return;
     }
 
-    EVENT_LOG("Cleaning up EventManager");
+    EVENT_INFO("Cleaning up EventManager");
 
     // Clear all events with proper cleanup
     {
@@ -85,7 +86,7 @@ void EventManager::clean() {
 
     m_initialized.store(false);
     m_isShutdown = true;
-    EVENT_LOG("EventManager cleaned up");
+    EVENT_INFO("EventManager cleaned up");
 }
 
 void EventManager::update() {
@@ -114,14 +115,14 @@ void EventManager::update() {
     auto endTime = getCurrentTimeNanos();
     double totalTimeMs = (endTime - startTime) / 1000000.0;
 
-    EVENT_LOG_DETAIL("EventManager update completed in " << totalTimeMs << "ms");
+    EVENT_DEBUG("EventManager update completed in " + std::to_string(totalTimeMs) + "ms");
     m_lastUpdateTime.store(endTime);
     (void)totalTimeMs; // Suppress unused warning
 }
 
 bool EventManager::registerEvent(const std::string& name, EventPtr event) {
     if (!event) {
-        EVENT_LOG("Error: Cannot register null event with name: " << name);
+        EVENT_ERROR("Cannot register null event with name: " + name);
         return false;
     }
 
@@ -150,7 +151,7 @@ bool EventManager::registerEventInternal(const std::string& name, EventPtr event
 
     // Check if event already exists
     if (m_nameToIndex.find(name) != m_nameToIndex.end()) {
-        EVENT_LOG("Warning: Event '" << name << "' already exists, replacing");
+        EVENT_WARN("Event '" + name + "' already exists, replacing");
     }
 
     // Create event data
@@ -170,7 +171,7 @@ bool EventManager::registerEventInternal(const std::string& name, EventPtr event
     m_nameToIndex[name] = index;
     m_nameToType[name] = typeId;
 
-    EVENT_LOG("Registered event '" << name << "' of type " << getEventTypeName(typeId));
+    EVENT_INFO("Registered event '" + name + "' of type " + std::string(getEventTypeName(typeId)));
     return true;
 }
 
@@ -344,7 +345,7 @@ void EventManager::clearAllHandlers() {
     for (auto& handlerContainer : m_handlersByType) {
         handlerContainer.clear();
     }
-    EVENT_LOG("All event handlers cleared");
+    EVENT_INFO("All event handlers cleared");
 }
 
 size_t EventManager::getHandlerCount(EventTypeId typeId) const {
@@ -372,8 +373,8 @@ void EventManager::updateEventTypeBatch(EventTypeId typeId) {
     double timeMs = (endTime - startTime) / 1000000.0;
     recordPerformance(typeId, timeMs);
 
-    EVENT_LOG_DETAIL("Updated " << container.size() << " events of type "
-                    << getEventTypeName(typeId) << " in " << timeMs << "ms");
+    EVENT_DEBUG("Updated " + std::to_string(container.size()) + " events of type " +
+                std::string(getEventTypeName(typeId)) + " in " + std::to_string(timeMs) + "ms");
 }
 
 void EventManager::updateEventTypeBatchThreaded(EventTypeId typeId) {
@@ -433,9 +434,9 @@ void EventManager::updateEventTypeBatchThreaded(EventTypeId typeId) {
             std::this_thread::sleep_for(std::chrono::microseconds(50));
         }
         
-        EVENT_LOG_DETAIL("Updated " << container.size() << " events of type "
-                        << getEventTypeName(typeId) << " using " << batchesSubmitted 
-                        << " batches (budget: " << eventWorkerBudget << ")");
+        EVENT_DEBUG("Updated " + std::to_string(container.size()) + " events of type " +
+                    std::string(getEventTypeName(typeId)) + " using " + std::to_string(batchesSubmitted) + 
+                    " batches (budget: " + std::to_string(eventWorkerBudget) + ")");
     } else {
         // Fall back to single-threaded processing
         for (auto& eventData : container) {
@@ -444,8 +445,8 @@ void EventManager::updateEventTypeBatchThreaded(EventTypeId typeId) {
             }
         }
         
-        EVENT_LOG_DETAIL("Updated " << container.size() << " events of type "
-                        << getEventTypeName(typeId) << " (single-threaded fallback)");
+        EVENT_DEBUG("Updated " + std::to_string(container.size()) + " events of type " +
+                    std::string(getEventTypeName(typeId)) + " (single-threaded fallback)");
     }
 
     auto endTime = getCurrentTimeNanos();
@@ -468,7 +469,7 @@ void EventManager::processEventDirect(EventData& eventData) {
 }
 
 bool EventManager::changeWeather(const std::string& weatherType, float transitionTime) const {
-    EVENT_LOG("Triggering weather change to: " << weatherType << " (transition: " << transitionTime << "s)");
+    EVENT_INFO("Triggering weather change to: " + weatherType + " (transition: " + std::to_string(transitionTime) + "s)");
 
     // Execute handlers for weather type only once
     std::lock_guard<std::mutex> lock(m_handlersMutex);
@@ -485,9 +486,9 @@ bool EventManager::changeWeather(const std::string& weatherType, float transitio
                 try {
                     handler(eventData);
                 } catch (const std::exception& e) {
-                    EVENT_LOG("Handler exception in changeWeather: " << e.what());
+                    EVENT_ERROR("Handler exception in changeWeather: " + std::string(e.what()));
                 } catch (...) {
-                    EVENT_LOG("Unknown handler exception in changeWeather");
+                    EVENT_ERROR("Unknown handler exception in changeWeather");
                 }
             }
         }
@@ -498,7 +499,7 @@ bool EventManager::changeWeather(const std::string& weatherType, float transitio
 }
 
 bool EventManager::changeScene(const std::string& sceneId, const std::string& transitionType, float transitionTime) const {
-    EVENT_LOG("Triggering scene change to: " << sceneId << " (transition: " << transitionType << ", duration: " << transitionTime << "s)");
+    EVENT_INFO("Triggering scene change to: " + sceneId + " (transition: " + transitionType + ", duration: " + std::to_string(transitionTime) + "s)");
 
     // Execute handlers for scene change only once
     std::lock_guard<std::mutex> lock(m_handlersMutex);
@@ -515,9 +516,9 @@ bool EventManager::changeScene(const std::string& sceneId, const std::string& tr
                 try {
                     handler(eventData);
                 } catch (const std::exception& e) {
-                    EVENT_LOG("Handler exception in changeScene: " << e.what());
+                    EVENT_ERROR("Handler exception in changeScene: " + std::string(e.what()));
                 } catch (...) {
-                    EVENT_LOG("Unknown handler exception in changeScene");
+                    EVENT_ERROR("Unknown handler exception in changeScene");
                 }
             }
         }
@@ -528,7 +529,7 @@ bool EventManager::changeScene(const std::string& sceneId, const std::string& tr
 }
 
 bool EventManager::spawnNPC(const std::string& npcType, float x, float y) const {
-    EVENT_LOG("Triggering NPC spawn: " << npcType << " at (" << x << ", " << y << ")");
+    EVENT_INFO("Triggering NPC spawn: " + npcType + " at (" + std::to_string(x) + ", " + std::to_string(y) + ")");
 
     // Execute handlers for NPC spawn only once
     std::lock_guard<std::mutex> lock(m_handlersMutex);
@@ -545,9 +546,9 @@ bool EventManager::spawnNPC(const std::string& npcType, float x, float y) const 
                 try {
                     handler(eventData);
                 } catch (const std::exception& e) {
-                    EVENT_LOG("Handler exception in spawnNPC: " << e.what());
+                    EVENT_ERROR("Handler exception in spawnNPC: " + std::string(e.what()));
                 } catch (...) {
-                    EVENT_LOG("Unknown handler exception in spawnNPC");
+                    EVENT_ERROR("Unknown handler exception in spawnNPC");
                 }
             }
         }

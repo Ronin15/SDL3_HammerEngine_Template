@@ -7,8 +7,8 @@
 #define UI_MANAGER_HPP
 
 #include <SDL3/SDL.h>
-#include <boost/container/flat_map.hpp>
-#include <boost/container/small_vector.hpp>
+#include <unordered_map>
+#include <vector>
 #include <memory>
 #include <string>
 #include <functional>
@@ -128,7 +128,7 @@ struct UIComponent {
     float minValue{0.0f};
     float maxValue{1.0f};
     bool checked{false};
-    boost::container::small_vector<std::string, 16> listItems{};
+    std::vector<std::string> listItems{};
     int selectedIndex{-1};
     std::string placeholder{};
     int maxLength{256};
@@ -148,7 +148,7 @@ struct UILayout {
     std::string id{};
     UILayoutType type{UILayoutType::ABSOLUTE};
     UIRect bounds{};
-    boost::container::small_vector<std::string, 16> childComponents{};
+    std::vector<std::string> childComponents{};
     
     // Layout-specific properties
     int spacing{4};
@@ -161,7 +161,7 @@ struct UILayout {
 // UI Theme
 struct UITheme {
     std::string name{"default"};
-    boost::container::flat_map<UIComponentType, UIStyle> componentStyles{};
+    std::unordered_map<UIComponentType, UIStyle> componentStyles{};
     
     UIStyle getStyle(UIComponentType type) const {
         auto it = componentStyles.find(type);
@@ -340,13 +340,13 @@ public:
 
 private:
     // Core data
-    boost::container::flat_map<std::string, std::shared_ptr<UIComponent>> m_components{};
-    boost::container::flat_map<std::string, std::shared_ptr<UILayout>> m_layouts{};
-    boost::container::small_vector<std::shared_ptr<UIAnimation>, 16> m_animations{};
+    std::unordered_map<std::string, std::shared_ptr<UIComponent>> m_components{};
+    std::unordered_map<std::string, std::shared_ptr<UILayout>> m_layouts{};
+    std::vector<std::shared_ptr<UIAnimation>> m_animations{};
     
     // State tracking
-    boost::container::small_vector<std::string, 8> m_clickedButtons{};
-    boost::container::small_vector<std::string, 8> m_hoveredComponents{};
+    std::vector<std::string> m_clickedButtons{};
+    std::vector<std::string> m_hoveredComponents{};
     std::string m_focusedComponent{};
     std::string m_hoveredTooltip{};
     float m_tooltipTimer{0.0f};
@@ -367,7 +367,7 @@ private:
     bool m_drawDebugBounds{false};
     
     // Event log state tracking
-    boost::container::flat_map<std::string, EventLogState> m_eventLogStates{};
+    std::unordered_map<std::string, EventLogState> m_eventLogStates{};
     bool m_isShutdown{false};
     
     // Input state

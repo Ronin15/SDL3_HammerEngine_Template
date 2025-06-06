@@ -27,22 +27,21 @@ void WanderBehavior::init(EntityPtr entity) {
     m_centerPoint = entity->getPosition();
 
     // Create entity state if it doesn't exist
-    EntityWeakPtr entityWeak = entity;
-    if (m_entityStates.find(entityWeak) == m_entityStates.end()) {
-        m_entityStates[entityWeak] = EntityState{};
+    if (m_entityStates.find(entity) == m_entityStates.end()) {
+        m_entityStates[entity] = EntityState{};
 
         // Generate a random start delay between 0 and 5000 milliseconds
         std::uniform_int_distribution<Uint64> delayDist(0, 5000);
-        m_entityStates[entityWeak].startDelay = delayDist(m_rng);
-        m_entityStates[entityWeak].movementStarted = false;
+        m_entityStates[entity].startDelay = delayDist(m_rng);
+        m_entityStates[entity].movementStarted = false;
     }
 
     // Record start time for direction changes
-    m_entityStates[entityWeak].lastDirectionChangeTime = SDL_GetTicks();
+    m_entityStates[entity].lastDirectionChangeTime = SDL_GetTicks();
 
     // Set initial random direction but with zero velocity until delay expires
     chooseNewDirection(entity);
-    if (m_entityStates[entityWeak].startDelay > 0) {
+    if (m_entityStates[entity].startDelay > 0) {
         // Set zero velocity until delay expires
         entity->setVelocity(Vector2D(0, 0));
     }
@@ -54,15 +53,14 @@ void WanderBehavior::executeLogic(EntityPtr entity) {
 
 
     // Create entity state if it doesn't exist
-    EntityWeakPtr entityWeak = entity;
-    if (m_entityStates.find(entityWeak) == m_entityStates.end()) {
-        m_entityStates[entityWeak] = EntityState{};
-        m_entityStates[entityWeak].lastDirectionChangeTime = SDL_GetTicks();
+    if (m_entityStates.find(entity) == m_entityStates.end()) {
+        m_entityStates[entity] = EntityState{};
+        m_entityStates[entity].lastDirectionChangeTime = SDL_GetTicks();
 
         // Generate a random start delay between 0 and 5000 milliseconds
         std::uniform_int_distribution<Uint64> delayDist(0, 5000);
-        m_entityStates[entityWeak].startDelay = delayDist(m_rng);
-        m_entityStates[entityWeak].movementStarted = false;
+        m_entityStates[entity].startDelay = delayDist(m_rng);
+        m_entityStates[entity].movementStarted = false;
 
         chooseNewDirection(entity);
         // Set zero velocity until delay expires
@@ -71,7 +69,7 @@ void WanderBehavior::executeLogic(EntityPtr entity) {
     }
 
     // Get entity-specific state
-    EntityState& state = m_entityStates[entityWeak];
+    EntityState& state = m_entityStates[entity];
 
     // Get current time
     Uint64 currentTime = SDL_GetTicks();
@@ -169,8 +167,7 @@ void WanderBehavior::clean(EntityPtr entity) {
         entity->setVelocity(Vector2D(0, 0));
 
         // Remove entity state
-        EntityWeakPtr entityWeak = entity;
-        m_entityStates.erase(entityWeak);
+        m_entityStates.erase(entity);
     } else {
         // If entity is null, clean up all entity states
         m_entityStates.clear();
@@ -180,7 +177,7 @@ void WanderBehavior::clean(EntityPtr entity) {
 void WanderBehavior::onMessage(EntityPtr entity, const std::string& message) {
     if (!entity) return;
 
-    EntityWeakPtr entityWeak = entity;
+
 
     if (message == "pause"){
         setActive(false);
@@ -192,19 +189,19 @@ void WanderBehavior::onMessage(EntityPtr entity, const std::string& message) {
         chooseNewDirection(entity);
     } else if (message == "increase_speed") {
         m_speed *= 1.5f;
-        if (m_active && m_entityStates.find(entityWeak) != m_entityStates.end()) {
-            entity->setVelocity(m_entityStates[entityWeak].currentDirection * m_speed);
+        if (m_active && m_entityStates.find(entity) != m_entityStates.end()) {
+            entity->setVelocity(m_entityStates[entity].currentDirection * m_speed);
         }
     } else if (message == "decrease_speed") {
         m_speed *= 0.75f;
-        if (m_active && m_entityStates.find(entityWeak) != m_entityStates.end()) {
-            entity->setVelocity(m_entityStates[entityWeak].currentDirection * m_speed);
+        if (m_active && m_entityStates.find(entity) != m_entityStates.end()) {
+            entity->setVelocity(m_entityStates[entity].currentDirection * m_speed);
         }
     } else if (message == "release_entities") {
         // Clear all entity state when asked to release entities
         entity->setVelocity(Vector2D(0, 0));
         // Clean up entity state for this specific entity
-        m_entityStates.erase(entityWeak);
+        m_entityStates.erase(entity);
     }
 }
 
@@ -263,9 +260,8 @@ void WanderBehavior::resetEntityPosition(EntityPtr entity) {
     if (!entity) return;
 
     // Ensure entity state exists
-    EntityWeakPtr entityWeak = entity;
-    if (m_entityStates.find(entityWeak) == m_entityStates.end()) {
-        m_entityStates[entityWeak] = EntityState{};
+    if (m_entityStates.find(entity) == m_entityStates.end()) {
+        m_entityStates[entity] = EntityState{};
     }
 
     // Calculate entry point on the opposite side of the screen
@@ -300,8 +296,7 @@ void WanderBehavior::chooseNewDirection(EntityPtr entity, bool wanderOffscreen) 
     if (!entity) return;
 
     // Get entity-specific state
-    EntityWeakPtr entityWeak = entity;
-    EntityState& state = m_entityStates[entityWeak];
+    EntityState& state = m_entityStates[entity];
 
     // Track if we're currently wandering offscreen
     state.currentlyWanderingOffscreen = wanderOffscreen;

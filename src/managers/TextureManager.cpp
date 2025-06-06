@@ -4,6 +4,7 @@
 */
 
 #include "managers/TextureManager.hpp"
+#include "utils/Logger.hpp"
 #include <iostream>
 #include <filesystem>
 #include <algorithm>
@@ -47,7 +48,7 @@ bool TextureManager::load(const std::string& fileName,
           auto surface = std::unique_ptr<SDL_Surface, decltype(&SDL_DestroySurface)>(
               IMG_Load(fullPath.c_str()), SDL_DestroySurface);
 
-          std::cout << "Forge Game Engine - Loading texture: " << fullPath << "!\n";
+          TEXTURE_INFO("Loading texture: " + fullPath);
 
           if (!surface) {
             std::cout << "Forge Game Engine - Could not load image: " << SDL_GetError() << "\n";
@@ -63,14 +64,14 @@ bool TextureManager::load(const std::string& fileName,
             loadedAny = true;
             texturesLoaded++;
           } else {
-            std::cerr << "Forge Game Engine - Could not create texture: " << SDL_GetError() << std::endl;
+            TEXTURE_ERROR("Could not create texture: " + std::string(SDL_GetError()));
           }
         }
       }
     } catch (const std::filesystem::filesystem_error& e) {
-      std::cerr << "Forge Game Engine - Filesystem error: " << e.what() << std::endl;
+      TEXTURE_ERROR("Filesystem error: " + std::string(e.what()));
     } catch (const std::exception& e) {
-      std::cerr << "Forge Game Engine - Error while loading textures: " << e.what() << std::endl;
+      TEXTURE_ERROR("Error while loading textures: " + std::string(e.what()));
     }
 
     std::cout << "Forge Game Engine - Loaded " << texturesLoaded << " textures from directory: " << fileName << "\n";
@@ -81,12 +82,11 @@ bool TextureManager::load(const std::string& fileName,
   auto surface = std::unique_ptr<SDL_Surface, decltype(&SDL_DestroySurface)>(
       IMG_Load(fileName.c_str()), SDL_DestroySurface);
 
-  std::cout << "Forge Game Engine - Loading texture: " << fileName << "!\n";
+  TEXTURE_INFO("Loaded texture: " + textureID);
 
   if (!surface) {
-    std::cerr << "Forge Game Engine - Could not load image: " << SDL_GetError() << std::endl;
-
-    return false;
+    TEXTURE_ERROR("Could not load image: " + std::string(SDL_GetError()));
+      return false;
   }
 
   auto texture = std::unique_ptr<SDL_Texture, decltype(&SDL_DestroyTexture)>(
@@ -97,7 +97,7 @@ bool TextureManager::load(const std::string& fileName,
     return true;
   }
 
-  std::cerr << "Forge Game Engine - Could not create Texture: " << SDL_GetError() << std::endl;
+  TEXTURE_ERROR("Could not create texture: " + std::string(SDL_GetError()));
 
   return false;
 }
@@ -160,14 +160,14 @@ void TextureManager::drawParallax(const std::string& textureID,
   // Verify the texture exists
   auto it = m_textureMap.find(textureID);
   if (it == m_textureMap.end()) {
-    std::cerr << "Forge Game Engine - Texture not found: " << textureID << std::endl;
+    TEXTURE_WARN("Texture not found: " + textureID);
     return;
   }
 
   // Get the texture dimensions
   float width, height;
   if (SDL_GetTextureSize(it->second.get(), &width, &height) != 0) {
-    std::cerr << "Forge Game Engine - Failed to get texture size: " << SDL_GetError() << std::endl;
+    TEXTURE_ERROR("Failed to get texture size: " + std::string(SDL_GetError()));
     return;
   }
 
@@ -229,7 +229,7 @@ std::shared_ptr<SDL_Texture> TextureManager::getTexture(const std::string& textu
 void TextureManager::clean() {
 
   // Track the number of textures cleaned up
-  int texturesFreed = m_textureMap.size();
+  [[maybe_unused]] int texturesFreed = m_textureMap.size();
 
   // Clear the map - shared_ptr will automatically destroy the textures
   m_textureMap.clear();
@@ -237,6 +237,6 @@ void TextureManager::clean() {
   // Set shutdown flag
   m_isShutdown = true;
 
-  std::cout << "Forge Game Engine - "<< texturesFreed << " textures Freed!\n";
-  std::cout << "Forge Game Engine - TextureManager resources cleaned!\n";
+  TEXTURE_INFO(std::to_string(texturesFreed) + " textures freed");
+  TEXTURE_INFO("TextureManager resources cleaned");
 }

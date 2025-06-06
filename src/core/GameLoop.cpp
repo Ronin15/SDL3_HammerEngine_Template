@@ -4,7 +4,7 @@
 */
 
 #include "core/GameLoop.hpp"
-#include <iostream>
+#include "utils/Logger.hpp"
 #include <exception>
 
 GameLoop::GameLoop(float targetFPS, float fixedTimestep, bool threaded)
@@ -44,7 +44,7 @@ void GameLoop::setRenderHandler(RenderHandler handler) {
 
 bool GameLoop::run() {
     if (m_running.load()) {
-        std::cerr << "GameLoop: Already running!" << std::endl;
+        GAMELOOP_WARN("GameLoop already running");
         return false;
     }
 
@@ -77,7 +77,7 @@ bool GameLoop::run() {
         return true;
 
     } catch (const std::exception& e) {
-        std::cerr << "GameLoop: Exception in main loop: " << e.what() << std::endl;
+        GAMELOOP_CRITICAL("Exception in main loop: " + std::string(e.what()));
         m_running.store(false);
         cleanup();
         return false;
@@ -146,7 +146,7 @@ void GameLoop::runMainThread() {
             m_timestepManager->endFrame();
 
         } catch (const std::exception& e) {
-            std::cerr << "GameLoop: Exception in main thread: " << e.what() << std::endl;
+            GAMELOOP_ERROR("Exception in main thread: " + std::string(e.what()));
             // Continue running, but log the error
         }
     }
@@ -169,7 +169,7 @@ void GameLoop::runUpdateThread() {
             std::this_thread::sleep_for(std::chrono::milliseconds(sleepTimeMs));
 
         } catch (const std::exception& e) {
-            std::cerr << "GameLoop: Exception in update thread: " << e.what() << std::endl;
+            GAMELOOP_ERROR("Exception in update thread: " + std::string(e.what()));
             // Continue running, but log the error
         }
     }
@@ -201,7 +201,7 @@ void GameLoop::invokeEventHandler() {
         try {
             m_eventHandler();
         } catch (const std::exception& e) {
-            std::cerr << "GameLoop: Exception in event handler: " << e.what() << std::endl;
+            GAMELOOP_ERROR("Exception in event handler: " + std::string(e.what()));
         }
     }
 }
@@ -212,7 +212,7 @@ void GameLoop::invokeUpdateHandler(float deltaTime) {
         try {
             m_updateHandler(deltaTime);
         } catch (const std::exception& e) {
-            std::cerr << "GameLoop: Exception in update handler: " << e.what() << std::endl;
+            GAMELOOP_ERROR("Exception in update handler: " + std::string(e.what()));
         }
     }
 }
@@ -223,7 +223,7 @@ void GameLoop::invokeRenderHandler(float interpolation) {
         try {
             m_renderHandler(interpolation);
         } catch (const std::exception& e) {
-            std::cerr << "GameLoop: Exception in render handler: " << e.what() << std::endl;
+            GAMELOOP_ERROR("Exception in render handler: " + std::string(e.what()));
         }
     }
 }

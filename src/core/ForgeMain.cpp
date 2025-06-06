@@ -4,11 +4,11 @@
 */
 
 #include <SDL3/SDL.h>
-#include <iostream>
 #include <string>
 #include "core/GameEngine.hpp"
 #include "core/ThreadSystem.hpp"
 #include "core/GameLoop.hpp"
+#include "utils/Logger.hpp"
 
 const int WINDOW_WIDTH{1920};
 const int WINDOW_HEIGHT{1080};
@@ -20,8 +20,8 @@ const std::string GAME_NAME{"Game Template"};
 // maybe_unused is just a hint to the compiler that the variable is not used.
 // with -Wall -Wextra flags
 int main([[maybe_unused]] int argc, [[maybe_unused]] char* argv[]) {
-  std::cout << "Forge Game Engine - Initializing " << GAME_NAME << "...\n";
-  std::cout << "Forge Game Engine - Initializing Thread System....\n";
+  GAMEENGINE_INFO("Initializing " + GAME_NAME);
+  THREADSYSTEM_INFO("Initializing Thread System");
 
   // Initialize the thread system with default capacity
   // Cache ThreadSystem reference for better performance
@@ -30,28 +30,27 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char* argv[]) {
   // Initialize thread system first
   try {
     if (!threadSystem.init()) {
-      std::cerr << "Forge Game Engine - Failed to initialize thread system!"
-                << std::endl;
+      THREADSYSTEM_CRITICAL("Failed to initialize thread system");
       return -1;
     }
   } catch (const std::exception& e) {
-    std::cerr << "Forge Game Engine - Exception during thread system init: " << e.what() << std::endl;
+    THREADSYSTEM_CRITICAL("Exception during thread system init: " + std::string(e.what()));
     return -1;
   }
 
-  std::cout << "Forge Game Engine - Thread system initialized with "
-            << threadSystem.getThreadCount()
-            << " worker threads and capacity for "
-            << threadSystem.getQueueCapacity()
-            << " parallel tasks!\n";
+  THREADSYSTEM_INFO("Thread system initialized with " + 
+                    std::to_string(threadSystem.getThreadCount()) + 
+                    " worker threads and capacity for " + 
+                    std::to_string(threadSystem.getQueueCapacity()) + 
+                    " parallel tasks");
 
   // Initialize GameEngine
   if (!GameEngine::Instance().init(GAME_NAME.c_str(), WINDOW_WIDTH, WINDOW_HEIGHT, false)) {
-    std::cerr << "Forge Game Engine - Init " << GAME_NAME << " Failed!: " << SDL_GetError() << std::endl;
+    GAMEENGINE_CRITICAL("Init " + GAME_NAME + " Failed: " + std::string(SDL_GetError()));
     return -1;
   }
 
-  std::cout << "Forge Game Engine - Initializing Game Loop...\n";
+  GAMELOOP_INFO("Initializing Game Loop");
 
   // Create game loop with industry-standard timing
   // Multi-threading enabled for better performance
@@ -84,11 +83,11 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char* argv[]) {
         try {
           gameEngine.processBackgroundTasks();
         } catch (const std::exception& e) {
-          std::cerr << "Forge Game Engine - ERROR: Exception in background task: " << e.what() << std::endl;
+          GAMEENGINE_ERROR("Exception in background task: " + std::string(e.what()));
         }
       });
     } catch (const std::exception& e) {
-      std::cerr << "Forge Game Engine - ERROR: Exception enqueuing background task: " << e.what() << std::endl;
+      GAMEENGINE_ERROR("Exception enqueuing background task: " + std::string(e.what()));
     }
   });
 
@@ -97,15 +96,15 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char* argv[]) {
     GameEngine::Instance().render(interpolation);
   });
 
-  std::cout << "Forge Game Engine - Starting Game Loop...\n";
+  GAMELOOP_INFO("Starting Game Loop");
 
   // Run the game loop - this blocks until the game ends
   if (!gameLoop->run()) {
-    std::cerr << "Forge Game Engine - Game loop failed!" << std::endl;
+    GAMELOOP_CRITICAL("Game loop failed");
     return -1;
   }
 
-  std::cout << "Forge Game Engine - Game " << GAME_NAME << " Shutting down...\n";
+  GAMEENGINE_INFO("Game " + GAME_NAME + " shutting down");
 
   gameEngine.clean();
 

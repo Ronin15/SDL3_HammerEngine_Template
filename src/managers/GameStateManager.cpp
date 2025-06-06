@@ -9,7 +9,10 @@
 #include <iostream>
 
 // GameStateManager Implementation
-GameStateManager::GameStateManager() : currentState() {}
+GameStateManager::GameStateManager() : currentState() {
+  // Reserve capacity for typical number of game states (performance optimization)
+  states.reserve(8);
+}
 
 void GameStateManager::addState(std::unique_ptr<GameState> state) {
   // Check if a state with the same name already exists

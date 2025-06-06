@@ -4,7 +4,7 @@
 */
 
 #define BOOST_TEST_MODULE EventTypesTest
-#include <boost/test/included/unit_test.hpp>
+#include <boost/test/unit_test.hpp>
 
 #include "events/WeatherEvent.hpp"
 #include "events/SceneChangeEvent.hpp"

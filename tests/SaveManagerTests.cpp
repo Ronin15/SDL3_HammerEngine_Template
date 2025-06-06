@@ -5,7 +5,7 @@
 
 // Define this to make Boost.Test a header-only library
 #define BOOST_TEST_MODULE SaveManagerTests
-#include <boost/test/included/unit_test.hpp>
+#include <boost/test/unit_test.hpp>
 #include <boost/serialization/serialization.hpp>
 #include <boost/archive/binary_oarchive.hpp>
 #include <boost/archive/binary_iarchive.hpp>

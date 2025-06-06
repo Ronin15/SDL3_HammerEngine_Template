@@ -4,6 +4,7 @@
 */
 
 #include "managers/InputManager.hpp"
+#include "utils/Logger.hpp"
 #include "core/GameEngine.hpp"
 #include "SDL3/SDL_gamepad.h"
 #include "SDL3/SDL_joystick.h"
@@ -16,6 +17,13 @@
 InputManager::InputManager()
     : m_keystates(nullptr),
       m_mousePosition(std::make_unique<Vector2D>(0, 0)) {
+  // Reserve capacity for performance optimization
+  m_pressedThisFrame.reserve(16);  // Typical max keys pressed per frame
+  m_joystickValues.reserve(4);     // Max 4 gamepads typically
+  m_joysticks.reserve(4);          // Max 4 gamepads typically
+  m_buttonStates.reserve(4);       // Max 4 gamepads typically
+  m_mouseButtonStates.reserve(3);  // 3 mouse buttons
+
   // Create button states for the mouse
   for (int i = 0; i < 3; i++) {
     m_mouseButtonStates.push_back(false);
@@ -32,8 +40,7 @@ void InputManager::initializeGamePad() {
 
   // Initialize gamepad subsystem
   if (!SDL_Init(SDL_INIT_GAMEPAD)) {
-    std::cerr << "Forge Game Engine - Failed to initialize gamepad subsystem: "
-              << SDL_GetError() << std::endl;
+    INPUT_CRITICAL("Unable to initialize gamepad subsystem: " + std::string(SDL_GetError()));
     return;
   }
 
@@ -62,7 +69,8 @@ void InputManager::initializeGamePad() {
           m_joystickValues.push_back(std::make_pair(std::make_unique<Vector2D>(0, 0), std::make_unique<Vector2D>(0, 0)));
 
           // Add default button states for this joystick
-          boost::container::small_vector<bool, 16> tempButtons;
+          std::vector<bool> tempButtons;
+          tempButtons.reserve(16);  // Reserve capacity for gamepad buttons
           for (int j = 0; j < SDL_GAMEPAD_BUTTON_COUNT; j++) {
             tempButtons.push_back(false);
           }
@@ -74,7 +82,7 @@ void InputManager::initializeGamePad() {
       }
     }
   } else {
-    std::cout << "Forge Game Engine - No gamepads connected.\n";
+    INPUT_INFO("No gamepads found");
     return; //return without setting m_gamePadInitialized to true.
   }
 
@@ -440,29 +448,28 @@ void InputManager::onGamepadButtonUp(const SDL_Event& event) {
 
 void InputManager::clean() {
   if(m_gamePadInitialized) {
-    int gamepadCount{0};
+    [[maybe_unused]] int gamepadCount{0};
     // Close all gamepads if detected
     for (auto& gamepad : m_joysticks) {
       SDL_CloseGamepad(gamepad);
-    gamepadCount++;
-  }
-
-  // No need to delete joystick values - smart pointers handle it
-  // m_joystickValues will be cleared below
-
-  m_joysticks.clear();
-  m_joystickValues.clear();
-  m_gamePadInitialized = false;
-  SDL_QuitSubSystem(SDL_INIT_GAMEPAD);
-  std::cout << "Forge Game Engine - " << gamepadCount << " gamepads freed!\n";
-  std::cout << "Forge Game Engine - InputManager resources cleaned!\n";
-
-}else{
-
-    std::cout << "Forge Game Engine - no gamepads to free!\n";
-    std::cout << "Forge Game Engine - InputManager resources cleaned!\n";
-    SDL_QuitSubSystem(SDL_INIT_GAMEPAD);
+      gamepadCount++;
     }
+
+    // No need to delete joystick values - smart pointers handle it
+    // m_joystickValues will be cleared below
+
+    m_joysticks.clear();
+    m_joystickValues.clear();
+    m_gamePadInitialized = false;
+    SDL_QuitSubSystem(SDL_INIT_GAMEPAD);
+    INPUT_INFO(std::to_string(gamepadCount) + " gamepads freed");
+    INPUT_INFO("InputManager resources cleaned");
+
+  } else {
+    INPUT_INFO("No gamepads to free");
+    INPUT_INFO("InputManager resources cleaned");
+    SDL_QuitSubSystem(SDL_INIT_GAMEPAD);
+  }
 
   // Clear all button states and mouse states (previously done in destructor)
   m_buttonStates.clear();

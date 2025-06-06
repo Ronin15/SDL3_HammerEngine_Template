@@ -173,29 +173,108 @@ public:
         return instance;
     }
 
-    // Core lifecycle
+    /**
+     * @brief Initializes the EventManager and its internal systems
+     * @return true if initialization successful, false otherwise
+     */
     bool init();
+    
+    /**
+     * @brief Cleans up all event resources and marks manager as shut down
+     */
     void clean();
+    
+    /**
+     * @brief Updates all active events and processes event systems
+     */
     void update();
     
-    // Check if EventManager has been shut down
+    /**
+     * @brief Checks if EventManager has been shut down
+     * @return true if manager is shut down, false otherwise
+     */
     bool isShutdown() const { return m_isShutdown; }
 
-    // Event registration (optimized)
+    /**
+     * @brief Registers a generic event with the event system
+     * @param name Unique name identifier for the event
+     * @param event Shared pointer to the event to register
+     * @return true if registration successful, false otherwise
+     */
     bool registerEvent(const std::string& name, EventPtr event);
+    
+    /**
+     * @brief Registers a weather event with the event system
+     * @param name Unique name identifier for the weather event
+     * @param event Shared pointer to the weather event to register
+     * @return true if registration successful, false otherwise
+     */
     bool registerWeatherEvent(const std::string& name, std::shared_ptr<WeatherEvent> event);
+    
+    /**
+     * @brief Registers a scene change event with the event system
+     * @param name Unique name identifier for the scene change event
+     * @param event Shared pointer to the scene change event to register
+     * @return true if registration successful, false otherwise
+     */
     bool registerSceneChangeEvent(const std::string& name, std::shared_ptr<SceneChangeEvent> event);
+    
+    /**
+     * @brief Registers an NPC spawn event with the event system
+     * @param name Unique name identifier for the NPC spawn event
+     * @param event Shared pointer to the NPC spawn event to register
+     * @return true if registration successful, false otherwise
+     */
     bool registerNPCSpawnEvent(const std::string& name, std::shared_ptr<NPCSpawnEvent> event);
 
-    // Event retrieval (fast lookup)
+    /**
+     * @brief Retrieves an event by its name
+     * @param name Name of the event to retrieve
+     * @return Shared pointer to the event, or nullptr if not found
+     */
     EventPtr getEvent(const std::string& name) const;
+    
+    /**
+     * @brief Retrieves all events of a specific type by type ID
+     * @param typeId Event type identifier
+     * @return Vector of shared pointers to events of the specified type
+     */
     std::vector<EventPtr> getEventsByType(EventTypeId typeId) const;
+    
+    /**
+     * @brief Retrieves all events of a specific type by type name
+     * @param typeName String name of the event type
+     * @return Vector of shared pointers to events of the specified type
+     */
     std::vector<EventPtr> getEventsByType(const std::string& typeName) const;
 
-    // Event control
+    /**
+     * @brief Sets the active state of an event
+     * @param name Name of the event to modify
+     * @param active New active state for the event
+     * @return true if state was changed successfully, false otherwise
+     */
     bool setEventActive(const std::string& name, bool active);
+    
+    /**
+     * @brief Checks if an event is currently active
+     * @param name Name of the event to check
+     * @return true if event is active, false if inactive or not found
+     */
     bool isEventActive(const std::string& name) const;
+    
+    /**
+     * @brief Removes an event from the event system
+     * @param name Name of the event to remove
+     * @return true if event was removed successfully, false otherwise
+     */
     bool removeEvent(const std::string& name);
+    
+    /**
+     * @brief Checks if an event is registered in the system
+     * @param name Name of the event to check
+     * @return true if event exists, false otherwise
+     */
     bool hasEvent(const std::string& name) const;
 
     // Fast execution methods

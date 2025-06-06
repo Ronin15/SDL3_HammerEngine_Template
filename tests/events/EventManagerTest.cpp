@@ -5,7 +5,7 @@
 
 #define BOOST_TEST_MODULE EventManagerTest
 // BOOST_TEST_NO_SIGNAL_HANDLING is already defined on the command line
-#include <boost/test/included/unit_test.hpp>
+#include <boost/test/unit_test.hpp>
 
 #include <memory>
 #include <string>

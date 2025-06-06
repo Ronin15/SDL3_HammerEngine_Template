@@ -23,12 +23,15 @@ bool UIManager::init() {
     m_titleFontID = "fonts_Arial";
     m_uiFontID = "fonts_UI_Arial";
 
-    // Clear any existing data
+    // Clear any existing data and reserve capacity for performance
     m_components.clear();
     m_layouts.clear();
     m_animations.clear();
+    m_animations.reserve(16);  // Reserve for typical UI animations
     m_clickedButtons.clear();
+    m_clickedButtons.reserve(8);  // Reserve for typical button interactions
     m_hoveredComponents.clear();
+    m_hoveredComponents.reserve(8);  // Reserve for typical hover states
     m_focusedComponent.clear();
     m_hoveredTooltip.clear();
 
@@ -1104,7 +1107,8 @@ void UIManager::removeThemeBackground() {
 
 void UIManager::removeComponentsWithPrefix(const std::string& prefix) {
     // Collect components to remove (can't modify map while iterating)
-    boost::container::small_vector<std::string, 32> componentsToRemove;
+    std::vector<std::string> componentsToRemove;
+    componentsToRemove.reserve(32);  // Reserve capacity for performance
 
     for (const auto& [id, component] : m_components) {
         if (id.substr(0, prefix.length()) == prefix) {
@@ -1120,7 +1124,8 @@ void UIManager::removeComponentsWithPrefix(const std::string& prefix) {
 
 void UIManager::clearAllComponents() {
     // Enhanced clearAllComponents - preserve theme background but clear everything else
-    boost::container::small_vector<std::string, 64> componentsToRemove;
+    std::vector<std::string> componentsToRemove;
+    componentsToRemove.reserve(64);  // Reserve capacity for performance
 
     for (const auto& [id, component] : m_components) {
         if (id != "__theme_background") {
@@ -1209,7 +1214,8 @@ void UIManager::handleInput() {
     m_hoveredComponents.clear();
 
     // Process components in reverse z-order (top to bottom)
-    boost::container::small_vector<std::pair<std::string, std::shared_ptr<UIComponent>>, 32> sortedComponents;
+    std::vector<std::pair<std::string, std::shared_ptr<UIComponent>>> sortedComponents;
+    sortedComponents.reserve(32);  // Reserve capacity for performance
     for (const auto& [id, component] : m_components) {
         if (component && component->visible && component->enabled) {
             sortedComponents.emplace_back(id, component);
@@ -1217,7 +1223,8 @@ void UIManager::handleInput() {
     }
 
     std::sort(sortedComponents.begin(), sortedComponents.end(),
-        [](const auto& a, const auto& b) {
+        [](const std::pair<std::string, std::shared_ptr<UIComponent>>& a, 
+           const std::pair<std::string, std::shared_ptr<UIComponent>>& b) {
             return a.second->zOrder > b.second->zOrder;
         });
 
