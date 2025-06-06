@@ -22,15 +22,7 @@ InputManager::InputManager()
   }
 }
 
-InputManager::~InputManager() {
-  // No need to delete m_mousePosition - smart pointer handles it
 
-  // Clear all vectors
-  //m_joystickValues.clear();
-  //m_joysticks.clear();
-  m_buttonStates.clear();
-  m_mouseButtonStates.clear();
-}
 
 void InputManager::initializeGamePad() {
   // Check if gamepad subsystem is already initialized
@@ -467,10 +459,15 @@ void InputManager::clean() {
 
 }else{
 
-    //m_buttonStates.clear(); cleared in destructor
     std::cout << "Forge Game Engine - no gamepads to free!\n";
     std::cout << "Forge Game Engine - InputManager resources cleaned!\n";
     SDL_QuitSubSystem(SDL_INIT_GAMEPAD);
     }
 
+  // Clear all button states and mouse states (previously done in destructor)
+  m_buttonStates.clear();
+  m_mouseButtonStates.clear();
+  
+  // Set shutdown flag
+  m_isShutdown = true;
 }

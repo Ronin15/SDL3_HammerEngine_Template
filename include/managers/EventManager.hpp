@@ -177,6 +177,9 @@ public:
     bool init();
     void clean();
     void update();
+    
+    // Check if EventManager has been shut down
+    bool isShutdown() const { return m_isShutdown; }
 
     // Event registration (optimized)
     bool registerEvent(const std::string& name, EventPtr event);
@@ -244,7 +247,14 @@ public:
 
 private:
     EventManager() = default;
-    ~EventManager() = default;
+    
+    // Shutdown state
+    bool m_isShutdown{false};
+    ~EventManager() {
+        if (!m_isShutdown) {
+            clean();
+        }
+    }
     EventManager(const EventManager&) = delete;
     EventManager& operator=(const EventManager&) = delete;
 

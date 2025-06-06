@@ -84,6 +84,7 @@ void AIManager::clean() {
     }
 
     m_initialized.store(false, std::memory_order_release);
+    m_isShutdown = true;
     AI_LOG("AIManager cleaned up");
 }
 

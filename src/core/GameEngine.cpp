@@ -204,10 +204,6 @@ bool GameEngine::init(const char* title,
   // Create and initialize texture manager - MAIN THREAD
   std::cout << "Forge Game Engine - Creating Texture Manager\n";
   TextureManager& texMgr = TextureManager::Instance();
-  if (!TextureManager::Exists()) {
-    std::cerr << "Forge Game Engine - Failed to create Texture Manager!"<< std::endl;
-    return false;
-  }
 
   // Load textures in main thread
   std::cout << "Forge Game Engine - Creating and loading textures\n";
@@ -250,10 +246,6 @@ bool GameEngine::init(const char* title,
       Forge::ThreadSystem::Instance().enqueueTaskWithResult([]() -> bool {
         std::cout << "Forge Game Engine - Creating Save Game Manager\n";
         SaveGameManager& saveMgr = SaveGameManager::Instance();
-        if (!SaveGameManager::Exists()) {
-          std::cerr << "Forge Game Engine - Failed to create Save Game Manager!" << std::endl;
-          return false;
-        }
 
         // Set the save directory to "res" folder
         saveMgr.setSaveDirectory("res");

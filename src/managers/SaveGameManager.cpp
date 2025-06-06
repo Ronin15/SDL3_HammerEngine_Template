@@ -18,8 +18,7 @@
 constexpr char FORGE_SAVE_SIGNATURE[9] = {'F', 'O', 'R', 'G', 'E', 'S', 'A', 'V', 'E'};
 constexpr size_t FORGE_SAVE_SIGNATURE_SIZE = sizeof(FORGE_SAVE_SIGNATURE);
 
-// Initialize the static variable
-bool SaveGameManager::initialized = false;
+
 
 bool SaveGameManager::save(const std::string& saveFileName, const Player& player) {
     // No need for null check with references - they're always valid
@@ -359,6 +358,9 @@ void SaveGameManager::setSaveDirectory(const std::string& directory) {
 }
 
 void SaveGameManager::clean() {
+    // Set shutdown flag
+    m_isShutdown = true;
+    
     std::cout << "Forge Game Engine - Save Game Manager resources cleaned!\n";
 }
 

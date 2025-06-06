@@ -16,7 +16,11 @@ enum mouse_buttons { LEFT = 0, MIDDLE = 1, RIGHT = 2 };
 
 class InputManager {
  public:
-    ~InputManager();
+    ~InputManager() {
+        if (!m_isShutdown) {
+            clean();
+        }
+    }
 
     static InputManager& Instance(){
         static InputManager instance;
@@ -34,6 +38,9 @@ class InputManager {
 
     // Clean up
     void clean();
+    
+    // Check if InputManager has been shut down
+    bool isShutdown() const { return m_isShutdown; }
 
     // Keyboard events
     bool isKeyDown(SDL_Scancode key) const;
@@ -65,6 +72,9 @@ class InputManager {
     // Mouse specific
     boost::container::small_vector<bool, 3> m_mouseButtonStates{};
     std::unique_ptr<Vector2D> m_mousePosition{nullptr};
+    
+    // Shutdown state
+    bool m_isShutdown{false};
 
     // Handle keyboard events
     void onKeyDown(const SDL_Event& event);

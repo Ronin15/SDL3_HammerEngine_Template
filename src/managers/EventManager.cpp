@@ -84,6 +84,7 @@ void EventManager::clean() {
     resetPerformanceStats();
 
     m_initialized.store(false);
+    m_isShutdown = true;
     EVENT_LOG("EventManager cleaned up");
 }
 
