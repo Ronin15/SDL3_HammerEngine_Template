@@ -7,7 +7,9 @@
 #define VECTOR_2D_HPP
 
 #include <math.h>
+#ifdef HAVE_BOOST_SERIALIZATION
 #include <boost/serialization/access.hpp>
+#endif
 
 // A simple 2D vector class
 class Vector2D {
@@ -89,6 +91,7 @@ private:
     float m_x{0.0f};
     float m_y{0.0f};
     
+#ifdef HAVE_BOOST_SERIALIZATION
     // Boost serialization support
     friend class boost::serialization::access;
     
@@ -97,6 +100,7 @@ private:
         ar & m_x;
         ar & m_y;
     }
+#endif
 };
 
 #endif  // VECTOR_2D_HPP

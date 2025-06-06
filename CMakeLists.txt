@@ -61,27 +61,32 @@ add_custom_target(copy-compile-commands ALL
 # Include FetchContent module
 include(FetchContent)
 
-# Add Boost library using FetchContent
-set(BOOST_GIT_TAG "boost-1.88.0")  # Latest stable release as of April 2025
-FetchContent_Declare(
-    Boost
-    GIT_REPOSITORY https://github.com/boostorg/boost.git
-    GIT_TAG ${BOOST_GIT_TAG}
-)
+# Set CMake policy for Boost module (CMP0167)
+if(POLICY CMP0167)
+    cmake_policy(SET CMP0167 NEW)
+endif()
 
-# Configure Boost build options
-set(BOOST_INCLUDE_LIBRARIES
-    container
-    serialization
-    # Add other Boost libraries you need
-)
-set(BOOST_ENABLE_CMAKE ON)
-set(BOOST_ENABLE_MPI OFF)
-set(BUILD_TESTING OFF)
-set(BOOST_INSTALL_LAYOUT "system")
+# Use system Boost if available, otherwise disable SaveGameManager serialization
+# Ultra-fast setup - no downloads needed if Boost is installed
+find_package(Boost QUIET COMPONENTS serialization unit_test_framework)
 
-# Make Boost available
-FetchContent_MakeAvailable(Boost)
+if(Boost_FOUND)
+    message(STATUS "Found system Boost - SaveGameManager serialization enabled")
+    set(HAVE_BOOST_SERIALIZATION TRUE)
+    
+    # Check if unit_test_framework component was found
+    if(TARGET Boost::unit_test_framework)
+        message(STATUS "Found Boost Unit Test Framework - Tests will be enabled")
+        set(HAVE_BOOST_TEST TRUE)
+    else()
+        message(STATUS "Boost Unit Test Framework not found - Tests will be disabled")
+        set(HAVE_BOOST_TEST FALSE)
+    endif()
+else()
+    message(STATUS "Boost not found - SaveGameManager will use simple binary format")
+    set(HAVE_BOOST_SERIALIZATION FALSE)
+    set(HAVE_BOOST_TEST FALSE)
+endif()
 
 # Specify the stable release tags for each SDL3 component
 # Updated from "main" branch to specific release versions
@@ -151,7 +156,6 @@ file(GLOB_RECURSE SOURCES
     "src/entities/*.cpp"
     "src/events/*.cpp"
     "src/ai/*.cpp"
-    "src/ui/*.cpp"
 )
 
 # Create executable for your project with proper extensions
@@ -270,16 +274,19 @@ if(APPLE)
     endif()
 endif()
 
-# Link against the SDL3 libraries and Boost
+# Link against SDL3 libraries and optionally Boost
 target_link_libraries(${PROJECT_NAME} PRIVATE
     SDL3::SDL3
     SDL3_image::SDL3_image
     SDL3_ttf::SDL3_ttf
     SDL3_mixer::SDL3_mixer
-    Boost::container
-    Boost::serialization
-    # Add other Boost libraries as needed
 )
+
+# Add Boost if available
+if(Boost_FOUND)
+    target_link_libraries(${PROJECT_NAME} PRIVATE Boost::serialization)
+    target_compile_definitions(${PROJECT_NAME} PRIVATE HAVE_BOOST_SERIALIZATION=1)
+endif()
 
 # Specify include directories
 target_include_directories(${PROJECT_NAME} PRIVATE
@@ -330,8 +337,11 @@ message(STATUS "SDL3, SDL3_image, SDL3_ttf, SDL3_mixer, and Boost have been "
 message(STATUS "Debug binaries will be output to: ${OUTPUT_DEBUG_DIR}")
 message(STATUS "Release binaries will be output to: ${OUTPUT_RELEASE_DIR}")
 
-# Enable testing
-enable_testing()
-
-# Add the tests subdirectory
-add_subdirectory(tests)
+# Enable testing only if Boost Test is available (tests require Boost.Test framework)
+if(HAVE_BOOST_TEST)
+    enable_testing()
+    add_subdirectory(tests)
+    message(STATUS "Tests enabled - Boost Test found")
+else()
+    message(STATUS "Tests disabled - Boost Test not found (required for test framework)")
+endif()

@@ -8,7 +8,7 @@
 
 #include <SDL3/SDL.h>
 #include <SDL3_ttf/SDL_ttf.h>
-#include <boost/container/flat_map.hpp>
+#include <unordered_map>
 #include <memory>
 #include <string>
 // filesystem is used in the implementation file
@@ -26,49 +26,97 @@ class FontManager {
     return instance;
   }
 
-  // Initialize the font system
+  /**
+   * @brief Initializes the TTF font system
+   * @return true if initialization successful, false otherwise
+   */
   bool init();
 
-  // Load a font with a specific size
-  // If fontFile is a directory, it loads all TTF/OTF files from that directory
-  // Returns true if at least one font was loaded successfully
+  /**
+   * @brief Loads a font with specified size from file or directory
+   * @param fontFile Path to font file or directory containing TTF/OTF files
+   * @param fontID Unique identifier for the font(s). Used as prefix when loading directory
+   * @param fontSize Size of the font in points
+   * @return true if at least one font was loaded successfully, false otherwise
+   */
   bool loadFont(const std::string& fontFile, const std::string& fontID, int fontSize);
 
-  // Render text to a texture
+  /**
+   * @brief Renders text to a texture using specified font
+   * @param text Text string to render
+   * @param fontID Unique identifier of the font to use
+   * @param color Text color for rendering
+   * @param renderer SDL renderer for texture creation
+   * @return Shared pointer to rendered text texture, or nullptr if failed
+   */
   std::shared_ptr<SDL_Texture> renderText(
                           const std::string& text, const std::string& fontID,
                           SDL_Color color, SDL_Renderer* renderer);
 
-  // Render multi-line text to a texture (handles newlines)
+  /**
+   * @brief Renders multi-line text to a texture (handles newlines)
+   * @param text Multi-line text string to render
+   * @param font TTF font to use for rendering
+   * @param color Text color for rendering
+   * @param renderer SDL renderer for texture creation
+   * @return Shared pointer to rendered text texture, or nullptr if failed
+   */
   std::shared_ptr<SDL_Texture> renderMultiLineText(
                           const std::string& text, TTF_Font* font,
                           SDL_Color color, SDL_Renderer* renderer);
 
-  // Draw text directly to renderer
-  // The x,y coordinates specify the center point of the text
+  /**
+   * @brief Draws text directly to renderer at center position
+   * @param text Text string to draw
+   * @param fontID Unique identifier of the font to use
+   * @param x X coordinate (center point of text)
+   * @param y Y coordinate (center point of text)
+   * @param color Text color for drawing
+   * @param renderer SDL renderer to draw to
+   */
   void drawText(const std::string& text, const std::string& fontID,
                 int x, int y, SDL_Color color, SDL_Renderer* renderer);
 
-  // Draw text with alignment control for UI elements
-  // The x,y coordinates and alignment determine positioning
+  /**
+   * @brief Draws text with alignment control for UI elements
+   * @param text Text string to draw
+   * @param fontID Unique identifier of the font to use
+   * @param x X coordinate for positioning
+   * @param y Y coordinate for positioning
+   * @param color Text color for drawing
+   * @param renderer SDL renderer to draw to
+   * @param alignment Text alignment (0=center, 1=left, 2=right, 3=top-left, 4=top-center, 5=top-right)
+   */
   void drawTextAligned(const std::string& text, const std::string& fontID,
                       int x, int y, SDL_Color color, SDL_Renderer* renderer,
-                      int alignment = 0); // 0=center, 1=left, 2=right, 3=top-left, 4=top-center, 5=top-right
+                      int alignment = 0);
 
-  // Check if a font is loaded
+  /**
+   * @brief Checks if a font is loaded in memory
+   * @param fontID Unique identifier of the font to check
+   * @return true if font is loaded, false otherwise
+   */
   bool isFontLoaded(const std::string& fontID) const;
 
-  // Clear a specific font from memory
+  /**
+   * @brief Removes a specific font from memory
+   * @param fontID Unique identifier of the font to remove
+   */
   void clearFont(const std::string& fontID);
 
-  // Clean up all font resources
+  /**
+   * @brief Cleans up all font resources and shuts down TTF system
+   */
   void clean();
 
-  // Check if FontManager has been shut down
+  /**
+   * @brief Checks if FontManager has been shut down
+   * @return true if manager is shut down, false otherwise
+   */
   bool isShutdown() const { return m_isShutdown; }
 
  private:
-  boost::container::flat_map<std::string, std::shared_ptr<TTF_Font>> m_fontMap{};
+  std::unordered_map<std::string, std::shared_ptr<TTF_Font>> m_fontMap{};
   bool m_isShutdown{false}; // Flag to indicate if FontManager has been shut down
 
   // Delete copy constructor and assignment operator

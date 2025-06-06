@@ -236,8 +236,9 @@ bool SaveGameManager::deleteSlot(int slotNumber) {
     return deleteSave(fileName);
 }
 
-boost::container::small_vector<std::string, 10> SaveGameManager::getSaveFiles() const {
-    boost::container::small_vector<std::string, 10> saveFiles;
+std::vector<std::string> SaveGameManager::getSaveFiles() const {
+    std::vector<std::string> saveFiles;
+    saveFiles.reserve(10);  // Reserve capacity for typical number of save files
     std::string savePath = m_saveDirectory + "/game_saves";
 
     // Check if the directory exists
@@ -278,9 +279,10 @@ SaveGameData SaveGameManager::getSaveInfo(const std::string& saveFileName) const
     return extractSaveInfo(saveFileName);
 }
 
-boost::container::small_vector<SaveGameData, 10> SaveGameManager::getAllSaveInfo() const {
-    boost::container::small_vector<SaveGameData, 10> saveInfoList;
-    boost::container::small_vector<std::string, 10> files = getSaveFiles();
+std::vector<SaveGameData> SaveGameManager::getAllSaveInfo() const {
+    std::vector<SaveGameData> saveInfoList;
+    saveInfoList.reserve(10);  // Reserve capacity for typical number of saves
+    std::vector<std::string> files = getSaveFiles();
 
     for (const auto& file : files) {
         SaveGameData info = extractSaveInfo(file);

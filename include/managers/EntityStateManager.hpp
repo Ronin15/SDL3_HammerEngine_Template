@@ -8,7 +8,7 @@
 
 #include <memory>
 #include <string>
-#include <boost/container/flat_map.hpp>
+#include <unordered_map>
 #include "entities/EntityState.hpp"
 
 class EntityStateManager {
@@ -24,7 +24,7 @@ class EntityStateManager {
   ~EntityStateManager();
 
   private:
-   boost::container::flat_map<std::string, std::shared_ptr<EntityState>> states;
+   std::unordered_map<std::string, std::shared_ptr<EntityState>> states;
    // Non-owning observer to the current active state
    // This state is owned by the 'states' container above
    std::weak_ptr<EntityState> currentState;

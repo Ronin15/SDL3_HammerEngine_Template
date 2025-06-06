@@ -8,7 +8,7 @@
 
 #include "ai/AIBehavior.hpp"
 #include "utils/Vector2D.hpp"
-#include <boost/container/small_vector.hpp>
+#include <vector>
 #include <SDL3/SDL.h>
 #include <random>
 
@@ -21,7 +21,7 @@ public:
         EVENT_TARGET        // Generate waypoints around an event target
     };
 
-    explicit PatrolBehavior(const boost::container::small_vector<Vector2D, 10>& waypoints, float moveSpeed = 2.0f, bool includeOffscreenPoints = false);
+    explicit PatrolBehavior(const std::vector<Vector2D>& waypoints, float moveSpeed = 2.0f, bool includeOffscreenPoints = false);
     
     // Constructor with mode - automatically configures behavior based on mode
     explicit PatrolBehavior(PatrolMode mode, float moveSpeed = 2.0f, bool includeOffscreenPoints = false);
@@ -36,7 +36,7 @@ public:
     void addWaypoint(const Vector2D& waypoint);
 
     // Clear all waypoints and set new ones
-    void setWaypoints(const boost::container::small_vector<Vector2D, 10>& waypoints);
+    void setWaypoints(const std::vector<Vector2D>& waypoints);
 
     // Enable or disable offscreen waypoints
     void setIncludeOffscreenPoints(bool include);
@@ -45,7 +45,7 @@ public:
     void setScreenDimensions(float width, float height);
 
     // Get current waypoints
-    const boost::container::small_vector<Vector2D, 10>& getWaypoints() const;
+    const std::vector<Vector2D>& getWaypoints() const;
 
     // Set movement speed
     void setMoveSpeed(float speed);
@@ -69,7 +69,7 @@ public:
     void setRandomSeed(unsigned int seed);
 
 private:
-    boost::container::small_vector<Vector2D, 10> m_waypoints;
+    std::vector<Vector2D> m_waypoints;
     size_t m_currentWaypoint{0};
     float m_moveSpeed{2.0f};
     float m_waypointRadius{25.0f}; // How close entity needs to be to "reach" a waypoint - increased from 15 to 25

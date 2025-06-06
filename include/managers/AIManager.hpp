@@ -105,26 +105,81 @@ public:
         return instance;
     }
 
-    // Core lifecycle
+    /**
+     * @brief Initializes the AI Manager and its internal systems
+     * @return true if initialization successful, false otherwise
+     */
     bool init();
+    
+    /**
+     * @brief Cleans up all AI resources and marks manager as shut down
+     */
     void clean();
+    
+    /**
+     * @brief Updates all active AI entities and processes behaviors
+     * @param deltaTime Time elapsed since last update in seconds
+     */
     void update(float deltaTime);
     
-    // Check if AIManager has been shut down
+    /**
+     * @brief Checks if AIManager has been shut down
+     * @return true if manager is shut down, false otherwise
+     */
     bool isShutdown() const { return m_isShutdown; }
 
-    // Behavior management
+    /**
+     * @brief Registers a behavior template for use by AI entities
+     * @param name Unique name identifier for the behavior
+     * @param behavior Shared pointer to the behavior template to register
+     */
     void registerBehavior(const std::string& name, std::shared_ptr<AIBehavior> behavior);
+    
+    /**
+     * @brief Checks if a behavior template is registered
+     * @param name Name of the behavior to check
+     * @return true if behavior is registered, false otherwise
+     */
     bool hasBehavior(const std::string& name) const;
+    
+    /**
+     * @brief Retrieves a registered behavior template
+     * @param name Name of the behavior to retrieve
+     * @return Shared pointer to behavior template, or nullptr if not found
+     */
     std::shared_ptr<AIBehavior> getBehavior(const std::string& name) const;
 
-    // Entity-behavior assignment
+    /**
+     * @brief Assigns a behavior to an entity immediately
+     * @param entity Pointer to the entity to assign behavior to
+     * @param behaviorName Name of the behavior to assign
+     */
     void assignBehaviorToEntity(EntityPtr entity, const std::string& behaviorName);
+    
+    /**
+     * @brief Removes behavior assignment from an entity
+     * @param entity Pointer to the entity to unassign behavior from
+     */
     void unassignBehaviorFromEntity(EntityPtr entity);
+    
+    /**
+     * @brief Checks if an entity has an assigned behavior
+     * @param entity Pointer to the entity to check
+     * @return true if entity has assigned behavior, false otherwise
+     */
     bool entityHasBehavior(EntityPtr entity) const;
 
-    // Batch operations
+    /**
+     * @brief Queues a behavior assignment for batch processing
+     * @param entity Pointer to the entity to assign behavior to
+     * @param behaviorName Name of the behavior to assign
+     */
     void queueBehaviorAssignment(EntityPtr entity, const std::string& behaviorName);
+    
+    /**
+     * @brief Processes all pending behavior assignments
+     * @return Number of assignments processed
+     */
     size_t processPendingBehaviorAssignments();
 
     // Player reference for AI targeting
