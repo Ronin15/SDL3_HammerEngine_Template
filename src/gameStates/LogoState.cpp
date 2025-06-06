@@ -14,7 +14,7 @@ Uint32 stateTimer{0};
 
 bool LogoState::enter() {
   std::cout << "Forge Game Engine - Entering LOGO State\n";
-  
+
   // Cache SoundManager reference for better performance
   SoundManager& soundMgr = SoundManager::Instance();
   soundMgr.playSFX("sfx_logo", 0, 5);
@@ -50,15 +50,15 @@ void LogoState::render() {
       renderer);
   texMgr.draw(
       "ForgeEngine",
-      windowWidth / 2 - 65,  // Center horizontally
+      windowWidth / 2 - 64,  // Center horizontally (128/2 = 64)
       (windowHeight / 2) + 10,
       128, 128,
       renderer);
 
   texMgr.draw(
       "cpp",
-      windowWidth / 2 + 150,  // Center horizontally
-      (windowHeight / 2) + 215,
+      windowWidth / 2 + 120,  // Position to right of subtitle text
+      (windowHeight / 2) + 220 - 25,  // Align vertically with subtitle text
       50, 50,
       renderer);
 
@@ -87,11 +87,19 @@ void LogoState::render() {
   // Draw version text
   fontMgr.drawText(
 
-      "v0.1.0",
+      "v0.1.5",
       "fonts_Arial",
       windowWidth / 2,  // Center horizontally
       (windowHeight / 2) + 260,
       fontColor,
+      renderer);
+
+  // Draw SDL logo centered below version text
+  texMgr.draw(
+      "sdl_logo",
+      windowWidth / 2 - 70,  // Center horizontally (adjusted slightly right)
+      (windowHeight / 2) + 290,
+      179, 99,
       renderer);
 }
 

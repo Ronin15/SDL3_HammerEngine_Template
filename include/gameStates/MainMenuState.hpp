@@ -15,6 +15,9 @@ class MainMenuState : public GameState {
   void render() override;
   bool exit() override;
   std::string getName() const override;
+
+ private:
+  // Pure UIManager approach - no UIScreen needed
 };
 
 #endif  // MAIN_MENU_STATE_HPP

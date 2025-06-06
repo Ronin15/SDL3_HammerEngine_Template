@@ -95,9 +95,9 @@ goto :show_summary
 :run_single_test
 set test_name=%~1
 :: Check if test executable exists
-set "TEST_EXECUTABLE=bin\debug\%test_name%.exe"
+set "TEST_EXECUTABLE=..\..\bin\debug\%test_name%.exe"
 if not exist "!TEST_EXECUTABLE!" (
-    set "TEST_EXECUTABLE=bin\debug\%test_name%"
+    set "TEST_EXECUTABLE=..\..\bin\debug\%test_name%"
     if not exist "!TEST_EXECUTABLE!" (
         echo !RED!Test executable not found at !TEST_EXECUTABLE!!NC!
         echo !YELLOW!Searching for test executable...!NC!
@@ -151,36 +151,36 @@ if exist "!LOG_FILE!" del "!LOG_FILE!"
     echo !BLUE!====================================!NC!
     
     :: Create test_results directory if it doesn't exist
-    if not exist "test_results" mkdir "test_results"
+    if not exist "..\..\test_results" mkdir "..\..\test_results"
     
 :: Save test results with timestamp
 for /f "tokens=2 delims==" %%a in ('wmic OS Get localdatetime /value') do set "dt=%%a"
 set "TIMESTAMP=!dt:~0,8!_!dt:~8,6!"
-copy "!LOG_FILE!" "test_results\%test_name%_output_!TIMESTAMP!.txt" > nul
+copy "!LOG_FILE!" "..\..\test_results\%test_name%_output_!TIMESTAMP!.txt" > nul
 :: Also save to the standard location for compatibility
-copy "!LOG_FILE!" "test_results\%test_name%_output.txt" > nul
+copy "!LOG_FILE!" "..\..\test_results\%test_name%_output.txt" > nul
 
 :: Extract performance metrics and test cases run
 echo !YELLOW!Saving test results for %test_name%...!NC!
-findstr /r /c:"time:" /c:"performance" /c:"TestEvent" /c:"TestWeatherEvent" /c:"TestSceneChange" /c:"TestNPCSpawn" /c:"TestEventFactory" /c:"TestEventManager" "!LOG_FILE!" > "test_results\%test_name%_performance_metrics.txt" 2>nul
+findstr /r /c:"time:" /c:"performance" /c:"TestEvent" /c:"TestWeatherEvent" /c:"TestSceneChange" /c:"TestNPCSpawn" /c:"TestEventFactory" /c:"TestEventManager" "!LOG_FILE!" > "..\..\test_results\%test_name%_performance_metrics.txt" 2>nul
 
 :: Extract test cases that were run
-echo === Test Cases Executed === > "test_results\%test_name%_test_cases.txt"
-findstr /r /c:"Entering test case" /c:"Test case.*passed" "!LOG_FILE!" >> "test_results\%test_name%_test_cases.txt" 2>nul
+echo === Test Cases Executed === > "..\..\test_results\%test_name%_test_cases.txt"
+findstr /r /c:"Entering test case" /c:"Test case.*passed" "!LOG_FILE!" >> "..\..\test_results\%test_name%_test_cases.txt" 2>nul
 
 :: Extract just the test case names for easy reporting
-findstr /r /c:"Entering test case" "!LOG_FILE!" > "test_results\%test_name%_test_cases_run.txt" 2>nul
+findstr /r /c:"Entering test case" "!LOG_FILE!" > "..\..\test_results\%test_name%_test_cases_run.txt" 2>nul
     
 :: Report test results
 if !TEST_RESULT! equ 0 (
     echo !GREEN!All tests passed for %test_name%!!NC!
-    echo !BLUE!Test results saved to:!NC! test_results\%test_name%_output_!TIMESTAMP!.txt
+    echo !BLUE!Test results saved to:!NC! ..\..\test_results\%test_name%_output_!TIMESTAMP!.txt
     
     :: Print summary of test cases run
     echo.
     echo !BLUE!Test Cases Run:!NC!
-    if exist "test_results\%test_name%_test_cases_run.txt" (
-        for /f "usebackq tokens=*" %%l in ("test_results\%test_name%_test_cases_run.txt") do (
+    if exist "..\..\test_results\%test_name%_test_cases_run.txt" (
+        for /f "usebackq tokens=*" %%l in ("..\..\test_results\%test_name%_test_cases_run.txt") do (
             set "line=%%l"
             :: Simple extraction for test case name
             echo   - !line!
@@ -190,18 +190,18 @@ if !TEST_RESULT! equ 0 (
     )
 ) else (
     echo !RED!Some tests failed for %test_name%. Please check the output above.!NC!
-    echo !YELLOW!Test results saved to:!NC! test_results\%test_name%_output_!TIMESTAMP!.txt
+    echo !YELLOW!Test results saved to:!NC! ..\..\test_results\%test_name%_output_!TIMESTAMP!.txt
     
     :: Print a summary of failed tests if available
     echo.
     echo !YELLOW!Failed Test Summary:!NC!
-    findstr /c:"FAILED" /c:"ASSERT" "test_results\%test_name%_output.txt" 2>nul || echo !YELLOW!No specific failure details found.!NC!
+    findstr /r /c:"FAILED" /c:"ASSERT" "..\..\test_results\%test_name%_output.txt" >nul 2>&1 || echo !YELLOW!No specific failure details found.!NC!
     
     :: Print summary of test cases run
     echo.
     echo !BLUE!Test Cases Run:!NC!
-    if exist "test_results\%test_name%_test_cases_run.txt" (
-        for /f "usebackq tokens=*" %%l in ("test_results\%test_name%_test_cases_run.txt") do (
+    if exist "..\..\test_results\%test_name%_test_cases_run.txt" (
+        for /f "usebackq tokens=*" %%l in ("..\..\test_results\%test_name%_test_cases_run.txt") do (
             set "line=%%l"
             :: Simple extraction for test case name
             echo   - !line!

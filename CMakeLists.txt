@@ -3,7 +3,8 @@ project(SDL3_Template VERSION 1.0.0 LANGUAGES C CXX)
 
 # Set build configurations
 if(NOT CMAKE_BUILD_TYPE)
-    set(CMAKE_BUILD_TYPE "Debug" CACHE STRING "Choose the type of build (Debug or Release)" FORCE)
+    set(CMAKE_BUILD_TYPE "Debug" CACHE STRING 
+        "Choose the type of build (Debug or Release)" FORCE)
 endif()
 
 # Define available build configurations
@@ -30,13 +31,23 @@ set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -g3 -O0 -Og")
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -g3 -O0 -Og -Wall -Wextra")
 
 # Release build settings
-set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -O3 -flto -fno-strict-aliasing -fomit-frame-pointer -ffunction-sections -fdata-sections -Wl,--gc-sections -ffast-math -ftree-vectorize -fpeel-loops -funroll-loops -march=x86-64-v3 -mtune=generic -msse4.2 -mavx -mavx2 -mfma")
-set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -flto -fno-strict-aliasing -fomit-frame-pointer -ffunction-sections -fdata-sections -Wl,--gc-sections -ffast-math -ftree-vectorize -fpeel-loops -funroll-loops -march=x86-64-v3 -mtune=generic -msse4.2 -mavx -mavx2 -mfma")
+set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -O3 -flto \
+    -fno-strict-aliasing -fomit-frame-pointer -ffunction-sections \
+    -fdata-sections -Wl,--gc-sections -ffast-math -ftree-vectorize \
+    -fpeel-loops -funroll-loops -march=x86-64-v3 -mtune=generic \
+    -msse4.2 -mavx -mavx2 -mfma")
+set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -flto \
+    -fno-strict-aliasing -fomit-frame-pointer -ffunction-sections \
+    -fdata-sections -Wl,--gc-sections -ffast-math -ftree-vectorize \
+    -fpeel-loops -funroll-loops -march=x86-64-v3 -mtune=generic \
+    -msse4.2 -mavx -mavx2 -mfma")
 #mac Os -mcpu=apple-m3 -mtune=generic
 
 # Set C++ standard
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+
 
 # Export compile commands for use with tools like clangd
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
@@ -74,9 +85,9 @@ FetchContent_MakeAvailable(Boost)
 
 # Specify the stable release tags for each SDL3 component
 # Updated from "main" branch to specific release versions
-set(SDL3_GIT_TAG "release-3.2.16")          # Latest stable release for SDL3
-set(SDL3_IMAGE_GIT_TAG "release-3.2.4")     # Latest stable release for SDL3_image
-set(SDL3_TTF_GIT_TAG "release-3.2.2")       # Latest stable release for SDL3_ttf
+set(SDL3_GIT_TAG "release-3.2.16")  # Latest stable release for SDL3
+set(SDL3_IMAGE_GIT_TAG "release-3.2.4")  # Latest stable release for SDL3_image
+set(SDL3_TTF_GIT_TAG "release-3.2.2")  # Latest stable release for SDL3_ttf
 set(SDL3_MIXER_GIT_TAG "main")     # Latest stable release for SDL3_mixer
 
 # Download and configure SDL3
@@ -173,16 +184,19 @@ if(WIN32)
   )
 
     # Add the resource file to the executable
-    target_sources(${PROJECT_NAME} PRIVATE "${CMAKE_BINARY_DIR}/windows_icon.rc")
+    target_sources(${PROJECT_NAME} PRIVATE 
+        "${CMAKE_BINARY_DIR}/windows_icon.rc")
 elseif(APPLE)
-    # For macOS, bundle the icon with the application if it exists
+    # For macOS, bundle the icon with the application
     set(APP_ICON_MACOS "${CMAKE_SOURCE_DIR}/res/img/icon.icns")
     if(EXISTS "${APP_ICON_MACOS}")
         set(MACOSX_BUNDLE_ICON_FILE icon.icns)
-        set_source_files_properties(${APP_ICON_MACOS} PROPERTIES MACOSX_PACKAGE_LOCATION "Resources")
+        set_source_files_properties(${APP_ICON_MACOS} PROPERTIES
+            MACOSX_PACKAGE_LOCATION "Resources")
         message(STATUS "Using macOS icon: ${APP_ICON_MACOS}")
     else()
-        message(STATUS "macOS icon not found at ${APP_ICON_MACOS} - using default icon")
+        message(STATUS "macOS icon not found at ${APP_ICON_MACOS} - "
+                       "using default icon")
     endif()
 endif()
 
@@ -311,7 +325,8 @@ file(MAKE_DIRECTORY ${OUTPUT_DEBUG_DIR})
 file(MAKE_DIRECTORY ${OUTPUT_RELEASE_DIR})
 
 # Display status message indicating successful configuration
-message(STATUS "SDL3, SDL3_image, SDL3_ttf, SDL3_mixer, and Boost have been configured successfully")
+message(STATUS "SDL3, SDL3_image, SDL3_ttf, SDL3_mixer, and Boost have been "
+               "configured successfully")
 message(STATUS "Debug binaries will be output to: ${OUTPUT_DEBUG_DIR}")
 message(STATUS "Release binaries will be output to: ${OUTPUT_RELEASE_DIR}")
 

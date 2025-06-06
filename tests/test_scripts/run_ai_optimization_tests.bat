@@ -17,7 +17,7 @@ echo !YELLOW!Running AI Optimization Tests...!NC!
 cd /d "%~dp0"
 
 :: Create directory for test results
-if not exist "test_results" mkdir test_results
+if not exist "..\..\test_results" mkdir "..\..\test_results"
 
 :: Set default build type
 set BUILD_TYPE=Debug
@@ -60,9 +60,9 @@ echo !YELLOW!Preparing to run AI Optimization tests...!NC!
 
 :: Determine the correct path to the test executable
 if "%BUILD_TYPE%"=="Debug" (
-    set TEST_EXECUTABLE=bin\debug\ai_optimization_tests.exe
+    set TEST_EXECUTABLE=..\..\bin\debug\ai_optimization_tests.exe
 ) else (
-    set TEST_EXECUTABLE=bin\release\ai_optimization_tests.exe
+    set TEST_EXECUTABLE=..\..\bin\release\ai_optimization_tests.exe
 )
 
 :: Verify executable exists
@@ -90,11 +90,11 @@ if not exist "!TEST_EXECUTABLE!" (
 echo !YELLOW!Running AI Optimization tests...!NC!
 
 :: Ensure test_results directory exists
-if not exist "test_results" mkdir test_results
+if not exist "..\..\test_results" mkdir "..\..\test_results"
 
 :: Output file
-set OUTPUT_FILE=test_results\ai_optimization_tests_output.txt
-set METRICS_FILE=test_results\ai_optimization_tests_performance_metrics.txt
+set OUTPUT_FILE=..\..\test_results\ai_optimization_tests_output.txt
+set METRICS_FILE=..\..\test_results\ai_optimization_tests_performance_metrics.txt
 
 :: Set test command options
 set TEST_OPTS=--log_level=all --catch_system_errors=no

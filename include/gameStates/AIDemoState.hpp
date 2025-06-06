@@ -57,7 +57,9 @@ private:
 
     // AI pause state
     bool m_aiPaused{false};
-    bool m_wasSpacePressed{false};
+    
+    // Helper methods
+    void handleInput();
 };
 
 #endif // AI_DEMO_STATE_HPP

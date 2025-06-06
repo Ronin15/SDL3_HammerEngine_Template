@@ -19,7 +19,7 @@ set "SCRIPT_DIR=%~dp0"
 cd /d "%SCRIPT_DIR%"
 
 :: Create directory for test results
-if not exist "test_results" mkdir test_results
+if not exist "..\..\test_results" mkdir "..\..\test_results"
 
 :: Set default build type
 set BUILD_TYPE=Debug
@@ -74,9 +74,9 @@ if "%EXTREME_TEST%"=="true" (
 
 :: Determine the correct path to the benchmark executable
 if "%BUILD_TYPE%"=="Debug" (
-    set BENCHMARK_EXECUTABLE=bin\debug\ai_scaling_benchmark.exe
+    set BENCHMARK_EXECUTABLE=..\..\bin\debug\ai_scaling_benchmark.exe
 ) else (
-    set BENCHMARK_EXECUTABLE=bin\release\ai_scaling_benchmark.exe
+    set BENCHMARK_EXECUTABLE=..\..\bin\release\ai_scaling_benchmark.exe
 )
 
 :: Verify executable exists
@@ -107,8 +107,8 @@ echo.
 :: Create output file for results
 for /f "tokens=2 delims==" %%a in ('wmic OS Get localdatetime /value') do set "dt=%%a"
 set "TIMESTAMP=!dt:~0,8!_!dt:~8,6!"
-set "RESULTS_FILE=test_results\ai_scaling_benchmark_!TIMESTAMP!.txt"
-if not exist "test_results" mkdir test_results
+set "RESULTS_FILE=..\..\test_results\ai_scaling_benchmark_!TIMESTAMP!.txt"
+if not exist "..\..\test_results" mkdir "..\..\test_results"
 
 :: Timeout for comprehensive benchmarks - adjusted for current performance
 set TIMEOUT_DURATION=180
@@ -222,43 +222,43 @@ echo !GREEN!Results saved to !RESULTS_FILE!!NC!
 
 :: Extract performance metrics
 echo !YELLOW!Extracting performance metrics...!NC!
-echo ============ PERFORMANCE SUMMARY ============> "test_results\ai_benchmark_performance_metrics.txt"
-echo Date: %date% %time%>> "test_results\ai_benchmark_performance_metrics.txt"
-echo Build type: !BUILD_TYPE!>> "test_results\ai_benchmark_performance_metrics.txt"
-echo ===========================================>> "test_results\ai_benchmark_performance_metrics.txt"
-echo.>> "test_results\ai_benchmark_performance_metrics.txt"
+echo ============ PERFORMANCE SUMMARY ============> "..\..\test_results\ai_benchmark_performance_metrics.txt"
+echo Date: %date% %time%>> "..\..\test_results\ai_benchmark_performance_metrics.txt"
+echo Build type: !BUILD_TYPE!>> "..\..\test_results\ai_benchmark_performance_metrics.txt"
+echo ===========================================>> "..\..\test_results\ai_benchmark_performance_metrics.txt"
+echo.>> "..\..\test_results\ai_benchmark_performance_metrics.txt"
 
 :: Use updated findstr patterns to capture metrics from the new clean output format
-findstr /r /c:"Performance Results" /c:"Total time:" /c:"Time per update cycle:" /c:"Time per entity:" /c:"Entity updates per second:" /c:"Total behavior updates:" /c:"Entity updates:" /c:"SCALABILITY SUMMARY" /c:"Entity Count" /c:"Updates Per Second" "!RESULTS_FILE!" >> "test_results\ai_benchmark_performance_metrics.txt" 2>nul
+findstr /r /c:"Performance Results" /c:"Total time:" /c:"Time per update cycle:" /c:"Time per entity:" /c:"Entity updates per second:" /c:"Total behavior updates:" /c:"Entity updates:" /c:"SCALABILITY SUMMARY" /c:"Entity Count" /c:"Updates Per Second" "!RESULTS_FILE!" >> "..\..\test_results\ai_benchmark_performance_metrics.txt" 2>nul
 
 :: Extract specific benchmark configurations and results for better analysis
-echo.>> "test_results\ai_benchmark_performance_metrics.txt"
-echo ============ DETAILED ANALYSIS ============>> "test_results\ai_benchmark_performance_metrics.txt"
+echo.>> "..\..\test_results\ai_benchmark_performance_metrics.txt"
+echo ============ DETAILED ANALYSIS ============>> "..\..\test_results\ai_benchmark_performance_metrics.txt"
 
 :: Extract threading mode comparisons
-echo Threading Mode Comparisons:>> "test_results\ai_benchmark_performance_metrics.txt"
+echo Threading Mode Comparisons:>> "..\..\test_results\ai_benchmark_performance_metrics.txt"
 findstr /a /c:"Single-Threaded mode" "!RESULTS_FILE!" >nul 2>&1 && (
     for /f "skip=1 tokens=*" %%a in ('findstr /a /c:"Single-Threaded mode" "!RESULTS_FILE!"') do (
-        findstr /c:"Total time:" /c:"Entity updates per second:" "!RESULTS_FILE!" >> "test_results\ai_benchmark_performance_metrics.txt" 2>nul
+        findstr /c:"Total time:" /c:"Entity updates per second:" "!RESULTS_FILE!" >> "..\..\test_results\ai_benchmark_performance_metrics.txt" 2>nul
         goto :threaded_search
     )
 )
 :threaded_search
 findstr /a /c:"Threaded mode" "!RESULTS_FILE!" >nul 2>&1 && (
     for /f "skip=1 tokens=*" %%a in ('findstr /a /c:"Threaded mode" "!RESULTS_FILE!"') do (
-        findstr /c:"Total time:" /c:"Entity updates per second:" "!RESULTS_FILE!" >> "test_results\ai_benchmark_performance_metrics.txt" 2>nul
+        findstr /c:"Total time:" /c:"Entity updates per second:" "!RESULTS_FILE!" >> "..\..\test_results\ai_benchmark_performance_metrics.txt" 2>nul
         goto :scalability_search
     )
 )
 
 :scalability_search
 :: Extract scalability test results
-echo.>> "test_results\ai_benchmark_performance_metrics.txt"
-echo Scalability Results:>> "test_results\ai_benchmark_performance_metrics.txt"
+echo.>> "..\..\test_results\ai_benchmark_performance_metrics.txt"
+echo Scalability Results:>> "..\..\test_results\ai_benchmark_performance_metrics.txt"
 findstr /a /c:"SCALABILITY SUMMARY" "!RESULTS_FILE!" >nul 2>&1 && (
     for /f "skip=1 tokens=*" %%a in ('findstr /a /c:"SCALABILITY SUMMARY" "!RESULTS_FILE!"') do (
         for /l %%i in (1,1,20) do (
-            echo %%a>> "test_results\ai_benchmark_performance_metrics.txt" 2>nul
+            echo %%a>> "..\..\test_results\ai_benchmark_performance_metrics.txt" 2>nul
         )
         goto :summary_footer
     )
@@ -266,18 +266,18 @@ findstr /a /c:"SCALABILITY SUMMARY" "!RESULTS_FILE!" >nul 2>&1 && (
 
 :summary_footer
 :: Add summary footer
-echo.>> "test_results\ai_benchmark_performance_metrics.txt"
-echo ============ END OF SUMMARY ============>> "test_results\ai_benchmark_performance_metrics.txt"
+echo.>> "..\..\test_results\ai_benchmark_performance_metrics.txt"
+echo ============ END OF SUMMARY ============>> "..\..\test_results\ai_benchmark_performance_metrics.txt"
 
 :: Display the performance summary
 echo !BLUE!Performance Summary:!NC!
-type "test_results\ai_benchmark_performance_metrics.txt"
+type "..\..\test_results\ai_benchmark_performance_metrics.txt"
 
 :: Check benchmark status and create a final status report
 echo !BLUE!Creating final benchmark report...!NC!
 
 :: Create a more comprehensive results summary
-set "SUMMARY_FILE=test_results\ai_benchmark_summary_!TIMESTAMP!.txt"
+set "SUMMARY_FILE=..\..\test_results\ai_benchmark_summary_!TIMESTAMP!.txt"
 echo ============ BENCHMARK SUMMARY ============> "!SUMMARY_FILE!"
 echo Date: %date% %time%>> "!SUMMARY_FILE!"
 echo Build type: !BUILD_TYPE!>> "!SUMMARY_FILE!"
@@ -365,7 +365,7 @@ echo   Successful validations: !GREEN!!SUCCESS_RATE!!NC!
 :: Final output
 echo !GREEN!Results saved to:!NC!
 echo   - Full log: !BLUE!!RESULTS_FILE!!NC!
-echo   - Performance metrics: !BLUE!test_results\ai_benchmark_performance_metrics.txt!NC!
+echo   - Performance metrics: !BLUE!..\..\test_results\ai_benchmark_performance_metrics.txt!NC!
 echo   - Summary: !BLUE!!SUMMARY_FILE!!NC!
 
 :: Exit with appropriate code based on whether we got results

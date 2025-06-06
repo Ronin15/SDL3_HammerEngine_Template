@@ -4,92 +4,151 @@
 */
 
 #include "gameStates/MainMenuState.hpp"
+#include "managers/UIManager.hpp"
 #include "managers/InputManager.hpp"
-#include "managers/FontManager.hpp"
 #include "core/GameEngine.hpp"
 #include <iostream>
 
 bool MainMenuState::enter() {
   std::cout << "Forge Game Engine - Entering MAIN MENU State\n";
+  
+  auto& gameEngine = GameEngine::Instance();
+  auto& ui = UIManager::Instance();
+  int windowWidth = gameEngine.getWindowWidth();
+  int windowHeight = gameEngine.getWindowHeight();
+
+  // Create theme background
+  ui.createThemeBackground(windowWidth, windowHeight);
+
+  // Create title
+  ui.createTitle("mainmenu_title", {0, 100, windowWidth, 60}, "Forge Game Engine - Main Menu");
+  ui.setTitleAlignment("mainmenu_title", UIAlignment::CENTER_CENTER);
+
+  // Create menu buttons
+  int buttonWidth = 300;
+  int buttonHeight = 50;
+  int buttonSpacing = 20;
+  int startY = windowHeight / 2 - 100;
+
+  ui.createButton("mainmenu_start_game_btn", {windowWidth/2 - buttonWidth/2, startY, buttonWidth, buttonHeight}, "Start Game");
+  ui.createButton("mainmenu_ai_demo_btn", {windowWidth/2 - buttonWidth/2, startY + (buttonHeight + buttonSpacing), buttonWidth, buttonHeight}, "AI Demo");
+  ui.createButton("mainmenu_event_demo_btn", {windowWidth/2 - buttonWidth/2, startY + 2 * (buttonHeight + buttonSpacing), buttonWidth, buttonHeight}, "Event Demo");
+  ui.createButton("mainmenu_ui_example_btn", {windowWidth/2 - buttonWidth/2, startY + 3 * (buttonHeight + buttonSpacing), buttonWidth, buttonHeight}, "UI Example");
+  ui.createButton("mainmenu_overlay_demo_btn", {windowWidth/2 - buttonWidth/2, startY + 4 * (buttonHeight + buttonSpacing), buttonWidth, buttonHeight}, "Overlay Demo");
+  ui.createButton("mainmenu_exit_btn", {windowWidth/2 - buttonWidth/2, startY + 5 * (buttonHeight + buttonSpacing), buttonWidth, buttonHeight}, "Exit");
+
+  // Set up button callbacks
+  ui.setOnClick("mainmenu_start_game_btn", []() {
+    auto& gameEngine = GameEngine::Instance();
+    auto* gameStateManager = gameEngine.getGameStateManager();
+    gameStateManager->setState("GamePlayState");
+  });
+
+  ui.setOnClick("mainmenu_ai_demo_btn", []() {
+    auto& gameEngine = GameEngine::Instance();
+    auto* gameStateManager = gameEngine.getGameStateManager();
+    gameStateManager->setState("AIDemo");
+  });
+
+  ui.setOnClick("mainmenu_event_demo_btn", []() {
+    auto& gameEngine = GameEngine::Instance();
+    auto* gameStateManager = gameEngine.getGameStateManager();
+    gameStateManager->setState("EventDemo");
+  });
+
+  ui.setOnClick("mainmenu_ui_example_btn", []() {
+    auto& gameEngine = GameEngine::Instance();
+    auto* gameStateManager = gameEngine.getGameStateManager();
+    gameStateManager->setState("UIExampleState");
+  });
+
+  ui.setOnClick("mainmenu_overlay_demo_btn", []() {
+    auto& gameEngine = GameEngine::Instance();
+    auto* gameStateManager = gameEngine.getGameStateManager();
+    gameStateManager->setState("OverlayDemoState");
+  });
+
+  ui.setOnClick("mainmenu_exit_btn", []() {
+    auto& gameEngine = GameEngine::Instance();
+    gameEngine.setRunning(false);
+  });
+
+  // Style the exit button red for distinction
+  UIStyle exitStyle;
+  exitStyle.backgroundColor = {180, 70, 70, 255}; // Dark red
+  exitStyle.hoverColor = {220, 100, 100, 255}; // Light red
+  exitStyle.pressedColor = {120, 50, 50, 255}; // Darker red
+  exitStyle.borderColor = {255, 255, 255, 255}; // White border
+  exitStyle.textColor = {255, 255, 255, 255}; // White text
+  exitStyle.borderWidth = 1;
+  exitStyle.textAlign = UIAlignment::CENTER_CENTER;
+  exitStyle.fontID = "fonts_UI_Arial";
+  ui.setStyle("mainmenu_exit_btn", exitStyle);
+  
   return true;
 }
 
-void MainMenuState::update([[maybe_unused]] float deltaTime) {
-  //std::cout << "Updating Main Menu State\n";
-
-      // Cache manager references for better performance
-      InputManager& inputMgr = InputManager::Instance();
-      GameEngine& gameEngine = GameEngine::Instance();
-      auto* gameStateManager = gameEngine.getGameStateManager();
-
-      // Handle menu options
-      if (inputMgr.isKeyDown(SDL_SCANCODE_RETURN)) {
-          gameStateManager->setState("GamePlayState");
-      }
-      if (inputMgr.isKeyDown(SDL_SCANCODE_A)) {
-          gameStateManager->setState("AIDemo");
-      }
-      if (inputMgr.isKeyDown(SDL_SCANCODE_E)) {
-          gameStateManager->setState("EventDemo");
-      }
-      if (inputMgr.isKeyDown(SDL_SCANCODE_ESCAPE)) {
-          gameEngine.setRunning(false);
-      }
+void MainMenuState::update(float deltaTime) {
+  // Update UI Manager
+  auto& uiManager = UIManager::Instance();
+  if (!uiManager.isShutdown()) {
+      uiManager.update(deltaTime);
   }
+  
+  // Handle keyboard shortcuts with event-driven approach
+  auto& inputManager = InputManager::Instance();
+  
+  if (inputManager.wasKeyPressed(SDL_SCANCODE_RETURN)) {
+      auto& gameEngine = GameEngine::Instance();
+      auto* gameStateManager = gameEngine.getGameStateManager();
+      gameStateManager->setState("GamePlayState");
+  }
+  
+  if (inputManager.wasKeyPressed(SDL_SCANCODE_A)) {
+      auto& gameEngine = GameEngine::Instance();
+      auto* gameStateManager = gameEngine.getGameStateManager();
+      gameStateManager->setState("AIDemo");
+  }
+  
+  if (inputManager.wasKeyPressed(SDL_SCANCODE_E)) {
+      auto& gameEngine = GameEngine::Instance();
+      auto* gameStateManager = gameEngine.getGameStateManager();
+      gameStateManager->setState("EventDemo");
+  }
+  
+  if (inputManager.wasKeyPressed(SDL_SCANCODE_U)) {
+      auto& gameEngine = GameEngine::Instance();
+      auto* gameStateManager = gameEngine.getGameStateManager();
+      gameStateManager->setState("UIExampleState");
+  }
+  
+  if (inputManager.wasKeyPressed(SDL_SCANCODE_O)) {
+      auto& gameEngine = GameEngine::Instance();
+      auto* gameStateManager = gameEngine.getGameStateManager();
+      gameStateManager->setState("OverlayDemoState");
+  }
+  
+  if (inputManager.wasKeyPressed(SDL_SCANCODE_ESCAPE)) {
+      auto& gameEngine = GameEngine::Instance();
+      gameEngine.setRunning(false);
+  }
+}
 
 void MainMenuState::render() {
-   // Cache manager references for better performance
-   FontManager& fontMgr = FontManager::Instance();
-   GameEngine& gameEngine = GameEngine::Instance();
-   SDL_Renderer* renderer = gameEngine.getRenderer();
-   int windowWidth = gameEngine.getWindowWidth();
-   int windowHeight = gameEngine.getWindowHeight();
-
-   SDL_Color fontColor = {200, 200, 200, 255};//Gray
-    // Title
-    fontMgr.drawText(
-      "Main Menu",
-      "fonts_Arial",
-      windowWidth / 2,     // Center horizontally
-      (windowHeight / 2) - 200,
-      fontColor,
-      renderer);
-
-    // Menu options
-    fontMgr.drawText(
-      "Press ENTER - Start Game",
-      "fonts_Arial",
-      windowWidth / 2,     // Center horizontally
-      (windowHeight / 2) - 120,
-      fontColor,
-      renderer);
-
-    fontMgr.drawText(
-      "Press A - AI Demo",
-      "fonts_Arial",
-      windowWidth / 2,     // Center horizontally
-      (windowHeight / 2) - 70,
-      fontColor,
-      renderer);
-
-    fontMgr.drawText(
-      "Press E - Event Demo",
-      "fonts_Arial",
-      windowWidth / 2,     // Center horizontally
-      (windowHeight / 2) - 20,
-      fontColor,
-      renderer);
-
-    fontMgr.drawText(
-      "Press ESC - Exit",
-      "fonts_Arial",
-      windowWidth / 2,     // Center horizontally
-      (windowHeight / 2) + 30,
-      fontColor,
-      renderer);
+  // Render UI components through UIManager
+  auto& gameEngine = GameEngine::Instance();
+  auto& ui = UIManager::Instance();
+  ui.render(gameEngine.getRenderer());
 }
 bool MainMenuState::exit() {
   std::cout << "Forge Game Engine - Exiting MAIN MENU State\n";
+  
+  // Clean up all UI components efficiently
+  auto& ui = UIManager::Instance();
+  ui.removeComponentsWithPrefix("mainmenu_");
+  ui.removeThemeBackground();
+  ui.resetToDefaultTheme();
+  
   return true;
 }
 

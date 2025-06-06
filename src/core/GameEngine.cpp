@@ -21,6 +21,9 @@
 #include "managers/InputManager.hpp"
 #include "gameStates/LogoState.hpp"
 #include "gameStates/MainMenuState.hpp"
+#include "gameStates/UIExampleState.hpp"
+#include "gameStates/OverlayDemoState.hpp"
+#include "managers/UIManager.hpp"
 #include "SDL3/SDL_render.h"
 #include "SDL3/SDL_video.h"
 #include "managers/SaveGameManager.hpp"
@@ -146,7 +149,7 @@ bool GameEngine::init(const char* title,
         std::cout << "Forge Game Engine - Rendering system online!\n";
         SDL_SetRenderDrawColor(mp_renderer.get(), FORGE_GRAY);  // Forge Game Engine gunmetal dark grey
         // Set logical rendering size to match our window size
-        SDL_SetRenderLogicalPresentation(mp_renderer.get(), logicalWidth, logicalHeight, SDL_LOGICAL_PRESENTATION_LETTERBOX);
+        SDL_SetRenderLogicalPresentation(mp_renderer.get(), logicalWidth, logicalHeight, m_logicalPresentationMode);
         //Render Mode.
         SDL_SetRenderDrawBlendMode(mp_renderer.get(), SDL_BLENDMODE_BLEND);
       } else {
@@ -237,6 +240,8 @@ bool GameEngine::init(const char* title,
           return false;
         }
         fontMgr.loadFont("res/fonts", "fonts", 24);
+        // Load UI-specific font with optimal size for UI elements
+        fontMgr.loadFont("res/fonts", "fonts_UI", 16);
         return true;
       }));
 
@@ -286,12 +291,23 @@ bool GameEngine::init(const char* title,
                "initial Game States\n";
   mp_gameStateManager = std::make_unique<GameStateManager>();
 
+  // Initialize UI Manager (on main thread because it uses font/text rendering) - MAIN THREAD
+  std::cout << "Forge Game Engine - Creating UI Manager\n";
+  UIManager& uiMgr = UIManager::Instance();
+  if (!uiMgr.init()) {
+    std::cerr << "Forge Game Engine - Failed to initialize UI Manager!" << std::endl;
+    return false;
+  }
+  std::cout << "Forge Game Engine - UI Manager initialized successfully\n";
+
   // Setting Up initial game states
   mp_gameStateManager->addState(std::make_unique<LogoState>());
   mp_gameStateManager->addState(std::make_unique<MainMenuState>());
   mp_gameStateManager->addState(std::make_unique<GamePlayState>());
   mp_gameStateManager->addState(std::make_unique<AIDemoState>());
   mp_gameStateManager->addState(std::make_unique<EventDemoState>());
+  mp_gameStateManager->addState(std::make_unique<UIExampleState>());
+  mp_gameStateManager->addState(std::make_unique<OverlayDemoState>());
 
   // Wait for all initialization tasks to complete
   bool allTasksSucceeded = true;
@@ -310,6 +326,25 @@ bool GameEngine::init(const char* title,
               << std::endl;
     return false;
   }
+
+  // Step 2: Cache manager references for performance (after all background init complete)
+  std::cout << "Forge Game Engine - Caching manager references\n";
+  try {
+    mp_aiManager = &AIManager::Instance();
+    mp_eventManager = &EventManager::Instance();
+    // InputManager not cached - handled in handleEvents() for proper SDL architecture
+    
+    // Validate that cached managers are properly initialized
+    if (!mp_aiManager || !mp_eventManager) {
+      std::cerr << "Forge Game Engine - Error: One or more manager references are null!" << std::endl;
+      return false;
+    }
+    
+    std::cout << "Forge Game Engine - Manager references cached and validated successfully\n";
+  } catch (const std::exception& e) {
+    std::cerr << "Forge Game Engine - Error caching manager references: " << e.what() << std::endl;
+    return false;
+  }
   //_______________________________________________________________________________________________________________END
 
   std::cout << "Forge Game Engine - Game " << title << " initialized successfully!\n";
@@ -322,7 +357,7 @@ bool GameEngine::init(const char* title,
 }
 
 void GameEngine::handleEvents() {
-  // Cache InputManager reference for better performance
+  // Handle input events - InputManager stays here for SDL event polling architecture
   InputManager& inputMgr = InputManager::Instance();
   inputMgr.update();
 }
@@ -376,7 +411,49 @@ void GameEngine::update([[maybe_unused]] float deltaTime) {
   const size_t updateBufferIndex = m_currentBufferIndex.load(std::memory_order_acquire);
 
   try {
-    // Update game states with fixed timestep - make sure GameStateManager knows which buffer to update
+    // HYBRID MANAGER UPDATE ARCHITECTURE
+    // =====================================
+    // HYBRID MANAGER UPDATE ARCHITECTURE - Step 1: Global Updates (No Caching)
+    // =====================================
+    // Core engine systems are updated globally for optimal performance and consistency
+    // State-specific systems are updated by individual states for flexibility and efficiency
+    
+    // GLOBAL SYSTEMS (Updated by GameEngine):
+    // - AIManager: World simulation with 10K+ entities, benefits from consistent global updates
+    // - EventManager: Global game events (weather, scene changes), batch processing optimization
+    // - InputManager: Handled in handleEvents() for proper SDL event polling architecture
+    
+    // AI system - manages world entities across all states (cached reference access)
+    if (mp_aiManager) {
+      try {
+        mp_aiManager->update(deltaTime);
+      } catch (const std::exception& e) {
+        std::cerr << "Forge Game Engine - AIManager exception: " << e.what() << std::endl;
+      } catch (...) {
+        std::cerr << "Forge Game Engine - AIManager unknown exception" << std::endl;
+      }
+    } else {
+      std::cerr << "Forge Game Engine - AIManager cache is null!" << std::endl;
+    }
+    
+    // Event system - global game events and world simulation (cached reference access)
+    if (mp_eventManager) {
+      try {
+        mp_eventManager->update();
+      } catch (const std::exception& e) {
+        std::cerr << "Forge Game Engine - EventManager exception: " << e.what() << std::endl;
+      } catch (...) {
+        std::cerr << "Forge Game Engine - EventManager unknown exception" << std::endl;
+      }
+    } else {
+      std::cerr << "Forge Game Engine - EventManager cache is null!" << std::endl;
+    }
+    
+    // STATE-MANAGED SYSTEMS (Updated by individual states):
+    // - UIManager: Optional, state-specific, only updated when UI is actually used
+    // See UIExampleState::update() for proper state-managed pattern
+    
+    // Update game states - states handle their specific system needs
     mp_gameStateManager->update(deltaTime);
 
     // Increment the frame counter
@@ -503,19 +580,30 @@ void GameEngine::processBackgroundTasks() {
   // It should be safe to run on worker threads
 
   try {
-    // Cache EventManager reference for better performance
-    EventManager& eventMgr = EventManager::Instance();
+    // Background processing tasks can be added here
+    // Note: EventManager is now updated in the main update loop for optimal performance
+    // and consistency with other global systems (AI, Input)
     
-    // Update Event Manager
-    eventMgr.update();
+    // Example: Process non-critical background tasks
+    // These tasks can run while the main thread is handling rendering
   } catch (const std::exception& e) {
     std::cerr << "Forge Game Engine - Exception in background tasks: " << e.what() << std::endl;
   } catch (...) {
     std::cerr << "Forge Game Engine - Unknown exception in background tasks" << std::endl;
   }
+}
 
-  // Example: Process AI, physics, or other non-rendering tasks
-  // These tasks can run while the main thread is handling rendering
+void GameEngine::setLogicalPresentationMode(SDL_RendererLogicalPresentation mode) {
+  m_logicalPresentationMode = mode;
+  if (mp_renderer) {
+    int width, height;
+    SDL_GetWindowSize(mp_window.get(), &width, &height);
+    SDL_SetRenderLogicalPresentation(mp_renderer.get(), width, height, mode);
+  }
+}
+
+SDL_RendererLogicalPresentation GameEngine::getLogicalPresentationMode() const {
+  return m_logicalPresentationMode;
 }
 
 void GameEngine::clean() {
@@ -555,6 +643,10 @@ void GameEngine::clean() {
   std::cout << "Forge Game Engine - Cleaning up Sound Manager...\n";
   soundMgr.clean();
 
+  std::cout << "Forge Game Engine - Cleaning up UI Manager...\n";
+  UIManager& uiMgr = UIManager::Instance();
+  uiMgr.clean();
+
   std::cout << "Forge Game Engine - Cleaning up Event Manager...\n";
   eventMgr.clean();
 
@@ -575,6 +667,13 @@ void GameEngine::clean() {
   if (!threadSystem.isShutdown()) {
     threadSystem.clean();
   }
+
+  // Clear manager cache references
+  std::cout << "Forge Game Engine - Clearing manager caches...\n";
+  mp_aiManager = nullptr;
+  mp_eventManager = nullptr;
+  // InputManager not cached
+  std::cout << "Forge Game Engine - Manager caches cleared\n";
 
   // Finally clean up SDL resources
   std::cout << "Forge Game Engine - Cleaning up SDL resources...\n";
