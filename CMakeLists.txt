@@ -3,7 +3,7 @@ project(SDL3_Template VERSION 1.0.0 LANGUAGES C CXX)
 
 # Set build configurations
 if(NOT CMAKE_BUILD_TYPE)
-    set(CMAKE_BUILD_TYPE "Debug" CACHE STRING 
+    set(CMAKE_BUILD_TYPE "Debug" CACHE STRING
         "Choose the type of build (Debug or Release)" FORCE)
 endif()
 
@@ -27,21 +27,48 @@ else() # Release build
 endif()
 
 # Debug build settings
-set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -g3 -O0 -Og")
-set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -g3 -O0 -Og -Wall -Wextra")
+if(APPLE)
+    # macOS-specific debug flags with dSYM generation and LLDB compatibility
+    set(CMAKE_C_FLAGS_DEBUG "-g3 -O0 -gdwarf-4 -glldb -fno-limit-debug-info")
+    set(CMAKE_CXX_FLAGS_DEBUG "-g3 -O0 -Wall -Wextra -gdwarf-4 -glldb -fno-limit-debug-info -fstandalone-debug")
+    
+    # Ensure debug symbols are preserved (don't strip them)
+    set(CMAKE_SHARED_LINKER_FLAGS_DEBUG "${CMAKE_SHARED_LINKER_FLAGS_DEBUG} -g")
+    set(CMAKE_EXE_LINKER_FLAGS_DEBUG "${CMAKE_EXE_LINKER_FLAGS_DEBUG} -g")
+else()
+    # Other platforms
+    set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -g3 -O0")
+    set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -g3 -O0 -Wall -Wextra")
+endif()
 
 # Release build settings
-set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -O3 -flto \
-    -fno-strict-aliasing -fomit-frame-pointer -ffunction-sections \
-    -fdata-sections -Wl,--gc-sections -ffast-math -ftree-vectorize \
-    -fpeel-loops -funroll-loops -march=x86-64-v3 -mtune=generic \
-    -msse4.2 -mavx -mavx2 -mfma")
-set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -flto \
-    -fno-strict-aliasing -fomit-frame-pointer -ffunction-sections \
-    -fdata-sections -Wl,--gc-sections -ffast-math -ftree-vectorize \
-    -fpeel-loops -funroll-loops -march=x86-64-v3 -mtune=generic \
-    -msse4.2 -mavx -mavx2 -mfma")
-#mac Os -mcpu=apple-m3 -mtune=generic
+if(APPLE)
+    # macOS-specific release flags
+    set(CMAKE_C_FLAGS_RELEASE "-O3 -flto -fno-strict-aliasing -fomit-frame-pointer \
+        -ffunction-sections -fdata-sections -ffast-math -ftree-vectorize \
+        -fpeel-loops -funroll-loops")
+    set(CMAKE_CXX_FLAGS_RELEASE "-O3 -flto -fno-strict-aliasing -fomit-frame-pointer \
+        -ffunction-sections -fdata-sections -ffast-math -ftree-vectorize \
+        -fpeel-loops -funroll-loops")
+    
+    # Add Apple Silicon specific optimizations if on Apple Silicon
+    if(CMAKE_SYSTEM_PROCESSOR MATCHES "arm64")
+        set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -mcpu=apple-m1")
+        set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -mcpu=apple-m1")
+    endif()
+else()
+    # x86-64 specific flags for other platforms
+    set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -O3 -flto \
+        -fno-strict-aliasing -fomit-frame-pointer -ffunction-sections \
+        -fdata-sections -Wl,--gc-sections -ffast-math -ftree-vectorize \
+        -fpeel-loops -funroll-loops -march=x86-64-v3 -mtune=generic \
+        -msse4.2 -mavx -mavx2 -mfma")
+    set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -flto \
+        -fno-strict-aliasing -fomit-frame-pointer -ffunction-sections \
+        -fdata-sections -Wl,--gc-sections -ffast-math -ftree-vectorize \
+        -fpeel-loops -funroll-loops -march=x86-64-v3 -mtune=generic \
+        -msse4.2 -mavx -mavx2 -mfma")
+endif()
 
 # Set C++ standard
 set(CMAKE_CXX_STANDARD 20)
@@ -73,7 +100,7 @@ find_package(Boost QUIET COMPONENTS serialization unit_test_framework)
 if(Boost_FOUND)
     message(STATUS "Found system Boost - SaveGameManager serialization enabled")
     set(HAVE_BOOST_SERIALIZATION TRUE)
-    
+
     # Check if unit_test_framework component was found
     if(TARGET Boost::unit_test_framework)
         message(STATUS "Found Boost Unit Test Framework - Tests will be enabled")
@@ -188,7 +215,7 @@ if(WIN32)
   )
 
     # Add the resource file to the executable
-    target_sources(${PROJECT_NAME} PRIVATE 
+    target_sources(${PROJECT_NAME} PRIVATE
         "${CMAKE_BINARY_DIR}/windows_icon.rc")
 elseif(APPLE)
     # For macOS, bundle the icon with the application
@@ -253,9 +280,26 @@ if(APPLE)
         set_target_properties(${PROJECT_NAME} PROPERTIES
       MACOSX_BUNDLE FALSE      # Don't create a bundle in debug mode
       BUILD_WITH_INSTALL_RPATH TRUE
-      BUILD_RPATH "@executable_path/../debug"
-      INSTALL_RPATH "@executable_path/../debug"
+      BUILD_RPATH "@executable_path/../bin/debug"
+      INSTALL_RPATH "@executable_path/../bin/debug"
+      # Enable dSYM generation for debug symbols
+      XCODE_ATTRIBUTE_DEBUG_INFORMATION_FORMAT "dwarf-with-dsym"
+      XCODE_ATTRIBUTE_GCC_GENERATE_DEBUGGING_SYMBOLS YES
     )
+
+        # Generate dSYM bundle for debugging with verbose output
+        add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+            COMMAND dsymutil $<TARGET_FILE:${PROJECT_NAME}> -o $<TARGET_FILE:${PROJECT_NAME}>.dSYM
+            COMMAND echo "dSYM bundle created at: $<TARGET_FILE:${PROJECT_NAME}>.dSYM"
+            COMMENT "Generating dSYM bundle for debugging"
+        )
+        
+        # Prevent accidental stripping of debug symbols
+        set_target_properties(${PROJECT_NAME} PROPERTIES
+            XCODE_ATTRIBUTE_STRIP_INSTALLED_PRODUCT NO
+            XCODE_ATTRIBUTE_COPY_PHASE_STRIP NO
+            XCODE_ATTRIBUTE_STRIP_STYLE "non-global"
+        )
 
         # Add a post-build message
         add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
@@ -263,6 +307,8 @@ if(APPLE)
     )
 
         message(STATUS "SDL console output enabled for macOS debug build")
+        message(STATUS "dSYM generation enabled for debug symbols")
+        message(STATUS "LLDB debugging flags enabled (-glldb, -fstandalone-debug)")
     else()
         # For release builds, create a proper macOS application bundle
         set_target_properties(${PROJECT_NAME} PROPERTIES
