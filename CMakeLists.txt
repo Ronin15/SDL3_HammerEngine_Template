@@ -280,8 +280,8 @@ if(APPLE)
         set_target_properties(${PROJECT_NAME} PROPERTIES
       MACOSX_BUNDLE FALSE      # Don't create a bundle in debug mode
       BUILD_WITH_INSTALL_RPATH TRUE
-      BUILD_RPATH "@executable_path/../bin/debug"
-      INSTALL_RPATH "@executable_path/../bin/debug"
+      BUILD_RPATH "@executable_path"
+      INSTALL_RPATH "@executable_path"
       # Enable dSYM generation for debug symbols
       XCODE_ATTRIBUTE_DEBUG_INFORMATION_FORMAT "dwarf-with-dsym"
       XCODE_ATTRIBUTE_GCC_GENERATE_DEBUGGING_SYMBOLS YES
@@ -314,8 +314,8 @@ if(APPLE)
         set_target_properties(${PROJECT_NAME} PROPERTIES
       MACOSX_BUNDLE TRUE
       BUILD_WITH_INSTALL_RPATH TRUE
-      BUILD_RPATH "@executable_path/../Frameworks"
-      INSTALL_RPATH "@executable_path/../Frameworks"
+      BUILD_RPATH "@executable_path/../Frameworks;@executable_path"
+      INSTALL_RPATH "@executable_path/../Frameworks;@executable_path"
     )
     endif()
 endif()
