@@ -491,6 +491,11 @@ Additional documentation can be found in the `docs/` directory:
 - **[Event Factory](docs/events/EventFactory.md)** - Advanced event creation with EventDefinition and sequences
 - **[Event Factory Quick Reference](docs/events/EventFactory_QuickReference.md)** - Fast API lookup and examples
 
+### Core System Documentation
+- **[GameEngine](docs/core/GameEngine.md)** - Central engine singleton managing all systems with SDL integration
+- **[GameLoop](docs/core/GameLoop.md)** - Industry-standard timing with fixed/variable timestep and threading support
+- **[Logger System](docs/Logger.md)** - High-performance logging with zero release overhead and system-specific macros
+
 ### Manager System Documentation
 - **[FontManager](docs/FontManager.md)** - Font loading and text rendering system with TTF/OTF support
 - **[TextureManager](docs/TextureManager.md)** - Texture loading and sprite rendering with animation support

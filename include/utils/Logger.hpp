@@ -9,8 +9,10 @@
 // Required includes for logging system:
 // - string: Used in macro expansions for std::string() conversions
 // - cstdio: Required for printf() and fflush() functions
+// - cstdint: Required for uint8_t type
 #include <string> // IWYU pragma: keep - Required for std::string() conversions in macros
 #include <cstdio> // IWYU pragma: keep - Required for printf() and fflush() functions
+#include <cstdint> // IWYU pragma: keep - Required for uint8_t type
 
 namespace Forge {
     enum class LogLevel : uint8_t {
