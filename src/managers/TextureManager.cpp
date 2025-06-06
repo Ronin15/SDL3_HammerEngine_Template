@@ -8,7 +8,7 @@
 #include <filesystem>
 #include <algorithm>
 
-bool TextureManager::initialized = false; // Initialize the static variable for TextureManager initialization
+
 
 bool TextureManager::load(const std::string& fileName,
                           const std::string& textureID,
@@ -233,6 +233,9 @@ void TextureManager::clean() {
 
   // Clear the map - shared_ptr will automatically destroy the textures
   m_textureMap.clear();
+
+  // Set shutdown flag
+  m_isShutdown = true;
 
   std::cout << "Forge Game Engine - "<< texturesFreed << " textures Freed!\n";
   std::cout << "Forge Game Engine - TextureManager resources cleaned!\n";

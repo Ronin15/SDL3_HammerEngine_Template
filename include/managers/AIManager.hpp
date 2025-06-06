@@ -109,6 +109,9 @@ public:
     bool init();
     void clean();
     void update(float deltaTime);
+    
+    // Check if AIManager has been shut down
+    bool isShutdown() const { return m_isShutdown; }
 
     // Behavior management
     void registerBehavior(const std::string& name, std::shared_ptr<AIBehavior> behavior);
@@ -183,7 +186,11 @@ public:
 
 private:
     AIManager() = default;
-    ~AIManager() = default;
+    ~AIManager() {
+        if (!m_isShutdown) {
+            clean();
+        }
+    }
     AIManager(const AIManager&) = delete;
     AIManager& operator=(const AIManager&) = delete;
 
@@ -266,6 +273,9 @@ private:
     void updateEntityBehavior(EntityPtr entity);
     void recordPerformance(BehaviorType type, double timeMs, uint64_t entities);
     static uint64_t getCurrentTimeNanos();
+    
+    // Shutdown state
+    bool m_isShutdown{false};
 };
 
 #endif // AI_MANAGER_HPP

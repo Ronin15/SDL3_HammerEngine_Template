@@ -40,15 +40,16 @@ struct SaveGameData {
 
 class SaveGameManager {
 public:
-    ~SaveGameManager() = default;
+    ~SaveGameManager() {
+        if (!m_isShutdown) {
+            clean();
+        }
+    }
 
     static SaveGameManager& Instance() {
         static SaveGameManager instance;
-        initialized = true;
         return instance;
     }
-
-    static bool Exists() { return initialized; }
 
     // Save game data to a file
     // Returns true if save was successful
@@ -100,9 +101,12 @@ public:
     // Clean up resources
     void clean();
 
+    // Check if SaveGameManager has been shut down
+    bool isShutdown() const { return m_isShutdown; }
+
 private:
     std::string m_saveDirectory{"res"};  // Default save directory
-    static bool initialized;
+    bool m_isShutdown{false};
 
     // Helper methods
     std::string getSlotFileName(int slotNumber) const;

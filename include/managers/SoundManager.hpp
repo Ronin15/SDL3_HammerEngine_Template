@@ -83,6 +83,9 @@ class SoundManager {
   
   // Get current SFX volume
   int getSFXVolume() const { return m_sfxVolume; }
+  
+  // Check if SoundManager has been shut down
+  bool isShutdown() const { return m_isShutdown.load(); }
 
  private:
   boost::container::flat_map<std::string, Mix_Chunk*> m_sfxMap{};
