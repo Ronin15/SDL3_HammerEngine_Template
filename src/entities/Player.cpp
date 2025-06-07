@@ -10,7 +10,7 @@
 #include "SDL3/SDL_surface.h"
 #include "managers/TextureManager.hpp"
 #include <SDL3/SDL.h>
-#include <iostream>
+#include "utils/Logger.hpp"
 
 Player::Player() {
     // Initialize player properties
@@ -59,7 +59,7 @@ void Player::loadDimensionsFromTexture() {
             // Query the texture to get its width and height
             // SDL3 uses SDL_GetTextureSize which returns float dimensions and returns a bool
             if (SDL_GetTextureSize(texture.get(), &width, &height)) {
-                std::cout << "Forge Game Engine - Original texture dimensions: " << width << "x" << height << "\n";
+                PLAYER_DEBUG("Original texture dimensions: " + std::to_string(width) + "x" + std::to_string(height));
 
                 // Store original dimensions for full sprite sheet
                 m_width = static_cast<int>(width);
@@ -72,15 +72,15 @@ void Player::loadDimensionsFromTexture() {
                 // Update height to be the height of a single frame
                 m_height = frameHeight;
 
-                std::cout << "Forge Game Engine - Loaded texture dimensions: " << m_width << "x" << height << "\n";
-                std::cout << "Forge Game Engine - Frame dimensions: " << m_frameWidth << "x" << frameHeight << "\n";
-                std::cout << "Forge Game Engine - Sprite layout: " << m_numFrames << " columns x " << m_spriteSheetRows << " rows" << "\n";
+                PLAYER_DEBUG("Loaded texture dimensions: " + std::to_string(m_width) + "x" + std::to_string(height));
+                PLAYER_DEBUG("Frame dimensions: " + std::to_string(m_frameWidth) + "x" + std::to_string(frameHeight));
+                PLAYER_DEBUG("Sprite layout: " + std::to_string(m_numFrames) + " columns x " + std::to_string(m_spriteSheetRows) + " rows");
             } else {
-                std::cerr << "Forge Game Engine - Failed to query texture dimensions: " << SDL_GetError() << std::endl;
+                PLAYER_ERROR("Failed to query texture dimensions: " + std::string(SDL_GetError()));
             }
         }
     } else {
-        std::cout << "Forge Game Engine - Texture '" << m_textureID << "' not found in TextureManager" << "\n";
+        PLAYER_ERROR("Texture '" + m_textureID + "' not found in TextureManager");
     }
 }
 
@@ -94,15 +94,15 @@ Player::~Player() {
     // Don't call virtual functions from destructors
     // Instead of calling clean(), directly handle cleanup here
 
-    std::cout << "Forge Game Engine - Cleaning up player resources" << "\n";
-    std::cout << "Forge Game Engine - Player resources cleaned!\n";
+    PLAYER_DEBUG("Cleaning up player resources");
+    PLAYER_DEBUG("Player resources cleaned!");
 }
 
 void Player::changeState(const std::string& stateName) {
     if (m_stateManager.hasState(stateName)) {
         m_stateManager.setState(stateName);
     } else {
-        std::cerr << "Player state not found: " << stateName << std::endl;
+        PLAYER_ERROR("Player state not found: " + stateName);
     }
 }
 
@@ -148,7 +148,7 @@ void Player::render() {
 
 void Player::clean() {
     // Clean up any resources
-    std::cout << "Forge Game Engine - Cleaning up player resources" << "\n";
+    PLAYER_DEBUG("Cleaning up player resources");
 }
 
 

@@ -45,5 +45,5 @@ bool PlayerIdleState::hasInputDetected() const {
 }
 
 void PlayerIdleState::exit() {
-    //std::cout << "Forge Game Engine - Exiting Player Idle State\n";
+    // Nothing special needed on exit
 }

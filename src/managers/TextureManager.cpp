@@ -5,7 +5,7 @@
 
 #include "managers/TextureManager.hpp"
 #include "utils/Logger.hpp"
-#include <iostream>
+#include "utils/Logger.hpp"
 #include <filesystem>
 #include <algorithm>
 
@@ -16,7 +16,7 @@ bool TextureManager::load(const std::string& fileName,
                           SDL_Renderer* p_renderer) {
   // Check if the fileName is a directory
   if (std::filesystem::exists(fileName) && std::filesystem::is_directory(fileName)) {
-    std::cout << "Forge Game Engine - Loading textures from directory: " << fileName << "\n";
+    TEXTURE_INFO("Loading textures from directory: " + fileName);
 
     bool loadedAny = false;
     int texturesLoaded{0};
@@ -51,7 +51,7 @@ bool TextureManager::load(const std::string& fileName,
           TEXTURE_INFO("Loading texture: " + fullPath);
 
           if (!surface) {
-            std::cout << "Forge Game Engine - Could not load image: " << SDL_GetError() << "\n";
+            TEXTURE_ERROR("Could not load image: " + std::string(SDL_GetError()));
             continue;
           }
 
@@ -74,7 +74,10 @@ bool TextureManager::load(const std::string& fileName,
       TEXTURE_ERROR("Error while loading textures: " + std::string(e.what()));
     }
 
-    std::cout << "Forge Game Engine - Loaded " << texturesLoaded << " textures from directory: " << fileName << "\n";
+    TEXTURE_INFO("Loaded " + std::to_string(texturesLoaded) + " textures from directory: " + fileName);
+    
+    // Suppress unused variable warning in release builds
+    (void)texturesLoaded;
     return loadedAny; // Return true if at least one texture was loaded successfully
   }
 
@@ -207,7 +210,7 @@ void TextureManager::drawParallax(const std::string& textureID,
 }
 
 void TextureManager::clearFromTexMap(const std::string& textureID) {
-    std::cout << "Forge Game Engine - Cleared : " << textureID << " texture\n";
+    TEXTURE_INFO("Cleared : " + textureID + " texture");
   m_textureMap.erase(textureID);
 }
 

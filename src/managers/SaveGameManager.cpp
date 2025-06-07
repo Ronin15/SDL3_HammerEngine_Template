@@ -8,7 +8,7 @@
 #include "utils/Vector2D.hpp"
 #include "utils/BinarySerializer.hpp"
 #include "utils/Logger.hpp"
-#include <iostream>
+#include "utils/Logger.hpp"
 #include <fstream>
 #include <filesystem>
 #include <algorithm>
@@ -129,7 +129,7 @@ bool SaveGameManager::save(const std::string& saveFileName, const Player& player
 
 bool SaveGameManager::saveToSlot(int slotNumber, const Player& player) {
     if (slotNumber < 1) {
-        std::cerr << "Forge Game Engine - Save Game Manager: Invalid slot number: " << slotNumber << std::endl;
+        SAVEGAME_ERROR("Invalid slot number: " + std::to_string(slotNumber));
         return false;
     }
 
@@ -221,7 +221,7 @@ bool SaveGameManager::load(const std::string& saveFileName, Player& player) cons
 
 bool SaveGameManager::loadFromSlot(int slotNumber, Player& player) {
     if (slotNumber < 1) {
-        std::cerr << "Forge Game Engine - Save Game Manager: Invalid slot number: " << slotNumber << std::endl;
+        SAVEGAME_ERROR("Invalid slot number: " + std::to_string(slotNumber));
         return false;
     }
 
@@ -234,23 +234,23 @@ bool SaveGameManager::deleteSave(const std::string& saveFileName) const {
         std::string fullPath = getFullSavePath(saveFileName);
         if (std::filesystem::exists(fullPath)) {
             std::filesystem::remove(fullPath);
-            std::cout << "Forge Game Engine - Save successful: " << saveFileName << "\n";
+            SAVEGAME_INFO("Save successful: " + saveFileName);
             return true;
         }
         else {
-            std::cerr << "Forge Game Engine - Save Game Manager: Save file does not exist: " << fullPath << std::endl;
+            SAVEGAME_ERROR("Save file does not exist: " + fullPath);
             return false;
         }
     }
     catch (const std::filesystem::filesystem_error& e) {
-        std::cerr << "Forge Game Engine - Save Game Manager: Error deleting save file: " << e.what() << std::endl;
+        SAVEGAME_ERROR("Error deleting save file: " + std::string(e.what()));
         return false;
     }
 }
 
 bool SaveGameManager::deleteSlot(int slotNumber) {
     if (slotNumber < 1) {
-        std::cerr << "Forge Game Engine - Save Game Manager: Invalid slot number: " << slotNumber << std::endl;
+        SAVEGAME_ERROR("Invalid slot number: " + std::to_string(slotNumber));
         return false;
     }
 
@@ -291,7 +291,7 @@ std::vector<std::string> SaveGameManager::getSaveFiles() const {
         }
     }
     catch (const std::filesystem::filesystem_error& e) {
-        std::cerr << "Forge Game Engine - Save Game Manager: Error listing save files: " << e.what() << std::endl;
+        SAVEGAME_ERROR("Error listing save files: " + std::string(e.what()));
     }
 
     return saveFiles;
@@ -368,10 +368,10 @@ void SaveGameManager::setSaveDirectory(const std::string& directory) {
         // Try to create it
         try {
             if (!std::filesystem::create_directories(directory)) {
-                std::cerr << "Forge Game Engine - Save Game Manager: Failed to create directory: " << directory << "\n";
+                SAVEGAME_ERROR("Failed to create directory: " + directory);
             }
         } catch (const std::exception& e) {
-            std::cerr << "Forge Game Engine - Save Game Manager: Error creating directory: " << e.what() << "\n";
+            SAVEGAME_ERROR("Error creating directory: " + std::string(e.what()));
         }
     }
 
@@ -471,7 +471,7 @@ SaveGameData SaveGameManager::extractSaveInfo(const std::string& saveFileName) c
         // Read and validate header
         SaveGameHeader header;
         if (!readHeader(file, header)) {
-            std::cerr << "Forge Game Engine - Save Game Manager: Invalid save file format when extracting info!" << std::endl;
+            SAVEGAME_ERROR("Invalid save file format when extracting info!");
             file.close();
             return info;
         }
@@ -518,7 +518,7 @@ SaveGameData SaveGameManager::extractSaveInfo(const std::string& saveFileName) c
         file.close();
     }
     catch (const std::exception& e) {
-        std::cerr << "Forge Game Engine - Save Game Manager: Error extracting save info: " << e.what() << std::endl;
+        SAVEGAME_ERROR("Error extracting save info: " + std::string(e.what()));
     }
 
     return info;

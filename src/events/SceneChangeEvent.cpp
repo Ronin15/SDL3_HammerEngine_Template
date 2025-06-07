@@ -5,7 +5,7 @@
 
 #include "events/SceneChangeEvent.hpp"
 #include "utils/Vector2D.hpp"
-#include <iostream>
+#include "utils/Logger.hpp"
 #include <algorithm>
 
 // Helper function to get player position
@@ -49,7 +49,7 @@ void SceneChangeEvent::update() {
             m_transitionProgress = 0.0f;
 
             // Transition complete, scene should be fully changed now
-            std::cout << "Scene transition to " << m_targetSceneID << " complete" << std::endl;
+            EVENT_INFO("Scene transition to " + m_targetSceneID + " complete");
         }
     }
 
@@ -85,14 +85,11 @@ void SceneChangeEvent::execute() {
     m_transitionProgress = 0.0f;
 
     // Log the scene change
-    std::cout << "Changing scene to: " << m_targetSceneID
-              << " using transition: " << static_cast<int>(m_transitionType)
-              << " (duration: " << m_transitionParams.duration << "s)" << std::endl;
+    EVENT_INFO("Changing scene to: " + m_targetSceneID + " using transition: " + std::to_string(static_cast<int>(m_transitionType)) + " (duration: " + std::to_string(m_transitionParams.duration) + "s)");
 
     // Play transition sound if enabled
     if (m_transitionParams.playSound && !m_transitionParams.soundEffect.empty()) {
-        std::cout << "Playing transition sound: " << m_transitionParams.soundEffect
-                  << " at volume: " << m_transitionParams.soundVolume << std::endl;
+        EVENT_INFO("Playing transition sound: " + m_transitionParams.soundEffect + " at volume: " + std::to_string(m_transitionParams.soundVolume));
     }
 
     // In a real implementation, this would trigger the actual scene change
@@ -234,9 +231,12 @@ bool SceneChangeEvent::isTimerComplete() const {
 
 void SceneChangeEvent::forceSceneChange(const std::string& sceneID, TransitionType type, float duration) {
     // Static method that would interact with a central scene management system
-    std::cout << "Forcing scene change to: " << sceneID
-              << " with transition type: " << static_cast<int>(type)
-              << " and duration: " << duration << "s" << std::endl;
+    EVENT_INFO("Forcing scene change to: " + sceneID + " with transition type: " + std::to_string(static_cast<int>(type)) + " and duration: " + std::to_string(duration) + "s");
+
+    // Suppress unused parameter warnings in release builds
+    (void)sceneID;
+    (void)type;
+    (void)duration;
 
     // This would typically call into a game system that manages scenes/states
 }

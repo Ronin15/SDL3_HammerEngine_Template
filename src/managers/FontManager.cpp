@@ -5,7 +5,7 @@
 
 #include "managers/FontManager.hpp"
 #include "utils/Logger.hpp"
-#include <iostream>
+#include "utils/Logger.hpp"
 #include <algorithm>
 #include <filesystem>
 #include <vector>
@@ -16,7 +16,7 @@ bool FontManager::init() {
       return false;
   } else {
 
-    std::cout << "Forge Game Engine - Font system initialized!\n";
+    FONT_INFO("Font system initialized!");
       return true;
   }
 }
@@ -86,7 +86,7 @@ bool FontManager::loadFont(const std::string& fontFile, const std::string& fontI
   }
 
   m_fontMap[fontID] = std::move(font);
-  std::cout << "Forge Game Engine - Loaded font '" << fontID << "' from '" << fontFile << "'\n";
+  FONT_INFO("Loaded font '" + fontID + "' from '" + fontFile + "'");
   return true;
 }
 
@@ -307,7 +307,7 @@ bool FontManager::isFontLoaded(const std::string& fontID) const {
 void FontManager::clearFont(const std::string& fontID) {
   // No need to manually call TTF_CloseFont as the unique_ptr will handle it
   if (m_fontMap.erase(fontID) > 0) {
-    std::cout << "Forge Game Engine - Cleared font: " << fontID << "\n";
+    FONT_INFO("Cleared font: " + fontID);
   }
 }
 

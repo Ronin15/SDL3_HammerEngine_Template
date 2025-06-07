@@ -5,7 +5,7 @@
 
 #include "managers/SoundManager.hpp"
 #include "utils/Logger.hpp"
-#include <iostream>
+#include "utils/Logger.hpp"
 #include <filesystem>
 #include <algorithm>
 
@@ -56,7 +56,7 @@ bool SoundManager::init() {
     return false;
   }
 
-  std::cout << "Forge Game Engine - Sound system initialized!" << "\n";
+  SOUND_INFO("Sound system initialized!");
   m_initialized = true;
   return true;
 }
@@ -128,7 +128,7 @@ bool SoundManager::loadSFX(const std::string& filePath, const std::string& sound
   auto chunk = std::unique_ptr<Mix_Chunk, decltype(&Mix_FreeChunk)>(
       Mix_LoadWAV(filePath.c_str()), Mix_FreeChunk);
 
-  std::cout << "Forge Game Engine - Loading sound effect: " << filePath << "! ID: " << soundID << "\n";
+  SOUND_INFO("Loading sound effect: " + filePath + "! ID: " + soundID);
 
   if (!chunk) {
     SOUND_ERROR("Could not load sound effect: " + std::string(SDL_GetError()));
@@ -200,7 +200,7 @@ bool SoundManager::loadMusic(const std::string& filePath, const std::string& mus
   auto music = std::unique_ptr<Mix_Music, decltype(&Mix_FreeMusic)>(
       Mix_LoadMUS(filePath.c_str()), Mix_FreeMusic);
 
-  std::cout << "Forge Game Engine - Loading music: " << filePath << "! ID: " << musicID << "\n";
+  SOUND_INFO("Loading music: " + filePath + "! ID: " + musicID);
 
   if (!music) {
     SOUND_ERROR("Could not load music: " + std::string(SDL_GetError()));
@@ -213,12 +213,12 @@ bool SoundManager::loadMusic(const std::string& filePath, const std::string& mus
 
 void SoundManager::playSFX(const std::string& soundID, int loops, int volume) {
   if (!m_initialized) {
-    std::cout << "Forge Game Engine - Sound system not initialized!\n";
+    SOUND_ERROR("Sound system not initialized!");
     return;
   }
 
   if (m_sfxMap.find(soundID) == m_sfxMap.end()) {
-    std::cout << "Forge Game Engine - Sound effect not found: " << soundID << "\n";
+    SOUND_ERROR("Sound effect not found: " + soundID);
     return;
   }
 
@@ -238,12 +238,12 @@ void SoundManager::playMusic(const std::string& musicID, int loops, int volume) 
   }
 
   if (!m_initialized) {
-    std::cout << "Forge Game Engine - Sound system not initialized!\n";
+    SOUND_ERROR("Sound system not initialized!");
     return;
   }
 
   if (m_musicMap.find(musicID) == m_musicMap.end()) {
-    std::cout << "Forge Game Engine - Music not found: " << musicID << "\n";
+    SOUND_ERROR("Music not found: " + musicID);
     return;
   }
 
@@ -252,7 +252,7 @@ void SoundManager::playMusic(const std::string& musicID, int loops, int volume) 
 
   // Play the music
   if (Mix_PlayMusic(m_musicMap[musicID], loops) != 0) {
-    std::cout << "Forge Game Engine - Could not play music: " << SDL_GetError() << "\n";
+    SOUND_ERROR("Could not play music: " + std::string(SDL_GetError()));
   }
 }
 
@@ -336,7 +336,7 @@ void SoundManager::clearSFX(const std::string& soundID) {
   if (m_sfxMap.find(soundID) != m_sfxMap.end()) {
     Mix_FreeChunk(m_sfxMap[soundID]);
     m_sfxMap.erase(soundID);
-    std::cout << "Forge Game Engine - Cleared : " << soundID << " sound effect" << "\n";
+    SOUND_INFO("Cleared : " + soundID + " sound effect");
   }
 }
 
@@ -344,7 +344,7 @@ void SoundManager::clearMusic(const std::string& musicID) {
   if (m_musicMap.find(musicID) != m_musicMap.end()) {
     Mix_FreeMusic(m_musicMap[musicID]);
     m_musicMap.erase(musicID);
-    std::cout << "Forge Game Engine - Cleared : " << musicID << " music" << "\n";
+    SOUND_INFO("Cleared : " + musicID + " music");
   }
 }
 

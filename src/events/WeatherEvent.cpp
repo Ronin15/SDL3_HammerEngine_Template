@@ -5,7 +5,7 @@
 
 #include "events/WeatherEvent.hpp"
 #include "utils/Vector2D.hpp"
-#include <iostream>
+#include "utils/Logger.hpp"
 #include <random>
 #include <chrono>
 #include <algorithm>
@@ -148,18 +148,16 @@ void WeatherEvent::execute() {
 
     // Apply this weather type to the game world
     // In a real implementation, this would interact with rendering systems
-    std::cout << "Weather changing to: " << getWeatherTypeString()
-              << " (Intensity: " << m_params.intensity
-              << ", Visibility: " << m_params.visibility << ")" << std::endl;
+    EVENT_INFO("Weather changing to: " + getWeatherTypeString() + " (Intensity: " + std::to_string(m_params.intensity) + ", Visibility: " + std::to_string(m_params.visibility) + ")");
 
     // Trigger particle effects if specified
     if (!m_params.particleEffect.empty()) {
-        std::cout << "Starting particle effect: " << m_params.particleEffect << std::endl;
+        EVENT_INFO("Starting particle effect: " + m_params.particleEffect);
     }
 
     // Play sound effects if specified
     if (!m_params.soundEffect.empty()) {
-        std::cout << "Playing sound effect: " << m_params.soundEffect << std::endl;
+        EVENT_INFO("Playing sound effect: " + m_params.soundEffect);
     }
 }
 
@@ -298,16 +296,22 @@ void WeatherEvent::setBoundingArea(float x1, float y1, float x2, float y2) {
 
 void WeatherEvent::forceWeatherChange(WeatherType type, float transitionTime) {
     // Static method that would interact with a central weather system
-    std::cout << "Forcing weather change to: " << static_cast<int>(type)
-              << " with transition time: " << transitionTime << "s" << std::endl;
+    EVENT_INFO("Forcing weather change to: " + std::to_string(static_cast<int>(type)) + " with transition time: " + std::to_string(transitionTime) + "s");
+
+    // Suppress unused parameter warnings in release builds
+    (void)type;
+    (void)transitionTime;
 
     // This would typically call into a game system that manages weather
 }
 
 void WeatherEvent::forceWeatherChange(const std::string& customType, float transitionTime) {
     // Static method that would interact with a central weather system
-    std::cout << "Forcing weather change to custom type: " << customType
-              << " with transition time: " << transitionTime << "s" << std::endl;
+    EVENT_INFO("Forcing weather change to custom type: " + customType + " with transition time: " + std::to_string(transitionTime) + "s");
+
+    // Suppress unused parameter warnings in release builds
+    (void)customType;
+    (void)transitionTime;
 
     // This would typically call into a game system that manages weather
 }
