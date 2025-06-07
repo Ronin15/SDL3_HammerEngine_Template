@@ -84,6 +84,20 @@ echo -e "${BLUE}Running SaveGameManager tests...${NC}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
+# Create test_data directory if it doesn't exist with user feedback
+if [ ! -d "$PROJECT_ROOT/tests/test_data" ]; then
+  echo -e "${YELLOW}Creating missing test_data directory...${NC}"
+  mkdir -p "$PROJECT_ROOT/tests/test_data"
+  if [ -d "$PROJECT_ROOT/tests/test_data" ]; then
+    echo -e "${GREEN}test_data directory created successfully${NC}"
+  else
+    echo -e "${RED}Failed to create test_data directory${NC}"
+    exit 1
+  fi
+else
+  echo -e "${GREEN}test_data directory already exists${NC}"
+fi
+
 # Check if test executable exists
 TEST_EXECUTABLE="$PROJECT_ROOT/bin/debug/save_manager_tests"
 if [ ! -f "$TEST_EXECUTABLE" ]; then
@@ -103,8 +117,7 @@ fi
 echo -e "${GREEN}Running tests...${NC}"
 echo -e "${BLUE}====================================${NC}"
 
-# Create test_data directory in the project root for the tests
-mkdir -p "$PROJECT_ROOT/tests/test_data"
+
 
 # Change to project root directory before running tests
 cd "$PROJECT_ROOT"
