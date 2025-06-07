@@ -103,11 +103,17 @@ fi
 echo -e "${GREEN}Running tests...${NC}"
 echo -e "${BLUE}====================================${NC}"
 
+# Create test_data directory in the project root for the tests
+mkdir -p "$PROJECT_ROOT/tests/test_data"
+
+# Change to project root directory before running tests
+cd "$PROJECT_ROOT"
+
 # Run with appropriate options
 if [ "$VERBOSE" = true ]; then
-  "$TEST_EXECUTABLE" $TEST_FILTER --log_level=all | tee test_output.log
+  "$TEST_EXECUTABLE" $TEST_FILTER --log_level=all | tee "$PROJECT_ROOT/test_output.log"
 else
-  "$TEST_EXECUTABLE" $TEST_FILTER | tee test_output.log
+  "$TEST_EXECUTABLE" $TEST_FILTER | tee "$PROJECT_ROOT/test_output.log"
 fi
 
 TEST_RESULT=$?
@@ -118,23 +124,23 @@ mkdir -p "$PROJECT_ROOT/test_results"
 
 # Save test results with timestamp
 TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
-cp test_output.log "$PROJECT_ROOT/test_results/save_manager_test_output_${TIMESTAMP}.txt"
+cp "$PROJECT_ROOT/test_output.log" "$PROJECT_ROOT/test_results/save_manager_test_output_${TIMESTAMP}.txt"
 # Also save to the standard location for compatibility
-cp test_output.log "$PROJECT_ROOT/test_results/save_manager_test_output.txt"
+cp "$PROJECT_ROOT/test_output.log" "$PROJECT_ROOT/test_results/save_manager_test_output.txt"
 
 # Extract performance metrics, BinarySerializer test info and test cases run
 echo -e "${YELLOW}Saving test results...${NC}"
-grep -E "time:|performance|microseconds|BinarySerializer|serialization|New serialization system|Binary writer/reader" test_output.log > "$PROJECT_ROOT/test_results/save_manager_performance_metrics.txt" || true
+grep -E "time:|performance|microseconds|BinarySerializer|serialization|New serialization system|Binary writer/reader" "$PROJECT_ROOT/test_output.log" > "$PROJECT_ROOT/test_results/save_manager_performance_metrics.txt" || true
 
 # Extract test cases that were run
 echo -e "\n=== Test Cases Executed ===" > "$PROJECT_ROOT/test_results/save_manager_test_cases.txt"
-grep -E "Entering test case|Test case.*passed" test_output.log >> "$PROJECT_ROOT/test_results/save_manager_test_cases.txt" || true
+grep -E "Entering test case|Test case.*passed" "$PROJECT_ROOT/test_output.log" >> "$PROJECT_ROOT/test_results/save_manager_test_cases.txt" || true
 
 # Extract just the test case names for easy reporting
-grep -E "Entering test case" test_output.log | sed 's/.*Entering test case "\([^"]*\)".*/\1/' > "$PROJECT_ROOT/test_results/save_manager_test_cases_run.txt" || true
+grep -E "Entering test case" "$PROJECT_ROOT/test_output.log" | sed 's/.*Entering test case "\([^"]*\)".*/\1/' > "$PROJECT_ROOT/test_results/save_manager_test_cases_run.txt" || true
 
 # Clean up temporary file
-rm test_output.log
+rm "$PROJECT_ROOT/test_output.log"
 
 # Report test results
 if [ $TEST_RESULT -eq 0 ]; then
@@ -143,10 +149,10 @@ if [ $TEST_RESULT -eq 0 ]; then
   
   # Print summary of test cases run
   echo -e "\n${BLUE}Test Cases Run:${NC}"
-  if [ -f "../../test_results/save_manager_test_cases_run.txt" ] && [ -s "../../test_results/save_manager_test_cases_run.txt" ]; then
+  if [ -f "$PROJECT_ROOT/test_results/save_manager_test_cases_run.txt" ] && [ -s "$PROJECT_ROOT/test_results/save_manager_test_cases_run.txt" ]; then
     while read -r testcase; do
       echo -e "  - ${testcase}"
-    done < "../../test_results/save_manager_test_cases_run.txt"
+    done < "$PROJECT_ROOT/test_results/save_manager_test_cases_run.txt"
   else
     echo -e "${YELLOW}  No test case details found.${NC}"
   fi
@@ -156,14 +162,14 @@ else
   
   # Print a summary of failed tests if available
   echo -e "\n${YELLOW}Failed Test Summary:${NC}"
-  grep -E "FAILED|ASSERT" "../../test_results/save_manager_test_output.txt" || echo -e "${YELLOW}No specific failure details found.${NC}"
+  grep -E "FAILED|ASSERT" "$PROJECT_ROOT/test_results/save_manager_test_output.txt" || echo -e "${YELLOW}No specific failure details found.${NC}"
   
   # Print summary of test cases run
   echo -e "\n${BLUE}Test Cases Run:${NC}"
-  if [ -f "../../test_results/save_manager_test_cases_run.txt" ] && [ -s "../../test_results/save_manager_test_cases_run.txt" ]; then
+  if [ -f "$PROJECT_ROOT/test_results/save_manager_test_cases_run.txt" ] && [ -s "$PROJECT_ROOT/test_results/save_manager_test_cases_run.txt" ]; then
     while read -r testcase; do
       echo -e "  - ${testcase}"
-    done < "../../test_results/save_manager_test_cases_run.txt"
+    done < "$PROJECT_ROOT/test_results/save_manager_test_cases_run.txt"
   else
     echo -e "${YELLOW}  No test case details found.${NC}"
   fi
