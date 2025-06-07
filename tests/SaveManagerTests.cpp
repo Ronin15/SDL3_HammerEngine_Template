@@ -10,7 +10,6 @@
 #include <filesystem>
 #include <csignal>
 #include <chrono>
-#include <thread>
 
 // Forward declarations to avoid dependencies
 class Player;
