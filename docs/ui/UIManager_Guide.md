@@ -12,10 +12,7 @@ The UIManager is a comprehensive UI system for SDL3 games that provides reusable
 // In your GameState's enter() method
 auto& ui = UIManager::Instance();
 
-// Create theme background for full-screen UI
-ui.createThemeBackground(windowWidth, windowHeight);
-
-// Create components with automatic professional styling
+// Create components with automatic professional styling and z-order
 ui.createButton("play_btn", {300, 200, 200, 50}, "Play Game");
 ui.createLabel("title", {0, 50, 800, 60}, "My Game Title");
 
@@ -50,14 +47,24 @@ public:
         // REQUIRED: Clean up UI components
         auto& ui = UIManager::Instance();
         ui.removeComponentsWithPrefix("mystate_");
-        ui.removeThemeBackground();
-        ui.resetToDefaultTheme();
         return true;
     }
 };
 ```
 
 ## Component Types & Usage
+
+### Automatic Z-Order System
+```cpp
+// Components automatically get proper layering - no manual z-order needed!
+ui.createDialog("background", bounds);    // Auto z-order: -10 (background)
+ui.createPanel("container", bounds);      // Auto z-order: 0 (containers)
+ui.createButton("action", bounds, "OK");  // Auto z-order: 10 (interactive)
+ui.createLabel("text", bounds, "Label");  // Auto z-order: 20 (text on top)
+
+// Manual override only if needed (rarely required)
+ui.setComponentZOrder("special_component", 50);
+```
 
 ### Buttons
 ```cpp
@@ -88,7 +95,7 @@ ui.setOnTextChanged("my_input", [](const std::string& text) {
 ### Progress Bars & Sliders
 ```cpp
 ui.createProgressBar("progress", {x, y, width, height}, 0.0f, 1.0f);
-ui.updateProgressBar("progress", 0.75f); // 75%
+ui.setValue("progress", 0.75f); // 75%
 
 ui.createSlider("volume", {x, y, width, height}, 0.0f, 100.0f);
 ui.setOnValueChanged("volume", [](float value) {
@@ -107,37 +114,47 @@ ui.addEventLogEntry("events", "System started");
 ui.enableEventLogAutoUpdate("events", 2.0f); // Demo updates every 2 seconds
 ```
 
-### Checkboxes & Images
+### Checkboxes, Images & Dialogs
 ```cpp
 ui.createCheckbox("option", {x, y, width, height}, "Enable Feature");
 ui.setChecked("option", true);
 
 ui.createImage("logo", {x, y, width, height}, "texture_id");
 ui.createPanel("background", {x, y, width, height}); // Background/container
+ui.createDialog("dialog", {x, y, width, height}); // Modal dialog backgrounds
 ```
 
-## Professional Theming System
+### Professional Theming System
 
-### Automatic Theme Styling
+### Automatic Theme Styling & Z-Order
 ```cpp
-// Components automatically use professional themes - no manual styling needed!
+// Components automatically use professional themes and z-order - no manual management needed!
 ui.setThemeMode("light");  // Professional light theme
 ui.setThemeMode("dark");   // Professional dark theme (default)
 
 // All components get consistent:
-// - Professional colors and contrast
+// - Professional colors and contrast (theme-appropriate text colors)
+// - Automatic z-order layering (dialogs: -10, panels: 0, buttons: 10, labels: 20)
 // - Enhanced mouse accuracy (36px list items)
 // - Proper hover/pressed states
 // - Optimized typography
+// - Automatic theme refresh when themes change mid-state
 ```
 
-### Background Management
+### Modal Creation & Overlays
 ```cpp
-// For full-screen menus (adds theme background overlay)
-ui.createThemeBackground(windowWidth, windowHeight);
+// Simplified modal creation - combines theme + overlay + dialog in one call
+int dialogX = (windowWidth - 400) / 2;
+int dialogY = (windowHeight - 200) / 2;
+ui.createModal("dialog_id", {dialogX, dialogY, 400, 200}, "dark", windowWidth, windowHeight);
+
+// Automatically handles:
+// - Theme switching and refreshing existing components
+// - Overlay creation for background dimming
+// - Dialog creation with proper z-order
+// - All components get theme-appropriate styling
 
 // For HUD elements (no overlay - game remains visible)
-// Simply don't call createThemeBackground()
 ui.createProgressBar("health_bar", {10, 10, 200, 20});
 ```
 
@@ -239,7 +256,12 @@ ui.resetToDefaultTheme();
 ui.setComponentVisible("my_component", false); // Hide temporarily
 ui.setComponentEnabled("my_component", false);  // Disable interaction
 ui.setComponentBounds("my_component", newBounds);
-ui.setComponentZOrder("my_component", 10);      // Rendering order
+
+// Z-order is automatic by component type:
+// DIALOG: -10, PANEL: 0, IMAGE: 1, PROGRESS_BAR: 5, EVENT_LOG: 6, LIST: 8
+// BUTTON: 10, SLIDER: 12, CHECKBOX: 13, INPUT_FIELD: 15, LABEL: 20, TITLE: 25
+// Override only if needed (rarely required):
+ui.setComponentZOrder("my_component", 50);
 ```
 
 ## Best Practices
@@ -255,6 +277,8 @@ ui.setComponentZOrder("my_component", 10);      // Rendering order
 - Minimize component creation/destruction in update loops
 - Use `removeComponentsWithPrefix()` for efficient bulk cleanup
 - Cache component references when accessing frequently
+- Automatic z-order eliminates manual layering management overhead
+- Theme refresh is automatic when using `createModal()` or `setThemeMode()`
 
 ### Component Naming Convention
 ```cpp
@@ -287,10 +311,7 @@ class MainMenuState : public GameState {
         auto& ui = UIManager::Instance();
         auto& gameEngine = GameEngine::Instance();
         
-        // Create theme background
-        ui.createThemeBackground(gameEngine.getWindowWidth(), gameEngine.getWindowHeight());
-        
-        // Create menu components
+        // Create menu components with automatic z-order
         ui.createTitle("mainmenu_title", {0, 100, 800, 80}, "My Game");
         ui.createButton("mainmenu_play", {300, 250, 200, 50}, "Play Game");
         ui.createButton("mainmenu_quit", {300, 320, 200, 50}, "Quit");
@@ -306,8 +327,6 @@ class MainMenuState : public GameState {
     bool exit() override {
         auto& ui = UIManager::Instance();
         ui.removeComponentsWithPrefix("mainmenu_");
-        ui.removeThemeBackground();
-        ui.resetToDefaultTheme();
         return true;
     }
 };
@@ -382,33 +401,31 @@ public:
     bool enter() override {
         auto& ui = UIManager::Instance();
         auto& gameEngine = GameEngine::Instance();
+        int windowWidth = gameEngine.getWindowWidth();
+        int windowHeight = gameEngine.getWindowHeight();
         
-        // Create theme background
-        ui.createThemeBackground(gameEngine.getWindowWidth(), gameEngine.getWindowHeight());
+        // Create modal with centered positioning
+        int dialogX = (windowWidth - 400) / 2;
+        int dialogY = (windowHeight - 200) / 2;
         
-        // Create title and controls
-        ui.createTitle("options_title", {0, 50, 800, 60}, "Options");
-        
-        ui.createLabel("options_volume_label", {200, 150, 150, 30}, "Volume:");
-        ui.createSlider("options_volume_slider", {360, 150, 200, 30}, 0.0f, 100.0f);
-        
-        ui.createCheckbox("options_fullscreen", {200, 200, 300, 30}, "Fullscreen");
-        ui.createCheckbox("options_vsync", {200, 240, 300, 30}, "V-Sync");
-        
-        ui.createButton("options_back", {300, 350, 200, 50}, "Back");
+        ui.createModal("dialog", {dialogX, dialogY, 400, 200}, "dark", windowWidth, windowHeight);
+        ui.createLabel("dialog_title", {dialogX + 20, dialogY + 20, 360, 30}, "Confirm Action");
+        ui.createLabel("dialog_text", {dialogX + 20, dialogY + 60, 360, 40}, "Are you sure you want to quit?");
+        ui.createButton("dialog_yes", {dialogX + 50, dialogY + 120, 100, 40}, "Yes");
+        ui.createButton("dialog_cancel", {dialogX + 250, dialogY + 120, 100, 40}, "Cancel");
         
         // Set up callbacks
-        ui.setOnClick("options_back", [this]() {
-            gameStateManager->setState("MainMenuState");
+        ui.setOnClick("dialog_yes", []() {
+            GameEngine::Instance().setRunning(false);
         });
         
-        ui.setOnValueChanged("options_volume_slider", [](float value) {
-            // Update game volume
-            AudioManager::Instance().setMasterVolume(value / 100.0f);
+        ui.setOnClick("dialog_cancel", []() {
+            // Close dialog logic here
         });
         
         return true;
     }
+</invoke>
     
     void update(float deltaTime) override {
         auto& ui = UIManager::Instance();
@@ -425,9 +442,8 @@ public:
     
     bool exit() override {
         auto& ui = UIManager::Instance();
-        ui.removeComponentsWithPrefix("options_");
-        ui.removeThemeBackground();
-        ui.resetToDefaultTheme();
+        ui.removeComponentsWithPrefix("dialog_");
+        ui.removeOverlay(); // Clean up modal overlay
         return true;
     }
 };

@@ -72,11 +72,23 @@ void UIManager::render(SDL_Renderer* renderer) {
         return;
     }
 
-    // Render components in z-order
+    // Create vector of components sorted by z-order
+    std::vector<std::shared_ptr<UIComponent>> sortedComponents;
     for (const auto& [id, component] : m_components) {
         if (component && component->visible) {
-            renderComponent(renderer, component);
+            sortedComponents.push_back(component);
         }
+    }
+    
+    // Sort by zOrder (lower values render first/behind)
+    std::sort(sortedComponents.begin(), sortedComponents.end(), 
+              [](const std::shared_ptr<UIComponent>& a, const std::shared_ptr<UIComponent>& b) {
+                  return a->zOrder < b->zOrder;
+              });
+    
+    // Render components in z-order
+    for (const auto& component : sortedComponents) {
+        renderComponent(renderer, component);
     }
 
     // Render tooltip last (on top)
@@ -128,6 +140,7 @@ void UIManager::createButton(const std::string& id, const UIRect& bounds, const 
     component->bounds = bounds;
     component->text = text;
     component->style = m_currentTheme.getStyle(UIComponentType::BUTTON);
+    component->zOrder = 10; // Interactive elements on top
 
     m_components[id] = component;
 }
@@ -139,6 +152,7 @@ void UIManager::createLabel(const std::string& id, const UIRect& bounds, const s
     component->bounds = bounds;
     component->text = text;
     component->style = m_currentTheme.getStyle(UIComponentType::LABEL);
+    component->zOrder = 20; // Text on top
 
     m_components[id] = component;
 }
@@ -150,6 +164,7 @@ void UIManager::createTitle(const std::string& id, const UIRect& bounds, const s
     component->bounds = bounds;
     component->text = text;
     component->style = m_currentTheme.getStyle(UIComponentType::TITLE);
+    component->zOrder = 25; // Titles on top
 
     m_components[id] = component;
 }
@@ -160,6 +175,7 @@ void UIManager::createPanel(const std::string& id, const UIRect& bounds) {
     component->type = UIComponentType::PANEL;
     component->bounds = bounds;
     component->style = m_currentTheme.getStyle(UIComponentType::PANEL);
+    component->zOrder = 0; // Background panels
 
     m_components[id] = component;
 }
@@ -173,6 +189,7 @@ void UIManager::createProgressBar(const std::string& id, const UIRect& bounds, f
     component->maxValue = maxVal;
     component->value = minVal;
     component->style = m_currentTheme.getStyle(UIComponentType::PROGRESS_BAR);
+    component->zOrder = 5; // UI elements
 
     m_components[id] = component;
 }
@@ -184,6 +201,7 @@ void UIManager::createInputField(const std::string& id, const UIRect& bounds, co
     component->bounds = bounds;
     component->placeholder = placeholder;
     component->style = m_currentTheme.getStyle(UIComponentType::INPUT_FIELD);
+    component->zOrder = 15; // Interactive elements
 
     m_components[id] = component;
 }
@@ -195,6 +213,7 @@ void UIManager::createImage(const std::string& id, const UIRect& bounds, const s
     component->bounds = bounds;
     component->textureID = textureID;
     component->style = m_currentTheme.getStyle(UIComponentType::IMAGE);
+    component->zOrder = 1; // Background images
 
     m_components[id] = component;
 }
@@ -208,6 +227,7 @@ void UIManager::createSlider(const std::string& id, const UIRect& bounds, float 
     component->maxValue = maxVal;
     component->value = minVal;
     component->style = m_currentTheme.getStyle(UIComponentType::SLIDER);
+    component->zOrder = 12; // Interactive elements
 
     m_components[id] = component;
 }
@@ -220,6 +240,7 @@ void UIManager::createCheckbox(const std::string& id, const UIRect& bounds, cons
     component->text = text;
     component->checked = false;
     component->style = m_currentTheme.getStyle(UIComponentType::CHECKBOX);
+    component->zOrder = 13; // Interactive elements
 
     m_components[id] = component;
 }
@@ -231,6 +252,7 @@ void UIManager::createList(const std::string& id, const UIRect& bounds) {
     component->bounds = bounds;
     component->selectedIndex = -1;
     component->style = m_currentTheme.getStyle(UIComponentType::LIST);
+    component->zOrder = 8; // UI elements
 
     m_components[id] = component;
 }
@@ -254,8 +276,46 @@ void UIManager::createEventLog(const std::string& id, const UIRect& bounds, int 
     component->bounds = bounds;
     component->maxLength = maxEntries; // Store max entries in maxLength field
     component->style = m_currentTheme.getStyle(UIComponentType::EVENT_LOG); // Use event log styling
+    component->zOrder = 6; // UI elements
 
     m_components[id] = component;
+}
+
+void UIManager::createDialog(const std::string& id, const UIRect& bounds) {
+    auto component = std::make_shared<UIComponent>();
+    component->id = id;
+    component->type = UIComponentType::DIALOG;
+    component->bounds = bounds;
+    component->style = m_currentTheme.getStyle(UIComponentType::DIALOG);
+    component->zOrder = -10; // Render behind other elements by default
+
+    m_components[id] = component;
+}
+
+void UIManager::createModal(const std::string& dialogId, const UIRect& bounds, const std::string& theme, int windowWidth, int windowHeight) {
+    // Set theme first
+    if (!theme.empty()) {
+        setThemeMode(theme);
+        // Refresh existing components to use new theme
+        refreshAllComponentThemes();
+    }
+    
+    // Create overlay to dim background
+    createOverlay(windowWidth, windowHeight);
+    
+    // Create dialog box
+    createDialog(dialogId, bounds);
+}
+
+void UIManager::refreshAllComponentThemes() {
+    // Apply current theme to all existing components, preserving custom alignment
+    for (const auto& [id, component] : m_components) {
+        if (component) {
+            UIAlignment preservedAlignment = component->style.textAlign;
+            component->style = m_currentTheme.getStyle(component->type);
+            component->style.textAlign = preservedAlignment;
+        }
+    }
 }
 
 // Component manipulation
@@ -844,7 +904,7 @@ void UIManager::setLightTheme() {
     // Label style - enhanced contrast
     UIStyle labelStyle;
     labelStyle.backgroundColor = {0, 0, 0, 0}; // Transparent
-    labelStyle.textColor = {255, 255, 255, 255}; // Pure white for maximum contrast
+    labelStyle.textColor = {20, 20, 20, 255}; // Dark text for light backgrounds
     labelStyle.textAlign = UIAlignment::CENTER_LEFT;
     labelStyle.fontID = "fonts_UI_Arial";
     lightTheme.componentStyles[UIComponentType::LABEL] = labelStyle;
@@ -901,7 +961,7 @@ void UIManager::setLightTheme() {
     UIStyle checkboxStyle = buttonStyle;
     checkboxStyle.backgroundColor = {180, 180, 180, 255};
     checkboxStyle.hoverColor = {200, 200, 200, 255};
-    checkboxStyle.textColor = {255, 255, 255, 255}; // Pure white text
+    checkboxStyle.textColor = {20, 20, 20, 255}; // Dark text for light backgrounds
     checkboxStyle.textAlign = UIAlignment::CENTER_LEFT;
     checkboxStyle.fontID = "fonts_UI_Arial";
     lightTheme.componentStyles[UIComponentType::CHECKBOX] = checkboxStyle;
@@ -911,7 +971,7 @@ void UIManager::setLightTheme() {
     tooltipStyle.backgroundColor = {40, 40, 40, 230}; // More opaque for tooltips
     tooltipStyle.borderColor = {180, 180, 180, 255};
     tooltipStyle.borderWidth = 1;
-    tooltipStyle.textColor = {255, 255, 255, 255};
+    tooltipStyle.textColor = {255, 255, 255, 255}; // White text for dark tooltip background
     tooltipStyle.fontID = "fonts_UI_Arial";
     lightTheme.componentStyles[UIComponentType::TOOLTIP] = tooltipStyle;
 
@@ -937,6 +997,14 @@ void UIManager::setLightTheme() {
     titleStyle.textAlign = UIAlignment::CENTER_LEFT;
     titleStyle.fontID = m_titleFontID; // Use larger font
     lightTheme.componentStyles[UIComponentType::TITLE] = titleStyle;
+
+    // Dialog style - solid background for modal dialogs
+    UIStyle dialogStyle;
+    dialogStyle.backgroundColor = {245, 245, 245, 255}; // Light solid background
+    dialogStyle.borderColor = {120, 120, 120, 255}; // Dark border for definition
+    dialogStyle.borderWidth = 2;
+    dialogStyle.fontID = "fonts_UI_Arial";
+    lightTheme.componentStyles[UIComponentType::DIALOG] = dialogStyle;
 
     m_currentTheme = lightTheme;
 
@@ -1064,6 +1132,14 @@ void UIManager::setDarkTheme() {
     titleStyle.fontID = m_titleFontID; // Use larger font
     darkTheme.componentStyles[UIComponentType::TITLE] = titleStyle;
 
+    // Dialog style - solid background for modal dialogs
+    UIStyle dialogStyle;
+    dialogStyle.backgroundColor = {45, 45, 45, 255}; // Dark solid background
+    dialogStyle.borderColor = {160, 160, 160, 255}; // Light border for definition
+    dialogStyle.borderWidth = 2;
+    dialogStyle.fontID = "fonts_UI_Arial";
+    darkTheme.componentStyles[UIComponentType::DIALOG] = dialogStyle;
+
     m_currentTheme = darkTheme;
 
     // Apply theme to all existing components, preserving custom alignment
@@ -1091,17 +1167,18 @@ std::string UIManager::getCurrentThemeMode() const {
     return m_currentThemeMode;
 }
 
-void UIManager::createThemeBackground(int windowWidth, int windowHeight) {
-    // Remove existing theme background if it exists
-    removeThemeBackground();
+void UIManager::createOverlay(int windowWidth, int windowHeight) {
+    // Remove existing overlay if it exists
+    removeOverlay();
 
-    // Create main background panel with current theme styling
-    createPanel("__theme_background", {0, 0, windowWidth, windowHeight});
+    // Create semi-transparent overlay panel using current theme's panel style
+    createPanel("__overlay", {0, 0, windowWidth, windowHeight});
 }
 
-void UIManager::removeThemeBackground() {
-    if (hasComponent("__theme_background")) {
-        removeComponent("__theme_background");
+void UIManager::removeOverlay() {
+    // Remove the overlay panel if it exists
+    if (hasComponent("__overlay")) {
+        removeComponent("__overlay");
     }
 }
 
@@ -1128,7 +1205,7 @@ void UIManager::clearAllComponents() {
     componentsToRemove.reserve(64);  // Reserve capacity for performance
 
     for (const auto& [id, component] : m_components) {
-        if (id != "__theme_background") {
+        if (id != "__overlay") {
             componentsToRemove.push_back(id);
         }
     }
@@ -1147,9 +1224,28 @@ void UIManager::clearAllComponents() {
 }
 
 void UIManager::resetToDefaultTheme() {
-    // Reset to dark theme and clear any theme contamination
+    // Reset to default dark theme (only used by states that actually change themes)
     setDarkTheme();
     m_currentThemeMode = "dark";
+}
+
+void UIManager::cleanupForStateTransition() {
+    // Remove all components (complete cleanup)
+    m_components.clear();
+    
+    // Remove overlay
+    removeOverlay();
+    
+    // Reset to default theme
+    resetToDefaultTheme();
+    
+    // Clear any remaining UI state
+    m_focusedComponent.clear();
+    m_hoveredTooltip.clear();
+    
+    // Reset global settings
+    m_globalStyle = UIStyle{};
+    m_globalFontID = "fonts_UI_Arial";
 }
 
 void UIManager::applyThemeToComponent(const std::string& id, UIComponentType type) {
@@ -1426,6 +1522,9 @@ void UIManager::renderComponent(SDL_Renderer* renderer, const std::shared_ptr<UI
             break;
         case UIComponentType::PANEL:
             renderPanel(renderer, component);
+            break;
+        case UIComponentType::DIALOG:
+            renderPanel(renderer, component);  // Dialogs render like panels
             break;
         case UIComponentType::PROGRESS_BAR:
             renderProgressBar(renderer, component);

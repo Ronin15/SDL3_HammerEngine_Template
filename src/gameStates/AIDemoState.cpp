@@ -215,11 +215,9 @@ bool AIDemoState::exit() {
         m_player.reset();
     }
 
-    // Clean up UI
+    // Clean up UI components efficiently
     auto& ui = UIManager::Instance();
-    ui.removeComponent("ai_title");
-    ui.removeComponent("ai_instructions");
-    ui.removeComponent("ai_status");
+    ui.removeComponentsWithPrefix("ai_");
 
     // Chase behavior cleanup is now handled by AIManager
 

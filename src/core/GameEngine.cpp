@@ -308,13 +308,13 @@ texMgr.load("res/img", "", mp_renderer.get());
     mp_aiManager = &AIManager::Instance();
     mp_eventManager = &EventManager::Instance();
     // InputManager not cached - handled in handleEvents() for proper SDL architecture
-    
+
     // Validate that cached managers are properly initialized
     if (!mp_aiManager || !mp_eventManager) {
       std::cerr << "Forge Game Engine - Error: One or more manager references are null!" << std::endl;
       return false;
     }
-    
+
     std::cout << "Forge Game Engine - Manager references cached and validated successfully\n";
   } catch (const std::exception& e) {
     std::cerr << "Forge Game Engine - Error caching manager references: " << e.what() << std::endl;
@@ -371,7 +371,7 @@ void GameEngine::update([[maybe_unused]] float deltaTime) {
   // Worker budget coordination - GameEngine reserves workers for critical operations
   if (Forge::ThreadSystem::Exists()) {
     auto& threadSystem = Forge::ThreadSystem::Instance();
-    
+
     // Submit critical game engine tasks with high priority to ensure they get processed first
     threadSystem.enqueueTask([]() {
       // Critical game loop coordination tasks can go here if needed
@@ -392,12 +392,12 @@ void GameEngine::update([[maybe_unused]] float deltaTime) {
     // =====================================
     // Core engine systems are updated globally for optimal performance and consistency
     // State-specific systems are updated by individual states for flexibility and efficiency
-    
+
     // GLOBAL SYSTEMS (Updated by GameEngine):
     // - AIManager: World simulation with 10K+ entities, benefits from consistent global updates
     // - EventManager: Global game events (weather, scene changes), batch processing optimization
     // - InputManager: Handled in handleEvents() for proper SDL event polling architecture
-    
+
     // AI system - manages world entities across all states (cached reference access)
     if (mp_aiManager) {
       try {
@@ -410,7 +410,7 @@ void GameEngine::update([[maybe_unused]] float deltaTime) {
     } else {
       std::cerr << "Forge Game Engine - AIManager cache is null!" << std::endl;
     }
-    
+
     // Event system - global game events and world simulation (cached reference access)
     if (mp_eventManager) {
       try {
@@ -423,11 +423,11 @@ void GameEngine::update([[maybe_unused]] float deltaTime) {
     } else {
       std::cerr << "Forge Game Engine - EventManager cache is null!" << std::endl;
     }
-    
+
     // STATE-MANAGED SYSTEMS (Updated by individual states):
     // - UIManager: Optional, state-specific, only updated when UI is actually used
     // See UIExampleState::update() for proper state-managed pattern
-    
+
     // Update game states - states handle their specific system needs
     mp_gameStateManager->update(deltaTime);
 
@@ -558,7 +558,7 @@ void GameEngine::processBackgroundTasks() {
     // Background processing tasks can be added here
     // Note: EventManager is now updated in the main update loop for optimal performance
     // and consistency with other global systems (AI, Input)
-    
+
     // Example: Process non-critical background tasks
     // These tasks can run while the main thread is handling rendering
   } catch (const std::exception& e) {

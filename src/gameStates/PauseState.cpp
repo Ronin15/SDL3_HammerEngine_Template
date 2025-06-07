@@ -52,9 +52,9 @@ void PauseState::render() {
 bool PauseState::exit() {
   std::cout << "Forge Game Engine - Exiting PAUSE State\n";
   
-  // Clean up UI
+  // Clean up UI components efficiently
   auto& ui = UIManager::Instance();
-  ui.removeComponent("pause_title");
+  ui.removeComponentsWithPrefix("pause_");
 
   return true;
 }
