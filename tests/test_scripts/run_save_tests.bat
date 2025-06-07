@@ -45,17 +45,14 @@ if /i "%~1"=="--help" (
     echo   --clean      Clean test artifacts before building
     echo   --clean-all  Remove entire build directory and rebuild
     echo   --verbose    Run tests with verbose output
-    echo   --dir-test   Run only directory creation tests
     echo   --save-test  Run only save/load tests
     echo   --slot-test  Run only slot operations tests
     echo   --error-test Run only error handling tests
+    echo   --serialization-test Run only new serialization system tests
+    echo   --performance-test Run only performance comparison tests
+    echo   --integration-test Run only BinarySerializer integration tests
     echo   --help       Show this help message
     exit /b 0
-)
-if /i "%~1"=="--dir-test" (
-    set "TEST_FILTER=--run_test=TestDirectoryCreation"
-    shift
-    goto :parse_args
 )
 if /i "%~1"=="--save-test" (
     set "TEST_FILTER=--run_test=TestSaveAndLoad"
@@ -69,6 +66,21 @@ if /i "%~1"=="--slot-test" (
 )
 if /i "%~1"=="--error-test" (
     set "TEST_FILTER=--run_test=TestErrorHandling"
+    shift
+    goto :parse_args
+)
+if /i "%~1"=="--serialization-test" (
+    set "TEST_FILTER=--run_test=TestNewSerializationSystem"
+    shift
+    goto :parse_args
+)
+if /i "%~1"=="--performance-test" (
+    set "TEST_FILTER=--run_test=TestPerformanceComparison"
+    shift
+    goto :parse_args
+)
+if /i "%~1"=="--integration-test" (
+    set "TEST_FILTER=--run_test=TestBinarySerializerIntegration"
     shift
     goto :parse_args
 )
@@ -113,11 +125,11 @@ set "LOG_FILE=test_output.log"
 if exist "!LOG_FILE!" del "!LOG_FILE!"
 
 if "%VERBOSE%"=="true" (
-    "!TEST_EXECUTABLE!" --log_level=all --report_level=detailed !TEST_FILTER! > "!LOG_FILE!" 2>&1
+    "!TEST_EXECUTABLE!" !TEST_FILTER! --log_level=all --report_level=detailed > "!LOG_FILE!" 2>&1
     type "!LOG_FILE!"
 ) else (
     :: Use test_log to capture test case entries even in non-verbose mode
-    "!TEST_EXECUTABLE!" --report_level=short --log_level=test_suite !TEST_FILTER! > "!LOG_FILE!" 2>&1
+    "!TEST_EXECUTABLE!" !TEST_FILTER! --report_level=short --log_level=test_suite > "!LOG_FILE!" 2>&1
 )
 
 set TEST_RESULT=!ERRORLEVEL!
@@ -133,9 +145,9 @@ copy test_output.log "..\..\test_results\save_manager_test_output_!TIMESTAMP!.tx
 :: Also save to the standard location for compatibility
 copy test_output.log "..\..\test_results\save_manager_test_output.txt" > nul
 
-:: Extract performance metrics, directory creation test info and test cases run
+:: Extract performance metrics, BinarySerializer test info and test cases run
 echo !YELLOW!Saving test results...!NC!
-findstr /r /c:"time:" /c:"performance" /c:"saved:" /c:"loaded:" /c:"TestSaveGameManager:" /c:"Directory creation" /c:"ensureDirectory" test_output.log > "..\..\test_results\save_manager_performance_metrics.txt" 2>nul
+findstr /r /c:"time:" /c:"performance" /c:"microseconds" /c:"BinarySerializer" /c:"serialization" /c:"New serialization system" /c:"Binary writer/reader" test_output.log > "..\..\test_results\save_manager_performance_metrics.txt" 2>nul
 
 :: Extract test cases that were run
 echo === Test Cases Executed === > "..\..\test_results\save_manager_test_cases.txt"

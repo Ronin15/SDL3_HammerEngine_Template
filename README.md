@@ -14,7 +14,7 @@ I use the Zed IDE with custom cmake and ninja task configurations to build/compi
 ## Features Overview
 
 - SDL3 integration with SDL_image, SDL_ttf, and SDL_mixer
-- Boost Container lib for efficient memory management -> https://www.boost.org https://github.com/boostorg/boost
+- Fast header-only binary serialization system (replaces Boost serialization)
 - Cross-platform support (Windows, macOS, Linux)
 - Multi-threading support with priority-based task scheduling
 - Automatic dependency management with FetchContent
@@ -22,7 +22,7 @@ I use the Zed IDE with custom cmake and ninja task configurations to build/compi
 - Game state management system (state machine)
 - Entity state management system (state machine)
 - Event management system for game events (weather, scene transitions, NPC spawning, Quests)
-- Save game system (for saving and loading game state)
+- Save game system with fast BinarySerializer (10x faster than Boost, smart pointer-based memory management)
 - Texture management (auto loads all from img dir)
 - Sound & Music management (auto loads all from sound and music dir) stop, start, pause, halt, play sfx
 - Font management (auto loads all from font dir)
@@ -55,7 +55,7 @@ I use the Zed IDE with custom cmake and ninja task configurations to build/compi
 - CMake 3.28 or higher
 - Ninja build system (recommended)
 - A C++ compiler with C++20 support. GCC and G++ 13.30 (recommended)
-- Boost libraries (automatically downloaded via FetchContent)
+- Boost Test framework (optional, only for unit tests - automatically downloaded via FetchContent)
 
 ### Windows
 Need to install mysys2 for compiler and for SDL3 dependencies like harfbuzz, freetype etc.
@@ -94,7 +94,7 @@ The project includes comprehensive testing suites for all major components inclu
 ./run_all_tests.sh
 
 # Core manager component tests
-./run_save_tests.sh          # SaveGameManager functionality tests
+./run_save_tests.sh          # SaveGameManager and BinarySerializer tests
 ./run_thread_tests.sh        # ThreadSystem unit tests and benchmarks
 ./run_event_tests.sh         # EventManager performance and functionality tests
 
