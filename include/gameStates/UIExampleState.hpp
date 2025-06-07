@@ -28,20 +28,7 @@ private:
     int m_selectedListItem{-1};
     std::string m_inputText{};
     
-    // Component IDs
-    static constexpr const char* BACK_BUTTON = "back_btn";
-    static constexpr const char* TITLE_LABEL = "title_label";
-    static constexpr const char* SLIDER_COMPONENT = "demo_slider";
-    static constexpr const char* SLIDER_LABEL = "slider_label";
-    static constexpr const char* CHECKBOX_COMPONENT = "demo_checkbox";
-    static constexpr const char* INPUT_FIELD = "demo_input";
-    static constexpr const char* INPUT_LABEL = "input_label";
-    static constexpr const char* LIST_COMPONENT = "demo_list";
-    static constexpr const char* PROGRESS_BAR = "demo_progress";
-    static constexpr const char* PROGRESS_LABEL = "progress_label";
-    static constexpr const char* ANIMATION_BUTTON = "animate_btn";
-    static constexpr const char* THEME_BUTTON = "theme_btn";
-    static constexpr const char* MAIN_PANEL = "main_panel";
+    // No state-specific constants - keep UIManager generic
     
     // Helper methods
     void handleSliderChange(float value);

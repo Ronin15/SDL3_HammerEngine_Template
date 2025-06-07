@@ -26,86 +26,86 @@ bool UIExampleState::enter() {
     int windowWidth = gameEngine.getWindowWidth();
     int windowHeight = gameEngine.getWindowHeight();
 
-    // Create theme background
-    ui.createThemeBackground(windowWidth, windowHeight);
+    // Create overlay background
+    ui.createOverlay(windowWidth, windowHeight);
     
     // Title
-    ui.createTitle("title_label", {0, 30, windowWidth, 40}, "UIManager Feature Demo");
-    ui.setTitleAlignment("title_label", UIAlignment::CENTER_CENTER);
+    ui.createTitle("uiexample_title_label", {0, 30, windowWidth, 40}, "UIManager Feature Demo");
+    ui.setTitleAlignment("uiexample_title_label", UIAlignment::CENTER_CENTER);
     
     // Back button and instruction
-    ui.createButton("back_btn", {50, windowHeight - 80, 120, 40}, "Back");
-    ui.createLabel("back_instruction", {180, windowHeight - 75, 200, 30}, "Press B to go back");
+    ui.createButton("uiexample_back_btn", {50, windowHeight - 80, 120, 40}, "Back");
+    ui.createLabel("uiexample_back_instruction", {180, windowHeight - 75, 200, 30}, "Press B to go back");
     
     // Slider demo
-    ui.createSlider("demo_slider", {50, 120, 200, 30}, 0.0f, 1.0f);
-    ui.setValue("demo_slider", 0.5f);
-    ui.createLabel("slider_label", {260, 120, 200, 30}, "Slider: 0.50");
+    ui.createSlider("uiexample_demo_slider", {50, 120, 200, 30}, 0.0f, 1.0f);
+    ui.setValue("uiexample_demo_slider", 0.5f);
+    ui.createLabel("uiexample_slider_label", {260, 120, 200, 30}, "Slider: 0.50");
     
     // Checkbox demo
-    ui.createCheckbox("demo_checkbox", {50, 170, 250, 30}, "Toggle Option");
+    ui.createCheckbox("uiexample_demo_checkbox", {50, 170, 250, 30}, "Toggle Option");
     
     // Input field demo
-    ui.createInputField("demo_input", {50, 220, 200, 30}, "Type here...");
-    ui.createLabel("input_label", {260, 220, 300, 30}, "Input: (empty)");
+    ui.createInputField("uiexample_demo_input", {50, 220, 200, 30}, "Type here...");
+    ui.createLabel("uiexample_input_label", {260, 220, 300, 30}, "Input: (empty)");
     
     // Progress bar demo
-    ui.createProgressBar("demo_progress", {50, 270, 200, 20}, 0.0f, 1.0f);
-    ui.createLabel("progress_label", {260, 270, 200, 20}, "Auto Progress");
+    ui.createProgressBar("uiexample_demo_progress", {50, 270, 200, 20}, 0.0f, 1.0f);
+    ui.createLabel("uiexample_progress_label", {260, 270, 200, 20}, "Auto Progress");
     
     // List demo
-    ui.createList("demo_list", {50, 320, 200, 180});
+    ui.createList("uiexample_demo_list", {50, 320, 200, 180});
     
     // Event Log demo
-    ui.createEventLog("demo_event_log", {300, 450, 400, 180}, 6);
-    ui.createLabel("event_log_label", {300, 430, 200, 20}, "Event Log (Auto-updating):");
-    ui.setupDemoEventLog("demo_event_log");
+    ui.createEventLog("uiexample_demo_event_log", {300, 450, 400, 180}, 6);
+    ui.createLabel("uiexample_event_log_label", {300, 430, 200, 20}, "Event Log (Auto-updating):");
+    ui.setupDemoEventLog("uiexample_demo_event_log");
     
     // Animation button
-    ui.createButton("animate_btn", {300, 320, 120, 40}, "Animate");
+    ui.createButton("uiexample_animate_btn", {300, 320, 120, 40}, "Animate");
     
     // Theme toggle button
-    ui.createButton("theme_btn", {300, 380, 120, 40}, "Dark Theme");
+    ui.createButton("uiexample_theme_btn", {300, 380, 120, 40}, "Dark Theme");
     
     // Instructions
-    ui.createLabel("instructions", {450, 320, 300, 100}, 
+    ui.createLabel("uiexample_instructions", {450, 320, 300, 100},
                    "Controls:\n- Click buttons and UI elements\n- Type in input field\n- Select list items\n- B key to go back");
 
     // Populate list
-    ui.addListItem("demo_list", "Option 1: Basic Item");
-    ui.addListItem("demo_list", "Option 2: Second Item");
-    ui.addListItem("demo_list", "Option 3: Third Item");
-    ui.addListItem("demo_list", "Option 4: Fourth Item");
-    ui.addListItem("demo_list", "Option 5: Fifth Item");
+    ui.addListItem("uiexample_demo_list", "Option 1: Basic Item");
+    ui.addListItem("uiexample_demo_list", "Option 2: Second Item");
+    ui.addListItem("uiexample_demo_list", "Option 3: Third Item");
+    ui.addListItem("uiexample_demo_list", "Option 4: Fourth Item");
+    ui.addListItem("uiexample_demo_list", "Option 5: Fifth Item");
 
     // Set up button callbacks
-    ui.setOnClick("back_btn", []() {
+    ui.setOnClick("uiexample_back_btn", []() {
         auto& gameEngine = GameEngine::Instance();
         auto* gameStateManager = gameEngine.getGameStateManager();
         gameStateManager->setState("MainMenuState");
     });
 
-    ui.setOnClick("animate_btn", [this]() {
+    ui.setOnClick("uiexample_animate_btn", [this]() {
         handleAnimation();
     });
 
-    ui.setOnClick("theme_btn", [this]() {
+    ui.setOnClick("uiexample_theme_btn", [this]() {
         handleThemeChange();
     });
 
-    ui.setOnClick("demo_checkbox", [this]() {
+    ui.setOnClick("uiexample_demo_checkbox", [this]() {
         handleCheckboxToggle();
     });
 
-    ui.setOnClick("demo_list", [this]() {
+    ui.setOnClick("uiexample_demo_list", [this]() {
         handleListSelection();
     });
 
-    ui.setOnValueChanged("demo_slider", [this](float value) {
+    ui.setOnValueChanged("uiexample_demo_slider", [this](float value) {
         handleSliderChange(value);
     });
 
-    ui.setOnTextChanged("demo_input", [this](const std::string& text) {
+    ui.setOnTextChanged("uiexample_demo_input", [this](const std::string& text) {
         handleInputChange(text);
     });
     
@@ -143,27 +143,12 @@ void UIExampleState::render() {
 bool UIExampleState::exit() {
     std::cout << "Exiting UI Example State\n";
     
-    // Clean up all UI components
+    // Clean up all UI components efficiently
     auto& ui = UIManager::Instance();
-    ui.removeComponent("title_label");
-    ui.removeComponent("back_btn");
-    ui.removeComponent("back_instruction");
-    ui.removeComponent("demo_slider");
-    ui.removeComponent("slider_label");
-    ui.removeComponent("demo_checkbox");
-    ui.removeComponent("demo_input");
-    ui.removeComponent("input_label");
-    ui.removeComponent("demo_progress");
-    ui.removeComponent("progress_label");
-    ui.removeComponent("demo_list");
-    ui.removeComponent("demo_event_log");
-    ui.removeComponent("event_log_label");
-    ui.removeComponent("animate_btn");
-    ui.removeComponent("theme_btn");
-    ui.removeComponent("instructions");
-    ui.removeThemeBackground();
+    ui.removeComponentsWithPrefix("uiexample_");
+    ui.removeOverlay();
     
-    // Reset theme to prevent contamination of other states
+    // Reset theme to prevent contamination of other states (UIExampleState changes themes)
     ui.resetToDefaultTheme();
     
     return true;
@@ -188,7 +173,7 @@ void UIExampleState::handleInputChange(const std::string& text) {
 
 void UIExampleState::handleListSelection() {
     auto& ui = UIManager::Instance();
-    m_selectedListItem = ui.getSelectedListItem(LIST_COMPONENT);
+    m_selectedListItem = ui.getSelectedListItem("uiexample_demo_list");
     std::cout << "List item selected: " << m_selectedListItem << "\n";
 }
 
@@ -196,13 +181,13 @@ void UIExampleState::handleAnimation() {
     auto& ui = UIManager::Instance();
     
     // Animate the animation button
-    UIRect currentBounds = ui.getBounds(ANIMATION_BUTTON);
+    UIRect currentBounds = ui.getBounds("uiexample_animate_btn");
     UIRect targetBounds = currentBounds;
     targetBounds.x += 50;
     
-    ui.animateMove(ANIMATION_BUTTON, targetBounds, 0.5f, [&ui, currentBounds]() {
+    ui.animateMove("uiexample_animate_btn", targetBounds, 0.5f, [&ui, currentBounds]() {
         // Animate back to original position
-        ui.animateMove(ANIMATION_BUTTON, currentBounds, 0.5f);
+        ui.animateMove("uiexample_animate_btn", currentBounds, 0.5f);
     });
     
     std::cout << "Animation triggered\n";
@@ -231,7 +216,7 @@ void UIExampleState::updateProgressBar(float deltaTime) {
     }
     
     auto& ui = UIManager::Instance();
-    ui.setValue("demo_progress", m_progressValue);
+    ui.setValue("uiexample_demo_progress", m_progressValue);
 }
 
 
@@ -240,13 +225,13 @@ void UIExampleState::updateSliderLabel(float value) {
     auto& ui = UIManager::Instance();
     std::ostringstream oss;
     oss << std::fixed << std::setprecision(2) << "Slider: " << value;
-    ui.setText("slider_label", oss.str());
+    ui.setText("uiexample_slider_label", oss.str());
 }
 
 void UIExampleState::updateInputLabel(const std::string& text) {
     auto& ui = UIManager::Instance();
     std::string labelText = "Input: " + (text.empty() ? "(empty)" : text);
-    ui.setText("input_label", labelText);
+    ui.setText("uiexample_input_label", labelText);
 }
 
 void UIExampleState::applyDarkTheme(bool dark) {
@@ -255,11 +240,11 @@ void UIExampleState::applyDarkTheme(bool dark) {
     if (dark) {
         // Use centralized dark theme
         ui.setThemeMode("dark");
-        ui.setText("theme_btn", "Light Theme");
+        ui.setText("uiexample_theme_btn", "Light Theme");
     } else {
         // Use centralized light theme
         ui.setThemeMode("light");
-        ui.setText("theme_btn", "Dark Theme");
+        ui.setText("uiexample_theme_btn", "Dark Theme");
     }
     
     // Title styling is handled automatically by UIManager's TITLE component type

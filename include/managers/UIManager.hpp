@@ -32,7 +32,8 @@ enum class UIComponentType {
     CHECKBOX,
     LIST,
     TOOLTIP,
-    EVENT_LOG
+    EVENT_LOG,
+    DIALOG
 };
 
 // Layout Types
@@ -224,7 +225,14 @@ public:
     void createCheckbox(const std::string& id, const UIRect& bounds, const std::string& text = "");
     void createList(const std::string& id, const UIRect& bounds);
     void createTooltip(const std::string& id, const std::string& text = "");
-    void createEventLog(const std::string& id, const UIRect& bounds, int maxEntries = 10);
+    void createEventLog(const std::string& id, const UIRect& bounds, int maxEntries = 5);
+    void createDialog(const std::string& id, const UIRect& bounds);
+    
+    // Modal creation helper - combines theme + overlay + dialog
+    void createModal(const std::string& dialogId, const UIRect& bounds, const std::string& theme, int windowWidth, int windowHeight);
+    
+    // Theme management
+    void refreshAllComponentThemes();
 
     // Component manipulation
     void removeComponent(const std::string& id);
@@ -319,13 +327,14 @@ public:
     void applyThemeToComponent(const std::string& id, UIComponentType type);
     void setGlobalStyle(const UIStyle& style);
     
-    // Background/overlay management
-    void createThemeBackground(int windowWidth, int windowHeight);
-    void removeThemeBackground();
+    // Overlay management - creates/removes semi-transparent background overlays
+    void createOverlay(int windowWidth, int windowHeight);  // Creates overlay using current theme's panel style
+    void removeOverlay();  // Removes the overlay background
     
     // Component cleanup utilities
     void removeComponentsWithPrefix(const std::string& prefix);
     void resetToDefaultTheme();
+    void cleanupForStateTransition();
 
     // Utility methods
     void setGlobalFont(const std::string& fontID);
