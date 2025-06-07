@@ -26,7 +26,7 @@ bool OverlayDemoState::enter() {
     auto& gameEngine = GameEngine::Instance();
     int windowWidth = gameEngine.getWindowWidth();
     int windowHeight = gameEngine.getWindowHeight();
-    
+
     // Add title
     ui.createTitle("overlay_control_title", {0, 10, windowWidth, 30}, "Overlay Demo State");
     ui.setTitleAlignment("overlay_control_title", UIAlignment::CENTER_CENTER);
@@ -155,6 +155,10 @@ void OverlayDemoState::setupNoOverlayMode() {
     ui.createLabel(DESCRIPTION_LABEL, {20, 85, 600, 50},
                    "Perfect for: Health bars, Score, Minimap, Chat\nGame content remains fully visible");
 
+    // Enable text backgrounds for readability over variable backgrounds
+    ui.enableTextBackground(MODE_LABEL, true);
+    ui.enableTextBackground(DESCRIPTION_LABEL, true);
+
     // Simulate HUD elements
     ui.createProgressBar(HEALTH_BAR, {20, 150, 200, 25}, 0.0f, 100.0f);
     ui.setValue(HEALTH_BAR, 75.0f);
@@ -180,6 +184,10 @@ void OverlayDemoState::setupLightOverlayMode() {
     ui.createLabel(MODE_LABEL, {20, 50, 400, 30}, "Mode: Main Menu (Light Theme)");
     ui.createLabel(DESCRIPTION_LABEL, {20, 85, 600, 50},
                    "Perfect for: Main menus, Settings screens\nSubtle separation from background");
+
+    // Enable text backgrounds for readability over variable backgrounds
+    ui.enableTextBackground(MODE_LABEL, true);
+    ui.enableTextBackground(DESCRIPTION_LABEL, true);
 
     // Simulate menu buttons
     ui.createButton(MENU_BUTTON_1, {windowWidth/2 - 100, 150, 200, 50}, "New Game");
@@ -216,16 +224,20 @@ void OverlayDemoState::setupModalOverlayMode() {
 
     // Mode indicator
     ui.createLabel(MODE_LABEL, {20, 50, 400, 30}, "Mode: Modal Dialog (Strong Overlay)");
-    ui.createLabel(DESCRIPTION_LABEL, {20, 85, 600, 50}, 
+    ui.createLabel(DESCRIPTION_LABEL, {20, 85, 600, 50},
                    "Perfect for: Confirmation dialogs, Settings panels\nStrong overlay demands attention");
-    
+
     // Simulate modal dialog - simple, clean positioning
     int dialogX = (windowWidth - 400) / 2;
     int dialogY = (windowHeight - 200) / 2;
-    
+
     ui.createModal("overlay_demo_dialog_panel", {dialogX, dialogY, 400, 200}, "dark", windowWidth, windowHeight);
     ui.createLabel("overlay_demo_dialog_title", {dialogX + 20, dialogY + 20, 360, 30}, "Confirm Action");
     ui.createLabel("overlay_demo_dialog_text", {dialogX + 20, dialogY + 60, 360, 40}, "Are you sure you want to quit?");
+    
+    // Disable text backgrounds for labels inside modal (they have solid modal background)
+    ui.enableTextBackground("overlay_demo_dialog_title", false);
+    ui.enableTextBackground("overlay_demo_dialog_text", false);
     ui.createButton(MENU_BUTTON_1, {dialogX + 50, dialogY + 120, 100, 40}, "Yes");
     ui.createButton(MENU_BUTTON_2, {dialogX + 250, dialogY + 120, 100, 40}, "Cancel");
 
@@ -240,16 +252,20 @@ void OverlayDemoState::setupLightModalOverlayMode() {
 
     // Mode indicator
     ui.createLabel(MODE_LABEL, {20, 50, 400, 30}, "Mode: Light Modal Dialog (Strong Overlay)");
-    ui.createLabel(DESCRIPTION_LABEL, {20, 85, 600, 50}, 
+    ui.createLabel(DESCRIPTION_LABEL, {20, 85, 600, 50},
                    "Perfect for: Light-themed dialogs, Settings panels\nLight strong overlay with good contrast");
-    
+
     // Simulate modal dialog - simple, clean positioning
     int dialogX = (windowWidth - 400) / 2;
     int dialogY = (windowHeight - 200) / 2;
-    
+
     ui.createModal("overlay_demo_dialog_panel", {dialogX, dialogY, 400, 200}, "light", windowWidth, windowHeight);
     ui.createLabel("overlay_demo_dialog_title", {dialogX + 20, dialogY + 20, 360, 30}, "Confirm Action");
     ui.createLabel("overlay_demo_dialog_text", {dialogX + 20, dialogY + 60, 360, 40}, "Save changes before closing?");
+    
+    // Disable text backgrounds for labels inside modal (they have solid modal background)
+    ui.enableTextBackground("overlay_demo_dialog_title", false);
+    ui.enableTextBackground("overlay_demo_dialog_text", false);
     ui.createButton(MENU_BUTTON_1, {dialogX + 50, dialogY + 120, 100, 40}, "Save");
     ui.createButton(MENU_BUTTON_2, {dialogX + 250, dialogY + 120, 100, 40}, "Cancel");
 

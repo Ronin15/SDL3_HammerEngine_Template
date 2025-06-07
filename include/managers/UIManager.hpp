@@ -100,6 +100,11 @@ struct UIStyle {
     SDL_Color pressedColor{30, 30, 30, 255};
     SDL_Color disabledColor{80, 80, 80, 128};
     
+    // Text background properties (for labels and titles)
+    SDL_Color textBackgroundColor{0, 0, 0, 128}; // Semi-transparent black by default
+    bool useTextBackground{false}; // Enable text background for readability
+    int textBackgroundPadding{4}; // Extra padding around text background
+    
     int borderWidth{1};
     int padding{8};
     int margin{4};
@@ -331,6 +336,11 @@ public:
     void createOverlay(int windowWidth, int windowHeight);  // Creates overlay using current theme's panel style
     void removeOverlay();  // Removes the overlay background
     
+    // Text background methods (for labels and titles readability)
+    void enableTextBackground(const std::string& id, bool enable = true);
+    void setTextBackgroundColor(const std::string& id, SDL_Color color);
+    void setTextBackgroundPadding(const std::string& id, int padding);
+    
     // Component cleanup utilities
     void removeComponentsWithPrefix(const std::string& prefix);
     void resetToDefaultTheme();
@@ -418,6 +428,9 @@ private:
     // Utility helpers
     void drawRect(SDL_Renderer* renderer, const UIRect& rect, const SDL_Color& color, bool filled = true);
     void drawBorder(SDL_Renderer* renderer, const UIRect& rect, const SDL_Color& color, int width = 1);
+    void drawTextWithBackground(const std::string& text, const std::string& fontID,
+                               int x, int y, SDL_Color textColor, SDL_Renderer* renderer,
+                               int alignment, bool useBackground, SDL_Color backgroundColor, int padding);
     UIRect calculateTextBounds(const std::string& text, const std::string& fontID, const UIRect& container, UIAlignment alignment);
     SDL_Color interpolateColor(const SDL_Color& start, const SDL_Color& end, float t);
     UIRect interpolateRect(const UIRect& start, const UIRect& end, float t);

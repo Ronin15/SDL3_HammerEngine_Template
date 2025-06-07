@@ -105,8 +105,8 @@ void UIManager::render(SDL_Renderer* renderer) {
         }
     }
 
-    // Reset renderer to GameEngine's default color (FORGE_GRAY: 31, 32, 34, 255)
-    SDL_SetRenderDrawColor(renderer, 31, 32, 34, 255);
+    // Note: Background color is now managed by GameEngine, not UIManager
+    // This allows GameStates to set custom background colors for UI rendering
 }
 
 void UIManager::clean() {
@@ -410,6 +410,28 @@ void UIManager::setStyle(const std::string& id, const UIStyle& style) {
     auto component = getComponent(id);
     if (component) {
         component->style = style;
+    }
+}
+
+// Text background methods for label and title readability
+void UIManager::enableTextBackground(const std::string& id, bool enable) {
+    auto component = getComponent(id);
+    if (component && (component->type == UIComponentType::LABEL || component->type == UIComponentType::TITLE)) {
+        component->style.useTextBackground = enable;
+    }
+}
+
+void UIManager::setTextBackgroundColor(const std::string& id, SDL_Color color) {
+    auto component = getComponent(id);
+    if (component && (component->type == UIComponentType::LABEL || component->type == UIComponentType::TITLE)) {
+        component->style.textBackgroundColor = color;
+    }
+}
+
+void UIManager::setTextBackgroundPadding(const std::string& id, int padding) {
+    auto component = getComponent(id);
+    if (component && (component->type == UIComponentType::LABEL || component->type == UIComponentType::TITLE)) {
+        component->style.textBackgroundPadding = padding;
     }
 }
 
@@ -907,6 +929,10 @@ void UIManager::setLightTheme() {
     labelStyle.textColor = {20, 20, 20, 255}; // Dark text for light backgrounds
     labelStyle.textAlign = UIAlignment::CENTER_LEFT;
     labelStyle.fontID = "fonts_UI_Arial";
+    // Text background enabled by default for readability on any background
+    labelStyle.useTextBackground = true;
+    labelStyle.textBackgroundColor = {255, 255, 255, 100}; // More transparent white
+    labelStyle.textBackgroundPadding = 6;
     lightTheme.componentStyles[UIComponentType::LABEL] = labelStyle;
 
     // Panel style - light overlay for subtle UI separation
@@ -995,7 +1021,11 @@ void UIManager::setLightTheme() {
     titleStyle.textColor = {255, 245, 120, 255}; // Gold color for titles
     titleStyle.fontSize = 24; // Use native 24px font size
     titleStyle.textAlign = UIAlignment::CENTER_LEFT;
-    titleStyle.fontID = m_titleFontID; // Use larger font
+    titleStyle.fontID = "fonts_Arial";
+    // Text background enabled by default for readability on any background
+    titleStyle.useTextBackground = true;
+    titleStyle.textBackgroundColor = {20, 20, 20, 120}; // More transparent dark for gold text
+    titleStyle.textBackgroundPadding = 8;
     lightTheme.componentStyles[UIComponentType::TITLE] = titleStyle;
 
     // Dialog style - solid background for modal dialogs
@@ -1041,6 +1071,10 @@ void UIManager::setDarkTheme() {
     labelStyle.textColor = {255, 255, 255, 255}; // Pure white
     labelStyle.textAlign = UIAlignment::CENTER_LEFT;
     labelStyle.fontID = "fonts_UI_Arial";
+    // Text background enabled by default for readability on any background
+    labelStyle.useTextBackground = true;
+    labelStyle.textBackgroundColor = {0, 0, 0, 100}; // More transparent black
+    labelStyle.textBackgroundPadding = 6;
     darkTheme.componentStyles[UIComponentType::LABEL] = labelStyle;
 
     // Panel style - slightly more overlay for dark theme
@@ -1129,7 +1163,11 @@ void UIManager::setDarkTheme() {
     titleStyle.textColor = {255, 245, 120, 255}; // Gold color for titles
     titleStyle.fontSize = 24; // Use native 24px font size
     titleStyle.textAlign = UIAlignment::CENTER_LEFT;
-    titleStyle.fontID = m_titleFontID; // Use larger font
+    titleStyle.fontID = "fonts_Arial";
+    // Text background enabled by default for readability on any background
+    titleStyle.useTextBackground = true;
+    titleStyle.textBackgroundColor = {0, 0, 0, 120}; // More transparent black for gold text
+    titleStyle.textBackgroundPadding = 8;
     darkTheme.componentStyles[UIComponentType::TITLE] = titleStyle;
 
     // Dialog style - solid background for modal dialogs
@@ -1597,8 +1635,6 @@ void UIManager::renderButton(SDL_Renderer* renderer, const std::shared_ptr<UICom
 void UIManager::renderLabel(SDL_Renderer* renderer, const std::shared_ptr<UIComponent>& component) {
     if (!component || component->text.empty()) return;
 
-    auto& fontManager = FontManager::Instance();
-
     int textX, textY, alignment;
 
     switch (component->style.textAlign) {
@@ -1640,7 +1676,16 @@ void UIManager::renderLabel(SDL_Renderer* renderer, const std::shared_ptr<UIComp
             break;
     }
 
-    fontManager.drawTextAligned(component->text, component->style.fontID, textX, textY, component->style.textColor, renderer, alignment);
+    // Only use text backgrounds for components with transparent backgrounds
+    bool needsBackground = component->style.useTextBackground && 
+                          component->style.backgroundColor.a == 0;
+    
+    // Use a custom text drawing method that renders background and text together
+    drawTextWithBackground(component->text, component->style.fontID, textX, textY, 
+                          component->style.textColor, renderer, alignment, 
+                          needsBackground, 
+                          component->style.textBackgroundColor, 
+                          component->style.textBackgroundPadding);
 }
 
 void UIManager::renderPanel(SDL_Renderer* renderer, const std::shared_ptr<UIComponent>& component) {
@@ -1986,6 +2031,67 @@ void UIManager::drawBorder(SDL_Renderer* renderer, const UIRect& rect, const SDL
                                static_cast<float>(rect.width + 2*i), static_cast<float>(rect.height + 2*i)};
         SDL_RenderRect(renderer, &borderRect);
     }
+}
+
+void UIManager::drawTextWithBackground(const std::string& text, const std::string& fontID,
+                                     int x, int y, SDL_Color textColor, SDL_Renderer* renderer,
+                                     int alignment, bool useBackground, SDL_Color backgroundColor, int padding) {
+    auto& fontManager = FontManager::Instance();
+    
+    // First render the text to get actual dimensions
+    auto texture = fontManager.renderText(text, fontID, textColor, renderer);
+    if (!texture) return;
+
+    // Get the actual texture size
+    float w, h;
+    SDL_GetTextureSize(texture.get(), &w, &h);
+    int width = static_cast<int>(w);
+    int height = static_cast<int>(h);
+
+    // Calculate position based on alignment (same as FontManager::drawTextAligned)
+    float destX, destY;
+    
+    switch (alignment) {
+        case 1: // Left alignment
+            destX = static_cast<float>(x);
+            destY = static_cast<float>(y - height/2.0f);
+            break;
+        case 2: // Right alignment
+            destX = static_cast<float>(x - width);
+            destY = static_cast<float>(y - height/2.0f);
+            break;
+        case 3: // Top-left alignment
+            destX = static_cast<float>(x);
+            destY = static_cast<float>(y);
+            break;
+        case 4: // Top-center alignment
+            destX = static_cast<float>(x - width/2.0f);
+            destY = static_cast<float>(y);
+            break;
+        case 5: // Top-right alignment
+            destX = static_cast<float>(x - width);
+            destY = static_cast<float>(y);
+            break;
+        default: // Center alignment (0)
+            destX = static_cast<float>(x - width/2.0f);
+            destY = static_cast<float>(y - height/2.0f);
+            break;
+    }
+
+    // Render background if enabled
+    if (useBackground) {
+        UIRect bgRect;
+        bgRect.x = static_cast<int>(destX) - padding;
+        bgRect.y = static_cast<int>(destY) - padding;
+        bgRect.width = width + (padding * 2);
+        bgRect.height = height + (padding * 2);
+        
+        drawRect(renderer, bgRect, backgroundColor, true);
+    }
+
+    // Create a destination rectangle and render the text
+    SDL_FRect dstRect = {destX, destY, static_cast<float>(width), static_cast<float>(height)};
+    SDL_RenderTexture(renderer, texture.get(), nullptr, &dstRect);
 }
 
 UIRect UIManager::calculateTextBounds(const std::string& text, const std::string& /* fontID */,

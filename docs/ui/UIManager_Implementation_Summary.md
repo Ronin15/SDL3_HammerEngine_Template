@@ -52,7 +52,26 @@ ui.removeThemeBackground();               // Clean removal
 ui.resetToDefaultTheme();                 // Prevent contamination
 ```
 
-### 4. Animation & Layout Systems
+### 4. Adaptive Text Background System
+```cpp
+// Automatic text readability on any background
+ui.createLabel("hud_health", {20, 20, 150, 30}, "Health: 100%");  // Gets background automatically
+ui.createTitle("level_name", {0, 50, 800, 40}, "Forest Temple");  // Title with background
+
+// Manual control when needed
+ui.enableTextBackground("my_label", false);             // Disable for solid backgrounds
+ui.setTextBackgroundColor("my_label", {0, 0, 0, 120});  // Custom color
+ui.setTextBackgroundPadding("my_label", 8);             // Custom padding
+```
+
+**Smart Features:**
+- Only applies to components with transparent backgrounds
+- Automatically skips buttons, input fields, modals (they have solid backgrounds)
+- Uses actual rendered text dimensions for perfect sizing
+- Theme-coordinated colors (light/dark appropriate)
+- Thread-safe rendering using texture-based measurement
+
+### 5. Animation & Layout Systems
 ```cpp
 // Smooth animations
 ui.animateMove("component", targetBounds, 0.5f, callback);
