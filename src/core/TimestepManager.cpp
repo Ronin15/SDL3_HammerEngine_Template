@@ -138,7 +138,7 @@ void TimestepManager::updateFPS() {
     }
 }
 
-void TimestepManager::limitFrameRate() {
+void TimestepManager::limitFrameRate() const {
     Uint64 currentTime = SDL_GetTicks();
     double frameTimeMs = static_cast<double>(currentTime - m_frameStart);
     double frameTime = frameTimeMs / 1000.0; // Convert to seconds

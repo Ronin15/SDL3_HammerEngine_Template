@@ -10,6 +10,7 @@
 #include "SDL3/SDL_joystick.h"
 #include "utils/Vector2D.hpp"
 #include <memory>
+#include <algorithm>
 
 // Removed global pointer - now managed as member variable
 
@@ -152,13 +153,9 @@ const Vector2D& InputManager::getMousePosition() const {
 }
 
 bool InputManager::wasKeyPressed(SDL_Scancode key) const {
-  // Check if this key was pressed this frame
-  for (const auto& pressedKey : m_pressedThisFrame) {
-    if (pressedKey == key) {
-      return true;
-    }
-  }
-  return false;
+  // Check if this key was pressed this frame using std::any_of
+  return std::any_of(m_pressedThisFrame.begin(), m_pressedThisFrame.end(),
+                     [key](SDL_Scancode pressedKey) { return pressedKey == key; });
 }
 
 void InputManager::clearFrameInput() {
@@ -226,13 +223,10 @@ void InputManager::onKeyDown(const SDL_Event& event) {
   
   // Track this key as pressed this frame (for wasKeyPressed)
   // Check for duplicates to avoid multiple entries for the same key in one frame
-  bool alreadyTracked = false;
-  for (const auto& pressedKey : m_pressedThisFrame) {
-    if (pressedKey == event.key.scancode) {
-      alreadyTracked = true;
-      break;
-    }
-  }
+  bool alreadyTracked = std::any_of(m_pressedThisFrame.begin(), m_pressedThisFrame.end(),
+                                   [scancode = event.key.scancode](SDL_Scancode pressedKey) {
+                                     return pressedKey == scancode;
+                                   });
   
   if (!alreadyTracked) {
     m_pressedThisFrame.push_back(event.key.scancode);

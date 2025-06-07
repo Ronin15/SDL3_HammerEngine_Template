@@ -27,13 +27,12 @@ void WanderBehavior::init(EntityPtr entity) {
     m_centerPoint = entity->getPosition();
 
     // Create entity state if it doesn't exist
-    if (m_entityStates.find(entity) == m_entityStates.end()) {
-        m_entityStates[entity] = EntityState{};
-
+    auto [it, inserted] = m_entityStates.try_emplace(entity, EntityState{});
+    if (inserted) {
         // Generate a random start delay between 0 and 5000 milliseconds
         std::uniform_int_distribution<Uint64> delayDist(0, 5000);
-        m_entityStates[entity].startDelay = delayDist(m_rng);
-        m_entityStates[entity].movementStarted = false;
+        it->second.startDelay = delayDist(m_rng);
+        it->second.movementStarted = false;
     }
 
     // Record start time for direction changes
@@ -53,14 +52,14 @@ void WanderBehavior::executeLogic(EntityPtr entity) {
 
 
     // Create entity state if it doesn't exist
-    if (m_entityStates.find(entity) == m_entityStates.end()) {
-        m_entityStates[entity] = EntityState{};
-        m_entityStates[entity].lastDirectionChangeTime = SDL_GetTicks();
+    auto [it, inserted] = m_entityStates.try_emplace(entity, EntityState{});
+    if (inserted) {
+        it->second.lastDirectionChangeTime = SDL_GetTicks();
 
         // Generate a random start delay between 0 and 5000 milliseconds
         std::uniform_int_distribution<Uint64> delayDist(0, 5000);
-        m_entityStates[entity].startDelay = delayDist(m_rng);
-        m_entityStates[entity].movementStarted = false;
+        it->second.startDelay = delayDist(m_rng);
+        it->second.movementStarted = false;
 
         chooseNewDirection(entity);
         // Set zero velocity until delay expires
@@ -260,9 +259,7 @@ void WanderBehavior::resetEntityPosition(EntityPtr entity) {
     if (!entity) return;
 
     // Ensure entity state exists
-    if (m_entityStates.find(entity) == m_entityStates.end()) {
-        m_entityStates[entity] = EntityState{};
-    }
+    m_entityStates.try_emplace(entity, EntityState{});
 
     // Calculate entry point on the opposite side of the screen
     Vector2D position = entity->getPosition();

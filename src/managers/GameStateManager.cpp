@@ -32,15 +32,11 @@ void GameStateManager::setState(const std::string& stateName) {
                          });
 
   if (it != states.end()) {
-    // Store the previous state name before changing (safe access via weak_ptr)
-    std::string prevStateName = "None";
-    if (auto current = currentState.lock()) {
-      prevStateName = current->getName();
-    }
-    
     try {
       // Exit current state if exists
       if (auto current = currentState.lock()) {
+        // Store the previous state name before changing (safe access via weak_ptr)
+        std::string prevStateName = current->getName();
         GAMESTATE_INFO("Exiting state: " + prevStateName);
         bool exitSuccess = current->exit();
         if (!exitSuccess) {
