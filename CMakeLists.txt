@@ -93,27 +93,19 @@ if(POLICY CMP0167)
     cmake_policy(SET CMP0167 NEW)
 endif()
 
-# Use system Boost if available, otherwise disable SaveGameManager serialization
-# Ultra-fast setup - no downloads needed if Boost is installed
-find_package(Boost QUIET COMPONENTS serialization unit_test_framework)
+# Check for Boost unit test framework (optional, only needed for tests)
+# SaveGameManager now uses header-only binary serialization (no Boost dependency)
+find_package(Boost QUIET COMPONENTS unit_test_framework)
 
-if(Boost_FOUND)
-    message(STATUS "Found system Boost - SaveGameManager serialization enabled")
-    set(HAVE_BOOST_SERIALIZATION TRUE)
-
-    # Check if unit_test_framework component was found
-    if(TARGET Boost::unit_test_framework)
-        message(STATUS "Found Boost Unit Test Framework - Tests will be enabled")
-        set(HAVE_BOOST_TEST TRUE)
-    else()
-        message(STATUS "Boost Unit Test Framework not found - Tests will be disabled")
-        set(HAVE_BOOST_TEST FALSE)
-    endif()
+if(Boost_FOUND AND TARGET Boost::unit_test_framework)
+    message(STATUS "Found Boost Unit Test Framework - Tests will be enabled")
+    set(HAVE_BOOST_TEST TRUE)
 else()
-    message(STATUS "Boost not found - SaveGameManager will use simple binary format")
-    set(HAVE_BOOST_SERIALIZATION FALSE)
+    message(STATUS "Boost Unit Test Framework not found - Tests will be disabled")
     set(HAVE_BOOST_TEST FALSE)
 endif()
+
+message(STATUS "SaveGameManager using fast header-only binary serialization")
 
 # Specify the stable release tags for each SDL3 component
 # Updated from "main" branch to specific release versions
@@ -320,19 +312,13 @@ if(APPLE)
     endif()
 endif()
 
-# Link against SDL3 libraries and optionally Boost
+# Link against SDL3 libraries
 target_link_libraries(${PROJECT_NAME} PRIVATE
     SDL3::SDL3
     SDL3_image::SDL3_image
     SDL3_ttf::SDL3_ttf
     SDL3_mixer::SDL3_mixer
 )
-
-# Add Boost if available
-if(Boost_FOUND)
-    target_link_libraries(${PROJECT_NAME} PRIVATE Boost::serialization)
-    target_compile_definitions(${PROJECT_NAME} PRIVATE HAVE_BOOST_SERIALIZATION=1)
-endif()
 
 # Specify include directories
 target_include_directories(${PROJECT_NAME} PRIVATE
@@ -378,7 +364,7 @@ file(MAKE_DIRECTORY ${OUTPUT_DEBUG_DIR})
 file(MAKE_DIRECTORY ${OUTPUT_RELEASE_DIR})
 
 # Display status message indicating successful configuration
-message(STATUS "SDL3, SDL3_image, SDL3_ttf, SDL3_mixer, and Boost have been "
+message(STATUS "SDL3, SDL3_image, SDL3_ttf, and SDL3_mixer have been "
                "configured successfully")
 message(STATUS "Debug binaries will be output to: ${OUTPUT_DEBUG_DIR}")
 message(STATUS "Release binaries will be output to: ${OUTPUT_RELEASE_DIR}")

@@ -7,12 +7,13 @@
 #define MOCK_PLAYER_HPP
 
 #include "utils/Vector2D.hpp"
+#include "utils/BinarySerializer.hpp"
 #include <string>
 #include <memory>
 #include <SDL3/SDL.h>
 
 // A completely independent mock player for testing SaveGameManager
-class MockPlayer : public std::enable_shared_from_this<MockPlayer> {
+class MockPlayer : public std::enable_shared_from_this<MockPlayer>, public ISerializable {
 public:
     MockPlayer() : 
         m_position(100.0f, 200.0f),
@@ -50,6 +51,75 @@ public:
     void clean() {
         // Perform any cleanup that might require shared_from_this()
         // Never call shared_from_this() in the destructor!
+    }
+    
+    // Implement ISerializable interface
+    bool serialize(std::ostream& stream) const override {
+        // Serialize position
+        if (!m_position.serialize(stream)) {
+            return false;
+        }
+        
+        // Serialize velocity
+        if (!m_velocity.serialize(stream)) {
+            return false;
+        }
+        
+        // Serialize textureID string
+        uint32_t textureIDLength = static_cast<uint32_t>(m_textureID.length());
+        stream.write(reinterpret_cast<const char*>(&textureIDLength), sizeof(uint32_t));
+        if (textureIDLength > 0) {
+            stream.write(m_textureID.c_str(), textureIDLength);
+        }
+        
+        // Serialize currentStateName string
+        uint32_t stateNameLength = static_cast<uint32_t>(m_currentStateName.length());
+        stream.write(reinterpret_cast<const char*>(&stateNameLength), sizeof(uint32_t));
+        if (stateNameLength > 0) {
+            stream.write(m_currentStateName.c_str(), stateNameLength);
+        }
+        
+        return stream.good();
+    }
+    
+    bool deserialize(std::istream& stream) override {
+        // Deserialize position
+        if (!m_position.deserialize(stream)) {
+            return false;
+        }
+        
+        // Deserialize velocity
+        if (!m_velocity.deserialize(stream)) {
+            return false;
+        }
+        
+        // Deserialize textureID string
+        uint32_t textureIDLength;
+        stream.read(reinterpret_cast<char*>(&textureIDLength), sizeof(uint32_t));
+        if (!stream.good()) return false;
+        
+        if (textureIDLength == 0) {
+            m_textureID.clear();
+        } else {
+            m_textureID.resize(textureIDLength);
+            stream.read(&m_textureID[0], textureIDLength);
+            if (stream.gcount() != static_cast<std::streamsize>(textureIDLength)) return false;
+        }
+        
+        // Deserialize currentStateName string
+        uint32_t stateNameLength;
+        stream.read(reinterpret_cast<char*>(&stateNameLength), sizeof(uint32_t));
+        if (!stream.good()) return false;
+        
+        if (stateNameLength == 0) {
+            m_currentStateName.clear();
+        } else {
+            m_currentStateName.resize(stateNameLength);
+            stream.read(&m_currentStateName[0], stateNameLength);
+            if (stream.gcount() != static_cast<std::streamsize>(stateNameLength)) return false;
+        }
+        
+        return stream.good();
     }
     
 private:
