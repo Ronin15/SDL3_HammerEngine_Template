@@ -462,6 +462,7 @@ void GameEngine::render([[maybe_unused]] float interpolation) {
   // Only render if the buffer is ready
   if (m_bufferReady[renderBufferIndex].load(std::memory_order_acquire)) {
     try {
+      SDL_SetRenderDrawColor(mp_renderer.get(), FORGE_GRAY);  // Forge Game Engine gunmetal dark grey
       SDL_RenderClear(mp_renderer.get());
 
       // Make sure GameStateManager knows which buffer to render from

@@ -22,6 +22,27 @@ ui.setOnClick("play_btn", [this]() {
 });
 ```
 
+### Automatic Text Backgrounds
+
+The UIManager automatically provides semi-transparent backgrounds for labels and titles to ensure text readability on any background (game world, textures, etc.):
+
+```cpp
+// Text backgrounds are enabled by default for labels and titles
+ui.createLabel("hud_health", {20, 20, 150, 30}, "Health: 100%");
+ui.createTitle("level_name", {0, 50, 800, 40}, "Forest Temple");
+
+// Manual control when needed
+ui.enableTextBackground("my_label", false);  // Disable for labels on solid backgrounds
+ui.setTextBackgroundColor("my_label", {0, 0, 0, 120});  // Custom color
+ui.setTextBackgroundPadding("my_label", 8);  // Custom padding
+```
+
+**Smart Application:**
+- Only applies to components with transparent backgrounds
+- Automatically skips buttons, input fields, and modals (they have solid backgrounds)
+- Theme-coordinated colors (light/dark appropriate)
+- Perfect sizing using actual rendered text dimensions
+
 ### Essential Integration Pattern
 
 ```cpp
