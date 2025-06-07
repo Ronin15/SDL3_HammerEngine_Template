@@ -157,6 +157,25 @@ namespace Forge {
     #define ENTITYSTATE_WARN(msg) FORGE_WARN("EntityStateManager", msg)
     #define ENTITYSTATE_INFO(msg) FORGE_INFO("EntityStateManager", msg)
     #define ENTITYSTATE_DEBUG(msg) FORGE_DEBUG("EntityStateManager", msg)
+    
+    // Entity Systems
+    #define ENTITY_CRITICAL(msg) FORGE_CRITICAL("Entity", msg)
+    #define ENTITY_ERROR(msg) FORGE_ERROR("Entity", msg)
+    #define ENTITY_WARN(msg) FORGE_WARN("Entity", msg)
+    #define ENTITY_INFO(msg) FORGE_INFO("Entity", msg)
+    #define ENTITY_DEBUG(msg) FORGE_DEBUG("Entity", msg)
+    
+    #define PLAYER_CRITICAL(msg) FORGE_CRITICAL("Player", msg)
+    #define PLAYER_ERROR(msg) FORGE_ERROR("Player", msg)
+    #define PLAYER_WARN(msg) FORGE_WARN("Player", msg)
+    #define PLAYER_INFO(msg) FORGE_INFO("Player", msg)
+    #define PLAYER_DEBUG(msg) FORGE_DEBUG("Player", msg)
+    
+    #define NPC_CRITICAL(msg) FORGE_CRITICAL("NPC", msg)
+    #define NPC_ERROR(msg) FORGE_ERROR("NPC", msg)
+    #define NPC_WARN(msg) FORGE_WARN("NPC", msg)
+    #define NPC_INFO(msg) FORGE_INFO("NPC", msg)
+    #define NPC_DEBUG(msg) FORGE_DEBUG("NPC", msg)
 
 } // namespace Forge
 

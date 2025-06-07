@@ -254,6 +254,32 @@ SAVEGAME_INFO(msg)        // Save information
 SAVEGAME_DEBUG(msg)       // Save debug info
 ```
 
+### Entity Systems
+
+#### Core Entity Management
+```cpp
+// General Entity System
+ENTITY_CRITICAL(msg)      // Entity system failures
+ENTITY_ERROR(msg)         // Entity operation errors
+ENTITY_WARN(msg)          // Entity warnings
+ENTITY_INFO(msg)          // Entity information
+ENTITY_DEBUG(msg)         // Entity debug info
+
+// Player Entity
+PLAYER_CRITICAL(msg)      // Player system failures
+PLAYER_ERROR(msg)         // Player operation errors
+PLAYER_WARN(msg)          // Player warnings
+PLAYER_INFO(msg)          // Player information
+PLAYER_DEBUG(msg)         // Player debug info
+
+// NPC Entities
+NPC_CRITICAL(msg)         // NPC system failures
+NPC_ERROR(msg)            // NPC operation errors
+NPC_WARN(msg)             // NPC warnings
+NPC_INFO(msg)             // NPC information
+NPC_DEBUG(msg)            // NPC debug info
+```
+
 ## Best Practices
 
 ### 1. Use Appropriate Log Levels
@@ -431,6 +457,69 @@ bool SoundManager::playSound(const std::string& soundID) {
     
     SOUND_DEBUG("Sound played successfully: " + soundID);
     return true;
+}
+```
+
+### Entity Management with Logging
+```cpp
+bool Player::loadDimensionsFromTexture() {
+    PLAYER_DEBUG("Loading texture dimensions for player");
+    
+    auto& textureManager = TextureManager::Instance();
+    auto texture = textureManager.getTexture(m_textureID);
+    
+    if (texture) {
+        float width, height;
+        if (SDL_GetTextureSize(texture.get(), &width, &height)) {
+            PLAYER_DEBUG("Original texture dimensions: " + std::to_string(width) + "x" + std::to_string(height));
+            
+            m_width = static_cast<int>(width);
+            m_height = static_cast<int>(height);
+            
+            // Calculate frame dimensions for sprite sheets
+            m_frameWidth = m_width / m_numFrames;
+            int frameHeight = m_height / m_spriteSheetRows;
+            m_height = frameHeight;
+            
+            PLAYER_DEBUG("Frame dimensions: " + std::to_string(m_frameWidth) + "x" + std::to_string(frameHeight));
+            PLAYER_DEBUG("Sprite layout: " + std::to_string(m_numFrames) + " columns x " + std::to_string(m_spriteSheetRows) + " rows");
+            
+            return true;
+        } else {
+            PLAYER_ERROR("Failed to query texture dimensions: " + std::string(SDL_GetError()));
+            return false;
+        }
+    } else {
+        PLAYER_ERROR("Texture '" + m_textureID + "' not found in TextureManager");
+        return false;
+    }
+}
+
+void NPC::setWanderArea(float x1, float y1, float x2, float y2) {
+    m_wanderBounds = {x1, y1, x2, y2};
+    m_hasWanderBounds = true;
+    
+    NPC_DEBUG("NPC wander area set: (" + std::to_string(x1) + ", " + std::to_string(y1) + 
+              ") to (" + std::to_string(x2) + ", " + std::to_string(y2) + ")");
+}
+
+void EntityStateManager::setState(const std::string& stateName) {
+    if (auto current = currentState.lock()) {
+        ENTITYSTATE_INFO("Exiting entity state: " + getCurrentStateName());
+        current->exit();
+    }
+    
+    auto it = states.find(stateName);
+    if (it != states.end()) {
+        currentState = it->second;
+        if (auto current = currentState.lock()) {
+            ENTITYSTATE_INFO("Entering entity state: " + stateName);
+            current->enter();
+        }
+    } else {
+        ENTITYSTATE_ERROR("Entity state not found: " + stateName);
+        currentState.reset();
+    }
 }
 ```
 
