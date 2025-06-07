@@ -134,7 +134,7 @@ private:
     
     // Helper methods
     void updateFPS();
-    void limitFrameRate();
+    void limitFrameRate() const;
 };
 
 #endif // TIMESTEP_MANAGER_HPP

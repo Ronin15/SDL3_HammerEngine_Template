@@ -8,6 +8,7 @@
 
 #include <math.h>
 #include <iostream>
+#include <cstdint>
 #include "BinarySerializer.hpp"
 
 // A simple 2D vector class
@@ -86,19 +87,44 @@ public:
         return v;
     }
 
-    // Fast binary serialization using simplified system
+    // Cross-platform binary serialization with proper endianness handling
     bool serialize(std::ostream& stream) const override {
-        stream.write(reinterpret_cast<const char*>(&m_x), sizeof(float));
-        if (!stream.good()) return false;
-        stream.write(reinterpret_cast<const char*>(&m_y), sizeof(float));
-        return stream.good();
+        // Convert to little-endian format for cross-platform compatibility
+        auto writeFloat = [&stream](float value) -> bool {
+            union { float f; uint32_t i; } converter;
+            converter.f = value;
+            
+            // Write as little-endian bytes
+            for (int i = 0; i < 4; ++i) {
+                char byte = static_cast<char>((converter.i >> (i * 8)) & 0xFF);
+                stream.write(&byte, 1);
+                if (!stream.good()) return false;
+            }
+            return true;
+        };
+        
+        return writeFloat(m_x) && writeFloat(m_y);
     }
 
     bool deserialize(std::istream& stream) override {
-        stream.read(reinterpret_cast<char*>(&m_x), sizeof(float));
-        if (!stream.good() || stream.gcount() != sizeof(float)) return false;
-        stream.read(reinterpret_cast<char*>(&m_y), sizeof(float));
-        return stream.good() && stream.gcount() == sizeof(float);
+        // Read from little-endian format for cross-platform compatibility
+        auto readFloat = [&stream](float& value) -> bool {
+            union { float f; uint32_t i; } converter;
+            converter.i = 0;
+            
+            // Read little-endian bytes
+            for (int i = 0; i < 4; ++i) {
+                char byte;
+                stream.read(&byte, 1);
+                if (!stream.good() || stream.gcount() != 1) return false;
+                converter.i |= (static_cast<uint32_t>(static_cast<unsigned char>(byte)) << (i * 8));
+            }
+            
+            value = converter.f;
+            return true;
+        };
+        
+        return readFloat(m_x) && readFloat(m_y);
     }
 
 private:

@@ -71,7 +71,7 @@ void AIDemoState::handleInput() {
     
     if (inputMgr.wasKeyPressed(SDL_SCANCODE_B)) {
         std::cout << "Forge Game Engine - Preparing to exit AIDemoState...\n";
-        GameEngine& gameEngine = GameEngine::Instance();
+        const GameEngine& gameEngine = GameEngine::Instance();
         gameEngine.getGameStateManager()->setState("MainMenuState");
     }
     
@@ -303,12 +303,12 @@ void AIDemoState::update([[maybe_unused]] float deltaTime) {
         uiManager.update(deltaTime);
         
         // Update status display
-        auto& gameEngine = GameEngine::Instance();
-        auto& aiMgr = AIManager::Instance();
+        const auto& gameEngine = GameEngine::Instance();
+        auto& aiManager = AIManager::Instance();
         std::stringstream status;
         status << "FPS: " << std::fixed << std::setprecision(1) << gameEngine.getCurrentFPS()
                << " | Entities: " << m_npcs.size() 
-               << " | AI: " << (aiMgr.isGloballyPaused() ? "PAUSED" : "RUNNING");
+               << " | AI: " << (aiManager.isGloballyPaused() ? "PAUSED" : "RUNNING");
         uiManager.setText("ai_status", status.str());
     }
 }

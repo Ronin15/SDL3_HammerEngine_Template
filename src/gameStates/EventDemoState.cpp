@@ -35,7 +35,7 @@ bool EventDemoState::enter() {
 
     try {
         // Cache GameEngine reference for better performance
-        GameEngine& gameEngine = GameEngine::Instance();
+        const GameEngine& gameEngine = GameEngine::Instance();
 
         // Setup window dimensions
         m_worldWidth = gameEngine.getWindowWidth();
