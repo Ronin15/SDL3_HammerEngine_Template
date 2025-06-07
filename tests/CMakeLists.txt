@@ -127,7 +127,6 @@ add_executable(ui_stress_test
 
 # Add compile definitions for Boost.Test
 target_compile_definitions(save_manager_tests PRIVATE
-    HAVE_BOOST_SERIALIZATION=1
 )
 
 target_compile_definitions(thread_system_tests PRIVATE
@@ -179,7 +178,6 @@ target_compile_definitions(ui_stress_test PRIVATE
 # Link with required libraries
 target_link_libraries(save_manager_tests PRIVATE
     SDL3::SDL3
-    Boost::serialization
     Boost::unit_test_framework
 )
 
@@ -246,13 +244,11 @@ target_link_libraries(weather_event_tests PRIVATE
 # Link UI Stress Test with minimal libraries
 target_link_libraries(ui_stress_test PRIVATE
     SDL3::SDL3
-    Boost::serialization
     Boost::unit_test_framework
 )
 
 # Add HAVE_BOOST_SERIALIZATION to ui_stress_test as well
 target_compile_definitions(ui_stress_test PRIVATE
-    HAVE_BOOST_SERIALIZATION=1
 )
 
 # Add the tests to CTest

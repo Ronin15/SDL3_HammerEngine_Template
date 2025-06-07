@@ -7,12 +7,11 @@
 #define VECTOR_2D_HPP
 
 #include <math.h>
-#ifdef HAVE_BOOST_SERIALIZATION
-#include <boost/serialization/access.hpp>
-#endif
+#include <iostream>
+#include "BinarySerializer.hpp"
 
 // A simple 2D vector class
-class Vector2D {
+class Vector2D : public ISerializable {
 public:
     // Constructors
     Vector2D() : m_x(0.0f), m_y(0.0f) {}
@@ -87,20 +86,24 @@ public:
         return v;
     }
 
+    // Fast binary serialization using simplified system
+    bool serialize(std::ostream& stream) const override {
+        stream.write(reinterpret_cast<const char*>(&m_x), sizeof(float));
+        if (!stream.good()) return false;
+        stream.write(reinterpret_cast<const char*>(&m_y), sizeof(float));
+        return stream.good();
+    }
+
+    bool deserialize(std::istream& stream) override {
+        stream.read(reinterpret_cast<char*>(&m_x), sizeof(float));
+        if (!stream.good() || stream.gcount() != sizeof(float)) return false;
+        stream.read(reinterpret_cast<char*>(&m_y), sizeof(float));
+        return stream.good() && stream.gcount() == sizeof(float);
+    }
+
 private:
     float m_x{0.0f};
     float m_y{0.0f};
-    
-#ifdef HAVE_BOOST_SERIALIZATION
-    // Boost serialization support
-    friend class boost::serialization::access;
-    
-    template<class Archive>
-    void serialize(Archive & ar, const unsigned int /*version*/) {
-        ar & m_x;
-        ar & m_y;
-    }
-#endif
 };
 
 #endif  // VECTOR_2D_HPP
