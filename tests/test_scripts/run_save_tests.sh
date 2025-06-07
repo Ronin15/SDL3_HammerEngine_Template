@@ -36,16 +36,14 @@ for arg in "$@"; do
       echo -e "  --clean      Clean test artifacts before building"
       echo -e "  --clean-all  Remove entire build directory and rebuild"
       echo -e "  --verbose    Run tests with verbose output"
-      echo -e "  --dir-test   Run only directory creation tests"
       echo -e "  --save-test  Run only save/load tests"
       echo -e "  --slot-test  Run only slot operations tests"
       echo -e "  --error-test Run only error handling tests"
+      echo -e "  --serialization-test Run only new serialization system tests"
+      echo -e "  --performance-test Run only performance comparison tests"
+      echo -e "  --integration-test Run only BinarySerializer integration tests"
       echo -e "  --help       Show this help message"
       exit 0
-      ;;
-    --dir-test)
-      TEST_FILTER="--run_test=TestDirectoryCreation"
-      shift
       ;;
     --save-test)
       TEST_FILTER="--run_test=TestSaveAndLoad"
@@ -57,6 +55,18 @@ for arg in "$@"; do
       ;;
     --error-test)
       TEST_FILTER="--run_test=TestErrorHandling"
+      shift
+      ;;
+    --serialization-test)
+      TEST_FILTER="--run_test=TestNewSerializationSystem"
+      shift
+      ;;
+    --performance-test)
+      TEST_FILTER="--run_test=TestPerformanceComparison"
+      shift
+      ;;
+    --integration-test)
+      TEST_FILTER="--run_test=TestBinarySerializerIntegration"
       shift
       ;;
   esac
@@ -95,9 +105,9 @@ echo -e "${BLUE}====================================${NC}"
 
 # Run with appropriate options
 if [ "$VERBOSE" = true ]; then
-  "$TEST_EXECUTABLE" --log_level=all | tee test_output.log
+  "$TEST_EXECUTABLE" $TEST_FILTER --log_level=all | tee test_output.log
 else
-  "$TEST_EXECUTABLE" | tee test_output.log
+  "$TEST_EXECUTABLE" $TEST_FILTER | tee test_output.log
 fi
 
 TEST_RESULT=$?
@@ -112,9 +122,9 @@ cp test_output.log "$PROJECT_ROOT/test_results/save_manager_test_output_${TIMEST
 # Also save to the standard location for compatibility
 cp test_output.log "$PROJECT_ROOT/test_results/save_manager_test_output.txt"
 
-# Extract performance metrics, directory creation test info and test cases run
+# Extract performance metrics, BinarySerializer test info and test cases run
 echo -e "${YELLOW}Saving test results...${NC}"
-grep -E "time:|performance|saved:|loaded:|TestSaveGameManager:|Directory creation|ensureDirectory" test_output.log > "$PROJECT_ROOT/test_results/save_manager_performance_metrics.txt" || true
+grep -E "time:|performance|microseconds|BinarySerializer|serialization|New serialization system|Binary writer/reader" test_output.log > "$PROJECT_ROOT/test_results/save_manager_performance_metrics.txt" || true
 
 # Extract test cases that were run
 echo -e "\n=== Test Cases Executed ===" > "$PROJECT_ROOT/test_results/save_manager_test_cases.txt"

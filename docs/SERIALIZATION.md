@@ -407,6 +407,84 @@ std::thread loadThread([&]() {
 
 ## Conclusion
 
+## SaveGameManager Integration
+
+The Forge Engine's SaveGameManager has been fully updated to use the BinarySerializer system, replacing the previous Boost serialization dependency.
+
+### How SaveGameManager Uses BinarySerializer
+
+```cpp
+// SaveGameManager internally uses BinarySerial::Writer and BinarySerial::Reader
+bool SaveGameManager::save(const std::string& saveFileName, const Player& player) {
+    // Creates BinarySerial::Writer with smart pointer-managed stream
+    auto writer = std::make_unique<BinarySerial::Writer>(
+        std::shared_ptr<std::ostream>(&file, [](std::ostream*){}));
+    
+    // Uses BinarySerializer for all data operations
+    writer->writeSerializable(player.getPosition());    // Vector2D
+    writer->writeString(player.getTextureID());         // String
+    writer->writeString(player.getCurrentStateName());  // String
+    
+    return writer->good();
+}
+```
+
+### Player Data Serialization
+
+The SaveGameManager serializes the following Player data using BinarySerializer:
+
+- **Position**: `Vector2D` using `ISerializable` interface
+- **Texture ID**: `std::string` using optimized string serialization  
+- **Current State**: `std::string` for player state machine
+- **Level ID**: `std::string` for current game level
+
+### Save File Format
+
+SaveGameManager creates binary save files with this structure:
+
+1. **Header Section**: 
+   - File signature: "FORGESAVE"
+   - Version number (uint32_t)
+   - Timestamp (time_t)
+   - Data section size (uint32_t)
+
+2. **Data Section** (serialized with BinarySerializer):
+   - Player position (Vector2D - 8 bytes)
+   - Texture ID (length-prefixed string)
+   - Current state (length-prefixed string)  
+   - Level ID (length-prefixed string)
+
+### Performance Benefits
+
+The BinarySerializer integration provides significant performance improvements:
+
+- **10x faster** primitive serialization vs Boost
+- **4x faster** string serialization vs Boost
+- **Automatic memory management** with smart pointers
+- **Integrated logging** with Forge logging system
+- **Type safety** with compile-time checks
+
+### Usage Examples
+
+```cpp
+// SaveGameManager usage remains the same - BinarySerializer is internal
+SaveGameManager& saveManager = SaveGameManager::Instance();
+
+// Save player data (now using BinarySerializer internally)
+bool success = saveManager.save("player_save.dat", player);
+
+// Load player data (now using BinarySerializer internally)  
+bool loaded = saveManager.load("player_save.dat", player);
+
+// Slot-based saving (also uses BinarySerializer)
+saveManager.saveToSlot(1, player);
+saveManager.loadFromSlot(1, player);
+```
+
+The transition to BinarySerializer is completely transparent to existing code while providing better performance and memory safety.
+
+## Conclusion
+
 The new serialization system provides a modern, fast, and memory-safe alternative to Boost serialization. With smart pointer-based memory management and a simple API, it's designed specifically for game development needs with minimal overhead and maximum safety.
 
-For working examples, see the test files in `tests/SaveManagerTests.cpp` which demonstrate real-world usage patterns.
+For working examples, see the test files in `tests/SaveManagerTests.cpp` which demonstrate real-world usage patterns, including the SaveGameManager integration.

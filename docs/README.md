@@ -69,6 +69,7 @@ High-performance multithreading framework with priority-based task scheduling.
 Core utility classes and helper systems used throughout the engine.
 
 - **[Logger System](Logger.md)** - High-performance logging with zero release overhead and system-specific macros
+- **[Binary Serialization](SERIALIZATION.md)** - Fast, header-only serialization system.
 - **[Worker Budget System](WorkerBudget_System.md)** - Memory optimization and budget management for threading
 
 ### Manager System Documentation
@@ -78,7 +79,7 @@ Core utility classes and helper systems used throughout the engine.
 - **[FontManager](FontManager.md)** - Font loading and text rendering system
 - **[TextureManager](TextureManager.md)** - Texture loading and sprite rendering system  
 - **[SoundManager](SoundManager.md)** - Audio playback and sound management system
-- **SaveGameManager** - Game save/load system with slot management and binary serialization
+- **SaveGameManager** - Game save/load system with BinarySerializer integration (see [SERIALIZATION.md](SERIALIZATION.md))
 
 
 

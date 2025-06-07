@@ -76,19 +76,37 @@ bool SaveGameManager::save(const std::string& saveFileName, const Player& player
         // Start of data section - track position to calculate data size
         std::streampos dataStart = file.tellp();
 
-        // Write player data
+        // Write player data using BinarySerializer
+        auto writer = std::make_unique<BinarySerial::Writer>(
+            std::shared_ptr<std::ostream>(&file, [](std::ostream*){}));
 
         // Write position
-        writeVector2D(file, player.getPosition());
+        if (!writer->writeSerializable(player.getPosition())) {
+            SAVEGAME_ERROR("Failed to write player position");
+            file.close();
+            return false;
+        }
 
         // Write textureID
-        writeString(file, player.getTextureID());
+        if (!writer->writeString(player.getTextureID())) {
+            SAVEGAME_ERROR("Failed to write player textureID");
+            file.close();
+            return false;
+        }
 
         // Write current state
-        writeString(file, player.getCurrentStateName());
+        if (!writer->writeString(player.getCurrentStateName())) {
+            SAVEGAME_ERROR("Failed to write player state");
+            file.close();
+            return false;
+        }
 
         // Write current level (this would come from your game state)
-        writeString(file, "current_level_id"); // Replace with actual level ID
+        if (!writer->writeString("current_level_id")) { // Replace with actual level ID
+            SAVEGAME_ERROR("Failed to write level ID");
+            file.close();
+            return false;
+        }
 
         // End of data section - calculate data size
         std::streampos dataEnd = file.tellp();
@@ -146,9 +164,13 @@ bool SaveGameManager::load(const std::string& saveFileName, Player& player) cons
             return false;
         }
 
-        // Read player data
+        // Read player data using BinarySerializer
+        auto reader = std::make_unique<BinarySerial::Reader>(
+            std::shared_ptr<std::istream>(&file, [](std::istream*){}));
+
+        // Read position
         Vector2D position(0.0f, 0.0f);
-        if (!readVector2D(file, position)) {
+        if (!reader->readSerializable(position)) {
             SAVEGAME_ERROR("Error reading player position");
             file.close();
             return false;
@@ -160,7 +182,7 @@ bool SaveGameManager::load(const std::string& saveFileName, Player& player) cons
 
         // Read textureID
         std::string textureID;
-        if (!readString(file, textureID)) {
+        if (!reader->readString(textureID)) {
             SAVEGAME_ERROR("Error reading player textureID!");
             file.close();
             return false;
@@ -168,7 +190,7 @@ bool SaveGameManager::load(const std::string& saveFileName, Player& player) cons
 
         // Read state
         std::string state;
-        if (!readString(file, state)) {
+        if (!reader->readString(state)) {
             SAVEGAME_ERROR("Error reading player state!");
             file.close();
             return false;
@@ -179,7 +201,7 @@ bool SaveGameManager::load(const std::string& saveFileName, Player& player) cons
 
         // Read level ID (not using it yet, but reading for future use)
         std::string levelID;
-        if (!readString(file, levelID)) {
+        if (!reader->readString(levelID)) {
             SAVEGAME_ERROR("Error reading level ID!");
             file.close();
             return false;
@@ -525,47 +547,27 @@ bool SaveGameManager::readHeader(std::ifstream& file, SaveGameHeader& header) co
     return file.good();
 }
 
+// These methods are now replaced by BinarySerializer - kept for compatibility if needed elsewhere
 bool SaveGameManager::writeString(std::ofstream& file, const std::string& str) const {
-    uint32_t length = static_cast<uint32_t>(str.length());
-    file.write(reinterpret_cast<const char*>(&length), sizeof(uint32_t));
-    if (length > 0) {
-        file.write(str.c_str(), length);
-    }
-    return file.good();
+    auto writer = std::make_unique<BinarySerial::Writer>(
+        std::shared_ptr<std::ostream>(&file, [](std::ostream*){}));
+    return writer->writeString(str);
 }
 
 bool SaveGameManager::readString(std::ifstream& file, std::string& str) const {
-    uint32_t length;
-    file.read(reinterpret_cast<char*>(&length), sizeof(uint32_t));
-
-    if (!file.good() || length > 1000000) { // Safety check for unreasonable string length
-        return false;
-    }
-
-    if (length == 0) {
-        str.clear();
-        return true;
-    }
-
-    str.resize(length);
-    file.read(&str[0], length);
-    return file.good();
+    auto reader = std::make_unique<BinarySerial::Reader>(
+        std::shared_ptr<std::istream>(&file, [](std::istream*){}));
+    return reader->readString(str);
 }
 
 bool SaveGameManager::writeVector2D(std::ofstream& file, const Vector2D& vec) const {
-    try {
-        return vec.serialize(file);
-    } catch (const std::exception& e) {
-        SAVEGAME_ERROR("Error serializing Vector2D: " + std::string(e.what()));
-        return false;
-    }
+    auto writer = std::make_unique<BinarySerial::Writer>(
+        std::shared_ptr<std::ostream>(&file, [](std::ostream*){}));
+    return writer->writeSerializable(vec);
 }
 
 bool SaveGameManager::readVector2D(std::ifstream& file, Vector2D& vec) const {
-    try {
-        return vec.deserialize(file);
-    } catch (const std::exception& e) {
-        SAVEGAME_ERROR("Error deserializing Vector2D: " + std::string(e.what()));
-        return false;
-    }
+    auto reader = std::make_unique<BinarySerial::Reader>(
+        std::shared_ptr<std::istream>(&file, [](std::istream*){}));
+    return reader->readSerializable(vec);
 }
