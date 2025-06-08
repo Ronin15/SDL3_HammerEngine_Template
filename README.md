@@ -13,6 +13,8 @@ I use the Zed IDE with custom cmake and ninja task configurations to build/compi
 
 ## Features Overview
 
+![Forge Engine](./md_imgs/Forge_Engine0.1.8.png)
+
 - SDL3 integration with SDL_image, SDL_ttf, and SDL_mixer
 - Fast header-only binary serialization system
 - Cross-platform support (Windows, macOS, Linux)
