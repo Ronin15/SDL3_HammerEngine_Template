@@ -87,15 +87,28 @@ ui.createLabel("text", bounds, "Label");  // Auto z-order: 20 (text on top)
 ui.setComponentZOrder("special_component", 50);
 ```
 
-### Buttons
+### Buttons & Semantic Button Types
 ```cpp
+// Standard button
 ui.createButton("my_btn", {x, y, width, height}, "Button Text");
+
+// Semantic button types with automatic color coding
+ui.createButtonDanger("quit_btn", {x, y, width, height}, "Exit");     // Red - destructive actions
+ui.createButtonSuccess("save_btn", {x, y, width, height}, "Save");    // Green - positive actions  
+ui.createButtonWarning("reset_btn", {x, y, width, height}, "Reset");  // Orange - cautionary actions
+
 ui.setOnClick("my_btn", []() { /* callback */ });
 
-// State checking
+// State checking works for all button types
 if (ui.isButtonClicked("my_btn")) { /* handle click */ }
 if (ui.isButtonHovered("my_btn")) { /* handle hover */ }
 ```
+
+#### Semantic Button Usage Guidelines
+- **BUTTON_DANGER (Red)**: Back, Quit, Exit, Delete, Remove, Destroy
+- **BUTTON_SUCCESS (Green)**: Save, Confirm, Accept, Yes, Apply, Submit
+- **BUTTON_WARNING (Orange)**: Cancel, Reset, Discard, Caution, Clear
+- **BUTTON (Blue/Gray)**: Standard actions, navigation, neutral operations
 
 ### Labels & Titles
 ```cpp
@@ -177,6 +190,25 @@ ui.createModal("dialog_id", {dialogX, dialogY, 400, 200}, "dark", windowWidth, w
 
 // For HUD elements (no overlay - game remains visible)
 ui.createProgressBar("health_bar", {10, 10, 200, 20});
+```
+
+### Semantic Button Colors by Theme
+```cpp
+// Light Theme Colors:
+// - Danger: Dark red {180, 50, 50}
+// - Success: Dark green {50, 150, 50}  
+// - Warning: Orange {200, 140, 50}
+// - Standard: Blue {60, 120, 180}
+
+// Dark Theme Colors:
+// - Danger: Bright red {200, 60, 60}
+// - Success: Bright green {60, 160, 60}
+// - Warning: Bright orange {220, 150, 60}
+// - Standard: Gray {50, 50, 60}
+
+// All button types automatically adapt to current theme
+ui.setThemeMode("light");  // All buttons use light theme colors
+ui.setThemeMode("dark");   // All buttons use dark theme colors
 ```
 
 ### Custom Styling (When Needed)
@@ -335,7 +367,7 @@ class MainMenuState : public GameState {
         // Create menu components with automatic z-order
         ui.createTitle("mainmenu_title", {0, 100, 800, 80}, "My Game");
         ui.createButton("mainmenu_play", {300, 250, 200, 50}, "Play Game");
-        ui.createButton("mainmenu_quit", {300, 320, 200, 50}, "Quit");
+        ui.createButtonDanger("mainmenu_quit", {300, 320, 200, 50}, "Quit");
         
         // Set up callbacks
         ui.setOnClick("mainmenu_play", [this]() {
@@ -432,8 +464,8 @@ public:
         ui.createModal("dialog", {dialogX, dialogY, 400, 200}, "dark", windowWidth, windowHeight);
         ui.createLabel("dialog_title", {dialogX + 20, dialogY + 20, 360, 30}, "Confirm Action");
         ui.createLabel("dialog_text", {dialogX + 20, dialogY + 60, 360, 40}, "Are you sure you want to quit?");
-        ui.createButton("dialog_yes", {dialogX + 50, dialogY + 120, 100, 40}, "Yes");
-        ui.createButton("dialog_cancel", {dialogX + 250, dialogY + 120, 100, 40}, "Cancel");
+        ui.createButtonSuccess("dialog_yes", {dialogX + 50, dialogY + 120, 100, 40}, "Yes");
+        ui.createButtonWarning("dialog_cancel", {dialogX + 250, dialogY + 120, 100, 40}, "Cancel");
         
         // Set up callbacks
         ui.setOnClick("dialog_yes", []() {

@@ -22,6 +22,9 @@ class TextureManager;
 // UI Component Types
 enum class UIComponentType {
     BUTTON,
+    BUTTON_DANGER,   // Red colored buttons (Back, Quit, Exit, Delete, etc.)
+    BUTTON_SUCCESS,  // Green colored buttons (Save, Confirm, Accept, etc.)
+    BUTTON_WARNING,  // Orange/Yellow colored buttons (Caution, Reset, etc.)
     LABEL,
     TITLE,
     PANEL,
@@ -218,9 +221,12 @@ public:
     void clean();
     bool isShutdown() const { return m_isShutdown; }
 
-    // Component creation methods  
-    void createButton(const std::string& id, const UIRect& bounds, const std::string& text);
-    void createLabel(const std::string& id, const UIRect& bounds, const std::string& text);
+    // UI Component creation methods
+    void createButton(const std::string& id, const UIRect& bounds, const std::string& text = "");
+    void createButtonDanger(const std::string& id, const UIRect& bounds, const std::string& text = "");
+    void createButtonSuccess(const std::string& id, const UIRect& bounds, const std::string& text = "");
+    void createButtonWarning(const std::string& id, const UIRect& bounds, const std::string& text = "");
+    void createLabel(const std::string& id, const UIRect& bounds, const std::string& text = "");
     void createTitle(const std::string& id, const UIRect& bounds, const std::string& text);
     void createPanel(const std::string& id, const UIRect& bounds);
     void createProgressBar(const std::string& id, const UIRect& bounds, float minVal = 0.0f, float maxVal = 1.0f);
@@ -352,6 +358,8 @@ public:
     float getGlobalScale() const { return m_globalScale; }
     void enableTooltips(bool enable) { m_tooltipsEnabled = enable; }
     void setTooltipDelay(float delay) { m_tooltipDelay = delay; }
+
+
 
     // Debug methods
     void setDebugMode(bool enable) { m_debugMode = enable; }

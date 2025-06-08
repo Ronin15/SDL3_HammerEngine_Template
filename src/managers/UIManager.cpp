@@ -145,6 +145,42 @@ void UIManager::createButton(const std::string& id, const UIRect& bounds, const 
     m_components[id] = component;
 }
 
+void UIManager::createButtonDanger(const std::string& id, const UIRect& bounds, const std::string& text) {
+    auto component = std::make_shared<UIComponent>();
+    component->id = id;
+    component->type = UIComponentType::BUTTON_DANGER;
+    component->bounds = bounds;
+    component->text = text;
+    component->style = m_currentTheme.getStyle(UIComponentType::BUTTON_DANGER);
+    component->zOrder = 10; // Interactive elements on top
+
+    m_components[id] = component;
+}
+
+void UIManager::createButtonSuccess(const std::string& id, const UIRect& bounds, const std::string& text) {
+    auto component = std::make_shared<UIComponent>();
+    component->id = id;
+    component->type = UIComponentType::BUTTON_SUCCESS;
+    component->bounds = bounds;
+    component->text = text;
+    component->style = m_currentTheme.getStyle(UIComponentType::BUTTON_SUCCESS);
+    component->zOrder = 10; // Interactive elements on top
+
+    m_components[id] = component;
+}
+
+void UIManager::createButtonWarning(const std::string& id, const UIRect& bounds, const std::string& text) {
+    auto component = std::make_shared<UIComponent>();
+    component->id = id;
+    component->type = UIComponentType::BUTTON_WARNING;
+    component->bounds = bounds;
+    component->text = text;
+    component->style = m_currentTheme.getStyle(UIComponentType::BUTTON_WARNING);
+    component->zOrder = 10; // Interactive elements on top
+
+    m_components[id] = component;
+}
+
 void UIManager::createLabel(const std::string& id, const UIRect& bounds, const std::string& text) {
     auto component = std::make_shared<UIComponent>();
     component->id = id;
@@ -923,6 +959,27 @@ void UIManager::setLightTheme() {
     buttonStyle.fontID = "fonts_UI_Arial";
     lightTheme.componentStyles[UIComponentType::BUTTON] = buttonStyle;
 
+    // Button Danger style - red buttons for Back, Quit, Exit, Delete, etc.
+    UIStyle dangerButtonStyle = buttonStyle;
+    dangerButtonStyle.backgroundColor = {180, 50, 50, 255};
+    dangerButtonStyle.hoverColor = {200, 70, 70, 255};
+    dangerButtonStyle.pressedColor = {160, 30, 30, 255};
+    lightTheme.componentStyles[UIComponentType::BUTTON_DANGER] = dangerButtonStyle;
+
+    // Button Success style - green buttons for Save, Confirm, Accept, etc.
+    UIStyle successButtonStyle = buttonStyle;
+    successButtonStyle.backgroundColor = {50, 150, 50, 255};
+    successButtonStyle.hoverColor = {70, 170, 70, 255};
+    successButtonStyle.pressedColor = {30, 130, 30, 255};
+    lightTheme.componentStyles[UIComponentType::BUTTON_SUCCESS] = successButtonStyle;
+
+    // Button Warning style - orange buttons for Caution, Reset, etc.
+    UIStyle warningButtonStyle = buttonStyle;
+    warningButtonStyle.backgroundColor = {200, 140, 50, 255};
+    warningButtonStyle.hoverColor = {220, 160, 70, 255};
+    warningButtonStyle.pressedColor = {180, 120, 30, 255};
+    lightTheme.componentStyles[UIComponentType::BUTTON_WARNING] = warningButtonStyle;
+
     // Label style - enhanced contrast
     UIStyle labelStyle;
     labelStyle.backgroundColor = {0, 0, 0, 0}; // Transparent
@@ -1064,6 +1121,27 @@ void UIManager::setDarkTheme() {
     buttonStyle.textAlign = UIAlignment::CENTER_CENTER;
     buttonStyle.fontID = "fonts_UI_Arial";
     darkTheme.componentStyles[UIComponentType::BUTTON] = buttonStyle;
+
+    // Button Danger style - red buttons for Back, Quit, Exit, Delete, etc.
+    UIStyle dangerButtonStyle = buttonStyle;
+    dangerButtonStyle.backgroundColor = {200, 60, 60, 255};
+    dangerButtonStyle.hoverColor = {220, 80, 80, 255};
+    dangerButtonStyle.pressedColor = {180, 40, 40, 255};
+    darkTheme.componentStyles[UIComponentType::BUTTON_DANGER] = dangerButtonStyle;
+
+    // Button Success style - green buttons for Save, Confirm, Accept, etc.
+    UIStyle successButtonStyle = buttonStyle;
+    successButtonStyle.backgroundColor = {60, 160, 60, 255};
+    successButtonStyle.hoverColor = {80, 180, 80, 255};
+    successButtonStyle.pressedColor = {40, 140, 40, 255};
+    darkTheme.componentStyles[UIComponentType::BUTTON_SUCCESS] = successButtonStyle;
+
+    // Button Warning style - orange buttons for Caution, Reset, etc.
+    UIStyle warningButtonStyle = buttonStyle;
+    warningButtonStyle.backgroundColor = {220, 150, 60, 255};
+    warningButtonStyle.hoverColor = {240, 170, 80, 255};
+    warningButtonStyle.pressedColor = {200, 130, 40, 255};
+    darkTheme.componentStyles[UIComponentType::BUTTON_WARNING] = warningButtonStyle;
 
     // Label style - pure white text for maximum contrast
     UIStyle labelStyle;
@@ -1415,6 +1493,9 @@ void UIManager::handleInput() {
 
             // Handle click/press for interactive components
             if (component->type == UIComponentType::BUTTON ||
+                component->type == UIComponentType::BUTTON_DANGER ||
+                component->type == UIComponentType::BUTTON_SUCCESS ||
+                component->type == UIComponentType::BUTTON_WARNING ||
                 component->type == UIComponentType::CHECKBOX ||
                 component->type == UIComponentType::SLIDER) {
 
@@ -1428,7 +1509,10 @@ void UIManager::handleInput() {
 
                 if (mouseJustReleased && component->state == UIState::PRESSED) {
                     // Handle click
-                    if (component->type == UIComponentType::BUTTON) {
+                    if (component->type == UIComponentType::BUTTON ||
+                        component->type == UIComponentType::BUTTON_DANGER ||
+                        component->type == UIComponentType::BUTTON_SUCCESS ||
+                        component->type == UIComponentType::BUTTON_WARNING) {
                         m_clickedButtons.push_back(id);
                         if (component->onClick) {
                             component->onClick();
@@ -1553,6 +1637,9 @@ void UIManager::renderComponent(SDL_Renderer* renderer, const std::shared_ptr<UI
 
     switch (component->type) {
         case UIComponentType::BUTTON:
+        case UIComponentType::BUTTON_DANGER:
+        case UIComponentType::BUTTON_SUCCESS:
+        case UIComponentType::BUTTON_WARNING:
             renderButton(renderer, component);
             break;
         case UIComponentType::LABEL:

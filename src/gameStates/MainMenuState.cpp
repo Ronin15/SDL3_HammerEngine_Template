@@ -34,7 +34,7 @@ bool MainMenuState::enter() {
   ui.createButton("mainmenu_event_demo_btn", {windowWidth/2 - buttonWidth/2, startY + 2 * (buttonHeight + buttonSpacing), buttonWidth, buttonHeight}, "Event Demo");
   ui.createButton("mainmenu_ui_example_btn", {windowWidth/2 - buttonWidth/2, startY + 3 * (buttonHeight + buttonSpacing), buttonWidth, buttonHeight}, "UI Example");
   ui.createButton("mainmenu_overlay_demo_btn", {windowWidth/2 - buttonWidth/2, startY + 4 * (buttonHeight + buttonSpacing), buttonWidth, buttonHeight}, "Overlay Demo");
-  ui.createButton("mainmenu_exit_btn", {windowWidth/2 - buttonWidth/2, startY + 5 * (buttonHeight + buttonSpacing), buttonWidth, buttonHeight}, "Exit");
+  ui.createButtonDanger("mainmenu_exit_btn", {windowWidth/2 - buttonWidth/2, startY + 5 * (buttonHeight + buttonSpacing), buttonWidth, buttonHeight}, "Exit");
 
   // Set up button callbacks
   ui.setOnClick("mainmenu_start_game_btn", []() {
@@ -72,7 +72,7 @@ bool MainMenuState::enter() {
     gameEngine.setRunning(false);
   });
 
-  // Exit button uses theme styling - no custom colors needed
+
   
   return true;
 }
