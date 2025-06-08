@@ -8,7 +8,7 @@ The EventManager leverages the ThreadSystem for efficient parallel processing of
 
 ### Realistic Event Scales
 - **Small Games**: 10-50 events (82,000-95,000 events/second)
-- **Medium Games**: 50-100 events (54,000-58,000 events/second)  
+- **Medium Games**: 50-100 events (54,000-58,000 events/second)
 - **Large Games**: 100-200 events (24,000-50,000 events/second)
 - **Maximum Scale**: ~500 events (still performant)
 
@@ -47,7 +47,7 @@ The EventManager now implements a sophisticated worker budget allocation system 
 The EventManager receives **30% of available workers** after the GameEngine reserves its minimum allocation:
 
 - **GameEngine**: Always reserves minimum 2 workers for critical operations
-- **AIManager**: Gets 60% of remaining workers for entity behavior processing  
+- **AIManager**: Gets 60% of remaining workers for entity behavior processing
 - **EventManager**: Gets 30% of remaining workers for event processing
 - **Buffer**: 10% left free for system responsiveness
 
@@ -104,7 +104,7 @@ if (currentQueueSize < maxQueuePressure && eventContainer.size() > 10) {
 ### Integration with WorkerBudget Utility
 
 ```cpp
-#include "utils/WorkerBudget.hpp"
+#include "core/WorkerBudget.hpp"
 
 // Calculate budget allocation
 Forge::WorkerBudget budget = Forge::calculateWorkerBudget(availableWorkers);
@@ -135,7 +135,7 @@ void EventManager::update() {
 ```cpp
 void EventManager::updateEventTypeBatch(EventTypeId typeId) {
     auto& eventBatch = m_eventsByType[static_cast<size_t>(typeId)];
-    
+
     if (m_threadingEnabled.load() && eventBatch.size() > m_threadingThreshold) {
         updateEventTypeBatchThreaded(typeId);  // Use ThreadSystem
     } else {
@@ -199,7 +199,7 @@ std::cout << "Weather processing time: " << stats.avgTime << "ms" << std::endl;
 // Check if threading is beneficial
 bool usingThreads = EventManager::Instance().isThreadingEnabled();
 size_t eventCount = EventManager::Instance().getEventCount();
-std::cout << "Threading enabled: " << usingThreads 
+std::cout << "Threading enabled: " << usingThreads
           << " for " << eventCount << " events" << std::endl;
 ```
 
@@ -245,17 +245,17 @@ class GameState {
         // Initialize threading first
         Forge::ThreadSystem::Instance().init();
         EventManager::Instance().init();
-        
+
         // Configure for game scale
         EventManager::Instance().enableThreading(true);
         EventManager::Instance().setThreadingThreshold(getExpectedEventCount() / 2);
     }
-    
+
     void update() {
         // Single call processes all events efficiently
         EventManager::Instance().update();
     }
-    
+
 private:
     size_t getExpectedEventCount() {
         // Return expected event count based on game scale
@@ -271,23 +271,23 @@ void profileEventPerformance() {
     for (int i = 0; i < 100; ++i) {
         EventManager::Instance().createWeatherEvent("test_" + std::to_string(i), "Rainy");
     }
-    
+
     // Test single-threaded
     EventManager::Instance().enableThreading(false);
     auto start = std::chrono::high_resolution_clock::now();
     EventManager::Instance().update();
     auto singleThreadTime = std::chrono::high_resolution_clock::now() - start;
-    
+
     // Test multi-threaded
     EventManager::Instance().enableThreading(true);
     start = std::chrono::high_resolution_clock::now();
     EventManager::Instance().update();
     auto multiThreadTime = std::chrono::high_resolution_clock::now() - start;
-    
+
     // Compare results
     auto singleMs = std::chrono::duration_cast<std::chrono::microseconds>(singleThreadTime).count() / 1000.0;
     auto multiMs = std::chrono::duration_cast<std::chrono::microseconds>(multiThreadTime).count() / 1000.0;
-    
+
     std::cout << "Single-threaded: " << singleMs << "ms" << std::endl;
     std::cout << "Multi-threaded: " << multiMs << "ms" << std::endl;
     std::cout << "Speedup: " << (singleMs / multiMs) << "x" << std::endl;
@@ -301,10 +301,10 @@ void profileEventPerformance() {
 void cleanupEventSystems() {
     // Disable threading first
     EventManager::Instance().enableThreading(false);
-    
+
     // Clean up EventManager
     EventManager::Instance().clean();
-    
+
     // ThreadSystem cleanup handled by application
     // Forge::ThreadSystem::Instance().clean();
 }
@@ -334,7 +334,7 @@ void cleanupEventSystems() {
 void validateThreadingPerformance() {
     size_t eventCount = EventManager::Instance().getEventCount();
     auto stats = EventManager::Instance().getPerformanceStats(EventTypeId::Weather);
-    
+
     if (stats.avgTime > 1.0 && eventCount > 50) {
         std::cout << "Consider lowering threading threshold" << std::endl;
     } else if (stats.avgTime < 0.1 && eventCount < 30) {

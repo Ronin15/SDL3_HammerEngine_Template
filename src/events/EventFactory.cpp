@@ -5,7 +5,7 @@
 
 #include "events/EventFactory.hpp"
 #include "events/NPCSpawnEvent.hpp"
-#include "utils/Logger.hpp"
+#include "core/Logger.hpp"
 #include <algorithm>
 #include <cctype>
 

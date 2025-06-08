@@ -8,7 +8,7 @@
 #include "utils/Vector2D.hpp"
 #include "entities/NPC.hpp"
 #include "core/GameEngine.hpp"
-#include "utils/Logger.hpp"
+#include "core/Logger.hpp"
 #include <random>
 #include <chrono>
 #include <algorithm>
@@ -120,7 +120,7 @@ void NPCSpawnEvent::onMessage(const std::string& message) {
     EVENT_INFO("NPCSpawnEvent received message: " + message);
     EVENT_INFO("  - Event demonstrates messaging system coordination");
     EVENT_INFO("  - Actual entity management handled by GameStates");
-    
+
     // Suppress unused parameter warning in release builds
     (void)message;
 }

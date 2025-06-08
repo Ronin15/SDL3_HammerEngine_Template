@@ -4,7 +4,7 @@
 */
 
 #include "core/GameLoop.hpp"
-#include "utils/Logger.hpp"
+#include "core/Logger.hpp"
 #include <exception>
 
 GameLoop::GameLoop(float targetFPS, float fixedTimestep, bool threaded)
@@ -94,7 +94,7 @@ bool GameLoop::isRunning() const {
 
 void GameLoop::setPaused(bool paused) {
     bool wasPaused = m_paused.exchange(paused);
-    
+
     // If transitioning from paused to unpaused, reset timing to avoid time jump
     if (wasPaused && !paused) {
         m_timestepManager->reset();
@@ -163,7 +163,7 @@ void GameLoop::runUpdateThread() {
             // Sleep for approximately half the target frame time to balance responsiveness and CPU usage
             float targetFPS = m_timestepManager->getTargetFPS();
             float targetFrameTimeMs = 1000.0f / targetFPS;
-            
+
             // Ensure minimum 1ms sleep, maximum 8ms for responsiveness
             uint32_t sleepTimeMs = static_cast<uint32_t>(std::max(1.0f, std::min(8.0f, targetFrameTimeMs * 0.5f)));
             std::this_thread::sleep_for(std::chrono::milliseconds(sleepTimeMs));
