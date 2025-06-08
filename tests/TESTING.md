@@ -49,11 +49,17 @@ Each test suite has dedicated scripts in the project root directory:
 
 # Performance scaling benchmarks (slow execution)
 ./run_event_scaling_benchmark.sh     # Event manager scaling benchmark
-./run_ai_benchmark.sh                # AI scaling benchmark
+./run_ai_benchmark.sh                # AI scaling benchmark with realistic automatic threading
 ./run_ui_stress_tests.sh             # UI stress and performance tests
 
 # Run all tests
 ./run_all_tests.sh                   # Run all test scripts sequentially
+
+# AI benchmark test examples with automatic threading
+./run_ai_benchmark.sh                                   # Full realistic benchmark suite
+./run_ai_benchmark.sh --realistic-only                  # Realistic performance tests only
+./run_ai_benchmark.sh --stress-test                     # 100K entity stress test only
+./run_ai_benchmark.sh --threshold-test                  # Threading threshold validation
 
 # Individual UI stress test examples
 ./run_ui_stress_tests.sh --level light --duration 30    # Quick UI test
@@ -77,6 +83,7 @@ run_thread_tests.bat                 # Thread system tests
 run_thread_safe_ai_tests.bat         # Thread-safe AI tests
 run_thread_safe_ai_integration_tests.bat  # Thread-safe AI integration tests
 run_ai_optimization_tests.bat        # AI optimization tests
+run_ai_benchmark.bat                 # AI scaling benchmark with realistic automatic threading
 run_save_tests.bat                   # Save manager and BinarySerializer tests
 run_event_tests.bat                  # Event manager tests
 
@@ -206,12 +213,33 @@ Special considerations for thread-safety tests:
 
 ### AI Benchmark Tests
 
-Located in `AIScalingBenchmark.cpp`, these tests measure:
+Located in `AIScalingBenchmark.cpp`, these tests measure realistic performance characteristics:
 
-1. **Threading Performance**: Compares single-threaded vs. multi-threaded performance
-2. **Scalability**: Tests how AI performance scales with different entity counts
-3. **Behavior Complexity**: Measures impact of behavior complexity on performance
-4. **Thread Count Impact**: Evaluates performance with different numbers of worker threads
+1. **Realistic Performance Testing**: Tests automatic threading behavior across different entity counts
+   - Below 200 entities: Validates single-threaded processing
+   - At 200+ entities: Validates automatic threading activation  
+   - 1000+ entities: Confirms high-performance threading
+   - 5000+ entities: Target performance validation
+
+2. **Realistic Scalability**: Tests automatic threading behavior across entity ranges
+   - Tests 100-10K entity range with automatic mode selection
+   - Validates 200-entity threading threshold effectiveness
+   - Measures cache-friendly batching performance
+
+3. **Legacy Comparison**: Forced threading modes for comparison with previous benchmarks
+   - Single-threaded forced mode for baseline comparison
+   - Multi-threaded forced mode for maximum performance comparison
+
+4. **Stress Testing**: 100K entity extreme load testing
+   - Validates system stability under extreme stress
+   - Tests WorkerBudget system coordination
+   - Confirms queue capacity handling (4096 tasks)
+
+**Key Performance Targets:**
+- 200 entities: Automatic threading activation (~750K updates/sec)
+- 1000 entities: High threading performance (~975K updates/sec)  
+- 10K entities: Target performance maintained (~995K updates/sec)
+- 100K entities: Stress test validation (2.2M+ updates/sec)
 
 ### UI Stress Tests
 

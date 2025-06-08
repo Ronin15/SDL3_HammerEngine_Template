@@ -71,6 +71,17 @@ class GameEngine {
   void processBackgroundTasks();
 
   /**
+   * @brief Processes critical engine coordination tasks
+   * @param deltaTime Time elapsed since last update in seconds
+   */
+  void processEngineCoordination(float deltaTime);
+
+  /**
+   * @brief Processes secondary engine tasks when multiple workers are allocated
+   */
+  void processEngineSecondaryTasks();
+
+  /**
    * @brief Loads resources asynchronously in background threads
    * @param path Path to resources to load
    * @return true if loading started successfully, false otherwise

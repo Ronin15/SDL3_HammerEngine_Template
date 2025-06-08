@@ -318,7 +318,7 @@ private:
 
     // Batch processing constants
     static constexpr size_t BATCH_SIZE = 64;
-    static constexpr size_t THREADING_THRESHOLD = 100;
+    static constexpr size_t THREADING_THRESHOLD = 200;
 
     // Helper methods
     BehaviorType inferBehaviorType(const std::string& behaviorName) const;

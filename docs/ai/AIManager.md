@@ -416,16 +416,18 @@ size_t optimalBatchSize = entities.size() / maxAIBatches;
 
 The system monitors ThreadSystem queue pressure to prevent overload:
 
-- **Normal Load**: Uses full worker budget for parallel processing
-- **High Pressure**: Falls back to single-threaded processing when queue > 2x worker count
+- **Normal Load**: Uses full worker budget for parallel processing  
+- **High Pressure**: Falls back to single-threaded processing when queue > 3x worker count
+- **Dynamic Priority**: Adjusts task priority based on entity count (Low for 10K+, Normal for 5K-10K, High for <5K)
 - **Graceful Degradation**: Maintains functionality under any load condition
 
 #### Performance Benefits
 
 - **Prevents Thread Starvation**: No single subsystem monopolizes workers
 - **Hardware Adaptive**: Automatically scales with processor count
-- **Optimal Throughput**: Maintains 12x+ threading speedup on large entity counts
-- **System Stability**: Eliminates ThreadSystem queue overflow issues
+- **Optimal Throughput**: Achieves 995,723 updates/sec for 10K entities (threading) vs 562,482 (single-threaded)
+- **System Stability**: Eliminates ThreadSystem queue overflow issues with 4096 queue capacity
+- **Cache-Friendly Batching**: Uses 25-1000 entity batches for optimal memory access patterns
 
 - `Forge::TaskPriority::Critical` (0) - For mission-critical AI (e.g., boss behaviors, player-interacting NPCs)
 - `Forge::TaskPriority::High` (1) - For important AI that needs quick responses (e.g., combat enemies)

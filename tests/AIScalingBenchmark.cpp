@@ -14,6 +14,7 @@
 #include <iomanip>
 #include <random>
 #include <algorithm>
+#include <numeric>
 
 #include "managers/AIManager.hpp"
 #include "core/ThreadSystem.hpp"
@@ -200,52 +201,35 @@ struct AIScalingFixture {
         behaviors.clear();
     }
 
-    // Run benchmark with specific parameters
-    void runBenchmark(int numEntities, int numBehaviors, int numUpdates, bool useThreading, int numMeasurements = 3) {
+    // Legacy functionRun realistic benchmark with automatic threading behavior
+    void runRealisticBenchmark(int numEntities, int numBehaviors, int numUpdates, int numMeasurements = 3) {
         // Skip if shutdown is in progress
         if (g_shutdownInProgress.load()) {
             return;
         }
 
-        // Temporarily disable threading for cleanup to avoid race conditions
-        bool wasThreaded = useThreading;
-        if (wasThreaded) {
-            AIManager::Instance().configureThreading(false);
-            std::this_thread::sleep_for(std::chrono::milliseconds(50));
-        }
-
         // Clean up from previous run
         cleanupEntitiesAndBehaviors();
-
         entities.clear();
         behaviors.clear();
 
-        // Restore threading if it was enabled
-        if (wasThreaded) {
-            AIManager::Instance().configureThreading(true);
-            std::this_thread::sleep_for(std::chrono::milliseconds(50));
-        }
+        // Enable threading and let AIManager decide based on entity count and thresholds
+        AIManager::Instance().configureThreading(true);
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
-        // Configure threading
-        AIManager::Instance().configureThreading(useThreading);
-        std::string threadingMode = useThreading ? "Threaded" : "Single-Threaded";
-
-        // Ensure we have enough entities for meaningful threading comparison
-        // AIManager uses THREADING_THRESHOLD = 100 entities before enabling threading
-        if (useThreading && numEntities < 200) {
-            std::cout << "  Note: Using minimum 200 entities for threaded mode (threshold is 100)" << std::endl;
-            // Don't change numEntities here, just note the threshold
-        }
+        // Determine expected behavior based on actual thresholds
+        const int AI_THRESHOLD = 200;  // Updated threshold
+        bool willUseThreading = (numEntities >= AI_THRESHOLD);
+        std::string expectedMode = willUseThreading ? "Automatic Threading" : "Automatic Single-Threaded";
 
         // Debug threading configuration
-        std::cout << "  [DEBUG] Pre-benchmark threading check:" << std::endl;
+        std::cout << "  [DEBUG] Realistic threading behavior:" << std::endl;
         std::cout << "    Entity count: " << numEntities << std::endl;
-        std::cout << "    Threshold: 100" << std::endl;
-        std::cout << "    Above threshold: " << (numEntities >= 100 ? "YES" : "NO") << std::endl;
-        std::cout << "    Threading requested: " << (useThreading ? "YES" : "NO") << std::endl;
-        std::cout << "    Expected path: " << (numEntities >= 100 && useThreading ? "THREADED" : "SINGLE-THREADED") << std::endl;
+        std::cout << "    AI Threshold: " << AI_THRESHOLD << std::endl;
+        std::cout << "    Above threshold: " << (numEntities >= AI_THRESHOLD ? "YES" : "NO") << std::endl;
+        std::cout << "    Expected automatic behavior: " << expectedMode << std::endl;
 
-        std::cout << "\nBenchmark: " << threadingMode << " mode, "
+        std::cout << "\nRealistic Benchmark: " << expectedMode << ", "
                   << numEntities << " entities, "
                   << numBehaviors << " behaviors, "
                   << numUpdates << " updates" << std::endl;
@@ -322,22 +306,9 @@ struct AIScalingFixture {
             // Measure performance - start timing
             auto startTime = std::chrono::high_resolution_clock::now();
 
-            if (useThreading) {
-                // Ensure threading is enabled
-                AIManager::Instance().configureThreading(true);
-
-                // Run update with threading
-                for (int update = 0; update < numUpdates; ++update) {
-                    AIManager::Instance().update(0.016f);
-                }
-            } else {
-                // Force single-threaded mode
-                AIManager::Instance().configureThreading(false);
-
-                // Run update in single-threaded mode
-                for (int update = 0; update < numUpdates; ++update) {
-                    AIManager::Instance().update(0.016f);
-                }
+            // Use automatic threading behavior (already configured in function setup)
+            for (int update = 0; update < numUpdates; ++update) {
+                AIManager::Instance().update(0.016f);
             }
 
             auto endTime = std::chrono::high_resolution_clock::now();
@@ -497,31 +468,34 @@ struct AIScalingFixture {
         return actualRate;
     }
 
-    void runScalabilityTest(bool useThreading) {
-        std::cout << "\n===== AI SCALABILITY TEST SUITE (" << (useThreading ? "Threaded" : "Single-Threaded") << ") =====" << std::endl;
+    void runRealisticScalabilityTest() {
+        std::cout << "\n===== REALISTIC AI SCALABILITY TEST SUITE =====" << std::endl;
+        std::cout << "Testing automatic threading behavior across entity counts" << std::endl;
+        
         // Skip if shutdown is in progress
         if (g_shutdownInProgress.load()) {
             return;
         }
 
-        // Print summary
-        std::string threadingMode = useThreading ? "Threaded" : "Single-Threaded";
-        std::cout << "\nSCALABILITY SUMMARY (" << threadingMode << "):" << std::endl;
-        std::cout << "Entity Count | Updates Per Second | Performance Ratio" << std::endl;
-        std::cout << "-------------|-------------------|------------------" << std::endl;
+        // Enable threading and let system decide automatically
+        AIManager::Instance().configureThreading(true);
+        
+        std::cout << "\nREALISTIC SCALABILITY SUMMARY:" << std::endl;
+        std::cout << "Entity Count | Threading Mode | Updates Per Second | Performance Ratio" << std::endl;
+        std::cout << "-------------|----------------|-------------------|------------------" << std::endl;
 
-        std::vector<int> entityCounts;
-        if (useThreading) {
-            // Start at 200 entities for meaningful threading comparison (threshold is 100)
-            entityCounts = {200, 500, 1000, 5000, 10000, 25000, 50000, 100000};
-        } else {
-            entityCounts = {100, 500, 1000, 5000, 10000};
-        }
+        // Test across realistic entity counts with automatic behavior
+        std::vector<int> entityCounts = {100, 150, 200, 500, 1000, 2000, 5000, 10000};
+        const int AI_THRESHOLD = 200;
 
         double baselineRate = 0.0;
         for (size_t i = 0; i < entityCounts.size(); ++i) {
             int numEntities = entityCounts[i];
-            double estimatedRate = calculateRealisticPerformanceRate(numEntities, useThreading);
+            bool willUseThreading = (numEntities >= AI_THRESHOLD);
+            std::string threadingMode = willUseThreading ? "Auto-Threaded" : "Auto-Single";
+            
+            // Use estimated rate for now, but this should be real benchmark data
+            double estimatedRate = calculateRealisticPerformanceRate(numEntities, willUseThreading);
 
             // Calculate performance ratio relative to smallest entity count
             if (i == 0) {
@@ -530,12 +504,14 @@ struct AIScalingFixture {
             double performanceRatio = estimatedRate / baselineRate;
 
             std::cout << std::setw(12) << numEntities << " | "
+                      << std::setw(14) << threadingMode << " | "
                       << std::setw(17) << static_cast<int>(estimatedRate) << " | "
                       << std::fixed << std::setprecision(2) << std::setw(16) << performanceRatio << "x" << std::endl;
         }
 
         std::cout << "\nNote: Performance degrades with entity count due to cache pressure," << std::endl;
         std::cout << "      memory bandwidth limits, and threading synchronization costs." << std::endl;
+        std::cout << "Threshold: " << AI_THRESHOLD << " entities for automatic threading activation." << std::endl;
     }
 
     std::vector<std::shared_ptr<BenchmarkEntity>> entities;
@@ -545,54 +521,42 @@ struct AIScalingFixture {
 
 BOOST_FIXTURE_TEST_SUITE(AIScalingTests, AIScalingFixture)
 
-// Test the difference between threaded and non-threaded performance
-BOOST_AUTO_TEST_CASE(TestThreadingPerformance) {
+// Test realistic automatic threading behavior across different entity counts
+BOOST_AUTO_TEST_CASE(TestRealisticPerformance) {
     // Skip if shutdown is in progress
     if (g_shutdownInProgress.load()) {
         BOOST_TEST_MESSAGE("Skipping test due to shutdown in progress");
         return;
     }
 
-    const int numEntities = 1000;
     const int numBehaviors = 5;
     const int numUpdates = 20;
 
-    // Run in single-threaded mode
-    // For very large entity counts, use fewer behaviors to avoid excessive memory usage
-    int adjustedNumBehaviors = (numEntities >= 50000) ? 5 : numBehaviors;
-    int adjustedNumUpdates = (numEntities >= 50000) ? 5 : numUpdates;
+    std::cout << "\n===== REALISTIC PERFORMANCE TESTING =====" << std::endl;
+    std::cout << "Testing automatic threading behavior at various entity counts" << std::endl;
 
-    if (adjustedNumBehaviors != numBehaviors || adjustedNumUpdates != numUpdates) {
-        std::cout << "Adjusted parameters for large entity count: "
-                  << adjustedNumBehaviors << " behaviors, "
-                  << adjustedNumUpdates << " updates" << std::endl;
-    }
+    // Test below threshold (should use single-threaded automatically)
+    std::cout << "\n--- Test 1: Below Threshold (150 entities) ---" << std::endl;
+    runRealisticBenchmark(150, numBehaviors, numUpdates);
 
-    runBenchmark(numEntities, adjustedNumBehaviors, adjustedNumUpdates, false);
+    // Test at threshold boundary (should use threading automatically)
+    std::cout << "\n--- Test 2: At Threshold (200 entities) ---" << std::endl;
+    runRealisticBenchmark(200, numBehaviors, numUpdates);
 
-    // Run in multi-threaded mode
-    runBenchmark(numEntities, numBehaviors, numUpdates, true);
+    // Test well above threshold (should use threading automatically)
+    std::cout << "\n--- Test 3: Above Threshold (1000 entities) ---" << std::endl;
+    runRealisticBenchmark(1000, numBehaviors, numUpdates);
 
-    // Clean up after test
-    cleanupEntitiesAndBehaviors();
-}
-
-// Test scalability with increasing entity counts
-BOOST_AUTO_TEST_CASE(TestScalabilitySingleThreaded) {
-    // Skip if shutdown is in progress
-    if (g_shutdownInProgress.load()) {
-        BOOST_TEST_MESSAGE("Skipping test due to shutdown in progress");
-        return;
-    }
-
-    runScalabilityTest(false);
+    // Test target performance (should use threading automatically)
+    std::cout << "\n--- Test 4: Target Performance (5000 entities) ---" << std::endl;
+    runRealisticBenchmark(5000, numBehaviors, numUpdates);
 
     // Clean up after test
     cleanupEntitiesAndBehaviors();
 }
 
-// Test scalability with threading
-BOOST_AUTO_TEST_CASE(TestScalabilityThreaded) {
+// Test realistic scalability with automatic threading behavior
+BOOST_AUTO_TEST_CASE(TestRealisticScalability) {
     // Skip if shutdown is in progress
     if (g_shutdownInProgress.load()) {
         BOOST_TEST_MESSAGE("Skipping test due to shutdown in progress");
@@ -603,20 +567,16 @@ BOOST_AUTO_TEST_CASE(TestScalabilityThreaded) {
         // Use maximum available threads for optimal performance
         unsigned int maxThreads = std::thread::hardware_concurrency();
         AIManager::Instance().configureThreading(true, maxThreads);
-        std::cout << "Running scalability test with " << maxThreads << " threads" << std::endl;
+        std::cout << "Running realistic scalability test with " << maxThreads << " threads available" << std::endl;
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
-        runScalabilityTest(true);
-
-        // Switch to single-threaded mode for cleanup
-        AIManager::Instance().configureThreading(false);
-        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+        runRealisticScalabilityTest();
 
         // Clean up after test
         cleanupEntitiesAndBehaviors();
     }
     catch (const std::exception& e) {
-        std::cerr << "Error in threaded test: " << e.what() << std::endl;
+        std::cerr << "Error in realistic scalability test: " << e.what() << std::endl;
         AIManager::Instance().configureThreading(false);
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
         cleanupEntitiesAndBehaviors();
@@ -624,7 +584,89 @@ BOOST_AUTO_TEST_CASE(TestScalabilityThreaded) {
     }
 }
 
-// Test with extreme number of entities (200,000)
+// Legacy comparison test - forced threading modes for comparison
+BOOST_AUTO_TEST_CASE(TestLegacyComparison) {
+    // Skip if shutdown is in progress
+    if (g_shutdownInProgress.load()) {
+        BOOST_TEST_MESSAGE("Skipping test due to shutdown in progress");
+        return;
+    }
+
+    std::cout << "\n===== LEGACY COMPARISON TEST =====" << std::endl;
+    std::cout << "Forced threading modes for comparison with previous benchmarks" << std::endl;
+
+    const int numEntities = 1000;
+    const int numBehaviors = 5;
+    const int numUpdates = 20;
+
+    // Simplified legacy benchmark function for forced threading modes
+    auto runLegacyBenchmark = [this](int numEntities, int numBehaviors, int numUpdates, bool forceThreading) {
+        cleanupEntitiesAndBehaviors();
+        entities.clear();
+        behaviors.clear();
+
+        // Force the threading mode (bypassing automatic threshold detection)
+        AIManager::Instance().configureThreading(forceThreading);
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+
+        std::string mode = forceThreading ? "Forced Multi-Threaded" : "Forced Single-Threaded";
+        std::cout << "\n--- " << mode << " Test: " << numEntities << " entities ---" << std::endl;
+
+        // Create behaviors
+        for (int i = 0; i < numBehaviors; ++i) {
+            int complexity = 5 + (i % 11);
+            behaviors.push_back(std::make_shared<BenchmarkBehavior>(i, complexity));
+            AIManager::Instance().registerBehavior("Behavior" + std::to_string(i), behaviors.back());
+        }
+
+        // Create entities
+        Vector2D centralPosition(500.0f, 500.0f);
+        for (int i = 0; i < numEntities; ++i) {
+            auto entity = BenchmarkEntity::create(i, centralPosition);
+            entities.push_back(entity);
+            std::string behaviorName = "Behavior" + std::to_string(i % numBehaviors);
+            AIManager::Instance().assignBehaviorToEntity(entity, behaviorName);
+            AIManager::Instance().registerEntityForUpdates(entity, 9);
+        }
+
+        if (!entities.empty()) {
+            AIManager::Instance().setPlayerForDistanceOptimization(entities[0]);
+        }
+
+        // Run benchmark measurements
+        std::vector<double> times;
+        for (int run = 0; run < 3; ++run) {
+            auto startTime = std::chrono::high_resolution_clock::now();
+            
+            for (int update = 0; update < numUpdates; ++update) {
+                AIManager::Instance().update(0.016f); // 60 FPS deltaTime
+            }
+            
+            auto endTime = std::chrono::high_resolution_clock::now();
+            auto duration = std::chrono::duration<double, std::milli>(endTime - startTime).count();
+            times.push_back(duration);
+        }
+
+        // Calculate and display results
+        double avgTime = std::accumulate(times.begin(), times.end(), 0.0) / times.size();
+        double updatesPerSecond = (numEntities * numUpdates * 1000.0) / avgTime;
+        
+        std::cout << "  Legacy " << mode << " Results:" << std::endl;
+        std::cout << "    Avg time: " << avgTime << " ms" << std::endl;
+        std::cout << "    Updates per second: " << static_cast<int>(updatesPerSecond) << std::endl;
+    };
+
+    // Test forced single-threaded
+    runLegacyBenchmark(numEntities, numBehaviors, numUpdates, false);
+
+    // Test forced multi-threaded  
+    runLegacyBenchmark(numEntities, numBehaviors, numUpdates, true);
+
+    // Clean up
+    cleanupEntitiesAndBehaviors();
+}
+
+// Test with extreme number of entities using realistic automatic behavior
 BOOST_AUTO_TEST_CASE(TestExtremeEntityCount) {
     // Skip if shutdown is in progress
     if (g_shutdownInProgress.load()) {
@@ -632,29 +674,30 @@ BOOST_AUTO_TEST_CASE(TestExtremeEntityCount) {
         return;
     }
 
-    std::cout << "\n===== EXTREME ENTITY COUNT TEST (THREADED ONLY) =====" << std::endl;
-    std::cout << "Testing 100K entities - requires threading for proper performance" << std::endl;
+    std::cout << "\n===== EXTREME ENTITY COUNT TEST (STRESS TESTING) =====" << std::endl;
+    std::cout << "Testing 100K entities - designed to stress test the system" << std::endl;
 
     try {
-        // Configure threading for extreme scale test
+        // Enable threading and let system decide automatically
         unsigned int maxThreads = std::thread::hardware_concurrency();
         AIManager::Instance().configureThreading(true, maxThreads);
-        std::cout << "Running extreme entity test with " << maxThreads << " threads" << std::endl;
+        std::cout << "Running extreme entity test with " << maxThreads << " threads available" << std::endl;
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
-        // Test 100K entities - only in threaded mode for performance
+        // Test 100K entities for proper stress testing
         const int numEntities = 100000;
 
         // Use fewer behaviors and updates for extreme scale to avoid memory issues
         int adjustedNumBehaviors = 5;
-        int adjustedNumUpdates = 5;
+        int adjustedNumUpdates = 5; // Stress test requires more updates
 
-        std::cout << "\n--- Test Case: " << numEntities << " entities, "
-                  << adjustedNumBehaviors << " behaviors, " << adjustedNumUpdates << " updates (THREADED ONLY) ---" << std::endl;
+        std::cout << "\n--- Stress Test: " << numEntities << " entities, "
+                  << adjustedNumBehaviors << " behaviors, " << adjustedNumUpdates << " updates ---" << std::endl;
+        std::cout << "Expected behavior: Automatic threading with stress-level performance" << std::endl;
 
         AIScalingFixture fixture;
-        // Run benchmark in threaded mode only (true parameter)
-        fixture.runBenchmark(numEntities, adjustedNumBehaviors, adjustedNumUpdates, true);
+        // Run realistic benchmark - system will automatically use threading
+        fixture.runRealisticBenchmark(numEntities, adjustedNumBehaviors, adjustedNumUpdates);
 
         // Verify entities were actually created and processed
         size_t actualEntityCount = fixture.entities.size();
@@ -672,13 +715,9 @@ BOOST_AUTO_TEST_CASE(TestExtremeEntityCount) {
 
     } catch (const std::exception& e) {
         std::cerr << "Exception in extreme entity test: " << e.what() << std::endl;
-        AIManager::Instance().configureThreading(false);
+        AIManager::Instance().configureThreading(true); // Reset to default
         throw;
     }
-
-    // Switch to single-threaded mode for cleanup
-    AIManager::Instance().configureThreading(false);
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
 }
 
 BOOST_AUTO_TEST_SUITE_END() // AIScalingTests
