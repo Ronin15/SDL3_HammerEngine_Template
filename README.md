@@ -49,8 +49,8 @@ I use the Zed IDE with custom cmake and ninja task configurations to build/compi
   - Sounds: wav, mp3, ogg
   - Fonts: ttf and otf
 
-## Performance Capabilities - M3 MAC Pro 11 core for most bench numbers
-
+## Performance Capabilities
+**M3 MAC Pro 11 core for most bench numbers**
 ### Multi-Threading Performance
 - **10K Entity Target**: Achieves 995K entity updates per second (5.85x threading improvement over baseline)
 - **100K Entity Stress Test**: Demonstrates 2.2M+ entity updates per second capability
