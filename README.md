@@ -42,7 +42,7 @@ I use the Zed IDE with custom cmake and ninja task configurations to build/compi
   - Event system performance and functionality tests
   - Threading system validation and optimization tests
   - Performance regression testing and continuous integration
-  - Stress testing up to 100K entities (2.3M updates/sec achieved)
+  - Stress testing up to 100K entities (2.3M updates/sec achieved) **Mac M3 pro 11 core**
 
 - Supports the following Image, Sound, and font formats:
   - Images: png
