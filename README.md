@@ -110,7 +110,7 @@ I'm using:
 
 ### macOS
 Homebrew is recommended for SDL3 dependencies like harfbuzz, truetype, and freetype etc.
-brew install sdl3 sdl3_image sdl3_ttf sdl3_mixer should get you everything you need for SDL3. However, via CMAKE the project will use the SDL3 libraries downloaded from official SDL github via fecthContent. It will not use the SDL3 libraries installed via Homebrew. 
+brew install sdl3 sdl3_image sdl3_ttf sdl3_mixer should get you everything you need for SDL3. However, via CMAKE the project will use the SDL3 libraries downloaded from official SDL github via fecthContent. It will not use the SDL3 libraries installed via Homebrew.
 
 - Boost is needed for the test framework
   -  brew install boost
@@ -436,7 +436,7 @@ The AIManager provides a high-performance AI behavior management system optimize
 
 **Priority System Details**:
 - **0-2 Priority**: Background entities (1.0x-1.2x update range)
-- **3-5 Priority**: Standard entities (1.3x-1.5x update range) 
+- **3-5 Priority**: Standard entities (1.3x-1.5x update range)
 - **6-8 Priority**: Important entities (1.6x-1.8x update range)
 - **9 Priority**: Critical entities (1.9x update range)
 
@@ -463,7 +463,7 @@ See docs/AIManager.md, include/gameStates/AIDemoState.hpp, and src/gameStates/AI
 
 See `docs/AIManager.md` for detailed documentation with examples and best practices. Additional API details can be found in `include/managers/AIManager.hpp`, `include/ai/AIBehavior.hpp`, and the specific behavior implementations.
 
-![Forge Engine](./md_imgs/Forge_Engine.png)
+![Forge Engine](./md_imgs/AI_Demo.png)
 ![Forge Engine](./md_imgs/AIDemo_resources.png)
 
 ## Template Architecture Overview
