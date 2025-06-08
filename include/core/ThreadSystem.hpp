@@ -608,7 +608,7 @@ class ThreadSystem {
 
 public:
     // Task queue settings
-    static constexpr size_t DEFAULT_QUEUE_CAPACITY = 1024;
+    static constexpr size_t DEFAULT_QUEUE_CAPACITY = 4096;
 
     // Timeout settings
     static constexpr int DEFAULT_SHUTDOWN_TIMEOUT_MS = 5000; // 5 seconds
