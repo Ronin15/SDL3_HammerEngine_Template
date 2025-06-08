@@ -32,7 +32,7 @@ bool OverlayDemoState::enter() {
     ui.setTitleAlignment("overlay_control_title", UIAlignment::CENTER_CENTER);
 
     // Control buttons that persist across all modes
-    ui.createButton("overlay_control_back_btn", {20, windowHeight - 60, 100, 40}, "Back");
+    ui.createButtonDanger("overlay_control_back_btn", {20, windowHeight - 60, 100, 40}, "Back");
     ui.createButton("overlay_control_next_mode_btn", {140, windowHeight - 60, 150, 40}, "Next Mode");
     ui.createLabel("overlay_control_instructions", {310, windowHeight - 55, 400, 30}, "Space = Next Mode, B = Back");
 
@@ -44,6 +44,8 @@ bool OverlayDemoState::enter() {
     ui.setOnClick("overlay_control_next_mode_btn", [this]() {
         handleModeSwitch();
     });
+
+
 
     // Start with no overlay mode
     m_currentMode = DemoMode::NO_OVERLAY;
@@ -140,6 +142,9 @@ void OverlayDemoState::clearCurrentUI() {
 
     // Only remove demo components, not control components
     ui.removeComponentsWithPrefix("overlay_demo_");
+    
+    // Reset to default theme to prevent modal themes from contaminating other modes
+    ui.resetToDefaultTheme();
 }
 
 void OverlayDemoState::setupNoOverlayMode() {
@@ -213,7 +218,8 @@ void OverlayDemoState::setupDarkOverlayMode() {
     // Simulate pause menu
     ui.createButton(MENU_BUTTON_1, {windowWidth/2 - 100, 150, 200, 50}, "Resume");
     ui.createButton(MENU_BUTTON_2, {windowWidth/2 - 100, 220, 200, 50}, "Settings");
-    ui.createButton(MENU_BUTTON_3, {windowWidth/2 - 100, 290, 200, 50}, "Quit to Menu");
+    ui.createButtonDanger(MENU_BUTTON_3, {windowWidth/2 - 100, 290, 200, 50}, "Quit to Menu");
+
 }
 
 void OverlayDemoState::setupModalOverlayMode() {
@@ -238,8 +244,8 @@ void OverlayDemoState::setupModalOverlayMode() {
     // Disable text backgrounds for labels inside modal (they have solid modal background)
     ui.enableTextBackground("overlay_demo_dialog_title", false);
     ui.enableTextBackground("overlay_demo_dialog_text", false);
-    ui.createButton(MENU_BUTTON_1, {dialogX + 50, dialogY + 120, 100, 40}, "Yes");
-    ui.createButton(MENU_BUTTON_2, {dialogX + 250, dialogY + 120, 100, 40}, "Cancel");
+    ui.createButtonSuccess(MENU_BUTTON_1, {dialogX + 50, dialogY + 120, 100, 40}, "Yes");
+    ui.createButtonWarning(MENU_BUTTON_2, {dialogX + 250, dialogY + 120, 100, 40}, "Cancel");
 
     // All styling handled by UIManager theme - no custom colors in state
 }
@@ -266,8 +272,8 @@ void OverlayDemoState::setupLightModalOverlayMode() {
     // Disable text backgrounds for labels inside modal (they have solid modal background)
     ui.enableTextBackground("overlay_demo_dialog_title", false);
     ui.enableTextBackground("overlay_demo_dialog_text", false);
-    ui.createButton(MENU_BUTTON_1, {dialogX + 50, dialogY + 120, 100, 40}, "Save");
-    ui.createButton(MENU_BUTTON_2, {dialogX + 250, dialogY + 120, 100, 40}, "Cancel");
+    ui.createButtonSuccess(MENU_BUTTON_1, {dialogX + 50, dialogY + 120, 100, 40}, "Save");
+    ui.createButtonWarning(MENU_BUTTON_2, {dialogX + 250, dialogY + 120, 100, 40}, "Cancel");
 
     // All styling handled by UIManager theme - no custom colors in state
 }

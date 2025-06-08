@@ -22,9 +22,12 @@ The UIManager follows a **hybrid architecture** with **centralized theme managem
 **Professional Styling Out-of-the-Box:**
 ```cpp
 // Components automatically use professional themes
-ui.createButton("my_btn", bounds, "Text");     // Gets professional styling
-ui.createList("my_list", bounds);              // 36px items for mouse accuracy
-ui.setThemeMode("dark");                       // Switch themes instantly
+ui.createButton("my_btn", bounds, "Text");           // Standard button (blue/gray)
+ui.createButtonDanger("quit_btn", bounds, "Exit");   // Red for destructive actions
+ui.createButtonSuccess("save_btn", bounds, "Save");  // Green for positive actions
+ui.createButtonWarning("reset_btn", bounds, "Reset"); // Orange for cautionary actions
+ui.createList("my_list", bounds);                    // 36px items for mouse accuracy
+ui.setThemeMode("dark");                             // Switch themes instantly
 ```
 
 **Benefits:**
@@ -204,6 +207,7 @@ void GameEngine::update(float deltaTime) {
 ```cpp
 // Use state prefixes for efficient cleanup
 ui.createButton("mainmenu_play_btn", bounds, "Play");
+ui.createButtonDanger("mainmenu_quit_btn", bounds, "Quit");
 ui.createSlider("options_volume_slider", bounds, 0.0f, 100.0f);
 ui.createProgressBar("hud_health_bar", bounds, 0.0f, 1.0f);
 ```
@@ -231,6 +235,7 @@ public:
         auto& ui = UIManager::Instance();
         ui.createThemeBackground(windowWidth, windowHeight);
         ui.createButton("mystate_button", bounds, "Click Me");
+        ui.createButtonDanger("mystate_back", bounds, "Back");
         ui.setOnClick("mystate_button", [this]() { handleClick(); });
         return true;
     }

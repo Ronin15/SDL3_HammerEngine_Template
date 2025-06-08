@@ -34,7 +34,7 @@ bool UIExampleState::enter() {
     ui.setTitleAlignment("uiexample_title_label", UIAlignment::CENTER_CENTER);
     
     // Back button and instruction
-    ui.createButton("uiexample_back_btn", {50, windowHeight - 80, 120, 40}, "Back");
+    ui.createButtonDanger("uiexample_back_btn", {50, windowHeight - 80, 120, 40}, "Back");
     ui.createLabel("uiexample_back_instruction", {180, windowHeight - 75, 200, 30}, "Press B to go back");
     
     // Slider demo

@@ -27,11 +27,18 @@ ui.setThemeMode("dark");   // Professional dark theme (default)
 
 // Components automatically get perfect styling
 ui.createButton("my_btn", {x, y, w, h}, "Text");
+ui.createButtonDanger("quit_btn", {x, y, w, h}, "Exit");     // Red
+ui.createButtonSuccess("save_btn", {x, y, w, h}, "Save");    // Green
+ui.createButtonWarning("reset_btn", {x, y, w, h}, "Reset");  // Orange
 ui.createList("my_list", {x, y, w, h}); // 36px items for mouse accuracy
 ```
 
 ### 2. Complete Component Library
-- **Buttons** - Interactive with hover/pressed states
+- **Buttons** - Interactive with hover/pressed states (includes semantic variants)
+  - **BUTTON** - Standard actions (blue/gray)
+  - **BUTTON_DANGER** - Destructive actions (red): Back, Quit, Exit, Delete
+  - **BUTTON_SUCCESS** - Positive actions (green): Save, Confirm, Accept, Yes
+  - **BUTTON_WARNING** - Cautionary actions (orange): Cancel, Reset, Discard
 - **Labels & Titles** - Text display with automatic sizing
 - **Input Fields** - Text input with validation
 - **Progress Bars & Sliders** - Value display and input
@@ -133,6 +140,7 @@ void MenuState::enter() {
     // Components automatically styled
     ui.createTitle("menu_title", bounds, "Game Title");
     ui.createButton("menu_play", bounds, "Play Game");
+    ui.createButtonDanger("menu_quit", bounds, "Quit Game");
     ui.setOnClick("menu_play", [this]() {
         gameStateManager->setState("GamePlayState");
     });
@@ -198,6 +206,7 @@ void HUDState::update(float deltaTime) {
 ```cpp
 // Use state prefixes for easy cleanup
 ui.createButton("mainmenu_play_btn", bounds, "Play");
+ui.createButtonDanger("mainmenu_quit_btn", bounds, "Quit");
 ui.createSlider("options_volume_slider", bounds, 0.0f, 100.0f);
 ui.createProgressBar("hud_health_bar", bounds, 0.0f, 1.0f);
 ```
@@ -208,6 +217,7 @@ bool GameState::enter() {
     // Create UI components
     ui.createThemeBackground(width, height);
     ui.createButton("state_button", bounds, "Click Me");
+    ui.createButtonDanger("state_back", bounds, "Back");
     return true;
 }
 
