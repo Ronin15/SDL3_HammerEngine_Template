@@ -89,6 +89,7 @@ Windows will need some env vars setup for path:
 - C:\msys64\mingw64\lib
 - C:\msys64\mingw64\include
 - C:\msys64\mingw64\bin
+
 Packages needed for testing:
 - mingw-w64-x86_64-boost
   - pacman -S mingw-w64-x86_64-boost - from msys terminal
