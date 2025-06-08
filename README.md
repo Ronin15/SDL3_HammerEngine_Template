@@ -100,6 +100,7 @@ Packages needed:
 ### Linux
 Follow the instructions on the official SDL3 website to install SDL3 dependencies.
 [https://wiki.libsdl.org/SDL3/README-linux](https://wiki.libsdl.org/SDL3/README-linux)
+
 Boost needed for testing.
   -sudo apt-get install boost
 
