@@ -25,10 +25,11 @@ private:
     
     // Demo modes
     enum class DemoMode {
-        NO_OVERLAY,      // HUD elements - no background overlay
-        LIGHT_OVERLAY,   // Menu with light overlay
-        DARK_OVERLAY,    // Pause menu with darker overlay
-        MODAL_OVERLAY    // Dialog/Settings with strong overlay
+        NO_OVERLAY,        // HUD elements - no background overlay
+        LIGHT_OVERLAY,     // Menu with light overlay
+        DARK_OVERLAY,      // Pause menu with darker overlay
+        LIGHT_MODAL_OVERLAY, // Light strong overlay for dialogs
+        MODAL_OVERLAY      // Dark strong overlay for dialogs
     };
     
     DemoMode m_currentMode{DemoMode::NO_OVERLAY};
@@ -53,6 +54,7 @@ private:
     void setupNoOverlayMode();
     void setupLightOverlayMode();
     void setupDarkOverlayMode();
+    void setupLightModalOverlayMode();
     void setupModalOverlayMode();
     std::string getModeDescription() const;
     void handleModeSwitch();

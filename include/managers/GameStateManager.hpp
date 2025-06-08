@@ -7,7 +7,7 @@
 #define GAME_STATE_MANAGER_HPP
 
 #include <memory>
-#include <boost/container/small_vector.hpp>
+#include <vector>
 #include "gameStates/GameState.hpp"
 
 class GameStateManager {
@@ -24,7 +24,7 @@ class GameStateManager {
   void clearAllStates();
 
   private:
-    boost::container::small_vector<std::shared_ptr<GameState>, 8> states{}; //increase to how many states you expect to have.
+    std::vector<std::shared_ptr<GameState>> states{}; // STL vector for game states
     // Non-owning observer to the current active state
     // This state is owned by the 'states' container above
     std::weak_ptr<GameState> currentState;

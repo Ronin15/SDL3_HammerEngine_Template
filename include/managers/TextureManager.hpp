@@ -8,7 +8,7 @@
 
 #include <SDL3/SDL.h>
 #include <SDL3_image/SDL_image.h>
-#include <boost/container/flat_map.hpp>
+#include <unordered_map>
 #include <memory>
 #include <string>
 
@@ -25,14 +25,27 @@ class TextureManager {
    return instance;
  }
 
-  // Loads a texture from a file or all PNG textures from a directory
-  // If fileName is a directory, it loads all PNG files from that directory
-  // Returns true if at least one texture was loaded successfully
-  // When loading a directory, textureID is used as a prefix for filenames
+  /**
+   * @brief Loads a texture from a file or all PNG textures from a directory
+   * @param fileName Path to texture file or directory containing PNG files
+   * @param textureID Unique identifier for the texture(s). Used as prefix when loading directory
+   * @param p_renderer SDL renderer for texture creation
+   * @return true if at least one texture was loaded successfully, false otherwise
+   */
   bool load(const std::string& fileName,
             const std::string& textureID,
             SDL_Renderer* p_renderer);
 
+  /**
+   * @brief Draws a texture to the renderer at specified position and size
+   * @param textureID Unique identifier of the texture to draw
+   * @param x X coordinate for drawing position
+   * @param y Y coordinate for drawing position
+   * @param width Width to draw the texture
+   * @param height Height to draw the texture
+   * @param p_renderer SDL renderer to draw to
+   * @param flip Flip mode for the texture (default: SDL_FLIP_NONE)
+   */
   void draw(const std::string& textureID,
             int x,
             int y,
@@ -41,6 +54,18 @@ class TextureManager {
             SDL_Renderer* p_renderer,
             SDL_FlipMode flip = SDL_FLIP_NONE);
 
+  /**
+   * @brief Draws a specific frame from a sprite sheet texture
+   * @param textureID Unique identifier of the sprite sheet texture
+   * @param x X coordinate for drawing position
+   * @param y Y coordinate for drawing position
+   * @param width Width of individual frame
+   * @param height Height of individual frame
+   * @param currentRow Row index in the sprite sheet
+   * @param currentFrame Frame index in the current row
+   * @param p_renderer SDL renderer to draw to
+   * @param flip Flip mode for the texture (default: SDL_FLIP_NONE)
+   */
   void drawFrame(const std::string& textureID,
                  int x,
                  int y,
@@ -50,26 +75,52 @@ class TextureManager {
                  int currentFrame,
                  SDL_Renderer* p_renderer,
                  SDL_FlipMode flip = SDL_FLIP_NONE);
+  /**
+   * @brief Draws a texture with parallax scrolling effect
+   * @param textureID Unique identifier of the texture to draw
+   * @param x X coordinate for drawing position
+   * @param y Y coordinate for drawing position
+   * @param scroll Scroll offset for parallax effect
+   * @param p_renderer SDL renderer to draw to
+   */
   void drawParallax(const std::string& textureID,
                     int x,
                     int y,
                     int scroll,
                     SDL_Renderer* p_renderer);
+  /**
+   * @brief Removes a texture from the texture map and frees its memory
+   * @param textureID Unique identifier of the texture to remove
+   */
   void clearFromTexMap(const std::string& textureID);
+  /**
+   * @brief Checks if a texture exists in the texture map
+   * @param textureID Unique identifier of the texture to check
+   * @return true if texture exists in map, false otherwise
+   */
   bool isTextureInMap(const std::string& textureID) const;
 
-  // Get a texture pointer by ID
+  /**
+   * @brief Retrieves a texture by its unique identifier
+   * @param textureID Unique identifier of the texture to retrieve
+   * @return Shared pointer to the texture, or nullptr if not found
+   */
   std::shared_ptr<SDL_Texture> getTexture(const std::string& textureID) const;
 
-  // Clean up all texture resources
+  /**
+   * @brief Cleans up all texture resources and marks manager as shut down
+   */
   void clean();
 
-  // Check if TextureManager has been shut down
+  /**
+   * @brief Checks if TextureManager has been shut down
+   * @return true if manager is shut down, false otherwise
+   */
   bool isShutdown() const { return m_isShutdown; }
 
  private:
   std::string m_textureID{""};
-  boost::container::flat_map<std::string, std::shared_ptr<SDL_Texture>> m_textureMap{};
+  std::unordered_map<std::string, std::shared_ptr<SDL_Texture>> m_textureMap{};
   bool m_isShutdown{false};
 
   // Delete copy constructor and assignment operator

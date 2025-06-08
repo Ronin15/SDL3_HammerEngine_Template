@@ -4,10 +4,18 @@
 set(CMAKE_CXX_STANDARD 20) # Match the main project's C++ standard
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# Find Boost
-find_package(Boost REQUIRED COMPONENTS unit_test_framework serialization)
+# Check if we can build tests - require Boost Test for test framework
+if(NOT HAVE_BOOST_TEST)
+    message(STATUS "Skipping all tests - Boost Test not found (required)")
+    return()
+endif()
 
-# We standardize on Boost Test Framework for all tests
+message(STATUS "Building tests with Boost Test support")
+
+# Use linked Boost.Test framework for proper symbol resolution
+# Tests use: #include <boost/test/unit_test.hpp>
+# Requires Boost unit_test_framework library
+
 include(FetchContent)
 
 # Include directories
@@ -25,6 +33,7 @@ include_directories(
     ${PROJECT_SOURCE_DIR}/include/ui
     ${PROJECT_SOURCE_DIR}/include/events
     ${CMAKE_CURRENT_SOURCE_DIR}/mocks
+    ${Boost_INCLUDE_DIRS}
 )
 
 # Add test executables
@@ -118,70 +127,58 @@ add_executable(ui_stress_test
 
 # Add compile definitions for Boost.Test
 target_compile_definitions(save_manager_tests PRIVATE
-    BOOST_TEST_NO_LIB
 )
 
 target_compile_definitions(thread_system_tests PRIVATE
-    BOOST_TEST_NO_LIB
 )
 
 # AI Optimization tests definitions
 target_compile_definitions(ai_optimization_tests PRIVATE
-    BOOST_TEST_NO_LIB
 )
 
 # AI Scaling benchmark definitions
 target_compile_definitions(ai_scaling_benchmark PRIVATE
-    BOOST_TEST_NO_LIB
 )
 
 target_compile_definitions(event_manager_scaling_benchmark PRIVATE
-    BOOST_TEST_NO_LIB
 )
 
 # Thread-safe AI Manager tests definitions
 target_compile_definitions(thread_safe_ai_manager_tests PRIVATE
-    BOOST_TEST_NO_LIB
     BOOST_TEST_NO_SIGNAL_HANDLING
 )
 
 # Thread-safe AI Integration tests definitions
 target_compile_definitions(thread_safe_ai_integration_tests PRIVATE
-    BOOST_TEST_NO_LIB
     BOOST_TEST_NO_SIGNAL_HANDLING
 )
 
 # Event Manager tests definitions
 target_compile_definitions(event_manager_tests PRIVATE
-    BOOST_TEST_NO_LIB
     BOOST_TEST_NO_SIGNAL_HANDLING
     RUNNING_TESTS
 )
 
 # Event Types tests definitions
 target_compile_definitions(event_types_tests PRIVATE
-    BOOST_TEST_NO_LIB
     BOOST_TEST_NO_SIGNAL_HANDLING
     RUNNING_TESTS
 )
 
 # Weather Event tests definitions
 target_compile_definitions(weather_event_tests PRIVATE
-    BOOST_TEST_NO_LIB
     BOOST_TEST_NO_SIGNAL_HANDLING
 )
 
 # UI Stress Test definitions
 target_compile_definitions(ui_stress_test PRIVATE
     UI_STRESS_TEST_BUILD
-    BOOST_TEST_NO_LIB
 )
 
 # Link with required libraries
 target_link_libraries(save_manager_tests PRIVATE
     SDL3::SDL3
     Boost::unit_test_framework
-    Boost::serialization
 )
 
 target_link_libraries(thread_system_tests PRIVATE
@@ -194,7 +191,6 @@ target_link_libraries(ai_optimization_tests PRIVATE
     SDL3::SDL3
     SDL3_image::SDL3_image
     Boost::unit_test_framework
-    Boost::container
 )
 
 # Link AI scaling benchmark with required libraries
@@ -202,14 +198,12 @@ target_link_libraries(ai_scaling_benchmark PRIVATE
     SDL3::SDL3
     SDL3_image::SDL3_image
     Boost::unit_test_framework
-    Boost::container
 )
 
 target_link_libraries(event_manager_scaling_benchmark PRIVATE
     SDL3::SDL3
     SDL3_image::SDL3_image
     Boost::unit_test_framework
-    Boost::container
 )
 
 # Link Thread-safe AI Manager tests with required libraries
@@ -217,7 +211,6 @@ target_link_libraries(thread_safe_ai_manager_tests PRIVATE
     SDL3::SDL3
     SDL3_image::SDL3_image
     Boost::unit_test_framework
-    Boost::container
 )
 
 # Link Thread-safe AI Integration tests with required libraries
@@ -225,7 +218,6 @@ target_link_libraries(thread_safe_ai_integration_tests PRIVATE
     SDL3::SDL3
     SDL3_image::SDL3_image
     Boost::unit_test_framework
-    Boost::container
 )
 
 # Link Event Manager tests with required libraries
@@ -233,7 +225,6 @@ target_link_libraries(event_manager_tests PRIVATE
     SDL3::SDL3
     SDL3_image::SDL3_image
     Boost::unit_test_framework
-    Boost::container
 )
 
 # Link Event Types tests with required libraries
@@ -241,7 +232,6 @@ target_link_libraries(event_types_tests PRIVATE
     SDL3::SDL3
     SDL3_image::SDL3_image
     Boost::unit_test_framework
-    Boost::container
 )
 
 # Link Weather Event tests with required libraries
@@ -249,14 +239,16 @@ target_link_libraries(weather_event_tests PRIVATE
     SDL3::SDL3
     SDL3_image::SDL3_image
     Boost::unit_test_framework
-    Boost::container
 )
 
 # Link UI Stress Test with minimal libraries
 target_link_libraries(ui_stress_test PRIVATE
     SDL3::SDL3
-    Boost::container
-    Boost::serialization
+    Boost::unit_test_framework
+)
+
+# Add HAVE_BOOST_SERIALIZATION to ui_stress_test as well
+target_compile_definitions(ui_stress_test PRIVATE
 )
 
 # Add the tests to CTest

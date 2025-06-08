@@ -15,7 +15,7 @@
 #define M_PI 3.14159265358979323846
 #endif
 
-PatrolBehavior::PatrolBehavior(const boost::container::small_vector<Vector2D, 10>& waypoints, float moveSpeed, bool includeOffscreenPoints)
+PatrolBehavior::PatrolBehavior(const std::vector<Vector2D>& waypoints, float moveSpeed, bool includeOffscreenPoints)
     : m_waypoints(waypoints), 
       m_currentWaypoint(0), 
       m_moveSpeed(moveSpeed), 
@@ -25,6 +25,9 @@ PatrolBehavior::PatrolBehavior(const boost::container::small_vector<Vector2D, 10
       m_screenWidth(1280.0f),
       m_screenHeight(720.0f),
       m_rng(std::random_device{}()) {
+    // Reserve capacity for typical patrol routes (performance optimization)
+    m_waypoints.reserve(10);
+    
     // Ensure we have at least two waypoints
     if (m_waypoints.size() < 2) {
         // Add a fallback waypoint if the list is too small
@@ -202,7 +205,7 @@ void PatrolBehavior::addWaypoint(const Vector2D& waypoint) {
     m_waypoints.push_back(waypoint);
 }
 
-void PatrolBehavior::setWaypoints(const boost::container::small_vector<Vector2D, 10>& waypoints) {
+void PatrolBehavior::setWaypoints(const std::vector<Vector2D>& waypoints) {
     if (waypoints.size() >= 2) {
         m_waypoints = waypoints;
         m_currentWaypoint = 0;
@@ -218,7 +221,7 @@ void PatrolBehavior::setScreenDimensions(float width, float height) {
     m_screenHeight = height;
 }
 
-const boost::container::small_vector<Vector2D, 10>& PatrolBehavior::getWaypoints() const {
+const std::vector<Vector2D>& PatrolBehavior::getWaypoints() const {
     return m_waypoints;
 }
 

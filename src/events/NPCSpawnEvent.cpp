@@ -8,7 +8,7 @@
 #include "utils/Vector2D.hpp"
 #include "entities/NPC.hpp"
 #include "core/GameEngine.hpp"
-#include <iostream>
+#include "utils/Logger.hpp"
 #include <random>
 #include <chrono>
 #include <algorithm>
@@ -69,8 +69,7 @@ void NPCSpawnEvent::update() {
 void NPCSpawnEvent::execute() {
     // Check spawn count limits
     if (m_maxSpawnCount >= 0 && m_currentSpawnCount >= m_maxSpawnCount) {
-        std::cout << "NPCSpawnEvent: " << m_name << " - Max spawn count reached ("
-                  << m_maxSpawnCount << ")" << std::endl;
+        EVENT_INFO("NPCSpawnEvent: " + m_name + " - Max spawn count reached (" + std::to_string(m_maxSpawnCount) + ")");
         return;
     }
 
@@ -84,9 +83,9 @@ void NPCSpawnEvent::execute() {
     }
 
     // NPCSpawnEvent is now just for event coordination and demonstration
-    std::cout << "NPCSpawnEvent triggered: " << m_name << " (" << m_spawnParams.npcType << ")" << std::endl;
-    std::cout << "  - Event serves as coordination/messaging demonstration" << std::endl;
-    std::cout << "  - GameStates handle actual entity creation and ownership" << std::endl;
+    EVENT_INFO("NPCSpawnEvent triggered: " + m_name + " (" + m_spawnParams.npcType + ")");
+    EVENT_INFO("  - Event serves as coordination/messaging demonstration");
+    EVENT_INFO("  - GameStates handle actual entity creation and ownership");
 
     // Update counters for event system demonstration
     m_currentSpawnCount++;
@@ -118,9 +117,12 @@ void NPCSpawnEvent::clean() {
 
 void NPCSpawnEvent::onMessage(const std::string& message) {
     // NPCSpawnEvent now serves as event coordination demonstration
-    std::cout << "NPCSpawnEvent received message: " << message << std::endl;
-    std::cout << "  - Event demonstrates messaging system coordination" << std::endl;
-    std::cout << "  - Actual entity management handled by GameStates" << std::endl;
+    EVENT_INFO("NPCSpawnEvent received message: " + message);
+    EVENT_INFO("  - Event demonstrates messaging system coordination");
+    EVENT_INFO("  - Actual entity management handled by GameStates");
+    
+    // Suppress unused parameter warning in release builds
+    (void)message;
 }
 
 void NPCSpawnEvent::addSpawnPoint(float x, float y) {
@@ -262,8 +264,7 @@ std::string NPCSpawnEvent::getTextureForNPCType(const std::string& npcType) {
 }
 
 EntityPtr NPCSpawnEvent::forceSpawnNPC(const std::string& npcType, float x, float y) {
-    std::cout << "Forcing spawn of NPC type: " << npcType
-              << " at position (" << x << ", " << y << ")" << std::endl;
+    EVENT_INFO("Forcing spawn of NPC type: " + npcType + " at position (" + std::to_string(x) + ", " + std::to_string(y) + ")");
 
     try {
         // Get the texture ID for this NPC type
@@ -277,18 +278,17 @@ EntityPtr NPCSpawnEvent::forceSpawnNPC(const std::string& npcType, float x, floa
         npc->setWanderArea(x - 50.0f, y - 50.0f, x + 50.0f, y + 50.0f);
         npc->setBoundsCheckEnabled(true);
 
-        std::cout << "Force-spawned " << npcType << " at (" << x << ", " << y << ")" << std::endl;
+        EVENT_INFO("Force-spawned " + npcType + " at (" + std::to_string(x) + ", " + std::to_string(y) + ")");
         return std::static_pointer_cast<Entity>(npc);
 
     } catch (const std::exception& e) {
-        std::cerr << "Exception while force-spawning NPC: " << e.what() << std::endl;
+        EVENT_ERROR("Exception while force-spawning NPC: " + std::string(e.what()));
         return nullptr;
     }
 }
 
 std::vector<EntityPtr> NPCSpawnEvent::forceSpawnNPCs(const SpawnParameters& params, float x, float y) {
-    std::cout << "Forcing spawn of " << params.count << " NPCs of type: " << params.npcType
-              << " at position (" << x << ", " << y << ")" << std::endl;
+    EVENT_INFO("Forcing spawn of " + std::to_string(params.count) + " NPCs of type: " + params.npcType + " at position (" + std::to_string(x) + ", " + std::to_string(y) + ")");
 
     std::vector<EntityPtr> spawnedNPCs;
 
@@ -313,11 +313,11 @@ std::vector<EntityPtr> NPCSpawnEvent::forceSpawnNPCs(const SpawnParameters& para
             npc->setBoundsCheckEnabled(true);
 
             spawnedNPCs.push_back(std::static_pointer_cast<Entity>(npc));
-            std::cout << "  - NPC " << (i+1) << " spawned successfully" << std::endl;
+            EVENT_INFO("  - NPC " + std::to_string(i+1) + " spawned successfully");
         }
 
     } catch (const std::exception& e) {
-        std::cerr << "Exception while force-spawning NPCs: " << e.what() << std::endl;
+        EVENT_ERROR("Exception while force-spawning NPCs: " + std::string(e.what()));
     }
 
     return spawnedNPCs;

@@ -4,6 +4,7 @@
 */
 
 #include "managers/AIManager.hpp"
+#include "utils/Logger.hpp"
 #include "core/ThreadSystem.hpp"
 #include "utils/WorkerBudget.hpp"
 #include <SDL3/SDL.h>
@@ -13,7 +14,7 @@
 
 bool AIManager::init() {
     if (m_initialized.load(std::memory_order_acquire)) {
-        AI_LOG("AIManager already initialized");
+        AI_INFO("AIManager already initialized");
         return true;
     }
 
@@ -40,18 +41,18 @@ bool AIManager::init() {
 
         m_initialized.store(true, std::memory_order_release);
         
-        AI_LOG("AIManager initialized");
+        AI_INFO("AIManager initialized");
         if (threadSystemExists) {
             // Cache ThreadSystem reference for better performance
             const Forge::ThreadSystem& threadSystem = Forge::ThreadSystem::Instance();
             (void)threadSystem; // Mark as intentionally used for logging
-            AI_LOG("Threading enabled with " << threadSystem.getThreadCount() << " threads");
+            AI_INFO("Threading enabled with " + std::to_string(threadSystem.getThreadCount()) + " threads");
         }
         
         return true;
     }
     catch (const std::exception& e) {
-        std::cerr << "Forge Game Engine - AIManager initialization failed: " << e.what() << std::endl;
+        AI_CRITICAL("AIManager initialization failed: " + std::string(e.what()));
         return false;
     }
 }
@@ -61,7 +62,7 @@ void AIManager::clean() {
         return;
     }
 
-    AI_LOG("Cleaning up AIManager");
+    AI_INFO("Cleaning up AIManager");
 
     // Clear all data structures
     {
@@ -85,7 +86,7 @@ void AIManager::clean() {
 
     m_initialized.store(false, std::memory_order_release);
     m_isShutdown = true;
-    AI_LOG("AIManager cleaned up");
+    AI_INFO("AIManager cleaned up");
 }
 
 void AIManager::update([[maybe_unused]] float deltaTime) {
@@ -120,13 +121,13 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
                     size_t maxAIBatches = aiWorkerBudget;
                     
                     // Debug output for worker budget strategy
-                    AI_LOG("Worker Budget - Total: " << budget.totalWorkers 
-                           << ", Engine: " << budget.engineReserved
-                           << ", AI: " << budget.aiAllocated
-                           << ", Events: " << budget.eventAllocated
-                           << ", Buffer: " << budget.remaining
-                           << ", Max Batches: " << maxAIBatches 
-                           << ", Entities: " << m_entities.size());
+                    AI_DEBUG("Worker Budget - Total: " + std::to_string(budget.totalWorkers) + 
+                           ", Engine: " + std::to_string(budget.engineReserved) +
+                           ", AI: " + std::to_string(budget.aiAllocated) +
+                           ", Events: " + std::to_string(budget.eventAllocated) +
+                           ", Buffer: " + std::to_string(budget.remaining) +
+                           ", Max Batches: " + std::to_string(maxAIBatches) +
+                           ", Entities: " + std::to_string(m_entities.size()));
                     
                     // Calculate optimal batch size based on our budget
                     size_t targetBatches = maxAIBatches;
@@ -141,8 +142,8 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
                         optimalBatchSize = std::min(optimalBatchSize, size_t(1000)); // Larger batches for big workloads
                     }
                     
-                    AI_LOG("Batch Strategy - Batch Size: " << optimalBatchSize 
-                           << ", Expected Batches: " << (m_entities.size() + optimalBatchSize - 1) / optimalBatchSize);
+                    AI_DEBUG("Batch Strategy - Batch Size: " + std::to_string(optimalBatchSize) + 
+                           ", Expected Batches: " + std::to_string((m_entities.size() + optimalBatchSize - 1) / optimalBatchSize));
                 
                     std::atomic<size_t> completedTasks{0};
                     size_t tasksSubmitted = 0;
@@ -167,8 +168,8 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
                             // Timeout protection
                             auto elapsed = std::chrono::high_resolution_clock::now() - waitStart;
                             if (elapsed > std::chrono::seconds(10)) {
-                                std::cerr << "Forge Game Engine - Warning: Task completion timeout after 10 seconds" << std::endl;
-                                std::cerr << "Completed: " << completedTasks.load() << "/" << tasksSubmitted << std::endl;
+                                AI_WARN("Task completion timeout after 10 seconds");
+                                AI_WARN("Completed: " + std::to_string(completedTasks.load()) + "/" + std::to_string(tasksSubmitted));
                                 break;
                             }
                         }
@@ -197,20 +198,20 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
         m_globalStats.addSample(duration, m_entities.size());
 
     } catch (const std::exception& e) {
-        std::cerr << "Forge Game Engine - Exception in AIManager::update: " << e.what() << std::endl;
+        AI_ERROR("Exception in AIManager::update: " + std::string(e.what()));
     }
 }
 
 void AIManager::registerBehavior(const std::string& name, std::shared_ptr<AIBehavior> behavior) {
     if (!behavior) {
-        std::cerr << "Forge Game Engine - Error: Attempt to register null behavior: " << name << std::endl;
+        AI_ERROR("Attempt to register null behavior: " + name);
         return;
     }
 
     std::unique_lock<std::shared_mutex> lock(m_behaviorsMutex);
     m_behaviorTemplates[name] = behavior;
     
-    AI_LOG("Registered behavior: " << name);
+    AI_INFO("Registered behavior: " + name);
 }
 
 bool AIManager::hasBehavior(const std::string& name) const {
@@ -226,7 +227,7 @@ std::shared_ptr<AIBehavior> AIManager::getBehavior(const std::string& name) cons
 
 void AIManager::assignBehaviorToEntity(EntityPtr entity, const std::string& behaviorName) {
     if (!entity) {
-        std::cerr << "Forge Game Engine - Error: Attempted to assign behavior to null entity" << std::endl;
+        AI_ERROR("Attempted to assign behavior to null entity");
         return;
     }
 
@@ -236,7 +237,7 @@ void AIManager::assignBehaviorToEntity(EntityPtr entity, const std::string& beha
         std::shared_lock<std::shared_mutex> lock(m_behaviorsMutex);
         auto it = m_behaviorTemplates.find(behaviorName);
         if (it == m_behaviorTemplates.end()) {
-            std::cerr << "Forge Game Engine - Behavior '" << behaviorName << "' not registered" << std::endl;
+            AI_ERROR("Behavior '" + behaviorName + "' not registered");
             return;
         }
         behaviorTemplate = it->second;
@@ -247,13 +248,12 @@ void AIManager::assignBehaviorToEntity(EntityPtr entity, const std::string& beha
     try {
         behaviorInstance = behaviorTemplate->clone();
     } catch (const std::exception& e) {
-        std::cerr << "Forge Game Engine - Error cloning behavior " << behaviorName 
-                  << " for entity: " << e.what() << std::endl;
+        AI_ERROR("Error cloning behavior " + behaviorName + " for entity: " + std::string(e.what()));
         return;
     }
 
     if (!behaviorInstance) {
-        std::cerr << "Forge Game Engine - Failed to clone behavior " << behaviorName << std::endl;
+        AI_ERROR("Failed to clone behavior " + behaviorName);
         return;
     }
 
@@ -292,10 +292,9 @@ void AIManager::assignBehaviorToEntity(EntityPtr entity, const std::string& beha
     // Initialize behavior
     try {
         behaviorInstance->init(entity);
-        AI_LOG("Assigned behavior '" << behaviorName << "' to entity");
+        AI_INFO("Assigned behavior '" + behaviorName + "' to entity");
     } catch (const std::exception& e) {
-        std::cerr << "Forge Game Engine - Error initializing " << behaviorName 
-                  << " for entity: " << e.what() << std::endl;
+        AI_ERROR("Error initializing " + behaviorName + " for entity: " + std::string(e.what()));
     }
 }
 
@@ -313,7 +312,7 @@ void AIManager::unassignBehaviorFromEntity(EntityPtr entity) {
             m_entities[index].behavior.reset();
         }
         m_entityToIndex.erase(it);
-        AI_LOG("Unassigned behavior from entity - remaining entities: " << m_entities.size());
+        AI_INFO("Unassigned behavior from entity - remaining entities: " + std::to_string(m_entities.size()));
     }
 }
 
@@ -427,7 +426,7 @@ void AIManager::unregisterEntityFromUpdates(EntityPtr entity) {
 
 void AIManager::setGlobalPause(bool paused) {
     m_globallyPaused.store(paused, std::memory_order_release);
-    AI_LOG("Global AI pause: " << (paused ? "enabled" : "disabled"));
+    AI_INFO("Global AI pause: " + std::string(paused ? "enabled" : "disabled"));
 }
 
 bool AIManager::isGloballyPaused() const {
@@ -435,7 +434,7 @@ bool AIManager::isGloballyPaused() const {
 }
 
 void AIManager::resetBehaviors() {
-    AI_LOG("Resetting all AI behaviors");
+    AI_INFO("Resetting all AI behaviors");
     
     std::unique_lock<std::shared_mutex> entitiesLock(m_entitiesMutex);
     std::unique_lock<std::shared_mutex> behaviorsLock(m_behaviorsMutex);
@@ -462,13 +461,13 @@ void AIManager::configureThreading(bool useThreading, unsigned int maxThreads) {
     
     m_maxThreads = maxThreads;
     
-    AI_LOG("Threading " << (useThreading ? "enabled" : "disabled") 
-           << " with " << m_maxThreads << " threads");
+    AI_INFO("Threading " + std::string(useThreading ? "enabled" : "disabled") + 
+           " with " + std::to_string(maxThreads) + " max threads");
 }
 
 void AIManager::configurePriorityMultiplier(float multiplier) {
     m_priorityMultiplier.store(multiplier, std::memory_order_release);
-    AI_LOG("Priority multiplier set to: " << multiplier);
+    AI_INFO("Priority multiplier set to: " + std::to_string(multiplier));
 }
 
 AIPerformanceStats AIManager::getPerformanceStats() const {
@@ -502,7 +501,7 @@ void AIManager::sendMessageToEntity(EntityPtr entity, const std::string& message
                 try {
                     m_entities[index].behavior->onMessage(entity, message);
                 } catch (const std::exception& e) {
-                    std::cerr << "Forge Game Engine - Error sending immediate message: " << e.what() << std::endl;
+                    AI_ERROR("Error sending immediate message: " + std::string(e.what()));
                 }
             }
         }
@@ -520,7 +519,7 @@ void AIManager::broadcastMessage(const std::string& message, bool immediate) {
                 try {
                     entityData.behavior->onMessage(entityData.entity, message);
                 } catch (const std::exception& e) {
-                    std::cerr << "Forge Game Engine - Error broadcasting immediate message: " << e.what() << std::endl;
+                    AI_ERROR("Error broadcasting immediate message: " + std::string(e.what()));
                 }
             }
         }
@@ -566,7 +565,7 @@ void AIManager::processMessageQueue() {
                 }
             }
         } catch (const std::exception& e) {
-            std::cerr << "Forge Game Engine - Error processing queued message: " << e.what() << std::endl;
+            AI_ERROR("Error processing queued message: " + std::string(e.what()));
         }
     }
 
@@ -605,7 +604,7 @@ void AIManager::processBatch(size_t start, size_t end, float deltaTime) {
                 entityData.entity->update(deltaTime);
             }
         } catch (const std::exception& e) {
-            AI_LOG("Error in batch processing entity: " << e.what());
+            AI_ERROR("Error in batch processing entity: " + std::string(e.what()));
             entityData.active = false;
         }
     }
@@ -686,7 +685,7 @@ void AIManager::updateEntityBehavior(EntityPtr entity) {
                 m_entities[index].behavior->executeLogic(entity);
                 m_totalBehaviorExecutions.fetch_add(1, std::memory_order_relaxed);
             } catch (const std::exception& e) {
-                std::cerr << "Forge Game Engine - Error updating entity behavior: " << e.what() << std::endl;
+                AI_ERROR("Error updating entity behavior: " + std::string(e.what()));
             }
         }
     }

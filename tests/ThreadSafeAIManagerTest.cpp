@@ -7,9 +7,11 @@
 // Include necessary headers
 #define BOOST_TEST_MODULE ThreadSafeAIManagerTests
 // BOOST_TEST_NO_SIGNAL_HANDLING is defined in CMakeLists.txt
+#ifndef BOOST_TEST_DYN_LINK
 #define BOOST_TEST_DYN_LINK // Use dynamic linking for proper exit code handling
+#endif
 #define BOOST_TEST_ALTERNATIVE_INIT_API
-#include <boost/test/included/unit_test.hpp>
+#include <boost/test/unit_test.hpp>
 #include <cstdlib> // For atexit
 #include <csignal> // For signal handling
 

@@ -7,10 +7,12 @@
 #define VECTOR_2D_HPP
 
 #include <math.h>
-#include <boost/serialization/access.hpp>
+#include <iostream>
+#include <cstdint>
+#include "BinarySerializer.hpp"
 
 // A simple 2D vector class
-class Vector2D {
+class Vector2D : public ISerializable {
 public:
     // Constructors
     Vector2D() : m_x(0.0f), m_y(0.0f) {}
@@ -85,18 +87,49 @@ public:
         return v;
     }
 
+    // Cross-platform binary serialization with proper endianness handling
+    bool serialize(std::ostream& stream) const override {
+        // Convert to little-endian format for cross-platform compatibility
+        auto writeFloat = [&stream](float value) -> bool {
+            union { float f; uint32_t i; } converter;
+            converter.f = value;
+            
+            // Write as little-endian bytes
+            for (int i = 0; i < 4; ++i) {
+                char byte = static_cast<char>((converter.i >> (i * 8)) & 0xFF);
+                stream.write(&byte, 1);
+                if (!stream.good()) return false;
+            }
+            return true;
+        };
+        
+        return writeFloat(m_x) && writeFloat(m_y);
+    }
+
+    bool deserialize(std::istream& stream) override {
+        // Read from little-endian format for cross-platform compatibility
+        auto readFloat = [&stream](float& value) -> bool {
+            union { float f; uint32_t i; } converter;
+            converter.i = 0;
+            
+            // Read little-endian bytes
+            for (int i = 0; i < 4; ++i) {
+                char byte;
+                stream.read(&byte, 1);
+                if (!stream.good() || stream.gcount() != 1) return false;
+                converter.i |= (static_cast<uint32_t>(static_cast<unsigned char>(byte)) << (i * 8));
+            }
+            
+            value = converter.f;
+            return true;
+        };
+        
+        return readFloat(m_x) && readFloat(m_y);
+    }
+
 private:
     float m_x{0.0f};
     float m_y{0.0f};
-    
-    // Boost serialization support
-    friend class boost::serialization::access;
-    
-    template<class Archive>
-    void serialize(Archive & ar, const unsigned int /*version*/) {
-        ar & m_x;
-        ar & m_y;
-    }
 };
 
 #endif  // VECTOR_2D_HPP

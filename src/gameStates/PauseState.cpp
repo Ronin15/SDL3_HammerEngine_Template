@@ -16,8 +16,13 @@ bool PauseState::enter() {
   // Create pause state UI
   auto& gameEngine = GameEngine::Instance();
   auto& ui = UIManager::Instance();
+  int windowWidth = gameEngine.getWindowWidth();
+  int windowHeight = gameEngine.getWindowHeight();
   
-  ui.createTitle("pause_title", {0, 100, gameEngine.getWindowWidth(), 40}, "Game Paused");
+  // Create overlay background to dim the game behind the pause menu
+  ui.createOverlay(windowWidth, windowHeight);
+  
+  ui.createTitle("pause_title", {0, 100, windowWidth, 40}, "Game Paused");
   ui.setTitleAlignment("pause_title", UIAlignment::CENTER_CENTER);
   
   return true;
@@ -52,9 +57,10 @@ void PauseState::render() {
 bool PauseState::exit() {
   std::cout << "Forge Game Engine - Exiting PAUSE State\n";
   
-  // Clean up UI
+  // Clean up UI components efficiently
   auto& ui = UIManager::Instance();
-  ui.removeComponent("pause_title");
+  ui.removeComponentsWithPrefix("pause_");
+  ui.removeOverlay();
 
   return true;
 }

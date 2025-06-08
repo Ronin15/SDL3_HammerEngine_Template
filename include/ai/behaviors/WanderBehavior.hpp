@@ -10,7 +10,7 @@
 #include "utils/Vector2D.hpp"
 
 #include <random>
-#include <boost/container/flat_map.hpp>
+#include <unordered_map>
 #include <SDL3/SDL.h>
 #include <memory>
 
@@ -79,8 +79,8 @@ private:
         {}
     };
 
-    // Map to store per-entity state
-    boost::container::flat_map<EntityWeakPtr, EntityState, std::owner_less<EntityWeakPtr>> m_entityStates;
+    // Map to store per-entity state using shared_ptr as key
+    std::unordered_map<EntityPtr, EntityState> m_entityStates;
 
     // Shared behavior parameters
     float m_speed{1.5f};

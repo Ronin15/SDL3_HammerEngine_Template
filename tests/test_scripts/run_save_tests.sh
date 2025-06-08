@@ -36,16 +36,14 @@ for arg in "$@"; do
       echo -e "  --clean      Clean test artifacts before building"
       echo -e "  --clean-all  Remove entire build directory and rebuild"
       echo -e "  --verbose    Run tests with verbose output"
-      echo -e "  --dir-test   Run only directory creation tests"
       echo -e "  --save-test  Run only save/load tests"
       echo -e "  --slot-test  Run only slot operations tests"
       echo -e "  --error-test Run only error handling tests"
+      echo -e "  --serialization-test Run only new serialization system tests"
+      echo -e "  --performance-test Run only performance comparison tests"
+      echo -e "  --integration-test Run only BinarySerializer integration tests"
       echo -e "  --help       Show this help message"
       exit 0
-      ;;
-    --dir-test)
-      TEST_FILTER="--run_test=TestDirectoryCreation"
-      shift
       ;;
     --save-test)
       TEST_FILTER="--run_test=TestSaveAndLoad"
@@ -57,6 +55,18 @@ for arg in "$@"; do
       ;;
     --error-test)
       TEST_FILTER="--run_test=TestErrorHandling"
+      shift
+      ;;
+    --serialization-test)
+      TEST_FILTER="--run_test=TestNewSerializationSystem"
+      shift
+      ;;
+    --performance-test)
+      TEST_FILTER="--run_test=TestPerformanceComparison"
+      shift
+      ;;
+    --integration-test)
+      TEST_FILTER="--run_test=TestBinarySerializerIntegration"
       shift
       ;;
   esac
@@ -73,6 +83,20 @@ echo -e "${BLUE}Running SaveGameManager tests...${NC}"
 # Get the directory where this script is located and find project root
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+
+# Create test_data directory if it doesn't exist with user feedback
+if [ ! -d "$PROJECT_ROOT/tests/test_data" ]; then
+  echo -e "${YELLOW}Creating missing test_data directory...${NC}"
+  mkdir -p "$PROJECT_ROOT/tests/test_data"
+  if [ -d "$PROJECT_ROOT/tests/test_data" ]; then
+    echo -e "${GREEN}test_data directory created successfully${NC}"
+  else
+    echo -e "${RED}Failed to create test_data directory${NC}"
+    exit 1
+  fi
+else
+  echo -e "${GREEN}test_data directory already exists${NC}"
+fi
 
 # Check if test executable exists
 TEST_EXECUTABLE="$PROJECT_ROOT/bin/debug/save_manager_tests"
@@ -93,11 +117,16 @@ fi
 echo -e "${GREEN}Running tests...${NC}"
 echo -e "${BLUE}====================================${NC}"
 
+
+
+# Change to project root directory before running tests
+cd "$PROJECT_ROOT"
+
 # Run with appropriate options
 if [ "$VERBOSE" = true ]; then
-  "$TEST_EXECUTABLE" --log_level=all | tee test_output.log
+  "$TEST_EXECUTABLE" $TEST_FILTER --log_level=all | tee "$PROJECT_ROOT/test_output.log"
 else
-  "$TEST_EXECUTABLE" | tee test_output.log
+  "$TEST_EXECUTABLE" $TEST_FILTER | tee "$PROJECT_ROOT/test_output.log"
 fi
 
 TEST_RESULT=$?
@@ -108,23 +137,23 @@ mkdir -p "$PROJECT_ROOT/test_results"
 
 # Save test results with timestamp
 TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
-cp test_output.log "$PROJECT_ROOT/test_results/save_manager_test_output_${TIMESTAMP}.txt"
+cp "$PROJECT_ROOT/test_output.log" "$PROJECT_ROOT/test_results/save_manager_test_output_${TIMESTAMP}.txt"
 # Also save to the standard location for compatibility
-cp test_output.log "$PROJECT_ROOT/test_results/save_manager_test_output.txt"
+cp "$PROJECT_ROOT/test_output.log" "$PROJECT_ROOT/test_results/save_manager_test_output.txt"
 
-# Extract performance metrics, directory creation test info and test cases run
+# Extract performance metrics, BinarySerializer test info and test cases run
 echo -e "${YELLOW}Saving test results...${NC}"
-grep -E "time:|performance|saved:|loaded:|TestSaveGameManager:|Directory creation|ensureDirectory" test_output.log > "$PROJECT_ROOT/test_results/save_manager_performance_metrics.txt" || true
+grep -E "time:|performance|microseconds|BinarySerializer|serialization|New serialization system|Binary writer/reader" "$PROJECT_ROOT/test_output.log" > "$PROJECT_ROOT/test_results/save_manager_performance_metrics.txt" || true
 
 # Extract test cases that were run
 echo -e "\n=== Test Cases Executed ===" > "$PROJECT_ROOT/test_results/save_manager_test_cases.txt"
-grep -E "Entering test case|Test case.*passed" test_output.log >> "$PROJECT_ROOT/test_results/save_manager_test_cases.txt" || true
+grep -E "Entering test case|Test case.*passed" "$PROJECT_ROOT/test_output.log" >> "$PROJECT_ROOT/test_results/save_manager_test_cases.txt" || true
 
 # Extract just the test case names for easy reporting
-grep -E "Entering test case" test_output.log | sed 's/.*Entering test case "\([^"]*\)".*/\1/' > "$PROJECT_ROOT/test_results/save_manager_test_cases_run.txt" || true
+grep -E "Entering test case" "$PROJECT_ROOT/test_output.log" | sed 's/.*Entering test case "\([^"]*\)".*/\1/' > "$PROJECT_ROOT/test_results/save_manager_test_cases_run.txt" || true
 
 # Clean up temporary file
-rm test_output.log
+rm "$PROJECT_ROOT/test_output.log"
 
 # Report test results
 if [ $TEST_RESULT -eq 0 ]; then
@@ -133,10 +162,10 @@ if [ $TEST_RESULT -eq 0 ]; then
   
   # Print summary of test cases run
   echo -e "\n${BLUE}Test Cases Run:${NC}"
-  if [ -f "../../test_results/save_manager_test_cases_run.txt" ] && [ -s "../../test_results/save_manager_test_cases_run.txt" ]; then
+  if [ -f "$PROJECT_ROOT/test_results/save_manager_test_cases_run.txt" ] && [ -s "$PROJECT_ROOT/test_results/save_manager_test_cases_run.txt" ]; then
     while read -r testcase; do
       echo -e "  - ${testcase}"
-    done < "../../test_results/save_manager_test_cases_run.txt"
+    done < "$PROJECT_ROOT/test_results/save_manager_test_cases_run.txt"
   else
     echo -e "${YELLOW}  No test case details found.${NC}"
   fi
@@ -146,14 +175,14 @@ else
   
   # Print a summary of failed tests if available
   echo -e "\n${YELLOW}Failed Test Summary:${NC}"
-  grep -E "FAILED|ASSERT" "../../test_results/save_manager_test_output.txt" || echo -e "${YELLOW}No specific failure details found.${NC}"
+  grep -E "FAILED|ASSERT" "$PROJECT_ROOT/test_results/save_manager_test_output.txt" || echo -e "${YELLOW}No specific failure details found.${NC}"
   
   # Print summary of test cases run
   echo -e "\n${BLUE}Test Cases Run:${NC}"
-  if [ -f "../../test_results/save_manager_test_cases_run.txt" ] && [ -s "../../test_results/save_manager_test_cases_run.txt" ]; then
+  if [ -f "$PROJECT_ROOT/test_results/save_manager_test_cases_run.txt" ] && [ -s "$PROJECT_ROOT/test_results/save_manager_test_cases_run.txt" ]; then
     while read -r testcase; do
       echo -e "  - ${testcase}"
-    done < "../../test_results/save_manager_test_cases_run.txt"
+    done < "$PROJECT_ROOT/test_results/save_manager_test_cases_run.txt"
   else
     echo -e "${YELLOW}  No test case details found.${NC}"
   fi

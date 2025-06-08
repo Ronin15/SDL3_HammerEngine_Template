@@ -44,7 +44,7 @@ Each test suite has dedicated scripts in the project root directory:
 ./run_thread_safe_ai_tests.sh        # Thread-safe AI tests
 ./run_thread_safe_ai_integration_tests.sh  # Thread-safe AI integration tests
 ./run_ai_optimization_tests.sh       # AI optimization tests
-./run_save_tests.sh                  # Save manager tests
+./run_save_tests.sh                  # Save manager and BinarySerializer tests
 ./run_event_tests.sh                 # Event manager tests
 
 # Performance scaling benchmarks (slow execution)
@@ -60,6 +60,14 @@ Each test suite has dedicated scripts in the project root directory:
 ./run_ui_stress_tests.sh --level heavy --duration 60    # Heavy load test
 ./run_ui_stress_tests.sh --benchmark                    # UI benchmark suite
 ./run_ui_stress_tests.sh --level medium --verbose       # Detailed output
+
+# Save manager test examples with BinarySerializer
+./run_save_tests.sh --save-test                         # Basic save/load operations
+./run_save_tests.sh --serialization-test                # New BinarySerializer system tests
+./run_save_tests.sh --performance-test                  # Serialization performance benchmarks
+./run_save_tests.sh --integration-test                  # BinarySerializer integration tests
+./run_save_tests.sh --error-test                        # Error handling tests
+./run_save_tests.sh --verbose                           # Detailed test output
 ```
 
 #### Windows
@@ -69,7 +77,7 @@ run_thread_tests.bat                 # Thread system tests
 run_thread_safe_ai_tests.bat         # Thread-safe AI tests
 run_thread_safe_ai_integration_tests.bat  # Thread-safe AI integration tests
 run_ai_optimization_tests.bat        # AI optimization tests
-run_save_tests.bat                   # Save manager tests
+run_save_tests.bat                   # Save manager and BinarySerializer tests
 run_event_tests.bat                  # Event manager tests
 
 # Performance scaling benchmarks (slow execution)
@@ -85,6 +93,14 @@ run_ui_stress_tests.bat /l light /d 30    # Quick UI test
 run_ui_stress_tests.bat /l heavy /d 60    # Heavy load test
 run_ui_stress_tests.bat /b                # UI benchmark suite
 run_ui_stress_tests.bat /l medium /v      # Detailed output
+
+# Save manager test examples with BinarySerializer
+run_save_tests.bat --save-test                          # Basic save/load operations
+run_save_tests.bat --serialization-test                 # New BinarySerializer system tests
+run_save_tests.bat --performance-test                   # Serialization performance benchmarks
+run_save_tests.bat --integration-test                   # BinarySerializer integration tests
+run_save_tests.bat --error-test                         # Error handling tests
+run_save_tests.bat --verbose                            # Detailed test output
 ```
 
 ### Test Execution Control
@@ -254,19 +270,41 @@ This approach provides actionable insights for UI system optimization rather tha
 
 ### Save Manager Tests
 
-Located in `SaveManagerTests.cpp` with supporting `MockPlayer` class and a robust directory testing framework, these tests verify:
+Located in `SaveManagerTests.cpp` with supporting `MockPlayer` class, these tests verify the **BinarySerializer integration** that replaces Boost serialization:
 
-1. **Data Serialization**: Tests serialization of game objects
-2. **File Operations**: Tests reading from and writing to save files
-3. **Error Handling**: Tests recovery from corrupted save data
-4. **Versioning**: Tests compatibility between different save formats
-5. **Directory Creation**: Tests proper creation of save directories, including:
-   - Creation of base directories when they don't exist
-   - Creation of nested subdirectories (e.g., `game_saves` within a base directory)
-   - Verification of directory write permissions
-   - Path handling and validation across different operating systems
-   - Recovery from directory creation failures
-   - Working directory awareness and path resolution
+1. **BinarySerializer Integration**: Tests the new fast, header-only serialization system:
+   - Tests `BinarySerial::Writer` and `BinarySerial::Reader` classes
+   - Verifies smart pointer-based memory management
+   - Tests convenience functions `saveToFile()` and `loadFromFile()`
+   - Validates cross-platform binary compatibility
+
+2. **Data Serialization**: Tests serialization of game objects using the new system:
+   - `TestNewSerializationSystem`: Vector2D and custom object serialization
+   - `TestBinaryWriterReader`: Primitive types, strings, and direct Writer/Reader usage
+   - `TestVectorSerialization`: Container serialization with safety checks
+   - `TestBinarySerializerIntegration`: End-to-end serialization testing
+
+3. **Performance Testing**: `TestPerformanceComparison` benchmarks:
+   - 100 serialization operations timing (typically ~13-25ms)
+   - Memory usage validation
+   - Cross-platform performance verification
+
+4. **File Operations**: Tests using BinarySerializer for save file management:
+   - `TestSaveAndLoad`: Basic save/load operations with MockPlayer
+   - `TestSlotOperations`: Multiple file handling and cleanup
+   - File existence validation and proper error handling
+
+5. **Error Handling**: `TestErrorHandling` covers:
+   - Non-existent file handling
+   - Invalid file path recovery
+   - Corrupted data detection through the BinarySerializer safety checks
+
+**Key Features Tested:**
+- **Fast Performance**: 10x faster than Boost for primitives, 4x faster for strings
+- **Smart Pointer Safety**: Automatic memory management with `std::shared_ptr` and `std::unique_ptr`
+- **Type Safety**: Compile-time checks for trivially copyable types
+- **Logging Integration**: Proper integration with Forge logging system (`SAVEGAME_*` macros)
+- **Cross-Platform**: Header-only solution works on Windows, macOS, and Linux
 
 ### Thread System Tests
 

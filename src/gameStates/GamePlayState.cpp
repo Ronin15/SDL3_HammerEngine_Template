@@ -7,6 +7,7 @@
 #include "managers/GameStateManager.hpp"
 #include "managers/FontManager.hpp"
 #include "managers/InputManager.hpp"
+#include "managers/UIManager.hpp"
 #include "core/GameEngine.hpp"
 #include "gameStates/PauseState.hpp"
 #include <iostream>
@@ -77,10 +78,10 @@ bool GamePlayState::exit() {
     // and not clear any as they may be needed. left over from testing but not hurting anything currently.
     std::cout << "Forge Game Engine - reset player pointer to null, not going to pause\n";
   } else {
-    std::cout << "Forge Game Engine - Keeping textures and player, going to pause\n";
-    // Reset flag for next time
-    m_transitioningToPause = false;
+    std::cout << "Forge Game Engine - Not clearing player and textures, transitioning to pause\n";
   }
+
+  // GamePlayState doesn't create UI components, so no UI cleanup needed
 
   return true;
 }
