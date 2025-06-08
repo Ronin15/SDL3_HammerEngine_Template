@@ -90,10 +90,13 @@ Windows will need some env vars setup for path:
 - C:\msys64\mingw64\include
 - C:\msys64\mingw64\bin
 
-Packages needed for testing:
-- mingw-w64-x86_64-boost
-  - pacman -S mingw-w64-x86_64-boost - from msys terminal
-
+Packages needed:
+- mingw-w64-x86_64-boost - testing
+- mingw-w64-x86_64-harfbuzz - SDL3 req
+- mingw-w64-x86_64-freetype -SDL3 req
+```
+ pacman -S mingw-w64-x86_64-boost mingw-w64-x86_64-harfbuzz mingw-w64-x86_64-freetype
+```
 ### Linux
 Follow the instructions on the official SDL3 website to install SDL3 dependencies.
 [https://wiki.libsdl.org/SDL3/README-linux](https://wiki.libsdl.org/SDL3/README-linux)
