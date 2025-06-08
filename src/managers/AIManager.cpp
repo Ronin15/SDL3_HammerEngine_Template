@@ -117,6 +117,10 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
                     Forge::WorkerBudget budget = Forge::calculateWorkerBudget(availableWorkers);
                     size_t aiWorkerBudget = budget.aiAllocated;
                     
+                    // Check queue pressure before submitting tasks
+                    size_t currentQueueSize = threadSystem.getQueueSize();
+                    size_t maxQueuePressure = availableWorkers * 3; // Allow 3x worker count in queue for AI
+                    
                     // Limit concurrent batches to our worker budget
                     size_t maxAIBatches = aiWorkerBudget;
                     
@@ -127,11 +131,14 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
                            ", Events: " + std::to_string(budget.eventAllocated) +
                            ", Buffer: " + std::to_string(budget.remaining) +
                            ", Max Batches: " + std::to_string(maxAIBatches) +
+                           ", Queue: " + std::to_string(currentQueueSize) + "/" + std::to_string(maxQueuePressure) +
                            ", Entities: " + std::to_string(m_entities.size()));
                     
-                    // Calculate optimal batch size based on our budget
-                    size_t targetBatches = maxAIBatches;
-                    size_t optimalBatchSize = std::max(size_t(25), m_entities.size() / targetBatches);
+                    // Only proceed with threading if queue pressure is acceptable
+                    if (currentQueueSize < maxQueuePressure) {
+                        // Calculate optimal batch size based on our budget
+                        size_t targetBatches = maxAIBatches;
+                        size_t optimalBatchSize = std::max(size_t(25), m_entities.size() / targetBatches);
                     
                     // Apply cache-friendly limits based on entity count
                     if (m_entities.size() < 1000) {
@@ -148,6 +155,16 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
                     std::atomic<size_t> completedTasks{0};
                     size_t tasksSubmitted = 0;
                 
+                    // Determine task priority based on entity count to prevent queue flooding
+                    Forge::TaskPriority batchPriority = Forge::TaskPriority::Normal;
+                    if (m_entities.size() >= 10000) {
+                        batchPriority = Forge::TaskPriority::Low;  // Lower priority for massive workloads
+                    } else if (m_entities.size() >= 5000) {
+                        batchPriority = Forge::TaskPriority::Normal;
+                    } else {
+                        batchPriority = Forge::TaskPriority::High;  // Higher priority for smaller workloads
+                    }
+                    
                     // Submit batches to ThreadSystem - it will distribute among workers
                     for (size_t i = 0; i < m_entities.size(); i += optimalBatchSize) {
                         size_t batchEnd = std::min(i + optimalBatchSize, m_entities.size());
@@ -155,15 +172,24 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
                         threadSystem.enqueueTask([this, i, batchEnd, &completedTasks, deltaTime]() {
                             processBatch(i, batchEnd, deltaTime);
                             completedTasks.fetch_add(1, std::memory_order_relaxed);
-                        }, Forge::TaskPriority::Normal, "AI_Batch_Update");
+                        }, batchPriority, "AI_Batch_Update");
                         tasksSubmitted++;
                     }
                 
-                    // Wait for all tasks to complete
+                    // Wait for all tasks to complete with adaptive waiting strategy
                     if (tasksSubmitted > 0) {
                         auto waitStart = std::chrono::high_resolution_clock::now();
+                        size_t waitIteration = 0;
                         while (completedTasks.load(std::memory_order_relaxed) < tasksSubmitted) {
-                            std::this_thread::sleep_for(std::chrono::microseconds(100));
+                            // Adaptive sleep: start with shorter sleeps, increase gradually
+                            if (waitIteration < 10) {
+                                std::this_thread::sleep_for(std::chrono::microseconds(50));
+                            } else if (waitIteration < 50) {
+                                std::this_thread::sleep_for(std::chrono::microseconds(100));
+                            } else {
+                                std::this_thread::sleep_for(std::chrono::microseconds(200));
+                            }
+                            waitIteration++;
                         
                             // Timeout protection
                             auto elapsed = std::chrono::high_resolution_clock::now() - waitStart;
@@ -173,6 +199,12 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
                                 break;
                             }
                         }
+                    }
+                    } else {
+                        // Queue pressure too high, fallback to single-threaded
+                        AI_DEBUG("Queue pressure too high (" + std::to_string(currentQueueSize) + 
+                               "/" + std::to_string(maxQueuePressure) + "), using single-threaded processing");
+                        processBatch(0, m_entities.size(), deltaTime);
                     }
                 } else {
                     // Fallback to single-threaded processing if ThreadSystem not available

@@ -404,13 +404,25 @@ void EventManager::updateEventTypeBatchThreaded(EventTypeId typeId) {
     size_t maxQueuePressure = availableWorkers * 2; // Allow 2x worker count in queue
     
     if (currentQueueSize < maxQueuePressure && container.size() > 10) {
-        // Use threaded processing - split events into batches based on our budget
-        size_t eventsPerBatch = std::max(size_t(1), container.size() / eventWorkerBudget);
+        // Use threaded processing with cache-friendly batching like AIManager
+        size_t targetBatches = eventWorkerBudget;
+        size_t optimalBatchSize = std::max(size_t(10), container.size() / targetBatches);
+        
+        // Apply cache-friendly limits based on event count
+        if (container.size() < 100) {
+            optimalBatchSize = std::min(optimalBatchSize, size_t(25));   // Small cache-friendly batches
+        } else if (container.size() < 1000) {
+            optimalBatchSize = std::min(optimalBatchSize, size_t(50));   // Medium batches
+        } else {
+            optimalBatchSize = std::min(optimalBatchSize, size_t(100));  // Larger batches for big workloads
+        }
+        
         std::atomic<size_t> completedBatches{0};
         size_t batchesSubmitted = 0;
         
-        for (size_t i = 0; i < container.size(); i += eventsPerBatch) {
-            size_t batchEnd = std::min(i + eventsPerBatch, container.size());
+        // Process ALL events, not just up to worker budget limit
+        for (size_t i = 0; i < container.size(); i += optimalBatchSize) {
+            size_t batchEnd = std::min(i + optimalBatchSize, container.size());
             
             threadSystem.enqueueTask([&container, i, batchEnd, &completedBatches]() {
                 for (size_t j = i; j < batchEnd; ++j) {
@@ -422,21 +434,37 @@ void EventManager::updateEventTypeBatchThreaded(EventTypeId typeId) {
             }, Forge::TaskPriority::Normal, "Event_Batch_Update");
             
             batchesSubmitted++;
-            
-            // Respect our worker budget
-            if (batchesSubmitted >= eventWorkerBudget) {
-                break;
-            }
         }
         
-        // Wait for all batches to complete
-        while (completedBatches.load(std::memory_order_relaxed) < batchesSubmitted) {
-            std::this_thread::sleep_for(std::chrono::microseconds(50));
+        // Wait for all batches to complete with adaptive waiting strategy
+        if (batchesSubmitted > 0) {
+            auto waitStart = std::chrono::high_resolution_clock::now();
+            size_t waitIteration = 0;
+            while (completedBatches.load(std::memory_order_relaxed) < batchesSubmitted) {
+                // Adaptive sleep: start with shorter sleeps, increase gradually
+                if (waitIteration < 10) {
+                    std::this_thread::sleep_for(std::chrono::microseconds(25));
+                } else if (waitIteration < 50) {
+                    std::this_thread::sleep_for(std::chrono::microseconds(50));
+                } else {
+                    std::this_thread::sleep_for(std::chrono::microseconds(100));
+                }
+                waitIteration++;
+                
+                // Timeout protection
+                auto elapsed = std::chrono::high_resolution_clock::now() - waitStart;
+                if (elapsed > std::chrono::seconds(5)) {
+                    EVENT_WARN("Event batch completion timeout after 5 seconds");
+                    EVENT_WARN("Completed: " + std::to_string(completedBatches.load()) + "/" + std::to_string(batchesSubmitted));
+                    break;
+                }
+            }
         }
         
         EVENT_DEBUG("Updated " + std::to_string(container.size()) + " events of type " +
                     std::string(getEventTypeName(typeId)) + " using " + std::to_string(batchesSubmitted) + 
-                    " batches (budget: " + std::to_string(eventWorkerBudget) + ")");
+                    " batches (optimal size: " + std::to_string(optimalBatchSize) + 
+                    ", budget: " + std::to_string(eventWorkerBudget) + ")");
     } else {
         // Fall back to single-threaded processing
         for (auto& eventData : container) {
