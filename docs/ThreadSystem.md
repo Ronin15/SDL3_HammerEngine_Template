@@ -116,20 +116,21 @@ The ThreadSystem actively pre-allocates and manages memory for the task queue. T
 ### Setting Initial Capacity (Optional)
 
 ```cpp
-// Initialize with default capacity (recommended approach - 1024 tasks)
+// Initialize with default capacity (recommended approach - 4096 tasks)
 if (!Forge::ThreadSystem::Instance().init()) {
     std::cerr << "Failed to initialize thread system!" << std::endl;
     return -1;
 }
 
 // Specify custom initial capacity, thread count, and profiling
-if (!Forge::ThreadSystem::Instance().init(2048, 0, false)) {  // 2048 capacity, auto threads, no profiling
+if (!Forge::ThreadSystem::Instance().init(8192, 0, false)) {  // 8192 capacity, auto threads, no profiling
     std::cerr << "Failed to initialize thread system!" << std::endl;
     return -1;
 }
+```
 
 // Initialize with specific thread count
-if (!Forge::ThreadSystem::Instance().init(1024, 6, true)) {  // 1024 capacity, 6 threads, profiling enabled
+if (!Forge::ThreadSystem::Instance().init(4096, 6, true)) {  // 4096 capacity, 6 threads, profiling enabled
     std::cerr << "Failed to initialize thread system!" << std::endl;
     return -1;
 }
@@ -139,7 +140,7 @@ if (!Forge::ThreadSystem::Instance().init(1024, 6, true)) {  // 1024 capacity, 6
 
 ```cpp
 // Reserve additional capacity if you know you'll submit many tasks
-bool success = Forge::ThreadSystem::Instance().reserveQueueCapacity(2048);
+bool success = Forge::ThreadSystem::Instance().reserveQueueCapacity(8192);
 if (!success) {
     std::cerr << "Failed to reserve queue capacity (system may be shut down)" << std::endl;
 }

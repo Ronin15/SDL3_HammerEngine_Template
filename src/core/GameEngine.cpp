@@ -6,6 +6,7 @@
 #include "core/GameEngine.hpp"
 #include "utils/Logger.hpp"
 #include "core/GameLoop.hpp" // IWYU pragma: keep - Required for GameLoop weak_ptr declaration
+#include "utils/WorkerBudget.hpp"
 #include <vector>
 #include <chrono>
 #include <future>
@@ -368,15 +369,28 @@ void GameEngine::update([[maybe_unused]] float deltaTime) {
   // This method is now thread-safe and can be called from a worker thread
   std::lock_guard<std::mutex> lock(m_updateMutex);
 
-  // Worker budget coordination - GameEngine reserves workers for critical operations
+  // Use WorkerBudget system for coordinated task submission
   if (Forge::ThreadSystem::Exists()) {
     auto& threadSystem = Forge::ThreadSystem::Instance();
-
-    // Submit critical game engine tasks with high priority to ensure they get processed first
-    threadSystem.enqueueTask([]() {
-      // Critical game loop coordination tasks can go here if needed
-      // For now, this ensures the engine gets priority access to workers
-    }, Forge::TaskPriority::Critical, "GameEngine_Critical");
+  
+    // Calculate worker budget for this frame
+    size_t availableWorkers = static_cast<size_t>(threadSystem.getThreadCount());
+    Forge::WorkerBudget budget = Forge::calculateWorkerBudget(availableWorkers);
+  
+    // Submit engine coordination tasks respecting our worker budget
+    // Use high priority for engine tasks to ensure timely processing
+    threadSystem.enqueueTask([this, deltaTime]() {
+      // Critical game engine coordination
+      processEngineCoordination(deltaTime);
+    }, Forge::TaskPriority::High, "GameEngine_Coordination");
+  
+    // Only submit additional tasks if we have multiple workers allocated
+    if (budget.engineReserved > 1) {
+      threadSystem.enqueueTask([this]() {
+        // Secondary engine tasks (resource management, cleanup, etc.)
+        processEngineSecondaryTasks();
+      }, Forge::TaskPriority::Normal, "GameEngine_Secondary");
+    }
   }
 
   // Mark update as running
@@ -580,6 +594,20 @@ void GameEngine::setLogicalPresentationMode(SDL_RendererLogicalPresentation mode
 
 SDL_RendererLogicalPresentation GameEngine::getLogicalPresentationMode() const {
   return m_logicalPresentationMode;
+}
+
+void GameEngine::processEngineCoordination(float deltaTime) {
+  // Critical engine coordination tasks
+  // This runs with high priority in the WorkerBudget system
+  (void)deltaTime; // Avoid unused parameter warning
+  
+  // Engine-specific coordination logic can be added here
+  // Examples: state synchronization, resource coordination, etc.
+}
+
+void GameEngine::processEngineSecondaryTasks() {
+  // Secondary engine tasks that only run when we have multiple workers allocated
+  // Examples: performance monitoring, resource cleanup, etc.
 }
 
 void GameEngine::clean() {

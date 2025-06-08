@@ -30,7 +30,8 @@ struct WorkerBudget {
  */
 static constexpr size_t AI_WORKER_PERCENTAGE = 60;     // 60% of remaining workers
 static constexpr size_t EVENT_WORKER_PERCENTAGE = 30;  // 30% of remaining workers
-static constexpr size_t ENGINE_MIN_WORKERS = 2;        // Minimum workers for GameEngine
+static constexpr size_t ENGINE_MIN_WORKERS = 1;        // Minimum workers for GameEngine
+static constexpr size_t ENGINE_OPTIMAL_WORKERS = 2;    // Optimal workers for GameEngine on higher-end systems
 
 /**
  * @brief Calculate optimal worker budget allocation
@@ -39,7 +40,7 @@ static constexpr size_t ENGINE_MIN_WORKERS = 2;        // Minimum workers for Ga
  * @return WorkerBudget Allocation strategy for all subsystems
  * 
  * Strategy:
- * - GameEngine gets minimum 2 workers (or 1 if only 1-2 total)
+ * - GameEngine gets 1 worker on low-end systems (≤4 cores), 2 workers on higher-end systems
  * - AI gets 60% of remaining workers
  * - Events get 30% of remaining workers  
  * - 10% buffer left for other tasks
@@ -48,8 +49,16 @@ inline WorkerBudget calculateWorkerBudget(size_t availableWorkers) {
     WorkerBudget budget;
     budget.totalWorkers = availableWorkers;
     
-    // Reserve minimum workers for GameEngine (1 if ≤2 total, otherwise 2)
-    budget.engineReserved = (availableWorkers <= 2) ? 1 : ENGINE_MIN_WORKERS;
+    // Dynamic GameEngine worker allocation based on available cores
+    // Low-end systems (≤4 workers): 1 worker for GameEngine coordination
+    // Higher-end systems (>4 workers): 2 workers for GameEngine tasks
+    if (availableWorkers <= 2) {
+        budget.engineReserved = 1;  // Very limited systems
+    } else if (availableWorkers <= 4) {
+        budget.engineReserved = ENGINE_MIN_WORKERS;  // Low-end systems: 1 worker
+    } else {
+        budget.engineReserved = ENGINE_OPTIMAL_WORKERS;  // Higher-end systems: 2 workers
+    }
     
     // Calculate remaining workers after engine reservation
     size_t remainingWorkers = availableWorkers - budget.engineReserved;
