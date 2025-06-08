@@ -52,9 +52,10 @@ I use the Zed IDE with custom cmake and ninja task configurations to build/compi
 ## Performance Capabilities
 
 ### Multi-Threading Performance
-- **10K Entity Target**: Achieves 995,723 entity updates per second (77% threading improvement)
-- **100K Entity Stress Test**: Demonstrates 2.3M+ entity updates per second capability
-- **WorkerBudget System**: Intelligent allocation across subsystems (AI: 60%, Events: 30%, Engine: minimum 2 workers)
+- **10K Entity Target**: Achieves 995K entity updates per second (5.85x threading improvement over baseline)
+- **100K Entity Stress Test**: Demonstrates 2.2M+ entity updates per second capability
+- **Threading Threshold**: Automatic activation at 200 entities provides 4.41x performance boost
+- **WorkerBudget System**: Dynamic allocation across subsystems (AI: 60%, Events: 30%, Engine: 1-2 workers)
 - **Queue Capacity**: 4096 task queue capacity eliminates bottlenecks under high entity loads
 - **Cache-Friendly Batching**: Optimized batch sizes (25-1000 entities) for optimal memory access patterns
 
@@ -66,9 +67,10 @@ I use the Zed IDE with custom cmake and ninja task configurations to build/compi
 
 ### Real-World Performance
 - Maintains consistent 60 FPS with 10K+ active entities on 10-core systems
+- Automatic threading threshold (200 entities) provides optimal performance across hardware tiers
+- Excellent scaling: 1.0x baseline → 5.85x at 10K entities with threading
 - Handles mixed workloads (AI + Events + Physics) without resource conflicts
-- Linear performance scaling with additional CPU cores
-- Validated through comprehensive benchmark suite with automated performance regression testing
+- Validated through comprehensive benchmark suite with clean, consistent performance data
 
 ## Building the Project
 
@@ -143,15 +145,15 @@ The project includes comprehensive testing suites for all major components inclu
 ```bash
 # AI benchmark suite - validates automatic threading behavior
 ./run_ai_benchmark.sh                    # Full realistic benchmark suite
-./run_ai_benchmark.sh --realistic-only   # Realistic performance tests only
+./run_ai_benchmark.sh --realistic-only   # Clean realistic performance tests
 ./run_ai_benchmark.sh --stress-test      # 100K entity stress test only
-./run_ai_benchmark.sh --threshold-test   # Threading threshold validation
+./run_ai_benchmark.sh --threshold-test   # Threading threshold validation (200 entities)
 
 # Expected performance targets (debug builds):
-# - 150 entities: Auto single-threaded (~383K updates/sec)
-# - 200+ entities: Auto threading activation (~750K updates/sec)
-# - 1000 entities: High threading performance (~975K updates/sec)
-# - 10K entities: Target performance (~995K updates/sec)
+# - 100 entities: Auto single-threaded baseline (~170K updates/sec, 1.00x)
+# - 200+ entities: Auto threading activation (~750K updates/sec, 4.41x)
+# - 1000 entities: High threading performance (~975K updates/sec, 5.74x)
+# - 10K entities: Target performance achieved (~995K updates/sec, 5.85x)
 # - 100K entities: Stress test validation (2.2M+ updates/sec)
 ```
 
@@ -164,9 +166,9 @@ The project includes comprehensive testing suites for all major components inclu
 --save-results    # Save test results to log files
 --duration N      # Set test duration in seconds
 --level LEVEL     # Set stress level (light/medium/heavy/extreme)
---realistic-only  # AI benchmarks: Run only realistic automatic threading tests
+--realistic-only  # AI benchmarks: Run clean realistic automatic threading tests
 --stress-test     # AI benchmarks: Run only 100K entity stress test
---threshold-test  # AI benchmarks: Test threading threshold behavior
+--threshold-test  # AI benchmarks: Test 200-entity threading threshold behavior
 ```
 
 ### Continuous Integration Support

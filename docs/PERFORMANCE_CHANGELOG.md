@@ -121,9 +121,9 @@ if (entityCount >= 10000) {
 ### 🎯 Performance Targets Achieved
 
 ✅ **Primary Goal**: 10K entity performance maintained at ~1M updates/sec  
-✅ **Scalability**: 100K entity processing nearly tripled in performance  
+#### ✅ **Scalability**: Consistent 5.29x-5.85x performance scaling with threading
 ✅ **Stability**: Zero timeouts or system hangs under extreme stress  
-✅ **Future-Proof**: Engine handles workloads far beyond target requirements  
+✅ **Future-Proof**: Engine handles workloads far beyond target requirements
 
 ### 🔄 Compatibility
 
@@ -144,8 +144,8 @@ if (entityCount >= 10000) {
 
 ### 🚧 Minor Trade-offs
 
-- **Small Scale Impact**: 1K entities show minor regression (3% multi-threaded)
-- **Debug Builds**: Results shown are debug builds; release builds will perform better
-- **Memory Usage**: Slight increase in queue memory allocation (~24KB additional)
+- **Debug Build Results**: Performance shown in debug builds; release builds will perform significantly better
+- **Memory Usage**: Slight increase in queue memory allocation (~32KB for 4096 capacity)
+- **Threading Threshold**: 200 entity threshold may defer threading benefits for medium-scale scenarios
 
-**Overall Assessment**: These optimizations successfully achieve the 10K entity performance target while providing substantial scalability improvements and maintaining system stability under extreme stress conditions.
+**Overall Assessment**: These optimizations successfully achieve the 10K entity performance target with excellent 5.85x performance scaling, automatic threading threshold activation, and clean benchmark validation across all entity ranges.
