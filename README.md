@@ -107,7 +107,7 @@ I'm using:
 Homebrew is recommended for SDL3 dependencies like harfbuzz, truetype, and freetype etc.
 brew install sdl3 sdl3_image sdl3_ttf sdl3_mixer should get you everything you need for SDL3. However, via CMAKE the project will use the SDL3 libraries downloaded from official SDL github via fecthContent. It will not use the SDL3 libraries installed via Homebrew. 
 
-- Boost is needed for the test framewrork
+- Boost is needed for the test framework
   -  brew install boost
 
 xcode command line tools is needed to compile.
