@@ -21,7 +21,7 @@ The Forge Game Engine logging system provides efficient, configurable logging wi
 ### Basic Usage
 
 ```cpp
-#include "utils/Logger.hpp"
+#include "core/Logger.hpp"
 
 // Basic logging with system identification
 FORGE_INFO("MySystem", "Application started successfully");
@@ -59,7 +59,7 @@ namespace Forge {
         INFO = 3,      // Debug only
         DEBUG = 4      // Debug only
     };
-    
+
     class Logger {
         static void Log(LogLevel level, const char* system, const std::string& message);
         static void Log(LogLevel level, const char* system, const char* message);
@@ -113,7 +113,7 @@ namespace Forge {
     #define FORGE_CRITICAL(system, msg) do { \
         printf("Forge Game Engine - [%s] CRITICAL: %s\n", system, std::string(msg).c_str()); \
     } while(0)
-    
+
     // All other levels become no-ops
     #define FORGE_ERROR(system, msg) ((void)0)
     #define FORGE_WARN(system, msg) ((void)0)
@@ -321,7 +321,7 @@ FORGE_INFO("SoundManager", "Audio subsystem initialized with OpenAL");
 ### 4. Format Complex Data
 ```cpp
 // Good: Format complex data clearly
-GAMELOOP_DEBUG("Frame timing - Delta: " + std::to_string(deltaTime) + 
+GAMELOOP_DEBUG("Frame timing - Delta: " + std::to_string(deltaTime) +
                "s, FPS: " + std::to_string(currentFPS));
 
 // Good: Use string concatenation for readable output
@@ -354,53 +354,53 @@ AI_INFO("Entity " + std::to_string(entityId) + " switched to patrol mode");
 ```cpp
 bool GameEngine::init(const char* title, int width, int height, bool fullscreen) {
     GAMEENGINE_INFO("Initializing Forge Game Engine");
-    
+
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO) < 0) {
         GAMEENGINE_CRITICAL("Failed to initialize SDL: " + std::string(SDL_GetError()));
         return false;
     }
-    
+
     GAMEENGINE_INFO("SDL initialized successfully");
-    
+
     // Create window
-    mp_window.reset(SDL_CreateWindow(title, width, height, 
+    mp_window.reset(SDL_CreateWindow(title, width, height,
                     fullscreen ? SDL_WINDOW_FULLSCREEN : 0));
-    
+
     if (!mp_window) {
         GAMEENGINE_ERROR("Failed to create window: " + std::string(SDL_GetError()));
         return false;
     }
-    
-    GAMEENGINE_DEBUG("Window created: " + std::to_string(width) + "x" + 
+
+    GAMEENGINE_DEBUG("Window created: " + std::to_string(width) + "x" +
                      std::to_string(height) + (fullscreen ? " (fullscreen)" : " (windowed)"));
-    
+
     return true;
 }
 ```
 
 ### Resource Loading with Error Handling
 ```cpp
-bool TextureManager::load(const std::string& fileName, const std::string& textureID, 
+bool TextureManager::load(const std::string& fileName, const std::string& textureID,
                          SDL_Renderer* renderer) {
     TEXTURE_INFO("Loading texture: " + fileName + " as ID: " + textureID);
-    
+
     SDL_Surface* surface = IMG_Load(fileName.c_str());
     if (!surface) {
         TEXTURE_ERROR("Failed to load image '" + fileName + "': " + std::string(IMG_GetError()));
         return false;
     }
-    
+
     SDL_Texture* texture = SDL_CreateTextureFromSurface(renderer, surface);
     SDL_FreeSurface(surface);
-    
+
     if (!texture) {
         TEXTURE_ERROR("Failed to create texture from '" + fileName + "': " + std::string(SDL_GetError()));
         return false;
     }
-    
+
     m_textureMap[textureID] = std::shared_ptr<SDL_Texture>(texture, SDL_DestroyTexture);
     TEXTURE_DEBUG("Texture loaded successfully - ID: " + textureID + ", File: " + fileName);
-    
+
     return true;
 }
 ```
@@ -409,28 +409,28 @@ bool TextureManager::load(const std::string& fileName, const std::string& textur
 ```cpp
 void GameLoop::runMainThread() {
     GAMELOOP_INFO("Starting main game loop thread");
-    
+
     while (m_running.load()) {
         auto frameStart = std::chrono::high_resolution_clock::now();
-        
+
         processEvents();
-        
+
         if (!m_paused.load()) {
             processUpdates();
         }
-        
+
         processRender();
-        
+
         auto frameEnd = std::chrono::high_resolution_clock::now();
         auto frameDuration = std::chrono::duration_cast<std::chrono::microseconds>(frameEnd - frameStart);
-        
+
         if (frameDuration.count() > 20000) { // > 20ms frame time
             GAMELOOP_WARN("Long frame detected: " + std::to_string(frameDuration.count()) + " microseconds");
         }
-        
+
         GAMELOOP_DEBUG("Frame completed in " + std::to_string(frameDuration.count()) + " microseconds");
     }
-    
+
     GAMELOOP_INFO("Game loop thread terminated");
 }
 ```
@@ -443,18 +443,18 @@ bool SoundManager::playSound(const std::string& soundID) {
         SOUND_ERROR("Attempted to play unknown sound: " + soundID);
         return false;
     }
-    
+
     if (Mix_PlayChannel(-1, it->second.get(), 0) == -1) {
-        SOUND_WARN("Failed to play sound '" + soundID + "': " + std::string(Mix_GetError()) + 
+        SOUND_WARN("Failed to play sound '" + soundID + "': " + std::string(Mix_GetError()) +
                    " - attempting retry");
-        
+
         // Retry once
         if (Mix_PlayChannel(-1, it->second.get(), 0) == -1) {
             SOUND_ERROR("Sound playback failed after retry: " + soundID);
             return false;
         }
     }
-    
+
     SOUND_DEBUG("Sound played successfully: " + soundID);
     return true;
 }
@@ -464,26 +464,26 @@ bool SoundManager::playSound(const std::string& soundID) {
 ```cpp
 bool Player::loadDimensionsFromTexture() {
     PLAYER_DEBUG("Loading texture dimensions for player");
-    
+
     auto& textureManager = TextureManager::Instance();
     auto texture = textureManager.getTexture(m_textureID);
-    
+
     if (texture) {
         float width, height;
         if (SDL_GetTextureSize(texture.get(), &width, &height)) {
             PLAYER_DEBUG("Original texture dimensions: " + std::to_string(width) + "x" + std::to_string(height));
-            
+
             m_width = static_cast<int>(width);
             m_height = static_cast<int>(height);
-            
+
             // Calculate frame dimensions for sprite sheets
             m_frameWidth = m_width / m_numFrames;
             int frameHeight = m_height / m_spriteSheetRows;
             m_height = frameHeight;
-            
+
             PLAYER_DEBUG("Frame dimensions: " + std::to_string(m_frameWidth) + "x" + std::to_string(frameHeight));
             PLAYER_DEBUG("Sprite layout: " + std::to_string(m_numFrames) + " columns x " + std::to_string(m_spriteSheetRows) + " rows");
-            
+
             return true;
         } else {
             PLAYER_ERROR("Failed to query texture dimensions: " + std::string(SDL_GetError()));
@@ -498,8 +498,8 @@ bool Player::loadDimensionsFromTexture() {
 void NPC::setWanderArea(float x1, float y1, float x2, float y2) {
     m_wanderBounds = {x1, y1, x2, y2};
     m_hasWanderBounds = true;
-    
-    NPC_DEBUG("NPC wander area set: (" + std::to_string(x1) + ", " + std::to_string(y1) + 
+
+    NPC_DEBUG("NPC wander area set: (" + std::to_string(x1) + ", " + std::to_string(y1) +
               ") to (" + std::to_string(x2) + ", " + std::to_string(y2) + ")");
 }
 
@@ -508,7 +508,7 @@ void EntityStateManager::setState(const std::string& stateName) {
         ENTITYSTATE_INFO("Exiting entity state: " + getCurrentStateName());
         current->exit();
     }
-    
+
     auto it = states.find(stateName);
     if (it != states.end()) {
         currentState = it->second;

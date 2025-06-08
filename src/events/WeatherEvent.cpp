@@ -5,7 +5,7 @@
 
 #include "events/WeatherEvent.hpp"
 #include "utils/Vector2D.hpp"
-#include "utils/Logger.hpp"
+#include "core/Logger.hpp"
 #include <random>
 #include <chrono>
 #include <algorithm>
@@ -222,7 +222,7 @@ bool WeatherEvent::checkConditions() {
     }
 
     // Check custom conditions first - if any fail, return false
-    if (!std::all_of(m_conditions.begin(), m_conditions.end(), 
+    if (!std::all_of(m_conditions.begin(), m_conditions.end(),
                      [](const auto& condition) { return condition(); })) {
         return false;
     }

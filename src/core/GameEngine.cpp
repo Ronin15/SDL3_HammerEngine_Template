@@ -4,9 +4,9 @@
 */
 
 #include "core/GameEngine.hpp"
-#include "utils/Logger.hpp"
+#include "core/Logger.hpp"
 #include "core/GameLoop.hpp" // IWYU pragma: keep - Required for GameLoop weak_ptr declaration
-#include "utils/WorkerBudget.hpp"
+#include "core/WorkerBudget.hpp"
 #include <vector>
 #include <chrono>
 #include <future>
@@ -372,18 +372,18 @@ void GameEngine::update([[maybe_unused]] float deltaTime) {
   // Use WorkerBudget system for coordinated task submission
   if (Forge::ThreadSystem::Exists()) {
     auto& threadSystem = Forge::ThreadSystem::Instance();
-  
+
     // Calculate worker budget for this frame
     size_t availableWorkers = static_cast<size_t>(threadSystem.getThreadCount());
     Forge::WorkerBudget budget = Forge::calculateWorkerBudget(availableWorkers);
-  
+
     // Submit engine coordination tasks respecting our worker budget
     // Use high priority for engine tasks to ensure timely processing
     threadSystem.enqueueTask([this, deltaTime]() {
       // Critical game engine coordination
       processEngineCoordination(deltaTime);
     }, Forge::TaskPriority::High, "GameEngine_Coordination");
-  
+
     // Only submit additional tasks if we have multiple workers allocated
     if (budget.engineReserved > 1) {
       threadSystem.enqueueTask([this]() {
@@ -600,7 +600,7 @@ void GameEngine::processEngineCoordination(float deltaTime) {
   // Critical engine coordination tasks
   // This runs with high priority in the WorkerBudget system
   (void)deltaTime; // Avoid unused parameter warning
-  
+
   // Engine-specific coordination logic can be added here
   // Examples: state synchronization, resource coordination, etc.
 }

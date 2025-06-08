@@ -4,9 +4,9 @@
 */
 
 #include "managers/AIManager.hpp"
-#include "utils/Logger.hpp"
+#include "core/Logger.hpp"
 #include "core/ThreadSystem.hpp"
-#include "utils/WorkerBudget.hpp"
+#include "core/WorkerBudget.hpp"
 #include <SDL3/SDL.h>
 #include <algorithm>
 #include <chrono>
@@ -40,7 +40,7 @@ bool AIManager::init() {
         m_messageQueue.reserve(100);
 
         m_initialized.store(true, std::memory_order_release);
-        
+
         AI_INFO("AIManager initialized");
         if (threadSystemExists) {
             // Cache ThreadSystem reference for better performance
@@ -48,7 +48,7 @@ bool AIManager::init() {
             (void)threadSystem; // Mark as intentionally used for logging
             AI_INFO("Threading enabled with " + std::to_string(threadSystem.getThreadCount()) + " threads");
         }
-        
+
         return true;
     }
     catch (const std::exception& e) {
@@ -77,7 +77,7 @@ void AIManager::clean() {
 
         m_pendingAssignments.clear();
         m_messageQueue.clear();
-        
+
         for (auto& stats : m_behaviorStats) {
             stats.reset();
         }
@@ -90,7 +90,7 @@ void AIManager::clean() {
 }
 
 void AIManager::update([[maybe_unused]] float deltaTime) {
-    if (!m_initialized.load(std::memory_order_acquire) || 
+    if (!m_initialized.load(std::memory_order_acquire) ||
         m_globallyPaused.load(std::memory_order_acquire)) {
         return;
     }
@@ -104,28 +104,28 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
         // Update all AI entities
         {
             std::shared_lock<std::shared_mutex> lock(m_entitiesMutex);
-            
+
             if (m_entities.size() >= THREADING_THRESHOLD && m_useThreading.load(std::memory_order_acquire)) {
                 // Check ThreadSystem availability and use RAII approach
                 if (Forge::ThreadSystem::Exists()) {
                     auto& threadSystem = Forge::ThreadSystem::Instance();
-                
+
                     // Use threaded processing with percentage-based worker budget system
-                    
+
                     // Get ThreadSystem's actual worker thread count and calculate budget
                     size_t availableWorkers = static_cast<size_t>(threadSystem.getThreadCount());
                     Forge::WorkerBudget budget = Forge::calculateWorkerBudget(availableWorkers);
                     size_t aiWorkerBudget = budget.aiAllocated;
-                    
+
                     // Check queue pressure before submitting tasks
                     size_t currentQueueSize = threadSystem.getQueueSize();
                     size_t maxQueuePressure = availableWorkers * 3; // Allow 3x worker count in queue for AI
-                    
+
                     // Limit concurrent batches to our worker budget
                     size_t maxAIBatches = aiWorkerBudget;
-                    
+
                     // Debug output for worker budget strategy
-                    AI_DEBUG("Worker Budget - Total: " + std::to_string(budget.totalWorkers) + 
+                    AI_DEBUG("Worker Budget - Total: " + std::to_string(budget.totalWorkers) +
                            ", Engine: " + std::to_string(budget.engineReserved) +
                            ", AI: " + std::to_string(budget.aiAllocated) +
                            ", Events: " + std::to_string(budget.eventAllocated) +
@@ -133,13 +133,13 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
                            ", Max Batches: " + std::to_string(maxAIBatches) +
                            ", Queue: " + std::to_string(currentQueueSize) + "/" + std::to_string(maxQueuePressure) +
                            ", Entities: " + std::to_string(m_entities.size()));
-                    
+
                     // Only proceed with threading if queue pressure is acceptable
                     if (currentQueueSize < maxQueuePressure) {
                         // Calculate optimal batch size based on our budget
                         size_t targetBatches = maxAIBatches;
                         size_t optimalBatchSize = std::max(size_t(25), m_entities.size() / targetBatches);
-                    
+
                     // Apply cache-friendly limits based on entity count
                     if (m_entities.size() < 1000) {
                         optimalBatchSize = std::min(optimalBatchSize, size_t(250));  // Small cache-friendly batches
@@ -148,13 +148,13 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
                     } else {
                         optimalBatchSize = std::min(optimalBatchSize, size_t(1000)); // Larger batches for big workloads
                     }
-                    
-                    AI_DEBUG("Batch Strategy - Batch Size: " + std::to_string(optimalBatchSize) + 
+
+                    AI_DEBUG("Batch Strategy - Batch Size: " + std::to_string(optimalBatchSize) +
                            ", Expected Batches: " + std::to_string((m_entities.size() + optimalBatchSize - 1) / optimalBatchSize));
-                
+
                     std::atomic<size_t> completedTasks{0};
                     size_t tasksSubmitted = 0;
-                
+
                     // Determine task priority based on entity count to prevent queue flooding
                     Forge::TaskPriority batchPriority = Forge::TaskPriority::Normal;
                     if (m_entities.size() >= 10000) {
@@ -164,18 +164,18 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
                     } else {
                         batchPriority = Forge::TaskPriority::High;  // Higher priority for smaller workloads
                     }
-                    
+
                     // Submit batches to ThreadSystem - it will distribute among workers
                     for (size_t i = 0; i < m_entities.size(); i += optimalBatchSize) {
                         size_t batchEnd = std::min(i + optimalBatchSize, m_entities.size());
-                    
+
                         threadSystem.enqueueTask([this, i, batchEnd, &completedTasks, deltaTime]() {
                             processBatch(i, batchEnd, deltaTime);
                             completedTasks.fetch_add(1, std::memory_order_relaxed);
                         }, batchPriority, "AI_Batch_Update");
                         tasksSubmitted++;
                     }
-                
+
                     // Wait for all tasks to complete with adaptive waiting strategy
                     if (tasksSubmitted > 0) {
                         auto waitStart = std::chrono::high_resolution_clock::now();
@@ -190,7 +190,7 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
                                 std::this_thread::sleep_for(std::chrono::microseconds(200));
                             }
                             waitIteration++;
-                        
+
                             // Timeout protection
                             auto elapsed = std::chrono::high_resolution_clock::now() - waitStart;
                             if (elapsed > std::chrono::seconds(10)) {
@@ -202,7 +202,7 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
                     }
                     } else {
                         // Queue pressure too high, fallback to single-threaded
-                        AI_DEBUG("Queue pressure too high (" + std::to_string(currentQueueSize) + 
+                        AI_DEBUG("Queue pressure too high (" + std::to_string(currentQueueSize) +
                                "/" + std::to_string(maxQueuePressure) + "), using single-threaded processing");
                         processBatch(0, m_entities.size(), deltaTime);
                     }
@@ -225,7 +225,7 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
         // Update performance statistics
         auto endTime = std::chrono::high_resolution_clock::now();
         auto duration = std::chrono::duration<double, std::milli>(endTime - startTime).count();
-        
+
         std::lock_guard<std::mutex> statsLock(m_statsMutex);
         m_globalStats.addSample(duration, m_entities.size());
 
@@ -242,7 +242,7 @@ void AIManager::registerBehavior(const std::string& name, std::shared_ptr<AIBeha
 
     std::unique_lock<std::shared_mutex> lock(m_behaviorsMutex);
     m_behaviorTemplates[name] = behavior;
-    
+
     AI_INFO("Registered behavior: " + name);
 }
 
@@ -292,7 +292,7 @@ void AIManager::assignBehaviorToEntity(EntityPtr entity, const std::string& beha
     // Add to unified spatial system
     {
         std::unique_lock<std::shared_mutex> lock(m_entitiesMutex);
-        
+
         // Check if entity already exists
         auto it = m_entityToIndex.find(entity);
         if (it != m_entityToIndex.end()) {
@@ -314,7 +314,7 @@ void AIManager::assignBehaviorToEntity(EntityPtr entity, const std::string& beha
             entityData.frameCounter = 0;
             entityData.priority = 5; // Default priority matching AIDemoState
             entityData.active = true;
-            
+
             size_t index = m_entities.size();
             m_entities.push_back(std::move(entityData));
             m_entityToIndex[entity] = index;
@@ -369,7 +369,7 @@ void AIManager::queueBehaviorAssignment(EntityPtr entity, const std::string& beh
 
 size_t AIManager::processPendingBehaviorAssignments() {
     std::vector<PendingAssignment> assignments;
-    
+
     {
         std::lock_guard<std::mutex> lock(m_assignmentsMutex);
         assignments.swap(m_pendingAssignments);
@@ -408,12 +408,12 @@ bool AIManager::isPlayerValid() const {
 
 void AIManager::registerEntityForUpdates(EntityPtr entity, int priority) {
     if (!entity) return;
-    
+
     // Clamp priority to valid range (0-9)
     priority = std::max(0, std::min(9, priority));
 
     std::unique_lock<std::shared_mutex> lock(m_entitiesMutex);
-    
+
     // Check if already registered
     auto it = m_entityToIndex.find(entity);
     if (it != m_entityToIndex.end()) {
@@ -434,7 +434,7 @@ void AIManager::registerEntityForUpdates(EntityPtr entity, int priority) {
     entityData.lastUpdateTime = std::chrono::duration<float, std::milli>(
         std::chrono::high_resolution_clock::now().time_since_epoch()).count();
     entityData.active = true;
-    
+
     size_t index = m_entities.size();
     m_entities.push_back(std::move(entityData));
     m_entityToIndex[entity] = index;
@@ -467,17 +467,17 @@ bool AIManager::isGloballyPaused() const {
 
 void AIManager::resetBehaviors() {
     AI_INFO("Resetting all AI behaviors");
-    
+
     std::unique_lock<std::shared_mutex> entitiesLock(m_entitiesMutex);
     std::unique_lock<std::shared_mutex> behaviorsLock(m_behaviorsMutex);
-    
+
     m_entities.clear();
     m_entityToIndex.clear();
     m_behaviorTemplates.clear();
-    
+
     // Reset behavior execution counter
     m_totalBehaviorExecutions.store(0, std::memory_order_relaxed);
-    
+
     for (auto& stats : m_behaviorStats) {
         stats.reset();
     }
@@ -485,15 +485,15 @@ void AIManager::resetBehaviors() {
 
 void AIManager::configureThreading(bool useThreading, unsigned int maxThreads) {
     m_useThreading.store(useThreading, std::memory_order_release);
-    
+
     if (maxThreads == 0) {
         unsigned int hwThreads = std::thread::hardware_concurrency();
         maxThreads = (hwThreads == 0) ? 4 : std::max(1u, hwThreads - 1);
     }
-    
+
     m_maxThreads = maxThreads;
-    
-    AI_INFO("Threading " + std::string(useThreading ? "enabled" : "disabled") + 
+
+    AI_INFO("Threading " + std::string(useThreading ? "enabled" : "disabled") +
            " with " + std::to_string(maxThreads) + " max threads");
 }
 
@@ -573,7 +573,7 @@ void AIManager::processMessageQueue() {
     }
 
     std::shared_lock<std::shared_mutex> lock(m_entitiesMutex);
-    
+
     for (const auto& queuedMessage : messages) {
         try {
             if (queuedMessage.targetEntity.expired()) {
@@ -612,10 +612,10 @@ BehaviorType AIManager::inferBehaviorType(const std::string& behaviorName) const
 void AIManager::processBatch(size_t start, size_t end, float deltaTime) {
     auto batchStart = std::chrono::high_resolution_clock::now();
     EntityPtr player = m_playerEntity.lock();
-    
+
     for (size_t i = start; i < end; ++i) {
         if (i >= m_entities.size()) break;
-        
+
         auto& entityData = m_entities[i];
         if (!entityData.active || !entityData.entity || !entityData.behavior) {
             continue;
@@ -644,7 +644,7 @@ void AIManager::processBatch(size_t start, size_t end, float deltaTime) {
     // Record performance for this batch
     auto batchEnd = std::chrono::high_resolution_clock::now();
     auto duration = std::chrono::duration<double, std::milli>(batchEnd - batchStart).count();
-    
+
     if (start < end && end <= m_entities.size()) {
         BehaviorType batchType = m_entities[start].behaviorType;
         recordPerformance(batchType, duration, end - start);
@@ -653,16 +653,16 @@ void AIManager::processBatch(size_t start, size_t end, float deltaTime) {
 
 void AIManager::cleanupInactiveEntities() {
     std::unique_lock<std::shared_mutex> lock(m_entitiesMutex);
-    
+
     // Remove inactive entities and rebuild index map
     auto newEnd = std::remove_if(m_entities.begin(), m_entities.end(),
         [](const AIEntityData& data) {
             return !data.active || !data.entity;
         });
-    
+
     if (newEnd != m_entities.end()) {
         m_entities.erase(newEnd, m_entities.end());
-        
+
         // Rebuild index map
         m_entityToIndex.clear();
         for (size_t i = 0; i < m_entities.size(); ++i) {
@@ -675,25 +675,25 @@ void AIManager::cleanupInactiveEntities() {
 
 bool AIManager::shouldUpdateEntity(EntityPtr entity, EntityPtr player, int& frameCounter, int entityPriority) {
     if (!entity) return false;
-    
+
     frameCounter++;
-    
+
     if (!player) {
         return frameCounter % 10 == 0; // Update every 10 frames if no player
     }
-    
+
     Vector2D entityPos = entity->getPosition();
     Vector2D playerPos = player->getPosition();
     float distance = (entityPos - playerPos).length();
-    
+
     // Apply priority multiplier and entity priority
     float multiplier = m_priorityMultiplier.load(std::memory_order_acquire);
     float priorityFactor = 1.0f + (entityPriority * 0.1f);
-    
+
     float adjustedCloseDist = m_maxUpdateDistance.load(std::memory_order_acquire) * multiplier * priorityFactor;
     float adjustedMediumDist = m_mediumUpdateDistance.load(std::memory_order_acquire) * multiplier * priorityFactor;
     float adjustedFarDist = m_minUpdateDistance.load(std::memory_order_acquire) * multiplier * priorityFactor;
-    
+
     if (distance <= adjustedCloseDist) {
         return true; // Close: every frame
     } else if (distance <= adjustedMediumDist) {
@@ -701,7 +701,7 @@ bool AIManager::shouldUpdateEntity(EntityPtr entity, EntityPtr player, int& fram
     } else if (distance <= adjustedFarDist) {
         return frameCounter % 30 == 0; // Far: every 30 frames
     }
-    
+
     return frameCounter % 60 == 0; // Very far: every 60 frames
 }
 
@@ -725,7 +725,7 @@ void AIManager::updateEntityBehavior(EntityPtr entity) {
 
 void AIManager::recordPerformance(BehaviorType type, double timeMs, uint64_t entities) {
     std::lock_guard<std::mutex> lock(m_statsMutex);
-    
+
     size_t typeIndex = static_cast<size_t>(type);
     if (typeIndex < m_behaviorStats.size()) {
         m_behaviorStats[typeIndex].addSample(timeMs, entities);
@@ -741,7 +741,7 @@ uint64_t AIManager::getCurrentTimeNanos() {
 
 int AIManager::getEntityPriority(EntityPtr entity) const {
     if (!entity) return DEFAULT_PRIORITY;
-    
+
     std::shared_lock<std::shared_mutex> lock(m_entitiesMutex);
     auto it = m_entityToIndex.find(entity);
     if (it != m_entityToIndex.end() && it->second < m_entities.size()) {
@@ -758,7 +758,7 @@ float AIManager::getUpdateRangeMultiplier(int priority) const {
 void AIManager::registerEntityForUpdates(EntityPtr entity, int priority, const std::string& behaviorName) {
     // Register for updates
     registerEntityForUpdates(entity, priority);
-    
+
     // Queue behavior assignment internally
     queueBehaviorAssignment(entity, behaviorName);
 }

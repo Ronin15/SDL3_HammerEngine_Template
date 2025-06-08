@@ -10,7 +10,7 @@
 #include "SDL3/SDL_surface.h"
 #include "managers/TextureManager.hpp"
 #include <SDL3/SDL.h>
-#include "utils/Logger.hpp"
+#include "core/Logger.hpp"
 
 Player::Player() {
     // Initialize player properties
@@ -150,5 +150,3 @@ void Player::clean() {
     // Clean up any resources
     PLAYER_DEBUG("Cleaning up player resources");
 }
-
-
