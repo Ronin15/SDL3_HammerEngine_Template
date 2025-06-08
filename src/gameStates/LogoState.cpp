@@ -26,7 +26,7 @@ void LogoState::update([[maybe_unused]] float deltaTime) {
   // std::cout << "Forge Game Engine - Updating LOGO State\n";
 
   stateTimer = SDL_GetTicks();
-  if (stateTimer > 7000) {
+  if (stateTimer > 3000) {  // 7 seconds 7000 // reducing for faster testing
     // Cache GameEngine reference for better performance
     GameEngine& gameEngine = GameEngine::Instance();
     gameEngine.getGameStateManager()->setState("MainMenuState");
@@ -87,7 +87,7 @@ void LogoState::render() {
   // Draw version text
   fontMgr.drawText(
 
-      "v0.1.5",
+      "v0.1.8",
       "fonts_Arial",
       windowWidth / 2,  // Center horizontally
       (windowHeight / 2) + 260,
