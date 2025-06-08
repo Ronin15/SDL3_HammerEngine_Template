@@ -57,9 +57,9 @@ Each test suite has dedicated scripts in the project root directory:
 
 # AI benchmark test examples with automatic threading
 ./run_ai_benchmark.sh                                   # Full realistic benchmark suite
-./run_ai_benchmark.sh --realistic-only                  # Realistic performance tests only
+./run_ai_benchmark.sh --realistic-only                  # Clean realistic performance tests
 ./run_ai_benchmark.sh --stress-test                     # 100K entity stress test only
-./run_ai_benchmark.sh --threshold-test                  # Threading threshold validation
+./run_ai_benchmark.sh --threshold-test                  # Threading threshold validation (200 entities)
 
 # Individual UI stress test examples
 ./run_ui_stress_tests.sh --level light --duration 30    # Quick UI test
@@ -215,16 +215,16 @@ Special considerations for thread-safety tests:
 
 Located in `AIScalingBenchmark.cpp`, these tests measure realistic performance characteristics:
 
-1. **Realistic Performance Testing**: Tests automatic threading behavior across different entity counts
-   - Below 200 entities: Validates single-threaded processing
-   - At 200+ entities: Validates automatic threading activation  
-   - 1000+ entities: Confirms high-performance threading
-   - 5000+ entities: Target performance validation
+1. **Realistic Performance Testing**: Tests automatic threading behavior across key entity counts
+   - 100 entities: Validates single-threaded baseline (~170K updates/sec)
+   - 200+ entities: Validates automatic threading activation (~750K updates/sec)
+   - 1000+ entities: Confirms high-performance threading (~975K updates/sec)
+   - 10K entities: Target performance validation (~995K updates/sec, 5.85x improvement)
 
-2. **Realistic Scalability**: Tests automatic threading behavior across entity ranges
+2. **Realistic Scalability**: Tests clean automatic threading behavior across entity ranges
    - Tests 100-10K entity range with automatic mode selection
-   - Validates 200-entity threading threshold effectiveness
-   - Measures cache-friendly batching performance
+   - Validates 200-entity threading threshold effectiveness (4.41x performance jump)
+   - Demonstrates consistent high performance scaling (5.29x-5.85x ratios)
 
 3. **Legacy Comparison**: Forced threading modes for comparison with previous benchmarks
    - Single-threaded forced mode for baseline comparison
@@ -236,9 +236,10 @@ Located in `AIScalingBenchmark.cpp`, these tests measure realistic performance c
    - Confirms queue capacity handling (4096 tasks)
 
 **Key Performance Targets:**
+- 100 entities: Single-threaded baseline (~170K updates/sec)
 - 200 entities: Automatic threading activation (~750K updates/sec)
 - 1000 entities: High threading performance (~975K updates/sec)  
-- 10K entities: Target performance maintained (~995K updates/sec)
+- 10K entities: Target performance achieved (~995K updates/sec, 5.85x improvement)
 - 100K entities: Stress test validation (2.2M+ updates/sec)
 
 ### UI Stress Tests
