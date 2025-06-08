@@ -4,8 +4,9 @@
 */
 
 #include "core/GameEngine.hpp"
+#include "utils/Logger.hpp"
 #include "core/GameLoop.hpp" // IWYU pragma: keep - Required for GameLoop weak_ptr declaration
-#include <boost/container/small_vector.hpp>
+#include <vector>
 #include <chrono>
 #include <future>
 #include <iostream>
@@ -37,36 +38,30 @@ bool GameEngine::init(const char* title,
                       int width,
                       int height,
                       bool fullscreen) {
-  std::cout << "Forge Game Engine - Initializing SDL Video....\n";
+  GAMEENGINE_INFO("Initializing SDL Video");
 
   if (SDL_Init(SDL_INIT_VIDEO)) {
-    std::cout << "Forge Game Engine - SDL Video online!\n";
+    GAMEENGINE_INFO("SDL Video online");
 
     // Get display bounds to determine optimal window size
     SDL_Rect display;
     if (SDL_GetDisplayBounds(1, &display) != 0) {  // Try display 1 first
       // Try display 0 as fallback
       if (SDL_GetDisplayBounds(0, &display) != 0) {
-        std::cerr
-            << "Forge Game Engine - Warning: Could not get display bounds: "
-            << SDL_GetError() << std::endl;
-        std::cout << "Forge Game Engine - Using default window size: " << width
-                  << "x" << height << "\n";
+        GAMEENGINE_WARN("Could not get display bounds: " + std::string(SDL_GetError()));
+        GAMEENGINE_INFO("Using default window size: " + std::to_string(width) + "x" + std::to_string(height));
         // Keep the provided dimensions
         m_windowWidth = width;
         m_windowHeight = height;
       } else {
         // Success with display 0
-        std::cout
-            << "Forge Game Engine - Detected resolution on primary display: "
-            << display.w << "x" << display.h << "\n";
+        GAMEENGINE_INFO("Detected resolution on primary display: " + std::to_string(display.w) + "x" + std::to_string(display.h));
 
         // Continue with display size logic
         if (width <= 0 || height <= 0) {
           m_windowWidth = static_cast<int>(display.w * 0.8f);
           m_windowHeight = static_cast<int>(display.h * 0.8f);
-          std::cout << "Forge Game Engine - Adjusted window size to: "
-                    << m_windowWidth << "x" << m_windowHeight << "\n";
+          GAMEENGINE_INFO("Adjusted window size to: " + std::to_string(m_windowWidth) + "x" + std::to_string(m_windowHeight));
         } else {
           // Use provided dimensions
           m_windowWidth = width;
@@ -76,33 +71,28 @@ bool GameEngine::init(const char* title,
         // Set fullscreen if requested dimensions are larger than screen
         if (width > display.w || height > display.h) {
           fullscreen = true;  // true
-          std::cout << "Forge Game Engine - Window size larger than screen, "
-                       "enabling fullscreen\n";
+          GAMEENGINE_INFO("Window size larger than screen, enabling fullscreen");
         }
       }
     } else {
-      std::cout << "Forge Game Engine - Detected resolution on display 1: "
-                << display.w << "x" << display.h << "\n";
+      GAMEENGINE_INFO("Detected resolution on display 1: " + std::to_string(display.w) + "x" + std::to_string(display.h));
 
       // Use 80% of display size if no specific size provided
       if (width <= 0 || height <= 0) {
         m_windowWidth = static_cast<int>(display.w * 0.8f);
         m_windowHeight = static_cast<int>(display.h * 0.8f);
-        std::cout << "Forge Game Engine - Adjusted window size to: "
-                  << m_windowWidth << "x" << m_windowHeight << "\n";
+        GAMEENGINE_INFO("Adjusted window size to: " + std::to_string(m_windowWidth) + "x" + std::to_string(m_windowHeight));
       } else {
         // Use the provided dimensions
         m_windowWidth = width;
         m_windowHeight = height;
-        std::cout << "Forge Game Engine - Using requested window size: "
-                  << m_windowWidth << "x" << m_windowHeight << "\n";
+        GAMEENGINE_INFO("Using requested window size: " + std::to_string(m_windowWidth) + "x" + std::to_string(m_windowHeight));
       }
 
       // Set fullscreen if requested dimensions are larger than screen
       if (width > display.w || height > display.h) {
         fullscreen = true;  // true
-        std::cout << "Forge Game Engine - Window size larger than screen, "
-                     "enabling fullscreen\n";
+        GAMEENGINE_INFO("Window size larger than screen, enabling fullscreen");
       }
     }
     // Window handling
@@ -115,16 +105,16 @@ bool GameEngine::init(const char* title,
       //setting window width and height to fullscreen dimensions for detected monitor
       m_windowWidth = display.w;
       m_windowHeight = display.h;
-      std::cout << "Forge Game Engine - Window size set to Full Screen!\n";
+      GAMEENGINE_INFO("Window size set to Full Screen");
     }
 
     mp_window.reset(SDL_CreateWindow(title, m_windowWidth, m_windowHeight, flags));
 
     if (mp_window) {
-      std::cout << "Forge Game Engine - Window creation system online!\n";
+      GAMEENGINE_INFO("Window creation system online");
 
       // Set window icon
-      std::cout << "Forge Game Engine - Setting window icon...\n";
+      GAMEENGINE_INFO("Setting window icon");
 
       // Use SDL_image to directly load the icon
       const char* iconPath = "res/img/icon.ico";
@@ -146,14 +136,14 @@ bool GameEngine::init(const char* title,
       mp_renderer.reset(SDL_CreateRenderer(mp_window.get(), NULL));
 
       if (mp_renderer) {
-        std::cout << "Forge Game Engine - Rendering system online!\n";
+        GAMEENGINE_INFO("Rendering system online");
         SDL_SetRenderDrawColor(mp_renderer.get(), FORGE_GRAY);  // Forge Game Engine gunmetal dark grey
         // Set logical rendering size to match our window size
         SDL_SetRenderLogicalPresentation(mp_renderer.get(), logicalWidth, logicalHeight, m_logicalPresentationMode);
         //Render Mode.
         SDL_SetRenderDrawBlendMode(mp_renderer.get(), SDL_BLENDMODE_BLEND);
       } else {
-        std::cerr << "Forge Game Engine - Rendering system creation failed! " << SDL_GetError() << std::endl;
+        GAMEENGINE_CRITICAL("Rendering system creation failed: " + std::string(SDL_GetError()));
         return false;  // Forge renderer fail
       }
 
@@ -163,63 +153,57 @@ bool GameEngine::init(const char* title,
         if (iconSurfacePtr) {
           SDL_SetWindowIcon(mp_window.get(), iconSurfacePtr.get());
           // No need to manually destroy the surface, smart pointer will handle it
-          std::cout << "Forge Game Engine - Window icon set successfully!\n";
+          GAMEENGINE_INFO("Window icon set successfully");
         } else {
-          std::cerr << "Forge Game Engine - Failed to load window icon: "
-                    << SDL_GetError() << std::endl;
+          GAMEENGINE_WARN("Failed to load window icon: " + std::string(SDL_GetError()));
         }
       } catch (const std::exception& e) {
-        std::cerr << "Forge Game Engine - Error loading window icon: "
-                  << e.what() << std::endl;
+        GAMEENGINE_WARN("Error loading window icon: " + std::string(e.what()));
       }
 
     } else {
-      std::cerr << "Forge Game Engine - Window system creation failed! "
-                << SDL_GetError() << std::endl;
+      GAMEENGINE_CRITICAL("Window system creation failed: " + std::string(SDL_GetError()));
       return false;
     }
   } else {
-    std::cerr
-        << "Forge Game Engine - SDL Video intialization failed! Make sure you "
-           "have the SDL3 runtime installed? SDL error: "
-        << SDL_GetError() << std::endl;
+    GAMEENGINE_CRITICAL("SDL Video initialization failed! Make sure SDL3 runtime is installed. SDL error: " + std::string(SDL_GetError()));
     return false;
   }
 
   // INITIALIZING GAME RESOURCE LOADING AND MANAGEMENT_________________________BEGIN
   // Use multiple threads for initialization
-  boost::container::small_vector<std::future<bool>, 8>
-      initTasks;  // Store up to 6 tasks without heap allocation
+  std::vector<std::future<bool>>
+      initTasks;  // Initialization tasks vector
+  initTasks.reserve(8);  // Reserve capacity for typical number of init tasks
 
-  // Initialize Input Handling in a separate thread - #1
-  initTasks.push_back(
-      Forge::ThreadSystem::Instance().enqueueTaskWithResult([]() -> bool {
-        std::cout << "Forge Game Engine - Detecting and initializing gamepads "
-                     "and input handling\n";
-        InputManager& inputMgr = InputManager::Instance();
-        inputMgr.initializeGamePad();
-        return true;
-      }));
+// Initialize input manager in a background thread - #1
+initTasks.push_back(
+    Forge::ThreadSystem::Instance().enqueueTaskWithResult([]() -> bool {
+      GAMEENGINE_INFO("Detecting and initializing gamepads and input handling");
+      InputManager& inputMgr = InputManager::Instance();
+      inputMgr.initializeGamePad();
+      return true;
+    }));
 
-  // Create and initialize texture manager - MAIN THREAD
-  std::cout << "Forge Game Engine - Creating Texture Manager\n";
-  TextureManager& texMgr = TextureManager::Instance();
+// Create and initialize texture manager - MAIN THREAD
+GAMEENGINE_INFO("Creating Texture Manager");
+TextureManager& texMgr = TextureManager::Instance();
 
-  // Load textures in main thread
-  std::cout << "Forge Game Engine - Creating and loading textures\n";
-  texMgr.load("res/img", "", mp_renderer.get());
+// Load textures in main thread
+GAMEENGINE_INFO("Creating and loading textures");
+texMgr.load("res/img", "", mp_renderer.get());
 
   // Initialize sound manager in a separate thread - #2
   initTasks.push_back(
       Forge::ThreadSystem::Instance().enqueueTaskWithResult([]() -> bool {
-        std::cout << "Forge Game Engine - Creating Sound Manager\n";
+        GAMEENGINE_INFO("Creating Sound Manager");
         SoundManager& soundMgr = SoundManager::Instance();
         if (!soundMgr.init()) {
-          std::cerr << "Forge Game Engine - Failed to initialize Sound Manager!" << std::endl;
+          GAMEENGINE_CRITICAL("Failed to initialize Sound Manager");
           return false;
         }
 
-        std::cout << "Forge Game Engine - Loading sounds and music\n";
+        GAMEENGINE_INFO("Loading sounds and music");
         soundMgr.loadSFX("res/sfx", "sfx");
         soundMgr.loadMusic("res/music", "music");
         return true;
@@ -228,23 +212,23 @@ bool GameEngine::init(const char* title,
   // Initialize font manager in a separate thread - #3
   initTasks.push_back(
       Forge::ThreadSystem::Instance().enqueueTaskWithResult([]() -> bool {
-        std::cout << "Forge Game Engine - Creating Font Manager\n";
+        GAMEENGINE_INFO("Creating Font Manager");
         FontManager& fontMgr = FontManager::Instance();
         if (!fontMgr.init()) {
-          std::cerr << "Forge Game Engine - Failed to initialize Font Manager!"
-                    << std::endl;
+          GAMEENGINE_CRITICAL("Failed to initialize Font Manager");
           return false;
         }
+
         fontMgr.loadFont("res/fonts", "fonts", 24);
         // Load UI-specific font with optimal size for UI elements
         fontMgr.loadFont("res/fonts", "fonts_UI", 16);
         return true;
       }));
 
-  // Initialize SaveGameManager in a separate thread - #4
+  // Initialize save game manager in a separate thread - #4
   initTasks.push_back(
       Forge::ThreadSystem::Instance().enqueueTaskWithResult([]() -> bool {
-        std::cout << "Forge Game Engine - Creating Save Game Manager\n";
+        GAMEENGINE_INFO("Creating Save Game Manager");
         SaveGameManager& saveMgr = SaveGameManager::Instance();
 
         // Set the save directory to "res" folder
@@ -255,42 +239,41 @@ bool GameEngine::init(const char* title,
   // Initialize AI Manager in a separate thread - #5
   initTasks.push_back(
       Forge::ThreadSystem::Instance().enqueueTaskWithResult([]() -> bool {
-        std::cout << "Forge Game Engine - Creating AI Manager\n";
+        GAMEENGINE_INFO("Creating AI Manager");
         AIManager& aiMgr = AIManager::Instance();
         if (!aiMgr.init()) {
-          std::cerr << "Forge Game Engine - Failed to initialize AI Manager!" << std::endl;
+          GAMEENGINE_CRITICAL("Failed to initialize AI Manager");
           return false;
         }
-        std::cout << "Forge Game Engine - AI Manager initialized successfully\n";
+        GAMEENGINE_INFO("AI Manager initialized successfully");
         return true;
       }));
 
   // Initialize Event Manager in a separate thread - #6
   initTasks.push_back(
       Forge::ThreadSystem::Instance().enqueueTaskWithResult([]() -> bool {
-        std::cout << "Forge Game Engine - Creating Event Manager\n";
+        GAMEENGINE_INFO("Creating Event Manager");
         EventManager& eventMgr = EventManager::Instance();
         if (!eventMgr.init()) {
-          std::cerr << "Forge Game Engine - Failed to initialize Event Manager!" << std::endl;
+          GAMEENGINE_CRITICAL("Failed to initialize Event Manager");
           return false;
         }
-        std::cout << "Forge Game Engine - Event Manager initialized successfully\n";
+        GAMEENGINE_INFO("Event Manager initialized successfully");
         return true;
       }));
 
   // Initialize game state manager (on main thread because it directly calls rendering) - MAIN THREAD
-  std::cout << "Forge Game Engine - Creating Game State Manager and setting up "
-               "initial Game States\n";
+  GAMEENGINE_INFO("Creating Game State Manager and setting up initial Game States");
   mp_gameStateManager = std::make_unique<GameStateManager>();
 
   // Initialize UI Manager (on main thread because it uses font/text rendering) - MAIN THREAD
-  std::cout << "Forge Game Engine - Creating UI Manager\n";
+  GAMEENGINE_INFO("Creating UI Manager");
   UIManager& uiMgr = UIManager::Instance();
   if (!uiMgr.init()) {
-    std::cerr << "Forge Game Engine - Failed to initialize UI Manager!" << std::endl;
+    GAMEENGINE_CRITICAL("Failed to initialize UI Manager");
     return false;
   }
-  std::cout << "Forge Game Engine - UI Manager initialized successfully\n";
+  GAMEENGINE_INFO("UI Manager initialized successfully");
 
   // Setting Up initial game states
   mp_gameStateManager->addState(std::make_unique<LogoState>());
@@ -325,13 +308,13 @@ bool GameEngine::init(const char* title,
     mp_aiManager = &AIManager::Instance();
     mp_eventManager = &EventManager::Instance();
     // InputManager not cached - handled in handleEvents() for proper SDL architecture
-    
+
     // Validate that cached managers are properly initialized
     if (!mp_aiManager || !mp_eventManager) {
       std::cerr << "Forge Game Engine - Error: One or more manager references are null!" << std::endl;
       return false;
     }
-    
+
     std::cout << "Forge Game Engine - Manager references cached and validated successfully\n";
   } catch (const std::exception& e) {
     std::cerr << "Forge Game Engine - Error caching manager references: " << e.what() << std::endl;
@@ -388,7 +371,7 @@ void GameEngine::update([[maybe_unused]] float deltaTime) {
   // Worker budget coordination - GameEngine reserves workers for critical operations
   if (Forge::ThreadSystem::Exists()) {
     auto& threadSystem = Forge::ThreadSystem::Instance();
-    
+
     // Submit critical game engine tasks with high priority to ensure they get processed first
     threadSystem.enqueueTask([]() {
       // Critical game loop coordination tasks can go here if needed
@@ -409,12 +392,12 @@ void GameEngine::update([[maybe_unused]] float deltaTime) {
     // =====================================
     // Core engine systems are updated globally for optimal performance and consistency
     // State-specific systems are updated by individual states for flexibility and efficiency
-    
+
     // GLOBAL SYSTEMS (Updated by GameEngine):
     // - AIManager: World simulation with 10K+ entities, benefits from consistent global updates
     // - EventManager: Global game events (weather, scene changes), batch processing optimization
     // - InputManager: Handled in handleEvents() for proper SDL event polling architecture
-    
+
     // AI system - manages world entities across all states (cached reference access)
     if (mp_aiManager) {
       try {
@@ -427,7 +410,7 @@ void GameEngine::update([[maybe_unused]] float deltaTime) {
     } else {
       std::cerr << "Forge Game Engine - AIManager cache is null!" << std::endl;
     }
-    
+
     // Event system - global game events and world simulation (cached reference access)
     if (mp_eventManager) {
       try {
@@ -440,11 +423,11 @@ void GameEngine::update([[maybe_unused]] float deltaTime) {
     } else {
       std::cerr << "Forge Game Engine - EventManager cache is null!" << std::endl;
     }
-    
+
     // STATE-MANAGED SYSTEMS (Updated by individual states):
     // - UIManager: Optional, state-specific, only updated when UI is actually used
     // See UIExampleState::update() for proper state-managed pattern
-    
+
     // Update game states - states handle their specific system needs
     mp_gameStateManager->update(deltaTime);
 
@@ -479,6 +462,7 @@ void GameEngine::render([[maybe_unused]] float interpolation) {
   // Only render if the buffer is ready
   if (m_bufferReady[renderBufferIndex].load(std::memory_order_acquire)) {
     try {
+      SDL_SetRenderDrawColor(mp_renderer.get(), FORGE_GRAY);  // Forge Game Engine gunmetal dark grey
       SDL_RenderClear(mp_renderer.get());
 
       // Make sure GameStateManager knows which buffer to render from
@@ -575,7 +559,7 @@ void GameEngine::processBackgroundTasks() {
     // Background processing tasks can be added here
     // Note: EventManager is now updated in the main update loop for optimal performance
     // and consistency with other global systems (AI, Input)
-    
+
     // Example: Process non-critical background tasks
     // These tasks can run while the main thread is handling rendering
   } catch (const std::exception& e) {

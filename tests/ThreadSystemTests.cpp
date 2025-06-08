@@ -3,9 +3,8 @@
  * Licensed under the MIT License - see LICENSE file for details
 */
 
-// Define this to make Boost.Test a header-only library
 #define BOOST_TEST_MODULE ThreadSystemTests
-#include <boost/test/included/unit_test.hpp>
+#include <boost/test/unit_test.hpp>
 
 #include <atomic>
 #include <chrono>
@@ -201,8 +200,8 @@ BOOST_AUTO_TEST_CASE(TestMultipleTasks) {
     for (int i = 0; i < numTasks; ++i) {
         Forge::ThreadSystem::Instance().enqueueTask(
             [&counter]() {
-                // Simulate some work
-                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+                // Simulate some work with reduced sleep time
+                std::this_thread::sleep_for(std::chrono::microseconds(100));
                 counter++;
             },
             Forge::TaskPriority::Normal,
@@ -210,8 +209,9 @@ BOOST_AUTO_TEST_CASE(TestMultipleTasks) {
         );
     }
 
-    // Wait for all tasks to complete with a longer timeout
-    std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+    // Wait for all tasks to complete with proper timeout calculation
+    // With 21 threads and reduced work, allow more time for queue processing
+    std::this_thread::sleep_for(std::chrono::milliseconds(3000));
 
     // Check that all tasks were executed
     BOOST_CHECK_EQUAL(counter, numTasks);

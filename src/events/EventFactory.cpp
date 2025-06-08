@@ -5,7 +5,7 @@
 
 #include "events/EventFactory.hpp"
 #include "events/NPCSpawnEvent.hpp"
-#include <iostream>
+#include "utils/Logger.hpp"
 #include <algorithm>
 #include <cctype>
 
@@ -64,7 +64,7 @@ bool EventFactory::init() {
         });
     }
 
-    std::cout << "EventFactory initialized" << std::endl;
+    EVENT_INFO("EventFactory initialized");
     return true;
 }
 
@@ -80,7 +80,7 @@ void EventFactory::clean() {
         return createWeatherEvent(def.name, weatherType, intensity, transitionTime);
     });
 
-    std::cout << "EventFactory cleaned" << std::endl;
+    EVENT_INFO("EventFactory cleaned");
 }
 
 EventPtr EventFactory::createEvent(const EventDefinition& def) {
@@ -121,7 +121,7 @@ EventPtr EventFactory::createEvent(const EventDefinition& def) {
         return event;
     }
 
-    std::cout << "Error: Unknown event type '" << def.type << "'" << std::endl;
+    EVENT_ERROR("Unknown event type '" + def.type + "'");
     return nullptr;
 }
 

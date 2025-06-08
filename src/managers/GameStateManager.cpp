@@ -5,15 +5,19 @@
 
 #include "managers/GameStateManager.hpp"
 #include "gameStates/GameState.hpp"
+#include "utils/Logger.hpp"
 #include <algorithm>
-#include <iostream>
 
 // GameStateManager Implementation
-GameStateManager::GameStateManager() : currentState() {}
+GameStateManager::GameStateManager() : currentState() {
+  // Reserve capacity for typical number of game states (performance optimization)
+  states.reserve(8);
+}
 
 void GameStateManager::addState(std::unique_ptr<GameState> state) {
   // Check if a state with the same name already exists
   if (hasState(state->getName())) {
+    GAMESTATE_ERROR("State with name " + state->getName() + " already exists");
     throw std::runtime_error("Forge Game Engine - State with name " + state->getName() + " already exists");
   }
   // Convert unique_ptr to shared_ptr and add to container
@@ -28,19 +32,15 @@ void GameStateManager::setState(const std::string& stateName) {
                          });
 
   if (it != states.end()) {
-    // Store the previous state name before changing (safe access via weak_ptr)
-    std::string prevStateName = "None";
-    if (auto current = currentState.lock()) {
-      prevStateName = current->getName();
-    }
-    
     try {
       // Exit current state if exists
       if (auto current = currentState.lock()) {
-        std::cout << "Forge Game Engine - Exiting state: " << prevStateName << std::endl;
+        // Store the previous state name before changing (safe access via weak_ptr)
+        std::string prevStateName = current->getName();
+        GAMESTATE_INFO("Exiting state: " + prevStateName);
         bool exitSuccess = current->exit();
         if (!exitSuccess) {
-          std::cerr << "Forge Game Engine - Warning: Exit for state " << prevStateName << " returned false" << std::endl;
+          GAMESTATE_WARN("Exit for state " + prevStateName + " returned false");
         }
         currentState.reset(); // Clear weak_ptr before entering new state
       }
@@ -50,29 +50,29 @@ void GameStateManager::setState(const std::string& stateName) {
 
       // Trigger enter of new state
       if (auto current = currentState.lock()) {
-        std::cout << "Forge Game Engine - Entering state: " << stateName << std::endl;
+        GAMESTATE_INFO("Entering state: " + stateName);
         bool enterSuccess = current->enter();
         if (!enterSuccess) {
-          std::cerr << "Forge Game Engine - Error: Enter for state " << stateName << " failed" << std::endl;
+          GAMESTATE_ERROR("Enter for state " + stateName + " failed");
           currentState.reset(); // Clear invalid state
         }
       }
     } catch (const std::exception& e) {
-      std::cerr << "Forge Game Engine - Exception during state transition: " << e.what() << std::endl;
+      GAMESTATE_ERROR("Exception during state transition: " + std::string(e.what()));
       currentState.reset(); // Safety measure
     } catch (...) {
-      std::cerr << "Forge Game Engine - Unknown exception during state transition" << std::endl;
+      GAMESTATE_ERROR("Unknown exception during state transition");
       currentState.reset(); // Safety measure
     }
   } else {
-    std::cerr << "Forge Game Engine - State not found: " << stateName << std::endl;
+    GAMESTATE_ERROR("State not found: " + stateName);
 
     // Exit current state if it exists
     if (auto current = currentState.lock()) {
       try {
         current->exit();
       } catch (...) {
-        std::cerr << "Forge Game Engine - Exception while exiting state" << std::endl;
+        GAMESTATE_ERROR("Exception while exiting state");
       }
       currentState.reset();
     }

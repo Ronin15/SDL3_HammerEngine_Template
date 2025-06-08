@@ -23,12 +23,15 @@ bool UIManager::init() {
     m_titleFontID = "fonts_Arial";
     m_uiFontID = "fonts_UI_Arial";
 
-    // Clear any existing data
+    // Clear any existing data and reserve capacity for performance
     m_components.clear();
     m_layouts.clear();
     m_animations.clear();
+    m_animations.reserve(16);  // Reserve for typical UI animations
     m_clickedButtons.clear();
+    m_clickedButtons.reserve(8);  // Reserve for typical button interactions
     m_hoveredComponents.clear();
+    m_hoveredComponents.reserve(8);  // Reserve for typical hover states
     m_focusedComponent.clear();
     m_hoveredTooltip.clear();
 
@@ -69,11 +72,23 @@ void UIManager::render(SDL_Renderer* renderer) {
         return;
     }
 
-    // Render components in z-order
+    // Create vector of components sorted by z-order
+    std::vector<std::shared_ptr<UIComponent>> sortedComponents;
     for (const auto& [id, component] : m_components) {
         if (component && component->visible) {
-            renderComponent(renderer, component);
+            sortedComponents.push_back(component);
         }
+    }
+    
+    // Sort by zOrder (lower values render first/behind)
+    std::sort(sortedComponents.begin(), sortedComponents.end(), 
+              [](const std::shared_ptr<UIComponent>& a, const std::shared_ptr<UIComponent>& b) {
+                  return a->zOrder < b->zOrder;
+              });
+    
+    // Render components in z-order
+    for (const auto& component : sortedComponents) {
+        renderComponent(renderer, component);
     }
 
     // Render tooltip last (on top)
@@ -90,8 +105,8 @@ void UIManager::render(SDL_Renderer* renderer) {
         }
     }
 
-    // Reset renderer to GameEngine's default color (FORGE_GRAY: 31, 32, 34, 255)
-    SDL_SetRenderDrawColor(renderer, 31, 32, 34, 255);
+    // Note: Background color is now managed by GameEngine, not UIManager
+    // This allows GameStates to set custom background colors for UI rendering
 }
 
 void UIManager::clean() {
@@ -125,6 +140,7 @@ void UIManager::createButton(const std::string& id, const UIRect& bounds, const 
     component->bounds = bounds;
     component->text = text;
     component->style = m_currentTheme.getStyle(UIComponentType::BUTTON);
+    component->zOrder = 10; // Interactive elements on top
 
     m_components[id] = component;
 }
@@ -136,6 +152,7 @@ void UIManager::createLabel(const std::string& id, const UIRect& bounds, const s
     component->bounds = bounds;
     component->text = text;
     component->style = m_currentTheme.getStyle(UIComponentType::LABEL);
+    component->zOrder = 20; // Text on top
 
     m_components[id] = component;
 }
@@ -147,6 +164,7 @@ void UIManager::createTitle(const std::string& id, const UIRect& bounds, const s
     component->bounds = bounds;
     component->text = text;
     component->style = m_currentTheme.getStyle(UIComponentType::TITLE);
+    component->zOrder = 25; // Titles on top
 
     m_components[id] = component;
 }
@@ -157,6 +175,7 @@ void UIManager::createPanel(const std::string& id, const UIRect& bounds) {
     component->type = UIComponentType::PANEL;
     component->bounds = bounds;
     component->style = m_currentTheme.getStyle(UIComponentType::PANEL);
+    component->zOrder = 0; // Background panels
 
     m_components[id] = component;
 }
@@ -170,6 +189,7 @@ void UIManager::createProgressBar(const std::string& id, const UIRect& bounds, f
     component->maxValue = maxVal;
     component->value = minVal;
     component->style = m_currentTheme.getStyle(UIComponentType::PROGRESS_BAR);
+    component->zOrder = 5; // UI elements
 
     m_components[id] = component;
 }
@@ -181,6 +201,7 @@ void UIManager::createInputField(const std::string& id, const UIRect& bounds, co
     component->bounds = bounds;
     component->placeholder = placeholder;
     component->style = m_currentTheme.getStyle(UIComponentType::INPUT_FIELD);
+    component->zOrder = 15; // Interactive elements
 
     m_components[id] = component;
 }
@@ -192,6 +213,7 @@ void UIManager::createImage(const std::string& id, const UIRect& bounds, const s
     component->bounds = bounds;
     component->textureID = textureID;
     component->style = m_currentTheme.getStyle(UIComponentType::IMAGE);
+    component->zOrder = 1; // Background images
 
     m_components[id] = component;
 }
@@ -205,6 +227,7 @@ void UIManager::createSlider(const std::string& id, const UIRect& bounds, float 
     component->maxValue = maxVal;
     component->value = minVal;
     component->style = m_currentTheme.getStyle(UIComponentType::SLIDER);
+    component->zOrder = 12; // Interactive elements
 
     m_components[id] = component;
 }
@@ -217,6 +240,7 @@ void UIManager::createCheckbox(const std::string& id, const UIRect& bounds, cons
     component->text = text;
     component->checked = false;
     component->style = m_currentTheme.getStyle(UIComponentType::CHECKBOX);
+    component->zOrder = 13; // Interactive elements
 
     m_components[id] = component;
 }
@@ -228,6 +252,7 @@ void UIManager::createList(const std::string& id, const UIRect& bounds) {
     component->bounds = bounds;
     component->selectedIndex = -1;
     component->style = m_currentTheme.getStyle(UIComponentType::LIST);
+    component->zOrder = 8; // UI elements
 
     m_components[id] = component;
 }
@@ -251,8 +276,46 @@ void UIManager::createEventLog(const std::string& id, const UIRect& bounds, int 
     component->bounds = bounds;
     component->maxLength = maxEntries; // Store max entries in maxLength field
     component->style = m_currentTheme.getStyle(UIComponentType::EVENT_LOG); // Use event log styling
+    component->zOrder = 6; // UI elements
 
     m_components[id] = component;
+}
+
+void UIManager::createDialog(const std::string& id, const UIRect& bounds) {
+    auto component = std::make_shared<UIComponent>();
+    component->id = id;
+    component->type = UIComponentType::DIALOG;
+    component->bounds = bounds;
+    component->style = m_currentTheme.getStyle(UIComponentType::DIALOG);
+    component->zOrder = -10; // Render behind other elements by default
+
+    m_components[id] = component;
+}
+
+void UIManager::createModal(const std::string& dialogId, const UIRect& bounds, const std::string& theme, int windowWidth, int windowHeight) {
+    // Set theme first
+    if (!theme.empty()) {
+        setThemeMode(theme);
+        // Refresh existing components to use new theme
+        refreshAllComponentThemes();
+    }
+    
+    // Create overlay to dim background
+    createOverlay(windowWidth, windowHeight);
+    
+    // Create dialog box
+    createDialog(dialogId, bounds);
+}
+
+void UIManager::refreshAllComponentThemes() {
+    // Apply current theme to all existing components, preserving custom alignment
+    for (const auto& [id, component] : m_components) {
+        if (component) {
+            UIAlignment preservedAlignment = component->style.textAlign;
+            component->style = m_currentTheme.getStyle(component->type);
+            component->style.textAlign = preservedAlignment;
+        }
+    }
 }
 
 // Component manipulation
@@ -347,6 +410,28 @@ void UIManager::setStyle(const std::string& id, const UIStyle& style) {
     auto component = getComponent(id);
     if (component) {
         component->style = style;
+    }
+}
+
+// Text background methods for label and title readability
+void UIManager::enableTextBackground(const std::string& id, bool enable) {
+    auto component = getComponent(id);
+    if (component && (component->type == UIComponentType::LABEL || component->type == UIComponentType::TITLE)) {
+        component->style.useTextBackground = enable;
+    }
+}
+
+void UIManager::setTextBackgroundColor(const std::string& id, SDL_Color color) {
+    auto component = getComponent(id);
+    if (component && (component->type == UIComponentType::LABEL || component->type == UIComponentType::TITLE)) {
+        component->style.textBackgroundColor = color;
+    }
+}
+
+void UIManager::setTextBackgroundPadding(const std::string& id, int padding) {
+    auto component = getComponent(id);
+    if (component && (component->type == UIComponentType::LABEL || component->type == UIComponentType::TITLE)) {
+        component->style.textBackgroundPadding = padding;
     }
 }
 
@@ -841,9 +926,13 @@ void UIManager::setLightTheme() {
     // Label style - enhanced contrast
     UIStyle labelStyle;
     labelStyle.backgroundColor = {0, 0, 0, 0}; // Transparent
-    labelStyle.textColor = {255, 255, 255, 255}; // Pure white for maximum contrast
+    labelStyle.textColor = {20, 20, 20, 255}; // Dark text for light backgrounds
     labelStyle.textAlign = UIAlignment::CENTER_LEFT;
     labelStyle.fontID = "fonts_UI_Arial";
+    // Text background enabled by default for readability on any background
+    labelStyle.useTextBackground = true;
+    labelStyle.textBackgroundColor = {255, 255, 255, 100}; // More transparent white
+    labelStyle.textBackgroundPadding = 6;
     lightTheme.componentStyles[UIComponentType::LABEL] = labelStyle;
 
     // Panel style - light overlay for subtle UI separation
@@ -898,7 +987,7 @@ void UIManager::setLightTheme() {
     UIStyle checkboxStyle = buttonStyle;
     checkboxStyle.backgroundColor = {180, 180, 180, 255};
     checkboxStyle.hoverColor = {200, 200, 200, 255};
-    checkboxStyle.textColor = {255, 255, 255, 255}; // Pure white text
+    checkboxStyle.textColor = {20, 20, 20, 255}; // Dark text for light backgrounds
     checkboxStyle.textAlign = UIAlignment::CENTER_LEFT;
     checkboxStyle.fontID = "fonts_UI_Arial";
     lightTheme.componentStyles[UIComponentType::CHECKBOX] = checkboxStyle;
@@ -908,7 +997,7 @@ void UIManager::setLightTheme() {
     tooltipStyle.backgroundColor = {40, 40, 40, 230}; // More opaque for tooltips
     tooltipStyle.borderColor = {180, 180, 180, 255};
     tooltipStyle.borderWidth = 1;
-    tooltipStyle.textColor = {255, 255, 255, 255};
+    tooltipStyle.textColor = {255, 255, 255, 255}; // White text for dark tooltip background
     tooltipStyle.fontID = "fonts_UI_Arial";
     lightTheme.componentStyles[UIComponentType::TOOLTIP] = tooltipStyle;
 
@@ -932,8 +1021,20 @@ void UIManager::setLightTheme() {
     titleStyle.textColor = {255, 245, 120, 255}; // Gold color for titles
     titleStyle.fontSize = 24; // Use native 24px font size
     titleStyle.textAlign = UIAlignment::CENTER_LEFT;
-    titleStyle.fontID = m_titleFontID; // Use larger font
+    titleStyle.fontID = "fonts_Arial";
+    // Text background enabled by default for readability on any background
+    titleStyle.useTextBackground = true;
+    titleStyle.textBackgroundColor = {20, 20, 20, 120}; // More transparent dark for gold text
+    titleStyle.textBackgroundPadding = 8;
     lightTheme.componentStyles[UIComponentType::TITLE] = titleStyle;
+
+    // Dialog style - solid background for modal dialogs
+    UIStyle dialogStyle;
+    dialogStyle.backgroundColor = {245, 245, 245, 255}; // Light solid background
+    dialogStyle.borderColor = {120, 120, 120, 255}; // Dark border for definition
+    dialogStyle.borderWidth = 2;
+    dialogStyle.fontID = "fonts_UI_Arial";
+    lightTheme.componentStyles[UIComponentType::DIALOG] = dialogStyle;
 
     m_currentTheme = lightTheme;
 
@@ -970,6 +1071,10 @@ void UIManager::setDarkTheme() {
     labelStyle.textColor = {255, 255, 255, 255}; // Pure white
     labelStyle.textAlign = UIAlignment::CENTER_LEFT;
     labelStyle.fontID = "fonts_UI_Arial";
+    // Text background enabled by default for readability on any background
+    labelStyle.useTextBackground = true;
+    labelStyle.textBackgroundColor = {0, 0, 0, 100}; // More transparent black
+    labelStyle.textBackgroundPadding = 6;
     darkTheme.componentStyles[UIComponentType::LABEL] = labelStyle;
 
     // Panel style - slightly more overlay for dark theme
@@ -1058,8 +1163,20 @@ void UIManager::setDarkTheme() {
     titleStyle.textColor = {255, 245, 120, 255}; // Gold color for titles
     titleStyle.fontSize = 24; // Use native 24px font size
     titleStyle.textAlign = UIAlignment::CENTER_LEFT;
-    titleStyle.fontID = m_titleFontID; // Use larger font
+    titleStyle.fontID = "fonts_Arial";
+    // Text background enabled by default for readability on any background
+    titleStyle.useTextBackground = true;
+    titleStyle.textBackgroundColor = {0, 0, 0, 120}; // More transparent black for gold text
+    titleStyle.textBackgroundPadding = 8;
     darkTheme.componentStyles[UIComponentType::TITLE] = titleStyle;
+
+    // Dialog style - solid background for modal dialogs
+    UIStyle dialogStyle;
+    dialogStyle.backgroundColor = {45, 45, 45, 255}; // Dark solid background
+    dialogStyle.borderColor = {160, 160, 160, 255}; // Light border for definition
+    dialogStyle.borderWidth = 2;
+    dialogStyle.fontID = "fonts_UI_Arial";
+    darkTheme.componentStyles[UIComponentType::DIALOG] = dialogStyle;
 
     m_currentTheme = darkTheme;
 
@@ -1088,23 +1205,25 @@ std::string UIManager::getCurrentThemeMode() const {
     return m_currentThemeMode;
 }
 
-void UIManager::createThemeBackground(int windowWidth, int windowHeight) {
-    // Remove existing theme background if it exists
-    removeThemeBackground();
+void UIManager::createOverlay(int windowWidth, int windowHeight) {
+    // Remove existing overlay if it exists
+    removeOverlay();
 
-    // Create main background panel with current theme styling
-    createPanel("__theme_background", {0, 0, windowWidth, windowHeight});
+    // Create semi-transparent overlay panel using current theme's panel style
+    createPanel("__overlay", {0, 0, windowWidth, windowHeight});
 }
 
-void UIManager::removeThemeBackground() {
-    if (hasComponent("__theme_background")) {
-        removeComponent("__theme_background");
+void UIManager::removeOverlay() {
+    // Remove the overlay panel if it exists
+    if (hasComponent("__overlay")) {
+        removeComponent("__overlay");
     }
 }
 
 void UIManager::removeComponentsWithPrefix(const std::string& prefix) {
     // Collect components to remove (can't modify map while iterating)
-    boost::container::small_vector<std::string, 32> componentsToRemove;
+    std::vector<std::string> componentsToRemove;
+    componentsToRemove.reserve(32);  // Reserve capacity for performance
 
     for (const auto& [id, component] : m_components) {
         if (id.substr(0, prefix.length()) == prefix) {
@@ -1120,10 +1239,11 @@ void UIManager::removeComponentsWithPrefix(const std::string& prefix) {
 
 void UIManager::clearAllComponents() {
     // Enhanced clearAllComponents - preserve theme background but clear everything else
-    boost::container::small_vector<std::string, 64> componentsToRemove;
+    std::vector<std::string> componentsToRemove;
+    componentsToRemove.reserve(64);  // Reserve capacity for performance
 
     for (const auto& [id, component] : m_components) {
-        if (id != "__theme_background") {
+        if (id != "__overlay") {
             componentsToRemove.push_back(id);
         }
     }
@@ -1142,9 +1262,28 @@ void UIManager::clearAllComponents() {
 }
 
 void UIManager::resetToDefaultTheme() {
-    // Reset to dark theme and clear any theme contamination
+    // Reset to default dark theme (only used by states that actually change themes)
     setDarkTheme();
     m_currentThemeMode = "dark";
+}
+
+void UIManager::cleanupForStateTransition() {
+    // Remove all components (complete cleanup)
+    m_components.clear();
+    
+    // Remove overlay
+    removeOverlay();
+    
+    // Reset to default theme
+    resetToDefaultTheme();
+    
+    // Clear any remaining UI state
+    m_focusedComponent.clear();
+    m_hoveredTooltip.clear();
+    
+    // Reset global settings
+    m_globalStyle = UIStyle{};
+    m_globalFontID = "fonts_UI_Arial";
 }
 
 void UIManager::applyThemeToComponent(const std::string& id, UIComponentType type) {
@@ -1209,7 +1348,8 @@ void UIManager::handleInput() {
     m_hoveredComponents.clear();
 
     // Process components in reverse z-order (top to bottom)
-    boost::container::small_vector<std::pair<std::string, std::shared_ptr<UIComponent>>, 32> sortedComponents;
+    std::vector<std::pair<std::string, std::shared_ptr<UIComponent>>> sortedComponents;
+    sortedComponents.reserve(32);  // Reserve capacity for performance
     for (const auto& [id, component] : m_components) {
         if (component && component->visible && component->enabled) {
             sortedComponents.emplace_back(id, component);
@@ -1217,7 +1357,8 @@ void UIManager::handleInput() {
     }
 
     std::sort(sortedComponents.begin(), sortedComponents.end(),
-        [](const auto& a, const auto& b) {
+        [](const std::pair<std::string, std::shared_ptr<UIComponent>>& a, 
+           const std::pair<std::string, std::shared_ptr<UIComponent>>& b) {
             return a.second->zOrder > b.second->zOrder;
         });
 
@@ -1420,6 +1561,9 @@ void UIManager::renderComponent(SDL_Renderer* renderer, const std::shared_ptr<UI
         case UIComponentType::PANEL:
             renderPanel(renderer, component);
             break;
+        case UIComponentType::DIALOG:
+            renderPanel(renderer, component);  // Dialogs render like panels
+            break;
         case UIComponentType::PROGRESS_BAR:
             renderProgressBar(renderer, component);
             break;
@@ -1491,8 +1635,6 @@ void UIManager::renderButton(SDL_Renderer* renderer, const std::shared_ptr<UICom
 void UIManager::renderLabel(SDL_Renderer* renderer, const std::shared_ptr<UIComponent>& component) {
     if (!component || component->text.empty()) return;
 
-    auto& fontManager = FontManager::Instance();
-
     int textX, textY, alignment;
 
     switch (component->style.textAlign) {
@@ -1534,7 +1676,16 @@ void UIManager::renderLabel(SDL_Renderer* renderer, const std::shared_ptr<UIComp
             break;
     }
 
-    fontManager.drawTextAligned(component->text, component->style.fontID, textX, textY, component->style.textColor, renderer, alignment);
+    // Only use text backgrounds for components with transparent backgrounds
+    bool needsBackground = component->style.useTextBackground && 
+                          component->style.backgroundColor.a == 0;
+    
+    // Use a custom text drawing method that renders background and text together
+    drawTextWithBackground(component->text, component->style.fontID, textX, textY, 
+                          component->style.textColor, renderer, alignment, 
+                          needsBackground, 
+                          component->style.textBackgroundColor, 
+                          component->style.textBackgroundPadding);
 }
 
 void UIManager::renderPanel(SDL_Renderer* renderer, const std::shared_ptr<UIComponent>& component) {
@@ -1880,6 +2031,67 @@ void UIManager::drawBorder(SDL_Renderer* renderer, const UIRect& rect, const SDL
                                static_cast<float>(rect.width + 2*i), static_cast<float>(rect.height + 2*i)};
         SDL_RenderRect(renderer, &borderRect);
     }
+}
+
+void UIManager::drawTextWithBackground(const std::string& text, const std::string& fontID,
+                                     int x, int y, SDL_Color textColor, SDL_Renderer* renderer,
+                                     int alignment, bool useBackground, SDL_Color backgroundColor, int padding) {
+    auto& fontManager = FontManager::Instance();
+    
+    // First render the text to get actual dimensions
+    auto texture = fontManager.renderText(text, fontID, textColor, renderer);
+    if (!texture) return;
+
+    // Get the actual texture size
+    float w, h;
+    SDL_GetTextureSize(texture.get(), &w, &h);
+    int width = static_cast<int>(w);
+    int height = static_cast<int>(h);
+
+    // Calculate position based on alignment (same as FontManager::drawTextAligned)
+    float destX, destY;
+    
+    switch (alignment) {
+        case 1: // Left alignment
+            destX = static_cast<float>(x);
+            destY = static_cast<float>(y - height/2.0f);
+            break;
+        case 2: // Right alignment
+            destX = static_cast<float>(x - width);
+            destY = static_cast<float>(y - height/2.0f);
+            break;
+        case 3: // Top-left alignment
+            destX = static_cast<float>(x);
+            destY = static_cast<float>(y);
+            break;
+        case 4: // Top-center alignment
+            destX = static_cast<float>(x - width/2.0f);
+            destY = static_cast<float>(y);
+            break;
+        case 5: // Top-right alignment
+            destX = static_cast<float>(x - width);
+            destY = static_cast<float>(y);
+            break;
+        default: // Center alignment (0)
+            destX = static_cast<float>(x - width/2.0f);
+            destY = static_cast<float>(y - height/2.0f);
+            break;
+    }
+
+    // Render background if enabled
+    if (useBackground) {
+        UIRect bgRect;
+        bgRect.x = static_cast<int>(destX) - padding;
+        bgRect.y = static_cast<int>(destY) - padding;
+        bgRect.width = width + (padding * 2);
+        bgRect.height = height + (padding * 2);
+        
+        drawRect(renderer, bgRect, backgroundColor, true);
+    }
+
+    // Create a destination rectangle and render the text
+    SDL_FRect dstRect = {destX, destY, static_cast<float>(width), static_cast<float>(height)};
+    SDL_RenderTexture(renderer, texture.get(), nullptr, &dstRect);
 }
 
 UIRect UIManager::calculateTextBounds(const std::string& text, const std::string& /* fontID */,

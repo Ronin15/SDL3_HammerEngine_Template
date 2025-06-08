@@ -5,7 +5,7 @@
 
 #include "managers/EntityStateManager.hpp"
 #include "entities/EntityState.hpp"
-#include <iostream>
+#include "utils/Logger.hpp"
 #include <stdexcept>
 #include <algorithm>
 
@@ -17,6 +17,7 @@ EntityStateManager::~EntityStateManager() {
 
 void EntityStateManager::addState(const std::string& stateName, std::unique_ptr<EntityState> state) {
   if (states.find(stateName) != states.end()) {
+    ENTITYSTATE_ERROR("State already exists: " + stateName);
     throw std::invalid_argument("Forge Game Engine - State already exists" + stateName);
   }
   // Convert unique_ptr to shared_ptr and add to container
@@ -37,7 +38,7 @@ void EntityStateManager::setState(const std::string& stateName) {
     }
   } else {
     // state not found, reset weak_ptr
-    std::cerr << "Forge Game Engine - State not found: " << stateName << std::endl;
+    ENTITYSTATE_ERROR("State not found: " + stateName);
     currentState.reset();
   }
 }

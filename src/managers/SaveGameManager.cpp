@@ -6,7 +6,9 @@
 #include "managers/SaveGameManager.hpp"
 #include "entities/Player.hpp"
 #include "utils/Vector2D.hpp"
-#include <iostream>
+#include "utils/BinarySerializer.hpp"
+#include "utils/Logger.hpp"
+#include "utils/Logger.hpp"
 #include <fstream>
 #include <filesystem>
 #include <algorithm>
@@ -25,23 +27,23 @@ bool SaveGameManager::save(const std::string& saveFileName, const Player& player
 
     // Make sure base directory exists
     if (!std::filesystem::exists(m_saveDirectory)) {
-        std::cerr << "Forge Game Engine - Save Game Manager: Base directory doesn't exist: '" << m_saveDirectory << "'\n";
+        SAVEGAME_WARN("Base directory doesn't exist: '" + m_saveDirectory + "'");
         try {
             if (std::filesystem::create_directories(m_saveDirectory)) {
-                // Base directory created successfully
+                SAVEGAME_INFO("Created base directory: " + m_saveDirectory);
             } else {
-                std::cerr << "Forge Game Engine - Save Game Manager: Failed to create base directory\n";
+                SAVEGAME_ERROR("Failed to create base directory");
                 return false;
             }
         } catch (const std::exception& e) {
-            std::cerr << "Forge Game Engine - Save Game Manager: Error creating base directory: " << e.what() << "\n";
+            SAVEGAME_ERROR("Error creating base directory: " + std::string(e.what()));
             return false;
         }
     }
 
     // Ensure the save directory exists
     if (!ensureSaveDirectoryExists()) {
-        std::cerr << "Forge Game Engine - Save Game Manager: Failed to ensure save directory exists!" << std::endl;
+        SAVEGAME_ERROR("Failed to ensure save directory exists!");
         return false;
     }
 
@@ -60,14 +62,12 @@ bool SaveGameManager::save(const std::string& saveFileName, const Player& player
         // Open binary file for writing
         std::ofstream file(fullPath, std::ios::binary | std::ios::out);
         if (!file.is_open()) {
-            std::cerr << "Forge Game Engine - Save Game Manager: Could not open file " << fullPath << " for writing!" << std::endl;
-            // Check if parent directory exists and is writable
-            std::cerr << "Forge Game Engine - Save Game Manager: Parent directory "
-                     << parentPath.string() << " exists: "
-                     << (std::filesystem::exists(parentPath) ? "yes" : "no") << std::endl;
+            SAVEGAME_ERROR("Could not open file " + fullPath + " for writing!");
+            SAVEGAME_DEBUG("Parent directory " + parentPath.string() + " exists: " + 
+                          (std::filesystem::exists(parentPath) ? "yes" : "no"));
             return false;
         }
-        // File opened successfully
+        SAVEGAME_DEBUG("Opened file for writing: " + fullPath);
 
         // We'll write the header at the end once we know the data size
         // For now, just skip past where the header will be
@@ -76,19 +76,37 @@ bool SaveGameManager::save(const std::string& saveFileName, const Player& player
         // Start of data section - track position to calculate data size
         std::streampos dataStart = file.tellp();
 
-        // Write player data
+        // Write player data using BinarySerializer
+        auto writer = std::make_unique<BinarySerial::Writer>(
+            std::shared_ptr<std::ostream>(&file, [](std::ostream*){}));
 
         // Write position
-        writeVector2D(file, player.getPosition());
+        if (!writer->writeSerializable(player.getPosition())) {
+            SAVEGAME_ERROR("Failed to write player position");
+            file.close();
+            return false;
+        }
 
         // Write textureID
-        writeString(file, player.getTextureID());
+        if (!writer->writeString(player.getTextureID())) {
+            SAVEGAME_ERROR("Failed to write player textureID");
+            file.close();
+            return false;
+        }
 
         // Write current state
-        writeString(file, player.getCurrentStateName());
+        if (!writer->writeString(player.getCurrentStateName())) {
+            SAVEGAME_ERROR("Failed to write player state");
+            file.close();
+            return false;
+        }
 
         // Write current level (this would come from your game state)
-        writeString(file, "current_level_id"); // Replace with actual level ID
+        if (!writer->writeString("current_level_id")) { // Replace with actual level ID
+            SAVEGAME_ERROR("Failed to write level ID");
+            file.close();
+            return false;
+        }
 
         // End of data section - calculate data size
         std::streampos dataEnd = file.tellp();
@@ -100,18 +118,18 @@ bool SaveGameManager::save(const std::string& saveFileName, const Player& player
 
         file.close();
 
-        std::cout << "Forge Game Engine - Save successful: " << saveFileName << "\n";
+        SAVEGAME_INFO("Save successful: " + saveFileName);
         return true;
     }
     catch (const std::exception& e) {
-        std::cerr << "Forge Game Engine - Save Game Manager: Error saving game: " << e.what() << std::endl;
+        SAVEGAME_ERROR("Error saving game: " + std::string(e.what()));
         return false;
     }
 }
 
 bool SaveGameManager::saveToSlot(int slotNumber, const Player& player) {
     if (slotNumber < 1) {
-        std::cerr << "Forge Game Engine - Save Game Manager: Invalid slot number: " << slotNumber << std::endl;
+        SAVEGAME_ERROR("Invalid slot number: " + std::to_string(slotNumber));
         return false;
     }
 
@@ -126,7 +144,7 @@ bool SaveGameManager::load(const std::string& saveFileName, Player& player) cons
     // Check if the file exists
     std::string fullPath = getFullSavePath(saveFileName);
     if (!std::filesystem::exists(fullPath)) {
-        std::cerr << "Forge Game Engine - Save Game Manager: Save file does not exist: " << saveFileName << std::endl;
+        SAVEGAME_ERROR("Save file does not exist: " + saveFileName);
         return false;
     }
 
@@ -134,22 +152,26 @@ bool SaveGameManager::load(const std::string& saveFileName, Player& player) cons
         // Open binary file for reading
         std::ifstream file(fullPath, std::ios::binary | std::ios::in);
         if (!file.is_open()) {
-            std::cerr << "Forge Game Engine - Save Game Manager: Could not open file for reading!" << std::endl;
+            SAVEGAME_ERROR("Could not open file for reading: " + fullPath);
             return false;
         }
 
         // Read and validate header
         SaveGameHeader header;
         if (!readHeader(file, header)) {
-            std::cerr << "Forge Game Engine - Save Game Manager: Invalid save file format" << std::endl;
+            SAVEGAME_ERROR("Invalid save file format");
             file.close();
             return false;
         }
 
-        // Read player data
+        // Read player data using BinarySerializer
+        auto reader = std::make_unique<BinarySerial::Reader>(
+            std::shared_ptr<std::istream>(&file, [](std::istream*){}));
+
+        // Read position
         Vector2D position(0.0f, 0.0f);
-        if (!readVector2D(file, position)) {
-            std::cerr << "Forge Game Engine - Save Game Manager: Error reading player position" << std::endl;
+        if (!reader->readSerializable(position)) {
+            SAVEGAME_ERROR("Error reading player position");
             file.close();
             return false;
         }
@@ -160,16 +182,16 @@ bool SaveGameManager::load(const std::string& saveFileName, Player& player) cons
 
         // Read textureID
         std::string textureID;
-        if (!readString(file, textureID)) {
-            std::cerr << "Forge Game Engine - Save Game Manager: Error reading player textureID!" << std::endl;
+        if (!reader->readString(textureID)) {
+            SAVEGAME_ERROR("Error reading player textureID!");
             file.close();
             return false;
         }
 
         // Read state
         std::string state;
-        if (!readString(file, state)) {
-            std::cerr << "Forge Game Engine - Save Game Manager: Error reading player state!" << std::endl;
+        if (!reader->readString(state)) {
+            SAVEGAME_ERROR("Error reading player state!");
             file.close();
             return false;
         }
@@ -179,19 +201,19 @@ bool SaveGameManager::load(const std::string& saveFileName, Player& player) cons
 
         // Read level ID (not using it yet, but reading for future use)
         std::string levelID;
-        if (!readString(file, levelID)) {
-            std::cerr << "Forge Game Engine - Save Game Manager: Error reading level ID!" << std::endl;
+        if (!reader->readString(levelID)) {
+            SAVEGAME_ERROR("Error reading level ID!");
             file.close();
             return false;
         }
 
         file.close();
 
-        std::cout << "Forge Game Engine - Game loaded: " << saveFileName << "\n";
+        SAVEGAME_INFO("Game loaded: " + saveFileName);
         return true;
     }
     catch (const std::exception& e) {
-        std::cerr << "Forge Game Engine - Save Game Manager: Error loading game: " << e.what() << std::endl;
+        SAVEGAME_ERROR("Error loading game: " + std::string(e.what()));
         return false;
     }
 }
@@ -199,7 +221,7 @@ bool SaveGameManager::load(const std::string& saveFileName, Player& player) cons
 
 bool SaveGameManager::loadFromSlot(int slotNumber, Player& player) {
     if (slotNumber < 1) {
-        std::cerr << "Forge Game Engine - Save Game Manager: Invalid slot number: " << slotNumber << std::endl;
+        SAVEGAME_ERROR("Invalid slot number: " + std::to_string(slotNumber));
         return false;
     }
 
@@ -212,23 +234,23 @@ bool SaveGameManager::deleteSave(const std::string& saveFileName) const {
         std::string fullPath = getFullSavePath(saveFileName);
         if (std::filesystem::exists(fullPath)) {
             std::filesystem::remove(fullPath);
-            std::cout << "Forge Game Engine - Save successful: " << saveFileName << "\n";
+            SAVEGAME_INFO("Save successful: " + saveFileName);
             return true;
         }
         else {
-            std::cerr << "Forge Game Engine - Save Game Manager: Save file does not exist: " << fullPath << std::endl;
+            SAVEGAME_ERROR("Save file does not exist: " + fullPath);
             return false;
         }
     }
     catch (const std::filesystem::filesystem_error& e) {
-        std::cerr << "Forge Game Engine - Save Game Manager: Error deleting save file: " << e.what() << std::endl;
+        SAVEGAME_ERROR("Error deleting save file: " + std::string(e.what()));
         return false;
     }
 }
 
 bool SaveGameManager::deleteSlot(int slotNumber) {
     if (slotNumber < 1) {
-        std::cerr << "Forge Game Engine - Save Game Manager: Invalid slot number: " << slotNumber << std::endl;
+        SAVEGAME_ERROR("Invalid slot number: " + std::to_string(slotNumber));
         return false;
     }
 
@@ -236,8 +258,9 @@ bool SaveGameManager::deleteSlot(int slotNumber) {
     return deleteSave(fileName);
 }
 
-boost::container::small_vector<std::string, 10> SaveGameManager::getSaveFiles() const {
-    boost::container::small_vector<std::string, 10> saveFiles;
+std::vector<std::string> SaveGameManager::getSaveFiles() const {
+    std::vector<std::string> saveFiles;
+    saveFiles.reserve(10);  // Reserve capacity for typical number of save files
     std::string savePath = m_saveDirectory + "/game_saves";
 
     // Check if the directory exists
@@ -268,7 +291,7 @@ boost::container::small_vector<std::string, 10> SaveGameManager::getSaveFiles() 
         }
     }
     catch (const std::filesystem::filesystem_error& e) {
-        std::cerr << "Forge Game Engine - Save Game Manager: Error listing save files: " << e.what() << std::endl;
+        SAVEGAME_ERROR("Error listing save files: " + std::string(e.what()));
     }
 
     return saveFiles;
@@ -278,9 +301,10 @@ SaveGameData SaveGameManager::getSaveInfo(const std::string& saveFileName) const
     return extractSaveInfo(saveFileName);
 }
 
-boost::container::small_vector<SaveGameData, 10> SaveGameManager::getAllSaveInfo() const {
-    boost::container::small_vector<SaveGameData, 10> saveInfoList;
-    boost::container::small_vector<std::string, 10> files = getSaveFiles();
+std::vector<SaveGameData> SaveGameManager::getAllSaveInfo() const {
+    std::vector<SaveGameData> saveInfoList;
+    saveInfoList.reserve(10);  // Reserve capacity for typical number of saves
+    std::vector<std::string> files = getSaveFiles();
 
     for (const auto& file : files) {
         SaveGameData info = extractSaveInfo(file);
@@ -344,10 +368,10 @@ void SaveGameManager::setSaveDirectory(const std::string& directory) {
         // Try to create it
         try {
             if (!std::filesystem::create_directories(directory)) {
-                std::cerr << "Forge Game Engine - Save Game Manager: Failed to create directory: " << directory << "\n";
+                SAVEGAME_ERROR("Failed to create directory: " + directory);
             }
         } catch (const std::exception& e) {
-            std::cerr << "Forge Game Engine - Save Game Manager: Error creating directory: " << e.what() << "\n";
+            SAVEGAME_ERROR("Error creating directory: " + std::string(e.what()));
         }
     }
 
@@ -361,7 +385,7 @@ void SaveGameManager::clean() {
     // Set shutdown flag
     m_isShutdown = true;
     
-    std::cout << "Forge Game Engine - Save Game Manager resources cleaned!\n";
+    SAVEGAME_INFO("Save Game Manager resources cleaned!");
 }
 
 // Private helper methods
@@ -379,7 +403,7 @@ bool SaveGameManager::ensureSaveDirectoryExists() const {
         if (!std::filesystem::exists(m_saveDirectory)) {
             // Try to create the base directory
             if (!std::filesystem::create_directories(m_saveDirectory)) {
-                std::cerr << "Forge Game Engine - Save Game Manager: Failed to create base directory\n";
+                SAVEGAME_ERROR("Failed to create base directory");
                 return false;
             }
         }
@@ -390,14 +414,14 @@ bool SaveGameManager::ensureSaveDirectoryExists() const {
         if (!std::filesystem::exists(savePath)) {
             // Create the directory and all parent directories
             if (!std::filesystem::create_directories(savePath)) {
-                std::cerr << "Forge Game Engine - Save Game Manager: Failed to create save directory\n";
+                SAVEGAME_ERROR("Failed to create save directory");
                 return false;
             }
         }
 
         // Verify directory exists after creation attempt
         if (!std::filesystem::exists(savePath)) {
-            std::cerr << "Forge Game Engine - Save Game Manager: Directory still doesn't exist after creation attempt\n";
+            SAVEGAME_ERROR("Directory still doesn't exist after creation attempt");
             return false;
         }
 
@@ -406,7 +430,7 @@ bool SaveGameManager::ensureSaveDirectoryExists() const {
             std::string testFilePath = savePath + "/test_write.tmp";
             std::ofstream testFile(testFilePath);
             if (!testFile.is_open()) {
-                std::cerr << "Forge Game Engine - Save Game Manager: Directory exists but is not writable\n";
+                SAVEGAME_ERROR("Directory exists but is not writable");
                 return false;
             }
             testFile << "Test"; // Actually write something
@@ -414,7 +438,7 @@ bool SaveGameManager::ensureSaveDirectoryExists() const {
             if (std::filesystem::exists(testFilePath)) {
                 std::filesystem::remove(testFilePath);
             } else {
-                std::cerr << "Forge Game Engine - Save Game Manager: Test file was not created properly\n";
+                SAVEGAME_ERROR("Test file was not created properly");
                 return false;
             }
         }
@@ -422,7 +446,7 @@ bool SaveGameManager::ensureSaveDirectoryExists() const {
         return true;
     }
     catch (const std::exception& e) {
-        std::cerr << "Forge Game Engine - Save Game Manager: Error creating save directory: " << e.what() << std::endl;
+        SAVEGAME_ERROR("Error creating save directory: " + std::string(e.what()));
         return false;
     }
 }
@@ -447,7 +471,7 @@ SaveGameData SaveGameManager::extractSaveInfo(const std::string& saveFileName) c
         // Read and validate header
         SaveGameHeader header;
         if (!readHeader(file, header)) {
-            std::cerr << "Forge Game Engine - Save Game Manager: Invalid save file format when extracting info!" << std::endl;
+            SAVEGAME_ERROR("Invalid save file format when extracting info!");
             file.close();
             return info;
         }
@@ -494,7 +518,7 @@ SaveGameData SaveGameManager::extractSaveInfo(const std::string& saveFileName) c
         file.close();
     }
     catch (const std::exception& e) {
-        std::cerr << "Forge Game Engine - Save Game Manager: Error extracting save info: " << e.what() << std::endl;
+        SAVEGAME_ERROR("Error extracting save info: " + std::string(e.what()));
     }
 
     return info;
@@ -523,44 +547,27 @@ bool SaveGameManager::readHeader(std::ifstream& file, SaveGameHeader& header) co
     return file.good();
 }
 
+// These methods are now replaced by BinarySerializer - kept for compatibility if needed elsewhere
 bool SaveGameManager::writeString(std::ofstream& file, const std::string& str) const {
-    uint32_t length = static_cast<uint32_t>(str.length());
-    file.write(reinterpret_cast<const char*>(&length), sizeof(uint32_t));
-    file.write(str.c_str(), length);
-    return file.good();
+    auto writer = std::make_unique<BinarySerial::Writer>(
+        std::shared_ptr<std::ostream>(&file, [](std::ostream*){}));
+    return writer->writeString(str);
 }
 
 bool SaveGameManager::readString(std::ifstream& file, std::string& str) const {
-    uint32_t length;
-    file.read(reinterpret_cast<char*>(&length), sizeof(uint32_t));
-
-    if (!file.good() || length > 1000000) { // Safety check for unreasonable string length
-        return false;
-    }
-
-    str.resize(length);
-    file.read(&str[0], length);
-    return file.good();
+    auto reader = std::make_unique<BinarySerial::Reader>(
+        std::shared_ptr<std::istream>(&file, [](std::istream*){}));
+    return reader->readString(str);
 }
 
 bool SaveGameManager::writeVector2D(std::ofstream& file, const Vector2D& vec) const {
-    try {
-        boost::archive::binary_oarchive oa(file);
-        oa << vec;
-        return file.good();
-    } catch (const std::exception& e) {
-        std::cerr << "Forge Game Engine - Save Game Manager: Error serializing Vector2D: " << e.what() << std::endl;
-        return false;
-    }
+    auto writer = std::make_unique<BinarySerial::Writer>(
+        std::shared_ptr<std::ostream>(&file, [](std::ostream*){}));
+    return writer->writeSerializable(vec);
 }
 
 bool SaveGameManager::readVector2D(std::ifstream& file, Vector2D& vec) const {
-    try {
-        boost::archive::binary_iarchive ia(file);
-        ia >> vec;
-        return file.good();
-    } catch (const std::exception& e) {
-        std::cerr << "Forge Game Engine - Save Game Manager: Error deserializing Vector2D: " << e.what() << std::endl;
-        return false;
-    }
+    auto reader = std::make_unique<BinarySerial::Reader>(
+        std::shared_ptr<std::istream>(&file, [](std::istream*){}));
+    return reader->readSerializable(vec);
 }

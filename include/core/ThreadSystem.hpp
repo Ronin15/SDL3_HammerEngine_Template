@@ -22,7 +22,7 @@
 #include <thread>
 
 #include <SDL3/SDL.h>
-#include <boost/container/small_vector.hpp>
+#include <vector>
 
 namespace Forge {
 
@@ -507,7 +507,7 @@ public:
         return result;
     }
 private:
-    boost::container::small_vector<std::thread, 16> m_workers{}; // Optimized for up to 16 threads without heap allocation
+    std::vector<std::thread> m_workers{}; // Thread worker pool
     TaskQueue taskQueue{};
     std::atomic<bool> isRunning{true};
     mutable std::mutex m_mutex{}; // For thread-safe access to members

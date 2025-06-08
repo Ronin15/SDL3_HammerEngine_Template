@@ -7,8 +7,8 @@
 #define UI_MANAGER_HPP
 
 #include <SDL3/SDL.h>
-#include <boost/container/flat_map.hpp>
-#include <boost/container/small_vector.hpp>
+#include <unordered_map>
+#include <vector>
 #include <memory>
 #include <string>
 #include <functional>
@@ -32,7 +32,8 @@ enum class UIComponentType {
     CHECKBOX,
     LIST,
     TOOLTIP,
-    EVENT_LOG
+    EVENT_LOG,
+    DIALOG
 };
 
 // Layout Types
@@ -99,6 +100,11 @@ struct UIStyle {
     SDL_Color pressedColor{30, 30, 30, 255};
     SDL_Color disabledColor{80, 80, 80, 128};
     
+    // Text background properties (for labels and titles)
+    SDL_Color textBackgroundColor{0, 0, 0, 128}; // Semi-transparent black by default
+    bool useTextBackground{false}; // Enable text background for readability
+    int textBackgroundPadding{4}; // Extra padding around text background
+    
     int borderWidth{1};
     int padding{8};
     int margin{4};
@@ -128,7 +134,7 @@ struct UIComponent {
     float minValue{0.0f};
     float maxValue{1.0f};
     bool checked{false};
-    boost::container::small_vector<std::string, 16> listItems{};
+    std::vector<std::string> listItems{};
     int selectedIndex{-1};
     std::string placeholder{};
     int maxLength{256};
@@ -148,7 +154,7 @@ struct UILayout {
     std::string id{};
     UILayoutType type{UILayoutType::ABSOLUTE};
     UIRect bounds{};
-    boost::container::small_vector<std::string, 16> childComponents{};
+    std::vector<std::string> childComponents{};
     
     // Layout-specific properties
     int spacing{4};
@@ -161,7 +167,7 @@ struct UILayout {
 // UI Theme
 struct UITheme {
     std::string name{"default"};
-    boost::container::flat_map<UIComponentType, UIStyle> componentStyles{};
+    std::unordered_map<UIComponentType, UIStyle> componentStyles{};
     
     UIStyle getStyle(UIComponentType type) const {
         auto it = componentStyles.find(type);
@@ -224,7 +230,14 @@ public:
     void createCheckbox(const std::string& id, const UIRect& bounds, const std::string& text = "");
     void createList(const std::string& id, const UIRect& bounds);
     void createTooltip(const std::string& id, const std::string& text = "");
-    void createEventLog(const std::string& id, const UIRect& bounds, int maxEntries = 10);
+    void createEventLog(const std::string& id, const UIRect& bounds, int maxEntries = 5);
+    void createDialog(const std::string& id, const UIRect& bounds);
+    
+    // Modal creation helper - combines theme + overlay + dialog
+    void createModal(const std::string& dialogId, const UIRect& bounds, const std::string& theme, int windowWidth, int windowHeight);
+    
+    // Theme management
+    void refreshAllComponentThemes();
 
     // Component manipulation
     void removeComponent(const std::string& id);
@@ -319,13 +332,19 @@ public:
     void applyThemeToComponent(const std::string& id, UIComponentType type);
     void setGlobalStyle(const UIStyle& style);
     
-    // Background/overlay management
-    void createThemeBackground(int windowWidth, int windowHeight);
-    void removeThemeBackground();
+    // Overlay management - creates/removes semi-transparent background overlays
+    void createOverlay(int windowWidth, int windowHeight);  // Creates overlay using current theme's panel style
+    void removeOverlay();  // Removes the overlay background
+    
+    // Text background methods (for labels and titles readability)
+    void enableTextBackground(const std::string& id, bool enable = true);
+    void setTextBackgroundColor(const std::string& id, SDL_Color color);
+    void setTextBackgroundPadding(const std::string& id, int padding);
     
     // Component cleanup utilities
     void removeComponentsWithPrefix(const std::string& prefix);
     void resetToDefaultTheme();
+    void cleanupForStateTransition();
 
     // Utility methods
     void setGlobalFont(const std::string& fontID);
@@ -340,13 +359,13 @@ public:
 
 private:
     // Core data
-    boost::container::flat_map<std::string, std::shared_ptr<UIComponent>> m_components{};
-    boost::container::flat_map<std::string, std::shared_ptr<UILayout>> m_layouts{};
-    boost::container::small_vector<std::shared_ptr<UIAnimation>, 16> m_animations{};
+    std::unordered_map<std::string, std::shared_ptr<UIComponent>> m_components{};
+    std::unordered_map<std::string, std::shared_ptr<UILayout>> m_layouts{};
+    std::vector<std::shared_ptr<UIAnimation>> m_animations{};
     
     // State tracking
-    boost::container::small_vector<std::string, 8> m_clickedButtons{};
-    boost::container::small_vector<std::string, 8> m_hoveredComponents{};
+    std::vector<std::string> m_clickedButtons{};
+    std::vector<std::string> m_hoveredComponents{};
     std::string m_focusedComponent{};
     std::string m_hoveredTooltip{};
     float m_tooltipTimer{0.0f};
@@ -367,7 +386,7 @@ private:
     bool m_drawDebugBounds{false};
     
     // Event log state tracking
-    boost::container::flat_map<std::string, EventLogState> m_eventLogStates{};
+    std::unordered_map<std::string, EventLogState> m_eventLogStates{};
     bool m_isShutdown{false};
     
     // Input state
@@ -409,6 +428,9 @@ private:
     // Utility helpers
     void drawRect(SDL_Renderer* renderer, const UIRect& rect, const SDL_Color& color, bool filled = true);
     void drawBorder(SDL_Renderer* renderer, const UIRect& rect, const SDL_Color& color, int width = 1);
+    void drawTextWithBackground(const std::string& text, const std::string& fontID,
+                               int x, int y, SDL_Color textColor, SDL_Renderer* renderer,
+                               int alignment, bool useBackground, SDL_Color backgroundColor, int padding);
     UIRect calculateTextBounds(const std::string& text, const std::string& fontID, const UIRect& container, UIAlignment alignment);
     SDL_Color interpolateColor(const SDL_Color& start, const SDL_Color& end, float t);
     UIRect interpolateRect(const UIRect& start, const UIRect& end, float t);

@@ -7,10 +7,7 @@
 #define SAVE_GAME_MANAGER_HPP
 
 #include <string>
-#include <boost/container/small_vector.hpp>
-#include <boost/serialization/serialization.hpp>
-#include <boost/archive/binary_oarchive.hpp>
-#include <boost/archive/binary_iarchive.hpp>
+#include <vector>
 #include "utils/Vector2D.hpp"
 #include <ctime>
 
@@ -76,13 +73,13 @@ public:
     bool deleteSlot(int slotNumber);
 
     // Get a list of all save files in the save directory
-    boost::container::small_vector<std::string, 10> getSaveFiles() const;
+    std::vector<std::string> getSaveFiles() const;
 
     // Get information about a specific save file
     SaveGameData getSaveInfo(const std::string& saveFileName) const;
 
     // Get information about all save slots
-    boost::container::small_vector<SaveGameData, 10> getAllSaveInfo() const;
+    std::vector<SaveGameData> getAllSaveInfo() const;
 
     // Check if a save file exists
     bool saveExists(const std::string& saveFileName) const;
@@ -119,7 +116,7 @@ private:
     bool readHeader(std::ifstream& file, SaveGameHeader& header) const;
     bool writeString(std::ofstream& file, const std::string& str) const;
     bool readString(std::ifstream& file, std::string& str) const;
-    // Binary serialization using Boost
+    // Fast binary serialization
     bool writeVector2D(std::ofstream& file, const Vector2D& vec) const;
     bool readVector2D(std::ifstream& file, Vector2D& vec) const;
 

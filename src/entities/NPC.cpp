@@ -7,7 +7,7 @@
 #include "core/GameEngine.hpp"
 #include "managers/TextureManager.hpp"
 #include <SDL3/SDL.h>
-#include <iostream>
+#include "utils/Logger.hpp"
 #include <cmath>
 #include <set>
 
@@ -87,11 +87,11 @@ void NPC::loadDimensionsFromTexture() {
                 // Update height to be the height of a single frame
                 m_height = frameHeight;
             } else {
-                std::cerr << "Forge Game Engine - Failed to query NPC texture dimensions: " << SDL_GetError() << std::endl;
+                NPC_ERROR("Failed to query NPC texture dimensions: " + std::string(SDL_GetError()));
             }
         }
     } else {
-        std::cerr << "Forge Game Engine - NPC texture '" << m_textureID << "' not found in TextureManager" << std::endl;
+        NPC_ERROR("NPC texture '" + m_textureID + "' not found in TextureManager");
     }
 }
 

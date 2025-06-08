@@ -3,7 +3,7 @@ project(SDL3_Template VERSION 1.0.0 LANGUAGES C CXX)
 
 # Set build configurations
 if(NOT CMAKE_BUILD_TYPE)
-    set(CMAKE_BUILD_TYPE "Debug" CACHE STRING 
+    set(CMAKE_BUILD_TYPE "Debug" CACHE STRING
         "Choose the type of build (Debug or Release)" FORCE)
 endif()
 
@@ -27,21 +27,48 @@ else() # Release build
 endif()
 
 # Debug build settings
-set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -g3 -O0 -Og")
-set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -g3 -O0 -Og -Wall -Wextra")
+if(APPLE)
+    # macOS-specific debug flags with dSYM generation and LLDB compatibility
+    set(CMAKE_C_FLAGS_DEBUG "-g3 -O0 -gdwarf-4 -glldb -fno-limit-debug-info")
+    set(CMAKE_CXX_FLAGS_DEBUG "-g3 -O0 -Wall -Wextra -gdwarf-4 -glldb -fno-limit-debug-info -fstandalone-debug")
+    
+    # Ensure debug symbols are preserved (don't strip them)
+    set(CMAKE_SHARED_LINKER_FLAGS_DEBUG "${CMAKE_SHARED_LINKER_FLAGS_DEBUG} -g")
+    set(CMAKE_EXE_LINKER_FLAGS_DEBUG "${CMAKE_EXE_LINKER_FLAGS_DEBUG} -g")
+else()
+    # Other platforms
+    set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -g3 -O0")
+    set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -g3 -O0 -Wall -Wextra")
+endif()
 
 # Release build settings
-set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -O3 -flto \
-    -fno-strict-aliasing -fomit-frame-pointer -ffunction-sections \
-    -fdata-sections -Wl,--gc-sections -ffast-math -ftree-vectorize \
-    -fpeel-loops -funroll-loops -march=x86-64-v3 -mtune=generic \
-    -msse4.2 -mavx -mavx2 -mfma")
-set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -flto \
-    -fno-strict-aliasing -fomit-frame-pointer -ffunction-sections \
-    -fdata-sections -Wl,--gc-sections -ffast-math -ftree-vectorize \
-    -fpeel-loops -funroll-loops -march=x86-64-v3 -mtune=generic \
-    -msse4.2 -mavx -mavx2 -mfma")
-#mac Os -mcpu=apple-m3 -mtune=generic
+if(APPLE)
+    # macOS-specific release flags
+    set(CMAKE_C_FLAGS_RELEASE "-O3 -flto -fno-strict-aliasing -fomit-frame-pointer \
+        -ffunction-sections -fdata-sections -ffast-math -ftree-vectorize \
+        -fpeel-loops -funroll-loops")
+    set(CMAKE_CXX_FLAGS_RELEASE "-O3 -flto -fno-strict-aliasing -fomit-frame-pointer \
+        -ffunction-sections -fdata-sections -ffast-math -ftree-vectorize \
+        -fpeel-loops -funroll-loops")
+    
+    # Add Apple Silicon specific optimizations if on Apple Silicon
+    if(CMAKE_SYSTEM_PROCESSOR MATCHES "arm64")
+        set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -mcpu=apple-m1")
+        set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -mcpu=apple-m1")
+    endif()
+else()
+    # x86-64 specific flags for other platforms
+    set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -O3 -flto \
+        -fno-strict-aliasing -fomit-frame-pointer -ffunction-sections \
+        -fdata-sections -Wl,--gc-sections -ffast-math -ftree-vectorize \
+        -fpeel-loops -funroll-loops -march=x86-64-v3 -mtune=generic \
+        -msse4.2 -mavx -mavx2 -mfma")
+    set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -flto \
+        -fno-strict-aliasing -fomit-frame-pointer -ffunction-sections \
+        -fdata-sections -Wl,--gc-sections -ffast-math -ftree-vectorize \
+        -fpeel-loops -funroll-loops -march=x86-64-v3 -mtune=generic \
+        -msse4.2 -mavx -mavx2 -mfma")
+endif()
 
 # Set C++ standard
 set(CMAKE_CXX_STANDARD 20)
@@ -61,27 +88,24 @@ add_custom_target(copy-compile-commands ALL
 # Include FetchContent module
 include(FetchContent)
 
-# Add Boost library using FetchContent
-set(BOOST_GIT_TAG "boost-1.88.0")  # Latest stable release as of April 2025
-FetchContent_Declare(
-    Boost
-    GIT_REPOSITORY https://github.com/boostorg/boost.git
-    GIT_TAG ${BOOST_GIT_TAG}
-)
+# Set CMake policy for Boost module (CMP0167)
+if(POLICY CMP0167)
+    cmake_policy(SET CMP0167 NEW)
+endif()
 
-# Configure Boost build options
-set(BOOST_INCLUDE_LIBRARIES
-    container
-    serialization
-    # Add other Boost libraries you need
-)
-set(BOOST_ENABLE_CMAKE ON)
-set(BOOST_ENABLE_MPI OFF)
-set(BUILD_TESTING OFF)
-set(BOOST_INSTALL_LAYOUT "system")
+# Check for Boost unit test framework (optional, only needed for tests)
+# SaveGameManager now uses header-only binary serialization (no Boost dependency)
+find_package(Boost QUIET COMPONENTS unit_test_framework)
 
-# Make Boost available
-FetchContent_MakeAvailable(Boost)
+if(Boost_FOUND AND TARGET Boost::unit_test_framework)
+    message(STATUS "Found Boost Unit Test Framework - Tests will be enabled")
+    set(HAVE_BOOST_TEST TRUE)
+else()
+    message(STATUS "Boost Unit Test Framework not found - Tests will be disabled")
+    set(HAVE_BOOST_TEST FALSE)
+endif()
+
+message(STATUS "SaveGameManager using fast header-only binary serialization")
 
 # Specify the stable release tags for each SDL3 component
 # Updated from "main" branch to specific release versions
@@ -151,7 +175,6 @@ file(GLOB_RECURSE SOURCES
     "src/entities/*.cpp"
     "src/events/*.cpp"
     "src/ai/*.cpp"
-    "src/ui/*.cpp"
 )
 
 # Create executable for your project with proper extensions
@@ -184,7 +207,7 @@ if(WIN32)
   )
 
     # Add the resource file to the executable
-    target_sources(${PROJECT_NAME} PRIVATE 
+    target_sources(${PROJECT_NAME} PRIVATE
         "${CMAKE_BINARY_DIR}/windows_icon.rc")
 elseif(APPLE)
     # For macOS, bundle the icon with the application
@@ -249,9 +272,26 @@ if(APPLE)
         set_target_properties(${PROJECT_NAME} PROPERTIES
       MACOSX_BUNDLE FALSE      # Don't create a bundle in debug mode
       BUILD_WITH_INSTALL_RPATH TRUE
-      BUILD_RPATH "@executable_path/../debug"
-      INSTALL_RPATH "@executable_path/../debug"
+      BUILD_RPATH "@executable_path"
+      INSTALL_RPATH "@executable_path"
+      # Enable dSYM generation for debug symbols
+      XCODE_ATTRIBUTE_DEBUG_INFORMATION_FORMAT "dwarf-with-dsym"
+      XCODE_ATTRIBUTE_GCC_GENERATE_DEBUGGING_SYMBOLS YES
     )
+
+        # Generate dSYM bundle for debugging with verbose output
+        add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+            COMMAND dsymutil $<TARGET_FILE:${PROJECT_NAME}> -o $<TARGET_FILE:${PROJECT_NAME}>.dSYM
+            COMMAND echo "dSYM bundle created at: $<TARGET_FILE:${PROJECT_NAME}>.dSYM"
+            COMMENT "Generating dSYM bundle for debugging"
+        )
+        
+        # Prevent accidental stripping of debug symbols
+        set_target_properties(${PROJECT_NAME} PROPERTIES
+            XCODE_ATTRIBUTE_STRIP_INSTALLED_PRODUCT NO
+            XCODE_ATTRIBUTE_COPY_PHASE_STRIP NO
+            XCODE_ATTRIBUTE_STRIP_STYLE "non-global"
+        )
 
         # Add a post-build message
         add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
@@ -259,26 +299,25 @@ if(APPLE)
     )
 
         message(STATUS "SDL console output enabled for macOS debug build")
+        message(STATUS "dSYM generation enabled for debug symbols")
+        message(STATUS "LLDB debugging flags enabled (-glldb, -fstandalone-debug)")
     else()
         # For release builds, create a proper macOS application bundle
         set_target_properties(${PROJECT_NAME} PROPERTIES
       MACOSX_BUNDLE TRUE
       BUILD_WITH_INSTALL_RPATH TRUE
-      BUILD_RPATH "@executable_path/../Frameworks"
-      INSTALL_RPATH "@executable_path/../Frameworks"
+      BUILD_RPATH "@executable_path/../Frameworks;@executable_path"
+      INSTALL_RPATH "@executable_path/../Frameworks;@executable_path"
     )
     endif()
 endif()
 
-# Link against the SDL3 libraries and Boost
+# Link against SDL3 libraries
 target_link_libraries(${PROJECT_NAME} PRIVATE
     SDL3::SDL3
     SDL3_image::SDL3_image
     SDL3_ttf::SDL3_ttf
     SDL3_mixer::SDL3_mixer
-    Boost::container
-    Boost::serialization
-    # Add other Boost libraries as needed
 )
 
 # Specify include directories
@@ -325,13 +364,16 @@ file(MAKE_DIRECTORY ${OUTPUT_DEBUG_DIR})
 file(MAKE_DIRECTORY ${OUTPUT_RELEASE_DIR})
 
 # Display status message indicating successful configuration
-message(STATUS "SDL3, SDL3_image, SDL3_ttf, SDL3_mixer, and Boost have been "
+message(STATUS "SDL3, SDL3_image, SDL3_ttf, and SDL3_mixer have been "
                "configured successfully")
 message(STATUS "Debug binaries will be output to: ${OUTPUT_DEBUG_DIR}")
 message(STATUS "Release binaries will be output to: ${OUTPUT_RELEASE_DIR}")
 
-# Enable testing
-enable_testing()
-
-# Add the tests subdirectory
-add_subdirectory(tests)
+# Enable testing only if Boost Test is available (tests require Boost.Test framework)
+if(HAVE_BOOST_TEST)
+    enable_testing()
+    add_subdirectory(tests)
+    message(STATUS "Tests enabled - Boost Test found")
+else()
+    message(STATUS "Tests disabled - Boost Test not found (required for test framework)")
+endif()

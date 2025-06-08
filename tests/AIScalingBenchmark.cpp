@@ -3,9 +3,8 @@
  * Licensed under the MIT License - see LICENSE file for details
 */
 
-// Define this to make Boost.Test a header-only library
 #define BOOST_TEST_MODULE AIScalingBenchmark
-#include <boost/test/included/unit_test.hpp>
+#include <boost/test/unit_test.hpp>
 
 #include <iostream>
 #include <chrono>

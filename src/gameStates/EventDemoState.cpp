@@ -35,7 +35,7 @@ bool EventDemoState::enter() {
 
     try {
         // Cache GameEngine reference for better performance
-        GameEngine& gameEngine = GameEngine::Instance();
+        const GameEngine& gameEngine = GameEngine::Instance();
 
         // Setup window dimensions
         m_worldWidth = gameEngine.getWindowWidth();
@@ -128,13 +128,9 @@ bool EventDemoState::exit() {
         eventMgr.removeHandlers(EventTypeId::NPCSpawn);
         eventMgr.removeHandlers(EventTypeId::SceneChange);
 
-        // Clean up UI components
+        // Clean up UI components efficiently
         auto& ui = UIManager::Instance();
-        ui.removeComponent("event_title");
-        ui.removeComponent("event_phase");
-        ui.removeComponent("event_status");
-        ui.removeComponent("event_controls");
-        ui.removeComponent("event_log");
+        ui.removeComponentsWithPrefix("event_");
 
         std::cout << "Forge Game Engine - EventDemoState cleanup complete\n";
         return true;

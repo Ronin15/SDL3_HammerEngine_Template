@@ -17,8 +17,7 @@ bool MainMenuState::enter() {
   int windowWidth = gameEngine.getWindowWidth();
   int windowHeight = gameEngine.getWindowHeight();
 
-  // Create theme background
-  ui.createThemeBackground(windowWidth, windowHeight);
+  // No overlay needed for main menu - keep clean appearance
 
   // Create title
   ui.createTitle("mainmenu_title", {0, 100, windowWidth, 60}, "Forge Game Engine - Main Menu");
@@ -73,17 +72,7 @@ bool MainMenuState::enter() {
     gameEngine.setRunning(false);
   });
 
-  // Style the exit button red for distinction
-  UIStyle exitStyle;
-  exitStyle.backgroundColor = {180, 70, 70, 255}; // Dark red
-  exitStyle.hoverColor = {220, 100, 100, 255}; // Light red
-  exitStyle.pressedColor = {120, 50, 50, 255}; // Darker red
-  exitStyle.borderColor = {255, 255, 255, 255}; // White border
-  exitStyle.textColor = {255, 255, 255, 255}; // White text
-  exitStyle.borderWidth = 1;
-  exitStyle.textAlign = UIAlignment::CENTER_CENTER;
-  exitStyle.fontID = "fonts_UI_Arial";
-  ui.setStyle("mainmenu_exit_btn", exitStyle);
+  // Exit button uses theme styling - no custom colors needed
   
   return true;
 }
@@ -146,8 +135,6 @@ bool MainMenuState::exit() {
   // Clean up all UI components efficiently
   auto& ui = UIManager::Instance();
   ui.removeComponentsWithPrefix("mainmenu_");
-  ui.removeThemeBackground();
-  ui.resetToDefaultTheme();
   
   return true;
 }

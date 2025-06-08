@@ -8,6 +8,7 @@
 #include "managers/SoundManager.hpp"
 #include "managers/FontManager.hpp"
 #include "managers/TextureManager.hpp"
+#include "managers/UIManager.hpp"
 #include <iostream>
 
 Uint32 stateTimer{0};
@@ -63,7 +64,6 @@ void LogoState::render() {
       renderer);
 
   // Render text using SDL_TTF
-  //SDL_Color titleColor = {185, 71, 0, 200}; // Forge Orange
   SDL_Color fontColor = {200, 200, 200, 255}; // Light gray
 
   // Draw title text
@@ -105,6 +105,9 @@ void LogoState::render() {
 
 bool LogoState::exit() {
   std::cout << "Forge Game Engine - Exiting LOGO State\n";
+  
+  // LogoState doesn't create UI components, so no UI cleanup needed
+  
   return true;
 }
 
