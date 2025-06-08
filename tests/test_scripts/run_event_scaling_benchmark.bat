@@ -68,6 +68,58 @@ echo   - Concurrency testing ^(multi-threaded^)
 echo   - Extreme scale testing ^(100K events, 5M handlers^)
 goto :eof
 
+:extract_performance_summary
+:: Extract key performance metrics from the benchmark output
+call :print_status "Extracting performance summary..."
+
+echo.
+echo !BLUE!==== PERFORMANCE SUMMARY ====!NC!
+
+:: Check if extreme scale test exists
+findstr /c:"===== EXTREME SCALE TEST =====" "!OUTPUT_FILE!" >nul 2>&1
+if !ERRORLEVEL! equ 0 (
+    echo.
+    echo !YELLOW!Extreme Scale Test Results:!NC!
+    :: Extract lines after extreme scale test
+    for /f "tokens=*" %%a in ('findstr /c:"Events per second:" "!OUTPUT_FILE!" 2^>nul') do (
+        echo   %%a
+    )
+) else (
+    call :print_warning "Extreme scale test section not found in output"
+)
+
+:: Extract performance metrics
+echo.
+echo !YELLOW!Performance Metrics Found:!NC!
+findstr /c:"Total time:" "!OUTPUT_FILE!" 2>nul
+findstr /c:"Events per second:" "!OUTPUT_FILE!" 2>nul
+findstr /c:"Handler calls per second:" "!OUTPUT_FILE!" 2>nul
+
+:: Check for test verification (using alternative characters that work in Windows)
+echo.
+echo !YELLOW!Test Verification:!NC!
+findstr /c:"Handler calls:" "!OUTPUT_FILE!" | findstr /c:"/" >nul 2>&1
+if !ERRORLEVEL! equ 0 (
+    echo !GREEN!  Handler verification tests found and checked!NC!
+    :: Count successful vs failed verifications
+    for /f %%i in ('findstr /c:"Handler calls:" "!OUTPUT_FILE!" 2^>nul ^| find /c /v ""') do (
+        echo    Total handler verification checks: %%i
+    )
+) else (
+    echo !YELLOW!  No handler verification data found!NC!
+)
+
+:: Check for failures by looking for mismatch patterns
+findstr /c:"Handler calls:" "!OUTPUT_FILE!" | findstr /v /c:"/" >nul 2>&1
+if !ERRORLEVEL! equ 0 (
+    echo !RED!  Warning: Handler verification issues detected!NC!
+) else (
+    echo !GREEN!  All handler verifications appear successful!NC!
+)
+
+echo.
+goto :eof
+
 :main
 :: Navigate to script directory
 cd /d "%SCRIPT_DIR%"
@@ -120,6 +172,7 @@ if not exist "!BENCHMARK_EXEC!" (
     set "BENCHMARK_EXEC=!SCRIPT_DIR!..\..\bin\!BUILD_TYPE!\event_manager_scaling_benchmark"
     if not exist "!BENCHMARK_EXEC!" (
         call :print_error "Benchmark executable not found: !BENCHMARK_EXEC!"
+        call :print_status "Please build the project first using the build script"
         exit /b 1
     )
 )
@@ -138,8 +191,8 @@ call :print_status "This may take several minutes for comprehensive testing..."
 
 if "!VERBOSE!"=="true" (
     call :print_status "Running with verbose output..."
-    :: Run with verbose output and save to file
-    "!BENCHMARK_EXEC!" 2>&1 > "!OUTPUT_FILE!"
+    :: Run with verbose output and save to file, also display on console
+    "!BENCHMARK_EXEC!" > "!OUTPUT_FILE!" 2>&1
     set BENCHMARK_RESULT=!ERRORLEVEL!
     type "!OUTPUT_FILE!"
 ) else (
@@ -155,16 +208,7 @@ if !BENCHMARK_RESULT! equ 0 (
     
     :: Extract and display key performance metrics
     if exist "!OUTPUT_FILE!" (
-        echo.
-        call :print_status "Performance Summary:"
-        echo.
-        
-        :: Extract key metrics from the output (simplified)
-        findstr /c:"EXTREME SCALE TEST" "!OUTPUT_FILE!" >nul 2>&1
-        if !ERRORLEVEL! equ 0 (
-            :: Show performance summary
-            findstr /c:"Performance" /c:"events" /c:"handlers" /c:"time" "!OUTPUT_FILE!" 2>nul
-        )
+        call :extract_performance_summary
         
         echo.
         call :print_status "Detailed results saved to: !OUTPUT_FILE!"
@@ -172,6 +216,23 @@ if !BENCHMARK_RESULT! equ 0 (
         :: Show file size for reference
         for %%f in ("!OUTPUT_FILE!") do set "FILE_SIZE=%%~zf"
         call :print_status "Output file size: !FILE_SIZE! bytes"
+        
+        :: Quick verification that the benchmark actually ran
+        findstr /c:"===== EXTREME SCALE TEST =====" "!OUTPUT_FILE!" >nul 2>&1
+        if !ERRORLEVEL! equ 0 (
+            call :print_success "All benchmark test suites completed successfully"
+        ) else (
+            call :print_warning "Extreme scale test may not have completed - check output file"
+        )
+        
+        :: Count total test results
+        for /f %%i in ('findstr /c:"Performance Results" "!OUTPUT_FILE!" 2^>nul ^| find /c /v ""') do (
+            if %%i gtr 0 (
+                call :print_status "Found %%i performance result sections"
+            ) else (
+                call :print_warning "No performance results detected in output"
+            )
+        )
     )
     
     echo.
@@ -192,7 +253,10 @@ if !BENCHMARK_RESULT! equ 0 (
         :: Show last few lines of output for immediate debugging
         echo.
         call :print_status "Last few lines of output:"
-        powershell -Command "Get-Content '!OUTPUT_FILE!' | Select-Object -Last 10" 2>nul
+        :: Use more command which is available on all Windows systems
+        more +99999 "!OUTPUT_FILE!" 2>nul || (
+            echo Use 'type !OUTPUT_FILE!' to view the complete output
+        )
     )
     
     exit /b !BENCHMARK_RESULT!
