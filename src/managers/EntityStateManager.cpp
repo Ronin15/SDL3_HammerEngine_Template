@@ -5,7 +5,7 @@
 
 #include "managers/EntityStateManager.hpp"
 #include "entities/EntityState.hpp"
-#include "utils/Logger.hpp"
+#include "core/Logger.hpp"
 #include <stdexcept>
 #include <algorithm>
 

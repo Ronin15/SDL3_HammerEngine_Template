@@ -4,7 +4,7 @@
 */
 
 #include "managers/InputManager.hpp"
-#include "utils/Logger.hpp"
+#include "core/Logger.hpp"
 #include "core/GameEngine.hpp"
 #include "SDL3/SDL_gamepad.h"
 #include "SDL3/SDL_joystick.h"
@@ -167,7 +167,7 @@ void InputManager::clearFrameInput() {
 void InputManager::update() {
   // Clear previous frame's pressed keys
   m_pressedThisFrame.clear();
-  
+
   // Cache GameEngine reference for better performance
   GameEngine& gameEngine = GameEngine::Instance();
 
@@ -220,14 +220,14 @@ void InputManager::update() {
 void InputManager::onKeyDown(const SDL_Event& event) {
   // Store the keyboard state
   m_keystates = SDL_GetKeyboardState(0);
-  
+
   // Track this key as pressed this frame (for wasKeyPressed)
   // Check for duplicates to avoid multiple entries for the same key in one frame
   bool alreadyTracked = std::any_of(m_pressedThisFrame.begin(), m_pressedThisFrame.end(),
                                    [scancode = event.key.scancode](SDL_Scancode pressedKey) {
                                      return pressedKey == scancode;
                                    });
-  
+
   if (!alreadyTracked) {
     m_pressedThisFrame.push_back(event.key.scancode);
   }
@@ -412,7 +412,7 @@ void InputManager::onGamepadButtonDown(const SDL_Event& event) {
   }
 
   // Debug message for button press with button name
-  INPUT_DEBUG("Gamepad " + std::to_string(whichOne) + " Button '" + buttonName + "' (" + 
+  INPUT_DEBUG("Gamepad " + std::to_string(whichOne) + " Button '" + buttonName + "' (" +
               std::to_string(static_cast<int>(event.gbutton.button)) + ") pressed!");
 }
 
@@ -466,7 +466,7 @@ void InputManager::clean() {
   // Clear all button states and mouse states (previously done in destructor)
   m_buttonStates.clear();
   m_mouseButtonStates.clear();
-  
+
   // Set shutdown flag
   m_isShutdown = true;
 }

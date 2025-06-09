@@ -428,7 +428,7 @@ The system uses a hierarchical allocation strategy:
 
 #### WorkerBudget Utility
 ```cpp
-#include "utils/WorkerBudget.hpp"
+#include "core/WorkerBudget.hpp"
 
 // Calculate optimal allocation for current hardware
 Forge::WorkerBudget budget = Forge::calculateWorkerBudget(availableWorkers);
@@ -481,7 +481,7 @@ The worker budget system delivers significant performance improvements:
 
 ### Configuration
 
-The worker budget percentages can be adjusted in `utils/WorkerBudget.hpp`:
+The worker budget percentages can be adjusted in `core/WorkerBudget.hpp`:
 
 ```cpp
 static constexpr size_t AI_WORKER_PERCENTAGE = 60;     // AI gets 60%

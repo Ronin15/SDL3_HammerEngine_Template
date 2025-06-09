@@ -7,8 +7,7 @@
 #include "entities/Player.hpp"
 #include "utils/Vector2D.hpp"
 #include "utils/BinarySerializer.hpp"
-#include "utils/Logger.hpp"
-#include "utils/Logger.hpp"
+#include "core/Logger.hpp"
 #include <fstream>
 #include <filesystem>
 #include <algorithm>
@@ -50,7 +49,7 @@ bool SaveGameManager::save(const std::string& saveFileName, const Player& player
     try {
         // Create full path for the save file
         std::string fullPath = getFullSavePath(saveFileName);
-        
+
         // Make sure parent directory exists once more
         std::filesystem::path filePath(fullPath);
         std::filesystem::path parentPath = filePath.parent_path();
@@ -63,7 +62,7 @@ bool SaveGameManager::save(const std::string& saveFileName, const Player& player
         std::ofstream file(fullPath, std::ios::binary | std::ios::out);
         if (!file.is_open()) {
             SAVEGAME_ERROR("Could not open file " + fullPath + " for writing!");
-            SAVEGAME_DEBUG("Parent directory " + parentPath.string() + " exists: " + 
+            SAVEGAME_DEBUG("Parent directory " + parentPath.string() + " exists: " +
                           (std::filesystem::exists(parentPath) ? "yes" : "no"));
             return false;
         }
@@ -384,7 +383,7 @@ void SaveGameManager::setSaveDirectory(const std::string& directory) {
 void SaveGameManager::clean() {
     // Set shutdown flag
     m_isShutdown = true;
-    
+
     SAVEGAME_INFO("Save Game Manager resources cleaned!");
 }
 

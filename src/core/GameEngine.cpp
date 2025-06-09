@@ -4,9 +4,9 @@
 */
 
 #include "core/GameEngine.hpp"
-#include "utils/Logger.hpp"
+#include "core/Logger.hpp"
 #include "core/GameLoop.hpp" // IWYU pragma: keep - Required for GameLoop weak_ptr declaration
-#include "utils/WorkerBudget.hpp"
+#include "core/WorkerBudget.hpp"
 #include <vector>
 #include <chrono>
 #include <future>

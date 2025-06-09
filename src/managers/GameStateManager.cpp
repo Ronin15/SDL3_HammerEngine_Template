@@ -5,7 +5,7 @@
 
 #include "managers/GameStateManager.hpp"
 #include "gameStates/GameState.hpp"
-#include "utils/Logger.hpp"
+#include "core/Logger.hpp"
 #include <algorithm>
 
 // GameStateManager Implementation

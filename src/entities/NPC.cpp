@@ -7,7 +7,7 @@
 #include "core/GameEngine.hpp"
 #include "managers/TextureManager.hpp"
 #include <SDL3/SDL.h>
-#include "utils/Logger.hpp"
+#include "core/Logger.hpp"
 #include <cmath>
 #include <set>
 
@@ -66,7 +66,7 @@ void NPC::loadDimensionsFromTexture() {
 
     // Cache TextureManager reference for better performance
     const TextureManager& texMgr = TextureManager::Instance();
-    
+
     // Get the texture from TextureManager
     if (texMgr.isTextureInMap(m_textureID)) {
         auto texture = texMgr.getTexture(m_textureID);
@@ -178,7 +178,7 @@ void NPC::render() {
     // Cache manager references for better performance
     TextureManager& texMgr = TextureManager::Instance();
     SDL_Renderer* renderer = GameEngine::Instance().getRenderer();
-    
+
     // Calculate centered position for rendering
     // This ensures the NPC is centered at its position coordinates
     int renderX = static_cast<int>(m_position.getX() - (m_frameWidth / 2.0f));
@@ -229,5 +229,3 @@ void NPC::setWanderArea(float minX, float minY, float maxX, float maxY) {
     m_maxX = maxX;
     m_maxY = maxY;
 }
-
-

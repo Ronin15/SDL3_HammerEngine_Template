@@ -4,8 +4,8 @@
 */
 
 #include "managers/SoundManager.hpp"
-#include "utils/Logger.hpp"
-#include "utils/Logger.hpp"
+#include "core/Logger.hpp"
+#include "core/Logger.hpp"
 #include <filesystem>
 #include <algorithm>
 

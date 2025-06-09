@@ -5,7 +5,7 @@
 
 #include "events/SceneChangeEvent.hpp"
 #include "utils/Vector2D.hpp"
-#include "utils/Logger.hpp"
+#include "core/Logger.hpp"
 #include <algorithm>
 
 // Helper function to get player position
@@ -153,7 +153,7 @@ bool SceneChangeEvent::checkConditions() {
     }
 
     // Check all custom conditions using STL algorithm
-    if (!std::all_of(m_conditions.begin(), m_conditions.end(), 
+    if (!std::all_of(m_conditions.begin(), m_conditions.end(),
                      [](const auto& condition) { return condition(); })) {
         return false;
     }
