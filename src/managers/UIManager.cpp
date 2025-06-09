@@ -22,6 +22,10 @@ bool UIManager::init() {
     m_globalFontID = "fonts_UI_Arial";
     m_titleFontID = "fonts_Arial";
     m_uiFontID = "fonts_UI_Arial";
+    
+    // Use centralized DPI scale from GameEngine
+    auto& gameEngine = GameEngine::Instance();
+    m_globalScale = gameEngine.getDPIScale();
 
     // Clear any existing data and reserve capacity for performance
     m_components.clear();
@@ -1712,9 +1716,11 @@ void UIManager::renderButton(SDL_Renderer* renderer, const std::shared_ptr<UICom
     // Draw text
     if (!component->text.empty()) {
         auto& fontManager = FontManager::Instance();
+        // Apply global scale to font positioning
+        int scaledX = static_cast<int>((component->bounds.x + component->bounds.width / 2.0f) * m_globalScale);
+        int scaledY = static_cast<int>((component->bounds.y + component->bounds.height / 2.0f) * m_globalScale);
         fontManager.drawTextAligned(component->text, component->style.fontID,
-                                   component->bounds.x + component->bounds.width / 2,
-                                   component->bounds.y + component->bounds.height / 2,
+                                   scaledX, scaledY,
                                    component->style.textColor, renderer, 0); // 0 = center
     }
 }
@@ -1767,10 +1773,14 @@ void UIManager::renderLabel(SDL_Renderer* renderer, const std::shared_ptr<UIComp
     bool needsBackground = component->style.useTextBackground && 
                           component->style.backgroundColor.a == 0;
     
+    // Apply global scale to text positioning
+    int scaledTextX = static_cast<int>(textX * m_globalScale);
+    int scaledTextY = static_cast<int>(textY * m_globalScale);
+    
     // Use a custom text drawing method that renders background and text together
-    drawTextWithBackground(component->text, component->style.fontID, textX, textY, 
+    drawTextWithBackground(component->text, component->style.fontID, scaledTextX, scaledTextY, 
                           component->style.textColor, renderer, alignment, 
-                          needsBackground, 
+                          needsBackground,
                           component->style.textBackgroundColor, 
                           component->style.textBackgroundPadding);
 }
@@ -1834,9 +1844,11 @@ void UIManager::renderInputField(SDL_Renderer* renderer, const std::shared_ptr<U
             SDL_Color{128, 128, 128, 255} : component->style.textColor;
 
         auto& fontManager = FontManager::Instance();
+        // Apply global scale to font positioning
+        int scaledX = static_cast<int>((component->bounds.x + component->style.padding) * m_globalScale);
+        int scaledY = static_cast<int>((component->bounds.y + component->bounds.height / 2.0f) * m_globalScale);
         fontManager.drawTextAligned(displayText, component->style.fontID,
-                                   component->bounds.x + component->style.padding,
-                                   component->bounds.y + component->bounds.height / 2,
+                                   scaledX, scaledY,
                                    textColor, renderer, 1); // 1 = left alignment
     }
 
@@ -1912,9 +1924,11 @@ void UIManager::renderCheckbox(SDL_Renderer* renderer, const std::shared_ptr<UIC
     // Draw label text
     if (!component->text.empty()) {
         auto& fontManager = FontManager::Instance();
+        // Apply global scale to font positioning
+        int scaledX = static_cast<int>((checkRect.x + checkRect.width + component->style.padding) * m_globalScale);
+        int scaledY = static_cast<int>((component->bounds.y + component->bounds.height / 2.0f) * m_globalScale);
         fontManager.drawTextAligned(component->text, component->style.fontID,
-                                   checkRect.x + checkRect.width + component->style.padding,
-                                   component->bounds.y + component->bounds.height / 2,
+                                   scaledX, scaledY,
                                    component->style.textColor, renderer, 1); // 1 = left alignment
     }
 }
@@ -1942,8 +1956,11 @@ void UIManager::renderList(SDL_Renderer* renderer, const std::shared_ptr<UICompo
 
         // Draw item text
         auto& fontManager = FontManager::Instance();
+        // Apply global scale to font positioning
+        int scaledX = static_cast<int>((itemRect.x + component->style.padding) * m_globalScale);
+        int scaledY = static_cast<int>((itemRect.y + itemHeight / 2.0f) * m_globalScale);
         fontManager.drawTextAligned(component->listItems[i], component->style.fontID,
-                                   itemRect.x + component->style.padding, itemRect.y + itemHeight / 2,
+                                   scaledX, scaledY,
                                    component->style.textColor, renderer, 1); // 1 = left alignment
 
         y += itemHeight;
@@ -1970,8 +1987,11 @@ void UIManager::renderEventLog(SDL_Renderer* renderer, const std::shared_ptr<UIC
 
         // Draw event entry text
         auto& fontManager = FontManager::Instance();
+        // Apply global scale to font positioning
+        int scaledX = static_cast<int>((itemRect.x + component->style.padding + 8) * m_globalScale);
+        int scaledY = static_cast<int>((itemRect.y + (itemHeight / 2.0f) + 2) * m_globalScale);
         fontManager.drawTextAligned(component->listItems[i], component->style.fontID,
-                                   itemRect.x + component->style.padding + 8, itemRect.y + (itemHeight / 2) + 2,
+                                   scaledX, scaledY,
                                    component->style.textColor, renderer, 1); // 1 = left alignment
 
         y += itemHeight;
@@ -2018,9 +2038,11 @@ void UIManager::renderTooltip(SDL_Renderer* renderer) {
     drawBorder(renderer, tooltipRect, {200, 200, 200, 255}, 1);
 
     auto& fontManager = FontManager::Instance();
+    // Apply global scale to font positioning
+    int scaledX = static_cast<int>((tooltipRect.x + tooltipRect.width / 2.0f) * m_globalScale);
+    int scaledY = static_cast<int>((tooltipRect.y + tooltipRect.height / 2.0f) * m_globalScale);
     fontManager.drawTextAligned(component->text, m_globalFontID,
-                               tooltipRect.x + tooltipRect.width / 2,
-                               tooltipRect.y + tooltipRect.height / 2,
+                               scaledX, scaledY,
                                {255, 255, 255, 255}, renderer, 0); // 0 = center alignment
 }
 

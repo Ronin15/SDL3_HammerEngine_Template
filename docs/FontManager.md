@@ -9,6 +9,9 @@ The FontManager provides a centralized system for loading, managing, and renderi
 - **TTF/OTF Font Support**: Load TrueType and OpenType fonts
 - **Directory Loading**: Batch load all fonts from a directory
 - **Text Rendering**: Render text to textures or directly to screen
+- **DPI-Aware Scaling**: Automatic font sizing based on display pixel density
+- **High-Quality Rendering**: TTF hinting, kerning, and linear texture filtering
+- **Pixel-Perfect Positioning**: Coordinate rounding for crisp text rendering
 - **Memory Management**: Automatic font cleanup with RAII
 - **Thread Safety**: Safe to use across multiple threads
 - **Efficient Caching**: Fonts are cached for reuse
@@ -16,14 +19,34 @@ The FontManager provides a centralized system for loading, managing, and renderi
 ## Initialization
 
 ```cpp
-// Initialize the font system
+// Initialize the font system with quality improvements
 if (!FontManager::Instance().init()) {
     std::cerr << "Failed to initialize FontManager" << std::endl;
     return false;
 }
+
+// The FontManager automatically configures:
+// - TTF hinting for better font outline quality
+// - Kerning for proper character spacing
+// - Linear texture scaling for smooth font rendering
+// - Pixel-aligned positioning for crisp text
 ```
 
 ## Loading Fonts
+
+### DPI-Aware Font Loading
+
+The GameEngine automatically calculates DPI-aware font sizes during initialization:
+
+```cpp
+// In GameEngine initialization:
+// - Detects display pixel density
+// - Calculates optimal font sizes for crisp rendering
+// - Loads fonts with pixel-aligned sizes for best quality
+
+// Example: On a 4K display, base font size 24 may become 48
+// to maintain readability while ensuring crisp rendering
+```
 
 ### Single Font Loading
 
@@ -32,8 +55,13 @@ if (!FontManager::Instance().init()) {
 bool success = FontManager::Instance().loadFont(
     "assets/fonts/Arial.ttf",  // Font file path
     "Arial",                   // Font ID for reference
-    24                         // Font size in pixels
+    24                         // Font size in pixels (will be DPI-adjusted)
 );
+
+// Font is automatically configured with:
+// - TTF_HINTING_NORMAL for better outline quality
+// - Kerning enabled for proper character spacing
+// - Linear texture scaling for smooth rendering
 ```
 
 ### Directory Loading
@@ -43,10 +71,11 @@ bool success = FontManager::Instance().loadFont(
 bool success = FontManager::Instance().loadFont(
     "assets/fonts/",           // Directory path
     "ui_fonts",               // ID prefix for all fonts
-    16                        // Font size for all fonts
+    16                        // Font size for all fonts (DPI-adjusted)
 );
 
 // Creates font IDs like: "ui_fonts_Arial", "ui_fonts_Times", etc.
+// All fonts receive quality improvements automatically
 ```
 
 ## Text Rendering
@@ -71,14 +100,17 @@ if (textTexture) {
 ### Direct Screen Rendering
 
 ```cpp
-// Render text directly to the screen
+// Render text directly to the screen with pixel-perfect positioning
 FontManager::Instance().drawText(
     "Score: 1000",            // Text to render
     "Arial",                  // Font ID
-    400, 50,                  // Center position (x, y)
+    400, 50,                  // Center position (x, y) - auto-rounded for crisp rendering
     {255, 255, 0, 255},      // Yellow color
     renderer                  // SDL Renderer
 );
+
+// Text positioning is automatically rounded to pixel boundaries
+// for crisp, blur-free rendering on all display types
 ```
 
 ## Font Management
@@ -253,7 +285,38 @@ std::thread renderThread([&]() {
 - **Pre-load fonts**: Load all fonts at startup rather than during gameplay
 - **Cache textures**: For frequently changing text, cache textures when possible
 - **Batch directory loading**: Use directory loading for better startup performance
-- **Appropriate sizes**: Load fonts at the sizes you'll actually use
+- **DPI-Aware Sizing**: Fonts are automatically sized for optimal display quality
+- **Quality vs Performance**: High-quality rendering uses TTF_RenderText_Blended for best results
+- **Pixel Alignment**: Coordinate rounding ensures optimal GPU texture caching
+
+## Display Quality Features
+
+### DPI Scaling Integration
+
+The FontManager integrates with GameEngine's DPI detection system:
+
+```cpp
+// Automatic DPI-aware font loading in GameEngine:
+float dpiScale = GameEngine::Instance().getDPIScale();
+
+// Font sizes are calculated as:
+// actualSize = baseSize * dpiScale (rounded to even numbers)
+// This ensures crisp rendering on high-DPI displays
+```
+
+### Quality Rendering Pipeline
+
+1. **Font Loading**: TTF hinting, kerning, and style normalization
+2. **Texture Creation**: Linear filtering for smooth scaling
+3. **Coordinate Rounding**: Pixel-perfect positioning for crisp edges
+4. **Alpha Blending**: Proper blend modes for clear text rendering
+
+### Multi-DPI Support
+
+- **Standard DPI (96-120)**: Uses base font sizes for optimal performance
+- **High DPI (150-300)**: Automatically scales fonts for clarity
+- **4K/Retina Displays**: Maintains crisp text at high pixel densities
+- **Dynamic Scaling**: UIManager applies additional scaling as needed
 
 ## File Format Support
 

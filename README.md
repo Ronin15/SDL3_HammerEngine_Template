@@ -285,13 +285,18 @@ See `include/managers/SoundManager.hpp` for the full API and `docs/SoundManager.
 
 ### FontManager
 
-The FontManager handles text rendering throughout the application:
+The FontManager handles high-quality text rendering throughout the application:
 
-- Loading of TTF and OTF fonts in various sizes
-- Text rendering to textures or directly to the screen
-- Text alignment control (center, left, right, top-left, top-center, top-right)
-- Memory-efficient font management with automatic resource cleanup
-- Directory loading support for batch font loading
+- **DPI-Aware Font Loading**: Automatic font sizing based on display pixel density for crisp rendering on all screen types
+- **High-Quality Rendering**: TTF hinting, kerning, and linear texture filtering for professional text quality
+- **Pixel-Perfect Positioning**: Coordinate rounding eliminates font blurriness and ensures crisp edges
+- **Multi-Format Support**: Loading of TTF and OTF fonts in various sizes with quality optimizations
+- **Advanced Text Rendering**: Render to textures or directly to screen with anti-aliasing and proper alpha blending
+- **Flexible Alignment**: Text alignment control (center, left, right, top-left, top-center, top-right)
+- **Efficient Management**: Memory-efficient font management with automatic resource cleanup
+- **Batch Loading**: Directory loading support for efficient font initialization
+
+The system automatically detects display DPI and scales fonts appropriately, ensuring optimal text quality across standard monitors, high-DPI displays, and 4K/Retina screens.
 
 See `include/managers/FontManager.hpp` for the full API and `docs/FontManager.md` for detailed documentation.
 
@@ -558,6 +563,7 @@ Additional documentation can be found in the `docs/` directory:
 
 ### Manager System Documentation
 - **[FontManager](docs/FontManager.md)** - Font loading and text rendering system with TTF/OTF support
+- **[DPI-Aware Font System](docs/DPI_Aware_Font_System.md)** - Comprehensive guide to automatic DPI detection, font scaling, and high-quality text rendering across all display types
 - **[TextureManager](docs/TextureManager.md)** - Texture loading and sprite rendering with animation support
 - **[SoundManager](docs/SoundManager.md)** - Audio playback and sound management with volume control
 

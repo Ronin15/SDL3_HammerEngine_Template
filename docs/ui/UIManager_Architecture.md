@@ -196,8 +196,42 @@ void GameEngine::update(float deltaTime) {
 ```
 
 ### Manager Dependencies
-- **FontManager**: Text rendering for all UI components
+- **FontManager**: Text rendering for all UI components with DPI-aware scaling
 - **InputManager**: Mouse and keyboard input handling
+- **GameEngine**: DPI scale factor and rendering context
+
+### DPI-Aware Scaling Integration
+
+The UIManager integrates seamlessly with the engine's DPI detection system:
+
+```cpp
+// Automatic DPI integration during initialization
+bool UIManager::init() {
+    // Get centralized DPI scale from GameEngine
+    auto& gameEngine = GameEngine::Instance();
+    m_globalScale = gameEngine.getDPIScale();
+    
+    // All text positioning automatically scaled
+    return true;
+}
+
+// All text rendering applies DPI scaling
+void UIManager::renderButton(std::shared_ptr<UIComponent> component, SDL_Renderer* renderer) {
+    // Apply global scale to font positioning
+    int scaledX = static_cast<int>((component->bounds.x + component->bounds.width / 2) * m_globalScale);
+    int scaledY = static_cast<int>((component->bounds.y + component->bounds.height / 2) * m_globalScale);
+    
+    FontManager::Instance().drawTextAligned(component->text, component->style.fontID,
+                                           scaledX, scaledY, component->style.textColor, renderer, 0);
+}
+```
+
+**DPI System Benefits:**
+- **Automatic Detection**: GameEngine detects display pixel density during initialization
+- **Centralized Management**: Single DPI scale value shared across all managers
+- **Quality Fonts**: FontManager loads DPI-appropriate font sizes with quality optimizations
+- **Crisp UI**: All text positioning scaled and pixel-aligned for sharp rendering
+- **Cross-Platform**: Works on standard, high-DPI, and 4K/Retina displays
 - **TextureManager**: Image loading for UI graphics
 - **GameEngine**: Window dimensions and renderer access
 
