@@ -63,14 +63,15 @@ High-performance multithreading framework with priority-based task scheduling.
 - **[ThreadSystem Overview](ThreadSystem.md)** - Core threading system documentation
 - **[ThreadSystem API](ThreadSystem_API.md)** - Complete API reference
 - **[ThreadSystem Optimization](ThreadSystem_Optimization.md)** - Performance tuning guide
+- **[ThreadSystem Logger Integration](ThreadSystem_Logger_Integration.md)** - Complete integration with Logger system, performance improvements, and static destruction safety
 - **[Worker Budget System](WorkerBudget_System.md)** - Memory optimization and budget management
 
 ### Utility Systems
 Core utility classes and helper systems used throughout the engine.
 
 - **[Logger System](Logger.md)** - High-performance logging with zero release overhead and system-specific macros
-- **[Binary Serialization](SERIALIZATION.md)** - Fast, header-only serialization system.
-- **[Worker Budget System](WorkerBudget_System.md)** - Memory optimization and budget management for threading
+- **[Binary Serialization](SERIALIZATION.md)** - Fast, header-only serialization system
+- **[Performance Changelog](PERFORMANCE_CHANGELOG.md)** - Detailed performance improvements and optimization history
 
 ### Manager System Documentation
 - **[AIManager](ai/AIManager.md)** - AI behavior management and entity processing
@@ -102,7 +103,7 @@ The Forge Game Engine provides several core systems that work together:
 - **[AI Quick Start](ai/BehaviorModes_QuickReference.md)** - Set up AI behaviors in minutes
 - **[Event Quick Start](events/EventManager_QuickReference.md)** - Event system essentials
 - **[UI Quick Start](ui/UIManager_Guide.md#quick-start)** - Create UI components instantly
-- **[Threading Setup](ThreadSystem.md#quick-start)** - Initialize multi-threading
+- **[Threading Setup](ThreadSystem.md)** - Initialize multi-threading
 
 ## Key Features
 

@@ -14,7 +14,9 @@
 
 bool AIManager::init() {
     if (m_initialized.load(std::memory_order_acquire)) {
-        AI_INFO("AIManager already initialized");
+        if (!m_isShutdown) {
+            AI_INFO("AIManager already initialized");
+        }
         return true;
     }
 
@@ -41,12 +43,15 @@ bool AIManager::init() {
 
         m_initialized.store(true, std::memory_order_release);
 
-        AI_INFO("AIManager initialized");
-        if (threadSystemExists) {
-            // Cache ThreadSystem reference for better performance
-            const Forge::ThreadSystem& threadSystem = Forge::ThreadSystem::Instance();
-            (void)threadSystem; // Mark as intentionally used for logging
-            AI_INFO("Threading enabled with " + std::to_string(threadSystem.getThreadCount()) + " threads");
+        // Only log if not in shutdown to avoid static destruction order issues
+        if (!m_isShutdown) {
+            AI_INFO("AIManager initialized");
+            if (threadSystemExists) {
+                // Cache ThreadSystem reference for better performance
+                const Forge::ThreadSystem& threadSystem = Forge::ThreadSystem::Instance();
+                (void)threadSystem; // Mark as intentionally used for logging
+                AI_INFO("Threading enabled with " + std::to_string(threadSystem.getThreadCount()) + " threads");
+            }
         }
 
         return true;
@@ -62,7 +67,10 @@ void AIManager::clean() {
         return;
     }
 
-    AI_INFO("Cleaning up AIManager");
+    // Only log if not in shutdown to avoid static destruction order issues
+    if (!m_isShutdown) {
+        AI_INFO("Cleaning up AIManager");
+    }
 
     // Clear all data structures
     {
@@ -86,7 +94,7 @@ void AIManager::clean() {
 
     m_initialized.store(false, std::memory_order_release);
     m_isShutdown = true;
-    AI_INFO("AIManager cleaned up");
+    // Skip logging during shutdown to avoid static destruction order issues
 }
 
 void AIManager::update([[maybe_unused]] float deltaTime) {

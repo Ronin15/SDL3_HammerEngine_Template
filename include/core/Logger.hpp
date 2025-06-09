@@ -10,9 +10,11 @@
 // - string: Used in macro expansions for std::string() conversions
 // - cstdio: Required for printf() and fflush() functions
 // - cstdint: Required for uint8_t type
+// - mutex: Required for thread-safe logging
 #include <string> // IWYU pragma: keep - Required for std::string() conversions in macros
 #include <cstdio> // IWYU pragma: keep - Required for printf() and fflush() functions
 #include <cstdint> // IWYU pragma: keep - Required for uint8_t type
+#include <mutex> // IWYU pragma: keep - Required for thread-safe logging
 
 namespace Forge {
     enum class LogLevel : uint8_t {
@@ -20,26 +22,41 @@ namespace Forge {
         ERROR = 1,     // Debug only
         WARNING = 2,   // Debug only  
         INFO = 3,      // Debug only
-        DEBUG = 4      // Debug only
+        DEBUG_LEVEL = 4      // Debug only (renamed to avoid macro conflicts)
     };
 
 #ifdef DEBUG
-    // Full logging system in debug builds
+    // Full logging system in debug builds - lockless for safety
     class Logger {
+    private:
+        static std::atomic<bool> s_benchmarkMode;
+        
     public:
+        static void SetBenchmarkMode(bool enabled) {
+            s_benchmarkMode.store(enabled, std::memory_order_relaxed);
+        }
+        
+        static bool IsBenchmarkMode() {
+            return s_benchmarkMode.load(std::memory_order_relaxed);
+        }
+        
         static void Log(LogLevel level, const char* system, const std::string& message) {
-            // Fast printf-based formatting for performance
-            const char* levelStr = getLevelString(level);
-            printf("Forge Game Engine - [%s] %s: %s\n", system, levelStr, message.c_str());
+            if (s_benchmarkMode.load(std::memory_order_relaxed)) {
+                return;
+            }
             
-            // Flush immediately in debug for real-time feedback
+            // Single printf call for atomic output, keep fflush for immediate debug feedback
+            printf("Forge Game Engine - [%s] %s: %s\n", system, getLevelString(level), message.c_str());
             fflush(stdout);
         }
         
-        // Overload for C-style strings (even faster)
         static void Log(LogLevel level, const char* system, const char* message) {
-            const char* levelStr = getLevelString(level);
-            printf("Forge Game Engine - [%s] %s: %s\n", system, levelStr, message);
+            if (s_benchmarkMode.load(std::memory_order_relaxed)) {
+                return;
+            }
+            
+            // Single printf call for atomic output, keep fflush for immediate debug feedback
+            printf("Forge Game Engine - [%s] %s: %s\n", system, getLevelString(level), message);
             fflush(stdout);
         }
         
@@ -50,23 +67,46 @@ namespace Forge {
                 case LogLevel::ERROR: return "ERROR";
                 case LogLevel::WARNING: return "WARNING";
                 case LogLevel::INFO: return "INFO";
-                case LogLevel::DEBUG: return "DEBUG";
+                case LogLevel::DEBUG_LEVEL: return "DEBUG";
                 default: return "UNKNOWN";
             }
         }
     };
+    
+    // Initialize static atomic
+    inline std::atomic<bool> Logger::s_benchmarkMode{false};
     
     // Debug build macros - full functionality
     #define FORGE_CRITICAL(system, msg) Forge::Logger::Log(Forge::LogLevel::CRITICAL, system, std::string(msg))
     #define FORGE_ERROR(system, msg) Forge::Logger::Log(Forge::LogLevel::ERROR, system, std::string(msg))
     #define FORGE_WARN(system, msg) Forge::Logger::Log(Forge::LogLevel::WARNING, system, std::string(msg))
     #define FORGE_INFO(system, msg) Forge::Logger::Log(Forge::LogLevel::INFO, system, std::string(msg))
-    #define FORGE_DEBUG(system, msg) Forge::Logger::Log(Forge::LogLevel::DEBUG, system, std::string(msg))
+    #define FORGE_DEBUG(system, msg) Forge::Logger::Log(Forge::LogLevel::DEBUG_LEVEL, system, std::string(msg))
 
 #else
-    // Release builds - ultra-minimal overhead
+    // Release builds - ultra-minimal overhead, lockless
+    class Logger {
+    private:
+        static std::atomic<bool> s_benchmarkMode;
+        
+    public:
+        static void SetBenchmarkMode(bool enabled) {
+            s_benchmarkMode.store(enabled, std::memory_order_relaxed);
+        }
+        
+        static bool IsBenchmarkMode() {
+            return s_benchmarkMode.load(std::memory_order_relaxed);
+        }
+    };
+    
+    // Initialize static atomic
+    inline std::atomic<bool> Logger::s_benchmarkMode{false};
+    
     #define FORGE_CRITICAL(system, msg) do { \
-        printf("Forge Game Engine - [%s] CRITICAL: %s\n", system, std::string(msg).c_str()); \
+        if (!Forge::Logger::IsBenchmarkMode()) { \
+            printf("Forge Game Engine - [%s] CRITICAL: %s\n", system, std::string(msg).c_str()); \
+            fflush(stdout); \
+        } \
     } while(0)
     
     #define FORGE_ERROR(system, msg) ((void)0)      // Zero overhead
@@ -176,6 +216,10 @@ namespace Forge {
     #define NPC_WARN(msg) FORGE_WARN("NPC", msg)
     #define NPC_INFO(msg) FORGE_INFO("NPC", msg)
     #define NPC_DEBUG(msg) FORGE_DEBUG("NPC", msg)
+    
+    // Benchmark mode convenience macros
+    #define FORGE_ENABLE_BENCHMARK_MODE() Forge::Logger::SetBenchmarkMode(true)
+    #define FORGE_DISABLE_BENCHMARK_MODE() Forge::Logger::SetBenchmarkMode(false)
 
 } // namespace Forge
 

@@ -12,7 +12,6 @@
 #include <condition_variable>
 #include <functional>
 #include <future>
-#include <iostream>
 #include <memory>
 #include <mutex>
 #include <array>
@@ -23,6 +22,8 @@
 
 #include <SDL3/SDL.h>
 #include <vector>
+
+#include "Logger.hpp"
 
 namespace Forge {
 
@@ -104,8 +105,8 @@ public:
                 queue.reserve(newCapacity);
 
                 if (m_enableProfiling) {
-                    std::cout << "Forge Game Engine - Priority " << priorityIndex 
-                              << " queue capacity increased to " << newCapacity << std::endl;
+                    THREADSYSTEM_INFO("Priority " + std::to_string(priorityIndex) + 
+                                    " queue capacity increased to " + std::to_string(newCapacity));
                 }
             }
 
@@ -118,8 +119,8 @@ public:
 
             // If profiling is enabled and this is a high priority task, log it
             if (m_enableProfiling && priority <= TaskPriority::High && !description.empty()) {
-                std::cout << "Forge Game Engine - High priority task enqueued: "
-                          << description << " (Priority: " << priorityIndex << ")" << std::endl;
+                THREADSYSTEM_INFO("High priority task enqueued: " + description + 
+                                " (Priority: " + std::to_string(priorityIndex) + ")");
             }
         }
         
@@ -186,13 +187,13 @@ public:
 
         // Log statistics if any tasks were pending
         if (m_enableProfiling && totalPending > 0) {
-            std::cout << "Forge Game Engine - Stopping task queues with "
-                      << totalPending << " pending tasks" << std::endl;
+            THREADSYSTEM_INFO("Stopping task queues with " + std::to_string(totalPending) + " pending tasks");
 
             // Log pending tasks by priority
             for (const auto& [priority, count] : pendingByPriority) {
-                std::cout << "  Priority " << static_cast<int>(priority)
-                          << ": " << count << " tasks" << std::endl;
+                (void)priority; (void)count; // Suppress unused variable warnings
+                THREADSYSTEM_INFO("  Priority " + std::to_string(static_cast<int>(priority)) + 
+                                ": " + std::to_string(count) + " tasks");
             }
         }
 
@@ -238,8 +239,8 @@ public:
         m_desiredCapacity = capacity;
 
         if (m_enableProfiling) {
-            std::cout << "Forge Game Engine - Task queue capacity manually set to "
-                      << capacity << " (" << capacityPerQueue << " per priority)" << std::endl;
+            THREADSYSTEM_INFO("Task queue capacity manually set to " + std::to_string(capacity) + 
+                            " (" + std::to_string(capacityPerQueue) + " per priority)");
         }
     }
 
@@ -352,9 +353,8 @@ private:
 
                     // Log long wait times for high priority tasks
                     if (priorityIndex <= static_cast<int>(TaskPriority::High) && waitTime > 100 && !prioritizedTask.description.empty()) {
-                        std::cout << "Forge Game Engine - High priority task delayed: "
-                                  << prioritizedTask.description
-                                  << " waited " << waitTime << "ms" << std::endl;
+                        THREADSYSTEM_WARN("High priority task delayed: " + prioritizedTask.description + 
+                                        " waited " + std::to_string(waitTime) + "ms");
                     }
                 }
 
@@ -408,8 +408,8 @@ public:
         }
 
         if (enableProfiling) {
-            std::cout << "Forge Game Engine - Thread pool created with "
-                      << numThreads << " threads and profiling enabled" << std::endl;
+            THREADSYSTEM_INFO("Thread pool created with " + std::to_string(numThreads) + 
+                            " threads and profiling enabled");
         }
     }
 
@@ -442,14 +442,14 @@ public:
                     // Just join directly - we've given threads time to exit cleanly
                     worker.join();
                 } catch (const std::exception& e) {
-                    std::cout << "Forge Game Engine - Error joining thread: " << e.what() << std::endl;
+                    THREADSYSTEM_ERROR("Error joining thread: " + std::string(e.what()));
                 } catch (...) {
-                    std::cout << "Forge Game Engine - Unknown error joining thread" << std::endl;
+                    THREADSYSTEM_ERROR("Unknown error joining thread");
                 }
             }
         }
 
-        std::cout << "Forge Game Engine - ThreadPool shutdown completed" << std::endl;
+        THREADSYSTEM_INFO("ThreadPool shutdown completed");
 
         // Clear the worker threads
         m_workers.clear();
@@ -518,6 +518,7 @@ private:
         // For statistics tracking
         auto startTime = std::chrono::steady_clock::now();
         size_t tasksProcessed = 0;
+        (void)threadIndex; // Mark as intentionally unused for release builds
 
         // Set thread as interruptible (platform-specific if needed)
         try {
@@ -554,11 +555,10 @@ private:
                         task();
                         tasksProcessed++;
                     } catch (const std::exception& e) {
-                        std::cout << "Forge Game Engine - Error in worker thread " << threadIndex
-                                << ": " << e.what() << std::endl;
+                        THREADSYSTEM_ERROR("Error in worker thread " + std::to_string(threadIndex) + 
+                                         ": " + std::string(e.what()));
                     } catch (...) {
-                        std::cout << "Forge Game Engine - Unknown error in worker thread "
-                                << threadIndex << std::endl;
+                        THREADSYSTEM_ERROR("Unknown error in worker thread " + std::to_string(threadIndex));
                     }
 
                     // Track execution time
@@ -568,8 +568,8 @@ private:
 
                     // Log slow tasks if they exceed 16ms (60fps frame time)
                     if (taskDuration > 16) {
-                        std::cout << "Forge Game Engine - Worker " << threadIndex
-                                << " - Slow task: " << taskDuration << "ms" << std::endl;
+                        THREADSYSTEM_WARN("Worker " + std::to_string(threadIndex) + 
+                                        " - Slow task: " + std::to_string(taskDuration) + "ms");
                     }
 
                     // Clear task after execution to free resources
@@ -585,11 +585,11 @@ private:
                 }
             }
         } catch (const std::exception& e) {
-            std::cout << "Forge Game Engine - Worker thread " << threadIndex
-                    << " terminated with exception: " << e.what() << std::endl;
+            THREADSYSTEM_ERROR("Worker thread " + std::to_string(threadIndex) + 
+                             " terminated with exception: " + std::string(e.what()));
         } catch (...) {
-            std::cout << "Forge Game Engine - Worker thread " << threadIndex
-                    << " terminated with unknown exception" << std::endl;
+            THREADSYSTEM_ERROR("Worker thread " + std::to_string(threadIndex) + 
+                             " terminated with unknown exception");
         }
 
         // Log worker thread statistics on exit
@@ -597,9 +597,13 @@ private:
         auto totalDuration = std::chrono::duration_cast<std::chrono::milliseconds>(
             endTime - startTime).count();
 
-        std::cout << "Forge Game Engine - Worker " << threadIndex
-                  << " exiting after processing " << tasksProcessed << " tasks over "
-                  << totalDuration << "ms" << std::endl;
+        THREADSYSTEM_INFO("Worker " + std::to_string(threadIndex) + 
+                        " exiting after processing " + std::to_string(tasksProcessed) + 
+                        " tasks over " + std::to_string(totalDuration) + "ms");
+        
+        // Suppress unused variable warnings in release builds
+        (void)tasksProcessed;
+        (void)totalDuration;
     }
 };
 
@@ -628,7 +632,7 @@ public:
     }
 
     void clean() {
-        std::cout << "Forge Game Engine - ThreadSystem resources cleaned!" << std::endl;
+        THREADSYSTEM_INFO("ThreadSystem resources cleaned!");
 
         // Set shutdown flag first so any new accesses will be rejected
         m_isShutdown.store(true, std::memory_order_release);
@@ -646,8 +650,8 @@ public:
             // Log the number of pending tasks
             size_t pendingTasks = m_threadPool->getTaskQueue().size();
             if (pendingTasks > 0) {
-                std::cout << "Forge Game Engine - Canceling " << pendingTasks
-                          << " pending tasks during shutdown..." << std::endl;
+                THREADSYSTEM_INFO("Canceling " + std::to_string(pendingTasks) + 
+                                " pending tasks during shutdown...");
             }
 
             // Reset the thread pool - this will trigger its destructor
@@ -657,7 +661,7 @@ public:
             // Add a small delay to allow any final thread messages to print
             std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
-            std::cout << "Forge Game Engine - Thread pool successfully shut down" << std::endl;
+            THREADSYSTEM_INFO("Thread pool successfully shut down");
         }
     }
 
@@ -685,7 +689,7 @@ public:
         // If already shutdown, don't allow re-initialization
         if (m_isShutdown.load(std::memory_order_acquire)) {
             if (m_enableDebugLogging) {
-                std::cout << "Forge Game Engine - Note: ThreadSystem already shut down, ignoring init request" << std::endl;
+                THREADSYSTEM_WARN("ThreadSystem already shut down, ignoring init request");
             }
             return false;
         }
@@ -707,14 +711,12 @@ public:
         try {
             m_threadPool = std::make_unique<ThreadPool>(m_numThreads, m_queueCapacity, m_enableProfiling);
 
-            std::cout << "Forge Game Engine - ThreadSystem initialized with "
-                      << m_numThreads << " worker threads"
-                      << (m_enableProfiling ? " (profiling enabled)" : "") << std::endl;
+            THREADSYSTEM_INFO("ThreadSystem initialized with " + std::to_string(m_numThreads) + 
+                            " worker threads" + (m_enableProfiling ? " (profiling enabled)" : ""));
 
             return m_threadPool != nullptr;
         } catch (const std::exception& e) {
-            std::cout << "Forge Game Engine - Failed to initialize ThreadSystem: "
-                      << e.what() << std::endl;
+            THREADSYSTEM_ERROR("Failed to initialize ThreadSystem: " + std::string(e.what()));
             return false;
         }
     }
@@ -737,18 +739,18 @@ public:
         // If shutdown or no thread pool, silently reject the task (for tests)
         if (m_isShutdown.load(std::memory_order_acquire) || !m_threadPool) {
             if (m_enableDebugLogging) {
-                std::cout << "Forge Game Engine - Ignoring task after shutdown";
+                std::string msg = "Ignoring task after shutdown";
                 if (!description.empty()) {
-                    std::cout << " (" << description << ")";
+                    msg += " (" + description + ")";
                 }
-                std::cout << std::endl;
+                THREADSYSTEM_DEBUG(msg);
             }
             return;
         }
 
         // If debug logging is enabled and we have a description, log it
         if (!description.empty() && m_enableDebugLogging) {
-            std::cout << "Forge Game Engine - Enqueuing task: " << description << std::endl;
+            THREADSYSTEM_DEBUG("Enqueuing task: " + description);
         }
 
         m_threadPool->enqueue(std::move(task), priority, description);
@@ -781,11 +783,11 @@ public:
             std::promise<ResultType> promise;
 
             if (m_enableDebugLogging) {
-                std::cout << "Forge Game Engine - Returning default value for task after shutdown";
+                std::string msg = "Returning default value for task after shutdown";
                 if (!description.empty()) {
-                    std::cout << " (" << description << ")";
+                    msg += " (" + description + ")";
                 }
-                std::cout << std::endl;
+                THREADSYSTEM_DEBUG(msg);
             }
 
             // Set the result using default construction if possible
@@ -818,7 +820,7 @@ public:
                                                   description,
                                                   std::forward<Args>(args)...);
         } catch (const std::exception& e) {
-            std::cout << "Forge Game Engine - Error enqueueing task: " << e.what() << std::endl;
+            THREADSYSTEM_ERROR("Error enqueueing task: " + std::string(e.what()));
             throw;
         }
     }

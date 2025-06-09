@@ -6,6 +6,7 @@
 #define BOOST_TEST_MODULE AIScalingBenchmark
 #include <boost/test/unit_test.hpp>
 
+#include "core/Logger.hpp"
 #include <iostream>
 #include <chrono>
 #include <atomic>
@@ -135,6 +136,9 @@ struct GlobalFixture {
     GlobalFixture() {
         std::lock_guard<std::mutex> lock(g_setupMutex);
         if (!g_systemsInitialized) {
+            // Enable benchmark mode to silence manager logging during tests
+            FORGE_ENABLE_BENCHMARK_MODE();
+            
             Forge::ThreadSystem::Instance().init();
             AIManager::Instance().init();
             g_systemsInitialized = true;
@@ -169,7 +173,12 @@ struct GlobalFixture {
             } catch (...) {
                 std::cerr << "Unknown exception during cleanup" << std::endl;
             }
-
+            
+            std::this_thread::sleep_for(std::chrono::milliseconds(200));
+            
+            // Disable benchmark mode after cleanup
+            FORGE_DISABLE_BENCHMARK_MODE();
+            
             g_systemsInitialized = false;
         }
     }
@@ -221,13 +230,6 @@ struct AIScalingFixture {
         const int AI_THRESHOLD = 200;  // Updated threshold
         bool willUseThreading = (numEntities >= AI_THRESHOLD);
         std::string expectedMode = willUseThreading ? "Automatic Threading" : "Automatic Single-Threaded";
-
-        // Debug threading configuration
-        std::cout << "  [DEBUG] Realistic threading behavior:" << std::endl;
-        std::cout << "    Entity count: " << numEntities << std::endl;
-        std::cout << "    AI Threshold: " << AI_THRESHOLD << std::endl;
-        std::cout << "    Above threshold: " << (numEntities >= AI_THRESHOLD ? "YES" : "NO") << std::endl;
-        std::cout << "    Expected automatic behavior: " << expectedMode << std::endl;
 
         std::cout << "\nRealistic Benchmark: " << expectedMode << ", "
                   << numEntities << " entities, "
@@ -296,11 +298,8 @@ struct AIScalingFixture {
 
         // Get starting behavior execution count from AIManager
         size_t startingExecutions = AIManager::Instance().getBehaviorUpdateCount();
-        std::cout << "  [DEBUG] Starting behavior execution count: " << startingExecutions << std::endl;
 
         for (int run = 0; run < numMeasurements; run++) {
-            std::cout << "  [DEBUG] Run " << (run + 1) << " starting" << std::endl;
-
             size_t executionsBeforeRun = AIManager::Instance().getBehaviorUpdateCount();
 
             // Measure performance - start timing
@@ -317,10 +316,7 @@ struct AIScalingFixture {
             // Count behavior executions for this run from AIManager
             size_t executionsAfterRun = AIManager::Instance().getBehaviorUpdateCount();
             int runExecutions = static_cast<int>(executionsAfterRun - executionsBeforeRun);
-
-            std::cout << "  [DEBUG] Run " << (run + 1) << ": "
-                      << runExecutions << " behavior executions in "
-                      << duration.count() << " microseconds" << std::endl;
+            (void)runExecutions; // Suppress unused variable warning
 
             // Store the duration
             durations.push_back(std::max(1.0, static_cast<double>(duration.count())));
@@ -512,6 +508,9 @@ BOOST_FIXTURE_TEST_SUITE(AIScalingTests, AIScalingFixture)
 
 // Test realistic automatic threading behavior across different entity counts
 BOOST_AUTO_TEST_CASE(TestRealisticPerformance) {
+    // Enable benchmark mode to suppress AI manager logging
+    FORGE_ENABLE_BENCHMARK_MODE();
+    
     // Skip if shutdown is in progress
     if (g_shutdownInProgress.load()) {
         BOOST_TEST_MESSAGE("Skipping test due to shutdown in progress");
