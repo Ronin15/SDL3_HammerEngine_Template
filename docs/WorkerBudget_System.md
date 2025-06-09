@@ -55,7 +55,7 @@ Total Available Workers (hardware_concurrency - 1)
 | Physical Cores | ThreadSystem Workers | Engine | AI | Events | Buffer |
 |---------------|---------------------|--------|----|--------|---------|
 | 2             | 1                   | 1      | 1  | 0      | 0       |
-| 4             | 3                   | 1      | 1  | 1      | 0       | 
+| 4             | 3                   | 1      | 1  | 1      | 0       |
 | 6             | 5                   | 2      | 1  | 1      | 1       |
 | 8             | 7                   | 2      | 3  | 1      | 1       |
 | 12            | 11                  | 2      | 5  | 2      | 2       |
@@ -98,21 +98,21 @@ namespace Forge {
 inline WorkerBudget calculateWorkerBudget(size_t availableWorkers) {
     WorkerBudget budget;
     budget.totalWorkers = availableWorkers;
-    
+
     // Reserve minimum workers for GameEngine
     budget.engineReserved = (availableWorkers <= 2) ? 1 : ENGINE_MIN_WORKERS;
-    
+
     // Calculate remaining workers after engine reservation
     size_t remainingWorkers = availableWorkers - budget.engineReserved;
-    
+
     // Allocate percentages of remaining workers
     budget.aiAllocated = std::max(size_t(1), (remainingWorkers * AI_WORKER_PERCENTAGE) / 100);
     budget.eventAllocated = std::max(size_t(1), (remainingWorkers * EVENT_WORKER_PERCENTAGE) / 100);
-    
+
     // Calculate buffer workers
     size_t allocated = budget.aiAllocated + budget.eventAllocated;
     budget.remaining = (remainingWorkers > allocated) ? remainingWorkers - allocated : 0;
-    
+
     return budget;
 }
 ```
@@ -135,16 +135,16 @@ namespace Forge {
 void AIManager::update(float deltaTime) {
     if (m_entities.size() >= THREADING_THRESHOLD && m_useThreading.load()) {
         auto& threadSystem = Forge::ThreadSystem::Instance();
-        
+
         // Calculate worker budget
         size_t availableWorkers = static_cast<size_t>(threadSystem.getThreadCount());
         Forge::WorkerBudget budget = Forge::calculateWorkerBudget(availableWorkers);
         size_t aiWorkerBudget = budget.aiAllocated;
-        
+
         // Limit concurrent batches to worker budget
         size_t maxAIBatches = aiWorkerBudget;
         size_t optimalBatchSize = std::max(size_t(25), m_entities.size() / maxAIBatches);
-        
+
         // Submit batches respecting worker budget
         for (size_t i = 0; i < m_entities.size(); i += optimalBatchSize) {
             size_t batchEnd = std::min(i + optimalBatchSize, m_entities.size());
@@ -161,23 +161,23 @@ void AIManager::update(float deltaTime) {
 ```cpp
 void EventManager::updateEventTypeBatchThreaded(EventTypeId typeId) {
     auto& threadSystem = Forge::ThreadSystem::Instance();
-    
+
     // Calculate worker budget
     size_t availableWorkers = static_cast<size_t>(threadSystem.getThreadCount());
     Forge::WorkerBudget budget = Forge::calculateWorkerBudget(availableWorkers);
     size_t eventWorkerBudget = budget.eventAllocated;
-    
+
     // Check queue pressure before submitting batches
     size_t currentQueueSize = threadSystem.getQueueSize();
     size_t maxQueuePressure = availableWorkers * 2;
-    
+
     if (currentQueueSize < maxQueuePressure && container.size() > 10) {
         // Use threaded processing with worker budget
         size_t eventsPerBatch = std::max(size_t(1), container.size() / eventWorkerBudget);
-        
+
         for (size_t i = 0; i < container.size(); i += eventsPerBatch) {
             size_t batchEnd = std::min(i + eventsPerBatch, container.size());
-            
+
             threadSystem.enqueueTask([this, &container, i, batchEnd]() {
                 for (size_t j = i; j < batchEnd; ++j) {
                     if (container[j].isActive() && container[j].event) {
@@ -202,13 +202,13 @@ void GameEngine::update(float deltaTime) {
         auto& threadSystem = Forge::ThreadSystem::Instance();
         size_t availableWorkers = static_cast<size_t>(threadSystem.getThreadCount());
         Forge::WorkerBudget budget = Forge::calculateWorkerBudget(availableWorkers);
-        
+
         // Submit critical engine tasks with guaranteed worker allocation
         threadSystem.enqueueTask([this, deltaTime]() {
             // Critical game loop coordination tasks
         }, Forge::TaskPriority::Critical, "GameEngine_Critical");
     }
-    
+
     // Other subsystems run with their allocated budgets
     mp_gameStateManager->update(deltaTime);
 }
@@ -312,7 +312,7 @@ bool isQueueUnderPressure(const Forge::ThreadSystem& threadSystem, size_t availa
 
 ### Percentage Adjustments
 
-To modify worker allocation percentages, edit `utils/WorkerBudget.hpp`:
+To modify worker allocation percentages, edit `core/WorkerBudget.hpp`:
 
 ```cpp
 // Conservative allocation (more buffer)
@@ -352,7 +352,7 @@ size_t maxQueuePressure = availableWorkers * 3;
 
 #### 1. Poor Threading Performance
 **Symptoms**: Multi-threaded slower than single-threaded
-**Causes**: 
+**Causes**:
 - Batch size too small (high threading overhead)
 - Queue pressure too high (contention)
 - Insufficient work per batch
@@ -390,17 +390,17 @@ size_t maxQueuePressure = availableWorkers * 3;
 void analyzeWorkerBudget() {
     size_t workers = Forge::ThreadSystem::Instance().getThreadCount();
     auto budget = Forge::calculateWorkerBudget(workers);
-    
+
     std::cout << "=== Worker Budget Analysis ===" << std::endl;
     std::cout << "Total Workers: " << budget.totalWorkers << std::endl;
     std::cout << "Engine Reserved: " << budget.engineReserved << std::endl;
     std::cout << "AI Allocated: " << budget.aiAllocated << std::endl;
     std::cout << "Event Allocated: " << budget.eventAllocated << std::endl;
     std::cout << "Buffer Remaining: " << budget.remaining << std::endl;
-    
+
     float aiPercent = (float)budget.aiAllocated / budget.totalWorkers * 100;
     float eventPercent = (float)budget.eventAllocated / budget.totalWorkers * 100;
-    
+
     std::cout << "AI Utilization: " << aiPercent << "%" << std::endl;
     std::cout << "Event Utilization: " << eventPercent << "%" << std::endl;
 }
@@ -412,9 +412,9 @@ void monitorQueuePressure() {
     auto& threadSystem = Forge::ThreadSystem::Instance();
     size_t queueSize = threadSystem.getQueueSize();
     size_t workers = threadSystem.getThreadCount();
-    
+
     float pressure = (float)queueSize / workers;
-    
+
     std::cout << "Queue Pressure: " << pressure << "x workers" << std::endl;
     if (pressure > 2.0f) {
         std::cout << "WARNING: High queue pressure detected!" << std::endl;

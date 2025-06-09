@@ -14,7 +14,7 @@ I use the Zed IDE with custom cmake and ninja task configurations to build/compi
 ## Features Overview
 
 - SDL3 integration with SDL_image, SDL_ttf, and SDL_mixer
-- Fast header-only binary serialization system (replaces Boost serialization)
+- Fast header-only binary serialization system
 - Cross-platform support (Windows, macOS, Linux)
 - Multi-threading support with priority-based task scheduling
 - Automatic dependency management with FetchContent
@@ -22,13 +22,13 @@ I use the Zed IDE with custom cmake and ninja task configurations to build/compi
 - Game state management system (state machine)
 - Entity state management system (state machine)
 - Event management system for game events (weather, scene transitions, NPC spawning, Quests)
-- Save game system with fast BinarySerializer (10x faster than Boost, smart pointer-based memory management)
+- Save game system with fast BinarySerializer (smart pointer-based memory management)
 - Texture management (auto loads all from img dir)
 - Sound & Music management (auto loads all from sound and music dir) stop, start, pause, halt, play sfx
 - Font management (auto loads all from font dir)
 - UI management system with comprehensive component support and layout management
 - UI stress testing framework for performance validation and optimization
-- AI Manager framework for adding AI behaviors that uses a messaging system (Optimized for 10K+ entities with 995K updates/sec)
+- AI Manager framework for adding AI behaviors that uses a messaging system
 - High-Performance Multi-Threading system with WorkerBudget allocation and 4096 task queue capacity
 - Test player and NPC sprites with 2 frame animations. They are all copyrighted - Hammer Forged Games (C) 2025
 - Input handling:
@@ -42,7 +42,7 @@ I use the Zed IDE with custom cmake and ninja task configurations to build/compi
   - Event system performance and functionality tests
   - Threading system validation and optimization tests
   - Performance regression testing and continuous integration
-  - Stress testing up to 100K entities (2.3M updates/sec achieved)
+  - Stress testing up to 100K entities (2.3M updates/sec achieved) **Mac M3 Pro 11 core**
 
 - Supports the following Image, Sound, and font formats:
   - Images: png
@@ -50,7 +50,7 @@ I use the Zed IDE with custom cmake and ninja task configurations to build/compi
   - Fonts: ttf and otf
 
 ## Performance Capabilities
-
+**M3 MAC Pro 11 core for most bench numbers**
 ### Multi-Threading Performance
 - **10K Entity Target**: Achieves 995K entity updates per second (5.85x threading improvement over baseline)
 - **100K Entity Stress Test**: Demonstrates 2.2M+ entity updates per second capability
@@ -60,13 +60,13 @@ I use the Zed IDE with custom cmake and ninja task configurations to build/compi
 - **Cache-Friendly Batching**: Optimized batch sizes (25-1000 entities) for optimal memory access patterns
 
 ### System Scalability
-- **Hardware Adaptive**: Automatically scales performance with processor count (tested up to 24 cores)
+- **Hardware Adaptive**: Automatically scales performance with processor count (tested up to 24 cores) - Ryzen 7900x3d
 - **Graceful Degradation**: Queue pressure monitoring with automatic fallback to single-threaded processing
 - **Memory Efficient**: ~32KB queue overhead for massive performance gains
 - **Stability Tested**: Zero timeouts or system hangs during extreme stress testing
 
 ### Real-World Performance
-- Maintains consistent 60 FPS with 10K+ active entities on 10-core systems
+- Maintains consistent 60 FPS with 10K+ active entities on 11-core systems
 - Automatic threading threshold (200 entities) provides optimal performance across hardware tiers
 - Excellent scaling: 1.0x baseline → 5.85x at 10K entities with threading
 - Handles mixed workloads (AI + Events + Physics) without resource conflicts
@@ -89,15 +89,32 @@ Windows will need some env vars setup for path:
 - C:\msys64\mingw64\lib
 - C:\msys64\mingw64\include
 - C:\msys64\mingw64\bin
-- Windows build tools
 
+Packages needed:
+- mingw-w64-x86_64-boost - testing
+- mingw-w64-x86_64-harfbuzz - SDL3 req
+- mingw-w64-x86_64-freetype - SDL3 req
+```
+ pacman -S mingw-w64-x86_64-boost mingw-w64-x86_64-harfbuzz mingw-w64-x86_64-freetype
+```
 ### Linux
 Follow the instructions on the official SDL3 website to install SDL3 dependencies.
 [https://wiki.libsdl.org/SDL3/README-linux](https://wiki.libsdl.org/SDL3/README-linux)
 
+Boost needed for testing.
+  - sudo apt-get install boost
+
+I'm using:
+  -  Operating System: Ubuntu 24.04.2 LTS
+  -  Kernel: Linux 6.11.0-26-generic
+
 ### macOS
 Homebrew is recommended for SDL3 dependencies like harfbuzz, truetype, and freetype etc.
 brew install sdl3 sdl3_image sdl3_ttf sdl3_mixer should get you everything you need for SDL3. However, via CMAKE the project will use the SDL3 libraries downloaded from official SDL github via fecthContent. It will not use the SDL3 libraries installed via Homebrew.
+
+- Boost is needed for the test framework
+  -  brew install boost
+
 xcode command line tools is needed to compile.
 
 ### Build Steps
@@ -360,7 +377,7 @@ See `include/managers/UIManager.hpp` for the full API, `docs/ui/SDL3_Logical_Pre
 
 The EventManager provides a high-performance, type-indexed event system optimized for speed:
 
-- **Ultra-Fast Event Processing**: Type-indexed storage system eliminates string lookups for maximum performance
+- **Fast Event Processing**: Type-indexed storage system eliminates string lookups for maximum performance
 - **Data-Oriented Design**: Cache-friendly event data structures optimized for batch processing
 - **Threading Integration**: Seamless ThreadSystem integration with worker budget allocation and queue pressure management
 - **Event Type System**: Strongly-typed event categories (Weather, SceneChange, NPCSpawn, Custom) for fast dispatch
@@ -419,7 +436,7 @@ The AIManager provides a high-performance AI behavior management system optimize
 
 **Priority System Details**:
 - **0-2 Priority**: Background entities (1.0x-1.2x update range)
-- **3-5 Priority**: Standard entities (1.3x-1.5x update range) 
+- **3-5 Priority**: Standard entities (1.3x-1.5x update range)
 - **6-8 Priority**: Important entities (1.6x-1.8x update range)
 - **9 Priority**: Critical entities (1.9x update range)
 
@@ -446,10 +463,12 @@ See docs/AIManager.md, include/gameStates/AIDemoState.hpp, and src/gameStates/AI
 
 See `docs/AIManager.md` for detailed documentation with examples and best practices. Additional API details can be found in `include/managers/AIManager.hpp`, `include/ai/AIBehavior.hpp`, and the specific behavior implementations.
 
-![Forge Engine](./md_imgs/Forge_Engine.png)
+![Forge Engine](./md_imgs/AI_Demo.png)
 ![Forge Engine](./md_imgs/AIDemo_resources.png)
 
-## Template Architecture Overview
+## Engine Architecture Overview
+
+![Forge Engine](./md_imgs/Forge_Engine0.1.8.png)
 
 This SDL3 Game Template represents a complete, production-ready game engine framework designed for performance, safety, and scalability. The architecture emphasizes:
 

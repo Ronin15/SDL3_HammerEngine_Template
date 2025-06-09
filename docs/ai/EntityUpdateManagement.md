@@ -50,8 +50,7 @@ void GameState::update() {
     // Update player manually
     m_player->update();
     
-    // All AI entities updated automatically by GameEngine::processBackgroundTasks()
-    // which calls AIManager::Instance().update()
+    // All AI entities updated automatically by AIManager::Instance().update() in main GameLoop
 }
 ```
 
@@ -82,7 +81,7 @@ float adjustedMaxDist = maxUpdateDistance * priorityMultiplier * priorityFactor;
 - **Priority 9**: Effective distances (1900, 950, 380)
 
 ### **Batch Processing**
-- Automatic threading for large entity counts (>100 entities)
+- Automatic threading for large entity counts (>200 entities)
 - Optimal batch sizes (1000-10000 entities per batch)
 - ThreadSystem integration for parallel processing
 - Timeout protection against hung tasks
@@ -116,8 +115,6 @@ AIPerformanceStats getPerformanceStats() const;
 
 ### **Configuration**
 ```cpp
-// Threading configuration
-void configureThreading(bool useThreading, unsigned int maxThreads = 0);
 
 // Priority multiplier (affects all distance calculations)
 void configurePriorityMultiplier(float multiplier = 1.0f);

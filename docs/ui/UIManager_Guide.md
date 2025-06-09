@@ -478,7 +478,6 @@ public:
         
         return true;
     }
-</invoke>
     
     void update(float deltaTime) override {
         auto& ui = UIManager::Instance();

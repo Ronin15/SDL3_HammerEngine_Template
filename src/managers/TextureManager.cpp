@@ -4,8 +4,7 @@
 */
 
 #include "managers/TextureManager.hpp"
-#include "utils/Logger.hpp"
-#include "utils/Logger.hpp"
+#include "core/Logger.hpp"
 #include <filesystem>
 #include <algorithm>
 
@@ -75,7 +74,7 @@ bool TextureManager::load(const std::string& fileName,
     }
 
     TEXTURE_INFO("Loaded " + std::to_string(texturesLoaded) + " textures from directory: " + fileName);
-    
+
     // Suppress unused variable warning in release builds
     (void)texturesLoaded;
     return loadedAny; // Return true if at least one texture was loaded successfully

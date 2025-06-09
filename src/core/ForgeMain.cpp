@@ -8,7 +8,7 @@
 #include "core/GameEngine.hpp"
 #include "core/ThreadSystem.hpp"
 #include "core/GameLoop.hpp"
-#include "utils/Logger.hpp"
+#include "core/Logger.hpp"
 
 const int WINDOW_WIDTH{1920};
 const int WINDOW_HEIGHT{1080};
@@ -38,10 +38,10 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char* argv[]) {
     return -1;
   }
 
-  THREADSYSTEM_INFO("Thread system initialized with " + 
-                    std::to_string(threadSystem.getThreadCount()) + 
-                    " worker threads and capacity for " + 
-                    std::to_string(threadSystem.getQueueCapacity()) + 
+  THREADSYSTEM_INFO("Thread system initialized with " +
+                    std::to_string(threadSystem.getThreadCount()) +
+                    " worker threads and capacity for " +
+                    std::to_string(threadSystem.getQueueCapacity()) +
                     " parallel tasks");
 
   // Initialize GameEngine

@@ -4,14 +4,14 @@
 */
 
 #include "managers/EventManager.hpp"
-#include "utils/Logger.hpp"
+#include "core/Logger.hpp"
 #include "events/Event.hpp"
 #include "events/WeatherEvent.hpp"
 #include "events/SceneChangeEvent.hpp"
 #include "events/NPCSpawnEvent.hpp"
 #include "events/EventFactory.hpp"
 #include "core/ThreadSystem.hpp"
-#include "utils/WorkerBudget.hpp"
+#include "core/WorkerBudget.hpp"
 #include <algorithm>
 #include <chrono>
 
@@ -398,16 +398,16 @@ void EventManager::updateEventTypeBatchThreaded(EventTypeId typeId) {
     size_t availableWorkers = static_cast<size_t>(threadSystem.getThreadCount());
     Forge::WorkerBudget budget = Forge::calculateWorkerBudget(availableWorkers);
     size_t eventWorkerBudget = budget.eventAllocated;
-    
+
     // Check if we should use threading based on our budget and current queue pressure
     size_t currentQueueSize = threadSystem.getQueueSize();
     size_t maxQueuePressure = availableWorkers * 2; // Allow 2x worker count in queue
-    
+
     if (currentQueueSize < maxQueuePressure && container.size() > 10) {
         // Use threaded processing with cache-friendly batching like AIManager
         size_t targetBatches = eventWorkerBudget;
         size_t optimalBatchSize = std::max(size_t(10), container.size() / targetBatches);
-        
+
         // Apply cache-friendly limits based on event count
         if (container.size() < 100) {
             optimalBatchSize = std::min(optimalBatchSize, size_t(25));   // Small cache-friendly batches
@@ -416,14 +416,14 @@ void EventManager::updateEventTypeBatchThreaded(EventTypeId typeId) {
         } else {
             optimalBatchSize = std::min(optimalBatchSize, size_t(100));  // Larger batches for big workloads
         }
-        
+
         std::atomic<size_t> completedBatches{0};
         size_t batchesSubmitted = 0;
-        
+
         // Process ALL events, not just up to worker budget limit
         for (size_t i = 0; i < container.size(); i += optimalBatchSize) {
             size_t batchEnd = std::min(i + optimalBatchSize, container.size());
-            
+
             threadSystem.enqueueTask([&container, i, batchEnd, &completedBatches]() {
                 for (size_t j = i; j < batchEnd; ++j) {
                     if (container[j].isActive() && container[j].event) {
@@ -432,10 +432,10 @@ void EventManager::updateEventTypeBatchThreaded(EventTypeId typeId) {
                 }
                 completedBatches.fetch_add(1, std::memory_order_relaxed);
             }, Forge::TaskPriority::Normal, "Event_Batch_Update");
-            
+
             batchesSubmitted++;
         }
-        
+
         // Wait for all batches to complete with adaptive waiting strategy
         if (batchesSubmitted > 0) {
             auto waitStart = std::chrono::high_resolution_clock::now();
@@ -450,7 +450,7 @@ void EventManager::updateEventTypeBatchThreaded(EventTypeId typeId) {
                     std::this_thread::sleep_for(std::chrono::microseconds(100));
                 }
                 waitIteration++;
-                
+
                 // Timeout protection
                 auto elapsed = std::chrono::high_resolution_clock::now() - waitStart;
                 if (elapsed > std::chrono::seconds(5)) {
@@ -460,10 +460,10 @@ void EventManager::updateEventTypeBatchThreaded(EventTypeId typeId) {
                 }
             }
         }
-        
+
         EVENT_DEBUG("Updated " + std::to_string(container.size()) + " events of type " +
-                    std::string(getEventTypeName(typeId)) + " using " + std::to_string(batchesSubmitted) + 
-                    " batches (optimal size: " + std::to_string(optimalBatchSize) + 
+                    std::string(getEventTypeName(typeId)) + " using " + std::to_string(batchesSubmitted) +
+                    " batches (optimal size: " + std::to_string(optimalBatchSize) +
                     ", budget: " + std::to_string(eventWorkerBudget) + ")");
     } else {
         // Fall back to single-threaded processing
@@ -472,7 +472,7 @@ void EventManager::updateEventTypeBatchThreaded(EventTypeId typeId) {
                 eventData.event->update();
             }
         }
-        
+
         EVENT_DEBUG("Updated " + std::to_string(container.size()) + " events of type " +
                     std::string(getEventTypeName(typeId)) + " (single-threaded fallback)");
     }

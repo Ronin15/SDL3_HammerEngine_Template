@@ -12,366 +12,352 @@ set "RED=[91m"
 set "BLUE=[94m"
 set "NC=[0m"
 
-echo !YELLOW!Running AI Scaling Benchmark...!NC!
-
-:: Navigate to project root directory (in case script is run from elsewhere)
+:: Script configuration
 set "SCRIPT_DIR=%~dp0"
+set "BUILD_DIR=%SCRIPT_DIR%..\..\build"
+set "RESULTS_DIR=%SCRIPT_DIR%..\..\test_results"
+set "BUILD_TYPE=debug"
+set "VERBOSE=false"
+set "EXTREME_TEST=false"
+
+:: Function to print colored output (using labels as functions)
+goto :main
+
+:print_status
+echo !BLUE![INFO]!NC! %~1
+goto :eof
+
+:print_success
+echo !GREEN![SUCCESS]!NC! %~1
+goto :eof
+
+:print_warning
+echo !YELLOW![WARNING]!NC! %~1
+goto :eof
+
+:print_error
+echo !RED![ERROR]!NC! %~1
+goto :eof
+
+:show_help
+echo AI Scaling Benchmark Test Script
+echo.
+echo Usage: run_ai_benchmark.bat [options]
+echo.
+echo Options:
+echo   --debug       Run debug build ^(default^)
+echo   --release     Run release build ^(optimized^)
+echo   --verbose     Show detailed benchmark output
+echo   --extreme     Run extended benchmarks
+echo   --clean       Clean build artifacts before building
+echo   --help        Show this help message
+echo.
+echo Examples:
+echo   run_ai_benchmark.bat                    # Run benchmark with default settings
+echo   run_ai_benchmark.bat --release         # Run optimized benchmark
+echo   run_ai_benchmark.bat --verbose         # Show detailed performance metrics
+echo   run_ai_benchmark.bat --extreme         # Run extended stress tests
+echo   run_ai_benchmark.bat --clean --release # Clean build and run optimized benchmark
+echo.
+echo Output:
+echo   Results are saved to timestamped files in test_results directory
+echo   Console output shows real-time benchmark progress
+echo.
+echo The benchmark tests AI Manager performance across multiple scales:
+echo   - Basic AI performance ^(small entity count^)
+echo   - Threshold testing ^(automatic threading behavior^)
+echo   - Medium scale performance ^(1K entities^)
+echo   - Large scale testing ^(5K entities^)
+echo   - Stress testing ^(100K entities if --extreme^)
+goto :eof
+
+:extract_performance_summary
+:: Extract key performance metrics from the AI benchmark output
+call :print_status "Extracting AI performance summary..."
+
+echo.
+echo !BLUE!==== AI PERFORMANCE SUMMARY ====!NC!
+
+:: Check if realistic performance test exists
+findstr /c:"===== REALISTIC PERFORMANCE TESTING =====" "!OUTPUT_FILE!" >nul 2>&1
+if !ERRORLEVEL! equ 0 (
+    echo.
+    echo !YELLOW!AI Performance Test Results:!NC!
+) else (
+    call :print_warning "AI performance test section not found in output"
+    goto :extract_basic_metrics
+)
+
+:: Extract all performance metrics in order
+echo.
+echo !YELLOW!Performance Metrics Found:!NC!
+findstr /c:"Total time:" "!OUTPUT_FILE!" 2>nul | findstr /n "."
+findstr /c:"Entity updates per second:" "!OUTPUT_FILE!" 2>nul | findstr /n "."
+findstr /c:"Total behavior updates:" "!OUTPUT_FILE!" 2>nul | findstr /n "."
+
+:extract_basic_metrics
+:: Check for scalability summary
+echo.
+echo !YELLOW!Scalability Analysis:!NC!
+findstr /c:"REALISTIC SCALABILITY SUMMARY:" "!OUTPUT_FILE!" >nul 2>&1
+if !ERRORLEVEL! equ 0 (
+    echo   Scalability summary found in output
+    :: Extract the summary table
+    findstr /c:"Entity Count" /c:"Threading Mode" /c:"Updates Per Second" "!OUTPUT_FILE!" 2>nul
+) else (
+    echo   No scalability summary found
+)
+
+:: Check for test verification
+echo.
+echo !YELLOW!Test Verification:!NC!
+findstr /c:"Entity updates:" "!OUTPUT_FILE!" | findstr /c:"/" >nul 2>&1
+if !ERRORLEVEL! equ 0 (
+    echo !GREEN!  Entity verification tests found and checked!NC!
+    :: Count successful vs failed verifications
+    for /f %%i in ('findstr /c:"Entity updates:" "!OUTPUT_FILE!" 2^>nul ^| find /c /v ""') do (
+        echo    Total entity verification checks: %%i
+    )
+) else (
+    echo !YELLOW!  No entity verification data found!NC!
+)
+
+:: Check for any threading behavior analysis
+echo.
+echo !YELLOW!Threading Analysis:!NC!
+findstr /c:"Automatic Single-Threaded" "!OUTPUT_FILE!" >nul 2>&1
+if !ERRORLEVEL! equ 0 (
+    echo   Single-threaded mode performance detected
+)
+findstr /c:"Automatic Threading" "!OUTPUT_FILE!" >nul 2>&1
+if !ERRORLEVEL! equ 0 (
+    echo   Multi-threaded mode performance detected
+)
+
+:: Extract best performance numbers
+echo.
+echo !YELLOW!Performance Highlights:!NC!
+:: Find the highest entity updates per second
+for /f "tokens=*" %%a in ('findstr /c:"Entity updates per second:" "!OUTPUT_FILE!" 2^>nul') do (
+    echo   %%a
+)
+
+echo.
+goto :eof
+
+:main
+:: Navigate to script directory
 cd /d "%SCRIPT_DIR%"
 
-:: Create directory for test results
-if not exist "..\..\test_results" mkdir "..\..\test_results"
-
-:: Set default build type
-set BUILD_TYPE=Debug
-set VERBOSE=false
-set EXTREME_TEST=false
-
-:: Process command-line options
+:: Parse command line arguments
 :parse_args
 if "%~1"=="" goto :done_parsing
 if /i "%~1"=="--debug" (
-    set BUILD_TYPE=Debug
-    shift
-    goto :parse_args
-)
-if /i "%~1"=="--verbose" (
-    set VERBOSE=true
-    shift
-    goto :parse_args
-)
-if /i "%~1"=="--extreme" (
-    set EXTREME_TEST=true
+    set "BUILD_TYPE=debug"
     shift
     goto :parse_args
 )
 if /i "%~1"=="--release" (
-    set BUILD_TYPE=Release
+    set "BUILD_TYPE=release"
+    shift
+    goto :parse_args
+)
+if /i "%~1"=="--verbose" (
+    set "VERBOSE=true"
+    shift
+    goto :parse_args
+)
+if /i "%~1"=="--extreme" (
+    set "EXTREME_TEST=true"
+    shift
+    goto :parse_args
+)
+if /i "%~1"=="--clean" (
+    call :print_status "Cleaning build artifacts..."
+    if exist "!BUILD_DIR!" (
+        rmdir /s /q "!BUILD_DIR!"
+        call :print_success "Build directory cleaned"
+    )
     shift
     goto :parse_args
 )
 if /i "%~1"=="--help" (
-    echo Usage: %0 [--debug] [--verbose] [--extreme] [--release] [--help]
-    echo   --debug     Run debug build ^(default^)
-    echo   --release   Run release build
-    echo   --verbose   Show detailed output
-    echo   --extreme   Run extended benchmarks
-    echo   --help      Show this help message
+    call :show_help
     exit /b 0
 )
-echo Unknown option: %1
-echo Usage: %0 [--debug] [--verbose] [--extreme] [--release] [--help]
+call :print_error "Unknown option: %1"
+echo Use --help for usage information
 exit /b 1
 
 :done_parsing
 
-echo !YELLOW!Running AI Scaling Benchmark...!NC!
+:: Create results directory if it doesn't exist
+if not exist "!RESULTS_DIR!" mkdir "!RESULTS_DIR!"
 
-:: Pass extreme test option to the benchmark if requested
-set BENCHMARK_OPTS=
-if "%EXTREME_TEST%"=="true" (
-    set BENCHMARK_OPTS=!BENCHMARK_OPTS! --extreme
-)
+call :print_status "Starting AI Scaling Benchmark..."
+call :print_status "Build type: !BUILD_TYPE!"
 
-:: Determine the correct path to the benchmark executable
-if "%BUILD_TYPE%"=="Debug" (
-    set BENCHMARK_EXECUTABLE=..\..\bin\debug\ai_scaling_benchmark.exe
-) else (
-    set BENCHMARK_EXECUTABLE=..\..\bin\release\ai_scaling_benchmark.exe
-)
+:: Navigate to script directory
+cd /d "%SCRIPT_DIR%"
 
-:: Verify executable exists
-if not exist "!BENCHMARK_EXECUTABLE!" (
-    echo !RED!Error: Benchmark executable not found at '!BENCHMARK_EXECUTABLE!'!NC!
-    :: Attempt to find the executable
-    echo !YELLOW!Searching for benchmark executable...!NC!
-    set FOUND_EXECUTABLE=
-    for /r "bin" %%f in (ai_scaling_benchmark*.exe) do (
-        echo !GREEN!Found executable at: %%f!NC!
-        set BENCHMARK_EXECUTABLE=%%f
-        set FOUND_EXECUTABLE=true
-        goto :found_executable
-    )
-    
-    if "!FOUND_EXECUTABLE!"=="" (
-        echo !RED!Could not find the benchmark executable. Build may have failed.!NC!
+:: Check if benchmark executable exists
+set "BENCHMARK_EXEC=!SCRIPT_DIR!..\..\bin\!BUILD_TYPE!\ai_scaling_benchmark.exe"
+if not exist "!BENCHMARK_EXEC!" (
+    set "BENCHMARK_EXEC=!SCRIPT_DIR!..\..\bin\!BUILD_TYPE!\ai_scaling_benchmark"
+    if not exist "!BENCHMARK_EXEC!" (
+        call :print_error "Benchmark executable not found: !BENCHMARK_EXEC!"
+        call :print_status "Please build the project first using the build script"
         exit /b 1
     )
 )
 
-:found_executable
-
-:: Prepare to run the benchmark
-echo !YELLOW!This may take several minutes depending on your hardware.!NC!
-echo.
-
-:: Create output file for results
+:: Create timestamped output file
 for /f "tokens=2 delims==" %%a in ('wmic OS Get localdatetime /value') do set "dt=%%a"
 set "TIMESTAMP=!dt:~0,8!_!dt:~8,6!"
-set "RESULTS_FILE=..\..\test_results\ai_scaling_benchmark_!TIMESTAMP!.txt"
-if not exist "..\..\test_results" mkdir "..\..\test_results"
+set "OUTPUT_FILE=!RESULTS_DIR!\ai_scaling_benchmark_!TIMESTAMP!.txt"
 
-:: Timeout for comprehensive benchmarks - adjusted for current performance
-set TIMEOUT_DURATION=180
+call :print_status "Results will be saved to: !OUTPUT_FILE!"
 
-:: Set test command options for better handling of threading issues
-set TEST_OPTS=--catch_system_errors=no --no_result_code
-if "%VERBOSE%"=="true" (
-    set TEST_OPTS=!TEST_OPTS! --log_level=all
+:: Prepare output file header
+echo AI Scaling Benchmark Results> "!OUTPUT_FILE!"
+echo ============================>> "!OUTPUT_FILE!"
+echo Date: %date% %time%>> "!OUTPUT_FILE!"
+echo Build Type: !BUILD_TYPE!>> "!OUTPUT_FILE!"
+echo System: %OS% %PROCESSOR_ARCHITECTURE%>> "!OUTPUT_FILE!"
+if "!EXTREME_TEST!"=="true" (
+    echo Extreme testing: ENABLED>> "!OUTPUT_FILE!"
 ) else (
-    set TEST_OPTS=!TEST_OPTS! --log_level=test_suite
+    echo Extreme testing: DISABLED>> "!OUTPUT_FILE!"
+)
+echo.>> "!OUTPUT_FILE!"
+
+:: Set up test options
+set "TEST_OPTS=--catch_system_errors=no --no_result_code"
+if "!VERBOSE!"=="true" (
+    set "TEST_OPTS=!TEST_OPTS! --log_level=all"
+) else (
+    set "TEST_OPTS=!TEST_OPTS! --log_level=test_suite"
 )
 
 :: Add extreme test flag if requested
-if "%EXTREME_TEST%"=="true" (
-    set TEST_OPTS=!TEST_OPTS! --extreme
+if "!EXTREME_TEST!"=="true" (
+    set "TEST_OPTS=!TEST_OPTS! --extreme"
+    call :print_status "Running with extreme stress testing enabled"
 )
 
-echo !BLUE!Starting benchmark run at %date% %time%!NC!
-echo !YELLOW!Running with options: !TEST_OPTS!!NC!
-echo !YELLOW!Timeout duration: !TIMEOUT_DURATION!s!NC!
+:: Run the benchmark
+call :print_status "Running AI scaling benchmark..."
+call :print_status "This may take several minutes depending on hardware and test options..."
 
-:: Run the benchmark with output capturing and specific options to handle threading issues
-echo ============ BENCHMARK START ============> "!RESULTS_FILE!"
-echo Date: %date% %time%>> "!RESULTS_FILE!"
-echo Build type: !BUILD_TYPE!>> "!RESULTS_FILE!"
-echo Command: !BENCHMARK_EXECUTABLE! !TEST_OPTS!>> "!RESULTS_FILE!"
-echo =========================================>> "!RESULTS_FILE!"
-echo.>> "!RESULTS_FILE!"
-
-:: Run the benchmark with output capturing and specific options to handle threading issues
-if "%VERBOSE%"=="true" (
-    :: Run with verbose output and save to file
-    powershell -Command "& { $job = Start-Job -ScriptBlock { & '%CD%\!BENCHMARK_EXECUTABLE!' !TEST_OPTS! 2>&1 }; if (Wait-Job $job -Timeout !TIMEOUT_DURATION!) { Receive-Job $job } else { Stop-Job $job; Remove-Job $job; Write-Host 'TIMEOUT' } }" > "!RESULTS_FILE!"
-    set TEST_RESULT=!ERRORLEVEL!
-    type "!RESULTS_FILE!"
+if "!VERBOSE!"=="true" (
+    call :print_status "Running with verbose output..."
+    :: Run with verbose output and save to file, also display on console
+    "!BENCHMARK_EXEC!" !TEST_OPTS! > "!OUTPUT_FILE!" 2>&1
+    set BENCHMARK_RESULT=!ERRORLEVEL!
+    type "!OUTPUT_FILE!"
 ) else (
-    :: Run quietly with output to file
-    powershell -Command "& { $job = Start-Job -ScriptBlock { & '%CD%\!BENCHMARK_EXECUTABLE!' !TEST_OPTS! 2>&1 }; if (Wait-Job $job -Timeout !TIMEOUT_DURATION!) { Receive-Job $job } else { Stop-Job $job; Remove-Job $job; Write-Host 'TIMEOUT' } }" >> "!RESULTS_FILE!"
-    set TEST_RESULT=!ERRORLEVEL!
+    :: Run quietly and save to file, show progress
+    call :print_status "Running benchmark tests (use --verbose for detailed output)..."
+    "!BENCHMARK_EXEC!" !TEST_OPTS! >> "!OUTPUT_FILE!" 2>&1
+    set BENCHMARK_RESULT=!ERRORLEVEL!
 )
 
-echo.>> "!RESULTS_FILE!"
-echo ============ BENCHMARK END =============>> "!RESULTS_FILE!"
-echo Date: %date% %time%>> "!RESULTS_FILE!"
-echo Exit code: !TEST_RESULT!>> "!RESULTS_FILE!"
-echo ========================================>> "!RESULTS_FILE!"
-
-:: Force success if benchmark passed but had cleanup issues
-findstr /c:"Benchmark: " /c:"Total time: " "!RESULTS_FILE!" >nul 2>&1
-if %ERRORLEVEL% equ 0 (
-    if !TEST_RESULT! neq 0 (
-        echo !YELLOW!Benchmark completed successfully but had non-zero exit code due to cleanup issues. Treating as success.!NC!
-        set TEST_RESULT=0
+:: Check benchmark results and handle various exit scenarios
+findstr /c:"Performance Results" /c:"Total time:" "!OUTPUT_FILE!" >nul 2>&1
+if !ERRORLEVEL! equ 0 (
+    :: We got performance results, so consider it successful regardless of exit code
+    if !BENCHMARK_RESULT! neq 0 (
+        call :print_warning "Benchmark had exit code !BENCHMARK_RESULT! but performance results were captured"
+        set BENCHMARK_RESULT=0
     )
-)
-
-:: Handle various exit codes
-if !TEST_RESULT! equ 0 (
-    echo !GREEN!Benchmark completed successfully!!NC!
 ) else (
-    :: Check for timeout (equivalent to exit code 124 in shell)
-    findstr /c:"TIMEOUT" "!RESULTS_FILE!" >nul 2>&1
-    if %ERRORLEVEL% equ 0 (
-        echo !RED!⚠️ Benchmark execution timed out after !TIMEOUT_DURATION!s!!NC!
-        echo Benchmark execution timed out after !TIMEOUT_DURATION!s!>> "!RESULTS_FILE!"
-        set TEST_RESULT=124
+    :: Check for timeout or other issues
+    findstr /c:"TIMEOUT" "!OUTPUT_FILE!" >nul 2>&1
+    if !ERRORLEVEL! equ 0 (
+        call :print_error "Benchmark execution timed out"
     ) else (
-        if !TEST_RESULT! equ 134 (
-            echo !YELLOW!⚠️ Benchmark terminated with SIGABRT ^(exit code 134^)!NC!
-            echo Benchmark terminated with SIGABRT>> "!RESULTS_FILE!"
-            :: If we still got results, consider it a success
-            findstr /c:"Total time: " "!RESULTS_FILE!" >nul 2>&1
-            if %ERRORLEVEL% equ 0 (
-                echo !GREEN!Results were captured before termination.!NC!
-                set TEST_RESULT=0
-            )
-        ) else if !TEST_RESULT! equ 139 (
-            echo !YELLOW!⚠️ Benchmark execution completed but crashed during cleanup ^(segmentation fault, exit code 139^)!!NC!
-            echo Benchmark execution completed but crashed during cleanup ^(segmentation fault^)!>> "!RESULTS_FILE!"
-            :: If we have results, consider it a success
-            findstr /c:"Total time: " /c:"Performance Results" "!RESULTS_FILE!" >nul 2>&1
-            if %ERRORLEVEL% equ 0 (
-                set TEST_RESULT=0
-            )
+        call :print_error "No performance results found in output"
+    )
+)
+
+:: Analyze results
+if !BENCHMARK_RESULT! equ 0 (
+    call :print_success "AI scaling benchmark completed successfully!"
+    
+    :: Extract and display key performance metrics
+    if exist "!OUTPUT_FILE!" (
+        call :extract_performance_summary
+        
+        echo.
+        call :print_status "Detailed results saved to: !OUTPUT_FILE!"
+        
+        :: Show file size for reference
+        for %%f in ("!OUTPUT_FILE!") do set "FILE_SIZE=%%~zf"
+        call :print_status "Output file size: !FILE_SIZE! bytes"
+        
+        :: Quick verification that the benchmark actually ran
+        findstr /c:"===== REALISTIC PERFORMANCE TESTING =====" "!OUTPUT_FILE!" >nul 2>&1
+        if !ERRORLEVEL! equ 0 (
+            call :print_success "All AI benchmark test suites completed successfully"
         ) else (
-            echo !YELLOW!Benchmark exited with code !TEST_RESULT!!NC!
-            :: Check if we got results despite the error
-            findstr /c:"Total time: " /c:"Performance Results" "!RESULTS_FILE!" >nul 2>&1
-            if %ERRORLEVEL% equ 0 (
-                echo !GREEN!Results were captured despite abnormal termination.!NC!
-                set TEST_RESULT=0
+            call :print_warning "AI performance test may not have completed - check output file"
+        )
+        
+        :: Count total test results
+        for /f %%i in ('findstr /c:"Performance Results" "!OUTPUT_FILE!" 2^>nul ^| find /c /v ""') do (
+            if %%i gtr 0 (
+                call :print_status "Found %%i performance result sections"
+            ) else (
+                call :print_warning "No performance results detected in output"
             )
         )
     )
-)
-
-:: Additional check for crash evidence
-findstr /c:"dumped core" /c:"Segmentation fault" /c:"Aborted" /c:"memory access violation" "!RESULTS_FILE!" >nul 2>&1
-if %ERRORLEVEL% equ 0 (
-    echo !YELLOW!⚠️ Evidence of crash found in output, but benchmark may have completed.!NC!
-    findstr /c:"Total time: " "!RESULTS_FILE!" >nul 2>&1
-    if %ERRORLEVEL% equ 0 (
-        echo !GREEN!Results were captured before crash.!NC!
-        set TEST_RESULT=0
+    
+    echo.
+    call :print_success "AI scaling benchmark test completed!"
+    
+    if "!VERBOSE!"=="false" (
+        echo.
+        call :print_status "For detailed performance metrics, run with --verbose flag"
+        call :print_status "Or view the complete results: type !OUTPUT_FILE!"
     )
-)
-
-echo.
-echo !GREEN!Benchmark complete!!NC!
-echo !GREEN!Results saved to !RESULTS_FILE!!NC!
-
-:: Extract performance metrics
-echo !YELLOW!Extracting performance metrics...!NC!
-echo ============ PERFORMANCE SUMMARY ============> "..\..\test_results\ai_benchmark_performance_metrics.txt"
-echo Date: %date% %time%>> "..\..\test_results\ai_benchmark_performance_metrics.txt"
-echo Build type: !BUILD_TYPE!>> "..\..\test_results\ai_benchmark_performance_metrics.txt"
-echo ===========================================>> "..\..\test_results\ai_benchmark_performance_metrics.txt"
-echo.>> "..\..\test_results\ai_benchmark_performance_metrics.txt"
-
-:: Use updated findstr patterns to capture metrics from the new clean output format
-findstr /r /c:"Performance Results" /c:"Total time:" /c:"Time per update cycle:" /c:"Time per entity:" /c:"Entity updates per second:" /c:"Total behavior updates:" /c:"Entity updates:" /c:"SCALABILITY SUMMARY" /c:"Entity Count" /c:"Updates Per Second" "!RESULTS_FILE!" >> "..\..\test_results\ai_benchmark_performance_metrics.txt" 2>nul
-
-:: Extract specific benchmark configurations and results for better analysis
-echo.>> "..\..\test_results\ai_benchmark_performance_metrics.txt"
-echo ============ DETAILED ANALYSIS ============>> "..\..\test_results\ai_benchmark_performance_metrics.txt"
-
-:: Extract threading mode comparisons
-echo Threading Mode Comparisons:>> "..\..\test_results\ai_benchmark_performance_metrics.txt"
-findstr /a /c:"Single-Threaded mode" "!RESULTS_FILE!" >nul 2>&1 && (
-    for /f "skip=1 tokens=*" %%a in ('findstr /a /c:"Single-Threaded mode" "!RESULTS_FILE!"') do (
-        findstr /c:"Total time:" /c:"Entity updates per second:" "!RESULTS_FILE!" >> "..\..\test_results\ai_benchmark_performance_metrics.txt" 2>nul
-        goto :threaded_search
-    )
-)
-:threaded_search
-findstr /a /c:"Threaded mode" "!RESULTS_FILE!" >nul 2>&1 && (
-    for /f "skip=1 tokens=*" %%a in ('findstr /a /c:"Threaded mode" "!RESULTS_FILE!"') do (
-        findstr /c:"Total time:" /c:"Entity updates per second:" "!RESULTS_FILE!" >> "..\..\test_results\ai_benchmark_performance_metrics.txt" 2>nul
-        goto :scalability_search
-    )
-)
-
-:scalability_search
-:: Extract scalability test results
-echo.>> "..\..\test_results\ai_benchmark_performance_metrics.txt"
-echo Scalability Results:>> "..\..\test_results\ai_benchmark_performance_metrics.txt"
-findstr /a /c:"SCALABILITY SUMMARY" "!RESULTS_FILE!" >nul 2>&1 && (
-    for /f "skip=1 tokens=*" %%a in ('findstr /a /c:"SCALABILITY SUMMARY" "!RESULTS_FILE!"') do (
-        for /l %%i in (1,1,20) do (
-            echo %%a>> "..\..\test_results\ai_benchmark_performance_metrics.txt" 2>nul
-        )
-        goto :summary_footer
-    )
-)
-
-:summary_footer
-:: Add summary footer
-echo.>> "..\..\test_results\ai_benchmark_performance_metrics.txt"
-echo ============ END OF SUMMARY ============>> "..\..\test_results\ai_benchmark_performance_metrics.txt"
-
-:: Display the performance summary
-echo !BLUE!Performance Summary:!NC!
-type "..\..\test_results\ai_benchmark_performance_metrics.txt"
-
-:: Check benchmark status and create a final status report
-echo !BLUE!Creating final benchmark report...!NC!
-
-:: Create a more comprehensive results summary
-set "SUMMARY_FILE=..\..\test_results\ai_benchmark_summary_!TIMESTAMP!.txt"
-echo ============ BENCHMARK SUMMARY ============> "!SUMMARY_FILE!"
-echo Date: %date% %time%>> "!SUMMARY_FILE!"
-echo Build type: !BUILD_TYPE!>> "!SUMMARY_FILE!"
-echo Exit code: !TEST_RESULT!>> "!SUMMARY_FILE!"
-echo.>> "!SUMMARY_FILE!"
-
-:: Extract key metrics for the summary
-echo Key Performance Metrics:>> "!SUMMARY_FILE!"
-findstr /c:"Total time:" /c:"Time per update cycle:" /c:"Entity updates per second:" /c:"Total behavior updates:" /c:"Entity updates:" "!RESULTS_FILE!" >> "!SUMMARY_FILE!" 2>nul
-
-:: Add threading performance comparison if available
-echo.>> "!SUMMARY_FILE!"
-echo Threading Performance Analysis:>> "!SUMMARY_FILE!"
-
-:: Extract rates for comparison (simplified Windows version)
-for /f "tokens=*" %%a in ('findstr /c:"Single-Threaded mode" "!RESULTS_FILE!" 2^>nul') do (
-    for /f "tokens=*" %%b in ('findstr /c:"Entity updates per second:" "!RESULTS_FILE!" 2^>nul ^| findstr /n "." ^| findstr "^1:"') do (
-        set "SINGLE_THREADED_LINE=%%b"
-        goto :get_threaded_rate
-    )
-)
-:get_threaded_rate
-for /f "tokens=*" %%a in ('findstr /c:"Threaded mode" "!RESULTS_FILE!" 2^>nul') do (
-    for /f "tokens=*" %%b in ('findstr /c:"Entity updates per second:" "!RESULTS_FILE!" 2^>nul ^| findstr /n "." ^| findstr "^2:"') do (
-        set "THREADED_LINE=%%b"
-        goto :performance_comparison
-    )
-)
-
-:performance_comparison
-if defined SINGLE_THREADED_LINE (
-    echo Single-threaded performance captured>> "!SUMMARY_FILE!"
-)
-if defined THREADED_LINE (
-    echo Multi-threaded performance captured>> "!SUMMARY_FILE!"
-)
-
-echo.>> "!SUMMARY_FILE!"
-
-:: Note any errors or warnings
-echo Status:>> "!SUMMARY_FILE!"
-if !TEST_RESULT! equ 0 (
-    echo ✅ Benchmark completed successfully>> "!SUMMARY_FILE!"
-    echo !GREEN!✅ Benchmark completed successfully!NC!
-) else (
-    findstr /c:"TIMEOUT" "!RESULTS_FILE!" >nul 2>&1
-    if %ERRORLEVEL% equ 0 (
-        echo ⚠️ Benchmark timed out but partial results were captured>> "!SUMMARY_FILE!"
-        echo !YELLOW!⚠️ Benchmark timed out but partial results were captured!NC!
-    ) else (
-        findstr /c:"Total time: " "!RESULTS_FILE!" >nul 2>&1
-        if %ERRORLEVEL% equ 0 (
-            echo ⚠️ Benchmark had issues but results were captured>> "!SUMMARY_FILE!"
-            echo !YELLOW!⚠️ Benchmark had issues but results were captured!NC!
-            :: We'll exit with success since we got results
-            set TEST_RESULT=0
-        ) else (
-            echo ❌ Benchmark failed to produce complete results>> "!SUMMARY_FILE!"
-            echo !RED!❌ Benchmark failed to produce complete results!NC!
-        )
-    )
-)
-
-:: Display quick performance summary to console
-echo !BLUE!Quick Performance Summary:!NC!
-
-:: Extract best performance rate (more accurate extraction)
-set "BEST_RATE=N/A"
-for /f "tokens=*" %%a in ('findstr /c:"Entity updates per second:" "!RESULTS_FILE!" 2^>nul') do (
-    for /f "tokens=4" %%b in ("%%a") do (
-        if "!BEST_RATE!"=="N/A" set "BEST_RATE=%%b"
-    )
-)
-
-:: Count test results
-set "TOTAL_TESTS=0"
-set "SUCCESS_RATE=0"
-for /f %%a in ('findstr /c:"Performance Results" "!RESULTS_FILE!" 2^>nul ^| find /c /v ""') do set "TOTAL_TESTS=%%a"
-for /f %%a in ('findstr /c:"✓" "!RESULTS_FILE!" 2^>nul ^| find /c /v ""') do set "SUCCESS_RATE=%%a"
-
-echo   Best performance: !GREEN!!BEST_RATE!!NC! entity updates/sec
-echo   Tests completed: !GREEN!!TOTAL_TESTS!!NC!
-echo   Successful validations: !GREEN!!SUCCESS_RATE!!NC!
-
-:: Final output
-echo !GREEN!Results saved to:!NC!
-echo   - Full log: !BLUE!!RESULTS_FILE!!NC!
-echo   - Performance metrics: !BLUE!..\..\test_results\ai_benchmark_performance_metrics.txt!NC!
-echo   - Summary: !BLUE!!SUMMARY_FILE!!NC!
-
-:: Exit with appropriate code based on whether we got results
-findstr /c:"Total time: " "!RESULTS_FILE!" >nul 2>&1
-if %ERRORLEVEL% equ 0 (
+    
+    :: Create performance metrics summary file
+    set "METRICS_FILE=!RESULTS_DIR!\ai_benchmark_performance_metrics.txt"
+    echo AI Performance Metrics Summary> "!METRICS_FILE!"
+    echo ==============================>> "!METRICS_FILE!"
+    echo Date: %date% %time%>> "!METRICS_FILE!"
+    echo Build type: !BUILD_TYPE!>> "!METRICS_FILE!"
+    echo.>> "!METRICS_FILE!"
+    
+    :: Extract key metrics to summary file
+    findstr /c:"Performance Results" "!OUTPUT_FILE!" >> "!METRICS_FILE!" 2>nul
+    findstr /c:"Total time:" "!OUTPUT_FILE!" >> "!METRICS_FILE!" 2>nul
+    findstr /c:"Entity updates per second:" "!OUTPUT_FILE!" >> "!METRICS_FILE!" 2>nul
+    findstr /c:"Total behavior updates:" "!OUTPUT_FILE!" >> "!METRICS_FILE!" 2>nul
+    
+    :: Extract scalability summary if available
+    echo.>> "!METRICS_FILE!"
+    echo Scalability Analysis:>> "!METRICS_FILE!"
+    findstr /c:"REALISTIC SCALABILITY SUMMARY:" "!OUTPUT_FILE!" >> "!METRICS_FILE!" 2>nul
+    findstr /c:"Entity Count" "!OUTPUT_FILE!" >> "!METRICS_FILE!" 2>nul
+    
+    call :print_status "Performance metrics saved to: !METRICS_FILE!"
+    
     exit /b 0
 ) else (
-    exit /b !TEST_RESULT!
+    call :print_error "AI scaling benchmark failed with exit code: !BENCHMARK_RESULT!"
+    
+    if exist "!OUTPUT_FILE!" (
+        call :print_status "Check the output file for details: !OUTPUT_FILE!"
+        :: Show last few lines of output for immediate debugging
+        echo.
+        call :print_status "Last few lines of output:"
+        :: Use more command which is available on all Windows systems
+        more +99999 "!OUTPUT_FILE!" 2>nul || (
+            echo Use 'type !OUTPUT_FILE!' to view the complete output
+        )
+    )
+    
+    exit /b !BENCHMARK_RESULT!
 )

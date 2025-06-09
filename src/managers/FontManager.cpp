@@ -4,8 +4,7 @@
 */
 
 #include "managers/FontManager.hpp"
-#include "utils/Logger.hpp"
-#include "utils/Logger.hpp"
+#include "core/Logger.hpp"
 #include <algorithm>
 #include <filesystem>
 #include <vector>
@@ -154,11 +153,11 @@ std::shared_ptr<SDL_Texture> FontManager::renderMultiLineText(
 
   // Get font height for line spacing
   int lineHeight = TTF_GetFontHeight(font);
-  
+
   // Calculate total dimensions needed
   int maxWidth = 0;
   int totalHeight = lineHeight * lines.size();
-  
+
   // Find the widest line
   for (const auto& line : lines) {
     int lineWidth = 0;
@@ -171,7 +170,7 @@ std::shared_ptr<SDL_Texture> FontManager::renderMultiLineText(
   // Create a surface large enough for all lines
   auto combinedSurface = std::unique_ptr<SDL_Surface, decltype(&SDL_DestroySurface)>(
       SDL_CreateSurface(maxWidth, totalHeight, SDL_PIXELFORMAT_RGBA8888), SDL_DestroySurface);
-  
+
   if (!combinedSurface) {
     FONT_ERROR("Failed to create combined surface: " + std::string(SDL_GetError()));
     return nullptr;
@@ -189,7 +188,7 @@ std::shared_ptr<SDL_Texture> FontManager::renderMultiLineText(
     if (!line.empty()) {
       auto lineSurface = std::unique_ptr<SDL_Surface, decltype(&SDL_DestroySurface)>(
           TTF_RenderText_Blended(font, line.c_str(), 0, color), SDL_DestroySurface);
-      
+
       if (lineSurface) {
         // Ensure proper alpha blending when blitting
         SDL_SetSurfaceBlendMode(lineSurface.get(), SDL_BLENDMODE_NONE);
@@ -263,7 +262,7 @@ void FontManager::drawTextAligned(const std::string& text, const std::string& fo
 
   // Calculate position based on alignment
   float destX, destY;
-  
+
   switch (alignment) {
     case 1: // Left alignment
       destX = static_cast<float>(x);
