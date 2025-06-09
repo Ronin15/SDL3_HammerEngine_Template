@@ -132,15 +132,12 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
                     // Limit concurrent batches to our worker budget
                     size_t maxAIBatches = aiWorkerBudget;
 
-                    // Debug output for worker budget strategy
-                    AI_DEBUG("Worker Budget - Total: " + std::to_string(budget.totalWorkers) +
-                           ", Engine: " + std::to_string(budget.engineReserved) +
-                           ", AI: " + std::to_string(budget.aiAllocated) +
-                           ", Events: " + std::to_string(budget.eventAllocated) +
-                           ", Buffer: " + std::to_string(budget.remaining) +
-                           ", Max Batches: " + std::to_string(maxAIBatches) +
-                           ", Queue: " + std::to_string(currentQueueSize) + "/" + std::to_string(maxQueuePressure) +
-                           ", Entities: " + std::to_string(m_entities.size()));
+                    // Log worker budget only when queue pressure becomes critical
+                    if (currentQueueSize > maxQueuePressure * 0.95) {
+                        AI_DEBUG("Critical queue pressure: " + std::to_string(currentQueueSize) +
+                               "/" + std::to_string(maxQueuePressure) + " (AI workers: " + 
+                               std::to_string(budget.aiAllocated) + ")");
+                    }
 
                     // Only proceed with threading if queue pressure is acceptable
                     if (currentQueueSize < maxQueuePressure) {
@@ -157,8 +154,7 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
                         optimalBatchSize = std::min(optimalBatchSize, size_t(1000)); // Larger batches for big workloads
                     }
 
-                    AI_DEBUG("Batch Strategy - Batch Size: " + std::to_string(optimalBatchSize) +
-                           ", Expected Batches: " + std::to_string((m_entities.size() + optimalBatchSize - 1) / optimalBatchSize));
+                    // No per-frame batch logging - statistics are handled in periodic summary
 
                     std::atomic<size_t> completedTasks{0};
                     size_t tasksSubmitted = 0;
@@ -209,9 +205,7 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
                         }
                     }
                     } else {
-                        // Queue pressure too high, fallback to single-threaded
-                        AI_DEBUG("Queue pressure too high (" + std::to_string(currentQueueSize) +
-                               "/" + std::to_string(maxQueuePressure) + "), using single-threaded processing");
+                        // Silent fallback to single-threaded - statistics tracked in summary
                         processBatch(0, m_entities.size(), deltaTime);
                     }
                 } else {
@@ -236,6 +230,24 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
 
         std::lock_guard<std::mutex> statsLock(m_statsMutex);
         m_globalStats.addSample(duration, m_entities.size());
+
+        // Log periodic summary every 300 frames (approximately every 5 seconds at 60fps)
+        m_frameCounter.fetch_add(1, std::memory_order_relaxed);
+        
+        if (m_frameCounter.load(std::memory_order_relaxed) % 300 == 0 && m_entities.size() > 0) {
+            double avgDuration = m_globalStats.updateCount > 0 ? 
+                (m_globalStats.totalUpdateTime / m_globalStats.updateCount) : 0.0;
+            AI_DEBUG("AI Summary - Entities: " + std::to_string(m_entities.size()) + 
+                   ", Avg Update: " + std::to_string(avgDuration) + "ms" +
+                   ", Current: " + std::to_string(duration) + "ms" +
+                   ", Total Executions: " + std::to_string(m_totalBehaviorExecutions.load()) +
+                   ", Entities/sec: " + std::to_string(m_globalStats.entitiesPerSecond));
+        }
+        
+        // Only log individual frames when exceptionally slow
+        if (duration > 50.0) {
+            AI_DEBUG("Very slow AI update: " + std::to_string(duration) + "ms for " + std::to_string(m_entities.size()) + " entities");
+        }
 
     } catch (const std::exception& e) {
         AI_ERROR("Exception in AIManager::update: " + std::string(e.what()));

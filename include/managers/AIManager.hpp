@@ -302,6 +302,9 @@ private:
 
     // Behavior execution tracking
     std::atomic<size_t> m_totalBehaviorExecutions{0};
+    
+    // Frame counter for periodic logging (thread-safe)
+    std::atomic<uint64_t> m_frameCounter{0};
 
     // Distance optimization settings
     std::atomic<float> m_maxUpdateDistance{4000.0f};

@@ -124,7 +124,10 @@ void EventManager::update() {
     auto endTime = getCurrentTimeNanos();
     double totalTimeMs = (endTime - startTime) / 1000000.0;
 
-    EVENT_DEBUG("EventManager update completed in " + std::to_string(totalTimeMs) + "ms");
+    // Only log if update took significant time (>5ms) - eliminates normal frame noise
+    if (totalTimeMs > 5.0) {
+        EVENT_DEBUG("EventManager update took " + std::to_string(totalTimeMs) + "ms (slow frame)");
+    }
     m_lastUpdateTime.store(endTime);
     (void)totalTimeMs; // Suppress unused warning
 }
@@ -382,8 +385,11 @@ void EventManager::updateEventTypeBatch(EventTypeId typeId) {
     double timeMs = (endTime - startTime) / 1000000.0;
     recordPerformance(typeId, timeMs);
 
-    EVENT_DEBUG("Updated " + std::to_string(container.size()) + " events of type " +
-                std::string(getEventTypeName(typeId)) + " in " + std::to_string(timeMs) + "ms");
+    // Only log if processing took significant time or there are many events
+    if (timeMs > 2.0 || container.size() > 10) {
+        EVENT_DEBUG("Updated " + std::to_string(container.size()) + " events of type " +
+                    std::string(getEventTypeName(typeId)) + " in " + std::to_string(timeMs) + "ms");
+    }
 }
 
 void EventManager::updateEventTypeBatchThreaded(EventTypeId typeId) {
@@ -470,10 +476,13 @@ void EventManager::updateEventTypeBatchThreaded(EventTypeId typeId) {
             }
         }
 
-        EVENT_DEBUG("Updated " + std::to_string(container.size()) + " events of type " +
-                    std::string(getEventTypeName(typeId)) + " using " + std::to_string(batchesSubmitted) +
-                    " batches (optimal size: " + std::to_string(optimalBatchSize) +
-                    ", budget: " + std::to_string(eventWorkerBudget) + ")");
+        // Only log threaded processing when using significant resources
+        if (container.size() > 50 || batchesSubmitted > 1) {
+            EVENT_DEBUG("Updated " + std::to_string(container.size()) + " events of type " +
+                        std::string(getEventTypeName(typeId)) + " using " + std::to_string(batchesSubmitted) +
+                        " batches (optimal size: " + std::to_string(optimalBatchSize) +
+                        ", budget: " + std::to_string(eventWorkerBudget) + ")");
+        }
     } else {
         // Fall back to single-threaded processing
         for (auto& eventData : container) {
@@ -482,8 +491,11 @@ void EventManager::updateEventTypeBatchThreaded(EventTypeId typeId) {
             }
         }
 
-        EVENT_DEBUG("Updated " + std::to_string(container.size()) + " events of type " +
-                    std::string(getEventTypeName(typeId)) + " (single-threaded fallback)");
+        // Only log fallback when it's significant
+        if (container.size() > 10) {
+            EVENT_DEBUG("Updated " + std::to_string(container.size()) + " events of type " +
+                        std::string(getEventTypeName(typeId)) + " (single-threaded fallback)");
+        }
     }
 
     auto endTime = getCurrentTimeNanos();
