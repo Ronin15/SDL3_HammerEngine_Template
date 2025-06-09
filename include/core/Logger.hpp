@@ -11,10 +11,12 @@
 // - cstdio: Required for printf() and fflush() functions
 // - cstdint: Required for uint8_t type
 // - mutex: Required for thread-safe logging
+// - atomic: Required for std::atomic<bool> benchmark mode flag
 #include <string> // IWYU pragma: keep - Required for std::string() conversions in macros
 #include <cstdio> // IWYU pragma: keep - Required for printf() and fflush() functions
 #include <cstdint> // IWYU pragma: keep - Required for uint8_t type
 #include <mutex> // IWYU pragma: keep - Required for thread-safe logging
+#include <atomic> // IWYU pragma: keep - Required for std::atomic<bool> benchmark mode flag
 
 namespace Forge {
     enum class LogLevel : uint8_t {
