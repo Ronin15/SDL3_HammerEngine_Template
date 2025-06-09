@@ -21,7 +21,10 @@ bool EventManager::init() {
         return true;
     }
 
-    EVENT_INFO("Initializing EventManager with performance optimizations");
+    // Only log if not in shutdown to avoid static destruction order issues
+    if (!m_isShutdown) {
+        EVENT_INFO("Initializing EventManager with performance optimizations");
+    }
 
     // Initialize all event type containers
     for (auto& eventContainer : m_eventsByType) {
@@ -48,7 +51,10 @@ bool EventManager::init() {
     m_lastUpdateTime.store(getCurrentTimeNanos());
     m_initialized.store(true);
 
-    EVENT_INFO("EventManager initialized successfully with type-indexed storage");
+    // Only log if not in shutdown to avoid static destruction order issues
+    if (!m_isShutdown) {
+        EVENT_INFO("EventManager initialized successfully with type-indexed storage");
+    }
     return true;
 }
 
@@ -57,7 +63,10 @@ void EventManager::clean() {
         return;
     }
 
-    EVENT_INFO("Cleaning up EventManager");
+    // Only log if not in shutdown to avoid static destruction order issues
+    if (!m_isShutdown) {
+        EVENT_INFO("Cleaning up EventManager");
+    }
 
     // Clear all events with proper cleanup
     {
@@ -86,7 +95,7 @@ void EventManager::clean() {
 
     m_initialized.store(false);
     m_isShutdown = true;
-    EVENT_INFO("EventManager cleaned up");
+    // Skip logging during shutdown to avoid static destruction order issues
 }
 
 void EventManager::update() {

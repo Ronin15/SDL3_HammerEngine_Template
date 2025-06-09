@@ -29,25 +29,30 @@ endif()
 # Debug build settings
 if(APPLE)
     # macOS-specific debug flags with dSYM generation and LLDB compatibility
-    set(CMAKE_C_FLAGS_DEBUG "-g3 -O0 -gdwarf-4 -glldb -fno-limit-debug-info")
-    set(CMAKE_CXX_FLAGS_DEBUG "-g3 -O0 -Wall -Wextra -gdwarf-4 -glldb -fno-limit-debug-info -fstandalone-debug")
+    set(CMAKE_C_FLAGS_DEBUG 
+        "-g3 -O0 -gdwarf-4 -glldb -fno-limit-debug-info -DDEBUG")
+    set(CMAKE_CXX_FLAGS_DEBUG 
+        "-g3 -O0 -Wall -Wextra -gdwarf-4 -glldb -fno-limit-debug-info -fstandalone-debug -DDEBUG")
     
     # Ensure debug symbols are preserved (don't strip them)
     set(CMAKE_SHARED_LINKER_FLAGS_DEBUG "${CMAKE_SHARED_LINKER_FLAGS_DEBUG} -g")
     set(CMAKE_EXE_LINKER_FLAGS_DEBUG "${CMAKE_EXE_LINKER_FLAGS_DEBUG} -g")
 else()
     # Other platforms
-    set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -g3 -O0")
-    set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -g3 -O0 -Wall -Wextra")
+    set(CMAKE_C_FLAGS_DEBUG 
+        "${CMAKE_C_FLAGS_DEBUG} -g3 -O0 -DDEBUG")
+    set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -g3 -O0 -Wall -Wextra -DDEBUG")
 endif()
 
 # Release build settings
 if(APPLE)
     # macOS-specific release flags
-    set(CMAKE_C_FLAGS_RELEASE "-O3 -flto -fno-strict-aliasing -fomit-frame-pointer \
+    set(CMAKE_C_FLAGS_RELEASE 
+        "-O3 -flto -fno-strict-aliasing -fomit-frame-pointer \
         -ffunction-sections -fdata-sections -ffast-math -ftree-vectorize \
         -fpeel-loops -funroll-loops")
-    set(CMAKE_CXX_FLAGS_RELEASE "-O3 -flto -fno-strict-aliasing -fomit-frame-pointer \
+    set(CMAKE_CXX_FLAGS_RELEASE 
+        "-O3 -flto -fno-strict-aliasing -fomit-frame-pointer \
         -ffunction-sections -fdata-sections -ffast-math -ftree-vectorize \
         -fpeel-loops -funroll-loops")
     
@@ -105,13 +110,16 @@ else()
     set(HAVE_BOOST_TEST FALSE)
 endif()
 
-message(STATUS "SaveGameManager using fast header-only binary serialization")
+message(STATUS 
+    "SaveGameManager using fast header-only binary serialization")
 
 # Specify the stable release tags for each SDL3 component
 # Updated from "main" branch to specific release versions
 set(SDL3_GIT_TAG "release-3.2.16")  # Latest stable release for SDL3
-set(SDL3_IMAGE_GIT_TAG "release-3.2.4")  # Latest stable release for SDL3_image
-set(SDL3_TTF_GIT_TAG "release-3.2.2")  # Latest stable release for SDL3_ttf
+set(SDL3_IMAGE_GIT_TAG "release-3.2.4")  
+    # Latest stable release for SDL3_image
+set(SDL3_TTF_GIT_TAG "release-3.2.2")  
+    # Latest stable release for SDL3_ttf
 set(SDL3_MIXER_GIT_TAG "main")     # Latest stable release for SDL3_mixer
 
 # Download and configure SDL3
@@ -134,8 +142,10 @@ FetchContent_Declare(
 )
 
 # Build options for SDL3_image
-set(SDL3IMAGE_SAMPLES FALSE CACHE BOOL "Build the SDL3_image sample programs")
-set(SDL3IMAGE_VENDORED FALSE CACHE BOOL "Use vendored third-party libraries")
+set(SDL3IMAGE_SAMPLES FALSE CACHE BOOL 
+    "Build the SDL3_image sample programs")
+set(SDL3IMAGE_VENDORED FALSE CACHE BOOL 
+    "Use vendored third-party libraries")
 set(SDL3IMAGE_DEPS_SHARED FALSE CACHE BOOL "Use shared dependencies")
 
 # Download and configure SDL3_ttf
@@ -245,12 +255,13 @@ if(WIN32)
         endif()
 
         # Enable SDL console output for Windows debug builds
-        target_compile_definitions(${PROJECT_NAME} PRIVATE SDL_MAIN_HANDLED)
+        target_compile_definitions(${PROJECT_NAME} PRIVATE 
+            SDL_MAIN_HANDLED)
 
         # Set the subsystem to console for debug builds
         set_target_properties(${PROJECT_NAME} PROPERTIES
-      WIN32_EXECUTABLE FALSE
-    )
+            WIN32_EXECUTABLE FALSE
+        )
 
         message(STATUS "SDL console output enabled for debug build")
     else()
@@ -265,23 +276,25 @@ if(APPLE)
     # For macOS targets
     if(CMAKE_BUILD_TYPE STREQUAL "Debug")
         # Enable SDL console output for macOS debug builds
-        target_compile_definitions(${PROJECT_NAME} PRIVATE SDL_MAIN_HANDLED)
+        target_compile_definitions(${PROJECT_NAME} PRIVATE 
+            SDL_MAIN_HANDLED)
 
         # On macOS, applications are bundles by default, but we can ensure
         # that console output works properly in debug mode
         set_target_properties(${PROJECT_NAME} PROPERTIES
-      MACOSX_BUNDLE FALSE      # Don't create a bundle in debug mode
-      BUILD_WITH_INSTALL_RPATH TRUE
-      BUILD_RPATH "@executable_path"
-      INSTALL_RPATH "@executable_path"
-      # Enable dSYM generation for debug symbols
-      XCODE_ATTRIBUTE_DEBUG_INFORMATION_FORMAT "dwarf-with-dsym"
-      XCODE_ATTRIBUTE_GCC_GENERATE_DEBUGGING_SYMBOLS YES
-    )
+            MACOSX_BUNDLE FALSE      # Don't create a bundle in debug mode
+            BUILD_WITH_INSTALL_RPATH TRUE
+            BUILD_RPATH "@executable_path"
+            INSTALL_RPATH "@executable_path"
+            # Enable dSYM generation for debug symbols
+            XCODE_ATTRIBUTE_DEBUG_INFORMATION_FORMAT "dwarf-with-dsym"
+            XCODE_ATTRIBUTE_GCC_GENERATE_DEBUGGING_SYMBOLS YES
+        )
 
         # Generate dSYM bundle for debugging with verbose output
         add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
-            COMMAND dsymutil $<TARGET_FILE:${PROJECT_NAME}> -o $<TARGET_FILE:${PROJECT_NAME}>.dSYM
+            COMMAND dsymutil $<TARGET_FILE:${PROJECT_NAME}> 
+                -o $<TARGET_FILE:${PROJECT_NAME}>.dSYM
             COMMAND echo "dSYM bundle created at: $<TARGET_FILE:${PROJECT_NAME}>.dSYM"
             COMMENT "Generating dSYM bundle for debugging"
         )
@@ -295,20 +308,21 @@ if(APPLE)
 
         # Add a post-build message
         add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
-      COMMAND echo "macOS console output enabled for debug build"
-    )
+            COMMAND echo "macOS console output enabled for debug build"
+        )
 
         message(STATUS "SDL console output enabled for macOS debug build")
         message(STATUS "dSYM generation enabled for debug symbols")
-        message(STATUS "LLDB debugging flags enabled (-glldb, -fstandalone-debug)")
+        message(STATUS 
+            "LLDB debugging flags enabled (-glldb, -fstandalone-debug)")
     else()
         # For release builds, create a proper macOS application bundle
         set_target_properties(${PROJECT_NAME} PROPERTIES
-      MACOSX_BUNDLE TRUE
-      BUILD_WITH_INSTALL_RPATH TRUE
-      BUILD_RPATH "@executable_path/../Frameworks;@executable_path"
-      INSTALL_RPATH "@executable_path/../Frameworks;@executable_path"
-    )
+            MACOSX_BUNDLE TRUE
+            BUILD_WITH_INSTALL_RPATH TRUE
+            BUILD_RPATH "@executable_path/../Frameworks;@executable_path"
+            INSTALL_RPATH "@executable_path/../Frameworks;@executable_path"
+        )
     endif()
 endif()
 
@@ -364,8 +378,8 @@ file(MAKE_DIRECTORY ${OUTPUT_DEBUG_DIR})
 file(MAKE_DIRECTORY ${OUTPUT_RELEASE_DIR})
 
 # Display status message indicating successful configuration
-message(STATUS "SDL3, SDL3_image, SDL3_ttf, and SDL3_mixer have been "
-               "configured successfully")
+message(STATUS 
+    "SDL3, SDL3_image, SDL3_ttf, and SDL3_mixer have been configured successfully")
 message(STATUS "Debug binaries will be output to: ${OUTPUT_DEBUG_DIR}")
 message(STATUS "Release binaries will be output to: ${OUTPUT_RELEASE_DIR}")
 
@@ -375,5 +389,6 @@ if(HAVE_BOOST_TEST)
     add_subdirectory(tests)
     message(STATUS "Tests enabled - Boost Test found")
 else()
-    message(STATUS "Tests disabled - Boost Test not found (required for test framework)")
+    message(STATUS 
+        "Tests disabled - Boost Test not found (required for test framework)")
 endif()

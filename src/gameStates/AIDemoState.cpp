@@ -4,6 +4,7 @@
 */
 
 #include "gameStates/AIDemoState.hpp"
+#include "core/Logger.hpp"
 #include "managers/AIManager.hpp"
 #include "SDL3/SDL_scancode.h"
 #include "ai/behaviors/WanderBehavior.hpp"
@@ -41,11 +42,11 @@ AIDemoState::~AIDemoState() {
         // Clean up player
         m_player.reset();
 
-        std::cout << "Forge Game Engine - Exiting AIDemoState in destructor...\n";
+        GAMESTATE_INFO("Exiting AIDemoState in destructor...");
     } catch (const std::exception& e) {
-        std::cerr << "Forge Game Engine - Exception in AIDemoState destructor: " << e.what() << std::endl;
+        GAMESTATE_ERROR("Exception in AIDemoState destructor: " + std::string(e.what()));
     } catch (...) {
-        std::cerr << "Forge Game Engine - Unknown exception in AIDemoState destructor" << std::endl;
+        GAMESTATE_ERROR("Unknown exception in AIDemoState destructor");
     }
 }
 

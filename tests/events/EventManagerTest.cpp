@@ -15,6 +15,7 @@
 #include <atomic>
 
 #include "core/ThreadSystem.hpp"
+#include "core/Logger.hpp"
 #include "managers/EventManager.hpp"
 #include "events/Event.hpp"
 #include "events/WeatherEvent.hpp"
@@ -61,13 +62,30 @@ private:
     bool m_conditionsMet{false};
 };
 
-struct EventManagerFixture {
-    EventManagerFixture() {
-        // Ensure ThreadSystem is initialized first if it exists
-        if (Forge::ThreadSystem::Exists()) {
+// Global fixture to initialize ThreadSystem once for all tests
+struct GlobalEventTestFixture {
+    GlobalEventTestFixture() {
+        // Initialize ThreadSystem once for all tests
+        if (!Forge::ThreadSystem::Exists()) {
             Forge::ThreadSystem::Instance().init();
         }
+        // Ensure benchmark mode is disabled for regular tests
+        FORGE_DISABLE_BENCHMARK_MODE();
+    }
+    
+    ~GlobalEventTestFixture() {
+        // Clean up ThreadSystem at the very end
+        if (Forge::ThreadSystem::Exists()) {
+            Forge::ThreadSystem::Instance().clean();
+        }
+    }
+};
 
+BOOST_GLOBAL_FIXTURE(GlobalEventTestFixture);
+
+struct EventManagerFixture {
+    EventManagerFixture() {
+        // Don't reinitialize ThreadSystem - use the global one
         EventManager::Instance().clean();
         BOOST_CHECK(EventManager::Instance().init());
     }

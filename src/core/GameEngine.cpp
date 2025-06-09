@@ -304,7 +304,7 @@ texMgr.load("res/img", "", mp_renderer.get());
   }
 
   // Step 2: Cache manager references for performance (after all background init complete)
-  std::cout << "Forge Game Engine - Caching manager references\n";
+  GAMEENGINE_INFO("Caching manager references");
   try {
     mp_aiManager = &AIManager::Instance();
     mp_eventManager = &EventManager::Instance();
@@ -316,15 +316,15 @@ texMgr.load("res/img", "", mp_renderer.get());
       return false;
     }
 
-    std::cout << "Forge Game Engine - Manager references cached and validated successfully\n";
+    GAMEENGINE_INFO("Manager references cached and validated successfully");
   } catch (const std::exception& e) {
-    std::cerr << "Forge Game Engine - Error caching manager references: " << e.what() << std::endl;
+    GAMEENGINE_ERROR("Error caching manager references: " + std::string(e.what()));
     return false;
   }
   //_______________________________________________________________________________________________________________END
 
-  std::cout << "Forge Game Engine - Game " << title << " initialized successfully!\n";
-  std::cout << "Forge Game Engine - Running " << title << " <]==={}\n";
+  GAMEENGINE_INFO("Game " + std::string(title) + " initialized successfully!");
+  GAMEENGINE_INFO("Running " + std::string(title) + " <]==={");
 
   // setting logo state for default state
   mp_gameStateManager->setState("LogoState");//set to "LogoState" for normal operation.
@@ -611,7 +611,7 @@ void GameEngine::processEngineSecondaryTasks() {
 }
 
 void GameEngine::clean() {
-  std::cout << "Forge Game Engine - Starting shutdown sequence...\n";
+  GAMEENGINE_INFO("Starting shutdown sequence...");
 
   // Cache manager references for better performance
   Forge::ThreadSystem& threadSystem = Forge::ThreadSystem::Instance();
@@ -633,7 +633,7 @@ void GameEngine::clean() {
   }
 
   // Clean up engine managers (non-singletons)
-  std::cout << "Forge Game Engine - Cleaning up GameState manager...\n";
+  GAMEENGINE_INFO("Cleaning up GameState manager...");
   mp_gameStateManager.reset();
 
   // Save copies of the smart pointers to resources we'll clean up at the very end
@@ -641,52 +641,52 @@ void GameEngine::clean() {
   auto renderer_to_destroy = std::move(mp_renderer);
 
   // Clean up Managers in reverse order of their initialization
-  std::cout << "Forge Game Engine - Cleaning up Font Manager...\n";
+  GAMEENGINE_INFO("Cleaning up Font Manager...");
   fontMgr.clean();
 
-  std::cout << "Forge Game Engine - Cleaning up Sound Manager...\n";
+  GAMEENGINE_INFO("Cleaning up Sound Manager...");
   soundMgr.clean();
 
-  std::cout << "Forge Game Engine - Cleaning up UI Manager...\n";
+  GAMEENGINE_INFO("Cleaning up UI Manager...");
   UIManager& uiMgr = UIManager::Instance();
   uiMgr.clean();
 
-  std::cout << "Forge Game Engine - Cleaning up Event Manager...\n";
+  GAMEENGINE_INFO("Cleaning up Event Manager...");
   eventMgr.clean();
 
-  std::cout << "Forge Game Engine - Cleaning up AI Manager...\n";
+  GAMEENGINE_INFO("Cleaning up AI Manager...");
   aiMgr.clean();
 
-  std::cout << "Forge Game Engine - Cleaning up Save Game Manager...\n";
+  GAMEENGINE_INFO("Cleaning up Save Game Manager...");
   saveMgr.clean();
 
-  std::cout << "Forge Game Engine - Cleaning up Input Manager...\n";
+  GAMEENGINE_INFO("Cleaning up Input Manager...");
   inputMgr.clean();
 
-  std::cout << "Forge Game Engine - Cleaning up Texture Manager...\n";
+  GAMEENGINE_INFO("Cleaning up Texture Manager...");
   texMgr.clean();
 
   // Clean up the thread system
-  std::cout << "Forge Game Engine - Cleaning up Thread System...\n";
+  GAMEENGINE_INFO("Cleaning up Thread System...");
   if (!threadSystem.isShutdown()) {
     threadSystem.clean();
   }
 
   // Clear manager cache references
-  std::cout << "Forge Game Engine - Clearing manager caches...\n";
+  GAMEENGINE_INFO("Clearing manager caches...");
   mp_aiManager = nullptr;
   mp_eventManager = nullptr;
   // InputManager not cached
-  std::cout << "Forge Game Engine - Manager caches cleared\n";
+  GAMEENGINE_INFO("Manager caches cleared");
 
   // Finally clean up SDL resources
-  std::cout << "Forge Game Engine - Cleaning up SDL resources...\n";
+  GAMEENGINE_INFO("Cleaning up SDL resources...");
 
   // Explicitly reset smart pointers at the end, after all subsystems
   // are done using them - this will trigger their custom deleters
   renderer_to_destroy.reset();
   window_to_destroy.reset();
   SDL_Quit();
-  std::cout << "Forge Game Engine - SDL resources cleaned!\n";
-  std::cout << "Forge Game Engine - Shutdown complete!\n";
+  GAMEENGINE_INFO("SDL resources cleaned!");
+  GAMEENGINE_INFO("Shutdown complete!");
 }

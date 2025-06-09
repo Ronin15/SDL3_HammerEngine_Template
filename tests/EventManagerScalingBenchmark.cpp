@@ -11,6 +11,7 @@
 #include "managers/EventManager.hpp"
 #include "events/Event.hpp"
 #include "core/ThreadSystem.hpp"
+#include "core/Logger.hpp"
 #include <iostream>
 #include <chrono>
 #include <thread>
@@ -165,6 +166,9 @@ struct GlobalFixture {
         std::cout << "\n===== EventManager Scaling Benchmark Started =====" << std::endl;
         g_shutdownInProgress.store(false);
         
+        // Enable benchmark mode to silence manager logging during tests
+        FORGE_ENABLE_BENCHMARK_MODE();
+        
         // Initialize ThreadSystem for EventManager threading
         Forge::ThreadSystem::Instance().init();
         EventManager::Instance().init();
@@ -181,6 +185,9 @@ struct GlobalFixture {
         } catch (...) {
             // Ignore cleanup errors during shutdown
         }
+        
+        // Disable benchmark mode after cleanup
+        FORGE_DISABLE_BENCHMARK_MODE();
         
         std::cout << "\n===== EventManager Scaling Benchmark Completed =====" << std::endl;
     }
@@ -230,12 +237,11 @@ struct EventManagerScalingFixture {
         std::cout << "\nBenchmark: " << mode << " mode, "
                   << numEventTypes << " event types, "
                   << numHandlersPerType << " handlers per type, "
-                  << numEvents << " total events" << std::endl;
+                  << numEvents << " events" << std::endl;
         
         // Add debugging for threading behavior
         bool willUseThreading = (numEvents > 1000);
-        std::cout << "  Threading mode: " << (willUseThreading ? "THREADED" : "SINGLE") 
-                  << " (events: " << numEvents << ", threshold: 1000)" << std::endl;
+        (void)willUseThreading; // Suppress unused variable warning
 
         // Create handlers and register them
         for (int eventType = 0; eventType < numEventTypes; ++eventType) {            
@@ -321,6 +327,8 @@ struct EventManagerScalingFixture {
             // Verify work was actually done
             int totalUpdates = 0;
             int totalExecutes = 0;
+            (void)totalUpdates; // Suppress unused variable warning
+            (void)totalExecutes; // Suppress unused variable warning
             for (const auto& event : testEvents) {
                 auto mockEvent = std::dynamic_pointer_cast<MockEvent>(event);
                 if (mockEvent) {
@@ -330,13 +338,7 @@ struct EventManagerScalingFixture {
             }
             
             // Output verification for first run only to avoid spam
-            if (run == 0) {
-                std::cout << "  Work verification - Updates: " << totalUpdates 
-                         << ", Executes: " << totalExecutes 
-                         << " (Updates expected: " << (numEvents * 10) << ")" << std::endl;
-                std::cout << "  Event count in manager: " << EventManager::Instance().getEventCount() << std::endl;
-                std::cout << "  Architecture: Handlers called only via trigger methods (changeWeather, spawnNPC, etc.)" << std::endl;
-            }
+
             
             // Clean up test events
             for (int event = 0; event < numEvents; ++event) {
@@ -348,6 +350,8 @@ struct EventManagerScalingFixture {
         double avgDuration = std::accumulate(durations.begin(), durations.end(), 0.0) / durations.size();
         double minDuration = *std::min_element(durations.begin(), durations.end());
         double maxDuration = *std::max_element(durations.begin(), durations.end());
+        (void)minDuration; // Suppress unused variable warning
+        (void)maxDuration; // Suppress unused variable warning
 
         // Calculate derived metrics based on explicit trigger calls
         int totalTriggerCalls = 5 * 4; // 5 cycles * 4 trigger calls per cycle
@@ -365,18 +369,17 @@ struct EventManagerScalingFixture {
         int totalHandlerCalls = weatherCalls + npcCalls + sceneCalls;
         double eventsPerSecond = (numEvents / avgDuration) * 1000.0;
         double handlerCallsPerSecond = (totalHandlerCalls / avgDuration) * 1000.0;
-        double triggersPerSecond = (totalTriggerCalls / avgDuration) * 1000.0;
+        double triggersPerSecond = totalTriggerCalls / (avgDuration / 1000.0);
         double timePerEvent = avgDuration / numEvents;
         double timePerTrigger = avgDuration / totalTriggerCalls;
+        (void)triggersPerSecond; // Suppress unused variable warning
+        (void)timePerTrigger; // Suppress unused variable warning
 
         // Report results
         std::cout << "\nPerformance Results (avg of " << numMeasurements << " runs):" << std::endl;
         std::cout << "  Total time: " << std::fixed << std::setprecision(2) << avgDuration << " ms" << std::endl;
-        std::cout << "  Min/Max time: " << minDuration << "/" << maxDuration << " ms" << std::endl;
         std::cout << "  Time per event: " << std::setprecision(4) << timePerEvent << " ms" << std::endl;
-        std::cout << "  Time per trigger: " << std::setprecision(6) << timePerTrigger << " ms" << std::endl;
         std::cout << "  Events per second: " << std::setprecision(0) << eventsPerSecond << std::endl;
-        std::cout << "  Triggers per second: " << triggersPerSecond << std::endl;
         std::cout << "  Handler calls per second: " << handlerCallsPerSecond << std::endl;
 
         // Verify handlers were called via explicit trigger methods
@@ -391,19 +394,8 @@ struct EventManagerScalingFixture {
         if (totalActualCalls == totalExpectedCalls) {
             std::cout << " ✓" << std::endl;
         } else {
-            std::cout << " ✗ (Missing: " << (totalExpectedCalls - totalActualCalls) << ")" << std::endl;
+            std::cout << " ✗" << std::endl;
         }
-        
-        // Report new behavior
-        std::cout << "  Note: update() only updates event state, handlers called via explicit triggers" << std::endl;
-
-        // Show handler processing time
-        int64_t totalProcessingTime = 0;
-        for (const auto& handler : handlers) {
-            totalProcessingTime += handler->getTotalProcessingTime();
-        }
-        double avgProcessingTimeMs = (totalProcessingTime / 1000000.0) / handlers.size();
-        std::cout << "  Avg handler processing time: " << std::setprecision(3) << avgProcessingTimeMs << " ms" << std::endl;
 
         cleanup();
     }
@@ -419,7 +411,7 @@ struct EventManagerScalingFixture {
             {4, 4, 100},        // Very large game: 4 types, 4 handlers each, 100 events
             {4, 5, 200},        // Massive game: 4 types, 5 handlers each, 200 events
         };
-
+        
         for (const auto& [numTypes, numHandlers, numEvents] : testCases) {
             std::cout << "\n--- Test Case: " << numTypes << " types, " 
                       << numHandlers << " handlers, " << numEvents << " events ---" << std::endl;
@@ -502,6 +494,7 @@ struct EventManagerScalingFixture {
         
         double totalTimeMs = totalDuration.count() / 1000.0;
         double processingTimeMs = processingDuration.count() / 1000.0;
+        (void)processingTimeMs; // Suppress unused variable warning
         double eventsPerSecond = (totalEvents / totalTimeMs) * 1000.0;
         
         // Verify handler calls
@@ -512,15 +505,14 @@ struct EventManagerScalingFixture {
 
         std::cout << "\nConcurrency Test Results:" << std::endl;
         std::cout << "  Total time: " << std::fixed << std::setprecision(2) << totalTimeMs << " ms" << std::endl;
-        std::cout << "  Processing time: " << processingTimeMs << " ms" << std::endl;
         std::cout << "  Events queued: " << totalEvents << std::endl;
+        std::cout << "  Events per second: " << std::setprecision(0) << eventsPerSecond << std::endl;
         std::cout << "  Handler calls: " << actualHandlerCalls << "/" << totalHandlerCalls;
         if (actualHandlerCalls == totalHandlerCalls) {
             std::cout << " ✓" << std::endl;
         } else {
             std::cout << " ✗" << std::endl;
         }
-        std::cout << "  Events per second: " << std::setprecision(0) << eventsPerSecond << std::endl;
         std::cout << "  Threads: " << numThreads << std::endl;
 
         cleanup();
@@ -603,11 +595,7 @@ BOOST_AUTO_TEST_CASE(ExtremeScaleTest) {
         const int numHandlersPerType = 10;
         const int numEvents = 500;
 
-        std::cout << "\nExtreme scale parameters:" << std::endl;
-        std::cout << "  Event types: " << numEventTypes << std::endl;
-        std::cout << "  Handlers per type: " << numHandlersPerType << std::endl;
-        std::cout << "  Total events: " << numEvents << std::endl;
-        std::cout << "  Total handler calls: " << (numEvents * numEventTypes * numHandlersPerType) << std::endl;
+
 
         // Only test batched mode for extreme scale (immediate would be too slow)
         fixture.runHandlerBenchmark(numEventTypes, numHandlersPerType, numEvents, true);

@@ -572,4 +572,5 @@ Additional documentation can be found in the `docs/` directory:
 - **[ThreadSystem Overview](docs/ThreadSystem.md)** - Core documentation for the ThreadSystem component with usage examples and best practices
 - **[ThreadSystem API](docs/ThreadSystem_API.md)** - Complete API reference for ThreadSystem components
 - **[ThreadSystem Optimization](docs/ThreadSystem_Optimization.md)** - Performance tuning and optimization guide
+- **[ThreadSystem Logger Integration](docs/ThreadSystem_Logger_Integration.md)** - Complete integration with Logger system, performance improvements, and static destruction safety
 - **[Worker Budget System](docs/WorkerBudget_System.md)** - Memory optimization and budget management
