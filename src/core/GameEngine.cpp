@@ -91,9 +91,17 @@ bool GameEngine::init(const char* title,
       GAMEENGINE_INFO("Window set to Fullscreen mode for macOS compatibility");
       #else
       //setting window width and height to fullscreen dimensions for detected monitor
-      m_windowWidth = display.w;
-      m_windowHeight = display.h;
-      GAMEENGINE_INFO("Window size set to Full Screen");
+      int displayCount = 0;
+      std::unique_ptr<SDL_DisplayID[], decltype(&SDL_free)> displays(
+        SDL_GetDisplays(&displayCount), SDL_free);
+      if (displays && displayCount > 0) {
+        const SDL_DisplayMode* displayMode = SDL_GetDesktopDisplayMode(displays[0]);
+        if (displayMode) {
+          m_windowWidth = displayMode->w;
+          m_windowHeight = displayMode->h;
+          GAMEENGINE_INFO("Window size set to Full Screen: " + std::to_string(m_windowWidth) + "x" + std::to_string(m_windowHeight));
+        }
+      }
       #endif
     }
 
@@ -738,7 +746,9 @@ int GameEngine::getOptimalDisplayIndex() const {
   return 0;
 #else
   // On other platforms, try secondary display first if available
-  int displayCount = SDL_GetNumVideoDisplays();
+  int displayCount = 0;
+  std::unique_ptr<SDL_DisplayID[], decltype(&SDL_free)> displays(
+    SDL_GetDisplays(&displayCount), SDL_free);
   return (displayCount > 1) ? 1 : 0;
 #endif
 }
