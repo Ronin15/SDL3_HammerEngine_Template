@@ -222,7 +222,7 @@ texMgr.load("res/img", "", mp_renderer.get());
 
         fontMgr.loadFont("res/fonts", "fonts", 24);
         // Load UI-specific font with optimal size for UI elements
-        fontMgr.loadFont("res/fonts", "fonts_UI", 16);
+        fontMgr.loadFont("res/fonts", "fonts_UI", 18);
         return true;
       }));
 
@@ -372,18 +372,18 @@ void GameEngine::update([[maybe_unused]] float deltaTime) {
   // Use WorkerBudget system for coordinated task submission
   if (Forge::ThreadSystem::Exists()) {
     auto& threadSystem = Forge::ThreadSystem::Instance();
-  
+
     // Calculate worker budget for this frame
     size_t availableWorkers = static_cast<size_t>(threadSystem.getThreadCount());
     Forge::WorkerBudget budget = Forge::calculateWorkerBudget(availableWorkers);
-  
+
     // Submit engine coordination tasks respecting our worker budget
     // Use high priority for engine tasks to ensure timely processing
     threadSystem.enqueueTask([this, deltaTime]() {
       // Critical game engine coordination
       processEngineCoordination(deltaTime);
     }, Forge::TaskPriority::High, "GameEngine_Coordination");
-  
+
     // Only submit additional tasks if we have multiple workers allocated
     if (budget.engineReserved > 1) {
       threadSystem.enqueueTask([this]() {
@@ -600,7 +600,7 @@ void GameEngine::processEngineCoordination(float deltaTime) {
   // Critical engine coordination tasks
   // This runs with high priority in the WorkerBudget system
   (void)deltaTime; // Avoid unused parameter warning
-  
+
   // Engine-specific coordination logic can be added here
   // Examples: state synchronization, resource coordination, etc.
 }
