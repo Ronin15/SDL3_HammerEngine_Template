@@ -18,14 +18,20 @@ bool UIManager::init() {
     // Initialize with enhanced dark theme
     setDarkTheme();
 
-    // Set global fonts to match what's loaded
+    // Set global fonts to match what's loaded by FontManager's loadFontsForDisplay
     m_globalFontID = "fonts_UI_Arial";
-    m_titleFontID = "fonts_Arial";
+    m_titleFontID = "fonts_title_Arial";
     m_uiFontID = "fonts_UI_Arial";
     
     // Use centralized DPI scale from GameEngine
     auto& gameEngine = GameEngine::Instance();
     m_globalScale = gameEngine.getDPIScale();
+    
+    #ifdef __APPLE__
+    // On macOS, ensure minimum scale for readability and clamp excessive scaling
+    m_globalScale = std::max(1.0f, std::min(m_globalScale, 3.0f));
+    UI_INFO("macOS DPI scale adjusted to: " + std::to_string(m_globalScale));
+    #endif
 
     // Clear any existing data and reserve capacity for performance
     m_components.clear();
@@ -195,6 +201,9 @@ void UIManager::createLabel(const std::string& id, const UIRect& bounds, const s
     component->zOrder = 20; // Text on top
 
     m_components[id] = component;
+    
+    // Apply auto-sizing after creation
+    calculateOptimalSize(component);
 }
 
 void UIManager::createTitle(const std::string& id, const UIRect& bounds, const std::string& text) {
@@ -207,6 +216,9 @@ void UIManager::createTitle(const std::string& id, const UIRect& bounds, const s
     component->zOrder = 25; // Titles on top
 
     m_components[id] = component;
+    
+    // Apply auto-sizing after creation
+    calculateOptimalSize(component);
 }
 
 void UIManager::createPanel(const std::string& id, const UIRect& bounds) {
@@ -789,6 +801,22 @@ void UIManager::setTitleAlignment(const std::string& titleID, UIAlignment alignm
     auto component = getComponent(titleID);
     if (component && component->type == UIComponentType::TITLE) {
         component->style.textAlign = alignment;
+        
+        // If setting to CENTER_CENTER and auto-sizing is enabled, recalculate position
+        if (alignment == UIAlignment::CENTER_CENTER && component->autoSize && component->autoWidth) {
+            auto& gameEngine = GameEngine::Instance();
+            int windowWidth = gameEngine.getWindowWidth();
+            component->bounds.x = (windowWidth - component->bounds.width) / 2;
+        }
+    }
+}
+
+void UIManager::centerTitleInContainer(const std::string& titleID, int containerX, int containerWidth) {
+    auto component = getComponent(titleID);
+    if (component && component->type == UIComponentType::TITLE) {
+        // Center the auto-sized title within the container
+        int titleWidth = component->bounds.width;
+        component->bounds.x = containerX + (containerWidth - titleWidth) / 2;
     }
 }
 
@@ -1030,7 +1058,14 @@ void UIManager::setLightTheme() {
     listStyle.textColor = {20, 20, 20, 255}; // Dark text on light background
     listStyle.hoverColor = {180, 200, 255, 255}; // Light blue selection
     listStyle.borderWidth = 1;
-    listStyle.listItemHeight = 36; // Enhanced mouse accuracy
+    // Calculate list item height based on font metrics
+    auto& fontManagerList = FontManager::Instance();
+    int lineHeightList = 0;
+    if (fontManagerList.getFontMetrics("fonts_UI_Arial", &lineHeightList, nullptr, nullptr)) {
+        listStyle.listItemHeight = lineHeightList + 8; // Add padding for better mouse accuracy
+    } else {
+        listStyle.listItemHeight = 36; // Fallback if font metrics unavailable
+    }
     listStyle.fontID = "fonts_UI_Arial";
     lightTheme.componentStyles[UIComponentType::LIST] = listStyle;
 
@@ -1059,7 +1094,7 @@ void UIManager::setLightTheme() {
     tooltipStyle.borderColor = {180, 180, 180, 255};
     tooltipStyle.borderWidth = 1;
     tooltipStyle.textColor = {255, 255, 255, 255}; // White text for dark tooltip background
-    tooltipStyle.fontID = "fonts_UI_Arial";
+    tooltipStyle.fontID = "fonts_tooltip_Arial";
     lightTheme.componentStyles[UIComponentType::TOOLTIP] = tooltipStyle;
 
     // Image component uses transparent background
@@ -1070,7 +1105,14 @@ void UIManager::setLightTheme() {
 
     // Event log style - similar to list but optimized for display-only
     UIStyle eventLogStyle = listStyle;
-    eventLogStyle.listItemHeight = 28; // Better spacing for event log
+    // Calculate event log item height based on font metrics
+    auto& fontManager = FontManager::Instance();
+    int lineHeight = 0;
+    if (fontManager.getFontMetrics("fonts_UI_Arial", &lineHeight, nullptr, nullptr)) {
+        eventLogStyle.listItemHeight = lineHeight + 4; // Tighter spacing for event log
+    } else {
+        eventLogStyle.listItemHeight = 24; // Fallback if font metrics unavailable
+    }
     eventLogStyle.backgroundColor = {245, 245, 250, 160}; // Semi-transparent light background
     eventLogStyle.textColor = {0, 0, 0, 255}; // Black text for maximum contrast
     eventLogStyle.borderColor = {120, 120, 140, 180}; // Less transparent border
@@ -1082,7 +1124,7 @@ void UIManager::setLightTheme() {
     titleStyle.textColor = {255, 245, 120, 255}; // Gold color for titles
     titleStyle.fontSize = 24; // Use native 24px font size
     titleStyle.textAlign = UIAlignment::CENTER_LEFT;
-    titleStyle.fontID = "fonts_Arial";
+    titleStyle.fontID = "fonts_title_Arial";
     // Text background enabled by default for readability on any background
     titleStyle.useTextBackground = true;
     titleStyle.textBackgroundColor = {20, 20, 20, 120}; // More transparent dark for gold text
@@ -1193,7 +1235,14 @@ void UIManager::setDarkTheme() {
     listStyle.textColor = {255, 255, 255, 255}; // White text
     listStyle.hoverColor = {60, 80, 150, 255}; // Blue selection
     listStyle.borderWidth = 1;
-    listStyle.listItemHeight = 36; // Enhanced mouse accuracy
+    // Calculate list item height based on font metrics
+    auto& fontManager2 = FontManager::Instance();
+    int lineHeight2 = 0;
+    if (fontManager2.getFontMetrics("fonts_UI_Arial", &lineHeight2, nullptr, nullptr)) {
+        listStyle.listItemHeight = lineHeight2 + 8; // Add padding for better mouse accuracy
+    } else {
+        listStyle.listItemHeight = 28; // Fallback if font metrics unavailable
+    }
     listStyle.fontID = "fonts_UI_Arial";
     darkTheme.componentStyles[UIComponentType::LIST] = listStyle;
 
@@ -1222,7 +1271,7 @@ void UIManager::setDarkTheme() {
     tooltipStyle.borderColor = {180, 180, 180, 255};
     tooltipStyle.borderWidth = 1;
     tooltipStyle.textColor = {255, 255, 255, 255};
-    tooltipStyle.fontID = "fonts_UI_Arial";
+    tooltipStyle.fontID = "fonts_tooltip_Arial";
     darkTheme.componentStyles[UIComponentType::TOOLTIP] = tooltipStyle;
 
     // Image component uses transparent background
@@ -1233,7 +1282,14 @@ void UIManager::setDarkTheme() {
 
     // Event log style - similar to list but optimized for display-only
     UIStyle eventLogStyle = listStyle;
-    eventLogStyle.listItemHeight = 28; // Better spacing for event log
+    // Calculate event log item height based on font metrics
+    auto& fontManager3 = FontManager::Instance();
+    int lineHeight3 = 0;
+    if (fontManager3.getFontMetrics("fonts_UI_Arial", &lineHeight3, nullptr, nullptr)) {
+        eventLogStyle.listItemHeight = lineHeight3 + 4; // Tighter spacing for event log
+    } else {
+        eventLogStyle.listItemHeight = 24; // Fallback if font metrics unavailable
+    }
     eventLogStyle.backgroundColor = {25, 30, 35, 80}; // Highly transparent dark background
     eventLogStyle.textColor = {255, 255, 255, 255}; // Pure white text for maximum contrast
     eventLogStyle.borderColor = {100, 120, 140, 100}; // Highly transparent blue-gray border
@@ -1245,7 +1301,7 @@ void UIManager::setDarkTheme() {
     titleStyle.textColor = {255, 245, 120, 255}; // Gold color for titles
     titleStyle.fontSize = 24; // Use native 24px font size
     titleStyle.textAlign = UIAlignment::CENTER_LEFT;
-    titleStyle.fontID = "fonts_Arial";
+    titleStyle.fontID = "fonts_title_Arial";
     // Text background enabled by default for readability on any background
     titleStyle.useTextBackground = true;
     titleStyle.textBackgroundColor = {0, 0, 0, 120}; // More transparent black for gold text
@@ -1716,11 +1772,17 @@ void UIManager::renderButton(SDL_Renderer* renderer, const std::shared_ptr<UICom
     // Draw text
     if (!component->text.empty()) {
         auto& fontManager = FontManager::Instance();
-        // Apply global scale to font positioning
-        int scaledX = static_cast<int>((component->bounds.x + component->bounds.width / 2.0f) * m_globalScale);
-        int scaledY = static_cast<int>((component->bounds.y + component->bounds.height / 2.0f) * m_globalScale);
+        #ifdef __APPLE__
+        // On macOS, use logical coordinates directly - SDL3 handles scaling automatically
+        int centerX = component->bounds.x + component->bounds.width / 2;
+        int centerY = component->bounds.y + component->bounds.height / 2;
+        #else
+        // Apply global scale to font positioning on other platforms
+        int centerX = static_cast<int>((component->bounds.x + component->bounds.width / 2.0f) * m_globalScale);
+        int centerY = static_cast<int>((component->bounds.y + component->bounds.height / 2.0f) * m_globalScale);
+        #endif
         fontManager.drawTextAligned(component->text, component->style.fontID,
-                                   scaledX, scaledY,
+                                   centerX, centerY,
                                    component->style.textColor, renderer, 0); // 0 = center
     }
 }
@@ -1773,12 +1835,18 @@ void UIManager::renderLabel(SDL_Renderer* renderer, const std::shared_ptr<UIComp
     bool needsBackground = component->style.useTextBackground && 
                           component->style.backgroundColor.a == 0;
     
-    // Apply global scale to text positioning
-    int scaledTextX = static_cast<int>(textX * m_globalScale);
-    int scaledTextY = static_cast<int>(textY * m_globalScale);
+    #ifdef __APPLE__
+    // On macOS, use logical coordinates directly - SDL3 handles scaling automatically
+    int finalTextX = static_cast<int>(textX);
+    int finalTextY = static_cast<int>(textY);
+    #else
+    // Apply global scale to text positioning on other platforms
+    int finalTextX = static_cast<int>(textX * m_globalScale);
+    int finalTextY = static_cast<int>(textY * m_globalScale);
+    #endif
     
     // Use a custom text drawing method that renders background and text together
-    drawTextWithBackground(component->text, component->style.fontID, scaledTextX, scaledTextY, 
+    drawTextWithBackground(component->text, component->style.fontID, finalTextX, finalTextY,
                           component->style.textColor, renderer, alignment, 
                           needsBackground,
                           component->style.textBackgroundColor, 
@@ -1844,11 +1912,17 @@ void UIManager::renderInputField(SDL_Renderer* renderer, const std::shared_ptr<U
             SDL_Color{128, 128, 128, 255} : component->style.textColor;
 
         auto& fontManager = FontManager::Instance();
-        // Apply global scale to font positioning
-        int scaledX = static_cast<int>((component->bounds.x + component->style.padding) * m_globalScale);
-        int scaledY = static_cast<int>((component->bounds.y + component->bounds.height / 2.0f) * m_globalScale);
+        #ifdef __APPLE__
+        // On macOS, use logical coordinates directly - SDL3 handles scaling automatically
+        int textX = component->bounds.x + component->style.padding;
+        int textY = component->bounds.y + component->bounds.height / 2;
+        #else
+        // Apply global scale to font positioning on other platforms
+        int textX = static_cast<int>((component->bounds.x + component->style.padding) * m_globalScale);
+        int textY = static_cast<int>((component->bounds.y + component->bounds.height / 2.0f) * m_globalScale);
+        #endif
         fontManager.drawTextAligned(displayText, component->style.fontID,
-                                   scaledX, scaledY,
+                                   textX, textY,
                                    textColor, renderer, 1); // 1 = left alignment
     }
 
@@ -1924,11 +1998,17 @@ void UIManager::renderCheckbox(SDL_Renderer* renderer, const std::shared_ptr<UIC
     // Draw label text
     if (!component->text.empty()) {
         auto& fontManager = FontManager::Instance();
-        // Apply global scale to font positioning
-        int scaledX = static_cast<int>((checkRect.x + checkRect.width + component->style.padding) * m_globalScale);
-        int scaledY = static_cast<int>((component->bounds.y + component->bounds.height / 2.0f) * m_globalScale);
+        #ifdef __APPLE__
+        // On macOS, use logical coordinates directly - SDL3 handles scaling automatically
+        int textX = checkRect.x + checkRect.width + component->style.padding;
+        int textY = component->bounds.y + component->bounds.height / 2;
+        #else
+        // Apply global scale to font positioning on other platforms
+        int textX = static_cast<int>((checkRect.x + checkRect.width + component->style.padding) * m_globalScale);
+        int textY = static_cast<int>((component->bounds.y + component->bounds.height / 2.0f) * m_globalScale);
+        #endif
         fontManager.drawTextAligned(component->text, component->style.fontID,
-                                   scaledX, scaledY,
+                                   textX, textY,
                                    component->style.textColor, renderer, 1); // 1 = left alignment
     }
 }
@@ -1956,11 +2036,17 @@ void UIManager::renderList(SDL_Renderer* renderer, const std::shared_ptr<UICompo
 
         // Draw item text
         auto& fontManager = FontManager::Instance();
-        // Apply global scale to font positioning
-        int scaledX = static_cast<int>((itemRect.x + component->style.padding) * m_globalScale);
-        int scaledY = static_cast<int>((itemRect.y + itemHeight / 2.0f) * m_globalScale);
+        #ifdef __APPLE__
+        // On macOS, use logical coordinates directly - SDL3 handles scaling automatically
+        int textX = itemRect.x + component->style.padding;
+        int textY = itemRect.y + itemHeight / 2;
+        #else
+        // Apply global scale to font positioning on other platforms
+        int textX = static_cast<int>((itemRect.x + component->style.padding) * m_globalScale);
+        int textY = static_cast<int>((itemRect.y + itemHeight / 2.0f) * m_globalScale);
+        #endif
         fontManager.drawTextAligned(component->listItems[i], component->style.fontID,
-                                   scaledX, scaledY,
+                                   textX, textY,
                                    component->style.textColor, renderer, 1); // 1 = left alignment
 
         y += itemHeight;
@@ -1987,11 +2073,17 @@ void UIManager::renderEventLog(SDL_Renderer* renderer, const std::shared_ptr<UIC
 
         // Draw event entry text
         auto& fontManager = FontManager::Instance();
-        // Apply global scale to font positioning
-        int scaledX = static_cast<int>((itemRect.x + component->style.padding + 8) * m_globalScale);
-        int scaledY = static_cast<int>((itemRect.y + (itemHeight / 2.0f) + 2) * m_globalScale);
+        #ifdef __APPLE__
+        // On macOS, use logical coordinates directly - SDL3 handles scaling automatically
+        int textX = itemRect.x + component->style.padding + 8;
+        int textY = itemRect.y + (itemHeight / 2) + 2;
+        #else
+        // Apply global scale to font positioning on other platforms
+        int textX = static_cast<int>((itemRect.x + component->style.padding + 8) * m_globalScale);
+        int textY = static_cast<int>((itemRect.y + (itemHeight / 2.0f) + 2) * m_globalScale);
+        #endif
         fontManager.drawTextAligned(component->listItems[i], component->style.fontID,
-                                   scaledX, scaledY,
+                                   textX, textY,
                                    component->style.textColor, renderer, 1); // 1 = left alignment
 
         y += itemHeight;
@@ -2013,9 +2105,20 @@ void UIManager::renderTooltip(SDL_Renderer* renderer) {
         return;
     }
 
-    // Position tooltip near mouse
-    int tooltipWidth = static_cast<int>(component->text.length() * 8 + 16);
-    int tooltipHeight = 24;
+    // Calculate actual text dimensions for content-aware sizing
+    auto& fontManager = FontManager::Instance();
+    auto tooltipTexture = fontManager.renderText(component->text, component->style.fontID,
+                                               component->style.textColor, renderer);
+    
+    int tooltipWidth = 200; // fallback width
+    int tooltipHeight = 32; // fallback height
+    
+    if (tooltipTexture) {
+        float textW, textH;
+        SDL_GetTextureSize(tooltipTexture.get(), &textW, &textH);
+        tooltipWidth = static_cast<int>(textW) + 16; // Add padding
+        tooltipHeight = static_cast<int>(textH) + 8; // Add padding
+    }
 
     UIRect tooltipRect = {
         static_cast<int>(m_lastMousePosition.getX() + 10),
@@ -2037,13 +2140,18 @@ void UIManager::renderTooltip(SDL_Renderer* renderer) {
     drawRect(renderer, tooltipRect, tooltipBg, true);
     drawBorder(renderer, tooltipRect, {200, 200, 200, 255}, 1);
 
-    auto& fontManager = FontManager::Instance();
-    // Apply global scale to font positioning
-    int scaledX = static_cast<int>((tooltipRect.x + tooltipRect.width / 2.0f) * m_globalScale);
-    int scaledY = static_cast<int>((tooltipRect.y + tooltipRect.height / 2.0f) * m_globalScale);
-    fontManager.drawTextAligned(component->text, m_globalFontID,
-                               scaledX, scaledY,
-                               {255, 255, 255, 255}, renderer, 0); // 0 = center alignment
+    #ifdef __APPLE__
+    // On macOS, use logical coordinates directly - SDL3 handles scaling automatically
+    int centerX = tooltipRect.x + tooltipRect.width / 2;
+    int centerY = tooltipRect.y + tooltipRect.height / 2;
+    #else
+    // Apply global scale to font positioning on other platforms
+    int centerX = static_cast<int>((tooltipRect.x + tooltipRect.width / 2.0f) * m_globalScale);
+    int centerY = static_cast<int>((tooltipRect.y + tooltipRect.height / 2.0f) * m_globalScale);
+    #endif
+    fontManager.drawTextAligned(component->text, component->style.fontID,
+                               centerX, centerY,
+                               component->style.textColor, renderer, 0); // 0 = center alignment
 }
 
 // Layout implementations
@@ -2249,4 +2357,188 @@ UIRect UIManager::interpolateRect(const UIRect& start, const UIRect& end, float 
         static_cast<int>(start.width + (end.width - start.width) * t),
         static_cast<int>(start.height + (end.height - start.height) * t)
     };
+}
+
+// Auto-sizing implementation
+void UIManager::calculateOptimalSize(const std::string& id) {
+    auto component = getComponent(id);
+    if (component) {
+        calculateOptimalSize(component);
+    }
+}
+
+void UIManager::calculateOptimalSize(std::shared_ptr<UIComponent> component) {
+    if (!component || !component->autoSize) {
+        return;
+    }
+
+    int contentWidth = 0;
+    int contentHeight = 0;
+    
+    if (!measureComponentContent(component, &contentWidth, &contentHeight)) {
+        return; // Failed to measure content
+    }
+
+
+
+    // Apply content padding
+    int totalWidth = contentWidth + (component->contentPadding * 2);
+    int totalHeight = contentHeight + (component->contentPadding * 2);
+
+    // Apply size constraints - ONLY modify width/height, preserve x/y position
+    if (component->autoWidth) {
+        int oldWidth = component->bounds.width;
+        component->bounds.width = std::max(component->minBounds.width, 
+                                         std::min(totalWidth, component->maxBounds.width));
+        
+
+        
+        // Automatically center any component with CENTER alignment when width changes
+        if (component->style.textAlign == UIAlignment::CENTER_CENTER && 
+            component->bounds.width != oldWidth) {
+            // Get window width for centering calculation
+            auto& gameEngine = GameEngine::Instance();
+            int windowWidth = gameEngine.getWindowWidth();
+            component->bounds.x = (windowWidth - component->bounds.width) / 2;
+        }
+    }
+    
+    if (component->autoHeight) {
+        component->bounds.height = std::max(component->minBounds.height, 
+                                          std::min(totalHeight, component->maxBounds.height));
+    }
+    
+    // CRITICAL: Never modify component->bounds.x or component->bounds.y
+    // Auto-sizing only affects dimensions, not position
+
+    // Trigger content changed callback if present
+    if (component->onContentChanged) {
+        component->onContentChanged();
+    }
+}
+
+bool UIManager::measureComponentContent(const std::shared_ptr<UIComponent>& component, int* width, int* height) {
+    if (!component || !width || !height) {
+        return false;
+    }
+
+    auto& fontManager = FontManager::Instance();
+    
+    switch (component->type) {
+        case UIComponentType::BUTTON:
+        case UIComponentType::BUTTON_DANGER:
+        case UIComponentType::BUTTON_SUCCESS:
+        case UIComponentType::BUTTON_WARNING:
+        case UIComponentType::LABEL:
+        case UIComponentType::TITLE:
+            if (!component->text.empty()) {
+                // Check if text contains newlines - use multiline measurement if so
+                if (component->text.find('\n') != std::string::npos) {
+                    return fontManager.measureMultilineText(component->text, component->style.fontID, 0, width, height);
+                } else {
+                    return fontManager.measureText(component->text, component->style.fontID, width, height);
+                }
+            }
+            *width = component->minBounds.width;
+            *height = component->minBounds.height;
+            return true;
+
+
+
+        case UIComponentType::INPUT_FIELD:
+            // For input fields, measure placeholder or current text
+            if (!component->text.empty()) {
+                fontManager.measureText(component->text, component->style.fontID, width, height);
+            } else if (!component->placeholder.empty()) {
+                fontManager.measureText(component->placeholder, component->style.fontID, width, height);
+            } else {
+                // Default to reasonable input field size
+                fontManager.measureText("Sample Text", component->style.fontID, width, height);
+            }
+            // Input fields need extra space for cursor and interaction
+            *width += 20;
+            return true;
+
+        case UIComponentType::LIST:
+            // Calculate based on list items and item height
+            if (!component->listItems.empty()) {
+                int maxItemWidth = 0;
+                for (const auto& item : component->listItems) {
+                    int itemWidth = 0;
+                    if (fontManager.measureText(item, component->style.fontID, &itemWidth, nullptr)) {
+                        maxItemWidth = std::max(maxItemWidth, itemWidth);
+                    }
+                }
+                *width = maxItemWidth + 20; // Add scrollbar space
+                
+                // Calculate height based on font metrics
+                int lineHeight = 0;
+                if (fontManager.getFontMetrics(component->style.fontID, &lineHeight, nullptr, nullptr)) {
+                    *height = lineHeight * static_cast<int>(component->listItems.size());
+                } else {
+                    *height = component->style.listItemHeight * static_cast<int>(component->listItems.size());
+                }
+                return true;
+            }
+            break;
+
+        case UIComponentType::TOOLTIP:
+            if (!component->text.empty()) {
+                return fontManager.measureText(component->text, component->style.fontID, width, height);
+            }
+            break;
+
+        default:
+            // For other component types, use current bounds or minimums
+            *width = std::max(component->bounds.width, component->minBounds.width);
+            *height = std::max(component->bounds.height, component->minBounds.height);
+            return true;
+    }
+
+    // Fallback to minimum bounds
+    *width = component->minBounds.width;
+    *height = component->minBounds.height;
+    return true;
+}
+
+void UIManager::invalidateLayout(const std::string& layoutID) {
+    // Mark layout for recalculation on next update
+    // For now, immediately recalculate
+    recalculateLayout(layoutID);
+}
+
+void UIManager::recalculateLayout(const std::string& layoutID) {
+    auto layout = getLayout(layoutID);
+    if (!layout) {
+        return;
+    }
+
+    // First, auto-size all child components
+    for (const auto& componentID : layout->childComponents) {
+        calculateOptimalSize(componentID);
+    }
+
+    // Then apply the layout with new sizes
+    updateLayout(layoutID);
+}
+
+void UIManager::enableAutoSizing(const std::string& id, bool enable) {
+    auto component = getComponent(id);
+    if (component) {
+        component->autoSize = enable;
+        if (enable) {
+            calculateOptimalSize(component);
+        }
+    }
+}
+
+void UIManager::setAutoSizingConstraints(const std::string& id, const UIRect& minBounds, const UIRect& maxBounds) {
+    auto component = getComponent(id);
+    if (component) {
+        component->minBounds = minBounds;
+        component->maxBounds = maxBounds;
+        if (component->autoSize) {
+            calculateOptimalSize(component);
+        }
+    }
 }

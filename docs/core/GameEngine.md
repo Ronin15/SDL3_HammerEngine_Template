@@ -448,6 +448,58 @@ SDL_Renderer* getRenderer() const {
 }
 ```
 
+### Font System Integration
+
+The GameEngine integrates with FontManager to provide display-aware font loading:
+
+```cpp
+// Automatic font system initialization during GameEngine::init()
+bool GameEngine::init(const char* title, int width, int height, bool fullscreen) {
+    // ... SDL, window, and renderer initialization ...
+    
+    // Calculate DPI scale for font sizing
+    float dpiScale = calculateDPIScale();
+    m_dpiScale = dpiScale;
+    
+    // Initialize managers with threading
+    std::vector<std::future<bool>> initTasks;
+    
+    // FontManager initialization in background thread
+    initTasks.push_back(
+        Forge::ThreadSystem::Instance().enqueueTaskWithResult([this]() -> bool {
+            FontManager& fontMgr = FontManager::Instance();
+            if (!fontMgr.init()) {
+                GAMEENGINE_CRITICAL("Failed to initialize Font Manager");
+                return false;
+            }
+            
+            // Load fonts with display-aware sizing
+            if (!fontMgr.loadFontsForDisplay("res/fonts", m_windowWidth, m_windowHeight)) {
+                GAMEENGINE_CRITICAL("Failed to load fonts for display");
+                return false;
+            }
+            return true;
+        })
+    );
+    
+    // Wait for all initialization tasks to complete
+    for (auto& task : initTasks) {
+        if (!task.get()) {
+            return false;
+        }
+    }
+    
+    return true;
+}
+```
+
+**Font System Features:**
+- **Display-Aware Loading**: Automatically calculates font sizes based on screen resolution
+- **DPI Integration**: Uses GameEngine's DPI scale for optimal text rendering
+- **Quality Fonts**: Loads multiple font categories (base, UI, title, tooltip) with appropriate sizes
+- **SDL3 Compatibility**: Leverages SDL3's logical presentation system for automatic scaling
+- **Threading Support**: Font loading occurs in background threads for better performance
+
 ### Initialization Order
 Critical for proper system startup:
 
@@ -460,10 +512,14 @@ bool GameEngine::init(const char* title, int width, int height, bool fullscreen)
     if (!createWindow(title, width, height, fullscreen)) return false;
     if (!createRenderer()) return false;
     
-    // 3. Core managers
-    if (!initializeGameStateManager()) return false;
+    // 3. DPI calculation
+    m_dpiScale = calculateDPIScale();
     
-    // 4. Cache manager references (after singleton initialization)
+    // 4. Core managers (with threading)
+    if (!initializeGameStateManager()) return false;
+    if (!initializeFontManager()) return false;
+    
+    // 5. Cache manager references (after singleton initialization)
     cacheManagerReferences();
     
     return true;

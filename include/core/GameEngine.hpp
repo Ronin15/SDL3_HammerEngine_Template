@@ -206,6 +206,12 @@ class GameEngine {
    */
   float getDPIScale() const { return m_dpiScale; }
 
+  /**
+   * @brief Gets the optimal display index for the current platform
+   * @return Display index (0 for macOS built-in screens, 1 for other platforms)
+   */
+  int getOptimalDisplayIndex() const;
+
  private:
   std::unique_ptr<GameStateManager> mp_gameStateManager{nullptr};
   std::unique_ptr<SDL_Window, decltype(&SDL_DestroyWindow)> mp_window{nullptr, SDL_DestroyWindow};

@@ -42,6 +42,15 @@ class FontManager {
   bool loadFont(const std::string& fontFile, const std::string& fontID, int fontSize);
 
   /**
+   * @brief Loads default fonts with sizes calculated based on display characteristics
+   * @param fontPath Path to font file or directory containing TTF/OTF files
+   * @param windowWidth Current window width in pixels
+   * @param windowHeight Current window height in pixels
+   * @return true if fonts were loaded successfully, false otherwise
+   */
+  bool loadFontsForDisplay(const std::string& fontPath, int windowWidth, int windowHeight);
+
+  /**
    * @brief Renders text to a texture using specified font
    * @param text Text string to render
    * @param fontID Unique identifier of the font to use
@@ -114,6 +123,38 @@ class FontManager {
    * @return true if manager is shut down, false otherwise
    */
   bool isShutdown() const { return m_isShutdown; }
+
+  /**
+   * @brief Measures text dimensions for a given font and string
+   * @param text Text string to measure
+   * @param fontID Font identifier to use for measurement
+   * @param width Pointer to store calculated width
+   * @param height Pointer to store calculated height
+   * @return true if measurement successful, false otherwise
+   */
+  bool measureText(const std::string& text, const std::string& fontID, int* width, int* height);
+
+  /**
+   * @brief Gets font metrics (line height, etc.) for auto-sizing calculations
+   * @param fontID Font identifier to get metrics for
+   * @param lineHeight Pointer to store line height
+   * @param ascent Pointer to store font ascent
+   * @param descent Pointer to store font descent
+   * @return true if metrics retrieved successfully, false otherwise
+   */
+  bool getFontMetrics(const std::string& fontID, int* lineHeight, int* ascent, int* descent);
+
+  /**
+   * @brief Calculates optimal size for multi-line text content
+   * @param text Multi-line text string (may contain newlines)
+   * @param fontID Font identifier to use
+   * @param maxWidth Maximum width constraint (0 = no limit)
+   * @param width Pointer to store calculated total width
+   * @param height Pointer to store calculated total height
+   * @return true if calculation successful, false otherwise
+   */
+  bool measureMultilineText(const std::string& text, const std::string& fontID, 
+                           int maxWidth, int* width, int* height);
 
  private:
   std::unordered_map<std::string, std::shared_ptr<TTF_Font>> m_fontMap{};

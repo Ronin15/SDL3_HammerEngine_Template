@@ -34,19 +34,30 @@ if (!FontManager::Instance().init()) {
 
 ## Loading Fonts
 
-### DPI-Aware Font Loading
+### Display-Aware Font Loading
 
-The GameEngine automatically calculates DPI-aware font sizes during initialization:
+The FontManager provides intelligent font loading that adapts to display characteristics:
 
 ```cpp
-// In GameEngine initialization:
-// - Detects display pixel density
-// - Calculates optimal font sizes for crisp rendering
-// - Loads fonts with pixel-aligned sizes for best quality
+// Automatic display-aware font loading
+FontManager& fontMgr = FontManager::Instance();
 
-// Example: On a 4K display, base font size 24 may become 48
-// to maintain readability while ensuring crisp rendering
+// Load fonts with sizes calculated based on display properties
+fontMgr.loadFontsForDisplay("res/fonts", windowWidth, windowHeight);
+
+// This automatically creates:
+// - fonts_Arial (base font): 22pt for general content
+// - fonts_UI_Arial (UI font): 19pt for interface elements  
+// - fonts_title_Arial (title font): 33pt for headings
+// - fonts_tooltip_Arial (tooltip font): 11pt for compact tooltips
+
+// Sizes are calculated based on:
+// - Screen resolution (larger screens get slightly larger fonts)
+// - Display characteristics (optimized for readability)
+// - SDL3 logical presentation system handles DPI scaling automatically
 ```
+
+### DPI-Aware Font Loading
 
 ### Single Font Loading
 
@@ -55,7 +66,7 @@ The GameEngine automatically calculates DPI-aware font sizes during initializati
 bool success = FontManager::Instance().loadFont(
     "assets/fonts/Arial.ttf",  // Font file path
     "Arial",                   // Font ID for reference
-    24                         // Font size in pixels (will be DPI-adjusted)
+    24                         // Font size in logical points (SDL3 handles DPI scaling)
 );
 
 // Font is automatically configured with:
@@ -71,11 +82,59 @@ bool success = FontManager::Instance().loadFont(
 bool success = FontManager::Instance().loadFont(
     "assets/fonts/",           // Directory path
     "ui_fonts",               // ID prefix for all fonts
-    16                        // Font size for all fonts (DPI-adjusted)
+    16                        // Font size for all fonts (logical points)
 );
 
 // Creates font IDs like: "ui_fonts_Arial", "ui_fonts_Times", etc.
 // All fonts receive quality improvements automatically
+```
+
+## Text Measurement Utilities
+
+### Single-Line Text Measurement
+
+```cpp
+// Measure text dimensions for layout calculations
+FontManager& fontMgr = FontManager::Instance();
+int width, height;
+
+bool success = fontMgr.measureText(
+    "Button Text",              // Text to measure
+    "fonts_UI_Arial",          // Font ID
+    &width, &height            // Output dimensions
+);
+
+// Use measurements for component sizing, layout, etc.
+```
+
+### Multi-Line Text Measurement
+
+```cpp
+// Automatic multi-line text measurement (detects newlines)
+int width, height;
+bool success = fontMgr.measureMultilineText(
+    "Line 1\nLine 2\nLine 3",  // Multi-line text
+    "fonts_UI_Arial",          // Font ID
+    400,                       // Maximum width (0 = no limit)
+    &width, &height            // Output dimensions
+);
+
+// Returns total dimensions for all lines combined
+```
+
+### Font Metrics
+
+```cpp
+// Get font metrics for spacing calculations
+int lineHeight, ascent, descent;
+bool success = fontMgr.getFontMetrics(
+    "fonts_UI_Arial",          // Font ID
+    &lineHeight,               // Line height
+    &ascent,                   // Font ascent
+    &descent                   // Font descent
+);
+
+// Use for precise layout calculations, list item heights, etc.
 ```
 
 ## Text Rendering
@@ -97,18 +156,20 @@ if (textTexture) {
 }
 ```
 
-### Direct Screen Rendering
+### Aligned Text Rendering
 
 ```cpp
-// Render text directly to the screen with pixel-perfect positioning
-FontManager::Instance().drawText(
-    "Score: 1000",            // Text to render
-    "Arial",                  // Font ID
-    400, 50,                  // Center position (x, y) - auto-rounded for crisp rendering
-    {255, 255, 0, 255},      // Yellow color
-    renderer                  // SDL Renderer
+// Render text with precise alignment control
+FontManager::Instance().drawTextAligned(
+    "Centered Text",          // Text to render
+    "fonts_UI_Arial",        // Font ID
+    400, 300,                // Position (x, y)
+    {255, 255, 255, 255},    // White color
+    renderer,                // SDL Renderer
+    0                        // Alignment: 0=center, 1=left, 2=right, 3=top-left, etc.
 );
 
+// Alignment options provide precise text positioning control
 // Text positioning is automatically rounded to pixel boundaries
 // for crisp, blur-free rendering on all display types
 ```
@@ -137,7 +198,7 @@ FontManager::Instance().clearAllFonts();
 
 ## Usage Examples
 
-### Game UI Text
+### Game UI Text with Auto-Sizing Integration
 
 ```cpp
 class GameUI {
@@ -146,45 +207,69 @@ private:
     
 public:
     void initializeFonts() {
-        // Load UI fonts
-        FontManager::Instance().loadFont("assets/fonts/", "ui", 16);
+        // Use display-aware font loading for optimal sizing
+        FontManager::Instance().loadFontsForDisplay("assets/fonts/", 1920, 1080);
+        
+        // Or load specific font sizes
         FontManager::Instance().loadFont("assets/fonts/Impact.ttf", "title", 48);
     }
     
     void renderScore(int score) {
         std::string scoreText = "Score: " + std::to_string(score);
         FontManager::Instance().drawText(
-            scoreText, "ui_Arial", 10, 10, 
+            scoreText, "fonts_UI_Arial", 10, 10, 
             {255, 255, 255, 255}, m_renderer
         );
     }
     
     void renderTitle() {
-        FontManager::Instance().drawText(
-            "GAME TITLE", "title", 400, 100,
-            {255, 215, 0, 255}, m_renderer  // Gold color
+        FontManager::Instance().drawTextAligned(
+            "GAME TITLE", "fonts_title_Arial", 400, 100,
+            {255, 215, 0, 255}, m_renderer, 0  // Centered alignment
         );
+    }
+    
+    // Get text dimensions for layout calculations
+    int calculateButtonWidth(const std::string& text) {
+        int width, height;
+        FontManager::Instance().measureText(text, "fonts_UI_Arial", &width, &height);
+        return width + 20; // Add padding
     }
 };
 ```
 
-### Dialog System
+### Dialog System with Multi-Line Support
 
 ```cpp
 class DialogSystem {
 public:
     void renderDialog(const std::string& speaker, const std::string& text) {
         // Render speaker name
-        FontManager::Instance().drawText(
-            speaker, "ui_bold", 50, 450,
-            {200, 200, 255, 255}, renderer
+        FontManager::Instance().drawTextAligned(
+            speaker, "fonts_title_Arial", 50, 450,
+            {200, 200, 255, 255}, renderer, 1  // Left aligned
         );
         
-        // Render dialog text
-        FontManager::Instance().drawText(
-            text, "ui_regular", 50, 480,
-            {255, 255, 255, 255}, renderer
+        // Calculate dialog text height for proper positioning
+        int textWidth, textHeight;
+        FontManager::Instance().measureMultilineText(
+            text, "fonts_UI_Arial", 500, &textWidth, &textHeight
         );
+        
+        // Render multi-line dialog text
+        FontManager::Instance().drawTextAligned(
+            text, "fonts_UI_Arial", 50, 480,
+            {255, 255, 255, 255}, renderer, 1  // Left aligned
+        );
+    }
+    
+    // Calculate dialog box height based on content
+    int calculateDialogHeight(const std::string& text) {
+        int width, height;
+        FontManager::Instance().measureMultilineText(
+            text, "fonts_UI_Arial", 500, &width, &height
+        );
+        return height + 40; // Add padding
     }
 };
 ```
@@ -228,7 +313,14 @@ void loadGameFonts() {
     // Load fonts at startup for best performance
     FontManager& fontMgr = FontManager::Instance();
     
-    // UI fonts - smaller sizes
+    // Recommended: Use display-aware loading for optimal sizing
+    auto& gameEngine = GameEngine::Instance();
+    fontMgr.loadFontsForDisplay("assets/fonts/", 
+                               gameEngine.getWindowWidth(), 
+                               gameEngine.getWindowHeight());
+    
+    // Alternative: Load specific font sizes
+    // UI fonts - smaller sizes  
     fontMgr.loadFont("assets/fonts/UI/", "ui", 16);
     
     // Title fonts - larger sizes
@@ -280,12 +372,38 @@ std::thread renderThread([&]() {
 });
 ```
 
+## Auto-Sizing Integration
+
+### UIManager Integration
+
+The FontManager integrates seamlessly with UIManager's auto-sizing system:
+
+```cpp
+// UIManager automatically uses FontManager for text measurement
+ui.createLabel("info", bounds, "Dynamic content");  // Auto-sizes using FontManager
+ui.createButton("action", bounds, "Click Me");      // Measures text for sizing
+
+// Multi-line labels are automatically detected and measured correctly
+ui.createLabel("multi", bounds, "Line 1\nLine 2\nLine 3");
+
+// Font-based list item heights
+ui.createList("items", bounds);  // Uses FontManager metrics for item sizing
+```
+
+### Text Measurement Pipeline
+
+1. **Content Analysis**: Automatic detection of single vs multi-line text
+2. **Font Measurement**: Precise text dimension calculation using TTF_GetStringSize
+3. **Multi-line Processing**: Line-by-line measurement for accurate height calculation
+4. **Font Metrics**: Line height, ascent, and descent for spacing calculations
+
 ## Performance Considerations
 
 - **Pre-load fonts**: Load all fonts at startup rather than during gameplay
 - **Cache textures**: For frequently changing text, cache textures when possible
 - **Batch directory loading**: Use directory loading for better startup performance
-- **DPI-Aware Sizing**: Fonts are automatically sized for optimal display quality
+- **Display-Aware Sizing**: Use loadFontsForDisplay() for optimal font sizes
+- **Text Measurement Caching**: Measurement results can be cached for repeated calculations
 - **Quality vs Performance**: High-quality rendering uses TTF_RenderText_Blended for best results
 - **Pixel Alignment**: Coordinate rounding ensures optimal GPU texture caching
 
@@ -307,9 +425,10 @@ float dpiScale = GameEngine::Instance().getDPIScale();
 ### Quality Rendering Pipeline
 
 1. **Font Loading**: TTF hinting, kerning, and style normalization
-2. **Texture Creation**: Linear filtering for smooth scaling
-3. **Coordinate Rounding**: Pixel-perfect positioning for crisp edges
-4. **Alpha Blending**: Proper blend modes for clear text rendering
+2. **Text Measurement**: Accurate dimension calculation for layout systems
+3. **Texture Creation**: Linear filtering for smooth scaling
+4. **Coordinate Rounding**: Pixel-perfect positioning for crisp edges
+5. **Alpha Blending**: Proper blend modes for clear text rendering
 
 ### Multi-DPI Support
 

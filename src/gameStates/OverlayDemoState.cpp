@@ -244,8 +244,8 @@ void OverlayDemoState::setupModalOverlayMode() {
     // Disable text backgrounds for labels inside modal (they have solid modal background)
     ui.enableTextBackground("overlay_demo_dialog_title", false);
     ui.enableTextBackground("overlay_demo_dialog_text", false);
-    ui.createButtonSuccess(MENU_BUTTON_1, {dialogX + 50, dialogY + 120, 100, 40}, "Yes");
-    ui.createButtonWarning(MENU_BUTTON_2, {dialogX + 250, dialogY + 120, 100, 40}, "Cancel");
+    ui.createButtonSuccess("overlay_demo_modal_yes_btn", {dialogX + 50, dialogY + 120, 100, 40}, "Yes");
+    ui.createButtonWarning("overlay_demo_modal_cancel_btn", {dialogX + 250, dialogY + 120, 100, 40}, "Cancel");
 
     // All styling handled by UIManager theme - no custom colors in state
 }
@@ -272,8 +272,8 @@ void OverlayDemoState::setupLightModalOverlayMode() {
     // Disable text backgrounds for labels inside modal (they have solid modal background)
     ui.enableTextBackground("overlay_demo_dialog_title", false);
     ui.enableTextBackground("overlay_demo_dialog_text", false);
-    ui.createButtonSuccess(MENU_BUTTON_1, {dialogX + 50, dialogY + 120, 100, 40}, "Save");
-    ui.createButtonWarning(MENU_BUTTON_2, {dialogX + 250, dialogY + 120, 100, 40}, "Cancel");
+    ui.createButtonSuccess("overlay_demo_modal_save_btn", {dialogX + 50, dialogY + 120, 100, 40}, "Save");
+    ui.createButtonWarning("overlay_demo_modal_cancel_btn", {dialogX + 250, dialogY + 120, 100, 40}, "Cancel");
 
     // All styling handled by UIManager theme - no custom colors in state
 }

@@ -38,37 +38,37 @@ bool UIExampleState::enter() {
     ui.createLabel("uiexample_back_instruction", {180, windowHeight - 75, 200, 30}, "Press B to go back");
     
     // Slider demo
-    ui.createSlider("uiexample_demo_slider", {50, 120, 200, 30}, 0.0f, 1.0f);
+    ui.createSlider("uiexample_demo_slider", {50, 140, 200, 30}, 0.0f, 1.0f);
     ui.setValue("uiexample_demo_slider", 0.5f);
-    ui.createLabel("uiexample_slider_label", {260, 120, 200, 30}, "Slider: 0.50");
+    ui.createLabel("uiexample_slider_label", {260, 140, 200, 30}, "Slider: 0.50");
     
     // Checkbox demo
-    ui.createCheckbox("uiexample_demo_checkbox", {50, 170, 250, 30}, "Toggle Option");
+    ui.createCheckbox("uiexample_demo_checkbox", {50, 190, 250, 30}, "Toggle Option");
     
     // Input field demo
-    ui.createInputField("uiexample_demo_input", {50, 220, 200, 30}, "Type here...");
-    ui.createLabel("uiexample_input_label", {260, 220, 300, 30}, "Input: (empty)");
+    ui.createInputField("uiexample_demo_input", {50, 240, 200, 30}, "Type here...");
+    ui.createLabel("uiexample_input_label", {260, 240, 300, 30}, "Input: (empty)");
     
     // Progress bar demo
-    ui.createProgressBar("uiexample_demo_progress", {50, 270, 200, 20}, 0.0f, 1.0f);
-    ui.createLabel("uiexample_progress_label", {260, 270, 200, 20}, "Auto Progress");
+    ui.createProgressBar("uiexample_demo_progress", {50, 290, 200, 20}, 0.0f, 1.0f);
+    ui.createLabel("uiexample_progress_label", {260, 290, 200, 20}, "Auto Progress");
     
     // List demo
-    ui.createList("uiexample_demo_list", {50, 320, 200, 180});
+    ui.createList("uiexample_demo_list", {50, 340, 200, 140});
     
     // Event Log demo
-    ui.createEventLog("uiexample_demo_event_log", {300, 450, 400, 180}, 6);
-    ui.createLabel("uiexample_event_log_label", {300, 430, 200, 20}, "Event Log (Auto-updating):");
+    ui.createEventLog("uiexample_demo_event_log", {300, 520, 400, 140}, 6);
+    ui.createLabel("uiexample_event_log_label", {300, 495, 200, 20}, "Event Log (Auto-updating):");
     ui.setupDemoEventLog("uiexample_demo_event_log");
     
     // Animation button
-    ui.createButton("uiexample_animate_btn", {300, 320, 120, 40}, "Animate");
+    ui.createButton("uiexample_animate_btn", {300, 340, 120, 40}, "Animate");
     
     // Theme toggle button
-    ui.createButton("uiexample_theme_btn", {300, 380, 120, 40}, "Dark Theme");
+    ui.createButton("uiexample_theme_btn", {300, 390, 120, 40}, "Dark Theme");
     
     // Instructions
-    ui.createLabel("uiexample_instructions", {450, 320, 300, 100},
+    ui.createLabel("uiexample_instructions", {450, 340, 300, 120},
                    "Controls:\n- Click buttons and UI elements\n- Type in input field\n- Select list items\n- B key to go back");
 
     // Populate list

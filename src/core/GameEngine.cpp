@@ -49,77 +49,66 @@ bool GameEngine::init(const char* title,
     SDL_SetHint("SDL_VIDEO_X11_NET_WM_BYPASS_COMPOSITOR", "0");  // Don't bypass compositor
     SDL_SetHint("SDL_MOUSE_AUTO_CAPTURE", "0");    // Prevent mouse capture issues
     
+    // macOS-specific hints for better fullscreen and DPI handling
+    #ifdef __APPLE__
+    SDL_SetHint(SDL_HINT_VIDEO_MAC_FULLSCREEN_SPACES, "1");  // Use Spaces for fullscreen
+    #endif
+    
     GAMEENGINE_INFO("SDL rendering hints configured for optimal quality");
 
-    // Get display bounds to determine optimal window size
-    SDL_Rect display;
-    if (SDL_GetDisplayBounds(1, &display) != 0) {  // Try display 1 first
-      // Try display 0 as fallback
-      if (SDL_GetDisplayBounds(0, &display) != 0) {
-        GAMEENGINE_WARN("Could not get display bounds: " + std::string(SDL_GetError()));
-        GAMEENGINE_INFO("Using default window size: " + std::to_string(width) + "x" + std::to_string(height));
-        // Keep the provided dimensions
-        m_windowWidth = width;
-        m_windowHeight = height;
-      } else {
-        // Success with display 0
-        GAMEENGINE_INFO("Detected resolution on primary display: " + std::to_string(display.w) + "x" + std::to_string(display.h));
-
-        // Continue with display size logic
-        if (width <= 0 || height <= 0) {
-          m_windowWidth = static_cast<int>(display.w * 0.8f);
-          m_windowHeight = static_cast<int>(display.h * 0.8f);
-          GAMEENGINE_INFO("Adjusted window size to: " + std::to_string(m_windowWidth) + "x" + std::to_string(m_windowHeight));
-        } else {
-          // Use provided dimensions
-          m_windowWidth = width;
-          m_windowHeight = height;
-        }
-
-        // Set fullscreen if requested dimensions are larger than screen
-        if (width > display.w || height > display.h) {
-          fullscreen = true;  // true
-          GAMEENGINE_INFO("Window size larger than screen, enabling fullscreen");
-        }
-      }
+    // Use reliable window sizing approach instead of potentially corrupted display bounds
+    if (width <= 0 || height <= 0) {
+      // Default to reasonable size if not specified
+      m_windowWidth = 1280;
+      m_windowHeight = 720;
+      GAMEENGINE_INFO("Using default window size: " + std::to_string(m_windowWidth) + "x" + std::to_string(m_windowHeight));
     } else {
-      GAMEENGINE_INFO("Detected resolution on display 1: " + std::to_string(display.w) + "x" + std::to_string(display.h));
-
-      // Use 80% of display size if no specific size provided
-      if (width <= 0 || height <= 0) {
-        m_windowWidth = static_cast<int>(display.w * 0.8f);
-        m_windowHeight = static_cast<int>(display.h * 0.8f);
-        GAMEENGINE_INFO("Adjusted window size to: " + std::to_string(m_windowWidth) + "x" + std::to_string(m_windowHeight));
-      } else {
-        // Use the provided dimensions
-        m_windowWidth = width;
-        m_windowHeight = height;
-        GAMEENGINE_INFO("Using requested window size: " + std::to_string(m_windowWidth) + "x" + std::to_string(m_windowHeight));
-      }
-
-      // Set fullscreen if requested dimensions are larger than screen
-      if (width > display.w || height > display.h) {
-        fullscreen = true;  // true
-        GAMEENGINE_INFO("Window size larger than screen, enabling fullscreen");
-      }
+      // Use the provided dimensions
+      m_windowWidth = width;
+      m_windowHeight = height;
+      GAMEENGINE_INFO("Using requested window size: " + std::to_string(m_windowWidth) + "x" + std::to_string(m_windowHeight));
     }
-    // Window handling
+
+    
+    // For macOS compatibility, use fullscreen for large window requests
+    #ifdef __APPLE__
+    if (m_windowWidth >= 1920 || m_windowHeight >= 1080) {
+      fullscreen = true;
+      GAMEENGINE_INFO("Large window requested on macOS, enabling fullscreen for compatibility");
+    }
+    #endif
+    // Window handling with platform-specific optimizations
     int flags{0};
     int flag1 = SDL_WINDOW_FULLSCREEN;
     int flag2 = SDL_WINDOW_HIGH_PIXEL_DENSITY;
 
     if (fullscreen) {
       flags = flag1 | flag2;
+      
+      #ifdef __APPLE__
+      // On macOS, keep logical dimensions for proper scaling
+      // Don't override m_windowWidth and m_windowHeight for macOS
+      GAMEENGINE_INFO("Window set to Fullscreen mode for macOS compatibility");
+      #else
       //setting window width and height to fullscreen dimensions for detected monitor
       m_windowWidth = display.w;
       m_windowHeight = display.h;
       GAMEENGINE_INFO("Window size set to Full Screen");
+      #endif
     }
 
     mp_window.reset(SDL_CreateWindow(title, m_windowWidth, m_windowHeight, flags));
 
     if (mp_window) {
       GAMEENGINE_INFO("Window creation system online");
+      
+      #ifdef __APPLE__
+      // On macOS, set fullscreen mode to null for borderless fullscreen desktop mode
+      if (fullscreen) {
+        SDL_SetWindowFullscreenMode(mp_window.get(), nullptr);
+        GAMEENGINE_INFO("Set to borderless fullscreen desktop mode on macOS");
+      }
+      #endif
 
       // Set window icon
       GAMEENGINE_INFO("Setting window icon");
@@ -146,8 +135,17 @@ bool GameEngine::init(const char* title,
       if (mp_renderer) {
         GAMEENGINE_INFO("Rendering system online");
         SDL_SetRenderDrawColor(mp_renderer.get(), FORGE_GRAY);  // Forge Game Engine gunmetal dark grey
-        // Set logical rendering size to match our window size
-        SDL_SetRenderLogicalPresentation(mp_renderer.get(), logicalWidth, logicalHeight, m_logicalPresentationMode);
+        // Set logical rendering size to standard resolution for consistent aspect ratio
+        int targetLogicalWidth = 1920;
+        int targetLogicalHeight = 1080;
+        
+        #ifdef __APPLE__
+        // On macOS, use LETTERBOX mode to maintain aspect ratio and avoid black bars
+        SDL_RendererLogicalPresentation presentationMode = SDL_LOGICAL_PRESENTATION_LETTERBOX;
+        #else
+        SDL_RendererLogicalPresentation presentationMode = m_logicalPresentationMode;
+        #endif
+        SDL_SetRenderLogicalPresentation(mp_renderer.get(), targetLogicalWidth, targetLogicalHeight, presentationMode);
         //Render Mode.
         SDL_SetRenderDrawBlendMode(mp_renderer.get(), SDL_BLENDMODE_BLEND);
       } else {
@@ -191,22 +189,25 @@ bool GameEngine::init(const char* title,
     float scaleX = static_cast<float>(pixelWidth) / static_cast<float>(logicalWidth);
     float scaleY = static_cast<float>(pixelHeight) / static_cast<float>(logicalHeight);
     dpiScale = std::max(scaleX, scaleY);
+    
+    #ifdef __APPLE__
+    // On macOS, get the display content scale for more accurate scaling
+    float displayScale = SDL_GetWindowDisplayScale(mp_window.get());
+    if (displayScale > 0.0f) {
+      // Use the display scale if it's valid, otherwise keep calculated scale
+      dpiScale = displayScale;
+      GAMEENGINE_INFO("Using macOS display content scale: " + std::to_string(displayScale));
+    }
+    #endif
   }
   
   // Store DPI scale for use by other managers
   m_dpiScale = dpiScale;
   
-  // Use DPI-aware font sizes (round to nearest even number for better pixel alignment)
-  int baseFontSize = static_cast<int>(std::round(24.0f * dpiScale / 2.0f) * 2.0f);
-  int uiFontSize = static_cast<int>(std::round(18.0f * dpiScale / 2.0f) * 2.0f);
-  
-  // Ensure minimum readable sizes
-  baseFontSize = std::max(baseFontSize, 12);
-  uiFontSize = std::max(uiFontSize, 10);
+  GAMEENGINE_INFO("Using display-aware font sizing - SDL3 handles DPI scaling automatically");
   
   GAMEENGINE_INFO("DPI scale: " + std::to_string(dpiScale) + 
-                 ", base font size: " + std::to_string(baseFontSize) + 
-                 ", UI font size: " + std::to_string(uiFontSize));
+                 ", window: " + std::to_string(m_windowWidth) + "x" + std::to_string(m_windowHeight));
 
   // Use multiple threads for initialization
   std::vector<std::future<bool>>
@@ -248,7 +249,7 @@ texMgr.load("res/img", "", mp_renderer.get());
 
   // Initialize font manager in a separate thread - #3
   initTasks.push_back(
-      Forge::ThreadSystem::Instance().enqueueTaskWithResult([baseFontSize, uiFontSize]() -> bool {
+      Forge::ThreadSystem::Instance().enqueueTaskWithResult([this]() -> bool {
         GAMEENGINE_INFO("Creating Font Manager");
         FontManager& fontMgr = FontManager::Instance();
         if (!fontMgr.init()) {
@@ -256,12 +257,13 @@ texMgr.load("res/img", "", mp_renderer.get());
           return false;
         }
 
-        GAMEENGINE_INFO("Loading fonts with calculated sizes - base: " + std::to_string(baseFontSize) + 
-                       ", UI: " + std::to_string(uiFontSize));
+        GAMEENGINE_INFO("Loading fonts with display-aware sizing");
         
-        fontMgr.loadFont("res/fonts", "fonts", baseFontSize);
-        // Load UI-specific font with optimal size for UI elements
-        fontMgr.loadFont("res/fonts", "fonts_UI", uiFontSize);
+        // Let FontManager calculate optimal sizes based on display characteristics
+        if (!fontMgr.loadFontsForDisplay("res/fonts", m_windowWidth, m_windowHeight)) {
+          GAMEENGINE_CRITICAL("Failed to load fonts for display");
+          return false;
+        }
         return true;
       }));
 
@@ -728,4 +730,15 @@ void GameEngine::clean() {
   SDL_Quit();
   GAMEENGINE_INFO("SDL resources cleaned!");
   GAMEENGINE_INFO("Shutdown complete!");
+}
+
+int GameEngine::getOptimalDisplayIndex() const {
+#ifdef __APPLE__
+  // On macOS, prioritize the primary display (0) for MacBook built-in screens
+  return 0;
+#else
+  // On other platforms, try secondary display first if available
+  int displayCount = SDL_GetNumVideoDisplays();
+  return (displayCount > 1) ? 1 : 0;
+#endif
 }

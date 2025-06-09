@@ -49,10 +49,11 @@ Robust event management system supporting weather events, NPC spawning, scene tr
 - **[Event Manager Threading](events/EventManager_ThreadSystem.md)** - Threading integration
 
 ### UI System
-Comprehensive UI system with professional theming, animations, layouts, and event handling for creating polished game interfaces.
+Comprehensive UI system with professional theming, animations, layouts, content-aware auto-sizing, and event handling for creating polished game interfaces.
 
 - **[UIManager Guide](ui/UIManager_Guide.md)** - Complete user guide with examples and best practices
 - **[UIManager Architecture](ui/UIManager_Architecture.md)** - System architecture and integration patterns
+- **[Auto-Sizing System](ui/Auto_Sizing_System.md)** - Content-aware component sizing with multi-line text support and SDL3 integration
 - **[UIManager Implementation Summary](ui/UIManager_Implementation_Summary.md)** - Technical implementation details
 - **[SDL3 Logical Presentation Modes](ui/SDL3_Logical_Presentation_Modes.md)** - SDL3 logical presentation system guide
 - **[UI Stress Testing Guide](ui/UI_Stress_Testing_Guide.md)** - UI performance testing framework
@@ -76,8 +77,8 @@ Core utility classes and helper systems used throughout the engine.
 ### Manager System Documentation
 - **[AIManager](ai/AIManager.md)** - AI behavior management and entity processing
 - **[EventManager](events/EventManager.md)** - High-performance event system with type-indexed storage
-- **[UIManager](ui/UIManager_Guide.md)** - Professional UI system with theming and animations
-- **[FontManager](FontManager.md)** - Font loading and text rendering system
+- **[UIManager](ui/UIManager_Guide.md)** - Professional UI system with theming, animations, and auto-sizing
+- **[FontManager](FontManager.md)** - Font loading, text rendering, and measurement utilities with display-aware sizing
 - **[TextureManager](TextureManager.md)** - Texture loading and sprite rendering system  
 - **[SoundManager](SoundManager.md)** - Audio playback and sound management system
 - **SaveGameManager** - Game save/load system with BinarySerializer integration (see [SERIALIZATION.md](SERIALIZATION.md))
@@ -102,7 +103,8 @@ The Forge Game Engine provides several core systems that work together:
 - **[Logger Quick Start](Logger.md#quick-start)** - Essential logging setup
 - **[AI Quick Start](ai/BehaviorModes_QuickReference.md)** - Set up AI behaviors in minutes
 - **[Event Quick Start](events/EventManager_QuickReference.md)** - Event system essentials
-- **[UI Quick Start](ui/UIManager_Guide.md#quick-start)** - Create UI components instantly
+- **[UI Quick Start](ui/UIManager_Guide.md#quick-start)** - Create UI components with auto-sizing
+- **[Auto-Sizing Guide](ui/Auto_Sizing_System.md)** - Content-aware component sizing
 - **[Threading Setup](ThreadSystem.md)** - Initialize multi-threading
 
 ## Key Features
@@ -114,6 +116,8 @@ The Forge Game Engine provides several core systems that work together:
 - **Individual Behavior Instances**: Each NPC gets isolated behavior state
 - **Mode-Based Configuration**: Automatic setup for common patterns
 - **Professional UI Theming**: Consistent appearance without manual styling
+- **Content-Aware Auto-Sizing**: Components automatically size to fit content
+- **SDL3 Coordinate Integration**: Accurate mouse input with logical presentation
 - **Thread-Safe Operations**: Concurrent access without race conditions
 - **Resource Management**: Automatic cleanup and efficient memory usage
 
