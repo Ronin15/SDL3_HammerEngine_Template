@@ -93,7 +93,7 @@ Windows will need some env vars setup for path:
 Packages needed:
 - mingw-w64-x86_64-boost - testing
 - mingw-w64-x86_64-harfbuzz - SDL3 req
-- mingw-w64-x86_64-freetype -SDL3 req
+- mingw-w64-x86_64-freetype - SDL3 req
 ```
  pacman -S mingw-w64-x86_64-boost mingw-w64-x86_64-harfbuzz mingw-w64-x86_64-freetype
 ```
