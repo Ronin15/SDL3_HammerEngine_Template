@@ -50,8 +50,7 @@ void GameState::update() {
     // Update player manually
     m_player->update();
     
-    // All AI entities updated automatically by GameEngine::processBackgroundTasks()
-    // which calls AIManager::Instance().update()
+    // All AI entities updated automatically by AIManager::Instance().update() in main GameLoop
 }
 ```
 
