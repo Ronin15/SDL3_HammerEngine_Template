@@ -44,6 +44,13 @@ bool GameEngine::init(const char* title,
   if (SDL_Init(SDL_INIT_VIDEO)) {
     GAMEENGINE_INFO("SDL Video online");
 
+    // Set SDL hints for better rendering quality
+    SDL_SetHint(SDL_HINT_RENDER_LINE_METHOD, "3");    // Use geometry for smoother lines
+    SDL_SetHint("SDL_VIDEO_X11_NET_WM_BYPASS_COMPOSITOR", "0");  // Don't bypass compositor
+    SDL_SetHint("SDL_MOUSE_AUTO_CAPTURE", "0");    // Prevent mouse capture issues
+    
+    GAMEENGINE_INFO("SDL rendering hints configured for optimal quality");
+
     // Get display bounds to determine optimal window size
     SDL_Rect display;
     if (SDL_GetDisplayBounds(1, &display) != 0) {  // Try display 1 first
@@ -172,6 +179,35 @@ bool GameEngine::init(const char* title,
   }
 
   // INITIALIZING GAME RESOURCE LOADING AND MANAGEMENT_________________________BEGIN
+  
+  // Calculate DPI-aware font sizes before threading
+  float dpiScale = 1.0f;
+  int pixelWidth, pixelHeight;
+  int logicalWidth, logicalHeight;
+  SDL_GetWindowSizeInPixels(mp_window.get(), &pixelWidth, &pixelHeight);
+  SDL_GetWindowSize(mp_window.get(), &logicalWidth, &logicalHeight);
+  
+  if (logicalWidth > 0 && logicalHeight > 0) {
+    float scaleX = static_cast<float>(pixelWidth) / static_cast<float>(logicalWidth);
+    float scaleY = static_cast<float>(pixelHeight) / static_cast<float>(logicalHeight);
+    dpiScale = std::max(scaleX, scaleY);
+  }
+  
+  // Store DPI scale for use by other managers
+  m_dpiScale = dpiScale;
+  
+  // Use DPI-aware font sizes (round to nearest even number for better pixel alignment)
+  int baseFontSize = static_cast<int>(std::round(24.0f * dpiScale / 2.0f) * 2.0f);
+  int uiFontSize = static_cast<int>(std::round(18.0f * dpiScale / 2.0f) * 2.0f);
+  
+  // Ensure minimum readable sizes
+  baseFontSize = std::max(baseFontSize, 12);
+  uiFontSize = std::max(uiFontSize, 10);
+  
+  GAMEENGINE_INFO("DPI scale: " + std::to_string(dpiScale) + 
+                 ", base font size: " + std::to_string(baseFontSize) + 
+                 ", UI font size: " + std::to_string(uiFontSize));
+
   // Use multiple threads for initialization
   std::vector<std::future<bool>>
       initTasks;  // Initialization tasks vector
@@ -212,7 +248,7 @@ texMgr.load("res/img", "", mp_renderer.get());
 
   // Initialize font manager in a separate thread - #3
   initTasks.push_back(
-      Forge::ThreadSystem::Instance().enqueueTaskWithResult([]() -> bool {
+      Forge::ThreadSystem::Instance().enqueueTaskWithResult([baseFontSize, uiFontSize]() -> bool {
         GAMEENGINE_INFO("Creating Font Manager");
         FontManager& fontMgr = FontManager::Instance();
         if (!fontMgr.init()) {
@@ -220,9 +256,12 @@ texMgr.load("res/img", "", mp_renderer.get());
           return false;
         }
 
-        fontMgr.loadFont("res/fonts", "fonts", 24);
+        GAMEENGINE_INFO("Loading fonts with calculated sizes - base: " + std::to_string(baseFontSize) + 
+                       ", UI: " + std::to_string(uiFontSize));
+        
+        fontMgr.loadFont("res/fonts", "fonts", baseFontSize);
         // Load UI-specific font with optimal size for UI elements
-        fontMgr.loadFont("res/fonts", "fonts_UI", 18);
+        fontMgr.loadFont("res/fonts", "fonts_UI", uiFontSize);
         return true;
       }));
 

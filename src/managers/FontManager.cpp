@@ -8,14 +8,14 @@
 #include <algorithm>
 #include <filesystem>
 #include <vector>
+#include <cmath>
 
 bool FontManager::init() {
   if (!TTF_Init()) {
     FONT_CRITICAL("Font system initialization failed: " + std::string(SDL_GetError()));
       return false;
   } else {
-
-    FONT_INFO("Font system initialized!");
+    FONT_INFO("Font system initialized with quality hints!");
       return true;
   }
 }
@@ -61,6 +61,11 @@ bool FontManager::loadFont(const std::string& fontFile, const std::string& fontI
             continue;
           }
 
+          // Configure font for better rendering quality
+          TTF_SetFontHinting(font.get(), TTF_HINTING_NORMAL);
+          TTF_SetFontKerning(font.get(), 1);
+          TTF_SetFontStyle(font.get(), TTF_STYLE_NORMAL);
+
           m_fontMap[combinedID] = std::move(font);
           loadedAny = true;
           fontsLoaded++;
@@ -83,6 +88,11 @@ bool FontManager::loadFont(const std::string& fontFile, const std::string& fontI
     FONT_ERROR("Failed to load font '" + fontFile + "': " + std::string(SDL_GetError()));
     return false;
   }
+
+  // Configure font for better rendering quality
+  TTF_SetFontHinting(font.get(), TTF_HINTING_NORMAL);
+  TTF_SetFontKerning(font.get(), 1);
+  TTF_SetFontStyle(font.get(), TTF_STYLE_NORMAL);
 
   m_fontMap[fontID] = std::move(font);
   FONT_INFO("Loaded font '" + fontID + "' from '" + fontFile + "'");
@@ -125,6 +135,9 @@ std::shared_ptr<SDL_Texture> FontManager::renderText(
     FONT_ERROR("Failed to create texture from rendered text: " + std::string(SDL_GetError()));
     return nullptr;
   }
+
+  // Set texture scale mode for crisp font rendering
+  SDL_SetTextureScaleMode(texture.get(), SDL_SCALEMODE_LINEAR);
 
   return texture;
 }
@@ -210,6 +223,8 @@ std::shared_ptr<SDL_Texture> FontManager::renderMultiLineText(
 
   // Set texture blend mode to preserve alpha
   SDL_SetTextureBlendMode(texture.get(), SDL_BLENDMODE_BLEND);
+  // Set texture scale mode for crisp font rendering
+  SDL_SetTextureScaleMode(texture.get(), SDL_SCALEMODE_LINEAR);
 
   return texture;
 }
@@ -233,8 +248,13 @@ void FontManager::drawText(const std::string& text, const std::string& fontID,
 
   // Create a destination rectangle
   // Position x,y is considered to be the center of the text
-  SDL_FRect dstRect = {static_cast<float>(x - width/2.0f), static_cast<float>(y - height/2.0f),
-                      static_cast<float>(width), static_cast<float>(height)};
+  // Round coordinates to nearest pixel for crisp rendering
+  SDL_FRect dstRect = {
+    std::roundf(static_cast<float>(x - width/2.0f)), 
+    std::roundf(static_cast<float>(y - height/2.0f)),
+    static_cast<float>(width), 
+    static_cast<float>(height)
+  };
 
   // Render the texture
   SDL_RenderTexture(renderer, texture.get(), nullptr, &dstRect);
@@ -290,8 +310,13 @@ void FontManager::drawTextAligned(const std::string& text, const std::string& fo
       break;
   }
 
-  // Create a destination rectangle
-  SDL_FRect dstRect = {destX, destY, static_cast<float>(width), static_cast<float>(height)};
+  // Create a destination rectangle with pixel-aligned coordinates
+  SDL_FRect dstRect = {
+    std::roundf(destX), 
+    std::roundf(destY),
+    static_cast<float>(width), 
+    static_cast<float>(height)
+  };
 
   // Render the texture
   SDL_RenderTexture(renderer, texture.get(), nullptr, &dstRect);

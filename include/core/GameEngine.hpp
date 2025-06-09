@@ -158,6 +158,12 @@ class GameEngine {
   SDL_Renderer* getRenderer() const { return mp_renderer.get(); }
 
   /**
+   * @brief Gets the SDL window instance
+   * @return Pointer to SDL window
+   */
+  SDL_Window* getWindow() const { return mp_window.get(); }
+
+  /**
    * @brief Gets current FPS from GameLoop's TimestepManager
    * @return Current frames per second
    */
@@ -194,6 +200,12 @@ class GameEngine {
    */
   SDL_RendererLogicalPresentation getLogicalPresentationMode() const;
 
+  /**
+   * @brief Gets the DPI scale factor calculated during initialization
+   * @return DPI scale factor (1.0 for standard DPI, higher for high-DPI displays)
+   */
+  float getDPIScale() const { return m_dpiScale; }
+
  private:
   std::unique_ptr<GameStateManager> mp_gameStateManager{nullptr};
   std::unique_ptr<SDL_Window, decltype(&SDL_DestroyWindow)> mp_window{nullptr, SDL_DestroyWindow};
@@ -210,6 +222,9 @@ class GameEngine {
   
   // Logical presentation settings
   SDL_RendererLogicalPresentation m_logicalPresentationMode{SDL_LOGICAL_PRESENTATION_LETTERBOX};
+  
+  // DPI scaling
+  float m_dpiScale{1.0f};
 
   // Multithreading synchronization
   std::mutex m_updateMutex{};

@@ -354,8 +354,40 @@ private:
     int m_windowWidth{1280};
     int m_windowHeight{720};
     SDL_RendererLogicalPresentation m_logicalPresentationMode{SDL_LOGICAL_PRESENTATION_LETTERBOX};
+    float m_dpiScale{1.0f};  // DPI scale factor for high-DPI displays
 };
 ```
+
+### DPI Management
+
+The GameEngine automatically detects and manages display pixel density for crisp text rendering:
+
+```cpp
+// Automatic DPI detection during initialization
+float GameEngine::calculateDPIScale() {
+    int pixelWidth, pixelHeight;
+    int logicalWidth, logicalHeight;
+    SDL_GetWindowSizeInPixels(mp_window.get(), &pixelWidth, &pixelHeight);
+    SDL_GetWindowSize(mp_window.get(), &logicalWidth, &logicalHeight);
+    
+    if (logicalWidth > 0 && logicalHeight > 0) {
+        float scaleX = static_cast<float>(pixelWidth) / static_cast<float>(logicalWidth);
+        float scaleY = static_cast<float>(pixelHeight) / static_cast<float>(logicalHeight);
+        return std::max(scaleX, scaleY);
+    }
+    return 1.0f;
+}
+
+// Access DPI scale for other managers
+float getDPIScale() const { return m_dpiScale; }
+```
+
+**DPI System Features:**
+- **Automatic Detection**: Calculates pixel density during window creation
+- **Font Scaling**: Provides scale factor for DPI-aware font loading
+- **Quality Optimization**: Ensures crisp text on all display types
+- **Manager Integration**: Shared scale factor across FontManager and UIManager
+- **Cross-Platform**: Works on standard, high-DPI, and 4K/Retina displays
 
 ### Window Management Methods
 
