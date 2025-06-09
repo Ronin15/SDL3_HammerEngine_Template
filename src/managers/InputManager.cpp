@@ -173,6 +173,9 @@ void InputManager::update() {
 
   SDL_Event event;
   while (SDL_PollEvent(&event)) {
+    // Temporarily disable coordinate conversion to test mouse clicks
+    // SDL_ConvertEventToRenderCoordinates(gameEngine.getRenderer(), &event);
+
     switch (event.type) {
       case SDL_EVENT_QUIT:
         INPUT_INFO("Shutting down! {}===]>");

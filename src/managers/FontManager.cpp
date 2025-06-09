@@ -20,6 +20,48 @@ bool FontManager::init() {
   }
 }
 
+bool FontManager::loadFontsForDisplay(const std::string& fontPath, int windowWidth, int windowHeight) {
+  // Calculate base font size based on display characteristics
+  // SDL3 handles DPI scaling automatically, so use logical sizes
+  float baseSizeFloat = 22.0f;
+  
+  // Adjust for screen resolution - larger screens can handle larger fonts
+  if (windowWidth > 1920 || windowHeight > 1080) {
+    baseSizeFloat *= 1.2f; // 20% larger for high-res displays
+  } else if (windowWidth < 1366 || windowHeight < 768) {
+    baseSizeFloat *= 0.9f; // 10% smaller for low-res displays
+  }
+  
+  // Don't apply DPI scaling - SDL3's logical presentation handles this automatically
+  // Just use the calculated logical sizes
+  
+  // Calculate sizes for different font types
+  int baseFontSize = static_cast<int>(std::round(baseSizeFloat));
+  int uiFontSize = static_cast<int>(std::round(baseSizeFloat * 0.875f)); // 87.5% of base
+  int titleFontSize = static_cast<int>(std::round(baseSizeFloat * 1.5f)); // 150% of base
+  int tooltipFontSize = static_cast<int>(std::round(baseSizeFloat * 0.5f)); // 50% of base for compact tooltips
+  
+  // Ensure minimum readable sizes
+  baseFontSize = std::max(baseFontSize, 10);
+  uiFontSize = std::max(uiFontSize, 8);
+  titleFontSize = std::max(titleFontSize, 14);
+  tooltipFontSize = std::max(tooltipFontSize, 8);
+  
+  FONT_INFO("Calculated logical font sizes for display " + std::to_string(windowWidth) + "x" + std::to_string(windowHeight) + 
+           " (SDL3 will handle DPI scaling): base=" + std::to_string(baseFontSize) + 
+           ", UI=" + std::to_string(uiFontSize) + ", title=" + std::to_string(titleFontSize) + 
+           ", tooltip=" + std::to_string(tooltipFontSize));
+  
+  // Load the fonts with calculated sizes
+  bool success = true;
+  success &= loadFont(fontPath, "fonts", baseFontSize);
+  success &= loadFont(fontPath, "fonts_UI", uiFontSize);
+  success &= loadFont(fontPath, "fonts_title", titleFontSize);
+  success &= loadFont(fontPath, "fonts_tooltip", tooltipFontSize);
+  
+  return success;
+}
+
 bool FontManager::loadFont(const std::string& fontFile, const std::string& fontID, int fontSize) {
   // Check if the fontFile is a directory
   if (std::filesystem::exists(fontFile) && std::filesystem::is_directory(fontFile)) {
@@ -333,6 +375,100 @@ void FontManager::clearFont(const std::string& fontID) {
   if (m_fontMap.erase(fontID) > 0) {
     FONT_INFO("Cleared font: " + fontID);
   }
+}
+
+bool FontManager::measureText(const std::string& text, const std::string& fontID, int* width, int* height) {
+  if (m_isShutdown || !width || !height) {
+    return false;
+  }
+
+  auto fontIt = m_fontMap.find(fontID);
+  if (fontIt == m_fontMap.end()) {
+    FONT_ERROR("Font '" + fontID + "' not found for measurement");
+    return false;
+  }
+
+  // Use TTF_GetStringSize for accurate text measurement
+  return TTF_GetStringSize(fontIt->second.get(), text.c_str(), 0, width, height);
+}
+
+bool FontManager::getFontMetrics(const std::string& fontID, int* lineHeight, int* ascent, int* descent) {
+  if (m_isShutdown || !lineHeight || !ascent || !descent) {
+    return false;
+  }
+
+  auto fontIt = m_fontMap.find(fontID);
+  if (fontIt == m_fontMap.end()) {
+    FONT_ERROR("Font '" + fontID + "' not found for metrics");
+    return false;
+  }
+
+  TTF_Font* font = fontIt->second.get();
+  *lineHeight = TTF_GetFontHeight(font);
+  *ascent = TTF_GetFontAscent(font);
+  *descent = TTF_GetFontDescent(font);
+  
+  return true;
+}
+
+bool FontManager::measureMultilineText(const std::string& text, const std::string& fontID, 
+                                      int maxWidth, int* width, int* height) {
+  if (m_isShutdown || !width || !height) {
+    return false;
+  }
+
+  auto fontIt = m_fontMap.find(fontID);
+  if (fontIt == m_fontMap.end()) {
+    FONT_ERROR("Font '" + fontID + "' not found for multiline measurement");
+    return false;
+  }
+
+  // Split text by newlines
+  std::vector<std::string> lines;
+  std::string currentLine;
+  for (char c : text) {
+    if (c == '\n') {
+      lines.push_back(currentLine);
+      currentLine.clear();
+    } else {
+      currentLine += c;
+    }
+  }
+  if (!currentLine.empty()) {
+    lines.push_back(currentLine);
+  }
+
+  if (lines.empty()) {
+    *width = 0;
+    *height = 0;
+    return true;
+  }
+
+  TTF_Font* font = fontIt->second.get();
+  int lineHeight = TTF_GetFontHeight(font);
+  int maxLineWidth = 0;
+
+  // Measure each line
+  for (const auto& line : lines) {
+    int lineWidth = 0;
+    if (!line.empty()) {
+      if (!TTF_GetStringSize(font, line.c_str(), 0, &lineWidth, nullptr)) {
+        FONT_ERROR("Failed to measure line: " + line);
+        return false;
+      }
+    }
+    maxLineWidth = std::max(maxLineWidth, lineWidth);
+  }
+
+  // Apply max width constraint if specified
+  if (maxWidth > 0 && maxLineWidth > maxWidth) {
+    maxLineWidth = maxWidth;
+  }
+
+  *width = maxLineWidth;
+  *height = lineHeight * static_cast<int>(lines.size());
+  
+  return true;
 }
 
 void FontManager::clean() {

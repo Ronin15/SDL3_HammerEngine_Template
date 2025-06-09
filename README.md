@@ -285,18 +285,21 @@ See `include/managers/SoundManager.hpp` for the full API and `docs/SoundManager.
 
 ### FontManager
 
-The FontManager handles high-quality text rendering throughout the application:
+The FontManager handles high-quality text rendering and measurement throughout the application:
 
-- **DPI-Aware Font Loading**: Automatic font sizing based on display pixel density for crisp rendering on all screen types
+- **Display-Aware Font Loading**: Automatic font sizing based on screen resolution and display characteristics for optimal readability
+- **Text Measurement Utilities**: Precise text dimension calculation for single-line and multi-line content with font metrics support
 - **High-Quality Rendering**: TTF hinting, kerning, and linear texture filtering for professional text quality
 - **Pixel-Perfect Positioning**: Coordinate rounding eliminates font blurriness and ensures crisp edges
 - **Multi-Format Support**: Loading of TTF and OTF fonts in various sizes with quality optimizations
 - **Advanced Text Rendering**: Render to textures or directly to screen with anti-aliasing and proper alpha blending
+- **Multi-Line Text Support**: Automatic detection and proper sizing for text containing newlines
 - **Flexible Alignment**: Text alignment control (center, left, right, top-left, top-center, top-right)
+- **Auto-Sizing Integration**: Provides measurement utilities for UIManager's content-aware component sizing
 - **Efficient Management**: Memory-efficient font management with automatic resource cleanup
 - **Batch Loading**: Directory loading support for efficient font initialization
 
-The system automatically detects display DPI and scales fonts appropriately, ensuring optimal text quality across standard monitors, high-DPI displays, and 4K/Retina screens.
+The system automatically calculates optimal font sizes based on display characteristics and provides measurement utilities for layout systems, ensuring optimal text quality and accurate component sizing across all display types.
 
 See `include/managers/FontManager.hpp` for the full API and `docs/FontManager.md` for detailed documentation.
 
@@ -345,13 +348,14 @@ See `include/managers/EntityStateManager.hpp` for the full API.
 
 ### UIManager
 
-The UIManager provides a comprehensive UI system with full SDL3 logical presentation support:
+The UIManager provides a comprehensive UI system with full SDL3 logical presentation support and content-aware auto-sizing:
 
 - **Component System**: Buttons, labels, panels, progress bars, input fields, images, sliders, checkboxes, lists, and tooltips
+- **Auto-Sizing System**: Content-aware component sizing with multi-line text detection, font-based measurements, and automatic title centering
 - **Layout Management**: Absolute, flow, grid, stack, and anchor layout types with automatic positioning
 - **Theme System**: Customizable themes with per-component styling and global theme management
 - **Animation System**: Smooth component animations for position, size, and color transitions
-- **Input Handling**: Full mouse and keyboard interaction with focus management
+- **Input Handling**: Full mouse and keyboard interaction with focus management using SDL3's coordinate transformation
 - **SDL3 Presentation Mode Support**: Universal compatibility with all SDL3 logical presentation modes:
   - **SDL_LOGICAL_PRESENTATION_LETTERBOX**: Maintains aspect ratio with black bars
   - **SDL_LOGICAL_PRESENTATION_STRETCH**: Stretches to fill window (may distort)
@@ -562,7 +566,7 @@ Additional documentation can be found in the `docs/` directory:
 - **[Logger System](docs/Logger.md)** - High-performance logging with zero release overhead and system-specific macros
 
 ### Manager System Documentation
-- **[FontManager](docs/FontManager.md)** - Font loading and text rendering system with TTF/OTF support
+- **[FontManager](docs/FontManager.md)** - Font loading, text rendering, and measurement utilities with display-aware sizing and TTF/OTF support
 - **[DPI-Aware Font System](docs/DPI_Aware_Font_System.md)** - Comprehensive guide to automatic DPI detection, font scaling, and high-quality text rendering across all display types
 - **[TextureManager](docs/TextureManager.md)** - Texture loading and sprite rendering with animation support
 - **[SoundManager](docs/SoundManager.md)** - Audio playback and sound management with volume control
@@ -570,6 +574,7 @@ Additional documentation can be found in the `docs/` directory:
 ### UI System Documentation
 - **[UIManager Guide](docs/ui/UIManager_Guide.md)** - Complete user guide with examples and best practices
 - **[UIManager Architecture](docs/ui/UIManager_Architecture.md)** - System architecture and integration patterns
+- **[Auto-Sizing System](docs/ui/Auto_Sizing_System.md)** - Content-aware component sizing with multi-line text support and SDL3 integration
 - **[UIManager Implementation Summary](docs/ui/UIManager_Implementation_Summary.md)** - Technical implementation details
 - **[SDL3 Logical Presentation Modes](docs/ui/SDL3_Logical_Presentation_Modes.md)** - Comprehensive guide to SDL3's logical presentation system and UIManager compatibility
 - **[UI Stress Testing Guide](docs/ui/UI_Stress_Testing_Guide.md)** - Complete documentation for the integrated UI performance testing framework

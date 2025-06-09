@@ -130,6 +130,15 @@ struct UIComponent {
     bool enabled{true};
     int zOrder{0};
     
+    // Auto-sizing properties
+    bool autoSize{true};                // Enable content-aware auto-sizing by default
+    UIRect minBounds{0, 0, 32, 16};    // Minimum size constraints (only width/height used)
+    UIRect maxBounds{0, 0, 800, 600};  // Maximum size constraints (only width/height used)
+    int contentPadding{8};             // Padding around content for size calculations
+    bool autoWidth{true};              // Auto-size width based on content
+    bool autoHeight{true};             // Auto-size height based on content
+    bool sizeToContent{true};          // Size exactly to fit content (vs. expand to fill)
+    
     // Component-specific data
     std::string text{};
     std::string textureID{};
@@ -148,6 +157,7 @@ struct UIComponent {
     std::function<void(const std::string&)> onTextChanged{};
     std::function<void()> onHover{};
     std::function<void()> onFocus{};
+    std::function<void()> onContentChanged{};  // Called when content changes and resize is needed
     
     virtual ~UIComponent() = default;
 };
@@ -316,6 +326,7 @@ public:
     
     // Title specific methods
     void setTitleAlignment(const std::string& titleID, UIAlignment alignment);
+    void centerTitleInContainer(const std::string& titleID, int containerX, int containerWidth); // Center title after auto-sizing
 
     // Input field specific methods
     void setInputFieldPlaceholder(const std::string& id, const std::string& placeholder);
@@ -352,6 +363,15 @@ public:
     void resetToDefaultTheme();
     void cleanupForStateTransition();
 
+    // Auto-sizing core methods
+    void calculateOptimalSize(const std::string& id);                    // Calculate and apply optimal size for component
+    void calculateOptimalSize(std::shared_ptr<UIComponent> component);   // Calculate and apply optimal size for component
+    bool measureComponentContent(const std::shared_ptr<UIComponent>& component, int* width, int* height); // Measure content dimensions
+    void invalidateLayout(const std::string& layoutID);                 // Mark layout for recalculation
+    void recalculateLayout(const std::string& layoutID);               // Recalculate layout with new component sizes
+    void enableAutoSizing(const std::string& id, bool enable = true);   // Enable/disable auto-sizing for component
+    void setAutoSizingConstraints(const std::string& id, const UIRect& minBounds, const UIRect& maxBounds); // Set size constraints
+    
     // Utility methods
     void setGlobalFont(const std::string& fontID);
     void setGlobalScale(float scale);

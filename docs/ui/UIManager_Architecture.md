@@ -17,26 +17,72 @@ The UIManager follows a **hybrid architecture** with **centralized theme managem
 - **UIManager**: Optional, state-specific, only updated when UI is actually used
 - **Audio/Visual effects**: State-specific requirements and lifecycle
 
-### 2. Centralized Theme Management
+### 2. Content-Aware Auto-Sizing System
 
-**Professional Styling Out-of-the-Box:**
+**Intelligent Component Sizing:**
+The UIManager features a core auto-sizing system that automatically calculates optimal component dimensions based on content:
+
 ```cpp
-// Components automatically use professional themes
-ui.createButton("my_btn", bounds, "Text");           // Standard button (blue/gray)
-ui.createButtonDanger("quit_btn", bounds, "Exit");   // Red for destructive actions
-ui.createButtonSuccess("save_btn", bounds, "Save");  // Green for positive actions
-ui.createButtonWarning("reset_btn", bounds, "Reset"); // Orange for cautionary actions
-ui.createList("my_list", bounds);                    // 36px items for mouse accuracy
+// Auto-sizing is enabled by default for all components
+ui.createLabel("info", {x, y, 0, 0}, "Dynamic Content");    // Sizes to fit text
+ui.createButton("action", {x, y, 0, 0}, "Click Me");       // Sizes to fit text + padding
+ui.createTitle("header", {0, y, windowWidth, 0}, "Title"); // Auto-centers when CENTER aligned
+
+// Multi-line text automatically detected and sized correctly
+ui.createLabel("multi", {x, y, 0, 0}, "Line 1\nLine 2\nLine 3"); // Height = 3 * line height
+
+// List items use font-based heights instead of hardcoded values
+ui.createList("items", bounds); // Item height = font line height + padding
+```
+
+**Auto-Sizing Features:**
+- **Text Measurement**: Uses FontManager to measure actual text dimensions
+- **Multi-line Detection**: Automatically detects newlines and calculates multi-line text height
+- **Font-Based Spacing**: List items and UI elements size based on actual font metrics
+- **Content Padding**: Automatic padding around content for proper spacing
+- **Size Constraints**: Configurable minimum and maximum size limits
+- **Title Centering**: Titles with CENTER alignment automatically reposition to stay centered
+
+**Auto-Sizing Control:**
+```cpp
+// Enable/disable auto-sizing per component
+ui.enableAutoSizing("component_id", true/false);
+
+// Set size constraints
+UIRect minBounds{0, 0, 32, 16};   // Minimum 32x16
+UIRect maxBounds{0, 0, 800, 600}; // Maximum 800x600
+ui.setAutoSizingConstraints("component_id", minBounds, maxBounds);
+
+// Manual size calculation
+ui.calculateOptimalSize("component_id"); // Recalculate size after content changes
+```
+
+### 3. Centralized Theme Management
+
+**Professional Styling and Auto-Sizing Out-of-the-Box:**
+```cpp
+// Components automatically use professional themes and content-aware sizing
+ui.createButton("my_btn", bounds, "Text");           // Auto-sizes to fit text content
+ui.createButtonDanger("quit_btn", bounds, "Exit");   // Red styling, auto-sized
+ui.createButtonSuccess("save_btn", bounds, "Save");  // Green styling, auto-sized
+ui.createButtonWarning("reset_btn", bounds, "Reset"); // Orange styling, auto-sized
+ui.createLabel("info", bounds, "Multi-line\nContent"); // Auto-detects newlines, sizes correctly
+ui.createTitle("header", bounds, "Page Title");      // Auto-centers on screen when CENTER aligned
+ui.createList("my_list", bounds);                    // Font-based item heights for accuracy
 ui.setThemeMode("dark");                             // Switch themes instantly
 ```
 
 **Benefits:**
+- **Content-Aware Auto-Sizing**: Components automatically size to fit their content
+- **Multi-line Text Support**: Automatic detection and sizing for text with newlines
+- **Title Auto-Centering**: Titles with CENTER alignment automatically position themselves
+- **Font-Based Measurements**: List items and spacing based on actual font metrics
 - No manual styling required for 98% of components
 - Consistent appearance across entire application
 - Enhanced UX with improved contrast and usability
 - Easy theme switching (light/dark modes)
 
-### 3. State-Driven UI Updates
+### 4. State-Driven UI Updates
 
 **Correct Implementation Pattern:**
 ```cpp
@@ -137,6 +183,49 @@ class NonUIGameState : public GameState {
     }
 };
 ```
+
+## Auto-Sizing Integration with FontManager
+
+### Font System Integration
+The auto-sizing system is deeply integrated with the FontManager for accurate text measurement:
+
+```cpp
+// FontManager provides text measurement utilities
+FontManager& fontMgr = FontManager::Instance();
+
+// Single-line text measurement
+int width, height;
+fontMgr.measureText("Button Text", "fonts_UI_Arial", &width, &height);
+
+// Multi-line text measurement (detects newlines automatically)
+fontMgr.measureMultilineText("Line 1\nLine 2", "fonts_UI_Arial", 0, &width, &height);
+
+// Font metrics for spacing calculations
+int lineHeight, ascent, descent;
+fontMgr.getFontMetrics("fonts_UI_Arial", &lineHeight, &ascent, &descent);
+```
+
+### Automatic Font Size Selection
+The system automatically selects appropriate font sizes based on display characteristics:
+
+```cpp
+// FontManager calculates display-aware font sizes
+fontMgr.loadFontsForDisplay("res/fonts", windowWidth, windowHeight);
+
+// Creates fonts with calculated sizes:
+// - base font: 22pt (main content)
+// - UI font: 19pt (interface elements)  
+// - title font: 33pt (headings)
+// - tooltip font: 11pt (compact tooltips)
+```
+
+### DPI-Aware Auto-Sizing
+Auto-sizing works seamlessly with SDL3's logical presentation system:
+
+- **Logical Coordinates**: All measurements done in logical units
+- **Automatic Scaling**: SDL3 handles physical display scaling
+- **Consistent Sizing**: Components appear correctly on all display types
+- **Font Quality**: Crisp text rendering at any DPI
 
 ## Component Lifecycle Management
 
