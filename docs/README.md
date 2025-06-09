@@ -31,7 +31,7 @@ Foundation systems that power the game engine architecture.
 The AI system provides flexible, thread-safe behavior management for game entities with individual behavior instances and mode-based configuration.
 
 - **[AI System Overview](ai/AIManager.md)** - Complete AI system documentation
-- **[🔥 NEW: Behavior Modes](ai/BehaviorModes.md)** - PatrolBehavior and WanderBehavior mode-based system
+- **[Behavior Modes](ai/BehaviorModes.md)** - PatrolBehavior and WanderBehavior mode-based system
 - **[Behavior Modes Quick Reference](ai/BehaviorModes_QuickReference.md)** - Quick setup guide for behavior modes
 - **[AIManager API](ai/AIManager.md)** - Complete API reference
 - **[Batched Behavior Assignment](ai/BATCHED_BEHAVIOR_ASSIGNMENT.md)** - Global batched assignment system
@@ -117,7 +117,7 @@ The Forge Game Engine provides several core systems that work together:
 - **Resource Management**: Automatic cleanup and efficient memory usage
 
 ### Performance Optimized
-- **Scales to 5000+ NPCs**: Linear performance scaling
+- **Scales to 10000+ NPCs**: Linear performance scaling - (10,000 entites drawn on screen is the target for testing and stability/performance)
 - **Priority-Based Threading**: Critical tasks processed first
 - **Efficient UI Rendering**: Only processes visible components
 - **Memory Optimizations**: Smart pointers and efficient containers
