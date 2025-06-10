@@ -1,26 +1,38 @@
 # EventFactory Documentation
 
 ## Overview
-The EventFactory provides the most streamlined and flexible API for creating game events. It offers multiple creation patterns from simple direct methods to advanced configuration-driven approaches, making it suitable for both rapid prototyping and complex event systems.
 
-## Key Features
+The EventFactory provides a streamlined and flexible API for creating game events with intelligent defaults and configuration-driven approaches. It serves as the primary creation interface for all event types in the Forge Game Engine, offering both simple direct methods and advanced definition-based creation patterns.
 
-- **Intelligent Defaults**: Automatically configures event parameters based on event type
-- **Configuration-Driven**: Create events from structured definitions (JSON-compatible)
-- **Batch Processing**: Create sequences of related events efficiently
-- **Extensible**: Register custom event creators for new event types
-- **Parameter Validation**: Type-safe parameter handling with fallback defaults
-- **Memory Efficient**: Smart pointer management and object pooling
+## Table of Contents
 
-## Getting Started
+- [Overview](#overview)
+- [Quick Start](#quick-start)
+- [Architecture](#architecture)
+- [Event Creation Methods](#event-creation-methods)
+- [Configuration-Driven Creation](#configuration-driven-creation)
+- [Custom Event Creators](#custom-event-creators)
+- [Event Sequences](#event-sequences)
+- [API Reference](#api-reference)
+- [Best Practices](#best-practices)
+- [Examples](#examples)
+
+## Quick Start
 
 ### Basic Initialization
+
 ```cpp
+#include "events/EventFactory.hpp"
+
 // EventFactory is automatically initialized by EventManager
-// No manual initialization required
+// No manual initialization required, but you can call init() explicitly
+if (!EventFactory::Instance().init()) {
+    std::cerr << "Failed to initialize EventFactory!" << std::endl;
+}
 ```
 
 ### Simple Event Creation
+
 ```cpp
 // Direct method calls - simplest approach
 auto rainEvent = EventFactory::Instance().createWeatherEvent(
@@ -45,10 +57,33 @@ auto npcEvent = EventFactory::Instance().createNPCSpawnEvent(
 );
 ```
 
-## Advanced Features
+## Architecture
+
+### Design Principles
+
+The EventFactory follows these key principles:
+
+1. **Intelligent Defaults**: Automatically configures parameters based on event type
+2. **Configuration-Driven**: Support for structured event definitions
+3. **Extensible**: Custom event creators for new event types
+4. **Type Safety**: Parameter validation with fallback defaults
+5. **Memory Efficient**: Smart pointer management throughout
+
+### Core Components
+
+```cpp
+class EventFactory {
+    // Custom event creator functions
+    std::unordered_map<std::string, std::function<EventPtr(const EventDefinition&)>> m_eventCreators;
+    
+    // Built-in creators for standard event types
+    // - Weather events
+    // - Scene change events  
+    // - NPC spawn events
+};
+```
 
 ### EventDefinition Structure
-The most powerful and flexible way to create events using structured definitions:
 
 ```cpp
 struct EventDefinition {
@@ -60,9 +95,71 @@ struct EventDefinition {
 };
 ```
 
-### Configuration-Driven Event Creation
+## Event Creation Methods
 
-#### Weather Events
+### Weather Events
+
+```cpp
+EventPtr createWeatherEvent(const std::string& name, 
+                           const std::string& weatherType,
+                           float intensity = 0.5f, 
+                           float transitionTime = 5.0f);
+```
+
+**Parameters:**
+- `name`: Unique identifier for the event
+- `weatherType`: Type of weather ("Clear", "Rainy", "Stormy", "Foggy", "Snowy", "Windy", or custom)
+- `intensity`: Weather intensity (0.0-1.0)
+- `transitionTime`: Time in seconds for weather transition
+
+**Automatic Configuration:**
+- **Rainy/Stormy**: Reduced visibility, rain particles, thunder sounds
+- **Foggy**: Drastically reduced visibility, fog particles
+- **Snowy**: Reduced visibility, snow particles, ambient snow sounds
+- **Clear**: Full visibility, no particles
+
+### Scene Change Events
+
+```cpp
+EventPtr createSceneChangeEvent(const std::string& name, 
+                              const std::string& targetScene,
+                              const std::string& transitionType = "fade", 
+                              float duration = 1.0f);
+```
+
+**Parameters:**
+- `name`: Unique identifier for the event
+- `targetScene`: ID of the target scene to transition to
+- `transitionType`: Transition effect ("fade", "dissolve", "slide", etc.)
+- `duration`: Duration of transition in seconds
+
+### NPC Spawn Events
+
+```cpp
+EventPtr createNPCSpawnEvent(const std::string& name, 
+                           const std::string& npcType,
+                           int count = 1, 
+                           float spawnRadius = 0.0f);
+```
+
+**Parameters:**
+- `name`: Unique identifier for the event
+- `npcType`: Type of NPC to spawn
+- `count`: Number of NPCs to spawn
+- `spawnRadius`: Radius around spawn point for random placement
+
+## Configuration-Driven Creation
+
+### Using EventDefinition
+
+The most powerful and flexible way to create events:
+
+```cpp
+EventPtr createEvent(const EventDefinition& def);
+```
+
+### Weather Event Configuration
+
 ```cpp
 EventDefinition stormDef;
 stormDef.type = "Weather";
@@ -78,7 +175,8 @@ stormDef.boolParams["active"] = true;
 auto stormEvent = EventFactory::Instance().createEvent(stormDef);
 ```
 
-#### Scene Change Events
+### Scene Change Configuration
+
 ```cpp
 EventDefinition portalDef;
 portalDef.type = "SceneChange";
@@ -92,7 +190,8 @@ portalDef.boolParams["oneTime"] = true;
 auto portalEvent = EventFactory::Instance().createEvent(portalDef);
 ```
 
-#### NPC Spawn Events
+### NPC Spawn Configuration
+
 ```cpp
 EventDefinition armyDef;
 armyDef.type = "NPCSpawn";
@@ -101,717 +200,446 @@ armyDef.params["npcType"] = "OrcWarrior";
 armyDef.numParams["count"] = 10.0f;
 armyDef.numParams["spawnRadius"] = 100.0f;
 armyDef.numParams["priority"] = 9;
-armyDef.boolParams["active"] = true;
+armyDef.boolParams["oneTime"] = true;
 
 auto armyEvent = EventFactory::Instance().createEvent(armyDef);
 ```
 
-### Event Sequences
-Create complex event chains that execute in order or simultaneously:
+### Common Event Properties
 
-#### Sequential Events
+All events support these common properties in EventDefinition:
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `priority` | float | Event processing priority (higher = first) |
+| `updateFrequency` | float | How often to update (1 = every frame) |
+| `cooldown` | float | Cooldown time in seconds |
+| `oneTime` | bool | Whether event can only trigger once |
+| `active` | bool | Initial active state |
+
+## Custom Event Creators
+
+### Registering Custom Creators
+
 ```cpp
-// Create a dramatic storm sequence
-std::vector<EventDefinition> stormSequence = {
-    {
-        .type = "Weather",
-        .name = "approaching_clouds",
-        .params = {{"weatherType", "Cloudy"}},
-        .numParams = {{"intensity", 0.3f}, {"transitionTime", 5.0f}}
-    },
-    {
-        .type = "Weather",
-        .name = "light_rain",
-        .params = {{"weatherType", "Rainy"}},
-        .numParams = {{"intensity", 0.5f}, {"transitionTime", 3.0f}}
-    },
-    {
-        .type = "Weather",
-        .name = "heavy_storm",
-        .params = {{"weatherType", "Stormy"}},
-        .numParams = {{"intensity", 0.9f}, {"transitionTime", 1.5f}}
-    },
-    {
-        .type = "SceneChange",
-        .name = "storm_atmosphere",
-        .params = {{"targetScene", "StormyField"}, {"transitionType", "fade"}},
-        .numParams = {{"duration", 2.0f}}
-    }
-};
-
-// Create all events in sequence (higher priority = executes first)
-auto stormEvents = EventFactory::Instance().createEventSequence(
-    "epic_storm_sequence",  // base name
-    stormSequence,          // event definitions
-    true                    // sequential (false = simultaneous)
-);
+void registerCustomEventCreator(const std::string& eventType,
+                               std::function<EventPtr(const EventDefinition&)> creatorFunc);
 ```
 
-#### Simultaneous Events
+### Example: Custom Quest Event
+
 ```cpp
-// Create a boss battle entrance
-std::vector<EventDefinition> bossBattleStart = {
-    {
-        .type = "Weather",
-        .name = "battle_storm",
-        .params = {{"weatherType", "Stormy"}},
-        .numParams = {{"intensity", 0.8f}, {"transitionTime", 1.0f}}
-    },
-    {
-        .type = "SceneChange", 
-        .name = "boss_arena",
-        .params = {{"targetScene", "BossArena"}, {"transitionType", "wipe"}},
-        .numParams = {{"duration", 1.5f}}
-    },
-    {
-        .type = "NPCSpawn",
-        .name = "boss_minions",
-        .params = {{"npcType", "SkeletonArcher"}},
-        .numParams = {{"count", 4.0f}, {"spawnRadius", 80.0f}}
-    }
-};
-
-// All events execute simultaneously
-auto bossBattleEvents = EventFactory::Instance().createEventSequence(
-    "boss_battle_intro",
-    bossBattleStart,
-    false  // simultaneous execution
-);
-```
-
-### Custom Event Creators
-Extend the factory to support new event types:
-
-#### Registering Custom Creators
-```cpp
-// Register a quest event creator
-EventFactory::Instance().registerCustomEventCreator("QuestEvent",
+// Register a custom quest event creator
+EventFactory::Instance().registerCustomEventCreator("Quest", 
     [](const EventDefinition& def) -> EventPtr {
-        std::string questId = def.params.at("questId");
-        std::string questType = def.params.count("questType") ? 
-                               def.params.at("questType") : "main";
-        bool isOptional = def.boolParams.count("optional") ? 
-                         def.boolParams.at("optional") : false;
-        int questLevel = static_cast<int>(def.numParams.count("level") ? 
-                                        def.numParams.at("level") : 1.0f);
+        std::string questId = def.params.count("questId") ? def.params.at("questId") : "";
+        std::string objective = def.params.count("objective") ? def.params.at("objective") : "";
+        int reward = static_cast<int>(def.numParams.count("reward") ? def.numParams.at("reward") : 0.0f);
         
-        return std::make_shared<QuestEvent>(def.name, questId, questType, isOptional, questLevel);
+        // Create your custom quest event
+        return std::make_shared<QuestEvent>(def.name, questId, objective, reward);
     });
 
-// Register a dialogue event creator
-EventFactory::Instance().registerCustomEventCreator("DialogueEvent",
-    [](const EventDefinition& def) -> EventPtr {
-        std::string characterId = def.params.at("characterId");
-        std::string dialogueFile = def.params.count("dialogueFile") ? 
-                                  def.params.at("dialogueFile") : "";
-        bool autoAdvance = def.boolParams.count("autoAdvance") ? 
-                          def.boolParams.at("autoAdvance") : false;
-        
-        return std::make_shared<DialogueEvent>(def.name, characterId, dialogueFile, autoAdvance);
-    });
-```
-
-#### Using Custom Events
-```cpp
-// Create quest events using the custom creator
+// Use the custom creator
 EventDefinition questDef;
-questDef.type = "QuestEvent";
-questDef.name = "rescue_princess";
-questDef.params["questId"] = "quest_001";
-questDef.params["questType"] = "main";
-questDef.numParams["level"] = 5.0f;
-questDef.boolParams["optional"] = false;
+questDef.type = "Quest";
+questDef.name = "find_treasure";
+questDef.params["questId"] = "treasure_hunt";
+questDef.params["objective"] = "Find the hidden treasure";
+questDef.numParams["reward"] = 1000.0f;
 
 auto questEvent = EventFactory::Instance().createEvent(questDef);
-
-// Create dialogue events
-EventDefinition dialogueDef;
-dialogueDef.type = "DialogueEvent";
-dialogueDef.name = "king_greeting";
-dialogueDef.params["characterId"] = "king_arthur";
-dialogueDef.params["dialogueFile"] = "king_intro.json";
-dialogueDef.boolParams["autoAdvance"] = false;
-
-auto dialogueEvent = EventFactory::Instance().createEvent(dialogueDef);
 ```
 
-## Intelligent Defaults
+## Event Sequences
 
-### Weather Events
-The factory automatically configures weather-specific parameters:
+### Creating Event Sequences
 
 ```cpp
-auto fogEvent = EventFactory::Instance().createWeatherEvent("morning_fog", "Foggy", 0.8f, 3.0f);
-// Automatically sets:
-// - visibility = 0.8 - (0.8 * 0.7) = 0.24
-// - particleEffect = "fog"
-// - soundEffect = "" (fog is silent)
-
-auto stormEvent = EventFactory::Instance().createWeatherEvent("thunderstorm", "Stormy", 0.9f, 2.0f);
-// Automatically sets:
-// - visibility = 0.7 - (0.9 * 0.4) = 0.34
-// - particleEffect = "heavy_rain" (intensity > 0.7)
-// - soundEffect = "thunder_storm"
-
-auto clearEvent = EventFactory::Instance().createWeatherEvent("sunshine", "Clear");
-// Automatically overrides:
-// - intensity = 0.0 (always for clear weather)
-// - visibility = 1.0
-// - particleEffect = "" (no particles)
-// - soundEffect = "" (no sound)
+std::vector<EventPtr> createEventSequence(const std::string& name,
+                                         const std::vector<EventDefinition>& events,
+                                         bool sequential = true);
 ```
 
-### Scene Transitions
-Transition-specific defaults are applied automatically:
+### Weather Sequence Example
 
 ```cpp
-auto fadeTransition = EventFactory::Instance().createSceneChangeEvent(
-    "fade_to_black", "NextScene", "fade", 2.0f);
-// Automatically sets:
-// - colorR/G/B = 0.0f (black fade)
-// - colorA = 1.0f (fully opaque)
-// - soundEffect = "transition_fade"
-
-auto wipeTransition = EventFactory::Instance().createSceneChangeEvent(
-    "door_opening", "Interior", "wipe", 1.0f);
-// Automatically sets:
-// - direction = 0.0f (right to left)
-// - soundEffect = "transition_wipe"
-
-auto slideTransition = EventFactory::Instance().createSceneChangeEvent(
-    "elevator_up", "UpperFloor", "slide", 1.5f);
-// Automatically sets:
-// - direction = 270.0f (bottom to top)
-// - soundEffect = "transition_slide"
-```
-
-### NPC Spawning
-Spawn-specific defaults ensure proper NPC behavior:
-
-```cpp
-auto guardSpawn = EventFactory::Instance().createNPCSpawnEvent(
-    "castle_guards", "Guard", 3, 40.0f);
-// Automatically sets:
-// - fadeIn = true
-// - fadeTime = 0.5f
-// - playSpawnEffect = false
-// - spawnSoundID = ""
-// - circular spawn area around origin
-```
-
-## JSON Integration
-
-### Loading from JSON
-EventDefinitions can be easily loaded from JSON configuration files:
-
-```json
-{
-  "events": [
-    {
-      "type": "Weather",
-      "name": "storm_sequence_1",
-      "params": {
-        "weatherType": "Cloudy"
-      },
-      "numParams": {
-        "intensity": 0.4,
-        "transitionTime": 4.0,
-        "priority": 3
-      },
-      "boolParams": {
-        "active": true,
-        "oneTime": false
-      }
-    },
-    {
-      "type": "SceneChange",
-      "name": "dramatic_entrance", 
-      "params": {
-        "targetScene": "ThroneRoom",
-        "transitionType": "dissolve"
-      },
-      "numParams": {
-        "duration": 2.5,
-        "priority": 5
-      },
-      "boolParams": {
-        "oneTime": true
-      }
-    }
-  ]
-}
-```
-
-### JSON Loading Example
-```cpp
-// Load events from JSON (pseudo-code - actual JSON parsing depends on library)
-void loadEventsFromJSON(const std::string& filename) {
-    auto jsonData = loadJSONFile(filename);
-    
-    for (const auto& eventJson : jsonData["events"]) {
-        EventDefinition def;
-        def.type = eventJson["type"];
-        def.name = eventJson["name"];
-        
-        // Load string parameters
-        for (const auto& [key, value] : eventJson["params"].items()) {
-            def.params[key] = value;
-        }
-        
-        // Load numeric parameters
-        for (const auto& [key, value] : eventJson["numParams"].items()) {
-            def.numParams[key] = value;
-        }
-        
-        // Load boolean parameters
-        for (const auto& [key, value] : eventJson["boolParams"].items()) {
-            def.boolParams[key] = value;
-        }
-        
-        // Create the event
-        auto event = EventFactory::Instance().createEvent(def);
-        if (event) {
-            EventManager::Instance().registerEvent(def.name, event);
-        }
-    }
-}
-```
-
-## Performance Optimization
-
-### Event Templates
-Create reusable event templates for common patterns:
-
-```cpp
-class EventTemplates {
-public:
-    static EventDefinition createWeatherTemplate(const std::string& name, 
-                                                const std::string& weatherType,
-                                                float intensity = 0.7f) {
-        EventDefinition def;
-        def.type = "Weather";
-        def.name = name;
-        def.params["weatherType"] = weatherType;
-        def.numParams["intensity"] = intensity;
-        def.numParams["transitionTime"] = 3.0f;
-        def.boolParams["active"] = true;
-        return def;
-    }
-    
-    static EventDefinition createCombatSpawnTemplate(const std::string& name,
-                                                    const std::string& npcType,
-                                                    int count) {
-        EventDefinition def;
-        def.type = "NPCSpawn";
-        def.name = name;
-        def.params["npcType"] = npcType;
-        def.numParams["count"] = static_cast<float>(count);
-        def.numParams["spawnRadius"] = 75.0f;
-        def.numParams["priority"] = 8; // High priority for combat
-        def.boolParams["active"] = true;
-        return def;
-    }
+// Create a dynamic weather sequence: Rain -> Lightning -> Clear
+std::vector<EventDefinition> weatherSequence = {
+    {"Weather", "StartRain", {{"weatherType", "Rainy"}}, {{"intensity", 0.5f}}, {}},
+    {"Weather", "Thunderstorm", {{"weatherType", "Stormy"}}, {{"intensity", 0.9f}}, {}},
+    {"Weather", "ClearSkies", {{"weatherType", "Clear"}}, {{"transitionTime", 8.0f}}, {}}
 };
 
-// Usage
-auto rainEvent = EventFactory::Instance().createEvent(
-    EventTemplates::createWeatherTemplate("battle_rain", "Rainy", 0.8f));
-auto enemySpawn = EventFactory::Instance().createEvent(
-    EventTemplates::createCombatSpawnTemplate("orc_reinforcements", "OrcWarrior", 5));
+auto sequence = EventFactory::Instance().createEventSequence(
+    "WeatherSequence", weatherSequence, true);
+
+// Events are automatically assigned decreasing priorities for sequential execution
+// StartRain gets highest priority, ClearSkies gets lowest
 ```
 
-### Batch Creation
-Efficiently create multiple related events:
+### Story Sequence Example
 
 ```cpp
-void createDungeonEvents() {
-    std::vector<EventDefinition> dungeonEvents;
-    
-    // Create weather progression
-    std::vector<std::pair<std::string, float>> weatherProgression = {
-        {"Clear", 0.0f}, {"Cloudy", 0.3f}, {"Foggy", 0.6f}, {"Stormy", 0.9f}
-    };
-    
-    for (size_t i = 0; i < weatherProgression.size(); ++i) {
-        EventDefinition weatherDef;
-        weatherDef.type = "Weather";
-        weatherDef.name = "dungeon_weather_" + std::to_string(i);
-        weatherDef.params["weatherType"] = weatherProgression[i].first;
-        weatherDef.numParams["intensity"] = weatherProgression[i].second;
-        weatherDef.numParams["transitionTime"] = 2.0f;
-        weatherDef.numParams["priority"] = static_cast<float>(weatherProgression.size() - i);
-        dungeonEvents.push_back(weatherDef);
-    }
-    
-    // Create enemy waves
-    std::vector<std::pair<std::string, int>> enemyWaves = {
-        {"SkeletonWarrior", 3}, {"SkeletonArcher", 2}, {"SkeletonMage", 1}
-    };
-    
-    for (size_t i = 0; i < enemyWaves.size(); ++i) {
-        EventDefinition spawnDef;
-        spawnDef.type = "NPCSpawn";
-        spawnDef.name = "enemy_wave_" + std::to_string(i);
-        spawnDef.params["npcType"] = enemyWaves[i].first;
-        spawnDef.numParams["count"] = static_cast<float>(enemyWaves[i].second);
-        spawnDef.numParams["spawnRadius"] = 60.0f;
-        spawnDef.numParams["priority"] = static_cast<float>(enemyWaves.size() - i);
-        dungeonEvents.push_back(spawnDef);
-    }
-    
-    // Create all events as a sequence
-    auto createdEvents = EventFactory::Instance().createEventSequence(
-        "dungeon_progression", dungeonEvents, true);
-    
-    // Register all events with EventManager
-    for (size_t i = 0; i < createdEvents.size() && i < dungeonEvents.size(); ++i) {
-        EventManager::Instance().registerEvent(dungeonEvents[i].name, createdEvents[i]);
-    }
-}
-```
-
-## Error Handling
-
-### Validation and Fallbacks
-```cpp
-EventPtr createSafeEvent(const EventDefinition& def) {
-    try {
-        // Validate required parameters
-        if (def.type.empty()) {
-            std::cerr << "Error: Event type is required" << std::endl;
-            return nullptr;
-        }
-        
-        if (def.name.empty()) {
-            std::cerr << "Error: Event name is required" << std::endl;
-            return nullptr;
-        }
-        
-        // Type-specific validation
-        if (def.type == "Weather") {
-            if (def.params.find("weatherType") == def.params.end()) {
-                std::cerr << "Warning: No weatherType specified, defaulting to 'Clear'" << std::endl;
-            }
-        }
-        
-        // Create the event
-        auto event = EventFactory::Instance().createEvent(def);
-        if (!event) {
-            std::cerr << "Error: Failed to create event '" << def.name << "' of type '" << def.type << "'" << std::endl;
-            return nullptr;
-        }
-        
-        return event;
-        
-    } catch (const std::exception& e) {
-        std::cerr << "Exception creating event '" << def.name << "': " << e.what() << std::endl;
-        return nullptr;
-    }
-}
-```
-
-### Parameter Validation
-```cpp
-bool validateEventDefinition(const EventDefinition& def) {
-    // Check required fields
-    if (def.type.empty() || def.name.empty()) {
-        return false;
-    }
-    
-    // Type-specific validation
-    if (def.type == "Weather") {
-        auto it = def.params.find("weatherType");
-        if (it != def.params.end()) {
-            std::vector<std::string> validTypes = {"Clear", "Cloudy", "Rainy", "Stormy", "Foggy", "Snowy", "Windy"};
-            if (std::find(validTypes.begin(), validTypes.end(), it->second) == validTypes.end()) {
-                std::cerr << "Invalid weather type: " << it->second << std::endl;
-                return false;
-            }
-        }
-    }
-    
-    // Validate numeric ranges
-    for (const auto& [key, value] : def.numParams) {
-        if (key == "intensity" && (value < 0.0f || value > 1.0f)) {
-            std::cerr << "Intensity must be between 0.0 and 1.0" << std::endl;
-            return false;
-        }
-        if (key == "duration" && value < 0.0f) {
-            std::cerr << "Duration must be non-negative" << std::endl;
-            return false;
-        }
-    }
-    
-    return true;
-}
-```
-
-## Integration Examples
-
-### Complete Weather System
-```cpp
-class AdvancedWeatherSystem {
-private:
-    std::vector<EventPtr> m_weatherEvents;
-    size_t m_currentEventIndex = 0;
-    
-public:
-    void initializeWeatherSystem() {
-        // Create weather cycle using EventDefinitions
-        std::vector<EventDefinition> weatherCycle = {
-            {
-                .type = "Weather",
-                .name = "dawn_clear",
-                .params = {{"weatherType", "Clear"}},
-                .numParams = {{"intensity", 1.0f}, {"transitionTime", 2.0f}}
-            },
-            {
-                .type = "Weather", 
-                .name = "morning_fog",
-                .params = {{"weatherType", "Foggy"}},
-                .numParams = {{"intensity", 0.4f}, {"transitionTime", 3.0f}}
-            },
-            {
-                .type = "Weather",
-                .name = "afternoon_clouds",
-                .params = {{"weatherType", "Cloudy"}},
-                .numParams = {{"intensity", 0.6f}, {"transitionTime", 4.0f}}
-            },
-            {
-                .type = "Weather",
-                .name = "evening_rain",
-                .params = {{"weatherType", "Rainy"}},
-                .numParams = {{"intensity", 0.7f}, {"transitionTime", 2.0f}}
-            },
-            {
-                .type = "Weather",
-                .name = "night_storm",
-                .params = {{"weatherType", "Stormy"}},
-                .numParams = {{"intensity", 0.9f}, {"transitionTime", 1.5f}}
-            }
-        };
-        
-        // Create all weather events
-        for (const auto& weatherDef : weatherCycle) {
-            auto event = EventFactory::Instance().createEvent(weatherDef);
-            if (event) {
-                m_weatherEvents.push_back(event);
-                EventManager::Instance().registerEvent(weatherDef.name, event);
-            }
-        }
-    }
-    
-    void advanceWeather() {
-        if (m_weatherEvents.empty()) return;
-        
-        auto currentEvent = m_weatherEvents[m_currentEventIndex];
-        currentEvent->execute();
-        
-        m_currentEventIndex = (m_currentEventIndex + 1) % m_weatherEvents.size();
-    }
-    
-    void triggerRandomWeather() {
-        if (m_weatherEvents.empty()) return;
-        
-        size_t randomIndex = rand() % m_weatherEvents.size();
-        m_weatherEvents[randomIndex]->execute();
-    }
+// Create a story sequence
+std::vector<EventDefinition> storySequence = {
+    {"SceneChange", "EnterVillage", {{"targetScene", "Village"}, {"transitionType", "fade"}}, {{"duration", 2.0f}}, {}},
+    {"NPCSpawn", "SpawnMayor", {{"npcType", "Mayor"}}, {{"count", 1.0f}}, {}},
+    {"SceneChange", "ShowDialogue", {{"targetScene", "DialogueScene"}}, {{"duration", 1.0f}}, {}}
 };
+
+auto storyEvents = EventFactory::Instance().createEventSequence(
+    "VillageIntro", storySequence, true);
 ```
 
-### Dynamic Quest System
+## API Reference
+
+### Core Methods
+
 ```cpp
-class QuestEventManager {
-public:
-    void initializeQuestSystem() {
-        // Register quest event creator
-        EventFactory::Instance().registerCustomEventCreator("QuestEvent",
-            [](const EventDefinition& def) -> EventPtr {
-                return createQuestEvent(def);
-            });
-        
-        // Register dialogue event creator  
-        EventFactory::Instance().registerCustomEventCreator("DialogueEvent",
-            [](const EventDefinition& def) -> EventPtr {
-                return createDialogueEvent(def);
-            });
-    }
-    
-    void createMainQuestLine() {
-        std::vector<EventDefinition> mainQuest = {
-            {
-                .type = "DialogueEvent",
-                .name = "king_introduction",
-                .params = {{"characterId", "king"}, {"dialogueFile", "intro.json"}},
-                .boolParams = {{"oneTime", true}}
-            },
-            {
-                .type = "QuestEvent", 
-                .name = "rescue_mission",
-                .params = {{"questId", "main_001"}, {"questType", "rescue"}},
-                .numParams = {{"level", 1.0f}},
-                .boolParams = {{"optional", false}}
-            },
-            {
-                .type = "NPCSpawn",
-                .name = "quest_enemies",
-                .params = {{"npcType", "Bandit"}},
-                .numParams = {{"count", 5.0f}, {"spawnRadius", 100.0f}}
-            },
-            {
-                .type = "SceneChange",
-                .name = "travel_to_hideout",
-                .params = {{"targetScene", "BanditHideout"}, {"transitionType", "fade"}},
-                .numParams = {{"duration", 2.0f}}
-            }
-        };
-        
-        auto questEvents = EventFactory::Instance().createEventSequence(
-            "main_questline", mainQuest, true);
-    }
-    
-private:
-    static EventPtr createQuestEvent(const EventDefinition& def) {
-        // Implementation for quest event creation
-        return std::make_shared<QuestEvent>(def.name, 
-                                          def.params.at("questId"),
-                                          def.params.at("questType"));
-    }
-    
-    static EventPtr createDialogueEvent(const EventDefinition& def) {
-        // Implementation for dialogue event creation
-        return std::make_shared<DialogueEvent>(def.name,
-                                             def.params.at("characterId"), 
-                                             def.params.at("dialogueFile"));
-    }
-};
+// Initialization and cleanup
+bool init();
+void clean();
+
+// Direct event creation
+EventPtr createWeatherEvent(const std::string& name, const std::string& weatherType,
+                           float intensity = 0.5f, float transitionTime = 5.0f);
+EventPtr createSceneChangeEvent(const std::string& name, const std::string& targetScene,
+                               const std::string& transitionType = "fade", float duration = 1.0f);
+EventPtr createNPCSpawnEvent(const std::string& name, const std::string& npcType,
+                            int count = 1, float spawnRadius = 0.0f);
+
+// Configuration-driven creation
+EventPtr createEvent(const EventDefinition& def);
+
+// Event sequences
+std::vector<EventPtr> createEventSequence(const std::string& name,
+                                        const std::vector<EventDefinition>& events,
+                                        bool sequential = true);
+
+// Custom event creators
+void registerCustomEventCreator(const std::string& eventType,
+                               std::function<EventPtr(const EventDefinition&)> creatorFunc);
+```
+
+### Built-in Event Creators
+
+The EventFactory comes with these built-in creators:
+
+| Event Type | Creator Key | Parameters |
+|------------|-------------|------------|
+| Weather | "Weather" | weatherType, intensity, transitionTime |
+| Scene Change | "SceneChange" | targetScene, transitionType, duration |
+| NPC Spawn | "NPCSpawn" | npcType, count, spawnRadius |
+
+### Helper Methods
+
+```cpp
+// Internal helper methods (implementation-specific)
+WeatherType getWeatherTypeFromString(const std::string& weatherType);
+TransitionType getTransitionTypeFromString(const std::string& transitionType);
 ```
 
 ## Best Practices
 
-### 1. Use Appropriate Creation Methods
+### 1. Use Direct Methods for Simple Events
+
 ```cpp
-// For simple, one-off events - use direct methods
-auto quickRain = EventFactory::Instance().createWeatherEvent("quick_rain", "Rainy", 0.5f);
+// Good: For straightforward events
+auto rainEvent = EventFactory::Instance().createWeatherEvent("Rain", "Rainy", 0.8f, 3.0f);
 
-// For complex, configurable events - use EventDefinition
-EventDefinition complexStorm;
-complexStorm.type = "Weather";
-complexStorm.name = "epic_storm";
-complexStorm.params["weatherType"] = "Stormy";
-complexStorm.numParams["intensity"] = 0.95f;
-complexStorm.numParams["priority"] = 9;
-complexStorm.boolParams["oneTime"] = true;
-auto epicStorm = EventFactory::Instance().createEvent(complexStorm);
-
-// For related events - use sequences
-auto eventChain = EventFactory::Instance().createEventSequence("boss_intro", definitions, true);
+// Avoid: EventDefinition for simple cases (unnecessary complexity)
+EventDefinition def;
+def.type = "Weather";
+def.name = "Rain";
+def.params["weatherType"] = "Rainy";
+def.numParams["intensity"] = 0.8f;
+def.numParams["transitionTime"] = 3.0f;
+auto rainEvent = EventFactory::Instance().createEvent(def);
 ```
 
-### 2. Leverage Intelligent Defaults
-```cpp
-// Let the factory configure details automatically
-auto fogEvent = EventFactory::Instance().createWeatherEvent("fog", "Foggy", 0.8f);
-// Automatically gets: reduced visibility, fog particles, no sound
+### 2. Use EventDefinition for Complex Configuration
 
-auto fadeScene = EventFactory::Instance().createSceneChangeEvent("fade_out", "NextLevel", "fade");
-// Automatically gets: black fade, transition sound, proper timing
+```cpp
+// Good: When you need multiple properties
+EventDefinition complexDef;
+complexDef.type = "Weather";
+complexDef.name = "EpicStorm";
+complexDef.params["weatherType"] = "Stormy";
+complexDef.numParams["intensity"] = 1.0f;
+complexDef.numParams["priority"] = 10;
+complexDef.numParams["cooldown"] = 60.0f;
+complexDef.boolParams["oneTime"] = true;
+
+auto event = EventFactory::Instance().createEvent(complexDef);
 ```
 
-### 3. Create Reusable Templates
+### 3. Register Custom Creators Early
+
 ```cpp
-class EventPatterns {
+void initializeCustomEvents() {
+    // Register all custom creators during initialization
+    EventFactory::Instance().registerCustomEventCreator("Quest", questCreator);
+    EventFactory::Instance().registerCustomEventCreator("Combat", combatCreator);
+    EventFactory::Instance().registerCustomEventCreator("Dialogue", dialogueCreator);
+}
+```
+
+### 4. Use Sequences for Related Events
+
+```cpp
+// Good: For events that should happen in order
+std::vector<EventDefinition> cutsceneEvents = {
+    {"SceneChange", "FadeOut", {{"targetScene", "Black"}}, {{"duration", 1.0f}}, {}},
+    {"NPCSpawn", "SpawnBoss", {{"npcType", "FinalBoss"}}, {}, {}},
+    {"SceneChange", "FadeIn", {{"targetScene", "BossArena"}}, {{"duration", 2.0f}}, {}}
+};
+
+auto sequence = EventFactory::Instance().createEventSequence("BossIntro", cutsceneEvents, true);
+```
+
+### 5. Validate Event Creation
+
+```cpp
+auto event = EventFactory::Instance().createWeatherEvent("Test", "InvalidType", 0.5f, 3.0f);
+if (!event) {
+    std::cerr << "Failed to create weather event!" << std::endl;
+    return false;
+}
+```
+
+## Examples
+
+### Complete Event System Setup
+
+```cpp
+#include "events/EventFactory.hpp"
+#include "events/QuestEvent.hpp" // Custom event type
+
+class GameEventInitializer {
 public:
-    static std::vector<EventDefinition> createCombatSequence(const std::string& enemyType, int waves) {
-        std::vector<EventDefinition> sequence;
-        
-        // Add pre-combat weather
-        sequence.push_back({
-            .type = "Weather",
-            .name = "pre_combat_atmosphere",
-            .params = {{"weatherType", "Stormy"}},
-            .numParams = {{"intensity", 0.7f}}
-        });
-        
-        // Add enemy waves
-        for (int i = 0; i < waves; ++i) {
-            sequence.push_back({
-                .type = "NPCSpawn",
-                .name = "wave_" + std::to_string(i),
-                .params = {{"npcType", enemyType}},
-                .numParams = {{"count", 3.0f + i}, {"spawnRadius", 80.0f}}
-            });
+    bool initialize() {
+        // Initialize the factory
+        if (!EventFactory::Instance().init()) {
+            return false;
         }
         
-        return sequence;
+        // Register custom event creators
+        registerCustomCreators();
+        
+        // Create initial game events
+        createInitialEvents();
+        
+        return true;
+    }
+    
+private:
+    void registerCustomCreators() {
+        // Register quest event creator
+        EventFactory::Instance().registerCustomEventCreator("Quest",
+            [](const EventDefinition& def) -> EventPtr {
+                std::string questId = def.params.count("questId") ? def.params.at("questId") : "";
+                std::string description = def.params.count("description") ? def.params.at("description") : "";
+                int reward = static_cast<int>(def.numParams.count("reward") ? def.numParams.at("reward") : 0.0f);
+                
+                return std::make_shared<QuestEvent>(def.name, questId, description, reward);
+            });
+        
+        // Register dialogue event creator
+        EventFactory::Instance().registerCustomEventCreator("Dialogue",
+            [](const EventDefinition& def) -> EventPtr {
+                std::string speaker = def.params.count("speaker") ? def.params.at("speaker") : "";
+                std::string text = def.params.count("text") ? def.params.at("text") : "";
+                
+                return std::make_shared<DialogueEvent>(def.name, speaker, text);
+            });
+    }
+    
+    void createInitialEvents() {
+        // Create weather events
+        createWeatherEvents();
+        
+        // Create scene transition events
+        createSceneEvents();
+        
+        // Create quest events
+        createQuestEvents();
+        
+        // Create event sequences
+        createEventSequences();
+    }
+    
+    void createWeatherEvents() {
+        // Simple weather events
+        auto morningFog = EventFactory::Instance().createWeatherEvent(
+            "MorningFog", "Foggy", 0.4f, 5.0f);
+        
+        auto afternoonRain = EventFactory::Instance().createWeatherEvent(
+            "AfternoonRain", "Rainy", 0.7f, 3.0f);
+        
+        // Complex weather event using EventDefinition
+        EventDefinition stormDef;
+        stormDef.type = "Weather";
+        stormDef.name = "EpicStorm";
+        stormDef.params["weatherType"] = "Stormy";
+        stormDef.numParams["intensity"] = 0.95f;
+        stormDef.numParams["transitionTime"] = 2.0f;
+        stormDef.numParams["priority"] = 8;
+        stormDef.numParams["cooldown"] = 120.0f;
+        stormDef.boolParams["oneTime"] = false;
+        
+        auto epicStorm = EventFactory::Instance().createEvent(stormDef);
+    }
+    
+    void createSceneEvents() {
+        // Scene transitions
+        auto enterTown = EventFactory::Instance().createSceneChangeEvent(
+            "EnterTown", "TownScene", "fade", 2.0f);
+        
+        auto enterDungeon = EventFactory::Instance().createSceneChangeEvent(
+            "EnterDungeon", "DungeonScene", "dissolve", 1.5f);
+    }
+    
+    void createQuestEvents() {
+        // Quest using custom creator
+        EventDefinition questDef;
+        questDef.type = "Quest";
+        questDef.name = "FindArtifact";
+        questDef.params["questId"] = "artifact_hunt";
+        questDef.params["description"] = "Find the ancient artifact in the ruins";
+        questDef.numParams["reward"] = 500.0f;
+        questDef.boolParams["oneTime"] = true;
+        
+        auto questEvent = EventFactory::Instance().createEvent(questDef);
+    }
+    
+    void createEventSequences() {
+        // Town entrance sequence
+        std::vector<EventDefinition> townSequence = {
+            {"SceneChange", "FadeToTown", {{"targetScene", "TownScene"}, {"transitionType", "fade"}}, {{"duration", 2.0f}}, {}},
+            {"Weather", "SetTownWeather", {{"weatherType", "Clear"}}, {{"intensity", 1.0f}}, {}},
+            {"NPCSpawn", "SpawnTownspeople", {{"npcType", "Villager"}}, {{"count", 5.0f}, {"spawnRadius", 50.0f}}, {}}
+        };
+        
+        auto townEvents = EventFactory::Instance().createEventSequence(
+            "TownEntrance", townSequence, true);
+        
+        // Combat sequence
+        std::vector<EventDefinition> combatSequence = {
+            {"Weather", "BattleStorm", {{"weatherType", "Stormy"}}, {{"intensity", 0.8f}}, {}},
+            {"NPCSpawn", "SpawnEnemies", {{"npcType", "Orc"}}, {{"count", 3.0f}}, {}},
+            {"SceneChange", "CombatMode", {{"targetScene", "BattleUI"}}, {{"duration", 0.5f}}, {}}
+        };
+        
+        auto combatEvents = EventFactory::Instance().createEventSequence(
+            "StartCombat", combatSequence, false); // Simultaneous execution
     }
 };
 ```
 
-### 4. Validate Configurations
+### JSON-Style Event Configuration
+
 ```cpp
-void createEventSafely(const EventDefinition& def) {
-    if (!validateEventDefinition(def)) {
-        std::cerr << "Invalid event definition for: " << def.name << std::endl;
-        return;
+class EventConfigLoader {
+public:
+    void loadEventsFromConfig() {
+        // Weather events configuration
+        std::vector<EventDefinition> weatherConfigs = {
+            {"Weather", "DayRain", {{"weatherType", "Rainy"}}, {{"intensity", 0.6f}, {"transitionTime", 4.0f}}, {{"active", true}}},
+            {"Weather", "NightFog", {{"weatherType", "Foggy"}}, {{"intensity", 0.8f}, {"transitionTime", 6.0f}}, {{"active", true}}},
+            {"Weather", "Storm", {{"weatherType", "Stormy"}}, {{"intensity", 0.9f}, {"priority", 5}, {"cooldown", 60.0f}}, {{"oneTime", false}}}
+        };
+        
+        // Scene events configuration
+        std::vector<EventDefinition> sceneConfigs = {
+            {"SceneChange", "MainMenu", {{"targetScene", "Menu"}, {"transitionType", "fade"}}, {{"duration", 1.5f}}, {}},
+            {"SceneChange", "GameStart", {{"targetScene", "GameWorld"}, {"transitionType", "dissolve"}}, {{"duration", 3.0f}}, {}},
+            {"SceneChange", "GameOver", {{"targetScene", "GameOverScene"}}, {{"duration", 2.0f}, {"priority", 10}}, {{"oneTime", true}}}
+        };
+        
+        // NPC events configuration
+        std::vector<EventDefinition> npcConfigs = {
+            {"NPCSpawn", "Guards", {{"npcType", "Guard"}}, {{"count", 2}, {"spawnRadius", 30.0f}}, {}},
+            {"NPCSpawn", "Merchants", {{"npcType", "Merchant"}}, {{"count", 1}, {"spawnRadius", 0.0f}}, {}},
+            {"NPCSpawn", "Enemies", {{"npcType", "Bandit"}}, {{"count", 4}, {"spawnRadius", 50.0f}, {"priority", 7}}, {}}
+        };
+        
+        // Create all events
+        createEventsFromConfigs(weatherConfigs);
+        createEventsFromConfigs(sceneConfigs);
+        createEventsFromConfigs(npcConfigs);
     }
     
-    auto event = EventFactory::Instance().createEvent(def);
-    if (event) {
-        EventManager::Instance().registerEvent(def.name, event);
+private:
+    void createEventsFromConfigs(const std::vector<EventDefinition>& configs) {
+        for (const auto& config : configs) {
+            auto event = EventFactory::Instance().createEvent(config);
+            if (event) {
+                std::cout << "Created event: " << config.name << " (type: " << config.type << ")" << std::endl;
+            } else {
+                std::cerr << "Failed to create event: " << config.name << std::endl;
+            }
+        }
     }
-}
+};
 ```
 
-### 5. Use JSON for Complex Scenarios
+### Performance Optimization
+
 ```cpp
-// Store complex event scenarios in JSON files
-// Load and modify them without recompiling
-void loadScenarioEvents(const std::string& scenarioName) {
-    std::string filename = "scenarios/" + scenarioName + ".json";
-    loadEventsFromJSON(filename);
-}
+class OptimizedEventCreation {
+public:
+    void createEventsEfficiently() {
+        // Batch create similar events
+        createWeatherEventBatch();
+        createNPCEventBatch();
+        
+        // Use sequences for related events
+        createStorySequences();
+    }
+    
+private:
+    void createWeatherEventBatch() {
+        std::vector<std::pair<std::string, std::string>> weatherTypes = {
+            {"ClearDay", "Clear"},
+            {"CloudyDay", "Cloudy"},
+            {"RainyDay", "Rainy"},
+            {"SnowyDay", "Snowy"}
+        };
+        
+        for (const auto& [name, type] : weatherTypes) {
+            auto event = EventFactory::Instance().createWeatherEvent(name, type, 0.7f, 4.0f);
+            // Events are automatically optimized by the factory
+        }
+    }
+    
+    void createNPCEventBatch() {
+        std::vector<std::tuple<std::string, std::string, int>> npcConfigs = {
+            {"TownGuards", "Guard", 3},
+            {"Villagers", "Villager", 8},
+            {"Merchants", "Merchant", 2}
+        };
+        
+        for (const auto& [name, type, count] : npcConfigs) {
+            auto event = EventFactory::Instance().createNPCSpawnEvent(name, type, count, 40.0f);
+        }
+    }
+    
+    void createStorySequences() {
+        // Efficient sequence creation
+        std::vector<EventDefinition> intro = {
+            {"SceneChange", "OpeningScene", {{"targetScene", "Intro"}}, {{"duration", 3.0f}}, {}},
+            {"Weather", "SetMood", {{"weatherType", "Cloudy"}}, {{"intensity", 0.5f}}, {}},
+            {"NPCSpawn", "IntroCharacters", {{"npcType", "Narrator"}}, {{"count", 1}}, {}}
+        };
+        
+        auto introSequence = EventFactory::Instance().createEventSequence("GameIntro", intro, true);
+        
+        // Sequences automatically optimize priority and execution order
+    }
+};
 ```
 
-## Migration Guide
+---
 
-### From Direct EventManager to EventFactory
-
-#### Old Approach
-```cpp
-// Old: Create event, then register separately
-auto event = std::make_shared<WeatherEvent>("rain", WeatherType::Rainy);
-WeatherParams params;
-params.intensity = 0.8f;
-params.transitionTime = 3.0f;
-event->setWeatherParams(params);
-EventManager::Instance().registerEvent("rain", event);
-```
-
-#### New Approach
-```cpp
-// New: Use EventFactory convenience method
-auto event = EventFactory::Instance().createWeatherEvent("rain", "Rainy", 0.8f, 3.0f);
-EventManager::Instance().registerEvent("rain", event);
-
-// Or even better: Use EventManager convenience method
-EventManager::Instance().createWeatherEvent("rain", "Rainy", 0.8f, 3.0f);
-```
-
-#### Advanced Approach
-```cpp
-// Advanced: Use EventDefinition for maximum flexibility
-EventDefinition rainDef;
-rainDef.type = "Weather";
-rainDef.name = "rain";
-rainDef.params["weatherType"] = "Rainy";
-rainDef.numParams["intensity"] = 0.8f;
-rainDef.numParams["transitionTime"] = 3.0f;
-rainDef.numParams["priority"] = 5;
-rainDef.boolParams["oneTime"] = false;
-
-auto event = EventFactory::Instance().createEvent(rainDef);
-EventManager::Instance().registerEvent("rain", event);
-```
-
-The EventFactory provides the most comprehensive and flexible event creation system, suitable for everything from simple prototypes to complex, data-driven event systems. Choose the approach that best fits your project's complexity and requirements.
+The EventFactory provides a powerful, flexible foundation for event creation in the Forge Game Engine. Its combination of simple direct methods and sophisticated configuration-driven approaches makes it suitable for both rapid prototyping and complex event systems. The built-in intelligent defaults ensure that events work correctly out-of-the-box, while the extensible custom creator system allows for unlimited customization.

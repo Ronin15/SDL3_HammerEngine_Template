@@ -26,6 +26,7 @@ Foundation systems that power the game engine architecture.
 
 - **[GameEngine Documentation](core/GameEngine.md)** - Central engine singleton managing all systems
 - **[GameLoop Documentation](core/GameLoop.md)** - Industry-standard timing with fixed/variable timestep
+- **[TimestepManager Documentation](core/TimestepManager.md)** - Simplified timing system with 1:1 frame mapping
 
 ### AI System
 The AI system provides flexible, thread-safe behavior management for game entities with individual behavior instances and mode-based configuration.
@@ -89,7 +90,7 @@ Core utility classes and helper systems used throughout the engine.
 
 ### System Overview
 The Forge Game Engine provides several core systems that work together:
-- **Core Engine**: GameEngine singleton and GameLoop timing systems
+- **Core Engine**: GameEngine singleton, GameLoop, and TimestepManager timing systems
 - **Utility Systems**: Logger, Worker Budget, and core utility classes
 - **AI System**: Behavior management for NPCs with threading support
 - **Event System**: Global event handling for weather, spawning, and custom events
@@ -100,6 +101,7 @@ The Forge Game Engine provides several core systems that work together:
 ### Quick Links
 - **[GameEngine Setup](core/GameEngine.md#quick-start)** - Initialize the engine
 - **[GameLoop Setup](core/GameLoop.md#quick-start)** - Configure main game loop
+- **[TimestepManager Setup](core/TimestepManager.md#quick-start)** - Timing system configuration
 - **[Logger Quick Start](Logger.md#quick-start)** - Essential logging setup
 - **[AI Quick Start](ai/BehaviorModes_QuickReference.md)** - Set up AI behaviors in minutes
 - **[Event Quick Start](events/EventManager_QuickReference.md)** - Event system essentials
@@ -112,6 +114,7 @@ The Forge Game Engine provides several core systems that work together:
 ### Modern Architecture
 - **Singleton Engine Management**: Centralized system coordination
 - **Fixed/Variable Timestep**: Deterministic updates with smooth rendering
+- **Simplified Timing System**: 1:1 frame-to-update mapping eliminates timing drift
 - **Zero-Overhead Utilities**: Debug logging and memory management without release impact
 - **Individual Behavior Instances**: Each NPC gets isolated behavior state
 - **Mode-Based Configuration**: Automatic setup for common patterns
@@ -148,6 +151,7 @@ The Forge Game Engine provides several core systems that work together:
 For issues with specific systems, see the troubleshooting sections in each system's documentation:
 - Core engine issues: See [GameEngine API Reference](core/GameEngine.md#api-reference)
 - Game loop issues: See [GameLoop Best Practices](core/GameLoop.md#best-practices)
+- Timing issues: See [TimestepManager Best Practices](core/TimestepManager.md#best-practices)
 - Logger issues: See [Logger Best Practices](Logger.md#best-practices)
 - AI issues: See [AI Developer Guide](ai/DeveloperGuide.md)
 - Event issues: See [Event System Integration](events/EventSystem_Integration.md)
