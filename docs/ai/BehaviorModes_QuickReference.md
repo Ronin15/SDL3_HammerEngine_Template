@@ -6,18 +6,22 @@
 ```cpp
 // Fixed waypoints (traditional)
 auto patrol = std::make_unique<PatrolBehavior>(PatrolBehavior::PatrolMode::FIXED_WAYPOINTS, 1.5f);
+patrol->setScreenDimensions(1280.0f, 720.0f);
 AIManager::Instance().registerBehavior("Patrol", std::move(patrol));
 
 // Random rectangular area
 auto randomPatrol = std::make_unique<PatrolBehavior>(PatrolBehavior::PatrolMode::RANDOM_AREA, 2.0f);
+randomPatrol->setScreenDimensions(1280.0f, 720.0f);
 AIManager::Instance().registerBehavior("RandomPatrol", std::move(randomPatrol));
 
 // Circular area
 auto circlePatrol = std::make_unique<PatrolBehavior>(PatrolBehavior::PatrolMode::CIRCULAR_AREA, 1.8f);
+circlePatrol->setScreenDimensions(1280.0f, 720.0f);
 AIManager::Instance().registerBehavior("CirclePatrol", std::move(circlePatrol));
 
 // Event target
 auto eventPatrol = std::make_unique<PatrolBehavior>(PatrolBehavior::PatrolMode::EVENT_TARGET, 2.2f);
+eventPatrol->setScreenDimensions(1280.0f, 720.0f);
 AIManager::Instance().registerBehavior("EventTarget", std::move(eventPatrol));
 ```
 
@@ -35,18 +39,22 @@ AIManager::Instance().registerBehavior("EventTarget", std::move(eventPatrol));
 ```cpp
 // Small area (75px radius)
 auto smallWander = std::make_unique<WanderBehavior>(WanderBehavior::WanderMode::SMALL_AREA, 1.5f);
+smallWander->setScreenDimensions(1280.0f, 720.0f);
 AIManager::Instance().registerBehavior("SmallWander", std::move(smallWander));
 
 // Medium area (200px radius) - default
 auto wander = std::make_unique<WanderBehavior>(WanderBehavior::WanderMode::MEDIUM_AREA, 2.0f);
+wander->setScreenDimensions(1280.0f, 720.0f);
 AIManager::Instance().registerBehavior("Wander", std::move(wander));
 
 // Large area (450px radius)
 auto largeWander = std::make_unique<WanderBehavior>(WanderBehavior::WanderMode::LARGE_AREA, 2.5f);
+largeWander->setScreenDimensions(1280.0f, 720.0f);
 AIManager::Instance().registerBehavior("LargeWander", std::move(largeWander));
 
 // Event target (150px radius)
 auto eventWander = std::make_unique<WanderBehavior>(WanderBehavior::WanderMode::EVENT_TARGET, 2.0f);
+eventWander->setScreenDimensions(1280.0f, 720.0f);
 AIManager::Instance().registerBehavior("EventWander", std::move(eventWander));
 ```
 
@@ -70,7 +78,7 @@ std::vector<std::string> guardBehaviors = {
 ### Villagers
 ```cpp
 std::vector<std::string> villagerBehaviors = {
-    "SmallWander", "Wander", "RandomPatrol", "CirclePatrol"
+    "SmallWander", "Wander", "RandomPatrol"
 };
 ```
 
@@ -78,13 +86,6 @@ std::vector<std::string> villagerBehaviors = {
 ```cpp
 std::vector<std::string> merchantBehaviors = {
     "Wander", "LargeWander", "RandomPatrol", "CirclePatrol"
-};
-```
-
-### Warriors
-```cpp
-std::vector<std::string> warriorBehaviors = {
-    "EventWander", "EventTarget", "LargeWander", "Chase"
 };
 ```
 
@@ -130,14 +131,36 @@ std::string determineBehaviorForNPCType(const std::string& npcType) {
 }
 ```
 
-## Migration Checklist
+## Entity Registration Pattern
 
-- [ ] Replace manual patrol setup with mode-based constructors
-- [ ] Replace manual wander setup with mode-based constructors  
-- [ ] Remove behavior-specific configuration from game states
-- [ ] Use static counters for behavior cycling
-- [ ] Set screen dimensions on all behaviors
-- [ ] Test that NPCs show varied movement patterns
+```cpp
+void createNPC(const std::string& npcType, const Vector2D& position) {
+    auto npc = std::make_shared<NPC>(npcType, position, 64, 64);
+    
+    // Get behavior and priority for this NPC type
+    std::string behaviorName = determineBehaviorForNPCType(npcType);
+    int priority = getPriorityForNPCType(npcType);
+    
+    // Single call for registration and assignment
+    AIManager::Instance().registerEntityForUpdates(npc, priority, behaviorName);
+}
+
+int getPriorityForNPCType(const std::string& npcType) {
+    if (npcType == "Guard") return 7;
+    else if (npcType == "Merchant") return 5;
+    else if (npcType == "Villager") return 2;
+    return 3; // Default
+}
+```
+
+## Essential Setup Checklist
+
+- [ ] Call `AIManager::Instance().init()` at engine startup
+- [ ] Set screen dimensions on all behaviors with `setScreenDimensions()`
+- [ ] Register behaviors once during game state setup
+- [ ] Use static counters for behavior cycling per NPC type
+- [ ] Set player reference with `setPlayerForDistanceOptimization()`
+- [ ] Clean up entities properly during state transitions
 
 ## Performance Notes
 
@@ -145,3 +168,4 @@ std::string determineBehaviorForNPCType(const std::string& npcType) {
 - Auto-regeneration adds slight CPU cost for dynamic behavior
 - Large area modes may need more frequent updates
 - Each NPC gets independent behavior instance (no sharing conflicts)
+- Threading automatically enabled when available (200+ entities)

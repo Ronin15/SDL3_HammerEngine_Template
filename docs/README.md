@@ -31,13 +31,9 @@ Foundation systems that power the game engine architecture.
 ### AI System
 The AI system provides flexible, thread-safe behavior management for game entities with individual behavior instances and mode-based configuration.
 
-- **[AI System Overview](ai/AIManager.md)** - Complete AI system documentation
-- **[Behavior Modes](ai/BehaviorModes.md)** - PatrolBehavior and WanderBehavior mode-based system
-- **[Behavior Modes Quick Reference](ai/BehaviorModes_QuickReference.md)** - Quick setup guide for behavior modes
-- **[AIManager API](ai/AIManager.md)** - Complete API reference
-- **[Batched Behavior Assignment](ai/BATCHED_BEHAVIOR_ASSIGNMENT.md)** - Global batched assignment system
-- **[Entity Update Management](ai/EntityUpdateManagement.md)** - Entity update system details
-- **[AI Developer Guide](ai/DeveloperGuide.md)** - Advanced AI development patterns and techniques
+- **[AI System Overview](ai/AIManager.md)** - Complete AI system documentation with unified architecture, performance optimization, and threading support
+- **[Behavior Modes](ai/BehaviorModes.md)** - Mode-based configuration for PatrolBehavior and WanderBehavior with automatic setup for common patterns
+- **[Behavior Modes Quick Reference](ai/BehaviorModes_QuickReference.md)** - Quick setup guide for mode-based behaviors
 
 ### Event System
 Robust event management system supporting weather events, NPC spawning, scene transitions, and custom events.
@@ -76,7 +72,7 @@ Core utility classes and helper systems used throughout the engine.
 - **[Performance Changelog](PERFORMANCE_CHANGELOG.md)** - Detailed performance optimization history
 
 ### Manager System Documentation
-- **[AIManager](ai/AIManager.md)** - AI behavior management and entity processing
+- **[AIManager](ai/AIManager.md)** - High-performance AI system with individual behavior instances, distance optimization, and threading
 - **[EventManager](events/EventManager.md)** - High-performance event system with type-indexed storage
 - **[UIManager](ui/UIManager_Guide.md)** - Professional UI system with theming, animations, and auto-sizing
 - **[FontManager](FontManager.md)** - Font loading, text rendering, and measurement utilities with display-aware sizing
@@ -153,7 +149,7 @@ For issues with specific systems, see the troubleshooting sections in each syste
 - Game loop issues: See [GameLoop Best Practices](core/GameLoop.md#best-practices)
 - Timing issues: See [TimestepManager Best Practices](core/TimestepManager.md#best-practices)
 - Logger issues: See [Logger Best Practices](Logger.md#best-practices)
-- AI issues: See [AI Developer Guide](ai/DeveloperGuide.md)
+- AI issues: See [AI System Overview](ai/AIManager.md) and [Behavior Modes](ai/BehaviorModes.md)
 - Event issues: See [Event System Integration](events/EventSystem_Integration.md)
 - UI issues: See [UIManager Architecture](ui/UIManager_Architecture.md#troubleshooting)
 - Threading issues: See [ThreadSystem Optimization](ThreadSystem_Optimization.md)
