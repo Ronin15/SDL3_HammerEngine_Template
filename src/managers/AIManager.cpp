@@ -90,6 +90,9 @@ void AIManager::clean() {
             stats.reset();
         }
         m_globalStats.reset();
+        
+        // Reset assignment counter for complete state reset
+        m_totalAssignmentCount.store(0, std::memory_order_relaxed);
     }
 
     m_initialized.store(false, std::memory_order_release);
@@ -180,27 +183,33 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
                         tasksSubmitted++;
                     }
 
-                    // Wait for all tasks to complete with adaptive waiting strategy
+                    // Wait for all tasks with high-performance strategy optimized for game loops
                     if (tasksSubmitted > 0) {
                         auto waitStart = std::chrono::high_resolution_clock::now();
-                        size_t waitIteration = 0;
+                        size_t spinCount = 0;
+                        const size_t maxSpinIterations = 64;  // CPU cache-line friendly spinning
+                        
                         while (completedTasks.load(std::memory_order_relaxed) < tasksSubmitted) {
-                            // Adaptive sleep: start with shorter sleeps, increase gradually
-                            if (waitIteration < 10) {
-                                std::this_thread::sleep_for(std::chrono::microseconds(50));
-                            } else if (waitIteration < 50) {
-                                std::this_thread::sleep_for(std::chrono::microseconds(100));
-                            } else {
-                                std::this_thread::sleep_for(std::chrono::microseconds(200));
+                            // Phase 1: Active spinning for ultra-low latency (first ~1-2 microseconds)
+                            if (spinCount < maxSpinIterations) {
+                                std::this_thread::yield();  // Yield to other threads on same core
+                                spinCount++;
                             }
-                            waitIteration++;
-
-                            // Timeout protection
-                            auto elapsed = std::chrono::high_resolution_clock::now() - waitStart;
-                            if (elapsed > std::chrono::seconds(10)) {
-                                AI_WARN("Task completion timeout after 10 seconds");
-                                AI_WARN("Completed: " + std::to_string(completedTasks.load()) + "/" + std::to_string(tasksSubmitted));
-                                break;
+                            // Phase 2: Progressive backoff for CPU efficiency
+                            else {
+                                auto elapsed = std::chrono::high_resolution_clock::now() - waitStart;
+                                
+                                // Real-time timeout: 16ms = 1 frame at 60fps, 33ms = 2 frames
+                                if (elapsed > std::chrono::milliseconds(16)) {
+                                    // Log only severe delays that impact frame rate
+                                    if (elapsed > std::chrono::milliseconds(50)) {
+                                        AI_WARN("Severe AI bottleneck: " + std::to_string(std::chrono::duration_cast<std::chrono::milliseconds>(elapsed).count()) + "ms");
+                                    }
+                                    break;  // Prioritize frame rate over AI completion
+                                }
+                                
+                                // Minimal sleep for CPU efficiency while maintaining responsiveness
+                                std::this_thread::sleep_for(std::chrono::microseconds(100));
                             }
                         }
                     }
@@ -344,7 +353,20 @@ void AIManager::assignBehaviorToEntity(EntityPtr entity, const std::string& beha
     // Initialize behavior
     try {
         behaviorInstance->init(entity);
-        AI_INFO("Assigned behavior '" + behaviorName + "' to entity");
+        
+        // Thread-safe assignment tracking using atomic member variable
+        size_t currentCount = m_totalAssignmentCount.fetch_add(1, std::memory_order_relaxed);
+        
+        if (currentCount < 5) {
+            // Log first 5 assignments for debugging
+            AI_INFO("Assigned behavior '" + behaviorName + "' to entity");
+        } else if (currentCount == 5) {
+            // Switch to batch mode notification
+            AI_INFO("Switching to batch assignment mode for performance");
+        } else if (currentCount % 1000 == 0) {
+            // Log milestone every 1000 assignments
+            AI_INFO("Batch assigned " + std::to_string(currentCount) + " behaviors");
+        }
     } catch (const std::exception& e) {
         AI_ERROR("Error initializing " + behaviorName + " for entity: " + std::string(e.what()));
     }
@@ -539,6 +561,11 @@ size_t AIManager::getManagedEntityCount() const {
 
 size_t AIManager::getBehaviorUpdateCount() const {
     return m_totalBehaviorExecutions.load(std::memory_order_relaxed);
+}
+
+size_t AIManager::getTotalAssignmentCount() const {
+    // Thread-safe access to assignment counter atomic member
+    return m_totalAssignmentCount.load(std::memory_order_relaxed);
 }
 
 void AIManager::sendMessageToEntity(EntityPtr entity, const std::string& message, bool immediate) {

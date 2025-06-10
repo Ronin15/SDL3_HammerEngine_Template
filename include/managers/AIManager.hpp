@@ -232,6 +232,9 @@ public:
     size_t getManagedEntityCount() const;
     size_t getBehaviorUpdateCount() const;
     
+    // Thread-safe assignment tracking (atomic counter only)
+    size_t getTotalAssignmentCount() const;
+    
 
 
     // Message system
@@ -302,6 +305,9 @@ private:
 
     // Behavior execution tracking
     std::atomic<size_t> m_totalBehaviorExecutions{0};
+    
+    // Thread-safe assignment tracking
+    std::atomic<size_t> m_totalAssignmentCount{0};
     
     // Frame counter for periodic logging (thread-safe)
     std::atomic<uint64_t> m_frameCounter{0};
