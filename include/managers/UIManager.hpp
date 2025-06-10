@@ -228,8 +228,13 @@ public:
     bool init();
     void update(float deltaTime);
     void render(SDL_Renderer* renderer);
+    void render(); // Overloaded version using cached renderer
     void clean();
     bool isShutdown() const { return m_isShutdown; }
+    
+    // Renderer management
+    void setRenderer(SDL_Renderer* renderer) { m_cachedRenderer = renderer; }
+    SDL_Renderer* getRenderer() const { return m_cachedRenderer; }
 
     // UI Component creation methods
     void createButton(const std::string& id, const UIRect& bounds, const std::string& text = "");
@@ -426,6 +431,7 @@ private:
     std::shared_ptr<UIComponent> getComponent(const std::string& id);
     std::shared_ptr<const UIComponent> getComponent(const std::string& id) const;
     std::shared_ptr<UILayout> getLayout(const std::string& id);
+    
     void handleInput();
     void updateAnimations(float deltaTime);
     void updateTooltips(float deltaTime);
@@ -462,6 +468,9 @@ private:
     UIRect calculateTextBounds(const std::string& text, const std::string& fontID, const UIRect& container, UIAlignment alignment);
     SDL_Color interpolateColor(const SDL_Color& start, const SDL_Color& end, float t);
     UIRect interpolateRect(const UIRect& start, const UIRect& end, float t);
+    
+    // Cached renderer for performance
+    SDL_Renderer* m_cachedRenderer{nullptr};
     
     // Delete copy constructor and assignment operator
     UIManager(const UIManager&) = delete;

@@ -274,29 +274,13 @@ void EventDemoState::update(float deltaTime) {
     // Update instructions
     updateInstructions();
 
-    // Update UI Manager
-    auto& uiManager = UIManager::Instance();
-    if (!uiManager.isShutdown()) {
-        uiManager.update(deltaTime);
-
-        // Update UI displays
-        auto& gameEngine = GameEngine::Instance();
-        std::stringstream phaseText;
-        phaseText << "Phase: " << getCurrentPhaseString();
-        uiManager.setText("event_phase", phaseText.str());
-
-        std::stringstream statusText;
-        statusText << "FPS: " << std::fixed << std::setprecision(1) << gameEngine.getCurrentFPS()
-                   << " | Weather: " << getCurrentWeatherString()
-                   << " | NPCs: " << m_spawnedNPCs.size();
-        uiManager.setText("event_status", statusText.str());
-    }
+    // Game logic only - UI updates moved to render() for thread safety
 
     // Note: EventManager is updated globally by GameEngine in the main update loop
     // for optimal performance and consistency with other global systems (AI, Input)
 }
 
-void EventDemoState::render() {
+void EventDemoState::render(float deltaTime) {
     // Render player
     if (m_player) {
         m_player->render();
@@ -309,10 +293,24 @@ void EventDemoState::render() {
         }
     }
 
-    // Render UI components through UIManager
-    auto& gameEngine = GameEngine::Instance();
+    // Update and render UI components through UIManager using cached renderer for cleaner API
     auto& ui = UIManager::Instance();
-    ui.render(gameEngine.getRenderer());
+    if (!ui.isShutdown()) {
+        ui.update(deltaTime); // Use actual deltaTime from update cycle
+
+        // Update UI displays
+        auto& gameEngine = GameEngine::Instance();
+        std::stringstream phaseText;
+        phaseText << "Phase: " << getCurrentPhaseString();
+        ui.setText("event_phase", phaseText.str());
+
+        std::stringstream statusText;
+        statusText << "FPS: " << std::fixed << std::setprecision(1) << gameEngine.getCurrentFPS()
+                   << " | Weather: " << getCurrentWeatherString()
+                   << " | NPCs: " << m_spawnedNPCs.size();
+        ui.setText("event_status", statusText.str());
+    }
+    ui.render();
 }
 
 void EventDemoState::setupEventSystem() {

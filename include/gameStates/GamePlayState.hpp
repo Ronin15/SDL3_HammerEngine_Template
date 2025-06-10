@@ -15,7 +15,7 @@ class GamePlayState : public GameState {
   GamePlayState() : m_transitioningToPause{false}, mp_Player{nullptr} {}
   bool enter() override;
   void update(float deltaTime) override;
-  void render() override;
+  void render(float deltaTime) override;
   bool exit() override;
   std::string getName() const override;
 

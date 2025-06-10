@@ -73,7 +73,6 @@ Core utility classes and helper systems used throughout the engine.
 - **[Logger System](Logger.md)** - High-performance logging with zero release overhead and system-specific macros
 - **[Binary Serialization](SERIALIZATION.md)** - Fast, header-only serialization system
 - **[Performance Changelog](PERFORMANCE_CHANGELOG.md)** - Detailed performance optimization history
-- **[Threading & Performance Guide](THREADING_PERFORMANCE_GUIDE.md)** - Critical threading optimizations and best practices (v4.2+)
 
 ### Manager System Documentation
 - **[AIManager](ai/AIManager.md)** - AI behavior management and entity processing

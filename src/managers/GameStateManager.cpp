@@ -80,6 +80,7 @@ void GameStateManager::setState(const std::string& stateName) {
 }
 
 void GameStateManager::update(float deltaTime) {
+  m_lastDeltaTime = deltaTime; // Store deltaTime for render
   if (auto current = currentState.lock()) {
     current->update(deltaTime);
   }
@@ -87,7 +88,7 @@ void GameStateManager::update(float deltaTime) {
 
 void GameStateManager::render() {
   if (auto current = currentState.lock()) {
-    current->render();
+    current->render(m_lastDeltaTime);
   }
 }
 

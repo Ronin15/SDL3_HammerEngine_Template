@@ -48,7 +48,7 @@ void GamePlayState::update([[maybe_unused]] float deltaTime) {
   }
 }
 
-void GamePlayState::render() {
+void GamePlayState::render([[maybe_unused]] float deltaTime) {
   //std::cout << "Rendering GAME State\n";
   
   // Cache manager references for better performance

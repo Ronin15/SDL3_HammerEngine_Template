@@ -113,12 +113,6 @@ bool UIExampleState::enter() {
 }
 
 void UIExampleState::update(float deltaTime) {
-    // Update UI Manager
-    auto& uiManager = UIManager::Instance();
-    if (!uiManager.isShutdown()) {
-        uiManager.update(deltaTime);
-    }
-    
     // Update progress bar animation
     updateProgressBar(deltaTime);
     
@@ -131,13 +125,15 @@ void UIExampleState::update(float deltaTime) {
     }
 }
 
-void UIExampleState::render() {
-    // Render UI components through UIManager
+void UIExampleState::render(float deltaTime) {
+    // Update and render UI components through UIManager using cached renderer for cleaner API
     // Each state that uses UI is responsible for rendering its own UI components
     // This ensures proper render order and state-specific UI management
-    auto& gameEngine = GameEngine::Instance();
     auto& ui = UIManager::Instance();
-    ui.render(gameEngine.getRenderer());
+    if (!ui.isShutdown()) {
+        ui.update(deltaTime);
+    }
+    ui.render();
 }
 
 bool UIExampleState::exit() {

@@ -61,10 +61,10 @@ void UIManager::update(float deltaTime) {
     m_clickedButtons.clear();
     m_mouseReleased = false;
 
-    // Handle input
+    // Handle input (may need component access)
     handleInput();
 
-    // Update animations
+    // Update animations (has its own locking)
     updateAnimations(deltaTime);
 
     // Update tooltips
@@ -119,6 +119,12 @@ void UIManager::render(SDL_Renderer* renderer) {
     // This allows GameStates to set custom background colors for UI rendering
 }
 
+void UIManager::render() {
+    if (m_cachedRenderer) {
+        render(m_cachedRenderer);
+    }
+}
+
 void UIManager::clean() {
     if (m_isShutdown) {
         return;
@@ -131,6 +137,7 @@ void UIManager::clean() {
     m_hoveredComponents.clear();
     m_focusedComponent.clear();
     m_hoveredTooltip.clear();
+    m_cachedRenderer = nullptr;
 
     m_isShutdown = true;
 }
@@ -505,7 +512,7 @@ bool UIManager::getChecked(const std::string& id) const {
 
 UIRect UIManager::getBounds(const std::string& id) const {
     auto component = getComponent(id);
-    return component ? component->bounds : UIRect{};
+    return component ? component->bounds : UIRect{0, 0, 0, 0};
 }
 
 UIState UIManager::getComponentState(const std::string& id) const {
