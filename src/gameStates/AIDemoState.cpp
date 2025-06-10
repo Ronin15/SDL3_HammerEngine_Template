@@ -222,6 +222,11 @@ bool AIDemoState::exit() {
 
     // Chase behavior cleanup is now handled by AIManager
 
+    // Always restore AI to unpaused state when exiting the demo state
+    // This prevents the global pause from affecting other states
+    aiMgr.setGlobalPause(false);
+    m_aiPaused = false;
+
     std::cout << "Forge Game Engine - AIDemoState exit complete\n";
     return true;
 }

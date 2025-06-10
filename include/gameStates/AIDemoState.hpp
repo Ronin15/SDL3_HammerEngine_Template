@@ -57,6 +57,7 @@ private:
 
     // AI pause state
     bool m_aiPaused{false};
+    bool m_previousGlobalPauseState{false};  // Store previous global pause state to restore on exit
     
     // Helper methods
     void handleInput();
