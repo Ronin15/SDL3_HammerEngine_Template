@@ -332,7 +332,10 @@ texMgr.load("res/img", "", mp_renderer.get());
     GAMEENGINE_CRITICAL("Failed to initialize UI Manager");
     return false;
   }
-  GAMEENGINE_INFO("UI Manager initialized successfully");
+  
+  // Set cached renderer for performance optimization
+  uiMgr.setRenderer(mp_renderer.get());
+  GAMEENGINE_INFO("UI Manager initialized successfully with cached renderer");
 
   // Setting Up initial game states
   mp_gameStateManager->addState(std::make_unique<LogoState>());

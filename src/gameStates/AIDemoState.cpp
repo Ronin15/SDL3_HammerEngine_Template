@@ -52,7 +52,7 @@ AIDemoState::~AIDemoState() {
 
 void AIDemoState::handleInput() {
     InputManager& inputMgr = InputManager::Instance();
-    
+
     // Use InputManager's new event-driven key press detection
     if (inputMgr.wasKeyPressed(SDL_SCANCODE_SPACE)) {
         // Toggle pause/resume
@@ -69,13 +69,13 @@ void AIDemoState::handleInput() {
         // Simple feedback
         std::cout << "Forge Game Engine - AI " << (m_aiPaused ? "PAUSED" : "RESUMED") << std::endl;
     }
-    
+
     if (inputMgr.wasKeyPressed(SDL_SCANCODE_B)) {
         std::cout << "Forge Game Engine - Preparing to exit AIDemoState...\n";
         const GameEngine& gameEngine = GameEngine::Instance();
         gameEngine.getGameStateManager()->setState("MainMenuState");
     }
-    
+
     if (inputMgr.wasKeyPressed(SDL_SCANCODE_1)) {
         // Assign Wander behavior to all NPCs
         std::cout << "Forge Game Engine - Switching all NPCs to WANDER behavior\n";
@@ -85,7 +85,7 @@ void AIDemoState::handleInput() {
             aiMgr.queueBehaviorAssignment(npc, "Wander");
         }
     }
-    
+
     if (inputMgr.wasKeyPressed(SDL_SCANCODE_2)) {
         // Assign Patrol behavior to all NPCs
         std::cout << "Forge Game Engine - Switching all NPCs to PATROL behavior\n";
@@ -95,7 +95,7 @@ void AIDemoState::handleInput() {
             aiMgr.queueBehaviorAssignment(npc, "Patrol");
         }
     }
-    
+
     if (inputMgr.wasKeyPressed(SDL_SCANCODE_3)) {
         // Assign Chase behavior to all NPCs
         std::cout << "Forge Game Engine - Switching all NPCs to CHASE behavior\n";
@@ -117,7 +117,7 @@ bool AIDemoState::enter() {
     try {
         // Cache GameEngine reference for better performance
         const GameEngine& gameEngine = GameEngine::Instance();
-        
+
         // Setup window size
         m_worldWidth = gameEngine.getWindowWidth();
         m_worldHeight = gameEngine.getWindowHeight();
@@ -131,7 +131,7 @@ bool AIDemoState::enter() {
 
         // Cache AIManager reference for better performance
         AIManager& aiMgr = AIManager::Instance();
-        
+
         // Set player reference in AIManager for distance optimization
         aiMgr.setPlayerForDistanceOptimization(m_player);
 
@@ -150,7 +150,7 @@ bool AIDemoState::enter() {
         auto& ui = UIManager::Instance();
         ui.createTitle("ai_title", {0, 10, gameEngine.getWindowWidth(), 30}, "AI Demo State");
         ui.setTitleAlignment("ai_title", UIAlignment::CENTER_CENTER);
-        ui.createLabel("ai_instructions", {10, 50, gameEngine.getWindowWidth() - 20, 25}, 
+        ui.createLabel("ai_instructions", {10, 50, gameEngine.getWindowWidth() - 20, 25},
                        "AI Demo: [B] Exit | [1] Wander | [2] Patrol | [3] Chase | [SPACE] Pause/Resume");
         ui.createLabel("ai_status", {10, 85, 400, 25}, "FPS: -- | Entities: -- | AI: RUNNING");
 
@@ -172,7 +172,7 @@ bool AIDemoState::exit() {
 
     // Cache AIManager reference for better performance
     AIManager& aiMgr = AIManager::Instance();
-    
+
     // First clear entity references from behaviors
     if (aiMgr.hasBehavior("Chase")) {
         auto chaseBehaviorPtr = aiMgr.getBehavior("Chase");
@@ -229,7 +229,7 @@ bool AIDemoState::exit() {
 void AIDemoState::update([[maybe_unused]] float deltaTime) {
     // Cache AIManager reference for better performance
     AIManager& aiMgr = AIManager::Instance();
-    
+
     try {
         // Update player
         if (m_player) {
@@ -253,7 +253,7 @@ void AIDemoState::update([[maybe_unused]] float deltaTime) {
     }
     // Cache InputManager reference for better performance
     InputManager& inputMgr = InputManager::Instance();
-    
+
     if (inputMgr.isKeyDown(SDL_SCANCODE_B)) {
         std::cout << "Forge Game Engine - Preparing to exit AIDemoState...\n";
 
@@ -295,24 +295,11 @@ void AIDemoState::update([[maybe_unused]] float deltaTime) {
 
     // Handle input with proper key press detection
     handleInput();
-    
-    // Update UI Manager
-    auto& uiManager = UIManager::Instance();
-    if (!uiManager.isShutdown()) {
-        uiManager.update(deltaTime);
-        
-        // Update status display
-        const auto& gameEngine = GameEngine::Instance();
-        auto& aiManager = AIManager::Instance();
-        std::stringstream status;
-        status << "FPS: " << std::fixed << std::setprecision(1) << gameEngine.getCurrentFPS()
-               << " | Entities: " << m_npcs.size() 
-               << " | AI: " << (aiManager.isGloballyPaused() ? "PAUSED" : "RUNNING");
-        uiManager.setText("ai_status", status.str());
-    }
+
+    // Game logic only - UI updates moved to render() for thread safety
 }
 
-void AIDemoState::render() {
+void AIDemoState::render(float deltaTime) {
     // Render all NPCs
     for (auto& npc : m_npcs) {
         npc->render();
@@ -323,10 +310,21 @@ void AIDemoState::render() {
         m_player->render();
     }
 
-    // Render UI components through UIManager
-    auto& gameEngine = GameEngine::Instance();
+    // Update and render UI components through UIManager using cached renderer for cleaner API
     auto& ui = UIManager::Instance();
-    ui.render(gameEngine.getRenderer());
+    if (!ui.isShutdown()) {
+        ui.update(deltaTime); // Use actual deltaTime from update cycle
+
+        // Update status display
+        const auto& gameEngine = GameEngine::Instance();
+        auto& aiManager = AIManager::Instance();
+        std::stringstream status;
+        status << "FPS: " << std::fixed << std::setprecision(1) << gameEngine.getCurrentFPS()
+               << " | Entities: " << m_npcs.size()
+               << " | AI: " << (aiManager.isGloballyPaused() ? "PAUSED" : "RUNNING");
+        ui.setText("ai_status", status.str());
+    }
+    ui.render(); // Uses cached renderer from GameEngine
 }
 
 void AIDemoState::setupAIBehaviors() {
@@ -334,7 +332,7 @@ void AIDemoState::setupAIBehaviors() {
 
     // Cache AIManager reference for better performance
     AIManager& aiMgr = AIManager::Instance();
-    
+
     if (!aiMgr.hasBehavior("Wander")) {
         auto wanderBehavior = std::make_unique<WanderBehavior>(WanderBehavior::WanderMode::MEDIUM_AREA, 80.0f);
         wanderBehavior->setScreenDimensions(m_worldWidth, m_worldHeight);
@@ -402,7 +400,7 @@ void AIDemoState::setupAIBehaviors() {
 void AIDemoState::createNPCs() {
     // Cache AIManager reference for better performance
     AIManager& aiMgr = AIManager::Instance();
-    
+
     try {
         // Random number generation for positioning
         std::random_device rd;
@@ -442,5 +440,3 @@ void AIDemoState::createNPCs() {
         std::cerr << "Forge Game Engine - ERROR: Unknown exception in createNPCs()" << std::endl;
     }
 }
-
-

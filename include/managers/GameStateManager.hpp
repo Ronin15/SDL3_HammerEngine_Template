@@ -28,6 +28,7 @@ class GameStateManager {
     // Non-owning observer to the current active state
     // This state is owned by the 'states' container above
     std::weak_ptr<GameState> currentState;
+    float m_lastDeltaTime{0.0f}; // Store deltaTime from update to pass to render
 
 };
 

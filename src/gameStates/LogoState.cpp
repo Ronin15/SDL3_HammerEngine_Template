@@ -11,10 +11,13 @@
 #include "managers/UIManager.hpp"
 #include <iostream>
 
-Uint32 stateTimer{0};
+float stateTimer{0.0f};
 
 bool LogoState::enter() {
   std::cout << "Forge Game Engine - Entering LOGO State\n";
+
+  // Reset timer when entering state
+  stateTimer = 0.0f;
 
   // Cache SoundManager reference for better performance
   SoundManager& soundMgr = SoundManager::Instance();
@@ -22,18 +25,18 @@ bool LogoState::enter() {
   return true;
 }
 
-void LogoState::update([[maybe_unused]] float deltaTime) {
+void LogoState::update(float deltaTime) {
   // std::cout << "Forge Game Engine - Updating LOGO State\n";
 
-  stateTimer = SDL_GetTicks();
-  if (stateTimer > 3000) {  // 7 seconds 7000 // reducing for faster testing
+  stateTimer += deltaTime;
+  if (stateTimer > 3.0f) {  // 3 seconds using deltaTime
     // Cache GameEngine reference for better performance
     GameEngine& gameEngine = GameEngine::Instance();
     gameEngine.getGameStateManager()->setState("MainMenuState");
   }
 }
 
-void LogoState::render() {
+void LogoState::render([[maybe_unused]] float deltaTime) {
   // Cache manager references for better performance
   TextureManager& texMgr = TextureManager::Instance();
   GameEngine& gameEngine = GameEngine::Instance();

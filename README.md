@@ -55,8 +55,8 @@ I use the Zed IDE with custom cmake and ninja task configurations to build/compi
 - **10K Entity Target**: Achieves 995K entity updates per second (5.85x threading improvement over baseline)
 - **100K Entity Stress Test**: Demonstrates 2.2M+ entity updates per second capability
 - **Threading Threshold**: Automatic activation at 200 entities provides 4.41x performance boost
-- **WorkerBudget System**: Dynamic allocation across subsystems (AI: 60%, Events: 30%, Engine: 1-2 workers)
-- **Queue Capacity**: 4096 task queue capacity eliminates bottlenecks under high entity loads
+- **WorkerBudget System**: Dynamic allocation across AI and Event systems (AI: 60%, Events: 30%, Engine coordination: 10%)
+- **Simplified UI Architecture**: Single-threaded UI operations for 2D games with excellent performance
 - **Cache-Friendly Batching**: Optimized batch sizes (25-1000 entities) for optimal memory access patterns
 
 ### System Scalability
@@ -485,7 +485,7 @@ This SDL3 Game Template represents a complete, production-ready game engine fram
 
 - **Memory Safety**: No raw pointers, no manual memory management - everything uses smart pointers and RAII
 - **Performance First**: Cache-friendly data structures, batch processing, and optimized algorithms throughout
-- **Thread Safety**: Comprehensive multi-threading support with proper synchronization and worker budgets
+- **Clean Threading**: Optimized threading for AI/Events with simplified single-threaded UI for maintainability
 - **Type Safety**: Strong typing systems with compile-time guarantees and runtime validation
 - **Cross-Platform**: Unified codebase supporting Windows, macOS, and Linux with platform-specific optimizations
 
@@ -506,7 +506,7 @@ Designed to handle production-scale requirements:
 - **Entity Management**: Efficiently handles 10,000+ AI entities with minimal performance impact
 - **UI Scalability**: Supports complex UI hierarchies with thousands of components
 - **Event Processing**: High-throughput event system with type-indexed storage and batch processing
-- **Threading Optimization**: Intelligent worker allocation with priority-based task scheduling
+- **Threading Optimization**: Intelligent worker allocation for data processing with clean UI architecture
 - **Memory Efficiency**: Optimized data structures using Boost containers and memory pools
 
 ### Development Workflow

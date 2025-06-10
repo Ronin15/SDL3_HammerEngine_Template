@@ -13,7 +13,7 @@ class GameState {
  public:
   virtual bool enter() = 0;
   virtual void update(float deltaTime) = 0;
-  virtual void render() = 0;
+  virtual void render(float deltaTime) = 0;
   virtual bool exit() = 0;
   virtual std::string getName() const = 0;
   virtual ~GameState() = default;

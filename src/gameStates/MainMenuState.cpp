@@ -77,57 +77,54 @@ bool MainMenuState::enter() {
   return true;
 }
 
-void MainMenuState::update(float deltaTime) {
-  // Update UI Manager
-  auto& uiManager = UIManager::Instance();
-  if (!uiManager.isShutdown()) {
-      uiManager.update(deltaTime);
-  }
-  
-  // Handle keyboard shortcuts with event-driven approach
+void MainMenuState::update([[maybe_unused]] float deltaTime) {
+  // Handle input - UI updates moved to render() for thread safety
   auto& inputManager = InputManager::Instance();
-  
+
+  // Keyboard shortcuts for quick navigation
   if (inputManager.wasKeyPressed(SDL_SCANCODE_RETURN)) {
       auto& gameEngine = GameEngine::Instance();
       auto* gameStateManager = gameEngine.getGameStateManager();
       gameStateManager->setState("GamePlayState");
   }
-  
+
   if (inputManager.wasKeyPressed(SDL_SCANCODE_A)) {
       auto& gameEngine = GameEngine::Instance();
       auto* gameStateManager = gameEngine.getGameStateManager();
       gameStateManager->setState("AIDemo");
   }
-  
+
   if (inputManager.wasKeyPressed(SDL_SCANCODE_E)) {
       auto& gameEngine = GameEngine::Instance();
       auto* gameStateManager = gameEngine.getGameStateManager();
       gameStateManager->setState("EventDemo");
   }
-  
+
   if (inputManager.wasKeyPressed(SDL_SCANCODE_U)) {
       auto& gameEngine = GameEngine::Instance();
       auto* gameStateManager = gameEngine.getGameStateManager();
       gameStateManager->setState("UIExampleState");
   }
-  
+
   if (inputManager.wasKeyPressed(SDL_SCANCODE_O)) {
       auto& gameEngine = GameEngine::Instance();
       auto* gameStateManager = gameEngine.getGameStateManager();
       gameStateManager->setState("OverlayDemoState");
   }
-  
+
   if (inputManager.wasKeyPressed(SDL_SCANCODE_ESCAPE)) {
       auto& gameEngine = GameEngine::Instance();
       gameEngine.setRunning(false);
   }
 }
 
-void MainMenuState::render() {
-  // Render UI components through UIManager
-  auto& gameEngine = GameEngine::Instance();
+void MainMenuState::render(float deltaTime) {
+  // Update and render UI components through UIManager using cached renderer for cleaner API
   auto& ui = UIManager::Instance();
-  ui.render(gameEngine.getRenderer());
+  if (!ui.isShutdown()) {
+      ui.update(deltaTime); // Use actual deltaTime from update cycle
+  }
+  ui.render(); // Uses cached renderer from GameEngine
 }
 bool MainMenuState::exit() {
   std::cout << "Forge Game Engine - Exiting MAIN MENU State\n";

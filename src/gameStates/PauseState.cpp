@@ -35,14 +35,17 @@ void PauseState::update([[maybe_unused]] float deltaTime) {
   handleInput();
 }
 
-void PauseState::render() {
+void PauseState::render(float deltaTime) {
     // Cache manager references for better performance
     FontManager& fontMgr = FontManager::Instance();
     GameEngine& gameEngine = GameEngine::Instance();
     auto& ui = UIManager::Instance();
     
-    // Render UI components through UIManager
-    ui.render(gameEngine.getRenderer());
+    // Update and render UI components through UIManager using cached renderer for cleaner API
+    if (!ui.isShutdown()) {
+        ui.update(deltaTime);
+    }
+    ui.render();
     
     // Additional instruction text below title
     SDL_Color fontColor = {200, 200, 200, 255};//gray

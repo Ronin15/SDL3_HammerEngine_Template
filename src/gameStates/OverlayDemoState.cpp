@@ -55,12 +55,6 @@ bool OverlayDemoState::enter() {
 }
 
 void OverlayDemoState::update(float deltaTime) {
-    // Update UI Manager
-    auto& uiManager = UIManager::Instance();
-    if (!uiManager.isShutdown()) {
-        uiManager.update(deltaTime);
-    }
-
     // Handle input with proper key press detection
     handleInput();
 
@@ -68,11 +62,13 @@ void OverlayDemoState::update(float deltaTime) {
     m_transitionTimer += deltaTime;
 }
 
-void OverlayDemoState::render() {
-    // Render UI components through UIManager
-    auto& gameEngine = GameEngine::Instance();
+void OverlayDemoState::render(float deltaTime) {
+    // Update and render UI components through UIManager using cached renderer for cleaner API
     auto& ui = UIManager::Instance();
-    ui.render(gameEngine.getRenderer());
+    if (!ui.isShutdown()) {
+        ui.update(deltaTime);
+    }
+    ui.render();
 }
 
 bool OverlayDemoState::exit() {
