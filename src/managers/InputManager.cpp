@@ -28,6 +28,8 @@ InputManager::InputManager()
   for (int i = 0; i < 3; i++) {
     m_mouseButtonStates.push_back(false);
   }
+  
+
 }
 
 
@@ -163,6 +165,8 @@ void InputManager::clearFrameInput() {
   // but keeping for backward compatibility
   m_pressedThisFrame.clear();
 }
+
+
 
 void InputManager::update() {
   // Clear previous frame's pressed keys

@@ -212,6 +212,19 @@ class GameEngine {
    */
   int getOptimalDisplayIndex() const;
 
+  /**
+   * @brief Checks if VSync is currently enabled
+   * @return true if VSync is active, false otherwise
+   */
+  bool isVSyncEnabled() const;
+
+  /**
+   * @brief Toggles VSync on or off at runtime
+   * @param enable true to enable VSync, false to disable
+   * @return true if VSync setting was changed successfully, false otherwise
+   */
+  bool setVSyncEnabled(bool enable);
+
  private:
   std::unique_ptr<GameStateManager> mp_gameStateManager{nullptr};
   std::unique_ptr<SDL_Window, decltype(&SDL_DestroyWindow)> mp_window{nullptr, SDL_DestroyWindow};

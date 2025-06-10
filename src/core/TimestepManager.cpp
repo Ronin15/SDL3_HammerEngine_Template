@@ -4,7 +4,6 @@
 */
 
 #include "core/TimestepManager.hpp"
-#include <algorithm>
 
 TimestepManager::TimestepManager(float targetFPS, float fixedTimestep)
     : m_targetFPS(targetFPS)
@@ -35,15 +34,14 @@ void TimestepManager::startFrame() {
     
     // Calculate frame delta time in seconds
     double deltaTimeMs = static_cast<double>(currentTime - m_lastFrameTime);
-    double deltaTime = deltaTimeMs / 1000.0; // Convert milliseconds to seconds
     m_lastFrameTime = currentTime;
     m_frameStart = currentTime;
     
     // Update frame time in milliseconds
     m_lastFrameTimeMs = static_cast<uint32_t>(deltaTimeMs);
     
-    // Add to accumulator, clamping to prevent spiral of death
-    m_accumulator += std::min(deltaTime, MAX_ACCUMULATOR);
+    // Simple timing - each frame gets one update and one render
+    m_accumulator = m_fixedTimestep;
     
     // Always render once per frame
     m_shouldRender = true;
@@ -53,8 +51,9 @@ void TimestepManager::startFrame() {
 }
 
 bool TimestepManager::shouldUpdate() {
+    // Simple 1:1 frame to update mapping
     if (m_accumulator >= m_fixedTimestep) {
-        m_accumulator -= m_fixedTimestep;
+        m_accumulator = 0.0;
         return true;
     }
     return false;
@@ -69,7 +68,8 @@ float TimestepManager::getUpdateDeltaTime() const {
 }
 
 float TimestepManager::getRenderInterpolation() const {
-    return static_cast<float>(m_accumulator / m_fixedTimestep);
+    // Simple interpolation for smooth rendering
+    return 0.0f;
 }
 
 void TimestepManager::endFrame() {

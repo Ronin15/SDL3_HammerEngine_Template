@@ -138,10 +138,19 @@ bool GameEngine::init(const char* title,
       int logicalWidth, logicalHeight;
       SDL_GetWindowSize(mp_window.get(), &logicalWidth, &logicalHeight);
 
+      // Create renderer - VSync will be set separately using SDL3 API
       mp_renderer.reset(SDL_CreateRenderer(mp_window.get(), NULL));
 
       if (mp_renderer) {
         GAMEENGINE_INFO("Rendering system online");
+        
+        // Enable VSync using SDL3 API
+        if (SDL_SetRenderVSync(mp_renderer.get(), 1)) {
+          GAMEENGINE_INFO("VSync enabled - hardware-synchronized frame presentation active");
+        } else {
+          GAMEENGINE_WARN("VSync not supported - using software frame rate limiting (may cause stuttering): " + std::string(SDL_GetError()));
+        }
+        
         SDL_SetRenderDrawColor(mp_renderer.get(), FORGE_GRAY);  // Forge Game Engine gunmetal dark grey
         // Set logical rendering size to standard resolution for consistent aspect ratio
         int targetLogicalWidth = 1920;
@@ -628,6 +637,20 @@ void GameEngine::setLogicalPresentationMode(SDL_RendererLogicalPresentation mode
     SDL_GetWindowSize(mp_window.get(), &width, &height);
     SDL_SetRenderLogicalPresentation(mp_renderer.get(), width, height, mode);
   }
+}
+
+bool GameEngine::isVSyncEnabled() const {
+  if (!mp_renderer) {
+    return false;
+  }
+  
+  // Check current VSync setting using SDL3 API
+  int vsync = 0;
+  if (SDL_GetRenderVSync(mp_renderer.get(), &vsync)) {
+    return (vsync > 0);  // Any positive value means VSync is enabled
+  }
+  
+  return false;
 }
 
 SDL_RendererLogicalPresentation GameEngine::getLogicalPresentationMode() const {
