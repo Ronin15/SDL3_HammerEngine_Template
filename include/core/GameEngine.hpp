@@ -247,8 +247,7 @@ class GameEngine {
   std::atomic<size_t> m_renderBufferIndex{0};
   std::atomic<bool> m_bufferReady[BUFFER_COUNT]{false, false};
   
-  // Synchronization barriers
-  std::mutex m_bufferMutex{};
+  // Buffer synchronization (lock-free atomic operations)
   std::condition_variable m_bufferCondition{};
   
   // Protection for high entity counts

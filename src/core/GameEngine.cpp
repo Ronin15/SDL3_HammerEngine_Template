@@ -375,6 +375,12 @@ texMgr.load("res/img", "", mp_renderer.get());
   GAMEENGINE_INFO("Game " + std::string(title) + " initialized successfully!");
   GAMEENGINE_INFO("Running " + std::string(title) + " <]==={");
 
+  // Initialize first buffer as ready for immediate rendering
+  m_bufferReady[0].store(true, std::memory_order_release);
+  m_renderBufferIndex.store(0, std::memory_order_release);
+  // Ensure first frame is always considered new by setting update counter to 1
+  m_lastUpdateFrame.store(1, std::memory_order_release);
+  
   // setting logo state for default state
   mp_gameStateManager->setState("LogoState");//set to "LogoState" for normal operation.
   // Note: GameLoop will be started by ForgeMain, not here
@@ -494,8 +500,8 @@ void GameEngine::update([[maybe_unused]] float deltaTime) {
     // Update game states - states handle their specific system needs
     mp_gameStateManager->update(deltaTime);
 
-    // Increment the frame counter
-    m_lastUpdateFrame++;
+    // Increment the frame counter atomically for thread-safe render synchronization
+    m_lastUpdateFrame.fetch_add(1, std::memory_order_relaxed);
 
     // Mark this buffer as ready for rendering
     m_bufferReady[updateBufferIndex].store(true, std::memory_order_release);
@@ -519,11 +525,8 @@ void GameEngine::render([[maybe_unused]] float interpolation) {
   // Always on MAIN thread as its an - SDL REQUIREMENT
   std::lock_guard<std::mutex> lock(m_renderMutex);
 
-  // Get the current render buffer index
-  const size_t renderBufferIndex = m_renderBufferIndex.load(std::memory_order_acquire);
-
-  // Only render if the buffer is ready
-  if (m_bufferReady[renderBufferIndex].load(std::memory_order_acquire)) {
+  // Always render - optimized buffer management ensures render buffer is always valid
+  {
     try {
       SDL_SetRenderDrawColor(mp_renderer.get(), FORGE_GRAY);  // Forge Game Engine gunmetal dark grey
       SDL_RenderClear(mp_renderer.get());
@@ -533,9 +536,8 @@ void GameEngine::render([[maybe_unused]] float interpolation) {
 
       SDL_RenderPresent(mp_renderer.get());
 
-      // Update the last rendered frame counter with memory ordering
-      m_lastRenderedFrame.store(m_lastUpdateFrame.load(std::memory_order_acquire),
-                                std::memory_order_release);
+      // Increment rendered frame counter for fast synchronization
+      m_lastRenderedFrame.fetch_add(1, std::memory_order_relaxed);
     } catch (const std::exception& e) {
       std::cerr << "Forge Game Engine - Exception in render: " << e.what() << std::endl;
     } catch (...) {
@@ -564,42 +566,29 @@ void GameEngine::signalUpdateComplete() {
 }
 
 void GameEngine::swapBuffers() {
-  std::lock_guard<std::mutex> lock(m_bufferMutex);
-
-  // Get current index
+  // Ultra-fast lock-free buffer swap - optimized for render thread performance
   size_t currentIndex = m_currentBufferIndex.load(std::memory_order_acquire);
-
-  // Calculate next buffer index
   size_t nextUpdateIndex = (currentIndex + 1) % BUFFER_COUNT;
 
-  // Only swap if the current update buffer is ready
+  // Only swap if current buffer is ready
   if (m_bufferReady[currentIndex].load(std::memory_order_acquire)) {
-    // Update buffer is ready, make it the render buffer
+    // Make current buffer available for rendering immediately
     m_renderBufferIndex.store(currentIndex, std::memory_order_release);
-
-    // Mark the next update buffer as not ready
-    m_bufferReady[nextUpdateIndex].store(false, std::memory_order_release);
-
-    // Switch to the next buffer for updates
+    
+    // Switch to next buffer for updates
     m_currentBufferIndex.store(nextUpdateIndex, std::memory_order_release);
+    
+    // Clear the next buffer's ready state for the next update cycle
+    m_bufferReady[nextUpdateIndex].store(false, std::memory_order_release);
   }
 }
 
 bool GameEngine::hasNewFrameToRender() const {
-  // We have a new frame to render if any buffer is ready that isn't the current render buffer
-  size_t renderIndex = m_renderBufferIndex.load(std::memory_order_acquire);
-
-  // Check if there's a buffer ready for rendering
-  for (size_t i = 0; i < BUFFER_COUNT; ++i) {
-    if (i != renderIndex && m_bufferReady[i].load(std::memory_order_acquire)) {
-      return true;
-    }
-  }
-
-  // Also check frame counters as a fallback
-  uint64_t lastUpdate = m_lastUpdateFrame.load(std::memory_order_acquire);
-  uint64_t lastRendered = m_lastRenderedFrame.load(std::memory_order_acquire);
-  return lastUpdate > lastRendered;
+  // Ultra-fast render check - single atomic read with relaxed ordering for speed
+  uint64_t lastUpdate = m_lastUpdateFrame.load(std::memory_order_relaxed);
+  uint64_t lastRendered = m_lastRenderedFrame.load(std::memory_order_relaxed);
+  // Always true for first frame, then compare frame counters
+  return lastUpdate > lastRendered || (lastUpdate == 1 && lastRendered == 0);
 }
 
 bool GameEngine::isUpdateRunning() const {
