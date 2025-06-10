@@ -82,6 +82,26 @@ ui.createButton("action", {x, y, 0, 0}, "Click Me");  // Sizes to fit text + pad
 ui.createLabel("multi", {x, y, 0, 0}, "Line 1\nLine 2\nLine 3");
 ```
 
+### Fixed-Size Components
+
+Some components use fixed-size design for specific purposes:
+
+```cpp
+// Event logs use fixed dimensions (industry standard for game event displays)
+ui.createEventLog("events", {x, y, 400, 200}, 10);
+ui.addEventLogEntry("events", "Long event messages automatically wrap within fixed bounds");
+
+// Lists also use fixed dimensions with proper padding
+ui.createList("options", {x, y, 220, 140});
+ui.addListItem("options", "List items fit within bounds with proper padding");
+```
+
+**Fixed-Size Benefits:**
+- **Predictable layout**: UI elements don't shift when content changes
+- **Performance**: No recalculation needed when adding content
+- **Industry standard**: Follows established patterns for event logs and chat systems
+- **Word wrapping**: Long content wraps automatically within bounds
+
 ### Title Auto-Centering
 
 ```cpp

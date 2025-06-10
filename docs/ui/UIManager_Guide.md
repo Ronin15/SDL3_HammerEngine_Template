@@ -145,8 +145,16 @@ ui.setListMaxItems("my_list", 10); // Auto-scroll when exceeded
 
 ui.createEventLog("events", {x, y, width, height}, 20);
 ui.addEventLogEntry("events", "System started");
+ui.addEventLogEntry("events", "This is a long event message that will automatically wrap to multiple lines within the event log bounds");
 ui.enableEventLogAutoUpdate("events", 2.0f); // Demo updates every 2 seconds
 ```
+
+**Event Log Features:**
+- **Fixed-size design**: Event logs maintain consistent dimensions (industry standard)
+- **Automatic word wrapping**: Long messages wrap at word boundaries to fit within bounds
+- **FIFO scrolling**: Oldest entries scroll out as new ones are added
+- **No user interaction**: Display-only for game events (combat, achievements, system messages)
+- **Proper padding**: Text respects all border padding for clean appearance
 
 ### Checkboxes, Images & Dialogs
 ```cpp

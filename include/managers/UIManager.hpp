@@ -322,6 +322,7 @@ public:
     void clearListItems(const std::string& listID);
     
     // Event log specific methods
+    // Event log management
     void addEventLogEntry(const std::string& logID, const std::string& entry);
     void clearEventLog(const std::string& logID);
     void setEventLogMaxEntries(const std::string& logID, int maxEntries);

@@ -9,6 +9,7 @@
 #include <filesystem>
 #include <vector>
 #include <cmath>
+#include <sstream>
 
 bool FontManager::init() {
   if (!TTF_Init()) {
@@ -364,6 +365,158 @@ void FontManager::drawTextAligned(const std::string& text, const std::string& fo
   SDL_RenderTexture(renderer, texture.get(), nullptr, &dstRect);
 
   // The texture will be automatically cleaned up when the unique_ptr goes out of scope
+}
+
+std::vector<std::string> FontManager::wrapTextToLines(const std::string& text, 
+                                                     const std::string& fontID, 
+                                                     int maxWidth) {
+  std::vector<std::string> wrappedLines;
+  
+  if (m_isShutdown || maxWidth <= 0) {
+    wrappedLines.push_back(text); // Return original text if invalid params
+    return wrappedLines;
+  }
+
+  auto fontIt = m_fontMap.find(fontID);
+  if (fontIt == m_fontMap.end()) {
+    FONT_ERROR("Font '" + fontID + "' not found for text wrapping");
+    wrappedLines.push_back(text);
+    return wrappedLines;
+  }
+
+  // First split by explicit newlines
+  std::vector<std::string> lines;
+  std::string currentLine;
+  for (char c : text) {
+    if (c == '\n') {
+      lines.push_back(currentLine);
+      currentLine.clear();
+    } else {
+      currentLine += c;
+    }
+  }
+  if (!currentLine.empty()) {
+    lines.push_back(currentLine);
+  }
+
+  // Now wrap each line if it's too wide
+  for (const auto& line : lines) {
+    if (line.empty()) {
+      wrappedLines.push_back("");
+      continue;
+    }
+
+    std::string workingLine;
+    std::istringstream words(line);
+    std::string word;
+    
+    while (words >> word) {
+      std::string testLine = workingLine.empty() ? word : workingLine + " " + word;
+      int testWidth = 0;
+      
+      if (TTF_GetStringSize(fontIt->second.get(), testLine.c_str(), 0, &testWidth, nullptr)) {
+        if (testWidth <= maxWidth) {
+          workingLine = testLine;
+        } else {
+          if (!workingLine.empty()) {
+            wrappedLines.push_back(workingLine);
+            workingLine = word;
+          } else {
+            // Single word is too long, just add it
+            wrappedLines.push_back(word);
+            workingLine.clear();
+          }
+        }
+      } else {
+        // If measurement fails, just add the word
+        workingLine = testLine;
+      }
+    }
+    
+    if (!workingLine.empty()) {
+      wrappedLines.push_back(workingLine);
+    }
+  }
+
+  return wrappedLines;
+}
+
+bool FontManager::measureTextWithWrapping(const std::string& text, const std::string& fontID,
+                                         int maxWidth, int* width, int* height) {
+  if (m_isShutdown || !width || !height) {
+    return false;
+  }
+
+  auto fontIt = m_fontMap.find(fontID);
+  if (fontIt == m_fontMap.end()) {
+    FONT_ERROR("Font '" + fontID + "' not found for wrapped measurement");
+    return false;
+  }
+
+  auto wrappedLines = wrapTextToLines(text, fontID, maxWidth);
+  if (wrappedLines.empty()) {
+    *width = 0;
+    *height = 0;
+    return true;
+  }
+
+  TTF_Font* font = fontIt->second.get();
+  int lineHeight = TTF_GetFontHeight(font);
+  int maxLineWidth = 0;
+
+  // Measure each wrapped line to get the actual maximum width
+  for (const auto& line : wrappedLines) {
+    int lineWidth = 0;
+    if (!line.empty()) {
+      if (TTF_GetStringSize(font, line.c_str(), 0, &lineWidth, nullptr)) {
+        maxLineWidth = std::max(maxLineWidth, lineWidth);
+      }
+    }
+  }
+
+  *width = maxLineWidth;
+  *height = lineHeight * static_cast<int>(wrappedLines.size());
+  return true;
+}
+
+void FontManager::drawTextWithWrapping(const std::string& text, const std::string& fontID,
+                                      int x, int y, int maxWidth, SDL_Color color, 
+                                      SDL_Renderer* renderer) {
+  if (m_isShutdown || !renderer) {
+    FONT_WARN("Attempted to draw wrapped text with invalid parameters");
+    return;
+  }
+
+  auto fontIt = m_fontMap.find(fontID);
+  if (fontIt == m_fontMap.end()) {
+    FONT_ERROR("Font '" + fontID + "' not found for wrapped drawing");
+    return;
+  }
+
+  auto wrappedLines = wrapTextToLines(text, fontID, maxWidth);
+  TTF_Font* font = fontIt->second.get();
+  int lineHeight = TTF_GetFontHeight(font);
+  int currentY = y;
+
+  // Draw each wrapped line
+  for (const auto& line : wrappedLines) {
+    if (!line.empty()) {
+      auto texture = renderText(line, fontID, color, renderer);
+      if (texture) {
+        float w, h;
+        SDL_GetTextureSize(texture.get(), &w, &h);
+        
+        SDL_FRect dstRect = {
+          static_cast<float>(x), 
+          static_cast<float>(currentY),
+          w, h
+        };
+        
+        SDL_RenderTexture(renderer, texture.get(), nullptr, &dstRect);
+      }
+    }
+    currentY += lineHeight;
+  }
 }
 
 bool FontManager::isFontLoaded(const std::string& fontID) const {

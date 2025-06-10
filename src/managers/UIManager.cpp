@@ -768,17 +768,19 @@ void UIManager::addEventLogEntry(const std::string& logID, const std::string& en
         // Add the entry directly (let the caller handle timestamps if needed)
         component->listItems.push_back(entry);
 
-        // Enforce max entries limit
+        // Enforce max entries limit - scroll old events out
         int maxEntries = component->maxLength;
         if (maxEntries > 0 && static_cast<int>(component->listItems.size()) > maxEntries) {
-            // Remove oldest entries
+            // Remove oldest events (FIFO behavior)
             while (static_cast<int>(component->listItems.size()) > maxEntries) {
                 component->listItems.erase(component->listItems.begin());
             }
         }
 
-        // No selection for event logs (they're display-only)
+        // Event logs are display-only for game events, no selection
         component->selectedIndex = -1;
+        
+        // Auto-scroll to bottom to show newest events
     }
 }
 
@@ -787,6 +789,8 @@ void UIManager::clearEventLog(const std::string& logID) {
     if (component && component->type == UIComponentType::EVENT_LOG) {
         component->listItems.clear();
         component->selectedIndex = -1;
+
+        // Event logs use fixed size for game events display
     }
 }
 
@@ -801,6 +805,8 @@ void UIManager::setEventLogMaxEntries(const std::string& logID, int maxEntries) 
                 component->listItems.erase(component->listItems.begin());
             }
         }
+
+        // Event logs use fixed size for game events display
     }
 }
 
@@ -853,6 +859,8 @@ void UIManager::disableEventLogAutoUpdate(const std::string& logID) {
         it->second.autoUpdate = false;
     }
 }
+
+
 
 void UIManager::updateEventLogs(float deltaTime) {
     for (auto& [logID, state] : m_eventLogStates) {
@@ -2029,12 +2037,14 @@ void UIManager::renderList(SDL_Renderer* renderer, const std::shared_ptr<UICompo
 
     // Draw items using configurable item height for better mouse accuracy
     int itemHeight = component->style.listItemHeight;
-    int y = component->bounds.y;
+    int y = component->bounds.y + component->style.padding;
+    int maxY = component->bounds.y + component->bounds.height - component->style.padding;
 
     for (size_t i = 0; i < component->listItems.size(); ++i) {
-        if (y >= component->bounds.y + component->bounds.height) break;
+        if (y + itemHeight > maxY) break;
 
-        UIRect itemRect = {component->bounds.x, y, component->bounds.width, itemHeight};
+        UIRect itemRect = {component->bounds.x + component->style.padding, y, 
+                          component->bounds.width - (component->style.padding * 2), itemHeight};
 
         // Highlight selected item
         if (static_cast<int>(i) == component->selectedIndex) {
@@ -2063,39 +2073,111 @@ void UIManager::renderList(SDL_Renderer* renderer, const std::shared_ptr<UICompo
 void UIManager::renderEventLog(SDL_Renderer* renderer, const std::shared_ptr<UIComponent>& component) {
     if (!component) return;
 
-    // Draw background
+    // Draw background panel
     drawRect(renderer, component->bounds, component->style.backgroundColor, true);
     drawBorder(renderer, component->bounds, component->style.borderColor, 1);
 
-    // Draw event log entries (no selection, just display)
-    int itemHeight = component->style.listItemHeight;
-    int y = component->bounds.y;
+    if (component->listItems.empty()) {
+        return; // Nothing to render
+    }
 
-    for (size_t i = 0; i < component->listItems.size(); ++i) {
-        if (y >= component->bounds.y + component->bounds.height) break;
+    // Calculate available display area
+    int contentX = component->bounds.x + component->style.padding;
+    int contentY = component->bounds.y + component->style.padding;
+    int contentWidth = component->bounds.width - (component->style.padding * 2);
+    int contentHeight = component->bounds.height - (component->style.padding * 2);
+    int maxY = component->bounds.y + component->bounds.height - component->style.padding;
 
-        UIRect itemRect = {component->bounds.x, y, component->bounds.width, itemHeight};
-
-        // No selection highlighting for event logs (display-only)
-
-        // Draw event entry text
-        auto& fontManager = FontManager::Instance();
-        #ifdef __APPLE__
-        // On macOS, use logical coordinates directly - SDL3 handles scaling automatically
-        int textX = itemRect.x + component->style.padding + 8;
-        int textY = itemRect.y + (itemHeight / 2) + 2;
-        #else
-        // Apply global scale to font positioning on other platforms
-        int textX = static_cast<int>((itemRect.x + component->style.padding + 8) * m_globalScale);
-        int textY = static_cast<int>((itemRect.y + (itemHeight / 2.0f) + 2) * m_globalScale);
-        #endif
-        fontManager.drawTextAligned(component->listItems[i], component->style.fontID,
-                                   textX, textY,
-                                   component->style.textColor, renderer, 1); // 1 = left alignment
-
-        y += itemHeight;
+    auto& fontManager = FontManager::Instance();
+    
+    // Start from the bottom and work upward to show most recent entries
+    std::vector<std::pair<std::string, int>> wrappedEntries;
+    int totalHeight = 0;
+    
+    // Pre-process entries to calculate wrapped text heights (from newest to oldest)
+    for (int i = static_cast<int>(component->listItems.size()) - 1; i >= 0; --i) {
+        const std::string& entry = component->listItems[i];
+        int entryWidth = 0, entryHeight = 0;
+        
+        // Use FontManager's word wrapping to measure text
+        if (fontManager.measureTextWithWrapping(entry, component->style.fontID, contentWidth, &entryWidth, &entryHeight)) {
+            wrappedEntries.insert(wrappedEntries.begin(), {entry, entryHeight + 4});
+            totalHeight += entryHeight + 4;
+        } else {
+            // Fallback to single line height
+            int lineHeight = component->style.listItemHeight;
+            wrappedEntries.insert(wrappedEntries.begin(), {entry, lineHeight + 4});
+            totalHeight += lineHeight + 4;
+        }
+        
+        // Stop if we have enough content to fill the display area
+        if (totalHeight >= contentHeight) {
+            break;
+        }
+    }
+    
+    // Render visible entries
+    if (totalHeight > contentHeight) {
+        // Find how many entries we can fit starting from the bottom
+        int remainingHeight = contentHeight;
+        int visibleEntries = 0;
+        
+        for (int i = static_cast<int>(wrappedEntries.size()) - 1; i >= 0; --i) {
+            if (remainingHeight >= wrappedEntries[i].second) {
+                remainingHeight -= wrappedEntries[i].second;
+                visibleEntries++;
+            } else {
+                break;
+            }
+        }
+        
+        // Render only the visible entries
+        int startIndex = static_cast<int>(wrappedEntries.size()) - visibleEntries;
+        int y = contentY;
+        
+        for (int i = startIndex; i < static_cast<int>(wrappedEntries.size()); ++i) {
+            if (y + wrappedEntries[i].second > maxY) break;
+            
+            #ifdef __APPLE__
+            int textX = contentX;
+            int textY = y;
+            #else
+            int textX = static_cast<int>(contentX * m_globalScale);
+            int textY = static_cast<int>(y * m_globalScale);
+            #endif
+            
+            // Use FontManager's word wrapping to draw text
+            fontManager.drawTextWithWrapping(wrappedEntries[i].first, component->style.fontID,
+                                           textX, textY, contentWidth,
+                                           component->style.textColor, renderer);
+            
+            y += wrappedEntries[i].second;
+        }
+    } else {
+        // All content fits, render normally
+        int y = contentY;
+        
+        for (const auto& entry : wrappedEntries) {
+            if (y + entry.second > maxY) break;
+            
+            #ifdef __APPLE__
+            int textX = contentX;
+            int textY = y;
+            #else
+            int textX = static_cast<int>(contentX * m_globalScale);
+            int textY = static_cast<int>(y * m_globalScale);
+            #endif
+            
+            // Use FontManager's word wrapping to draw text
+            fontManager.drawTextWithWrapping(entry.first, component->style.fontID,
+                                           textX, textY, contentWidth,
+                                           component->style.textColor, renderer);
+            
+            y += entry.second;
+        }
     }
 }
+
 
 void UIManager::renderTooltip(SDL_Renderer* renderer) {
     if (m_hoveredTooltip.empty() || m_tooltipTimer < m_tooltipDelay) {
@@ -2488,6 +2570,12 @@ bool UIManager::measureComponentContent(const std::shared_ptr<UIComponent>& comp
                 return true;
             }
             break;
+
+        case UIComponentType::EVENT_LOG:
+            // Fixed size for game event display
+            *width = component->bounds.width;
+            *height = component->bounds.height;
+            return true;
 
         case UIComponentType::TOOLTIP:
             if (!component->text.empty()) {

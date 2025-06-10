@@ -122,6 +122,21 @@ bool success = fontMgr.measureMultilineText(
 // Returns total dimensions for all lines combined
 ```
 
+### Word Wrapping Text Measurement
+
+```cpp
+// Measure text with automatic word wrapping
+int width, height;
+bool success = fontMgr.measureTextWithWrapping(
+    "This is a long line that will be wrapped to fit within the specified width",
+    "fonts_UI_Arial",          // Font ID
+    300,                       // Maximum width for wrapping
+    &width, &height            // Output dimensions
+);
+
+// Returns dimensions of the wrapped text block
+```
+
 ### Font Metrics
 
 ```cpp
@@ -174,7 +189,39 @@ FontManager::Instance().drawTextAligned(
 // for crisp, blur-free rendering on all display types
 ```
 
+### Word Wrapped Text Rendering
+
+```cpp
+// Render text with automatic word wrapping
+FontManager::Instance().drawTextWithWrapping(
+    "This is a long text that will be automatically wrapped to fit within the specified width",
+    "fonts_UI_Arial",        // Font ID
+    50, 100,                // Position (x, y)
+    300,                    // Maximum width for wrapping
+    {255, 255, 255, 255},   // White color
+    renderer                // SDL Renderer
+);
+
+// Text automatically wraps at word boundaries and renders multiple lines
+```
+
 ## Font Management
+
+### Text Wrapping Utilities
+
+```cpp
+// Get wrapped lines for layout calculations
+std::vector<std::string> wrappedLines = FontManager::Instance().wrapTextToLines(
+    "Long text that needs wrapping",
+    "fonts_UI_Arial",        // Font ID
+    300                      // Maximum width
+);
+
+// Use wrapped lines for custom rendering or layout
+for (const auto& line : wrappedLines) {
+    // Process each wrapped line
+}
+```
 
 ### Check Font Availability
 
@@ -238,7 +285,7 @@ public:
 };
 ```
 
-### Dialog System with Multi-Line Support
+### Dialog System with Multi-Line Support and Word Wrapping
 
 ```cpp
 class DialogSystem {
@@ -250,26 +297,25 @@ public:
             {200, 200, 255, 255}, renderer, 1  // Left aligned
         );
         
-        // Calculate dialog text height for proper positioning
-        int textWidth, textHeight;
-        FontManager::Instance().measureMultilineText(
-            text, "fonts_UI_Arial", 500, &textWidth, &textHeight
-        );
-        
-        // Render multi-line dialog text
-        FontManager::Instance().drawTextAligned(
-            text, "fonts_UI_Arial", 50, 480,
-            {255, 255, 255, 255}, renderer, 1  // Left aligned
+        // Render dialog text with automatic word wrapping
+        FontManager::Instance().drawTextWithWrapping(
+            text, "fonts_UI_Arial", 50, 480, 500,  // Wraps at 500px width
+            {255, 255, 255, 255}, renderer
         );
     }
     
-    // Calculate dialog box height based on content
+    // Calculate dialog box height based on wrapped content
     int calculateDialogHeight(const std::string& text) {
         int width, height;
-        FontManager::Instance().measureMultilineText(
+        FontManager::Instance().measureTextWithWrapping(
             text, "fonts_UI_Arial", 500, &width, &height
         );
         return height + 40; // Add padding
+    }
+    
+    // Get individual wrapped lines for custom layout
+    std::vector<std::string> getWrappedDialogLines(const std::string& text) {
+        return FontManager::Instance().wrapTextToLines(text, "fonts_UI_Arial", 500);
     }
 };
 ```
@@ -386,16 +432,21 @@ ui.createButton("action", bounds, "Click Me");      // Measures text for sizing
 // Multi-line labels are automatically detected and measured correctly
 ui.createLabel("multi", bounds, "Line 1\nLine 2\nLine 3");
 
-// Font-based list item heights
+// Event logs automatically use word wrapping for long entries
+ui.createEventLog("events", bounds, 10);
+ui.addEventLogEntry("events", "This is a long event message that will automatically wrap");
+
+// Font-based list item heights with proper padding
 ui.createList("items", bounds);  // Uses FontManager metrics for item sizing
 ```
 
 ### Text Measurement Pipeline
 
 1. **Content Analysis**: Automatic detection of single vs multi-line text
-2. **Font Measurement**: Precise text dimension calculation using TTF_GetStringSize
-3. **Multi-line Processing**: Line-by-line measurement for accurate height calculation
-4. **Font Metrics**: Line height, ascent, and descent for spacing calculations
+2. **Word Wrapping**: Intelligent text wrapping at word boundaries for long content
+3. **Font Measurement**: Precise text dimension calculation using TTF_GetStringSize
+4. **Multi-line Processing**: Line-by-line measurement for accurate height calculation
+5. **Font Metrics**: Line height, ascent, and descent for spacing calculations
 
 ## Performance Considerations
 

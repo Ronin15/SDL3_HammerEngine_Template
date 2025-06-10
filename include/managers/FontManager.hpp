@@ -11,6 +11,7 @@
 #include <unordered_map>
 #include <memory>
 #include <string>
+#include <vector>
 // filesystem is used in the implementation file
 
 class FontManager {
@@ -155,6 +156,43 @@ class FontManager {
    */
   bool measureMultilineText(const std::string& text, const std::string& fontID, 
                            int maxWidth, int* width, int* height);
+
+  /**
+   * @brief Measure text with word wrapping
+   * @param text Text to measure
+   * @param fontID Font identifier to use
+   * @param maxWidth Maximum width for wrapping
+   * @param width Pointer to store calculated total width
+   * @param height Pointer to store calculated total height
+   * @return true if calculation successful, false otherwise
+   */
+  bool measureTextWithWrapping(const std::string& text, const std::string& fontID,
+                              int maxWidth, int* width, int* height);
+
+  /**
+   * @brief Draw text with word wrapping
+   * @param text Text to draw
+   * @param fontID Font identifier to use
+   * @param x X position for text
+   * @param y Y position for text
+   * @param maxWidth Maximum width for wrapping
+   * @param color Text color
+   * @param renderer SDL renderer to draw to
+   */
+  void drawTextWithWrapping(const std::string& text, const std::string& fontID,
+                           int x, int y, int maxWidth, SDL_Color color, 
+                           SDL_Renderer* renderer);
+
+  /**
+   * @brief Wrap text into lines that fit within specified width
+   * @param text Text to wrap
+   * @param fontID Font identifier to use
+   * @param maxWidth Maximum width constraint
+   * @return Vector of wrapped lines
+   */
+  std::vector<std::string> wrapTextToLines(const std::string& text, 
+                                          const std::string& fontID, 
+                                          int maxWidth);
 
  private:
   std::unordered_map<std::string, std::shared_ptr<TTF_Font>> m_fontMap{};

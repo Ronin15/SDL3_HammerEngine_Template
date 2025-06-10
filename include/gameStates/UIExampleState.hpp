@@ -37,6 +37,7 @@ private:
     void handleListSelection();
     void handleAnimation();
     void handleThemeChange();
+
     void updateProgressBar(float deltaTime);
     void updateSliderLabel(float value);
     void updateInputLabel(const std::string& text);

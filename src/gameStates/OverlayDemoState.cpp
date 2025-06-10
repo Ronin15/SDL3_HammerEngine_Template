@@ -153,7 +153,7 @@ void OverlayDemoState::setupNoOverlayMode() {
 
     // Mode indicator
     ui.createLabel(MODE_LABEL, {20, 50, 400, 30}, "Mode: HUD Elements (No Overlay)");
-    ui.createLabel(DESCRIPTION_LABEL, {20, 85, 600, 50},
+    ui.createLabel(DESCRIPTION_LABEL, {20, 85, std::min(600, windowWidth - 40), 50},
                    "Perfect for: Health bars, Score, Minimap, Chat\nGame content remains fully visible");
 
     // Enable text backgrounds for readability over variable backgrounds
@@ -183,7 +183,7 @@ void OverlayDemoState::setupLightOverlayMode() {
 
     // Mode indicator
     ui.createLabel(MODE_LABEL, {20, 50, 400, 30}, "Mode: Main Menu (Light Theme)");
-    ui.createLabel(DESCRIPTION_LABEL, {20, 85, 600, 50},
+    ui.createLabel(DESCRIPTION_LABEL, {20, 85, std::min(600, windowWidth - 40), 50},
                    "Perfect for: Main menus, Settings screens\nSubtle separation from background");
 
     // Enable text backgrounds for readability over variable backgrounds
@@ -208,7 +208,7 @@ void OverlayDemoState::setupDarkOverlayMode() {
 
     // Mode indicator
     ui.createLabel(MODE_LABEL, {20, 50, 400, 30}, "Mode: Pause Menu (Dark Theme)");
-    ui.createLabel(DESCRIPTION_LABEL, {20, 85, 600, 50},
+    ui.createLabel(DESCRIPTION_LABEL, {20, 85, std::min(600, windowWidth - 40), 50},
                    "Perfect for: Pause menus, In-game menus\nDarker theme for focus during gameplay");
 
     // Simulate pause menu
@@ -226,7 +226,7 @@ void OverlayDemoState::setupModalOverlayMode() {
 
     // Mode indicator
     ui.createLabel(MODE_LABEL, {20, 50, 400, 30}, "Mode: Modal Dialog (Strong Overlay)");
-    ui.createLabel(DESCRIPTION_LABEL, {20, 85, 600, 50},
+    ui.createLabel(DESCRIPTION_LABEL, {20, 85, std::min(600, windowWidth - 40), 50},
                    "Perfect for: Confirmation dialogs, Settings panels\nStrong overlay demands attention");
 
     // Simulate modal dialog - simple, clean positioning
@@ -254,7 +254,7 @@ void OverlayDemoState::setupLightModalOverlayMode() {
 
     // Mode indicator
     ui.createLabel(MODE_LABEL, {20, 50, 400, 30}, "Mode: Light Modal Dialog (Strong Overlay)");
-    ui.createLabel(DESCRIPTION_LABEL, {20, 85, 600, 50},
+    ui.createLabel(DESCRIPTION_LABEL, {20, 85, std::min(600, windowWidth - 40), 50},
                    "Perfect for: Light-themed dialogs, Settings panels\nLight strong overlay with good contrast");
 
     // Simulate modal dialog - simple, clean positioning
