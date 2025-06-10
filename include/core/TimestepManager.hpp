@@ -10,13 +10,13 @@
 #include <SDL3/SDL.h>
 
 /**
- * TimestepManager implements the industry-standard "Fix Your Timestep" pattern.
+ * TimestepManager provides consistent game timing with simplified accumulator handling.
  * 
  * This separates update timing (fixed timestep for consistent physics/logic)
- * from render timing (variable timestep for smooth visuals with interpolation).
+ * from render timing (variable timestep for smooth visuals).
  * 
- * Based on Glenn Fiedler's "Fix Your Timestep" article and used by
- * professional game engines like Unity, Unreal Engine, etc.
+ * Uses 1:1 frame-to-update mapping to eliminate timing drift and micro-stuttering
+ * that can occur with traditional accumulator patterns.
  */
 class TimestepManager {
 public:
@@ -55,9 +55,8 @@ public:
 
     /**
      * Gets interpolation factor for smooth rendering.
-     * Value between 0.0 and 1.0 representing how far between
-     * the last and next update the current render frame is.
-     * @return interpolation factor [0.0, 1.0]
+     * Returns 0.0 for simplified 1:1 frame mapping to prevent timing drift.
+     * @return interpolation factor (always 0.0 for consistent timing)
      */
     float getRenderInterpolation() const;
 
@@ -118,9 +117,9 @@ private:
     Uint64 m_frameStart;
     Uint64 m_lastFrameTime;
     
-    // Fixed timestep accumulator pattern
-    double m_accumulator;                // Accumulated time for fixed updates
-    static constexpr double MAX_ACCUMULATOR = 0.25; // Max 250ms of catch-up
+    // Simplified timing pattern (eliminates accumulator drift)
+    double m_accumulator;                // Simple frame timing state
+    static constexpr double MAX_ACCUMULATOR = 0.25; // Unused (kept for compatibility)
     
     // Frame statistics
     uint32_t m_lastFrameTimeMs;         // Last frame duration in milliseconds

@@ -13,7 +13,7 @@
 const int WINDOW_WIDTH{1920};
 const int WINDOW_HEIGHT{1080};
 const float TARGET_FPS{60.0f};
-const float FIXED_TIMESTEP{1.0f / 60.0f}; // 75Hz or 60hz fixed update rate for responsive gameplay-testing
+const float FIXED_TIMESTEP{1.0f / 60.0f};
 // Game Name goes here.
 const std::string GAME_NAME{"Game Template"};
 
@@ -52,7 +52,7 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char* argv[]) {
 
   GAMELOOP_INFO("Initializing Game Loop");
 
-  // Create game loop with industry-standard timing
+  // Create game loop with stable 60Hz timing
   // Multi-threading enabled for better performance
   auto gameLoop = std::make_shared<GameLoop>(TARGET_FPS, FIXED_TIMESTEP, true);
 

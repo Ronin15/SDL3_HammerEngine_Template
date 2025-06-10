@@ -14,6 +14,7 @@ class Player;
 class PlayerRunningState : public EntityState {
 public:
     explicit PlayerRunningState(Player& player);
+    ~PlayerRunningState() override = default;
 
     void enter() override;
     void update(float deltaTime) override;

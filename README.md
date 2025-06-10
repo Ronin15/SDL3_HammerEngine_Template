@@ -562,7 +562,7 @@ Additional documentation can be found in the `docs/` directory:
 
 ### Core System Documentation
 - **[GameEngine](docs/core/GameEngine.md)** - Central engine singleton managing all systems with SDL integration
-- **[GameLoop](docs/core/GameLoop.md)** - Industry-standard timing with fixed/variable timestep and threading support
+- **[GameLoop](docs/core/GameLoop.md)** - Optimized timing system with consistent frame pacing and threading support
 - **[Logger System](docs/Logger.md)** - High-performance logging with zero release overhead and system-specific macros
 
 ### Manager System Documentation

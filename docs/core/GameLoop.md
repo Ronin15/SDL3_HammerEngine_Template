@@ -149,7 +149,7 @@ gameLoop.setRenderHandler([](float interpolation) {
 
 ### TimestepManager Integration
 
-The GameLoop uses TimestepManager for precise timing control:
+The GameLoop uses TimestepManager for consistent timing control:
 
 ```cpp
 // Access timestep manager for advanced configuration
@@ -157,8 +157,9 @@ TimestepManager& timestepMgr = gameLoop.getTimestepManager();
 
 // Configure timing parameters
 timestepMgr.setTargetFPS(60.0f);
-timestepMgr.setMaxFrameSkip(5);
-timestepMgr.setVsyncEnabled(true);
+timestepMgr.setFixedTimestep(1.0f/60.0f);
+
+// Note: Uses simplified 1:1 frame mapping to eliminate timing drift
 ```
 
 ## Threading Models
@@ -649,8 +650,7 @@ private:
         
         // Configure for high-performance gaming
         timestepMgr.setTargetFPS(144.0f);
-        timestepMgr.setMaxFrameSkip(2); // Allow max 2 frame skips
-        timestepMgr.setVsyncEnabled(false); // Disable vsync for max FPS
+        timestepMgr.setFixedTimestep(1.0f/144.0f); // Match update rate
         
         // Monitor performance
         m_gameLoop.setUpdateHandler([this](float deltaTime) {

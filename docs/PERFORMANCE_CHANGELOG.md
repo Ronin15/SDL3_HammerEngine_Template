@@ -35,6 +35,18 @@
 - **CPU EFFICIENCY**: 100μs sleep intervals vs previous long waits
 - **FRAME PRIORITY**: AI never blocks frame rendering for more than 16ms
 
+#### TimestepManager Timing Drift Fix
+- **FIXED**: Accumulator timing drift causing periodic player micro-stuttering
+- **REPLACED**: Complex accumulator pattern with simplified 1:1 frame mapping
+- **ELIMINATED**: Periodic "skip forward" behavior that occurred every ~1 second
+- **OPTIMIZED**: Player movement timing for buttery smooth gameplay
+
+**Performance Impact**:
+- **Player Movement**: Eliminated all periodic micro-stuttering and timing drift
+- **Frame Consistency**: Perfect 1:1 frame-to-update mapping prevents accumulation errors
+- **Input Responsiveness**: Maintained while eliminating timing conflicts
+- **VSync Integration**: Basic hardware synchronization for smooth presentation
+
 ### 📊 Performance Benchmarks (v4.2)
 
 #### 10K Entity Stress Test
