@@ -54,11 +54,11 @@ bool UIExampleState::enter() {
     ui.createLabel("uiexample_progress_label", {260, 290, 200, 20}, "Auto Progress");
     
     // List demo
-    ui.createList("uiexample_demo_list", {50, 340, 200, 140});
+    ui.createList("uiexample_demo_list", {50, 340, 220, 140});
     
-    // Event Log demo
-    ui.createEventLog("uiexample_demo_event_log", {300, 520, 400, 140}, 6);
-    ui.createLabel("uiexample_event_log_label", {300, 495, 200, 20}, "Event Log (Auto-updating):");
+    // Event Log demo - fixed size following industry standard
+    ui.createEventLog("uiexample_demo_event_log", {300, 540, 400, 90}, 6);
+    ui.createLabel("uiexample_event_log_label", {300, 500, 200, 20}, "Event Log (Fixed Size):");
     ui.setupDemoEventLog("uiexample_demo_event_log");
     
     // Animation button
@@ -67,8 +67,8 @@ bool UIExampleState::enter() {
     // Theme toggle button
     ui.createButton("uiexample_theme_btn", {300, 390, 120, 40}, "Dark Theme");
     
-    // Instructions
-    ui.createLabel("uiexample_instructions", {450, 340, 300, 120},
+    // Instructions - adjusted position and size to prevent overlap
+    ui.createLabel("uiexample_instructions", {430, 340, 280, 120},
                    "Controls:\n- Click buttons and UI elements\n- Type in input field\n- Select list items\n- B key to go back");
 
     // Populate list
@@ -92,6 +92,8 @@ bool UIExampleState::enter() {
     ui.setOnClick("uiexample_theme_btn", [this]() {
         handleThemeChange();
     });
+
+
 
     ui.setOnClick("uiexample_demo_checkbox", [this]() {
         handleCheckboxToggle();
@@ -194,6 +196,8 @@ void UIExampleState::handleThemeChange() {
     applyDarkTheme(m_darkTheme);
     std::cout << "Theme changed to: " << (m_darkTheme ? "dark" : "light") << "\n";
 }
+
+
 
 void UIExampleState::updateProgressBar(float deltaTime) {
     // Animate progress bar automatically
