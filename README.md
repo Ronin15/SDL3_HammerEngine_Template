@@ -209,7 +209,7 @@ All test scripts support CI/CD integration with exit codes and result logging:
 echo $? # Returns 0 for success, non-zero for failures
 ```
 
-See `tests/TESTING.md` for comprehensive documentation on all testing frameworks, `tests/TROUBLESHOOTING.md` for common issues and solutions, `docs/ui/UI_Stress_Testing_Guide.md` for UI testing details, or component-specific documentation like `docs/ThreadSystem.md` for WorkerBudget system details and `docs/EventManager.md` for detailed information.
+See `tests/TESTING.md` for comprehensive documentation on all testing frameworks, `tests/TROUBLESHOOTING.md` for common issues and solutions, `docs/ui/UI_Stress_Testing_Guide.md` for UI testing details, or component-specific documentation like `docs/ThreadSystem.md` for WorkerBudget system details and `docs/events/EventManager.md` for detailed information.
 
 ## Feature Component Details
 
@@ -429,7 +429,7 @@ The EventDemoState serves as both documentation and testing platform for develop
 ![Forge Engine](./md_imgs/Event_Demo.png)
 ![Forge Engine](./md_imgs/Event_Demo_resources.png)
 
-See `docs/EventManager.md`, `docs/EventManager_QuickReference.md`, and `docs/EventManager_ThreadSystem.md` for detailed documentation and usage examples.
+See `docs/events/EventManager.md`, `docs/events/EventManager_QuickReference.md`, and `docs/events/EventManager_Advanced.md` for detailed documentation and usage examples.
 
 ### AIManager
 
@@ -566,12 +566,10 @@ Additional documentation can be found in the `docs/` directory:
 - **[Behavior Modes Quick Reference](docs/ai/BehaviorModes_QuickReference.md)** - Quick setup guide for behavior modes
 
 ### Event System Documentation
-- **[Event Manager](docs/events/EventManager.md)** - Guide to the event management system with examples and integration details
-- **[EventManager Quick Reference](docs/events/EventManager_QuickReference.md)** - Convenience methods guide and quick reference
-- **[Event System Integration](docs/events/EventSystem_Integration.md)** - Quick reference guide for EventSystem integration and usage patterns
-- **[Event Manager Threading](docs/events/EventManager_ThreadSystem.md)** - Details on EventManager and ThreadSystem integration
-- **[Event Factory](docs/events/EventFactory.md)** - Advanced event creation with EventDefinition and sequences
-- **[Event Factory Quick Reference](docs/events/EventFactory_QuickReference.md)** - Fast API lookup and examples
+- **[EventManager Overview](docs/events/EventManager.md)** - Complete unified documentation with EventManager as the single source of truth for all event operations
+- **[EventManager Quick Reference](docs/events/EventManager_QuickReference.md)** - Fast API lookup for weather events, scene transitions, NPC spawning, and custom events through EventManager
+- **[EventManager Advanced](docs/events/EventManager_Advanced.md)** - Advanced threading integration, performance optimization, complex event patterns, and architectural considerations
+- **[EventManager Examples](docs/events/EventManager_Examples.cpp)** - Comprehensive code examples and best practices for EventManager usage
 
 ### Core System Documentation
 - **[GameEngine](docs/GameEngine.md)** - Central engine singleton managing all systems with SDL integration

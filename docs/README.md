@@ -36,14 +36,12 @@ The AI system provides flexible, thread-safe behavior management for game entiti
 - **[Behavior Modes Quick Reference](ai/BehaviorModes_QuickReference.md)** - Quick setup guide for mode-based behaviors
 
 ### Event System
-Robust event management system supporting weather events, NPC spawning, scene transitions, and custom events.
+Comprehensive event management system with EventManager as the single source of truth for weather events, NPC spawning, scene transitions, and custom events.
 
-- **[Event Manager](events/EventManager.md)** - Core event management system
-- **[EventManager Quick Reference](events/EventManager_QuickReference.md)** - Convenience methods guide
-- **[EventFactory Complete Guide](events/EventFactory.md)** - Advanced event creation with EventDefinition, sequences, and custom creators
-- **[EventFactory Quick Reference](events/EventFactory_QuickReference.md)** - Fast API lookup and examples
-- **[Event System Integration](events/EventSystem_Integration.md)** - Integration guidelines
-- **[Event Manager Threading](events/EventManager_ThreadSystem.md)** - Threading integration
+- **[EventManager Overview](events/EventManager.md)** - Complete unified documentation for EventManager as the single source of truth
+- **[EventManager Quick Reference](events/EventManager_QuickReference.md)** - Fast API lookup for all event functionality through EventManager
+- **[EventManager Advanced](events/EventManager_Advanced.md)** - Advanced topics like threading, performance optimization, and complex event patterns
+- **[EventManager Examples](events/EventManager_Examples.cpp)** - Comprehensive code examples and best practices
 
 ### UI System
 Comprehensive UI system with professional theming, animations, layouts, content-aware auto-sizing, and event handling for creating polished game interfaces.
@@ -92,7 +90,7 @@ The Forge Game Engine provides several core systems that work together:
 - **[TimestepManager Setup](TimestepManager.md#quick-start)** - Timing system configuration
 
 - **[AI Quick Start](ai/BehaviorModes_QuickReference.md)** - Set up AI behaviors in minutes
-- **[Event Quick Start](events/EventManager_QuickReference.md)** - Event system essentials
+- **[Event Quick Start](events/EventManager_QuickReference.md)** - Event system essentials with EventManager
 - **[UI Quick Start](ui/UIManager_Guide.md#quick-start)** - Create UI components with auto-sizing
 - **[Threading Setup](ThreadSystem.md#quick-start)** - Initialize multi-threading
 
@@ -142,7 +140,7 @@ For issues with specific systems, see the troubleshooting sections in each syste
 - Timing issues: See [TimestepManager Best Practices](TimestepManager.md#best-practices)
 - Logger issues: See [Logger Best Practices](Logger.md#best-practices)
 - AI issues: See [AI System Overview](ai/AIManager.md) and [Behavior Modes](ai/BehaviorModes.md)
-- Event issues: See [Event System Integration](events/EventSystem_Integration.md)
+- Event issues: See [EventManager Overview](events/EventManager.md) and [EventManager Advanced](events/EventManager_Advanced.md)
 - UI issues: See [UIManager Guide](ui/UIManager_Guide.md), [Auto-Sizing System](ui/Auto_Sizing_System.md), and [DPI-Aware Font System](ui/DPI_Aware_Font_System.md)
 - Threading issues: See [ThreadSystem Overview](ThreadSystem.md)
 

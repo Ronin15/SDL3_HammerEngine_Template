@@ -507,7 +507,7 @@ if (soundMgr.hasSFX("special_effect")) {
 ## Integration with Other Systems
 
 The SoundManager works seamlessly with:
-- **[EventManager](../events/EventManager.md)**: Audio can be triggered by game events
+- **[EventManager](../events/EventManager.md)**: Audio can be triggered by game events through EventManager
 - **[GameEngine](../core/GameEngine.md)**: Integrated into main game loop
 - **GameStates**: State-specific audio loading and management
 
