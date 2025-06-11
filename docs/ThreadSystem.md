@@ -112,24 +112,32 @@ Total Available Workers (hardware_concurrency - 1 for main thread)
 ├── GameLoop Reserved (1-2 workers based on hardware tier)
 └── Remaining Workers
     ├── AIManager (60% of remaining, minimum 1)
-    ├── EventManager (30% of remaining, minimum 1)  
+    ├── EventManager (30% of remaining, minimum 1)
     └── Buffer (remaining workers for dynamic burst capacity)
 ```
 
 ### Hardware Tier Classification
 
 ```cpp
-// Tier 1: Ultra Low-End (≤1 worker available)
+// Tier 1: Ultra Low-End (≤3 workers available)
+// 4-core/4-thread system (3 workers) - CPU without hyperthreading/SMT
 // Strategy: GameLoop gets priority, AI/Events single-threaded
-GameLoop: 1 worker, AI: 0 workers, Events: 0 workers, Buffer: 0
+GameLoop: 2 workers, AI: 1 worker, Events: 0 workers, Buffer: 0
 
-// Tier 2: Low-End (2-4 workers available)
-// Strategy: Conservative threading, GameLoop priority
-GameLoop: 1 worker, AI: 1 worker (if available), Events: 0 workers
+// Tier 2: Entry Gaming (7 workers available)
+// 4-core/8-thread system (7 workers) - entry-level gaming CPU
+// Strategy: Conservative threading with basic WorkerBudget allocation
+GameLoop: 2 workers, AI: 3 workers (60% of 5), Events: 1 worker (30% of 5), Buffer: 1
 
-// Tier 3: High-End (5+ workers available)  
-// Strategy: Full multi-threading with buffer capacity
-GameLoop: 2 workers, AI: 60% of remaining, Events: 30% of remaining
+// Tier 3: Mid-Range Gaming (15 workers available)
+// 8-core/16-thread system (15 workers) - mainstream gaming CPU
+// Strategy: Full WorkerBudget allocation with buffer capacity
+GameLoop: 2 workers, AI: 8 workers (60% of 13), Events: 4 workers (30% of 13), Buffer: 1
+
+// Tier 4: High-End Gaming (31 workers available)
+// 32-thread system (31 workers) - AMD 7950X3D (16c/32t), Intel 13900K/14900K (24c/32t)
+// Strategy: Full multi-threading with substantial buffer capacity
+GameLoop: 2 workers, AI: 17 workers (60% of 29), Events: 9 workers (30% of 29), Buffer: 3
 ```
 
 ### WorkerBudget Structure
@@ -140,10 +148,10 @@ GameLoop: 2 workers, AI: 60% of remaining, Events: 30% of remaining
 struct WorkerBudget {
     size_t totalWorkers;      // Total available worker threads
     size_t engineReserved;    // Workers reserved for GameLoop (1-2 based on tier)
-    size_t aiAllocated;       // Workers allocated to AIManager  
+    size_t aiAllocated;       // Workers allocated to AIManager
     size_t eventAllocated;    // Workers allocated to EventManager
     size_t remaining;         // Buffer workers for dynamic allocation
-    
+
     // Helper methods for buffer utilization
     size_t getOptimalWorkerCount(size_t baseAllocation, size_t workloadSize, size_t threshold) const;
     bool hasBufferCapacity() const;
@@ -162,7 +170,7 @@ WorkerBudget {
     totalWorkers: 7,
     engineReserved: 2,    // GameLoop gets 2 workers for optimal performance
     aiAllocated: 3,       // AI gets 60% of remaining 5 = 3 workers
-    eventAllocated: 1,    // Events get 30% of remaining 5 = 1 worker  
+    eventAllocated: 1,    // Events get 30% of remaining 5 = 1 worker
     remaining: 1          // 1 buffer worker for burst capacity
 }
 
@@ -195,14 +203,14 @@ void AIManager::update(float deltaTime) {
     auto& threadSystem = Forge::ThreadSystem::Instance();
     size_t availableWorkers = threadSystem.getThreadCount();
     Forge::WorkerBudget budget = Forge::calculateWorkerBudget(availableWorkers);
-    
+
     // Calculate optimal worker count based on current workload
     size_t optimalWorkers = budget.getOptimalWorkerCount(
         budget.aiAllocated,    // Base guaranteed allocation
         m_entities.size(),     // Current workload size
         1000                   // Threshold for buffer usage
     );
-    
+
     // Use buffer capacity for high entity counts
     if (optimalWorkers > budget.aiAllocated) {
         // High workload: Use base + buffer workers
@@ -216,13 +224,13 @@ void AIManager::update(float deltaTime) {
 // EventManager using buffer threads similarly
 void EventManager::processEvents() {
     Forge::WorkerBudget budget = Forge::calculateWorkerBudget(availableWorkers);
-    
+
     size_t optimalWorkers = budget.getOptimalWorkerCount(
         budget.eventAllocated, // Base allocation
         m_events.size(),       // Current event count
         100                    // Buffer threshold
     );
-    
+
     processEventBatches(optimalWorkers);
 }
 ```
@@ -237,7 +245,7 @@ void EventManager::processEvents() {
 // - Events use base allocation: 1 worker
 // - Buffer remains available: 1 worker idle
 
-// High Workload (AI: 5000 entities, Events: 500 events)  
+// High Workload (AI: 5000 entities, Events: 500 events)
 // - AI uses burst capacity: 4 workers (3 base + 1 buffer)
 // - Events would use burst if available: 2 workers
 // - Buffer is utilized for improved performance
@@ -279,14 +287,14 @@ void SubSystem::processWorkload() {
     auto& threadSystem = Forge::ThreadSystem::Instance();
     size_t availableWorkers = threadSystem.getThreadCount();
     Forge::WorkerBudget budget = Forge::calculateWorkerBudget(availableWorkers);
-    
+
     // Calculate optimal workers based on current workload
     size_t optimalWorkers = budget.getOptimalWorkerCount(
         budget.systemAllocated,  // Your system's base allocation
         currentWorkloadSize,     // Current workload (entities, events, etc.)
         workloadThreshold        // Threshold for buffer usage
     );
-    
+
     // Use optimal worker count for batch processing
     processBatches(optimalWorkers);
 }
@@ -331,7 +339,7 @@ void debugWorkerBudget() {
     auto& threadSystem = Forge::ThreadSystem::Instance();
     size_t workers = threadSystem.getThreadCount();
     Forge::WorkerBudget budget = Forge::calculateWorkerBudget(workers);
-    
+
     std::cout << "=== WorkerBudget Debug Info ===" << std::endl;
     std::cout << "Total workers: " << budget.totalWorkers << std::endl;
     std::cout << "GameLoop reserved: " << budget.engineReserved << std::endl;
@@ -339,7 +347,7 @@ void debugWorkerBudget() {
     std::cout << "Events allocated: " << budget.eventAllocated << std::endl;
     std::cout << "Buffer available: " << budget.remaining << std::endl;
     std::cout << "Has buffer capacity: " << (budget.hasBufferCapacity() ? "Yes" : "No") << std::endl;
-    
+
     // Test different workload scenarios
     size_t testWorkloads[] = {100, 500, 1000, 5000, 10000};
     for (size_t workload : testWorkloads) {
@@ -379,7 +387,7 @@ static bool Exists();
 void enqueueTask(std::function<void()> task, TaskPriority priority = TaskPriority::Normal, const std::string& description = "");
 
 template<class F, class... Args>
-auto enqueueTaskWithResult(F&& f, TaskPriority priority = TaskPriority::Normal, const std::string& description = "", Args&&... args) 
+auto enqueueTaskWithResult(F&& f, TaskPriority priority = TaskPriority::Normal, const std::string& description = "", Args&&... args)
     -> std::future<typename std::invoke_result<F, Args...>::type>;
 
 // Status and information
@@ -416,10 +424,10 @@ void setDebugLogging(bool enable);           // Enable detailed logging
 class AIManager {
     void updateEntitiesParallel(const std::vector<EntityData>& entities) {
         size_t batchSize = calculateOptimalBatchSize(entities.size());
-        
+
         for (size_t i = 0; i < entities.size(); i += batchSize) {
             size_t end = std::min(i + batchSize, entities.size());
-            
+
             Forge::ThreadSystem::Instance().enqueueTask([this, i, end, &entities]() {
                 processBatch(entities, i, end);
             }, Forge::TaskPriority::Normal, "AI Batch Processing");
@@ -566,28 +574,28 @@ public:
         if (!Forge::ThreadSystem::Instance().init(2048, 0, true)) {
             return false;
         }
-        
+
         // Initialize other systems that use ThreadSystem
         if (!EventManager::Instance().init()) return false;
         if (!AIManager::Instance().init()) return false;
-        
+
         return true;
     }
-    
+
     void update(float deltaTime) {
         // Submit background tasks
         Forge::ThreadSystem::Instance().enqueueTask([this, deltaTime]() {
             updateAI(deltaTime);
         }, Forge::TaskPriority::High, "AI Update");
-        
+
         Forge::ThreadSystem::Instance().enqueueTask([this]() {
             processEvents();
         }, Forge::TaskPriority::Normal, "Event Processing");
-        
+
         // Continue with main thread work
         updateMainSystems(deltaTime);
     }
-    
+
     void cleanup() {
         // Clean up in reverse order
         AIManager::Instance().clean();
@@ -623,7 +631,7 @@ public:
 // Monitor ThreadSystem performance
 void debugThreadSystem() {
     auto& ts = Forge::ThreadSystem::Instance();
-    
+
     std::cout << "Thread count: " << ts.getThreadCount() << std::endl;
     std::cout << "Queue size: " << ts.getQueueSize() << std::endl;
     std::cout << "Completed tasks: " << ts.getCompletedTaskCount() << std::endl;
