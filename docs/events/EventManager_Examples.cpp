@@ -4,16 +4,17 @@
 */
 
 /**
- * @file EventManagerExamples.cpp
- * @brief Comprehensive examples of the EventManager API
+ * @file EventManager_Examples.cpp
+ * @brief Comprehensive examples of the EventManager as single source of truth
  *
- * This file demonstrates the EventManager with its actual implementation:
- * - Type-indexed storage with EventTypeId enumeration
- * - Convenience methods for one-line event creation
+ * This file demonstrates EventManager as the single source of truth for all event operations:
+ * - EventManager as the single source of truth for all event functionality
+ * - Simple and advanced event creation methods
  * - Direct triggering methods for immediate events
- * - Type-safe handler registration
+ * - Type-safe handler registration and management
+ * - Event sequences and custom event types
  * - Performance monitoring and threading configuration
- * - Real-world integration patterns
+ * - Real-world integration patterns and best practices
  */
 
 #include "managers/EventManager.hpp"
