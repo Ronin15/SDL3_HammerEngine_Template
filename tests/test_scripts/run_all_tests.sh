@@ -70,6 +70,7 @@ done
 # Core functionality tests (fast execution)
 CORE_TEST_SCRIPTS=(
   "$SCRIPT_DIR/run_thread_tests.sh"
+  "$SCRIPT_DIR/run_buffer_utilization_tests.sh"
   "$SCRIPT_DIR/run_thread_safe_ai_tests.sh"
   "$SCRIPT_DIR/run_thread_safe_ai_integration_tests.sh"
   "$SCRIPT_DIR/run_ai_optimization_tests.sh"

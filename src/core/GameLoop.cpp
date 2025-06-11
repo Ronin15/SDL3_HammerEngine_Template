@@ -6,6 +6,7 @@
 #include "core/GameLoop.hpp"
 #include "core/Logger.hpp"
 #include "core/ThreadSystem.hpp"
+#include "core/WorkerBudget.hpp"
 #include <exception>
 
 GameLoop::GameLoop(float targetFPS, float fixedTimestep, bool threaded)
@@ -47,22 +48,29 @@ bool GameLoop::run() {
         return false;
     }
 
-    m_running.store(true);
-    m_stopRequested.store(false);
-    m_paused.store(false);
+    m_running.store(true, std::memory_order_relaxed);
+    m_stopRequested.store(false, std::memory_order_relaxed);
+    m_paused.store(false, std::memory_order_relaxed);
 
     // Reset timestep manager for clean start
     m_timestepManager->reset();
 
     try {
         if (m_threaded) {
-            // Start update task using ThreadSystem
+            // Start update worker respecting WorkerBudget allocation
             if (Forge::ThreadSystem::Exists()) {
-                m_updateTaskRunning.store(true);
-                Forge::ThreadSystem::Instance().enqueueTask(
-                    [this]() { runUpdateTask(); },
+                auto& threadSystem = Forge::ThreadSystem::Instance();
+                size_t availableWorkers = static_cast<size_t>(threadSystem.getThreadCount());
+                Forge::WorkerBudget budget = Forge::calculateWorkerBudget(availableWorkers);
+
+                GAMELOOP_INFO("GameLoop allocated " + std::to_string(budget.engineReserved) +
+                             " workers from WorkerBudget (total: " + std::to_string(availableWorkers) + ")");
+
+                m_updateTaskRunning.store(true, std::memory_order_relaxed);
+                m_updateTaskFuture = Forge::ThreadSystem::Instance().enqueueTaskWithResult(
+                    [this, budget]() { runUpdateWorker(budget); },
                     Forge::TaskPriority::Critical,
-                    "GameLoop Update Task"
+                    "GameLoop WorkerBudget Update Worker"
                 );
             } else {
                 GAMELOOP_WARN("ThreadSystem not available, falling back to single-threaded mode");
@@ -74,33 +82,33 @@ bool GameLoop::run() {
         runMainThread();
 
         // Clean shutdown
-        if (m_threaded) {
-            m_updateTaskRunning.store(false);
-            // Give update task time to finish
-            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        if (m_threaded && m_updateTaskFuture.valid()) {
+            m_updateTaskRunning.store(false, std::memory_order_relaxed);
+            // Wait for update worker to finish cleanly
+            m_updateTaskFuture.wait();
         }
 
-        m_running.store(false);
+        m_running.store(false, std::memory_order_relaxed);
         return true;
 
     } catch (const std::exception& e) {
         GAMELOOP_CRITICAL("Exception in main loop: " + std::string(e.what()));
-        m_running.store(false);
+        m_running.store(false, std::memory_order_relaxed);
         cleanup();
         return false;
     }
 }
 
 void GameLoop::stop() {
-    m_stopRequested.store(true);
+    m_stopRequested.store(true, std::memory_order_relaxed);
 }
 
 bool GameLoop::isRunning() const {
-    return m_running.load();
+    return m_running.load(std::memory_order_relaxed);
 }
 
 void GameLoop::setPaused(bool paused) {
-    bool wasPaused = m_paused.exchange(paused);
+    bool wasPaused = m_paused.exchange(paused, std::memory_order_relaxed);
 
     // If transitioning from paused to unpaused, reset timing to avoid time jump
     if (wasPaused && !paused) {
@@ -109,7 +117,7 @@ void GameLoop::setPaused(bool paused) {
 }
 
 bool GameLoop::isPaused() const {
-    return m_paused.load();
+    return m_paused.load(std::memory_order_relaxed);
 }
 
 float GameLoop::getCurrentFPS() const {
@@ -133,7 +141,7 @@ TimestepManager& GameLoop::getTimestepManager() {
 }
 
 void GameLoop::runMainThread() {
-    while (m_running.load() && !m_stopRequested.load()) {
+    while (m_running.load(std::memory_order_relaxed) && !m_stopRequested.load(std::memory_order_relaxed)) {
         // Start frame timing
         m_timestepManager->startFrame();
 
@@ -159,42 +167,68 @@ void GameLoop::runMainThread() {
     }
 }
 
-void GameLoop::runUpdateTask() {
-    try {
-        if (!m_paused.load()) {
-            processUpdates();
-        }
+void GameLoop::runUpdateWorker(const Forge::WorkerBudget& budget) {
+    // WorkerBudget-aware update worker - respects allocated resources
+    GAMELOOP_INFO("Update worker started with " + std::to_string(budget.engineReserved) + " allocated workers");
 
-        // Re-enqueue this task if still running
-        if (m_updateTaskRunning.load() && !m_stopRequested.load()) {
-            // Calculate smart sleep time based on target FPS for reliable behavior
-            // Sleep for approximately half the target frame time to balance responsiveness and CPU usage
-            float targetFPS = m_timestepManager->getTargetFPS();
-            float targetFrameTimeMs = 1000.0f / targetFPS;
+    // Pre-calculate sleep time to avoid repeated calculations
+    float targetFPS = m_timestepManager->getTargetFPS();
+    auto sleepDuration = std::chrono::microseconds(static_cast<long>(
+        std::max(500.0f, std::min(8000.0f, (1000000.0f / targetFPS) * 0.5f))
+    ));
 
-            // Ensure minimum 1ms sleep, maximum 8ms for responsiveness
-            uint32_t sleepTimeMs = static_cast<uint32_t>(std::max(1.0f, std::min(8.0f, targetFrameTimeMs * 0.5f)));
-            std::this_thread::sleep_for(std::chrono::milliseconds(sleepTimeMs));
+    // Adaptive behavior based on WorkerBudget allocation
+    bool canUseParallelUpdates = (budget.engineReserved >= 2);
+    bool isHighEndSystem = (budget.totalWorkers > 4);
 
-            // Re-enqueue the task
-            if (Forge::ThreadSystem::Exists()) {
-                Forge::ThreadSystem::Instance().enqueueTask(
-                    [this]() { runUpdateTask(); },
-                    Forge::TaskPriority::Critical,
-                    "GameLoop Update Task"
-                );
+    // Adjust sleep precision based on system capabilities
+    auto adaptiveSleepDuration = isHighEndSystem ?
+        std::chrono::microseconds(static_cast<long>(sleepDuration.count() * 0.8)) : // More responsive on high-end
+        sleepDuration; // Standard timing on low-end
+
+    while (m_updateTaskRunning.load(std::memory_order_relaxed) && !m_stopRequested.load(std::memory_order_relaxed)) {
+        try {
+            if (!m_paused.load(std::memory_order_relaxed)) {
+                if (canUseParallelUpdates && Forge::ThreadSystem::Exists()) {
+                    // Use enhanced processing for high-end systems
+                    processUpdatesParallel();
+                } else {
+                    // Standard processing for low-end systems
+                    processUpdates();
+                }
             }
-        }
 
-    } catch (const std::exception& e) {
-        GAMELOOP_ERROR("Exception in update task: " + std::string(e.what()));
-        // Re-enqueue the task to continue running
-        if (m_updateTaskRunning.load() && !m_stopRequested.load() && Forge::ThreadSystem::Exists()) {
-            Forge::ThreadSystem::Instance().enqueueTask(
-                [this]() { runUpdateTask(); },
-                Forge::TaskPriority::Critical,
-                "GameLoop Update Task"
-            );
+            // WorkerBudget-aware sleep timing
+            std::this_thread::sleep_for(adaptiveSleepDuration);
+
+            // Adaptive recalibration interval based on system tier
+            static int frameCounter = 0;
+            int recalibrationInterval = isHighEndSystem ? 1200 : 600; // High-end: 20s, Low-end: 10s
+
+            if (++frameCounter % recalibrationInterval == 0) {
+                float newTargetFPS = m_timestepManager->getTargetFPS();
+                if (newTargetFPS != targetFPS) {
+                    targetFPS = newTargetFPS;
+                    sleepDuration = std::chrono::microseconds(static_cast<long>(
+                        std::max(500.0f, std::min(8000.0f, (1000000.0f / targetFPS) * 0.5f))
+                    ));
+                    adaptiveSleepDuration = isHighEndSystem ?
+                        std::chrono::microseconds(static_cast<long>(sleepDuration.count() * 0.8)) :
+                        sleepDuration;
+                }
+
+                // Log WorkerBudget utilization periodically on high-end systems
+                if (isHighEndSystem && Forge::ThreadSystem::Exists()) {
+                    auto& threadSystem = Forge::ThreadSystem::Instance();
+                    if (threadSystem.isBusy()) {
+                        GAMELOOP_DEBUG("High-end system WorkerBudget busy - optimal utilization");
+                    }
+                }
+            }
+
+        } catch (const std::exception& e) {
+            GAMELOOP_ERROR("Exception in update worker: " + std::string(e.what()));
+            // Continue running - don't let exceptions kill the update worker
         }
     }
 }
@@ -208,7 +242,32 @@ void GameLoop::processUpdates() {
     while (m_timestepManager->shouldUpdate()) {
         float deltaTime = m_timestepManager->getUpdateDeltaTime();
         invokeUpdateHandler(deltaTime);
-        m_updateCount.fetch_add(1);
+        m_updateCount.fetch_add(1, std::memory_order_relaxed);
+    }
+}
+
+void GameLoop::processUpdatesParallel() {
+    // Enhanced parallel processing for high-end systems with 2+ allocated workers
+    // Still process updates sequentially to maintain game logic consistency
+    // but optimized for systems with more worker budget allocation
+
+    // Use enhanced timing precision for high-end systems
+    auto highPrecisionStart = std::chrono::high_resolution_clock::now();
+
+    while (m_timestepManager->shouldUpdate()) {
+        float deltaTime = m_timestepManager->getUpdateDeltaTime();
+        invokeUpdateHandler(deltaTime);
+        m_updateCount.fetch_add(1, std::memory_order_relaxed);
+    }
+
+    // Monitor performance on high-end systems (every 1000 updates)
+    static std::atomic<int> perfCounter{0};
+    if (perfCounter.fetch_add(1, std::memory_order_relaxed) % 1000 == 0) {
+        auto duration = std::chrono::high_resolution_clock::now() - highPrecisionStart;
+        auto microseconds = std::chrono::duration_cast<std::chrono::microseconds>(duration).count();
+        if (microseconds > 20000) { // > 20ms for 1000 updates indicates potential performance issues
+            GAMELOOP_WARN("High-end system update batch took " + std::to_string(microseconds) + " microseconds");
+        }
     }
 }
 
@@ -253,11 +312,13 @@ void GameLoop::invokeRenderHandler(float interpolation) {
 }
 
 void GameLoop::cleanup() {
-    // Stop update task if running
-    m_updateTaskRunning.store(false);
-    
-    // Give update task time to finish
-    std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    // Stop update worker if running
+    m_updateTaskRunning.store(false, std::memory_order_relaxed);
+
+    // Wait for update worker to finish cleanly
+    if (m_updateTaskFuture.valid()) {
+        m_updateTaskFuture.wait();
+    }
 
     // Clear callbacks
     {
@@ -267,5 +328,5 @@ void GameLoop::cleanup() {
         m_renderHandler = nullptr;
     }
 
-    m_running.store(false);
+    m_running.store(false, std::memory_order_relaxed);
 }

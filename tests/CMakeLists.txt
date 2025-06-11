@@ -125,6 +125,11 @@ add_executable(ui_stress_test
     ui/ui_stress_test_main.cpp
 )
 
+# Buffer Utilization tests
+add_executable(buffer_utilization_tests
+    BufferUtilizationTest.cpp
+)
+
 # Add compile definitions for Boost.Test
 target_compile_definitions(save_manager_tests PRIVATE
 )
@@ -173,6 +178,10 @@ target_compile_definitions(weather_event_tests PRIVATE
 # UI Stress Test definitions
 target_compile_definitions(ui_stress_test PRIVATE
     UI_STRESS_TEST_BUILD
+)
+
+# Buffer Utilization tests definitions
+target_compile_definitions(buffer_utilization_tests PRIVATE
 )
 
 # Link with required libraries
@@ -247,6 +256,12 @@ target_link_libraries(ui_stress_test PRIVATE
     Boost::unit_test_framework
 )
 
+# Link Buffer Utilization tests with required libraries
+target_link_libraries(buffer_utilization_tests PRIVATE
+    SDL3::SDL3
+    Boost::unit_test_framework
+)
+
 # Add HAVE_BOOST_SERIALIZATION to ui_stress_test as well
 target_compile_definitions(ui_stress_test PRIVATE
 )
@@ -265,3 +280,4 @@ add_test(NAME ThreadSafeAIIntegrationTests
 add_test(NAME EventManagerTests COMMAND event_manager_tests)
 add_test(NAME EventTypesTests COMMAND event_types_tests)
 add_test(NAME WeatherEventTests COMMAND weather_event_tests)
+add_test(NAME BufferUtilizationTests COMMAND buffer_utilization_tests)

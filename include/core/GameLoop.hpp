@@ -11,6 +11,12 @@
 #include <memory>
 #include <atomic>
 #include <mutex>
+#include <future>
+
+// Forward declaration
+namespace Forge {
+    struct WorkerBudget;
+}
 
 /**
  * GameLoop manages the main game loop with industry-standard timing patterns.
@@ -141,6 +147,7 @@ private:
     // Threading
     bool m_threaded;
     std::atomic<bool> m_updateTaskRunning;
+    std::future<void> m_updateTaskFuture;
     
     // Update synchronization for threaded mode
     std::atomic<int> m_updateCount;
@@ -148,9 +155,10 @@ private:
 
     // Internal methods
     void runMainThread();
-    void runUpdateTask();
+    void runUpdateWorker(const Forge::WorkerBudget& budget);
     void processEvents();
     void processUpdates();
+    void processUpdatesParallel();
     void processRender();
     void cleanup();
 

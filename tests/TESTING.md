@@ -41,6 +41,7 @@ Each test suite has dedicated scripts in the project root directory:
 ```bash
 # Core functionality tests (fast execution)
 ./run_thread_tests.sh                # Thread system tests
+./run_buffer_utilization_tests.sh    # WorkerBudget buffer thread utilization tests
 ./run_thread_safe_ai_tests.sh        # Thread-safe AI tests
 ./run_thread_safe_ai_integration_tests.sh  # Thread-safe AI integration tests
 ./run_ai_optimization_tests.sh       # AI optimization tests
@@ -345,6 +346,35 @@ Located in `ThreadSystemTests.cpp`, these tests verify:
 4. **Error Handling**: Tests recovery from failed tasks
 5. **Priority System**: Tests the task priority levels (Critical, High, Normal, Low, Idle)
 6. **Priority Scheduling**: Verifies that higher priority tasks execute before lower priority ones
+
+### WorkerBudget Buffer Utilization Tests
+
+Located in `BufferUtilizationTest.cpp`, these tests verify the intelligent buffer thread utilization system:
+
+1. **Hardware Tier Classification**: Tests allocation strategies across ultra low-end to very high-end systems
+2. **Dynamic Buffer Scaling**: Validates workload-based buffer utilization (AI: >1000 entities, Events: >100 events)
+3. **Conservative Burst Strategy**: Tests systems using maximum 50% of base allocation from buffer
+4. **Resource Allocation Logic**: Verifies no over-allocation and proper fallback behavior
+5. **Graceful Degradation**: Tests single-threaded fallback on resource-constrained systems
+
+**Test Coverage:**
+- **Ultra Low-End (1-2 workers)**: GameLoop priority, AI/Events single-threaded
+- **Low-End (3-4 workers)**: Conservative allocation with limited buffer
+- **Target Minimum (7 workers)**: Optimal allocation (GameLoop: 2, AI: 3, Events: 1, Buffer: 1)
+- **High-End (12+ workers)**: Full buffer utilization for burst capacity
+
+**Validation Examples:**
+```bash
+# 12-worker system test results:
+Base allocations - GameLoop: 2, AI: 6, Events: 3, Buffer: 1
+Low workload (500 entities): 6 workers    # Uses base allocation
+High workload (5000 entities): 7 workers  # Uses base + buffer
+
+# 16-worker system test results:
+Very high workload burst: 10 workers      # AI gets 8 base + 2 buffer
+```
+
+The tests ensure the WorkerBudget system provides guaranteed minimum performance while enabling intelligent scaling for high workloads without resource conflicts.
 
 ### Event Manager Tests
 

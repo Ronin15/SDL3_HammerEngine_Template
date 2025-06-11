@@ -66,7 +66,7 @@ I use the Zed IDE with custom cmake and ninja task configurations to build/compi
 - **Stability Tested**: Zero timeouts or system hangs during extreme stress testing
 
 ### Real-World Performance
-- Maintains consistent 60 FPS with 10K+ active entities on 11-core systems
+- Maintains consistent 60 FPS with 10K+ active entities on 8-core/16-thread systems
 - Automatic threading threshold (200 entities) provides optimal performance across hardware tiers
 - Excellent scaling: 1.0x baseline → 5.85x at 10K entities with threading
 - Handles mixed workloads (AI + Events + Physics) without resource conflicts
@@ -137,6 +137,7 @@ The project includes comprehensive testing suites for all major components inclu
 # Core manager component tests
 ./run_save_tests.sh          # SaveGameManager and BinarySerializer tests
 ./run_thread_tests.sh        # ThreadSystem unit tests and benchmarks
+./run_buffer_utilization_tests.sh # WorkerBudget buffer thread utilization tests
 ./run_event_tests.sh         # EventManager performance and functionality tests
 
 # AI system comprehensive testing
@@ -174,6 +175,19 @@ The project includes comprehensive testing suites for all major components inclu
 # - 100K entities: Stress test validation (2.2M+ updates/sec)
 ```
 
+### WorkerBudget System Tests
+```bash
+# Buffer thread utilization testing
+./run_buffer_utilization_tests.sh           # WorkerBudget allocation and scaling tests
+./run_buffer_utilization_tests.sh --verbose # Detailed allocation metrics and patterns
+
+# Tests validate:
+# - Hardware tier classification (ultra low-end to very high-end systems)
+# - Dynamic buffer scaling based on workload thresholds
+# - Conservative burst allocation (AI: >1000 entities, Events: >100 events)
+# - Graceful degradation on resource-constrained systems
+```
+
 ### Test Script Options
 ```bash
 # Common test script options (available for most test runners)
@@ -186,7 +200,6 @@ The project includes comprehensive testing suites for all major components inclu
 --realistic-only  # AI benchmarks: Run clean realistic automatic threading tests
 --stress-test     # AI benchmarks: Run only 100K entity stress test
 --threshold-test  # AI benchmarks: Test 200-entity threading threshold behavior
-```
 
 ### Continuous Integration Support
 All test scripts support CI/CD integration with exit codes and result logging:
@@ -196,7 +209,7 @@ All test scripts support CI/CD integration with exit codes and result logging:
 echo $? # Returns 0 for success, non-zero for failures
 ```
 
-See `tests/TESTING.md` for comprehensive documentation on all testing frameworks, `tests/TROUBLESHOOTING.md` for common issues and solutions, `docs/ui/UI_Stress_Testing_Guide.md` for UI testing details, or component-specific documentation like `docs/ThreadSystem.md` and `docs/EventManager.md` for detailed information.
+See `tests/TESTING.md` for comprehensive documentation on all testing frameworks, `tests/TROUBLESHOOTING.md` for common issues and solutions, `docs/ui/UI_Stress_Testing_Guide.md` for UI testing details, or component-specific documentation like `docs/ThreadSystem.md` for WorkerBudget system details and `docs/EventManager.md` for detailed information.
 
 ## Feature Component Details
 
@@ -233,17 +246,20 @@ See `include/managers/SaveGameManager.hpp` for the full API and implementation d
 
 ### ThreadSystem
 
-The ThreadSystem provides a thread pool implementation for efficient multi-threaded task execution:
+The ThreadSystem provides a high-performance thread pool implementation with intelligent WorkerBudget allocation:
 
-- Thread-safe task queue with pre-allocated memory
-- Worker thread pool that automatically scales to hardware capabilities
-- Priority-based task scheduling (Critical, High, Normal, Low, Idle)
-- Support for both fire-and-forget tasks and tasks with future results
-- Queue capacity management to avoid overhead from memory reallocations
-- Graceful shutdown with proper cleanup of resources
-- Automatic capacity management for different workloads
+- **WorkerBudget System**: Dynamic allocation across AI and Event systems (AI: 60%, Events: 30%, Engine coordination: 10%)
+- **Hardware Adaptive**: Automatically scales from ultra low-end (single-threaded) to high-end (multi-threaded) systems
+- **Buffer Thread Utilization**: Dynamic scaling based on workload thresholds (AI: >1000 entities, Events: >100 events)
+- **Priority-Based Scheduling**: Critical, High, Normal, Low, Idle task priorities with GameLoop getting Critical priority
+- **Thread-Safe Operations**: Task queue with pre-allocated memory and atomic operations
+- **Smart Resource Management**: Queue pressure monitoring with graceful degradation under load
+- **Future-Based Results**: Support for both fire-and-forget tasks and tasks with return values
+- **Engine Integration**: Seamlessly integrated with AIManager, EventManager, and GameLoop systems
 
-See `docs/ThreadSystem.md` for the full API and detailed documentation.
+The WorkerBudget system ensures optimal resource distribution: on a 4-core/8-thread system (7 workers), GameLoop gets 2 workers, AI gets 3 workers, Events get 1 worker, with 1 buffer worker for burst capacity during high workloads.
+
+See `docs/ThreadSystem.md` for comprehensive WorkerBudget documentation and full API details.
 
 ### TextureManager
 

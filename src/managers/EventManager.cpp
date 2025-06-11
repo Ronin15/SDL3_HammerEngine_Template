@@ -419,8 +419,19 @@ void EventManager::updateEventTypeBatchThreaded(EventTypeId typeId) {
     size_t maxQueuePressure = availableWorkers * 2; // Allow 2x worker count in queue
 
     if (currentQueueSize < maxQueuePressure && container.size() > 10) {
+        // Calculate optimal worker count using buffer threads for high workloads
+        size_t optimalWorkerCount = budget.getOptimalWorkerCount(eventWorkerBudget, container.size(), 100);
+        size_t targetBatches = optimalWorkerCount;
+        
+        // Log buffer usage when it occurs
+        if (optimalWorkerCount > eventWorkerBudget && budget.hasBufferCapacity()) {
+            EVENT_DEBUG("Using buffer capacity: " + std::to_string(optimalWorkerCount) + 
+                       " workers (" + std::to_string(eventWorkerBudget) + " base + " + 
+                       std::to_string(optimalWorkerCount - eventWorkerBudget) + " buffer) for " + 
+                       std::to_string(container.size()) + " events");
+        }
+
         // Use threaded processing with cache-friendly batching like AIManager
-        size_t targetBatches = eventWorkerBudget;
         size_t optimalBatchSize = std::max(size_t(10), container.size() / targetBatches);
 
         // Apply cache-friendly limits based on event count
