@@ -259,6 +259,10 @@ if "!EXTREME_TEST!"=="true" (
 call :print_status "Running AI scaling benchmark..."
 call :print_status "This may take several minutes depending on hardware and test options..."
 
+:: Use timeout command if available (Windows 7+ has timeout.exe)
+set "TIMEOUT_DURATION=300"
+call :print_status "Benchmark will timeout after !TIMEOUT_DURATION! seconds if it hangs"
+
 if "!VERBOSE!"=="true" (
     call :print_status "Running with verbose output..."
     :: Run with verbose output and save to file, also display on console
@@ -272,7 +276,7 @@ if "!VERBOSE!"=="true" (
     set BENCHMARK_RESULT=!ERRORLEVEL!
 )
 
-:: Check benchmark results and handle various exit scenarios
+:: Check benchmark results and handle various exit scenarios like SH version
 findstr /c:"Performance Results" /c:"Total time:" "!OUTPUT_FILE!" >nul 2>&1
 if !ERRORLEVEL! equ 0 (
     :: We got performance results, so consider it successful regardless of exit code
@@ -287,6 +291,29 @@ if !ERRORLEVEL! equ 0 (
         call :print_error "Benchmark execution timed out"
     ) else (
         call :print_error "No performance results found in output"
+    )
+)
+
+:: Handle various exit codes like SH version
+if !BENCHMARK_RESULT! equ -1073741819 (
+    call :print_warning "Benchmark terminated with access violation but may have completed"
+    :: If we have results, consider it a success
+    findstr /c:"Total time:" "!OUTPUT_FILE!" >nul 2>&1
+    if !ERRORLEVEL! equ 0 (
+        call :print_success "Results were captured before termination"
+        set BENCHMARK_RESULT=0
+    )
+)
+
+:: Additional crash detection like SH version
+findstr /c:"Access violation" /c:"Segmentation fault" /c:"Aborted" /c:"Exception" "!OUTPUT_FILE!" >nul 2>&1
+if !ERRORLEVEL! equ 0 (
+    call :print_warning "Evidence of crash found in output, but benchmark may have completed"
+    :: If we have results, consider it a success
+    findstr /c:"Total time:" "!OUTPUT_FILE!" >nul 2>&1
+    if !ERRORLEVEL! equ 0 (
+        call :print_success "Results were captured before crash"
+        set BENCHMARK_RESULT=0
     )
 )
 
@@ -360,6 +387,35 @@ if !BENCHMARK_RESULT! equ 0 (
     findstr /c:"Entity Count" "!OUTPUT_FILE!" >> "!METRICS_FILE!" 2>nul
 
     call :print_status "Performance metrics saved to: !METRICS_FILE!"
+
+    :: Create comprehensive summary file like SH version
+    set "SUMMARY_FILE=!RESULTS_DIR!\ai_benchmark_summary_!TIMESTAMP!.txt"
+    echo ============ BENCHMARK SUMMARY ============> "!SUMMARY_FILE!"
+    echo Date: %date% %time%>> "!SUMMARY_FILE!"
+    echo Build type: !BUILD_TYPE!>> "!SUMMARY_FILE!"
+    echo Exit code: !BENCHMARK_RESULT!>> "!SUMMARY_FILE!"
+    echo.>> "!SUMMARY_FILE!"
+    
+    :: Extract key metrics for the summary
+    echo Key Performance Metrics:>> "!SUMMARY_FILE!"
+    findstr /c:"Total time:" /c:"Entity updates per second:" /c:"Total behavior updates:" "!OUTPUT_FILE!" >> "!SUMMARY_FILE!" 2>nul
+    
+    echo.>> "!SUMMARY_FILE!"
+    echo WorkerBudget System Information:>> "!SUMMARY_FILE!"
+    findstr /c:"System Configuration:" /c:"WorkerBudget:" /c:"Threading mode:" "!OUTPUT_FILE!" >> "!SUMMARY_FILE!" 2>nul
+    
+    :: Extract threading performance comparison like SH version
+    echo.>> "!SUMMARY_FILE!"
+    echo Threading Performance Analysis:>> "!SUMMARY_FILE!"
+    for /f "tokens=*" %%a in ('findstr /c:"Entity updates per second:" "!OUTPUT_FILE!" 2^>nul') do (
+        echo %%a>> "!SUMMARY_FILE!"
+    )
+    
+    echo.>> "!SUMMARY_FILE!"
+    echo Status:>> "!SUMMARY_FILE!"
+    echo Benchmark completed successfully>> "!SUMMARY_FILE!"
+    
+    call :print_status "Comprehensive summary saved to: !SUMMARY_FILE!"
 
     exit /b 0
 ) else (

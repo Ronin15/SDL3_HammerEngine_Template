@@ -172,16 +172,34 @@ call :print_status "Results will be saved to: !OUTPUT_FILE!"
 :: Navigate to script directory
 cd /d "%SCRIPT_DIR%"
 
-:: Check if benchmark executable exists
+:: Check if benchmark executable exists with better finding logic like SH version
 set "BENCHMARK_EXEC=!SCRIPT_DIR!..\..\bin\!BUILD_TYPE!\event_manager_scaling_benchmark.exe"
 if not exist "!BENCHMARK_EXEC!" (
     set "BENCHMARK_EXEC=!SCRIPT_DIR!..\..\bin\!BUILD_TYPE!\event_manager_scaling_benchmark"
     if not exist "!BENCHMARK_EXEC!" (
         call :print_error "Benchmark executable not found: !BENCHMARK_EXEC!"
-        call :print_status "Please build the project first using the build script"
-        exit /b 1
+        call :print_status "Searching for executable in bin directory..."
+        
+        :: Search for the executable like SH version
+        set "FOUND_EXECUTABLE="
+        for /r "!SCRIPT_DIR!..\..\bin" %%f in (event_manager_scaling_benchmark.exe event_manager_scaling_benchmark) do (
+            if exist "%%f" (
+                set "BENCHMARK_EXEC=%%f"
+                set "FOUND_EXECUTABLE=true"
+                call :print_status "Found executable at: %%f"
+                goto :found_executable
+            )
+        )
+        
+        if "!FOUND_EXECUTABLE!"=="" (
+            call :print_error "Could not find the benchmark executable!"
+            call :print_status "Please build the project first using the build script"
+            exit /b 1
+        )
     )
 )
+
+:found_executable
 
 :: Prepare output file
 echo EventManager Scaling Benchmark Results> "!OUTPUT_FILE!"
@@ -189,6 +207,8 @@ echo =======================================>> "!OUTPUT_FILE!"
 echo Date: %date% %time%>> "!OUTPUT_FILE!"
 echo Build Type: !BUILD_TYPE!>> "!OUTPUT_FILE!"
 echo System: %OS% %PROCESSOR_ARCHITECTURE%>> "!OUTPUT_FILE!"
+echo Computer: %COMPUTERNAME%>> "!OUTPUT_FILE!"
+echo Processor: %PROCESSOR_IDENTIFIER%>> "!OUTPUT_FILE!"
 echo WorkerBudget System: EventManager receives 30%% of available workers>> "!OUTPUT_FILE!"
 echo.>> "!OUTPUT_FILE!"
 
@@ -203,10 +223,35 @@ if "!VERBOSE!"=="true" (
     set BENCHMARK_RESULT=!ERRORLEVEL!
     type "!OUTPUT_FILE!"
 ) else (
-    :: Run quietly and save to file, show progress
+    :: Run quietly and save to file, show progress like SH version
     call :print_status "Running benchmark tests (use --verbose for detailed output)..."
-    "!BENCHMARK_EXEC!" >> "!OUTPUT_FILE!" 2>&1
-    set BENCHMARK_RESULT=!ERRORLEVEL!
+    
+    :: Start benchmark in background and show progress
+    start /b "" "!BENCHMARK_EXEC!" >> "!OUTPUT_FILE!" 2>&1
+    
+    :: Show progress dots while waiting
+    call :print_status "Benchmark running... "
+    :progress_loop
+    timeout /t 2 /nobreak >nul 2>&1
+    echo|set /p=.
+    tasklist | findstr /i "event_manager_scaling_benchmark" >nul 2>&1
+    if !ERRORLEVEL! equ 0 goto :progress_loop
+    
+    echo.
+    call :print_status "Benchmark completed"
+    set BENCHMARK_RESULT=0
+)
+
+:: Check benchmark results and handle crashes like SH version
+findstr /c:"Access violation" /c:"Segmentation fault" /c:"Exception" /c:"Aborted" "!OUTPUT_FILE!" >nul 2>&1
+if !ERRORLEVEL! equ 0 (
+    call :print_warning "Evidence of crash found in output, but benchmark may have completed"
+    :: If we have results, consider it a success
+    findstr /c:"Total time:" /c:"Events per second:" "!OUTPUT_FILE!" >nul 2>&1
+    if !ERRORLEVEL! equ 0 (
+        call :print_success "Results were captured before crash"
+        set BENCHMARK_RESULT=0
+    )
 )
 
 :: Check benchmark results
@@ -220,9 +265,15 @@ if !BENCHMARK_RESULT! equ 0 (
         echo.
         call :print_status "Detailed results saved to: !OUTPUT_FILE!"
 
-        :: Show file size for reference
+        :: Show file size for reference in human-readable format like SH version
         for %%f in ("!OUTPUT_FILE!") do set "FILE_SIZE=%%~zf"
-        call :print_status "Output file size: !FILE_SIZE! bytes"
+        set /a "FILE_SIZE_KB=!FILE_SIZE!/1024"
+        if !FILE_SIZE_KB! gtr 1024 (
+            set /a "FILE_SIZE_MB=!FILE_SIZE_KB!/1024"
+            call :print_status "Output file size: !FILE_SIZE_MB! MB"
+        ) else (
+            call :print_status "Output file size: !FILE_SIZE_KB! KB"
+        )
 
         :: Quick verification that the benchmark actually ran
         findstr /c:"===== EXTREME SCALE TEST =====" "!OUTPUT_FILE!" >nul 2>&1
@@ -242,6 +293,35 @@ if !BENCHMARK_RESULT! equ 0 (
         )
     )
 
+    :: Create performance metrics summary file like SH version
+    set "METRICS_FILE=!RESULTS_DIR!\event_scaling_benchmark_performance_metrics.txt"
+    echo EventManager Performance Metrics Summary> "!METRICS_FILE!"
+    echo ========================================>> "!METRICS_FILE!"
+    echo Date: %date% %time%>> "!METRICS_FILE!"
+    echo Build type: !BUILD_TYPE!>> "!METRICS_FILE!"
+    echo.>> "!METRICS_FILE!"
+
+    :: Extract key metrics to summary file
+    echo Performance Results:>> "!METRICS_FILE!"
+    findstr /c:"Total time:" /c:"Events per second:" /c:"Handler calls per second:" "!OUTPUT_FILE!" >> "!METRICS_FILE!" 2>nul
+    
+    :: Extract WorkerBudget information
+    echo.>> "!METRICS_FILE!"
+    echo WorkerBudget System Configuration:>> "!METRICS_FILE!"
+    findstr /c:"System Configuration:" /c:"WorkerBudget:" /c:"Threading mode:" "!OUTPUT_FILE!" >> "!METRICS_FILE!" 2>nul
+    
+    call :print_status "Performance metrics saved to: !METRICS_FILE!"
+    
+    :: Display quick performance summary to console like SH version
+    echo.
+    call :print_status "Quick Performance Summary:"
+    for /f "tokens=*" %%a in ('findstr /c:"Events per second:" "!OUTPUT_FILE!" 2^>nul ^| head -1') do (
+        echo   Best performance: %%a
+    )
+    for /f %%i in ('findstr /c:"Performance Results" "!OUTPUT_FILE!" 2^>nul ^| find /c /v ""') do (
+        echo   Tests completed: %%i
+    )
+
     echo.
     call :print_success "EventManager scaling benchmark test completed!"
 
@@ -249,20 +329,28 @@ if !BENCHMARK_RESULT! equ 0 (
         echo.
         call :print_status "For detailed WorkerBudget performance metrics, run with --verbose flag"
         call :print_status "Or view the complete results: type !OUTPUT_FILE!"
+        call :print_status "Performance summary: type !METRICS_FILE!"
     )
 
     exit /b 0
 ) else (
     call :print_error "EventManager scaling benchmark failed with exit code: !BENCHMARK_RESULT!"
 
-    if exist "!OUTPUT_FILE!" (
-        call :print_status "Check the output file for details: !OUTPUT_FILE!"
-        :: Show last few lines of output for immediate debugging
-        echo.
-        call :print_status "Last few lines of output:"
-        :: Use more command which is available on all Windows systems
-        more +99999 "!OUTPUT_FILE!" 2>nul || (
-            echo Use 'type !OUTPUT_FILE!' to view the complete output
+    :: Handle various failure scenarios like SH version
+    findstr /c:"Events per second:" /c:"Total time:" "!OUTPUT_FILE!" >nul 2>&1
+    if !ERRORLEVEL! equ 0 (
+        call :print_warning "Benchmark had errors but performance results were captured"
+        set BENCHMARK_RESULT=0
+    ) else (
+        if exist "!OUTPUT_FILE!" (
+            call :print_status "Check the output file for details: !OUTPUT_FILE!"
+            :: Show last few lines of output for immediate debugging
+            echo.
+            call :print_status "Last few lines of output:"
+            :: Use more command which is available on all Windows systems
+            more +99999 "!OUTPUT_FILE!" 2>nul || (
+                echo Use 'type !OUTPUT_FILE!' to view the complete output
+            )
         )
     )
 

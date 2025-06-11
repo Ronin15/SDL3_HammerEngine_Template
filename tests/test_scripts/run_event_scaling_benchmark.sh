@@ -119,7 +119,7 @@ if [ ! -f "$BENCHMARK_EXEC" ]; then
     # Attempt to find the executable
     FOUND_EXECUTABLE=$(find "$PROJECT_ROOT/bin" -name "event_manager_scaling_benchmark" -type f -executable | head -n 1)
     if [ -n "$FOUND_EXECUTABLE" ]; then
-        print_info "Found executable at: $FOUND_EXECUTABLE"
+        print_status "Found executable at: $FOUND_EXECUTABLE"
         BENCHMARK_EXEC="$FOUND_EXECUTABLE"
     else
         print_error "Could not find the benchmark executable!"
