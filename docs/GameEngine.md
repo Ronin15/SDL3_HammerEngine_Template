@@ -249,9 +249,21 @@ void GameEngine::render(float interpolation) {
 
 ## Threading and Synchronization
 
-### Multi-Threading Support
+### WorkerBudget Integration & Multi-Threading Support
 
-The GameEngine uses the `Forge::ThreadSystem` with `WorkerBudget` allocation for coordinated multi-threading.
+The GameEngine implements sophisticated threading with centralized resource management through the WorkerBudget system:
+
+**Engine Resource Allocation:**
+- Receives **2 workers** (Critical priority) from ThreadSystem's WorkerBudget system
+- Uses `Forge::calculateWorkerBudget()` for centralized resource allocation
+- Coordinates with GameLoop to ensure optimal frame-rate performance
+- Submits tasks with appropriate priorities to prevent system overload
+
+**Threading Architecture:**
+- **Primary Coordination**: Engine coordination tasks with High priority
+- **Secondary Tasks**: Resource management and cleanup with Normal priority (only if 2+ workers allocated)
+- **Manager Integration**: Coordinates AI (60%) and Event (30%) manager threading
+- **Queue Pressure Management**: Monitors ThreadSystem load to prevent bottlenecks
 
 #### Thread-Safe State Management
 ```cpp
@@ -313,6 +325,46 @@ void GameEngine::processEngineSecondaryTasks() {
     // Examples: performance monitoring, resource cleanup
 }
 ```
+
+#### Threading Implementation Details
+
+**WorkerBudget Task Submission:**
+```cpp
+void GameEngine::update(float deltaTime) {
+    // Use WorkerBudget system for coordinated task submission
+    if (Forge::ThreadSystem::Exists()) {
+        auto& threadSystem = Forge::ThreadSystem::Instance();
+        
+        // Calculate worker budget for this frame
+        size_t availableWorkers = static_cast<size_t>(threadSystem.getThreadCount());
+        Forge::WorkerBudget budget = Forge::calculateWorkerBudget(availableWorkers);
+        
+        // Submit engine coordination tasks with high priority
+        threadSystem.enqueueTask([this, deltaTime]() {
+            processEngineCoordination(deltaTime);
+        }, Forge::TaskPriority::High, "GameEngine_Coordination");
+        
+        // Only submit secondary tasks if multiple workers allocated
+        if (budget.engineReserved > 1) {
+            threadSystem.enqueueTask([this]() {
+                processEngineSecondaryTasks();
+            }, Forge::TaskPriority::Normal, "GameEngine_Secondary");
+        }
+    }
+}
+```
+
+**Manager Update Architecture:**
+- **Global Systems**: AIManager and EventManager updated by GameEngine for consistency
+- **State-Specific Systems**: UIManager and others updated by individual game states
+- **Cached References**: Zero-overhead access to WorkerBudget-participating managers
+- **Exception Handling**: Robust error handling prevents single manager failures from crashing the engine
+
+**Resource Coordination:**
+- Engine coordinates with GameLoop's Critical priority allocation
+- Respects AI (60%) and Event (30%) manager worker budgets
+- Utilizes buffer threads for secondary tasks when available
+- Monitors queue pressure to prevent system overload
 
 ### Synchronization Methods
 
@@ -431,20 +483,65 @@ The GameEngine uses a hybrid approach for manager updates:
 - UIManager: Optional, state-specific updates
 - Other state-specific managers
 
-### Cached Manager References
+### Cached Manager References with WorkerBudget Integration
 
-For performance optimization, frequently accessed managers are cached:
+For optimal performance, the GameEngine caches references to WorkerBudget-participating managers:
 
 ```cpp
 class GameEngine {
 private:
     // Cached manager references for zero-overhead performance
-    AIManager* mp_aiManager{nullptr};
-    EventManager* mp_eventManager{nullptr};
+    // These managers integrate with WorkerBudget system for threading
+    AIManager* mp_aiManager{nullptr};        // 60% worker allocation
+    EventManager* mp_eventManager{nullptr};  // 30% worker allocation
     
-    // InputManager NOT cached - handled in handleEvents() for proper SDL architecture
+    // InputManager not cached - handled in handleEvents() for proper SDL event polling
+    // (SDL requires main thread event processing)
 };
 ```
+
+**WorkerBudget Integration Advantages:**
+- **Direct Access**: Zero-overhead cached references for frequent WorkerBudget coordination
+- **Thread Coordination**: Managers coordinate through centralized WorkerBudget calculation
+- **Performance Monitoring**: Direct access enables real-time performance tracking
+**Resource Management**: Cached references allow efficient worker allocation monitoring
+
+### WorkerBudget Coordination Architecture
+
+The GameEngine implements sophisticated coordination with the WorkerBudget system:
+
+**Centralized Resource Management:**
+```cpp
+void GameEngine::update(float deltaTime) {
+    // Calculate worker budget for coordinated resource allocation
+    size_t availableWorkers = static_cast<size_t>(threadSystem.getThreadCount());
+    Forge::WorkerBudget budget = Forge::calculateWorkerBudget(availableWorkers);
+    
+    // Resource allocation coordination:
+    // - GameLoop: 2 workers (Critical priority)
+    // - GameEngine: 2 workers (engine tasks)
+    // - AIManager: 60% of remaining workers  
+    // - EventManager: 30% of remaining workers
+    // - Buffer: Remaining workers for burst capacity
+}
+```
+
+**Task Priority Coordination:**
+- **Critical Priority**: GameLoop tasks (frame-rate consistency)
+- **High Priority**: Engine coordination tasks
+- **Normal Priority**: Secondary engine tasks (when 2+ workers available)
+- **AI/Event Tasks**: Managed by respective managers with their allocated budgets
+
+**Performance Scaling Examples:**
+- **4-core/8-thread system (7 workers)**: Engine gets 2 workers for coordination tasks
+- **8-core/16-thread system (15 workers)**: Engine gets 2 workers + enhanced secondary task processing
+- **32-thread system (31 workers)**: Engine gets 2 workers + full secondary task utilization - AMD 7950X3D (16c/32t), Intel 13900K/14900K (24c/32t)
+
+**Integration Benefits:**
+- **Centralized Coordination**: Single WorkerBudget calculation shared across all systems
+- **Resource Fairness**: Prevents any single system from monopolizing worker threads
+- **Adaptive Scaling**: Automatically adjusts based on available hardware
+- **Queue Pressure Management**: Coordinated task submission prevents system overload
 
 ### Manager Access Methods
 

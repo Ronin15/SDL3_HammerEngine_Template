@@ -323,16 +323,56 @@ struct PerformanceStats {
 };
 ```
 
-## Threading
+## Threading & WorkerBudget Integration
 
-### Threading Model
+### Threading Model & Resource Allocation
 
-The EventManager uses intelligent threading based on event count:
+The EventManager implements sophisticated threading with centralized resource management through the WorkerBudget system:
 
-- **Small Event Counts** (<1000): Single-threaded processing for better performance
+**Threading Threshold & Scaling:**
+- **Small Event Counts** (<1000 by default): Single-threaded processing for optimal performance  
 - **Large Event Counts** (≥1000): Multi-threaded batch processing using ThreadSystem
-- **Batch Processing**: Events of the same type are processed together in batches
-- **Type-Based Distribution**: Different event types can be processed on different threads
+- **Configurable Threshold**: Use `setThreadingThreshold()` to adjust based on system capabilities
+- **Dynamic Scaling**: Automatically adapts to available CPU cores and current workload
+
+**WorkerBudget Resource Allocation:**
+- Receives **30% of available workers** from ThreadSystem's WorkerBudget system
+- Uses `Forge::calculateWorkerBudget()` for centralized resource allocation
+- Integrates with buffer threads for burst capacity during high event loads
+- Fair resource sharing with AIManager (60%) and other engine components
+
+**Buffer Thread Utilization:**
+- Dynamically scales beyond base allocation using `budget.getOptimalWorkerCount()`
+- Utilizes buffer threads when event count exceeds normal processing capacity  
+- Logs buffer usage: `"Using buffer capacity: X workers (Y base + Z buffer)"`
+- Handles temporary event bursts without impacting other systems
+
+### Type-Based Parallel Processing
+
+**Event Type Distribution:**
+- **Weather Events**: Processed in parallel batches for environmental effects
+- **Scene Change Events**: Threaded processing for complex scene transitions
+- **NPC Spawn Events**: Batch creation and initialization of multiple NPCs
+- **Custom Events**: User-defined events with automatic threading support
+
+**Batch Processing Optimization:**
+- Cache-friendly batch sizes: 10-100 events per batch based on event type and count
+- Optimal worker distribution across event types for balanced processing
+- Task priority: Normal for most events, preventing queue flooding
+- Adaptive completion waiting with progressive backoff strategy
+
+### Queue Pressure Management
+
+**Smart Threading Decisions:**
+- Monitors ThreadSystem queue pressure (max 2x worker count for events)
+- Falls back to single-threaded processing when queue pressure is high
+- Prevents system overload while maintaining event processing performance
+- Coordinates with AIManager to avoid resource conflicts
+
+**Resource Scaling Examples:**
+- **4-core/8-thread system (7 workers)**: Events get 1 worker (30% of 5 remaining after GameLoop)
+- **8-core/16-thread system (15 workers)**: Events get 4 workers (30% of 13 remaining)
+- **32-thread system (31 workers)**: Events get 9 workers (30% of 29 remaining) - AMD 7950X3D (16c/32t), Intel 13900K/14900K (24c/32t)
 
 ### Threading Configuration
 
@@ -341,16 +381,44 @@ The EventManager uses intelligent threading based on event count:
 EventManager::Instance().enableThreading(true);
 EventManager::Instance().setThreadingThreshold(500); // Thread if >500 events
 
-// Check threading status
+// Check threading status  
 bool isThreaded = EventManager::Instance().isThreadingEnabled();
+
+// WorkerBudget integration happens automatically
+// EventManager gets 30% of available workers through calculateWorkerBudget()
 ```
 
-### Thread Safety
+### Thread Safety & Synchronization
 
+**Multi-Reader/Single-Writer Architecture:**
 - **Shared Mutex**: Read-heavy operations use shared locks for concurrent access
-- **Atomic Operations**: Event counts and flags use atomic variables
+- **Event Updates**: Shared locks allow parallel batch processing across event types
+- **Handler Storage**: Type-indexed handlers for lock-free dispatch during updates
+
+**Lock-Free Operations:**
+- **Atomic Operations**: Event counts and flags use atomic variables for zero-latency access
+- **Threading State**: Atomic configuration flags for runtime control
+- **Performance Counters**: Lock-free statistics collection
+
+**Synchronization Mechanisms:**
 - **Handler Safety**: Handler registration/removal is mutex-protected
-- **Pool Safety**: Event pools have their own synchronization
+- **Pool Safety**: Event pools have their own synchronization for memory management
+- **Batch Completion**: Atomic counters for task synchronization across worker threads
+- **Timeout Protection**: 5-second timeout prevents indefinite waiting on worker completion
+
+### Performance Coordination
+
+**Frame-Rate Protection:**
+- Respects ThreadSystem queue limits to prevent frame drops
+- Coordinates resource usage with AIManager and other engine components
+- Adaptive processing: single-threaded for small loads, multi-threaded for large loads
+- Buffer thread utilization for handling event processing spikes
+
+**Integration with Engine Architecture:**
+- Seamless integration with GameLoop's critical timing requirements
+- Automatic resource allocation through centralized WorkerBudget system
+- No manual thread management required - all handled internally
+- Optimal performance scaling from low-end to high-end hardware
 
 ## Best Practices
 

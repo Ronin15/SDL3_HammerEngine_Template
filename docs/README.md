@@ -54,9 +54,12 @@ Comprehensive UI system with professional theming, animations, layouts, content-
 - **[SDL3 Logical Presentation](ui/SDL3_Logical_Presentation_Modes.md)** - SDL3 presentation system integration and coordinate handling
 
 ### Threading System
-High-performance multithreading framework with priority-based task scheduling and worker budget allocation.
+High-performance multithreading framework with intelligent WorkerBudget allocation and priority-based task scheduling.
 
-- **[ThreadSystem Overview](ThreadSystem.md)** - Complete threading system documentation with worker budget allocation, priority scheduling, and engine integration
+- **[ThreadSystem Overview](ThreadSystem.md)** - Complete threading system documentation with WorkerBudget allocation, buffer thread utilization, priority scheduling, and engine integration
+- **WorkerBudget System** - Dynamic resource allocation across engine subsystems (GameLoop: guaranteed workers, AI: 60%, Events: 30%, Buffer: dynamic scaling)
+- **Buffer Thread Utilization** - Intelligent scaling based on workload thresholds (AI: >1000 entities, Events: >100 events)
+- **Hardware Adaptive** - Automatic scaling from ultra low-end (single-threaded) to high-end (multi-threaded) systems
 
 ### Manager Systems
 Resource management systems for fonts, textures, audio, and game data.

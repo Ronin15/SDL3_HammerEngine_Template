@@ -212,12 +212,34 @@ The AIManager uses sophisticated distance-based optimization:
 
 Higher priority entities get larger effective update distances and more frequent processing.
 
-### Threading & Batch Processing
+### Threading & WorkerBudget Integration
 
-- Automatic threading for large entity counts (>200 entities)
-- Optimal batch sizes (64-1000 entities per batch)
-- ThreadSystem integration for parallel processing
-- Worker budget allocation (60% of available workers)
+The AIManager implements sophisticated threading with centralized resource management:
+
+**Threading Threshold & Scaling:**
+- Single-threaded processing for ≤200 entities (optimal for small workloads)
+- Automatic multi-threaded processing for >200 entities
+- Dynamic scaling based on available CPU cores and current workload
+
+**WorkerBudget Resource Allocation:**
+- Receives **60% of available workers** from ThreadSystem's WorkerBudget system
+- Uses `Forge::calculateWorkerBudget()` for centralized resource allocation
+- Integrates with buffer threads for burst capacity during high workloads
+
+**Buffer Thread Utilization:**
+- Dynamically scales beyond base allocation using `budget.getOptimalWorkerCount()`
+- Utilizes buffer threads when entity count exceeds normal processing capacity
+- Logs buffer usage: `"Using buffer capacity: X workers (Y base + Z buffer)"`
+
+**Batch Processing Optimization:**
+- Cache-friendly batch sizes: 25-1000 entities per batch based on total count
+- Task priority adjustment: High (small workloads) → Normal → Low (massive workloads)
+- Adaptive waiting strategy with CPU-efficient spinning and progressive backoff
+
+**Queue Pressure Management:**
+- Monitors ThreadSystem queue pressure (max 3x worker count)
+- Falls back to single-threaded processing when queue pressure is high
+- Prevents system overload while maintaining performance
 
 ## Performance Monitoring
 
@@ -382,14 +404,29 @@ void GameState::exit() {
 }
 ```
 
-## Thread Safety
+## Thread Safety & Synchronization
 
-The AIManager is designed to be thread-safe:
-- **Registration/Assignment**: Protected by shared_mutex
-- **Message Queue**: Thread-safe double-buffered system
-- **Global Pause**: Atomic boolean for lock-free access
-- **Performance Stats**: Mutex-protected collection
-- **Behavior Processing**: Read-only access during updates
+The AIManager implements comprehensive thread safety:
+
+**Multi-Reader/Single-Writer Architecture:**
+- **Registration/Assignment**: Protected by `std::shared_mutex` for concurrent reads
+- **Entity Updates**: Shared locks allow parallel batch processing
+- **Behavior Storage**: Read-only access during threaded updates
+
+**Lock-Free Operations:**
+- **Global Pause**: Atomic boolean (`std::atomic<bool>`) for zero-latency checks
+- **Threading State**: Atomic configuration flags for runtime control
+- **Performance Counters**: Atomic counters for lock-free statistics
+
+**Message System Synchronization:**
+- **Message Queue**: Mutex-protected with deferred processing
+- **Assignment Queue**: Thread-safe batch assignment processing
+- **Performance Stats**: Mutex-protected collection with periodic updates
+
+**Threading Coordination:**
+- **Batch Completion**: Atomic counters for task synchronization
+- **Adaptive Waiting**: Spin-lock with progressive backoff for optimal latency
+- **Timeout Protection**: 16ms frame-rate protection with 50ms severe bottleneck warnings
 
 ## Memory Management
 
@@ -398,15 +435,33 @@ The AIManager is designed to be thread-safe:
 - **Automatic Cleanup**: Inactive entities removed during cleanup cycles
 - **Efficient Containers**: Pre-allocated vectors and optimized data structures
 
-## Integration with Game Engine
+## Integration with Game Engine & ThreadSystem
 
-The AIManager integrates seamlessly with the GameEngine:
+The AIManager integrates seamlessly with the engine's threading architecture:
 
+**GameEngine Integration:**
 1. **GameEngine calls** `AIManager::update()` automatically each frame
 2. **Batch assignments** are processed before entity updates
-3. **ThreadSystem integration** provides parallel processing
-4. **Worker budget system** ensures fair resource allocation
+3. **Automatic resource management** through WorkerBudget system
+4. **No manual update calls** required in game states
 
-This eliminates the need for manual AI update calls in game states while providing optimal performance and resource management.
+**ThreadSystem & WorkerBudget Architecture:**
+1. **Centralized Resource Allocation**: Uses `Forge::calculateWorkerBudget()` for fair distribution
+2. **AI Worker Budget**: Receives 60% of available workers (after GameLoop's critical allocation)
+3. **Buffer Thread Access**: Can utilize buffer threads during high-demand periods
+4. **Dynamic Scaling**: Automatically adjusts worker count based on entity load
+
+**Resource Scaling Examples:**
+- **4-core/8-thread system (7 workers)**: AI gets 3 workers (60% of 5 remaining after GameLoop)
+- **8-core/16-thread system (15 workers)**: AI gets 8 workers (60% of 13 remaining)
+- **32-thread system (31 workers)**: AI gets 17 workers (60% of 29 remaining) - AMD 7950X3D (16c/32t), Intel 13900K/14900K (24c/32t)
+
+**Performance Coordination:**
+- **Queue Pressure Monitoring**: Respects ThreadSystem queue limits
+- **Priority-Based Task Submission**: Adjusts task priority based on workload size
+- **Frame-Rate Protection**: 16ms timeout ensures consistent frame rates
+- **Burst Capacity**: Buffer threads handle temporary workload spikes
+
+This architecture ensures optimal AI performance while maintaining system stability and fair resource allocation across all engine components.
 
 For specific behavior configuration details, see the behavior mode documentation. For integration patterns and advanced usage, refer to the developer guides.

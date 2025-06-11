@@ -99,36 +99,254 @@ threadSystem.enqueueTask([]() {
 
 ## Worker Budget System
 
+### Overview
+
+The WorkerBudget system provides intelligent resource allocation across engine subsystems, preventing resource contention while enabling dynamic scaling based on workload demands. It ensures guaranteed minimum performance while allowing systems to burst beyond their allocation when buffer threads are available.
+
 ### Allocation Strategy
 
-The ThreadSystem implements a sophisticated worker budget allocation to prevent resource contention:
+The ThreadSystem implements a tiered allocation strategy that adapts to hardware capabilities:
 
 ```
-Total Available Workers (hardware_concurrency - 1)
-├── GameEngine Reserved (1-2 workers for critical operations)
+Total Available Workers (hardware_concurrency - 1 for main thread)
+├── GameLoop Reserved (1-2 workers based on hardware tier)
 └── Remaining Workers
-    ├── AIManager (60% of remaining)
-    ├── EventManager (30% of remaining)
-    └── Buffer (10% of remaining for system responsiveness)
+    ├── AIManager (60% of remaining, minimum 1)
+    ├── EventManager (30% of remaining, minimum 1)  
+    └── Buffer (remaining workers for dynamic burst capacity)
 ```
 
-### Budget Calculation
+### Hardware Tier Classification
 
 ```cpp
-// Automatic budget calculation based on hardware
+// Tier 1: Ultra Low-End (≤1 worker available)
+// Strategy: GameLoop gets priority, AI/Events single-threaded
+GameLoop: 1 worker, AI: 0 workers, Events: 0 workers, Buffer: 0
+
+// Tier 2: Low-End (2-4 workers available)
+// Strategy: Conservative threading, GameLoop priority
+GameLoop: 1 worker, AI: 1 worker (if available), Events: 0 workers
+
+// Tier 3: High-End (5+ workers available)  
+// Strategy: Full multi-threading with buffer capacity
+GameLoop: 2 workers, AI: 60% of remaining, Events: 30% of remaining
+```
+
+### WorkerBudget Structure
+
+```cpp
+#include "core/WorkerBudget.hpp"
+
 struct WorkerBudget {
-    size_t totalWorkers;      // Total available workers
-    size_t engineReserved;    // Reserved for critical GameEngine operations
-    size_t aiAllocated;       // Allocated for AIManager
-    size_t eventAllocated;    // Allocated for EventManager
-    size_t bufferReserved;    // Reserved for system responsiveness
+    size_t totalWorkers;      // Total available worker threads
+    size_t engineReserved;    // Workers reserved for GameLoop (1-2 based on tier)
+    size_t aiAllocated;       // Workers allocated to AIManager  
+    size_t eventAllocated;    // Workers allocated to EventManager
+    size_t remaining;         // Buffer workers for dynamic allocation
+    
+    // Helper methods for buffer utilization
+    size_t getOptimalWorkerCount(size_t baseAllocation, size_t workloadSize, size_t threshold) const;
+    bool hasBufferCapacity() const;
+    size_t getMaxWorkerCount(size_t baseAllocation) const;
 };
 
-// Example allocations by core count:
-// 4 cores:  1 engine, 1 AI, 0 event, 1 buffer
-// 8 cores:  2 engine, 3 AI, 1 event, 1 buffer  
-// 12 cores: 2 engine, 5 AI, 3 event, 1 buffer
-// 24 cores: 2 engine, 13 AI, 6 event, 2 buffer
+// Calculate budget based on available workers
+Forge::WorkerBudget budget = Forge::calculateWorkerBudget(availableWorkers);
+```
+
+### Real-World Allocation Examples
+
+```cpp
+// Target Minimum: 4-core/8-thread system (7 workers available)
+WorkerBudget {
+    totalWorkers: 7,
+    engineReserved: 2,    // GameLoop gets 2 workers for optimal performance
+    aiAllocated: 3,       // AI gets 60% of remaining 5 = 3 workers
+    eventAllocated: 1,    // Events get 30% of remaining 5 = 1 worker  
+    remaining: 1          // 1 buffer worker for burst capacity
+}
+
+// Mid-Range Gaming: 8-core/16-thread system (15 workers available)
+WorkerBudget {
+    totalWorkers: 15,
+    engineReserved: 2,    // GameLoop gets 2 workers
+    aiAllocated: 8,       // AI gets 60% of remaining 13 = 8 workers
+    eventAllocated: 4,    // Events get 30% of remaining 13 = 4 workers
+    remaining: 1          // 1 buffer worker for burst capacity
+}
+
+// High-End Gaming: 32-thread system (31 workers available) - AMD 7950X3D (16c/32t), Intel 13900K/14900K (24c/32t)
+WorkerBudget {
+    totalWorkers: 31,
+    engineReserved: 2,    // GameLoop gets 2 workers
+    aiAllocated: 17,      // AI gets 60% of remaining 29 = 17 workers
+    eventAllocated: 9,    // Events get 30% of remaining 29 = 9 workers
+    remaining: 3          // 3 buffer workers for burst capacity
+}
+```
+
+### Buffer Thread Utilization
+
+The WorkerBudget system enables intelligent buffer utilization for dynamic scaling:
+
+```cpp
+// AIManager using buffer threads for high workloads
+void AIManager::update(float deltaTime) {
+    auto& threadSystem = Forge::ThreadSystem::Instance();
+    size_t availableWorkers = threadSystem.getThreadCount();
+    Forge::WorkerBudget budget = Forge::calculateWorkerBudget(availableWorkers);
+    
+    // Calculate optimal worker count based on current workload
+    size_t optimalWorkers = budget.getOptimalWorkerCount(
+        budget.aiAllocated,    // Base guaranteed allocation
+        m_entities.size(),     // Current workload size
+        1000                   // Threshold for buffer usage
+    );
+    
+    // Use buffer capacity for high entity counts
+    if (optimalWorkers > budget.aiAllocated) {
+        // High workload: Use base + buffer workers
+        createBatches(optimalWorkers);
+    } else {
+        // Normal workload: Use base allocation only
+        createBatches(budget.aiAllocated);
+    }
+}
+
+// EventManager using buffer threads similarly
+void EventManager::processEvents() {
+    Forge::WorkerBudget budget = Forge::calculateWorkerBudget(availableWorkers);
+    
+    size_t optimalWorkers = budget.getOptimalWorkerCount(
+        budget.eventAllocated, // Base allocation
+        m_events.size(),       // Current event count
+        100                    // Buffer threshold
+    );
+    
+    processEventBatches(optimalWorkers);
+}
+```
+
+### Workload-Based Scaling
+
+```cpp
+// Buffer utilization automatically scales based on workload thresholds:
+
+// Low Workload (AI: 500 entities, Events: 50 events)
+// - AI uses base allocation: 3 workers
+// - Events use base allocation: 1 worker
+// - Buffer remains available: 1 worker idle
+
+// High Workload (AI: 5000 entities, Events: 500 events)  
+// - AI uses burst capacity: 4 workers (3 base + 1 buffer)
+// - Events would use burst if available: 2 workers
+// - Buffer is utilized for improved performance
+
+// Conservative Burst Strategy
+// - Systems take maximum 50% of their base allocation from buffer
+// - Prevents any single system from monopolizing buffer capacity
+// - Ensures fair resource distribution under load
+```
+
+### Testing the WorkerBudget System
+
+The WorkerBudget system includes comprehensive testing to validate allocation logic:
+
+```cpp
+// Run buffer utilization tests
+./tests/test_scripts/run_buffer_utilization_tests.sh
+./tests/test_scripts/run_buffer_utilization_tests.sh --verbose
+
+// Expected test results for different hardware tiers:
+// 12-worker system:
+Base allocations - GameLoop: 2, AI: 6, Events: 3, Buffer: 1
+Low workload (500 entities): 6 workers    // Uses base allocation only
+High workload (5000 entities): 7 workers  // Uses base + 1 buffer worker
+
+// 3-worker system (low-end):
+Allocations - GameLoop: 1, AI: 1, Events: 1, Buffer: 0
+High workload with no buffer: 1 workers   // No scaling possible
+
+// 16-worker system (very high-end):
+Very high workload burst: 10 workers      // AI gets 8 base + 2 buffer
+```
+
+### WorkerBudget Integration Patterns
+
+```cpp
+// Recommended pattern for subsystems using WorkerBudget
+void SubSystem::processWorkload() {
+    auto& threadSystem = Forge::ThreadSystem::Instance();
+    size_t availableWorkers = threadSystem.getThreadCount();
+    Forge::WorkerBudget budget = Forge::calculateWorkerBudget(availableWorkers);
+    
+    // Calculate optimal workers based on current workload
+    size_t optimalWorkers = budget.getOptimalWorkerCount(
+        budget.systemAllocated,  // Your system's base allocation
+        currentWorkloadSize,     // Current workload (entities, events, etc.)
+        workloadThreshold        // Threshold for buffer usage
+    );
+    
+    // Use optimal worker count for batch processing
+    processBatches(optimalWorkers);
+}
+
+// Example thresholds for different systems:
+// - AIManager: 1000 entities (CPU-intensive)
+// - EventManager: 100 events (I/O and coordination)
+// - Custom systems: Choose based on profiling results
+```
+
+### Troubleshooting WorkerBudget Issues
+
+**Common Issues and Solutions:**
+
+```cpp
+// Issue: System not using buffer threads
+// Check workload threshold
+if (workloadSize <= threshold) {
+    // Increase workload or lower threshold for testing
+}
+
+// Issue: Over-allocation detected
+// The system has built-in validation:
+size_t totalAllocated = budget.engineReserved + budget.aiAllocated + budget.eventAllocated;
+if (totalAllocated > availableWorkers) {
+    // Emergency fallback automatically triggered
+    // Check hardware detection logic
+}
+
+// Issue: Poor performance on high-end systems
+// Verify buffer utilization:
+if (budget.hasBufferCapacity() && workloadSize > threshold) {
+    size_t burstWorkers = budget.getOptimalWorkerCount(baseAllocation, workloadSize, threshold);
+    // Should be > baseAllocation
+}
+```
+
+**Debugging WorkerBudget Allocation:**
+
+```cpp
+void debugWorkerBudget() {
+    auto& threadSystem = Forge::ThreadSystem::Instance();
+    size_t workers = threadSystem.getThreadCount();
+    Forge::WorkerBudget budget = Forge::calculateWorkerBudget(workers);
+    
+    std::cout << "=== WorkerBudget Debug Info ===" << std::endl;
+    std::cout << "Total workers: " << budget.totalWorkers << std::endl;
+    std::cout << "GameLoop reserved: " << budget.engineReserved << std::endl;
+    std::cout << "AI allocated: " << budget.aiAllocated << std::endl;
+    std::cout << "Events allocated: " << budget.eventAllocated << std::endl;
+    std::cout << "Buffer available: " << budget.remaining << std::endl;
+    std::cout << "Has buffer capacity: " << (budget.hasBufferCapacity() ? "Yes" : "No") << std::endl;
+    
+    // Test different workload scenarios
+    size_t testWorkloads[] = {100, 500, 1000, 5000, 10000};
+    for (size_t workload : testWorkloads) {
+        size_t optimal = budget.getOptimalWorkerCount(budget.aiAllocated, workload, 1000);
+        std::cout << "Workload " << workload << ": " << optimal << " workers" << std::endl;
+    }
+}
 ```
 
 ### Queue Pressure Management

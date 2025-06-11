@@ -177,11 +177,11 @@ void GameLoop::processRender() {
 - **High FPS Support**: Can render at 120+ FPS while updates stay at 60 FPS
 - **Interpolation**: Smooth motion between fixed update steps
 
-## Threading Models
+## Threading Models & WorkerBudget Integration
 
 ### Single-Threaded Mode
 
-Everything runs on the main thread in sequence:
+Everything runs on the main thread in sequence - optimal for low-end hardware:
 
 ```cpp
 void GameLoop::runMainThread() {
@@ -204,41 +204,81 @@ void GameLoop::runMainThread() {
 }
 ```
 
-### Multi-Threaded Mode
+### WorkerBudget-Aware Multi-Threaded Mode
 
-Updates run on a separate thread with smart timing:
+GameLoop integrates with the centralized WorkerBudget system for optimal performance:
+
+**Critical Priority Allocation:**
+- GameLoop receives **2 workers** (Critical priority) from WorkerBudget system
+- Uses `Forge::calculateWorkerBudget()` for centralized resource allocation
+- Receives highest priority to ensure consistent frame timing
+
+**Update Worker with Resource Awareness:**
 
 ```cpp
-void GameLoop::runUpdateThread() {
-    while (m_updateThreadRunning.load() && !m_stopRequested.load()) {
+void GameLoop::runUpdateWorker(const Forge::WorkerBudget& budget) {
+    // WorkerBudget-aware update worker - respects allocated resources
+    GAMELOOP_INFO("Update worker started with " + std::to_string(budget.engineReserved) + " allocated workers");
+
+    // Adaptive behavior based on WorkerBudget allocation
+    bool canUseParallelUpdates = (budget.engineReserved >= 2);
+    bool isHighEndSystem = (budget.totalWorkers > 4);
+
+    // Adjust timing precision based on system capabilities
+    auto adaptiveSleepDuration = isHighEndSystem ?
+        std::chrono::microseconds(/* more responsive timing */) :
+        std::chrono::microseconds(/* standard timing */);
+
+    while (m_updateTaskRunning.load() && !m_stopRequested.load()) {
         if (!m_paused.load()) {
-            processUpdates();
+            if (canUseParallelUpdates) {
+                processUpdatesParallel(); // Enhanced processing for high-end systems
+            } else {
+                processUpdates(); // Standard processing for low-end systems
+            }
         }
         
-        // Smart sleep time based on target FPS
-        float targetFPS = m_timestepManager->getTargetFPS();
-        float targetFrameTimeMs = 1000.0f / targetFPS;
-        
-        // Sleep for half target frame time (1-8ms range)
-        uint32_t sleepTimeMs = static_cast<uint32_t>(
-            std::max(1.0f, std::min(8.0f, targetFrameTimeMs * 0.5f))
-        );
-        std::this_thread::sleep_for(std::chrono::milliseconds(sleepTimeMs));
+        std::this_thread::sleep_for(adaptiveSleepDuration);
     }
 }
 ```
 
-### Thread Synchronization
+### WorkerBudget Resource Scaling
+
+**Resource Allocation Examples:**
+- **4-core/8-thread system (7 workers)**: GameLoop gets 2 workers (Critical priority allocation)
+- **8-core/16-thread system (15 workers)**: GameLoop gets 2 workers (consistent critical timing)
+- **32-thread system (31 workers)**: GameLoop gets 2 workers (maintains frame-rate priority) - AMD 7950X3D (16c/32t), Intel 13900K/14900K (24c/32t)
+
+**Adaptive Processing:**
+- **Low-end Systems**: Single update worker, standard timing precision
+- **High-end Systems**: Parallel update processing, enhanced timing precision
+- **Performance Monitoring**: Periodic logging of WorkerBudget utilization on high-end systems
+
+### Thread Synchronization & Critical Priority
 
 ```cpp
 class GameLoop {
 private:
-    std::mutex m_callbackMutex;          // Protects callback function pointers
-    std::atomic<bool> m_updateThreadRunning;  // Update thread state
-    std::atomic<int> m_updateCount;      // Update counter for debugging
-    std::atomic<bool> m_pendingUpdates;  // Update synchronization flag
+    // WorkerBudget integration
+    std::future<void> m_updateTaskFuture;     // ThreadSystem task future
+    std::atomic<bool> m_updateTaskRunning;    // Update task state
+    
+    // Thread synchronization
+    std::mutex m_callbackMutex;               // Protects callback function pointers
+    std::atomic<int> m_updateCount;           // Update counter for performance tracking
+    
+    // Critical timing methods
+    void runUpdateWorker(const Forge::WorkerBudget& budget);
+    void processUpdatesParallel();            // High-end system optimization
 };
 ```
+
+**Critical Priority Scheduling:**
+- GameLoop tasks submitted with `Forge::TaskPriority::Critical`
+- Ensures frame-rate consistency across all hardware tiers
+- ThreadSystem prioritizes GameLoop over AI and Event processing
+- Prevents frame drops during high system load
 
 ## Callback System
 

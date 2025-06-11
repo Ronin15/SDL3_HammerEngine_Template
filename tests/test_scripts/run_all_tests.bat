@@ -83,13 +83,14 @@ goto :parse_args
 
 :: Define test categories
 :: Core functionality tests (fast execution)
-set CORE_TEST_COUNT=6
+set CORE_TEST_COUNT=7
 set CORE_TEST_1=run_thread_tests.bat
-set CORE_TEST_2=run_thread_safe_ai_tests.bat
-set CORE_TEST_3=run_thread_safe_ai_integration_tests.bat
-set CORE_TEST_4=run_ai_optimization_tests.bat
-set CORE_TEST_5=run_save_tests.bat
-set CORE_TEST_6=run_event_tests.bat
+set CORE_TEST_2=run_buffer_utilization_tests.bat
+set CORE_TEST_3=run_thread_safe_ai_tests.bat
+set CORE_TEST_4=run_thread_safe_ai_integration_tests.bat
+set CORE_TEST_5=run_ai_optimization_tests.bat
+set CORE_TEST_6=run_save_tests.bat
+set CORE_TEST_7=run_event_tests.bat
 
 :: Performance scaling benchmarks (slow execution)
 set BENCHMARK_TEST_COUNT=3

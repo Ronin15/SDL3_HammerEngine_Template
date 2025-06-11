@@ -132,8 +132,17 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
                     size_t currentQueueSize = threadSystem.getQueueSize();
                     size_t maxQueuePressure = availableWorkers * 3; // Allow 3x worker count in queue for AI
 
-                    // Limit concurrent batches to our worker budget
-                    size_t maxAIBatches = aiWorkerBudget;
+                    // Calculate optimal worker count using buffer threads for high workloads
+                    size_t optimalWorkerCount = budget.getOptimalWorkerCount(aiWorkerBudget, m_entities.size(), 1000);
+                    size_t maxAIBatches = optimalWorkerCount;
+                    
+                    // Log buffer usage when it occurs
+                    if (optimalWorkerCount > aiWorkerBudget && budget.hasBufferCapacity()) {
+                        AI_DEBUG("Using buffer capacity: " + std::to_string(optimalWorkerCount) + 
+                               " workers (" + std::to_string(aiWorkerBudget) + " base + " + 
+                               std::to_string(optimalWorkerCount - aiWorkerBudget) + " buffer) for " + 
+                               std::to_string(m_entities.size()) + " entities");
+                    }
 
                     // Log worker budget only when queue pressure becomes critical
                     if (currentQueueSize > maxQueuePressure * 0.95) {
