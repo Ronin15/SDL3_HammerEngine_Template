@@ -10,6 +10,7 @@
 
 #include <atomic>
 #include <condition_variable>
+#include <deque>
 #include <functional>
 #include <future>
 #include <memory>
@@ -19,6 +20,7 @@
 #include <map>
 #include <string>
 #include <thread>
+
 
 #include <SDL3/SDL.h>
 #include <vector>
@@ -44,7 +46,7 @@ struct PrioritizedTask {
     std::string description;
 
     // Default constructor
-    PrioritizedTask() 
+    PrioritizedTask()
         : priority(TaskPriority::Normal),
           enqueueTime(std::chrono::steady_clock::now()) {}
 
@@ -93,7 +95,7 @@ public:
     explicit TaskQueue(size_t initialCapacity = 256, bool enableProfiling = false)
         : m_desiredCapacity(initialCapacity),
           m_enableProfiling(enableProfiling) {
-        
+
         // Initialize separate queues for each priority level
         for (int i = 0; i <= static_cast<int>(TaskPriority::Idle); ++i) {
             m_priorityQueues[i].reserve(initialCapacity / 5); // Distribute capacity
@@ -103,7 +105,7 @@ public:
 
     void push(std::function<void()> task, TaskPriority priority = TaskPriority::Normal, const std::string& description = "") {
         int priorityIndex = static_cast<int>(priority);
-        
+
         {
             std::unique_lock<std::mutex> lock(m_priorityMutexes[priorityIndex]);
 
@@ -114,7 +116,7 @@ public:
                 queue.reserve(newCapacity);
 
                 if (m_enableProfiling) {
-                    THREADSYSTEM_INFO("Priority " + std::to_string(priorityIndex) + 
+                    THREADSYSTEM_INFO("Priority " + std::to_string(priorityIndex) +
                                     " queue capacity increased to " + std::to_string(newCapacity));
                 }
             }
@@ -128,11 +130,11 @@ public:
 
             // If profiling is enabled and this is a high priority task, log it
             if (m_enableProfiling && priority <= TaskPriority::High && !description.empty()) {
-                THREADSYSTEM_INFO("High priority task enqueued: " + description + 
+                THREADSYSTEM_INFO("High priority task enqueued: " + description +
                                 " (Priority: " + std::to_string(priorityIndex) + ")");
             }
         }
-        
+
         // Smart notification: for high/critical priority, notify all for immediate response
         // For normal/low priority, use single notification to reduce thundering herd
         if (priority <= TaskPriority::High) {
@@ -155,10 +157,10 @@ public:
 
         // If no task available, wait for notification
         std::unique_lock<std::mutex> lock(queueMutex);
-        
+
         // Use short timeout for better work-stealing responsiveness
         auto timeout = std::chrono::milliseconds(2);
-            
+
         condition.wait_for(lock, timeout,
             [this] { return stopping.load(std::memory_order_acquire) || hasAnyTasksLockFree(); });
 
@@ -181,21 +183,21 @@ public:
 
         // Now take locks to clear all priority queues
         std::unique_lock<std::mutex> lock(queueMutex);
-        
+
         // Count and clear all priority queues
         size_t totalPending = 0;
         std::map<TaskPriority, int> pendingByPriority;
-        
+
         for (int i = 0; i <= static_cast<int>(TaskPriority::Idle); ++i) {
             std::unique_lock<std::mutex> priorityLock(m_priorityMutexes[i]);
             auto& queue = m_priorityQueues[i];
-            
+
             if (m_enableProfiling && !queue.empty()) {
                 TaskPriority priority = static_cast<TaskPriority>(i);
                 pendingByPriority[priority] = queue.size();
                 totalPending += queue.size();
             }
-            
+
             // Clear the queue
             queue.clear();
         }
@@ -207,7 +209,7 @@ public:
             // Log pending tasks by priority
             for (const auto& [priority, count] : pendingByPriority) {
                 (void)priority; (void)count; // Suppress unused variable warnings
-                THREADSYSTEM_INFO("  Priority " + std::to_string(static_cast<int>(priority)) + 
+                THREADSYSTEM_INFO("  Priority " + std::to_string(static_cast<int>(priority)) +
                                 ": " + std::to_string(count) + " tasks");
             }
         }
@@ -254,7 +256,7 @@ public:
         m_desiredCapacity = capacity;
 
         if (m_enableProfiling) {
-            THREADSYSTEM_INFO("Task queue capacity manually set to " + std::to_string(capacity) + 
+            THREADSYSTEM_INFO("Task queue capacity manually set to " + std::to_string(capacity) +
                             " (" + std::to_string(capacityPerQueue) + " per priority)");
         }
     }
@@ -325,7 +327,7 @@ private:
 
     size_t m_desiredCapacity{256}; // Track desired capacity ourselves
     bool m_enableProfiling{false}; // Enable detailed performance metrics
-    
+
     // Lock-free check for any tasks
     bool hasAnyTasksLockFree() const {
         for (int i = 0; i <= static_cast<int>(TaskPriority::Idle); ++i) {
@@ -348,7 +350,7 @@ private:
             if (!priorityLock.owns_lock()) {
                 continue; // Skip if we can't get the lock immediately
             }
-            
+
             auto& queue = m_priorityQueues[priorityIndex];
             if (!queue.empty()) {
                 // Get the oldest task from this priority level (FIFO within priority)
@@ -368,7 +370,7 @@ private:
 
                     // Log long wait times for high priority tasks
                     if (priorityIndex <= static_cast<int>(TaskPriority::High) && waitTime > 100 && !prioritizedTask.description.empty()) {
-                        THREADSYSTEM_WARN("High priority task delayed: " + prioritizedTask.description + 
+                        THREADSYSTEM_WARN("High priority task delayed: " + prioritizedTask.description +
                                         " waited " + std::to_string(waitTime) + "ms");
                     }
                 }
@@ -401,17 +403,17 @@ private:
     std::deque<PrioritizedTask> m_lowTasks;       // Low priority tasks for work stealing
     mutable std::mutex m_mutex;
     std::atomic<size_t> m_taskCount{0};
-    
+
 public:
     // Default constructor
     WorkStealingQueue() = default;
-    
+
     // Move constructor
-    WorkStealingQueue(WorkStealingQueue&& other) noexcept 
+    WorkStealingQueue(WorkStealingQueue&& other) noexcept
         : m_normalTasks(std::move(other.m_normalTasks))
         , m_lowTasks(std::move(other.m_lowTasks))
         , m_taskCount(other.m_taskCount.load()) {}
-    
+
     // Move assignment operator
     WorkStealingQueue& operator=(WorkStealingQueue&& other) noexcept {
         if (this != &other) {
@@ -421,7 +423,7 @@ public:
         }
         return *this;
     }
-    
+
     // Delete copy constructor and assignment
     WorkStealingQueue(const WorkStealingQueue&) = delete;
     WorkStealingQueue& operator=(const WorkStealingQueue&) = delete;
@@ -435,11 +437,11 @@ public:
         }
         m_taskCount.fetch_add(1, std::memory_order_relaxed);
     }
-    
+
     // Pop from own queue (LIFO for cache locality)
     bool popOwnTask(PrioritizedTask& task) {
         std::lock_guard<std::mutex> lock(m_mutex);
-        
+
         // Prioritize normal tasks over low tasks
         if (!m_normalTasks.empty()) {
             task = std::move(m_normalTasks.back());
@@ -447,21 +449,21 @@ public:
             m_taskCount.fetch_sub(1, std::memory_order_relaxed);
             return true;
         }
-        
+
         if (!m_lowTasks.empty()) {
             task = std::move(m_lowTasks.back());
             m_lowTasks.pop_back();
             m_taskCount.fetch_sub(1, std::memory_order_relaxed);
             return true;
         }
-        
+
         return false;
     }
-    
+
     // Steal from other worker's queue (FIFO for fairness)
     bool stealTask(PrioritizedTask& task) {
         std::lock_guard<std::mutex> lock(m_mutex);
-        
+
         // Only steal normal priority tasks to preserve low priority locality
         if (!m_normalTasks.empty()) {
             task = std::move(m_normalTasks.front());
@@ -469,14 +471,14 @@ public:
             m_taskCount.fetch_sub(1, std::memory_order_relaxed);
             return true;
         }
-        
+
         return false;
     }
-    
+
     size_t approximateSize() const {
         return m_taskCount.load(std::memory_order_relaxed);
     }
-    
+
     bool isEmpty() const {
         return m_taskCount.load(std::memory_order_relaxed) == 0;
     }
@@ -493,14 +495,14 @@ public:
      * @param enableProfiling Enable detailed performance profiling (default: false)
      */
     explicit ThreadPool(size_t numThreads, size_t queueCapacity = 256, bool enableProfiling = false)
-        : taskQueue(queueCapacity, enableProfiling), 
+        : taskQueue(queueCapacity, enableProfiling),
           m_numWorkers(numThreads),
           m_nextWorkerIndex(0),
           m_enableWorkStealing(true) {
 
         // Initialize per-worker queues for work stealing
         m_workerQueues.resize(numThreads);
-        
+
         // Set up worker threads
         m_workers.reserve(numThreads);
         for (size_t i = 0; i < numThreads; ++i) {
@@ -517,7 +519,7 @@ public:
         }
 
         if (enableProfiling) {
-            THREADSYSTEM_INFO("Thread pool created with " + std::to_string(numThreads) + 
+            THREADSYSTEM_INFO("Thread pool created with " + std::to_string(numThreads) +
                             " threads, WorkerBudget-aware work-stealing enabled, and profiling enabled");
         }
     }
@@ -591,14 +593,14 @@ public:
         if (!taskQueue.isEmpty()) {
             return true;
         }
-        
+
         // Check worker queues for distributed tasks
         for (const auto& workerQueue : m_workerQueues) {
             if (!workerQueue.isEmpty()) {
                 return true;
             }
         }
-        
+
         // If no queued tasks, check if any worker threads are actively processing
         return m_activeTasks.load(std::memory_order_relaxed) > 0;
     }
@@ -611,12 +613,12 @@ public:
     const TaskQueue& getTaskQueue() const {
         return taskQueue;
     }
-    
+
     // Comprehensive task statistics (global + worker queues)
     size_t getTotalTasksEnqueued() const {
         return m_totalTasksEnqueued.load(std::memory_order_relaxed);
     }
-    
+
     size_t getTotalTasksProcessed() const {
         return m_totalTasksProcessed.load(std::memory_order_relaxed);
     }
@@ -652,13 +654,13 @@ private:
     std::atomic<bool> isRunning{true};
     mutable std::atomic<size_t> m_activeTasks{0}; // Track actively running tasks
     mutable std::mutex m_mutex{}; // For thread-safe access to members
-    
+
     // WorkerBudget-aware work-stealing infrastructure
     std::vector<WorkStealingQueue> m_workerQueues; // Per-worker queues for normal/low priority
     size_t m_numWorkers;
     std::atomic<size_t> m_nextWorkerIndex; // Round-robin assignment counter
     bool m_enableWorkStealing; // Enable/disable work stealing
-    
+
     // Comprehensive task statistics tracking
     std::atomic<size_t> m_totalTasksEnqueued{0}; // All tasks (global + worker queues)
     std::atomic<size_t> m_totalTasksProcessed{0}; // All tasks processed
@@ -666,18 +668,18 @@ private:
     // Batch-aware task distribution for optimal performance
     void distributeToWorkerQueue(std::function<void()> task, TaskPriority priority, const std::string& description) {
         // Detect batch workloads by description patterns
-        bool isBatchTask = (description.find("AI_Batch") != std::string::npos || 
+        bool isBatchTask = (description.find("AI_Batch") != std::string::npos ||
                            description.find("Event_Batch") != std::string::npos);
-        
+
         if (isBatchTask) {
             // Batch optimization: minimize work-stealing overhead by direct placement
             // Use static thread-local counter to distribute batches across workers efficiently
             static thread_local size_t batchCounter = 0;
             size_t workerIndex = (batchCounter++) % m_numWorkers;
-            
+
             PrioritizedTask prioritizedTask(std::move(task), priority, description);
             m_workerQueues[workerIndex].pushTask(std::move(prioritizedTask));
-            
+
             // For batch tasks, notify specific worker first, then others
             taskQueue.notifyAllThreads();
         } else {
@@ -685,25 +687,25 @@ private:
             size_t workerIndex = m_nextWorkerIndex.fetch_add(1, std::memory_order_relaxed) % m_numWorkers;
             PrioritizedTask prioritizedTask(std::move(task), priority, description);
             m_workerQueues[workerIndex].pushTask(std::move(prioritizedTask));
-            
+
             // Single notification for regular tasks
             taskQueue.notifyAllThreads();
         }
-        
+
         // Update comprehensive statistics
         m_totalTasksEnqueued.fetch_add(1, std::memory_order_relaxed);
     }
-    
+
     // Batch-optimized work-stealing with adaptive victim selection
     bool getTaskWithWorkStealing(size_t workerIndex, std::function<void()>& task) {
         PrioritizedTask prioritizedTask;
-        
+
         // 1. First priority: try own queue (LIFO for cache locality)
         if (m_workerQueues[workerIndex].popOwnTask(prioritizedTask)) {
             task = std::move(prioritizedTask.task);
             return true;
         }
-        
+
         // 2. Batch-aware work stealing
         if (m_enableWorkStealing) {
             // For high-throughput periods, use more efficient stealing strategy
@@ -711,7 +713,7 @@ private:
             for (size_t i = 0; i < m_numWorkers; ++i) {
                 totalTasks += m_workerQueues[i].approximateSize();
             }
-            
+
             // Adaptive victim selection based on workload
             size_t maxAttempts;
             if (totalTasks > 50) {
@@ -721,10 +723,10 @@ private:
                 // Normal workload: comprehensive search
                 maxAttempts = m_numWorkers - 1;
             }
-            
+
             // Smart victim selection: start with neighbors for cache locality
             size_t startOffset = (workerIndex + 1) % m_numWorkers;
-            
+
             for (size_t attempt = 0; attempt < maxAttempts; ++attempt) {
                 size_t victimIndex = (startOffset + attempt) % m_numWorkers;
                 if (victimIndex != workerIndex && m_workerQueues[victimIndex].stealTask(prioritizedTask)) {
@@ -733,7 +735,7 @@ private:
                 }
             }
         }
-        
+
         return false;
     }
 
@@ -757,7 +759,7 @@ private:
 
                 bool gotTask = false;
                 bool isHighPriority = false;
-                
+
                 try {
                     // WorkerBudget-aware task acquisition priority order:
                     // 1. Global queue for high/critical priority tasks (WorkerBudget engine/urgent tasks)
@@ -789,7 +791,7 @@ private:
                 if (gotTask) {
                     // Optimized: Only increment counter when we actually have work
                     const size_t activeCount = m_activeTasks.fetch_add(1, std::memory_order_relaxed) + 1;
-                    
+
                     // Track execution time for profiling
                     auto taskStartTime = std::chrono::steady_clock::now();
 
@@ -797,18 +799,18 @@ private:
                         // Execute the task and increment counter
                         task();
                         tasksProcessed++;
-                        
+
                         // Update comprehensive statistics (only for high priority tasks from global queue)
                         if (isHighPriority) {
                             m_totalTasksProcessed.fetch_add(1, std::memory_order_relaxed);
                         }
                     } catch (const std::exception& e) {
-                        THREADSYSTEM_ERROR("Error in worker thread " + std::to_string(threadIndex) + 
+                        THREADSYSTEM_ERROR("Error in worker thread " + std::to_string(threadIndex) +
                                          ": " + std::string(e.what()));
                     } catch (...) {
                         THREADSYSTEM_ERROR("Unknown error in worker thread " + std::to_string(threadIndex));
                     }
-                    
+
                     // Decrement with relaxed ordering - order doesn't matter for simple counting
                     m_activeTasks.fetch_sub(1, std::memory_order_relaxed);
 
@@ -819,14 +821,14 @@ private:
 
                     // Log slow tasks if they exceed 16ms (60fps frame time)
                     if (taskDuration > 16) {
-                        THREADSYSTEM_WARN("Worker " + std::to_string(threadIndex) + 
+                        THREADSYSTEM_WARN("Worker " + std::to_string(threadIndex) +
                                         " - Slow task: " + std::to_string(taskDuration) + "ms" +
                                         (isHighPriority ? " (HIGH PRIORITY)" : ""));
                     }
 
                     // Clear task after execution to free resources
                     task = nullptr;
-                    
+
                     // Unused variable warning suppression
                     (void)activeCount;
                 } else {
@@ -840,18 +842,18 @@ private:
                     for (size_t i = 0; i < m_numWorkers; ++i) {
                         systemLoad += m_workerQueues[i].approximateSize();
                     }
-                    
-                    auto sleepTime = (systemLoad > 10) ? 
+
+                    auto sleepTime = (systemLoad > 10) ?
                         std::chrono::microseconds(10) :   // High load: minimal sleep
                         std::chrono::microseconds(100);   // Normal load: standard sleep
                     std::this_thread::sleep_for(sleepTime);
                 }
             }
         } catch (const std::exception& e) {
-            THREADSYSTEM_ERROR("Worker thread " + std::to_string(threadIndex) + 
+            THREADSYSTEM_ERROR("Worker thread " + std::to_string(threadIndex) +
                              " terminated with exception: " + std::string(e.what()));
         } catch (...) {
-            THREADSYSTEM_ERROR("Worker thread " + std::to_string(threadIndex) + 
+            THREADSYSTEM_ERROR("Worker thread " + std::to_string(threadIndex) +
                              " terminated with unknown exception");
         }
 
@@ -860,11 +862,11 @@ private:
         auto totalDuration = std::chrono::duration_cast<std::chrono::milliseconds>(
             endTime - startTime).count();
 
-        THREADSYSTEM_INFO("Worker " + std::to_string(threadIndex) + 
-                        " exiting after processing " + std::to_string(tasksProcessed) + 
-                        " tasks (HP:" + std::to_string(highPriorityTasks) + 
+        THREADSYSTEM_INFO("Worker " + std::to_string(threadIndex) +
+                        " exiting after processing " + std::to_string(tasksProcessed) +
+                        " tasks (HP:" + std::to_string(highPriorityTasks) +
                         ", WS:" + std::to_string(tasksStolen) + ") over " + std::to_string(totalDuration) + "ms");
-        
+
         // Suppress unused variable warnings in release builds
         (void)tasksProcessed;
         (void)totalDuration;
@@ -916,7 +918,7 @@ public:
             // Log the number of pending tasks
             size_t pendingTasks = m_threadPool->getTaskQueue().size();
             if (pendingTasks > 0) {
-                THREADSYSTEM_INFO("Canceling " + std::to_string(pendingTasks) + 
+                THREADSYSTEM_INFO("Canceling " + std::to_string(pendingTasks) +
                                 " pending tasks during shutdown...");
             }
 
@@ -977,7 +979,7 @@ public:
         try {
             m_threadPool = std::make_unique<ThreadPool>(m_numThreads, m_queueCapacity, m_enableProfiling);
 
-            THREADSYSTEM_INFO("ThreadSystem initialized with " + std::to_string(m_numThreads) + 
+            THREADSYSTEM_INFO("ThreadSystem initialized with " + std::to_string(m_numThreads) +
                             " worker threads" + (m_enableProfiling ? " (profiling enabled)" : ""));
 
             return m_threadPool != nullptr;
