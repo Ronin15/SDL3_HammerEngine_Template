@@ -234,13 +234,23 @@ struct EventManagerScalingFixture {
         std::string mode = "Optimized";
 
 
+        // Get system threading information
+        unsigned int systemThreads = std::thread::hardware_concurrency();
+        size_t totalWorkers = (systemThreads > 0) ? systemThreads - 1 : 0;
+        size_t eventWorkers = static_cast<size_t>(totalWorkers * 0.3); // 30% allocation
+        
         std::cout << "\nBenchmark: " << mode << " mode, "
                   << numEventTypes << " event types, "
                   << numHandlersPerType << " handlers per type, "
                   << numEvents << " events" << std::endl;
+        std::cout << "  System: " << systemThreads << " hardware threads available" << std::endl;
         
         // Add debugging for threading behavior
         bool willUseThreading = (numEvents > 1000);
+        if (willUseThreading) {
+            std::cout << "  WorkerBudget: " << totalWorkers << " total workers, " 
+                      << eventWorkers << " allocated to Events (30%)" << std::endl;
+        }
         (void)willUseThreading; // Suppress unused variable warning
 
         // Create handlers and register them
@@ -401,7 +411,12 @@ struct EventManagerScalingFixture {
     }
 
     void runScalabilityTest() {
-        std::cout << "\n===== SCALABILITY TEST SUITE =====" << std::endl;
+        std::cout << "\n===== SCALABILITY TEST =====" << std::endl;
+        unsigned int systemThreads = std::thread::hardware_concurrency();
+        size_t totalWorkers = (systemThreads > 0) ? systemThreads - 1 : 0;
+        size_t eventWorkers = static_cast<size_t>(totalWorkers * 0.3);
+        std::cout << "System Configuration: " << systemThreads << " hardware threads, " 
+                  << totalWorkers << " workers (" << eventWorkers << " for Events)" << std::endl;
 
         // Test progression: realistic event counts for actual games
         std::vector<std::tuple<int, int, int>> testCases = {

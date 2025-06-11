@@ -231,10 +231,20 @@ struct AIScalingFixture {
         bool willUseThreading = (numEntities >= AI_THRESHOLD);
         std::string expectedMode = willUseThreading ? "Automatic Threading" : "Automatic Single-Threaded";
 
+        // Get system threading information
+        unsigned int systemThreads = std::thread::hardware_concurrency();
         std::cout << "\nRealistic Benchmark: " << expectedMode << ", "
                   << numEntities << " entities, "
                   << numBehaviors << " behaviors, "
                   << numUpdates << " updates" << std::endl;
+        std::cout << "  System: " << systemThreads << " hardware threads available" << std::endl;
+        if (willUseThreading) {
+            // Calculate WorkerBudget allocation (mimicking the actual calculation)
+            size_t workers = (systemThreads > 0) ? systemThreads - 1 : 0;
+            size_t aiWorkers = static_cast<size_t>(workers * 0.6); // 60% allocation
+            std::cout << "  WorkerBudget: " << workers << " total workers, " 
+                      << aiWorkers << " allocated to AI (60%)" << std::endl;
+        }
 
         // Create behaviors with varying complexity
         for (int i = 0; i < numBehaviors; ++i) {
@@ -360,6 +370,7 @@ struct AIScalingFixture {
         std::cout << std::setprecision(0);
         std::cout << "  Entity updates per second: " << entitiesPerSecond << std::endl;
         std::cout << "  Total behavior updates: " << totalBehaviorExecutions << std::endl;
+        std::cout << "  Threading mode: " << (willUseThreading ? "WorkerBudget Multi-threaded" : "Single-threaded") << std::endl;
 
         // Verification status based on behavior executions
         int expectedExecutions = numEntities * numUpdates;
@@ -521,7 +532,12 @@ BOOST_AUTO_TEST_CASE(TestRealisticPerformance) {
     const int numUpdates = 20;
 
     std::cout << "\n===== REALISTIC PERFORMANCE TESTING =====" << std::endl;
-    std::cout << "Testing automatic threading behavior at various entity counts" << std::endl;
+    std::cout << "Testing WorkerBudget automatic threading behavior at various entity counts" << std::endl;
+    unsigned int systemThreads = std::thread::hardware_concurrency();
+    size_t totalWorkers = (systemThreads > 0) ? systemThreads - 1 : 0;
+    size_t aiWorkers = static_cast<size_t>(totalWorkers * 0.6);
+    std::cout << "System Configuration: " << systemThreads << " hardware threads, " 
+              << totalWorkers << " workers (" << aiWorkers << " for AI)" << std::endl;
 
     // Test below threshold (should use single-threaded automatically)
     std::cout << "\n--- Test 1: Below Threshold (150 entities) ---" << std::endl;

@@ -229,19 +229,23 @@ echo "Build type: $BUILD_TYPE" >> "../../test_results/ai_benchmark_performance_m
 echo "===========================================" >> "../../test_results/ai_benchmark_performance_metrics.txt"
 echo >> "../../test_results/ai_benchmark_performance_metrics.txt"
 
-# Use updated grep patterns to capture metrics from the new clean output format
-grep -E "Performance Results|Total time:|Time per update cycle:|Time per entity:|Entity updates per second:|Total behavior updates:|Entity updates:|SCALABILITY SUMMARY|Entity Count|Updates Per Second" "$RESULTS_FILE" >> "../../test_results/ai_benchmark_performance_metrics.txt" || true
+# Use updated grep patterns to capture metrics including WorkerBudget information
+grep -E "Performance Results|Total time:|Time per update cycle:|Time per entity:|Entity updates per second:|Total behavior updates:|Entity updates:|SCALABILITY SUMMARY|Entity Count|Updates Per Second|WorkerBudget|Threading mode:|System:|hardware threads|allocated to AI" "$RESULTS_FILE" >> "../../test_results/ai_benchmark_performance_metrics.txt" || true
 
 # Extract specific benchmark configurations and results for better analysis
 echo >> "../../test_results/ai_benchmark_performance_metrics.txt"
 echo "============ DETAILED ANALYSIS ============" >> "../../test_results/ai_benchmark_performance_metrics.txt"
 
+# Extract WorkerBudget system configuration
+echo "WorkerBudget System Configuration:" >> "../../test_results/ai_benchmark_performance_metrics.txt"
+grep -E "System Configuration:|WorkerBudget:|hardware threads" "$RESULTS_FILE" >> "../../test_results/ai_benchmark_performance_metrics.txt" 2>/dev/null || true
+
 # Extract threading mode comparisons with better pattern matching
 echo "Threading Mode Comparisons:" >> "../../test_results/ai_benchmark_performance_metrics.txt"
 echo "Single-Threaded Results:" >> "../../test_results/ai_benchmark_performance_metrics.txt"
-grep -A 15 "Single-Threaded mode" "$RESULTS_FILE" | grep -E "Total time:|Entity updates per second:|Time per entity:|Performance Results" >> "../../test_results/ai_benchmark_performance_metrics.txt" 2>/dev/null || true
+grep -A 15 "Single-Threaded mode\|Single-threaded" "$RESULTS_FILE" | grep -E "Total time:|Entity updates per second:|Time per entity:|Performance Results|Threading mode:" >> "../../test_results/ai_benchmark_performance_metrics.txt" 2>/dev/null || true
 echo "Multi-Threaded Results:" >> "../../test_results/ai_benchmark_performance_metrics.txt"
-grep -A 15 "Threaded mode" "$RESULTS_FILE" | grep -E "Total time:|Entity updates per second:|Time per entity:|Performance Results" >> "../../test_results/ai_benchmark_performance_metrics.txt" 2>/dev/null || true
+grep -A 15 "Multi-threaded\|WorkerBudget Multi-threaded" "$RESULTS_FILE" | grep -E "Total time:|Entity updates per second:|Time per entity:|Performance Results|Threading mode:" >> "../../test_results/ai_benchmark_performance_metrics.txt" 2>/dev/null || true
 
 # Extract scalability test results
 echo >> "../../test_results/ai_benchmark_performance_metrics.txt"
@@ -255,6 +259,15 @@ echo "============ END OF SUMMARY ============" >> "../../test_results/ai_benchm
 # Display the performance summary
 echo -e "${BLUE}Performance Summary:${NC}"
 cat "../../test_results/ai_benchmark_performance_metrics.txt"
+
+# Extract and display WorkerBudget system information
+echo -e "${BLUE}WorkerBudget System Analysis:${NC}"
+WORKER_CONFIG=$(grep -E "System Configuration:|WorkerBudget:" "$RESULTS_FILE" | head -3)
+if [ -n "$WORKER_CONFIG" ]; then
+    echo "$WORKER_CONFIG"
+else
+    echo "WorkerBudget configuration not found in results"
+fi
 
 # Check benchmark status and create a final status report
 echo -e "${BLUE}Creating final benchmark report...${NC}"
@@ -271,11 +284,15 @@ echo >> "$SUMMARY_FILE"
 echo "Key Performance Metrics:" >> "$SUMMARY_FILE"
 grep -E "Total time:|Time per update cycle:|Entity updates per second:|Total behavior updates:|Entity updates:" "$RESULTS_FILE" | sort | uniq >> "$SUMMARY_FILE"
 
-# Add threading performance comparison if available
+echo >> "$SUMMARY_FILE"
+echo "WorkerBudget System Information:" >> "$SUMMARY_FILE"
+grep -E "System Configuration:|WorkerBudget:|Threading mode:" "$RESULTS_FILE" | sort | uniq >> "$SUMMARY_FILE"
+
+# Extract threading performance comparison if available
 echo >> "$SUMMARY_FILE"
 echo "Threading Performance Analysis:" >> "$SUMMARY_FILE"
-SINGLE_THREADED_RATE=$(grep -A 15 "Single-Threaded mode" "$RESULTS_FILE" | grep "Entity updates per second:" | tail -1 | awk '{print $NF}' 2>/dev/null || echo "N/A")
-THREADED_RATE=$(grep -A 15 "Threaded mode" "$RESULTS_FILE" | grep "Entity updates per second:" | tail -1 | awk '{print $NF}' 2>/dev/null || echo "N/A")
+SINGLE_THREADED_RATE=$(grep -A 15 "Single-threaded\|Single-Threaded mode" "$RESULTS_FILE" | grep "Entity updates per second:" | tail -1 | awk '{print $NF}' 2>/dev/null || echo "N/A")
+THREADED_RATE=$(grep -A 15 "WorkerBudget Multi-threaded\|Multi-threaded\|Threaded mode" "$RESULTS_FILE" | grep "Entity updates per second:" | tail -1 | awk '{print $NF}' 2>/dev/null || echo "N/A")
 
 if [ "$SINGLE_THREADED_RATE" != "N/A" ] && [ "$THREADED_RATE" != "N/A" ]; then
   echo "Single-threaded rate: $SINGLE_THREADED_RATE updates/sec" >> "$SUMMARY_FILE"
