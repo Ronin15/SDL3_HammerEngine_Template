@@ -548,9 +548,6 @@ Additional documentation can be found in the `docs/` directory:
 - **[AI System Overview](docs/ai/AIManager.md)** - Complete API reference and usage guide
 - **[Behavior Modes](docs/ai/BehaviorModes.md)** - PatrolBehavior and WanderBehavior mode-based system
 - **[Behavior Modes Quick Reference](docs/ai/BehaviorModes_QuickReference.md)** - Quick setup guide for behavior modes
-- **[Batched Behavior Assignment](docs/ai/BATCHED_BEHAVIOR_ASSIGNMENT.md)** - Global batched assignment system
-- **[Entity Update Management](docs/ai/EntityUpdateManagement.md)** - Entity update system details
-- **[AI Developer Guide](docs/ai/DeveloperGuide.md)** - Advanced AI development patterns and techniques
 
 ### Event System Documentation
 - **[Event Manager](docs/events/EventManager.md)** - Guide to the event management system with examples and integration details
@@ -561,27 +558,25 @@ Additional documentation can be found in the `docs/` directory:
 - **[Event Factory Quick Reference](docs/events/EventFactory_QuickReference.md)** - Fast API lookup and examples
 
 ### Core System Documentation
-- **[GameEngine](docs/core/GameEngine.md)** - Central engine singleton managing all systems with SDL integration
-- **[GameLoop](docs/core/GameLoop.md)** - Optimized timing system with consistent frame pacing and threading support
+- **[GameEngine](docs/GameEngine.md)** - Central engine singleton managing all systems with SDL integration
+- **[GameLoop](docs/GameLoop.md)** - Optimized timing system with consistent frame pacing and threading support
+- **[TimestepManager](docs/TimestepManager.md)** - Simplified timing system with 1:1 frame mapping
 - **[Logger System](docs/Logger.md)** - High-performance logging with zero release overhead and system-specific macros
 
 ### Manager System Documentation
-- **[FontManager](docs/FontManager.md)** - Font loading, text rendering, and measurement utilities with display-aware sizing and TTF/OTF support
-- **[DPI-Aware Font System](docs/DPI_Aware_Font_System.md)** - Comprehensive guide to automatic DPI detection, font scaling, and high-quality text rendering across all display types
-- **[TextureManager](docs/TextureManager.md)** - Texture loading and sprite rendering with animation support
-- **[SoundManager](docs/SoundManager.md)** - Audio playback and sound management with volume control
+- **[FontManager](docs/managers/FontManager.md)** - Font loading, text rendering, and measurement utilities with display-aware sizing and TTF/OTF support
+- **[TextureManager](docs/managers/TextureManager.md)** - Texture loading and sprite rendering with animation support
+- **[SoundManager](docs/managers/SoundManager.md)** - Audio playback and sound management with volume control
 
 ### UI System Documentation
 - **[UIManager Guide](docs/ui/UIManager_Guide.md)** - Complete user guide with examples and best practices
-- **[UIManager Architecture](docs/ui/UIManager_Architecture.md)** - System architecture and integration patterns
 - **[Auto-Sizing System](docs/ui/Auto_Sizing_System.md)** - Content-aware component sizing with multi-line text support and SDL3 integration
-- **[UIManager Implementation Summary](docs/ui/UIManager_Implementation_Summary.md)** - Technical implementation details
+- **[DPI-Aware Font System](docs/ui/DPI_Aware_Font_System.md)** - Comprehensive guide to automatic DPI detection, font scaling, and high-quality text rendering across all display types
 - **[SDL3 Logical Presentation Modes](docs/ui/SDL3_Logical_Presentation_Modes.md)** - Comprehensive guide to SDL3's logical presentation system and UIManager compatibility
-- **[UI Stress Testing Guide](docs/ui/UI_Stress_Testing_Guide.md)** - Complete documentation for the integrated UI performance testing framework
 
 ### Threading System Documentation
 - **[ThreadSystem Overview](docs/ThreadSystem.md)** - Core documentation for the ThreadSystem component with usage examples and best practices
-- **[ThreadSystem API](docs/ThreadSystem_API.md)** - Complete API reference for ThreadSystem components
-- **[ThreadSystem Optimization](docs/ThreadSystem_Optimization.md)** - Performance tuning and optimization guide
-- **[ThreadSystem Logger Integration](docs/ThreadSystem_Logger_Integration.md)** - Complete integration with Logger system, performance improvements, and static destruction safety
-- **[Worker Budget System](docs/WorkerBudget_System.md)** - Memory optimization and budget management
+
+### Utility Systems Documentation
+- **[Binary Serialization](docs/SERIALIZATION.md)** - Fast, header-only serialization system for game data
+- **[Performance Changelog](docs/PERFORMANCE_CHANGELOG.md)** - Detailed performance optimization history and benchmarks
