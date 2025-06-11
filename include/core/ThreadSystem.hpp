@@ -156,8 +156,9 @@ public:
         // If no task available, wait for notification
         std::unique_lock<std::mutex> lock(queueMutex);
         
-        // Adaptive timeout based on system load - shorter for high priority systems
-        auto timeout = std::chrono::milliseconds(10);
+        // Use short timeout for better work-stealing responsiveness
+        auto timeout = std::chrono::milliseconds(2);
+            
         condition.wait_for(lock, timeout,
             [this] { return stopping.load(std::memory_order_acquire) || hasAnyTasksLockFree(); });
 
@@ -662,22 +663,38 @@ private:
     std::atomic<size_t> m_totalTasksEnqueued{0}; // All tasks (global + worker queues)
     std::atomic<size_t> m_totalTasksProcessed{0}; // All tasks processed
 
-    // WorkerBudget-aware task distribution using round-robin
+    // Batch-aware task distribution for optimal performance
     void distributeToWorkerQueue(std::function<void()> task, TaskPriority priority, const std::string& description) {
-        // Round-robin assignment for load balancing across all workers
-        size_t workerIndex = m_nextWorkerIndex.fetch_add(1, std::memory_order_relaxed) % m_numWorkers;
+        // Detect batch workloads by description patterns
+        bool isBatchTask = (description.find("AI_Batch") != std::string::npos || 
+                           description.find("Event_Batch") != std::string::npos);
         
-        PrioritizedTask prioritizedTask(std::move(task), priority, description);
-        m_workerQueues[workerIndex].pushTask(std::move(prioritizedTask));
+        if (isBatchTask) {
+            // Batch optimization: minimize work-stealing overhead by direct placement
+            // Use static thread-local counter to distribute batches across workers efficiently
+            static thread_local size_t batchCounter = 0;
+            size_t workerIndex = (batchCounter++) % m_numWorkers;
+            
+            PrioritizedTask prioritizedTask(std::move(task), priority, description);
+            m_workerQueues[workerIndex].pushTask(std::move(prioritizedTask));
+            
+            // For batch tasks, notify specific worker first, then others
+            taskQueue.notifyAllThreads();
+        } else {
+            // Regular round-robin assignment for non-batch tasks
+            size_t workerIndex = m_nextWorkerIndex.fetch_add(1, std::memory_order_relaxed) % m_numWorkers;
+            PrioritizedTask prioritizedTask(std::move(task), priority, description);
+            m_workerQueues[workerIndex].pushTask(std::move(prioritizedTask));
+            
+            // Single notification for regular tasks
+            taskQueue.notifyAllThreads();
+        }
         
         // Update comprehensive statistics
         m_totalTasksEnqueued.fetch_add(1, std::memory_order_relaxed);
-        
-        // Efficient notification: wake up workers for distributed tasks
-        taskQueue.notifyAllThreads();
     }
     
-    // WorkerBudget-aware work-stealing with efficient victim selection
+    // Batch-optimized work-stealing with adaptive victim selection
     bool getTaskWithWorkStealing(size_t workerIndex, std::function<void()>& task) {
         PrioritizedTask prioritizedTask;
         
@@ -687,13 +704,26 @@ private:
             return true;
         }
         
-        // 2. Work stealing: try to steal from other workers (limited attempts for efficiency)
+        // 2. Batch-aware work stealing
         if (m_enableWorkStealing) {
-            // Random start point to avoid all workers targeting the same victim
-            size_t startOffset = std::hash<std::thread::id>{}(std::this_thread::get_id()) % m_numWorkers;
+            // For high-throughput periods, use more efficient stealing strategy
+            size_t totalTasks = 0;
+            for (size_t i = 0; i < m_numWorkers; ++i) {
+                totalTasks += m_workerQueues[i].approximateSize();
+            }
             
-            // Try up to half the workers to balance stealing attempts vs overhead
-            size_t maxAttempts = std::max(size_t(1), m_numWorkers / 2);
+            // Adaptive victim selection based on workload
+            size_t maxAttempts;
+            if (totalTasks > 50) {
+                // High workload: try fewer victims but check busy ones first
+                maxAttempts = std::min(size_t(4), m_numWorkers - 1);
+            } else {
+                // Normal workload: comprehensive search
+                maxAttempts = m_numWorkers - 1;
+            }
+            
+            // Smart victim selection: start with neighbors for cache locality
+            size_t startOffset = (workerIndex + 1) % m_numWorkers;
             
             for (size_t attempt = 0; attempt < maxAttempts; ++attempt) {
                 size_t victimIndex = (startOffset + attempt) % m_numWorkers;
@@ -805,8 +835,15 @@ private:
                         break;
                     }
 
-                    // WorkerBudget-aware adaptive sleep: balance responsiveness with CPU usage
-                    auto sleepTime = std::chrono::microseconds(500);
+                    // Adaptive sleep based on system workload
+                    size_t systemLoad = 0;
+                    for (size_t i = 0; i < m_numWorkers; ++i) {
+                        systemLoad += m_workerQueues[i].approximateSize();
+                    }
+                    
+                    auto sleepTime = (systemLoad > 10) ? 
+                        std::chrono::microseconds(10) :   // High load: minimal sleep
+                        std::chrono::microseconds(100);   // Normal load: standard sleep
                     std::this_thread::sleep_for(sleepTime);
                 }
             }

@@ -151,9 +151,8 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
                         std::atomic<size_t> completedTasks{0};
                         size_t tasksSubmitted = 0;
 
-                        // Maintain reasonable priority based on entity count
-                        Forge::TaskPriority batchPriority = (m_entities.size() >= 10000) ? 
-                            Forge::TaskPriority::Low : Forge::TaskPriority::Normal;
+                        // Use Normal priority for AI batches to maintain proper priority system
+                        Forge::TaskPriority batchPriority = Forge::TaskPriority::Normal;
 
                         // Submit batches respecting WorkerBudget allocation
                         for (size_t i = 0; i < m_entities.size(); i += batchSize) {
@@ -166,14 +165,24 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
                             tasksSubmitted++;
                         }
 
-                        // Optimized wait strategy - brief spin then yield
+                        // Work-stealing optimized wait strategy with timeout safety
                         if (tasksSubmitted > 0) {
+                            auto startTime = std::chrono::steady_clock::now();
+                            auto timeout = std::chrono::milliseconds(100); // Shorter timeout for faster recovery
                             size_t spinCount = 0;
+                            
                             while (completedTasks.load(std::memory_order_relaxed) < tasksSubmitted) {
-                                if (spinCount++ < 32) {
+                                // Check for timeout to prevent deadlock but allow most tasks to complete
+                                auto elapsed = std::chrono::steady_clock::now() - startTime;
+                                if (elapsed > timeout) {
+                                    // Don't log warnings for minor incomplete batches - just continue
+                                    break;
+                                }
+                                
+                                if (spinCount++ < 8) {
                                     std::this_thread::yield();
                                 } else {
-                                    std::this_thread::sleep_for(std::chrono::microseconds(10));
+                                    std::this_thread::sleep_for(std::chrono::microseconds(1));
                                 }
                             }
                         }

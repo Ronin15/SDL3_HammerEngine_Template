@@ -440,9 +440,8 @@ void EventManager::updateEventTypeBatchThreaded(EventTypeId typeId) {
         std::atomic<size_t> completedBatches{0};
         size_t batchesSubmitted = 0;
 
-        // Maintain reasonable priority based on event count
-        Forge::TaskPriority batchPriority = (container.size() >= 500) ? 
-            Forge::TaskPriority::Low : Forge::TaskPriority::Normal;
+        // Use Normal priority for Event batches to maintain proper priority system
+        Forge::TaskPriority batchPriority = Forge::TaskPriority::Normal;
 
         // Submit batches respecting WorkerBudget allocation
         for (size_t i = 0; i < container.size(); i += batchSize) {
