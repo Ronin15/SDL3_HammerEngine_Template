@@ -2,15 +2,7 @@
 
 ## Overview
 
-SDL3's logical presentation system provides a powerful way to handle different screen resolutions and aspect ratios while maintaining consistent UI layout and coordinate systems. This document details how the Forge Game Engine's UI system handles all SDL3 logical presentation modes.
-
-**Template Context**: This documentation is part of the SDL3 Game Engine Template. The UI stress testing system described here is included as a **validation and demonstration tool** for template users. When using this template for your own project, you may choose to:
-- Keep the stress testing system for ongoing UI performance validation
-- Remove it entirely after validating your UI implementation
-- Adapt it for your specific performance requirements
-
-The stress testing integration demonstrates real-world UI performance characteristics and validates the template's design decisions.
-</overview>
+SDL3's logical presentation system provides a powerful way to handle different screen resolutions and aspect ratios while maintaining consistent UI layout and coordinate systems. This document details how the UIManager integrates with all SDL3 logical presentation modes for production games.
 
 ## Logical Presentation Modes
 
@@ -55,16 +47,6 @@ mouseY = static_cast<int>(mousePos.getY());
 - **Coordinate Conversion**: Required - non-uniform scaling possible
 - **UI Impact**: UI elements may appear stretched on different aspect ratios
 
-**Visual Example:**
-```
-┌─────────────────────────────────┐
-│                                 │
-│      GAME CONTENT AREA          │
-│      (may be distorted)         │
-│                                 │
-└─────────────────────────────────┘
-```
-
 ### SDL_LOGICAL_PRESENTATION_OVERSCAN
 **Aspect Ratio Preservation with Content Cropping**
 - **Behavior**: Maintains logical aspect ratio, crops content that doesn't fit
@@ -72,18 +54,9 @@ mouseY = static_cast<int>(mousePos.getY());
 - **Coordinate Conversion**: Required - content may extend beyond visible area
 - **UI Impact**: Edge UI elements may be cropped, center content always visible
 
-**Visual Example:**
-```
-    ┌─────────────────────────────────┐
-    │ CROPPED │ VISIBLE AREA │ CROPPED │
-    │  AREA   │              │  AREA   │
-    │         │              │         │
-    └─────────────────────────────────┘
-```
-
 ## Implementation in UIManager
 
-### Coordinate Conversion System
+### Automatic Coordinate Conversion
 
 The UIManager automatically handles coordinate conversion for all presentation modes:
 
@@ -103,7 +76,7 @@ if (SDL_GetRenderLogicalPresentation(renderer, &logicalW, &logicalH, &presentati
 } else {
     // No logical presentation - use window coordinates directly
     mouseX = static_cast<int>(mousePos.getX());
-    mouseY = static_cast<int>(logicalY);
+    mouseY = static_cast<int>(mousePos.getY());
 }
 ```
 
@@ -116,104 +89,68 @@ The UI system is designed to work seamlessly with all presentation modes:
 3. **Consistent Behavior**: UI interactions work identically regardless of mode
 4. **Performance Optimized**: Conversion only performed when necessary
 
-## Best Practices
+## Choosing the Right Mode
 
-### Choosing the Right Mode
+### Recommended Usage by Game Type
 
-| Scenario | Recommended Mode | Reason |
-|----------|-----------------|---------|
-| Pixel-perfect games | DISABLED | Direct control over every pixel |
-| Cross-platform games | LETTERBOX | Consistent experience across devices |
-| Full-screen utilities | STRETCH | Maximum screen usage |
-| Mobile games | OVERSCAN | Better use of varied mobile screens |
+| Game Type | Recommended Mode | Reason |
+|-----------|------------------|---------|
+| Pixel Art Games | DISABLED | Direct pixel control for crisp graphics |
+| Cross-Platform Games | LETTERBOX | Consistent experience across all devices |
+| Productivity Apps | STRETCH | Maximum screen usage for interfaces |
+| Mobile Ports | OVERSCAN | Better adaptation to varied mobile screens |
+| Strategy Games | LETTERBOX | Consistent UI layout across platforms |
 
 ### UI Design Considerations
 
 #### For LETTERBOX Mode
-- Design UI for target logical resolution
+- Design UI for target logical resolution (e.g., 1920x1080)
 - Ensure important elements fit within safe area
-- Test with various aspect ratios
+- Test with various aspect ratios (16:9, 16:10, 4:3)
+- UI auto-sizing works perfectly within logical bounds
 
 #### For STRETCH Mode
 - Design flexible UI that handles distortion gracefully
 - Use relative positioning where possible
 - Test with extreme aspect ratios (ultrawide, mobile)
+- Auto-sizing adapts to stretched dimensions
 
 #### For OVERSCAN Mode
-- Keep critical UI elements in center area
-- Design expendable content for edges
-- Provide visual indicators for cropped areas
+- Keep critical UI elements in center area (safe zone)
+- Design expendable content for edges that may be cropped
+- Provide visual indicators when content extends beyond visible area
+- Auto-sizing works but edge content may be hidden
 
 #### For DISABLED Mode
-- Handle resolution changes manually
+- Handle resolution changes manually in your game logic
 - Implement custom scaling logic if needed
 - Direct pixel manipulation available
+- Full control over rendering pipeline
 
 ## Performance Considerations
 
 ### Coordinate Conversion Overhead
-- **DISABLED**: Zero overhead - no conversion
-- **LETTERBOX/STRETCH/OVERSCAN**: Minimal overhead - single function call per mouse event
-- **Optimization**: Conversion only performed for interactive components
+- **DISABLED**: Zero overhead - no conversion needed
+- **LETTERBOX/STRETCH/OVERSCAN**: Minimal overhead - single function call per input event
+- **Optimization**: Conversion only performed for UI interactions, not every frame
 
-### Memory Usage
+### Memory and Rendering
 - All modes have identical memory footprint
 - No additional storage required for coordinate conversion
 - Component bounds stored in logical coordinates
+- SDL3 handles scaling at GPU level for optimal performance
 
-### Rendering Performance
-- All modes use same rendering pipeline
-- SDL3 handles scaling at GPU level
-- No performance difference between modes
-
-## Testing Scenarios
-
-### Resolution Testing
-Test UI behavior across common resolutions:
-- 1920x1080 (16:9)
-- 1280x720 (16:9)
-- 1024x768 (4:3)
-- 3440x1440 (21:9 ultrawide)
-- 812x375 (mobile)
-
-### Aspect Ratio Testing
-Verify UI behavior with different aspect ratios:
-- Standard (16:9, 16:10)
-- Legacy (4:3, 5:4) 
-- Ultrawide (21:9, 32:9)
-- Mobile (various ratios)
-
-### Dynamic Mode Switching
-Test runtime mode changes:
-- Window resizing
-- Fullscreen transitions
-- Mode switching during gameplay
-
-## Common Issues and Solutions
-
-### Issue: Clicks Not Registering
-**Cause**: Coordinate conversion not applied
-**Solution**: Ensure `SDL_RenderCoordinatesFromWindow()` is called
-
-### Issue: UI Elements Appear Distorted
-**Cause**: Using STRETCH mode with non-matching aspect ratio
-**Solution**: Switch to LETTERBOX or design flexible UI
-
-### Issue: UI Elements Cropped
-**Cause**: Using OVERSCAN mode with edge-positioned elements
-**Solution**: Move critical UI to center or switch to LETTERBOX
-
-### Issue: Black Bars Unwanted
-**Cause**: Using LETTERBOX mode
-**Solution**: Switch to STRETCH or OVERSCAN based on preference
-
-## Code Examples
+## Integration Examples
 
 ### Setting Up Logical Presentation
 ```cpp
-// Set logical size and presentation mode
+// Initialize with target logical resolution
 SDL_SetRenderLogicalPresentation(renderer, 1920, 1080, 
                                 SDL_LOGICAL_PRESENTATION_LETTERBOX);
+
+// UIManager automatically adapts to this configuration
+auto& ui = UIManager::Instance();
+ui.createButton("my_button", {100, 100, 0, 0}, "Click Me");  // Works in any mode
 ```
 
 ### Checking Current Mode
@@ -224,56 +161,145 @@ SDL_GetRenderLogicalPresentation(renderer, &logicalW, &logicalH, &presentation);
 
 switch(presentation) {
     case SDL_LOGICAL_PRESENTATION_DISABLED:
-        // Handle direct mode
+        // Handle direct pixel mode
         break;
     case SDL_LOGICAL_PRESENTATION_LETTERBOX:
-        // Handle letterbox mode
+        // Handle letterbox mode - UI maintains proportions
         break;
     case SDL_LOGICAL_PRESENTATION_STRETCH:
-        // Handle stretch mode
+        // Handle stretch mode - UI may appear distorted
         break;
     case SDL_LOGICAL_PRESENTATION_OVERSCAN:
-        // Handle overscan mode
+        // Handle overscan mode - edge UI may be cropped
         break;
 }
 ```
 
-### Manual Coordinate Conversion
+### Runtime Mode Switching
 ```cpp
-// Convert specific coordinates (if needed outside UIManager)
-float logicalX, logicalY;
-SDL_RenderCoordinatesFromWindow(renderer, windowX, windowY, &logicalX, &logicalY);
+void GameSettings::setPresentationMode(SDL_RendererLogicalPresentation mode) {
+    SDL_SetRenderLogicalPresentation(renderer, 1920, 1080, mode);
+    
+    // UIManager automatically adapts - no additional code needed
+    // All existing UI components continue to work correctly
+}
 ```
 
-## Integration with Game Engine
+## Common Issues and Solutions
 
-The Forge Game Engine's UIManager handles all presentation modes transparently:
+### Issue: Clicks Not Registering
+**Cause**: Coordinate conversion not applied in logical presentation modes
+**Solution**: UIManager handles this automatically - ensure you're using UIManager for input
 
-1. **Automatic Setup**: Game engine initializes with chosen presentation mode
-2. **Transparent Operation**: UI code doesn't need mode-specific logic
-3. **Runtime Flexibility**: Can change modes without UI code changes
-4. **Debug Support**: Debug overlays work in all modes
+### Issue: UI Elements Appear Distorted
+**Cause**: Using STRETCH mode with non-matching aspect ratio
+**Solution**: Switch to LETTERBOX or design UI to handle stretching gracefully
 
-## Template Usage Guidelines
+### Issue: UI Elements Cut Off
+**Cause**: Using OVERSCAN mode with edge-positioned elements
+**Solution**: Move critical UI to center area or switch to LETTERBOX mode
 
-### For Template Evaluation
-- Use the integrated UI stress tests to validate performance characteristics
-- Test all presentation modes with your target resolutions
-- Verify UI behavior meets your project requirements
-- Benchmark performance on your target hardware
+### Issue: Unwanted Black Bars
+**Cause**: Using LETTERBOX mode when you want full screen usage
+**Solution**: Switch to STRETCH or OVERSCAN based on your distortion/cropping preference
 
-### For Production Projects
-- **Keep Testing System**: Maintain ongoing UI performance validation
-- **Remove Testing System**: Clean removal after initial validation
-- **Adapt Testing System**: Modify for project-specific requirements
+### Issue: Inconsistent UI Sizing
+**Cause**: Not setting logical presentation consistently
+**Solution**: Set logical presentation early in initialization before creating UI
 
-### Recommended Workflow
-1. **Evaluation Phase**: Run comprehensive stress tests to understand capabilities
-2. **Development Phase**: Use lightweight tests during UI development
-3. **Production Decision**: Choose whether to maintain testing infrastructure
+## Best Practices
+
+### Development Workflow
+1. **Choose your target logical resolution** (commonly 1920x1080)
+2. **Select appropriate presentation mode** based on game requirements
+3. **Design UI using logical coordinates** - UIManager handles the rest
+4. **Test on multiple aspect ratios** to verify behavior
+5. **Use auto-sizing features** to adapt to different scaling scenarios
+
+### Testing Strategy
+```cpp
+void testPresentationModes() {
+    std::vector<SDL_RendererLogicalPresentation> modes = {
+        SDL_LOGICAL_PRESENTATION_DISABLED,
+        SDL_LOGICAL_PRESENTATION_LETTERBOX,
+        SDL_LOGICAL_PRESENTATION_STRETCH,
+        SDL_LOGICAL_PRESENTATION_OVERSCAN
+    };
+    
+    for (auto mode : modes) {
+        SDL_SetRenderLogicalPresentation(renderer, 1920, 1080, mode);
+        
+        // Test UI interactions in each mode
+        testUIInteractions();
+    }
+}
+```
+
+### Resolution Testing
+Test your UI across common resolutions:
+- **1920x1080** (16:9) - Most common desktop
+- **1280x720** (16:9) - Lower resolution displays  
+- **1024x768** (4:3) - Legacy displays
+- **3440x1440** (21:9) - Ultrawide monitors
+- **Various mobile** - Different aspect ratios
+
+## Advanced Features
+
+### Dynamic Safe Area Calculation
+```cpp
+SDL_FRect getSafeArea() {
+    int logicalW, logicalH;
+    SDL_RendererLogicalPresentation presentation;
+    SDL_GetRenderLogicalPresentation(renderer, &logicalW, &logicalH, &presentation);
+    
+    if (presentation == SDL_LOGICAL_PRESENTATION_OVERSCAN) {
+        // Calculate safe area for overscan mode
+        float margin = 0.1f;  // 10% margin
+        return {
+            logicalW * margin,
+            logicalH * margin,
+            logicalW * (1.0f - 2 * margin),
+            logicalH * (1.0f - 2 * margin)
+        };
+    }
+    
+    return {0, 0, static_cast<float>(logicalW), static_cast<float>(logicalH)};
+}
+```
+
+### Aspect Ratio Detection
+```cpp
+float getDisplayAspectRatio() {
+    int windowW, windowH;
+    SDL_GetWindowSize(window, &windowW, &windowH);
+    return static_cast<float>(windowW) / static_cast<float>(windowH);
+}
+
+bool isUltrawide() {
+    return getDisplayAspectRatio() > 2.0f;  // 21:9 or wider
+}
+```
+
+## Integration with Auto-Sizing
+
+The UIManager's auto-sizing system works seamlessly with all presentation modes:
+
+```cpp
+// Auto-sizing works in any presentation mode
+ui.createLabel("status", {x, y, 0, 0}, "Dynamic Text");  // Sizes to fit content
+
+// Title centering adapts to logical presentation bounds
+ui.createTitle("header", {0, y, logicalWidth, 0}, "Game Title");
+ui.setTitleAlignment("header", UIAlignment::CENTER_CENTER);  // Centers within logical area
+
+// Multi-line text auto-sizing works correctly in all modes
+ui.createLabel("info", {x, y, 0, 0}, "Line 1\nLine 2\nLine 3");
+```
+
+The auto-sizing system uses logical coordinates, so components maintain proper proportions regardless of the presentation mode in use.
 
 ## Conclusion
 
-SDL3's logical presentation system provides flexible scaling options while the UIManager ensures consistent behavior across all modes. By understanding each mode's characteristics and trade-offs, developers can choose the best option for their specific use case while maintaining a seamless user experience.
+SDL3's logical presentation system provides flexible scaling options while the UIManager ensures consistent behavior across all modes. By understanding each mode's characteristics and trade-offs, developers can choose the best option for their specific game while maintaining excellent user experience across all target platforms and display configurations.
 
-This template provides both the production-ready UI system and the tools to validate its performance, giving developers confidence in their UI implementation choices.
+The UIManager's automatic coordinate conversion and auto-sizing features eliminate the complexity of handling different presentation modes manually, allowing developers to focus on game content rather than display compatibility issues.

@@ -3,13 +3,13 @@
 ## Table of Contents
 
 - [Core Systems](#core-systems)
-  - [Logger System](#logger-system)
-  - [Core Engine Systems](#core-engine-systems)
+  - [GameEngine & Core Systems](#gameengine--core-systems)
   - [AI System](#ai-system)
   - [Event System](#event-system) 
   - [UI System](#ui-system)
   - [Threading System](#threading-system)
-  - [Manager System Documentation](#manager-system-documentation)
+  - [Manager Systems](#manager-systems)
+  - [Utility Systems](#utility-systems)
 - [Getting Started](#getting-started)
 - [Key Features](#key-features)
 - [Development Workflow](#development-workflow)
@@ -17,16 +17,16 @@
 
 ## Overview
 
-The Forge Game Engine is a high-performance game development framework built on SDL3, featuring advanced AI systems, event management, threading capabilities, and more.
+The Forge Game Engine is a high-performance game development framework built on SDL3, featuring advanced AI systems, event management, threading capabilities, and comprehensive UI support with auto-sizing and DPI awareness.
 
 ## Core Systems
 
-### Core Engine Systems
-Foundation systems that power the game engine architecture.
+### GameEngine & Core Systems
+Foundation systems that power the game engine architecture and timing.
 
-- **[GameEngine Documentation](core/GameEngine.md)** - Central engine singleton managing all systems
-- **[GameLoop Documentation](core/GameLoop.md)** - Industry-standard timing with fixed/variable timestep
-- **[TimestepManager Documentation](core/TimestepManager.md)** - Simplified timing system with 1:1 frame mapping
+- **[GameEngine](GameEngine.md)** - Central engine singleton managing all systems and coordination
+- **[GameLoop](GameLoop.md)** - Industry-standard timing with fixed/variable timestep support  
+- **[TimestepManager](TimestepManager.md)** - Simplified timing system with 1:1 frame mapping
 
 ### AI System
 The AI system provides flexible, thread-safe behavior management for game entities with individual behavior instances and mode-based configuration.
@@ -48,88 +48,77 @@ Robust event management system supporting weather events, NPC spawning, scene tr
 ### UI System
 Comprehensive UI system with professional theming, animations, layouts, content-aware auto-sizing, and event handling for creating polished game interfaces.
 
-- **[UIManager Guide](ui/UIManager_Guide.md)** - Complete user guide with examples and best practices
-- **[UIManager Architecture](ui/UIManager_Architecture.md)** - System architecture and integration patterns
-- **[Auto-Sizing System](ui/Auto_Sizing_System.md)** - Content-aware component sizing with multi-line text support and SDL3 integration
-- **[UIManager Implementation Summary](ui/UIManager_Implementation_Summary.md)** - Technical implementation details
-- **[SDL3 Logical Presentation Modes](ui/SDL3_Logical_Presentation_Modes.md)** - SDL3 logical presentation system guide
-- **[UI Stress Testing Guide](ui/UI_Stress_Testing_Guide.md)** - UI performance testing framework
+- **[UIManager Guide](ui/UIManager_Guide.md)** - Complete UI system guide with auto-sizing, theming, and SDL3 integration
+- **[Auto-Sizing System](ui/Auto_Sizing_System.md)** - Content-aware component sizing with multi-line text support and font-based measurements
+- **[DPI-Aware Font System](ui/DPI_Aware_Font_System.md)** - Automatic display detection and font scaling for crisp text on all display types
+- **[SDL3 Logical Presentation](ui/SDL3_Logical_Presentation_Modes.md)** - SDL3 presentation system integration and coordinate handling
 
 ### Threading System
-High-performance multithreading framework with priority-based task scheduling.
+High-performance multithreading framework with priority-based task scheduling and worker budget allocation.
 
-- **[ThreadSystem Overview](ThreadSystem.md)** - Core threading system documentation
-- **[ThreadSystem API](ThreadSystem_API.md)** - Complete API reference
-- **[ThreadSystem Optimization](ThreadSystem_Optimization.md)** - Performance tuning guide
-- **[ThreadSystem Logger Integration](ThreadSystem_Logger_Integration.md)** - Complete integration with Logger system, performance improvements, and static destruction safety
-- **[Worker Budget System](WorkerBudget_System.md)** - Memory optimization and budget management
+- **[ThreadSystem Overview](ThreadSystem.md)** - Complete threading system documentation with worker budget allocation, priority scheduling, and engine integration
+
+### Manager Systems
+Resource management systems for fonts, textures, audio, and game data.
+
+- **[FontManager](managers/FontManager.md)** - Font loading, text rendering, and measurement utilities with DPI-aware scaling and auto-sizing integration
+- **[SoundManager](managers/SoundManager.md)** - Audio playback and sound management system with volume control and state integration
+- **[TextureManager](managers/TextureManager.md)** - Texture loading and sprite rendering system
 
 ### Utility Systems
 Core utility classes and helper systems used throughout the engine.
 
-- **[Logger System](Logger.md)** - High-performance logging with zero release overhead and system-specific macros
-- **[Binary Serialization](SERIALIZATION.md)** - Fast, header-only serialization system
-- **[Performance Changelog](PERFORMANCE_CHANGELOG.md)** - Detailed performance optimization history
-
-### Manager System Documentation
-- **[AIManager](ai/AIManager.md)** - High-performance AI system with individual behavior instances, distance optimization, and threading
-- **[EventManager](events/EventManager.md)** - High-performance event system with type-indexed storage
-- **[UIManager](ui/UIManager_Guide.md)** - Professional UI system with theming, animations, and auto-sizing
-- **[FontManager](FontManager.md)** - Font loading, text rendering, and measurement utilities with display-aware sizing
-- **[TextureManager](TextureManager.md)** - Texture loading and sprite rendering system  
-- **[SoundManager](SoundManager.md)** - Audio playback and sound management system
-- **SaveGameManager** - Game save/load system with BinarySerializer integration (see [SERIALIZATION.md](SERIALIZATION.md))
-
-
+- **[Logger System](Logger.md)** - Comprehensive logging system with debug/release optimization and system-specific macros
+- **[Binary Serialization](SERIALIZATION.md)** - Fast, header-only serialization system for game data
+- **[Performance Changelog](PERFORMANCE_CHANGELOG.md)** - Detailed performance optimization history and benchmarks
 
 ## Getting Started
 
 ### System Overview
 The Forge Game Engine provides several core systems that work together:
 - **Core Engine**: GameEngine singleton, GameLoop, and TimestepManager timing systems
-- **Utility Systems**: Logger, Worker Budget, and core utility classes
-- **AI System**: Behavior management for NPCs with threading support
-- **Event System**: Global event handling for weather, spawning, and custom events
-- **UI System**: Professional interface components with theming and animations
-- **Threading System**: Multi-threaded task processing with priority scheduling
+- **AI System**: Behavior management for NPCs with threading support and distance optimization
+- **Event System**: Global event handling for weather, spawning, and custom events  
+- **UI System**: Professional interface components with theming, animations, and auto-sizing
+- **Threading System**: Multi-threaded task processing with priority scheduling and worker budgets
 - **Manager Systems**: Resource management for fonts, textures, audio, and more
 
 ### Quick Links
-- **[GameEngine Setup](core/GameEngine.md#quick-start)** - Initialize the engine
-- **[GameLoop Setup](core/GameLoop.md#quick-start)** - Configure main game loop
-- **[TimestepManager Setup](core/TimestepManager.md#quick-start)** - Timing system configuration
-- **[Logger Quick Start](Logger.md#quick-start)** - Essential logging setup
+- **[GameEngine Setup](GameEngine.md#quick-start)** - Initialize the engine
+- **[GameLoop Setup](GameLoop.md#quick-start)** - Configure main game loop
+- **[TimestepManager Setup](TimestepManager.md#quick-start)** - Timing system configuration
+
 - **[AI Quick Start](ai/BehaviorModes_QuickReference.md)** - Set up AI behaviors in minutes
 - **[Event Quick Start](events/EventManager_QuickReference.md)** - Event system essentials
 - **[UI Quick Start](ui/UIManager_Guide.md#quick-start)** - Create UI components with auto-sizing
-- **[Auto-Sizing Guide](ui/Auto_Sizing_System.md)** - Content-aware component sizing
-- **[Threading Setup](ThreadSystem.md)** - Initialize multi-threading
+- **[Threading Setup](ThreadSystem.md#quick-start)** - Initialize multi-threading
 
 ## Key Features
 
 ### Modern Architecture
-- **Singleton Engine Management**: Centralized system coordination
-- **Fixed/Variable Timestep**: Deterministic updates with smooth rendering
+- **Singleton Engine Management**: Centralized system coordination through GameEngine
+- **Fixed/Variable Timestep**: Deterministic updates with smooth rendering via GameLoop
 - **Simplified Timing System**: 1:1 frame-to-update mapping eliminates timing drift
 - **Zero-Overhead Utilities**: Debug logging and memory management without release impact
-- **Individual Behavior Instances**: Each NPC gets isolated behavior state
-- **Mode-Based Configuration**: Automatic setup for common patterns
+- **Individual Behavior Instances**: Each NPC gets isolated behavior state via clone()
+- **Mode-Based Configuration**: Automatic setup for common AI and UI patterns
 - **Professional UI Theming**: Consistent appearance without manual styling
 - **Content-Aware Auto-Sizing**: Components automatically size to fit content
+- **DPI-Aware Font System**: Crisp text rendering on all display types
 - **SDL3 Coordinate Integration**: Accurate mouse input with logical presentation
 - **Thread-Safe Operations**: Concurrent access without race conditions
 - **Resource Management**: Automatic cleanup and efficient memory usage
 
 ### Performance Optimized
-- **Scales to 10000+ NPCs**: Linear performance scaling - (10,000 entites drawn on screen is the target for testing and stability/performance)
-- **Priority-Based Threading**: Critical tasks processed first
-- **Efficient UI Rendering**: Only processes visible components
-- **Memory Optimizations**: Smart pointers and efficient containers
-- **Batched Operations**: Bulk processing for better performance
+- **Scales to 10,000+ NPCs**: Linear performance scaling with distance optimization
+- **Priority-Based Threading**: Critical tasks processed first with worker budget allocation
+- **Efficient UI Rendering**: Only processes visible components with auto-sizing
+- **Memory Optimizations**: Smart pointers and cache-friendly data structures
+- **Batched Operations**: Bulk processing for better performance across all systems
 
 ### Developer Friendly
-- **Comprehensive Documentation**: Detailed guides with examples
-- **Quick Reference Guides**: Fast API lookup
+- **Comprehensive Documentation**: Detailed guides with examples and quick references
+- **Quick Reference Guides**: Fast API lookup for all major systems
 - **Debug Tools**: Built-in diagnostics and performance monitoring
 - **Best Practice Guides**: Proven patterns and techniques
 - **Migration Support**: Guides for updating existing code
@@ -145,14 +134,14 @@ The Forge Game Engine provides several core systems that work together:
 ## Support and Troubleshooting
 
 For issues with specific systems, see the troubleshooting sections in each system's documentation:
-- Core engine issues: See [GameEngine API Reference](core/GameEngine.md#api-reference)
-- Game loop issues: See [GameLoop Best Practices](core/GameLoop.md#best-practices)
-- Timing issues: See [TimestepManager Best Practices](core/TimestepManager.md#best-practices)
+- Core engine issues: See [GameEngine Documentation](GameEngine.md)
+- Game loop issues: See [GameLoop Best Practices](GameLoop.md#best-practices)
+- Timing issues: See [TimestepManager Best Practices](TimestepManager.md#best-practices)
 - Logger issues: See [Logger Best Practices](Logger.md#best-practices)
 - AI issues: See [AI System Overview](ai/AIManager.md) and [Behavior Modes](ai/BehaviorModes.md)
 - Event issues: See [Event System Integration](events/EventSystem_Integration.md)
-- UI issues: See [UIManager Architecture](ui/UIManager_Architecture.md#troubleshooting)
-- Threading issues: See [ThreadSystem Optimization](ThreadSystem_Optimization.md)
+- UI issues: See [UIManager Guide](ui/UIManager_Guide.md), [Auto-Sizing System](ui/Auto_Sizing_System.md), and [DPI-Aware Font System](ui/DPI_Aware_Font_System.md)
+- Threading issues: See [ThreadSystem Overview](ThreadSystem.md)
 
 ---
 

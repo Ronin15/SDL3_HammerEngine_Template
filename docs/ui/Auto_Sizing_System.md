@@ -2,51 +2,46 @@
 
 ## Overview
 
-The Auto-Sizing System is a core feature of the UIManager that automatically calculates optimal component dimensions based on content. This system eliminates the need for manual sizing calculations and provides consistent, content-aware layouts across all UI components.
+The Auto-Sizing System is a core feature of the UIManager that automatically calculates optimal component dimensions based on content. This system eliminates manual sizing calculations and provides consistent, content-aware layouts across all UI components.
 
 ## Core Features
 
 ### Content-Aware Sizing
-- **Text Measurement**: Precise calculation of text dimensions using FontManager
+- **Text Measurement**: Precise calculation using FontManager with actual font metrics
 - **Multi-line Detection**: Automatic detection and sizing for text containing newlines
-- **Font-Based Calculations**: All measurements based on actual font metrics rather than estimates
+- **Font-Based Calculations**: All measurements based on real font dimensions, not estimates
 - **Padding Integration**: Automatic content padding for proper spacing
 
 ### Smart Centering
-- **Title Auto-Centering**: Titles with CENTER alignment automatically reposition to stay centered on screen
-- **Alignment Preservation**: Component alignment is maintained after auto-sizing
-- **Position Stability**: Auto-sizing only affects dimensions, never base positioning
+- **Title Auto-Centering**: Titles with CENTER alignment automatically reposition to stay centered
+- **Alignment Preservation**: Component alignment maintained after auto-sizing
+- **Position Stability**: Auto-sizing affects dimensions only, never base positioning
 
-### Display Integration
-- **SDL3 Compatibility**: Works seamlessly with SDL3's logical presentation system
+### SDL3 Integration
+- **Coordinate Compatibility**: Works seamlessly with SDL3's logical presentation system
 - **DPI Awareness**: Integrates with GameEngine's DPI detection for optimal sizing
-- **Coordinate Conversion**: Proper mouse coordinate handling with SDL3's coordinate transformation
+- **Input Accuracy**: Proper mouse coordinate handling with logical presentation
 
-## Architecture
+## How It Works
 
-### Component Structure
-
-Each UIComponent includes auto-sizing properties:
+### Component Auto-Sizing Properties
 
 ```cpp
 struct UIComponent {
-    // Auto-sizing properties
-    bool autoSize{true};                // Enable content-aware auto-sizing by default
-    UIRect minBounds{0, 0, 32, 16};    // Minimum size constraints (only width/height used)
-    UIRect maxBounds{0, 0, 800, 600};  // Maximum size constraints (only width/height used)
-    int contentPadding{8};             // Padding around content for size calculations
-    bool autoWidth{true};              // Auto-size width based on content
-    bool autoHeight{true};             // Auto-size height based on content
-    bool sizeToContent{true};          // Size exactly to fit content (vs. expand to fill)
+    // Auto-sizing enabled by default
+    bool autoSize{true};                
+    UIRect minBounds{0, 0, 32, 16};     // Minimum size constraints
+    UIRect maxBounds{0, 0, 800, 600};   // Maximum size constraints
+    int contentPadding{8};              // Padding around content
+    bool autoWidth{true};               // Auto-size width based on content
+    bool autoHeight{true};              // Auto-size height based on content
     
     // Callback for content changes
-    std::function<void()> onContentChanged;  // Called when content changes and resize is needed
+    std::function<void()> onContentChanged;
 };
 ```
 
 ### FontManager Integration
-
-The auto-sizing system leverages FontManager's text measurement utilities:
 
 ```cpp
 // Single-line text measurement
@@ -74,11 +69,11 @@ bool getFontMetrics(const std::string& fontID, int* lineHeight, int* ascent, int
 ### Basic Auto-Sizing
 
 ```cpp
-// Components automatically size to fit their content
+// Components automatically size to fit content (width/height = 0)
 ui.createLabel("info", {x, y, 0, 0}, "This text will auto-size");
-ui.createButton("action", {x, y, 0, 0}, "Click Me");  // Sizes to fit text + padding
+ui.createButton("action", {x, y, 0, 0}, "Click Me");
 
-// Multi-line content is automatically detected and sized
+// Multi-line content automatically detected and sized
 ui.createLabel("multi", {x, y, 0, 0}, "Line 1\nLine 2\nLine 3");
 ```
 
@@ -87,25 +82,25 @@ ui.createLabel("multi", {x, y, 0, 0}, "Line 1\nLine 2\nLine 3");
 Some components use fixed-size design for specific purposes:
 
 ```cpp
-// Event logs use fixed dimensions (industry standard for game event displays)
+// Event logs use fixed dimensions (industry standard)
 ui.createEventLog("events", {x, y, 400, 200}, 10);
-ui.addEventLogEntry("events", "Long event messages automatically wrap within fixed bounds");
+ui.addEventLogEntry("events", "Long messages automatically wrap within bounds");
 
-// Lists also use fixed dimensions with proper padding
+// Lists use fixed dimensions with proper padding
 ui.createList("options", {x, y, 220, 140});
-ui.addListItem("options", "List items fit within bounds with proper padding");
+ui.addListItem("options", "List items fit within bounds");
 ```
 
 **Fixed-Size Benefits:**
 - **Predictable layout**: UI elements don't shift when content changes
 - **Performance**: No recalculation needed when adding content
-- **Industry standard**: Follows established patterns for event logs and chat systems
+- **Industry standard**: Follows established patterns for logs and lists
 - **Word wrapping**: Long content wraps automatically within bounds
 
 ### Title Auto-Centering
 
 ```cpp
-// Titles automatically center themselves when using CENTER alignment
+// Titles automatically center when using CENTER alignment
 ui.createTitle("header", {0, y, windowWidth, 40}, "Page Title");
 ui.setTitleAlignment("header", UIAlignment::CENTER_CENTER);
 // Title automatically repositions to center of screen after auto-sizing
@@ -130,83 +125,57 @@ ui.calculateOptimalSize("dynamic_content");
 
 ### Labels and Titles
 - **Single-line text**: Measured using `measureText()`
-- **Multi-line text**: Automatically detected and measured using `measureMultilineText()`
+- **Multi-line text**: Automatically detected, measured using `measureMultilineText()`
 - **Empty text**: Falls back to minimum bounds
 - **Title centering**: Automatic repositioning for CENTER-aligned titles
 
 ### Buttons
 - **Content-based sizing**: Measures button text and adds appropriate padding
-- **Consistent padding**: All button types use the same padding calculations
+- **Consistent padding**: All button types use same padding calculations
 - **Type independence**: All button types (regular, success, warning, danger) behave consistently
 
-### Lists
+### Lists and Event Logs
 - **Font-based item heights**: Uses font line height + padding instead of hardcoded values
-- **Dynamic item sizing**: List items automatically size based on actual font metrics
+- **Dynamic item sizing**: List items automatically size based on font metrics
 - **Content measurement**: Measures list item text for width calculations
 
 ### Input Fields
-- **Placeholder consideration**: Measures placeholder text if no content is present
+- **Placeholder consideration**: Measures placeholder text if no content present
 - **Content adaptation**: Sizes to fit current text content
 - **Interaction space**: Adds extra space for cursor and user interaction
 
-### Tooltips
-- **Compact sizing**: Uses smaller tooltip-specific font (11pt) for better fit
-- **Content-aware containers**: Tooltip containers automatically size to fit text
-- **Multi-line support**: Properly handles tooltips with multiple lines
-
-## Integration with Coordinate System
-
-### SDL3 Coordinate Conversion
-
-The system integrates with SDL3's coordinate transformation for accurate mouse input:
-
-```cpp
-// In InputManager::update() - automatic coordinate conversion
-SDL_ConvertEventToRenderCoordinates(gameEngine.getRenderer(), &event);
-```
-
-**Benefits:**
-- **Automatic Scaling**: SDL3 handles logical presentation, scaling, and viewport
-- **Accurate Targeting**: Mouse clicks align properly with auto-sized components
-- **DPI Compatibility**: Works correctly on all display types
-- **No Manual Calculation**: Eliminates need for manual coordinate transformation
-
 ### Display-Aware Font Loading
 
-FontManager automatically calculates optimal font sizes:
+The auto-sizing system integrates with the DPI-aware font system for optimal text scaling:
 
 ```cpp
-// Automatic font size calculation in FontManager::loadFontsForDisplay()
-float baseSizeFloat = 22.0f;  // Base font size
+// FontManager automatically calculates DPI-scaled font sizes
+// See DPI_Aware_Font_System.md for complete details
 
-// Adjust for screen resolution
-if (windowWidth > 1920 || windowHeight > 1080) {
-    baseSizeFloat *= 1.2f; // 20% larger for high-res displays
-} else if (windowWidth < 1366 || windowHeight < 768) {
-    baseSizeFloat *= 0.9f; // 10% smaller for low-res displays
-}
+// Automatic DPI detection and font scaling
+float dpiScale = GameEngine::Instance().getDPIScale();
+int baseFontSize = static_cast<int>(std::round(24.0f * dpiScale / 2.0f) * 2.0f);
+int uiFontSize = static_cast<int>(std::round(18.0f * dpiScale / 2.0f) * 2.0f);
 
-// Calculate proportional sizes
-int baseFontSize = static_cast<int>(std::round(baseSizeFloat));      // 22pt
-int uiFontSize = static_cast<int>(std::round(baseSizeFloat * 0.875f)); // 19pt
-int titleFontSize = static_cast<int>(std::round(baseSizeFloat * 1.5f)); // 33pt
-int tooltipFontSize = static_cast<int>(std::round(baseSizeFloat * 0.5f)); // 11pt
+// Auto-sizing uses these DPI-scaled fonts for accurate measurements
+int width, height;
+FontManager::Instance().measureText("Sample Text", "fonts_UI_Arial", &width, &height);
 ```
 
 ## Performance Considerations
 
 ### Efficient Measurement
-- **Caching**: FontManager provides caching for font metrics
+- **FontManager Caching**: Caching for font metrics reduces recalculation
 - **Single Calculation**: Auto-sizing occurs once during component creation
 - **Lazy Evaluation**: Only recalculates when content actually changes
 
 ### Threading Compatibility
-- **Main Thread Only**: Auto-sizing operations occur on the main rendering thread
+- **Main Thread Only**: Auto-sizing operations occur on main rendering thread
 - **No Blocking**: Quick calculations don't impact frame rate
 - **Background Loading**: Font loading occurs in background threads
 
 ### Memory Efficiency
-- **Shared Resources**: FontManager instances are shared across all components
+- **Shared Resources**: FontManager instances shared across all components
 - **Smart Pointers**: Automatic memory management for font resources
 - **Minimal Overhead**: Auto-sizing properties add minimal memory footprint
 
@@ -263,44 +232,24 @@ ui.invalidateLayout("main_layout");  // Triggers recalculation of all child comp
 - Verify auto-sizing is enabled for the title
 - Check that title creation uses full window width
 
-**Mouse clicks misaligned:**
-- Ensure SDL_ConvertEventToRenderCoordinates() is being called
-- Verify logical presentation mode is set correctly
-- Check that input events are processed after coordinate conversion
-
 ### Debug Techniques
 
 ```cpp
 // Enable debug logging for specific components
 if (component->type == UIComponentType::BUTTON) {
-    UI_INFO("Auto-sizing button '" + component->id + "' with text '" + component->text + 
-           "': measured=" + std::to_string(contentWidth) + "x" + std::to_string(contentHeight));
+    std::cout << "Auto-sizing button '" << component->id << "' with text '" << component->text << 
+                 "': measured=" << contentWidth << "x" << contentHeight << std::endl;
 }
 
 // Verify font availability
 if (!FontManager::Instance().isFontLoaded("fonts_UI_Arial")) {
-    UI_ERROR("Required font not loaded");
+    std::cerr << "Required font not loaded" << std::endl;
 }
 
 // Check size constraints
-UI_INFO("Component bounds: " + std::to_string(component->bounds.width) + "x" + 
-        std::to_string(component->bounds.height) + 
-        ", min: " + std::to_string(component->minBounds.width) + "x" + 
-        std::to_string(component->minBounds.height));
+std::cout << "Component bounds: " << component->bounds.width << "x" << component->bounds.height << 
+             ", min: " << component->minBounds.width << "x" << component->minBounds.height << std::endl;
 ```
-
-## Future Enhancements
-
-### Planned Features
-- **Layout-Aware Sizing**: Auto-sizing that considers parent container constraints
-- **Content Prediction**: Pre-calculation of sizes for dynamic content
-- **Animation Support**: Smooth transitions when component sizes change
-- **Custom Measurement**: Support for custom content measurement functions
-
-### Extension Points
-- **Custom Sizing Algorithms**: Pluggable sizing strategies for different component types
-- **Content Observers**: Automatic detection of content changes
-- **Layout Constraints**: Integration with constraint-based layout systems
 
 ## API Reference
 
@@ -337,6 +286,6 @@ bool loadFontsForDisplay(const std::string& fontPath, int windowWidth, int windo
 
 ## Conclusion
 
-The Auto-Sizing System provides a robust, content-aware foundation for UI layout in the Forge Game Engine. By automatically calculating optimal component dimensions based on actual content and font metrics, it eliminates manual sizing calculations while ensuring consistent, professional-looking interfaces across all display types and resolutions.
+The Auto-Sizing System provides a robust foundation for content-aware UI layout. By automatically calculating optimal component dimensions based on actual content and font metrics, it eliminates manual sizing calculations while ensuring consistent, professional-looking interfaces across all display types and resolutions.
 
-The system's integration with SDL3's coordinate transformation and the engine's DPI detection ensures accurate input handling and crisp text rendering on all platforms, making it a powerful tool for creating responsive, accessible user interfaces.
+The system's integration with SDL3's coordinate transformation and the engine's DPI detection ensures accurate input handling and crisp text rendering on all platforms.
