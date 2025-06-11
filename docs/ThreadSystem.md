@@ -2,491 +2,422 @@
 
 ## Overview
 
-The ThreadSystem is a core component of the Forge Game Engine, providing thread pool management and task-based concurrency. It allows game systems to enqueue work that gets processed by a pool of worker threads, enabling performance benefits from multi-core processors while maintaining a simplified programming model. The system automatically manages its capacity and is designed to efficiently handle hundreds of concurrent tasks (see [Defining a Task](ThreadSystem_Optimization.md) for details). ThreadSystem serves as the unified threading framework used by various engine components, including the [EventManager](EventManager.md) and [AIManager](ai/AIManager.md). It supports priority-based task scheduling to ensure critical operations receive appropriate processing time.
+The ThreadSystem is a high-performance thread pool implementation that provides task-based concurrency for the Forge Game Engine. It enables multi-core performance benefits while maintaining a simplified programming model, with automatic worker allocation, priority-based scheduling, and seamless integration with engine components.
 
-## Features
+## Key Features
 
-- Thread pool with automatic sizing based on available CPU cores
-- Task-based programming model with simple enqueue interface
-- Support for fire-and-forget tasks and tasks with return values
-- Thread-safe operations with proper synchronization
-- Queue capacity reservation for memory optimization
-- Priority-based task scheduling (Critical, High, Normal, Low, Idle)
-- Clean shutdown with proper resource management
-- Integration with engine components such as EventManager and AIManager
+- **Automatic Thread Pool**: Sizing based on available CPU cores with worker budget allocation
+- **Priority-Based Scheduling**: Critical, High, Normal, Low, and Idle task priorities
+- **Task-Based Programming**: Simple enqueue interface for fire-and-forget and result-returning tasks
+- **Thread-Safe Operations**: Proper synchronization with shared_mutex and atomic operations
+- **Engine Integration**: Used by EventManager, AIManager, and other core systems
+- **Performance Monitoring**: Built-in statistics and queue management
+- **Clean Shutdown**: Proper resource management and graceful worker termination
 
-## Basic Usage
+## Quick Start
 
-### Initialization
+### Basic Initialization
 
 ```cpp
-// Initialize the thread system with default settings (1024 queue capacity, auto thread count)
+#include "core/ThreadSystem.hpp"
+
+// Initialize with default settings
 if (!Forge::ThreadSystem::Instance().init()) {
-    std::cerr << "Failed to initialize thread system!" << std::endl;
+    std::cerr << "Failed to initialize ThreadSystem!" << std::endl;
     return -1;
 }
 
 // Initialize with custom parameters
-if (!Forge::ThreadSystem::Instance().init(2048, 4, true)) {  // 2048 queue capacity, 4 threads, profiling enabled
-    std::cerr << "Failed to initialize thread system!" << std::endl;
+if (!Forge::ThreadSystem::Instance().init(2048, 4, true)) {  // Queue capacity, thread count, profiling
+    std::cerr << "Failed to initialize ThreadSystem!" << std::endl;
     return -1;
 }
 
-// Access information about the thread system
+// Check initialization status
 unsigned int threadCount = Forge::ThreadSystem::Instance().getThreadCount();
-std::cout << "Thread system initialized with " << threadCount << " threads" << std::endl;
+std::cout << "ThreadSystem initialized with " << threadCount << " threads" << std::endl;
 ```
 
-### Submitting Tasks
+### Basic Task Submission
 
 ```cpp
-// Simple fire-and-forget task with default (Normal) priority
+// Fire-and-forget task with default priority
 Forge::ThreadSystem::Instance().enqueueTask([]() {
-    // Task logic here
     std::cout << "Executing task on thread pool" << std::endl;
 });
 
 // Task with high priority
 Forge::ThreadSystem::Instance().enqueueTask([]() {
-    // High-priority task logic
-    std::cout << "Executing high-priority task" << std::endl;
-}, Forge::TaskPriority::High);
+    // Critical game logic here
+}, Forge::TaskPriority::High, "Critical Game Update");
 
-// Task with a return value and specific priority
-auto future = Forge::ThreadSystem::Instance().enqueueTaskWithResult([]() -> int {
-    // Task logic here
-    return 42;
-}, Forge::TaskPriority::Normal);
+// Task with return value
+auto future = Forge::ThreadSystem::Instance().enqueueTaskWithResult([](int value) -> int {
+    return value * 2;
+}, Forge::TaskPriority::Normal, "Math Calculation", 42);
 
-// Wait for and use the result
-int result = future.get();  // Blocks until the task completes
+int result = future.get();  // Will be 84
 ```
 
-## Integration with Engine Components
-
-ThreadSystem is designed to be the unified thread management solution for the Forge Game Engine. Multiple engine components integrate with ThreadSystem:
-
-### EventManager Integration
-
-The EventManager uses ThreadSystem for parallel event processing:
-
-```cpp
-// Initialize both systems
-Forge::ThreadSystem::Instance().init();
-EventManager::Instance().init();
-
-// EventManager automatically uses ThreadSystem when available
-// No explicit configuration needed - it detects ThreadSystem automatically
-
-// EventManager will now process events in parallel through ThreadSystem
-EventManager::Instance().update();
-```
-
-See [EventManager_ThreadSystem.md](EventManager_ThreadSystem.md) for detailed integration documentation.
-
-### AIManager Integration
-
-The AIManager similarly uses ThreadSystem for parallel AI behavior processing, allowing efficient scaling across available CPU cores:
-
-```cpp
-// Initialize both systems
-Forge::ThreadSystem::Instance().init();
-AIManager::Instance().init();
-
-// AIManager automatically uses ThreadSystem when available
-// No explicit configuration needed - it detects ThreadSystem automatically
-
-// AIManager will now process AI behaviors in parallel through ThreadSystem
-AIManager::Instance().updateManagedEntities();
-```
-
-See [AIManager.md](ai/AIManager.md) for detailed integration documentation.
-
-### Shutdown
-
-```cpp
-// Clean up the thread system when your application exits
-Forge::ThreadSystem::Instance().clean();
-```
-
-## Queue Capacity Management
-
-The ThreadSystem actively pre-allocates and manages memory for the task queue. This provides significant performance benefits by reducing memory fragmentation and eliminating allocation pauses during gameplay.
-
-### Setting Initial Capacity (Optional)
-
-```cpp
-// Initialize with default capacity (recommended approach - 4096 tasks)
-if (!Forge::ThreadSystem::Instance().init()) {
-    std::cerr << "Failed to initialize thread system!" << std::endl;
-    return -1;
-}
-
-// Specify custom initial capacity, thread count, and profiling
-if (!Forge::ThreadSystem::Instance().init(8192, 0, false)) {  // 8192 capacity, auto threads, no profiling
-    std::cerr << "Failed to initialize thread system!" << std::endl;
-    return -1;
-}
-```
-
-// Initialize with specific thread count
-if (!Forge::ThreadSystem::Instance().init(4096, 6, true)) {  // 4096 capacity, 6 threads, profiling enabled
-    std::cerr << "Failed to initialize thread system!" << std::endl;
-    return -1;
-}
-```
-
-### Adjusting Capacity at Runtime (Rarely Needed)
-
-```cpp
-// Reserve additional capacity if you know you'll submit many tasks
-bool success = Forge::ThreadSystem::Instance().reserveQueueCapacity(8192);
-if (!success) {
-    std::cerr << "Failed to reserve queue capacity (system may be shut down)" << std::endl;
-}
-```
-
-### Automatic Capacity Expansion
-
-The queue automatically expands its capacity when it reaches 90% of the current limit. When this happens:
-- The system temporarily stores existing tasks
-- Doubles the capacity
-- Reinserts the tasks in their proper priority order
-- This happens without any task loss or API interruption
-
-### Monitoring Queue Status
-
-```cpp
-// Check current capacity
-size_t capacity = Forge::ThreadSystem::Instance().getQueueCapacity();
-
-// Check current queue size
-size_t queueSize = Forge::ThreadSystem::Instance().getQueueSize();
-
-// Get task processing statistics
-size_t processed = Forge::ThreadSystem::Instance().getTotalTasksProcessed();
-size_t enqueued = Forge::ThreadSystem::Instance().getTotalTasksEnqueued();
-
-// Enable debug logging for detailed task information
-Forge::ThreadSystem::Instance().setDebugLogging(true);
-
-std::cout << "Queue usage: " << queueSize << "/" << capacity << std::endl;
-std::cout << "Tasks processed: " << processed << ", enqueued: " << enqueued << std::endl;
-```
-
-### Debug Logging
-
-```cpp
-// Enable debug logging during development
-Forge::ThreadSystem::Instance().setDebugLogging(true);
-
-// Now all task enqueuing will be logged with descriptions
-Forge::ThreadSystem::Instance().enqueueTask([]() {
-    // Task logic
-}, Forge::TaskPriority::High, "Update player AI");
-
-// Output: "Forge Game Engine - Enqueuing task: Update player AI"
-
-// Disable for production
-Forge::ThreadSystem::Instance().setDebugLogging(false);
-```
-
-## Memory Management Benefits
-
-### Reduced Fragmentation
-
-By pre-allocating the task queue's memory, the system significantly reduces memory fragmentation that would otherwise occur from frequent allocations and deallocations. This is particularly important for long-running applications like games.
-
-### Improved Cache Locality
-
-The contiguous memory layout of the pre-allocated queue improves cache performance when worker threads access tasks, leading to better throughput and reduced cache misses. The implementation specifically manages the underlying container to maintain this benefit.
-
-### Consistent Performance
-
-The system eliminates unexpected memory allocation during normal operation by:
-1. Pre-allocating memory during initialization
-2. Performing controlled growth when needed (doubling capacity)
-3. Managing reallocations during low-activity periods rather than during peak demand
-
-This helps maintain consistent performance during gameplay, avoiding hitches that would otherwise occur during unpredictable memory reallocation.
-
-## Best Practices
-
-1. **Use Default Capacity When Possible**
-   - For most games, the default capacity (1024) works well and adjusts automatically
-   - You rarely need to manually set or adjust the capacity
-
-2. **Focus on Task Design Instead of Capacity Management**
-   - Create appropriately sized tasks that perform meaningful work
-   - Let the thread system worry about queue management
-
-3. **Add Error Handling to Tasks**
-   - Always wrap task code in try-catch blocks to prevent crashes
-   - Report errors but allow the system to continue running
-
-4. **Monitor During Development**
-   - Use `getQueueSize()`, `getQueueCapacity()`, `getTotalTasksProcessed()`, and `getTotalTasksEnqueued()` during development to understand usage patterns
-   - If queue size regularly approaches capacity, consider optimizing your task design
-   - Enable profiling during development with `init(capacity, threadCount, true)` for detailed performance insights
-
-5. **Consider Task Granularity**
-   - Optimal task size is typically 0.1-1ms per task
-   - Too small tasks (<0.05ms) create excessive overhead
-   - Too large tasks (>5ms) can cause load imbalance
-   - See [ThreadSystem Task](ThreadSystem_Optimization.md) for detailed guidance
-
-6. **Add Proper Exception Handling**
-   - Always handle exceptions that might occur in threaded tasks
-   - Ensure your code is resilient to thread task failures
-
-7. **Use Debug Logging for Development**
-   - Enable debug logging with `Forge::ThreadSystem::Instance().setDebugLogging(true)` during development
-   - Provides detailed information about task enqueueing and execution
-   - Remember to disable in production builds for performance
-
-8. **Check System Status**
-   - Use `Forge::ThreadSystem::Exists()` to verify ThreadSystem is available before enqueueing tasks
-   - Useful for systems that may operate both with and without ThreadSystem
-
-## Example Scenarios
-
-### Game Entity Updates
-
-```cpp
-// Process game entities in parallel
-void updateEntities(const std::vector<std::shared_ptr<Entity>>& entities) {
-    // Submit update tasks - no need to manually reserve capacity
-    for (auto entity : entities) {
-        // Assign appropriate priority based on entity importance
-        Forge::TaskPriority priority = Forge::TaskPriority::Normal;
-
-        // Prioritize player-interactive entities
-        if (entity->isInteractingWithPlayer()) {
-            priority = Forge::TaskPriority::High;
-        }
-        // Use lower priority for distant/background entities
-        else if (entity->isDistantFromPlayer()) {
-            priority = Forge::TaskPriority::Low;
-        }
-
-        Forge::ThreadSystem::Instance().enqueueTask([entity]() {
-            try {
-                entity->update();
-            } catch (const std::exception& e) {
-                std::cerr << "Error updating entity: " << e.what() << std::endl;
-            }
-        }, priority);
-    }
-}
-```
-
-### Asset Loading
-
-```cpp
-// Load multiple assets in parallel
-void loadAssets(const std::vector<std::string>& assetPaths) {
-    // Pre-reserve the results vector (good practice)
-    std::vector<std::future<bool>> results;
-    results.reserve(assetPaths.size());
-
-    // Submit asset loading tasks - the ThreadSystem manages queue capacity
-    for (const auto& path : assetPaths) {
-        try {
-            results.push_back(
-                Forge::ThreadSystem::Instance().enqueueTaskWithResult(
-                    [path]() -> bool {
-                        try {
-                            return loadAssetFromDisk(path);
-                        } catch (const std::exception& e) {
-                            std::cerr << "Error loading asset " << path << ": " << e.what() << std::endl;
-                            return false;
-                        }
-                    }
-                )
-            );
-        } catch (const std::exception& e) {
-            std::cerr << "Failed to enqueue task for " << path << ": " << e.what() << std::endl;
-        }
-    }
-
-    // Wait for and process results
-    for (auto& future : results) {
-        try {
-            bool success = future.get();
-            // Handle result
-        } catch (const std::exception& e) {
-            std::cerr << "Exception during task execution: " << e.what() << std::endl;
-            // Handle failure
-        }
-    }
-}
-```
-
-## Technical Details
-
-The ThreadSystem uses a custom priority queue implementation with separate queues for each priority level. This design reduces lock contention and provides better memory management than standard containers. All operations are thread-safe with proper synchronization to ensure correct behavior in a multi-threaded environment.
-
-### Architecture Features
-- **Separate Priority Queues**: Each priority level has its own queue to minimize lock contention
-- **Automatic Thread Detection**: Uses `std::thread::hardware_concurrency() - 1` threads by default
-- **Graceful Shutdown**: Proper cleanup with timeout handling and pending task reporting
-- **Memory Pre-allocation**: Each priority queue reserves capacity to reduce runtime allocations
-- **Lock-free Checks**: Fast existence and shutdown detection without acquiring locks
-
-The implementation efficiently handles:
-- Task creation and enqueueing with priority-based ordering using separate priority queues
-- Intelligent memory pre-allocation and automatic growth when reaching 90% capacity
-- Thread-safe access to the task queue with minimal lock contention
-- Proper propagation of exceptions and return values
-- Automatic thread pool scaling based on available CPU cores
-
-Tasks are processed according to their priority level, with higher-priority tasks being executed before lower-priority ones. The system uses separate queues for each priority level to improve performance and reduce lock contention.
+## Task Priority System
 
 ### Priority Levels
 
-The ThreadSystem supports five priority levels for tasks:
+```cpp
+enum class TaskPriority : int {
+    Critical = 0,  // Mission-critical operations (engine core, critical AI)
+    High = 1,      // Important game operations (combat AI, player interactions)
+    Normal = 2,    // Standard game logic (background AI, standard processing)
+    Low = 3,       // Background operations (resource loading, non-critical updates)
+    Idle = 4       // Low-priority cleanup and maintenance tasks
+};
+```
 
-- `Forge::TaskPriority::Critical` (0): For mission-critical operations that must execute immediately
-- `Forge::TaskPriority::High` (1): For important tasks that need quick responses
-- `Forge::TaskPriority::Normal` (2): Default priority for standard tasks
-- `Forge::TaskPriority::Low` (3): For background or non-time-sensitive tasks
-- `Forge::TaskPriority::Idle` (4): For very low-priority tasks that should only run when the system is idle
+### Priority Usage Examples
 
-## Performance Characteristics
+```cpp
+// Critical: Engine core operations
+threadSystem.enqueueTask([]() {
+    updateCriticalGameState();
+}, Forge::TaskPriority::Critical, "Game State Update");
 
-The system is designed to efficiently handle hundreds of concurrent tasks with dynamic memory management for optimal memory usage and processing efficiency. The task queue starts with a default capacity of 1024 tasks distributed across priority levels and can automatically grow as needed.
+// High: Important AI or player interactions
+threadSystem.enqueueTask([]() {
+    updatePlayerCombat();
+}, Forge::TaskPriority::High, "Player Combat");
 
-The priority-based scheduling with separate queues ensures that critical tasks receive timely execution without being delayed by lower-priority work. This is especially important in games where some operations (like player input handling or AI for nearby enemies) need faster response times than others (like distant entity updates or background calculations).
+// Normal: Standard background processing
+threadSystem.enqueueTask([]() {
+    updateBackgroundNPCs();
+}, Forge::TaskPriority::Normal, "Background AI");
 
-Key performance features:
-- Separate priority queues reduce lock contention
-- Automatic capacity expansion at 90% utilization
-- Lock-free existence checks for shutdown detection
-- Efficient memory pre-allocation per priority level
-- Thread pool sizing based on available CPU cores (hardware_concurrency - 1)
-
-## Thread Safety
-
-All public methods of the ThreadSystem are thread-safe and can be called from any thread. The system handles proper synchronization internally, allowing game systems to enqueue tasks without additional synchronization.
-
-### Safe Shutdown Handling
-The ThreadSystem gracefully handles shutdown scenarios:
-- Tasks enqueued after shutdown are silently ignored (no crashes)
-- Pending tasks are reported during cleanup
-- Worker threads are properly joined with timeout protection
-- The system can be safely destroyed at application exit
-
-### Available Methods Summary
-- `init(queueCapacity, customThreadCount, enableProfiling)` - Initialize with custom parameters
-- `enqueueTask(task, priority, description)` - Submit fire-and-forget tasks
-- `enqueueTaskWithResult(function, priority, description, args...)` - Submit tasks with return values
-- `getThreadCount()` - Get number of worker threads
-- `getQueueSize()` / `getQueueCapacity()` - Monitor queue status
-- `getTotalTasksProcessed()` / `getTotalTasksEnqueued()` - Get processing statistics
-- `reserveQueueCapacity(capacity)` - Pre-allocate additional queue space
-- `setDebugLogging(enabled)` - Enable/disable detailed logging
-- `clean()` - Explicit cleanup (automatic in destructor)
-- `Exists()` - Check if system is available and not shut down
+// Low: Resource management
+threadSystem.enqueueTask([]() {
+    cleanupUnusedTextures();
+}, Forge::TaskPriority::Low, "Texture Cleanup");
+```
 
 ## Worker Budget System
 
-The ThreadSystem now includes a sophisticated worker budget allocation system to prevent resource contention between game subsystems. This system ensures fair thread distribution and prevents any single component from overwhelming the thread pool.
+### Allocation Strategy
 
-### Architecture Overview
+The ThreadSystem implements a sophisticated worker budget allocation to prevent resource contention:
 
-The worker budget system divides available threads among major engine subsystems:
-- **GameEngine**: Reserved workers for critical game loop operations
-- **AIManager**: Allocated workers for entity behavior processing
-- **EventManager**: Allocated workers for event processing
-- **Buffer**: Remaining workers for other tasks and system responsiveness
-
-### Budget Allocation Strategy
-
-The system uses a hierarchical allocation strategy:
-
-1. **GameEngine Reservation**: Always gets minimum required workers for critical operations
-2. **Percentage-Based Distribution**: Remaining workers distributed by percentage
-3. **Minimum Guarantees**: Each subsystem gets at least 1 worker
-4. **Buffer Maintenance**: Some workers left free for responsiveness
-
-### Worker Budget by Processor Count
-
-| Logical Cores | Total Workers | Engine | AI (60%) | Events (30%) | Buffer (10%) |
-|---------------|---------------|--------|----------|--------------|-------------- |
-| 2             | 1             | 1      | 1        | 0            | 0             |
-| 4             | 3             | 2      | 1        | 1            | 0             |
-| 6             | 5             | 2      | 1        | 1            | 1             |
-| 8             | 7             | 2      | 3        | 1            | 1             |
-| 12            | 11            | 2      | 5        | 2            | 2             |
-| 16            | 15            | 2      | 7        | 3            | 3             |
-| 24            | 23            | 2      | 13       | 6            | 2             |
-| 32            | 31            | 2      | 17       | 8            | 4             |
-
-*Note: ThreadSystem automatically reserves 1 core for the main thread (hardware_concurrency - 1)*
-
-### Implementation Details
-
-#### WorkerBudget Utility
-```cpp
-#include "core/WorkerBudget.hpp"
-
-// Calculate optimal allocation for current hardware
-Forge::WorkerBudget budget = Forge::calculateWorkerBudget(availableWorkers);
-
-// Access allocated worker counts
-size_t aiWorkers = budget.aiAllocated;      // 60% of remaining
-size_t eventWorkers = budget.eventAllocated; // 30% of remaining
-size_t engineWorkers = budget.engineReserved; // Minimum 2
+```
+Total Available Workers (hardware_concurrency - 1)
+├── GameEngine Reserved (1-2 workers for critical operations)
+└── Remaining Workers
+    ├── AIManager (60% of remaining)
+    ├── EventManager (30% of remaining)
+    └── Buffer (10% of remaining for system responsiveness)
 ```
 
-#### Queue Pressure Management
-Each subsystem monitors queue pressure to prevent overload:
+### Budget Calculation
 
 ```cpp
-size_t currentQueueSize = threadSystem.getQueueSize();
-size_t maxQueuePressure = availableWorkers * 2;
+// Automatic budget calculation based on hardware
+struct WorkerBudget {
+    size_t totalWorkers;      // Total available workers
+    size_t engineReserved;    // Reserved for critical GameEngine operations
+    size_t aiAllocated;       // Allocated for AIManager
+    size_t eventAllocated;    // Allocated for EventManager
+    size_t bufferReserved;    // Reserved for system responsiveness
+};
 
-if (currentQueueSize < maxQueuePressure) {
-    // Safe to submit batches
-    submitThreadedTasks();
+// Example allocations by core count:
+// 4 cores:  1 engine, 1 AI, 0 event, 1 buffer
+// 8 cores:  2 engine, 3 AI, 1 event, 1 buffer  
+// 12 cores: 2 engine, 5 AI, 3 event, 1 buffer
+// 24 cores: 2 engine, 13 AI, 6 event, 2 buffer
+```
+
+### Queue Pressure Management
+
+```cpp
+// System monitors queue pressure to prevent overload
+size_t queueSize = getQueueSize();
+size_t workerCount = getThreadCount();
+
+if (queueSize > workerCount * 3) {
+    // High pressure - fall back to single-threaded processing
+    processTasksSingleThreaded();
 } else {
-    // Fall back to single-threaded processing
-    processSingleThreaded();
+    // Normal load - use full parallel processing
+    processTasksParallel();
 }
 ```
 
-### Benefits
+## API Reference
 
-1. **Prevents Thread Starvation**: No single subsystem can monopolize workers
-2. **Hardware Adaptive**: Automatically scales with available processor cores
-3. **Performance Optimized**: Maintains high throughput while ensuring responsiveness
-4. **Graceful Degradation**: Falls back to single-threaded under pressure
-5. **System Stability**: Prevents ThreadSystem queue overflow
-
-### Performance Impact
-
-The worker budget system delivers significant performance improvements:
-- **AI Threading**: Up to 12x speedup on large entity counts
-- **Event Processing**: Efficient parallel processing without contention
-- **System Responsiveness**: GameEngine always has reserved workers
-- **Scalability**: Performance scales naturally with hardware
-
-### Best Practices for Subsystems
-
-1. **Respect Budget Limits**: Never submit more batches than allocated workers
-2. **Monitor Queue Pressure**: Check queue size before submitting large batches
-3. **Use Appropriate Priorities**: Critical tasks use `TaskPriority::Critical`
-4. **Graceful Fallback**: Implement single-threaded fallback paths
-5. **Batch Sizing**: Size batches appropriately for worker count
-
-### Configuration
-
-The worker budget percentages can be adjusted in `core/WorkerBudget.hpp`:
+### Core Methods
 
 ```cpp
-static constexpr size_t AI_WORKER_PERCENTAGE = 60;     // AI gets 60%
-static constexpr size_t EVENT_WORKER_PERCENTAGE = 30;  // Events get 30%
-static constexpr size_t ENGINE_MIN_WORKERS = 2;        // Engine minimum
+// Initialization and cleanup
+bool init(size_t queueCapacity = 1024, unsigned int customThreadCount = 0, bool enableProfiling = false);
+void clean();
+static bool Exists();
+
+// Task submission
+void enqueueTask(std::function<void()> task, TaskPriority priority = TaskPriority::Normal, const std::string& description = "");
+
+template<class F, class... Args>
+auto enqueueTaskWithResult(F&& f, TaskPriority priority = TaskPriority::Normal, const std::string& description = "", Args&&... args) 
+    -> std::future<typename std::invoke_result<F, Args...>::type>;
+
+// Status and information
+unsigned int getThreadCount() const;
+bool isBusy() const;
+bool isShutdown() const;
+size_t getQueueSize() const;
+size_t getCompletedTaskCount() const;
+
+// Configuration
+void setDebugLogging(bool enable);
+void reserveQueueCapacity(size_t capacity);
 ```
 
-This system ensures optimal performance across all hardware configurations while maintaining system stability and responsiveness.
+### Task Management
+
+```cpp
+// Queue management
+void reserveQueueCapacity(size_t capacity);  // Pre-allocate queue memory
+size_t getQueueSize() const;                 // Current queue size
+bool isBusy() const;                         // Check if tasks are pending
+
+// Performance monitoring
+size_t getCompletedTaskCount() const;        // Total completed tasks
+void setDebugLogging(bool enable);           // Enable detailed logging
+```
+
+## Engine Integration
+
+### AIManager Integration
+
+```cpp
+// AIManager uses ThreadSystem for entity batch processing
+class AIManager {
+    void updateEntitiesParallel(const std::vector<EntityData>& entities) {
+        size_t batchSize = calculateOptimalBatchSize(entities.size());
+        
+        for (size_t i = 0; i < entities.size(); i += batchSize) {
+            size_t end = std::min(i + batchSize, entities.size());
+            
+            Forge::ThreadSystem::Instance().enqueueTask([this, i, end, &entities]() {
+                processBatch(entities, i, end);
+            }, Forge::TaskPriority::Normal, "AI Batch Processing");
+        }
+    }
+};
+```
+
+### EventManager Integration
+
+```cpp
+// EventManager uses ThreadSystem for event processing
+class EventManager {
+    void processEventsParallel() {
+        if (m_eventQueue.size() > m_threadingThreshold) {
+            // Batch process events using ThreadSystem
+            Forge::ThreadSystem::Instance().enqueueTask([this]() {
+                processBatchedEvents();
+            }, Forge::TaskPriority::High, "Event Processing");
+        } else {
+            // Process on main thread for small batches
+            processEventsSequential();
+        }
+    }
+};
+```
+
+## Performance Optimization
+
+### Best Practices
+
+```cpp
+// ✅ GOOD: Group related tasks into batches
+std::vector<EntityPtr> entities = getEntitiesNeedingUpdate();
+size_t batchSize = entities.size() / threadCount;
+
+for (size_t i = 0; i < entities.size(); i += batchSize) {
+    threadSystem.enqueueTask([entities, i, batchSize]() {
+        processBatch(entities, i, batchSize);
+    }, Forge::TaskPriority::Normal, "Entity Batch");
+}
+
+// ✅ GOOD: Use appropriate priorities
+threadSystem.enqueueTask(criticalTask, Forge::TaskPriority::Critical);
+threadSystem.enqueueTask(backgroundTask, Forge::TaskPriority::Low);
+
+// ❌ BAD: Don't create excessive small tasks
+for (auto& entity : entities) {  // Creates thousands of tiny tasks
+    threadSystem.enqueueTask([&entity]() {
+        entity.update();
+    });
+}
+```
+
+### Performance Guidelines
+
+1. **Batch Size**: Create batches of 25-1000 items for optimal cache performance
+2. **Priority Usage**: Use Critical sparingly, Normal for most tasks, Low for cleanup
+3. **Queue Management**: Reserve queue capacity for known workloads
+4. **Memory Access**: Design tasks to minimize shared memory access
+5. **Task Granularity**: Balance between parallelism and overhead
+
+### Memory Optimization
+
+```cpp
+// Pre-allocate queue capacity for better performance
+threadSystem.reserveQueueCapacity(2048);  // Reserve space for 2048 tasks
+
+// Use move semantics to avoid unnecessary copies
+auto task = [data = std::move(largeData)]() mutable {
+    processData(std::move(data));
+};
+threadSystem.enqueueTask(std::move(task));
+```
+
+## Thread Safety
+
+### Safe Patterns
+
+```cpp
+// ✅ SAFE: Capture by value or move
+int value = 42;
+threadSystem.enqueueTask([value]() {  // Copy capture is safe
+    processValue(value);
+});
+
+// ✅ SAFE: Shared pointer for shared data
+auto sharedData = std::make_shared<GameData>();
+threadSystem.enqueueTask([sharedData]() {
+    processGameData(*sharedData);
+});
+
+// ❌ UNSAFE: Raw pointer or reference capture
+SomeObject obj;
+threadSystem.enqueueTask([&obj]() {  // obj might be destroyed
+    obj.process();  // Potential use-after-free
+});
+```
+
+### Thread-Safe Operations
+
+- **Task Submission**: All `enqueueTask` methods are thread-safe
+- **Status Queries**: All getter methods are thread-safe
+- **Configuration**: `setDebugLogging` and `reserveQueueCapacity` are thread-safe
+- **Shutdown**: `clean()` safely waits for all tasks to complete
+
+## Error Handling
+
+### Exception Safety
+
+```cpp
+// ThreadSystem handles exceptions in tasks gracefully
+threadSystem.enqueueTask([]() {
+    try {
+        riskyOperation();
+    } catch (const std::exception& e) {
+        // Log error but don't crash the thread pool
+        std::cerr << "Task failed: " << e.what() << std::endl;
+    }
+});
+
+// Future-based tasks propagate exceptions
+auto future = threadSystem.enqueueTaskWithResult([]() -> int {
+    throw std::runtime_error("Something went wrong");
+    return 42;
+});
+
+try {
+    int result = future.get();  // Will throw the exception
+} catch (const std::exception& e) {
+    std::cerr << "Task exception: " << e.what() << std::endl;
+}
+```
+
+## Integration Examples
+
+### Complete Game Loop Integration
+
+```cpp
+class GameEngine {
+public:
+    bool init() {
+        // Initialize ThreadSystem first
+        if (!Forge::ThreadSystem::Instance().init(2048, 0, true)) {
+            return false;
+        }
+        
+        // Initialize other systems that use ThreadSystem
+        if (!EventManager::Instance().init()) return false;
+        if (!AIManager::Instance().init()) return false;
+        
+        return true;
+    }
+    
+    void update(float deltaTime) {
+        // Submit background tasks
+        Forge::ThreadSystem::Instance().enqueueTask([this, deltaTime]() {
+            updateAI(deltaTime);
+        }, Forge::TaskPriority::High, "AI Update");
+        
+        Forge::ThreadSystem::Instance().enqueueTask([this]() {
+            processEvents();
+        }, Forge::TaskPriority::Normal, "Event Processing");
+        
+        // Continue with main thread work
+        updateMainSystems(deltaTime);
+    }
+    
+    void cleanup() {
+        // Clean up in reverse order
+        AIManager::Instance().clean();
+        EventManager::Instance().clean();
+        Forge::ThreadSystem::Instance().clean();  // Clean up last
+    }
+};
+```
+
+## Troubleshooting
+
+### Common Issues
+
+**Tasks not executing:**
+- Verify ThreadSystem is initialized with `init()`
+- Check that the system isn't shut down with `isShutdown()`
+- Ensure proper exception handling in tasks
+
+**Performance issues:**
+- Monitor queue size with `getQueueSize()`
+- Use appropriate task priorities
+- Batch small operations together
+- Avoid excessive task creation
+
+**Memory issues:**
+- Use `reserveQueueCapacity()` for known workloads
+- Avoid capturing large objects by reference
+- Use move semantics for large data
+
+### Debug Information
+
+```cpp
+// Monitor ThreadSystem performance
+void debugThreadSystem() {
+    auto& ts = Forge::ThreadSystem::Instance();
+    
+    std::cout << "Thread count: " << ts.getThreadCount() << std::endl;
+    std::cout << "Queue size: " << ts.getQueueSize() << std::endl;
+    std::cout << "Completed tasks: " << ts.getCompletedTaskCount() << std::endl;
+    std::cout << "Is busy: " << (ts.isBusy() ? "Yes" : "No") << std::endl;
+}
+
+// Enable detailed logging
+Forge::ThreadSystem::Instance().setDebugLogging(true);
+```
+
+## Conclusion
+
+The ThreadSystem provides a robust foundation for multi-threaded game development while maintaining simplicity and safety. Its integration with the worker budget system ensures optimal resource allocation across all engine components, while the priority system allows for fine-grained control over task execution order.
+
+The system scales from 2 to 32+ cores automatically and provides the performance foundation for AI processing, event handling, and other parallel operations throughout the engine.
