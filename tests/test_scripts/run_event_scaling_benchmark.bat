@@ -60,12 +60,12 @@ echo Output:
 echo   Results are saved to: !OUTPUT_FILE!
 echo   Console output shows real-time benchmark progress
 echo.
-echo The benchmark tests EventManager performance across multiple scales:
-echo   - Basic handler performance ^(small scale^)
-echo   - Medium scale performance ^(5K events, 25K handlers^)
-echo   - Comprehensive scalability suite
-echo   - Concurrency testing ^(multi-threaded^)
-echo   - Extreme scale testing ^(100K events, 5M handlers^)
+echo The benchmark tests EventManager WorkerBudget performance across multiple scales:
+echo   - Basic handler performance ^(small scale, single-threaded^)
+echo   - Medium scale performance ^(5K events, 25K handlers, WorkerBudget threading^)
+echo   - Comprehensive scalability suite ^(WorkerBudget resource allocation^)
+echo   - Concurrency testing ^(multi-threaded with 30%% worker allocation^)
+echo   - Extreme scale testing ^(WorkerBudget buffer utilization^)
 goto :eof
 
 :extract_performance_summary
@@ -74,6 +74,11 @@ call :print_status "Extracting performance summary..."
 
 echo.
 echo !BLUE!==== PERFORMANCE SUMMARY ====!NC!
+
+:: Extract WorkerBudget system information
+echo.
+echo !YELLOW!WorkerBudget System Configuration:!NC!
+findstr /c:"System Configuration:" /c:"WorkerBudget:" /c:"hardware threads" /c:"allocated to Events" "!OUTPUT_FILE!" 2>nul
 
 :: Check if extreme scale test exists
 findstr /c:"===== EXTREME SCALE TEST =====" "!OUTPUT_FILE!" >nul 2>&1
@@ -94,6 +99,7 @@ echo !YELLOW!Performance Metrics Found:!NC!
 findstr /c:"Total time:" "!OUTPUT_FILE!" 2>nul
 findstr /c:"Events per second:" "!OUTPUT_FILE!" 2>nul
 findstr /c:"Handler calls per second:" "!OUTPUT_FILE!" 2>nul
+findstr /c:"Threading mode:" "!OUTPUT_FILE!" 2>nul
 
 :: Check for test verification (using alternative characters that work in Windows)
 echo.
@@ -183,6 +189,7 @@ echo =======================================>> "!OUTPUT_FILE!"
 echo Date: %date% %time%>> "!OUTPUT_FILE!"
 echo Build Type: !BUILD_TYPE!>> "!OUTPUT_FILE!"
 echo System: %OS% %PROCESSOR_ARCHITECTURE%>> "!OUTPUT_FILE!"
+echo WorkerBudget System: EventManager receives 30%% of available workers>> "!OUTPUT_FILE!"
 echo.>> "!OUTPUT_FILE!"
 
 :: Run the benchmark
@@ -205,18 +212,18 @@ if "!VERBOSE!"=="true" (
 :: Check benchmark results
 if !BENCHMARK_RESULT! equ 0 (
     call :print_success "EventManager scaling benchmark completed successfully!"
-    
+
     :: Extract and display key performance metrics
     if exist "!OUTPUT_FILE!" (
         call :extract_performance_summary
-        
+
         echo.
         call :print_status "Detailed results saved to: !OUTPUT_FILE!"
-        
+
         :: Show file size for reference
         for %%f in ("!OUTPUT_FILE!") do set "FILE_SIZE=%%~zf"
         call :print_status "Output file size: !FILE_SIZE! bytes"
-        
+
         :: Quick verification that the benchmark actually ran
         findstr /c:"===== EXTREME SCALE TEST =====" "!OUTPUT_FILE!" >nul 2>&1
         if !ERRORLEVEL! equ 0 (
@@ -224,7 +231,7 @@ if !BENCHMARK_RESULT! equ 0 (
         ) else (
             call :print_warning "Extreme scale test may not have completed - check output file"
         )
-        
+
         :: Count total test results
         for /f %%i in ('findstr /c:"Performance Results" "!OUTPUT_FILE!" 2^>nul ^| find /c /v ""') do (
             if %%i gtr 0 (
@@ -234,20 +241,20 @@ if !BENCHMARK_RESULT! equ 0 (
             )
         )
     )
-    
+
     echo.
     call :print_success "EventManager scaling benchmark test completed!"
-    
+
     if "!VERBOSE!"=="false" (
         echo.
-        call :print_status "For detailed performance metrics, run with --verbose flag"
+        call :print_status "For detailed WorkerBudget performance metrics, run with --verbose flag"
         call :print_status "Or view the complete results: type !OUTPUT_FILE!"
     )
-    
+
     exit /b 0
 ) else (
     call :print_error "EventManager scaling benchmark failed with exit code: !BENCHMARK_RESULT!"
-    
+
     if exist "!OUTPUT_FILE!" (
         call :print_status "Check the output file for details: !OUTPUT_FILE!"
         :: Show last few lines of output for immediate debugging
@@ -258,6 +265,6 @@ if !BENCHMARK_RESULT! equ 0 (
             echo Use 'type !OUTPUT_FILE!' to view the complete output
         )
     )
-    
+
     exit /b !BENCHMARK_RESULT!
 )

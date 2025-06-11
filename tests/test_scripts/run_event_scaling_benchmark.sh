@@ -60,12 +60,12 @@ show_help() {
     echo "  Results are saved to: $OUTPUT_FILE"
     echo "  Console output shows real-time benchmark progress"
     echo ""
-    echo "The benchmark tests EventManager performance across multiple scales:"
-    echo "  - Basic handler performance (small scale)"
-    echo "  - Medium scale performance (5K events, 25K handlers)"
-    echo "  - Comprehensive scalability suite"
-    echo "  - Concurrency testing (multi-threaded)"
-    echo "  - Extreme scale testing (100K events, 5M handlers)"
+    echo "The benchmark tests EventManager WorkerBudget performance across multiple scales:"
+    echo "  - Basic handler performance (small scale, single-threaded)"
+    echo "  - Medium scale performance (5K events, 25K handlers, WorkerBudget threading)"
+    echo "  - Comprehensive scalability suite (WorkerBudget resource allocation)"
+    echo "  - Concurrency testing (multi-threaded with 30% worker allocation)"
+    echo "  - Extreme scale testing (WorkerBudget buffer utilization)"
 }
 
 # Parse command line arguments
@@ -133,6 +133,7 @@ echo "=======================================" >> "$OUTPUT_FILE"
 echo "Date: $(date)" >> "$OUTPUT_FILE"
 echo "Build Type: $BUILD_TYPE" >> "$OUTPUT_FILE"
 echo "System: $(uname -a)" >> "$OUTPUT_FILE"
+echo "WorkerBudget System: EventManager receives 30% of available workers" >> "$OUTPUT_FILE"
 echo "" >> "$OUTPUT_FILE"
 
 # Run the benchmark
@@ -149,14 +150,14 @@ else
     print_status "Running benchmark tests (use --verbose for detailed output)..."
     "$BENCHMARK_EXEC" >> "$OUTPUT_FILE" 2>&1 &
     BENCHMARK_PID=$!
-    
+
     # Show progress while benchmark runs
     while kill -0 $BENCHMARK_PID 2>/dev/null; do
         echo -n "."
         sleep 2
     done
     echo ""
-    
+
     wait $BENCHMARK_PID
     BENCHMARK_RESULT=$?
 fi
@@ -164,37 +165,47 @@ fi
 # Check benchmark results
 if [ $BENCHMARK_RESULT -eq 0 ]; then
     print_success "EventManager scaling benchmark completed successfully!"
-    
+
     # Extract and display key performance metrics
     if [ -f "$OUTPUT_FILE" ]; then
         echo ""
         print_status "Performance Summary:"
         echo ""
-        
-        # Extract key metrics from the output
-        grep -A 20 "EXTREME SCALE TEST" "$OUTPUT_FILE" | tail -15 || true
-        
+
+        # Extract WorkerBudget system information
+        print_status "WorkerBudget System Configuration:"
+        grep -E "System Configuration:|WorkerBudget:|hardware threads|allocated to Events" "$OUTPUT_FILE" | head -5 || true
+
+        echo ""
+        print_status "Threading Performance Analysis:"
+        grep -E "Threading mode:|Multi-threaded|Single-threaded" "$OUTPUT_FILE" | head -10 || true
+
+        echo ""
+        print_status "Key Performance Metrics:"
+        # Extract key metrics from the output including WorkerBudget information
+        grep -E "Performance Results|Total time:|Entity updates per second:|Threading mode:|WorkerBudget:" "$OUTPUT_FILE" | tail -15 || true
+
         echo ""
         print_status "Detailed results saved to: $OUTPUT_FILE"
-        
+
         # Show file size for reference
         FILE_SIZE=$(du -h "$OUTPUT_FILE" | cut -f1)
         print_status "Output file size: $FILE_SIZE"
     fi
-    
+
     echo ""
     print_success "EventManager scaling benchmark test completed!"
-    
+
     if [ "$VERBOSE" = false ]; then
         echo ""
-        print_status "For detailed performance metrics, run with --verbose flag"
+        print_status "For detailed WorkerBudget performance metrics, run with --verbose flag"
         print_status "Or view the complete results: cat $OUTPUT_FILE"
     fi
-    
+
     exit 0
 else
     print_error "EventManager scaling benchmark failed with exit code: $BENCHMARK_RESULT"
-    
+
     if [ -f "$OUTPUT_FILE" ]; then
         print_status "Check the output file for details: $OUTPUT_FILE"
         # Show last few lines of output for immediate debugging
@@ -202,6 +213,6 @@ else
         print_status "Last few lines of output:"
         tail -10 "$OUTPUT_FILE"
     fi
-    
+
     exit $BENCHMARK_RESULT
 fi

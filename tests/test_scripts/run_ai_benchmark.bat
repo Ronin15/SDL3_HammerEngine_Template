@@ -63,12 +63,12 @@ echo Output:
 echo   Results are saved to timestamped files in test_results directory
 echo   Console output shows real-time benchmark progress
 echo.
-echo The benchmark tests AI Manager performance across multiple scales:
-echo   - Basic AI performance ^(small entity count^)
-echo   - Threshold testing ^(automatic threading behavior^)
-echo   - Medium scale performance ^(1K entities^)
-echo   - Large scale testing ^(5K entities^)
-echo   - Stress testing ^(100K entities if --extreme^)
+echo The benchmark tests AI Manager WorkerBudget performance across multiple scales:
+echo   - Basic AI performance ^(small entity count, single-threaded^)
+echo   - Threshold testing ^(WorkerBudget automatic threading behavior^)
+echo   - Medium scale performance ^(1K entities, WorkerBudget threading^)
+echo   - Large scale testing ^(5K entities, WorkerBudget resource allocation^)
+echo   - Stress testing ^(WorkerBudget buffer utilization if --extreme^)
 goto :eof
 
 :extract_performance_summary
@@ -82,7 +82,7 @@ echo !BLUE!==== AI PERFORMANCE SUMMARY ====!NC!
 findstr /c:"===== REALISTIC PERFORMANCE TESTING =====" "!OUTPUT_FILE!" >nul 2>&1
 if !ERRORLEVEL! equ 0 (
     echo.
-    echo !YELLOW!AI Performance Test Results:!NC!
+    echo !YELLOW!AI WorkerBudget Performance Test Results:!NC!
 ) else (
     call :print_warning "AI performance test section not found in output"
     goto :extract_basic_metrics
@@ -90,10 +90,15 @@ if !ERRORLEVEL! equ 0 (
 
 :: Extract all performance metrics in order
 echo.
+echo !YELLOW!WorkerBudget System Configuration:!NC!
+findstr /c:"System Configuration:" /c:"WorkerBudget:" /c:"hardware threads" /c:"allocated to AI" "!OUTPUT_FILE!" 2>nul
+
+echo.
 echo !YELLOW!Performance Metrics Found:!NC!
 findstr /c:"Total time:" "!OUTPUT_FILE!" 2>nul | findstr /n "."
 findstr /c:"Entity updates per second:" "!OUTPUT_FILE!" 2>nul | findstr /n "."
 findstr /c:"Total behavior updates:" "!OUTPUT_FILE!" 2>nul | findstr /n "."
+findstr /c:"Threading mode:" "!OUTPUT_FILE!" 2>nul | findstr /n "."
 
 :extract_basic_metrics
 :: Check for scalability summary
@@ -124,14 +129,18 @@ if !ERRORLEVEL! equ 0 (
 
 :: Check for any threading behavior analysis
 echo.
-echo !YELLOW!Threading Analysis:!NC!
-findstr /c:"Automatic Single-Threaded" "!OUTPUT_FILE!" >nul 2>&1
+echo !YELLOW!WorkerBudget Threading Analysis:!NC!
+findstr /c:"Single-threaded" "!OUTPUT_FILE!" >nul 2>&1
 if !ERRORLEVEL! equ 0 (
     echo   Single-threaded mode performance detected
 )
-findstr /c:"Automatic Threading" "!OUTPUT_FILE!" >nul 2>&1
+findstr /c:"WorkerBudget Multi-threaded" /c:"Multi-threaded" "!OUTPUT_FILE!" >nul 2>&1
 if !ERRORLEVEL! equ 0 (
-    echo   Multi-threaded mode performance detected
+    echo   WorkerBudget multi-threaded mode performance detected
+)
+findstr /c:"WorkerBudget:" "!OUTPUT_FILE!" >nul 2>&1
+if !ERRORLEVEL! equ 0 (
+    echo   WorkerBudget resource allocation information found
 )
 
 :: Extract best performance numbers
@@ -224,6 +233,7 @@ echo ============================>> "!OUTPUT_FILE!"
 echo Date: %date% %time%>> "!OUTPUT_FILE!"
 echo Build Type: !BUILD_TYPE!>> "!OUTPUT_FILE!"
 echo System: %OS% %PROCESSOR_ARCHITECTURE%>> "!OUTPUT_FILE!"
+echo WorkerBudget System: AI receives 60%% of available workers>> "!OUTPUT_FILE!"
 if "!EXTREME_TEST!"=="true" (
     echo Extreme testing: ENABLED>> "!OUTPUT_FILE!"
 ) else (
@@ -283,18 +293,18 @@ if !ERRORLEVEL! equ 0 (
 :: Analyze results
 if !BENCHMARK_RESULT! equ 0 (
     call :print_success "AI scaling benchmark completed successfully!"
-    
+
     :: Extract and display key performance metrics
     if exist "!OUTPUT_FILE!" (
         call :extract_performance_summary
-        
+
         echo.
         call :print_status "Detailed results saved to: !OUTPUT_FILE!"
-        
+
         :: Show file size for reference
         for %%f in ("!OUTPUT_FILE!") do set "FILE_SIZE=%%~zf"
         call :print_status "Output file size: !FILE_SIZE! bytes"
-        
+
         :: Quick verification that the benchmark actually ran
         findstr /c:"===== REALISTIC PERFORMANCE TESTING =====" "!OUTPUT_FILE!" >nul 2>&1
         if !ERRORLEVEL! equ 0 (
@@ -302,7 +312,7 @@ if !BENCHMARK_RESULT! equ 0 (
         ) else (
             call :print_warning "AI performance test may not have completed - check output file"
         )
-        
+
         :: Count total test results
         for /f %%i in ('findstr /c:"Performance Results" "!OUTPUT_FILE!" 2^>nul ^| find /c /v ""') do (
             if %%i gtr 0 (
@@ -312,16 +322,16 @@ if !BENCHMARK_RESULT! equ 0 (
             )
         )
     )
-    
+
     echo.
     call :print_success "AI scaling benchmark test completed!"
-    
+
     if "!VERBOSE!"=="false" (
         echo.
         call :print_status "For detailed performance metrics, run with --verbose flag"
         call :print_status "Or view the complete results: type !OUTPUT_FILE!"
     )
-    
+
     :: Create performance metrics summary file
     set "METRICS_FILE=!RESULTS_DIR!\ai_benchmark_performance_metrics.txt"
     echo AI Performance Metrics Summary> "!METRICS_FILE!"
@@ -329,25 +339,32 @@ if !BENCHMARK_RESULT! equ 0 (
     echo Date: %date% %time%>> "!METRICS_FILE!"
     echo Build type: !BUILD_TYPE!>> "!METRICS_FILE!"
     echo.>> "!METRICS_FILE!"
-    
+
+    :: Extract WorkerBudget system information
+    echo WorkerBudget System Configuration:>> "!METRICS_FILE!"
+    findstr /c:"System Configuration:" /c:"WorkerBudget:" /c:"hardware threads" /c:"allocated to AI" "!OUTPUT_FILE!" >> "!METRICS_FILE!" 2>nul
+    echo.>> "!METRICS_FILE!"
+
     :: Extract key metrics to summary file
+    echo Performance Results:>> "!METRICS_FILE!"
     findstr /c:"Performance Results" "!OUTPUT_FILE!" >> "!METRICS_FILE!" 2>nul
     findstr /c:"Total time:" "!OUTPUT_FILE!" >> "!METRICS_FILE!" 2>nul
     findstr /c:"Entity updates per second:" "!OUTPUT_FILE!" >> "!METRICS_FILE!" 2>nul
     findstr /c:"Total behavior updates:" "!OUTPUT_FILE!" >> "!METRICS_FILE!" 2>nul
-    
+    findstr /c:"Threading mode:" "!OUTPUT_FILE!" >> "!METRICS_FILE!" 2>nul
+
     :: Extract scalability summary if available
     echo.>> "!METRICS_FILE!"
-    echo Scalability Analysis:>> "!METRICS_FILE!"
+    echo WorkerBudget Scalability Analysis:>> "!METRICS_FILE!"
     findstr /c:"REALISTIC SCALABILITY SUMMARY:" "!OUTPUT_FILE!" >> "!METRICS_FILE!" 2>nul
     findstr /c:"Entity Count" "!OUTPUT_FILE!" >> "!METRICS_FILE!" 2>nul
-    
+
     call :print_status "Performance metrics saved to: !METRICS_FILE!"
-    
+
     exit /b 0
 ) else (
     call :print_error "AI scaling benchmark failed with exit code: !BENCHMARK_RESULT!"
-    
+
     if exist "!OUTPUT_FILE!" (
         call :print_status "Check the output file for details: !OUTPUT_FILE!"
         :: Show last few lines of output for immediate debugging
@@ -358,6 +375,6 @@ if !BENCHMARK_RESULT! equ 0 (
             echo Use 'type !OUTPUT_FILE!' to view the complete output
         )
     )
-    
+
     exit /b !BENCHMARK_RESULT!
 )
