@@ -355,7 +355,7 @@ private:
     mutable std::mutex m_handlersMutex;
     std::atomic<bool> m_threadingEnabled{true};
     std::atomic<bool> m_initialized{false};
-    size_t m_threadingThreshold{1000}; // Thread only if more events than this
+    size_t m_threadingThreshold{50}; // Thread for medium+ event counts (consistent with buffer threshold)
 
     // Performance monitoring
     mutable std::array<PerformanceStats, static_cast<size_t>(EventTypeId::COUNT)> m_performanceStats;

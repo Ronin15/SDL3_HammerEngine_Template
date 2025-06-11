@@ -106,8 +106,8 @@ void EventManager::update() {
     auto startTime = getCurrentTimeNanos();
 
     // Update all event types in optimized batches
-    if (m_threadingEnabled.load() && getEventCount() > m_threadingThreshold) {
-        // Use threading for large event counts
+    if (m_threadingEnabled.load() && getEventCount() > 50) {
+        // Use threading for medium+ event counts (consistent with buffer threshold)
         updateEventTypeBatchThreaded(EventTypeId::Weather);
         updateEventTypeBatchThreaded(EventTypeId::SceneChange);
         updateEventTypeBatchThreaded(EventTypeId::NPCSpawn);
@@ -120,16 +120,15 @@ void EventManager::update() {
         updateEventTypeBatch(EventTypeId::Custom);
     }
 
-    // Record total update performance
+    // Simplified performance tracking - reduce lock contention
     auto endTime = getCurrentTimeNanos();
     double totalTimeMs = (endTime - startTime) / 1000000.0;
 
-    // Only log if update took significant time (>5ms) - eliminates normal frame noise
-    if (totalTimeMs > 5.0) {
+    // Only log severe performance issues (>10ms) to reduce noise
+    if (totalTimeMs > 10.0) {
         EVENT_DEBUG("EventManager update took " + std::to_string(totalTimeMs) + "ms (slow frame)");
     }
     m_lastUpdateTime.store(endTime);
-    (void)totalTimeMs; // Suppress unused warning
 }
 
 bool EventManager::registerEvent(const std::string& name, EventPtr event) {
@@ -371,24 +370,26 @@ void EventManager::updateEventTypeBatch(EventTypeId typeId) {
     std::shared_lock<std::shared_mutex> lock(m_eventsMutex);
     auto& container = m_eventsByType[static_cast<size_t>(typeId)];
 
-    // Only update events, don't execute them continuously
-    // Events should only execute when explicitly triggered
+    // Optimized single-threaded processing
     for (auto& eventData : container) {
         if (eventData.isActive() && eventData.event) {
-            // Just update the event state, no execution or handler calling
             eventData.event->update();
         }
     }
 
-    // Record performance
+    // Simplified performance recording - reduce overhead
     auto endTime = getCurrentTimeNanos();
     double timeMs = (endTime - startTime) / 1000000.0;
-    recordPerformance(typeId, timeMs);
+    
+    // Only record performance for operations that took significant time
+    if (timeMs > 1.0 || container.size() > 50) {
+        recordPerformance(typeId, timeMs);
+    }
 
-    // Only log if processing took significant time or there are many events
-    if (timeMs > 2.0 || container.size() > 10) {
+    // Only log significant performance issues (>5ms) to reduce noise
+    if (timeMs > 5.0) {
         EVENT_DEBUG("Updated " + std::to_string(container.size()) + " events of type " +
-                    std::string(getEventTypeName(typeId)) + " in " + std::to_string(timeMs) + "ms");
+                    std::string(getEventTypeName(typeId)) + " in " + std::to_string(timeMs) + "ms (slow)");
     }
 }
 
@@ -409,46 +410,43 @@ void EventManager::updateEventTypeBatchThreaded(EventTypeId typeId) {
         return;
     }
 
-    // Calculate EventManager's worker budget using centralized calculation
+    // Proper WorkerBudget calculation with architectural respect
     size_t availableWorkers = static_cast<size_t>(threadSystem.getThreadCount());
     Forge::WorkerBudget budget = Forge::calculateWorkerBudget(availableWorkers);
     size_t eventWorkerBudget = budget.eventAllocated;
 
-    // Check if we should use threading based on our budget and current queue pressure
+    // Optimized queue pressure check - respect ThreadSystem capacity
     size_t currentQueueSize = threadSystem.getQueueSize();
-    size_t maxQueuePressure = availableWorkers * 2; // Allow 2x worker count in queue
+    size_t maxQueuePressure = availableWorkers * 3; // Reasonable threshold
 
-    if (currentQueueSize < maxQueuePressure && container.size() > 10) {
-        // Calculate optimal worker count using buffer threads for high workloads
-        size_t optimalWorkerCount = budget.getOptimalWorkerCount(eventWorkerBudget, container.size(), 100);
+    // Use buffer capacity for high workloads (architectural alignment)
+    size_t optimalWorkerCount = budget.getOptimalWorkerCount(eventWorkerBudget, container.size(), 100);
+
+    // Only fallback if queue pressure is too high
+    if (currentQueueSize < maxQueuePressure && container.size() > 5) {
+        // Calculate batch size based on allocated workers (not fixed)
         size_t targetBatches = optimalWorkerCount;
-        
-        // Log buffer usage when it occurs
-        if (optimalWorkerCount > eventWorkerBudget && budget.hasBufferCapacity()) {
-            EVENT_DEBUG("Using buffer capacity: " + std::to_string(optimalWorkerCount) + 
-                       " workers (" + std::to_string(eventWorkerBudget) + " base + " + 
-                       std::to_string(optimalWorkerCount - eventWorkerBudget) + " buffer) for " + 
-                       std::to_string(container.size()) + " events");
-        }
+        size_t batchSize = std::max(size_t(10), container.size() / targetBatches);
 
-        // Use threaded processing with cache-friendly batching like AIManager
-        size_t optimalBatchSize = std::max(size_t(10), container.size() / targetBatches);
-
-        // Apply cache-friendly limits based on event count
+        // Apply reasonable limits for cache efficiency
         if (container.size() < 100) {
-            optimalBatchSize = std::min(optimalBatchSize, size_t(25));   // Small cache-friendly batches
+            batchSize = std::min(batchSize, size_t(30));
         } else if (container.size() < 1000) {
-            optimalBatchSize = std::min(optimalBatchSize, size_t(50));   // Medium batches
+            batchSize = std::min(batchSize, size_t(60));
         } else {
-            optimalBatchSize = std::min(optimalBatchSize, size_t(100));  // Larger batches for big workloads
+            batchSize = std::min(batchSize, size_t(100));
         }
 
         std::atomic<size_t> completedBatches{0};
         size_t batchesSubmitted = 0;
 
-        // Process ALL events, not just up to worker budget limit
-        for (size_t i = 0; i < container.size(); i += optimalBatchSize) {
-            size_t batchEnd = std::min(i + optimalBatchSize, container.size());
+        // Maintain reasonable priority based on event count
+        Forge::TaskPriority batchPriority = (container.size() >= 500) ? 
+            Forge::TaskPriority::Low : Forge::TaskPriority::Normal;
+
+        // Submit batches respecting WorkerBudget allocation
+        for (size_t i = 0; i < container.size(); i += batchSize) {
+            size_t batchEnd = std::min(i + batchSize, container.size());
 
             threadSystem.enqueueTask([&container, i, batchEnd, &completedBatches]() {
                 for (size_t j = i; j < batchEnd; ++j) {
@@ -457,61 +455,39 @@ void EventManager::updateEventTypeBatchThreaded(EventTypeId typeId) {
                     }
                 }
                 completedBatches.fetch_add(1, std::memory_order_relaxed);
-            }, Forge::TaskPriority::Normal, "Event_Batch_Update");
+            }, batchPriority, "Event_Batch");
 
             batchesSubmitted++;
         }
 
-        // Wait for all batches to complete with adaptive waiting strategy
+        // Optimized wait strategy - brief spin then yield
         if (batchesSubmitted > 0) {
-            auto waitStart = std::chrono::high_resolution_clock::now();
-            size_t waitIteration = 0;
+            size_t spinCount = 0;
             while (completedBatches.load(std::memory_order_relaxed) < batchesSubmitted) {
-                // Adaptive sleep: start with shorter sleeps, increase gradually
-                if (waitIteration < 10) {
-                    std::this_thread::sleep_for(std::chrono::microseconds(25));
-                } else if (waitIteration < 50) {
-                    std::this_thread::sleep_for(std::chrono::microseconds(50));
+                if (spinCount++ < 32) {
+                    std::this_thread::yield();
                 } else {
-                    std::this_thread::sleep_for(std::chrono::microseconds(100));
-                }
-                waitIteration++;
-
-                // Timeout protection
-                auto elapsed = std::chrono::high_resolution_clock::now() - waitStart;
-                if (elapsed > std::chrono::seconds(5)) {
-                    EVENT_WARN("Event batch completion timeout after 5 seconds");
-                    EVENT_WARN("Completed: " + std::to_string(completedBatches.load()) + "/" + std::to_string(batchesSubmitted));
-                    break;
+                    std::this_thread::sleep_for(std::chrono::microseconds(10));
                 }
             }
         }
-
-        // Only log threaded processing when using significant resources
-        if (container.size() > 50 || batchesSubmitted > 1) {
-            EVENT_DEBUG("Updated " + std::to_string(container.size()) + " events of type " +
-                        std::string(getEventTypeName(typeId)) + " using " + std::to_string(batchesSubmitted) +
-                        " batches (optimal size: " + std::to_string(optimalBatchSize) +
-                        ", budget: " + std::to_string(eventWorkerBudget) + ")");
-        }
     } else {
-        // Fall back to single-threaded processing
+        // Fallback to single-threaded
         for (auto& eventData : container) {
             if (eventData.isActive() && eventData.event) {
                 eventData.event->update();
             }
         }
-
-        // Only log fallback when it's significant
-        if (container.size() > 10) {
-            EVENT_DEBUG("Updated " + std::to_string(container.size()) + " events of type " +
-                        std::string(getEventTypeName(typeId)) + " (single-threaded fallback)");
-        }
     }
 
+    // Simplified performance recording - only record significant operations
     auto endTime = getCurrentTimeNanos();
     double timeMs = (endTime - startTime) / 1000000.0;
-    recordPerformance(typeId, timeMs);
+    
+    // Only record performance for operations that took significant time
+    if (timeMs > 1.0 || container.size() > 50) {
+        recordPerformance(typeId, timeMs);
+    }
 }
 
 void EventManager::processEventDirect(EventData& eventData) {
@@ -759,8 +735,15 @@ std::string EventManager::getEventTypeName(EventTypeId typeId) const {
 }
 
 void EventManager::recordPerformance(EventTypeId typeId, double timeMs) const {
-    std::lock_guard<std::mutex> lock(m_perfMutex);
-    m_performanceStats[static_cast<size_t>(typeId)].addSample(timeMs);
+    // Reduced lock contention - only update stats periodically
+    static thread_local uint64_t updateCounter = 0;
+    updateCounter++;
+    
+    // Only acquire lock every 10th call to reduce contention
+    if (updateCounter % 10 == 0 || timeMs > 5.0) {
+        std::lock_guard<std::mutex> lock(m_perfMutex);
+        m_performanceStats[static_cast<size_t>(typeId)].addSample(timeMs);
+    }
 }
 
 uint64_t EventManager::getCurrentTimeNanos() const {
