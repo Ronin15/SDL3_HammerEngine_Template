@@ -5,6 +5,7 @@
 
 #include "core/GameLoop.hpp"
 #include "core/Logger.hpp"
+#include "core/ThreadSystem.hpp"
 #include <exception>
 
 GameLoop::GameLoop(float targetFPS, float fixedTimestep, bool threaded)
@@ -13,9 +14,7 @@ GameLoop::GameLoop(float targetFPS, float fixedTimestep, bool threaded)
     , m_paused(false)
     , m_stopRequested(false)
     , m_threaded(threaded)
-    , m_updateThread(nullptr)
-    , m_updateThreadRunning(false)
-    , m_pendingUpdates(false)
+    , m_updateTaskRunning(false)
     , m_updateCount(0)
 {
 }
@@ -57,20 +56,28 @@ bool GameLoop::run() {
 
     try {
         if (m_threaded) {
-            // Start update thread
-            m_updateThreadRunning.store(true);
-            m_updateThread = std::make_unique<std::thread>(&GameLoop::runUpdateThread, this);
+            // Start update task using ThreadSystem
+            if (Forge::ThreadSystem::Exists()) {
+                m_updateTaskRunning.store(true);
+                Forge::ThreadSystem::Instance().enqueueTask(
+                    [this]() { runUpdateTask(); },
+                    Forge::TaskPriority::Critical,
+                    "GameLoop Update Task"
+                );
+            } else {
+                GAMELOOP_WARN("ThreadSystem not available, falling back to single-threaded mode");
+                m_threaded = false;
+            }
         }
 
         // Run main thread loop
         runMainThread();
 
         // Clean shutdown
-        if (m_threaded && m_updateThread) {
-            m_updateThreadRunning.store(false);
-            if (m_updateThread->joinable()) {
-                m_updateThread->join();
-            }
+        if (m_threaded) {
+            m_updateTaskRunning.store(false);
+            // Give update task time to finish
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
         }
 
         m_running.store(false);
@@ -152,13 +159,14 @@ void GameLoop::runMainThread() {
     }
 }
 
-void GameLoop::runUpdateThread() {
-    while (m_updateThreadRunning.load() && !m_stopRequested.load()) {
-        try {
-            if (!m_paused.load()) {
-                processUpdates();
-            }
+void GameLoop::runUpdateTask() {
+    try {
+        if (!m_paused.load()) {
+            processUpdates();
+        }
 
+        // Re-enqueue this task if still running
+        if (m_updateTaskRunning.load() && !m_stopRequested.load()) {
             // Calculate smart sleep time based on target FPS for reliable behavior
             // Sleep for approximately half the target frame time to balance responsiveness and CPU usage
             float targetFPS = m_timestepManager->getTargetFPS();
@@ -168,9 +176,25 @@ void GameLoop::runUpdateThread() {
             uint32_t sleepTimeMs = static_cast<uint32_t>(std::max(1.0f, std::min(8.0f, targetFrameTimeMs * 0.5f)));
             std::this_thread::sleep_for(std::chrono::milliseconds(sleepTimeMs));
 
-        } catch (const std::exception& e) {
-            GAMELOOP_ERROR("Exception in update thread: " + std::string(e.what()));
-            // Continue running, but log the error
+            // Re-enqueue the task
+            if (Forge::ThreadSystem::Exists()) {
+                Forge::ThreadSystem::Instance().enqueueTask(
+                    [this]() { runUpdateTask(); },
+                    Forge::TaskPriority::Critical,
+                    "GameLoop Update Task"
+                );
+            }
+        }
+
+    } catch (const std::exception& e) {
+        GAMELOOP_ERROR("Exception in update task: " + std::string(e.what()));
+        // Re-enqueue the task to continue running
+        if (m_updateTaskRunning.load() && !m_stopRequested.load() && Forge::ThreadSystem::Exists()) {
+            Forge::ThreadSystem::Instance().enqueueTask(
+                [this]() { runUpdateTask(); },
+                Forge::TaskPriority::Critical,
+                "GameLoop Update Task"
+            );
         }
     }
 }
@@ -229,14 +253,11 @@ void GameLoop::invokeRenderHandler(float interpolation) {
 }
 
 void GameLoop::cleanup() {
-    // Stop update thread if running
-    if (m_updateThread) {
-        m_updateThreadRunning.store(false);
-        if (m_updateThread->joinable()) {
-            m_updateThread->join();
-        }
-        m_updateThread.reset();
-    }
+    // Stop update task if running
+    m_updateTaskRunning.store(false);
+    
+    // Give update task time to finish
+    std::this_thread::sleep_for(std::chrono::milliseconds(20));
 
     // Clear callbacks
     {
