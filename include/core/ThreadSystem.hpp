@@ -469,7 +469,14 @@ public:
     }
 
     bool busy() const {
-        return !taskQueue.isEmpty();
+        // First check if there are queued tasks (fastest check)
+        if (!taskQueue.isEmpty()) {
+            return true;
+        }
+        
+        // If no queued tasks, check if any worker threads are actively processing
+        // This avoids atomic operations on the hot path by checking thread states
+        return m_activeTasks.load(std::memory_order_relaxed) > 0;
     }
 
     // Access the task queue for capacity management
@@ -510,6 +517,7 @@ private:
     std::vector<std::thread> m_workers{}; // Thread worker pool
     TaskQueue taskQueue{};
     std::atomic<bool> isRunning{true};
+    mutable std::atomic<size_t> m_activeTasks{0}; // Track actively running tasks (zero-overhead when no active tasks)
     mutable std::mutex m_mutex{}; // For thread-safe access to members
 
     void workerThread(size_t threadIndex = 0) {
@@ -547,6 +555,10 @@ private:
                 }
 
                 if (gotTask) {
+                    // Optimized: Only increment counter when we actually have work
+                    // This minimizes atomic operations for better cache performance
+                    const size_t activeCount = m_activeTasks.fetch_add(1, std::memory_order_relaxed) + 1;
+                    
                     // Track execution time for profiling
                     auto taskStartTime = std::chrono::steady_clock::now();
 
@@ -560,6 +572,9 @@ private:
                     } catch (...) {
                         THREADSYSTEM_ERROR("Unknown error in worker thread " + std::to_string(threadIndex));
                     }
+                    
+                    // Decrement with relaxed ordering - order doesn't matter for simple counting
+                    m_activeTasks.fetch_sub(1, std::memory_order_relaxed);
 
                     // Track execution time
                     auto taskEndTime = std::chrono::steady_clock::now();
@@ -574,6 +589,9 @@ private:
 
                     // Clear task after execution to free resources
                     task = nullptr;
+                    
+                    // Unused variable warning suppression
+                    (void)activeCount;
                 } else {
                     // No task available, check shutdown and then sleep briefly
                     if (!isRunning.load(std::memory_order_acquire)) {
