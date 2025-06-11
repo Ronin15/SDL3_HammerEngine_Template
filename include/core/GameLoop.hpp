@@ -10,7 +10,6 @@
 #include <functional>
 #include <memory>
 #include <atomic>
-#include <thread>
 #include <mutex>
 
 /**
@@ -141,18 +140,15 @@ private:
 
     // Threading
     bool m_threaded;
-    std::unique_ptr<std::thread> m_updateThread;
-    std::mutex m_updateMutex;
-    std::atomic<bool> m_updateThreadRunning;
-
+    std::atomic<bool> m_updateTaskRunning;
+    
     // Update synchronization for threaded mode
-    std::atomic<bool> m_pendingUpdates;
     std::atomic<int> m_updateCount;
     std::mutex m_callbackMutex;
 
     // Internal methods
     void runMainThread();
-    void runUpdateThread();
+    void runUpdateTask();
     void processEvents();
     void processUpdates();
     void processRender();
