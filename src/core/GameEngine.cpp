@@ -10,7 +10,6 @@
 #include <vector>
 #include <chrono>
 #include <future>
-#include <iostream>
 #include <thread>
 #include "SDL3/SDL_surface.h"
 #include "managers/AIManager.hpp"
@@ -352,15 +351,13 @@ texMgr.load("res/img", "", mp_renderer.get());
     try {
       allTasksSucceeded &= task.get();
     } catch (const std::exception& e) {
-      std::cerr << "Forge Game Engine - Initialization task failed: "
-                << e.what() << std::endl;
+      GAMEENGINE_ERROR("Initialization task failed: " + std::string(e.what()));
       allTasksSucceeded = false;
     }
   }
 
   if (!allTasksSucceeded) {
-    std::cerr << "Forge Game Engine - One or more initialization tasks failed"
-              << std::endl;
+    GAMEENGINE_ERROR("One or more initialization tasks failed");
     return false;
   }
 
@@ -373,7 +370,7 @@ texMgr.load("res/img", "", mp_renderer.get());
 
     // Validate that cached managers are properly initialized
     if (!mp_aiManager || !mp_eventManager) {
-      std::cerr << "Forge Game Engine - Error: One or more manager references are null!" << std::endl;
+      GAMEENGINE_CRITICAL("Error: One or more manager references are null!");
       return false;
     }
 
@@ -409,12 +406,12 @@ void GameEngine::setRunning(bool running) {
   if (auto gameLoop = m_gameLoop.lock()) {
     if (running) {
       // Can't restart GameLoop from GameEngine - this might be an error case
-      std::cerr << "Warning: Cannot start GameLoop from GameEngine - use GameLoop::run() instead" << std::endl;
+      GAMEENGINE_WARN("Cannot start GameLoop from GameEngine - use GameLoop::run() instead");
     } else {
       gameLoop->stop();
     }
   } else {
-    std::cerr << "Warning: No GameLoop set - cannot change running state" << std::endl;
+    GAMEENGINE_WARN("No GameLoop set - cannot change running state");
   }
 }
 
@@ -484,12 +481,12 @@ void GameEngine::update([[maybe_unused]] float deltaTime) {
       try {
         mp_aiManager->update(deltaTime);
       } catch (const std::exception& e) {
-        std::cerr << "Forge Game Engine - AIManager exception: " << e.what() << std::endl;
+        GAMEENGINE_ERROR("AIManager exception: " + std::string(e.what()));
       } catch (...) {
-        std::cerr << "Forge Game Engine - AIManager unknown exception" << std::endl;
+        GAMEENGINE_ERROR("AIManager unknown exception");
       }
     } else {
-      std::cerr << "Forge Game Engine - AIManager cache is null!" << std::endl;
+      GAMEENGINE_ERROR("AIManager cache is null!");
     }
 
     // Event system - global game events and world simulation (cached reference access)
@@ -497,12 +494,12 @@ void GameEngine::update([[maybe_unused]] float deltaTime) {
       try {
         mp_eventManager->update();
       } catch (const std::exception& e) {
-        std::cerr << "Forge Game Engine - EventManager exception: " << e.what() << std::endl;
+        GAMEENGINE_ERROR("EventManager exception: " + std::string(e.what()));
       } catch (...) {
-        std::cerr << "Forge Game Engine - EventManager unknown exception" << std::endl;
+        GAMEENGINE_ERROR("EventManager unknown exception");
       }
     } else {
-      std::cerr << "Forge Game Engine - EventManager cache is null!" << std::endl;
+      GAMEENGINE_ERROR("EventManager cache is null!");
     }
 
     // STATE-MANAGED SYSTEMS (Updated by individual states):
@@ -521,9 +518,9 @@ void GameEngine::update([[maybe_unused]] float deltaTime) {
     // Mark update as completed
     m_updateCompleted = true;
   } catch (const std::exception& e) {
-    std::cerr << "Forge Game Engine - Exception in update: " << e.what() << std::endl;
+    GAMEENGINE_ERROR("Exception in update: " + std::string(e.what()));
   } catch (...) {
-    std::cerr << "Forge Game Engine - Unknown exception in update" << std::endl;
+    GAMEENGINE_ERROR("Unknown exception in update");
   }
 
   m_updateRunning = false;
@@ -551,9 +548,9 @@ void GameEngine::render([[maybe_unused]] float interpolation) {
       // Increment rendered frame counter for fast synchronization
       m_lastRenderedFrame.fetch_add(1, std::memory_order_relaxed);
     } catch (const std::exception& e) {
-      std::cerr << "Forge Game Engine - Exception in render: " << e.what() << std::endl;
+      GAMEENGINE_ERROR("Exception in render: " + std::string(e.what()));
     } catch (...) {
-      std::cerr << "Forge Game Engine - Unknown exception in render" << std::endl;
+      GAMEENGINE_ERROR("Unknown exception in render");
     }
   }
 }
@@ -564,7 +561,7 @@ void GameEngine::waitForUpdate() {
   if (!m_updateCondition.wait_for(lock, std::chrono::milliseconds(100),
       [this] { return m_updateCompleted.load(std::memory_order_acquire); })) {
     // If timeout occurs, log a warning but continue
-    std::cerr << "Forge Game Engine - Warning: Update wait timeout with high entity count" << std::endl;
+    GAMEENGINE_WARN("Update wait timeout with high entity count");
     // Force the update completed flag to true to avoid deadlock
     m_updateCompleted.store(true, std::memory_order_release);
   }
@@ -627,9 +624,9 @@ void GameEngine::processBackgroundTasks() {
     // Example: Process non-critical background tasks
     // These tasks can run while the main thread is handling rendering
   } catch (const std::exception& e) {
-    std::cerr << "Forge Game Engine - Exception in background tasks: " << e.what() << std::endl;
+    GAMEENGINE_ERROR("Exception in background tasks: " + std::string(e.what()));
   } catch (...) {
-    std::cerr << "Forge Game Engine - Unknown exception in background tasks" << std::endl;
+    GAMEENGINE_ERROR("Unknown exception in background tasks");
   }
 }
 
@@ -689,8 +686,7 @@ void GameEngine::clean() {
 
   // Wait for any pending background tasks to complete
   if (!threadSystem.isShutdown()) {
-    std::cout
-        << "Forge Game Engine - Waiting for background tasks to complete...\n";
+    GAMEENGINE_INFO("Waiting for background tasks to complete...");
     while (threadSystem.isBusy()) {
       std::this_thread::sleep_for(std::chrono::milliseconds(1));  // Short delay to avoid busy waiting
     }
