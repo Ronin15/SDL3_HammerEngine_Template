@@ -724,5 +724,103 @@ BOOST_AUTO_TEST_CASE(TestExtremeEntityCount) {
     }
 }
 
+BOOST_AUTO_TEST_CASE(TestThreadSystemQueueLoad) {
+    std::cout << "\n===== THREAD SYSTEM QUEUE LOAD MONITORING =====" << std::endl;
+    std::cout << "DEFENSIVE TEST: Monitoring ThreadSystem queue to prevent future overload issues" << std::endl;
+    std::cout << "This test ensures AIManager respects ThreadSystem's 4096 task limit" << std::endl;
+    std::cout << "PURPOSE: Early warning system for code changes that might overwhelm ThreadSystem" << std::endl;
+    
+    if (!Forge::ThreadSystem::Exists()) {
+        BOOST_FAIL("ThreadSystem not available for queue monitoring test");
+    }
+    
+    auto& threadSystem = Forge::ThreadSystem::Instance();
+    std::cout << "ThreadSystem queue capacity: " << threadSystem.getQueueCapacity() << std::endl;
+    
+    // Test different entity counts and monitor queue usage
+    std::vector<int> testCounts = {500, 1000, 2000, 5000, 10000};
+    bool anyQueueGrowth = false;
+    
+    for (int entityCount : testCounts) {
+        std::cout << "\n--- Testing " << entityCount << " entities ---" << std::endl;
+        
+        AIScalingFixture fixture;
+        
+        size_t maxQueueSize = 0;
+        size_t totalQueueSamples = 0;
+        double avgQueueSize = 0.0;
+        bool queueOverflow = false;
+        std::vector<size_t> queueSnapshots;
+        
+        // Use runRealisticBenchmark to create entities and monitor during updates
+        (void)threadSystem.getQueueSize(); // Initial queue state (for monitoring baseline)
+        
+        // Create entities and run a few updates while monitoring
+        std::thread monitorThread([&]() {
+            for (int sample = 0; sample < 30; ++sample) { // More samples for better detection
+                size_t currentQueue = threadSystem.getQueueSize();
+                queueSnapshots.push_back(currentQueue);
+                maxQueueSize = std::max(maxQueueSize, currentQueue);
+                avgQueueSize = (avgQueueSize * totalQueueSamples + currentQueue) / (totalQueueSamples + 1);
+                totalQueueSamples++;
+                
+                if (currentQueue > 3500) { // Critical threshold - 85% of 4096
+                    queueOverflow = true;
+                }
+                if (currentQueue > 0) {
+                    anyQueueGrowth = true;
+                }
+                
+                std::this_thread::sleep_for(std::chrono::milliseconds(5)); // More frequent sampling
+            }
+        });
+        
+        // Run realistic benchmark with minimal updates to trigger task submission
+        fixture.runRealisticBenchmark(entityCount, 3, 5, 1);
+        
+        // Wait for monitoring to complete
+        monitorThread.join();
+        
+        (void)threadSystem.getQueueSize(); // Final queue state (monitoring complete)
+        
+        // Calculate more detailed statistics
+        size_t nonZeroSamples = std::count_if(queueSnapshots.begin(), queueSnapshots.end(), 
+                                             [](size_t q) { return q > 0; });
+        double queueUtilization = (maxQueueSize / 4096.0) * 100.0;
+        
+        std::cout << "  Results:" << std::endl;
+        std::cout << "    Peak queue size: " << maxQueueSize << " (" << std::fixed << std::setprecision(1) 
+                  << queueUtilization << "% of capacity)" << std::endl;
+        std::cout << "    Average queue size: " << std::fixed << std::setprecision(1) << avgQueueSize << std::endl;
+        std::cout << "    Non-zero queue samples: " << nonZeroSamples << "/" << queueSnapshots.size() << std::endl;
+        std::cout << "    Queue overflow risk: " << (queueOverflow ? "CRITICAL" : "SAFE") << std::endl;
+        
+        // DEFENSIVE ASSERTIONS - Will fail if future changes break queue management
+        BOOST_CHECK_LT(maxQueueSize, 4000); // Critical: Must stay below ThreadSystem limit
+        BOOST_CHECK_LT(queueUtilization, 85.0); // Warning: Should stay under 85% capacity
+        
+        if (queueOverflow) {
+            std::cout << "    ⚠️  CRITICAL: Queue approaching ThreadSystem limit!" << std::endl;
+            std::cout << "    ⚠️  Future code changes may have broken queue management!" << std::endl;
+        }
+        
+        if (maxQueueSize > 2000) {
+            std::cout << "    ⚠️  WARNING: High queue usage detected - monitor for performance impact" << std::endl;
+        }
+        
+        // Let queue drain between tests
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
+    
+    std::cout << "\n===== THREAD SYSTEM QUEUE MONITORING COMPLETED =====" << std::endl;
+    std::cout << "ThreadSystem queue capacity limit: 4096 tasks" << std::endl;
+    std::cout << "Queue growth detected: " << (anyQueueGrowth ? "YES" : "NO") << std::endl;
+    std::cout << "\n🛡️  DEFENSIVE TEST STATUS: " << std::endl;
+    std::cout << "   - This test will FAIL if future changes overwhelm ThreadSystem" << std::endl;
+    std::cout << "   - Peak queue >4000 = CRITICAL failure" << std::endl;
+    std::cout << "   - Peak queue >3500 = WARNING in logs" << std::endl;
+    std::cout << "   - Keep this test to catch regressions early!" << std::endl;
+}
+
 BOOST_AUTO_TEST_SUITE_END() // AIScalingTests
 }
