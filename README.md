@@ -596,7 +596,10 @@ Additional documentation can be found in the `docs/` directory:
 - **[SDL3 Logical Presentation Modes](docs/ui/SDL3_Logical_Presentation_Modes.md)** - Comprehensive guide to SDL3's logical presentation system and UIManager compatibility
 
 ### Threading System Documentation
-- **[ThreadSystem Overview](docs/ThreadSystem.md)** - Core documentation for the ThreadSystem component with usage examples and best practices
+- **[ThreadSystem Overview](docs/ThreadSystem.md)** - Complete threading system documentation with WorkerBudget allocation, work-stealing load balancing, and priority scheduling
+- **[ThreadSystem Analysis](docs/ThreadSystem_Analysis.md)** - Comprehensive implementation analysis with performance benchmarks and architectural decisions
+- **[ThreadSystem Summary](docs/ThreadSystem_Summary.md)** - Practical usage guide with examples and best practices
+- **[Work-Stealing Quick Reference](docs/ThreadSystem_WorkStealing_QuickReference.md)** - Advanced work-stealing system achieving 90%+ load balancing efficiency
 
 ### Utility Systems Documentation
 - **[Binary Serialization](docs/SERIALIZATION.md)** - Fast, header-only serialization system for game data
