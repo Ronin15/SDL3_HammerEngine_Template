@@ -133,13 +133,9 @@ void UIExampleState::render(float deltaTime) {
 bool UIExampleState::exit() {
     std::cout << "Exiting UI Example State\n";
     
-    // Clean up all UI components efficiently
+    // Clean up UI components using simplified method
     auto& ui = UIManager::Instance();
-    ui.removeComponentsWithPrefix("uiexample_");
-    ui.removeOverlay();
-    
-    // Reset theme to prevent contamination of other states (UIExampleState changes themes)
-    ui.resetToDefaultTheme();
+    ui.prepareForStateTransition();
     
     return true;
 }

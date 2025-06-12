@@ -71,12 +71,9 @@ void OverlayDemoState::render(float deltaTime) {
 bool OverlayDemoState::exit() {
     std::cout << "Exiting Overlay Demo State\n";
 
-    // Clean up all components using UIManager
+    // Clean up UI components using simplified method
     auto& ui = UIManager::Instance();
-    ui.removeComponentsWithPrefix("overlay_demo_"); // Remove all demo components
-    ui.removeComponentsWithPrefix("overlay_control_"); // Remove all control components
-    ui.removeOverlay();
-    ui.resetToDefaultTheme(); // Reset theme state
+    ui.prepareForStateTransition();
 
     return true;
 }

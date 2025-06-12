@@ -368,6 +368,9 @@ public:
     void removeComponentsWithPrefix(const std::string& prefix);
     void resetToDefaultTheme();
     void cleanupForStateTransition();
+    
+    // Simplified state transition method
+    void prepareForStateTransition();
 
     // Auto-sizing core methods
     void calculateOptimalSize(const std::string& id);                    // Calculate and apply optimal size for component

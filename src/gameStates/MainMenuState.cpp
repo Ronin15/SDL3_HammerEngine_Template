@@ -93,9 +93,9 @@ void MainMenuState::render(float deltaTime) {
 bool MainMenuState::exit() {
   std::cout << "Forge Game Engine - Exiting MAIN MENU State\n";
   
-  // Clean up all UI components efficiently
+  // Clean up UI components using simplified method
   auto& ui = UIManager::Instance();
-  ui.removeComponentsWithPrefix("mainmenu_");
+  ui.prepareForStateTransition();
   
   return true;
 }

@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <cstring>
 
+
 #ifdef _MSC_VER
     #include <intrin.h>
     #define SIMD_AVAILABLE
@@ -110,6 +111,27 @@ void AIManager::clean() {
     m_frameCounter.store(0, std::memory_order_relaxed);
 
     AI_LOG("AIManager shutdown complete");
+}
+
+void AIManager::prepareForStateTransition() {
+    AI_LOG("Preparing AIManager for state transition...");
+    
+    // Pause AI processing to prevent new tasks
+    m_globallyPaused.store(true, std::memory_order_release);
+    
+    // Process any pending messages
+    processMessageQueue();
+    
+    // Clean up all entities safely
+    cleanupAllEntities();
+    
+    // Clear managed entities list
+    {
+        std::unique_lock<std::shared_mutex> lock(m_entitiesMutex);
+        m_managedEntities.clear();
+    }
+    
+    AI_LOG("AIManager prepared for state transition");
 }
 
 void AIManager::update([[maybe_unused]] float deltaTime) {
@@ -787,6 +809,30 @@ void AIManager::cleanupInactiveEntities() {
     }
     
     AI_DEBUG("Cleaned up " + std::to_string(toRemove.size()) + " inactive entities");
+}
+
+void AIManager::cleanupAllEntities() {
+    std::unique_lock<std::shared_mutex> lock(m_entitiesMutex);
+    
+    // Clean all behaviors
+    for (size_t i = 0; i < m_storage.size(); ++i) {
+        if (m_storage.behaviors[i] && m_storage.entities[i]) {
+            try {
+                m_storage.behaviors[i]->clean(m_storage.entities[i]);
+            } catch (const std::exception& e) {
+                AI_ERROR("Exception cleaning behavior: " + std::string(e.what()));
+            }
+        }
+    }
+    
+    // Clear all storage
+    m_storage.hotData.clear();
+    m_storage.entities.clear();
+    m_storage.behaviors.clear();
+    m_storage.lastUpdateTimes.clear();
+    m_entityToIndex.clear();
+    
+    AI_DEBUG("Cleaned up all entities for state transition");
 }
 
 void AIManager::recordPerformance(BehaviorType type, double timeMs, uint64_t entities) {
