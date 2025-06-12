@@ -2,7 +2,19 @@
 
 ## Overview
 
-The UIManager is a comprehensive UI system for SDL3 games that provides reusable UI components with professional theming, auto-sizing, animations, and event handling. It features a single-threaded architecture optimized for 2D strategy and simulation games.
+The UIManager is a comprehensive UI system for SDL3 games that provides reusable UI components with professional theming, content-aware auto-sizing, animations, and event handling. Key features include:
+
+1. **Content-Aware Auto-Sizing** - Components automatically size to fit their content
+2. **Professional Theme System** - Light, dark, and custom themes with automatic styling
+3. **Smart Text Backgrounds** - Configurable text background colors and padding
+4. **Comprehensive Component Types** - Buttons (including semantic variants), labels, titles, input fields, progress bars, sliders, checkboxes, lists, event logs, images, tooltips, dialogs, and modals
+5. **Layout System** - Multiple layout types: Absolute, Flow, Grid, Stack, and Anchor
+6. **Animation System** - Move and color animations with completion callbacks
+7. **Event Handling** - Both callback-based and state-based event handling
+8. **Modal Management** - Create and manage modal dialogs with automatic background handling
+9. **Component Management** - Efficient cleanup, visibility control, and state management
+10. **Z-Order Management** - Automatic depth sorting for proper rendering order
+11. **Single-Threaded Architecture** - Optimized for 2D strategy and simulation games
 
 ## Quick Start
 
@@ -633,53 +645,208 @@ public:
 
 ## API Reference
 
-### Core Methods
+### Core Initialization Methods
 
 ```cpp
-// Component creation (auto-sizing with width/height = 0)
-void createButton(const std::string& id, const UIRect& bounds, const std::string& text);
-void createButtonDanger/Success/Warning(const std::string& id, const UIRect& bounds, const std::string& text);
-void createLabel(const std::string& id, const UIRect& bounds, const std::string& text);
-void createTitle(const std::string& id, const UIRect& bounds, const std::string& text);
-void createInputField(const std::string& id, const UIRect& bounds, const std::string& placeholder);
-void createProgressBar(const std::string& id, const UIRect& bounds, float min, float max);
-void createSlider(const std::string& id, const UIRect& bounds, float min, float max);
-void createList(const std::string& id, const UIRect& bounds);
-void createEventLog(const std::string& id, const UIRect& bounds, int maxEntries);
+bool init()                              // Initialize UIManager
+void clean()                            // Clean shutdown
+bool isShutdown() const                 // Check shutdown state
+void update(float deltaTime)            // Update animations and input
+void render(SDL_Renderer* renderer)    // Render all components
+void render()                           // Render using cached renderer
+void setRenderer(SDL_Renderer* renderer) // Set cached renderer
+SDL_Renderer* getRenderer() const      // Get cached renderer
+```
 
-// Component management
+### Component Creation Methods
+
+```cpp
+// Buttons and semantic variants
+void createButton(const std::string& id, const UIRect& bounds, const std::string& text = "");
+void createButtonDanger(const std::string& id, const UIRect& bounds, const std::string& text = "");
+void createButtonSuccess(const std::string& id, const UIRect& bounds, const std::string& text = "");
+void createButtonWarning(const std::string& id, const UIRect& bounds, const std::string& text = "");
+
+// Text components
+void createLabel(const std::string& id, const UIRect& bounds, const std::string& text = "");
+void createTitle(const std::string& id, const UIRect& bounds, const std::string& text);
+
+// Input components
+void createInputField(const std::string& id, const UIRect& bounds, const std::string& placeholder = "");
+void createCheckbox(const std::string& id, const UIRect& bounds, const std::string& text = "");
+void createSlider(const std::string& id, const UIRect& bounds, float minVal = 0.0f, float maxVal = 1.0f);
+
+// Visual components
+void createPanel(const std::string& id, const UIRect& bounds);
+void createProgressBar(const std::string& id, const UIRect& bounds, float minVal = 0.0f, float maxVal = 1.0f);
+void createImage(const std::string& id, const UIRect& bounds, const std::string& textureID = "");
+
+// Container components
+void createList(const std::string& id, const UIRect& bounds);
+void createEventLog(const std::string& id, const UIRect& bounds, int maxEntries = 5);
+void createDialog(const std::string& id, const UIRect& bounds);
+void createTooltip(const std::string& id, const std::string& text = "");
+
+// Modal system
+void createModal(const std::string& dialogId, const UIRect& bounds, const std::string& theme, int windowWidth, int windowHeight);
+void createOverlay(const std::string& id, int windowWidth, int windowHeight);
+void removeOverlay();
+```
+
+### Component Management
+
+```cpp
 void removeComponent(const std::string& id);
 void removeComponentsWithPrefix(const std::string& prefix);
 void clearAllComponents();
 bool hasComponent(const std::string& id) const;
-
-// Properties
-void setText(const std::string& id, const std::string& text);
-void setValue(const std::string& id, float value);
 void setComponentVisible(const std::string& id, bool visible);
 void setComponentEnabled(const std::string& id, bool enabled);
+void setComponentBounds(const std::string& id, const UIRect& bounds);
+void setComponentZOrder(const std::string& id, int zOrder);
+```
 
-// Events
+### Property Setters and Getters
+
+```cpp
+// Setters
+void setText(const std::string& id, const std::string& text);
+void setTexture(const std::string& id, const std::string& textureID);
+void setValue(const std::string& id, float value);
+void setChecked(const std::string& id, bool checked);
+void setStyle(const std::string& id, const UIStyle& style);
+
+// Getters
+std::string getText(const std::string& id) const;
+float getValue(const std::string& id) const;
+bool getChecked(const std::string& id) const;
+UIRect getBounds(const std::string& id) const;
+UIState getComponentState(const std::string& id) const;
+```
+
+### Event Handling
+
+```cpp
+// Callback registration
 void setOnClick(const std::string& id, std::function<void()> callback);
 void setOnValueChanged(const std::string& id, std::function<void(float)> callback);
 void setOnTextChanged(const std::string& id, std::function<void(const std::string&)> callback);
+void setOnHover(const std::string& id, std::function<void()> callback);
+void setOnFocus(const std::string& id, std::function<void()> callback);
 
 // State checking
-bool isButtonClicked(const std::string& id);
-bool isButtonHovered(const std::string& id);
-bool isComponentFocused(const std::string& id);
+bool isButtonClicked(const std::string& id) const;
+bool isButtonPressed(const std::string& id) const;
+bool isButtonHovered(const std::string& id) const;
+bool isComponentFocused(const std::string& id) const;
+```
 
-// Theme management
-void setThemeMode(const std::string& mode);  // "light" or "dark"
+### Layout System
+
+```cpp
+void createLayout(const std::string& id, UILayoutType type, const UIRect& bounds);
+void addComponentToLayout(const std::string& layoutId, const std::string& componentId);
+void removeComponentFromLayout(const std::string& layoutId, const std::string& componentId);
+void updateLayout(const std::string& layoutId);
+void setLayoutSpacing(const std::string& layoutId, int spacing);
+void setLayoutColumns(const std::string& layoutId, int columns);
+void setLayoutAlignment(const std::string& layoutId, UIAlignment alignment);
+```
+
+### Specialized Component Features
+
+```cpp
+// Progress bars
+void updateProgressBar(const std::string& id, float value);
+void setProgressBarRange(const std::string& id, float minVal, float maxVal);
+
+// Lists
+void addListItem(const std::string& id, const std::string& item);
+void removeListItem(const std::string& id, int index);
+void clearList(const std::string& id);
+int getSelectedListItem(const std::string& id) const;
+void setSelectedListItem(const std::string& id, int index);
+void setListMaxItems(const std::string& id, int maxItems);
+void addListItemWithAutoScroll(const std::string& id, const std::string& item);
+void clearListItems(const std::string& id);
+
+// Event logs
+void addEventLogEntry(const std::string& id, const std::string& entry);
+void clearEventLog(const std::string& id);
+void setEventLogMaxEntries(const std::string& id, int maxEntries);
+void setupDemoEventLog(const std::string& id);
+void enableEventLogAutoUpdate(const std::string& id, bool enable);
+void disableEventLogAutoUpdate(const std::string& id);
+
+// Title alignment
+void setTitleAlignment(const std::string& id, UIAlignment alignment);
+void centerTitleInContainer(const std::string& id, int containerWidth);
+
+// Input fields
+void setInputFieldPlaceholder(const std::string& id, const std::string& placeholder);
+void setInputFieldMaxLength(const std::string& id, int maxLength);
+bool isInputFieldFocused(const std::string& id) const;
+```
+
+### Animation System
+
+```cpp
+void animateMove(const std::string& id, const UIRect& targetBounds, float duration, std::function<void()> onComplete = nullptr);
+void animateColor(const std::string& id, const SDL_Color& targetColor, float duration, std::function<void()> onComplete = nullptr);
+void stopAnimation(const std::string& id);
+bool isAnimating(const std::string& id) const;
+```
+
+### Theme Management
+
+```cpp
+void loadTheme(const std::string& themeName);
+void setDefaultTheme();
+void setLightTheme();
+void setDarkTheme();
+void setThemeMode(const std::string& mode);
+std::string getCurrentThemeMode() const;
+void applyThemeToComponent(const std::string& id, UIComponentType type);
+void setGlobalStyle(const UIStyle& style);
+void refreshAllComponentThemes();
 void resetToDefaultTheme();
-void createModal(const std::string& id, const UIRect& bounds, const std::string& theme, int windowWidth, int windowHeight);
-void createOverlay(int windowWidth, int windowHeight);
-void removeOverlay();
+```
 
-// System methods
-void update(float deltaTime);
-void render(SDL_Renderer* renderer);
-bool isShutdown() const;
+### Text Background Features
+
+```cpp
+void enableTextBackground(const std::string& id, bool enable);
+void setTextBackgroundColor(const std::string& id, const SDL_Color& color);
+void setTextBackgroundPadding(const std::string& id, int padding);
+```
+
+### Auto-Sizing and Layout
+
+```cpp
+void calculateOptimalSize(const std::string& id);
+void calculateOptimalSize(const std::string& id, int maxWidth, int maxHeight);
+bool measureComponentContent(const std::string& id, int& outWidth, int& outHeight);
+void invalidateLayout(const std::string& id);
+void recalculateLayout(const std::string& id);
+void enableAutoSizing(const std::string& id, bool autoWidth, bool autoHeight);
+void setAutoSizingConstraints(const std::string& id, const UIRect& minBounds, const UIRect& maxBounds);
+```
+
+### Global Settings
+
+```cpp
+void setGlobalFont(const std::string& fontID);
+void setGlobalScale(float scale);
+float getGlobalScale() const;
+void enableTooltips(bool enable);
+void setTooltipDelay(float delay);
+```
+
+### State Transition Support
+
+```cpp
+void cleanupForStateTransition();
+void prepareForStateTransition();
 ```
 
 This UIManager system provides everything needed for sophisticated game UIs while maintaining simplicity and professional appearance out-of-the-box. The content-aware auto-sizing, professional theming, and single-threaded architecture make it ideal for 2D strategy and simulation games.

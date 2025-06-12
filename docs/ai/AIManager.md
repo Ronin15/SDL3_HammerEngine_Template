@@ -6,15 +6,18 @@ The AI Manager is a high-performance, unified system for managing autonomous beh
 
 1. **Cross-Platform Performance** - Windows performance fix with asynchronous processing for 60+ FPS
 2. **Non-Blocking AI Processing** - Fire-and-forget threading prevents main thread blocking
-3. **Unified Spatial System** - Single `AIEntityData` structure with cache-friendly batch processing
+3. **Cache-Friendly Structure of Arrays (SoA)** - Hot/cold data separation for optimal cache efficiency
 4. **Distance-based optimization** - Frame skipping for distant entities based on player distance
-5. **Priority-based management** - Higher priority entities get larger distance thresholds
+5. **Priority-based management** - Higher priority entities get larger distance thresholds (0-9 scale)
 6. **Individual behavior instances** - Each entity gets its own behavior state via clone()
-7. **Threading & Batching** - Automatic batch processing with ThreadSystem integration
-8. **Type-indexed behaviors** - Fast behavior dispatch using enumerated types
-9. **Message queue system** - Asynchronous communication with behaviors
+7. **Threading & Batching** - Automatic batch processing with ThreadSystem and WorkerBudget integration
+8. **Type-indexed behaviors** - Fast behavior dispatch using enumerated types (BehaviorType enum)
+9. **Lock-free message queue** - Zero-contention communication with behaviors
 10. **Global AI pause/resume** - Complete halt of all AI processing with thread-safe controls
-11. **Performance monitoring** - Built-in statistics and performance tracking
+11. **Performance monitoring** - Built-in statistics tracking per behavior type and globally
+12. **SIMD optimizations** - Vector processing for distance calculations where available
+13. **Double buffering** - Lock-free updates during processing phases
+14. **Batch assignment queue** - Efficient registration of multiple entities
 
 ## Individual Behavior Instances Architecture
 
@@ -460,16 +463,17 @@ private:
 ### Core AIManager Methods
 
 ```cpp
-// Initialization
+// Core initialization
 bool init();
 void clean();
+void prepareForStateTransition(); // Call before GameState::exit()
 
-// Behavior management
-void registerBehavior(const std::string& behaviorName, std::shared_ptr<AIBehavior> behavior);
-bool hasBehavior(const std::string& behaviorName) const;
-std::shared_ptr<AIBehavior> getBehavior(const std::string& behaviorName) const;
+// Behavior registration
+void registerBehavior(const std::string& name, std::shared_ptr<AIBehavior> behavior);
+bool hasBehavior(const std::string& name) const;
+std::shared_ptr<AIBehavior> getBehavior(const std::string& name) const;
 
-// Entity registration
+// Entity management
 void registerEntityForUpdates(EntityPtr entity, int priority = 5);
 void registerEntityForUpdates(EntityPtr entity, int priority, const std::string& behaviorName);
 void unregisterEntityFromUpdates(EntityPtr entity);
@@ -481,24 +485,35 @@ size_t processPendingBehaviorAssignments();
 void unassignBehaviorFromEntity(EntityPtr entity);
 bool entityHasBehavior(EntityPtr entity) const;
 
-// Player reference for distance optimization
+// Distance optimization
 void setPlayerForDistanceOptimization(EntityPtr player);
 EntityPtr getPlayerReference() const;
+Vector2D getPlayerPosition() const;
 bool isPlayerValid() const;
 
 // Global controls
 void setGlobalPause(bool paused);
 bool isGloballyPaused() const;
+void resetBehaviors();
+int getEntityPriority(EntityPtr entity) const;
+float getUpdateRangeMultiplier(int priority) const;
 
-// Messaging system
+// Threading configuration
+void configureThreading(bool useThreading, unsigned int maxThreads = 0);
+void configurePriorityMultiplier(float multiplier = 1.0f);
+
+// Message system
 void sendMessageToEntity(EntityPtr entity, const std::string& message, bool immediate = false);
 void broadcastMessage(const std::string& message, bool immediate = false);
+void processMessageQueue();
 
 // Performance monitoring
 AIPerformanceStats getPerformanceStats() const;
 size_t getManagedEntityCount() const;
 size_t getBehaviorCount() const;
+size_t getBehaviorUpdateCount() const;
 size_t getTotalAssignmentCount() const;
+bool isShutdown() const;
 ```
 
 ### AIBehavior Interface
