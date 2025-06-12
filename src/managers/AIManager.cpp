@@ -716,25 +716,25 @@ void AIManager::updateDistancesSIMD(const Vector2D& playerPos) {
     
 #ifdef SIMD_AVAILABLE
     // Process 4 entities at a time with SSE2
-    const __m128 playerX = _mm_set1_ps(playerPos.x);
-    const __m128 playerY = _mm_set1_ps(playerPos.y);
+    const __m128 playerX = _mm_set1_ps(playerPos.getX());
+    const __m128 playerY = _mm_set1_ps(playerPos.getY());
     
     size_t simdCount = (entityCount / 4) * 4;
     
     for (size_t i = 0; i < simdCount; i += 4) {
         // Load 4 entity positions
         __m128 entityX = _mm_setr_ps(
-            m_storage.hotData[i].position.x,
-            m_storage.hotData[i+1].position.x,
-            m_storage.hotData[i+2].position.x,
-            m_storage.hotData[i+3].position.x
+            m_storage.hotData[i].position.getX(),
+            m_storage.hotData[i+1].position.getX(),
+            m_storage.hotData[i+2].position.getX(),
+            m_storage.hotData[i+3].position.getX()
         );
         
         __m128 entityY = _mm_setr_ps(
-            m_storage.hotData[i].position.y,
-            m_storage.hotData[i+1].position.y,
-            m_storage.hotData[i+2].position.y,
-            m_storage.hotData[i+3].position.y
+            m_storage.hotData[i].position.getY(),
+            m_storage.hotData[i+1].position.getY(),
+            m_storage.hotData[i+2].position.getY(),
+            m_storage.hotData[i+3].position.getY()
         );
         
         // Calculate differences
