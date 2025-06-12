@@ -248,6 +248,7 @@ class GameEngine {
   // Multithreading synchronization
   std::mutex m_updateMutex{};
   std::condition_variable m_updateCondition{};
+  
   // Using memory_order for thread synchronization
   std::atomic<bool> m_updateCompleted{false};
   std::atomic<bool> m_updateRunning{false};

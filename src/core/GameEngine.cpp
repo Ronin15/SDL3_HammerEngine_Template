@@ -396,10 +396,16 @@ texMgr.load("res/img", "", mp_renderer.get());
   return true;
 }
 
+
+
 void GameEngine::handleEvents() {
   // Handle input events - InputManager stays here for SDL event polling architecture
   InputManager& inputMgr = InputManager::Instance();
   inputMgr.update();
+  
+  // Handle game state input on main thread where SDL events are processed (SDL3 requirement)
+  // This prevents cross-thread input state access between main thread and update worker thread
+  mp_gameStateManager->handleInput();
 }
 
 void GameEngine::setRunning(bool running) {

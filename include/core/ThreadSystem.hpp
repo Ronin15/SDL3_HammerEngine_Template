@@ -747,6 +747,9 @@ private:
         size_t tasksProcessed = 0;
         size_t tasksStolen = 0;
         size_t highPriorityTasks = 0;
+        
+        // Exponential backoff state (thread-local, no static variables)
+        size_t consecutiveEmptyPolls = 0;
 
         // Set thread as interruptible (platform-specific if needed)
         try {
@@ -789,6 +792,9 @@ private:
                 }
 
                 if (gotTask) {
+                    // Reset exponential backoff when work is found
+                    consecutiveEmptyPolls = 0;
+                    
                     // Optimized: Only increment counter when we actually have work
                     const size_t activeCount = m_activeTasks.fetch_add(1, std::memory_order_relaxed) + 1;
 
@@ -837,15 +843,18 @@ private:
                         break;
                     }
 
-                    // Adaptive sleep based on system workload
-                    size_t systemLoad = 0;
-                    for (size_t i = 0; i < m_numWorkers; ++i) {
-                        systemLoad += m_workerQueues[i].approximateSize();
+                    // AI-optimized exponential backoff sleep
+                    consecutiveEmptyPolls++;
+                    
+                    // Optimized sleep pattern for AI workloads - faster ramp-up, shorter max sleep
+                    auto sleepTime = std::chrono::microseconds(5);   // Start with 5μs for responsive AI
+                    if (consecutiveEmptyPolls > 5) {
+                        sleepTime = std::chrono::microseconds(50);   // Quick ramp to 50μs
                     }
-
-                    auto sleepTime = (systemLoad > 10) ?
-                        std::chrono::microseconds(10) :   // High load: minimal sleep
-                        std::chrono::microseconds(100);   // Normal load: standard sleep
+                    if (consecutiveEmptyPolls > 20) {
+                        sleepTime = std::chrono::microseconds(200);  // Max 200μs for AI responsiveness
+                    }
+                    
                     std::this_thread::sleep_for(sleepTime);
                 }
             }

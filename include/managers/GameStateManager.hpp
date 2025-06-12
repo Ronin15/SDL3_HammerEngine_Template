@@ -18,6 +18,7 @@ class GameStateManager {
   void setState(const std::string& stateName);
   void update(float deltaTime);
   void render();
+  void handleInput();
   bool hasState(const std::string& stateName) const;
   std::shared_ptr<GameState> getState(const std::string& stateName) const;
   void removeState(const std::string& stateName);

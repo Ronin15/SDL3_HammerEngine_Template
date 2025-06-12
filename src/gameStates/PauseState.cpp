@@ -30,9 +30,6 @@ bool PauseState::enter() {
 
 void PauseState::update([[maybe_unused]] float deltaTime) {
   //std::cout << "Updating PAUSE State\n";
-  
-  // Handle input with proper key press detection
-  handleInput();
 }
 
 void PauseState::render(float deltaTime) {

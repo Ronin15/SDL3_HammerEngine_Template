@@ -27,6 +27,7 @@ public:
 
     void update(float deltaTime) override;
     void render(float deltaTime) override;
+    void handleInput() override;
 
     bool enter() override;
     bool exit() override;
@@ -58,9 +59,6 @@ private:
     // AI pause state
     bool m_aiPaused{false};
     bool m_previousGlobalPauseState{false};  // Store previous global pause state to restore on exit
-    
-    // Helper methods
-    void handleInput();
 };
 
 #endif // AI_DEMO_STATE_HPP

@@ -51,9 +51,11 @@ void ChaseBehavior::executeLogic(EntityPtr entity) {
     // Get player target from AIManager
     auto target = aiMgr.getPlayerReference();
     if (!target) {
-        // No target, so stop chasing
-        entity->setVelocity(Vector2D(0, 0));
-        m_isChasing = false;
+        // No target, stop chasing efficiently
+        if (m_isChasing) {
+            entity->setVelocity(Vector2D(0, 0));
+            m_isChasing = false;
+        }
         return;
     }
 
@@ -61,53 +63,47 @@ void ChaseBehavior::executeLogic(EntityPtr entity) {
     Vector2D entityPos = entity->getPosition();
     Vector2D targetPos = target->getPosition();
 
-    // Calculate distance to target and ensure we have a valid target position
+    // Pre-calculate squared distances for efficiency
     Vector2D toTarget = targetPos - entityPos;
-    float distance = toTarget.length();
-
-    // Store current target position for debugging
+    float distanceSquared = toTarget.lengthSquared();
+    float maxRangeSquared = m_maxRange * m_maxRange;
+    float minRangeSquared = m_minRange * m_minRange;
+    
+    // Store target position
     m_lastKnownTargetPos = targetPos;
 
-    // Check if target is in chase range
-    if (distance <= m_maxRange) {
-        // Check line of sight (simplified)
+    // Fast range check using squared distance
+    if (distanceSquared <= maxRangeSquared) {
         m_hasLineOfSight = checkLineOfSight(entity, target);
 
         if (m_hasLineOfSight) {
-            m_isChasing = true;
-
-            // If not too close, move toward target
-            if (distance > m_minRange) {
-                // Normalize the direction
-                Vector2D direction = toTarget * (1.0f / distance);
-
-                // Set velocity toward target with consistent speed
-                Vector2D newVelocity = direction * m_chaseSpeed;
-                entity->setVelocity(newVelocity);
-
-                // NPC class now handles sprite flipping based on velocity
+            if (distanceSquared > minRangeSquared) {
+                // Only calculate sqrt and normalize when actually moving
+                float invDistance = 1.0f / std::sqrt(distanceSquared);
+                Vector2D direction = toTarget * invDistance;
+                
+                m_isChasing = true;
+                entity->setVelocity(direction * m_chaseSpeed);
             } else {
-                // Target is within minimum range, stop moving
-                entity->setVelocity(Vector2D(0, 0));
-
-                onTargetReached(entity);
+                // Within minimum range - stop efficiently
+                if (m_isChasing) {
+                    entity->setVelocity(Vector2D(0, 0));
+                    m_isChasing = false;
+                    onTargetReached(entity);
+                }
             }
         } else {
             // Lost line of sight
             if (m_isChasing) {
-                // Continue to last known position for a while
-                m_lastKnownTargetPos = targetPos;
                 m_timeWithoutSight = 0;
             }
-
             handleNoLineOfSight(entity);
         }
     } else {
-        // Target out of range, stop chasing
+        // Out of range - only update state if needed
         if (m_isChasing) {
             m_isChasing = false;
             entity->setVelocity(Vector2D(0, 0));
-
             onTargetLost(entity);
         }
     }
@@ -226,31 +222,27 @@ bool ChaseBehavior::checkLineOfSight(EntityPtr entity, EntityPtr target) const {
 
 void ChaseBehavior::handleNoLineOfSight(EntityPtr entity) {
     if (m_timeWithoutSight < m_maxTimeWithoutSight) {
-        // Move toward last known position for a while
         Vector2D entityPos = entity->getPosition();
         Vector2D toLastKnown = m_lastKnownTargetPos - entityPos;
-        float distance = toLastKnown.length();
+        float distanceSquared = toLastKnown.lengthSquared();
 
-        if (distance > 10.0f) {
-            // Still moving to last known position
-            Vector2D direction = toLastKnown * (1.0f / distance);
-
-            // Use a slightly slower speed when tracking last known position
-            Vector2D newVelocity = direction * (m_chaseSpeed * 0.8f);
-            entity->setVelocity(newVelocity);
-
-            // NPC class now handles sprite flipping based on velocity
+        // Use squared distance threshold (10.0f squared = 100.0f)
+        if (distanceSquared > 100.0f) {
+            // Optimized normalization with inverse sqrt
+            float invDistance = 1.0f / std::sqrt(distanceSquared);
+            Vector2D direction = toLastKnown * invDistance;
+            entity->setVelocity(direction * (m_chaseSpeed * 0.8f));
         } else {
-            // Reached last known position, stop
             entity->setVelocity(Vector2D(0, 0));
         }
 
         m_timeWithoutSight++;
     } else {
-        // Give up chase after timeout
-        m_isChasing = false;
-        entity->setVelocity(Vector2D(0, 0));
-
-        onTargetLost(entity);
+        // Timeout - stop chasing efficiently
+        if (m_isChasing) {
+            m_isChasing = false;
+            entity->setVelocity(Vector2D(0, 0));
+            onTargetLost(entity);
+        }
     }
 }
