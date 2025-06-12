@@ -40,8 +40,12 @@ bool GameEngine::init(const char* title,
                       bool fullscreen) {
   GAMEENGINE_INFO("Initializing SDL Video");
 
-  if (SDL_Init(SDL_INIT_VIDEO)) {
-    GAMEENGINE_INFO("SDL Video online");
+  if (!SDL_Init(SDL_INIT_VIDEO)) {
+    GAMEENGINE_CRITICAL("SDL Video initialization failed: " + std::string(SDL_GetError()));
+    return false;
+  }
+  
+  GAMEENGINE_INFO("SDL Video online");
 
     // Set SDL hints for better rendering quality
     SDL_SetHint(SDL_HINT_RENDER_LINE_METHOD, "3");    // Use geometry for smoother lines
@@ -106,10 +110,14 @@ bool GameEngine::init(const char* title,
 
     mp_window.reset(SDL_CreateWindow(title, m_windowWidth, m_windowHeight, flags));
 
-    if (mp_window) {
-      GAMEENGINE_INFO("Window creation system online");
-      
-      #ifdef __APPLE__
+    if (!mp_window) {
+      GAMEENGINE_ERROR("Failed to create window: " + std::string(SDL_GetError()));
+      return false;
+    }
+    
+    GAMEENGINE_INFO("Window creation system online");
+    
+    #ifdef __APPLE__
       // On macOS, set fullscreen mode to null for borderless fullscreen desktop mode
       if (fullscreen) {
         SDL_SetWindowFullscreenMode(mp_window.get(), nullptr);
@@ -132,42 +140,56 @@ bool GameEngine::init(const char* title,
       // Continue with initialization while icon loads
       // account for pixel density for rendering
       int pixelWidth, pixelHeight;
-      SDL_GetWindowSizeInPixels(mp_window.get(), &pixelWidth, &pixelHeight);
+      if (!SDL_GetWindowSizeInPixels(mp_window.get(), &pixelWidth, &pixelHeight)) {
+        GAMEENGINE_ERROR("Failed to get window pixel size: " + std::string(SDL_GetError()));
+        // Use logical size as fallback
+        pixelWidth = m_windowWidth;
+        pixelHeight = m_windowHeight;
+      }
       // Get logical dimensions
       int logicalWidth, logicalHeight;
-      SDL_GetWindowSize(mp_window.get(), &logicalWidth, &logicalHeight);
+      if (!SDL_GetWindowSize(mp_window.get(), &logicalWidth, &logicalHeight)) {
+        GAMEENGINE_ERROR("Failed to get window logical size: " + std::string(SDL_GetError()));
+        // Use stored dimensions as fallback
+        logicalWidth = m_windowWidth;
+        logicalHeight = m_windowHeight;
+      }
 
       // Create renderer - VSync will be set separately using SDL3 API
       mp_renderer.reset(SDL_CreateRenderer(mp_window.get(), NULL));
 
-      if (mp_renderer) {
-        GAMEENGINE_INFO("Rendering system online");
-        
-        // Enable VSync using SDL3 API
-        if (SDL_SetRenderVSync(mp_renderer.get(), 1)) {
-          GAMEENGINE_INFO("VSync enabled - hardware-synchronized frame presentation active");
-        } else {
-          GAMEENGINE_WARN("VSync not supported - using software frame rate limiting (may cause stuttering): " + std::string(SDL_GetError()));
-        }
-        
-        SDL_SetRenderDrawColor(mp_renderer.get(), FORGE_GRAY);  // Forge Game Engine gunmetal dark grey
-        // Set logical rendering size to standard resolution for consistent aspect ratio
-        int targetLogicalWidth = 1920;
-        int targetLogicalHeight = 1080;
-        
-        #ifdef __APPLE__
-        // On macOS, use LETTERBOX mode to maintain aspect ratio and avoid black bars
-        SDL_RendererLogicalPresentation presentationMode = SDL_LOGICAL_PRESENTATION_LETTERBOX;
-        #else
-        SDL_RendererLogicalPresentation presentationMode = m_logicalPresentationMode;
-        #endif
-        SDL_SetRenderLogicalPresentation(mp_renderer.get(), targetLogicalWidth, targetLogicalHeight, presentationMode);
-        //Render Mode.
-        SDL_SetRenderDrawBlendMode(mp_renderer.get(), SDL_BLENDMODE_BLEND);
-      } else {
-        GAMEENGINE_CRITICAL("Rendering system creation failed: " + std::string(SDL_GetError()));
-        return false;  // Forge renderer fail
+      if (!mp_renderer) {
+        GAMEENGINE_ERROR("Failed to create renderer: " + std::string(SDL_GetError()));
+        return false;
       }
+      
+      GAMEENGINE_INFO("Rendering system online");
+      
+      // Enable VSync using SDL3 API
+      if (!SDL_SetRenderVSync(mp_renderer.get(), 1)) {
+        GAMEENGINE_ERROR("Failed to set VSync: " + std::string(SDL_GetError()));
+        // Continue without VSync rather than failing completely
+        GAMEENGINE_WARN("Continuing without VSync - using software frame rate limiting (may cause stuttering)");
+      } else {
+        GAMEENGINE_INFO("VSync enabled - hardware-synchronized frame presentation active");
+      }
+      
+      if (!SDL_SetRenderDrawColor(mp_renderer.get(), FORGE_GRAY)) {  // Forge Game Engine gunmetal dark grey
+        GAMEENGINE_ERROR("Failed to set initial render draw color: " + std::string(SDL_GetError()));
+      }
+      // Set logical rendering size to standard resolution for consistent aspect ratio
+      int targetLogicalWidth = 1920;
+      int targetLogicalHeight = 1080;
+      
+      #ifdef __APPLE__
+      // On macOS, use LETTERBOX mode to maintain aspect ratio and avoid black bars
+      SDL_RendererLogicalPresentation presentationMode = SDL_LOGICAL_PRESENTATION_LETTERBOX;
+      #else
+      SDL_RendererLogicalPresentation presentationMode = m_logicalPresentationMode;
+      #endif
+      SDL_SetRenderLogicalPresentation(mp_renderer.get(), targetLogicalWidth, targetLogicalHeight, presentationMode);
+      //Render Mode.
+      SDL_SetRenderDrawBlendMode(mp_renderer.get(), SDL_BLENDMODE_BLEND);
 
       // Now check if the icon was loaded successfully
       try {
@@ -183,27 +205,31 @@ bool GameEngine::init(const char* title,
         GAMEENGINE_WARN("Error loading window icon: " + std::string(e.what()));
       }
 
-    } else {
-      GAMEENGINE_CRITICAL("Window system creation failed: " + std::string(SDL_GetError()));
-      return false;
-    }
-  } else {
-    GAMEENGINE_CRITICAL("SDL Video initialization failed! Make sure SDL3 runtime is installed. SDL error: " + std::string(SDL_GetError()));
-    return false;
-  }
+
 
   // INITIALIZING GAME RESOURCE LOADING AND MANAGEMENT_________________________BEGIN
+
   
   // Calculate DPI-aware font sizes before threading
   float dpiScale = 1.0f;
-  int pixelWidth, pixelHeight;
-  int logicalWidth, logicalHeight;
-  SDL_GetWindowSizeInPixels(mp_window.get(), &pixelWidth, &pixelHeight);
-  SDL_GetWindowSize(mp_window.get(), &logicalWidth, &logicalHeight);
+  int dpiPixelWidth, dpiPixelHeight;
+  int dpiLogicalWidth, dpiLogicalHeight;
+  if (!SDL_GetWindowSizeInPixels(mp_window.get(), &dpiPixelWidth, &dpiPixelHeight)) {
+    GAMEENGINE_ERROR("Failed to get window pixel size for DPI calculation: " + std::string(SDL_GetError()));
+    // Use window dimensions as fallback
+    dpiPixelWidth = m_windowWidth;
+    dpiPixelHeight = m_windowHeight;
+  }
+  if (!SDL_GetWindowSize(mp_window.get(), &dpiLogicalWidth, &dpiLogicalHeight)) {
+    GAMEENGINE_ERROR("Failed to get window logical size for DPI calculation: " + std::string(SDL_GetError()));
+    // Use stored dimensions as fallback
+    dpiLogicalWidth = m_windowWidth;
+    dpiLogicalHeight = m_windowHeight;
+  }
   
-  if (logicalWidth > 0 && logicalHeight > 0) {
-    float scaleX = static_cast<float>(pixelWidth) / static_cast<float>(logicalWidth);
-    float scaleY = static_cast<float>(pixelHeight) / static_cast<float>(logicalHeight);
+  if (dpiLogicalWidth > 0 && dpiLogicalHeight > 0) {
+    float scaleX = static_cast<float>(dpiPixelWidth) / static_cast<float>(dpiLogicalWidth);
+    float scaleY = static_cast<float>(dpiPixelHeight) / static_cast<float>(dpiLogicalHeight);
     dpiScale = std::max(scaleX, scaleY);
     
     #ifdef __APPLE__
@@ -543,13 +569,19 @@ void GameEngine::render([[maybe_unused]] float interpolation) {
   // Always render - optimized buffer management ensures render buffer is always valid
   {
     try {
-      SDL_SetRenderDrawColor(mp_renderer.get(), FORGE_GRAY);  // Forge Game Engine gunmetal dark grey
-      SDL_RenderClear(mp_renderer.get());
+      if (!SDL_SetRenderDrawColor(mp_renderer.get(), FORGE_GRAY)) {  // Forge Game Engine gunmetal dark grey
+        GAMEENGINE_ERROR("Failed to set render draw color: " + std::string(SDL_GetError()));
+      }
+      if (!SDL_RenderClear(mp_renderer.get())) {
+        GAMEENGINE_ERROR("Failed to clear renderer: " + std::string(SDL_GetError()));
+      }
 
       // Make sure GameStateManager knows which buffer to render from
       mp_gameStateManager->render();
 
-      SDL_RenderPresent(mp_renderer.get());
+      if (!SDL_RenderPresent(mp_renderer.get())) {
+        GAMEENGINE_ERROR("Failed to present renderer: " + std::string(SDL_GetError()));
+      }
 
       // Increment rendered frame counter for fast synchronization
       m_lastRenderedFrame.fetch_add(1, std::memory_order_relaxed);
@@ -640,8 +672,15 @@ void GameEngine::setLogicalPresentationMode(SDL_RendererLogicalPresentation mode
   m_logicalPresentationMode = mode;
   if (mp_renderer) {
     int width, height;
-    SDL_GetWindowSize(mp_window.get(), &width, &height);
-    SDL_SetRenderLogicalPresentation(mp_renderer.get(), width, height, mode);
+    if (!SDL_GetWindowSize(mp_window.get(), &width, &height)) {
+      GAMEENGINE_ERROR("Failed to get window size for logical presentation: " + std::string(SDL_GetError()));
+      // Use stored dimensions as fallback
+      width = m_windowWidth;
+      height = m_windowHeight;
+    }
+    if (!SDL_SetRenderLogicalPresentation(mp_renderer.get(), width, height, mode)) {
+      GAMEENGINE_ERROR("Failed to set render logical presentation: " + std::string(SDL_GetError()));
+    }
   }
 }
 

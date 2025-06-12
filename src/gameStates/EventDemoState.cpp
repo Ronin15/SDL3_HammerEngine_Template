@@ -128,24 +128,13 @@ bool EventDemoState::exit() {
         eventMgr.removeHandlers(EventTypeId::NPCSpawn);
         eventMgr.removeHandlers(EventTypeId::SceneChange);
 
-        // Cache AIManager reference for cleanup operations
+        // Use AIManager's prepareForStateTransition for safer cleanup
         AIManager& aiMgr = AIManager::Instance();
+        aiMgr.prepareForStateTransition();
 
-        // Send release message to all behaviors
-        aiMgr.broadcastMessage("release_entities", true);
-        aiMgr.processMessageQueue();
-
-        // Reset all AI behaviors to clear behavior templates and entity references
-        // This ensures behaviors release their references before entities are destroyed
-        aiMgr.resetBehaviors();
-
-        // Always restore AI to unpaused state when exiting the demo state
-        // This prevents the global pause from affecting other states
-        aiMgr.setGlobalPause(false);
-
-        // Clean up UI components efficiently
+        // Clean up UI components using simplified method
         auto& ui = UIManager::Instance();
-        ui.removeComponentsWithPrefix("event_");
+        ui.prepareForStateTransition();
 
         std::cout << "Forge Game Engine - EventDemoState cleanup complete\n";
         return true;

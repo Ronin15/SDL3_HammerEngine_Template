@@ -173,42 +173,16 @@ bool AIDemoState::exit() {
     // Cache AIManager reference for better performance
     AIManager& aiMgr = AIManager::Instance();
 
-    // First clear entity references from behaviors
-    if (aiMgr.hasBehavior("Chase")) {
-        auto chaseBehaviorPtr = aiMgr.getBehavior("Chase");
-        auto chaseBehavior = std::dynamic_pointer_cast<ChaseBehavior>(chaseBehaviorPtr);
-        if (chaseBehavior) {
-            // Chase behavior cleanup handled by AIManager
-        }
-    }
+    // Use the new prepareForStateTransition method for safer cleanup
+    aiMgr.prepareForStateTransition();
 
-    // First unregister all NPCs from AIManager before calling clean()
-    std::cout << "Forge Game Engine - Unregistering NPCs from AIManager before cleanup\n";
+    // Clean up NPCs
     for (auto& npc : m_npcs) {
         if (npc) {
-            // Unregister from AIManager first to avoid shared_from_this() issues
-            aiMgr.unregisterEntityFromUpdates(npc);
-
-            // Unassign behavior if it has one
-            if (aiMgr.entityHasBehavior(npc)) {
-                aiMgr.unassignBehaviorFromEntity(npc);
-            }
-
-            // Now safe to call clean() and stop movement
             npc->clean();
             npc->setVelocity(Vector2D(0, 0));
         }
     }
-
-    // Send release message to all behaviors
-    aiMgr.broadcastMessage("release_entities", true);
-    aiMgr.processMessageQueue();
-
-    // Reset all AI behaviors to clear entity references
-    // This ensures behaviors release their entity references before the entities are destroyed
-    aiMgr.resetBehaviors();
-
-    // Clean up NPCs
     m_npcs.clear();
 
     // Clean up player
@@ -216,11 +190,9 @@ bool AIDemoState::exit() {
         m_player.reset();
     }
 
-    // Clean up UI components efficiently
+    // Clean up UI components using simplified method
     auto& ui = UIManager::Instance();
-    ui.removeComponentsWithPrefix("ai_");
-
-    // Chase behavior cleanup is now handled by AIManager
+    ui.prepareForStateTransition();
 
     // Always restore AI to unpaused state when exiting the demo state
     // This prevents the global pause from affecting other states

@@ -111,7 +111,13 @@ namespace Forge {
         } \
     } while(0)
     
-    #define FORGE_ERROR(system, msg) ((void)0)      // Zero overhead
+    #define FORGE_ERROR(system, msg) do { \
+        if (!Forge::Logger::IsBenchmarkMode()) { \
+            printf("Forge Game Engine - [%s] ERROR: %s\n", system, std::string(msg).c_str()); \
+            fflush(stdout); \
+        } \
+    } while(0)
+    
     #define FORGE_WARN(system, msg) ((void)0)       // Zero overhead
     #define FORGE_INFO(system, msg) ((void)0)       // Zero overhead
     #define FORGE_DEBUG(system, msg) ((void)0)      // Zero overhead

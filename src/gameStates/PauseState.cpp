@@ -57,10 +57,9 @@ void PauseState::render(float deltaTime) {
 bool PauseState::exit() {
   std::cout << "Forge Game Engine - Exiting PAUSE State\n";
   
-  // Clean up UI components efficiently
+  // Clean up UI components using simplified method
   auto& ui = UIManager::Instance();
-  ui.removeComponentsWithPrefix("pause_");
-  ui.removeOverlay();
+  ui.prepareForStateTransition();
 
   return true;
 }
