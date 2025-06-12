@@ -150,9 +150,6 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
                             batchSize = std::min(batchSize, size_t(600));
                         }
 
-                        std::atomic<size_t> completedTasks{0};
-                        size_t tasksSubmitted = 0;
-
                         // Use Normal priority for AI batches to maintain proper priority system
                         Forge::TaskPriority batchPriority = Forge::TaskPriority::Normal;
 
@@ -163,7 +160,6 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
                             threadSystem.enqueueTask([this, i, batchEnd, deltaTime]() {
                                 processBatch(i, batchEnd, deltaTime);
                             }, batchPriority, "AI_Batch");
-                            tasksSubmitted++;
                         }
 
                         // No blocking wait - let AI processing be asynchronous for optimal performance

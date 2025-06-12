@@ -14,6 +14,7 @@
 #include <mutex>
 #include <unordered_set>
 #include <csignal>
+#include <cmath>
 
 // Include the ThreadSystem header
 #include "core/ThreadSystem.hpp"
@@ -449,6 +450,93 @@ BOOST_AUTO_TEST_CASE(TestTaskStats) {
 
     BOOST_CHECK_GE(finalEnqueued, initialEnqueued + numTasks);
     BOOST_CHECK_GE(finalProcessed, initialProcessed + numTasks);
+}
+
+BOOST_AUTO_TEST_CASE(TestQueueOverflowProtection) {
+    // Test submitting tasks close to queue capacity (4096)
+    const size_t testTaskCount = 3500; // Safe threshold below capacity
+    std::vector<std::future<void>> futures;
+    
+    std::cout << "Testing queue capacity with " << testTaskCount << " tasks..." << std::endl;
+    
+    // Submit many tasks quickly to test queue limits
+    for (size_t i = 0; i < testTaskCount; ++i) {
+        futures.push_back(Forge::ThreadSystem::Instance().enqueueTaskWithResult(
+            []() -> void {
+                // Small work to simulate AI batch processing
+                volatile float temp = 0.0f;
+                for (int j = 0; j < 10; ++j) {
+                    temp += std::sqrt(static_cast<float>(j + 1));
+                }
+            },
+            Forge::TaskPriority::Normal,
+            "Load test task"
+        ));
+        
+        // Check queue size periodically
+        if (i % 500 == 0) {
+            size_t currentQueueSize = Forge::ThreadSystem::Instance().getQueueSize();
+            std::cout << "Queue size at " << i << " tasks: " << currentQueueSize << std::endl;
+            
+            // Verify we're not approaching dangerous levels
+            BOOST_CHECK_LT(currentQueueSize, 4000);
+        }
+    }
+    
+    // Wait for all tasks to complete
+    for (auto& future : futures) {
+        future.wait();
+    }
+    
+    // Final queue size should be manageable
+    size_t finalQueueSize = Forge::ThreadSystem::Instance().getQueueSize();
+    std::cout << "Final queue size: " << finalQueueSize << std::endl;
+    BOOST_CHECK_LT(finalQueueSize, 100); // Should drain quickly
+}
+
+
+
+BOOST_AUTO_TEST_CASE(TestBurstTaskSubmission) {
+    // Simulate burst conditions like what AIManager might create
+    std::cout << "Testing burst task submission patterns..." << std::endl;
+    
+    const int burstSize = 100;
+    const int burstCount = 10;
+    
+    for (int burst = 0; burst < burstCount; ++burst) {
+        size_t queueBefore = Forge::ThreadSystem::Instance().getQueueSize();
+        
+        // Submit a burst of tasks quickly (simulating AI batch submission)
+        std::vector<std::future<void>> burstTasks;
+        for (int i = 0; i < burstSize; ++i) {
+            burstTasks.push_back(Forge::ThreadSystem::Instance().enqueueTaskWithResult(
+                []() -> void {
+                    // Simulate AI processing work
+                    std::this_thread::sleep_for(std::chrono::microseconds(100));
+                },
+                Forge::TaskPriority::Normal,
+                "Burst task"
+            ));
+        }
+        
+        size_t queueAfter = Forge::ThreadSystem::Instance().getQueueSize();
+        size_t queueGrowth = queueAfter - queueBefore;
+        
+        std::cout << "Burst " << burst << ": Added " << queueGrowth << " tasks, queue size: " << queueAfter << std::endl;
+        
+        // Verify queue doesn't overflow
+        BOOST_CHECK_LT(queueAfter, 4000);
+        
+        // Wait for burst to complete before next burst
+        for (auto& task : burstTasks) {
+            task.wait();
+        }
+        
+        // Brief pause between bursts
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    
+    std::cout << "Burst testing completed successfully" << std::endl;
 }
 
 BOOST_AUTO_TEST_CASE(TestThreadSystemReinitialization) {
