@@ -117,14 +117,6 @@ bool UIExampleState::enter() {
 void UIExampleState::update(float deltaTime) {
     // Update progress bar animation
     updateProgressBar(deltaTime);
-    
-    // Handle B key to go back
-    auto& inputManager = InputManager::Instance();
-    if (inputManager.wasKeyPressed(SDL_SCANCODE_B)) {
-        auto& gameEngine = GameEngine::Instance();
-        auto* gameStateManager = gameEngine.getGameStateManager();
-        gameStateManager->setState("MainMenuState");
-    }
 }
 
 void UIExampleState::render(float deltaTime) {
@@ -195,6 +187,16 @@ void UIExampleState::handleThemeChange() {
     m_darkTheme = !m_darkTheme;
     applyDarkTheme(m_darkTheme);
     std::cout << "Theme changed to: " << (m_darkTheme ? "dark" : "light") << "\n";
+}
+
+void UIExampleState::handleInput() {
+    // Handle B key to go back
+    auto& inputManager = InputManager::Instance();
+    if (inputManager.wasKeyPressed(SDL_SCANCODE_B)) {
+        auto& gameEngine = GameEngine::Instance();
+        auto* gameStateManager = gameEngine.getGameStateManager();
+        gameStateManager->setState("MainMenuState");
+    }
 }
 
 

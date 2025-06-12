@@ -55,9 +55,6 @@ bool OverlayDemoState::enter() {
 }
 
 void OverlayDemoState::update(float deltaTime) {
-    // Handle input with proper key press detection
-    handleInput();
-
     // Update transition timer
     m_transitionTimer += deltaTime;
 }

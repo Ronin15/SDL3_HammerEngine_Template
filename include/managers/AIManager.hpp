@@ -289,7 +289,7 @@ private:
     };
     std::vector<EntityUpdateInfo> m_managedEntities;
 
-    // Batch assignment queue
+    // Batch assignment queue with deduplication
     struct PendingAssignment {
         EntityPtr entity;
         std::string behaviorName;
@@ -297,6 +297,7 @@ private:
         PendingAssignment(EntityPtr e, const std::string& b) : entity(e), behaviorName(b) {}
     };
     std::vector<PendingAssignment> m_pendingAssignments;
+    std::unordered_map<EntityPtr, std::string> m_pendingAssignmentIndex; // For deduplication
 
     // Message queue
     struct QueuedMessage {
@@ -324,6 +325,12 @@ private:
     
     // Frame counter for periodic logging (thread-safe)
     std::atomic<uint64_t> m_frameCounter{0};
+    
+    // Frame throttling for task submission (thread-safe)
+    std::atomic<uint64_t> m_lastFrameWithTasks{0};
+    
+    // Cleanup timing (thread-safe)
+    std::atomic<uint64_t> m_lastCleanupFrame{0};
 
     // Distance optimization settings
     std::atomic<float> m_maxUpdateDistance{4000.0f};

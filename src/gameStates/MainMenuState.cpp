@@ -78,7 +78,29 @@ bool MainMenuState::enter() {
 }
 
 void MainMenuState::update([[maybe_unused]] float deltaTime) {
-  // Handle input - UI updates moved to render() for thread safety
+  // UI updates handled in render() for thread safety
+}
+
+void MainMenuState::render(float deltaTime) {
+  // Update and render UI components through UIManager using cached renderer for cleaner API
+  auto& ui = UIManager::Instance();
+  if (!ui.isShutdown()) {
+      ui.update(deltaTime); // Use actual deltaTime from update cycle
+  }
+  ui.render(); // Uses cached renderer from GameEngine
+}
+
+bool MainMenuState::exit() {
+  std::cout << "Forge Game Engine - Exiting MAIN MENU State\n";
+  
+  // Clean up all UI components efficiently
+  auto& ui = UIManager::Instance();
+  ui.removeComponentsWithPrefix("mainmenu_");
+  
+  return true;
+}
+
+void MainMenuState::handleInput() {
   auto& inputManager = InputManager::Instance();
 
   // Keyboard shortcuts for quick navigation
@@ -116,24 +138,6 @@ void MainMenuState::update([[maybe_unused]] float deltaTime) {
       auto& gameEngine = GameEngine::Instance();
       gameEngine.setRunning(false);
   }
-}
-
-void MainMenuState::render(float deltaTime) {
-  // Update and render UI components through UIManager using cached renderer for cleaner API
-  auto& ui = UIManager::Instance();
-  if (!ui.isShutdown()) {
-      ui.update(deltaTime); // Use actual deltaTime from update cycle
-  }
-  ui.render(); // Uses cached renderer from GameEngine
-}
-bool MainMenuState::exit() {
-  std::cout << "Forge Game Engine - Exiting MAIN MENU State\n";
-  
-  // Clean up all UI components efficiently
-  auto& ui = UIManager::Instance();
-  ui.removeComponentsWithPrefix("mainmenu_");
-  
-  return true;
 }
 
 std::string MainMenuState::getName() const {

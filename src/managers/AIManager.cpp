@@ -112,77 +112,101 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
         // Process pending assignments
         processPendingBehaviorAssignments();
 
-        // Update all AI entities
+        // Update all AI entities - minimize lock scope to prevent main thread blocking
+        size_t entityCount;
+        bool useThreading;
         {
             std::shared_lock<std::shared_mutex> lock(m_entitiesMutex);
+            entityCount = m_entities.size();
+            useThreading = (entityCount >= THREADING_THRESHOLD && m_useThreading.load(std::memory_order_acquire));
+        }
 
-            if (m_entities.size() >= THREADING_THRESHOLD && m_useThreading.load(std::memory_order_acquire)) {
-                // Check ThreadSystem availability
-                if (Forge::ThreadSystem::Exists()) {
-                    auto& threadSystem = Forge::ThreadSystem::Instance();
+        if (useThreading) {
+            // Check ThreadSystem availability
+            if (Forge::ThreadSystem::Exists()) {
+                auto& threadSystem = Forge::ThreadSystem::Instance();
 
-                    // Proper WorkerBudget calculation with architectural respect
-                    size_t availableWorkers = static_cast<size_t>(threadSystem.getThreadCount());
-                    Forge::WorkerBudget budget = Forge::calculateWorkerBudget(availableWorkers);
-                    size_t aiWorkerBudget = budget.aiAllocated;
-                    
+                // Proper WorkerBudget calculation with architectural respect
+                size_t availableWorkers = static_cast<size_t>(threadSystem.getThreadCount());
+                Forge::WorkerBudget budget = Forge::calculateWorkerBudget(availableWorkers);
+                size_t aiWorkerBudget = budget.aiAllocated;
+                
 
-                    // Optimized queue pressure check - respect ThreadSystem capacity
-                    size_t currentQueueSize = threadSystem.getQueueSize();
-                    size_t maxQueuePressure = availableWorkers * 3; // Reasonable threshold
-                    
-                    // Use buffer capacity for high workloads (architectural alignment)
-                    size_t optimalWorkerCount = budget.getOptimalWorkerCount(aiWorkerBudget, m_entities.size(), 1000);
-                    
-
-                    // Only fallback if queue pressure is too high
-                    if (currentQueueSize < maxQueuePressure) {
-                        // Calculate batch size based on allocated workers (not fixed)
-                        size_t targetBatches = std::max(size_t(1), optimalWorkerCount); // Prevent division by zero
-                        size_t batchSize = std::max(size_t(50), m_entities.size() / targetBatches);
-                        
-                        // Apply reasonable limits for cache efficiency
-                        if (m_entities.size() < 1000) {
-                            batchSize = std::min(batchSize, size_t(200));
-                        } else if (m_entities.size() < 10000) {
-                            batchSize = std::min(batchSize, size_t(400));
-                        } else {
-                            batchSize = std::min(batchSize, size_t(600));
-                        }
-
-                        // Use Normal priority for AI batches to maintain proper priority system
-                        Forge::TaskPriority batchPriority = Forge::TaskPriority::Normal;
-
-                        // Submit batches respecting WorkerBudget allocation
-                        for (size_t i = 0; i < m_entities.size(); i += batchSize) {
-                            size_t batchEnd = std::min(i + batchSize, m_entities.size());
-
-                            threadSystem.enqueueTask([this, i, batchEnd, deltaTime]() {
-                                processBatch(i, batchEnd, deltaTime);
-                            }, batchPriority, "AI_Batch");
-                        }
-
-                        // No blocking wait - let AI processing be asynchronous for optimal performance
-                        // This allows the main thread to continue immediately while AI catches up
-                    } else {
-                        // Fallback to single-threaded
-                        processBatch(0, m_entities.size(), deltaTime);
-                    }
+                // Cache frame counter for efficiency
+                uint64_t currentFrame = m_frameCounter.load(std::memory_order_relaxed);
+                
+                // Fast frame throttling check - avoid expensive operations if already processed this frame
+                uint64_t lastTaskFrame = m_lastFrameWithTasks.load(std::memory_order_relaxed);
+                if (lastTaskFrame == currentFrame) {
+                    // Already processed this frame, skip to avoid duplicate work
+                    processBatch(0, entityCount, deltaTime);
                 } else {
-                    // Fallback to single-threaded processing if ThreadSystem not available
-                    processBatch(0, m_entities.size(), deltaTime);
+                    // Early queue pressure check - cached queue size
+                    size_t currentQueueSize = threadSystem.getQueueSize();
+                    size_t maxQueuePressure = aiWorkerBudget * 3; // Use AI worker budget, not total workers
+                    
+                    if (currentQueueSize >= maxQueuePressure) {
+                        // Queue overloaded - single-threaded fallback
+                        processBatch(0, entityCount, deltaTime);
+                    } else if (m_lastFrameWithTasks.compare_exchange_strong(lastTaskFrame, currentFrame, std::memory_order_relaxed)) {
+                        // Successfully claimed this frame for task submission
+                        
+                        // Behavior-aware batch sizing based on computational complexity
+                        // Chase behavior is extremely expensive during convergence scenarios
+                        constexpr size_t WANDER_ENTITIES_PER_MS = 150; // Wander/Patrol are lighter
+                        constexpr size_t CHASE_ENTITIES_PER_MS = 12;   // Chase convergence is extremely heavy
+                        constexpr size_t TARGET_TASK_DURATION_MS = 8;  // More aggressive target duration
+                        
+                        // Estimate predominant behavior complexity (simple heuristic)
+                        size_t chaseCount = 0;
+                        {
+                            std::shared_lock<std::shared_mutex> lock(m_entitiesMutex);
+                            for (const auto& entityData : m_entities) {
+                                if (entityData.behaviorType == BehaviorType::Chase) {
+                                    chaseCount++;
+                                }
+                            }
+                        }
+                        
+                        // Use chase rate if >50% entities are chasing, otherwise use wander rate
+                        size_t entitiesPerMs = (chaseCount > entityCount / 2) ? CHASE_ENTITIES_PER_MS : WANDER_ENTITIES_PER_MS;
+                        size_t maxEntitiesPerTask = entitiesPerMs * TARGET_TASK_DURATION_MS;
+                        
+                        size_t targetTasks = (entityCount + maxEntitiesPerTask - 1) / maxEntitiesPerTask; // Ceiling division
+                        targetTasks = std::min(targetTasks, aiWorkerBudget * 2); // Don't exceed 2x AI workers
+                        targetTasks = std::max(size_t(1), targetTasks); // At least 1 task
+                        
+                        size_t entitiesPerTask = entityCount / targetTasks;
+                        size_t remainder = entityCount % targetTasks;
+
+                        // Submit larger batches - typically 2-4 tasks instead of 20-50
+                        size_t processedEntities = 0;
+                        for (size_t taskIdx = 0; taskIdx < targetTasks; ++taskIdx) {
+                            size_t taskSize = entitiesPerTask + (taskIdx < remainder ? 1 : 0);
+                            size_t taskEnd = processedEntities + taskSize;
+                            
+                            threadSystem.enqueueTask([this, processedEntities, taskEnd, deltaTime]() {
+                                processBatch(processedEntities, taskEnd, deltaTime);
+                            }, Forge::TaskPriority::Normal, "AI_Batch");
+                            
+                            processedEntities = taskEnd;
+                        }
+                    } else {
+                        // Frame throttled - single-threaded fallback
+                        processBatch(0, entityCount, deltaTime);
+                    }
                 }
             } else {
-                // Single-threaded processing for smaller counts
-                processBatch(0, m_entities.size(), deltaTime);
+                // Fallback to single-threaded processing if ThreadSystem not available
+                processBatch(0, entityCount, deltaTime);
             }
+        } else {
+            // Single-threaded processing for smaller counts
+            processBatch(0, entityCount, deltaTime);
         }
 
         // Process message queue
         processMessageQueue();
-
-        // Clean up inactive entities periodically
-        cleanupInactiveEntities();
 
         // Simplified performance tracking - less lock contention
         auto endTime = std::chrono::high_resolution_clock::now();
@@ -190,6 +214,13 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
 
         // Only update stats periodically to reduce lock contention
         uint64_t currentFrame = m_frameCounter.fetch_add(1, std::memory_order_relaxed);
+        
+        // Clean up inactive entities less frequently to prevent race conditions
+        uint64_t lastCleanup = m_lastCleanupFrame.load(std::memory_order_relaxed);
+        if (currentFrame - lastCleanup > 300) { // Cleanup every 5 seconds at 60fps
+            cleanupInactiveEntities();
+            m_lastCleanupFrame.store(currentFrame, std::memory_order_relaxed);
+        }
         
         if (currentFrame % 60 == 0) { // Update stats every 60 frames instead of every frame
             std::lock_guard<std::mutex> statsLock(m_statsMutex);
@@ -273,11 +304,13 @@ void AIManager::assignBehaviorToEntity(EntityPtr entity, const std::string& beha
         return;
     }
 
-    // Add to unified spatial system
+    // CRITICAL FIX: Use exclusive lock for entire assignment to prevent race conditions
+    // This ensures atomic entity lookup + modification, preventing the assignment counter bug
+    bool isNewEntity = false;
     {
         std::unique_lock<std::shared_mutex> lock(m_entitiesMutex);
 
-        // Check if entity already exists
+        // Double-check entity existence under exclusive lock to prevent race conditions
         auto it = m_entityToIndex.find(entity);
         if (it != m_entityToIndex.end()) {
             // Update existing entry - preserve existing priority
@@ -289,7 +322,7 @@ void AIManager::assignBehaviorToEntity(EntityPtr entity, const std::string& beha
                 // Keep existing priority, frameCounter, etc.
             }
         } else {
-            // Create new entry with default priority (should be set by registerEntityForUpdates first)
+            // Create new entry with default priority
             AIEntityData entityData;
             entityData.entity = entity;
             entityData.behavior = behaviorInstance;
@@ -302,6 +335,7 @@ void AIManager::assignBehaviorToEntity(EntityPtr entity, const std::string& beha
             size_t index = m_entities.size();
             m_entities.push_back(std::move(entityData));
             m_entityToIndex[entity] = index;
+            isNewEntity = true;
         }
     }
 
@@ -309,18 +343,20 @@ void AIManager::assignBehaviorToEntity(EntityPtr entity, const std::string& beha
     try {
         behaviorInstance->init(entity);
         
-        // Thread-safe assignment tracking using atomic member variable
-        size_t currentCount = m_totalAssignmentCount.fetch_add(1, std::memory_order_relaxed);
-        
-        if (currentCount < 5) {
-            // Log first 5 assignments for debugging
-            AI_INFO("Assigned behavior '" + behaviorName + "' to entity");
-        } else if (currentCount == 5) {
-            // Switch to batch mode notification
-            AI_INFO("Switching to batch assignment mode for performance");
-        } else if (currentCount % 1000 == 0) {
-            // Log milestone every 1000 assignments
-            AI_INFO("Batch assigned " + std::to_string(currentCount) + " behaviors");
+        // Thread-safe assignment tracking - only count new entity assignments, not behavior updates
+        if (isNewEntity) {
+            size_t currentCount = m_totalAssignmentCount.fetch_add(1, std::memory_order_relaxed);
+            
+            if (currentCount < 5) {
+                // Log first 5 assignments for debugging
+                AI_INFO("Assigned behavior '" + behaviorName + "' to new entity");
+            } else if (currentCount == 5) {
+                // Switch to batch mode notification
+                AI_INFO("Switching to batch assignment mode for performance");
+            } else if (currentCount % 1000 == 0) {
+                // Log milestone every 1000 new entity assignments
+                AI_INFO("Batch assigned " + std::to_string(currentCount) + " behaviors");
+            }
         }
     } catch (const std::exception& e) {
         AI_ERROR("Error initializing " + behaviorName + " for entity: " + std::string(e.what()));
@@ -361,10 +397,35 @@ void AIManager::queueBehaviorAssignment(EntityPtr entity, const std::string& beh
     if (!entity) return;
 
     std::lock_guard<std::mutex> lock(m_assignmentsMutex);
-    m_pendingAssignments.emplace_back(entity, behaviorName);
+    
+    // Check for duplicate assignments - remove existing entry for this entity
+    auto it = std::find_if(m_pendingAssignments.begin(), m_pendingAssignments.end(),
+        [entity](const PendingAssignment& assignment) {
+            return assignment.entity == entity;
+        });
+    
+    if (it != m_pendingAssignments.end()) {
+        // Replace existing assignment with new behavior
+        it->behaviorName = behaviorName;
+    } else {
+        // Add new assignment
+        m_pendingAssignments.emplace_back(entity, behaviorName);
+    }
 }
 
 size_t AIManager::processPendingBehaviorAssignments() {
+    // CRITICAL: Wait for any active AI batch processing to complete before modifying entity assignments
+    // This prevents race conditions that caused the assignment counter bug
+    if (Forge::ThreadSystem::Exists()) {
+        auto& threadSystem = Forge::ThreadSystem::Instance();
+        // Simple busy-wait with yield to avoid blocking main thread performance
+        int maxWaitCycles = 10; // Limit wait time to ~1ms max
+        while (threadSystem.isBusy() && maxWaitCycles > 0) {
+            std::this_thread::yield();
+            maxWaitCycles--;
+        }
+    }
+
     std::vector<PendingAssignment> assignments;
 
     {
@@ -375,6 +436,22 @@ size_t AIManager::processPendingBehaviorAssignments() {
     size_t processed = 0;
     for (const auto& assignment : assignments) {
         if (assignment.entity) {
+            // Check if this entity already has the requested behavior to avoid redundant work
+            {
+                std::shared_lock<std::shared_mutex> lock(m_entitiesMutex);
+                auto it = m_entityToIndex.find(assignment.entity);
+                if (it != m_entityToIndex.end()) {
+                    size_t index = it->second;
+                    if (index < m_entities.size() && m_entities[index].behavior) {
+                        std::string currentBehavior = m_entities[index].behavior->getName();
+                        if (currentBehavior == assignment.behaviorName) {
+                            // Entity already has this behavior, skip assignment
+                            continue;
+                        }
+                    }
+                }
+            }
+            
             assignBehaviorToEntity(assignment.entity, assignment.behaviorName);
             processed++;
         }
@@ -634,20 +711,25 @@ void AIManager::processBatch(size_t start, size_t end, float deltaTime) {
         }
 
         try {
-            // Optimized distance check using cached player position
+            // Optimized distance check with minimal calculations
             bool shouldUpdate = true;
             if (hasPlayer) {
                 entityData.frameCounter++;
+                
+                // Fast distance culling using squared distance
                 Vector2D entityPos = entityData.entity->getPosition();
-                float distance = (entityPos - playerPos).length();
+                Vector2D diff = entityPos - playerPos;
+                float distanceSquared = diff.lengthSquared();
+                
+                // Cache the squared distance threshold
+                float maxDist = m_maxUpdateDistance.load(std::memory_order_relaxed);
+                float priorityMultiplier = 1.0f + entityData.priority * 0.1f;
+                float maxDistSquared = maxDist * maxDist * priorityMultiplier * priorityMultiplier;
 
-                // Simplified distance-based updates
-                float adjustedDist = m_maxUpdateDistance.load(std::memory_order_relaxed) * 
-                                   (1.0f + entityData.priority * 0.1f);
-
-                if (distance > adjustedDist) {
-                    // Simple frame-based culling for distant entities
-                    shouldUpdate = (entityData.frameCounter % 30 == 0);
+                if (distanceSquared > maxDistSquared) {
+                    // Behavior-specific culling intervals optimized for performance
+                    int cullInterval = (entityData.behaviorType == BehaviorType::Chase) ? 60 : 45;
+                    shouldUpdate = (entityData.frameCounter % cullInterval == 0);
                 }
             }
 

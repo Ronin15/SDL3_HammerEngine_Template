@@ -151,9 +151,6 @@ void EventDemoState::update(float deltaTime) {
     // Update timing
     updateDemoTimer(deltaTime);
 
-    // Handle input
-    handleInput();
-
     // Update player
     if (m_player) {
         m_player->update(deltaTime);
