@@ -131,6 +131,12 @@ void AIManager::prepareForStateTransition() {
         m_managedEntities.clear();
     }
     
+    // Reset behaviors
+    resetBehaviors();
+    
+    // Reset pause state to false so next state starts unpaused
+    m_globallyPaused.store(false, std::memory_order_release);
+    
     AI_LOG("AIManager prepared for state transition");
 }
 
