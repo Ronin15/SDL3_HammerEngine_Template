@@ -126,6 +126,7 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
                     Forge::WorkerBudget budget = Forge::calculateWorkerBudget(availableWorkers);
                     size_t aiWorkerBudget = budget.aiAllocated;
                     
+
                     // Optimized queue pressure check - respect ThreadSystem capacity
                     size_t currentQueueSize = threadSystem.getQueueSize();
                     size_t maxQueuePressure = availableWorkers * 3; // Reasonable threshold
@@ -133,10 +134,11 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
                     // Use buffer capacity for high workloads (architectural alignment)
                     size_t optimalWorkerCount = budget.getOptimalWorkerCount(aiWorkerBudget, m_entities.size(), 1000);
                     
+
                     // Only fallback if queue pressure is too high
                     if (currentQueueSize < maxQueuePressure) {
                         // Calculate batch size based on allocated workers (not fixed)
-                        size_t targetBatches = optimalWorkerCount;
+                        size_t targetBatches = std::max(size_t(1), optimalWorkerCount); // Prevent division by zero
                         size_t batchSize = std::max(size_t(50), m_entities.size() / targetBatches);
                         
                         // Apply reasonable limits for cache efficiency
@@ -158,34 +160,14 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
                         for (size_t i = 0; i < m_entities.size(); i += batchSize) {
                             size_t batchEnd = std::min(i + batchSize, m_entities.size());
 
-                            threadSystem.enqueueTask([this, i, batchEnd, &completedTasks, deltaTime]() {
+                            threadSystem.enqueueTask([this, i, batchEnd, deltaTime]() {
                                 processBatch(i, batchEnd, deltaTime);
-                                completedTasks.fetch_add(1, std::memory_order_relaxed);
                             }, batchPriority, "AI_Batch");
                             tasksSubmitted++;
                         }
 
-                        // Work-stealing optimized wait strategy with timeout safety
-                        if (tasksSubmitted > 0) {
-                            auto startTime = std::chrono::steady_clock::now();
-                            auto timeout = std::chrono::milliseconds(100); // Shorter timeout for faster recovery
-                            size_t spinCount = 0;
-                            
-                            while (completedTasks.load(std::memory_order_relaxed) < tasksSubmitted) {
-                                // Check for timeout to prevent deadlock but allow most tasks to complete
-                                auto elapsed = std::chrono::steady_clock::now() - startTime;
-                                if (elapsed > timeout) {
-                                    // Don't log warnings for minor incomplete batches - just continue
-                                    break;
-                                }
-                                
-                                if (spinCount++ < 8) {
-                                    std::this_thread::yield();
-                                } else {
-                                    std::this_thread::sleep_for(std::chrono::microseconds(1));
-                                }
-                            }
-                        }
+                        // No blocking wait - let AI processing be asynchronous for optimal performance
+                        // This allows the main thread to continue immediately while AI catches up
                     } else {
                         // Fallback to single-threaded
                         processBatch(0, m_entities.size(), deltaTime);
