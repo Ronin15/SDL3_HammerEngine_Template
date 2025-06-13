@@ -183,16 +183,76 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
         if (useThreading) {
             auto& threadSystem = Forge::ThreadSystem::Instance();
             size_t availableWorkers = static_cast<size_t>(threadSystem.getThreadCount());
+            
+            // Check queue pressure before submitting tasks
+            size_t queueSize = threadSystem.getQueueSize();
+            size_t queueCapacity = threadSystem.getQueueCapacity();
+            size_t pressureThreshold = (queueCapacity * 3) / 4; // 75% capacity threshold
+            bool systemBusy = threadSystem.isBusy();
+            
+            if (queueSize > pressureThreshold || systemBusy) {
+                // Graceful degradation: fallback to single-threaded processing
+                std::string reason = systemBusy ? "ThreadSystem busy" : "Queue pressure";
+                AI_DEBUG(reason + " detected (" + std::to_string(queueSize) + "/" + 
+                        std::to_string(queueCapacity) + "), using single-threaded processing");
+                processBatch(0, entityCount, deltaTime, nextBuffer);
+                
+                // Swap buffers atomically
+                if (nextBuffer != currentBuffer) {
+                    m_storage.currentBuffer.store(nextBuffer, std::memory_order_release);
+                }
+                
+                // Process message queue and continue with performance tracking
+                processMessageQueue();
+                
+                auto endTime = std::chrono::high_resolution_clock::now();
+                auto duration = std::chrono::duration<double, std::milli>(endTime - startTime).count();
+                currentFrame = m_frameCounter.fetch_add(1, std::memory_order_relaxed);
+                
+                // Periodic cleanup and stats
+                if (currentFrame % 300 == 0) {
+                    cleanupInactiveEntities();
+                    m_lastCleanupFrame.store(currentFrame, std::memory_order_relaxed);
+                    
+                    std::lock_guard<std::mutex> statsLock(m_statsMutex);
+                    m_globalStats.addSample(duration, entityCount);
+                    
+                    if (entityCount > 0) {
+                        double avgDuration = m_globalStats.updateCount > 0 ? 
+                            (m_globalStats.totalUpdateTime / m_globalStats.updateCount) : 0.0;
+                        AI_DEBUG("AI Summary - Entities: " + std::to_string(entityCount) + 
+                               ", Avg Update: " + std::to_string(avgDuration) + "ms" +
+                               ", Entities/sec: " + std::to_string(m_globalStats.entitiesPerSecond));
+                    }
+                }
+                return; // Exit early after single-threaded processing
+            }
+            
             Forge::WorkerBudget budget = Forge::calculateWorkerBudget(availableWorkers);
             
             // Use WorkerBudget system properly with threshold-based buffer allocation
             size_t optimalWorkerCount = budget.getOptimalWorkerCount(budget.aiAllocated, entityCount, 1000);
             
-            // Calculate optimal batch size - 2-4 large batches for optimal performance
-            // Follow the established pattern: minimum 1000 entities per batch
+            // Dynamic batch sizing based on queue pressure for optimal performance
             size_t minEntitiesPerBatch = 1000;
+            size_t maxBatches = 4;
+            
+            // Adjust batch strategy based on queue pressure
+            double queuePressure = static_cast<double>(queueSize) / queueCapacity;
+            if (queuePressure > 0.5) {
+                // High pressure: use fewer, larger batches to reduce queue overhead
+                minEntitiesPerBatch = 1500;
+                maxBatches = 2;
+                AI_DEBUG("High queue pressure (" + std::to_string(static_cast<int>(queuePressure * 100)) + 
+                        "%), using larger batches");
+            } else if (queuePressure < 0.25) {
+                // Low pressure: can use more batches for better parallelization
+                minEntitiesPerBatch = 800;
+                maxBatches = 4;
+            }
+            
             size_t batchCount = std::min(optimalWorkerCount, entityCount / minEntitiesPerBatch);
-            batchCount = std::max(size_t(1), std::min(batchCount, size_t(4))); // Cap at 4 batches max for optimal performance
+            batchCount = std::max(size_t(1), std::min(batchCount, maxBatches));
             
             size_t entitiesPerBatch = entityCount / batchCount;
             size_t remainingEntities = entityCount % batchCount;
