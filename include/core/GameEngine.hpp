@@ -55,10 +55,9 @@ class GameEngine {
   void update(float deltaTime);
   
   /**
-   * @brief Renders the current frame with interpolation
-   * @param interpolation Interpolation factor for smooth rendering
+   * @brief Main rendering function called from game loop
    */
-  void render(float interpolation);
+  void render();
   
   /**
    * @brief Cleans up all engine resources and shuts down systems
@@ -99,33 +98,35 @@ class GameEngine {
   void signalUpdateComplete();
   
   /**
-   * @brief Checks if a new frame is ready for rendering
-   * @return true if new frame ready, false otherwise
+   * @brief Checks if there's a new frame ready to render
+   * @return true if new frame available, false otherwise
    */
-  bool hasNewFrameToRender() const;
+  bool hasNewFrameToRender() const noexcept;
   
   /**
-   * @brief Checks if update thread is currently running
-   * @return true if update is running, false otherwise
+   * @brief Checks if update is currently running
+   * @return true if update in progress, false otherwise
    */
-  bool isUpdateRunning() const;
+  bool isUpdateRunning() const noexcept;
+  
+  /**
+   * @brief Gets the current buffer index being used for updates
+   * @return Current buffer index (0 or 1)
+   */
+  size_t getCurrentBufferIndex() const noexcept;
+  
+  /**
+   * @brief Gets the buffer index being used for rendering
+   * @return Render buffer index (0 or 1)
+   */
+  size_t getRenderBufferIndex() const noexcept;
   
   /**
    * @brief Swaps double buffers for thread-safe rendering
    */
   void swapBuffers();
   
-  /**
-   * @brief Gets the current buffer index for double buffering
-   * @return Current buffer index
-   */
-  size_t getCurrentBufferIndex() const;
-  
-  /**
-   * @brief Gets the render buffer index for double buffering
-   * @return Render buffer index
-   */
-  size_t getRenderBufferIndex() const;
+
 
   /**
    * @brief Gets pointer to the game state manager
@@ -155,13 +156,13 @@ class GameEngine {
    * @brief Gets the SDL renderer instance
    * @return Pointer to SDL renderer
    */
-  SDL_Renderer* getRenderer() const { return mp_renderer.get(); }
+  SDL_Renderer* getRenderer() const noexcept { return mp_renderer.get(); }
 
   /**
    * @brief Gets the SDL window instance
    * @return Pointer to SDL window
    */
-  SDL_Window* getWindow() const { return mp_window.get(); }
+  SDL_Window* getWindow() const noexcept { return mp_window.get(); }
 
   /**
    * @brief Gets current FPS from GameLoop's TimestepManager
@@ -173,13 +174,13 @@ class GameEngine {
    * @brief Gets the current window width
    * @return Window width in pixels
    */
-  int getWindowWidth() const { return m_windowWidth; }
+  int getWindowWidth() const noexcept { return m_windowWidth; }
   
   /**
    * @brief Gets the current window height
    * @return Window height in pixels
    */
-  int getWindowHeight() const { return m_windowHeight; }
+  int getWindowHeight() const noexcept { return m_windowHeight; }
   
   /**
    * @brief Sets the window size
@@ -196,9 +197,9 @@ class GameEngine {
   
   /**
    * @brief Gets the current logical presentation mode
-   * @return Current SDL logical presentation mode
+   * @return Current logical presentation mode
    */
-  SDL_RendererLogicalPresentation getLogicalPresentationMode() const;
+  SDL_RendererLogicalPresentation getLogicalPresentationMode() const noexcept;
 
   /**
    * @brief Gets the DPI scale factor calculated during initialization
@@ -214,9 +215,9 @@ class GameEngine {
 
   /**
    * @brief Checks if VSync is currently enabled
-   * @return true if VSync is active, false otherwise
+   * @return true if VSync is enabled, false otherwise
    */
-  bool isVSyncEnabled() const;
+  bool isVSyncEnabled() const noexcept;
 
   /**
    * @brief Toggles VSync on or off at runtime
@@ -252,6 +253,7 @@ class GameEngine {
   // Using memory_order for thread synchronization
   std::atomic<bool> m_updateCompleted{false};
   std::atomic<bool> m_updateRunning{false};
+  std::atomic<bool> m_stopRequested{false};
   std::atomic<uint64_t> m_lastUpdateFrame{0};
   std::atomic<uint64_t> m_lastRenderedFrame{0};
   

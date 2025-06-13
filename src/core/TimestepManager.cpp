@@ -56,9 +56,10 @@ void TimestepManager::startFrame() {
 }
 
 bool TimestepManager::shouldUpdate() {
-    // Process fixed timestep updates
-    if (m_accumulator >= m_fixedTimestep) {
-        m_accumulator -= m_fixedTimestep;
+    // Always update once per frame for responsive input
+    // Use actual frame time instead of fixed timestep accumulator
+    if (m_accumulator > 0.0) {
+        m_accumulator = 0.0; // Reset for next frame
         return true;
     }
     return false;
@@ -69,13 +70,11 @@ bool TimestepManager::shouldRender() const {
 }
 
 float TimestepManager::getUpdateDeltaTime() const {
-    return m_fixedTimestep;
+    // Use actual frame time for responsive movement
+    return static_cast<float>(m_lastFrameTimeMs) / 1000.0f;
 }
 
-float TimestepManager::getRenderInterpolation() const {
-    // Calculate interpolation factor for smooth rendering between fixed updates
-    return static_cast<float>(m_accumulator / m_fixedTimestep);
-}
+
 
 void TimestepManager::endFrame() {
     // Mark render as completed for this frame

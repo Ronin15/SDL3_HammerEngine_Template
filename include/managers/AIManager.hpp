@@ -124,6 +124,12 @@ public:
     bool init();
     
     /**
+     * @brief Checks if the AI Manager has been initialized
+     * @return true if initialized, false otherwise
+     */
+    bool isInitialized() const { return m_initialized.load(std::memory_order_acquire); }
+    
+    /**
      * @brief Cleans up all AI resources and marks manager as shut down
      */
     void clean();
