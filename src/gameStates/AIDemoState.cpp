@@ -173,42 +173,16 @@ bool AIDemoState::exit() {
     // Cache AIManager reference for better performance
     AIManager& aiMgr = AIManager::Instance();
 
-    // First clear entity references from behaviors
-    if (aiMgr.hasBehavior("Chase")) {
-        auto chaseBehaviorPtr = aiMgr.getBehavior("Chase");
-        auto chaseBehavior = std::dynamic_pointer_cast<ChaseBehavior>(chaseBehaviorPtr);
-        if (chaseBehavior) {
-            // Chase behavior cleanup handled by AIManager
-        }
-    }
+    // Use the new prepareForStateTransition method for safer cleanup
+    aiMgr.prepareForStateTransition();
 
-    // First unregister all NPCs from AIManager before calling clean()
-    std::cout << "Forge Game Engine - Unregistering NPCs from AIManager before cleanup\n";
+    // Clean up NPCs
     for (auto& npc : m_npcs) {
         if (npc) {
-            // Unregister from AIManager first to avoid shared_from_this() issues
-            aiMgr.unregisterEntityFromUpdates(npc);
-
-            // Unassign behavior if it has one
-            if (aiMgr.entityHasBehavior(npc)) {
-                aiMgr.unassignBehaviorFromEntity(npc);
-            }
-
-            // Now safe to call clean() and stop movement
             npc->clean();
             npc->setVelocity(Vector2D(0, 0));
         }
     }
-
-    // Send release message to all behaviors
-    aiMgr.broadcastMessage("release_entities", true);
-    aiMgr.processMessageQueue();
-
-    // Reset all AI behaviors to clear entity references
-    // This ensures behaviors release their entity references before the entities are destroyed
-    aiMgr.resetBehaviors();
-
-    // Clean up NPCs
     m_npcs.clear();
 
     // Clean up player
@@ -216,11 +190,9 @@ bool AIDemoState::exit() {
         m_player.reset();
     }
 
-    // Clean up UI components efficiently
+    // Clean up UI components using simplified method
     auto& ui = UIManager::Instance();
-    ui.removeComponentsWithPrefix("ai_");
-
-    // Chase behavior cleanup is now handled by AIManager
+    ui.prepareForStateTransition();
 
     // Always restore AI to unpaused state when exiting the demo state
     // This prevents the global pause from affecting other states
@@ -232,9 +204,6 @@ bool AIDemoState::exit() {
 }
 
 void AIDemoState::update([[maybe_unused]] float deltaTime) {
-    // Cache AIManager reference for better performance
-    AIManager& aiMgr = AIManager::Instance();
-
     try {
         // Update player
         if (m_player) {
@@ -256,50 +225,6 @@ void AIDemoState::update([[maybe_unused]] float deltaTime) {
     } catch (...) {
         std::cerr << "Forge Game Engine - ERROR: Unknown exception in AIDemoState::update()" << std::endl;
     }
-    // Cache InputManager reference for better performance
-    InputManager& inputMgr = InputManager::Instance();
-
-    if (inputMgr.isKeyDown(SDL_SCANCODE_B)) {
-        std::cout << "Forge Game Engine - Preparing to exit AIDemoState...\n";
-
-        // First call clean() on all NPCs to properly handle unassignment
-        for (auto& npc : m_npcs) {
-            if (npc) {
-                // Unregister from AIManager entity updates
-                aiMgr.unregisterEntityFromUpdates(npc);
-                // Call clean() which will handle unassignment safely
-                npc->clean();
-                // Also stop the entity's movement
-                npc->setVelocity(Vector2D(0, 0));
-            }
-        }
-
-        // Set chase behavior target to nullptr to avoid dangling reference
-        if (aiMgr.hasBehavior("Chase")) {
-            auto chaseBehaviorPtr = aiMgr.getBehavior("Chase");
-            auto chaseBehavior = std::dynamic_pointer_cast<ChaseBehavior>(chaseBehaviorPtr);
-            if (chaseBehavior) {
-                std::cout << "Forge Game Engine - Chase behavior cleanup handled by AIManager...\n";
-
-                // Ensure chase behavior has no references to any entities
-                chaseBehavior->clean(nullptr);
-            }
-        }
-
-        // Make sure all AI behavior references are cleared
-        aiMgr.broadcastMessage("release_entities", true);
-
-        // Force a flush of the message queue to ensure all messages are processed
-        aiMgr.processMessageQueue();
-
-        std::cout << "Forge Game Engine - Transitioning to MainMenuState...\n";
-        // Cache GameEngine reference for better performance
-        GameEngine& gameEngine = GameEngine::Instance();
-        gameEngine.getGameStateManager()->setState("MainMenuState");
-    }
-
-    // Handle input with proper key press detection
-    handleInput();
 
     // Game logic only - UI updates moved to render() for thread safety
 }

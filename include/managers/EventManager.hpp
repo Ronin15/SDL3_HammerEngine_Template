@@ -60,20 +60,23 @@ enum class EventTypeId : uint8_t {
 
 /**
  * @brief Cache-friendly event data structure (data-oriented design)
+ * Optimized for 32-byte cache line alignment
  */
 struct EventData {
-    EventPtr event;                    // Smart pointer to event
-    EventTypeId typeId;               // Type for fast dispatch
-    uint32_t flags;                   // Active, dirty, etc.
-    float lastUpdateTime;             // For delta time calculations
-    uint32_t priority;                // For priority-based processing
+    EventPtr event;                    // Smart pointer to event (8 bytes)
+    float lastUpdateTime;             // For delta time calculations (4 bytes)
+    uint32_t flags;                   // Active, dirty, etc. (4 bytes)
+    uint32_t priority;                // For priority-based processing (4 bytes)
+    EventTypeId typeId;               // Type for fast dispatch (1 byte)
+    uint8_t padding[11];              // Padding to 32 bytes for cache alignment
     
     // Flags bit definitions
     static constexpr uint32_t FLAG_ACTIVE = 1 << 0;
     static constexpr uint32_t FLAG_DIRTY = 1 << 1;
     static constexpr uint32_t FLAG_PENDING_REMOVAL = 1 << 2;
     
-    EventData() : typeId(EventTypeId::Custom), flags(0), lastUpdateTime(0.0f), priority(0) {}
+    EventData() : event(nullptr), lastUpdateTime(0.0f), flags(0), priority(0), 
+                  typeId(EventTypeId::Custom), padding{} {}
     
     bool isActive() const { return flags & FLAG_ACTIVE; }
     void setActive(bool active) { 
@@ -86,7 +89,7 @@ struct EventData {
         if (dirty) flags |= FLAG_DIRTY; 
         else flags &= ~FLAG_DIRTY; 
     }
-};
+} __attribute__((aligned(32)));
 
 /**
  * @brief Fast event handler function type
@@ -180,9 +183,21 @@ public:
     bool init();
     
     /**
-     * @brief Cleans up all event resources and marks manager as shut down
+     * @brief Checks if the Event Manager has been initialized
+     * @return true if initialized, false otherwise
+     */
+    bool isInitialized() const { return m_initialized.load(std::memory_order_acquire); }
+    
+    /**
+     * @brief Cleans up all event resources
      */
     void clean();
+    
+    /**
+     * @brief Prepares for state transition by safely cleaning up events and handlers
+     * @details Call this before exit() in game states to avoid issues
+     */
+    void prepareForStateTransition();
     
     /**
      * @brief Updates all active events and processes event systems
@@ -363,6 +378,10 @@ private:
 
     // Timing
     std::atomic<uint64_t> m_lastUpdateTime{0};
+    
+    // Double buffering for lock-free reads during updates
+    std::atomic<size_t> m_currentBuffer{0};
+    std::array<std::vector<EventData>, 2> m_updateBuffers[static_cast<size_t>(EventTypeId::COUNT)];
 
     // Helper methods
     EventTypeId getEventTypeId(const EventPtr& event) const;

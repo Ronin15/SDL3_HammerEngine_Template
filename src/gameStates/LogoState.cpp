@@ -114,6 +114,10 @@ bool LogoState::exit() {
   return true;
 }
 
+void LogoState::handleInput() {
+  // LogoState doesn't need input handling
+}
+
 std::string LogoState::getName() const {
   return "LogoState";
 }

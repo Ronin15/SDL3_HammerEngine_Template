@@ -4,6 +4,7 @@
 */
 
 #include "core/TimestepManager.hpp"
+#include <algorithm>
 
 TimestepManager::TimestepManager(float targetFPS, float fixedTimestep)
     : m_targetFPS(targetFPS)
@@ -40,8 +41,12 @@ void TimestepManager::startFrame() {
     // Update frame time in milliseconds
     m_lastFrameTimeMs = static_cast<uint32_t>(deltaTimeMs);
     
-    // Simple timing - each frame gets one update and one render
-    m_accumulator = m_fixedTimestep;
+    // Convert to seconds and clamp to prevent spiral of death
+    double deltaTime = deltaTimeMs / 1000.0;
+    deltaTime = std::min(deltaTime, static_cast<double>(MAX_ACCUMULATOR));
+    
+    // Add to accumulator for fixed timestep updates
+    m_accumulator += deltaTime;
     
     // Always render once per frame
     m_shouldRender = true;
@@ -51,9 +56,10 @@ void TimestepManager::startFrame() {
 }
 
 bool TimestepManager::shouldUpdate() {
-    // Simple 1:1 frame to update mapping
-    if (m_accumulator >= m_fixedTimestep) {
-        m_accumulator = 0.0;
+    // Always update once per frame for responsive input
+    // Use actual frame time instead of fixed timestep accumulator
+    if (m_accumulator > 0.0) {
+        m_accumulator = 0.0; // Reset for next frame
         return true;
     }
     return false;
@@ -64,13 +70,11 @@ bool TimestepManager::shouldRender() const {
 }
 
 float TimestepManager::getUpdateDeltaTime() const {
-    return m_fixedTimestep;
+    // Use actual frame time for responsive movement
+    return static_cast<float>(m_lastFrameTimeMs) / 1000.0f;
 }
 
-float TimestepManager::getRenderInterpolation() const {
-    // Simple interpolation for smooth rendering
-    return 0.0f;
-}
+
 
 void TimestepManager::endFrame() {
     // Mark render as completed for this frame

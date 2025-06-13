@@ -171,23 +171,29 @@ void GameLoop::runUpdateWorker(const Forge::WorkerBudget& budget) {
     // WorkerBudget-aware update worker - respects allocated resources
     GAMELOOP_INFO("Update worker started with " + std::to_string(budget.engineReserved) + " allocated workers");
 
-    // Pre-calculate sleep time to avoid repeated calculations
+    // Adaptive timing system
     float targetFPS = m_timestepManager->getTargetFPS();
-    auto sleepDuration = std::chrono::microseconds(static_cast<long>(
-        std::max(500.0f, std::min(8000.0f, (1000000.0f / targetFPS) * 0.5f))
-    ));
-
-    // Adaptive behavior based on WorkerBudget allocation
+    const auto targetFrameTime = std::chrono::microseconds(static_cast<long>(1000000.0f / targetFPS));
+    
+    // Performance tracking for adaptive sleep
+    auto lastUpdateStart = std::chrono::high_resolution_clock::now();
+    auto avgUpdateTime = std::chrono::microseconds(0);
+    const int performanceSamples = 10;
+    int sampleCount = 0;
+    
+    // System capability detection
     bool canUseParallelUpdates = (budget.engineReserved >= 2);
     bool isHighEndSystem = (budget.totalWorkers > 4);
-
-    // Adjust sleep precision based on system capabilities
-    auto adaptiveSleepDuration = isHighEndSystem ?
-        std::chrono::microseconds(static_cast<long>(sleepDuration.count() * 0.8)) : // More responsive on high-end
-        sleepDuration; // Standard timing on low-end
+    
+    // Initial conservative sleep estimate
+    auto adaptiveSleepDuration = std::chrono::microseconds(
+        static_cast<long>(targetFrameTime.count() * 0.3f)
+    );
 
     while (m_updateTaskRunning.load(std::memory_order_relaxed) && !m_stopRequested.load(std::memory_order_relaxed)) {
         try {
+            auto updateStart = std::chrono::high_resolution_clock::now();
+            
             if (!m_paused.load(std::memory_order_relaxed)) {
                 if (canUseParallelUpdates && Forge::ThreadSystem::Exists()) {
                     // Use enhanced processing for high-end systems
@@ -197,32 +203,65 @@ void GameLoop::runUpdateWorker(const Forge::WorkerBudget& budget) {
                     processUpdates();
                 }
             }
-
-            // WorkerBudget-aware sleep timing
-            std::this_thread::sleep_for(adaptiveSleepDuration);
-
-            // Adaptive recalibration interval based on system tier
-            static int frameCounter = 0;
-            int recalibrationInterval = isHighEndSystem ? 1200 : 600; // High-end: 20s, Low-end: 10s
-
-            if (++frameCounter % recalibrationInterval == 0) {
-                float newTargetFPS = m_timestepManager->getTargetFPS();
-                if (newTargetFPS != targetFPS) {
-                    targetFPS = newTargetFPS;
-                    sleepDuration = std::chrono::microseconds(static_cast<long>(
-                        std::max(500.0f, std::min(8000.0f, (1000000.0f / targetFPS) * 0.5f))
-                    ));
-                    adaptiveSleepDuration = isHighEndSystem ?
-                        std::chrono::microseconds(static_cast<long>(sleepDuration.count() * 0.8)) :
-                        sleepDuration;
+            
+            auto updateEnd = std::chrono::high_resolution_clock::now();
+            auto updateDuration = std::chrono::duration_cast<std::chrono::microseconds>(
+                updateEnd - updateStart
+            );
+            
+            // Update rolling average of update time
+            if (sampleCount < performanceSamples) {
+                avgUpdateTime = (avgUpdateTime * sampleCount + updateDuration) / (sampleCount + 1);
+                sampleCount++;
+            } else {
+                avgUpdateTime = (avgUpdateTime * (performanceSamples - 1) + updateDuration) / performanceSamples;
+            }
+            
+            // Calculate adaptive sleep duration
+            auto frameTimeElapsed = std::chrono::duration_cast<std::chrono::microseconds>(
+                updateEnd - lastUpdateStart
+            );
+            auto remainingTime = targetFrameTime - frameTimeElapsed;
+            
+            if (remainingTime.count() > 0) {
+                // Adjust sleep based on system responsiveness
+                float sleepFactor = isHighEndSystem ? 0.95f : 0.85f; // High-end can sleep closer to deadline
+                adaptiveSleepDuration = std::chrono::microseconds(
+                    static_cast<long>(remainingTime.count() * sleepFactor)
+                );
+                
+                // Ensure minimum sleep to avoid busy waiting
+                const auto minSleep = std::chrono::microseconds(100);
+                if (adaptiveSleepDuration < minSleep) {
+                    adaptiveSleepDuration = minSleep;
                 }
-
-                // Log WorkerBudget utilization periodically on high-end systems
-                if (isHighEndSystem && Forge::ThreadSystem::Exists()) {
-                    auto& threadSystem = Forge::ThreadSystem::Instance();
-                    if (threadSystem.isBusy()) {
-                        GAMELOOP_DEBUG("High-end system WorkerBudget busy - optimal utilization");
-                    }
+                
+                std::this_thread::sleep_for(adaptiveSleepDuration);
+            } else {
+                // Running behind - yield to other threads
+                std::this_thread::yield();
+            }
+            
+            lastUpdateStart = updateStart;
+            
+            // Periodic recalibration and logging
+            const int recalibrationInterval = 300; // Every 5 seconds at 60 FPS
+            
+            if (++m_updateCount % recalibrationInterval == 0) {
+                float newTargetFPS = m_timestepManager->getTargetFPS();
+                if (std::abs(newTargetFPS - targetFPS) > 0.1f) {
+                    targetFPS = newTargetFPS;
+                    GAMELOOP_DEBUG("Target FPS changed to: " + std::to_string(targetFPS));
+                }
+                
+                // Log performance metrics
+                if (avgUpdateTime.count() > 0) {
+                    float avgUpdateMs = avgUpdateTime.count() / 1000.0f;
+                    float targetMs = 1000.0f / targetFPS;
+                    float utilizationPercent = (avgUpdateMs / targetMs) * 100.0f;
+                    
+                    GAMELOOP_DEBUG("Update performance: " + std::to_string(avgUpdateMs) + 
+                                 "ms avg (" + std::to_string(utilizationPercent) + "% frame budget)");
                 }
             }
 
@@ -261,8 +300,7 @@ void GameLoop::processUpdatesParallel() {
     }
 
     // Monitor performance on high-end systems (every 1000 updates)
-    static std::atomic<int> perfCounter{0};
-    if (perfCounter.fetch_add(1, std::memory_order_relaxed) % 1000 == 0) {
+    if (m_updateCount.load(std::memory_order_relaxed) % 1000 == 0) {
         auto duration = std::chrono::high_resolution_clock::now() - highPrecisionStart;
         auto microseconds = std::chrono::duration_cast<std::chrono::microseconds>(duration).count();
         if (microseconds > 20000) { // > 20ms for 1000 updates indicates potential performance issues
@@ -273,8 +311,7 @@ void GameLoop::processUpdatesParallel() {
 
 void GameLoop::processRender() {
     if (m_timestepManager->shouldRender()) {
-        float interpolation = m_timestepManager->getRenderInterpolation();
-        invokeRenderHandler(interpolation);
+        invokeRenderHandler();
     }
 }
 
@@ -300,11 +337,11 @@ void GameLoop::invokeUpdateHandler(float deltaTime) {
     }
 }
 
-void GameLoop::invokeRenderHandler(float interpolation) {
+void GameLoop::invokeRenderHandler() {
     std::lock_guard<std::mutex> lock(m_callbackMutex);
     if (m_renderHandler) {
         try {
-            m_renderHandler(interpolation);
+            m_renderHandler();
         } catch (const std::exception& e) {
             GAMELOOP_ERROR("Exception in render handler: " + std::string(e.what()));
         }

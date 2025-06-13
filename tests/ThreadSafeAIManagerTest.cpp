@@ -839,6 +839,10 @@ BOOST_FIXTURE_TEST_CASE(TestConcurrentBehaviorProcessing, ThreadedAITestFixture)
     std::cout << "Starting TestConcurrentBehaviorProcessing..." << std::endl;
     const int NUM_ENTITIES = 10; // Reduced for stability
 
+    // Create and set a player entity to ensure consistent updates
+    auto player = std::make_shared<TestEntity>(Vector2D(0, 0));
+    AIManager::Instance().setPlayerForDistanceOptimization(player);
+
     // Register a behavior
     auto behavior = std::make_shared<ThreadTestBehavior>(0);
     {
@@ -879,6 +883,8 @@ BOOST_FIXTURE_TEST_CASE(TestConcurrentBehaviorProcessing, ThreadedAITestFixture)
         AIManager::Instance().unregisterEntityFromUpdates(entity);
         AIManager::Instance().unassignBehaviorFromEntity(entity);
     }
+    // Clear player entity
+    AIManager::Instance().setPlayerForDistanceOptimization(nullptr);
     // Wait before resetting behaviors
     std::this_thread::sleep_for(std::chrono::milliseconds(20));
     AIManager::Instance().resetBehaviors();

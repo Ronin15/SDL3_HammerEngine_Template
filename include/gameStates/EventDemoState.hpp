@@ -31,6 +31,7 @@ public:
 
     void update(float deltaTime) override;
     void render(float deltaTime) override;
+    void handleInput() override;
 
     bool enter() override;
     bool exit() override;
@@ -41,7 +42,6 @@ private:
     // Demo management methods
     void setupEventSystem();
     void createTestEvents();
-    void handleInput();
     void updateDemoTimer(float deltaTime);
 
     void renderUI();

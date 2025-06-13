@@ -106,11 +106,12 @@ bool EventDemoState::exit() {
     std::cout << "Forge Game Engine - Exiting EventDemoState...\n";
 
     try {
-        // Cleanup spawned NPCs
-        cleanupSpawnedNPCs();
-
         // Reset player
         m_player.reset();
+
+        // Clear spawned NPCs vector and reset limit flag
+        m_spawnedNPCs.clear();
+        m_limitMessageShown = false;
 
         // Clear event log
         m_eventLog.clear();
@@ -123,14 +124,17 @@ bool EventDemoState::exit() {
         // Cache EventManager reference for better performance
         EventManager& eventMgr = EventManager::Instance();
 
-        // Clean up event handlers
-        eventMgr.removeHandlers(EventTypeId::Weather);
-        eventMgr.removeHandlers(EventTypeId::NPCSpawn);
-        eventMgr.removeHandlers(EventTypeId::SceneChange);
+        // Use EventManager's prepareForStateTransition for safer cleanup
+        // This handles clearing all handlers and events in one operation
+        eventMgr.prepareForStateTransition();
 
-        // Clean up UI components efficiently
+        // Use AIManager's prepareForStateTransition for architectural consistency
+        AIManager& aiMgr = AIManager::Instance();
+        aiMgr.prepareForStateTransition();
+
+        // Clean up UI components using simplified method
         auto& ui = UIManager::Instance();
-        ui.removeComponentsWithPrefix("event_");
+        ui.prepareForStateTransition();
 
         std::cout << "Forge Game Engine - EventDemoState cleanup complete\n";
         return true;
@@ -150,9 +154,6 @@ void EventDemoState::update(float deltaTime) {
 
     // Update timing
     updateDemoTimer(deltaTime);
-
-    // Handle input
-    handleInput();
 
     // Update player
     if (m_player) {
