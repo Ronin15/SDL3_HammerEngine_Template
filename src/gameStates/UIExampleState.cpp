@@ -117,14 +117,6 @@ bool UIExampleState::enter() {
 void UIExampleState::update(float deltaTime) {
     // Update progress bar animation
     updateProgressBar(deltaTime);
-    
-    // Handle B key to go back
-    auto& inputManager = InputManager::Instance();
-    if (inputManager.wasKeyPressed(SDL_SCANCODE_B)) {
-        auto& gameEngine = GameEngine::Instance();
-        auto* gameStateManager = gameEngine.getGameStateManager();
-        gameStateManager->setState("MainMenuState");
-    }
 }
 
 void UIExampleState::render(float deltaTime) {
@@ -141,13 +133,9 @@ void UIExampleState::render(float deltaTime) {
 bool UIExampleState::exit() {
     std::cout << "Exiting UI Example State\n";
     
-    // Clean up all UI components efficiently
+    // Clean up UI components using simplified method
     auto& ui = UIManager::Instance();
-    ui.removeComponentsWithPrefix("uiexample_");
-    ui.removeOverlay();
-    
-    // Reset theme to prevent contamination of other states (UIExampleState changes themes)
-    ui.resetToDefaultTheme();
+    ui.prepareForStateTransition();
     
     return true;
 }
@@ -195,6 +183,16 @@ void UIExampleState::handleThemeChange() {
     m_darkTheme = !m_darkTheme;
     applyDarkTheme(m_darkTheme);
     std::cout << "Theme changed to: " << (m_darkTheme ? "dark" : "light") << "\n";
+}
+
+void UIExampleState::handleInput() {
+    // Handle B key to go back
+    auto& inputManager = InputManager::Instance();
+    if (inputManager.wasKeyPressed(SDL_SCANCODE_B)) {
+        auto& gameEngine = GameEngine::Instance();
+        auto* gameStateManager = gameEngine.getGameStateManager();
+        gameStateManager->setState("MainMenuState");
+    }
 }
 
 

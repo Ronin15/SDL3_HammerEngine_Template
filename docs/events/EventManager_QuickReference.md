@@ -1,7 +1,7 @@
 # EventManager Quick Reference
 
 ## Overview
-Quick reference for the Forge Game Engine EventManager as the single source of truth for all event operations.
+Quick reference for the Forge Game Engine EventManager as the single source of truth for all event operations. Features queue pressure monitoring, WorkerBudget integration, and architectural consistency with AIManager.
 
 ## Essential Includes
 ```cpp
@@ -17,9 +17,12 @@ Forge::ThreadSystem::Instance().init();
 // Initialize EventManager (single source of truth)
 EventManager::Instance().init();
 
-// Optional: Configure threading
+// Optional: Configure threading (automatic queue pressure monitoring)
 EventManager::Instance().enableThreading(true);
-EventManager::Instance().setThreadingThreshold(100);
+EventManager::Instance().setThreadingThreshold(50); // Lower threshold for events
+
+// Queue pressure monitoring is automatic (90% capacity threshold)
+// Dynamic batch sizing adjusts based on real-time queue pressure
 ```
 
 ## Event Types

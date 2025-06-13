@@ -1421,22 +1421,49 @@ void UIManager::resetToDefaultTheme() {
 }
 
 void UIManager::cleanupForStateTransition() {
-    // Remove all components (complete cleanup)
+    // Comprehensive cleanup for safe state transitions
+    
+    // Clear all UI components
     m_components.clear();
     
-    // Remove overlay
+    // Clear all layouts
+    m_layouts.clear();
+    
+    // Stop and clear all animations
+    m_animations.clear();
+    
+    // Clear all interaction state
+    m_clickedButtons.clear();
+    m_hoveredComponents.clear();
+    m_focusedComponent.clear();
+    m_hoveredTooltip.clear();
+    m_tooltipTimer = 0.0f;
+    
+    // Clear event log states
+    m_eventLogStates.clear();
+    
+    // Remove overlay if present
     removeOverlay();
     
     // Reset to default theme
     resetToDefaultTheme();
     
-    // Clear any remaining UI state
-    m_focusedComponent.clear();
-    m_hoveredTooltip.clear();
+    // Reset mouse state
+    m_lastMousePosition = Vector2D(0, 0);
+    m_mousePressed = false;
+    m_mouseReleased = false;
     
-    // Reset global settings
+    // Reset global settings to defaults
     m_globalStyle = UIStyle{};
     m_globalFontID = "fonts_UI_Arial";
+    m_globalScale = 1.0f;
+    
+    UI_INFO("UIManager prepared for state transition");
+}
+
+void UIManager::prepareForStateTransition() {
+    // Simplified public interface that delegates to the comprehensive cleanup
+    cleanupForStateTransition();
 }
 
 void UIManager::applyThemeToComponent(const std::string& id, UIComponentType type) {

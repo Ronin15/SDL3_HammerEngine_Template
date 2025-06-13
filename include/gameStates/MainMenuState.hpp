@@ -13,6 +13,7 @@ class MainMenuState : public GameState {
   bool enter() override;
   void update(float deltaTime) override;
   void render(float deltaTime) override;
+  void handleInput() override;
   bool exit() override;
   std::string getName() const override;
 

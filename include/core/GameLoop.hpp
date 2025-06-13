@@ -33,7 +33,7 @@ public:
     // Callback function types
     using EventHandler = std::function<void()>;
     using UpdateHandler = std::function<void(float deltaTime)>;
-    using RenderHandler = std::function<void(float interpolation)>;
+    using RenderHandler = std::function<void()>;
 
     /**
      * Constructor
@@ -165,7 +165,7 @@ private:
     // Thread-safe callback invocation
     void invokeEventHandler();
     void invokeUpdateHandler(float deltaTime);
-    void invokeRenderHandler(float interpolation);
+    void invokeRenderHandler();
 
     // Prevent copying
     GameLoop(const GameLoop&) = delete;

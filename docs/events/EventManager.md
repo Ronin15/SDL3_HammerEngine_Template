@@ -2,7 +2,20 @@
 
 ## Overview
 
-The Forge Game Engine EventManager provides a comprehensive, high-performance event management framework as the single source of truth for all event operations. The system supports weather events, scene transitions, NPC spawning, and custom events with intelligent threading, type-safe handlers, and optimized batch processing.
+The Forge Game Engine EventManager provides a comprehensive, high-performance event management framework as the single source of truth for all event operations. The system features:
+
+1. **Type-indexed storage** - Fast O(1) event lookups using EventTypeId enumeration
+2. **Cache-friendly data structures** - Structure of Arrays (SoA) pattern with 32-byte alignment
+3. **Queue pressure monitoring** - 90% capacity threshold with graceful degradation to single-threaded processing
+4. **WorkerBudget integration** - 30% worker allocation with buffer scaling for high workloads
+5. **Dynamic batch sizing** - Adjusts batch size (8-15 events) based on real-time queue pressure
+6. **Threading optimization** - Automatic scaling with 50+ event threshold
+7. **Performance monitoring** - Built-in statistics tracking per event type
+8. **Type-safe handlers** - Fast event handler registration by EventTypeId
+9. **Architectural consistency** - Same patterns as AIManager for system harmony
+10. **Memory compaction** - Automatic storage optimization and cleanup
+
+The system supports weather events, scene transitions, NPC spawning, and custom events with coordinated ThreadSystem resource management. This design ensures optimal performance while maintaining system stability through intelligent queue pressure management.
 
 ## Table of Contents
 
@@ -13,6 +26,8 @@ The Forge Game Engine EventManager provides a comprehensive, high-performance ev
 - [Threading & Performance](#threading--performance)
 - [Best Practices](#best-practices)
 - [Examples](#examples)
+- [Memory Management](#memory-management)
+- [Performance Monitoring](#performance-monitoring)
 
 ## Quick Start
 
@@ -197,88 +212,120 @@ bool isShutdown()             // Check shutdown state
 void update()                 // Process all events (call each frame)
 ```
 
-#### Simple Event Creation
+#### Event Registration
+```cpp
+bool registerEvent(const std::string& name, EventPtr event)
+bool registerWeatherEvent(const std::string& name, std::shared_ptr<WeatherEvent> event)
+bool registerSceneChangeEvent(const std::string& name, std::shared_ptr<SceneChangeEvent> event)
+bool registerNPCSpawnEvent(const std::string& name, std::shared_ptr<NPCSpawnEvent> event)
+```
+
+#### Event Creation (Factory Methods)
 ```cpp
 bool createWeatherEvent(const std::string& name, const std::string& weatherType, 
-                       float intensity, float transitionTime)
+                       float intensity = 1.0f, float transitionTime = 5.0f)
 bool createSceneChangeEvent(const std::string& name, const std::string& targetScene,
-                           const std::string& transitionType, float duration)
+                           const std::string& transitionType = "fade", float transitionTime = 1.0f)
 bool createNPCSpawnEvent(const std::string& name, const std::string& npcType,
-                        int count, float spawnRadius)
-```
-
-#### Advanced Event Creation
-```cpp
-bool createAdvancedWeatherEvent(const std::string& name, const std::string& weatherType,
-                               float intensity, float transitionTime, uint32_t priority = 5,
-                               float cooldown = 10.0f, bool oneTime = false, bool active = true)
-bool createAdvancedSceneChangeEvent(const std::string& name, const std::string& targetScene,
-                                   const std::string& transitionType, float duration,
-                                   uint32_t priority = 5, bool oneTime = false)
-bool createAdvancedNPCSpawnEvent(const std::string& name, const std::string& npcType,
-                                int count, float spawnRadius, uint32_t priority = 5, bool oneTime = false)
-```
-
-#### Custom Event Support
-```cpp
-void registerCustomEventType(const std::string& typeName,
-                            std::function<EventPtr(const std::string&, 
-                                                  const std::unordered_map<std::string, std::string>&,
-                                                  const std::unordered_map<std::string, float>&,
-                                                  const std::unordered_map<std::string, bool>&)> creator)
-bool createCustomEvent(const std::string& typeName, const std::string& name,
-                      const std::unordered_map<std::string, std::string>& params = {},
-                      const std::unordered_map<std::string, float>& numParams = {},
-                      const std::unordered_map<std::string, bool>& boolParams = {})
-```
-
-#### Event Sequences
-```cpp
-bool createEventSequence(const std::string& sequenceName,
-                        const std::vector<std::string>& eventNames,
-                        bool sequential = true)
-bool createWeatherSequence(const std::string& sequenceName,
-                          const std::vector<std::tuple<std::string, std::string, float, float>>& weatherEvents,
-                          bool sequential = true)
-```
-
-#### Direct Event Triggering
-```cpp
-bool changeWeather(const std::string& weatherType, float transitionTime)
-bool changeScene(const std::string& targetScene, const std::string& transitionType, float duration)
-bool spawnNPC(const std::string& npcType, float x, float y)
-
-// Alternative method names
-bool triggerWeatherChange(const std::string& weatherType, float transitionTime)
-bool triggerSceneChange(const std::string& targetScene, const std::string& transitionType, float duration)
-bool triggerNPCSpawn(const std::string& npcType, float x, float y)
-```
-
-#### Event Management
-```cpp
-EventPtr getEvent(const std::string& name)
-std::vector<EventPtr> getEventsByType(EventTypeId typeId)
-std::vector<EventPtr> getEventsByType(const std::string& typeName)
-
-bool setEventActive(const std::string& name, bool active)
-bool isEventActive(const std::string& name)
-bool removeEvent(const std::string& name)
-bool hasEvent(const std::string& name)
-```
-
-#### Event Execution
-```cpp
-bool executeEvent(const std::string& name)
-int executeEventsByType(EventTypeId typeId)
-int executeEventsByType(const std::string& typeName)
+                        int count = 1, float spawnRadius = 0.0f)
 ```
 
 #### Handler Management
 ```cpp
-void registerHandler(EventTypeId typeId, std::function<void(const EventData&)> handler)
+void registerHandler(EventTypeId typeId, FastEventHandler handler)
 void removeHandlers(EventTypeId typeId)
 void clearAllHandlers()
-size_t getHandlerCount(EventTypeId typeId)
+size_t getHandlerCount(EventTypeId typeId) const
+```
+
+#### Event Execution
+```cpp
+bool executeEvent(const std::string& eventName) const
+int executeEventsByType(EventTypeId typeId) const
+int executeEventsByType(const std::string& eventType) const
+```
+
+#### Direct Event Triggering
+```cpp
+bool changeWeather(const std::string& weatherType, float transitionTime = 5.0f) const
+bool changeScene(const std::string& sceneId, const std::string& transitionType = "fade", float transitionTime = 1.0f) const
+bool spawnNPC(const std::string& npcType, float x, float y) const
+
+// Alternative method names (aliases for compatibility)
+bool triggerWeatherChange(const std::string& weatherType, float transitionTime = 5.0f) const
+bool triggerSceneChange(const std::string& sceneId, const std::string& transitionType = "fade", float transitionTime = 1.0f) const
+bool triggerNPCSpawn(const std::string& npcType, float x, float y) const
+```
+
+#### Event Management
+
+```cpp
+EventPtr getEvent(const std::string& name) const;
+std::vector<EventPtr> getEventsByType(EventTypeId typeId) const;
+std::vector<EventPtr> getEventsByType(const std::string& eventType) const;
+
+bool setEventActive(const std::string& name, bool active);
+bool isEventActive(const std::string& name) const;
+bool removeEvent(const std::string& name);
+bool hasEvent(const std::string& name) const
+```
+
+<old_text>
+#### Event Management
+
+```cpp
+EventPtr getEvent(const std::string& name) const;
+std::vector<EventPtr> getEventsByType(EventTypeId typeId) const;
+std::vector<EventPtr> getEventsByType(const std::string& eventType) const;
+
+bool setEventActive(const std::string& name, bool active);
+bool isEventActive(const std::string& name) const;
+bool removeEvent(const std::string& name);
+
+#### Event Execution
+
+```cpp
+bool executeEvent(const std::string& eventName) const;
+int executeEventsByType(EventTypeId typeId) const;
+int executeEventsByType(const std::string& eventType) const;
+```
+
+#### Handler Management
+```cpp
+void registerHandler(EventTypeId typeId, FastEventHandler handler)
+void removeHandlers(EventTypeId typeId)
+void clearAllHandlers()
+size_t getHandlerCount(EventTypeId typeId) const
+```
+
+#### Threading Control
+```cpp
+void enableThreading(bool enable)
+bool isThreadingEnabled() const
+void setThreadingThreshold(size_t threshold)
+```
+
+#### Batch Processing
+```cpp
+void updateWeatherEvents()
+void updateSceneChangeEvents()
+void updateNPCSpawnEvents()
+void updateCustomEvents()
+```
+
+#### Performance and Monitoring
+```cpp
+PerformanceStats getPerformanceStats(EventTypeId typeId) const
+void resetPerformanceStats()
+size_t getEventCount() const
+size_t getEventCount(EventTypeId typeId) const
+```
+
+#### Memory Management
+```cpp
+void compactEventStorage()
+void clearEventPools()
+void prepareForStateTransition()
 ```
 
 #### Performance and Monitoring
@@ -295,12 +342,15 @@ void clearEventPools()        // Clear cached objects (shutdown only)
 ## Threading & Performance
 
 ### Threading Model
-EventManager uses intelligent threading decisions based on workload:
+EventManager uses intelligent threading decisions with queue pressure monitoring and WorkerBudget integration:
 
-- **Automatic Threading**: Enabled when event count exceeds threshold
+- **Automatic Threading**: Enabled when event count exceeds threshold (50+ events)
+- **Queue Pressure Monitoring**: 90% queue capacity threshold with graceful degradation
 - **Type-Based Batching**: Events processed by type for optimal cache usage
-- **WorkerBudget Integration**: Allocates 30% of available worker threads to events
+- **WorkerBudget Integration**: Allocates 30% of available worker threads with buffer allocation
+- **Dynamic Batch Sizing**: Adjusts batch size based on real-time queue pressure
 - **Lock-Free Operations**: Minimal locking for high-performance concurrent access
+- **Graceful Degradation**: Falls back to single-threaded processing under high queue pressure
 
 ### Threading Configuration
 ```cpp
@@ -313,10 +363,13 @@ EventManager::Instance().setThreadingThreshold(500);
 ```
 
 ### Performance Characteristics
-- **Single-threaded**: Optimal for <100 events per frame
-- **Multi-threaded**: Significant benefits with >500 events per frame
-- **Batch Processing**: Linear performance scaling up to 10,000+ events
+- **Single-threaded**: Optimal for <50 events per frame (automatic fallback)
+- **Multi-threaded**: Benefits with 50+ events, optimal with 100+ events
+- **Queue Pressure Management**: Prevents ThreadSystem overload through monitoring
+- **Dynamic Batch Sizing**: 8-15 events per batch based on queue pressure
 - **Memory Efficiency**: Type-indexed storage minimizes cache misses
+- **WorkerBudget Coordination**: Proper resource allocation with AIManager and GameEngine
+- **Architectural Consistency**: Same patterns as AIManager for system harmony
 
 ### Performance Monitoring
 ```cpp
@@ -329,6 +382,19 @@ void monitorEventPerformance() {
     if (totalEvents > 1000) {
         std::cout << "High event count detected: " << totalEvents << std::endl;
         EventManager::Instance().compactEventStorage();
+    }
+    
+    // Monitor queue pressure for system coordination
+    if (Forge::ThreadSystem::Exists()) {
+        auto& threadSystem = Forge::ThreadSystem::Instance();
+        size_t queueSize = threadSystem.getQueueSize();
+        size_t queueCapacity = threadSystem.getQueueCapacity();
+        double queuePressure = static_cast<double>(queueSize) / queueCapacity;
+        
+        if (queuePressure > 0.75) {
+            std::cout << "Warning: High queue pressure (" 
+                      << static_cast<int>(queuePressure * 100) << "%)" << std::endl;
+        }
     }
 }
 ```

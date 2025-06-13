@@ -13,6 +13,7 @@ The Forge Game Engine has the following test suites:
    - Thread-Safe AI Tests: Validate thread safety of the AI management system
    - Thread-Safe AI Integration Tests: Test integration of AI components with threading
    - AI Benchmark Tests: Measure performance characteristics and scaling capabilities
+   - ThreadSystem Queue Load Tests: Defensive monitoring to prevent ThreadSystem overload
 
 2. **UI System Tests**
    - UI Stress Tests: Validate UI performance and scalability in headless mode
@@ -21,6 +22,7 @@ The Forge Game Engine has the following test suites:
 3. **Core Systems Tests**
    - Save Manager Tests: Validate save/load functionality with directory creation and file operations
    - Thread System Tests: Verify multi-threading capabilities and priority scheduling
+   - ThreadSystem Load Monitoring: Defensive tests ensuring AI doesn't overwhelm 4096 task limit
    - Event Manager Tests: Validate event handling and integration with threading
    - Event Types Tests: Test specific event type implementations (Weather, Scene Change, NPC Spawn)
    - Weather Event Tests: Focused tests for weather event functionality

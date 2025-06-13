@@ -92,6 +92,12 @@ void GameStateManager::render() {
   }
 }
 
+void GameStateManager::handleInput() {
+  if (auto current = currentState.lock()) {
+    current->handleInput();
+  }
+}
+
 bool GameStateManager::hasState(const std::string& stateName) const {
   return std::any_of(states.begin(), states.end(),
                      [&stateName](const std::shared_ptr<GameState>& state) {

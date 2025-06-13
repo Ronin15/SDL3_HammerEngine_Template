@@ -19,63 +19,88 @@ This document covers advanced EventManager topics including detailed threading i
 
 ### ThreadSystem Integration Details
 
-The EventManager integrates deeply with the ThreadSystem using a WorkerBudget allocation model:
+The EventManager integrates deeply with the ThreadSystem using WorkerBudget allocation and queue pressure monitoring:
 
 ```cpp
 // EventManager automatically allocates 30% of available worker threads
-// Buffer threads are used when event count exceeds thresholds
+// Buffer threads are used when event count exceeds thresholds (100+ events)
+// Queue pressure monitoring prevents ThreadSystem overload
 
 class EventManager {
 private:
-    // Threading is managed internally
+    // Threading with queue pressure monitoring
     void updateEventTypeBatchThreaded(EventTypeId typeId) {
-        // Type-based batch processing for optimal cache usage
-        auto& events = m_eventStorage[static_cast<size_t>(typeId)];
+        auto& threadSystem = ThreadSystem::Instance();
         
-        // Partition events for parallel processing
-        size_t chunkSize = events.size() / availableThreads;
+        // Check queue pressure before submitting tasks
+        size_t queueSize = threadSystem.getQueueSize();
+        size_t queueCapacity = threadSystem.getQueueCapacity();
+        size_t pressureThreshold = (queueCapacity * 9) / 10; // 90% threshold
         
-        // Process chunks in parallel
-        ThreadSystem::Instance().processBatch(events, chunkSize);
+        if (queueSize > pressureThreshold) {
+            // Graceful degradation: fallback to single-threaded processing
+            updateEventTypeBatch(typeId);
+            return;
+        }
+        
+        // WorkerBudget allocation with buffer scaling
+        size_t availableWorkers = static_cast<size_t>(threadSystem.getThreadCount());
+        WorkerBudget budget = calculateWorkerBudget(availableWorkers);
+        size_t optimalWorkerCount = budget.getOptimalWorkerCount(budget.eventAllocated, eventCount, 100);
+        
+        // Dynamic batch sizing based on queue pressure
+        double queuePressure = static_cast<double>(queueSize) / queueCapacity;
+        size_t minEventsPerBatch = (queuePressure > 0.5) ? 15 : 8;
+        size_t maxBatches = (queuePressure > 0.5) ? 2 : 4;
     }
     
     bool shouldUseThreading() const {
         return m_threadingEnabled && 
-               getTotalEventCount() > m_threadingThreshold &&
+               getTotalEventCount() > 50 && // Lower threshold for events
                ThreadSystem::Instance().hasAvailableWorkers();
     }
 };
 ```
 
-### Dynamic Threading Adjustment
+### Dynamic Threading Adjustment with Queue Pressure
 
-EventManager automatically adjusts threading based on system load:
+EventManager automatically adjusts threading based on system load and queue pressure:
 
 ```cpp
 void EventManager::update() {
     size_t eventCount = getTotalEventCount();
     
-    // Automatic threshold adjustment based on performance
-    if (eventCount > 1000 && m_averageProcessingTime > 16.67f) { // >16.67ms at 60fps
-        enableThreading(true);
-        setThreadingThreshold(std::max(100, static_cast<int>(eventCount * 0.1f)));
-    }
-    
-    // Process events with optimal strategy
-    if (shouldUseThreading()) {
-        updateAllTypesThreaded();
-    } else {
-        updateAllTypesSingleThreaded();
+    // Queue pressure aware threading decisions
+    if (ThreadSystem::Exists()) {
+        auto& threadSystem = ThreadSystem::Instance();
+        size_t queueSize = threadSystem.getQueueSize();
+        size_t queueCapacity = threadSystem.getQueueCapacity();
+        double queuePressure = static_cast<double>(queueSize) / queueCapacity;
+        
+        // Adjust threading threshold based on queue pressure
+        size_t dynamicThreshold = 50; // Base threshold
+        if (queuePressure > 0.75) {
+            dynamicThreshold = 100; // Higher threshold under pressure
+        } else if (queuePressure < 0.25) {
+            dynamicThreshold = 30;  // Lower threshold when queue is light
+        }
+        
+        // Use threading for medium+ event counts with queue coordination
+        if (m_threadingEnabled && eventCount > dynamicThreshold) {
+            updateAllTypesThreaded();
+        } else {
+            updateAllTypesSingleThreaded();
+        }
     }
 }
 ```
 
-### Thread Safety Guarantees
+### Thread Safety Guarantees with Queue Coordination
 
-EventManager provides thread-safe operations through careful design:
+EventManager provides thread-safe operations with ThreadSystem coordination:
 
 ```cpp
-// Lock-free event counting
+// Lock-free event counting with queue pressure awareness
 std::atomic<size_t> getEventCount() const {
     std::atomic<size_t> total{0};
     for (const auto& typeContainer : m_eventStorage) {
@@ -84,8 +109,28 @@ std::atomic<size_t> getEventCount() const {
     return total;
 }
 
-// Minimal locking for handler invocation
+// Minimal locking for handler invocation with queue pressure monitoring
 void invokeHandlers(EventTypeId typeId, const EventData& data) {
+    // Check queue pressure before potentially adding more tasks
+    if (ThreadSystem::Exists()) {
+        auto& threadSystem = ThreadSystem::Instance();
+        size_t queueSize = threadSystem.getQueueSize();
+        size_t queueCapacity = threadSystem.getQueueCapacity();
+        
+        if (queueSize > (queueCapacity * 8) / 10) { // 80% threshold for handlers
+            // Process handlers synchronously under pressure
+            std::shared_lock<std::shared_mutex> lock(m_handlersMutex);
+            auto it = m_handlers.find(typeId);
+            if (it != m_handlers.end()) {
+                for (const auto& handler : it->second) {
+                    handler(data);
+                }
+            }
+            return;
+        }
+    }
+    
+    // Normal asynchronous handler processing
     std::shared_lock<std::shared_mutex> lock(m_handlersMutex);
     auto it = m_handlers.find(typeId);
     if (it != m_handlers.end()) {

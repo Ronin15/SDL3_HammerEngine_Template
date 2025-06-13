@@ -38,9 +38,6 @@ bool GamePlayState::enter() {
 
 void GamePlayState::update([[maybe_unused]] float deltaTime) {
   //std::cout << "Updating GAME State\n";
-  
-  // Handle input with proper key press detection
-  handleInput();
 
   // Update player if it exists
   if (mp_Player) {
