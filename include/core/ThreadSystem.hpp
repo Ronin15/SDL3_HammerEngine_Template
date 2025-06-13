@@ -19,11 +19,8 @@
 #include <map>
 #include <string>
 #include <thread>
-
-
 #include <SDL3/SDL.h>
 #include <vector>
-
 #include "Logger.hpp"
 
 namespace Forge {
@@ -570,7 +567,7 @@ private:
         auto startTime = std::chrono::steady_clock::now();
         size_t tasksProcessed = 0;
         size_t highPriorityTasks = 0;
-        
+
         // Exponential backoff state (thread-local, no static variables)
         size_t consecutiveEmptyPolls = 0;
 
@@ -611,7 +608,7 @@ private:
                 if (gotTask) {
                     // Reset exponential backoff when work is found
                     consecutiveEmptyPolls = 0;
-                    
+
                     // Optimized: Only increment counter when we actually have work
                     const size_t activeCount = m_activeTasks.fetch_add(1, std::memory_order_relaxed) + 1;
 
@@ -660,7 +657,7 @@ private:
 
                     // Less aggressive backoff sleep to reduce CPU usage and work stealing pressure
                     consecutiveEmptyPolls++;
-                    
+
                     // Simple exponential backoff for idle workers
                     auto sleepTime = std::chrono::microseconds(50);   // Start with 50μs
                     if (consecutiveEmptyPolls > 5) {
@@ -669,7 +666,7 @@ private:
                     if (consecutiveEmptyPolls > 15) {
                         sleepTime = std::chrono::microseconds(500);   // Max 500μs for responsiveness
                     }
-                    
+
                     std::this_thread::sleep_for(sleepTime);
                 }
             }
