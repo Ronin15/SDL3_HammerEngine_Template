@@ -3,7 +3,6 @@
  * Licensed under the MIT License - see LICENSE file for details
 */
 
-#include <SDL3/SDL.h>
 #include <string>
 #include "core/GameEngine.hpp"
 #include "core/ThreadSystem.hpp"
