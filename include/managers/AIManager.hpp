@@ -146,13 +146,13 @@ public:
      * PERFORMANCE IMPROVEMENTS:
      * - Lock-free double buffering eliminates contention
      * - Cache-efficient SoA layout for 3-4x better performance
-     * - SIMD-optimized distance calculations where available
-     * - Simplified batch processing with work stealing
+     * - Optimized scalar distance calculations for scattered memory access
+     * - Simplified batch processing with WorkerBudget integration
      * 
      * Key Features:
      * - Zero locks during update phase
      * - Cache-friendly memory access patterns
-     * - Cross-platform SIMD optimizations (SSE2/NEON)
+     * - Cross-platform threading optimizations
      * - Scales to 20k+ entities at 60+ FPS
      * 
      * @param deltaTime Time elapsed since last update in seconds
@@ -397,16 +397,14 @@ private:
     static constexpr size_t CACHE_LINE_SIZE = 64;           // Standard cache line size
     static constexpr size_t BATCH_SIZE = 256;               // Larger batches for better throughput
     static constexpr size_t THREADING_THRESHOLD = 500;      // Higher threshold due to improved efficiency
-    static constexpr size_t SIMD_ALIGNMENT = 16;            // SIMD alignment requirement
 
     // Optimized helper methods
     BehaviorType inferBehaviorType(const std::string& behaviorName) const;
     void processBatch(size_t start, size_t end, float deltaTime, int bufferIndex);
-    void processBatchSIMD(size_t start, size_t end, const Vector2D& playerPos);
     void swapBuffers();
     void cleanupInactiveEntities();
     void cleanupAllEntities();
-    void updateDistancesSIMD(const Vector2D& playerPos);
+    void updateDistancesScalar(const Vector2D& playerPos);
     void recordPerformance(BehaviorType type, double timeMs, uint64_t entities);
     static uint64_t getCurrentTimeNanos();
     
