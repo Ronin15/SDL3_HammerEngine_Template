@@ -2,7 +2,7 @@
 
 ## Overview
 
-The ThreadSystem is a high-performance, priority-based thread pool implementation designed for the Forge Game Engine. It provides efficient task-based concurrency with automatic load balancing and comprehensive performance monitoring. The system scales automatically based on hardware capabilities while maintaining optimal resource utilization through advanced WorkerBudget allocation. **Performance optimized**: Achieves 4-6% CPU usage with 1000+ entities through intelligent batching and resource coordination.
+The ThreadSystem is a high-performance, priority-based thread pool implementation designed for the Forge Game Engine. It provides efficient task-based concurrency with priority scheduling and comprehensive performance monitoring. The system scales automatically based on hardware capabilities while maintaining optimal resource utilization through advanced WorkerBudget allocation. **Performance optimized**: Achieves 4-6% CPU usage with 1000+ entities through intelligent batching and resource coordination.
 
 ## Architecture Overview
 
@@ -20,10 +20,10 @@ The ThreadSystem is a high-performance, priority-based thread pool implementatio
 │  │ └─────────────┘ │    └─────────────────────────────────┘ │
 │  └─────────────────┘                                        │
 │  ┌─────────────────────────────────────────────────────────┐ │
-│  │            Work-Stealing Queues                         │ │
-│  │  Worker 0 Queue │ Worker 1 Queue │ ... │ Worker N Queue │ │
+│  │            WorkerBudget Allocation                      │ │
+│  │   Engine: 10% │ AI: 60% │ Events: 30% │ Buffer: Auto   │ │
 │  └─────────────────────────────────────────────────────────┘ │
-└─────────────────────────────────────────────────────────────┘
+└─────────────────────────────────────────────────────────────┐
 ```
 
 ## Key Features
@@ -153,49 +153,7 @@ ThreadSystem::Instance().enqueueTask([]() {
 }, TaskPriority::Idle, "Memory Defragmentation");
 ```
 
-## Work-Stealing System
 
-### Overview
-
-The ThreadSystem implements an advanced work-stealing algorithm that automatically achieves 90%+ load balancing efficiency. This system operates transparently, requiring zero configuration while dramatically improving performance for large-scale workloads.
-
-### Key Benefits
-
-- **90%+ Load Balancing Efficiency**: Eliminates worker idle time and resource waste
-- **Zero Configuration Required**: Works automatically with existing code
-- **Priority Preservation**: Respects task priorities throughout redistribution
-- **Batch Awareness**: AI and Event batches stolen as complete units
-- **Minimal Overhead**: <1KB memory, <0.1% CPU impact
-
-### Performance Impact
-
-```cpp
-// Before Work-Stealing (Severe Imbalance)
-Worker 0: 1,900 tasks processed
-Worker 1: 1,850 tasks processed  
-Worker 2: 1,920 tasks processed
-Worker 3: 4 tasks processed ⚠️
-Load Balance Ratio: 495:1 (Critical Imbalance)
-
-// After Work-Stealing (Excellent Balance)
-Worker 0: 1,247 tasks processed
-Worker 1: 1,251 tasks processed
-Worker 2: 1,248 tasks processed  
-Worker 3: 1,254 tasks processed ✅
-Load Balance Ratio: ~1.1:1 (90%+ Efficiency)
-```
-
-### Work-Stealing Operation
-
-```cpp
-// Work-stealing operates transparently
-ThreadSystem::Instance().enqueueTask(aiUpdateBatch, TaskPriority::Normal);
-// Result: Automatic 90%+ load distribution across all workers
-
-// Your existing code benefits immediately:
-AIManager::Instance().update();           // Work-stealing active
-EventManager::Instance().processEvents(); // Work-stealing active
-```
 
 ## WorkerBudget System
 
@@ -492,13 +450,13 @@ ThreadSystem::Instance().enqueueTask(criticalRenderTask,
 ThreadSystem::Instance().enqueueTask(backgroundLoadTask, 
                                    TaskPriority::Low, "Asset Loading");
 
-// 3. Leverage work-stealing for large workloads
+// 3. Process large workloads with optimal batching
 for (int i = 0; i < 10000; ++i) {
     ThreadSystem::Instance().enqueueTask([=]() {
-        processEntity(entities[i]);
+        processEntity(i);
     }, TaskPriority::Normal, "Entity_" + std::to_string(i));
 }
-// Work-stealing automatically achieves 90%+ load balance
+// WorkerBudget system provides optimal resource allocation
 ```
 
 #### ⚠️ Anti-Patterns to Avoid
@@ -527,8 +485,8 @@ ThreadSystem::Instance().enqueueTask(backgroundTask,
 |---------------|----------------|-------------------|
 | **1-100 tasks** | Single batch or sequential | 70-85% |
 | **100-1,000 tasks** | Worker-count batches | 85-90% |
-| **1,000+ tasks** | Individual task submission | 90%+ with work-stealing |
-| **10,000+ tasks** | Optimal work-stealing scenario | 95%+ efficiency |
+| **1,000+ tasks** | Individual task submission | 90%+ with optimal batching |
+| **10,000+ tasks** | WorkerBudget allocation scenario | 95%+ efficiency |
 
 ### Memory Optimization
 
@@ -757,7 +715,7 @@ void debugThreadSystem() {
 | Issue | Symptoms | Solution |
 |-------|----------|----------|
 | **High queue utilization** | Tasks queuing up, performance degradation | Increase worker count or optimize task granularity |
-| **Worker thread starvation** | Some workers idle while others busy | Enable work-stealing (automatic) |
+| **Worker thread starvation** | Some workers idle while others busy | Optimize task batching and WorkerBudget allocation |
 | **Memory growth** | Increasing memory usage | Reserve queue capacity, optimize task captures |
 | **Deadlocks** | System hanging | Avoid blocking operations in tasks |
 | **Poor performance** | Low throughput | Check task granularity, use appropriate priorities |
@@ -791,11 +749,11 @@ void validateThreadSystemPerformance() {
     // Expected: <2000ms for 10,000 tasks on 8-core system
     THREADSYSTEM_INFO("Load test completed in " + std::to_string(duration.count()) + "ms");
     
-    // Validate work-stealing effectiveness
+    // Validate load balancing effectiveness
     if (duration.count() < 2000) {
         THREADSYSTEM_INFO("✅ Excellent load balancing performance");
     } else {
-        THREADSYSTEM_WARN("⚠️ Suboptimal performance - check work-stealing");
+        THREADSYSTEM_WARN("⚠️ Suboptimal performance - check WorkerBudget allocation");
     }
 }
 ```
@@ -878,12 +836,12 @@ public:
 
 ## Conclusion
 
-The ThreadSystem provides a robust, high-performance foundation for multi-threaded game development. With automatic work-stealing achieving 90%+ load balancing efficiency, intelligent WorkerBudget allocation, and comprehensive performance monitoring, it enables scalable, maintainable concurrent programming.
+The ThreadSystem provides a robust, high-performance foundation for multi-threaded game development. With intelligent WorkerBudget allocation, priority-based scheduling, and comprehensive performance monitoring, it enables scalable, maintainable concurrent programming.
 
 ### Key Takeaways
 
 - **Simple API**: Fire-and-forget or result-returning task submission
-- **Automatic Optimization**: Work-stealing and load balancing require no configuration  
+- **Automatic Optimization**: WorkerBudget allocation and priority scheduling require no configuration  
 - **Production Ready**: Comprehensive error handling, thread safety, and monitoring
 - **Engine Integrated**: Seamless integration with all engine subsystems
 - **Performance Focused**: Optimized for game development workloads

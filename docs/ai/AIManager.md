@@ -15,7 +15,7 @@ The AI Manager is a high-performance, unified system for managing autonomous beh
 9. **Lock-free message queue** - Zero-contention communication with behaviors
 10. **Global AI pause/resume** - Complete halt of all AI processing with thread-safe controls
 11. **Performance monitoring** - Built-in statistics tracking per behavior type and globally
-12. **Scalar distance calculations** - Optimized for scattered memory access patterns
+12. **Optimized distance calculations** - Reduced frequency and efficient computation
 13. **Intelligent double buffering** - Only copies when needed, not every frame
 14. **Batch lock optimization** - Single lock per batch instead of per-entity
 
@@ -248,7 +248,7 @@ The AIManager implements high-performance threading with **4-6% CPU usage** achi
 **Distance Calculation Optimizations:**
 - **Reduced frequency**: Distance calculations only every 4th frame (75% reduction)
 - **Active entity filtering**: Skip inactive entities to reduce computational overhead
-- **Scalar implementation**: More efficient than SIMD for scattered memory access
+- **Optimized distance computation**: Efficient calculation patterns for entity processing
 - **Early exit optimization**: Skip processing when no active entities
 
 **Double Buffer Optimizations:**
