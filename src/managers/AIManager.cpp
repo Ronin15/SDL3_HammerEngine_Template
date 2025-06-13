@@ -11,13 +11,7 @@
 #include <cstring>
 
 
-#ifdef _MSC_VER
-    #include <intrin.h>
-    #define SIMD_AVAILABLE
-#elif defined(__SSE2__)
-    #include <emmintrin.h>
-    #define SIMD_AVAILABLE
-#endif
+
 
 bool AIManager::init() {
     if (m_initialized.load(std::memory_order_acquire)) {
@@ -160,19 +154,25 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
         int currentBuffer = m_storage.currentBuffer.load(std::memory_order_acquire);
         int nextBuffer = 1 - currentBuffer;
 
-        // Copy current state to next buffer (this is the only time we need synchronization)
-        {
-            std::shared_lock<std::shared_mutex> lock(m_entitiesMutex);
-            m_storage.doubleBuffer[nextBuffer] = m_storage.hotData;
-        }
-
-        // Get player position for distance calculations
+        // Get player position for distance calculations (only every 4th frame to reduce CPU usage)
         EntityPtr player = m_playerEntity.lock();
-        if (player) {
+        bool distancesUpdated = false;
+        uint64_t currentFrame = m_frameCounter.load(std::memory_order_relaxed);
+        if (player && (currentFrame % 4 == 0)) {
             Vector2D playerPos = player->getPosition();
             
-            // SIMD-optimized distance updates
-            updateDistancesSIMD(playerPos);
+            // Simple scalar distance updates (more efficient for scattered memory access)
+            updateDistancesScalar(playerPos);
+            distancesUpdated = true;
+        }
+
+        // Copy current state to next buffer only if we updated distances or have changes
+        if (distancesUpdated || currentFrame % 60 == 0) {  // Full sync every 60 frames as fallback
+            std::shared_lock<std::shared_mutex> lock(m_entitiesMutex);
+            m_storage.doubleBuffer[nextBuffer] = m_storage.hotData;
+        } else {
+            // Use current buffer data
+            nextBuffer = currentBuffer;
         }
 
         // Determine threading strategy
@@ -185,27 +185,42 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
             size_t availableWorkers = static_cast<size_t>(threadSystem.getThreadCount());
             Forge::WorkerBudget budget = Forge::calculateWorkerBudget(availableWorkers);
             
-            // Simple fixed-size batching
-            size_t workerCount = std::min(budget.aiAllocated, (entityCount + BATCH_SIZE - 1) / BATCH_SIZE);
-            workerCount = std::max(size_t(1), workerCount);
-            size_t entitiesPerWorker = entityCount / workerCount;
+            // Use WorkerBudget system properly with threshold-based buffer allocation
+            size_t optimalWorkerCount = budget.getOptimalWorkerCount(budget.aiAllocated, entityCount, 1000);
             
-            // Submit work-stealing tasks
-            for (size_t i = 0; i < workerCount; ++i) {
-                size_t start = i * entitiesPerWorker;
-                size_t end = (i == workerCount - 1) ? entityCount : (i + 1) * entitiesPerWorker;
+            // Calculate optimal batch size - 2-4 large batches for optimal performance
+            // Follow the established pattern: minimum 1000 entities per batch
+            size_t minEntitiesPerBatch = 1000;
+            size_t batchCount = std::min(optimalWorkerCount, entityCount / minEntitiesPerBatch);
+            batchCount = std::max(size_t(1), std::min(batchCount, size_t(4))); // Cap at 4 batches max for optimal performance
+            
+            size_t entitiesPerBatch = entityCount / batchCount;
+            size_t remainingEntities = entityCount % batchCount;
+            
+            // Submit optimized batches
+            for (size_t i = 0; i < batchCount; ++i) {
+                size_t start = i * entitiesPerBatch;
+                size_t end = start + entitiesPerBatch;
+                
+                // Add remaining entities to last batch
+                if (i == batchCount - 1) {
+                    end += remainingEntities;
+                }
                 
                 threadSystem.enqueueTask([this, start, end, deltaTime, nextBuffer]() {
                     processBatch(start, end, deltaTime, nextBuffer);
-                }, Forge::TaskPriority::Normal, "AI_Batch");
+                }, Forge::TaskPriority::High, "AI_OptimalBatch");
             }
+            
         } else {
             // Single-threaded processing
             processBatch(0, entityCount, deltaTime, nextBuffer);
         }
 
-        // Swap buffers atomically
-        m_storage.currentBuffer.store(nextBuffer, std::memory_order_release);
+        // Swap buffers atomically only if we actually changed buffers
+        if (nextBuffer != currentBuffer) {
+            m_storage.currentBuffer.store(nextBuffer, std::memory_order_release);
+        }
 
         // Process lock-free message queue
         processMessageQueue();
@@ -214,9 +229,9 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
         auto endTime = std::chrono::high_resolution_clock::now();
         auto duration = std::chrono::duration<double, std::milli>(endTime - startTime).count();
 
-        uint64_t currentFrame = m_frameCounter.fetch_add(1, std::memory_order_relaxed);
+        currentFrame = m_frameCounter.fetch_add(1, std::memory_order_relaxed);
         
-        // Periodic cleanup and stats
+        // Periodic cleanup and stats (balanced frequency)
         if (currentFrame % 300 == 0) {
             cleanupInactiveEntities();
             m_lastCleanupFrame.store(currentFrame, std::memory_order_relaxed);
@@ -645,21 +660,36 @@ void AIManager::processBatch(size_t start, size_t end, float deltaTime, int buff
     
     size_t batchExecutions = 0;
     
-    for (size_t i = start; i < end && i < workBuffer.size(); ++i) {
-        auto& hotData = workBuffer[i];
+    // Pre-calculate common values once per batch to reduce per-entity overhead
+    float maxDist = m_maxUpdateDistance.load(std::memory_order_relaxed);
+    float maxDistSquared = maxDist * maxDist;
+    bool hasPlayer = (player != nullptr);
+    
+    // Pre-cache entities and behaviors for the entire batch to reduce lock contention
+    std::vector<EntityPtr> batchEntities;
+    std::vector<std::shared_ptr<AIBehavior>> batchBehaviors;
+    batchEntities.reserve(end - start);
+    batchBehaviors.reserve(end - start);
+    
+    // Single lock acquisition for the entire batch
+    {
+        std::shared_lock<std::shared_mutex> lock(m_entitiesMutex);
+        for (size_t i = start; i < end && i < m_storage.size(); ++i) {
+            batchEntities.push_back(m_storage.entities[i]);
+            batchBehaviors.push_back(m_storage.behaviors[i]);
+        }
+    }
+    
+    // Process entities without locks
+    for (size_t idx = 0; idx < batchEntities.size(); ++idx) {
+        size_t i = start + idx;
+        if (i >= workBuffer.size()) break;
         
+        auto& hotData = workBuffer[i];
         if (!hotData.active) continue;
         
-        // Get entity and behavior from cold storage
-        EntityPtr entity;
-        std::shared_ptr<AIBehavior> behavior;
-        {
-            std::shared_lock<std::shared_mutex> lock(m_entitiesMutex);
-            if (i < m_storage.size()) {
-                entity = m_storage.entities[i];
-                behavior = m_storage.behaviors[i];
-            }
-        }
+        EntityPtr entity = batchEntities[idx];
+        std::shared_ptr<AIBehavior> behavior = batchBehaviors[idx];
         
         if (!entity || !behavior) {
             hotData.active = false;
@@ -670,21 +700,15 @@ void AIManager::processBatch(size_t start, size_t end, float deltaTime, int buff
             // Update position
             hotData.position = entity->getPosition();
             
-            // Determine if should update based on cached distance
+            // Simple distance-based culling - no frame counting needed
             bool shouldUpdate = true;
-            if (player) {
-                hotData.frameCounter++;
-                
-                // Use pre-calculated squared distance
-                float maxDist = m_maxUpdateDistance.load(std::memory_order_relaxed);
+            if (hasPlayer) {
+                // Use pre-calculated values from batch level
                 float priorityMultiplier = 1.0f + hotData.priority * 0.1f;
-                float maxDistSquared = maxDist * maxDist * priorityMultiplier * priorityMultiplier;
+                float effectiveMaxDistSquared = maxDistSquared * priorityMultiplier * priorityMultiplier;
                 
-                if (hotData.distanceSquared > maxDistSquared) {
-                    // Behavior-specific culling
-                    int cullInterval = (static_cast<BehaviorType>(hotData.behaviorType) == BehaviorType::Chase) ? 60 : 45;
-                    shouldUpdate = (hotData.frameCounter % cullInterval == 0);
-                }
+                // Pure distance-based culling - entities too far away don't update
+                shouldUpdate = (hotData.distanceSquared <= effectiveMaxDistSquared);
             }
             
             if (shouldUpdate) {
@@ -711,64 +735,25 @@ void AIManager::processBatch(size_t start, size_t end, float deltaTime, int buff
     }
 }
 
-void AIManager::updateDistancesSIMD(const Vector2D& playerPos) {
+void AIManager::updateDistancesScalar(const Vector2D& playerPos) {
     size_t entityCount = m_storage.hotData.size();
     
-#ifdef SIMD_AVAILABLE
-    // Process 4 entities at a time with SSE2
-    const __m128 playerX = _mm_set1_ps(playerPos.getX());
-    const __m128 playerY = _mm_set1_ps(playerPos.getY());
-    
-    size_t simdCount = (entityCount / 4) * 4;
-    
-    for (size_t i = 0; i < simdCount; i += 4) {
-        // Load 4 entity positions
-        __m128 entityX = _mm_setr_ps(
-            m_storage.hotData[i].position.getX(),
-            m_storage.hotData[i+1].position.getX(),
-            m_storage.hotData[i+2].position.getX(),
-            m_storage.hotData[i+3].position.getX()
-        );
-        
-        __m128 entityY = _mm_setr_ps(
-            m_storage.hotData[i].position.getY(),
-            m_storage.hotData[i+1].position.getY(),
-            m_storage.hotData[i+2].position.getY(),
-            m_storage.hotData[i+3].position.getY()
-        );
-        
-        // Calculate differences
-        __m128 diffX = _mm_sub_ps(entityX, playerX);
-        __m128 diffY = _mm_sub_ps(entityY, playerY);
-        
-        // Square the differences
-        __m128 diffXSquared = _mm_mul_ps(diffX, diffX);
-        __m128 diffYSquared = _mm_mul_ps(diffY, diffY);
-        
-        // Add to get squared distances
-        __m128 distSquared = _mm_add_ps(diffXSquared, diffYSquared);
-        
-        // Store results
-        float distances[4];
-        _mm_storeu_ps(distances, distSquared);
-        
-        for (int j = 0; j < 4; ++j) {
-            m_storage.hotData[i + j].distanceSquared = distances[j];
+    // Simple scalar implementation - only update active entities
+    // Skip inactive entities to reduce CPU usage significantly
+    size_t updatedCount = 0;
+    for (size_t i = 0; i < entityCount; ++i) {
+        auto& hotData = m_storage.hotData[i];
+        if (hotData.active) {
+            Vector2D diff = hotData.position - playerPos;
+            hotData.distanceSquared = diff.lengthSquared();
+            updatedCount++;
         }
     }
     
-    // Handle remaining entities
-    for (size_t i = simdCount; i < entityCount; ++i) {
-        Vector2D diff = m_storage.hotData[i].position - playerPos;
-        m_storage.hotData[i].distanceSquared = diff.lengthSquared();
+    // Optional: Early exit if no entities were active
+    if (updatedCount == 0) {
+        return;
     }
-#else
-    // Fallback non-SIMD implementation
-    for (size_t i = 0; i < entityCount; ++i) {
-        Vector2D diff = m_storage.hotData[i].position - playerPos;
-        m_storage.hotData[i].distanceSquared = diff.lengthSquared();
-    }
-#endif
 }
 
 void AIManager::cleanupInactiveEntities() {
