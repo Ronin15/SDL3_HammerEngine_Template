@@ -52,14 +52,13 @@ Comprehensive UI system with professional theming, animations, layouts, content-
 - **[SDL3 Logical Presentation](ui/SDL3_Logical_Presentation_Modes.md)** - SDL3 presentation system integration and coordinate handling
 
 ### Threading System
-High-performance multithreading framework with intelligent WorkerBudget allocation, advanced work-stealing load balancing, and priority-based task scheduling.
+High-performance multithreading framework with intelligent WorkerBudget allocation and priority-based task scheduling.
 
-- **[ThreadSystem Overview](ThreadSystem.md)** - Complete threading system documentation with WorkerBudget allocation, work-stealing load balancing, buffer thread utilization, priority scheduling, and engine integration
+- **[ThreadSystem Overview](ThreadSystem.md)** - Complete threading system documentation with WorkerBudget allocation, buffer thread utilization, priority scheduling, and engine integration
 - **[ThreadSystem Analysis](ThreadSystem_Analysis.md)** - Comprehensive implementation analysis with performance benchmarks, architectural decisions, and production readiness assessment
 - **[ThreadSystem Summary](ThreadSystem_Summary.md)** - Practical usage guide with examples, best practices, and quick API reference
-- **[Work-Stealing Quick Reference](ThreadSystem_WorkStealing_QuickReference.md)** - Comprehensive guide to the work-stealing system achieving 90%+ load balancing efficiency
 - **WorkerBudget System** - Dynamic resource allocation across engine subsystems (GameLoop: guaranteed workers, AI: 60%, Events: 30%, Buffer: dynamic scaling)
-- **Work-Stealing Load Balancing** - Advanced algorithm achieving 90%+ efficiency, eliminating worker idle time (495:1 imbalance → 1.1:1 balance)
+- **Priority-Based Scheduling** - Five-level priority system (Critical, High, Normal, Low, Idle) for optimal task ordering
 - **Buffer Thread Utilization** - Intelligent scaling based on workload thresholds (AI: >1000 entities, Events: >100 events)
 - **Hardware Adaptive** - Automatic scaling from ultra low-end (single-threaded) to high-end (multi-threaded) systems
 
@@ -115,9 +114,9 @@ The Forge Game Engine provides several core systems that work together:
 - **Resource Management**: Automatic cleanup and efficient memory usage
 
 ### Performance Optimized
-- **Scales to 10,000+ NPCs**: Linear performance scaling with distance optimization and work-stealing load balancing
-- **Priority-Based Threading**: Critical tasks processed first with worker budget allocation and 90%+ load balancing efficiency
-- **Work-Stealing Load Balancing**: Automatic task distribution eliminating worker idle time (495:1 → 1.1:1 worker load ratio)
+- **Scales to 10,000+ NPCs**: Linear performance scaling with distance optimization and WorkerBudget allocation
+- **Priority-Based Threading**: Critical tasks processed first with worker budget allocation and optimal resource distribution
+- **WorkerBudget Allocation**: Intelligent resource distribution across AI (60%), Events (30%), and Engine (10%) systems
 - **Efficient UI Rendering**: Only processes visible components with auto-sizing
 - **Memory Optimizations**: Smart pointers and cache-friendly data structures
 - **Batched Operations**: Bulk processing for better performance across all systems
@@ -147,7 +146,7 @@ For issues with specific systems, see the troubleshooting sections in each syste
 - AI issues: See [AI System Overview](ai/AIManager.md) and [Behavior Modes](ai/BehaviorModes.md)
 - Event issues: See [EventManager Overview](events/EventManager.md) and [EventManager Advanced](events/EventManager_Advanced.md)
 - UI issues: See [UIManager Guide](ui/UIManager_Guide.md), [Auto-Sizing System](ui/Auto_Sizing_System.md), and [DPI-Aware Font System](ui/DPI_Aware_Font_System.md)
-- Threading issues: See [ThreadSystem Overview](ThreadSystem.md) and [Work-Stealing Quick Reference](ThreadSystem_WorkStealing_QuickReference.md)
+- Threading issues: See [ThreadSystem Overview](ThreadSystem.md) and [ThreadSystem Summary](ThreadSystem_Summary.md)
 
 ---
 

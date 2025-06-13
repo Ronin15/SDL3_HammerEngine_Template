@@ -41,8 +41,7 @@ struct HotData {
 - Atomic buffer swapping for thread safety
 - No locks needed in the critical update path
 
-### 3. Scalar Distance Optimizations
-- Optimized scalar distance calculations for scattered memory access patterns
+### 3. Distance Calculation Optimizations
 - Distance calculations reduced to every 4th frame (75% reduction)
 - Pre-computed squared distances to avoid expensive sqrt operations
 - Active entity filtering to skip inactive entities
@@ -102,7 +101,7 @@ std::vector<std::shared_ptr<AIBehavior>> batchBehaviors;
 
 ### All Platforms
 - Consistent 4-6% CPU usage across Windows, Linux, and macOS
-- Scalar distance calculations optimized for all architectures
+- Optimized distance calculations for all architectures
 - Efficient atomic operations using std::atomic
 - WorkerBudget integration for optimal resource allocation
 

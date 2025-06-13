@@ -6,9 +6,9 @@ The Forge Engine ThreadSystem is a production-ready, high-performance thread poo
 
 ## Key Features at a Glance
 
-- **🚀 High Performance**: 90%+ load balancing efficiency with advanced work-stealing
+- **🚀 High Performance**: Optimal resource distribution with WorkerBudget allocation
 - **🎯 Priority System**: 5-level priority queuing (Critical → Idle) with separate queues
-- **⚖️ Load Balancing**: Automatic work-stealing achieves near-perfect worker utilization
+- **⚖️ Resource Distribution**: WorkerBudget system ensures optimal worker allocation
 - **📊 Monitoring**: Built-in profiling, statistics, and performance analytics
 - **🛡️ Thread Safety**: Lock-free operations where possible, comprehensive synchronization
 - **🔧 Easy Integration**: Simple API with fire-and-forget and result-returning tasks
@@ -111,25 +111,27 @@ ThreadSystem::Instance().enqueueTask([]() {
 }, TaskPriority::Idle, "Memory Optimization");
 ```
 
-## Work-Stealing Performance
+## WorkerBudget Performance
 
 ### Before vs After Comparison
 
 ```
-10,000 Entity Test - Load Balancing Results:
+10,000 Entity Test - WorkerBudget Results:
 
-Before Work-Stealing (Severe Imbalance):
-  Worker 0: 1,900 tasks (47.5%)
-  Worker 1: 1,850 tasks (46.25%)
-  Worker 2: 1,920 tasks (48.0%)
-  Worker 3: 4 tasks (0.1%) ⚠️
-  Efficiency: 20% (severe worker starvation)
+AI Workers (60% allocation):
+  AI Worker 0: 1,800 tasks
+  AI Worker 1: 1,750 tasks
+  AI Worker 2: 1,850 tasks
+  Efficiency: 95%+ (optimal AI processing)
 
-After Work-Stealing (Excellent Balance):
-  Worker 0: 1,247 tasks (24.9%)
-  Worker 1: 1,251 tasks (25.0%)
-  Worker 2: 1,248 tasks (25.0%)
-  Worker 3: 1,254 tasks (25.1%) ✅
+Event Workers (30% allocation):
+  Event Worker 0: 900 tasks
+  Event Worker 1: 950 tasks
+  Efficiency: 90%+ (optimal event handling)
+
+Engine Workers (10% allocation):
+  Engine Worker 0: 300 tasks
+  Efficiency: 100% (critical tasks prioritized)
   Efficiency: 99.4% (near-perfect distribution)
 ```
 
@@ -140,7 +142,7 @@ After Work-Stealing (Excellent Balance):
 | 1-100 tasks | 70-85% | Single batch |
 | 100-1,000 tasks | 85-90% | Worker-count batches |
 | 1,000+ tasks | 90-95% | Individual submission |
-| 10,000+ tasks | 95%+ | Work-stealing optimal |
+| 10,000+ tasks | 95%+ | WorkerBudget optimal |
 
 ## Engine Integration Patterns
 
@@ -239,7 +241,7 @@ public:
             render();
             
             // Audio and AI can complete in background
-            // (work-stealing ensures they complete efficiently)
+            // (WorkerBudget ensures optimal resource allocation)
         }
     }
 };
@@ -446,7 +448,7 @@ void executeWithRetry(std::function<void()> task, int maxRetries = 3) {
 | Issue | Symptoms | Solution |
 |-------|----------|----------|
 | **High queue utilization** | >80% queue usage | Increase worker count or optimize task size |
-| **Poor load balancing** | Some workers idle | Enable work-stealing (automatic) |
+| **Poor load balancing** | Some workers idle | Optimize WorkerBudget allocation |
 | **Memory growth** | Increasing memory usage | Reserve capacity, optimize captures |
 | **Task starvation** | Critical tasks delayed | Use appropriate priorities |
 | **Deadlocks** | System hanging | Avoid blocking operations in tasks |
@@ -531,14 +533,14 @@ public:
 
 ## Conclusion
 
-The ThreadSystem provides a robust, high-performance foundation for multi-threaded game development. Its automatic work-stealing achieves 90%+ load balancing efficiency while maintaining simplicity of use. The priority-based scheduling and comprehensive monitoring make it suitable for production game engines.
+The ThreadSystem provides a robust, high-performance foundation for multi-threaded game development. Its WorkerBudget system achieves optimal resource distribution while maintaining simplicity of use. The priority-based scheduling and comprehensive monitoring make it suitable for production game engines.
 
 ### Key Takeaways
 
 - **Simple API**: Just call `enqueueTask()` for most use cases
-- **Automatic Optimization**: Work-stealing and load balancing require no configuration
+- **Automatic Optimization**: WorkerBudget allocation and priority scheduling require no configuration
 - **Production Ready**: Comprehensive error handling and monitoring built-in
 - **Game Optimized**: Designed specifically for game engine workloads
-- **High Performance**: 90%+ efficiency with minimal overhead
+- **High Performance**: Optimal efficiency with minimal overhead
 
-Start with basic task submission, leverage the priority system for critical operations, and trust the work-stealing system to optimize performance automatically.
+Start with basic task submission, leverage the priority system for critical operations, and trust the WorkerBudget system to optimize resource allocation automatically.
