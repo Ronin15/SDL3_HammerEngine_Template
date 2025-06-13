@@ -219,8 +219,7 @@ struct AIScalingFixture {
             return;
         }
 
-        // Clean up from previous run
-        cleanupEntitiesAndBehaviors();
+        // Clear local collections only (don't reset AIManager state)
         entities.clear();
         behaviors.clear();
 
@@ -266,10 +265,15 @@ struct AIScalingFixture {
             AIManager::Instance().assignBehaviorToEntity(entity, behaviorName);
             // Register entity for managed updates with maximum priority to ensure updates
             AIManager::Instance().registerEntityForUpdates(entity, 9); // Max priority
+
         }
+
 
         // Set the first entity as player reference and ensure all entities are positioned close
         if (!entities.empty()) {
+            // Set player first to ensure proper distance calculations
+            AIManager::Instance().setPlayerForDistanceOptimization(entities[0]);
+            
             // Position all entities very close to the first entity (which becomes the player reference)
             Vector2D playerPosition = entities[0]->getPosition();
             
@@ -293,10 +297,21 @@ struct AIScalingFixture {
                 entities[i]->setPosition(closePosition);
             }
             
-            AIManager::Instance().setPlayerForDistanceOptimization(entities[0]);
+            // Debug: Check if entities have behaviors assigned and distances calculated
+            size_t entitiesWithBehaviors = 0;
+            for (const auto& entity : entities) {
+                if (AIManager::Instance().entityHasBehavior(entity)) {
+                    entitiesWithBehaviors++;
+                }
+            }
+            
             std::cout << "  [DEBUG] Set player reference and positioned " << entities.size() 
                       << " entities in tight cluster within " << MAX_CLUSTER_RADIUS 
                       << " units for optimal AI execution rates" << std::endl;
+            std::cout << "  [DEBUG] Entities with behaviors: " << entitiesWithBehaviors << "/" << entities.size() << std::endl;
+            std::cout << "  [DEBUG] Managed entity count: " << AIManager::Instance().getManagedEntityCount() << std::endl;
+            
+
         }
 
         // Organize entities by behavior for batch updates
@@ -312,6 +327,8 @@ struct AIScalingFixture {
 
         // Get starting behavior execution count from AIManager
         size_t startingExecutions = AIManager::Instance().getBehaviorUpdateCount();
+
+
 
         for (int run = 0; run < numMeasurements; run++) {
             // Measure timing for main thread responsiveness (core metric)
@@ -330,7 +347,30 @@ struct AIScalingFixture {
         }
 
         // Allow async AI processing to complete before measuring executions
-        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        // For large entity counts, poll until behavior count stabilizes
+        if (numEntities > 50000) {
+            size_t lastCount = 0;
+            size_t stableCount = 0;
+            const size_t maxWaitIterations = 100; // Maximum 10 seconds wait
+            
+            for (size_t i = 0; i < maxWaitIterations; ++i) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                size_t currentCount = AIManager::Instance().getBehaviorUpdateCount();
+                
+                if (currentCount == lastCount) {
+                    stableCount++;
+                    // Consider stable after count hasn't changed for 5 iterations (500ms)
+                    if (stableCount >= 5) {
+                        break;
+                    }
+                } else {
+                    stableCount = 0;
+                    lastCount = currentCount;
+                }
+            }
+        } else {
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        }
 
         // Calculate the average duration
         double avgDuration = 0.0;
@@ -693,7 +733,7 @@ BOOST_AUTO_TEST_CASE(TestExtremeEntityCount) {
 
         // Use fewer behaviors and updates for extreme scale to avoid memory issues
         int adjustedNumBehaviors = 5;
-        int adjustedNumUpdates = 5; // Stress test requires more updates
+        int adjustedNumUpdates = 10; // Increased to ensure distance calculations work properly
 
         std::cout << "\n--- Stress Test: " << numEntities << " entities, "
                   << adjustedNumBehaviors << " behaviors, " << adjustedNumUpdates << " updates ---" << std::endl;

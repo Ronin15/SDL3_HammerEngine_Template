@@ -167,7 +167,9 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
         }
 
         // Copy current state to next buffer only if we updated distances or have changes
-        if (distancesUpdated || currentFrame % 60 == 0) {  // Full sync every 60 frames as fallback
+        bool entityCountChanged = (m_storage.doubleBuffer[nextBuffer].size() != m_storage.hotData.size());
+        
+        if (distancesUpdated || currentFrame % 60 == 0 || entityCountChanged) {
             std::shared_lock<std::shared_mutex> lock(m_entitiesMutex);
             m_storage.doubleBuffer[nextBuffer] = m_storage.hotData;
         } else {
@@ -585,6 +587,11 @@ void AIManager::resetBehaviors() {
     m_entityToIndex.clear();
     m_managedEntities.clear();
     
+    // Clear double buffers to prevent stale data synchronization issues
+    m_storage.doubleBuffer[0].clear();
+    m_storage.doubleBuffer[1].clear();
+    m_storage.currentBuffer.store(0, std::memory_order_release);
+    
     // Reset counters
     m_totalBehaviorExecutions.store(0, std::memory_order_relaxed);
 }
@@ -767,6 +774,8 @@ void AIManager::processBatch(size_t start, size_t end, float deltaTime, int buff
                 
                 // Pure distance-based culling - entities too far away don't update
                 shouldUpdate = (hotData.distanceSquared <= effectiveMaxDistSquared);
+                
+
             }
             
             if (shouldUpdate) {

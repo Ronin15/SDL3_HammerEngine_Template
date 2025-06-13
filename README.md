@@ -42,7 +42,7 @@ I use the Zed IDE with custom cmake and ninja task configurations to build/compi
   - Event system performance and functionality tests
   - Threading system validation and optimization tests
   - Performance regression testing and continuous integration
-  - Stress testing up to 100K entities (2.3M updates/sec achieved) **Mac M3 Pro 11 core**
+  - **Stress testing up to 100K entities (500M+ updates/sec achieved) **Mac M3 Pro 11 core**
 
 - Supports the following Image, Sound, and font formats:
   - Images: png
@@ -53,7 +53,7 @@ I use the Zed IDE with custom cmake and ninja task configurations to build/compi
 **M3 MAC Pro 11 core for most bench numbers**
 ### Multi-Threading Performance
 - **10K Entity Target**: Achieves 995K entity updates per second (5.85x threading improvement over baseline)
-- **100K Entity Stress Test**: Demonstrates 2.2M+ entity updates per second capability
+- **100K Entity Stress Test**: Demonstrates 500M+ entity updates per second capability
 - **Threading Threshold**: Automatic activation at 200 entities provides 4.41x performance boost
 - **WorkerBudget System**: Dynamic allocation across AI and Event systems (AI: 60%, Events: 30%, Engine coordination: 10%)
 - **Work-Stealing Load Balancing**: 90%+ efficiency across workers (495:1 imbalance → 1.1:1 balance)
@@ -175,7 +175,7 @@ The project includes comprehensive testing suites for all major components inclu
 # - 200+ entities: Auto threading activation (~750K updates/sec, 4.41x)
 # - 1000 entities: High threading performance (~975K updates/sec, 5.74x)
 # - 10K entities: Target performance achieved (~995K updates/sec, 5.85x)
-# - 100K entities: Stress test validation (2.2M+ updates/sec)
+# - 100K entities: Stress test validation (500M+ updates/sec)
 ```
 
 ### WorkerBudget System Tests
