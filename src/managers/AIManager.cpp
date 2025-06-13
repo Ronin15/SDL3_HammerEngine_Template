@@ -187,13 +187,11 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
             // Check queue pressure before submitting tasks
             size_t queueSize = threadSystem.getQueueSize();
             size_t queueCapacity = threadSystem.getQueueCapacity();
-            size_t pressureThreshold = (queueCapacity * 3) / 4; // 75% capacity threshold
-            bool systemBusy = threadSystem.isBusy();
+            size_t pressureThreshold = (queueCapacity * 9) / 10; // 90% capacity threshold
             
-            if (queueSize > pressureThreshold || systemBusy) {
+            if (queueSize > pressureThreshold) {
                 // Graceful degradation: fallback to single-threaded processing
-                std::string reason = systemBusy ? "ThreadSystem busy" : "Queue pressure";
-                AI_DEBUG(reason + " detected (" + std::to_string(queueSize) + "/" + 
+                AI_DEBUG("Queue pressure detected (" + std::to_string(queueSize) + "/" + 
                         std::to_string(queueCapacity) + "), using single-threaded processing");
                 processBatch(0, entityCount, deltaTime, nextBuffer);
                 
