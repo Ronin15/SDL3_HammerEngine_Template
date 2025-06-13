@@ -44,19 +44,19 @@ bool GameEngine::init(const char* title,
     GAMEENGINE_CRITICAL("SDL Video initialization failed: " + std::string(SDL_GetError()));
     return false;
   }
-  
+
   GAMEENGINE_INFO("SDL Video online");
 
     // Set SDL hints for better rendering quality
     SDL_SetHint(SDL_HINT_RENDER_LINE_METHOD, "3");    // Use geometry for smoother lines
     SDL_SetHint("SDL_VIDEO_X11_NET_WM_BYPASS_COMPOSITOR", "0");  // Don't bypass compositor
     SDL_SetHint("SDL_MOUSE_AUTO_CAPTURE", "0");    // Prevent mouse capture issues
-    
+
     // macOS-specific hints for better fullscreen and DPI handling
     #ifdef __APPLE__
     SDL_SetHint(SDL_HINT_VIDEO_MAC_FULLSCREEN_SPACES, "1");  // Use Spaces for fullscreen
     #endif
-    
+
     GAMEENGINE_INFO("SDL rendering hints configured for optimal quality");
 
     // Use reliable window sizing approach instead of potentially corrupted display bounds
@@ -72,7 +72,7 @@ bool GameEngine::init(const char* title,
       GAMEENGINE_INFO("Using requested window size: " + std::to_string(m_windowWidth) + "x" + std::to_string(m_windowHeight));
     }
 
-    
+
     // For macOS compatibility, use fullscreen for large window requests
     #ifdef __APPLE__
     if (m_windowWidth >= 1920 || m_windowHeight >= 1080) {
@@ -87,7 +87,7 @@ bool GameEngine::init(const char* title,
 
     if (fullscreen) {
       flags = flag1 | flag2;
-      
+
       #ifdef __APPLE__
       // On macOS, keep logical dimensions for proper scaling
       // Don't override m_windowWidth and m_windowHeight for macOS
@@ -114,9 +114,9 @@ bool GameEngine::init(const char* title,
       GAMEENGINE_ERROR("Failed to create window: " + std::string(SDL_GetError()));
       return false;
     }
-    
+
     GAMEENGINE_INFO("Window creation system online");
-    
+
     #ifdef __APPLE__
       // On macOS, set fullscreen mode to null for borderless fullscreen desktop mode
       if (fullscreen) {
@@ -162,9 +162,9 @@ bool GameEngine::init(const char* title,
         GAMEENGINE_ERROR("Failed to create renderer: " + std::string(SDL_GetError()));
         return false;
       }
-      
+
       GAMEENGINE_INFO("Rendering system online");
-      
+
       // Enable VSync using SDL3 API
       if (!SDL_SetRenderVSync(mp_renderer.get(), 1)) {
         GAMEENGINE_ERROR("Failed to set VSync: " + std::string(SDL_GetError()));
@@ -173,14 +173,14 @@ bool GameEngine::init(const char* title,
       } else {
         GAMEENGINE_INFO("VSync enabled - hardware-synchronized frame presentation active");
       }
-      
+
       if (!SDL_SetRenderDrawColor(mp_renderer.get(), FORGE_GRAY)) {  // Forge Game Engine gunmetal dark grey
         GAMEENGINE_ERROR("Failed to set initial render draw color: " + std::string(SDL_GetError()));
       }
       // Set logical rendering size to standard resolution for consistent aspect ratio
       int targetLogicalWidth = 1920;
       int targetLogicalHeight = 1080;
-      
+
       #ifdef __APPLE__
       // On macOS, use LETTERBOX mode to maintain aspect ratio and avoid black bars
       SDL_RendererLogicalPresentation presentationMode = SDL_LOGICAL_PRESENTATION_LETTERBOX;
@@ -209,7 +209,7 @@ bool GameEngine::init(const char* title,
 
   // INITIALIZING GAME RESOURCE LOADING AND MANAGEMENT_________________________BEGIN
 
-  
+
   // Calculate DPI-aware font sizes before threading
   float dpiScale = 1.0f;
   int dpiPixelWidth, dpiPixelHeight;
@@ -226,12 +226,12 @@ bool GameEngine::init(const char* title,
     dpiLogicalWidth = m_windowWidth;
     dpiLogicalHeight = m_windowHeight;
   }
-  
+
   if (dpiLogicalWidth > 0 && dpiLogicalHeight > 0) {
     float scaleX = static_cast<float>(dpiPixelWidth) / static_cast<float>(dpiLogicalWidth);
     float scaleY = static_cast<float>(dpiPixelHeight) / static_cast<float>(dpiLogicalHeight);
     dpiScale = std::max(scaleX, scaleY);
-    
+
     #ifdef __APPLE__
     // On macOS, get the display content scale for more accurate scaling
     float displayScale = SDL_GetWindowDisplayScale(mp_window.get());
@@ -242,13 +242,13 @@ bool GameEngine::init(const char* title,
     }
     #endif
   }
-  
+
   // Store DPI scale for use by other managers
   m_dpiScale = dpiScale;
-  
+
   GAMEENGINE_INFO("Using display-aware font sizing - SDL3 handles DPI scaling automatically");
-  
-  GAMEENGINE_INFO("DPI scale: " + std::to_string(dpiScale) + 
+
+  GAMEENGINE_INFO("DPI scale: " + std::to_string(dpiScale) +
                  ", window: " + std::to_string(m_windowWidth) + "x" + std::to_string(m_windowHeight));
 
   // Use multiple threads for initialization
@@ -300,7 +300,7 @@ texMgr.load("res/img", "", mp_renderer.get());
         }
 
         GAMEENGINE_INFO("Loading fonts with display-aware sizing");
-        
+
         // Let FontManager calculate optimal sizes based on display characteristics
         if (!fontMgr.loadFontsForDisplay("res/fonts", m_windowWidth, m_windowHeight)) {
           GAMEENGINE_CRITICAL("Failed to load fonts for display");
@@ -357,7 +357,7 @@ texMgr.load("res/img", "", mp_renderer.get());
     GAMEENGINE_CRITICAL("Failed to initialize UI Manager");
     return false;
   }
-  
+
   // Set cached renderer for performance optimization
   uiMgr.setRenderer(mp_renderer.get());
   GAMEENGINE_INFO("UI Manager initialized successfully with cached renderer");
@@ -388,15 +388,42 @@ texMgr.load("res/img", "", mp_renderer.get());
   }
 
   // Step 2: Cache manager references for performance (after all background init complete)
-  GAMEENGINE_INFO("Caching manager references");
+  GAMEENGINE_INFO("Caching and validating manager references");
   try {
-    mp_aiManager = &AIManager::Instance();
-    mp_eventManager = &EventManager::Instance();
+    // Validate AI Manager before caching
+    AIManager& aiMgrTest = AIManager::Instance();
+    if (!aiMgrTest.isInitialized()) {
+      GAMEENGINE_CRITICAL("AIManager not properly initialized before caching!");
+      return false;
+    }
+    mp_aiManager = &aiMgrTest;
+    
+    // Validate Event Manager before caching
+    EventManager& eventMgrTest = EventManager::Instance();
+    if (!eventMgrTest.isInitialized()) {
+      GAMEENGINE_CRITICAL("EventManager not properly initialized before caching!");
+      return false;
+    }
+    mp_eventManager = &eventMgrTest;
+    
     // InputManager not cached - handled in handleEvents() for proper SDL architecture
 
-    // Validate that cached managers are properly initialized
+    // Double-check cached references are valid
     if (!mp_aiManager || !mp_eventManager) {
-      GAMEENGINE_CRITICAL("Error: One or more manager references are null!");
+      GAMEENGINE_CRITICAL("Error: One or more manager references are null after caching!");
+      return false;
+    }
+    
+    // Verify managers are still responding after caching
+    try {
+      // Test AI Manager responsiveness
+      size_t entityCount = mp_aiManager->getManagedEntityCount();
+      GAMEENGINE_DEBUG("AIManager cached successfully, managing " + std::to_string(entityCount) + " entities");
+      
+      // Test Event Manager responsiveness (just verify it's initialized)
+      GAMEENGINE_DEBUG("EventManager cached successfully and initialized");
+    } catch (const std::exception& e) {
+      GAMEENGINE_CRITICAL("Manager validation failed after caching: " + std::string(e.what()));
       return false;
     }
 
@@ -408,14 +435,21 @@ texMgr.load("res/img", "", mp_renderer.get());
   //_______________________________________________________________________________________________________________END
 
   GAMEENGINE_INFO("Game " + std::string(title) + " initialized successfully!");
-  GAMEENGINE_INFO("Running " + std::string(title) + " <]==={");
+  GAMEENGINE_INFO("Running " + std::string(title) + " <]==={}");
 
-  // Initialize first buffer as ready for immediate rendering
-  m_bufferReady[0].store(true, std::memory_order_release);
+  // Initialize buffer system for first frame
+  m_currentBufferIndex.store(0, std::memory_order_release);
   m_renderBufferIndex.store(0, std::memory_order_release);
-  // Ensure first frame is always considered new by setting update counter to 1
-  m_lastUpdateFrame.store(1, std::memory_order_release);
-  
+
+  // Mark first buffer as ready with initial clear frame
+  m_bufferReady[0].store(true, std::memory_order_release);
+  m_bufferReady[1].store(false, std::memory_order_release);
+  m_bufferReady[2].store(false, std::memory_order_release);
+
+  // Initialize frame counters
+  m_lastUpdateFrame.store(0, std::memory_order_release);
+  m_lastRenderedFrame.store(0, std::memory_order_release);
+
   // setting logo state for default state
   mp_gameStateManager->setState("LogoState");//set to "LogoState" for normal operation.
   // Note: GameLoop will be started by ForgeMain, not here
@@ -428,7 +462,7 @@ void GameEngine::handleEvents() {
   // Handle input events - InputManager stays here for SDL event polling architecture
   InputManager& inputMgr = InputManager::Instance();
   inputMgr.update();
-  
+
   // Handle game state input on main thread where SDL events are processed (SDL3 requirement)
   // This prevents cross-thread input state access between main thread and update worker thread
   mp_gameStateManager->handleInput();
@@ -489,8 +523,8 @@ void GameEngine::update([[maybe_unused]] float deltaTime) {
     }
   }
 
-  // Mark update as running
-  m_updateRunning = true;
+  // Mark update as running with relaxed ordering (protected by mutex)
+  m_updateRunning.store(true, std::memory_order_relaxed);
 
   // Get the buffer for the current update
   const size_t updateBufferIndex = m_currentBufferIndex.load(std::memory_order_acquire);
@@ -547,22 +581,22 @@ void GameEngine::update([[maybe_unused]] float deltaTime) {
     // Mark this buffer as ready for rendering
     m_bufferReady[updateBufferIndex].store(true, std::memory_order_release);
 
-    // Mark update as completed
-    m_updateCompleted = true;
+    // Mark update as completed with relaxed ordering (protected by condition variable)
+    m_updateCompleted.store(true, std::memory_order_relaxed);
   } catch (const std::exception& e) {
     GAMEENGINE_ERROR("Exception in update: " + std::string(e.what()));
   } catch (...) {
     GAMEENGINE_ERROR("Unknown exception in update");
   }
 
-  m_updateRunning = false;
+  m_updateRunning.store(false, std::memory_order_relaxed);
 
   // Notify anyone waiting on this update
   m_updateCondition.notify_all();
   m_bufferCondition.notify_all();
 }
 
-void GameEngine::render([[maybe_unused]] float interpolation) {
+void GameEngine::render() {
   // Always on MAIN thread as its an - SDL REQUIREMENT
   std::lock_guard<std::mutex> lock(m_renderMutex);
 
@@ -595,13 +629,24 @@ void GameEngine::render([[maybe_unused]] float interpolation) {
 
 void GameEngine::waitForUpdate() {
   std::unique_lock<std::mutex> lock(m_updateMutex);
-  // Set a timeout to avoid deadlocks with extremely high entity counts
-  if (!m_updateCondition.wait_for(lock, std::chrono::milliseconds(100),
-      [this] { return m_updateCompleted.load(std::memory_order_acquire); })) {
-    // If timeout occurs, log a warning but continue
-    GAMEENGINE_WARN("Update wait timeout with high entity count");
-    // Force the update completed flag to true to avoid deadlock
-    m_updateCompleted.store(true, std::memory_order_release);
+  // Adaptive timeout based on system load
+  auto timeout = std::chrono::milliseconds(100);
+  
+  // Wait for update completion with timeout
+  bool completed = m_updateCondition.wait_for(lock, timeout,
+      [this] { return m_updateCompleted.load(std::memory_order_acquire) || 
+                      m_stopRequested.load(std::memory_order_acquire); });
+  
+  if (!completed && !m_stopRequested.load(std::memory_order_acquire)) {
+    // Timeout occurred - check if update is actually stuck
+    if (m_updateRunning.load(std::memory_order_acquire)) {
+      // Update is still running, give it more time
+      GAMEENGINE_DEBUG("Update taking longer than expected, waiting additional time");
+      m_updateCondition.wait_for(lock, std::chrono::milliseconds(50));
+    } else {
+      // Update not running, safe to continue
+      GAMEENGINE_DEBUG("Update wait timeout but update not running, continuing");
+    }
   }
 }
 
@@ -613,41 +658,60 @@ void GameEngine::signalUpdateComplete() {
 }
 
 void GameEngine::swapBuffers() {
-  // Ultra-fast lock-free buffer swap - optimized for render thread performance
+  // Thread-safe buffer swap with proper synchronization
   size_t currentIndex = m_currentBufferIndex.load(std::memory_order_acquire);
   size_t nextUpdateIndex = (currentIndex + 1) % BUFFER_COUNT;
 
-  // Only swap if current buffer is ready
-  if (m_bufferReady[currentIndex].load(std::memory_order_acquire)) {
-    // Make current buffer available for rendering immediately
-    m_renderBufferIndex.store(currentIndex, std::memory_order_release);
-    
-    // Switch to next buffer for updates
-    m_currentBufferIndex.store(nextUpdateIndex, std::memory_order_release);
-    
-    // Clear the next buffer's ready state for the next update cycle
-    m_bufferReady[nextUpdateIndex].store(false, std::memory_order_release);
+  // Check if we have a valid render buffer before attempting swap
+  size_t currentRenderIndex = m_renderBufferIndex.load(std::memory_order_acquire);
+
+  // Only swap if current buffer is ready AND next buffer isn't being rendered
+  if (m_bufferReady[currentIndex].load(std::memory_order_acquire) &&
+      nextUpdateIndex != currentRenderIndex) {
+
+    // Atomic compare-exchange to ensure no race condition
+    size_t expected = currentIndex;
+    if (m_currentBufferIndex.compare_exchange_strong(expected, nextUpdateIndex,
+                                                     std::memory_order_acq_rel)) {
+      // Successfully swapped update buffer
+      // Make previous update buffer available for rendering
+      m_renderBufferIndex.store(currentIndex, std::memory_order_release);
+
+      // Clear the next buffer's ready state for the next update cycle
+      m_bufferReady[nextUpdateIndex].store(false, std::memory_order_release);
+
+      // Signal buffer swap completion
+      m_bufferCondition.notify_one();
+    }
   }
 }
 
-bool GameEngine::hasNewFrameToRender() const {
-  // Ultra-fast render check - single atomic read with relaxed ordering for speed
+bool GameEngine::hasNewFrameToRender() const noexcept {
+  // Optimized render check with minimal atomic operations
+  size_t renderIndex = m_renderBufferIndex.load(std::memory_order_acquire);
+  
+  // Single check for buffer readiness
+  if (!m_bufferReady[renderIndex].load(std::memory_order_acquire)) {
+    return false;
+  }
+  
+  // Compare frame counters only if buffer is ready - use relaxed ordering for counters
   uint64_t lastUpdate = m_lastUpdateFrame.load(std::memory_order_relaxed);
   uint64_t lastRendered = m_lastRenderedFrame.load(std::memory_order_relaxed);
-  // Always true for first frame, then compare frame counters
-  return lastUpdate > lastRendered || (lastUpdate == 1 && lastRendered == 0);
+  
+  return lastUpdate > lastRendered;
 }
 
-bool GameEngine::isUpdateRunning() const {
-  return m_updateRunning.load(std::memory_order_acquire);
+bool GameEngine::isUpdateRunning() const noexcept {
+  return m_updateRunning.load(std::memory_order_relaxed);
 }
 
-size_t GameEngine::getCurrentBufferIndex() const {
-  return m_currentBufferIndex.load(std::memory_order_acquire);
+size_t GameEngine::getCurrentBufferIndex() const noexcept {
+  return m_currentBufferIndex.load(std::memory_order_relaxed);
 }
 
-size_t GameEngine::getRenderBufferIndex() const {
-  return m_renderBufferIndex.load(std::memory_order_acquire);
+size_t GameEngine::getRenderBufferIndex() const noexcept {
+  return m_renderBufferIndex.load(std::memory_order_relaxed);
 }
 
 void GameEngine::processBackgroundTasks() {
@@ -684,7 +748,7 @@ void GameEngine::setLogicalPresentationMode(SDL_RendererLogicalPresentation mode
   }
 }
 
-bool GameEngine::isVSyncEnabled() const {
+bool GameEngine::isVSyncEnabled() const noexcept {
   if (!mp_renderer) {
     return false;
   }
@@ -698,7 +762,7 @@ bool GameEngine::isVSyncEnabled() const {
   return false;
 }
 
-SDL_RendererLogicalPresentation GameEngine::getLogicalPresentationMode() const {
+SDL_RendererLogicalPresentation GameEngine::getLogicalPresentationMode() const noexcept {
   return m_logicalPresentationMode;
 }
 
@@ -718,6 +782,11 @@ void GameEngine::processEngineSecondaryTasks() {
 
 void GameEngine::clean() {
   GAMEENGINE_INFO("Starting shutdown sequence...");
+  
+  // Signal all threads to stop
+  m_stopRequested.store(true, std::memory_order_release);
+  m_updateCondition.notify_all();
+  m_bufferCondition.notify_all();
 
   // Cache manager references for better performance
   Forge::ThreadSystem& threadSystem = Forge::ThreadSystem::Instance();

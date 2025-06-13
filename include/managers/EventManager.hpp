@@ -183,7 +183,13 @@ public:
     bool init();
     
     /**
-     * @brief Cleans up all event resources and marks manager as shut down
+     * @brief Checks if the Event Manager has been initialized
+     * @return true if initialized, false otherwise
+     */
+    bool isInitialized() const { return m_initialized.load(std::memory_order_acquire); }
+    
+    /**
+     * @brief Cleans up all event resources
      */
     void clean();
     

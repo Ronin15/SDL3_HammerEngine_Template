@@ -53,12 +53,7 @@ public:
      */
     float getUpdateDeltaTime() const;
 
-    /**
-     * Gets interpolation factor for smooth rendering.
-     * Returns 0.0 for simplified 1:1 frame mapping to prevent timing drift.
-     * @return interpolation factor (always 0.0 for consistent timing)
-     */
-    float getRenderInterpolation() const;
+
 
     /**
      * Call this at the end of each frame.
