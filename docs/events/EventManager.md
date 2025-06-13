@@ -6,15 +6,16 @@ The Forge Game Engine EventManager provides a comprehensive, high-performance ev
 
 1. **Type-indexed storage** - Fast O(1) event lookups using EventTypeId enumeration
 2. **Cache-friendly data structures** - Structure of Arrays (SoA) pattern with 32-byte alignment
-3. **Event pooling** - Memory-efficient reuse of event objects (EventPool template)
-4. **Double buffering** - Lock-free updates during processing phases
-5. **Performance monitoring** - Built-in statistics tracking per event type
-6. **Threading optimization** - Automatic scaling with configurable thresholds
-7. **Direct event execution** - Minimal overhead function calls
+3. **Queue pressure monitoring** - 90% capacity threshold with graceful degradation to single-threaded processing
+4. **WorkerBudget integration** - 30% worker allocation with buffer scaling for high workloads
+5. **Dynamic batch sizing** - Adjusts batch size (8-15 events) based on real-time queue pressure
+6. **Threading optimization** - Automatic scaling with 50+ event threshold
+7. **Performance monitoring** - Built-in statistics tracking per event type
 8. **Type-safe handlers** - Fast event handler registration by EventTypeId
-9. **Batch processing** - Optimized batch updates similar to AIManager architecture
+9. **Architectural consistency** - Same patterns as AIManager for system harmony
 10. **Memory compaction** - Automatic storage optimization and cleanup
-The Forge Game Engine EventManager provides a comprehensive, high-performance event management framework as the single source of truth for all event operations. The system supports weather events, scene transitions, NPC spawning, and custom events with type-indexed storage, cache-friendly data structures, memory pooling, and batch processing optimizations. This redesign focuses on maximum performance with minimal overhead.
+
+The system supports weather events, scene transitions, NPC spawning, and custom events with coordinated ThreadSystem resource management. This design ensures optimal performance while maintaining system stability through intelligent queue pressure management.
 
 ## Table of Contents
 
@@ -341,14 +342,15 @@ void clearEventPools()        // Clear cached objects (shutdown only)
 ## Threading & Performance
 
 ### Threading Model
-EventManager uses intelligent threading decisions based on workload with advanced work-stealing load balancing:
+EventManager uses intelligent threading decisions with queue pressure monitoring and WorkerBudget integration:
 
-- **Automatic Threading**: Enabled when event count exceeds threshold
+- **Automatic Threading**: Enabled when event count exceeds threshold (50+ events)
+- **Queue Pressure Monitoring**: 90% queue capacity threshold with graceful degradation
 - **Type-Based Batching**: Events processed by type for optimal cache usage
-- **WorkerBudget Integration**: Allocates 30% of available worker threads to events
-- **Work-Stealing Load Balancing**: 90%+ efficiency across all allocated workers
+- **WorkerBudget Integration**: Allocates 30% of available worker threads with buffer allocation
+- **Dynamic Batch Sizing**: Adjusts batch size based on real-time queue pressure
 - **Lock-Free Operations**: Minimal locking for high-performance concurrent access
-- **Batch-Aware Stealing**: Preserves event batch processing integrity
+- **Graceful Degradation**: Falls back to single-threaded processing under high queue pressure
 
 ### Threading Configuration
 ```cpp
@@ -361,13 +363,13 @@ EventManager::Instance().setThreadingThreshold(500);
 ```
 
 ### Performance Characteristics
-- **Single-threaded**: Optimal for <100 events per frame
-- **Multi-threaded**: Significant benefits with >500 events per frame
-- **Batch Processing**: Linear performance scaling up to 10,000+ events
+- **Single-threaded**: Optimal for <50 events per frame (automatic fallback)
+- **Multi-threaded**: Benefits with 50+ events, optimal with 100+ events
+- **Queue Pressure Management**: Prevents ThreadSystem overload through monitoring
+- **Dynamic Batch Sizing**: 8-15 events per batch based on queue pressure
 - **Memory Efficiency**: Type-indexed storage minimizes cache misses
-- **Work-Stealing Efficiency**: 90%+ load balancing across workers
-- **Load Balancing**: Automatic task distribution prevents worker starvation
-- **Priority Preservation**: Work-stealing maintains event priority ordering
+- **WorkerBudget Coordination**: Proper resource allocation with AIManager and GameEngine
+- **Architectural Consistency**: Same patterns as AIManager for system harmony
 
 ### Performance Monitoring
 ```cpp
@@ -380,6 +382,19 @@ void monitorEventPerformance() {
     if (totalEvents > 1000) {
         std::cout << "High event count detected: " << totalEvents << std::endl;
         EventManager::Instance().compactEventStorage();
+    }
+    
+    // Monitor queue pressure for system coordination
+    if (Forge::ThreadSystem::Exists()) {
+        auto& threadSystem = Forge::ThreadSystem::Instance();
+        size_t queueSize = threadSystem.getQueueSize();
+        size_t queueCapacity = threadSystem.getQueueCapacity();
+        double queuePressure = static_cast<double>(queueSize) / queueCapacity;
+        
+        if (queuePressure > 0.75) {
+            std::cout << "Warning: High queue pressure (" 
+                      << static_cast<int>(queuePressure * 100) << "%)" << std::endl;
+        }
     }
 }
 ```

@@ -468,27 +468,79 @@ void EventManager::updateEventTypeBatchThreaded(EventTypeId typeId) {
     Forge::WorkerBudget budget = Forge::calculateWorkerBudget(availableWorkers);
     size_t eventWorkerBudget = budget.eventAllocated;
 
+    // Check queue pressure before submitting tasks
+    size_t queueSize = threadSystem.getQueueSize();
+    size_t queueCapacity = threadSystem.getQueueCapacity();
+    size_t pressureThreshold = (queueCapacity * 9) / 10; // 90% capacity threshold
+    
+    if (queueSize > pressureThreshold) {
+        // Graceful degradation: fallback to single-threaded processing
+        EVENT_DEBUG("Queue pressure detected (" + std::to_string(queueSize) + "/" + 
+                   std::to_string(queueCapacity) + "), using single-threaded processing");
+        for (auto& eventData : localEvents) {
+            if (eventData.event) {
+                eventData.event->update();
+            }
+        }
+        
+        // Record performance and return early
+        auto endTime = getCurrentTimeNanos();
+        double timeMs = (endTime - startTime) / 1000000.0;
+        if (timeMs > 1.0 || localEvents.size() > 50) {
+            recordPerformance(typeId, timeMs);
+        }
+        return;
+    }
+
     // Use buffer capacity for high workloads
     size_t optimalWorkerCount = budget.getOptimalWorkerCount(eventWorkerBudget, localEvents.size(), 100);
 
+    // Dynamic batch sizing based on queue pressure for optimal performance
+    size_t minEventsPerBatch = 10;
+    size_t maxBatches = 4;
+    
+    // Adjust batch strategy based on queue pressure
+    double queuePressure = static_cast<double>(queueSize) / queueCapacity;
+    if (queuePressure > 0.5) {
+        // High pressure: use fewer, larger batches to reduce queue overhead
+        minEventsPerBatch = 15;
+        maxBatches = 2;
+        EVENT_DEBUG("High queue pressure (" + std::to_string(static_cast<int>(queuePressure * 100)) + 
+                   "%), using larger batches");
+    } else if (queuePressure < 0.25) {
+        // Low pressure: can use more batches for better parallelization
+        minEventsPerBatch = 8;
+        maxBatches = 4;
+    }
+
     // Simple batch processing without complex spin-wait
     if (optimalWorkerCount > 1 && localEvents.size() > 20) {
-        size_t batchSize = std::max(size_t(10), localEvents.size() / optimalWorkerCount);
+        size_t batchCount = std::min(optimalWorkerCount, localEvents.size() / minEventsPerBatch);
+        batchCount = std::max(size_t(1), std::min(batchCount, maxBatches));
+        
+        size_t batchSize = localEvents.size() / batchCount;
+        size_t remainingEvents = localEvents.size() % batchCount;
         
         std::vector<std::future<void>> futures;
-        futures.reserve(optimalWorkerCount);
+        futures.reserve(batchCount);
 
-        // Submit batches using futures for simpler synchronization
-        for (size_t i = 0; i < localEvents.size(); i += batchSize) {
-            size_t batchEnd = std::min(i + batchSize, localEvents.size());
+        // Submit optimized batches using futures for simpler synchronization
+        for (size_t i = 0; i < batchCount; ++i) {
+            size_t start = i * batchSize;
+            size_t end = start + batchSize;
+            
+            // Add remaining events to last batch
+            if (i == batchCount - 1) {
+                end += remainingEvents;
+            }
 
-            futures.push_back(threadSystem.enqueueTaskWithResult([&localEvents, i, batchEnd]() {
-                for (size_t j = i; j < batchEnd; ++j) {
+            futures.push_back(threadSystem.enqueueTaskWithResult([&localEvents, start, end]() {
+                for (size_t j = start; j < end; ++j) {
                     if (localEvents[j].event) {
                         localEvents[j].event->update();
                     }
                 }
-            }, Forge::TaskPriority::Normal, "Event_Batch"));
+            }, Forge::TaskPriority::Normal, "Event_OptimalBatch"));
         }
 
         // Wait for all batches to complete
