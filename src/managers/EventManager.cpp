@@ -400,12 +400,12 @@ void EventManager::updateEventTypeBatch(EventTypeId typeId) {
         auto& container = m_eventsByType[static_cast<size_t>(typeId)];
         localEvents.reserve(container.size());
         
-        // Quick copy of active events
-        for (const auto& eventData : container) {
-            if (eventData.isActive() && eventData.event) {
-                localEvents.push_back(eventData);
-            }
-        }
+        // Quick copy of active events using STL algorithm
+        std::copy_if(container.begin(), container.end(), 
+                     std::back_inserter(localEvents),
+                     [](const auto& eventData) { 
+                         return eventData.isActive() && eventData.event; 
+                     });
     }
     
     // Process events without holding lock
@@ -452,11 +452,11 @@ void EventManager::updateEventTypeBatchThreaded(EventTypeId typeId) {
         }
         
         localEvents.reserve(container.size());
-        for (const auto& eventData : container) {
-            if (eventData.isActive() && eventData.event) {
-                localEvents.push_back(eventData);
-            }
-        }
+        std::copy_if(container.begin(), container.end(), 
+                     std::back_inserter(localEvents),
+                     [](const auto& eventData) { 
+                         return eventData.isActive() && eventData.event; 
+                     });
     }
 
     if (localEvents.empty()) {
@@ -586,11 +586,11 @@ bool EventManager::changeWeather(const std::string& weatherType, float transitio
         std::lock_guard<std::mutex> lock(m_handlersMutex);
         const auto& handlers = m_handlersByType[static_cast<size_t>(EventTypeId::Weather)];
         localHandlers.reserve(handlers.size());
-        for (const auto& handler : handlers) {
-            if (handler) {
-                localHandlers.push_back(handler);
-            }
-        }
+        std::copy_if(handlers.begin(), handlers.end(), 
+                     std::back_inserter(localHandlers),
+                     [](const auto& handler) { 
+                         return handler != nullptr; 
+                     });
     }
 
     if (!localHandlers.empty()) {
@@ -623,11 +623,11 @@ bool EventManager::changeScene(const std::string& sceneId, const std::string& tr
         std::lock_guard<std::mutex> lock(m_handlersMutex);
         const auto& handlers = m_handlersByType[static_cast<size_t>(EventTypeId::SceneChange)];
         localHandlers.reserve(handlers.size());
-        for (const auto& handler : handlers) {
-            if (handler) {
-                localHandlers.push_back(handler);
-            }
-        }
+        std::copy_if(handlers.begin(), handlers.end(), 
+                     std::back_inserter(localHandlers),
+                     [](const auto& handler) { 
+                         return handler != nullptr; 
+                     });
     }
 
     if (!localHandlers.empty()) {
@@ -660,11 +660,11 @@ bool EventManager::spawnNPC(const std::string& npcType, float x, float y) const 
         std::lock_guard<std::mutex> lock(m_handlersMutex);
         const auto& handlers = m_handlersByType[static_cast<size_t>(EventTypeId::NPCSpawn)];
         localHandlers.reserve(handlers.size());
-        for (const auto& handler : handlers) {
-            if (handler) {
-                localHandlers.push_back(handler);
-            }
-        }
+        std::copy_if(handlers.begin(), handlers.end(), 
+                     std::back_inserter(localHandlers),
+                     [](const auto& handler) { 
+                         return handler != nullptr; 
+                     });
     }
 
     if (!localHandlers.empty()) {

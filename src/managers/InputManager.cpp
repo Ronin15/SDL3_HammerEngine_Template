@@ -297,7 +297,7 @@ void InputManager::onGamepadAxisMove(const SDL_Event& event) {
     return;
   }
 
-  // Get axis name
+  // Get axis name for debug messages
   std::string axisName = "Unknown";
   switch (event.gaxis.axis) {
     case 0: axisName = "Left Stick X"; break;
@@ -397,7 +397,7 @@ void InputManager::onGamepadButtonDown(const SDL_Event& event) {
 
   m_buttonStates[whichOne][event.gbutton.button] = true;
 
-  // Get button name based on the button index
+  // Get button name for debug message
   std::string buttonName = "Unknown";
   switch (event.gbutton.button) {
     case 0: buttonName = "A or CROSS"; break;

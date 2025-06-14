@@ -408,11 +408,7 @@ texMgr.load("res/img", "", mp_renderer.get());
     
     // InputManager not cached - handled in handleEvents() for proper SDL architecture
 
-    // Double-check cached references are valid
-    if (!mp_aiManager || !mp_eventManager) {
-      GAMEENGINE_CRITICAL("Error: One or more manager references are null after caching!");
-      return false;
-    }
+    // Manager references are valid (assigned above)
     
     // Verify managers are still responding after caching
     try {
@@ -444,7 +440,6 @@ texMgr.load("res/img", "", mp_renderer.get());
   // Mark first buffer as ready with initial clear frame
   m_bufferReady[0].store(true, std::memory_order_release);
   m_bufferReady[1].store(false, std::memory_order_release);
-  m_bufferReady[2].store(false, std::memory_order_release);
 
   // Initialize frame counters
   m_lastUpdateFrame.store(0, std::memory_order_release);

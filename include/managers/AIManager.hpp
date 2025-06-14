@@ -415,7 +415,7 @@ private:
         std::atomic<bool> ready{false};
     };
     static constexpr size_t MESSAGE_QUEUE_SIZE = 1024;
-    std::array<LockFreeMessage, MESSAGE_QUEUE_SIZE> m_lockFreeMessages;
+    std::array<LockFreeMessage, MESSAGE_QUEUE_SIZE> m_lockFreeMessages{};
     std::atomic<size_t> m_messageWriteIndex{0};
     std::atomic<size_t> m_messageReadIndex{0};
     

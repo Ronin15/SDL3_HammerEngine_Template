@@ -58,6 +58,13 @@ public:
     int getGameDay() const { return m_currentDay; }
 
     /**
+     * @brief Get current game season (0=Spring, 1=Summer, 2=Fall, 3=Winter)
+     * @param daysPerSeason Number of game days per season (default: 30)
+     * @return Current season index (0-3)
+     */
+    int getCurrentSeason(int daysPerSeason = 30) const;
+
+    /**
      * @brief Get total elapsed game time in seconds
      * @return Total game seconds elapsed
      */

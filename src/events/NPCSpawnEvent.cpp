@@ -9,8 +9,8 @@
 #include "entities/NPC.hpp"
 #include "core/GameEngine.hpp"
 #include "core/Logger.hpp"
+#include "core/GameTime.hpp"
 #include <random>
-#include <chrono>
 #include <algorithm>
 
 
@@ -366,13 +366,8 @@ bool NPCSpawnEvent::checkTimeCondition() const {
         return true; // No time restriction
     }
 
-    // This would get the current game time from a time system
-    // For now, using a placeholder value (real-world hour 0-23)
-    auto now = std::chrono::system_clock::now();
-    auto timeT = std::chrono::system_clock::to_time_t(now);
-    std::tm localTime = *std::localtime(&timeT);
-    float currentHour = static_cast<float>(localTime.tm_hour) +
-                        static_cast<float>(localTime.tm_min) / 60.0f;
+    // Get the current game time from the GameTime system
+    float currentHour = GameTime::Instance().getGameHour();
 
     if (m_startHour <= m_endHour) {
         // Simple case: start time is before end time

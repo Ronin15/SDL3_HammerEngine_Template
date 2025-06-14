@@ -291,7 +291,7 @@ void OverlayDemoState::handleModeSwitch() {
 }
 
 void OverlayDemoState::handleInput() {
-    auto& inputManager = InputManager::Instance();
+    const auto& inputManager = InputManager::Instance();
 
     // Use InputManager's new event-driven key press detection
     if (inputManager.wasKeyPressed(SDL_SCANCODE_SPACE)) {

@@ -117,6 +117,18 @@ std::string GameTime::getTimeOfDayName() const {
     }
 }
 
+int GameTime::getCurrentSeason(int daysPerSeason) const {
+    // Validate input
+    if (daysPerSeason <= 0) {
+        daysPerSeason = 30; // Default fallback
+    }
+    
+    // Calculate which season we're in based on current day
+    // Seasons: 0=Spring, 1=Summer, 2=Fall, 3=Winter
+    int seasonIndex = ((m_currentDay - 1) / daysPerSeason) % 4;
+    return seasonIndex;
+}
+
 std::string GameTime::formatCurrentTime(bool use24Hour) const {
     int hours = static_cast<int>(m_currentHour);
     int minutes = static_cast<int>((m_currentHour - hours) * 60.0f);

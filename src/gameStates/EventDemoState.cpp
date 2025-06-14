@@ -402,7 +402,7 @@ void EventDemoState::createTestEvents() {
 void EventDemoState::handleInput() {
     // Cache manager references for better performance
     const InputManager& inputMgr = InputManager::Instance();
-    GameEngine& gameEngine = GameEngine::Instance();
+    const auto& gameEngine = GameEngine::Instance();
 
     // Use InputManager's new event-driven key press detection
     if (inputMgr.wasKeyPressed(SDL_SCANCODE_SPACE)) {

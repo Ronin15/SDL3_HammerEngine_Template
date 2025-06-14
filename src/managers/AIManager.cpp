@@ -46,7 +46,7 @@ bool AIManager::init() {
 
         // Configure threading based on system capabilities
         if (Forge::ThreadSystem::Exists()) {
-            auto& threadSystem = Forge::ThreadSystem::Instance();
+            const auto& threadSystem = Forge::ThreadSystem::Instance();
             m_maxThreads = threadSystem.getThreadCount();
             m_useThreading.store(m_maxThreads > 1, std::memory_order_release);
         }
@@ -559,7 +559,7 @@ void AIManager::unregisterEntityFromUpdates(EntityPtr entity) {
 
 void AIManager::setGlobalPause(bool paused) {
     m_globallyPaused.store(paused, std::memory_order_release);
-    AI_LOG(paused ? "AI processing paused" : "AI processing resumed");
+    AI_LOG((paused ? "AI processing paused" : "AI processing resumed"));
 }
 
 bool AIManager::isGloballyPaused() const {

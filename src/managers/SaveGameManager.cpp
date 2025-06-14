@@ -475,10 +475,15 @@ SaveGameData SaveGameManager::extractSaveInfo(const std::string& saveFileName) c
             return info;
         }
 
-        // Set timestamp from header
-        const std::tm* timeinfo = std::localtime(&header.timestamp);
+        // Set timestamp from header using thread-safe localtime
+        std::tm timeinfo;
+#ifdef _WIN32
+        localtime_s(&timeinfo, &header.timestamp);
+#else
+        localtime_r(&header.timestamp, &timeinfo);
+#endif
         char buffer[80];
-        std::strftime(buffer, sizeof(buffer), "%Y-%m-%d %H:%M:%S", timeinfo);
+        std::strftime(buffer, sizeof(buffer), "%Y-%m-%d %H:%M:%S", &timeinfo);
         info.timestamp = buffer;
 
         // Read position (skip the actual data, we just want to read ahead)
