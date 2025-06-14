@@ -212,8 +212,8 @@ public:
         // Memory fence for maximum visibility across all threads
         std::atomic_thread_fence(std::memory_order_seq_cst);
 
-        // Wake all waiting threads again after clearing queues
-        notifyAllThreads();
+        // Wake all waiting threads again after clearing queues (mutex already held)
+        notifyAllThreadsUnsafe();
 
         // Small delay to let threads notice the stop signal
         std::this_thread::sleep_for(std::chrono::milliseconds(5));
@@ -384,10 +384,15 @@ private:
 public:
     // Wake up all waiting threads without clearing the queue
     void notifyAllThreads() {
+        std::lock_guard<std::mutex> lock(queueMutex);
         condition.notify_all();
     }
 
 private:
+    // Internal notify without mutex - for use when mutex is already held
+    void notifyAllThreadsUnsafe() {
+        condition.notify_all();
+    }
 };
 
 // Thread pool for managing worker threads
