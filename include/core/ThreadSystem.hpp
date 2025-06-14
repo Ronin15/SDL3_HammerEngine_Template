@@ -132,10 +132,14 @@ public:
 
         // Smart notification: for high/critical priority, notify all for immediate response
         // For normal/low priority, use single notification to reduce thundering herd
-        if (priority <= TaskPriority::High) {
-            condition.notify_all();
-        } else {
-            condition.notify_one();
+        // Hold mutex during notification to avoid race conditions
+        {
+            std::lock_guard<std::mutex> lock(queueMutex);
+            if (priority <= TaskPriority::High) {
+                condition.notify_all();
+            } else {
+                condition.notify_one();
+            }
         }
     }
 

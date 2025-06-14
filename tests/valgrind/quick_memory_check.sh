@@ -63,13 +63,20 @@ run_quick_memcheck() {
 
     # Quick analysis
     if [[ -f "${log_file}" ]]; then
-        local def_lost=$(grep "definitely lost:" "${log_file}" | tail -1 | awk '{print $4,$5}' 2>/dev/null || echo "0 bytes")
+        local def_lost=$(grep "definitely lost:" "${log_file}" | tail -1 | awk '{print $4,$5}' 2>/dev/null || echo "")
         local errors=$(grep "ERROR SUMMARY:" "${log_file}" | tail -1 | awk '{print $4}' 2>/dev/null || echo "0")
+        local all_freed=$(grep "All heap blocks were freed" "${log_file}" 2>/dev/null)
 
-        if [[ "${errors}" == "0" && "${def_lost}" == "0 bytes" ]]; then
+        # Check if it's a clean run (all freed) or has specific leak data
+        if [[ -n "${all_freed}" && "${errors}" == "0" ]]; then
+            echo -e "${GREEN}  ✓ Clean - No leaks or errors${NC}"
+        elif [[ "${errors}" == "0" && ( "${def_lost}" == "0 bytes" || -z "${def_lost}" ) ]]; then
             echo -e "${GREEN}  ✓ Clean - No leaks or errors${NC}"
         else
-            echo -e "${YELLOW}  ⚠ Issues found - Errors: ${errors}, Leaks: ${def_lost}${NC}"
+            # Handle empty def_lost gracefully
+            local leak_info="${def_lost}"
+            [[ -z "${leak_info}" ]] && leak_info="unknown"
+            echo -e "${YELLOW}  ⚠ Issues found - Errors: ${errors}, Leaks: ${leak_info}${NC}"
         fi
     else
         echo -e "${RED}  ✗ Analysis failed${NC}"
@@ -88,6 +95,10 @@ echo ""
 echo -e "${GREEN}========================================${NC}"
 echo -e "${GREEN}  Quick Memory Analysis Complete       ${NC}"
 echo -e "${GREEN}========================================${NC}"
+echo ""
+echo -e "${CYAN}Expected Behaviors:${NC}"
+echo -e "  • ThreadSystem: 1 error from intentional overflow protection test"
+echo -e "  • Other components: Zero leaks indicates excellent memory management"
 echo ""
 echo -e "For detailed analysis, run: ${CYAN}./tests/valgrind/run_valgrind_analysis.sh${NC}"
 echo -e "Log files saved to: ${CYAN}${RESULTS_DIR}${NC}"
