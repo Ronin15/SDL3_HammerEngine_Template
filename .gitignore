@@ -1,3 +1,5 @@
 build/
 .cache/
 !cppcheck_suppressions.txt
+test_results/valgrind/cache/
+test_results/valgrind/complete_analysis_*.md
