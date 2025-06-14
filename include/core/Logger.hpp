@@ -32,6 +32,7 @@ namespace Forge {
     class Logger {
     private:
         static std::atomic<bool> s_benchmarkMode;
+        static std::mutex s_logMutex;
         
     public:
         static void SetBenchmarkMode(bool enabled) {
@@ -47,7 +48,8 @@ namespace Forge {
                 return;
             }
             
-            // Single printf call for atomic output, keep fflush for immediate debug feedback
+            // Thread-safe logging with mutex protection
+            std::lock_guard<std::mutex> lock(s_logMutex);
             printf("Forge Game Engine - [%s] %s: %s\n", system, getLevelString(level), message.c_str());
             fflush(stdout);
         }
@@ -57,7 +59,8 @@ namespace Forge {
                 return;
             }
             
-            // Single printf call for atomic output, keep fflush for immediate debug feedback
+            // Thread-safe logging with mutex protection
+            std::lock_guard<std::mutex> lock(s_logMutex);
             printf("Forge Game Engine - [%s] %s: %s\n", system, getLevelString(level), message);
             fflush(stdout);
         }
@@ -75,8 +78,9 @@ namespace Forge {
         }
     };
     
-    // Initialize static atomic
+    // Initialize static members
     inline std::atomic<bool> Logger::s_benchmarkMode{false};
+    inline std::mutex Logger::s_logMutex{};
     
     // Debug build macros - full functionality
     #define FORGE_CRITICAL(system, msg) Forge::Logger::Log(Forge::LogLevel::CRITICAL, system, std::string(msg))
@@ -92,6 +96,8 @@ namespace Forge {
         static std::atomic<bool> s_benchmarkMode;
         
     public:
+        static std::mutex s_logMutex;  // Public for macro access
+        
         static void SetBenchmarkMode(bool enabled) {
             s_benchmarkMode.store(enabled, std::memory_order_relaxed);
         }
@@ -101,11 +107,13 @@ namespace Forge {
         }
     };
     
-    // Initialize static atomic
+    // Initialize static members
     inline std::atomic<bool> Logger::s_benchmarkMode{false};
+    inline std::mutex Logger::s_logMutex{};
     
     #define FORGE_CRITICAL(system, msg) do { \
         if (!Forge::Logger::IsBenchmarkMode()) { \
+            std::lock_guard<std::mutex> lock(Forge::Logger::s_logMutex); \
             printf("Forge Game Engine - [%s] CRITICAL: %s\n", system, std::string(msg).c_str()); \
             fflush(stdout); \
         } \
@@ -113,6 +121,7 @@ namespace Forge {
     
     #define FORGE_ERROR(system, msg) do { \
         if (!Forge::Logger::IsBenchmarkMode()) { \
+            std::lock_guard<std::mutex> lock(Forge::Logger::s_logMutex); \
             printf("Forge Game Engine - [%s] ERROR: %s\n", system, std::string(msg).c_str()); \
             fflush(stdout); \
         } \

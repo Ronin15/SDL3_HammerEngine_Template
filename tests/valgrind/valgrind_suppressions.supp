@@ -1,0 +1,37 @@
+{
+   SDL3_Init_Leak
+   Memcheck:Leak
+   ...
+   fun:SDL_Init*
+}
+{
+   SDL3_CreateWindow_Leak
+   Memcheck:Leak
+   ...
+   fun:SDL_CreateWindow*
+}
+{
+   SDL3_Audio_Leak
+   Memcheck:Leak
+   ...
+   fun:SDL_*Audio*
+}
+{
+   FontCache_Leak
+   Memcheck:Leak
+   ...
+   fun:*font*
+   fun:*Font*
+}
+{
+   GLX_Leak
+   Memcheck:Leak
+   ...
+   obj:*/libGL.so*
+}
+{
+   Mesa_Leak
+   Memcheck:Leak
+   ...
+   obj:*/mesa/*
+}
