@@ -421,24 +421,23 @@ struct ThreadedAITestFixture {
         }
     }
 
-    // Helper method to wait for futures to complete with timeout
-    template<typename T>
-    void waitForFutures(std::vector<std::future<T>>& futures) {
+    // Helper method to wait for ThreadSystem tasks to complete
+    void waitForThreadSystemTasks(std::vector<std::future<void>>& futures) {
         for (auto& future : futures) {
             try {
                 if (future.valid()) {
-                    // Use wait_for with timeout to avoid hanging
-                    std::future_status status = future.wait_for(std::chrono::seconds(1));
+                    // Use longer timeout for ThreadSystem tasks
+                    std::future_status status = future.wait_for(std::chrono::seconds(10));
                     if (status == std::future_status::ready) {
                         future.get();
                     } else {
-                        std::cerr << "Future timed out after 1 second, continuing..." << std::endl;
+                        std::cerr << "ThreadSystem task timed out after 10 seconds, continuing..." << std::endl;
                     }
                 }
             } catch (const std::exception& e) {
-                std::cerr << "Exception in future: " << e.what() << std::endl;
+                std::cerr << "Exception in ThreadSystem task: " << e.what() << std::endl;
             } catch (...) {
-                std::cerr << "Unknown exception in future" << std::endl;
+                std::cerr << "Unknown exception in ThreadSystem task" << std::endl;
             }
         }
     }
@@ -480,9 +479,9 @@ BOOST_FIXTURE_TEST_CASE(TestThreadSafeBehaviorRegistration, ThreadedAITestFixtur
 
     std::cout << "Starting TestThreadSafeBehaviorRegistration..." << std::endl;
 
-    // Register behaviors from multiple threads
+    // Register behaviors from multiple threads using ThreadSystem
     for (int i = 0; i < NUM_BEHAVIORS; ++i) {
-        futures.push_back(std::async(std::launch::async, [i]() {
+        auto future = Forge::ThreadSystem::Instance().enqueueTaskWithResult([i]() {
             // Skip if we're in exit process
             if (g_exitGuard.load()) {
                 return;
@@ -495,11 +494,12 @@ BOOST_FIXTURE_TEST_CASE(TestThreadSafeBehaviorRegistration, ThreadedAITestFixtur
                 g_allBehaviors.push_back(behavior);
             }
             AIManager::Instance().registerBehavior("Behavior" + std::to_string(i), behavior);
-        }));
+        });
+        futures.push_back(std::move(future));
     }
 
     // Wait for all tasks to complete
-    waitForFutures(futures);
+    waitForThreadSystemTasks(futures);
 
     // Verify all behaviors were registered
     for (int i = 0; i < NUM_BEHAVIORS; ++i) {
@@ -539,13 +539,14 @@ BOOST_FIXTURE_TEST_CASE(TestThreadSafeBehaviorAssignment, ThreadedAITestFixture)
     // Assign behaviors from multiple threads
     std::vector<std::future<void>> futures;
     for (int i = 0; i < NUM_ENTITIES; ++i) {
-        futures.push_back(std::async(std::launch::async, [i, &entityPtrs]() {
+        auto future = Forge::ThreadSystem::Instance().enqueueTaskWithResult([i, &entityPtrs]() {
             AIManager::Instance().assignBehaviorToEntity(entityPtrs[i], "TestBehavior");
-        }));
+        });
+        futures.push_back(std::move(future));
     }
 
     // Wait for all tasks to complete
-    waitForFutures(futures);
+    waitForThreadSystemTasks(futures);
 
     // Verify all entities have behaviors
     for (auto entity : entityPtrs) {
@@ -601,17 +602,18 @@ BOOST_FIXTURE_TEST_CASE(TestThreadSafeBatchUpdates, ThreadedAITestFixture) {
     // Run concurrent managed entity updates from multiple threads
     std::vector<std::future<void>> futures;
     for (int i = 0; i < NUM_BEHAVIORS; ++i) {
-        futures.push_back(std::async(std::launch::async, []() {
+        auto future = Forge::ThreadSystem::Instance().enqueueTaskWithResult([]() {
             for (int j = 0; j < UPDATES_PER_BEHAVIOR; ++j) {
                 // Use the unified entity update system
                 AIManager::Instance().update(0.016f);
                 std::this_thread::sleep_for(std::chrono::milliseconds(2));
             }
-        }));
+        });
+        futures.push_back(std::move(future));
     }
 
     // Wait for all updates to complete
-    waitForFutures(futures);
+    waitForThreadSystemTasks(futures);
 
     // Give a longer delay to ensure all updates are processed
     std::this_thread::sleep_for(std::chrono::milliseconds(50));
@@ -717,7 +719,7 @@ BOOST_FIXTURE_TEST_CASE(TestThreadSafeMessaging, ThreadedAITestFixture) {
         // Send a mix of direct and broadcast messages from multiple threads
         std::vector<std::future<void>> futures;
         for (int i = 0; i < NUM_MESSAGES; ++i) {
-            futures.push_back(std::async(std::launch::async, [i, &entities]() {
+            auto future = Forge::ThreadSystem::Instance().enqueueTaskWithResult([i, &entities]() {
                 std::string message = "ThreadMessage_" + std::to_string(i);
 
                 if (i % 2 == 0) {
@@ -728,14 +730,12 @@ BOOST_FIXTURE_TEST_CASE(TestThreadSafeMessaging, ThreadedAITestFixture) {
                     int entityIdx = i % entities.size();
                     AIManager::Instance().sendMessageToEntity(entities[entityIdx], message, true);
                 }
-
-                // Small delay
-                std::this_thread::sleep_for(std::chrono::milliseconds(10));
-            }));
+            });
+            futures.push_back(std::move(future));
         }
 
         // Wait for all messages to be sent
-        waitForFutures(futures);
+        waitForThreadSystemTasks(futures);
 
         // Allow time for messages to be processed
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
@@ -783,7 +783,7 @@ BOOST_FIXTURE_TEST_CASE(TestThreadSafeCacheInvalidation, ThreadedAITestFixture) 
     // Run a mix of operations
     std::vector<std::future<void>> futures;
     for (int i = 0; i < NUM_OPERATIONS; ++i) {
-        futures.push_back(std::async(std::launch::async, [i, &entityPtrs]() {
+        auto future = Forge::ThreadSystem::Instance().enqueueTaskWithResult([i, &entityPtrs]() {
             int entityIndex = i % entityPtrs.size();
             if (i % 2 == 0) {
                 AIManager::Instance().assignBehaviorToEntity(entityPtrs[entityIndex], "CacheTest");
@@ -792,21 +792,22 @@ BOOST_FIXTURE_TEST_CASE(TestThreadSafeCacheInvalidation, ThreadedAITestFixture) 
                 // Unassign the behavior
                 AIManager::Instance().unassignBehaviorFromEntity(entityPtrs[entityIndex]);
             }
-        }));
+        });
+        futures.push_back(std::move(future));
     }
 
-    // Also run updates at the same time
     for (int i = 0; i < 10; ++i) {
-        futures.push_back(std::async(std::launch::async, []() {
+        auto future = Forge::ThreadSystem::Instance().enqueueTaskWithResult([]() {
             for (int j = 0; j < 5; ++j) {
                 AIManager::Instance().update(0.016f);
                 std::this_thread::sleep_for(std::chrono::milliseconds(2));
             }
-        }));
+        });
+        futures.push_back(std::move(future));
     }
 
     // Wait for all operations to complete
-    waitForFutures(futures);
+    waitForThreadSystemTasks(futures);
 
     // Verify the system is still consistent
     int countAssigned = 0;

@@ -1,6 +1,6 @@
 # Thread Safety Analysis Report
 
-Generated on: Sat Jun 14 12:54:49 PM PDT 2025
+Generated on: Sat Jun 14 01:13:12 PM PDT 2025
 Analysis Tools: Helgrind, DRD (Data Race Detector)
 
 ## Executive Summary
@@ -43,7 +43,7 @@ This report analyzes thread safety in the SDL3 ForgeEngine Template using Valgri
 - **Status**: ✅ SAFE
 
 #### thread_safe_ai_mgr
-- **Conflicting Access**: 40
+- **Conflicting Access**: 95
 - **Race Type**: Standard library (not application code)
 - **Status**: ℹ️ STD LIB RACE
 
