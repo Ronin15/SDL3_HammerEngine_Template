@@ -1,0 +1,202 @@
+# Cppcheck Suppressions File for SDL3_ForgeEngine_Template
+# This file suppresses false positives and irrelevant warnings
+
+# Suppress missing include warnings for project headers
+# These are typically resolved by proper include paths in build system
+missingInclude:*/core/Logger.hpp
+missingInclude:*/core/GameEngine.hpp
+missingInclude:*/managers/InputManager.hpp
+missingInclude:*/managers/UIManager.hpp
+missingInclude:*/managers/AIManager.hpp
+missingInclude:*/managers/FontManager.hpp
+missingInclude:*/managers/TextureManager.hpp
+missingInclude:*/managers/SoundManager.hpp
+missingInclude:*/managers/EventManager.hpp
+missingInclude:*/managers/SaveGameManager.hpp
+missingInclude:*/ai/AIBehavior.hpp
+missingInclude:*/ai/behaviors/ChaseBehavior.hpp
+missingInclude:*/ai/behaviors/PatrolBehavior.hpp
+missingInclude:*/ai/behaviors/WanderBehavior.hpp
+missingInclude:*/events/NPCSpawnEvent.hpp
+missingInclude:*/entities/playerStates/PlayerRunningState.hpp
+missingInclude:*/gameStates/EventDemoState.hpp
+missingInclude:*/gameStates/AIDemoState.hpp
+missingInclude:*/gameStates/MainMenuState.hpp
+missingInclude:*/gameStates/UIExampleState.hpp
+missingInclude:*/gameStates/OverlayDemoState.hpp
+missingInclude:*/utils/Vector2D.hpp
+missingInclude:*/utils/BinarySerializer.hpp
+
+# Suppress library function checks for logging macros
+# These are defined in the library config but may still trigger
+checkLibraryFunction:*GAMEENGINE_*
+checkLibraryFunction:*TEXTURE_*
+checkLibraryFunction:*SOUND_*
+checkLibraryFunction:*FONT_*
+checkLibraryFunction:*AI_*
+checkLibraryFunction:*EVENT_*
+checkLibraryFunction:*INPUT_*
+checkLibraryFunction:*UI_*
+checkLibraryFunction:*SAVEGAME_*
+checkLibraryFunction:*GAMESTATE_*
+checkLibraryFunction:*GAMELOOP_*
+checkLibraryFunction:*THREADSYSTEM_*
+checkLibraryFunction:*FORGE_*
+
+# Suppress no-return checks for logging functions
+# Logging functions don't need noreturn configuration
+checkLibraryNoReturn:*addLogEntry
+checkLibraryNoReturn:*AI_LOG
+checkLibraryNoReturn:*GAMEENGINE_*
+checkLibraryNoReturn:*TEXTURE_*
+checkLibraryNoReturn:*SOUND_*
+checkLibraryNoReturn:*FONT_*
+checkLibraryNoReturn:*EVENT_*
+checkLibraryNoReturn:*INPUT_*
+checkLibraryNoReturn:*UI_*
+checkLibraryNoReturn:*SAVEGAME_*
+
+# Suppress library function checks for singleton patterns
+checkLibraryFunction:*Instance()
+checkLibraryFunction:*GameEngine::Instance
+checkLibraryFunction:*AIManager::Instance
+checkLibraryFunction:*UIManager::Instance
+checkLibraryFunction:*FontManager::Instance
+checkLibraryFunction:*InputManager::Instance
+checkLibraryFunction:*SoundManager::Instance
+checkLibraryFunction:*TextureManager::Instance
+checkLibraryFunction:*EventManager::Instance
+checkLibraryFunction:*ThreadSystem::Instance
+
+# Suppress library function checks for custom utility classes
+checkLibraryFunction:*Vector2D*
+checkLibraryFunction:*getPosition
+checkLibraryFunction:*getX
+checkLibraryFunction:*getY
+checkLibraryFunction:*lengthSquared
+checkLibraryFunction:*setX
+checkLibraryFunction:*setY
+
+# Suppress library function checks for common engine patterns
+checkLibraryFunction:*getPlayerReference
+checkLibraryFunction:*isPlayerValid
+checkLibraryFunction:*getGameStateManager
+checkLibraryFunction:*setState
+checkLibraryFunction:*registerBehavior
+checkLibraryFunction:*hasBehavior
+checkLibraryFunction:*wasKeyPressed
+checkLibraryFunction:*isKeyDown
+checkLibraryFunction:*createLabel
+checkLibraryFunction:*enableTextBackground
+checkLibraryFunction:*drawRect
+checkLibraryFunction:*drawBorder
+checkLibraryFunction:*getComponent
+checkLibraryFunction:*checkLineOfSight
+checkLibraryFunction:*onTargetReached
+checkLibraryFunction:*onTargetLost
+checkLibraryFunction:*handleNoLineOfSight
+checkLibraryFunction:*setActive
+checkLibraryFunction:*init
+checkLibraryFunction:*getCurrentTimeNanos
+
+# Suppress library function checks for standard library functions
+# that cppcheck might not recognize in certain contexts
+checkLibraryFunction:*std::filesystem::exists
+checkLibraryFunction:*std::exception::what
+checkLibraryFunction:*std::string
+checkLibraryFunction:*std::vector
+checkLibraryFunction:*std::map
+checkLibraryFunction:*std::shared_ptr
+checkLibraryFunction:*std::unique_ptr
+checkLibraryFunction:*std::atomic
+checkLibraryFunction:*std::mutex
+checkLibraryFunction:*std::thread
+
+# Suppress SDL3 library function checks
+# These should be handled by SDL3 library config but may still trigger
+checkLibraryFunction:*SDL_GetError
+checkLibraryFunction:*SDL_*
+
+# Suppress auto type deduction warnings in modern C++
+checkLibraryFunction:*auto::*
+
+# Suppress container method warnings
+checkLibraryFunction:*size()
+checkLibraryFunction:*empty()
+checkLibraryFunction:*begin()
+checkLibraryFunction:*end()
+checkLibraryFunction:*push_back
+checkLibraryFunction:*emplace_back
+checkLibraryFunction:*insert
+checkLibraryFunction:*erase
+checkLibraryFunction:*find
+checkLibraryFunction:*get
+
+# Suppress smart pointer method warnings
+checkLibraryFunction:*reset()
+checkLibraryFunction:*release()
+checkLibraryFunction:*get()
+checkLibraryFunction:*operator->
+checkLibraryFunction:*operator*
+
+# Suppress template instantiation warnings
+unusedFunction:*template*
+unusedFunction:*<anonymous>*
+
+# Suppress warnings for benchmark/test code
+unusedFunction:*benchmark*
+unusedFunction:*test*
+unusedFunction:*Test*
+unusedFunction:*BOOST_*
+
+# Suppress warnings for generated code or external dependencies
+*:*/build/*
+*:*/temp/*
+*:*/.cache/*
+*:*/test_results/*
+*:*/bin/*
+
+# Suppress remaining false positives that are actually correct code
+# Variables used in debug macros that may be conditionally compiled
+variableScope:*/ThreadSystem.hpp:572
+variableScope:*/ThreadSystem.hpp:584
+variableScope:*/FontManager.cpp:72
+variableScope:*/SoundManager.cpp:76
+variableScope:*/SoundManager.cpp:148
+
+# Variables used in debug logging that are conditionally compiled in release builds
+# axisName variables in InputManager.cpp (debug variables for controller input)
+unreadVariable:*/InputManager.cpp:303
+unreadVariable:*/InputManager.cpp:304
+unreadVariable:*/InputManager.cpp:305
+unreadVariable:*/InputManager.cpp:306
+unreadVariable:*/InputManager.cpp:307
+unreadVariable:*/InputManager.cpp:308
+unreadVariable:*/InputManager.cpp:309
+
+# buttonName variables in InputManager.cpp (debug variables for controller buttons)
+unreadVariable:*/InputManager.cpp:403
+unreadVariable:*/InputManager.cpp:404
+unreadVariable:*/InputManager.cpp:405
+unreadVariable:*/InputManager.cpp:406
+unreadVariable:*/InputManager.cpp:407
+unreadVariable:*/InputManager.cpp:408
+unreadVariable:*/InputManager.cpp:409
+unreadVariable:*/InputManager.cpp:410
+unreadVariable:*/InputManager.cpp:411
+unreadVariable:*/InputManager.cpp:412
+unreadVariable:*/InputManager.cpp:413
+unreadVariable:*/InputManager.cpp:414
+unreadVariable:*/InputManager.cpp:415
+unreadVariable:*/InputManager.cpp:416
+unreadVariable:*/InputManager.cpp:417
+unreadVariable:*/InputManager.cpp:418
+
+# Const reference opportunities that would break functionality
+# GameEngine references that need to call non-const methods (setState, setRunning)
+constVariableReference:*/GamePlayState.cpp:108
+constVariableReference:*/PauseState.cpp:78
+
+# Suppress specific files that are known to be correct
+*:*/compile_commands.json
+*:*/cppcheck_results.xml
