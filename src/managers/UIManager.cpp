@@ -24,7 +24,7 @@ bool UIManager::init() {
     m_uiFontID = "fonts_UI_Arial";
     
     // Use centralized DPI scale from GameEngine
-    auto& gameEngine = GameEngine::Instance();
+    const auto& gameEngine = GameEngine::Instance();
     m_globalScale = gameEngine.getDPIScale();
     
     #ifdef __APPLE__
@@ -817,7 +817,7 @@ void UIManager::setTitleAlignment(const std::string& titleID, UIAlignment alignm
         
         // If setting to CENTER_CENTER and auto-sizing is enabled, recalculate position
         if (alignment == UIAlignment::CENTER_CENTER && component->autoSize && component->autoWidth) {
-            auto& gameEngine = GameEngine::Instance();
+            const auto& gameEngine = GameEngine::Instance();
             int windowWidth = gameEngine.getWindowWidth();
             component->bounds.x = (windowWidth - component->bounds.width) / 2;
         }
@@ -1510,7 +1510,7 @@ std::shared_ptr<UILayout> UIManager::getLayout(const std::string& id) {
 }
 
 void UIManager::handleInput() {
-    auto& inputManager = InputManager::Instance();
+    const auto& inputManager = InputManager::Instance();
 
     // Get mouse position
     Vector2D mousePos = inputManager.getMousePosition();
@@ -2243,7 +2243,7 @@ void UIManager::renderTooltip(SDL_Renderer* renderer) {
     };
 
     // Ensure tooltip stays on screen
-    auto& gameEngine = GameEngine::Instance();
+    const auto& gameEngine = GameEngine::Instance();
     if (tooltipRect.x + tooltipRect.width > gameEngine.getWindowWidth()) {
         tooltipRect.x = gameEngine.getWindowWidth() - tooltipRect.width;
     }
@@ -2513,7 +2513,7 @@ void UIManager::calculateOptimalSize(std::shared_ptr<UIComponent> component) {
         if (component->style.textAlign == UIAlignment::CENTER_CENTER && 
             component->bounds.width != oldWidth) {
             // Get window width for centering calculation
-            auto& gameEngine = GameEngine::Instance();
+            const auto& gameEngine = GameEngine::Instance();
             int windowWidth = gameEngine.getWindowWidth();
             component->bounds.x = (windowWidth - component->bounds.width) / 2;
         }

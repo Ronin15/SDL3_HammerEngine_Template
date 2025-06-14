@@ -6,20 +6,15 @@
 #include "events/WeatherEvent.hpp"
 #include "utils/Vector2D.hpp"
 #include "core/Logger.hpp"
+#include "core/GameTime.hpp"
 #include <random>
-#include <chrono>
 #include <algorithm>
 
 // Helper for getting current game time (hour of day)
+// Helper for getting current game time of day (0-24)
 static float getCurrentGameTime() {
-    // This would typically come from a game time system
-    // For now, return a placeholder value between 0-24
-    auto now = std::chrono::system_clock::now();
-    auto time = std::chrono::system_clock::to_time_t(now);
-    const std::tm* localTime = std::localtime(&time);
-
-    return static_cast<float>(localTime->tm_hour) +
-           static_cast<float>(localTime->tm_min) / 60.0f;
+    // Use the GameTime system for simulated game time
+    return GameTime::Instance().getGameHour();
 }
 
 // Helper for getting current player position
@@ -31,19 +26,9 @@ static Vector2D getPlayerPosition() {
 
 // Helper for getting current season
 static int getCurrentSeason() {
-    // This would typically come from a game calendar system
-    // For now, determine season based on real-world month
-    auto now = std::chrono::system_clock::now();
-    auto time = std::chrono::system_clock::to_time_t(now);
-    const std::tm* localTime = std::localtime(&time);
-
-    int month = localTime->tm_mon; // 0-11
-
+    // Use the GameTime system for simulated game seasons
     // 0=spring, 1=summer, 2=fall, 3=winter
-    if (month >= 2 && month <= 4) return 0; // Spring (Mar-May)
-    if (month >= 5 && month <= 7) return 1; // Summer (Jun-Aug)
-    if (month >= 8 && month <= 10) return 2; // Fall (Sep-Nov)
-    return 3; // Winter (Dec-Feb)
+    return GameTime::Instance().getCurrentSeason();
 }
 
 WeatherEvent::WeatherEvent(const std::string& name, WeatherType type)

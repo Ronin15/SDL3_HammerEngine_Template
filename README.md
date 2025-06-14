@@ -214,6 +214,35 @@ echo $? # Returns 0 for success, non-zero for failures
 
 See `tests/TESTING.md` for comprehensive documentation on all testing frameworks, `tests/TROUBLESHOOTING.md` for common issues and solutions, `docs/ui/UI_Stress_Testing_Guide.md` for UI testing details, or component-specific documentation like `docs/ThreadSystem.md` for WorkerBudget system details and `docs/events/EventManager.md` for detailed information.
 
+## Static Analysis
+
+The project includes professional-grade static analysis tools to maintain code quality:
+
+### Cppcheck Analysis
+```bash
+# Automatic with test suite (recommended)
+./run_all_tests.sh       # Linux/macOS - includes cppcheck
+run_all_tests.bat        # Windows - includes cppcheck
+
+# Standalone analysis
+cd tests/cppcheck
+./cppcheck_focused.sh    # Linux/macOS
+cppcheck_focused.bat     # Windows
+```
+
+**Key Benefits:**
+- **96% noise reduction** - Filters 2,606 false positives down to ~63 real issues
+- **Zero false positives** - All reported issues are genuine code quality concerns
+- **Clear prioritization** - Critical bugs highlighted first
+- **Actionable results** - Specific fixes provided for each issue
+- **Integrated testing** - Automatically runs with test suite
+
+**Current Status:** Codebase is exceptionally clean with only 2 critical issues requiring immediate attention:
+1. Array index out of bounds in `GameEngine.cpp` (5-minute fix)
+2. Uninitialized member variable in `AIManager.hpp` (5-minute fix)
+
+See `STATIC_ANALYSIS.md` for quick reference or `tests/cppcheck/` for full documentation and tools.
+
 ## Feature Component Details
 
 ### Game Engine

@@ -59,7 +59,7 @@ bool GameLoop::run() {
         if (m_threaded) {
             // Start update worker respecting WorkerBudget allocation
             if (Forge::ThreadSystem::Exists()) {
-                auto& threadSystem = Forge::ThreadSystem::Instance();
+                const auto& threadSystem = Forge::ThreadSystem::Instance();
                 size_t availableWorkers = static_cast<size_t>(threadSystem.getThreadCount());
                 Forge::WorkerBudget budget = Forge::calculateWorkerBudget(availableWorkers);
 
@@ -256,12 +256,8 @@ void GameLoop::runUpdateWorker(const Forge::WorkerBudget& budget) {
                 
                 // Log performance metrics
                 if (avgUpdateTime.count() > 0) {
-                    float avgUpdateMs = avgUpdateTime.count() / 1000.0f;
-                    float targetMs = 1000.0f / targetFPS;
-                    float utilizationPercent = (avgUpdateMs / targetMs) * 100.0f;
-                    
-                    GAMELOOP_DEBUG("Update performance: " + std::to_string(avgUpdateMs) + 
-                                 "ms avg (" + std::to_string(utilizationPercent) + "% frame budget)");
+                    GAMELOOP_DEBUG("Update performance: " + std::to_string(avgUpdateTime.count() / 1000.0f) + 
+                                 "ms avg (" + std::to_string((avgUpdateTime.count() / 1000.0f) / (1000.0f / targetFPS) * 100.0f) + "% frame budget)");
                 }
             }
 

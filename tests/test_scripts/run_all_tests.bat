@@ -61,7 +61,7 @@ if /i "%~1"=="--help" (
     echo   --help            Show this help message
     echo.
     echo Test Categories:
-    echo   Core Tests:       Thread, AI, Save, Event functionality tests
+    echo   Core Tests:       Static analysis, Thread, AI, Save, Event functionality tests
     echo   Benchmarks:       AI scaling, EventManager scaling, and UI stress benchmarks
     echo.
     echo Execution Time:
@@ -83,14 +83,15 @@ goto :parse_args
 
 :: Define test categories
 :: Core functionality tests (fast execution)
-set CORE_TEST_COUNT=7
-set CORE_TEST_1=run_thread_tests.bat
-set CORE_TEST_2=run_buffer_utilization_tests.bat
-set CORE_TEST_3=run_thread_safe_ai_tests.bat
-set CORE_TEST_4=run_thread_safe_ai_integration_tests.bat
-set CORE_TEST_5=run_ai_optimization_tests.bat
-set CORE_TEST_6=run_save_tests.bat
-set CORE_TEST_7=run_event_tests.bat
+set CORE_TEST_COUNT=8
+set CORE_TEST_1=run_cppcheck_focused.bat
+set CORE_TEST_2=run_thread_tests.bat
+set CORE_TEST_3=run_buffer_utilization_tests.bat
+set CORE_TEST_4=run_thread_safe_ai_tests.bat
+set CORE_TEST_5=run_thread_safe_ai_integration_tests.bat
+set CORE_TEST_6=run_ai_optimization_tests.bat
+set CORE_TEST_7=run_save_tests.bat
+set CORE_TEST_8=run_event_tests.bat
 
 :: Performance scaling benchmarks (slow execution)
 set BENCHMARK_TEST_COUNT=3
@@ -147,7 +148,7 @@ echo !CYAN!Found !TOTAL_COUNT! test scripts to run!NC!
 if "%RUN_CORE%"=="true" (
     for /L %%i in (1,1,!CORE_TEST_COUNT!) do (
         call :run_test_script !CORE_TEST_%%i! false
-        
+
         :: Add a small delay between tests to ensure resources are released
         timeout /t 2 /nobreak >nul 2>&1
     )
@@ -157,7 +158,7 @@ if "%RUN_CORE%"=="true" (
 if "%RUN_BENCHMARKS%"=="true" (
     for /L %%i in (1,1,!BENCHMARK_TEST_COUNT!) do (
         call :run_test_script !BENCHMARK_TEST_%%i! true
-        
+
         :: Add delay for benchmarks to ensure proper resource cleanup
         echo !YELLOW!Allowing time for resource cleanup after benchmark...!NC!
         timeout /t 2 /nobreak >nul 2>&1

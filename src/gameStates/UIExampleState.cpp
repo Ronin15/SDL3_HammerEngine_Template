@@ -158,7 +158,7 @@ void UIExampleState::handleInputChange(const std::string& text) {
 }
 
 void UIExampleState::handleListSelection() {
-    auto& ui = UIManager::Instance();
+    const auto& ui = UIManager::Instance();
     m_selectedListItem = ui.getSelectedListItem("uiexample_demo_list");
     std::cout << "List item selected: " << m_selectedListItem << "\n";
 }
@@ -187,9 +187,9 @@ void UIExampleState::handleThemeChange() {
 
 void UIExampleState::handleInput() {
     // Handle B key to go back
-    auto& inputManager = InputManager::Instance();
+    const auto& inputManager = InputManager::Instance();
     if (inputManager.wasKeyPressed(SDL_SCANCODE_B)) {
-        auto& gameEngine = GameEngine::Instance();
+        const auto& gameEngine = GameEngine::Instance();
         auto* gameStateManager = gameEngine.getGameStateManager();
         gameStateManager->setState("MainMenuState");
     }

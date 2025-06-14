@@ -50,7 +50,7 @@ for arg in "$@"; do
       echo -e "  --no-benchmarks   Run core tests but skip benchmarks"
       echo -e "  --help            Show this help message"
       echo -e "\nTest Categories:"
-      echo -e "  Core Tests:       Thread, AI, Save, Event functionality tests"
+      echo -e "  Core Tests:       Static analysis, Thread, AI, Save, Event functionality tests"
       echo -e "  Benchmarks:       AI scaling, EventManager scaling, and UI stress benchmarks"
       echo -e "\nExecution Time:"
       echo -e "  Core tests:       ~2-5 minutes total"
@@ -69,6 +69,7 @@ done
 # Define test categories
 # Core functionality tests (fast execution)
 CORE_TEST_SCRIPTS=(
+  "$SCRIPT_DIR/run_cppcheck_focused.sh"
   "$SCRIPT_DIR/run_thread_tests.sh"
   "$SCRIPT_DIR/run_buffer_utilization_tests.sh"
   "$SCRIPT_DIR/run_thread_safe_ai_tests.sh"
@@ -110,12 +111,12 @@ run_test_script() {
   local script=$1
   local script_name=$(basename "$script")
   local args=""
-  
+
   # Pass along relevant flags
   if [ "$VERBOSE" = true ]; then
     args="$args --verbose"
   fi
-  
+
   # Special handling for scaling benchmarks and stress tests
   local is_benchmark=false
   if [[ "$script_name" == *"benchmark"* ]] || [[ "$script_name" == *"scaling"* ]] || [[ "$script_name" == *"stress"* ]]; then
@@ -129,7 +130,7 @@ run_test_script() {
     echo -e "${CYAN}Running test script: ${YELLOW}$script_name${NC}"
     echo -e "${MAGENTA}=====================================================${NC}"
   fi
-  
+
   # Check if the script exists and is executable
   if [ ! -f "$script" ]; then
     echo -e "${RED}Script not found: $script${NC}"
@@ -138,14 +139,14 @@ run_test_script() {
     ((FAILED_COUNT++))
     return 1
   fi
-  
+
   # Make sure the script is executable
   chmod +x "$script"
-  
+
   # Run the script with provided arguments
   $script $args
   local result=$?
-  
+
   if [ $result -eq 0 ]; then
     if [ "$is_benchmark" = true ]; then
       echo -e "\n${GREEN}✓ Performance benchmark $script_name completed successfully${NC}"
@@ -193,7 +194,7 @@ echo -e "${CYAN}Found ${#TEST_SCRIPTS[@]} test scripts to run${NC}"
 # Run each test script
 for script in "${TEST_SCRIPTS[@]}"; do
   run_test_script "$script"
-  
+
   # Add delay for benchmarks and stress tests to ensure proper resource cleanup
   if [[ "$(basename "$script")" == *"benchmark"* ]] || [[ "$(basename "$script")" == *"scaling"* ]] || [[ "$(basename "$script")" == *"stress"* ]]; then
     echo -e "${YELLOW}Allowing time for resource cleanup after benchmark...${NC}"

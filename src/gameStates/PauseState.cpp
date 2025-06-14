@@ -35,7 +35,7 @@ void PauseState::update([[maybe_unused]] float deltaTime) {
 void PauseState::render(float deltaTime) {
     // Cache manager references for better performance
     FontManager& fontMgr = FontManager::Instance();
-    GameEngine& gameEngine = GameEngine::Instance();
+    const auto& gameEngine = GameEngine::Instance();
     auto& ui = UIManager::Instance();
     
     // Update and render UI components through UIManager using cached renderer for cleaner API
@@ -69,18 +69,18 @@ std::string PauseState::getName() const {
 }
 
 void PauseState::handleInput() {
-  InputManager& inputMgr = InputManager::Instance();
+  const auto& inputMgr = InputManager::Instance();
   
   // Use InputManager's new event-driven key press detection
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_R)) {
       // Flag the GamePlayState transition
       // We'll do the actual removal in GamePlayState::enter()
-      GameEngine& gameEngine = GameEngine::Instance();
+      auto& gameEngine = GameEngine::Instance();
       gameEngine.getGameStateManager()->setState("GamePlayState");
   }
   
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_ESCAPE)) {
-      GameEngine& gameEngine = GameEngine::Instance();
+      auto& gameEngine = GameEngine::Instance();
       gameEngine.setRunning(false);
   }
 }

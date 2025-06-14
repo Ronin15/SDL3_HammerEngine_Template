@@ -16,7 +16,7 @@ bool GamePlayState::enter() {
   std::cout << "Forge Game Engine - Entering GAME State\n";
 
   // Cache GameEngine reference for better performance
-  GameEngine& gameEngine = GameEngine::Instance();
+  const auto& gameEngine = GameEngine::Instance();
   auto* gameStateManager = gameEngine.getGameStateManager();
 
   // Reset transition flag when entering
@@ -50,7 +50,7 @@ void GamePlayState::render([[maybe_unused]] float deltaTime) {
   
   // Cache manager references for better performance
   FontManager& fontMgr = FontManager::Instance();
-  GameEngine& gameEngine = GameEngine::Instance();
+  const auto& gameEngine = GameEngine::Instance();
   
   SDL_Color fontColor = {200, 200, 200, 255};
    fontMgr.drawText(
@@ -88,12 +88,12 @@ std::string GamePlayState::getName() const {
 }
 
 void GamePlayState::handleInput() {
-  InputManager& inputMgr = InputManager::Instance();
+  const auto& inputMgr = InputManager::Instance();
   
   // Use InputManager's new event-driven key press detection
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_P)) {
       // Create PauseState if it doesn't exist
-      GameEngine& gameEngine = GameEngine::Instance();
+      auto& gameEngine = GameEngine::Instance();
       auto* gameStateManager = gameEngine.getGameStateManager();
       if (!gameStateManager->hasState("PauseState")) {
           gameStateManager->addState(std::make_unique<PauseState>());
@@ -105,12 +105,12 @@ void GamePlayState::handleInput() {
   
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_B)) {
       std::cout << "Forge Game Engine - Transitioning to MainMenuState...\n";
-      GameEngine& gameEngine = GameEngine::Instance();
+      auto& gameEngine = GameEngine::Instance();
       gameEngine.getGameStateManager()->setState("MainMenuState");
   }
   
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_ESCAPE)) {
-      GameEngine& gameEngine = GameEngine::Instance();
+      auto& gameEngine = GameEngine::Instance();
       gameEngine.setRunning(false);
   }
 }
