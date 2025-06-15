@@ -363,8 +363,8 @@ void FleeBehavior::updatePanicFlee(EntityPtr entity, EntityState& state) {
     }
     
     float speedModifier = calculateFleeSpeedModifier(state);
-    Vector2D newPos = currentPos + state.fleeDirection * m_fleeSpeed * speedModifier;
-    entity->setPosition(newPos);
+    Vector2D velocity = state.fleeDirection * m_fleeSpeed * speedModifier;
+    entity->setVelocity(velocity);
 }
 
 void FleeBehavior::updateStrategicRetreat(EntityPtr entity, EntityState& state) {
@@ -390,8 +390,8 @@ void FleeBehavior::updateStrategicRetreat(EntityPtr entity, EntityState& state) 
     }
     
     float speedModifier = calculateFleeSpeedModifier(state);
-    Vector2D newPos = currentPos + state.fleeDirection * m_fleeSpeed * speedModifier;
-    entity->setPosition(newPos);
+    Vector2D velocity = state.fleeDirection * m_fleeSpeed * speedModifier;
+    entity->setVelocity(velocity);
 }
 
 void FleeBehavior::updateEvasiveManeuver(EntityPtr entity, EntityState& state) {
@@ -423,8 +423,8 @@ void FleeBehavior::updateEvasiveManeuver(EntityPtr entity, EntityState& state) {
     state.fleeDirection = normalizeVector(zigzagDir);
     
     float speedModifier = calculateFleeSpeedModifier(state);
-    Vector2D newPos = currentPos + state.fleeDirection * m_fleeSpeed * speedModifier;
-    entity->setPosition(newPos);
+    Vector2D velocity = state.fleeDirection * m_fleeSpeed * speedModifier;
+    entity->setVelocity(velocity);
 }
 
 void FleeBehavior::updateSeekCover(EntityPtr entity, EntityState& state) {
@@ -443,8 +443,8 @@ void FleeBehavior::updateSeekCover(EntityPtr entity, EntityState& state) {
         }
     }
     float speedModifier = calculateFleeSpeedModifier(state);
-    Vector2D newPos = currentPos + state.fleeDirection * m_fleeSpeed * speedModifier;
-    entity->setPosition(newPos);
+    Vector2D velocity = state.fleeDirection * m_fleeSpeed * speedModifier;
+    entity->setVelocity(velocity);
 }
 
 void FleeBehavior::updateStamina(EntityState& state, float deltaTime, bool fleeing) {

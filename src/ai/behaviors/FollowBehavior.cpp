@@ -463,8 +463,8 @@ void FollowBehavior::updateCloseFollow(EntityPtr entity, EntityState& state) {
             direction = smoothPath(currentPos, desiredPos, state);
         }
         
-        Vector2D newPos = currentPos + direction * speed;
-        entity->setPosition(newPos);
+        Vector2D velocity = direction * speed;
+        entity->setVelocity(velocity);
         
         state.currentVelocity = direction * speed;
     }
@@ -487,8 +487,8 @@ void FollowBehavior::updateLooseFollow(EntityPtr entity, EntityState& state) {
             direction = smoothPath(currentPos, desiredPos, state);
         }
         
-        Vector2D newPos = currentPos + direction * speed;
-        entity->setPosition(newPos);
+        Vector2D velocity = direction * speed;
+        entity->setVelocity(velocity);
         
         state.currentVelocity = direction * speed;
     } else {
@@ -508,10 +508,10 @@ void FollowBehavior::updateFlankingFollow(EntityPtr entity, EntityState& state) 
         float speed = calculateFollowSpeed(entity, state, distanceToDesired);
         Vector2D direction = normalizeVector(desiredPos - currentPos);
         
-        Vector2D newPos = currentPos + direction * speed;
-        entity->setPosition(newPos);
+        Vector2D velocity = direction * speed;
+        entity->setVelocity(velocity);
         
-        state.currentVelocity = direction * speed;
+        state.currentVelocity = velocity;
     }
 }
 
@@ -528,10 +528,10 @@ void FollowBehavior::updateRearGuard(EntityPtr entity, EntityState& state) {
         float speed = calculateFollowSpeed(entity, state, distanceToDesired) * 0.8f; // Slightly slower
         Vector2D direction = normalizeVector(desiredPos - currentPos);
         
-        Vector2D newPos = currentPos + direction * speed;
-        entity->setPosition(newPos);
+        Vector2D velocity = direction * speed;
+        entity->setVelocity(velocity);
         
-        state.currentVelocity = direction * speed;
+        state.currentVelocity = velocity;
     }
 }
 
@@ -550,8 +550,8 @@ void FollowBehavior::updateEscortFormation(EntityPtr entity, EntityState& state)
         float speed = calculateFollowSpeed(entity, state, distanceToDesired);
         Vector2D direction = normalizeVector(desiredPos - currentPos);
         
-        Vector2D newPos = currentPos + direction * speed;
-        entity->setPosition(newPos);
+        Vector2D velocity = direction * speed;
+        entity->setVelocity(velocity);
         
         state.currentVelocity = direction * speed;
     }

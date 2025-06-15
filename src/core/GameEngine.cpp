@@ -14,6 +14,7 @@
 #include "SDL3/SDL_surface.h"
 #include "managers/AIManager.hpp"
 #include "gameStates/AIDemoState.hpp"
+#include "gameStates/AdvancedAIDemoState.hpp"
 #include "gameStates/EventDemoState.hpp"
 #include "managers/EventManager.hpp"
 #include "managers/FontManager.hpp"
@@ -367,6 +368,7 @@ texMgr.load("res/img", "", mp_renderer.get());
   mp_gameStateManager->addState(std::make_unique<MainMenuState>());
   mp_gameStateManager->addState(std::make_unique<GamePlayState>());
   mp_gameStateManager->addState(std::make_unique<AIDemoState>());
+  mp_gameStateManager->addState(std::make_unique<AdvancedAIDemoState>());
   mp_gameStateManager->addState(std::make_unique<EventDemoState>());
   mp_gameStateManager->addState(std::make_unique<UIExampleState>());
   mp_gameStateManager->addState(std::make_unique<OverlayDemoState>());

@@ -137,7 +137,7 @@ fi
 if [ $TEST_RESULT -eq 124 ]; then
   echo -e "${RED}❌ Tests timed out! See $OUTPUT_FILE for details.${NC}"
   exit $TEST_RESULT
-elif [ $TEST_RESULT -ne 0 ] || grep -q "failure\|test cases failed\|memory access violation\|fatal error\|Segmentation fault\|Abort trap\|assertion failed" "$OUTPUT_FILE"; then
+elif [ $TEST_RESULT -ne 0 ] || grep -q "failure\|test cases failed\|memory access violation\|fatal error\|Segmentation fault\|Abort trap\|assertion failed\|error:" "$OUTPUT_FILE"; then
   echo -e "${RED}❌ Some tests failed! See $OUTPUT_FILE for details.${NC}"
   exit 1
 else

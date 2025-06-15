@@ -161,24 +161,23 @@ void IdleBehavior::initializeEntityState(EntityPtr entity, EntityState& state) {
     state.initialized = true;
 }
 
-void IdleBehavior::updateStationary(EntityPtr entity, EntityState& state) {
-    // Ensure entity stays at original position
-    Vector2D targetPos = state.originalPosition + state.currentOffset;
-    entity->setPosition(targetPos);
+void IdleBehavior::updateStationary(EntityPtr entity, EntityState& /* state */) {
+    // Keep entity stationary with zero velocity
+    entity->setVelocity(Vector2D(0, 0));
 }
 
 void IdleBehavior::updateSubtleSway(EntityPtr entity, EntityState& state) {
     Uint64 currentTime = SDL_GetTicks();
     
     if (m_movementFrequency > 0.0f && currentTime >= state.nextMovementTime) {
-        // Generate gentle swaying motion
-        state.currentOffset = generateRandomOffset() * 0.3f; // Subtle movement
+        // Generate gentle swaying direction
+        Vector2D swayDirection = generateRandomOffset();
+        swayDirection.normalize();
+        entity->setVelocity(swayDirection * 20.0f); // Gentle sway speed
         state.lastMovementTime = currentTime;
         state.nextMovementTime = currentTime + getRandomMovementInterval();
     }
-    
-    Vector2D targetPos = state.originalPosition + state.currentOffset;
-    entity->setPosition(targetPos);
+    // Keep velocity applied for smooth animation - don't reset to zero
 }
 
 void IdleBehavior::updateOccasionalTurn(EntityPtr entity, EntityState& state) {
@@ -194,9 +193,8 @@ void IdleBehavior::updateOccasionalTurn(EntityPtr entity, EntityState& state) {
         // entity->setRotation(state.currentAngle);
     }
     
-    // Stay at original position
-    Vector2D targetPos = state.originalPosition + state.currentOffset;
-    entity->setPosition(targetPos);
+    // Stay at original position with zero velocity
+    entity->setVelocity(Vector2D(0, 0));
 }
 
 void IdleBehavior::updateLightFidget(EntityPtr entity, EntityState& state) {
@@ -204,10 +202,14 @@ void IdleBehavior::updateLightFidget(EntityPtr entity, EntityState& state) {
     
     // Handle movement fidgeting
     if (m_movementFrequency > 0.0f && currentTime >= state.nextMovementTime) {
-        state.currentOffset = generateRandomOffset() * 0.5f; // Light fidgeting
+        // Generate light fidgeting direction
+        Vector2D fidgetDirection = generateRandomOffset();
+        fidgetDirection.normalize();
+        entity->setVelocity(fidgetDirection * 25.0f); // Light fidget speed
         state.lastMovementTime = currentTime;
         state.nextMovementTime = currentTime + getRandomMovementInterval();
     }
+    // Keep velocity applied for smooth animation
     
     // Handle turning
     if (m_turnFrequency > 0.0f && currentTime >= state.nextTurnTime) {
@@ -215,9 +217,6 @@ void IdleBehavior::updateLightFidget(EntityPtr entity, EntityState& state) {
         state.lastTurnTime = currentTime;
         state.nextTurnTime = currentTime + getRandomTurnInterval();
     }
-    
-    Vector2D targetPos = state.originalPosition + state.currentOffset;
-    entity->setPosition(targetPos);
 }
 
 Vector2D IdleBehavior::generateRandomOffset() const {

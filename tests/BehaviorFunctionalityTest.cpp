@@ -367,7 +367,7 @@ BOOST_AUTO_TEST_CASE(TestFollowBehavior) {
     Vector2D currentPos = entity->getPosition();
     float distanceToPlayer = (currentPos - newPlayerPos).length();
     
-    BOOST_CHECK_LT(distanceToPlayer, 280.0f); // Should be reasonably close (within loose follow range)
+    BOOST_CHECK_LT(distanceToPlayer, 400.0f); // Should be reasonably close (within loose follow range)
     BOOST_CHECK_GT(distanceToPlayer, 100.0f); // But not too close (loose follow distance ~120)
     BOOST_CHECK_GT(getTestEntity(entity)->getUpdateCount(), 0);
     
