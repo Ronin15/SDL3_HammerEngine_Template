@@ -52,10 +52,11 @@ I use the Zed IDE with custom cmake and ninja task configurations to build/compi
 ## Performance Capabilities
 **M3 MAC Pro 11 core for most bench numbers**
 ### Multi-Threading Performance
-- **10K Entity Target**: Achieves 995K entity updates per second (5.85x threading improvement over baseline)
-- **100K Entity Stress Test**: Demonstrates 500M+ entity updates per second capability
+- **10K Entity Target**: Achieves 82-86M entity updates per second (5.85x threading improvement over baseline)
+- **100K Entity Stress Test**: Demonstrates 998M+ entity updates per second capability (nearly 1 billion)
 - **Threading Threshold**: Automatic activation at 200 entities provides 4.41x performance boost
-- **WorkerBudget System**: Dynamic allocation across AI and Event systems (AI: 60%, Events: 30%, Engine coordination: 10%)
+- **WorkerBudget System**: Dynamic allocation across 11 hardware threads with 10 workers (AI: 60%, Events: 30%, Engine coordination: 10%)
+- **Event Processing**: 40K+ events per second in extreme scale tests with 188K+ handler calls per second
 - **Priority-Based Task Scheduling**: Efficient task distribution across worker threads
 - **Simplified UI Architecture**: Single-threaded UI operations for 2D games with excellent performance
 - **Cache-Friendly Batching**: Optimized batch sizes (25-1000 entities) for optimal memory access patterns
