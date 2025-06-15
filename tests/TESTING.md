@@ -2,7 +2,7 @@
 
 This document provides a comprehensive guide to the testing framework used in the Forge Game Engine project. All tests use the Boost Test Framework for consistency and are organized by component.
 
-**Current Test Coverage:** 15+ individual test suites covering AI systems, UI performance, core systems, and event management with both functional validation and performance benchmarking.
+**Current Test Coverage:** 16+ individual test suites covering AI systems, AI behaviors, UI performance, core systems, and event management with both functional validation and performance benchmarking.
 
 ## Test Suites Overview
 
@@ -13,6 +13,7 @@ The Forge Game Engine has the following test suites:
    - Thread-Safe AI Tests: Validate thread safety of the AI management system
    - Thread-Safe AI Integration Tests: Test integration of AI components with threading
    - AI Benchmark Tests: Measure performance characteristics and scaling capabilities
+   - Behavior Functionality Tests: Comprehensive validation of all 8 AI behaviors and their modes
    - ThreadSystem Queue Load Tests: Defensive monitoring to prevent ThreadSystem overload
 
 2. **UI System Tests**
@@ -29,9 +30,9 @@ The Forge Game Engine has the following test suites:
    - Event Manager Scaling Benchmark: Performance testing for event system scalability
 
 **Test Execution Categories:**
-- **Core Tests** (6 suites): Fast functional validation (~2-5 minutes total)
+- **Core Tests** (7 suites): Fast functional validation (~3-6 minutes total)
 - **Benchmarks** (3 suites): Performance and scalability testing (~5-15 minutes total)
-- **Total Coverage**: 15+ test executables with comprehensive automation scripts
+- **Total Coverage**: 16+ test executables with comprehensive automation scripts
 
 ## Running Tests
 
@@ -47,6 +48,7 @@ Each test suite has dedicated scripts in the project root directory:
 ./run_thread_safe_ai_tests.sh        # Thread-safe AI tests
 ./run_thread_safe_ai_integration_tests.sh  # Thread-safe AI integration tests
 ./run_ai_optimization_tests.sh       # AI optimization tests
+./run_behavior_functionality_tests.sh # Comprehensive AI behavior validation tests
 ./run_save_tests.sh                  # Save manager and BinarySerializer tests
 ./run_event_tests.sh                 # Event manager tests
 
@@ -86,6 +88,7 @@ run_thread_tests.bat                 # Thread system tests
 run_thread_safe_ai_tests.bat         # Thread-safe AI tests
 run_thread_safe_ai_integration_tests.bat  # Thread-safe AI integration tests
 run_ai_optimization_tests.bat        # AI optimization tests
+run_behavior_functionality_tests.bat # Comprehensive AI behavior validation tests
 run_ai_benchmark.bat                 # AI scaling benchmark with realistic automatic threading
 run_save_tests.bat                   # Save manager and BinarySerializer tests
 run_event_tests.bat                  # Event manager tests

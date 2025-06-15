@@ -134,6 +134,22 @@ add_executable(buffer_utilization_tests
     BufferUtilizationTest.cpp
 )
 
+# Behavior Functionality tests
+add_executable(behavior_functionality_tests
+    BehaviorFunctionalityTest.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/AIManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/ai/behaviors/IdleBehavior.cpp
+    ${PROJECT_SOURCE_DIR}/src/ai/behaviors/WanderBehavior.cpp
+    ${PROJECT_SOURCE_DIR}/src/ai/behaviors/PatrolBehavior.cpp
+    ${PROJECT_SOURCE_DIR}/src/ai/behaviors/ChaseBehavior.cpp
+    ${PROJECT_SOURCE_DIR}/src/ai/behaviors/FleeBehavior.cpp
+    ${PROJECT_SOURCE_DIR}/src/ai/behaviors/FollowBehavior.cpp
+    ${PROJECT_SOURCE_DIR}/src/ai/behaviors/GuardBehavior.cpp
+    ${PROJECT_SOURCE_DIR}/src/ai/behaviors/AttackBehavior.cpp
+    mocks/SimpleMockNPC.cpp
+    mocks/AIBehavior.cpp
+)
+
 # Add compile definitions for Boost.Test
 target_compile_definitions(save_manager_tests PRIVATE
 )
@@ -187,6 +203,13 @@ target_compile_definitions(ui_stress_test PRIVATE
 # Buffer Utilization tests definitions
 target_compile_definitions(buffer_utilization_tests PRIVATE
 )
+
+# Behavior Functionality tests definitions
+target_compile_definitions(behavior_functionality_tests PRIVATE
+    BOOST_TEST_NO_SIGNAL_HANDLING
+)
+
+
 
 # Link with required libraries
 target_link_libraries(save_manager_tests PRIVATE
@@ -266,6 +289,13 @@ target_link_libraries(buffer_utilization_tests PRIVATE
     Boost::unit_test_framework
 )
 
+# Link Behavior Functionality tests with required libraries
+target_link_libraries(behavior_functionality_tests PRIVATE
+    SDL3::SDL3
+    SDL3_image::SDL3_image
+    Boost::unit_test_framework
+)
+
 # Add HAVE_BOOST_SERIALIZATION to ui_stress_test as well
 target_compile_definitions(ui_stress_test PRIVATE
 )
@@ -285,3 +315,4 @@ add_test(NAME EventManagerTests COMMAND event_manager_tests)
 add_test(NAME EventTypesTests COMMAND event_types_tests)
 add_test(NAME WeatherEventTests COMMAND weather_event_tests)
 add_test(NAME BufferUtilizationTests COMMAND buffer_utilization_tests)
+add_test(NAME BehaviorFunctionalityTests COMMAND behavior_functionality_tests)
