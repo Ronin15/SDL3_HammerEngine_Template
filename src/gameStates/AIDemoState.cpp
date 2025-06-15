@@ -108,6 +108,66 @@ void AIDemoState::handleInput() {
             aiMgr.queueBehaviorAssignment(npc, "Chase");
         }
     }
+
+    if (inputMgr.wasKeyPressed(SDL_SCANCODE_4)) {
+        // Assign SmallWander behavior to all NPCs
+        std::cout << "Forge Game Engine - Switching all NPCs to SMALL WANDER behavior\n";
+        AIManager& aiMgr = AIManager::Instance();
+        for (auto& npc : m_npcs) {
+            // Queue the behavior assignment for batch processing
+            aiMgr.queueBehaviorAssignment(npc, "SmallWander");
+        }
+    }
+
+    if (inputMgr.wasKeyPressed(SDL_SCANCODE_5)) {
+        // Assign LargeWander behavior to all NPCs
+        std::cout << "Forge Game Engine - Switching all NPCs to LARGE WANDER behavior\n";
+        AIManager& aiMgr = AIManager::Instance();
+        for (auto& npc : m_npcs) {
+            // Queue the behavior assignment for batch processing
+            aiMgr.queueBehaviorAssignment(npc, "LargeWander");
+        }
+    }
+
+    if (inputMgr.wasKeyPressed(SDL_SCANCODE_6)) {
+        // Assign EventWander behavior to all NPCs
+        std::cout << "Forge Game Engine - Switching all NPCs to EVENT WANDER behavior\n";
+        AIManager& aiMgr = AIManager::Instance();
+        for (auto& npc : m_npcs) {
+            // Queue the behavior assignment for batch processing
+            aiMgr.queueBehaviorAssignment(npc, "EventWander");
+        }
+    }
+
+    if (inputMgr.wasKeyPressed(SDL_SCANCODE_7)) {
+        // Assign RandomPatrol behavior to all NPCs
+        std::cout << "Forge Game Engine - Switching all NPCs to RANDOM PATROL behavior\n";
+        AIManager& aiMgr = AIManager::Instance();
+        for (auto& npc : m_npcs) {
+            // Queue the behavior assignment for batch processing
+            aiMgr.queueBehaviorAssignment(npc, "RandomPatrol");
+        }
+    }
+
+    if (inputMgr.wasKeyPressed(SDL_SCANCODE_8)) {
+        // Assign CirclePatrol behavior to all NPCs
+        std::cout << "Forge Game Engine - Switching all NPCs to CIRCLE PATROL behavior\n";
+        AIManager& aiMgr = AIManager::Instance();
+        for (auto& npc : m_npcs) {
+            // Queue the behavior assignment for batch processing
+            aiMgr.queueBehaviorAssignment(npc, "CirclePatrol");
+        }
+    }
+
+    if (inputMgr.wasKeyPressed(SDL_SCANCODE_9)) {
+        // Assign EventTarget behavior to all NPCs
+        std::cout << "Forge Game Engine - Switching all NPCs to EVENT TARGET behavior\n";
+        AIManager& aiMgr = AIManager::Instance();
+        for (auto& npc : m_npcs) {
+            // Queue the behavior assignment for batch processing
+            aiMgr.queueBehaviorAssignment(npc, "EventTarget");
+        }
+    }
 }
 
 
@@ -148,11 +208,13 @@ bool AIDemoState::enter() {
 
         // Create simple HUD UI
         auto& ui = UIManager::Instance();
-        ui.createTitle("ai_title", {0, 10, gameEngine.getWindowWidth(), 30}, "AI Demo State");
+        ui.createTitle("ai_title", {0, 5, gameEngine.getWindowWidth(), 25}, "AI Demo State");
         ui.setTitleAlignment("ai_title", UIAlignment::CENTER_CENTER);
-        ui.createLabel("ai_instructions", {10, 50, gameEngine.getWindowWidth() - 20, 25},
-                       "AI Demo: [B] Exit | [1] Wander | [2] Patrol | [3] Chase | [SPACE] Pause/Resume");
-        ui.createLabel("ai_status", {10, 85, 400, 25}, "FPS: -- | Entities: -- | AI: RUNNING");
+        ui.createLabel("ai_instructions_line1", {10, 40, gameEngine.getWindowWidth() - 20, 20},
+                       "Controls: [B] Exit | [SPACE] Pause/Resume | [1] Wander | [2] Patrol | [3] Chase");
+        ui.createLabel("ai_instructions_line2", {10, 75, gameEngine.getWindowWidth() - 20, 20},
+                       "Advanced: [4] Small | [5] Large | [6] Event | [7] Random | [8] Circle | [9] Target");
+        ui.createLabel("ai_status", {10, 110, 400, 20}, "FPS: -- | Entities: -- | AI: RUNNING");
 
         // Log status
         std::cout << "Forge Game Engine - Created " << m_npcs.size() << " NPCs with AI behaviors\n";
