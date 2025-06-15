@@ -653,8 +653,8 @@ void GuardBehavior::moveToPosition(EntityPtr entity, const Vector2D& targetPos, 
     Vector2D direction = normalizeDirection(targetPos - currentPos);
     
     if (direction.length() > 0.001f) {
-        Vector2D newPos = currentPos + direction * speed;
-        entity->setPosition(newPos);
+        Vector2D velocity = direction * speed;
+        entity->setVelocity(velocity);
     }
 }
 

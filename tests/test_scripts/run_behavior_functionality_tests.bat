@@ -236,11 +236,11 @@ echo Generating behavior test report...
 
 REM Check test status and provide detailed feedback
 if %TEST_RESULT% neq 0 (
-    findstr /i "failure test.*failed memory.*access.*violation fatal.*error Segmentation.*fault Abort.*trap assertion.*failed" "%OUTPUT_FILE%" >nul
+    findstr /i "failure test.*failed memory.*access.*violation fatal.*error Segmentation.*fault Abort.*trap assertion.*failed error:" "%OUTPUT_FILE%" >nul
     if !ERRORLEVEL! equ 0 (
         echo ❌ Some behavior tests failed!
         echo Failed test details:
-        findstr /i /A:3 /B:1 "failure assertion.*failed" "%OUTPUT_FILE%" 2>nul
+        findstr /i /A:3 /B:1 "failure assertion.*failed error:" "%OUTPUT_FILE%" 2>nul
         echo See %OUTPUT_FILE% for complete details.
         exit /b 1
     )

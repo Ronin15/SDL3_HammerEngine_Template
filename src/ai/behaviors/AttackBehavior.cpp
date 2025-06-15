@@ -799,8 +799,8 @@ void AttackBehavior::updateRetreating(EntityPtr entity, EntityState& state) {
     Vector2D targetPos = target->getPosition();
     Vector2D retreatDir = normalizeDirection(entityPos - targetPos);
 
-    Vector2D retreatPos = entityPos + retreatDir * (m_movementSpeed * RETREAT_SPEED_MULTIPLIER);
-    entity->setPosition(retreatPos);
+    Vector2D retreatVelocity = retreatDir * (m_movementSpeed * RETREAT_SPEED_MULTIPLIER);
+    entity->setVelocity(retreatVelocity);
 
     // Stop retreating if far enough or health recovered
     if (state.targetDistance > m_attackRange * 2.0f || !shouldRetreat(state)) {
@@ -821,8 +821,8 @@ void AttackBehavior::moveToPosition(EntityPtr entity, const Vector2D& targetPos,
     Vector2D direction = normalizeDirection(targetPos - currentPos);
 
     if (direction.length() > 0.001f) {
-        Vector2D newPos = currentPos + direction * speed;
-        entity->setPosition(newPos);
+        Vector2D velocity = direction * speed;
+        entity->setVelocity(velocity);
     }
 }
 
