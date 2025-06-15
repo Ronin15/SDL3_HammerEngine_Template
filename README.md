@@ -81,14 +81,16 @@ I use the Zed IDE with custom cmake and ninja task configurations to build/compi
 
 - CMake 3.28 or higher
 - Ninja build system (recommended)
-- A C++ compiler with C++20 support. GCC and G++ 13.30 (recommended)
-- Boost Test framework (optional, only for unit tests - automatically downloaded via FetchContent)
+- A C++ compiler with C++20 support. GCC and G++ 13.x - 15.x
+- Boost Test framework (optional, only for unit tests)
 
 ### Windows
 Need to install mysys2 for compiler and for SDL3 dependencies like harfbuzz, freetype etc.
-scoop or chocolatey to install Ninja and zed.
+scoop or chocolatey to install Ninja, zed, and cppheck.
 Cmake can be installed from the official website.
-Windows will need some env vars setup for path:
+Cpp check can be installed other ways just make sure its in your path.
+
+Windows will need some env vars setup for path to compile:
 - C:\msys64\mingw64\lib
 - C:\msys64\mingw64\include
 - C:\msys64\mingw64\bin
@@ -97,6 +99,9 @@ Packages needed:
 - mingw-w64-x86_64-boost - testing
 - mingw-w64-x86_64-harfbuzz - SDL3 req
 - mingw-w64-x86_64-freetype - SDL3 req
+
+ - Will most likely add some MSVC options later but for now this will do.
+
 ```
  pacman -S mingw-w64-x86_64-boost mingw-w64-x86_64-harfbuzz mingw-w64-x86_64-freetype
 ```
@@ -104,8 +109,8 @@ Packages needed:
 Follow the instructions on the official SDL3 website to install SDL3 dependencies.
 [https://wiki.libsdl.org/SDL3/README-linux](https://wiki.libsdl.org/SDL3/README-linux)
 
-Boost needed for testing.
-  - sudo apt-get install boost
+Boost needed for tests to compile. Valgrind for cache, memory and thread testing. cppheck for static analysis
+  - sudo apt-get install boost valgrind cppcheck
 
 I'm using:
   -  Operating System: Ubuntu 24.04.2 LTS
@@ -169,13 +174,6 @@ The project includes comprehensive testing suites for all major components inclu
 ./run_ai_benchmark.sh --realistic-only   # Clean realistic performance tests
 ./run_ai_benchmark.sh --stress-test      # 100K entity stress test only
 ./run_ai_benchmark.sh --threshold-test   # Threading threshold validation (200 entities)
-
-# Expected performance targets (debug builds):
-# - 100 entities: Auto single-threaded baseline (~170K updates/sec, 1.00x)
-# - 200+ entities: Auto threading activation (~750K updates/sec, 4.41x)
-# - 1000 entities: High threading performance (~975K updates/sec, 5.74x)
-# - 10K entities: Target performance achieved (~995K updates/sec, 5.85x)
-# - 100K entities: Stress test validation (500M+ updates/sec)
 ```
 
 ### WorkerBudget System Tests
@@ -236,10 +234,6 @@ cppcheck_focused.bat     # Windows
 - **Clear prioritization** - Critical bugs highlighted first
 - **Actionable results** - Specific fixes provided for each issue
 - **Integrated testing** - Automatically runs with test suite
-
-**Current Status:** Codebase is exceptionally clean with only 2 critical issues requiring immediate attention:
-1. Array index out of bounds in `GameEngine.cpp` (5-minute fix)
-2. Uninitialized member variable in `AIManager.hpp` (5-minute fix)
 
 See `STATIC_ANALYSIS.md` for quick reference or `tests/cppcheck/` for full documentation and tools.
 
