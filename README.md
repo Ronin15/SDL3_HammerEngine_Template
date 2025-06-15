@@ -62,7 +62,7 @@ I use the Zed IDE with custom cmake and ninja task configurations to build/compi
 - **Cache-Friendly Batching**: Optimized batch sizes (25-1000 entities) for optimal memory access patterns
 
 ### System Scalability
-- **Hardware Adaptive**: Automatically scales performance with processor count (tested up to 24 cores) - Ryzen 7900x3d
+- **Hardware Adaptive**: Automatically scales performance with processor count (tested up to 12 cores (24 - 1) 23 threads) - Ryzen 7900x3d
 - **WorkerBudget Allocation**: Intelligent resource distribution across AI, Events, and Engine systems
 - **Graceful Degradation**: Queue pressure monitoring with automatic fallback to single-threaded processing
 - **Memory Efficient**: ~32KB queue overhead for high-performance task processing
