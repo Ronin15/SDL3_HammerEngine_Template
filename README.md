@@ -82,7 +82,7 @@ I use the Zed IDE with custom cmake and ninja task configurations to build/compi
 
 - CMake 3.28 or higher
 - Ninja build system (recommended)
-- A C++ compiler with C++20 support. GCC and G++ 13.x - 15.x
+- A C/C++ compiler with C++20 support. GCC and G++ 13.x - 15.x and Clang 17 MacOS
 - Boost Test framework (optional, only for unit tests)
 
 ### Windows
@@ -117,7 +117,7 @@ I'm using:
   -  Operating System: Ubuntu 24.04.2 LTS
   -  Kernel: Linux 6.11.0-26-generic
 
-### macOS
+### MacOS
 Homebrew is recommended for SDL3 dependencies like harfbuzz, truetype, and freetype etc.
 brew install sdl3 sdl3_image sdl3_ttf sdl3_mixer should get you everything you need for SDL3. However, via CMAKE the project will use the SDL3 libraries downloaded from official SDL github via fecthContent. It will not use the SDL3 libraries installed via Homebrew.
 
