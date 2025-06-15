@@ -70,7 +70,7 @@ if not exist "!TEST_EXECUTABLE!" (
         set FOUND_EXECUTABLE=true
         goto :found_executable
     )
-    
+
     if "!FOUND_EXECUTABLE!"=="" (
         echo Could not find the test executable. Build may have failed or placed the executable in an unexpected location.
         exit /b 1
@@ -173,16 +173,16 @@ if !TEST_RESULT! equ 124 (
             exit /b 0
         )
     )
-    
+
     :: Check for successful completion indicators first
     findstr /c:"Test exit code: 0" "!TEMP_OUTPUT!" >nul 2>&1 && findstr /c:"ThreadSystem cleaned up successfully" "!TEMP_OUTPUT!" >nul 2>&1
     if %ERRORLEVEL% equ 0 (
         echo ✅ All Thread-Safe AI Manager tests passed!
         exit /b 0
     )
-    
+
     :: Check for actual test failures (not expected error messages)
-    findstr /c:"test cases failed" /c:"assertion failed" /c:"BOOST.*failed" "!TEMP_OUTPUT!" >nul 2>&1
+    findstr /c:"test cases failed" /c:"assertion failed" /c:"BOOST.*failed" /c:"error:" "!TEMP_OUTPUT!" >nul 2>&1
     if %ERRORLEVEL% equ 0 (
         :: Additional check for known cleanup issues that can be ignored
         findstr /c:"system_error.*Operation not permitted" /c:"fatal error: in.*unrecognized signal" /c:"memory access violation" /c:"Segmentation fault" /c:"Abort trap" /c:"dumped core" "!TEMP_OUTPUT!" >nul 2>&1

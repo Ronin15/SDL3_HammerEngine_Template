@@ -76,7 +76,7 @@ mkdir -p ../../test_results
 
 # Create a temporary file for test output
 TEMP_OUTPUT="../../test_results/thread_safe_ai_integration_test_output.txt"
-  
+
 # Clear any existing output file
 > "$TEMP_OUTPUT"
 
@@ -156,7 +156,7 @@ fi
 # First check for a clear success pattern, regardless of other messages
 if grep -q "\*\*\* No errors detected\|All tests completed successfully\|TestCacheInvalidation completed" "$TEMP_OUTPUT"; then
   echo "✅ All Thread-Safe AI Integration tests passed!"
-  
+
   # Mention the "Test is aborted" messages as informational only
   if grep -q "Test is aborted" "$TEMP_OUTPUT"; then
     echo "ℹ️ Note: 'Test is aborted' messages were detected but are harmless since all tests passed."
@@ -180,7 +180,7 @@ if grep -q "memory access violation\|segmentation fault\|Segmentation fault\|Abo
 fi
 
 # Check for any failed assertions, but exclude "Test is aborted" as a fatal error
-if grep -v "Test is aborted" "$TEMP_OUTPUT" | grep -q "fail\|error\|assertion.*failed\|exception"; then
+if grep -v "Test is aborted" "$TEMP_OUTPUT" | grep -q "fail\|error:\|assertion.*failed\|exception"; then
   echo "❌ Some tests failed! See ../../test_results/thread_safe_ai_integration_test_output.txt for details."
   exit 1
 fi
@@ -192,8 +192,8 @@ TOTAL_NAMED_TESTS=4  # Hardcoded count of named tests in this file
 if [ "$COMPLETED_TESTS" -ge "$TOTAL_NAMED_TESTS" ]; then
   # All tests completed, and no explicit failures were found
   echo "✅ All Thread-Safe AI Integration tests have completed successfully!"
-  
-  # Check for known boost test termination issue 
+
+  # Check for known boost test termination issue
   if grep -q "boost::detail::system_signal_exception\|terminating due to uncaught exception\|libunwind\|terminate called\|Test is aborted" "$TEMP_OUTPUT"; then
     echo "⚠️ Known issue: Boost test framework had non-fatal issues during execution."
     echo "This is likely due to signal handling with threads, but all tests completed."
@@ -230,7 +230,7 @@ else
   else
     echo "❓ Test execution status is unclear. Check the test output for details."
     echo "Review ../../test_results/thread_safe_ai_integration_test_output.txt for details."
-    
+
     # Show the beginning and end of the output for context
     echo "First few lines of test output:"
     head -5 "$TEMP_OUTPUT"

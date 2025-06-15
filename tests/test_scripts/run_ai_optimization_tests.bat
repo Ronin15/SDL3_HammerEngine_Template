@@ -77,7 +77,7 @@ if not exist "!TEST_EXECUTABLE!" (
         set FOUND_EXECUTABLE=true
         goto :found_executable
     )
-    
+
     if "!FOUND_EXECUTABLE!"=="" (
         echo !RED!Could not find the test executable. Build may have failed or placed the executable in an unexpected location.!NC!
         exit /b 1
@@ -135,7 +135,7 @@ if !TEST_RESULT! equ 124 (
     echo !RED!❌ Tests timed out! See !OUTPUT_FILE! for details.!NC!
     exit /b !TEST_RESULT!
 ) else (
-    findstr /c:"failure" /c:"test cases failed" /c:"memory access violation" /c:"fatal error" /c:"Segmentation fault" /c:"Abort trap" /c:"assertion failed" "!OUTPUT_FILE!" >nul 2>&1
+    findstr /c:"failure" /c:"test cases failed" /c:"memory access violation" /c:"fatal error" /c:"Segmentation fault" /c:"Abort trap" /c:"assertion failed" /c:"error:" "!OUTPUT_FILE!" >nul 2>&1
     if %ERRORLEVEL% equ 0 (
         echo !RED!❌ Some tests failed! See !OUTPUT_FILE! for details.!NC!
         exit /b 1
