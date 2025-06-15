@@ -63,11 +63,12 @@ set STYLE_COUNT=0
 set PERFORMANCE_COUNT=0
 set PORTABILITY_COUNT=0
 
-for /f %%i in ('findstr /c:"[error]" "%TEMP_OUTPUT%" 2^>nul ^|^| echo 0') do set ERROR_COUNT=%%i
-for /f %%i in ('findstr /c:"[warning]" "%TEMP_OUTPUT%" 2^>nul ^|^| echo 0') do set WARNING_COUNT=%%i
-for /f %%i in ('findstr /c:"[style]" "%TEMP_OUTPUT%" 2^>nul ^|^| echo 0') do set STYLE_COUNT=%%i
-for /f %%i in ('findstr /c:"[performance]" "%TEMP_OUTPUT%" 2^>nul ^|^| echo 0') do set PERFORMANCE_COUNT=%%i
-for /f %%i in ('findstr /c:"[portability]" "%TEMP_OUTPUT%" 2^>nul ^|^| echo 0') do set PORTABILITY_COUNT=%%i
+REM Count each type by finding matches and using find /c
+for /f %%i in ('findstr "[error]" "%TEMP_OUTPUT%" 2^>nul ^| find /c "[error]"') do set ERROR_COUNT=%%i
+for /f %%i in ('findstr "[warning]" "%TEMP_OUTPUT%" 2^>nul ^| find /c "[warning]"') do set WARNING_COUNT=%%i
+for /f %%i in ('findstr "[style]" "%TEMP_OUTPUT%" 2^>nul ^| find /c "[style]"') do set STYLE_COUNT=%%i
+for /f %%i in ('findstr "[performance]" "%TEMP_OUTPUT%" 2^>nul ^| find /c "[performance]"') do set PERFORMANCE_COUNT=%%i
+for /f %%i in ('findstr "[portability]" "%TEMP_OUTPUT%" 2^>nul ^| find /c "[portability]"') do set PORTABILITY_COUNT=%%i
 
 set /a TOTAL_COUNT=ERROR_COUNT+WARNING_COUNT+STYLE_COUNT+PERFORMANCE_COUNT+PORTABILITY_COUNT
 
@@ -79,7 +80,7 @@ echo Analysis complete!
 echo.
 
 REM Dynamic summary based on actual results
-if %TOTAL_COUNT% equ 0 (
+if !TOTAL_COUNT! equ 0 (
     echo 🎉 Perfect! No issues found!
     echo Status: All critical issues have been resolved
     echo ✓ Array bounds errors - FIXED
@@ -89,12 +90,12 @@ if %TOTAL_COUNT% equ 0 (
     echo.
     echo Result: 100%% of actionable issues resolved!
 ) else (
-    echo Found %TOTAL_COUNT% issues:
-    if %ERROR_COUNT% gtr 0 echo   Errors: %ERROR_COUNT%
-    if %WARNING_COUNT% gtr 0 echo   Warnings: %WARNING_COUNT%
-    if %STYLE_COUNT% gtr 0 echo   Style: %STYLE_COUNT%
-    if %PERFORMANCE_COUNT% gtr 0 echo   Performance: %PERFORMANCE_COUNT%
-    if %PORTABILITY_COUNT% gtr 0 echo   Portability: %PORTABILITY_COUNT%
+    echo Found !TOTAL_COUNT! issues:
+    if !ERROR_COUNT! gtr 0 (echo   Errors: !ERROR_COUNT!)
+    if !WARNING_COUNT! gtr 0 (echo   Warnings: !WARNING_COUNT!)
+    if !STYLE_COUNT! gtr 0 (echo   Style: !STYLE_COUNT!)
+    if !PERFORMANCE_COUNT! gtr 0 (echo   Performance: !PERFORMANCE_COUNT!)
+    if !PORTABILITY_COUNT! gtr 0 (echo   Portability: !PORTABILITY_COUNT!)
     echo.
     set /a CRITICAL_COUNT=ERROR_COUNT+WARNING_COUNT
     if !CRITICAL_COUNT! equ 0 (
@@ -108,7 +109,5 @@ if %TOTAL_COUNT% equ 0 (
 echo.
 echo Note: This configuration filters out ~2,500 false positives
 echo to focus on genuine code quality issues.
-echo.
-echo See CPPCHECK_FIXES.md for detailed fix instructions.
 echo.
 pause
