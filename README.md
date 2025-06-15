@@ -9,7 +9,7 @@ I use the Zed IDE with custom cmake and ninja task configurations to build/compi
 
 
 ### Generative AI useage
- - This project has evolved into a large-scale simulation engine—not like Unity or Unreal, but rather a framework that powers the game you want to create. I’m using AI to accelerate development, but it’s not building the architecture or tying everything together for me. I’ve designed the core and the shell of the engine myself, and AI is helping me refine it, especially when it comes to memory safety. One of my key goals is safety, which means no raw pointers, and no manual memory allocation or deallocation (no new or delete). There are a couple of exceptions in some SDL subsystems that I couldn't convert—only about two. I also leverage AI to help me synchronize threading issues and resolve crashes. I see AI as a powerful tool—like a well-crafted sword—that slays big nasty memory bugs, and helps me bring games to life. I hope you find this project useful or cool!
+ - This project has evolved into a large-scale simulation engine—not like Unity or Unreal, but rather a framework that powers the game you want to create. I’m using AI to accelerate development, but it’s not building the architecture or tying everything together for me. I’ve designed the core systems and the shell of the engine myself, and AI is helping me refine it, especially when it comes to memory safety. One of my key goals is safety, which means no raw pointers, and no manual memory allocation or deallocation (no new or delete). I also leverage AI to help me synchronize threading issues, resolve crashes, optimize with valgrind, and cppcheck. I really strive to remove any underfined behaviour at all costs and AI helps me with that as well. I see AI as a powerful tool—like a well-crafted sword—that slays big nasty code issues, and helps me bring games to life. I hope you find this project useful or cool!
 
 ## Features Overview
 
@@ -508,12 +508,6 @@ A full-featured demonstration and benchmarking framework for the AI system:
 - Performance Monitoring: Tracks and displays live FPS, average FPS, and entity counts for AI stress testing.
 - Visual Info Panel: Renders on-screen instructions and real-time status, including current FPS and controls.
 - Randomized NPC Placement: All NPCs are distributed randomly within the simulated world on startup.
-- Robust Cleanup: Ensures safe cleanup of AI behaviors, player, and NPCs on exit to prevent memory/resource leaks.
-- Extensible AI Behaviors: Easily add or extend behaviors (e.g., Wander, Patrol with offscreen waypoints, Chase) with AIManager’s plugin-like architecture.
-- Lifecycle Management: Handles initialization (enter()), per-frame updates (update()), rendering (render()), and resource cleanup (exit()) cleanly as a GameState.
-- Thread-Safe AI: Integrates with the ThreadSystem for scalable, multi-threaded AI updates with WorkerBudget allocation and priority scheduling.
-- Performance Demonstration: Shows real-world ThreadSystem performance with 10,000 NPCs running smoothly at 60+ FPS.
-- The AIDemoState serves as a reference and stress test for AI scalability, behavior switching, and real-time control, mirroring the structure and purpose of EventDemoState for the event system.
 
 See docs/AIManager.md, include/gameStates/AIDemoState.hpp, and src/gameStates/AIDemoState.cpp for full API and code examples.
 
