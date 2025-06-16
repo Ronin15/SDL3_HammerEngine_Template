@@ -472,13 +472,17 @@ The AIManager provides a high-performance AI behavior management system optimize
 - **Message System**: Queue-based messaging with immediate and deferred delivery options
 - **Performance Monitoring**: Real-time statistics tracking with behavior execution counters and timing data
 
-**Behavior Types and AI Patterns**:
-- **WanderBehavior**: Random movement within defined areas with direction change intervals
-- **PatrolBehavior**: Waypoint-based navigation with sequence following and path reversal
-- **ChaseBehavior**: Dynamic target pursuit with detection range and line-of-sight systems
-- **GuardBehavior**: Position-based defensive AI with threat detection
-- **AttackBehavior**: Combat-oriented behavior with engagement mechanics
-- **FleeBehavior**: Escape and avoidance patterns with threat assessment
+**Behavior Types and AI Patterns** (8 behaviors, 32 total modes):
+- **IdleBehavior** (4 modes): Stationary NPCs with life-like micro-movements - STATIONARY, SUBTLE_SWAY, OCCASIONAL_TURN, LIGHT_FIDGET
+- **WanderBehavior** (4 modes): Random movement with configurable areas - SMALL_AREA (75px), MEDIUM_AREA (200px), LARGE_AREA (450px), EVENT_TARGET (150px)
+- **PatrolBehavior** (4 modes): Waypoint-based navigation - FIXED_WAYPOINTS, RANDOM_AREA, CIRCULAR_AREA, EVENT_TARGET with auto-regeneration
+- **ChaseBehavior** (single config): Dynamic target pursuit with line-of-sight and persistence tracking
+- **FleeBehavior** (4 modes): Escape and avoidance - PANIC_FLEE, STRATEGIC_RETREAT, EVASIVE_MANEUVER, SEEK_COVER with stamina systems
+- **FollowBehavior** (5 modes): Advanced companion AI - CLOSE_FOLLOW (50px), LOOSE_FOLLOW (120px), FLANKING_FOLLOW, REAR_GUARD, ESCORT_FORMATION
+- **GuardBehavior** (5 modes): Area defense with alert systems - STATIC_GUARD, PATROL_GUARD, AREA_GUARD, ROAMING_GUARD, ALERT_GUARD with threat detection
+- **AttackBehavior** (7 modes): Combat AI - MELEE_ATTACK, RANGED_ATTACK, CHARGE_ATTACK, AMBUSH_ATTACK, COORDINATED_ATTACK, HIT_AND_RUN, BERSERKER_ATTACK
+
+**Mode-Based Configuration**: Automatic setup for common patterns eliminates manual configuration while ensuring consistent behavior across NPC types. Each mode provides pre-configured parameters for speed, detection ranges, movement patterns, and specialized features like formation management, combo attacks, and tactical retreats.
 
 **High-Performance Features**:
 - **Entity Scaling**: Efficiently manages 10,000+ entities with minimal performance impact and 90%+ load balancing efficiency
