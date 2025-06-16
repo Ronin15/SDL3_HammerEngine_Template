@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Forge Engine Template includes a fast, cross-platform, header-only binary serialization system that replaces Boost serialization. This system uses smart pointers internally for memory management and is designed for high-performance game save/load operations.
+The Hammer Engine Template includes a fast, cross-platform, header-only binary serialization system that replaces Boost serialization. This system uses smart pointers internally for memory management and is designed for high-performance game save/load operations.
 
 ## Key Features
 
@@ -45,10 +45,10 @@ if (writer) {
     writer->write(true);                           // bool
     writer->writeString("player name");            // string
     writer->writeSerializable(playerObject);       // custom object
-    
+
     std::vector<int> scores = {100, 250, 300};
     writer->writeVector(scores);                   // vector of primitives
-    
+
     writer->flush(); // Ensure data is written
 }
 
@@ -59,13 +59,13 @@ if (reader) {
     float floatVal;
     bool flag;
     std::string name;
-    
+
     reader->read(value);
     reader->read(floatVal);
     reader->read(flag);
     reader->readString(name);
     reader->readSerializable(playerObject);
-    
+
     std::vector<int> loadedScores;
     reader->readVector(loadedScores);
 }
@@ -87,18 +87,18 @@ public:
         // Write volume
         stream.write(reinterpret_cast<const char*>(&volume), sizeof(float));
         if (!stream.good()) return false;
-        
+
         // Write difficulty
         stream.write(reinterpret_cast<const char*>(&difficulty), sizeof(int));
         if (!stream.good()) return false;
-        
+
         // Write player name
         uint32_t nameLength = static_cast<uint32_t>(playerName.length());
         stream.write(reinterpret_cast<const char*>(&nameLength), sizeof(uint32_t));
         if (nameLength > 0) {
             stream.write(playerName.c_str(), nameLength);
         }
-        
+
         return stream.good();
     }
 
@@ -106,16 +106,16 @@ public:
         // Read volume
         stream.read(reinterpret_cast<char*>(&volume), sizeof(float));
         if (!stream.good() || stream.gcount() != sizeof(float)) return false;
-        
+
         // Read difficulty
         stream.read(reinterpret_cast<char*>(&difficulty), sizeof(int));
         if (!stream.good() || stream.gcount() != sizeof(int)) return false;
-        
+
         // Read player name
         uint32_t nameLength;
         stream.read(reinterpret_cast<char*>(&nameLength), sizeof(uint32_t));
         if (!stream.good()) return false;
-        
+
         if (nameLength == 0) {
             playerName.clear();
         } else {
@@ -124,7 +124,7 @@ public:
             stream.read(&playerName[0], nameLength);
             if (stream.gcount() != static_cast<std::streamsize>(nameLength)) return false;
         }
-        
+
         return stream.good();
     }
 };
@@ -233,17 +233,17 @@ if (!success || !writer->good()) {
 bool saveGameSafe(const std::string& filename, const GameData& data) {
     auto writer = BinarySerial::Writer::createFileWriter(filename);
     if (!writer) return false;
-    
+
     bool result = writer->writeSerializable(data);
     writer->flush();
-    
+
     return result && writer->good();
 }
 
 bool loadGameSafe(const std::string& filename, GameData& data) {
     auto reader = BinarySerial::Reader::createFileReader(filename);
     if (!reader) return false;
-    
+
     return reader->readSerializable(data) && reader->good();
 }
 ```
@@ -343,7 +343,7 @@ public:
     bool serialize(std::ostream& stream) const override {
         stream.write(reinterpret_cast<const char*>(&version), sizeof(uint32_t));
         if (!stream.good()) return false;
-        
+
         // Serialize other data...
         return playerData.serialize(stream) && worldData.serialize(stream);
     }
@@ -352,11 +352,11 @@ public:
         uint32_t fileVersion;
         stream.read(reinterpret_cast<char*>(&fileVersion), sizeof(uint32_t));
         if (!stream.good()) return false;
-        
+
         if (fileVersion > version) {
             return false; // Save file version too new
         }
-        
+
         // Handle version-specific loading...
         return playerData.deserialize(stream) && worldData.deserialize(stream);
     }
@@ -409,7 +409,7 @@ std::thread loadThread([&]() {
 
 ## SaveGameManager Integration
 
-The Forge Engine's SaveGameManager has been fully updated to use the BinarySerializer system, replacing the previous Boost serialization dependency.
+The Hammer Engine's SaveGameManager has been fully updated to use the BinarySerializer system, replacing the previous Boost serialization dependency.
 
 ### How SaveGameManager Uses BinarySerializer
 
@@ -419,12 +419,12 @@ bool SaveGameManager::save(const std::string& saveFileName, const Player& player
     // Creates BinarySerial::Writer with smart pointer-managed stream
     auto writer = std::make_unique<BinarySerial::Writer>(
         std::shared_ptr<std::ostream>(&file, [](std::ostream*){}));
-    
+
     // Uses BinarySerializer for all data operations
     writer->writeSerializable(player.getPosition());    // Vector2D
     writer->writeString(player.getTextureID());         // String
     writer->writeString(player.getCurrentStateName());  // String
-    
+
     return writer->good();
 }
 ```
@@ -434,7 +434,7 @@ bool SaveGameManager::save(const std::string& saveFileName, const Player& player
 The SaveGameManager serializes the following Player data using BinarySerializer:
 
 - **Position**: `Vector2D` using `ISerializable` interface
-- **Texture ID**: `std::string` using optimized string serialization  
+- **Texture ID**: `std::string` using optimized string serialization
 - **Current State**: `std::string` for player state machine
 - **Level ID**: `std::string` for current game level
 
@@ -442,7 +442,7 @@ The SaveGameManager serializes the following Player data using BinarySerializer:
 
 SaveGameManager creates binary save files with this structure:
 
-1. **Header Section**: 
+1. **Header Section**:
    - File signature: "FORGESAVE"
    - Version number (uint32_t)
    - Timestamp (time_t)
@@ -451,7 +451,7 @@ SaveGameManager creates binary save files with this structure:
 2. **Data Section** (serialized with BinarySerializer):
    - Player position (Vector2D - 8 bytes)
    - Texture ID (length-prefixed string)
-   - Current state (length-prefixed string)  
+   - Current state (length-prefixed string)
    - Level ID (length-prefixed string)
 
 ### Performance Benefits
@@ -473,7 +473,7 @@ SaveGameManager& saveManager = SaveGameManager::Instance();
 // Save player data (now using BinarySerializer internally)
 bool success = saveManager.save("player_save.dat", player);
 
-// Load player data (now using BinarySerializer internally)  
+// Load player data (now using BinarySerializer internally)
 bool loaded = saveManager.load("player_save.dat", player);
 
 // Slot-based saving (also uses BinarySerializer)

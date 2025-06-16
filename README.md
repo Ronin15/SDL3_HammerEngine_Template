@@ -454,8 +454,8 @@ A comprehensive demonstration and testing framework for the event system:
 - **Performance Monitoring**: Real-time FPS tracking and system status
 
 The EventDemoState serves as both documentation and testing platform for developers to understand event system integration.
-![Forge Engine](./md_imgs/Event_Demo.png)
-![Forge Engine](./md_imgs/Event_Demo_resources.png)
+![Hammer Engine](./md_imgs/Event_Demo.png)
+![Hammer Engine](./md_imgs/Event_Demo_resources.png)
 
 See `docs/events/EventManager.md`, `docs/events/EventManager_QuickReference.md`, and `docs/events/EventManager_Advanced.md` for detailed documentation and usage examples.
 
@@ -517,12 +517,12 @@ See docs/AIManager.md, include/gameStates/AIDemoState.hpp, and src/gameStates/AI
 
 See `docs/AIManager.md` for detailed documentation with examples and best practices. Additional API details can be found in `include/managers/AIManager.hpp`, `include/ai/AIBehavior.hpp`, and the specific behavior implementations.
 
-![Forge Engine](./md_imgs/AI_Demo.png)
-![Forge Engine](./md_imgs/AIDemo_resources.png)
+![Hammer Engine](./md_imgs/AI_Demo.png)
+![Hammer Engine](./md_imgs/AIDemo_resources.png)
 
 ## Engine Architecture Overview
 
-![Forge Engine](./md_imgs/Hammer_Engine0.1.8.png)
+![Hammer Engine](./md_imgs/Hammer_Engine0.1.8.png)
 
 This SDL3 Game Template represents a complete, production-ready game engine framework designed for performance, safety, and scalability. The architecture emphasizes:
 

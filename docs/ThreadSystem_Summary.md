@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Forge Engine ThreadSystem is a production-ready, high-performance thread pool implementation designed specifically for game development. It provides efficient task-based concurrency with automatic load balancing, priority-based scheduling, and comprehensive performance monitoring.
+The Hammer Engine ThreadSystem is a production-ready, high-performance thread pool implementation designed specifically for game development. It provides efficient task-based concurrency with automatic load balancing, priority-based scheduling, and comprehensive performance monitoring.
 
 ## Key Features at a Glance
 
@@ -155,22 +155,22 @@ public:
         std::vector<Entity*> entities = getActiveEntities();
         size_t workerCount = ThreadSystem::Instance().getThreadCount();
         size_t batchSize = entities.size() / workerCount;
-        
+
         // Create batch tasks for parallel processing
         std::vector<std::future<void>> futures;
         for (size_t i = 0; i < workerCount; ++i) {
             size_t start = i * batchSize;
             size_t end = (i == workerCount - 1) ? entities.size() : start + batchSize;
-            
+
             auto future = ThreadSystem::Instance().enqueueTaskWithResult([=]() {
                 for (size_t j = start; j < end; ++j) {
                     entities[j]->updateAI(deltaTime);
                 }
             }, TaskPriority::Normal, "AI_Batch_" + std::to_string(i));
-            
+
             futures.push_back(std::move(future));
         }
-        
+
         // Wait for all AI updates to complete
         for (auto& future : futures) {
             future.wait();
@@ -186,10 +186,10 @@ class EventManager {
 public:
     void processEvents() {
         auto eventBatches = partitionEventsByType(pendingEvents);
-        
+
         for (const auto& [eventType, events] : eventBatches) {
             TaskPriority priority = getEventPriority(eventType);
-            
+
             ThreadSystem::Instance().enqueueTask([=]() {
                 for (const auto& event : events) {
                     processEvent(event);
@@ -197,7 +197,7 @@ public:
             }, priority, "Event_" + eventTypeToString(eventType));
         }
     }
-    
+
 private:
     TaskPriority getEventPriority(EventType type) {
         switch (type) {
@@ -220,26 +220,26 @@ public:
         while (running) {
             // Handle input on main thread (immediate)
             handleInput();
-            
+
             // Submit parallel updates
             auto physicsTask = ThreadSystem::Instance().enqueueTaskWithResult([=]() {
                 physics.update(deltaTime);
             }, TaskPriority::High, "Physics");
-            
+
             auto aiTask = ThreadSystem::Instance().enqueueTaskWithResult([=]() {
                 aiManager.update(deltaTime);
             }, TaskPriority::Normal, "AI");
-            
+
             auto audioTask = ThreadSystem::Instance().enqueueTaskWithResult([=]() {
                 audioManager.update(deltaTime);
             }, TaskPriority::Normal, "Audio");
-            
+
             // Wait for critical updates before rendering
             physicsTask.wait();
-            
+
             // Render on main thread
             render();
-            
+
             // Audio and AI can complete in background
             // (WorkerBudget ensures optimal resource allocation)
         }
@@ -295,7 +295,7 @@ ThreadSystem::Instance().enqueueTask([]() {
 });
 
 // Don't use wrong priorities
-ThreadSystem::Instance().enqueueTask(backgroundTask, 
+ThreadSystem::Instance().enqueueTask(backgroundTask,
     TaskPriority::Critical); // Wrong: background task as critical
 
 // Don't capture by reference for long-running tasks
@@ -312,19 +312,19 @@ ThreadSystem::Instance().enqueueTask([&obj]() { // Dangerous: obj might be destr
 ```cpp
 void monitorPerformance() {
     auto& ts = ThreadSystem::Instance();
-    
+
     // Basic metrics
     size_t queueSize = ts.getQueueSize();
     size_t processed = ts.getTotalTasksProcessed();
     size_t enqueued = ts.getTotalTasksEnqueued();
-    
+
     // Calculate efficiency
     double throughput = processed / getUptimeSeconds();
     double utilization = static_cast<double>(queueSize) / ts.getQueueCapacity();
-    
+
     THREADSYSTEM_INFO("Throughput: " + std::to_string(throughput) + " tasks/sec");
     THREADSYSTEM_INFO("Queue Utilization: " + std::to_string(utilization * 100) + "%");
-    
+
     // Performance alerts
     if (utilization > 0.8) {
         THREADSYSTEM_WARN("High queue utilization: " + std::to_string(utilization * 100) + "%");
@@ -337,22 +337,22 @@ void monitorPerformance() {
 ```cpp
 void debugThreadSystem() {
     auto& ts = ThreadSystem::Instance();
-    
+
     // Enable debug logging
     ts.setDebugLogging(true);
-    
+
     // System status
     THREADSYSTEM_DEBUG("=== ThreadSystem Status ===");
     THREADSYSTEM_DEBUG("Workers: " + std::to_string(ts.getThreadCount()));
     THREADSYSTEM_DEBUG("Queue Size: " + std::to_string(ts.getQueueSize()));
     THREADSYSTEM_DEBUG("Queue Capacity: " + std::to_string(ts.getQueueCapacity()));
     THREADSYSTEM_DEBUG("Is Busy: " + std::string(ts.isBusy() ? "Yes" : "No"));
-    
+
     // Task statistics
     THREADSYSTEM_DEBUG("=== Task Statistics ===");
     THREADSYSTEM_DEBUG("Enqueued: " + std::to_string(ts.getTotalTasksEnqueued()));
     THREADSYSTEM_DEBUG("Processed: " + std::to_string(ts.getTotalTasksProcessed()));
-    
+
     size_t pending = ts.getTotalTasksEnqueued() - ts.getTotalTasksProcessed();
     THREADSYSTEM_DEBUG("Pending: " + std::to_string(pending));
 }
@@ -459,9 +459,9 @@ void executeWithRetry(std::function<void()> task, int maxRetries = 3) {
 void validatePerformance() {
     const size_t taskCount = 10000;
     std::atomic<size_t> completed{0};
-    
+
     auto start = std::chrono::steady_clock::now();
-    
+
     // Submit large workload
     for (size_t i = 0; i < taskCount; ++i) {
         ThreadSystem::Instance().enqueueTask([&]() {
@@ -469,15 +469,15 @@ void validatePerformance() {
             completed.fetch_add(1);
         }, TaskPriority::Normal, "Load Test");
     }
-    
+
     // Wait for completion
     while (completed.load() < taskCount) {
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
-    
+
     auto end = std::chrono::steady_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
-    
+
     // Expected: <2000ms for 10K tasks on 8-core system
     if (duration.count() < 2000) {
         THREADSYSTEM_INFO("✅ Excellent performance: " + std::to_string(duration.count()) + "ms");
@@ -497,24 +497,24 @@ public:
     // Singleton access
     static ThreadSystem& Instance();
     static bool Exists();
-    
+
     // Initialization
     bool init(size_t queueCapacity = DEFAULT_QUEUE_CAPACITY,
               unsigned int customThreadCount = 0,
               bool enableProfiling = false);
     void clean();
-    
+
     // Task submission
     void enqueueTask(std::function<void()> task,
                      TaskPriority priority = TaskPriority::Normal,
                      const std::string& description = "");
-    
+
     template<class F, class... Args>
     auto enqueueTaskWithResult(F&& f,
                               TaskPriority priority = TaskPriority::Normal,
                               const std::string& description = "",
                               Args&&... args);
-    
+
     // Status and monitoring
     bool isBusy() const;
     bool isShutdown() const;
@@ -523,7 +523,7 @@ public:
     size_t getQueueCapacity() const;
     size_t getTotalTasksProcessed() const;
     size_t getTotalTasksEnqueued() const;
-    
+
     // Configuration
     bool reserveQueueCapacity(size_t capacity);
     void setDebugLogging(bool enable);
