@@ -210,13 +210,13 @@ GameLoop integrates with the centralized WorkerBudget system for optimal perform
 
 **Critical Priority Allocation:**
 - GameLoop receives **2 workers** (Critical priority) from WorkerBudget system
-- Uses `Forge::calculateWorkerBudget()` for centralized resource allocation
+- Uses `Hammer::calculateWorkerBudget()` for centralized resource allocation
 - Receives highest priority to ensure consistent frame timing
 
 **Update Worker with Resource Awareness:**
 
 ```cpp
-void GameLoop::runUpdateWorker(const Forge::WorkerBudget& budget) {
+void GameLoop::runUpdateWorker(const Hammer::WorkerBudget& budget) {
     // WorkerBudget-aware update worker - respects allocated resources
     GAMELOOP_INFO("Update worker started with " + std::to_string(budget.engineReserved) + " allocated workers");
 
@@ -269,13 +269,13 @@ private:
     std::atomic<int> m_updateCount;           // Update counter for performance tracking
     
     // Critical timing methods
-    void runUpdateWorker(const Forge::WorkerBudget& budget);
+    void runUpdateWorker(const Hammer::WorkerBudget& budget);
     void processUpdatesParallel();            // High-end system optimization
 };
 ```
 
 **Critical Priority Scheduling:**
-- GameLoop tasks submitted with `Forge::TaskPriority::Critical`
+- GameLoop tasks submitted with `Hammer::TaskPriority::Critical`
 - Ensures frame-rate consistency across all hardware tiers
 - ThreadSystem prioritizes GameLoop over AI and Event processing
 - Prevents frame drops during high system load

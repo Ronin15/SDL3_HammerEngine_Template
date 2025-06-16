@@ -522,7 +522,7 @@ See `docs/AIManager.md` for detailed documentation with examples and best practi
 
 ## Engine Architecture Overview
 
-![Forge Engine](./md_imgs/Forge_Engine0.1.8.png)
+![Forge Engine](./md_imgs/Hammer_Engine0.1.8.png)
 
 This SDL3 Game Template represents a complete, production-ready game engine framework designed for performance, safety, and scalability. The architecture emphasizes:
 

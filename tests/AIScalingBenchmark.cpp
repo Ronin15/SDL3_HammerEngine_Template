@@ -139,9 +139,9 @@ struct GlobalFixture {
         std::lock_guard<std::mutex> lock(g_setupMutex);
         if (!g_systemsInitialized) {
             // Enable benchmark mode to silence manager logging during tests
-            FORGE_ENABLE_BENCHMARK_MODE();
-            
-            Forge::ThreadSystem::Instance().init();
+            HAMMER_ENABLE_BENCHMARK_MODE();
+
+            Hammer::ThreadSystem::Instance().init();
             AIManager::Instance().init();
             g_systemsInitialized = true;
         }
@@ -169,7 +169,7 @@ struct GlobalFixture {
                 std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
                 // Clean ThreadSystem
-                Forge::ThreadSystem::Instance().clean();
+                Hammer::ThreadSystem::Instance().clean();
             } catch (const std::exception& e) {
                 std::cerr << "Exception during cleanup: " << e.what() << std::endl;
             } catch (...) {
@@ -179,8 +179,8 @@ struct GlobalFixture {
             std::this_thread::sleep_for(std::chrono::milliseconds(200));
             
             // Disable benchmark mode after cleanup
-            FORGE_DISABLE_BENCHMARK_MODE();
-            
+            HAMMER_DISABLE_BENCHMARK_MODE();
+
             g_systemsInitialized = false;
         }
     }
@@ -560,8 +560,8 @@ BOOST_FIXTURE_TEST_SUITE(AIScalingTests, AIScalingFixture)
 // Test realistic automatic threading behavior across different entity counts
 BOOST_AUTO_TEST_CASE(TestRealisticPerformance) {
     // Enable benchmark mode to suppress AI manager logging
-    FORGE_ENABLE_BENCHMARK_MODE();
-    
+    HAMMER_ENABLE_BENCHMARK_MODE();
+
     // Skip if shutdown is in progress
     if (g_shutdownInProgress.load()) {
         BOOST_TEST_MESSAGE("Skipping test due to shutdown in progress");
@@ -769,12 +769,12 @@ BOOST_AUTO_TEST_CASE(TestThreadSystemQueueLoad) {
     std::cout << "DEFENSIVE TEST: Monitoring ThreadSystem queue to prevent future overload issues" << std::endl;
     std::cout << "This test ensures AIManager respects ThreadSystem's 4096 task limit" << std::endl;
     std::cout << "PURPOSE: Early warning system for code changes that might overwhelm ThreadSystem" << std::endl;
-    
-    if (!Forge::ThreadSystem::Exists()) {
+
+    if (!Hammer::ThreadSystem::Exists()) {
         BOOST_FAIL("ThreadSystem not available for queue monitoring test");
     }
-    
-    auto& threadSystem = Forge::ThreadSystem::Instance();
+
+    auto& threadSystem = Hammer::ThreadSystem::Instance();
     std::cout << "ThreadSystem queue capacity: " << threadSystem.getQueueCapacity() << std::endl;
     
     // Test different entity counts and monitor queue usage
@@ -824,7 +824,7 @@ BOOST_AUTO_TEST_CASE(TestThreadSystemQueueLoad) {
         (void)threadSystem.getQueueSize(); // Final queue state (monitoring complete)
         
         // Calculate more detailed statistics
-        size_t nonZeroSamples = std::count_if(queueSnapshots.begin(), queueSnapshots.end(), 
+        size_t nonZeroSamples = std::count_if(queueSnapshots.begin(), queueSnapshots.end(),
                                              [](size_t q) { return q > 0; });
         double queueUtilization = (maxQueueSize / 4096.0) * 100.0;
         

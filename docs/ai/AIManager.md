@@ -342,7 +342,7 @@ The AIManager was experiencing high CPU usage (30%) due to inefficient distance 
 
 **Threading Performance:**
 - 150 entities (single-threaded): 530K+ updates/sec
-- 200+ entities (multi-threaded): 7M-41M+ updates/sec  
+- 200+ entities (multi-threaded): 7M-41M+ updates/sec
 - 1000 entities: 22M+ updates/sec
 - 100K entities: 5.6M+ updates/sec
 
@@ -551,11 +551,11 @@ virtual bool isEntityInRange(EntityPtr entity) const;
 void createNPCGroup(const std::string& npcType, int count) {
     for (int i = 0; i < count; ++i) {
         auto npc = createNPC(npcType);
-        
+
         // Determine behavior based on NPC type
         std::string behavior = getBehaviorForNPCType(npcType, i);
         int priority = getPriorityForNPCType(npcType);
-        
+
         // Single call for registration and assignment
         AIManager::Instance().registerEntityForUpdates(npc, priority, behavior);
     }
@@ -606,7 +606,7 @@ void GameState::exit() {
         AIManager::Instance().unregisterEntityFromUpdates(npc);
         AIManager::Instance().unassignBehaviorFromEntity(npc);
     }
-    
+
     // Note: Don't clean AIManager - it's used across game states
 }
 ```
@@ -654,7 +654,7 @@ The AIManager integrates seamlessly with the engine's optimized threading archit
 5. **Architectural compliance** ensures system-wide coordination and stability
 
 **ThreadSystem & WorkerBudget Architecture (Enhanced):**
-1. **Centralized Resource Allocation**: Uses `Forge::calculateWorkerBudget()` for coordinated distribution
+1. **Centralized Resource Allocation**: Uses `Hammer::calculateWorkerBudget()` for coordinated distribution
 2. **AI Worker Budget**: Receives 60% of available workers with proper allocation limits
 3. **Buffer Thread Access**: Utilizes buffer threads when entity count > 1000 for burst capacity
 4. **Dynamic Scaling**: Batch sizes scale with allocated workers (`entities / optimalWorkerCount`)
@@ -670,7 +670,7 @@ The AIManager integrates seamlessly with the engine's optimized threading archit
 
 **Resource Scaling Examples (Optimized):**
 - **4-core/8-thread system (7 workers)**: GameLoop=2, AI=3, Events=1, Buffer=1
-- **8-core/16-thread system (15 workers)**: GameLoop=2, AI=8, Events=4, Buffer=1  
+- **8-core/16-thread system (15 workers)**: GameLoop=2, AI=8, Events=4, Buffer=1
 - **16-core/32-thread system (31 workers)**: GameLoop=2, AI=17, Events=9, Buffer=3
 - **High-end systems**: Automatic scaling with buffer utilization for workloads >1000 entities
 

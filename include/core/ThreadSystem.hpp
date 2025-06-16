@@ -23,7 +23,7 @@
 #include <vector>
 #include "Logger.hpp"
 
-namespace Forge {
+namespace Hammer {
 
 // Task priority levels
 enum class TaskPriority {
@@ -835,7 +835,7 @@ public:
         // If shutdown or no thread pool, silently reject the task (for tests)
         if (m_isShutdown.load(std::memory_order_acquire) || !m_threadPool) {
             if (m_enableDebugLogging) {
-                THREADSYSTEM_DEBUG("Ignoring task after shutdown" + 
+                THREADSYSTEM_DEBUG("Ignoring task after shutdown" +
                     (description.empty() ? "" : " (" + description + ")"));
             }
             return;
@@ -876,7 +876,7 @@ public:
             std::promise<ResultType> promise;
 
             if (m_enableDebugLogging) {
-                THREADSYSTEM_DEBUG("Returning default value for task after shutdown" + 
+                THREADSYSTEM_DEBUG("Returning default value for task after shutdown" +
                     (description.empty() ? "" : " (" + description + ")"));
             }
 

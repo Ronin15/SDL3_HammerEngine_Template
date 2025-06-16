@@ -1,11 +1,11 @@
-# Forge Game Engine Documentation
+# Hammer Game Engine Documentation
 
 ## Table of Contents
 
 - [Core Systems](#core-systems)
   - [GameEngine & Core Systems](#gameengine--core-systems)
   - [AI System](#ai-system)
-  - [Event System](#event-system) 
+  - [Event System](#event-system)
   - [UI System](#ui-system)
   - [Threading System](#threading-system)
   - [Manager Systems](#manager-systems)
@@ -17,7 +17,7 @@
 
 ## Overview
 
-The Forge Game Engine is a high-performance game development framework built on SDL3, featuring advanced AI systems, event management, threading capabilities, and comprehensive UI support with auto-sizing and DPI awareness.
+The Hammer Game Engine is a high-performance game development framework built on SDL3, featuring advanced AI systems, event management, threading capabilities, and comprehensive UI support with auto-sizing and DPI awareness.
 
 ## Core Systems
 
@@ -25,7 +25,7 @@ The Forge Game Engine is a high-performance game development framework built on 
 Foundation systems that power the game engine architecture and timing.
 
 - **[GameEngine](GameEngine.md)** - Central engine singleton managing all systems and coordination
-- **[GameLoop](GameLoop.md)** - Industry-standard timing with fixed/variable timestep support  
+- **[GameLoop](GameLoop.md)** - Industry-standard timing with fixed/variable timestep support
 - **[TimestepManager](TimestepManager.md)** - Simplified timing system with 1:1 frame mapping
 
 ### AI System
@@ -79,10 +79,10 @@ Core utility classes and helper systems used throughout the engine.
 ## Getting Started
 
 ### System Overview
-The Forge Game Engine provides several core systems that work together:
+The Hammer Game Engine provides several core systems that work together:
 - **Core Engine**: GameEngine singleton, GameLoop, and TimestepManager timing systems
 - **AI System**: Behavior management for NPCs with threading support and distance optimization
-- **Event System**: Global event handling for weather, spawning, and custom events  
+- **Event System**: Global event handling for weather, spawning, and custom events
 - **UI System**: Professional interface components with theming, animations, and auto-sizing
 - **Threading System**: Multi-threaded task processing with priority scheduling and worker budgets
 - **Manager Systems**: Resource management for fonts, textures, audio, and more

@@ -16,8 +16,8 @@
 #include <chrono>
 
 // File signature constant
-constexpr char FORGE_SAVE_SIGNATURE[9] = {'F', 'O', 'R', 'G', 'E', 'S', 'A', 'V', 'E'};
-constexpr size_t FORGE_SAVE_SIGNATURE_SIZE = sizeof(FORGE_SAVE_SIGNATURE);
+constexpr char HAMMER_SAVE_SIGNATURE[9] = {'F', 'O', 'R', 'G', 'E', 'S', 'A', 'V', 'E'};
+constexpr size_t HAMMER_SAVE_SIGNATURE_SIZE = sizeof(HAMMER_SAVE_SIGNATURE);
 
 
 
@@ -348,7 +348,7 @@ bool SaveGameManager::isValidSaveFile(const std::string& saveFileName) const {
         }
 
         // Check signature using constexpr array
-        if (std::memcmp(header.signature, FORGE_SAVE_SIGNATURE, FORGE_SAVE_SIGNATURE_SIZE) != 0) {
+        if (std::memcmp(header.signature, HAMMER_SAVE_SIGNATURE, HAMMER_SAVE_SIGNATURE_SIZE) != 0) {
             file.close();
             return false;
         }
@@ -532,7 +532,7 @@ SaveGameData SaveGameManager::extractSaveInfo(const std::string& saveFileName) c
 bool SaveGameManager::writeHeader(std::ofstream& file, uint32_t dataSize) const {
     SaveGameHeader header;
     // Initialize signature using the same constant
-    std::memcpy(header.signature, FORGE_SAVE_SIGNATURE, FORGE_SAVE_SIGNATURE_SIZE);
+    std::memcpy(header.signature, HAMMER_SAVE_SIGNATURE, HAMMER_SAVE_SIGNATURE_SIZE);
     header.timestamp = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
     header.dataSize = dataSize;
 
@@ -544,7 +544,7 @@ bool SaveGameManager::readHeader(std::ifstream& file, SaveGameHeader& header) co
     file.read(reinterpret_cast<char*>(&header), sizeof(SaveGameHeader));
 
     // Verify header signature using constexpr array
-    if (std::memcmp(header.signature, FORGE_SAVE_SIGNATURE, FORGE_SAVE_SIGNATURE_SIZE) != 0) {
+    if (std::memcmp(header.signature, HAMMER_SAVE_SIGNATURE, HAMMER_SAVE_SIGNATURE_SIZE) != 0) {
         return false;
     }
 

@@ -14,7 +14,7 @@
 #include <future>
 
 // Forward declaration
-namespace Forge {
+namespace Hammer {
     struct WorkerBudget;
 }
 
@@ -155,7 +155,7 @@ private:
 
     // Internal methods
     void runMainThread();
-    void runUpdateWorker(const Forge::WorkerBudget& budget);
+    void runUpdateWorker(const Hammer::WorkerBudget& budget);
     void processEvents();
     void processUpdates();
     void processUpdatesParallel();

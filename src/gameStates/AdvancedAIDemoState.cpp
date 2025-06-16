@@ -69,18 +69,18 @@ void AdvancedAIDemoState::handleInput() {
         aiMgr.broadcastMessage(message, true);
 
         // Simple feedback
-        std::cout << "Forge Game Engine - Advanced AI " << (m_aiPaused ? "PAUSED" : "RESUMED") << std::endl;
+        std::cout << "Hammer Game Engine - Advanced AI " << (m_aiPaused ? "PAUSED" : "RESUMED") << std::endl;
     }
 
     if (inputMgr.wasKeyPressed(SDL_SCANCODE_B)) {
-        std::cout << "Forge Game Engine - Preparing to exit AdvancedAIDemoState...\n";
+        std::cout << "Hammer Game Engine - Preparing to exit AdvancedAIDemoState...\n";
         const GameEngine& gameEngine = GameEngine::Instance();
         gameEngine.getGameStateManager()->setState("MainMenuState");
     }
 
     if (inputMgr.wasKeyPressed(SDL_SCANCODE_1)) {
         // Assign Idle behavior to all NPCs
-        std::cout << "Forge Game Engine - Switching all NPCs to IDLE behavior\n";
+        std::cout << "Hammer Game Engine - Switching all NPCs to IDLE behavior\n";
         AIManager& aiMgr = AIManager::Instance();
         for (auto& npc : m_npcs) {
             aiMgr.queueBehaviorAssignment(npc, "Idle");
@@ -89,7 +89,7 @@ void AdvancedAIDemoState::handleInput() {
 
     if (inputMgr.wasKeyPressed(SDL_SCANCODE_2)) {
         // Assign Flee behavior to all NPCs
-        std::cout << "Forge Game Engine - Switching all NPCs to FLEE behavior\n";
+        std::cout << "Hammer Game Engine - Switching all NPCs to FLEE behavior\n";
         AIManager& aiMgr = AIManager::Instance();
         for (auto& npc : m_npcs) {
             aiMgr.queueBehaviorAssignment(npc, "Flee");
@@ -98,7 +98,7 @@ void AdvancedAIDemoState::handleInput() {
 
     if (inputMgr.wasKeyPressed(SDL_SCANCODE_3)) {
         // Assign Follow behavior to all NPCs
-        std::cout << "Forge Game Engine - Switching all NPCs to FOLLOW behavior\n";
+        std::cout << "Hammer Game Engine - Switching all NPCs to FOLLOW behavior\n";
         AIManager& aiMgr = AIManager::Instance();
         for (auto& npc : m_npcs) {
             aiMgr.queueBehaviorAssignment(npc, "Follow");
@@ -107,7 +107,7 @@ void AdvancedAIDemoState::handleInput() {
 
     if (inputMgr.wasKeyPressed(SDL_SCANCODE_4)) {
         // Assign Guard behavior to all NPCs
-        std::cout << "Forge Game Engine - Switching all NPCs to GUARD behavior\n";
+        std::cout << "Hammer Game Engine - Switching all NPCs to GUARD behavior\n";
         AIManager& aiMgr = AIManager::Instance();
         for (auto& npc : m_npcs) {
             aiMgr.queueBehaviorAssignment(npc, "Guard");
@@ -116,7 +116,7 @@ void AdvancedAIDemoState::handleInput() {
 
     if (inputMgr.wasKeyPressed(SDL_SCANCODE_5)) {
         // Assign Attack behavior to all NPCs
-        std::cout << "Forge Game Engine - Switching all NPCs to ATTACK behavior\n";
+        std::cout << "Hammer Game Engine - Switching all NPCs to ATTACK behavior\n";
         AIManager& aiMgr = AIManager::Instance();
         for (auto& npc : m_npcs) {
             aiMgr.queueBehaviorAssignment(npc, "Attack");
@@ -125,7 +125,7 @@ void AdvancedAIDemoState::handleInput() {
 }
 
 bool AdvancedAIDemoState::enter() {
-    std::cout << "Forge Game Engine - Entering AdvancedAIDemoState...\n";
+    std::cout << "Hammer Game Engine - Entering AdvancedAIDemoState...\n";
 
     try {
         // Cache GameEngine reference for better performance
@@ -171,21 +171,21 @@ bool AdvancedAIDemoState::enter() {
         ui.createLabel("advanced_ai_status", {10, 110, 400, 20}, "FPS: -- | NPCs: -- | AI: RUNNING | Combat: ON");
 
         // Log status
-        std::cout << "Forge Game Engine - Created " << m_npcs.size() << " NPCs with advanced AI behaviors\n";
-        std::cout << "Forge Game Engine - Combat system initialized with health/damage attributes\n";
+        std::cout << "Hammer Game Engine - Created " << m_npcs.size() << " NPCs with advanced AI behaviors\n";
+        std::cout << "Hammer Game Engine - Combat system initialized with health/damage attributes\n";
 
         return true;
     } catch (const std::exception& e) {
-        std::cerr << "Forge Game Engine - ERROR: Exception in AdvancedAIDemoState::enter(): " << e.what() << std::endl;
+        std::cerr << "Hammer Game Engine - ERROR: Exception in AdvancedAIDemoState::enter(): " << e.what() << std::endl;
         return false;
     } catch (...) {
-        std::cerr << "Forge Game Engine - ERROR: Unknown exception in AdvancedAIDemoState::enter()" << std::endl;
+        std::cerr << "Hammer Game Engine - ERROR: Unknown exception in AdvancedAIDemoState::enter()" << std::endl;
         return false;
     }
 }
 
 bool AdvancedAIDemoState::exit() {
-    std::cout << "Forge Game Engine - Exiting AdvancedAIDemoState...\n";
+    std::cout << "Hammer Game Engine - Exiting AdvancedAIDemoState...\n";
 
     // Cache AIManager reference for better performance
     AIManager& aiMgr = AIManager::Instance();
@@ -218,7 +218,7 @@ bool AdvancedAIDemoState::exit() {
     aiMgr.setGlobalPause(false);
     m_aiPaused = false;
 
-    std::cout << "Forge Game Engine - AdvancedAIDemoState exit complete\n";
+    std::cout << "Hammer Game Engine - AdvancedAIDemoState exit complete\n";
     return true;
 }
 
@@ -239,9 +239,9 @@ void AdvancedAIDemoState::update(float deltaTime) {
         // Entity updates are handled by AIManager::update() in GameEngine
 
     } catch (const std::exception& e) {
-        std::cerr << "Forge Game Engine - ERROR: Exception in AdvancedAIDemoState::update(): " << e.what() << std::endl;
+        std::cerr << "Hammer Game Engine - ERROR: Exception in AdvancedAIDemoState::update(): " << e.what() << std::endl;
     } catch (...) {
-        std::cerr << "Forge Game Engine - ERROR: Unknown exception in AdvancedAIDemoState::update()" << std::endl;
+        std::cerr << "Hammer Game Engine - ERROR: Unknown exception in AdvancedAIDemoState::update()" << std::endl;
     }
 }
 
@@ -396,16 +396,16 @@ void AdvancedAIDemoState::createAdvancedNPCs() {
                 // Add to collection
                 m_npcs.push_back(npc);
             } catch (const std::exception& e) {
-                std::cerr << "Forge Game Engine - ERROR: Exception creating advanced NPC " << i << ": " << e.what() << std::endl;
+                std::cerr << "Hammer Game Engine - ERROR: Exception creating advanced NPC " << i << ": " << e.what() << std::endl;
                 continue;
             }
         }
 
         std::cout << "AdvancedAIDemoState: Created " << m_npcs.size() << " NPCs with combat attributes\n";
     } catch (const std::exception& e) {
-        std::cerr << "Forge Game Engine - ERROR: Exception in createAdvancedNPCs(): " << e.what() << std::endl;
+        std::cerr << "Hammer Game Engine - ERROR: Exception in createAdvancedNPCs(): " << e.what() << std::endl;
     } catch (...) {
-        std::cerr << "Forge Game Engine - ERROR: Unknown exception in createAdvancedNPCs()" << std::endl;
+        std::cerr << "Hammer Game Engine - ERROR: Unknown exception in createAdvancedNPCs()" << std::endl;
     }
 }
 

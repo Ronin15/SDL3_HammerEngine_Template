@@ -11,8 +11,8 @@
  * @brief Comprehensive include file for all AI behaviors
  * 
  * This header provides convenient access to all available AI behaviors
- * in the Forge Game Engine. Include this file to access all behavior types.
- * 
+ * in the Hammer Game Engine. Include this file to access all behavior types.
+ *
  * Available Behaviors:
  * - IdleBehavior: Minimal movement and stationary behavior
  * - WanderBehavior: Random movement within defined areas

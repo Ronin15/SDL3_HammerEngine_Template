@@ -45,7 +45,7 @@ NPC::NPC(const std::string& textureID, const Vector2D& startPosition, int frameW
     // Disable bounds checking by default
     m_boundsCheckEnabled = false;
 
-    //std::cout << "Forge Game Engine - NPC created at position: " << m_position.getX() << ", " << m_position.getY() << "\n";
+    //std::cout << "Hammer Game Engine - NPC created at position: " << m_position.getX() << ", " << m_position.getY() << "\n";
 }
 
 NPC::~NPC() {

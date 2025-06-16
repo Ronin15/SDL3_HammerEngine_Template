@@ -66,17 +66,17 @@ private:
 struct GlobalEventTestFixture {
     GlobalEventTestFixture() {
         // Initialize ThreadSystem once for all tests
-        if (!Forge::ThreadSystem::Exists()) {
-            Forge::ThreadSystem::Instance().init();
+        if (!Hammer::ThreadSystem::Exists()) {
+            Hammer::ThreadSystem::Instance().init();
         }
         // Ensure benchmark mode is disabled for regular tests
-        FORGE_DISABLE_BENCHMARK_MODE();
+        HAMMER_DISABLE_BENCHMARK_MODE();
     }
     
     ~GlobalEventTestFixture() {
         // Clean up ThreadSystem at the very end
-        if (Forge::ThreadSystem::Exists()) {
-            Forge::ThreadSystem::Instance().clean();
+        if (Hammer::ThreadSystem::Exists()) {
+            Hammer::ThreadSystem::Instance().clean();
         }
     }
 };
@@ -518,8 +518,8 @@ BOOST_FIXTURE_TEST_CASE(ConcurrentPriorityTest, EventManagerFixture) {
     BOOST_CHECK(EventManager::Instance().init());
 
     // Initialize ThreadSystem with enough threads
-    if (Forge::ThreadSystem::Exists()) {
-        Forge::ThreadSystem::Instance().init(4); // Ensure we have enough threads
+    if (Hammer::ThreadSystem::Exists()) {
+        Hammer::ThreadSystem::Instance().init(4); // Ensure we have enough threads
     }
 
     std::atomic<int> executionOrder{0};

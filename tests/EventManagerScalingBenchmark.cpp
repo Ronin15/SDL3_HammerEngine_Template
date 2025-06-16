@@ -25,7 +25,7 @@
 // Mock Event class for benchmarking with realistic work
 class MockEvent : public Event {
 public:
-    MockEvent(const std::string& name, int /* complexity */ = 5) 
+    MockEvent(const std::string& name, int /* complexity */ = 5)
         : m_name(name), m_updateCount(0), m_executeCount(0) {
         m_rng.seed(std::hash<std::string>{}(name));
     }
@@ -36,11 +36,11 @@ public:
         bool timeCondition = (m_updateCount % 10) == 0;
         bool positionCondition = (m_updateCount % 7) != 0;
         volatile bool conditionMet = timeCondition && positionCondition;
-        
+
         // Simple state updates that real events do
         m_lastUpdateTime = m_updateCount * 0.016f; // 60fps timing
         m_internalState = conditionMet ? 1 : 0;
-        
+
         m_updateCount++;
         // Use variables to prevent optimization
         if (conditionMet && m_lastUpdateTime < 0) { /* never happens */ }
@@ -52,11 +52,11 @@ public:
         m_effectActive = true;
         m_targetX = 100.0f + (m_executeCount % 50);
         m_targetY = 200.0f + (m_executeCount % 30);
-        
+
         // Simulate triggering other systems (just state changes)
         m_soundTriggered = (m_executeCount % 3) == 0;
         m_particleTriggered = (m_executeCount % 5) == 0;
-        
+
         m_executeCount++;
         // Use variables to prevent optimization
         if (m_effectActive && m_targetX < 0) { /* never happens */ }
@@ -81,7 +81,7 @@ private:
     std::atomic<int> m_updateCount;
     std::atomic<int> m_executeCount;
     std::mt19937 m_rng;
-    
+
     // Realistic event state variables
     float m_lastUpdateTime{0.0f};
     int m_internalState{0};
@@ -107,18 +107,18 @@ public:
 
     void handleEvent(const std::string& params) {
         auto startTime = std::chrono::high_resolution_clock::now();
-        
+
         m_callCount.fetch_add(1);
-        
+
         // Simulate realistic event handler work: respond to events with simple logic
         // Real handlers do: update UI, play sounds, modify game state
         m_handlerState = (m_callCount % 4);
         m_lastProcessedId = m_id;
-        
+
         // Simple conditional logic that real handlers do
         bool shouldUpdate = (m_callCount % 3) == 0;
         bool shouldNotify = (m_callCount % 7) == 0;
-        
+
         volatile int workResult = 0;
         if (shouldUpdate) {
             workResult += m_handlerState * 2;
@@ -126,13 +126,13 @@ public:
         if (shouldNotify) {
             workResult += m_lastProcessedId;
         }
-        
+
         // Use the result to prevent compiler optimization
         if (workResult < -1000) { /* never happens */ }
-        
+
         // Store the parameter for verification
         m_lastParams = params;
-        
+
         auto endTime = std::chrono::high_resolution_clock::now();
         auto duration = std::chrono::duration_cast<std::chrono::nanoseconds>(endTime - startTime);
         m_totalProcessingTime.fetch_add(duration.count());
@@ -153,7 +153,7 @@ private:
     std::atomic<int64_t> m_totalProcessingTime;
     std::string m_lastParams;
     std::mt19937 m_rng;
-    
+
     // Realistic handler state
     int m_handlerState{0};
     int m_lastProcessedId{0};
@@ -165,19 +165,19 @@ struct GlobalFixture {
         std::lock_guard<std::mutex> lock(g_outputMutex);
         std::cout << "\n===== EventManager Scaling Benchmark Started =====" << std::endl;
         g_shutdownInProgress.store(false);
-        
+
         // Enable benchmark mode to silence manager logging during tests
-        FORGE_ENABLE_BENCHMARK_MODE();
-        
+        HAMMER_ENABLE_BENCHMARK_MODE();
+
         // Initialize ThreadSystem for EventManager threading
-        Forge::ThreadSystem::Instance().init();
+        Hammer::ThreadSystem::Instance().init();
         EventManager::Instance().init();
     }
 
     ~GlobalFixture() {
         std::lock_guard<std::mutex> lock(g_outputMutex);
         g_shutdownInProgress.store(true);
-        
+
         // Clean up EventManager
         try {
             EventManager::Instance().clean();
@@ -185,10 +185,10 @@ struct GlobalFixture {
         } catch (...) {
             // Ignore cleanup errors during shutdown
         }
-        
+
         // Disable benchmark mode after cleanup
-        FORGE_DISABLE_BENCHMARK_MODE();
-        
+        HAMMER_DISABLE_BENCHMARK_MODE();
+
         std::cout << "\n===== EventManager Scaling Benchmark Completed =====" << std::endl;
     }
 };
@@ -209,7 +209,7 @@ struct EventManagerScalingFixture {
     void cleanup() {
         // Clean up handlers
         handlers.clear();
-        
+
         // Reset EventManager
         EventManager::Instance().clean();
         EventManager::Instance().init();
@@ -238,41 +238,41 @@ struct EventManagerScalingFixture {
         unsigned int systemThreads = std::thread::hardware_concurrency();
         size_t totalWorkers = (systemThreads > 0) ? systemThreads - 1 : 0;
         size_t eventWorkers = static_cast<size_t>(totalWorkers * 0.3); // 30% allocation
-        
+
         std::cout << "\nBenchmark: " << mode << " mode, "
                   << numEventTypes << " event types, "
                   << numHandlersPerType << " handlers per type, "
                   << numEvents << " events" << std::endl;
         std::cout << "  System: " << systemThreads << " hardware threads available" << std::endl;
-        
+
         // Add debugging for threading behavior
         bool willUseThreading = (numEvents > 1000);
         if (willUseThreading) {
-            std::cout << "  WorkerBudget: " << totalWorkers << " total workers, " 
+            std::cout << "  WorkerBudget: " << totalWorkers << " total workers, "
                       << eventWorkers << " allocated to Events (30%)" << std::endl;
         }
         (void)willUseThreading; // Suppress unused variable warning
 
         // Create handlers and register them
-        for (int eventType = 0; eventType < numEventTypes; ++eventType) {            
+        for (int eventType = 0; eventType < numEventTypes; ++eventType) {
             for (int handler = 0; handler < numHandlersPerType; ++handler) {
                 int handlerId = eventType * numHandlersPerType + handler;
                 int complexity = 4 + (handlerId % 6); // Vary complexity from 4-9 (balanced for good simulation)
-                
+
                 auto benchmarkHandler = std::make_shared<BenchmarkEventHandler>(handlerId, complexity);
                 handlers.push_back(benchmarkHandler);
-                
+
                 // Register handlers for all event types we'll be triggering
                 EventManager::Instance().registerHandler(EventTypeId::Weather,
                     [benchmarkHandler](const EventData&) {
                         benchmarkHandler->handleEvent("weather_event");
                     });
-                
+
                 EventManager::Instance().registerHandler(EventTypeId::NPCSpawn,
                     [benchmarkHandler](const EventData&) {
                         benchmarkHandler->handleEvent("npc_event");
                     });
-                
+
                 EventManager::Instance().registerHandler(EventTypeId::SceneChange,
                     [benchmarkHandler](const EventData&) {
                         benchmarkHandler->handleEvent("scene_event");
@@ -305,12 +305,12 @@ struct EventManagerScalingFixture {
                 testEvents.push_back(mockEvent);
                 EventManager::Instance().registerEvent("BenchmarkEvent_" + std::to_string(event), mockEvent);
             }
-            
+
             // Benchmark the EventManager's update cycle (updates state only)
             for (int cycle = 0; cycle < 10; ++cycle) {
                 EventManager::Instance().update();
             }
-            
+
             // Benchmark explicit trigger methods (where handlers are actually called)
             for (int cycle = 0; cycle < 5; ++cycle) {
                 // Use the proper trigger methods that call handlers
@@ -323,13 +323,13 @@ struct EventManagerScalingFixture {
 
 
 
-            
+
             // Add delay for threaded tasks to complete
             bool willUseThreading = (numEvents > 1000);
             if (willUseThreading) {
                 std::this_thread::sleep_for(std::chrono::milliseconds(100));
             }
-            
+
             auto endTime = std::chrono::high_resolution_clock::now();
             auto duration = std::chrono::duration_cast<std::chrono::microseconds>(endTime - startTime);
             durations.push_back(duration.count() / 1000.0); // Convert to milliseconds
@@ -346,10 +346,10 @@ struct EventManagerScalingFixture {
                     totalExecutes += mockEvent->getExecuteCount();
                 }
             }
-            
+
             // Output verification for first run only to avoid spam
 
-            
+
             // Clean up test events
             for (int event = 0; event < numEvents; ++event) {
                 EventManager::Instance().removeEvent("BenchmarkEvent_" + std::to_string(event));
@@ -369,7 +369,7 @@ struct EventManagerScalingFixture {
         // Each of the totalHandlers is registered for ALL 3 event types (Weather, NPC, Scene)
         // So every trigger calls ALL handlers, not just numHandlersPerType
         // Weather triggers: 2 per cycle * 5 cycles = 10 total weather triggers
-        // NPC triggers: 1 per cycle * 5 cycles = 5 total npc triggers  
+        // NPC triggers: 1 per cycle * 5 cycles = 5 total npc triggers
         // Scene triggers: 1 per cycle * 5 cycles = 5 total scene triggers
         // Each trigger calls ALL handlers (since each handler listens to all types)
         int totalBenchmarkHandlers = handlers.size(); // All created benchmark handlers
@@ -415,7 +415,7 @@ struct EventManagerScalingFixture {
         unsigned int systemThreads = std::thread::hardware_concurrency();
         size_t totalWorkers = (systemThreads > 0) ? systemThreads - 1 : 0;
         size_t eventWorkers = static_cast<size_t>(totalWorkers * 0.3);
-        std::cout << "System Configuration: " << systemThreads << " hardware threads, " 
+        std::cout << "System Configuration: " << systemThreads << " hardware threads, "
                   << totalWorkers << " workers (" << eventWorkers << " for Events)" << std::endl;
 
         // Test progression: realistic event counts for actual games
@@ -426,11 +426,11 @@ struct EventManagerScalingFixture {
             {4, 4, 100},        // Very large game: 4 types, 4 handlers each, 100 events
             {4, 5, 200},        // Massive game: 4 types, 5 handlers each, 200 events
         };
-        
+
         for (const auto& [numTypes, numHandlers, numEvents] : testCases) {
-            std::cout << "\n--- Test Case: " << numTypes << " types, " 
+            std::cout << "\n--- Test Case: " << numTypes << " types, "
                       << numHandlers << " handlers, " << numEvents << " events ---" << std::endl;
-            
+
             // Test both immediate and batched modes
             runHandlerBenchmark(numTypes, numHandlers, numEvents, false); // Immediate
             runHandlerBenchmark(numTypes, numHandlers, numEvents, true);  // Batched
@@ -447,13 +447,13 @@ struct EventManagerScalingFixture {
         // Create a few event types with multiple handlers
         const int numEventTypes = 5;
         const int numHandlersPerType = 3;
-        
+
         for (int eventType = 0; eventType < numEventTypes; ++eventType) {
             for (int handler = 0; handler < numHandlersPerType; ++handler) {
                 int handlerId = eventType * numHandlersPerType + handler;
                 auto benchmarkHandler = std::make_shared<BenchmarkEventHandler>(handlerId, 5);
                 handlers.push_back(benchmarkHandler);
-                
+
                 // Register handler with new optimized API
                 EventManager::Instance().registerHandler(EventTypeId::Custom,
                     [benchmarkHandler](const EventData&) {
@@ -546,7 +546,7 @@ BOOST_AUTO_TEST_CASE(BasicHandlerPerformance) {
     }
 
     std::cout << "\n===== BASIC HANDLER PERFORMANCE TEST =====" << std::endl;
-    
+
     // Simple test with realistic small game event count
     fixture.runHandlerBenchmark(4, 1, 10, false); // Immediate mode
     fixture.runHandlerBenchmark(4, 1, 10, true);  // Batched mode

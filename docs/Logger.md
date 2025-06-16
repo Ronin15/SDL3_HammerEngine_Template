@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Forge Game Engine logging system provides efficient, configurable logging with zero overhead in release builds. The system is designed for high-performance game development with separate debug and release configurations.
+The Hammer Game Engine logging system provides efficient, configurable logging with zero overhead in release builds. The system is designed for high-performance game development with separate debug and release configurations.
 
 ## Table of Contents
 
@@ -24,9 +24,9 @@ The Forge Game Engine logging system provides efficient, configurable logging wi
 #include "core/Logger.hpp"
 
 // Basic logging with system identification
-FORGE_INFO("MySystem", "Application started successfully");
-FORGE_ERROR("Network", "Failed to connect to server");
-FORGE_CRITICAL("Memory", "Out of memory condition detected");
+HAMMER_INFO("MySystem", "Application started successfully");
+HAMMER_ERROR("Network", "Failed to connect to server");
+HAMMER_CRITICAL("Memory", "Out of memory condition detected");
 ```
 
 ### System-Specific Macros
@@ -102,7 +102,7 @@ namespace Forge {
     // Full Logger class with printf-based output
     // All log levels functional
     // Immediate flushing for real-time feedback
-    #define FORGE_INFO(system, msg) Forge::Logger::Log(Forge::LogLevel::INFO, system, std::string(msg))
+    #define HAMMER_INFO(system, msg) Hammer::Logger::Log(Hammer::LogLevel::INFO, system, std::string(msg))
 #endif
 ```
 
@@ -110,13 +110,13 @@ namespace Forge {
 ```cpp
 #else
     // Ultra-minimal overhead
-    #define FORGE_CRITICAL(system, msg) do { \
-        printf("Forge Game Engine - [%s] CRITICAL: %s\n", system, std::string(msg).c_str()); \
+    #define HAMMER_CRITICAL(system, msg) do { \
+        printf("Hammer Game Engine - [%s] CRITICAL: %s\n", system, std::string(msg).c_str()); \
     } while(0)
 
     // All other levels become no-ops
-    #define FORGE_ERROR(system, msg) ((void)0)
-    #define FORGE_WARN(system, msg) ((void)0)
+    #define HAMMER_ERROR(system, msg) ((void)0)
+    #define HAMMER_WARN(system, msg) ((void)0)
     // ... etc
 #endif
 ```
@@ -127,11 +127,11 @@ namespace Forge {
 
 | Macro | Parameters | Description |
 |-------|------------|-------------|
-| `FORGE_CRITICAL(system, msg)` | system: const char*, msg: any type | Critical error logging |
-| `FORGE_ERROR(system, msg)` | system: const char*, msg: any type | Error logging |
-| `FORGE_WARN(system, msg)` | system: const char*, msg: any type | Warning logging |
-| `FORGE_INFO(system, msg)` | system: const char*, msg: any type | Information logging |
-| `FORGE_DEBUG(system, msg)` | system: const char*, msg: any type | Debug logging |
+| `HAMMER_CRITICAL(system, msg)` | system: const char*, msg: any type | Critical error logging |
+| `HAMMER_ERROR(system, msg)` | system: const char*, msg: any type | Error logging |
+| `HAMMER_WARN(system, msg)` | system: const char*, msg: any type | Warning logging |
+| `HAMMER_INFO(system, msg)` | system: const char*, msg: any type | Information logging |
+| `HAMMER_DEBUG(system, msg)` | system: const char*, msg: any type | Debug logging |
 
 ### Message Parameter Types
 The `msg` parameter accepts:
@@ -315,7 +315,7 @@ TEXTURE_ERROR("Load failed");
 SOUND_INFO("Audio subsystem initialized with OpenAL");
 
 // Less ideal: Generic macro requires system parameter
-FORGE_INFO("SoundManager", "Audio subsystem initialized with OpenAL");
+HAMMER_INFO("SoundManager", "Audio subsystem initialized with OpenAL");
 ```
 
 ### 4. Format Complex Data
@@ -353,7 +353,7 @@ AI_INFO("Entity " + std::to_string(entityId) + " switched to patrol mode");
 ### Basic System Initialization
 ```cpp
 bool GameEngine::init(const char* title, int width, int height, bool fullscreen) {
-    GAMEENGINE_INFO("Initializing Forge Game Engine");
+    GAMEENGINE_INFO("Initializing Hammer Game Engine");
 
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO) < 0) {
         GAMEENGINE_CRITICAL("Failed to initialize SDL: " + std::string(SDL_GetError()));
@@ -549,4 +549,4 @@ AI_DEBUG("AI update completed in " + std::to_string(duration.count()) + " micros
 
 ---
 
-The Logger system provides the foundation for debugging and monitoring the Forge Game Engine. Use it liberally in debug builds for comprehensive insight into system behavior, while maintaining zero overhead in release builds for optimal performance.
+The Logger system provides the foundation for debugging and monitoring the Hammer Game Engine. Use it liberally in debug builds for comprehensive insight into system behavior, while maintaining zero overhead in release builds for optimal performance.

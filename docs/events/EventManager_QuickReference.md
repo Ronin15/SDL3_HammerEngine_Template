@@ -1,7 +1,7 @@
 # EventManager Quick Reference
 
 ## Overview
-Quick reference for the Forge Game Engine EventManager as the single source of truth for all event operations. Features queue pressure monitoring, WorkerBudget integration, and architectural consistency with AIManager.
+Quick reference for the Hammer Game Engine EventManager as the single source of truth for all event operations. Features queue pressure monitoring, WorkerBudget integration, and architectural consistency with AIManager.
 
 ## Essential Includes
 ```cpp
@@ -12,7 +12,7 @@ Quick reference for the Forge Game Engine EventManager as the single source of t
 ## Quick Setup
 ```cpp
 // Initialize dependencies
-Forge::ThreadSystem::Instance().init();
+Hammer::ThreadSystem::Instance().init();
 
 // Initialize EventManager (single source of truth)
 EventManager::Instance().init();
@@ -167,8 +167,8 @@ EventManager::Instance().createWeatherSequence("DailyWeather", weatherEvents, tr
 ### Register Custom Event Type
 ```cpp
 // Register custom event type with EventManager
-EventManager::Instance().registerCustomEventType("Quest", 
-    [](const std::string& name, 
+EventManager::Instance().registerCustomEventType("Quest",
+    [](const std::string& name,
        const std::unordered_map<std::string, std::string>& params,
        const std::unordered_map<std::string, float>& numParams,
        const std::unordered_map<std::string, bool>& boolParams) -> EventPtr {
@@ -192,7 +192,7 @@ std::unordered_map<std::string, bool> questBoolParams = {
     {"repeatable", false}
 };
 
-EventManager::Instance().createCustomEvent("Quest", "FindTreasure", 
+EventManager::Instance().createCustomEvent("Quest", "FindTreasure",
                                           questParams, questNumParams, questBoolParams);
 ```
 
@@ -259,7 +259,7 @@ bool isThreaded = EventManager::Instance().isThreadingEnabled();
 
 // Recommended thresholds:
 // - 50-100: Light threading benefit
-// - 200-500: Moderate threading benefit  
+// - 200-500: Moderate threading benefit
 // - 1000+: Significant threading benefit
 ```
 
@@ -286,7 +286,7 @@ struct EventData {
     uint32_t flags;           // Active, dirty, etc.
     float lastUpdateTime;     // For delta time calculations
     uint32_t priority;        // Processing priority
-    
+
     // Helper methods (internal use)
     bool isActive() const;
     void setActive(bool active);
@@ -320,16 +320,16 @@ struct EventData {
 ```cpp
 void initEventSystem() {
     // Initialize dependencies
-    Forge::ThreadSystem::Instance().init();
-    
+    Hammer::ThreadSystem::Instance().init();
+
     // Initialize EventManager (single source of truth)
     EventManager::Instance().init();
     EventManager::Instance().enableThreading(true);
-    
+
     // Register handlers through EventManager
     EventManager::Instance().registerHandler(EventTypeId::Weather,
         [](const EventData& data) { /* handle weather */ });
-    
+
     EventManager::Instance().registerHandler(EventTypeId::SceneChange,
         [](const EventData& data) { /* handle scene change */ });
 }
@@ -341,11 +341,11 @@ void createGameEvents() {
     // All creation through EventManager
     EventManager::Instance().createWeatherEvent("MorningFog", "Foggy", 0.3f, 5.0f);
     EventManager::Instance().createWeatherEvent("AfternoonRain", "Rainy", 0.7f, 3.0f);
-    
+
     // Scene transitions
     EventManager::Instance().createSceneChangeEvent("EnterTown", "TownScene", "fade", 2.0f);
     EventManager::Instance().createAdvancedSceneChangeEvent("EnterDungeon", "DungeonScene", "dissolve", 1.5f, 7, false);
-    
+
     // NPC spawning
     EventManager::Instance().createNPCSpawnEvent("TownGuards", "Guard", 3, 50.0f);
     EventManager::Instance().createAdvancedNPCSpawnEvent("Merchants", "Merchant", 2, 30.0f, 5, false);
@@ -376,11 +376,11 @@ void createEventsBatch() {
         {"EveningRain", "Rainy", 0.6f, 4.0f},
         {"NightStorm", "Stormy", 0.8f, 2.0f}
     };
-    
+
     for (const auto& [name, type, intensity, time] : weatherEvents) {
         EventManager::Instance().createWeatherEvent(name, type, intensity, time);
     }
-    
+
     // Or use weather sequence
     EventManager::Instance().createWeatherSequence("DailyWeather", weatherEvents, true);
 }
@@ -395,7 +395,7 @@ void checkEventPerformance() {
         std::cout << "High event count: " << eventCount << std::endl;
         EventManager::Instance().compactEventStorage();
     }
-    
+
     auto weatherStats = EventManager::Instance().getPerformanceStats(EventTypeId::Weather);
     if (weatherStats.avgTime > 5.0) {
         std::cout << "Weather events slow: " << weatherStats.avgTime << "ms" << std::endl;
@@ -409,22 +409,22 @@ class GameEventSystem {
 public:
     bool initialize() {
         // Initialize dependencies
-        if (!Forge::ThreadSystem::Instance().init()) return false;
-        
+        if (!Hammer::ThreadSystem::Instance().init()) return false;
+
         // Initialize EventManager (single source of truth)
         if (!EventManager::Instance().init()) return false;
-        
+
         // Configure through EventManager
         EventManager::Instance().enableThreading(true);
         EventManager::Instance().setThreadingThreshold(200);
-        
+
         // Setup everything through EventManager
         setupHandlers();
         createEvents();
-        
+
         return true;
     }
-    
+
 private:
     void setupHandlers() {
         EventManager::Instance().registerHandler(EventTypeId::Weather,
@@ -434,15 +434,15 @@ private:
         EventManager::Instance().registerHandler(EventTypeId::NPCSpawn,
             [](const EventData& data) { /* NPC logic */ });
     }
-    
+
     void createEvents() {
         // Simple events
         EventManager::Instance().createWeatherEvent("Rain", "Rainy", 0.7f, 3.0f);
         EventManager::Instance().createSceneChangeEvent("ToTown", "TownScene", "fade", 2.0f);
-        
+
         // Advanced events
         EventManager::Instance().createAdvancedWeatherEvent("EpicStorm", "Stormy", 0.95f, 1.5f, 10, 60.0f, true, true);
-        
+
         // Custom events
         std::unordered_map<std::string, std::string> params = {{"questId", "tutorial"}};
         std::unordered_map<std::string, float> numParams = {{"reward", 100.0f}};

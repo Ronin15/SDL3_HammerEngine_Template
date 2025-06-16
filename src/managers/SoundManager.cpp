@@ -97,7 +97,7 @@ bool SoundManager::loadSFX(const std::string& filePath, const std::string& sound
 
           // Create sound ID by combining the provided prefix and filename
           std::string combinedID = soundID.empty() ? filename : soundID + "_" + filename;
-          //std::cout << "Forge Game Engine - Loading sound ID: " << combinedID << "!\n";
+          //std::cout << "Hammer Game Engine - Loading sound ID: " << combinedID << "!\n";
           // Load the individual file as a sound with immediate RAII
           auto chunk = std::unique_ptr<Mix_Chunk, decltype(&Mix_FreeChunk)>(
               Mix_LoadWAV(fullPath.c_str()), Mix_FreeChunk);

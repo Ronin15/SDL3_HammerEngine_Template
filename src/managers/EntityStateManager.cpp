@@ -18,7 +18,7 @@ EntityStateManager::~EntityStateManager() {
 void EntityStateManager::addState(const std::string& stateName, std::unique_ptr<EntityState> state) {
   if (states.find(stateName) != states.end()) {
     ENTITYSTATE_ERROR("State already exists: " + stateName);
-    throw std::invalid_argument("Forge Game Engine - State already exists" + stateName);
+    throw std::invalid_argument("Hammer Game Engine - State already exists" + stateName);
   }
   // Convert unique_ptr to shared_ptr and add to container
   states[stateName] = std::shared_ptr<EntityState>(state.release());

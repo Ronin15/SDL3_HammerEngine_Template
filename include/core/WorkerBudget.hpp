@@ -9,7 +9,7 @@
 #include <cstddef>
 #include <algorithm>
 
-namespace Forge {
+namespace Hammer {
 
 /**
  * @brief Worker budget allocation for game engine subsystems

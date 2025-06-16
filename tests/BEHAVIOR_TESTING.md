@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Behavior Functionality Test suite (`BehaviorFunctionalityTest.cpp`) provides comprehensive testing for all 8 AI behaviors implemented in the Forge Game Engine. This test ensures that each behavior works correctly, handles messages properly, and integrates seamlessly with the AIManager.
+The Behavior Functionality Test suite (`BehaviorFunctionalityTest.cpp`) provides comprehensive testing for all 8 AI behaviors implemented in the Hammer Game Engine. This test ensures that each behavior works correctly, handles messages properly, and integrates seamlessly with the AIManager.
 
 ## Test Structure
 

@@ -14,7 +14,7 @@ BOOST_AUTO_TEST_CASE(TestBufferUtilizationLogic) {
     std::cout << "\n=== Testing Buffer Thread Utilization ===\n";
     
     // Test high-end system (12 workers)
-    Forge::WorkerBudget budget = Forge::calculateWorkerBudget(12);
+    Hammer::WorkerBudget budget = Hammer::calculateWorkerBudget(12);
     
     std::cout << "System: 12 workers total\n";
     std::cout << "Base allocations - GameLoop: " << budget.engineReserved 
@@ -66,7 +66,7 @@ BOOST_AUTO_TEST_CASE(TestLowEndSystemBuffer) {
     std::cout << "\n=== Testing Low-End System (No Buffer) ===\n";
     
     // Test low-end system (3 workers)
-    Forge::WorkerBudget budget = Forge::calculateWorkerBudget(3);
+    Hammer::WorkerBudget budget = Hammer::calculateWorkerBudget(3);
     
     std::cout << "System: 3 workers total\n";
     std::cout << "Allocations - GameLoop: " << budget.engineReserved 
@@ -90,7 +90,7 @@ BOOST_AUTO_TEST_CASE(TestVeryHighEndSystem) {
     std::cout << "\n=== Testing Very High-End System (16 workers) ===\n";
     
     // Test very high-end system (16 workers)
-    Forge::WorkerBudget budget = Forge::calculateWorkerBudget(16);
+    Hammer::WorkerBudget budget = Hammer::calculateWorkerBudget(16);
     
     std::cout << "System: 16 workers total\n";
     std::cout << "Allocations - GameLoop: " << budget.engineReserved 

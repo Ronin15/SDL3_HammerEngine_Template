@@ -67,18 +67,18 @@ void AIDemoState::handleInput() {
         aiMgr.broadcastMessage(message, true);
 
         // Simple feedback
-        std::cout << "Forge Game Engine - AI " << (m_aiPaused ? "PAUSED" : "RESUMED") << std::endl;
+        std::cout << "Hammer Game Engine - AI " << (m_aiPaused ? "PAUSED" : "RESUMED") << std::endl;
     }
 
     if (inputMgr.wasKeyPressed(SDL_SCANCODE_B)) {
-        std::cout << "Forge Game Engine - Preparing to exit AIDemoState...\n";
+        std::cout << "Hammer Game Engine - Preparing to exit AIDemoState...\n";
         const GameEngine& gameEngine = GameEngine::Instance();
         gameEngine.getGameStateManager()->setState("MainMenuState");
     }
 
     if (inputMgr.wasKeyPressed(SDL_SCANCODE_1)) {
         // Assign Wander behavior to all NPCs
-        std::cout << "Forge Game Engine - Switching all NPCs to WANDER behavior\n";
+        std::cout << "Hammer Game Engine - Switching all NPCs to WANDER behavior\n";
         AIManager& aiMgr = AIManager::Instance();
         for (auto& npc : m_npcs) {
             // Queue the behavior assignment for batch processing
@@ -88,7 +88,7 @@ void AIDemoState::handleInput() {
 
     if (inputMgr.wasKeyPressed(SDL_SCANCODE_2)) {
         // Assign Patrol behavior to all NPCs
-        std::cout << "Forge Game Engine - Switching all NPCs to PATROL behavior\n";
+        std::cout << "Hammer Game Engine - Switching all NPCs to PATROL behavior\n";
         AIManager& aiMgr = AIManager::Instance();
         for (auto& npc : m_npcs) {
             // Queue the behavior assignment for batch processing
@@ -98,7 +98,7 @@ void AIDemoState::handleInput() {
 
     if (inputMgr.wasKeyPressed(SDL_SCANCODE_3)) {
         // Assign Chase behavior to all NPCs
-        std::cout << "Forge Game Engine - Switching all NPCs to CHASE behavior\n";
+        std::cout << "Hammer Game Engine - Switching all NPCs to CHASE behavior\n";
 
         // Chase behavior target is automatically maintained by AIManager
         // No manual target updates needed
@@ -111,7 +111,7 @@ void AIDemoState::handleInput() {
 
     if (inputMgr.wasKeyPressed(SDL_SCANCODE_4)) {
         // Assign SmallWander behavior to all NPCs
-        std::cout << "Forge Game Engine - Switching all NPCs to SMALL WANDER behavior\n";
+        std::cout << "Hammer Game Engine - Switching all NPCs to SMALL WANDER behavior\n";
         AIManager& aiMgr = AIManager::Instance();
         for (auto& npc : m_npcs) {
             // Queue the behavior assignment for batch processing
@@ -121,7 +121,7 @@ void AIDemoState::handleInput() {
 
     if (inputMgr.wasKeyPressed(SDL_SCANCODE_5)) {
         // Assign LargeWander behavior to all NPCs
-        std::cout << "Forge Game Engine - Switching all NPCs to LARGE WANDER behavior\n";
+        std::cout << "Hammer Game Engine - Switching all NPCs to LARGE WANDER behavior\n";
         AIManager& aiMgr = AIManager::Instance();
         for (auto& npc : m_npcs) {
             // Queue the behavior assignment for batch processing
@@ -131,7 +131,7 @@ void AIDemoState::handleInput() {
 
     if (inputMgr.wasKeyPressed(SDL_SCANCODE_6)) {
         // Assign EventWander behavior to all NPCs
-        std::cout << "Forge Game Engine - Switching all NPCs to EVENT WANDER behavior\n";
+        std::cout << "Hammer Game Engine - Switching all NPCs to EVENT WANDER behavior\n";
         AIManager& aiMgr = AIManager::Instance();
         for (auto& npc : m_npcs) {
             // Queue the behavior assignment for batch processing
@@ -141,7 +141,7 @@ void AIDemoState::handleInput() {
 
     if (inputMgr.wasKeyPressed(SDL_SCANCODE_7)) {
         // Assign RandomPatrol behavior to all NPCs
-        std::cout << "Forge Game Engine - Switching all NPCs to RANDOM PATROL behavior\n";
+        std::cout << "Hammer Game Engine - Switching all NPCs to RANDOM PATROL behavior\n";
         AIManager& aiMgr = AIManager::Instance();
         for (auto& npc : m_npcs) {
             // Queue the behavior assignment for batch processing
@@ -151,7 +151,7 @@ void AIDemoState::handleInput() {
 
     if (inputMgr.wasKeyPressed(SDL_SCANCODE_8)) {
         // Assign CirclePatrol behavior to all NPCs
-        std::cout << "Forge Game Engine - Switching all NPCs to CIRCLE PATROL behavior\n";
+        std::cout << "Hammer Game Engine - Switching all NPCs to CIRCLE PATROL behavior\n";
         AIManager& aiMgr = AIManager::Instance();
         for (auto& npc : m_npcs) {
             // Queue the behavior assignment for batch processing
@@ -161,7 +161,7 @@ void AIDemoState::handleInput() {
 
     if (inputMgr.wasKeyPressed(SDL_SCANCODE_9)) {
         // Assign EventTarget behavior to all NPCs
-        std::cout << "Forge Game Engine - Switching all NPCs to EVENT TARGET behavior\n";
+        std::cout << "Hammer Game Engine - Switching all NPCs to EVENT TARGET behavior\n";
         AIManager& aiMgr = AIManager::Instance();
         for (auto& npc : m_npcs) {
             // Queue the behavior assignment for batch processing
@@ -172,7 +172,7 @@ void AIDemoState::handleInput() {
 
 
 bool AIDemoState::enter() {
-    std::cout << "Forge Game Engine - Entering AIDemoState...\n";
+    std::cout << "Hammer Game Engine - Entering AIDemoState...\n";
 
     try {
         // Cache GameEngine reference for better performance
@@ -198,7 +198,7 @@ bool AIDemoState::enter() {
         // Create and register chase behavior - behaviors can get player via getPlayerReference()
         auto chaseBehavior = std::make_unique<ChaseBehavior>(120.0f, 500.0f, 50.0f);
         aiMgr.registerBehavior("Chase", std::move(chaseBehavior));
-        std::cout << "Forge Game Engine - Chase behavior registered (will use AIManager::getPlayerReference())\n";
+        std::cout << "Hammer Game Engine - Chase behavior registered (will use AIManager::getPlayerReference())\n";
 
         // Configure priority multiplier for proper distance progression (1.0 = full distance thresholds)
         aiMgr.configurePriorityMultiplier(1.0f);
@@ -217,20 +217,20 @@ bool AIDemoState::enter() {
         ui.createLabel("ai_status", {10, 110, 400, 20}, "FPS: -- | Entities: -- | AI: RUNNING");
 
         // Log status
-        std::cout << "Forge Game Engine - Created " << m_npcs.size() << " NPCs with AI behaviors\n";
+        std::cout << "Hammer Game Engine - Created " << m_npcs.size() << " NPCs with AI behaviors\n";
 
         return true;
     } catch (const std::exception& e) {
-        std::cerr << "Forge Game Engine - ERROR: Exception in AIDemoState::enter(): " << e.what() << std::endl;
+        std::cerr << "Hammer Game Engine - ERROR: Exception in AIDemoState::enter(): " << e.what() << std::endl;
         return false;
     } catch (...) {
-        std::cerr << "Forge Game Engine - ERROR: Unknown exception in AIDemoState::enter()" << std::endl;
+        std::cerr << "Hammer Game Engine - ERROR: Unknown exception in AIDemoState::enter()" << std::endl;
         return false;
     }
 }
 
 bool AIDemoState::exit() {
-    std::cout << "Forge Game Engine - Exiting AIDemoState...\n";
+    std::cout << "Hammer Game Engine - Exiting AIDemoState...\n";
 
     // Cache AIManager reference for better performance
     AIManager& aiMgr = AIManager::Instance();
@@ -261,7 +261,7 @@ bool AIDemoState::exit() {
     aiMgr.setGlobalPause(false);
     m_aiPaused = false;
 
-    std::cout << "Forge Game Engine - AIDemoState exit complete\n";
+    std::cout << "Hammer Game Engine - AIDemoState exit complete\n";
     return true;
 }
 
@@ -283,9 +283,9 @@ void AIDemoState::update([[maybe_unused]] float deltaTime) {
 
         // Handle user input for the demo
     } catch (const std::exception& e) {
-        std::cerr << "Forge Game Engine - ERROR: Exception in AIDemoState::update(): " << e.what() << std::endl;
+        std::cerr << "Hammer Game Engine - ERROR: Exception in AIDemoState::update(): " << e.what() << std::endl;
     } catch (...) {
-        std::cerr << "Forge Game Engine - ERROR: Unknown exception in AIDemoState::update()" << std::endl;
+        std::cerr << "Hammer Game Engine - ERROR: Unknown exception in AIDemoState::update()" << std::endl;
     }
 
     // Game logic only - UI updates moved to render() for thread safety
@@ -419,7 +419,7 @@ void AIDemoState::createNPCs() {
                 // Add to collection
                 m_npcs.push_back(npc);
             } catch (const std::exception& e) {
-                std::cerr << "Forge Game Engine - ERROR: Exception creating NPC " << i << ": " << e.what() << std::endl;
+                std::cerr << "Hammer Game Engine - ERROR: Exception creating NPC " << i << ": " << e.what() << std::endl;
                 continue;
             }
         }
@@ -427,8 +427,8 @@ void AIDemoState::createNPCs() {
         // Chase behavior target is now automatically handled by AIManager
         // No manual setup needed - target is set during setupChaseBehaviorWithTarget()
     } catch (const std::exception& e) {
-        std::cerr << "Forge Game Engine - ERROR: Exception in createNPCs(): " << e.what() << std::endl;
+        std::cerr << "Hammer Game Engine - ERROR: Exception in createNPCs(): " << e.what() << std::endl;
     } catch (...) {
-        std::cerr << "Forge Game Engine - ERROR: Unknown exception in createNPCs()" << std::endl;
+        std::cerr << "Hammer Game Engine - ERROR: Unknown exception in createNPCs()" << std::endl;
     }
 }

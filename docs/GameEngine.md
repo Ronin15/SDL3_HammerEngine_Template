@@ -2,7 +2,7 @@
 
 ## Overview
 
-The `GameEngine` class is the core singleton that manages all game systems, SDL subsystems, and coordinates the main game loop. It serves as the central hub for initialization, resource management, threading coordination, and system integration in the Forge Game Engine.
+The `GameEngine` class is the core singleton that manages all game systems, SDL subsystems, and coordinates the main game loop. It serves as the central hub for initialization, resource management, threading coordination, and system integration in the Hammer Game Engine.
 
 ## Table of Contents
 
@@ -127,7 +127,7 @@ SDL_SetWindowFullscreenMode(mp_window.get(), nullptr);
 ```cpp
 // Example: Sound manager initialization in background thread
 initTasks.push_back(
-    Forge::ThreadSystem::Instance().enqueueTaskWithResult([]() -> bool {
+    Hammer::ThreadSystem::Instance().enqueueTaskWithResult([]() -> bool {
         SoundManager& soundMgr = SoundManager::Instance();
         return soundMgr.init();
     }));
@@ -193,21 +193,21 @@ void GameEngine::update(float deltaTime) {
     std::lock_guard<std::mutex> lock(m_updateMutex);
     
     // Use WorkerBudget system for coordinated task submission
-    if (Forge::ThreadSystem::Exists()) {
-        auto& threadSystem = Forge::ThreadSystem::Instance();
+    if (Hammer::ThreadSystem::Exists()) {
+        auto& threadSystem = Hammer::ThreadSystem::Instance();
         size_t availableWorkers = static_cast<size_t>(threadSystem.getThreadCount());
-        Forge::WorkerBudget budget = Forge::calculateWorkerBudget(availableWorkers);
-        
+        Hammer::WorkerBudget budget = Hammer::calculateWorkerBudget(availableWorkers);
+
         // Submit engine coordination tasks
         threadSystem.enqueueTask([this, deltaTime]() {
             processEngineCoordination(deltaTime);
-        }, Forge::TaskPriority::High);
-        
+        }, Hammer::TaskPriority::High);
+
         // Submit secondary tasks if multiple workers available
         if (budget.engineReserved > 1) {
             threadSystem.enqueueTask([this]() {
                 processEngineSecondaryTasks();
-            }, Forge::TaskPriority::Normal);
+            }, Hammer::TaskPriority::Normal);
         }
     }
     
@@ -236,8 +236,8 @@ void GameEngine::update(float deltaTime) {
 void GameEngine::render(float interpolation) {
     // Always on MAIN thread (SDL requirement)
     std::lock_guard<std::mutex> lock(m_renderMutex);
-    
-    SDL_SetRenderDrawColor(mp_renderer.get(), FORGE_GRAY);
+
+    SDL_SetRenderDrawColor(mp_renderer.get(), HAMMER_GRAY);
     SDL_RenderClear(mp_renderer.get());
     
     mp_gameStateManager->render();
@@ -255,7 +255,7 @@ The GameEngine implements sophisticated threading with centralized resource mana
 
 **Engine Resource Allocation:**
 - Receives **2 workers** (Critical priority) from ThreadSystem's WorkerBudget system
-- Uses `Forge::calculateWorkerBudget()` for centralized resource allocation
+- Uses `Hammer::calculateWorkerBudget()` for centralized resource allocation
 - Coordinates with GameLoop to ensure optimal frame-rate performance
 - Submits tasks with appropriate priorities to prevent system overload
 
@@ -303,7 +303,7 @@ public:
             m_bufferReady[nextUpdateIndex].store(false, std::memory_order_release);
         }
     }
-    
+
     bool hasNewFrameToRender() const {
         uint64_t lastUpdate = m_lastUpdateFrame.load(std::memory_order_relaxed);
         uint64_t lastRendered = m_lastRenderedFrame.load(std::memory_order_relaxed);
@@ -332,23 +332,23 @@ void GameEngine::processEngineSecondaryTasks() {
 ```cpp
 void GameEngine::update(float deltaTime) {
     // Use WorkerBudget system for coordinated task submission
-    if (Forge::ThreadSystem::Exists()) {
-        auto& threadSystem = Forge::ThreadSystem::Instance();
-        
+    if (Hammer::ThreadSystem::Exists()) {
+        auto& threadSystem = Hammer::ThreadSystem::Instance();
+
         // Calculate worker budget for this frame
         size_t availableWorkers = static_cast<size_t>(threadSystem.getThreadCount());
-        Forge::WorkerBudget budget = Forge::calculateWorkerBudget(availableWorkers);
-        
+        Hammer::WorkerBudget budget = Hammer::calculateWorkerBudget(availableWorkers);
+
         // Submit engine coordination tasks with high priority
         threadSystem.enqueueTask([this, deltaTime]() {
             processEngineCoordination(deltaTime);
-        }, Forge::TaskPriority::High, "GameEngine_Coordination");
-        
+        }, Hammer::TaskPriority::High, "GameEngine_Coordination");
+
         // Only submit secondary tasks if multiple workers allocated
         if (budget.engineReserved > 1) {
             threadSystem.enqueueTask([this]() {
                 processEngineSecondaryTasks();
-            }, Forge::TaskPriority::Normal, "GameEngine_Secondary");
+            }, Hammer::TaskPriority::Normal, "GameEngine_Secondary");
         }
     }
 }
@@ -416,7 +416,7 @@ if (logicalWidth > 0 && logicalHeight > 0) {
     float scaleX = static_cast<float>(pixelWidth) / static_cast<float>(logicalWidth);
     float scaleY = static_cast<float>(pixelHeight) / static_cast<float>(logicalHeight);
     dpiScale = std::max(scaleX, scaleY);
-    
+
     #ifdef __APPLE__
     float displayScale = SDL_GetWindowDisplayScale(mp_window.get());
     if (displayScale > 0.0f) {
@@ -431,7 +431,7 @@ if (logicalWidth > 0 && logicalHeight > 0) {
 ```cpp
 bool GameEngine::isVSyncEnabled() const {
     if (!mp_renderer) return false;
-    
+
     int vsync = 0;
     if (SDL_GetRenderVSync(mp_renderer.get(), &vsync)) {
         return (vsync > 0);
@@ -451,9 +451,9 @@ bool GameEngine::setVSyncEnabled(bool enable) {
 ```cpp
 int getWindowWidth() const { return m_windowWidth; }
 int getWindowHeight() const { return m_windowHeight; }
-void setWindowSize(int width, int height) { 
-    m_windowWidth = width; 
-    m_windowHeight = height; 
+void setWindowSize(int width, int height) {
+    m_windowWidth = width;
+    m_windowHeight = height;
 }
 ```
 
@@ -494,7 +494,7 @@ private:
     // These managers integrate with WorkerBudget system for threading
     AIManager* mp_aiManager{nullptr};        // 60% worker allocation
     EventManager* mp_eventManager{nullptr};  // 30% worker allocation
-    
+
     // InputManager not cached - handled in handleEvents() for proper SDL event polling
     // (SDL requires main thread event processing)
 };
@@ -515,12 +515,12 @@ The GameEngine implements sophisticated coordination with the WorkerBudget syste
 void GameEngine::update(float deltaTime) {
     // Calculate worker budget for coordinated resource allocation
     size_t availableWorkers = static_cast<size_t>(threadSystem.getThreadCount());
-    Forge::WorkerBudget budget = Forge::calculateWorkerBudget(availableWorkers);
-    
+    Hammer::WorkerBudget budget = Hammer::calculateWorkerBudget(availableWorkers);
+
     // Resource allocation coordination:
     // - GameLoop: 2 workers (Critical priority)
     // - GameEngine: 2 workers (engine tasks)
-    // - AIManager: 60% of remaining workers  
+    // - AIManager: 60% of remaining workers
     // - EventManager: 30% of remaining workers
     // - Buffer: Remaining workers for burst capacity
 }
@@ -633,19 +633,19 @@ Always initialize in the correct sequence:
 ```cpp
 bool initializeGame() {
     GameEngine& engine = GameEngine::Instance();
-    
+
     // 1. Initialize engine first
     if (!engine.init("Game Title", 1280, 720, false)) {
         return false;
     }
-    
+
     // 2. Create and set game loop
     auto gameLoop = std::make_shared<GameLoop>();
     engine.setGameLoop(gameLoop);
-    
+
     // 3. Start the loop
     gameLoop->run();
-    
+
     // 4. Cleanup
     engine.clean();
     return true;
@@ -659,12 +659,12 @@ When accessing resources from worker threads:
 ```cpp
 void workerThreadFunction() {
     GameEngine& engine = GameEngine::Instance();
-    
+
     // Safe: These methods are thread-safe
     if (engine.hasNewFrameToRender()) {
         // Process frame data
     }
-    
+
     // Safe: Atomic operations
     bool isRunning = engine.isUpdateRunning();
 }
@@ -675,7 +675,7 @@ void workerThreadFunction() {
 ```cpp
 void setupRenderer() {
     GameEngine& engine = GameEngine::Instance();
-    
+
     // Check VSync capability
     if (engine.isVSyncEnabled()) {
         // VSync is active
@@ -696,14 +696,14 @@ Always check return values and handle exceptions:
 bool safeEngineOperation() {
     try {
         GameEngine& engine = GameEngine::Instance();
-        
+
         if (!engine.init("My Game", 1280, 720, false)) {
             return false;
         }
-        
+
         // Additional operations...
         return true;
-        
+
     } catch (const std::exception& e) {
         std::cerr << "Engine error: " << e.what() << std::endl;
         return false;
@@ -719,46 +719,46 @@ bool safeEngineOperation() {
 class MyGame {
 private:
     std::shared_ptr<GameLoop> m_gameLoop;
-    
+
 public:
     MyGame() = default;
-    
+
     bool initialize() {
         GameEngine& engine = GameEngine::Instance();
-        
+
         // Initialize engine with specific parameters
         if (!engine.init("My Awesome Game", 1920, 1080, false)) {
             return false;
         }
-        
+
         // Create game loop
         m_gameLoop = std::make_shared<GameLoop>();
         engine.setGameLoop(m_gameLoop);
-        
+
         // Load game-specific resources
         if (!loadGameResources()) {
             return false;
         }
-        
+
         return true;
     }
-    
+
     bool run() {
         if (!m_gameLoop) {
             return false;
         }
-        
+
         // Start the main loop
         m_gameLoop->run();
         return true;
     }
-    
+
     void shutdown() {
         GameEngine& engine = GameEngine::Instance();
         engine.clean();
         m_gameLoop.reset();
     }
-    
+
 private:
     bool loadGameResources() {
         // Load game-specific resources here
@@ -768,14 +768,14 @@ private:
 
 int main() {
     MyGame game;
-    
+
     if (!game.initialize()) {
         return -1;
     }
-    
+
     game.run();
     game.shutdown();
-    
+
     return 0;
 }
 ```
@@ -787,14 +787,14 @@ class AsyncResourceLoader {
 private:
     std::atomic<bool> m_loadingComplete{false};
     std::vector<std::future<bool>> m_loadingTasks;
-    
+
 public:
     AsyncResourceLoader() = default;
-    
+
     void startLoading() {
         // Use ThreadSystem for coordinated loading
-        auto& threadSystem = Forge::ThreadSystem::Instance();
-        
+        auto& threadSystem = Hammer::ThreadSystem::Instance();
+
         // Load different resource types in parallel
         m_loadingTasks.push_back(
             threadSystem.enqueueTaskWithResult([]() -> bool {
@@ -804,7 +804,7 @@ public:
                 return true;
             })
         );
-        
+
         m_loadingTasks.push_back(
             threadSystem.enqueueTaskWithResult([]() -> bool {
                 // Load sounds
@@ -813,18 +813,18 @@ public:
                 return true;
             })
         );
-        
+
         // Start background completion check
         threadSystem.enqueueTask([this]() {
             waitForCompletion();
             m_loadingComplete.store(true);
         });
     }
-    
+
     bool isComplete() const {
         return m_loadingComplete.load();
     }
-    
+
 private:
     void waitForCompletion() {
         for (auto& task : m_loadingTasks) {
@@ -846,30 +846,30 @@ private:
     std::chrono::high_resolution_clock::time_point m_lastFrame;
     float m_frameTimeAccumulator{0.0f};
     int m_frameCount{0};
-    
+
 public:
     PerformanceMonitor() : m_lastFrame(std::chrono::high_resolution_clock::now()) {}
-    
+
     void updatePerformanceMetrics() {
         auto currentTime = std::chrono::high_resolution_clock::now();
         auto frameTime = std::chrono::duration<float>(currentTime - m_lastFrame).count();
         m_lastFrame = currentTime;
-        
+
         m_frameTimeAccumulator += frameTime;
         m_frameCount++;
-        
+
         // Report every second
         if (m_frameTimeAccumulator >= 1.0f) {
             GameEngine& engine = GameEngine::Instance();
             float engineFPS = engine.getCurrentFPS();
             float calculatedFPS = static_cast<float>(m_frameCount) / m_frameTimeAccumulator;
-            
-            std::cout << "Engine FPS: " << engineFPS 
+
+            std::cout << "Engine FPS: " << engineFPS
                       << ", Calculated FPS: " << calculatedFPS
                       << ", Update Running: " << engine.isUpdateRunning()
                       << ", New Frame Available: " << engine.hasNewFrameToRender()
                       << std::endl;
-            
+
             // Reset counters
             m_frameTimeAccumulator = 0.0f;
             m_frameCount = 0;

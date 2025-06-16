@@ -432,13 +432,13 @@ void EventManager::updateEventTypeBatch(EventTypeId typeId) {
 }
 
 void EventManager::updateEventTypeBatchThreaded(EventTypeId typeId) {
-    if (!Forge::ThreadSystem::Exists()) {
+    if (!Hammer::ThreadSystem::Exists()) {
         // Fall back to single-threaded if ThreadSystem not available
         updateEventTypeBatch(typeId);
         return;
     }
 
-    auto& threadSystem = Forge::ThreadSystem::Instance();
+    auto& threadSystem = Hammer::ThreadSystem::Instance();
     auto startTime = getCurrentTimeNanos();
 
     // Copy events to local vector to minimize lock time
@@ -465,7 +465,7 @@ void EventManager::updateEventTypeBatchThreaded(EventTypeId typeId) {
 
     // Proper WorkerBudget calculation with architectural respect
     size_t availableWorkers = static_cast<size_t>(threadSystem.getThreadCount());
-    Forge::WorkerBudget budget = Forge::calculateWorkerBudget(availableWorkers);
+    Hammer::WorkerBudget budget = Hammer::calculateWorkerBudget(availableWorkers);
     size_t eventWorkerBudget = budget.eventAllocated;
 
     // Check queue pressure before submitting tasks
@@ -475,7 +475,7 @@ void EventManager::updateEventTypeBatchThreaded(EventTypeId typeId) {
     
     if (queueSize > pressureThreshold) {
         // Graceful degradation: fallback to single-threaded processing
-        EVENT_DEBUG("Queue pressure detected (" + std::to_string(queueSize) + "/" + 
+        EVENT_DEBUG("Queue pressure detected (" + std::to_string(queueSize) + "/" +
                    std::to_string(queueCapacity) + "), using single-threaded processing");
         for (auto& eventData : localEvents) {
             if (eventData.event) {
@@ -505,7 +505,7 @@ void EventManager::updateEventTypeBatchThreaded(EventTypeId typeId) {
         // High pressure: use fewer, larger batches to reduce queue overhead
         minEventsPerBatch = 15;
         maxBatches = 2;
-        EVENT_DEBUG("High queue pressure (" + std::to_string(static_cast<int>(queuePressure * 100)) + 
+        EVENT_DEBUG("High queue pressure (" + std::to_string(static_cast<int>(queuePressure * 100)) +
                    "%), using larger batches");
     } else if (queuePressure < 0.25) {
         // Low pressure: can use more batches for better parallelization
@@ -540,7 +540,7 @@ void EventManager::updateEventTypeBatchThreaded(EventTypeId typeId) {
                         localEvents[j].event->update();
                     }
                 }
-            }, Forge::TaskPriority::Normal, "Event_OptimalBatch"));
+            }, Hammer::TaskPriority::Normal, "Event_OptimalBatch"));
         }
 
         // Wait for all batches to complete

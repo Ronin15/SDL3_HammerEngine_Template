@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Forge Game Engine AI system includes comprehensive mode-based behavior configuration for all AI behaviors. These modes provide automatic setup for common patterns, eliminating manual configuration while ensuring consistent behavior across different NPC types. The system supports 8 distinct behavior types, each with multiple modes for specialized use cases.
+The Hammer Game Engine AI system includes comprehensive mode-based behavior configuration for all AI behaviors. These modes provide automatic setup for common patterns, eliminating manual configuration while ensuring consistent behavior across different NPC types. The system supports 8 distinct behavior types, each with multiple modes for specialized use cases.
 
 ## Complete Behavior System
 
@@ -567,37 +567,37 @@ void setupAttackBehaviors() {
         AttackBehavior::AttackMode::MELEE_ATTACK, 80.0f, 15.0f
     );
     AIManager::Instance().registerBehavior("Melee", std::move(meleeAttack));
-    
+
     // Ranged attack - projectile combat
     auto rangedAttack = std::make_unique<AttackBehavior>(
         AttackBehavior::AttackMode::RANGED_ATTACK, 250.0f, 12.0f
     );
     AIManager::Instance().registerBehavior("Ranged", std::move(rangedAttack));
-    
+
     // Charge attack - powerful rush
     auto chargeAttack = std::make_unique<AttackBehavior>(
         AttackBehavior::AttackMode::CHARGE_ATTACK, 120.0f, 20.0f
     );
     AIManager::Instance().registerBehavior("Charge", std::move(chargeAttack));
-    
+
     // Ambush attack - stealth strike
     auto ambushAttack = std::make_unique<AttackBehavior>(
         AttackBehavior::AttackMode::AMBUSH_ATTACK, 60.0f, 18.0f
     );
     AIManager::Instance().registerBehavior("Ambush", std::move(ambushAttack));
-    
+
     // Coordinated attack - team combat
     auto coordinatedAttack = std::make_unique<AttackBehavior>(
         AttackBehavior::AttackMode::COORDINATED_ATTACK, 90.0f, 14.0f
     );
     AIManager::Instance().registerBehavior("Coordinated", std::move(coordinatedAttack));
-    
+
     // Hit and run - mobile combat
     auto hitAndRun = std::make_unique<AttackBehavior>(
         AttackBehavior::AttackMode::HIT_AND_RUN, 100.0f, 13.0f
     );
     AIManager::Instance().registerBehavior("HitAndRun", std::move(hitAndRun));
-    
+
     // Berserker attack - aggressive assault
     auto berserkerAttack = std::make_unique<AttackBehavior>(
         AttackBehavior::AttackMode::BERSERKER_ATTACK, 85.0f, 16.0f
@@ -631,7 +631,7 @@ void setupChaseBehavior() {
 std::string getBehaviorForNPCType(const std::string& npcType, const std::string& context = "") {
     static std::unordered_map<std::string, size_t> counters;
     size_t index = counters[npcType]++;
-    
+
     if (npcType == "Guard") {
         if (context == "alert") return "AlertGuard";
         if (context == "patrol") return "PatrolGuard";
@@ -686,7 +686,7 @@ std::string getBehaviorForNPCType(const std::string& npcType, const std::string&
         };
         return behaviors[index % behaviors.size()];
     }
-    
+
     return "Wander"; // Default fallback
 }
 ```
@@ -696,14 +696,14 @@ std::string getBehaviorForNPCType(const std::string& npcType, const std::string&
 ```cpp
 void GameState::createNPC(const std::string& npcType, const Vector2D& position, const std::string& context = "") {
     auto npc = std::make_shared<NPC>(npcType, position, 64, 64);
-    
+
     // Get behavior and priority for this NPC type
     std::string behaviorName = getBehaviorForNPCType(npcType, context);
     int priority = getPriorityForNPCType(npcType, context);
-    
+
     // Register with AI system
     AIManager::Instance().registerEntityForUpdates(npc, priority, behaviorName);
-    
+
     // Track the NPC
     m_npcs.push_back(npc);
 }
@@ -823,7 +823,7 @@ void updateGuardPost(std::shared_ptr<GuardBehavior> guard, const Vector2D& newPo
 void switchBehaviorMode(EntityPtr entity, const std::string& newBehaviorName) {
     // Remove from current behavior
     AIManager::Instance().removeEntityFromUpdates(entity);
-    
+
     // Assign new behavior
     int priority = getPriorityForNPCType(entity->getType());
     AIManager::Instance().registerEntityForUpdates(entity, priority, newBehaviorName);
@@ -833,7 +833,7 @@ void switchBehaviorMode(EntityPtr entity, const std::string& newBehaviorName) {
 void handleContextChange(EntityPtr entity, const std::string& newContext) {
     std::string npcType = entity->getType();
     std::string newBehavior = getBehaviorForNPCType(npcType, newContext);
-    
+
     if (newBehavior != entity->getCurrentBehavior()) {
         switchBehaviorMode(entity, newBehavior);
     }
@@ -849,14 +849,14 @@ void setupCustomPatrolArea() {
         PatrolBehavior::PatrolMode::RANDOM_AREA, 2.0f
     );
     customPatrol->setScreenDimensions(1280.0f, 720.0f);
-    
+
     // Override default area settings
     Vector2D customTopLeft(100, 100);
     Vector2D customBottomRight(600, 500);
     customPatrol->setRandomPatrolArea(customTopLeft, customBottomRight, 8);
     customPatrol->setMinWaypointDistance(120.0f);
     customPatrol->setAutoRegenerate(false); // Static waypoints
-    
+
     AIManager::Instance().registerBehavior("CustomPatrol", std::move(customPatrol));
 }
 
@@ -865,13 +865,13 @@ void setupSafeZones() {
     auto fleeBehavior = std::make_unique<FleeBehavior>(
         FleeBehavior::FleeMode::SEEK_COVER, 4.0f, 400.0f
     );
-    
+
     // Add multiple safe zones
     fleeBehavior->addSafeZone(Vector2D(100, 100), 50.0f);  // Town center
     fleeBehavior->addSafeZone(Vector2D(600, 400), 75.0f);  // Guard post
     fleeBehavior->addSafeZone(Vector2D(300, 600), 60.0f);  // Shelter
     fleeBehavior->setScreenBounds(1280.0f, 720.0f);
-    
+
     AIManager::Instance().registerBehavior("FleeToSafety", std::move(fleeBehavior));
 }
 ```
@@ -888,7 +888,7 @@ void setupPerformanceOptimizedBehaviors() {
     lightWander->setChangeDirectionInterval(5000.0f); // Less frequent updates
     lightWander->setOffscreenProbability(0.0f);       // Never go offscreen
     AIManager::Instance().registerBehavior("LightWander", std::move(lightWander));
-    
+
     // High-performance mode - enhanced activity
     auto activePatrol = std::make_unique<PatrolBehavior>(
         PatrolBehavior::PatrolMode::CIRCULAR_AREA, 3.0f
@@ -896,7 +896,7 @@ void setupPerformanceOptimizedBehaviors() {
     activePatrol->setAutoRegenerate(true);
     activePatrol->setMinWaypointDistance(40.0f);       // Tighter patterns
     AIManager::Instance().registerBehavior("ActivePatrol", std::move(activePatrol));
-    
+
     // Memory-efficient idle behavior
     auto efficientIdle = std::make_unique<IdleBehavior>(
         IdleBehavior::IdleMode::STATIONARY
@@ -963,10 +963,10 @@ void setupBehavior() {
 // Clean up behaviors during state transitions
 void transitionToNewState() {
     AIManager::Instance().prepareForStateTransition();
-    
+
     // Clear old NPCs and behaviors
     m_npcs.clear();
-    
+
     // Set up new behaviors for new state
     setupBehaviorsForNewState();
 }
@@ -1001,7 +1001,7 @@ void transitionToNewState() {
 ```cpp
 // Debug behavior state
 void debugBehaviorState(EntityPtr entity) {
-    std::cout << "Entity " << entity->getId() 
+    std::cout << "Entity " << entity->getId()
               << " behavior: " << entity->getCurrentBehavior()
               << " priority: " << entity->getPriority()
               << " position: " << entity->getPosition().toString()
@@ -1023,7 +1023,7 @@ void monitorBehaviorPerformance() {
 void setupCompleteAISystem() {
     // Initialize AI Manager
     AIManager::Instance().init();
-    
+
     // Set up all behavior types
     setupIdleBehaviors();
     setupWanderBehaviors();
@@ -1033,12 +1033,12 @@ void setupCompleteAISystem() {
     setupGuardBehaviors();
     setupAttackBehaviors();
     setupChaseBehavior();
-    
+
     // Set player reference for distance optimization
     if (playerEntity) {
         AIManager::Instance().setPlayerForDistanceOptimization(playerEntity);
     }
-    
+
     // Create diverse NPC population
     createNPC("Guard", Vector2D(100, 100), "patrol");
     createNPC("Villager", Vector2D(200, 200));

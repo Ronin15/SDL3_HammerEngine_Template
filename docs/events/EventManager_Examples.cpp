@@ -34,7 +34,7 @@ void example1_BasicSetup() {
     std::cout << "=== Example 1: Basic Setup ===" << std::endl;
 
     // Initialize ThreadSystem first (required dependency)
-    if (!Forge::ThreadSystem::Instance().init()) {
+    if (!Hammer::ThreadSystem::Instance().init()) {
         std::cerr << "Failed to initialize ThreadSystem!" << std::endl;
         return;
     }
@@ -51,7 +51,7 @@ void example1_BasicSetup() {
 
     std::cout << "EventManager initialized successfully" << std::endl;
     std::cout << "Threading enabled with threshold: 100 events" << std::endl;
-    std::cout << "ThreadSystem available: " << Forge::ThreadSystem::Exists() << std::endl;
+    std::cout << "ThreadSystem available: " << Hammer::ThreadSystem::Exists() << std::endl;
 }
 
 //=============================================================================
@@ -185,39 +185,39 @@ void example5_PerformanceMonitoring() {
         EventManager::Instance().update();
     }
     auto end = std::chrono::high_resolution_clock::now();
-    
+
     auto totalTime = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count() / 1000.0;
-    
+
     // Get performance statistics by event type
     auto weatherStats = EventManager::Instance().getPerformanceStats(EventTypeId::Weather);
     auto sceneStats = EventManager::Instance().getPerformanceStats(EventTypeId::SceneChange);
     auto npcStats = EventManager::Instance().getPerformanceStats(EventTypeId::NPCSpawn);
-    
+
     std::cout << "Performance Results:" << std::endl;
     std::cout << "Total update time: " << totalTime << "ms for 5 cycles" << std::endl;
-    
+
     if (weatherStats.callCount > 0) {
-        std::cout << "Weather events: " << weatherStats.avgTime << "ms avg, " 
-                  << weatherStats.callCount << " calls, " 
+        std::cout << "Weather events: " << weatherStats.avgTime << "ms avg, "
+                  << weatherStats.callCount << " calls, "
                   << weatherStats.minTime << "-" << weatherStats.maxTime << "ms range" << std::endl;
     }
-    
+
     if (sceneStats.callCount > 0) {
-        std::cout << "Scene events: " << sceneStats.avgTime << "ms avg, " 
-                  << sceneStats.callCount << " calls, " 
+        std::cout << "Scene events: " << sceneStats.avgTime << "ms avg, "
+                  << sceneStats.callCount << " calls, "
                   << sceneStats.minTime << "-" << sceneStats.maxTime << "ms range" << std::endl;
     }
-    
+
     if (npcStats.callCount > 0) {
-        std::cout << "NPC events: " << npcStats.avgTime << "ms avg, " 
-                  << npcStats.callCount << " calls, " 
+        std::cout << "NPC events: " << npcStats.avgTime << "ms avg, "
+                  << npcStats.callCount << " calls, "
                   << npcStats.minTime << "-" << npcStats.maxTime << "ms range" << std::endl;
     }
-    
+
     // Check threading effectiveness
     bool isThreaded = EventManager::Instance().isThreadingEnabled();
     size_t totalEvents = EventManager::Instance().getEventCount();
-    std::cout << "Threading enabled: " << (isThreaded ? "yes" : "no") 
+    std::cout << "Threading enabled: " << (isThreaded ? "yes" : "no")
               << " for " << totalEvents << " total events" << std::endl;
 }
 
@@ -227,47 +227,47 @@ void example5_PerformanceMonitoring() {
 
 void example6_EventManagement() {
     std::cout << "\n=== Example 6: Event Management ===" << std::endl;
-    
+
     // Create a test event
     bool created = EventManager::Instance().createWeatherEvent("TestEvent", "Rainy", 0.7f, 3.0f);
     std::cout << "Created test event: " << (created ? "success" : "failed") << std::endl;
-    
+
     // Check if event exists
     bool exists = EventManager::Instance().hasEvent("TestEvent");
     std::cout << "Event exists: " << (exists ? "yes" : "no") << std::endl;
-    
+
     // Check if event is active
     bool active = EventManager::Instance().isEventActive("TestEvent");
     std::cout << "Event is active: " << (active ? "yes" : "no") << std::endl;
-    
+
     // Deactivate event
     bool deactivated = EventManager::Instance().setEventActive("TestEvent", false);
     std::cout << "Deactivated event: " << (deactivated ? "success" : "failed") << std::endl;
-    
+
     // Check active status again
     active = EventManager::Instance().isEventActive("TestEvent");
     std::cout << "Event is now active: " << (active ? "yes" : "no") << std::endl;
-    
+
     // Reactivate event
     bool reactivated = EventManager::Instance().setEventActive("TestEvent", true);
     std::cout << "Reactivated event: " << (reactivated ? "success" : "failed") << std::endl;
-    
+
     // Execute specific event
     bool executed = EventManager::Instance().executeEvent("TestEvent");
     std::cout << "Executed event: " << (executed ? "success" : "failed") << std::endl;
-    
+
     // Get event details
     auto event = EventManager::Instance().getEvent("TestEvent");
     std::cout << "Retrieved event: " << (event ? "success" : "failed") << std::endl;
-    
+
     // Get events by type
     auto weatherEvents = EventManager::Instance().getEventsByType(EventTypeId::Weather);
     std::cout << "Weather events count: " << weatherEvents.size() << std::endl;
-    
+
     // Remove event
     bool removed = EventManager::Instance().removeEvent("TestEvent");
     std::cout << "Removed event: " << (removed ? "success" : "failed") << std::endl;
-    
+
     // Verify removal
     exists = EventManager::Instance().hasEvent("TestEvent");
     std::cout << "Event exists after removal: " << (exists ? "yes" : "no") << std::endl;
@@ -282,56 +282,56 @@ private:
     std::vector<std::string> m_weatherTypes{"Clear", "Cloudy", "Rainy", "Stormy", "Foggy"};
     size_t m_currentIndex{0};
     bool m_initialized{false};
-    
+
 public:
     void init() {
         if (m_initialized) return;
-        
+
         std::cout << "\n=== Example 7: Weather System Integration ===" << std::endl;
-        
+
         // Create weather events for each type
         for (size_t i = 0; i < m_weatherTypes.size(); ++i) {
             std::string eventName = "weather_" + m_weatherTypes[i];
             bool created = EventManager::Instance().createWeatherEvent(
                 eventName, m_weatherTypes[i], 0.7f, 2.0f);
-            
+
             if (created) {
                 std::cout << "Created weather event: " << eventName << std::endl;
             }
         }
-        
+
         // Register handler for weather changes
         EventManager::Instance().registerHandler(EventTypeId::Weather,
             [this](const EventData& data) { onWeatherChanged(data); });
-        
+
         m_initialized = true;
         std::cout << "Weather system initialized with " << m_weatherTypes.size() << " weather types" << std::endl;
     }
-    
+
     void cycleWeather() {
         if (!m_initialized) return;
-        
+
         std::string currentWeather = m_weatherTypes[m_currentIndex];
         m_currentIndex = (m_currentIndex + 1) % m_weatherTypes.size();
-        
+
         // Use direct trigger for immediate weather change
         bool success = EventManager::Instance().changeWeather(currentWeather, 3.0f);
-        
+
         if (success) {
             std::cout << "Weather changed to: " << currentWeather << std::endl;
         }
     }
-    
+
     void getWeatherStats() {
         auto stats = EventManager::Instance().getPerformanceStats(EventTypeId::Weather);
         if (stats.callCount > 0) {
-            std::cout << "Weather system stats - Average time: " << stats.avgTime 
+            std::cout << "Weather system stats - Average time: " << stats.avgTime
                       << "ms, Total calls: " << stats.callCount << std::endl;
         } else {
             std::cout << "No weather performance data available" << std::endl;
         }
     }
-    
+
 private:
     void onWeatherChanged(const EventData&) {
         std::cout << "Weather system responding to weather change event" << std::endl;
@@ -340,7 +340,7 @@ private:
         updateParticleEffects();
         updateSoundscape();
     }
-    
+
     void updateLighting() { /* Weather lighting updates */ }
     void updateParticleEffects() { /* Weather particle updates */ }
     void updateSoundscape() { /* Weather audio updates */ }
@@ -352,42 +352,42 @@ private:
 
 void example8_ThreadingPerformance() {
     std::cout << "\n=== Example 8: Threading Performance ===" << std::endl;
-    
+
     // Create many events for threading test
     const int eventCount = 150;
     for (int i = 0; i < eventCount; ++i) {
         EventManager::Instance().createWeatherEvent("thread_test_" + std::to_string(i), "Rainy", 0.5f, 3.0f);
     }
-    
+
     std::cout << "Created " << eventCount << " events for threading test" << std::endl;
-    
+
     // Test single-threaded performance
     EventManager::Instance().enableThreading(false);
     EventManager::Instance().resetPerformanceStats();
-    
+
     auto start = std::chrono::high_resolution_clock::now();
     for (int i = 0; i < 10; ++i) {
         EventManager::Instance().update();
     }
     auto singleThreadTime = std::chrono::high_resolution_clock::now() - start;
-    
+
     auto singleMs = std::chrono::duration_cast<std::chrono::milliseconds>(singleThreadTime).count();
     std::cout << "Single-threaded: " << singleMs << "ms for 10 updates" << std::endl;
-    
+
     // Test multi-threaded performance
     EventManager::Instance().enableThreading(true);
     EventManager::Instance().setThreadingThreshold(50); // Low threshold to force threading
     EventManager::Instance().resetPerformanceStats();
-    
+
     start = std::chrono::high_resolution_clock::now();
     for (int i = 0; i < 10; ++i) {
         EventManager::Instance().update();
     }
     auto multiThreadTime = std::chrono::high_resolution_clock::now() - start;
-    
+
     auto multiMs = std::chrono::duration_cast<std::chrono::milliseconds>(multiThreadTime).count();
     std::cout << "Multi-threaded: " << multiMs << "ms for 10 updates" << std::endl;
-    
+
     if (multiMs < singleMs) {
         double speedup = double(singleMs) / double(multiMs);
         std::cout << "Threading speedup: " << speedup << "x faster" << std::endl;
@@ -397,12 +397,12 @@ void example8_ThreadingPerformance() {
     } else {
         std::cout << "Threading performance: no significant difference" << std::endl;
     }
-    
+
     // Clean up test events
     for (int i = 0; i < eventCount; ++i) {
         EventManager::Instance().removeEvent("thread_test_" + std::to_string(i));
     }
-    
+
     std::cout << "Cleaned up threading test events" << std::endl;
 }
 
@@ -412,38 +412,38 @@ void example8_ThreadingPerformance() {
 
 void example9_MemoryManagement() {
     std::cout << "\n=== Example 9: Memory Management ===" << std::endl;
-    
+
     // Create and remove many events to test memory management
     const int testEvents = 100;
-    
+
     // Create events
     for (int i = 0; i < testEvents; ++i) {
         EventManager::Instance().createWeatherEvent("memory_test_" + std::to_string(i), "Rainy", 0.5f, 3.0f);
     }
-    
+
     size_t initialCount = EventManager::Instance().getEventCount();
     std::cout << "Created " << initialCount << " test events" << std::endl;
-    
+
     // Remove half of the events
     for (int i = 0; i < testEvents / 2; ++i) {
         EventManager::Instance().removeEvent("memory_test_" + std::to_string(i));
     }
-    
+
     size_t afterRemovalCount = EventManager::Instance().getEventCount();
     std::cout << "After removing half: " << afterRemovalCount << " events remaining" << std::endl;
-    
+
     // Compact storage to reclaim memory
     EventManager::Instance().compactEventStorage();
     std::cout << "Compacted event storage to optimize memory usage" << std::endl;
-    
+
     size_t afterCompactionCount = EventManager::Instance().getEventCount();
     std::cout << "After compaction: " << afterCompactionCount << " events" << std::endl;
-    
+
     // Clean up remaining test events
     for (int i = testEvents / 2; i < testEvents; ++i) {
         EventManager::Instance().removeEvent("memory_test_" + std::to_string(i));
     }
-    
+
     std::cout << "Cleaned up all memory test events" << std::endl;
     std::cout << "Final event count: " << EventManager::Instance().getEventCount() << std::endl;
 }
@@ -457,76 +457,76 @@ private:
     WeatherSystem m_weatherSystem;
     bool m_initialized{false};
     float m_stateTimer{0.0f};
-    
+
 public:
     bool init() {
         if (m_initialized) return true;
-        
+
         std::cout << "\n=== Example 10: Game State Integration ===" << std::endl;
-        
+
         // Initialize required systems
-        if (!Forge::ThreadSystem::Instance().init()) {
+        if (!Hammer::ThreadSystem::Instance().init()) {
             std::cerr << "Failed to initialize ThreadSystem!" << std::endl;
             return false;
         }
-        
+
         if (!EventManager::Instance().init()) {
             std::cerr << "Failed to initialize EventManager!" << std::endl;
             return false;
         }
-        
+
         // Configure for medium-scale game
         EventManager::Instance().enableThreading(true);
         EventManager::Instance().setThreadingThreshold(75);
-        
+
         // Initialize weather system
         m_weatherSystem.init();
-        
+
         // Create game-specific events
         createGameEvents();
-        
+
         // Register game-specific handlers
         registerGameHandlers();
-        
+
         m_initialized = true;
         std::cout << "Game state initialized successfully" << std::endl;
         return true;
     }
-    
+
     void update(float deltaTime) {
         if (!m_initialized) return;
-        
+
         m_stateTimer += deltaTime;
-        
+
         // EventManager is automatically updated by GameEngine
         // But for demonstration, we'll call it here
         EventManager::Instance().update();
-        
+
         // Cycle weather every 5 seconds
         static int updateCount = 0;
         if (++updateCount % 300 == 0) { // Every 5 seconds at 60 FPS
             m_weatherSystem.cycleWeather();
             showStats();
         }
-        
+
         // Trigger random events based on game state
         if (static_cast<int>(m_stateTimer) % 10 == 0 && static_cast<int>(m_stateTimer) != static_cast<int>(m_stateTimer - deltaTime)) {
             // Every 10 seconds, spawn some NPCs
             EventManager::Instance().spawnNPC("RandomNPC", 100.0f + (rand() % 200), 100.0f + (rand() % 200));
         }
     }
-    
+
     void showStats() {
         std::cout << "Game State Stats:" << std::endl;
         std::cout << "State timer: " << m_stateTimer << " seconds" << std::endl;
         std::cout << "Total events: " << EventManager::Instance().getEventCount() << std::endl;
-        
+
         m_weatherSystem.getWeatherStats();
-        
+
         // Show performance stats
         auto weatherStats = EventManager::Instance().getPerformanceStats(EventTypeId::Weather);
         auto npcStats = EventManager::Instance().getPerformanceStats(EventTypeId::NPCSpawn);
-        
+
         if (weatherStats.callCount > 0) {
             std::cout << "Weather performance: " << weatherStats.avgTime << "ms avg" << std::endl;
         }
@@ -534,31 +534,31 @@ public:
             std::cout << "NPC spawn performance: " << npcStats.avgTime << "ms avg" << std::endl;
         }
     }
-    
+
     void cleanup() {
         std::cout << "Cleaning up game state..." << std::endl;
-        
+
         // Clear all handlers
         EventManager::Instance().clearAllHandlers();
-        
+
         // Clean up EventManager
         EventManager::Instance().clean();
-        
+
         m_initialized = false;
     }
-    
+
 private:
     void createGameEvents() {
         // Create state-specific events
         EventManager::Instance().createSceneChangeEvent("ExitGame", "MainMenu", "fade", 2.0f);
         EventManager::Instance().createNPCSpawnEvent("InitialGuards", "Guard", 3, 50.0f);
-        
+
         // Create some environmental events
         EventManager::Instance().createWeatherEvent("GameStateWeather", "Clear", 1.0f, 4.0f);
-        
+
         std::cout << "Created game state specific events" << std::endl;
     }
-    
+
     void registerGameHandlers() {
         // Register handlers for game state
         EventManager::Instance().registerHandler(EventTypeId::SceneChange,
@@ -566,13 +566,13 @@ private:
                 std::cout << "Game state handling scene change" << std::endl;
                 // Handle scene transitions, save state, etc.
             });
-        
+
         EventManager::Instance().registerHandler(EventTypeId::NPCSpawn,
             [](const EventData&) {
                 std::cout << "Game state handling NPC spawn" << std::endl;
                 // Add NPC to game world, update AI manager, etc.
             });
-        
+
         std::cout << "Registered game state event handlers" << std::endl;
     }
 };
@@ -584,7 +584,7 @@ private:
 int main() {
     std::cout << "EventManager Examples - Comprehensive API Demonstration" << std::endl;
     std::cout << "==========================================================" << std::endl;
-    
+
     try {
         // Run all examples in sequence
         example1_BasicSetup();
@@ -593,17 +593,17 @@ int main() {
         example4_HandlersAndBatching();
         example5_PerformanceMonitoring();
         example6_EventManagement();
-        
+
         // Weather system example
         WeatherSystem weatherSystem;
         weatherSystem.init();
         weatherSystem.cycleWeather();
         weatherSystem.cycleWeather();
         weatherSystem.getWeatherStats();
-        
+
         example8_ThreadingPerformance();
         example9_MemoryManagement();
-        
+
         // Game state integration example
         ExampleGameState gameState;
         if (gameState.init()) {
@@ -614,17 +614,17 @@ int main() {
             }
             gameState.cleanup();
         }
-        
+
         std::cout << "\n==========================================================" << std::endl;
         std::cout << "All examples completed successfully!" << std::endl;
         std::cout << "Final system stats:" << std::endl;
         std::cout << "Total events: " << EventManager::Instance().getEventCount() << std::endl;
         std::cout << "Threading enabled: " << (EventManager::Instance().isThreadingEnabled() ? "yes" : "no") << std::endl;
-        
+
     } catch (const std::exception& e) {
         std::cerr << "Example failed with exception: " << e.what() << std::endl;
         return 1;
     }
-    
+
     return 0;
 }

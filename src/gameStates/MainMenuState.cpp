@@ -10,8 +10,8 @@
 #include <iostream>
 
 bool MainMenuState::enter() {
-  std::cout << "Forge Game Engine - Entering MAIN MENU State\n";
-  
+  std::cout << "Hammer Game Engine - Entering MAIN MENU State\n";
+
   auto& gameEngine = GameEngine::Instance();
   auto& ui = UIManager::Instance();
   int windowWidth = gameEngine.getWindowWidth();
@@ -20,7 +20,7 @@ bool MainMenuState::enter() {
   // No overlay needed for main menu - keep clean appearance
 
   // Create title
-  ui.createTitle("mainmenu_title", {0, 100, windowWidth, 60}, "Forge Game Engine - Main Menu");
+  ui.createTitle("mainmenu_title", {0, 100, windowWidth, 60}, "Hammer Game Engine - Main Menu");
   ui.setTitleAlignment("mainmenu_title", UIAlignment::CENTER_CENTER);
 
   // Create menu buttons
@@ -79,8 +79,6 @@ bool MainMenuState::enter() {
     gameEngine.setRunning(false);
   });
 
-
-  
   return true;
 }
 
@@ -98,12 +96,12 @@ void MainMenuState::render(float deltaTime) {
 }
 
 bool MainMenuState::exit() {
-  std::cout << "Forge Game Engine - Exiting MAIN MENU State\n";
-  
+  std::cout << "Hammer Game Engine - Exiting MAIN MENU State\n";
+
   // Clean up UI components using simplified method
   auto& ui = UIManager::Instance();
   ui.prepareForStateTransition();
-  
+
   return true;
 }
 

@@ -58,18 +58,18 @@ bool GameLoop::run() {
     try {
         if (m_threaded) {
             // Start update worker respecting WorkerBudget allocation
-            if (Forge::ThreadSystem::Exists()) {
-                const auto& threadSystem = Forge::ThreadSystem::Instance();
+            if (Hammer::ThreadSystem::Exists()) {
+                const auto& threadSystem = Hammer::ThreadSystem::Instance();
                 size_t availableWorkers = static_cast<size_t>(threadSystem.getThreadCount());
-                Forge::WorkerBudget budget = Forge::calculateWorkerBudget(availableWorkers);
+                Hammer::WorkerBudget budget = Hammer::calculateWorkerBudget(availableWorkers);
 
                 GAMELOOP_INFO("GameLoop allocated " + std::to_string(budget.engineReserved) +
                              " workers from WorkerBudget (total: " + std::to_string(availableWorkers) + ")");
 
                 m_updateTaskRunning.store(true, std::memory_order_relaxed);
-                m_updateTaskFuture = Forge::ThreadSystem::Instance().enqueueTaskWithResult(
+                m_updateTaskFuture = Hammer::ThreadSystem::Instance().enqueueTaskWithResult(
                     [this, budget]() { runUpdateWorker(budget); },
-                    Forge::TaskPriority::Critical,
+                    Hammer::TaskPriority::Critical,
                     "GameLoop WorkerBudget Update Worker"
                 );
             } else {
@@ -167,7 +167,7 @@ void GameLoop::runMainThread() {
     }
 }
 
-void GameLoop::runUpdateWorker(const Forge::WorkerBudget& budget) {
+void GameLoop::runUpdateWorker(const Hammer::WorkerBudget& budget) {
     // WorkerBudget-aware update worker - respects allocated resources
     GAMELOOP_INFO("Update worker started with " + std::to_string(budget.engineReserved) + " allocated workers");
 
@@ -195,7 +195,7 @@ void GameLoop::runUpdateWorker(const Forge::WorkerBudget& budget) {
             auto updateStart = std::chrono::high_resolution_clock::now();
             
             if (!m_paused.load(std::memory_order_relaxed)) {
-                if (canUseParallelUpdates && Forge::ThreadSystem::Exists()) {
+                if (canUseParallelUpdates && Hammer::ThreadSystem::Exists()) {
                     // Use enhanced processing for high-end systems
                     processUpdatesParallel();
                 } else {

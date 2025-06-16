@@ -40,7 +40,7 @@ using EventWeakPtr = std::weak_ptr<Event>;
 
 // Conditional debug logging
 #ifdef EVENT_DEBUG_LOGGING
-    #define EVENT_LOG(x) std::cout << "Forge Game Engine - [Event Manager] " << x << std::endl
+    #define EVENT_LOG(x) std::cout << "Hammer Game Engine - [Event Manager] " << x << std::endl
     #define EVENT_LOG_DETAIL(x) std::cout << x << std::endl
 #else
     #define EVENT_LOG(x)

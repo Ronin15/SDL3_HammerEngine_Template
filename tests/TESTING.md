@@ -1,12 +1,12 @@
-# Forge Game Engine Test Framework
+# Hammer Game Engine Test Framework
 
-This document provides a comprehensive guide to the testing framework used in the Forge Game Engine project. All tests use the Boost Test Framework for consistency and are organized by component.
+This document provides a comprehensive guide to the testing framework used in the Hammer Game Engine project. All tests use the Boost Test Framework for consistency and are organized by component.
 
 **Current Test Coverage:** 16+ individual test suites covering AI systems, AI behaviors, UI performance, core systems, and event management with both functional validation and performance benchmarking.
 
 ## Test Suites Overview
 
-The Forge Game Engine has the following test suites:
+The Hammer Game Engine has the following test suites:
 
 1. **AI System Tests**
    - AI Optimization Tests: Verify performance optimizations in the AI system
@@ -244,7 +244,7 @@ Located in `AIScalingBenchmark.cpp`, these tests measure realistic performance c
 **Key Performance Targets:**
 - 100 entities: Single-threaded baseline (~170K updates/sec)
 - 200 entities: Automatic threading activation (~750K updates/sec)
-- 1000 entities: High threading performance (~975K updates/sec)  
+- 1000 entities: High threading performance (~975K updates/sec)
 - 10K entities: Target performance achieved (~995K updates/sec, 5.85x improvement)
 - 100K entities: Stress test validation (2.2M+ updates/sec)
 
@@ -480,7 +480,7 @@ ctest -R EventManagerScaling
 
 **Expected Performance (on modern hardware):**
 - Small scale: ~540K events/sec
-- Medium scale: ~78K events/sec  
+- Medium scale: ~78K events/sec
 - Large scale: ~39K events/sec
 - Extreme scale: ~7.8K events/sec with 5M handler calls
 
@@ -510,11 +510,11 @@ When testing components that depend on complex systems (like NPCSpawnEvent depen
 class MockNPC : public Entity {
 public:
     MockNPC(const std::string& textureID, const Vector2D& position, int width, int height);
-    
+
     // Mock the required interface methods
     void setWanderArea(float x1, float y1, float x2, float y2);
     void setBoundsCheckEnabled(bool enabled);
-    
+
     // Factory method like real class
     static std::shared_ptr<MockNPC> create(const std::string& textureID, const Vector2D& position, int width, int height);
 };
@@ -551,7 +551,7 @@ struct TestFixture {
     TestFixture() {
         // Setup code
     }
-    
+
     ~TestFixture() {
         // Cleanup code
     }
