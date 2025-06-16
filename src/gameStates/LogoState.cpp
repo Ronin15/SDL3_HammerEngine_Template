@@ -53,7 +53,7 @@ void LogoState::render([[maybe_unused]] float deltaTime) {
       727, 352,
       renderer);
   texMgr.draw(
-      "ForgeEngine",
+      "HammerEngine",
       windowWidth / 2 - 64,  // Center horizontally (128/2 = 64)
       (windowHeight / 2) + 10,
       128, 128,
@@ -110,7 +110,7 @@ bool LogoState::exit() {
   std::cout << "Hammer Game Engine - Exiting LOGO State\n";
 
   // LogoState doesn't create UI components, so no UI cleanup needed
-  
+
   return true;
 }
 
