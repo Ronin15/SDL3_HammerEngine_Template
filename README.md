@@ -12,7 +12,6 @@ I use the Zed IDE with custom cmake and ninja task configurations to build/compi
  - This project has evolved into a large-scale simulation engine—not like Unity or Unreal, but rather a framework that powers the game you want to create. I’m using AI to accelerate development, but it’s not building the architecture or tying everything together for me. I’ve designed the core systems and the shell of the engine myself, and AI is helping me refine it, especially when it comes to memory safety. One of my key goals is safety, which means no raw pointers, and no manual memory allocation or deallocation (no new or delete). I also leverage AI to help me synchronize threading, resolve crashes, optimize with valgrind, and cppcheck. I really strive to remove any underfined behaviour at all costs and AI helps me with that as well. I see AI as a powerful tool—like a well-crafted sword—that slays big nasty code issues, and helps me bring games to life. I hope you find this project useful or cool!
 
 ## Features Overview
-
 - SDL3 integration with SDL_image, SDL_ttf, and SDL_mixer
 - Fast header-only binary serialization system
 - Cross-platform support (Windows, macOS, Linux)
