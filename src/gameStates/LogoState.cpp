@@ -48,9 +48,9 @@ void LogoState::render([[maybe_unused]] float deltaTime) {
   // std::cout << "Rendering Main Menu State\n";
   texMgr.draw(
       "HammerForgeBanner",
-      windowWidth / 2 - 373,  // Center horizontally
-      (windowHeight / 2) - 352,
-      727, 352,
+      windowWidth / 2 - 256,  // Center horizontally (512/2 = 256)
+      (windowHeight / 2) - 525,  // Position above HammerEngine with spacing
+      512, 512,
       renderer);
   texMgr.draw(
       "HammerEngine",
