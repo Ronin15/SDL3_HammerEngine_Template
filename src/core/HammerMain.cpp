@@ -24,7 +24,7 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char* argv[]) {
 
   // Initialize the thread system with default capacity
   // Cache ThreadSystem reference for better performance
-  Forge::ThreadSystem& threadSystem = Forge::ThreadSystem::Instance();
+  Hammer::ThreadSystem& threadSystem = Hammer::ThreadSystem::Instance();
 
   // Initialize thread system first
   try {

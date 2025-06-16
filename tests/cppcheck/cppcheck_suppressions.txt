@@ -39,7 +39,7 @@ checkLibraryFunction:SAVEGAME_*
 checkLibraryFunction:GAMESTATE_*
 checkLibraryFunction:GAMELOOP_*
 checkLibraryFunction:THREADSYSTEM_*
-checkLibraryFunction:FORGE_*
+checkLibraryFunction:HAMMER_*
 
 # Suppress library function checks for singleton patterns
 checkLibraryFunction:*Instance

@@ -14,7 +14,7 @@
 float stateTimer{0.0f};
 
 bool LogoState::enter() {
-  std::cout << "Forge Game Engine - Entering LOGO State\n";
+  std::cout << "Hammer Game Engine - Entering LOGO State\n";
 
   // Reset timer when entering state
   stateTimer = 0.0f;
@@ -26,7 +26,7 @@ bool LogoState::enter() {
 }
 
 void LogoState::update(float deltaTime) {
-  // std::cout << "Forge Game Engine - Updating LOGO State\n";
+  // std::cout << "Hammer Game Engine - Updating LOGO State\n";
 
   stateTimer += deltaTime;
   if (stateTimer > 3.0f) {  // 3 seconds using deltaTime
@@ -71,7 +71,7 @@ void LogoState::render([[maybe_unused]] float deltaTime) {
 
   // Draw title text
   fontMgr.drawText(
-      "<]==={ }* FORGE GAME ENGINE *{ }===]>",
+      "<]==={ }* HAMMER GAME ENGINE *{ }===]>",
       "fonts_Arial",
       windowWidth / 2,  // Center horizontally
       (windowHeight / 2) + 180,
@@ -107,8 +107,8 @@ void LogoState::render([[maybe_unused]] float deltaTime) {
 }
 
 bool LogoState::exit() {
-  std::cout << "Forge Game Engine - Exiting LOGO State\n";
-  
+  std::cout << "Hammer Game Engine - Exiting LOGO State\n";
+
   // LogoState doesn't create UI components, so no UI cleanup needed
   
   return true;

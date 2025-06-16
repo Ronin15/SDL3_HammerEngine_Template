@@ -31,7 +31,7 @@ EventDemoState::~EventDemoState() {
 }
 
 bool EventDemoState::enter() {
-    std::cout << "Forge Game Engine - Entering EventDemoState...\n";
+    std::cout << "Hammer Game Engine - Entering EventDemoState...\n";
 
     try {
         // Cache GameEngine reference for better performance
@@ -90,20 +90,20 @@ bool EventDemoState::enter() {
         ui.createEventLog("event_log", {10, gameEngine.getWindowHeight() - 200, 730, 180}, 6);
         ui.addEventLogEntry("event_log", "Event Demo System Initialized");
 
-        std::cout << "Forge Game Engine - EventDemoState initialized successfully\n";
+        std::cout << "Hammer Game Engine - EventDemoState initialized successfully\n";
         return true;
 
     } catch (const std::exception& e) {
-        std::cerr << "Forge Game Engine - ERROR: Exception in EventDemoState::enter(): " << e.what() << std::endl;
+        std::cerr << "Hammer Game Engine - ERROR: Exception in EventDemoState::enter(): " << e.what() << std::endl;
         return false;
     } catch (...) {
-        std::cerr << "Forge Game Engine - ERROR: Unknown exception in EventDemoState::enter()" << std::endl;
+        std::cerr << "Hammer Game Engine - ERROR: Unknown exception in EventDemoState::enter()" << std::endl;
         return false;
     }
 }
 
 bool EventDemoState::exit() {
-    std::cout << "Forge Game Engine - Exiting EventDemoState...\n";
+    std::cout << "Hammer Game Engine - Exiting EventDemoState...\n";
 
     try {
         // Reset player
@@ -136,14 +136,14 @@ bool EventDemoState::exit() {
         auto& ui = UIManager::Instance();
         ui.prepareForStateTransition();
 
-        std::cout << "Forge Game Engine - EventDemoState cleanup complete\n";
+        std::cout << "Hammer Game Engine - EventDemoState cleanup complete\n";
         return true;
 
     } catch (const std::exception& e) {
-        std::cerr << "Forge Game Engine - ERROR: Exception in EventDemoState::exit(): " << e.what() << std::endl;
+        std::cerr << "Hammer Game Engine - ERROR: Exception in EventDemoState::exit(): " << e.what() << std::endl;
         return false;
     } catch (...) {
-        std::cerr << "Forge Game Engine - ERROR: Unknown exception in EventDemoState::exit()" << std::endl;
+        std::cerr << "Hammer Game Engine - ERROR: Unknown exception in EventDemoState::exit()" << std::endl;
         return false;
     }
 }
@@ -315,19 +315,19 @@ void EventDemoState::render(float deltaTime) {
 }
 
 void EventDemoState::setupEventSystem() {
-    std::cout << "Forge Game Engine - EventDemoState: EventManager instance obtained\n";
+    std::cout << "Hammer Game Engine - EventDemoState: EventManager instance obtained\n";
     addLogEntry("EventManager singleton obtained");
 
     // Cache EventManager reference for better performance
     EventManager& eventMgr = EventManager::Instance();
 
     if (!eventMgr.init()) {
-        std::cerr << "Forge Game Engine - ERROR: Failed to initialize EventManager!\n";
+        std::cerr << "Hammer Game Engine - ERROR: Failed to initialize EventManager!\n";
         addLogEntry("ERROR: EventManager initialization failed");
         return;
     }
 
-    std::cout << "Forge Game Engine - EventDemoState: EventManager initialized successfully\n";
+    std::cout << "Hammer Game Engine - EventDemoState: EventManager initialized successfully\n";
     addLogEntry("EventManager initialized");
 
     // Register event handlers using new optimized API
@@ -352,7 +352,7 @@ void EventDemoState::setupEventSystem() {
             }
         });
 
-    std::cout << "Forge Game Engine - EventDemoState: Event handlers registered\n";
+    std::cout << "Hammer Game Engine - EventDemoState: Event handlers registered\n";
     addLogEntry("Event System Setup Complete - All handlers registered");
 }
 

@@ -18,7 +18,7 @@ void GameStateManager::addState(std::unique_ptr<GameState> state) {
   // Check if a state with the same name already exists
   if (hasState(state->getName())) {
     GAMESTATE_ERROR("State with name " + state->getName() + " already exists");
-    throw std::runtime_error("Forge Game Engine - State with name " + state->getName() + " already exists");
+    throw std::runtime_error("Hammer Game Engine - State with name " + state->getName() + " already exists");
   }
   // Convert unique_ptr to shared_ptr and add to container
   states.push_back(std::shared_ptr<GameState>(state.release()));

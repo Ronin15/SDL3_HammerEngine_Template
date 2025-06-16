@@ -37,7 +37,7 @@ Player::Player() {
     // Set default state
     changeState("idle");
 
-    //std::cout << "Forge Game Engine - Player created" << "\n";
+    //std::cout << "Hammer Game Engine - Player created" << "\n";
 }
 
 // Helper method to get dimensions from the loaded texture

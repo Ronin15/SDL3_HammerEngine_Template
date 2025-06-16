@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Forge Game Engine implements a comprehensive DPI-aware font rendering system that automatically detects display pixel density and scales fonts accordingly, ensuring crisp, professional text rendering across all display types - from standard monitors to 4K/Retina displays.
+The Hammer Game Engine implements a comprehensive DPI-aware font rendering system that automatically detects display pixel density and scales fonts accordingly, ensuring crisp, professional text rendering across all display types - from standard monitors to 4K/Retina displays.
 
 ## System Architecture
 
@@ -195,7 +195,7 @@ public:
     void render() override {
         auto& fontManager = FontManager::Instance();
         auto& gameEngine = GameEngine::Instance();
-        
+
         // Text automatically scaled for current display
         fontManager.drawText(
             "Score: 1000",
@@ -214,11 +214,11 @@ public:
 ```cpp
 void updatePlayerStats() {
     auto& ui = UIManager::Instance();
-    
+
     // Text automatically uses appropriate font size for display
     std::string healthText = "Health: " + std::to_string(player.getHealth());
     ui.setText("hud_health", healthText);  // DPI-scaled font used automatically
-    
+
     // Auto-sizing works correctly with DPI scaling
     ui.calculateOptimalSize("hud_health");  // Measures with DPI-appropriate font
 }
@@ -296,10 +296,10 @@ SDL_Renderer* getRenderer() const;   // Access renderer for text rendering
 ```cpp
 // All existing methods automatically use DPI-scaled fonts
 bool loadFont(const std::string& fontFile, const std::string& fontID, int fontSize);
-void drawText(const std::string& text, const std::string& fontID, int x, int y, 
+void drawText(const std::string& text, const std::string& fontID, int x, int y,
               SDL_Color color, SDL_Renderer* renderer);
 bool measureText(const std::string& text, const std::string& fontID, int* width, int* height);
-bool measureMultilineText(const std::string& text, const std::string& fontID, 
+bool measureMultilineText(const std::string& text, const std::string& fontID,
                          int maxWidth, int* width, int* height);
 ```
 

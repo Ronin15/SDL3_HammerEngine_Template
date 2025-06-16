@@ -142,13 +142,13 @@ When testing components that use ThreadSystem's priority-based scheduling (AIMan
 1. **Initialization with Priorities**:
    ```cpp
    // Initialize ThreadSystem first
-   Forge::ThreadSystem::Instance().init();
+   Hammer::ThreadSystem::Instance().init();
    
    // Initialize manager
    AIManager::Instance().init();
    
    // Configure with specific priority
-   AIManager::Instance().configureThreading(true, 0, Forge::TaskPriority::High);
+   AIManager::Instance().configureThreading(true, 0, Hammer::TaskPriority::High);
    ```
 
 2. **Testing Priority Levels**:

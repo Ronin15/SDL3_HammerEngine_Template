@@ -33,7 +33,7 @@
 #include "core/ThreadSystem.hpp"
 #include "managers/TextureManager.hpp"
 
-#define FORGE_GRAY 31, 32, 34, 255
+#define HAMMER_GRAY 31, 32, 34, 255
 
 bool GameEngine::init(const char* title,
                       int width,
@@ -133,7 +133,7 @@ bool GameEngine::init(const char* title,
       const char* iconPath = "res/img/icon.ico";
 
       // Use a separate thread to load the icon
-      auto iconFuture = Forge::ThreadSystem::Instance().enqueueTaskWithResult(
+      auto iconFuture = Hammer::ThreadSystem::Instance().enqueueTaskWithResult(
           [iconPath]() -> std::unique_ptr<SDL_Surface, decltype(&SDL_DestroySurface)> {
               return std::unique_ptr<SDL_Surface, decltype(&SDL_DestroySurface)>(IMG_Load(iconPath), SDL_DestroySurface);
           });
@@ -175,7 +175,7 @@ bool GameEngine::init(const char* title,
         GAMEENGINE_INFO("VSync enabled - hardware-synchronized frame presentation active");
       }
 
-      if (!SDL_SetRenderDrawColor(mp_renderer.get(), FORGE_GRAY)) {  // Forge Game Engine gunmetal dark grey
+      if (!SDL_SetRenderDrawColor(mp_renderer.get(), HAMMER_GRAY)) {  // Hammer Game Engine gunmetal dark grey
         GAMEENGINE_ERROR("Failed to set initial render draw color: " + std::string(SDL_GetError()));
       }
       // Set logical rendering size to standard resolution for consistent aspect ratio
@@ -259,7 +259,7 @@ bool GameEngine::init(const char* title,
 
 // Initialize input manager in a background thread - #1
 initTasks.push_back(
-    Forge::ThreadSystem::Instance().enqueueTaskWithResult([]() -> bool {
+    Hammer::ThreadSystem::Instance().enqueueTaskWithResult([]() -> bool {
       GAMEENGINE_INFO("Detecting and initializing gamepads and input handling");
       InputManager& inputMgr = InputManager::Instance();
       inputMgr.initializeGamePad();
@@ -276,7 +276,7 @@ texMgr.load("res/img", "", mp_renderer.get());
 
   // Initialize sound manager in a separate thread - #2
   initTasks.push_back(
-      Forge::ThreadSystem::Instance().enqueueTaskWithResult([]() -> bool {
+      Hammer::ThreadSystem::Instance().enqueueTaskWithResult([]() -> bool {
         GAMEENGINE_INFO("Creating Sound Manager");
         SoundManager& soundMgr = SoundManager::Instance();
         if (!soundMgr.init()) {
@@ -292,7 +292,7 @@ texMgr.load("res/img", "", mp_renderer.get());
 
   // Initialize font manager in a separate thread - #3
   initTasks.push_back(
-      Forge::ThreadSystem::Instance().enqueueTaskWithResult([this]() -> bool {
+      Hammer::ThreadSystem::Instance().enqueueTaskWithResult([this]() -> bool {
         GAMEENGINE_INFO("Creating Font Manager");
         FontManager& fontMgr = FontManager::Instance();
         if (!fontMgr.init()) {
@@ -312,7 +312,7 @@ texMgr.load("res/img", "", mp_renderer.get());
 
   // Initialize save game manager in a separate thread - #4
   initTasks.push_back(
-      Forge::ThreadSystem::Instance().enqueueTaskWithResult([]() -> bool {
+      Hammer::ThreadSystem::Instance().enqueueTaskWithResult([]() -> bool {
         GAMEENGINE_INFO("Creating Save Game Manager");
         SaveGameManager& saveMgr = SaveGameManager::Instance();
 
@@ -323,7 +323,7 @@ texMgr.load("res/img", "", mp_renderer.get());
 
   // Initialize AI Manager in a separate thread - #5
   initTasks.push_back(
-      Forge::ThreadSystem::Instance().enqueueTaskWithResult([]() -> bool {
+      Hammer::ThreadSystem::Instance().enqueueTaskWithResult([]() -> bool {
         GAMEENGINE_INFO("Creating AI Manager");
         AIManager& aiMgr = AIManager::Instance();
         if (!aiMgr.init()) {
@@ -336,7 +336,7 @@ texMgr.load("res/img", "", mp_renderer.get());
 
   // Initialize Event Manager in a separate thread - #6
   initTasks.push_back(
-      Forge::ThreadSystem::Instance().enqueueTaskWithResult([]() -> bool {
+      Hammer::ThreadSystem::Instance().enqueueTaskWithResult([]() -> bool {
         GAMEENGINE_INFO("Creating Event Manager");
         EventManager& eventMgr = EventManager::Instance();
         if (!eventMgr.init()) {
@@ -497,26 +497,26 @@ void GameEngine::update([[maybe_unused]] float deltaTime) {
   std::lock_guard<std::mutex> lock(m_updateMutex);
 
   // Use WorkerBudget system for coordinated task submission
-  if (Forge::ThreadSystem::Exists()) {
-    auto& threadSystem = Forge::ThreadSystem::Instance();
+  if (Hammer::ThreadSystem::Exists()) {
+    auto& threadSystem = Hammer::ThreadSystem::Instance();
 
     // Calculate worker budget for this frame
     size_t availableWorkers = static_cast<size_t>(threadSystem.getThreadCount());
-    Forge::WorkerBudget budget = Forge::calculateWorkerBudget(availableWorkers);
+    Hammer::WorkerBudget budget = Hammer::calculateWorkerBudget(availableWorkers);
 
     // Submit engine coordination tasks respecting our worker budget
     // Use high priority for engine tasks to ensure timely processing
     threadSystem.enqueueTask([this, deltaTime]() {
       // Critical game engine coordination
       processEngineCoordination(deltaTime);
-    }, Forge::TaskPriority::High, "GameEngine_Coordination");
+    }, Hammer::TaskPriority::High, "GameEngine_Coordination");
 
     // Only submit additional tasks if we have multiple workers allocated
     if (budget.engineReserved > 1) {
       threadSystem.enqueueTask([this]() {
         // Secondary engine tasks (resource management, cleanup, etc.)
         processEngineSecondaryTasks();
-      }, Forge::TaskPriority::Normal, "GameEngine_Secondary");
+      }, Hammer::TaskPriority::Normal, "GameEngine_Secondary");
     }
   }
 
@@ -600,7 +600,7 @@ void GameEngine::render() {
   // Always render - optimized buffer management ensures render buffer is always valid
   {
     try {
-      if (!SDL_SetRenderDrawColor(mp_renderer.get(), FORGE_GRAY)) {  // Forge Game Engine gunmetal dark grey
+      if (!SDL_SetRenderDrawColor(mp_renderer.get(), HAMMER_GRAY)) {  // Hammer Game Engine gunmetal dark grey
         GAMEENGINE_ERROR("Failed to set render draw color: " + std::string(SDL_GetError()));
       }
       if (!SDL_RenderClear(mp_renderer.get())) {
@@ -631,7 +631,7 @@ void GameEngine::waitForUpdate() {
   
   // Wait for update completion with timeout
   bool completed = m_updateCondition.wait_for(lock, timeout,
-      [this] { return m_updateCompleted.load(std::memory_order_acquire) || 
+      [this] { return m_updateCompleted.load(std::memory_order_acquire) ||
                       m_stopRequested.load(std::memory_order_acquire); });
   
   if (!completed && !m_stopRequested.load(std::memory_order_acquire)) {
@@ -786,7 +786,7 @@ void GameEngine::clean() {
   m_bufferCondition.notify_all();
 
   // Cache manager references for better performance
-  Forge::ThreadSystem& threadSystem = Forge::ThreadSystem::Instance();
+  Hammer::ThreadSystem& threadSystem = Hammer::ThreadSystem::Instance();
   FontManager& fontMgr = FontManager::Instance();
   SoundManager& soundMgr = SoundManager::Instance();
   EventManager& eventMgr = EventManager::Instance();

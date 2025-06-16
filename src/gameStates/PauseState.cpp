@@ -11,8 +11,8 @@
 #include <iostream>
 
 bool PauseState::enter() {
-  std::cout << "Forge Game Engine - Entering PAUSE State\n";
-  
+  std::cout << "Hammer Game Engine - Entering PAUSE State\n";
+
   // Create pause state UI
   auto& gameEngine = GameEngine::Instance();
   auto& ui = UIManager::Instance();
@@ -55,8 +55,8 @@ void PauseState::render(float deltaTime) {
        gameEngine.getRenderer());
 }
 bool PauseState::exit() {
-  std::cout << "Forge Game Engine - Exiting PAUSE State\n";
-  
+  std::cout << "Hammer Game Engine - Exiting PAUSE State\n";
+
   // Clean up UI components using simplified method
   auto& ui = UIManager::Instance();
   ui.prepareForStateTransition();

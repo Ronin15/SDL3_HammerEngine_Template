@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Forge Game Engine EventManager provides a comprehensive, high-performance event management framework as the single source of truth for all event operations. The system features:
+The Hammer Game Engine EventManager provides a comprehensive, high-performance event management framework as the single source of truth for all event operations. The system features:
 
 1. **Type-indexed storage** - Fast O(1) event lookups using EventTypeId enumeration
 2. **Cache-friendly data structures** - Structure of Arrays (SoA) pattern with 32-byte alignment
@@ -37,7 +37,7 @@ The system supports weather events, scene transitions, NPC spawning, and custom 
 #include "core/ThreadSystem.hpp"
 
 // Initialize dependencies
-Forge::ThreadSystem::Instance().init();
+Hammer::ThreadSystem::Instance().init();
 
 // Initialize EventManager (handles all event creation and management)
 EventManager::Instance().init();
@@ -115,7 +115,7 @@ struct EventData {
     uint32_t flags;           // Active, dirty, pending removal
     float lastUpdateTime;     // For delta time calculations
     uint32_t priority;        // Processing priority
-    
+
     // Helper methods (internal use)
     bool isActive() const;
     void setActive(bool active);
@@ -183,7 +183,7 @@ EventManager provides extensible custom event support:
 
 ```cpp
 // Register custom event type with EventManager
-EventManager::Instance().registerCustomEventType("Quest", 
+EventManager::Instance().registerCustomEventType("Quest",
     [](const std::string& name, const std::unordered_map<std::string, std::string>& params,
        const std::unordered_map<std::string, float>& numParams,
        const std::unordered_map<std::string, bool>& boolParams) -> EventPtr {
@@ -222,7 +222,7 @@ bool registerNPCSpawnEvent(const std::string& name, std::shared_ptr<NPCSpawnEven
 
 #### Event Creation (Factory Methods)
 ```cpp
-bool createWeatherEvent(const std::string& name, const std::string& weatherType, 
+bool createWeatherEvent(const std::string& name, const std::string& weatherType,
                        float intensity = 1.0f, float transitionTime = 5.0f)
 bool createSceneChangeEvent(const std::string& name, const std::string& targetScene,
                            const std::string& transitionType = "fade", float transitionTime = 1.0f)
@@ -375,24 +375,24 @@ EventManager::Instance().setThreadingThreshold(500);
 ```cpp
 void monitorEventPerformance() {
     auto stats = EventManager::Instance().getPerformanceStats(EventTypeId::Weather);
-    std::cout << "Weather events: " << stats.avgTime << "ms avg, " 
+    std::cout << "Weather events: " << stats.avgTime << "ms avg, "
               << stats.callCount << " calls" << std::endl;
-    
+
     size_t totalEvents = EventManager::Instance().getEventCount();
     if (totalEvents > 1000) {
         std::cout << "High event count detected: " << totalEvents << std::endl;
         EventManager::Instance().compactEventStorage();
     }
-    
+
     // Monitor queue pressure for system coordination
-    if (Forge::ThreadSystem::Exists()) {
-        auto& threadSystem = Forge::ThreadSystem::Instance();
+    if (Hammer::ThreadSystem::Exists()) {
+        auto& threadSystem = Hammer::ThreadSystem::Instance();
         size_t queueSize = threadSystem.getQueueSize();
         size_t queueCapacity = threadSystem.getQueueCapacity();
         double queuePressure = static_cast<double>(queueSize) / queueCapacity;
-        
+
         if (queuePressure > 0.75) {
-            std::cout << "Warning: High queue pressure (" 
+            std::cout << "Warning: High queue pressure ("
                       << static_cast<int>(queuePressure * 100) << "%)" << std::endl;
         }
     }
@@ -416,11 +416,11 @@ EventManager::Instance().changeWeather("Stormy", 2.0f);
 void gameInit() {
     // Initialize EventManager first
     EventManager::Instance().init();
-    
+
     // Register handlers during initialization
     EventManager::Instance().registerHandler(EventTypeId::Weather,
         [](const EventData& data) { handleWeatherChange(data); });
-    
+
     EventManager::Instance().registerHandler(EventTypeId::SceneChange,
         [](const EventData& data) { handleSceneTransition(data); });
 }
@@ -467,7 +467,7 @@ void createStorySequence() {
         {"GetStormy", "Stormy", 0.9f, 2.0f},
         {"ClearUp", "Clear", 1.0f, 4.0f}
     };
-    
+
     EventManager::Instance().createWeatherSequence("StoryWeather", weatherEvents, true);
 }
 ```
@@ -495,94 +495,94 @@ private:
 public:
     bool initialize() {
         // Initialize dependencies
-        if (!Forge::ThreadSystem::Instance().init()) {
+        if (!Hammer::ThreadSystem::Instance().init()) {
             return false;
         }
-        
+
         // Initialize EventManager (single source of truth)
         if (!EventManager::Instance().init()) {
             return false;
         }
-        
+
         // Configure threading through EventManager
         EventManager::Instance().enableThreading(true);
         EventManager::Instance().setThreadingThreshold(200);
-        
+
         // Setup through EventManager
         setupEventHandlers();
         createGameEvents();
-        
+
         m_initialized = true;
         return true;
     }
-    
+
     void setupEventHandlers() {
         // All handler registration through EventManager
         EventManager::Instance().registerHandler(EventTypeId::Weather,
             [this](const EventData& data) {
                 handleWeatherEvent(data);
             });
-        
+
         EventManager::Instance().registerHandler(EventTypeId::SceneChange,
             [this](const EventData& data) {
                 handleSceneChange(data);
             });
-        
+
         EventManager::Instance().registerHandler(EventTypeId::NPCSpawn,
             [this](const EventData& data) {
                 handleNPCSpawn(data);
             });
     }
-    
+
     void createGameEvents() {
         // All event creation through EventManager
         EventManager::Instance().createWeatherEvent("MorningFog", "Foggy", 0.4f, 5.0f);
         EventManager::Instance().createWeatherEvent("DayRain", "Rainy", 0.7f, 3.0f);
         EventManager::Instance().createAdvancedWeatherEvent("NightStorm", "Stormy", 0.9f, 2.0f, 8, 30.0f, false, true);
-        
+
         EventManager::Instance().createSceneChangeEvent("ToTown", "TownScene", "fade", 2.0f);
         EventManager::Instance().createAdvancedSceneChangeEvent("ToBattle", "BattleScene", "dissolve", 1.5f, 7, false);
-        
+
         EventManager::Instance().createNPCSpawnEvent("Guards", "Guard", 3, 50.0f);
         EventManager::Instance().createAdvancedNPCSpawnEvent("Villagers", "Villager", 8, 40.0f, 5, false);
     }
-    
+
     void update() {
         if (!m_initialized) return;
-        
+
         // Single call to EventManager processes everything
         EventManager::Instance().update();
-        
+
         // Monitor performance through EventManager
         static int frameCount = 0;
         if (++frameCount % 300 == 0) { // Every 5 seconds at 60fps
             monitorPerformance();
         }
     }
-    
+
     void handleWeatherEvent(const EventData& data) {
         std::cout << "Weather event triggered!" << std::endl;
         // Update weather system, lighting, particles, etc.
     }
-    
+
     void handleSceneChange(const EventData& data) {
         std::cout << "Scene changing..." << std::endl;
         // Handle scene transition logic
     }
-    
+
     void handleNPCSpawn(const EventData& data) {
         std::cout << "NPCs spawned!" << std::endl;
         // Create and initialize NPCs
     }
-    
+
     void monitorPerformance() {
         // Performance monitoring through EventManager
         size_t totalEvents = EventManager::Instance().getEventCount();
         std::cout << "Total events: " << totalEvents << std::endl;
-        
+
         auto weatherStats = EventManager::Instance().getPerformanceStats(EventTypeId::Weather);
         std::cout << "Weather events: " << weatherStats.avgTime << "ms avg" << std::endl;
-        
+
         if (totalEvents > 1000) {
             std::cout << "High event count - optimizing through EventManager" << std::endl;
             EventManager::Instance().compactEventStorage();
@@ -600,20 +600,20 @@ public:
         std::vector<std::string> weatherTypes = {"Clear", "Cloudy", "Rainy", "Stormy"};
         for (const auto& weather : weatherTypes) {
             std::string eventName = weather + "Weather" + std::to_string(rand() % 100);
-            EventManager::Instance().createWeatherEvent(eventName, weather, 
-                                                       0.3f + (rand() % 70) / 100.0f, 
+            EventManager::Instance().createWeatherEvent(eventName, weather,
+                                                       0.3f + (rand() % 70) / 100.0f,
                                                        2.0f + (rand() % 60) / 10.0f);
         }
-        
+
         // Random NPC spawning through EventManager
         if (shouldSpawnRandomNPC()) {
             std::string npcType = getRandomNPCType();
-            EventManager::Instance().spawnNPC(npcType, 
-                                             getPlayerX() + (rand() % 200 - 100), 
+            EventManager::Instance().spawnNPC(npcType,
+                                             getPlayerX() + (rand() % 200 - 100),
                                              getPlayerY() + (rand() % 200 - 100));
         }
     }
-    
+
     void handlePlayerAction(const std::string& action) {
         // All direct triggering through EventManager
         if (action == "weather_spell") {
@@ -624,12 +624,12 @@ public:
             EventManager::Instance().spawnNPC("Ally", getPlayerX(), getPlayerY());
         }
     }
-    
+
     void createEventSequence() {
         // Event sequences through EventManager
         std::vector<std::string> storyEvents = {"StartRain", "GetStormy", "ClearUp"};
         EventManager::Instance().createEventSequence("WeatherStory", storyEvents, true);
-        
+
         // Weather sequence through EventManager
         std::vector<std::tuple<std::string, std::string, float, float>> weatherSequence = {
             {"MorningMist", "Foggy", 0.3f, 4.0f},
@@ -638,10 +638,10 @@ public:
         };
         EventManager::Instance().createWeatherSequence("DailyWeather", weatherSequence, true);
     }
-    
+
 private:
     bool shouldSpawnRandomNPC() { return rand() % 100 < 20; } // 20% chance
-    std::string getRandomNPCType() { 
+    std::string getRandomNPCType() {
         std::vector<std::string> types = {"Guard", "Villager", "Merchant"};
         return types[rand() % types.size()];
     }
@@ -656,8 +656,8 @@ class CustomEventExample {
 public:
     void setupCustomEvents() {
         // Register custom event type with EventManager
-        EventManager::Instance().registerCustomEventType("Quest", 
-            [](const std::string& name, 
+        EventManager::Instance().registerCustomEventType("Quest",
+            [](const std::string& name,
                const std::unordered_map<std::string, std::string>& params,
                const std::unordered_map<std::string, float>& numParams,
                const std::unordered_map<std::string, bool>& boolParams) -> EventPtr {
@@ -666,14 +666,14 @@ public:
                 int reward = static_cast<int>(numParams.count("reward") ? numParams.at("reward") : 0.0f);
                 return std::make_shared<QuestEvent>(name, questId, objective, reward);
             });
-        
+
         // Register handler for custom events
         EventManager::Instance().registerHandler(EventTypeId::Custom,
             [this](const EventData& data) {
                 handleQuestEvent(data);
             });
     }
-    
+
     void createQuests() {
         // Create custom events through EventManager
         std::unordered_map<std::string, std::string> questParams = {
@@ -686,11 +686,11 @@ public:
         std::unordered_map<std::string, bool> questBoolParams = {
             {"repeatable", false}
         };
-        
-        EventManager::Instance().createCustomEvent("Quest", "FindTreasure", 
+
+        EventManager::Instance().createCustomEvent("Quest", "FindTreasure",
                                                   questParams, questNumParams, questBoolParams);
     }
-    
+
     void handleQuestEvent(const EventData& data) {
         std::cout << "Quest event triggered!" << std::endl;
         // Handle quest logic

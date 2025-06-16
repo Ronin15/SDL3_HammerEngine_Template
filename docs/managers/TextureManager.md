@@ -2,7 +2,7 @@
 
 ## Overview
 
-The TextureManager provides a centralized system for loading, managing, and rendering textures in the Forge Game Engine. It handles PNG image files with support for directory-based batch loading, sprite animations, parallax scrolling, and efficient texture management with automatic memory cleanup.
+The TextureManager provides a centralized system for loading, managing, and rendering textures in the Hammer Game Engine. It handles PNG image files with support for directory-based batch loading, sprite animations, parallax scrolling, and efficient texture management with automatic memory cleanup.
 
 ## Key Features
 
@@ -131,7 +131,7 @@ private:
     int m_animationTimer = 0;
     const int m_frameDelay = 100; // milliseconds
     bool m_facingRight = true;
-    
+
 public:
     void loadTextures(SDL_Renderer* renderer) {
         // Load player sprite sheets
@@ -139,7 +139,7 @@ public:
         TextureManager::Instance().load("assets/player/walk.png", "player_walk", renderer);
         TextureManager::Instance().load("assets/player/jump.png", "player_jump", renderer);
     }
-    
+
     void update(uint32_t deltaTime) {
         m_animationTimer += deltaTime;
         if (m_animationTimer >= m_frameDelay) {
@@ -147,14 +147,14 @@ public:
             m_animationTimer = 0;
         }
     }
-    
+
     void render(SDL_Renderer* renderer) {
         std::string textureID = "player_idle";
         if (m_isMoving) textureID = "player_walk";
         if (m_isJumping) textureID = "player_jump";
-        
+
         SDL_FlipMode flip = m_facingRight ? SDL_FLIP_NONE : SDL_FLIP_HORIZONTAL;
-        
+
         TextureManager::Instance().drawFrame(
             textureID, m_x, m_y, 64, 64, 0, m_currentFrame, renderer, flip
         );
@@ -168,16 +168,16 @@ public:
 class BackgroundRenderer {
 private:
     float m_cameraX = 0.0f;
-    
+
 public:
     void loadBackgrounds(SDL_Renderer* renderer) {
         // Load background layers
         TextureManager::Instance().load("assets/bg/", "bg", renderer);
     }
-    
+
     void render(SDL_Renderer* renderer, float cameraX) {
         m_cameraX = cameraX;
-        
+
         // Multiple parallax layers for depth
         TextureManager::Instance().drawParallax("bg_sky", m_cameraX, 0.1f, renderer);
         TextureManager::Instance().drawParallax("bg_mountains", m_cameraX, 0.3f, renderer);
@@ -195,20 +195,20 @@ public:
     void initializeUI(SDL_Renderer* renderer) {
         // Load UI textures from directory
         TextureManager::Instance().load("assets/ui/", "ui", renderer);
-        
+
         // Load specific UI elements
         TextureManager::Instance().load("assets/ui/buttons/", "btn", renderer);
         TextureManager::Instance().load("assets/ui/icons/", "icon", renderer);
     }
-    
+
     void renderHealthBar(int health, int maxHealth, SDL_Renderer* renderer) {
         // Background
         TextureManager::Instance().draw("ui_health_bg", 10, 10, 200, 20, renderer);
-        
+
         // Health fill
         int healthWidth = (health * 200) / maxHealth;
         TextureManager::Instance().draw("ui_health_fill", 10, 10, healthWidth, 20, renderer);
-        
+
         // Health icon
         TextureManager::Instance().draw("icon_heart", 220, 10, 20, 20, renderer);
     }
@@ -222,7 +222,7 @@ class TileMap {
 private:
     std::vector<std::vector<int>> m_tileData;
     const int m_tileSize = 32;
-    
+
 public:
     void loadTilesets(SDL_Renderer* renderer) {
         // Load tileset textures
@@ -230,16 +230,16 @@ public:
         TextureManager::Instance().load("assets/tiles/stone.png", "tile_stone", renderer);
         TextureManager::Instance().load("assets/tiles/water.png", "tile_water", renderer);
     }
-    
+
     void renderTiles(SDL_Renderer* renderer, float cameraX, float cameraY) {
         for (int y = 0; y < m_tileData.size(); ++y) {
             for (int x = 0; x < m_tileData[y].size(); ++x) {
                 int tileType = m_tileData[y][x];
                 if (tileType == 0) continue; // Empty tile
-                
+
                 int screenX = (x * m_tileSize) - cameraX;
                 int screenY = (y * m_tileSize) - cameraY;
-                
+
                 std::string textureID = getTileTexture(tileType);
                 TextureManager::Instance().draw(
                     textureID, screenX, screenY, m_tileSize, m_tileSize, renderer
@@ -247,7 +247,7 @@ public:
             }
         }
     }
-    
+
 private:
     std::string getTileTexture(int tileType) {
         switch (tileType) {
@@ -267,7 +267,7 @@ private:
 ```cpp
 void loadGameTextures(SDL_Renderer* renderer) {
     TextureManager& texMgr = TextureManager::Instance();
-    
+
     // Load textures at game startup for best performance
     texMgr.load("assets/players/", "player", renderer);
     texMgr.load("assets/enemies/", "enemy", renderer);
@@ -286,13 +286,13 @@ public:
     void changeState(GameState newState) {
         // Clear previous state textures
         clearStateTextures(m_currentState);
-        
+
         // Load new state textures
         loadStateTextures(newState);
-        
+
         m_currentState = newState;
     }
-    
+
 private:
     void clearStateTextures(GameState state) {
         switch (state) {
@@ -315,12 +315,12 @@ bool initializeGraphics(SDL_Renderer* renderer) {
         std::cerr << "TextureManager not available" << std::endl;
         return false;
     }
-    
+
     if (!TextureManager::Instance().load("assets/player.png", "player", renderer)) {
         std::cerr << "Failed to load player texture" << std::endl;
         return false;
     }
-    
+
     return true;
 }
 ```
@@ -361,7 +361,7 @@ public:
         std::string texturePath = "assets/levels/" + levelName + "/textures/";
         return TextureManager::Instance().load(texturePath, levelName, renderer);
     }
-    
+
     void unloadLevel(const std::string& levelName) {
         // Clear level-specific textures
         TextureManager::Instance().clearTexture(levelName + "_*");
@@ -380,11 +380,11 @@ private:
         int frameDelay;
         bool looping;
     };
-    
+
 public:
     void playAnimation(const std::string& animID, SDL_Renderer* renderer) {
         Animation& anim = m_animations[animID];
-        
+
         TextureManager::Instance().drawFrame(
             anim.textureID, m_x, m_y, m_frameWidth, m_frameHeight,
             0, m_currentFrame, renderer

@@ -45,8 +45,8 @@ bool AIManager::init() {
         }
 
         // Configure threading based on system capabilities
-        if (Forge::ThreadSystem::Exists()) {
-            const auto& threadSystem = Forge::ThreadSystem::Instance();
+        if (Hammer::ThreadSystem::Exists()) {
+            const auto& threadSystem = Hammer::ThreadSystem::Instance();
             m_maxThreads = threadSystem.getThreadCount();
             m_useThreading.store(m_maxThreads > 1, std::memory_order_release);
         }
@@ -180,10 +180,10 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
         // Determine threading strategy
         bool useThreading = (entityCount >= THREADING_THRESHOLD && 
                            m_useThreading.load(std::memory_order_acquire) &&
-                           Forge::ThreadSystem::Exists());
+                           Hammer::ThreadSystem::Exists());
 
         if (useThreading) {
-            auto& threadSystem = Forge::ThreadSystem::Instance();
+            auto& threadSystem = Hammer::ThreadSystem::Instance();
             size_t availableWorkers = static_cast<size_t>(threadSystem.getThreadCount());
             
             // Check queue pressure before submitting tasks
@@ -228,7 +228,7 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
                 return; // Exit early after single-threaded processing
             }
             
-            Forge::WorkerBudget budget = Forge::calculateWorkerBudget(availableWorkers);
+            Hammer::WorkerBudget budget = Hammer::calculateWorkerBudget(availableWorkers);
             
             // Use WorkerBudget system properly with threshold-based buffer allocation
             size_t optimalWorkerCount = budget.getOptimalWorkerCount(budget.aiAllocated, entityCount, 1000);
@@ -269,7 +269,7 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
                 
                 threadSystem.enqueueTask([this, start, end, deltaTime, nextBuffer]() {
                     processBatch(start, end, deltaTime, nextBuffer);
-                }, Forge::TaskPriority::High, "AI_OptimalBatch");
+                }, Hammer::TaskPriority::High, "AI_OptimalBatch");
             }
             
         } else {

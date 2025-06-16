@@ -885,9 +885,9 @@ void diagnoseThreadingIssues() {
     std::cout << "=== Threading Diagnostic ===" << std::endl;
     
     // Check ThreadSystem status
-    if (!Forge::ThreadSystem::Instance().isInitialized()) {
+    if (!Hammer::ThreadSystem::Instance().isInitialized()) {
         std::cout << "ThreadSystem is not initialized!" << std::endl;
-        std::cout << "Call Forge::ThreadSystem::Instance().init() first" << std::endl;
+        std::cout << "Call Hammer::ThreadSystem::Instance().init() first" << std::endl;
         return;
     }
     

@@ -2,7 +2,7 @@
 
 ## Overview
 
-The SoundManager provides a centralized audio system for the Forge Game Engine, handling both sound effects and music playback. It supports multiple audio formats with volume control, efficient resource management, and seamless integration with game states.
+The SoundManager provides a centralized audio system for the Hammer Game Engine, handling both sound effects and music playback. It supports multiple audio formats with volume control, efficient resource management, and seamless integration with game states.
 
 ## Key Features
 
@@ -185,32 +185,32 @@ class MenuState : public GameState {
 public:
     bool enter() override {
         auto& sound = SoundManager::Instance();
-        
+
         // Load state-specific audio
         sound.loadMusic("res/music/menu.ogg", "menu_bg");
         sound.loadSFX("res/sounds/ui/", "ui");  // Load all UI sounds
-        
+
         // Start background music
         sound.playMusic("menu_bg", true);
-        
+
         return true;
     }
-    
+
     void handleButtonClick() {
         // Play UI sound effect
         SoundManager::Instance().playSFX("ui_button_click");
     }
-    
+
     bool exit() override {
         auto& sound = SoundManager::Instance();
-        
+
         // Fade out music when leaving state
         sound.fadeOutMusic(500);
-        
+
         // Clean up state-specific sounds
         sound.unloadMusic("menu_bg");
         sound.unloadSFXGroup("ui");
-        
+
         return true;
     }
 };
@@ -224,29 +224,29 @@ public:
     void onPlayerJump() {
         SoundManager::Instance().playSFX("jump", 0.8f);
     }
-    
+
     void onEnemyDeath() {
         SoundManager::Instance().playSFX("enemy_death", 1.0f);
     }
-    
+
     void onLevelComplete() {
         auto& sound = SoundManager::Instance();
-        
+
         // Fade out background music
         sound.fadeOutMusic(1000);
-        
+
         // Play victory sound
         sound.playSFX("victory", 1.0f);
-        
+
         // Start victory music after delay
         // Note: You might implement a timer or delayed callback system
     }
-    
+
     void onHealthLow() {
         // Play heartbeat sound on loop
         SoundManager::Instance().playSFX("heartbeat", 0.6f, true);
     }
-    
+
     void onHealthRecovered() {
         // Stop heartbeat sound
         SoundManager::Instance().stopSFX("heartbeat");
@@ -261,27 +261,27 @@ class AudioSettingsMenu {
 private:
     float m_sfxVolume = 1.0f;
     float m_musicVolume = 1.0f;
-    
+
 public:
     void updateSFXVolume(float volume) {
         m_sfxVolume = volume;
         SoundManager::Instance().setSFXVolume(volume);
-        
+
         // Play test sound to demonstrate volume
         SoundManager::Instance().playSFX("ui_slider", volume);
     }
-    
+
     void updateMusicVolume(float volume) {
         m_musicVolume = volume;
         SoundManager::Instance().setMusicVolume(volume);
     }
-    
+
     void toggleSFXMute() {
         static bool isMuted = false;
         isMuted = !isMuted;
         SoundManager::Instance().muteSFX(isMuted);
     }
-    
+
     void toggleMusicMute() {
         static bool isMuted = false;
         isMuted = !isMuted;
@@ -298,7 +298,7 @@ public:
 // Load all game audio at startup (small games)
 void loadAllAudio() {
     auto& sound = SoundManager::Instance();
-    
+
     sound.loadSFXFromDirectory("res/sounds/ui/", "ui");
     sound.loadSFXFromDirectory("res/sounds/gameplay/", "game");
     sound.loadMusic("res/music/menu.ogg", "menu_music");
@@ -308,10 +308,10 @@ void loadAllAudio() {
 // Load audio per game state (larger games)
 void loadStateAudio(const std::string& stateName) {
     auto& sound = SoundManager::Instance();
-    
+
     std::string soundPath = "res/sounds/" + stateName + "/";
     std::string musicPath = "res/music/" + stateName + ".ogg";
-    
+
     sound.loadSFXFromDirectory(soundPath, stateName);
     sound.loadMusic(musicPath, stateName + "_music");
 }

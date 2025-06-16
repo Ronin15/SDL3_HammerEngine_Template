@@ -2,7 +2,7 @@
 
 ## Overview
 
-The FontManager provides a centralized system for loading, managing, and rendering text in the Forge Game Engine. It integrates seamlessly with the DPI-aware font system and UI components to provide crisp, professional text rendering across all display types.
+The FontManager provides a centralized system for loading, managing, and rendering text in the Hammer Game Engine. It integrates seamlessly with the DPI-aware font system and UI components to provide crisp, professional text rendering across all display types.
 
 ## Key Features
 
@@ -178,7 +178,7 @@ float dpiScale = GameEngine::Instance().getDPIScale();
 
 // Font sizes are automatically calculated based on DPI:
 // Standard DPI (1.0x): 24px base font
-// High DPI (2.0x): 48px base font  
+// High DPI (2.0x): 48px base font
 // 4K/Retina (3.0x): 72px base font
 
 // All text rendering uses DPI-appropriate fonts automatically
@@ -256,14 +256,14 @@ fontMgr.clearAllFonts();
 // For frequently changing text, consider texture caching
 class TextCache {
     std::unordered_map<std::string, SDL_Texture*> m_cache;
-    
+
 public:
     SDL_Texture* getOrCreateText(const std::string& text, const std::string& fontID) {
         auto it = m_cache.find(text);
         if (it != m_cache.end()) {
             return it->second;  // Return cached texture
         }
-        
+
         // Create new texture and cache it
         auto texture = FontManager::Instance().renderTextToTexture(text, fontID, color, renderer);
         m_cache[text] = texture;
@@ -322,7 +322,7 @@ void unloadFont(const std::string& fontID);
 void clearAllFonts();
 
 // Text rendering
-void drawText(const std::string& text, const std::string& fontID, int x, int y, 
+void drawText(const std::string& text, const std::string& fontID, int x, int y,
               SDL_Color color, SDL_Renderer* renderer);
 void drawTextCentered(const std::string& text, const std::string& fontID, int x, int y,
                       SDL_Color color, SDL_Renderer* renderer);
@@ -331,7 +331,7 @@ SDL_Texture* renderTextToTexture(const std::string& text, const std::string& fon
 
 // Text measurement
 bool measureText(const std::string& text, const std::string& fontID, int* width, int* height);
-bool measureMultilineText(const std::string& text, const std::string& fontID, 
+bool measureMultilineText(const std::string& text, const std::string& fontID,
                          int maxWidth, int* width, int* height);
 bool getFontMetrics(const std::string& fontID, int* lineHeight, int* ascent, int* descent);
 ```

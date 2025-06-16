@@ -33,7 +33,7 @@
 
 // Conditional debug logging
 #ifdef AI_DEBUG_LOGGING
-    #define AI_LOG(x) std::cout << "Forge Game Engine - [AI Manager] " << x << std::endl
+    #define AI_LOG(x) std::cout << "Hammer Game Engine - [AI Manager] " << x << std::endl
 #else
     #define AI_LOG(x)
 #endif
@@ -272,8 +272,6 @@ public:
     // Thread-safe assignment tracking (atomic counter only)
     size_t getTotalAssignmentCount() const;
     
-
-
     // Message system
     void sendMessageToEntity(EntityPtr entity, const std::string& message, bool immediate = false);
     void broadcastMessage(const std::string& message, bool immediate = false);

@@ -2,7 +2,7 @@
 
 ## Overview
 
-The ThreadSystem is a high-performance, priority-based thread pool implementation designed for the Forge Game Engine. It provides efficient task-based concurrency with priority scheduling and comprehensive performance monitoring. The system scales automatically based on hardware capabilities while maintaining optimal resource utilization through advanced WorkerBudget allocation. **Performance optimized**: Achieves 4-6% CPU usage with 1000+ entities through intelligent batching and resource coordination.
+The ThreadSystem is a high-performance, priority-based thread pool implementation designed for the Hammer Game Engine. It provides efficient task-based concurrency with priority scheduling and comprehensive performance monitoring. The system scales automatically based on hardware capabilities while maintaining optimal resource utilization through advanced WorkerBudget allocation. **Performance optimized**: Achieves 4-6% CPU usage with 1000+ entities through intelligent batching and resource coordination.
 
 ## Architecture Overview
 
@@ -107,7 +107,7 @@ for (size_t i = 0; i < entities.size(); i += batchSize) {
 ```cpp
 enum class TaskPriority : int {
     Critical = 0,   // Must execute ASAP (rendering, input handling)
-    High = 1,       // Important tasks (physics, animation)  
+    High = 1,       // Important tasks (physics, animation)
     Normal = 2,     // Default priority for most tasks
     Low = 3,        // Background tasks (asset loading)
     Idle = 4        // Only execute when nothing else is pending
@@ -198,7 +198,7 @@ WorkerBudget budget = {
     .remaining = 0           // Fully allocated
 };
 
-// 16-core system (15 workers available)  
+// 16-core system (15 workers available)
 WorkerBudget budget = {
     .totalWorkers = 15,
     .engineReserved = 2,     // 13% - Enhanced engine capacity
@@ -232,17 +232,17 @@ void AIManager::update() {
     
     size_t entitiesPerBatch = entityCount / batchCount;
     size_t remainingEntities = entityCount % batchCount;
-    
+
     // Submit optimized batches
     for (size_t i = 0; i < batchCount; ++i) {
         size_t start = i * entitiesPerBatch;
         size_t end = start + entitiesPerBatch;
-        
+
         // Add remaining entities to last batch
         if (i == batchCount - 1) {
             end += remainingEntities;
         }
-        
+
         threadSystem.enqueueTask([this, start, end, deltaTime]() {
             processBatch(start, end, deltaTime);
         }, TaskPriority::High, "AI_OptimalBatch");
@@ -267,13 +267,13 @@ public:
     // Singleton access
     static ThreadSystem& Instance();
     static bool Exists();
-    
+
     // Initialization and cleanup
     bool init(size_t queueCapacity = DEFAULT_QUEUE_CAPACITY,
               unsigned int customThreadCount = 0,
               bool enableProfiling = false);
     void clean();
-    
+
     // System status
     bool isShutdown() const;
     unsigned int getThreadCount() const;
@@ -325,44 +325,44 @@ private:
     void updateEntitiesWithOptimalBatching(float deltaTime) {
         size_t entityCount = m_storage.size();
         if (entityCount == 0) return;
-        
+
         // Use WorkerBudget system for optimal resource allocation
         auto& threadSystem = ThreadSystem::Instance();
         size_t availableWorkers = static_cast<size_t>(threadSystem.getThreadCount());
         WorkerBudget budget = calculateWorkerBudget(availableWorkers);
-        
+
         // Get optimal worker count with buffer allocation
         size_t optimalWorkerCount = budget.getOptimalWorkerCount(budget.aiAllocated, entityCount, 1000);
-        
+
         // Optimal batching: 2-4 large batches for maximum efficiency
         size_t minEntitiesPerBatch = 1000;
         size_t batchCount = std::min(optimalWorkerCount, entityCount / minEntitiesPerBatch);
         batchCount = std::max(size_t(1), std::min(batchCount, size_t(4)));
-        
+
         size_t entitiesPerBatch = entityCount / batchCount;
         size_t remainingEntities = entityCount % batchCount;
-        
+
         // Submit optimized batches with High priority
         for (size_t i = 0; i < batchCount; ++i) {
             size_t start = i * entitiesPerBatch;
             size_t end = start + entitiesPerBatch;
-            
+
             if (i == batchCount - 1) {
                 end += remainingEntities;
             }
-            
+
             threadSystem.enqueueTask([this, start, end, deltaTime]() {
                 processBatch(start, end, deltaTime);
             }, TaskPriority::High, "AI_OptimalBatch");
         }
     }
-    
+
     // Optimized batch processing with lock-free entity caching
     void processBatch(size_t start, size_t end, float deltaTime) {
         // Pre-cache entities and behaviors to reduce lock contention
         std::vector<EntityPtr> batchEntities;
         std::vector<std::shared_ptr<AIBehavior>> batchBehaviors;
-        
+
         // Single lock acquisition for entire batch
         {
             std::shared_lock<std::shared_mutex> lock(m_entitiesMutex);
@@ -371,14 +371,14 @@ private:
                 batchBehaviors.push_back(m_storage.behaviors[i]);
             }
         }
-        
+
         // Process entities without locks using pre-calculated distance thresholds
         float maxDistSquared = m_maxUpdateDistance.load() * m_maxUpdateDistance.load();
-        
+
         for (size_t idx = 0; idx < batchEntities.size(); ++idx) {
             EntityPtr entity = batchEntities[idx];
             auto behavior = batchBehaviors[idx];
-            
+
             if (entity && behavior) {
                 // Pure distance-based culling (no frame counting)
                 bool shouldUpdate = true;
@@ -386,7 +386,7 @@ private:
                     float distanceSquared = calculateDistanceSquared(entity->getPosition());
                     shouldUpdate = (distanceSquared <= maxDistSquared);
                 }
-                
+
                 if (shouldUpdate) {
                     behavior->executeLogic(entity);
                     entity->update(deltaTime);
@@ -404,17 +404,17 @@ class EventManager {
 private:
     void processEventsParallel() {
         auto eventBatches = partitionEventsByType(pendingEvents);
-        
+
         for (const auto& [eventType, events] : eventBatches) {
             ThreadSystem::Instance().enqueueTask([=]() {
                 for (const auto& event : events) {
                     processEvent(event);
                 }
-            }, getEventPriority(eventType), 
+            }, getEventPriority(eventType),
                "Event_Batch_" + std::to_string(static_cast<int>(eventType)));
         }
     }
-    
+
     TaskPriority getEventPriority(EventType type) {
         switch (type) {
             case EventType::Input: return TaskPriority::Critical;
@@ -445,9 +445,9 @@ for (size_t i = 0; i < entities.size(); i += batchSize) {
 }
 
 // 2. Use appropriate priorities
-ThreadSystem::Instance().enqueueTask(criticalRenderTask, 
+ThreadSystem::Instance().enqueueTask(criticalRenderTask,
                                    TaskPriority::Critical, "Render Update");
-ThreadSystem::Instance().enqueueTask(backgroundLoadTask, 
+ThreadSystem::Instance().enqueueTask(backgroundLoadTask,
                                    TaskPriority::Low, "Asset Loading");
 
 // 3. Process large workloads with optimal batching
@@ -475,7 +475,7 @@ ThreadSystem::Instance().enqueueTask([]() {
 });
 
 // ❌ Don't use high priority for non-critical tasks
-ThreadSystem::Instance().enqueueTask(backgroundTask, 
+ThreadSystem::Instance().enqueueTask(backgroundTask,
                                    TaskPriority::Critical); // Wrong priority
 ```
 
@@ -606,47 +606,47 @@ private:
             THREADSYSTEM_ERROR("Failed to initialize ThreadSystem");
             return false;
         }
-        
+
         // Initialize other systems
         if (!initRenderer() || !initAIManager() || !initEventManager()) {
             return false;
         }
-        
+
         THREADSYSTEM_INFO("Game engine initialized successfully");
         return true;
     }
-    
+
     void update(float deltaTime) {
         // Update systems using ThreadSystem
         updateInput();      // Main thread
-        
+
         // Parallel updates
         ThreadSystem::Instance().enqueueTask([=]() {
             aiManager.update(deltaTime);
         }, TaskPriority::High, "AI Update");
-        
+
         ThreadSystem::Instance().enqueueTask([=]() {
             physicsManager.update(deltaTime);
         }, TaskPriority::High, "Physics Update");
-        
+
         ThreadSystem::Instance().enqueueTask([=]() {
             audioManager.update(deltaTime);
         }, TaskPriority::Normal, "Audio Update");
-        
+
         // Wait for critical updates before rendering
         while (ThreadSystem::Instance().isBusy()) {
             std::this_thread::yield();
         }
-        
+
         render(); // Main thread
     }
-    
+
     void cleanup() {
         // Clean shutdown - process remaining tasks
         while (ThreadSystem::Instance().isBusy()) {
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
         }
-        
+
         ThreadSystem::Instance().clean();
         THREADSYSTEM_INFO("Game engine shutdown complete");
     }
@@ -660,22 +660,22 @@ private:
 ```cpp
 void monitorThreadSystemPerformance() {
     auto& ts = ThreadSystem::Instance();
-    
+
     // Basic statistics
     size_t queueSize = ts.getQueueSize();
     size_t processed = ts.getTotalTasksProcessed();
     size_t enqueued = ts.getTotalTasksEnqueued();
-    
+
     // Performance metrics
     double throughput = static_cast<double>(processed) / getUptimeSeconds();
     double queueUtilization = static_cast<double>(queueSize) / ts.getQueueCapacity();
-    
-    THREADSYSTEM_INFO("Performance - Throughput: " + std::to_string(throughput) + 
+
+    THREADSYSTEM_INFO("Performance - Throughput: " + std::to_string(throughput) +
                      " tasks/sec, Queue: " + std::to_string(queueUtilization * 100) + "%");
-    
+
     // Alert on performance issues
     if (queueUtilization > 0.8) {
-        THREADSYSTEM_WARN("High queue utilization detected: " + 
+        THREADSYSTEM_WARN("High queue utilization detected: " +
                          std::to_string(queueUtilization * 100) + "%");
     }
 }
@@ -686,10 +686,10 @@ void monitorThreadSystemPerformance() {
 ```cpp
 void debugThreadSystem() {
     auto& ts = ThreadSystem::Instance();
-    
+
     // Enable detailed logging
     ts.setDebugLogging(true);
-    
+
     // System status
     THREADSYSTEM_DEBUG("ThreadSystem Status:");
     THREADSYSTEM_DEBUG("  Workers: " + std::to_string(ts.getThreadCount()));
@@ -697,12 +697,12 @@ void debugThreadSystem() {
     THREADSYSTEM_DEBUG("  Queue Capacity: " + std::to_string(ts.getQueueCapacity()));
     THREADSYSTEM_DEBUG("  Is Busy: " + std::string(ts.isBusy() ? "Yes" : "No"));
     THREADSYSTEM_DEBUG("  Is Shutdown: " + std::string(ts.isShutdown() ? "Yes" : "No"));
-    
+
     // Task statistics
     THREADSYSTEM_DEBUG("Task Statistics:");
     THREADSYSTEM_DEBUG("  Enqueued: " + std::to_string(ts.getTotalTasksEnqueued()));
     THREADSYSTEM_DEBUG("  Processed: " + std::to_string(ts.getTotalTasksProcessed()));
-    
+
     size_t pending = ts.getTotalTasksEnqueued() - ts.getTotalTasksProcessed();
     THREADSYSTEM_DEBUG("  Pending: " + std::to_string(pending));
 }
@@ -727,9 +727,9 @@ void validateThreadSystemPerformance() {
     // Test load balancing with large workload
     const size_t taskCount = 10000;
     std::atomic<size_t> completedTasks{0};
-    
+
     auto startTime = std::chrono::steady_clock::now();
-    
+
     for (size_t i = 0; i < taskCount; ++i) {
         ThreadSystem::Instance().enqueueTask([&]() {
             // Simulate work
@@ -737,18 +737,18 @@ void validateThreadSystemPerformance() {
             completedTasks.fetch_add(1, std::memory_order_relaxed);
         }, TaskPriority::Normal, "Load Test Task");
     }
-    
+
     // Wait for completion
     while (completedTasks.load() < taskCount) {
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
-    
+
     auto endTime = std::chrono::steady_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime);
-    
+
     // Expected: <2000ms for 10,000 tasks on 8-core system
     THREADSYSTEM_INFO("Load test completed in " + std::to_string(duration.count()) + "ms");
-    
+
     // Validate load balancing effectiveness
     if (duration.count() < 2000) {
         THREADSYSTEM_INFO("✅ Excellent load balancing performance");
@@ -767,7 +767,7 @@ class CustomSubsystem {
 private:
     WorkerBudget calculateOptimalBudget() {
         size_t totalWorkers = ThreadSystem::Instance().getThreadCount();
-        
+
         return WorkerBudget{
             .totalWorkers = totalWorkers,
             .engineReserved = std::max(1UL, totalWorkers / 10),      // 10%
@@ -776,17 +776,17 @@ private:
             .remaining = 0
         };
     }
-    
+
 public:
     void processWithBudget() {
         auto budget = calculateOptimalBudget();
-        
+
         // Use allocated workers efficiently
         size_t workersToUse = budget.aiAllocated;
         if (getWorkloadSize() > 1000 && budget.hasBufferCapacity()) {
             workersToUse += std::min(budget.remaining, 2UL);
         }
-        
+
         distributeTasks(workersToUse);
     }
 };
@@ -807,7 +807,7 @@ public:
             return result;
         }, TaskPriority::High, "Pipeline Stage 1");
     }
-    
+
     template<typename T>
     auto stage2(std::future<std::vector<T>>&& input) -> std::future<std::vector<T>> {
         return ThreadSystem::Instance().enqueueTaskWithResult([input = std::move(input)]() mutable {
@@ -819,12 +819,12 @@ public:
             return result;
         }, TaskPriority::Normal, "Pipeline Stage 2");
     }
-    
+
     template<typename T>
     void execute(const std::vector<T>& input) {
         auto stage1Result = stage1(input);
         auto stage2Result = stage2(std::move(stage1Result));
-        
+
         // Final processing
         ThreadSystem::Instance().enqueueTask([stage2Result = std::move(stage2Result)]() mutable {
             auto finalResult = stage2Result.get();
@@ -841,7 +841,7 @@ The ThreadSystem provides a robust, high-performance foundation for multi-thread
 ### Key Takeaways
 
 - **Simple API**: Fire-and-forget or result-returning task submission
-- **Automatic Optimization**: WorkerBudget allocation and priority scheduling require no configuration  
+- **Automatic Optimization**: WorkerBudget allocation and priority scheduling require no configuration
 - **Production Ready**: Comprehensive error handling, thread safety, and monitoring
 - **Engine Integrated**: Seamless integration with all engine subsystems
 - **Performance Focused**: Optimized for game development workloads
