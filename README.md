@@ -589,8 +589,8 @@ Additional documentation can be found in the `docs/` directory:
 ### AI System Documentation
 - **[AI System Overview](docs/ai/AIManager.md)** - Complete API reference and usage guide
 - **[AIManager Optimization Summary](docs/AIManager_Optimization_Summary.md)** - Performance optimization details achieving 4-6% CPU usage with 1000+ entities
-- **[Behavior Modes](docs/ai/BehaviorModes.md)** - PatrolBehavior and WanderBehavior mode-based system
-- **[Behavior Modes Quick Reference](docs/ai/BehaviorModes_QuickReference.md)** - Quick setup guide for behavior modes
+- **[Behavior Modes](docs/ai/BehaviorModes.md)** - Comprehensive documentation for all 8 AI behaviors with 32 total modes, configuration examples, and best practices
+- **[Behavior Quick Reference](docs/ai/BehaviorQuickReference.md)** - Streamlined quick lookup for all behaviors, modes, and setup patterns
 
 ### Event System Documentation
 - **[EventManager Overview](docs/events/EventManager.md)** - Complete unified documentation with EventManager as the single source of truth for all event operations

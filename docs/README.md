@@ -32,8 +32,8 @@ Foundation systems that power the game engine architecture and timing.
 The AI system provides flexible, thread-safe behavior management for game entities with individual behavior instances and mode-based configuration.
 
 - **[AI System Overview](ai/AIManager.md)** - Complete AI system documentation with unified architecture, performance optimization, and threading support
-- **[Behavior Modes](ai/BehaviorModes.md)** - Mode-based configuration for PatrolBehavior and WanderBehavior with automatic setup for common patterns
-- **[Behavior Modes Quick Reference](ai/BehaviorModes_QuickReference.md)** - Quick setup guide for mode-based behaviors
+- **[Behavior Modes](ai/BehaviorModes.md)** - Comprehensive documentation for all 8 AI behaviors with 32 total modes, configuration examples, and best practices
+- **[Behavior Quick Reference](ai/BehaviorQuickReference.md)** - Streamlined quick lookup for all behaviors, modes, and setup patterns
 
 ### Event System
 Comprehensive event management system with EventManager as the single source of truth for weather events, NPC spawning, scene transitions, and custom events.
@@ -92,7 +92,7 @@ The Forge Game Engine provides several core systems that work together:
 - **[GameLoop Setup](GameLoop.md#quick-start)** - Configure main game loop
 - **[TimestepManager Setup](TimestepManager.md#quick-start)** - Timing system configuration
 
-- **[AI Quick Start](ai/BehaviorModes_QuickReference.md)** - Set up AI behaviors in minutes
+- **[AI Quick Start](ai/BehaviorQuickReference.md)** - Set up AI behaviors in minutes
 - **[Event Quick Start](events/EventManager_QuickReference.md)** - Event system essentials with EventManager
 - **[UI Quick Start](ui/UIManager_Guide.md#quick-start)** - Create UI components with auto-sizing
 - **[Threading Setup](ThreadSystem.md#quick-start)** - Initialize multi-threading
