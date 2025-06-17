@@ -187,9 +187,20 @@ bool GameEngine::init(const char* title,
         GAMEENGINE_ERROR("Failed to set initial render draw color: " + std::string(SDL_GetError()));
       }
       #ifdef __APPLE__
-      // On macOS, use logical presentation with standard resolution for consistent aspect ratio
-      int targetLogicalWidth = 1920;
-      int targetLogicalHeight = 1080;
+      // On macOS, calculate logical resolution based on actual screen aspect ratio
+      // to prevent UI from being clipped by letterbox mode
+      int actualWidth, actualHeight;
+      if (!SDL_GetWindowSizeInPixels(mp_window.get(), &actualWidth, &actualHeight)) {
+        GAMEENGINE_ERROR("Failed to get actual window pixel size: " + std::string(SDL_GetError()));
+        // Fallback to window dimensions
+        actualWidth = m_windowWidth;
+        actualHeight = m_windowHeight;
+      }
+      
+      // Calculate aspect ratio and logical resolution that matches the screen
+      float aspectRatio = static_cast<float>(actualWidth) / static_cast<float>(actualHeight);
+      int targetLogicalHeight = 1080;  // Keep consistent height
+      int targetLogicalWidth = static_cast<int>(std::round(targetLogicalHeight * aspectRatio));
       
       // Store logical dimensions for UI positioning
       m_logicalWidth = targetLogicalWidth;
@@ -198,6 +209,9 @@ bool GameEngine::init(const char* title,
       // Use LETTERBOX mode to maintain aspect ratio and avoid black bars
       SDL_RendererLogicalPresentation presentationMode = SDL_LOGICAL_PRESENTATION_LETTERBOX;
       SDL_SetRenderLogicalPresentation(mp_renderer.get(), targetLogicalWidth, targetLogicalHeight, presentationMode);
+      
+      GAMEENGINE_INFO("macOS logical resolution calculated from aspect ratio " + std::to_string(aspectRatio) + 
+                     ": " + std::to_string(targetLogicalWidth) + "x" + std::to_string(targetLogicalHeight));
       #else
       // On non-Apple platforms, use actual screen resolution to eliminate scaling blur
       int actualWidth, actualHeight;
