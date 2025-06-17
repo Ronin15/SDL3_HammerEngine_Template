@@ -183,6 +183,18 @@ class GameEngine {
   int getWindowHeight() const noexcept { return m_windowHeight; }
   
   /**
+   * @brief Gets the logical rendering width used for UI positioning
+   * @return Logical rendering width in pixels
+   */
+  int getLogicalWidth() const noexcept { return m_logicalWidth; }
+  
+  /**
+   * @brief Gets the logical rendering height used for UI positioning
+   * @return Logical rendering height in pixels
+   */
+  int getLogicalHeight() const noexcept { return m_logicalHeight; }
+  
+  /**
    * @brief Sets the window size
    * @param width New window width in pixels
    * @param height New window height in pixels
@@ -206,6 +218,12 @@ class GameEngine {
    * @return DPI scale factor (1.0 for standard DPI, higher for high-DPI displays)
    */
   float getDPIScale() const { return m_dpiScale; }
+
+  /**
+   * @brief Updates the DPI scale factor when window is resized
+   * @param newScale New DPI scale factor to set
+   */
+  void setDPIScale(float newScale) { m_dpiScale = newScale; }
 
   /**
    * @brief Gets the optimal display index for the current platform
@@ -233,6 +251,8 @@ class GameEngine {
   std::weak_ptr<GameLoop> m_gameLoop{};  // Non-owning weak reference to GameLoop
   int m_windowWidth{0};
   int m_windowHeight{0};
+  int m_logicalWidth{1920};   // Logical rendering width for UI positioning
+  int m_logicalHeight{1080};  // Logical rendering height for UI positioning
   
   // Cached manager references for zero-overhead performance
   // Step 2: Re-implementing manager caching with proper initialization order

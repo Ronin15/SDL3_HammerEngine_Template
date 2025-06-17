@@ -6,6 +6,8 @@
 #include "managers/InputManager.hpp"
 #include "core/Logger.hpp"
 #include "core/GameEngine.hpp"
+#include "managers/UIManager.hpp"
+#include "managers/FontManager.hpp"
 #include "SDL3/SDL_gamepad.h"
 #include "SDL3/SDL_joystick.h"
 #include "utils/Vector2D.hpp"
@@ -216,6 +218,10 @@ void InputManager::update() {
 
       case SDL_EVENT_KEY_UP:
         onKeyUp(event);
+        break;
+
+      case SDL_EVENT_WINDOW_RESIZED:
+        onWindowResize(event);
         break;
 
       default:
@@ -443,6 +449,80 @@ void InputManager::onGamepadButtonUp(const SDL_Event& event) {
   }
 
   m_buttonStates[whichOne][event.gbutton.button] = false;
+}
+
+void InputManager::onWindowResize(const SDL_Event& event) {
+  // Cache GameEngine reference for better performance
+  GameEngine& gameEngine = GameEngine::Instance();
+  
+  // Update GameEngine with new window dimensions
+  int newWidth = event.window.data1;
+  int newHeight = event.window.data2;
+  
+  INPUT_INFO("Window resized to: " + std::to_string(newWidth) + "x" + std::to_string(newHeight));
+  
+  // Update GameEngine window dimensions
+  gameEngine.setWindowSize(newWidth, newHeight);
+  
+  // Recalculate DPI scale for the new window size
+  float newDpiScale = 1.0f;
+  int pixelWidth, pixelHeight;
+  int logicalWidth, logicalHeight;
+  
+  if (!SDL_GetWindowSizeInPixels(gameEngine.getWindow(), &pixelWidth, &pixelHeight)) {
+    INPUT_ERROR("Failed to get window pixel size for DPI recalculation: " + std::string(SDL_GetError()));
+    pixelWidth = newWidth;
+    pixelHeight = newHeight;
+  }
+  
+  if (!SDL_GetWindowSize(gameEngine.getWindow(), &logicalWidth, &logicalHeight)) {
+    INPUT_ERROR("Failed to get window logical size for DPI recalculation: " + std::string(SDL_GetError()));
+    logicalWidth = newWidth;
+    logicalHeight = newHeight;
+  }
+  
+  if (logicalWidth > 0 && logicalHeight > 0) {
+    float scaleX = static_cast<float>(pixelWidth) / static_cast<float>(logicalWidth);
+    float scaleY = static_cast<float>(pixelHeight) / static_cast<float>(logicalHeight);
+    newDpiScale = std::max(scaleX, scaleY);
+    
+    #ifdef __APPLE__
+    // On macOS, get the display content scale for more accurate scaling
+    float displayScale = SDL_GetWindowDisplayScale(gameEngine.getWindow());
+    if (displayScale > 0.0f) {
+      newDpiScale = displayScale;
+      INPUT_INFO("Using macOS display content scale: " + std::to_string(displayScale));
+    }
+    #endif
+  }
+  
+  INPUT_INFO("Recalculated DPI scale: " + std::to_string(newDpiScale));
+  
+  // Update GameEngine with new DPI scale
+  gameEngine.setDPIScale(newDpiScale);
+  
+  // Update UI systems with new scaling
+  try {
+    // Update UIManager with new scale
+    UIManager& uiManager = UIManager::Instance();
+    uiManager.setGlobalScale(newDpiScale);
+    INPUT_INFO("Updated UIManager with new scale: " + std::to_string(newDpiScale));
+    
+    // Force UI layout recalculation by cleaning up and reinitializing for the new scale
+    // This ensures all UI elements are repositioned correctly
+    uiManager.cleanupForStateTransition();
+    
+    // Update FontManager with logical display characteristics (not actual window size)
+    FontManager& fontManager = FontManager::Instance();
+    if (fontManager.refreshFontsForDisplay("res/fonts", gameEngine.getLogicalWidth(), gameEngine.getLogicalHeight())) {
+      INPUT_INFO("Successfully refreshed fonts for logical display size");
+    } else {
+      INPUT_WARN("Failed to refresh fonts for logical display size");
+    }
+    
+  } catch (const std::exception& e) {
+    INPUT_ERROR("Error updating UI scaling after window resize: " + std::string(e.what()));
+  }
 }
 
 void InputManager::clean() {

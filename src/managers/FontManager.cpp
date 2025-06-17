@@ -11,6 +11,28 @@
 #include <cmath>
 #include <sstream>
 
+// Font sizing configuration constants
+namespace {
+  // Platform-specific base font sizes
+  [[maybe_unused]] constexpr float APPLE_BASE_FONT_SIZE = 18.0f;
+  constexpr float NON_APPLE_HEIGHT_RATIO = 90.0f;
+  
+  // Font size ratios for different text types
+  constexpr float UI_FONT_RATIO = 0.875f;     // 87.5% of base
+  constexpr float TITLE_FONT_RATIO = 1.5f;    // 150% of base
+  constexpr float TOOLTIP_FONT_RATIO = 0.6f;  // 60% of base
+  
+  // Font size bounds for edge case protection
+  constexpr int MIN_FONT_SIZE = 8;
+  constexpr int MAX_FONT_SIZE = 100;
+  
+  // Minimum readable sizes for specific font types
+  constexpr int MIN_BASE_FONT_SIZE = 12;
+  constexpr int MIN_UI_FONT_SIZE = 10;
+  constexpr int MIN_TITLE_FONT_SIZE = 16;
+  constexpr int MIN_TOOLTIP_FONT_SIZE = 10;
+}
+
 bool FontManager::init() {
   if (!TTF_Init()) {
     FONT_CRITICAL("Font system initialization failed: " + std::string(SDL_GetError()));
@@ -22,34 +44,36 @@ bool FontManager::init() {
 }
 
 bool FontManager::loadFontsForDisplay(const std::string& fontPath, int windowWidth, int windowHeight) {
-  // Calculate base font size based on display characteristics
-  // SDL3 handles DPI scaling automatically, so use logical sizes
-  float baseSizeFloat = 22.0f;
-  
-  // Adjust for screen resolution - larger screens can handle larger fonts
-  if (windowWidth > 1920 || windowHeight > 1080) {
-    baseSizeFloat *= 1.2f; // 20% larger for high-res displays
-  } else if (windowWidth < 1366 || windowHeight < 768) {
-    baseSizeFloat *= 0.9f; // 10% smaller for low-res displays
-  }
-  
-  // Don't apply DPI scaling - SDL3's logical presentation handles this automatically
-  // Just use the calculated logical sizes
+  #ifdef __APPLE__
+  // On macOS, use logical font sizes - SDL3 logical presentation handles scaling
+  float baseSizeFloat = APPLE_BASE_FONT_SIZE;
+  #else
+  // On non-Apple platforms, calculate font sizes based on actual screen resolution
+  // Bounds checking for edge cases (ultra-high resolution, very small screens)
+  int clampedHeight = std::clamp(windowHeight, 480, 8640); // 480p minimum, 8K maximum
+  float baseSizeFloat = static_cast<float>(clampedHeight) / NON_APPLE_HEIGHT_RATIO;
+  #endif
   
   // Calculate sizes for different font types
   int baseFontSize = static_cast<int>(std::round(baseSizeFloat));
-  int uiFontSize = static_cast<int>(std::round(baseSizeFloat * 0.875f)); // 87.5% of base
-  int titleFontSize = static_cast<int>(std::round(baseSizeFloat * 1.5f)); // 150% of base
-  int tooltipFontSize = static_cast<int>(std::round(baseSizeFloat * 0.5f)); // 50% of base for compact tooltips
+  int uiFontSize = static_cast<int>(std::round(baseSizeFloat * UI_FONT_RATIO));
+  int titleFontSize = static_cast<int>(std::round(baseSizeFloat * TITLE_FONT_RATIO));
+  int tooltipFontSize = static_cast<int>(std::round(baseSizeFloat * TOOLTIP_FONT_RATIO));
   
-  // Ensure minimum readable sizes
-  baseFontSize = std::max(baseFontSize, 10);
-  uiFontSize = std::max(uiFontSize, 8);
-  titleFontSize = std::max(titleFontSize, 14);
-  tooltipFontSize = std::max(tooltipFontSize, 8);
+  // Apply bounds checking to prevent extreme font sizes
+  baseFontSize = std::clamp(baseFontSize, MIN_FONT_SIZE, MAX_FONT_SIZE);
+  uiFontSize = std::clamp(uiFontSize, MIN_FONT_SIZE, MAX_FONT_SIZE);
+  titleFontSize = std::clamp(titleFontSize, MIN_FONT_SIZE, MAX_FONT_SIZE);
+  tooltipFontSize = std::clamp(tooltipFontSize, MIN_FONT_SIZE, MAX_FONT_SIZE);
   
-  FONT_INFO("Calculated logical font sizes for display " + std::to_string(windowWidth) + "x" + std::to_string(windowHeight) + 
-           " (SDL3 will handle DPI scaling): base=" + std::to_string(baseFontSize) + 
+  // Ensure minimum readable sizes for specific font types
+  baseFontSize = std::max(baseFontSize, MIN_BASE_FONT_SIZE);
+  uiFontSize = std::max(uiFontSize, MIN_UI_FONT_SIZE);
+  titleFontSize = std::max(titleFontSize, MIN_TITLE_FONT_SIZE);
+  tooltipFontSize = std::max(tooltipFontSize, MIN_TOOLTIP_FONT_SIZE);
+  
+  FONT_INFO("Logical font sizes for " + std::to_string(windowWidth) + "x" + std::to_string(windowHeight) + 
+           ": base=" + std::to_string(baseFontSize) + 
            ", UI=" + std::to_string(uiFontSize) + ", title=" + std::to_string(titleFontSize) + 
            ", tooltip=" + std::to_string(tooltipFontSize));
   
@@ -61,6 +85,23 @@ bool FontManager::loadFontsForDisplay(const std::string& fontPath, int windowWid
   success &= loadFont(fontPath, "fonts_tooltip", tooltipFontSize);
   
   return success;
+}
+
+bool FontManager::refreshFontsForDisplay(const std::string& fontPath, int windowWidth, int windowHeight) {
+  FONT_INFO("Refreshing fonts for new display size: " + std::to_string(windowWidth) + "x" + std::to_string(windowHeight));
+  
+  // Clear existing display fonts to reload them with new sizes
+  clearFont("fonts_Arial");
+  clearFont("fonts_UI_Arial");
+  clearFont("fonts_title_Arial");
+  clearFont("fonts_tooltip_Arial");
+  clearFont("fonts");
+  clearFont("fonts_UI");
+  clearFont("fonts_title");
+  clearFont("fonts_tooltip");
+  
+  // Reload fonts with new display characteristics
+  return loadFontsForDisplay(fontPath, windowWidth, windowHeight);
 }
 
 bool FontManager::loadFont(const std::string& fontFile, const std::string& fontID, int fontSize) {
@@ -179,8 +220,8 @@ std::shared_ptr<SDL_Texture> FontManager::renderText(
     return nullptr;
   }
 
-  // Set texture scale mode for crisp font rendering
-  SDL_SetTextureScaleMode(texture.get(), SDL_SCALEMODE_LINEAR);
+  // Set texture scale mode for crisp font rendering - use NEAREST to avoid blur when scaling
+  SDL_SetTextureScaleMode(texture.get(), SDL_SCALEMODE_NEAREST);
 
   return texture;
 }
@@ -266,8 +307,8 @@ std::shared_ptr<SDL_Texture> FontManager::renderMultiLineText(
 
   // Set texture blend mode to preserve alpha
   SDL_SetTextureBlendMode(texture.get(), SDL_BLENDMODE_BLEND);
-  // Set texture scale mode for crisp font rendering
-  SDL_SetTextureScaleMode(texture.get(), SDL_SCALEMODE_LINEAR);
+  // Set texture scale mode for crisp font rendering - use NEAREST to avoid blur when scaling
+  SDL_SetTextureScaleMode(texture.get(), SDL_SCALEMODE_NEAREST);
 
   return texture;
 }
@@ -361,7 +402,7 @@ void FontManager::drawTextAligned(const std::string& text, const std::string& fo
     static_cast<float>(height)
   };
 
-  // Render the texture
+  // Render the texture using logical coordinates
   SDL_RenderTexture(renderer, texture.get(), nullptr, &dstRect);
 
   // The texture will be automatically cleaned up when the unique_ptr goes out of scope

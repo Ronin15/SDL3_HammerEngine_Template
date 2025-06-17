@@ -23,14 +23,16 @@ bool UIManager::init() {
     m_titleFontID = "fonts_title_Arial";
     m_uiFontID = "fonts_UI_Arial";
     
-    // Use centralized DPI scale from GameEngine
+    // Platform-specific scaling approach to ensure compatibility
+    #ifdef __APPLE__
+    // On macOS, use the DPI scale calculated by GameEngine for proper text rendering
     const auto& gameEngine = GameEngine::Instance();
     m_globalScale = gameEngine.getDPIScale();
-    
-    #ifdef __APPLE__
-    // On macOS, ensure minimum scale for readability and clamp excessive scaling
-    m_globalScale = std::max(1.0f, std::min(m_globalScale, 3.0f));
-    UI_INFO("macOS DPI scale adjusted to: " + std::to_string(m_globalScale));
+    UI_INFO("macOS: Using DPI scale from GameEngine: " + std::to_string(m_globalScale));
+    #else
+    // On other platforms, use consistent scaling with logical presentation
+    m_globalScale = 1.0f;
+    UI_INFO("Non-macOS: Global scale set to 1.0 (SDL3 logical presentation handles scaling)");
     #endif
 
     // Clear any existing data and reserve capacity for performance
@@ -818,7 +820,7 @@ void UIManager::setTitleAlignment(const std::string& titleID, UIAlignment alignm
         // If setting to CENTER_CENTER and auto-sizing is enabled, recalculate position
         if (alignment == UIAlignment::CENTER_CENTER && component->autoSize && component->autoWidth) {
             const auto& gameEngine = GameEngine::Instance();
-            int windowWidth = gameEngine.getWindowWidth();
+            int windowWidth = gameEngine.getLogicalWidth();
             component->bounds.x = (windowWidth - component->bounds.width) / 2;
         }
     }
@@ -1819,9 +1821,9 @@ void UIManager::renderButton(SDL_Renderer* renderer, const std::shared_ptr<UICom
         int centerX = component->bounds.x + component->bounds.width / 2;
         int centerY = component->bounds.y + component->bounds.height / 2;
         #else
-        // Apply global scale to font positioning on other platforms
-        int centerX = static_cast<int>((component->bounds.x + component->bounds.width / 2.0f) * m_globalScale);
-        int centerY = static_cast<int>((component->bounds.y + component->bounds.height / 2.0f) * m_globalScale);
+        // Use logical coordinates directly - SDL3 logical presentation handles scaling
+        int centerX = component->bounds.x + component->bounds.width / 2;
+        int centerY = component->bounds.y + component->bounds.height / 2;
         #endif
         fontManager.drawTextAligned(component->text, component->style.fontID,
                                    centerX, centerY,
@@ -1882,9 +1884,9 @@ void UIManager::renderLabel(SDL_Renderer* renderer, const std::shared_ptr<UIComp
     int finalTextX = static_cast<int>(textX);
     int finalTextY = static_cast<int>(textY);
     #else
-    // Apply global scale to text positioning on other platforms
-    int finalTextX = static_cast<int>(textX * m_globalScale);
-    int finalTextY = static_cast<int>(textY * m_globalScale);
+    // Use logical coordinates directly - SDL3 logical presentation handles scaling
+    int finalTextX = static_cast<int>(textX);
+    int finalTextY = static_cast<int>(textY);
     #endif
     
     // Use a custom text drawing method that renders background and text together
@@ -1959,9 +1961,9 @@ void UIManager::renderInputField(SDL_Renderer* renderer, const std::shared_ptr<U
         int textX = component->bounds.x + component->style.padding;
         int textY = component->bounds.y + component->bounds.height / 2;
         #else
-        // Apply global scale to font positioning on other platforms
-        int textX = static_cast<int>((component->bounds.x + component->style.padding) * m_globalScale);
-        int textY = static_cast<int>((component->bounds.y + component->bounds.height / 2.0f) * m_globalScale);
+        // Use logical coordinates directly - SDL3 logical presentation handles scaling
+        int textX = component->bounds.x + component->style.padding;
+        int textY = component->bounds.y + component->bounds.height / 2;
         #endif
         fontManager.drawTextAligned(displayText, component->style.fontID,
                                    textX, textY,
@@ -2045,9 +2047,9 @@ void UIManager::renderCheckbox(SDL_Renderer* renderer, const std::shared_ptr<UIC
         int textX = checkRect.x + checkRect.width + component->style.padding;
         int textY = component->bounds.y + component->bounds.height / 2;
         #else
-        // Apply global scale to font positioning on other platforms
-        int textX = static_cast<int>((checkRect.x + checkRect.width + component->style.padding) * m_globalScale);
-        int textY = static_cast<int>((component->bounds.y + component->bounds.height / 2.0f) * m_globalScale);
+        // Use logical coordinates directly - SDL3 logical presentation handles scaling
+        int textX = checkRect.x + checkRect.width + component->style.padding;
+        int textY = component->bounds.y + component->bounds.height / 2;
         #endif
         fontManager.drawTextAligned(component->text, component->style.fontID,
                                    textX, textY,
@@ -2085,9 +2087,9 @@ void UIManager::renderList(SDL_Renderer* renderer, const std::shared_ptr<UICompo
         int textX = itemRect.x + component->style.padding;
         int textY = itemRect.y + itemHeight / 2;
         #else
-        // Apply global scale to font positioning on other platforms
-        int textX = static_cast<int>((itemRect.x + component->style.padding) * m_globalScale);
-        int textY = static_cast<int>((itemRect.y + itemHeight / 2.0f) * m_globalScale);
+        // Use logical coordinates directly - SDL3 logical presentation handles scaling
+        int textX = itemRect.x + component->style.padding;
+        int textY = itemRect.y + itemHeight / 2;
         #endif
         fontManager.drawTextAligned(component->listItems[i], component->style.fontID,
                                    textX, textY,
@@ -2169,8 +2171,9 @@ void UIManager::renderEventLog(SDL_Renderer* renderer, const std::shared_ptr<UIC
             int textX = contentX;
             int textY = y;
             #else
-            int textX = static_cast<int>(contentX * m_globalScale);
-            int textY = static_cast<int>(y * m_globalScale);
+            // Use logical coordinates directly - SDL3 logical presentation handles scaling
+            int textX = contentX;
+            int textY = y;
             #endif
             
             // Use FontManager's word wrapping to draw text
@@ -2191,8 +2194,9 @@ void UIManager::renderEventLog(SDL_Renderer* renderer, const std::shared_ptr<UIC
             int textX = contentX;
             int textY = y;
             #else
-            int textX = static_cast<int>(contentX * m_globalScale);
-            int textY = static_cast<int>(y * m_globalScale);
+            // Use logical coordinates directly - SDL3 logical presentation handles scaling
+            int textX = contentX;
+            int textY = y;
             #endif
             
             // Use FontManager's word wrapping to draw text
@@ -2266,9 +2270,9 @@ void UIManager::renderTooltip(SDL_Renderer* renderer) {
     int centerX = tooltipRect.x + tooltipRect.width / 2;
     int centerY = tooltipRect.y + tooltipRect.height / 2;
     #else
-    // Apply global scale to font positioning on other platforms
-    int centerX = static_cast<int>((tooltipRect.x + tooltipRect.width / 2.0f) * m_globalScale);
-    int centerY = static_cast<int>((tooltipRect.y + tooltipRect.height / 2.0f) * m_globalScale);
+    // Use logical coordinates directly - SDL3 logical presentation handles scaling
+    int centerX = tooltipRect.x + tooltipRect.width / 2;
+    int centerY = tooltipRect.y + tooltipRect.height / 2;
     #endif
     fontManager.drawTextAligned(component->text, component->style.fontID,
                                centerX, centerY,
@@ -2516,9 +2520,9 @@ void UIManager::calculateOptimalSize(std::shared_ptr<UIComponent> component) {
         // Automatically center any component with CENTER alignment when width changes
         if (component->style.textAlign == UIAlignment::CENTER_CENTER && 
             component->bounds.width != oldWidth) {
-            // Get window width for centering calculation
+            // Get logical width for centering calculation
             const auto& gameEngine = GameEngine::Instance();
-            int windowWidth = gameEngine.getWindowWidth();
+            int windowWidth = gameEngine.getLogicalWidth();
             component->bounds.x = (windowWidth - component->bounds.width) / 2;
         }
     }

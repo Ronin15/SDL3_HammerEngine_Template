@@ -52,6 +52,14 @@ bool GameEngine::init(const char* title,
     SDL_SetHint(SDL_HINT_RENDER_LINE_METHOD, "3");    // Use geometry for smoother lines
     SDL_SetHint("SDL_VIDEO_X11_NET_WM_BYPASS_COMPOSITOR", "0");  // Don't bypass compositor
     SDL_SetHint("SDL_MOUSE_AUTO_CAPTURE", "0");    // Prevent mouse capture issues
+    
+    // Performance hints for rendering
+    SDL_SetHint("SDL_RENDER_BATCHING", "1");          // Enable render batching for performance
+    
+    // Texture memory management and text rendering optimization
+    SDL_SetHint("SDL_HINT_RENDER_VSYNC", "1");        // Ensure VSync is properly handled
+    SDL_SetHint("SDL_HINT_VIDEO_DOUBLE_BUFFER", "1"); // Enable double buffering for smoother rendering
+    SDL_SetHint("SDL_HINT_FRAMEBUFFER_ACCELERATION", "1"); // Enable framebuffer acceleration
 
     // macOS-specific hints for better fullscreen and DPI handling
     #ifdef __APPLE__
@@ -178,17 +186,38 @@ bool GameEngine::init(const char* title,
       if (!SDL_SetRenderDrawColor(mp_renderer.get(), HAMMER_GRAY)) {  // Hammer Game Engine gunmetal dark grey
         GAMEENGINE_ERROR("Failed to set initial render draw color: " + std::string(SDL_GetError()));
       }
-      // Set logical rendering size to standard resolution for consistent aspect ratio
+      #ifdef __APPLE__
+      // On macOS, use logical presentation with standard resolution for consistent aspect ratio
       int targetLogicalWidth = 1920;
       int targetLogicalHeight = 1080;
-
-      #ifdef __APPLE__
-      // On macOS, use LETTERBOX mode to maintain aspect ratio and avoid black bars
+      
+      // Store logical dimensions for UI positioning
+      m_logicalWidth = targetLogicalWidth;
+      m_logicalHeight = targetLogicalHeight;
+      
+      // Use LETTERBOX mode to maintain aspect ratio and avoid black bars
       SDL_RendererLogicalPresentation presentationMode = SDL_LOGICAL_PRESENTATION_LETTERBOX;
-      #else
-      SDL_RendererLogicalPresentation presentationMode = m_logicalPresentationMode;
-      #endif
       SDL_SetRenderLogicalPresentation(mp_renderer.get(), targetLogicalWidth, targetLogicalHeight, presentationMode);
+      #else
+      // On non-Apple platforms, use actual screen resolution to eliminate scaling blur
+      int actualWidth, actualHeight;
+      if (!SDL_GetWindowSizeInPixels(mp_window.get(), &actualWidth, &actualHeight)) {
+        GAMEENGINE_ERROR("Failed to get actual window pixel size: " + std::string(SDL_GetError()));
+        // Fallback to window dimensions
+        actualWidth = m_windowWidth;
+        actualHeight = m_windowHeight;
+      }
+      
+      // Store actual dimensions for UI positioning (no scaling needed)
+      m_logicalWidth = actualWidth;
+      m_logicalHeight = actualHeight;
+      
+      // Disable logical presentation to render at native resolution
+      SDL_RendererLogicalPresentation presentationMode = SDL_LOGICAL_PRESENTATION_DISABLED;
+      SDL_SetRenderLogicalPresentation(mp_renderer.get(), actualWidth, actualHeight, presentationMode);
+      
+      GAMEENGINE_INFO("Using native resolution for crisp rendering: " + std::to_string(actualWidth) + "x" + std::to_string(actualHeight));
+      #endif
       //Render Mode.
       SDL_SetRenderDrawBlendMode(mp_renderer.get(), SDL_BLENDMODE_BLEND);
 
@@ -229,18 +258,20 @@ bool GameEngine::init(const char* title,
   }
 
   if (dpiLogicalWidth > 0 && dpiLogicalHeight > 0) {
-    float scaleX = static_cast<float>(dpiPixelWidth) / static_cast<float>(dpiLogicalWidth);
-    float scaleY = static_cast<float>(dpiPixelHeight) / static_cast<float>(dpiLogicalHeight);
-    dpiScale = std::max(scaleX, scaleY);
-
     #ifdef __APPLE__
-    // On macOS, get the display content scale for more accurate scaling
+    // On macOS, use the native display content scale for proper text rendering
     float displayScale = SDL_GetWindowDisplayScale(mp_window.get());
     if (displayScale > 0.0f) {
-      // Use the display scale if it's valid, otherwise keep calculated scale
       dpiScale = displayScale;
       GAMEENGINE_INFO("Using macOS display content scale: " + std::to_string(displayScale));
+    } else {
+      dpiScale = 1.0f;
+      GAMEENGINE_INFO("macOS display scale unavailable, using 1.0");
     }
+    #else
+    // On other platforms, don't apply additional DPI scaling - SDL3 logical presentation handles it
+    dpiScale = 1.0f;
+    GAMEENGINE_INFO("Non-macOS: Using DPI scale 1.0 (SDL3 logical presentation handles scaling)");
     #endif
   }
 
@@ -302,8 +333,8 @@ texMgr.load("res/img", "", mp_renderer.get());
 
         GAMEENGINE_INFO("Loading fonts with display-aware sizing");
 
-        // Let FontManager calculate optimal sizes based on display characteristics
-        if (!fontMgr.loadFontsForDisplay("res/fonts", m_windowWidth, m_windowHeight)) {
+        // Use logical dimensions to match UI coordinate system
+        if (!fontMgr.loadFontsForDisplay("res/fonts", m_logicalWidth, m_logicalHeight)) {
           GAMEENGINE_CRITICAL("Failed to load fonts for display");
           return false;
         }
