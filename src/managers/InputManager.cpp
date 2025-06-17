@@ -179,8 +179,8 @@ void InputManager::update() {
 
   SDL_Event event;
   while (SDL_PollEvent(&event)) {
-    // Temporarily disable coordinate conversion to test mouse clicks
-    // SDL_ConvertEventToRenderCoordinates(gameEngine.getRenderer(), &event);
+    // Convert window coordinates to logical coordinates for all mouse events
+    SDL_ConvertEventToRenderCoordinates(gameEngine.getRenderer(), &event);
 
     switch (event.type) {
       case SDL_EVENT_QUIT:
