@@ -44,7 +44,7 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char* argv[]) {
                     " parallel tasks");
 
   // Initialize GameEngine
-  if (!GameEngine::Instance().init(GAME_NAME.c_str(), WINDOW_WIDTH, WINDOW_HEIGHT, true)) {
+  if (!GameEngine::Instance().init(GAME_NAME.c_str(), WINDOW_WIDTH, WINDOW_HEIGHT, false)) {
     GAMEENGINE_CRITICAL("Init " + GAME_NAME + " Failed: " + std::string(SDL_GetError()));
     return -1;
   }
