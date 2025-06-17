@@ -315,6 +315,9 @@ void UIManager::createList(const std::string& id, const UIRect& bounds) {
     component->zOrder = 8; // UI elements
 
     m_components[id] = component;
+    
+    // Enable auto-sizing for dynamic content-based sizing
+    calculateOptimalSize(component);
 }
 
 void UIManager::createTooltip(const std::string& id, const std::string& text) {
@@ -670,6 +673,8 @@ void UIManager::addListItem(const std::string& listID, const std::string& item) 
     auto component = getComponent(listID);
     if (component && component->type == UIComponentType::LIST) {
         component->listItems.push_back(item);
+        // Trigger auto-sizing to accommodate new content
+        calculateOptimalSize(component);
     }
 }
 
@@ -683,6 +688,8 @@ void UIManager::removeListItem(const std::string& listID, int index) {
         } else if (component->selectedIndex > index) {
             component->selectedIndex--;
         }
+        // Trigger auto-sizing (grow-only behavior will prevent shrinking)
+        calculateOptimalSize(component);
     }
 }
 
@@ -752,6 +759,9 @@ void UIManager::addListItemWithAutoScroll(const std::string& listID, const std::
         // Auto-scroll by selecting the last item (optional behavior)
         // Comment this out if you don't want auto-selection
         // component->selectedIndex = static_cast<int>(component->listItems.size()) - 1;
+        
+        // Trigger auto-sizing to accommodate new content
+        calculateOptimalSize(component);
     }
 }
 
@@ -1075,13 +1085,7 @@ void UIManager::setLightTheme() {
     listStyle.hoverColor = {180, 200, 255, 255}; // Light blue selection
     listStyle.borderWidth = 1;
     // Calculate list item height based on font metrics
-    auto& fontManagerList = FontManager::Instance();
-    int lineHeightList = 0;
-    if (fontManagerList.getFontMetrics("fonts_UI_Arial", &lineHeightList, nullptr, nullptr)) {
-        listStyle.listItemHeight = lineHeightList + 8; // Add padding for better mouse accuracy
-    } else {
-        listStyle.listItemHeight = 36; // Fallback if font metrics unavailable
-    }
+    listStyle.listItemHeight = 32; // Will be calculated dynamically during rendering
     listStyle.fontID = "fonts_UI_Arial";
     lightTheme.componentStyles[UIComponentType::LIST] = listStyle;
 
@@ -1122,13 +1126,7 @@ void UIManager::setLightTheme() {
     // Event log style - similar to list but optimized for display-only
     UIStyle eventLogStyle = listStyle;
     // Calculate event log item height based on font metrics
-    auto& fontManager = FontManager::Instance();
-    int lineHeight = 0;
-    if (fontManager.getFontMetrics("fonts_UI_Arial", &lineHeight, nullptr, nullptr)) {
-        eventLogStyle.listItemHeight = lineHeight + 4; // Tighter spacing for event log
-    } else {
-        eventLogStyle.listItemHeight = 24; // Fallback if font metrics unavailable
-    }
+    eventLogStyle.listItemHeight = 24; // Will be calculated dynamically during rendering
     eventLogStyle.backgroundColor = {245, 245, 250, 160}; // Semi-transparent light background
     eventLogStyle.textColor = {0, 0, 0, 255}; // Black text for maximum contrast
     eventLogStyle.borderColor = {120, 120, 140, 180}; // Less transparent border
@@ -1252,13 +1250,7 @@ void UIManager::setDarkTheme() {
     listStyle.hoverColor = {60, 80, 150, 255}; // Blue selection
     listStyle.borderWidth = 1;
     // Calculate list item height based on font metrics
-    auto& fontManager2 = FontManager::Instance();
-    int lineHeight2 = 0;
-    if (fontManager2.getFontMetrics("fonts_UI_Arial", &lineHeight2, nullptr, nullptr)) {
-        listStyle.listItemHeight = lineHeight2 + 8; // Add padding for better mouse accuracy
-    } else {
-        listStyle.listItemHeight = 28; // Fallback if font metrics unavailable
-    }
+    listStyle.listItemHeight = 32; // Will be calculated dynamically during rendering
     listStyle.fontID = "fonts_UI_Arial";
     darkTheme.componentStyles[UIComponentType::LIST] = listStyle;
 
@@ -1299,13 +1291,7 @@ void UIManager::setDarkTheme() {
     // Event log style - similar to list but optimized for display-only
     UIStyle eventLogStyle = listStyle;
     // Calculate event log item height based on font metrics
-    auto& fontManager3 = FontManager::Instance();
-    int lineHeight3 = 0;
-    if (fontManager3.getFontMetrics("fonts_UI_Arial", &lineHeight3, nullptr, nullptr)) {
-        eventLogStyle.listItemHeight = lineHeight3 + 4; // Tighter spacing for event log
-    } else {
-        eventLogStyle.listItemHeight = 24; // Fallback if font metrics unavailable
-    }
+    eventLogStyle.listItemHeight = 24; // Will be calculated dynamically during rendering
     eventLogStyle.backgroundColor = {25, 30, 35, 80}; // Highly transparent dark background
     eventLogStyle.textColor = {255, 255, 255, 255}; // Pure white text for maximum contrast
     eventLogStyle.borderColor = {100, 120, 140, 100}; // Highly transparent blue-gray border
@@ -1628,8 +1614,13 @@ void UIManager::handleInput() {
 
             // Handle list selection
             if (component->type == UIComponentType::LIST && mouseJustPressed) {
-                // Calculate which item was clicked using configurable item height
-                int itemHeight = component->style.listItemHeight;
+                // Calculate item height dynamically based on current font metrics
+                auto& fontManager = FontManager::Instance();
+                int lineHeight = 0;
+                int itemHeight = 32; // Default fallback
+                if (fontManager.getFontMetrics(component->style.fontID, &lineHeight, nullptr, nullptr)) {
+                    itemHeight = lineHeight + 8; // Add padding for better mouse accuracy
+                }
                 int itemIndex = static_cast<int>((mousePos.getY() - component->bounds.y) / itemHeight);
                 if (itemIndex >= 0 && itemIndex < static_cast<int>(component->listItems.size())) {
                     component->selectedIndex = itemIndex;
@@ -2040,8 +2031,13 @@ void UIManager::renderList(SDL_Renderer* renderer, const std::shared_ptr<UICompo
     drawRect(renderer, component->bounds, component->style.backgroundColor, true);
     drawBorder(renderer, component->bounds, component->style.borderColor, 1);
 
-    // Draw items using configurable item height for better mouse accuracy
-    int itemHeight = component->style.listItemHeight;
+    // Calculate item height dynamically based on current font metrics
+    auto& fontManager = FontManager::Instance();
+    int lineHeight = 0;
+    int itemHeight = 32; // Default fallback
+    if (fontManager.getFontMetrics(component->style.fontID, &lineHeight, nullptr, nullptr)) {
+        itemHeight = lineHeight + 8; // Add padding for better mouse accuracy
+    }
     int y = component->bounds.y + component->style.padding;
     int maxY = component->bounds.y + component->bounds.height - component->style.padding;
 
@@ -2109,8 +2105,12 @@ void UIManager::renderEventLog(SDL_Renderer* renderer, const std::shared_ptr<UIC
             wrappedEntries.insert(wrappedEntries.begin(), {entry, entryHeight + 4});
             totalHeight += entryHeight + 4;
         } else {
-            // Fallback to single line height
-            int lineHeight = component->style.listItemHeight;
+            // Fallback to single line height - calculate dynamically based on font metrics
+            int fontLineHeight = 0;
+            int lineHeight = 24; // Default fallback
+            if (fontManager.getFontMetrics(component->style.fontID, &fontLineHeight, nullptr, nullptr)) {
+                lineHeight = fontLineHeight + 4; // Tighter spacing for event log
+            }
             wrappedEntries.insert(wrappedEntries.begin(), {entry, lineHeight + 4});
             totalHeight += lineHeight + 4;
         }
@@ -2486,6 +2486,13 @@ void UIManager::calculateOptimalSize(std::shared_ptr<UIComponent> component) {
     int totalWidth = contentWidth + (component->contentPadding * 2);
     int totalHeight = contentHeight + (component->contentPadding * 2);
 
+    // Implement grow-only behavior for lists to prevent shrinking
+    if (component->type == UIComponentType::LIST) {
+        // Update minimum bounds to current size to prevent shrinking
+        component->minBounds.width = std::max(component->minBounds.width, component->bounds.width);
+        component->minBounds.height = std::max(component->minBounds.height, component->bounds.height);
+    }
+
     // Apply size constraints - ONLY modify width/height, preserve x/y position
     if (component->autoWidth) {
         int oldWidth = component->bounds.width;
@@ -2493,9 +2500,10 @@ void UIManager::calculateOptimalSize(std::shared_ptr<UIComponent> component) {
                                          std::min(totalWidth, component->maxBounds.width));
         
  
-        // Automatically center any component with CENTER alignment when width changes
+        // Automatically center only titles and labels with CENTER alignment when width changes
         if (component->style.textAlign == UIAlignment::CENTER_CENTER && 
-            component->bounds.width != oldWidth) {
+            component->bounds.width != oldWidth &&
+            (component->type == UIComponentType::TITLE || component->type == UIComponentType::LABEL)) {
             // Get logical width for centering calculation
             const auto& gameEngine = GameEngine::Instance();
             int windowWidth = gameEngine.getLogicalWidth();
@@ -2560,6 +2568,18 @@ bool UIManager::measureComponentContent(const std::shared_ptr<UIComponent>& comp
             return true;
 
         case UIComponentType::LIST:
+        {
+            // Calculate height based on font metrics dynamically
+            int lineHeight = 0;
+            int itemHeight = 32; // Default fallback
+            if (fontManager.getFontMetrics(component->style.fontID, &lineHeight, nullptr, nullptr)) {
+                itemHeight = lineHeight + 8; // Add padding for better mouse accuracy
+            } else {
+                // If font metrics fail, use reasonable fallback based on expected font sizes
+                // Assume 21px font (typical for UI) + 8px padding = 29px
+                itemHeight = 29;
+            }
+            
             // Calculate based on list items and item height
             if (!component->listItems.empty()) {
                 int maxItemWidth = 0;
@@ -2567,20 +2587,21 @@ bool UIManager::measureComponentContent(const std::shared_ptr<UIComponent>& comp
                     int itemWidth = 0;
                     if (fontManager.measureText(item, component->style.fontID, &itemWidth, nullptr)) {
                         maxItemWidth = std::max(maxItemWidth, itemWidth);
+                    } else {
+                        // If text measurement fails, estimate based on character count
+                        // Assume ~12px per character for UI fonts
+                        maxItemWidth = std::max(maxItemWidth, static_cast<int>(item.length() * 12));
                     }
                 }
-                *width = maxItemWidth + 20; // Add scrollbar space
-                
-                // Calculate height based on font metrics
-                int lineHeight = 0;
-                if (fontManager.getFontMetrics(component->style.fontID, &lineHeight, nullptr, nullptr)) {
-                    *height = lineHeight * static_cast<int>(component->listItems.size());
-                } else {
-                    *height = component->style.listItemHeight * static_cast<int>(component->listItems.size());
-                }
-                return true;
+                *width = std::max(maxItemWidth + 20, 150); // Add scrollbar space, minimum 150px
+                *height = itemHeight * static_cast<int>(component->listItems.size());
+            } else {
+                // Provide reasonable defaults for empty lists
+                *width = 200; // Default width
+                *height = itemHeight * 3; // Height for 3 items as reasonable default
             }
-            break;
+            return true;
+        }
 
         case UIComponentType::EVENT_LOG:
             // Fixed size for game event display

@@ -67,7 +67,7 @@ bool UIExampleState::enter() {
     ui.createButton("uiexample_animate_btn", {rightColumnX, 340, 120, 40}, "Animate");
     
     // Theme toggle button
-    ui.createButton("uiexample_theme_btn", {rightColumnX, 390, 120, 40}, "Dark Theme");
+    ui.createButton("uiexample_theme_btn", {rightColumnX, 390, 150, 40}, "Dark Theme");
     
     // Instructions - adjusted position and size to prevent overlap
     ui.createLabel("uiexample_instructions", {rightColumnX + 150, 340, rightColumnWidth - 150, 120},
