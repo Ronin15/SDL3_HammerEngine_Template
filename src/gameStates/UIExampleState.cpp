@@ -20,28 +20,24 @@ UIExampleState::UIExampleState() {
 bool UIExampleState::enter() {
     std::cout << "Entering UI Example State\n";
     
-    // Create UI components directly with UIManager
-    auto& gameEngine = GameEngine::Instance();
+    // Create UI components directly with UIManager using auto-detecting methods
     auto& ui = UIManager::Instance();
-    int windowWidth = gameEngine.getLogicalWidth();
-    int windowHeight = gameEngine.getLogicalHeight();
 
     // Calculate relative positioning for cross-resolution compatibility
     int leftColumnX = 50;
     int leftColumnWidth = 220;
-    int rightColumnX = windowWidth / 2 + 50;
-    int rightColumnWidth = windowWidth - rightColumnX - 50;
+    int rightColumnX = ui.getLogicalWidth() / 2 + 50;
+    int rightColumnWidth = ui.getLogicalWidth() - rightColumnX - 50;
 
-    // Create overlay background
-    ui.createOverlay(windowWidth, windowHeight);
+    // Create overlay background using auto-detection
+    ui.createOverlay();
     
-    // Title
-    ui.createTitle("uiexample_title_label", {0, 30, windowWidth, 40}, "UIManager Feature Demo");
-    ui.setTitleAlignment("uiexample_title_label", UIAlignment::CENTER_CENTER);
+    // Title using auto-positioning
+    ui.createTitleAtTop("uiexample_title_label", "UIManager Feature Demo", 40);
     
-    // Back button and instruction
-    ui.createButtonDanger("uiexample_back_btn", {leftColumnX, windowHeight - 80, 120, 40}, "Back");
-    ui.createLabel("uiexample_back_instruction", {leftColumnX + 130, windowHeight - 75, 200, 30}, "Press B to go back");
+    // Back button using auto-positioning and instruction
+    ui.createButtonAtBottom("uiexample_back_btn", "Back", 120, 40);
+    ui.createLabel("uiexample_back_instruction", {leftColumnX + 130, ui.getLogicalHeight() - 75, 200, 30}, "Press B to go back");
     
     // Slider demo
     ui.createSlider("uiexample_demo_slider", {leftColumnX, 140, 200, 30}, 0.0f, 1.0f);
@@ -63,8 +59,8 @@ bool UIExampleState::enter() {
     ui.createList("uiexample_demo_list", {leftColumnX, 340, leftColumnWidth, 140});
     
     // Event Log demo - fixed size following industry standard
-    ui.createEventLog("uiexample_demo_event_log", {rightColumnX, windowHeight - 150, rightColumnWidth, 90}, 6);
-    ui.createLabel("uiexample_event_log_label", {rightColumnX, windowHeight - 190, rightColumnWidth/2, 20}, "Event Log (Fixed Size):");
+    ui.createEventLog("uiexample_demo_event_log", {rightColumnX, ui.getLogicalHeight() - 150, rightColumnWidth, 90}, 6);
+    ui.createLabel("uiexample_event_log_label", {rightColumnX, ui.getLogicalHeight() - 190, rightColumnWidth/2, 20}, "Event Log (Fixed Size):");
     ui.setupDemoEventLog("uiexample_demo_event_log");
     
     // Animation button

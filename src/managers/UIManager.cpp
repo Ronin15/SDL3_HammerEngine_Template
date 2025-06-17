@@ -2671,3 +2671,39 @@ void UIManager::setAutoSizingConstraints(const std::string& id, const UIRect& mi
         }
     }
 }
+
+// Auto-detection methods
+int UIManager::getLogicalWidth() const {
+    const auto& gameEngine = GameEngine::Instance();
+    return gameEngine.getLogicalWidth();
+}
+
+int UIManager::getLogicalHeight() const {
+    const auto& gameEngine = GameEngine::Instance();
+    return gameEngine.getLogicalHeight();
+}
+
+// Auto-detecting overlay creation
+void UIManager::createOverlay() {
+    createOverlay(getLogicalWidth(), getLogicalHeight());
+}
+
+// Convenience positioning methods
+void UIManager::createTitleAtTop(const std::string& id, const std::string& text, int height) {
+    int width = getLogicalWidth();
+    createTitle(id, {0, 10, width, height}, text);
+    setTitleAlignment(id, UIAlignment::CENTER_CENTER);
+}
+
+void UIManager::createButtonAtBottom(const std::string& id, const std::string& text, int width, int height) {
+    int logicalHeight = getLogicalHeight();
+    createButtonDanger(id, {20, logicalHeight - height - 20, width, height}, text);
+}
+
+void UIManager::createCenteredDialog(const std::string& id, int width, int height, const std::string& theme) {
+    int logicalWidth = getLogicalWidth();
+    int logicalHeight = getLogicalHeight();
+    int x = (logicalWidth - width) / 2;
+    int y = (logicalHeight - height) / 2;
+    createModal(id, {x, y, width, height}, theme, logicalWidth, logicalHeight);
+}

@@ -12,30 +12,26 @@
 bool MainMenuState::enter() {
   std::cout << "Hammer Game Engine - Entering MAIN MENU State\n";
 
-  auto& gameEngine = GameEngine::Instance();
   auto& ui = UIManager::Instance();
-  int windowWidth = gameEngine.getLogicalWidth();
-  int windowHeight = gameEngine.getLogicalHeight();
 
   // No overlay needed for main menu - keep clean appearance
 
-  // Create title
-  ui.createTitle("mainmenu_title", {0, 100, windowWidth, 60}, "Hammer Game Engine - Main Menu");
-  ui.setTitleAlignment("mainmenu_title", UIAlignment::CENTER_CENTER);
+  // Create title using auto-positioning
+  ui.createTitleAtTop("mainmenu_title", "Hammer Game Engine - Main Menu", 60);
 
   // Create menu buttons
   int buttonWidth = 300;
   int buttonHeight = 50;
   int buttonSpacing = 20;
-  int startY = windowHeight / 2 - 100;
+  int startY = ui.getLogicalHeight() / 2 - 100;
 
-  ui.createButton("mainmenu_start_game_btn", {windowWidth/2 - buttonWidth/2, startY, buttonWidth, buttonHeight}, "Start Game");
-  ui.createButton("mainmenu_ai_demo_btn", {windowWidth/2 - buttonWidth/2, startY + (buttonHeight + buttonSpacing), buttonWidth, buttonHeight}, "AI Demo");
-  ui.createButton("mainmenu_advanced_ai_demo_btn", {windowWidth/2 - buttonWidth/2, startY + 2 * (buttonHeight + buttonSpacing), buttonWidth, buttonHeight}, "Advanced AI Demo");
-  ui.createButton("mainmenu_event_demo_btn", {windowWidth/2 - buttonWidth/2, startY + 3 * (buttonHeight + buttonSpacing), buttonWidth, buttonHeight}, "Event Demo");
-  ui.createButton("mainmenu_ui_example_btn", {windowWidth/2 - buttonWidth/2, startY + 4 * (buttonHeight + buttonSpacing), buttonWidth, buttonHeight}, "UI Example");
-  ui.createButton("mainmenu_overlay_demo_btn", {windowWidth/2 - buttonWidth/2, startY + 5 * (buttonHeight + buttonSpacing), buttonWidth, buttonHeight}, "Overlay Demo");
-  ui.createButtonDanger("mainmenu_exit_btn", {windowWidth/2 - buttonWidth/2, startY + 6 * (buttonHeight + buttonSpacing), buttonWidth, buttonHeight}, "Exit");
+  ui.createButton("mainmenu_start_game_btn", {ui.getLogicalWidth()/2 - buttonWidth/2, startY, buttonWidth, buttonHeight}, "Start Game");
+  ui.createButton("mainmenu_ai_demo_btn", {ui.getLogicalWidth()/2 - buttonWidth/2, startY + (buttonHeight + buttonSpacing), buttonWidth, buttonHeight}, "AI Demo");
+  ui.createButton("mainmenu_advanced_ai_demo_btn", {ui.getLogicalWidth()/2 - buttonWidth/2, startY + 2 * (buttonHeight + buttonSpacing), buttonWidth, buttonHeight}, "Advanced AI Demo");
+  ui.createButton("mainmenu_event_demo_btn", {ui.getLogicalWidth()/2 - buttonWidth/2, startY + 3 * (buttonHeight + buttonSpacing), buttonWidth, buttonHeight}, "Event Demo");
+  ui.createButton("mainmenu_ui_example_btn", {ui.getLogicalWidth()/2 - buttonWidth/2, startY + 4 * (buttonHeight + buttonSpacing), buttonWidth, buttonHeight}, "UI Example");
+  ui.createButton("mainmenu_overlay_demo_btn", {ui.getLogicalWidth()/2 - buttonWidth/2, startY + 5 * (buttonHeight + buttonSpacing), buttonWidth, buttonHeight}, "Overlay Demo");
+  ui.createButtonDanger("mainmenu_exit_btn", {ui.getLogicalWidth()/2 - buttonWidth/2, startY + 6 * (buttonHeight + buttonSpacing), buttonWidth, buttonHeight}, "Exit");
 
   // Set up button callbacks
   ui.setOnClick("mainmenu_start_game_btn", []() {
