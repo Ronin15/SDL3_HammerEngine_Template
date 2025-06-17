@@ -25,10 +25,9 @@ bool UIManager::init() {
     
     // Platform-specific scaling approach to ensure compatibility
     #ifdef __APPLE__
-    // On macOS, use the DPI scale calculated by GameEngine for proper text rendering
-    const auto& gameEngine = GameEngine::Instance();
-    m_globalScale = gameEngine.getDPIScale();
-    UI_INFO("macOS: Using DPI scale from GameEngine: " + std::to_string(m_globalScale));
+    // On macOS, use 1.0 scaling since our aspect ratio-based logical resolution handles proper sizing
+    m_globalScale = 1.0f;
+    UI_INFO("macOS: Global scale set to 1.0 (aspect ratio-based logical resolution handles scaling)");
     #else
     // On other platforms, use consistent scaling with logical presentation
     m_globalScale = 1.0f;
