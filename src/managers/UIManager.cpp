@@ -1554,32 +1554,9 @@ void UIManager::handleInput() {
             continue;
         }
 
-        // Convert window coordinates to logical coordinates for hit testing
-        // This handles all SDL3 logical presentation modes:
-        // - SDL_LOGICAL_PRESENTATION_LETTERBOX: Maintains aspect ratio with black bars
-        // - SDL_LOGICAL_PRESENTATION_STRETCH: Stretches to fill window (may distort)
-        // - SDL_LOGICAL_PRESENTATION_OVERSCAN: Crops content to maintain aspect ratio
-        // - SDL_LOGICAL_PRESENTATION_DISABLED: No coordinate conversion needed
-        int mouseX, mouseY;
-        auto* renderer = GameEngine::Instance().getRenderer();
-
-        // Check if logical presentation is active
-        int logicalW, logicalH;
-        SDL_RendererLogicalPresentation presentation;
-        if (SDL_GetRenderLogicalPresentation(renderer, &logicalW, &logicalH, &presentation) &&
-            presentation != SDL_LOGICAL_PRESENTATION_DISABLED) {
-
-            // Convert coordinates for any logical presentation mode
-            float logicalX, logicalY;
-            SDL_RenderCoordinatesFromWindow(renderer, mousePos.getX(), mousePos.getY(),
-                                           &logicalX, &logicalY);
-            mouseX = static_cast<int>(logicalX);
-            mouseY = static_cast<int>(logicalY);
-        } else {
-            // No logical presentation - use window coordinates directly
-            mouseX = static_cast<int>(mousePos.getX());
-            mouseY = static_cast<int>(mousePos.getY());
-        }
+        // InputManager already converts coordinates to logical coordinates
+        int mouseX = static_cast<int>(mousePos.getX());
+        int mouseY = static_cast<int>(mousePos.getY());
 
         bool isHovered = component->bounds.contains(mouseX, mouseY);
 
