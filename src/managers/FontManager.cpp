@@ -26,11 +26,11 @@ namespace {
   constexpr int MIN_FONT_SIZE = 8;
   constexpr int MAX_FONT_SIZE = 100;
   
-  // Minimum readable sizes for specific font types
-  constexpr int MIN_BASE_FONT_SIZE = 12;
-  constexpr int MIN_UI_FONT_SIZE = 10;
-  constexpr int MIN_TITLE_FONT_SIZE = 16;
-  constexpr int MIN_TOOLTIP_FONT_SIZE = 10;
+  // Minimum readable sizes for specific font types (ensure good readability at 1080p)
+  constexpr int MIN_BASE_FONT_SIZE = 18;
+  constexpr int MIN_UI_FONT_SIZE = 16;
+  constexpr int MIN_TITLE_FONT_SIZE = 24;
+  constexpr int MIN_TOOLTIP_FONT_SIZE = 12;
 }
 
 bool FontManager::init() {
