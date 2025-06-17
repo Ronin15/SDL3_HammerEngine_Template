@@ -14,8 +14,8 @@ bool MainMenuState::enter() {
 
   auto& gameEngine = GameEngine::Instance();
   auto& ui = UIManager::Instance();
-  int windowWidth = gameEngine.getWindowWidth();
-  int windowHeight = gameEngine.getWindowHeight();
+  int windowWidth = gameEngine.getLogicalWidth();
+  int windowHeight = gameEngine.getLogicalHeight();
 
   // No overlay needed for main menu - keep clean appearance
 

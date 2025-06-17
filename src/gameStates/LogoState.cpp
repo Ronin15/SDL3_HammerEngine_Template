@@ -42,8 +42,9 @@ void LogoState::render([[maybe_unused]] float deltaTime) {
   GameEngine& gameEngine = GameEngine::Instance();
   FontManager& fontMgr = FontManager::Instance();
   SDL_Renderer* renderer = gameEngine.getRenderer();
-  int windowWidth = gameEngine.getWindowWidth();
-  int windowHeight = gameEngine.getWindowHeight();
+  // Use logical rendering dimensions for proper UI positioning in all display modes
+  int windowWidth = gameEngine.getLogicalWidth();
+  int windowHeight = gameEngine.getLogicalHeight();
 
   // std::cout << "Rendering Main Menu State\n";
   texMgr.draw(

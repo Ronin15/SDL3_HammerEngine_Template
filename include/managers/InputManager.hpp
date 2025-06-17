@@ -90,6 +90,9 @@ class InputManager {
     void onGamepadButtonDown(const SDL_Event& event);
     void onGamepadButtonUp(const SDL_Event& event);
 
+    // Handle window events
+    void onWindowResize(const SDL_Event& event);
+
     // Delete copy constructor and assignment operator
     InputManager(const InputManager&) = delete; // Prevent copying
     InputManager& operator=(const InputManager&) = delete; // Prevent assignment

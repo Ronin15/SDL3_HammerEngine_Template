@@ -52,6 +52,15 @@ class FontManager {
   bool loadFontsForDisplay(const std::string& fontPath, int windowWidth, int windowHeight);
 
   /**
+   * @brief Refreshes existing fonts with new sizes based on updated display characteristics
+   * @param fontPath Path to font file or directory containing TTF/OTF files
+   * @param windowWidth New window width in pixels
+   * @param windowHeight New window height in pixels
+   * @return true if fonts were refreshed successfully, false otherwise
+   */
+  bool refreshFontsForDisplay(const std::string& fontPath, int windowWidth, int windowHeight);
+
+  /**
    * @brief Renders text to a texture using specified font
    * @param text Text string to render
    * @param fontID Unique identifier of the font to use

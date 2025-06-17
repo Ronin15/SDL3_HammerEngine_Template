@@ -23,8 +23,14 @@ bool UIExampleState::enter() {
     // Create UI components directly with UIManager
     auto& gameEngine = GameEngine::Instance();
     auto& ui = UIManager::Instance();
-    int windowWidth = gameEngine.getWindowWidth();
-    int windowHeight = gameEngine.getWindowHeight();
+    int windowWidth = gameEngine.getLogicalWidth();
+    int windowHeight = gameEngine.getLogicalHeight();
+
+    // Calculate relative positioning for cross-resolution compatibility
+    int leftColumnX = 50;
+    int leftColumnWidth = 220;
+    int rightColumnX = windowWidth / 2 + 50;
+    int rightColumnWidth = windowWidth - rightColumnX - 50;
 
     // Create overlay background
     ui.createOverlay(windowWidth, windowHeight);
@@ -34,41 +40,41 @@ bool UIExampleState::enter() {
     ui.setTitleAlignment("uiexample_title_label", UIAlignment::CENTER_CENTER);
     
     // Back button and instruction
-    ui.createButtonDanger("uiexample_back_btn", {50, windowHeight - 80, 120, 40}, "Back");
-    ui.createLabel("uiexample_back_instruction", {180, windowHeight - 75, 200, 30}, "Press B to go back");
+    ui.createButtonDanger("uiexample_back_btn", {leftColumnX, windowHeight - 80, 120, 40}, "Back");
+    ui.createLabel("uiexample_back_instruction", {leftColumnX + 130, windowHeight - 75, 200, 30}, "Press B to go back");
     
     // Slider demo
-    ui.createSlider("uiexample_demo_slider", {50, 140, 200, 30}, 0.0f, 1.0f);
+    ui.createSlider("uiexample_demo_slider", {leftColumnX, 140, 200, 30}, 0.0f, 1.0f);
     ui.setValue("uiexample_demo_slider", 0.5f);
-    ui.createLabel("uiexample_slider_label", {260, 140, 200, 30}, "Slider: 0.50");
+    ui.createLabel("uiexample_slider_label", {leftColumnX + 210, 140, 200, 30}, "Slider: 0.50");
     
     // Checkbox demo
-    ui.createCheckbox("uiexample_demo_checkbox", {50, 190, 250, 30}, "Toggle Option");
+    ui.createCheckbox("uiexample_demo_checkbox", {leftColumnX, 190, 250, 30}, "Toggle Option");
     
     // Input field demo
-    ui.createInputField("uiexample_demo_input", {50, 240, 200, 30}, "Type here...");
-    ui.createLabel("uiexample_input_label", {260, 240, 300, 30}, "Input: (empty)");
+    ui.createInputField("uiexample_demo_input", {leftColumnX, 240, 200, 30}, "Type here...");
+    ui.createLabel("uiexample_input_label", {leftColumnX + 210, 240, 300, 30}, "Input: (empty)");
     
     // Progress bar demo
-    ui.createProgressBar("uiexample_demo_progress", {50, 290, 200, 20}, 0.0f, 1.0f);
-    ui.createLabel("uiexample_progress_label", {260, 290, 200, 20}, "Auto Progress");
+    ui.createProgressBar("uiexample_demo_progress", {leftColumnX, 290, 200, 20}, 0.0f, 1.0f);
+    ui.createLabel("uiexample_progress_label", {leftColumnX + 210, 290, 200, 20}, "Auto Progress");
     
     // List demo
-    ui.createList("uiexample_demo_list", {50, 340, 220, 140});
+    ui.createList("uiexample_demo_list", {leftColumnX, 340, leftColumnWidth, 140});
     
     // Event Log demo - fixed size following industry standard
-    ui.createEventLog("uiexample_demo_event_log", {300, 540, 400, 90}, 6);
-    ui.createLabel("uiexample_event_log_label", {300, 500, 200, 20}, "Event Log (Fixed Size):");
+    ui.createEventLog("uiexample_demo_event_log", {rightColumnX, windowHeight - 150, rightColumnWidth, 90}, 6);
+    ui.createLabel("uiexample_event_log_label", {rightColumnX, windowHeight - 190, rightColumnWidth/2, 20}, "Event Log (Fixed Size):");
     ui.setupDemoEventLog("uiexample_demo_event_log");
     
     // Animation button
-    ui.createButton("uiexample_animate_btn", {300, 340, 120, 40}, "Animate");
+    ui.createButton("uiexample_animate_btn", {rightColumnX, 340, 120, 40}, "Animate");
     
     // Theme toggle button
-    ui.createButton("uiexample_theme_btn", {300, 390, 120, 40}, "Dark Theme");
+    ui.createButton("uiexample_theme_btn", {rightColumnX, 390, 120, 40}, "Dark Theme");
     
     // Instructions - adjusted position and size to prevent overlap
-    ui.createLabel("uiexample_instructions", {430, 340, 280, 120},
+    ui.createLabel("uiexample_instructions", {rightColumnX + 150, 340, rightColumnWidth - 150, 120},
                    "Controls:\n- Click buttons and UI elements\n- Type in input field\n- Select list items\n- B key to go back");
 
     // Populate list
