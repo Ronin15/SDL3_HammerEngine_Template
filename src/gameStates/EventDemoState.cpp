@@ -37,9 +37,9 @@ bool EventDemoState::enter() {
         // Cache GameEngine reference for better performance
         const GameEngine& gameEngine = GameEngine::Instance();
 
-        // Setup window dimensions
-        m_worldWidth = gameEngine.getWindowWidth();
-        m_worldHeight = gameEngine.getWindowHeight();
+        // Setup world dimensions using logical coordinates for consistency
+        m_worldWidth = gameEngine.getLogicalWidth();
+        m_worldHeight = gameEngine.getLogicalHeight();
 
         // Initialize event system
         setupEventSystem();
@@ -77,17 +77,16 @@ bool EventDemoState::enter() {
         // Add initial log entry
         addLogEntry("Event Demo System Initialized");
 
-        // Create simple UI components
+        // Create simple UI components using auto-detecting methods
         auto& ui = UIManager::Instance();
-        ui.createTitle("event_title", {10, 10, gameEngine.getWindowWidth() - 20, 25}, "Event Demo State");
-        ui.setTitleAlignment("event_title", UIAlignment::CENTER_CENTER);
+        ui.createTitleAtTop("event_title", "Event Demo State", 25);
         ui.createLabel("event_phase", {10, 40, 300, 20}, "Phase: Initialization");
         ui.createLabel("event_status", {10, 65, 400, 20}, "FPS: -- | Weather: Clear | NPCs: 0");
-        ui.createLabel("event_controls", {10, 90, gameEngine.getWindowWidth() - 20, 20},
+        ui.createLabel("event_controls", {10, 90, ui.getLogicalWidth() - 20, 20},
                        "[B] Exit | [SPACE] Manual | [1-5] Events | [A] Auto Mode | [R] Reset");
 
-        // Create event log component
-        ui.createEventLog("event_log", {10, gameEngine.getWindowHeight() - 200, 730, 180}, 6);
+        // Create event log component using auto-detected dimensions
+        ui.createEventLog("event_log", {10, ui.getLogicalHeight() - 200, 730, 180}, 6);
         ui.addEventLogEntry("event_log", "Event Demo System Initialized");
 
         std::cout << "Hammer Game Engine - EventDemoState initialized successfully\n";

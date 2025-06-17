@@ -22,19 +22,15 @@ bool OverlayDemoState::enter() {
     auto& ui = UIManager::Instance();
     ui.resetToDefaultTheme();
 
-    // Create persistent control components
-    auto& gameEngine = GameEngine::Instance();
-    int windowWidth = gameEngine.getWindowWidth();
-    int windowHeight = gameEngine.getWindowHeight();
+    // Create persistent control components using auto-detecting methods
 
-    // Add title
-    ui.createTitle("overlay_control_title", {0, 10, windowWidth, 30}, "Overlay Demo State");
-    ui.setTitleAlignment("overlay_control_title", UIAlignment::CENTER_CENTER);
+    // Add title using auto-positioning
+    ui.createTitleAtTop("overlay_control_title", "Overlay Demo State", 30);
 
-    // Control buttons that persist across all modes
-    ui.createButtonDanger("overlay_control_back_btn", {20, windowHeight - 60, 100, 40}, "Back");
-    ui.createButton("overlay_control_next_mode_btn", {140, windowHeight - 60, 150, 40}, "Next Mode");
-    ui.createLabel("overlay_control_instructions", {310, windowHeight - 55, 400, 30}, "Space = Next Mode, B = Back");
+    // Control buttons that persist across all modes using auto-detected dimensions
+    ui.createButtonAtBottom("overlay_control_back_btn", "Back", 100, 40);
+    ui.createButton("overlay_control_next_mode_btn", {140, ui.getLogicalHeight() - 60, 150, 40}, "Next Mode");
+    ui.createLabel("overlay_control_instructions", {310, ui.getLogicalHeight() - 55, 400, 30}, "Space = Next Mode, B = Back");
 
     // Set up button callbacks
     ui.setOnClick("overlay_control_back_btn", [this]() {
@@ -139,15 +135,13 @@ void OverlayDemoState::clearCurrentUI() {
 
 void OverlayDemoState::setupNoOverlayMode() {
     auto& ui = UIManager::Instance();
-    auto& gameEngine = GameEngine::Instance();
-    int windowWidth = gameEngine.getWindowWidth();
 
     // NO OVERLAY - Perfect for HUD elements
     // This shows how HUD elements look without any background interference
 
     // Mode indicator
     ui.createLabel(MODE_LABEL, {20, 50, 400, 30}, "Mode: HUD Elements (No Overlay)");
-    ui.createLabel(DESCRIPTION_LABEL, {20, 85, std::min(600, windowWidth - 40), 50},
+    ui.createLabel(DESCRIPTION_LABEL, {20, 85, std::min(600, ui.getLogicalWidth() - 40), 50},
                    "Perfect for: Health bars, Score, Minimap, Chat\nGame content remains fully visible");
 
     // Enable text backgrounds for readability over variable backgrounds
@@ -160,24 +154,21 @@ void OverlayDemoState::setupNoOverlayMode() {
     ui.createLabel(SCORE_LABEL, {20, 185, 150, 20}, "Score: 12,450");
 
     // Minimap simulation
-    ui.createPanel(MINIMAP_PANEL, {windowWidth - 160, 20, 140, 140});
+    ui.createPanel(MINIMAP_PANEL, {ui.getLogicalWidth() - 160, 20, 140, 140});
 
     // HUD elements and minimap use theme styling - no custom colors needed
 }
 
 void OverlayDemoState::setupLightOverlayMode() {
     auto& ui = UIManager::Instance();
-    auto& gameEngine = GameEngine::Instance();
-    int windowWidth = gameEngine.getWindowWidth();
-    int windowHeight = gameEngine.getWindowHeight();
 
     // LIGHT OVERLAY - Set theme BEFORE creating components
     ui.setThemeMode("light");
-    ui.createOverlay(windowWidth, windowHeight);
+    ui.createOverlay(); // Auto-detecting overlay creation
 
     // Mode indicator
     ui.createLabel(MODE_LABEL, {20, 50, 400, 30}, "Mode: Main Menu (Light Theme)");
-    ui.createLabel(DESCRIPTION_LABEL, {20, 85, std::min(600, windowWidth - 40), 50},
+    ui.createLabel(DESCRIPTION_LABEL, {20, 85, std::min(600, ui.getLogicalWidth() - 40), 50},
                    "Perfect for: Main menus, Settings screens\nSubtle separation from background");
 
     // Enable text backgrounds for readability over variable backgrounds
@@ -185,49 +176,44 @@ void OverlayDemoState::setupLightOverlayMode() {
     ui.enableTextBackground(DESCRIPTION_LABEL, true);
 
     // Simulate menu buttons
-    ui.createButton(MENU_BUTTON_1, {windowWidth/2 - 100, 150, 200, 50}, "New Game");
-    ui.createButton(MENU_BUTTON_2, {windowWidth/2 - 100, 220, 200, 50}, "Load Game");
-    ui.createButton(MENU_BUTTON_3, {windowWidth/2 - 100, 290, 200, 50}, "Options");
+    ui.createButton(MENU_BUTTON_1, {ui.getLogicalWidth()/2 - 100, 150, 200, 50}, "New Game");
+    ui.createButton(MENU_BUTTON_2, {ui.getLogicalWidth()/2 - 100, 220, 200, 50}, "Load Game");
+    ui.createButton(MENU_BUTTON_3, {ui.getLogicalWidth()/2 - 100, 290, 200, 50}, "Options");
 }
 
 void OverlayDemoState::setupDarkOverlayMode() {
     auto& ui = UIManager::Instance();
-    auto& gameEngine = GameEngine::Instance();
-    int windowWidth = gameEngine.getWindowWidth();
-    int windowHeight = gameEngine.getWindowHeight();
 
     // DARK OVERLAY - Set theme BEFORE creating components
     ui.setThemeMode("dark");
-    ui.createOverlay(windowWidth, windowHeight);
+    ui.createOverlay(); // Auto-detecting overlay creation
 
     // Mode indicator
     ui.createLabel(MODE_LABEL, {20, 50, 400, 30}, "Mode: Pause Menu (Dark Theme)");
-    ui.createLabel(DESCRIPTION_LABEL, {20, 85, std::min(600, windowWidth - 40), 50},
+    ui.createLabel(DESCRIPTION_LABEL, {20, 85, std::min(600, ui.getLogicalWidth() - 40), 50},
                    "Perfect for: Pause menus, In-game menus\nDarker theme for focus during gameplay");
 
     // Simulate pause menu
-    ui.createButton(MENU_BUTTON_1, {windowWidth/2 - 100, 150, 200, 50}, "Resume");
-    ui.createButton(MENU_BUTTON_2, {windowWidth/2 - 100, 220, 200, 50}, "Settings");
-    ui.createButtonDanger(MENU_BUTTON_3, {windowWidth/2 - 100, 290, 200, 50}, "Quit to Menu");
+    ui.createButton(MENU_BUTTON_1, {ui.getLogicalWidth()/2 - 100, 150, 200, 50}, "Resume");
+    ui.createButton(MENU_BUTTON_2, {ui.getLogicalWidth()/2 - 100, 220, 200, 50}, "Settings");
+    ui.createButtonDanger(MENU_BUTTON_3, {ui.getLogicalWidth()/2 - 100, 290, 200, 50}, "Quit to Menu");
 
 }
 
 void OverlayDemoState::setupModalOverlayMode() {
     auto& ui = UIManager::Instance();
-    auto& gameEngine = GameEngine::Instance();
-    int windowWidth = gameEngine.getWindowWidth();
-    int windowHeight = gameEngine.getWindowHeight();
 
     // Mode indicator
     ui.createLabel(MODE_LABEL, {20, 50, 400, 30}, "Mode: Modal Dialog (Strong Overlay)");
-    ui.createLabel(DESCRIPTION_LABEL, {20, 85, std::min(600, windowWidth - 40), 50},
+    ui.createLabel(DESCRIPTION_LABEL, {20, 85, std::min(600, ui.getLogicalWidth() - 40), 50},
                    "Perfect for: Confirmation dialogs, Settings panels\nStrong overlay demands attention");
 
-    // Simulate modal dialog - simple, clean positioning
-    int dialogX = (windowWidth - 400) / 2;
-    int dialogY = (windowHeight - 200) / 2;
+    // Simulate modal dialog using auto-centered positioning
+    ui.createCenteredDialog("overlay_demo_dialog_panel", 400, 200, "dark");
+    
+    int dialogX = (ui.getLogicalWidth() - 400) / 2;
+    int dialogY = (ui.getLogicalHeight() - 200) / 2;
 
-    ui.createModal("overlay_demo_dialog_panel", {dialogX, dialogY, 400, 200}, "dark", windowWidth, windowHeight);
     ui.createLabel("overlay_demo_dialog_title", {dialogX + 20, dialogY + 20, 360, 30}, "Confirm Action");
     ui.createLabel("overlay_demo_dialog_text", {dialogX + 20, dialogY + 60, 360, 40}, "Are you sure you want to quit?");
     
@@ -242,20 +228,18 @@ void OverlayDemoState::setupModalOverlayMode() {
 
 void OverlayDemoState::setupLightModalOverlayMode() {
     auto& ui = UIManager::Instance();
-    auto& gameEngine = GameEngine::Instance();
-    int windowWidth = gameEngine.getWindowWidth();
-    int windowHeight = gameEngine.getWindowHeight();
 
     // Mode indicator
     ui.createLabel(MODE_LABEL, {20, 50, 400, 30}, "Mode: Light Modal Dialog (Strong Overlay)");
-    ui.createLabel(DESCRIPTION_LABEL, {20, 85, std::min(600, windowWidth - 40), 50},
+    ui.createLabel(DESCRIPTION_LABEL, {20, 85, std::min(600, ui.getLogicalWidth() - 40), 50},
                    "Perfect for: Light-themed dialogs, Settings panels\nLight strong overlay with good contrast");
 
-    // Simulate modal dialog - simple, clean positioning
-    int dialogX = (windowWidth - 400) / 2;
-    int dialogY = (windowHeight - 200) / 2;
+    // Simulate modal dialog using auto-centered positioning
+    ui.createCenteredDialog("overlay_demo_dialog_panel", 400, 200, "light");
+    
+    int dialogX = (ui.getLogicalWidth() - 400) / 2;
+    int dialogY = (ui.getLogicalHeight() - 200) / 2;
 
-    ui.createModal("overlay_demo_dialog_panel", {dialogX, dialogY, 400, 200}, "light", windowWidth, windowHeight);
     ui.createLabel("overlay_demo_dialog_title", {dialogX + 20, dialogY + 20, 360, 30}, "Confirm Action");
     ui.createLabel("overlay_demo_dialog_text", {dialogX + 20, dialogY + 60, 360, 40}, "Save changes before closing?");
     

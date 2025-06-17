@@ -356,7 +356,8 @@ public:
     void setGlobalStyle(const UIStyle& style);
     
     // Overlay management - creates/removes semi-transparent background overlays
-    void createOverlay(int windowWidth, int windowHeight);  // Creates overlay using current theme's panel style
+    void createOverlay(int windowWidth, int windowHeight);  // Creates overlay using specified dimensions
+    void createOverlay();  // Creates overlay using auto-detected logical dimensions
     void removeOverlay();  // Removes the overlay background
     
     // Text background methods (for labels and titles readability)
@@ -380,6 +381,13 @@ public:
     void recalculateLayout(const std::string& layoutID);               // Recalculate layout with new component sizes
     void enableAutoSizing(const std::string& id, bool enable = true);   // Enable/disable auto-sizing for component
     void setAutoSizingConstraints(const std::string& id, const UIRect& minBounds, const UIRect& maxBounds); // Set size constraints
+    
+    // Auto-detection and convenience methods
+    int getLogicalWidth() const;   // Auto-detect logical width from GameEngine
+    int getLogicalHeight() const;  // Auto-detect logical height from GameEngine
+    void createTitleAtTop(const std::string& id, const std::string& text, int height = 40);
+    void createButtonAtBottom(const std::string& id, const std::string& text, int width = 120, int height = 40);
+    void createCenteredDialog(const std::string& id, int width, int height, const std::string& theme = "dark");
     
     // Utility methods
     void setGlobalFont(const std::string& fontID);
