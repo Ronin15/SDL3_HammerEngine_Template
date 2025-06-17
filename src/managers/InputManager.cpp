@@ -464,49 +464,47 @@ void InputManager::onWindowResize(const SDL_Event& event) {
   // Update GameEngine window dimensions
   gameEngine.setWindowSize(newWidth, newHeight);
   
-  // Recalculate DPI scale for the new window size
-  float newDpiScale = 1.0f;
-  int pixelWidth, pixelHeight;
-  int logicalWidth, logicalHeight;
-  
-  if (!SDL_GetWindowSizeInPixels(gameEngine.getWindow(), &pixelWidth, &pixelHeight)) {
-    INPUT_ERROR("Failed to get window pixel size for DPI recalculation: " + std::string(SDL_GetError()));
-    pixelWidth = newWidth;
-    pixelHeight = newHeight;
+  // Recalculate logical resolution based on our rendering approach
+  #ifdef __APPLE__
+  // On macOS, recalculate aspect ratio-based logical resolution
+  int actualWidth, actualHeight;
+  if (!SDL_GetWindowSizeInPixels(gameEngine.getWindow(), &actualWidth, &actualHeight)) {
+    INPUT_ERROR("Failed to get actual window pixel size: " + std::string(SDL_GetError()));
+    actualWidth = newWidth;
+    actualHeight = newHeight;
   }
   
-  if (!SDL_GetWindowSize(gameEngine.getWindow(), &logicalWidth, &logicalHeight)) {
-    INPUT_ERROR("Failed to get window logical size for DPI recalculation: " + std::string(SDL_GetError()));
-    logicalWidth = newWidth;
-    logicalHeight = newHeight;
+  // Calculate aspect ratio and logical resolution that matches the screen
+  float aspectRatio = static_cast<float>(actualWidth) / static_cast<float>(actualHeight);
+  int targetLogicalHeight = 1080;  // Keep consistent height
+  int targetLogicalWidth = static_cast<int>(std::round(targetLogicalHeight * aspectRatio));
+  
+  // Update renderer logical presentation
+  SDL_SetRenderLogicalPresentation(gameEngine.getRenderer(), targetLogicalWidth, targetLogicalHeight, SDL_LOGICAL_PRESENTATION_LETTERBOX);
+  
+  INPUT_INFO("macOS: Updated logical resolution for aspect ratio " + std::to_string(aspectRatio) + 
+             ": " + std::to_string(targetLogicalWidth) + "x" + std::to_string(targetLogicalHeight));
+  #else
+  // On non-Apple platforms, use actual screen resolution
+  int actualWidth, actualHeight;
+  if (!SDL_GetWindowSizeInPixels(gameEngine.getWindow(), &actualWidth, &actualHeight)) {
+    INPUT_ERROR("Failed to get actual window pixel size: " + std::string(SDL_GetError()));
+    actualWidth = newWidth;
+    actualHeight = newHeight;
   }
   
-  if (logicalWidth > 0 && logicalHeight > 0) {
-    float scaleX = static_cast<float>(pixelWidth) / static_cast<float>(logicalWidth);
-    float scaleY = static_cast<float>(pixelHeight) / static_cast<float>(logicalHeight);
-    newDpiScale = std::max(scaleX, scaleY);
-    
-    #ifdef __APPLE__
-    // On macOS, get the display content scale for more accurate scaling
-    float displayScale = SDL_GetWindowDisplayScale(gameEngine.getWindow());
-    if (displayScale > 0.0f) {
-      newDpiScale = displayScale;
-      INPUT_INFO("Using macOS display content scale: " + std::to_string(displayScale));
-    }
-    #endif
-  }
+  // Update renderer to native resolution
+  SDL_SetRenderLogicalPresentation(gameEngine.getRenderer(), actualWidth, actualHeight, SDL_LOGICAL_PRESENTATION_DISABLED);
   
-  INPUT_INFO("Recalculated DPI scale: " + std::to_string(newDpiScale));
+  INPUT_INFO("Non-macOS: Updated to native resolution: " + std::to_string(actualWidth) + "x" + std::to_string(actualHeight));
+  #endif
   
-  // Update GameEngine with new DPI scale
-  gameEngine.setDPIScale(newDpiScale);
-  
-  // Update UI systems with new scaling
+  // Update UI systems with consistent scaling
   try {
-    // Update UIManager with new scale
+    // Update UIManager with consistent 1.0 scale (our logical resolution handles sizing)
     UIManager& uiManager = UIManager::Instance();
-    uiManager.setGlobalScale(newDpiScale);
-    INPUT_INFO("Updated UIManager with new scale: " + std::to_string(newDpiScale));
+    uiManager.setGlobalScale(1.0f);
+    INPUT_INFO("Updated UIManager with consistent 1.0 scale");
     
     // Force UI layout recalculation by cleaning up and reinitializing for the new scale
     // This ensures all UI elements are repositioned correctly
