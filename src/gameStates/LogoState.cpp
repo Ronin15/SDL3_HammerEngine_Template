@@ -71,7 +71,7 @@ void LogoState::render([[maybe_unused]] float deltaTime) {
 
   // Draw title text
   fontMgr.drawText(
-      "<]==={ }* HAMMER GAME ENGINE *{ }===]>",
+      "<]==={ }* Hammer Game Engine *{ }===]>",
       "fonts_Arial",
       windowWidth / 2,  // Center horizontally
       (windowHeight / 2) + 180,
@@ -90,7 +90,7 @@ void LogoState::render([[maybe_unused]] float deltaTime) {
   // Draw version text
   fontMgr.drawText(
 
-      "v0.1.8",
+      "v0.2.0",
       "fonts_Arial",
       windowWidth / 2,  // Center horizontally
       (windowHeight / 2) + 260,
