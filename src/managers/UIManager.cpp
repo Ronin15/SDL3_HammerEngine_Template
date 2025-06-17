@@ -1136,7 +1136,7 @@ void UIManager::setLightTheme() {
     // Title style - large, prominent text for headings
     UIStyle titleStyle;
     titleStyle.backgroundColor = {0, 0, 0, 0}; // Transparent background
-    titleStyle.textColor = {255, 245, 120, 255}; // Gold color for titles
+    titleStyle.textColor = { 0, 198, 230, 255}; // Dark Cyan color for titles
     titleStyle.fontSize = 24; // Use native 24px font size
     titleStyle.textAlign = UIAlignment::CENTER_LEFT;
     titleStyle.fontID = "fonts_title_Arial";
@@ -1313,7 +1313,7 @@ void UIManager::setDarkTheme() {
     // Title style - large, prominent text for headings
     UIStyle titleStyle;
     titleStyle.backgroundColor = {0, 0, 0, 0}; // Transparent background
-    titleStyle.textColor = {255, 245, 120, 255}; // Gold color for titles
+    titleStyle.textColor = { 0, 198, 230, 255}; // Dark Cyan color for titles
     titleStyle.fontSize = 24; // Use native 24px font size
     titleStyle.textAlign = UIAlignment::CENTER_LEFT;
     titleStyle.fontID = "fonts_title_Arial";
@@ -2216,6 +2216,11 @@ void UIManager::renderTooltip(SDL_Renderer* renderer) {
         return;
     }
 
+    // Skip tooltips for titles
+    if (component->type == UIComponentType::TITLE) {
+        return;
+    }
+
     // Skip tooltips for multi-line text (contains newlines)
     if (component->text.find('\n') != std::string::npos) {
         return;
@@ -2507,8 +2512,7 @@ void UIManager::calculateOptimalSize(std::shared_ptr<UIComponent> component) {
         component->bounds.width = std::max(component->minBounds.width, 
                                          std::min(totalWidth, component->maxBounds.width));
         
-
-        
+ 
         // Automatically center any component with CENTER alignment when width changes
         if (component->style.textAlign == UIAlignment::CENTER_CENTER && 
             component->bounds.width != oldWidth) {
