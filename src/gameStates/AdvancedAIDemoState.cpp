@@ -131,9 +131,9 @@ bool AdvancedAIDemoState::enter() {
         // Cache GameEngine reference for better performance
         const GameEngine& gameEngine = GameEngine::Instance();
 
-        // Setup window size
-        m_worldWidth = gameEngine.getWindowWidth();
-        m_worldHeight = gameEngine.getWindowHeight();
+        // Setup world size using logical dimensions for proper cross-platform rendering
+        m_worldWidth = gameEngine.getLogicalWidth();
+        m_worldHeight = gameEngine.getLogicalHeight();
 
         // Initialize game time
         m_gameTime = 0.0f;
@@ -162,11 +162,11 @@ bool AdvancedAIDemoState::enter() {
 
         // Create advanced HUD UI
         auto& ui = UIManager::Instance();
-        ui.createTitle("advanced_ai_title", {0, 5, gameEngine.getWindowWidth(), 25}, "Advanced AI Demo State");
+        ui.createTitle("advanced_ai_title", {0, 5, gameEngine.getLogicalWidth(), 25}, "Advanced AI Demo State");
         ui.setTitleAlignment("advanced_ai_title", UIAlignment::CENTER_CENTER);
-        ui.createLabel("advanced_ai_instructions_line1", {10, 40, gameEngine.getWindowWidth() - 20, 20},
+        ui.createLabel("advanced_ai_instructions_line1", {10, 40, gameEngine.getLogicalWidth() - 20, 20},
                        "Advanced AI Demo: [B] Exit | [SPACE] Pause/Resume | [1] Idle | [2] Flee | [3] Follow");
-        ui.createLabel("advanced_ai_instructions_line2", {10, 75, gameEngine.getWindowWidth() - 20, 20},
+        ui.createLabel("advanced_ai_instructions_line2", {10, 75, gameEngine.getLogicalWidth() - 20, 20},
                        "Combat & Social: [4] Guard | [5] Attack");
         ui.createLabel("advanced_ai_status", {10, 110, 400, 20}, "FPS: -- | NPCs: -- | AI: RUNNING | Combat: ON");
 

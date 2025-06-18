@@ -466,7 +466,7 @@ void InputManager::onWindowResize(const SDL_Event& event) {
   
   // Recalculate logical resolution based on our rendering approach
   #ifdef __APPLE__
-  // On macOS, recalculate aspect ratio-based logical resolution
+  // On macOS, recalculate logical resolution with stretch mode
   int actualWidth, actualHeight;
   if (!SDL_GetWindowSizeInPixels(gameEngine.getWindow(), &actualWidth, &actualHeight)) {
     INPUT_ERROR("Failed to get actual window pixel size: " + std::string(SDL_GetError()));
@@ -474,16 +474,15 @@ void InputManager::onWindowResize(const SDL_Event& event) {
     actualHeight = newHeight;
   }
   
-  // Calculate aspect ratio and logical resolution that matches the screen
-  float aspectRatio = static_cast<float>(actualWidth) / static_cast<float>(actualHeight);
-  int targetLogicalHeight = 1080;  // Keep consistent height
-  int targetLogicalWidth = static_cast<int>(std::round(targetLogicalHeight * aspectRatio));
+  // Use standard logical resolution to ensure UI elements are positioned correctly
+  // This prevents buttons from going off-screen while maintaining good scaling
+  int targetLogicalWidth = 1920;
+  int targetLogicalHeight = 1080;
   
-  // Update renderer logical presentation
+  // Update renderer logical presentation with letterbox mode
   SDL_SetRenderLogicalPresentation(gameEngine.getRenderer(), targetLogicalWidth, targetLogicalHeight, SDL_LOGICAL_PRESENTATION_LETTERBOX);
   
-  INPUT_INFO("macOS: Updated logical resolution for aspect ratio " + std::to_string(aspectRatio) + 
-             ": " + std::to_string(targetLogicalWidth) + "x" + std::to_string(targetLogicalHeight));
+  INPUT_INFO("macOS: Updated standard logical resolution with letterbox mode: " + std::to_string(targetLogicalWidth) + "x" + std::to_string(targetLogicalHeight) + " on " + std::to_string(actualWidth) + "x" + std::to_string(actualHeight));
   #else
   // On non-Apple platforms, use actual screen resolution
   int actualWidth, actualHeight;
@@ -496,7 +495,7 @@ void InputManager::onWindowResize(const SDL_Event& event) {
   // Update renderer to native resolution
   SDL_SetRenderLogicalPresentation(gameEngine.getRenderer(), actualWidth, actualHeight, SDL_LOGICAL_PRESENTATION_DISABLED);
   
-  INPUT_INFO("Non-macOS: Updated to native resolution: " + std::to_string(actualWidth) + "x" + std::to_string(actualHeight));
+  INPUT_INFO("Updated to native resolution: " + std::to_string(actualWidth) + "x" + std::to_string(actualHeight));
   #endif
   
   // Update UI systems with consistent scaling

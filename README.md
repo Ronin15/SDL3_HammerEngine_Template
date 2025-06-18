@@ -262,10 +262,9 @@ The SaveGameManager provides comprehensive save and load functionality with robu
 - **Metadata Extraction**: Retrieve save information without loading full game state (timestamps, player position, level)
 - **File Validation**: Verify save file integrity and format compatibility
 - **Directory Management**: Automatic save directory creation with write permission validation
-- **Boost Serialization**: Efficient Vector2D serialization using Boost binary archives
 - **Error Handling**: Comprehensive error checking with detailed logging and exception safety
 - **Memory Safety**: RAII principles with smart pointers and automatic resource cleanup
-- **Cross-Platform**: Full Windows, macOS, and Linux compatibility with filesystem operations
+- **Cross-Platform**: Full Windows, macOS, and Linux compatibility with filesystem operations, SaveManager, and threadSystem.
 
 Key features include automatic save directory setup (`res/game_saves/`), save file listing and enumeration, batch save information retrieval, and safe file deletion with validation.
 
@@ -275,7 +274,7 @@ See `include/managers/SaveGameManager.hpp` for the full API and implementation d
 
 The ThreadSystem provides a high-performance thread pool implementation with intelligent WorkerBudget allocation and priority-based task scheduling:
 
-- **WorkerBudget System**: Dynamic allocation across AI and Event systems (AI: 60%, Events: 30%, Engine coordination: 10%)
+- **WorkerBudget System**: Tiered allocation strategy (Engine: 1-2 workers, AI: 60% of remaining, Events: 30% of remaining)
 - **Priority-Based Scheduling**: Critical, High, Normal, Low, and Idle priority levels for optimal task ordering
 - **Hardware Adaptive**: Automatically scales from ultra low-end (single-threaded) to high-end (multi-threaded) systems
 - **Buffer Thread Utilization**: Dynamic scaling based on workload thresholds (AI: >1000 entities, Events: >100 events)
@@ -285,7 +284,7 @@ The ThreadSystem provides a high-performance thread pool implementation with int
 - **Future-Based Results**: Support for both fire-and-forget tasks and tasks with return values
 - **Engine Integration**: Seamlessly integrated with AIManager, EventManager, and GameLoop systems
 
-The WorkerBudget system ensures optimal resource distribution: on a 4-core/8-thread system (7 workers), GameLoop gets 2 workers, AI gets 3 workers, Events get 1 worker, with 1 buffer worker for burst capacity during high workloads. Priority-based scheduling ensures critical tasks are processed first while maintaining efficient resource utilization.
+The WorkerBudget system ensures optimal resource distribution: on a 4-core/8-thread system (7 workers available), GameLoop gets 2 workers, AI gets 3 workers (60% of remaining 5), Events get 1 worker (30% of remaining 5), with 1 buffer worker for burst capacity during high workloads. Priority-based scheduling ensures critical tasks are processed first while maintaining efficient resource utilization.
 
 See `docs/ThreadSystem.md` for comprehensive WorkerBudget documentation and full API details.
 
@@ -343,7 +342,8 @@ The FontManager handles high-quality text rendering and measurement throughout t
 - **Efficient Management**: Memory-efficient font management with automatic resource cleanup
 - **Batch Loading**: Directory loading support for efficient font initialization
 
-The system automatically calculates optimal font sizes based on display characteristics and provides measurement utilities for layout systems, ensuring optimal text quality and accurate component sizing across all display types.
+The system automatically calculates optimal font sizes based on display characteristics and provides measurement utilities for layout systems, ensuring optimal text quality and accurate component sizing across all display types. HD through 4k tested. Higher or lower resolutions should work, but not tested.
+
 
 See `include/managers/FontManager.hpp` for the full API and `docs/FontManager.md` for detailed documentation.
 
@@ -503,7 +503,8 @@ Higher priority entities receive more frequent updates and larger detection rang
 
 ### AIDemoState
 
-A full-featured demonstration and benchmarking framework for the AI system:
+A loading and rendering perfromance demonstration for the AI system: 
+  - The Target is 10K entites drawn on screen at once. I want to make sure that this is always the benchmark 60 FPS with 10k entities. The system can handle way more entites that aren't on screen. The Ants are a simple 2D sprite with a 2 frame animation. This shows the system is working optimially and showcases SDL3's renderers efficiency. 
 
 - Mass AI Entity Handling: Spawns and manages thousands of NPCs (default: 10,000), each with dynamic, hot-swappable AI behaviors, demonstrating efficient WorkerBudget allocation and priority-based processing.
 - Live Behavior Switching: Instantly switch all NPCs between Wander, Patrol, and Chase behaviors using keys [1], [2], and [3], leveraging the AIManager’s registration and assignment system.
@@ -529,8 +530,7 @@ This SDL3 Game Template represents a complete, production-ready game engine fram
 ### Core Design Principles
 
 - **Memory Safety**: No raw pointers, no manual memory management - everything uses smart pointers and RAII
-- **Performance First**: Cache-friendly data structures, batch processing, and optimized algorithms throughout
-- **Clean Threading**: Optimized threading for AI/Events with simplified single-threaded UI for maintainability
+- **Performance First**: Cache-friendly data structures, batch processing, and optimized algorithms throughout 
 - **Type Safety**: Strong typing systems with compile-time guarantees and runtime validation
 - **Cross-Platform**: Unified codebase supporting Windows, macOS, and Linux with platform-specific optimizations
 
@@ -548,11 +548,11 @@ The template demonstrates advanced integration patterns:
 
 Designed to handle production-scale requirements:
 
-- **Entity Management**: Efficiently handles 10,000+ AI entities with minimal performance impact
+- **Entity Management**: Efficiently handles 10,000+ AI entities drawn on screen with minimal performance impact
 - **UI Scalability**: Supports complex UI hierarchies with thousands of components
 - **Event Processing**: High-throughput event system with type-indexed storage and batch processing
-- **Threading Optimization**: Intelligent worker allocation for data processing with clean UI architecture
-- **Memory Efficiency**: Optimized data structures using Boost containers and memory pools
+- **Threading Optimization**: Intelligent worker thread allocation for data processing and burst processing.
+- **Memory Efficiency**: Optimized data structures using small vectors with reserve and memory pools
 
 ### Development Workflow
 
@@ -619,9 +619,7 @@ Additional documentation can be found in the `docs/` directory:
 - **[SDL3 Logical Presentation Modes](docs/ui/SDL3_Logical_Presentation_Modes.md)** - Comprehensive guide to SDL3's logical presentation system and UIManager compatibility
 
 ### Threading System Documentation
-- **[ThreadSystem Overview](docs/ThreadSystem.md)** - Complete threading system documentation with WorkerBudget allocation and priority-based task scheduling
-- **[ThreadSystem Analysis](docs/ThreadSystem_Analysis.md)** - Comprehensive implementation analysis with performance benchmarks and architectural decisions
-- **[ThreadSystem Summary](docs/ThreadSystem_Summary.md)** - Practical usage guide with examples and best practices
+- **[ThreadSystem](docs/ThreadSystem.md)** - Complete threading system documentation with WorkerBudget allocation, priority-based task scheduling, implementation details, performance analysis, and production best practices
 
 
 ### Utility Systems Documentation

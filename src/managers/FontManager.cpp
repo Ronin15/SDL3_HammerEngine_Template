@@ -15,10 +15,14 @@
 namespace {
   // Platform-specific base font sizes
   [[maybe_unused]] constexpr float APPLE_BASE_FONT_SIZE = 18.0f;
-  constexpr float NON_APPLE_HEIGHT_RATIO = 90.0f;
+  [[maybe_unused]] constexpr float NON_APPLE_HEIGHT_RATIO = 90.0f;
   
   // Font size ratios for different text types
+  #ifdef __APPLE__
+  constexpr float UI_FONT_RATIO = 1.0f;       // 100% of base (slightly larger for macOS)
+  #else
   constexpr float UI_FONT_RATIO = 0.875f;     // 87.5% of base
+  #endif
   constexpr float TITLE_FONT_RATIO = 1.5f;    // 150% of base
   constexpr float TOOLTIP_FONT_RATIO = 0.6f;  // 60% of base
   
