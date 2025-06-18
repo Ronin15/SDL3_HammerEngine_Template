@@ -120,7 +120,7 @@ bool isStopping() const {
 
 ```cpp
 #include "core/ThreadSystem.hpp"
-using namespace Forge;
+using namespace Hammer;
 
 // Initialize with default settings (recommended)
 if (!ThreadSystem::Instance().init()) {
