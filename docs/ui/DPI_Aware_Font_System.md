@@ -200,7 +200,7 @@ public:
         fontManager.drawText(
             "Score: 1000",
             "fonts_Arial",                    // DPI-appropriate font
-            gameEngine.getWindowWidth() / 2, // Position scaled by UIManager
+            gameEngine.getLogicalWidth() / 2, // Position scaled by UIManager
             50,
             {255, 255, 255, 255},
             gameEngine.getRenderer()
@@ -272,11 +272,11 @@ ui.createTitle("header", {0, y, windowWidth, 0}, "Game Title");  // Centers with
 ```cpp
 // Check DPI detection results
 float dpiScale = GameEngine::Instance().getDPIScale();
-int windowWidth = GameEngine::Instance().getWindowWidth();
-int windowHeight = GameEngine::Instance().getWindowHeight();
+int windowWidth = GameEngine::Instance().getLogicalWidth();
+int windowHeight = GameEngine::Instance().getLogicalHeight();
 
 std::cout << "DPI Scale: " << dpiScale << std::endl;
-std::cout << "Window Size: " << windowWidth << "x" << windowHeight << std::endl;
+std::cout << "Logical Size: " << windowWidth << "x" << windowHeight << std::endl;
 
 // Verify font loading
 bool fontLoaded = FontManager::Instance().isFontLoaded("fonts_Arial");

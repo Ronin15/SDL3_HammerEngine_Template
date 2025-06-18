@@ -16,8 +16,8 @@ bool PauseState::enter() {
   // Create pause state UI
   auto& gameEngine = GameEngine::Instance();
   auto& ui = UIManager::Instance();
-  int windowWidth = gameEngine.getWindowWidth();
-  int windowHeight = gameEngine.getWindowHeight();
+  int windowWidth = gameEngine.getLogicalWidth();
+  int windowHeight = gameEngine.getLogicalHeight();
   
   // Create overlay background to dim the game behind the pause menu
   ui.createOverlay(windowWidth, windowHeight);
@@ -49,7 +49,7 @@ void PauseState::render(float deltaTime) {
      fontMgr.drawText(
        "Press R to Return to Game",
        "fonts_Arial",
-       gameEngine.getWindowWidth() / 2,     // Center horizontally
+       gameEngine.getLogicalWidth() / 2,     // Center horizontally
        160,
        fontColor,
        gameEngine.getRenderer());

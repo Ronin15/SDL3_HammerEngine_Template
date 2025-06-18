@@ -56,7 +56,7 @@ void GamePlayState::render([[maybe_unused]] float deltaTime) {
    fontMgr.drawText(
      "Game State Place Holder <----> Press [P] to test Pause State <----> Press [B] to return to Main Menu",
      "fonts_Arial",
-     gameEngine.getWindowWidth() / 2,  // Center horizontally
+     gameEngine.getLogicalWidth() / 2,  // Center horizontally
      20,
      fontColor,
      gameEngine.getRenderer());
