@@ -7,9 +7,11 @@ The FontManager provides a centralized system for loading, managing, and renderi
 ## Key Features
 
 - **TTF/OTF Font Support**: Load TrueType and OpenType fonts with high quality
-- **DPI-Aware Scaling**: Automatic font sizing based on display pixel density
+- **Cross-Platform Font Sizing**: Automatic font sizing based on screen resolution and platform
+- **Native Resolution Rendering**: Crisp text rendering without scaling blur
+- **Dynamic Auto-Sizing**: Fonts automatically adapt to current display characteristics
 - **Text Measurement**: Precise text dimension calculation for auto-sizing systems
-- **High-Quality Rendering**: TTF hinting, kerning, and anti-aliasing
+- **High-Quality Rendering**: TTF hinting, kerning, and pixel-perfect scaling
 - **Directory Loading**: Batch load fonts from directories
 - **Thread Safety**: Safe to use across multiple threads
 - **Memory Management**: Automatic font cleanup with RAII
@@ -28,21 +30,27 @@ if (!FontManager::Instance().init()) {
 // The FontManager automatically configures quality settings:
 // - TTF hinting for better font outline quality
 // - Kerning for proper character spacing
-// - Linear texture scaling for smooth rendering
+// - Nearest neighbor texture scaling for crisp text rendering
+// - Cross-platform font sizing for consistent readability
 ```
 
-### Display-Aware Font Loading
+### Cross-Platform Font Loading
 
 ```cpp
-// Automatic display-aware font loading (recommended)
+// Automatic cross-platform font loading (recommended)
 FontManager& fontMgr = FontManager::Instance();
 
 // Load fonts with sizes calculated based on display properties
 fontMgr.loadFontsForDisplay("res/fonts", windowWidth, windowHeight);
 
-// This automatically creates DPI-scaled fonts:
+// This automatically creates platform-optimized fonts:
+// macOS: Fixed 18px base with logical presentation scaling
+// Windows/Linux: Dynamic scaling with 18px minimum for readability
+// 4K displays: Properly scaled fonts (24px+ base)
+// 
+// Font IDs created:
 // - fonts_Arial: Base font for general content
-// - fonts_UI_Arial: UI font for interface elements
+// - fonts_UI_Arial: UI font for interface elements  
 // - fonts_Title_Arial: Title font for headers
 // - fonts_Tooltip_Arial: Smaller font for tooltips
 ```
@@ -152,37 +160,43 @@ int nextLineY = y + lineHeight;
 
 ## Integration with UI Systems
 
-### Auto-Sizing Integration
+### Dynamic Auto-Sizing Integration
 
-The FontManager integrates seamlessly with the UI auto-sizing system:
+The FontManager integrates seamlessly with the UI dynamic auto-sizing system:
 
 ```cpp
-// UI components automatically use FontManager for text measurement
+// UI components automatically use FontManager for dynamic text measurement
 auto& ui = UIManager::Instance();
 
-// Label automatically sizes to fit text using FontManager
+// Lists automatically size based on current font metrics
+ui.createList("dynamic_list", {x, y, 200, 140});
+ui.addListItem("dynamic_list", "Item 1"); // Triggers auto-sizing
+
+// Labels automatically size to fit text using current fonts
 ui.createLabel("dynamic", {x, y, 0, 0}, "Dynamic Content");
 
-// Button automatically sizes to fit text plus padding
-ui.createButton("action", {x, y, 0, 0}, "Click Me");
-
-// Multi-line text automatically measured and sized
-ui.createLabel("multiline", {x, y, 0, 0}, "Line 1\nLine 2\nLine 3");
+// Auto-sizing adapts to font changes during window resize
+// No manual recalculation needed - all handled automatically
 ```
 
-### DPI Integration
+### Cross-Platform Resolution Integration
 
 ```cpp
-// FontManager automatically adapts to display DPI
-float dpiScale = GameEngine::Instance().getDPIScale();
+// FontManager automatically adapts to display resolution and platform
+// No manual DPI scaling needed - handled automatically per platform
 
-// Font sizes are automatically calculated based on DPI:
-// Standard DPI (1.0x): 24px base font
-// High DPI (2.0x): 48px base font
-// 4K/Retina (3.0x): 72px base font
+// Font sizes are calculated based on platform and resolution:
+// macOS (any resolution): 18px base font with logical scaling
+// Windows/Linux 1080p: 18px base font (minimum enforced)
+// Windows/Linux 1440p: 18px base font (minimum enforced) 
+// Windows/Linux 4K: 24px base font (dynamically calculated)
 
-// All text rendering uses DPI-appropriate fonts automatically
+// All text rendering uses platform-appropriate fonts automatically
 fontMgr.drawText("Text", "fonts_Arial", x, y, color, renderer);
+
+// Font sizing formula for Windows/Linux:
+// Base size = max(screen_height / 90, 18px minimum)
+// This ensures readability at all resolutions
 ```
 
 ## Directory Loading
@@ -224,7 +238,7 @@ TTF_SetFontKerning(font, 1);                     // Proper character spacing
 TTF_SetFontStyle(font, TTF_STYLE_NORMAL);        // Consistent rendering
 
 // Texture quality settings:
-SDL_SetTextureScaleMode(texture, SDL_SCALEMODE_LINEAR);  // Smooth scaling
+SDL_SetTextureScaleMode(texture, SDL_SCALEMODE_NEAREST);  // Crisp pixel-perfect scaling
 ```
 
 ### Custom Quality Settings
@@ -352,13 +366,16 @@ void setFontKerning(const std::string& fontID, bool enable);
 ### Font Loading
 
 ```cpp
-// ✅ GOOD: Use display-aware loading for UI fonts
+// ✅ GOOD: Use cross-platform loading for UI fonts
 fontMgr.loadFontsForDisplay("res/fonts", windowWidth, windowHeight);
 
 // ✅ GOOD: Load fonts once during initialization
 void GameState::enter() {
     fontMgr.loadFont("res/fonts/special.ttf", "special_font", 32);
 }
+
+// ✅ GOOD: Fonts automatically refresh on window resize
+// No manual intervention needed - handled by InputManager
 
 // ❌ BAD: Don't load fonts every frame
 void GameState::render() {
@@ -403,8 +420,9 @@ if (fontMgr.isFontLoaded("fonts_Arial")) {
 ## Integration with Other Systems
 
 The FontManager works seamlessly with:
-- **[UIManager](../ui/UIManager_Guide.md)**: Automatic text measurement for component auto-sizing
-- **[DPI-Aware Font System](../ui/DPI_Aware_Font_System.md)**: Automatic font scaling for all display types
-- **[Auto-Sizing System](../ui/Auto_Sizing_System.md)**: Precise text measurement for content-aware sizing
+- **[UIManager](../ui/UIManager_Guide.md)**: Dynamic text measurement for component auto-sizing and grow-only lists
+- **[GameEngine](../GameEngine.md)**: Cross-platform coordinate system and native resolution rendering
+- **[InputManager](../InputManager.md)**: Automatic font refresh during window resize events
+- **[Auto-Sizing System](../ui/Auto_Sizing_System.md)**: Real-time text measurement for content-aware sizing
 
-The FontManager serves as the foundation for all text rendering in the engine, providing the measurement and rendering capabilities that enable the UI system's advanced features like auto-sizing and DPI awareness.
+The FontManager serves as the foundation for all text rendering in the engine, providing cross-platform font sizing, crisp rendering, and dynamic measurement capabilities that enable the UI system's advanced features like auto-sizing and resolution adaptation.
