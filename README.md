@@ -277,18 +277,14 @@ The ThreadSystem provides a high-performance thread pool implementation with int
 - **WorkerBudget System**: Tiered allocation strategy (Engine: 1-2 workers, AI: 60% of remaining, Events: 30% of remaining)
 - **Priority-Based Scheduling**: Critical, High, Normal, Low, and Idle priority levels for optimal task ordering
 - **Hardware Adaptive**: Automatically scales from ultra low-end (single-threaded) to high-end (multi-threaded) systems
-- **Buffer Thread Utilization**: Dynamic scaling based on workload thresholds (AI: >1000 entities, Events: >100 events) - Dynamicaly uses more threads from the buffer when needed
+- **Buffer Thread Utilization**: Dynamic scaling based on workload thresholds (AI: >1000 entities, Events: >100 events)
 - **Priority-Based Scheduling**: Critical, High, Normal, Low, Idle task priorities with GameLoop getting Critical priority
 - **Thread-Safe Operations**: Task queue with pre-allocated memory and atomic operations
 - **Smart Resource Management**: Queue pressure monitoring with graceful degradation under load
 - **Future-Based Results**: Support for both fire-and-forget tasks and tasks with return values
 - **Engine Integration**: Seamlessly integrated with AIManager, EventManager, and GameLoop systems
 
-<<<<<<< HEAD
-The WorkerBudget system ensures optimal resource distribution: on an 8-core system (7 workers), GameLoop gets 2 workers, AI gets 3 workers (60% of remaining 5), Events get 1 worker (30% of remaining 5), with 1 buffer worker for burst capacity during high workloads. Priority-based scheduling ensures critical tasks are processed first while maintaining efficient resource utilization.
-=======
-The WorkerBudget system ensures optimal resource distribution: on a 4-core/8-thread system (7 workers<-concurrency - 1), GameLoop gets 2 workers, AI gets 3 workers, Events get 1 worker, with 1 buffer worker for burst capacity during high workloads. Priority-based scheduling ensures critical tasks are processed first while maintaining efficient resource utilization.
->>>>>>> 01c4ce63d79ee5722cde814810f30231cd12f05c
+The WorkerBudget system ensures optimal resource distribution: on a 4-core/8-thread system (7 workers available), GameLoop gets 2 workers, AI gets 3 workers (60% of remaining 5), Events get 1 worker (30% of remaining 5), with 1 buffer worker for burst capacity during high workloads. Priority-based scheduling ensures critical tasks are processed first while maintaining efficient resource utilization.
 
 See `docs/ThreadSystem.md` for comprehensive WorkerBudget documentation and full API details.
 
