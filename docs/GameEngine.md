@@ -400,31 +400,72 @@ private:
 };
 ```
 
-### DPI Management
+### Cross-Platform Coordinate System
 
-The engine automatically calculates DPI scaling factors:
+The engine automatically handles coordinate systems and rendering for optimal text quality across platforms:
+
+#### Platform-Specific Rendering Strategies
+
+**macOS (Letterbox Mode):**
+```cpp
+// On macOS, use aspect ratio-based logical resolution for compatibility
+int actualWidth, actualHeight;
+SDL_GetWindowSizeInPixels(mp_window.get(), &actualWidth, &actualHeight);
+
+// Calculate logical resolution based on actual screen aspect ratio
+float aspectRatio = static_cast<float>(actualWidth) / static_cast<float>(actualHeight);
+int targetLogicalHeight = 1080;  // Keep consistent height
+int targetLogicalWidth = static_cast<int>(std::round(targetLogicalHeight * aspectRatio));
+
+// Use letterbox mode to maintain aspect ratio and avoid black bars
+SDL_SetRenderLogicalPresentation(mp_renderer.get(), targetLogicalWidth, targetLogicalHeight, 
+                                SDL_LOGICAL_PRESENTATION_LETTERBOX);
+```
+
+**Windows/Linux (Native Resolution):**
+```cpp
+// On non-Apple platforms, use actual screen resolution to eliminate scaling blur
+int actualWidth, actualHeight;
+SDL_GetWindowSizeInPixels(mp_window.get(), &actualWidth, &actualHeight);
+
+// Store actual dimensions for UI positioning (no scaling needed)
+m_logicalWidth = actualWidth;
+m_logicalHeight = actualHeight;
+
+// Disable logical presentation to render at native resolution
+SDL_SetRenderLogicalPresentation(mp_renderer.get(), actualWidth, actualHeight, 
+                                SDL_LOGICAL_PRESENTATION_DISABLED);
+```
+
+#### Coordinate System Benefits
+
+- **Eliminates Text Blurriness**: Native resolution rendering on Windows/Linux prevents scaling artifacts
+- **Cross-Platform Consistency**: Each platform uses its optimal rendering approach
+- **Automatic Adaptation**: Systems automatically adapt to the engine's coordinate choice
+- **Zero Coupling**: UI and Font systems automatically query engine for logical dimensions
+
+### Font System Integration
+
+The engine coordinates with FontManager for platform-optimized font sizing:
 
 ```cpp
-// Calculate DPI-aware scaling
-float dpiScale = 1.0f;
-int pixelWidth, pixelHeight;
-int logicalWidth, logicalHeight;
-SDL_GetWindowSizeInPixels(mp_window.get(), &pixelWidth, &pixelHeight);
-SDL_GetWindowSize(mp_window.get(), &logicalWidth, &logicalHeight);
-
-if (logicalWidth > 0 && logicalHeight > 0) {
-    float scaleX = static_cast<float>(pixelWidth) / static_cast<float>(logicalWidth);
-    float scaleY = static_cast<float>(pixelHeight) / static_cast<float>(logicalHeight);
-    dpiScale = std::max(scaleX, scaleY);
-
-    #ifdef __APPLE__
-    float displayScale = SDL_GetWindowDisplayScale(mp_window.get());
-    if (displayScale > 0.0f) {
-        dpiScale = displayScale;
-    }
-    #endif
-}
+// Platform-specific font size calculation
+#ifdef __APPLE__
+// On macOS, use fixed 18px base with logical presentation scaling
+float baseSizeFloat = 18.0f;
+#else
+// On non-Apple platforms, calculate based on actual screen resolution
+// Formula: height / 90 with 18px minimum for readability
+int clampedHeight = std::clamp(windowHeight, 480, 8640);
+float baseSizeFloat = std::max(static_cast<float>(clampedHeight) / 90.0f, 18.0f);
+#endif
 ```
+
+**Font Sizing Results:**
+- **macOS (any resolution)**: 18px base font with logical scaling
+- **Windows/Linux 1080p**: 18px base font (minimum enforced) 
+- **Windows/Linux 4K**: 24px base font (dynamically calculated)
+- **All platforms**: Consistent readability and crisp rendering
 
 ### VSync Management
 
