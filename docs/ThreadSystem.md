@@ -274,18 +274,18 @@ struct WorkerBudget {
 
 ### Hardware Tier Classification
 
-| Hardware Tier | CPU Cores | Worker Allocation | AI Workers | Event Workers | Engine Reserved | Buffer |
-|---------------|-----------|-------------------|------------|---------------|-----------------|--------|
-| **Ultra Low-End** | 1-2 cores | 1-2 workers | 0-1 | 0-1 | 1 | 0 |
-| **Low-End** | 2-4 cores | 2-4 workers | 1 | 0-1 | 1 | 0 |
-| **Mid-Range** | 5-8 cores | 5-7 workers | 3 | 1 | 2 | 1 |
-| **High-End** | 9-16 cores | 8-15 workers | 5-7 | 2-3 | 2 | 1-3 |
-| **Enthusiast** | 16+ cores | 16+ workers | 8+ | 4+ | 2 | 2+ |
+| Hardware Tier | CPU Cores/Threads | Worker Allocation | AI Workers | Event Workers | Engine Reserved | Buffer |
+|---------------|-------------------|-------------------|------------|---------------|-----------------|--------|
+| **Ultra Low-End** | 1-2 cores/2-4 threads | 1-3 workers | 0-1 | 0-1 | 1 | 0 |
+| **Low-End** | 2-4 cores/4-8 threads | 3-7 workers | 1-3 | 1 | 1-2 | 0-1 |
+| **Mid-Range** | 4-6 cores/8-12 threads | 7-11 workers | 3-6 | 1-3 | 2 | 1-2 |
+| **High-End** | 6-8 cores/12-16 threads | 11-15 workers | 5-7 | 2-4 | 2 | 2-3 |
+| **Enthusiast** | 8+ cores/16+ threads | 15+ workers | 8+ | 4+ | 2 | 3+ |
 
 ### Real-World Allocation Examples
 
 ```cpp
-// 8-core system (7 workers available)
+// 4-core/8-thread system (7 workers available)
 WorkerBudget budget = {
     .totalWorkers = 7,
     .engineReserved = 2,     // 29% - Enhanced engine capacity for mid-tier systems
@@ -294,7 +294,7 @@ WorkerBudget budget = {
     .remaining = 1           // 14% - Buffer for burst workloads
 };
 
-// 16-core system (15 workers available)
+// 8-core/16-thread system (15 workers available)
 WorkerBudget budget = {
     .totalWorkers = 15,
     .engineReserved = 2,     // 13% - Enhanced engine capacity
@@ -303,7 +303,7 @@ WorkerBudget budget = {
     .remaining = 3           // 20% - Buffer for burst workloads
 };
 
-// 3-core system (3 workers available) - Low-end
+// 2-core/4-thread system (3 workers available) - Low-end
 WorkerBudget budget = {
     .totalWorkers = 3,
     .engineReserved = 1,     // 33% - Critical engine operations
@@ -312,13 +312,13 @@ WorkerBudget budget = {
     .remaining = 0           // No buffer available
 };
 
-// 12-core system (12 workers available) - High-end
+// 6-core/12-thread system (11 workers available) - High-end
 WorkerBudget budget = {
-    .totalWorkers = 12,
-    .engineReserved = 2,     // 17% - Enhanced engine capacity
-    .aiAllocated = 6,        // 50% - AI processing (60% of remaining 10 workers)
-    .eventAllocated = 3,     // 25% - Event handling (30% of remaining 10 workers)
-    .remaining = 1           // 8% - Buffer for burst workloads
+    .totalWorkers = 11,
+    .engineReserved = 2,     // 18% - Enhanced engine capacity
+    .aiAllocated = 5,        // 45% - AI processing (60% of remaining 9 workers)
+    .eventAllocated = 2,     // 18% - Event handling (30% of remaining 9 workers)
+    .remaining = 2           // 18% - Buffer for burst workloads
 };
 ```
 
