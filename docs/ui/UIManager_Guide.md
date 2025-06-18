@@ -596,8 +596,8 @@ public:
     bool enter() override {
         auto& ui = UIManager::Instance();
         auto& gameEngine = GameEngine::Instance();
-        int windowWidth = gameEngine.getWindowWidth();
-        int windowHeight = gameEngine.getWindowHeight();
+        int windowWidth = gameEngine.getLogicalWidth();
+        int windowHeight = gameEngine.getLogicalHeight();
         
         // Create modal with centered positioning
         int dialogX = (windowWidth - 400) / 2;

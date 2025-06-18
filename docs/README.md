@@ -54,10 +54,8 @@ Comprehensive UI system with professional theming, animations, layouts, content-
 ### Threading System
 High-performance multithreading framework with intelligent WorkerBudget allocation and priority-based task scheduling.
 
-- **[ThreadSystem Overview](ThreadSystem.md)** - Complete threading system documentation with WorkerBudget allocation, buffer thread utilization, priority scheduling, and engine integration
-- **[ThreadSystem Analysis](ThreadSystem_Analysis.md)** - Comprehensive implementation analysis with performance benchmarks, architectural decisions, and production readiness assessment
-- **[ThreadSystem Summary](ThreadSystem_Summary.md)** - Practical usage guide with examples, best practices, and quick API reference
-- **WorkerBudget System** - Dynamic resource allocation across engine subsystems (GameLoop: guaranteed workers, AI: 60%, Events: 30%, Buffer: dynamic scaling)
+- **[ThreadSystem](ThreadSystem.md)** - Complete threading system documentation with WorkerBudget allocation, buffer thread utilization, priority scheduling, engine integration, implementation details, and production best practices
+- **WorkerBudget System** - Tiered resource allocation strategy (Tier 1: single-threaded, Tier 2: minimal allocation, Tier 3: AI 60%/Events 30% of remaining workers)
 - **Priority-Based Scheduling** - Five-level priority system (Critical, High, Normal, Low, Idle) for optimal task ordering
 - **Buffer Thread Utilization** - Intelligent scaling based on workload thresholds (AI: >1000 entities, Events: >100 events)
 - **Hardware Adaptive** - Automatic scaling from ultra low-end (single-threaded) to high-end (multi-threaded) systems
@@ -115,8 +113,8 @@ The Hammer Game Engine provides several core systems that work together:
 
 ### Performance Optimized
 - **Scales to 10,000+ NPCs**: Linear performance scaling with distance optimization and WorkerBudget allocation
-- **Priority-Based Threading**: Critical tasks processed first with worker budget allocation and optimal resource distribution
-- **WorkerBudget Allocation**: Intelligent resource distribution across AI (60%), Events (30%), and Engine (10%) systems
+- **Priority-Based Threading**: Critical tasks processed first with tiered worker allocation and optimal resource distribution
+- **WorkerBudget Allocation**: Intelligent tiered resource distribution (Engine: 1-2 workers, AI: 60% of remaining, Events: 30% of remaining, Buffer: dynamic scaling)
 - **Efficient UI Rendering**: Only processes visible components with auto-sizing
 - **Memory Optimizations**: Smart pointers and cache-friendly data structures
 - **Batched Operations**: Bulk processing for better performance across all systems
@@ -146,7 +144,7 @@ For issues with specific systems, see the troubleshooting sections in each syste
 - AI issues: See [AI System Overview](ai/AIManager.md) and [Behavior Modes](ai/BehaviorModes.md)
 - Event issues: See [EventManager Overview](events/EventManager.md) and [EventManager Advanced](events/EventManager_Advanced.md)
 - UI issues: See [UIManager Guide](ui/UIManager_Guide.md), [Auto-Sizing System](ui/Auto_Sizing_System.md), and [DPI-Aware Font System](ui/DPI_Aware_Font_System.md)
-- Threading issues: See [ThreadSystem Overview](ThreadSystem.md) and [ThreadSystem Summary](ThreadSystem_Summary.md)
+- Threading issues: See [ThreadSystem](ThreadSystem.md)
 
 ---
 

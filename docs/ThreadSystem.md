@@ -2,9 +2,86 @@
 
 ## Overview
 
-The ThreadSystem is a high-performance, priority-based thread pool implementation designed for the Hammer Game Engine. It provides efficient task-based concurrency with priority scheduling and comprehensive performance monitoring. The system scales automatically based on hardware capabilities while maintaining optimal resource utilization through advanced WorkerBudget allocation. **Performance optimized**: Achieves 4-6% CPU usage with 1000+ entities through intelligent batching and resource coordination.
+The Hammer Engine ThreadSystem is a sophisticated, production-ready thread pool implementation designed for high-performance game development. It provides efficient task-based concurrency with automatic load balancing, priority-based scheduling, and comprehensive performance monitoring.
 
 ## Architecture Overview
+
+### Core Components Hierarchy
+
+```
+ThreadSystem (Singleton)
+├── ThreadPool (Manages worker lifecycle)
+│   ├── TaskQueue (Priority-based global queue)
+│   │   ├── Priority Queues [0-4] (Critical → Idle)
+│   │   ├── Statistics Tracking
+│   │   └── Profiling System
+│   └── WorkerBudget Integration
+├── Worker Threads
+│   ├── Task Acquisition (Priority-based)
+│   ├── Exception Handling
+│   └── Performance Monitoring
+└── WorkerBudget System (Resource allocation)
+```
+
+### Class Responsibilities
+
+| Class | Responsibility | Key Features |
+|-------|---------------|--------------|
+| **ThreadSystem** | Singleton API manager | Initialization, cleanup, public interface |
+| **ThreadPool** | Worker thread lifecycle | Thread creation, task distribution, shutdown |
+| **TaskQueue** | Priority-based queuing | 5 priority levels, statistics, capacity management |
+| **WorkerBudget** | Resource allocation | Tiered allocation strategy with buffer capacity |
+| **PrioritizedTask** | Task wrapper | Priority, timing, description, comparison |
+
+### Performance Characteristics
+
+| Metric | Value | Notes |
+|--------|-------|-------|
+| **Memory Overhead** | <1KB | Static system overhead |
+| **CPU Overhead** | <0.1% | Per task processing |
+| **Throughput** | 15,000-20,000 tasks/sec | Small tasks (100 ops) |
+| **Load Balance Efficiency** | 90%+ | With WorkerBudget system |
+| **Scalability** | 70-98% efficiency | 2-16+ cores |
+
+## Implementation Details
+
+### Memory Management Strategy
+
+**Queue Capacity Management:**
+```cpp
+// Dynamic growth strategy
+if (queue.size() >= (m_desiredCapacity * 90) / 100) { // 90% threshold
+    size_t newCapacity = queue.capacity() * 2;
+    queue.reserve(newCapacity);
+}
+```
+
+**Memory Efficiency Features:**
+- **Pre-allocation**: `reserveQueueCapacity()` for known workloads
+- **Exponential Growth**: Doubles capacity when 90% full
+- **Move Semantics**: Extensive use of `std::move` to avoid copies
+- **Minimal Overhead**: <1KB total system overhead
+
+### Thread Safety Implementation
+
+**Synchronization Primitives:**
+- **Per-Priority Mutexes**: Reduces contention between priority levels
+- **Atomic Counters**: Lock-free statistics tracking
+- **Condition Variables**: Efficient thread wake-up
+- **Memory Ordering**: Explicit memory ordering for performance
+
+**Lock-Free Operations:**
+```cpp
+// Atomic task counting
+m_totalTasksProcessed.fetch_add(1, std::memory_order_relaxed);
+
+// Lock-free stopping check
+bool isStopping() const {
+    return stopping.load(std::memory_order_acquire);
+}
+```
+
+## Key Features
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -12,18 +89,18 @@ The ThreadSystem is a high-performance, priority-based thread pool implementatio
 ├─────────────────────────────────────────────────────────────┤
 │  ┌─────────────────┐    ┌─────────────────────────────────┐ │
 │  │   ThreadPool    │    │        TaskQueue                │ │
-│  │                 │    │  ┌─────────────────────────────┐ │ │
-│  │ ┌─────────────┐ │    │  │ Priority Queues (0-4)      │ │ │
-│  │ │ Worker 0    │ │    │  │ Critical │ High │ Normal   │ │ │
-│  │ │ Worker 1    │ │◄───┤  │ Low      │ Idle │          │ │ │
-│  │ │ Worker N    │ │    │  └─────────────────────────────┘ │ │
+│  │                 │    │  ┌─────────────────────────────┐│ │
+│  │ ┌─────────────┐ │    │  │ Priority Queues (0-4)       ││ │
+│  │ │ Worker 0    │ │    │  │ Critical │ High │ Normal    ││ │
+│  │ │ Worker 1    │ │◄───┤  │ Low      │ Idle │           ││ │
+│  │ │ Worker N    │ │    │  └─────────────────────────────┘│ │
 │  │ └─────────────┘ │    └─────────────────────────────────┘ │
 │  └─────────────────┘                                        │
-│  ┌─────────────────────────────────────────────────────────┐ │
-│  │            WorkerBudget Allocation                      │ │
-│  │   Engine: 10% │ AI: 60% │ Events: 30% │ Buffer: Auto   │ │
-│  └─────────────────────────────────────────────────────────┘ │
-└─────────────────────────────────────────────────────────────┐
+│  ┌─────────────────────────────────────────────────────────┐│
+│  │            WorkerBudget Allocation                      ││
+│  │   Engine: 10% │ AI: 60% │ Events: 30% │ Buffer: Auto    ││
+│  └─────────────────────────────────────────────────────────┘│
+└─────────────────────────────────────────────────────────────
 ```
 
 ## Key Features
@@ -43,7 +120,7 @@ The ThreadSystem is a high-performance, priority-based thread pool implementatio
 
 ```cpp
 #include "core/ThreadSystem.hpp"
-using namespace Forge;
+using namespace Hammer;
 
 // Initialize with default settings (recommended)
 if (!ThreadSystem::Instance().init()) {
@@ -163,48 +240,85 @@ The WorkerBudget system provides intelligent resource allocation across engine s
 
 ### Allocation Strategy
 
+The system uses a tiered allocation strategy that adapts to hardware capabilities:
+
+**Tier 1 (≤1 workers)**: Ultra low-end systems
+- GameEngine: 1 worker (all available)
+- AI: 0 workers (single-threaded fallback)
+- Events: 0 workers (single-threaded fallback)
+
+**Tier 2 (2-4 workers)**: Low-end systems
+- GameEngine: 1 worker (minimum required)
+- AI: 1 worker if available
+- Events: 0 workers (shares with AI or single-threaded)
+
+**Tier 3 (5+ workers)**: High-end systems
+- GameEngine: 2 workers (optimal for coordination)
+- AI: 60% of remaining workers after engine reservation
+- Events: 30% of remaining workers after engine reservation
+- Buffer: Remaining workers for burst capacity
+
 ```cpp
 struct WorkerBudget {
     size_t totalWorkers;      // Total available worker threads
-    size_t engineReserved;    // Reserved for critical engine operations (10%)
-    size_t aiAllocated;       // Allocated for AI subsystem (60%)
-    size_t eventAllocated;    // Allocated for event processing (30%)
-    size_t remaining;         // Available for dynamic allocation
+    size_t engineReserved;    // Reserved for critical engine operations
+    size_t aiAllocated;       // Allocated for AI subsystem (60% of remaining)
+    size_t eventAllocated;    // Allocated for event processing (30% of remaining)
+    size_t remaining;         // Buffer workers for burst capacity
     
-    size_t getOptimalWorkerCount() const { return totalWorkers - engineReserved; }
+    size_t getOptimalWorkerCount(size_t baseAllocation, size_t workloadSize, size_t workloadThreshold) const;
     bool hasBufferCapacity() const { return remaining > 0; }
-    size_t getMaxWorkerCount() const { return totalWorkers; }
+    size_t getMaxWorkerCount(size_t baseAllocation) const { return baseAllocation + remaining; }
 };
 ```
 
 ### Hardware Tier Classification
 
-| Hardware Tier | CPU Cores | Worker Allocation | AI Workers | Event Workers | Engine Reserved |
-|---------------|-----------|-------------------|------------|---------------|-----------------|
-| **Low-End** | 2-4 cores | 2-3 workers | 1-2 | 1 | 1 |
-| **Mid-Range** | 4-8 cores | 4-7 workers | 3-4 | 2-3 | 1 |
-| **High-End** | 8-16 cores | 8-15 workers | 6-9 | 3-5 | 1-2 |
-| **Enthusiast** | 16+ cores | 16+ workers | 10+ | 5+ | 2+ |
+| Hardware Tier | CPU Cores/Threads | Worker Allocation | AI Workers | Event Workers | Engine Reserved | Buffer |
+|---------------|-------------------|-------------------|------------|---------------|-----------------|--------|
+| **Ultra Low-End** | 1-2 cores/2-4 threads | 1-3 workers | 0-1 | 0-1 | 1 | 0 |
+| **Low-End** | 2-4 cores/4-8 threads | 3-7 workers | 1-3 | 1 | 1-2 | 0-1 |
+| **Mid-Range** | 4-6 cores/8-12 threads | 7-11 workers | 3-6 | 1-3 | 2 | 1-2 |
+| **High-End** | 6-8 cores/12-16 threads | 11-15 workers | 5-7 | 2-4 | 2 | 2-3 |
+| **Enthusiast** | 8+ cores/16+ threads | 15+ workers | 8+ | 4+ | 2 | 3+ |
 
 ### Real-World Allocation Examples
 
 ```cpp
-// 8-core system (7 workers available)
+// 4-core/8-thread system (7 workers available)
 WorkerBudget budget = {
     .totalWorkers = 7,
-    .engineReserved = 1,     // 10% - Critical engine operations
-    .aiAllocated = 4,        // 60% - AI processing
-    .eventAllocated = 2,     // 30% - Event handling
-    .remaining = 0           // Fully allocated
+    .engineReserved = 2,     // 29% - Enhanced engine capacity for mid-tier systems
+    .aiAllocated = 3,        // 43% - AI processing (60% of remaining 5 workers)
+    .eventAllocated = 1,     // 14% - Event handling (30% of remaining 5 workers)
+    .remaining = 1           // 14% - Buffer for burst workloads
 };
 
-// 16-core system (15 workers available)
+// 8-core/16-thread system (15 workers available)
 WorkerBudget budget = {
     .totalWorkers = 15,
     .engineReserved = 2,     // 13% - Enhanced engine capacity
-    .aiAllocated = 9,        // 60% - Robust AI processing
-    .eventAllocated = 4,     // 27% - Enhanced event handling
-    .remaining = 0           // Fully allocated
+    .aiAllocated = 7,        // 47% - AI processing (60% of remaining 13 workers)
+    .eventAllocated = 3,     // 20% - Event handling (30% of remaining 13 workers)
+    .remaining = 3           // 20% - Buffer for burst workloads
+};
+
+// 2-core/4-thread system (3 workers available) - Low-end
+WorkerBudget budget = {
+    .totalWorkers = 3,
+    .engineReserved = 1,     // 33% - Critical engine operations
+    .aiAllocated = 1,        // 33% - Minimal AI processing
+    .eventAllocated = 1,     // 33% - Minimal event handling
+    .remaining = 0           // No buffer available
+};
+
+// 6-core/12-thread system (11 workers available) - High-end
+WorkerBudget budget = {
+    .totalWorkers = 11,
+    .engineReserved = 2,     // 18% - Enhanced engine capacity
+    .aiAllocated = 5,        // 45% - AI processing (60% of remaining 9 workers)
+    .eventAllocated = 2,     // 18% - Event handling (30% of remaining 9 workers)
+    .remaining = 2           // 18% - Buffer for burst workloads
 };
 ```
 
@@ -833,6 +947,99 @@ public:
     }
 };
 ```
+
+## Production Readiness & Best Practices
+
+### ✅ Optimal Usage Patterns
+
+**Large Batch Processing:**
+```cpp
+// ✅ Process entities in large batches (1000+ items)
+void AIManager::updateOptimal() {
+    size_t workerCount = ThreadSystem::Instance().getThreadCount();
+    size_t batchSize = entities.size() / workerCount;
+    
+    for (size_t i = 0; i < workerCount; ++i) {
+        ThreadSystem::Instance().enqueueTask([=]() {
+            processBatch(i * batchSize, batchSize);
+        }, TaskPriority::Normal, "AI_Batch_" + std::to_string(i));
+    }
+}
+```
+
+**Priority-Based Task Submission:**
+```cpp
+// ✅ Use appropriate priorities
+ThreadSystem::Instance().enqueueTask(renderCriticalTask, TaskPriority::Critical);
+ThreadSystem::Instance().enqueueTask(gameLogicTask, TaskPriority::Normal);
+ThreadSystem::Instance().enqueueTask(backgroundTask, TaskPriority::Low);
+```
+
+**WorkerBudget-Aware Processing:**
+```cpp
+// ✅ Adapt to available workers
+WorkerBudget budget = calculateWorkerBudget(totalWorkers);
+size_t optimalWorkers = budget.getOptimalWorkerCount(
+    budget.aiAllocated, entityCount, 1000);
+```
+
+### ❌ Anti-Patterns to Avoid
+
+**Excessive Small Tasks:**
+```cpp
+// ❌ Don't create tiny tasks
+for (auto& entity : entities) {
+    ThreadSystem::Instance().enqueueTask([&entity]() {
+        entity.update(); // Too small!
+    });
+}
+```
+
+**Blocking Operations in Tasks:**
+```cpp
+// ❌ Don't block worker threads
+ThreadSystem::Instance().enqueueTask([]() {
+    std::this_thread::sleep_for(std::chrono::seconds(1)); // Bad!
+    loadResourceFromDisk(); // Also bad!
+});
+```
+
+**Ignoring Task Priorities:**
+```cpp
+// ❌ Don't use Normal priority for everything
+ThreadSystem::Instance().enqueueTask(task, TaskPriority::Normal); // Consider priority!
+```
+
+### Performance Validation
+
+**System Health Check:**
+```cpp
+void validateThreadSystemHealth() {
+    auto& ts = ThreadSystem::Instance();
+    
+    // Check queue utilization
+    double utilization = static_cast<double>(ts.getQueueSize()) / ts.getQueueCapacity();
+    if (utilization > 0.8) {
+        THREADSYSTEM_WARN("Queue utilization high: " + std::to_string(utilization * 100) + "%");
+    }
+    
+    // Check worker efficiency
+    size_t processed = ts.getTotalTasksProcessed();
+    size_t enqueued = ts.getTotalTasksEnqueued();
+    if (processed < enqueued * 0.95) {
+        THREADSYSTEM_WARN("Worker efficiency below 95%");
+    }
+}
+```
+
+### Production Deployment Checklist
+
+- [ ] **Memory Validation**: Confirm <1KB overhead on target hardware
+- [ ] **Performance Testing**: Validate 90%+ efficiency under peak loads
+- [ ] **Error Handling**: Test graceful degradation under high stress
+- [ ] **Resource Monitoring**: Implement queue and worker utilization tracking
+- [ ] **Platform Testing**: Verify behavior across all target platforms
+- [ ] **Load Testing**: Test with 10,000+ tasks over extended periods
 
 ## Conclusion
 

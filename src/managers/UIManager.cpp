@@ -2229,11 +2229,14 @@ void UIManager::renderTooltip(SDL_Renderer* renderer) {
 
     // Ensure tooltip stays on screen
     const auto& gameEngine = GameEngine::Instance();
-    if (tooltipRect.x + tooltipRect.width > gameEngine.getWindowWidth()) {
-        tooltipRect.x = gameEngine.getWindowWidth() - tooltipRect.width;
+    if (tooltipRect.x + tooltipRect.width > gameEngine.getLogicalWidth()) {
+        tooltipRect.x = gameEngine.getLogicalWidth() - tooltipRect.width;
     }
     if (tooltipRect.y < 0) {
         tooltipRect.y = static_cast<int>(m_lastMousePosition.getY() + 20);
+    }
+    if (tooltipRect.y + tooltipRect.height > gameEngine.getLogicalHeight()) {
+        tooltipRect.y = gameEngine.getLogicalHeight() - tooltipRect.height;
     }
 
     // Draw tooltip
@@ -2683,7 +2686,26 @@ int UIManager::getLogicalHeight() const {
 
 // Auto-detecting overlay creation
 void UIManager::createOverlay() {
-    createOverlay(getLogicalWidth(), getLogicalHeight());
+    int logicalWidth = getLogicalWidth();
+    int logicalHeight = getLogicalHeight();
+    
+    // Check if we're using logical presentation (macOS)
+    int overlayWidth = logicalWidth;
+    int overlayHeight = logicalHeight;
+    
+    if (m_cachedRenderer) {
+        int actualWidth, actualHeight;
+        if (SDL_GetCurrentRenderOutputSize(m_cachedRenderer, &actualWidth, &actualHeight)) {
+            // If actual render size differs significantly from logical size, 
+            // we're likely using logical presentation and should use actual size for overlay
+            if (actualWidth != logicalWidth || actualHeight != logicalHeight) {
+                overlayWidth = actualWidth;
+                overlayHeight = actualHeight;
+            }
+        }
+    }
+    
+    createOverlay(overlayWidth, overlayHeight);
 }
 
 // Convenience positioning methods
@@ -2703,5 +2725,20 @@ void UIManager::createCenteredDialog(const std::string& id, int width, int heigh
     int logicalHeight = getLogicalHeight();
     int x = (logicalWidth - width) / 2;
     int y = (logicalHeight - height) / 2;
-    createModal(id, {x, y, width, height}, theme, logicalWidth, logicalHeight);
+    
+    // Use actual render output size for overlay if available
+    int overlayWidth = logicalWidth;
+    int overlayHeight = logicalHeight;
+    
+    if (m_cachedRenderer) {
+        int actualWidth, actualHeight;
+        if (SDL_GetCurrentRenderOutputSize(m_cachedRenderer, &actualWidth, &actualHeight)) {
+            if (actualWidth != logicalWidth || actualHeight != logicalHeight) {
+                overlayWidth = actualWidth;
+                overlayHeight = actualHeight;
+            }
+        }
+    }
+    
+    createModal(id, {x, y, width, height}, theme, overlayWidth, overlayHeight);
 }
