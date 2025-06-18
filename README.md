@@ -275,7 +275,7 @@ See `include/managers/SaveGameManager.hpp` for the full API and implementation d
 
 The ThreadSystem provides a high-performance thread pool implementation with intelligent WorkerBudget allocation and priority-based task scheduling:
 
-- **WorkerBudget System**: Dynamic allocation across AI and Event systems (AI: 60%, Events: 30%, Engine coordination: 10%)
+- **WorkerBudget System**: Tiered allocation strategy (Engine: 1-2 workers, AI: 60% of remaining, Events: 30% of remaining)
 - **Priority-Based Scheduling**: Critical, High, Normal, Low, and Idle priority levels for optimal task ordering
 - **Hardware Adaptive**: Automatically scales from ultra low-end (single-threaded) to high-end (multi-threaded) systems
 - **Buffer Thread Utilization**: Dynamic scaling based on workload thresholds (AI: >1000 entities, Events: >100 events)
@@ -285,7 +285,7 @@ The ThreadSystem provides a high-performance thread pool implementation with int
 - **Future-Based Results**: Support for both fire-and-forget tasks and tasks with return values
 - **Engine Integration**: Seamlessly integrated with AIManager, EventManager, and GameLoop systems
 
-The WorkerBudget system ensures optimal resource distribution: on a 4-core/8-thread system (7 workers), GameLoop gets 2 workers, AI gets 3 workers, Events get 1 worker, with 1 buffer worker for burst capacity during high workloads. Priority-based scheduling ensures critical tasks are processed first while maintaining efficient resource utilization.
+The WorkerBudget system ensures optimal resource distribution: on an 8-core system (7 workers), GameLoop gets 2 workers, AI gets 3 workers (60% of remaining 5), Events get 1 worker (30% of remaining 5), with 1 buffer worker for burst capacity during high workloads. Priority-based scheduling ensures critical tasks are processed first while maintaining efficient resource utilization.
 
 See `docs/ThreadSystem.md` for comprehensive WorkerBudget documentation and full API details.
 
@@ -619,9 +619,7 @@ Additional documentation can be found in the `docs/` directory:
 - **[SDL3 Logical Presentation Modes](docs/ui/SDL3_Logical_Presentation_Modes.md)** - Comprehensive guide to SDL3's logical presentation system and UIManager compatibility
 
 ### Threading System Documentation
-- **[ThreadSystem Overview](docs/ThreadSystem.md)** - Complete threading system documentation with WorkerBudget allocation and priority-based task scheduling
-- **[ThreadSystem Analysis](docs/ThreadSystem_Analysis.md)** - Comprehensive implementation analysis with performance benchmarks and architectural decisions
-- **[ThreadSystem Summary](docs/ThreadSystem_Summary.md)** - Practical usage guide with examples and best practices
+- **[ThreadSystem](docs/ThreadSystem.md)** - Complete threading system documentation with WorkerBudget allocation, priority-based task scheduling, implementation details, performance analysis, and production best practices
 
 
 ### Utility Systems Documentation
