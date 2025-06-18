@@ -187,8 +187,7 @@ bool GameEngine::init(const char* title,
         GAMEENGINE_ERROR("Failed to set initial render draw color: " + std::string(SDL_GetError()));
       }
       #ifdef __APPLE__
-      // On macOS, calculate logical resolution based on actual screen aspect ratio
-      // to prevent UI from being clipped by letterbox mode
+      // On macOS, use logical presentation with stretch mode for consistent UI scaling
       int actualWidth, actualHeight;
       if (!SDL_GetWindowSizeInPixels(mp_window.get(), &actualWidth, &actualHeight)) {
         GAMEENGINE_ERROR("Failed to get actual window pixel size: " + std::string(SDL_GetError()));
@@ -197,21 +196,20 @@ bool GameEngine::init(const char* title,
         actualHeight = m_windowHeight;
       }
       
-      // Calculate aspect ratio and logical resolution that matches the screen
-      float aspectRatio = static_cast<float>(actualWidth) / static_cast<float>(actualHeight);
-      int targetLogicalHeight = 1080;  // Keep consistent height
-      int targetLogicalWidth = static_cast<int>(std::round(targetLogicalHeight * aspectRatio));
+      // Use standard logical resolution to ensure UI elements are positioned correctly
+      // This prevents buttons from going off-screen while maintaining good scaling
+      int targetLogicalWidth = 1920;
+      int targetLogicalHeight = 1080;
       
       // Store logical dimensions for UI positioning
       m_logicalWidth = targetLogicalWidth;
       m_logicalHeight = targetLogicalHeight;
       
-      // Use LETTERBOX mode to maintain aspect ratio and avoid black bars
+      // Use LETTERBOX mode to preserve all UI elements (with DPI-aware scaling for sharp text)
       SDL_RendererLogicalPresentation presentationMode = SDL_LOGICAL_PRESENTATION_LETTERBOX;
       SDL_SetRenderLogicalPresentation(mp_renderer.get(), targetLogicalWidth, targetLogicalHeight, presentationMode);
       
-      GAMEENGINE_INFO("macOS logical resolution calculated from aspect ratio " + std::to_string(aspectRatio) + 
-                     ": " + std::to_string(targetLogicalWidth) + "x" + std::to_string(targetLogicalHeight));
+      GAMEENGINE_INFO("macOS using standard logical resolution with letterbox mode: " + std::to_string(targetLogicalWidth) + "x" + std::to_string(targetLogicalHeight) + " on " + std::to_string(actualWidth) + "x" + std::to_string(actualHeight));
       #else
       // On non-Apple platforms, use actual screen resolution to eliminate scaling blur
       int actualWidth, actualHeight;
