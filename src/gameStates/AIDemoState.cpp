@@ -178,9 +178,9 @@ bool AIDemoState::enter() {
         // Cache GameEngine reference for better performance
         const GameEngine& gameEngine = GameEngine::Instance();
 
-        // Setup window size
-        m_worldWidth = gameEngine.getWindowWidth();
-        m_worldHeight = gameEngine.getWindowHeight();
+        // Setup world size using logical dimensions for proper cross-platform rendering
+        m_worldWidth = gameEngine.getLogicalWidth();
+        m_worldHeight = gameEngine.getLogicalHeight();
 
         //Texture has to be loaded by NPC or Player can't be loaded here
         setupAIBehaviors();
@@ -208,11 +208,11 @@ bool AIDemoState::enter() {
 
         // Create simple HUD UI
         auto& ui = UIManager::Instance();
-        ui.createTitle("ai_title", {0, 5, gameEngine.getWindowWidth(), 25}, "AI Demo State");
+        ui.createTitle("ai_title", {0, 5, gameEngine.getLogicalWidth(), 25}, "AI Demo State");
         ui.setTitleAlignment("ai_title", UIAlignment::CENTER_CENTER);
-        ui.createLabel("ai_instructions_line1", {10, 40, gameEngine.getWindowWidth() - 20, 20},
+        ui.createLabel("ai_instructions_line1", {10, 40, gameEngine.getLogicalWidth() - 20, 20},
                        "Controls: [B] Exit | [SPACE] Pause/Resume | [1] Wander | [2] Patrol | [3] Chase");
-        ui.createLabel("ai_instructions_line2", {10, 75, gameEngine.getWindowWidth() - 20, 20},
+        ui.createLabel("ai_instructions_line2", {10, 75, gameEngine.getLogicalWidth() - 20, 20},
                        "Advanced: [4] Small | [5] Large | [6] Event | [7] Random | [8] Circle | [9] Target");
         ui.createLabel("ai_status", {10, 110, 400, 20}, "FPS: -- | Entities: -- | AI: RUNNING");
 

@@ -2229,11 +2229,14 @@ void UIManager::renderTooltip(SDL_Renderer* renderer) {
 
     // Ensure tooltip stays on screen
     const auto& gameEngine = GameEngine::Instance();
-    if (tooltipRect.x + tooltipRect.width > gameEngine.getWindowWidth()) {
-        tooltipRect.x = gameEngine.getWindowWidth() - tooltipRect.width;
+    if (tooltipRect.x + tooltipRect.width > gameEngine.getLogicalWidth()) {
+        tooltipRect.x = gameEngine.getLogicalWidth() - tooltipRect.width;
     }
     if (tooltipRect.y < 0) {
         tooltipRect.y = static_cast<int>(m_lastMousePosition.getY() + 20);
+    }
+    if (tooltipRect.y + tooltipRect.height > gameEngine.getLogicalHeight()) {
+        tooltipRect.y = gameEngine.getLogicalHeight() - tooltipRect.height;
     }
 
     // Draw tooltip
