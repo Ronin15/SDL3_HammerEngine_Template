@@ -318,16 +318,11 @@ void EventDemoState::setupEventSystem() {
     addLogEntry("EventManager singleton obtained");
 
     // Cache EventManager reference for better performance
+    // Note: EventManager is already initialized by GameEngine
     EventManager& eventMgr = EventManager::Instance();
 
-    if (!eventMgr.init()) {
-        std::cerr << "Hammer Game Engine - ERROR: Failed to initialize EventManager!\n";
-        addLogEntry("ERROR: EventManager initialization failed");
-        return;
-    }
-
-    std::cout << "Hammer Game Engine - EventDemoState: EventManager initialized successfully\n";
-    addLogEntry("EventManager initialized");
+    std::cout << "Hammer Game Engine - EventDemoState: Using pre-initialized EventManager\n";
+    addLogEntry("EventManager ready for use");
 
     // Register event handlers using new optimized API
     eventMgr.registerHandler(EventTypeId::Weather,
