@@ -3,7 +3,7 @@
  * Licensed under the MIT License - see LICENSE file for details
 */
 
-#include "gameStates/UIExampleState.hpp"
+#include "gameStates/UIDemoState.hpp"
 #include "managers/UIManager.hpp"
 #include "managers/InputManager.hpp"
 #include "core/GameEngine.hpp"
@@ -19,7 +19,7 @@ UIExampleState::UIExampleState() {
 
 bool UIExampleState::enter() {
     std::cout << "Entering UI Example State\n";
-    
+
     // Create UI components directly with UIManager using auto-detecting methods
     auto& ui = UIManager::Instance();
 
@@ -31,44 +31,44 @@ bool UIExampleState::enter() {
 
     // Create overlay background using auto-detection
     ui.createOverlay();
-    
+
     // Title using auto-positioning
-    ui.createTitleAtTop("uiexample_title_label", "UIManager Feature Demo", 40);
-    
+    ui.createTitleAtTop("uiexample_title_label", "UI Demo State", 40);
+
     // Back button using auto-positioning and instruction
     ui.createButtonAtBottom("uiexample_back_btn", "Back", 120, 40);
     ui.createLabel("uiexample_back_instruction", {leftColumnX + 130, ui.getLogicalHeight() - 75, 200, 30}, "Press B to go back");
-    
+
     // Slider demo
     ui.createSlider("uiexample_demo_slider", {leftColumnX, 140, 200, 30}, 0.0f, 1.0f);
     ui.setValue("uiexample_demo_slider", 0.5f);
     ui.createLabel("uiexample_slider_label", {leftColumnX + 210, 140, 200, 30}, "Slider: 0.50");
-    
+
     // Checkbox demo
     ui.createCheckbox("uiexample_demo_checkbox", {leftColumnX, 190, 250, 30}, "Toggle Option");
-    
+
     // Input field demo
     ui.createInputField("uiexample_demo_input", {leftColumnX, 240, 200, 30}, "Type here...");
     ui.createLabel("uiexample_input_label", {leftColumnX + 210, 240, 300, 30}, "Input: (empty)");
-    
+
     // Progress bar demo
     ui.createProgressBar("uiexample_demo_progress", {leftColumnX, 290, 200, 20}, 0.0f, 1.0f);
     ui.createLabel("uiexample_progress_label", {leftColumnX + 210, 290, 200, 20}, "Auto Progress");
-    
+
     // List demo
     ui.createList("uiexample_demo_list", {leftColumnX, 340, leftColumnWidth, 140});
-    
+
     // Event Log demo - fixed size following industry standard
     ui.createEventLog("uiexample_demo_event_log", {rightColumnX, ui.getLogicalHeight() - 150, rightColumnWidth, 90}, 6);
     ui.createLabel("uiexample_event_log_label", {rightColumnX, ui.getLogicalHeight() - 190, rightColumnWidth/2, 20}, "Event Log (Fixed Size):");
     ui.setupDemoEventLog("uiexample_demo_event_log");
-    
+
     // Animation button
     ui.createButton("uiexample_animate_btn", {rightColumnX, 340, 120, 40}, "Animate");
-    
+
     // Theme toggle button
     ui.createButton("uiexample_theme_btn", {rightColumnX, 390, 150, 40}, "Dark Theme");
-    
+
     // Instructions - adjusted position and size to prevent overlap
     ui.createLabel("uiexample_instructions", {rightColumnX + 150, 340, rightColumnWidth - 150, 120},
                    "Controls:\n- Click buttons and UI elements\n- Type in input field\n- Select list items\n- B key to go back");
@@ -112,7 +112,7 @@ bool UIExampleState::enter() {
     ui.setOnTextChanged("uiexample_demo_input", [this](const std::string& text) {
         handleInputChange(text);
     });
-    
+
     return true;
 }
 
@@ -134,11 +134,11 @@ void UIExampleState::render(float deltaTime) {
 
 bool UIExampleState::exit() {
     std::cout << "Exiting UI Example State\n";
-    
+
     // Clean up UI components using simplified method
     auto& ui = UIManager::Instance();
     ui.prepareForStateTransition();
-    
+
     return true;
 }
 
@@ -167,17 +167,17 @@ void UIExampleState::handleListSelection() {
 
 void UIExampleState::handleAnimation() {
     auto& ui = UIManager::Instance();
-    
+
     // Animate the animation button
     UIRect currentBounds = ui.getBounds("uiexample_animate_btn");
     UIRect targetBounds = currentBounds;
     targetBounds.x += 50;
-    
+
     ui.animateMove("uiexample_animate_btn", targetBounds, 0.5f, [&ui, currentBounds]() {
         // Animate back to original position
         ui.animateMove("uiexample_animate_btn", currentBounds, 0.5f);
     });
-    
+
     std::cout << "Animation triggered\n";
 }
 
@@ -214,7 +214,7 @@ void UIExampleState::updateProgressBar(float deltaTime) {
             m_progressIncreasing = true;
         }
     }
-    
+
     auto& ui = UIManager::Instance();
     ui.setValue("uiexample_demo_progress", m_progressValue);
 }
@@ -236,7 +236,7 @@ void UIExampleState::updateInputLabel(const std::string& text) {
 
 void UIExampleState::applyDarkTheme(bool dark) {
     auto& ui = UIManager::Instance();
-    
+
     if (dark) {
         // Use centralized dark theme
         ui.setThemeMode("dark");
@@ -246,7 +246,7 @@ void UIExampleState::applyDarkTheme(bool dark) {
         ui.setThemeMode("light");
         ui.setText("uiexample_theme_btn", "Dark Theme");
     }
-    
+
     // Title styling is handled automatically by UIManager's TITLE component type
 }
 

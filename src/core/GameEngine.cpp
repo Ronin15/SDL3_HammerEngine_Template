@@ -23,7 +23,7 @@
 #include "managers/InputManager.hpp"
 #include "gameStates/LogoState.hpp"
 #include "gameStates/MainMenuState.hpp"
-#include "gameStates/UIExampleState.hpp"
+#include "gameStates/UIDemoState.hpp"
 #include "gameStates/OverlayDemoState.hpp"
 #include "managers/UIManager.hpp"
 #include "SDL3/SDL_render.h"
@@ -798,7 +798,7 @@ bool GameEngine::isVSyncEnabled() const noexcept {
   if (SDL_GetRenderVSync(mp_renderer.get(), &vsync)) {
     return (vsync > 0);  // Any positive value means VSync is enabled
   }
-  
+
   return false;
 }
 
