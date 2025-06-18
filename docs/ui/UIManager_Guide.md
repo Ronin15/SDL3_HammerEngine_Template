@@ -148,6 +148,52 @@ ui.setTextBackgroundPadding("my_label", 8);              // Custom padding
 - Theme-coordinated colors
 - Perfect sizing using actual text dimensions
 
+### 5. Auto-Detection and Coordinate System Transparency
+
+UIManager automatically handles coordinate systems and dimensions:
+
+```cpp
+// NEW: Auto-detecting coordinate methods (no manual dimensions needed)
+ui.createOverlay();  // Automatically uses logical screen dimensions
+ui.createTitleAtTop("header", "Game Title");  // Auto-positioned at top
+ui.createButtonAtBottom("back", "Back");  // Auto-positioned at bottom
+ui.createCenteredDialog("confirm", 400, 200);  // Auto-centered modal
+
+// UIManager automatically queries GameEngine for logical dimensions
+int uiWidth = ui.getLogicalWidth();   // Auto-detected from engine
+int uiHeight = ui.getLogicalHeight(); // Auto-detected from engine
+
+// Cross-platform coordinate handling - works on any resolution/platform
+// No need to worry about macOS vs Windows/Linux coordinate differences
+```
+
+**Auto-Detection Benefits:**
+- **Zero Coupling**: Game states never need to query GameEngine for dimensions
+- **Cross-Platform**: Works seamlessly on macOS letterbox and Windows/Linux native resolution
+- **Future-Proof**: Automatically adapts to engine coordinate system changes
+- **Simplified API**: Common positioning patterns become one-line calls
+
+### 6. Dynamic List Auto-Sizing with Grow-Only Behavior
+
+Lists automatically size based on content and current font metrics:
+
+```cpp
+// Lists automatically size to fit content
+ui.createList("items", {x, y, 200, 140});  // Initial size
+ui.addListItem("items", "Option 1");  // List grows to accommodate
+ui.addListItem("items", "Option 2");  // List continues growing
+ui.addListItem("items", "Option 3");  // Perfect font-based sizing
+
+// Grow-only behavior: lists never shrink once expanded
+ui.removeListItem("items", 0);  // List maintains size for consistency
+```
+
+**Dynamic Sizing Features:**
+- **Font-Aware**: Uses current loaded font metrics for precise item height
+- **Grow-Only**: Prevents jarring size changes during content updates
+- **Real-Time**: Recalculates on font changes (window resize, DPI changes)
+- **Platform-Consistent**: Works with our cross-platform font system
+
 ## Component Types
 
 ### Buttons & Semantic Types
