@@ -21,6 +21,10 @@ TimestepManager::TimestepManager(float targetFPS, float fixedTimestep)
     m_frameStart = currentTime;
     m_lastFrameTime = currentTime;
     m_fpsLastUpdate = currentTime;
+    
+    // Initialize fixed timestep state
+    m_usingSoftwareFrameLimiting = false;
+    m_explicitlySet = false;
 }
 
 void TimestepManager::startFrame() {
@@ -70,11 +74,15 @@ bool TimestepManager::shouldRender() const {
 }
 
 float TimestepManager::getUpdateDeltaTime() const {
-    // Use actual frame time for responsive movement
-    return static_cast<float>(m_lastFrameTimeMs) / 1000.0f;
+    // For VSync, use actual frame time (it's already perfectly smooth)
+    if (!m_usingSoftwareFrameLimiting) {
+        return static_cast<float>(m_lastFrameTimeMs) / 1000.0f;
+    }
+    
+    // For software frame limiting, use fixed timestep to eliminate ALL timing variations
+    // This ensures perfectly consistent movement regardless of SDL_Delay() precision
+    return m_fixedTimestep;
 }
-
-
 
 void TimestepManager::endFrame() {
     // Mark render as completed for this frame
@@ -127,6 +135,12 @@ void TimestepManager::reset() {
     m_frameStart = currentTime;
     m_lastFrameTime = currentTime;
     m_fpsLastUpdate = currentTime;
+    
+    // Preserve explicit software frame limiting settings during reset
+    // Only reset if not explicitly configured by GameEngine
+    if (!m_explicitlySet) {
+        m_usingSoftwareFrameLimiting = false;
+    }
 }
 
 void TimestepManager::updateFPS() {
@@ -156,5 +170,10 @@ void TimestepManager::limitFrameRate() const {
             SDL_Delay(sleepMs);
         }
     }
+}
+
+void TimestepManager::setSoftwareFrameLimiting(bool useSoftwareLimiting) {
+    m_usingSoftwareFrameLimiting = useSoftwareLimiting;
+    m_explicitlySet = true;
 }
 

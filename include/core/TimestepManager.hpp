@@ -126,9 +126,20 @@ private:
     bool m_shouldRender;                // True when render should happen this frame
     bool m_firstFrame;                  // True for the very first frame
     
+    // Fixed timestep for software frame limiting
+    mutable bool m_usingSoftwareFrameLimiting = false;
+    mutable bool m_explicitlySet = false;
+    
     // Helper methods
     void updateFPS();
     void limitFrameRate() const;
+    
+public:
+    /**
+     * Explicitly set software frame limiting mode (called from GameEngine)
+     * @param useSoftwareLimiting true to force fixed timestep mode
+     */
+    void setSoftwareFrameLimiting(bool useSoftwareLimiting);
 };
 
 #endif // TIMESTEP_MANAGER_HPP

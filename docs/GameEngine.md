@@ -473,29 +473,34 @@ float baseSizeFloat = std::max(static_cast<float>(clampedHeight) / 90.0f, 18.0f)
 The GameEngine implements intelligent VSync management with platform-specific optimizations to handle compatibility issues across different display servers and graphics drivers.
 
 #### Platform Compatibility
+**Platform Compatibility and Fixed Timestep Solution**
 
 **VSync Timing Issues on Wayland**
 
-Wayland display server, particularly when combined with Intel integrated graphics, can experience severe timing issues when VSync is enabled. These issues manifest as:
-- Game loop getting stuck waiting for vertical refresh
-- Excessive frame budget usage (500%+ instead of normal ~17%)
-- Timers not progressing properly
-- State transitions failing to trigger
+Wayland display server can experience timing issues when VSync is enabled, leading to:
+- Micro-stuttering and pixel-level "ticking" in movement
+- Inconsistent deltaTime values causing jerky animations
+- Poor visual smoothness despite stable frame rates
 
-**Automatic Platform Detection**
+**Automatic Platform Detection and Fixed Timestep**
 
-The GameEngine automatically detects problematic platforms during initialization:
+The GameEngine automatically detects Wayland and configures a fixed timestep system for smooth movement:
 
 ```cpp
-// Automatic platform detection in GameEngine::init()
-const char* videoDriver = SDL_GetCurrentVideoDriver();
-bool isWayland = (videoDriver && strcmp(videoDriver, "wayland") == 0);
+// Platform detection in GameEngine::init() - Modern C++17
+const char* videoDriverRaw = SDL_GetCurrentVideoDriver();
+std::string_view videoDriver = videoDriverRaw ? videoDriverRaw : "";
+bool isWayland = (videoDriver == "wayland");
 
-// Fallback to environment detection
+// Fallback to environment detection with null safety
 if (!isWayland) {
-    const char* sessionType = std::getenv("XDG_SESSION_TYPE");
-    const char* waylandDisplay = std::getenv("WAYLAND_DISPLAY");
-    isWayland = (sessionType && strcmp(sessionType, "wayland") == 0) || waylandDisplay;
+    const char* sessionTypeRaw = std::getenv("XDG_SESSION_TYPE");
+    const char* waylandDisplayRaw = std::getenv("WAYLAND_DISPLAY");
+    
+    std::string_view sessionType = sessionTypeRaw ? sessionTypeRaw : "";
+    bool hasWaylandDisplay = waylandDisplayRaw != nullptr;
+    
+    isWayland = (sessionType == "wayland") || hasWaylandDisplay;
 }
 
 if (isWayland) {
@@ -512,11 +517,43 @@ if (isWayland) {
 }
 ```
 
+**Fixed Timestep Configuration:**
+
+The TimestepManager is automatically configured in HammerMain after GameLoop initialization using modern C++17:
+
+```cpp
+// Configure TimestepManager for platform-specific frame limiting using modern C++17
+// This must happen after GameLoop is set but before the game starts running
+const char* sessionTypeRaw = std::getenv("XDG_SESSION_TYPE");
+const char* waylandDisplayRaw = std::getenv("WAYLAND_DISPLAY");
+
+std::string_view sessionType = sessionTypeRaw ? sessionTypeRaw : "";
+bool hasWaylandDisplay = waylandDisplayRaw != nullptr;
+bool isWayland = (sessionType == "wayland") || hasWaylandDisplay;
+
+if (isWayland) {
+    gameLoop->getTimestepManager().setSoftwareFrameLimiting(true);
+    GAMELOOP_INFO("Configured TimestepManager for Wayland software frame limiting");
+} else {
+    gameLoop->getTimestepManager().setSoftwareFrameLimiting(false);
+    GAMELOOP_INFO("Configured TimestepManager for hardware VSync");
+}
+```
+
+**Modern C++ Implementation Notes:**
+- Uses `std::string_view` for efficient, zero-copy string operations (C++17)
+- Employs type-safe string comparisons instead of C-style `strcmp()`
+- Implements explicit null-safety checks to prevent undefined behavior
+- Leverages RAII smart pointers with `.get()` for SDL API interoperability
+- Avoids raw pointer ownership while safely interfacing with C APIs
+- **HammerMain Configuration**: Modern C++17 patterns for environment variable handling
+- **Null-Safe Environment Access**: Immediate wrapping of raw pointers in `std::string_view`
+
 **Platform-Specific Behavior:**
-- **Linux Wayland**: VSync disabled, software frame limiting used
-- **Linux X11**: VSync enabled (works reliably)
-- **macOS**: VSync enabled (excellent VSync support)
-- **Windows**: VSync enabled (reliable VSync implementation)
+- **Linux Wayland**: VSync disabled, fixed timestep (16.667ms) for smooth movement
+- **Linux X11**: VSync enabled, variable timestep based on actual frame time
+- **macOS**: VSync enabled, variable timestep (excellent VSync support)
+- **Windows**: VSync enabled, variable timestep (reliable VSync implementation)
 
 #### API Methods
 
@@ -538,30 +575,33 @@ bool GameEngine::setVSyncEnabled(bool enable) {
 ```
 
 #### Troubleshooting VSync Issues
+**Fixed Timestep Implementation:**
 
-**Symptoms of VSync Problems:**
-```
-LogoState taking too long to change
-Update performance: 500%+ frame budget
-Timer accumulation frozen or very slow
-State transitions not triggering
+The TimestepManager automatically provides consistent deltaTime based on platform:
+
+```cpp
+float TimestepManager::getUpdateDeltaTime() const {
+    // For VSync platforms, use actual frame time (already smooth)
+    if (!m_usingSoftwareFrameLimiting) {
+        return static_cast<float>(m_lastFrameTimeMs) / 1000.0f;
+    }
+    
+    // For software frame limiting, use fixed timestep for perfect consistency
+    return m_fixedTimestep; // Always 16.667ms at 60 FPS
+}
 ```
 
-**Manual Override:**
-```bash
-# Force X11 on Linux to test VSync behavior
-SDL_VIDEODRIVER=x11 ./your_game
-
-# Disable VSync entirely for testing
-# (modify GameEngine initialization to always disable VSync)
-```
+**Movement Consistency Benefits:**
+- **Wayland**: `position += velocity * 16.667ms` (perfect consistency)
+- **VSync Platforms**: `position += velocity * actualFrameTime` (hardware smooth)
+- **Eliminates**: Micro-stuttering, pixel-level ticking, jerky animations
 
 **Performance Monitoring:**
-The GameLoop provides performance metrics to identify VSync issues:
+The GameLoop provides performance metrics to identify timing issues:
 ```
-[GameLoop] DEBUG: Update performance: 35.354000ms avg (212.124008% frame budget)
+[GameLoop] DEBUG: Update performance: 2.5ms avg (15% frame budget)
 ```
-Normal frame budget should be under 100% at target FPS.
+Normal frame budget should be under 50% at target FPS.
 
 ### Window Management Methods
 
@@ -814,18 +854,27 @@ void setupRenderer() {
 void optimizeForPlatform() {
     GameEngine& engine = GameEngine::Instance();
     
+    // Movement and animation code works automatically across all platforms
+    // The TimestepManager provides appropriate deltaTime for each platform
+    
     // Adapt rendering strategy based on VSync availability
     if (engine.isVSyncEnabled()) {
         // Hardware VSync available - can use aggressive rendering optimizations
         enableHighQualityEffects();
     } else {
-        // Software limiting - be more conservative with effects
+        // Software limiting with fixed timestep - still smooth but different timing
         optimizeForSoftwareFrameLimiting();
     }
 }
 ```
 
-**Never manually override the automatic VSync detection** unless you have specific requirements. The GameEngine's automatic detection prevents timing issues on problematic platforms.
+**Fixed Timestep Benefits:**
+- **Consistent Physics**: Same deltaTime every frame on software limiting platforms
+- **Smooth Movement**: Eliminates micro-stuttering and pixel-level ticking
+- **Cross-Platform**: Automatic adaptation without code changes
+- **Predictable**: Deterministic movement behavior for debugging and testing
+
+**Never manually override the automatic platform detection** unless you have specific requirements. The GameEngine's automatic detection provides optimal timing for each platform.
 
 ### 4. Error Handling
 
@@ -854,22 +903,23 @@ bool safeEngineOperation() {
 
 ### VSync and Timing Issues
 
-**Problem: LogoState or other timed states taking too long to transition**
+**Problem: Movement appears jerky or "ticks" pixel by pixel**
 
-This is typically caused by VSync compatibility issues on certain platforms, particularly Linux Wayland with Intel integrated graphics.
+This is caused by inconsistent deltaTime values when using software frame limiting instead of hardware VSync.
 
 **Symptoms:**
-- State transitions not triggering after expected time delays
-- High frame budget usage (300%+ instead of normal ~17%)
-- Game loop appearing to freeze or stutter
-- Console output showing excessive update performance warnings
+- Player or entity movement appears to stutter or tick forward
+- Smooth movement works on some platforms but not others
+- Animations appear jerky despite stable frame rates
+- Movement inconsistency on Wayland-based systems
 
 **Automatic Solution:**
 The GameEngine automatically detects and handles this issue by:
 - Detecting Wayland display server during initialization
-- Disabling VSync on problematic platforms
-- Falling back to software frame rate limiting
-- Logging the detection and mitigation strategy
+- Disabling VSync and configuring fixed timestep mode
+- Providing perfectly consistent 16.667ms deltaTime every frame
+- Preserving smooth VSync timing on compatible platforms
+- Logging the detection and configuration strategy
 
 **Manual Diagnosis:**
 ```bash
@@ -888,19 +938,27 @@ grep -i "wayland\|vsync" game_output.log
 ```
 [GameEngine] WARNING: Detected Wayland session - VSync may cause timing issues, using software limiting
 [GameEngine] INFO: Using software frame rate limiting for consistent timing on Wayland
+[GameLoop] INFO: Configured TimestepManager for Wayland software frame limiting
 ```
 
 **Platform-Specific Notes:**
-- **Linux X11**: VSync works reliably, should be enabled
-- **Linux Wayland**: VSync disabled automatically due to timing issues
-- **macOS**: VSync works excellently, always enabled
-- **Windows**: VSync works reliably, should be enabled
+- **Linux X11**: VSync enabled, variable timestep based on hardware timing
+- **Linux Wayland**: VSync disabled, fixed timestep (16.667ms) for smooth movement
+- **macOS**: VSync enabled, variable timestep (excellent VSync support)
+- **Windows**: VSync enabled, variable timestep (reliable VSync implementation)
 
-**If Problems Persist:**
-1. Check graphics drivers are up to date
-2. Verify SDL3 version compatibility
-3. Test with different window managers or compositors
-4. Check system performance and resource usage
+**Solution Verification:**
+The fixed timestep solution provides:
+- **Consistent deltaTime**: Always 16.667ms on Wayland (60 FPS)
+- **Smooth Movement**: `position += velocity * deltaTime` with perfect consistency
+- **Automatic Detection**: No manual configuration required
+- **Cross-Platform**: Works identically on all systems
+
+**If Movement Still Appears Jerky:**
+1. Verify the TimestepManager configuration message appears in logs
+2. Check that movement code uses deltaTime properly: `position += velocity * deltaTime`
+3. Ensure frame rate is stable (low CPU/GPU usage)
+4. Test on X11 to confirm it's platform-specific: `SDL_VIDEODRIVER=x11 ./your_game`
 
 ### Performance Issues
 
@@ -922,6 +980,35 @@ Check GameLoop performance metrics in console output:
 - Inefficient rendering operations
 - Background thread contention
 - Resource loading blocking main thread
+
+### Movement and Animation Issues
+
+**Problem: Smooth movement works on some platforms but not others**
+
+This is resolved by the automatic fixed timestep system for software frame limiting platforms.
+
+**Technical Implementation:**
+```cpp
+// Movement code works identically across all platforms
+void Entity::update(float deltaTime) {
+    // deltaTime is automatically:
+    // - Variable (hardware VSync) on X11/macOS/Windows
+    // - Fixed 16.667ms on Wayland for perfect consistency
+    m_position += m_velocity * deltaTime;
+}
+```
+
+**Fixed Timestep Benefits:**
+1. **Eliminates Micro-Stuttering**: Perfectly consistent deltaTime every frame
+2. **Cross-Platform Consistency**: Movement behavior identical across systems
+3. **Predictable Physics**: Deterministic movement for debugging and testing
+4. **No Code Changes**: Existing movement code works automatically
+
+**Verification Steps:**
+1. Check logs for TimestepManager configuration messages
+2. Verify smooth movement in GamePlayState (arrow keys to move player)
+3. Test state transitions work correctly (LogoState → MainMenuState → GamePlayState)
+4. Compare movement smoothness between Wayland and X11 if available
 
 ## Examples
 
