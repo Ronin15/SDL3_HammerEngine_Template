@@ -10,6 +10,8 @@
 #include <vector>
 #include <chrono>
 #include <future>
+#include <cstdlib>
+#include <cstring>
 #include <thread>
 #include "SDL3/SDL_surface.h"
 #include "managers/AIManager.hpp"
@@ -174,13 +176,33 @@ bool GameEngine::init(const char* title,
 
       GAMEENGINE_INFO("Rendering system online");
 
-      // Enable VSync using SDL3 API
-      if (!SDL_SetRenderVSync(mp_renderer.get(), 1)) {
-        GAMEENGINE_ERROR("Failed to set VSync: " + std::string(SDL_GetError()));
-        // Continue without VSync rather than failing completely
-        GAMEENGINE_WARN("Continuing without VSync - using software frame rate limiting (may cause stuttering)");
+      // Platform-specific VSync handling for timing issues
+      // Check if we're using Wayland (known to have VSync timing issues with some drivers)
+      const char* videoDriver = SDL_GetCurrentVideoDriver();
+      bool isWayland = (videoDriver && strcmp(videoDriver, "wayland") == 0);
+      
+      // Fallback to environment detection if driver info unavailable
+      if (!isWayland) {
+        const char* sessionType = std::getenv("XDG_SESSION_TYPE");
+        const char* waylandDisplay = std::getenv("WAYLAND_DISPLAY");
+        isWayland = (sessionType && strcmp(sessionType, "wayland") == 0) || waylandDisplay;
+      }
+      
+      if (isWayland) {
+        GAMEENGINE_WARN("Detected Wayland session - VSync may cause timing issues, using software limiting");
+        // Disable VSync on Wayland to avoid timing problems
+        if (!SDL_SetRenderVSync(mp_renderer.get(), 0)) {
+          GAMEENGINE_ERROR("Failed to disable VSync: " + std::string(SDL_GetError()));
+        }
+        GAMEENGINE_INFO("Using software frame rate limiting for consistent timing on Wayland");
       } else {
-        GAMEENGINE_INFO("VSync enabled - hardware-synchronized frame presentation active");
+        // Try to enable VSync on X11 and other stable platforms
+        if (SDL_SetRenderVSync(mp_renderer.get(), 1)) {
+          GAMEENGINE_INFO("VSync enabled - hardware-synchronized frame presentation active");
+        } else {
+          GAMEENGINE_WARN("Failed to enable VSync: " + std::string(SDL_GetError()) + " - falling back to software limiting");
+          GAMEENGINE_INFO("Using software frame rate limiting for consistent timing");
+        }
       }
 
       if (!SDL_SetRenderDrawColor(mp_renderer.get(), HAMMER_GRAY)) {  // Hammer Game Engine gunmetal dark grey
