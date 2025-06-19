@@ -88,17 +88,17 @@ bool GameEngine::init(const char* title,
     // For macOS compatibility, use fullscreen for large window requests
     #ifdef __APPLE__
     if (m_windowWidth >= 1920 || m_windowHeight >= 1080) {
+      if (!fullscreen) {  // Only log if we're changing it
+        GAMEENGINE_INFO("Large window on macOS - enabling fullscreen for compatibility");
+      }
       fullscreen = true;
-      GAMEENGINE_INFO("Large window requested on macOS, enabling fullscreen for compatibility");
     }
     #endif
     // Window handling with platform-specific optimizations
-    int flags{0};
-    int flag1 = SDL_WINDOW_FULLSCREEN;
-    int flag2 = SDL_WINDOW_HIGH_PIXEL_DENSITY;
+    SDL_WindowFlags flags = fullscreen ? 
+        (SDL_WINDOW_FULLSCREEN | SDL_WINDOW_HIGH_PIXEL_DENSITY) : 0;
 
     if (fullscreen) {
-      flags = flag1 | flag2;
 
       #ifdef __APPLE__
       // On macOS, keep logical dimensions for proper scaling
