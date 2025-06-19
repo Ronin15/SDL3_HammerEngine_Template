@@ -4,6 +4,8 @@
 */
 
 #include <string>
+#include <string_view>
+#include <cstdlib>
 #include "core/GameEngine.hpp"
 #include "core/ThreadSystem.hpp"
 #include "core/GameLoop.hpp"
@@ -57,6 +59,23 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char* argv[]) {
 
   // Set GameLoop reference in GameEngine for delegation
   GameEngine::Instance().setGameLoop(gameLoop);
+
+  // Configure TimestepManager for platform-specific frame limiting using modern C++17
+  // This must happen after GameLoop is set but before the game starts running
+  const char* sessionTypeRaw = std::getenv("XDG_SESSION_TYPE");
+  const char* waylandDisplayRaw = std::getenv("WAYLAND_DISPLAY");
+  
+  std::string_view sessionType = sessionTypeRaw ? sessionTypeRaw : "";
+  bool hasWaylandDisplay = waylandDisplayRaw != nullptr;
+  bool isWayland = (sessionType == "wayland") || hasWaylandDisplay;
+  
+  if (isWayland) {
+    gameLoop->getTimestepManager().setSoftwareFrameLimiting(true);
+    GAMELOOP_INFO("Configured TimestepManager for Wayland software frame limiting");
+  } else {
+    gameLoop->getTimestepManager().setSoftwareFrameLimiting(false);
+    GAMELOOP_INFO("Configured TimestepManager for hardware VSync");
+  }
 
   // Cache GameEngine reference for better performance in game loop
   GameEngine& gameEngine = GameEngine::Instance();

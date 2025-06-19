@@ -11,7 +11,8 @@
 #include <chrono>
 #include <future>
 #include <cstdlib>
-#include <cstring>
+#include <string>
+#include <string_view>
 #include <thread>
 #include "SDL3/SDL_surface.h"
 #include "managers/AIManager.hpp"
@@ -178,14 +179,19 @@ bool GameEngine::init(const char* title,
 
       // Platform-specific VSync handling for timing issues
       // Check if we're using Wayland (known to have VSync timing issues with some drivers)
-      const char* videoDriver = SDL_GetCurrentVideoDriver();
-      bool isWayland = (videoDriver && strcmp(videoDriver, "wayland") == 0);
+      const char* videoDriverRaw = SDL_GetCurrentVideoDriver();
+      std::string_view videoDriver = videoDriverRaw ? videoDriverRaw : "";
+      bool isWayland = (videoDriver == "wayland");
       
       // Fallback to environment detection if driver info unavailable
       if (!isWayland) {
-        const char* sessionType = std::getenv("XDG_SESSION_TYPE");
-        const char* waylandDisplay = std::getenv("WAYLAND_DISPLAY");
-        isWayland = (sessionType && strcmp(sessionType, "wayland") == 0) || waylandDisplay;
+        const char* sessionTypeRaw = std::getenv("XDG_SESSION_TYPE");
+        const char* waylandDisplayRaw = std::getenv("WAYLAND_DISPLAY");
+        
+        std::string_view sessionType = sessionTypeRaw ? sessionTypeRaw : "";
+        bool hasWaylandDisplay = waylandDisplayRaw != nullptr;
+        
+        isWayland = (sessionType == "wayland") || hasWaylandDisplay;
       }
       
       if (isWayland) {
