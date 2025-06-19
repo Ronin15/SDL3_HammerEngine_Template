@@ -15,6 +15,7 @@ The `GameEngine` class is the core singleton that manages all game systems, SDL 
 - [Manager Integration](#manager-integration)
 - [API Reference](#api-reference)
 - [Best Practices](#best-practices)
+- [Troubleshooting](#troubleshooting)
 - [Examples](#examples)
 
 ## Quick Start
@@ -469,6 +470,56 @@ float baseSizeFloat = std::max(static_cast<float>(clampedHeight) / 90.0f, 18.0f)
 
 ### VSync Management
 
+The GameEngine implements intelligent VSync management with platform-specific optimizations to handle compatibility issues across different display servers and graphics drivers.
+
+#### Platform Compatibility
+
+**VSync Timing Issues on Wayland**
+
+Wayland display server, particularly when combined with Intel integrated graphics, can experience severe timing issues when VSync is enabled. These issues manifest as:
+- Game loop getting stuck waiting for vertical refresh
+- Excessive frame budget usage (500%+ instead of normal ~17%)
+- Timers not progressing properly
+- State transitions failing to trigger
+
+**Automatic Platform Detection**
+
+The GameEngine automatically detects problematic platforms during initialization:
+
+```cpp
+// Automatic platform detection in GameEngine::init()
+const char* videoDriver = SDL_GetCurrentVideoDriver();
+bool isWayland = (videoDriver && strcmp(videoDriver, "wayland") == 0);
+
+// Fallback to environment detection
+if (!isWayland) {
+    const char* sessionType = std::getenv("XDG_SESSION_TYPE");
+    const char* waylandDisplay = std::getenv("WAYLAND_DISPLAY");
+    isWayland = (sessionType && strcmp(sessionType, "wayland") == 0) || waylandDisplay;
+}
+
+if (isWayland) {
+    // Disable VSync on Wayland to prevent timing issues
+    SDL_SetRenderVSync(mp_renderer.get(), 0);
+    GAMEENGINE_WARN("Detected Wayland session - using software frame limiting");
+} else {
+    // Enable VSync on stable platforms (X11, macOS, Windows)
+    if (SDL_SetRenderVSync(mp_renderer.get(), 1)) {
+        GAMEENGINE_INFO("VSync enabled - hardware-synchronized presentation");
+    } else {
+        GAMEENGINE_WARN("VSync failed - falling back to software limiting");
+    }
+}
+```
+
+**Platform-Specific Behavior:**
+- **Linux Wayland**: VSync disabled, software frame limiting used
+- **Linux X11**: VSync enabled (works reliably)
+- **macOS**: VSync enabled (excellent VSync support)
+- **Windows**: VSync enabled (reliable VSync implementation)
+
+#### API Methods
+
 ```cpp
 bool GameEngine::isVSyncEnabled() const {
     if (!mp_renderer) return false;
@@ -485,6 +536,32 @@ bool GameEngine::setVSyncEnabled(bool enable) {
     return SDL_SetRenderVSync(mp_renderer.get(), enable ? 1 : 0) == 0;
 }
 ```
+
+#### Troubleshooting VSync Issues
+
+**Symptoms of VSync Problems:**
+```
+LogoState taking too long to change
+Update performance: 500%+ frame budget
+Timer accumulation frozen or very slow
+State transitions not triggering
+```
+
+**Manual Override:**
+```bash
+# Force X11 on Linux to test VSync behavior
+SDL_VIDEODRIVER=x11 ./your_game
+
+# Disable VSync entirely for testing
+# (modify GameEngine initialization to always disable VSync)
+```
+
+**Performance Monitoring:**
+The GameLoop provides performance metrics to identify VSync issues:
+```
+[GameLoop] DEBUG: Update performance: 35.354000ms avg (212.124008% frame budget)
+```
+Normal frame budget should be under 100% at target FPS.
 
 ### Window Management Methods
 
@@ -713,21 +790,42 @@ void workerThreadFunction() {
 
 ### 3. Proper VSync Handling
 
+The GameEngine automatically handles VSync based on platform compatibility, but you can still check VSync status for optimization purposes:
+
 ```cpp
 void setupRenderer() {
     GameEngine& engine = GameEngine::Instance();
 
-    // Check VSync capability
+    // GameEngine automatically configures VSync based on platform
+    // Check the result for optimization decisions
     if (engine.isVSyncEnabled()) {
-        // VSync is active
+        // VSync is active - hardware frame synchronization
+        // Can rely on VSync for smooth animation timing
     } else {
-        // Fallback to software frame limiting
-        if (!engine.setVSyncEnabled(true)) {
-            // VSync not supported, implement software limiting
-        }
+        // Software frame limiting is active
+        // May need more careful timing for smooth animations
+        // This is normal on Wayland or when VSync fails
     }
 }
 ```
+
+**Platform-Aware Development:**
+```cpp
+void optimizeForPlatform() {
+    GameEngine& engine = GameEngine::Instance();
+    
+    // Adapt rendering strategy based on VSync availability
+    if (engine.isVSyncEnabled()) {
+        // Hardware VSync available - can use aggressive rendering optimizations
+        enableHighQualityEffects();
+    } else {
+        // Software limiting - be more conservative with effects
+        optimizeForSoftwareFrameLimiting();
+    }
+}
+```
+
+**Never manually override the automatic VSync detection** unless you have specific requirements. The GameEngine's automatic detection prevents timing issues on problematic platforms.
 
 ### 4. Error Handling
 
@@ -751,6 +849,79 @@ bool safeEngineOperation() {
     }
 }
 ```
+
+## Troubleshooting
+
+### VSync and Timing Issues
+
+**Problem: LogoState or other timed states taking too long to transition**
+
+This is typically caused by VSync compatibility issues on certain platforms, particularly Linux Wayland with Intel integrated graphics.
+
+**Symptoms:**
+- State transitions not triggering after expected time delays
+- High frame budget usage (300%+ instead of normal ~17%)
+- Game loop appearing to freeze or stutter
+- Console output showing excessive update performance warnings
+
+**Automatic Solution:**
+The GameEngine automatically detects and handles this issue by:
+- Detecting Wayland display server during initialization
+- Disabling VSync on problematic platforms
+- Falling back to software frame rate limiting
+- Logging the detection and mitigation strategy
+
+**Manual Diagnosis:**
+```bash
+# Check if you're running on Wayland
+echo $XDG_SESSION_TYPE
+echo $WAYLAND_DISPLAY
+
+# Test with forced X11 (if available)
+SDL_VIDEODRIVER=x11 ./your_game
+
+# Check game logs for VSync detection messages
+grep -i "wayland\|vsync" game_output.log
+```
+
+**Expected Log Output:**
+```
+[GameEngine] WARNING: Detected Wayland session - VSync may cause timing issues, using software limiting
+[GameEngine] INFO: Using software frame rate limiting for consistent timing on Wayland
+```
+
+**Platform-Specific Notes:**
+- **Linux X11**: VSync works reliably, should be enabled
+- **Linux Wayland**: VSync disabled automatically due to timing issues
+- **macOS**: VSync works excellently, always enabled
+- **Windows**: VSync works reliably, should be enabled
+
+**If Problems Persist:**
+1. Check graphics drivers are up to date
+2. Verify SDL3 version compatibility
+3. Test with different window managers or compositors
+4. Check system performance and resource usage
+
+### Performance Issues
+
+**Problem: Low FPS or stuttering despite VSync being handled correctly**
+
+**Diagnosis:**
+Check GameLoop performance metrics in console output:
+```
+[GameLoop] DEBUG: Update performance: X.XXXms avg (Y.Y% frame budget)
+```
+
+**Normal Values:**
+- At 60 FPS: ~16.67ms frame budget (100%)
+- Update performance should be <50% frame budget
+- Render operations should complete within frame time
+
+**Common Causes:**
+- Too many entities being processed simultaneously
+- Inefficient rendering operations
+- Background thread contention
+- Resource loading blocking main thread
 
 ## Examples
 
