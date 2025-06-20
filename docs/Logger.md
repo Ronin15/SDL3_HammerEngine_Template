@@ -352,7 +352,7 @@ AI_INFO("Entity " + std::to_string(entityId) + " switched to patrol mode");
 
 ### Basic System Initialization
 ```cpp
-bool GameEngine::init(const char* title, int width, int height, bool fullscreen) {
+bool GameEngine::init(std::string_view title, int width, int height, bool fullscreen) {
     GAMEENGINE_INFO("Initializing Hammer Game Engine");
 
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO) < 0) {

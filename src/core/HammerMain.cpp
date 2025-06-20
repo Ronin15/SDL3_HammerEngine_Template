@@ -46,7 +46,7 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char* argv[]) {
                     " parallel tasks");
 
   // Initialize GameEngine
-  if (!GameEngine::Instance().init(GAME_NAME.c_str(), WINDOW_WIDTH, WINDOW_HEIGHT, false)) {
+  if (!GameEngine::Instance().init(GAME_NAME, WINDOW_WIDTH, WINDOW_HEIGHT, false)) {
     GAMEENGINE_CRITICAL("Init " + GAME_NAME + " Failed: " + std::string(SDL_GetError()));
     return -1;
   }
@@ -62,11 +62,11 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char* argv[]) {
 
   // Configure TimestepManager for platform-specific frame limiting using modern C++17
   // This must happen after GameLoop is set but before the game starts running
-  const char* sessionTypeRaw = std::getenv("XDG_SESSION_TYPE");
-  const char* waylandDisplayRaw = std::getenv("WAYLAND_DISPLAY");
+  const std::string sessionTypeRaw = std::getenv("XDG_SESSION_TYPE") ? std::getenv("XDG_SESSION_TYPE") : "";
+  const std::string waylandDisplayRaw = std::getenv("WAYLAND_DISPLAY") ? std::getenv("WAYLAND_DISPLAY") : "";
   
-  std::string_view sessionType = sessionTypeRaw ? sessionTypeRaw : "";
-  bool hasWaylandDisplay = waylandDisplayRaw != nullptr;
+  std::string_view sessionType = sessionTypeRaw;
+  bool hasWaylandDisplay = !waylandDisplayRaw.empty();
   bool isWayland = (sessionType == "wayland") || hasWaylandDisplay;
   
   if (isWayland) {

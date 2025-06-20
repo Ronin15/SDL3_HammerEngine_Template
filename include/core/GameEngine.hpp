@@ -12,6 +12,7 @@
 #include <condition_variable>
 #include <memory>
 #include <mutex>
+#include <string_view>
 
 // Forward declarations
 class GameLoop;
@@ -41,7 +42,7 @@ class GameEngine {
    * @param fullscreen Whether to start in fullscreen mode
    * @return true if initialization successful, false otherwise
    */
-  bool init(const char* title, int width, int height, bool fullscreen);
+  bool init(std::string_view title, int width, int height, bool fullscreen);
 
   /**
    * @brief Handles SDL events and input processing

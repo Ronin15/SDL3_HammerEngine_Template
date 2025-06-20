@@ -93,7 +93,7 @@ The GameEngine initializes and manages:
 ### Initialization Method
 
 ```cpp
-bool GameEngine::init(const char* title, int width, int height, bool fullscreen)
+bool GameEngine::init(std::string_view title, int width, int height, bool fullscreen)
 ```
 
 **Parameters:**
@@ -137,7 +137,7 @@ initTasks.push_back(
 ### Error Handling During Initialization
 
 ```cpp
-bool GameEngine::init(const char* title, int width, int height, bool fullscreen) {
+bool GameEngine::init(std::string_view title, int width, int height, bool fullscreen) {
     if (SDL_Init(SDL_INIT_VIDEO)) {
         // SDL initialization
     } else {
@@ -488,17 +488,17 @@ The GameEngine automatically detects Wayland and configures a fixed timestep sys
 
 ```cpp
 // Platform detection in GameEngine::init() - Modern C++17
-const char* videoDriverRaw = SDL_GetCurrentVideoDriver();
-std::string_view videoDriver = videoDriverRaw ? videoDriverRaw : "";
+const std::string videoDriverRaw = SDL_GetCurrentVideoDriver() ? SDL_GetCurrentVideoDriver() : "";
+std::string_view videoDriver = videoDriverRaw;
 bool isWayland = (videoDriver == "wayland");
 
 // Fallback to environment detection with null safety
 if (!isWayland) {
-    const char* sessionTypeRaw = std::getenv("XDG_SESSION_TYPE");
-    const char* waylandDisplayRaw = std::getenv("WAYLAND_DISPLAY");
+    const std::string sessionTypeRaw = std::getenv("XDG_SESSION_TYPE") ? std::getenv("XDG_SESSION_TYPE") : "";
+    const std::string waylandDisplayRaw = std::getenv("WAYLAND_DISPLAY") ? std::getenv("WAYLAND_DISPLAY") : "";
     
-    std::string_view sessionType = sessionTypeRaw ? sessionTypeRaw : "";
-    bool hasWaylandDisplay = waylandDisplayRaw != nullptr;
+    std::string_view sessionType = sessionTypeRaw;
+    bool hasWaylandDisplay = !waylandDisplayRaw.empty();
     
     isWayland = (sessionType == "wayland") || hasWaylandDisplay;
 }
@@ -524,11 +524,11 @@ The TimestepManager is automatically configured in HammerMain after GameLoop ini
 ```cpp
 // Configure TimestepManager for platform-specific frame limiting using modern C++17
 // This must happen after GameLoop is set but before the game starts running
-const char* sessionTypeRaw = std::getenv("XDG_SESSION_TYPE");
-const char* waylandDisplayRaw = std::getenv("WAYLAND_DISPLAY");
+const std::string sessionTypeRaw = std::getenv("XDG_SESSION_TYPE") ? std::getenv("XDG_SESSION_TYPE") : "";
+const std::string waylandDisplayRaw = std::getenv("WAYLAND_DISPLAY") ? std::getenv("WAYLAND_DISPLAY") : "";
 
-std::string_view sessionType = sessionTypeRaw ? sessionTypeRaw : "";
-bool hasWaylandDisplay = waylandDisplayRaw != nullptr;
+std::string_view sessionType = sessionTypeRaw;
+bool hasWaylandDisplay = !waylandDisplayRaw.empty();
 bool isWayland = (sessionType == "wayland") || hasWaylandDisplay;
 
 if (isWayland) {
@@ -728,7 +728,7 @@ float GameEngine::getCurrentFPS() const {
 
 ```cpp
 static GameEngine& Instance();
-bool init(const char* title, int width, int height, bool fullscreen);
+bool init(std::string_view title, int width, int height, bool fullscreen);
 void handleEvents();
 void update(float deltaTime);
 void render(float interpolation);
