@@ -85,7 +85,7 @@ I use the Zed IDE with custom cmake and ninja task configurations to build/compi
 - Boost Test framework (optional, only for unit tests)
 
 ### Windows
-Need to install mysys2 for compiler and for SDL3 dependencies like harfbuzz, freetype etc.
+Need to install msys2 for compiler and for SDL3 dependencies like harfbuzz, freetype etc.
 scoop or chocolatey to install Ninja, zed, and cppheck.
 Cmake can be installed from the official website.
 Cpp check can be installed other ways just make sure its in your path.
