@@ -86,7 +86,7 @@ bool EventDemoState::enter() {
                        "[B] Exit | [SPACE] Manual | [1-5] Events | [A] Auto Mode | [R] Reset");
 
         // Create event log component using auto-detected dimensions
-        ui.createEventLog("event_log", {10, ui.getLogicalHeight() - 200, 730, 180}, 6);
+        ui.createEventLog("event_log", {10, ui.getLogicalHeight() - 200, 730, 180}, 7);
         ui.addEventLogEntry("event_log", "Event Demo System Initialized");
 
         std::cout << "Hammer Game Engine - EventDemoState initialized successfully\n";
