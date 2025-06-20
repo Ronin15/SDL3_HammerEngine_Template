@@ -110,7 +110,7 @@ Follow the instructions on the official SDL3 website to install SDL3 dependencie
 [https://wiki.libsdl.org/SDL3/README-linux](https://wiki.libsdl.org/SDL3/README-linux)
 
 Boost needed for tests to compile. Valgrind for cache, memory and thread testing. cppheck for static analysis
-  - sudo apt-get install boost valgrind cppcheck
+  - sudo apt-get install libboost-all-dev valgrind cppcheck
 
 I'm using:
   -  Operating System: Ubuntu 24.04.2 LTS
