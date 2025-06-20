@@ -38,7 +38,7 @@
 
 #define HAMMER_GRAY 31, 32, 34, 255
 
-bool GameEngine::init(const char* title,
+bool GameEngine::init(std::string_view title,
                       int width,
                       int height,
                       bool fullscreen) {
@@ -120,7 +120,7 @@ bool GameEngine::init(const char* title,
       #endif
     }
 
-    mp_window.reset(SDL_CreateWindow(title, m_windowWidth, m_windowHeight, flags));
+    mp_window.reset(SDL_CreateWindow(title.data(), m_windowWidth, m_windowHeight, flags));
 
     if (!mp_window) {
       GAMEENGINE_ERROR("Failed to create window: " + std::string(SDL_GetError()));
@@ -141,12 +141,12 @@ bool GameEngine::init(const char* title,
       GAMEENGINE_INFO("Setting window icon");
 
       // Use SDL_image to directly load the icon
-      const char* iconPath = "res/img/icon.ico";
+      constexpr std::string_view iconPath = "res/img/icon.ico";
 
       // Use a separate thread to load the icon
       auto iconFuture = Hammer::ThreadSystem::Instance().enqueueTaskWithResult(
           [iconPath]() -> std::unique_ptr<SDL_Surface, decltype(&SDL_DestroySurface)> {
-              return std::unique_ptr<SDL_Surface, decltype(&SDL_DestroySurface)>(IMG_Load(iconPath), SDL_DestroySurface);
+              return std::unique_ptr<SDL_Surface, decltype(&SDL_DestroySurface)>(IMG_Load(iconPath.data()), SDL_DestroySurface);
           });
 
       // Continue with initialization while icon loads
@@ -179,17 +179,17 @@ bool GameEngine::init(const char* title,
 
       // Platform-specific VSync handling for timing issues
       // Check if we're using Wayland (known to have VSync timing issues with some drivers)
-      const char* videoDriverRaw = SDL_GetCurrentVideoDriver();
-      std::string_view videoDriver = videoDriverRaw ? videoDriverRaw : "";
+      const std::string videoDriverRaw = SDL_GetCurrentVideoDriver() ? SDL_GetCurrentVideoDriver() : "";
+      std::string_view videoDriver = videoDriverRaw;
       bool isWayland = (videoDriver == "wayland");
       
       // Fallback to environment detection if driver info unavailable
       if (!isWayland) {
-        const char* sessionTypeRaw = std::getenv("XDG_SESSION_TYPE");
-        const char* waylandDisplayRaw = std::getenv("WAYLAND_DISPLAY");
+        const std::string sessionTypeRaw = std::getenv("XDG_SESSION_TYPE") ? std::getenv("XDG_SESSION_TYPE") : "";
+        const std::string waylandDisplayRaw = std::getenv("WAYLAND_DISPLAY") ? std::getenv("WAYLAND_DISPLAY") : "";
         
-        std::string_view sessionType = sessionTypeRaw ? sessionTypeRaw : "";
-        bool hasWaylandDisplay = waylandDisplayRaw != nullptr;
+        std::string_view sessionType = sessionTypeRaw;
+        bool hasWaylandDisplay = !waylandDisplayRaw.empty();
         
         isWayland = (sessionType == "wayland") || hasWaylandDisplay;
       }
@@ -343,7 +343,9 @@ TextureManager& texMgr = TextureManager::Instance();
 
 // Load textures in main thread
 GAMEENGINE_INFO("Creating and loading textures");
-texMgr.load("res/img", "", mp_renderer.get());
+constexpr std::string_view textureResPath = "res/img";
+constexpr std::string_view texturePrefix = "";
+texMgr.load(std::string(textureResPath), std::string(texturePrefix), mp_renderer.get());
 
   // Initialize sound manager in a separate thread - #2
   initTasks.push_back(
@@ -356,8 +358,12 @@ texMgr.load("res/img", "", mp_renderer.get());
         }
 
         GAMEENGINE_INFO("Loading sounds and music");
-        soundMgr.loadSFX("res/sfx", "sfx");
-        soundMgr.loadMusic("res/music", "music");
+        constexpr std::string_view sfxPath = "res/sfx";
+        constexpr std::string_view sfxPrefix = "sfx";
+        constexpr std::string_view musicPath = "res/music";
+        constexpr std::string_view musicPrefix = "music";
+        soundMgr.loadSFX(std::string(sfxPath), std::string(sfxPrefix));
+        soundMgr.loadMusic(std::string(musicPath), std::string(musicPrefix));
         return true;
       }));
 
@@ -374,7 +380,8 @@ texMgr.load("res/img", "", mp_renderer.get());
         GAMEENGINE_INFO("Loading fonts with display-aware sizing");
 
         // Use logical dimensions to match UI coordinate system
-        if (!fontMgr.loadFontsForDisplay("res/fonts", m_logicalWidth, m_logicalHeight)) {
+        constexpr std::string_view fontsPath = "res/fonts";
+        if (!fontMgr.loadFontsForDisplay(std::string(fontsPath), m_logicalWidth, m_logicalHeight)) {
           GAMEENGINE_CRITICAL("Failed to load fonts for display");
           return false;
         }
@@ -388,7 +395,8 @@ texMgr.load("res/img", "", mp_renderer.get());
         SaveGameManager& saveMgr = SaveGameManager::Instance();
 
         // Set the save directory to "res" folder
-        saveMgr.setSaveDirectory("res");
+        constexpr std::string_view saveDir = "res";
+        saveMgr.setSaveDirectory(std::string(saveDir));
         return true;
       }));
 
@@ -520,7 +528,7 @@ texMgr.load("res/img", "", mp_renderer.get());
 
   // setting logo state for default state
   mp_gameStateManager->setState("LogoState");//set to "LogoState" for normal operation.
-  // Note: GameLoop will be started by ForgeMain, not here
+
   return true;
 }
 
