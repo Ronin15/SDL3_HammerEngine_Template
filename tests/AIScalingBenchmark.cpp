@@ -247,11 +247,12 @@ struct AIScalingFixture {
                       << aiWorkers << " allocated to AI (60%)" << std::endl;
         }
 
-        // Create behaviors with varying complexity
-        for (int i = 0; i < numBehaviors; ++i) {
+        // Create behaviors with varying complexity using valid behavior names
+        const std::vector<std::string> validBehaviors = {"Wander", "Guard", "Patrol", "Follow", "Chase"};
+        for (int i = 0; i < numBehaviors && i < static_cast<int>(validBehaviors.size()); ++i) {
             int complexity = 5 + (i % 11);
             behaviors.push_back(std::make_shared<BenchmarkBehavior>(i, complexity));
-            AIManager::Instance().registerBehavior("Behavior" + std::to_string(i), behaviors.back());
+            AIManager::Instance().registerBehavior(validBehaviors[i], behaviors.back());
         }
 
         // Create entities at the same position to ensure they're close to player
@@ -260,8 +261,9 @@ struct AIScalingFixture {
             auto entity = BenchmarkEntity::create(i, centralPosition);
             entities.push_back(entity);
 
-            // Assign behaviors in a round-robin fashion
-            std::string behaviorName = "Behavior" + std::to_string(i % numBehaviors);
+            // Assign behaviors in a round-robin fashion using valid AI behavior names
+            const std::vector<std::string> validBehaviors = {"Wander", "Guard", "Patrol", "Follow", "Chase"};
+            std::string behaviorName = validBehaviors[i % validBehaviors.size()];
             AIManager::Instance().assignBehaviorToEntity(entity, behaviorName);
             // Register entity for managed updates with maximum priority to ensure updates
             AIManager::Instance().registerEntityForUpdates(entity, 9); // Max priority
@@ -338,6 +340,14 @@ struct AIScalingFixture {
             for (int update = 0; update < numUpdates; ++update) {
                 AIManager::Instance().update(0.016f);
             }
+
+            // Wait for all asynchronous AI tasks to complete before measuring
+            while (Hammer::ThreadSystem::Instance().isBusy()) {
+                std::this_thread::sleep_for(std::chrono::microseconds(500));
+            }
+            
+            // Add small additional delay to ensure all behavior counts are recorded
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
 
             auto endTime = std::chrono::high_resolution_clock::now();
             auto duration = std::chrono::duration_cast<std::chrono::microseconds>(endTime - startTime);
@@ -657,10 +667,11 @@ BOOST_AUTO_TEST_CASE(TestLegacyComparison) {
         std::cout << "\n--- " << mode << " Test: " << numEntities << " entities ---" << std::endl;
 
         // Create behaviors
-        for (int i = 0; i < numBehaviors; ++i) {
+        const std::vector<std::string> validBehaviors = {"Wander", "Guard", "Patrol", "Follow", "Chase"};
+        for (int i = 0; i < numBehaviors && i < static_cast<int>(validBehaviors.size()); ++i) {
             int complexity = 5 + (i % 11);
             behaviors.push_back(std::make_shared<BenchmarkBehavior>(i, complexity));
-            AIManager::Instance().registerBehavior("Behavior" + std::to_string(i), behaviors.back());
+            AIManager::Instance().registerBehavior(validBehaviors[i], behaviors.back());
         }
 
         // Create entities
@@ -668,7 +679,8 @@ BOOST_AUTO_TEST_CASE(TestLegacyComparison) {
         for (int i = 0; i < numEntities; ++i) {
             auto entity = BenchmarkEntity::create(i, centralPosition);
             entities.push_back(entity);
-            std::string behaviorName = "Behavior" + std::to_string(i % numBehaviors);
+            const std::vector<std::string> validBehaviors = {"Wander", "Guard", "Patrol", "Follow", "Chase"};
+            std::string behaviorName = validBehaviors[i % validBehaviors.size()];
             AIManager::Instance().assignBehaviorToEntity(entity, behaviorName);
             AIManager::Instance().registerEntityForUpdates(entity, 9);
         }
@@ -685,6 +697,14 @@ BOOST_AUTO_TEST_CASE(TestLegacyComparison) {
             for (int update = 0; update < numUpdates; ++update) {
                 AIManager::Instance().update(0.016f); // 60 FPS deltaTime
             }
+            
+            // Wait for all asynchronous AI tasks to complete before measuring
+            while (Hammer::ThreadSystem::Instance().isBusy()) {
+                std::this_thread::sleep_for(std::chrono::microseconds(500));
+            }
+            
+            // Add small additional delay to ensure all behavior counts are recorded
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
             
             auto endTime = std::chrono::high_resolution_clock::now();
             auto duration = std::chrono::duration<double, std::milli>(endTime - startTime).count();
