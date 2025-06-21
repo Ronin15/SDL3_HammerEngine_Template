@@ -2,22 +2,27 @@
 
 ## Overview
 
-The `GameLoop` class manages the main game execution loop using industry-standard timing patterns. It provides a callback-based architecture with support for both single-threaded and multi-threaded execution modes, featuring fixed timestep updates and variable timestep rendering with interpolation.
+The GameLoop class provides a robust, high-performance game loop implementation with support for both single-threaded and multi-threaded execution modes. It integrates seamlessly with the Hammer Engine's ThreadSystem and WorkerBudget allocation system to provide optimal performance scaling across different hardware configurations.
+
+**Key Features:**
+- Fixed timestep updates with variable timestep rendering
+- WorkerBudget-aware thread allocation and resource management
+- Adaptive performance scaling based on system capabilities
+- Thread-safe callback system with exception handling
+- Comprehensive performance monitoring and logging
+- Graceful pause/resume functionality
 
 ## Table of Contents
 
-- [Overview](#overview)
-- [Quick Start](#quick-start)
-  - [Basic Setup](#basic-setup)
-  - [Multi-Threaded Setup](#multi-threaded-setup)
-- [Architecture](#architecture)
-- [Timing Systems](#timing-systems)
-- [Threading Models](#threading-models)
-- [Callback System](#callback-system)
-- [Performance Features](#performance-features)
-- [API Reference](#api-reference)
-- [Best Practices](#best-practices)
-- [Examples](#examples)
+1. [Quick Start](#quick-start)
+2. [Architecture](#architecture)
+3. [Timing Systems](#timing-systems)
+4. [Threading Models & WorkerBudget Integration](#threading-models--workerbudget-integration)
+5. [Callback System](#callback-system)
+6. [Performance Features](#performance-features)
+7. [API Reference](#api-reference)
+8. [Best Practices](#best-practices)
+9. [Examples](#examples)
 
 ## Quick Start
 
@@ -25,123 +30,125 @@ The `GameLoop` class manages the main game execution loop using industry-standar
 
 ```cpp
 #include "core/GameLoop.hpp"
-#include "core/GameEngine.hpp"
 
 int main() {
-    // Initialize game engine
-    GameEngine& engine = GameEngine::Instance();
-    if (!engine.init("My Game", 1280, 720, false)) {
+    // Create single-threaded game loop
+    GameLoop gameLoop(60.0f, 1.0f/60.0f, false);
+    
+    // Set up callbacks
+    gameLoop.setEventHandler([]() {
+        // Handle SDL events here
+        SDL_Event event;
+        while (SDL_PollEvent(&event)) {
+            if (event.type == SDL_EVENT_QUIT) {
+                // Handle quit event
+            }
+        }
+    });
+    
+    gameLoop.setUpdateHandler([](float deltaTime) {
+        // Update game logic at fixed timestep
+        updateGameWorld(deltaTime);
+    });
+    
+    gameLoop.setRenderHandler([]() {
+        // Render at variable framerate
+        renderGame();
+    });
+    
+    // Start the game loop
+    if (!gameLoop.run()) {
         return -1;
     }
     
-    // Create game loop with 60 FPS, 1/60s fixed timestep, threaded mode
-    auto gameLoop = std::make_shared<GameLoop>(60.0f, 1.0f/60.0f, true);
-    
-    // Set callbacks
-    gameLoop->setEventHandler([&engine]() {
-        engine.handleEvents();
-    });
-    
-    gameLoop->setUpdateHandler([&engine](float deltaTime) {
-        engine.update(deltaTime);
-    });
-    
-    gameLoop->setRenderHandler([&engine](float interpolation) {
-        engine.render(interpolation);
-    });
-    
-    // Set engine's game loop reference
-    engine.setGameLoop(gameLoop);
-    
-    // Run the game loop
-    bool success = gameLoop->run();
-    
-    // Cleanup
-    engine.clean();
-    return success ? 0 : -1;
+    return 0;
 }
 ```
 
-### Multi-Threaded Setup
-
-The GameLoop automatically handles threading when constructed with `threaded = true`:
+### Multi-Threaded Setup with WorkerBudget
 
 ```cpp
-// Multi-threaded: Updates run on separate thread, events/rendering on main thread
-GameLoop gameLoop(60.0f, 1.0f/60.0f, true);
-
-// Single-threaded: Everything runs on main thread
-GameLoop gameLoop(60.0f, 1.0f/60.0f, false);
+int main() {
+    // Initialize ThreadSystem first
+    Hammer::ThreadSystem::Initialize(8); // 8 worker threads
+    
+    // Create multi-threaded game loop
+    GameLoop gameLoop(60.0f, 1.0f/60.0f, true);
+    
+    // Setup callbacks (same as above)
+    setupCallbacks(gameLoop);
+    
+    // Run - automatically allocates workers from WorkerBudget
+    gameLoop.run();
+    
+    // Cleanup
+    Hammer::ThreadSystem::Shutdown();
+    return 0;
+}
 ```
 
 ## Architecture
 
 ### Design Principles
 
-- **Separation of Concerns**: Events, updates, and rendering are handled separately
-- **Fixed Timestep Updates**: Ensures consistent game logic regardless of frame rate
-- **Variable Timestep Rendering**: Provides smooth visuals with interpolation
-- **Thread Safety**: Safe callback invocation and state management
-- **Professional Patterns**: Based on industry-standard game loop implementations
+- **Separation of Concerns**: Events, updates, and rendering are handled independently
+- **Resource-Aware Scaling**: Uses WorkerBudget to optimally allocate thread resources
+- **Performance Adaptive**: Automatically adjusts behavior based on system capabilities
+- **Exception Safe**: Comprehensive exception handling prevents crashes
+- **Thread Safe**: All operations are thread-safe with proper synchronization
 
 ### Core Components
 
 ```cpp
 class GameLoop {
 private:
-    // Timing management
+    // Timing Management
     std::unique_ptr<TimestepManager> m_timestepManager;
-
-    // Callback handlers
+    
+    // Callback Handlers
     EventHandler m_eventHandler;
     UpdateHandler m_updateHandler;
     RenderHandler m_renderHandler;
-
-    // Loop state
+    
+    // State Management
     std::atomic<bool> m_running;
     std::atomic<bool> m_paused;
     std::atomic<bool> m_stopRequested;
-
-    // Threading
+    
+    // Threading System
     bool m_threaded;
-    std::unique_ptr<std::thread> m_updateThread;
-    std::mutex m_updateMutex;
-    std::atomic<bool> m_updateThreadRunning;
-
-    // Update synchronization
-    std::atomic<bool> m_pendingUpdates;
+    std::future<void> m_updateTaskFuture;
+    std::atomic<bool> m_updateTaskRunning;
+    
+    // Performance Tracking
     std::atomic<int> m_updateCount;
+    
+    // Thread Safety
     std::mutex m_callbackMutex;
 };
 ```
 
 ### Execution Flow
 
-**Single-Threaded Mode:**
-1. Process events (main thread)
-2. Process updates with fixed timestep (main thread)
-3. Process rendering with interpolation (main thread)
-4. Frame rate limiting
-
-**Multi-Threaded Mode:**
-1. Main thread: Events → Rendering → Frame rate limiting
-2. Update thread: Fixed timestep updates with smart sleep timing
+1. **Initialization**: Configure timing, threading mode, and callbacks
+2. **Main Thread**: Always handles events and rendering (SDL requirement)
+3. **Update Worker**: Processes game logic updates (multi-threaded mode only)
+4. **WorkerBudget Allocation**: Automatically allocates optimal thread resources
+5. **Adaptive Performance**: Adjusts timing and resource usage based on system performance
+6. **Graceful Shutdown**: Clean termination with proper resource cleanup
 
 ## Timing Systems
 
 ### TimestepManager Integration
 
-The GameLoop uses `TimestepManager` for precise timing control:
+The GameLoop uses TimestepManager for precise timing control:
 
-```cpp
-// Constructor creates TimestepManager
-GameLoop(float targetFPS, float fixedTimestep, bool threaded)
-    : m_timestepManager(std::make_unique<TimestepManager>(targetFPS, fixedTimestep))
-```
+- **Fixed Timestep Updates**: Game logic runs at consistent intervals
+- **Variable Timestep Rendering**: Renders as fast as possible while respecting target FPS
+- **Frame Time Monitoring**: Tracks performance metrics
+- **Dynamic Configuration**: Runtime adjustment of timing parameters
 
 ### Fixed Timestep Updates
-
-Updates run at a consistent rate regardless of frame rate:
 
 ```cpp
 void GameLoop::processUpdates() {
@@ -149,164 +156,173 @@ void GameLoop::processUpdates() {
     while (m_timestepManager->shouldUpdate()) {
         float deltaTime = m_timestepManager->getUpdateDeltaTime();
         invokeUpdateHandler(deltaTime);
-        m_updateCount.fetch_add(1);
-    }
-}
-```
-
-**Key Features:**
-- **Consistent Physics**: Game logic runs at fixed intervals (e.g., 1/60s)
-- **Catch-up Updates**: Multiple updates per frame if system is behind
-- **Deterministic Behavior**: Same input produces same output regardless of FPS
-
-### Variable Timestep Rendering
-
-Rendering runs as fast as possible with interpolation:
-
-```cpp
-void GameLoop::processRender() {
-    if (m_timestepManager->shouldRender()) {
-        float interpolation = m_timestepManager->getRenderInterpolation();
-        invokeRenderHandler(interpolation);
+        m_updateCount.fetch_add(1, std::memory_order_relaxed);
     }
 }
 ```
 
 **Benefits:**
-- **Smooth Visuals**: Rendering not tied to update frequency
-- **High FPS Support**: Can render at 120+ FPS while updates stay at 60 FPS
-- **Interpolation**: Smooth motion between fixed update steps
+- Deterministic game logic
+- Network synchronization friendly
+- Physics stability
+- Consistent gameplay across different hardware
+
+### Variable Timestep Rendering
+
+```cpp
+void GameLoop::processRender() {
+    if (m_timestepManager->shouldRender()) {
+        invokeRenderHandler();
+    }
+}
+```
+
+**Benefits:**
+- Smooth visual experience
+- Optimal GPU utilization
+- Adaptive to display refresh rates
+- Battery efficiency on mobile platforms
 
 ## Threading Models & WorkerBudget Integration
 
 ### Single-Threaded Mode
-
-Everything runs on the main thread in sequence - optimal for low-end hardware:
 
 ```cpp
 void GameLoop::runMainThread() {
     while (m_running.load() && !m_stopRequested.load()) {
         m_timestepManager->startFrame();
         
-        // Always process events on main thread (SDL requirement)
-        processEvents();
-        
-        // Process updates (single-threaded mode only)
-        if (!m_threaded && !m_paused.load()) {
-            processUpdates();
+        try {
+            processEvents();    // SDL events (main thread required)
+            
+            if (!m_threaded && !m_paused.load()) {
+                processUpdates();  // Game logic updates
+            }
+            
+            processRender();    // Rendering
+            
+            m_timestepManager->endFrame();
+        } catch (const std::exception& e) {
+            GAMELOOP_ERROR("Exception in main thread: " + std::string(e.what()));
         }
-        
-        // Always process rendering
-        processRender();
-        
-        m_timestepManager->endFrame();
     }
 }
 ```
 
+**Use Cases:**
+- Simple games with light processing requirements
+- Platforms with limited threading support
+- Debugging and development
+- Fallback mode when ThreadSystem is unavailable
+
 ### WorkerBudget-Aware Multi-Threaded Mode
-
-GameLoop integrates with the centralized WorkerBudget system for optimal performance:
-
-**Critical Priority Allocation:**
-- GameLoop receives **2 workers** (Critical priority) from WorkerBudget system
-- Uses `Hammer::calculateWorkerBudget()` for centralized resource allocation
-- Receives highest priority to ensure consistent frame timing
-
-**Update Worker with Resource Awareness:**
 
 ```cpp
 void GameLoop::runUpdateWorker(const Hammer::WorkerBudget& budget) {
-    // WorkerBudget-aware update worker - respects allocated resources
     GAMELOOP_INFO("Update worker started with " + std::to_string(budget.engineReserved) + " allocated workers");
-
-    // Adaptive behavior based on WorkerBudget allocation
+    
+    // Adaptive timing system
+    float targetFPS = m_timestepManager->getTargetFPS();
+    const auto targetFrameTime = std::chrono::microseconds(static_cast<long>(1000000.0f / targetFPS));
+    
+    // Performance tracking for adaptive sleep
+    auto avgUpdateTime = std::chrono::microseconds(0);
+    
+    // System capability detection
     bool canUseParallelUpdates = (budget.engineReserved >= 2);
     bool isHighEndSystem = (budget.totalWorkers > 4);
-
-    // Adjust timing precision based on system capabilities
-    auto adaptiveSleepDuration = isHighEndSystem ?
-        std::chrono::microseconds(/* more responsive timing */) :
-        std::chrono::microseconds(/* standard timing */);
-
+    
     while (m_updateTaskRunning.load() && !m_stopRequested.load()) {
-        if (!m_paused.load()) {
-            if (canUseParallelUpdates) {
-                processUpdatesParallel(); // Enhanced processing for high-end systems
-            } else {
-                processUpdates(); // Standard processing for low-end systems
-            }
+        // Adaptive update processing based on available workers
+        if (canUseParallelUpdates && !m_paused.load()) {
+            processUpdatesParallel();
+        } else if (!m_paused.load()) {
+            processUpdates();
         }
         
-        std::this_thread::sleep_for(adaptiveSleepDuration);
+        // Adaptive sleep timing based on system capabilities
+        // ... (sophisticated timing logic)
     }
 }
 ```
 
 ### WorkerBudget Resource Scaling
 
-**Resource Allocation Examples:**
-- **4-core/8-thread system (7 workers)**: GameLoop gets 2 workers (Critical priority allocation)
-- **8-core/16-thread system (15 workers)**: GameLoop gets 2 workers (consistent critical timing)
-- **32-thread system (31 workers)**: GameLoop gets 2 workers (maintains frame-rate priority) - AMD 7950X3D (16c/32t), Intel 13900K/14900K (24c/32t)
+The GameLoop automatically scales its resource usage based on the WorkerBudget allocation:
 
-**Adaptive Processing:**
-- **Low-end Systems**: Single update worker, standard timing precision
-- **High-end Systems**: Parallel update processing, enhanced timing precision
-- **Performance Monitoring**: Periodic logging of WorkerBudget utilization on high-end systems
+- **Low-End Systems** (`budget.engineReserved < 2`): Standard sequential processing
+- **High-End Systems** (`budget.engineReserved >= 2`): Enhanced parallel processing
+- **Resource Monitoring**: Continuous performance tracking and adaptation
+- **Dynamic Allocation**: Respects system-wide thread budget constraints
+
+**Example Allocation:**
+- 4-core system: 1-2 workers allocated to GameLoop
+- 8-core system: 2-4 workers allocated to GameLoop  
+- 16-core system: 4-8 workers allocated to GameLoop
 
 ### Thread Synchronization & Critical Priority
 
 ```cpp
 class GameLoop {
 private:
-    // WorkerBudget integration
-    std::future<void> m_updateTaskFuture;     // ThreadSystem task future
-    std::atomic<bool> m_updateTaskRunning;    // Update task state
+    // Future-based task management instead of raw threads
+    std::future<void> m_updateTaskFuture;
+    std::atomic<bool> m_updateTaskRunning;
     
-    // Thread synchronization
-    std::mutex m_callbackMutex;               // Protects callback function pointers
-    std::atomic<int> m_updateCount;           // Update counter for performance tracking
+    // Thread-safe callback protection
+    std::mutex m_callbackMutex;
     
-    // Critical timing methods
+    // Performance tracking
+    std::atomic<int> m_updateCount;
+    
+    // Enhanced processing methods
     void runUpdateWorker(const Hammer::WorkerBudget& budget);
-    void processUpdatesParallel();            // High-end system optimization
+    void processUpdatesParallel();
 };
 ```
 
-**Critical Priority Scheduling:**
-- GameLoop tasks submitted with `Hammer::TaskPriority::Critical`
-- Ensures frame-rate consistency across all hardware tiers
-- ThreadSystem prioritizes GameLoop over AI and Event processing
-- Prevents frame drops during high system load
+**Key Features:**
+- **Critical Priority**: Update worker gets high priority in ThreadSystem
+- **Future-Based**: Uses `std::future` for better task management than raw threads
+- **Atomic Operations**: Lock-free state management where possible
+- **Exception Safety**: Exceptions don't terminate the update worker
 
 ## Callback System
 
 ### Callback Function Types
 
 ```cpp
-// Event handling (main thread only - SDL requirement)
 using EventHandler = std::function<void()>;
-
-// Game logic updates (fixed timestep)
 using UpdateHandler = std::function<void(float deltaTime)>;
-
-// Rendering (variable timestep with interpolation)
-using RenderHandler = std::function<void(float interpolation)>;
+using RenderHandler = std::function<void()>;
 ```
+
+**EventHandler**: Called once per frame on main thread
+- Process SDL events
+- Handle input
+- Update UI state
+
+**UpdateHandler**: Called at fixed timestep intervals
+- Update game logic
+- Physics simulation
+- AI processing
+
+**RenderHandler**: Called when rendering should occur
+- Draw game objects
+- Update display
+- Present frame
 
 ### Setting Up Callbacks
 
 ```cpp
-// Thread-safe callback registration
 void setEventHandler(EventHandler handler);
 void setUpdateHandler(UpdateHandler handler);
 void setRenderHandler(RenderHandler handler);
 ```
 
-### Thread-Safe Callback Invocation
+All callback setters are thread-safe and can be called while the game loop is running.
 
-All callbacks are invoked with proper thread safety:
+### Thread-Safe Callback Invocation
 
 ```cpp
 void GameLoop::invokeEventHandler() {
@@ -319,90 +335,83 @@ void GameLoop::invokeEventHandler() {
         }
     }
 }
-
-void GameLoop::invokeUpdateHandler(float deltaTime) {
-    std::lock_guard<std::mutex> lock(m_callbackMutex);
-    if (m_updateHandler) {
-        try {
-            m_updateHandler(deltaTime);
-        } catch (const std::exception& e) {
-            GAMELOOP_ERROR("Exception in update handler: " + std::string(e.what()));
-        }
-    }
-}
-
-void GameLoop::invokeRenderHandler(float interpolation) {
-    std::lock_guard<std::mutex> lock(m_callbackMutex);
-    if (m_renderHandler) {
-        try {
-            m_renderHandler(interpolation);
-        } catch (const std::exception& e) {
-            GAMELOOP_ERROR("Exception in render handler: " + std::string(e.what()));
-        }
-    }
-}
 ```
+
+**Safety Features:**
+- **Mutex Protection**: Callbacks protected from concurrent modification
+- **Exception Handling**: Exceptions logged but don't crash the loop
+- **Null Checking**: Safe to call even if callbacks aren't set
+- **RAII Locking**: Automatic lock management with `lock_guard`
 
 ## Performance Features
 
 ### Frame Time Monitoring
 
 ```cpp
-// Get current performance metrics
-float getCurrentFPS() const;           // Measured FPS
-uint32_t getFrameTimeMs() const;      // Last frame time in milliseconds
-float getTargetFPS() const;           // Target FPS setting
-
-// Check for performance issues
-bool isFrameTimeExcessive() const;    // From TimestepManager
+float getCurrentFPS();           // Current measured FPS
+uint32_t getFrameTimeMs();       // Last frame time in milliseconds
+float getTargetFPS();            // Target FPS setting
 ```
+
+**Advanced Metrics:**
+- Rolling average FPS calculation
+- Frame time variance tracking
+- Performance budget analysis
+- System capability detection
 
 ### Dynamic Configuration
 
 ```cpp
-// Runtime adjustments
-void setTargetFPS(float fps);         // Change target frame rate
-void setFixedTimestep(float timestep); // Change update frequency
-
-// Advanced access
-TimestepManager& getTimestepManager(); // Direct access for custom timing
+void setTargetFPS(float fps);                    // Change target FPS at runtime
+void setFixedTimestep(float timestep);           // Adjust update frequency
+TimestepManager& getTimestepManager();           // Direct access to timing system
 ```
+
+**Runtime Adaptation:**
+- Automatic FPS adjustment based on performance
+- Dynamic timestep scaling for heavy processing
+- Performance-based quality adjustment
+- Battery life optimization
 
 ### Pause/Resume System
 
 ```cpp
-void setPaused(bool paused);          // Pause/resume game logic
-bool isPaused() const;               // Check pause state
-
-// Automatic timing reset when resuming
-if (wasPaused && !paused) {
-    m_timestepManager->reset();      // Prevents time jumps
-}
+void setPaused(bool paused);     // Pause/resume game logic
+bool isPaused();                 // Check pause state
 ```
+
+**Features:**
+- **Timing Reset**: Prevents time jumps when resuming
+- **Thread-Safe**: Safe to call from any thread
+- **Update Blocking**: Pauses only updates, not events or rendering
+- **Menu Integration**: Perfect for pause menus and loading screens
 
 ## API Reference
 
 ### Constructor
 
 ```cpp
-explicit GameLoop(float targetFPS = 60.0f, 
-                 float fixedTimestep = 1.0f/60.0f, 
-                 bool threaded = true);
+GameLoop(float targetFPS = 60.0f, float fixedTimestep = 1.0f/60.0f, bool threaded = true);
 ```
+
+**Parameters:**
+- `targetFPS`: Target frames per second for rendering
+- `fixedTimestep`: Fixed time interval for updates (in seconds)
+- `threaded`: Enable multi-threaded mode with WorkerBudget integration
 
 ### Core Methods
 
 ```cpp
-bool run();                          // Start main loop (blocks until stopped)
-void stop();                         // Stop the loop (thread-safe)
-bool isRunning() const;             // Check if loop is active
+bool run();              // Start the game loop (blocking call)
+void stop();             // Request loop termination
+bool isRunning();        // Check if loop is currently running
 ```
 
 ### Callback Configuration
 
 ```cpp
 void setEventHandler(EventHandler handler);
-void setUpdateHandler(UpdateHandler handler);
+void setUpdateHandler(UpdateHandler handler);  
 void setRenderHandler(RenderHandler handler);
 ```
 
@@ -410,15 +419,15 @@ void setRenderHandler(RenderHandler handler);
 
 ```cpp
 void setPaused(bool paused);
-bool isPaused() const;
+bool isPaused();
 ```
 
 ### Performance Monitoring
 
 ```cpp
-float getCurrentFPS() const;
-uint32_t getFrameTimeMs() const;
-float getTargetFPS() const;
+float getCurrentFPS();
+uint32_t getFrameTimeMs();
+float getTargetFPS();
 ```
 
 ### Advanced Configuration
@@ -433,35 +442,37 @@ TimestepManager& getTimestepManager();
 
 ### 1. Proper Callback Design
 
-Design callbacks to be fast and exception-safe:
-
+**DO:**
 ```cpp
-// Good: Fast, exception-safe event handling
-gameLoop.setEventHandler([&engine]() {
-    try {
-        engine.handleEvents();
-    } catch (const std::exception& e) {
-        // Log error but don't crash the loop
-        GAMELOOP_ERROR("Event handling failed: " + std::string(e.what()));
-    }
+// Keep callbacks focused and efficient
+gameLoop.setUpdateHandler([&gameWorld](float deltaTime) {
+    gameWorld.update(deltaTime);
+    physics.step(deltaTime);
 });
 
-// Good: Fixed timestep update logic
-gameLoop.setUpdateHandler([&engine](float deltaTime) {
-    // deltaTime is always consistent (e.g., 1/60s = 0.0167s)
-    engine.update(deltaTime);
+// Use RAII for resource management
+gameLoop.setRenderHandler([&renderer]() {
+    renderer.beginFrame();
+    renderer.renderScene();
+    renderer.endFrame();
+});
+```
+
+**DON'T:**
+```cpp
+// Avoid heavy operations in event handler
+gameLoop.setEventHandler([]() {
+    processComplexAI();      // This blocks SDL event processing!
+    loadLargeAssets();       // This causes frame drops!
 });
 
-// Good: Interpolated rendering
-gameLoop.setRenderHandler([&engine](float interpolation) {
-    // interpolation helps smooth movement between updates
-    engine.render(interpolation);
+// Don't ignore exceptions
+gameLoop.setUpdateHandler([](float deltaTime) {
+    riskyOperation();        // Unhandled exceptions crash the update worker!
 });
 ```
 
 ### 2. Thread-Safe Game State
-
-When using multi-threaded mode, ensure proper synchronization:
 
 ```cpp
 class ThreadSafeGameWorld {
@@ -470,23 +481,21 @@ private:
     GameState m_gameState;
     
 public:
-    // Update (called from update thread)
+    // Write operations (updates) use exclusive lock
     void update(float deltaTime) {
         std::unique_lock<std::shared_mutex> lock(m_stateMutex);
         m_gameState.update(deltaTime);
     }
     
-    // Render (called from main thread)
-    void render(float interpolation) const {
+    // Read operations (rendering) use shared lock
+    void render() const {
         std::shared_lock<std::shared_mutex> lock(m_stateMutex);
-        m_gameState.render(interpolation);
+        m_gameState.render();
     }
 };
 ```
 
 ### 3. Graceful Shutdown
-
-Implement proper shutdown handling:
 
 ```cpp
 class GameApplication {
@@ -504,19 +513,19 @@ public:
     
     void setupCallbacks() {
         m_gameLoop->setEventHandler([this]() {
-            // Check for quit events
-            if (shouldQuit()) {
-                requestShutdown();
+            SDL_Event event;
+            while (SDL_PollEvent(&event)) {
+                if (event.type == SDL_EVENT_QUIT || m_shutdownRequested.load()) {
+                    requestShutdown();
+                    return;
+                }
             }
-            // Handle other events...
         });
     }
 };
 ```
 
 ### 4. Performance Monitoring
-
-Monitor performance and adjust accordingly:
 
 ```cpp
 class PerformanceAwareGameLoop {
@@ -525,18 +534,22 @@ private:
     
 public:
     void monitorPerformance() {
-        // Check if frame time is excessive
-        if (m_gameLoop->getTimestepManager().isFrameTimeExcessive()) {
-            GAMELOOP_WARN("Frame time excessive: " + 
-                         std::to_string(m_gameLoop->getFrameTimeMs()) + "ms");
-        }
-        
-        // Log FPS periodically
-        static int frameCounter = 0;
-        if (++frameCounter % 300 == 0) { // Every 5 seconds at 60 FPS
-            GAMELOOP_INFO("Current FPS: " + 
-                         std::to_string(m_gameLoop->getCurrentFPS()));
-        }
+        m_gameLoop->setUpdateHandler([this](float deltaTime) {
+            static int frameCounter = 0;
+            static auto lastTime = std::chrono::high_resolution_clock::now();
+            
+            updateGameLogic(deltaTime);
+            
+            if (++frameCounter % 300 == 0) { // Every 5 seconds at 60 FPS
+                float fps = m_gameLoop->getCurrentFPS();
+                uint32_t frameTime = m_gameLoop->getFrameTimeMs();
+                
+                if (fps < 45.0f) {
+                    GAMELOOP_WARN("Low FPS detected: " + std::to_string(fps));
+                    adjustQualitySettings();
+                }
+            }
+        });
     }
 };
 ```
@@ -547,7 +560,7 @@ public:
 
 ```cpp
 #include "core/GameLoop.hpp"
-#include "core/GameEngine.hpp"
+#include "core/ThreadSystem.hpp"
 
 class MyGameApplication {
 private:
@@ -555,68 +568,67 @@ private:
     std::atomic<bool> m_running{true};
     
 public:
-    MyGameApplication() = default;
+    MyGameApplication() : m_gameLoop(std::make_shared<GameLoop>(60.0f, 1.0f/60.0f, true)) {}
     
     bool initialize() {
-        // Initialize engine
-        GameEngine& engine = GameEngine::Instance();
-        if (!engine.init("My Game", 1920, 1080, false)) {
+        // Initialize ThreadSystem for multi-threading
+        if (!Hammer::ThreadSystem::Initialize()) {
+            GAMELOOP_ERROR("Failed to initialize ThreadSystem");
             return false;
         }
         
-        // Create game loop (60 FPS, 1/60s updates, multi-threaded)
-        m_gameLoop = std::make_shared<GameLoop>(60.0f, 1.0f/60.0f, true);
-        
-        // Set up callbacks
+        // Setup callbacks
         setupCallbacks();
         
-        // Set engine's game loop reference
-        engine.setGameLoop(m_gameLoop);
-        
+        GAMELOOP_INFO("Game application initialized successfully");
         return true;
     }
     
     bool run() {
-        if (!m_gameLoop) {
+        if (!m_gameLoop->run()) {
+            GAMELOOP_ERROR("Game loop failed to start");
             return false;
         }
-        
-        // Start the main loop (blocks until stopped)
-        return m_gameLoop->run();
+        return true;
     }
     
     void shutdown() {
-        if (m_gameLoop) {
-            m_gameLoop->stop();
-        }
+        m_gameLoop->stop();
         
-        GameEngine& engine = GameEngine::Instance();
-        engine.clean();
+        // Cleanup ThreadSystem
+        Hammer::ThreadSystem::Shutdown();
+        
+        GAMELOOP_INFO("Game application shut down successfully");
     }
     
 private:
     void setupCallbacks() {
-        GameEngine& engine = GameEngine::Instance();
-        
-        // Event handling (main thread only)
-        m_gameLoop->setEventHandler([&engine, this]() {
-            engine.handleEvents();
-            
-            // Check for quit condition
-            if (!engine.getRunning()) {
-                m_running.store(false);
-                m_gameLoop->stop();
+        // Event handling (main thread)
+        m_gameLoop->setEventHandler([this]() {
+            SDL_Event event;
+            while (SDL_PollEvent(&event)) {
+                if (event.type == SDL_EVENT_QUIT) {
+                    m_running.store(false);
+                    m_gameLoop->stop();
+                }
+                // Handle other events...
             }
         });
         
-        // Game logic updates (fixed timestep)
-        m_gameLoop->setUpdateHandler([&engine](float deltaTime) {
-            engine.update(deltaTime);
+        // Game logic updates (update worker thread)
+        m_gameLoop->setUpdateHandler([this](float deltaTime) {
+            if (m_running.load()) {
+                updateGameWorld(deltaTime);
+                updatePhysics(deltaTime);
+                updateAI(deltaTime);
+            }
         });
         
-        // Rendering (variable timestep)
-        m_gameLoop->setRenderHandler([&engine](float interpolation) {
-            engine.render(interpolation);
+        // Rendering (main thread)
+        m_gameLoop->setRenderHandler([this]() {
+            if (m_running.load()) {
+                renderGame();
+            }
         });
     }
 };
@@ -628,10 +640,10 @@ int main() {
         return -1;
     }
     
-    bool success = app.run();
+    app.run();
     app.shutdown();
     
-    return success ? 0 : -1;
+    return 0;
 }
 ```
 
@@ -643,40 +655,38 @@ private:
     std::shared_ptr<GameLoop> m_gameLoop;
     
 public:
-    HighPerformanceGameLoop() {
-        // High refresh rate setup: 144 FPS rendering, 60 FPS logic
-        m_gameLoop = std::make_shared<GameLoop>(144.0f, 1.0f/60.0f, true);
+    HighPerformanceGameLoop() : 
+        m_gameLoop(std::make_shared<GameLoop>(120.0f, 1.0f/120.0f, true)) {
         configureTiming();
     }
     
 private:
     void configureTiming() {
-        // Access TimestepManager for advanced configuration
-        TimestepManager& timestep = m_gameLoop->getTimestepManager();
-        
-        // Monitor performance
+        // Enable high-frequency updates for competitive gaming
         m_gameLoop->setUpdateHandler([this](float deltaTime) {
+            // Track update frequency
             static int updateCount = 0;
             static auto lastTime = std::chrono::high_resolution_clock::now();
             
             updateHighFrequencyLogic(deltaTime);
             
-            // Performance monitoring every 60 updates (1 second)
-            if (++updateCount % 60 == 0) {
-                auto currentTime = std::chrono::high_resolution_clock::now();
-                auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
-                    currentTime - lastTime).count();
+            if (++updateCount % 1200 == 0) { // Every 10 seconds at 120 FPS
+                auto now = std::chrono::high_resolution_clock::now();
+                auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - lastTime);
                 
-                float actualUpdateRate = 60000.0f / duration;
-                GAMELOOP_INFO("Update rate: " + std::to_string(actualUpdateRate) + " Hz");
-                lastTime = currentTime;
+                float actualUpdateRate = 1200.0f / (elapsed.count() / 1000.0f);
+                GAMELOOP_INFO("High-frequency update rate: " + std::to_string(actualUpdateRate) + " Hz");
+                
+                lastTime = now;
             }
         });
     }
     
     void updateHighFrequencyLogic(float deltaTime) {
-        // High-precision game logic
-        // deltaTime = 1/60s = 0.0167s consistently
+        // Critical game logic that benefits from high update rates
+        updatePlayerInput(deltaTime);
+        updateNetworking(deltaTime);
+        updatePrecisionPhysics(deltaTime);
     }
 };
 ```
@@ -687,27 +697,25 @@ private:
 class PausableGameLoop {
 private:
     std::shared_ptr<GameLoop> m_gameLoop;
-    bool m_gameMenuOpen{false};
+    bool m_gameMenuOpen = false;
     
 public:
-    PausableGameLoop() {
-        m_gameLoop = std::make_shared<GameLoop>(60.0f, 1.0f/60.0f, true);
+    PausableGameLoop() : m_gameLoop(std::make_shared<GameLoop>()) {
         setupPauseHandling();
     }
     
 private:
     void setupPauseHandling() {
         m_gameLoop->setEventHandler([this]() {
-            // Handle pause input
-            if (isEscapePressed()) {
-                togglePause();
-            }
-            
-            // Handle other events based on pause state
-            if (m_gameLoop->isPaused()) {
-                // Handle menu events
-            } else {
-                // Handle game events
+            SDL_Event event;
+            while (SDL_PollEvent(&event)) {
+                if (event.type == SDL_EVENT_QUIT) {
+                    m_gameLoop->stop();
+                } else if (event.type == SDL_EVENT_KEY_DOWN) {
+                    if (event.key.keysym.sym == SDLK_ESCAPE) {
+                        togglePause();
+                    }
+                }
             }
         });
         
@@ -719,26 +727,20 @@ private:
             }
         });
         
-        m_gameLoop->setRenderHandler([this](float interpolation) {
-            renderGame(interpolation);
-            
+        m_gameLoop->setRenderHandler([this]() {
+            renderGame();
             if (m_gameLoop->isPaused()) {
-                renderPauseOverlay(interpolation);
+                renderPauseOverlay();
             }
         });
     }
     
     void togglePause() {
-        bool currentlyPaused = m_gameLoop->isPaused();
-        m_gameLoop->setPaused(!currentlyPaused);
-        m_gameMenuOpen = !currentlyPaused;
+        bool wasPaused = m_gameLoop->isPaused();
+        m_gameLoop->setPaused(!wasPaused);
+        m_gameMenuOpen = !wasPaused;
         
-        GAMELOOP_INFO(currentlyPaused ? "Game resumed" : "Game paused");
-    }
-    
-    bool isEscapePressed() {
-        // Implement escape key detection
-        return false; // Placeholder
+        GAMELOOP_INFO(m_gameMenuOpen ? "Game paused" : "Game resumed");
     }
     
     void updateGameLogic(float deltaTime) {
@@ -746,19 +748,19 @@ private:
     }
     
     void updatePauseMenu(float deltaTime) {
-        // Pause menu logic
+        // Update pause menu UI
     }
     
-    void renderGame(float interpolation) {
-        // Game rendering
+    void renderGame() {
+        // Render game world
     }
     
-    void renderPauseOverlay(float interpolation) {
-        // Pause menu rendering
+    void renderPauseOverlay() {
+        // Render pause menu overlay
     }
 };
 ```
 
 ---
 
-The GameLoop provides a robust, professional-grade main loop implementation that handles the complexities of timing, threading, and callback management, allowing developers to focus on game logic rather than infrastructure concerns.
+*This documentation covers the complete GameLoop system with WorkerBudget integration. For additional details on specific components like TimestepManager or ThreadSystem, refer to their respective documentation files.*
