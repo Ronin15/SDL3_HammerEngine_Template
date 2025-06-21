@@ -3,12 +3,12 @@
  * Licensed under the MIT License - see LICENSE file for details
 */
 
-#include "../include/core/GameTime.hpp"
+#include "core/GameTime.hpp"
 #include <iomanip>
 #include <sstream>
 #include <cmath>
 
-GameTime::GameTime() : 
+GameTime::GameTime() :
     m_currentHour(12.0f),
     m_currentDay(1),
     m_totalGameSeconds(43200.0f), // 12 hours in seconds
@@ -23,29 +23,29 @@ bool GameTime::init(float startHour, float timeScale) {
     if (startHour < 0.0f || startHour >= 24.0f) {
         return false;
     }
-    
+
     if (timeScale <= 0.0f) {
         return false;
     }
-    
+
     // Set initial time values
     m_currentHour = startHour;
     m_currentDay = 1;
     m_timeScale = timeScale;
-    
+
     // Calculate total seconds based on current hour
     m_totalGameSeconds = startHour * 3600.0f;
-    
+
     // Initialize last update time
     m_lastUpdateTime = std::chrono::steady_clock::now();
-    
+
     return true;
 }
 
 void GameTime::update(float deltaTimeMs) {
     // Convert delta time to game seconds based on time scale
     float deltaGameSeconds = (deltaTimeMs / 1000.0f) * m_timeScale;
-    
+
     // Advance game time
     advanceTime(deltaGameSeconds);
 }
@@ -53,12 +53,12 @@ void GameTime::update(float deltaTimeMs) {
 void GameTime::advanceTime(float deltaGameSeconds) {
     // Increment total game seconds
     m_totalGameSeconds += deltaGameSeconds;
-    
+
     // Calculate new hour and day
     float totalHours = m_totalGameSeconds / 3600.0f;
     float newHour = std::fmod(totalHours, 24.0f);
     int newDay = static_cast<int>(totalHours / 24.0f) + 1;
-    
+
     // Update hour and day
     m_currentHour = newHour;
     m_currentDay = newDay;
@@ -69,23 +69,23 @@ void GameTime::setGameHour(float hour) {
     if (hour >= 0.0f && hour < 24.0f) {
         float oldHour = m_currentHour;
         m_currentHour = hour;
-        
+
         // Adjust total game seconds to match new hour
         float hourDiff = hour - oldHour;
         if (hourDiff < 0.0f) {
             hourDiff += 24.0f; // Handle wraparound (e.g., 23:00 to 01:00)
         }
-        
+
         m_totalGameSeconds += hourDiff * 3600.0f;
     }
 }
 
 void GameTime::setDaylightHours(float sunrise, float sunset) {
     // Validate input
-    if (sunrise >= 0.0f && sunrise < 24.0f && 
-        sunset >= 0.0f && sunset < 24.0f && 
+    if (sunrise >= 0.0f && sunrise < 24.0f &&
+        sunset >= 0.0f && sunset < 24.0f &&
         sunrise != sunset) {
-        
+
         m_sunriseHour = sunrise;
         m_sunsetHour = sunset;
     }
@@ -122,7 +122,7 @@ int GameTime::getCurrentSeason(int daysPerSeason) const {
     if (daysPerSeason <= 0) {
         daysPerSeason = 30; // Default fallback
     }
-    
+
     // Calculate which season we're in based on current day
     // Seasons: 0=Spring, 1=Summer, 2=Fall, 3=Winter
     int seasonIndex = ((m_currentDay - 1) / daysPerSeason) % 4;
@@ -132,9 +132,9 @@ int GameTime::getCurrentSeason(int daysPerSeason) const {
 std::string GameTime::formatCurrentTime(bool use24Hour) const {
     int hours = static_cast<int>(m_currentHour);
     int minutes = static_cast<int>((m_currentHour - hours) * 60.0f);
-    
+
     std::stringstream ss;
-    
+
     if (use24Hour) {
         // 24-hour format (e.g., "14:30")
         ss << std::setw(2) << std::setfill('0') << hours << ":"
@@ -145,11 +145,11 @@ std::string GameTime::formatCurrentTime(bool use24Hour) const {
         if (displayHour == 0) {
             displayHour = 12; // 0 should display as 12 in 12-hour format
         }
-        
+
         ss << displayHour << ":"
            << std::setw(2) << std::setfill('0') << minutes
            << (hours >= 12 ? " PM" : " AM");
     }
-    
+
     return ss.str();
 }
