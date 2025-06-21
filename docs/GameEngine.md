@@ -73,6 +73,7 @@ private:
 - **Threading System**: Multi-threaded task processing with WorkerBudget system
 - **Resource Loading**: Asynchronous resource initialization
 - **State Management**: Integration with GameStateManager
+- **Double Buffering**: Thread-safe rendering with lock-free buffer management
 
 ### System Dependencies
 
@@ -106,42 +107,51 @@ bool GameEngine::init(std::string_view title, int width, int height, bool fullsc
 
 1. **SDL Initialization**: Initializes SDL3 video subsystem with quality hints
 2. **Window Creation**: Creates window with platform-specific optimizations
-3. **Renderer Setup**: Creates hardware-accelerated renderer with VSync
+3. **Renderer Setup**: Creates hardware-accelerated renderer with adaptive VSync
 4. **DPI Calculation**: Calculates display-aware scaling factors
-5. **Multi-threaded Manager Initialization**: Initializes managers across multiple threads
+5. **Multi-threaded Manager Initialization**: Initializes managers across 6 background threads
 6. **Resource Loading**: Loads textures, sounds, fonts, and other resources
-7. **State Setup**: Initializes game states and sets initial state
+7. **State Setup**: Initializes game states and sets initial LogoState
 8. **Buffer Initialization**: Sets up double buffering system
+9. **Manager Caching**: Caches frequently accessed manager references for performance
 
 ### Platform-Specific Features
 
 #### macOS Optimizations
-```cpp
-#ifdef __APPLE__
-SDL_SetHint(SDL_HINT_VIDEO_MAC_FULLSCREEN_SPACES, "1");
-// Use borderless fullscreen desktop mode
-SDL_SetWindowFullscreenMode(mp_window.get(), nullptr);
-#endif
-```
+- Borderless fullscreen desktop mode for compatibility
+- Display content scale detection for proper DPI handling
+- Logical presentation with letterbox mode (1920x1080 target resolution)
+- Spaces integration for fullscreen mode
+
+#### Wayland/Linux Support
+- Automatic Wayland detection with VSync fallback
+- Software frame rate limiting for timing consistency
+- Native resolution rendering to eliminate scaling blur
 
 #### Multi-threaded Initialization
+The engine uses 6 background threads for parallel initialization:
+
 ```cpp
-// Example: Sound manager initialization in background thread
-initTasks.push_back(
-    Hammer::ThreadSystem::Instance().enqueueTaskWithResult([]() -> bool {
-        SoundManager& soundMgr = SoundManager::Instance();
-        return soundMgr.init();
-    }));
+// Thread #1: Input Manager
+initTasks.push_back(threadSystem.enqueueTaskWithResult([]() -> bool {
+    InputManager& inputMgr = InputManager::Instance();
+    inputMgr.initializeGamePad();
+    return true;
+}));
+
+// Thread #2: Sound Manager
+initTasks.push_back(threadSystem.enqueueTaskWithResult([]() -> bool {
+    SoundManager& soundMgr = SoundManager::Instance();
+    return soundMgr.init() && soundMgr.loadResources();
+}));
 ```
 
 ### Error Handling During Initialization
 
 ```cpp
 bool GameEngine::init(std::string_view title, int width, int height, bool fullscreen) {
-    if (SDL_Init(SDL_INIT_VIDEO)) {
-        // SDL initialization
-    } else {
-        GAMEENGINE_CRITICAL("SDL Video initialization failed! SDL error: " + std::string(SDL_GetError()));
+    if (!SDL_Init(SDL_INIT_VIDEO)) {
+        GAMEENGINE_CRITICAL("SDL Video initialization failed: " + std::string(SDL_GetError()));
         return false;
     }
     
@@ -183,8 +193,12 @@ public:
 #### Event Handling
 ```cpp
 void GameEngine::handleEvents() {
-    // Delegates to InputManager for proper SDL event polling
-    // InputManager is not cached to maintain SDL architecture
+    // Handle input events - InputManager for SDL event polling architecture
+    InputManager& inputMgr = InputManager::Instance();
+    inputMgr.update();
+
+    // Handle game state input on main thread (SDL3 requirement)
+    mp_gameStateManager->handleInput();
 }
 ```
 
@@ -199,23 +213,21 @@ void GameEngine::update(float deltaTime) {
         size_t availableWorkers = static_cast<size_t>(threadSystem.getThreadCount());
         Hammer::WorkerBudget budget = Hammer::calculateWorkerBudget(availableWorkers);
 
-        // Submit engine coordination tasks
+        // Submit engine coordination tasks with high priority
         threadSystem.enqueueTask([this, deltaTime]() {
             processEngineCoordination(deltaTime);
-        }, Hammer::TaskPriority::High);
+        }, Hammer::TaskPriority::High, "GameEngine_Coordination");
 
         // Submit secondary tasks if multiple workers available
         if (budget.engineReserved > 1) {
             threadSystem.enqueueTask([this]() {
                 processEngineSecondaryTasks();
-            }, Hammer::TaskPriority::Normal);
+            }, Hammer::TaskPriority::Normal, "GameEngine_Secondary");
         }
     }
     
     // Hybrid Manager Update Architecture:
-    // Global systems updated by GameEngine, state-specific by individual states
-    
-    // Global Systems (cached references for performance):
+    // Global systems updated by GameEngine (cached references for performance)
     if (mp_aiManager) {
         mp_aiManager->update(deltaTime);
     }
@@ -234,7 +246,7 @@ void GameEngine::update(float deltaTime) {
 
 #### Rendering
 ```cpp
-void GameEngine::render(float interpolation) {
+void GameEngine::render() {
     // Always on MAIN thread (SDL requirement)
     std::lock_guard<std::mutex> lock(m_renderMutex);
 
@@ -263,7 +275,7 @@ The GameEngine implements sophisticated threading with centralized resource mana
 **Threading Architecture:**
 - **Primary Coordination**: Engine coordination tasks with High priority
 - **Secondary Tasks**: Resource management and cleanup with Normal priority (only if 2+ workers allocated)
-- **Manager Integration**: Coordinates AI (60%) and Event (30%) manager threading
+- **Manager Integration**: Coordinates AI and Event manager threading
 - **Queue Pressure Management**: Monitors ThreadSystem load to prevent bottlenecks
 
 #### Thread-Safe State Management
@@ -271,15 +283,19 @@ The GameEngine implements sophisticated threading with centralized resource mana
 class GameEngine {
 private:
     // Threading synchronization
-    std::mutex m_updateMutex;
-    std::condition_variable m_updateCondition;
+    std::mutex m_updateMutex{};
+    std::condition_variable m_updateCondition{};
     std::atomic<bool> m_updateCompleted{false};
     std::atomic<bool> m_updateRunning{false};
+    std::atomic<bool> m_stopRequested{false};
     std::atomic<uint64_t> m_lastUpdateFrame{0};
     std::atomic<uint64_t> m_lastRenderedFrame{0};
     
     // Render synchronization
-    std::mutex m_renderMutex;
+    std::mutex m_renderMutex{};
+    
+    // Protection for high entity counts
+    std::atomic<size_t> m_entityProcessingCount{0};
 };
 ```
 
@@ -291,24 +307,40 @@ private:
     std::atomic<size_t> m_currentBufferIndex{0};
     std::atomic<size_t> m_renderBufferIndex{0};
     std::atomic<bool> m_bufferReady[BUFFER_COUNT]{false, false};
-    std::condition_variable m_bufferCondition;
+    std::condition_variable m_bufferCondition{};
     
 public:
     void swapBuffers() {
         size_t currentIndex = m_currentBufferIndex.load(std::memory_order_acquire);
         size_t nextUpdateIndex = (currentIndex + 1) % BUFFER_COUNT;
-        
-        if (m_bufferReady[currentIndex].load(std::memory_order_acquire)) {
-            m_renderBufferIndex.store(currentIndex, std::memory_order_release);
-            m_currentBufferIndex.store(nextUpdateIndex, std::memory_order_release);
-            m_bufferReady[nextUpdateIndex].store(false, std::memory_order_release);
+        size_t currentRenderIndex = m_renderBufferIndex.load(std::memory_order_acquire);
+
+        // Only swap if current buffer is ready AND next buffer isn't being rendered
+        if (m_bufferReady[currentIndex].load(std::memory_order_acquire) &&
+            nextUpdateIndex != currentRenderIndex) {
+
+            // Atomic compare-exchange to ensure no race condition
+            size_t expected = currentIndex;
+            if (m_currentBufferIndex.compare_exchange_strong(expected, nextUpdateIndex,
+                                                           std::memory_order_acq_rel)) {
+                m_renderBufferIndex.store(currentIndex, std::memory_order_release);
+                m_bufferReady[nextUpdateIndex].store(false, std::memory_order_release);
+                m_bufferCondition.notify_one();
+            }
         }
     }
 
-    bool hasNewFrameToRender() const {
+    bool hasNewFrameToRender() const noexcept {
+        size_t renderIndex = m_renderBufferIndex.load(std::memory_order_acquire);
+        
+        if (!m_bufferReady[renderIndex].load(std::memory_order_acquire)) {
+            return false;
+        }
+        
         uint64_t lastUpdate = m_lastUpdateFrame.load(std::memory_order_relaxed);
         uint64_t lastRendered = m_lastRenderedFrame.load(std::memory_order_relaxed);
-        return lastUpdate > lastRendered || (lastUpdate == 1 && lastRendered == 0);
+        
+        return lastUpdate > lastRendered;
     }
 };
 ```
@@ -327,56 +359,23 @@ void GameEngine::processEngineSecondaryTasks() {
 }
 ```
 
-#### Threading Implementation Details
-
-**WorkerBudget Task Submission:**
-```cpp
-void GameEngine::update(float deltaTime) {
-    // Use WorkerBudget system for coordinated task submission
-    if (Hammer::ThreadSystem::Exists()) {
-        auto& threadSystem = Hammer::ThreadSystem::Instance();
-
-        // Calculate worker budget for this frame
-        size_t availableWorkers = static_cast<size_t>(threadSystem.getThreadCount());
-        Hammer::WorkerBudget budget = Hammer::calculateWorkerBudget(availableWorkers);
-
-        // Submit engine coordination tasks with high priority
-        threadSystem.enqueueTask([this, deltaTime]() {
-            processEngineCoordination(deltaTime);
-        }, Hammer::TaskPriority::High, "GameEngine_Coordination");
-
-        // Only submit secondary tasks if multiple workers allocated
-        if (budget.engineReserved > 1) {
-            threadSystem.enqueueTask([this]() {
-                processEngineSecondaryTasks();
-            }, Hammer::TaskPriority::Normal, "GameEngine_Secondary");
-        }
-    }
-}
-```
-
-**Manager Update Architecture:**
-- **Global Systems**: AIManager and EventManager updated by GameEngine for consistency
-- **State-Specific Systems**: UIManager and others updated by individual game states
-- **Cached References**: Zero-overhead access to WorkerBudget-participating managers
-- **Exception Handling**: Robust error handling prevents single manager failures from crashing the engine
-
-**Resource Coordination:**
-- Engine coordinates with GameLoop's Critical priority allocation
-- Respects AI (60%) and Event (30%) manager worker budgets
-- Utilizes buffer threads for secondary tasks when available
-- Monitors queue pressure to prevent system overload
-
 ### Synchronization Methods
 
 #### Update Thread Coordination
 ```cpp
 void GameEngine::waitForUpdate() {
     std::unique_lock<std::mutex> lock(m_updateMutex);
-    if (!m_updateCondition.wait_for(lock, std::chrono::milliseconds(100),
-        [this] { return m_updateCompleted.load(std::memory_order_acquire); })) {
-        // Timeout handling for high entity counts
-        m_updateCompleted.store(true, std::memory_order_release);
+    auto timeout = std::chrono::milliseconds(100);
+    
+    bool completed = m_updateCondition.wait_for(lock, timeout,
+        [this] { return m_updateCompleted.load(std::memory_order_acquire) ||
+                        m_stopRequested.load(std::memory_order_acquire); });
+    
+    if (!completed && !m_stopRequested.load(std::memory_order_acquire)) {
+        if (m_updateRunning.load(std::memory_order_acquire)) {
+            // Give more time for running updates
+            m_updateCondition.wait_for(lock, std::chrono::milliseconds(50));
+        }
     }
 }
 
@@ -396,6 +395,8 @@ private:
     std::unique_ptr<SDL_Renderer, decltype(&SDL_DestroyRenderer)> mp_renderer{nullptr, SDL_DestroyRenderer};
     int m_windowWidth{1280};
     int m_windowHeight{720};
+    int m_logicalWidth{1920};   // Logical rendering width for UI positioning
+    int m_logicalHeight{1080};  // Logical rendering height for UI positioning
     SDL_RendererLogicalPresentation m_logicalPresentationMode{SDL_LOGICAL_PRESENTATION_LETTERBOX};
     float m_dpiScale{1.0f};
 };
@@ -403,164 +404,61 @@ private:
 
 ### Cross-Platform Coordinate System
 
-The engine automatically handles coordinate systems and rendering for optimal text quality across platforms:
-
 #### Platform-Specific Rendering Strategies
 
-**macOS (Letterbox Mode):**
-```cpp
-// On macOS, use aspect ratio-based logical resolution for compatibility
-int actualWidth, actualHeight;
-SDL_GetWindowSizeInPixels(mp_window.get(), &actualWidth, &actualHeight);
+**macOS Approach:**
+- Uses logical presentation with letterbox mode
+- Target resolution: 1920x1080 for consistent UI layout
+- Display content scale for proper DPI handling
+- Borderless fullscreen desktop mode
 
-// Calculate logical resolution based on actual screen aspect ratio
-float aspectRatio = static_cast<float>(actualWidth) / static_cast<float>(actualHeight);
-int targetLogicalHeight = 1080;  // Keep consistent height
-int targetLogicalWidth = static_cast<int>(std::round(targetLogicalHeight * aspectRatio));
-
-// Use letterbox mode to maintain aspect ratio and avoid black bars
-SDL_SetRenderLogicalPresentation(mp_renderer.get(), targetLogicalWidth, targetLogicalHeight, 
-                                SDL_LOGICAL_PRESENTATION_LETTERBOX);
-```
-
-**Windows/Linux (Native Resolution):**
-```cpp
-// On non-Apple platforms, use actual screen resolution to eliminate scaling blur
-int actualWidth, actualHeight;
-SDL_GetWindowSizeInPixels(mp_window.get(), &actualWidth, &actualHeight);
-
-// Store actual dimensions for UI positioning (no scaling needed)
-m_logicalWidth = actualWidth;
-m_logicalHeight = actualHeight;
-
-// Disable logical presentation to render at native resolution
-SDL_SetRenderLogicalPresentation(mp_renderer.get(), actualWidth, actualHeight, 
-                                SDL_LOGICAL_PRESENTATION_DISABLED);
-```
+**Linux/Windows Approach:**
+- Native resolution rendering to eliminate scaling blur
+- Disabled logical presentation for pixel-perfect rendering
+- Direct pixel coordinate system
 
 #### Coordinate System Benefits
 
-- **Eliminates Text Blurriness**: Native resolution rendering on Windows/Linux prevents scaling artifacts
-- **Cross-Platform Consistency**: Each platform uses its optimal rendering approach
-- **Automatic Adaptation**: Systems automatically adapt to the engine's coordinate choice
-- **Zero Coupling**: UI and Font systems automatically query engine for logical dimensions
-
-### Font System Integration
-
-The engine coordinates with FontManager for platform-optimized font sizing:
-
-```cpp
-// Platform-specific font size calculation
-#ifdef __APPLE__
-// On macOS, use fixed 18px base with logical presentation scaling
-float baseSizeFloat = 18.0f;
-#else
-// On non-Apple platforms, calculate based on actual screen resolution
-// Formula: height / 90 with 18px minimum for readability
-int clampedHeight = std::clamp(windowHeight, 480, 8640);
-float baseSizeFloat = std::max(static_cast<float>(clampedHeight) / 90.0f, 18.0f);
-#endif
-```
-
-**Font Sizing Results:**
-- **macOS (any resolution)**: 18px base font with logical scaling
-- **Windows/Linux 1080p**: 18px base font (minimum enforced) 
-- **Windows/Linux 4K**: 24px base font (dynamically calculated)
-- **All platforms**: Consistent readability and crisp rendering
+- **Consistent UI Layout**: UI elements position correctly across platforms
+- **DPI Awareness**: Automatic scaling for high-DPI displays
+- **Performance**: Native resolution on supported platforms eliminates scaling overhead
+- **Compatibility**: Fallback modes ensure operation on all systems
 
 ### VSync Management
 
-The GameEngine implements intelligent VSync management with platform-specific optimizations to handle compatibility issues across different display servers and graphics drivers.
-
 #### Platform Compatibility
-**Platform Compatibility and Fixed Timestep Solution**
 
-**VSync Timing Issues on Wayland**
+**Adaptive VSync Handling:**
+- **Wayland Detection**: Automatic detection with fallback to software limiting
+- **X11/Windows**: Hardware VSync preferred for smooth presentation
+- **macOS**: Native VSync support with display sync
 
-Wayland display server can experience timing issues when VSync is enabled, leading to:
-- Micro-stuttering and pixel-level "ticking" in movement
-- Inconsistent deltaTime values causing jerky animations
-- Poor visual smoothness despite stable frame rates
-
-**Automatic Platform Detection and Fixed Timestep**
-
-The GameEngine automatically detects Wayland and configures a fixed timestep system for smooth movement:
-
+**Detection Logic:**
 ```cpp
-// Platform detection in GameEngine::init() - Modern C++17
-const std::string videoDriverRaw = SDL_GetCurrentVideoDriver() ? SDL_GetCurrentVideoDriver() : "";
-std::string_view videoDriver = videoDriverRaw;
+const std::string videoDriver = SDL_GetCurrentVideoDriver() ? SDL_GetCurrentVideoDriver() : "";
 bool isWayland = (videoDriver == "wayland");
 
-// Fallback to environment detection with null safety
+// Fallback environment detection
 if (!isWayland) {
-    const std::string sessionTypeRaw = std::getenv("XDG_SESSION_TYPE") ? std::getenv("XDG_SESSION_TYPE") : "";
-    const std::string waylandDisplayRaw = std::getenv("WAYLAND_DISPLAY") ? std::getenv("WAYLAND_DISPLAY") : "";
-    
-    std::string_view sessionType = sessionTypeRaw;
-    bool hasWaylandDisplay = !waylandDisplayRaw.empty();
-    
-    isWayland = (sessionType == "wayland") || hasWaylandDisplay;
+    const std::string sessionType = std::getenv("XDG_SESSION_TYPE") ? std::getenv("XDG_SESSION_TYPE") : "";
+    const std::string waylandDisplay = std::getenv("WAYLAND_DISPLAY") ? std::getenv("WAYLAND_DISPLAY") : "";
+    isWayland = (sessionType == "wayland") || !waylandDisplay.empty();
 }
 
 if (isWayland) {
-    // Disable VSync on Wayland to prevent timing issues
-    SDL_SetRenderVSync(mp_renderer.get(), 0);
-    GAMEENGINE_WARN("Detected Wayland session - using software frame limiting");
+    SDL_SetRenderVSync(mp_renderer.get(), 0);  // Disable for Wayland
 } else {
-    // Enable VSync on stable platforms (X11, macOS, Windows)
-    if (SDL_SetRenderVSync(mp_renderer.get(), 1)) {
-        GAMEENGINE_INFO("VSync enabled - hardware-synchronized presentation");
-    } else {
-        GAMEENGINE_WARN("VSync failed - falling back to software limiting");
-    }
+    SDL_SetRenderVSync(mp_renderer.get(), 1);  // Enable for other platforms
 }
 ```
-
-**Fixed Timestep Configuration:**
-
-The TimestepManager is automatically configured in HammerMain after GameLoop initialization using modern C++17:
-
-```cpp
-// Configure TimestepManager for platform-specific frame limiting using modern C++17
-// This must happen after GameLoop is set but before the game starts running
-const std::string sessionTypeRaw = std::getenv("XDG_SESSION_TYPE") ? std::getenv("XDG_SESSION_TYPE") : "";
-const std::string waylandDisplayRaw = std::getenv("WAYLAND_DISPLAY") ? std::getenv("WAYLAND_DISPLAY") : "";
-
-std::string_view sessionType = sessionTypeRaw;
-bool hasWaylandDisplay = !waylandDisplayRaw.empty();
-bool isWayland = (sessionType == "wayland") || hasWaylandDisplay;
-
-if (isWayland) {
-    gameLoop->getTimestepManager().setSoftwareFrameLimiting(true);
-    GAMELOOP_INFO("Configured TimestepManager for Wayland software frame limiting");
-} else {
-    gameLoop->getTimestepManager().setSoftwareFrameLimiting(false);
-    GAMELOOP_INFO("Configured TimestepManager for hardware VSync");
-}
-```
-
-**Modern C++ Implementation Notes:**
-- Uses `std::string_view` for efficient, zero-copy string operations (C++17)
-- Employs type-safe string comparisons instead of C-style `strcmp()`
-- Implements explicit null-safety checks to prevent undefined behavior
-- Leverages RAII smart pointers with `.get()` for SDL API interoperability
-- Avoids raw pointer ownership while safely interfacing with C APIs
-- **HammerMain Configuration**: Modern C++17 patterns for environment variable handling
-- **Null-Safe Environment Access**: Immediate wrapping of raw pointers in `std::string_view`
-
-**Platform-Specific Behavior:**
-- **Linux Wayland**: VSync disabled, fixed timestep (16.667ms) for smooth movement
-- **Linux X11**: VSync enabled, variable timestep based on actual frame time
-- **macOS**: VSync enabled, variable timestep (excellent VSync support)
-- **Windows**: VSync enabled, variable timestep (reliable VSync implementation)
 
 #### API Methods
 
+**VSync Control:**
 ```cpp
-bool GameEngine::isVSyncEnabled() const {
+bool GameEngine::isVSyncEnabled() const noexcept {
     if (!mp_renderer) return false;
-
+    
     int vsync = 0;
     if (SDL_GetRenderVSync(mp_renderer.get(), &vsync)) {
         return (vsync > 0);
@@ -570,49 +468,37 @@ bool GameEngine::isVSyncEnabled() const {
 
 bool GameEngine::setVSyncEnabled(bool enable) {
     if (!mp_renderer) return false;
-    return SDL_SetRenderVSync(mp_renderer.get(), enable ? 1 : 0) == 0;
+    
+    return SDL_SetRenderVSync(mp_renderer.get(), enable ? 1 : 0);
 }
 ```
 
 #### Troubleshooting VSync Issues
-**Fixed Timestep Implementation:**
 
-The TimestepManager automatically provides consistent deltaTime based on platform:
+**Common Issues:**
+- **Wayland Timing Problems**: Automatic software fallback prevents frame time inconsistencies
+- **Driver Compatibility**: Graceful degradation to software limiting
+- **Performance Impact**: Monitor frame time consistency with TimestepManager
 
+**Debugging VSync:**
 ```cpp
-float TimestepManager::getUpdateDeltaTime() const {
-    // For VSync platforms, use actual frame time (already smooth)
-    if (!m_usingSoftwareFrameLimiting) {
-        return static_cast<float>(m_lastFrameTimeMs) / 1000.0f;
+float GameEngine::getCurrentFPS() const {
+    if (auto gameLoop = m_gameLoop.lock()) {
+        return gameLoop->getCurrentFPS();
     }
-    
-    // For software frame limiting, use fixed timestep for perfect consistency
-    return m_fixedTimestep; // Always 16.667ms at 60 FPS
+    return 0.0f;
 }
 ```
-
-**Movement Consistency Benefits:**
-- **Wayland**: `position += velocity * 16.667ms` (perfect consistency)
-- **VSync Platforms**: `position += velocity * actualFrameTime` (hardware smooth)
-- **Eliminates**: Micro-stuttering, pixel-level ticking, jerky animations
-
-**Performance Monitoring:**
-The GameLoop provides performance metrics to identify timing issues:
-```
-[GameLoop] DEBUG: Update performance: 2.5ms avg (15% frame budget)
-```
-Normal frame budget should be under 50% at target FPS.
 
 ### Window Management Methods
 
 #### Size Management
 ```cpp
-int getWindowWidth() const { return m_windowWidth; }
-int getWindowHeight() const { return m_windowHeight; }
-void setWindowSize(int width, int height) {
-    m_windowWidth = width;
-    m_windowHeight = height;
-}
+int getWindowWidth() const noexcept { return m_windowWidth; }
+int getWindowHeight() const noexcept { return m_windowHeight; }
+int getLogicalWidth() const noexcept { return m_logicalWidth; }
+int getLogicalHeight() const noexcept { return m_logicalHeight; }
+void setWindowSize(int width, int height) { m_windowWidth = width; m_windowHeight = height; }
 ```
 
 #### Logical Presentation
@@ -631,82 +517,80 @@ void setLogicalPresentationMode(SDL_RendererLogicalPresentation mode) {
 
 ### Hybrid Manager Architecture
 
-The GameEngine uses a hybrid approach for manager updates:
+The GameEngine implements a hybrid approach to manager updates:
 
-**Global Systems** (Updated by GameEngine):
-- AIManager: World simulation with 10K+ entities
-- EventManager: Global game events, batch processing
+**Global Systems (Updated by GameEngine):**
+- **AIManager**: World simulation with 10K+ entities, cached reference for performance
+- **EventManager**: Global game events with batch processing, cached reference
 
-**State-Managed Systems** (Updated by individual states):
-- UIManager: Optional, state-specific updates
-- Other state-specific managers
+**State-Managed Systems (Updated by individual states):**
+- **UIManager**: Optional, state-specific, only updated when UI is actually used
+- **InputManager**: Handled in handleEvents() for proper SDL event polling architecture
 
 ### Cached Manager References with WorkerBudget Integration
-
-For optimal performance, the GameEngine caches references to WorkerBudget-participating managers:
 
 ```cpp
 class GameEngine {
 private:
     // Cached manager references for zero-overhead performance
-    // These managers integrate with WorkerBudget system for threading
-    AIManager* mp_aiManager{nullptr};        // 60% worker allocation
-    EventManager* mp_eventManager{nullptr};  // 30% worker allocation
-
-    // InputManager not cached - handled in handleEvents() for proper SDL event polling
-    // (SDL requires main thread event processing)
+    AIManager* mp_aiManager{nullptr};
+    EventManager* mp_eventManager{nullptr};
+    // InputManager not cached - handled in handleEvents() for proper SDL architecture
+    
+public:
+    // Manager caching happens after background initialization completes
+    // Validation ensures managers are properly initialized before caching
 };
 ```
 
-**WorkerBudget Integration Advantages:**
-- **Direct Access**: Zero-overhead cached references for frequent WorkerBudget coordination
-- **Thread Coordination**: Managers coordinate through centralized WorkerBudget calculation
-- **Performance Monitoring**: Direct access enables real-time performance tracking
-**Resource Management**: Cached references allow efficient worker allocation monitoring
+**Manager Validation During Caching:**
+```cpp
+// Validate AI Manager before caching
+AIManager& aiMgrTest = AIManager::Instance();
+if (!aiMgrTest.isInitialized()) {
+    GAMEENGINE_CRITICAL("AIManager not properly initialized before caching!");
+    return false;
+}
+mp_aiManager = &aiMgrTest;
+
+// Validate Event Manager before caching
+EventManager& eventMgrTest = EventManager::Instance();
+if (!eventMgrTest.isInitialized()) {
+    GAMEENGINE_CRITICAL("EventManager not properly initialized before caching!");
+    return false;
+}
+mp_eventManager = &eventMgrTest;
+```
 
 ### WorkerBudget Coordination Architecture
 
-The GameEngine implements sophisticated coordination with the WorkerBudget system:
-
-**Centralized Resource Management:**
 ```cpp
 void GameEngine::update(float deltaTime) {
-    // Calculate worker budget for coordinated resource allocation
-    size_t availableWorkers = static_cast<size_t>(threadSystem.getThreadCount());
-    Hammer::WorkerBudget budget = Hammer::calculateWorkerBudget(availableWorkers);
+    // Use WorkerBudget system for coordinated task submission
+    if (Hammer::ThreadSystem::Exists()) {
+        auto& threadSystem = Hammer::ThreadSystem::Instance();
+        size_t availableWorkers = static_cast<size_t>(threadSystem.getThreadCount());
+        Hammer::WorkerBudget budget = Hammer::calculateWorkerBudget(availableWorkers);
 
-    // Resource allocation coordination:
-    // - GameLoop: 2 workers (Critical priority)
-    // - GameEngine: 2 workers (engine tasks)
-    // - AIManager: 60% of remaining workers
-    // - EventManager: 30% of remaining workers
-    // - Buffer: Remaining workers for burst capacity
+        // Engine receives 2 workers from WorkerBudget allocation
+        threadSystem.enqueueTask([this, deltaTime]() {
+            processEngineCoordination(deltaTime);
+        }, Hammer::TaskPriority::High, "GameEngine_Coordination");
+
+        if (budget.engineReserved > 1) {
+            threadSystem.enqueueTask([this]() {
+                processEngineSecondaryTasks();
+            }, Hammer::TaskPriority::Normal, "GameEngine_Secondary");
+        }
+    }
 }
 ```
 
-**Task Priority Coordination:**
-- **Critical Priority**: GameLoop tasks (frame-rate consistency)
-- **High Priority**: Engine coordination tasks
-- **Normal Priority**: Secondary engine tasks (when 2+ workers available)
-- **AI/Event Tasks**: Managed by respective managers with their allocated budgets
-
-**Performance Scaling Examples:**
-- **4-core/8-thread system (7 workers)**: Engine gets 2 workers for coordination tasks
-- **8-core/16-thread system (15 workers)**: Engine gets 2 workers + enhanced secondary task processing
-- **32-thread system (31 workers)**: Engine gets 2 workers + full secondary task utilization - AMD 7950X3D (16c/32t), Intel 13900K/14900K (24c/32t)
-
-**Integration Benefits:**
-- **Centralized Coordination**: Single WorkerBudget calculation shared across all systems
-- **Resource Fairness**: Prevents any single system from monopolizing worker threads
-- **Adaptive Scaling**: Automatically adjusts based on available hardware
-- **Queue Pressure Management**: Coordinated task submission prevents system overload
-
 ### Manager Access Methods
-
 ```cpp
 GameStateManager* getGameStateManager() const { return mp_gameStateManager.get(); }
-SDL_Renderer* getRenderer() const { return mp_renderer.get(); }
-SDL_Window* getWindow() const { return mp_window.get(); }
+SDL_Renderer* getRenderer() const noexcept { return mp_renderer.get(); }
+SDL_Window* getWindow() const noexcept { return mp_window.get(); }
 float getDPIScale() const { return m_dpiScale; }
 ```
 
@@ -714,7 +598,6 @@ float getDPIScale() const { return m_dpiScale; }
 
 ```cpp
 float GameEngine::getCurrentFPS() const {
-    // Gets FPS from GameLoop's TimestepManager
     if (auto gameLoop = m_gameLoop.lock()) {
         return gameLoop->getCurrentFPS();
     }
@@ -727,173 +610,153 @@ float GameEngine::getCurrentFPS() const {
 ### Core Lifecycle Methods
 
 ```cpp
-static GameEngine& Instance();
-bool init(std::string_view title, int width, int height, bool fullscreen);
-void handleEvents();
-void update(float deltaTime);
-void render(float interpolation);
-void clean();
+static GameEngine& Instance();                                    // Get singleton instance
+bool init(std::string_view title, int width, int height, bool fullscreen); // Initialize engine
+void handleEvents();                                             // Handle SDL events and input
+void update(float deltaTime);                                    // Update game logic (thread-safe)
+void render();                                                   // Render frame (main thread only)
+void clean();                                                    // Cleanup all resources
 ```
 
 ### Threading Methods
 
 ```cpp
-void processBackgroundTasks();
-void processEngineCoordination(float deltaTime);
-void processEngineSecondaryTasks();
-bool loadResourcesAsync(const std::string& path);
-void waitForUpdate();
-void signalUpdateComplete();
-bool hasNewFrameToRender() const;
-bool isUpdateRunning() const;
-void swapBuffers();
-size_t getCurrentBufferIndex() const;
-size_t getRenderBufferIndex() const;
+void processBackgroundTasks();                                   // Process background tasks
+void processEngineCoordination(float deltaTime);                // Engine coordination (high priority)
+void processEngineSecondaryTasks();                            // Secondary tasks (normal priority)
+void waitForUpdate();                                           // Wait for update completion
+void signalUpdateComplete();                                    // Signal update complete
+bool hasNewFrameToRender() const noexcept;                     // Check if new frame ready
+bool isUpdateRunning() const noexcept;                         // Check if update in progress
+void swapBuffers();                                             // Swap double buffers
+size_t getCurrentBufferIndex() const noexcept;                 // Get current update buffer
+size_t getRenderBufferIndex() const noexcept;                  // Get render buffer index
 ```
 
 ### State Management
 
 ```cpp
-void setGameLoop(std::shared_ptr<GameLoop> gameLoop);
-void setRunning(bool running);
-bool getRunning() const;
-float getCurrentFPS() const;
+void setGameLoop(std::shared_ptr<GameLoop> gameLoop);          // Set GameLoop reference
+void setRunning(bool running);                                  // Set engine running state
+bool getRunning() const;                                        // Get engine running state
+float getCurrentFPS() const;                                    // Get current FPS from GameLoop
 ```
 
 ### Window and Rendering
 
 ```cpp
-int getWindowWidth() const;
-int getWindowHeight() const;
-void setWindowSize(int width, int height);
-void setLogicalPresentationMode(SDL_RendererLogicalPresentation mode);
-SDL_RendererLogicalPresentation getLogicalPresentationMode() const;
-float getDPIScale() const;
-int getOptimalDisplayIndex() const;
-bool isVSyncEnabled() const;
-bool setVSyncEnabled(bool enable);
+int getWindowWidth() const noexcept;                           // Get window width
+int getWindowHeight() const noexcept;                          // Get window height
+int getLogicalWidth() const noexcept;                          // Get logical width
+int getLogicalHeight() const noexcept;                         // Get logical height
+void setWindowSize(int width, int height);                     // Set window size
+void setLogicalPresentationMode(SDL_RendererLogicalPresentation mode); // Set presentation mode
+SDL_RendererLogicalPresentation getLogicalPresentationMode() const noexcept; // Get presentation mode
+float getDPIScale() const;                                      // Get DPI scale factor
+void setDPIScale(float newScale);                              // Set DPI scale factor
+int getOptimalDisplayIndex() const;                            // Get optimal display index
+bool isVSyncEnabled() const noexcept;                          // Check VSync status
+bool setVSyncEnabled(bool enable);                             // Set VSync on/off
 ```
 
 ### Resource Management
 
 ```cpp
-GameStateManager* getGameStateManager() const;
-SDL_Renderer* getRenderer() const;
-SDL_Window* getWindow() const;
+GameStateManager* getGameStateManager() const;                 // Get GameStateManager pointer
+SDL_Renderer* getRenderer() const noexcept;                   // Get SDL renderer
+SDL_Window* getWindow() const noexcept;                       // Get SDL window
 ```
 
 ## Best Practices
 
 ### 1. Proper Initialization Order
 
-Always initialize in the correct sequence:
-
 ```cpp
 bool initializeGame() {
     GameEngine& engine = GameEngine::Instance();
-
-    // 1. Initialize engine first
-    if (!engine.init("Game Title", 1280, 720, false)) {
+    
+    // Initialize engine first
+    if (!engine.init("My Game", 1280, 720, false)) {
+        GAMEENGINE_ERROR("Failed to initialize GameEngine");
         return false;
     }
-
-    // 2. Create and set game loop
+    
+    // Create and set GameLoop
     auto gameLoop = std::make_shared<GameLoop>();
     engine.setGameLoop(gameLoop);
-
-    // 3. Start the loop
-    gameLoop->run();
-
-    // 4. Cleanup
-    engine.clean();
+    
+    // Additional game-specific initialization
+    // ...
+    
     return true;
 }
 ```
 
 ### 2. Thread-Safe Resource Access
 
-When accessing resources from worker threads:
-
 ```cpp
 void workerThreadFunction() {
+    // Safe to call from worker threads
     GameEngine& engine = GameEngine::Instance();
-
-    // Safe: These methods are thread-safe
-    if (engine.hasNewFrameToRender()) {
-        // Process frame data
+    
+    // These methods are thread-safe
+    bool hasFrame = engine.hasNewFrameToRender();
+    size_t bufferIndex = engine.getCurrentBufferIndex();
+    
+    // Access managers through engine (cached references)
+    if (auto* gameStateManager = engine.getGameStateManager()) {
+        // Safe access to game state
     }
-
-    // Safe: Atomic operations
-    bool isRunning = engine.isUpdateRunning();
 }
 ```
 
 ### 3. Proper VSync Handling
 
-The GameEngine automatically handles VSync based on platform compatibility, but you can still check VSync status for optimization purposes:
-
 ```cpp
 void setupRenderer() {
     GameEngine& engine = GameEngine::Instance();
-
-    // GameEngine automatically configures VSync based on platform
-    // Check the result for optimization decisions
+    
+    // Check VSync support
     if (engine.isVSyncEnabled()) {
-        // VSync is active - hardware frame synchronization
-        // Can rely on VSync for smooth animation timing
+        GAMEENGINE_INFO("VSync enabled - using hardware timing");
     } else {
-        // Software frame limiting is active
-        // May need more careful timing for smooth animations
-        // This is normal on Wayland or when VSync fails
+        GAMEENGINE_INFO("VSync disabled - using software timing");
+        
+        // Implement software frame limiting if needed
+        // GameLoop handles this automatically
     }
 }
-```
 
-**Platform-Aware Development:**
-```cpp
 void optimizeForPlatform() {
     GameEngine& engine = GameEngine::Instance();
     
-    // Movement and animation code works automatically across all platforms
-    // The TimestepManager provides appropriate deltaTime for each platform
-    
-    // Adapt rendering strategy based on VSync availability
-    if (engine.isVSyncEnabled()) {
-        // Hardware VSync available - can use aggressive rendering optimizations
-        enableHighQualityEffects();
-    } else {
-        // Software limiting with fixed timestep - still smooth but different timing
-        optimizeForSoftwareFrameLimiting();
-    }
+    #ifdef __APPLE__
+    // macOS uses letterbox mode for consistent UI
+    engine.setLogicalPresentationMode(SDL_LOGICAL_PRESENTATION_LETTERBOX);
+    #else
+    // Other platforms use native resolution
+    engine.setLogicalPresentationMode(SDL_LOGICAL_PRESENTATION_DISABLED);
+    #endif
 }
 ```
 
-**Fixed Timestep Benefits:**
-- **Consistent Physics**: Same deltaTime every frame on software limiting platforms
-- **Smooth Movement**: Eliminates micro-stuttering and pixel-level ticking
-- **Cross-Platform**: Automatic adaptation without code changes
-- **Predictable**: Deterministic movement behavior for debugging and testing
-
-**Never manually override the automatic platform detection** unless you have specific requirements. The GameEngine's automatic detection provides optimal timing for each platform.
-
 ### 4. Error Handling
-
-Always check return values and handle exceptions:
 
 ```cpp
 bool safeEngineOperation() {
     try {
         GameEngine& engine = GameEngine::Instance();
-
-        if (!engine.init("My Game", 1280, 720, false)) {
+        
+        // Always check if engine is properly initialized
+        if (!engine.getRenderer()) {
+            GAMEENGINE_ERROR("Engine not properly initialized");
             return false;
         }
-
-        // Additional operations...
+        
+        // Perform operations...
         return true;
-
     } catch (const std::exception& e) {
-        std::cerr << "Engine error: " << e.what() << std::endl;
+        GAMEENGINE_ERROR("Engine operation failed: " + std::string(e.what()));
         return false;
     }
 }
@@ -903,112 +766,54 @@ bool safeEngineOperation() {
 
 ### VSync and Timing Issues
 
-**Problem: Movement appears jerky or "ticks" pixel by pixel**
+**Problem**: Stuttering or inconsistent frame times
+**Solution**: 
+- Check if VSync is properly enabled: `engine.isVSyncEnabled()`
+- On Wayland, the engine automatically falls back to software timing
+- Monitor FPS with `engine.getCurrentFPS()`
 
-This is caused by inconsistent deltaTime values when using software frame limiting instead of hardware VSync.
-
-**Symptoms:**
-- Player or entity movement appears to stutter or tick forward
-- Smooth movement works on some platforms but not others
-- Animations appear jerky despite stable frame rates
-- Movement inconsistency on Wayland-based systems
-
-**Automatic Solution:**
-The GameEngine automatically detects and handles this issue by:
-- Detecting Wayland display server during initialization
-- Disabling VSync and configuring fixed timestep mode
-- Providing perfectly consistent 16.667ms deltaTime every frame
-- Preserving smooth VSync timing on compatible platforms
-- Logging the detection and configuration strategy
-
-**Manual Diagnosis:**
-```bash
-# Check if you're running on Wayland
-echo $XDG_SESSION_TYPE
-echo $WAYLAND_DISPLAY
-
-# Test with forced X11 (if available)
-SDL_VIDEODRIVER=x11 ./your_game
-
-# Check game logs for VSync detection messages
-grep -i "wayland\|vsync" game_output.log
-```
-
-**Expected Log Output:**
-```
-[GameEngine] WARNING: Detected Wayland session - VSync may cause timing issues, using software limiting
-[GameEngine] INFO: Using software frame rate limiting for consistent timing on Wayland
-[GameLoop] INFO: Configured TimestepManager for Wayland software frame limiting
-```
-
-**Platform-Specific Notes:**
-- **Linux X11**: VSync enabled, variable timestep based on hardware timing
-- **Linux Wayland**: VSync disabled, fixed timestep (16.667ms) for smooth movement
-- **macOS**: VSync enabled, variable timestep (excellent VSync support)
-- **Windows**: VSync enabled, variable timestep (reliable VSync implementation)
-
-**Solution Verification:**
-The fixed timestep solution provides:
-- **Consistent deltaTime**: Always 16.667ms on Wayland (60 FPS)
-- **Smooth Movement**: `position += velocity * deltaTime` with perfect consistency
-- **Automatic Detection**: No manual configuration required
-- **Cross-Platform**: Works identically on all systems
-
-**If Movement Still Appears Jerky:**
-1. Verify the TimestepManager configuration message appears in logs
-2. Check that movement code uses deltaTime properly: `position += velocity * deltaTime`
-3. Ensure frame rate is stable (low CPU/GPU usage)
-4. Test on X11 to confirm it's platform-specific: `SDL_VIDEODRIVER=x11 ./your_game`
+**Problem**: VSync not working on Linux
+**Solution**:
+- The engine automatically detects Wayland and disables VSync
+- Use environment variables for manual override if needed
+- Check SDL video driver: `SDL_GetCurrentVideoDriver()`
 
 ### Performance Issues
 
-**Problem: Low FPS or stuttering despite VSync being handled correctly**
+**Symptoms**: Low FPS, high CPU usage, frame drops
+**Debugging Steps**:
 
-**Diagnosis:**
-Check GameLoop performance metrics in console output:
-```
-[GameLoop] DEBUG: Update performance: X.XXXms avg (Y.Y% frame budget)
-```
+1. **Check Thread System Load**:
+   ```cpp
+   if (Hammer::ThreadSystem::Instance().isBusy()) {
+       GAMEENGINE_WARN("Thread system overloaded");
+   }
+   ```
 
-**Normal Values:**
-- At 60 FPS: ~16.67ms frame budget (100%)
-- Update performance should be <50% frame budget
-- Render operations should complete within frame time
+2. **Monitor Manager Performance**:
+   - AI Manager entity count: Check if entity processing is too high
+   - Event Manager: Check for event processing bottlenecks
+   - UI Manager: Only update when UI is active
 
-**Common Causes:**
-- Too many entities being processed simultaneously
-- Inefficient rendering operations
-- Background thread contention
-- Resource loading blocking main thread
+3. **Buffer System Health**:
+   ```cpp
+   bool hasFrame = engine.hasNewFrameToRender();
+   bool updateRunning = engine.isUpdateRunning();
+   ```
 
 ### Movement and Animation Issues
 
-**Problem: Smooth movement works on some platforms but not others**
-
-This is resolved by the automatic fixed timestep system for software frame limiting platforms.
-
-**Technical Implementation:**
+**Problem**: Jerky movement or animation
+**Cause**: Usually related to timing or buffer synchronization
+**Solution**:
 ```cpp
-// Movement code works identically across all platforms
 void Entity::update(float deltaTime) {
-    // deltaTime is automatically:
-    // - Variable (hardware VSync) on X11/macOS/Windows
-    // - Fixed 16.667ms on Wayland for perfect consistency
-    m_position += m_velocity * deltaTime;
+    // Use provided deltaTime for consistent movement
+    position += velocity * deltaTime;
+    
+    // Don't create your own timing system
 }
 ```
-
-**Fixed Timestep Benefits:**
-1. **Eliminates Micro-Stuttering**: Perfectly consistent deltaTime every frame
-2. **Cross-Platform Consistency**: Movement behavior identical across systems
-3. **Predictable Physics**: Deterministic movement for debugging and testing
-4. **No Code Changes**: Existing movement code works automatically
-
-**Verification Steps:**
-1. Check logs for TimestepManager configuration messages
-2. Verify smooth movement in GamePlayState (arrow keys to move player)
-3. Test state transitions work correctly (LogoState → MainMenuState → GamePlayState)
-4. Compare movement smoothness between Wayland and X11 if available
 
 ## Examples
 
@@ -1018,46 +823,50 @@ void Entity::update(float deltaTime) {
 class MyGame {
 private:
     std::shared_ptr<GameLoop> m_gameLoop;
-
+    
 public:
     MyGame() = default;
-
+    
     bool initialize() {
+        // Initialize engine
         GameEngine& engine = GameEngine::Instance();
-
-        // Initialize engine with specific parameters
-        if (!engine.init("My Awesome Game", 1920, 1080, false)) {
+        if (!engine.init("My Game", 1920, 1080, false)) {
+            GAMEENGINE_ERROR("Failed to initialize GameEngine");
             return false;
         }
-
-        // Create game loop
+        
+        // Create GameLoop
         m_gameLoop = std::make_shared<GameLoop>();
         engine.setGameLoop(m_gameLoop);
-
+        
         // Load game-specific resources
         if (!loadGameResources()) {
+            GAMEENGINE_ERROR("Failed to load game resources");
             return false;
         }
-
+        
+        GAMEENGINE_INFO("Game initialized successfully");
         return true;
     }
-
+    
     bool run() {
         if (!m_gameLoop) {
+            GAMEENGINE_ERROR("GameLoop not initialized");
             return false;
         }
-
+        
         // Start the main loop
         m_gameLoop->run();
         return true;
     }
-
+    
     void shutdown() {
         GameEngine& engine = GameEngine::Instance();
         engine.clean();
-        m_gameLoop.reset();
+        
+        GAMEENGINE_INFO("Game shutdown complete");
     }
-
+    
 private:
     bool loadGameResources() {
         // Load game-specific resources here
@@ -1067,14 +876,14 @@ private:
 
 int main() {
     MyGame game;
-
+    
     if (!game.initialize()) {
         return -1;
     }
-
+    
     game.run();
     game.shutdown();
-
+    
     return 0;
 }
 ```
@@ -1086,52 +895,58 @@ class AsyncResourceLoader {
 private:
     std::atomic<bool> m_loadingComplete{false};
     std::vector<std::future<bool>> m_loadingTasks;
-
+    
 public:
     AsyncResourceLoader() = default;
-
+    
     void startLoading() {
-        // Use ThreadSystem for coordinated loading
+        GameEngine& engine = GameEngine::Instance();
         auto& threadSystem = Hammer::ThreadSystem::Instance();
-
-        // Load different resource types in parallel
+        
+        // Load textures in background
         m_loadingTasks.push_back(
-            threadSystem.enqueueTaskWithResult([]() -> bool {
-                // Load textures
+            threadSystem.enqueueTaskWithResult([&engine]() -> bool {
                 TextureManager& texMgr = TextureManager::Instance();
-                texMgr.load("res/textures", "", GameEngine::Instance().getRenderer());
-                return true;
+                return texMgr.loadFromDirectory("res/textures", engine.getRenderer());
             })
         );
-
+        
+        // Load sounds in background
         m_loadingTasks.push_back(
             threadSystem.enqueueTaskWithResult([]() -> bool {
-                // Load sounds
                 SoundManager& soundMgr = SoundManager::Instance();
-                soundMgr.loadSFX("res/audio", "sfx");
-                return true;
+                return soundMgr.loadFromDirectory("res/sounds");
             })
         );
-
-        // Start background completion check
+        
+        // Start completion check
         threadSystem.enqueueTask([this]() {
             waitForCompletion();
-            m_loadingComplete.store(true);
         });
     }
-
+    
     bool isComplete() const {
         return m_loadingComplete.load();
     }
-
+    
 private:
     void waitForCompletion() {
+        bool allSucceeded = true;
         for (auto& task : m_loadingTasks) {
             try {
-                task.get();
+                allSucceeded &= task.get();
             } catch (const std::exception& e) {
-                std::cerr << "Resource loading failed: " << e.what() << std::endl;
+                GAMEENGINE_ERROR("Resource loading failed: " + std::string(e.what()));
+                allSucceeded = false;
             }
+        }
+        
+        m_loadingComplete.store(allSucceeded);
+        
+        if (allSucceeded) {
+            GAMEENGINE_INFO("All resources loaded successfully");
+        } else {
+            GAMEENGINE_ERROR("Some resources failed to load");
         }
     }
 };
@@ -1163,11 +978,10 @@ public:
             float engineFPS = engine.getCurrentFPS();
             float calculatedFPS = static_cast<float>(m_frameCount) / m_frameTimeAccumulator;
 
-            std::cout << "Engine FPS: " << engineFPS
-                      << ", Calculated FPS: " << calculatedFPS
-                      << ", Update Running: " << engine.isUpdateRunning()
-                      << ", New Frame Available: " << engine.hasNewFrameToRender()
-                      << std::endl;
+            GAMEENGINE_INFO("Engine FPS: " + std::to_string(engineFPS) +
+                          ", Calculated FPS: " + std::to_string(calculatedFPS) +
+                          ", Update Running: " + std::to_string(engine.isUpdateRunning()) +
+                          ", New Frame Available: " + std::to_string(engine.hasNewFrameToRender()));
 
             // Reset counters
             m_frameTimeAccumulator = 0.0f;
@@ -1176,3 +990,7 @@ public:
     }
 };
 ```
+
+---
+
+*This documentation reflects the current GameEngine implementation with SDL3, multi-threaded initialization, WorkerBudget integration, and cross-platform compatibility. The engine provides a robust foundation for game development with automatic platform optimization and thread-safe operations.*
