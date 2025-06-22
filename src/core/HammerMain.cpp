@@ -60,7 +60,7 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char* argv[]) {
   // Set GameLoop reference in GameEngine for delegation
   GameEngine::Instance().setGameLoop(gameLoop);
 
-  // Configure TimestepManager for platform-specific frame limiting using modern C++17
+  // Configure TimestepManager for platform-specific frame limiting
   // This must happen after GameLoop is set but before the game starts running
   const std::string sessionTypeRaw = std::getenv("XDG_SESSION_TYPE") ? std::getenv("XDG_SESSION_TYPE") : "";
   const std::string waylandDisplayRaw = std::getenv("WAYLAND_DISPLAY") ? std::getenv("WAYLAND_DISPLAY") : "";
