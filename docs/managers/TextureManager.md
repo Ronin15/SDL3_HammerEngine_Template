@@ -87,8 +87,9 @@ TextureManager::Instance().drawFrame(
 // Create scrolling background effect
 TextureManager::Instance().drawParallax(
     "background",                  // Texture ID
-    cameraX,                       // Camera X position
-    0.5f,                         // Scroll speed factor (0.0-1.0)
+    100,                           // X position
+    50,                            // Y position
+    150,                           // Scroll offset
     renderer                       // SDL Renderer
 );
 ```
@@ -99,13 +100,15 @@ TextureManager::Instance().drawParallax(
 
 ```cpp
 // Check if texture exists
-if (TextureManager::Instance().hasTexture("player")) {
+if (TextureManager::Instance().isTextureInMap("player")) {
     // Texture is loaded and ready
 }
 
-// Get texture dimensions
-int width, height;
-if (TextureManager::Instance().getTextureDimensions("player", width, height)) {
+// Get texture directly for custom operations
+if (auto texture = TextureManager::Instance().getTexture("player")) {
+    // Texture is available for use
+    float width, height;
+    SDL_GetTextureSize(texture.get(), &width, &height);
     std::cout << "Texture size: " << width << "x" << height << std::endl;
 }
 ```
@@ -114,10 +117,10 @@ if (TextureManager::Instance().getTextureDimensions("player", width, height)) {
 
 ```cpp
 // Remove specific texture
-TextureManager::Instance().clearTexture("old_texture");
+TextureManager::Instance().clearFromTexMap("old_texture");
 
 // Clear all textures
-TextureManager::Instance().clearAllTextures();
+TextureManager::Instance().clean();
 ```
 
 ## Usage Examples
