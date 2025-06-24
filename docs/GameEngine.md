@@ -309,10 +309,17 @@ private:
     std::atomic<bool> m_bufferReady[BUFFER_COUNT]{false, false};
     std::condition_variable m_bufferCondition{};
     
+    // Frame tracking for synchronization
+    std::atomic<uint64_t> m_lastUpdateFrame{0};
+    std::atomic<uint64_t> m_lastRenderedFrame{0};
+    
 public:
     void swapBuffers() {
+        // Thread-safe buffer swap with proper synchronization
         size_t currentIndex = m_currentBufferIndex.load(std::memory_order_acquire);
         size_t nextUpdateIndex = (currentIndex + 1) % BUFFER_COUNT;
+
+        // Check if we have a valid render buffer before attempting swap
         size_t currentRenderIndex = m_renderBufferIndex.load(std::memory_order_acquire);
 
         // Only swap if current buffer is ready AND next buffer isn't being rendered
@@ -322,21 +329,30 @@ public:
             // Atomic compare-exchange to ensure no race condition
             size_t expected = currentIndex;
             if (m_currentBufferIndex.compare_exchange_strong(expected, nextUpdateIndex,
-                                                           std::memory_order_acq_rel)) {
+                                                             std::memory_order_acq_rel)) {
+                // Successfully swapped update buffer
+                // Make previous update buffer available for rendering
                 m_renderBufferIndex.store(currentIndex, std::memory_order_release);
+
+                // Clear the next buffer's ready state for the next update cycle
                 m_bufferReady[nextUpdateIndex].store(false, std::memory_order_release);
+
+                // Signal buffer swap completion
                 m_bufferCondition.notify_one();
             }
         }
     }
 
     bool hasNewFrameToRender() const noexcept {
+        // Optimized render check with minimal atomic operations
         size_t renderIndex = m_renderBufferIndex.load(std::memory_order_acquire);
         
+        // Single check for buffer readiness
         if (!m_bufferReady[renderIndex].load(std::memory_order_acquire)) {
             return false;
         }
         
+        // Compare frame counters only if buffer is ready - use relaxed ordering for counters
         uint64_t lastUpdate = m_lastUpdateFrame.load(std::memory_order_relaxed);
         uint64_t lastRendered = m_lastRenderedFrame.load(std::memory_order_relaxed);
         

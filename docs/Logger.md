@@ -51,18 +51,20 @@ SOUND_WARN("Audio device not found, using software mixing");
 ### Class Structure
 
 ```cpp
-namespace Forge {
+namespace Hammer {
     enum class LogLevel : uint8_t {
         CRITICAL = 0,  // Always logged (even in release)
         ERROR = 1,     // Debug only
         WARNING = 2,   // Debug only
         INFO = 3,      // Debug only
-        DEBUG = 4      // Debug only
+        DEBUG_LEVEL = 4      // Debug only (renamed to avoid macro conflicts)
     };
 
     class Logger {
         static void Log(LogLevel level, const char* system, const std::string& message);
         static void Log(LogLevel level, const char* system, const char* message);
+        static void SetBenchmarkMode(bool enabled);
+        static bool IsBenchmarkMode();
     };
 }
 ```
@@ -328,6 +330,60 @@ GAMELOOP_DEBUG("Frame timing - Delta: " + std::to_string(deltaTime) +
 AI_INFO("Entity " + std::to_string(entityId) + " switched to patrol mode");
 ```
 
+## Benchmark Mode
+
+The logging system includes a benchmark mode that disables all logging output for performance testing:
+
+### Benchmark Mode Control
+```cpp
+// Enable benchmark mode (disables all logging)
+HAMMER_ENABLE_BENCHMARK_MODE();
+// or
+Hammer::Logger::SetBenchmarkMode(true);
+
+// Disable benchmark mode (re-enables logging)
+HAMMER_DISABLE_BENCHMARK_MODE();
+// or
+Hammer::Logger::SetBenchmarkMode(false);
+
+// Check current benchmark mode status
+if (Hammer::Logger::IsBenchmarkMode()) {
+    // Logging is currently disabled
+}
+```
+
+### Use Cases for Benchmark Mode
+- **Performance Profiling**: Eliminate logging overhead during benchmarks
+- **Release Testing**: Test release performance characteristics in debug builds
+- **Automated Testing**: Reduce console output during automated test runs
+- **Performance Comparison**: Compare performance with and without logging
+
+### Example Usage
+```cpp
+void runPerformanceTest() {
+    GAMELOOP_INFO("Starting performance test");
+    
+    // Enable benchmark mode for clean performance measurement
+    HAMMER_ENABLE_BENCHMARK_MODE();
+    
+    auto start = std::chrono::high_resolution_clock::now();
+    
+    // Run performance-critical code without logging overhead
+    for (int i = 0; i < 1000000; ++i) {
+        processGameFrame();
+        // No logging output during this loop
+    }
+    
+    auto end = std::chrono::high_resolution_clock::now();
+    
+    // Re-enable logging for results
+    HAMMER_DISABLE_BENCHMARK_MODE();
+    
+    auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
+    GAMELOOP_INFO("Performance test completed in " + std::to_string(duration.count()) + " microseconds");
+}
+```
+
 ## Performance Considerations
 
 ### Debug Build Performance
@@ -335,18 +391,21 @@ AI_INFO("Entity " + std::to_string(entityId) + " switched to patrol mode");
 - Immediate flushing ensures real-time feedback
 - String conversion handled automatically
 - Minimal overhead for typical game logging
+- Benchmark mode available for zero-overhead testing
 
 ### Release Build Performance
 - **Zero overhead** for ERROR, WARNING, INFO, DEBUG levels
-- CRITICAL messages have minimal overhead (single printf call)
+- CRITICAL and ERROR messages have minimal overhead (single printf call with mutex protection)
 - No function calls or string processing for disabled levels
 - Compiler optimizes away disabled macros completely
+- Benchmark mode affects CRITICAL and ERROR levels in release builds
 
 ### Memory Usage
 - No dynamic memory allocation
 - No log buffering or storage
 - Immediate output to stdout
 - No memory leaks possible
+- Thread-safe mutex protection with minimal memory footprint
 
 ## Examples
 

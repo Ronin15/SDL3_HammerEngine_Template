@@ -1010,6 +1010,6 @@ private:
     ThreadSystem() = default;
 };
 
-} // namespace Forge
+} // namespace Hammer
 
 #endif // THREAD_SYSTEM_HPP
