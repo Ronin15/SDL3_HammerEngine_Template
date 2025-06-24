@@ -66,6 +66,7 @@ Resource management systems for fonts, textures, audio, and game data.
 - **[FontManager](managers/FontManager.md)** - Font loading, text rendering, and measurement utilities with DPI-aware scaling and auto-sizing integration
 - **[SoundManager](managers/SoundManager.md)** - Audio playback and sound management system with volume control and state integration
 - **[TextureManager](managers/TextureManager.md)** - Texture loading and sprite rendering system
+- **[SaveGameManager](SaveGameManager.md)** - Comprehensive binary save/load system with slot management, metadata extraction, and cross-platform compatibility
 
 ### Utility Systems
 Core utility classes and helper systems used throughout the engine.
