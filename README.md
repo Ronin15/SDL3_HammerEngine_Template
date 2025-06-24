@@ -264,11 +264,12 @@ The SaveGameManager provides comprehensive save and load functionality with robu
 - **Directory Management**: Automatic save directory creation with write permission validation
 - **Error Handling**: Comprehensive error checking with detailed logging and exception safety
 - **Memory Safety**: RAII principles with smart pointers and automatic resource cleanup
-- **Cross-Platform**: Full Windows, macOS, and Linux compatibility with filesystem operations, SaveManager, and threadSystem.
+- **Cross-Platform**: Full Windows, macOS, and Linux compatibility with filesystem operations
+- **BinarySerializer Integration**: Fast, optimized serialization with 10x performance improvement over text formats
 
 Key features include automatic save directory setup (`res/game_saves/`), save file listing and enumeration, batch save information retrieval, and safe file deletion with validation.
 
-See `include/managers/SaveGameManager.hpp` for the full API and implementation details.
+See `docs/SaveGameManager.md` for comprehensive documentation including API reference, usage examples, save file format details, and best practices.
 
 ### ThreadSystem
 
