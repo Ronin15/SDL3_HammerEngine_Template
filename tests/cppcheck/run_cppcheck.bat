@@ -1,5 +1,5 @@
 @echo off
-REM Cppcheck Analysis Script for SDL3_ForgeEngine_Template (Windows)
+REM Cppcheck Analysis Script for SDL3_HammerEngine_Template (Windows)
 REM This script runs cppcheck with optimized settings to focus on real issues
 
 setlocal enabledelayedexpansion
@@ -16,7 +16,7 @@ set TIMESTAMP=%datetime:~0,8%_%datetime:~8,6%
 REM Create output directory if it doesn't exist
 if not exist "%OUTPUT_DIR%" mkdir "%OUTPUT_DIR%"
 
-echo === SDL3 ForgeEngine Template - Cppcheck Analysis ===
+echo === SDL3 HammerEngine Template - Cppcheck Analysis ===
 echo Project Root: %PROJECT_ROOT%
 echo Timestamp: %TIMESTAMP%
 echo.
@@ -175,7 +175,7 @@ echo.
 REM Generate final summary
 echo === FINAL CPPCHECK SUMMARY === > "%FINAL_SUMMARY%"
 echo Generated: %date% %time% >> "%FINAL_SUMMARY%"
-echo Project: SDL3_ForgeEngine_Template >> "%FINAL_SUMMARY%"
+echo Project: SDL3_HammerEngine_Template >> "%FINAL_SUMMARY%"
 echo. >> "%FINAL_SUMMARY%"
 echo Analysis Results: >> "%FINAL_SUMMARY%"
 echo   Critical Issues: !CRITICAL_COUNT! >> "%FINAL_SUMMARY%"
