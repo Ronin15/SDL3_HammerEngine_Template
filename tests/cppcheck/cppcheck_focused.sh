@@ -1,5 +1,5 @@
 #!/bin/bash
-# Simple focused cppcheck analysis for SDL3_ForgeEngine_Template
+# Simple focused cppcheck analysis for SDL3_HammerEngine_Template
 # This script runs cppcheck with optimized settings to show only real issues
 
 set -e
@@ -11,7 +11,7 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-echo -e "${BLUE}=== SDL3 ForgeEngine - Focused Cppcheck Analysis ===${NC}"
+echo -e "${BLUE}=== SDL3 HammerEngine - Focused Cppcheck Analysis ===${NC}"
 echo ""
 
 # Check if cppcheck is available

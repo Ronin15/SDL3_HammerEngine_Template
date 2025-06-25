@@ -1,10 +1,10 @@
 @echo off
-REM Simple focused cppcheck analysis for SDL3_ForgeEngine_Template (Windows)
+REM Simple focused cppcheck analysis for SDL3_HammerEngine_Template (Windows)
 REM This script runs cppcheck with optimized settings to show only real issues
 
 setlocal enabledelayedexpansion
 
-echo === SDL3 ForgeEngine - Focused Cppcheck Analysis ===
+echo === SDL3 HammerEngine - Focused Cppcheck Analysis ===
 echo.
 
 REM Check if cppcheck is available
