@@ -10,6 +10,7 @@
 #include "managers/UIManager.hpp"
 #include "managers/AIManager.hpp"
 #include "managers/EventManager.hpp"
+#include "managers/ParticleManager.hpp"
 #include "events/WeatherEvent.hpp"
 #include "events/SceneChangeEvent.hpp"
 #include "events/NPCSpawnEvent.hpp"
@@ -281,6 +282,20 @@ void EventDemoState::update(float deltaTime) {
 }
 
 void EventDemoState::render(float deltaTime) {
+    // Get renderer using the standard pattern (consistent with other states)
+    auto& gameEngine = GameEngine::Instance();
+    SDL_Renderer* renderer = gameEngine.getRenderer();
+    
+    // Render particle effects first (background layer)
+    ParticleManager& particleMgr = ParticleManager::Instance();
+    if (particleMgr.isInitialized() && !particleMgr.isShutdown()) {
+        // Particle system is working correctly - debug code removed
+        
+        // Render particles with camera offset (for world-space effects)
+        // Using 0,0 for now since EventDemoState doesn't have camera movement
+        particleMgr.render(renderer, 0.0f, 0.0f);
+    }
+
     // Render player
     if (m_player) {
         m_player->render();
@@ -549,7 +564,9 @@ void EventDemoState::triggerWeatherDemoAuto() {
 
     // Create and execute weather event directly
     auto weatherEvent = std::make_shared<WeatherEvent>("demo_auto_weather", newWeather);
-    WeatherParams params;
+    
+    // Get the default params (which include particle effects) and modify them
+    WeatherParams params = weatherEvent->getWeatherParams();
     params.transitionTime = m_weatherTransitionTime;
     params.intensity = (newWeather == WeatherType::Clear) ? 0.0f : 0.8f;
     weatherEvent->setWeatherParams(params);
@@ -568,7 +585,9 @@ void EventDemoState::triggerWeatherDemoManual() {
 
     // Create and execute weather event directly
     auto weatherEvent = std::make_shared<WeatherEvent>("demo_manual_weather", newWeather);
-    WeatherParams params;
+    
+    // Get the default params (which include particle effects) and modify them
+    WeatherParams params = weatherEvent->getWeatherParams();
     params.transitionTime = m_weatherTransitionTime;
     params.intensity = (newWeather == WeatherType::Clear) ? 0.0f : 0.8f;
     weatherEvent->setWeatherParams(params);

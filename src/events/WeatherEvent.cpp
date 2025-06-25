@@ -7,6 +7,7 @@
 #include "utils/Vector2D.hpp"
 #include "core/Logger.hpp"
 #include "core/GameTime.hpp"
+#include "managers/ParticleManager.hpp"
 #include <random>
 #include <algorithm>
 
@@ -138,6 +139,18 @@ void WeatherEvent::execute() {
     // Trigger particle effects if specified
     if (!m_params.particleEffect.empty()) {
         EVENT_INFO("Starting particle effect: " + m_params.particleEffect);
+        
+        // Hook into ParticleManager to trigger actual particle effects
+        if (ParticleManager::Instance().isInitialized()) {
+            ParticleManager::Instance().triggerWeatherEffect(
+                getWeatherTypeString(), 
+                m_params.intensity, 
+                m_params.transitionTime
+            );
+            EVENT_INFO("ParticleManager triggered for weather: " + getWeatherTypeString());
+        } else {
+            EVENT_WARN("ParticleManager not initialized - particle effects disabled");
+        }
     }
 
     // Play sound effects if specified
