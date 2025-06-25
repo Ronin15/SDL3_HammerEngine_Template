@@ -137,7 +137,7 @@ void ParticleManager::render(SDL_Renderer* renderer, float cameraX, float camera
         // Get particle size from cold data or use default
         float size = 2.0f;
         if (m_storage.hotData.size() == m_storage.coldData.size()) {
-            auto particleIndex = &particle - &m_storage.hotData[0];
+            auto particleIndex = static_cast<size_t>(&particle - &m_storage.hotData[0]);
             if (particleIndex < m_storage.coldData.size()) {
                 size = m_storage.coldData[particleIndex].size;
             }
@@ -182,7 +182,8 @@ uint32_t ParticleManager::playEffect(const std::string& effectName, const Vector
         return 0;
     }
 
-    auto& definition = it->second;
+    // Note: definition would be used for more complex effect configuration
+    // auto& definition = it->second;
     EffectInstance instance;
     instance.id = generateEffectId();
     instance.effectName = effectName;
@@ -269,6 +270,9 @@ void ParticleManager::clearWeatherGeneration(uint8_t generationId, float fadeTim
 
 void ParticleManager::triggerWeatherEffect(const std::string& weatherType, float intensity, float transitionTime) {
     PARTICLE_LOG("*** WEATHER EFFECT TRIGGERED: " + weatherType + " intensity=" + std::to_string(intensity));
+    
+    // Note: transitionTime parameter available for future fade-in implementation
+    (void)transitionTime; // Suppress unused parameter warning
     
     // Stop all existing weather effects first to prevent stacking
     stopWeatherEffects(0.5f); // Quick fade out
