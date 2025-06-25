@@ -90,9 +90,9 @@ echo ======================================================
 echo            Particle Manager Test Runner             
 echo ======================================================
 
-REM Get script directory and project root
-set SCRIPT_DIR=%~dp0
-for %%i in ("%SCRIPT_DIR%..\..\") do set PROJECT_ROOT=%%~fi
+REM Get project root - calculate relative to script location
+set "SCRIPT_DIR=%~dp0"
+set "PROJECT_ROOT=%SCRIPT_DIR%..\..\"
 
 REM Define test executables based on what to run
 set TEST_EXECUTABLES=
@@ -145,8 +145,8 @@ set COMBINED_RESULTS=%PROJECT_ROOT%\test_results\particle_manager\all_particle_t
 echo Particle Manager Tests Run %date% %time% > "%COMBINED_RESULTS%"
 
 REM Run each test suite
-for %%exec in (%TEST_EXECUTABLES%) do (
-    call :run_particle_test "%%exec"
+for %%e in (%TEST_EXECUTABLES%) do (
+    call :run_particle_test "%%e"
     
     REM Add delay between test suites for resource cleanup
     echo Allowing time for resource cleanup...
@@ -269,32 +269,34 @@ findstr /i "time: performance TestCase Running.*test.*cases failures.*detected N
 
 REM Check test results
 findstr /i "failure test.*cases.*failed errors.*detected.*[1-9]" "%OUTPUT_FILE%" >nul
-if %test_result%==0 if %ERRORLEVEL% neq 0 (
-    echo.
-    echo ✓ %test_type% tests completed successfully
-    
-    REM Extract test count information
-    for /f "tokens=2" %%a in ('findstr /i "Running.*test.*cases" "%OUTPUT_FILE%" 2^>nul') do (
-        echo ✓ All %%a test cases passed
-        goto :test_success
+set failure_found=%ERRORLEVEL%
+
+if %test_result%==0 (
+    if %failure_found% neq 0 (
+        echo.
+        echo ✓ %test_type% tests completed successfully
+        REM Extract test count information
+        for /f "tokens=2" %%a in ('findstr /i "Running.*test.*cases" "%OUTPUT_FILE%" 2^>nul') do (
+            echo ✓ All %%a test cases passed
+            goto :test_success
+        )
+        :test_success
+        echo PASSED: %exec_name% >> "%COMBINED_RESULTS%"
+        set /a PASSED_COUNT+=1
+        goto :eof
     )
-    :test_success
-    
-    echo PASSED: %exec_name% >> "%COMBINED_RESULTS%"
-    set /a PASSED_COUNT+=1
-) else (
-    echo.
-    echo ✗ %test_type% tests failed
-    
-    REM Show failure summary
-    echo.
-    echo Failure Summary:
-    findstr /i "failure FAILED error.*in.*:" "%OUTPUT_FILE%" 2>nul | findstr /n "^" | findstr "^[1-5]:"
-    if %ERRORLEVEL% neq 0 echo No specific failure details found.
-    
-    echo FAILED: %exec_name% (exit code: %test_result%) >> "%COMBINED_RESULTS%"
-    set OVERALL_SUCCESS=false
-    set /a FAILED_COUNT+=1
 )
+
+REM If we reach here, the test failed
+echo.
+echo ✗ %test_type% tests failed
+REM Show failure summary
+echo.
+echo Failure Summary:
+findstr /i "failure FAILED error.*in.*:" "%OUTPUT_FILE%" 2>nul | findstr /n "^" | findstr "^[1-5]:"
+if %ERRORLEVEL% neq 0 echo No specific failure details found.
+echo FAILED: %exec_name% (exit code: %test_result%) >> "%COMBINED_RESULTS%"
+set OVERALL_SUCCESS=false
+set /a FAILED_COUNT+=1
 
 goto :eof
