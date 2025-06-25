@@ -119,6 +119,58 @@ add_executable(event_types_tests
     mocks/MockGameEngine.cpp
 )
 
+# Particle Manager Core tests
+add_executable(particle_manager_core_tests
+    particle/ParticleManagerCoreTest.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/ParticleManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/events/Event.cpp
+    ${PROJECT_SOURCE_DIR}/src/events/WeatherEvent.cpp
+    ${PROJECT_SOURCE_DIR}/src/events/SceneChangeEvent.cpp
+    ${PROJECT_SOURCE_DIR}/src/events/EventFactory.cpp
+    ${PROJECT_SOURCE_DIR}/src/core/GameTime.cpp
+    mocks/NPCSpawnEventTest.cpp
+    mocks/MockNPC.cpp
+)
+
+# Particle Manager Performance tests
+add_executable(particle_manager_performance_tests
+    particle/ParticleManagerPerformanceTest.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/ParticleManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/events/Event.cpp
+    ${PROJECT_SOURCE_DIR}/src/events/WeatherEvent.cpp
+    ${PROJECT_SOURCE_DIR}/src/events/SceneChangeEvent.cpp
+    ${PROJECT_SOURCE_DIR}/src/events/EventFactory.cpp
+    ${PROJECT_SOURCE_DIR}/src/core/GameTime.cpp
+    mocks/NPCSpawnEventTest.cpp
+    mocks/MockNPC.cpp
+)
+
+# Particle Manager Weather tests
+add_executable(particle_manager_weather_tests
+    particle/ParticleManagerWeatherTest.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/ParticleManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/events/Event.cpp
+    ${PROJECT_SOURCE_DIR}/src/events/WeatherEvent.cpp
+    ${PROJECT_SOURCE_DIR}/src/events/SceneChangeEvent.cpp
+    ${PROJECT_SOURCE_DIR}/src/events/EventFactory.cpp
+    ${PROJECT_SOURCE_DIR}/src/core/GameTime.cpp
+    mocks/NPCSpawnEventTest.cpp
+    mocks/MockNPC.cpp
+)
+
+# Particle Manager Threading tests
+add_executable(particle_manager_threading_tests
+    particle/ParticleManagerThreadingTest.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/ParticleManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/events/Event.cpp
+    ${PROJECT_SOURCE_DIR}/src/events/WeatherEvent.cpp
+    ${PROJECT_SOURCE_DIR}/src/events/SceneChangeEvent.cpp
+    ${PROJECT_SOURCE_DIR}/src/events/EventFactory.cpp
+    ${PROJECT_SOURCE_DIR}/src/core/GameTime.cpp
+    mocks/NPCSpawnEventTest.cpp
+    mocks/MockNPC.cpp
+)
+
 # Weather Event tests
 add_executable(weather_event_tests
     events/WeatherEventTest.cpp
@@ -192,6 +244,26 @@ target_compile_definitions(event_manager_tests PRIVATE
 target_compile_definitions(event_types_tests PRIVATE
     BOOST_TEST_NO_SIGNAL_HANDLING
     RUNNING_TESTS
+)
+
+# Particle Manager Core tests definitions
+target_compile_definitions(particle_manager_core_tests PRIVATE
+    BOOST_TEST_NO_SIGNAL_HANDLING
+)
+
+# Particle Manager Performance tests definitions
+target_compile_definitions(particle_manager_performance_tests PRIVATE
+    BOOST_TEST_NO_SIGNAL_HANDLING
+)
+
+# Particle Manager Weather tests definitions
+target_compile_definitions(particle_manager_weather_tests PRIVATE
+    BOOST_TEST_NO_SIGNAL_HANDLING
+)
+
+# Particle Manager Threading tests definitions
+target_compile_definitions(particle_manager_threading_tests PRIVATE
+    BOOST_TEST_NO_SIGNAL_HANDLING
 )
 
 # Weather Event tests definitions
@@ -274,6 +346,34 @@ target_link_libraries(event_types_tests PRIVATE
     Boost::unit_test_framework
 )
 
+# Link Particle Manager Core tests with required libraries
+target_link_libraries(particle_manager_core_tests PRIVATE
+    SDL3::SDL3
+    SDL3_image::SDL3_image
+    Boost::unit_test_framework
+)
+
+# Link Particle Manager Performance tests with required libraries
+target_link_libraries(particle_manager_performance_tests PRIVATE
+    SDL3::SDL3
+    SDL3_image::SDL3_image
+    Boost::unit_test_framework
+)
+
+# Link Particle Manager Weather tests with required libraries
+target_link_libraries(particle_manager_weather_tests PRIVATE
+    SDL3::SDL3
+    SDL3_image::SDL3_image
+    Boost::unit_test_framework
+)
+
+# Link Particle Manager Threading tests with required libraries
+target_link_libraries(particle_manager_threading_tests PRIVATE
+    SDL3::SDL3
+    SDL3_image::SDL3_image
+    Boost::unit_test_framework
+)
+
 # Link Weather Event tests with required libraries
 target_link_libraries(weather_event_tests PRIVATE
     SDL3::SDL3
@@ -317,6 +417,10 @@ add_test(NAME ThreadSafeAIIntegrationTests
     COMMAND thread_safe_ai_integration_tests)
 add_test(NAME EventManagerTests COMMAND event_manager_tests)
 add_test(NAME EventTypesTests COMMAND event_types_tests)
+add_test(NAME ParticleManagerCoreTests COMMAND particle_manager_core_tests)
+add_test(NAME ParticleManagerPerformanceTests COMMAND particle_manager_performance_tests)
+add_test(NAME ParticleManagerWeatherTests COMMAND particle_manager_weather_tests)
+add_test(NAME ParticleManagerThreadingTests COMMAND particle_manager_threading_tests)
 add_test(NAME WeatherEventTests COMMAND weather_event_tests)
 add_test(NAME BufferUtilizationTests COMMAND buffer_utilization_tests)
 add_test(NAME BehaviorFunctionalityTests COMMAND behavior_functionality_tests)

@@ -284,6 +284,9 @@ void ParticleManager::renderForeground(SDL_Renderer* renderer, float cameraX, fl
 uint32_t ParticleManager::playEffect(const std::string& effectName, const Vector2D& position, float intensity) {
     PARTICLE_LOG("*** PLAY EFFECT CALLED: " + effectName + " at (" + std::to_string(position.getX()) + ", " + std::to_string(position.getY()) + ") intensity=" + std::to_string(intensity));
     
+    // Thread safety: Use exclusive lock for modifying effect instances
+    std::unique_lock<std::shared_mutex> lock(m_particlesMutex);
+    
     auto it = m_effectDefinitions.find(effectName);
     if (it == m_effectDefinitions.end()) {
         PARTICLE_LOG("ERROR: Effect not found: " + effectName);
@@ -314,6 +317,9 @@ uint32_t ParticleManager::playEffect(const std::string& effectName, const Vector
 }
 
 void ParticleManager::stopEffect(uint32_t effectId) {
+    // Thread safety: Use exclusive lock for modifying effect instances
+    std::unique_lock<std::shared_mutex> lock(m_particlesMutex);
+    
     auto it = m_effectIdToIndex.find(effectId);
     if (it != m_effectIdToIndex.end()) {
         m_effectInstances[it->second].active = false;
@@ -446,23 +452,26 @@ void ParticleManager::triggerWeatherEffect(const std::string& weatherType, float
         uint32_t effectId = playEffect(effectName, weatherPosition, intensity);
         
         // CRITICAL: Mark this effect as a weather effect IMMEDIATELY after creation
-        auto it = m_effectIdToIndex.find(effectId);
-        if (it != m_effectIdToIndex.end()) {
-            m_effectInstances[it->second].isWeatherEffect = true;
-            PARTICLE_LOG("MARKED effect ID " + std::to_string(effectId) + " as weather effect");
-        } else {
-            PARTICLE_LOG("ERROR: Could not find effect ID " + std::to_string(effectId) + " to mark as weather effect");
+        {
+            std::unique_lock<std::shared_mutex> lock(m_particlesMutex);
+            auto it = m_effectIdToIndex.find(effectId);
+            if (it != m_effectIdToIndex.end()) {
+                m_effectInstances[it->second].isWeatherEffect = true;
+                PARTICLE_LOG("MARKED effect ID " + std::to_string(effectId) + " as weather effect");
+            } else {
+                PARTICLE_LOG("ERROR: Could not find effect ID " + std::to_string(effectId) + " to mark as weather effect");
+            }
+            
+            // Verify the effect was properly marked
+            if (it != m_effectIdToIndex.end()) {
+                std::string_view isWeatherStr = m_effectInstances[it->second].isWeatherEffect ? "true" : "false";
+                PARTICLE_LOG("Weather effect verification - isWeatherEffect: " + std::string(isWeatherStr));
+            }
         }
         
         PARTICLE_LOG("Weather effect triggered: " + weatherType + " -> " + effectName + 
                     " at position (" + std::to_string(weatherPosition.getX()) + 
                     ", " + std::to_string(weatherPosition.getY()) + ") -> Effect ID: " + std::to_string(effectId));
-        
-        // Verify the effect was properly marked
-        if (it != m_effectIdToIndex.end()) {
-            std::string_view isWeatherStr = m_effectInstances[it->second].isWeatherEffect ? "true" : "false";
-            PARTICLE_LOG("Weather effect verification - isWeatherEffect: " + std::string(isWeatherStr));
-        }
     } else {
         PARTICLE_LOG("ERROR: No effect mapping found for weather type: " + weatherType);
     }
@@ -562,6 +571,10 @@ ParticleEffectDefinition ParticleManager::createCloudyEffect() {
 }
 
 size_t ParticleManager::getActiveParticleCount() const {
+    if (!m_initialized.load(std::memory_order_acquire)) {
+        return 0;
+    }
+    
     std::shared_lock<std::shared_mutex> lock(m_particlesMutex);
     size_t count = 0;
     for (const auto& particle : m_storage.hotData) {
@@ -821,4 +834,51 @@ void ParticleManager::updateParticle(ParticleData& particle, float deltaTime) {
         particle.velocity.setX(particle.velocity.getX() + coldData.acceleration.getX() * deltaTime);
         particle.velocity.setY(particle.velocity.getY() + coldData.acceleration.getY() * deltaTime);
     }
+}
+
+// Global control methods
+void ParticleManager::setGlobalPause(bool paused) {
+    m_globallyPaused.store(paused, std::memory_order_release);
+}
+
+bool ParticleManager::isGloballyPaused() const {
+    return m_globallyPaused.load(std::memory_order_acquire);
+}
+
+void ParticleManager::setGlobalVisibility(bool visible) {
+    m_globallyVisible.store(visible, std::memory_order_release);
+}
+
+bool ParticleManager::isGloballyVisible() const {
+    return m_globallyVisible.load(std::memory_order_acquire);
+}
+
+// Effect management methods
+bool ParticleManager::isEffectPlaying(uint32_t effectId) const {
+    auto it = m_effectIdToIndex.find(effectId);
+    if (it != m_effectIdToIndex.end() && it->second < m_effectInstances.size()) {
+        return m_effectInstances[it->second].active;
+    }
+    return false;
+}
+
+// Performance and capacity methods
+ParticlePerformanceStats ParticleManager::getPerformanceStats() const {
+    std::shared_lock<std::shared_mutex> lock(m_particlesMutex);
+    std::lock_guard<std::mutex> statsLock(m_statsMutex);
+    return m_performanceStats;
+}
+
+void ParticleManager::resetPerformanceStats() {
+    std::lock_guard<std::mutex> lock(m_statsMutex);
+    m_performanceStats.reset();
+}
+
+size_t ParticleManager::getMaxParticleCapacity() const {
+    return m_storage.capacity();
+}
+
+void ParticleManager::setMaxParticles(size_t maxParticles) {
+    std::unique_lock<std::shared_mutex> lock(m_particlesMutex);
+    m_storage.reserve(maxParticles);
 }
