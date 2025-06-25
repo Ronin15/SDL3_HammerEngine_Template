@@ -132,6 +132,13 @@ bool EventDemoState::exit() {
         AIManager& aiMgr = AIManager::Instance();
         aiMgr.prepareForStateTransition();
 
+        // Stop all weather particle effects and clean up particles
+        ParticleManager& particleMgr = ParticleManager::Instance();
+        if (particleMgr.isInitialized() && !particleMgr.isShutdown()) {
+            particleMgr.stopWeatherEffects(0.0f); // Immediate stop - no fade time
+            particleMgr.prepareForStateTransition();
+        }
+
         // Clean up UI components using simplified method
         auto& ui = UIManager::Instance();
         ui.prepareForStateTransition();
