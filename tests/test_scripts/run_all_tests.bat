@@ -61,8 +61,8 @@ if /i "%~1"=="--help" (
     echo   --help            Show this help message
     echo.
     echo Test Categories:
-    echo   Core Tests:       Static analysis, Thread, AI, Behavior, Save, Event functionality tests
-    echo   Benchmarks:       AI scaling, EventManager scaling, and UI stress benchmarks
+    echo   Core Tests:       Static analysis, Thread, AI, Behavior, Save, Event, ParticleManager functionality tests
+    echo   Benchmarks:       AI scaling, EventManager scaling, UI stress, and ParticleManager performance benchmarks
     echo.
     echo Execution Time:
     echo   Core tests:       ~2-5 minutes total
@@ -83,7 +83,7 @@ goto :parse_args
 
 :: Define test categories
 :: Core functionality tests (fast execution)
-set CORE_TEST_COUNT=9
+set CORE_TEST_COUNT=13
 set CORE_TEST_1=run_cppcheck_focused.bat
 set CORE_TEST_2=run_thread_tests.bat
 set CORE_TEST_3=run_buffer_utilization_tests.bat
@@ -93,12 +93,18 @@ set CORE_TEST_6=run_ai_optimization_tests.bat
 set CORE_TEST_7=run_behavior_functionality_tests.bat
 set CORE_TEST_8=run_save_tests.bat
 set CORE_TEST_9=run_event_tests.bat
+set CORE_TEST_10=run_particle_manager_tests.bat
+set CORE_TEST_11=run_weather_event_tests.bat
+set CORE_TEST_12=run_particle_manager_core_tests.bat
+set CORE_TEST_13=run_particle_manager_weather_tests.bat
 
 :: Performance scaling benchmarks (slow execution)
-set BENCHMARK_TEST_COUNT=3
+set BENCHMARK_TEST_COUNT=5
 set BENCHMARK_TEST_1=run_event_scaling_benchmark.bat
 set BENCHMARK_TEST_2=run_ai_benchmark.bat
 set BENCHMARK_TEST_3=run_ui_stress_tests.bat
+set BENCHMARK_TEST_4=run_particle_manager_performance_tests.bat
+set BENCHMARK_TEST_5=run_particle_manager_threading_tests.bat
 
 :: Build the test scripts array based on user selection
 set TOTAL_COUNT=0

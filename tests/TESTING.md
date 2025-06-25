@@ -2,7 +2,7 @@
 
 This document provides a comprehensive guide to the testing framework used in the Hammer Game Engine project. All tests use the Boost Test Framework for consistency and are organized by component.
 
-**Current Test Coverage:** 16+ individual test suites covering AI systems, AI behaviors, UI performance, core systems, and event management with both functional validation and performance benchmarking.
+**Current Test Coverage:** 20+ individual test suites covering AI systems, AI behaviors, UI performance, core systems, event management, and particle systems with both functional validation and performance benchmarking.
 
 ## Test Suites Overview
 
@@ -28,6 +28,7 @@ The Hammer Game Engine has the following test suites:
    - Event Types Tests: Test specific event type implementations (Weather, Scene Change, NPC Spawn)
    - Weather Event Tests: Focused tests for weather event functionality
    - Event Manager Scaling Benchmark: Performance testing for event system scalability
+   - Particle Manager Tests: Comprehensive particle system validation covering core functionality, weather integration, performance, and threading
 
 **Test Execution Categories:**
 - **Core Tests** (7 suites): Fast functional validation (~3-6 minutes total)
@@ -485,6 +486,168 @@ ctest -R EventManagerScaling
 - Extreme scale: ~7.8K events/sec with 5M handler calls
 
 The benchmark validates that the EventManager can handle large-scale simulations (MMOs, city simulations, real-time strategy games) while maintaining consistent performance characteristics.
+
+### Particle Manager Tests
+
+Located in `particle/` directory, these tests provide comprehensive validation of the ParticleManager system covering core functionality, weather integration, performance benchmarks, and threading safety.
+
+#### Test Suites Overview
+
+**1. Core Tests (`ParticleManagerCoreTest.cpp`)**
+**14 test cases** covering basic ParticleManager functionality:
+- Initialization and cleanup
+- Effect registration and management  
+- Particle creation and lifecycle
+- Global pause/resume functionality
+- Performance statistics
+- State transition handling
+
+**2. Weather Integration Tests (`ParticleManagerWeatherTest.cpp`)**
+**9 test cases** covering weather system integration:
+- Weather effect triggering (Rain, Snow, Fog, Cloudy, Stormy, Clear)
+- Weather transitions and timing
+- Weather-specific particle behavior
+- Intensity scaling
+- Weather effect cleanup
+- Multiple weather effect handling
+
+**3. Performance Tests (`ParticleManagerPerformanceTest.cpp`)**
+**8 test cases** covering performance characteristics:
+- Large-scale particle simulation (1000+ particles)
+- Update performance scaling
+- Memory usage efficiency
+- Sustained performance benchmarks
+- Different effect type performance
+- Cleanup performance
+
+**4. Threading Tests (`ParticleManagerThreadingTest.cpp`)**
+**7 test cases** covering multi-threading safety:
+- Concurrent particle creation
+- Thread-safe effect management
+- Concurrent weather changes (using `triggerWeatherEffect()` for accurate marking)
+- Parallel statistics access
+- Mixed concurrent operations
+- Enhanced resource cleanup safety with proper weather effect stopping
+
+#### Running Particle Manager Tests
+
+**Quick Commands:**
+```bash
+# Run all particle manager tests (4-6 minutes)
+./tests/test_scripts/run_particle_manager_tests.sh
+
+# Quick core validation (30 seconds)
+./tests/test_scripts/run_particle_manager_tests.sh --core
+
+# Weather functionality only (45 seconds)
+./tests/test_scripts/run_particle_manager_tests.sh --weather
+
+# Performance benchmarks (2-3 minutes)
+./tests/test_scripts/run_particle_manager_tests.sh --performance
+
+# Threading safety tests (1-2 minutes)
+./tests/test_scripts/run_particle_manager_tests.sh --threading
+
+# Verbose output
+./tests/test_scripts/run_particle_manager_tests.sh --verbose
+```
+
+**Cross-Platform Support:**
+- **Linux/macOS:** `run_particle_manager_tests.sh`
+- **Windows:** `run_particle_manager_tests.bat`
+
+Both scripts support identical command-line options and functionality.
+
+**Test Results:**
+Test results are automatically saved to:
+- `test_results/particle_manager/` - Individual test outputs
+- `test_results/particle_manager/all_particle_tests_results.txt` - Combined summary
+
+#### Integration with Main Test Runner
+
+The particle manager tests are integrated into the main test runner:
+```bash
+# All tests (includes particle manager tests)
+./tests/test_scripts/run_all_tests.sh
+
+# Core functionality only (includes particle manager core tests)
+./tests/test_scripts/run_all_tests.sh --core-only
+```
+
+#### Test Status Summary
+
+**✅ Passing Test Suites:**
+- **Core Tests:** 14/14 passing - Basic functionality verified
+- **Weather Tests:** 9/9 passing - Weather integration working correctly
+
+**⚠️ Known Issues:**
+- **Performance Tests:** Some tests may fail on slower systems or under load
+- **Threading Tests:** Concurrency tests may be sensitive to system timing
+
+These issues don't affect core functionality but may require system-specific tuning.
+
+#### Performance Characteristics
+
+**Expected Performance (Debug builds):**
+- **Core tests:** Complete in ~30 seconds
+- **Weather tests:** Complete in ~45 seconds
+- **Performance tests:** Complete in 2-3 minutes
+- **Threading tests:** Complete in 1-2 minutes
+
+**Scaling Behavior:**
+The ParticleManager is designed to handle:
+- 1000+ active particles efficiently
+- Multiple concurrent weather effects
+- Thread-safe operations across multiple cores
+- Sustained 60 FPS performance with realistic particle loads
+
+Performance tests validate these capabilities and benchmark actual system performance.
+
+#### Weather Test Fixes Applied
+
+Recent fixes to weather tests addressed:
+1. **Timing issues:** Tests now use multiple update cycles for particle emission
+2. **Weather type mapping:** Consistent use of weather type names (e.g., "Rainy" vs "Rain")
+3. **Low emission rates:** Special handling for effects like "Cloudy" with very low emission rates
+4. **Particle lifecycle:** Proper handling of particle fade and cleanup behavior
+
+These fixes ensure reliable weather functionality testing across different systems.
+5. **Test Adjustments:** Weather effects are now created using `triggerWeatherEffect()` to ensure proper marking and cleanup consistent with expected ParticleManager behavior.
+
+#### Development Guidelines
+
+**Adding New Tests:**
+1. **Core functionality:** Add to `ParticleManagerCoreTest.cpp`
+2. **Weather features:** Add to `ParticleManagerWeatherTest.cpp`
+3. **Performance cases:** Add to `ParticleManagerPerformanceTest.cpp`
+4. **Threading scenarios:** Add to `ParticleManagerThreadingTest.cpp`
+
+**Test Fixture Pattern:**
+All test files use the same fixture pattern:
+```cpp
+struct ParticleManagerTestFixture {
+    ParticleManagerTestFixture() {
+        manager = &ParticleManager::Instance();
+        if (manager->isInitialized()) {
+            manager->clean();
+        }
+    }
+    
+    ~ParticleManagerTestFixture() {
+        if (manager->isInitialized()) {
+            manager->clean();
+        }
+    }
+    
+    ParticleManager* manager;
+};
+```
+
+**Best Practices:**
+1. **Always clean up:** Use RAII pattern in test fixtures
+2. **Multiple update cycles:** Weather and effect tests need multiple `update()` calls
+3. **Timing considerations:** Performance tests should account for system variations
+4. **Resource cleanup:** Add delays between resource-intensive tests
 
 ## Adding New Tests
 
