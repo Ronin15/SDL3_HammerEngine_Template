@@ -293,14 +293,12 @@ void EventDemoState::render(float deltaTime) {
     auto& gameEngine = GameEngine::Instance();
     SDL_Renderer* renderer = gameEngine.getRenderer();
     
-    // Render particle effects first (background layer)
+    // Render background particles first (rain, snow) - behind player/NPCs
     ParticleManager& particleMgr = ParticleManager::Instance();
     if (particleMgr.isInitialized() && !particleMgr.isShutdown()) {
-        // Particle system is working correctly - debug code removed
-        
-        // Render particles with camera offset (for world-space effects)
+        // Render background particles with camera offset (for world-space effects)
         // Using 0,0 for now since EventDemoState doesn't have camera movement
-        particleMgr.render(renderer, 0.0f, 0.0f);
+        particleMgr.renderBackground(renderer, 0.0f, 0.0f);
     }
 
     // Render player
@@ -313,6 +311,11 @@ void EventDemoState::render(float deltaTime) {
         if (npc) {
             npc->render();
         }
+    }
+    
+    // Render foreground particles last (fog) - in front of player/NPCs
+    if (particleMgr.isInitialized() && !particleMgr.isShutdown()) {
+        particleMgr.renderForeground(renderer, 0.0f, 0.0f);
     }
 
     // Update and render UI components through UIManager using cached renderer for cleaner API

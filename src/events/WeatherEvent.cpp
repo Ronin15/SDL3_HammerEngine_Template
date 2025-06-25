@@ -46,6 +46,7 @@ WeatherEvent::WeatherEvent(const std::string& name, WeatherType type)
             m_params.intensity = 0.5f;
             m_params.visibility = 0.8f;
             m_params.windSpeed = 0.3f;
+            m_params.particleEffect = "cloudy";
             break;
         case WeatherType::Rainy:
             m_params.intensity = 0.7f;
@@ -136,21 +137,24 @@ void WeatherEvent::execute() {
     // In a real implementation, this would interact with rendering systems
     EVENT_INFO("Weather changing to: " + getWeatherTypeString() + " (Intensity: " + std::to_string(m_params.intensity) + ", Visibility: " + std::to_string(m_params.visibility) + ")");
 
-    // Trigger particle effects if specified
-    if (!m_params.particleEffect.empty()) {
-        EVENT_INFO("Starting particle effect: " + m_params.particleEffect);
-        
-        // Hook into ParticleManager to trigger actual particle effects
-        if (ParticleManager::Instance().isInitialized()) {
-            ParticleManager::Instance().triggerWeatherEffect(
-                getWeatherTypeString(), 
-                m_params.intensity, 
-                m_params.transitionTime
-            );
-            EVENT_INFO("ParticleManager triggered for weather: " + getWeatherTypeString());
-        } else {
-            EVENT_WARN("ParticleManager not initialized - particle effects disabled");
+    // Always trigger ParticleManager for weather changes (including Clear weather)
+    if (ParticleManager::Instance().isInitialized()) {
+        // For Clear weather, we just clear effects
+        if (m_weatherType == WeatherType::Clear || getWeatherTypeString() == "Clear") {
+            EVENT_INFO("Clearing weather effects");
+        } else if (!m_params.particleEffect.empty()) {
+            EVENT_INFO("Starting particle effect: " + m_params.particleEffect);
         }
+        
+        // Always call ParticleManager - it handles Clear weather internally
+        ParticleManager::Instance().triggerWeatherEffect(
+            getWeatherTypeString(), 
+            m_params.intensity, 
+            m_params.transitionTime
+        );
+        EVENT_INFO("ParticleManager triggered for weather: " + getWeatherTypeString());
+    } else {
+        EVENT_WARN("ParticleManager not initialized - particle effects disabled");
     }
 
     // Play sound effects if specified

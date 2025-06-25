@@ -275,6 +275,22 @@ public:
     void render(SDL_Renderer* renderer, float cameraX = 0.0f, float cameraY = 0.0f);
     
     /**
+     * @brief Renders only background particles (rain, snow) - call before player/NPCs
+     * @param renderer SDL renderer for drawing
+     * @param cameraX Camera X offset for world-space rendering
+     * @param cameraY Camera Y offset for world-space rendering
+     */
+    void renderBackground(SDL_Renderer* renderer, float cameraX = 0.0f, float cameraY = 0.0f);
+    
+    /**
+     * @brief Renders only foreground particles (fog) - call after player/NPCs
+     * @param renderer SDL renderer for drawing
+     * @param cameraX Camera X offset for world-space rendering
+     * @param cameraY Camera Y offset for world-space rendering
+     */
+    void renderForeground(SDL_Renderer* renderer, float cameraX = 0.0f, float cameraY = 0.0f);
+    
+    /**
      * @brief Checks if ParticleManager has been shut down
      * @return true if manager is shut down, false otherwise
      */
@@ -539,6 +555,9 @@ private:
     // Effect ID generation
     std::atomic<uint32_t> m_nextEffectId{1};
     
+    // Frame counting for periodic logging
+    std::atomic<uint64_t> m_frameCounter{0};
+    
     // Helper methods
     uint32_t generateEffectId();
     size_t allocateParticle();
@@ -565,6 +584,7 @@ private:
     ParticleEffectDefinition createSnowEffect();
     ParticleEffectDefinition createHeavySnowEffect();
     ParticleEffectDefinition createFogEffect();
+    ParticleEffectDefinition createCloudyEffect();
     ParticleEffectDefinition createFireEffect();
     ParticleEffectDefinition createSmokeEffect();
     ParticleEffectDefinition createSparksEffect();
