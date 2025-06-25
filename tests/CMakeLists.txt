@@ -63,6 +63,7 @@ add_executable(ai_scaling_benchmark
 add_executable(event_manager_scaling_benchmark
     EventManagerScalingBenchmark.cpp
     ${PROJECT_SOURCE_DIR}/src/managers/EventManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/ParticleManager.cpp
     ${PROJECT_SOURCE_DIR}/src/events/Event.cpp
     ${PROJECT_SOURCE_DIR}/src/events/WeatherEvent.cpp
     ${PROJECT_SOURCE_DIR}/src/events/SceneChangeEvent.cpp
@@ -93,6 +94,7 @@ add_executable(thread_safe_ai_integration_tests
 add_executable(event_manager_tests
     events/EventManagerTest.cpp
     ${PROJECT_SOURCE_DIR}/src/managers/EventManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/ParticleManager.cpp
     ${PROJECT_SOURCE_DIR}/src/events/Event.cpp
     ${PROJECT_SOURCE_DIR}/src/events/WeatherEvent.cpp
     ${PROJECT_SOURCE_DIR}/src/events/SceneChangeEvent.cpp
@@ -108,6 +110,7 @@ add_executable(event_types_tests
     events/EventTypesTest.cpp
     ${PROJECT_SOURCE_DIR}/src/events/Event.cpp
     ${PROJECT_SOURCE_DIR}/src/events/WeatherEvent.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/ParticleManager.cpp
     ${PROJECT_SOURCE_DIR}/src/events/SceneChangeEvent.cpp
     ${PROJECT_SOURCE_DIR}/src/events/EventFactory.cpp
     ${PROJECT_SOURCE_DIR}/src/core/GameTime.cpp
@@ -121,6 +124,7 @@ add_executable(weather_event_tests
     events/WeatherEventTest.cpp
     ${PROJECT_SOURCE_DIR}/src/events/Event.cpp
     ${PROJECT_SOURCE_DIR}/src/events/WeatherEvent.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/ParticleManager.cpp
     ${PROJECT_SOURCE_DIR}/src/core/GameTime.cpp
 )
 
