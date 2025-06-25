@@ -168,7 +168,6 @@ void ParticleManager::renderBackground(SDL_Renderer* renderer, float cameraX, fl
 
     // Render only background particles (rain, snow)
     std::shared_lock<std::shared_mutex> lock(m_particlesMutex);
-    int renderCount = 0;
     for (const auto& particle : m_storage.hotData) {
         if (!particle.isActive() || !particle.isVisible()) {
             continue;
@@ -190,8 +189,6 @@ void ParticleManager::renderBackground(SDL_Renderer* renderer, float cameraX, fl
         if (!isBackground) {
             continue; // Skip foreground particles
         }
-        
-        renderCount++;
 
         // Extract color components
         uint8_t r = (color >> 24) & 0xFF;
@@ -231,7 +228,6 @@ void ParticleManager::renderForeground(SDL_Renderer* renderer, float cameraX, fl
 
     // Render only foreground particles (fog)
     std::shared_lock<std::shared_mutex> lock(m_particlesMutex);
-    int renderCount = 0;
     for (const auto& particle : m_storage.hotData) {
         if (!particle.isActive() || !particle.isVisible()) {
             continue;
@@ -253,8 +249,6 @@ void ParticleManager::renderForeground(SDL_Renderer* renderer, float cameraX, fl
         if (!isForeground) {
             continue; // Skip background particles
         }
-        
-        renderCount++;
 
         // Extract color components
         uint8_t r = (color >> 24) & 0xFF;
@@ -775,8 +769,6 @@ void ParticleManager::createParticleForEffect(EffectInstance& effect, const Part
     // Add to hot and cold data
     m_storage.hotData.push_back(particle);
     m_storage.coldData.push_back(coldData);
-    
-    size_t particleIndex = m_storage.hotData.size() - 1;
     
     // PARTICLE_LOG("*** PARTICLE CREATED: Index " + std::to_string(particleIndex) + 
     //             " at position (" + std::to_string(particle.position.getX()) + 
