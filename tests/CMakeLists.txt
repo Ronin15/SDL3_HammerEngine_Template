@@ -64,9 +64,11 @@ add_executable(event_manager_scaling_benchmark
     EventManagerScalingBenchmark.cpp
     ${PROJECT_SOURCE_DIR}/src/managers/EventManager.cpp
     ${PROJECT_SOURCE_DIR}/src/managers/ParticleManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/SoundManager.cpp
     ${PROJECT_SOURCE_DIR}/src/events/Event.cpp
     ${PROJECT_SOURCE_DIR}/src/events/WeatherEvent.cpp
     ${PROJECT_SOURCE_DIR}/src/events/SceneChangeEvent.cpp
+    ${PROJECT_SOURCE_DIR}/src/events/ParticleEffectEvent.cpp
     ${PROJECT_SOURCE_DIR}/src/events/EventFactory.cpp
     ${PROJECT_SOURCE_DIR}/src/core/GameTime.cpp
     mocks/NPCSpawnEventTest.cpp
@@ -95,9 +97,11 @@ add_executable(event_manager_tests
     events/EventManagerTest.cpp
     ${PROJECT_SOURCE_DIR}/src/managers/EventManager.cpp
     ${PROJECT_SOURCE_DIR}/src/managers/ParticleManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/SoundManager.cpp
     ${PROJECT_SOURCE_DIR}/src/events/Event.cpp
     ${PROJECT_SOURCE_DIR}/src/events/WeatherEvent.cpp
     ${PROJECT_SOURCE_DIR}/src/events/SceneChangeEvent.cpp
+    ${PROJECT_SOURCE_DIR}/src/events/ParticleEffectEvent.cpp
     ${PROJECT_SOURCE_DIR}/src/events/EventFactory.cpp
     ${PROJECT_SOURCE_DIR}/src/core/GameTime.cpp
     mocks/NPCSpawnEventTest.cpp
@@ -111,7 +115,9 @@ add_executable(event_types_tests
     ${PROJECT_SOURCE_DIR}/src/events/Event.cpp
     ${PROJECT_SOURCE_DIR}/src/events/WeatherEvent.cpp
     ${PROJECT_SOURCE_DIR}/src/managers/ParticleManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/SoundManager.cpp
     ${PROJECT_SOURCE_DIR}/src/events/SceneChangeEvent.cpp
+    ${PROJECT_SOURCE_DIR}/src/events/ParticleEffectEvent.cpp
     ${PROJECT_SOURCE_DIR}/src/events/EventFactory.cpp
     ${PROJECT_SOURCE_DIR}/src/core/GameTime.cpp
     mocks/NPCSpawnEventTest.cpp
@@ -123,9 +129,11 @@ add_executable(event_types_tests
 add_executable(particle_manager_core_tests
     particle/ParticleManagerCoreTest.cpp
     ${PROJECT_SOURCE_DIR}/src/managers/ParticleManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/SoundManager.cpp
     ${PROJECT_SOURCE_DIR}/src/events/Event.cpp
     ${PROJECT_SOURCE_DIR}/src/events/WeatherEvent.cpp
     ${PROJECT_SOURCE_DIR}/src/events/SceneChangeEvent.cpp
+    ${PROJECT_SOURCE_DIR}/src/events/ParticleEffectEvent.cpp
     ${PROJECT_SOURCE_DIR}/src/events/EventFactory.cpp
     ${PROJECT_SOURCE_DIR}/src/core/GameTime.cpp
     mocks/NPCSpawnEventTest.cpp
@@ -315,6 +323,7 @@ target_link_libraries(ai_scaling_benchmark PRIVATE
 target_link_libraries(event_manager_scaling_benchmark PRIVATE
     SDL3::SDL3
     SDL3_image::SDL3_image
+    SDL3_mixer::SDL3_mixer
     Boost::unit_test_framework
 )
 
@@ -336,6 +345,7 @@ target_link_libraries(thread_safe_ai_integration_tests PRIVATE
 target_link_libraries(event_manager_tests PRIVATE
     SDL3::SDL3
     SDL3_image::SDL3_image
+    SDL3_mixer::SDL3_mixer
     Boost::unit_test_framework
 )
 
@@ -343,6 +353,7 @@ target_link_libraries(event_manager_tests PRIVATE
 target_link_libraries(event_types_tests PRIVATE
     SDL3::SDL3
     SDL3_image::SDL3_image
+    SDL3_mixer::SDL3_mixer
     Boost::unit_test_framework
 )
 
@@ -350,6 +361,7 @@ target_link_libraries(event_types_tests PRIVATE
 target_link_libraries(particle_manager_core_tests PRIVATE
     SDL3::SDL3
     SDL3_image::SDL3_image
+    SDL3_mixer::SDL3_mixer
     Boost::unit_test_framework
 )
 
