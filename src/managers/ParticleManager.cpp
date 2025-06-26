@@ -182,16 +182,32 @@ void ParticleManager::renderBackground(SDL_Renderer* renderer, float cameraX, fl
             continue;
         }
         
-        // Check if this is a background particle (rain = blue-ish, snow = white)
+        // Check if this is a background particle (rain, snow, fire, smoke, sparks)
         uint32_t color = particle.color;
         bool isBackground = false;
         
-        // Rain particles are blue-ish (0x4080FFFF)
+        // Rain particles are blue-ish (0x4080FF00)
         if ((color & 0xFFFFFF00) == 0x4080FF00) {
             isBackground = true;
         }
         // Snow particles are white (0xFFFFFFFF with any alpha)
         else if ((color & 0xFFFFFF00) == 0xFFFFFF00) {
+            isBackground = true;
+        }
+        // Fire particles - orange/red/yellow range
+        else if ((color & 0xFF000000) == 0xFF000000 && 
+                 ((color & 0x00FF0000) >= 0x00450000) && // Red component >= 0x45
+                 ((color & 0x0000FF00) <= 0x0000FF00)) {   // Green component <= 0xFF
+            isBackground = true;
+        }
+        // Smoke particles - grey range
+        else if ((color & 0xFF000000) >= 0x20000000 && (color & 0xFF000000) <= 0x80000000 &&
+                 (color & 0x00FFFFFF) >= 0x00202020 && (color & 0x00FFFFFF) <= 0x00808080) {
+            isBackground = true;
+        }
+        // Sparks particles - bright yellow/orange
+        else if ((color & 0xFFFF0000) == 0xFFFF0000 || // Yellow (FFFF__)
+                 (color & 0xFF8C0000) == 0xFF8C0000) {     // Orange (FF8C__)
             isBackground = true;
         }
         
@@ -494,6 +510,193 @@ void ParticleManager::recordPerformance(bool isRender, double timeMs, size_t par
     }
 }
 
+void ParticleManager::toggleFireEffect() {
+    std::unique_lock<std::shared_mutex> lock(m_effectsMutex);
+    if (!m_fireActive) {
+        m_fireEffectId = playIndependentEffect("Fire", Vector2D(400, 300));
+        m_fireActive = true;
+    } else {
+        stopIndependentEffect(m_fireEffectId);
+        m_fireActive = false;
+    }
+}
+
+void ParticleManager::toggleSmokeEffect() {
+    std::unique_lock<std::shared_mutex> lock(m_effectsMutex);
+    if (!m_smokeActive) {
+        m_smokeEffectId = playIndependentEffect("Smoke", Vector2D(400, 300));
+        m_smokeActive = true;
+    } else {
+        stopIndependentEffect(m_smokeEffectId);
+        m_smokeActive = false;
+    }
+}
+
+void ParticleManager::toggleSparksEffect() {
+    std::unique_lock<std::shared_mutex> lock(m_effectsMutex);
+    if (!m_sparksActive) {
+        m_sparksEffectId = playIndependentEffect("Sparks", Vector2D(400, 300));
+        m_sparksActive = true;
+    } else {
+        stopIndependentEffect(m_sparksEffectId);
+        m_sparksActive = false;
+    }
+}
+
+// Independent Effect Management Implementation
+uint32_t ParticleManager::playIndependentEffect(const std::string& effectName, const Vector2D& position, 
+                                              float intensity, float duration, 
+                                              const std::string& groupTag, const std::string& soundEffect) {
+    PARTICLE_LOG("Playing independent effect: " + effectName + " at (" + std::to_string(position.getX()) + ", " + std::to_string(position.getY()) + ")");
+    
+    std::unique_lock<std::shared_mutex> lock(m_particlesMutex);
+    
+    auto it = m_effectDefinitions.find(effectName);
+    if (it == m_effectDefinitions.end()) {
+        PARTICLE_LOG("ERROR: Independent effect not found: " + effectName);
+        return 0;
+    }
+    
+    EffectInstance instance;
+    instance.id = generateEffectId();
+    instance.effectName = effectName;
+    instance.position = position;
+    instance.intensity = intensity;
+    instance.currentIntensity = intensity;
+    instance.targetIntensity = intensity;
+    instance.active = true;
+    instance.isIndependentEffect = true;
+    instance.isWeatherEffect = false;
+    instance.maxDuration = duration;
+    instance.groupTag = groupTag;
+    instance.soundEffect = soundEffect;
+    
+    // Register effect
+    m_effectInstances.push_back(instance);
+    m_effectIdToIndex[instance.id] = m_effectInstances.size() - 1;
+    
+    PARTICLE_LOG("Independent effect started: " + effectName + " (ID: " + std::to_string(instance.id) + ")");
+    return instance.id;
+}
+
+void ParticleManager::stopIndependentEffect(uint32_t effectId) {
+    std::unique_lock<std::shared_mutex> lock(m_particlesMutex);
+    
+    auto it = m_effectIdToIndex.find(effectId);
+    if (it != m_effectIdToIndex.end() && it->second < m_effectInstances.size()) {
+        auto& effect = m_effectInstances[it->second];
+        if (effect.isIndependentEffect) {
+            effect.active = false;
+            PARTICLE_LOG("Independent effect stopped: ID " + std::to_string(effectId));
+        }
+    }
+}
+
+void ParticleManager::stopAllIndependentEffects() {
+    std::unique_lock<std::shared_mutex> lock(m_particlesMutex);
+    
+    int stoppedCount = 0;
+    for (auto& effect : m_effectInstances) {
+        if (effect.active && effect.isIndependentEffect) {
+            effect.active = false;
+            stoppedCount++;
+        }
+    }
+    
+    PARTICLE_LOG("Stopped " + std::to_string(stoppedCount) + " independent effects");
+}
+
+void ParticleManager::stopIndependentEffectsByGroup(const std::string& groupTag) {
+    std::unique_lock<std::shared_mutex> lock(m_particlesMutex);
+    
+    int stoppedCount = 0;
+    for (auto& effect : m_effectInstances) {
+        if (effect.active && effect.isIndependentEffect && effect.groupTag == groupTag) {
+            effect.active = false;
+            stoppedCount++;
+        }
+    }
+    
+    PARTICLE_LOG("Stopped " + std::to_string(stoppedCount) + " independent effects in group: " + groupTag);
+}
+
+void ParticleManager::pauseIndependentEffect(uint32_t effectId, bool paused) {
+    std::unique_lock<std::shared_mutex> lock(m_particlesMutex);
+    
+    auto it = m_effectIdToIndex.find(effectId);
+    if (it != m_effectIdToIndex.end() && it->second < m_effectInstances.size()) {
+        auto& effect = m_effectInstances[it->second];
+        if (effect.isIndependentEffect) {
+            effect.paused = paused;
+            PARTICLE_LOG("Independent effect " + std::to_string(effectId) + (paused ? " paused" : " unpaused"));
+        }
+    }
+}
+
+void ParticleManager::pauseAllIndependentEffects(bool paused) {
+    std::unique_lock<std::shared_mutex> lock(m_particlesMutex);
+    
+    int affectedCount = 0;
+    for (auto& effect : m_effectInstances) {
+        if (effect.active && effect.isIndependentEffect) {
+            effect.paused = paused;
+            affectedCount++;
+        }
+    }
+    
+    PARTICLE_LOG("All independent effects " + std::string(paused ? "paused" : "unpaused") + " (" + std::to_string(affectedCount) + " effects)");
+}
+
+void ParticleManager::pauseIndependentEffectsByGroup(const std::string& groupTag, bool paused) {
+    std::unique_lock<std::shared_mutex> lock(m_particlesMutex);
+    
+    int affectedCount = 0;
+    for (auto& effect : m_effectInstances) {
+        if (effect.active && effect.isIndependentEffect && effect.groupTag == groupTag) {
+            effect.paused = paused;
+            affectedCount++;
+        }
+    }
+    
+    PARTICLE_LOG("Independent effects in group " + groupTag + " " + std::string(paused ? "paused" : "unpaused") + " (" + std::to_string(affectedCount) + " effects)");
+}
+
+bool ParticleManager::isIndependentEffect(uint32_t effectId) const {
+    std::shared_lock<std::shared_mutex> lock(m_particlesMutex);
+    
+    auto it = m_effectIdToIndex.find(effectId);
+    if (it != m_effectIdToIndex.end() && it->second < m_effectInstances.size()) {
+        return m_effectInstances[it->second].isIndependentEffect;
+    }
+    return false;
+}
+
+std::vector<uint32_t> ParticleManager::getActiveIndependentEffects() const {
+    std::shared_lock<std::shared_mutex> lock(m_particlesMutex);
+    
+    std::vector<uint32_t> activeEffects;
+    for (const auto& effect : m_effectInstances) {
+        if (effect.active && effect.isIndependentEffect) {
+            activeEffects.push_back(effect.id);
+        }
+    }
+    
+    return activeEffects;
+}
+
+std::vector<uint32_t> ParticleManager::getActiveIndependentEffectsByGroup(const std::string& groupTag) const {
+    std::shared_lock<std::shared_mutex> lock(m_particlesMutex);
+    
+    std::vector<uint32_t> activeEffects;
+    for (const auto& effect : m_effectInstances) {
+        if (effect.active && effect.isIndependentEffect && effect.groupTag == groupTag) {
+            activeEffects.push_back(effect.id);
+        }
+    }
+    
+    return activeEffects;
+}
+
 uint32_t ParticleManager::generateEffectId() {
     return m_nextEffectId.fetch_add(1, std::memory_order_relaxed);
 }
@@ -506,6 +709,11 @@ void ParticleManager::registerBuiltInEffects() {
     m_effectDefinitions["Snow"] = createSnowEffect();
     m_effectDefinitions["Fog"] = createFogEffect();
     m_effectDefinitions["Cloudy"] = createCloudyEffect();
+    
+    // Register independent particle effects
+    m_effectDefinitions["Fire"] = createFireEffect();
+    m_effectDefinitions["Smoke"] = createSmokeEffect();
+    m_effectDefinitions["Sparks"] = createSparksEffect();
     
     PARTICLE_LOG("Built-in effects registered: " + std::to_string(m_effectDefinitions.size()));
     for (const auto& pair : m_effectDefinitions) {
@@ -564,7 +772,9 @@ ParticleEffectDefinition ParticleManager::createFogEffect() {
 }
 
 ParticleEffectDefinition ParticleManager::createCloudyEffect() {
-    ParticleEffectDefinition cloudy("Cloudy", ParticleEffectType::Fog); // Reuse Fog type for similar behavior
+    ParticleEffectDefinition cloudy("Cloudy", ParticleEffectType::Fog);
+    cloudy.emitterConfig.position = Vector2D(400, -50); // Start above screen
+    cloudy.emitterConfig.direction = Vector2D(1.0f, 0.1f); // Mostly horizontal
     cloudy.emitterConfig.spread = 1200.0f; // Wide spread for cloud wisps
     cloudy.emitterConfig.emissionRate = 0.5f; // Lower emission rate for fewer clouds
     cloudy.emitterConfig.minSpeed = 12.0f; // Faster horizontal movement like clouds
@@ -577,6 +787,78 @@ ParticleEffectDefinition ParticleManager::createCloudyEffect() {
     cloudy.emitterConfig.textureID = "cloud";
     cloudy.intensityMultiplier = 0.5f; // Moderate intensity for visible wisps
     return cloudy;
+}
+
+ParticleEffectDefinition ParticleManager::createFireEffect() {
+    ParticleEffectDefinition fire("Fire", ParticleEffectType::Fire);
+    fire.emitterConfig.position = Vector2D(0, 0); // Will be set when played
+    fire.emitterConfig.direction = Vector2D(0, -1); // Upward flames
+    fire.emitterConfig.spread = 30.0f; // Moderate spread for realistic flame shape
+    fire.emitterConfig.emissionRate = 80.0f; // High emission for dense flames
+    fire.emitterConfig.minSpeed = 20.0f; // Slow initial upward movement
+    fire.emitterConfig.maxSpeed = 60.0f;
+    fire.emitterConfig.minLife = 0.8f; // Short-lived for flickering effect
+    fire.emitterConfig.maxLife = 2.0f;
+    fire.emitterConfig.minSize = 2.0f; // Small flame particles
+    fire.emitterConfig.maxSize = 8.0f;
+    fire.emitterConfig.minColor = 0xFF4500FF; // Orange-red
+    fire.emitterConfig.maxColor = 0xFFFF00FF; // Yellow
+    fire.emitterConfig.gravity = Vector2D(0, -30.0f); // Negative gravity for upward movement
+    fire.emitterConfig.windForce = Vector2D(10.0f, 0); // Slight horizontal flicker
+    fire.emitterConfig.textureID = "fire_particle";
+    fire.emitterConfig.blendMode = ParticleBlendMode::Additive; // Additive for glowing effect
+    fire.emitterConfig.duration = -1.0f; // Infinite by default
+    fire.intensityMultiplier = 1.0f;
+    return fire;
+}
+
+ParticleEffectDefinition ParticleManager::createSmokeEffect() {
+    ParticleEffectDefinition smoke("Smoke", ParticleEffectType::Smoke);
+    smoke.emitterConfig.position = Vector2D(0, 0); // Will be set when played
+    smoke.emitterConfig.direction = Vector2D(0, -1); // Upward smoke
+    smoke.emitterConfig.spread = 45.0f; // Wide spread as smoke disperses
+    smoke.emitterConfig.emissionRate = 25.0f; // Moderate emission for wispy smoke
+    smoke.emitterConfig.minSpeed = 15.0f; // Slow upward drift
+    smoke.emitterConfig.maxSpeed = 40.0f;
+    smoke.emitterConfig.minLife = 3.0f; // Long-lived for realistic smoke trails
+    smoke.emitterConfig.maxLife = 6.0f;
+    smoke.emitterConfig.minSize = 8.0f; // Large smoke particles
+    smoke.emitterConfig.maxSize = 20.0f;
+    smoke.emitterConfig.minColor = 0x202020AA; // Very dark grey (almost black)
+    smoke.emitterConfig.maxColor = 0x606060AA; // Medium grey
+    smoke.emitterConfig.gravity = Vector2D(0, -20.0f); // Light upward movement
+    smoke.emitterConfig.windForce = Vector2D(15.0f, 0); // Wind affects smoke
+    smoke.emitterConfig.textureID = "smoke_particle";
+    smoke.emitterConfig.blendMode = ParticleBlendMode::Alpha; // Standard alpha blending
+    smoke.emitterConfig.duration = -1.0f; // Infinite by default
+    smoke.intensityMultiplier = 1.0f;
+    return smoke;
+}
+
+ParticleEffectDefinition ParticleManager::createSparksEffect() {
+    ParticleEffectDefinition sparks("Sparks", ParticleEffectType::Sparks);
+    sparks.emitterConfig.position = Vector2D(0, 0); // Will be set when played
+    sparks.emitterConfig.direction = Vector2D(0, -1); // Initial upward burst
+    sparks.emitterConfig.spread = 180.0f; // Wide spread for explosive spark pattern
+    sparks.emitterConfig.emissionRate = 150.0f; // High burst rate
+    sparks.emitterConfig.minSpeed = 80.0f; // Fast initial velocity
+    sparks.emitterConfig.maxSpeed = 200.0f;
+    sparks.emitterConfig.minLife = 0.3f; // Very short-lived for realistic sparks
+    sparks.emitterConfig.maxLife = 1.2f;
+    sparks.emitterConfig.minSize = 1.0f; // Small spark particles
+    sparks.emitterConfig.maxSize = 3.0f;
+    sparks.emitterConfig.minColor = 0xFFFF00FF; // Bright yellow
+    sparks.emitterConfig.maxColor = 0xFF8C00FF; // Orange
+    sparks.emitterConfig.gravity = Vector2D(0, 120.0f); // Strong downward gravity
+    sparks.emitterConfig.windForce = Vector2D(5.0f, 0); // Slight wind resistance
+    sparks.emitterConfig.textureID = "spark_particle";
+    sparks.emitterConfig.blendMode = ParticleBlendMode::Additive; // Bright additive blending
+    sparks.emitterConfig.duration = 2.0f; // Short burst effect
+    sparks.emitterConfig.burstCount = 50; // Burst of sparks
+    sparks.emitterConfig.enableCollision = true; // Sparks bounce off surfaces
+    sparks.emitterConfig.bounceDamping = 0.6f; // Medium bounce damping
+    sparks.intensityMultiplier = 1.0f;
+    return sparks;
 }
 
 size_t ParticleManager::getActiveParticleCount() const {
@@ -772,6 +1054,30 @@ void ParticleManager::createParticleForEffect(EffectInstance& effect, const Part
             particle.color = 0xF8F8F8C0; // Light white with higher alpha for more visible clouds
         } else {
             particle.color = 0xCCCCCC88; // Semi-transparent gray for fog
+        }
+    } else if (effectDef.type == ParticleEffectType::Fire) {
+        // Fire particles with realistic colors - random between orange-red and yellow
+        std::uniform_int_distribution<int> colorChoice(0, 2);
+        switch (colorChoice(gen)) {
+            case 0: particle.color = 0xFF4500FF; break; // Orange-red
+            case 1: particle.color = 0xFF6500FF; break; // Red-orange  
+            case 2: particle.color = 0xFFFF00FF; break; // Yellow
+        }
+    } else if (effectDef.type == ParticleEffectType::Smoke) {
+        // Smoke particles with realistic black/grey variations
+        std::uniform_int_distribution<int> colorChoice(0, 3);
+        switch (colorChoice(gen)) {
+            case 0: particle.color = 0x404040FF; break; // Dark grey
+            case 1: particle.color = 0x606060FF; break; // Medium grey
+            case 2: particle.color = 0x808080FF; break; // Light grey
+            case 3: particle.color = 0x202020FF; break; // Very dark grey (almost black)
+        }
+    } else if (effectDef.type == ParticleEffectType::Sparks) {
+        // Sparks with bright yellow/orange colors
+        std::uniform_int_distribution<int> colorChoice(0, 1);
+        switch (colorChoice(gen)) {
+            case 0: particle.color = 0xFFFF00FF; break; // Bright yellow
+            case 1: particle.color = 0xFF8C00FF; break; // Orange
         }
     } else {
         particle.color = 0xFFFFFFFF; // Default white

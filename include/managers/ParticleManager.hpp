@@ -335,6 +335,94 @@ public:
      */
     bool isEffectPlaying(uint32_t effectId) const;
 
+    // Independent Effect Management
+    /**
+     * @brief Creates and plays an independent particle effect that persists until manually stopped
+     * @param effectName Name of the registered effect
+     * @param position World position to play effect
+     * @param intensity Effect intensity multiplier (0.0 to 2.0)
+     * @param duration Effect duration in seconds (-1 for infinite)
+     * @param groupTag Optional group tag for bulk operations
+     * @param soundEffect Optional sound effect name for SoundManager
+     * @return Effect ID for controlling the effect, or 0 if failed
+     */
+    uint32_t playIndependentEffect(const std::string& effectName, const Vector2D& position, 
+                                  float intensity = 1.0f, float duration = -1.0f, 
+                                  const std::string& groupTag = "", const std::string& soundEffect = "");
+    
+    /**
+     * @brief Stops an independent effect
+     * @param effectId Effect ID returned from playIndependentEffect
+     */
+    void stopIndependentEffect(uint32_t effectId);
+    
+    /**
+     * @brief Stops all independent effects
+     */
+    void stopAllIndependentEffects();
+    
+    /**
+     * @brief Stops all independent effects with a specific group tag
+     * @param groupTag Group tag to stop
+     */
+    void stopIndependentEffectsByGroup(const std::string& groupTag);
+    
+    /**
+     * @brief Pauses/unpauses an independent effect
+     * @param effectId Effect ID to pause/unpause
+     * @param paused Whether to pause the effect
+     */
+    void pauseIndependentEffect(uint32_t effectId, bool paused);
+    
+    /**
+     * @brief Pauses/unpauses all independent effects
+     * @param paused Whether to pause all independent effects
+     */
+    void pauseAllIndependentEffects(bool paused);
+    
+    /**
+     * @brief Pauses/unpauses all independent effects with a specific group tag
+     * @param groupTag Group tag to pause/unpause
+     * @param paused Whether to pause the effects
+     */
+    void pauseIndependentEffectsByGroup(const std::string& groupTag, bool paused);
+    
+    /**
+     * @brief Checks if an effect is an independent effect
+     * @param effectId Effect ID to check
+     * @return true if effect is independent, false otherwise
+     */
+    bool isIndependentEffect(uint32_t effectId) const;
+    
+    /**
+     * @brief Gets all active independent effect IDs
+     * @return Vector of active independent effect IDs
+     */
+    std::vector<uint32_t> getActiveIndependentEffects() const;
+    
+    /**
+     * @brief Gets all active independent effect IDs with a specific group tag
+     * @param groupTag Group tag to filter by
+     * @return Vector of active independent effect IDs
+     */
+    std::vector<uint32_t> getActiveIndependentEffectsByGroup(const std::string& groupTag) const;
+    
+    // Effect Toggles for EventManager
+    /**
+     * @brief Toggles the Fire effect on/off for EventManager
+     */
+    void toggleFireEffect();
+
+    /**
+     * @brief Toggles the Smoke effect on/off for EventManager
+     */
+    void toggleSmokeEffect();
+
+    /**
+     * @brief Toggles the Sparks effect on/off for EventManager
+     */
+    void toggleSparksEffect();
+
     // Weather Integration (EventManager callbacks)
     /**
      * @brief Triggers weather particle effects (called by EventManager)
@@ -505,14 +593,20 @@ private:
         float transitionSpeed;       // Transition rate
         float emissionTimer;
         float durationTimer;
+        float maxDuration;           // Maximum duration (-1 for infinite)
         bool active;
+        bool paused;                 // Independent pause state
         bool isWeatherEffect;
+        bool isIndependentEffect;    // Independent effects (not weather)
+        std::string groupTag;        // For bulk operations
+        std::string soundEffect;     // Associated sound effect
         uint8_t currentGenerationId; // Current generation for new particles
         
         EffectInstance() : id(0), position(0, 0), intensity(1.0f), currentIntensity(0.0f),
                           targetIntensity(1.0f), transitionSpeed(1.0f), emissionTimer(0.0f),
-                          durationTimer(0.0f), active(false), isWeatherEffect(false), 
-                          currentGenerationId(0) {}
+                          durationTimer(0.0f), maxDuration(-1.0f), active(false), paused(false),
+                          isWeatherEffect(false), isIndependentEffect(false), groupTag(""),
+                          soundEffect(""), currentGenerationId(0) {}
     };
 
     // Core storage
@@ -559,6 +653,14 @@ private:
     
     // Frame counting for periodic logging
     std::atomic<uint64_t> m_frameCounter{0};
+    
+    // Built-in effect state tracking
+    uint32_t m_fireEffectId{0};
+    uint32_t m_smokeEffectId{0};
+    uint32_t m_sparksEffectId{0};
+    bool m_fireActive{false};
+    bool m_smokeActive{false};
+    bool m_sparksActive{false};
     
     // Helper methods
     uint32_t generateEffectId();

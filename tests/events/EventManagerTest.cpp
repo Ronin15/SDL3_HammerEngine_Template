@@ -20,6 +20,7 @@
 #include "events/Event.hpp"
 #include "events/WeatherEvent.hpp"
 #include "events/SceneChangeEvent.hpp"
+#include "events/ParticleEffectEvent.hpp"
 
 
 
@@ -431,6 +432,144 @@ BOOST_FIXTURE_TEST_CASE(ThreadSafety, EventManagerFixture) {
 
     // Test passes if we reached this point
     BOOST_CHECK(true);
+}
+
+// Test ParticleEffect convenience methods
+BOOST_FIXTURE_TEST_CASE(ParticleEffectConvenienceMethods, EventManagerFixture) {
+    // Test convenience methods for creating particle effect events
+    BOOST_CHECK(EventManager::Instance().createParticleEffectEvent("TestFire", "Fire", 100.0f, 200.0f, 1.5f, 5.0f, "effects"));
+    
+    Vector2D position(300.0f, 400.0f);
+    BOOST_CHECK(EventManager::Instance().createParticleEffectEvent("TestSmoke", "Smoke", position, 0.8f, -1.0f, "ambient"));
+    
+    // Test with minimal parameters
+    BOOST_CHECK(EventManager::Instance().createParticleEffectEvent("TestSparks", "Sparks", 500.0f, 600.0f));
+    
+    // Verify events were created and registered
+    BOOST_CHECK(EventManager::Instance().hasEvent("TestFire"));
+    BOOST_CHECK(EventManager::Instance().hasEvent("TestSmoke"));
+    BOOST_CHECK(EventManager::Instance().hasEvent("TestSparks"));
+    
+    // Test event count
+    BOOST_CHECK_GE(EventManager::Instance().getEventCount(), 3);
+    
+    // Verify properties of created events
+    auto fireEvent = EventManager::Instance().getEvent("TestFire");
+    BOOST_REQUIRE(fireEvent != nullptr);
+    BOOST_CHECK_EQUAL(fireEvent->getType(), "ParticleEffect");
+    
+    auto particleEvent = std::dynamic_pointer_cast<ParticleEffectEvent>(fireEvent);
+    BOOST_REQUIRE(particleEvent != nullptr);
+    BOOST_CHECK_EQUAL(particleEvent->getEffectName(), "Fire");
+    BOOST_CHECK_EQUAL(particleEvent->getPosition().getX(), 100.0f);
+    BOOST_CHECK_EQUAL(particleEvent->getPosition().getY(), 200.0f);
+    BOOST_CHECK_EQUAL(particleEvent->getIntensity(), 1.5f);
+    BOOST_CHECK_EQUAL(particleEvent->getDuration(), 5.0f);
+    BOOST_CHECK_EQUAL(particleEvent->getGroupTag(), "effects");
+}
+
+// Test ParticleEffect event execution and integration
+BOOST_FIXTURE_TEST_CASE(ParticleEffectEventExecution, EventManagerFixture) {
+    // Create a particle effect event using convenience method
+    BOOST_CHECK(EventManager::Instance().createParticleEffectEvent("ExecutionTest", "TestEffect", 150.0f, 250.0f, 2.0f));
+    
+    // Verify event exists
+    BOOST_CHECK(EventManager::Instance().hasEvent("ExecutionTest"));
+    
+    auto event = EventManager::Instance().getEvent("ExecutionTest");
+    BOOST_REQUIRE(event != nullptr);
+    
+    auto particleEvent = std::dynamic_pointer_cast<ParticleEffectEvent>(event);
+    BOOST_REQUIRE(particleEvent != nullptr);
+    
+    // Initially should not be active (no effect running)
+    BOOST_CHECK(!particleEvent->isEffectActive());
+    
+    // Test direct execution through EventManager
+    // Note: This will fail gracefully since ParticleManager is not initialized in test environment
+    BOOST_CHECK(EventManager::Instance().executeEvent("ExecutionTest"));
+    
+    // Effect should still not be active due to ParticleManager not being available
+    BOOST_CHECK(!particleEvent->isEffectActive());
+    
+    // Test with invalid event name
+    BOOST_CHECK(!EventManager::Instance().executeEvent("NonExistentParticleEffect"));
+}
+
+// Test ParticleEffect events retrieval by type
+BOOST_FIXTURE_TEST_CASE(ParticleEffectEventsByType, EventManagerFixture) {
+    // Create multiple particle effect events
+    BOOST_CHECK(EventManager::Instance().createParticleEffectEvent("Fire1", "Fire", 100.0f, 100.0f));
+    BOOST_CHECK(EventManager::Instance().createParticleEffectEvent("Fire2", "Fire", 200.0f, 200.0f));
+    BOOST_CHECK(EventManager::Instance().createParticleEffectEvent("Smoke1", "Smoke", 300.0f, 300.0f));
+    
+    // Also create a non-particle event for comparison
+    BOOST_CHECK(EventManager::Instance().createWeatherEvent("TestRain", "Rainy", 0.5f));
+    
+    // Get ParticleEffect events by type string
+    auto particleEvents = EventManager::Instance().getEventsByType("ParticleEffect");
+    BOOST_CHECK_GE(particleEvents.size(), 3);
+    
+    // Verify all returned events are ParticleEffect type
+    for (const auto& event : particleEvents) {
+        BOOST_CHECK_EQUAL(event->getType(), "ParticleEffect");
+        auto particleEvent = std::dynamic_pointer_cast<ParticleEffectEvent>(event);
+        BOOST_CHECK(particleEvent != nullptr);
+    }
+    
+    // Get Weather events by type for comparison
+    auto weatherEvents = EventManager::Instance().getEventsByType("Weather");
+    BOOST_CHECK_GE(weatherEvents.size(), 1);
+    
+    // Verify weather events are different type
+    for (const auto& event : weatherEvents) {
+        BOOST_CHECK_EQUAL(event->getType(), "Weather");
+    }
+}
+
+// Test ParticleEffect event activation and deactivation
+BOOST_FIXTURE_TEST_CASE(ParticleEffectEventActivation, EventManagerFixture) {
+    // Create a particle effect event
+    BOOST_CHECK(EventManager::Instance().createParticleEffectEvent("ActivationTest", "TestEffect", 0.0f, 0.0f));
+    
+    // Should be active by default
+    BOOST_CHECK(EventManager::Instance().isEventActive("ActivationTest"));
+    
+    // Test deactivation
+    EventManager::Instance().setEventActive("ActivationTest", false);
+    BOOST_CHECK(!EventManager::Instance().isEventActive("ActivationTest"));
+    
+    // Test reactivation
+    EventManager::Instance().setEventActive("ActivationTest", true);
+    BOOST_CHECK(EventManager::Instance().isEventActive("ActivationTest"));
+    
+    // Get the event and test its internal state
+    auto event = EventManager::Instance().getEvent("ActivationTest");
+    BOOST_REQUIRE(event != nullptr);
+    
+    auto particleEvent = std::dynamic_pointer_cast<ParticleEffectEvent>(event);
+    BOOST_REQUIRE(particleEvent != nullptr);
+    
+    // Verify the event reflects the activation state
+    BOOST_CHECK(particleEvent->isActive());
+}
+
+// Test ParticleEffect event removal
+BOOST_FIXTURE_TEST_CASE(ParticleEffectEventRemoval, EventManagerFixture) {
+    // Create a particle effect event
+    BOOST_CHECK(EventManager::Instance().createParticleEffectEvent("RemovalTest", "TestEffect", 0.0f, 0.0f));
+    
+    // Verify it exists
+    BOOST_CHECK(EventManager::Instance().hasEvent("RemovalTest"));
+    
+    // Remove the event
+    BOOST_CHECK(EventManager::Instance().removeEvent("RemovalTest"));
+    
+    // Verify it's gone
+    BOOST_CHECK(!EventManager::Instance().hasEvent("RemovalTest"));
+    
+    // Test removing non-existent event
+    BOOST_CHECK(!EventManager::Instance().removeEvent("NonExistentParticleEffect"));
 }
 
 // Test task priority with the ThreadSystem
