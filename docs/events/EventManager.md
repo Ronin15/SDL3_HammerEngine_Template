@@ -132,8 +132,9 @@ enum class EventTypeId : uint8_t {
     Weather = 0,      // Weather system events
     SceneChange = 1,  // Scene transition events
     NPCSpawn = 2,     // NPC creation events
-    Custom = 3,       // User-defined events
-    COUNT = 4         // Total count (internal use)
+    ParticleEffect = 3, // Particle effect events
+    Custom = 4,       // User-defined events
+    COUNT = 5         // Total count (internal use)
 };
 ```
 
@@ -176,6 +177,47 @@ EventManager::Instance().createNPCSpawnEvent("Villagers", "Villager", 5, 30.0f);
 // Advanced NPC spawn with custom properties
 EventManager::Instance().createAdvancedNPCSpawnEvent("OrcInvasion", "OrcWarrior", 10, 100.0f, 9, true);
 // Parameters: (name, npcType, count, spawnRadius, priority, oneTime)
+```
+
+### Particle Effect Events
+Control visual effects and particle systems through EventManager with ParticleManager integration:
+
+```cpp
+// Simple particle effect creation
+EventManager::Instance().createParticleEffectEvent("Explosion", "Fire", 250.0f, 150.0f, 2.0f, 3.0f, "combat");
+
+// Particle effect with Vector2D position
+Vector2D position(400.0f, 300.0f);
+EventManager::Instance().createParticleEffectEvent("MagicSmoke", "Smoke", position, 1.5f, -1.0f, "magic", "magic_cast");
+
+// Minimal particle effect (position only)
+EventManager::Instance().createParticleEffectEvent("Sparks", "Sparks", 100.0f, 200.0f);
+```
+
+**Effect Types**: Fire, Smoke, Sparks, Rain, Snow, Fog, Cloudy, Custom  
+**Features**: Position-based triggering, intensity control, duration settings, group tagging, sound integration
+
+#### Particle Effect Parameters
+- **effectName**: Name of the particle effect to trigger (must be registered with ParticleManager)
+- **position**: World coordinates where the effect should appear
+- **intensity**: Effect intensity multiplier (0.0 to 2.0+, default: 1.0)
+- **duration**: Effect duration in seconds (-1 for infinite, default: -1.0)
+- **groupTag**: Optional group identifier for batch operations (default: "")
+- **soundEffect**: Optional sound effect name for SoundManager integration (default: "")
+
+#### ParticleManager Integration
+ParticleEffectEvents automatically integrate with the ParticleManager system:
+
+```cpp
+// EventManager coordinates with ParticleManager for effect execution
+EventManager::Instance().executeEvent("Explosion"); // Triggers particle effect at specified position
+
+// Check if particle effect is currently active
+auto event = EventManager::Instance().getEvent("MagicSmoke");
+auto particleEvent = std::dynamic_pointer_cast<ParticleEffectEvent>(event);
+if (particleEvent && particleEvent->isEffectActive()) {
+    std::cout << "Magic smoke effect is running!" << std::endl;
+}
 ```
 
 ### Custom Events
@@ -228,6 +270,12 @@ bool createSceneChangeEvent(const std::string& name, const std::string& targetSc
                            const std::string& transitionType = "fade", float transitionTime = 1.0f)
 bool createNPCSpawnEvent(const std::string& name, const std::string& npcType,
                         int count = 1, float spawnRadius = 0.0f)
+bool createParticleEffectEvent(const std::string& name, const std::string& effectName,
+                              float x, float y, float intensity = 1.0f, float duration = -1.0f,
+                              const std::string& groupTag = "", const std::string& soundEffect = "")
+bool createParticleEffectEvent(const std::string& name, const std::string& effectName,
+                              const Vector2D& position, float intensity = 1.0f, float duration = -1.0f,
+                              const std::string& groupTag = "", const std::string& soundEffect = "")
 ```
 
 #### Handler Management
@@ -270,34 +318,6 @@ bool removeEvent(const std::string& name);
 bool hasEvent(const std::string& name) const
 ```
 
-<old_text>
-#### Event Management
-
-```cpp
-EventPtr getEvent(const std::string& name) const;
-std::vector<EventPtr> getEventsByType(EventTypeId typeId) const;
-std::vector<EventPtr> getEventsByType(const std::string& eventType) const;
-
-bool setEventActive(const std::string& name, bool active);
-bool isEventActive(const std::string& name) const;
-bool removeEvent(const std::string& name);
-
-#### Event Execution
-
-```cpp
-bool executeEvent(const std::string& eventName) const;
-int executeEventsByType(EventTypeId typeId) const;
-int executeEventsByType(const std::string& eventType) const;
-```
-
-#### Handler Management
-```cpp
-void registerHandler(EventTypeId typeId, FastEventHandler handler)
-void removeHandlers(EventTypeId typeId)
-void clearAllHandlers()
-size_t getHandlerCount(EventTypeId typeId) const
-```
-
 #### Threading Control
 ```cpp
 void enableThreading(bool enable)
@@ -326,17 +346,6 @@ size_t getEventCount(EventTypeId typeId) const
 void compactEventStorage()
 void clearEventPools()
 void prepareForStateTransition()
-```
-
-#### Performance and Monitoring
-```cpp
-PerformanceStats getPerformanceStats(EventTypeId typeId)
-void resetPerformanceStats()
-size_t getEventCount()
-size_t getEventCount(EventTypeId typeId)
-
-void compactEventStorage()    // Optimize memory layout
-void clearEventPools()        // Clear cached objects (shutdown only)
 ```
 
 ## Threading & Performance

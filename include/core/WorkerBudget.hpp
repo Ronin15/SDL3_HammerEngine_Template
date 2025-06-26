@@ -24,6 +24,7 @@ struct WorkerBudget {
     size_t totalWorkers;      // Total available worker threads
     size_t engineReserved;    // Workers reserved for GameEngine critical tasks
     size_t aiAllocated;       // Workers allocated to AIManager
+    size_t particleAllocated; // Workers allocated to ParticleManager
     size_t eventAllocated;    // Workers allocated to EventManager
     size_t remaining;         // Buffer workers available for burst capacity
     
@@ -64,8 +65,9 @@ struct WorkerBudget {
 /**
  * @brief Worker allocation percentages and limits
  */
-static constexpr size_t AI_WORKER_PERCENTAGE = 60;     // 60% of remaining workers
-static constexpr size_t EVENT_WORKER_PERCENTAGE = 30;  // 30% of remaining workers
+static constexpr size_t AI_WORKER_PERCENTAGE = 45;        // 45% of remaining workers
+static constexpr size_t PARTICLE_WORKER_PERCENTAGE = 25;   // 25% of remaining workers
+static constexpr size_t EVENT_WORKER_PERCENTAGE = 20;      // 20% of remaining workers
 static constexpr size_t ENGINE_MIN_WORKERS = 1;        // Minimum workers for GameEngine
 static constexpr size_t ENGINE_OPTIMAL_WORKERS = 2;    // Optimal workers for GameEngine on higher-end systems
 
@@ -91,8 +93,9 @@ inline WorkerBudget calculateWorkerBudget(size_t availableWorkers) {
     if (availableWorkers <= 1) {
         // Tier 1: Ultra low-end - GameLoop gets priority, others single-threaded
         budget.engineReserved = 1;
-        budget.aiAllocated = 0;      // Single-threaded fallback
-        budget.eventAllocated = 0;   // Single-threaded fallback
+        budget.aiAllocated = 0;         // Single-threaded fallback
+        budget.particleAllocated = 0;   // Single-threaded fallback
+        budget.eventAllocated = 0;      // Single-threaded fallback
         budget.remaining = 0;
         return budget;
     }
@@ -111,25 +114,35 @@ inline WorkerBudget calculateWorkerBudget(size_t availableWorkers) {
     // Calculate remaining workers after engine reservation
     size_t remainingWorkers = availableWorkers - budget.engineReserved;
     
-    if (remainingWorkers <= 1) {
-        // Tier 2: Low-end - Conservative allocation
-        budget.aiAllocated = (remainingWorkers >= 1) ? 1 : 0;
-        budget.eventAllocated = 0;  // Share with AI or single-threaded
+    if (availableWorkers <= 4) {
+        // Tier 2: Low-end systems (2-4 workers) - Conservative allocation
+        if (availableWorkers == 3) {
+            // Special case: 3 workers should use all available (no buffer)
+            budget.aiAllocated = 1;
+            budget.particleAllocated = 1;  // Use remaining worker
+            budget.eventAllocated = 0;     // Single-threaded fallback
+        } else {
+            budget.aiAllocated = (remainingWorkers >= 1) ? 1 : 0;
+            budget.particleAllocated = 0;  // Single-threaded fallback
+            budget.eventAllocated = 0;     // Single-threaded fallback
+        }
     } else {
-        // Tier 3: High-end - Full multi-threading with percentages
+        // Tier 3: High-end systems (5+ workers) - Full multi-threading with percentages
         budget.aiAllocated = std::max(size_t(1), (remainingWorkers * AI_WORKER_PERCENTAGE) / 100);
+        budget.particleAllocated = std::max(size_t(1), (remainingWorkers * PARTICLE_WORKER_PERCENTAGE) / 100);
         budget.eventAllocated = std::max(size_t(1), (remainingWorkers * EVENT_WORKER_PERCENTAGE) / 100);
     }
     
     // Calculate truly remaining workers (buffer for other tasks)
-    size_t allocated = budget.aiAllocated + budget.eventAllocated;
+    size_t allocated = budget.aiAllocated + budget.particleAllocated + budget.eventAllocated;
     budget.remaining = (remainingWorkers > allocated) ? remainingWorkers - allocated : 0;
     
     // Validation: Ensure we never over-allocate
-    size_t totalAllocated = budget.engineReserved + budget.aiAllocated + budget.eventAllocated;
+    size_t totalAllocated = budget.engineReserved + budget.aiAllocated + budget.particleAllocated + budget.eventAllocated;
     if (totalAllocated > availableWorkers) {
         // Emergency fallback - should never happen with correct logic above
         budget.aiAllocated = 0;
+        budget.particleAllocated = 0;
         budget.eventAllocated = 0;
         budget.remaining = availableWorkers - budget.engineReserved;
     }

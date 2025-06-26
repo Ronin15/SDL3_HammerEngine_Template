@@ -75,8 +75,8 @@ BOOST_AUTO_TEST_CASE(TestLowEndSystemBuffer) {
               << ", Buffer: " << budget.remaining << "\n";
     
     // No buffer available
-    BOOST_CHECK_EQUAL(budget.remaining, 0);
-    BOOST_CHECK(!budget.hasBufferCapacity());
+BOOST_CHECK_EQUAL(budget.remaining, 0);
+BOOST_CHECK(!budget.hasBufferCapacity());
     
     // Should always return base allocation regardless of workload
     size_t highWorkload = 10000;
