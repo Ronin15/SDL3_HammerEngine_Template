@@ -48,33 +48,6 @@ I use Warp Terminal/ADE with custom cmake and ninja task configurations to build
   - Sounds: wav, mp3, ogg
   - Fonts: ttf and otf
 
-## Performance Capabilities
-**M3 MAC Pro 11 core for most bench numbers**
-### Multi-Threading Performance
-- **10K Entity Target**: Achieves 82-86M entity updates per second (5.85x threading improvement over baseline)
-- **100K Entity Stress Test**: Demonstrates 998M+ entity updates per second capability (nearly 1 billion)
-- **Threading Threshold**: Automatic activation at 200 entities provides 4.41x performance boost
-- **WorkerBudget System**: Dynamic allocation across 11 hardware threads with 10 workers (AI: 60%, Events: 30%, Engine coordination: 10%)
-- **Event Processing**: 40K+ events per second in extreme scale tests with 188K+ handler calls per second
-- **Priority-Based Task Scheduling**: Efficient task distribution across worker threads
-- **Simplified UI Architecture**: Single-threaded UI operations for 2D games with excellent performance
-- **Cache-Friendly Batching**: Optimized batch sizes (25-1000 entities) for optimal memory access patterns
-
-### System Scalability
-- **Hardware Adaptive**: Automatically scales performance with processor count (tested up to 12 cores (24 - 1) 23 threads) - Ryzen 7900x3d
-- **WorkerBudget Allocation**: Intelligent resource distribution across AI, Events, and Engine systems
-- **Graceful Degradation**: Queue pressure monitoring with automatic fallback to single-threaded processing
-- **Memory Efficient**: ~32KB queue overhead for high-performance task processing
-- **Stability Tested**: Zero timeouts or system hangs during extreme stress testing
-
-### Real-World Performance
-- Maintains consistent 60 FPS with 10K+ active entities on 8-core/16-thread systems
-- Automatic threading threshold (200 entities) provides optimal performance across hardware tiers
-- Excellent scaling: 1.0x baseline → 5.85x at 10K entities with threading
-- WorkerBudget system ensures optimal resource allocation across all subsystems
-- Handles mixed workloads (AI + Events + Physics) without resource conflicts
-- Validated through comprehensive benchmark suite with clean, consistent performance data
-
 ## Building the Project
 
 ### Prerequisites
