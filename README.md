@@ -86,7 +86,7 @@ I use Warp Terminal/ADE with custom cmake and ninja task configurations to build
 
 ### Windows
 Need to install msys2 for compiler and for SDL3 dependencies like harfbuzz, freetype etc.
-scoop or chocolatey to install Ninja, zed, and cppheck.
+scoop or chocolatey to install Ninja and cppheck.
 Cmake can be installed from the official website.
 Cpp check can be installed other ways just make sure its in your path.
 
