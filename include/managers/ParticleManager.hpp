@@ -32,6 +32,7 @@
 #include <unordered_map>
 #include <SDL3/SDL.h>
 #include "utils/Vector2D.hpp"
+#include "core/WorkerBudget.hpp"
 
 // Forward declarations
 class TextureManager;
@@ -494,6 +495,19 @@ public:
     void setThreadingThreshold(size_t threshold);
     
     /**
+     * @brief Enables WorkerBudget-aware threading with intelligent resource allocation
+     * @param enable Whether to enable WorkerBudget integration
+     */
+    void enableWorkerBudgetThreading(bool enable);
+    
+    /**
+     * @brief Updates particles using WorkerBudget-optimized batch processing
+     * @param deltaTime Time elapsed since last update
+     * @param particleCount Current number of active particles
+     */
+    void updateWithWorkerBudget(float deltaTime, size_t particleCount);
+    
+    /**
      * @brief Gets current performance statistics
      * @return Performance statistics structure
      */
@@ -662,11 +676,14 @@ private:
     bool m_smokeActive{false};
     bool m_sparksActive{false};
     
+    // WorkerBudget threading state
+    std::atomic<bool> m_useWorkerBudgetThreading{false};
+    
     // Helper methods
     uint32_t generateEffectId();
     size_t allocateParticle();
     void releaseParticle(size_t index);
-    void updateParticleBatch(size_t start, size_t end, float deltaTime, int bufferIndex);
+    void updateParticleBatch(size_t start, size_t end, float deltaTime);
     void renderParticleBatch(SDL_Renderer* renderer, size_t start, size_t end, 
                             float cameraX, float cameraY);
     void emitParticles(EffectInstance& effect, const ParticleEffectDefinition& definition, 

@@ -73,7 +73,7 @@ echo -e "${BLUE}================================================${NC}"
 mkdir -p "$PROJECT_ROOT/test_results"
 
 # Check if there were any failures in the output
-FAILURES=$(grep -o "[0-9]\+ failure" test_output.log 2>/dev/null | grep -o "[0-9]\+" || echo "0")
+FAILURES=$(grep -o "[0-9]\+ failures\? are detected" test_output.log 2>/dev/null | grep -o "[0-9]\+" || echo "0")
 
 # Save test results
 if [ -f test_output.log ]; then

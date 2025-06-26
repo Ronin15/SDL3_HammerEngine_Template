@@ -8,6 +8,8 @@
 #include "managers/EventManager.hpp"
 #include "core/Logger.hpp"
 #include "core/GameTime.hpp"
+#include "core/ThreadSystem.hpp"
+#include "core/WorkerBudget.hpp"
 #include <chrono>
 #include <algorithm>
 #include <random>
@@ -1196,4 +1198,147 @@ size_t ParticleManager::getMaxParticleCapacity() const {
 void ParticleManager::setMaxParticles(size_t maxParticles) {
     std::unique_lock<std::shared_mutex> lock(m_particlesMutex);
     m_storage.reserve(maxParticles);
+}
+
+// WorkerBudget threading implementation
+void ParticleManager::enableWorkerBudgetThreading(bool enable) {
+    m_useWorkerBudgetThreading.store(enable, std::memory_order_release);
+    if (enable) {
+        PARTICLE_LOG("WorkerBudget threading enabled for ParticleManager");
+    } else {
+        PARTICLE_LOG("WorkerBudget threading disabled for ParticleManager");
+    }
+}
+
+void ParticleManager::updateWithWorkerBudget(float deltaTime, size_t particleCount) {
+    if (!m_initialized.load(std::memory_order_acquire) ||
+        m_globallyPaused.load(std::memory_order_acquire)) {
+        return;
+    }
+
+    auto startTime = std::chrono::high_resolution_clock::now();
+
+    try {
+        // Check if we should use WorkerBudget threading
+        bool useThreading = (particleCount >= m_threadingThreshold &&
+                           m_useThreading.load(std::memory_order_acquire) &&
+                           m_useWorkerBudgetThreading.load(std::memory_order_acquire) &&
+                           Hammer::ThreadSystem::Exists());
+
+        if (useThreading) {
+            auto& threadSystem = Hammer::ThreadSystem::Instance();
+            size_t availableWorkers = static_cast<size_t>(threadSystem.getThreadCount());
+            
+            // Check queue pressure before submitting tasks
+            size_t queueSize = threadSystem.getQueueSize();
+            size_t queueCapacity = threadSystem.getQueueCapacity();
+            size_t pressureThreshold = (queueCapacity * 9) / 10; // 90% capacity threshold
+            
+            if (queueSize > pressureThreshold) {
+                // Graceful degradation: fallback to single-threaded processing
+                PARTICLE_LOG("Queue pressure detected (" + std::to_string(queueSize) + "/" + 
+                           std::to_string(queueCapacity) + "), using single-threaded processing");
+                update(deltaTime); // Use regular single-threaded update
+                return;
+            }
+            
+            // Use WorkerBudget system for optimal resource allocation
+            Hammer::WorkerBudget budget = Hammer::calculateWorkerBudget(availableWorkers);
+            
+            // Get optimal worker count with buffer allocation for particle workload
+            size_t optimalWorkerCount = budget.getOptimalWorkerCount(budget.particleAllocated, particleCount, 1000);
+            
+            // Dynamic batch sizing based on queue pressure for optimal performance
+            size_t minParticlesPerBatch = 1000;
+            size_t maxBatches = 4;
+            
+            // Adjust batch strategy based on queue pressure
+            double queuePressure = static_cast<double>(queueSize) / queueCapacity;
+            if (queuePressure > 0.5) {
+                // High pressure: use fewer, larger batches to reduce queue overhead
+                minParticlesPerBatch = 1500;
+                maxBatches = 2;
+            } else if (queuePressure < 0.25) {
+                // Low pressure: can use more batches for better parallelization
+                minParticlesPerBatch = 800;
+                maxBatches = 4;
+            }
+            
+            size_t batchCount = std::min(optimalWorkerCount, particleCount / minParticlesPerBatch);
+            batchCount = std::max(size_t(1), std::min(batchCount, maxBatches));
+            
+            size_t particlesPerBatch = particleCount / batchCount;
+            size_t remainingParticles = particleCount % batchCount;
+            
+            // Submit optimized particle update batches
+            for (size_t i = 0; i < batchCount; ++i) {
+                size_t start = i * particlesPerBatch;
+                size_t end = start + particlesPerBatch;
+                
+                // Add remaining particles to last batch
+                if (i == batchCount - 1) {
+                    end += remainingParticles;
+                }
+                
+                threadSystem.enqueueTask([this, start, end, deltaTime]() {
+                    updateParticleBatch(start, end, deltaTime);
+                }, Hammer::TaskPriority::High, "Particle_OptimalBatch");
+            }
+            
+        } else {
+            // Single-threaded processing
+            update(deltaTime);
+        }
+
+        // Performance tracking
+        auto endTime = std::chrono::high_resolution_clock::now();
+        auto duration = std::chrono::duration<double, std::milli>(endTime - startTime).count();
+        
+        // Update frame counter
+        uint64_t currentFrame = m_frameCounter.fetch_add(1, std::memory_order_relaxed);
+        
+        // Periodic performance summary (every 300 frames ~5 seconds)
+        if (currentFrame % 300 == 0) {
+            std::lock_guard<std::mutex> statsLock(m_statsMutex);
+            recordPerformance(false, duration, particleCount);
+            
+            if (particleCount > 0) {
+                PARTICLE_LOG("Particle Summary - Count: " + std::to_string(particleCount) + 
+                           ", Update: " + std::to_string(duration) + "ms" +
+                           ", Effects: " + std::to_string(m_effectInstances.size()));
+            }
+        }
+        
+    } catch (const std::exception& e) {
+        PARTICLE_LOG("Exception in ParticleManager::updateWithWorkerBudget: " + std::string(e.what()));
+    }
+}
+
+void ParticleManager::updateParticleBatch(size_t start, size_t end, float deltaTime) {
+    if (!m_initialized.load(std::memory_order_acquire)) {
+        return;
+    }
+
+    // Process particle batch with shared lock for read access
+    std::shared_lock<std::shared_mutex> lock(m_particlesMutex);
+    
+    // Update particles in the specified range
+    for (size_t i = start; i < end && i < m_storage.hotData.size(); ++i) {
+        auto& particle = m_storage.hotData[i];
+        if (particle.isActive()) {
+            updateParticle(particle, deltaTime);
+        }
+    }
+    
+    // Also update effect instances in this batch (shared across batches, but thread-safe)
+    size_t effectBatchSize = m_effectInstances.size() / 4; // Rough division
+    size_t effectStart = (start * m_effectInstances.size()) / (end - start + 1);
+    size_t effectEnd = std::min(effectStart + effectBatchSize, m_effectInstances.size());
+    
+    for (size_t i = effectStart; i < effectEnd; ++i) {
+        auto& effect = m_effectInstances[i];
+        if (effect.active) {
+            updateEffectInstance(effect, deltaTime);
+        }
+    }
 }

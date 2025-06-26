@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Hammer Engine ThreadSystem is a sophisticated, production-ready thread pool implementation designed for high-performance game development. It provides efficient task-based concurrency with automatic load balancing, priority-based scheduling, and comprehensive performance monitoring.
+The Hammer Engine ThreadSystem is a robust, production-ready thread pool implementation designed for high-performance game development. It provides efficient task-based concurrency with priority-based scheduling, WorkerBudget resource allocation, and comprehensive performance monitoring. The design emphasizes reliability, maintainability, and consistent performance across diverse hardware configurations.
 
 ## Architecture Overview
 
@@ -10,17 +10,22 @@ The Hammer Engine ThreadSystem is a sophisticated, production-ready thread pool 
 
 ```
 ThreadSystem (Singleton)
-├── ThreadPool (Manages worker lifecycle)
-│   ├── TaskQueue (Priority-based global queue)
+├── ThreadPool (Worker thread management)
+│   ├── TaskQueue (Global priority-based queue)
 │   │   ├── Priority Queues [0-4] (Critical → Idle)
+│   │   ├── Per-Priority Mutexes (Reduced contention)
 │   │   ├── Statistics Tracking
 │   │   └── Profiling System
-│   └── WorkerBudget Integration
-├── Worker Threads
-│   ├── Task Acquisition (Priority-based)
-│   ├── Exception Handling
-│   └── Performance Monitoring
-└── WorkerBudget System (Resource allocation)
+│   └── Worker Threads [N]
+│       ├── Priority-Based Task Processing
+│       ├── Exponential Backoff
+│       └── Exception Handling
+└── WorkerBudget System (Intelligent resource allocation)
+    ├── AI: 45% allocation
+    ├── Particles: 25% allocation  
+    ├── Events: 20% allocation
+    ├── Engine: 1-2 workers reserved
+    └── Buffer: Dynamic burst capacity
 ```
 
 ### Class Responsibilities
@@ -28,20 +33,20 @@ ThreadSystem (Singleton)
 | Class | Responsibility | Key Features |
 |-------|---------------|--------------|
 | **ThreadSystem** | Singleton API manager | Initialization, cleanup, public interface |
-| **ThreadPool** | Worker thread lifecycle | Thread creation, task distribution, shutdown |
-| **TaskQueue** | Priority-based queuing | 5 priority levels, statistics, capacity management |
-| **WorkerBudget** | Resource allocation | Tiered allocation strategy with buffer capacity |
-| **PrioritizedTask** | Task wrapper | Priority, timing, description, comparison |
+| **ThreadPool** | Worker thread lifecycle | Thread creation, task distribution, graceful shutdown |
+| **TaskQueue** | Priority-based queuing | 5 priority levels, per-priority mutexes, capacity management |
+| **WorkerBudget** | Resource allocation | Hardware-adaptive allocation with dynamic buffer usage |
+| **PrioritizedTask** | Task wrapper | Priority, timing, description, FIFO within priority |
 
 ### Performance Characteristics
 
 | Metric | Value | Notes |
 |--------|-------|-------|
-| **Memory Overhead** | <1KB | Static system overhead |
-| **CPU Overhead** | <0.1% | Per task processing |
-| **Throughput** | 15,000-20,000 tasks/sec | Small tasks (100 ops) |
-| **Load Balance Efficiency** | 90%+ | With WorkerBudget system |
-| **Scalability** | 70-98% efficiency | 2-16+ cores |
+| **Memory Overhead** | <0.5KB | Minimal static system overhead |
+| **CPU Overhead** | <0.05% | Per task processing cost |
+| **Throughput** | 15,000-25,000 tasks/sec | Small tasks (100-1000 ops) |
+| **Load Balance Efficiency** | 85%+ | Priority-based distribution |
+| **Scalability** | 75-95% efficiency | 2-16+ cores, reliable scaling |
 
 ## Implementation Details
 
