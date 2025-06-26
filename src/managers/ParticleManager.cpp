@@ -65,13 +65,22 @@ void ParticleManager::clean() {
 void ParticleManager::prepareForStateTransition() {
     PARTICLE_LOG("Preparing ParticleManager for state transition...");
 
-    // Pause particle updates
+    // Temporarily pause for safe cleanup
     m_globallyPaused.store(true, std::memory_order_release);
 
-    // Clean up particles
+    // Stop all weather effects immediately (clean slate for new state)
+    stopWeatherEffects(0.0f);
+
+    // Clean up inactive particles and effects
     cleanupInactiveParticles();
 
-    PARTICLE_LOG("ParticleManager prepared for state transition");
+    // Reset performance stats for fresh monitoring in new state
+    resetPerformanceStats();
+
+    // Resume particle system (ready for immediate reuse)
+    m_globallyPaused.store(false, std::memory_order_release);
+
+    PARTICLE_LOG("ParticleManager prepared and ready for state transition");
 }
 
 void ParticleManager::update(float deltaTime) {

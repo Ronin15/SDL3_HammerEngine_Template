@@ -247,8 +247,10 @@ public:
     void clean();
     
     /**
-     * @brief Prepares for state transition by safely cleaning up particles
-     * @details Call this before exit() in game states to avoid issues
+     * @brief Prepares for state transition by safely cleaning up and resetting the particle system
+     * @details Stops all weather effects, cleans up inactive particles, resets performance stats,
+     *          and leaves the system ready for immediate reuse in the new state.
+     *          Call this during exit() in game states for a clean transition.
      */
     void prepareForStateTransition();
     
