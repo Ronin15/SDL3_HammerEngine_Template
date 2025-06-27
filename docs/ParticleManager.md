@@ -288,8 +288,8 @@ void configureThreading(bool useThreading, unsigned int maxThreads = 0);
 void setThreadingThreshold(size_t threshold);
 void enableWorkerBudgetThreading(bool enable);
 
-// WorkerBudget integration
-void updateWithWorkerBudget(float deltaTime, size_t particleCount);
+// WorkerBudget integration (handled internally by main update method)
+void enableWorkerBudgetThreading(bool enable);
 
 // Performance monitoring
 ParticlePerformanceStats getPerformanceStats() const;
