@@ -525,6 +525,12 @@ public:
     size_t getActiveParticleCount() const;
     
     /**
+     * @brief Counts the actual number of active particles in storage
+     * @return Number of active particles
+     */
+    size_t countActiveParticles() const;
+    
+    /**
      * @brief Gets the maximum particle capacity
      * @return Maximum number of particles
      */
@@ -558,41 +564,75 @@ private:
     ParticleManager(const ParticleManager&) = delete;
     ParticleManager& operator=(const ParticleManager&) = delete;
 
-    // Cache-efficient storage using Structure of Arrays (SoA)
+    // FIXED: Unified particle storage - no more data synchronization issues
+    struct UnifiedParticle {
+        // All particle data in one structure - no synchronization issues
+        Vector2D position;
+        Vector2D velocity;
+        Vector2D acceleration;
+        float life;
+        float maxLife;
+        float size;
+        float rotation;
+        float angularVelocity;
+        uint32_t color;
+        uint16_t textureIndex;
+        uint8_t flags;
+        uint8_t generationId;
+        
+        // Flags bit definitions
+        static constexpr uint8_t FLAG_ACTIVE = 1 << 0;
+        static constexpr uint8_t FLAG_VISIBLE = 1 << 1;
+        static constexpr uint8_t FLAG_GRAVITY = 1 << 2;
+        static constexpr uint8_t FLAG_COLLISION = 1 << 3;
+        static constexpr uint8_t FLAG_WEATHER = 1 << 4;
+        static constexpr uint8_t FLAG_FADE_OUT = 1 << 5;
+        
+        UnifiedParticle() : position(0, 0), velocity(0, 0), acceleration(0, 0),
+                           life(0.0f), maxLife(1.0f), size(2.0f), rotation(0.0f),
+                           angularVelocity(0.0f), color(0xFFFFFFFF), textureIndex(0),
+                           flags(0), generationId(0) {}
+        
+        bool isActive() const { return flags & FLAG_ACTIVE; }
+        void setActive(bool active) {
+            if (active) flags |= FLAG_ACTIVE;
+            else flags &= ~FLAG_ACTIVE;
+        }
+        
+        bool isVisible() const { return flags & FLAG_VISIBLE; }
+        void setVisible(bool visible) {
+            if (visible) flags |= FLAG_VISIBLE;
+            else flags &= ~FLAG_VISIBLE;
+        }
+        
+        bool isWeatherParticle() const { return flags & FLAG_WEATHER; }
+        void setWeatherParticle(bool weather) {
+            if (weather) flags |= FLAG_WEATHER;
+            else flags &= ~FLAG_WEATHER;
+        }
+        
+        bool isFadingOut() const { return flags & FLAG_FADE_OUT; }
+        void setFadingOut(bool fading) {
+            if (fading) flags |= FLAG_FADE_OUT;
+            else flags &= ~FLAG_FADE_OUT;
+        }
+        
+        float getLifeRatio() const { return maxLife > 0 ? life / maxLife : 0.0f; }
+    };
+    
+    // Simple, robust storage
     struct ParticleStorage {
-        // Hot data arrays - tightly packed for cache efficiency
-        std::vector<ParticleData> hotData;
+        std::vector<UnifiedParticle> particles;
         
-        // Cold data arrays - accessed less frequently
-        std::vector<ParticleColdData> coldData;
-        
-        // Index management
-        std::vector<size_t> freeIndices;
-        size_t nextIndex{0};
-        
-        // Double buffering for lock-free updates
-        std::atomic<int> currentBuffer{0};
-        std::array<std::vector<ParticleData>, 2> doubleBuffer;
-        
-        size_t size() const { return hotData.size(); }
-        size_t capacity() const { return hotData.capacity(); }
+        size_t size() const { return particles.size(); }
+        size_t capacity() const { return particles.capacity(); }
         
         void reserve(size_t capacity) {
-            hotData.reserve(capacity);
-            coldData.reserve(capacity);
-            freeIndices.reserve(capacity / 4); // Assume 25% turnover
-            doubleBuffer[0].reserve(capacity);
-            doubleBuffer[1].reserve(capacity);
+            particles.reserve(capacity);
         }
         
         void clear() {
-            hotData.clear();
-            coldData.clear();
-            freeIndices.clear();
-            doubleBuffer[0].clear();
-            doubleBuffer[1].clear();
-            nextIndex = 0;
-            currentBuffer.store(0);
+            particles.clear();
         }
     };
     
@@ -645,6 +685,9 @@ private:
     std::atomic<size_t> m_threadingThreshold{1000};
     unsigned int m_maxThreads{0};
     
+    // Frame counter for periodic maintenance (like AIManager)
+    std::atomic<uint64_t> m_frameCounter{0};
+    
     // Camera and culling
     struct CameraViewport {
         float x{0}, y{0}, width{1920}, height{1080};
@@ -664,9 +707,6 @@ private:
     
     // Effect ID generation
     std::atomic<uint32_t> m_nextEffectId{1};
-    
-    // Frame counting for periodic logging
-    std::atomic<uint64_t> m_frameCounter{0};
     
     // Built-in effect state tracking
     uint32_t m_fireEffectId{0};
@@ -693,6 +733,11 @@ private:
     bool isParticleVisible(const ParticleData& particle, float cameraX, float cameraY) const;
     void swapBuffers();
     void cleanupInactiveParticles();
+    void updateEffectInstances(float deltaTime);
+    void updateParticlesThreaded(float deltaTime, size_t activeParticleCount);
+    void updateParticlesSingleThreaded(float deltaTime, size_t activeParticleCount);
+    void updateParticleWithColdData(ParticleData& particle, ParticleColdData& coldData, float deltaTime);
+    void updateUnifiedParticle(UnifiedParticle& particle, float deltaTime);
     void createParticleForEffect(EffectInstance& effect, const ParticleEffectDefinition& effectDef);
     uint16_t getTextureIndex(const std::string& textureID);
     uint32_t interpolateColor(uint32_t color1, uint32_t color2, float factor);
