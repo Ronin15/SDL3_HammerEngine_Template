@@ -38,8 +38,8 @@
 class TextureManager;
 class EventManager;
 
-// Conditional debug logging - ENABLED FOR DEBUGGING
-#define PARTICLE_LOG(x) std::cout << "Hammer Game Engine - [Particle Manager] " << x << std::endl
+// Use the proper logging system for thread-safe logging
+// Note: This header only contains the LOG macro declaration, the actual include is in the .cpp file
 
 /**
  * @brief Particle effect type enumeration for fast dispatch

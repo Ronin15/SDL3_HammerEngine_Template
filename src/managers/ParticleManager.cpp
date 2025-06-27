@@ -16,7 +16,7 @@
 
 bool ParticleManager::init() {
     if (m_initialized.load(std::memory_order_acquire)) {
-        PARTICLE_LOG("ParticleManager already initialized");
+        PARTICLE_INFO("ParticleManager already initialized");
         return true;
     }
 
@@ -31,11 +31,11 @@ bool ParticleManager::init() {
         m_initialized.store(true, std::memory_order_release);
         m_isShutdown = false;
 
-        PARTICLE_LOG("ParticleManager initialized successfully");
+        PARTICLE_INFO("ParticleManager initialized successfully");
         return true;
 
     } catch (const std::exception& e) {
-        PARTICLE_LOG("Failed to initialize ParticleManager: " + std::string(e.what()));
+        PARTICLE_ERROR("Failed to initialize ParticleManager: " + std::string(e.what()));
         return false;
     }
 }
@@ -45,7 +45,7 @@ void ParticleManager::clean() {
         return;
     }
 
-    PARTICLE_LOG("ParticleManager shutting down...");
+    PARTICLE_INFO("ParticleManager shutting down...");
 
     // Mark as shutting down
     m_isShutdown = true;
@@ -58,11 +58,11 @@ void ParticleManager::clean() {
     m_effectInstances.clear();
     m_effectIdToIndex.clear();
 
-    PARTICLE_LOG("ParticleManager shutdown complete");
+    PARTICLE_INFO("ParticleManager shutdown complete");
 }
 
 void ParticleManager::prepareForStateTransition() {
-    PARTICLE_LOG("Preparing ParticleManager for state transition...");
+    PARTICLE_INFO("Preparing ParticleManager for state transition...");
 
     // COMPREHENSIVE CLEANUP: Ensure all effects and particles are properly cleaned up
     // This prevents effects from continuing when re-entering a state
@@ -71,7 +71,7 @@ void ParticleManager::prepareForStateTransition() {
     std::unique_lock<std::shared_mutex> lock(m_particlesMutex, std::try_to_lock);
     if (!lock.owns_lock()) {
         // If we can't get the lock immediately, force a simpler cleanup
-        PARTICLE_LOG("Could not acquire lock for state transition, using simpler cleanup");
+        PARTICLE_WARN("Could not acquire lock for state transition, using simpler cleanup");
         m_globallyPaused.store(true, std::memory_order_release);
         
         // Simple atomic cleanup without locking
@@ -82,7 +82,7 @@ void ParticleManager::prepareForStateTransition() {
         }
         
         m_globallyPaused.store(false, std::memory_order_release);
-        PARTICLE_LOG("ParticleManager state transition complete (simple cleanup)");
+        PARTICLE_INFO("ParticleManager state transition complete (simple cleanup)");
         return;
     }
     
@@ -94,7 +94,7 @@ void ParticleManager::prepareForStateTransition() {
     auto it = m_effectInstances.begin();
     while (it != m_effectInstances.end()) {
         if (it->isWeatherEffect) {
-            PARTICLE_LOG("Removing weather effect: " + it->effectName + " (ID: " + std::to_string(it->id) + ")");
+            PARTICLE_INFO("Removing weather effect: " + it->effectName + " (ID: " + std::to_string(it->id) + ")");
             m_effectIdToIndex.erase(it->id);
             it = m_effectInstances.erase(it);
             weatherEffectsStopped++;
@@ -103,13 +103,33 @@ void ParticleManager::prepareForStateTransition() {
         }
     }
     
-    // 2. Stop ALL independent effects to ensure clean state transitions
+    // 2. Remove ALL remaining effects (independent and regular) for complete state cleanup
     int independentEffectsStopped = 0;
+    int regularEffectsStopped = 0;
+    
+    // First pass: count and deactivate
     for (auto& effect : m_effectInstances) {
-        if (effect.active && effect.isIndependentEffect) {
+        if (effect.active) {
+            if (effect.isIndependentEffect) {
+                independentEffectsStopped++;
+            } else {
+                regularEffectsStopped++;
+            }
             effect.active = false;
-            independentEffectsStopped++;
         }
+    }
+    
+    // Second pass: remove ALL non-weather effects from the list
+    auto newEnd = std::remove_if(m_effectInstances.begin(), m_effectInstances.end(),
+        [](const EffectInstance& effect) {
+            return !effect.isWeatherEffect; // Remove everything except weather (already removed)
+        });
+    m_effectInstances.erase(newEnd, m_effectInstances.end());
+    
+    // Third pass: rebuild the effect ID index for the remaining effects (should be empty)
+    m_effectIdToIndex.clear();
+    for (size_t i = 0; i < m_effectInstances.size(); ++i) {
+        m_effectIdToIndex[m_effectInstances[i].id] = i;
     }
     
     // 3. Clear ALL particles (both weather and independent) - MORE AGGRESSIVE APPROACH
@@ -126,7 +146,7 @@ void ParticleManager::prepareForStateTransition() {
     size_t totalParticlesBefore = m_storage.particles.size();
     m_storage.particles.clear();  // Complete clear to ensure zero particles
     
-    PARTICLE_LOG("Complete particle cleanup: cleared " + std::to_string(particlesCleared) + 
+    PARTICLE_INFO("Complete particle cleanup: cleared " + std::to_string(particlesCleared) + 
                 " active particles, removed total of " + std::to_string(totalParticlesBefore) + " particles from storage");
     
     // 4. Rebuild effect index mapping for any remaining effects
@@ -144,9 +164,10 @@ void ParticleManager::prepareForStateTransition() {
     // Resume system
     m_globallyPaused.store(false, std::memory_order_release);
     
-    PARTICLE_LOG("ParticleManager state transition complete - stopped " + 
+    PARTICLE_INFO("ParticleManager state transition complete - stopped " + 
                 std::to_string(weatherEffectsStopped) + " weather effects, " +
-                std::to_string(independentEffectsStopped) + " independent effects, cleared " +
+                std::to_string(independentEffectsStopped) + " independent effects, " +
+                std::to_string(regularEffectsStopped) + " regular effects, cleared " +
                 std::to_string(particlesCleared) + " particles");
 }
 
@@ -195,14 +216,14 @@ void ParticleManager::update(float deltaTime) {
             recordPerformance(false, timeMs, activeCount);
             
             if (activeCount > 0) {
-                PARTICLE_LOG("Particle Summary - Count: " + std::to_string(activeCount) + 
+                PARTICLE_DEBUG("Particle Summary - Count: " + std::to_string(activeCount) + 
                            ", Update: " + std::to_string(timeMs) + "ms" +
                            ", Effects: " + std::to_string(m_effectInstances.size()));
             }
         }
         
     } catch (const std::exception& e) {
-        PARTICLE_LOG("Exception in ParticleManager::update: " + std::string(e.what()));
+        PARTICLE_ERROR("Exception in ParticleManager::update: " + std::string(e.what()));
     }
 }
 
@@ -248,7 +269,7 @@ void ParticleManager::render(SDL_Renderer* renderer, float cameraX, float camera
     // Periodic summary logging (every 900 frames ~15 seconds)
     uint64_t currentFrame = m_frameCounter.fetch_add(1, std::memory_order_relaxed);
     if (currentFrame % 900 == 0 && renderCount > 0) {
-        PARTICLE_LOG("Particle Summary - Total: " + std::to_string(m_storage.particles.size()) + 
+        PARTICLE_DEBUG("Particle Summary - Total: " + std::to_string(m_storage.particles.size()) + 
                     ", Active: " + std::to_string(renderCount) + 
                     ", Effects: " + std::to_string(m_effectInstances.size()));
     }
@@ -387,17 +408,17 @@ void ParticleManager::renderForeground(SDL_Renderer* renderer, float cameraX, fl
 }
 
 uint32_t ParticleManager::playEffect(const std::string& effectName, const Vector2D& position, float intensity) {
-    PARTICLE_LOG("*** PLAY EFFECT CALLED: " + effectName + " at (" + std::to_string(position.getX()) + ", " + std::to_string(position.getY()) + ") intensity=" + std::to_string(intensity));
+    PARTICLE_INFO("*** PLAY EFFECT CALLED: " + effectName + " at (" + std::to_string(position.getX()) + ", " + std::to_string(position.getY()) + ") intensity=" + std::to_string(intensity));
     
     // Thread safety: Use exclusive lock for modifying effect instances
     std::unique_lock<std::shared_mutex> lock(m_particlesMutex);
     
     auto it = m_effectDefinitions.find(effectName);
     if (it == m_effectDefinitions.end()) {
-        PARTICLE_LOG("ERROR: Effect not found: " + effectName);
-        PARTICLE_LOG("Available effects: " + std::to_string(m_effectDefinitions.size()));
+        PARTICLE_ERROR("ERROR: Effect not found: " + effectName);
+        PARTICLE_INFO("Available effects: " + std::to_string(m_effectDefinitions.size()));
         for (const auto& pair : m_effectDefinitions) {
-            PARTICLE_LOG("  - " + pair.first);
+            PARTICLE_INFO("  - " + pair.first);
         }
         return 0;
     }
@@ -417,7 +438,7 @@ uint32_t ParticleManager::playEffect(const std::string& effectName, const Vector
     m_effectInstances.push_back(instance);
     m_effectIdToIndex[instance.id] = m_effectInstances.size() - 1;
 
-    PARTICLE_LOG("Effect successfully started: " + effectName + " (ID: " + std::to_string(instance.id) + ") - Total active effects: " + std::to_string(m_effectInstances.size()));
+    PARTICLE_INFO("Effect successfully started: " + effectName + " (ID: " + std::to_string(instance.id) + ") - Total active effects: " + std::to_string(m_effectInstances.size()));
     return instance.id;
 }
 
@@ -428,17 +449,17 @@ void ParticleManager::stopEffect(uint32_t effectId) {
     auto it = m_effectIdToIndex.find(effectId);
     if (it != m_effectIdToIndex.end()) {
         m_effectInstances[it->second].active = false;
-        PARTICLE_LOG("Effect stopped: ID " + std::to_string(effectId));
+        PARTICLE_INFO("Effect stopped: ID " + std::to_string(effectId));
     }
 }
 
 void ParticleManager::stopWeatherEffects(float transitionTime) {
-    PARTICLE_LOG("*** STOPPING ALL WEATHER EFFECTS (transition: " + std::to_string(transitionTime) + "s)");
+    PARTICLE_INFO("*** STOPPING ALL WEATHER EFFECTS (transition: " + std::to_string(transitionTime) + "s)");
     
     // Use try_lock to avoid deadlocks during testing
     std::unique_lock<std::shared_mutex> lock(m_particlesMutex, std::try_to_lock);
     if (!lock.owns_lock()) {
-        PARTICLE_LOG("Could not acquire lock for stopping weather effects, skipping");
+        PARTICLE_WARN("Could not acquire lock for stopping weather effects, skipping");
         return;
     }
     
@@ -448,7 +469,7 @@ void ParticleManager::stopWeatherEffects(float transitionTime) {
     auto it = m_effectInstances.begin();
     while (it != m_effectInstances.end()) {
         if (it->isWeatherEffect) {
-            PARTICLE_LOG("DEBUG: Removing weather effect: " + it->effectName + " (ID: " + std::to_string(it->id) + ")");
+            PARTICLE_DEBUG("DEBUG: Removing weather effect: " + it->effectName + " (ID: " + std::to_string(it->id) + ")");
             
             // Remove from ID mapping
             m_effectIdToIndex.erase(it->id);
@@ -477,7 +498,7 @@ void ParticleManager::stopWeatherEffects(float transitionTime) {
                 affectedCount++;
             }
         }
-        PARTICLE_LOG("Cleared " + std::to_string(affectedCount) + " weather particles immediately");
+        PARTICLE_INFO("Cleared " + std::to_string(affectedCount) + " weather particles immediately");
     } else {
         // Set fade-out for particles with transition time
         int affectedCount = 0;
@@ -488,10 +509,10 @@ void ParticleManager::stopWeatherEffects(float transitionTime) {
                 affectedCount++;
             }
         }
-        PARTICLE_LOG("Cleared " + std::to_string(affectedCount) + " weather particles with fade time: " + std::to_string(transitionTime) + "s");
+        PARTICLE_INFO("Cleared " + std::to_string(affectedCount) + " weather particles with fade time: " + std::to_string(transitionTime) + "s");
     }
     
-    PARTICLE_LOG("Stopped and removed " + std::to_string(stoppedCount) + " weather effects");
+    PARTICLE_INFO("Stopped and removed " + std::to_string(stoppedCount) + " weather effects");
 }
 
 void ParticleManager::clearWeatherGeneration(uint8_t generationId, float fadeTime) {
@@ -520,13 +541,13 @@ void ParticleManager::clearWeatherGeneration(uint8_t generationId, float fadeTim
         }
     }
     
-    PARTICLE_LOG("Cleared " + std::to_string(affectedCount) + " weather particles" + 
+    PARTICLE_INFO("Cleared " + std::to_string(affectedCount) + " weather particles" + 
                 (generationId > 0 ? " (generation " + std::to_string(generationId) + ")" : "") +
                 " with fade time: " + std::to_string(fadeTime) + "s");
 }
 
 void ParticleManager::triggerWeatherEffect(const std::string& weatherType, float intensity, float transitionTime) {
-    PARTICLE_LOG("*** WEATHER EFFECT TRIGGERED: " + weatherType + " intensity=" + std::to_string(intensity));
+    PARTICLE_INFO("*** WEATHER EFFECT TRIGGERED: " + weatherType + " intensity=" + std::to_string(intensity));
     
     // Use smooth transitions for better visual quality
     float actualTransitionTime = (transitionTime > 0.0f) ? transitionTime : 1.5f;
@@ -539,7 +560,7 @@ void ParticleManager::triggerWeatherEffect(const std::string& weatherType, float
     auto it = m_effectInstances.begin();
     while (it != m_effectInstances.end()) {
         if (it->isWeatherEffect) {
-            PARTICLE_LOG("DEBUG: Removing weather effect: " + it->effectName + " (ID: " + std::to_string(it->id) + ")");
+            PARTICLE_DEBUG("DEBUG: Removing weather effect: " + it->effectName + " (ID: " + std::to_string(it->id) + ")");
             m_effectIdToIndex.erase(it->id);
             it = m_effectInstances.erase(it);
             stoppedCount++;
@@ -564,14 +585,14 @@ void ParticleManager::triggerWeatherEffect(const std::string& weatherType, float
                 affectedCount++;
             }
         }
-        PARTICLE_LOG("Cleared " + std::to_string(affectedCount) + " weather particles immediately");
+        PARTICLE_INFO("Cleared " + std::to_string(affectedCount) + " weather particles immediately");
     }
     
-    PARTICLE_LOG("Stopped " + std::to_string(stoppedCount) + " weather effects");
+    PARTICLE_INFO("Stopped " + std::to_string(stoppedCount) + " weather effects");
     
     // Handle Clear weather - just stop effects and return
     if (weatherType == "Clear") {
-        PARTICLE_LOG("Clear weather triggered - only stopping weather effects");
+        PARTICLE_INFO("Clear weather triggered - only stopping weather effects");
         return;
     }
     
@@ -583,13 +604,13 @@ void ParticleManager::triggerWeatherEffect(const std::string& weatherType, float
     else if (weatherType == "Cloudy") effectName = "Cloudy";
     else if (weatherType == "Stormy") effectName = "Rain"; // Stormy = heavy rain
     
-    PARTICLE_LOG("Mapped weather type '" + weatherType + "' to effect '" + effectName + "'");
+    PARTICLE_INFO("Mapped weather type '" + weatherType + "' to effect '" + effectName + "'");
 
     if (!effectName.empty()) {
         // Check if effect definition exists
         auto defIt = m_effectDefinitions.find(effectName);
         if (defIt == m_effectDefinitions.end()) {
-            PARTICLE_LOG("ERROR: Effect not found: " + effectName);
+            PARTICLE_ERROR("ERROR: Effect not found: " + effectName);
             return;
         }
         
@@ -620,10 +641,10 @@ void ParticleManager::triggerWeatherEffect(const std::string& weatherType, float
         m_effectInstances.push_back(instance);
         m_effectIdToIndex[instance.id] = m_effectInstances.size() - 1;
         
-        PARTICLE_LOG("Weather effect created: " + effectName + " (ID: " + std::to_string(instance.id) + ") at position (" + 
+        PARTICLE_INFO("Weather effect created: " + effectName + " (ID: " + std::to_string(instance.id) + ") at position (" + 
                     std::to_string(weatherPosition.getX()) + ", " + std::to_string(weatherPosition.getY()) + ")");
     } else {
-        PARTICLE_LOG("ERROR: No effect mapping found for weather type: " + weatherType);
+        PARTICLE_ERROR("ERROR: No effect mapping found for weather type: " + weatherType);
     }
 }
 
@@ -672,13 +693,13 @@ void ParticleManager::toggleSparksEffect() {
 uint32_t ParticleManager::playIndependentEffect(const std::string& effectName, const Vector2D& position, 
                                               float intensity, float duration, 
                                               const std::string& groupTag, const std::string& soundEffect) {
-    PARTICLE_LOG("Playing independent effect: " + effectName + " at (" + std::to_string(position.getX()) + ", " + std::to_string(position.getY()) + ")");
+    PARTICLE_INFO("Playing independent effect: " + effectName + " at (" + std::to_string(position.getX()) + ", " + std::to_string(position.getY()) + ")");
     
     std::unique_lock<std::shared_mutex> lock(m_particlesMutex);
     
     auto it = m_effectDefinitions.find(effectName);
     if (it == m_effectDefinitions.end()) {
-        PARTICLE_LOG("ERROR: Independent effect not found: " + effectName);
+        PARTICLE_ERROR("ERROR: Independent effect not found: " + effectName);
         return 0;
     }
     
@@ -700,7 +721,7 @@ uint32_t ParticleManager::playIndependentEffect(const std::string& effectName, c
     m_effectInstances.push_back(instance);
     m_effectIdToIndex[instance.id] = m_effectInstances.size() - 1;
     
-    PARTICLE_LOG("Independent effect started: " + effectName + " (ID: " + std::to_string(instance.id) + ")");
+    PARTICLE_INFO("Independent effect started: " + effectName + " (ID: " + std::to_string(instance.id) + ")");
     return instance.id;
 }
 
@@ -712,7 +733,7 @@ void ParticleManager::stopIndependentEffect(uint32_t effectId) {
         auto& effect = m_effectInstances[it->second];
         if (effect.isIndependentEffect) {
             effect.active = false;
-            PARTICLE_LOG("Independent effect stopped: ID " + std::to_string(effectId));
+            PARTICLE_INFO("Independent effect stopped: ID " + std::to_string(effectId));
         }
     }
 }
@@ -728,7 +749,7 @@ void ParticleManager::stopAllIndependentEffects() {
         }
     }
     
-    PARTICLE_LOG("Stopped " + std::to_string(stoppedCount) + " independent effects");
+    PARTICLE_INFO("Stopped " + std::to_string(stoppedCount) + " independent effects");
 }
 
 void ParticleManager::stopIndependentEffectsByGroup(const std::string& groupTag) {
@@ -742,7 +763,7 @@ void ParticleManager::stopIndependentEffectsByGroup(const std::string& groupTag)
         }
     }
     
-    PARTICLE_LOG("Stopped " + std::to_string(stoppedCount) + " independent effects in group: " + groupTag);
+    PARTICLE_INFO("Stopped " + std::to_string(stoppedCount) + " independent effects in group: " + groupTag);
 }
 
 void ParticleManager::pauseIndependentEffect(uint32_t effectId, bool paused) {
@@ -753,7 +774,7 @@ void ParticleManager::pauseIndependentEffect(uint32_t effectId, bool paused) {
         auto& effect = m_effectInstances[it->second];
         if (effect.isIndependentEffect) {
             effect.paused = paused;
-            PARTICLE_LOG("Independent effect " + std::to_string(effectId) + (paused ? " paused" : " unpaused"));
+            PARTICLE_INFO("Independent effect " + std::to_string(effectId) + (paused ? " paused" : " unpaused"));
         }
     }
 }
@@ -769,7 +790,7 @@ void ParticleManager::pauseAllIndependentEffects(bool paused) {
         }
     }
     
-    PARTICLE_LOG("All independent effects " + std::string(paused ? "paused" : "unpaused") + " (" + std::to_string(affectedCount) + " effects)");
+    PARTICLE_INFO("All independent effects " + std::string(paused ? "paused" : "unpaused") + " (" + std::to_string(affectedCount) + " effects)");
 }
 
 void ParticleManager::pauseIndependentEffectsByGroup(const std::string& groupTag, bool paused) {
@@ -783,7 +804,7 @@ void ParticleManager::pauseIndependentEffectsByGroup(const std::string& groupTag
         }
     }
     
-    PARTICLE_LOG("Independent effects in group " + groupTag + " " + std::string(paused ? "paused" : "unpaused") + " (" + std::to_string(affectedCount) + " effects)");
+    PARTICLE_INFO("Independent effects in group " + groupTag + " " + std::string(paused ? "paused" : "unpaused") + " (" + std::to_string(affectedCount) + " effects)");
 }
 
 bool ParticleManager::isIndependentEffect(uint32_t effectId) const {
@@ -827,7 +848,7 @@ uint32_t ParticleManager::generateEffectId() {
 }
 
 void ParticleManager::registerBuiltInEffects() {
-    PARTICLE_LOG("*** REGISTERING BUILT-IN EFFECTS");
+    PARTICLE_INFO("*** REGISTERING BUILT-IN EFFECTS");
     
     // Register preset weather effects
     m_effectDefinitions["Rain"] = createRainEffect();
@@ -840,9 +861,9 @@ void ParticleManager::registerBuiltInEffects() {
     m_effectDefinitions["Smoke"] = createSmokeEffect();
     m_effectDefinitions["Sparks"] = createSparksEffect();
     
-    PARTICLE_LOG("Built-in effects registered: " + std::to_string(m_effectDefinitions.size()));
+    PARTICLE_INFO("Built-in effects registered: " + std::to_string(m_effectDefinitions.size()));
     for (const auto& pair : m_effectDefinitions) {
-        PARTICLE_LOG("  - Effect: " + pair.first);
+        PARTICLE_INFO("  - Effect: " + pair.first);
     }
     
     // More effects can be added as needed
@@ -1039,7 +1060,7 @@ void ParticleManager::cleanupInactiveParticles() {
         size_t removedCount = std::distance(removeIt, m_storage.particles.end());
         m_storage.particles.erase(removeIt, m_storage.particles.end());
         
-        PARTICLE_LOG("Cleaned up " + std::to_string(removedCount) + " inactive/faded particles");
+        PARTICLE_DEBUG("Cleaned up " + std::to_string(removedCount) + " inactive/faded particles");
     }
     
     // No need to clean up particle indices since effects don't own particles anymore
@@ -1081,7 +1102,7 @@ void ParticleManager::updateEffectInstance(EffectInstance& effect, float deltaTi
         // Only deactivate when intensity is very low (not just zero) to maintain visual continuity
         if (effect.isWeatherEffect && effect.targetIntensity == 0.0f && effect.currentIntensity <= 0.05f) {
             effect.active = false;
-            PARTICLE_LOG("Weather effect " + effect.effectName + " faded out and deactivated");
+            PARTICLE_INFO("Weather effect " + effect.effectName + " faded out and deactivated");
             return;
         }
     }
@@ -1125,7 +1146,7 @@ void ParticleManager::updateEffectInstance(EffectInstance& effect, float deltaTi
             // Reduced logging: only log weather effects periodically (every 10 seconds)
             static uint64_t emissionLogCounter = 0;
             if (effect.isWeatherEffect && (++emissionLogCounter % 600 == 0)) {
-                PARTICLE_LOG("Weather Effect: " + effect.effectName + " emitting " + 
+                PARTICLE_DEBUG("Weather Effect: " + effect.effectName + " emitting " + 
                             std::to_string(particlesToEmit) + " particles (Intensity: " + 
                             std::to_string(effect.currentIntensity) + ")");
             }
@@ -1266,7 +1287,7 @@ void ParticleManager::createParticleForEffect(EffectInstance& effect, const Part
         if (removeIt != m_storage.particles.end()) {
             size_t removedCount = std::distance(removeIt, m_storage.particles.end());
             m_storage.particles.erase(removeIt, m_storage.particles.end());
-            PARTICLE_LOG("Cleaned up " + std::to_string(removedCount) + " dead particles");
+            PARTICLE_DEBUG("Cleaned up " + std::to_string(removedCount) + " dead particles");
         }
     }
     
@@ -1370,9 +1391,9 @@ void ParticleManager::setMaxParticles(size_t maxParticles) {
 void ParticleManager::enableWorkerBudgetThreading(bool enable) {
     m_useWorkerBudgetThreading.store(enable, std::memory_order_release);
     if (enable) {
-        PARTICLE_LOG("WorkerBudget threading enabled for ParticleManager");
+        PARTICLE_INFO("WorkerBudget threading enabled for ParticleManager");
     } else {
-        PARTICLE_LOG("WorkerBudget threading disabled for ParticleManager");
+        PARTICLE_INFO("WorkerBudget threading disabled for ParticleManager");
     }
 }
 
@@ -1402,7 +1423,7 @@ void ParticleManager::updateWithWorkerBudget(float deltaTime, size_t particleCou
             
             if (queueSize > pressureThreshold) {
                 // Graceful degradation: fallback to single-threaded processing
-                PARTICLE_LOG("Queue pressure detected (" + std::to_string(queueSize) + "/" + 
+                PARTICLE_WARN("Queue pressure detected (" + std::to_string(queueSize) + "/" + 
                            std::to_string(queueCapacity) + "), using single-threaded processing");
                 update(deltaTime); // Use regular single-threaded update
                 return;
@@ -1469,14 +1490,14 @@ void ParticleManager::updateWithWorkerBudget(float deltaTime, size_t particleCou
             recordPerformance(false, duration, particleCount);
             
             if (particleCount > 0) {
-                PARTICLE_LOG("Particle Summary - Count: " + std::to_string(particleCount) + 
+                PARTICLE_DEBUG("Particle Summary - Count: " + std::to_string(particleCount) + 
                            ", Update: " + std::to_string(duration) + "ms" +
                            ", Effects: " + std::to_string(m_effectInstances.size()));
             }
         }
         
     } catch (const std::exception& e) {
-        PARTICLE_LOG("Exception in ParticleManager::updateWithWorkerBudget: " + std::string(e.what()));
+        PARTICLE_ERROR("Exception in ParticleManager::updateWithWorkerBudget: " + std::string(e.what()));
     }
 }
 
@@ -1516,7 +1537,7 @@ void ParticleManager::updateParticlesThreaded(float deltaTime, size_t totalParti
     
     if (queueSize > pressureThreshold) {
         // Graceful degradation: fallback to single-threaded processing
-        PARTICLE_LOG("Queue pressure detected (" + std::to_string(queueSize) + "/" + 
+        PARTICLE_WARN("Queue pressure detected (" + std::to_string(queueSize) + "/" + 
                     std::to_string(queueCapacity) + "), using single-threaded processing");
         updateParticlesSingleThreaded(cappedDeltaTime, totalParticleCount);
         return;
@@ -1729,6 +1750,6 @@ void ParticleManager::compactParticleStorage() {
     if (removeIt != m_storage.particles.end()) {
         size_t removedCount = std::distance(removeIt, m_storage.particles.end());
         m_storage.particles.erase(removeIt, m_storage.particles.end());
-        PARTICLE_LOG("Compacted storage: removed " + std::to_string(removedCount) + " inactive particles");
+        PARTICLE_DEBUG("Compacted storage: removed " + std::to_string(removedCount) + " inactive particles");
     }
 }

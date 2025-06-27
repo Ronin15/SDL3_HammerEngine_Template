@@ -172,6 +172,12 @@ namespace Hammer {
     #define FONT_INFO(msg) HAMMER_INFO("FontManager", msg)
     #define FONT_DEBUG(msg) HAMMER_DEBUG("FontManager", msg)
 
+    #define PARTICLE_CRITICAL(msg) HAMMER_CRITICAL("ParticleManager", msg)
+    #define PARTICLE_ERROR(msg) HAMMER_ERROR("ParticleManager", msg)
+    #define PARTICLE_WARN(msg) HAMMER_WARN("ParticleManager", msg)
+    #define PARTICLE_INFO(msg) HAMMER_INFO("ParticleManager", msg)
+    #define PARTICLE_DEBUG(msg) HAMMER_DEBUG("ParticleManager", msg)
+
     #define AI_CRITICAL(msg) HAMMER_CRITICAL("AIManager", msg)
     #define AI_ERROR(msg) HAMMER_ERROR("AIManager", msg)
     #define AI_WARN(msg) HAMMER_WARN("AIManager", msg)
