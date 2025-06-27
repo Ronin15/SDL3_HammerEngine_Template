@@ -64,34 +64,69 @@ void ParticleManager::clean() {
 void ParticleManager::prepareForStateTransition() {
     PARTICLE_LOG("Preparing ParticleManager for state transition...");
 
-    // SIMPLIFICATION: Much simpler approach to prevent hangs
-    // Just pause the system and clear weather particles without complex locking
+    // COMPREHENSIVE CLEANUP: Ensure all effects and particles are properly cleaned up
+    // This prevents effects from continuing when re-entering a state
     
-    // Pause system
+    // Pause system to prevent new emissions during cleanup
     m_globallyPaused.store(true, std::memory_order_release);
     
     // Give any ongoing operations a moment to complete
     std::this_thread::sleep_for(std::chrono::milliseconds(10));
     
-    // Simple atomic particle cleanup - clear all weather particles
-    size_t particleCount = m_storage.particles.size();
-    int clearedCount = 0;
-    for (size_t i = 0; i < particleCount; ++i) {
-        auto& particle = m_storage.particles[i];
-        if (particle.isWeatherParticle()) {
-            particle.setActive(false);
-            clearedCount++;
+    // Use single lock for entire cleanup operation
+    std::unique_lock<std::shared_mutex> lock(m_particlesMutex);
+    
+    // 1. Stop ALL weather effects
+    int weatherEffectsStopped = 0;
+    auto it = m_effectInstances.begin();
+    while (it != m_effectInstances.end()) {
+        if (it->isWeatherEffect) {
+            PARTICLE_LOG("Removing weather effect: " + it->effectName + " (ID: " + std::to_string(it->id) + ")");
+            m_effectIdToIndex.erase(it->id);
+            it = m_effectInstances.erase(it);
+            weatherEffectsStopped++;
+        } else {
+            ++it;
         }
     }
     
-    // Reset performance stats (safe operation)
+    // 2. Stop ALL independent effects to ensure clean state transitions
+    int independentEffectsStopped = 0;
+    for (auto& effect : m_effectInstances) {
+        if (effect.active && effect.isIndependentEffect) {
+            effect.active = false;
+            independentEffectsStopped++;
+        }
+    }
+    
+    // 3. Clear ALL particles (both weather and independent)
+    int particlesCleared = 0;
+    for (auto& particle : m_storage.particles) {
+        if (particle.isActive()) {
+            particle.setActive(false);
+            particlesCleared++;
+        }
+    }
+    
+    // 4. Rebuild effect index mapping for any remaining effects
+    m_effectIdToIndex.clear();
+    for (size_t i = 0; i < m_effectInstances.size(); ++i) {
+        m_effectIdToIndex[m_effectInstances[i].id] = i;
+    }
+    
+    // 5. Reset performance stats (safe operation)
     resetPerformanceStats();
+    
+    // Release lock before resuming
+    lock.unlock();
     
     // Resume system
     m_globallyPaused.store(false, std::memory_order_release);
     
-    PARTICLE_LOG("ParticleManager state transition complete - cleared " + 
-                std::to_string(clearedCount) + " weather particles");
+    PARTICLE_LOG("ParticleManager state transition complete - stopped " + 
+                std::to_string(weatherEffectsStopped) + " weather effects, " +
+                std::to_string(independentEffectsStopped) + " independent effects, cleared " +
+                std::to_string(particlesCleared) + " particles");
 }
 
 void ParticleManager::update(float deltaTime) {
