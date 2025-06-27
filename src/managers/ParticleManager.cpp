@@ -112,14 +112,22 @@ void ParticleManager::prepareForStateTransition() {
         }
     }
     
-    // 3. Clear ALL particles (both weather and independent)
+    // 3. Clear ALL particles (both weather and independent) - MORE AGGRESSIVE APPROACH
     int particlesCleared = 0;
     for (auto& particle : m_storage.particles) {
         if (particle.isActive()) {
             particle.setActive(false);
+            particle.life = 0.0f;  // Ensure life is zero for double safety
             particlesCleared++;
         }
     }
+    
+    // 3.5. IMMEDIATE COMPLETE CLEANUP - Remove ALL particles to ensure zero count
+    size_t totalParticlesBefore = m_storage.particles.size();
+    m_storage.particles.clear();  // Complete clear to ensure zero particles
+    
+    PARTICLE_LOG("Complete particle cleanup: cleared " + std::to_string(particlesCleared) + 
+                " active particles, removed total of " + std::to_string(totalParticlesBefore) + " particles from storage");
     
     // 4. Rebuild effect index mapping for any remaining effects
     m_effectIdToIndex.clear();
