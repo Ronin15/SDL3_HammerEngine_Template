@@ -501,10 +501,9 @@ BOOST_FIXTURE_TEST_CASE(TestPerformanceStats, ParticleManagerCoreFixture) {
     BOOST_CHECK_NE(effectId, 0);
     BOOST_CHECK(manager->isEffectPlaying(effectId));
     
-    // Update several times to ensure particles are created and stats are recorded
-    // Rain effect needs time to emit particles, and stats are only recorded if
-    // the update method actually processes (not paused, initialized, etc.)
-    for (int i = 0; i < 20; ++i) {
+    // Update 601 times to ensure we hit the performance recording threshold
+    // Performance stats are only recorded every 600 frames for performance reasons
+    for (int i = 0; i < 601; ++i) {
         manager->update(0.016f);
     }
     
@@ -512,7 +511,7 @@ BOOST_FIXTURE_TEST_CASE(TestPerformanceStats, ParticleManagerCoreFixture) {
     size_t particleCount = manager->getActiveParticleCount();
     BOOST_CHECK_GT(particleCount, 0);
     
-    // Stats should have been updated - even if no particles, update should have run
+    // Stats should have been updated after 600+ frames
     stats = manager->getPerformanceStats();
     BOOST_CHECK_GT(stats.updateCount, 0);
     BOOST_CHECK_GT(stats.totalUpdateTime, 0.0);
