@@ -707,7 +707,7 @@ private:
     // Constants for optimization
     static constexpr size_t CACHE_LINE_SIZE = 64;
     static constexpr size_t BATCH_SIZE = 512;
-    static constexpr size_t DEFAULT_MAX_PARTICLES = 10000;
+    static constexpr size_t DEFAULT_MAX_PARTICLES = 100000;  // Increased for modern performance
     static constexpr float MIN_VISIBLE_SIZE = 0.5f;
     
     // Performance optimization structures

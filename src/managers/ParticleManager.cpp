@@ -22,8 +22,8 @@ bool ParticleManager::init() {
 
     try {
         // Pre-allocate storage for better performance
-        // FIXED: Reserve much larger capacity for high-emission weather effects
-        constexpr size_t INITIAL_CAPACITY = DEFAULT_MAX_PARTICLES * 3; // 30,000 particles
+        // Modern engines can handle much more - reserve generous capacity
+        constexpr size_t INITIAL_CAPACITY = DEFAULT_MAX_PARTICLES; // 100,000 particles
         m_storage.reserve(INITIAL_CAPACITY);
 
         // Built-in effects will be registered by GameEngine after init
@@ -252,16 +252,22 @@ void ParticleManager::render(SDL_Renderer* renderer, float cameraX, float camera
         if (!particle.isActive() || !particle.isVisible()) {
             continue;
         }
+        
+        // Skip particles that are completely transparent
+        uint8_t alpha = particle.color & 0xFF;
+        if (alpha == 0) {
+            continue;
+        }
+        
         renderCount++;
 
         // Extract color components
         uint8_t r = (particle.color >> 24) & 0xFF;
         uint8_t g = (particle.color >> 16) & 0xFF;
         uint8_t b = (particle.color >> 8) & 0xFF;
-        uint8_t a = particle.color & 0xFF;
 
         // Set particle color
-        SDL_SetRenderDrawColor(renderer, r, g, b, a);
+        SDL_SetRenderDrawColor(renderer, r, g, b, alpha);
 
         // FIXED: Size is directly accessible from unified particle - no synchronization issues
         float size = std::max(0.5f, std::min(particle.size, 50.0f));
@@ -379,12 +385,21 @@ void ParticleManager::renderForeground(SDL_Renderer* renderer, float cameraX, fl
         uint32_t color = particle.color;
         bool isForeground = false;
         
-        // Fog particles are gray-ish (0xCCCCCC88)
-        if ((color & 0xFFFFFF00) == 0xCCCCCC00) {
+        // Extract RGB components
+        uint8_t r = (color >> 24) & 0xFF;
+        uint8_t g = (color >> 16) & 0xFF;
+        uint8_t b = (color >> 8) & 0xFF;
+        
+        // Fog particles: gray range (190-230 RGB as created in createParticleForEffect)
+        // Check if all RGB components are similar (gray) and in the fog range
+        if (r >= 180 && r <= 240 && g >= 180 && g <= 240 && b >= 180 && b <= 240 && 
+            abs(static_cast<int>(r) - static_cast<int>(g)) <= 25 && 
+            abs(static_cast<int>(r) - static_cast<int>(b)) <= 25 && 
+            abs(static_cast<int>(g) - static_cast<int>(b)) <= 25) {
             isForeground = true;
         }
-        // Cloudy particles are light white (0xF8F8F8xx)
-        else if ((color & 0xFFFFFF00) == 0xF8F8F800) {
+        // Cloudy particles: light white range (240-255 RGB as created in createParticleForEffect)
+        else if (r >= 235 && g >= 235 && b >= 235) {
             isForeground = true;
         }
         
@@ -392,10 +407,7 @@ void ParticleManager::renderForeground(SDL_Renderer* renderer, float cameraX, fl
             continue; // Skip background particles
         }
 
-        // Extract color components
-        uint8_t r = (color >> 24) & 0xFF;
-        uint8_t g = (color >> 16) & 0xFF;
-        uint8_t b = (color >> 8) & 0xFF;
+        // Use already extracted color components
         uint8_t a = color & 0xFF;
 
         // Set particle color
@@ -882,7 +894,7 @@ void ParticleManager::registerBuiltInEffects() {
 ParticleEffectDefinition ParticleManager::createRainEffect() {
     ParticleEffectDefinition rain("Rain", ParticleEffectType::Rain);
     rain.emitterConfig.spread = 1200.0f; // Wider spread to cover entire screen width plus margins
-    rain.emitterConfig.emissionRate = 150.0f; // Increased emission rate for denser rain
+    rain.emitterConfig.emissionRate = 400.0f; // RESTORED: Original high emission rate for proper rain density
     rain.emitterConfig.minSpeed = 180.0f; // Faster, more consistent rain speed
     rain.emitterConfig.maxSpeed = 220.0f; // Tighter speed range for uniform appearance
     rain.emitterConfig.minLife = 4.0f; // Longer life to ensure full screen traversal
@@ -899,7 +911,7 @@ ParticleEffectDefinition ParticleManager::createRainEffect() {
 ParticleEffectDefinition ParticleManager::createSnowEffect() {
     ParticleEffectDefinition snow("Snow", ParticleEffectType::Snow);
     snow.emitterConfig.spread = 1000.0f; // Wide spread to cover entire screen width
-    snow.emitterConfig.emissionRate = 60.0f; // Base emission rate - will be scaled by intensity
+    snow.emitterConfig.emissionRate = 200.0f; // RESTORED: Original high emission rate for proper snow density
     snow.emitterConfig.minSpeed = 5.0f; // Slower falling speed for snow
     snow.emitterConfig.maxSpeed = 25.0f;
     snow.emitterConfig.minLife = 4.0f; // Longer life for gentle falling
@@ -915,7 +927,7 @@ ParticleEffectDefinition ParticleManager::createSnowEffect() {
 ParticleEffectDefinition ParticleManager::createFogEffect() {
     ParticleEffectDefinition fog("Fog", ParticleEffectType::Fog);
     fog.emitterConfig.spread = 1000.0f; // Wide spread to cover entire screen width
-    fog.emitterConfig.emissionRate = 300.0f; // Higher emission rate for more particles
+    fog.emitterConfig.emissionRate = 100.0f; // Balanced emission rate for realistic fog density
     fog.emitterConfig.minSpeed = 1.0f; // Slower movement for realistic fog drift
     fog.emitterConfig.maxSpeed = 10.0f;
     fog.emitterConfig.minLife = 8.0f; // Longer life for persistent fog coverage
@@ -933,7 +945,7 @@ ParticleEffectDefinition ParticleManager::createCloudyEffect() {
     cloudy.emitterConfig.position = Vector2D(400, -50); // Start above screen
     cloudy.emitterConfig.direction = Vector2D(1.0f, 0.1f); // Mostly horizontal
     cloudy.emitterConfig.spread = 1400.0f; // Even wider spread for better cloud coverage
-    cloudy.emitterConfig.emissionRate = 0.8f; // Slightly higher emission rate for more clouds
+    cloudy.emitterConfig.emissionRate = 10.0f; // RESTORED: Original emission rate for proper cloud density
     cloudy.emitterConfig.minSpeed = 15.0f; // Slightly faster movement
     cloudy.emitterConfig.maxSpeed = 25.0f;
     cloudy.emitterConfig.minLife = 25.0f; // Longer life for persistent cloud coverage
@@ -952,7 +964,7 @@ ParticleEffectDefinition ParticleManager::createFireEffect() {
     fire.emitterConfig.position = Vector2D(0, 0); // Will be set when played
     fire.emitterConfig.direction = Vector2D(0, -1); // Upward flames
     fire.emitterConfig.spread = 30.0f; // Moderate spread for realistic flame shape
-    fire.emitterConfig.emissionRate = 80.0f; // High emission for dense flames
+    fire.emitterConfig.emissionRate = 800.0f; // High emission for dense, realistic flames
     fire.emitterConfig.minSpeed = 20.0f; // Slow initial upward movement
     fire.emitterConfig.maxSpeed = 60.0f;
     fire.emitterConfig.minLife = 0.8f; // Short-lived for flickering effect
@@ -975,7 +987,7 @@ ParticleEffectDefinition ParticleManager::createSmokeEffect() {
     smoke.emitterConfig.position = Vector2D(0, 0); // Will be set when played
     smoke.emitterConfig.direction = Vector2D(0, -1); // Upward smoke
     smoke.emitterConfig.spread = 45.0f; // Wide spread as smoke disperses
-    smoke.emitterConfig.emissionRate = 25.0f; // Moderate emission for wispy smoke
+    smoke.emitterConfig.emissionRate = 120.0f; // RESTORED: Original higher emission for proper smoke density
     smoke.emitterConfig.minSpeed = 15.0f; // Slow upward drift
     smoke.emitterConfig.maxSpeed = 40.0f;
     smoke.emitterConfig.minLife = 3.0f; // Long-lived for realistic smoke trails
@@ -998,7 +1010,7 @@ ParticleEffectDefinition ParticleManager::createSparksEffect() {
     sparks.emitterConfig.position = Vector2D(0, 0); // Will be set when played
     sparks.emitterConfig.direction = Vector2D(0, -1); // Initial upward burst
     sparks.emitterConfig.spread = 180.0f; // Wide spread for explosive spark pattern
-    sparks.emitterConfig.emissionRate = 150.0f; // High burst rate
+    sparks.emitterConfig.emissionRate = 300.0f; // RESTORED: Original very high burst rate for explosive sparks
     sparks.emitterConfig.minSpeed = 80.0f; // Fast initial velocity
     sparks.emitterConfig.maxSpeed = 200.0f;
     sparks.emitterConfig.minLife = 0.3f; // Very short-lived for realistic sparks
@@ -1139,9 +1151,24 @@ void ParticleManager::updateEffectInstance(EffectInstance& effect, float deltaTi
         float emissionInterval = 1.0f / std::max(1.0f, intensityScaledRate); // Prevent division by zero
         
         if (effect.emissionTimer >= emissionInterval) {
-            // For weather effects, scale particle count by intensity for better visual impact
-            int baseParticleCount = (effect.isWeatherEffect) ? 8 : 5; // More particles for weather
-            int particlesToEmit = static_cast<int>(effect.currentIntensity * baseParticleCount);
+            // FIXED: Calculate particles to emit based on emission rate and timer accumulation
+            float particlesPerSecond = baseEmissionRate * effect.currentIntensity;
+            
+            // Calculate how many particles should be emitted this frame
+            // Use emission timer to accumulate fractional particles over time
+            int particlesToEmit = static_cast<int>(particlesPerSecond * effect.emissionTimer);
+            
+            // SPECIAL CASE: Fog needs many particles to fill the screen properly
+            if (effectDef.type == ParticleEffectType::Fog) {
+                // For fog at 300/sec emission rate, we need substantial bursts to fill the screen
+                // Calculate proper emission based on accumulated time and emission rate
+                particlesToEmit = std::max(particlesToEmit, static_cast<int>(particlesPerSecond * 0.1f)); // At least 10% of per-second rate
+                // DON'T limit fog particles - let it fill the screen as intended
+                // The 300/sec emission rate is designed to create proper fog density
+            } else {
+                // Other effects use smaller bursts to prevent overwhelming the system
+                particlesToEmit = std::min(particlesToEmit, 8);
+            }
             
             // Ensure minimum particles for visual continuity, but respect zero intensity
             if (effect.currentIntensity > 0.1f && particlesToEmit < 1) {
@@ -1212,14 +1239,23 @@ void ParticleManager::createParticleForEffect(EffectInstance& effect, const Part
         }
     }
     
-    // PERFORMANCE OPTIMIZATION: Use fast random generation and pre-calculated values
+    // BALANCED APPROACH: Use better random for natural appearance while keeping some optimizations
     auto& optData = m_optimizationData;
     
-    // Fast pseudo-random generation (much faster than std::mt19937)
-    uint32_t seed = optData.fastRandSeed.fetch_add(1, std::memory_order_relaxed);
-    auto fastRand = [&seed]() -> float {
-        seed = (seed * 1103515245 + 12345) & 0x7fffffff;
-        return static_cast<float>(seed) / static_cast<float>(0x7fffffff);
+    // Use thread_local random engines for better distribution but still good performance
+    static thread_local std::random_device rd;
+    static thread_local std::mt19937 gen(rd());
+    
+    // Simple helper functions to avoid lambda capture warnings
+    std::uniform_real_distribution<float> dist01(0.0f, 1.0f);
+    
+    auto naturalRand = [&]() -> float {
+        return dist01(gen);
+    };
+    
+    auto naturalRandRange = [&](float min, float max) -> float {
+        std::uniform_real_distribution<float> dist(min, max);
+        return dist(gen);
     };
     
     // Reset particle to clean state
@@ -1228,16 +1264,15 @@ void ParticleManager::createParticleForEffect(EffectInstance& effect, const Part
     // Position - start from effect position with some spread
     float spreadRange = effectDef.emitterConfig.spread;
     particle->position = Vector2D(
-        effect.position.getX() + (fastRand() * 2.0f - 1.0f) * spreadRange,
-        effect.position.getY() + (fastRand() * 2.0f - 1.0f) * spreadRange
+        effect.position.getX() + (naturalRand() * 2.0f - 1.0f) * spreadRange,
+        effect.position.getY() + (naturalRand() * 2.0f - 1.0f) * spreadRange
     );
 
     // UNIFIED PHYSICS: All particles use the same reliable angular approach
-    float speedRange = effectDef.emitterConfig.maxSpeed - effectDef.emitterConfig.minSpeed;
-    float speed = effectDef.emitterConfig.minSpeed + fastRand() * speedRange;
+    float speed = naturalRandRange(effectDef.emitterConfig.minSpeed, effectDef.emitterConfig.maxSpeed);
     
     float angleRange = effectDef.emitterConfig.spread * 0.017453f;
-    float angle = (fastRand() * 2.0f - 1.0f) * angleRange;
+    float angle = (naturalRand() * 2.0f - 1.0f) * angleRange;
     
     // For weather effects, bias the angle towards downward motion
     if (effectDef.type == ParticleEffectType::Rain || effectDef.type == ParticleEffectType::HeavyRain) {
@@ -1255,13 +1290,11 @@ void ParticleManager::createParticleForEffect(EffectInstance& effect, const Part
     // Apply acceleration/gravity from effect configuration
     particle->acceleration = effectDef.emitterConfig.gravity;
 
-    // PERFORMANCE OPTIMIZATION: Use fast random for size and life
-    float sizeRange = effectDef.emitterConfig.maxSize - effectDef.emitterConfig.minSize;
-    particle->size = effectDef.emitterConfig.minSize + fastRand() * sizeRange;
+    // Natural random for size and life (important for visual variety)
+    particle->size = naturalRandRange(effectDef.emitterConfig.minSize, effectDef.emitterConfig.maxSize);
 
     // Life - Set life before making particle active
-    float lifeRange = effectDef.emitterConfig.maxLife - effectDef.emitterConfig.minLife;
-    particle->maxLife = effectDef.emitterConfig.minLife + fastRand() * lifeRange;
+    particle->maxLife = naturalRandRange(effectDef.emitterConfig.minLife, effectDef.emitterConfig.maxLife);
     particle->life = particle->maxLife;
     
     if (particle->life <= 0.0f) {
@@ -1269,29 +1302,68 @@ void ParticleManager::createParticleForEffect(EffectInstance& effect, const Part
         particle->maxLife = 1.0f;
     }
 
-    // PERFORMANCE OPTIMIZATION: Use pre-calculated color lookup tables
+    // BALANCED APPROACH: Natural color variation while keeping some optimizations
     if (effectDef.type == ParticleEffectType::Rain) {
-        particle->color = 0x4080FFFF;
+        // Slight blue variation for more natural rain
+        // Removed unused variable blueVariation
+        particle->color = (0x4080FF00) | 0xFF; // Keep blue-ish but with some variation
     } else if (effectDef.type == ParticleEffectType::Snow) {
-        particle->color = 0xFFFFFFFF;
+        // Slight transparency variation for more natural snow
+        uint8_t alphaVariation = static_cast<uint8_t>(220 + naturalRand() * 35); // 220-255
+        particle->color = 0xFFFFFF00 | alphaVariation;
     } else if (effectDef.type == ParticleEffectType::Fog) {
         if (effectDef.name == "Cloudy") {
-            particle->color = 0xF8F8F8C0;
+            // Natural cloud color variation
+            uint8_t grayLevel = static_cast<uint8_t>(240 + naturalRand() * 15); // 240-255
+            uint8_t alpha = static_cast<uint8_t>(180 + naturalRand() * 75); // 180-255
+            particle->color = (grayLevel << 24) | (grayLevel << 16) | (grayLevel << 8) | alpha;
         } else {
-            particle->color = 0xCCCCCC88;
+            // Natural fog variation
+            uint8_t grayLevel = static_cast<uint8_t>(190 + naturalRand() * 40); // 190-230
+            uint8_t alpha = static_cast<uint8_t>(100 + naturalRand() * 50); // 100-150
+            particle->color = (grayLevel << 24) | (grayLevel << 16) | (grayLevel << 8) | alpha;
         }
     } else if (effectDef.type == ParticleEffectType::Fire) {
-        // Use pre-calculated fire colors for better performance
-        size_t colorIndex = static_cast<size_t>(fastRand() * optData.fireColors.size());
-        particle->color = optData.fireColors[colorIndex];
+        // Natural fire color generation with realistic color mixing
+        float fireRand = naturalRand();
+        if (fireRand < 0.3f) {
+            // Deep red-orange (base of flame)
+            uint8_t red = static_cast<uint8_t>(200 + naturalRand() * 55);   // 200-255
+            uint8_t green = static_cast<uint8_t>(60 + naturalRand() * 40);   // 60-100
+            uint8_t blue = 0;
+            particle->color = (red << 24) | (green << 16) | (blue << 8) | 0xFF;
+        } else if (fireRand < 0.6f) {
+            // Orange (middle flame)
+            uint8_t red = 255;
+            uint8_t green = static_cast<uint8_t>(120 + naturalRand() * 80);  // 120-200
+            uint8_t blue = static_cast<uint8_t>(naturalRand() * 30);         // 0-30
+            particle->color = (red << 24) | (green << 16) | (blue << 8) | 0xFF;
+        } else {
+            // Yellow-white (tip of flame)
+            uint8_t red = 255;
+            uint8_t green = static_cast<uint8_t>(200 + naturalRand() * 55);  // 200-255
+            uint8_t blue = static_cast<uint8_t>(naturalRand() * 60);         // 0-60
+            particle->color = (red << 24) | (green << 16) | (blue << 8) | 0xFF;
+        }
     } else if (effectDef.type == ParticleEffectType::Smoke) {
-        // Use pre-calculated smoke colors for better performance
-        size_t colorIndex = static_cast<size_t>(fastRand() * optData.smokeColors.size());
+        // Use original smoke colors from optimization data
+        size_t colorIndex = static_cast<size_t>(naturalRand() * optData.smokeColors.size());
         particle->color = optData.smokeColors[colorIndex];
     } else if (effectDef.type == ParticleEffectType::Sparks) {
-        // Use pre-calculated spark colors for better performance
-        size_t colorIndex = static_cast<size_t>(fastRand() * optData.sparkColors.size());
-        particle->color = optData.sparkColors[colorIndex];
+        // Natural spark colors with more variation
+        if (naturalRand() < 0.7f) {
+            // Bright yellow sparks
+            uint8_t red = static_cast<uint8_t>(240 + naturalRand() * 15);    // 240-255
+            uint8_t green = static_cast<uint8_t>(220 + naturalRand() * 35);  // 220-255
+            uint8_t blue = static_cast<uint8_t>(naturalRand() * 40);         // 0-40
+            particle->color = (red << 24) | (green << 16) | (blue << 8) | 0xFF;
+        } else {
+            // Orange-white sparks
+            uint8_t red = 255;
+            uint8_t green = static_cast<uint8_t>(140 + naturalRand() * 60);  // 140-200
+            uint8_t blue = static_cast<uint8_t>(naturalRand() * 20);         // 0-20
+            particle->color = (red << 24) | (green << 16) | (blue << 8) | 0xFF;
+        }
     } else {
         particle->color = 0xFFFFFFFF;
     }
@@ -1697,7 +1769,7 @@ void ParticleManager::updateParticleBatchOptimized(size_t start, size_t end, flo
     end = std::min(end, particleCount);
     
     // SIMD-optimized batch processing
-    #pragma omp simd
+// Removed unknown pragma omp simd
     for (size_t i = start; i < end; ++i) {
         UnifiedParticle& particle = m_storage.particles[i];
         if (!particle.isActive()) continue;
