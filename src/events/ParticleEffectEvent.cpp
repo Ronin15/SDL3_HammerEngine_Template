@@ -49,7 +49,7 @@ void ParticleEffectEvent::update() {
     if (m_effectId != 0 && m_duration > 0.0f) {
         // Note: Duration tracking is handled by ParticleManager internally
         // We just need to check if our effect is still valid
-        ParticleManager& particleMgr = ParticleManager::Instance();
+        const ParticleManager& particleMgr = ParticleManager::Instance();
         if (particleMgr.isInitialized() && !particleMgr.isShutdown()) {
             // Effect lifetime is managed by ParticleManager
             // No additional tracking needed here
@@ -162,7 +162,7 @@ bool ParticleEffectEvent::checkConditions() {
     }
     
     // Check if ParticleManager is available
-    ParticleManager& particleMgr = ParticleManager::Instance();
+    const ParticleManager& particleMgr = ParticleManager::Instance();
     if (!particleMgr.isInitialized() || particleMgr.isShutdown()) {
         return false;
     }

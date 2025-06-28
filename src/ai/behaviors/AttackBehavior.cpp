@@ -298,33 +298,24 @@ void AttackBehavior::setChargeDamageMultiplier(float multiplier) {
 }
 
 bool AttackBehavior::isInCombat() const {
-    for (const auto& pair : m_entityStates) {
-        if (pair.second.inCombat) return true;
-    }
-    return false;
+    return std::any_of(m_entityStates.begin(), m_entityStates.end(),
+                      [](const auto& pair) { return pair.second.inCombat; });
 }
 
 bool AttackBehavior::isAttacking() const {
-    for (const auto& pair : m_entityStates) {
-        if (pair.second.currentState == AttackState::ATTACKING) return true;
-    }
-    return false;
+    return std::any_of(m_entityStates.begin(), m_entityStates.end(),
+                      [](const auto& pair) { return pair.second.currentState == AttackState::ATTACKING; });
 }
 
 bool AttackBehavior::canAttack() const {
-    for (const auto& pair : m_entityStates) {
-        if (pair.second.canAttack) return true;
-    }
-    return false;
+    return std::any_of(m_entityStates.begin(), m_entityStates.end(),
+                      [](const auto& pair) { return pair.second.canAttack; });
 }
 
 AttackBehavior::AttackState AttackBehavior::getCurrentAttackState() const {
-    for (const auto& pair : m_entityStates) {
-        if (pair.second.inCombat) {
-            return pair.second.currentState;
-        }
-    }
-    return AttackState::SEEKING;
+    auto it = std::find_if(m_entityStates.begin(), m_entityStates.end(),
+                          [](const auto& pair) { return pair.second.inCombat; });
+    return (it != m_entityStates.end()) ? it->second.currentState : AttackState::SEEKING;
 }
 
 AttackBehavior::AttackMode AttackBehavior::getAttackMode() const {
@@ -332,32 +323,27 @@ AttackBehavior::AttackMode AttackBehavior::getAttackMode() const {
 }
 
 float AttackBehavior::getDistanceToTarget() const {
-    for (const auto& pair : m_entityStates) {
-        if (pair.second.hasTarget && pair.second.inCombat) {
-            return pair.second.targetDistance;
-        }
-    }
-    return -1.0f;
+    auto it = std::find_if(m_entityStates.begin(), m_entityStates.end(),
+                          [](const auto& pair) { return pair.second.hasTarget && pair.second.inCombat; });
+    return (it != m_entityStates.end()) ? it->second.targetDistance : -1.0f;
 }
 
 float AttackBehavior::getLastAttackTime() const {
-    Uint64 lastTime = 0;
-    for (const auto& pair : m_entityStates) {
-        if (pair.second.lastAttackTime > lastTime) {
-            lastTime = pair.second.lastAttackTime;
-        }
-    }
-    return static_cast<float>(lastTime) / 1000.0f;
+    if (m_entityStates.empty()) return 0.0f;
+    auto it = std::max_element(m_entityStates.begin(), m_entityStates.end(),
+                              [](const auto& a, const auto& b) {
+                                  return a.second.lastAttackTime < b.second.lastAttackTime;
+                              });
+    return static_cast<float>(it->second.lastAttackTime) / 1000.0f;
 }
 
 int AttackBehavior::getCurrentCombo() const {
-    int maxCombo = 0;
-    for (const auto& pair : m_entityStates) {
-        if (pair.second.currentCombo > maxCombo) {
-            maxCombo = pair.second.currentCombo;
-        }
-    }
-    return maxCombo;
+    if (m_entityStates.empty()) return 0;
+    auto it = std::max_element(m_entityStates.begin(), m_entityStates.end(),
+                              [](const auto& a, const auto& b) {
+                                  return a.second.currentCombo < b.second.currentCombo;
+                              });
+    return it->second.currentCombo;
 }
 
 std::shared_ptr<AIBehavior> AttackBehavior::clone() const {

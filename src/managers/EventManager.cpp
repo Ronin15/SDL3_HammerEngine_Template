@@ -746,10 +746,8 @@ bool EventManager::createParticleEffectEvent(const std::string& name, const std:
     try {
         // Create ParticleEffectEvent directly (no factory needed for this simple event)
         auto event = std::make_shared<ParticleEffectEvent>(name, effectName, x, y, intensity, duration, groupTag);
-        if (!event) {
-            EVENT_ERROR("Failed to create ParticleEffectEvent: " + name);
-            return false;
-        }
+        // Note: std::make_shared never returns nullptr for successful allocation
+        // If allocation fails, it throws std::bad_alloc instead
 
         // Register with EventManager
         return registerEventInternal(name, event, EventTypeId::ParticleEffect);

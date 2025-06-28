@@ -323,8 +323,7 @@ void ParticleManager::renderBackground(SDL_Renderer* renderer, float cameraX, fl
         }
         // Fire particles - orange/red/yellow range
         else if ((color & 0xFF000000) == 0xFF000000 && 
-                 ((color & 0x00FF0000) >= 0x00450000) && // Red component >= 0x45
-                 ((color & 0x0000FF00) <= 0x0000FF00)) {   // Green component <= 0xFF
+                 ((color & 0x00FF0000) >= 0x00450000)) { // Red component >= 0x45, green check always true so removed
             isBackground = true;
         }
         // Smoke particles - grey range
@@ -1037,13 +1036,8 @@ size_t ParticleManager::getActiveParticleCount() const {
     }
     
     std::shared_lock<std::shared_mutex> lock(m_particlesMutex);
-    size_t count = 0;
-    for (const auto& particle : m_storage.particles) {
-        if (particle.isActive()) {
-            count++;
-        }
-    }
-    return count;
+    return std::count_if(m_storage.particles.begin(), m_storage.particles.end(),
+                        [](const auto& particle) { return particle.isActive(); });
 }
 
 void ParticleManager::cleanupInactiveParticles() {
@@ -1193,7 +1187,7 @@ void ParticleManager::updateEffectInstance(EffectInstance& effect, float deltaTi
     // Note: Particles are now updated independently in the main update loop
 }
 
-void ParticleManager::createParticleForEffect(EffectInstance& effect, const ParticleEffectDefinition& effectDef) {
+void ParticleManager::createParticleForEffect(const EffectInstance& effect, const ParticleEffectDefinition& effectDef) {
     // MEMORY LEAK FIX: Implement efficient particle reuse with slot management
     // First, try to find an inactive particle slot to reuse
     
@@ -1240,7 +1234,7 @@ void ParticleManager::createParticleForEffect(EffectInstance& effect, const Part
     }
     
     // BALANCED APPROACH: Use better random for natural appearance while keeping some optimizations
-    auto& optData = m_optimizationData;
+    const auto& optData = m_optimizationData;
     
     // Use thread_local random engines for better distribution but still good performance
     static thread_local std::random_device rd;
@@ -1306,7 +1300,7 @@ void ParticleManager::createParticleForEffect(EffectInstance& effect, const Part
     if (effectDef.type == ParticleEffectType::Rain) {
         // Slight blue variation for more natural rain
         // Removed unused variable blueVariation
-        particle->color = (0x4080FF00) | 0xFF; // Keep blue-ish but with some variation
+        particle->color = 0x4080FFFF; // Fully solid blue-ish
     } else if (effectDef.type == ParticleEffectType::Snow) {
         // Slight transparency variation for more natural snow
         uint8_t alphaVariation = static_cast<uint8_t>(220 + naturalRand() * 35); // 220-255
@@ -1330,8 +1324,8 @@ void ParticleManager::createParticleForEffect(EffectInstance& effect, const Part
             // Deep red-orange (base of flame)
             uint8_t red = static_cast<uint8_t>(200 + naturalRand() * 55);   // 200-255
             uint8_t green = static_cast<uint8_t>(60 + naturalRand() * 40);   // 60-100
-            uint8_t blue = 0;
-            particle->color = (red << 24) | (green << 16) | (blue << 8) | 0xFF;
+            // blue is 0, so no need to declare or OR it
+            particle->color = (red << 24) | (green << 16) | 0xFF;
         } else if (fireRand < 0.6f) {
             // Orange (middle flame)
             uint8_t red = 255;
@@ -1800,7 +1794,7 @@ void ParticleManager::updateParticleBatchOptimized(size_t start, size_t end, flo
     }
 }
 
-void ParticleManager::updateParticleWithColdData(ParticleData& particle, ParticleColdData& coldData, float deltaTime) {
+void ParticleManager::updateParticleWithColdData(ParticleData& particle, const ParticleColdData& coldData, float deltaTime) {
     if (!particle.isActive()) {
         return;
     }
@@ -1849,13 +1843,8 @@ size_t ParticleManager::countActiveParticles() const {
     }
     
     std::shared_lock<std::shared_mutex> lock(m_particlesMutex);
-    size_t count = 0;
-    for (const auto& particle : m_storage.particles) {
-        if (particle.isActive()) {
-            count++;
-        }
-    }
-    return count;
+    return std::count_if(m_storage.particles.begin(), m_storage.particles.end(),
+                        [](const auto& particle) { return particle.isActive(); });
 }
 
 
@@ -1906,12 +1895,10 @@ void ParticleManager::compactParticleStorageIfNeeded() {
     }
     
     // Count inactive particles
-    size_t inactiveCount = 0;
-    for (const auto& particle : m_storage.particles) {
-        if (!particle.isActive() || particle.life <= 0.0f || (particle.color & 0xFF) <= 10) {
-            inactiveCount++;
-        }
-    }
+    size_t inactiveCount = std::count_if(m_storage.particles.begin(), m_storage.particles.end(),
+        [](const auto& particle) {
+            return !particle.isActive() || particle.life <= 0.0f || (particle.color & 0xFF) <= 10;
+        });
     
     // Only compact if inactive particles are more than 30% of total
     if (inactiveCount > totalParticles * 0.3) {
