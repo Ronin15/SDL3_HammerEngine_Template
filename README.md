@@ -249,19 +249,19 @@ See `docs/SaveGameManager.md` for comprehensive documentation including API refe
 
 The ParticleManager provides a high-performance particle system designed for real-time visual effects with advanced optimization and integration:
 
-- **Structure of Arrays (SoA)**: 3-4x better cache performance than traditional Array of Structures approach with 32-byte aligned hot data
+- **Unified Particle Architecture**: Single-structure design eliminates data synchronization issues and provides excellent cache performance
 - **Weather System Integration**: Automatic rain, snow, fog, and cloud effects triggered by EventManager weather events with smooth transitions
 - **Visual Effects Library**: Fire, smoke, sparks, and customizable magical effects with realistic physics and proper blend modes
-- **WorkerBudget Threading**: Intelligent threading allocation (25% of worker threads) with dynamic buffer usage for high particle loads
-- **Lock-Free Operations**: Atomic operations and double buffering minimize thread contention during concurrent updates
+- **WorkerBudget Threading**: Queue pressure management with graceful degradation and optimal worker allocation based on workload
+- **Lock-Free Worker Threads**: Shared_mutex with try-lock mechanisms prevent deadlocks during batch processing
 - **Independent Effects**: Effects that persist beyond weather changes with grouping, bulk operations, and pause/resume control
 - **Layered Rendering**: Background/foreground particle separation for proper depth ordering (rain behind characters, fog in front)
 - **Advanced Management**: Real-time intensity control, smooth fade transitions, effect grouping, and generation-based cleanup
 - **Performance Monitoring**: Real-time statistics with update/render times, throughput analysis, and memory usage tracking
-- **Memory Optimization**: Object pooling, generation-based batch cleanup, and efficient particle storage with capacity management
+- **Automatic Memory Management**: Intelligent cleanup every 100 particles and compaction every 300 frames prevent memory leaks
 - **Production Ready**: Comprehensive error handling, debug logging, performance validation, and platform optimization
 
-The system handles 10,000+ particles while maintaining 60+ FPS through SIMD optimizations, intelligent culling, and WorkerBudget integration. Weather effects automatically adapt to EventManager triggers while independent effects provide persistent visual elements like campfires, magical auras, and environmental ambiance.
+The system handles 50,000+ particles while maintaining 60+ FPS through SIMD-ready batch processing, intelligent memory management, and WorkerBudget integration. Weather effects automatically adapt to EventManager triggers while independent effects provide persistent visual elements like campfires, magical auras, and environmental ambiance.
 
 See `docs/ParticleManager.md` for comprehensive documentation including architecture details, API reference, integration examples, and production best practices.
 
