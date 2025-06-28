@@ -32,6 +32,7 @@ declare -A THREAD_TESTS=(
     ["thread_safe_ai_integ"]="thread_safe_ai_integration_tests"
     ["event_manager"]="event_manager_tests"
     ["ai_optimization"]="ai_optimization_tests"
+    ["particle_threading"]="particle_manager_threading_tests"
 )
 
 run_helgrind_test() {

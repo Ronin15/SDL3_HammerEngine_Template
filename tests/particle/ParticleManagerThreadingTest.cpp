@@ -427,7 +427,7 @@ BOOST_FIXTURE_TEST_CASE(TestMixedConcurrentOperations, ParticleManagerThreadingF
                     case 3: {
                         // Weather effect
                         if (i % 10 == 3) {
-                            manager->triggerWeatherEffect("Snow", 0.4f);
+                            manager->triggerWeatherEffect("Snowy", 0.4f);
                         }
                         break;
                     }

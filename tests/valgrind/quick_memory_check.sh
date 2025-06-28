@@ -27,6 +27,7 @@ declare -A QUICK_TESTS=(
     ["event_mgr"]="event_manager_tests"
     ["ai_opt"]="ai_optimization_tests"
     ["thread_sys"]="thread_system_tests"
+    ["particle_core"]="particle_manager_core_tests"
 )
 
 echo -e "${BLUE}========================================${NC}"

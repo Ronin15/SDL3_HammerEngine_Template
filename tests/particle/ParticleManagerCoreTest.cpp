@@ -466,7 +466,7 @@ BOOST_FIXTURE_TEST_CASE(TestMaxParticleCapacity, ParticleManagerCoreFixture) {
     // Should have some reasonable default capacity
     size_t maxCapacity = manager->getMaxParticleCapacity();
     BOOST_CHECK_GT(maxCapacity, 1000); // Should be at least 1000
-    BOOST_CHECK_LE(maxCapacity, 50000); // Should be reasonable
+    BOOST_CHECK_LE(maxCapacity, 200000); // Should be reasonable (updated for new higher limits)
     
     // Test that setMaxParticles doesn't crash
     manager->setMaxParticles(5000);
@@ -501,9 +501,9 @@ BOOST_FIXTURE_TEST_CASE(TestPerformanceStats, ParticleManagerCoreFixture) {
     BOOST_CHECK_NE(effectId, 0);
     BOOST_CHECK(manager->isEffectPlaying(effectId));
     
-    // Update 601 times to ensure we hit the performance recording threshold
-    // Performance stats are only recorded every 600 frames for performance reasons
-    for (int i = 0; i < 601; ++i) {
+    // Update 1201 times to ensure we hit the performance recording threshold
+    // Performance stats are only recorded every 1200 frames for performance reasons
+    for (int i = 0; i < 1201; ++i) {
         manager->update(0.016f);
     }
     

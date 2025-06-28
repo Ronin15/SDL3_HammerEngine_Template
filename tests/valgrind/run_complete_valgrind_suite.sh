@@ -25,10 +25,10 @@ FINAL_REPORT="${RESULTS_DIR}/complete_analysis_${TIMESTAMP}.md"
 
 # Test configuration
 declare -A ALL_TESTS=(
-    ["memory_critical"]="buffer_utilization_tests event_manager_tests ai_optimization_tests"
-    ["thread_safety"]="thread_safe_ai_manager_tests thread_safe_ai_integration_tests"
-    ["performance"]="event_manager_tests ai_optimization_tests save_manager_tests"
-    ["comprehensive"]="event_types_tests weather_event_tests ui_stress_test"
+    ["memory_critical"]="buffer_utilization_tests event_manager_tests ai_optimization_tests particle_manager_core_tests behavior_functionality_tests thread_system_tests"
+    ["thread_safety"]="thread_safe_ai_manager_tests thread_safe_ai_integration_tests particle_manager_threading_tests thread_system_tests event_manager_tests"
+    ["performance"]="event_manager_tests ai_optimization_tests save_manager_tests particle_manager_performance_tests ai_scaling_benchmark event_manager_scaling_benchmark behavior_functionality_tests"
+    ["comprehensive"]="event_types_tests weather_event_tests ui_stress_test particle_manager_weather_tests thread_system_tests ai_scaling_benchmark"
 )
 
 # Performance tracking
@@ -84,7 +84,7 @@ handle_timeout() {
 run_memory_analysis() {
     section_header "MEMORY LEAK ANALYSIS (Memcheck)"
 
-    local memory_tests="buffer_utilization_tests event_manager_tests ai_optimization_tests save_manager_tests"
+    local memory_tests="${ALL_TESTS[memory_critical]}"
     local clean_tests=0
     local problematic_tests=0
 
@@ -172,7 +172,7 @@ run_memory_analysis() {
 run_cache_analysis() {
     section_header "CACHE PERFORMANCE ANALYSIS (Cachegrind)"
 
-    local cache_tests="event_manager_tests buffer_utilization_tests ai_optimization_tests"
+    local cache_tests="${ALL_TESTS[performance]}"
     local exceptional_count=0
     local good_count=0
 
@@ -262,7 +262,7 @@ run_cache_analysis() {
 run_thread_analysis() {
     section_header "THREAD SAFETY ANALYSIS (Helgrind/DRD)"
 
-    local thread_tests="thread_safe_ai_manager_tests thread_safe_ai_integration_tests event_manager_tests"
+    local thread_tests="${ALL_TESTS[thread_safety]}"
     local safe_components=0
     local total_races=0
 
