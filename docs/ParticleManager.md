@@ -8,34 +8,32 @@ The ParticleManager is a high-performance, production-ready particle system desi
 
 ### Core Design Philosophy
 
-The ParticleManager follows a **Structure of Arrays (SoA)** approach combined with **double buffering** and **object pooling** for maximum performance:
+The ParticleManager follows a **Unified Particle Architecture** approach combined with **WorkerBudget threading** and **intelligent memory management** for maximum performance:
 
-- **Cache-Friendly Design**: Hot data (position, velocity, life) separated from cold data (size, rotation)
-- **Lock-Free Operations**: Atomic operations and double buffering minimize thread contention
-- **WorkerBudget Integration**: Intelligent threading allocation for optimal resource utilization
+- **Unified Storage**: Single-structure particles eliminate data synchronization issues
+- **Lock-Free Updates**: Worker threads use lock-free batch processing with shared_mutex synchronization
+- **WorkerBudget Integration**: Intelligent threading allocation with queue pressure management
 - **EventManager Integration**: Seamless weather effects triggered by game events
 
 ### System Architecture
 
 ```
 ParticleManager (Singleton)
-├── Particle Storage System
-│   ├── Structure of Arrays (SoA)
-│   │   ├── Hot Data (32-byte aligned)
-│   │   │   ├── Position, Velocity (Vector2D)
-│   │   │   ├── Life, MaxLife (float)
-│   │   │   ├── Color (RGBA packed)
-│   │   │   └── Flags (active, visible, weather)
-│   │   └── Cold Data
-│   │       ├── Acceleration, Size
-│   │       ├── Rotation, Angular Velocity
-│   │       └── Fade Timings
-│   ├── Double Buffering
-│   │   ├── Active Buffer
-│   │   └── Swap Buffer
-│   └── Object Pooling
-│       ├── Free Index Pool
-│       └── Generation Management
+├── Unified Particle Storage System
+│   ├── UnifiedParticle Structure
+│   │   ├── Position, Velocity, Acceleration (Vector2D)
+│   │   ├── Life, MaxLife, Size (float)
+│   │   ├── Rotation, Angular Velocity (float)
+│   │   ├── Color (RGBA packed uint32_t)
+│   │   ├── Texture Index (uint16_t)
+│   │   ├── Flags (active, visible, weather, fade)
+│   │   └── Generation ID (uint8_t)
+│   ├── Contiguous Vector Storage
+│   │   ├── std::vector<UnifiedParticle>
+│   │   └── Reserve-based allocation
+│   └── Automatic Memory Management
+│       ├── Cleanup every 100 particles
+│       └── Compaction every 300 frames
 ├── Effect Management System
 │   ├── Effect Definitions
 │   │   ├── Built-in Weather Effects
@@ -64,11 +62,11 @@ ParticleManager (Singleton)
 ## Key Features
 
 ### 🚀 High Performance
-- **Structure of Arrays (SoA)**: 3-4x better cache performance than Array of Structures
-- **SIMD Optimizations**: Vectorized physics calculations for batch processing
-- **Lock-Free Updates**: Atomic operations and double buffering eliminate contention
-- **WorkerBudget Threading**: Intelligent resource allocation (25% of worker threads)
-- **Frustum Culling**: Off-screen particles automatically culled
+- **Unified Particle Architecture**: Single-structure design eliminates data synchronization issues
+- **SIMD-Ready Batch Processing**: Optimized loops with 512-particle batches for vectorization
+- **Lock-Free Worker Threads**: Shared_mutex with try-lock mechanisms prevent deadlocks
+- **WorkerBudget Threading**: Queue pressure management with graceful degradation
+- **Automatic Memory Management**: Intelligent cleanup and compaction prevent memory leaks
 
 ### 🌦️ Weather System Integration
 - **EventManager Integration**: Automatic weather effects triggered by game events
@@ -95,29 +93,30 @@ ParticleManager (Singleton)
 
 ## Core Classes and Structures
 
-### ParticleData (Hot Data)
+### UnifiedParticle (All Data in One Structure)
 ```cpp
-struct alignas(32) ParticleData {
-    Vector2D position;           // Current position (8 bytes)
-    Vector2D velocity;           // Velocity vector (8 bytes)
-    float life;                  // Current life (4 bytes)
-    float maxLife;               // Maximum life (4 bytes)
-    uint32_t color;              // RGBA color packed (4 bytes)
-    uint16_t textureIndex;       // Texture index (2 bytes)
-    uint8_t flags;               // Active, visible, weather flags (1 byte)
-    uint8_t generationId;        // Generation for batch clearing (1 byte)
-};
-```
-
-### ParticleColdData (Cold Data)
-```cpp
-struct ParticleColdData {
+struct UnifiedParticle {
+    // All particle data unified - no synchronization issues
+    Vector2D position;           // Current position
+    Vector2D velocity;           // Velocity vector  
     Vector2D acceleration;       // Acceleration vector
+    float life;                  // Current life
+    float maxLife;               // Maximum life
     float size;                  // Particle size
     float rotation;              // Current rotation
     float angularVelocity;       // Angular velocity
-    float fadeInTime;            // Fade in duration
-    float fadeOutTime;           // Fade out duration
+    uint32_t color;              // RGBA color packed
+    uint16_t textureIndex;       // Texture index
+    uint8_t flags;               // Active, visible, weather, fade flags
+    uint8_t generationId;        // Generation for batch clearing
+    
+    // Flag bit definitions
+    static constexpr uint8_t FLAG_ACTIVE = 1 << 0;
+    static constexpr uint8_t FLAG_VISIBLE = 1 << 1;
+    static constexpr uint8_t FLAG_GRAVITY = 1 << 2;
+    static constexpr uint8_t FLAG_COLLISION = 1 << 3;
+    static constexpr uint8_t FLAG_WEATHER = 1 << 4;
+    static constexpr uint8_t FLAG_FADE_OUT = 1 << 5;
 };
 ```
 
@@ -288,8 +287,8 @@ void configureThreading(bool useThreading, unsigned int maxThreads = 0);
 void setThreadingThreshold(size_t threshold);
 void enableWorkerBudgetThreading(bool enable);
 
-// WorkerBudget integration (handled internally by main update method)
-void enableWorkerBudgetThreading(bool enable);
+// WorkerBudget-optimized update with queue pressure management
+void updateWithWorkerBudget(float deltaTime, size_t particleCount);
 
 // Performance monitoring
 ParticlePerformanceStats getPerformanceStats() const;
@@ -317,8 +316,13 @@ void cleanupInactiveParticles();
 class GameEngine {
 private:
     void update(float deltaTime) {
-        // Update particle system
+        // Option 1: Standard update
         ParticleManager::Instance().update(deltaTime);
+        
+        // Option 2: WorkerBudget-optimized update
+        auto& pm = ParticleManager::Instance();
+        size_t particleCount = pm.getActiveParticleCount();
+        pm.updateWithWorkerBudget(deltaTime, particleCount);
         
         // Other system updates...
     }
@@ -390,7 +394,7 @@ private:
 
 ### WorkerBudget Threading
 
-The ParticleManager integrates with the engine's WorkerBudget system for optimal performance:
+The ParticleManager integrates with the engine's WorkerBudget system for optimal performance with intelligent queue pressure management:
 
 ```cpp
 void optimizeParticleProcessing() {
@@ -402,8 +406,11 @@ void optimizeParticleProcessing() {
     // Set threading threshold (minimum particles for threading)
     pm.setThreadingThreshold(1000);
     
-    // The system automatically uses 25% of available workers
-    // with dynamic buffer allocation for high particle loads
+    // The system automatically:
+    // - Monitors queue pressure (90% capacity threshold)
+    // - Uses optimal worker count based on WorkerBudget
+    // - Gracefully degrades to single-threaded if queue is full
+    // - Dynamically adjusts batch sizes based on load
 }
 ```
 
@@ -411,11 +418,11 @@ void optimizeParticleProcessing() {
 
 | Particle Count | CPU Usage | Memory Usage | Threading Strategy |
 |----------------|-----------|--------------|-------------------|
-| 0-500 | <0.1% | <50KB | Single-threaded |
-| 500-2,000 | 0.5-1% | 100-200KB | Single-threaded optimized |
-| 2,000-5,000 | 1-2% | 200-500KB | Multi-threaded (2-3 workers) |
-| 5,000-10,000 | 2-4% | 500KB-1MB | Multi-threaded (3-4 workers) |
-| 10,000+ | 4-6% | 1-2MB | Full WorkerBudget allocation |
+| 0-1,000 | <0.5% | <100KB | Single-threaded |
+| 1,000-5,000 | 0.5-2% | 100-500KB | WorkerBudget threading (optimal batch size) |
+| 5,000-10,000 | 2-4% | 500KB-1MB | Multi-threaded with queue pressure monitoring |
+| 10,000-50,000 | 4-8% | 1-5MB | Full WorkerBudget allocation with graceful degradation |
+| 50,000+ | 8-12% | 5-10MB | Automatic fallback to single-threaded if queue pressure high |
 
 ### Memory Optimization Tips
 
@@ -623,7 +630,7 @@ The ParticleManager provides a robust, high-performance foundation for visual ef
 
 ### Key Takeaways
 
-- **High Performance**: Structure of Arrays and WorkerBudget threading deliver optimal performance
+- **High Performance**: Unified Particle Architecture and WorkerBudget threading deliver optimal performance
 - **Rich Visual Effects**: Comprehensive built-in effects with full customization support  
 - **Weather Integration**: Seamless EventManager integration for dynamic weather systems
 - **Production Ready**: Thorough error handling, performance monitoring, and debugging support
