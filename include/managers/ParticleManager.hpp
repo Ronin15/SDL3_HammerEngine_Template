@@ -543,6 +543,11 @@ public:
     void compactParticleStorage();
     
     /**
+     * @brief Performs lightweight storage compaction if needed (based on thresholds)
+     */
+    void compactParticleStorageIfNeeded();
+    
+    /**
      * @brief Sets the maximum number of particles
      * @param maxParticles Maximum particle count
      */

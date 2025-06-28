@@ -201,9 +201,14 @@ void ParticleManager::update(float deltaTime) {
             updateParticlesSingleThreaded(deltaTime, totalParticleCount);
         }
         
-        // Phase 4: Compact storage periodically to prevent memory bloat
+        // Phase 4: More frequent memory management to prevent leaks
         uint64_t currentFrame = m_frameCounter.fetch_add(1, std::memory_order_relaxed);
-        if (currentFrame % 1200 == 0) { // Every 20 seconds at 60fps
+        if (currentFrame % 300 == 0) { // Every 5 seconds at 60fps instead of 20
+            compactParticleStorageIfNeeded();
+        }
+        
+        // Deep cleanup less frequently but more thoroughly
+        if (currentFrame % 1800 == 0) { // Every 30 seconds
             compactParticleStorage();
         }
         
@@ -1157,144 +1162,153 @@ void ParticleManager::updateEffectInstance(EffectInstance& effect, float deltaTi
 }
 
 void ParticleManager::createParticleForEffect(EffectInstance& effect, const ParticleEffectDefinition& effectDef) {
-    // CRITICAL FIX: Remove exclusive lock to eliminate deadlock completely
-    // Instead, rely on vector reallocation safety through pre-allocated capacity
-    // Vector operations are thread-safe for reading existing elements during push_back
+    // MEMORY LEAK FIX: Implement efficient particle reuse with slot management
+    // First, try to find an inactive particle slot to reuse
     
-    // FIXED: Create unified particle directly - no more hot/cold data split!
-    UnifiedParticle particle;
-
+    UnifiedParticle* particle = nullptr;
+    
+    // Try to reuse an inactive particle first (prevents memory growth)
+    for (size_t i = 0; i < m_storage.particles.size(); ++i) {
+        if (!m_storage.particles[i].isActive()) {
+            particle = &m_storage.particles[i];
+            break;
+        }
+    }
+    
+    // If no inactive particle found, add new one (but with better size management)
+    if (!particle) {
+        // Prevent excessive growth by limiting total particle count
+        if (m_storage.particles.size() >= DEFAULT_MAX_PARTICLES * 2) {
+            // Force cleanup of oldest particles when approaching memory limits
+            size_t removedCount = 0;
+            auto removeIt = std::remove_if(m_storage.particles.begin(), m_storage.particles.end(),
+                [&removedCount](const UnifiedParticle& p) {
+                    if (!p.isActive() || p.life <= 0.0f || (p.color & 0xFF) <= 10) {
+                        removedCount++;
+                        return true;
+                    }
+                    return false;
+                });
+            
+            if (removeIt != m_storage.particles.end()) {
+                m_storage.particles.erase(removeIt, m_storage.particles.end());
+                PARTICLE_DEBUG("Memory management: cleaned up " + std::to_string(removedCount) + " particles");
+            }
+        }
+        
+        // Add new particle if still under reasonable limits
+        if (m_storage.particles.size() < DEFAULT_MAX_PARTICLES * 2) {
+            m_storage.particles.emplace_back();
+            particle = &m_storage.particles.back();
+        } else {
+            // Skip creation if at hard limit to prevent memory explosion
+            PARTICLE_WARN("Particle limit reached, skipping creation");
+            return;
+        }
+    }
+    
     // Generate random values within the effect's parameters
     static std::random_device rd;
     static std::mt19937 gen(rd());
     
+    // Reset particle to clean state
+    *particle = UnifiedParticle();
+    
     // Position - start from effect position with some spread
     std::uniform_real_distribution<float> spreadDist(-effectDef.emitterConfig.spread, effectDef.emitterConfig.spread);
-    particle.position = Vector2D(
+    particle->position = Vector2D(
         effect.position.getX() + spreadDist(gen),
         effect.position.getY() + spreadDist(gen)
     );
 
     // UNIFIED PHYSICS: All particles use the same reliable angular approach
-    // This eliminates the rain/snow-specific bugs by using the proven fog/cloud logic
     std::uniform_real_distribution<float> speedDist(effectDef.emitterConfig.minSpeed, effectDef.emitterConfig.maxSpeed);
     float speed = speedDist(gen);
     
-    // ALL particles use angular spread - this is what works for fog/clouds
     std::uniform_real_distribution<float> angleDist(-effectDef.emitterConfig.spread * 0.017453f, effectDef.emitterConfig.spread * 0.017453f);
     float angle = angleDist(gen);
     
     // For weather effects, bias the angle towards downward motion
     if (effectDef.type == ParticleEffectType::Rain || effectDef.type == ParticleEffectType::HeavyRain) {
-        // Rain: strong downward bias with small horizontal spread
         angle = (M_PI * 0.5f) + (angle * 0.1f); // Mostly downward
     } else if (effectDef.type == ParticleEffectType::Snow || effectDef.type == ParticleEffectType::HeavySnow) {
-        // Snow: gentle downward bias with more drift
         angle = (M_PI * 0.5f) + (angle * 0.3f); // Gentle downward with drift
     }
     
-    // Apply consistent velocity calculation for ALL particle types
-    particle.velocity = Vector2D(
+    // Apply consistent velocity calculation
+    particle->velocity = Vector2D(
         speed * sin(angle),
         speed * cos(angle)
     );
     
     // Apply acceleration/gravity from effect configuration
-    particle.acceleration = effectDef.emitterConfig.gravity;
+    particle->acceleration = effectDef.emitterConfig.gravity;
 
     // Size
     std::uniform_real_distribution<float> sizeDist(effectDef.emitterConfig.minSize, effectDef.emitterConfig.maxSize);
-    particle.size = sizeDist(gen);
+    particle->size = sizeDist(gen);
 
-    // Life - CRITICAL: Set life FIRST before making particle active
+    // Life - Set life before making particle active
     std::uniform_real_distribution<float> lifeDist(effectDef.emitterConfig.minLife, effectDef.emitterConfig.maxLife);
-    particle.maxLife = lifeDist(gen);
-    particle.life = particle.maxLife;
+    particle->maxLife = lifeDist(gen);
+    particle->life = particle->maxLife;
     
-    // CRITICAL FIX: Ensure particle has valid life before activation
-    // This prevents race condition where particles get updated before life is set
-    if (particle.life <= 0.0f) {
-        particle.life = 1.0f;  // Fallback to prevent immediate death
-        particle.maxLife = 1.0f;
+    if (particle->life <= 0.0f) {
+        particle->life = 1.0f;
+        particle->maxLife = 1.0f;
     }
 
     // Color based on effect type
     if (effectDef.type == ParticleEffectType::Rain) {
-        particle.color = 0x4080FFFF; // Blue-ish for rain
+        particle->color = 0x4080FFFF;
     } else if (effectDef.type == ParticleEffectType::Snow) {
-        particle.color = 0xFFFFFFFF; // White for snow
+        particle->color = 0xFFFFFFFF;
     } else if (effectDef.type == ParticleEffectType::Fog) {
         if (effectDef.name == "Cloudy") {
-            particle.color = 0xF8F8F8C0; // Light white with higher alpha for more visible clouds
+            particle->color = 0xF8F8F8C0;
         } else {
-            particle.color = 0xCCCCCC88; // Semi-transparent gray for fog
+            particle->color = 0xCCCCCC88;
         }
     } else if (effectDef.type == ParticleEffectType::Fire) {
-        // Fire particles with realistic colors - random between orange-red and yellow
         std::uniform_int_distribution<int> colorChoice(0, 2);
         switch (colorChoice(gen)) {
-            case 0: particle.color = 0xFF4500FF; break; // Orange-red
-            case 1: particle.color = 0xFF6500FF; break; // Red-orange  
-            case 2: particle.color = 0xFFFF00FF; break; // Yellow
+            case 0: particle->color = 0xFF4500FF; break;
+            case 1: particle->color = 0xFF6500FF; break;
+            case 2: particle->color = 0xFFFF00FF; break;
         }
     } else if (effectDef.type == ParticleEffectType::Smoke) {
-        // Smoke particles with realistic black/grey variations
         std::uniform_int_distribution<int> colorChoice(0, 3);
         switch (colorChoice(gen)) {
-            case 0: particle.color = 0x404040FF; break; // Dark grey
-            case 1: particle.color = 0x606060FF; break; // Medium grey
-            case 2: particle.color = 0x808080FF; break; // Light grey
-            case 3: particle.color = 0x202020FF; break; // Very dark grey (almost black)
+            case 0: particle->color = 0x404040FF; break;
+            case 1: particle->color = 0x606060FF; break;
+            case 2: particle->color = 0x808080FF; break;
+            case 3: particle->color = 0x202020FF; break;
         }
     } else if (effectDef.type == ParticleEffectType::Sparks) {
-        // Sparks with bright yellow/orange colors
         std::uniform_int_distribution<int> colorChoice(0, 1);
         switch (colorChoice(gen)) {
-            case 0: particle.color = 0xFFFF00FF; break; // Bright yellow
-            case 1: particle.color = 0xFF8C00FF; break; // Orange
+            case 0: particle->color = 0xFFFF00FF; break;
+            case 1: particle->color = 0xFF8C00FF; break;
         }
     } else {
-        particle.color = 0xFFFFFFFF; // Default white
+        particle->color = 0xFFFFFFFF;
     }
 
-    // CRITICAL: Set active and visible LAST after ALL properties are initialized
-    // This ensures no race condition where particles are updated before being fully initialized
-    particle.setActive(true);
-    particle.setVisible(true);
+    // Set active and visible LAST after ALL properties are initialized
+    particle->setActive(true);
+    particle->setVisible(true);
     
     // Mark weather particles for batch management
     if (effect.isWeatherEffect) {
-        particle.setWeatherParticle(true);
-        particle.generationId = effect.currentGenerationId;
+        particle->setWeatherParticle(true);
+        particle->generationId = effect.currentGenerationId;
     }
     
-    // FINAL SOLUTION: Simple allocation with periodic cleanup
-    // The reuse logic was causing the stuck particle issue
-    // Use simple push_back with occasional cleanup to prevent memory growth
-    
-    m_storage.particles.push_back(particle);
-    
-    // Periodic cleanup every 1000 particles to prevent memory growth
-    // This is much safer than complex reuse logic
+    // MEMORY LEAK FIX: More frequent cleanup to prevent accumulation
     static size_t cleanupCounter = 0;
-    if (++cleanupCounter % 1000 == 0) {
-        // Simple cleanup: remove particles that have been inactive for a while
-        auto removeIt = std::remove_if(m_storage.particles.begin(), m_storage.particles.end(),
-            [](const UnifiedParticle& p) {
-                return !p.isActive() && p.life <= 0.0f;
-            });
-        
-        if (removeIt != m_storage.particles.end()) {
-            size_t removedCount = std::distance(removeIt, m_storage.particles.end());
-            m_storage.particles.erase(removeIt, m_storage.particles.end());
-            PARTICLE_DEBUG("Cleaned up " + std::to_string(removedCount) + " dead particles");
-        }
+    if (++cleanupCounter % 100 == 0) {  // Every 100 particles instead of 1000
+        compactParticleStorageIfNeeded();
     }
-    
-    // PARTICLE_LOG("*** PARTICLE CREATED: Index " + std::to_string(particleIndex) + 
-    //             " at position (" + std::to_string(particle.position.getX()) + 
-    //             ", " + std::to_string(particle.position.getY()) + ") - Storage size now: " + 
-    //             std::to_string(m_storage.hotData.size()) + " active=" + (particle.isActive() ? "true" : "false"));
 }
 
 void ParticleManager::updateParticle(ParticleData& particle, float deltaTime) {
@@ -1741,15 +1755,51 @@ void ParticleManager::compactParticleStorage() {
         return; // Skip compaction if busy
     }
     
-    // Remove inactive particles to compact storage
+    // More aggressive cleanup: remove inactive particles AND faded particles
     auto removeIt = std::remove_if(m_storage.particles.begin(), m_storage.particles.end(),
         [](const UnifiedParticle& particle) {
-            return !particle.isActive() && particle.life <= 0.0f;
+            // Remove if inactive, dead, or essentially invisible
+            return !particle.isActive() || 
+                   particle.life <= 0.0f || 
+                   (particle.color & 0xFF) <= 10;  // Very low alpha
         });
     
     if (removeIt != m_storage.particles.end()) {
         size_t removedCount = std::distance(removeIt, m_storage.particles.end());
         m_storage.particles.erase(removeIt, m_storage.particles.end());
-        PARTICLE_DEBUG("Compacted storage: removed " + std::to_string(removedCount) + " inactive particles");
+        PARTICLE_DEBUG("Compacted storage: removed " + std::to_string(removedCount) + " inactive/faded particles");
+    }
+    
+    // Shrink vector capacity if we have excessive unused space
+    if (m_storage.particles.capacity() > m_storage.particles.size() * 2 && 
+        m_storage.particles.capacity() > DEFAULT_MAX_PARTICLES) {
+        m_storage.particles.shrink_to_fit();
+        PARTICLE_DEBUG("Shrunk particle storage capacity to fit actual usage");
+    }
+}
+
+// New helper method for more frequent, lightweight cleanup
+void ParticleManager::compactParticleStorageIfNeeded() {
+    if (!m_initialized.load(std::memory_order_acquire)) {
+        return;
+    }
+    
+    // Only compact if we have a significant number of inactive particles
+    size_t totalParticles = m_storage.particles.size();
+    if (totalParticles < 500) {
+        return; // Not worth compacting small numbers
+    }
+    
+    // Count inactive particles
+    size_t inactiveCount = 0;
+    for (const auto& particle : m_storage.particles) {
+        if (!particle.isActive() || particle.life <= 0.0f || (particle.color & 0xFF) <= 10) {
+            inactiveCount++;
+        }
+    }
+    
+    // Only compact if inactive particles are more than 30% of total
+    if (inactiveCount > totalParticles * 0.3) {
+        compactParticleStorage();
     }
 }
