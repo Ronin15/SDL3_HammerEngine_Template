@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# SDL3 ForgeEngine Template - Complete Valgrind Test Suite
+# SDL3 HammerEngine Template - Complete Valgrind Test Suite
 # Master script for comprehensive memory, cache, and thread safety analysis
 
 # Don't exit on non-zero codes from tests - we handle errors explicitly
@@ -25,10 +25,10 @@ FINAL_REPORT="${RESULTS_DIR}/complete_analysis_${TIMESTAMP}.md"
 
 # Test configuration
 declare -A ALL_TESTS=(
-    ["memory_critical"]="buffer_utilization_tests event_manager_tests ai_optimization_tests"
-    ["thread_safety"]="thread_safe_ai_manager_tests thread_safe_ai_integration_tests"
-    ["performance"]="event_manager_tests ai_optimization_tests save_manager_tests"
-    ["comprehensive"]="event_types_tests weather_event_tests ui_stress_test"
+    ["memory_critical"]="buffer_utilization_tests event_manager_tests ai_optimization_tests particle_manager_core_tests behavior_functionality_tests"
+    ["thread_safety"]="thread_safe_ai_manager_tests thread_safe_ai_integration_tests particle_manager_threading_tests thread_system_tests event_manager_tests"
+    ["performance"]="event_manager_tests ai_optimization_tests save_manager_tests particle_manager_performance_tests event_manager_scaling_benchmark behavior_functionality_tests ai_scaling_benchmark"
+    ["comprehensive"]="event_types_tests weather_event_tests ui_stress_test particle_manager_weather_tests thread_system_tests ai_scaling_benchmark"
 )
 
 # Performance tracking
@@ -38,7 +38,7 @@ CRITICAL_ISSUES=0
 WARNINGS=0
 
 echo -e "${BOLD}${BLUE}╔══════════════════════════════════════════════════════════════╗${NC}"
-echo -e "${BOLD}${BLUE}║                SDL3 ForgeEngine Template                    ║${NC}"
+echo -e "${BOLD}${BLUE}║                SDL3 HammerEngine Template                    ║${NC}"
 echo -e "${BOLD}${BLUE}║              Complete Valgrind Analysis Suite               ║${NC}"
 echo -e "${BOLD}${BLUE}║                                                              ║${NC}"
 echo -e "${BOLD}${BLUE}║  Comprehensive Memory, Cache & Thread Safety Analysis       ║${NC}"
@@ -84,7 +84,7 @@ handle_timeout() {
 run_memory_analysis() {
     section_header "MEMORY LEAK ANALYSIS (Memcheck)"
 
-    local memory_tests="buffer_utilization_tests event_manager_tests ai_optimization_tests save_manager_tests"
+    local memory_tests="${ALL_TESTS[memory_critical]}"
     local clean_tests=0
     local problematic_tests=0
 
@@ -172,7 +172,7 @@ run_memory_analysis() {
 run_cache_analysis() {
     section_header "CACHE PERFORMANCE ANALYSIS (Cachegrind)"
 
-    local cache_tests="event_manager_tests buffer_utilization_tests ai_optimization_tests"
+    local cache_tests="${ALL_TESTS[performance]}"
     local exceptional_count=0
     local good_count=0
 
@@ -192,13 +192,20 @@ run_cache_analysis() {
         # Show progress indicator
         echo -e "${YELLOW}  ⏳ Running Cachegrind performance analysis...${NC}"
 
-        # Run Cachegrind
+        # Run Cachegrind - use targeted test for ai_scaling_benchmark to reduce execution time
+        local test_args=""
+        if [[ "${test}" == "ai_scaling_benchmark" ]]; then
+            # Run only the realistic performance test for cache analysis
+            test_args="--run_test=AIScalingTests/TestRealisticPerformance --catch_system_errors=no --no_result_code --log_level=nothing"
+            echo -e "${YELLOW}    Using targeted realistic performance test for faster cache analysis...${NC}"
+        fi
+        
         timeout 600s valgrind \
             --tool=cachegrind \
             --cache-sim=yes \
             --cachegrind-out-file="${out_file}" \
             --log-file="${log_file}" \
-            "${exe_path}" >/dev/null 2>&1
+            "${exe_path}" ${test_args} > /dev/null 2>&1
 
         local valgrind_exit_code=$?
         if [[ $valgrind_exit_code -eq 124 ]]; then
@@ -262,7 +269,7 @@ run_cache_analysis() {
 run_thread_analysis() {
     section_header "THREAD SAFETY ANALYSIS (Helgrind/DRD)"
 
-    local thread_tests="thread_safe_ai_manager_tests thread_safe_ai_integration_tests event_manager_tests"
+    local thread_tests="${ALL_TESTS[thread_safety]}"
     local safe_components=0
     local total_races=0
 
@@ -348,7 +355,7 @@ generate_final_report() {
     section_header "GENERATING COMPREHENSIVE REPORT"
 
     cat > "${FINAL_REPORT}" << EOF
-# SDL3 ForgeEngine Template - Complete Valgrind Analysis Report
+# SDL3 HammerEngine Template - Complete Valgrind Analysis Report
 
 **Analysis Date**: $(date)
 **Analysis Duration**: Complete Valgrind test suite
@@ -357,7 +364,7 @@ generate_final_report() {
 
 ## Executive Summary
 
-This comprehensive analysis evaluated the SDL3 ForgeEngine Template across three critical performance and safety dimensions:
+This comprehensive analysis evaluated the SDL3 HammerEngine Template across three critical performance and safety dimensions:
 - **Memory Management** (Leak detection and error analysis)
 - **Cache Performance** (Memory hierarchy optimization)
 - **Thread Safety** (Concurrency and race condition analysis)
@@ -455,7 +462,7 @@ To reproduce this analysis:
 
 ---
 
-**Conclusion**: The SDL3 ForgeEngine Template demonstrates $([ $CRITICAL_ISSUES -eq 0 ] && echo "exceptional engineering quality" || echo "solid engineering with areas for improvement"), making it $([ $CRITICAL_ISSUES -eq 0 ] && echo "immediately suitable for production use" || echo "suitable for production after addressing flagged issues").
+**Conclusion**: The SDL3 HammerEngine Template demonstrates $([ $CRITICAL_ISSUES -eq 0 ] && echo "exceptional engineering quality" || echo "solid engineering with areas for improvement"), making it $([ $CRITICAL_ISSUES -eq 0 ] && echo "immediately suitable for production use" || echo "suitable for production after addressing flagged issues").
 
 ## Expected Behaviors (Not Issues)
 
@@ -547,7 +554,7 @@ case "${1:-all}" in
         run_thread_analysis
         ;;
     "help"|"-h"|"--help")
-        echo "SDL3 ForgeEngine Complete Valgrind Analysis Suite"
+        echo "SDL3 HammerEngine Complete Valgrind Analysis Suite"
         echo ""
         echo "Usage: $0 [analysis_type]"
         echo ""

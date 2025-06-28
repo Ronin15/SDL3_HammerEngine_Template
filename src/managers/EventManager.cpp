@@ -9,6 +9,7 @@
 #include "events/WeatherEvent.hpp"
 #include "events/SceneChangeEvent.hpp"
 #include "events/NPCSpawnEvent.hpp"
+#include "events/ParticleEffectEvent.hpp"
 #include "events/EventFactory.hpp"
 #include "core/ThreadSystem.hpp"
 #include "core/WorkerBudget.hpp"
@@ -137,12 +138,14 @@ void EventManager::update() {
         updateEventTypeBatchThreaded(EventTypeId::Weather);
         updateEventTypeBatchThreaded(EventTypeId::SceneChange);
         updateEventTypeBatchThreaded(EventTypeId::NPCSpawn);
+        updateEventTypeBatchThreaded(EventTypeId::ParticleEffect);
         updateEventTypeBatchThreaded(EventTypeId::Custom);
     } else {
         // Use single-threaded for small event counts (better performance)
         updateEventTypeBatch(EventTypeId::Weather);
         updateEventTypeBatch(EventTypeId::SceneChange);
         updateEventTypeBatch(EventTypeId::NPCSpawn);
+        updateEventTypeBatch(EventTypeId::ParticleEffect);
         updateEventTypeBatch(EventTypeId::Custom);
     }
 
@@ -255,6 +258,7 @@ std::vector<EventPtr> EventManager::getEventsByType(const std::string& typeName)
     if (typeName == "Weather") typeId = EventTypeId::Weather;
     else if (typeName == "SceneChange") typeId = EventTypeId::SceneChange;
     else if (typeName == "NPCSpawn") typeId = EventTypeId::NPCSpawn;
+    else if (typeName == "ParticleEffect") typeId = EventTypeId::ParticleEffect;
 
     return getEventsByType(typeId);
 }
@@ -738,6 +742,29 @@ bool EventManager::createNPCSpawnEvent(const std::string& name, const std::strin
     return registerEvent(name, event);
 }
 
+bool EventManager::createParticleEffectEvent(const std::string& name, const std::string& effectName, float x, float y, float intensity, float duration, const std::string& groupTag) {
+    try {
+        // Create ParticleEffectEvent directly (no factory needed for this simple event)
+        auto event = std::make_shared<ParticleEffectEvent>(name, effectName, x, y, intensity, duration, groupTag);
+        // Note: std::make_shared never returns nullptr for successful allocation
+        // If allocation fails, it throws std::bad_alloc instead
+
+        // Register with EventManager
+        return registerEventInternal(name, event, EventTypeId::ParticleEffect);
+
+    } catch (const std::exception& e) {
+        EVENT_ERROR("Exception creating ParticleEffectEvent '" + name + "': " + e.what());
+        return false;
+    } catch (...) {
+        EVENT_ERROR("Unknown exception creating ParticleEffectEvent: " + name);
+        return false;
+    }
+}
+
+bool EventManager::createParticleEffectEvent(const std::string& name, const std::string& effectName, const Vector2D& position, float intensity, float duration, const std::string& groupTag) {
+    return createParticleEffectEvent(name, effectName, position.getX(), position.getY(), intensity, duration, groupTag);
+}
+
 PerformanceStats EventManager::getPerformanceStats(EventTypeId typeId) const {
     std::lock_guard<std::mutex> lock(m_perfMutex);
     return m_performanceStats[static_cast<size_t>(typeId)];
@@ -817,6 +844,9 @@ EventTypeId EventManager::getEventTypeId(const EventPtr& event) const {
     if (std::dynamic_pointer_cast<NPCSpawnEvent>(event)) {
         return EventTypeId::NPCSpawn;
     }
+    if (std::dynamic_pointer_cast<ParticleEffectEvent>(event)) {
+        return EventTypeId::ParticleEffect;
+    }
     return EventTypeId::Custom;
 }
 
@@ -825,6 +855,7 @@ std::string EventManager::getEventTypeName(EventTypeId typeId) const {
         case EventTypeId::Weather: return "Weather";
         case EventTypeId::SceneChange: return "SceneChange";
         case EventTypeId::NPCSpawn: return "NPCSpawn";
+        case EventTypeId::ParticleEffect: return "ParticleEffect";
         case EventTypeId::Custom: return "Custom";
         default: return "Unknown";
     }

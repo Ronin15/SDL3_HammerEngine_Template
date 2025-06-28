@@ -27,6 +27,7 @@
 #include <functional>
 #include <queue>
 #include <unordered_map>
+#include "utils/Vector2D.hpp"
 
 // Forward declarations
 class Event;
@@ -47,8 +48,9 @@ enum class EventTypeId : uint8_t {
     Weather = 0,
     SceneChange = 1,
     NPCSpawn = 2,
-    Custom = 3,
-    COUNT = 4
+    ParticleEffect = 3,
+    Custom = 4,
+    COUNT = 5
 };
 
 /**
@@ -316,6 +318,10 @@ public:
     bool createWeatherEvent(const std::string& name, const std::string& weatherType, float intensity = 1.0f, float transitionTime = 5.0f);
     bool createSceneChangeEvent(const std::string& name, const std::string& targetScene, const std::string& transitionType = "fade", float transitionTime = 1.0f);
     bool createNPCSpawnEvent(const std::string& name, const std::string& npcType, int count = 1, float spawnRadius = 0.0f);
+    
+    // Particle effect convenience methods
+    bool createParticleEffectEvent(const std::string& name, const std::string& effectName, float x, float y, float intensity = 1.0f, float duration = -1.0f, const std::string& groupTag = "");
+    bool createParticleEffectEvent(const std::string& name, const std::string& effectName, const Vector2D& position, float intensity = 1.0f, float duration = -1.0f, const std::string& groupTag = "");
 
     // Alternative trigger methods (aliases for compatibility)
     bool triggerWeatherChange(const std::string& weatherType, float transitionTime = 5.0f) const { return changeWeather(weatherType, transitionTime); }

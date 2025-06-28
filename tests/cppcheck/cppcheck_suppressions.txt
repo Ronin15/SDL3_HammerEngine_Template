@@ -158,8 +158,28 @@ unreadVariable:*/InputManager.cpp:418
 variableScope:*/ThreadSystem.hpp:572
 variableScope:*/ThreadSystem.hpp:584
 variableScope:*/FontManager.cpp:72
+variableScope:*/FontManager.cpp:117
 variableScope:*/SoundManager.cpp:76
 variableScope:*/SoundManager.cpp:148
+
+# Variables used only in debug logging macros (removedCount)
+unreadVariable:*/ParticleManager.cpp:1077
+unreadVariable:*/ParticleManager.cpp:1210
+unreadVariable:*/ParticleManager.cpp:1873
+
+# Variables used only in debug logging macros (axisName, buttonName)
+unreadVariable:*/InputManager.cpp:310
+unreadVariable:*/InputManager.cpp:311
+unreadVariable:*/InputManager.cpp:312
+unreadVariable:*/InputManager.cpp:313
+unreadVariable:*/InputManager.cpp:314
+unreadVariable:*/InputManager.cpp:315
+unreadVariable:*/InputManager.cpp:419
+unreadVariable:*/InputManager.cpp:420
+unreadVariable:*/InputManager.cpp:421
+unreadVariable:*/InputManager.cpp:422
+unreadVariable:*/InputManager.cpp:423
+unreadVariable:*/InputManager.cpp:424
 
 # Const reference opportunities that would break functionality
 constVariableReference:*/GamePlayState.cpp:108

@@ -268,31 +268,23 @@ void FollowBehavior::setPredictiveFollowing(bool enabled, float predictionTime) 
 }
 
 bool FollowBehavior::isFollowing() const {
-    for (const auto& pair : m_entityStates) {
-        if (pair.second.isFollowing) return true;
-    }
-    return false;
+    return std::any_of(m_entityStates.begin(), m_entityStates.end(),
+                      [](const auto& pair) { return pair.second.isFollowing; });
 }
 
 bool FollowBehavior::isInFormation() const {
     if (m_followMode != FollowMode::ESCORT_FORMATION) return true;
-    
-    for (const auto& pair : m_entityStates) {
-        if (!pair.second.inFormation) return false;
-    }
-    return true;
+    return std::all_of(m_entityStates.begin(), m_entityStates.end(),
+                      [](const auto& pair) { return pair.second.inFormation; });
 }
 
 float FollowBehavior::getDistanceToTarget() const {
     EntityPtr target = getTarget();
     if (!target) return -1.0f;
-    
-    for (const auto& pair : m_entityStates) {
-        if (pair.second.isFollowing) {
-            return (pair.first->getPosition() - target->getPosition()).length();
-        }
-    }
-    return -1.0f;
+    auto it = std::find_if(m_entityStates.begin(), m_entityStates.end(),
+                          [](const auto& pair) { return pair.second.isFollowing; });
+    return (it != m_entityStates.end()) ? 
+           (it->first->getPosition() - target->getPosition()).length() : -1.0f;
 }
 
 FollowBehavior::FollowMode FollowBehavior::getFollowMode() const {
@@ -365,7 +357,9 @@ Vector2D FollowBehavior::calculateFormationOffset(const EntityState& state) cons
 }
 
 Vector2D FollowBehavior::predictTargetPosition(EntityPtr target, const EntityState& state) const {
-    if (!target || !state.targetMoving) return target->getPosition();
+    if (!target || !state.targetMoving) {
+        return target ? target->getPosition() : Vector2D(0, 0);
+    }
     
     Vector2D currentPos = target->getPosition();
     Vector2D velocity = (currentPos - state.lastTargetPosition) / 0.016f; // Assume 60 FPS

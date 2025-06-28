@@ -61,8 +61,8 @@ if /i "%~1"=="--help" (
     echo   --help            Show this help message
     echo.
     echo Test Categories:
-    echo   Core Tests:       Static analysis, Thread, AI, Behavior, Save, Event functionality tests
-    echo   Benchmarks:       AI scaling, EventManager scaling, and UI stress benchmarks
+    echo   Core Tests:       Static analysis, Thread, AI, Behavior, Save, Event, ParticleManager functionality tests
+    echo   Benchmarks:       AI scaling, EventManager scaling, UI stress, and ParticleManager performance benchmarks
     echo.
     echo Execution Time:
     echo   Core tests:       ~2-5 minutes total
@@ -83,7 +83,7 @@ goto :parse_args
 
 :: Define test categories
 :: Core functionality tests (fast execution)
-set CORE_TEST_COUNT=9
+set CORE_TEST_COUNT=10
 set CORE_TEST_1=run_cppcheck_focused.bat
 set CORE_TEST_2=run_thread_tests.bat
 set CORE_TEST_3=run_buffer_utilization_tests.bat
@@ -93,6 +93,7 @@ set CORE_TEST_6=run_ai_optimization_tests.bat
 set CORE_TEST_7=run_behavior_functionality_tests.bat
 set CORE_TEST_8=run_save_tests.bat
 set CORE_TEST_9=run_event_tests.bat
+set CORE_TEST_10=run_particle_manager_tests.bat
 
 :: Performance scaling benchmarks (slow execution)
 set BENCHMARK_TEST_COUNT=3

@@ -19,6 +19,7 @@ class GameLoop;
 class AIManager;
 class EventManager;
 class InputManager;
+class ParticleManager;
 
 class GameEngine {
  public:
@@ -260,6 +261,7 @@ class GameEngine {
   // InputManager not cached - handled in handleEvents() for proper SDL event polling architecture
   AIManager* mp_aiManager{nullptr};
   EventManager* mp_eventManager{nullptr};
+  ParticleManager* mp_particleManager{nullptr};
   
   // Logical presentation settings
   SDL_RendererLogicalPresentation m_logicalPresentationMode{SDL_LOGICAL_PRESENTATION_LETTERBOX};

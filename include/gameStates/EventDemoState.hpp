@@ -54,6 +54,7 @@ private:
     void triggerWeatherDemoManual();   // Manual trigger version
     void triggerNPCSpawnDemo();
     void triggerSceneTransitionDemo();
+    void triggerParticleEffectDemo();   // NEW: Demonstrate particle effects via EventManager
     void triggerCustomEventDemo();
     void triggerConvenienceMethodsDemo();  // NEW: Demonstrate convenience methods
     void resetAllEvents();
@@ -69,6 +70,7 @@ private:
         WeatherDemo,
         NPCSpawnDemo,
         SceneTransitionDemo,
+        ParticleEffectDemo,
         CustomEventDemo,
         InteractiveMode,
         Complete
@@ -115,6 +117,14 @@ private:
     // Scene transition demo variables
     std::vector<std::string> m_sceneNames{"Forest", "Village", "Castle", "Dungeon"};
     size_t m_currentSceneIndex{0};
+    
+    // Independent particle effects tracking
+    uint32_t m_fireEffectId{0};
+    uint32_t m_smokeEffectId{0};
+    uint32_t m_sparksEffectId{0};
+    bool m_fireActive{false};
+    bool m_smokeActive{false};
+    bool m_sparksActive{false};
 
 
 

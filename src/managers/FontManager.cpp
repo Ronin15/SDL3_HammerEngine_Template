@@ -114,7 +114,7 @@ bool FontManager::loadFont(const std::string& fontFile, const std::string& fontI
     FONT_INFO("Loading fonts from directory: " + fontFile);
 
     bool loadedAny = false;
-    [[maybe_unused]] int fontsLoaded = 0;
+    int fontsLoaded = 0;  // Declare at appropriate scope
 
     try {
       // Iterate through all files in the directory

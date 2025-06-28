@@ -105,7 +105,7 @@ void GamePlayState::handleInput() {
 
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_B)) {
       std::cout << "Hammer Game Engine - Transitioning to MainMenuState...\n";
-      auto& gameEngine = GameEngine::Instance();
+      const auto& gameEngine = GameEngine::Instance();
       gameEngine.getGameStateManager()->setState("MainMenuState");
   }
 
