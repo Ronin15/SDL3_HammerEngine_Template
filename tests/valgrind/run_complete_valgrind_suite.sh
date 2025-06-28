@@ -27,7 +27,7 @@ FINAL_REPORT="${RESULTS_DIR}/complete_analysis_${TIMESTAMP}.md"
 declare -A ALL_TESTS=(
     ["memory_critical"]="buffer_utilization_tests event_manager_tests ai_optimization_tests particle_manager_core_tests behavior_functionality_tests"
     ["thread_safety"]="thread_safe_ai_manager_tests thread_safe_ai_integration_tests particle_manager_threading_tests thread_system_tests event_manager_tests"
-    ["performance"]="event_manager_tests ai_optimization_tests save_manager_tests particle_manager_performance_tests event_manager_scaling_benchmark behavior_functionality_tests"
+    ["performance"]="event_manager_tests ai_optimization_tests save_manager_tests particle_manager_performance_tests event_manager_scaling_benchmark behavior_functionality_tests ai_scaling_benchmark"
     ["comprehensive"]="event_types_tests weather_event_tests ui_stress_test particle_manager_weather_tests thread_system_tests ai_scaling_benchmark"
 )
 
@@ -192,13 +192,20 @@ run_cache_analysis() {
         # Show progress indicator
         echo -e "${YELLOW}  ⏳ Running Cachegrind performance analysis...${NC}"
 
-        # Run Cachegrind
+        # Run Cachegrind - use targeted test for ai_scaling_benchmark to reduce execution time
+        local test_args=""
+        if [[ "${test}" == "ai_scaling_benchmark" ]]; then
+            # Run only the realistic performance test for cache analysis
+            test_args="--run_test=AIScalingTests/TestRealisticPerformance --catch_system_errors=no --no_result_code --log_level=nothing"
+            echo -e "${YELLOW}    Using targeted realistic performance test for faster cache analysis...${NC}"
+        fi
+        
         timeout 600s valgrind \
             --tool=cachegrind \
             --cache-sim=yes \
             --cachegrind-out-file="${out_file}" \
             --log-file="${log_file}" \
-            "${exe_path}" >/dev/null 2>&1
+            "${exe_path}" ${test_args} > /dev/null 2>&1
 
         local valgrind_exit_code=$?
         if [[ $valgrind_exit_code -eq 124 ]]; then
