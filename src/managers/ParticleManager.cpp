@@ -198,7 +198,11 @@ void ParticleManager::update(float deltaTime) {
         if (useThreading) {
             updateParticlesThreaded(deltaTime, totalParticleCount);
         } else {
-            updateParticlesSingleThreaded(deltaTime, totalParticleCount);
+            // Use optimized single-threaded batch processing
+            for (size_t start = 0; start < totalParticleCount; start += BATCH_SIZE) {
+                size_t end = std::min(start + BATCH_SIZE, totalParticleCount);
+                updateParticleBatchOptimized(start, end, deltaTime);
+            }
         }
         
         // Phase 4: More frequent memory management to prevent leaks
@@ -212,11 +216,12 @@ void ParticleManager::update(float deltaTime) {
             compactParticleStorage();
         }
         
-        // Phase 5: Performance tracking (less frequent to reduce overhead)
+        // Phase 5: Performance tracking (much less frequent to reduce overhead)
         auto endTime = std::chrono::high_resolution_clock::now();
         double timeMs = std::chrono::duration_cast<std::chrono::microseconds>(endTime - startTime).count() / 1000.0;
         
-        if (currentFrame % 600 == 0) {
+        // Only track performance every 1200 frames (20 seconds) to minimize overhead
+        if (currentFrame % 1200 == 0) {
             size_t activeCount = countActiveParticles();
             recordPerformance(false, timeMs, activeCount);
             
@@ -1207,26 +1212,32 @@ void ParticleManager::createParticleForEffect(EffectInstance& effect, const Part
         }
     }
     
-    // Generate random values within the effect's parameters
-    static std::random_device rd;
-    static std::mt19937 gen(rd());
+    // PERFORMANCE OPTIMIZATION: Use fast random generation and pre-calculated values
+    auto& optData = m_optimizationData;
+    
+    // Fast pseudo-random generation (much faster than std::mt19937)
+    uint32_t seed = optData.fastRandSeed.fetch_add(1, std::memory_order_relaxed);
+    auto fastRand = [&seed]() -> float {
+        seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+        return static_cast<float>(seed) / static_cast<float>(0x7fffffff);
+    };
     
     // Reset particle to clean state
     *particle = UnifiedParticle();
     
     // Position - start from effect position with some spread
-    std::uniform_real_distribution<float> spreadDist(-effectDef.emitterConfig.spread, effectDef.emitterConfig.spread);
+    float spreadRange = effectDef.emitterConfig.spread;
     particle->position = Vector2D(
-        effect.position.getX() + spreadDist(gen),
-        effect.position.getY() + spreadDist(gen)
+        effect.position.getX() + (fastRand() * 2.0f - 1.0f) * spreadRange,
+        effect.position.getY() + (fastRand() * 2.0f - 1.0f) * spreadRange
     );
 
     // UNIFIED PHYSICS: All particles use the same reliable angular approach
-    std::uniform_real_distribution<float> speedDist(effectDef.emitterConfig.minSpeed, effectDef.emitterConfig.maxSpeed);
-    float speed = speedDist(gen);
+    float speedRange = effectDef.emitterConfig.maxSpeed - effectDef.emitterConfig.minSpeed;
+    float speed = effectDef.emitterConfig.minSpeed + fastRand() * speedRange;
     
-    std::uniform_real_distribution<float> angleDist(-effectDef.emitterConfig.spread * 0.017453f, effectDef.emitterConfig.spread * 0.017453f);
-    float angle = angleDist(gen);
+    float angleRange = effectDef.emitterConfig.spread * 0.017453f;
+    float angle = (fastRand() * 2.0f - 1.0f) * angleRange;
     
     // For weather effects, bias the angle towards downward motion
     if (effectDef.type == ParticleEffectType::Rain || effectDef.type == ParticleEffectType::HeavyRain) {
@@ -1244,13 +1255,13 @@ void ParticleManager::createParticleForEffect(EffectInstance& effect, const Part
     // Apply acceleration/gravity from effect configuration
     particle->acceleration = effectDef.emitterConfig.gravity;
 
-    // Size
-    std::uniform_real_distribution<float> sizeDist(effectDef.emitterConfig.minSize, effectDef.emitterConfig.maxSize);
-    particle->size = sizeDist(gen);
+    // PERFORMANCE OPTIMIZATION: Use fast random for size and life
+    float sizeRange = effectDef.emitterConfig.maxSize - effectDef.emitterConfig.minSize;
+    particle->size = effectDef.emitterConfig.minSize + fastRand() * sizeRange;
 
     // Life - Set life before making particle active
-    std::uniform_real_distribution<float> lifeDist(effectDef.emitterConfig.minLife, effectDef.emitterConfig.maxLife);
-    particle->maxLife = lifeDist(gen);
+    float lifeRange = effectDef.emitterConfig.maxLife - effectDef.emitterConfig.minLife;
+    particle->maxLife = effectDef.emitterConfig.minLife + fastRand() * lifeRange;
     particle->life = particle->maxLife;
     
     if (particle->life <= 0.0f) {
@@ -1258,7 +1269,7 @@ void ParticleManager::createParticleForEffect(EffectInstance& effect, const Part
         particle->maxLife = 1.0f;
     }
 
-    // Color based on effect type
+    // PERFORMANCE OPTIMIZATION: Use pre-calculated color lookup tables
     if (effectDef.type == ParticleEffectType::Rain) {
         particle->color = 0x4080FFFF;
     } else if (effectDef.type == ParticleEffectType::Snow) {
@@ -1270,26 +1281,17 @@ void ParticleManager::createParticleForEffect(EffectInstance& effect, const Part
             particle->color = 0xCCCCCC88;
         }
     } else if (effectDef.type == ParticleEffectType::Fire) {
-        std::uniform_int_distribution<int> colorChoice(0, 2);
-        switch (colorChoice(gen)) {
-            case 0: particle->color = 0xFF4500FF; break;
-            case 1: particle->color = 0xFF6500FF; break;
-            case 2: particle->color = 0xFFFF00FF; break;
-        }
+        // Use pre-calculated fire colors for better performance
+        size_t colorIndex = static_cast<size_t>(fastRand() * optData.fireColors.size());
+        particle->color = optData.fireColors[colorIndex];
     } else if (effectDef.type == ParticleEffectType::Smoke) {
-        std::uniform_int_distribution<int> colorChoice(0, 3);
-        switch (colorChoice(gen)) {
-            case 0: particle->color = 0x404040FF; break;
-            case 1: particle->color = 0x606060FF; break;
-            case 2: particle->color = 0x808080FF; break;
-            case 3: particle->color = 0x202020FF; break;
-        }
+        // Use pre-calculated smoke colors for better performance
+        size_t colorIndex = static_cast<size_t>(fastRand() * optData.smokeColors.size());
+        particle->color = optData.smokeColors[colorIndex];
     } else if (effectDef.type == ParticleEffectType::Sparks) {
-        std::uniform_int_distribution<int> colorChoice(0, 1);
-        switch (colorChoice(gen)) {
-            case 0: particle->color = 0xFFFF00FF; break;
-            case 1: particle->color = 0xFF8C00FF; break;
-        }
+        // Use pre-calculated spark colors for better performance
+        size_t colorIndex = static_cast<size_t>(fastRand() * optData.sparkColors.size());
+        particle->color = optData.sparkColors[colorIndex];
     } else {
         particle->color = 0xFFFFFFFF;
     }
@@ -1596,7 +1598,7 @@ void ParticleManager::updateParticlesThreaded(float deltaTime, size_t totalParti
         }
         
         threadSystem.enqueueTask([this, start, end, cappedDeltaTime]() {
-            updateParticleBatch(start, end, cappedDeltaTime);
+            updateParticleBatchOptimized(start, end, cappedDeltaTime);
         }, Hammer::TaskPriority::High, "Particle_OptimalBatch");
     }
 }
@@ -1683,6 +1685,47 @@ void ParticleManager::updateUnifiedParticle(UnifiedParticle& particle, float del
     
     // Update rotation
     particle.rotation += particle.angularVelocity * deltaTime;
+}
+
+// PERFORMANCE OPTIMIZED: Batch update with SIMD support
+void ParticleManager::updateParticleBatchOptimized(size_t start, size_t end, float deltaTime) {
+    if (!m_initialized.load(std::memory_order_acquire)) {
+        return;
+    }
+    
+    size_t particleCount = m_storage.particles.size();
+    end = std::min(end, particleCount);
+    
+    // SIMD-optimized batch processing
+    #pragma omp simd
+    for (size_t i = start; i < end; ++i) {
+        UnifiedParticle& particle = m_storage.particles[i];
+        if (!particle.isActive()) continue;
+
+        // Update life
+        particle.life -= deltaTime;
+        if (particle.life <= 0.0f) {
+            particle.setActive(false);
+            continue;
+        }
+
+        // Fast update of position and velocity (vectorizable)
+        particle.velocity.setX(particle.velocity.getX() + particle.acceleration.getX() * deltaTime);
+        particle.velocity.setY(particle.velocity.getY() + particle.acceleration.getY() * deltaTime);
+        particle.position.setX(particle.position.getX() + particle.velocity.getX() * deltaTime);
+        particle.position.setY(particle.position.getY() + particle.velocity.getY() * deltaTime);
+
+        // Fade out particles as they age (optimized calculation)
+        float lifeRatio = particle.life / particle.maxLife;
+        if (lifeRatio < 0.25f) {
+            float fadeRatio = lifeRatio * 4.0f; // Normalize to 0-1
+            uint8_t alpha = static_cast<uint8_t>((particle.color & 0xFF) * fadeRatio);
+            particle.color = (particle.color & 0xFFFFFF00) | alpha;
+            if (alpha <= 5) {
+                particle.setActive(false);
+            }
+        }
+    }
 }
 
 void ParticleManager::updateParticleWithColdData(ParticleData& particle, ParticleColdData& coldData, float deltaTime) {

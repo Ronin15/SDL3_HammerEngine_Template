@@ -710,6 +710,27 @@ private:
     static constexpr size_t DEFAULT_MAX_PARTICLES = 10000;
     static constexpr float MIN_VISIBLE_SIZE = 0.5f;
     
+    // Performance optimization structures
+    struct alignas(32) BatchUpdateData {
+        float deltaTime;
+        size_t startIndex;
+        size_t endIndex;
+        size_t processedCount;
+    };
+    
+    // Pre-calculated lookup tables for performance
+    struct ParticleOptimizationData {
+        // Pre-calculated color variations
+        std::array<uint32_t, 8> fireColors{{0xFF4500FF, 0xFF6500FF, 0xFFFF00FF, 0xFF8C00FF, 0xFFA500FF, 0xFF0000FF, 0xFFD700FF, 0xFF7F00FF}};
+        std::array<uint32_t, 8> smokeColors{{0x404040FF, 0x606060FF, 0x808080FF, 0x202020FF, 0x4A4A4AFF, 0x505050FF, 0x707070FF, 0x303030FF}};
+        std::array<uint32_t, 4> sparkColors{{0xFFFF00FF, 0xFF8C00FF, 0xFFD700FF, 0xFFA500FF}};
+        
+        // Fast random state for each thread
+        mutable std::atomic<uint32_t> fastRandSeed{12345};
+        
+        ParticleOptimizationData() = default;
+    } m_optimizationData;
+    
     // Effect ID generation
     std::atomic<uint32_t> m_nextEffectId{1};
     
@@ -729,6 +750,7 @@ private:
     size_t allocateParticle();
     void releaseParticle(size_t index);
     void updateParticleBatch(size_t start, size_t end, float deltaTime);
+    void updateParticleBatchOptimized(size_t start, size_t end, float deltaTime);
     void renderParticleBatch(SDL_Renderer* renderer, size_t start, size_t end, 
                             float cameraX, float cameraY);
     void emitParticles(EffectInstance& effect, const ParticleEffectDefinition& definition, 
