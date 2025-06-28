@@ -35,6 +35,7 @@
 #include "managers/SoundManager.hpp"
 #include "core/ThreadSystem.hpp"
 #include "managers/TextureManager.hpp"
+#include "managers/ParticleManager.hpp"
 
 #define HAMMER_GRAY 31, 32, 34, 255
 
@@ -426,6 +427,23 @@ texMgr.load(std::string(textureResPath), std::string(texturePrefix), mp_renderer
         return true;
       }));
 
+  // Initialize Particle Manager in a separate thread - #7
+  initTasks.push_back(
+      Hammer::ThreadSystem::Instance().enqueueTaskWithResult([]() -> bool {
+        GAMEENGINE_INFO("Creating Particle Manager");
+        ParticleManager& particleMgr = ParticleManager::Instance();
+        if (!particleMgr.init()) {
+          GAMEENGINE_CRITICAL("Failed to initialize Particle Manager");
+          return false;
+        }
+        
+        // Register built-in weather effect presets
+        particleMgr.registerBuiltInEffects();
+        
+        GAMEENGINE_INFO("Particle Manager initialized successfully with built-in effects");
+        return true;
+      }));
+
   // Initialize game state manager (on main thread because it directly calls rendering) - MAIN THREAD
   GAMEENGINE_INFO("Creating Game State Manager and setting up initial Game States");
   mp_gameStateManager = std::make_unique<GameStateManager>();
@@ -487,6 +505,14 @@ texMgr.load(std::string(textureResPath), std::string(texturePrefix), mp_renderer
     }
     mp_eventManager = &eventMgrTest;
     
+    // Validate Particle Manager before caching
+    ParticleManager& particleMgrTest = ParticleManager::Instance();
+    if (!particleMgrTest.isInitialized()) {
+      GAMEENGINE_CRITICAL("ParticleManager not properly initialized before caching!");
+      return false;
+    }
+    mp_particleManager = &particleMgrTest;
+    
     // InputManager not cached - handled in handleEvents() for proper SDL architecture
 
     // Manager references are valid (assigned above)
@@ -499,6 +525,10 @@ texMgr.load(std::string(textureResPath), std::string(texturePrefix), mp_renderer
       
       // Test Event Manager responsiveness (just verify it's initialized)
       GAMEENGINE_DEBUG("EventManager cached successfully and initialized");
+      
+      // Test Particle Manager responsiveness
+      size_t activeParticles = mp_particleManager->getActiveParticleCount();
+      GAMEENGINE_DEBUG("ParticleManager cached successfully, " + std::to_string(activeParticles) + " active particles");
     } catch (const std::exception& e) {
       GAMEENGINE_CRITICAL("Manager validation failed after caching: " + std::string(e.what()));
       return false;
@@ -616,6 +646,7 @@ void GameEngine::update([[maybe_unused]] float deltaTime) {
     // GLOBAL SYSTEMS (Updated by GameEngine):
     // - AIManager: World simulation with 10K+ entities, benefits from consistent global updates
     // - EventManager: Global game events (weather, scene changes), batch processing optimization
+    // - ParticleManager: Global particle system with weather integration, cache-optimized SoA updates
     // - InputManager: Handled in handleEvents() for proper SDL event polling architecture
 
     // AI system - manages world entities across all states (cached reference access)
@@ -642,6 +673,19 @@ void GameEngine::update([[maybe_unused]] float deltaTime) {
       }
     } else {
       GAMEENGINE_ERROR("EventManager cache is null!");
+    }
+
+    // Particle system - global weather and effect particles (cached reference access)
+    if (mp_particleManager) {
+      try {
+        mp_particleManager->update(deltaTime);
+      } catch (const std::exception& e) {
+        GAMEENGINE_ERROR("ParticleManager exception: " + std::string(e.what()));
+      } catch (...) {
+        GAMEENGINE_ERROR("ParticleManager unknown exception");
+      }
+    } else {
+      GAMEENGINE_ERROR("ParticleManager cache is null!");
     }
 
     // STATE-MANAGED SYSTEMS (Updated by individual states):
@@ -891,6 +935,10 @@ void GameEngine::clean() {
   auto renderer_to_destroy = std::move(mp_renderer);
 
   // Clean up Managers in reverse order of their initialization
+  GAMEENGINE_INFO("Cleaning up Particle Manager...");
+  ParticleManager& particleMgr = ParticleManager::Instance();
+  particleMgr.clean();
+
   GAMEENGINE_INFO("Cleaning up Font Manager...");
   fontMgr.clean();
 
@@ -926,6 +974,7 @@ void GameEngine::clean() {
   GAMEENGINE_INFO("Clearing manager caches...");
   mp_aiManager = nullptr;
   mp_eventManager = nullptr;
+  mp_particleManager = nullptr;
   // InputManager not cached
   GAMEENGINE_INFO("Manager caches cleared");
 

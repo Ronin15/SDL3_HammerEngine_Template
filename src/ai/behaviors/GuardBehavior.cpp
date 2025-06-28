@@ -126,11 +126,10 @@ void GuardBehavior::executeLogic(EntityPtr entity) {
     // Handle alert decay
     if (state.currentAlertLevel > AlertLevel::CALM &&
         currentTime - state.lastAlertDecay > static_cast<Uint64>(m_alertDecayTime * 1000)) {
-
-        if (state.currentAlertLevel > AlertLevel::CALM) {
-            state.currentAlertLevel = static_cast<AlertLevel>(static_cast<int>(state.currentAlertLevel) - 1);
-            state.lastAlertDecay = currentTime;
-        }
+        
+        // Reduce alert level by one step
+        state.currentAlertLevel = static_cast<AlertLevel>(static_cast<int>(state.currentAlertLevel) - 1);
+        state.lastAlertDecay = currentTime;
     }
 }
 
@@ -316,34 +315,27 @@ void GuardBehavior::setGuardGroup(int groupId) {
 }
 
 bool GuardBehavior::isOnDuty() const {
-    for (const auto& pair : m_entityStates) {
-        if (pair.second.onDuty) return true;
-    }
-    return false;
+    return std::any_of(m_entityStates.begin(), m_entityStates.end(),
+                      [](const auto& pair) { return pair.second.onDuty; });
 }
 
 bool GuardBehavior::isAlerted() const {
-    for (const auto& pair : m_entityStates) {
-        if (pair.second.currentAlertLevel > AlertLevel::CALM) return true;
-    }
-    return false;
+    return std::any_of(m_entityStates.begin(), m_entityStates.end(),
+                      [](const auto& pair) { return pair.second.currentAlertLevel > AlertLevel::CALM; });
 }
 
 bool GuardBehavior::isInvestigating() const {
-    for (const auto& pair : m_entityStates) {
-        if (pair.second.isInvestigating) return true;
-    }
-    return false;
+    return std::any_of(m_entityStates.begin(), m_entityStates.end(),
+                      [](const auto& pair) { return pair.second.isInvestigating; });
 }
 
 GuardBehavior::AlertLevel GuardBehavior::getCurrentAlertLevel() const {
-    AlertLevel maxLevel = AlertLevel::CALM;
-    for (const auto& pair : m_entityStates) {
-        if (pair.second.currentAlertLevel > maxLevel) {
-            maxLevel = pair.second.currentAlertLevel;
-        }
-    }
-    return maxLevel;
+    if (m_entityStates.empty()) return AlertLevel::CALM;
+    auto it = std::max_element(m_entityStates.begin(), m_entityStates.end(),
+                              [](const auto& a, const auto& b) {
+                                  return a.second.currentAlertLevel < b.second.currentAlertLevel;
+                              });
+    return it->second.currentAlertLevel;
 }
 
 GuardBehavior::GuardMode GuardBehavior::getGuardMode() const {
@@ -355,12 +347,10 @@ Vector2D GuardBehavior::getGuardPosition() const {
 }
 
 float GuardBehavior::getDistanceFromPost() const {
-    for (const auto& pair : m_entityStates) {
-        if (pair.second.onDuty) {
-            return (pair.first->getPosition() - pair.second.assignedPosition).length();
-        }
-    }
-    return 0.0f;
+    auto it = std::find_if(m_entityStates.begin(), m_entityStates.end(),
+                          [](const auto& pair) { return pair.second.onDuty; });
+    return (it != m_entityStates.end()) ? 
+           (it->first->getPosition() - it->second.assignedPosition).length() : 0.0f;
 }
 
 std::shared_ptr<AIBehavior> GuardBehavior::clone() const {
@@ -404,6 +394,7 @@ EntityPtr GuardBehavior::detectThreat(EntityPtr entity, const EntityState& state
     }
     
     // Check line of sight if required
+    // Note: hasLineOfSight currently always returns true (simplified implementation)
     if (m_lineOfSightRequired && !hasLineOfSight(entity, threat)) {
         return nullptr;
     }

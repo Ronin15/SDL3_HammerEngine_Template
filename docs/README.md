@@ -61,8 +61,9 @@ High-performance multithreading framework with intelligent WorkerBudget allocati
 - **Hardware Adaptive** - Automatic scaling from ultra low-end (single-threaded) to high-end (multi-threaded) systems
 
 ### Manager Systems
-Resource management systems for fonts, textures, audio, and game data.
+Resource management systems for fonts, textures, audio, particles, and game data.
 
+- **[ParticleManager](ParticleManager.md)** - High-performance particle system with weather effects, visual effects, WorkerBudget threading, and EventManager integration
 - **[FontManager](managers/FontManager.md)** - Font loading, text rendering, and measurement utilities with DPI-aware scaling and auto-sizing integration
 - **[SoundManager](managers/SoundManager.md)** - Audio playback and sound management system with volume control and state integration
 - **[TextureManager](managers/TextureManager.md)** - Texture loading and sprite rendering system

@@ -9,6 +9,7 @@
 #include "events/WeatherEvent.hpp"
 #include "events/SceneChangeEvent.hpp"
 #include "events/NPCSpawnEvent.hpp"
+#include "events/ParticleEffectEvent.hpp"
 #include "events/EventFactory.hpp"
 #include <memory>
 #include <string>
@@ -334,4 +335,129 @@ BOOST_FIXTURE_TEST_CASE(EventCooldownFunctionality, EventTypesFixture) {
     // Reset cooldown
     event->resetCooldown();
     BOOST_CHECK(!event->isOnCooldown());
+}
+
+// Test ParticleEffectEvent creation and basic functionality
+BOOST_FIXTURE_TEST_CASE(ParticleEffectEventBasics, EventTypesFixture) {
+    // Test constructor with Vector2D
+    Vector2D position(100.0f, 200.0f);
+    ParticleEffectEvent effectEvent1("TestEffect1", "Fire", position, 1.5f, 5.0f, "group1", "fire_sound");
+
+    // Check basic properties
+    BOOST_CHECK_EQUAL(effectEvent1.getName(), "TestEffect1");
+    BOOST_CHECK_EQUAL(effectEvent1.getType(), "ParticleEffect");
+    BOOST_CHECK_EQUAL(effectEvent1.getEffectName(), "Fire");
+    BOOST_CHECK_EQUAL(effectEvent1.getPosition().getX(), position.getX());
+    BOOST_CHECK_EQUAL(effectEvent1.getPosition().getY(), position.getY());
+    BOOST_CHECK_EQUAL(effectEvent1.getIntensity(), 1.5f);
+    BOOST_CHECK_EQUAL(effectEvent1.getDuration(), 5.0f);
+    BOOST_CHECK_EQUAL(effectEvent1.getGroupTag(), "group1");
+
+    // Test constructor with x,y coordinates
+    ParticleEffectEvent effectEvent2("TestEffect2", "Smoke", 300.0f, 400.0f, 0.8f, -1.0f, "group2");
+    BOOST_CHECK_EQUAL(effectEvent2.getName(), "TestEffect2");
+    BOOST_CHECK_EQUAL(effectEvent2.getEffectName(), "Smoke");
+    BOOST_CHECK_EQUAL(effectEvent2.getPosition().getX(), 300.0f);
+    BOOST_CHECK_EQUAL(effectEvent2.getPosition().getY(), 400.0f);
+    BOOST_CHECK_EQUAL(effectEvent2.getIntensity(), 0.8f);
+    BOOST_CHECK_EQUAL(effectEvent2.getDuration(), -1.0f); // Infinite duration
+    BOOST_CHECK_EQUAL(effectEvent2.getGroupTag(), "group2");
+}
+
+// Test ParticleEffectEvent property setters and getters
+BOOST_FIXTURE_TEST_CASE(ParticleEffectEventProperties, EventTypesFixture) {
+    ParticleEffectEvent effectEvent("PropTest", "Sparks", 50.0f, 60.0f);
+
+    // Test position setters
+    effectEvent.setPosition(150.0f, 250.0f);
+    BOOST_CHECK_EQUAL(effectEvent.getPosition().getX(), 150.0f);
+    BOOST_CHECK_EQUAL(effectEvent.getPosition().getY(), 250.0f);
+
+    Vector2D newPos(200.0f, 300.0f);
+    effectEvent.setPosition(newPos);
+    BOOST_CHECK_EQUAL(effectEvent.getPosition().getX(), newPos.getX());
+    BOOST_CHECK_EQUAL(effectEvent.getPosition().getY(), newPos.getY());
+
+    // Test intensity adjustment
+    effectEvent.setIntensity(2.5f);
+    BOOST_CHECK_EQUAL(effectEvent.getIntensity(), 2.5f);
+
+    // Test duration setting
+    effectEvent.setDuration(15.0f);
+    BOOST_CHECK_EQUAL(effectEvent.getDuration(), 15.0f);
+
+    // Test group tagging
+    effectEvent.setGroupTag("newGroup");
+    BOOST_CHECK_EQUAL(effectEvent.getGroupTag(), "newGroup");
+
+    // Test default values
+    ParticleEffectEvent defaultEvent("Default", "Rain", 0.0f, 0.0f);
+    BOOST_CHECK_EQUAL(defaultEvent.getIntensity(), 1.0f);
+    BOOST_CHECK_EQUAL(defaultEvent.getDuration(), -1.0f);
+    BOOST_CHECK_EQUAL(defaultEvent.getGroupTag(), "");
+}
+
+// Test ParticleEffectEvent conditions and state
+BOOST_FIXTURE_TEST_CASE(ParticleEffectEventConditions, EventTypesFixture) {
+    ParticleEffectEvent effectEvent("ConditionTest", "Snow", 0.0f, 0.0f);
+
+    // Should be active by default
+    BOOST_CHECK(effectEvent.isActive());
+    
+    // Check conditions - should pass basic checks (active state, non-empty effect name)
+    // Note: ParticleManager availability check will fail in test environment
+    BOOST_CHECK(!effectEvent.checkConditions()); // Fails due to ParticleManager not initialized
+    
+    // Test with empty effect name
+    ParticleEffectEvent emptyEvent("Empty", "", 0.0f, 0.0f);
+    BOOST_CHECK(!emptyEvent.checkConditions()); // Should fail due to empty effect name
+    
+    // Test inactive event
+    effectEvent.setActive(false);
+    BOOST_CHECK(!effectEvent.checkConditions()); // Should fail due to inactive state
+}
+
+// Test ParticleEffectEvent lifecycle
+BOOST_FIXTURE_TEST_CASE(ParticleEffectEventLifecycle, EventTypesFixture) {
+    ParticleEffectEvent effectEvent("LifecycleTest", "Fire", 100.0f, 100.0f, 1.0f, 3.0f);
+
+    // Initially should not be active
+    BOOST_CHECK(!effectEvent.isEffectActive());
+    
+    // Test update method (should not crash)
+    effectEvent.update();
+    
+    // Test reset method
+    effectEvent.reset();
+    BOOST_CHECK(!effectEvent.isEffectActive());
+    
+    // Test clean method
+    effectEvent.clean();
+    BOOST_CHECK(!effectEvent.isEffectActive());
+    
+    // Test stopEffect method (should not crash even if no effect is running)
+    effectEvent.stopEffect();
+    BOOST_CHECK(!effectEvent.isEffectActive());
+}
+
+// Test ParticleEffectEvent edge cases
+BOOST_FIXTURE_TEST_CASE(ParticleEffectEventEdgeCases, EventTypesFixture) {
+    // Test with extreme values
+    ParticleEffectEvent extremeEvent("Extreme", "Test", -1000.0f, 1000.0f, 0.0f, 0.0f);
+    BOOST_CHECK_EQUAL(extremeEvent.getPosition().getX(), -1000.0f);
+    BOOST_CHECK_EQUAL(extremeEvent.getPosition().getY(), 1000.0f);
+    BOOST_CHECK_EQUAL(extremeEvent.getIntensity(), 0.0f);
+    BOOST_CHECK_EQUAL(extremeEvent.getDuration(), 0.0f);
+    
+    // Test with very high intensity
+    extremeEvent.setIntensity(10.0f);
+    BOOST_CHECK_EQUAL(extremeEvent.getIntensity(), 10.0f);
+    
+    // Test with very long duration
+    extremeEvent.setDuration(9999.0f);
+    BOOST_CHECK_EQUAL(extremeEvent.getDuration(), 9999.0f);
+    
+    // Test execution without ParticleManager (should handle gracefully)
+    extremeEvent.execute(); // Should not crash
+    BOOST_CHECK(!extremeEvent.isEffectActive()); // Effect won't be active due to no ParticleManager
 }

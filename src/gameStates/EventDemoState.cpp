@@ -10,6 +10,7 @@
 #include "managers/UIManager.hpp"
 #include "managers/AIManager.hpp"
 #include "managers/EventManager.hpp"
+#include "managers/ParticleManager.hpp"
 #include "events/WeatherEvent.hpp"
 #include "events/SceneChangeEvent.hpp"
 #include "events/NPCSpawnEvent.hpp"
@@ -83,7 +84,7 @@ bool EventDemoState::enter() {
         ui.createLabel("event_phase", {10, 40, 300, 20}, "Phase: Initialization");
         ui.createLabel("event_status", {10, 65, 400, 20}, "FPS: -- | Weather: Clear | NPCs: 0");
         ui.createLabel("event_controls", {10, 90, ui.getLogicalWidth() - 20, 20},
-                       "[B] Exit | [SPACE] Manual | [1-5] Events | [A] Auto Mode | [R] Reset");
+                       "[B] Exit | [SPACE] Manual | [1-5] Events | [A] Auto | [R] Reset | [F] Fire | [S] Smoke | [K] Sparks");
 
         // Create event log component using auto-detected dimensions
         ui.createEventLog("event_log", {10, ui.getLogicalHeight() - 200, 730, 180}, 7);
@@ -130,6 +131,12 @@ bool EventDemoState::exit() {
         // Use AIManager's prepareForStateTransition for architectural consistency
         AIManager& aiMgr = AIManager::Instance();
         aiMgr.prepareForStateTransition();
+
+        // Simple particle cleanup - let prepareForStateTransition handle everything
+        ParticleManager& particleMgr = ParticleManager::Instance();
+        if (particleMgr.isInitialized() && !particleMgr.isShutdown()) {
+            particleMgr.prepareForStateTransition(); // This handles weather effects and cleanup
+        }
 
         // Clean up UI components using simplified method
         auto& ui = UIManager::Instance();
@@ -243,8 +250,22 @@ void EventDemoState::update(float deltaTime) {
                     m_lastEventTriggerTime = m_totalDemoTime;
                 }
                 if (m_phaseTimer >= m_phaseDuration) {
+                    m_currentPhase = DemoPhase::ParticleEffectDemo;
+                    m_phaseTimer = 0.0f;
+                    addLogEntry("Starting Particle Effect Demo Phase");
+                }
+                break;
+
+            case DemoPhase::ParticleEffectDemo:
+                if (m_phaseTimer >= 2.0f &&
+                    (m_totalDemoTime - m_lastEventTriggerTime) >= m_eventFireInterval) {
+                    triggerParticleEffectDemo();
+                    m_lastEventTriggerTime = m_totalDemoTime;
+                }
+                if (m_phaseTimer >= m_phaseDuration) {
                     m_currentPhase = DemoPhase::CustomEventDemo;
                     m_phaseTimer = 0.0f;
+                    addLogEntry("Advancing to Custom Event Demo Phase");
                 }
                 break;
 
@@ -281,6 +302,18 @@ void EventDemoState::update(float deltaTime) {
 }
 
 void EventDemoState::render(float deltaTime) {
+    // Get renderer using the standard pattern (consistent with other states)
+    auto& gameEngine = GameEngine::Instance();
+    SDL_Renderer* renderer = gameEngine.getRenderer();
+    
+    // Render background particles first (rain, snow) - behind player/NPCs
+    ParticleManager& particleMgr = ParticleManager::Instance();
+    if (particleMgr.isInitialized() && !particleMgr.isShutdown()) {
+        // Render background particles with camera offset (for world-space effects)
+        // Using 0,0 for now since EventDemoState doesn't have camera movement
+        particleMgr.renderBackground(renderer, 0.0f, 0.0f);
+    }
+
     // Render player
     if (m_player) {
         m_player->render();
@@ -292,6 +325,11 @@ void EventDemoState::render(float deltaTime) {
             npc->render();
         }
     }
+    
+    // Render foreground particles last (fog) - in front of player/NPCs
+    if (particleMgr.isInitialized() && !particleMgr.isShutdown()) {
+        particleMgr.renderForeground(renderer, 0.0f, 0.0f);
+    }
 
     // Update and render UI components through UIManager using cached renderer for cleaner API
     auto& ui = UIManager::Instance();
@@ -299,7 +337,6 @@ void EventDemoState::render(float deltaTime) {
         ui.update(deltaTime); // Use actual deltaTime from update cycle
 
         // Update UI displays
-        auto& gameEngine = GameEngine::Instance();
         std::stringstream phaseText;
         phaseText << "Phase: " << getCurrentPhaseString();
         ui.setText("event_phase", phaseText.str());
@@ -512,6 +549,27 @@ void EventDemoState::handleInput() {
         addLogEntry(m_autoMode ? "Auto mode enabled" : "Auto mode disabled");
     }
 
+    // Cache ParticleManager reference for better performance
+    ParticleManager& particleMgr = ParticleManager::Instance();
+    
+    // Fire effect toggle (F key)
+    if (inputMgr.wasKeyPressed(SDL_SCANCODE_F)) {
+        particleMgr.toggleFireEffect();
+        addLogEntry("Fire effect toggled");
+    }
+    
+    // Smoke effect toggle (S key)
+    if (inputMgr.wasKeyPressed(SDL_SCANCODE_S)) {
+        particleMgr.toggleSmokeEffect();
+        addLogEntry("Smoke effect toggled");
+    }
+    
+    // Sparks effect toggle (K key)
+    if (inputMgr.wasKeyPressed(SDL_SCANCODE_K)) {
+        particleMgr.toggleSparksEffect();
+        addLogEntry("Sparks effect toggled");
+    }
+
     if (inputMgr.wasKeyPressed(SDL_SCANCODE_B)) {
         gameEngine.getGameStateManager()->setState("MainMenuState");
     }
@@ -549,7 +607,9 @@ void EventDemoState::triggerWeatherDemoAuto() {
 
     // Create and execute weather event directly
     auto weatherEvent = std::make_shared<WeatherEvent>("demo_auto_weather", newWeather);
-    WeatherParams params;
+    
+    // Get the default params (which include particle effects) and modify them
+    WeatherParams params = weatherEvent->getWeatherParams();
     params.transitionTime = m_weatherTransitionTime;
     params.intensity = (newWeather == WeatherType::Clear) ? 0.0f : 0.8f;
     weatherEvent->setWeatherParams(params);
@@ -568,7 +628,9 @@ void EventDemoState::triggerWeatherDemoManual() {
 
     // Create and execute weather event directly
     auto weatherEvent = std::make_shared<WeatherEvent>("demo_manual_weather", newWeather);
-    WeatherParams params;
+    
+    // Get the default params (which include particle effects) and modify them
+    WeatherParams params = weatherEvent->getWeatherParams();
     params.transitionTime = m_weatherTransitionTime;
     params.intensity = (newWeather == WeatherType::Clear) ? 0.0f : 0.8f;
     weatherEvent->setWeatherParams(params);
@@ -618,6 +680,51 @@ void EventDemoState::triggerSceneTransitionDemo() {
                                 (transitionType == TransitionType::Dissolve) ? "dissolve" : "wipe";
 
     addLogEntry("Scene transition to: " + sceneName + " (" + transitionName + ") executed directly");
+}
+
+void EventDemoState::triggerParticleEffectDemo() {
+    static std::vector<std::string> effectNames = {"Fire", "Smoke", "Sparks"};
+    static size_t effectIndex = 0;
+    static std::vector<Vector2D> effectPositions = {
+        Vector2D(200, 150),  // Top-left area
+        Vector2D(600, 150),  // Top-right area
+        Vector2D(400, 300),  // Center
+        Vector2D(300, 450),  // Bottom-left
+        Vector2D(500, 450),  // Bottom-right
+    };
+    static size_t positionIndex = 0;
+    
+    // Get current effect and position
+    std::string effectName = effectNames[effectIndex];
+    Vector2D position = effectPositions[positionIndex];
+    
+    // Create ParticleEffectEvent using EventManager convenience method
+    EventManager& eventMgr = EventManager::Instance();
+    
+    std::string eventName = "particle_demo_" + effectName + "_" + std::to_string(positionIndex);
+    bool success = eventMgr.createParticleEffectEvent(
+        eventName,
+        effectName,
+        position,
+        1.2f,  // intensity
+        5.0f,  // duration (5 seconds)
+        "demo_effects"  // group tag
+    );
+    
+    if (success) {
+        // Execute the created event
+        eventMgr.executeEvent(eventName);
+        
+        addLogEntry("ParticleEffectEvent created and executed: " + effectName + 
+                   " at (" + std::to_string((int)position.getX()) + 
+                   ", " + std::to_string((int)position.getY()) + ") via EventManager");
+    } else {
+        addLogEntry("Failed to create ParticleEffectEvent: " + effectName);
+    }
+    
+    // Advance to next effect and position
+    effectIndex = (effectIndex + 1) % effectNames.size();
+    positionIndex = (positionIndex + 1) % effectPositions.size();
 }
 
 void EventDemoState::triggerCustomEventDemo() {
@@ -907,6 +1014,7 @@ std::string EventDemoState::getCurrentPhaseString() const {
         case DemoPhase::WeatherDemo: return "Weather Demo";
         case DemoPhase::NPCSpawnDemo: return "NPC Spawn Demo";
         case DemoPhase::SceneTransitionDemo: return "Scene Transition Demo";
+        case DemoPhase::ParticleEffectDemo: return "Particle Effect Demo";
         case DemoPhase::CustomEventDemo: return "Custom Event Demo";
         case DemoPhase::InteractiveMode: return "Interactive Mode";
         case DemoPhase::Complete: return "Complete";
@@ -947,6 +1055,10 @@ void EventDemoState::updateInstructions() {
         case DemoPhase::SceneTransitionDemo:
             m_instructions.push_back("Demonstrating scene transition events");
             m_instructions.push_back("Scene changes will be logged");
+            break;
+        case DemoPhase::ParticleEffectDemo:
+            m_instructions.push_back("Demonstrating particle effects via EventManager");
+            m_instructions.push_back("Particles triggered at various coordinates");
             break;
         case DemoPhase::CustomEventDemo:
             m_instructions.push_back("Demonstrating custom event combinations");

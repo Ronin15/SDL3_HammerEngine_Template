@@ -220,8 +220,8 @@ private:
     // Helper methods
     EntityPtr getTarget() const; // Gets player reference from AIManager
     bool isTargetInRange(EntityPtr entity, EntityPtr target) const;
-    bool isTargetInAttackRange(EntityPtr entity, EntityPtr target) const;
-    bool canReachTarget(EntityPtr entity, EntityPtr target) const;
+    [[maybe_unused]] bool isTargetInAttackRange(EntityPtr entity, EntityPtr target) const;
+    [[maybe_unused]] bool canReachTarget(EntityPtr entity, EntityPtr target) const;
     float calculateDamage(const EntityState& state) const;
     Vector2D calculateOptimalAttackPosition(EntityPtr entity, EntityPtr target, const EntityState& state) const;
     Vector2D calculateFlankingPosition(EntityPtr entity, EntityPtr target) const;
@@ -260,26 +260,26 @@ private:
     
     // Movement and positioning
     void moveToPosition(EntityPtr entity, const Vector2D& targetPos, float speed);
-    void maintainDistance(EntityPtr entity, EntityPtr target, float desiredDistance);
-    void circleStrafe(EntityPtr entity, EntityPtr target, EntityState& state);
-    void performFlankingManeuver(EntityPtr entity, EntityPtr target, EntityState& state);
+    [[maybe_unused]] void maintainDistance(EntityPtr entity, EntityPtr target, float desiredDistance);
+    [[maybe_unused]] void circleStrafe(EntityPtr entity, EntityPtr target, EntityState& state);
+    [[maybe_unused]] void performFlankingManeuver(EntityPtr entity, EntityPtr target, EntityState& state);
     
     // Utility methods
     Vector2D normalizeDirection(const Vector2D& direction) const;
-    float calculateAngleToTarget(const Vector2D& from, const Vector2D& to) const;
-    float normalizeAngle(float angle) const;
+    [[maybe_unused]] float calculateAngleToTarget(const Vector2D& from, const Vector2D& to) const;
+    [[maybe_unused]] float normalizeAngle(float angle) const;
     Vector2D rotateVector(const Vector2D& vector, float angle) const;
-    bool isValidAttackPosition(const Vector2D& position, EntityPtr target) const;
+    [[maybe_unused]] bool isValidAttackPosition(const Vector2D& position, EntityPtr target) const;
     
     // Combat calculations
     float calculateEffectiveRange(const EntityState& state) const;
-    float calculateAttackSuccessChance(EntityPtr entity, EntityPtr target, const EntityState& state) const;
+    [[maybe_unused]] float calculateAttackSuccessChance(EntityPtr entity, EntityPtr target, const EntityState& state) const;
     Vector2D calculateKnockbackVector(EntityPtr attacker, EntityPtr target) const;
     
     // Team coordination
     void coordinateWithTeam(EntityPtr entity, const EntityState& state);
-    bool isFriendlyFireRisk(EntityPtr entity, EntityPtr target) const;
-    std::vector<EntityPtr> getNearbyAllies(EntityPtr entity, float radius) const;
+    [[maybe_unused]] bool isFriendlyFireRisk(EntityPtr entity, EntityPtr target) const;
+    [[maybe_unused]] std::vector<EntityPtr> getNearbyAllies(EntityPtr entity, float radius) const;
 };
 
 #endif // ATTACK_BEHAVIOR_HPP

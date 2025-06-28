@@ -2053,7 +2053,6 @@ void UIManager::renderList(SDL_Renderer* renderer, const std::shared_ptr<UICompo
         }
 
         // Draw item text
-        auto& fontManager = FontManager::Instance();
         #ifdef __APPLE__
         // On macOS, use logical coordinates directly - SDL3 handles scaling automatically
         int textX = itemRect.x + component->style.padding;

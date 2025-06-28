@@ -39,6 +39,11 @@ declare -A CACHE_TESTS=(
     ["weather_events"]="weather_event_tests"
     ["thread_safe_ai_mgr"]="thread_safe_ai_manager_tests"
     ["thread_safe_ai_integ"]="thread_safe_ai_integration_tests"
+    ["particle_performance"]="particle_manager_performance_tests"
+    ["particle_core"]="particle_manager_core_tests"
+    ["ai_scaling"]="ai_scaling_benchmark"
+    ["event_scaling"]="event_manager_scaling_benchmark"
+    ["behavior_functionality"]="behavior_functionality_tests"
 )
 
 # Industry benchmark data for comparison
