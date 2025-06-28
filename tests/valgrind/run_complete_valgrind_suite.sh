@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# SDL3 ForgeEngine Template - Complete Valgrind Test Suite
+# SDL3 HammerEngine Template - Complete Valgrind Test Suite
 # Master script for comprehensive memory, cache, and thread safety analysis
 
 # Don't exit on non-zero codes from tests - we handle errors explicitly
@@ -25,9 +25,9 @@ FINAL_REPORT="${RESULTS_DIR}/complete_analysis_${TIMESTAMP}.md"
 
 # Test configuration
 declare -A ALL_TESTS=(
-    ["memory_critical"]="buffer_utilization_tests event_manager_tests ai_optimization_tests particle_manager_core_tests behavior_functionality_tests thread_system_tests"
+    ["memory_critical"]="buffer_utilization_tests event_manager_tests ai_optimization_tests particle_manager_core_tests behavior_functionality_tests"
     ["thread_safety"]="thread_safe_ai_manager_tests thread_safe_ai_integration_tests particle_manager_threading_tests thread_system_tests event_manager_tests"
-    ["performance"]="event_manager_tests ai_optimization_tests save_manager_tests particle_manager_performance_tests ai_scaling_benchmark event_manager_scaling_benchmark behavior_functionality_tests"
+    ["performance"]="event_manager_tests ai_optimization_tests save_manager_tests particle_manager_performance_tests event_manager_scaling_benchmark behavior_functionality_tests"
     ["comprehensive"]="event_types_tests weather_event_tests ui_stress_test particle_manager_weather_tests thread_system_tests ai_scaling_benchmark"
 )
 
@@ -38,7 +38,7 @@ CRITICAL_ISSUES=0
 WARNINGS=0
 
 echo -e "${BOLD}${BLUE}╔══════════════════════════════════════════════════════════════╗${NC}"
-echo -e "${BOLD}${BLUE}║                SDL3 ForgeEngine Template                    ║${NC}"
+echo -e "${BOLD}${BLUE}║                SDL3 HammerEngine Template                    ║${NC}"
 echo -e "${BOLD}${BLUE}║              Complete Valgrind Analysis Suite               ║${NC}"
 echo -e "${BOLD}${BLUE}║                                                              ║${NC}"
 echo -e "${BOLD}${BLUE}║  Comprehensive Memory, Cache & Thread Safety Analysis       ║${NC}"
@@ -348,7 +348,7 @@ generate_final_report() {
     section_header "GENERATING COMPREHENSIVE REPORT"
 
     cat > "${FINAL_REPORT}" << EOF
-# SDL3 ForgeEngine Template - Complete Valgrind Analysis Report
+# SDL3 HammerEngine Template - Complete Valgrind Analysis Report
 
 **Analysis Date**: $(date)
 **Analysis Duration**: Complete Valgrind test suite
@@ -357,7 +357,7 @@ generate_final_report() {
 
 ## Executive Summary
 
-This comprehensive analysis evaluated the SDL3 ForgeEngine Template across three critical performance and safety dimensions:
+This comprehensive analysis evaluated the SDL3 HammerEngine Template across three critical performance and safety dimensions:
 - **Memory Management** (Leak detection and error analysis)
 - **Cache Performance** (Memory hierarchy optimization)
 - **Thread Safety** (Concurrency and race condition analysis)
@@ -455,7 +455,7 @@ To reproduce this analysis:
 
 ---
 
-**Conclusion**: The SDL3 ForgeEngine Template demonstrates $([ $CRITICAL_ISSUES -eq 0 ] && echo "exceptional engineering quality" || echo "solid engineering with areas for improvement"), making it $([ $CRITICAL_ISSUES -eq 0 ] && echo "immediately suitable for production use" || echo "suitable for production after addressing flagged issues").
+**Conclusion**: The SDL3 HammerEngine Template demonstrates $([ $CRITICAL_ISSUES -eq 0 ] && echo "exceptional engineering quality" || echo "solid engineering with areas for improvement"), making it $([ $CRITICAL_ISSUES -eq 0 ] && echo "immediately suitable for production use" || echo "suitable for production after addressing flagged issues").
 
 ## Expected Behaviors (Not Issues)
 
@@ -547,7 +547,7 @@ case "${1:-all}" in
         run_thread_analysis
         ;;
     "help"|"-h"|"--help")
-        echo "SDL3 ForgeEngine Complete Valgrind Analysis Suite"
+        echo "SDL3 HammerEngine Complete Valgrind Analysis Suite"
         echo ""
         echo "Usage: $0 [analysis_type]"
         echo ""
