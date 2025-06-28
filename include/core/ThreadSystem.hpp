@@ -577,9 +577,6 @@ private:
         size_t tasksProcessed = 0;
         size_t highPriorityTasks = 0;
 
-        // Exponential backoff state (thread-local, no static variables)
-        size_t consecutiveEmptyPolls = 0;
-
         // Set thread as interruptible (platform-specific if needed)
         try {
             // Main worker loop
@@ -589,15 +586,15 @@ private:
                     break;
                 }
 
+                // Exponential backoff state (thread-local, no static variables)
+                size_t consecutiveEmptyPolls = 0;
                 bool gotTask = false;
-                bool isHighPriority = false;
 
                 try {
                     // WorkerBudget-aware task acquisition priority order:
                     // 1. Global queue for high/critical priority tasks (WorkerBudget engine/urgent tasks)
                     if (taskQueue.pop(task)) {
                         gotTask = true;
-                        isHighPriority = true;
                         highPriorityTasks++;
                     }
                     // All tasks go through single global queue - simple and reliable
@@ -650,7 +647,7 @@ private:
                     if (taskDuration > 100) {
                         THREADSYSTEM_WARN("Worker " + std::to_string(threadIndex) +
                                         " - Slow task: " + std::to_string(taskDuration) + "ms" +
-                                        (isHighPriority ? " (HIGH PRIORITY)" : ""));
+                                        (highPriorityTasks > 0 ? " (HIGH PRIORITY)" : ""));
                     }
 
                     // Clear task after execution to free resources

@@ -204,32 +204,22 @@ void FleeBehavior::setScreenBounds(float width, float height) {
 }
 
 bool FleeBehavior::isFleeing() const {
-    // Check if any entity is currently fleeing
-    for (const auto& pair : m_entityStates) {
-        if (pair.second.isFleeing) return true;
-    }
-    return false;
+    return std::any_of(m_entityStates.begin(), m_entityStates.end(),
+                      [](const auto& pair) { return pair.second.isFleeing; });
 }
 
 bool FleeBehavior::isInPanic() const {
-    // Check if any entity is in panic
-    for (const auto& pair : m_entityStates) {
-        if (pair.second.isInPanic) return true;
-    }
-    return false;
+    return std::any_of(m_entityStates.begin(), m_entityStates.end(),
+                      [](const auto& pair) { return pair.second.isInPanic; });
 }
 
 float FleeBehavior::getDistanceToThreat() const {
     EntityPtr threat = getThreat();
     if (!threat) return -1.0f;
-    
-    // Return distance for first fleeing entity found
-    for (const auto& pair : m_entityStates) {
-        if (pair.second.isFleeing) {
-            return (pair.first->getPosition() - threat->getPosition()).length();
-        }
-    }
-    return -1.0f;
+    auto it = std::find_if(m_entityStates.begin(), m_entityStates.end(),
+                          [](const auto& pair) { return pair.second.isFleeing; });
+    return (it != m_entityStates.end()) ? 
+           (it->first->getPosition() - threat->getPosition()).length() : -1.0f;
 }
 
 FleeBehavior::FleeMode FleeBehavior::getFleeMode() const {
@@ -341,7 +331,6 @@ void FleeBehavior::updatePanicFlee(EntityPtr entity, EntityState& state) {
     EntityPtr threat = getThreat();
     if (!threat) return;
     
-    Vector2D currentPos = entity->getPosition();
     Uint64 currentTime = SDL_GetTicks();
     
     // In panic mode, change direction more frequently
@@ -398,7 +387,6 @@ void FleeBehavior::updateEvasiveManeuver(EntityPtr entity, EntityState& state) {
     EntityPtr threat = getThreat();
     if (!threat) return;
     
-    Vector2D currentPos = entity->getPosition();
     Uint64 currentTime = SDL_GetTicks();
     
     // Zigzag pattern
@@ -428,9 +416,8 @@ void FleeBehavior::updateEvasiveManeuver(EntityPtr entity, EntityState& state) {
 }
 
 void FleeBehavior::updateSeekCover(EntityPtr entity, EntityState& state) {
+    // Return to guard post  
     Vector2D currentPos = entity->getPosition();
-    
-    // Prioritize moving to safe zones
     Vector2D safeZoneDirection = findNearestSafeZone(currentPos);
     
     if (safeZoneDirection.length() > 0.001f) {

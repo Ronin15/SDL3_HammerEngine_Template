@@ -763,9 +763,9 @@ private:
     void updateEffectInstances(float deltaTime);
     void updateParticlesThreaded(float deltaTime, size_t activeParticleCount);
     void updateParticlesSingleThreaded(float deltaTime, size_t activeParticleCount);
-    void updateParticleWithColdData(ParticleData& particle, ParticleColdData& coldData, float deltaTime);
+    void updateParticleWithColdData(ParticleData& particle, const ParticleColdData& coldData, float deltaTime);
     void updateUnifiedParticle(UnifiedParticle& particle, float deltaTime);
-    void createParticleForEffect(EffectInstance& effect, const ParticleEffectDefinition& effectDef);
+    void createParticleForEffect(const EffectInstance& effect, const ParticleEffectDefinition& effectDef);
     uint16_t getTextureIndex(const std::string& textureID);
     uint32_t interpolateColor(uint32_t color1, uint32_t color2, float factor);
     void recordPerformance(bool isRender, double timeMs, size_t particleCount);

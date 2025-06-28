@@ -337,7 +337,6 @@ void EventDemoState::render(float deltaTime) {
         ui.update(deltaTime); // Use actual deltaTime from update cycle
 
         // Update UI displays
-        auto& gameEngine = GameEngine::Instance();
         std::stringstream phaseText;
         phaseText << "Phase: " << getCurrentPhaseString();
         ui.setText("event_phase", phaseText.str());
