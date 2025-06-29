@@ -168,12 +168,20 @@ bool GameEngine::init(std::string_view title,
         logicalHeight = m_windowHeight;
       }
 
-      // Create renderer - VSync will be set separately using SDL3 API
+      // Create renderer (let SDL3 choose the best available backend)
       mp_renderer.reset(SDL_CreateRenderer(mp_window.get(), NULL));
 
       if (!mp_renderer) {
         GAMEENGINE_ERROR("Failed to create renderer: " + std::string(SDL_GetError()));
         return false;
+      }
+
+      // Log which renderer backend SDL3 actually selected
+      auto rendererName = SDL_GetRendererName(mp_renderer.get());
+      if (rendererName) {
+        GAMEENGINE_INFO("SDL3 selected renderer backend: " + std::string(rendererName));
+      } else {
+        GAMEENGINE_WARN("Could not determine selected renderer backend");
       }
 
       GAMEENGINE_INFO("Rendering system online");
