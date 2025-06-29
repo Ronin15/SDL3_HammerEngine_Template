@@ -27,8 +27,21 @@ EventDemoState::EventDemoState() {
 }
 
 EventDemoState::~EventDemoState() {
-    // Cleanup any resources if needed
-    cleanupSpawnedNPCs();
+    // Don't call virtual functions from destructors
+    
+    try {
+        // Note: Proper cleanup should already have happened in exit()
+        // This destructor is just a safety measure in case exit() wasn't called
+        
+        // Cleanup any resources if needed
+        cleanupSpawnedNPCs();
+        
+        GAMESTATE_INFO("Exiting EventDemoState in destructor...");
+    } catch (const std::exception& e) {
+        GAMESTATE_ERROR("Exception in EventDemoState destructor: " + std::string(e.what()));
+    } catch (...) {
+        GAMESTATE_ERROR("Unknown exception in EventDemoState destructor");
+    }
 }
 
 bool EventDemoState::enter() {
