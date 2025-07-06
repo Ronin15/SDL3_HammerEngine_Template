@@ -597,6 +597,7 @@ Additional documentation can be found in the `docs/` directory:
 - **[EventManager Examples](docs/events/EventManager_Examples.cpp)** - Comprehensive code examples and best practices for EventManager usage
 
 ### Core System Documentation
+- **[ThreadSystem](docs/ThreadSystem.md)** - Complete threading system documentation with WorkerBudget allocation, priority-based task scheduling, implementation details, performance analysis, and production best practices
 - **[GameEngine](docs/GameEngine.md)** - Central engine singleton managing all systems with SDL integration
 - **[GameLoop](docs/GameLoop.md)** - Optimized timing system with consistent frame pacing and threading support
 - **[TimestepManager](docs/TimestepManager.md)** - Simplified timing system with 1:1 frame mapping
@@ -613,10 +614,6 @@ Additional documentation can be found in the `docs/` directory:
 - **[Auto-Sizing System](docs/ui/Auto_Sizing_System.md)** - Content-aware component sizing with multi-line text support and SDL3 integration
 - **[DPI-Aware Font System](docs/ui/DPI_Aware_Font_System.md)** - Comprehensive guide to automatic DPI detection, font scaling, and high-quality text rendering across all display types
 - **[SDL3 Logical Presentation Modes](docs/ui/SDL3_Logical_Presentation_Modes.md)** - Comprehensive guide to SDL3's logical presentation system and UIManager compatibility
-
-### Threading System Documentation
-- **[ThreadSystem](docs/ThreadSystem.md)** - Complete threading system documentation with WorkerBudget allocation, priority-based task scheduling, implementation details, performance analysis, and production best practices
-
 
 ### Utility Systems Documentation
 - **[Binary Serialization](docs/SERIALIZATION.md)** - Fast, header-only serialization system for game data
