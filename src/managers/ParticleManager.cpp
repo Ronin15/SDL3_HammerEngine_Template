@@ -4,10 +4,7 @@
 */
 
 #include "managers/ParticleManager.hpp"
-#include "managers/TextureManager.hpp"
-#include "managers/EventManager.hpp"
 #include "core/Logger.hpp"
-#include "core/GameTime.hpp"
 #include "core/ThreadSystem.hpp"
 #include "core/WorkerBudget.hpp"
 #include <chrono>
