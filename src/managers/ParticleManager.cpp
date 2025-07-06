@@ -195,11 +195,8 @@ void ParticleManager::update(float deltaTime) {
         if (useThreading) {
             updateParticlesThreaded(deltaTime, totalParticleCount);
         } else {
-            // Use optimized single-threaded batch processing
-            for (size_t start = 0; start < totalParticleCount; start += BATCH_SIZE) {
-                size_t end = std::min(start + BATCH_SIZE, totalParticleCount);
-                updateParticleBatchOptimized(start, end, deltaTime);
-            }
+            // Use single-threaded processing with proper bounds checking
+            updateParticlesSingleThreaded(deltaTime, totalParticleCount);
         }
         
         // Phase 4: More frequent memory management to prevent leaks
@@ -1191,8 +1188,10 @@ void ParticleManager::createParticleForEffect(const EffectInstance& effect, cons
     UnifiedParticle* particle = nullptr;
     
     // Try to reuse an inactive particle first (prevents memory growth)
-    for (size_t i = 0; i < m_storage.particles.size(); ++i) {
-        if (!m_storage.particles[i].isActive()) {
+    size_t particleCount = m_storage.particles.size();
+    for (size_t i = 0; i < particleCount; ++i) {
+        // Double-check bounds before access
+        if (i < m_storage.particles.size() && !m_storage.particles[i].isActive()) {
             particle = &m_storage.particles[i];
             break;
         }
@@ -1606,6 +1605,10 @@ void ParticleManager::updateParticlesThreaded(float deltaTime, size_t totalParti
     // Apply frame-rate limiting BEFORE threading to ensure consistent timing
     float cappedDeltaTime = std::min(deltaTime, 0.033f); // Cap at ~30 FPS minimum for smooth motion
     
+    // Get current actual size and use the smaller of the two to prevent out-of-bounds
+    size_t actualParticleCount = m_storage.particles.size();
+    size_t safeParticleCount = std::min(totalParticleCount, actualParticleCount);
+    
     auto& threadSystem = Hammer::ThreadSystem::Instance();
     size_t availableWorkers = static_cast<size_t>(threadSystem.getThreadCount());
     
@@ -1618,7 +1621,12 @@ void ParticleManager::updateParticlesThreaded(float deltaTime, size_t totalParti
         // Graceful degradation: fallback to single-threaded processing
         PARTICLE_WARN("Queue pressure detected (" + std::to_string(queueSize) + "/" + 
                     std::to_string(queueCapacity) + "), using single-threaded processing");
-        updateParticlesSingleThreaded(cappedDeltaTime, totalParticleCount);
+        updateParticlesSingleThreaded(cappedDeltaTime, safeParticleCount);
+        return;
+    }
+    
+    // Early exit if no particles to process
+    if (safeParticleCount == 0) {
         return;
     }
     
@@ -1626,7 +1634,7 @@ void ParticleManager::updateParticlesThreaded(float deltaTime, size_t totalParti
     Hammer::WorkerBudget budget = Hammer::calculateWorkerBudget(availableWorkers);
     
     // Get optimal worker count with buffer allocation for particle workload
-    size_t optimalWorkerCount = budget.getOptimalWorkerCount(budget.particleAllocated, totalParticleCount, 1000);
+    size_t optimalWorkerCount = budget.getOptimalWorkerCount(budget.particleAllocated, safeParticleCount, 1000);
     
     // Dynamic batch sizing based on queue pressure for optimal performance
     size_t minParticlesPerBatch = 1000;
@@ -1644,11 +1652,11 @@ void ParticleManager::updateParticlesThreaded(float deltaTime, size_t totalParti
         maxBatches = 4;
     }
     
-    size_t batchCount = std::min(optimalWorkerCount, totalParticleCount / minParticlesPerBatch);
+    size_t batchCount = std::min(optimalWorkerCount, safeParticleCount / minParticlesPerBatch);
     batchCount = std::max(size_t(1), std::min(batchCount, maxBatches));
     
-    size_t particlesPerBatch = totalParticleCount / batchCount;
-    size_t remainingParticles = totalParticleCount % batchCount;
+    size_t particlesPerBatch = safeParticleCount / batchCount;
+    size_t remainingParticles = safeParticleCount % batchCount;
     
     // Submit optimized particle update batches
     for (size_t i = 0; i < batchCount; ++i) {
@@ -1658,6 +1666,14 @@ void ParticleManager::updateParticlesThreaded(float deltaTime, size_t totalParti
         // Add remaining particles to last batch
         if (i == batchCount - 1) {
             end += remainingParticles;
+        }
+        
+        // Ensure end doesn't exceed safe particle count
+        end = std::min(end, safeParticleCount);
+        
+        // Skip empty batches
+        if (start >= end) {
+            continue;
         }
         
         threadSystem.enqueueTask([this, start, end, cappedDeltaTime]() {
@@ -1670,10 +1686,11 @@ void ParticleManager::updateParticlesSingleThreaded(float deltaTime, size_t tota
     // Apply frame-rate limiting to prevent stuttering - cap deltaTime to prevent large jumps
     float cappedDeltaTime = std::min(deltaTime, 0.033f); // Cap at ~30 FPS minimum for smooth motion
     
-    // Update all particles directly using unified storage - lock-free for performance
-    size_t particleCount = m_storage.particles.size();
-    for (size_t i = 0; i < particleCount; ++i) {
-        if (m_storage.particles[i].isActive()) {
+    // Update all particles directly using unified storage - with proper bounds checking
+    // Don't cache size - check bounds on each access to prevent out-of-bounds errors
+    for (size_t i = 0; i < m_storage.particles.size(); ++i) {
+        // Double-check bounds before access due to potential concurrent modifications
+        if (i < m_storage.particles.size() && m_storage.particles[i].isActive()) {
             updateUnifiedParticle(m_storage.particles[i], cappedDeltaTime);
         }
     }
@@ -1694,11 +1711,13 @@ void ParticleManager::updateParticleBatch(size_t start, size_t end, float deltaT
     // Apply frame-rate limiting to prevent stuttering - cap deltaTime to prevent large jumps
     float cappedDeltaTime = std::min(deltaTime, 0.033f); // Cap at ~30 FPS minimum for smooth motion
     
-    // Cache vector size to avoid repeated calls during lock-free access
-    size_t particleCount = m_storage.particles.size();
-    
-    // Simple, correct sequential processing - update every particle in the batch range
-    for (size_t i = start; i < end && i < particleCount; ++i) {
+    // Simple, correct sequential processing with proper bounds checking
+    for (size_t i = start; i < end; ++i) {
+        // Always check current size before access to prevent out-of-bounds
+        size_t currentSize = m_storage.particles.size();
+        if (i >= currentSize) {
+            break; // Vector size changed, stop processing
+        }
         if (m_storage.particles[i].isActive()) {
             updateUnifiedParticle(m_storage.particles[i], cappedDeltaTime);
         }
@@ -1756,12 +1775,13 @@ void ParticleManager::updateParticleBatchOptimized(size_t start, size_t end, flo
         return;
     }
     
-    size_t particleCount = m_storage.particles.size();
-    end = std::min(end, particleCount);
-    
-    // SIMD-optimized batch processing
-// Removed unknown pragma omp simd
+    // SIMD-optimized batch processing with proper bounds checking
     for (size_t i = start; i < end; ++i) {
+        // Always check current size before access to prevent out-of-bounds
+        size_t currentSize = m_storage.particles.size();
+        if (i >= currentSize) {
+            break; // Vector size changed, stop processing
+        }
         UnifiedParticle& particle = m_storage.particles[i];
         if (!particle.isActive()) continue;
 
