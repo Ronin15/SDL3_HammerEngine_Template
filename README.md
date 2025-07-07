@@ -578,6 +578,39 @@ Also, this template can be used for 3D as well. Just focus on replacing SDL_rend
 
 For more complex games, consider using the EventManager system for handling game events, scene transitions, and dynamic world interactions. The ThreadSystem priority-based task scheduling is particularly useful for managing complex AI behaviors in games with many entities.
 
+## Contributing
+
+Contributions are welcome! Here's how you can help:
+
+### Reporting Issues
+- Use the GitHub issue tracker to report bugs
+- Include detailed information about your environment (OS, compiler version, etc.)
+- Provide steps to reproduce the issue
+- Include any relevant error messages or logs
+
+### Making Changes
+1. Fork the repository
+2. Create a new branch for your feature or fix
+3. Write clean, well-documented code following the existing style
+4. Ensure all tests pass (run `run_all_tests.sh`)
+5. Update documentation if needed
+6. Submit a pull request with a clear description of your changes
+
+### Code Style Guidelines
+- Use smart pointers instead of raw pointers
+- Follow RAII principles
+- Keep functions focused and concise
+- Add comments for complex logic
+- Use consistent naming conventions
+- Write unit tests for new features
+
+### Testing
+Before submitting a pull request:
+1. Run the full test suite
+2. Perform static analysis with cppcheck
+3. Test on multiple platforms if possible
+4. Verify documentation accuracy
+
 ## Documentation
 
 **📚 [Complete Documentation Hub](docs/README.md)** - Comprehensive documentation overview with quick start guides, architecture details, and best practices.
