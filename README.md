@@ -1,5 +1,5 @@
 # SDL3 2D Game Template with Multi-Threading
-  -Work in progress.... Features do work and are implemented! Also, learning all the features of github will implement more as I figure it out. Please strongly consider donating if you use this or like it! Its most appreciated!
+  -Work in progress.... Features do work and are implemented! Please strongly consider donating if you use this or like it! Its most appreciated!
 
 Based off of my SDL2 template, but updated for SDL3 and completely transformed. It has simplified Entity management and Entity state management systems. Also has a more robust game state management system and uses CMake and Ninja instead of a custom build.sh. This is designed to be a jump off point for making a game with some of the low level and architecture stuff handled. Just add your content and start modifing the managers and add states. Demo's included to show how the systems integrate.
 
