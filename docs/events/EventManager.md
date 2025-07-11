@@ -37,7 +37,7 @@ The system supports weather events, scene transitions, NPC spawning, and custom 
 #include "core/ThreadSystem.hpp"
 
 // Initialize dependencies
-Hammer::ThreadSystem::Instance().init();
+HammerEngine::ThreadSystem::Instance().init();
 
 // Initialize EventManager (handles all event creation and management)
 EventManager::Instance().init();
@@ -194,7 +194,7 @@ EventManager::Instance().createParticleEffectEvent("MagicSmoke", "Smoke", positi
 EventManager::Instance().createParticleEffectEvent("Sparks", "Sparks", 100.0f, 200.0f);
 ```
 
-**Effect Types**: Fire, Smoke, Sparks, Rain, Snow, Fog, Cloudy, Custom  
+**Effect Types**: Fire, Smoke, Sparks, Rain, Snow, Fog, Cloudy, Custom
 **Features**: Position-based triggering, intensity control, duration settings, group tagging, sound integration
 
 #### Particle Effect Parameters
@@ -394,8 +394,8 @@ void monitorEventPerformance() {
     }
 
     // Monitor queue pressure for system coordination
-    if (Hammer::ThreadSystem::Exists()) {
-        auto& threadSystem = Hammer::ThreadSystem::Instance();
+    if (HammerEngine::ThreadSystem::Exists()) {
+        auto& threadSystem = HammerEngine::ThreadSystem::Instance();
         size_t queueSize = threadSystem.getQueueSize();
         size_t queueCapacity = threadSystem.getQueueCapacity();
         double queuePressure = static_cast<double>(queueSize) / queueCapacity;
@@ -504,7 +504,7 @@ private:
 public:
     bool initialize() {
         // Initialize dependencies
-        if (!Hammer::ThreadSystem::Instance().init()) {
+        if (!HammerEngine::ThreadSystem::Instance().init()) {
             return false;
         }
 

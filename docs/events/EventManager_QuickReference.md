@@ -12,7 +12,7 @@ Quick reference for the Hammer Game Engine EventManager as the single source of 
 ## Quick Setup
 ```cpp
 // Initialize dependencies
-Hammer::ThreadSystem::Instance().init();
+HammerEngine::ThreadSystem::Instance().init();
 
 // Initialize EventManager (single source of truth)
 EventManager::Instance().init();
@@ -320,7 +320,7 @@ struct EventData {
 ```cpp
 void initEventSystem() {
     // Initialize dependencies
-    Hammer::ThreadSystem::Instance().init();
+    HammerEngine::ThreadSystem::Instance().init();
 
     // Initialize EventManager (single source of truth)
     EventManager::Instance().init();
@@ -409,7 +409,7 @@ class GameEventSystem {
 public:
     bool initialize() {
         // Initialize dependencies
-        if (!Hammer::ThreadSystem::Instance().init()) return false;
+        if (!HammerEngine::ThreadSystem::Instance().init()) return false;
 
         // Initialize EventManager (single source of truth)
         if (!EventManager::Instance().init()) return false;

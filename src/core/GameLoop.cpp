@@ -58,18 +58,18 @@ bool GameLoop::run() {
     try {
         if (m_threaded) {
             // Start update worker respecting WorkerBudget allocation
-            if (Hammer::ThreadSystem::Exists()) {
-                const auto& threadSystem = Hammer::ThreadSystem::Instance();
+            if (HammerEngine::ThreadSystem::Exists()) {
+                const auto& threadSystem = HammerEngine::ThreadSystem::Instance();
                 size_t availableWorkers = static_cast<size_t>(threadSystem.getThreadCount());
-                Hammer::WorkerBudget budget = Hammer::calculateWorkerBudget(availableWorkers);
+                HammerEngine::WorkerBudget budget = HammerEngine::calculateWorkerBudget(availableWorkers);
 
                 GAMELOOP_INFO("GameLoop allocated " + std::to_string(budget.engineReserved) +
                              " workers from WorkerBudget (total: " + std::to_string(availableWorkers) + ")");
 
                 m_updateTaskRunning.store(true, std::memory_order_relaxed);
-                m_updateTaskFuture = Hammer::ThreadSystem::Instance().enqueueTaskWithResult(
+                m_updateTaskFuture = HammerEngine::ThreadSystem::Instance().enqueueTaskWithResult(
                     [this, budget]() { runUpdateWorker(budget); },
-                    Hammer::TaskPriority::Critical,
+                    HammerEngine::TaskPriority::Critical,
                     "GameLoop WorkerBudget Update Worker"
                 );
             } else {
@@ -167,24 +167,24 @@ void GameLoop::runMainThread() {
     }
 }
 
-void GameLoop::runUpdateWorker(const Hammer::WorkerBudget& budget) {
+void GameLoop::runUpdateWorker(const HammerEngine::WorkerBudget& budget) {
     // WorkerBudget-aware update worker - respects allocated resources
     GAMELOOP_INFO("Update worker started with " + std::to_string(budget.engineReserved) + " allocated workers");
 
     // Adaptive timing system
     float targetFPS = m_timestepManager->getTargetFPS();
     const auto targetFrameTime = std::chrono::microseconds(static_cast<long>(1000000.0f / targetFPS));
-    
+
     // Performance tracking for adaptive sleep
     auto lastUpdateStart = std::chrono::high_resolution_clock::now();
     auto avgUpdateTime = std::chrono::microseconds(0);
     const int performanceSamples = 10;
     int sampleCount = 0;
-    
+
     // System capability detection
     bool canUseParallelUpdates = (budget.engineReserved >= 2);
     bool isHighEndSystem = (budget.totalWorkers > 4);
-    
+
     // Initial conservative sleep estimate
     auto adaptiveSleepDuration = std::chrono::microseconds(
         static_cast<long>(targetFrameTime.count() * 0.3f)
@@ -193,9 +193,9 @@ void GameLoop::runUpdateWorker(const Hammer::WorkerBudget& budget) {
     while (m_updateTaskRunning.load(std::memory_order_relaxed) && !m_stopRequested.load(std::memory_order_relaxed)) {
         try {
             auto updateStart = std::chrono::high_resolution_clock::now();
-            
+
             if (!m_paused.load(std::memory_order_relaxed)) {
-                if (canUseParallelUpdates && Hammer::ThreadSystem::Exists()) {
+                if (canUseParallelUpdates && HammerEngine::ThreadSystem::Exists()) {
                     // Use enhanced processing for high-end systems
                     processUpdatesParallel();
                 } else {
@@ -203,12 +203,12 @@ void GameLoop::runUpdateWorker(const Hammer::WorkerBudget& budget) {
                     processUpdates();
                 }
             }
-            
+
             auto updateEnd = std::chrono::high_resolution_clock::now();
             auto updateDuration = std::chrono::duration_cast<std::chrono::microseconds>(
                 updateEnd - updateStart
             );
-            
+
             // Update rolling average of update time
             if (sampleCount < performanceSamples) {
                 avgUpdateTime = (avgUpdateTime * sampleCount + updateDuration) / (sampleCount + 1);
@@ -216,47 +216,47 @@ void GameLoop::runUpdateWorker(const Hammer::WorkerBudget& budget) {
             } else {
                 avgUpdateTime = (avgUpdateTime * (performanceSamples - 1) + updateDuration) / performanceSamples;
             }
-            
+
             // Calculate adaptive sleep duration
             auto frameTimeElapsed = std::chrono::duration_cast<std::chrono::microseconds>(
                 updateEnd - lastUpdateStart
             );
             auto remainingTime = targetFrameTime - frameTimeElapsed;
-            
+
             if (remainingTime.count() > 0) {
                 // Adjust sleep based on system responsiveness
                 float sleepFactor = isHighEndSystem ? 0.95f : 0.85f; // High-end can sleep closer to deadline
                 adaptiveSleepDuration = std::chrono::microseconds(
                     static_cast<long>(remainingTime.count() * sleepFactor)
                 );
-                
+
                 // Ensure minimum sleep to avoid busy waiting
                 const auto minSleep = std::chrono::microseconds(100);
                 if (adaptiveSleepDuration < minSleep) {
                     adaptiveSleepDuration = minSleep;
                 }
-                
+
                 std::this_thread::sleep_for(adaptiveSleepDuration);
             } else {
                 // Running behind - yield to other threads
                 std::this_thread::yield();
             }
-            
+
             lastUpdateStart = updateStart;
-            
+
             // Periodic recalibration and logging
             const int recalibrationInterval = 300; // Every 5 seconds at 60 FPS
-            
+
             if (++m_updateCount % recalibrationInterval == 0) {
                 float newTargetFPS = m_timestepManager->getTargetFPS();
                 if (std::abs(newTargetFPS - targetFPS) > 0.1f) {
                     targetFPS = newTargetFPS;
                     GAMELOOP_DEBUG("Target FPS changed to: " + std::to_string(targetFPS));
                 }
-                
+
                 // Log performance metrics
                 if (avgUpdateTime.count() > 0) {
-                    GAMELOOP_DEBUG("Update performance: " + std::to_string(avgUpdateTime.count() / 1000.0f) + 
+                    GAMELOOP_DEBUG("Update performance: " + std::to_string(avgUpdateTime.count() / 1000.0f) +
                                  "ms avg (" + std::to_string((avgUpdateTime.count() / 1000.0f) / (1000.0f / targetFPS) * 100.0f) + "% frame budget)");
                 }
             }

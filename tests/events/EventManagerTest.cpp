@@ -67,17 +67,17 @@ private:
 struct GlobalEventTestFixture {
     GlobalEventTestFixture() {
         // Initialize ThreadSystem once for all tests
-        if (!Hammer::ThreadSystem::Exists()) {
-            Hammer::ThreadSystem::Instance().init();
+        if (!HammerEngine::ThreadSystem::Exists()) {
+            HammerEngine::ThreadSystem::Instance().init();
         }
         // Ensure benchmark mode is disabled for regular tests
         HAMMER_DISABLE_BENCHMARK_MODE();
     }
-    
+
     ~GlobalEventTestFixture() {
         // Clean up ThreadSystem at the very end
-        if (Hammer::ThreadSystem::Exists()) {
-            Hammer::ThreadSystem::Instance().clean();
+        if (HammerEngine::ThreadSystem::Exists()) {
+            HammerEngine::ThreadSystem::Instance().clean();
         }
     }
 };
@@ -200,7 +200,7 @@ BOOST_FIXTURE_TEST_CASE(EventUpdateAndConditions, EventManagerFixture) {
     BOOST_CHECK(eventPtr->wasUpdated());
     // Events no longer execute during update() - only when explicitly triggered
     BOOST_CHECK(!eventPtr->wasExecuted());
-    
+
     // TEST PHASE 3: Explicit execution should work
     eventPtr->reset();
     eventPtr->setConditionsMet(true);
@@ -254,27 +254,27 @@ BOOST_FIXTURE_TEST_CASE(EventExecutionAndHandlers, EventManagerFixture) {
     // Test that events exist
     BOOST_CHECK(EventManager::Instance().hasEvent("Event1"));
     BOOST_CHECK(EventManager::Instance().hasEvent("Event2"));
-    
+
     auto event1ptr = EventManager::Instance().getEvent("Event1");
     auto event2ptr = EventManager::Instance().getEvent("Event2");
-    
+
     BOOST_REQUIRE(event1ptr != nullptr);
     BOOST_REQUIRE(event2ptr != nullptr);
-    
+
     // Test direct event execution
     BOOST_CHECK(EventManager::Instance().executeEvent("Event1"));
     BOOST_CHECK(EventManager::Instance().executeEvent("Event2"));
-    
+
     auto mockEvent1 = std::dynamic_pointer_cast<MockEvent>(event1ptr);
     auto mockEvent2 = std::dynamic_pointer_cast<MockEvent>(event2ptr);
-    
+
     BOOST_CHECK(mockEvent1 != nullptr);
     BOOST_CHECK(mockEvent2 != nullptr);
 
     // Test that events were executed
     BOOST_CHECK(mockEvent1->wasExecuted());
     BOOST_CHECK(mockEvent2->wasExecuted());
-    
+
     // Test batch execution by type
     int executedCount = EventManager::Instance().executeEventsByType("Custom");
     BOOST_CHECK_EQUAL(executedCount, 2);
@@ -287,32 +287,32 @@ BOOST_FIXTURE_TEST_CASE(ConvenienceMethods, EventManagerFixture) {
     BOOST_CHECK(EventManager::Instance().createWeatherEvent("TestRain", "Rainy", 0.8f, 3.0f));
     BOOST_CHECK(EventManager::Instance().createSceneChangeEvent("TestScene", "MainMenu", "fade", 1.5f));
     BOOST_CHECK(EventManager::Instance().createNPCSpawnEvent("TestNPC", "Guard", 2, 30.0f));
-    
+
     // Verify events were created and registered
     BOOST_CHECK(EventManager::Instance().hasEvent("TestRain"));
     BOOST_CHECK(EventManager::Instance().hasEvent("TestScene"));
     BOOST_CHECK(EventManager::Instance().hasEvent("TestNPC"));
-    
+
     // Test event count
     BOOST_CHECK_EQUAL(EventManager::Instance().getEventCount(), 3);
-    
+
     // Register handlers for testing trigger methods
     bool weatherHandlerCalled = false;
     bool sceneHandlerCalled = false;
     bool npcHandlerCalled = false;
-    
+
     EventManager::Instance().registerHandler(EventTypeId::Weather,
         [&weatherHandlerCalled](const EventData&) { weatherHandlerCalled = true; });
     EventManager::Instance().registerHandler(EventTypeId::SceneChange,
         [&sceneHandlerCalled](const EventData&) { sceneHandlerCalled = true; });
     EventManager::Instance().registerHandler(EventTypeId::NPCSpawn,
         [&npcHandlerCalled](const EventData&) { npcHandlerCalled = true; });
-    
+
     // Test trigger aliases - should return true when handlers are registered
     BOOST_CHECK(EventManager::Instance().triggerWeatherChange("Stormy", 2.0f));
     BOOST_CHECK(EventManager::Instance().triggerSceneChange("NewScene", "dissolve", 1.0f));
     BOOST_CHECK(EventManager::Instance().triggerNPCSpawn("Villager", 100.0f, 200.0f));
-    
+
     // Verify handlers were called
     BOOST_CHECK(weatherHandlerCalled);
     BOOST_CHECK(sceneHandlerCalled);
@@ -368,10 +368,10 @@ BOOST_FIXTURE_TEST_CASE(NPCSpawnEvents, EventManagerFixture) {
 
     // Test NPC spawn trigger
     EventManager::Instance().spawnNPC("Guard", 100.0f, 200.0f);
-    
+
     // Wait a bit for async processing
     std::this_thread::sleep_for(std::chrono::milliseconds(50));
-    
+
     BOOST_CHECK(handlerCalled);
 }
 
@@ -400,7 +400,7 @@ BOOST_FIXTURE_TEST_CASE(ThreadSafety, EventManagerFixture) {
     // Verify update worked - events update but don't execute during update()
     BOOST_CHECK(std::dynamic_pointer_cast<MockEvent>(EventManager::Instance().getEvent("ThreadTest"))->wasUpdated());
     BOOST_CHECK(!std::dynamic_pointer_cast<MockEvent>(EventManager::Instance().getEvent("ThreadTest"))->wasExecuted());
-    
+
     // Test explicit execution with threading
     EventManager::Instance().executeEvent("ThreadTest");
     BOOST_CHECK(std::dynamic_pointer_cast<MockEvent>(EventManager::Instance().getEvent("ThreadTest"))->wasExecuted());
@@ -418,7 +418,7 @@ BOOST_FIXTURE_TEST_CASE(ThreadSafety, EventManagerFixture) {
     // Verify update worked without threading - events update but don't execute during update()
     BOOST_CHECK(std::dynamic_pointer_cast<MockEvent>(EventManager::Instance().getEvent("ThreadTest"))->wasUpdated());
     BOOST_CHECK(!std::dynamic_pointer_cast<MockEvent>(EventManager::Instance().getEvent("ThreadTest"))->wasExecuted());
-    
+
     // Test explicit execution without threading
     EventManager::Instance().executeEvent("ThreadTest");
     BOOST_CHECK(std::dynamic_pointer_cast<MockEvent>(EventManager::Instance().getEvent("ThreadTest"))->wasExecuted());
@@ -438,26 +438,26 @@ BOOST_FIXTURE_TEST_CASE(ThreadSafety, EventManagerFixture) {
 BOOST_FIXTURE_TEST_CASE(ParticleEffectConvenienceMethods, EventManagerFixture) {
     // Test convenience methods for creating particle effect events
     BOOST_CHECK(EventManager::Instance().createParticleEffectEvent("TestFire", "Fire", 100.0f, 200.0f, 1.5f, 5.0f, "effects"));
-    
+
     Vector2D position(300.0f, 400.0f);
     BOOST_CHECK(EventManager::Instance().createParticleEffectEvent("TestSmoke", "Smoke", position, 0.8f, -1.0f, "ambient"));
-    
+
     // Test with minimal parameters
     BOOST_CHECK(EventManager::Instance().createParticleEffectEvent("TestSparks", "Sparks", 500.0f, 600.0f));
-    
+
     // Verify events were created and registered
     BOOST_CHECK(EventManager::Instance().hasEvent("TestFire"));
     BOOST_CHECK(EventManager::Instance().hasEvent("TestSmoke"));
     BOOST_CHECK(EventManager::Instance().hasEvent("TestSparks"));
-    
+
     // Test event count
     BOOST_CHECK_GE(EventManager::Instance().getEventCount(), 3);
-    
+
     // Verify properties of created events
     auto fireEvent = EventManager::Instance().getEvent("TestFire");
     BOOST_REQUIRE(fireEvent != nullptr);
     BOOST_CHECK_EQUAL(fireEvent->getType(), "ParticleEffect");
-    
+
     auto particleEvent = std::dynamic_pointer_cast<ParticleEffectEvent>(fireEvent);
     BOOST_REQUIRE(particleEvent != nullptr);
     BOOST_CHECK_EQUAL(particleEvent->getEffectName(), "Fire");
@@ -472,26 +472,26 @@ BOOST_FIXTURE_TEST_CASE(ParticleEffectConvenienceMethods, EventManagerFixture) {
 BOOST_FIXTURE_TEST_CASE(ParticleEffectEventExecution, EventManagerFixture) {
     // Create a particle effect event using convenience method
     BOOST_CHECK(EventManager::Instance().createParticleEffectEvent("ExecutionTest", "TestEffect", 150.0f, 250.0f, 2.0f));
-    
+
     // Verify event exists
     BOOST_CHECK(EventManager::Instance().hasEvent("ExecutionTest"));
-    
+
     auto event = EventManager::Instance().getEvent("ExecutionTest");
     BOOST_REQUIRE(event != nullptr);
-    
+
     auto particleEvent = std::dynamic_pointer_cast<ParticleEffectEvent>(event);
     BOOST_REQUIRE(particleEvent != nullptr);
-    
+
     // Initially should not be active (no effect running)
     BOOST_CHECK(!particleEvent->isEffectActive());
-    
+
     // Test direct execution through EventManager
     // Note: This will fail gracefully since ParticleManager is not initialized in test environment
     BOOST_CHECK(EventManager::Instance().executeEvent("ExecutionTest"));
-    
+
     // Effect should still not be active due to ParticleManager not being available
     BOOST_CHECK(!particleEvent->isEffectActive());
-    
+
     // Test with invalid event name
     BOOST_CHECK(!EventManager::Instance().executeEvent("NonExistentParticleEffect"));
 }
@@ -502,25 +502,25 @@ BOOST_FIXTURE_TEST_CASE(ParticleEffectEventsByType, EventManagerFixture) {
     BOOST_CHECK(EventManager::Instance().createParticleEffectEvent("Fire1", "Fire", 100.0f, 100.0f));
     BOOST_CHECK(EventManager::Instance().createParticleEffectEvent("Fire2", "Fire", 200.0f, 200.0f));
     BOOST_CHECK(EventManager::Instance().createParticleEffectEvent("Smoke1", "Smoke", 300.0f, 300.0f));
-    
+
     // Also create a non-particle event for comparison
     BOOST_CHECK(EventManager::Instance().createWeatherEvent("TestRain", "Rainy", 0.5f));
-    
+
     // Get ParticleEffect events by type string
     auto particleEvents = EventManager::Instance().getEventsByType("ParticleEffect");
     BOOST_CHECK_GE(particleEvents.size(), 3);
-    
+
     // Verify all returned events are ParticleEffect type
     for (const auto& event : particleEvents) {
         BOOST_CHECK_EQUAL(event->getType(), "ParticleEffect");
         auto particleEvent = std::dynamic_pointer_cast<ParticleEffectEvent>(event);
         BOOST_CHECK(particleEvent != nullptr);
     }
-    
+
     // Get Weather events by type for comparison
     auto weatherEvents = EventManager::Instance().getEventsByType("Weather");
     BOOST_CHECK_GE(weatherEvents.size(), 1);
-    
+
     // Verify weather events are different type
     for (const auto& event : weatherEvents) {
         BOOST_CHECK_EQUAL(event->getType(), "Weather");
@@ -531,25 +531,25 @@ BOOST_FIXTURE_TEST_CASE(ParticleEffectEventsByType, EventManagerFixture) {
 BOOST_FIXTURE_TEST_CASE(ParticleEffectEventActivation, EventManagerFixture) {
     // Create a particle effect event
     BOOST_CHECK(EventManager::Instance().createParticleEffectEvent("ActivationTest", "TestEffect", 0.0f, 0.0f));
-    
+
     // Should be active by default
     BOOST_CHECK(EventManager::Instance().isEventActive("ActivationTest"));
-    
+
     // Test deactivation
     EventManager::Instance().setEventActive("ActivationTest", false);
     BOOST_CHECK(!EventManager::Instance().isEventActive("ActivationTest"));
-    
+
     // Test reactivation
     EventManager::Instance().setEventActive("ActivationTest", true);
     BOOST_CHECK(EventManager::Instance().isEventActive("ActivationTest"));
-    
+
     // Get the event and test its internal state
     auto event = EventManager::Instance().getEvent("ActivationTest");
     BOOST_REQUIRE(event != nullptr);
-    
+
     auto particleEvent = std::dynamic_pointer_cast<ParticleEffectEvent>(event);
     BOOST_REQUIRE(particleEvent != nullptr);
-    
+
     // Verify the event reflects the activation state
     BOOST_CHECK(particleEvent->isActive());
 }
@@ -558,16 +558,16 @@ BOOST_FIXTURE_TEST_CASE(ParticleEffectEventActivation, EventManagerFixture) {
 BOOST_FIXTURE_TEST_CASE(ParticleEffectEventRemoval, EventManagerFixture) {
     // Create a particle effect event
     BOOST_CHECK(EventManager::Instance().createParticleEffectEvent("RemovalTest", "TestEffect", 0.0f, 0.0f));
-    
+
     // Verify it exists
     BOOST_CHECK(EventManager::Instance().hasEvent("RemovalTest"));
-    
+
     // Remove the event
     BOOST_CHECK(EventManager::Instance().removeEvent("RemovalTest"));
-    
+
     // Verify it's gone
     BOOST_CHECK(!EventManager::Instance().hasEvent("RemovalTest"));
-    
+
     // Test removing non-existent event
     BOOST_CHECK(!EventManager::Instance().removeEvent("NonExistentParticleEffect"));
 }
@@ -657,8 +657,8 @@ BOOST_FIXTURE_TEST_CASE(ConcurrentPriorityTest, EventManagerFixture) {
     BOOST_CHECK(EventManager::Instance().init());
 
     // Initialize ThreadSystem with enough threads
-    if (Hammer::ThreadSystem::Exists()) {
-        Hammer::ThreadSystem::Instance().init(4); // Ensure we have enough threads
+    if (HammerEngine::ThreadSystem::Exists()) {
+        HammerEngine::ThreadSystem::Instance().init(4); // Ensure we have enough threads
     }
 
     std::atomic<int> executionOrder{0};

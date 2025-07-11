@@ -23,7 +23,7 @@
 #include <vector>
 #include "Logger.hpp"
 
-namespace Hammer {
+namespace HammerEngine {
 
 // Task priority levels
 enum class TaskPriority {

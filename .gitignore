@@ -1,3 +1,4 @@
 build/
 .cache/
 !cppcheck_suppressions.txt
+compile_commands.json

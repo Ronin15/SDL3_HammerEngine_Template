@@ -99,7 +99,7 @@ static std::mutex g_outputMutex;
 // Mock event handler for benchmarking
 class BenchmarkEventHandler {
 public:
-    BenchmarkEventHandler(int id, int /* complexity */ = 5) 
+    BenchmarkEventHandler(int id, int /* complexity */ = 5)
         : m_id(id), m_callCount(0), m_totalProcessingTime(0) {
         // Seed with handler ID for deterministic but varied behavior
         m_rng.seed(static_cast<unsigned int>(id + 12345));
@@ -142,8 +142,8 @@ public:
     int64_t getTotalProcessingTime() const { return m_totalProcessingTime.load(); }
     std::string getLastParams() const { return m_lastParams; }
     int getId() const { return m_id; }
-    void resetCounters() { 
-        m_callCount.store(0); 
+    void resetCounters() {
+        m_callCount.store(0);
         m_totalProcessingTime.store(0);
     }
 
@@ -170,7 +170,7 @@ struct GlobalFixture {
         HAMMER_ENABLE_BENCHMARK_MODE();
 
         // Initialize ThreadSystem for EventManager threading
-        Hammer::ThreadSystem::Instance().init();
+        HammerEngine::ThreadSystem::Instance().init();
         EventManager::Instance().init();
     }
 
@@ -473,13 +473,13 @@ struct EventManagerScalingFixture {
                 while (!startFlag.load()) {
                     std::this_thread::yield();
                 }
-                
+
                 // Generate and register events
                 std::mt19937 rng(t + 42); // Thread-specific seed
                 for (int event = 0; event < eventsPerThread; ++event) {
                     std::string eventName = "Thread" + std::to_string(t) + "_Event" + std::to_string(event);
                     auto mockEvent = std::make_shared<MockEvent>(eventName);
-                    
+
                     EventManager::Instance().registerEvent(eventName, mockEvent);
                 }
             });
@@ -487,7 +487,7 @@ struct EventManagerScalingFixture {
 
         // Start all threads simultaneously
         startFlag.store(true);
-        
+
         // Wait for all threads to complete
         for (auto& thread : threads) {
             thread.join();
@@ -503,15 +503,15 @@ struct EventManagerScalingFixture {
         // Calculate performance metrics
         auto totalDuration = std::chrono::duration_cast<std::chrono::microseconds>(endTime - startTime);
         auto processingDuration = std::chrono::duration_cast<std::chrono::microseconds>(endTime - processingStart);
-        
+
         int totalEvents = numThreads * eventsPerThread;
         int totalHandlerCalls = totalEvents * numHandlersPerType;
-        
+
         double totalTimeMs = totalDuration.count() / 1000.0;
         double processingTimeMs = processingDuration.count() / 1000.0;
         (void)processingTimeMs; // Suppress unused variable warning
         double eventsPerSecond = (totalEvents / totalTimeMs) * 1000.0;
-        
+
         // Verify handler calls
         int actualHandlerCalls = 0;
         for (const auto& handler : handlers) {
@@ -539,7 +539,7 @@ struct EventManagerScalingFixture {
 // Basic functionality test
 BOOST_AUTO_TEST_CASE(BasicHandlerPerformance) {
     EventManagerScalingFixture fixture;
-    
+
     if (g_shutdownInProgress.load()) {
         BOOST_TEST_MESSAGE("Skipping test due to shutdown in progress");
         return;
@@ -555,14 +555,14 @@ BOOST_AUTO_TEST_CASE(BasicHandlerPerformance) {
 // Medium scale test
 BOOST_AUTO_TEST_CASE(MediumScalePerformance) {
     EventManagerScalingFixture fixture;
-    
+
     if (g_shutdownInProgress.load()) {
         BOOST_TEST_MESSAGE("Skipping test due to shutdown in progress");
         return;
     }
 
     std::cout << "\n===== MEDIUM SCALE PERFORMANCE TEST =====" << std::endl;
-    
+
     // Medium load test - realistic medium game event count
     fixture.runHandlerBenchmark(4, 3, 50, false); // Immediate mode
     fixture.runHandlerBenchmark(4, 3, 50, true);  // Batched mode
@@ -571,7 +571,7 @@ BOOST_AUTO_TEST_CASE(MediumScalePerformance) {
 // Comprehensive scalability test
 BOOST_AUTO_TEST_CASE(ComprehensiveScalabilityTest) {
     EventManagerScalingFixture fixture;
-    
+
     if (g_shutdownInProgress.load()) {
         BOOST_TEST_MESSAGE("Skipping test due to shutdown in progress");
         return;
@@ -583,7 +583,7 @@ BOOST_AUTO_TEST_CASE(ComprehensiveScalabilityTest) {
 // Concurrency test
 BOOST_AUTO_TEST_CASE(ConcurrencyTest) {
     EventManagerScalingFixture fixture;
-    
+
     if (g_shutdownInProgress.load()) {
         BOOST_TEST_MESSAGE("Skipping test due to shutdown in progress");
         return;
@@ -596,7 +596,7 @@ BOOST_AUTO_TEST_CASE(ConcurrencyTest) {
 // Extreme scale test
 BOOST_AUTO_TEST_CASE(ExtremeScaleTest) {
     EventManagerScalingFixture fixture;
-    
+
     if (g_shutdownInProgress.load()) {
         BOOST_TEST_MESSAGE("Skipping test due to shutdown in progress");
         return;

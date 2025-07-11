@@ -18,11 +18,11 @@
 #include <mutex> // IWYU pragma: keep - Required for thread-safe logging
 #include <atomic> // IWYU pragma: keep - Required for std::atomic<bool> benchmark mode flag
 
-namespace Hammer {
+namespace HammerEngine {
     enum class LogLevel : uint8_t {
         CRITICAL = 0,  // Always logs (even in release for crashes)
         ERROR = 1,     // Debug only
-        WARNING = 2,   // Debug only  
+        WARNING = 2,   // Debug only
         INFO = 3,      // Debug only
         DEBUG_LEVEL = 4      // Debug only (renamed to avoid macro conflicts)
     };
@@ -33,38 +33,38 @@ namespace Hammer {
     private:
         static std::atomic<bool> s_benchmarkMode;
         static std::mutex s_logMutex;
-        
+
     public:
         static void SetBenchmarkMode(bool enabled) {
             s_benchmarkMode.store(enabled, std::memory_order_relaxed);
         }
-        
+
         static bool IsBenchmarkMode() {
             return s_benchmarkMode.load(std::memory_order_relaxed);
         }
-        
+
         static void Log(LogLevel level, const char* system, const std::string& message) {
             if (s_benchmarkMode.load(std::memory_order_relaxed)) {
                 return;
             }
-            
+
             // Thread-safe logging with mutex protection
             std::lock_guard<std::mutex> lock(s_logMutex);
             printf("Hammer Game Engine - [%s] %s: %s\n", system, getLevelString(level), message.c_str());
             fflush(stdout);
         }
-        
+
         static void Log(LogLevel level, const char* system, const char* message) {
             if (s_benchmarkMode.load(std::memory_order_relaxed)) {
                 return;
             }
-            
+
             // Thread-safe logging with mutex protection
             std::lock_guard<std::mutex> lock(s_logMutex);
             printf("Hammer Game Engine - [%s] %s: %s\n", system, getLevelString(level), message);
             fflush(stdout);
         }
-        
+
     private:
         static const char* getLevelString(LogLevel level) {
             switch(level) {
@@ -77,36 +77,36 @@ namespace Hammer {
             }
         }
     };
-    
+
     // Initialize static members
     inline std::atomic<bool> Logger::s_benchmarkMode{false};
     inline std::mutex Logger::s_logMutex{};
-    
+
     // Debug build macros - full functionality
-    #define HAMMER_CRITICAL(system, msg) Hammer::Logger::Log(Hammer::LogLevel::CRITICAL, system, std::string(msg))
-    #define HAMMER_ERROR(system, msg) Hammer::Logger::Log(Hammer::LogLevel::ERROR, system, std::string(msg))
-    #define HAMMER_WARN(system, msg) Hammer::Logger::Log(Hammer::LogLevel::WARNING, system, std::string(msg))
-    #define HAMMER_INFO(system, msg) Hammer::Logger::Log(Hammer::LogLevel::INFO, system, std::string(msg))
-    #define HAMMER_DEBUG(system, msg) Hammer::Logger::Log(Hammer::LogLevel::DEBUG_LEVEL, system, std::string(msg))
+    #define HAMMER_CRITICAL(system, msg) HammerEngine::Logger::Log(HammerEngine::LogLevel::CRITICAL, system, std::string(msg))
+    #define HAMMER_ERROR(system, msg) HammerEngine::Logger::Log(HammerEngine::LogLevel::ERROR, system, std::string(msg))
+    #define HAMMER_WARN(system, msg) HammerEngine::Logger::Log(HammerEngine::LogLevel::WARNING, system, std::string(msg))
+    #define HAMMER_INFO(system, msg) HammerEngine::Logger::Log(HammerEngine::LogLevel::INFO, system, std::string(msg))
+    #define HAMMER_DEBUG(system, msg) HammerEngine::Logger::Log(HammerEngine::LogLevel::DEBUG_LEVEL, system, std::string(msg))
 
 #else
     // Release builds - ultra-minimal overhead, lockless
     class Logger {
     private:
         static std::atomic<bool> s_benchmarkMode;
-        
+
     public:
         static std::mutex s_logMutex;  // Public for macro access
-        
+
         static void SetBenchmarkMode(bool enabled) {
             s_benchmarkMode.store(enabled, std::memory_order_relaxed);
         }
-        
+
         static bool IsBenchmarkMode() {
             return s_benchmarkMode.load(std::memory_order_relaxed);
         }
     };
-    
+
     // Initialize static members
     inline std::atomic<bool> Logger::s_benchmarkMode{false};
     inline std::mutex Logger::s_logMutex{};
@@ -133,7 +133,7 @@ namespace Hammer {
 #endif
 
     // Convenience macros for each manager and core system
-    
+
     // Core Systems
     #define GAMELOOP_CRITICAL(msg) HAMMER_CRITICAL("GameLoop", msg)
     #define GAMELOOP_ERROR(msg) HAMMER_ERROR("GameLoop", msg)
@@ -241,8 +241,8 @@ namespace Hammer {
     #define NPC_DEBUG(msg) HAMMER_DEBUG("NPC", msg)
 
     // Benchmark mode convenience macros
-    #define HAMMER_ENABLE_BENCHMARK_MODE() Hammer::Logger::SetBenchmarkMode(true)
-    #define HAMMER_DISABLE_BENCHMARK_MODE() Hammer::Logger::SetBenchmarkMode(false)
+    #define HAMMER_ENABLE_BENCHMARK_MODE() HammerEngine::Logger::SetBenchmarkMode(true)
+    #define HAMMER_DISABLE_BENCHMARK_MODE() HammerEngine::Logger::SetBenchmarkMode(false)
 
 } // namespace Forge
 
