@@ -24,7 +24,7 @@ bool ParticleManager::init() {
         m_storage.reserve(INITIAL_CAPACITY);
 
         // Built-in effects will be registered by GameEngine after init
-        
+
         m_initialized.store(true, std::memory_order_release);
         m_isShutdown = false;
 
@@ -63,29 +63,29 @@ void ParticleManager::prepareForStateTransition() {
 
     // COMPREHENSIVE CLEANUP: Ensure all effects and particles are properly cleaned up
     // This prevents effects from continuing when re-entering a state
-    
+
     // Use try_lock to avoid deadlock issues during testing
     std::unique_lock<std::shared_mutex> lock(m_particlesMutex, std::try_to_lock);
     if (!lock.owns_lock()) {
         // If we can't get the lock immediately, force a simpler cleanup
         PARTICLE_WARN("Could not acquire lock for state transition, using simpler cleanup");
         m_globallyPaused.store(true, std::memory_order_release);
-        
+
         // Simple atomic cleanup without locking
         for (auto& effect : m_effectInstances) {
             if (effect.isWeatherEffect || effect.isIndependentEffect) {
                 effect.active = false;
             }
         }
-        
+
         m_globallyPaused.store(false, std::memory_order_release);
         PARTICLE_INFO("ParticleManager state transition complete (simple cleanup)");
         return;
     }
-    
+
     // Pause system to prevent new emissions during cleanup
     m_globallyPaused.store(true, std::memory_order_release);
-    
+
     // 1. Stop ALL weather effects
     int weatherEffectsStopped = 0;
     auto it = m_effectInstances.begin();
@@ -99,11 +99,11 @@ void ParticleManager::prepareForStateTransition() {
             ++it;
         }
     }
-    
+
     // 2. Remove ALL remaining effects (independent and regular) for complete state cleanup
     int independentEffectsStopped = 0;
     int regularEffectsStopped = 0;
-    
+
     // First pass: count and deactivate
     for (auto& effect : m_effectInstances) {
         if (effect.active) {
@@ -115,20 +115,20 @@ void ParticleManager::prepareForStateTransition() {
             effect.active = false;
         }
     }
-    
+
     // Second pass: remove ALL non-weather effects from the list
     auto newEnd = std::remove_if(m_effectInstances.begin(), m_effectInstances.end(),
         [](const EffectInstance& effect) {
             return !effect.isWeatherEffect; // Remove everything except weather (already removed)
         });
     m_effectInstances.erase(newEnd, m_effectInstances.end());
-    
+
     // Third pass: rebuild the effect ID index for the remaining effects (should be empty)
     m_effectIdToIndex.clear();
     for (size_t i = 0; i < m_effectInstances.size(); ++i) {
         m_effectIdToIndex[m_effectInstances[i].id] = i;
     }
-    
+
     // 3. Clear ALL particles (both weather and independent) - MORE AGGRESSIVE APPROACH
     int particlesCleared = 0;
     for (auto& particle : m_storage.particles) {
@@ -138,30 +138,30 @@ void ParticleManager::prepareForStateTransition() {
             particlesCleared++;
         }
     }
-    
+
     // 3.5. IMMEDIATE COMPLETE CLEANUP - Remove ALL particles to ensure zero count
     size_t totalParticlesBefore = m_storage.particles.size();
     m_storage.particles.clear();  // Complete clear to ensure zero particles
-    
-    PARTICLE_INFO("Complete particle cleanup: cleared " + std::to_string(particlesCleared) + 
+
+    PARTICLE_INFO("Complete particle cleanup: cleared " + std::to_string(particlesCleared) +
                 " active particles, removed total of " + std::to_string(totalParticlesBefore) + " particles from storage");
-    
+
     // 4. Rebuild effect index mapping for any remaining effects
     m_effectIdToIndex.clear();
     for (size_t i = 0; i < m_effectInstances.size(); ++i) {
         m_effectIdToIndex[m_effectInstances[i].id] = i;
     }
-    
+
     // 5. Reset performance stats (safe operation)
     resetPerformanceStats();
-    
+
     // Release lock before resuming
     lock.unlock();
-    
+
     // Resume system
     m_globallyPaused.store(false, std::memory_order_release);
-    
-    PARTICLE_INFO("ParticleManager state transition complete - stopped " + 
+
+    PARTICLE_INFO("ParticleManager state transition complete - stopped " +
                 std::to_string(weatherEffectsStopped) + " weather effects, " +
                 std::to_string(independentEffectsStopped) + " independent effects, " +
                 std::to_string(regularEffectsStopped) + " regular effects, cleared " +
@@ -179,53 +179,53 @@ void ParticleManager::update(float deltaTime) {
     try {
         // Phase 1: Update effect instances (emission, timing) - MAIN THREAD ONLY
         updateEffectInstances(deltaTime);
-        
+
         // Phase 2: Get snapshot of particle count for threading decision
         size_t totalParticleCount = m_storage.particles.size();
         if (totalParticleCount == 0) {
             return;
         }
-        
+
         // Phase 3: Update particle physics with proper threading strategy
         // Use WorkerBudget system for optimal resource allocation
         bool useThreading = (totalParticleCount >= m_threadingThreshold &&
                            m_useThreading.load(std::memory_order_acquire) &&
-                           Hammer::ThreadSystem::Exists());
-        
+                           HammerEngine::ThreadSystem::Exists());
+
         if (useThreading) {
             updateParticlesThreaded(deltaTime, totalParticleCount);
         } else {
             // Use single-threaded processing with proper bounds checking
             updateParticlesSingleThreaded(deltaTime, totalParticleCount);
         }
-        
+
         // Phase 4: More frequent memory management to prevent leaks
         uint64_t currentFrame = m_frameCounter.fetch_add(1, std::memory_order_relaxed);
         if (currentFrame % 300 == 0) { // Every 5 seconds at 60fps instead of 20
             compactParticleStorageIfNeeded();
         }
-        
+
         // Deep cleanup less frequently but more thoroughly
         if (currentFrame % 1800 == 0) { // Every 30 seconds
             compactParticleStorage();
         }
-        
+
         // Phase 5: Performance tracking (much less frequent to reduce overhead)
         auto endTime = std::chrono::high_resolution_clock::now();
         double timeMs = std::chrono::duration_cast<std::chrono::microseconds>(endTime - startTime).count() / 1000.0;
-        
+
         // Only track performance every 1200 frames (20 seconds) to minimize overhead
         if (currentFrame % 1200 == 0) {
             size_t activeCount = countActiveParticles();
             recordPerformance(false, timeMs, activeCount);
-            
+
             if (activeCount > 0) {
-                PARTICLE_DEBUG("Particle Summary - Count: " + std::to_string(activeCount) + 
+                PARTICLE_DEBUG("Particle Summary - Count: " + std::to_string(activeCount) +
                            ", Update: " + std::to_string(timeMs) + "ms" +
                            ", Effects: " + std::to_string(m_effectInstances.size()));
             }
         }
-        
+
     } catch (const std::exception& e) {
         PARTICLE_ERROR("Exception in ParticleManager::update: " + std::string(e.what()));
     }
@@ -241,18 +241,18 @@ void ParticleManager::render(SDL_Renderer* renderer, float cameraX, float camera
     // FIXED: Unified storage - no more synchronization issues
     std::shared_lock<std::shared_mutex> lock(m_particlesMutex);
     int renderCount = 0;
-    
+
     for (const auto& particle : m_storage.particles) {
         if (!particle.isActive() || !particle.isVisible()) {
             continue;
         }
-        
+
         // Skip particles that are completely transparent
         uint8_t alpha = particle.color & 0xFF;
         if (alpha == 0) {
             continue;
         }
-        
+
         renderCount++;
 
         // Extract color components
@@ -279,8 +279,8 @@ void ParticleManager::render(SDL_Renderer* renderer, float cameraX, float camera
     // Periodic summary logging (every 900 frames ~15 seconds)
     uint64_t currentFrame = m_frameCounter.fetch_add(1, std::memory_order_relaxed);
     if (currentFrame % 900 == 0 && renderCount > 0) {
-        PARTICLE_DEBUG("Particle Summary - Total: " + std::to_string(m_storage.particles.size()) + 
-                    ", Active: " + std::to_string(renderCount) + 
+        PARTICLE_DEBUG("Particle Summary - Total: " + std::to_string(m_storage.particles.size()) +
+                    ", Active: " + std::to_string(renderCount) +
                     ", Effects: " + std::to_string(m_effectInstances.size()));
     }
 
@@ -296,17 +296,17 @@ void ParticleManager::renderBackground(SDL_Renderer* renderer, float cameraX, fl
 
     // FIXED: Unified storage - no more synchronization issues
     std::shared_lock<std::shared_mutex> lock(m_particlesMutex);
-    
+
     for (const auto& particle : m_storage.particles) {
-        
+
         if (!particle.isActive() || !particle.isVisible()) {
             continue;
         }
-        
+
         // Check if this is a background particle (rain, snow, fire, smoke, sparks)
         uint32_t color = particle.color;
         bool isBackground = false;
-        
+
         // Rain particles are blue-ish (0x4080FF00)
         if ((color & 0xFFFFFF00) == 0x4080FF00) {
             isBackground = true;
@@ -316,7 +316,7 @@ void ParticleManager::renderBackground(SDL_Renderer* renderer, float cameraX, fl
             isBackground = true;
         }
         // Fire particles - orange/red/yellow range
-        else if ((color & 0xFF000000) == 0xFF000000 && 
+        else if ((color & 0xFF000000) == 0xFF000000 &&
                  ((color & 0x00FF0000) >= 0x00450000)) { // Red component >= 0x45, green check always true so removed
             isBackground = true;
         }
@@ -330,7 +330,7 @@ void ParticleManager::renderBackground(SDL_Renderer* renderer, float cameraX, fl
                  (color & 0xFF8C0000) == 0xFF8C0000) {     // Orange (FF8C__)
             isBackground = true;
         }
-        
+
         if (!isBackground) {
             continue; // Skip foreground particles
         }
@@ -356,7 +356,7 @@ void ParticleManager::renderBackground(SDL_Renderer* renderer, float cameraX, fl
         };
         SDL_RenderFillRect(renderer, &rect);
     }
-    
+
     // Background particle render complete
 }
 
@@ -367,27 +367,27 @@ void ParticleManager::renderForeground(SDL_Renderer* renderer, float cameraX, fl
 
     // FIXED: Unified storage - no more synchronization issues
     std::shared_lock<std::shared_mutex> lock(m_particlesMutex);
-    
+
     for (const auto& particle : m_storage.particles) {
-        
+
         if (!particle.isActive() || !particle.isVisible()) {
             continue;
         }
-        
+
         // Check if this is a foreground particle (fog = gray-ish, clouds = light white)
         uint32_t color = particle.color;
         bool isForeground = false;
-        
+
         // Extract RGB components
         uint8_t r = (color >> 24) & 0xFF;
         uint8_t g = (color >> 16) & 0xFF;
         uint8_t b = (color >> 8) & 0xFF;
-        
+
         // Fog particles: gray range (190-230 RGB as created in createParticleForEffect)
         // Check if all RGB components are similar (gray) and in the fog range
-        if (r >= 180 && r <= 240 && g >= 180 && g <= 240 && b >= 180 && b <= 240 && 
-            abs(static_cast<int>(r) - static_cast<int>(g)) <= 25 && 
-            abs(static_cast<int>(r) - static_cast<int>(b)) <= 25 && 
+        if (r >= 180 && r <= 240 && g >= 180 && g <= 240 && b >= 180 && b <= 240 &&
+            abs(static_cast<int>(r) - static_cast<int>(g)) <= 25 &&
+            abs(static_cast<int>(r) - static_cast<int>(b)) <= 25 &&
             abs(static_cast<int>(g) - static_cast<int>(b)) <= 25) {
             isForeground = true;
         }
@@ -395,7 +395,7 @@ void ParticleManager::renderForeground(SDL_Renderer* renderer, float cameraX, fl
         else if (r >= 235 && g >= 235 && b >= 235) {
             isForeground = true;
         }
-        
+
         if (!isForeground) {
             continue; // Skip background particles
         }
@@ -418,16 +418,16 @@ void ParticleManager::renderForeground(SDL_Renderer* renderer, float cameraX, fl
         };
         SDL_RenderFillRect(renderer, &rect);
     }
-    
+
     // Foreground particle render complete
 }
 
 uint32_t ParticleManager::playEffect(const std::string& effectName, const Vector2D& position, float intensity) {
     PARTICLE_INFO("*** PLAY EFFECT CALLED: " + effectName + " at (" + std::to_string(position.getX()) + ", " + std::to_string(position.getY()) + ") intensity=" + std::to_string(intensity));
-    
+
     // Thread safety: Use exclusive lock for modifying effect instances
     std::unique_lock<std::shared_mutex> lock(m_particlesMutex);
-    
+
     auto it = m_effectDefinitions.find(effectName);
     if (it == m_effectDefinitions.end()) {
         PARTICLE_ERROR("ERROR: Effect not found: " + effectName);
@@ -460,7 +460,7 @@ uint32_t ParticleManager::playEffect(const std::string& effectName, const Vector
 void ParticleManager::stopEffect(uint32_t effectId) {
     // Thread safety: Use exclusive lock for modifying effect instances
     std::unique_lock<std::shared_mutex> lock(m_particlesMutex);
-    
+
     auto it = m_effectIdToIndex.find(effectId);
     if (it != m_effectIdToIndex.end()) {
         m_effectInstances[it->second].active = false;
@@ -470,25 +470,25 @@ void ParticleManager::stopEffect(uint32_t effectId) {
 
 void ParticleManager::stopWeatherEffects(float transitionTime) {
     PARTICLE_INFO("*** STOPPING ALL WEATHER EFFECTS (transition: " + std::to_string(transitionTime) + "s)");
-    
+
     // Use try_lock to avoid deadlocks during testing
     std::unique_lock<std::shared_mutex> lock(m_particlesMutex, std::try_to_lock);
     if (!lock.owns_lock()) {
         PARTICLE_WARN("Could not acquire lock for stopping weather effects, skipping");
         return;
     }
-    
+
     int stoppedCount = 0;
-    
+
     // Clean approach: Remove ALL weather effects to prevent accumulation
     auto it = m_effectInstances.begin();
     while (it != m_effectInstances.end()) {
         if (it->isWeatherEffect) {
             PARTICLE_DEBUG("DEBUG: Removing weather effect: " + it->effectName + " (ID: " + std::to_string(it->id) + ")");
-            
+
             // Remove from ID mapping
             m_effectIdToIndex.erase(it->id);
-            
+
             // Remove the effect entirely
             it = m_effectInstances.erase(it);
             stoppedCount++;
@@ -496,13 +496,13 @@ void ParticleManager::stopWeatherEffects(float transitionTime) {
             ++it;
         }
     }
-    
+
     // Rebuild index mapping for remaining effects
     m_effectIdToIndex.clear();
     for (size_t i = 0; i < m_effectInstances.size(); ++i) {
         m_effectIdToIndex[m_effectInstances[i].id] = i;
     }
-    
+
     // Clear weather particles directly here to avoid re-locking
     if (transitionTime <= 0.0f) {
         // Clear immediately without calling clearWeatherGeneration to avoid re-locking
@@ -526,7 +526,7 @@ void ParticleManager::stopWeatherEffects(float transitionTime) {
         }
         PARTICLE_INFO("Cleared " + std::to_string(affectedCount) + " weather particles with fade time: " + std::to_string(transitionTime) + "s");
     }
-    
+
     PARTICLE_INFO("Stopped and removed " + std::to_string(stoppedCount) + " weather effects");
 }
 
@@ -536,9 +536,9 @@ void ParticleManager::clearWeatherGeneration(uint8_t generationId, float fadeTim
     }
 
     std::unique_lock<std::shared_mutex> lock(m_particlesMutex);
-    
+
     int affectedCount = 0;
-    
+
     for (auto& particle : m_storage.particles) {
         if (particle.isActive() && particle.isWeatherParticle()) {
             // Clear specific generation or all weather particles if generationId is 0
@@ -555,21 +555,21 @@ void ParticleManager::clearWeatherGeneration(uint8_t generationId, float fadeTim
             }
         }
     }
-    
-    PARTICLE_INFO("Cleared " + std::to_string(affectedCount) + " weather particles" + 
+
+    PARTICLE_INFO("Cleared " + std::to_string(affectedCount) + " weather particles" +
                 (generationId > 0 ? " (generation " + std::to_string(generationId) + ")" : "") +
                 " with fade time: " + std::to_string(fadeTime) + "s");
 }
 
 void ParticleManager::triggerWeatherEffect(const std::string& weatherType, float intensity, float transitionTime) {
     PARTICLE_INFO("*** WEATHER EFFECT TRIGGERED: " + weatherType + " intensity=" + std::to_string(intensity));
-    
+
     // Use smooth transitions for better visual quality
     float actualTransitionTime = (transitionTime > 0.0f) ? transitionTime : 1.5f;
-    
+
     // DEADLOCK FIX: Use single lock scope for entire operation
     std::unique_lock<std::shared_mutex> lock(m_particlesMutex);
-    
+
     // Clear existing weather effects first (without calling stopWeatherEffects to avoid re-locking)
     int stoppedCount = 0;
     auto it = m_effectInstances.begin();
@@ -583,13 +583,13 @@ void ParticleManager::triggerWeatherEffect(const std::string& weatherType, float
             ++it;
         }
     }
-    
+
     // Rebuild index mapping for remaining effects
     m_effectIdToIndex.clear();
     for (size_t i = 0; i < m_effectInstances.size(); ++i) {
         m_effectIdToIndex[m_effectInstances[i].id] = i;
     }
-    
+
     // Clear weather particles
     if (actualTransitionTime <= 0.0f) {
         // Clear immediately without calling clearWeatherGeneration to avoid re-locking
@@ -602,15 +602,15 @@ void ParticleManager::triggerWeatherEffect(const std::string& weatherType, float
         }
         PARTICLE_INFO("Cleared " + std::to_string(affectedCount) + " weather particles immediately");
     }
-    
+
     PARTICLE_INFO("Stopped " + std::to_string(stoppedCount) + " weather effects");
-    
+
     // Handle Clear weather - just stop effects and return
     if (weatherType == "Clear") {
         PARTICLE_INFO("Clear weather triggered - only stopping weather effects");
         return;
     }
-    
+
     // Map weather type to particle effect
     std::string effectName;
     if (weatherType == "Rainy") effectName = "Rain";
@@ -618,7 +618,7 @@ void ParticleManager::triggerWeatherEffect(const std::string& weatherType, float
     else if (weatherType == "Foggy") effectName = "Fog";
     else if (weatherType == "Cloudy") effectName = "Cloudy";
     else if (weatherType == "Stormy") effectName = "Rain"; // Stormy = heavy rain
-    
+
     PARTICLE_INFO("Mapped weather type '" + weatherType + "' to effect '" + effectName + "'");
 
     if (!effectName.empty()) {
@@ -628,7 +628,7 @@ void ParticleManager::triggerWeatherEffect(const std::string& weatherType, float
             PARTICLE_ERROR("ERROR: Effect not found: " + effectName);
             return;
         }
-        
+
         // Calculate optimal weather position based on effect type
         Vector2D weatherPosition;
         if (effectName == "Rain" || effectName == "Snow") {
@@ -640,7 +640,7 @@ void ParticleManager::triggerWeatherEffect(const std::string& weatherType, float
         } else {
             weatherPosition = Vector2D(960, -50); // Default top spawn
         }
-        
+
         // Create new weather effect directly (inline to avoid re-locking)
         EffectInstance instance;
         instance.id = generateEffectId();
@@ -651,12 +651,12 @@ void ParticleManager::triggerWeatherEffect(const std::string& weatherType, float
         instance.targetIntensity = intensity;
         instance.active = true;
         instance.isWeatherEffect = true; // Mark as weather effect immediately
-        
+
         // Register effect
         m_effectInstances.push_back(instance);
         m_effectIdToIndex[instance.id] = m_effectInstances.size() - 1;
-        
-        PARTICLE_INFO("Weather effect created: " + effectName + " (ID: " + std::to_string(instance.id) + ") at position (" + 
+
+        PARTICLE_INFO("Weather effect created: " + effectName + " (ID: " + std::to_string(instance.id) + ") at position (" +
                     std::to_string(weatherPosition.getX()) + ", " + std::to_string(weatherPosition.getY()) + ")");
     } else {
         PARTICLE_ERROR("ERROR: No effect mapping found for weather type: " + weatherType);
@@ -705,19 +705,19 @@ void ParticleManager::toggleSparksEffect() {
 }
 
 // Independent Effect Management Implementation
-uint32_t ParticleManager::playIndependentEffect(const std::string& effectName, const Vector2D& position, 
-                                              float intensity, float duration, 
+uint32_t ParticleManager::playIndependentEffect(const std::string& effectName, const Vector2D& position,
+                                              float intensity, float duration,
                                               const std::string& groupTag, const std::string& soundEffect) {
     PARTICLE_INFO("Playing independent effect: " + effectName + " at (" + std::to_string(position.getX()) + ", " + std::to_string(position.getY()) + ")");
-    
+
     std::unique_lock<std::shared_mutex> lock(m_particlesMutex);
-    
+
     auto it = m_effectDefinitions.find(effectName);
     if (it == m_effectDefinitions.end()) {
         PARTICLE_ERROR("ERROR: Independent effect not found: " + effectName);
         return 0;
     }
-    
+
     EffectInstance instance;
     instance.id = generateEffectId();
     instance.effectName = effectName;
@@ -731,18 +731,18 @@ uint32_t ParticleManager::playIndependentEffect(const std::string& effectName, c
     instance.maxDuration = duration;
     instance.groupTag = groupTag;
     instance.soundEffect = soundEffect;
-    
+
     // Register effect
     m_effectInstances.push_back(instance);
     m_effectIdToIndex[instance.id] = m_effectInstances.size() - 1;
-    
+
     PARTICLE_INFO("Independent effect started: " + effectName + " (ID: " + std::to_string(instance.id) + ")");
     return instance.id;
 }
 
 void ParticleManager::stopIndependentEffect(uint32_t effectId) {
     std::unique_lock<std::shared_mutex> lock(m_particlesMutex);
-    
+
     auto it = m_effectIdToIndex.find(effectId);
     if (it != m_effectIdToIndex.end() && it->second < m_effectInstances.size()) {
         auto& effect = m_effectInstances[it->second];
@@ -755,7 +755,7 @@ void ParticleManager::stopIndependentEffect(uint32_t effectId) {
 
 void ParticleManager::stopAllIndependentEffects() {
     std::unique_lock<std::shared_mutex> lock(m_particlesMutex);
-    
+
     int stoppedCount = 0;
     for (auto& effect : m_effectInstances) {
         if (effect.active && effect.isIndependentEffect) {
@@ -763,13 +763,13 @@ void ParticleManager::stopAllIndependentEffects() {
             stoppedCount++;
         }
     }
-    
+
     PARTICLE_INFO("Stopped " + std::to_string(stoppedCount) + " independent effects");
 }
 
 void ParticleManager::stopIndependentEffectsByGroup(const std::string& groupTag) {
     std::unique_lock<std::shared_mutex> lock(m_particlesMutex);
-    
+
     int stoppedCount = 0;
     for (auto& effect : m_effectInstances) {
         if (effect.active && effect.isIndependentEffect && effect.groupTag == groupTag) {
@@ -777,13 +777,13 @@ void ParticleManager::stopIndependentEffectsByGroup(const std::string& groupTag)
             stoppedCount++;
         }
     }
-    
+
     PARTICLE_INFO("Stopped " + std::to_string(stoppedCount) + " independent effects in group: " + groupTag);
 }
 
 void ParticleManager::pauseIndependentEffect(uint32_t effectId, bool paused) {
     std::unique_lock<std::shared_mutex> lock(m_particlesMutex);
-    
+
     auto it = m_effectIdToIndex.find(effectId);
     if (it != m_effectIdToIndex.end() && it->second < m_effectInstances.size()) {
         auto& effect = m_effectInstances[it->second];
@@ -796,7 +796,7 @@ void ParticleManager::pauseIndependentEffect(uint32_t effectId, bool paused) {
 
 void ParticleManager::pauseAllIndependentEffects(bool paused) {
     std::unique_lock<std::shared_mutex> lock(m_particlesMutex);
-    
+
     int affectedCount = 0;
     for (auto& effect : m_effectInstances) {
         if (effect.active && effect.isIndependentEffect) {
@@ -804,13 +804,13 @@ void ParticleManager::pauseAllIndependentEffects(bool paused) {
             affectedCount++;
         }
     }
-    
+
     PARTICLE_INFO("All independent effects " + std::string(paused ? "paused" : "unpaused") + " (" + std::to_string(affectedCount) + " effects)");
 }
 
 void ParticleManager::pauseIndependentEffectsByGroup(const std::string& groupTag, bool paused) {
     std::unique_lock<std::shared_mutex> lock(m_particlesMutex);
-    
+
     int affectedCount = 0;
     for (auto& effect : m_effectInstances) {
         if (effect.active && effect.isIndependentEffect && effect.groupTag == groupTag) {
@@ -818,13 +818,13 @@ void ParticleManager::pauseIndependentEffectsByGroup(const std::string& groupTag
             affectedCount++;
         }
     }
-    
+
     PARTICLE_INFO("Independent effects in group " + groupTag + " " + std::string(paused ? "paused" : "unpaused") + " (" + std::to_string(affectedCount) + " effects)");
 }
 
 bool ParticleManager::isIndependentEffect(uint32_t effectId) const {
     std::shared_lock<std::shared_mutex> lock(m_particlesMutex);
-    
+
     auto it = m_effectIdToIndex.find(effectId);
     if (it != m_effectIdToIndex.end() && it->second < m_effectInstances.size()) {
         return m_effectInstances[it->second].isIndependentEffect;
@@ -834,27 +834,27 @@ bool ParticleManager::isIndependentEffect(uint32_t effectId) const {
 
 std::vector<uint32_t> ParticleManager::getActiveIndependentEffects() const {
     std::shared_lock<std::shared_mutex> lock(m_particlesMutex);
-    
+
     std::vector<uint32_t> activeEffects;
     for (const auto& effect : m_effectInstances) {
         if (effect.active && effect.isIndependentEffect) {
             activeEffects.push_back(effect.id);
         }
     }
-    
+
     return activeEffects;
 }
 
 std::vector<uint32_t> ParticleManager::getActiveIndependentEffectsByGroup(const std::string& groupTag) const {
     std::shared_lock<std::shared_mutex> lock(m_particlesMutex);
-    
+
     std::vector<uint32_t> activeEffects;
     for (const auto& effect : m_effectInstances) {
         if (effect.active && effect.isIndependentEffect && effect.groupTag == groupTag) {
             activeEffects.push_back(effect.id);
         }
     }
-    
+
     return activeEffects;
 }
 
@@ -864,23 +864,23 @@ uint32_t ParticleManager::generateEffectId() {
 
 void ParticleManager::registerBuiltInEffects() {
     PARTICLE_INFO("*** REGISTERING BUILT-IN EFFECTS");
-    
+
     // Register preset weather effects
     m_effectDefinitions["Rain"] = createRainEffect();
     m_effectDefinitions["Snow"] = createSnowEffect();
     m_effectDefinitions["Fog"] = createFogEffect();
     m_effectDefinitions["Cloudy"] = createCloudyEffect();
-    
+
     // Register independent particle effects
     m_effectDefinitions["Fire"] = createFireEffect();
     m_effectDefinitions["Smoke"] = createSmokeEffect();
     m_effectDefinitions["Sparks"] = createSparksEffect();
-    
+
     PARTICLE_INFO("Built-in effects registered: " + std::to_string(m_effectDefinitions.size()));
     for (const auto& pair : m_effectDefinitions) {
         PARTICLE_INFO("  - Effect: " + pair.first);
     }
-    
+
     // More effects can be added as needed
 }
 
@@ -1028,7 +1028,7 @@ size_t ParticleManager::getActiveParticleCount() const {
     if (!m_initialized.load(std::memory_order_acquire)) {
         return 0;
     }
-    
+
     std::shared_lock<std::shared_mutex> lock(m_particlesMutex);
     return std::count_if(m_storage.particles.begin(), m_storage.particles.end(),
                         [](const auto& particle) { return particle.isActive(); });
@@ -1047,7 +1047,7 @@ void ParticleManager::cleanupInactiveParticles() {
         // Skip cleanup this frame to avoid deadlock - updates have priority
         return;
     }
-    
+
     // CRITICAL FIX: Remove aggressive cleanup that was causing rain/snow freezing
     // The 0.1s life threshold was prematurely removing active particles
     auto removeIt = std::remove_if(m_storage.particles.begin(), m_storage.particles.end(),
@@ -1055,35 +1055,35 @@ void ParticleManager::cleanupInactiveParticles() {
             // Only remove truly dead particles
             if (!particle.isActive()) return true;
             if (particle.life <= 0.0f) return true;
-            
+
             // Remove particles with very low alpha (essentially invisible)
             uint8_t alpha = particle.color & 0xFF;
             if (alpha <= 5) return true;
-            
+
             // REMOVED: Don't remove particles based on remaining life time
             // This was causing the freeze/resume cycle in rain and snow
-            
+
             return false;
         });
-    
+
     if (removeIt != m_storage.particles.end()) {
         size_t removedCount = std::distance(removeIt, m_storage.particles.end());
         m_storage.particles.erase(removeIt, m_storage.particles.end());
-        
+
         PARTICLE_DEBUG("Cleaned up " + std::to_string(removedCount) + " inactive/faded particles");
     }
-    
+
     // No need to clean up particle indices since effects don't own particles anymore
-    
+
     // Remove inactive effect instances
     auto effectRemoveIt = std::remove_if(m_effectInstances.begin(), m_effectInstances.end(),
         [](const EffectInstance& effect) {
             return !effect.active;
         });
-    
+
     if (effectRemoveIt != m_effectInstances.end()) {
         m_effectInstances.erase(effectRemoveIt, m_effectInstances.end());
-        
+
         // Rebuild effect ID to index mapping
         m_effectIdToIndex.clear();
         for (size_t i = 0; i < m_effectInstances.size(); ++i) {
@@ -1096,18 +1096,18 @@ void ParticleManager::updateEffectInstance(EffectInstance& effect, float deltaTi
     if (!effect.active) {
         return;
     }
-    
+
     // Update intensity transitions
     if (effect.currentIntensity != effect.targetIntensity) {
         float intensityDelta = effect.transitionSpeed * deltaTime;
         if (effect.currentIntensity < effect.targetIntensity) {
-            effect.currentIntensity = std::min(effect.targetIntensity, 
+            effect.currentIntensity = std::min(effect.targetIntensity,
                                              effect.currentIntensity + intensityDelta);
         } else {
-            effect.currentIntensity = std::max(effect.targetIntensity, 
+            effect.currentIntensity = std::max(effect.targetIntensity,
                                              effect.currentIntensity - intensityDelta);
         }
-        
+
         // ENHANCED: Keep weather effects active longer during transitions for smoother crossfade
         // Only deactivate when intensity is very low (not just zero) to maintain visual continuity
         if (effect.isWeatherEffect && effect.targetIntensity == 0.0f && effect.currentIntensity <= 0.05f) {
@@ -1116,15 +1116,15 @@ void ParticleManager::updateEffectInstance(EffectInstance& effect, float deltaTi
             return;
         }
     }
-    
+
     // Update emission timer
     effect.emissionTimer += deltaTime;
-    
+
     // Update duration timer if this effect has a limited duration
     auto effectDefIt = m_effectDefinitions.find(effect.effectName);
     if (effectDefIt != m_effectDefinitions.end()) {
         const auto& effectDef = effectDefIt->second;
-        
+
         if (effectDef.emitterConfig.duration > 0.0f) {
             effect.durationTimer += deltaTime;
             if (effect.durationTimer >= effectDef.emitterConfig.duration) {
@@ -1132,20 +1132,20 @@ void ParticleManager::updateEffectInstance(EffectInstance& effect, float deltaTi
                 return;
             }
         }
-        
+
         // Emit new particles based on emission rate and intensity
         float baseEmissionRate = effectDef.emitterConfig.emissionRate;
         float intensityScaledRate = baseEmissionRate * effect.currentIntensity;
         float emissionInterval = 1.0f / std::max(1.0f, intensityScaledRate); // Prevent division by zero
-        
+
         if (effect.emissionTimer >= emissionInterval) {
             // FIXED: Calculate particles to emit based on emission rate and timer accumulation
             float particlesPerSecond = baseEmissionRate * effect.currentIntensity;
-            
+
             // Calculate how many particles should be emitted this frame
             // Use emission timer to accumulate fractional particles over time
             int particlesToEmit = static_cast<int>(particlesPerSecond * effect.emissionTimer);
-            
+
             // SPECIAL CASE: Fog needs many particles to fill the screen properly
             if (effectDef.type == ParticleEffectType::Fog) {
                 // For fog at 300/sec emission rate, we need substantial bursts to fill the screen
@@ -1157,36 +1157,36 @@ void ParticleManager::updateEffectInstance(EffectInstance& effect, float deltaTi
                 // Other effects use smaller bursts to prevent overwhelming the system
                 particlesToEmit = std::min(particlesToEmit, 8);
             }
-            
+
             // Ensure minimum particles for visual continuity, but respect zero intensity
             if (effect.currentIntensity > 0.1f && particlesToEmit < 1) {
                 particlesToEmit = 1;
             }
-            
+
             for (int i = 0; i < particlesToEmit; ++i) {
                 createParticleForEffect(effect, effectDef);
             }
             effect.emissionTimer = 0.0f;
-            
+
             // Reduced logging: only log weather effects periodically (every 10 seconds)
             static uint64_t emissionLogCounter = 0;
             if (effect.isWeatherEffect && (++emissionLogCounter % 600 == 0)) {
-                PARTICLE_DEBUG("Weather Effect: " + effect.effectName + " emitting " + 
-                            std::to_string(particlesToEmit) + " particles (Intensity: " + 
+                PARTICLE_DEBUG("Weather Effect: " + effect.effectName + " emitting " +
+                            std::to_string(particlesToEmit) + " particles (Intensity: " +
                             std::to_string(effect.currentIntensity) + ")");
             }
         }
     }
-    
+
     // Note: Particles are now updated independently in the main update loop
 }
 
 void ParticleManager::createParticleForEffect(const EffectInstance& effect, const ParticleEffectDefinition& effectDef) {
     // MEMORY LEAK FIX: Implement efficient particle reuse with slot management
     // First, try to find an inactive particle slot to reuse
-    
+
     UnifiedParticle* particle = nullptr;
-    
+
     // Try to reuse an inactive particle first (prevents memory growth)
     size_t particleCount = m_storage.particles.size();
     for (size_t i = 0; i < particleCount; ++i) {
@@ -1196,7 +1196,7 @@ void ParticleManager::createParticleForEffect(const EffectInstance& effect, cons
             break;
         }
     }
-    
+
     // If no inactive particle found, add new one (but with better size management)
     if (!particle) {
         // Prevent excessive growth by limiting total particle count
@@ -1211,13 +1211,13 @@ void ParticleManager::createParticleForEffect(const EffectInstance& effect, cons
                     }
                     return false;
                 });
-            
+
             if (removeIt != m_storage.particles.end()) {
                 m_storage.particles.erase(removeIt, m_storage.particles.end());
                 PARTICLE_DEBUG("Memory management: cleaned up " + std::to_string(removedCount) + " particles");
             }
         }
-        
+
         // Add new particle if still under reasonable limits
         if (m_storage.particles.size() < DEFAULT_MAX_PARTICLES * 2) {
             m_storage.particles.emplace_back();
@@ -1228,29 +1228,29 @@ void ParticleManager::createParticleForEffect(const EffectInstance& effect, cons
             return;
         }
     }
-    
+
     // BALANCED APPROACH: Use better random for natural appearance while keeping some optimizations
     const auto& optData = m_optimizationData;
-    
+
     // Use thread_local random engines for better distribution but still good performance
     static thread_local std::random_device rd;
     static thread_local std::mt19937 gen(rd());
-    
+
     // Simple helper functions to avoid lambda capture warnings
     std::uniform_real_distribution<float> dist01(0.0f, 1.0f);
-    
+
     auto naturalRand = [&]() -> float {
         return dist01(gen);
     };
-    
+
     auto naturalRandRange = [&](float min, float max) -> float {
         std::uniform_real_distribution<float> dist(min, max);
         return dist(gen);
     };
-    
+
     // Reset particle to clean state
     *particle = UnifiedParticle();
-    
+
     // Position - start from effect position with some spread
     float spreadRange = effectDef.emitterConfig.spread;
     particle->position = Vector2D(
@@ -1260,23 +1260,23 @@ void ParticleManager::createParticleForEffect(const EffectInstance& effect, cons
 
     // UNIFIED PHYSICS: All particles use the same reliable angular approach
     float speed = naturalRandRange(effectDef.emitterConfig.minSpeed, effectDef.emitterConfig.maxSpeed);
-    
+
     float angleRange = effectDef.emitterConfig.spread * 0.017453f;
     float angle = (naturalRand() * 2.0f - 1.0f) * angleRange;
-    
+
     // For weather effects, bias the angle towards downward motion
     if (effectDef.type == ParticleEffectType::Rain || effectDef.type == ParticleEffectType::HeavyRain) {
         angle = (M_PI * 0.5f) + (angle * 0.1f); // Mostly downward
     } else if (effectDef.type == ParticleEffectType::Snow || effectDef.type == ParticleEffectType::HeavySnow) {
         angle = (M_PI * 0.5f) + (angle * 0.3f); // Gentle downward with drift
     }
-    
+
     // Apply consistent velocity calculation
     particle->velocity = Vector2D(
         speed * sin(angle),
         speed * cos(angle)
     );
-    
+
     // Apply acceleration/gravity from effect configuration
     particle->acceleration = effectDef.emitterConfig.gravity;
 
@@ -1286,7 +1286,7 @@ void ParticleManager::createParticleForEffect(const EffectInstance& effect, cons
     // Life - Set life before making particle active
     particle->maxLife = naturalRandRange(effectDef.emitterConfig.minLife, effectDef.emitterConfig.maxLife);
     particle->life = particle->maxLife;
-    
+
     if (particle->life <= 0.0f) {
         particle->life = 1.0f;
         particle->maxLife = 1.0f;
@@ -1361,13 +1361,13 @@ void ParticleManager::createParticleForEffect(const EffectInstance& effect, cons
     // Set active and visible LAST after ALL properties are initialized
     particle->setActive(true);
     particle->setVisible(true);
-    
+
     // Mark weather particles for batch management
     if (effect.isWeatherEffect) {
         particle->setWeatherParticle(true);
         particle->generationId = effect.currentGenerationId;
     }
-    
+
     // MEMORY LEAK FIX: More frequent cleanup to prevent accumulation
     static size_t cleanupCounter = 0;
     if (++cleanupCounter % 100 == 0) {  // Every 100 particles instead of 1000
@@ -1379,39 +1379,39 @@ void ParticleManager::updateParticle(ParticleData& particle, float deltaTime) {
     if (!particle.isActive()) {
         return;
     }
-    
+
     // Update particle life
     particle.life -= deltaTime;
     if (particle.life <= 0.0f) {
         particle.setActive(false);
         return;
     }
-    
+
     // Apply alpha fade as particle ages (fade out over last 25% of life)
     float lifeRatio = particle.getLifeRatio();
     if (lifeRatio < 0.25f || particle.isFadingOut()) {
         // Calculate fade ratio - particles that are marked for fade-out fade faster
         float fadeMultiplier = particle.isFadingOut() ? 4.0f : 1.0f;
         float fadeRatio = std::max(0.0f, lifeRatio / 0.25f) / fadeMultiplier;
-        
+
         // Extract current alpha and apply fade
         uint8_t currentAlpha = particle.color & 0xFF;
         uint8_t newAlpha = static_cast<uint8_t>(currentAlpha * fadeRatio);
-        
+
         // Update alpha component while preserving RGB
         particle.color = (particle.color & 0xFFFFFF00) | newAlpha;
-        
+
         // Mark for removal if alpha is very low
         if (newAlpha <= 5) {
             particle.setActive(false);
             return;
         }
     }
-    
+
     // Update particle position with velocity
     particle.position.setX(particle.position.getX() + particle.velocity.getX() * deltaTime);
     particle.position.setY(particle.position.getY() + particle.velocity.getY() * deltaTime);
-    
+
     // FIXED: Remove dangerous pointer arithmetic - use basic physics only
     // Apply basic gravity if no cold data is available
     const float GRAVITY = 98.0f; // Default gravity
@@ -1488,35 +1488,35 @@ void ParticleManager::updateWithWorkerBudget(float deltaTime, size_t particleCou
         bool useThreading = (particleCount >= m_threadingThreshold &&
                            m_useThreading.load(std::memory_order_acquire) &&
                            m_useWorkerBudgetThreading.load(std::memory_order_acquire) &&
-                           Hammer::ThreadSystem::Exists());
+                           HammerEngine::ThreadSystem::Exists());
 
         if (useThreading) {
-            auto& threadSystem = Hammer::ThreadSystem::Instance();
+            auto& threadSystem = HammerEngine::ThreadSystem::Instance();
             size_t availableWorkers = static_cast<size_t>(threadSystem.getThreadCount());
-            
+
             // Check queue pressure before submitting tasks
             size_t queueSize = threadSystem.getQueueSize();
             size_t queueCapacity = threadSystem.getQueueCapacity();
             size_t pressureThreshold = (queueCapacity * 9) / 10; // 90% capacity threshold
-            
+
             if (queueSize > pressureThreshold) {
                 // Graceful degradation: fallback to single-threaded processing
-                PARTICLE_WARN("Queue pressure detected (" + std::to_string(queueSize) + "/" + 
+                PARTICLE_WARN("Queue pressure detected (" + std::to_string(queueSize) + "/" +
                            std::to_string(queueCapacity) + "), using single-threaded processing");
                 update(deltaTime); // Use regular single-threaded update
                 return;
             }
-            
+
             // Use WorkerBudget system for optimal resource allocation
-            Hammer::WorkerBudget budget = Hammer::calculateWorkerBudget(availableWorkers);
-            
+            HammerEngine::WorkerBudget budget = HammerEngine::calculateWorkerBudget(availableWorkers);
+
             // Get optimal worker count with buffer allocation for particle workload
             size_t optimalWorkerCount = budget.getOptimalWorkerCount(budget.particleAllocated, particleCount, 1000);
-            
+
             // Dynamic batch sizing based on queue pressure for optimal performance
             size_t minParticlesPerBatch = 1000;
             size_t maxBatches = 4;
-            
+
             // Adjust batch strategy based on queue pressure
             double queuePressure = static_cast<double>(queueSize) / queueCapacity;
             if (queuePressure > 0.5) {
@@ -1528,28 +1528,28 @@ void ParticleManager::updateWithWorkerBudget(float deltaTime, size_t particleCou
                 minParticlesPerBatch = 800;
                 maxBatches = 4;
             }
-            
+
             size_t batchCount = std::min(optimalWorkerCount, particleCount / minParticlesPerBatch);
             batchCount = std::max(size_t(1), std::min(batchCount, maxBatches));
-            
+
             size_t particlesPerBatch = particleCount / batchCount;
             size_t remainingParticles = particleCount % batchCount;
-            
+
             // Submit optimized particle update batches
             for (size_t i = 0; i < batchCount; ++i) {
                 size_t start = i * particlesPerBatch;
                 size_t end = start + particlesPerBatch;
-                
+
                 // Add remaining particles to last batch
                 if (i == batchCount - 1) {
                     end += remainingParticles;
                 }
-                
+
                 threadSystem.enqueueTask([this, start, end, deltaTime]() {
                     updateParticleBatch(start, end, deltaTime);
-                }, Hammer::TaskPriority::High, "Particle_OptimalBatch");
+                }, HammerEngine::TaskPriority::High, "Particle_OptimalBatch");
             }
-            
+
         } else {
             // Single-threaded processing
             update(deltaTime);
@@ -1558,22 +1558,22 @@ void ParticleManager::updateWithWorkerBudget(float deltaTime, size_t particleCou
         // Performance tracking
         auto endTime = std::chrono::high_resolution_clock::now();
         auto duration = std::chrono::duration<double, std::milli>(endTime - startTime).count();
-        
+
         // Update frame counter
         uint64_t currentFrame = m_frameCounter.fetch_add(1, std::memory_order_relaxed);
-        
+
         // Periodic performance summary (every 300 frames ~5 seconds)
         if (currentFrame % 300 == 0) {
             std::lock_guard<std::mutex> statsLock(m_statsMutex);
             recordPerformance(false, duration, particleCount);
-            
+
             if (particleCount > 0) {
-                PARTICLE_DEBUG("Particle Summary - Count: " + std::to_string(particleCount) + 
+                PARTICLE_DEBUG("Particle Summary - Count: " + std::to_string(particleCount) +
                            ", Update: " + std::to_string(duration) + "ms" +
                            ", Effects: " + std::to_string(m_effectInstances.size()));
             }
         }
-        
+
     } catch (const std::exception& e) {
         PARTICLE_ERROR("Exception in ParticleManager::updateWithWorkerBudget: " + std::string(e.what()));
     }
@@ -1585,9 +1585,9 @@ void ParticleManager::updateEffectInstances(float deltaTime) {
     if (!m_initialized.load(std::memory_order_acquire)) {
         return;
     }
-    
+
     std::shared_lock<std::shared_mutex> lock(m_particlesMutex);
-    
+
     // Process all active particle effects
     for (auto& effect : m_effectInstances) {
         if (effect.active && !effect.paused) {
@@ -1597,49 +1597,49 @@ void ParticleManager::updateEffectInstances(float deltaTime) {
 }
 
 void ParticleManager::updateParticlesThreaded(float deltaTime, size_t totalParticleCount) {
-    if (!Hammer::ThreadSystem::Exists()) {
+    if (!HammerEngine::ThreadSystem::Exists()) {
         updateParticlesSingleThreaded(deltaTime, totalParticleCount);
         return;
     }
-    
+
     // Apply frame-rate limiting BEFORE threading to ensure consistent timing
     float cappedDeltaTime = std::min(deltaTime, 0.033f); // Cap at ~30 FPS minimum for smooth motion
-    
+
     // Get current actual size and use the smaller of the two to prevent out-of-bounds
     size_t actualParticleCount = m_storage.particles.size();
     size_t safeParticleCount = std::min(totalParticleCount, actualParticleCount);
-    
-    auto& threadSystem = Hammer::ThreadSystem::Instance();
+
+    auto& threadSystem = HammerEngine::ThreadSystem::Instance();
     size_t availableWorkers = static_cast<size_t>(threadSystem.getThreadCount());
-    
+
     // Check queue pressure before submitting tasks
     size_t queueSize = threadSystem.getQueueSize();
     size_t queueCapacity = threadSystem.getQueueCapacity();
     size_t pressureThreshold = (queueCapacity * 9) / 10; // 90% capacity threshold
-    
+
     if (queueSize > pressureThreshold) {
         // Graceful degradation: fallback to single-threaded processing
-        PARTICLE_WARN("Queue pressure detected (" + std::to_string(queueSize) + "/" + 
+        PARTICLE_WARN("Queue pressure detected (" + std::to_string(queueSize) + "/" +
                     std::to_string(queueCapacity) + "), using single-threaded processing");
         updateParticlesSingleThreaded(cappedDeltaTime, safeParticleCount);
         return;
     }
-    
+
     // Early exit if no particles to process
     if (safeParticleCount == 0) {
         return;
     }
-    
+
     // Use WorkerBudget system for optimal resource allocation
-    Hammer::WorkerBudget budget = Hammer::calculateWorkerBudget(availableWorkers);
-    
+    HammerEngine::WorkerBudget budget = HammerEngine::calculateWorkerBudget(availableWorkers);
+
     // Get optimal worker count with buffer allocation for particle workload
     size_t optimalWorkerCount = budget.getOptimalWorkerCount(budget.particleAllocated, safeParticleCount, 1000);
-    
+
     // Dynamic batch sizing based on queue pressure for optimal performance
     size_t minParticlesPerBatch = 1000;
     size_t maxBatches = 4;
-    
+
     // Adjust batch strategy based on queue pressure
     double queuePressure = static_cast<double>(queueSize) / queueCapacity;
     if (queuePressure > 0.5) {
@@ -1651,41 +1651,41 @@ void ParticleManager::updateParticlesThreaded(float deltaTime, size_t totalParti
         minParticlesPerBatch = 800;
         maxBatches = 4;
     }
-    
+
     size_t batchCount = std::min(optimalWorkerCount, safeParticleCount / minParticlesPerBatch);
     batchCount = std::max(size_t(1), std::min(batchCount, maxBatches));
-    
+
     size_t particlesPerBatch = safeParticleCount / batchCount;
     size_t remainingParticles = safeParticleCount % batchCount;
-    
+
     // Submit optimized particle update batches
     for (size_t i = 0; i < batchCount; ++i) {
         size_t start = i * particlesPerBatch;
         size_t end = start + particlesPerBatch;
-        
+
         // Add remaining particles to last batch
         if (i == batchCount - 1) {
             end += remainingParticles;
         }
-        
+
         // Ensure end doesn't exceed safe particle count
         end = std::min(end, safeParticleCount);
-        
+
         // Skip empty batches
         if (start >= end) {
             continue;
         }
-        
+
         threadSystem.enqueueTask([this, start, end, cappedDeltaTime]() {
             updateParticleBatchOptimized(start, end, cappedDeltaTime);
-        }, Hammer::TaskPriority::High, "Particle_OptimalBatch");
+        }, HammerEngine::TaskPriority::High, "Particle_OptimalBatch");
     }
 }
 
 void ParticleManager::updateParticlesSingleThreaded(float deltaTime, size_t totalParticleCount) {
     // Apply frame-rate limiting to prevent stuttering - cap deltaTime to prevent large jumps
     float cappedDeltaTime = std::min(deltaTime, 0.033f); // Cap at ~30 FPS minimum for smooth motion
-    
+
     // Update all particles directly using unified storage - with proper bounds checking
     // Don't cache size - check bounds on each access to prevent out-of-bounds errors
     for (size_t i = 0; i < m_storage.particles.size(); ++i) {
@@ -1694,7 +1694,7 @@ void ParticleManager::updateParticlesSingleThreaded(float deltaTime, size_t tota
             updateUnifiedParticle(m_storage.particles[i], cappedDeltaTime);
         }
     }
-    
+
     // Suppress unused parameter warning
     (void)totalParticleCount;
 }
@@ -1703,14 +1703,14 @@ void ParticleManager::updateParticleBatch(size_t start, size_t end, float deltaT
     if (!m_initialized.load(std::memory_order_acquire)) {
         return;
     }
-    
+
     // CRITICAL FIX: Remove ALL locks to eliminate deadlock - use lock-free approach like AIManager
     // Particle vector is only modified during emission (main thread) and cleanup (try-lock)
     // Worker threads only read/update existing particles, which is safe without locks
-    
+
     // Apply frame-rate limiting to prevent stuttering - cap deltaTime to prevent large jumps
     float cappedDeltaTime = std::min(deltaTime, 0.033f); // Cap at ~30 FPS minimum for smooth motion
-    
+
     // Simple, correct sequential processing with proper bounds checking
     for (size_t i = start; i < end; ++i) {
         // Always check current size before access to prevent out-of-bounds
@@ -1728,43 +1728,43 @@ void ParticleManager::updateUnifiedParticle(UnifiedParticle& particle, float del
     if (!particle.isActive()) {
         return;
     }
-    
+
     // Update particle life
     particle.life -= deltaTime;
     if (particle.life <= 0.0f) {
         particle.setActive(false);
         return;
     }
-    
+
     // Apply alpha fade as particle ages (fade out over last 25% of life)
     float lifeRatio = particle.getLifeRatio();
     if (lifeRatio < 0.25f || particle.isFadingOut()) {
         // Calculate fade ratio - particles that are marked for fade-out fade faster
         float fadeMultiplier = particle.isFadingOut() ? 4.0f : 1.0f;
         float fadeRatio = std::max(0.0f, lifeRatio / 0.25f) / fadeMultiplier;
-        
+
         // Extract current alpha and apply fade
         uint8_t currentAlpha = particle.color & 0xFF;
         uint8_t newAlpha = static_cast<uint8_t>(currentAlpha * fadeRatio);
-        
+
         // Update alpha component while preserving RGB
         particle.color = (particle.color & 0xFFFFFF00) | newAlpha;
-        
+
         // Mark for removal if alpha is very low
         if (newAlpha <= 5) {
             particle.setActive(false);
             return;
         }
     }
-    
+
     // Update particle position with velocity
     particle.position.setX(particle.position.getX() + particle.velocity.getX() * deltaTime);
     particle.position.setY(particle.position.getY() + particle.velocity.getY() * deltaTime);
-    
+
     // Apply acceleration (gravity, wind, etc.) from unified particle data
     particle.velocity.setX(particle.velocity.getX() + particle.acceleration.getX() * deltaTime);
     particle.velocity.setY(particle.velocity.getY() + particle.acceleration.getY() * deltaTime);
-    
+
     // Update rotation
     particle.rotation += particle.angularVelocity * deltaTime;
 }
@@ -1774,7 +1774,7 @@ void ParticleManager::updateParticleBatchOptimized(size_t start, size_t end, flo
     if (!m_initialized.load(std::memory_order_acquire)) {
         return;
     }
-    
+
     // SIMD-optimized batch processing with proper bounds checking
     for (size_t i = start; i < end; ++i) {
         // Always check current size before access to prevent out-of-bounds
@@ -1815,39 +1815,39 @@ void ParticleManager::updateParticleWithColdData(ParticleData& particle, const P
     if (!particle.isActive()) {
         return;
     }
-    
+
     // Update particle life
     particle.life -= deltaTime;
     if (particle.life <= 0.0f) {
         particle.setActive(false);
         return;
     }
-    
+
     // Apply alpha fade as particle ages (fade out over last 25% of life)
     float lifeRatio = particle.getLifeRatio();
     if (lifeRatio < 0.25f || particle.isFadingOut()) {
         // Calculate fade ratio - particles that are marked for fade-out fade faster
         float fadeMultiplier = particle.isFadingOut() ? 4.0f : 1.0f;
         float fadeRatio = std::max(0.0f, lifeRatio / 0.25f) / fadeMultiplier;
-        
+
         // Extract current alpha and apply fade
         uint8_t currentAlpha = particle.color & 0xFF;
         uint8_t newAlpha = static_cast<uint8_t>(currentAlpha * fadeRatio);
-        
+
         // Update alpha component while preserving RGB
         particle.color = (particle.color & 0xFFFFFF00) | newAlpha;
-        
+
         // Mark for removal if alpha is very low
         if (newAlpha <= 5) {
             particle.setActive(false);
             return;
         }
     }
-    
+
     // Update particle position with velocity
     particle.position.setX(particle.position.getX() + particle.velocity.getX() * deltaTime);
     particle.position.setY(particle.position.getY() + particle.velocity.getY() * deltaTime);
-    
+
     // Apply acceleration (gravity, wind, etc.) from cold data
     particle.velocity.setX(particle.velocity.getX() + coldData.acceleration.getX() * deltaTime);
     particle.velocity.setY(particle.velocity.getY() + coldData.acceleration.getY() * deltaTime);
@@ -1858,7 +1858,7 @@ size_t ParticleManager::countActiveParticles() const {
     if (!m_initialized.load(std::memory_order_acquire)) {
         return 0;
     }
-    
+
     std::shared_lock<std::shared_mutex> lock(m_particlesMutex);
     return std::count_if(m_storage.particles.begin(), m_storage.particles.end(),
                         [](const auto& particle) { return particle.isActive(); });
@@ -1869,30 +1869,30 @@ void ParticleManager::compactParticleStorage() {
     if (!m_initialized.load(std::memory_order_acquire)) {
         return;
     }
-    
+
     // Use try_lock to avoid blocking normal operations
     std::unique_lock<std::shared_mutex> lock(m_particlesMutex, std::try_to_lock);
     if (!lock.owns_lock()) {
         return; // Skip compaction if busy
     }
-    
+
     // More aggressive cleanup: remove inactive particles AND faded particles
     auto removeIt = std::remove_if(m_storage.particles.begin(), m_storage.particles.end(),
         [](const UnifiedParticle& particle) {
             // Remove if inactive, dead, or essentially invisible
-            return !particle.isActive() || 
-                   particle.life <= 0.0f || 
+            return !particle.isActive() ||
+                   particle.life <= 0.0f ||
                    (particle.color & 0xFF) <= 10;  // Very low alpha
         });
-    
+
     if (removeIt != m_storage.particles.end()) {
         size_t removedCount = std::distance(removeIt, m_storage.particles.end());
         m_storage.particles.erase(removeIt, m_storage.particles.end());
         PARTICLE_DEBUG("Compacted storage: removed " + std::to_string(removedCount) + " inactive/faded particles");
     }
-    
+
     // Shrink vector capacity if we have excessive unused space
-    if (m_storage.particles.capacity() > m_storage.particles.size() * 2 && 
+    if (m_storage.particles.capacity() > m_storage.particles.size() * 2 &&
         m_storage.particles.capacity() > DEFAULT_MAX_PARTICLES) {
         m_storage.particles.shrink_to_fit();
         PARTICLE_DEBUG("Shrunk particle storage capacity to fit actual usage");
@@ -1904,19 +1904,19 @@ void ParticleManager::compactParticleStorageIfNeeded() {
     if (!m_initialized.load(std::memory_order_acquire)) {
         return;
     }
-    
+
     // Only compact if we have a significant number of inactive particles
     size_t totalParticles = m_storage.particles.size();
     if (totalParticles < 500) {
         return; // Not worth compacting small numbers
     }
-    
+
     // Count inactive particles
     size_t inactiveCount = std::count_if(m_storage.particles.begin(), m_storage.particles.end(),
         [](const auto& particle) {
             return !particle.isActive() || particle.life <= 0.0f || (particle.color & 0xFF) <= 10;
         });
-    
+
     // Only compact if inactive particles are more than 30% of total
     if (inactiveCount > totalParticles * 0.3) {
         compactParticleStorage();

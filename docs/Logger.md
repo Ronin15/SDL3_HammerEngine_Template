@@ -51,7 +51,7 @@ SOUND_WARN("Audio device not found, using software mixing");
 ### Class Structure
 
 ```cpp
-namespace Hammer {
+namespace HammerEngine {
     enum class LogLevel : uint8_t {
         CRITICAL = 0,  // Always logged (even in release)
         ERROR = 1,     // Debug only
@@ -104,7 +104,7 @@ namespace Hammer {
     // Full Logger class with printf-based output
     // All log levels functional
     // Immediate flushing for real-time feedback
-    #define HAMMER_INFO(system, msg) Hammer::Logger::Log(Hammer::LogLevel::INFO, system, std::string(msg))
+    #define HAMMER_INFO(system, msg) HammerEngine::Logger::Log(HammerEngine::LogLevel::INFO, system, std::string(msg))
 #endif
 ```
 
@@ -339,15 +339,15 @@ The logging system includes a benchmark mode that disables all logging output fo
 // Enable benchmark mode (disables all logging)
 HAMMER_ENABLE_BENCHMARK_MODE();
 // or
-Hammer::Logger::SetBenchmarkMode(true);
+HammerEngine::Logger::SetBenchmarkMode(true);
 
 // Disable benchmark mode (re-enables logging)
 HAMMER_DISABLE_BENCHMARK_MODE();
 // or
-Hammer::Logger::SetBenchmarkMode(false);
+HammerEngine::Logger::SetBenchmarkMode(false);
 
 // Check current benchmark mode status
-if (Hammer::Logger::IsBenchmarkMode()) {
+if (HammerEngine::Logger::IsBenchmarkMode()) {
     // Logging is currently disabled
 }
 ```
@@ -362,23 +362,23 @@ if (Hammer::Logger::IsBenchmarkMode()) {
 ```cpp
 void runPerformanceTest() {
     GAMELOOP_INFO("Starting performance test");
-    
+
     // Enable benchmark mode for clean performance measurement
     HAMMER_ENABLE_BENCHMARK_MODE();
-    
+
     auto start = std::chrono::high_resolution_clock::now();
-    
+
     // Run performance-critical code without logging overhead
     for (int i = 0; i < 1000000; ++i) {
         processGameFrame();
         // No logging output during this loop
     }
-    
+
     auto end = std::chrono::high_resolution_clock::now();
-    
+
     // Re-enable logging for results
     HAMMER_DISABLE_BENCHMARK_MODE();
-    
+
     auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
     GAMELOOP_INFO("Performance test completed in " + std::to_string(duration.count()) + " microseconds");
 }

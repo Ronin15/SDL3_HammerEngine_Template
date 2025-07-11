@@ -14,18 +14,18 @@
 #include <future>
 
 // Forward declaration
-namespace Hammer {
+namespace HammerEngine{
     struct WorkerBudget;
 }
 
 /**
  * GameLoop manages the main game loop with industry-standard timing patterns.
- * 
+ *
  * Uses callback-based architecture for clean separation of concerns:
  * - Event handling runs on main thread
  * - Updates run with fixed timestep (can be threaded)
  * - Rendering runs with variable timestep and interpolation
- * 
+ *
  * Based on patterns used by professional game engines.
  */
 class GameLoop {
@@ -148,14 +148,14 @@ private:
     bool m_threaded;
     std::atomic<bool> m_updateTaskRunning;
     std::future<void> m_updateTaskFuture;
-    
+
     // Update synchronization for threaded mode
     std::atomic<int> m_updateCount;
     std::mutex m_callbackMutex;
 
     // Internal methods
     void runMainThread();
-    void runUpdateWorker(const Hammer::WorkerBudget& budget);
+    void runUpdateWorker(const HammerEngine::WorkerBudget& budget);
     void processEvents();
     void processUpdates();
     void processUpdatesParallel();

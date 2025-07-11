@@ -26,19 +26,19 @@ The `GameEngine` class is the core singleton that manages all game systems, SDL 
 int main() {
     // Get singleton instance
     GameEngine& engine = GameEngine::Instance();
-    
+
     // Initialize with window parameters
     if (!engine.init("My Game", 1280, 720, false)) {
         return -1;
     }
-    
+
     // Create and set game loop
     auto gameLoop = std::make_shared<GameLoop>();
     engine.setGameLoop(gameLoop);
-    
+
     // Start the main loop
     gameLoop->run();
-    
+
     // Cleanup
     engine.clean();
     return 0;
@@ -58,7 +58,7 @@ public:
         static GameEngine instance;
         return instance;
     }
-    
+
 private:
     GameEngine() = default;
     GameEngine(const GameEngine&) = delete;
@@ -154,7 +154,7 @@ bool GameEngine::init(std::string_view title, int width, int height, bool fullsc
         GAMEENGINE_CRITICAL("SDL Video initialization failed: " + std::string(SDL_GetError()));
         return false;
     }
-    
+
     // Wait for all background initialization tasks
     bool allTasksSucceeded = true;
     for (auto& task : initTasks) {
@@ -165,7 +165,7 @@ bool GameEngine::init(std::string_view title, int width, int height, bool fullsc
             allTasksSucceeded = false;
         }
     }
-    
+
     return allTasksSucceeded;
 }
 ```
@@ -180,10 +180,10 @@ The GameEngine delegates main loop control to a GameLoop instance:
 class GameEngine {
 private:
     std::weak_ptr<GameLoop> m_gameLoop;  // Non-owning reference
-    
+
 public:
-    void setGameLoop(std::shared_ptr<GameLoop> gameLoop) { 
-        m_gameLoop = gameLoop; 
+    void setGameLoop(std::shared_ptr<GameLoop> gameLoop) {
+        m_gameLoop = gameLoop;
     }
 };
 ```
@@ -206,26 +206,26 @@ void GameEngine::handleEvents() {
 ```cpp
 void GameEngine::update(float deltaTime) {
     std::lock_guard<std::mutex> lock(m_updateMutex);
-    
+
     // Use WorkerBudget system for coordinated task submission
-    if (Hammer::ThreadSystem::Exists()) {
-        auto& threadSystem = Hammer::ThreadSystem::Instance();
+    if (HammerEngine::ThreadSystem::Exists()) {
+        auto& threadSystem = HammerEngine::ThreadSystem::Instance();
         size_t availableWorkers = static_cast<size_t>(threadSystem.getThreadCount());
-        Hammer::WorkerBudget budget = Hammer::calculateWorkerBudget(availableWorkers);
+        HammerEngine::WorkerBudget budget = HammerEngine::calculateWorkerBudget(availableWorkers);
 
         // Submit engine coordination tasks with high priority
         threadSystem.enqueueTask([this, deltaTime]() {
             processEngineCoordination(deltaTime);
-        }, Hammer::TaskPriority::High, "GameEngine_Coordination");
+        }, HammerEngine::TaskPriority::High, "GameEngine_Coordination");
 
         // Submit secondary tasks if multiple workers available
         if (budget.engineReserved > 1) {
             threadSystem.enqueueTask([this]() {
                 processEngineSecondaryTasks();
-            }, Hammer::TaskPriority::Normal, "GameEngine_Secondary");
+            }, HammerEngine::TaskPriority::Normal, "GameEngine_Secondary");
         }
     }
-    
+
     // Hybrid Manager Update Architecture:
     // Global systems updated by GameEngine (cached references for performance)
     if (mp_aiManager) {
@@ -234,10 +234,10 @@ void GameEngine::update(float deltaTime) {
     if (mp_eventManager) {
         mp_eventManager->update();
     }
-    
+
     // State-managed systems updated by individual game states
     mp_gameStateManager->update(deltaTime);
-    
+
     // Update frame counters and buffer management
     m_lastUpdateFrame.fetch_add(1, std::memory_order_relaxed);
     m_bufferReady[updateBufferIndex].store(true, std::memory_order_release);
@@ -252,9 +252,9 @@ void GameEngine::render() {
 
     SDL_SetRenderDrawColor(mp_renderer.get(), HAMMER_GRAY);
     SDL_RenderClear(mp_renderer.get());
-    
+
     mp_gameStateManager->render();
-    
+
     SDL_RenderPresent(mp_renderer.get());
     m_lastRenderedFrame.fetch_add(1, std::memory_order_relaxed);
 }
@@ -268,7 +268,7 @@ The GameEngine implements sophisticated threading with centralized resource mana
 
 **Engine Resource Allocation:**
 - Receives **2 workers** (Critical priority) from ThreadSystem's WorkerBudget system
-- Uses `Hammer::calculateWorkerBudget()` for centralized resource allocation
+- Uses `HammerEngine::calculateWorkerBudget()` for centralized resource allocation
 - Coordinates with GameLoop to ensure optimal frame-rate performance
 - Submits tasks with appropriate priorities to prevent system overload
 
@@ -290,10 +290,10 @@ private:
     std::atomic<bool> m_stopRequested{false};
     std::atomic<uint64_t> m_lastUpdateFrame{0};
     std::atomic<uint64_t> m_lastRenderedFrame{0};
-    
+
     // Render synchronization
     std::mutex m_renderMutex{};
-    
+
     // Protection for high entity counts
     std::atomic<size_t> m_entityProcessingCount{0};
 };
@@ -308,11 +308,11 @@ private:
     std::atomic<size_t> m_renderBufferIndex{0};
     std::atomic<bool> m_bufferReady[BUFFER_COUNT]{false, false};
     std::condition_variable m_bufferCondition{};
-    
+
     // Frame tracking for synchronization
     std::atomic<uint64_t> m_lastUpdateFrame{0};
     std::atomic<uint64_t> m_lastRenderedFrame{0};
-    
+
 public:
     void swapBuffers() {
         // Thread-safe buffer swap with proper synchronization
@@ -346,16 +346,16 @@ public:
     bool hasNewFrameToRender() const noexcept {
         // Optimized render check with minimal atomic operations
         size_t renderIndex = m_renderBufferIndex.load(std::memory_order_acquire);
-        
+
         // Single check for buffer readiness
         if (!m_bufferReady[renderIndex].load(std::memory_order_acquire)) {
             return false;
         }
-        
+
         // Compare frame counters only if buffer is ready - use relaxed ordering for counters
         uint64_t lastUpdate = m_lastUpdateFrame.load(std::memory_order_relaxed);
         uint64_t lastRendered = m_lastRenderedFrame.load(std::memory_order_relaxed);
-        
+
         return lastUpdate > lastRendered;
     }
 };
@@ -382,11 +382,11 @@ void GameEngine::processEngineSecondaryTasks() {
 void GameEngine::waitForUpdate() {
     std::unique_lock<std::mutex> lock(m_updateMutex);
     auto timeout = std::chrono::milliseconds(100);
-    
+
     bool completed = m_updateCondition.wait_for(lock, timeout,
         [this] { return m_updateCompleted.load(std::memory_order_acquire) ||
                         m_stopRequested.load(std::memory_order_acquire); });
-    
+
     if (!completed && !m_stopRequested.load(std::memory_order_acquire)) {
         if (m_updateRunning.load(std::memory_order_acquire)) {
             // Give more time for running updates
@@ -474,7 +474,7 @@ if (isWayland) {
 ```cpp
 bool GameEngine::isVSyncEnabled() const noexcept {
     if (!mp_renderer) return false;
-    
+
     int vsync = 0;
     if (SDL_GetRenderVSync(mp_renderer.get(), &vsync)) {
         return (vsync > 0);
@@ -484,7 +484,7 @@ bool GameEngine::isVSyncEnabled() const noexcept {
 
 bool GameEngine::setVSyncEnabled(bool enable) {
     if (!mp_renderer) return false;
-    
+
     return SDL_SetRenderVSync(mp_renderer.get(), enable ? 1 : 0);
 }
 ```
@@ -552,7 +552,7 @@ private:
     AIManager* mp_aiManager{nullptr};
     EventManager* mp_eventManager{nullptr};
     // InputManager not cached - handled in handleEvents() for proper SDL architecture
-    
+
 public:
     // Manager caching happens after background initialization completes
     // Validation ensures managers are properly initialized before caching
@@ -583,20 +583,20 @@ mp_eventManager = &eventMgrTest;
 ```cpp
 void GameEngine::update(float deltaTime) {
     // Use WorkerBudget system for coordinated task submission
-    if (Hammer::ThreadSystem::Exists()) {
-        auto& threadSystem = Hammer::ThreadSystem::Instance();
+    if (HammerEngine::ThreadSystem::Exists()) {
+        auto& threadSystem = HammerEngine::ThreadSystem::Instance();
         size_t availableWorkers = static_cast<size_t>(threadSystem.getThreadCount());
-        Hammer::WorkerBudget budget = Hammer::calculateWorkerBudget(availableWorkers);
+        HammerEngine::WorkerBudget budget = HammerEngine::calculateWorkerBudget(availableWorkers);
 
         // Engine receives 2 workers from WorkerBudget allocation
         threadSystem.enqueueTask([this, deltaTime]() {
             processEngineCoordination(deltaTime);
-        }, Hammer::TaskPriority::High, "GameEngine_Coordination");
+        }, HammerEngine::TaskPriority::High, "GameEngine_Coordination");
 
         if (budget.engineReserved > 1) {
             threadSystem.enqueueTask([this]() {
                 processEngineSecondaryTasks();
-            }, Hammer::TaskPriority::Normal, "GameEngine_Secondary");
+            }, HammerEngine::TaskPriority::Normal, "GameEngine_Secondary");
         }
     }
 }
@@ -690,20 +690,20 @@ SDL_Window* getWindow() const noexcept;                       // Get SDL window
 ```cpp
 bool initializeGame() {
     GameEngine& engine = GameEngine::Instance();
-    
+
     // Initialize engine first
     if (!engine.init("My Game", 1280, 720, false)) {
         GAMEENGINE_ERROR("Failed to initialize GameEngine");
         return false;
     }
-    
+
     // Create and set GameLoop
     auto gameLoop = std::make_shared<GameLoop>();
     engine.setGameLoop(gameLoop);
-    
+
     // Additional game-specific initialization
     // ...
-    
+
     return true;
 }
 ```
@@ -714,11 +714,11 @@ bool initializeGame() {
 void workerThreadFunction() {
     // Safe to call from worker threads
     GameEngine& engine = GameEngine::Instance();
-    
+
     // These methods are thread-safe
     bool hasFrame = engine.hasNewFrameToRender();
     size_t bufferIndex = engine.getCurrentBufferIndex();
-    
+
     // Access managers through engine (cached references)
     if (auto* gameStateManager = engine.getGameStateManager()) {
         // Safe access to game state
@@ -731,13 +731,13 @@ void workerThreadFunction() {
 ```cpp
 void setupRenderer() {
     GameEngine& engine = GameEngine::Instance();
-    
+
     // Check VSync support
     if (engine.isVSyncEnabled()) {
         GAMEENGINE_INFO("VSync enabled - using hardware timing");
     } else {
         GAMEENGINE_INFO("VSync disabled - using software timing");
-        
+
         // Implement software frame limiting if needed
         // GameLoop handles this automatically
     }
@@ -745,7 +745,7 @@ void setupRenderer() {
 
 void optimizeForPlatform() {
     GameEngine& engine = GameEngine::Instance();
-    
+
     #ifdef __APPLE__
     // macOS uses letterbox mode for consistent UI
     engine.setLogicalPresentationMode(SDL_LOGICAL_PRESENTATION_LETTERBOX);
@@ -762,13 +762,13 @@ void optimizeForPlatform() {
 bool safeEngineOperation() {
     try {
         GameEngine& engine = GameEngine::Instance();
-        
+
         // Always check if engine is properly initialized
         if (!engine.getRenderer()) {
             GAMEENGINE_ERROR("Engine not properly initialized");
             return false;
         }
-        
+
         // Perform operations...
         return true;
     } catch (const std::exception& e) {
@@ -783,7 +783,7 @@ bool safeEngineOperation() {
 ### VSync and Timing Issues
 
 **Problem**: Stuttering or inconsistent frame times
-**Solution**: 
+**Solution**:
 - Check if VSync is properly enabled: `engine.isVSyncEnabled()`
 - On Wayland, the engine automatically falls back to software timing
 - Monitor FPS with `engine.getCurrentFPS()`
@@ -801,7 +801,7 @@ bool safeEngineOperation() {
 
 1. **Check Thread System Load**:
    ```cpp
-   if (Hammer::ThreadSystem::Instance().isBusy()) {
+   if (HammerEngine::ThreadSystem::Instance().isBusy()) {
        GAMEENGINE_WARN("Thread system overloaded");
    }
    ```
@@ -826,7 +826,7 @@ bool safeEngineOperation() {
 void Entity::update(float deltaTime) {
     // Use provided deltaTime for consistent movement
     position += velocity * deltaTime;
-    
+
     // Don't create your own timing system
 }
 ```
@@ -839,10 +839,10 @@ void Entity::update(float deltaTime) {
 class MyGame {
 private:
     std::shared_ptr<GameLoop> m_gameLoop;
-    
+
 public:
     MyGame() = default;
-    
+
     bool initialize() {
         // Initialize engine
         GameEngine& engine = GameEngine::Instance();
@@ -850,39 +850,39 @@ public:
             GAMEENGINE_ERROR("Failed to initialize GameEngine");
             return false;
         }
-        
+
         // Create GameLoop
         m_gameLoop = std::make_shared<GameLoop>();
         engine.setGameLoop(m_gameLoop);
-        
+
         // Load game-specific resources
         if (!loadGameResources()) {
             GAMEENGINE_ERROR("Failed to load game resources");
             return false;
         }
-        
+
         GAMEENGINE_INFO("Game initialized successfully");
         return true;
     }
-    
+
     bool run() {
         if (!m_gameLoop) {
             GAMEENGINE_ERROR("GameLoop not initialized");
             return false;
         }
-        
+
         // Start the main loop
         m_gameLoop->run();
         return true;
     }
-    
+
     void shutdown() {
         GameEngine& engine = GameEngine::Instance();
         engine.clean();
-        
+
         GAMEENGINE_INFO("Game shutdown complete");
     }
-    
+
 private:
     bool loadGameResources() {
         // Load game-specific resources here
@@ -892,14 +892,14 @@ private:
 
 int main() {
     MyGame game;
-    
+
     if (!game.initialize()) {
         return -1;
     }
-    
+
     game.run();
     game.shutdown();
-    
+
     return 0;
 }
 ```
@@ -911,14 +911,14 @@ class AsyncResourceLoader {
 private:
     std::atomic<bool> m_loadingComplete{false};
     std::vector<std::future<bool>> m_loadingTasks;
-    
+
 public:
     AsyncResourceLoader() = default;
-    
+
     void startLoading() {
         GameEngine& engine = GameEngine::Instance();
-        auto& threadSystem = Hammer::ThreadSystem::Instance();
-        
+        auto& threadSystem = HammerEngine::ThreadSystem::Instance();
+
         // Load textures in background
         m_loadingTasks.push_back(
             threadSystem.enqueueTaskWithResult([&engine]() -> bool {
@@ -926,7 +926,7 @@ public:
                 return texMgr.loadFromDirectory("res/textures", engine.getRenderer());
             })
         );
-        
+
         // Load sounds in background
         m_loadingTasks.push_back(
             threadSystem.enqueueTaskWithResult([]() -> bool {
@@ -934,17 +934,17 @@ public:
                 return soundMgr.loadFromDirectory("res/sounds");
             })
         );
-        
+
         // Start completion check
         threadSystem.enqueueTask([this]() {
             waitForCompletion();
         });
     }
-    
+
     bool isComplete() const {
         return m_loadingComplete.load();
     }
-    
+
 private:
     void waitForCompletion() {
         bool allSucceeded = true;
@@ -956,9 +956,9 @@ private:
                 allSucceeded = false;
             }
         }
-        
+
         m_loadingComplete.store(allSucceeded);
-        
+
         if (allSucceeded) {
             GAMEENGINE_INFO("All resources loaded successfully");
         } else {

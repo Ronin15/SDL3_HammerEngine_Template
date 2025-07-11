@@ -158,7 +158,7 @@ void performSafeCleanup() {
 
         // Then clean ThreadSystem
         std::cout << "Cleaning ThreadSystem..." << std::endl;
-        Hammer::ThreadSystem::Instance().clean();
+        HammerEngine::ThreadSystem::Instance().clean();
 
         std::cout << "Test fixture cleanup completed successfully" << std::endl;
         cleanupDone = true;
@@ -198,7 +198,7 @@ struct GlobalTestFixture {
 
         // Initialize thread system
         std::cout << "Initializing ThreadSystem" << std::endl;
-        if (!Hammer::ThreadSystem::Instance().init()) {
+        if (!HammerEngine::ThreadSystem::Instance().init()) {
             std::cerr << "Failed to initialize ThreadSystem" << std::endl;
             throw std::runtime_error("ThreadSystem initialization failed");
         }

@@ -72,7 +72,7 @@ private:
 class ThreadTestBehavior : public AIBehavior {
 private:
     static std::atomic<int> s_sharedMessageCount; // Shared across all instances
-    
+
 public:
     ThreadTestBehavior(int id) : m_id(id) {}
 
@@ -126,11 +126,11 @@ public:
         cloned->setActive(m_active);
         return cloned;
     }
-    
+
     static void resetSharedMessageCount() {
         s_sharedMessageCount.store(0);
     }
-    
+
     static int getSharedMessageCount() {
         return s_sharedMessageCount.load();
     }
@@ -232,7 +232,7 @@ namespace {
             try {
                 // Additional pause to ensure threads can finish
                 std::this_thread::sleep_for(std::chrono::milliseconds(100));
-                Hammer::ThreadSystem::Instance().clean();
+                HammerEngine::ThreadSystem::Instance().clean();
                 std::cerr << "ThreadSystem cleaned up successfully" << std::endl;
             } catch (const std::exception& e) {
                 std::cerr << "Exception during ThreadSystem cleanup: " << e.what() << std::endl;
@@ -328,7 +328,7 @@ struct GlobalTestFixture {
         // Initialize thread system first
         if (!g_threadSystemInitialized) {
             std::cout << "Initializing ThreadSystem" << std::endl;
-            if (!Hammer::ThreadSystem::Instance().init()) {
+            if (!HammerEngine::ThreadSystem::Instance().init()) {
                 std::cerr << "Failed to initialize ThreadSystem" << std::endl;
                 throw std::runtime_error("ThreadSystem initialization failed");
             }
@@ -385,12 +385,12 @@ struct ThreadedAITestFixture {
     ThreadedAITestFixture() {
         // Each test will get a fresh setup
         std::cout << "Setting up test fixture" << std::endl;
-        
+
         // Enable threading for proper messaging and behavior processing
         unsigned int maxThreads = std::thread::hardware_concurrency();
         AIManager::Instance().configureThreading(true, maxThreads);
         std::cout << "Enabled threading with " << maxThreads << " threads" << std::endl;
-        
+
         // Allow time for threading setup
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
     }
@@ -481,12 +481,12 @@ BOOST_FIXTURE_TEST_CASE(TestThreadSafeBehaviorRegistration, ThreadedAITestFixtur
 
     // Register behaviors from multiple threads using ThreadSystem
     for (int i = 0; i < NUM_BEHAVIORS; ++i) {
-        auto future = Hammer::ThreadSystem::Instance().enqueueTaskWithResult([i]() {
+        auto future = HammerEngine::ThreadSystem::Instance().enqueueTaskWithResult([i]() {
             // Skip if we're in exit process
             if (g_exitGuard.load()) {
                 return;
             }
-            
+
             auto behavior = std::make_shared<ThreadTestBehavior>(i);
             {
                 // Track this behavior globally to prevent premature destruction
@@ -539,7 +539,7 @@ BOOST_FIXTURE_TEST_CASE(TestThreadSafeBehaviorAssignment, ThreadedAITestFixture)
     // Assign behaviors from multiple threads
     std::vector<std::future<void>> futures;
     for (int i = 0; i < NUM_ENTITIES; ++i) {
-        auto future = Hammer::ThreadSystem::Instance().enqueueTaskWithResult([i, &entityPtrs]() {
+        auto future = HammerEngine::ThreadSystem::Instance().enqueueTaskWithResult([i, &entityPtrs]() {
             AIManager::Instance().assignBehaviorToEntity(entityPtrs[i], "TestBehavior");
         });
         futures.push_back(std::move(future));
@@ -602,7 +602,7 @@ BOOST_FIXTURE_TEST_CASE(TestThreadSafeBatchUpdates, ThreadedAITestFixture) {
     // Run concurrent managed entity updates from multiple threads
     std::vector<std::future<void>> futures;
     for (int i = 0; i < NUM_BEHAVIORS; ++i) {
-        auto future = Hammer::ThreadSystem::Instance().enqueueTaskWithResult([]() {
+        auto future = HammerEngine::ThreadSystem::Instance().enqueueTaskWithResult([]() {
             for (int j = 0; j < UPDATES_PER_BEHAVIOR; ++j) {
                 // Use the unified entity update system
                 AIManager::Instance().update(0.016f);
@@ -647,12 +647,12 @@ BOOST_FIXTURE_TEST_CASE(TestThreadSafeMessaging, ThreadedAITestFixture) {
     std::cout << "Starting TestThreadSafeMessaging..." << std::endl;
     const int NUM_ENTITIES = 100;
     const int NUM_MESSAGES = 200;
-    
+
     // Create a single behavior instance that we'll use for all entities
     auto behavior = std::make_shared<ThreadTestBehavior>(42);
     behavior->m_messageCount.store(0); // Ensure counter starts at 0
     ThreadTestBehavior::resetSharedMessageCount(); // Reset shared counter
-    
+
     // Register and track the behavior
     AIManager::Instance().registerBehavior("MessageTest", behavior);
     {
@@ -682,7 +682,7 @@ BOOST_FIXTURE_TEST_CASE(TestThreadSafeMessaging, ThreadedAITestFixture) {
 
     // SIMPLER TEST APPROACH: Just do a single, direct message test
     std::cout << "\nSending a single direct message..." << std::endl;
-    
+
     // Use the first entity for a simple test
     AIManager::Instance().sendMessageToEntity(entities[0], "TEST_DIRECT_MESSAGE", true);
 
@@ -691,14 +691,14 @@ BOOST_FIXTURE_TEST_CASE(TestThreadSafeMessaging, ThreadedAITestFixture) {
 
     // Check if message was received (use shared counter for cloned behaviors)
     int msgCount = ThreadTestBehavior::getSharedMessageCount();
-    
+
     // If first test failed, try a second approach with broadcast
     if (msgCount == 0) {
         // Try with broadcast message
         AIManager::Instance().broadcastMessage("TEST_BROADCAST_MESSAGE", true);
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
         msgCount = ThreadTestBehavior::getSharedMessageCount();
-        
+
         // If broadcast also failed, try manual approach
         if (msgCount == 0) {
             behavior->onMessage(entities[0], "MANUAL_TEST_MESSAGE");
@@ -719,7 +719,7 @@ BOOST_FIXTURE_TEST_CASE(TestThreadSafeMessaging, ThreadedAITestFixture) {
         // Send a mix of direct and broadcast messages from multiple threads
         std::vector<std::future<void>> futures;
         for (int i = 0; i < NUM_MESSAGES; ++i) {
-            auto future = Hammer::ThreadSystem::Instance().enqueueTaskWithResult([i, &entities]() {
+            auto future = HammerEngine::ThreadSystem::Instance().enqueueTaskWithResult([i, &entities]() {
                 std::string message = "ThreadMessage_" + std::to_string(i);
 
                 if (i % 2 == 0) {
@@ -779,11 +779,11 @@ BOOST_FIXTURE_TEST_CASE(TestThreadSafeCacheInvalidation, ThreadedAITestFixture) 
         entities.push_back(entity);
         entityPtrs.push_back(entity);
     }
-    
+
     // Run a mix of operations
     std::vector<std::future<void>> futures;
     for (int i = 0; i < NUM_OPERATIONS; ++i) {
-        auto future = Hammer::ThreadSystem::Instance().enqueueTaskWithResult([i, &entityPtrs]() {
+        auto future = HammerEngine::ThreadSystem::Instance().enqueueTaskWithResult([i, &entityPtrs]() {
             int entityIndex = i % entityPtrs.size();
             if (i % 2 == 0) {
                 AIManager::Instance().assignBehaviorToEntity(entityPtrs[entityIndex], "CacheTest");
@@ -797,7 +797,7 @@ BOOST_FIXTURE_TEST_CASE(TestThreadSafeCacheInvalidation, ThreadedAITestFixture) 
     }
 
     for (int i = 0; i < 10; ++i) {
-        auto future = Hammer::ThreadSystem::Instance().enqueueTaskWithResult([]() {
+        auto future = HammerEngine::ThreadSystem::Instance().enqueueTaskWithResult([]() {
             for (int j = 0; j < 5; ++j) {
                 AIManager::Instance().update(0.016f);
                 std::this_thread::sleep_for(std::chrono::milliseconds(2));

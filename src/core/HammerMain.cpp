@@ -26,7 +26,7 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char* argv[]) {
 
   // Initialize the thread system with default capacity
   // Cache ThreadSystem reference for better performance
-  Hammer::ThreadSystem& threadSystem = Hammer::ThreadSystem::Instance();
+  HammerEngine::ThreadSystem& threadSystem = HammerEngine::ThreadSystem::Instance();
 
   // Initialize thread system first
   try {
@@ -64,11 +64,11 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char* argv[]) {
   // This must happen after GameLoop is set but before the game starts running
   const std::string sessionTypeRaw = std::getenv("XDG_SESSION_TYPE") ? std::getenv("XDG_SESSION_TYPE") : "";
   const std::string waylandDisplayRaw = std::getenv("WAYLAND_DISPLAY") ? std::getenv("WAYLAND_DISPLAY") : "";
-  
+
   std::string_view sessionType = sessionTypeRaw;
   bool hasWaylandDisplay = !waylandDisplayRaw.empty();
   bool isWayland = (sessionType == "wayland") || hasWaylandDisplay;
-  
+
   if (isWayland) {
     gameLoop->getTimestepManager().setSoftwareFrameLimiting(true);
     GAMELOOP_INFO("Configured TimestepManager for Wayland software frame limiting");

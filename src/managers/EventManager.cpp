@@ -102,10 +102,10 @@ void EventManager::clean() {
 
 void EventManager::prepareForStateTransition() {
     EVENT_INFO("Preparing EventManager for state transition...");
-    
+
     // Clear all event handlers first to prevent callbacks during cleanup
     clearAllHandlers();
-    
+
     // Clear all events
     {
         std::unique_lock<std::shared_mutex> lock(m_eventsMutex);
@@ -115,13 +115,13 @@ void EventManager::prepareForStateTransition() {
         m_nameToIndex.clear();
         m_nameToType.clear();
     }
-    
+
     // Clear event pools
     clearEventPools();
-    
+
     // Reset performance stats
     resetPerformanceStats();
-    
+
     EVENT_INFO("EventManager prepared for state transition");
 }
 
@@ -403,15 +403,15 @@ void EventManager::updateEventTypeBatch(EventTypeId typeId) {
         std::shared_lock<std::shared_mutex> lock(m_eventsMutex);
         auto& container = m_eventsByType[static_cast<size_t>(typeId)];
         localEvents.reserve(container.size());
-        
+
         // Quick copy of active events using STL algorithm
-        std::copy_if(container.begin(), container.end(), 
+        std::copy_if(container.begin(), container.end(),
                      std::back_inserter(localEvents),
-                     [](const auto& eventData) { 
-                         return eventData.isActive() && eventData.event; 
+                     [](const auto& eventData) {
+                         return eventData.isActive() && eventData.event;
                      });
     }
-    
+
     // Process events without holding lock
     for (auto& eventData : localEvents) {
         if (eventData.event) {
@@ -422,7 +422,7 @@ void EventManager::updateEventTypeBatch(EventTypeId typeId) {
     // Simplified performance recording - reduce overhead
     auto endTime = getCurrentTimeNanos();
     double timeMs = (endTime - startTime) / 1000000.0;
-    
+
     // Only record performance for operations that took significant time
     if (timeMs > 1.0 || localEvents.size() > 50) {
         recordPerformance(typeId, timeMs);
@@ -436,13 +436,13 @@ void EventManager::updateEventTypeBatch(EventTypeId typeId) {
 }
 
 void EventManager::updateEventTypeBatchThreaded(EventTypeId typeId) {
-    if (!Hammer::ThreadSystem::Exists()) {
+    if (!HammerEngine::ThreadSystem::Exists()) {
         // Fall back to single-threaded if ThreadSystem not available
         updateEventTypeBatch(typeId);
         return;
     }
 
-    auto& threadSystem = Hammer::ThreadSystem::Instance();
+    auto& threadSystem = HammerEngine::ThreadSystem::Instance();
     auto startTime = getCurrentTimeNanos();
 
     // Copy events to local vector to minimize lock time
@@ -450,16 +450,16 @@ void EventManager::updateEventTypeBatchThreaded(EventTypeId typeId) {
     {
         std::shared_lock<std::shared_mutex> lock(m_eventsMutex);
         auto& container = m_eventsByType[static_cast<size_t>(typeId)];
-        
+
         if (container.empty()) {
             return;
         }
-        
+
         localEvents.reserve(container.size());
-        std::copy_if(container.begin(), container.end(), 
+        std::copy_if(container.begin(), container.end(),
                      std::back_inserter(localEvents),
-                     [](const auto& eventData) { 
-                         return eventData.isActive() && eventData.event; 
+                     [](const auto& eventData) {
+                         return eventData.isActive() && eventData.event;
                      });
     }
 
@@ -469,14 +469,14 @@ void EventManager::updateEventTypeBatchThreaded(EventTypeId typeId) {
 
     // Proper WorkerBudget calculation with architectural respect
     size_t availableWorkers = static_cast<size_t>(threadSystem.getThreadCount());
-    Hammer::WorkerBudget budget = Hammer::calculateWorkerBudget(availableWorkers);
+    HammerEngine::WorkerBudget budget = HammerEngine::calculateWorkerBudget(availableWorkers);
     size_t eventWorkerBudget = budget.eventAllocated;
 
     // Check queue pressure before submitting tasks
     size_t queueSize = threadSystem.getQueueSize();
     size_t queueCapacity = threadSystem.getQueueCapacity();
     size_t pressureThreshold = (queueCapacity * 9) / 10; // 90% capacity threshold
-    
+
     if (queueSize > pressureThreshold) {
         // Graceful degradation: fallback to single-threaded processing
         EVENT_DEBUG("Queue pressure detected (" + std::to_string(queueSize) + "/" +
@@ -486,7 +486,7 @@ void EventManager::updateEventTypeBatchThreaded(EventTypeId typeId) {
                 eventData.event->update();
             }
         }
-        
+
         // Record performance and return early
         auto endTime = getCurrentTimeNanos();
         double timeMs = (endTime - startTime) / 1000000.0;
@@ -502,7 +502,7 @@ void EventManager::updateEventTypeBatchThreaded(EventTypeId typeId) {
     // Dynamic batch sizing based on queue pressure for optimal performance
     size_t minEventsPerBatch = 10;
     size_t maxBatches = 4;
-    
+
     // Adjust batch strategy based on queue pressure
     double queuePressure = static_cast<double>(queueSize) / queueCapacity;
     if (queuePressure > 0.5) {
@@ -521,10 +521,10 @@ void EventManager::updateEventTypeBatchThreaded(EventTypeId typeId) {
     if (optimalWorkerCount > 1 && localEvents.size() > 20) {
         size_t batchCount = std::min(optimalWorkerCount, localEvents.size() / minEventsPerBatch);
         batchCount = std::max(size_t(1), std::min(batchCount, maxBatches));
-        
+
         size_t batchSize = localEvents.size() / batchCount;
         size_t remainingEvents = localEvents.size() % batchCount;
-        
+
         std::vector<std::future<void>> futures;
         futures.reserve(batchCount);
 
@@ -532,7 +532,7 @@ void EventManager::updateEventTypeBatchThreaded(EventTypeId typeId) {
         for (size_t i = 0; i < batchCount; ++i) {
             size_t start = i * batchSize;
             size_t end = start + batchSize;
-            
+
             // Add remaining events to last batch
             if (i == batchCount - 1) {
                 end += remainingEvents;
@@ -544,7 +544,7 @@ void EventManager::updateEventTypeBatchThreaded(EventTypeId typeId) {
                         localEvents[j].event->update();
                     }
                 }
-            }, Hammer::TaskPriority::Normal, "Event_OptimalBatch"));
+            }, HammerEngine::TaskPriority::Normal, "Event_OptimalBatch"));
         }
 
         // Wait for all batches to complete
@@ -563,7 +563,7 @@ void EventManager::updateEventTypeBatchThreaded(EventTypeId typeId) {
     // Simplified performance recording
     auto endTime = getCurrentTimeNanos();
     double timeMs = (endTime - startTime) / 1000000.0;
-    
+
     if (timeMs > 1.0 || localEvents.size() > 50) {
         recordPerformance(typeId, timeMs);
     }
@@ -590,16 +590,16 @@ bool EventManager::changeWeather(const std::string& weatherType, float transitio
         std::lock_guard<std::mutex> lock(m_handlersMutex);
         const auto& handlers = m_handlersByType[static_cast<size_t>(EventTypeId::Weather)];
         localHandlers.reserve(handlers.size());
-        std::copy_if(handlers.begin(), handlers.end(), 
+        std::copy_if(handlers.begin(), handlers.end(),
                      std::back_inserter(localHandlers),
-                     [](const auto& handler) { 
-                         return handler != nullptr; 
+                     [](const auto& handler) {
+                         return handler != nullptr;
                      });
     }
 
     if (!localHandlers.empty()) {
         EVENT_INFO("Triggering weather change to: " + weatherType + " (transition: " + std::to_string(transitionTime) + "s)");
-        
+
         // Create a temporary EventData for handler execution
         EventData eventData;
         eventData.typeId = EventTypeId::Weather;
@@ -627,16 +627,16 @@ bool EventManager::changeScene(const std::string& sceneId, const std::string& tr
         std::lock_guard<std::mutex> lock(m_handlersMutex);
         const auto& handlers = m_handlersByType[static_cast<size_t>(EventTypeId::SceneChange)];
         localHandlers.reserve(handlers.size());
-        std::copy_if(handlers.begin(), handlers.end(), 
+        std::copy_if(handlers.begin(), handlers.end(),
                      std::back_inserter(localHandlers),
-                     [](const auto& handler) { 
-                         return handler != nullptr; 
+                     [](const auto& handler) {
+                         return handler != nullptr;
                      });
     }
 
     if (!localHandlers.empty()) {
         EVENT_INFO("Triggering scene change to: " + sceneId + " (transition: " + transitionType + ", duration: " + std::to_string(transitionTime) + "s)");
-        
+
         // Create a temporary EventData for handler execution
         EventData eventData;
         eventData.typeId = EventTypeId::SceneChange;
@@ -664,16 +664,16 @@ bool EventManager::spawnNPC(const std::string& npcType, float x, float y) const 
         std::lock_guard<std::mutex> lock(m_handlersMutex);
         const auto& handlers = m_handlersByType[static_cast<size_t>(EventTypeId::NPCSpawn)];
         localHandlers.reserve(handlers.size());
-        std::copy_if(handlers.begin(), handlers.end(), 
+        std::copy_if(handlers.begin(), handlers.end(),
                      std::back_inserter(localHandlers),
-                     [](const auto& handler) { 
-                         return handler != nullptr; 
+                     [](const auto& handler) {
+                         return handler != nullptr;
                      });
     }
 
     if (!localHandlers.empty()) {
         EVENT_INFO("Triggering NPC spawn: " + npcType + " at (" + std::to_string(x) + ", " + std::to_string(y) + ")");
-        
+
         // Create a temporary EventData for handler execution
         EventData eventData;
         eventData.typeId = EventTypeId::NPCSpawn;
@@ -865,7 +865,7 @@ void EventManager::recordPerformance(EventTypeId typeId, double timeMs) const {
     // Reduced lock contention - only update stats periodically
     static thread_local uint64_t updateCounter = 0;
     updateCounter++;
-    
+
     // Only acquire lock every 10th call to reduce contention
     if (updateCounter % 10 == 0 || timeMs > 5.0) {
         std::lock_guard<std::mutex> lock(m_perfMutex);

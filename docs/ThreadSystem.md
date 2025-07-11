@@ -22,7 +22,7 @@ ThreadSystem (Singleton)
 │       └── Exception Handling
 └── WorkerBudget System (Intelligent resource allocation)
     ├── AI: 45% allocation
-    ├── Particles: 25% allocation  
+    ├── Particles: 25% allocation
     ├── Events: 20% allocation
     ├── Engine: 1-2 workers reserved
     └── Buffer: Dynamic burst capacity
@@ -125,7 +125,7 @@ bool isStopping() const {
 
 ```cpp
 #include "core/ThreadSystem.hpp"
-using namespace Hammer;
+using namespace HammerEngine;
 
 // Initialize with default settings (recommended)
 if (!ThreadSystem::Instance().init()) {
@@ -270,7 +270,7 @@ struct WorkerBudget {
     size_t aiAllocated;       // Allocated for AI subsystem (60% of remaining)
     size_t eventAllocated;    // Allocated for event processing (30% of remaining)
     size_t remaining;         // Buffer workers for burst capacity
-    
+
     size_t getOptimalWorkerCount(size_t baseAllocation, size_t workloadSize, size_t workloadThreshold) const;
     bool hasBufferCapacity() const { return remaining > 0; }
     size_t getMaxWorkerCount(size_t baseAllocation) const { return baseAllocation + remaining; }
@@ -335,20 +335,20 @@ WorkerBudget budget = {
 void AIManager::update() {
     size_t entityCount = getActiveEntityCount();
     if (entityCount == 0) return;
-    
+
     // Calculate optimal worker allocation using WorkerBudget system
     auto& threadSystem = ThreadSystem::Instance();
     size_t availableWorkers = static_cast<size_t>(threadSystem.getThreadCount());
     WorkerBudget budget = calculateWorkerBudget(availableWorkers);
-    
+
     // Use WorkerBudget's intelligent buffer allocation
     size_t optimalWorkerCount = budget.getOptimalWorkerCount(budget.aiAllocated, entityCount, 1000);
-    
+
     // Optimal batching: 2-4 large batches for best performance
     size_t minEntitiesPerBatch = 1000;
     size_t batchCount = std::min(optimalWorkerCount, entityCount / minEntitiesPerBatch);
     batchCount = std::max(size_t(1), std::min(batchCount, size_t(4))); // Cap at 4 batches
-    
+
     size_t entitiesPerBatch = entityCount / batchCount;
     size_t remainingEntities = entityCount % batchCount;
 
@@ -963,7 +963,7 @@ public:
 void AIManager::updateOptimal() {
     size_t workerCount = ThreadSystem::Instance().getThreadCount();
     size_t batchSize = entities.size() / workerCount;
-    
+
     for (size_t i = 0; i < workerCount; ++i) {
         ThreadSystem::Instance().enqueueTask([=]() {
             processBatch(i * batchSize, batchSize);
@@ -1021,13 +1021,13 @@ ThreadSystem::Instance().enqueueTask(task, TaskPriority::Normal); // Consider pr
 ```cpp
 void validateThreadSystemHealth() {
     auto& ts = ThreadSystem::Instance();
-    
+
     // Check queue utilization
     double utilization = static_cast<double>(ts.getQueueSize()) / ts.getQueueCapacity();
     if (utilization > 0.8) {
         THREADSYSTEM_WARN("Queue utilization high: " + std::to_string(utilization * 100) + "%");
     }
-    
+
     // Check worker efficiency
     size_t processed = ts.getTotalTasksProcessed();
     size_t enqueued = ts.getTotalTasksEnqueued();

@@ -8,7 +8,7 @@ This guide addresses common issues you might encounter when working with our tes
 
 **Problem**: You might get errors about multiple definitions of symbols or functions.
 
-**Solution**: 
+**Solution**:
 - Ensure the MockPlayer doesn't redefine member variables that are already in the base class
 - Make sure there's only one definition of each function
 - Use `inline` for functions defined in headers
@@ -108,7 +108,7 @@ struct TestFixture {
         // 3. Configure task priorities if needed
         // 4. Enable threading
     }
-    
+
     ~TestFixture() {
         // Cleanup code in reverse order:
         // 1. Disable threading for all managers
@@ -142,13 +142,13 @@ When testing components that use ThreadSystem's priority-based scheduling (AIMan
 1. **Initialization with Priorities**:
    ```cpp
    // Initialize ThreadSystem first
-   Hammer::ThreadSystem::Instance().init();
-   
+   HammerEngine::ThreadSystem::Instance().init();
+
    // Initialize manager
    AIManager::Instance().init();
-   
+
    // Configure with specific priority
-   AIManager::Instance().configureThreading(true, 0, Hammer::TaskPriority::High);
+   AIManager::Instance().configureThreading(true, 0, HammerEngine::TaskPriority::High);
    ```
 
 2. **Testing Priority Levels**:

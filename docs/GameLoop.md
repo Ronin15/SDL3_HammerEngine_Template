@@ -34,7 +34,7 @@ The GameLoop class provides a robust, high-performance game loop implementation 
 int main() {
     // Create single-threaded game loop
     GameLoop gameLoop(60.0f, 1.0f/60.0f, false);
-    
+
     // Set up callbacks
     gameLoop.setEventHandler([]() {
         // Handle SDL events here
@@ -45,22 +45,22 @@ int main() {
             }
         }
     });
-    
+
     gameLoop.setUpdateHandler([](float deltaTime) {
         // Update game logic at fixed timestep
         updateGameWorld(deltaTime);
     });
-    
+
     gameLoop.setRenderHandler([]() {
         // Render at variable framerate
         renderGame();
     });
-    
+
     // Start the game loop
     if (!gameLoop.run()) {
         return -1;
     }
-    
+
     return 0;
 }
 ```
@@ -70,19 +70,19 @@ int main() {
 ```cpp
 int main() {
     // Initialize ThreadSystem first
-    Hammer::ThreadSystem::Initialize(8); // 8 worker threads
-    
+    HammerEngine::ThreadSystem::Initialize(8); // 8 worker threads
+
     // Create multi-threaded game loop
     GameLoop gameLoop(60.0f, 1.0f/60.0f, true);
-    
+
     // Setup callbacks (same as above)
     setupCallbacks(gameLoop);
-    
+
     // Run - automatically allocates workers from WorkerBudget
     gameLoop.run();
-    
+
     // Cleanup
-    Hammer::ThreadSystem::Shutdown();
+    HammerEngine::ThreadSystem::Shutdown();
     return 0;
 }
 ```
@@ -104,25 +104,25 @@ class GameLoop {
 private:
     // Timing Management
     std::unique_ptr<TimestepManager> m_timestepManager;
-    
+
     // Callback Handlers
     EventHandler m_eventHandler;
     UpdateHandler m_updateHandler;
     RenderHandler m_renderHandler;
-    
+
     // State Management
     std::atomic<bool> m_running;
     std::atomic<bool> m_paused;
     std::atomic<bool> m_stopRequested;
-    
+
     // Threading System
     bool m_threaded;
     std::future<void> m_updateTaskFuture;
     std::atomic<bool> m_updateTaskRunning;
-    
+
     // Performance Tracking
     std::atomic<int> m_updateCount;
-    
+
     // Thread Safety
     std::mutex m_callbackMutex;
 };
@@ -191,16 +191,16 @@ void GameLoop::processRender() {
 void GameLoop::runMainThread() {
     while (m_running.load() && !m_stopRequested.load()) {
         m_timestepManager->startFrame();
-        
+
         try {
             processEvents();    // SDL events (main thread required)
-            
+
             if (!m_threaded && !m_paused.load()) {
                 processUpdates();  // Game logic updates
             }
-            
+
             processRender();    // Rendering
-            
+
             m_timestepManager->endFrame();
         } catch (const std::exception& e) {
             GAMELOOP_ERROR("Exception in main thread: " + std::string(e.what()));
@@ -218,20 +218,20 @@ void GameLoop::runMainThread() {
 ### WorkerBudget-Aware Multi-Threaded Mode
 
 ```cpp
-void GameLoop::runUpdateWorker(const Hammer::WorkerBudget& budget) {
+void GameLoop::runUpdateWorker(const HammerEngine::WorkerBudget& budget) {
     GAMELOOP_INFO("Update worker started with " + std::to_string(budget.engineReserved) + " allocated workers");
-    
+
     // Adaptive timing system
     float targetFPS = m_timestepManager->getTargetFPS();
     const auto targetFrameTime = std::chrono::microseconds(static_cast<long>(1000000.0f / targetFPS));
-    
+
     // Performance tracking for adaptive sleep
     auto avgUpdateTime = std::chrono::microseconds(0);
-    
+
     // System capability detection
     bool canUseParallelUpdates = (budget.engineReserved >= 2);
     bool isHighEndSystem = (budget.totalWorkers > 4);
-    
+
     while (m_updateTaskRunning.load() && !m_stopRequested.load()) {
         // Adaptive update processing based on available workers
         if (canUseParallelUpdates && !m_paused.load()) {
@@ -239,7 +239,7 @@ void GameLoop::runUpdateWorker(const Hammer::WorkerBudget& budget) {
         } else if (!m_paused.load()) {
             processUpdates();
         }
-        
+
         // Adaptive sleep timing based on system capabilities
         // ... (sophisticated timing logic)
     }
@@ -257,7 +257,7 @@ The GameLoop automatically scales its resource usage based on the WorkerBudget a
 
 **Example Allocation:**
 - 4-core system: 1-2 workers allocated to GameLoop
-- 8-core system: 2-4 workers allocated to GameLoop  
+- 8-core system: 2-4 workers allocated to GameLoop
 - 16-core system: 4-8 workers allocated to GameLoop
 
 ### Thread Synchronization & Critical Priority
@@ -268,15 +268,15 @@ private:
     // Future-based task management instead of raw threads
     std::future<void> m_updateTaskFuture;
     std::atomic<bool> m_updateTaskRunning;
-    
+
     // Thread-safe callback protection
     std::mutex m_callbackMutex;
-    
+
     // Performance tracking
     std::atomic<int> m_updateCount;
-    
+
     // Enhanced processing methods
-    void runUpdateWorker(const Hammer::WorkerBudget& budget);
+    void runUpdateWorker(const HammerEngine::WorkerBudget& budget);
     void processUpdatesParallel();
 };
 ```
@@ -411,7 +411,7 @@ bool isRunning();        // Check if loop is currently running
 
 ```cpp
 void setEventHandler(EventHandler handler);
-void setUpdateHandler(UpdateHandler handler);  
+void setUpdateHandler(UpdateHandler handler);
 void setRenderHandler(RenderHandler handler);
 ```
 
@@ -479,14 +479,14 @@ class ThreadSafeGameWorld {
 private:
     mutable std::shared_mutex m_stateMutex;
     GameState m_gameState;
-    
+
 public:
     // Write operations (updates) use exclusive lock
     void update(float deltaTime) {
         std::unique_lock<std::shared_mutex> lock(m_stateMutex);
         m_gameState.update(deltaTime);
     }
-    
+
     // Read operations (rendering) use shared lock
     void render() const {
         std::shared_lock<std::shared_mutex> lock(m_stateMutex);
@@ -502,7 +502,7 @@ class GameApplication {
 private:
     std::shared_ptr<GameLoop> m_gameLoop;
     std::atomic<bool> m_shutdownRequested{false};
-    
+
 public:
     void requestShutdown() {
         m_shutdownRequested.store(true);
@@ -510,7 +510,7 @@ public:
             m_gameLoop->stop();
         }
     }
-    
+
     void setupCallbacks() {
         m_gameLoop->setEventHandler([this]() {
             SDL_Event event;
@@ -531,19 +531,19 @@ public:
 class PerformanceAwareGameLoop {
 private:
     std::shared_ptr<GameLoop> m_gameLoop;
-    
+
 public:
     void monitorPerformance() {
         m_gameLoop->setUpdateHandler([this](float deltaTime) {
             static int frameCounter = 0;
             static auto lastTime = std::chrono::high_resolution_clock::now();
-            
+
             updateGameLogic(deltaTime);
-            
+
             if (++frameCounter % 300 == 0) { // Every 5 seconds at 60 FPS
                 float fps = m_gameLoop->getCurrentFPS();
                 uint32_t frameTime = m_gameLoop->getFrameTimeMs();
-                
+
                 if (fps < 45.0f) {
                     GAMELOOP_WARN("Low FPS detected: " + std::to_string(fps));
                     adjustQualitySettings();
@@ -566,24 +566,24 @@ class MyGameApplication {
 private:
     std::shared_ptr<GameLoop> m_gameLoop;
     std::atomic<bool> m_running{true};
-    
+
 public:
     MyGameApplication() : m_gameLoop(std::make_shared<GameLoop>(60.0f, 1.0f/60.0f, true)) {}
-    
+
     bool initialize() {
         // Initialize ThreadSystem for multi-threading
-        if (!Hammer::ThreadSystem::Initialize()) {
+        if (!HammerEngine::ThreadSystem::Initialize()) {
             GAMELOOP_ERROR("Failed to initialize ThreadSystem");
             return false;
         }
-        
+
         // Setup callbacks
         setupCallbacks();
-        
+
         GAMELOOP_INFO("Game application initialized successfully");
         return true;
     }
-    
+
     bool run() {
         if (!m_gameLoop->run()) {
             GAMELOOP_ERROR("Game loop failed to start");
@@ -591,16 +591,16 @@ public:
         }
         return true;
     }
-    
+
     void shutdown() {
         m_gameLoop->stop();
-        
+
         // Cleanup ThreadSystem
-        Hammer::ThreadSystem::Shutdown();
-        
+        HammerEngine::ThreadSystem::Shutdown();
+
         GAMELOOP_INFO("Game application shut down successfully");
     }
-    
+
 private:
     void setupCallbacks() {
         // Event handling (main thread)
@@ -614,7 +614,7 @@ private:
                 // Handle other events...
             }
         });
-        
+
         // Game logic updates (update worker thread)
         m_gameLoop->setUpdateHandler([this](float deltaTime) {
             if (m_running.load()) {
@@ -623,7 +623,7 @@ private:
                 updateAI(deltaTime);
             }
         });
-        
+
         // Rendering (main thread)
         m_gameLoop->setRenderHandler([this]() {
             if (m_running.load()) {
@@ -635,14 +635,14 @@ private:
 
 int main() {
     MyGameApplication app;
-    
+
     if (!app.initialize()) {
         return -1;
     }
-    
+
     app.run();
     app.shutdown();
-    
+
     return 0;
 }
 ```
@@ -653,13 +653,13 @@ int main() {
 class HighPerformanceGameLoop {
 private:
     std::shared_ptr<GameLoop> m_gameLoop;
-    
+
 public:
-    HighPerformanceGameLoop() : 
+    HighPerformanceGameLoop() :
         m_gameLoop(std::make_shared<GameLoop>(120.0f, 1.0f/120.0f, true)) {
         configureTiming();
     }
-    
+
 private:
     void configureTiming() {
         // Enable high-frequency updates for competitive gaming
@@ -667,21 +667,21 @@ private:
             // Track update frequency
             static int updateCount = 0;
             static auto lastTime = std::chrono::high_resolution_clock::now();
-            
+
             updateHighFrequencyLogic(deltaTime);
-            
+
             if (++updateCount % 1200 == 0) { // Every 10 seconds at 120 FPS
                 auto now = std::chrono::high_resolution_clock::now();
                 auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - lastTime);
-                
+
                 float actualUpdateRate = 1200.0f / (elapsed.count() / 1000.0f);
                 GAMELOOP_INFO("High-frequency update rate: " + std::to_string(actualUpdateRate) + " Hz");
-                
+
                 lastTime = now;
             }
         });
     }
-    
+
     void updateHighFrequencyLogic(float deltaTime) {
         // Critical game logic that benefits from high update rates
         updatePlayerInput(deltaTime);
@@ -698,12 +698,12 @@ class PausableGameLoop {
 private:
     std::shared_ptr<GameLoop> m_gameLoop;
     bool m_gameMenuOpen = false;
-    
+
 public:
     PausableGameLoop() : m_gameLoop(std::make_shared<GameLoop>()) {
         setupPauseHandling();
     }
-    
+
 private:
     void setupPauseHandling() {
         m_gameLoop->setEventHandler([this]() {
@@ -718,7 +718,7 @@ private:
                 }
             }
         });
-        
+
         m_gameLoop->setUpdateHandler([this](float deltaTime) {
             if (m_gameLoop->isPaused()) {
                 updatePauseMenu(deltaTime);
@@ -726,7 +726,7 @@ private:
                 updateGameLogic(deltaTime);
             }
         });
-        
+
         m_gameLoop->setRenderHandler([this]() {
             renderGame();
             if (m_gameLoop->isPaused()) {
@@ -734,27 +734,27 @@ private:
             }
         });
     }
-    
+
     void togglePause() {
         bool wasPaused = m_gameLoop->isPaused();
         m_gameLoop->setPaused(!wasPaused);
         m_gameMenuOpen = !wasPaused;
-        
+
         GAMELOOP_INFO(m_gameMenuOpen ? "Game paused" : "Game resumed");
     }
-    
+
     void updateGameLogic(float deltaTime) {
         // Normal game updates
     }
-    
+
     void updatePauseMenu(float deltaTime) {
         // Update pause menu UI
     }
-    
+
     void renderGame() {
         // Render game world
     }
-    
+
     void renderPauseOverlay() {
         // Render pause menu overlay
     }

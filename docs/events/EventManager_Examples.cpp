@@ -34,7 +34,7 @@ void example1_BasicSetup() {
     std::cout << "=== Example 1: Basic Setup ===" << std::endl;
 
     // Initialize ThreadSystem first (required dependency)
-    if (!Hammer::ThreadSystem::Instance().init()) {
+    if (!HammerEngine::ThreadSystem::Instance().init()) {
         std::cerr << "Failed to initialize ThreadSystem!" << std::endl;
         return;
     }
@@ -51,7 +51,7 @@ void example1_BasicSetup() {
 
     std::cout << "EventManager initialized successfully" << std::endl;
     std::cout << "Threading enabled with threshold: 100 events" << std::endl;
-    std::cout << "ThreadSystem available: " << Hammer::ThreadSystem::Exists() << std::endl;
+    std::cout << "ThreadSystem available: " << HammerEngine::ThreadSystem::Exists() << std::endl;
 }
 
 //=============================================================================
@@ -465,7 +465,7 @@ public:
         std::cout << "\n=== Example 10: Game State Integration ===" << std::endl;
 
         // Initialize required systems
-        if (!Hammer::ThreadSystem::Instance().init()) {
+        if (!HammerEngine::ThreadSystem::Instance().init()) {
             std::cerr << "Failed to initialize ThreadSystem!" << std::endl;
             return false;
         }

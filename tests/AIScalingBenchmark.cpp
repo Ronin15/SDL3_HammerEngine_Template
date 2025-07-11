@@ -43,8 +43,8 @@ public:
         return std::make_shared<BenchmarkEntity>(id, pos);
     }
 
-    void update(float deltaTime) override { 
-        m_updateCount++; 
+    void update(float deltaTime) override {
+        m_updateCount++;
         (void)deltaTime; // Suppress unused parameter warning
     }
     void render() override {}
@@ -141,7 +141,7 @@ struct GlobalFixture {
             // Enable benchmark mode to silence manager logging during tests
             HAMMER_ENABLE_BENCHMARK_MODE();
 
-            Hammer::ThreadSystem::Instance().init();
+            HammerEngine::ThreadSystem::Instance().init();
             AIManager::Instance().init();
             g_systemsInitialized = true;
         }
@@ -169,15 +169,15 @@ struct GlobalFixture {
                 std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
                 // Clean ThreadSystem
-                Hammer::ThreadSystem::Instance().clean();
+                HammerEngine::ThreadSystem::Instance().clean();
             } catch (const std::exception& e) {
                 std::cerr << "Exception during cleanup: " << e.what() << std::endl;
             } catch (...) {
                 std::cerr << "Unknown exception during cleanup" << std::endl;
             }
-            
+
             std::this_thread::sleep_for(std::chrono::milliseconds(200));
-            
+
             // Disable benchmark mode after cleanup
             HAMMER_DISABLE_BENCHMARK_MODE();
 
@@ -243,7 +243,7 @@ struct AIScalingFixture {
             // Calculate WorkerBudget allocation (mimicking the actual calculation)
             size_t workers = (systemThreads > 0) ? systemThreads - 1 : 0;
             size_t aiWorkers = static_cast<size_t>(workers * 0.6); // 60% allocation
-            std::cout << "  WorkerBudget: " << workers << " total workers, " 
+            std::cout << "  WorkerBudget: " << workers << " total workers, "
                       << aiWorkers << " allocated to AI (60%)" << std::endl;
         }
 
@@ -275,30 +275,30 @@ struct AIScalingFixture {
         if (!entities.empty()) {
             // Set player first to ensure proper distance calculations
             AIManager::Instance().setPlayerForDistanceOptimization(entities[0]);
-            
+
             // Position all entities very close to the first entity (which becomes the player reference)
             Vector2D playerPosition = entities[0]->getPosition();
-            
+
             // Keep ALL entities within optimal AI update range (under 2000 units from player)
             // Use very tight clustering to ensure high execution rates in benchmarks
             const float MAX_CLUSTER_RADIUS = 1500.0f; // Well within 4000 unit update range
-            
+
             for (size_t i = 1; i < entities.size(); ++i) {
                 // Create a very tight cluster using random positioning within small radius
                 static std::mt19937 rng(42); // Fixed seed for consistent results
                 std::uniform_real_distribution<float> angleDist(0.0f, 2.0f * 3.14159f);
                 std::uniform_real_distribution<float> radiusDist(0.0f, MAX_CLUSTER_RADIUS);
-                
+
                 float angle = angleDist(rng);
                 float radius = radiusDist(rng);
-                
+
                 float offsetX = radius * std::cos(angle);
                 float offsetY = radius * std::sin(angle);
-                
+
                 Vector2D closePosition(playerPosition.getX() + offsetX, playerPosition.getY() + offsetY);
                 entities[i]->setPosition(closePosition);
             }
-            
+
             // Debug: Check if entities have behaviors assigned and distances calculated
             size_t entitiesWithBehaviors = 0;
             for (const auto& entity : entities) {
@@ -306,13 +306,13 @@ struct AIScalingFixture {
                     entitiesWithBehaviors++;
                 }
             }
-            
-            std::cout << "  [DEBUG] Set player reference and positioned " << entities.size() 
-                      << " entities in tight cluster within " << MAX_CLUSTER_RADIUS 
+
+            std::cout << "  [DEBUG] Set player reference and positioned " << entities.size()
+                      << " entities in tight cluster within " << MAX_CLUSTER_RADIUS
                       << " units for optimal AI execution rates" << std::endl;
             std::cout << "  [DEBUG] Entities with behaviors: " << entitiesWithBehaviors << "/" << entities.size() << std::endl;
             std::cout << "  [DEBUG] Managed entity count: " << AIManager::Instance().getManagedEntityCount() << std::endl;
-            
+
 
         }
 
@@ -342,10 +342,10 @@ struct AIScalingFixture {
             }
 
             // Wait for all asynchronous AI tasks to complete before measuring
-            while (Hammer::ThreadSystem::Instance().isBusy()) {
+            while (HammerEngine::ThreadSystem::Instance().isBusy()) {
                 std::this_thread::sleep_for(std::chrono::microseconds(500));
             }
-            
+
             // Add small additional delay to ensure all behavior counts are recorded
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
 
@@ -362,11 +362,11 @@ struct AIScalingFixture {
             size_t lastCount = 0;
             size_t stableCount = 0;
             const size_t maxWaitIterations = 100; // Maximum 10 seconds wait
-            
+
             for (size_t i = 0; i < maxWaitIterations; ++i) {
                 std::this_thread::sleep_for(std::chrono::milliseconds(100));
                 size_t currentCount = AIManager::Instance().getBehaviorUpdateCount();
-                
+
                 if (currentCount == lastCount) {
                     stableCount++;
                     // Consider stable after count hasn't changed for 5 iterations (500ms)
@@ -517,7 +517,7 @@ struct AIScalingFixture {
     void runRealisticScalabilityTest() {
         std::cout << "\n===== REALISTIC AI SCALABILITY TEST SUITE =====" << std::endl;
         std::cout << "Testing automatic threading behavior across entity counts" << std::endl;
-        
+
         // Skip if shutdown is in progress
         if (g_shutdownInProgress.load()) {
             return;
@@ -525,7 +525,7 @@ struct AIScalingFixture {
 
         // Enable threading and let system decide automatically
         AIManager::Instance().configureThreading(true);
-        
+
         std::cout << "\nREALISTIC SCALABILITY SUMMARY:" << std::endl;
         std::cout << "Entity Count | Threading Mode | Updates Per Second | Performance Ratio" << std::endl;
         std::cout << "-------------|----------------|-------------------|------------------" << std::endl;
@@ -539,7 +539,7 @@ struct AIScalingFixture {
             int numEntities = entityCounts[i];
             bool willUseThreading = (numEntities >= AI_THRESHOLD);
             std::string threadingMode = willUseThreading ? "Auto-Threaded" : "Auto-Single";
-            
+
             // Use estimated rate for now, but this should be real benchmark data
             double estimatedRate = calculateRealisticPerformanceRate(numEntities, willUseThreading);
 
@@ -586,7 +586,7 @@ BOOST_AUTO_TEST_CASE(TestRealisticPerformance) {
     unsigned int systemThreads = std::thread::hardware_concurrency();
     size_t totalWorkers = (systemThreads > 0) ? systemThreads - 1 : 0;
     size_t aiWorkers = static_cast<size_t>(totalWorkers * 0.6);
-    std::cout << "System Configuration: " << systemThreads << " hardware threads, " 
+    std::cout << "System Configuration: " << systemThreads << " hardware threads, "
               << totalWorkers << " workers (" << aiWorkers << " for AI)" << std::endl;
 
     // Test below threshold (should use single-threaded automatically)
@@ -693,19 +693,19 @@ BOOST_AUTO_TEST_CASE(TestLegacyComparison) {
         std::vector<double> times;
         for (int run = 0; run < 3; ++run) {
             auto startTime = std::chrono::high_resolution_clock::now();
-            
+
             for (int update = 0; update < numUpdates; ++update) {
                 AIManager::Instance().update(0.016f); // 60 FPS deltaTime
             }
-            
+
             // Wait for all asynchronous AI tasks to complete before measuring
-            while (Hammer::ThreadSystem::Instance().isBusy()) {
+            while (HammerEngine::ThreadSystem::Instance().isBusy()) {
                 std::this_thread::sleep_for(std::chrono::microseconds(500));
             }
-            
+
             // Add small additional delay to ensure all behavior counts are recorded
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
-            
+
             auto endTime = std::chrono::high_resolution_clock::now();
             auto duration = std::chrono::duration<double, std::milli>(endTime - startTime).count();
             times.push_back(duration);
@@ -714,7 +714,7 @@ BOOST_AUTO_TEST_CASE(TestLegacyComparison) {
         // Calculate and display results
         double avgTime = std::accumulate(times.begin(), times.end(), 0.0) / times.size();
         double updatesPerSecond = (numEntities * numUpdates * 1000.0) / avgTime;
-        
+
         std::cout << "  Legacy " << mode << " Results:" << std::endl;
         std::cout << "    Avg time: " << avgTime << " ms" << std::endl;
         std::cout << "    Updates per second: " << static_cast<int>(updatesPerSecond) << std::endl;
@@ -723,7 +723,7 @@ BOOST_AUTO_TEST_CASE(TestLegacyComparison) {
     // Test forced single-threaded
     runLegacyBenchmark(numEntities, numBehaviors, numUpdates, false);
 
-    // Test forced multi-threaded  
+    // Test forced multi-threaded
     runLegacyBenchmark(numEntities, numBehaviors, numUpdates, true);
 
     // Clean up
@@ -790,31 +790,31 @@ BOOST_AUTO_TEST_CASE(TestThreadSystemQueueLoad) {
     std::cout << "This test ensures AIManager respects ThreadSystem's 4096 task limit" << std::endl;
     std::cout << "PURPOSE: Early warning system for code changes that might overwhelm ThreadSystem" << std::endl;
 
-    if (!Hammer::ThreadSystem::Exists()) {
+    if (!HammerEngine::ThreadSystem::Exists()) {
         BOOST_FAIL("ThreadSystem not available for queue monitoring test");
     }
 
-    auto& threadSystem = Hammer::ThreadSystem::Instance();
+    auto& threadSystem = HammerEngine::ThreadSystem::Instance();
     std::cout << "ThreadSystem queue capacity: " << threadSystem.getQueueCapacity() << std::endl;
-    
+
     // Test different entity counts and monitor queue usage
     std::vector<int> testCounts = {500, 1000, 2000, 5000, 10000};
     bool anyQueueGrowth = false;
-    
+
     for (int entityCount : testCounts) {
         std::cout << "\n--- Testing " << entityCount << " entities ---" << std::endl;
-        
+
         AIScalingFixture fixture;
-        
+
         size_t maxQueueSize = 0;
         size_t totalQueueSamples = 0;
         double avgQueueSize = 0.0;
         bool queueOverflow = false;
         std::vector<size_t> queueSnapshots;
-        
+
         // Use runRealisticBenchmark to create entities and monitor during updates
         (void)threadSystem.getQueueSize(); // Initial queue state (for monitoring baseline)
-        
+
         // Create entities and run a few updates while monitoring
         std::thread monitorThread([&]() {
             for (int sample = 0; sample < 30; ++sample) { // More samples for better detection
@@ -823,55 +823,55 @@ BOOST_AUTO_TEST_CASE(TestThreadSystemQueueLoad) {
                 maxQueueSize = std::max(maxQueueSize, currentQueue);
                 avgQueueSize = (avgQueueSize * totalQueueSamples + currentQueue) / (totalQueueSamples + 1);
                 totalQueueSamples++;
-                
+
                 if (currentQueue > 3500) { // Critical threshold - 85% of 4096
                     queueOverflow = true;
                 }
                 if (currentQueue > 0) {
                     anyQueueGrowth = true;
                 }
-                
+
                 std::this_thread::sleep_for(std::chrono::milliseconds(5)); // More frequent sampling
             }
         });
-        
+
         // Run realistic benchmark with minimal updates to trigger task submission
         fixture.runRealisticBenchmark(entityCount, 3, 5, 1);
-        
+
         // Wait for monitoring to complete
         monitorThread.join();
-        
+
         (void)threadSystem.getQueueSize(); // Final queue state (monitoring complete)
-        
+
         // Calculate more detailed statistics
         size_t nonZeroSamples = std::count_if(queueSnapshots.begin(), queueSnapshots.end(),
                                              [](size_t q) { return q > 0; });
         double queueUtilization = (maxQueueSize / 4096.0) * 100.0;
-        
+
         std::cout << "  Results:" << std::endl;
-        std::cout << "    Peak queue size: " << maxQueueSize << " (" << std::fixed << std::setprecision(1) 
+        std::cout << "    Peak queue size: " << maxQueueSize << " (" << std::fixed << std::setprecision(1)
                   << queueUtilization << "% of capacity)" << std::endl;
         std::cout << "    Average queue size: " << std::fixed << std::setprecision(1) << avgQueueSize << std::endl;
         std::cout << "    Non-zero queue samples: " << nonZeroSamples << "/" << queueSnapshots.size() << std::endl;
         std::cout << "    Queue overflow risk: " << (queueOverflow ? "CRITICAL" : "SAFE") << std::endl;
-        
+
         // DEFENSIVE ASSERTIONS - Will fail if future changes break queue management
         BOOST_CHECK_LT(maxQueueSize, 4000); // Critical: Must stay below ThreadSystem limit
         BOOST_CHECK_LT(queueUtilization, 85.0); // Warning: Should stay under 85% capacity
-        
+
         if (queueOverflow) {
             std::cout << "    ⚠️  CRITICAL: Queue approaching ThreadSystem limit!" << std::endl;
             std::cout << "    ⚠️  Future code changes may have broken queue management!" << std::endl;
         }
-        
+
         if (maxQueueSize > 2000) {
             std::cout << "    ⚠️  WARNING: High queue usage detected - monitor for performance impact" << std::endl;
         }
-        
+
         // Let queue drain between tests
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
-    
+
     std::cout << "\n===== THREAD SYSTEM QUEUE MONITORING COMPLETED =====" << std::endl;
     std::cout << "ThreadSystem queue capacity limit: 4096 tasks" << std::endl;
     std::cout << "Queue growth detected: " << (anyQueueGrowth ? "YES" : "NO") << std::endl;
