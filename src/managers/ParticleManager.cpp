@@ -263,8 +263,8 @@ void ParticleManager::render(SDL_Renderer* renderer, float cameraX, float camera
         // Set particle color
         SDL_SetRenderDrawColor(renderer, r, g, b, alpha);
 
-        // FIXED: Size is directly accessible from unified particle - no synchronization issues
-        float size = std::max(0.5f, std::min(particle.size, 50.0f));
+        // Use particle size directly without any size limits
+        float size = particle.size;
 
         // Render particle as a filled rectangle (accounting for camera offset)
         SDL_FRect rect = {
@@ -344,8 +344,8 @@ void ParticleManager::renderBackground(SDL_Renderer* renderer, float cameraX, fl
         // Set particle color
         SDL_SetRenderDrawColor(renderer, r, g, b, a);
 
-        // FIXED: Direct size access from unified storage
-        float size = std::max(0.5f, std::min(particle.size, 50.0f));
+        // Use particle size directly without any size limits
+        float size = particle.size;
 
         // Render particle as a filled rectangle (accounting for camera offset)
         SDL_FRect rect = {
@@ -406,8 +406,8 @@ void ParticleManager::renderForeground(SDL_Renderer* renderer, float cameraX, fl
         // Set particle color
         SDL_SetRenderDrawColor(renderer, r, g, b, a);
 
-        // FIXED: Direct size access from unified storage
-        float size = std::max(0.5f, std::min(particle.size, 50.0f));
+        // Use particle size directly without any size limits
+        float size = particle.size;
 
         // Render particle as a filled rectangle (accounting for camera offset)
         SDL_FRect rect = {
@@ -635,8 +635,8 @@ void ParticleManager::triggerWeatherEffect(const std::string& weatherType, float
             weatherPosition = Vector2D(960, -100); // High spawn for falling particles
         } else if (effectName == "Fog") {
             weatherPosition = Vector2D(960, 300); // Mid-screen for fog spread
-        } else if (effectName == "Cloudy") {
-            weatherPosition = Vector2D(960, 50); // Visible clouds at top
+} else if (effectName == "Cloudy") {
+            weatherPosition = Vector2D(960, -100); // Higher spawn point for clouds
         } else {
             weatherPosition = Vector2D(960, -50); // Default top spawn
         }
@@ -934,21 +934,22 @@ ParticleEffectDefinition ParticleManager::createFogEffect() {
 }
 
 ParticleEffectDefinition ParticleManager::createCloudyEffect() {
-    ParticleEffectDefinition cloudy("Cloudy", ParticleEffectType::Fog);
-    cloudy.emitterConfig.position = Vector2D(400, -50); // Start above screen
-    cloudy.emitterConfig.direction = Vector2D(1.0f, 0.1f); // Mostly horizontal
-    cloudy.emitterConfig.spread = 1400.0f; // Even wider spread for better cloud coverage
-    cloudy.emitterConfig.emissionRate = 10.0f; // RESTORED: Original emission rate for proper cloud density
-    cloudy.emitterConfig.minSpeed = 15.0f; // Slightly faster movement
-    cloudy.emitterConfig.maxSpeed = 25.0f;
-    cloudy.emitterConfig.minLife = 25.0f; // Longer life for persistent cloud coverage
-    cloudy.emitterConfig.maxLife = 40.0f;
-    cloudy.emitterConfig.minSize = 120.0f; // Much larger cloud particles for better visibility
-    cloudy.emitterConfig.maxSize = 200.0f; // Significantly larger maximum size
-    cloudy.emitterConfig.gravity = Vector2D(12.0f, 2.0f); // Mostly horizontal drift like wind
-    cloudy.emitterConfig.windForce = Vector2D(3.0f, -1.0f); // Additional wind force for natural movement
+ParticleEffectDefinition cloudy("Cloudy", ParticleEffectType::Fog);
+    // No initial position - will be set by triggerWeatherEffect
+    cloudy.emitterConfig.direction = Vector2D(1.0f, 0.0f); // Pure horizontal movement for clouds
+    cloudy.emitterConfig.spread = 2000.0f; // Wider spread to cover entire screen width
+    cloudy.emitterConfig.emissionRate = 5.0f; // Increased for better cloud density
+    cloudy.emitterConfig.minSpeed = 10.0f; // Slower movement for more natural drift
+    cloudy.emitterConfig.maxSpeed = 20.0f; // Cap max speed for consistency
+    cloudy.emitterConfig.minLife = 30.0f; // Longer life for persistent coverage
+    cloudy.emitterConfig.maxLife = 45.0f; // Even longer max life
+    cloudy.emitterConfig.minSize = 50.0f; // Larger minimum size for better visibility
+    cloudy.emitterConfig.maxSize = 120.0f; // Larger maximum size for variety
+    cloudy.emitterConfig.gravity = Vector2D(5.0f, 0.0f); // Gentle horizontal drift
+    cloudy.emitterConfig.windForce = Vector2D(2.0f, 0.0f); // Subtle wind effect
     cloudy.emitterConfig.textureID = "cloud";
-    cloudy.intensityMultiplier = 0.7f; // Higher intensity for better visibility
+    cloudy.emitterConfig.blendMode = ParticleBlendMode::Alpha; // Standard alpha blending
+    cloudy.intensityMultiplier = 1.0f; // Standard intensity scaling
     return cloudy;
 }
 
