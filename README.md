@@ -185,7 +185,7 @@ All test scripts support CI/CD integration with exit codes and result logging:
 echo $? # Returns 0 for success, non-zero for failures
 ```
 
-See `tests/TESTING.md` for comprehensive documentation on all testing frameworks, `tests/TROUBLESHOOTING.md` for common issues and solutions, `docs/ui/UI_Stress_Testing_Guide.md` for UI testing details, or component-specific documentation like `docs/ThreadSystem.md` for WorkerBudget system details and `docs/events/EventManager.md` for detailed information.
+See `tests/TESTING.md` for comprehensive documentation on all testing frameworks, `tests/TROUBLESHOOTING.md` for common issues and solutions, and `docs/ui/UIManager_Guide.md` for UI testing and stress testing details, or component-specific documentation like `docs/ThreadSystem.md` for WorkerBudget system details and `docs/events/EventManager.md` for detailed information.
 
 ## Static Analysis
 
@@ -419,7 +419,7 @@ The template includes a comprehensive UI stress testing framework for performanc
 
 The stress testing system serves as both a validation tool for template users and a development aid for ongoing UI performance optimization.
 
-See `include/managers/UIManager.hpp` for the full API, `docs/ui/SDL3_Logical_Presentation_Modes.md` for presentation mode details, and `docs/ui/UI_Stress_Testing_Guide.md` for comprehensive testing documentation.
+See `include/managers/UIManager.hpp` for the full API, `docs/ui/SDL3_Logical_Presentation_Modes.md` for presentation mode details, and `docs/ui/UIManager_Guide.md` for comprehensive UI usage and stress testing documentation.
 
 ### EventManager
 
