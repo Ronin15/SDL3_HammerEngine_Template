@@ -369,12 +369,11 @@ bool GameEngine::init(const std::string_view title, const int width,
     float displayScale = SDL_GetWindowDisplayScale(mp_window.get());
     if (displayScale > 0.0f) {
       dpiScale = displayScale;
-      GAMEENGINE_INFO("Using macOS display content scale: " +
-                      std::to_string(displayScale));
     } else {
       dpiScale = 1.0f;
-      GAMEENGINE_INFO("macOS display scale unavailable, using 1.0");
     }
+    GAMEENGINE_INFO("macOS display content scale: " + std::to_string(dpiScale) +
+                    (displayScale > 0.0f ? " (detected)" : " (fallback)"));
 #else
     // On other platforms, don't apply additional DPI scaling - SDL3 logical
     // presentation handles it
