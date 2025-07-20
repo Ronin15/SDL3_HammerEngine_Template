@@ -1,5 +1,11 @@
 # SaveGameManager Documentation
 
+**Where to find the code:**
+- Implementation: `src/managers/SaveGameManager.cpp`
+- Header: `include/managers/SaveGameManager.hpp`
+
+**Singleton Access:** Use `SaveGameManager::Instance()` to access the manager.
+
 ## Overview
 
 The SaveGameManager is a comprehensive save and load system designed for the Hammer Engine Template. It provides robust file management, binary save format with version control, and seamless integration with the engine's BinarySerializer system. The manager handles everything from slot-based saves to custom file naming, with full cross-platform compatibility.

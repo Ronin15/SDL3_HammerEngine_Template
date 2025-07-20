@@ -1,5 +1,11 @@
 # EventManager Documentation
 
+**Where to find the code:**
+- Implementation: `src/managers/EventManager.cpp`
+- Header: `include/managers/EventManager.hpp`
+
+**Singleton Access:** Use `EventManager::Instance()` to access the manager.
+
 ## Overview
 
 The Hammer Game Engine EventManager provides a comprehensive, high-performance event management framework as the single source of truth for all event operations. The system features:

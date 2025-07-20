@@ -1,5 +1,10 @@
 # ThreadSystem Documentation
 
+**Where to find the code:**
+- Header-only implementation: `include/core/ThreadSystem.hpp`
+
+**Singleton Access:** Use `HammerEngine::ThreadSystem::Instance()` to access the thread system.
+
 ## Overview
 
 The Hammer Engine ThreadSystem is a robust, production-ready thread pool implementation designed for high-performance game development. It provides efficient task-based concurrency with priority-based scheduling, WorkerBudget resource allocation, and comprehensive performance monitoring. The design emphasizes reliability, maintainability, and consistent performance across diverse hardware configurations.

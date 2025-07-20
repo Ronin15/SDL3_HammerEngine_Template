@@ -1,5 +1,11 @@
 # EventManager Advanced Documentation
 
+**Where to find the code:**
+- Implementation: `src/managers/EventManager.cpp`
+- Header: `include/managers/EventManager.hpp`
+
+**Singleton Access:** Use `EventManager::Instance()` to access the manager.
+
 ## Overview
 
 This document covers advanced EventManager topics including detailed threading integration, performance optimization, complex event patterns, and architectural considerations. The EventManager is the single source of truth for all operations discussed here.

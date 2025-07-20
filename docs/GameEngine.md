@@ -1,5 +1,11 @@
 # GameEngine Documentation
 
+**Where to find the code:**
+- Implementation: `src/core/GameEngine.cpp`
+- Header: `include/core/GameEngine.hpp`
+
+**Singleton Access:** Use `GameEngine::Instance()` to access the engine.
+
 ## Overview
 
 The `GameEngine` class is the core singleton that manages all game systems, SDL subsystems, and coordinates the main game loop. It serves as the central hub for initialization, resource management, threading coordination, and system integration in the Hammer Game Engine.

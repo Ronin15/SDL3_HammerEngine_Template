@@ -1,5 +1,11 @@
 # ParticleManager Documentation
 
+**Where to find the code:**
+- Implementation: `src/managers/ParticleManager.cpp`
+- Header: `include/managers/ParticleManager.hpp`
+
+**Singleton Access:** Use `ParticleManager::Instance()` to access the manager.
+
 ## Overview
 
 The ParticleManager is a high-performance, production-ready particle system designed for real-time game development. It provides efficient visual effects including weather systems, fire, smoke, sparks, and custom particle effects. The system is optimized for handling thousands of particles while maintaining 60+ FPS through advanced memory management, threading, and rendering optimizations.

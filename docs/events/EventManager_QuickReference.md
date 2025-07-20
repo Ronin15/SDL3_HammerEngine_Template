@@ -1,5 +1,11 @@
 # EventManager Quick Reference
 
+**Where to find the code:**
+- Implementation: `src/managers/EventManager.cpp`
+- Header: `include/managers/EventManager.hpp`
+
+**Singleton Access:** Use `EventManager::Instance()` to access the manager.
+
 ## Overview
 Quick reference for the Hammer Game Engine EventManager as the single source of truth for all event operations. Features queue pressure monitoring, WorkerBudget integration, and architectural consistency with AIManager.
 

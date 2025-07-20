@@ -1,5 +1,9 @@
 # AI Behavior Quick Reference
 
+**Where to find the code:**
+- Implementation: `src/ai/behaviors/`
+- Registered and managed by: `src/managers/AIManager.cpp`
+
 ## All Available Behaviors
 
 | Behavior | Modes | Complexity | Priority Range | Primary Use |

@@ -1,5 +1,11 @@
 # AI Manager System Documentation
 
+**Where to find the code:**
+- Implementation: `src/managers/AIManager.cpp`, `src/ai/behaviors/`
+- Header: `include/managers/AIManager.hpp`
+
+**Singleton Access:** Use `AIManager::Instance()` to access the manager.
+
 ## Overview
 
 The AI Manager is a high-performance, unified system for managing autonomous behaviors for game entities. It provides a single, optimized framework for implementing and controlling various AI behaviors with advanced performance features:
