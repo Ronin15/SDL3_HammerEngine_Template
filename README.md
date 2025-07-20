@@ -3,10 +3,7 @@
 
 Based off of my SDL2 template, but updated for SDL3 and completely transformed. It has simplified Entity management and Entity state management systems. Also has a more robust game state management system and uses CMake and Ninja instead of a custom build.sh. This is designed to be a jump off point for making a game with some of the low level and architecture stuff handled. Just add your content and start modifing the managers and add states. Demo's included to show how the systems integrate.
 
-I use Warp Terminal/ADE with custom cmake and ninja task configurations to build/compile on all platforms. Warp has good documentation check it out at https://www.warp.dev
-
   - **Note**: Below in the Prerequisites I mentioned some ways that I used to get the project to compile on Windows. You may need some additional tweaks depending on your system and preferences. Via Cmake the compile_commands.json file is generated automatically and moved to the project root directory. This will allow Neovim/telescope diagnostics. If neovim is setup for LSP use.
-
 
 ### Generative AI useage
  - This project has evolved into a large-scale simulation engine—not like Unity or Unreal, but rather a framework that powers the game you want to create. I’m using AI to accelerate development, but it’s not building the architecture or tying everything together for me. I’ve designed the core systems and the shell of the engine myself, and AI is helping me refine it, especially when it comes to memory safety. One of my key goals is safety, which means no raw pointers, and no manual memory allocation or deallocation (no new or delete). I also leverage AI to help me synchronize threading, resolve crashes, optimize with valgrind, and cppcheck. I really strive to remove any underfined behaviour at all costs and AI helps me with that as well. I see AI as a powerful tool—like a well-crafted sword—that slays big nasty code issues, and helps me bring games to life. I hope you find this project useful or cool!
@@ -498,8 +495,8 @@ Higher priority entities receive more frequent updates and larger detection rang
 
 ### AIDemoState
 
-A loading and rendering perfromance demonstration for the AI system: 
-  - The Target is 10K entites drawn on screen at once. I want to make sure that this is always the benchmark 60 FPS with 10k entities. The system can handle way more entites that aren't on screen. The Ants are a simple 2D sprite with a 2 frame animation. This shows the system is working optimially and showcases SDL3's renderers efficiency. 
+A loading and rendering perfromance demonstration for the AI system:
+  - The Target is 10K entites drawn on screen at once. I want to make sure that this is always the benchmark 60 FPS with 10k entities. The system can handle way more entites that aren't on screen. The Ants are a simple 2D sprite with a 2 frame animation. This shows the system is working optimially and showcases SDL3's renderers efficiency.
 
 - Mass AI Entity Handling: Spawns and manages thousands of NPCs (default: 10,000), each with dynamic, hot-swappable AI behaviors, demonstrating efficient WorkerBudget allocation and priority-based processing.
 - Live Behavior Switching: Instantly switch all NPCs between Wander, Patrol, and Chase behaviors using keys [1], [2], and [3], leveraging the AIManager’s registration and assignment system.
@@ -525,7 +522,7 @@ This SDL3 Game Template represents a complete, production-ready game engine fram
 ### Core Design Principles
 
 - **Memory Safety**: No raw pointers, no manual memory management - everything uses smart pointers and RAII
-- **Performance First**: Cache-friendly data structures, batch processing, and optimized algorithms throughout 
+- **Performance First**: Cache-friendly data structures, batch processing, and optimized algorithms throughout
 - **Type Safety**: Strong typing systems with compile-time guarantees and runtime validation
 - **Cross-Platform**: Unified codebase supporting Windows, macOS, and Linux with platform-specific optimizations
 
