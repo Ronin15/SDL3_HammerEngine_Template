@@ -1,7 +1,7 @@
 /* Copyright (c) 2025 Hammer Forged Games
  * All rights reserved.
  * Licensed under the MIT License - see LICENSE file for details
-*/
+ */
 
 #ifndef GAME_ENGINE_HPP
 #define GAME_ENGINE_HPP
@@ -22,17 +22,16 @@ class InputManager;
 class ParticleManager;
 
 class GameEngine {
- public:
-
+public:
   ~GameEngine() = default;
 
   /**
    * @brief Gets the singleton instance of GameEngine
    * @return Reference to the GameEngine singleton instance
    */
-  static GameEngine& Instance(){
-      static GameEngine instance;
-      return instance;
+  static GameEngine &Instance() {
+    static GameEngine instance;
+    return instance;
   }
 
   /**
@@ -43,24 +42,25 @@ class GameEngine {
    * @param fullscreen Whether to start in fullscreen mode
    * @return true if initialization successful, false otherwise
    */
-  bool init(std::string_view title, int width, int height, bool fullscreen);
+  bool init(const std::string_view title, const int width, const int height,
+            bool fullscreen);
 
   /**
    * @brief Handles SDL events and input processing
    */
   void handleEvents();
-  
+
   /**
    * @brief Updates game logic with fixed timestep
    * @param deltaTime Time elapsed since last update in seconds
    */
   void update(float deltaTime);
-  
+
   /**
    * @brief Main rendering function called from game loop
    */
   void render();
-  
+
   /**
    * @brief Cleans up all engine resources and shuts down systems
    */
@@ -87,84 +87,86 @@ class GameEngine {
    * @param path Path to resources to load
    * @return true if loading started successfully, false otherwise
    */
-  bool loadResourcesAsync(const std::string& path);
+  bool loadResourcesAsync(const std::string &path);
 
   /**
    * @brief Waits for update thread to complete current frame
    */
   void waitForUpdate();
-  
+
   /**
    * @brief Signals that update processing is complete
    */
   void signalUpdateComplete();
-  
+
   /**
    * @brief Checks if there's a new frame ready to render
    * @return true if new frame available, false otherwise
    */
   bool hasNewFrameToRender() const noexcept;
-  
+
   /**
    * @brief Checks if update is currently running
    * @return true if update in progress, false otherwise
    */
   bool isUpdateRunning() const noexcept;
-  
+
   /**
    * @brief Gets the current buffer index being used for updates
    * @return Current buffer index (0 or 1)
    */
   size_t getCurrentBufferIndex() const noexcept;
-  
+
   /**
    * @brief Gets the buffer index being used for rendering
    * @return Render buffer index (0 or 1)
    */
   size_t getRenderBufferIndex() const noexcept;
-  
+
   /**
    * @brief Swaps double buffers for thread-safe rendering
    */
   void swapBuffers();
-  
-
 
   /**
    * @brief Gets pointer to the game state manager
    * @return Pointer to GameStateManager instance
    */
-  GameStateManager* getGameStateManager() const { return mp_gameStateManager.get(); }
+  GameStateManager *getGameStateManager() const {
+    return mp_gameStateManager.get();
+  }
 
   /**
    * @brief Sets the game loop reference for delegation
    * @param gameLoop Shared pointer to the GameLoop instance
    */
-  void setGameLoop(std::shared_ptr<GameLoop> gameLoop) { m_gameLoop = gameLoop; }
-  
+  void setGameLoop(std::shared_ptr<GameLoop> gameLoop) {
+    m_gameLoop = gameLoop;
+  }
+
   /**
    * @brief Sets the running state of the engine
    * @param running New running state
    */
   void setRunning(bool running);
-  
+
   /**
    * @brief Gets the current running state of the engine
    * @return true if engine is running, false otherwise
    */
   bool getRunning() const;
-  
+
   /**
    * @brief Gets the SDL renderer instance
    * @return Pointer to SDL renderer
    */
-  SDL_Renderer* getRenderer() const noexcept { return mp_renderer.get(); }
+  SDL_Renderer *getRenderer() const noexcept { return mp_renderer.get(); }
 
   /**
    * @brief Gets the SDL window instance
    * @return Pointer to SDL window
    */
-  SDL_Window* getWindow() const noexcept { return mp_window.get(); }
+  SDL_Window *getWindow() const noexcept { return mp_window.get(); }
 
   /**
    * @brief Gets current FPS from GameLoop's TimestepManager
@@ -177,38 +179,41 @@ class GameEngine {
    * @return Window width in pixels
    */
   int getWindowWidth() const noexcept { return m_windowWidth; }
-  
+
   /**
    * @brief Gets the current window height
    * @return Window height in pixels
    */
   int getWindowHeight() const noexcept { return m_windowHeight; }
-  
+
   /**
    * @brief Gets the logical rendering width used for UI positioning
    * @return Logical rendering width in pixels
    */
   int getLogicalWidth() const noexcept { return m_logicalWidth; }
-  
+
   /**
    * @brief Gets the logical rendering height used for UI positioning
    * @return Logical rendering height in pixels
    */
   int getLogicalHeight() const noexcept { return m_logicalHeight; }
-  
+
   /**
    * @brief Sets the window size
    * @param width New window width in pixels
    * @param height New window height in pixels
    */
-  void setWindowSize(int width, int height) { m_windowWidth = width; m_windowHeight = height; }
+  void setWindowSize(int width, int height) {
+    m_windowWidth = width;
+    m_windowHeight = height;
+  }
 
   /**
    * @brief Sets the logical presentation mode for rendering
    * @param mode SDL logical presentation mode to use
    */
   void setLogicalPresentationMode(SDL_RendererLogicalPresentation mode);
-  
+
   /**
    * @brief Gets the current logical presentation mode
    * @return Current logical presentation mode
@@ -217,7 +222,8 @@ class GameEngine {
 
   /**
    * @brief Gets the DPI scale factor calculated during initialization
-   * @return DPI scale factor (1.0 for standard DPI, higher for high-DPI displays)
+   * @return DPI scale factor (1.0 for standard DPI, higher for high-DPI
+   * displays)
    */
   float getDPIScale() const { return m_dpiScale; }
 
@@ -246,61 +252,63 @@ class GameEngine {
    */
   bool setVSyncEnabled(bool enable);
 
- private:
+private:
   std::unique_ptr<GameStateManager> mp_gameStateManager{nullptr};
-  std::unique_ptr<SDL_Window, decltype(&SDL_DestroyWindow)> mp_window{nullptr, SDL_DestroyWindow};
-  std::unique_ptr<SDL_Renderer, decltype(&SDL_DestroyRenderer)> mp_renderer{nullptr, SDL_DestroyRenderer};
-  std::weak_ptr<GameLoop> m_gameLoop{};  // Non-owning weak reference to GameLoop
+  std::unique_ptr<SDL_Window, decltype(&SDL_DestroyWindow)> mp_window{
+      nullptr, SDL_DestroyWindow};
+  std::unique_ptr<SDL_Renderer, decltype(&SDL_DestroyRenderer)> mp_renderer{
+      nullptr, SDL_DestroyRenderer};
+  std::weak_ptr<GameLoop> m_gameLoop{}; // Non-owning weak reference to GameLoop
   int m_windowWidth{0};
   int m_windowHeight{0};
-  int m_logicalWidth{1920};   // Logical rendering width for UI positioning
-  int m_logicalHeight{1080};  // Logical rendering height for UI positioning
-  
+  int m_logicalWidth{1920};  // Logical rendering width for UI positioning
+  int m_logicalHeight{1080}; // Logical rendering height for UI positioning
+
   // Cached manager references for zero-overhead performance
   // Step 2: Re-implementing manager caching with proper initialization order
-  // InputManager not cached - handled in handleEvents() for proper SDL event polling architecture
-  AIManager* mp_aiManager{nullptr};
-  EventManager* mp_eventManager{nullptr};
-  ParticleManager* mp_particleManager{nullptr};
-  
+  // InputManager not cached - handled in handleEvents() for proper SDL event
+  // polling architecture
+  AIManager *mp_aiManager{nullptr};
+  EventManager *mp_eventManager{nullptr};
+  ParticleManager *mp_particleManager{nullptr};
+
   // Logical presentation settings
-  SDL_RendererLogicalPresentation m_logicalPresentationMode{SDL_LOGICAL_PRESENTATION_LETTERBOX};
-  
+  SDL_RendererLogicalPresentation m_logicalPresentationMode{
+      SDL_LOGICAL_PRESENTATION_LETTERBOX};
+
   // DPI scaling
   float m_dpiScale{1.0f};
 
   // Multithreading synchronization
   std::mutex m_updateMutex{};
   std::condition_variable m_updateCondition{};
-  
+
   // Using memory_order for thread synchronization
   std::atomic<bool> m_updateCompleted{false};
   std::atomic<bool> m_updateRunning{false};
   std::atomic<bool> m_stopRequested{false};
   std::atomic<uint64_t> m_lastUpdateFrame{0};
   std::atomic<uint64_t> m_lastRenderedFrame{0};
-  
+
   // Double buffering (ping-pong buffers)
   static constexpr size_t BUFFER_COUNT = 2;
   std::atomic<size_t> m_currentBufferIndex{0};
   std::atomic<size_t> m_renderBufferIndex{0};
   std::atomic<bool> m_bufferReady[BUFFER_COUNT]{false, false};
-  
+
   // Buffer synchronization (lock-free atomic operations)
   std::condition_variable m_bufferCondition{};
-  
+
   // Protection for high entity counts
   std::atomic<size_t> m_entityProcessingCount{0};
 
   // Render synchronization
   std::mutex m_renderMutex{};
 
-
-
   // Delete copy constructor and assignment operator
-  GameEngine(const GameEngine&) = delete; // Prevent copying
-  GameEngine& operator=(const GameEngine&) = delete; // Prevent assignment
+  GameEngine(const GameEngine &) = delete;            // Prevent copying
+  GameEngine &operator=(const GameEngine &) = delete; // Prevent assignment
 
   GameEngine() : m_windowWidth{1280}, m_windowHeight{720} {}
 };
-#endif  // GAME_ENGINE_HPP
+#endif // GAME_ENGINE_HPP
