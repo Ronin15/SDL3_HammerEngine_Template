@@ -1,5 +1,11 @@
 # TextureManager Documentation
 
+**Where to find the code:**
+- Implementation: `src/managers/TextureManager.cpp`
+- Header: `include/managers/TextureManager.hpp`
+
+**Singleton Access:** Use `TextureManager::Instance()` to access the manager.
+
 ## Overview
 
 The TextureManager provides a centralized system for loading, managing, and rendering textures in the Hammer Game Engine. It handles PNG image files with support for directory-based batch loading, sprite animations, parallax scrolling, and efficient texture management with automatic memory cleanup.

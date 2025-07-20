@@ -1,5 +1,11 @@
 # SoundManager Documentation
 
+**Where to find the code:**
+- Implementation: `src/managers/SoundManager.cpp`
+- Header: `include/managers/SoundManager.hpp`
+
+**Singleton Access:** Use `SoundManager::Instance()` to access the manager.
+
 ## Overview
 
 The SoundManager provides a centralized audio system for the Hammer Game Engine, handling both sound effects and music playback. It supports multiple audio formats with volume control, efficient resource management, and seamless integration with game states.

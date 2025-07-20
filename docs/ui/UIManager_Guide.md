@@ -1,5 +1,11 @@
 # UIManager System Guide
 
+**Where to find the code:**
+- Implementation: `src/managers/UIManager.cpp`
+- Header: `include/managers/UIManager.hpp`
+
+**Singleton Access:** Use `UIManager::Instance()` to access the manager.
+
 ## Overview
 
 The UIManager is a comprehensive UI system for SDL3 games that provides reusable UI components with professional theming, content-aware auto-sizing, animations, and event handling. Key features include:

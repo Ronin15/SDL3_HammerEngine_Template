@@ -1,5 +1,11 @@
 # FontManager Documentation
 
+**Where to find the code:**
+- Implementation: `src/managers/FontManager.cpp`
+- Header: `include/managers/FontManager.hpp`
+
+**Singleton Access:** Use `FontManager::Instance()` to access the manager.
+
 ## Overview
 
 The FontManager provides a centralized system for loading, managing, and rendering text in the Hammer Game Engine. It integrates seamlessly with the DPI-aware font system and UI components to provide crisp, professional text rendering across all display types.

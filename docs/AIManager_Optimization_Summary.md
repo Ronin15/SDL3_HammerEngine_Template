@@ -1,5 +1,9 @@
 # AIManager Optimization Summary
 
+**Where to find the code:**
+- Implementation: `src/managers/AIManager.cpp`, `src/ai/behaviors/`
+- Header: `include/managers/AIManager.hpp`
+
 ## Overview
 The AIManager has been completely optimized achieving **4-6% CPU usage** with 1000+ entities through intelligent batching, lock optimization, and elimination of unnecessary computations. These changes maintain all existing functionality while providing dramatic performance improvements.
 

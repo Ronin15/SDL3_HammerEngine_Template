@@ -1,5 +1,9 @@
 # AI Behavior Modes Documentation
 
+**Where to find the code:**
+- Implementation: `src/ai/behaviors/`
+- Registered and managed by: `src/managers/AIManager.cpp`
+
 ## Overview
 
 The Hammer Game Engine AI system includes comprehensive mode-based behavior configuration for all AI behaviors. These modes provide automatic setup for common patterns, eliminating manual configuration while ensuring consistent behavior across different NPC types. The system supports 8 distinct behavior types, each with multiple modes for specialized use cases.
