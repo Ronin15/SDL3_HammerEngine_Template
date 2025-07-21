@@ -20,6 +20,7 @@ class AIManager;
 class EventManager;
 class InputManager;
 class ParticleManager;
+class ResourceManager;
 
 class GameEngine {
 public:
@@ -271,6 +272,7 @@ private:
   AIManager *mp_aiManager{nullptr};
   EventManager *mp_eventManager{nullptr};
   ParticleManager *mp_particleManager{nullptr};
+  ResourceManager *mp_resourceManager{nullptr};
 
   // Logical presentation settings
   SDL_RendererLogicalPresentation m_logicalPresentationMode{

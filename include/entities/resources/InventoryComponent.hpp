@@ -1,0 +1,128 @@
+/* Copyright (c) 2025 Hammer Forged Games
+ * All rights reserved.
+ * Licensed under the MIT License - see LICENSE file for details
+ */
+
+#ifndef INVENTORY_COMPONENT_HPP
+#define INVENTORY_COMPONENT_HPP
+
+#include "entities/Resource.hpp"
+#include <functional>
+#include <mutex>
+#include <string>
+#include <unordered_map>
+#include <vector>
+
+// Forward declarations
+class Entity;
+
+/**
+ * @brief Inventory slot data structure
+ */
+struct InventorySlot {
+  std::string resourceId{""};
+  int quantity{0};
+
+  InventorySlot() = default;
+  InventorySlot(const std::string &id, int qty)
+      : resourceId(id), quantity(qty) {}
+
+  bool isEmpty() const { return resourceId.empty() || quantity <= 0; }
+  void clear() {
+    resourceId.clear();
+    quantity = 0;
+  }
+};
+
+/**
+ * @brief Component for managing entity inventories
+ *
+ * This component handles resource storage, quantity tracking, and inventory
+ * operations for any entity that needs to store resources (Player, NPC,
+ * containers, etc.)
+ */
+class InventoryComponent {
+public:
+  using ResourceChangeCallback =
+      std::function<void(const std::string &, int, int)>;
+
+  explicit InventoryComponent(Entity *owner = nullptr, size_t maxSlots = 50);
+  virtual ~InventoryComponent() = default;
+
+  // Basic inventory operations
+  bool addResource(const std::string &resourceId, int quantity);
+  bool removeResource(const std::string &resourceId, int quantity);
+  int getResourceQuantity(const std::string &resourceId) const;
+  bool hasResource(const std::string &resourceId,
+                   int minimumQuantity = 1) const;
+
+  // Inventory management
+  void clearInventory();
+  size_t getUsedSlots() const;
+  size_t getMaxSlots() const { return m_maxSlots; }
+  size_t getAvailableSlots() const;
+  bool isFull() const;
+  bool isEmpty() const;
+
+  // Category-based queries
+  std::vector<InventorySlot>
+  getResourcesByCategory(ResourceCategory category) const;
+  std::unordered_map<std::string, int> getAllResources() const;
+  std::vector<std::string> getResourceIds() const;
+
+  // Slot-based operations (for grid-based inventories)
+  const InventorySlot &getSlot(size_t slotIndex) const;
+  bool setSlot(size_t slotIndex, const std::string &resourceId, int quantity);
+  bool swapSlots(size_t slotA, size_t slotB);
+  bool moveResource(size_t fromSlot, size_t toSlot, int quantity = -1);
+
+  // Transfer operations
+  bool transferTo(InventoryComponent &target, const std::string &resourceId,
+                  int quantity);
+  bool transferSlotTo(InventoryComponent &target, size_t slotIndex,
+                      int quantity = -1);
+
+  // Event handling
+  void setResourceChangeCallback(ResourceChangeCallback callback) {
+    m_onResourceChanged = callback;
+  }
+  void clearResourceChangeCallback() { m_onResourceChanged = nullptr; }
+
+  // Serialization support
+  // TODO: Implement proper serialization later
+  // bool serialize(std::ostream &stream) const;
+  // bool deserialize(std::istream &stream);
+  // Utility functions
+  float getTotalValue() const;
+  float getTotalWeight() const;
+  bool canAddResource(const std::string &resourceId, int quantity) const;
+  int getStackableQuantity(const std::string &resourceId) const;
+
+  // Sorting and organization
+  void sortByCategory();
+  void sortByValue();
+  void sortByName();
+  void compactInventory(); // Remove empty slots and stack items
+
+  // Owner management
+  Entity *getOwner() const { return m_owner; }
+  void setOwner(Entity *owner) { m_owner = owner; }
+
+protected:
+  Entity *m_owner;                            // Entity that owns this inventory
+  std::vector<InventorySlot> m_slots;         // Inventory slots
+  size_t m_maxSlots;                          // Maximum number of slots
+  ResourceChangeCallback m_onResourceChanged; // Callback for resource changes
+  mutable std::mutex m_inventoryMutex;        // Thread safety
+
+  // Helper methods
+  int findSlotWithResource(const std::string &resourceId) const;
+  int findEmptySlot() const;
+  bool canStackInSlot(size_t slotIndex, const std::string &resourceId) const;
+  void notifyResourceChange(const std::string &resourceId, int oldQuantity,
+                            int newQuantity);
+  void validateSlotIndex(size_t slotIndex) const;
+  int getResourceQuantityUnlocked(const std::string &resourceId) const;
+};
+
+#endif // INVENTORY_COMPONENT_HPP

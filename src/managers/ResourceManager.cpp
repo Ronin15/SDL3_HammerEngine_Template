@@ -1,0 +1,438 @@
+/* Copyright (c) 2025 Hammer Forged Games
+ * All rights reserved.
+ * Licensed under the MIT License - see LICENSE file for details
+ */
+
+#include "managers/ResourceManager.hpp"
+#include "core/Logger.hpp"
+#include "entities/resources/CurrencyAndGameResources.hpp"
+#include "entities/resources/ItemResources.hpp"
+#include "entities/resources/MaterialResources.hpp"
+#include <algorithm>
+#include <cassert>
+
+ResourceManager &ResourceManager::Instance() {
+  static ResourceManager instance;
+  return instance;
+}
+
+ResourceManager::~ResourceManager() { clean(); }
+
+bool ResourceManager::init() {
+  if (m_initialized) {
+    return true; // Already initialized
+  }
+
+  std::lock_guard<std::shared_mutex> lock(m_resourceMutex);
+
+  if (m_initialized) {
+    return true; // Double-check after acquiring lock
+  }
+
+  try {
+    // Clear any existing data
+    m_resourceTemplates.clear();
+    m_categoryIndex.clear();
+    m_typeIndex.clear();
+
+    // Initialize category index
+    for (int i = 0; i < static_cast<int>(ResourceCategory::COUNT); ++i) {
+      m_categoryIndex[static_cast<ResourceCategory>(i)] =
+          std::vector<std::string>();
+    }
+
+    // Initialize type index
+    for (int i = 0; i < static_cast<int>(ResourceType::COUNT); ++i) {
+      m_typeIndex[static_cast<ResourceType>(i)] = std::vector<std::string>();
+    }
+
+    // Create default resources
+    createDefaultResources();
+
+    m_initialized = true;
+    m_stats.reset();
+
+    RESOURCE_INFO("ResourceManager initialized with " +
+                  std::to_string(m_resourceTemplates.size()) +
+                  " resource templates");
+    return true;
+  } catch (const std::exception &ex) {
+    RESOURCE_ERROR("ResourceManager::init - Exception: " +
+                   std::string(ex.what()));
+    return false;
+  }
+}
+
+void ResourceManager::clean() {
+  std::lock_guard<std::shared_mutex> lock(m_resourceMutex);
+
+  // Clear all data structures
+  m_resourceTemplates.clear();
+  m_categoryIndex.clear();
+  m_typeIndex.clear();
+
+  m_initialized = false;
+  m_stats.reset();
+
+  RESOURCE_INFO("ResourceManager cleaned up");
+}
+
+bool ResourceManager::registerResourceTemplate(const ResourcePtr &resource) {
+  if (!resource) {
+    RESOURCE_ERROR(
+        "ResourceManager::registerResourceTemplate - Null resource provided");
+    return false;
+  }
+
+  if (!isValidResourceId(resource->getId())) {
+    RESOURCE_ERROR(
+        "ResourceManager::registerResourceTemplate - Invalid resource ID: " +
+        resource->getId());
+    return false;
+  }
+
+  std::lock_guard<std::shared_mutex> lock(m_resourceMutex);
+
+  const std::string &resourceId = resource->getId();
+
+  // Check if already registered
+  if (m_resourceTemplates.find(resourceId) != m_resourceTemplates.end()) {
+    RESOURCE_WARN("ResourceManager::registerResourceTemplate - Resource "
+                  "already registered: " +
+                  resourceId);
+    return false;
+  }
+
+  try {
+    // Register the resource template
+    m_resourceTemplates[resourceId] = resource;
+
+    // Update indexes
+    updateIndexes(resourceId, resource->getCategory(), resource->getType());
+
+    m_stats.templatesLoaded.fetch_add(1, std::memory_order_relaxed);
+
+    RESOURCE_DEBUG("ResourceManager::registerResourceTemplate - Registered: " +
+                   resourceId);
+    return true;
+  } catch (const std::exception &ex) {
+    RESOURCE_ERROR("ResourceManager::registerResourceTemplate - Exception: " +
+                   std::string(ex.what()));
+    return false;
+  }
+}
+
+ResourcePtr
+ResourceManager::getResourceTemplate(const std::string &resourceId) const {
+  std::shared_lock<std::shared_mutex> lock(m_resourceMutex);
+
+  auto it = m_resourceTemplates.find(resourceId);
+  if (it != m_resourceTemplates.end()) {
+    return it->second;
+  }
+
+  return nullptr;
+}
+
+std::vector<ResourcePtr>
+ResourceManager::getResourcesByCategory(ResourceCategory category) const {
+  std::shared_lock<std::shared_mutex> lock(m_resourceMutex);
+  std::vector<ResourcePtr> result;
+
+  auto categoryIt = m_categoryIndex.find(category);
+  if (categoryIt != m_categoryIndex.end()) {
+    result.reserve(categoryIt->second.size());
+
+    for (const auto &resourceId : categoryIt->second) {
+      auto resourceIt = m_resourceTemplates.find(resourceId);
+      if (resourceIt != m_resourceTemplates.end()) {
+        result.push_back(resourceIt->second);
+      }
+    }
+  }
+
+  return result;
+}
+
+std::vector<ResourcePtr>
+ResourceManager::getResourcesByType(ResourceType type) const {
+  std::shared_lock<std::shared_mutex> lock(m_resourceMutex);
+  std::vector<ResourcePtr> result;
+
+  auto typeIt = m_typeIndex.find(type);
+  if (typeIt != m_typeIndex.end()) {
+    result.reserve(typeIt->second.size());
+
+    for (const auto &resourceId : typeIt->second) {
+      auto resourceIt = m_resourceTemplates.find(resourceId);
+      if (resourceIt != m_resourceTemplates.end()) {
+        result.push_back(resourceIt->second);
+      }
+    }
+  }
+
+  return result;
+}
+
+ResourceStats ResourceManager::getStats() const { return m_stats; }
+ResourcePtr
+ResourceManager::createResource(const std::string &resourceId) const {
+  auto templateResource = getResourceTemplate(resourceId);
+  if (!templateResource) {
+    RESOURCE_ERROR("ResourceManager::createResource - Unknown resource: " +
+                   resourceId);
+    return nullptr;
+  }
+
+  try {
+    // Create a copy of the template
+    ResourcePtr newResource = std::make_shared<Resource>(*templateResource);
+
+    m_stats.resourcesCreated.fetch_add(1, std::memory_order_relaxed);
+
+    return newResource;
+  } catch (const std::exception &ex) {
+    RESOURCE_ERROR("ResourceManager::createResource - Exception: " +
+                   std::string(ex.what()));
+    return nullptr;
+  }
+}
+
+size_t ResourceManager::getResourceTemplateCount() const {
+  std::shared_lock<std::shared_mutex> lock(m_resourceMutex);
+  return m_resourceTemplates.size();
+}
+
+bool ResourceManager::hasResourceTemplate(const std::string &resourceId) const {
+  std::shared_lock<std::shared_mutex> lock(m_resourceMutex);
+  return m_resourceTemplates.find(resourceId) != m_resourceTemplates.end();
+}
+
+size_t ResourceManager::getMemoryUsage() const {
+  std::shared_lock<std::shared_mutex> lock(m_resourceMutex);
+
+  size_t totalSize = 0;
+
+  // Account for m_resourceTemplates map itself
+  totalSize +=
+      m_resourceTemplates.size() * (sizeof(std::string) + sizeof(ResourcePtr));
+
+  // Account for the actual strings and Resource objects in m_resourceTemplates
+  for (const auto &[resourceId, resource] : m_resourceTemplates) {
+    totalSize += resourceId.size(); // Size of the key string
+    if (resource) {
+      totalSize += sizeof(Resource);           // Base Resource object size
+      totalSize += resource->getName().size(); // Resource name
+      totalSize += resource->getDescription().size(); // Resource description
+    }
+  }
+
+  for (const auto &[categoryKey, resourceIds] : m_categoryIndex) {
+    totalSize += resourceIds.size() * sizeof(std::string);
+    for (const auto &id : resourceIds) {
+      totalSize += id.size();
+    }
+  }
+
+  for (const auto &[typeKey, resourceIds] : m_typeIndex) {
+    totalSize += resourceIds.size() * sizeof(std::string);
+    for (const auto &id : resourceIds) {
+      totalSize += id.size();
+    }
+  }
+
+  return totalSize;
+}
+
+void ResourceManager::updateIndexes(const std::string &resourceId,
+                                    ResourceCategory category,
+                                    ResourceType type) {
+  std::lock_guard<std::mutex> lock(m_indexMutex);
+
+  // Add to category index
+  m_categoryIndex[category].push_back(resourceId);
+
+  // Add to type index
+  m_typeIndex[type].push_back(resourceId);
+}
+
+void ResourceManager::removeFromIndexes(const std::string &resourceId) {
+  std::lock_guard<std::mutex> lock(m_indexMutex);
+
+  // Remove from category index
+  for (auto &[category, resourceIds] : m_categoryIndex) {
+    auto it = std::find(resourceIds.begin(), resourceIds.end(), resourceId);
+    if (it != resourceIds.end()) {
+      resourceIds.erase(it);
+    }
+  }
+
+  // Remove from type index
+  for (auto &[type, resourceIds] : m_typeIndex) {
+    auto it = std::find(resourceIds.begin(), resourceIds.end(), resourceId);
+    if (it != resourceIds.end()) {
+      resourceIds.erase(it);
+    }
+  }
+}
+
+void ResourceManager::rebuildIndexes() {
+  std::lock_guard<std::mutex> lock(m_indexMutex);
+
+  // Clear existing indexes
+  m_categoryIndex.clear();
+  m_typeIndex.clear();
+
+  // Initialize empty vectors for all categories and types
+  for (int i = 0; i < static_cast<int>(ResourceCategory::COUNT); ++i) {
+    m_categoryIndex[static_cast<ResourceCategory>(i)] =
+        std::vector<std::string>();
+  }
+
+  for (int i = 0; i < static_cast<int>(ResourceType::COUNT); ++i) {
+    m_typeIndex[static_cast<ResourceType>(i)] = std::vector<std::string>();
+  }
+
+  // Rebuild indexes from current resources
+  for (const auto &[resourceId, resource] : m_resourceTemplates) {
+    if (resource) {
+      m_categoryIndex[resource->getCategory()].push_back(resourceId);
+      m_typeIndex[resource->getType()].push_back(resourceId);
+    }
+  }
+}
+
+bool ResourceManager::isValidResourceId(const std::string &resourceId) const {
+  return !resourceId.empty() && resourceId.length() <= 64 && // Reasonable limit
+         std::all_of(resourceId.begin(), resourceId.end(), [](char c) {
+           return std::isalnum(c) || c == '_' || c == '-';
+         });
+}
+
+void ResourceManager::createDefaultResources() {
+  RESOURCE_INFO("ResourceManager::createDefaultResources - Creating default "
+                "resource templates");
+
+  try {
+    // Create basic items using base Resource class
+    auto sword = std::make_shared<Resource>(
+        "sword", "Iron Sword", ResourceCategory::Item, ResourceType::Equipment);
+    sword->setValue(100);
+    sword->setMaxStackSize(1); // Weapons don't stack
+    sword->setConsumable(false);
+    sword->setDescription("A sturdy iron sword with a sharp blade.");
+
+    auto shield = std::make_shared<Resource>("shield", "Wooden Shield",
+                                             ResourceCategory::Item,
+                                             ResourceType::Equipment);
+    shield->setValue(75);
+    shield->setMaxStackSize(1); // Armor doesn't stack
+    shield->setConsumable(false);
+    shield->setDescription("A reliable wooden shield for basic protection.");
+
+    auto potion = std::make_shared<Resource>("health_potion", "Health Potion",
+                                             ResourceCategory::Item,
+                                             ResourceType::Consumable);
+    potion->setValue(50);
+    potion->setMaxStackSize(10); // Potions can stack
+    potion->setConsumable(true);
+    potion->setDescription(
+        "A magical potion that restores health when consumed.");
+
+    // Register resources directly (we already have the lock in init())
+    m_resourceTemplates["sword"] = sword;
+    updateIndexes("sword", sword->getCategory(), sword->getType());
+    m_stats.templatesLoaded.fetch_add(1, std::memory_order_relaxed);
+    RESOURCE_INFO("Created resource: " + sword->getName() + " (ID: sword)");
+
+    m_resourceTemplates["shield"] = shield;
+    updateIndexes("shield", shield->getCategory(), shield->getType());
+    m_stats.templatesLoaded.fetch_add(1, std::memory_order_relaxed);
+    RESOURCE_INFO("Created resource: " + shield->getName() + " (ID: shield)");
+
+    m_resourceTemplates["health_potion"] = potion;
+    updateIndexes("health_potion", potion->getCategory(), potion->getType());
+    m_stats.templatesLoaded.fetch_add(1, std::memory_order_relaxed);
+    RESOURCE_INFO("Created resource: " + potion->getName() +
+                  " (ID: health_potion)");
+
+    // Create default materials
+    auto iron = std::make_shared<Resource>("iron_ore", "Iron Ore",
+                                           ResourceCategory::Material,
+                                           ResourceType::RawResource);
+    iron->setValue(25);
+    iron->setMaxStackSize(100); // Materials stack well
+    iron->setConsumable(false);
+    iron->setDescription("Raw iron ore that can be smelted into ingots.");
+
+    auto wood = std::make_shared<Resource>("wood", "Oak Wood",
+                                           ResourceCategory::Material,
+                                           ResourceType::RawResource);
+    wood->setValue(10);
+    wood->setMaxStackSize(100);
+    wood->setConsumable(false);
+    wood->setDescription("High-quality oak wood useful for crafting.");
+
+    m_resourceTemplates["iron_ore"] = iron;
+    updateIndexes("iron_ore", iron->getCategory(), iron->getType());
+    m_stats.templatesLoaded.fetch_add(1, std::memory_order_relaxed);
+    RESOURCE_INFO("Created resource: " + iron->getName() + " (ID: iron_ore)");
+
+    m_resourceTemplates["wood"] = wood;
+    updateIndexes("wood", wood->getCategory(), wood->getType());
+    m_stats.templatesLoaded.fetch_add(1, std::memory_order_relaxed);
+    RESOURCE_INFO("Created resource: " + wood->getName() + " (ID: wood)");
+
+    // Create default currency
+    auto gold = std::make_shared<Resource>(
+        "gold", "Gold Coins", ResourceCategory::Currency, ResourceType::Gold);
+    gold->setValue(1);
+    gold->setMaxStackSize(10000); // Currency stacks high
+    gold->setConsumable(false);
+    gold->setDescription(
+        "Shiny gold coins, the standard currency of the realm.");
+
+    m_resourceTemplates["gold"] = gold;
+    updateIndexes("gold", gold->getCategory(), gold->getType());
+    m_stats.templatesLoaded.fetch_add(1, std::memory_order_relaxed);
+    RESOURCE_INFO("Created resource: " + gold->getName() + " (ID: gold)");
+
+    // Create default game resources
+    auto xp = std::make_shared<Resource>("experience", "Experience Points",
+                                         ResourceCategory::GameResource,
+                                         ResourceType::Energy);
+    xp->setValue(0);
+    xp->setMaxStackSize(999999); // Experience can accumulate
+    xp->setConsumable(false);
+    xp->setDescription("Experience points gained through various activities.");
+
+    m_resourceTemplates["experience"] = xp;
+    updateIndexes("experience", xp->getCategory(), xp->getType());
+    m_stats.templatesLoaded.fetch_add(1, std::memory_order_relaxed);
+    RESOURCE_INFO("Created resource: " + xp->getName() + " (ID: experience)");
+
+    // Add iron_sword for consistency with tests
+    auto ironSword = std::make_shared<Resource>("iron_sword", "Iron Sword",
+                                                ResourceCategory::Item,
+                                                ResourceType::Equipment);
+    ironSword->setValue(120);
+    ironSword->setMaxStackSize(1);
+    ironSword->setConsumable(false);
+    ironSword->setDescription(
+        "A well-crafted iron sword with excellent balance.");
+
+    m_resourceTemplates["iron_sword"] = ironSword;
+    updateIndexes("iron_sword", ironSword->getCategory(), ironSword->getType());
+    m_stats.templatesLoaded.fetch_add(1, std::memory_order_relaxed);
+    RESOURCE_INFO("Created resource: " + ironSword->getName() +
+                  " (ID: iron_sword)");
+
+    RESOURCE_INFO("ResourceManager::createDefaultResources - Created " +
+                  std::to_string(m_resourceTemplates.size()) +
+                  " default resources");
+
+  } catch (const std::exception &ex) {
+    RESOURCE_ERROR("ResourceManager::createDefaultResources - Exception: " +
+                   std::string(ex.what()));
+  }
+}

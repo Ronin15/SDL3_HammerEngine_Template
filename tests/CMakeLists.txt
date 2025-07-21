@@ -214,6 +214,56 @@ add_executable(behavior_functionality_tests
     mocks/AIBehavior.cpp
 )
 
+# Resource Manager tests
+add_executable(resource_manager_tests
+    resources/ResourceManagerTests.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/ResourceManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/Resource.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/resources/ItemResources.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/resources/MaterialResources.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/resources/CurrencyAndGameResources.cpp
+)
+
+# Inventory Component tests
+add_executable(inventory_component_tests
+    resources/InventoryComponentTests.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/ResourceManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/Resource.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/resources/InventoryComponent.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/resources/ItemResources.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/resources/MaterialResources.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/resources/CurrencyAndGameResources.cpp
+    ${PROJECT_SOURCE_DIR}/src/events/ResourceChangeEvent.cpp
+    ${PROJECT_SOURCE_DIR}/src/events/Event.cpp
+    mocks/MockPlayer.cpp
+)
+
+# Resource Change Event tests
+add_executable(resource_change_event_tests
+    resources/ResourceChangeEventTests.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/ResourceManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/Resource.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/resources/ItemResources.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/resources/MaterialResources.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/resources/CurrencyAndGameResources.cpp
+    ${PROJECT_SOURCE_DIR}/src/events/ResourceChangeEvent.cpp
+    ${PROJECT_SOURCE_DIR}/src/events/Event.cpp
+)
+
+# Resource Integration tests
+add_executable(resource_integration_tests
+    resources/ResourceIntegrationTests.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/ResourceManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/Resource.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/resources/InventoryComponent.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/resources/ItemResources.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/resources/MaterialResources.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/resources/CurrencyAndGameResources.cpp
+    ${PROJECT_SOURCE_DIR}/src/events/ResourceChangeEvent.cpp
+    ${PROJECT_SOURCE_DIR}/src/events/Event.cpp
+    mocks/MockPlayer.cpp
+)
+
 # Add compile definitions for Boost.Test
 target_compile_definitions(save_manager_tests PRIVATE
 )
@@ -290,6 +340,26 @@ target_compile_definitions(buffer_utilization_tests PRIVATE
 
 # Behavior Functionality tests definitions
 target_compile_definitions(behavior_functionality_tests PRIVATE
+    BOOST_TEST_NO_SIGNAL_HANDLING
+)
+
+# Resource Manager tests definitions
+target_compile_definitions(resource_manager_tests PRIVATE
+    BOOST_TEST_NO_SIGNAL_HANDLING
+)
+
+# Inventory Component tests definitions
+target_compile_definitions(inventory_component_tests PRIVATE
+    BOOST_TEST_NO_SIGNAL_HANDLING
+)
+
+# Resource Change Event tests definitions
+target_compile_definitions(resource_change_event_tests PRIVATE
+    BOOST_TEST_NO_SIGNAL_HANDLING
+)
+
+# Resource Integration tests definitions
+target_compile_definitions(resource_integration_tests PRIVATE
     BOOST_TEST_NO_SIGNAL_HANDLING
 )
 
@@ -412,6 +482,34 @@ target_link_libraries(behavior_functionality_tests PRIVATE
     Boost::unit_test_framework
 )
 
+# Link Resource Manager tests with required libraries
+target_link_libraries(resource_manager_tests PRIVATE
+    SDL3::SDL3
+    Boost::unit_test_framework
+)
+
+# Link Inventory Component tests with required libraries
+target_link_libraries(inventory_component_tests PRIVATE
+    SDL3::SDL3
+    SDL3_image::SDL3_image
+    SDL3_mixer::SDL3_mixer
+    Boost::unit_test_framework
+)
+
+# Link Resource Change Event tests with required libraries
+target_link_libraries(resource_change_event_tests PRIVATE
+    SDL3::SDL3
+    Boost::unit_test_framework
+)
+
+# Link Resource Integration tests with required libraries
+target_link_libraries(resource_integration_tests PRIVATE
+    SDL3::SDL3
+    SDL3_image::SDL3_image
+    SDL3_mixer::SDL3_mixer
+    Boost::unit_test_framework
+)
+
 # Add HAVE_BOOST_SERIALIZATION to ui_stress_test as well
 target_compile_definitions(ui_stress_test PRIVATE
 )
@@ -436,3 +534,7 @@ add_test(NAME ParticleManagerThreadingTests COMMAND particle_manager_threading_t
 add_test(NAME WeatherEventTests COMMAND weather_event_tests)
 add_test(NAME BufferUtilizationTests COMMAND buffer_utilization_tests)
 add_test(NAME BehaviorFunctionalityTests COMMAND behavior_functionality_tests)
+add_test(NAME ResourceManagerTests COMMAND resource_manager_tests)
+add_test(NAME InventoryComponentTests COMMAND inventory_component_tests)
+add_test(NAME ResourceChangeEventTests COMMAND resource_change_event_tests)
+add_test(NAME ResourceIntegrationTests COMMAND resource_integration_tests)
