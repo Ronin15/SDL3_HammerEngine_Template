@@ -19,12 +19,14 @@
 - **Run a Single Test:**
   ```
   ./tests/test_scripts/run_save_tests.sh --verbose
-  ./build/tests/SaveManagerTests --run_test="TestSaveAndLoad*"
+  ./bin/debug/SaveManagerTests --run_test="TestSaveAndLoad*"
   ```
 - **Static Analysis:**
   ```
   ./tests/test_scripts/run_cppcheck_focused.sh
   ```
+
+**IMPORTANT NOTE:** Test executables are located in `bin/debug/` directory (project root), NOT in `build/bin/debug/`. Test scripts look for binaries in the correct location.
 
 ## Code Style Guidelines
 
@@ -43,7 +45,8 @@
 - **Thread Safety:** Use std::atomic, std::shared_mutex, and lock-free structures. Follow cache-friendly data layout (SoA patterns).
 - **File/Directory Handling:** Use std::filesystem for cross-platform path handling. Validate file permissions and clean up test artifacts.
 - **Documentation:** Comment complex algorithms, document all public APIs with Doxygen-style comments, update relevant docs for new features.
-
+- **Serialization System:** HammerEngine uses ISerializable interface with serialize(std::ostream&) and deserialize(std::istream&) methods. Use BinarySerial::Writer and BinarySerial::Reader classes for binary serialization, NOT BinarySerializer. See SaveGameManager and MockPlayer for examples.
+- **Aditional Instructions:** Please ask before removing the build dir, Only remove it when absolutley necessary. Updating cmake and then re-configruing fixes most build problems.
 > For more details, see `README.md`, `docs/Logger.md`, `docs/ThreadSystem.md`, and `tests/TESTING.md`.
 
 ---

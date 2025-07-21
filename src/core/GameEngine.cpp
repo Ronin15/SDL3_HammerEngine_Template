@@ -25,6 +25,7 @@
 #include "managers/GameStateManager.hpp"
 #include "managers/InputManager.hpp"
 #include "managers/ParticleManager.hpp"
+#include "managers/ResourceManager.hpp"
 #include "managers/SaveGameManager.hpp"
 #include "managers/SoundManager.hpp"
 #include "managers/TextureManager.hpp"
@@ -524,6 +525,20 @@ bool GameEngine::init(const std::string_view title, const int width,
         return true;
       }));
 
+  // Initialize Resource Manager in a separate thread - #8
+  initTasks.push_back(
+      HammerEngine::ThreadSystem::Instance().enqueueTaskWithResult(
+          []() -> bool {
+            GAMEENGINE_INFO("Creating Resource Manager");
+            ResourceManager &resourceMgr = ResourceManager::Instance();
+            if (!resourceMgr.init()) {
+              GAMEENGINE_CRITICAL("Failed to initialize Resource Manager");
+              return false;
+            }
+            GAMEENGINE_INFO("Resource Manager initialized successfully");
+            return true;
+          }));
+
   // Initialize game state manager (on main thread because it directly calls
   // rendering) - MAIN THREAD
   GAMEENGINE_INFO(
@@ -598,6 +613,15 @@ bool GameEngine::init(const std::string_view title, const int width,
       return false;
     }
     mp_particleManager = &particleMgrTest;
+
+    // Validate Resource Manager before caching
+    ResourceManager &resourceMgrTest = ResourceManager::Instance();
+    if (!resourceMgrTest.isInitialized()) {
+      GAMEENGINE_CRITICAL(
+          "ResourceManager not properly initialized before caching!");
+      return false;
+    }
+    mp_resourceManager = &resourceMgrTest;
 
     // InputManager not cached - handled in handleEvents() for proper SDL
     // architecture
@@ -1045,6 +1069,7 @@ void GameEngine::clean() {
   SaveGameManager &saveMgr = SaveGameManager::Instance();
   InputManager &inputMgr = InputManager::Instance();
   TextureManager &texMgr = TextureManager::Instance();
+  ResourceManager &resourceMgr = ResourceManager::Instance();
 
   // Wait for any pending background tasks to complete
   if (!threadSystem.isShutdown()) {
@@ -1094,6 +1119,9 @@ void GameEngine::clean() {
   GAMEENGINE_INFO("Cleaning up Texture Manager...");
   texMgr.clean();
 
+  GAMEENGINE_INFO("Cleaning up Resource Manager...");
+  resourceMgr.clean();
+
   // Clean up the thread system
   GAMEENGINE_INFO("Cleaning up Thread System...");
   if (!threadSystem.isShutdown()) {
@@ -1105,6 +1133,7 @@ void GameEngine::clean() {
   mp_aiManager = nullptr;
   mp_eventManager = nullptr;
   mp_particleManager = nullptr;
+  mp_resourceManager = nullptr;
   // InputManager not cached
   GAMEENGINE_INFO("Manager caches cleared");
 
