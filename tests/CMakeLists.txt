@@ -214,10 +214,21 @@ add_executable(behavior_functionality_tests
     mocks/AIBehavior.cpp
 )
 
-# Resource Manager tests
-add_executable(resource_manager_tests
-    resources/ResourceManagerTests.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/ResourceManager.cpp
+# Resource Template Manager tests
+add_executable(resource_template_manager_tests
+    resources/ResourceTemplateManagerTests.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/ResourceTemplateManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/Resource.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/resources/ItemResources.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/resources/MaterialResources.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/resources/CurrencyAndGameResources.cpp
+)
+
+# World Resource Manager tests
+add_executable(world_resource_manager_tests
+    resources/WorldResourceManagerTests.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/ResourceTemplateManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/WorldResourceManager.cpp
     ${PROJECT_SOURCE_DIR}/src/entities/Resource.cpp
     ${PROJECT_SOURCE_DIR}/src/entities/resources/ItemResources.cpp
     ${PROJECT_SOURCE_DIR}/src/entities/resources/MaterialResources.cpp
@@ -227,7 +238,8 @@ add_executable(resource_manager_tests
 # Inventory Component tests
 add_executable(inventory_component_tests
     resources/InventoryComponentTests.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/ResourceManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/ResourceTemplateManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/WorldResourceManager.cpp
     ${PROJECT_SOURCE_DIR}/src/entities/Resource.cpp
     ${PROJECT_SOURCE_DIR}/src/entities/resources/InventoryComponent.cpp
     ${PROJECT_SOURCE_DIR}/src/entities/resources/ItemResources.cpp
@@ -241,7 +253,7 @@ add_executable(inventory_component_tests
 # Resource Change Event tests
 add_executable(resource_change_event_tests
     resources/ResourceChangeEventTests.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/ResourceManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/ResourceTemplateManager.cpp
     ${PROJECT_SOURCE_DIR}/src/entities/Resource.cpp
     ${PROJECT_SOURCE_DIR}/src/entities/resources/ItemResources.cpp
     ${PROJECT_SOURCE_DIR}/src/entities/resources/MaterialResources.cpp
@@ -253,7 +265,8 @@ add_executable(resource_change_event_tests
 # Resource Integration tests
 add_executable(resource_integration_tests
     resources/ResourceIntegrationTests.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/ResourceManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/ResourceTemplateManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/WorldResourceManager.cpp
     ${PROJECT_SOURCE_DIR}/src/entities/Resource.cpp
     ${PROJECT_SOURCE_DIR}/src/entities/resources/InventoryComponent.cpp
     ${PROJECT_SOURCE_DIR}/src/entities/resources/ItemResources.cpp
@@ -344,7 +357,12 @@ target_compile_definitions(behavior_functionality_tests PRIVATE
 )
 
 # Resource Manager tests definitions
-target_compile_definitions(resource_manager_tests PRIVATE
+target_compile_definitions(resource_template_manager_tests PRIVATE
+    BOOST_TEST_NO_SIGNAL_HANDLING
+)
+
+# World Resource Manager tests definitions
+target_compile_definitions(world_resource_manager_tests PRIVATE
     BOOST_TEST_NO_SIGNAL_HANDLING
 )
 
@@ -483,7 +501,13 @@ target_link_libraries(behavior_functionality_tests PRIVATE
 )
 
 # Link Resource Manager tests with required libraries
-target_link_libraries(resource_manager_tests PRIVATE
+target_link_libraries(resource_template_manager_tests PRIVATE
+    SDL3::SDL3
+    Boost::unit_test_framework
+)
+
+# Link World Resource Manager tests with required libraries
+target_link_libraries(world_resource_manager_tests PRIVATE
     SDL3::SDL3
     Boost::unit_test_framework
 )
@@ -534,7 +558,8 @@ add_test(NAME ParticleManagerThreadingTests COMMAND particle_manager_threading_t
 add_test(NAME WeatherEventTests COMMAND weather_event_tests)
 add_test(NAME BufferUtilizationTests COMMAND buffer_utilization_tests)
 add_test(NAME BehaviorFunctionalityTests COMMAND behavior_functionality_tests)
-add_test(NAME ResourceManagerTests COMMAND resource_manager_tests)
+add_test(NAME ResourceTemplateManagerTests COMMAND resource_template_manager_tests)
+add_test(NAME WorldResourceManagerTests COMMAND world_resource_manager_tests)
 add_test(NAME InventoryComponentTests COMMAND inventory_component_tests)
 add_test(NAME ResourceChangeEventTests COMMAND resource_change_event_tests)
 add_test(NAME ResourceIntegrationTests COMMAND resource_integration_tests)

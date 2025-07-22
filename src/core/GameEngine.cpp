@@ -25,11 +25,12 @@
 #include "managers/GameStateManager.hpp"
 #include "managers/InputManager.hpp"
 #include "managers/ParticleManager.hpp"
-#include "managers/ResourceManager.hpp"
+#include "managers/ResourceTemplateManager.hpp"
 #include "managers/SaveGameManager.hpp"
 #include "managers/SoundManager.hpp"
 #include "managers/TextureManager.hpp"
 #include "managers/UIManager.hpp"
+#include "managers/WorldResourceManager.hpp"
 #include <chrono>
 #include <cstdlib>
 #include <future>
@@ -396,7 +397,7 @@ bool GameEngine::init(const std::string_view title, const int width,
 
   // Use multiple threads for initialization
   std::vector<std::future<bool>> initTasks; // Initialization tasks vector
-  initTasks.reserve(8); // Reserve capacity for typical number of init tasks
+  initTasks.reserve(9); // Reserve capacity for typical number of init tasks
 
   // Initialize input manager in a background thread - #1
   initTasks.push_back(
@@ -530,7 +531,8 @@ bool GameEngine::init(const std::string_view title, const int width,
       HammerEngine::ThreadSystem::Instance().enqueueTaskWithResult(
           []() -> bool {
             GAMEENGINE_INFO("Creating Resource Manager");
-            ResourceManager &resourceMgr = ResourceManager::Instance();
+            ResourceTemplateManager &resourceMgr =
+                ResourceTemplateManager::Instance();
             if (!resourceMgr.init()) {
               GAMEENGINE_CRITICAL("Failed to initialize Resource Manager");
               return false;
@@ -538,6 +540,25 @@ bool GameEngine::init(const std::string_view title, const int width,
             GAMEENGINE_INFO("Resource Manager initialized successfully");
             return true;
           }));
+
+  // Initialize World Resource Manager for global resource tracking
+  auto worldResourceTask =
+      HammerEngine::ThreadSystem::Instance().enqueueTaskWithResult(
+          []() -> bool {
+            GAMEENGINE_INFO("Creating World Resource Manager");
+            WorldResourceManager &worldResourceMgr =
+                WorldResourceManager::Instance();
+            if (!worldResourceMgr.init()) {
+              GAMEENGINE_CRITICAL(
+                  "Failed to initialize World Resource Manager");
+              return false;
+            }
+            GAMEENGINE_INFO("World Resource Manager initialized successfully");
+            return true;
+          });
+
+  // Add the world resource task to the initialization tasks
+  initTasks.push_back(std::move(worldResourceTask));
 
   // Initialize game state manager (on main thread because it directly calls
   // rendering) - MAIN THREAD
@@ -615,13 +636,24 @@ bool GameEngine::init(const std::string_view title, const int width,
     mp_particleManager = &particleMgrTest;
 
     // Validate Resource Manager before caching
-    ResourceManager &resourceMgrTest = ResourceManager::Instance();
+    ResourceTemplateManager &resourceMgrTest =
+        ResourceTemplateManager::Instance();
     if (!resourceMgrTest.isInitialized()) {
       GAMEENGINE_CRITICAL(
-          "ResourceManager not properly initialized before caching!");
+          "ResourceTemplateManager not properly initialized before caching!");
       return false;
     }
     mp_resourceManager = &resourceMgrTest;
+
+    // Validate World Resource Manager before caching
+    WorldResourceManager &worldResourceMgrTest =
+        WorldResourceManager::Instance();
+    if (!worldResourceMgrTest.isInitialized()) {
+      GAMEENGINE_CRITICAL(
+          "WorldResourceManager not properly initialized before caching!");
+      return false;
+    }
+    mp_worldResourceManager = &worldResourceMgrTest;
 
     // InputManager not cached - handled in handleEvents() for proper SDL
     // architecture
@@ -1069,7 +1101,8 @@ void GameEngine::clean() {
   SaveGameManager &saveMgr = SaveGameManager::Instance();
   InputManager &inputMgr = InputManager::Instance();
   TextureManager &texMgr = TextureManager::Instance();
-  ResourceManager &resourceMgr = ResourceManager::Instance();
+  ResourceTemplateManager &resourceMgr = ResourceTemplateManager::Instance();
+  WorldResourceManager &worldResourceMgr = WorldResourceManager::Instance();
 
   // Wait for any pending background tasks to complete
   if (!threadSystem.isShutdown()) {
@@ -1119,8 +1152,9 @@ void GameEngine::clean() {
   GAMEENGINE_INFO("Cleaning up Texture Manager...");
   texMgr.clean();
 
-  GAMEENGINE_INFO("Cleaning up Resource Manager...");
+  GAMEENGINE_INFO("Cleaning up Resource Managers...");
   resourceMgr.clean();
+  worldResourceMgr.clean();
 
   // Clean up the thread system
   GAMEENGINE_INFO("Cleaning up Thread System...");
@@ -1134,6 +1168,7 @@ void GameEngine::clean() {
   mp_eventManager = nullptr;
   mp_particleManager = nullptr;
   mp_resourceManager = nullptr;
+  mp_worldResourceManager = nullptr;
   // InputManager not cached
   GAMEENGINE_INFO("Manager caches cleared");
 

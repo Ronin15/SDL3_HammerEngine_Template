@@ -3,7 +3,7 @@
  * Licensed under the MIT License - see LICENSE file for details
  */
 
-#include "managers/ResourceManager.hpp"
+#include "managers/ResourceTemplateManager.hpp"
 #include "core/Logger.hpp"
 #include "entities/resources/CurrencyAndGameResources.hpp"
 #include "entities/resources/ItemResources.hpp"
@@ -11,14 +11,14 @@
 #include <algorithm>
 #include <cassert>
 
-ResourceManager &ResourceManager::Instance() {
-  static ResourceManager instance;
+ResourceTemplateManager &ResourceTemplateManager::Instance() {
+  static ResourceTemplateManager instance;
   return instance;
 }
 
-ResourceManager::~ResourceManager() { clean(); }
+ResourceTemplateManager::~ResourceTemplateManager() { clean(); }
 
-bool ResourceManager::init() {
+bool ResourceTemplateManager::init() {
   if (m_initialized) {
     return true; // Already initialized
   }
@@ -52,18 +52,18 @@ bool ResourceManager::init() {
     m_initialized = true;
     m_stats.reset();
 
-    RESOURCE_INFO("ResourceManager initialized with " +
+    RESOURCE_INFO("ResourceTemplateManager initialized with " +
                   std::to_string(m_resourceTemplates.size()) +
                   " resource templates");
     return true;
   } catch (const std::exception &ex) {
-    RESOURCE_ERROR("ResourceManager::init - Exception: " +
+    RESOURCE_ERROR("ResourceTemplateManager::init - Exception: " +
                    std::string(ex.what()));
     return false;
   }
 }
 
-void ResourceManager::clean() {
+void ResourceTemplateManager::clean() {
   std::lock_guard<std::shared_mutex> lock(m_resourceMutex);
 
   // Clear all data structures
@@ -74,20 +74,21 @@ void ResourceManager::clean() {
   m_initialized = false;
   m_stats.reset();
 
-  RESOURCE_INFO("ResourceManager cleaned up");
+  RESOURCE_INFO("ResourceTemplateManager cleaned up");
 }
 
-bool ResourceManager::registerResourceTemplate(const ResourcePtr &resource) {
+bool ResourceTemplateManager::registerResourceTemplate(
+    const ResourcePtr &resource) {
   if (!resource) {
-    RESOURCE_ERROR(
-        "ResourceManager::registerResourceTemplate - Null resource provided");
+    RESOURCE_ERROR("ResourceTemplateManager::registerResourceTemplate - Null "
+                   "resource provided");
     return false;
   }
 
   if (!isValidResourceId(resource->getId())) {
-    RESOURCE_ERROR(
-        "ResourceManager::registerResourceTemplate - Invalid resource ID: " +
-        resource->getId());
+    RESOURCE_ERROR("ResourceTemplateManager::registerResourceTemplate - "
+                   "Invalid resource ID: " +
+                   resource->getId());
     return false;
   }
 
@@ -97,9 +98,10 @@ bool ResourceManager::registerResourceTemplate(const ResourcePtr &resource) {
 
   // Check if already registered
   if (m_resourceTemplates.find(resourceId) != m_resourceTemplates.end()) {
-    RESOURCE_WARN("ResourceManager::registerResourceTemplate - Resource "
-                  "already registered: " +
-                  resourceId);
+    RESOURCE_WARN(
+        "ResourceTemplateManager::registerResourceTemplate - Resource "
+        "already registered: " +
+        resourceId);
     return false;
   }
 
@@ -112,18 +114,20 @@ bool ResourceManager::registerResourceTemplate(const ResourcePtr &resource) {
 
     m_stats.templatesLoaded.fetch_add(1, std::memory_order_relaxed);
 
-    RESOURCE_DEBUG("ResourceManager::registerResourceTemplate - Registered: " +
-                   resourceId);
+    RESOURCE_DEBUG(
+        "ResourceTemplateManager::registerResourceTemplate - Registered: " +
+        resourceId);
     return true;
   } catch (const std::exception &ex) {
-    RESOURCE_ERROR("ResourceManager::registerResourceTemplate - Exception: " +
-                   std::string(ex.what()));
+    RESOURCE_ERROR(
+        "ResourceTemplateManager::registerResourceTemplate - Exception: " +
+        std::string(ex.what()));
     return false;
   }
 }
 
-ResourcePtr
-ResourceManager::getResourceTemplate(const std::string &resourceId) const {
+ResourcePtr ResourceTemplateManager::getResourceTemplate(
+    const std::string &resourceId) const {
   std::shared_lock<std::shared_mutex> lock(m_resourceMutex);
 
   auto it = m_resourceTemplates.find(resourceId);
@@ -134,8 +138,8 @@ ResourceManager::getResourceTemplate(const std::string &resourceId) const {
   return nullptr;
 }
 
-std::vector<ResourcePtr>
-ResourceManager::getResourcesByCategory(ResourceCategory category) const {
+std::vector<ResourcePtr> ResourceTemplateManager::getResourcesByCategory(
+    ResourceCategory category) const {
   std::shared_lock<std::shared_mutex> lock(m_resourceMutex);
   std::vector<ResourcePtr> result;
 
@@ -155,7 +159,7 @@ ResourceManager::getResourcesByCategory(ResourceCategory category) const {
 }
 
 std::vector<ResourcePtr>
-ResourceManager::getResourcesByType(ResourceType type) const {
+ResourceTemplateManager::getResourcesByType(ResourceType type) const {
   std::shared_lock<std::shared_mutex> lock(m_resourceMutex);
   std::vector<ResourcePtr> result;
 
@@ -174,13 +178,14 @@ ResourceManager::getResourcesByType(ResourceType type) const {
   return result;
 }
 
-ResourceStats ResourceManager::getStats() const { return m_stats; }
+ResourceStats ResourceTemplateManager::getStats() const { return m_stats; }
 ResourcePtr
-ResourceManager::createResource(const std::string &resourceId) const {
+ResourceTemplateManager::createResource(const std::string &resourceId) const {
   auto templateResource = getResourceTemplate(resourceId);
   if (!templateResource) {
-    RESOURCE_ERROR("ResourceManager::createResource - Unknown resource: " +
-                   resourceId);
+    RESOURCE_ERROR(
+        "ResourceTemplateManager::createResource - Unknown resource: " +
+        resourceId);
     return nullptr;
   }
 
@@ -192,23 +197,24 @@ ResourceManager::createResource(const std::string &resourceId) const {
 
     return newResource;
   } catch (const std::exception &ex) {
-    RESOURCE_ERROR("ResourceManager::createResource - Exception: " +
+    RESOURCE_ERROR("ResourceTemplateManager::createResource - Exception: " +
                    std::string(ex.what()));
     return nullptr;
   }
 }
 
-size_t ResourceManager::getResourceTemplateCount() const {
+size_t ResourceTemplateManager::getResourceTemplateCount() const {
   std::shared_lock<std::shared_mutex> lock(m_resourceMutex);
   return m_resourceTemplates.size();
 }
 
-bool ResourceManager::hasResourceTemplate(const std::string &resourceId) const {
+bool ResourceTemplateManager::hasResourceTemplate(
+    const std::string &resourceId) const {
   std::shared_lock<std::shared_mutex> lock(m_resourceMutex);
   return m_resourceTemplates.find(resourceId) != m_resourceTemplates.end();
 }
 
-size_t ResourceManager::getMemoryUsage() const {
+size_t ResourceTemplateManager::getMemoryUsage() const {
   std::shared_lock<std::shared_mutex> lock(m_resourceMutex);
 
   size_t totalSize = 0;
@@ -244,9 +250,9 @@ size_t ResourceManager::getMemoryUsage() const {
   return totalSize;
 }
 
-void ResourceManager::updateIndexes(const std::string &resourceId,
-                                    ResourceCategory category,
-                                    ResourceType type) {
+void ResourceTemplateManager::updateIndexes(const std::string &resourceId,
+                                            ResourceCategory category,
+                                            ResourceType type) {
   std::lock_guard<std::mutex> lock(m_indexMutex);
 
   // Add to category index
@@ -256,7 +262,7 @@ void ResourceManager::updateIndexes(const std::string &resourceId,
   m_typeIndex[type].push_back(resourceId);
 }
 
-void ResourceManager::removeFromIndexes(const std::string &resourceId) {
+void ResourceTemplateManager::removeFromIndexes(const std::string &resourceId) {
   std::lock_guard<std::mutex> lock(m_indexMutex);
 
   // Remove from category index
@@ -276,7 +282,7 @@ void ResourceManager::removeFromIndexes(const std::string &resourceId) {
   }
 }
 
-void ResourceManager::rebuildIndexes() {
+void ResourceTemplateManager::rebuildIndexes() {
   std::lock_guard<std::mutex> lock(m_indexMutex);
 
   // Clear existing indexes
@@ -302,16 +308,18 @@ void ResourceManager::rebuildIndexes() {
   }
 }
 
-bool ResourceManager::isValidResourceId(const std::string &resourceId) const {
+bool ResourceTemplateManager::isValidResourceId(
+    const std::string &resourceId) const {
   return !resourceId.empty() && resourceId.length() <= 64 && // Reasonable limit
          std::all_of(resourceId.begin(), resourceId.end(), [](char c) {
            return std::isalnum(c) || c == '_' || c == '-';
          });
 }
 
-void ResourceManager::createDefaultResources() {
-  RESOURCE_INFO("ResourceManager::createDefaultResources - Creating default "
-                "resource templates");
+void ResourceTemplateManager::createDefaultResources() {
+  RESOURCE_INFO(
+      "ResourceTemplateManager::createDefaultResources - Creating default "
+      "resource templates");
 
   try {
     // Create basic items using base Resource class
@@ -427,12 +435,13 @@ void ResourceManager::createDefaultResources() {
     RESOURCE_INFO("Created resource: " + ironSword->getName() +
                   " (ID: iron_sword)");
 
-    RESOURCE_INFO("ResourceManager::createDefaultResources - Created " +
+    RESOURCE_INFO("ResourceTemplateManager::createDefaultResources - Created " +
                   std::to_string(m_resourceTemplates.size()) +
                   " default resources");
 
   } catch (const std::exception &ex) {
-    RESOURCE_ERROR("ResourceManager::createDefaultResources - Exception: " +
-                   std::string(ex.what()));
+    RESOURCE_ERROR(
+        "ResourceTemplateManager::createDefaultResources - Exception: " +
+        std::string(ex.what()));
   }
 }

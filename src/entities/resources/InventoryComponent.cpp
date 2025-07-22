@@ -6,13 +6,16 @@
 #include "entities/resources/InventoryComponent.hpp"
 #include "core/Logger.hpp"
 #include "entities/Entity.hpp"
-#include "managers/ResourceManager.hpp"
+#include "managers/ResourceTemplateManager.hpp"
+#include "managers/WorldResourceManager.hpp"
 #include <algorithm>
 #include <cassert>
 #include <stdexcept>
 
-InventoryComponent::InventoryComponent(Entity *owner, size_t maxSlots)
-    : m_owner(owner), m_maxSlots(maxSlots), m_onResourceChanged(nullptr) {
+InventoryComponent::InventoryComponent(Entity *owner, size_t maxSlots,
+                                       const std::string &worldId)
+    : m_owner(owner), m_maxSlots(maxSlots), m_onResourceChanged(nullptr),
+      m_worldId(worldId), m_trackWorldResources(true) {
 
   m_slots.resize(m_maxSlots);
 
@@ -35,7 +38,7 @@ bool InventoryComponent::addResource(const std::string &resourceId,
 
   // Get resource template to check properties
   auto resourceTemplate =
-      ResourceManager::Instance().getResourceTemplate(resourceId);
+      ResourceTemplateManager::Instance().getResourceTemplate(resourceId);
   if (!resourceTemplate) {
     RESOURCE_ERROR("InventoryComponent::addResource - Unknown resource: " +
                    resourceId);
@@ -199,7 +202,8 @@ InventoryComponent::getResourcesByCategory(ResourceCategory category) const {
   for (const auto &slot : m_slots) {
     if (!slot.isEmpty()) {
       auto resourceTemplate =
-          ResourceManager::Instance().getResourceTemplate(slot.resourceId);
+          ResourceTemplateManager::Instance().getResourceTemplate(
+              slot.resourceId);
       if (resourceTemplate && resourceTemplate->getCategory() == category) {
         result.push_back(slot);
       }
@@ -321,7 +325,8 @@ void InventoryComponent::compactInventory() {
       continue;
 
     auto resourceTemplate =
-        ResourceManager::Instance().getResourceTemplate(m_slots[i].resourceId);
+        ResourceTemplateManager::Instance().getResourceTemplate(
+            m_slots[i].resourceId);
     if (!resourceTemplate || !resourceTemplate->isStackable())
       continue;
 
@@ -373,8 +378,15 @@ int InventoryComponent::findEmptySlot() const {
 void InventoryComponent::notifyResourceChange(const std::string &resourceId,
                                               int oldQuantity,
                                               int newQuantity) {
-  if (m_onResourceChanged && oldQuantity != newQuantity) {
-    m_onResourceChanged(resourceId, oldQuantity, newQuantity);
+  if (oldQuantity != newQuantity) {
+    // Update WorldResourceManager if tracking is enabled
+    int quantityChange = newQuantity - oldQuantity;
+    updateWorldResourceManager(resourceId, quantityChange);
+
+    // Call the user-defined callback
+    if (m_onResourceChanged) {
+      m_onResourceChanged(resourceId, oldQuantity, newQuantity);
+    }
   }
 }
 
@@ -391,7 +403,7 @@ bool InventoryComponent::canAddResource(const std::string &resourceId,
   std::lock_guard<std::mutex> lock(m_inventoryMutex);
 
   auto resourceTemplate =
-      ResourceManager::Instance().getResourceTemplate(resourceId);
+      ResourceTemplateManager::Instance().getResourceTemplate(resourceId);
   if (!resourceTemplate) {
     return false;
   }
@@ -440,4 +452,31 @@ int InventoryComponent::getResourceQuantityUnlocked(
     }
   }
   return totalQuantity;
+}
+
+void InventoryComponent::updateWorldResourceManager(
+    const std::string &resourceId, int quantityChange) {
+  if (!m_trackWorldResources || quantityChange == 0) {
+    return;
+  }
+
+  auto &worldResourceManager = WorldResourceManager::Instance();
+  if (!worldResourceManager.isInitialized()) {
+    return; // WorldResourceManager not available
+  }
+
+  ResourceTransactionResult result;
+  if (quantityChange > 0) {
+    result =
+        worldResourceManager.addResource(m_worldId, resourceId, quantityChange);
+  } else {
+    result = worldResourceManager.removeResource(m_worldId, resourceId,
+                                                 -quantityChange);
+  }
+
+  if (result != ResourceTransactionResult::Success) {
+    RESOURCE_WARN("InventoryComponent::updateWorldResourceManager - Failed to "
+                  "update world resources for " +
+                  resourceId + " in world " + m_worldId);
+  }
 }

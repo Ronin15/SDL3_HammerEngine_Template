@@ -3,7 +3,7 @@
  * Licensed under the MIT License - see LICENSE file for details
  */
 
-#define BOOST_TEST_MODULE ResourceManagerTests
+#define BOOST_TEST_MODULE ResourceTemplateManagerTests
 #include <boost/test/unit_test.hpp>
 
 #include <atomic>
@@ -18,13 +18,13 @@
 #include "entities/resources/CurrencyAndGameResources.hpp"
 #include "entities/resources/ItemResources.hpp"
 #include "entities/resources/MaterialResources.hpp"
-#include "managers/ResourceManager.hpp"
+#include "managers/ResourceTemplateManager.hpp"
 
-class ResourceManagerTestFixture {
+class ResourceTemplateManagerTestFixture {
 public:
-  ResourceManagerTestFixture() {
-    // Initialize ResourceManager singleton
-    resourceManager = &ResourceManager::Instance();
+  ResourceTemplateManagerTestFixture() {
+    // Initialize ResourceTemplateManager singleton
+    resourceManager = &ResourceTemplateManager::Instance();
     BOOST_REQUIRE(resourceManager != nullptr);
 
     // Initialize the manager (loads default resources)
@@ -32,21 +32,22 @@ public:
     BOOST_REQUIRE(initialized);
   }
 
-  ~ResourceManagerTestFixture() {
-    // Clean up ResourceManager
+  ~ResourceTemplateManagerTestFixture() {
+    // Clean up ResourceTemplateManager
     resourceManager->clean();
   }
 
 protected:
-  ResourceManager *resourceManager;
+  ResourceTemplateManager *resourceManager;
 };
 
-BOOST_FIXTURE_TEST_SUITE(ResourceManagerTestSuite, ResourceManagerTestFixture)
+BOOST_FIXTURE_TEST_SUITE(ResourceTemplateManagerTestSuite,
+                         ResourceTemplateManagerTestFixture)
 
 BOOST_AUTO_TEST_CASE(TestSingletonPattern) {
   // Test that Instance always returns the same instance
-  ResourceManager *instance1 = &ResourceManager::Instance();
-  ResourceManager *instance2 = &ResourceManager::Instance();
+  ResourceTemplateManager *instance1 = &ResourceTemplateManager::Instance();
+  ResourceTemplateManager *instance2 = &ResourceTemplateManager::Instance();
 
   BOOST_CHECK(instance1 == instance2);
   BOOST_CHECK(instance1 == resourceManager);

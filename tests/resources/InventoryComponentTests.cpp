@@ -18,15 +18,15 @@
 #include "entities/Resource.hpp"
 #include "entities/resources/InventoryComponent.hpp"
 #include "events/ResourceChangeEvent.hpp"
-#include "managers/ResourceManager.hpp"
+#include "managers/ResourceTemplateManager.hpp"
 
 class InventoryComponentTestFixture {
 public:
   InventoryComponentTestFixture() {
-    // Initialize ResourceManager
-    resourceManager = &ResourceManager::Instance();
+    // Initialize ResourceTemplateManager
+    resourceManager = &ResourceTemplateManager::Instance();
 
-    // Ensure ResourceManager is initialized with default resources
+    // Ensure ResourceTemplateManager is initialized with default resources
     if (!resourceManager->isInitialized()) {
       resourceManager->init();
     }
@@ -45,7 +45,7 @@ public:
   }
 
 protected:
-  ResourceManager *resourceManager;
+  ResourceTemplateManager *resourceManager;
   std::shared_ptr<MockPlayer> mockPlayer;
   std::unique_ptr<InventoryComponent> testInventory;
   std::string healthPotionId;

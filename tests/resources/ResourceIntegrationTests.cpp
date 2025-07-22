@@ -9,20 +9,20 @@ __attribute__((constructor)) static void print_startup() {
   fflush(stdout);
 }
 #define BOOST_TEST_MODULE ResourceIntegrationTests
-#include "managers/ResourceManager.hpp"
+#include "managers/ResourceTemplateManager.hpp"
 #include <boost/test/unit_test.hpp>
 
-// Force ResourceManager reset for test isolation
-struct ResourceManagerResetter {
-  ResourceManagerResetter() {
-    RESOURCE_INFO("ResourceManagerResetter: before clean");
-    ResourceManager::Instance().clean();
-    RESOURCE_INFO("ResourceManagerResetter: after clean, before init");
-    ResourceManager::Instance().init();
-    RESOURCE_INFO("ResourceManagerResetter: after init");
+// Force ResourceTemplateManager reset for test isolation
+struct ResourceTemplateManagerResetter {
+  ResourceTemplateManagerResetter() {
+    RESOURCE_INFO("ResourceTemplateManagerResetter: before clean");
+    ResourceTemplateManager::Instance().clean();
+    RESOURCE_INFO("ResourceTemplateManagerResetter: after clean, before init");
+    ResourceTemplateManager::Instance().init();
+    RESOURCE_INFO("ResourceTemplateManagerResetter: after init");
   }
 };
-static ResourceManagerResetter resourceManagerResetterInstance;
+static ResourceTemplateManagerResetter resourceTemplateManagerResetterInstance;
 
 #include <chrono>
 #include <memory>
@@ -35,15 +35,15 @@ static ResourceManagerResetter resourceManagerResetterInstance;
 #include "entities/Resource.hpp"
 #include "entities/resources/InventoryComponent.hpp"
 #include "events/ResourceChangeEvent.hpp"
-#include "managers/ResourceManager.hpp"
+#include "managers/ResourceTemplateManager.hpp"
 
 class ResourceIntegrationTestFixture {
 public:
   ResourceIntegrationTestFixture() {
-    // Initialize ResourceManager
-    resourceManager = &ResourceManager::Instance();
+    // Initialize ResourceTemplateManager
+    resourceManager = &ResourceTemplateManager::Instance();
 
-    // Ensure ResourceManager is initialized with default resources
+    // Ensure ResourceTemplateManager is initialized with default resources
     if (!resourceManager->isInitialized()) {
       resourceManager->init();
     }
@@ -81,7 +81,7 @@ public:
   }
 
 protected:
-  ResourceManager *resourceManager;
+  ResourceTemplateManager *resourceManager;
   std::unique_ptr<InventoryComponent> playerInventory;
   std::unique_ptr<InventoryComponent> npcInventory;
   std::shared_ptr<Resource> healthPotion;

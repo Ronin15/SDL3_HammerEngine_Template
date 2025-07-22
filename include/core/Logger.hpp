@@ -231,11 +231,18 @@ inline std::mutex Logger::s_logMutex{};
 #define SAVEGAME_INFO(msg) HAMMER_INFO("SaveGameManager", msg)
 #define SAVEGAME_DEBUG(msg) HAMMER_DEBUG("SaveGameManager", msg)
 
-#define RESOURCE_CRITICAL(msg) HAMMER_CRITICAL("ResourceManager", msg)
-#define RESOURCE_ERROR(msg) HAMMER_ERROR("ResourceManager", msg)
-#define RESOURCE_WARN(msg) HAMMER_WARN("ResourceManager", msg)
-#define RESOURCE_INFO(msg) HAMMER_INFO("ResourceManager", msg)
-#define RESOURCE_DEBUG(msg) HAMMER_DEBUG("ResourceManager", msg)
+#define RESOURCE_CRITICAL(msg) HAMMER_CRITICAL("ResourceTemplateManager", msg)
+#define RESOURCE_ERROR(msg) HAMMER_ERROR("ResourceTemplateManager", msg)
+#define RESOURCE_WARN(msg) HAMMER_WARN("ResourceTemplateManager", msg)
+#define RESOURCE_INFO(msg) HAMMER_INFO("ResourceTemplateManager", msg)
+#define RESOURCE_DEBUG(msg) HAMMER_DEBUG("ResourceTemplateManager", msg)
+
+#define WORLD_RESOURCE_CRITICAL(msg)                                           \
+  HAMMER_CRITICAL("WorldResourceManager", msg)
+#define WORLD_RESOURCE_ERROR(msg) HAMMER_ERROR("WorldResourceManager", msg)
+#define WORLD_RESOURCE_WARN(msg) HAMMER_WARN("WorldResourceManager", msg)
+#define WORLD_RESOURCE_INFO(msg) HAMMER_INFO("WorldResourceManager", msg)
+#define WORLD_RESOURCE_DEBUG(msg) HAMMER_DEBUG("WorldResourceManager", msg)
 
 // Entity and State Systems
 #define GAMESTATE_CRITICAL(msg) HAMMER_CRITICAL("GameStateManager", msg)
