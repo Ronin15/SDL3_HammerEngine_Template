@@ -14,7 +14,7 @@
 #include "entities/Entity.hpp"
 #include "entities/Resource.hpp"
 #include "events/ResourceChangeEvent.hpp"
-#include "managers/ResourceManager.hpp"
+#include "managers/ResourceTemplateManager.hpp"
 #include "utils/Vector2D.hpp"
 
 // Simple mock entity for testing
@@ -35,8 +35,8 @@ private:
 class ResourceChangeEventTestFixture {
 public:
   ResourceChangeEventTestFixture() {
-    // Initialize ResourceManager
-    resourceManager = &ResourceManager::Instance();
+    // Initialize ResourceTemplateManager
+    resourceManager = &ResourceTemplateManager::Instance();
 
     // Create simple mock entities for testing
     player = std::make_shared<MockEntity>("test_player");
@@ -48,7 +48,7 @@ public:
   }
 
 protected:
-  ResourceManager *resourceManager;
+  ResourceTemplateManager *resourceManager;
   std::shared_ptr<MockEntity> player;
   std::shared_ptr<MockEntity> npc;
   std::string healthPotionId;

@@ -11,7 +11,7 @@
 #include "entities/playerStates/PlayerRunningState.hpp"
 #include "events/ResourceChangeEvent.hpp"
 #include "managers/EventManager.hpp"
-#include "managers/ResourceManager.hpp"
+#include "managers/ResourceTemplateManager.hpp"
 #include "managers/TextureManager.hpp"
 #include <SDL3/SDL.h>
 
@@ -261,7 +261,7 @@ bool Player::equipItem(const std::string &itemId) {
   }
 
   // Get item template to determine equipment slot
-  auto resourceManager = &ResourceManager::Instance();
+  auto resourceManager = &ResourceTemplateManager::Instance();
   auto itemTemplate = resourceManager->getResourceTemplate(itemId);
   if (!itemTemplate) {
     PLAYER_ERROR("Player::equipItem - Unknown item: " + itemId);
@@ -309,8 +309,8 @@ bool Player::unequipItem(const std::string &slotName) {
     return true;
   }
 
-  PLAYER_WARN(
-      "Player::unequipItem - Could not add item back to inventory: " + itemId);
+  PLAYER_WARN("Player::unequipItem - Could not add item back to inventory: " +
+              itemId);
   return false;
 }
 
@@ -339,7 +339,7 @@ bool Player::consumeItem(const std::string &itemId) {
   }
 
   // Get item template to check if it's consumable
-  auto resourceManager = &ResourceManager::Instance();
+  auto resourceManager = &ResourceTemplateManager::Instance();
   auto itemTemplate = resourceManager->getResourceTemplate(itemId);
   if (!itemTemplate || !itemTemplate->isConsumable()) {
     PLAYER_WARN("Player::consumeItem - Item is not consumable: " + itemId);

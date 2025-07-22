@@ -46,7 +46,8 @@ public:
   using ResourceChangeCallback =
       std::function<void(const std::string &, int, int)>;
 
-  explicit InventoryComponent(Entity *owner = nullptr, size_t maxSlots = 50);
+  explicit InventoryComponent(Entity *owner = nullptr, size_t maxSlots = 50,
+                              const std::string &worldId = "default");
   virtual ~InventoryComponent() = default;
 
   // Basic inventory operations
@@ -108,12 +109,25 @@ public:
   Entity *getOwner() const { return m_owner; }
   void setOwner(Entity *owner) { m_owner = owner; }
 
+  // World management
+  const std::string &getWorldId() const { return m_worldId; }
+  void setWorldId(const std::string &worldId) { m_worldId = worldId; }
+
+  // WorldResourceManager integration
+  void setWorldResourceTracking(bool enabled) {
+    m_trackWorldResources = enabled;
+  }
+  bool isWorldResourceTrackingEnabled() const { return m_trackWorldResources; }
+
 protected:
   Entity *m_owner;                            // Entity that owns this inventory
   std::vector<InventorySlot> m_slots;         // Inventory slots
   size_t m_maxSlots;                          // Maximum number of slots
   ResourceChangeCallback m_onResourceChanged; // Callback for resource changes
   mutable std::mutex m_inventoryMutex;        // Thread safety
+  std::string m_worldId;                      // World ID for resource tracking
+  bool m_trackWorldResources;                 // Whether to track resources in
+                                              // WorldResourceManager
 
   // Helper methods
   int findSlotWithResource(const std::string &resourceId) const;
@@ -123,6 +137,10 @@ protected:
                             int newQuantity);
   void validateSlotIndex(size_t slotIndex) const;
   int getResourceQuantityUnlocked(const std::string &resourceId) const;
+
+  // WorldResourceManager integration helpers
+  void updateWorldResourceManager(const std::string &resourceId,
+                                  int quantityChange);
 };
 
 #endif // INVENTORY_COMPONENT_HPP

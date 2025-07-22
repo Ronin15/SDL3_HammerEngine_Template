@@ -7,7 +7,7 @@
 #include "core/GameEngine.hpp"
 #include "core/Logger.hpp"
 #include "events/ResourceChangeEvent.hpp"
-#include "managers/ResourceManager.hpp"
+#include "managers/ResourceTemplateManager.hpp"
 #include "managers/TextureManager.hpp"
 #include <SDL3/SDL.h>
 #include <cmath>

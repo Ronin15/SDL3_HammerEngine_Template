@@ -3,8 +3,8 @@
  * Licensed under the MIT License - see LICENSE file for details
  */
 
-#ifndef RESOURCE_MANAGER_HPP
-#define RESOURCE_MANAGER_HPP
+#ifndef RESOURCE_TEMPLATE_MANAGER_HPP
+#define RESOURCE_TEMPLATE_MANAGER_HPP
 
 #include "entities/Resource.hpp"
 #include <atomic>
@@ -51,11 +51,11 @@ struct ResourceStats {
 };
 
 /**
- * @brief Singleton ResourceManager for managing resource templates
+ * @brief Singleton ResourceTemplateManager for managing resource templates
  */
-class ResourceManager {
+class ResourceTemplateManager {
 public:
-  static ResourceManager &Instance();
+  static ResourceTemplateManager &Instance();
 
   // Core functionality
   bool init();
@@ -82,12 +82,12 @@ public:
   size_t getMemoryUsage() const;
 
 private:
-  ResourceManager() = default;
-  ~ResourceManager();
+  ResourceTemplateManager() = default;
+  ~ResourceTemplateManager();
 
   // Prevent copying
-  ResourceManager(const ResourceManager &) = delete;
-  ResourceManager &operator=(const ResourceManager &) = delete;
+  ResourceTemplateManager(const ResourceTemplateManager &) = delete;
+  ResourceTemplateManager &operator=(const ResourceTemplateManager &) = delete;
 
   // Internal data
   std::unordered_map<std::string, ResourcePtr> m_resourceTemplates;
@@ -113,4 +113,4 @@ private:
   void createDefaultResources();
 };
 
-#endif // RESOURCE_MANAGER_HPP
+#endif // RESOURCE_TEMPLATE_MANAGER_HPP

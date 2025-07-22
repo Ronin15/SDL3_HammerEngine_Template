@@ -20,8 +20,12 @@ for arg in "$@"; do
       VERBOSE=true
       shift
       ;;
-    --resource-manager-test)
-      TEST_FILTER="resource_manager_tests"
+    --resource-template-test)
+      TEST_FILTER="resource_template_manager_tests"
+      shift
+      ;;
+    --world-resource-test)
+      TEST_FILTER="world_resource_manager_tests"
       shift
       ;;
     --inventory-test)
@@ -40,24 +44,26 @@ for arg in "$@"; do
       echo -e "${BLUE}Resource Manager Test Runner${NC}"
       echo -e "Usage: ./run_resource_tests.sh [options]"
       echo -e "\nOptions:"
-      echo -e "  --verbose                Run tests with verbose output"
-      echo -e "  --resource-manager-test  Run only resource manager tests"
-      echo -e "  --inventory-test         Run only inventory component tests"
-      echo -e "  --resource-event-test    Run only resource event tests"
-      echo -e "  --integration-test       Run only resource integration tests"
-      echo -e "  --help                   Show this help message"
+      echo -e "  --verbose                    Run tests with verbose output"
+      echo -e "  --resource-template-test     Run only resource template manager tests"
+      echo -e "  --world-resource-test        Run only world resource manager tests"
+      echo -e "  --inventory-test             Run only inventory component tests"
+      echo -e "  --resource-event-test        Run only resource event tests"
+      echo -e "  --integration-test           Run only resource integration tests"
+      echo -e "  --help                       Show this help message"
       echo -e "\nTest Suite Overview:"
-      echo -e "  Resource Manager Tests:    Core resource system functionality"
-      echo -e "  Inventory Component Tests: Inventory operations and thread safety"
-      echo -e "  Resource Event Tests:      Resource change event handling"
-      echo -e "  Integration Tests:         Cross-system resource operations"
+      echo -e "  Resource Template Tests:       Core resource template/type definitions"
+      echo -e "  World Resource Tests:          Global resource quantity tracking"
+      echo -e "  Inventory Component Tests:     Inventory operations and thread safety"
+      echo -e "  Resource Event Tests:          Resource change event handling"
+      echo -e "  Integration Tests:             Cross-system resource operations"
       echo -e "\nExecution Time:"
-      echo -e "  Full test suite:          ~1-2 seconds"
-      echo -e "  Individual tests:         ~200-500ms each"
+      echo -e "  Full test suite:               ~2-3 seconds"
+      echo -e "  Individual tests:              ~200-500ms each"
       echo -e "\nExamples:"
-      echo -e "  ./run_resource_tests.sh                      # Run all resource tests"
-      echo -e "  ./run_resource_tests.sh --verbose            # Run with detailed output"
-      echo -e "  ./run_resource_tests.sh --inventory-test     # Run only inventory tests"
+      echo -e "  ./run_resource_tests.sh                          # Run all resource tests"
+      echo -e "  ./run_resource_tests.sh --verbose                # Run with detailed output"
+      echo -e "  ./run_resource_tests.sh --world-resource-test    # Run only world resource tests"
       exit 0
       ;;
   esac
@@ -78,7 +84,8 @@ if [ -n "$TEST_FILTER" ]; then
     TESTS=("$TEST_FILTER")
 else
     TESTS=(
-        "resource_manager_tests"
+        "resource_template_manager_tests"
+        "world_resource_manager_tests"
         "inventory_component_tests"
         "resource_change_event_tests"
         "resource_integration_tests"
