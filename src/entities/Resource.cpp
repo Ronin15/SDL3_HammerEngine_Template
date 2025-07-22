@@ -50,7 +50,7 @@ Resource::Resource(const std::string &id, const std::string &name,
   RESOURCE_INFO("Created resource: " + m_name + " (ID: " + m_id + ")");
 }
 
-void Resource::update(float deltaTime) {
+void Resource::update(float) {
   // Resources are templates - they don't update themselves
   // Individual instances are managed by InventoryComponent
 }
