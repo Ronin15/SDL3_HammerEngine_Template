@@ -62,6 +62,9 @@ public:
   bool craftItem(const std::string &recipeId);
   bool consumeItem(const std::string &itemId);
 
+  // Initialization - call after construction to setup inventory
+  void initializeInventory();
+
 private:
   void handleMovementInput(float deltaTime);
   void handleStateTransitions();

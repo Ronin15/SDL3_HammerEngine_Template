@@ -50,8 +50,9 @@ NPC::NPC(const std::string &textureID, const Vector2D &startPosition,
   // Disable bounds checking by default
   m_boundsCheckEnabled = false;
 
-  // Initialize inventory system
-  setupInventory();
+  // Initialize inventory system - NOTE: Do NOT call setupInventory() here
+  // because it can trigger shared_this() during construction.
+  // Call initializeInventory() after construction completes.
   // std::cout << "Hammer Game Engine - NPC created at position: " <<
   // m_position.getX() << ", " << m_position.getY() << "\n";
 }
@@ -231,7 +232,7 @@ void NPC::clean() {
   }
 }
 
-void NPC::setupInventory() {
+void NPC::initializeInventory() {
   // Create inventory with 20 slots (smaller than player inventory)
   m_inventory = std::make_unique<InventoryComponent>(this, 20);
 
