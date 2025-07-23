@@ -53,6 +53,9 @@ public:
   InventoryComponent *getInventory() { return m_inventory.get(); }
   const InventoryComponent *getInventory() const { return m_inventory.get(); }
 
+  // Initialization - call after construction to setup inventory
+  void initializeInventory();
+
   // NPC-specific resource operations
   bool addResource(const std::string &resourceId, int quantity);
   bool removeResource(const std::string &resourceId, int quantity);

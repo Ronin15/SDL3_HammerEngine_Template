@@ -40,8 +40,9 @@ Player::Player() {
   // Setup state manager and add states
   setupStates();
 
-  // Setup inventory system
-  setupInventory();
+  // Setup inventory system - NOTE: Do NOT call setupInventory() here
+  // because it can trigger shared_this() during construction.
+  // Call setupInventory() after construction completes.
   // Set default state
   changeState("idle");
 
@@ -173,7 +174,7 @@ void Player::clean() {
   m_equippedItems.clear();
 }
 
-void Player::setupInventory() {
+void Player::initializeInventory() {
   // Create inventory with 50 slots (can be made configurable)
   m_inventory = std::make_unique<InventoryComponent>(this, 50);
 
@@ -193,10 +194,10 @@ void Player::setupInventory() {
   m_equippedItems["ring"] = "";
   m_equippedItems["necklace"] = "";
 
-  // Give player some starting resources
+  // Give player some starting resources (only use resources that exist)
   addResource("gold", 100);
   addResource("health_potion", 3);
-  addResource("mana_potion", 2);
+  // Note: mana_potion doesn't exist in default resources
 
   PLAYER_DEBUG("Player inventory initialized with " +
                std::to_string(m_inventory->getMaxSlots()) + " slots");
