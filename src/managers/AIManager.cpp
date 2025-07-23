@@ -32,6 +32,11 @@ bool AIManager::init() {
     m_storage.reserve(INITIAL_CAPACITY);
     m_entityToIndex.reserve(INITIAL_CAPACITY);
 
+    // Reserve capacity for assignment queues to prevent reallocations during
+    // batch processing
+    m_pendingAssignments.reserve(AIConfig::ASSIGNMENT_QUEUE_RESERVE);
+    m_pendingAssignmentIndex.reserve(AIConfig::ASSIGNMENT_QUEUE_RESERVE);
+
     // Initialize double buffers
     m_storage.doubleBuffer[0].reserve(INITIAL_CAPACITY);
     m_storage.doubleBuffer[1].reserve(INITIAL_CAPACITY);
@@ -495,9 +500,21 @@ size_t AIManager::processPendingBehaviorAssignments() {
       return 0;
     }
 
-    toProcess = std::move(m_pendingAssignments);
-    m_pendingAssignments.clear();
-    m_pendingAssignmentIndex.clear();
+    // Batch processing: limit assignments per frame to prevent framerate spikes
+    size_t batchSize = std::min(m_pendingAssignments.size(),
+                                AIConfig::MAX_ASSIGNMENTS_PER_FRAME);
+    toProcess.reserve(batchSize);
+
+    // Move first batch of assignments to processing queue
+    auto end_it = m_pendingAssignments.begin() + batchSize;
+    std::move(m_pendingAssignments.begin(), end_it,
+              std::back_inserter(toProcess));
+    m_pendingAssignments.erase(m_pendingAssignments.begin(), end_it);
+
+    // Update index for processed entities
+    for (const auto &assignment : toProcess) {
+      m_pendingAssignmentIndex.erase(assignment.entity);
+    }
   }
 
   size_t processed = 0;

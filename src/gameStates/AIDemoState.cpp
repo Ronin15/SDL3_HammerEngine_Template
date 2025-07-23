@@ -90,12 +90,15 @@ void AIDemoState::handleInput() {
 
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_2)) {
     // Assign Patrol behavior to all NPCs
-    std::cout << "Hammer Game Engine - Switching all NPCs to PATROL behavior\n";
+    std::cout << "Hammer Game Engine - Switching " << m_npcs.size()
+              << " NPCs to PATROL behavior (batched processing)...\n";
     AIManager &aiMgr = AIManager::Instance();
     for (auto &npc : m_npcs) {
       // Queue the behavior assignment for batch processing
       aiMgr.queueBehaviorAssignment(npc, "Patrol");
     }
+    std::cout << "Hammer Game Engine - Patrol assignments queued. Processing "
+                 "across multiple frames for optimal performance.\n";
   }
 
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_3)) {
