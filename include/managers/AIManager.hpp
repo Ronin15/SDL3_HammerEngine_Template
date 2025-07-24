@@ -42,8 +42,8 @@
 
 // Performance configuration constants
 namespace AIConfig {
-constexpr size_t MAX_ASSIGNMENTS_PER_FRAME =
-    500; // Batch limit for behavior assignments
+// Assignment per-frame limit removed. Assignment batching is now dynamic and
+// thread-aware.
 constexpr size_t ASSIGNMENT_QUEUE_RESERVE =
     1000; // Reserve capacity for assignment queue
 } // namespace AIConfig
@@ -226,16 +226,21 @@ public:
    * @brief Queues a behavior assignment for batch processing
    * @param entity Pointer to the entity to assign behavior to
    * @param behaviorName Name of the behavior to assign
+   *
+   * Assignment batching is now dynamic and thread-aware. All pending
+   * assignments are processed in optimal batches using the ThreadSystem.
    */
   void queueBehaviorAssignment(EntityPtr entity,
                                const std::string &behaviorName);
-
   /**
    * @brief Processes all pending behavior assignments
    * @return Number of assignments processed
+   *
+   * This method now uses the ThreadSystem and WorkerBudget to process all
+   * assignments in optimal parallel batches. No artificial per-frame limit is
+   * imposed; all assignments are processed as fast as system resources allow.
    */
   size_t processPendingBehaviorAssignments();
-
   // Player reference for AI targeting
   void setPlayerForDistanceOptimization(EntityPtr player);
   EntityPtr getPlayerReference() const;

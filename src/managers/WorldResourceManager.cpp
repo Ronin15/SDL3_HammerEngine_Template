@@ -13,7 +13,12 @@ WorldResourceManager &WorldResourceManager::Instance() {
   return instance;
 }
 
-WorldResourceManager::~WorldResourceManager() { clean(); }
+WorldResourceManager::~WorldResourceManager() {
+  // Only clean up if not already shut down
+  if (!m_isShutdown) {
+    clean();
+  }
+}
 
 bool WorldResourceManager::init() {
   if (m_initialized) {
@@ -53,6 +58,7 @@ void WorldResourceManager::clean() {
   m_worldResources.clear();
 
   m_initialized = false;
+  m_isShutdown = true;
   m_stats.reset();
 
   WORLD_RESOURCE_INFO("WorldResourceManager cleaned up");

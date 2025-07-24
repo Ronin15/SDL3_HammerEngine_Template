@@ -46,6 +46,11 @@
 - **File/Directory Handling:** Use std::filesystem for cross-platform path handling. Validate file permissions and clean up test artifacts.
 - **Documentation:** Comment complex algorithms, document all public APIs with Doxygen-style comments, update relevant docs for new features.
 - **Serialization System:** HammerEngine uses ISerializable interface with serialize(std::ostream&) and deserialize(std::istream&) methods. Use BinarySerial::Writer and BinarySerial::Reader classes for binary serialization, NOT BinarySerializer. See SaveGameManager and MockPlayer for examples.
+- **Singleton Manager Pattern:** All singleton managers MUST implement proper shutdown handling to prevent double cleanup:
+  - Add `bool m_isShutdown{false};` member variable
+  - In destructor: `if (!m_isShutdown) { clean(); }`
+  - In `clean()` method: Set `m_isShutdown = true;` before cleanup
+  - Examples: SoundManager, EventManager, WorldResourceManager, ResourceTemplateManager
 - **Aditional Instructions:** Please ask before removing the build dir, Only remove it when absolutley necessary. Updating cmake and then re-configruing fixes most build problems.
 > For more details, see `README.md`, `docs/Logger.md`, `docs/ThreadSystem.md`, and `tests/TESTING.md`.
 

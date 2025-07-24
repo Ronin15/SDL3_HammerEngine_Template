@@ -98,7 +98,7 @@ void AIDemoState::handleInput() {
       aiMgr.queueBehaviorAssignment(npc, "Patrol");
     }
     std::cout << "Hammer Game Engine - Patrol assignments queued. Processing "
-                 "across multiple frames for optimal performance.\n";
+                 "instantly in parallel for optimal performance.\n";
   }
 
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_3)) {
