@@ -100,7 +100,7 @@ private:
 
   // Shared RNG optimization - use thread-local static RNG pool
   // instead of per-instance RNG to reduce memory overhead
-  static thread_local std::mt19937 &getSharedRNG();
+  static std::mt19937 &getSharedRNG();
   static thread_local std::uniform_real_distribution<float> s_angleDistribution;
   static thread_local std::uniform_real_distribution<float>
       s_wanderOffscreenChance;
