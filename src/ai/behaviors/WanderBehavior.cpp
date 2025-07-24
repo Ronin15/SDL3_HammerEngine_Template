@@ -28,10 +28,33 @@ std::mt19937 &WanderBehavior::getSharedRNG() {
 WanderBehavior::WanderBehavior(float speed, float changeDirectionInterval,
                                float areaRadius)
     : m_speed(speed), m_changeDirectionInterval(changeDirectionInterval),
-      m_areaRadius(areaRadius) {}
+      m_areaRadius(areaRadius) {
+  // Default to every frame, can be set by mode or setter
+  m_updateFrequency = 1;
+}
+
+WanderBehavior::WanderMode
+getDefaultModeForFrequency(WanderBehavior::WanderMode mode) {
+  return mode;
+}
 
 WanderBehavior::WanderBehavior(WanderMode mode, float speed) : m_speed(speed) {
   setupModeDefaults(mode);
+  // Set sensible default update frequency per mode
+  switch (mode) {
+  case WanderMode::SMALL_AREA:
+    m_updateFrequency = 1; // every frame
+    break;
+  case WanderMode::MEDIUM_AREA:
+    m_updateFrequency = 2; // every 2 frames
+    break;
+  case WanderMode::LARGE_AREA:
+    m_updateFrequency = 4; // every 4 frames
+    break;
+  case WanderMode::EVENT_TARGET:
+    m_updateFrequency = 1; // treat as small for responsiveness
+    break;
+  }
 }
 
 void WanderBehavior::init(EntityPtr entity) {
@@ -64,6 +87,24 @@ void WanderBehavior::executeLogic(EntityPtr entity) {
     }
     return;
   }
+
+  // Only run expensive logic on staggered frames
+  // (AIBehavior base will call this every frame, but only staggered frames
+  // should do the heavy work) This is handled by executeLogicWithStaggering in
+  // the base class. Here, we assume executeLogic is called only on the correct
+  // frames.
+  updateWanderState(entity);
+
+  // Always apply velocity (in case something external changed it)
+  entity->setVelocity(state.currentDirection * m_speed);
+}
+
+void WanderBehavior::updateWanderState(EntityPtr entity) {
+  if (!entity)
+    return;
+
+  EntityState &state = m_entityStates[entity];
+  Uint64 currentTime = SDL_GetTicks();
 
   Vector2D position = entity->getPosition();
   Vector2D previousVelocity = entity->getVelocity();

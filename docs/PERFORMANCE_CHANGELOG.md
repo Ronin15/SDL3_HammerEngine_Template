@@ -7,18 +7,18 @@
 #### New Performance Optimization System
 - **ADDED**: Per-entity update staggering framework for expensive AI behaviors
 - **IMPLEMENTED**: Frame-based distribution of computational load across multiple frames
-- **ENHANCED**: ChaseBehavior with staggered line-of-sight and distance calculations
-- **CONFIGURABLE**: Runtime-adjustable update frequencies per behavior type
+- **ENHANCED**: ChaseBehavior and WanderBehavior now both use staggered updates for expensive logic (direction changes, offscreen checks, etc.)
+- **CONFIGURABLE**: Runtime-adjustable update frequencies per behavior type (including WanderBehavior)
 
 **Core Features**:
 - **Automatic Stagger Distribution**: Entities automatically distributed across frames using hash-based offsets
 - **Cached State Management**: Expensive calculations cached and reused between staggered updates
-- **Configurable Frequency**: Per-behavior update frequency configuration (default: every 3 frames)
+- **Configurable Frequency**: Per-behavior update frequency configuration (default: every 3 frames for Chase, 1-4 for Wander depending on mode)
 - **Backward Compatibility**: Existing behaviors continue to work without modification
 - **Debug Monitoring**: Performance profiling hooks for measuring staggering effectiveness
 
 #### Performance Improvements
-- **ChaseBehavior CPU Reduction**: Up to 67% reduction in expensive calculations (with frequency=3)
+- **ChaseBehavior & WanderBehavior CPU Reduction**: Up to 67% reduction in expensive calculations (with frequency=3 for Chase, 4 for Wander/LARGE)
 - **Spike Prevention**: Distributes computational load to prevent frame-time spikes
 - **Maintained Responsiveness**: Smooth entity movement using cached calculation results
 - **Scalable Design**: Performance benefits increase with entity count
@@ -31,17 +31,25 @@
 
 **Configuration Examples**:
 ```cpp
-// Default staggering (every 3 frames, ~67% CPU reduction)
+// Default staggering (every 3 frames for Chase, 1-4 for Wander)
 chaseBehavior->setUpdateFrequency(3);
+wanderBehavior->setUpdateFrequency(4); // For large groups, use 4+ for best performance
 
-// High-priority entities (every 2 frames, ~50% CPU reduction)  
+// High-priority entities (every 2 frames)
 chaseBehavior->setUpdateFrequency(2);
+wanderBehavior->setUpdateFrequency(2);
 
-// Background entities (every 5 frames, ~80% CPU reduction)
+// Background entities (every 5+ frames)
 chaseBehavior->setUpdateFrequency(5);
+wanderBehavior->setUpdateFrequency(6);
 ```
 
 ---
+
+#### Migration Note
+- **WanderBehavior now uses per-entity update staggering by default.**
+- Default frequencies: SMALL=1, MEDIUM=2, LARGE=4, EVENT_TARGET=2. For large numbers of wandering NPCs, increase update frequency (e.g., 4+) for best performance.
+- No code changes required for existing users, but tuning is recommended for large-scale scenarios.
 
 ## Version 4.4.0 - Threading Architecture Simplification (2025-01-XX)
 
