@@ -81,3 +81,27 @@ When fixing unused variable warnings, **ALWAYS investigate whether the variable 
 - `-Wunused-parameter`: Function parameters that aren't used
 
 ---
+
+## Documentation Hygiene Checklist
+
+When updating documentation, always:
+
+1. **Check all links and anchors:**
+   - Verify that every `[text](link)` and `[text](file.md#anchor)` points to an existing file and section.
+   - Use your editor’s search or a script to find all Markdown links and anchors.
+2. **Update summaries and navigation:**
+   - If you add, remove, or rename a doc, update the relevant summary/index (e.g., this file, managers/README.md).
+   - Ensure the Table of Contents and quick links match the actual content.
+3. **Spot-check deep links:**
+   - For new or changed docs, check that the summary/description in the index matches the actual content.
+4. **Keep platform notes and setup instructions current:**
+   - Update platform-specific instructions if dependencies or build steps change.
+5. **Test documentation navigation:**
+   - Open docs in a Markdown viewer and click through links to ensure there are no dead ends.
+6. **Document new features:**
+   - Add new features to the appropriate section and update the index/quick links.
+7. **Remove or update outdated content:**
+   - Delete or revise obsolete instructions, links, or references.
+
+> Following this checklist ensures the documentation remains robust, accurate, and easy for new contributors to navigate.
+
