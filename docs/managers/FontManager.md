@@ -32,33 +32,19 @@ if (!FontManager::Instance().init()) {
     std::cerr << "Failed to initialize FontManager" << std::endl;
     return false;
 }
-
-// The FontManager automatically configures quality settings:
-// - TTF hinting for better font outline quality
-// - Kerning for proper character spacing
-// - Nearest neighbor texture scaling for crisp text rendering
-// - Cross-platform font sizing for consistent readability
 ```
 
 ### Cross-Platform Font Loading
 
 ```cpp
-// Automatic cross-platform font loading (recommended)
-FontManager& fontMgr = FontManager::Instance();
-
 // Load fonts with sizes calculated based on display properties
+FontManager& fontMgr = FontManager::Instance();
 fontMgr.loadFontsForDisplay("res/fonts", windowWidth, windowHeight);
-
-// This automatically creates platform-optimized fonts:
-// macOS: Fixed 18px base with logical presentation scaling
-// Windows/Linux: Dynamic scaling with 18px minimum for readability
-// 4K displays: Properly scaled fonts (24px+ base)
-// 
 // Font IDs created:
-// - fonts_Arial: Base font for general content
-// - fonts_UI_Arial: UI font for interface elements  
-// - fonts_Title_Arial: Title font for headers
-// - fonts_Tooltip_Arial: Smaller font for tooltips
+// - fonts: Base font for general content
+// - fonts_UI: UI font for interface elements
+// - fonts_title: Title font for headers
+// - fonts_tooltip: Smaller font for tooltips
 ```
 
 ### Manual Font Loading
@@ -77,22 +63,23 @@ bool success = fontMgr.loadFont(
 ### Basic Text Rendering
 
 ```cpp
-// Render text directly to screen
+// Render text directly to screen (centered by default)
 fontMgr.drawText(
     "Hello World",               // Text to render
-    "fonts_Arial",               // Font ID
+    "fonts",                     // Font ID
     400, 300,                    // Position (x, y)
     {255, 255, 255, 255},        // Color (white)
     renderer                     // SDL renderer
 );
 
-// Centered text rendering
-fontMgr.drawTextCentered(
-    "Centered Text",
-    "fonts_Title_Arial",
-    400, 300,                    // Center position
+// Render text with alignment (0=center, 1=left, 2=right, 3=top-left, 4=top-center, 5=top-right)
+fontMgr.drawTextAligned(
+    "Aligned Text",
+    "fonts_title",
+    400, 300,                    // Position
     {255, 215, 0, 255},          // Gold color
-    renderer
+    renderer,
+    1                            // Left alignment
 );
 ```
 
@@ -100,16 +87,39 @@ fontMgr.drawTextCentered(
 
 ```cpp
 // Create text texture for caching or complex layouts
-SDL_Texture* textTexture = fontMgr.renderTextToTexture(
+std::shared_ptr<SDL_Texture> textTexture = fontMgr.renderText(
     "Cached Text",
-    "fonts_UI_Arial",
+    "fonts_UI",
     {200, 200, 200, 255},        // Gray color
     renderer
 );
 
 // Use the texture in your rendering
-SDL_Rect destRect = {x, y, width, height};
-SDL_RenderTexture(renderer, textTexture, nullptr, &destRect);
+SDL_FRect destRect = {x, y, width, height};
+SDL_RenderTexture(renderer, textTexture.get(), nullptr, &destRect);
+```
+
+### Multi-Line and Wrapped Text
+
+```cpp
+// Render multi-line text (handles newlines automatically)
+fontMgr.drawText(
+    "Line 1\nLine 2\nLine 3",
+    "fonts",
+    400, 300,
+    {255, 255, 255, 255},
+    renderer
+);
+
+// Render text with word wrapping
+fontMgr.drawTextWithWrapping(
+    "This is a long string that will wrap to fit within 300px.",
+    "fonts_UI",
+    100, 100,                    // Top-left position
+    300,                         // Max width
+    {255, 255, 255, 255},
+    renderer
+);
 ```
 
 ## Text Measurement
@@ -121,30 +131,36 @@ SDL_RenderTexture(renderer, textTexture, nullptr, &destRect);
 int width, height;
 bool success = fontMgr.measureText(
     "Sample Text",
-    "fonts_UI_Arial",
+    "fonts_UI",
     &width,
     &height
 );
-
 if (success) {
     std::cout << "Text size: " << width << "x" << height << " pixels" << std::endl;
 }
 ```
 
-### Multi-Line Text
+### Multi-Line and Wrapped Text
 
 ```cpp
-// Measure multi-line text (automatically detects newlines)
+// Measure multi-line text (newlines)
 int width, height;
 bool success = fontMgr.measureMultilineText(
     "Line 1\nLine 2\nLine 3",
-    "fonts_Arial",
-    400,                         // Maximum width (0 for no limit)
+    "fonts",
+    0,      // No max width
     &width,
     &height
 );
 
-// Returns total dimensions including all lines
+// Measure text with word wrapping
+success = fontMgr.measureTextWithWrapping(
+    "This is a long string that will wrap.",
+    "fonts_UI",
+    300,    // Max width
+    &width,
+    &height
+);
 ```
 
 ### Font Metrics
@@ -153,173 +169,26 @@ bool success = fontMgr.measureMultilineText(
 // Get font metrics for layout calculations
 int lineHeight, ascent, descent;
 bool success = fontMgr.getFontMetrics(
-    "fonts_Arial",
+    "fonts",
     &lineHeight,
     &ascent,
     &descent
 );
-
-// Use metrics for precise text positioning
-int baselineY = y + ascent;
-int nextLineY = y + lineHeight;
 ```
 
-## Integration with UI Systems
-
-### Dynamic Auto-Sizing Integration
-
-The FontManager integrates seamlessly with the UI dynamic auto-sizing system:
+## Font Management
 
 ```cpp
-// UI components automatically use FontManager for dynamic text measurement
-auto& ui = UIManager::Instance();
-
-// Lists automatically size based on current font metrics
-ui.createList("dynamic_list", {x, y, 200, 140});
-ui.addListItem("dynamic_list", "Item 1"); // Triggers auto-sizing
-
-// Labels automatically size to fit text using current fonts
-ui.createLabel("dynamic", {x, y, 0, 0}, "Dynamic Content");
-
-// Auto-sizing adapts to font changes during window resize
-// No manual recalculation needed - all handled automatically
-```
-
-### Cross-Platform Resolution Integration
-
-```cpp
-// FontManager automatically adapts to display resolution and platform
-// No manual DPI scaling needed - handled automatically per platform
-
-// Font sizes are calculated based on platform and resolution:
-// macOS (any resolution): 18px base font with logical scaling
-// Windows/Linux 1080p: 18px base font (minimum enforced)
-// Windows/Linux 1440p: 18px base font (minimum enforced) 
-// Windows/Linux 4K: 24px base font (dynamically calculated)
-
-// All text rendering uses platform-appropriate fonts automatically
-fontMgr.drawText("Text", "fonts_Arial", x, y, color, renderer);
-
-// Font sizing formula for Windows/Linux:
-// Base size = max(screen_height / 90, 18px minimum)
-// This ensures readability at all resolutions
-```
-
-## Directory Loading
-
-### Batch Font Loading
-
-```cpp
-// Load all fonts from a directory
-bool success = fontMgr.loadFontsFromDirectory(
-    "res/fonts/",               // Directory path
-    "game_fonts",               // Font ID prefix
-    18                          // Base font size
-);
-
-// Creates font IDs like: "game_fonts_arial", "game_fonts_times", etc.
-```
-
-### Font Family Loading
-
-```cpp
-// Load multiple sizes of the same font
-std::vector<int> sizes = {12, 18, 24, 36};
-for (int size : sizes) {
-    std::string fontID = "arial_" + std::to_string(size);
-    fontMgr.loadFont("res/fonts/arial.ttf", fontID, size);
-}
-```
-
-## Quality Settings
-
-### Automatic Quality Configuration
-
-The FontManager automatically configures optimal quality settings:
-
-```cpp
-// Applied to all loaded fonts automatically:
-TTF_SetFontHinting(font, TTF_HINTING_NORMAL);    // Better outline quality
-TTF_SetFontKerning(font, 1);                     // Proper character spacing
-TTF_SetFontStyle(font, TTF_STYLE_NORMAL);        // Consistent rendering
-
-// Texture quality settings:
-SDL_SetTextureScaleMode(texture, SDL_SCALEMODE_NEAREST);  // Crisp pixel-perfect scaling
-```
-
-### Custom Quality Settings
-
-```cpp
-// Advanced font configuration (rarely needed)
-fontMgr.setFontHinting("fonts_Arial", TTF_HINTING_LIGHT);
-fontMgr.setFontKerning("fonts_Arial", false);
-```
-
-## Performance Optimization
-
-### Font Caching
-
-```cpp
-// Fonts are automatically cached for reuse
-bool isLoaded = fontMgr.isFontLoaded("fonts_Arial");
-
-// Unload unused fonts to free memory
-fontMgr.unloadFont("unused_font");
-
-// Clear all fonts
-fontMgr.clearAllFonts();
-```
-
-### Text Texture Caching
-
-```cpp
-// For frequently changing text, consider texture caching
-class TextCache {
-    std::unordered_map<std::string, SDL_Texture*> m_cache;
-
-public:
-    SDL_Texture* getOrCreateText(const std::string& text, const std::string& fontID) {
-        auto it = m_cache.find(text);
-        if (it != m_cache.end()) {
-            return it->second;  // Return cached texture
-        }
-
-        // Create new texture and cache it
-        auto texture = FontManager::Instance().renderTextToTexture(text, fontID, color, renderer);
-        m_cache[text] = texture;
-        return texture;
-    }
-};
-```
-
-## Error Handling
-
-### Font Loading Errors
-
-```cpp
-// Check font loading success
-if (!fontMgr.loadFont("res/fonts/arial.ttf", "arial", 24)) {
-    std::cerr << "Failed to load font: arial.ttf" << std::endl;
-    // Fall back to default font or handle error
+// Check if a font is loaded
+if (fontMgr.isFontLoaded("fonts_UI")) {
+    // Use the font
 }
 
-// Verify font availability before use
-if (!fontMgr.isFontLoaded("fonts_Arial")) {
-    std::cerr << "Font not available: fonts_Arial" << std::endl;
-    return;
-}
-```
+// Remove a specific font
+fontMgr.clearFont("custom_font");
 
-### Rendering Errors
-
-```cpp
-// Text measurement can fail with invalid fonts or empty text
-int width, height;
-if (!fontMgr.measureText("", "invalid_font", &width, &height)) {
-    // Handle measurement failure
-    width = 0;
-    height = 0;
-}
+// Clean up all fonts and shut down
+fontMgr.clean();
 ```
 
 ## API Reference
@@ -334,93 +203,25 @@ void clean();
 // Font loading
 bool loadFont(const std::string& fontFile, const std::string& fontID, int fontSize);
 bool loadFontsForDisplay(const std::string& fontPath, int windowWidth, int windowHeight);
-bool loadFontsFromDirectory(const std::string& directory, const std::string& prefix, int fontSize);
+bool refreshFontsForDisplay(const std::string& fontPath, int windowWidth, int windowHeight);
 
 // Font management
 bool isFontLoaded(const std::string& fontID) const;
-void unloadFont(const std::string& fontID);
-void clearAllFonts();
+void clearFont(const std::string& fontID);
 
 // Text rendering
-void drawText(const std::string& text, const std::string& fontID, int x, int y,
-              SDL_Color color, SDL_Renderer* renderer);
-void drawTextCentered(const std::string& text, const std::string& fontID, int x, int y,
-                      SDL_Color color, SDL_Renderer* renderer);
-SDL_Texture* renderTextToTexture(const std::string& text, const std::string& fontID,
-                                 SDL_Color color, SDL_Renderer* renderer);
+void drawText(const std::string& text, const std::string& fontID, int x, int y, SDL_Color color, SDL_Renderer* renderer);
+void drawTextAligned(const std::string& text, const std::string& fontID, int x, int y, SDL_Color color, SDL_Renderer* renderer, int alignment = 0);
+void drawTextWithWrapping(const std::string& text, const std::string& fontID, int x, int y, int maxWidth, SDL_Color color, SDL_Renderer* renderer);
+std::shared_ptr<SDL_Texture> renderText(const std::string& text, const std::string& fontID, SDL_Color color, SDL_Renderer* renderer);
+std::shared_ptr<SDL_Texture> renderMultiLineText(const std::string& text, TTF_Font* font, SDL_Color color, SDL_Renderer* renderer);
 
 // Text measurement
 bool measureText(const std::string& text, const std::string& fontID, int* width, int* height);
-bool measureMultilineText(const std::string& text, const std::string& fontID,
-                         int maxWidth, int* width, int* height);
+bool measureMultilineText(const std::string& text, const std::string& fontID, int maxWidth, int* width, int* height);
+bool measureTextWithWrapping(const std::string& text, const std::string& fontID, int maxWidth, int* width, int* height);
 bool getFontMetrics(const std::string& fontID, int* lineHeight, int* ascent, int* descent);
-```
-
-### Integration Methods
-
-```cpp
-// DPI integration
-float getDPIScale() const;  // Get current DPI scale factor
-
-// Quality configuration
-void setFontHinting(const std::string& fontID, int hinting);
-void setFontKerning(const std::string& fontID, bool enable);
-```
-
-## Best Practices
-
-### Font Loading
-
-```cpp
-// ✅ GOOD: Use cross-platform loading for UI fonts
-fontMgr.loadFontsForDisplay("res/fonts", windowWidth, windowHeight);
-
-// ✅ GOOD: Load fonts once during initialization
-void GameState::enter() {
-    fontMgr.loadFont("res/fonts/special.ttf", "special_font", 32);
-}
-
-// ✅ GOOD: Fonts automatically refresh on window resize
-// No manual intervention needed - handled by InputManager
-
-// ❌ BAD: Don't load fonts every frame
-void GameState::render() {
-    fontMgr.loadFont("res/fonts/arial.ttf", "arial", 24);  // Inefficient
-    fontMgr.drawText("Text", "arial", x, y, color, renderer);
-}
-```
-
-### Text Rendering
-
-```cpp
-// ✅ GOOD: Cache textures for static text
-SDL_Texture* cachedTexture = fontMgr.renderTextToTexture("Static Text", "fonts_Arial", color, renderer);
-
-// ✅ GOOD: Use appropriate font sizes for content
-fontMgr.drawText("Title", "fonts_Title_Arial", x, y, color, renderer);      // Large for titles
-fontMgr.drawText("Body text", "fonts_Arial", x, y, color, renderer);        // Medium for content
-fontMgr.drawText("Tooltip", "fonts_Tooltip_Arial", x, y, color, renderer);  // Small for tooltips
-
-// ✅ GOOD: Measure text before rendering for layout
-int width, height;
-fontMgr.measureText("Dynamic Text", "fonts_UI_Arial", &width, &height);
-// Use width/height for positioning or UI layout
-```
-
-### Memory Management
-
-```cpp
-// ✅ GOOD: Unload unused fonts
-void GameState::exit() {
-    fontMgr.unloadFont("state_specific_font");
-}
-
-// ✅ GOOD: Check font availability
-if (fontMgr.isFontLoaded("fonts_Arial")) {
-    fontMgr.drawText("Text", "fonts_Arial", x, y, color, renderer);
-} else {
-    // Use fallback font or skip rendering
-}
+std::vector<std::string> wrapTextToLines(const std::string& text, const std::string& fontID, int maxWidth);
 ```
 
 ## Integration with Other Systems
