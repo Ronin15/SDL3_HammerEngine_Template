@@ -56,10 +56,23 @@ public:
   // Set the probability of wandering offscreen
   void setOffscreenProbability(float probability);
 
+  // Set the update frequency for staggering (every N frames)
+  void setUpdateFrequency(uint32_t frequency) {
+    m_updateFrequency = frequency > 0 ? frequency : 1;
+  }
+
   // Clone method for creating unique behavior instances
   std::shared_ptr<AIBehavior> clone() const override;
 
+public:
+  // --- Staggering system overrides ---
+  bool useStaggering() const override { return true; }
+  uint32_t getUpdateFrequency() const override { return m_updateFrequency; }
+
 private:
+  // Called only on staggered frames for expensive logic
+  void updateWanderState(EntityPtr entity);
+
   // Entity-specific state data
   struct EntityState {
     Vector2D currentDirection{0, 0};
@@ -85,6 +98,9 @@ private:
   float m_changeDirectionInterval{2000.0f}; // milliseconds
   float m_areaRadius{300.0f};
   Vector2D m_centerPoint{0, 0};
+
+  // Staggering system
+  uint32_t m_updateFrequency{1}; // Default: every frame, will be set by mode
 
   // Screen dimensions - defaults that will be updated in setCenterPoint
   float m_screenWidth{1280.0f};

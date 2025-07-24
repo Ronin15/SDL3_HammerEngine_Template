@@ -122,7 +122,7 @@ Entities pursue a target (typically the player) when within detection range.
 
 ### Overview
 
-The AI system supports per-entity update staggering to reduce computational load for expensive behaviors like ChaseBehavior. This feature allows behaviors to update their expensive calculations less frequently while maintaining smooth entity movement.
+The AI system supports per-entity update staggering to reduce computational load for expensive behaviors like ChaseBehavior and WanderBehavior. This feature allows behaviors to update their expensive calculations less frequently while maintaining smooth entity movement.
 
 ### How It Works
 
@@ -160,22 +160,34 @@ public:
 - **Maintains Responsiveness**: Entities still move smoothly using cached data
 - **Configurable**: Can be tuned per behavior type or globally
 
-### Example: ChaseBehavior Staggering
+### Example: Staggering in ChaseBehavior and WanderBehavior
 
-ChaseBehavior uses staggering to optimize:
-- Line-of-sight calculations
+All core AI behaviors (Wander, Patrol, Idle, Guard, Follow, Flee, Attack, and Chase) now support per-entity update staggering for optimal performance:
+- Expensive calculations (e.g., line-of-sight, pathfinding, threat detection, attack logic) are distributed across frames
+- Direction changes, offscreen checks, and reset logic (Wander)
+- Patrol route updates (Patrol)
+- Idle/fidget logic (Idle)
+- Guard alertness and patrol (Guard)
+- Following and formation logic (Follow)
+- Fleeing and evasive maneuvers (Flee)
+- Attack and combat state updates (Attack)
 - Distance computations
-- Target tracking updates
+- Target tracking updates (Chase)
 
 ```cpp
-// Default: Update expensive calculations every 3 frames
+// ChaseBehavior: Default is every 3 frames
 chaseBehavior->setUpdateFrequency(3);  // ~67% CPU reduction
 
+// WanderBehavior: Default is every 1-4 frames depending on mode
+wanderBehavior->setUpdateFrequency(4); // For large groups, use 4+ for best performance
+
 // For high-priority entities: Update more frequently
-chaseBehavior->setUpdateFrequency(2);  // ~50% CPU reduction
+chaseBehavior->setUpdateFrequency(2);
+wanderBehavior->setUpdateFrequency(2);
 
 // For background entities: Update less frequently
-chaseBehavior->setUpdateFrequency(5);  // ~80% CPU reduction
+chaseBehavior->setUpdateFrequency(5);
+wanderBehavior->setUpdateFrequency(6);
 ```
 
 ## Quick Start
@@ -645,6 +657,7 @@ void createNPCGroup(const std::string& npcType, int count) {
 8. **Batch entity creation** - register multiple entities at once for better cache efficiency
 9. **Avoid frequent behavior changes** - behavior switching has overhead, design for stability
 10. **Use distance-based priorities** - closer entities should have higher priorities for better player experience
+11. **For large numbers of wandering NPCs, increase WanderBehavior's update frequency (e.g., 4+) to maximize performance.**
 
 **Threading Performance Guidelines:**
 - **< 200 entities**: Single-threaded mode (optimal for small workloads)

@@ -29,8 +29,9 @@ PatrolBehavior::PatrolBehavior(const std::vector<Vector2D> &waypoints,
     : m_waypoints(waypoints), m_currentWaypoint(0), m_moveSpeed(moveSpeed),
       m_waypointRadius(25.0f), m_includeOffscreenPoints(includeOffscreenPoints),
       m_needsReset(false), m_screenWidth(1280.0f), m_screenHeight(720.0f),
-      m_rng(getSharedRNG()), m_seedSet(true) {
-  // Reserve capacity for typical patrol routes (performance optimization)
+      m_rng(getSharedRNG()), m_seedSet(true),
+      m_updateFrequency(2) { // Default: every 2 frames  // Reserve capacity for
+                             // typical patrol routes (performance optimization)
   m_waypoints.reserve(10);
 
   // Ensure we have at least two waypoints
@@ -46,8 +47,22 @@ PatrolBehavior::PatrolBehavior(PatrolMode mode, float moveSpeed,
     : m_currentWaypoint(0), m_moveSpeed(moveSpeed), m_waypointRadius(25.0f),
       m_includeOffscreenPoints(includeOffscreenPoints), m_needsReset(false),
       m_screenWidth(1280.0f), m_screenHeight(720.0f), m_rng(getSharedRNG()),
-      m_seedSet(true) {
-  // Set up the behavior based on the mode
+      m_seedSet(true), m_updateFrequency(2) { // Default: every 2 frames
+  // Set sensible default update frequency per mode
+  switch (mode) {
+  case PatrolMode::FIXED_WAYPOINTS:
+    m_updateFrequency = 2;
+    break;
+  case PatrolMode::RANDOM_AREA:
+    m_updateFrequency = 4;
+    break;
+  case PatrolMode::CIRCULAR_AREA:
+    m_updateFrequency = 4;
+    break;
+  case PatrolMode::EVENT_TARGET:
+    m_updateFrequency = 1;
+    break;
+  } // Set up the behavior based on the mode
   setupModeDefaults(mode, m_screenWidth, m_screenHeight);
 }
 
