@@ -113,6 +113,71 @@ Entities pursue a target (typically the player) when within detection range.
 - Maximum detection/pursuit range
 - Minimum distance to maintain from target
 
+**Performance Features:**
+- Uses per-entity update staggering to reduce computational load
+- Caches expensive calculations (distance, line-of-sight checks)
+- Default update frequency: every 3 frames per entity (configurable)
+
+## Per-Entity Update Staggering
+
+### Overview
+
+The AI system supports per-entity update staggering to reduce computational load for expensive behaviors like ChaseBehavior. This feature allows behaviors to update their expensive calculations less frequently while maintaining smooth entity movement.
+
+### How It Works
+
+1. **Frame-Based Staggering**: Each entity is assigned a unique stagger offset based on its pointer hash
+2. **Configurable Frequency**: Behaviors can specify how often they want to run expensive updates (e.g., every N frames)
+3. **Cached Results**: Between staggered updates, behaviors use cached calculation results
+4. **Automatic Distribution**: Entities are automatically distributed across frames to prevent spikes
+
+### Implementing Staggered Behaviors
+
+```cpp
+class MyExpensiveBehavior : public AIBehavior {
+public:
+    // Enable staggering
+    bool useStaggering() const override { return true; }
+    
+    // Update expensive calculations every 5 frames
+    uint32_t getUpdateFrequency() const override { return 5; }
+    
+    void executeLogic(EntityPtr entity) override {
+        // This is called only on staggered frames
+        updateExpensiveCalculations(entity);
+        applyMovementLogic(entity);
+    }
+    
+    // Optional: Configure frequency at runtime
+    void setUpdateFrequency(uint32_t frequency) { m_updateFrequency = frequency; }
+};
+```
+
+### Performance Benefits
+
+- **Reduced CPU Usage**: Up to 67% reduction in expensive calculations (with frequency=3)
+- **Prevents Spikes**: Distributes work across multiple frames
+- **Maintains Responsiveness**: Entities still move smoothly using cached data
+- **Configurable**: Can be tuned per behavior type or globally
+
+### Example: ChaseBehavior Staggering
+
+ChaseBehavior uses staggering to optimize:
+- Line-of-sight calculations
+- Distance computations
+- Target tracking updates
+
+```cpp
+// Default: Update expensive calculations every 3 frames
+chaseBehavior->setUpdateFrequency(3);  // ~67% CPU reduction
+
+// For high-priority entities: Update more frequently
+chaseBehavior->setUpdateFrequency(2);  // ~50% CPU reduction
+
+// For background entities: Update less frequently
+chaseBehavior->setUpdateFrequency(5);  // ~80% CPU reduction
+```
+
 ## Quick Start
 
 ### Basic Setup

@@ -1,5 +1,48 @@
 # Performance Changelog
 
+## Version 4.5.0 - AI Behavior Staggering System (2025-01-25)
+
+### 🎯 Per-Entity Update Staggering for Expensive AI Behaviors
+
+#### New Performance Optimization System
+- **ADDED**: Per-entity update staggering framework for expensive AI behaviors
+- **IMPLEMENTED**: Frame-based distribution of computational load across multiple frames
+- **ENHANCED**: ChaseBehavior with staggered line-of-sight and distance calculations
+- **CONFIGURABLE**: Runtime-adjustable update frequencies per behavior type
+
+**Core Features**:
+- **Automatic Stagger Distribution**: Entities automatically distributed across frames using hash-based offsets
+- **Cached State Management**: Expensive calculations cached and reused between staggered updates
+- **Configurable Frequency**: Per-behavior update frequency configuration (default: every 3 frames)
+- **Backward Compatibility**: Existing behaviors continue to work without modification
+- **Debug Monitoring**: Performance profiling hooks for measuring staggering effectiveness
+
+#### Performance Improvements
+- **ChaseBehavior CPU Reduction**: Up to 67% reduction in expensive calculations (with frequency=3)
+- **Spike Prevention**: Distributes computational load to prevent frame-time spikes
+- **Maintained Responsiveness**: Smooth entity movement using cached calculation results
+- **Scalable Design**: Performance benefits increase with entity count
+
+**Implementation Details**:
+- **Base Class Enhancement**: Added `executeLogicWithStaggering()` to AIBehavior base class
+- **Frame Counter Integration**: Uses AIManager's existing frame counter for stagger calculations
+- **Hash-Based Distribution**: Entity pointer hash ensures even distribution across frames
+- **Cached State Validation**: Automatic fallback to immediate calculation if cache is invalid
+
+**Configuration Examples**:
+```cpp
+// Default staggering (every 3 frames, ~67% CPU reduction)
+chaseBehavior->setUpdateFrequency(3);
+
+// High-priority entities (every 2 frames, ~50% CPU reduction)  
+chaseBehavior->setUpdateFrequency(2);
+
+// Background entities (every 5 frames, ~80% CPU reduction)
+chaseBehavior->setUpdateFrequency(5);
+```
+
+---
+
 ## Version 4.4.0 - Threading Architecture Simplification (2025-01-XX)
 
 ### 🎯 Architecture Simplification & Reliability Focus
