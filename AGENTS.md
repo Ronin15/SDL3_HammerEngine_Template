@@ -25,6 +25,23 @@
   ```
   ./tests/test_scripts/run_cppcheck_focused.sh
   ```
+- **Valgrind Analysis:**
+  ```
+  # Complete analysis suite
+  ./tests/valgrind/run_complete_valgrind_suite.sh
+  
+  # Quick memory check
+  ./tests/valgrind/quick_memory_check.sh
+  
+  # Function profiling analysis
+  ./tests/valgrind/callgrind_profiling_analysis.sh
+  
+  # Resource management profiling
+  ./tests/valgrind/callgrind_profiling_analysis.sh resource_management
+  
+  # Cache performance analysis
+  ./tests/valgrind/cache_performance_analysis.sh
+  ```
 
 **IMPORTANT NOTE:** Test executables are located in `bin/debug/` directory (project root), NOT in `build/bin/debug/`. Test scripts look for binaries in the correct location.
 
