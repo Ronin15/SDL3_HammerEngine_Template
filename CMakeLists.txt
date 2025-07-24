@@ -114,13 +114,11 @@ message(STATUS
     "SaveGameManager using fast header-only binary serialization")
 
 # Specify the stable release tags for each SDL3 component
-# Updated from "main" branch to specific release versions
-set(SDL3_GIT_TAG "release-3.2.18")  # Latest stable release for SDL3
-set(SDL3_IMAGE_GIT_TAG "release-3.2.4")  
-    # Latest stable release for SDL3_image
-set(SDL3_TTF_GIT_TAG "release-3.2.2")  
-    # Latest stable release for SDL3_ttf
-set(SDL3_MIXER_GIT_TAG "main")     # Latest stable release for SDL3_mixer
+# SDL3 must use main to provide SDL_ALIGNED macro needed by SDL3_mixer
+set(SDL3_GIT_TAG "main")                   # Use main to get SDL_ALIGNED macro needed by SDL3_mixer
+set(SDL3_IMAGE_GIT_TAG "release-3.2.4")   # Latest stable SDL3_image release  
+set(SDL3_TTF_GIT_TAG "release-3.2.2")     # Latest stable SDL3_ttf release
+set(SDL3_MIXER_GIT_TAG "main")             # Keep on main for latest SDL3_mixer features
 
 # Download and configure SDL3
 FetchContent_Declare(
