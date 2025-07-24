@@ -881,8 +881,9 @@ void AIManager::processBatch(size_t start, size_t end, float deltaTime,
       }
 
       if (shouldUpdate) {
-        // Execute behavior
-        behavior->executeLogic(entity);
+        // Execute behavior with staggering support
+        uint64_t currentFrame = m_frameCounter.load(std::memory_order_relaxed);
+        behavior->executeLogicWithStaggering(entity, currentFrame);
         batchExecutions++;
 
         // Update entity
