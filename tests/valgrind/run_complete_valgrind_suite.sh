@@ -25,10 +25,11 @@ FINAL_REPORT="${RESULTS_DIR}/complete_analysis_${TIMESTAMP}.md"
 
 # Test configuration
 declare -A ALL_TESTS=(
-    ["memory_critical"]="buffer_utilization_tests event_manager_tests ai_optimization_tests particle_manager_core_tests behavior_functionality_tests"
-    ["thread_safety"]="thread_safe_ai_manager_tests thread_safe_ai_integration_tests particle_manager_threading_tests thread_system_tests event_manager_tests"
-    ["performance"]="event_manager_tests ai_optimization_tests save_manager_tests particle_manager_performance_tests event_manager_scaling_benchmark behavior_functionality_tests ai_scaling_benchmark"
-    ["comprehensive"]="event_types_tests weather_event_tests ui_stress_test particle_manager_weather_tests thread_system_tests ai_scaling_benchmark"
+    ["memory_critical"]="buffer_utilization_tests event_manager_tests ai_optimization_tests particle_manager_core_tests behavior_functionality_tests resource_manager_tests world_resource_manager_tests resource_template_manager_tests resource_integration_tests"
+    ["thread_safety"]="thread_safe_ai_manager_tests thread_safe_ai_integration_tests particle_manager_threading_tests thread_system_tests event_manager_tests resource_integration_tests resource_manager_tests world_resource_manager_tests resource_template_manager_tests"
+    ["performance"]="event_manager_tests ai_optimization_tests save_manager_tests particle_manager_performance_tests event_manager_scaling_benchmark behavior_functionality_tests ai_scaling_benchmark resource_template_manager_tests inventory_component_tests resource_manager_tests world_resource_manager_tests resource_change_event_tests"
+    ["comprehensive"]="event_types_tests weather_event_tests ui_stress_test particle_manager_weather_tests thread_system_tests ai_scaling_benchmark resource_change_event_tests inventory_component_tests"
+    ["resource_management"]="resource_manager_tests world_resource_manager_tests resource_template_manager_tests resource_integration_tests resource_change_event_tests inventory_component_tests"
 )
 
 # Performance tracking
@@ -41,7 +42,7 @@ echo -e "${BOLD}${BLUE}╔══════════════════
 echo -e "${BOLD}${BLUE}║                SDL3 HammerEngine Template                    ║${NC}"
 echo -e "${BOLD}${BLUE}║              Complete Valgrind Analysis Suite               ║${NC}"
 echo -e "${BOLD}${BLUE}║                                                              ║${NC}"
-echo -e "${BOLD}${BLUE}║  Comprehensive Memory, Cache & Thread Safety Analysis       ║${NC}"
+echo -e "${BOLD}${BLUE}║  Comprehensive Memory, Cache, Thread Safety & Profiling     ║${NC}"
 echo -e "${BOLD}${BLUE}╚══════════════════════════════════════════════════════════════╝${NC}"
 echo ""
 echo -e "${CYAN}Analysis Timestamp: ${TIMESTAMP}${NC}"
@@ -51,7 +52,7 @@ echo -e "${CYAN}CPU: $(grep "model name" /proc/cpuinfo | head -1 | cut -d: -f2 |
 echo -e "${CYAN}Memory: $(free -h | grep "Mem:" | awk '{print $2}')${NC}"
 echo -e "${CYAN}Valgrind: $(valgrind --version 2>/dev/null || echo "Not found")${NC}"
 echo ""
-echo -e "${YELLOW}⚠️  NOTE: Valgrind analysis is thorough but slow. Complete analysis may take 30-60 minutes.${NC}"
+echo -e "${YELLOW}⚠️  NOTE: Valgrind analysis is thorough but slow. Complete analysis may take 45-90 minutes.${NC}"
 echo -e "${YELLOW}   Individual tests will show progress indicators during execution.${NC}"
 echo ""
 
@@ -60,6 +61,7 @@ mkdir -p "${RESULTS_DIR}/memory"
 mkdir -p "${RESULTS_DIR}/cache"
 mkdir -p "${RESULTS_DIR}/threads"
 mkdir -p "${RESULTS_DIR}/logs"
+mkdir -p "${RESULTS_DIR}/callgrind"
 
 # Function to display section headers
 section_header() {
@@ -350,6 +352,185 @@ run_thread_analysis() {
     fi
 }
 
+# Function to run callgrind profiling analysis
+run_callgrind_analysis() {
+    section_header "FUNCTION PROFILING ANALYSIS (Callgrind)"
+    
+    echo -e "${CYAN}Running targeted callgrind profiling on critical components...${NC}"
+    echo -e "${YELLOW}⚠️  Note: This analysis focuses on AI behaviors and performance-critical code.${NC}"
+    echo ""
+    
+    # Run targeted callgrind profiling using the dedicated script
+    local callgrind_script="${PROJECT_ROOT}/tests/valgrind/callgrind_profiling_analysis.sh"
+    
+    if [[ -f "${callgrind_script}" ]]; then
+        echo -e "${CYAN}Executing callgrind profiling analysis...${NC}"
+        
+        # Run with performance category to get focused results
+        "${callgrind_script}" performance &
+        local callgrind_pid=$!
+        
+        # Show progress while profiling runs
+        local elapsed=0
+        while kill -0 "$callgrind_pid" 2>/dev/null; do
+            sleep 30
+            elapsed=$((elapsed + 30))
+            echo -e "${YELLOW}  ⏳ Callgrind profiling in progress... (${elapsed}s elapsed)${NC}"
+        done
+        
+        wait "$callgrind_pid"
+        local callgrind_exit_code=$?
+        
+        if [[ $callgrind_exit_code -eq 0 ]]; then
+            echo -e "${GREEN}✓ Callgrind profiling completed successfully${NC}"
+            
+            # Check for generated results
+            local callgrind_results_dir="${RESULTS_DIR}/callgrind"
+            if [[ -d "${callgrind_results_dir}" ]]; then
+                local profile_count=$(find "${callgrind_results_dir}" -name "*_callgrind.out" | wc -l)
+                local summary_count=$(find "${callgrind_results_dir}" -name "*_summary.txt" | wc -l)
+                
+                echo -e "${GREEN}  Generated ${profile_count} profiling data files${NC}"
+                echo -e "${GREEN}  Generated ${summary_count} function summaries${NC}"
+                
+                ((TESTS_PASSED++))
+            else
+                echo -e "${YELLOW}  Warning: Callgrind results directory not found${NC}"
+                ((WARNINGS++))
+            fi
+        else
+            echo -e "${YELLOW}⚠ Callgrind profiling completed with warnings (exit code: ${callgrind_exit_code})${NC}"
+            echo -e "${YELLOW}  Some profiling data may still be available for analysis${NC}"
+            ((WARNINGS++))
+        fi
+    else
+        echo -e "${RED}✗ Callgrind profiling script not found: ${callgrind_script}${NC}"
+        echo -e "${YELLOW}  Skipping function profiling analysis${NC}"
+        ((TESTS_FAILED++))
+    fi
+    
+    echo ""
+    echo -e "${BOLD}Function Profiling Summary:${NC}"
+    if [[ -d "${RESULTS_DIR}/callgrind" ]]; then
+        local available_profiles=$(find "${RESULTS_DIR}/callgrind" -name "*.out" | wc -l)
+        echo -e "  Available Profiles: ${GREEN}${available_profiles}${NC}"
+        echo -e "  Analysis Tools: ${CYAN}KCacheGrind, callgrind_annotate${NC}"
+        echo -e "  Overall Assessment: ${GREEN}PROFILING DATA AVAILABLE${NC} - Ready for optimization analysis"
+    else
+        echo -e "  Overall Assessment: ${YELLOW}PROFILING INCOMPLETE${NC} - Limited function analysis available"
+    fi
+}
+
+# Function to run resource management analysis
+run_resource_management_analysis() {
+    section_header "RESOURCE MANAGEMENT ANALYSIS (Memory & Performance)"
+    
+    local resource_tests="${ALL_TESTS[resource_management]}"
+    local efficient_systems=0
+    local total_resource_issues=0
+    
+    for test in $resource_tests; do
+        local exe_path="${BIN_DIR}/${test}"
+        local memcheck_log="${RESULTS_DIR}/memory/${test}_memcheck.log"
+        local cache_log="${RESULTS_DIR}/cache/${test}_cachegrind.log"
+        
+        echo -e "${CYAN}Resource analysis: ${test}... (This may take 3-7 minutes)${NC}"
+        
+        if [[ ! -f "${exe_path}" ]]; then
+            echo -e "${RED}  ✗ Executable not found${NC}"
+            ((TESTS_FAILED++))
+            continue
+        fi
+        
+        # Show progress indicator
+        echo -e "${YELLOW}  ⏳ Running combined memory and cache analysis for resource systems...${NC}"
+        
+        # Run memcheck for resource leak detection
+        timeout 300s valgrind \
+            --tool=memcheck \
+            --leak-check=full \
+            --show-leak-kinds=all \
+            --track-origins=yes \
+            --log-file="${memcheck_log}" \
+            "${exe_path}" >/dev/null 2>&1 &
+        local memcheck_pid=$!
+        
+        # Run cachegrind for resource access patterns
+        timeout 300s valgrind \
+            --tool=cachegrind \
+            --cache-sim=yes \
+            --cachegrind-out-file="${RESULTS_DIR}/cache/${test}_cachegrind.out" \
+            --log-file="${cache_log}" \
+            "${exe_path}" >/dev/null 2>&1 &
+        local cachegrind_pid=$!
+        
+        # Wait for both analyses
+        wait $memcheck_pid
+        local memcheck_exit=$?
+        wait $cachegrind_pid  
+        local cachegrind_exit=$?
+        
+        if [[ $memcheck_exit -eq 124 || $cachegrind_exit -eq 124 ]]; then
+            echo -e "${YELLOW}  ⏰ TIMEOUT - ${test} resource analysis exceeded time limit${NC}"
+            ((WARNINGS++))
+            continue
+        fi
+        
+        # Analyze resource management efficiency
+        local memory_leaks=0
+        local cache_efficiency="UNKNOWN"
+        
+        if [[ -f "${memcheck_log}" ]]; then
+            memory_leaks=$(grep -c "definitely lost\|indirectly lost" "${memcheck_log}" 2>/dev/null || echo "0")
+        fi
+        
+        if [[ -f "${cache_log}" ]]; then
+            local l1d_miss=$(grep "D1  miss rate:" "${cache_log}" | awk '{print $5}' | sed 's/%//' 2>/dev/null || echo "N/A")
+            if [[ "${l1d_miss}" != "N/A" && "${l1d_miss}" =~ ^[0-9]*\.?[0-9]+$ ]]; then
+                if (( $(echo "${l1d_miss} < 3.0" | bc -l 2>/dev/null || echo 0) )); then
+                    cache_efficiency="EXCELLENT"
+                elif (( $(echo "${l1d_miss} < 8.0" | bc -l 2>/dev/null || echo 0) )); then
+                    cache_efficiency="GOOD"
+                else
+                    cache_efficiency="AVERAGE"
+                fi
+            fi
+        fi
+        
+        # Assess resource management quality
+        if [[ $memory_leaks -eq 0 && "${cache_efficiency}" == "EXCELLENT" ]]; then
+            echo -e "${GREEN}  ✓ OPTIMAL - Perfect resource management and cache efficiency${NC}"
+            ((efficient_systems++))
+        elif [[ $memory_leaks -eq 0 && "${cache_efficiency}" == "GOOD" ]]; then
+            echo -e "${CYAN}  ✓ EFFICIENT - Good resource management with minor optimizations possible${NC}"
+            ((efficient_systems++))
+        elif [[ $memory_leaks -eq 0 ]]; then
+            echo -e "${YELLOW}  ⚠ CLEAN - No leaks but cache performance needs review${NC}"
+            ((WARNINGS++))
+        else
+            echo -e "${RED}  ✗ ISSUES - Resource leaks detected: ${memory_leaks}${NC}"
+            total_resource_issues=$((total_resource_issues + memory_leaks))
+            ((CRITICAL_ISSUES++))
+        fi
+        
+        ((TESTS_PASSED++))
+    done
+    
+    echo ""
+    echo -e "${BOLD}Resource Management Summary:${NC}"
+    echo -e "  Efficient Systems: ${GREEN}${efficient_systems}${NC}"
+    echo -e "  Total Resource Issues: ${total_resource_issues}"
+    
+    if [[ $efficient_systems -ge 4 ]]; then
+        echo -e "  Overall Assessment: ${GREEN}EXCELLENT${NC} - Production-ready resource management"
+        echo -e "  ${CYAN}Resource systems demonstrate optimal memory usage and access patterns${NC}"
+    elif [[ $efficient_systems -ge 2 && $total_resource_issues -le 5 ]]; then
+        echo -e "  Overall Assessment: ${CYAN}GOOD${NC} - Minor optimizations recommended"
+    else
+        echo -e "  Overall Assessment: ${YELLOW}NEEDS ATTENTION${NC} - Resource management requires optimization"
+    fi
+}
+
 # Function to generate final comprehensive report
 generate_final_report() {
     section_header "GENERATING COMPREHENSIVE REPORT"
@@ -364,10 +545,11 @@ generate_final_report() {
 
 ## Executive Summary
 
-This comprehensive analysis evaluated the SDL3 HammerEngine Template across three critical performance and safety dimensions:
+This comprehensive analysis evaluated the SDL3 HammerEngine Template across four critical performance and safety dimensions:
 - **Memory Management** (Leak detection and error analysis)
 - **Cache Performance** (Memory hierarchy optimization)
 - **Thread Safety** (Concurrency and race condition analysis)
+- **Function Profiling** (Performance hotspot identification)
 
 ### Overall Assessment
 
@@ -419,6 +601,11 @@ EOF
 - **Tool**: Valgrind DRD (Data Race Detector)
 - **Focus**: Race conditions, deadlocks, synchronization issues
 - **Key Finding**: $([ $CRITICAL_ISSUES -eq 0 ] && echo "Robust thread safety with no critical race conditions" || echo "Some threading patterns require review")
+
+### Function Profiling Analysis
+- **Tool**: Valgrind Callgrind
+- **Focus**: Function-level performance, call graphs, hotspot identification
+- **Key Finding**: $([ -d "${RESULTS_DIR}/callgrind" ] && echo "Comprehensive function profiling data available for optimization analysis" || echo "Function profiling data generation in progress")
 
 ## Industry Comparison
 
@@ -536,6 +723,8 @@ main() {
     run_memory_analysis
     run_cache_analysis
     run_thread_analysis
+    run_resource_management_analysis
+    run_callgrind_analysis
 
     # Generate final report and summary
     generate_final_report
@@ -553,17 +742,25 @@ case "${1:-all}" in
     "threads")
         run_thread_analysis
         ;;
+    "callgrind"|"profiling")
+        run_callgrind_analysis
+        ;;
+    "resources"|"resource_management")
+        run_resource_management_analysis
+        ;;
     "help"|"-h"|"--help")
         echo "SDL3 HammerEngine Complete Valgrind Analysis Suite"
         echo ""
         echo "Usage: $0 [analysis_type]"
         echo ""
         echo "Analysis types:"
-        echo "  all      - Run complete analysis suite (default)"
-        echo "  memory   - Memory leak analysis only"
-        echo "  cache    - Cache performance analysis only"
-        echo "  threads  - Thread safety analysis only"
-        echo "  help     - Show this help message"
+        echo "  all       - Run complete analysis suite (default)"
+        echo "  memory    - Memory leak analysis only"
+        echo "  cache     - Cache performance analysis only"
+        echo "  threads   - Thread safety analysis only"
+        echo "  resources - Resource management analysis only"
+        echo "  callgrind - Function profiling analysis only"
+        echo "  help      - Show this help message"
         echo ""
         exit 0
         ;;

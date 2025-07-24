@@ -33,6 +33,9 @@ declare -A THREAD_TESTS=(
     ["event_manager"]="event_manager_tests"
     ["ai_optimization"]="ai_optimization_tests"
     ["particle_threading"]="particle_manager_threading_tests"
+    ["resource_integration"]="resource_integration_tests"
+    ["resource_manager"]="resource_manager_tests"
+    ["world_resource_manager"]="world_resource_manager_tests"
 )
 
 run_helgrind_test() {

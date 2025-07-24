@@ -44,6 +44,22 @@ The SDL3 ForgeEngine Template has achieved **WORLD-CLASS OPTIMIZATION** with:
 # Results: World-class optimization across all metrics
 ```
 
+### Function Profiling Analysis (10-30 minutes)
+```bash
+# Detailed function-level performance profiling
+./tests/valgrind/callgrind_profiling_analysis.sh
+
+# Results: Function hotspot identification and optimization guidance
+```
+
+### Resource Management Analysis (5-15 minutes)
+```bash
+# Resource system performance and memory efficiency analysis  
+./tests/valgrind/callgrind_profiling_analysis.sh resource_management
+
+# Results: Resource loading, caching, and lifecycle optimization insights
+```
+
 ## Analysis Tools
 
 ### 1. Quick Memory Check (`quick_memory_check.sh`)
@@ -70,7 +86,19 @@ The SDL3 ForgeEngine Template has achieved **WORLD-CLASS OPTIMIZATION** with:
 - **Focus**: Memory + Cache + Threads with detailed reporting
 - **Output**: Executive summary and production readiness assessment
 
-### 5. Legacy Comprehensive Analysis (`run_valgrind_analysis.sh`)
+### 5. Function Profiling Analysis (`callgrind_profiling_analysis.sh`)
+- **Purpose**: Function-level performance profiling and hotspot identification
+- **Duration**: 10-30 minutes (depends on test selection)
+- **Focus**: Call graphs, instruction counts, performance bottlenecks
+- **Output**: KCacheGrind-compatible data, function summaries, AI behavior analysis
+
+### 6. Resource Management Analysis (Integrated)
+- **Purpose**: Resource system performance and memory efficiency validation
+- **Duration**: 5-15 minutes per component
+- **Focus**: Resource loading, caching, lifecycle management, memory patterns
+- **Output**: Resource optimization insights, memory leak detection, cache efficiency
+
+### 7. Legacy Comprehensive Analysis (`run_valgrind_analysis.sh`)
 - **Purpose**: Original full-featured analysis tool
 - **Duration**: Variable (can be configured)
 - **Focus**: All Valgrind tools with extensive options
@@ -94,6 +122,7 @@ The SDL3 ForgeEngine Template has achieved **WORLD-CLASS OPTIMIZATION** with:
 - `test_results/valgrind/` - Detailed logs and analysis files
 - `test_results/valgrind/cache/` - Cache performance data
 - `test_results/valgrind/threads/` - Thread safety results
+- `test_results/valgrind/callgrind/` - Function profiling data and reports
 
 ## Prerequisites
 
@@ -134,6 +163,9 @@ ls bin/debug/*_tests
 
 # Release preparation - complete analysis
 ./tests/valgrind/run_complete_valgrind_suite.sh
+
+# Function-level optimization - detailed profiling
+./tests/valgrind/callgrind_profiling_analysis.sh
 ```
 
 ### CI/CD Integration
@@ -143,6 +175,12 @@ ls bin/debug/*_tests
 
 # Performance regression testing
 ./tests/valgrind/cache_performance_analysis.sh
+
+# Function profiling for optimization
+./tests/valgrind/callgrind_profiling_analysis.sh performance
+
+# Resource management profiling
+./tests/valgrind/callgrind_profiling_analysis.sh resource_management
 ```
 
 ### Performance Benchmarking
@@ -224,6 +262,12 @@ This optimization level typically requires:
 
 # Thread analysis only
 ./run_complete_valgrind_suite.sh threads
+
+# Function profiling categories
+./callgrind_profiling_analysis.sh ai_behaviors
+./callgrind_profiling_analysis.sh event_systems
+./callgrind_profiling_analysis.sh performance
+./callgrind_profiling_analysis.sh resource_management
 ```
 
 ### Manual Valgrind Commands
@@ -236,6 +280,10 @@ valgrind --tool=memcheck --leak-check=full bin/debug/buffer_utilization_tests
 
 # Direct thread analysis
 valgrind --tool=drd bin/debug/thread_safe_ai_manager_tests
+
+# Direct function profiling analysis
+valgrind --tool=callgrind --callgrind-out-file=profile.out bin/debug/ai_optimization_tests
+kcachegrind profile.out
 ```
 
 ## Maintenance
@@ -259,6 +307,7 @@ Update performance baselines when adding new optimizations:
 - `VALGRIND_ANALYSIS_COMPLETE.md` - Complete technical analysis
 - `cache_efficiency_analysis.md` - Previous cache analysis results
 - `test_results/valgrind/` - All analysis outputs and logs
+- `test_results/valgrind/callgrind/` - Function profiling reports and data
 
 ### Troubleshooting
 1. **Build Issues**: Ensure debug build with `ninja -C build`
