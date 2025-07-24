@@ -49,4 +49,35 @@
 - **Aditional Instructions:** Please ask before removing the build dir, Only remove it when absolutley necessary. Updating cmake and then re-configruing fixes most build problems.
 > For more details, see `README.md`, `docs/Logger.md`, `docs/ThreadSystem.md`, and `tests/TESTING.md`.
 
+## Warning Investigation and Fixes
+
+### Unused Variable Warnings
+When fixing unused variable warnings, **ALWAYS investigate whether the variable is actually needed** rather than just marking it as unused:
+
+**Investigation Process:**
+1. **Build with verbose output to identify all warnings:**
+   ```bash
+   ninja -C build clean && ninja -C build -v 2>&1 | grep -E "(warning|unused|error)"
+   ```
+
+2. **Examine the specific code context:**
+   - Read the function where the warning occurs
+   - Check if the variable serves a logical purpose
+   - Look for similar usage patterns in nearby code
+   - Verify if the variable was meant to be used but forgotten
+
+3. **Apply appropriate fix:**
+   - **Remove completely** if genuinely unused (preferred)
+   - **Fix the logic** if variable should be used but isn't
+   - **Only mark as unused** as last resort if needed for API compliance
+
+**Examples of Fixed Issues:**
+- `ChaseBehavior.cpp:69` - Removed unused `const AIManager &aiMgr = AIManager::Instance();` that was cached for "performance" but never used since function already uses cached player targets
+- `WorldResourceManagerTests.cpp:475` - Removed meaningless `BOOST_CHECK(initialMemoryUsage >= 0);` since `size_t` is unsigned and always >= 0
+
+**Warning Types to Fix:**
+- `-Wunused-variable`: Variable declared but never referenced
+- `-Wtype-limits`: Comparisons that are always true/false due to type limits
+- `-Wunused-parameter`: Function parameters that aren't used
+
 ---
