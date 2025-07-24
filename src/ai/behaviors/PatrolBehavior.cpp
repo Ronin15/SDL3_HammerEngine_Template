@@ -26,12 +26,13 @@ std::mt19937 &getSharedRNG() {
 
 PatrolBehavior::PatrolBehavior(const std::vector<Vector2D> &waypoints,
                                float moveSpeed, bool includeOffscreenPoints)
-    : m_waypoints(waypoints), m_currentWaypoint(0), m_moveSpeed(moveSpeed),
-      m_waypointRadius(25.0f), m_includeOffscreenPoints(includeOffscreenPoints),
-      m_needsReset(false), m_screenWidth(1280.0f), m_screenHeight(720.0f),
-      m_rng(getSharedRNG()), m_seedSet(true),
-      m_updateFrequency(2) { // Default: every 2 frames  // Reserve capacity for
-                             // typical patrol routes (performance optimization)
+    : m_waypoints(waypoints), m_updateFrequency(2), m_currentWaypoint(0),
+      m_moveSpeed(moveSpeed), m_waypointRadius(25.0f),
+      m_includeOffscreenPoints(includeOffscreenPoints), m_needsReset(false),
+      m_screenWidth(1280.0f), m_screenHeight(720.0f),
+      m_patrolMode(PatrolMode::FIXED_WAYPOINTS), m_rng(getSharedRNG()),
+      m_seedSet(true) { // Default: every 2 frames  // Reserve capacity for
+                        // typical patrol routes (performance optimization)
   m_waypoints.reserve(10);
 
   // Ensure we have at least two waypoints
@@ -44,10 +45,11 @@ PatrolBehavior::PatrolBehavior(const std::vector<Vector2D> &waypoints,
 
 PatrolBehavior::PatrolBehavior(PatrolMode mode, float moveSpeed,
                                bool includeOffscreenPoints)
-    : m_currentWaypoint(0), m_moveSpeed(moveSpeed), m_waypointRadius(25.0f),
+    : m_waypoints(), m_updateFrequency(2), m_currentWaypoint(0),
+      m_moveSpeed(moveSpeed), m_waypointRadius(25.0f),
       m_includeOffscreenPoints(includeOffscreenPoints), m_needsReset(false),
-      m_screenWidth(1280.0f), m_screenHeight(720.0f), m_rng(getSharedRNG()),
-      m_seedSet(true), m_updateFrequency(2) { // Default: every 2 frames
+      m_screenWidth(1280.0f), m_screenHeight(720.0f), m_patrolMode(mode),
+      m_rng(getSharedRNG()), m_seedSet(true) { // Default: every 2 frames
   // Set sensible default update frequency per mode
   switch (mode) {
   case PatrolMode::FIXED_WAYPOINTS:
