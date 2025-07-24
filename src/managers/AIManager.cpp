@@ -493,38 +493,81 @@ void AIManager::queueBehaviorAssignment(EntityPtr entity,
 
 size_t AIManager::processPendingBehaviorAssignments() {
   std::vector<PendingAssignment> toProcess;
-
   {
     std::lock_guard<std::mutex> lock(m_assignmentsMutex);
     if (m_pendingAssignments.empty()) {
       return 0;
     }
-
-    // Batch processing: limit assignments per frame to prevent framerate spikes
-    size_t batchSize = std::min(m_pendingAssignments.size(),
-                                AIConfig::MAX_ASSIGNMENTS_PER_FRAME);
-    toProcess.reserve(batchSize);
-
-    // Move first batch of assignments to processing queue
-    auto end_it = m_pendingAssignments.begin() + batchSize;
-    std::move(m_pendingAssignments.begin(), end_it,
-              std::back_inserter(toProcess));
-    m_pendingAssignments.erase(m_pendingAssignments.begin(), end_it);
-
-    // Update index for processed entities
-    for (const auto &assignment : toProcess) {
-      m_pendingAssignmentIndex.erase(assignment.entity);
-    }
+    // Move all pending assignments to local vector
+    toProcess = std::move(m_pendingAssignments);
+    m_pendingAssignments.clear();
+    m_pendingAssignmentIndex.clear();
   }
 
   size_t processed = 0;
-  for (const auto &assignment : toProcess) {
-    if (assignment.entity) {
-      assignBehaviorToEntity(assignment.entity, assignment.behaviorName);
-      processed++;
+  size_t assignmentCount = toProcess.size();
+
+  // Threaded batch assignment using WorkerBudget
+  bool useThreading = m_useThreading.load(std::memory_order_acquire) &&
+                      HammerEngine::ThreadSystem::Exists();
+  if (useThreading && assignmentCount > 1000) {
+    auto &threadSystem = HammerEngine::ThreadSystem::Instance();
+    size_t availableWorkers =
+        static_cast<size_t>(threadSystem.getThreadCount());
+    size_t queueSize = threadSystem.getQueueSize();
+    size_t queueCapacity = threadSystem.getQueueCapacity();
+    double queuePressure = static_cast<double>(queueSize) / queueCapacity;
+
+    HammerEngine::WorkerBudget budget =
+        HammerEngine::calculateWorkerBudget(availableWorkers);
+    size_t optimalWorkerCount =
+        budget.getOptimalWorkerCount(budget.aiAllocated, assignmentCount, 1000);
+
+    size_t minAssignmentsPerBatch = 1000;
+    size_t maxBatches = 4;
+    if (queuePressure > 0.5) {
+      minAssignmentsPerBatch = 1500;
+      maxBatches = 2;
+    } else if (queuePressure < 0.25) {
+      minAssignmentsPerBatch = 800;
+      maxBatches = 4;
+    }
+    size_t batchCount =
+        std::min(optimalWorkerCount, assignmentCount / minAssignmentsPerBatch);
+    batchCount = std::max(size_t(1), std::min(batchCount, maxBatches));
+    size_t assignmentsPerBatch = assignmentCount / batchCount;
+    size_t remaining = assignmentCount % batchCount;
+
+    std::vector<std::future<void>> futures;
+    size_t start = 0;
+    for (size_t i = 0; i < batchCount; ++i) {
+      size_t end =
+          start + assignmentsPerBatch + (i == batchCount - 1 ? remaining : 0);
+      futures.push_back(threadSystem.enqueueTaskWithResult(
+          [this, &toProcess, start, end]() {
+            for (size_t j = start; j < end && j < toProcess.size(); ++j) {
+              if (toProcess[j].entity) {
+                assignBehaviorToEntity(toProcess[j].entity,
+                                       toProcess[j].behaviorName);
+              }
+            }
+          },
+          HammerEngine::TaskPriority::High, "AI_AssignmentBatch"));
+      start = end;
+    }
+    // Wait for all assignment batches to complete
+    for (auto &f : futures)
+      f.get();
+    processed = assignmentCount;
+  } else {
+    // Single-threaded fallback
+    for (const auto &assignment : toProcess) {
+      if (assignment.entity) {
+        assignBehaviorToEntity(assignment.entity, assignment.behaviorName);
+        processed++;
+      }
     }
   }
-
   return processed;
 }
 

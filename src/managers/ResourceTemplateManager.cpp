@@ -5,18 +5,19 @@
 
 #include "managers/ResourceTemplateManager.hpp"
 #include "core/Logger.hpp"
-#include "entities/resources/CurrencyAndGameResources.hpp"
-#include "entities/resources/ItemResources.hpp"
-#include "entities/resources/MaterialResources.hpp"
 #include <algorithm>
-#include <cassert>
 
 ResourceTemplateManager &ResourceTemplateManager::Instance() {
   static ResourceTemplateManager instance;
   return instance;
 }
 
-ResourceTemplateManager::~ResourceTemplateManager() { clean(); }
+ResourceTemplateManager::~ResourceTemplateManager() {
+  // Only clean up if not already shut down
+  if (!m_isShutdown) {
+    clean();
+  }
+}
 
 bool ResourceTemplateManager::init() {
   if (m_initialized) {
@@ -72,6 +73,7 @@ void ResourceTemplateManager::clean() {
   m_typeIndex.clear();
 
   m_initialized = false;
+  m_isShutdown = true;
   m_stats.reset();
 
   RESOURCE_INFO("ResourceTemplateManager cleaned up");

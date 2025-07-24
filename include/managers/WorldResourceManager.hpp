@@ -150,6 +150,7 @@ private:
 
   mutable WorldResourceStats m_stats;
   bool m_initialized{false};
+  bool m_isShutdown{false};
 
   // Thread safety
   mutable std::shared_mutex m_resourceMutex;
