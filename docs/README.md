@@ -119,9 +119,9 @@ Core utility classes and helper systems used throughout the engine.
 ### macOS
 - Use Homebrew for SDL3 dependencies:
   ```
-  brew install sdl3 sdl3_image sdl3_ttf sdl3_mixer boost cppcheck
+  brew install freetype harfbuzz boost cppcheck
   ```
-- Note: CMake will use SDL3 libraries downloaded via FetchContent, not Homebrew, for the build.
+- Note: CMake will use SDL3 libraries downloaded via FetchContent, not Homebrew, for the build. Homebrew SDL3 libs can conflict.
 - Xcode command line tools are required to compile.
 
 ## Getting Started
@@ -199,4 +199,3 @@ For issues with specific systems, see the troubleshooting sections in each syste
 ---
 
 For specific system details, see the individual documentation files linked above.
-
