@@ -35,7 +35,6 @@ void ChaseBehavior::init(EntityPtr entity) {
     m_hasLineOfSight = checkLineOfSight(entity, target);
   }
 }
-}
 
 EntityPtr ChaseBehavior::getCachedPlayerTarget() const {
   if (!m_playerCacheValid || !m_cachedPlayerTarget) {
@@ -57,20 +56,6 @@ void ChaseBehavior::executeLogic(EntityPtr entity) {
 
   // Get player target from optimized cache instead of AIManager lookup
   auto target = getCachedPlayerTarget();
-  if (!target) {
-    // No target, stop chasing efficiently
-    if (m_isChasing) {
-      entity->setVelocity(Vector2D(0, 0));
-      m_isChasing = false;
-    }
-    return;
-  }
-
-  // Cache AIManager reference for better performance
-  const AIManager &aiMgr = AIManager::Instance();
-
-  // Get player target from AIManager
-  auto target = aiMgr.getPlayerReference();
   if (!target) {
     // No target, stop chasing efficiently
     if (m_isChasing) {

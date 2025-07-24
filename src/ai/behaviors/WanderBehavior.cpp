@@ -22,50 +22,96 @@ std::mt19937 &WanderBehavior::getSharedRNG() {
     static thread_local std::random_device rd;
     s_wanderRng = new std::mt19937(rd());
   }
-
-  // Add some randomness to the direction using shared RNG
-  float randomAngle = (s_angleDistribution(getSharedRNG()) - M_PI) *
-                      0.2f; // Small angle variation
-  float x = state.currentDirection.getX() * std::cos(randomAngle) -
-            state.currentDirection.getY() * std::sin(randomAngle);
-  float y = state.currentDirection.getX() * std::sin(randomAngle) +
-            state.currentDirection.getY() * std::cos(randomAngle);
-  state.currentDirection = Vector2D(x, y);
-  state.currentDirection.normalize();
-
-  // Apply the new direction
-  entity->setVelocity(state.currentDirection * m_speed);
-}
+  return *s_wanderRng;
 }
 
-// Control sprite flipping to avoid rapid flips
-// Only allow direction flips if enough time has passed since the last flip
-Vector2D currentVelocity = entity->getVelocity();
+WanderBehavior::WanderBehavior(float speed, float changeDirectionInterval,
+                               float areaRadius)
+    : m_speed(speed), m_changeDirectionInterval(changeDirectionInterval),
+      m_areaRadius(areaRadius) {}
 
-// Check if there was a direction change that would cause a flip
-bool wouldFlip =
-    (previousVelocity.getX() > 0.5f && currentVelocity.getX() < -0.5f) ||
-    (previousVelocity.getX() < -0.5f && currentVelocity.getX() > 0.5f);
-
-if (wouldFlip &&
-    (currentTime - state.lastDirectionFlip < m_minimumFlipInterval)) {
-  // Prevent the flip by maintaining previous direction's sign but with new
-  // magnitude
-  float magnitude = currentVelocity.length();
-  float xDir = (previousVelocity.getX() < 0) ? -1.0f : 1.0f;
-  float yVal = currentVelocity.getY();
-
-  // Create a new direction that doesn't cause a flip
-  Vector2D stableVelocity(xDir * magnitude * 0.8f, yVal);
-  stableVelocity.normalize();
-  stableVelocity = stableVelocity * m_speed;
-
-  // Apply the stable velocity
-  entity->setVelocity(stableVelocity);
-} else if (wouldFlip) {
-  // Record the time of this flip
-  state.lastDirectionFlip = currentTime;
+WanderBehavior::WanderBehavior(WanderMode mode, float speed) : m_speed(speed) {
+  setupModeDefaults(mode);
 }
+
+void WanderBehavior::init(EntityPtr entity) {
+  if (!entity)
+    return;
+
+  // Initialize entity state
+  EntityState &state = m_entityStates[entity];
+  state.lastDirectionChangeTime = SDL_GetTicks();
+  state.startDelay = s_delayDistribution(getSharedRNG());
+  state.movementStarted = false;
+
+  // Choose initial direction
+  chooseNewDirection(entity, false);
+}
+
+void WanderBehavior::executeLogic(EntityPtr entity) {
+  if (!entity || !m_active)
+    return;
+
+  // Get entity state
+  EntityState &state = m_entityStates[entity];
+  Uint64 currentTime = SDL_GetTicks();
+
+  // Check if we need to start movement after delay
+  if (!state.movementStarted) {
+    if (currentTime - state.lastDirectionChangeTime >= state.startDelay) {
+      state.movementStarted = true;
+      entity->setVelocity(state.currentDirection * m_speed);
+    }
+    return;
+  }
+
+  Vector2D position = entity->getPosition();
+  Vector2D previousVelocity = entity->getVelocity();
+
+  // Check if entity is well offscreen and reset if needed
+  if (state.resetScheduled && isWellOffscreen(position)) {
+    resetEntityPosition(entity);
+    state.resetScheduled = false;
+    return;
+  }
+
+  // Control sprite flipping to avoid rapid flips
+  Vector2D currentVelocity = entity->getVelocity();
+
+  // Check if there was a direction change that would cause a flip
+  bool wouldFlip =
+      (previousVelocity.getX() > 0.5f && currentVelocity.getX() < -0.5f) ||
+      (previousVelocity.getX() < -0.5f && currentVelocity.getX() > 0.5f);
+
+  if (wouldFlip &&
+      (currentTime - state.lastDirectionFlip < m_minimumFlipInterval)) {
+    // Prevent the flip by maintaining previous direction's sign but with new
+    // magnitude
+    float magnitude = currentVelocity.length();
+    float xDir = (previousVelocity.getX() < 0) ? -1.0f : 1.0f;
+    float yVal = currentVelocity.getY();
+
+    // Create a new direction that doesn't cause a flip
+    Vector2D stableVelocity(xDir * magnitude * 0.8f, yVal);
+    stableVelocity.normalize();
+    stableVelocity = stableVelocity * m_speed;
+
+    // Apply the stable velocity
+    entity->setVelocity(stableVelocity);
+  } else if (wouldFlip) {
+    // Record the time of this flip
+    state.lastDirectionFlip = currentTime;
+  }
+
+  // Check if it's time to change direction
+  if (currentTime - state.lastDirectionChangeTime >=
+      m_changeDirectionInterval) {
+    // Decide if we should wander offscreen
+    bool shouldWanderOffscreen =
+        (s_wanderOffscreenChance(getSharedRNG()) < m_offscreenProbability);
+    chooseNewDirection(entity, shouldWanderOffscreen);
+    state.lastDirectionChangeTime = currentTime;
+  }
 }
 
 void WanderBehavior::clean(EntityPtr entity) {
@@ -233,8 +279,8 @@ void WanderBehavior::chooseNewDirection(EntityPtr entity,
     }
 
     // Add some randomness to the direction
-    float randomAngle =
-        (m_angleDistribution(m_rng) - M_PI) * 0.2f; // Small angle variation
+    float randomAngle = (s_angleDistribution(getSharedRNG()) - M_PI) *
+                        0.2f; // Small angle variation
     float x = state.currentDirection.getX() * std::cos(randomAngle) -
               state.currentDirection.getY() * std::sin(randomAngle);
     float y = state.currentDirection.getX() * std::sin(randomAngle) +

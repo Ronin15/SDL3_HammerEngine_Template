@@ -472,7 +472,6 @@ BOOST_AUTO_TEST_CASE(TestConcurrentWorldOperations) {
 BOOST_AUTO_TEST_CASE(TestMemoryUsage) {
   // Test memory usage reporting
   size_t initialMemoryUsage = worldManager->getMemoryUsage();
-  BOOST_CHECK(initialMemoryUsage >= 0);
 
   // Create worlds and add resources to increase memory usage
   std::vector<std::string> worldIds = {"mem_world1", "mem_world2",
