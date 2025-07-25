@@ -62,7 +62,8 @@ PatrolBehavior::PatrolBehavior(PatrolMode mode, float moveSpeed,
     m_updateFrequency = 4;
     break;
   case PatrolMode::EVENT_TARGET:
-    m_updateFrequency = 1;
+    m_updateFrequency =
+        4; // Reduced from 1 to match other modes for performance
     break;
   } // Set up the behavior based on the mode
   setupModeDefaults(mode, m_screenWidth, m_screenHeight);
@@ -451,19 +452,28 @@ void PatrolBehavior::generateWaypointsAroundTarget() {
   ensureRandomSeed();
   m_waypoints.clear();
 
-  // Generate waypoints in a circle around the target
+  // Optimize trigonometric calculations by pre-computing them
   float angleStep = 2.0f * M_PI / m_waypointCount;
 
-  for (int i = 0; i < m_waypointCount && m_waypoints.size() < 10; ++i) {
-    float angle = i * angleStep;
+  // Pre-compute all angles and trigonometric values for better performance
+  std::vector<float> cosValues, sinValues;
+  cosValues.reserve(m_waypointCount);
+  sinValues.reserve(m_waypointCount);
 
+  for (int i = 0; i < m_waypointCount; ++i) {
+    float angle = i * angleStep;
+    cosValues.push_back(std::cos(angle));
+    sinValues.push_back(std::sin(angle));
+  }
+
+  // Generate waypoints using pre-computed values
+  for (int i = 0; i < m_waypointCount && m_waypoints.size() < 10; ++i) {
     // Add some randomness to the radius (between 0.7 and 1.0 of target radius)
     std::uniform_real_distribution<float> radiusDist(0.7f, 1.0f);
     float randomRadius = m_eventTargetRadius * radiusDist(m_rng);
 
-    Vector2D waypoint =
-        m_eventTarget + Vector2D(std::cos(angle) * randomRadius,
-                                 std::sin(angle) * randomRadius);
+    Vector2D waypoint = m_eventTarget + Vector2D(cosValues[i] * randomRadius,
+                                                 sinValues[i] * randomRadius);
 
     m_waypoints.push_back(waypoint);
   }
@@ -477,18 +487,25 @@ void PatrolBehavior::generateWaypointsAroundTarget() {
 }
 
 Vector2D PatrolBehavior::generateRandomPointInRectangle() const {
-  std::uniform_real_distribution<float> xDist(m_areaTopLeft.getX(),
-                                              m_areaBottomRight.getX());
-  std::uniform_real_distribution<float> yDist(m_areaTopLeft.getY(),
-                                              m_areaBottomRight.getY());
+  // Use static distributions to avoid repeated construction overhead
+  static thread_local std::uniform_real_distribution<float> xDist(0.0f, 1.0f);
+  static thread_local std::uniform_real_distribution<float> yDist(0.0f, 1.0f);
 
-  return Vector2D(xDist(m_rng), yDist(m_rng));
+  float x = m_areaTopLeft.getX() +
+            xDist(m_rng) * (m_areaBottomRight.getX() - m_areaTopLeft.getX());
+  float y = m_areaTopLeft.getY() +
+            yDist(m_rng) * (m_areaBottomRight.getY() - m_areaTopLeft.getY());
+
+  return Vector2D(x, y);
 }
 
 Vector2D PatrolBehavior::generateRandomPointInCircle() const {
   // Generate random point in circle using polar coordinates
-  std::uniform_real_distribution<float> angleDist(0.0f, 2.0f * M_PI);
-  std::uniform_real_distribution<float> radiusDist(0.0f, 1.0f);
+  // Use static distributions to avoid repeated construction overhead
+  static thread_local std::uniform_real_distribution<float> angleDist(
+      0.0f, 2.0f * M_PI);
+  static thread_local std::uniform_real_distribution<float> radiusDist(0.0f,
+                                                                       1.0f);
 
   float angle = angleDist(m_rng);
   float radius = std::sqrt(radiusDist(m_rng)) *
