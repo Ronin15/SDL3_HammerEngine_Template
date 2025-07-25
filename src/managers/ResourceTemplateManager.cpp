@@ -56,6 +56,7 @@ bool ResourceTemplateManager::init() {
     RESOURCE_INFO("ResourceTemplateManager initialized with " +
                   std::to_string(m_resourceTemplates.size()) +
                   " resource templates");
+
     return true;
   } catch (const std::exception &ex) {
     RESOURCE_ERROR("ResourceTemplateManager::init - Exception: " +
@@ -353,18 +354,14 @@ void ResourceTemplateManager::createDefaultResources() {
     m_resourceTemplates["sword"] = sword;
     updateIndexes("sword", sword->getCategory(), sword->getType());
     m_stats.templatesLoaded.fetch_add(1, std::memory_order_relaxed);
-    RESOURCE_INFO("Created resource: " + sword->getName() + " (ID: sword)");
 
     m_resourceTemplates["shield"] = shield;
     updateIndexes("shield", shield->getCategory(), shield->getType());
     m_stats.templatesLoaded.fetch_add(1, std::memory_order_relaxed);
-    RESOURCE_INFO("Created resource: " + shield->getName() + " (ID: shield)");
 
     m_resourceTemplates["health_potion"] = potion;
     updateIndexes("health_potion", potion->getCategory(), potion->getType());
     m_stats.templatesLoaded.fetch_add(1, std::memory_order_relaxed);
-    RESOURCE_INFO("Created resource: " + potion->getName() +
-                  " (ID: health_potion)");
 
     // Create default materials
     auto iron = std::make_shared<Resource>("iron_ore", "Iron Ore",
@@ -386,12 +383,10 @@ void ResourceTemplateManager::createDefaultResources() {
     m_resourceTemplates["iron_ore"] = iron;
     updateIndexes("iron_ore", iron->getCategory(), iron->getType());
     m_stats.templatesLoaded.fetch_add(1, std::memory_order_relaxed);
-    RESOURCE_INFO("Created resource: " + iron->getName() + " (ID: iron_ore)");
 
     m_resourceTemplates["wood"] = wood;
     updateIndexes("wood", wood->getCategory(), wood->getType());
     m_stats.templatesLoaded.fetch_add(1, std::memory_order_relaxed);
-    RESOURCE_INFO("Created resource: " + wood->getName() + " (ID: wood)");
 
     // Create default currency
     auto gold = std::make_shared<Resource>(
@@ -405,7 +400,6 @@ void ResourceTemplateManager::createDefaultResources() {
     m_resourceTemplates["gold"] = gold;
     updateIndexes("gold", gold->getCategory(), gold->getType());
     m_stats.templatesLoaded.fetch_add(1, std::memory_order_relaxed);
-    RESOURCE_INFO("Created resource: " + gold->getName() + " (ID: gold)");
 
     // Create default game resources
     auto xp = std::make_shared<Resource>("experience", "Experience Points",
@@ -419,7 +413,6 @@ void ResourceTemplateManager::createDefaultResources() {
     m_resourceTemplates["experience"] = xp;
     updateIndexes("experience", xp->getCategory(), xp->getType());
     m_stats.templatesLoaded.fetch_add(1, std::memory_order_relaxed);
-    RESOURCE_INFO("Created resource: " + xp->getName() + " (ID: experience)");
 
     // Add iron_sword for consistency with tests
     auto ironSword = std::make_shared<Resource>("iron_sword", "Iron Sword",
@@ -434,8 +427,6 @@ void ResourceTemplateManager::createDefaultResources() {
     m_resourceTemplates["iron_sword"] = ironSword;
     updateIndexes("iron_sword", ironSword->getCategory(), ironSword->getType());
     m_stats.templatesLoaded.fetch_add(1, std::memory_order_relaxed);
-    RESOURCE_INFO("Created resource: " + ironSword->getName() +
-                  " (ID: iron_sword)");
 
     RESOURCE_INFO("ResourceTemplateManager::createDefaultResources - Created " +
                   std::to_string(m_resourceTemplates.size()) +
