@@ -53,6 +53,7 @@ ninja -C build
 - Comprehensive memory, cache, and thread safety analysis with Valgrind
 - Quick memory check: `./tests/valgrind/quick_memory_check.sh`
 - Cache performance: `./tests/valgrind/cache_performance_analysis.sh`
+- Function profiling: `./tests/valgrind/callgrind_profiling_analysis.sh`
 - Thread safety: `./tests/valgrind/thread_safety_check.sh`
 - Full suite: `./tests/valgrind/run_complete_valgrind_suite.sh`
 - See [tests/valgrind/README.md](tests/valgrind/README.md) for details, usage, and performance metrics
