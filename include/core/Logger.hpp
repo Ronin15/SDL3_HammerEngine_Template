@@ -55,7 +55,6 @@ public:
            message.c_str());
     fflush(stdout);
   }
-
   static void Log(LogLevel level, const char *system, const char *message) {
     if (s_benchmarkMode.load(std::memory_order_relaxed)) {
       return;
@@ -86,10 +85,6 @@ private:
     }
   }
 };
-
-// Initialize static members
-inline std::atomic<bool> Logger::s_benchmarkMode{false};
-inline std::mutex Logger::s_logMutex{};
 
 // Debug build macros - full functionality
 #define HAMMER_CRITICAL(system, msg)                                           \
@@ -126,14 +121,10 @@ public:
   }
 };
 
-// Initialize static members
-inline std::atomic<bool> Logger::s_benchmarkMode{false};
-inline std::mutex Logger::s_logMutex{};
-
 #define HAMMER_CRITICAL(system, msg)                                           \
   do {                                                                         \
-    if (!Hammer::Logger::IsBenchmarkMode()) {                                  \
-      std::lock_guard<std::mutex> lock(Hammer::Logger::s_logMutex);            \
+    if (!HammerEngine::Logger::IsBenchmarkMode()) {                            \
+      std::lock_guard<std::mutex> lock(HammerEngine::Logger::s_logMutex);      \
       printf("Hammer Game Engine - [%s] CRITICAL: %s\n", system,               \
              std::string(msg).c_str());                                        \
       fflush(stdout);                                                          \
@@ -142,8 +133,8 @@ inline std::mutex Logger::s_logMutex{};
 
 #define HAMMER_ERROR(system, msg)                                              \
   do {                                                                         \
-    if (!Hammer::Logger::IsBenchmarkMode()) {                                  \
-      std::lock_guard<std::mutex> lock(Hammer::Logger::s_logMutex);            \
+    if (!HammerEngine::Logger::IsBenchmarkMode()) {                            \
+      std::lock_guard<std::mutex> lock(HammerEngine::Logger::s_logMutex);      \
       printf("Hammer Game Engine - [%s] ERROR: %s\n", system,                  \
              std::string(msg).c_str());                                        \
       fflush(stdout);                                                          \
@@ -154,6 +145,10 @@ inline std::mutex Logger::s_logMutex{};
 #define HAMMER_INFO(system, msg) ((void)0)  // Zero overhead
 #define HAMMER_DEBUG(system, msg) ((void)0) // Zero overhead
 #endif
+
+// Static member definitions - shared by both DEBUG and RELEASE builds
+inline std::atomic<bool> Logger::s_benchmarkMode{false};
+inline std::mutex Logger::s_logMutex{};
 
 // Convenience macros for each manager and core system
 
