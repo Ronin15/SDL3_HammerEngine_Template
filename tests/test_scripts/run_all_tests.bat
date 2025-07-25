@@ -83,7 +83,7 @@ goto :parse_args
 
 :: Define test categories
 :: Core functionality tests (fast execution)
-set CORE_TEST_COUNT=10
+set CORE_TEST_COUNT=11
 set CORE_TEST_1=run_cppcheck_focused.bat
 set CORE_TEST_2=run_thread_tests.bat
 set CORE_TEST_3=run_buffer_utilization_tests.bat
@@ -94,6 +94,7 @@ set CORE_TEST_7=run_behavior_functionality_tests.bat
 set CORE_TEST_8=run_save_tests.bat
 set CORE_TEST_9=run_event_tests.bat
 set CORE_TEST_10=run_particle_manager_tests.bat
+set CORE_TEST_11=run_json_reader_tests.bat
 
 :: Performance scaling benchmarks (slow execution)
 set BENCHMARK_TEST_COUNT=3

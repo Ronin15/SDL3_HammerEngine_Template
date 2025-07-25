@@ -2,7 +2,7 @@
 
 This document provides a comprehensive guide to the testing framework used in the Hammer Game Engine project. All tests use the Boost Test Framework for consistency and are organized by component.
 
-**Current Test Coverage:** 20+ individual test suites covering AI systems, AI behaviors, UI performance, core systems, event management, and particle systems with both functional validation and performance benchmarking.
+**Current Test Coverage:** 21+ individual test suites covering AI systems, AI behaviors, UI performance, core systems, event management, particle systems, and utility components with both functional validation and performance benchmarking.
 
 ## Test Suites Overview
 
@@ -30,10 +30,13 @@ The Hammer Game Engine has the following test suites:
    - Event Manager Scaling Benchmark: Performance testing for event system scalability
    - Particle Manager Tests: Comprehensive particle system validation covering core functionality, weather integration, performance, and threading
 
+4. **Utility System Tests**
+   - JsonReader Tests: RFC 8259 compliant JSON parser validation with comprehensive error handling and type safety testing
+
 **Test Execution Categories:**
-- **Core Tests** (7 suites): Fast functional validation (~3-6 minutes total)
+- **Core Tests** (8 suites): Fast functional validation (~3-6 minutes total)
 - **Benchmarks** (3 suites): Performance and scalability testing (~5-15 minutes total)
-- **Total Coverage**: 16+ test executables with comprehensive automation scripts
+- **Total Coverage**: 17+ test executables with comprehensive automation scripts
 
 ## Running Tests
 
@@ -52,6 +55,7 @@ Each test suite has dedicated scripts in the project root directory:
 ./run_behavior_functionality_tests.sh # Comprehensive AI behavior validation tests
 ./run_save_tests.sh                  # Save manager and BinarySerializer tests
 ./run_event_tests.sh                 # Event manager tests
+./run_json_reader_tests.sh           # JSON parser validation tests
 
 # Performance scaling benchmarks (slow execution)
 ./run_event_scaling_benchmark.sh     # Event manager scaling benchmark
@@ -80,6 +84,13 @@ Each test suite has dedicated scripts in the project root directory:
 ./run_save_tests.sh --integration-test                  # BinarySerializer integration tests
 ./run_save_tests.sh --error-test                        # Error handling tests
 ./run_save_tests.sh --verbose                           # Detailed test output
+
+# JSON reader test examples
+./run_json_reader_tests.sh --parse-test                 # Basic JSON parsing validation
+./run_json_reader_tests.sh --error-test                 # Error handling and malformed JSON tests
+./run_json_reader_tests.sh --file-test                  # File loading functionality tests
+./run_json_reader_tests.sh --game-test                  # Game item data parsing tests
+./run_json_reader_tests.sh --verbose                    # Detailed test output with all test cases
 ```
 
 #### Windows
@@ -93,6 +104,7 @@ run_behavior_functionality_tests.bat # Comprehensive AI behavior validation test
 run_ai_benchmark.bat                 # AI scaling benchmark with realistic automatic threading
 run_save_tests.bat                   # Save manager and BinarySerializer tests
 run_event_tests.bat                  # Event manager tests
+run_json_reader_tests.bat            # JSON parser validation tests
 
 # Performance scaling benchmarks (slow execution)
 run_event_scaling_benchmark.bat      # Event manager scaling benchmark

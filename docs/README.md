@@ -83,6 +83,7 @@ Some managers (e.g., ParticleManager, SaveGameManager) are tightly integrated wi
 Core utility classes and helper systems used throughout the engine.
 
 - **[Logger System](Logger.md)** - Comprehensive logging system with debug/release optimization and system-specific macros
+- **[JsonReader](utils/JsonReader.md)** - RFC 8259 compliant JSON parser with type-safe accessors and robust error handling
 - **[Binary Serialization](SERIALIZATION.md)** - Fast, header-only serialization system for game data
 - **[Performance Changelog](PERFORMANCE_CHANGELOG.md)** - Detailed performance optimization history and benchmarks
 

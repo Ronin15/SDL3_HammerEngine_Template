@@ -13,6 +13,7 @@ A modern, production-ready C++20 SDL3 game engine template. Features robust enti
 - Automatic resource, texture, sound, and font management
 - UI system with auto-sizing, themes, and stress testing
 - Save/load system with fast binary serialization
+- RFC 8259 compliant JSON parser for configuration and data
 - Cross-platform: Windows, macOS, Linux
 - Comprehensive test suite and static analysis
 
@@ -67,7 +68,7 @@ ninja -C build
 - **Threading:** [ThreadSystem](docs/ThreadSystem.md)
 - **Managers:** [ParticleManager](docs/managers/ParticleManager.md), [FontManager](docs/managers/FontManager.md), [TextureManager](docs/managers/TextureManager.md), [SoundManager](docs/managers/SoundManager.md)
 - **UI:** [UIManager Guide](docs/ui/UIManager_Guide.md), [Auto-Sizing](docs/ui/Auto_Sizing_System.md), [DPI-Aware Fonts](docs/ui/DPI_Aware_Font_System.md)
-- **Utilities:** [Serialization](docs/SERIALIZATION.md), [Performance Changelog](docs/PERFORMANCE_CHANGELOG.md)
+- **Utilities:** [JsonReader](docs/utils/JsonReader.md), [Serialization](docs/SERIALIZATION.md), [Performance Changelog](docs/PERFORMANCE_CHANGELOG.md)
 
 ---
 
