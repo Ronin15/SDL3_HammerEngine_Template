@@ -80,6 +80,7 @@ CORE_TEST_SCRIPTS=(
   "$SCRIPT_DIR/run_event_tests.sh"
   "$SCRIPT_DIR/run_particle_manager_tests.sh"
   "$SCRIPT_DIR/run_resource_tests.sh"
+  "$SCRIPT_DIR/run_json_reader_tests.sh"
 )
 
 # Performance scaling benchmarks (slow execution)

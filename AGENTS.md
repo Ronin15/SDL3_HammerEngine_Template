@@ -19,7 +19,9 @@
 - **Run a Single Test:**
   ```
   ./tests/test_scripts/run_save_tests.sh --verbose
+  ./tests/test_scripts/run_json_reader_tests.sh --verbose
   ./bin/debug/SaveManagerTests --run_test="TestSaveAndLoad*"
+  ./bin/debug/json_reader_tests --run_test="TestBasicParsing"
   ```
 - **Static Analysis:**
   ```
