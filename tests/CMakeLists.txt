@@ -277,6 +277,12 @@ add_executable(resource_integration_tests
     mocks/MockPlayer.cpp
 )
 
+# JsonReader tests
+add_executable(json_reader_tests
+    utils/JsonReaderTest.cpp
+    ${PROJECT_SOURCE_DIR}/src/utils/JsonReader.cpp
+)
+
 # Add compile definitions for Boost.Test
 target_compile_definitions(save_manager_tests PRIVATE
 )
@@ -378,6 +384,11 @@ target_compile_definitions(resource_change_event_tests PRIVATE
 
 # Resource Integration tests definitions
 target_compile_definitions(resource_integration_tests PRIVATE
+    BOOST_TEST_NO_SIGNAL_HANDLING
+)
+
+# JsonReader tests definitions
+target_compile_definitions(json_reader_tests PRIVATE
     BOOST_TEST_NO_SIGNAL_HANDLING
 )
 
@@ -534,6 +545,12 @@ target_link_libraries(resource_integration_tests PRIVATE
     Boost::unit_test_framework
 )
 
+# Link JsonReader tests with required libraries
+target_link_libraries(json_reader_tests PRIVATE
+    SDL3::SDL3
+    Boost::unit_test_framework
+)
+
 # Add HAVE_BOOST_SERIALIZATION to ui_stress_test as well
 target_compile_definitions(ui_stress_test PRIVATE
 )
@@ -563,3 +580,4 @@ add_test(NAME WorldResourceManagerTests COMMAND world_resource_manager_tests)
 add_test(NAME InventoryComponentTests COMMAND inventory_component_tests)
 add_test(NAME ResourceChangeEventTests COMMAND resource_change_event_tests)
 add_test(NAME ResourceIntegrationTests COMMAND resource_integration_tests)
+add_test(NAME JsonReaderTests COMMAND json_reader_tests)
