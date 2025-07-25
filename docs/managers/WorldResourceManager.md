@@ -17,6 +17,51 @@ The `WorldResourceManager` is a singleton responsible for tracking and manipulat
 - Thread-safe operations with shared_mutex
 - Statistics and memory usage tracking
 
+## Demo Features
+
+### GamePlayState Integration
+The WorldResourceManager is showcased in the GamePlayState with a fully interactive inventory system featuring enhanced UI and alignment:
+
+**Inventory Controls:**
+- **[I]** - Toggle inventory display on/off
+- **[1]** - Add 10 gold to inventory
+- **[2]** - Add 1 health potion to inventory  
+- **[3]** - Add 5 iron ore to inventory
+- **[4]** - Add 3 wood to inventory
+- **[5]** - Remove 5 gold from inventory
+
+**Enhanced Inventory UI Features:**
+- **Professional alignment** - Fixed title positioning and improved text spacing
+- **Real-time inventory display** showing all resources and quantities
+- **Auto-updating resource counters** (Gold, Health Potions, Total Items)
+- **Visual feedback** for inventory operations with smooth updating
+- **Inventory capacity tracking** (used slots / max slots)
+- **Responsive layout** - 420px height panel with proper vertical spacing
+- **Consistent styling** - Matches EventDemoState inventory with professional appearance
+
+### EventDemoState Integration
+The WorldResourceManager is also demonstrated in the EventDemoState as part of the ResourceDemo phase with comprehensive visual inventory tracking:
+
+**Event-Based Resource Management:**
+- **[6]** - Trigger resource events that add/remove resources via the EventManager
+- Automatic cycling through different resource types (gold, health_potion, iron_ore, wood)
+- Demonstrates ResourceChangeEvent creation and execution
+- Shows event-driven resource management patterns
+- Logs all resource operations to the event log with detailed before/after quantities
+
+**Visual Inventory Integration:**
+- **Real-time inventory panel** - Right-aligned 280×320px panel displaying all resources
+- **Live resource tracking** - Inventory updates automatically during resource events
+- **Enhanced event logging** - Shows before/after quantities and operation results
+- **Smooth UI updates** - Uses list component for consistent, glitch-free updating
+- **Professional styling** - Matches GamePlayState inventory with responsive positioning
+
+**Demonstration Features:**
+- Resource quantities are displayed in real-time as events modify the inventory
+- Event log shows detailed transaction information (e.g., "Added 5 gold (10 → 15)")
+- Visual feedback demonstrates the engine's event-driven resource architecture
+- Inventory panel automatically repositions based on window width for responsive design
+
 ## API Reference
 
 ### Singleton Access

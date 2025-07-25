@@ -34,6 +34,9 @@ bool GamePlayState::enter() {
     mp_Player->initializeInventory(); // Initialize inventory after construction
     std::cout << "Hammer Game Engine - Player created in GamePlayState\n";
   }
+
+  // Initialize inventory UI
+  initializeInventoryUI();
   return true;
 }
 
@@ -44,6 +47,15 @@ void GamePlayState::update([[maybe_unused]] float deltaTime) {
   if (mp_Player) {
     mp_Player->update(deltaTime);
   }
+
+  // Update UI
+  auto &ui = UIManager::Instance();
+  if (!ui.isShutdown()) {
+    ui.update(deltaTime);
+  }
+
+  // Update inventory display
+  updateInventoryUI();
 }
 
 void GamePlayState::render([[maybe_unused]] float deltaTime) {
@@ -54,16 +66,24 @@ void GamePlayState::render([[maybe_unused]] float deltaTime) {
   const auto &gameEngine = GameEngine::Instance();
 
   SDL_Color fontColor = {200, 200, 200, 255};
-  fontMgr.drawText("Game State Place Holder <----> Press [P] to test Pause "
-                   "State <----> Press [B] to return to Main Menu",
+  fontMgr.drawText("Game State with Inventory Demo <-> [P] Pause <-> [B] Main "
+                   "Menu <-> [I] Toggle Inventory <-> [1-5] Add Items",
                    "fonts_Arial",
                    gameEngine.getLogicalWidth() / 2, // Center horizontally
                    20, fontColor, gameEngine.getRenderer());
 
   mp_Player->render();
+
+  // Render UI components
+  auto &ui = UIManager::Instance();
+  ui.render(gameEngine.getRenderer());
 }
 bool GamePlayState::exit() {
   std::cout << "Hammer Game Engine - Exiting GAME State\n";
+
+  // Clean up UI components
+  auto &ui = UIManager::Instance();
+  ui.removeComponentsWithPrefix("gameplay_");
 
   // Only clear specific textures if we're not transitioning to pause state
   if (!m_transitioningToPause) {
@@ -112,5 +132,148 @@ void GamePlayState::handleInput() {
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_ESCAPE)) {
     auto &gameEngine = GameEngine::Instance();
     gameEngine.setRunning(false);
+  }
+
+  // Inventory toggle
+  if (inputMgr.wasKeyPressed(SDL_SCANCODE_I)) {
+    toggleInventoryDisplay();
+  }
+
+  // Resource addition demo keys
+  if (inputMgr.wasKeyPressed(SDL_SCANCODE_1)) {
+    addDemoResource("gold", 10);
+  }
+  if (inputMgr.wasKeyPressed(SDL_SCANCODE_2)) {
+    addDemoResource("health_potion", 1);
+  }
+  if (inputMgr.wasKeyPressed(SDL_SCANCODE_3)) {
+    addDemoResource("iron_ore", 5);
+  }
+  if (inputMgr.wasKeyPressed(SDL_SCANCODE_4)) {
+    addDemoResource("wood", 3);
+  }
+  if (inputMgr.wasKeyPressed(SDL_SCANCODE_5)) {
+    removeDemoResource("gold", 5);
+  }
+}
+
+void GamePlayState::initializeInventoryUI() {
+  auto &ui = UIManager::Instance();
+  const auto &gameEngine = GameEngine::Instance();
+  int windowWidth = gameEngine.getLogicalWidth();
+
+  // Create inventory panel (initially hidden)
+  int inventoryWidth = 300;
+  int inventoryHeight = 420; // Increased height to accommodate better spacing
+  int inventoryX = windowWidth - inventoryWidth - 20;
+  int inventoryY = 60;
+
+  ui.createPanel("gameplay_inventory_panel",
+                 {inventoryX, inventoryY, inventoryWidth, inventoryHeight});
+  ui.createTitle("gameplay_inventory_title",
+                 {inventoryX + 10, inventoryY + 10, inventoryWidth - 20, 30},
+                 "Player Inventory");
+
+  // Create inventory list for displaying items with better spacing
+  ui.createList("gameplay_inventory_list",
+                {inventoryX + 10, inventoryY + 50, inventoryWidth - 20, 260});
+
+  // Create resource status labels with better vertical spacing
+  ui.createLabel("gameplay_gold_label",
+                 {inventoryX + 10, inventoryY + 330, inventoryWidth - 20, 20},
+                 "Gold: 0");
+  ui.createLabel("gameplay_potions_label",
+                 {inventoryX + 10, inventoryY + 355, inventoryWidth - 20, 20},
+                 "Health Potions: 0");
+  ui.createLabel("gameplay_total_items",
+                 {inventoryX + 10, inventoryY + 380, inventoryWidth - 20, 20},
+                 "Total Items: 0");
+
+  // Hide inventory initially
+  ui.setComponentVisible("gameplay_inventory_panel", false);
+  ui.setComponentVisible("gameplay_inventory_title", false);
+  ui.setComponentVisible("gameplay_inventory_list", false);
+  ui.setComponentVisible("gameplay_gold_label", false);
+  ui.setComponentVisible("gameplay_potions_label", false);
+  ui.setComponentVisible("gameplay_total_items", false);
+}
+
+void GamePlayState::updateInventoryUI() {
+  if (!mp_Player || !mp_Player->getInventory()) {
+    return;
+  }
+
+  auto &ui = UIManager::Instance();
+  auto *inventory = mp_Player->getInventory();
+
+  // Update resource counts
+  int goldCount = inventory->getResourceQuantity("gold");
+  int potionCount = inventory->getResourceQuantity("health_potion");
+  size_t totalItems = inventory->getUsedSlots();
+
+  ui.setText("gameplay_gold_label", "Gold: " + std::to_string(goldCount));
+  ui.setText("gameplay_potions_label",
+             "Health Potions: " + std::to_string(potionCount));
+  ui.setText("gameplay_total_items",
+             "Total Items: " + std::to_string(totalItems) + "/" +
+                 std::to_string(inventory->getMaxSlots()));
+
+  // Update inventory list
+  ui.clearList("gameplay_inventory_list");
+  auto allResources = inventory->getAllResources();
+  for (const auto &[resourceId, quantity] : allResources) {
+    if (quantity > 0) {
+      ui.addListItem("gameplay_inventory_list",
+                     resourceId + " x" + std::to_string(quantity));
+    }
+  }
+}
+
+void GamePlayState::toggleInventoryDisplay() {
+  auto &ui = UIManager::Instance();
+  m_inventoryVisible = !m_inventoryVisible;
+
+  ui.setComponentVisible("gameplay_inventory_panel", m_inventoryVisible);
+  ui.setComponentVisible("gameplay_inventory_title", m_inventoryVisible);
+  ui.setComponentVisible("gameplay_inventory_list", m_inventoryVisible);
+  ui.setComponentVisible("gameplay_gold_label", m_inventoryVisible);
+  ui.setComponentVisible("gameplay_potions_label", m_inventoryVisible);
+  ui.setComponentVisible("gameplay_total_items", m_inventoryVisible);
+
+  std::cout << "Inventory " << (m_inventoryVisible ? "shown" : "hidden")
+            << std::endl;
+}
+
+void GamePlayState::addDemoResource(const std::string &resourceId,
+                                    int quantity) {
+  if (!mp_Player) {
+    std::cout << "Player not available for resource addition" << std::endl;
+    return;
+  }
+
+  bool success = mp_Player->addResource(resourceId, quantity);
+  if (success) {
+    std::cout << "Added " << quantity << " " << resourceId
+              << " to player inventory" << std::endl;
+  } else {
+    std::cout << "Failed to add " << resourceId
+              << " to inventory (might be full)" << std::endl;
+  }
+}
+
+void GamePlayState::removeDemoResource(const std::string &resourceId,
+                                       int quantity) {
+  if (!mp_Player) {
+    std::cout << "Player not available for resource removal" << std::endl;
+    return;
+  }
+
+  bool success = mp_Player->removeResource(resourceId, quantity);
+  if (success) {
+    std::cout << "Removed " << quantity << " " << resourceId
+              << " from player inventory" << std::endl;
+  } else {
+    std::cout << "Failed to remove " << resourceId
+              << " from inventory (insufficient quantity)" << std::endl;
   }
 }

@@ -10,6 +10,7 @@
 #include "ai/behaviors/WanderBehavior.hpp"
 #include "core/GameEngine.hpp"
 #include "events/NPCSpawnEvent.hpp"
+#include "events/ResourceChangeEvent.hpp"
 #include "events/SceneChangeEvent.hpp"
 #include "events/WeatherEvent.hpp"
 #include "managers/AIManager.hpp"
@@ -17,6 +18,7 @@
 #include "managers/InputManager.hpp"
 #include "managers/ParticleManager.hpp"
 #include "managers/UIManager.hpp"
+#include <algorithm>
 #include <iomanip>
 #include <iostream>
 #include <sstream>
@@ -98,15 +100,36 @@ bool EventDemoState::enter() {
     ui.createLabel("event_phase", {10, 40, 300, 20}, "Phase: Initialization");
     ui.createLabel("event_status", {10, 65, 400, 20},
                    "FPS: -- | Weather: Clear | NPCs: 0");
-    ui.createLabel("event_controls", {10, 90, ui.getLogicalWidth() - 20, 20},
-                   "[B] Exit | [SPACE] Manual | [1-5] Events | [A] Auto | [R] "
-                   "Reset | [F] Fire | [S] Smoke | [K] Sparks");
+    ui.createLabel(
+        "event_controls", {10, 90, ui.getLogicalWidth() - 20, 20},
+        "[B] Exit | [SPACE] Manual | [1-6] Events | [A] Auto | [R] "
+        "Reset | [F] Fire | [S] Smoke | [K] Sparks | Inventory Panel →");
 
     // Create event log component using auto-detected dimensions
     ui.createEventLog("event_log", {10, ui.getLogicalHeight() - 200, 730, 180},
                       7);
     ui.addEventLogEntry("event_log", "Event Demo System Initialized");
 
+    // Create right-aligned inventory panel for resource demo visualization
+    int windowWidth = ui.getLogicalWidth();
+    int inventoryWidth = 280;
+    int inventoryHeight = 320;
+    int inventoryX =
+        windowWidth - inventoryWidth - 20; // Right-aligned with 20px margin
+    int inventoryY = 120;
+
+    ui.createPanel("inventory_panel",
+                   {inventoryX, inventoryY, inventoryWidth, inventoryHeight});
+    ui.createTitle("inventory_title",
+                   {inventoryX + 10, inventoryY + 10, inventoryWidth - 20, 30},
+                   "Player Inventory");
+    ui.createLabel("inventory_status",
+                   {inventoryX + 10, inventoryY + 45, inventoryWidth - 20, 20},
+                   "Capacity: 0/50");
+
+    // Create inventory list for smooth updates like GamePlayState
+    ui.createList("inventory_list",
+                  {inventoryX + 10, inventoryY + 75, inventoryWidth - 20, 220});
     std::cout
         << "Hammer Game Engine - EventDemoState initialized successfully\n";
     return true;
@@ -296,6 +319,19 @@ void EventDemoState::update(float deltaTime) {
         m_lastEventTriggerTime = m_totalDemoTime;
       }
       if (m_phaseTimer >= m_phaseDuration) {
+        m_currentPhase = DemoPhase::ResourceDemo;
+        m_phaseTimer = 0.0f;
+        addLogEntry("Starting Resource Demo Phase");
+      }
+      break;
+
+    case DemoPhase::ResourceDemo:
+      if (m_phaseTimer >= 2.0f &&
+          (m_totalDemoTime - m_lastEventTriggerTime) >= m_eventFireInterval) {
+        triggerResourceDemo();
+        m_lastEventTriggerTime = m_totalDemoTime;
+      }
+      if (m_phaseTimer >= m_phaseDuration) {
         m_currentPhase = DemoPhase::CustomEventDemo;
         m_phaseTimer = 0.0f;
         addLogEntry("Advancing to Custom Event Demo Phase");
@@ -382,6 +418,9 @@ void EventDemoState::render(float deltaTime) {
                << " | Weather: " << getCurrentWeatherString()
                << " | NPCs: " << m_spawnedNPCs.size();
     ui.setText("event_status", statusText.str());
+
+    // Update inventory display
+    updateInventoryUI();
   }
   ui.render();
 }
@@ -504,6 +543,14 @@ void EventDemoState::handleInput() {
       triggerSceneTransitionDemo();
       break;
     case DemoPhase::SceneTransitionDemo:
+      m_currentPhase = DemoPhase::ParticleEffectDemo;
+      triggerParticleEffectDemo();
+      break;
+    case DemoPhase::ParticleEffectDemo:
+      m_currentPhase = DemoPhase::ResourceDemo;
+      triggerResourceDemo();
+      break;
+    case DemoPhase::ResourceDemo:
       m_currentPhase = DemoPhase::CustomEventDemo;
       triggerCustomEventDemo();
       break;
@@ -576,6 +623,16 @@ void EventDemoState::handleInput() {
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_5)) {
     resetAllEvents();
     addLogEntry("All events reset");
+  }
+
+  if (inputMgr.wasKeyPressed(SDL_SCANCODE_6) &&
+      (m_totalDemoTime - m_lastEventTriggerTime) >= 0.2f) {
+    if (m_autoMode && m_currentPhase == DemoPhase::ResourceDemo) {
+      m_phaseTimer = 0.0f;
+    }
+    triggerResourceDemo();
+    addLogEntry("Manual resource event triggered");
+    m_lastEventTriggerTime = m_totalDemoTime;
   }
 
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_R)) {
@@ -787,6 +844,120 @@ void EventDemoState::triggerParticleEffectDemo() {
   // Advance to next effect and position
   effectIndex = (effectIndex + 1) % effectNames.size();
   positionIndex = (positionIndex + 1) % effectPositions.size();
+}
+
+void EventDemoState::triggerResourceDemo() {
+  static std::vector<std::string> resourceIds = {"gold", "health_potion",
+                                                 "iron_ore", "wood"};
+  static std::vector<int> quantities = {50, 2, 10, 5};
+  static size_t resourceIndex = 0;
+  static bool isAdding = true;
+
+  // Get current resource and quantity
+  std::string resourceId = resourceIds[resourceIndex];
+  int quantity = quantities[resourceIndex];
+
+  if (!m_player || !m_player->getInventory()) {
+    addLogEntry("Resource demo failed: Player inventory not available");
+    return;
+  }
+
+  auto *inventory = m_player->getInventory();
+  int currentQuantity = inventory->getResourceQuantity(resourceId);
+
+  if (isAdding) {
+    // Add resources to player inventory
+    addLogEntry("BEFORE ADD: " + resourceId + " = " +
+                std::to_string(currentQuantity));
+
+    bool success = m_player->addResource(resourceId, quantity);
+    if (success) {
+      int newQuantity = inventory->getResourceQuantity(resourceId);
+      addLogEntry("AFTER ADD: " + resourceId + " = " +
+                  std::to_string(newQuantity) + " (+" +
+                  std::to_string(quantity) + ")");
+
+      // Create and register ResourceChangeEvent for demonstration
+      auto resourceEvent =
+          std::make_shared<ResourceChangeEvent>(m_player, resourceId,
+                                                currentQuantity, // old quantity
+                                                newQuantity,     // new quantity
+                                                "event_demo");
+
+      // Register and execute the event to demonstrate event-based resource
+      // management
+      EventManager &eventMgr = EventManager::Instance();
+      std::string eventName = "resource_demo_add_" + resourceId + "_" +
+                              std::to_string(resourceIndex);
+      eventMgr.registerEvent(eventName, resourceEvent);
+      eventMgr.executeEvent(eventName);
+
+      addLogEntry("ResourceChangeEvent executed for ADD operation");
+    } else {
+      addLogEntry("FAILED to add " + resourceId + " - inventory may be full");
+    }
+  } else {
+    // Remove resources from player inventory
+    int removeQuantity = std::min(quantity, currentQuantity);
+
+    if (removeQuantity > 0) {
+      addLogEntry("BEFORE REMOVE: " + resourceId + " = " +
+                  std::to_string(currentQuantity));
+
+      bool success = m_player->removeResource(resourceId, removeQuantity);
+      if (success) {
+        int newQuantity = inventory->getResourceQuantity(resourceId);
+        addLogEntry("AFTER REMOVE: " + resourceId + " = " +
+                    std::to_string(newQuantity) + " (-" +
+                    std::to_string(removeQuantity) + ")");
+
+        // Create and register ResourceChangeEvent for demonstration
+        auto resourceEvent = std::make_shared<ResourceChangeEvent>(
+            m_player, resourceId,
+            currentQuantity, // old quantity
+            newQuantity,     // new quantity
+            "event_demo");
+
+        // Register and execute the event
+        EventManager &eventMgr = EventManager::Instance();
+        std::string eventName = "resource_demo_remove_" + resourceId + "_" +
+                                std::to_string(resourceIndex);
+        eventMgr.registerEvent(eventName, resourceEvent);
+        eventMgr.executeEvent(eventName);
+
+        addLogEntry("ResourceChangeEvent executed for REMOVE operation");
+      } else {
+        addLogEntry("FAILED to remove " + resourceId + " from inventory");
+      }
+    } else {
+      addLogEntry("No " + resourceId + " to remove from inventory");
+    }
+  }
+
+  // Cycle through resources and alternate between adding and removing
+  resourceIndex = (resourceIndex + 1) % resourceIds.size();
+  if (resourceIndex == 0) {
+    isAdding = !isAdding; // Switch between adding and removing after full cycle
+    std::string mode = isAdding ? "ADDING" : "REMOVING";
+    addLogEntry("--- Switched to " + mode + " mode ---");
+  }
+
+  // Log current inventory summary
+  auto allResources = inventory->getAllResources();
+  std::string inventoryStatus = "Inventory Summary: ";
+  bool hasItems = false;
+  for (const auto &[id, qty] : allResources) {
+    if (qty > 0) {
+      if (hasItems)
+        inventoryStatus += ", ";
+      inventoryStatus += id + "(" + std::to_string(qty) + ")";
+      hasItems = true;
+    }
+  }
+  if (!hasItems) {
+    inventoryStatus += "Empty";
+  }
+  addLogEntry(inventoryStatus);
 }
 
 void EventDemoState::triggerCustomEventDemo() {
@@ -1121,6 +1292,8 @@ std::string EventDemoState::getCurrentPhaseString() const {
     return "Scene Transition Demo";
   case DemoPhase::ParticleEffectDemo:
     return "Particle Effect Demo";
+  case DemoPhase::ResourceDemo:
+    return "Resource Demo";
   case DemoPhase::CustomEventDemo:
     return "Custom Event Demo";
   case DemoPhase::InteractiveMode:
@@ -1179,13 +1352,19 @@ void EventDemoState::updateInstructions() {
     m_instructions.push_back("Demonstrating particle effects via EventManager");
     m_instructions.push_back("Particles triggered at various coordinates");
     break;
+  case DemoPhase::ResourceDemo:
+    m_instructions.push_back(
+        "Demonstrating resource management via EventManager");
+    m_instructions.push_back("Resources added/removed with events fired");
+    m_instructions.push_back("Watch inventory panel for real-time changes");
+    break;
   case DemoPhase::CustomEventDemo:
     m_instructions.push_back("Demonstrating custom event combinations");
     m_instructions.push_back("Multiple events triggered together");
     break;
   case DemoPhase::InteractiveMode:
     m_instructions.push_back("Interactive Mode - Manual Control (Permanent)");
-    m_instructions.push_back("Use number keys 1-5 to trigger events");
+    m_instructions.push_back("Use number keys 1-6 to trigger events");
     m_instructions.push_back("Press 'C' for convenience methods demo");
     m_instructions.push_back("Press 'A' to toggle auto mode on/off");
     m_instructions.push_back("Press 'R' to reset all events");
@@ -1258,4 +1437,49 @@ void EventDemoState::createNPCAtPosition(const std::string &npcType, float x,
     std::cerr << "NPC type: " << npcType << ", position: (" << x << ", " << y
               << ")" << std::endl;
   }
+}
+
+void EventDemoState::updateInventoryUI() {
+  if (!m_player || !m_player->getInventory()) {
+    return;
+  }
+
+  auto *inventory = m_player->getInventory();
+  auto &ui = UIManager::Instance();
+
+  // Update capacity status
+  size_t usedSlots = inventory->getUsedSlots();
+  size_t maxSlots = inventory->getMaxSlots();
+  std::string capacityText =
+      "Capacity: " + std::to_string(usedSlots) + "/" + std::to_string(maxSlots);
+  ui.setText("inventory_status", capacityText);
+
+  // Update inventory list (like GamePlayState for smooth updates)
+  ui.clearList("inventory_list");
+  auto allResources = inventory->getAllResources();
+
+  // Create sorted list for consistent display
+  std::vector<std::pair<std::string, int>> sortedResources;
+  for (const auto &[resourceId, quantity] : allResources) {
+    if (quantity > 0) {
+      sortedResources.emplace_back(resourceId, quantity);
+    }
+  }
+  std::sort(sortedResources.begin(), sortedResources.end());
+
+  // Add resources to list
+  for (const auto &[resourceId, quantity] : sortedResources) {
+    ui.addListItem("inventory_list",
+                   resourceId + " x" + std::to_string(quantity));
+  }
+
+  // If inventory is empty, show a message
+  if (sortedResources.empty()) {
+    ui.addListItem("inventory_list", "(Empty)");
+  }
+}
+
+void EventDemoState::renderInventoryPanel() {
+  // Inventory panel rendering is handled by UIManager
+  // This method exists for potential future custom rendering
 }
