@@ -450,7 +450,50 @@ class MainMenuState : public GameState {
 };
 ```
 
-### HUD/Overlay State
+### Inventory UI Patterns
+
+The UIManager supports sophisticated inventory interfaces with responsive design and real-time updating:
+
+```cpp
+// Standard inventory UI pattern used in GamePlayState and EventDemoState
+void createInventoryPanel(const std::string& prefix, int windowWidth, int windowHeight) {
+    auto& ui = UIManager::Instance();
+    
+    // Calculate responsive positioning
+    int panelWidth = 280;
+    int panelHeight = 320;
+    int panelX = windowWidth - panelWidth - 20;  // Right-aligned
+    int panelY = 100;
+    
+    // Create panel components
+    ui.createPanel(prefix + "_panel", {panelX, panelY, panelWidth, panelHeight});
+    ui.createTitle(prefix + "_title", {panelX + 10, panelY + 10, panelWidth - 20, 0}, "Inventory");
+    ui.createList(prefix + "_list", {panelX + 10, panelY + 50, panelWidth - 20, panelHeight - 80});
+}
+
+// Update inventory with resource data
+void updateInventoryDisplay(const std::string& prefix) {
+    auto& ui = UIManager::Instance();
+    auto& wrm = WorldResourceManager::Instance();
+    
+    // Clear and rebuild list for smooth updating
+    ui.clearListItems(prefix + "_list");
+    
+    auto resources = wrm.getWorldResources("main_world");
+    for (const auto& [resourceId, quantity] : resources) {
+        if (quantity > 0) {
+            ui.addListItem(prefix + "_list", resourceId + ": " + std::to_string(quantity));
+        }
+    }
+}
+```
+
+**Key Design Patterns:**
+- **Right-aligned responsive panels** - Adapt to different window sizes
+- **List-based updates** - Rebuild entire list for consistent display
+- **Grow-only auto-sizing** - Lists expand but never shrink for UI stability
+- **Prefix-based organization** - Clean component management per state
+- **Real-time integration** - Updates when WorldResourceManager changes occur
 
 ```cpp
 class PlayerHUDState : public EntityState {
@@ -694,6 +737,104 @@ public:
     }
 };
 ```
+
+## Complete Example: Resource Inventory Panel
+
+The engine includes advanced inventory UI patterns used in both GamePlayState and EventDemoState:
+
+```cpp
+class ResourceInventoryState : public GameState {
+public:
+    bool enter() override {
+        auto& ui = UIManager::Instance();
+        auto& gameEngine = GameEngine::Instance();
+        int windowWidth = gameEngine.getLogicalWidth();
+        int windowHeight = gameEngine.getLogicalHeight();
+        
+        // Create responsive right-aligned inventory panel
+        int panelWidth = 280;
+        int panelHeight = 320;
+        int panelX = windowWidth - panelWidth - 20;  // Right-aligned with 20px margin
+        int panelY = 100;  // Top margin
+        
+        // Create inventory panel background
+        ui.createPanel("inventory_panel", {panelX, panelY, panelWidth, panelHeight});
+        
+        // Create inventory title
+        ui.createTitle("inventory_title", {panelX + 10, panelY + 10, panelWidth - 20, 0}, "Inventory");
+        
+        // Create resource list (auto-sizing with grow-only behavior)
+        ui.createList("inventory_list", {panelX + 10, panelY + 50, panelWidth - 20, panelHeight - 80});
+        
+        // Initially populate inventory
+        updateInventoryUI();
+        
+        return true;
+    }
+    
+    void updateInventoryUI() {
+        auto& ui = UIManager::Instance();
+        auto& wrm = WorldResourceManager::Instance();
+        
+        // Clear current list items
+        ui.clearListItems("inventory_list");
+        
+        // Get all resources from world
+        auto resources = wrm.getWorldResources("main_world");
+        
+        // Add each resource to the inventory list
+        for (const auto& [resourceId, quantity] : resources) {
+            if (quantity > 0) {  // Only show resources with positive quantities
+                std::string displayText = resourceId + ": " + std::to_string(quantity);
+                ui.addListItem("inventory_list", displayText);
+            }
+        }
+        
+        // Add total count summary
+        size_t totalItems = 0;
+        for (const auto& [_, quantity] : resources) {
+            totalItems += quantity;
+        }
+        ui.addListItem("inventory_list", "Total Items: " + std::to_string(totalItems));
+    }
+    
+    void update(float deltaTime) override {
+        auto& ui = UIManager::Instance();
+        if (!ui.isShutdown()) {
+            ui.update(deltaTime);
+            
+            // Update inventory if resources changed
+            static size_t lastResourceCount = 0;
+            auto& wrm = WorldResourceManager::Instance();
+            auto resources = wrm.getWorldResources("main_world");
+            size_t currentCount = resources.size();
+            
+            if (currentCount != lastResourceCount) {
+                updateInventoryUI();
+                lastResourceCount = currentCount;
+            }
+        }
+    }
+    
+    void render() override {
+        auto& ui = UIManager::Instance();
+        ui.render(GameEngine::Instance().getRenderer());
+    }
+    
+    bool exit() override {
+        auto& ui = UIManager::Instance();
+        ui.removeComponentsWithPrefix("inventory_");
+        return true;
+    }
+};
+```
+
+**Inventory UI Features:**
+- **Right-aligned responsive panels** - Automatically position based on window width
+- **Live resource tracking** - Real-time updates when resources change
+- **List-based display** - Smooth updating with grow-only auto-sizing behavior
+- **Professional styling** - Consistent appearance with engine theming
+- **Cross-state compatibility** - Used in both GamePlayState and EventDemoState
 
 ## API Reference
 
