@@ -25,11 +25,10 @@ FINAL_REPORT="${RESULTS_DIR}/complete_analysis_${TIMESTAMP}.md"
 
 # Test configuration
 declare -A ALL_TESTS=(
-    ["memory_critical"]="buffer_utilization_tests event_manager_tests ai_optimization_tests particle_manager_core_tests behavior_functionality_tests resource_manager_tests world_resource_manager_tests resource_template_manager_tests resource_integration_tests json_reader_tests"
-    ["thread_safety"]="thread_safe_ai_manager_tests thread_safe_ai_integration_tests particle_manager_threading_tests thread_system_tests event_manager_tests resource_integration_tests resource_manager_tests world_resource_manager_tests resource_template_manager_tests"
-    ["performance"]="event_manager_tests ai_optimization_tests save_manager_tests particle_manager_performance_tests event_manager_scaling_benchmark behavior_functionality_tests ai_scaling_benchmark resource_template_manager_tests inventory_component_tests resource_manager_tests world_resource_manager_tests resource_change_event_tests json_reader_tests"
+    ["memory_critical"]="buffer_utilization_tests event_manager_tests ai_optimization_tests particle_manager_core_tests behavior_functionality_tests resource_manager_tests world_resource_manager_tests resource_template_manager_tests resource_integration_tests resource_factory_tests json_reader_tests"
+    ["thread_safety"]="thread_safe_ai_manager_tests thread_safe_ai_integration_tests particle_manager_threading_tests thread_system_tests event_manager_tests resource_integration_tests resource_manager_tests world_resource_manager_tests resource_template_manager_tests resource_factory_tests"
+    ["performance"]="event_manager_tests ai_optimization_tests save_manager_tests particle_manager_performance_tests event_manager_scaling_benchmark behavior_functionality_tests ai_scaling_benchmark resource_template_manager_tests inventory_component_tests resource_manager_tests world_resource_manager_tests resource_change_event_tests resource_template_manager_json_tests json_reader_tests"
     ["comprehensive"]="event_types_tests weather_event_tests ui_stress_test particle_manager_weather_tests thread_system_tests ai_scaling_benchmark resource_change_event_tests inventory_component_tests resource_factory_tests resource_template_manager_json_tests"
-    ["resource_management"]="resource_manager_tests world_resource_manager_tests resource_template_manager_tests resource_integration_tests resource_change_event_tests inventory_component_tests resource_factory_tests resource_template_manager_json_tests"
 )
 
 # Performance tracking
@@ -421,116 +420,6 @@ run_callgrind_analysis() {
     fi
 }
 
-# Function to run resource management analysis
-run_resource_management_analysis() {
-    section_header "RESOURCE MANAGEMENT ANALYSIS (Memory & Performance)"
-    
-    local resource_tests="${ALL_TESTS[resource_management]}"
-    local efficient_systems=0
-    local total_resource_issues=0
-    
-    for test in $resource_tests; do
-        local exe_path="${BIN_DIR}/${test}"
-        local memcheck_log="${RESULTS_DIR}/memory/${test}_memcheck.log"
-        local cache_log="${RESULTS_DIR}/cache/${test}_cachegrind.log"
-        
-        echo -e "${CYAN}Resource analysis: ${test}... (This may take 3-7 minutes)${NC}"
-        
-        if [[ ! -f "${exe_path}" ]]; then
-            echo -e "${RED}  ✗ Executable not found${NC}"
-            ((TESTS_FAILED++))
-            continue
-        fi
-        
-        # Show progress indicator
-        echo -e "${YELLOW}  ⏳ Running combined memory and cache analysis for resource systems...${NC}"
-        
-        # Run memcheck for resource leak detection
-        timeout 300s valgrind \
-            --tool=memcheck \
-            --leak-check=full \
-            --show-leak-kinds=all \
-            --track-origins=yes \
-            --log-file="${memcheck_log}" \
-            "${exe_path}" >/dev/null 2>&1 &
-        local memcheck_pid=$!
-        
-        # Run cachegrind for resource access patterns
-        timeout 300s valgrind \
-            --tool=cachegrind \
-            --cache-sim=yes \
-            --cachegrind-out-file="${RESULTS_DIR}/cache/${test}_cachegrind.out" \
-            --log-file="${cache_log}" \
-            "${exe_path}" >/dev/null 2>&1 &
-        local cachegrind_pid=$!
-        
-        # Wait for both analyses
-        wait $memcheck_pid
-        local memcheck_exit=$?
-        wait $cachegrind_pid  
-        local cachegrind_exit=$?
-        
-        if [[ $memcheck_exit -eq 124 || $cachegrind_exit -eq 124 ]]; then
-            echo -e "${YELLOW}  ⏰ TIMEOUT - ${test} resource analysis exceeded time limit${NC}"
-            ((WARNINGS++))
-            continue
-        fi
-        
-        # Analyze resource management efficiency
-        local memory_leaks=0
-        local cache_efficiency="UNKNOWN"
-        
-        if [[ -f "${memcheck_log}" ]]; then
-            memory_leaks=$(grep -c "definitely lost\|indirectly lost" "${memcheck_log}" 2>/dev/null || echo "0")
-        fi
-        
-        if [[ -f "${cache_log}" ]]; then
-            local l1d_miss=$(grep "D1  miss rate:" "${cache_log}" | awk '{print $5}' | sed 's/%//' 2>/dev/null || echo "N/A")
-            if [[ "${l1d_miss}" != "N/A" && "${l1d_miss}" =~ ^[0-9]*\.?[0-9]+$ ]]; then
-                if (( $(echo "${l1d_miss} < 3.0" | bc -l 2>/dev/null || echo 0) )); then
-                    cache_efficiency="EXCELLENT"
-                elif (( $(echo "${l1d_miss} < 8.0" | bc -l 2>/dev/null || echo 0) )); then
-                    cache_efficiency="GOOD"
-                else
-                    cache_efficiency="AVERAGE"
-                fi
-            fi
-        fi
-        
-        # Assess resource management quality
-        if [[ $memory_leaks -eq 0 && "${cache_efficiency}" == "EXCELLENT" ]]; then
-            echo -e "${GREEN}  ✓ OPTIMAL - Perfect resource management and cache efficiency${NC}"
-            ((efficient_systems++))
-        elif [[ $memory_leaks -eq 0 && "${cache_efficiency}" == "GOOD" ]]; then
-            echo -e "${CYAN}  ✓ EFFICIENT - Good resource management with minor optimizations possible${NC}"
-            ((efficient_systems++))
-        elif [[ $memory_leaks -eq 0 ]]; then
-            echo -e "${YELLOW}  ⚠ CLEAN - No leaks but cache performance needs review${NC}"
-            ((WARNINGS++))
-        else
-            echo -e "${RED}  ✗ ISSUES - Resource leaks detected: ${memory_leaks}${NC}"
-            total_resource_issues=$((total_resource_issues + memory_leaks))
-            ((CRITICAL_ISSUES++))
-        fi
-        
-        ((TESTS_PASSED++))
-    done
-    
-    echo ""
-    echo -e "${BOLD}Resource Management Summary:${NC}"
-    echo -e "  Efficient Systems: ${GREEN}${efficient_systems}${NC}"
-    echo -e "  Total Resource Issues: ${total_resource_issues}"
-    
-    if [[ $efficient_systems -ge 4 ]]; then
-        echo -e "  Overall Assessment: ${GREEN}EXCELLENT${NC} - Production-ready resource management"
-        echo -e "  ${CYAN}Resource systems demonstrate optimal memory usage and access patterns${NC}"
-    elif [[ $efficient_systems -ge 2 && $total_resource_issues -le 5 ]]; then
-        echo -e "  Overall Assessment: ${CYAN}GOOD${NC} - Minor optimizations recommended"
-    else
-        echo -e "  Overall Assessment: ${YELLOW}NEEDS ATTENTION${NC} - Resource management requires optimization"
-    fi
-}
-
 # Function to generate final comprehensive report
 generate_final_report() {
     section_header "GENERATING COMPREHENSIVE REPORT"
@@ -723,7 +612,6 @@ main() {
     run_memory_analysis
     run_cache_analysis
     run_thread_analysis
-    run_resource_management_analysis
     run_callgrind_analysis
 
     # Generate final report and summary
@@ -745,9 +633,6 @@ case "${1:-all}" in
     "callgrind"|"profiling")
         run_callgrind_analysis
         ;;
-    "resources"|"resource_management")
-        run_resource_management_analysis
-        ;;
     "help"|"-h"|"--help")
         echo "SDL3 HammerEngine Complete Valgrind Analysis Suite"
         echo ""
@@ -758,7 +643,6 @@ case "${1:-all}" in
         echo "  memory    - Memory leak analysis only"
         echo "  cache     - Cache performance analysis only"
         echo "  threads   - Thread safety analysis only"
-        echo "  resources - Resource management analysis only"
         echo "  callgrind - Function profiling analysis only"
         echo "  help      - Show this help message"
         echo ""
