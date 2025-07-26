@@ -262,11 +262,19 @@ REM Save results with timestamp
 for /f "tokens=2-4 delims=/ " %%a in ('date /t') do (set mydate=%%c%%a%%b)
 for /f "tokens=1-2 delims=/:" %%a in ('time /t') do (set mytime=%%a%%b)
 set TIMESTAMP=%mydate%_%mytime%
-copy "%OUTPUT_FILE%" "%PROJECT_ROOT%\test_results\particle_manager\%exec_name%_output_%TIMESTAMP%.txt" >nul
+
+echo Saving test results for %exec_name%...
+copy "%OUTPUT_FILE%" "%PROJECT_ROOT%\test_results\particle_manager\%exec_name%_output_%TIMESTAMP%.txt"
+if %ERRORLEVEL% neq 0 (
+    echo WARNING: Failed to copy test output to timestamped file
+)
 
 REM Extract performance metrics and test summary
-findstr /i "time: performance TestCase Running.*test.*cases failures.*detected No.*errors.*detected" "%OUTPUT_FILE%" > "%PROJECT_ROOT%\test_results\particle_manager\%exec_name%_summary.txt" 2>nul
-
+echo Extracting performance metrics...
+findstr /i "time: performance TestCase Running.*test.*cases failures.*detected No.*errors.*detected" "%OUTPUT_FILE%" > "%PROJECT_ROOT%\test_results\particle_manager\%exec_name%_summary.txt"
+if %ERRORLEVEL% neq 0 (
+    echo WARNING: No performance metrics found in test output
+)
 REM Check test results
 findstr /i "failure test.*cases.*failed errors.*detected.*[1-9]" "%OUTPUT_FILE%" >nul
 set failure_found=%ERRORLEVEL%
@@ -293,9 +301,11 @@ echo ✗ %test_type% tests failed
 REM Show failure summary
 echo.
 echo Failure Summary:
-findstr /i "failure FAILED error.*in.*:" "%OUTPUT_FILE%" 2>nul | findstr /n "^" | findstr "^[1-5]:"
-if %ERRORLEVEL% neq 0 echo No specific failure details found.
-echo FAILED: %exec_name% (exit code: %test_result%) >> "%COMBINED_RESULTS%"
+findstr /i "failure FAILED error.*in.*:" "%OUTPUT_FILE%" | findstr /n "^" | findstr "^[1-5]:"
+if %ERRORLEVEL% neq 0 (
+    echo No specific failure details found in output
+    echo This may indicate a runtime crash or early termination
+)echo FAILED: %exec_name% (exit code: %test_result%) >> "%COMBINED_RESULTS%"
 set OVERALL_SUCCESS=false
 set /a FAILED_COUNT+=1
 
