@@ -3,7 +3,7 @@
 # SDL3 HammerEngine Template - Callgrind Function Profiling Analysis
 # Detailed function-level profiling and performance hotspot identification
 
-set -e
+# set -e # Disabled to allow controlled error handling in profiling loops
 
 # Colors for output
 RED='\033[0;31m'
@@ -34,9 +34,18 @@ declare -A PROFILE_TESTS=(
     ["behavior_functionality"]="behavior_functionality_tests"
     ["event_manager"]="event_manager_tests"
     ["event_scaling"]="event_manager_scaling_benchmark"
+    ["event_types"]="event_types_tests"
+    ["weather_events"]="weather_event_tests"
+    ["particle_core"]="particle_manager_core_tests"
     ["particle_performance"]="particle_manager_performance_tests"
+    ["particle_threading"]="particle_manager_threading_tests"
+    ["particle_weather"]="particle_manager_weather_tests"
     ["buffer_utilization"]="buffer_utilization_tests"
     ["thread_safe_ai"]="thread_safe_ai_manager_tests"
+    ["thread_safe_ai_integration"]="thread_safe_ai_integration_tests"
+    ["thread_system"]="thread_system_tests"
+    ["save_manager"]="save_manager_tests"
+    ["ui_stress"]="ui_stress_test"
     ["resource_manager"]="resource_manager_tests"
     ["world_resource_manager"]="world_resource_manager_tests"
     ["resource_template_manager"]="resource_template_manager_tests"
@@ -132,6 +141,9 @@ run_callgrind_profiling() {
     elif [[ "${test_name}" == "event_scaling" ]]; then
         test_args="--run_test=EventManagerScalingTests/TestEventManagerScaling --catch_system_errors=no --no_result_code --log_level=nothing"
         echo -e "${YELLOW}    Using targeted event scaling test for faster profiling...${NC}"
+    elif [[ "${test_name}" == "ui_stress" ]]; then
+        test_args="--catch_system_errors=no --no_result_code --log_level=nothing"
+        echo -e "${YELLOW}    Using optimized test settings for UI stress analysis...${NC}"
     fi
     
     # Run Callgrind with timeout
@@ -312,7 +324,7 @@ EOF
 EOF
 
     # Add AI-specific analysis
-    for test_name in "ai_optimization" "ai_scaling" "behavior_functionality"; do
+    for test_name in "ai_optimization" "ai_scaling" "behavior_functionality" "thread_safe_ai" "thread_safe_ai_integration"; do
         if [[ -n "${PROFILE_TESTS[$test_name]}" ]]; then
             local summary_file="${RESULTS_DIR}/summaries/${test_name}_summary.txt"
             if [[ -f "${summary_file}" ]]; then
@@ -333,7 +345,7 @@ EOF
 EOF
 
     # Add event system analysis
-    for test_name in "event_manager" "event_scaling"; do
+    for test_name in "event_manager" "event_scaling" "event_types" "weather_events"; do
         if [[ -n "${PROFILE_TESTS[$test_name]}" ]]; then
             local summary_file="${RESULTS_DIR}/summaries/${test_name}_summary.txt"
             if [[ -f "${summary_file}" ]]; then
@@ -351,7 +363,25 @@ EOF
 EOF
 
     # Add resource management analysis
-    for test_name in "resource_manager" "world_resource_manager" "resource_template_manager" "resource_integration" "inventory_components"; do
+    for test_name in "resource_manager" "world_resource_manager" "resource_template_manager" "resource_integration" "resource_change_events" "inventory_components" "resource_factory" "resource_template_json" "json_reader"; do
+        if [[ -n "${PROFILE_TESTS[$test_name]}" ]]; then
+            local summary_file="${RESULTS_DIR}/summaries/${test_name}_summary.txt"
+            if [[ -f "${summary_file}" ]]; then
+                echo "#### ${test_name}" >> "${FINAL_REPORT}"
+                echo "- **Raw Data**: \`${RESULTS_DIR}/raw/${test_name}_callgrind.out\`" >> "${FINAL_REPORT}"
+                echo "- **Summary**: \`${summary_file}\`" >> "${FINAL_REPORT}"
+                echo "" >> "${FINAL_REPORT}"
+            fi
+        fi
+    done
+
+    cat >> "${FINAL_REPORT}" << EOF
+
+### Performance Critical Systems
+EOF
+
+    # Add performance systems analysis
+    for test_name in "particle_core" "particle_performance" "particle_threading" "particle_weather" "buffer_utilization" "thread_system" "save_manager" "ui_stress"; do
         if [[ -n "${PROFILE_TESTS[$test_name]}" ]]; then
             local summary_file="${RESULTS_DIR}/summaries/${test_name}_summary.txt"
             if [[ -f "${summary_file}" ]]; then
@@ -467,7 +497,7 @@ run_targeted_profiling() {
     case "${category}" in
         "ai_behaviors"|"ai")
             section_header "AI BEHAVIOR PROFILING ANALYSIS"
-            for test_name in "ai_optimization" "ai_scaling" "behavior_functionality"; do
+            for test_name in "ai_optimization" "ai_scaling" "behavior_functionality" "thread_safe_ai" "thread_safe_ai_integration"; do
                 if [[ -n "${PROFILE_TESTS[$test_name]}" ]]; then
                     run_callgrind_profiling "${test_name}" "${PROFILE_TESTS[$test_name]}"
                     echo ""
@@ -476,7 +506,7 @@ run_targeted_profiling() {
             ;;
         "event_systems"|"events")
             section_header "EVENT SYSTEM PROFILING ANALYSIS"
-            for test_name in "event_manager" "event_scaling"; do
+            for test_name in "event_manager" "event_scaling" "event_types" "weather_events"; do
                 if [[ -n "${PROFILE_TESTS[$test_name]}" ]]; then
                     run_callgrind_profiling "${test_name}" "${PROFILE_TESTS[$test_name]}"
                     echo ""
@@ -485,7 +515,7 @@ run_targeted_profiling() {
             ;;
         "performance"|"perf")
             section_header "PERFORMANCE CRITICAL PROFILING ANALYSIS"
-            for test_name in "particle_performance" "buffer_utilization" "thread_safe_ai"; do
+            for test_name in "particle_core" "particle_performance" "particle_threading" "particle_weather" "buffer_utilization" "thread_system" "save_manager" "ui_stress"; do
                 if [[ -n "${PROFILE_TESTS[$test_name]}" ]]; then
                     run_callgrind_profiling "${test_name}" "${PROFILE_TESTS[$test_name]}"
                     echo ""
@@ -494,7 +524,7 @@ run_targeted_profiling() {
             ;;
         "resource_management"|"resources")
             section_header "RESOURCE MANAGEMENT PROFILING ANALYSIS"
-            for test_name in "resource_manager" "world_resource_manager" "resource_template_manager" "resource_integration" "inventory_components"; do
+            for test_name in "resource_manager" "world_resource_manager" "resource_template_manager" "resource_integration" "resource_change_events" "inventory_components" "resource_factory" "resource_template_json" "json_reader"; do
                 if [[ -n "${PROFILE_TESTS[$test_name]}" ]]; then
                     run_callgrind_profiling "${test_name}" "${PROFILE_TESTS[$test_name]}"
                     echo ""
