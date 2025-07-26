@@ -82,6 +82,9 @@ void ResourceTemplateManager::clean() {
   m_categoryIndex.clear();
   m_typeIndex.clear();
 
+  // Clear ResourceFactory to prevent type registration warnings
+  ResourceFactory::clear();
+
   m_initialized = false;
   m_isShutdown = true;
   m_stats.reset();
