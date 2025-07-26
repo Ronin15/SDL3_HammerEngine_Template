@@ -84,6 +84,7 @@ Core utility classes and helper systems used throughout the engine.
 
 - **[Logger System](Logger.md)** - Comprehensive logging system with debug/release optimization and system-specific macros
 - **[JsonReader](utils/JsonReader.md)** - RFC 8259 compliant JSON parser with type-safe accessors and robust error handling
+- **[JSON Resource Loading](utils/JSON_Resource_Loading_Guide.md)** - Complete guide to loading items, materials, currency, and game resources from JSON files with ResourceTemplateManager integration
 - **[Binary Serialization](SERIALIZATION.md)** - Fast, header-only serialization system for game data
 - **[Performance Changelog](PERFORMANCE_CHANGELOG.md)** - Detailed performance optimization history and benchmarks
 

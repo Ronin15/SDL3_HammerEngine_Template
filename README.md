@@ -11,6 +11,7 @@ A modern, production-ready C++20 SDL3 game engine template. Features robust enti
 - Entity, game, and event state machines
 - High-performance AI and particle systems
 - Automatic resource, texture, sound, and font management
+- JSON-based resource loading system for items, materials, and currency
 - UI system with auto-sizing, themes, and stress testing
 - Save/load system with fast binary serialization
 - RFC 8259 compliant JSON parser for configuration and data
@@ -67,9 +68,9 @@ ninja -C build
 - **AI System:** [Overview](docs/ai/AIManager.md), [Optimization](docs/ai/AIManager_Optimization_Summary.md), [Behaviors](docs/ai/BehaviorModes.md)
 - **Event System:** [Overview](docs/events/EventManager.md), [Quick Reference](docs/events/EventManager_QuickReference.md), [Examples](docs/events/EventManager_Examples.cpp)
 - **Threading:** [ThreadSystem](docs/ThreadSystem.md)
-- **Managers:** [ParticleManager](docs/managers/ParticleManager.md), [FontManager](docs/managers/FontManager.md), [TextureManager](docs/managers/TextureManager.md), [SoundManager](docs/managers/SoundManager.md)
+- **Managers:** [ParticleManager](docs/managers/ParticleManager.md), [FontManager](docs/managers/FontManager.md), [TextureManager](docs/managers/TextureManager.md), [SoundManager](docs/managers/SoundManager.md), [ResourceTemplateManager](docs/managers/ResourceTemplateManager.md), [WorldResourceManager](docs/managers/WorldResourceManager.md)
 - **UI:** [UIManager Guide](docs/ui/UIManager_Guide.md), [Auto-Sizing](docs/ui/Auto_Sizing_System.md), [DPI-Aware Fonts](docs/ui/DPI_Aware_Font_System.md)
-- **Utilities:** [JsonReader](docs/utils/JsonReader.md), [Serialization](docs/SERIALIZATION.md), [Performance Changelog](docs/PERFORMANCE_CHANGELOG.md)
+- **Utilities:** [JsonReader](docs/utils/JsonReader.md), [JSON Resource Loading](docs/utils/JSON_Resource_Loading_Guide.md), [Serialization](docs/SERIALIZATION.md), [Performance Changelog](docs/PERFORMANCE_CHANGELOG.md)
 
 ---
 
