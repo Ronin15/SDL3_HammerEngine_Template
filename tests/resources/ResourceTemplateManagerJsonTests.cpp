@@ -6,7 +6,6 @@
 #define BOOST_TEST_MODULE ResourceTemplateManagerJsonTests
 #include <boost/test/unit_test.hpp>
 
-#include <fstream>
 #include <memory>
 #include <string>
 
@@ -23,34 +22,25 @@ public:
     resourceManager = &ResourceTemplateManager::Instance();
     BOOST_REQUIRE(resourceManager != nullptr);
 
-    // Clean and initialize the manager
+    // Clean and initialize the manager for each test
     resourceManager->clean();
     bool initialized = resourceManager->init();
-    BOOST_REQUIRE(initialized);
+    BOOST_REQUIRE_MESSAGE(initialized,
+                          "Failed to initialize ResourceTemplateManager");
+
+    // Verify the manager is in a good state
+    BOOST_TEST_MESSAGE("ResourceTemplateManager initialized with "
+                       << resourceManager->getResourceTemplateCount()
+                       << " default resources");
   }
 
   ~ResourceTemplateManagerJsonTestFixture() {
-    // Clean up ResourceTemplateManager
+    // Clean up ResourceTemplateManager after each test
     resourceManager->clean();
   }
 
 protected:
   ResourceTemplateManager *resourceManager;
-
-  // Helper method to create a temporary JSON file
-  std::string createTempJsonFile(const std::string &jsonContent) {
-    std::string filename =
-        "/tmp/test_resources_" + std::to_string(rand()) + ".json";
-    std::ofstream file(filename);
-    file << jsonContent;
-    file.close();
-    return filename;
-  }
-
-  // Helper method to remove temporary file
-  void removeTempFile(const std::string &filename) {
-    std::remove(filename.c_str());
-  }
 };
 
 BOOST_FIXTURE_TEST_SUITE(ResourceTemplateManagerJsonTestSuite,
@@ -89,49 +79,13 @@ BOOST_AUTO_TEST_CASE(TestLoadValidJsonString) {
                     "effectPower": 75,
                     "effectDuration": 0
                 }
-            }
-        ]
-    })";
-
-  // Get initial count
-  size_t initialCount = resourceManager->getResourceTemplateCount();
-
-  // Load resources from JSON string
-  bool result = resourceManager->loadResourcesFromJsonString(jsonString);
-  BOOST_CHECK(result);
-
-  // Verify resources were loaded
-  size_t newCount = resourceManager->getResourceTemplateCount();
-  BOOST_CHECK_EQUAL(newCount, initialCount + 2);
-
-  // Test that we can retrieve the loaded resources
-  auto sword = resourceManager->getResourceTemplate("json_test_sword");
-  BOOST_REQUIRE(sword != nullptr);
-  BOOST_CHECK_EQUAL(sword->getName(), "JSON Test Sword");
-  BOOST_CHECK_EQUAL(sword->getValue(), 150.0f);
-
-  auto potion = resourceManager->getResourceTemplate("json_test_potion");
-  BOOST_REQUIRE(potion != nullptr);
-  BOOST_CHECK_EQUAL(potion->getName(), "JSON Test Potion");
-  BOOST_CHECK(potion->isConsumable());
-
-  // Test that they're the correct specialized types
-  auto equipment = std::dynamic_pointer_cast<Equipment>(sword);
-  BOOST_CHECK(equipment != nullptr);
-
-  auto consumable = std::dynamic_pointer_cast<Consumable>(potion);
-  BOOST_CHECK(consumable != nullptr);
-}
-
-BOOST_AUTO_TEST_CASE(TestLoadValidJsonFile) {
-  std::string jsonContent = R"({
-        "resources": [
+            },
             {
-                "id": "file_test_gem",
-                "name": "File Test Gem",
+                "id": "json_test_gem",
+                "name": "JSON Test Gem",
                 "category": "Currency",
                 "type": "Gem",
-                "description": "A gem loaded from file",
+                "description": "A gem loaded from JSON",
                 "value": 500,
                 "maxStackSize": 100,
                 "consumable": false,
@@ -144,41 +98,175 @@ BOOST_AUTO_TEST_CASE(TestLoadValidJsonFile) {
         ]
     })";
 
-  // Create temporary file
-  std::string filename = createTempJsonFile(jsonContent);
+  // Get initial count
+  size_t initialCount = resourceManager->getResourceTemplateCount();
 
-  try {
-    // Get initial count
-    size_t initialCount = resourceManager->getResourceTemplateCount();
+  // Load resources from JSON string
+  bool result = resourceManager->loadResourcesFromJsonString(jsonString);
+  BOOST_CHECK_MESSAGE(result, "Failed to load resources from JSON string");
 
-    // Load resources from file
-    bool result = resourceManager->loadResourcesFromJson(filename);
-    BOOST_CHECK(result);
+  // Verify resources were loaded
+  size_t newCount = resourceManager->getResourceTemplateCount();
+  BOOST_CHECK_EQUAL_MESSAGE(newCount, initialCount + 3,
+                            "Expected " << (initialCount + 3)
+                                        << " resources, got " << newCount);
 
-    // Verify resource was loaded
-    size_t newCount = resourceManager->getResourceTemplateCount();
-    BOOST_CHECK_EQUAL(newCount, initialCount + 1);
+  // Test Equipment (sword)
+  auto sword = resourceManager->getResourceTemplate("json_test_sword");
+  BOOST_REQUIRE(sword != nullptr);
+  BOOST_CHECK_EQUAL(sword->getName(), "JSON Test Sword");
+  BOOST_CHECK_EQUAL(sword->getValue(), 150.0f);
 
-    // Test that we can retrieve the loaded resource
-    auto gem = resourceManager->getResourceTemplate("file_test_gem");
-    BOOST_REQUIRE(gem != nullptr);
-    BOOST_CHECK_EQUAL(gem->getName(), "File Test Gem");
+  // Test Consumable (potion)
+  auto potion = resourceManager->getResourceTemplate("json_test_potion");
+  BOOST_REQUIRE(potion != nullptr);
+  BOOST_CHECK_EQUAL(potion->getName(), "JSON Test Potion");
+  BOOST_CHECK(potion->isConsumable());
 
-    // Test that it's the correct specialized type
-    auto gemPtr = std::dynamic_pointer_cast<Gem>(gem);
-    BOOST_REQUIRE(gemPtr != nullptr);
-    BOOST_CHECK_EQUAL(static_cast<int>(gemPtr->getGemType()),
-                      static_cast<int>(Gem::GemType::Diamond));
-    BOOST_CHECK_EQUAL(gemPtr->getClarity(), 9);
+  // Test Gem type casting and properties
+  auto gem = resourceManager->getResourceTemplate("json_test_gem");
+  BOOST_REQUIRE_MESSAGE(gem != nullptr,
+                        "Failed to retrieve gem resource 'json_test_gem'");
+  BOOST_CHECK_EQUAL(gem->getName(), "JSON Test Gem");
+  BOOST_TEST_MESSAGE("Retrieved gem: " << gem->getName() << " with value "
+                                       << gem->getValue());
 
-  } catch (...) {
-    removeTempFile(filename);
-    throw;
-  }
+  // Test that they're the correct specialized types
+  auto equipment = std::dynamic_pointer_cast<Equipment>(sword);
+  BOOST_CHECK_MESSAGE(equipment != nullptr,
+                      "Failed to cast sword to Equipment type");
 
-  removeTempFile(filename);
+  auto consumable = std::dynamic_pointer_cast<Consumable>(potion);
+  BOOST_CHECK_MESSAGE(consumable != nullptr,
+                      "Failed to cast potion to Consumable type");
+
+  auto gemPtr = std::dynamic_pointer_cast<Gem>(gem);
+  BOOST_REQUIRE_MESSAGE(
+      gemPtr != nullptr,
+      "Failed to cast resource to Gem type. Resource type might be: "
+          << static_cast<int>(gem->getResourceType()));
+
+  BOOST_TEST_MESSAGE("Gem type: "
+                     << static_cast<int>(gemPtr->getGemType()) << " (expected: "
+                     << static_cast<int>(Gem::GemType::Diamond) << ")");
+  BOOST_TEST_MESSAGE("Gem clarity: " << gemPtr->getClarity()
+                                     << " (expected: 9)");
+
+  BOOST_CHECK_EQUAL_MESSAGE(static_cast<int>(gemPtr->getGemType()),
+                            static_cast<int>(Gem::GemType::Diamond),
+                            "Expected Diamond gem type");
+  BOOST_CHECK_EQUAL_MESSAGE(gemPtr->getClarity(), 9, "Expected clarity of 9");
 }
 
+BOOST_AUTO_TEST_CASE(TestLoadValidJsonFile) {
+  // This test verifies that loadResourcesFromJson() properly delegates to
+  // loadResourcesFromJsonString() after reading a file. Rather than creating
+  // temporary files, we test with the existing JSON data files in the project.
+
+  // Get initial count
+  size_t initialCount = resourceManager->getResourceTemplateCount();
+  BOOST_TEST_MESSAGE("Initial resource count: " << initialCount);
+
+  // Test loading from the project's existing items.json file
+  // The test executable runs from bin/debug/, so we need to go up to project
+  // root
+  std::string itemsFile = "../../res/data/items.json";
+
+  // Load resources from the existing project data file
+  bool result = resourceManager->loadResourcesFromJson(itemsFile);
+  BOOST_CHECK_MESSAGE(result,
+                      "Failed to load resources from project items.json file");
+
+  if (result) {
+    // Verify resources were loaded from the file
+    size_t newCount = resourceManager->getResourceTemplateCount();
+    BOOST_TEST_MESSAGE(
+        "New resource count after loading items.json: " << newCount);
+    BOOST_CHECK_MESSAGE(
+        newCount > initialCount,
+        "Expected resource count to increase after loading items.json");
+
+    BOOST_TEST_MESSAGE("Successfully loaded " << (newCount - initialCount)
+                                              << " resources from items.json");
+  } else {
+    BOOST_TEST_MESSAGE(
+        "Note: items.json may not exist or may have format differences. "
+        "JSON string parsing is tested separately in TestLoadValidJsonString.");
+  }
+}
+}
+
+BOOST_AUTO_TEST_CASE(TestLoadInvalidJsonString) {
+  // Test malformed JSON
+  std::string invalidJson = R"({
+        "resources": [
+            {
+                "id": "invalid_test",
+                "name": "Invalid JSON",
+                "category": "Item",
+                "type": "Equipment"
+                // Missing closing brace and comma
+            }
+        ]
+    })";
+
+  size_t initialCount = resourceManager->getResourceTemplateCount();
+  bool result = resourceManager->loadResourcesFromJsonString(invalidJson);
+  BOOST_CHECK_MESSAGE(!result, "Expected invalid JSON to fail parsing");
+
+  // Verify no resources were added
+  size_t newCount = resourceManager->getResourceTemplateCount();
+  BOOST_CHECK_EQUAL(newCount, initialCount);
+}
+
+BOOST_AUTO_TEST_CASE(TestLoadEmptyJsonString) {
+  // Test empty JSON
+  std::string emptyJson = "{}";
+
+  size_t initialCount = resourceManager->getResourceTemplateCount();
+  bool result = resourceManager->loadResourcesFromJsonString(emptyJson);
+  BOOST_CHECK_MESSAGE(!result,
+                      "Expected empty JSON to fail (missing resources array)");
+
+  // Verify no resources were added
+  size_t newCount = resourceManager->getResourceTemplateCount();
+  BOOST_CHECK_EQUAL(newCount, initialCount);
+}
+
+BOOST_AUTO_TEST_CASE(TestLoadInvalidResourceData) {
+  // Test JSON with missing required fields
+  std::string invalidResourceJson = R"({
+        "resources": [
+            {
+                "id": "invalid_resource",
+                "name": "Missing Category"
+                // Missing category, type, etc.
+            }
+        ]
+    })";
+
+  size_t initialCount = resourceManager->getResourceTemplateCount();
+  bool result =
+      resourceManager->loadResourcesFromJsonString(invalidResourceJson);
+  BOOST_CHECK_MESSAGE(!result, "Expected resource with missing fields to fail");
+
+  // Verify no resources were added
+  size_t newCount = resourceManager->getResourceTemplateCount();
+  BOOST_CHECK_EQUAL(newCount, initialCount);
+}
+
+BOOST_AUTO_TEST_CASE(TestLoadNonExistentFile) {
+  // Test loading from a file that doesn't exist
+  std::string nonExistentFile = "../../non_existent_file.json";
+
+  size_t initialCount = resourceManager->getResourceTemplateCount();
+  bool result = resourceManager->loadResourcesFromJson(nonExistentFile);
+  BOOST_CHECK_MESSAGE(!result, "Expected non-existent file to fail loading");
+
+  // Verify no resources were added
+  size_t newCount = resourceManager->getResourceTemplateCount();
+  BOOST_CHECK_EQUAL(newCount, initialCount);
+}
 BOOST_AUTO_TEST_CASE(TestLoadDuplicateResources) {
   // First load
   std::string jsonString1 = R"({

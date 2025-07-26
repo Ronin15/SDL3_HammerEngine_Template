@@ -2,52 +2,176 @@
 REM Run Resource Manager Tests
 REM Copyright (c) 2025 Hammer Forged Games
 
-echo ==========================================
-echo Running Resource Manager System Tests
-echo ==========================================
+setlocal EnableDelayedExpansion
 
-REM Check if build directory exists
-if not exist "build" (
-    echo Error: Build directory not found. Please build the project first.
-    echo Run: cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Debug ^&^& ninja -C build
-    exit /b 1
+REM Set up colored output
+set "RED=[91m"
+set "GREEN=[92m"
+set "YELLOW=[93m"
+set "BLUE=[94m"
+set "NC=[0m"
+
+echo !BLUE!==========================================!NC!
+echo !BLUE!Running Resource Manager System Tests!NC!
+echo !BLUE!==========================================!NC!
+
+REM Navigate to script directory
+cd /d "%~dp0"
+
+REM Set build type and verbose flag
+set "BUILD_TYPE=Debug"
+set "VERBOSE=false"
+
+REM Process command line arguments
+:parse_args
+if "%~1"=="" goto :done_parsing
+if /i "%~1"=="--verbose" (
+    set "VERBOSE=true"
+    shift
+    goto :parse_args
 )
+if /i "%~1"=="--release" (
+    set "BUILD_TYPE=Release"
+    shift
+    goto :parse_args
+)
+if /i "%~1"=="--help" (
+    echo Resource Manager Test Runner
+    echo Usage: run_resource_tests.bat [options]
+    echo.
+    echo Options:
+    echo   --verbose    Run tests with verbose output
+    echo   --release    Use release build instead of debug
+    echo   --help       Show this help message
+    echo.
+    echo Test Suites:
+    echo   - WorldResourceManager core functionality
+    echo   - ResourceTemplateManager tests
+    echo   - ResourceTemplateManager JSON tests
+    echo   - ResourceFactory tests
+    echo   - InventoryComponent tests
+    echo   - ResourceChangeEvent tests  
+    echo   - Resource Integration tests
+    exit /b 0
+)
+shift
+goto :parse_args
+
+:done_parsing
+
+REM Determine executable directory based on build type
+if "%BUILD_TYPE%"=="Debug" (
+    set "EXEC_DIR=..\..\bin\debug"
+) else (
+    set "EXEC_DIR=..\..\bin\release"
+)
+
+REM Create test_results directory if it doesn't exist
+if not exist "..\..\test_results" mkdir "..\..\test_results"
 
 REM Set up test environment
 set SDL_VIDEODRIVER=dummy
 
-echo Running ResourceManager Tests...
-if "%1"=="--verbose" (
-    .\build\tests\resource_manager_tests.exe --log_level=all --report_level=detailed
+REM Track overall success
+set "OVERALL_SUCCESS=true"
+set "PASSED_COUNT=0"
+set "FAILED_COUNT=0"
+
+echo !YELLOW!Build type: %BUILD_TYPE%!NC!
+echo !YELLOW!Test executable directory: !EXEC_DIR!!NC!
+echo.
+
+call :run_test_suite "world_resource_manager_tests" "WorldResourceManager"
+call :run_test_suite "resource_template_manager_tests" "ResourceTemplateManager"
+call :run_test_suite "resource_template_manager_json_tests" "ResourceTemplateManager JSON"
+call :run_test_suite "resource_factory_tests" "ResourceFactory"
+call :run_test_suite "inventory_component_tests" "InventoryComponent" 
+call :run_test_suite "resource_change_event_tests" "ResourceChangeEvent"
+call :run_test_suite "resource_integration_tests" "Resource Integration"
+
+goto :show_summary
+
+:run_test_suite
+set "test_name=%~1"
+set "display_name=%~2"
+set "TEST_EXECUTABLE=!EXEC_DIR!\!test_name!.exe"
+
+echo !GREEN!Running !display_name! Tests...!NC!
+
+REM Check if test executable exists
+if not exist "!TEST_EXECUTABLE!" (
+    echo !RED!Test executable not found at !TEST_EXECUTABLE!!NC!
+    echo !YELLOW!Searching for test executable...!NC!
+    set "FOUND_EXECUTABLE="
+    for /r ..\.. %%f in (!test_name!.exe) do (
+        if exist "%%f" (
+            set "TEST_EXECUTABLE=%%f"
+            set "FOUND_EXECUTABLE=true"
+            echo !GREEN!Found test executable at %%f!NC!
+            goto :found_executable
+        )
+    )
+    if "!FOUND_EXECUTABLE!"=="" (
+        echo !RED!Could not find test executable!!NC!
+        echo !RED!Please build the project first!NC!
+        set "OVERALL_SUCCESS=false"
+        set /a FAILED_COUNT+=1
+        goto :eof
+    )
+)
+
+:found_executable
+
+REM Set test options based on verbosity
+if "!VERBOSE!"=="true" (
+    set "TEST_OPTS=--log_level=all --report_level=detailed"
 ) else (
-    .\build\tests\resource_manager_tests.exe --log_level=error --report_level=short
+    set "TEST_OPTS=--log_level=error --report_level=short"
+)
+
+REM Run the test and capture output
+"!TEST_EXECUTABLE!" !TEST_OPTS! > "..\..\test_results\!test_name!_output.txt" 2>&1
+set "TEST_RESULT=!ERRORLEVEL!"
+
+REM Display output if verbose or if test failed
+if "!VERBOSE!"=="true" (
+    type "..\..\test_results\!test_name!_output.txt"
+) else (
+    if !TEST_RESULT! neq 0 (
+        echo !RED!Test failed, showing output:!NC!
+        type "..\..\test_results\!test_name!_output.txt"
+    )
+)
+
+REM Report result
+if !TEST_RESULT! equ 0 (
+    echo !GREEN!+ !display_name! tests passed!!NC!
+    set /a PASSED_COUNT+=1
+) else (
+    echo !RED!- !display_name! tests failed with exit code !TEST_RESULT!!NC!
+    set "OVERALL_SUCCESS=false"
+    set /a FAILED_COUNT+=1
 )
 
 echo.
-echo Running InventoryComponent Tests...
-if "%1"=="--verbose" (
-    .\build\tests\inventory_component_tests.exe --log_level=all --report_level=detailed
-) else (
-    .\build\tests\inventory_component_tests.exe --log_level=error --report_level=short
-)
+goto :eof
 
-echo.
-echo Running ResourceChangeEvent Tests...
-if "%1"=="--verbose" (
-    .\build\tests\resource_change_event_tests.exe --log_level=all --report_level=detailed
-) else (
-    .\build\tests\resource_change_event_tests.exe --log_level=error --report_level=short
-)
+:show_summary
+echo !BLUE!==========================================!NC!
+echo !BLUE!         Resource Tests Summary          !NC!
+echo !BLUE!==========================================!NC!
+echo Total test suites: 7
+echo !GREEN!Passed: !PASSED_COUNT!!NC!
+echo !RED!Failed: !FAILED_COUNT!!NC!
 
-echo.
-echo Running Resource Integration Tests...
-if "%1"=="--verbose" (
-    .\build\tests\resource_integration_tests.exe --log_level=all --report_level=detailed
+if "!OVERALL_SUCCESS!"=="true" (
+    echo.
+    echo !GREEN!All Resource Manager tests completed successfully!!NC!
+    echo !BLUE!Test results saved to test_results\ directory!NC!
+    exit /b 0
 ) else (
-    .\build\tests\resource_integration_tests.exe --log_level=error --report_level=short
+    echo.
+    echo !RED!Some Resource Manager tests failed!!NC!
+    echo !YELLOW!Check test results in test_results\ directory for details!NC!
+    exit /b 1
 )
-
-echo.
-echo ==========================================
-echo All Resource Tests Completed Successfully!
-echo ==========================================
