@@ -65,8 +65,9 @@ The SDL3 ForgeEngine Template has achieved **WORLD-CLASS OPTIMIZATION** with:
 ### 1. Quick Memory Check (`quick_memory_check.sh`)
 - **Purpose**: Fast memory leak detection for development workflow
 - **Duration**: 1-2 minutes
-- **Focus**: Critical components (buffer, event, AI, thread systems)
+- **Focus**: Critical components (buffer, event, AI, thread, resource, JSON systems)
 - **Output**: Clean/Issues summary with leak detection
+- **New Tests**: Includes JSON reader and resource factory validation
 
 ### 2. Cache Performance Analysis (`cache_performance_analysis.sh`)
 - **Purpose**: Comprehensive cache hierarchy performance analysis
@@ -95,8 +96,9 @@ The SDL3 ForgeEngine Template has achieved **WORLD-CLASS OPTIMIZATION** with:
 ### 6. Resource Management Analysis (Integrated)
 - **Purpose**: Resource system performance and memory efficiency validation
 - **Duration**: 5-15 minutes per component
-- **Focus**: Resource loading, caching, lifecycle management, memory patterns
+- **Focus**: Resource loading, caching, lifecycle management, memory patterns, JSON parsing
 - **Output**: Resource optimization insights, memory leak detection, cache efficiency
+- **New Components**: Resource factory, JSON-based template manager, JSON reader performance
 
 ### 7. Legacy Comprehensive Analysis (`run_valgrind_analysis.sh`)
 - **Purpose**: Original full-featured analysis tool
@@ -302,6 +304,19 @@ Update performance baselines when adding new optimizations:
 ```
 
 ## Support & Documentation
+
+### Recent Updates
+
+**New Test Coverage Added (2025)**:
+- **JSON Reader Tests** (`json_reader_tests`) - Memory and performance analysis of JSON parsing components
+- **Resource Factory Tests** (`resource_factory_tests`) - Resource creation and management validation
+- **Resource Template JSON Tests** (`resource_template_manager_json_tests`) - JSON-based template system analysis
+
+These tests are automatically included in:
+- Memory leak analysis (JSON reader)
+- Performance benchmarking (JSON reader)
+- Resource management validation (Factory and JSON template tests)
+- Comprehensive analysis across all categories
 
 ### Key Files
 - `VALGRIND_ANALYSIS_COMPLETE.md` - Complete technical analysis

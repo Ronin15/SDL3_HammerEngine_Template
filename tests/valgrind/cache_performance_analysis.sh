@@ -50,6 +50,9 @@ declare -A CACHE_TESTS=(
     ["resource_integration"]="resource_integration_tests"
     ["resource_change_event"]="resource_change_event_tests"
     ["inventory_component"]="inventory_component_tests"
+    ["json_reader"]="json_reader_tests"
+    ["resource_factory"]="resource_factory_tests"
+    ["resource_template_json"]="resource_template_manager_json_tests"
 )
 
 # Industry benchmark data for comparison

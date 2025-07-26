@@ -30,6 +30,8 @@ declare -A QUICK_TESTS=(
     ["particle_core"]="particle_manager_core_tests"
     ["resource_mgr"]="resource_manager_tests"
     ["world_resource"]="world_resource_manager_tests"
+    ["json_reader"]="json_reader_tests"
+    ["resource_factory"]="resource_factory_tests"
 )
 
 echo -e "${BLUE}========================================${NC}"
