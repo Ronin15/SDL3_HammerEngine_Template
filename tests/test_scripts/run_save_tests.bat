@@ -226,18 +226,34 @@ if !ERROR_COUNT! gtr 0 (
 )
 
 :: Save results to permanent location
-copy "..\..\!LOG_FILE!" "!RESULTS_DIR!\save_manager_test_output_!TIMESTAMP!.txt" >nul
-copy "..\..\!LOG_FILE!" "!RESULTS_DIR!\save_manager_test_output.txt" >nul
+copy "..\..\!LOG_FILE!" "!RESULTS_DIR!\save_manager_test_output_!TIMESTAMP!.txt"
+if !ERRORLEVEL! neq 0 (
+    echo !RED!WARNING: Failed to copy test output to timestamped file!NC!
+)
 
+copy "..\..\!LOG_FILE!" "!RESULTS_DIR!\save_manager_test_output.txt"
+if !ERRORLEVEL! neq 0 (
+    echo !RED!ERROR: Failed to copy test output to main results file!NC!
+    echo !RED!This may indicate a permissions or disk space issue!NC!
+)
 :: Extract test case information
 echo === Test Cases Executed === > "!RESULTS_DIR!\save_manager_test_cases.txt"
-findstr /r /c:"Entering test case" "..\..\!LOG_FILE!" >> "!RESULTS_DIR!\save_manager_test_cases.txt" 2>nul
+findstr /r /c:"Entering test case" "..\..\!LOG_FILE!" >> "!RESULTS_DIR!\save_manager_test_cases.txt"
+if !ERRORLEVEL! neq 0 (
+    echo !YELLOW!WARNING: No test case entries found - test may not have run properly!NC!
+)
 
-:: Extract just test case names
-findstr /r /c:"Entering test case" "..\..\!LOG_FILE!" > "!RESULTS_DIR!\save_manager_test_cases_run.txt" 2>nul
+:: Extract just the test case names for easy reporting
+findstr /r /c:"Entering test case" "..\..\!LOG_FILE!" > "!RESULTS_DIR!\save_manager_test_cases_run.txt"
+if !ERRORLEVEL! neq 0 (
+    echo !YELLOW!WARNING: No test case names found - unable to generate test case summary!NC!
+)
 
 :: Extract performance metrics
-findstr /r /c:"microseconds" /c:"performance" /c:"serialization" "..\..\!LOG_FILE!" > "!RESULTS_DIR!\save_manager_performance_metrics.txt" 2>nul
+findstr /r /c:"microseconds" /c:"performance" /c:"serialization" "..\..\!LOG_FILE!" > "!RESULTS_DIR!\save_manager_performance_metrics.txt"
+if !ERRORLEVEL! neq 0 (
+    echo !YELLOW!WARNING: No performance metrics found in test output!NC!
+)
 
 :: Report results
 echo !CYAN!======================================!NC!
@@ -289,12 +305,13 @@ if "!TEST_PASSED!"=="false" (
     echo.
     echo !RED!FAILURE DETAILS:!NC!
     echo !YELLOW!Recent errors from test output:!NC!
-    findstr /r /c:"error:" "..\..\!LOG_FILE!" | findstr /v /c:"No errors detected" >nul 2>&1 && (
-        echo !YELLOW!  Error details saved to results file!NC!
-    ) || (
+    findstr /r /c:"error:" "..\..\!LOG_FILE!" | findstr /v /c:"No errors detected"
+    if !ERRORLEVEL! neq 0 (
         echo !YELLOW!  No specific error details found in output!NC!
-    )
-    
+        echo !YELLOW!  This may indicate a runtime crash or early termination!NC!
+    ) else (
+        echo !YELLOW!  Error details found and saved to results file!NC!
+    )    
     echo.
     echo !BLUE!For complete failure analysis, check:!NC!
     echo   !RESULTS_DIR!\save_manager_test_output.txt
@@ -304,12 +321,19 @@ if "!TEST_PASSED!"=="false" (
 if exist "!RESULTS_DIR!\save_manager_performance_metrics.txt" (
     echo.
     echo !BLUE!Performance Summary:!NC!
-    findstr /r /c:"took.*microseconds" "!RESULTS_DIR!\save_manager_performance_metrics.txt" 2>nul || echo !YELLOW!  No performance data available!NC!
+    findstr /r /c:"took.*microseconds" "!RESULTS_DIR!\save_manager_performance_metrics.txt"
+    if !ERRORLEVEL! neq 0 (
+        echo !YELLOW!  No performance data available!NC!
+    )
 )
 
-:: Clean up temporary log file
-del "..\..\!LOG_FILE!" 2>nul
-
+:: Clean up temporary log file (with error checking)
+if exist "..\..\!LOG_FILE!" (
+    del "..\..\!LOG_FILE!"
+    if exist "..\..\!LOG_FILE!" (
+        echo !YELLOW!WARNING: Could not delete temporary log file - file may be in use!NC!
+    )
+)
 echo.
 echo !CYAN!======================================!NC!
 if "!TEST_PASSED!"=="true" (
