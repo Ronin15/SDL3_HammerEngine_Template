@@ -1,9 +1,16 @@
 @echo off
 rem Helper script to build and run JsonReader tests
 
-rem Set up colored output variables (limited support on Windows)
-rem Note: Windows batch files have limited color support compared to bash
+setlocal EnableDelayedExpansion
 
+rem Set up colored output
+set "RED=[91m"
+set "GREEN=[92m"
+set "YELLOW=[93m"
+set "BLUE=[94m"
+set "MAGENTA=[95m"
+set "CYAN=[96m"
+set "NC=[0m"
 rem Process command line arguments
 set CLEAN=false
 set CLEAN_ALL=false
@@ -81,40 +88,40 @@ if "%CLEAN_ALL%"=="true" (
         echo Build directory does not exist - nothing to clean
     )
 )
-echo Running JsonReader tests...
+echo !BLUE!Running JsonReader tests...!NC!
+
+rem Navigate to script directory to ensure consistent behavior
+cd /d "%~dp0"
 
 rem Get the directory where this script is located and find project root
 set SCRIPT_DIR=%~dp0
 for %%i in ("%SCRIPT_DIR%..\..") do set PROJECT_ROOT=%%~fi
-
 rem Create test_data directory if it doesn't exist
 if not exist "%PROJECT_ROOT%\tests\test_data" (
-    echo Creating missing test_data directory...
+    echo !YELLOW!Creating missing test_data directory...!NC!
     mkdir "%PROJECT_ROOT%\tests\test_data"
     if exist "%PROJECT_ROOT%\tests\test_data" (
-        echo test_data directory created successfully
+        echo !GREEN!test_data directory created successfully!NC!
     ) else (
-        echo Failed to create test_data directory
+        echo !RED!Failed to create test_data directory!NC!
         exit /b 1
     )
 ) else (
-    echo test_data directory already exists
+    echo !GREEN!test_data directory already exists!NC!
 )
-
 rem Check if test executable exists
 set TEST_EXECUTABLE=%PROJECT_ROOT%\bin\debug\json_reader_tests.exe
 if not exist "%TEST_EXECUTABLE%" (
-    echo Test executable not found at %TEST_EXECUTABLE%
-    echo Searching for test executable...
+    echo !RED!Test executable not found at %TEST_EXECUTABLE%!NC!
+    echo !YELLOW!Searching for test executable...!NC!
     for /r "%PROJECT_ROOT%" %%f in (json_reader_tests.exe) do (
         set TEST_EXECUTABLE=%%f
-        echo Found test executable at %%f
+        echo !GREEN!Found test executable at %%f!NC!
         goto found_executable
     )
-    echo Could not find test executable!
+    echo !RED!Could not find test executable!!NC!
     exit /b 1
 )
-
 :found_executable
 
 rem Run the tests
@@ -193,48 +200,53 @@ if %ERRORLEVEL% neq 0 (
     )
 )
 rem Clean up temporary file
-del "test_output.log"
-
+if exist "test_output.log" (
+    del "test_output.log"
+    if exist "test_output.log" (
+        echo WARNING: Could not delete temporary log file - file may be in use
+    )
+)
 rem Report test results
 if %TEST_RESULT% equ 0 (
-    echo All tests passed!
-    echo Test results saved to: test_results\json_reader_test_output_%DATESTAMP%_%TIMESTAMP%.txt
+    echo.
+    echo !GREEN!All tests passed!!NC!
+    echo !BLUE!Test results saved to: test_results\json_reader_test_output_%DATESTAMP%_%TIMESTAMP%.txt!NC!
     
     echo.
-    echo Test Cases Run:
+    echo !BLUE!Test Cases Run:!NC!
     if exist "test_results\json_reader_test_cases_run.txt" (
-        for /f "delims=" %%i in (test_results\json_reader_test_cases_run.txt) do echo   - %%i
+        for /f "delims=" %%i in (test_results\json_reader_test_cases_run.txt) do echo !CYAN!  - %%i!NC!
     ) else (
-        echo   No test case details found.
+        echo !YELLOW!  No test case details found.!NC!
     )
 ) else (
-    echo Some tests failed. Please check the output above.
-    echo Test results saved to: test_results\json_reader_test_output_%DATESTAMP%_%TIMESTAMP%.txt
+    echo.
+    echo !RED!Some tests failed. Please check the output above.!NC!
+    echo !BLUE!Test results saved to: test_results\json_reader_test_output_%DATESTAMP%_%TIMESTAMP%.txt!NC!
     
     echo.
-    echo Failed Test Summary:
+    echo !RED!Failed Test Summary:!NC!
     rem Look for detailed failure messages first
     findstr /C:"FAILED" /C:"ASSERT" "test_results\json_reader_test_output.txt"
     if %ERRORLEVEL% neq 0 (
         rem If no detailed failures, check for summary indicators
         findstr /C:"errors detected" "test_results\json_reader_test_output.txt" | findstr /v /C:"No errors detected"
         if %ERRORLEVEL% neq 0 (
-            echo No specific failure details found in output
-            echo This may indicate a runtime crash or early termination
-            echo Check that the test executable exists and runs properly
+            echo !YELLOW!No specific failure details found in output!NC!
+            echo !YELLOW!This may indicate a runtime crash or early termination!NC!
+            echo !YELLOW!Check that the test executable exists and runs properly!NC!
         ) else (
-            echo Error summary information found in test output
+            echo !YELLOW!Error summary information found in test output!NC!
         )
     ) else (
-        echo Detailed failure information found in test output
+        echo !YELLOW!Detailed failure information found in test output!NC!
     )    
     echo.
-    echo Test Cases Run:
+    echo !BLUE!Test Cases Run:!NC!
     if exist "test_results\json_reader_test_cases_run.txt" (
-        for /f "delims=" %%i in (test_results\json_reader_test_cases_run.txt) do echo   - %%i
+        for /f "delims=" %%i in (test_results\json_reader_test_cases_run.txt) do echo !CYAN!  - %%i!NC!
     ) else (
-        echo   No test case details found.
+        echo !YELLOW!  No test case details found.!NC!
     )
 )
-
 exit /b %TEST_RESULT%
