@@ -60,8 +60,8 @@ bool ResourceTemplateManager::init() {
     createDefaultResources();
 
     m_initialized = true;
+    m_isShutdown = false; // Reset shutdown flag on successful init
     m_stats.reset();
-
     RESOURCE_INFO("ResourceTemplateManager initialized with " +
                   std::to_string(m_resourceTemplates.size()) +
                   " resource templates");
