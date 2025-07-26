@@ -76,6 +76,10 @@ public:
   // Resource creation
   ResourcePtr createResource(const std::string &resourceId) const;
 
+  // JSON loading methods
+  bool loadResourcesFromJson(const std::string &filename);
+  bool loadResourcesFromJsonString(const std::string &jsonString);
+
   // Query methods
   size_t getResourceTemplateCount() const;
   bool hasResourceTemplate(const std::string &resourceId) const;

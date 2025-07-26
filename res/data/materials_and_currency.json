@@ -1,0 +1,125 @@
+{
+  "resources": [
+    {
+      "id": "mithril_ore",
+      "name": "Mithril Ore",
+      "category": "Material",
+      "type": "RawResource",
+      "description": "A rare and precious metal ore that shimmers with silver light.",
+      "value": 75,
+      "maxStackSize": 100,
+      "consumable": false,
+      "iconTextureId": "mithril_ore_icon"
+    },
+    {
+      "id": "enchanted_wood",
+      "name": "Enchanted Wood",
+      "category": "Material",
+      "type": "RawResource",
+      "description": "Wood from a tree blessed by nature spirits, perfect for magical crafting.",
+      "value": 50,
+      "maxStackSize": 200,
+      "consumable": false,
+      "iconTextureId": "enchanted_wood_icon"
+    },
+    {
+      "id": "crystal_essence",
+      "name": "Crystal Essence",
+      "category": "Material",
+      "type": "CraftingComponent",
+      "description": "Pure magical essence extracted from elemental crystals.",
+      "value": 200,
+      "maxStackSize": 50,
+      "consumable": false,
+      "iconTextureId": "crystal_essence_icon"
+    },
+    {
+      "id": "void_silk",
+      "name": "Void Silk",
+      "category": "Material",
+      "type": "CraftingComponent",
+      "description": "Silk spun by void spiders, incredibly strong and magically conductive.",
+      "value": 300,
+      "maxStackSize": 25,
+      "consumable": false,
+      "iconTextureId": "void_silk_icon"
+    },
+    {
+      "id": "platinum_coins",
+      "name": "Platinum Coins",
+      "category": "Currency",
+      "type": "Gold",
+      "description": "Rare platinum coins worth significantly more than gold.",
+      "value": 10,
+      "maxStackSize": 10000,
+      "consumable": false,
+      "iconTextureId": "platinum_coins_icon"
+    },
+    {
+      "id": "dragon_gems",
+      "name": "Dragon Gems",
+      "category": "Currency",
+      "type": "Gem",
+      "description": "Precious gems that dragons hoard, extremely valuable and rare.",
+      "value": 1000,
+      "maxStackSize": 1000,
+      "consumable": false,
+      "iconTextureId": "dragon_gems_icon"
+    },
+    {
+      "id": "guild_tokens",
+      "name": "Guild Tokens",
+      "category": "Currency",
+      "type": "FactionToken",
+      "description": "Special tokens earned through guild activities and achievements.",
+      "value": 5,
+      "maxStackSize": 5000,
+      "consumable": false,
+      "iconTextureId": "guild_tokens_icon"
+    },
+    {
+      "id": "arcane_energy",
+      "name": "Arcane Energy",
+      "category": "GameResource",
+      "type": "Energy",
+      "description": "Pure magical energy used to power spells and enchantments.",
+      "value": 0,
+      "maxStackSize": 999999,
+      "consumable": false,
+      "iconTextureId": "arcane_energy_icon"
+    },
+    {
+      "id": "soul_essence",
+      "name": "Soul Essence",
+      "category": "GameResource",
+      "type": "Mana",
+      "description": "The essence of one's soul, used for the most powerful magical rituals.",
+      "value": 0,
+      "maxStackSize": 10000,
+      "consumable": false,
+      "iconTextureId": "soul_essence_icon"
+    },
+    {
+      "id": "enchanted_stone",
+      "name": "Enchanted Stone",
+      "category": "GameResource",
+      "type": "BuildingMaterial",
+      "description": "Magically reinforced stone used in the construction of mystical buildings.",
+      "value": 25,
+      "maxStackSize": 1000,
+      "consumable": false,
+      "iconTextureId": "enchanted_stone_icon"
+    },
+    {
+      "id": "spectral_arrows",
+      "name": "Spectral Arrows",
+      "category": "GameResource",
+      "type": "Ammunition",
+      "description": "Arrows imbued with spectral energy that can pierce through magical defenses.",
+      "value": 15,
+      "maxStackSize": 500,
+      "consumable": true,
+      "iconTextureId": "spectral_arrows_icon"
+    }
+  ]
+}

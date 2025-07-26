@@ -24,6 +24,14 @@ for arg in "$@"; do
       TEST_FILTER="resource_template_manager_tests"
       shift
       ;;
+    --resource-factory-test)
+      TEST_FILTER="resource_factory_tests"
+      shift
+      ;;
+    --resource-template-json-test)
+      TEST_FILTER="resource_template_manager_json_tests"
+      shift
+      ;;
     --world-resource-test)
       TEST_FILTER="world_resource_manager_tests"
       shift
@@ -46,6 +54,8 @@ for arg in "$@"; do
       echo -e "\nOptions:"
       echo -e "  --verbose                    Run tests with verbose output"
       echo -e "  --resource-template-test     Run only resource template manager tests"
+      echo -e "  --resource-factory-test      Run only resource factory tests"
+      echo -e "  --resource-template-json-test Run only resource template JSON tests"
       echo -e "  --world-resource-test        Run only world resource manager tests"
       echo -e "  --inventory-test             Run only inventory component tests"
       echo -e "  --resource-event-test        Run only resource event tests"
@@ -53,6 +63,8 @@ for arg in "$@"; do
       echo -e "  --help                       Show this help message"
       echo -e "\nTest Suite Overview:"
       echo -e "  Resource Template Tests:       Core resource template/type definitions"
+      echo -e "  Resource Factory Tests:        Resource creation and factory patterns"
+      echo -e "  Resource Template JSON Tests:  JSON-based resource template operations"
       echo -e "  World Resource Tests:          Global resource quantity tracking"
       echo -e "  Inventory Component Tests:     Inventory operations and thread safety"
       echo -e "  Resource Event Tests:          Resource change event handling"
@@ -85,6 +97,8 @@ if [ -n "$TEST_FILTER" ]; then
 else
     TESTS=(
         "resource_template_manager_tests"
+        "resource_factory_tests"
+        "resource_template_manager_json_tests"
         "world_resource_manager_tests"
         "inventory_component_tests"
         "resource_change_event_tests"

@@ -395,7 +395,7 @@ BOOST_AUTO_TEST_CASE(TestConcurrentResourceOperations) {
   std::atomic<int> successfulNPCOps{0};
 
   for (int i = 0; i < NUM_THREADS; ++i) {
-    threads.emplace_back([&, i]() {
+    threads.emplace_back([&]() {
       for (int j = 0; j < OPERATIONS_PER_THREAD; ++j) {
         // Test concurrent player operations
         if (playerInventory->addResource("health_potion", 1)) {
