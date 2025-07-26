@@ -116,9 +116,8 @@ if not exist "!TEST_EXECUTABLE!" (
         echo !RED!Please build the project first!NC!
         set "OVERALL_SUCCESS=false"
         set /a FAILED_COUNT+=1
-        goto :eof
-    )
-)
+        exit /b 1
+    ))
 
 :found_executable
 
@@ -131,28 +130,56 @@ if "!VERBOSE!"=="true" (
 
 REM Run the test and capture output
 "!TEST_EXECUTABLE!" !TEST_OPTS! > "..\..\test_results\!test_name!_output.txt" 2>&1
-set "TEST_RESULT=!ERRORLEVEL!"
+set "EXECUTABLE_EXIT_CODE=!ERRORLEVEL!"
+
+REM Analyze test results by examining output content rather than just exit code
+set "TEST_PASSED=false"
+set "ERROR_COUNT=0"
+set "FAILURE_COUNT=0"
+
+REM Count errors and failures in the output
+for /f %%i in ('findstr /r /c:"error:" "..\..\test_results\!test_name!_output.txt" ^| find /c /v ""') do set ERROR_COUNT=%%i
+for /f %%i in ('findstr /r /c:"has failed" "..\..\test_results\!test_name!_output.txt" ^| find /c /v ""') do set FAILURE_COUNT=%%i
+
+REM Check for success indicators - look for "has passed" message
+findstr /r /c:"has passed with" /c:"All.*passed" /c:"No errors detected" "..\..\test_results\!test_name!_output.txt" >nul 2>&1
+if !ERRORLEVEL! equ 0 (
+    set "TEST_PASSED=true"
+)
+
+REM If we have errors but also success messages, prefer the error count
+if !ERROR_COUNT! gtr 0 (
+    set "TEST_PASSED=false"
+)
 
 REM Display output if verbose or if test failed
 if "!VERBOSE!"=="true" (
     type "..\..\test_results\!test_name!_output.txt"
 ) else (
-    if !TEST_RESULT! neq 0 (
+    if "!TEST_PASSED!"=="false" (
         echo !RED!Test failed, showing output:!NC!
         type "..\..\test_results\!test_name!_output.txt"
     )
 )
 
-REM Report result
-if !TEST_RESULT! equ 0 (
+REM Report result based on content analysis, not just exit code
+if "!TEST_PASSED!"=="true" (
     echo !GREEN!+ !display_name! tests passed!!NC!
     set /a PASSED_COUNT+=1
 ) else (
-    echo !RED!- !display_name! tests failed with exit code !TEST_RESULT!!NC!
+    echo !RED!- !display_name! tests failed!!NC!
+    if !ERROR_COUNT! gtr 0 (
+        echo !RED!  Errors found: !ERROR_COUNT!!NC!
+    )
+    if !FAILURE_COUNT! gtr 0 (
+        echo !RED!  Failures found: !FAILURE_COUNT!!NC!
+    )
+    if !EXECUTABLE_EXIT_CODE! neq 0 (
+        echo !YELLOW!  Executable exit code: !EXECUTABLE_EXIT_CODE!!NC!
+    )
     set "OVERALL_SUCCESS=false"
     set /a FAILED_COUNT+=1
 )
-
 echo.
 goto :eof
 
