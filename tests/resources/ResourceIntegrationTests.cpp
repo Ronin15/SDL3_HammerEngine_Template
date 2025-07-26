@@ -16,10 +16,22 @@ __attribute__((constructor)) static void print_startup() {
 struct ResourceTemplateManagerResetter {
   ResourceTemplateManagerResetter() {
     RESOURCE_INFO("ResourceTemplateManagerResetter: before clean");
-    ResourceTemplateManager::Instance().clean();
+    // Only clean if already initialized to avoid double cleanup
+    if (ResourceTemplateManager::Instance().isInitialized()) {
+      ResourceTemplateManager::Instance().clean();
+    }
     RESOURCE_INFO("ResourceTemplateManagerResetter: after clean, before init");
     ResourceTemplateManager::Instance().init();
     RESOURCE_INFO("ResourceTemplateManagerResetter: after init");
+  }
+
+  ~ResourceTemplateManagerResetter() {
+    RESOURCE_INFO("ResourceTemplateManagerResetter: destructor - before clean");
+    // Only clean if still initialized to avoid double cleanup
+    if (ResourceTemplateManager::Instance().isInitialized()) {
+      ResourceTemplateManager::Instance().clean();
+    }
+    RESOURCE_INFO("ResourceTemplateManagerResetter: destructor - after clean");
   }
 };
 static ResourceTemplateManagerResetter resourceTemplateManagerResetterInstance;

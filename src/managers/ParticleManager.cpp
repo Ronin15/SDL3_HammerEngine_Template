@@ -510,12 +510,18 @@ void ParticleManager::stopWeatherEffects(float transitionTime) {
   PARTICLE_INFO("*** STOPPING ALL WEATHER EFFECTS (transition: " +
                 std::to_string(transitionTime) + "s)");
 
-  // Use try_lock to avoid deadlocks during testing
-  std::unique_lock<std::shared_mutex> lock(m_particlesMutex, std::try_to_lock);
-  if (!lock.owns_lock()) {
-    PARTICLE_WARN(
-        "Could not acquire lock for stopping weather effects, skipping");
-    return;
+  // Retry lock acquisition with timeout to handle thread contention
+  std::unique_lock<std::shared_mutex> lock(m_particlesMutex, std::defer_lock);
+  auto startTime = std::chrono::steady_clock::now();
+  constexpr auto maxWaitTime = std::chrono::milliseconds(100);
+
+  while (!lock.try_lock()) {
+    if (std::chrono::steady_clock::now() - startTime > maxWaitTime) {
+      PARTICLE_WARN("Could not acquire lock for stopping weather effects "
+                    "within timeout, skipping");
+      return;
+    }
+    std::this_thread::sleep_for(std::chrono::microseconds(100));
   }
 
   int stoppedCount = 0;
