@@ -107,9 +107,7 @@ BOOST_AUTO_TEST_CASE(TestLoadValidJsonString) {
 
   // Verify resources were loaded
   size_t newCount = resourceManager->getResourceTemplateCount();
-  BOOST_CHECK_EQUAL_MESSAGE(newCount, initialCount + 3,
-                            "Expected " << (initialCount + 3)
-                                        << " resources, got " << newCount);
+  BOOST_CHECK_EQUAL(newCount, initialCount + 3);
 
   // Test Equipment (sword)
   auto sword = resourceManager->getResourceTemplate("json_test_sword");
@@ -144,7 +142,7 @@ BOOST_AUTO_TEST_CASE(TestLoadValidJsonString) {
   BOOST_REQUIRE_MESSAGE(
       gemPtr != nullptr,
       "Failed to cast resource to Gem type. Resource type might be: "
-          << static_cast<int>(gem->getResourceType()));
+          << static_cast<int>(gem->getType()));
 
   BOOST_TEST_MESSAGE("Gem type: "
                      << static_cast<int>(gemPtr->getGemType()) << " (expected: "
@@ -152,10 +150,9 @@ BOOST_AUTO_TEST_CASE(TestLoadValidJsonString) {
   BOOST_TEST_MESSAGE("Gem clarity: " << gemPtr->getClarity()
                                      << " (expected: 9)");
 
-  BOOST_CHECK_EQUAL_MESSAGE(static_cast<int>(gemPtr->getGemType()),
-                            static_cast<int>(Gem::GemType::Diamond),
-                            "Expected Diamond gem type");
-  BOOST_CHECK_EQUAL_MESSAGE(gemPtr->getClarity(), 9, "Expected clarity of 9");
+  BOOST_CHECK_EQUAL(static_cast<int>(gemPtr->getGemType()),
+                    static_cast<int>(Gem::GemType::Diamond));
+  BOOST_CHECK_EQUAL(gemPtr->getClarity(), 9);
 }
 
 BOOST_AUTO_TEST_CASE(TestLoadValidJsonFile) {
@@ -193,7 +190,6 @@ BOOST_AUTO_TEST_CASE(TestLoadValidJsonFile) {
         "Note: items.json may not exist or may have format differences. "
         "JSON string parsing is tested separately in TestLoadValidJsonString.");
   }
-}
 }
 
 BOOST_AUTO_TEST_CASE(TestLoadInvalidJsonString) {
