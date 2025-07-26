@@ -417,11 +417,20 @@ bool InventoryComponent::canAddResource(const std::string &resourceId,
     return availableSlots >= static_cast<size_t>(quantity);
   }
 
+  // Validate stack size for stackable resources
+  int maxStackSize = resourceTemplate->getMaxStackSize();
+  if (maxStackSize <= 0) {
+    RESOURCE_ERROR(
+        "Stackable resource " + resourceId +
+        " has invalid max stack size: " + std::to_string(maxStackSize));
+    return false;
+  }
+
   // Calculate how much can fit in existing stacks
   int canFitInExisting = 0;
   for (const auto &slot : m_slots) {
     if (slot.resourceId == resourceId) {
-      canFitInExisting += (resourceTemplate->getMaxStackSize() - slot.quantity);
+      canFitInExisting += (maxStackSize - slot.quantity);
     }
   }
 
@@ -431,8 +440,12 @@ bool InventoryComponent::canAddResource(const std::string &resourceId,
   }
 
   // Calculate how many new stacks we need
-  int stacksNeeded = (remaining + resourceTemplate->getMaxStackSize() - 1) /
-                     resourceTemplate->getMaxStackSize();
+  if (maxStackSize <= 0) {
+    RESOURCE_ERROR("Resource " + resourceId + " has invalid max stack size: " +
+                   std::to_string(maxStackSize));
+    return false;
+  }
+  int stacksNeeded = (remaining + maxStackSize - 1) / maxStackSize;
 
   // Calculate available slots inline to avoid recursive mutex lock
   size_t usedSlots =

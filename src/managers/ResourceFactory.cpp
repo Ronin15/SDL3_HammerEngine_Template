@@ -11,10 +11,6 @@
 
 namespace HammerEngine {
 
-// Static member definition
-std::unordered_map<std::string, ResourceFactory::ResourceCreator>
-    ResourceFactory::s_creators;
-
 ResourcePtr ResourceFactory::createFromJson(const JsonValue &json) {
   if (!json.isObject()) {
     RESOURCE_ERROR(
@@ -45,8 +41,9 @@ ResourcePtr ResourceFactory::createFromJson(const JsonValue &json) {
   ResourceType type = Resource::stringToType(typeStr);
 
   // Look for specialized creator based on type
-  auto creatorIt = s_creators.find(typeStr);
-  if (creatorIt != s_creators.end()) {
+  auto &creators = getCreators();
+  auto creatorIt = creators.find(typeStr);
+  if (creatorIt != creators.end()) {
     try {
       ResourcePtr resource = creatorIt->second(json);
       if (resource) {
@@ -72,13 +69,14 @@ ResourcePtr ResourceFactory::createFromJson(const JsonValue &json) {
 
 bool ResourceFactory::registerCreator(const std::string &typeName,
                                       ResourceCreator creator) {
-  if (s_creators.find(typeName) != s_creators.end()) {
+  auto &creators = getCreators();
+  if (creators.find(typeName) != creators.end()) {
     RESOURCE_WARN("ResourceFactory::registerCreator - Type '" + typeName +
                   "' already registered");
     return false;
   }
 
-  s_creators[typeName] = creator;
+  creators[typeName] = creator;
   RESOURCE_DEBUG(
       "ResourceFactory::registerCreator - Registered creator for type: " +
       typeName);
@@ -86,14 +84,16 @@ bool ResourceFactory::registerCreator(const std::string &typeName,
 }
 
 bool ResourceFactory::hasCreator(const std::string &typeName) {
-  return s_creators.find(typeName) != s_creators.end();
+  auto &creators = getCreators();
+  return creators.find(typeName) != creators.end();
 }
 
 std::vector<std::string> ResourceFactory::getRegisteredTypes() {
   std::vector<std::string> types;
-  types.reserve(s_creators.size());
+  auto &creators = getCreators();
+  types.reserve(creators.size());
 
-  for (const auto &[typeName, creator] : s_creators) {
+  for (const auto &[typeName, creator] : creators) {
     types.push_back(typeName);
   }
 
@@ -119,11 +119,11 @@ void ResourceFactory::initialize() {
   registerCreator("Ammunition", createGameResource);
 
   RESOURCE_INFO("ResourceFactory::initialize - Registered " +
-                std::to_string(s_creators.size()) + " resource creators");
+                std::to_string(getCreators().size()) + " resource creators");
 }
 
 void ResourceFactory::clear() {
-  s_creators.clear();
+  getCreators().clear();
   RESOURCE_DEBUG("ResourceFactory::clear - Cleared all resource creators");
 }
 

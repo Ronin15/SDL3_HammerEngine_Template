@@ -69,8 +69,12 @@ public:
   static void clear();
 
 private:
-  // Registry of resource creators
-  static std::unordered_map<std::string, ResourceCreator> s_creators;
+  // Registry of resource creators - use Meyer's singleton pattern for safe
+  // initialization
+  static std::unordered_map<std::string, ResourceCreator> &getCreators() {
+    static std::unordered_map<std::string, ResourceCreator> s_creators;
+    return s_creators;
+  }
 
   // Helper methods for creating specific resource types
   static ResourcePtr createBaseResource(const JsonValue &json);
