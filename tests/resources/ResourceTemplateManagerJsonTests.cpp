@@ -6,8 +6,10 @@
 #define BOOST_TEST_MODULE ResourceTemplateManagerJsonTests
 #include <boost/test/unit_test.hpp>
 
+#include <filesystem>
 #include <memory>
 #include <string>
+#include <vector>
 
 #include "core/Logger.hpp"
 #include "entities/resources/CurrencyAndGameResources.hpp"
@@ -165,14 +167,59 @@ BOOST_AUTO_TEST_CASE(TestLoadValidJsonFile) {
   BOOST_TEST_MESSAGE("Initial resource count: " << initialCount);
 
   // Test loading from the project's existing items.json file
-  // The test executable runs from bin/debug/, so we need to go up to project
-  // root
-  std::string itemsFile = "../../res/data/items.json";
+  // Use std::filesystem for cross-platform path handling
+  // This approach works on Windows (backslash), macOS/Linux (forward slash),
+  // and handles different working directory scenarios automatically
+  std::vector<std::filesystem::path> candidatePaths;
 
-  // Load resources from the existing project data file
-  bool result = resourceManager->loadResourcesFromJson(itemsFile);
-  BOOST_CHECK_MESSAGE(result,
-                      "Failed to load resources from project items.json file");
+  // Try multiple potential working directories and path combinations
+  std::filesystem::path itemsFile = "items.json";
+  std::vector<std::filesystem::path> basePaths = {
+      std::filesystem::current_path() / ".." / ".." / "res" /
+          "data",                                       // From bin/debug/
+      std::filesystem::current_path() / "res" / "data", // From project root
+      std::filesystem::current_path() / ".." / "res" / "data", // From build/
+      std::filesystem::path("res") / "data", // Relative from project root
+      std::filesystem::path("..") / ".." / "res" /
+          "data" // Relative from bin/debug/
+  };
+
+  // Build candidate paths with proper separators for the current platform
+  for (const auto &basePath : basePaths) {
+    candidatePaths.push_back(basePath / itemsFile);
+  }
+
+  bool result = false;
+  std::string successfulPath;
+
+  for (const auto &path : candidatePaths) {
+    // Convert to string using native path separators
+    std::string pathStr = path.string();
+
+    // Check if file exists before trying to load it
+    if (std::filesystem::exists(path) &&
+        std::filesystem::is_regular_file(path)) {
+      result = resourceManager->loadResourcesFromJson(pathStr);
+      if (result) {
+        successfulPath = pathStr;
+        break;
+      }
+    }
+  }
+
+  BOOST_CHECK_MESSAGE(
+      result, "Failed to load resources from items.json. Searched paths:\n" +
+                  [&candidatePaths]() {
+                    std::string pathList;
+                    for (const auto &path : candidatePaths) {
+                      pathList +=
+                          "  - " + path.string() +
+                          (std::filesystem::exists(path) ? " (exists)"
+                                                         : " (not found)") +
+                          "\n";
+                    }
+                    return pathList;
+                  }());
 
   if (result) {
     // Verify resources were loaded from the file
@@ -184,7 +231,8 @@ BOOST_AUTO_TEST_CASE(TestLoadValidJsonFile) {
         "Expected resource count to increase after loading items.json");
 
     BOOST_TEST_MESSAGE("Successfully loaded " << (newCount - initialCount)
-                                              << " resources from items.json");
+                                              << " resources from "
+                                              << successfulPath);
   } else {
     BOOST_TEST_MESSAGE(
         "Note: items.json may not exist or may have format differences. "
