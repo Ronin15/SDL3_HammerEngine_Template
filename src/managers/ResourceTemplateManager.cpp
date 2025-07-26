@@ -5,7 +5,13 @@
 
 #include "managers/ResourceTemplateManager.hpp"
 #include "core/Logger.hpp"
+#include "managers/ResourceFactory.hpp"
+#include "utils/JsonReader.hpp"
 #include <algorithm>
+
+using HammerEngine::JsonReader;
+using HammerEngine::JsonValue;
+using HammerEngine::ResourceFactory;
 
 ResourceTemplateManager &ResourceTemplateManager::Instance() {
   static ResourceTemplateManager instance;
@@ -46,6 +52,9 @@ bool ResourceTemplateManager::init() {
     for (int i = 0; i < static_cast<int>(ResourceType::COUNT); ++i) {
       m_typeIndex[static_cast<ResourceType>(i)] = std::vector<std::string>();
     }
+
+    // Initialize ResourceFactory
+    ResourceFactory::initialize();
 
     // Create default resources
     createDefaultResources();
@@ -204,6 +213,93 @@ ResourceTemplateManager::createResource(const std::string &resourceId) const {
                    std::string(ex.what()));
     return nullptr;
   }
+}
+
+bool ResourceTemplateManager::loadResourcesFromJson(
+    const std::string &filename) {
+  JsonReader reader;
+  if (!reader.loadFromFile(filename)) {
+    RESOURCE_ERROR("ResourceTemplateManager::loadResourcesFromJson - Failed to "
+                   "load file: " +
+                   filename + " - " + reader.getLastError());
+    return false;
+  }
+
+  return loadResourcesFromJsonString(reader.getRoot().toString());
+}
+
+bool ResourceTemplateManager::loadResourcesFromJsonString(
+    const std::string &jsonString) {
+  JsonReader reader;
+  if (!reader.parse(jsonString)) {
+    RESOURCE_ERROR("ResourceTemplateManager::loadResourcesFromJsonString - "
+                   "Failed to parse JSON: " +
+                   reader.getLastError());
+    return false;
+  }
+
+  const JsonValue &root = reader.getRoot();
+
+  if (!root.isObject()) {
+    RESOURCE_ERROR("ResourceTemplateManager::loadResourcesFromJsonString - "
+                   "Root JSON is not an object");
+    return false;
+  }
+
+  // Check if we have a resources array
+  if (!root.hasKey("resources") || !root["resources"].isArray()) {
+    RESOURCE_ERROR("ResourceTemplateManager::loadResourcesFromJsonString - "
+                   "Missing or invalid 'resources' array");
+    return false;
+  }
+
+  const JsonValue &resourcesArray = root["resources"];
+  size_t loadedCount = 0;
+  size_t failedCount = 0;
+
+  RESOURCE_INFO(
+      "ResourceTemplateManager::loadResourcesFromJsonString - Loading " +
+      std::to_string(resourcesArray.size()) + " resources from JSON");
+
+  // Process each resource in the array
+  for (size_t i = 0; i < resourcesArray.size(); ++i) {
+    const JsonValue &resourceJson = resourcesArray[i];
+
+    try {
+      ResourcePtr resource = ResourceFactory::createFromJson(resourceJson);
+      if (resource) {
+        if (registerResourceTemplate(resource)) {
+          loadedCount++;
+          RESOURCE_DEBUG("ResourceTemplateManager::loadResourcesFromJsonString "
+                         "- Loaded resource: " +
+                         resource->getId());
+        } else {
+          failedCount++;
+          RESOURCE_WARN("ResourceTemplateManager::loadResourcesFromJsonString "
+                        "- Failed to register resource: " +
+                        resource->getId());
+        }
+      } else {
+        failedCount++;
+        RESOURCE_WARN("ResourceTemplateManager::loadResourcesFromJsonString - "
+                      "Failed to create resource from JSON at index " +
+                      std::to_string(i));
+      }
+    } catch (const std::exception &ex) {
+      failedCount++;
+      RESOURCE_ERROR("ResourceTemplateManager::loadResourcesFromJsonString - "
+                     "Exception processing resource at index " +
+                     std::to_string(i) + ": " + std::string(ex.what()));
+    }
+  }
+
+  RESOURCE_INFO(
+      "ResourceTemplateManager::loadResourcesFromJsonString - Completed: " +
+      std::to_string(loadedCount) + " loaded, " + std::to_string(failedCount) +
+      " failed");
+
+  return failedCount ==
+         0; // Return true only if all resources were loaded successfully
 }
 
 size_t ResourceTemplateManager::getResourceTemplateCount() const {

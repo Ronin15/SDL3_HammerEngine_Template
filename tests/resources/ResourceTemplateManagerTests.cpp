@@ -212,7 +212,7 @@ BOOST_AUTO_TEST_CASE(TestThreadSafety) {
 
   // Create threads that perform concurrent operations
   for (int i = 0; i < NUM_THREADS; ++i) {
-    threads.emplace_back([&, i]() {
+    threads.emplace_back([&]() {
       for (int j = 0; j < OPERATIONS_PER_THREAD; ++j) {
         // Test concurrent reads
         auto resource = resourceManager->getResourceTemplate("health_potion");
