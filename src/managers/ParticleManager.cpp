@@ -618,8 +618,8 @@ void ParticleManager::triggerWeatherEffect(const std::string &weatherType,
   // Use smooth transitions for better visual quality
   float actualTransitionTime = (transitionTime > 0.0f) ? transitionTime : 1.5f;
 
-  // DEADLOCK FIX: Use single lock scope for entire operation
-  // PERFORMANCE: No locks needed for lock-free particle system
+  // THREADING FIX: Effect management requires synchronization
+  std::unique_lock<std::shared_mutex> lock(m_effectsMutex);
 
   // Clear existing weather effects first (without calling
   // stopWeatherEffects to avoid re-locking)
