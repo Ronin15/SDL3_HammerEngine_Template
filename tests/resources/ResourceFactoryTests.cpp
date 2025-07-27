@@ -26,7 +26,8 @@ public:
   }
 
   ~ResourceFactoryTestFixture() {
-    // Clean up factory
+    // Clean up factory for test isolation
+    // This is safe in tests, but should NEVER be called from production code
     ResourceFactory::clear();
   }
 

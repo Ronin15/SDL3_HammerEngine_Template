@@ -742,6 +742,43 @@ BOOST_AUTO_TEST_CASE(TestSomething) {
 }
 ```
 
+## Singleton and Factory Lifecycle Management
+
+When working with singleton factories (like ResourceFactory) in tests, follow these important guidelines:
+
+### Factory Lifecycle Best Practices
+
+1. **Test Isolation**: Use `clear()` methods in test fixtures to ensure test isolation
+2. **Production Safety**: **NEVER** call factory `clear()` methods from production code or other singleton destructors
+3. **Static Object Destruction**: Let static factories clean themselves up at program exit
+
+**Safe Test Pattern:**
+```cpp
+class ResourceFactoryTestFixture {
+public:
+    ResourceFactoryTestFixture() {
+        ResourceFactory::initialize();  // Safe in tests
+    }
+    
+    ~ResourceFactoryTestFixture() {
+        ResourceFactory::clear();      // Safe in tests for isolation
+    }
+};
+```
+
+**Unsafe Production Pattern (DO NOT DO):**
+```cpp
+// WRONG: Don't call factory clear() from other singletons
+void SomeManager::clean() {
+    ResourceFactory::clear();  // ❌ Can cause crashes due to undefined destruction order
+}
+```
+
+**Why This Matters:**
+- Static object destruction order is undefined between translation units
+- Calling `clear()` from other destructors can cause double-free or use-after-free errors
+- Test crashes like "Abort trap: 6" often indicate this anti-pattern
+
 ## Thread Safety Considerations
 
 For thread-safety tests, follow these guidelines:

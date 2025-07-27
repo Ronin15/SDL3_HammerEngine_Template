@@ -64,7 +64,13 @@ public:
 
   /**
    * @brief Clear all registered creators
-   * Used primarily for testing
+   *
+   * WARNING: This method is intended ONLY for testing purposes to ensure
+   * test isolation. DO NOT call this from production code, especially from
+   * other singleton destructors, as it can cause undefined behavior due to
+   * uncertain destruction order of static objects.
+   *
+   * The factory will automatically clean itself up at program exit.
    */
   static void clear();
 
