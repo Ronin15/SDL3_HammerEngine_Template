@@ -188,6 +188,11 @@ void ParticleManager::update(float deltaTime) {
     return;
   }
 
+  // CRITICAL FIX: Ensure only one update() call runs at a time
+  // Multiple concurrent update() calls can cause race conditions
+  static std::mutex updateMutex;
+  std::lock_guard<std::mutex> updateLock(updateMutex);
+
   auto startTime = std::chrono::high_resolution_clock::now();
 
   try {
@@ -1778,7 +1783,10 @@ void ParticleManager::updateEffectInstances(float deltaTime) {
     return;
   }
 
-  std::shared_lock<std::shared_mutex> lock(m_particlesMutex);
+  // CRITICAL FIX: Use exclusive lock instead of shared lock
+  // Particle creation during effect updates can modify m_storage.particles,
+  // which is incompatible with concurrent worker thread access
+  std::unique_lock<std::shared_mutex> lock(m_particlesMutex);
 
   // Process all active particle effects
   for (auto &effect : m_effectInstances) {
