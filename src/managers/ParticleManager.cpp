@@ -1343,40 +1343,19 @@ void ParticleManager::createParticleForEffect(
     m_storage.particles.reserve(m_storage.particles.size() +
                                 PARTICLE_BURST_RESERVE * 4);
   }
+
   // Efficient particle reuse: find an inactive slot to reuse (object pool
   // pattern)
   UnifiedParticle *particle = nullptr;
 
   // Try to reuse an inactive particle first (prevents memory growth)
-  // OPTIMIZED: Cache size once for better performance while maintaining safety
+  // OPTIMIZED: Cache size once and use consistent bounds checking
   const size_t currentSize = m_storage.particles.size();
   for (size_t i = 0; i < currentSize; ++i) {
-    // Fast bounds check - most iterations won't have size changes
-    if (i < m_storage.particles.size()) {
-      if (!m_storage.particles[i].isActive()) {
-        particle = &m_storage.particles[i];
-        break;
-      }
-    } else {
-      break; // Vector size changed, stop searching
-    }
-  }
-  // Efficient particle reuse: find an inactive slot to reuse (object pool
-  // pattern)
-  UnifiedParticle *particle = nullptr;
-
-  // Try to reuse an inactive particle first (prevents memory growth)
-  // OPTIMIZED: Cache size once and use likely() hint for better performance
-  const size_t currentSize = m_storage.particles.size();
-  for (size_t i = 0; i < currentSize; ++i) {
-    // Use likely() hint since most iterations won't have size changes
-    if ([[likely]] i < m_storage.particles.size()) {
-      if (!m_storage.particles[i].isActive()) {
-        particle = &m_storage.particles[i];
-        break;
-      }
-    } else {
-      break; // Vector size changed, stop searching
+    // Simplified bounds checking - avoid redundant size() calls
+    if (!m_storage.particles[i].isActive()) {
+      particle = &m_storage.particles[i];
+      break;
     }
   } // If no inactive particle found, add new one (but with better size
   // management)
@@ -1916,35 +1895,14 @@ void ParticleManager::updateParticlesSingleThreaded(float deltaTime,
   // safety
   const size_t currentSize = m_storage.particles.size();
   for (size_t i = 0; i < currentSize; ++i) {
-    // Fast bounds check - most iterations won't have size changes
-    if (i < m_storage.particles.size()) {
-      if (m_storage.particles[i].isActive()) {
-        updateUnifiedParticle(m_storage.particles[i], cappedDeltaTime);
-      }
-    } else {
-      break; // Vector size changed, stop processing
+    // Simplified bounds check - cached size is safe for duration of loop
+    if (m_storage.particles[i].isActive()) {
+      updateUnifiedParticle(m_storage.particles[i], cappedDeltaTime);
     }
   }
 
   // Suppress unused parameter warning
   (void)totalParticleCount;
-}
-}
-else {
-  break; // Vector size changed, stop processing
-}
-}
-
-// Suppress unused parameter warning
-(void)totalParticleCount;
-}
-if (m_storage.particles[i].isActive()) {
-  updateUnifiedParticle(m_storage.particles[i], cappedDeltaTime);
-}
-}
-
-// Suppress unused parameter warning
-(void)totalParticleCount;
 }
 void ParticleManager::updateParticleBatch(size_t start, size_t end,
                                           float deltaTime) {
@@ -1963,12 +1921,12 @@ void ParticleManager::updateParticleBatch(size_t start, size_t end,
       std::min(deltaTime, 0.033f); // Cap at ~30 FPS minimum for smooth motion
 
   // Simple, correct sequential processing with proper bounds checking
-  for (size_t i = start; i < end; ++i) {
-    // Always check current size before access to prevent out-of-bounds
-    size_t currentSize = m_storage.particles.size();
-    if (i >= currentSize) {
-      break; // Vector size changed, stop processing
-    }
+  // THREAD SAFETY: Cache the vector size once before the loop to avoid
+  // race conditions and performance issues
+  const size_t vectorSize = m_storage.particles.size();
+  const size_t safeEnd = std::min(end, vectorSize);
+
+  for (size_t i = start; i < safeEnd; ++i) {
     if (m_storage.particles[i].isActive()) {
       updateUnifiedParticle(m_storage.particles[i], cappedDeltaTime);
     }
@@ -2035,12 +1993,12 @@ void ParticleManager::updateParticleBatchOptimized(size_t start, size_t end,
   }
 
   // SIMD-optimized batch processing with proper bounds checking
-  for (size_t i = start; i < end; ++i) {
-    // Always check current size before access to prevent out-of-bounds
-    size_t currentSize = m_storage.particles.size();
-    if (i >= currentSize) {
-      break; // Vector size changed, stop processing
-    }
+  // THREAD SAFETY: Cache the vector size once before the loop to avoid
+  // race conditions and performance issues
+  const size_t vectorSize = m_storage.particles.size();
+  const size_t safeEnd = std::min(end, vectorSize);
+
+  for (size_t i = start; i < safeEnd; ++i) {
     UnifiedParticle &particle = m_storage.particles[i];
     if (!particle.isActive())
       continue;
