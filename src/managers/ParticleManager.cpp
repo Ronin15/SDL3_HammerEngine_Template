@@ -745,10 +745,28 @@ void ParticleManager::recordPerformance(bool isRender, double timeMs,
 void ParticleManager::toggleFireEffect() {
   std::unique_lock<std::shared_mutex> lock(m_effectsMutex);
   if (!m_fireActive) {
-    m_fireEffectId = playIndependentEffect("Fire", Vector2D(400, 300));
+    // Create multiple fire sources for a more natural distributed campfire
+    // effect
+    Vector2D basePosition(400, 300);
+
+    // Main central fire
+    m_fireEffectId =
+        playIndependentEffect("Fire", basePosition, 1.2f, -1.0f, "campfire");
+
+    // Additional distributed fire sources for realism
+    playIndependentEffect("Fire", basePosition + Vector2D(-15, 5), 0.8f, -1.0f,
+                          "campfire");
+    playIndependentEffect("Fire", basePosition + Vector2D(20, 8), 0.9f, -1.0f,
+                          "campfire");
+    playIndependentEffect("Fire", basePosition + Vector2D(-8, 12), 0.7f, -1.0f,
+                          "campfire");
+    playIndependentEffect("Fire", basePosition + Vector2D(12, -3), 0.6f, -1.0f,
+                          "campfire");
+
     m_fireActive = true;
   } else {
-    stopIndependentEffect(m_fireEffectId);
+    // Stop all fire effects in the campfire group
+    stopIndependentEffectsByGroup("campfire");
     m_fireActive = false;
   }
 }
@@ -756,10 +774,25 @@ void ParticleManager::toggleFireEffect() {
 void ParticleManager::toggleSmokeEffect() {
   std::unique_lock<std::shared_mutex> lock(m_effectsMutex);
   if (!m_smokeActive) {
-    m_smokeEffectId = playIndependentEffect("Smoke", Vector2D(400, 300));
+    // Create distributed smoke sources that rise from different points
+    Vector2D basePosition(400, 280); // Slightly above fire
+
+    // Main smoke column
+    m_smokeEffectId = playIndependentEffect("Smoke", basePosition, 1.0f, -1.0f,
+                                            "campfire_smoke");
+
+    // Additional smoke sources for realistic dispersion
+    playIndependentEffect("Smoke", basePosition + Vector2D(-25, 10), 0.7f,
+                          -1.0f, "campfire_smoke");
+    playIndependentEffect("Smoke", basePosition + Vector2D(30, 15), 0.8f, -1.0f,
+                          "campfire_smoke");
+    playIndependentEffect("Smoke", basePosition + Vector2D(-10, 20), 0.6f,
+                          -1.0f, "campfire_smoke");
+
     m_smokeActive = true;
   } else {
-    stopIndependentEffect(m_smokeEffectId);
+    // Stop all smoke effects in the campfire_smoke group
+    stopIndependentEffectsByGroup("campfire_smoke");
     m_smokeActive = false;
   }
 }
@@ -1121,26 +1154,30 @@ ParticleEffectDefinition ParticleManager::createFireEffect() {
   fire.emitterConfig.position = Vector2D(0, 0);   // Will be set when played
   fire.emitterConfig.direction = Vector2D(0, -1); // Upward flames
   fire.emitterConfig.spread =
-      30.0f; // Moderate spread for realistic flame shape
+      90.0f; // Very wide spread for natural flame distribution
   fire.emitterConfig.emissionRate =
-      800.0f; // High emission for dense, realistic flames
-  fire.emitterConfig.minSpeed = 20.0f; // Slow initial upward movement
-  fire.emitterConfig.maxSpeed = 60.0f;
-  fire.emitterConfig.minLife = 0.8f; // Short-lived for flickering effect
-  fire.emitterConfig.maxLife = 2.0f;
-  fire.emitterConfig.minSize = 2.0f; // Small flame particles
-  fire.emitterConfig.maxSize = 8.0f;
-  fire.emitterConfig.minColor = 0xFF4500FF; // Orange-red
-  fire.emitterConfig.maxColor = 0xFFFF00FF; // Yellow
+      640.0f; // Reduced by 20% from 800 for more natural emission
+  fire.emitterConfig.minSpeed =
+      10.0f; // Slower minimum for realistic base flames
+  fire.emitterConfig.maxSpeed = 100.0f; // Higher max for dramatic flame tips
+  fire.emitterConfig.minLife = 0.3f;    // Very short min life for intense core
+  fire.emitterConfig.maxLife = 3.0f;  // Longer max life for outer flame trails
+  fire.emitterConfig.minSize = 1.0f;  // Very small min size for fine detail
+  fire.emitterConfig.maxSize = 15.0f; // Larger max size for dramatic effect
+  fire.emitterConfig.minColor = 0xFF1100FF; // Deep red for flame core
+  fire.emitterConfig.maxColor = 0xFFEE00FF; // Bright yellow for flame tips
   fire.emitterConfig.gravity =
-      Vector2D(0, -30.0f); // Negative gravity for upward movement
+      Vector2D(0, -20.0f); // Moderate negative gravity for natural rise
   fire.emitterConfig.windForce =
-      Vector2D(10.0f, 0); // Slight horizontal flicker
+      Vector2D(35.0f, 0); // Strong wind for dynamic movement
   fire.emitterConfig.textureID = "fire_particle";
   fire.emitterConfig.blendMode =
       ParticleBlendMode::Additive;     // Additive for glowing effect
   fire.emitterConfig.duration = -1.0f; // Infinite by default
-  fire.intensityMultiplier = 1.0f;
+  // Burst configuration for more natural fire
+  fire.emitterConfig.burstCount = 15;      // Particles per burst
+  fire.emitterConfig.burstInterval = 0.1f; // Frequent small bursts
+  fire.intensityMultiplier = 1.3f;         // More intense
   return fire;
 }
 
@@ -1148,24 +1185,29 @@ ParticleEffectDefinition ParticleManager::createSmokeEffect() {
   ParticleEffectDefinition smoke("Smoke", ParticleEffectType::Smoke);
   smoke.emitterConfig.position = Vector2D(0, 0);   // Will be set when played
   smoke.emitterConfig.direction = Vector2D(0, -1); // Upward smoke
-  smoke.emitterConfig.spread = 45.0f; // Wide spread as smoke disperses
+  smoke.emitterConfig.spread =
+      120.0f; // Very wide spread for natural smoke dispersion
   smoke.emitterConfig.emissionRate =
-      120.0f; // RESTORED: Original higher emission for proper smoke density
-  smoke.emitterConfig.minSpeed = 15.0f; // Slow upward drift
-  smoke.emitterConfig.maxSpeed = 40.0f;
-  smoke.emitterConfig.minLife = 3.0f; // Long-lived for realistic smoke trails
-  smoke.emitterConfig.maxLife = 6.0f;
-  smoke.emitterConfig.minSize = 8.0f; // Large smoke particles
-  smoke.emitterConfig.maxSize = 20.0f;
-  smoke.emitterConfig.minColor = 0x202020AA; // Very dark grey (almost black)
-  smoke.emitterConfig.maxColor = 0x606060AA; // Medium grey
-  smoke.emitterConfig.gravity = Vector2D(0, -20.0f);  // Light upward movement
-  smoke.emitterConfig.windForce = Vector2D(15.0f, 0); // Wind affects smoke
+      120.0f; // Reduced by 20% from 150 for more natural smoke emission
+  smoke.emitterConfig.minSpeed = 5.0f;  // Very slow minimum for realistic drift
+  smoke.emitterConfig.maxSpeed = 60.0f; // Higher max for initial smoke burst
+  smoke.emitterConfig.minLife = 3.0f;   // Long-lived for realistic smoke trails
+  smoke.emitterConfig.maxLife = 10.0f; // Very long max life for lingering smoke
+  smoke.emitterConfig.minSize = 4.0f;  // Smaller minimum for initial puffs
+  smoke.emitterConfig.maxSize = 45.0f; // Much larger for expanded smoke clouds
+  smoke.emitterConfig.minColor = 0x101010AA;         // Very dark smoke
+  smoke.emitterConfig.maxColor = 0x808080DD;         // Lighter grey for variety
+  smoke.emitterConfig.gravity = Vector2D(0, -12.0f); // Light upward force
+  smoke.emitterConfig.windForce =
+      Vector2D(40.0f, 0); // Very strong wind influence
   smoke.emitterConfig.textureID = "smoke_particle";
   smoke.emitterConfig.blendMode =
       ParticleBlendMode::Alpha;         // Standard alpha blending
   smoke.emitterConfig.duration = -1.0f; // Infinite by default
-  smoke.intensityMultiplier = 1.0f;
+  // Burst configuration for more natural smoke puffs
+  smoke.emitterConfig.burstCount = 8;       // Smaller bursts for smoke puffs
+  smoke.emitterConfig.burstInterval = 0.2f; // Less frequent bursts
+  smoke.intensityMultiplier = 1.4f;         // More intense smoke
   return smoke;
 }
 
@@ -1410,6 +1452,69 @@ void ParticleManager::updateParticleRange(
       }
     }
 
+    // Special handling for fire and smoke particles for natural movement
+    else {
+      float lifeRatio = particle.getLifeRatio();
+
+      // Fire particles: flickering, turbulent movement with heat distortion
+      if (particle.textureIndex == getTextureIndex("fire_particle") ||
+          (particle.color & 0xFF000000) ==
+              0xFF000000) { // Detect fire by color/texture
+
+        // Heat-based turbulence - more chaotic movement
+        float heatTurbulence = std::sin(windPhase * 8.0f + i * 0.3f) * 15.0f;
+        float heatRise = std::cos(windPhase * 6.0f + i * 0.25f) * 10.0f;
+
+        particle.velocity.setX(particle.velocity.getX() +
+                               heatTurbulence * deltaTime);
+        particle.velocity.setY(particle.velocity.getY() + heatRise * deltaTime);
+
+        // Fire gets more chaotic as it ages (burns out)
+        float chaos = (1.0f - lifeRatio) * 25.0f;
+        particle.acceleration.setX(
+            particle.acceleration.getX() +
+            (std::sin(windPhase * 12.0f + i * 0.4f) * chaos * deltaTime));
+
+        atmosphericDrag = 0.94f; // High drag for fire flicker
+      }
+
+      // Smoke particles: billowing, wind-affected movement
+      else if (particle.textureIndex == getTextureIndex("smoke_particle") ||
+               ((particle.color & 0xFF000000) >> 24) <
+                   200) { // Detect smoke by transparency
+
+        // Billowing smoke movement with wind influence
+        float smokeWind = windVariation * 40.0f;
+        float smokeBillow = std::sin(windPhase * 2.0f + i * 0.12f) * 20.0f;
+        float smokeRise = std::cos(windPhase * 1.5f + i * 0.08f) * 8.0f;
+
+        particle.velocity.setX(particle.velocity.getX() +
+                               (smokeWind + smokeBillow) * deltaTime);
+        particle.velocity.setY(particle.velocity.getY() +
+                               smokeRise * deltaTime);
+
+        // Smoke disperses and slows down as it ages
+        float dispersion = lifeRatio * 0.5f; // Older smoke is more dispersed
+        particle.velocity.setX(particle.velocity.getX() *
+                               (1.0f - dispersion * deltaTime));
+
+        // Wind affects smoke more as it gets older and lighter
+        float windSensitivity = (1.0f - lifeRatio) * 30.0f;
+        particle.acceleration.setX(particle.acceleration.getX() +
+                                   windSensitivity * windVariation * deltaTime);
+
+        atmosphericDrag = 0.92f; // High drag for realistic smoke movement
+      }
+
+      // Other particles (sparks, magic, etc.) - use standard turbulence
+      else {
+        float generalTurbulence = windVariation * 10.0f;
+        particle.velocity.setX(particle.velocity.getX() +
+                               generalTurbulence * deltaTime);
+        atmosphericDrag = 0.97f;
+      }
+    }
+
     // Apply atmospheric drag
     particle.velocity.setX(particle.velocity.getX() * atmosphericDrag);
     particle.velocity.setY(particle.velocity.getY() * atmosphericDrag);
@@ -1503,6 +1608,36 @@ void ParticleManager::createParticleForEffect(
       spawnPosition.setY(randomY);
     }
   }
+  // FIRE AND SMOKE DISPERSION: Add random scatter around base position
+  else if (effectDef.type == ParticleEffectType::Fire) {
+    // Fire particles need random dispersion in a circular area
+    float disperseRadius = 25.0f; // Random spread radius
+    float randomAngle = (static_cast<float>(rand()) / RAND_MAX) * 2.0f * M_PI;
+    float randomRadius =
+        (static_cast<float>(rand()) / RAND_MAX) * disperseRadius;
+
+    spawnPosition.setX(position.getX() + randomRadius * cos(randomAngle));
+    spawnPosition.setY(position.getY() + randomRadius * sin(randomAngle));
+
+    // Add small vertical offset for natural fire base variation
+    float verticalOffset =
+        (static_cast<float>(rand()) / RAND_MAX - 0.5f) * 10.0f;
+    spawnPosition.setY(spawnPosition.getY() + verticalOffset);
+  } else if (effectDef.type == ParticleEffectType::Smoke) {
+    // Smoke particles need wider random dispersion
+    float disperseRadius = 40.0f; // Wider spread for smoke
+    float randomAngle = (static_cast<float>(rand()) / RAND_MAX) * 2.0f * M_PI;
+    float randomRadius =
+        (static_cast<float>(rand()) / RAND_MAX) * disperseRadius;
+
+    spawnPosition.setX(position.getX() + randomRadius * cos(randomAngle));
+    spawnPosition.setY(position.getY() + randomRadius * sin(randomAngle));
+
+    // Add more vertical variation for smoke sources
+    float verticalOffset =
+        (static_cast<float>(rand()) / RAND_MAX - 0.5f) * 20.0f;
+    spawnPosition.setY(spawnPosition.getY() + verticalOffset);
+  }
 
   request.position = spawnPosition;
 
@@ -1526,11 +1661,32 @@ void ParticleManager::createParticleForEffect(
   } else if (effectDef.type == ParticleEffectType::HeavySnow) {
     angle = (M_PI * 0.5f) + (angle * 0.5f); // More chaotic movement in blizzard
   } else if (effectDef.type == ParticleEffectType::Fire) {
-    // Fire goes upward with some spread
+    // Fire goes upward with random spread and velocity variation
     angle = (M_PI * 1.5f) + angle; // Upward direction with spread
+
+    // Add random velocity variation for natural fire movement
+    float velocityVariation =
+        (static_cast<float>(rand()) / RAND_MAX - 0.5f) * 0.4f;
+    speed *= (1.0f + velocityVariation); // ±20% speed variation
+
+    // Add random angular jitter for flickering effect
+    float angularJitter = (static_cast<float>(rand()) / RAND_MAX - 0.5f) * 0.3f;
+    angle += angularJitter;
+
   } else if (effectDef.type == ParticleEffectType::Smoke) {
-    // Smoke goes upward with wider spread
+    // Smoke goes upward with wider spread and more random movement
     angle = (M_PI * 1.5f) + angle; // Upward direction with spread
+
+    // Add significant velocity variation for billowing smoke
+    float velocityVariation =
+        (static_cast<float>(rand()) / RAND_MAX - 0.5f) * 0.6f;
+    speed *= (1.0f + velocityVariation); // ±30% speed variation
+
+    // Add random angular variation for natural smoke dispersion
+    float angularVariation =
+        (static_cast<float>(rand()) / RAND_MAX - 0.5f) * 0.5f;
+    angle += angularVariation;
+
   } else if (effectDef.type == ParticleEffectType::Fog) {
     // Fog has gentle horizontal drift
     if (effectDef.name == "Cloudy") {
