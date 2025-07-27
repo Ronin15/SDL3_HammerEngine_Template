@@ -46,33 +46,37 @@ WeatherEvent::WeatherEvent(const std::string &name, WeatherType type)
     m_params.intensity = 0.5f;
     m_params.visibility = 0.8f;
     m_params.windSpeed = 0.3f;
-    m_params.particleEffect = "cloudy";
+    m_params.particleEffect =
+        "Cloudy"; // Fixed: Match ParticleManager effect name
     break;
   case WeatherType::Rainy:
     m_params.intensity = 0.7f;
     m_params.visibility = 0.6f;
     m_params.windSpeed = 0.5f;
-    m_params.particleEffect = "rain";
+    m_params.particleEffect =
+        "Rain"; // Fixed: Match ParticleManager effect name
     m_params.soundEffect = "rain_ambient";
     break;
   case WeatherType::Stormy:
     m_params.intensity = 1.0f;
     m_params.visibility = 0.3f;
     m_params.windSpeed = 0.9f;
-    m_params.particleEffect = "heavy_rain";
+    m_params.particleEffect =
+        "HeavyRain"; // Fixed: Match ParticleManager effect name
     m_params.soundEffect = "thunder_storm";
     break;
   case WeatherType::Foggy:
     m_params.intensity = 0.6f;
     m_params.visibility = 0.2f;
     m_params.windSpeed = 0.1f;
-    m_params.particleEffect = "fog";
+    m_params.particleEffect = "Fog"; // Fixed: Match ParticleManager effect name
     break;
   case WeatherType::Snowy:
     m_params.intensity = 0.7f;
     m_params.visibility = 0.5f;
     m_params.windSpeed = 0.4f;
-    m_params.particleEffect = "snow";
+    m_params.particleEffect =
+        "Snow"; // Fixed: Match ParticleManager effect name
     m_params.soundEffect = "snow_ambient";
     break;
   case WeatherType::Windy:
