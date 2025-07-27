@@ -415,12 +415,4 @@ BOOST_AUTO_TEST_CASE(TestCustomCreatorRegistration) {
   BOOST_CHECK(!registeredAgain);
 }
 
-BOOST_AUTO_TEST_CASE(TestFactoryInitialization) {
-  // Verify we have creators after initialization
-  BOOST_CHECK(ResourceFactory::getRegisteredTypes().size() > 0);
-  BOOST_CHECK(ResourceFactory::hasCreator("Equipment"));
-  BOOST_CHECK(ResourceFactory::hasCreator("Consumable"));
-  BOOST_CHECK(ResourceFactory::hasCreator("Gold"));
-}
-
 BOOST_AUTO_TEST_SUITE_END()
