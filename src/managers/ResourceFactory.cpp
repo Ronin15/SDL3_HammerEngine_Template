@@ -123,7 +123,8 @@ void ResourceFactory::initialize() {
 }
 
 void ResourceFactory::clear() {
-  getCreators().clear();
+  auto &creators = getCreators();
+  creators.clear();
   RESOURCE_DEBUG("ResourceFactory::clear - Cleared all resource creators");
 }
 

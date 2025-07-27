@@ -75,7 +75,6 @@ private:
     static std::unordered_map<std::string, ResourceCreator> s_creators;
     return s_creators;
   }
-
   // Helper methods for creating specific resource types
   static ResourcePtr createBaseResource(const JsonValue &json);
   static ResourcePtr createEquipment(const JsonValue &json);
