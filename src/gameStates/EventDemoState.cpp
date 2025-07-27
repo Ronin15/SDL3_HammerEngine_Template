@@ -709,22 +709,38 @@ void EventDemoState::triggerWeatherDemo() { triggerWeatherDemoManual(); }
 void EventDemoState::triggerWeatherDemoAuto() {
   size_t currentIndex = m_currentWeatherIndex;
   WeatherType newWeather = m_weatherSequence[m_currentWeatherIndex];
+  std::string customType = m_customWeatherTypes[m_currentWeatherIndex];
   m_currentWeatherIndex =
       (m_currentWeatherIndex + 1) % m_weatherSequence.size();
 
-  // Create and execute weather event directly
-  auto weatherEvent =
-      std::make_shared<WeatherEvent>("demo_auto_weather", newWeather);
+  // Create weather event - use custom type if specified
+  std::shared_ptr<WeatherEvent> weatherEvent;
+  if (newWeather == WeatherType::Custom && !customType.empty()) {
+    weatherEvent =
+        std::make_shared<WeatherEvent>("demo_auto_weather", customType);
+  } else {
+    weatherEvent =
+        std::make_shared<WeatherEvent>("demo_auto_weather", newWeather);
+  }
 
   // Get the default params (which include particle effects) and modify them
   WeatherParams params = weatherEvent->getWeatherParams();
   params.transitionTime = m_weatherTransitionTime;
-  params.intensity = (newWeather == WeatherType::Clear) ? 0.0f : 0.8f;
+
+  // Set intensity based on weather type
+  if (customType == "HeavyRain" || customType == "HeavySnow") {
+    params.intensity = 0.9f; // High intensity for heavy weather
+  } else {
+    params.intensity = (newWeather == WeatherType::Clear) ? 0.0f : 0.8f;
+  }
+
   weatherEvent->setWeatherParams(params);
   weatherEvent->execute();
 
   m_currentWeather = newWeather;
-  addLogEntry("Weather changed to: " + getCurrentWeatherString() +
+  std::string weatherName =
+      customType.empty() ? getCurrentWeatherString() : customType;
+  addLogEntry("Weather changed to: " + weatherName +
               " (Auto - Index: " + std::to_string(currentIndex) + ")");
 }
 
@@ -733,21 +749,47 @@ void EventDemoState::triggerWeatherDemoManual() {
 
   size_t currentIndex = manualWeatherIndex;
   WeatherType newWeather = m_weatherSequence[manualWeatherIndex];
+  std::string customType = m_customWeatherTypes[manualWeatherIndex];
+
+  // Debug output
+  addLogEntry("Manual weather index: " + std::to_string(currentIndex) + " of " +
+              std::to_string(m_weatherSequence.size()));
+  if (!customType.empty()) {
+    addLogEntry("Using custom weather type: " + customType);
+  }
+
   manualWeatherIndex = (manualWeatherIndex + 1) % m_weatherSequence.size();
 
-  // Create and execute weather event directly
-  auto weatherEvent =
-      std::make_shared<WeatherEvent>("demo_manual_weather", newWeather);
+  // Create weather event - use custom type if specified
+  std::shared_ptr<WeatherEvent> weatherEvent;
+  if (newWeather == WeatherType::Custom && !customType.empty()) {
+    weatherEvent =
+        std::make_shared<WeatherEvent>("demo_manual_weather", customType);
+  } else {
+    weatherEvent =
+        std::make_shared<WeatherEvent>("demo_manual_weather", newWeather);
+  }
 
   // Get the default params (which include particle effects) and modify them
   WeatherParams params = weatherEvent->getWeatherParams();
   params.transitionTime = m_weatherTransitionTime;
-  params.intensity = (newWeather == WeatherType::Clear) ? 0.0f : 0.8f;
+
+  // Set intensity based on weather type
+  if (customType == "HeavyRain" || customType == "HeavySnow") {
+    params.intensity = 0.9f; // High intensity for heavy weather
+    addLogEntry("Setting high intensity (0.9) for heavy weather: " +
+                customType);
+  } else {
+    params.intensity = (newWeather == WeatherType::Clear) ? 0.0f : 0.8f;
+  }
+
   weatherEvent->setWeatherParams(params);
   weatherEvent->execute();
 
   m_currentWeather = newWeather;
-  addLogEntry("Weather changed to: " + getCurrentWeatherString() +
+  std::string weatherName =
+      customType.empty() ? getCurrentWeatherString() : customType;
+  addLogEntry("Weather changed to: " + weatherName +
               " (Manual - Index: " + std::to_string(currentIndex) + ")");
 }
 

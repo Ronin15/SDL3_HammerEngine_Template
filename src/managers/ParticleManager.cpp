@@ -331,12 +331,21 @@ void ParticleManager::renderBackground(SDL_Renderer *renderer, float cameraX,
     uint32_t color = particle.color;
     bool isBackground = false;
 
-    // Rain particles are blue-ish (0x4080FF__)
-    if ((color & 0xFFFFFF00) == 0x4080FF00) {
+    // Rain particles (including HeavyRain) - blue-dominant colors
+    uint8_t r = (color >> 24) & 0xFF;
+    uint8_t g = (color >> 16) & 0xFF;
+    uint8_t b = (color >> 8) & 0xFF;
+
+    // Rain/HeavyRain: blue is dominant (blue > red AND blue > green)
+    if (b > r && b > g && b >= 150) {
       isBackground = true;
     }
-    // Snow particles are white (0xFFFFFF__ with any alpha)
-    else if ((color & 0xFFFFFF00) == 0xFFFFFF00) {
+    // Snow particles (including HeavySnow) - white (all RGB components high and
+    // similar)
+    else if (r >= 200 && g >= 200 && b >= 200 &&
+             abs(static_cast<int>(r) - static_cast<int>(g)) <= 30 &&
+             abs(static_cast<int>(r) - static_cast<int>(b)) <= 30 &&
+             abs(static_cast<int>(g) - static_cast<int>(b)) <= 30) {
       isBackground = true;
     }
     // Fire particles - orange/red/yellow range (red component >= 0x45)
@@ -361,14 +370,11 @@ void ParticleManager::renderBackground(SDL_Renderer *renderer, float cameraX,
       continue; // Skip foreground particles
     }
 
-    // Extract color components
-    uint8_t r = (color >> 24) & 0xFF;
-    uint8_t g = (color >> 16) & 0xFF;
-    uint8_t b = (color >> 8) & 0xFF;
-    uint8_t a = color & 0xFF;
+    // Use already extracted color components for rendering
+    // uint8_t a = color & 0xFF; // Already declared above
 
     // Set particle color
-    SDL_SetRenderDrawColor(renderer, r, g, b, a);
+    SDL_SetRenderDrawColor(renderer, r, g, b, (color & 0xFF));
 
     // Use particle size directly without any size limits
     float size = particle.size;
@@ -682,6 +688,10 @@ void ParticleManager::triggerWeatherEffect(const std::string &weatherType,
     effectName = "Cloudy";
   } else if (weatherType == "Stormy") {
     effectName = "HeavyRain"; // Stormy always uses heavy rain
+  } else if (weatherType == "HeavyRain") {
+    effectName = "HeavyRain"; // Direct heavy rain
+  } else if (weatherType == "HeavySnow") {
+    effectName = "HeavySnow"; // Direct heavy snow
   }
 
   PARTICLE_INFO("Mapped weather type '" + weatherType + "' to effect '" +
@@ -1016,17 +1026,17 @@ ParticleEffectDefinition ParticleManager::createRainEffect() {
   rain.emitterConfig.emissionRate =
       800.0f; // Reduced emission for better performance while maintaining
               // coverage
-  rain.emitterConfig.minSpeed = 180.0f; // Higher minimum speed for rain impact
+  rain.emitterConfig.minSpeed = 250.0f; // Faster minimum speed for quicker rain
   rain.emitterConfig.maxSpeed =
-      250.0f; // Increased for more realistic terminal velocity
+      350.0f;                        // Much faster for more dynamic rain fall
   rain.emitterConfig.minLife = 4.0f; // Longer to ensure screen traversal
   rain.emitterConfig.maxLife = 7.0f;
   rain.emitterConfig.minSize = 2.0f; // Much smaller for realistic raindrops
   rain.emitterConfig.maxSize = 6.0f;
   rain.emitterConfig.gravity =
-      Vector2D(5.0f, 320.0f); // Reduced wind drift for more vertical fall
+      Vector2D(2.0f, 450.0f); // More vertical fall for 2D isometric view
   rain.emitterConfig.windForce =
-      Vector2D(8.0f, 3.0f); // Reduced wind force for straighter fall
+      Vector2D(3.0f, 1.0f); // Minimal wind for straighter downward fall
   rain.emitterConfig.textureID = "raindrop";
   rain.emitterConfig.blendMode = ParticleBlendMode::Alpha;
   rain.intensityMultiplier =
@@ -1041,16 +1051,18 @@ ParticleEffectDefinition ParticleManager::createHeavyRainEffect() {
       800.0f; // Narrower spread for more intense, vertical heavy rain
   heavyRain.emitterConfig.emissionRate =
       1200.0f; // Reduced emission while maintaining storm intensity
-  heavyRain.emitterConfig.minSpeed = 220.0f; // Faster falling in storm
-  heavyRain.emitterConfig.maxSpeed = 320.0f; // High speed for impact
-  heavyRain.emitterConfig.minLife = 3.5f;    // Good life for screen coverage
+  heavyRain.emitterConfig.minSpeed =
+      320.0f; // Much faster falling in heavy storm
+  heavyRain.emitterConfig.maxSpeed =
+      450.0f;                             // Very high speed for intense impact
+  heavyRain.emitterConfig.minLife = 3.5f; // Good life for screen coverage
   heavyRain.emitterConfig.maxLife = 6.0f;
   heavyRain.emitterConfig.minSize = 1.5f; // Smaller but more numerous
   heavyRain.emitterConfig.maxSize = 5.0f;
-  heavyRain.emitterConfig.gravity =
-      Vector2D(15.0f, 380.0f); // Reduced wind drift for more vertical storm
+  heavyRain.emitterConfig.gravity = Vector2D(
+      5.0f, 500.0f); // Strong vertical fall for intense rain in 2D isometric
   heavyRain.emitterConfig.windForce =
-      Vector2D(12.0f, 6.0f); // Reduced wind for straighter heavy rain
+      Vector2D(5.0f, 2.0f); // Minimal wind for mostly vertical heavy rain
   heavyRain.emitterConfig.textureID = "raindrop";
   heavyRain.emitterConfig.blendMode = ParticleBlendMode::Alpha;
   heavyRain.intensityMultiplier = 1.8f; // High intensity for storms
@@ -1062,16 +1074,17 @@ ParticleEffectDefinition ParticleManager::createSnowEffect() {
   snow.emitterConfig.spread = 1200.0f; // Moderate spread for gentle snow drift
   snow.emitterConfig.emissionRate =
       350.0f; // Further reduced emission for optimal density
-  snow.emitterConfig.minSpeed = 5.0f;  // Slower minimum for gentle fall
-  snow.emitterConfig.maxSpeed = 25.0f; // Reduced max for natural drift
+  snow.emitterConfig.minSpeed = 15.0f; // Faster minimum for quicker snow fall
+  snow.emitterConfig.maxSpeed = 50.0f; // Much faster max for more dynamic drift
   snow.emitterConfig.minLife = 8.0f;   // Much longer life for coverage
   snow.emitterConfig.maxLife = 15.0f;  // Extended for slow drift
   snow.emitterConfig.minSize = 8.0f;   // Larger for better visibility
   snow.emitterConfig.maxSize = 16.0f;  // Good visible size range
-  snow.emitterConfig.gravity =
-      Vector2D(-5.0f, 25.0f); // Gentle wind drift + very gentle fall
+  snow.emitterConfig.gravity = Vector2D(
+      -2.0f,
+      60.0f); // More vertical fall with minimal wind drift for 2D isometric
   snow.emitterConfig.windForce =
-      Vector2D(8.0f, 1.5f); // Gentle variable wind effect
+      Vector2D(3.0f, 0.5f); // Very gentle wind for mostly downward snow
   snow.emitterConfig.textureID = "snowflake";
   snow.emitterConfig.blendMode = ParticleBlendMode::Alpha;
   snow.intensityMultiplier = 1.1f; // Slightly enhanced for visibility
@@ -1085,17 +1098,18 @@ ParticleEffectDefinition ParticleManager::createHeavySnowEffect() {
       1800.0f; // Wider spread for blizzard but not extreme
   heavySnow.emitterConfig.emissionRate =
       600.0f; // Further reduced emission for realistic blizzard
-  heavySnow.emitterConfig.minSpeed =
-      10.0f; // Faster in blizzard but still gentle
-  heavySnow.emitterConfig.maxSpeed = 45.0f; // Moderate wind speeds
+  heavySnow.emitterConfig.minSpeed = 25.0f; // Much faster in heavy blizzard
+  heavySnow.emitterConfig.maxSpeed = 80.0f; // High wind speeds for blizzard
   heavySnow.emitterConfig.minLife = 5.0f;   // Good life for coverage
   heavySnow.emitterConfig.maxLife = 10.0f;
   heavySnow.emitterConfig.minSize = 6.0f; // Visible but numerous flakes
   heavySnow.emitterConfig.maxSize = 14.0f;
   heavySnow.emitterConfig.gravity =
-      Vector2D(-12.0f, 35.0f); // Moderate wind drift + gravity
-  heavySnow.emitterConfig.windForce =
-      Vector2D(15.0f, 3.0f); // Moderate variable wind
+      Vector2D(-5.0f, 80.0f); // Stronger vertical fall with some wind for
+                              // blizzard in 2D isometric
+  heavySnow.emitterConfig.windForce = Vector2D(
+      8.0f,
+      2.0f); // Moderate wind for blizzard effect but still mostly downward
   heavySnow.emitterConfig.textureID = "snowflake";
   heavySnow.emitterConfig.blendMode = ParticleBlendMode::Alpha;
   heavySnow.intensityMultiplier = 1.6f; // High intensity for blizzard
@@ -1125,23 +1139,26 @@ ParticleEffectDefinition ParticleManager::createFogEffect() {
 ParticleEffectDefinition ParticleManager::createCloudyEffect() {
   ParticleEffectDefinition cloudy("Cloudy", ParticleEffectType::Fog);
   // No initial position - will be set by triggerWeatherEffect
-  cloudy.emitterConfig.direction =
-      Vector2D(1.0f, 0.2f); // Slight upward drift for natural cloud movement
+  cloudy.emitterConfig.direction = Vector2D(
+      1.0f, 0.0f); // Horizontal movement for clouds sweeping across sky
   cloudy.emitterConfig.spread =
       2000.0f; // Wider spread to cover entire screen width
   cloudy.emitterConfig.emissionRate =
-      3.0f;                             // Reduced to prevent too many clouds
-  cloudy.emitterConfig.minSpeed = 5.0f; // Slower for more realistic cloud drift
-  cloudy.emitterConfig.maxSpeed = 15.0f; // Reduced for gentle movement
-  cloudy.emitterConfig.minLife =
-      25.0f; // Significantly reduced life for faster turnover
-  cloudy.emitterConfig.maxLife = 45.0f; // Shorter max life to prevent lingering
+      1.5f; // Further reduced for less dense cloud effect
+  cloudy.emitterConfig.minSpeed =
+      25.0f; // Much faster horizontal movement for visible sweeping motion
+  cloudy.emitterConfig.maxSpeed =
+      60.0f;                            // Very fast for dramatic cloud movement
+  cloudy.emitterConfig.minLife = 20.0f; // Shorter life for faster turnover
+  cloudy.emitterConfig.maxLife =
+      35.0f; // Reduced max life to prevent screen crowding
   cloudy.emitterConfig.minSize =
       100.0f; // Much larger clouds for better coverage
   cloudy.emitterConfig.maxSize = 200.0f; // Very large maximum size
   cloudy.emitterConfig.gravity =
-      Vector2D(3.0f, -1.0f); // Gentle horizontal drift with slight upward float
-  cloudy.emitterConfig.windForce = Vector2D(1.5f, 0.3f); // Variable wind effect
+      Vector2D(0.0f, 0.0f); // No gravity - clouds float and drift with wind
+  cloudy.emitterConfig.windForce =
+      Vector2D(25.0f, 0.0f); // Strong horizontal wind for sweeping motion
   cloudy.emitterConfig.textureID = "cloud";
   cloudy.emitterConfig.blendMode =
       ParticleBlendMode::Alpha;      // Standard alpha blending
@@ -1417,8 +1434,31 @@ void ParticleManager::updateParticleRange(
         std::sin(windPhase + i * 0.1f) * 0.3f; // Per-particle wind variation
     float atmosphericDrag = 0.98f;             // Slight air resistance
 
+    // Cloud detection and movement for light-colored particles
+    uint8_t r = (particle.color >> 24) & 0xFF;
+    uint8_t g = (particle.color >> 16) & 0xFF;
+    uint8_t b = (particle.color >> 8) & 0xFF;
+
+    // Cloud particles: light white/gray range (240-255 RGB)
+    bool isCloud = (r >= 240 && g >= 240 && b >= 240);
+
+    if (isCloud) {
+      // Apply horizontal movement for cloud drift
+      particle.acceleration.setX(15.0f);
+      particle.acceleration.setY(0.0f);
+
+      // Add natural wind variation
+      float drift = std::sin(windPhase * 0.8f + i * 0.15f) * 3.0f;
+      float verticalFloat = std::cos(windPhase * 1.2f + i * 0.1f) * 1.5f;
+
+      particle.velocity.setX(particle.velocity.getX() + drift * deltaTime);
+      particle.velocity.setY(particle.velocity.getY() +
+                             verticalFloat * deltaTime);
+
+      atmosphericDrag = 1.0f;
+    }
     // Apply wind variation for weather particles
-    if (particle.isWeatherParticle()) {
+    else if (particle.isWeatherParticle()) {
       // Add natural wind turbulence
       particle.acceleration.setX(particle.acceleration.getX() +
                                  windVariation * 20.0f);
@@ -1442,16 +1482,15 @@ void ParticleManager::updateParticleRange(
       }
 
       // Fog/cloud particles drift and have gentle movement
-      else { // Fog/cloud behavior
-        float drift = std::sin(windPhase * 0.8f + i * 0.15f) * 5.0f;
+      else { // Regular fog behavior (not clouds)
+        float drift = std::sin(windPhase * 0.8f + i * 0.15f) * 15.0f;
         particle.velocity.setX(particle.velocity.getX() + drift * deltaTime);
         particle.velocity.setY(particle.velocity.getY() +
-                               std::cos(windPhase * 1.2f + i * 0.1f) * 2.0f *
+                               std::cos(windPhase * 1.2f + i * 0.1f) * 3.0f *
                                    deltaTime);
-        atmosphericDrag = 0.95f; // More drag for fog
+        atmosphericDrag = 0.999f;
       }
     }
-
     // Special handling for fire and smoke particles for natural movement
     else {
       float lifeRatio = particle.getLifeRatio();
@@ -1690,8 +1729,13 @@ void ParticleManager::createParticleForEffect(
   } else if (effectDef.type == ParticleEffectType::Fog) {
     // Fog has gentle horizontal drift
     if (effectDef.name == "Cloudy") {
-      // Clouds move horizontally
-      angle = 0.0f + (angle * 0.2f); // Mostly horizontal with slight variation
+      // Clouds move horizontally - use 0 degrees for rightward movement
+      angle =
+          0.0f +
+          (angle *
+           0.05f); // Horizontal (0 degrees = rightward) with minimal variation
+      speed =
+          std::max(speed, 25.0f); // Ensure minimum horizontal speed for clouds
     } else {
       // Regular fog has minimal movement
       angle = angle * 0.5f; // Very small movement in any direction

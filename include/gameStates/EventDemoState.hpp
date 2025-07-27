@@ -103,7 +103,11 @@ private:
   float m_weatherTransitionTime{3.0f};
   std::vector<WeatherType> m_weatherSequence{
       WeatherType::Clear,  WeatherType::Cloudy, WeatherType::Rainy,
-      WeatherType::Stormy, WeatherType::Foggy,  WeatherType::Snowy};
+      WeatherType::Stormy, WeatherType::Foggy,  WeatherType::Snowy,
+      WeatherType::Custom, WeatherType::Custom}; // Last two for HeavyRain and
+                                                 // HeavySnow
+  std::vector<std::string> m_customWeatherTypes{
+      "", "", "", "", "", "", "HeavyRain", "HeavySnow"};
   size_t m_currentWeatherIndex{0};
   float m_weatherChangeInterval{4.0f}; // Time between weather changes
   size_t m_weatherChangesShown{0};     // Track how many weather types shown
