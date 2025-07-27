@@ -500,12 +500,11 @@ void ParticleManager::stopEffect(uint32_t effectId) {
   std::unique_lock<std::shared_mutex> lock(m_particlesMutex);
 
   auto it = m_effectIdToIndex.find(effectId);
-  if (it != m_effectIdToIndex.end()) {
+  if (it != m_effectIdToIndex.end() && it->second < m_effectInstances.size()) {
     m_effectInstances[it->second].active = false;
     PARTICLE_INFO("Effect stopped: ID " + std::to_string(effectId));
   }
 }
-
 void ParticleManager::stopWeatherEffects(float transitionTime) {
   PARTICLE_INFO("*** STOPPING ALL WEATHER EFFECTS (transition: " +
                 std::to_string(transitionTime) + "s)");
@@ -1349,15 +1348,18 @@ void ParticleManager::createParticleForEffect(
   UnifiedParticle *particle = nullptr;
 
   // Try to reuse an inactive particle first (prevents memory growth)
-  size_t particleCount = m_storage.particles.size();
-  size_t storageSize = m_storage.particles.size();
-  for (size_t i = 0; i < particleCount && i < storageSize; ++i) {
+  // FIXED: Use consistent bounds checking to prevent race conditions
+  size_t currentSize = m_storage.particles.size();
+  for (size_t i = 0; i < currentSize; ++i) {
+    // Double-check bounds on each access
+    if (i >= m_storage.particles.size()) {
+      break; // Vector size changed, stop searching
+    }
     if (!m_storage.particles[i].isActive()) {
       particle = &m_storage.particles[i];
       break;
     }
   }
-
   // If no inactive particle found, add new one (but with better size
   // management)
   if (!particle) {
@@ -1506,9 +1508,16 @@ void ParticleManager::createParticleForEffect(
     }
   } else if (effectDef.type == ParticleEffectType::Smoke) {
     // Use original smoke colors from optimization data
-    size_t colorIndex = static_cast<size_t>(
-        naturalRand() * m_optimizationData.smokeColors.size());
-    particle->color = m_optimizationData.smokeColors[colorIndex];
+    // FIXED: Prevent out-of-bounds access with proper clamping
+    size_t maxIndex = m_optimizationData.smokeColors.size();
+    if (maxIndex > 0) {
+      size_t colorIndex = static_cast<size_t>(naturalRand() * maxIndex);
+      // Clamp to valid range to prevent off-by-one errors
+      colorIndex = std::min(colorIndex, maxIndex - 1);
+      particle->color = m_optimizationData.smokeColors[colorIndex];
+    } else {
+      particle->color = 0x606060AA; // Fallback grey smoke color
+    }
   } else if (effectDef.type == ParticleEffectType::Sparks) {
     // Natural spark colors with more variation
     if (naturalRand() < 0.7f) {
@@ -1885,12 +1894,16 @@ void ParticleManager::updateParticlesSingleThreaded(float deltaTime,
       std::min(deltaTime, 0.033f); // Cap at ~30 FPS minimum for smooth motion
 
   // Update all particles directly using unified storage - with proper bounds
-  // checking Don't cache size - check bounds on each access to prevent
-  // out-of-bounds errors
-  for (size_t i = 0; i < m_storage.particles.size(); ++i) {
+  // checking FIXED: Use consistent bounds checking pattern to prevent race
+  // conditions
+  size_t currentSize = m_storage.particles.size();
+  for (size_t i = 0; i < currentSize; ++i) {
     // Double-check bounds before access due to potential concurrent
     // modifications
-    if (i < m_storage.particles.size() && m_storage.particles[i].isActive()) {
+    if (i >= m_storage.particles.size()) {
+      break; // Vector size changed, stop processing
+    }
+    if (m_storage.particles[i].isActive()) {
       updateUnifiedParticle(m_storage.particles[i], cappedDeltaTime);
     }
   }
@@ -1898,7 +1911,6 @@ void ParticleManager::updateParticlesSingleThreaded(float deltaTime,
   // Suppress unused parameter warning
   (void)totalParticleCount;
 }
-
 void ParticleManager::updateParticleBatch(size_t start, size_t end,
                                           float deltaTime) {
   if (!m_initialized.load(std::memory_order_acquire)) {
