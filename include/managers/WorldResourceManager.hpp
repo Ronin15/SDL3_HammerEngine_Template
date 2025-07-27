@@ -87,7 +87,7 @@ public:
 
   // Core functionality
   bool init();
-  bool isInitialized() const { return m_initialized; }
+  bool isInitialized() const { return m_initialized.load(); }
   void clean();
 
   // World management
@@ -149,7 +149,7 @@ private:
       m_worldResources;
 
   mutable WorldResourceStats m_stats;
-  bool m_initialized{false};
+  std::atomic<bool> m_initialized{false};
   bool m_isShutdown{false};
 
   // Thread safety

@@ -21,13 +21,13 @@ WorldResourceManager::~WorldResourceManager() {
 }
 
 bool WorldResourceManager::init() {
-  if (m_initialized) {
+  if (m_initialized.load(std::memory_order_acquire)) {
     return true; // Already initialized
   }
 
   std::lock_guard<std::shared_mutex> lock(m_resourceMutex);
 
-  if (m_initialized) {
+  if (m_initialized.load(std::memory_order_acquire)) {
     return true; // Double-check after acquiring lock
   }
 
@@ -38,7 +38,7 @@ bool WorldResourceManager::init() {
     // Create a default world for single-world scenarios
     m_worldResources["default"] = std::unordered_map<ResourceId, Quantity>();
 
-    m_initialized = true;
+    m_initialized.store(true, std::memory_order_release);
     m_stats.reset();
     m_stats.worldsTracked = 1; // Default world
 
@@ -57,7 +57,7 @@ void WorldResourceManager::clean() {
   // Clear all data structures
   m_worldResources.clear();
 
-  m_initialized = false;
+  m_initialized.store(false, std::memory_order_release);
   m_isShutdown = true;
   m_stats.reset();
 

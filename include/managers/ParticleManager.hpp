@@ -732,7 +732,7 @@ private:
     std::atomic<uint64_t> currentEpoch{0};
     std::atomic<uint64_t> safeEpoch{0};
 
-    LockFreeParticleStorage() {
+    LockFreeParticleStorage() : creationRing{} {
       // Pre-allocate both buffers
       particles[0].reserve(DEFAULT_MAX_PARTICLES);
       particles[1].reserve(DEFAULT_MAX_PARTICLES);
@@ -768,7 +768,6 @@ private:
     void processCreationRequests() {
       size_t tail = creationTail.load(std::memory_order_acquire);
       size_t head = creationHead.load(std::memory_order_acquire);
-      int processedCount = 0;
 
       while (tail != head) {
         auto &req = creationRing[tail];
@@ -791,7 +790,6 @@ private:
 
             activeParticles.push_back(particle);
             particleCount.fetch_add(1, std::memory_order_acq_rel);
-            processedCount++;
           }
 
           req.ready.store(false, std::memory_order_release);
