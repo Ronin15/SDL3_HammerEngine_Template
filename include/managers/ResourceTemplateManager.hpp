@@ -59,7 +59,7 @@ public:
 
   // Core functionality
   bool init();
-  bool isInitialized() const { return m_initialized; }
+  bool isInitialized() const { return m_initialized.load(); }
   void clean();
 
   // Resource template management
@@ -100,7 +100,7 @@ private:
   std::unordered_map<ResourceType, std::vector<std::string>> m_typeIndex;
 
   mutable ResourceStats m_stats;
-  bool m_initialized{false};
+  std::atomic<bool> m_initialized{false};
   bool m_isShutdown{false};
 
   // Thread safety

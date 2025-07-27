@@ -26,13 +26,13 @@ ResourceTemplateManager::~ResourceTemplateManager() {
 }
 
 bool ResourceTemplateManager::init() {
-  if (m_initialized) {
+  if (m_initialized.load(std::memory_order_acquire)) {
     return true; // Already initialized
   }
 
   std::lock_guard<std::shared_mutex> lock(m_resourceMutex);
 
-  if (m_initialized) {
+  if (m_initialized.load(std::memory_order_acquire)) {
     return true; // Double-check after acquiring lock
   }
 
@@ -59,7 +59,7 @@ bool ResourceTemplateManager::init() {
     // Create default resources
     createDefaultResources();
 
-    m_initialized = true;
+    m_initialized.store(true, std::memory_order_release);
     m_isShutdown = false; // Reset shutdown flag on successful init
     m_stats.reset();
     RESOURCE_INFO("ResourceTemplateManager initialized with " +
@@ -82,7 +82,7 @@ void ResourceTemplateManager::clean() {
   m_categoryIndex.clear();
   m_typeIndex.clear();
 
-  m_initialized = false;
+  m_initialized.store(false, std::memory_order_release);
   m_isShutdown = true;
   m_stats.reset();
 
