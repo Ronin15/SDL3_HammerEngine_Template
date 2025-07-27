@@ -1764,6 +1764,7 @@ void ParticleManager::createParticleForEffect(
         {0x404040FF, 0x606060FF, 0x808080FF, 0x202020FF, 0x4A4A4AFF, 0x505050FF,
          0x707070FF, 0x303030FF}};
     size_t colorIndex = static_cast<size_t>(naturalRand * smokeColors.size());
+    colorIndex = std::min(colorIndex, smokeColors.size() - 1);
     request.color = smokeColors[colorIndex];
   } else if (effectDef.type == ParticleEffectType::Sparks) {
     // Natural spark colors with more variation
