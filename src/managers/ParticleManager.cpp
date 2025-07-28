@@ -1117,7 +1117,8 @@ ParticleEffectDefinition ParticleManager::createHeavySnowEffect() {
 ParticleEffectDefinition ParticleManager::createFogEffect() {
   ParticleEffectDefinition fog("Fog", ParticleEffectType::Fog);
   fog.emitterConfig.spread = 3000.0f; // Very wide spread to cover entire screen
-  fog.emitterConfig.emissionRate = 30.0f; // Lower emission rate for gradual fog
+  fog.emitterConfig.emissionRate =
+      50.0f;                          // Increased emission rate for denser fog
   fog.emitterConfig.minSpeed = 2.0f;  // Slower movement for realistic fog drift
   fog.emitterConfig.maxSpeed = 15.0f; // Varied speeds for natural movement
   fog.emitterConfig.minLife = 8.0f;   // Reduced life for faster turnover
