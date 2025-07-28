@@ -11,7 +11,6 @@
 #include <algorithm> // for std::clamp
 #include <chrono>
 #include <cmath>
-#include <random>
 
 // Static mutex for update serialization
 std::mutex ParticleManager::updateMutex;
