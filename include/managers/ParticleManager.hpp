@@ -842,7 +842,8 @@ private:
       size_t inactiveCount =
           std::count_if(activeParticles.begin(), activeParticles.end(),
                         [](const UnifiedParticle &p) { return !p.isActive(); });
-      return inactiveCount > activeParticles.size() * 0.3;
+      return inactiveCount >
+             activeParticles.size() * 0.5; // Less aggressive: 50% vs 30%
     }
 
     // Submit new particle (lock-free)
@@ -889,7 +890,7 @@ private:
   std::atomic<bool> m_globallyVisible{true};
   std::atomic<bool> m_useThreading{true};
   std::atomic<bool> m_useWorkerBudget{true};
-  std::atomic<size_t> m_threadingThreshold{1000};
+  std::atomic<size_t> m_threadingThreshold{750};
   unsigned int m_maxThreads{0};
 
   // Frame counter for periodic maintenance (like AIManager)
@@ -912,7 +913,8 @@ private:
 
   // Constants for optimization
   static constexpr size_t CACHE_LINE_SIZE = 64;
-  static constexpr size_t BATCH_SIZE = 512;
+  static constexpr size_t BATCH_SIZE =
+      1024; // Increased for better WorkerBudget efficiency
   static constexpr size_t DEFAULT_MAX_PARTICLES =
       100000; // Increased for modern performance
   static constexpr float MIN_VISIBLE_SIZE = 0.5f;
