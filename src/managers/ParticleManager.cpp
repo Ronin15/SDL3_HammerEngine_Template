@@ -84,8 +84,9 @@ void ParticleManager::prepareForStateTransition() {
   auto it = m_effectInstances.begin();
   while (it != m_effectInstances.end()) {
     if (it->isWeatherEffect) {
-      PARTICLE_INFO("Removing weather effect: " + it->effectName +
-                    " (ID: " + std::to_string(it->id) + ")");
+      PARTICLE_INFO(
+          "Removing weather effect: " + effectTypeToString(it->effectType) +
+          " (ID: " + std::to_string(it->id) + ")");
       m_effectIdToIndex.erase(it->id);
       it = m_effectInstances.erase(it);
       weatherEffectsStopped++;
@@ -458,33 +459,33 @@ void ParticleManager::renderForeground(SDL_Renderer *renderer, float cameraX,
   // Foreground particle render complete
 }
 
-uint32_t ParticleManager::playEffect(const std::string &effectName,
+uint32_t ParticleManager::playEffect(ParticleEffectType effectType,
                                      const Vector2D &position,
                                      float intensity) {
-  PARTICLE_INFO("*** PLAY EFFECT CALLED: " + effectName + " at (" +
-                std::to_string(position.getX()) + ", " +
+  PARTICLE_INFO("*** PLAY EFFECT CALLED: " + effectTypeToString(effectType) +
+                " at (" + std::to_string(position.getX()) + ", " +
                 std::to_string(position.getY()) +
                 ") intensity=" + std::to_string(intensity));
 
   // PERFORMANCE: Exclusive lock needed for adding effect instances
   std::unique_lock<std::shared_mutex> lock(m_effectsMutex);
 
-  auto it = m_effectDefinitions.find(effectName);
+  // Check if effect definition exists
+  auto it = m_effectDefinitions.find(effectType);
   if (it == m_effectDefinitions.end()) {
-    PARTICLE_ERROR("ERROR: Effect not found: " + effectName);
+    PARTICLE_ERROR("ERROR: Effect not registered: " +
+                   effectTypeToString(effectType));
     PARTICLE_INFO("Available effects: " +
                   std::to_string(m_effectDefinitions.size()));
     for (const auto &pair : m_effectDefinitions) {
-      PARTICLE_INFO("  - " + pair.first);
+      PARTICLE_INFO("  - " + effectTypeToString(pair.first));
     }
     return 0;
   }
 
-  // Note: definition would be used for more complex effect configuration
-  // auto& definition = it->second;
   EffectInstance instance;
   instance.id = generateEffectId();
-  instance.effectName = effectName;
+  instance.effectType = effectType;
   instance.position = position;
   instance.intensity = intensity;
   instance.currentIntensity = intensity;
@@ -495,9 +496,11 @@ uint32_t ParticleManager::playEffect(const std::string &effectName,
   m_effectInstances.push_back(instance);
   m_effectIdToIndex[instance.id] = m_effectInstances.size() - 1;
 
-  PARTICLE_INFO("Effect successfully started: " + effectName + " (ID: " +
-                std::to_string(instance.id) + ") - Total active effects: " +
-                std::to_string(m_effectInstances.size()));
+  PARTICLE_INFO(
+      "Effect successfully started: " + effectTypeToString(effectType) +
+      " (ID: " + std::to_string(instance.id) +
+      ") - Total active effects: " + std::to_string(m_effectInstances.size()));
+
   return instance.id;
 }
 
@@ -524,7 +527,8 @@ void ParticleManager::stopWeatherEffects(float transitionTime) {
   auto it = m_effectInstances.begin();
   while (it != m_effectInstances.end()) {
     if (it->isWeatherEffect) {
-      PARTICLE_DEBUG("DEBUG: Removing weather effect: " + it->effectName +
+      PARTICLE_DEBUG("DEBUG: Removing weather effect: " +
+                     effectTypeToString(it->effectType) +
                      " (ID: " + std::to_string(it->id) + ")");
 
       // Remove from ID mapping
@@ -626,19 +630,39 @@ void ParticleManager::triggerWeatherEffect(const std::string &weatherType,
   PARTICLE_INFO("*** WEATHER EFFECT TRIGGERED: " + weatherType +
                 " intensity=" + std::to_string(intensity));
 
+  // Convert string weather type to enum and delegate to enum-based method
+  ParticleEffectType effectType = weatherStringToEnum(weatherType, intensity);
+
+  // Handle Clear weather - just stop effects and return
+  if (weatherType == "Clear") {
+    stopWeatherEffects(transitionTime);
+    return;
+  }
+
+  // Use enum-based method
+  triggerWeatherEffect(effectType, intensity, transitionTime);
+}
+
+void ParticleManager::triggerWeatherEffect(ParticleEffectType effectType,
+                                           float intensity,
+                                           float transitionTime) {
+  PARTICLE_INFO(
+      "*** WEATHER EFFECT TRIGGERED: " + effectTypeToString(effectType) +
+      " intensity=" + std::to_string(intensity));
+
   // Use smooth transitions for better visual quality
   float actualTransitionTime = (transitionTime > 0.0f) ? transitionTime : 1.5f;
 
   // THREADING FIX: Effect management requires synchronization
   std::unique_lock<std::shared_mutex> lock(m_effectsMutex);
 
-  // Clear existing weather effects first (without calling
-  // stopWeatherEffects to avoid re-locking)
+  // Clear existing weather effects first
   int stoppedCount = 0;
   auto it = m_effectInstances.begin();
   while (it != m_effectInstances.end()) {
     if (it->isWeatherEffect) {
-      PARTICLE_DEBUG("DEBUG: Removing weather effect: " + it->effectName +
+      PARTICLE_DEBUG("DEBUG: Removing weather effect: " +
+                     effectTypeToString(it->effectType) +
                      " (ID: " + std::to_string(it->id) + ")");
       m_effectIdToIndex.erase(it->id);
       it = m_effectInstances.erase(it);
@@ -673,79 +697,61 @@ void ParticleManager::triggerWeatherEffect(const std::string &weatherType,
 
   PARTICLE_INFO("Stopped " + std::to_string(stoppedCount) + " weather effects");
 
-  // Handle Clear weather - just stop effects and return
-  if (weatherType == "Clear") {
-    PARTICLE_INFO("Clear weather triggered - only stopping weather effects");
+  // Validate effect type
+  if (effectType >= ParticleEffectType::COUNT) {
+    PARTICLE_ERROR("ERROR: Invalid effect type: " +
+                   std::to_string(static_cast<int>(effectType)));
     return;
   }
 
-  // Map weather type to particle effect with intensity-based selection
-  std::string effectName;
-  if (weatherType == "Rainy") {
-    effectName = (intensity > 0.7f) ? "HeavyRain"
-                                    : "Rain"; // Heavy rain for high intensity
-  } else if (weatherType == "Snowy") {
-    effectName = (intensity > 0.7f) ? "HeavySnow"
-                                    : "Snow"; // Heavy snow for high intensity
-  } else if (weatherType == "Foggy") {
-    effectName = "Fog";
-  } else if (weatherType == "Cloudy") {
-    effectName = "Cloudy";
-  } else if (weatherType == "Stormy") {
-    effectName = "HeavyRain"; // Stormy always uses heavy rain
-  } else if (weatherType == "HeavyRain") {
-    effectName = "HeavyRain"; // Direct heavy rain
-  } else if (weatherType == "HeavySnow") {
-    effectName = "HeavySnow"; // Direct heavy snow
+  // Check if effect definition exists
+  auto defIt = m_effectDefinitions.find(effectType);
+  if (defIt == m_effectDefinitions.end()) {
+    PARTICLE_ERROR("ERROR: Effect not registered: " +
+                   effectTypeToString(effectType));
+    return;
   }
 
-  PARTICLE_INFO("Mapped weather type '" + weatherType + "' to effect '" +
-                effectName + "'");
+  // Check if effect definition exists
+  const auto &definition = m_effectDefinitions[effectType];
+  if (definition.name.empty()) {
+    PARTICLE_ERROR("ERROR: Effect not registered: " +
+                   effectTypeToString(effectType));
+    return;
+  }
 
-  if (!effectName.empty()) {
-    // Check if effect definition exists
-    auto defIt = m_effectDefinitions.find(effectName);
-    if (defIt == m_effectDefinitions.end()) {
-      PARTICLE_ERROR("ERROR: Effect not found: " + effectName);
-      return;
-    }
-
-    // Calculate optimal weather position based on effect type
-    Vector2D weatherPosition;
-    if (effectName == "Rain" || effectName == "HeavyRain" ||
-        effectName == "Snow" || effectName == "HeavySnow") {
-      weatherPosition = Vector2D(960, -100); // High spawn for falling particles
-    } else if (effectName == "Fog") {
-      weatherPosition = Vector2D(960, 300); // Mid-screen for fog spread
-    } else if (effectName == "Cloudy") {
-      weatherPosition = Vector2D(960, -100); // Higher spawn point for clouds
-    } else {
-      weatherPosition = Vector2D(960, -50); // Default top spawn
-    }
-
-    // Create new weather effect directly (inline to avoid re-locking)
-    EffectInstance instance;
-    instance.id = generateEffectId();
-    instance.effectName = effectName;
-    instance.position = weatherPosition;
-    instance.intensity = intensity;
-    instance.currentIntensity = intensity;
-    instance.targetIntensity = intensity;
-    instance.active = true;
-    instance.isWeatherEffect = true; // Mark as weather effect immediately
-
-    // Register effect
-    m_effectInstances.emplace_back(std::move(instance));
-    m_effectIdToIndex[instance.id] = m_effectInstances.size() - 1;
-
-    PARTICLE_INFO("Weather effect created: " + effectName +
-                  " (ID: " + std::to_string(instance.id) + ") at position (" +
-                  std::to_string(weatherPosition.getX()) + ", " +
-                  std::to_string(weatherPosition.getY()) + ")");
+  // Calculate optimal weather position based on effect type
+  Vector2D weatherPosition;
+  if (effectType == ParticleEffectType::Rain ||
+      effectType == ParticleEffectType::HeavyRain ||
+      effectType == ParticleEffectType::Snow ||
+      effectType == ParticleEffectType::HeavySnow) {
+    weatherPosition = Vector2D(960, -100); // High spawn for falling particles
+  } else if (effectType == ParticleEffectType::Fog) {
+    weatherPosition = Vector2D(960, 300); // Mid-screen for fog spread
   } else {
-    PARTICLE_ERROR("ERROR: No effect mapping found for weather type: " +
-                   weatherType);
+    weatherPosition = Vector2D(960, -50); // Default top spawn
   }
+
+  // Create new weather effect
+  EffectInstance instance;
+  instance.id = generateEffectId();
+  instance.effectType = effectType;
+  instance.position = weatherPosition;
+  instance.intensity = intensity;
+  instance.currentIntensity = intensity;
+  instance.targetIntensity = intensity;
+  instance.active = true;
+  instance.isWeatherEffect = true; // Mark as weather effect immediately
+
+  // Register effect
+  m_effectInstances.emplace_back(std::move(instance));
+  m_effectIdToIndex[instance.id] = m_effectInstances.size() - 1;
+
+  PARTICLE_INFO("Weather effect created: " + effectTypeToString(effectType) +
+                " (ID: " + std::to_string(instance.id) + ") at position (" +
+                std::to_string(weatherPosition.getX()) + ", " +
+                std::to_string(weatherPosition.getY()) + ")");
 }
 
 void ParticleManager::recordPerformance(bool isRender, double timeMs,
@@ -764,8 +770,8 @@ void ParticleManager::toggleFireEffect() {
     Vector2D basePosition(400, 300);
 
     // Single main fire effect
-    m_fireEffectId =
-        playIndependentEffect("Fire", basePosition, 1.2f, -1.0f, "campfire");
+    m_fireEffectId = playIndependentEffect(
+        ParticleEffectType::Fire, basePosition, 1.2f, -1.0f, "campfire");
 
     m_fireActive = true;
   } else {
@@ -782,8 +788,8 @@ void ParticleManager::toggleSmokeEffect() {
     Vector2D basePosition(400, 280); // Slightly above fire
 
     // Single main smoke column
-    m_smokeEffectId = playIndependentEffect("Smoke", basePosition, 1.0f, -1.0f,
-                                            "campfire_smoke");
+    m_smokeEffectId = playIndependentEffect(
+        ParticleEffectType::Smoke, basePosition, 1.0f, -1.0f, "campfire_smoke");
 
     m_smokeActive = true;
   } else {
@@ -796,7 +802,8 @@ void ParticleManager::toggleSmokeEffect() {
 void ParticleManager::toggleSparksEffect() {
   std::unique_lock<std::shared_mutex> lock(m_effectsMutex);
   if (!m_sparksActive) {
-    m_sparksEffectId = playIndependentEffect("Sparks", Vector2D(400, 300));
+    m_sparksEffectId =
+        playIndependentEffect(ParticleEffectType::Sparks, Vector2D(400, 300));
     m_sparksActive = true;
   } else {
     stopIndependentEffect(m_sparksEffectId);
@@ -806,24 +813,27 @@ void ParticleManager::toggleSparksEffect() {
 
 // Independent Effect Management Implementation
 uint32_t ParticleManager::playIndependentEffect(
-    const std::string &effectName, const Vector2D &position, float intensity,
+    ParticleEffectType effectType, const Vector2D &position, float intensity,
     float duration, const std::string &groupTag,
     const std::string &soundEffect) {
-  PARTICLE_INFO("Playing independent effect: " + effectName + " at (" +
-                std::to_string(position.getX()) + ", " +
-                std::to_string(position.getY()) + ")");
+  PARTICLE_INFO(
+      "Playing independent effect: " + effectTypeToString(effectType) +
+      " at (" + std::to_string(position.getX()) + ", " +
+      std::to_string(position.getY()) + ")");
 
   // PERFORMANCE: No locks needed for lock-free particle system
 
-  auto it = m_effectDefinitions.find(effectName);
+  // Check if effect definition exists
+  auto it = m_effectDefinitions.find(effectType);
   if (it == m_effectDefinitions.end()) {
-    PARTICLE_ERROR("ERROR: Independent effect not found: " + effectName);
+    PARTICLE_ERROR("ERROR: Independent effect not registered: " +
+                   effectTypeToString(effectType));
     return 0;
   }
 
   EffectInstance instance;
   instance.id = generateEffectId();
-  instance.effectName = effectName;
+  instance.effectType = effectType;
   instance.position = position;
   instance.intensity = intensity;
   instance.currentIntensity = intensity;
@@ -839,8 +849,9 @@ uint32_t ParticleManager::playIndependentEffect(
   m_effectInstances.push_back(instance);
   m_effectIdToIndex[instance.id] = m_effectInstances.size() - 1;
 
-  PARTICLE_INFO("Independent effect started: " + effectName +
-                " (ID: " + std::to_string(instance.id) + ")");
+  PARTICLE_INFO(
+      "Independent effect started: " + effectTypeToString(effectType) +
+      " (ID: " + std::to_string(instance.id) + ")");
   return instance.id;
 }
 
@@ -984,22 +995,23 @@ void ParticleManager::registerBuiltInEffects() {
   PARTICLE_INFO("*** REGISTERING BUILT-IN EFFECTS");
 
   // Register preset weather effects
-  m_effectDefinitions["Rain"] = createRainEffect();
-  m_effectDefinitions["HeavyRain"] = createHeavyRainEffect();
-  m_effectDefinitions["Snow"] = createSnowEffect();
-  m_effectDefinitions["HeavySnow"] = createHeavySnowEffect();
-  m_effectDefinitions["Fog"] = createFogEffect();
-  m_effectDefinitions["Cloudy"] = createCloudyEffect();
+  m_effectDefinitions[ParticleEffectType::Rain] = createRainEffect();
+  m_effectDefinitions[ParticleEffectType::HeavyRain] = createHeavyRainEffect();
+  m_effectDefinitions[ParticleEffectType::Snow] = createSnowEffect();
+  m_effectDefinitions[ParticleEffectType::HeavySnow] = createHeavySnowEffect();
+  m_effectDefinitions[ParticleEffectType::Fog] = createFogEffect();
+  m_effectDefinitions[ParticleEffectType::Cloudy] = createCloudyEffect();
 
   // Register independent particle effects
-  m_effectDefinitions["Fire"] = createFireEffect();
-  m_effectDefinitions["Smoke"] = createSmokeEffect();
-  m_effectDefinitions["Sparks"] = createSparksEffect();
+  m_effectDefinitions[ParticleEffectType::Fire] = createFireEffect();
+  m_effectDefinitions[ParticleEffectType::Smoke] = createSmokeEffect();
+  m_effectDefinitions[ParticleEffectType::Sparks] = createSparksEffect();
 
   PARTICLE_INFO("Built-in effects registered: " +
                 std::to_string(m_effectDefinitions.size()));
+
   for (const auto &pair : m_effectDefinitions) {
-    PARTICLE_INFO("  - Effect: " + pair.first);
+    PARTICLE_INFO("  - Effect: " + effectTypeToString(pair.first));
   }
 
   // More effects can be added as needed
@@ -1123,7 +1135,7 @@ ParticleEffectDefinition ParticleManager::createFogEffect() {
 }
 
 ParticleEffectDefinition ParticleManager::createCloudyEffect() {
-  ParticleEffectDefinition cloudy("Cloudy", ParticleEffectType::Fog);
+  ParticleEffectDefinition cloudy("Cloudy", ParticleEffectType::Cloudy);
   // No initial position - will be set by triggerWeatherEffect
   cloudy.emitterConfig.direction = Vector2D(
       1.0f, 0.0f); // Horizontal movement for clouds sweeping across sky
@@ -1350,7 +1362,7 @@ void ParticleManager::updateEffectInstances(float deltaTime) {
     instance.emissionTimer += deltaTime;
 
     // Find effect definition to get emission rate
-    auto defIt = m_effectDefinitions.find(instance.effectName);
+    auto defIt = m_effectDefinitions.find(instance.effectType);
     if (defIt != m_effectDefinitions.end()) {
       const auto &config = defIt->second.emitterConfig;
 
@@ -1642,8 +1654,7 @@ void ParticleManager::createParticleForEffect(
       effectDef.type == ParticleEffectType::Snow ||
       effectDef.type == ParticleEffectType::HeavySnow ||
       effectDef.type == ParticleEffectType::Fog ||
-      (effectDef.type == ParticleEffectType::Fog &&
-       effectDef.name == "Cloudy")) {
+      effectDef.type == ParticleEffectType::Cloudy) {
 
     // Spread particles across full screen width (much wider for rain/snow)
     float screenWidth = 3200.0f; // Much wider to ensure full coverage
@@ -1653,17 +1664,15 @@ void ParticleManager::createParticleForEffect(
 
     // Different Y positioning for different effect types
     if (effectDef.type == ParticleEffectType::Fog) {
-      if (effectDef.name == "Cloudy") {
-        // Clouds spread across full screen height for layered effect
-        float screenHeight = 1080.0f; // Full screen height
-        float randomY = (static_cast<float>(rand()) / RAND_MAX) * screenHeight;
-        spawnPosition.setY(randomY);
-      } else {
-        // Fog spreads across full screen height for complete coverage
-        float screenHeight = 1080.0f; // Full screen height
-        float randomY = (static_cast<float>(rand()) / RAND_MAX) * screenHeight;
-        spawnPosition.setY(randomY);
-      }
+      // Fog spreads across full screen height for complete coverage
+      float screenHeight = 1080.0f; // Full screen height
+      float randomY = (static_cast<float>(rand()) / RAND_MAX) * screenHeight;
+      spawnPosition.setY(randomY);
+    } else if (effectDef.type == ParticleEffectType::Cloudy) {
+      // Clouds spread across full screen height for layered effect
+      float screenHeight = 1080.0f; // Full screen height
+      float randomY = (static_cast<float>(rand()) / RAND_MAX) * screenHeight;
+      spawnPosition.setY(randomY);
     } else {
       // Rain/snow need FULL SCREEN COVERAGE immediately
       // Spawn particles across the entire screen height for instant coverage
@@ -1753,9 +1762,10 @@ void ParticleManager::createParticleForEffect(
         (static_cast<float>(rand()) / RAND_MAX - 0.5f) * 0.5f;
     angle += angularVariation;
 
-  } else if (effectDef.type == ParticleEffectType::Fog) {
-    // Fog has gentle horizontal drift
-    if (effectDef.name == "Cloudy") {
+  } else if (effectDef.type == ParticleEffectType::Fog ||
+             effectDef.type == ParticleEffectType::Cloudy) {
+    // Fog and clouds have gentle horizontal drift
+    if (effectDef.type == ParticleEffectType::Cloudy) {
       // Clouds move horizontally - use 0 degrees for rightward movement
       angle =
           0.0f +
@@ -1793,22 +1803,19 @@ void ParticleManager::createParticleForEffect(
         static_cast<uint8_t>(240 + naturalRand * 15); // 240-255 (very opaque)
     request.color = 0xFFFFFF00 | alphaVariation;
   } else if (effectDef.type == ParticleEffectType::Fog) {
-    if (effectDef.name == "Cloudy") {
-      // Natural cloud color variation (like old system)
-      uint8_t grayLevel =
-          static_cast<uint8_t>(240 + naturalRand * 15);             // 240-255
-      uint8_t alpha = static_cast<uint8_t>(180 + naturalRand * 75); // 180-255
-      request.color =
-          (grayLevel << 24) | (grayLevel << 16) | (grayLevel << 8) | alpha;
-    } else {
-      // Natural fog variation with much more transparency
-      uint8_t grayLevel =
-          static_cast<uint8_t>(200 + naturalRand * 30); // 200-230 (lighter)
-      uint8_t alpha = static_cast<uint8_t>(
-          40 + naturalRand * 40); // 40-80 (much more transparent)
-      request.color =
-          (grayLevel << 24) | (grayLevel << 16) | (grayLevel << 8) | alpha;
-    }
+    // Natural fog variation with much more transparency
+    uint8_t grayLevel =
+        static_cast<uint8_t>(200 + naturalRand * 30); // 200-230 (lighter)
+    uint8_t alpha = static_cast<uint8_t>(
+        40 + naturalRand * 40); // 40-80 (much more transparent)
+    request.color =
+        (grayLevel << 24) | (grayLevel << 16) | (grayLevel << 8) | alpha;
+  } else if (effectDef.type == ParticleEffectType::Cloudy) {
+    // Natural cloud color variation
+    uint8_t grayLevel = static_cast<uint8_t>(240 + naturalRand * 15); // 240-255
+    uint8_t alpha = static_cast<uint8_t>(180 + naturalRand * 75);     // 180-255
+    request.color =
+        (grayLevel << 24) | (grayLevel << 16) | (grayLevel << 8) | alpha;
   } else if (effectDef.type == ParticleEffectType::Fire) {
     // Natural fire color generation with realistic color mixing
     if (naturalRand < 0.3f) {
@@ -1858,6 +1865,7 @@ void ParticleManager::createParticleForEffect(
 
   request.textureIndex = getTextureIndex(config.textureID);
   request.blendMode = config.blendMode;
+  request.effectType = effectDef.type;
 
   // Submit to lock-free ring buffer
   m_storage.submitNewParticle(request);
@@ -1971,4 +1979,59 @@ void ParticleManager::setThreadingThreshold(size_t threshold) {
   m_threadingThreshold = threshold;
   PARTICLE_INFO("Threading threshold set to " + std::to_string(threshold) +
                 " particles");
+}
+
+// Helper methods for enum-based classification system
+ParticleEffectType
+ParticleManager::weatherStringToEnum(const std::string &weatherType,
+                                     float intensity) const {
+  if (weatherType == "Rainy") {
+    return (intensity > 0.7f) ? ParticleEffectType::HeavyRain
+                              : ParticleEffectType::Rain;
+  } else if (weatherType == "Snowy") {
+    return (intensity > 0.7f) ? ParticleEffectType::HeavySnow
+                              : ParticleEffectType::Snow;
+  } else if (weatherType == "Foggy") {
+    return ParticleEffectType::Fog;
+  } else if (weatherType == "Cloudy") {
+    return ParticleEffectType::Cloudy;
+  } else if (weatherType == "Stormy") {
+    return ParticleEffectType::HeavyRain; // Stormy always uses heavy rain
+  } else if (weatherType == "HeavyRain") {
+    return ParticleEffectType::HeavyRain;
+  } else if (weatherType == "HeavySnow") {
+    return ParticleEffectType::HeavySnow;
+  }
+
+  // Default/unknown weather type
+  return ParticleEffectType::Custom;
+}
+
+std::string ParticleManager::effectTypeToString(ParticleEffectType type) const {
+  switch (type) {
+  case ParticleEffectType::Rain:
+    return "Rain";
+  case ParticleEffectType::HeavyRain:
+    return "HeavyRain";
+  case ParticleEffectType::Snow:
+    return "Snow";
+  case ParticleEffectType::HeavySnow:
+    return "HeavySnow";
+  case ParticleEffectType::Fog:
+    return "Fog";
+  case ParticleEffectType::Cloudy:
+    return "Cloudy";
+  case ParticleEffectType::Fire:
+    return "Fire";
+  case ParticleEffectType::Smoke:
+    return "Smoke";
+  case ParticleEffectType::Sparks:
+    return "Sparks";
+  case ParticleEffectType::Magic:
+    return "Magic";
+  case ParticleEffectType::Custom:
+    return "Custom";
+  default:
+    return "Unknown";
+  }
 }

@@ -798,10 +798,14 @@ bool EventManager::createParticleEffectEvent(const std::string &name,
                                              float duration,
                                              const std::string &groupTag) {
   try {
+    // Convert string effect name to ParticleEffectType enum
+    ParticleEffectType effectType =
+        ParticleEffectEvent::stringToEffectType(effectName);
+
     // Create ParticleEffectEvent directly (no factory needed for this simple
     // event)
     auto event = std::make_shared<ParticleEffectEvent>(
-        name, effectName, x, y, intensity, duration, groupTag);
+        name, effectType, x, y, intensity, duration, groupTag);
     // Note: std::make_shared never returns nullptr for successful allocation
     // If allocation fails, it throws std::bad_alloc instead
 

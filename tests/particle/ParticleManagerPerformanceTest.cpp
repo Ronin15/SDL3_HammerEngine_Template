@@ -6,6 +6,7 @@
 #define BOOST_TEST_MODULE ParticleManagerPerformanceTest
 #include <boost/test/unit_test.hpp>
 
+#include "events/ParticleEffectEvent.hpp"
 #include "managers/ParticleManager.hpp"
 #include "utils/Vector2D.hpp"
 #include <chrono>
@@ -47,8 +48,9 @@ struct ParticleManagerPerformanceFixture {
   }
 
   // Helper to create particles for performance testing
-  void createParticles(size_t targetCount,
-                       const std::string &effectType = "Rain") {
+  void
+  createParticles(size_t targetCount,
+                  ParticleEffectType effectType = ParticleEffectType::Rain) {
     Vector2D basePosition(960, 100); // Center-top
 
     // Reset performance stats for clean measurement
@@ -145,7 +147,7 @@ BOOST_FIXTURE_TEST_CASE(TestParticleCreationThroughput,
   double creationTime = measureExecutionTime([&]() {
     for (int i = 0; i < NUM_EFFECTS; ++i) {
       Vector2D pos(testPosition.getX() + i * 10, testPosition.getY());
-      manager->playEffect("Rain", pos, 1.0f);
+      manager->playEffect(ParticleEffectType::Rain, pos, 1.0f);
     }
   });
 
@@ -185,7 +187,7 @@ BOOST_FIXTURE_TEST_CASE(TestMemoryUsageScaling,
     for (int i = 0; i < 10; ++i) {
       Vector2D pos(testPosition.getX() + batch * 100 + i * 10,
                    testPosition.getY());
-      manager->playEffect("Rain", pos, 1.0f);
+      manager->playEffect(ParticleEffectType::Rain, pos, 1.0f);
     }
 
     // Update to create particles
@@ -287,7 +289,7 @@ BOOST_FIXTURE_TEST_CASE(TestEffectManagementPerformance,
     // Create effects
     for (int i = 0; i < NUM_EFFECTS; ++i) {
       Vector2D pos(testPosition.getX() + i * 5, testPosition.getY());
-      uint32_t id = manager->playEffect("Rain", pos, 0.5f);
+      uint32_t id = manager->playEffect(ParticleEffectType::Rain, pos, 0.5f);
       if (id != 0) {
         effectIds.push_back(id);
       }
@@ -368,10 +370,28 @@ BOOST_FIXTURE_TEST_CASE(TestDifferentEffectTypesPerformance,
                         ParticleManagerPerformanceFixture) {
   Vector2D testPosition(500, 300);
 
-  std::vector<std::string> effectTypes = {"Rain", "Snow", "Fog"};
+  std::vector<ParticleEffectType> effectTypes = {ParticleEffectType::Rain,
+                                                 ParticleEffectType::Snow,
+                                                 ParticleEffectType::Fog};
 
   for (const auto &effectType : effectTypes) {
-    std::cout << "\nTesting " << effectType
+    std::string effectName;
+    switch (effectType) {
+    case ParticleEffectType::Rain:
+      effectName = "Rain";
+      break;
+    case ParticleEffectType::Snow:
+      effectName = "Snow";
+      break;
+    case ParticleEffectType::Fog:
+      effectName = "Fog";
+      break;
+    default:
+      effectName = "Unknown";
+      break;
+    }
+
+    std::cout << "\nTesting " << effectName
               << " effect performance:" << std::endl;
 
     // Clean up previous effects
