@@ -60,7 +60,10 @@ declare -A PROFILE_TESTS=(
 # Performance tracking
 TESTS_PROFILED=0
 TESTS_FAILED=0
-HOTSPOTS_FOUND=0
+CRITICAL_HOTSPOTS=0
+MODERATE_TARGETS=0
+MINOR_OPPORTUNITIES=0
+TOTAL_FUNCTIONS_ANALYZED=0
 
 echo -e "${BOLD}${PURPLE}╔══════════════════════════════════════════════════════════════╗${NC}"
 echo -e "${BOLD}${PURPLE}║             SDL3 HammerEngine Template                      ║${NC}"
@@ -111,26 +114,32 @@ run_callgrind_profiling() {
     # Show progress indicator
     echo -e "${YELLOW}  ⏳ Running Callgrind function profiling (5-15 minutes)...${NC}"
     
-    # Optimize callgrind options for AI behavior analysis
+    # Optimize callgrind options for practical profiling
     local callgrind_opts=""
     callgrind_opts+="--tool=callgrind "
     callgrind_opts+="--callgrind-out-file=${callgrind_out} "
     callgrind_opts+="--collect-jumps=yes "
     callgrind_opts+="--collect-atstart=yes "
     callgrind_opts+="--instr-atstart=yes "
-    callgrind_opts+="--compress-strings=no "
-    callgrind_opts+="--compress-pos=no "
+    callgrind_opts+="--compress-strings=yes "
+    callgrind_opts+="--compress-pos=yes "
+    callgrind_opts+="--separate-callers=3 "  # Break false cycles in callback code
     
-    # Add specific optimizations for AI behavior tests
+    # Add specific optimizations for different test types
     if [[ "${test_name}" == *"ai_"* || "${test_name}" == *"behavior"* ]]; then
         echo -e "${YELLOW}    Optimizing for AI behavior analysis...${NC}"
         # Focus on function calls rather than cache simulation for behavior analysis
         callgrind_opts+="--cache-sim=no "
         callgrind_opts+="--branch-sim=no "
-    else
-        # For performance tests, include cache simulation
+    elif [[ "${test_name}" == *"scaling"* || "${test_name}" == *"performance"* ]]; then
+        echo -e "${YELLOW}    Optimizing for performance analysis...${NC}"
+        # Include cache simulation for performance-critical tests
         callgrind_opts+="--cache-sim=yes "
         callgrind_opts+="--branch-sim=yes "
+    else
+        # For general tests, focus on function profiling
+        callgrind_opts+="--cache-sim=no "
+        callgrind_opts+="--branch-sim=no "
     fi
     
     # Run targeted test for scaling benchmarks to reduce execution time
@@ -197,7 +206,7 @@ run_callgrind_profiling() {
     return 0
 }
 
-# Function to analyze callgrind results and extract key metrics
+# Function to analyze callgrind results and extract actionable metrics
 analyze_callgrind_results() {
     local test_name="$1"
     local callgrind_out="$2" 
@@ -205,6 +214,9 @@ analyze_callgrind_results() {
     
     # Extract key metrics from summary if available
     if [[ -f "${summary_file}" ]]; then
+        local critical_functions=0
+        local moderate_functions=0
+        local minor_functions=0
         local top_function=""
         local total_instructions=""
         local function_count=""
@@ -214,48 +226,101 @@ analyze_callgrind_results() {
             top_function=$(grep -A 1 "Ir" "${summary_file}" | tail -1 | awk '{print $2}' 2>/dev/null || echo "N/A")
             total_instructions=$(grep "^PROGRAM TOTALS" "${summary_file}" | awk '{print $2}' 2>/dev/null || echo "N/A")
             function_count=$(grep -c "^[[:space:]]*[0-9]" "${summary_file}" 2>/dev/null || echo "N/A")
-        fi
-        
-        # Identify performance hotspots (functions consuming >5% of instructions)
-        local hotspot_count=0
-        if [[ -f "${summary_file}" ]]; then
-            # Count functions with significant instruction percentages
-            hotspot_count=$(awk '/^[[:space:]]*[0-9]/ { 
-                # Extract percentage from first numeric column
+            
+            # Analyze function performance distribution with realistic thresholds
+            critical_functions=$(awk '/^[[:space:]]*[0-9]/ { 
                 gsub(/[^0-9.]/, "", $1)
-                if ($1 > 5.0) count++
+                if ($1 >= 10.0) count++
+            } END { print count+0 }' "${summary_file}" 2>/dev/null || echo "0")
+            
+            moderate_functions=$(awk '/^[[:space:]]*[0-9]/ { 
+                gsub(/[^0-9.]/, "", $1)
+                if ($1 >= 2.0 && $1 < 10.0) count++
+            } END { print count+0 }' "${summary_file}" 2>/dev/null || echo "0")
+            
+            minor_functions=$(awk '/^[[:space:]]*[0-9]/ { 
+                gsub(/[^0-9.]/, "", $1)
+                if ($1 >= 1.0 && $1 < 2.0) count++
             } END { print count+0 }' "${summary_file}" 2>/dev/null || echo "0")
         fi
         
-        HOTSPOTS_FOUND=$((HOTSPOTS_FOUND + hotspot_count))
+        CRITICAL_HOTSPOTS=$((CRITICAL_HOTSPOTS + critical_functions))
+        MODERATE_TARGETS=$((MODERATE_TARGETS + moderate_functions))
+        MINOR_OPPORTUNITIES=$((MINOR_OPPORTUNITIES + minor_functions))
+        TOTAL_FUNCTIONS_ANALYZED=$((TOTAL_FUNCTIONS_ANALYZED + function_count))
         
-        # Display results with assessment
+        # Generate actionable performance assessment
         local assessment="UNKNOWN"
         local color="${YELLOW}"
+        local recommendation=""
         
-        if [[ "${hotspot_count}" -eq 0 ]]; then
-            assessment="EXCELLENT"
+        if [[ "${critical_functions}" -eq 0 && "${moderate_functions}" -le 2 ]]; then
+            assessment="WELL_OPTIMIZED"
             color="${GREEN}"
-        elif [[ "${hotspot_count}" -le 3 ]]; then
-            assessment="GOOD"
+            recommendation="Good performance profile"
+        elif [[ "${critical_functions}" -eq 0 && "${moderate_functions}" -le 5 ]]; then
+            assessment="GOOD_PERFORMANCE"
             color="${CYAN}"
-        elif [[ "${hotspot_count}" -le 7 ]]; then
-            assessment="AVERAGE"
+            recommendation="Minor optimization opportunities"
+        elif [[ "${critical_functions}" -le 2 && "${moderate_functions}" -le 8 ]]; then
+            assessment="MODERATE_PERFORMANCE"
             color="${YELLOW}"
+            recommendation="Several optimization targets identified"
         else
-            assessment="NEEDS_OPTIMIZATION"
+            assessment="OPTIMIZATION_NEEDED"
             color="${RED}"
+            recommendation="Multiple critical hotspots require attention"
         fi
         
-        echo -e "  ${color}${assessment}${NC} - Hotspots: ${hotspot_count}, Functions: ${function_count}"
+        # Display actionable results
+        echo -e "  ${color}${assessment}${NC} - Critical: ${critical_functions}, Moderate: ${moderate_functions}, Minor: ${minor_functions}"
+        echo -e "    ${recommendation}"
         if [[ "${top_function}" != "N/A" && "${top_function}" != "" ]]; then
             echo -e "    Top Function: ${top_function}"
         fi
         if [[ "${total_instructions}" != "N/A" && "${total_instructions}" != "" ]]; then
             echo -e "    Total Instructions: ${total_instructions}"
         fi
+        
+        # Generate top functions analysis for actionable insights
+        generate_function_analysis "${test_name}" "${summary_file}"
     else
         echo -e "${YELLOW}  Analysis complete - Raw data available${NC}"
+    fi
+}
+
+# Function to generate detailed function analysis
+generate_function_analysis() {
+    local test_name="$1"
+    local summary_file="$2"
+    local analysis_file="${RESULTS_DIR}/summaries/${test_name}_function_analysis.txt"
+    
+    if [[ -f "${summary_file}" ]]; then
+        echo "# Function Performance Analysis for ${test_name}" > "${analysis_file}"
+        echo "Generated: $(date)" >> "${analysis_file}"
+        echo "" >> "${analysis_file}"
+        
+        echo "## Critical Hotspots (≥10% of instructions)" >> "${analysis_file}"
+        awk '/^[[:space:]]*[0-9]/ { 
+            gsub(/[^0-9.]/, "", $1)
+            if ($1 >= 10.0) print "- " $0
+        }' "${summary_file}" >> "${analysis_file}" 2>/dev/null || echo "None found" >> "${analysis_file}"
+        echo "" >> "${analysis_file}"
+        
+        echo "## Moderate Optimization Targets (2-10% of instructions)" >> "${analysis_file}"
+        awk '/^[[:space:]]*[0-9]/ { 
+            gsub(/[^0-9.]/, "", $1)
+            if ($1 >= 2.0 && $1 < 10.0) print "- " $0
+        }' "${summary_file}" >> "${analysis_file}" 2>/dev/null || echo "None found" >> "${analysis_file}"
+        echo "" >> "${analysis_file}"
+        
+        echo "## Minor Opportunities (1-2% of instructions)" >> "${analysis_file}"
+        awk '/^[[:space:]]*[0-9]/ { 
+            gsub(/[^0-9.]/, "", $1)
+            if ($1 >= 1.0 && $1 < 2.0) print "- " $0
+        }' "${summary_file}" >> "${analysis_file}" 2>/dev/null || echo "None found" >> "${analysis_file}"
+        
+        echo "Function analysis saved to: ${analysis_file}"
     fi
 }
 
@@ -285,34 +350,46 @@ This comprehensive callgrind analysis provides function-level performance profil
 |----------|--------|------------|
 | **Tests Profiled** | ${TESTS_PROFILED} | $([ $TESTS_PROFILED -ge 6 ] && echo "Comprehensive Coverage" || echo "Partial Coverage") |
 | **Tests Failed** | ${TESTS_FAILED} | $([ $TESTS_FAILED -eq 0 ] && echo "Perfect Execution" || echo "Some Issues") |
-| **Performance Hotspots** | ${HOTSPOTS_FOUND} | $([ $HOTSPOTS_FOUND -le 10 ] && echo "Well Optimized" || echo "Optimization Opportunities") |
+| **Critical Hotspots** | ${CRITICAL_HOTSPOTS} | $([ $CRITICAL_HOTSPOTS -eq 0 ] && echo "No Critical Issues" || echo "Needs Immediate Attention") |
+| **Moderate Targets** | ${MODERATE_TARGETS} | $([ $MODERATE_TARGETS -le 5 ] && echo "Few Targets" || echo "Multiple Opportunities") |
+| **Minor Opportunities** | ${MINOR_OPPORTUNITIES} | $([ $MINOR_OPPORTUNITIES -le 10 ] && echo "Limited Scope" || echo "Many Small Gains") |
+| **Total Functions** | ${TOTAL_FUNCTIONS_ANALYZED} | Analysis Coverage |
 
-### Performance Assessment
+### Realistic Performance Assessment
 
 EOF
 
-    if [[ $TESTS_FAILED -eq 0 && $HOTSPOTS_FOUND -le 15 ]]; then
+    if [[ $TESTS_FAILED -eq 0 && $CRITICAL_HOTSPOTS -eq 0 && $MODERATE_TARGETS -le 3 ]]; then
         cat >> "${FINAL_REPORT}" << EOF
-🏆 **EXCEPTIONAL PROFILING RESULTS** - World-class function-level performance
+🎯 **WELL-OPTIMIZED PERFORMANCE** - Strong function-level performance
 - Zero profiling failures
-- Minimal performance hotspots
-- Excellent function distribution
-- Ready for production deployment
+- No critical performance hotspots (≥10% instruction usage)
+- Minimal moderate optimization targets (2-10% instruction usage)
+- Ready for production with minor tuning opportunities
 EOF
-    elif [[ $TESTS_FAILED -le 1 && $HOTSPOTS_FOUND -le 25 ]]; then
+    elif [[ $TESTS_FAILED -le 1 && $CRITICAL_HOTSPOTS -le 1 && $MODERATE_TARGETS -le 8 ]]; then
         cat >> "${FINAL_REPORT}" << EOF
-✅ **EXCELLENT PROFILING RESULTS** - High-quality function performance
+✅ **GOOD PERFORMANCE PROFILE** - Solid function performance with clear targets
 - Minimal profiling issues
-- Manageable hotspot count
-- Good function optimization
-- Minor tuning recommended
+- Few critical hotspots requiring attention
+- Manageable number of moderate optimization targets
+- Specific optimization opportunities identified
+EOF
+    elif [[ $CRITICAL_HOTSPOTS -le 3 && $MODERATE_TARGETS -le 15 ]]; then
+        cat >> "${FINAL_REPORT}" << EOF
+⚠️ **OPTIMIZATION OPPORTUNITIES IDENTIFIED** - Performance improvements available
+- Several critical hotspots consuming significant instruction cycles
+- Multiple moderate optimization targets identified
+- Clear roadmap for performance improvements available
+- Prioritized optimization recommendations provided
 EOF
     else
         cat >> "${FINAL_REPORT}" << EOF
-⚠️ **GOOD PROFILING RESULTS** - Performance optimization opportunities identified
-- Some profiling challenges encountered
-- Multiple optimization opportunities
-- Targeted improvements recommended
+🔧 **PERFORMANCE OPTIMIZATION NEEDED** - Multiple improvement areas identified
+- Multiple critical hotspots requiring immediate attention
+- Significant moderate optimization opportunities
+- Performance bottlenecks clearly identified
+- Comprehensive optimization strategy recommended
 EOF
     fi
 
@@ -395,22 +472,35 @@ EOF
 
     cat >> "${FINAL_REPORT}" << EOF
 
-## Optimization Recommendations
+## Actionable Optimization Recommendations
 
-### Function-Level Optimizations
-1. **Hotspot Analysis**: Review functions consuming >5% of total instructions
-2. **Call Graph Optimization**: Analyze call patterns for unnecessary overhead
-3. **AI Behavior Tuning**: Focus on behavior update loops and decision trees
-4. **Event Processing**: Optimize event dispatch and handler efficiency
-5. **Resource Management**: Analyze resource loading, caching, and lifecycle performance
+### Priority 1: Critical Hotspots (≥10% instruction usage)
+$([ $CRITICAL_HOTSPOTS -eq 0 ] && echo "✅ No critical hotspots identified - excellent performance profile" || echo "🔴 ${CRITICAL_HOTSPOTS} critical hotspot(s) found - immediate optimization required")
 
-### Advanced Profiling Techniques
-1. **Custom Instrumentation**: Add callgrind control calls for targeted profiling
-2. **Comparative Analysis**: Profile before/after optimization changes
-3. **Memory Access Patterns**: Combine with cachegrind for comprehensive analysis
-4. **Multi-threaded Profiling**: Analyze thread-specific performance characteristics
+### Priority 2: Moderate Targets (2-10% instruction usage)  
+$([ $MODERATE_TARGETS -eq 0 ] && echo "✅ No moderate targets identified" || echo "🟡 ${MODERATE_TARGETS} moderate target(s) found - good optimization opportunities")
 
-## Data Analysis Tools
+### Priority 3: Minor Opportunities (1-2% instruction usage)
+$([ $MINOR_OPPORTUNITIES -eq 0 ] && echo "✅ No minor opportunities identified" || echo "🟢 ${MINOR_OPPORTUNITIES} minor opportunit(ies) found - potential for small gains")
+
+### Function-Level Optimization Strategy
+1. **Critical Hotspots**: Focus on functions using ≥10% of total instructions
+   - These represent the highest-impact optimization opportunities
+   - Typical targets: main game loops, rendering functions, AI update cycles
+   - Expected impact: 5-50% performance improvement per function
+
+2. **Moderate Targets**: Review functions using 2-10% of instructions
+   - Good ROI optimization opportunities
+   - Often involve algorithmic improvements or caching strategies
+   - Expected impact: 1-10% performance improvement per function
+
+3. **Algorithm-Specific Optimizations**:
+   - **AI Behavior Systems**: Look for expensive decision trees and update loops
+   - **Event Processing**: Optimize event dispatch and handler efficiency  
+   - **Resource Management**: Focus on loading, caching, and lifecycle costs
+   - **Particle Systems**: Optimize update and rendering batch operations
+
+### Performance Analysis Tools
 
 ### Viewing Callgrind Results
 \`\`\`bash
@@ -424,10 +514,13 @@ kcachegrind ${RESULTS_DIR}/raw/[test_name]_callgrind.out
 callgrind_annotate --auto=yes ${RESULTS_DIR}/raw/[test_name]_callgrind.out
 
 # AI-focused analysis
-callgrind_annotate --include="*Behavior*:*AI*:*Manager*" ${RESULTS_DIR}/raw/[test_name]_callgrind.out
+callgrind_annotate --include="*Behavior*:*AI*:*Manager*" \${RESULTS_DIR}/raw/[test_name]_callgrind.out
 
-# Resource management analysis
-callgrind_annotate --include="*Resource*:*Inventory*:*Template*" ${RESULTS_DIR}/raw/[test_name]_callgrind.out
+# Resource management analysis  
+callgrind_annotate --include="*Resource*:*Inventory*:*Template*" \${RESULTS_DIR}/raw/[test_name]_callgrind.out
+
+# Top 10 functions by instruction count (most actionable)
+callgrind_annotate --auto=no --threshold=99 \${RESULTS_DIR}/raw/[test_name]_callgrind.out | head -20
 \`\`\`
 
 ### Integration with Existing Analysis
@@ -460,7 +553,7 @@ This callgrind profiling complements existing valgrind tools:
 
 ---
 
-**Conclusion**: The SDL3 HammerEngine Template demonstrates $([ $HOTSPOTS_FOUND -le 15 ] && echo "exceptional function-level performance" || echo "solid function-level performance with optimization opportunities"), making it $([ $TESTS_FAILED -eq 0 ] && echo "immediately suitable for production deployment" || echo "suitable for deployment after addressing identified optimizations").
+**Conclusion**: The SDL3 HammerEngine Template demonstrates $([ $CRITICAL_HOTSPOTS -eq 0 ] && echo "well-optimized function-level performance with no critical bottlenecks" || echo "identifiable performance optimization opportunities with ${CRITICAL_HOTSPOTS} critical hotspot(s)"), making it $([ $TESTS_FAILED -eq 0 ] && [ $CRITICAL_HOTSPOTS -eq 0 ] && echo "suitable for production deployment" || echo "ready for targeted performance optimization").
 
 ## Integration Notes
 
@@ -546,18 +639,23 @@ display_profiling_summary() {
     echo -e "${BOLD}Profiling Summary:${NC}"
     echo -e "  Tests Profiled: ${GREEN}${TESTS_PROFILED}${NC}"
     echo -e "  Tests Failed: ${RED}${TESTS_FAILED}${NC}"
-    echo -e "  Performance Hotspots: ${YELLOW}${HOTSPOTS_FOUND}${NC}"
+    echo -e "  Critical Hotspots (≥10%): ${RED}${CRITICAL_HOTSPOTS}${NC}"
+    echo -e "  Moderate Targets (2-10%): ${YELLOW}${MODERATE_TARGETS}${NC}"
+    echo -e "  Minor Opportunities (1-2%): ${CYAN}${MINOR_OPPORTUNITIES}${NC}"
     echo ""
     
-    if [[ $TESTS_FAILED -eq 0 && $HOTSPOTS_FOUND -le 15 ]]; then
-        echo -e "${BOLD}${GREEN}🏆 EXCEPTIONAL FUNCTION PROFILING ACHIEVED! 🏆${NC}"
-        echo -e "${GREEN}Your engine demonstrates world-class function-level performance optimization.${NC}"
-    elif [[ $TESTS_FAILED -le 1 && $HOTSPOTS_FOUND -le 25 ]]; then
-        echo -e "${BOLD}${CYAN}✅ EXCELLENT FUNCTION PROFILING ACHIEVED! ✅${NC}"
-        echo -e "${CYAN}Your engine shows high-quality function performance with minimal hotspots.${NC}"
+    if [[ $TESTS_FAILED -eq 0 && $CRITICAL_HOTSPOTS -eq 0 && $MODERATE_TARGETS -le 3 ]]; then
+        echo -e "${BOLD}${GREEN}🎯 WELL-OPTIMIZED PERFORMANCE ACHIEVED! 🎯${NC}"
+        echo -e "${GREEN}Your engine demonstrates strong function-level performance optimization.${NC}"
+    elif [[ $TESTS_FAILED -le 1 && $CRITICAL_HOTSPOTS -le 1 && $MODERATE_TARGETS -le 8 ]]; then
+        echo -e "${BOLD}${CYAN}✅ GOOD PERFORMANCE PROFILE ACHIEVED! ✅${NC}"
+        echo -e "${CYAN}Your engine shows solid performance with clear optimization targets.${NC}"
+    elif [[ $CRITICAL_HOTSPOTS -le 3 && $MODERATE_TARGETS -le 15 ]]; then
+        echo -e "${BOLD}${YELLOW}⚠️ OPTIMIZATION OPPORTUNITIES IDENTIFIED ⚠️${NC}"
+        echo -e "${YELLOW}Your engine has identifiable performance improvement opportunities.${NC}"
     else
-        echo -e "${BOLD}${YELLOW}⚠️ GOOD PROFILING WITH OPTIMIZATION OPPORTUNITIES ⚠️${NC}"
-        echo -e "${YELLOW}Your engine has solid performance with identified improvement areas.${NC}"
+        echo -e "${BOLD}${RED}🔧 PERFORMANCE OPTIMIZATION NEEDED 🔧${NC}"
+        echo -e "${RED}Your engine has multiple areas requiring performance attention.${NC}"
     fi
     
     echo ""
@@ -565,7 +663,8 @@ display_profiling_summary() {
     echo -e "📊 Profiling Report: ${CYAN}${FINAL_REPORT}${NC}"
     echo -e "📁 Raw Callgrind Data: ${CYAN}${RESULTS_DIR}/raw/${NC}"
     echo -e "📋 Function Summaries: ${CYAN}${RESULTS_DIR}/summaries/${NC}"
-    echo -e "🔍 AI Annotations: ${CYAN}${RESULTS_DIR}/annotations/${NC}"
+    echo -e "🔍 Function Analysis: ${CYAN}${RESULTS_DIR}/summaries/*_function_analysis.txt${NC}"
+    echo -e "🎯 AI Annotations: ${CYAN}${RESULTS_DIR}/annotations/${NC}"
     echo ""
     echo -e "${BOLD}Analysis Tools:${NC}"
     echo -e "🖥️  KCacheGrind: ${CYAN}kcachegrind ${RESULTS_DIR}/raw/[test]_callgrind.out${NC}"

@@ -343,6 +343,11 @@ private:
       m_behaviorTemplates;
   std::unordered_map<std::string, BehaviorType> m_behaviorTypeMap;
 
+  // Performance optimization: cache frequently accessed behaviors and types
+  mutable std::unordered_map<std::string, std::shared_ptr<AIBehavior>>
+      m_behaviorCache;
+  mutable std::unordered_map<std::string, BehaviorType> m_behaviorTypeCache;
+
   // Performance stats per behavior type
   std::array<AIPerformanceStats, static_cast<size_t>(BehaviorType::COUNT)>
       m_behaviorStats;

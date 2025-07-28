@@ -87,8 +87,10 @@ bool InventoryComponent::addResource(const std::string &resourceId,
     remainingQuantity -= toAdd;
   }
 
-  // Notify about the change
+  // Notify about the change and update cache incrementally
   int newQuantity = getResourceQuantityUnlocked(resourceId);
+  int actualChange = newQuantity - oldQuantity;
+  updateQuantityCache(resourceId, actualChange);
   notifyResourceChange(resourceId, oldQuantity, newQuantity);
 
   return true;
@@ -123,8 +125,10 @@ bool InventoryComponent::removeResource(const std::string &resourceId,
     }
   }
 
-  // Notify about the change
+  // Notify about the change and update cache incrementally
   int newQuantity = getResourceQuantityUnlocked(resourceId);
+  int actualChange = newQuantity - oldQuantity;
+  updateQuantityCache(resourceId, actualChange);
   notifyResourceChange(resourceId, oldQuantity, newQuantity);
 
   return remainingToRemove == 0;
@@ -169,6 +173,10 @@ void InventoryComponent::clearInventory() {
   for (auto &slot : m_slots) {
     slot.clear();
   }
+
+  // Clear the quantity cache and mark as clean
+  m_resourceQuantityCache.clear();
+  m_cacheNeedsRebuild = false;
 }
 
 size_t InventoryComponent::getUsedSlots() const {
@@ -272,7 +280,8 @@ bool InventoryComponent::setSlot(size_t slotIndex,
     m_slots[slotIndex] = InventorySlot(resourceId, quantity);
   }
 
-  // Notify about changes
+  // Notify about changes and mark cache for rebuild (complex operation)
+  m_cacheNeedsRebuild = true;
   if (!oldResourceId.empty() && oldResourceId != resourceId) {
     int newOldQuantity = getResourceQuantityUnlocked(oldResourceId);
     notifyResourceChange(oldResourceId, oldQuantity, newOldQuantity);
@@ -458,15 +467,16 @@ bool InventoryComponent::canAddResource(const std::string &resourceId,
 
 int InventoryComponent::getResourceQuantityUnlocked(
     const std::string &resourceId) const {
-  int totalQuantity = 0;
-  for (const auto &slot : m_slots) {
-    if (slot.resourceId == resourceId) {
-      totalQuantity += slot.quantity;
-    }
+  // If cache needs rebuilding, rebuild it once
+  if (m_cacheNeedsRebuild) {
+    rebuildQuantityCache();
+    m_cacheNeedsRebuild = false;
   }
-  return totalQuantity;
-}
 
+  // Use cache for O(1) lookup
+  auto it = m_resourceQuantityCache.find(resourceId);
+  return (it != m_resourceQuantityCache.end()) ? it->second : 0;
+}
 void InventoryComponent::updateWorldResourceManager(
     const std::string &resourceId, int quantityChange) {
   if (!m_trackWorldResources || quantityChange == 0) {
@@ -492,4 +502,35 @@ void InventoryComponent::updateWorldResourceManager(
                   "update world resources for " +
                   resourceId + " in world " + m_worldId);
   }
+}
+
+void InventoryComponent::updateQuantityCache(const std::string &resourceId,
+                                             int quantityChange) {
+  if (m_cacheNeedsRebuild) {
+    // If cache needs rebuilding anyway, don't bother with incremental updates
+    return;
+  }
+
+  auto it = m_resourceQuantityCache.find(resourceId);
+  if (it != m_resourceQuantityCache.end()) {
+    it->second += quantityChange;
+    if (it->second <= 0) {
+      m_resourceQuantityCache.erase(it);
+    }
+  } else if (quantityChange > 0) {
+    m_resourceQuantityCache[resourceId] = quantityChange;
+  } else {
+    // Cache miss with negative change - need to rebuild to get accurate count
+    m_cacheNeedsRebuild = true;
+  }
+}
+
+void InventoryComponent::rebuildQuantityCache() const {
+  m_resourceQuantityCache.clear();
+  for (const auto &slot : m_slots) {
+    if (!slot.isEmpty()) {
+      m_resourceQuantityCache[slot.resourceId] += slot.quantity;
+    }
+  }
+  m_cacheNeedsRebuild = false;
 }

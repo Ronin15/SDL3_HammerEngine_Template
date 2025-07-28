@@ -129,6 +129,10 @@ protected:
   bool m_trackWorldResources;                 // Whether to track resources in
                                               // WorldResourceManager
 
+  // Performance optimization: cache resource quantities for O(1) lookups
+  mutable std::unordered_map<std::string, int> m_resourceQuantityCache;
+  mutable bool m_cacheNeedsRebuild{false};
+
   // Helper methods
   int findSlotWithResource(const std::string &resourceId) const;
   int findEmptySlot() const;
@@ -137,6 +141,10 @@ protected:
                             int newQuantity);
   void validateSlotIndex(size_t slotIndex) const;
   int getResourceQuantityUnlocked(const std::string &resourceId) const;
+
+  // Cache management for performance optimization
+  void updateQuantityCache(const std::string &resourceId, int quantityChange);
+  void rebuildQuantityCache() const;
 
   // WorldResourceManager integration helpers
   void updateWorldResourceManager(const std::string &resourceId,
