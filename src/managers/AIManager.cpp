@@ -96,6 +96,8 @@ void AIManager::clean() {
 
     m_entityToIndex.clear();
     m_behaviorTemplates.clear();
+    m_behaviorCache.clear();
+    m_behaviorTypeCache.clear();
     m_pendingAssignments.clear();
     m_pendingAssignmentIndex.clear();
     m_messageQueue.clear();
@@ -347,6 +349,11 @@ void AIManager::registerBehavior(const std::string &name,
 
   std::unique_lock<std::shared_mutex> lock(m_behaviorsMutex);
   m_behaviorTemplates[name] = behavior;
+
+  // Clear cache when adding new behavior
+  m_behaviorCache.clear();
+  m_behaviorTypeCache.clear();
+
   AI_LOG("Registered behavior: " + name);
 }
 
@@ -357,9 +364,21 @@ bool AIManager::hasBehavior(const std::string &name) const {
 
 std::shared_ptr<AIBehavior>
 AIManager::getBehavior(const std::string &name) const {
+  // Check cache first for O(1) lookup
+  auto cacheIt = m_behaviorCache.find(name);
+  if (cacheIt != m_behaviorCache.end()) {
+    return cacheIt->second;
+  }
+
+  // Cache miss - lookup and cache result
   std::shared_lock<std::shared_mutex> lock(m_behaviorsMutex);
   auto it = m_behaviorTemplates.find(name);
-  return (it != m_behaviorTemplates.end()) ? it->second : nullptr;
+  std::shared_ptr<AIBehavior> result =
+      (it != m_behaviorTemplates.end()) ? it->second : nullptr;
+
+  // Cache the result (even if nullptr)
+  m_behaviorCache[name] = result;
+  return result;
 }
 
 void AIManager::assignBehaviorToEntity(EntityPtr entity,
@@ -369,16 +388,11 @@ void AIManager::assignBehaviorToEntity(EntityPtr entity,
     return;
   }
 
-  // Get behavior template
-  std::shared_ptr<AIBehavior> behaviorTemplate;
-  {
-    std::shared_lock<std::shared_mutex> lock(m_behaviorsMutex);
-    auto it = m_behaviorTemplates.find(behaviorName);
-    if (it == m_behaviorTemplates.end()) {
-      AI_ERROR("Behavior not found: " + behaviorName);
-      return;
-    }
-    behaviorTemplate = it->second;
+  // Get behavior template (use cache for performance)
+  std::shared_ptr<AIBehavior> behaviorTemplate = getBehavior(behaviorName);
+  if (!behaviorTemplate) {
+    AI_ERROR("Behavior not found: " + behaviorName);
+    return;
   }
 
   // Clone behavior for this entity
@@ -811,8 +825,20 @@ void AIManager::processMessageQueue() {
 
 BehaviorType
 AIManager::inferBehaviorType(const std::string &behaviorName) const {
+  // Check cache first for O(1) lookup
+  auto cacheIt = m_behaviorTypeCache.find(behaviorName);
+  if (cacheIt != m_behaviorTypeCache.end()) {
+    return cacheIt->second;
+  }
+
+  // Cache miss - lookup and cache result
   auto it = m_behaviorTypeMap.find(behaviorName);
-  return (it != m_behaviorTypeMap.end()) ? it->second : BehaviorType::Custom;
+  BehaviorType result =
+      (it != m_behaviorTypeMap.end()) ? it->second : BehaviorType::Custom;
+
+  // Cache the result
+  m_behaviorTypeCache[behaviorName] = result;
+  return result;
 }
 
 void AIManager::processBatch(size_t start, size_t end, float deltaTime,
