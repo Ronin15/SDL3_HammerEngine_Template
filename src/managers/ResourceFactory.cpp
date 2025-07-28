@@ -90,7 +90,7 @@ bool ResourceFactory::hasCreator(const std::string &typeName) {
 
 std::vector<std::string> ResourceFactory::getRegisteredTypes() {
   std::vector<std::string> types;
-  auto &creators = getCreators();
+  const auto &creators = getCreators();
   types.reserve(creators.size());
 
   for (const auto &[typeName, creator] : creators) {

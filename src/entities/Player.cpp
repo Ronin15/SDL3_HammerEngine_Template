@@ -262,7 +262,7 @@ bool Player::equipItem(const std::string &itemId) {
   }
 
   // Get item template to determine equipment slot
-  auto resourceManager = &ResourceTemplateManager::Instance();
+  const auto *resourceManager = &ResourceTemplateManager::Instance();
   auto itemTemplate = resourceManager->getResourceTemplate(itemId);
   if (!itemTemplate) {
     PLAYER_ERROR("Player::equipItem - Unknown item: " + itemId);
@@ -340,7 +340,7 @@ bool Player::consumeItem(const std::string &itemId) {
   }
 
   // Get item template to check if it's consumable
-  auto resourceManager = &ResourceTemplateManager::Instance();
+  const auto *resourceManager = &ResourceTemplateManager::Instance();
   auto itemTemplate = resourceManager->getResourceTemplate(itemId);
   if (!itemTemplate || !itemTemplate->isConsumable()) {
     PLAYER_WARN("Player::consumeItem - Item is not consumable: " + itemId);

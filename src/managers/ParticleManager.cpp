@@ -140,15 +140,13 @@ void ParticleManager::prepareForStateTransition() {
   }
 
   // 3.5. IMMEDIATE COMPLETE CLEANUP - Remove ALL particles to ensure zero count
-  size_t totalParticlesBefore = activeParticles.size();
   activeParticles.clear(); // Complete clear to ensure zero particles
   m_storage.particles[1 - activeIdx].clear(); // Clear other buffer too
   m_storage.particleCount.store(0, std::memory_order_release);
 
-  PARTICLE_INFO(
-      "Complete particle cleanup: cleared " + std::to_string(particlesCleared) +
-      " active particles, removed total of " +
-      std::to_string(totalParticlesBefore) + " particles from storage");
+  PARTICLE_INFO("Complete particle cleanup: cleared " +
+                std::to_string(particlesCleared) +
+                " active particles from storage");
 
   // 4. Rebuild effect index mapping for any remaining effects
   m_effectIdToIndex.clear();

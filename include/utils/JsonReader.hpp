@@ -53,17 +53,17 @@ private:
 public:
   // Constructors
   JsonValue() : m_value(nullptr) {}
-  JsonValue(std::nullptr_t) : m_value(nullptr) {}
-  JsonValue(bool value) : m_value(value) {}
-  JsonValue(int value) : m_value(static_cast<double>(value)) {}
-  JsonValue(double value) : m_value(value) {}
+  explicit JsonValue(std::nullptr_t) : m_value(nullptr) {}
+  explicit JsonValue(bool value) : m_value(value) {}
+  explicit JsonValue(int value) : m_value(static_cast<double>(value)) {}
+  explicit JsonValue(double value) : m_value(value) {}
   JsonValue(const std::string &value) : m_value(value) {}
   JsonValue(std::string &&value) : m_value(std::move(value)) {}
   JsonValue(const char *value) : m_value(std::string(value)) {}
-  JsonValue(const JsonArray &value) : m_value(value) {}
-  JsonValue(JsonArray &&value) : m_value(std::move(value)) {}
-  JsonValue(const JsonObject &value) : m_value(value) {}
-  JsonValue(JsonObject &&value) : m_value(std::move(value)) {}
+  explicit JsonValue(const JsonArray &value) : m_value(value) {}
+  explicit JsonValue(JsonArray &&value) : m_value(std::move(value)) {}
+  explicit JsonValue(const JsonObject &value) : m_value(value) {}
+  explicit JsonValue(JsonObject &&value) : m_value(std::move(value)) {}
 
   // Type checking
   JsonType getType() const;
@@ -131,8 +131,8 @@ struct JsonToken {
   size_t line;
   size_t column;
 
-  JsonToken(JsonTokenType t, const std::string &v = "", size_t l = 1,
-            size_t c = 1)
+  explicit JsonToken(JsonTokenType t, const std::string &v = "", size_t l = 1,
+                     size_t c = 1)
       : type(t), value(v), line(l), column(c) {}
 };
 
