@@ -52,12 +52,13 @@ enum class ParticleEffectType : uint8_t {
   Snow = 2,
   HeavySnow = 3,
   Fog = 4,
-  Fire = 5,
-  Smoke = 6,
-  Sparks = 7,
-  Magic = 8,
-  Custom = 9,
-  COUNT = 10
+  Cloudy = 5,
+  Fire = 6,
+  Smoke = 7,
+  Sparks = 8,
+  Magic = 9,
+  Custom = 10,
+  COUNT = 11
 };
 
 /**
@@ -330,12 +331,12 @@ public:
 
   /**
    * @brief Creates and plays a particle effect at specified position
-   * @param effectName Name of the registered effect
+   * @param effectType Type of the effect to play
    * @param position World position to play effect
    * @param intensity Effect intensity multiplier (0.0 to 2.0)
    * @return Effect ID for controlling the effect, or 0 if failed
    */
-  uint32_t playEffect(const std::string &effectName, const Vector2D &position,
+  uint32_t playEffect(ParticleEffectType effectType, const Vector2D &position,
                       float intensity = 1.0f);
 
   /**
@@ -362,7 +363,7 @@ public:
   /**
    * @brief Creates and plays an independent particle effect that persists until
    * manually stopped
-   * @param effectName Name of the registered effect
+   * @param effectType Type of the effect to play
    * @param position World position to play effect
    * @param intensity Effect intensity multiplier (0.0 to 2.0)
    * @param duration Effect duration in seconds (-1 for infinite)
@@ -370,7 +371,7 @@ public:
    * @param soundEffect Optional sound effect name for SoundManager
    * @return Effect ID for controlling the effect, or 0 if failed
    */
-  uint32_t playIndependentEffect(const std::string &effectName,
+  uint32_t playIndependentEffect(ParticleEffectType effectType,
                                  const Vector2D &position,
                                  float intensity = 1.0f, float duration = -1.0f,
                                  const std::string &groupTag = "",
@@ -458,6 +459,15 @@ public:
    * @param transitionTime Time to transition to new intensity
    */
   void triggerWeatherEffect(const std::string &weatherType, float intensity,
+                            float transitionTime = 2.0f);
+
+  /**
+   * @brief Triggers weather particle effects using enum type
+   * @param effectType Weather effect type
+   * @param intensity Weather intensity (0.0 to 1.0)
+   * @param transitionTime Time to transition to new intensity
+   */
+  void triggerWeatherEffect(ParticleEffectType effectType, float intensity,
                             float transitionTime = 2.0f);
 
   /**
@@ -635,6 +645,7 @@ private:
     uint16_t textureIndex;
     uint8_t flags;
     uint8_t generationId;
+    ParticleEffectType effectType; // Effect type for this particle
 
     // Flags bit definitions
     static constexpr uint8_t FLAG_ACTIVE = 1 << 0;
@@ -647,7 +658,8 @@ private:
     UnifiedParticle()
         : position(0, 0), velocity(0, 0), acceleration(0, 0), life(0.0f),
           maxLife(1.0f), size(2.0f), rotation(0.0f), angularVelocity(0.0f),
-          color(0xFFFFFFFF), textureIndex(0), flags(0), generationId(0) {}
+          color(0xFFFFFFFF), textureIndex(0), flags(0), generationId(0),
+          effectType(ParticleEffectType::Custom) {}
 
     bool isActive() const { return flags & FLAG_ACTIVE; }
     void setActive(bool active) {
@@ -687,7 +699,7 @@ private:
   // Effect instance tracking - effects only emit particles, don't own them
   struct EffectInstance {
     uint32_t id;
-    std::string effectName;
+    ParticleEffectType effectType;
     Vector2D position;
     float intensity;
     float currentIntensity; // For transitions
@@ -705,9 +717,10 @@ private:
     uint8_t currentGenerationId; // Current generation for new particles
 
     EffectInstance()
-        : id(0), position(0, 0), intensity(1.0f), currentIntensity(0.0f),
-          targetIntensity(1.0f), transitionSpeed(1.0f), emissionTimer(0.0f),
-          durationTimer(0.0f), maxDuration(-1.0f), active(false), paused(false),
+        : id(0), effectType(ParticleEffectType::Custom), position(0, 0),
+          intensity(1.0f), currentIntensity(0.0f), targetIntensity(1.0f),
+          transitionSpeed(1.0f), emissionTimer(0.0f), durationTimer(0.0f),
+          maxDuration(-1.0f), active(false), paused(false),
           isWeatherEffect(false), isIndependentEffect(false), groupTag(""),
           soundEffect(""), currentGenerationId(0) {}
   };
@@ -722,6 +735,7 @@ private:
     uint32_t color;
     uint16_t textureIndex;
     ParticleBlendMode blendMode;
+    ParticleEffectType effectType;
   };
 
   // Lock-free high-performance storage with double buffering
@@ -742,6 +756,7 @@ private:
       float size;
       uint8_t flags;
       uint8_t generationId;
+      ParticleEffectType effectType;
       std::atomic<bool> ready{false};
     };
 
@@ -764,7 +779,8 @@ private:
     // Lock-free particle creation
     bool tryCreateParticle(const Vector2D &pos, const Vector2D &vel,
                            uint32_t color, float life, float size,
-                           uint8_t flags, uint8_t genId) {
+                           uint8_t flags, uint8_t genId,
+                           ParticleEffectType effectType) {
       size_t head = creationHead.load(std::memory_order_acquire);
       size_t next = (head + 1) & (CREATION_RING_SIZE - 1);
 
@@ -780,6 +796,7 @@ private:
       req.size = size;
       req.flags = flags;
       req.generationId = genId;
+      req.effectType = effectType;
       req.ready.store(true, std::memory_order_release);
 
       creationHead.store(next, std::memory_order_release);
@@ -809,6 +826,7 @@ private:
             particle.size = req.size;
             particle.flags = req.flags;
             particle.generationId = req.generationId;
+            particle.effectType = req.effectType;
 
             activeParticles.push_back(particle);
             particleCount.fetch_add(1, std::memory_order_acq_rel);
@@ -848,10 +866,11 @@ private:
 
     // Submit new particle (lock-free)
     bool submitNewParticle(const NewParticleRequest &request) {
-      return tryCreateParticle(
-          request.position, request.velocity, request.color, request.life,
-          request.size,
-          UnifiedParticle::FLAG_ACTIVE | UnifiedParticle::FLAG_VISIBLE, 0);
+      return tryCreateParticle(request.position, request.velocity,
+                               request.color, request.life, request.size,
+                               UnifiedParticle::FLAG_ACTIVE |
+                                   UnifiedParticle::FLAG_VISIBLE,
+                               0, request.effectType);
     }
 
     // Swap buffers for lock-free updates
@@ -872,7 +891,8 @@ private:
 
   // Core storage - now lock-free
   LockFreeParticleStorage m_storage;
-  std::unordered_map<std::string, ParticleEffectDefinition> m_effectDefinitions;
+  std::unordered_map<ParticleEffectType, ParticleEffectDefinition>
+      m_effectDefinitions;
   std::vector<EffectInstance> m_effectInstances;
   std::unordered_map<uint32_t, size_t> m_effectIdToIndex;
 
@@ -992,6 +1012,11 @@ private:
   uint32_t interpolateColor(uint32_t color1, uint32_t color2, float factor);
   void recordPerformance(bool isRender, double timeMs, size_t particleCount);
   uint64_t getCurrentTimeNanos() const;
+
+  // Weather type conversion helpers
+  ParticleEffectType weatherStringToEnum(const std::string &weatherType,
+                                         float intensity) const;
+  std::string effectTypeToString(ParticleEffectType type) const;
 
   // Built-in effect creation helpers
   ParticleEffectDefinition createRainEffect();

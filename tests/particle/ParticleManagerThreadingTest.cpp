@@ -7,6 +7,7 @@
 #include <boost/test/unit_test.hpp>
 
 #include "core/ThreadSystem.hpp"
+#include "events/ParticleEffectEvent.hpp"
 #include "managers/ParticleManager.hpp"
 #include "utils/Vector2D.hpp"
 #include <atomic>
@@ -84,7 +85,8 @@ BOOST_FIXTURE_TEST_CASE(TestConcurrentParticleCreation,
           for (int i = 0; i < EFFECTS_PER_THREAD; ++i) {
             Vector2D position(100 + threadId * 50, 100 + i * 10);
 
-            uint32_t effectId = manager->playEffect("Rain", position, 0.5f);
+            uint32_t effectId =
+                manager->playEffect(ParticleEffectType::Rain, position, 0.5f);
             if (effectId != 0) {
               successCount.fetch_add(1, std::memory_order_relaxed);
             }
@@ -123,7 +125,7 @@ BOOST_FIXTURE_TEST_CASE(TestConcurrentParticleUpdates,
   // Create some particles first
   Vector2D position(500, 300);
   for (int i = 0; i < 10; ++i) {
-    manager->playEffect("Rain", position, 1.0f);
+    manager->playEffect(ParticleEffectType::Rain, position, 1.0f);
   }
 
   // Update to create particles
@@ -196,7 +198,8 @@ BOOST_FIXTURE_TEST_CASE(TestThreadSafeEffectManagement,
             Vector2D position(200 + threadId * 100, 200 + i * 20);
 
             // Create effect
-            uint32_t effectId = manager->playEffect("Snow", position, 0.7f);
+            uint32_t effectId =
+                manager->playEffect(ParticleEffectType::Snow, position, 0.7f);
             if (effectId != 0) {
               effectsCreated.fetch_add(1, std::memory_order_relaxed);
               localEffectIds.push_back(effectId);
@@ -303,7 +306,7 @@ BOOST_FIXTURE_TEST_CASE(TestConcurrentStatsAccess,
   // Create some particle activity
   Vector2D position(400, 400);
   for (int i = 0; i < 5; ++i) {
-    manager->playEffect("Rain", position, 1.0f);
+    manager->playEffect(ParticleEffectType::Rain, position, 1.0f);
   }
 
   const int NUM_THREADS =
@@ -455,7 +458,8 @@ BOOST_FIXTURE_TEST_CASE(TestMixedConcurrentOperations,
             switch (i % 5) {
             case 0: {
               // Create effect
-              uint32_t effectId = manager->playEffect("Rain", position, 0.6f);
+              uint32_t effectId =
+                  manager->playEffect(ParticleEffectType::Rain, position, 0.6f);
               (void)effectId;
               break;
             }
