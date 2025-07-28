@@ -1461,33 +1461,60 @@ void ParticleManager::updateParticleRange(
   static float windPhase = 0.0f; // Static wind phase for natural variation
   windPhase += deltaTime * 0.5f; // Slow wind variation
 
+  // PRODUCTION OPTIMIZATION: Pre-compute expensive operations
+  const float windPhase0_8 = windPhase * 0.8f;
+  const float windPhase1_2 = windPhase * 1.2f;
+  const float windPhase3_0 = windPhase * 3.0f;
+  const float windPhase8_0 = windPhase * 8.0f;
+  const float windPhase6_0 = windPhase * 6.0f;
+  const float windPhase12_0 = windPhase * 12.0f;
+  const float windPhase2_0 = windPhase * 2.0f;
+  const float windPhase1_5 = windPhase * 1.5f;
+
+  // Cache texture indices to avoid string lookups
+  static const uint16_t fireTextureIndex = getTextureIndex("fire_particle");
+  static const uint16_t smokeTextureIndex = getTextureIndex("smoke_particle");
+
   for (size_t i = startIdx; i < endIdx; ++i) {
     if (i >= particles.size() || !particles[i].isActive())
       continue;
 
     auto &particle = particles[i];
 
-    // Enhanced physics with natural atmospheric effects
-    float windVariation =
-        std::sin(windPhase + i * 0.1f) * 0.3f; // Per-particle wind variation
-    float atmosphericDrag = 0.98f;             // Slight air resistance
+    // PRODUCTION OPTIMIZATION: Pre-compute per-particle values
+    const float particleOffset = i * 0.1f;
+    const float particleOffset12 = i * 0.12f;
+    const float particleOffset15 = i * 0.15f;
+    const float particleOffset2 = i * 0.2f;
+    const float particleOffset25 = i * 0.25f;
+    const float particleOffset3 = i * 0.3f;
+    const float particleOffset4 = i * 0.4f;
+    const float particleOffset08 = i * 0.08f;
 
-    // Cloud detection and movement for light-colored particles
-    uint8_t r = (particle.color >> 24) & 0xFF;
-    uint8_t g = (particle.color >> 16) & 0xFF;
-    uint8_t b = (particle.color >> 8) & 0xFF;
+    // Enhanced physics with natural atmospheric effects
+    float windVariation = std::sin(windPhase + particleOffset) *
+                          0.3f;    // Per-particle wind variation
+    float atmosphericDrag = 0.98f; // Slight air resistance
+
+    // PRODUCTION OPTIMIZATION: Extract color components once and cache
+    // comparison results
+    const uint32_t color = particle.color;
+    const uint8_t r = (color >> 24) & 0xFF;
+    const uint8_t g = (color >> 16) & 0xFF;
+    const uint8_t b = (color >> 8) & 0xFF;
 
     // Cloud particles: light white/gray range (240-255 RGB)
-    bool isCloud = (r >= 240 && g >= 240 && b >= 240);
+    const bool isCloud = (r >= 240 && g >= 240 && b >= 240);
 
     if (isCloud) {
       // Apply horizontal movement for cloud drift
       particle.acceleration.setX(15.0f);
       particle.acceleration.setY(0.0f);
 
-      // Add natural wind variation
-      float drift = std::sin(windPhase * 0.8f + i * 0.15f) * 3.0f;
-      float verticalFloat = std::cos(windPhase * 1.2f + i * 0.1f) * 1.5f;
+      // PRODUCTION OPTIMIZATION: Pre-computed trigonometric values
+      const float drift = std::sin(windPhase0_8 + particleOffset15) * 3.0f;
+      const float verticalFloat =
+          std::cos(windPhase1_2 + particleOffset) * 1.5f;
 
       particle.velocity.setX(particle.velocity.getX() + drift * deltaTime);
       particle.velocity.setY(particle.velocity.getY() +
@@ -1502,11 +1529,11 @@ void ParticleManager::updateParticleRange(
                                  windVariation * 20.0f);
 
       // Different atmospheric effects for different particle types
-      float lifeRatio = particle.getLifeRatio();
+      const float lifeRatio = particle.getLifeRatio();
 
       // Snow particles drift more with wind and have flutter
       if (particle.generationId % 3 == 0) { // Assume snow-like behavior
-        float flutter = std::sin(windPhase * 3.0f + i * 0.2f) * 8.0f;
+        const float flutter = std::sin(windPhase3_0 + particleOffset2) * 8.0f;
         particle.velocity.setX(particle.velocity.getX() + flutter * deltaTime);
         atmosphericDrag = 0.96f; // More air resistance for snow
       }
@@ -1521,49 +1548,54 @@ void ParticleManager::updateParticleRange(
 
       // Fog/cloud particles drift and have gentle movement
       else { // Regular fog behavior (not clouds)
-        float drift = std::sin(windPhase * 0.8f + i * 0.15f) * 15.0f;
+        const float drift = std::sin(windPhase0_8 + particleOffset15) * 15.0f;
+        const float verticalDrift =
+            std::cos(windPhase1_2 + particleOffset) * 3.0f * deltaTime;
         particle.velocity.setX(particle.velocity.getX() + drift * deltaTime);
-        particle.velocity.setY(particle.velocity.getY() +
-                               std::cos(windPhase * 1.2f + i * 0.1f) * 3.0f *
-                                   deltaTime);
+        particle.velocity.setY(particle.velocity.getY() + verticalDrift);
         atmosphericDrag = 0.999f;
       }
     }
     // Special handling for fire and smoke particles for natural movement
     else {
-      float lifeRatio = particle.getLifeRatio();
+      const float lifeRatio = particle.getLifeRatio();
 
-      // Fire particles: flickering, turbulent movement with heat distortion
-      if (particle.textureIndex == getTextureIndex("fire_particle") ||
-          (particle.color & 0xFF000000) ==
-              0xFF000000) { // Detect fire by color/texture
+      // PRODUCTION OPTIMIZATION: Use cached texture indices instead of string
+      // lookups Fire particles: flickering, turbulent movement with heat
+      // distortion
+      if (particle.textureIndex == fireTextureIndex ||
+          (color & 0xFF000000) == 0xFF000000) { // Detect fire by color/texture
 
-        // Heat-based turbulence - more chaotic movement
-        float heatTurbulence = std::sin(windPhase * 8.0f + i * 0.3f) * 15.0f;
-        float heatRise = std::cos(windPhase * 6.0f + i * 0.25f) * 10.0f;
+        // PRODUCTION OPTIMIZATION: Pre-computed trigonometric values
+        const float heatTurbulence =
+            std::sin(windPhase8_0 + particleOffset3) * 15.0f;
+        const float heatRise =
+            std::cos(windPhase6_0 + particleOffset25) * 10.0f;
 
         particle.velocity.setX(particle.velocity.getX() +
                                heatTurbulence * deltaTime);
         particle.velocity.setY(particle.velocity.getY() + heatRise * deltaTime);
 
         // Fire gets more chaotic as it ages (burns out)
-        float chaos = (1.0f - lifeRatio) * 25.0f;
-        particle.acceleration.setX(
-            particle.acceleration.getX() +
-            (std::sin(windPhase * 12.0f + i * 0.4f) * chaos * deltaTime));
+        const float chaos = (1.0f - lifeRatio) * 25.0f;
+        const float chaosValue =
+            std::sin(windPhase12_0 + particleOffset4) * chaos * deltaTime;
+        particle.acceleration.setX(particle.acceleration.getX() + chaosValue);
 
         atmosphericDrag = 0.94f; // High drag for fire flicker
       }
 
       // Smoke particles: billowing, wind-affected movement
-      else if (particle.textureIndex == getTextureIndex("smoke_particle") ||
-               ((particle.color & 0xFF000000) >> 24) <
+      else if (particle.textureIndex == smokeTextureIndex ||
+               ((color & 0xFF000000) >> 24) <
                    200) { // Detect smoke by transparency
 
-        // Billowing smoke movement with wind influence
-        float smokeWind = windVariation * 40.0f;
-        float smokeBillow = std::sin(windPhase * 2.0f + i * 0.12f) * 20.0f;
-        float smokeRise = std::cos(windPhase * 1.5f + i * 0.08f) * 8.0f;
+        // PRODUCTION OPTIMIZATION: Pre-computed trigonometric values
+        const float smokeWind = windVariation * 40.0f;
+        const float smokeBillow =
+            std::sin(windPhase2_0 + particleOffset12) * 20.0f;
+        const float smokeRise =
+            std::cos(windPhase1_5 + particleOffset08) * 8.0f;
 
         particle.velocity.setX(particle.velocity.getX() +
                                (smokeWind + smokeBillow) * deltaTime);
@@ -1571,12 +1603,13 @@ void ParticleManager::updateParticleRange(
                                smokeRise * deltaTime);
 
         // Smoke disperses and slows down as it ages
-        float dispersion = lifeRatio * 0.5f; // Older smoke is more dispersed
+        const float dispersion =
+            lifeRatio * 0.5f; // Older smoke is more dispersed
         particle.velocity.setX(particle.velocity.getX() *
                                (1.0f - dispersion * deltaTime));
 
         // Wind affects smoke more as it gets older and lighter
-        float windSensitivity = (1.0f - lifeRatio) * 30.0f;
+        const float windSensitivity = (1.0f - lifeRatio) * 30.0f;
         particle.acceleration.setX(particle.acceleration.getX() +
                                    windSensitivity * windVariation * deltaTime);
 
@@ -1585,7 +1618,7 @@ void ParticleManager::updateParticleRange(
 
       // Other particles (sparks, magic, etc.) - use standard turbulence
       else {
-        float generalTurbulence = windVariation * 10.0f;
+        const float generalTurbulence = windVariation * 10.0f;
         particle.velocity.setX(particle.velocity.getX() +
                                generalTurbulence * deltaTime);
         atmosphericDrag = 0.97f;
@@ -1615,7 +1648,7 @@ void ParticleManager::updateParticleRange(
     }
 
     // Enhanced visual properties with natural fading
-    float lifeRatio = particle.getLifeRatio();
+    const float lifeRatio = particle.getLifeRatio();
 
     // Natural fade-in and fade-out for weather particles
     float alphaMultiplier = 1.0f;
@@ -1632,8 +1665,8 @@ void ParticleManager::updateParticleRange(
       alphaMultiplier = lifeRatio;
     }
 
-    uint8_t alpha = static_cast<uint8_t>(255 * alphaMultiplier);
-    particle.color = (particle.color & 0xFFFFFF00) | alpha;
+    const uint8_t alpha = static_cast<uint8_t>(255 * alphaMultiplier);
+    particle.color = (color & 0xFFFFFF00) | alpha;
 
     // Note: Size variation for natural appearance would be applied during
     // rendering
