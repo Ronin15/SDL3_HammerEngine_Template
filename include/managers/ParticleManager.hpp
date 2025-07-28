@@ -525,6 +525,20 @@ public:
    * @brief Enables WorkerBudget-aware threading with intelligent resource
    * allocation
    * @param enable Whether to enable WorkerBudget integration
+   *
+   * WorkerBudget integration provides coordinated thread allocation across all
+   * engine subsystems (AI, Particles, Events, etc.) following the engine's
+   * architectural patterns. When enabled:
+   *
+   * - Uses HammerEngine::calculateWorkerBudget() for fair thread distribution
+   * - Dynamically adjusts worker count based on workload and system pressure
+   * - Submits tasks via ThreadSystem::enqueueTaskWithResult() for proper
+   * scheduling
+   * - Monitors ThreadSystem queue pressure to prevent resource contention
+   * - Automatically falls back to single-threaded mode when appropriate
+   *
+   * This is the recommended threading mode for production use as it ensures
+   * the particle system cooperates well with other engine subsystems.
    */
   void enableWorkerBudgetThreading(bool enable);
 
@@ -532,6 +546,14 @@ public:
    * @brief Updates particles using WorkerBudget-optimized batch processing
    * @param deltaTime Time elapsed since last update
    * @param particleCount Current number of active particles
+   *
+   * This method provides the WorkerBudget-aware update path, which:
+   * - Calculates optimal thread allocation using WorkerBudget system
+   * - Adjusts batch sizes based on ThreadSystem queue pressure
+   * - Falls back to single-threaded mode when WorkerBudget is disabled
+   * - Respects the threading threshold for efficient resource usage
+   *
+   * Called automatically by update() when WorkerBudget threading is enabled.
    */
   void updateWithWorkerBudget(float deltaTime, size_t particleCount);
 
@@ -866,6 +888,7 @@ private:
   std::atomic<bool> m_globallyPaused{false};
   std::atomic<bool> m_globallyVisible{true};
   std::atomic<bool> m_useThreading{true};
+  std::atomic<bool> m_useWorkerBudget{true};
   std::atomic<size_t> m_threadingThreshold{1000};
   unsigned int m_maxThreads{0};
 

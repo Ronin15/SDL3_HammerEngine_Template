@@ -24,7 +24,8 @@ struct ParticleManagerThreadingFixture {
 
     // Always try to initialize the ThreadSystem for threading tests
     if (threadSystem->isShutdown() || threadSystem->getThreadCount() == 0) {
-      bool initSuccess = threadSystem->init(2048, 4); // 4 threads for testing
+      // Use automatic thread detection for WorkerBudget testing
+      bool initSuccess = threadSystem->init();
       if (!initSuccess) {
         // If initialization failed, this might be because it's already
         // initialized Check if it's working by verifying thread count
@@ -68,7 +69,9 @@ struct ParticleManagerThreadingFixture {
 // Test concurrent particle creation
 BOOST_FIXTURE_TEST_CASE(TestConcurrentParticleCreation,
                         ParticleManagerThreadingFixture) {
-  const int NUM_THREADS = 4;
+  // Use actual ThreadSystem thread count for realistic testing
+  const int NUM_THREADS =
+      std::min(static_cast<int>(threadSystem->getThreadCount()), 8);
   const int EFFECTS_PER_THREAD = 20;
 
   std::atomic<int> successCount{0};
@@ -172,7 +175,8 @@ BOOST_FIXTURE_TEST_CASE(TestConcurrentParticleUpdates,
 // Test thread-safe effect management
 BOOST_FIXTURE_TEST_CASE(TestThreadSafeEffectManagement,
                         ParticleManagerThreadingFixture) {
-  const int NUM_THREADS = 4;
+  const int NUM_THREADS =
+      std::min(static_cast<int>(threadSystem->getThreadCount()), 6);
   const int OPERATIONS_PER_THREAD = 15;
 
   std::atomic<int> effectsCreated{0};
@@ -302,7 +306,8 @@ BOOST_FIXTURE_TEST_CASE(TestConcurrentStatsAccess,
     manager->playEffect("Rain", position, 1.0f);
   }
 
-  const int NUM_THREADS = 4;
+  const int NUM_THREADS =
+      std::min(static_cast<int>(threadSystem->getThreadCount()), 6);
   const int STATS_READS_PER_THREAD = 50;
 
   std::atomic<int> statsReads{0};
@@ -433,7 +438,8 @@ BOOST_FIXTURE_TEST_CASE(TestThreadSafeCleanup,
 // Test mixed concurrent operations
 BOOST_FIXTURE_TEST_CASE(TestMixedConcurrentOperations,
                         ParticleManagerThreadingFixture) {
-  const int NUM_THREADS = 4;
+  const int NUM_THREADS =
+      std::min(static_cast<int>(threadSystem->getThreadCount()), 6);
   const int OPERATIONS_PER_THREAD = 25;
 
   std::atomic<int> totalOperations{0};
