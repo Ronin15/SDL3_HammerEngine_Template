@@ -204,7 +204,13 @@ void ParticleManager::update(float deltaTime) {
                          HammerEngine::ThreadSystem::Exists());
 
     if (useThreading) {
-      updateParticlesThreaded(deltaTime, totalParticleCount);
+      // Use WorkerBudget system if enabled, otherwise fall back to legacy
+      // threading
+      if (m_useWorkerBudget.load(std::memory_order_acquire)) {
+        updateWithWorkerBudget(deltaTime, totalParticleCount);
+      } else {
+        updateParticlesThreaded(deltaTime, totalParticleCount);
+      }
     } else {
       updateParticlesSingleThreaded(deltaTime, totalParticleCount);
     }
@@ -1385,32 +1391,72 @@ void ParticleManager::updateParticlesThreaded(float deltaTime,
   // Use lock-free double buffering for threaded updates
   auto &currentBuffer = m_storage.getCurrentBuffer();
 
-  // Split work across available threads
-  const size_t numThreads =
-      std::min(static_cast<size_t>(4), activeParticleCount / 100 + 1);
-  const size_t particlesPerThread = activeParticleCount / numThreads;
+  // WorkerBudget-aware threading following engine architecture
+  // This implementation follows the same patterns as AIManager for consistent
+  // resource allocation across the engine's subsystems
+  auto &threadSystem = HammerEngine::ThreadSystem::Instance();
+  size_t availableWorkers = static_cast<size_t>(threadSystem.getThreadCount());
+  size_t queueSize = threadSystem.getQueueSize();
+  size_t queueCapacity = threadSystem.getQueueCapacity();
 
-  std::vector<std::future<void>> futures;
-  futures.reserve(numThreads);
+  // Calculate WorkerBudget allocation for particle system
+  // WorkerBudget ensures fair distribution of threads between AI, particles,
+  // events, etc.
+  HammerEngine::WorkerBudget budget =
+      HammerEngine::calculateWorkerBudget(availableWorkers);
 
-  for (size_t i = 0; i < numThreads; ++i) {
-    size_t startIdx = i * particlesPerThread;
-    size_t endIdx = (i == numThreads - 1) ? activeParticleCount
-                                          : startIdx + particlesPerThread;
+  // Use WorkerBudget system with threshold-based buffer allocation
+  // This allows particle system to use additional threads when workload is high
+  size_t optimalWorkerCount = budget.getOptimalWorkerCount(
+      budget.particleAllocated, activeParticleCount, m_threadingThreshold);
 
-    futures.emplace_back(
-        std::async(std::launch::async, [this, &currentBuffer, startIdx, endIdx,
-                                        deltaTime]() {
-          updateParticleRange(currentBuffer, startIdx, endIdx, deltaTime);
-        }));
+  // Dynamic batch sizing based on queue pressure for optimal performance
+  // This prevents overwhelming the ThreadSystem when other subsystems are busy
+  size_t minParticlesPerBatch = 500;
+  size_t maxBatches = 8;
+
+  // Adjust batch strategy based on queue pressure
+  double queuePressure = static_cast<double>(queueSize) / queueCapacity;
+  if (queuePressure > 0.5) {
+    // High pressure: use fewer, larger batches to reduce queue overhead
+    minParticlesPerBatch = 1000;
+    maxBatches = 4;
+  } else if (queuePressure < 0.25) {
+    // Low pressure: can use more batches for better parallelization
+    minParticlesPerBatch = 300;
+    maxBatches = 8;
   }
 
-  // Wait for all threads to complete
+  size_t batchCount =
+      std::min(optimalWorkerCount, activeParticleCount / minParticlesPerBatch);
+  batchCount = std::max(size_t(1), std::min(batchCount, maxBatches));
+
+  size_t particlesPerBatch = activeParticleCount / batchCount;
+  size_t remainingParticles = activeParticleCount % batchCount;
+
+  // Submit optimized batches to ThreadSystem with Normal priority
+  // Particle updates are typically non-critical compared to AI or input
+  // processing
+  std::vector<std::future<void>> futures;
+  futures.reserve(batchCount);
+
+  for (size_t i = 0; i < batchCount; ++i) {
+    size_t startIdx = i * particlesPerBatch;
+    size_t endIdx = startIdx + particlesPerBatch +
+                    (i == batchCount - 1 ? remainingParticles : 0);
+
+    futures.push_back(threadSystem.enqueueTaskWithResult(
+        [this, &currentBuffer, startIdx, endIdx, deltaTime]() {
+          updateParticleRange(currentBuffer, startIdx, endIdx, deltaTime);
+        },
+        HammerEngine::TaskPriority::Normal, "Particle_UpdateBatch"));
+  }
+
+  // Wait for all particle update batches to complete
   for (auto &future : futures) {
-    future.wait();
+    future.get();
   }
 }
-
 void ParticleManager::updateParticlesSingleThreaded(
     float deltaTime, size_t activeParticleCount) {
   auto &currentBuffer = m_storage.getCurrentBuffer();
@@ -1871,4 +1917,77 @@ void ParticleManager::setGlobalVisibility(bool visible) {
 
 void ParticleManager::setMaxParticles(size_t maxParticles) {
   m_storage.capacity.store(maxParticles, std::memory_order_release);
+}
+
+void ParticleManager::enableWorkerBudgetThreading(bool enable) {
+  /**
+   * Enable or disable WorkerBudget-aware threading for ParticleManager.
+   *
+   * WorkerBudget integration provides several benefits:
+   * - Fair resource allocation with other engine subsystems (AI, Events, etc.)
+   * - Dynamic thread allocation based on workload and system pressure
+   * - Automatic scaling from single-threaded to multi-threaded operation
+   * - Queue pressure monitoring to prevent ThreadSystem overload
+   *
+   * When enabled, ParticleManager will:
+   * 1. Calculate its allocated thread budget using
+   * HammerEngine::calculateWorkerBudget()
+   * 2. Use budget.getOptimalWorkerCount() to determine threads needed for
+   * current workload
+   * 3. Submit particle update batches via ThreadSystem::enqueueTaskWithResult()
+   * 4. Adjust batch sizes based on ThreadSystem queue pressure
+   *
+   * @param enable True to enable WorkerBudget threading, false for legacy
+   * threading
+   */
+  m_useWorkerBudget.store(enable, std::memory_order_release);
+
+  // When enabled, ensure main threading is also enabled
+  if (enable) {
+    m_useThreading.store(true, std::memory_order_release);
+  }
+
+  PARTICLE_INFO("WorkerBudget threading " +
+                std::string(enable ? "enabled" : "disabled"));
+}
+
+void ParticleManager::updateWithWorkerBudget(float deltaTime,
+                                             size_t particleCount) {
+  /**
+   * WorkerBudget-optimized particle update path.
+   *
+   * This method serves as the entry point for WorkerBudget-aware particle
+   * updates. It performs validation and fallback logic before delegating to the
+   * threaded update implementation.
+   *
+   * @param deltaTime Time elapsed since last update
+   * @param particleCount Current number of active particles
+   */
+  if (!m_useWorkerBudget.load(std::memory_order_acquire) ||
+      particleCount < m_threadingThreshold ||
+      !HammerEngine::ThreadSystem::Exists()) {
+    // Fall back to regular single-threaded update
+    updateParticlesSingleThreaded(deltaTime, particleCount);
+    return;
+  }
+
+  // Use WorkerBudget-aware threaded update
+  updateParticlesThreaded(deltaTime, particleCount);
+}
+
+void ParticleManager::configureThreading(bool useThreading,
+                                         unsigned int maxThreads) {
+  m_useThreading.store(useThreading, std::memory_order_release);
+  m_maxThreads = maxThreads;
+
+  PARTICLE_INFO("Threading configured: " +
+                std::string(useThreading ? "enabled" : "disabled") +
+                (maxThreads > 0 ? " (max: " + std::to_string(maxThreads) + ")"
+                                : " (auto)"));
+}
+
+void ParticleManager::setThreadingThreshold(size_t threshold) {
+  m_threadingThreshold = threshold;
+  PARTICLE_INFO("Threading threshold set to " + std::to_string(threshold) +
+                " particles");
 }
