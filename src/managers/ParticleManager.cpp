@@ -218,14 +218,14 @@ void ParticleManager::update(float deltaTime) {
     // Phase 5: Swap buffers for next frame (lock-free)
     m_storage.swapBuffers();
 
-    // Phase 6: Optimized memory management
+    // Phase 6: Optimized memory management - less aggressive
     uint64_t currentFrame =
         m_frameCounter.fetch_add(1, std::memory_order_relaxed);
-    if (currentFrame % 300 == 0) { // Every 5 seconds at 60fps
+    if (currentFrame % 600 == 0) { // Every 10 seconds at 60fps (was 5)
       compactParticleStorageIfNeeded();
     }
 
-    if (currentFrame % 1800 == 0) { // Every 30 seconds - deep cleanup
+    if (currentFrame % 3600 == 0) { // Every 60 seconds - deep cleanup (was 30)
       compactParticleStorage();
     }
 
@@ -761,23 +761,12 @@ void ParticleManager::recordPerformance(bool isRender, double timeMs,
 void ParticleManager::toggleFireEffect() {
   std::unique_lock<std::shared_mutex> lock(m_effectsMutex);
   if (!m_fireActive) {
-    // Create multiple fire sources for a more natural distributed campfire
-    // effect
+    // Create a single central fire source for better performance
     Vector2D basePosition(400, 300);
 
-    // Main central fire
+    // Single main fire effect
     m_fireEffectId =
         playIndependentEffect("Fire", basePosition, 1.2f, -1.0f, "campfire");
-
-    // Additional distributed fire sources for realism
-    playIndependentEffect("Fire", basePosition + Vector2D(-15, 5), 0.8f, -1.0f,
-                          "campfire");
-    playIndependentEffect("Fire", basePosition + Vector2D(20, 8), 0.9f, -1.0f,
-                          "campfire");
-    playIndependentEffect("Fire", basePosition + Vector2D(-8, 12), 0.7f, -1.0f,
-                          "campfire");
-    playIndependentEffect("Fire", basePosition + Vector2D(12, -3), 0.6f, -1.0f,
-                          "campfire");
 
     m_fireActive = true;
   } else {
@@ -790,20 +779,12 @@ void ParticleManager::toggleFireEffect() {
 void ParticleManager::toggleSmokeEffect() {
   std::unique_lock<std::shared_mutex> lock(m_effectsMutex);
   if (!m_smokeActive) {
-    // Create distributed smoke sources that rise from different points
+    // Create single smoke source for better performance
     Vector2D basePosition(400, 280); // Slightly above fire
 
-    // Main smoke column
+    // Single main smoke column
     m_smokeEffectId = playIndependentEffect("Smoke", basePosition, 1.0f, -1.0f,
                                             "campfire_smoke");
-
-    // Additional smoke sources for realistic dispersion
-    playIndependentEffect("Smoke", basePosition + Vector2D(-25, 10), 0.7f,
-                          -1.0f, "campfire_smoke");
-    playIndependentEffect("Smoke", basePosition + Vector2D(30, 15), 0.8f, -1.0f,
-                          "campfire_smoke");
-    playIndependentEffect("Smoke", basePosition + Vector2D(-10, 20), 0.6f,
-                          -1.0f, "campfire_smoke");
 
     m_smokeActive = true;
   } else {
@@ -1179,7 +1160,7 @@ ParticleEffectDefinition ParticleManager::createFireEffect() {
   fire.emitterConfig.spread =
       90.0f; // Very wide spread for natural flame distribution
   fire.emitterConfig.emissionRate =
-      640.0f; // Reduced by 20% from 800 for more natural emission
+      400.0f; // Reduced from 640 for better performance
   fire.emitterConfig.minSpeed =
       10.0f; // Slower minimum for realistic base flames
   fire.emitterConfig.maxSpeed = 100.0f; // Higher max for dramatic flame tips
@@ -1211,7 +1192,7 @@ ParticleEffectDefinition ParticleManager::createSmokeEffect() {
   smoke.emitterConfig.spread =
       120.0f; // Very wide spread for natural smoke dispersion
   smoke.emitterConfig.emissionRate =
-      120.0f; // Reduced by 20% from 150 for more natural smoke emission
+      80.0f; // Reduced from 120 for better performance
   smoke.emitterConfig.minSpeed = 5.0f;  // Very slow minimum for realistic drift
   smoke.emitterConfig.maxSpeed = 60.0f; // Higher max for initial smoke burst
   smoke.emitterConfig.minLife = 3.0f;   // Long-lived for realistic smoke trails
@@ -1240,9 +1221,10 @@ ParticleEffectDefinition ParticleManager::createSparksEffect() {
   sparks.emitterConfig.direction = Vector2D(0, -1); // Initial upward burst
   sparks.emitterConfig.spread =
       180.0f; // Wide spread for explosive spark pattern
-  sparks.emitterConfig.emissionRate = 300.0f; // RESTORED: Original very high
-                                              // burst rate for explosive sparks
-  sparks.emitterConfig.minSpeed = 80.0f;      // Fast initial velocity
+  sparks.emitterConfig.emissionRate =
+      200.0f; // Reduced from 300 for better performance
+              // while maintaining explosive sparks
+  sparks.emitterConfig.minSpeed = 80.0f; // Fast initial velocity
   sparks.emitterConfig.maxSpeed = 200.0f;
   sparks.emitterConfig.minLife = 0.3f; // Very short-lived for realistic sparks
   sparks.emitterConfig.maxLife = 1.2f;
