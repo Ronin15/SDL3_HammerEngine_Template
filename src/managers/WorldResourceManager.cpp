@@ -560,8 +560,9 @@ bool WorldResourceManager::validateParameters(const WorldId &worldId,
 
 void WorldResourceManager::ensureWorldExists(const WorldId &worldId) {
   // Assumes we already have a write lock
-  if (m_worldResources.find(worldId) == m_worldResources.end()) {
-    m_worldResources[worldId] = std::unordered_map<ResourceId, Quantity>();
+  auto [it, inserted] = m_worldResources.try_emplace(
+      worldId, std::unordered_map<ResourceId, Quantity>());
+  if (inserted) {
     m_stats.worldsTracked.fetch_add(1, std::memory_order_relaxed);
     WORLD_RESOURCE_DEBUG("Auto-created world: " + worldId);
   }

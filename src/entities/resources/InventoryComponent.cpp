@@ -10,6 +10,7 @@
 #include "managers/WorldResourceManager.hpp"
 #include <algorithm>
 #include <cassert>
+#include <numeric>
 #include <stdexcept>
 
 InventoryComponent::InventoryComponent(Entity *owner, size_t maxSlots,
@@ -138,14 +139,12 @@ int InventoryComponent::getResourceQuantity(
     const std::string &resourceId) const {
   std::lock_guard<std::mutex> lock(m_inventoryMutex);
 
-  int totalQuantity = 0;
-  for (const auto &slot : m_slots) {
-    if (slot.resourceId == resourceId) {
-      totalQuantity += slot.quantity;
-    }
-  }
-
-  return totalQuantity;
+  return std::accumulate(m_slots.begin(), m_slots.end(), 0,
+                         [&resourceId](int sum, const InventorySlot &slot) {
+                           return slot.resourceId == resourceId
+                                      ? sum + slot.quantity
+                                      : sum;
+                         });
 }
 
 bool InventoryComponent::hasResource(const std::string &resourceId,
@@ -436,12 +435,13 @@ bool InventoryComponent::canAddResource(const std::string &resourceId,
   }
 
   // Calculate how much can fit in existing stacks
-  int canFitInExisting = 0;
-  for (const auto &slot : m_slots) {
-    if (slot.resourceId == resourceId) {
-      canFitInExisting += (maxStackSize - slot.quantity);
-    }
-  }
+  int canFitInExisting = std::accumulate(
+      m_slots.begin(), m_slots.end(), 0,
+      [&resourceId, maxStackSize](int sum, const InventorySlot &slot) {
+        return slot.resourceId == resourceId
+                   ? sum + (maxStackSize - slot.quantity)
+                   : sum;
+      });
 
   int remaining = quantity - canFitInExisting;
   if (remaining <= 0) {
