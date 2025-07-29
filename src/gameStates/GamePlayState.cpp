@@ -208,7 +208,7 @@ void GamePlayState::updateInventoryUI() {
   auto *inventory = mp_Player->getInventory();
 
   // Update resource counts using ResourceTemplateManager
-  auto &templateManager = ResourceTemplateManager::Instance();
+  const auto &templateManager = ResourceTemplateManager::Instance();
 
   int goldCount = 0;
   auto goldResource = templateManager.getResourceByName("gold");
@@ -269,7 +269,7 @@ void GamePlayState::addDemoResource(const std::string &resourceId,
     return;
   }
 
-  auto &templateManager = ResourceTemplateManager::Instance();
+  const auto &templateManager = ResourceTemplateManager::Instance();
   auto resource = templateManager.getResourceByName(resourceId);
   if (!resource) {
     std::cout << "Unknown resource: " << resourceId << std::endl;
@@ -294,7 +294,7 @@ void GamePlayState::removeDemoResource(const std::string &resourceId,
     return;
   }
 
-  auto &templateManager = ResourceTemplateManager::Instance();
+  const auto &templateManager = ResourceTemplateManager::Instance();
   auto resource = templateManager.getResourceByName(resourceId);
   if (!resource) {
     std::cout << "Unknown resource: " << resourceId << std::endl;

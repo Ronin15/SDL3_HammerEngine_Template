@@ -25,8 +25,8 @@ InventoryComponent::InventoryComponent(Entity *owner, size_t maxSlots,
     slot.clear();
   }
 
-  RESOURCE_DEBUG("InventoryComponent created with " + std::to_string(maxSlots) +
-                 " slots");
+  RESOURCE_DEBUG("InventoryComponent initialized with " +
+                 std::to_string(maxSlots) + " slots");
 }
 
 bool InventoryComponent::addResource(HammerEngine::ResourceHandle handle,

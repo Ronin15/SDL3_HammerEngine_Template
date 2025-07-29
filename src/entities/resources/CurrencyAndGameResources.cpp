@@ -21,8 +21,6 @@ Gold::Gold(HammerEngine::ResourceHandle handle, const std::string &name)
     : Currency(handle, name, ResourceType::Gold) {
   setValue(1.0f);
   setExchangeRate(1.0f); // Base currency
-  setDescription("Standard gold currency");
-  setIconTextureId("currency_gold");
 }
 
 // Gem currency implementation
@@ -54,8 +52,6 @@ Gem::Gem(HammerEngine::ResourceHandle handle, const std::string &name,
   case GemType::COUNT:
     break;
   }
-  setDescription("Precious gem: " + gemTypeToString(gemType));
-  setIconTextureId("gem_" + gemTypeToString(gemType));
 }
 
 std::string Gem::gemTypeToString(GemType type) {
@@ -77,8 +73,6 @@ FactionToken::FactionToken(HammerEngine::ResourceHandle handle,
       m_factionId(factionId) {
   setValue(1.0f);
   setExchangeRate(0.0f); // Cannot be exchanged for gold
-  setDescription("Faction token for " + factionId);
-  setIconTextureId("token_" + factionId);
 }
 
 // GameResource base class implementation
@@ -95,8 +89,6 @@ Energy::Energy(HammerEngine::ResourceHandle handle, const std::string &name)
     : GameResource(handle, name, ResourceType::Energy) {
   setValue(0.1f);
   setRegenerationRate(1.0f); // 1 energy per second
-  setDescription("Energy for actions and abilities");
-  setIconTextureId("energy");
 }
 
 // Mana implementation
@@ -105,8 +97,6 @@ Mana::Mana(HammerEngine::ResourceHandle handle, const std::string &name,
     : GameResource(handle, name, ResourceType::Mana), m_manaType(manaType) {
   setValue(0.2f);
   setRegenerationRate(0.5f); // 0.5 mana per second
-  setDescription("Magical energy: " + manaTypeToString(manaType));
-  setIconTextureId("mana_" + manaTypeToString(manaType));
 }
 
 std::string Mana::manaTypeToString(ManaType type) {
@@ -147,8 +137,6 @@ BuildingMaterial::BuildingMaterial(HammerEngine::ResourceHandle handle,
   case MaterialType::COUNT:
     break;
   }
-  setDescription("Building material: " + materialTypeToString(materialType));
-  setIconTextureId("building_" + materialTypeToString(materialType));
 }
 
 std::string BuildingMaterial::materialTypeToString(MaterialType type) {
@@ -197,8 +185,6 @@ Ammunition::Ammunition(HammerEngine::ResourceHandle handle,
   case AmmoType::COUNT:
     break;
   }
-  setDescription("Ammunition: " + ammoTypeToString(ammoType));
-  setIconTextureId("ammo_" + ammoTypeToString(ammoType));
 }
 
 std::string Ammunition::ammoTypeToString(AmmoType type) {

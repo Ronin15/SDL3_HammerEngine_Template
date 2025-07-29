@@ -961,7 +961,7 @@ std::vector<uint32_t> ParticleManager::getActiveIndependentEffects() const {
   // PERFORMANCE: No locks needed for lock-free particle system
 
   std::vector<uint32_t> activeEffects;
-  for (auto &effect : m_effectInstances) {
+  for (const auto &effect : m_effectInstances) {
     if (effect.active && effect.isIndependentEffect) {
       activeEffects.push_back(effect.id);
     }
@@ -975,7 +975,7 @@ std::vector<uint32_t> ParticleManager::getActiveIndependentEffectsByGroup(
   // PERFORMANCE: No locks needed for lock-free particle system
 
   std::vector<uint32_t> activeEffects;
-  for (auto &effect : m_effectInstances) {
+  for (const auto &effect : m_effectInstances) {
     if (effect.active && effect.isIndependentEffect &&
         effect.groupTag == groupTag) {
       activeEffects.push_back(effect.id);

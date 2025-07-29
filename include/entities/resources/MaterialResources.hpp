@@ -16,7 +16,7 @@ class Material : public Resource {
 public:
   Material(HammerEngine::ResourceHandle handle, const std::string &name,
            ResourceType type);
-  virtual ~Material() = default;
+  virtual ~Material() override = default;
 
   // Material-specific properties
   int getTier() const { return m_tier; }
@@ -48,7 +48,7 @@ public:
 
   CraftingComponent(HammerEngine::ResourceHandle handle,
                     const std::string &name, ComponentType componentType);
-  virtual ~CraftingComponent() = default;
+  virtual ~CraftingComponent() override = default;
 
   ComponentType getComponentType() const { return m_componentType; }
   float getPurity() const { return m_purity; }
@@ -82,7 +82,7 @@ public:
 
   RawResource(HammerEngine::ResourceHandle handle, const std::string &name,
               ResourceOrigin origin);
-  virtual ~RawResource() = default;
+  virtual ~RawResource() override = default;
 
   ResourceOrigin getOrigin() const { return m_origin; }
   int getRarity() const { return m_rarity; }
