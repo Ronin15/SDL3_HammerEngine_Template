@@ -273,7 +273,7 @@ bool NPC::canTrade(const std::string &itemId, int quantity) const {
   }
 
   // Convert string to handle via ResourceTemplateManager
-  auto &templateManager = ResourceTemplateManager::Instance();
+  const auto &templateManager = ResourceTemplateManager::Instance();
   auto resource = templateManager.getResourceByName(itemId);
   if (!resource) {
     return false;
@@ -291,7 +291,7 @@ bool NPC::tradeWithPlayer(const std::string &itemId, int quantity,
 
   // Simple trade: NPC gives item to player for free (could be enhanced with
   // currency exchange)
-  auto &templateManager = ResourceTemplateManager::Instance();
+  const auto &templateManager = ResourceTemplateManager::Instance();
   auto resource = templateManager.getResourceByName(itemId);
   if (!resource) {
     NPC_WARN("NPC::tradeWithPlayer - Unknown item: " + itemId);
@@ -312,7 +312,7 @@ void NPC::initializeShopInventory() {
   m_canTrade = true;
 
   // Add some basic shop items using ResourceTemplateManager
-  auto &templateManager = ResourceTemplateManager::Instance();
+  const auto &templateManager = ResourceTemplateManager::Instance();
 
   // Add health potions
   auto healthPotion = templateManager.getResourceByName("health_potion");

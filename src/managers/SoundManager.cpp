@@ -426,7 +426,7 @@ void SoundManager::setSFXVolume(float volume) {
   if (m_initialized) {
     // Update volume for all active SFX tracks
     cleanupStoppedTracks();
-    for (auto &pair : m_activeSfxTracks) {
+    for (const auto &pair : m_activeSfxTracks) {
       for (MIX_Track *track : pair.second) {
         MIX_SetTrackGain(track, volume);
       }
@@ -439,7 +439,7 @@ void SoundManager::clean() {
     return;
 
   // Stop and destroy all active tracks
-  for (auto &pair : m_activeSfxTracks) {
+  for (const auto &pair : m_activeSfxTracks) {
     for (MIX_Track *track : pair.second) {
       if (MIX_TrackPlaying(track)) {
         MIX_StopTrack(track, 0);

@@ -196,7 +196,7 @@ void Player::initializeInventory() {
   m_equippedItems["necklace"] = "";
 
   // Give player some starting resources using ResourceTemplateManager
-  auto &templateManager = ResourceTemplateManager::Instance();
+  const auto &templateManager = ResourceTemplateManager::Instance();
 
   auto goldResource = templateManager.getResourceByName("gold");
   if (goldResource && m_inventory) {
@@ -210,8 +210,10 @@ void Player::initializeInventory() {
   }
   // Note: mana_potion doesn't exist in default resources
 
-  PLAYER_DEBUG("Player inventory initialized with " +
-               std::to_string(m_inventory->getMaxSlots()) + " slots");
+  if (m_inventory) {
+    PLAYER_DEBUG("Player inventory initialized with " +
+                 std::to_string(m_inventory->getMaxSlots()) + " slots");
+  }
 }
 
 void Player::onResourceChanged(HammerEngine::ResourceHandle resourceHandle,
@@ -246,7 +248,7 @@ bool Player::equipItem(const std::string &itemId) {
   }
 
   // Find the resource handle using ResourceTemplateManager
-  auto &templateManager = ResourceTemplateManager::Instance();
+  const auto &templateManager = ResourceTemplateManager::Instance();
   auto resource = templateManager.getResourceByName(itemId);
   if (!resource) {
     PLAYER_ERROR("Player::equipItem - Unknown item: " + itemId);
@@ -300,7 +302,7 @@ bool Player::unequipItem(const std::string &slotName) {
   std::string itemId = it->second;
 
   // Try to add back to inventory using ResourceTemplateManager
-  auto &templateManager = ResourceTemplateManager::Instance();
+  const auto &templateManager = ResourceTemplateManager::Instance();
   auto resource = templateManager.getResourceByName(itemId);
   if (resource && m_inventory->addResource(resource->getHandle(), 1)) {
     it->second.clear();
@@ -338,7 +340,7 @@ bool Player::consumeItem(const std::string &itemId) {
   }
 
   // Find the resource handle using ResourceTemplateManager
-  auto &templateManager = ResourceTemplateManager::Instance();
+  const auto &templateManager = ResourceTemplateManager::Instance();
   auto resource = templateManager.getResourceByName(itemId);
   if (!resource) {
     PLAYER_WARN("Player::consumeItem - Unknown item: " + itemId);
