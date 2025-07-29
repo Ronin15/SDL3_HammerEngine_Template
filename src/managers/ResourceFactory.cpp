@@ -74,8 +74,8 @@ bool ResourceFactory::registerCreator(const std::string &typeName,
                                       ResourceCreator creator) {
   auto &creators = getCreators();
   if (creators.find(typeName) != creators.end()) {
-    RESOURCE_WARN("ResourceFactory::registerCreator - Type '" + typeName +
-                  "' already registered");
+    RESOURCE_DEBUG("ResourceFactory::registerCreator - Type '" + typeName +
+                   "' already registered, skipping");
     return false;
   }
 
@@ -104,6 +104,14 @@ std::vector<std::string> ResourceFactory::getRegisteredTypes() {
 }
 
 void ResourceFactory::initialize() {
+  // Check if already initialized to avoid duplicate registrations
+  auto &creators = getCreators();
+  if (!creators.empty()) {
+    RESOURCE_DEBUG("ResourceFactory::initialize - Already initialized with " +
+                   std::to_string(creators.size()) + " resource creators");
+    return;
+  }
+
   RESOURCE_INFO(
       "ResourceFactory::initialize - Registering default resource creators");
 

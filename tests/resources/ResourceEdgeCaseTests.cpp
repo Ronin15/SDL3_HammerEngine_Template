@@ -351,14 +351,16 @@ BOOST_AUTO_TEST_CASE(TestDuplicateResourceHandling) {
       createTestResource("DuplicateTest"); // Same name, different handle
 
   BOOST_CHECK(templateManager->registerResourceTemplate(resource1));
-  BOOST_CHECK(templateManager->registerResourceTemplate(resource2));
+  // Second registration should fail due to duplicate name enforcement
+  BOOST_CHECK(!templateManager->registerResourceTemplate(resource2));
 
-  // Both should be added successfully since they have different handles
-  BOOST_CHECK_GT(templateManager->getResourceTemplateCount(), 1);
+  // Only the first resource should be registered
+  BOOST_CHECK_GT(templateManager->getResourceTemplateCount(), 0);
 
-  // Name lookup should return one of them (implementation dependent which one)
+  // Name lookup should return the first resource
   auto foundHandle = templateManager->getHandleByName("DuplicateTest");
   BOOST_CHECK(foundHandle.isValid());
+  BOOST_CHECK_EQUAL(foundHandle.getId(), resource1->getHandle().getId());
 }
 
 //==============================================================================

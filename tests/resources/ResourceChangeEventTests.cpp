@@ -48,10 +48,10 @@ public:
 
     // Create test resource handles through ResourceTemplateManager
     auto healthPotion = Resource::create<Resource>(
-        resourceManager->generateHandle(), "health_potion", "Health Potion",
-        ResourceCategory::Item, ResourceType::Consumable);
+        resourceManager->generateHandle(), "test_health_potion",
+        "Test Health Potion", ResourceCategory::Item, ResourceType::Consumable);
     auto ironSword = Resource::create<Resource>(
-        resourceManager->generateHandle(), "iron_sword", "Iron Sword",
+        resourceManager->generateHandle(), "test_iron_sword", "Test Iron Sword",
         ResourceCategory::Item, ResourceType::Equipment);
 
     resourceManager->registerResourceTemplate(healthPotion);
@@ -59,6 +59,17 @@ public:
 
     healthPotionHandle = healthPotion->getHandle();
     ironSwordHandle = ironSword->getHandle();
+  }
+
+  ~ResourceChangeEventTestFixture() {
+    // Explicitly clean up before singletons are destroyed to prevent crashes
+    player.reset();
+    npc.reset();
+
+    // Clean up the ResourceTemplateManager to prevent shutdown issues
+    if (resourceManager && resourceManager->isInitialized()) {
+      resourceManager->clean();
+    }
   }
 
 protected:

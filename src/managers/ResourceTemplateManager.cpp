@@ -86,6 +86,19 @@ void ResourceTemplateManager::clean() {
   m_types.clear();
   m_categoryIndex.clear();
   m_typeIndex.clear();
+  m_nameIndex.clear();
+  m_idIndex.clear();
+
+  // Clear handle generation data
+  {
+    std::lock_guard<std::mutex> handleLock(m_handleMutex);
+    m_freedHandleIds.clear();
+    m_handleGenerations.clear();
+    m_nextHandleId.store(1, std::memory_order_release);
+  }
+
+  // Clear ResourceFactory for test isolation
+  ResourceFactory::clear();
 
   m_initialized.store(false, std::memory_order_release);
   m_isShutdown = true;
