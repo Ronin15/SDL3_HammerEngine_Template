@@ -257,7 +257,7 @@ void NPC::onResourceChanged(HammerEngine::ResourceHandle resourceHandle,
 
   // Create and fire resource change event
   auto resourceEvent = std::make_shared<ResourceChangeEvent>(
-      shared_this(), resourceId, oldQuantity, newQuantity, "npc_action");
+      shared_this(), resourceHandle, oldQuantity, newQuantity, "npc_action");
 
   NPC_DEBUG("NPC Resource changed: " + resourceId + " from " +
             std::to_string(oldQuantity) + " to " + std::to_string(newQuantity));

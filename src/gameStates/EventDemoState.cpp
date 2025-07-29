@@ -932,7 +932,7 @@ void EventDemoState::triggerResourceDemo() {
 
       // Create and register ResourceChangeEvent for demonstration
       auto resourceEvent =
-          std::make_shared<ResourceChangeEvent>(m_player, resourceId,
+          std::make_shared<ResourceChangeEvent>(m_player, handle,
                                                 currentQuantity, // old quantity
                                                 newQuantity,     // new quantity
                                                 "event_demo");
@@ -966,7 +966,7 @@ void EventDemoState::triggerResourceDemo() {
 
         // Create and register ResourceChangeEvent for demonstration
         auto resourceEvent = std::make_shared<ResourceChangeEvent>(
-            m_player, resourceId,
+            m_player, handle,
             currentQuantity, // old quantity
             newQuantity,     // new quantity
             "event_demo");

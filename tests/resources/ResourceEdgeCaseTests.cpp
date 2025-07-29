@@ -125,11 +125,11 @@ BOOST_AUTO_TEST_CASE(TestInvalidHandleOperations) {
   // Test transaction operations with invalid handle (should be safe)
   auto addResult =
       worldManager->addResource(defaultWorldId, invalidHandle, 100);
-  BOOST_CHECK(addResult == ResourceTransactionResult::InvalidResourceId);
+  BOOST_CHECK(addResult == ResourceTransactionResult::InvalidResourceHandle);
 
   auto removeResult =
       worldManager->removeResource(defaultWorldId, invalidHandle, 25);
-  BOOST_CHECK(removeResult == ResourceTransactionResult::InvalidResourceId);
+  BOOST_CHECK(removeResult == ResourceTransactionResult::InvalidResourceHandle);
 }
 
 //==============================================================================

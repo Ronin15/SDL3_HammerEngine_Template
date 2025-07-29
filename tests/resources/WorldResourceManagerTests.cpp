@@ -341,14 +341,14 @@ BOOST_AUTO_TEST_CASE(TestInvalidOperations) {
 
   // Test operations with invalid resource handle
   result = worldManager->addResource(validWorldId, invalidResourceHandle, 100);
-  BOOST_CHECK(result == ResourceTransactionResult::InvalidResourceId);
+  BOOST_CHECK(result == ResourceTransactionResult::InvalidResourceHandle);
 
   result =
       worldManager->removeResource(validWorldId, invalidResourceHandle, 50);
-  BOOST_CHECK(result == ResourceTransactionResult::InvalidResourceId);
+  BOOST_CHECK(result == ResourceTransactionResult::InvalidResourceHandle);
 
   result = worldManager->setResource(validWorldId, invalidResourceHandle, 200);
-  BOOST_CHECK(result == ResourceTransactionResult::InvalidResourceId);
+  BOOST_CHECK(result == ResourceTransactionResult::InvalidResourceHandle);
 
   // Test getting quantity (should work for valid handle due to auto-creation)
   int64_t quantity =
@@ -667,7 +667,7 @@ BOOST_AUTO_TEST_CASE(TestResourceValidation) {
 
   // Test with invalid resource handle
   result = worldManager->addResource(worldId, invalidResourceHandle, 100);
-  BOOST_CHECK(result == ResourceTransactionResult::InvalidResourceId);
+  BOOST_CHECK(result == ResourceTransactionResult::InvalidResourceHandle);
 
   // Test with zero quantity (should succeed for add/set)
   result = worldManager->addResource(worldId, validResourceHandle, 0);
