@@ -643,7 +643,7 @@ bool GameEngine::init(const std::string_view title, const int width,
           "ResourceTemplateManager not properly initialized before caching!");
       return false;
     }
-    mp_resourceManager = &resourceMgrTest;
+    mp_resourceTemplateManager = &resourceMgrTest;
 
     // Validate World Resource Manager before caching
     WorldResourceManager &worldResourceMgrTest =
@@ -1167,7 +1167,7 @@ void GameEngine::clean() {
   mp_aiManager = nullptr;
   mp_eventManager = nullptr;
   mp_particleManager = nullptr;
-  mp_resourceManager = nullptr;
+  mp_resourceTemplateManager = nullptr;
   mp_worldResourceManager = nullptr;
   // InputManager not cached
   GAMEENGINE_INFO("Manager caches cleared");

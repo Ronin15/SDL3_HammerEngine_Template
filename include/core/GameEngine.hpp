@@ -273,7 +273,7 @@ private:
   AIManager *mp_aiManager{nullptr};
   EventManager *mp_eventManager{nullptr};
   ParticleManager *mp_particleManager{nullptr};
-  ResourceTemplateManager *mp_resourceManager{nullptr};
+  ResourceTemplateManager *mp_resourceTemplateManager{nullptr};
   WorldResourceManager *mp_worldResourceManager{nullptr};
 
   // Logical presentation settings

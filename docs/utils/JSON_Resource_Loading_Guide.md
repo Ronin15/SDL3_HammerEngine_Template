@@ -51,10 +51,13 @@ resourceManager.loadResourcesFromJsonString(jsonData);
 
 ### 3. Use Loaded Resources
 ```cpp
-// Get a resource template
-auto healthPotion = resourceManager.getResourceTemplate("health_potion");
+// Get a resource template by name (for initialization/validation)
+auto healthPotion = resourceManager.getResourceByName("Health Potion");
 if (healthPotion) {
     std::cout << "Found: " << healthPotion->getName() << std::endl;
+    
+    // Convert to handle for runtime use
+    auto healthPotionHandle = healthPotion->getHandle();
     
     // Check if it's a consumable
     auto consumable = std::dynamic_pointer_cast<Consumable>(healthPotion);
@@ -63,8 +66,14 @@ if (healthPotion) {
     }
 }
 
-// Create instances from templates
-auto potionInstance = resourceManager.createResource("health_potion");
+// Preferred runtime pattern: Convert names to handles during initialization
+auto healthPotionHandle = resourceManager.getHandleByName("Health Potion");
+if (healthPotionHandle.isValid()) {
+    // Runtime: Fast handle-based operations
+    auto potionInstance = resourceManager.createResource(healthPotionHandle);
+    int maxStack = resourceManager.getMaxStackSize(healthPotionHandle);
+    float value = resourceManager.getValue(healthPotionHandle);
+}
 ```
 
 ## JSON Schema Overview
@@ -141,6 +150,8 @@ ResourceFactory::registerCreator("MyCustomType", [](const JsonValue& json) -> Re
 ## Performance Tips
 
 - Load all JSON resources at startup, not during gameplay
+- **Convert names to ResourceHandles during initialization** and cache them in game objects
+- **Use handle-based operations during runtime** for optimal performance 
 - Use the `getStats()` method to monitor memory usage
 - Organize resources into logical files (items.json, materials.json, etc.)
 - Validate JSON syntax before deploying

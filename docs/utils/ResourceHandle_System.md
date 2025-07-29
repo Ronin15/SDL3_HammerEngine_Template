@@ -32,7 +32,7 @@ The system operates in two distinct phases:
 | Operation | String-Based | Handle-Based | Improvement |
 |-----------|--------------|--------------|-------------|
 | Resource lookup | O(1) hash + string compare | O(1) integer lookup | ~10x faster |
-| Memory per ID | ~50-200 bytes | 8 bytes | ~25x less memory |
+| Memory per ID | ~50-200 bytes | 6 bytes | ~25x less memory |
 | Cache efficiency | Poor (scattered strings) | Excellent (dense integers) | Better locality |
 | Type safety | Runtime errors | Compile-time safety | Fewer bugs |
 
@@ -47,28 +47,33 @@ namespace HammerEngine {
         
     public:
         // Validity checking
-        bool isValid() const;
+        constexpr bool isValid() const noexcept;
         
         // Comparison operators
-        bool operator==(const ResourceHandle& other) const;
-        bool operator!=(const ResourceHandle& other) const;
-        bool operator<(const ResourceHandle& other) const;
+        constexpr bool operator==(const ResourceHandle& other) const noexcept;
+        constexpr bool operator!=(const ResourceHandle& other) const noexcept;
+        constexpr bool operator<(const ResourceHandle& other) const noexcept;
         
         // Hash support for containers
-        std::size_t hash() const;
+        std::size_t hash() const noexcept;
         
         // Debug string representation
         std::string toString() const;
+        
+        // Accessors
+        constexpr HandleId getId() const noexcept;
+        constexpr Generation getGeneration() const noexcept;
     };
 }
 ```
 
 ### Key Features
-- **64-bit total size**: Fits in a single cache line entry
+- **48-bit total size**: Fits efficiently in CPU registers and cache lines
 - **Generation counter**: Prevents stale reference bugs (future enhancement)
 - **Hash support**: Works with `std::unordered_map` and `std::unordered_set`
 - **Type safety**: Cannot accidentally mix handles with other integers
 - **Debug support**: `toString()` for logging and debugging
+- **Constexpr operations**: Compile-time handle operations where possible
 
 ## Integration Examples
 
