@@ -165,6 +165,7 @@ variableScope:*/SoundManager.cpp:148
 # Variables used only in debug logging macros (removedCount)
 unreadVariable:*/ParticleManager.cpp:1077
 unreadVariable:*/ParticleManager.cpp:1210
+unreadVariable:*/ParticleManager.cpp:1288
 unreadVariable:*/ParticleManager.cpp:1873
 
 # Variables used only in debug logging macros (axisName, buttonName)

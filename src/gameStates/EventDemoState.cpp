@@ -941,11 +941,12 @@ void EventDemoState::triggerResourceDemo() {
         templateManager.getResourcesByType(ResourceType::Consumable);
     if (!consumables.empty()) {
       // Real game logic: find a consumable with reasonable value
-      for (const auto &resource : consumables) {
-        if (resource->getValue() > 0 && resource->getValue() < 100) {
-          selectedResource = resource;
-          break;
-        }
+      auto it = std::find_if(
+          consumables.begin(), consumables.end(), [](const auto &resource) {
+            return resource->getValue() > 0 && resource->getValue() < 100;
+          });
+      if (it != consumables.end()) {
+        selectedResource = *it;
       }
       discoveryMethod = "Consumable type query (filtered by value)";
       quantity = 3;
@@ -958,11 +959,12 @@ void EventDemoState::triggerResourceDemo() {
         templateManager.getResourcesByType(ResourceType::RawResource);
     if (!materials.empty()) {
       // Real game logic: find stackable materials
-      for (const auto &resource : materials) {
-        if (resource->isStackable() && resource->getMaxStackSize() >= 50) {
-          selectedResource = resource;
-          break;
-        }
+      auto it = std::find_if(
+          materials.begin(), materials.end(), [](const auto &resource) {
+            return resource->isStackable() && resource->getMaxStackSize() >= 50;
+          });
+      if (it != materials.end()) {
+        selectedResource = *it;
       }
       discoveryMethod = "RawResource type query (stackable, high capacity)";
       quantity = 15;
@@ -996,13 +998,14 @@ void EventDemoState::triggerResourceDemo() {
     auto gems = templateManager.getResourcesByType(ResourceType::Gem);
     if (!gems.empty()) {
       // Real game logic: find high-value gems
-      for (const auto &resource : gems) {
-        if (resource->getValue() > 500) {
-          selectedResource = resource;
-          break;
-        }
+      auto it =
+          std::find_if(gems.begin(), gems.end(), [](const auto &resource) {
+            return resource->getValue() > 500;
+          });
+      if (it != gems.end()) {
+        selectedResource = *it;
       }
-      if (!selectedResource && !gems.empty()) {
+      if (!selectedResource) {
         selectedResource = gems[0]; // fallback
       }
       discoveryMethod = "Gem type query (high value preferred)";
@@ -1107,18 +1110,18 @@ void EventDemoState::triggerResourceDemo() {
   auto allResources = inventory->getAllResources();
   std::string inventoryStatus = "Inventory Summary: ";
   bool hasItems = false;
-  for (const auto &[handle, qty] : allResources) {
+  for (const auto &[resourceHandle, qty] : allResources) {
     if (qty > 0) {
       if (hasItems)
         inventoryStatus += ", ";
 
-      // Convert ResourceHandle to name
       auto resourceTemplate =
-          ResourceTemplateManager::Instance().getResourceTemplate(handle);
-      std::string resourceName =
+          ResourceTemplateManager::Instance().getResourceTemplate(
+              resourceHandle);
+      std::string resName =
           resourceTemplate ? resourceTemplate->getName() : "Unknown";
 
-      inventoryStatus += resourceName + "(" + std::to_string(qty) + ")";
+      inventoryStatus += resName + "(" + std::to_string(qty) + ")";
       hasItems = true;
     }
   }
@@ -1697,7 +1700,7 @@ void EventDemoState::renderInventoryPanel() {
 void EventDemoState::setupResourceAchievements() {
   // Set up achievement thresholds for different resource types for
   // demonstration
-  auto &templateManager = ResourceTemplateManager::Instance();
+  const auto &templateManager = ResourceTemplateManager::Instance();
 
   if (!templateManager.isInitialized()) {
     addLogEntry(
