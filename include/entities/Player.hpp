@@ -9,6 +9,7 @@
 #include "entities/Entity.hpp"
 #include "entities/resources/InventoryComponent.hpp"
 #include "managers/EntityStateManager.hpp"
+#include "utils/ResourceHandle.hpp"
 #include <SDL3/SDL.h>
 #include <memory>
 #include <unordered_map>
@@ -48,14 +49,15 @@ public:
   // Player-specific resource operations (use ResourceHandle via getInventory())
 
   // Equipment management
-  bool equipItem(const std::string &itemId);
+  bool equipItem(HammerEngine::ResourceHandle itemHandle);
   bool unequipItem(const std::string &slotName);
-  std::string getEquippedItem(const std::string &slotName) const;
+  HammerEngine::ResourceHandle
+  getEquippedItem(const std::string &slotName) const;
 
   // Crafting and consumption
   bool canCraft(const std::string &recipeId) const;
   bool craftItem(const std::string &recipeId);
-  bool consumeItem(const std::string &itemId);
+  bool consumeItem(HammerEngine::ResourceHandle itemHandle);
 
   // Initialization - call after construction to setup inventory
   void initializeInventory();
@@ -76,8 +78,8 @@ private:
   SDL_FlipMode m_flip{SDL_FLIP_NONE}; // Default flip direction
   float m_movementSpeed{150.0f};      // Movement speed in pixels per second
 
-  // Equipment slots
-  std::unordered_map<std::string, std::string>
-      m_equippedItems; // slot -> itemId
+  // Equipment slots - store handles instead of item IDs
+  std::unordered_map<std::string, HammerEngine::ResourceHandle>
+      m_equippedItems; // slot -> itemHandle
 };
 #endif // PLAYER_HPP

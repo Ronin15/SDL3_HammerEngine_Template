@@ -186,15 +186,15 @@ void Player::initializeInventory() {
         onResourceChanged(resourceHandle, oldQuantity, newQuantity);
       });
 
-  // Initialize equipment slots
-  m_equippedItems["weapon"] = "";
-  m_equippedItems["helmet"] = "";
-  m_equippedItems["chest"] = "";
-  m_equippedItems["legs"] = "";
-  m_equippedItems["boots"] = "";
-  m_equippedItems["gloves"] = "";
-  m_equippedItems["ring"] = "";
-  m_equippedItems["necklace"] = "";
+  // Initialize equipment slots with invalid handles
+  m_equippedItems["weapon"] = HammerEngine::ResourceHandle{};
+  m_equippedItems["helmet"] = HammerEngine::ResourceHandle{};
+  m_equippedItems["chest"] = HammerEngine::ResourceHandle{};
+  m_equippedItems["legs"] = HammerEngine::ResourceHandle{};
+  m_equippedItems["boots"] = HammerEngine::ResourceHandle{};
+  m_equippedItems["gloves"] = HammerEngine::ResourceHandle{};
+  m_equippedItems["ring"] = HammerEngine::ResourceHandle{};
+  m_equippedItems["necklace"] = HammerEngine::ResourceHandle{};
 
   // Give player some starting resources using ResourceTemplateManager
   const auto &templateManager = ResourceTemplateManager::Instance();
@@ -245,40 +245,35 @@ void Player::onResourceChanged(HammerEngine::ResourceHandle resourceHandle,
 // ResourceHandle
 
 // Equipment management
-bool Player::equipItem(const std::string &itemId) {
+bool Player::equipItem(HammerEngine::ResourceHandle itemHandle) {
   if (!m_inventory) {
     PLAYER_WARN("Player::equipItem - Inventory not initialized");
     return false;
   }
 
-  if (itemId.empty()) {
-    PLAYER_ERROR("Player::equipItem - Item ID cannot be empty");
+  if (!itemHandle.isValid()) {
+    PLAYER_ERROR("Player::equipItem - Invalid resource handle");
     return false;
   }
 
-  // Find the resource handle using ResourceTemplateManager
+  if (!m_inventory->hasResource(itemHandle, 1)) {
+    PLAYER_WARN("Player::equipItem - Item not available (handle: " +
+                itemHandle.toString() + ")");
+    return false;
+  }
+
   const auto &templateManager = ResourceTemplateManager::Instance();
-  auto resource = templateManager.getResourceByName(itemId);
-  if (!resource) {
-    PLAYER_ERROR("Player::equipItem - Unknown item: " + itemId);
-    return false;
-  }
-
-  auto handle = resource->getHandle();
-  if (!m_inventory->hasResource(handle, 1)) {
-    PLAYER_WARN("Player::equipItem - Item not available: " + itemId);
-    return false;
-  }
-
-  auto itemTemplate = templateManager.getResourceTemplate(handle);
+  auto itemTemplate = templateManager.getResourceTemplate(itemHandle);
   if (!itemTemplate) {
-    PLAYER_ERROR("Player::equipItem - Cannot get template for item: " + itemId);
+    PLAYER_ERROR("Player::equipItem - Cannot get template for item handle: " +
+                 itemHandle.toString());
     return false;
   }
 
   // Check if it's equipment
   if (itemTemplate->getType() != ResourceType::Equipment) {
-    PLAYER_WARN("Player::equipItem - Item is not equipment: " + itemId);
+    PLAYER_WARN("Player::equipItem - Item is not equipment (handle: " +
+                itemHandle.toString() + ")");
     return false;
   }
 
@@ -288,14 +283,15 @@ bool Player::equipItem(const std::string &itemId) {
       "weapon"; // Default, should be determined from item properties
 
   // Unequip existing item in that slot
-  if (!m_equippedItems[slotName].empty()) {
+  if (m_equippedItems[slotName].isValid()) {
     unequipItem(slotName);
   }
 
   // Remove item from inventory and equip it
-  if (m_inventory->removeResource(handle, 1)) {
-    m_equippedItems[slotName] = itemId;
-    PLAYER_DEBUG("Equipped item: " + itemId + " in slot: " + slotName);
+  if (m_inventory->removeResource(itemHandle, 1)) {
+    m_equippedItems[slotName] = itemHandle;
+    PLAYER_DEBUG("Equipped item (handle: " + itemHandle.toString() +
+                 ") in slot: " + slotName);
     return true;
   }
 
@@ -309,35 +305,37 @@ bool Player::unequipItem(const std::string &slotName) {
   }
 
   auto it = m_equippedItems.find(slotName);
-  if (it == m_equippedItems.end() || it->second.empty()) {
+  if (it == m_equippedItems.end() || !it->second.isValid()) {
     PLAYER_WARN("Player::unequipItem - No item equipped in slot: " + slotName);
     return false; // Nothing equipped in this slot
   }
 
-  std::string itemId = it->second;
+  HammerEngine::ResourceHandle itemHandle = it->second;
 
-  // Try to add back to inventory using ResourceTemplateManager
-  const auto &templateManager = ResourceTemplateManager::Instance();
-  auto resource = templateManager.getResourceByName(itemId);
-  if (resource && m_inventory->addResource(resource->getHandle(), 1)) {
-    it->second.clear();
-    PLAYER_DEBUG("Unequipped item: " + itemId + " from slot: " + slotName);
+  // Try to add back to inventory
+  if (m_inventory->addResource(itemHandle, 1)) {
+    it->second = HammerEngine::ResourceHandle{}; // Set to invalid handle
+    PLAYER_DEBUG("Unequipped item (handle: " + itemHandle.toString() +
+                 ") from slot: " + slotName);
     return true;
   }
 
-  PLAYER_WARN("Player::unequipItem - Could not add item back to inventory: " +
-              itemId);
+  PLAYER_WARN(
+      "Player::unequipItem - Could not add item back to inventory (handle: " +
+      itemHandle.toString() + ")");
   return false;
 }
 
-std::string Player::getEquippedItem(const std::string &slotName) const {
+HammerEngine::ResourceHandle
+Player::getEquippedItem(const std::string &slotName) const {
   if (slotName.empty()) {
     PLAYER_ERROR("Player::getEquippedItem - Slot name cannot be empty");
-    return "";
+    return HammerEngine::ResourceHandle{};
   }
 
   auto it = m_equippedItems.find(slotName);
-  return (it != m_equippedItems.end()) ? it->second : "";
+  return (it != m_equippedItems.end()) ? it->second
+                                       : HammerEngine::ResourceHandle{};
 }
 
 // Crafting and consumption
@@ -354,40 +352,34 @@ bool Player::craftItem(const std::string &recipeId) {
   return false;   // Not implemented yet
 }
 
-bool Player::consumeItem(const std::string &itemId) {
+bool Player::consumeItem(HammerEngine::ResourceHandle itemHandle) {
   if (!m_inventory) {
     PLAYER_WARN("Player::consumeItem - Inventory not initialized");
     return false;
   }
 
-  if (itemId.empty()) {
-    PLAYER_ERROR("Player::consumeItem - Item ID cannot be empty");
+  if (!itemHandle.isValid()) {
+    PLAYER_ERROR("Player::consumeItem - Invalid resource handle");
     return false;
   }
 
-  // Find the resource handle using ResourceTemplateManager
+  if (!m_inventory->hasResource(itemHandle, 1)) {
+    PLAYER_WARN("Player::consumeItem - Item not available (handle: " +
+                itemHandle.toString() + ")");
+    return false;
+  }
+
   const auto &templateManager = ResourceTemplateManager::Instance();
-  auto resource = templateManager.getResourceByName(itemId);
-  if (!resource) {
-    PLAYER_WARN("Player::consumeItem - Unknown item: " + itemId);
-    return false;
-  }
-
-  auto handle = resource->getHandle();
-  if (!m_inventory->hasResource(handle, 1)) {
-    PLAYER_WARN("Player::consumeItem - Item not available: " + itemId);
-    return false;
-  }
-
-  auto itemTemplate = templateManager.getResourceTemplate(handle);
+  auto itemTemplate = templateManager.getResourceTemplate(itemHandle);
   if (!itemTemplate || !itemTemplate->isConsumable()) {
-    PLAYER_WARN("Player::consumeItem - Item is not consumable: " + itemId);
+    PLAYER_WARN("Player::consumeItem - Item is not consumable (handle: " +
+                itemHandle.toString() + ")");
     return false;
   }
 
   // Remove the item and apply its effects
-  if (m_inventory->removeResource(handle, 1)) {
-    PLAYER_DEBUG("Consumed item: " + itemId);
+  if (m_inventory->removeResource(itemHandle, 1)) {
+    PLAYER_DEBUG("Consumed item (handle: " + itemHandle.toString() + ")");
     // Here you would apply the item's effects (healing, buffs, etc.)
     return true;
   }

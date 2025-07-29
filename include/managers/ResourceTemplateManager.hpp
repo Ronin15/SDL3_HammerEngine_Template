@@ -183,6 +183,8 @@ private:
   void removeFromIndexes(HammerEngine::ResourceHandle handle);
   void rebuildIndexes();
   bool isValidResourceHandle(HammerEngine::ResourceHandle handle) const;
+  bool checkForDuplicateName(const std::string &name,
+                             HammerEngine::ResourceHandle currentHandle) const;
 
   // Internal registration method (no locking - assumes lock is already held)
   bool registerResourceTemplateInternal(const ResourcePtr &resource);

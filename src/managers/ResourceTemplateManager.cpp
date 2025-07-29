@@ -178,6 +178,17 @@ bool ResourceTemplateManager::registerResourceTemplateInternal(
     return false;
   }
 
+  // Check for duplicate names (validation phase)
+  const std::string &resourceName = resource->getName();
+  if (checkForDuplicateName(resourceName, handle)) {
+    RESOURCE_ERROR(
+        "ResourceTemplateManager::registerResourceTemplateInternal "
+        "- Duplicate resource name detected: '" +
+        resourceName +
+        "'. Resource names must be unique across all resource types.");
+    return false;
+  }
+
   try {
     // Cache frequently accessed properties for performance
     m_maxStackSizes[handle] = resource->getMaxStackSize();
@@ -190,13 +201,13 @@ bool ResourceTemplateManager::registerResourceTemplateInternal(
 
     // Update indexes
     updateIndexes(handle, resource->getCategory(), resource->getType());
-    updateNameIndex(handle, resource->getName());
+    updateNameIndex(handle, resourceName);
 
     m_stats.templatesLoaded.fetch_add(1, std::memory_order_relaxed);
 
     RESOURCE_DEBUG("ResourceTemplateManager::registerResourceTemplateInternal "
                    "- Registered: " +
-                   handle.toString());
+                   handle.toString() + " with name: '" + resourceName + "'");
     return true;
   } catch (const std::exception &ex) {
     RESOURCE_ERROR("ResourceTemplateManager::registerResourceTemplateInternal "
@@ -657,6 +668,20 @@ void ResourceTemplateManager::rebuildIndexes() {
 bool ResourceTemplateManager::isValidResourceHandle(
     HammerEngine::ResourceHandle handle) const {
   return handle.isValid();
+}
+
+bool ResourceTemplateManager::checkForDuplicateName(
+    const std::string &name, HammerEngine::ResourceHandle currentHandle) const {
+  // This method assumes the lock is already held by the caller
+  auto nameIt = m_nameIndex.find(name);
+  if (nameIt != m_nameIndex.end()) {
+    // Name exists - check if it's for a different resource
+    if (nameIt->second != currentHandle) {
+      // Different resource has the same name - this is a duplicate
+      return true;
+    }
+  }
+  return false;
 }
 
 void ResourceTemplateManager::createDefaultResources() {

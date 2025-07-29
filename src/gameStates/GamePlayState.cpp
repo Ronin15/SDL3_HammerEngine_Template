@@ -14,30 +14,17 @@
 #include <iostream>
 
 bool GamePlayState::enter() {
-  std::cout << "Hammer Game Engine - Entering GAME State\n";
+  // Create the player
+  mp_Player = std::make_shared<Player>();
+  mp_Player->initializeInventory(); // Initialize after construction
 
-  // Cache GameEngine reference for better performance
-  const auto &gameEngine = GameEngine::Instance();
-  auto *gameStateManager = gameEngine.getGameStateManager();
-
-  // Reset transition flag when entering
-  m_transitioningToPause = false;
-
-  // Remove PauseState if we're coming from it
-  if (gameStateManager->hasState("PauseState")) {
-    gameStateManager->removeState("PauseState");
-    std::cout << "Hammer Game Engine - Removing PAUSE State\n";
-  }
-
-  // Create player if not already created
-  if (!mp_Player) {
-    mp_Player = std::make_shared<Player>();
-    mp_Player->initializeInventory(); // Initialize inventory after construction
-    std::cout << "Hammer Game Engine - Player created in GamePlayState\n";
-  }
-
-  // Initialize inventory UI
+  // Initialize the inventory UI first
   initializeInventoryUI();
+
+  // Initialize resource handles (resolve names to handles once during
+  // initialization)
+  initializeResourceHandles();
+
   return true;
 }
 
@@ -142,19 +129,19 @@ void GamePlayState::handleInput() {
 
   // Resource addition demo keys
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_1)) {
-    addDemoResource("gold", 10);
+    addDemoResource(m_goldHandle, 10);
   }
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_2)) {
-    addDemoResource("health_potion", 1);
+    addDemoResource(m_healthPotionHandle, 1);
   }
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_3)) {
-    addDemoResource("iron_ore", 5);
+    addDemoResource(m_ironOreHandle, 5);
   }
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_4)) {
-    addDemoResource("wood", 3);
+    addDemoResource(m_woodHandle, 3);
   }
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_5)) {
-    removeDemoResource("gold", 5);
+    removeDemoResource(m_goldHandle, 5);
   }
 }
 
@@ -204,22 +191,17 @@ void GamePlayState::updateInventoryUI() {
     return;
   }
 
-  auto &ui = UIManager::Instance();
   auto *inventory = mp_Player->getInventory();
-
-  // Update resource counts using ResourceTemplateManager
-  const auto &templateManager = ResourceTemplateManager::Instance();
+  UIManager &ui = UIManager::Instance();
 
   int goldCount = 0;
-  auto goldResource = templateManager.getResourceByName("gold");
-  if (goldResource) {
-    goldCount = inventory->getResourceQuantity(goldResource->getHandle());
+  if (m_goldHandle.isValid()) {
+    goldCount = inventory->getResourceQuantity(m_goldHandle);
   }
 
   int potionCount = 0;
-  auto potionResource = templateManager.getResourceByName("health_potion");
-  if (potionResource) {
-    potionCount = inventory->getResourceQuantity(potionResource->getHandle());
+  if (m_healthPotionHandle.isValid()) {
+    potionCount = inventory->getResourceQuantity(m_healthPotionHandle);
   }
 
   size_t totalItems = inventory->getUsedSlots();
@@ -262,52 +244,76 @@ void GamePlayState::toggleInventoryDisplay() {
             << std::endl;
 }
 
-void GamePlayState::addDemoResource(const std::string &resourceId,
+void GamePlayState::addDemoResource(HammerEngine::ResourceHandle resourceHandle,
                                     int quantity) {
   if (!mp_Player) {
     std::cout << "Player not available for resource addition" << std::endl;
     return;
   }
 
-  const auto &templateManager = ResourceTemplateManager::Instance();
-  auto resource = templateManager.getResourceByName(resourceId);
-  if (!resource) {
-    std::cout << "Unknown resource: " << resourceId << std::endl;
+  if (!resourceHandle.isValid()) {
+    std::cout << "Invalid resource handle" << std::endl;
     return;
   }
 
   bool success =
-      mp_Player->getInventory()->addResource(resource->getHandle(), quantity);
+      mp_Player->getInventory()->addResource(resourceHandle, quantity);
   if (success) {
-    std::cout << "Added " << quantity << " " << resourceId
-              << " to player inventory" << std::endl;
+    std::cout << "Added " << quantity
+              << " resources (handle: " << resourceHandle.toString()
+              << ") to player inventory" << std::endl;
   } else {
-    std::cout << "Failed to add " << resourceId
-              << " to inventory (might be full)" << std::endl;
+    std::cout << "Failed to add resources to inventory (might be full)"
+              << std::endl;
   }
 }
 
-void GamePlayState::removeDemoResource(const std::string &resourceId,
-                                       int quantity) {
+void GamePlayState::removeDemoResource(
+    HammerEngine::ResourceHandle resourceHandle, int quantity) {
   if (!mp_Player) {
     std::cout << "Player not available for resource removal" << std::endl;
     return;
   }
 
-  const auto &templateManager = ResourceTemplateManager::Instance();
-  auto resource = templateManager.getResourceByName(resourceId);
-  if (!resource) {
-    std::cout << "Unknown resource: " << resourceId << std::endl;
+  if (!resourceHandle.isValid()) {
+    std::cout << "Invalid resource handle" << std::endl;
     return;
   }
 
-  bool success = mp_Player->getInventory()->removeResource(
-      resource->getHandle(), quantity);
+  bool success =
+      mp_Player->getInventory()->removeResource(resourceHandle, quantity);
   if (success) {
-    std::cout << "Removed " << quantity << " " << resourceId
-              << " from player inventory" << std::endl;
+    std::cout << "Removed " << quantity
+              << " resources (handle: " << resourceHandle.toString()
+              << ") from player inventory" << std::endl;
   } else {
-    std::cout << "Failed to remove " << resourceId
-              << " from inventory (insufficient quantity)" << std::endl;
+    std::cout
+        << "Failed to remove resources from inventory (insufficient quantity)"
+        << std::endl;
   }
+}
+
+void GamePlayState::initializeResourceHandles() {
+  // Resolve resource names to handles once during initialization (resource
+  // handle system compliance)
+  const auto &templateManager = ResourceTemplateManager::Instance();
+
+  // Only perform name-based lookups during initialization, not at runtime
+  auto goldResource = templateManager.getResourceByName("gold");
+  m_goldHandle =
+      goldResource ? goldResource->getHandle() : HammerEngine::ResourceHandle();
+
+  auto healthPotionResource =
+      templateManager.getResourceByName("health_potion");
+  m_healthPotionHandle = healthPotionResource
+                             ? healthPotionResource->getHandle()
+                             : HammerEngine::ResourceHandle();
+
+  auto ironOreResource = templateManager.getResourceByName("iron_ore");
+  m_ironOreHandle = ironOreResource ? ironOreResource->getHandle()
+                                    : HammerEngine::ResourceHandle();
+
+  auto woodResource = templateManager.getResourceByName("wood");
+  m_woodHandle =
+      woodResource ? woodResource->getHandle() : HammerEngine::ResourceHandle();
 }

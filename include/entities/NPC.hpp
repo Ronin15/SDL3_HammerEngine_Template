@@ -8,7 +8,7 @@
 
 #include "entities/Entity.hpp"
 #include "entities/resources/InventoryComponent.hpp"
-
+#include "utils/ResourceHandle.hpp"
 #include "utils/Vector2D.hpp"
 #include <SDL3/SDL.h>
 #include <memory>
@@ -58,16 +58,21 @@ public:
 
   // NPC-specific resource operations (use ResourceHandle via getInventory())
 
-  // Trading system
-  bool canTrade(const std::string &itemId, int quantity = 1) const;
-  bool tradeWithPlayer(const std::string &itemId, int quantity,
-                       InventoryComponent &playerInventory);
+  // Trading system (resource handle system compliance)
+  bool canTrade(HammerEngine::ResourceHandle resourceHandle,
+                int quantity = 1) const;
+  bool tradeWithPlayer(HammerEngine::ResourceHandle resourceHandle,
+                       int quantity, InventoryComponent &playerInventory);
   void initializeShopInventory();
   void initializeLootDrops();
 
   // Loot system
   void dropLoot();
-  void dropSpecificItem(const std::string &itemId, int quantity = 1);
+  void dropSpecificItem(HammerEngine::ResourceHandle itemHandle,
+                        int quantity = 1);
+
+  // Helper method to set up loot drops during initialization
+  void setLootDropRate(HammerEngine::ResourceHandle itemHandle, float dropRate);
 
 private:
   void loadDimensionsFromTexture();
@@ -95,8 +100,8 @@ private:
   // Trading and loot configuration
   bool m_canTrade{false};
   bool m_hasLootDrops{false};
-  std::unordered_map<std::string, float>
-      m_dropRates; // itemId -> drop probability
+  std::unordered_map<HammerEngine::ResourceHandle, float>
+      m_dropRates; // itemHandle -> drop probability
 };
 
 #endif // NPC_HPP
