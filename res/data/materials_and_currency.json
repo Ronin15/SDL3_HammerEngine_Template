@@ -120,6 +120,39 @@
       "maxStackSize": 500,
       "consumable": true,
       "iconTextureId": "spectral_arrows_icon"
+    },
+    {
+      "id": "gold",
+      "name": "Gold",
+      "category": "Currency",
+      "type": "Gold",
+      "description": "Standard gold coins used as currency throughout the realm.",
+      "value": 1,
+      "maxStackSize": 10000,
+      "consumable": false,
+      "iconTextureId": "gold_icon"
+    },
+    {
+      "id": "iron_ore",
+      "name": "Iron Ore",
+      "category": "Material",
+      "type": "RawResource",
+      "description": "Raw iron ore that can be smelted into iron ingots.",
+      "value": 10,
+      "maxStackSize": 100,
+      "consumable": false,
+      "iconTextureId": "iron_ore_icon"
+    },
+    {
+      "id": "wood",
+      "name": "Wood",
+      "category": "Material",
+      "type": "RawResource",
+      "description": "Basic wood logs useful for crafting and construction.",
+      "value": 5,
+      "maxStackSize": 200,
+      "consumable": false,
+      "iconTextureId": "wood_icon"
     }
   ]
 }

@@ -890,15 +890,8 @@ void EventDemoState::triggerParticleEffectDemo() {
 }
 
 void EventDemoState::triggerResourceDemo() {
-  static std::vector<std::string> resourceIds = {"gold", "health_potion",
-                                                 "iron_ore", "wood"};
-  static std::vector<int> quantities = {50, 2, 10, 5};
-  static size_t resourceIndex = 0;
+  static size_t demonstrationStep = 0;
   static bool isAdding = true;
-
-  // Get current resource and quantity
-  std::string resourceId = resourceIds[resourceIndex];
-  int quantity = quantities[resourceIndex];
 
   if (!m_player || !m_player->getInventory()) {
     addLogEntry("Resource demo failed: Player inventory not available");
@@ -906,27 +899,130 @@ void EventDemoState::triggerResourceDemo() {
   }
 
   auto *inventory = m_player->getInventory();
-
-  // Convert string to ResourceHandle using ResourceTemplateManager
   auto &templateManager = ResourceTemplateManager::Instance();
-  auto resource = templateManager.getResourceByName(resourceId);
-  if (!resource) {
-    addLogEntry("Resource demo failed: Unknown resource: " + resourceId);
+
+  if (!templateManager.isInitialized()) {
+    addLogEntry(
+        "Resource demo failed: ResourceTemplateManager not initialized");
     return;
   }
-  auto handle = resource->getHandle();
 
+  // Realistic resource discovery: Query system for different categories/types
+  ResourcePtr selectedResource = nullptr;
+  std::string discoveryMethod;
+  int quantity = 1;
+
+  switch (demonstrationStep % 6) {
+  case 0: {
+    // Discovery pattern: Find currency resources
+    auto currencyResources =
+        templateManager.getResourcesByCategory(ResourceCategory::Currency);
+    if (!currencyResources.empty()) {
+      // Real game logic: pick the first currency resource found
+      selectedResource = currencyResources[0];
+      discoveryMethod = "Currency category query";
+      quantity = 50;
+    }
+    break;
+  }
+  case 1: {
+    // Discovery pattern: Find consumable items
+    auto consumables =
+        templateManager.getResourcesByType(ResourceType::Consumable);
+    if (!consumables.empty()) {
+      // Real game logic: find a consumable with reasonable value
+      for (const auto &resource : consumables) {
+        if (resource->getValue() > 0 && resource->getValue() < 100) {
+          selectedResource = resource;
+          break;
+        }
+      }
+      discoveryMethod = "Consumable type query (filtered by value)";
+      quantity = 3;
+    }
+    break;
+  }
+  case 2: {
+    // Discovery pattern: Find raw materials
+    auto materials =
+        templateManager.getResourcesByType(ResourceType::RawResource);
+    if (!materials.empty()) {
+      // Real game logic: find stackable materials
+      for (const auto &resource : materials) {
+        if (resource->isStackable() && resource->getMaxStackSize() >= 50) {
+          selectedResource = resource;
+          break;
+        }
+      }
+      discoveryMethod = "RawResource type query (stackable, high capacity)";
+      quantity = 15;
+    }
+    break;
+  }
+  case 3: {
+    // Discovery pattern: Find building materials
+    auto gameResources =
+        templateManager.getResourcesByType(ResourceType::BuildingMaterial);
+    if (!gameResources.empty()) {
+      selectedResource = gameResources[0];
+      discoveryMethod = "BuildingMaterial type query";
+      quantity = 8;
+    }
+    break;
+  }
+  case 4: {
+    // Discovery pattern: Find equipment
+    auto equipment =
+        templateManager.getResourcesByType(ResourceType::Equipment);
+    if (!equipment.empty()) {
+      selectedResource = equipment[0];
+      discoveryMethod = "Equipment type query";
+      quantity = 1;
+    }
+    break;
+  }
+  case 5: {
+    // Discovery pattern: Find valuable gems
+    auto gems = templateManager.getResourcesByType(ResourceType::Gem);
+    if (!gems.empty()) {
+      // Real game logic: find high-value gems
+      for (const auto &resource : gems) {
+        if (resource->getValue() > 500) {
+          selectedResource = resource;
+          break;
+        }
+      }
+      if (!selectedResource && !gems.empty()) {
+        selectedResource = gems[0]; // fallback
+      }
+      discoveryMethod = "Gem type query (high value preferred)";
+      quantity = 2;
+    }
+    break;
+  }
+  }
+
+  if (!selectedResource) {
+    addLogEntry("Resource discovery failed: No resources found for step " +
+                std::to_string(demonstrationStep));
+    demonstrationStep++;
+    return;
+  }
+
+  // Use the discovered resource
+  auto handle = selectedResource->getHandle();
+  std::string resourceName = selectedResource->getName();
   int currentQuantity = inventory->getResourceQuantity(handle);
 
   if (isAdding) {
     // Add resources to player inventory
-    addLogEntry("BEFORE ADD: " + resourceId + " = " +
-                std::to_string(currentQuantity));
+    addLogEntry("BEFORE ADD (" + discoveryMethod + "): " + resourceName +
+                " = " + std::to_string(currentQuantity));
 
     bool success = inventory->addResource(handle, quantity);
     if (success) {
       int newQuantity = inventory->getResourceQuantity(handle);
-      addLogEntry("AFTER ADD: " + resourceId + " = " +
+      addLogEntry("AFTER ADD: " + resourceName + " = " +
                   std::to_string(newQuantity) + " (+" +
                   std::to_string(quantity) + ")");
 
@@ -940,27 +1036,27 @@ void EventDemoState::triggerResourceDemo() {
       // Register and execute the event to demonstrate event-based resource
       // management
       EventManager &eventMgr = EventManager::Instance();
-      std::string eventName = "resource_demo_add_" + resourceId + "_" +
-                              std::to_string(resourceIndex);
+      std::string eventName =
+          "resource_demo_add_" + std::to_string(demonstrationStep);
       eventMgr.registerEvent(eventName, resourceEvent);
       eventMgr.executeEvent(eventName);
 
       addLogEntry("ResourceChangeEvent executed for ADD operation");
     } else {
-      addLogEntry("FAILED to add " + resourceId + " - inventory may be full");
+      addLogEntry("FAILED to add " + resourceName + " - inventory may be full");
     }
   } else {
     // Remove resources from player inventory
     int removeQuantity = std::min(quantity, currentQuantity);
 
     if (removeQuantity > 0) {
-      addLogEntry("BEFORE REMOVE: " + resourceId + " = " +
-                  std::to_string(currentQuantity));
+      addLogEntry("BEFORE REMOVE (" + discoveryMethod + "): " + resourceName +
+                  " = " + std::to_string(currentQuantity));
 
       bool success = inventory->removeResource(handle, removeQuantity);
       if (success) {
         int newQuantity = inventory->getResourceQuantity(handle);
-        addLogEntry("AFTER REMOVE: " + resourceId + " = " +
+        addLogEntry("AFTER REMOVE: " + resourceName + " = " +
                     std::to_string(newQuantity) + " (-" +
                     std::to_string(removeQuantity) + ")");
 
@@ -973,26 +1069,28 @@ void EventDemoState::triggerResourceDemo() {
 
         // Register and execute the event
         EventManager &eventMgr = EventManager::Instance();
-        std::string eventName = "resource_demo_remove_" + resourceId + "_" +
-                                std::to_string(resourceIndex);
+        std::string eventName =
+            "resource_demo_remove_" + std::to_string(demonstrationStep);
         eventMgr.registerEvent(eventName, resourceEvent);
         eventMgr.executeEvent(eventName);
 
         addLogEntry("ResourceChangeEvent executed for REMOVE operation");
       } else {
-        addLogEntry("FAILED to remove " + resourceId + " from inventory");
+        addLogEntry("FAILED to remove " + resourceName + " from inventory");
       }
     } else {
-      addLogEntry("No " + resourceId + " to remove from inventory");
+      addLogEntry("No " + resourceName + " to remove from inventory");
     }
   }
 
-  // Cycle through resources and alternate between adding and removing
-  resourceIndex = (resourceIndex + 1) % resourceIds.size();
-  if (resourceIndex == 0) {
+  // Progress through different discovery patterns and alternate between adding
+  // and removing
+  demonstrationStep++;
+  if (demonstrationStep % 6 == 0) {
     isAdding = !isAdding; // Switch between adding and removing after full cycle
     std::string mode = isAdding ? "ADDING" : "REMOVING";
-    addLogEntry("--- Switched to " + mode + " mode ---");
+    addLogEntry("--- Switched to " + mode + " mode (completed " +
+                std::to_string(demonstrationStep / 6) + " cycles) ---");
   }
 
   // Log current inventory summary

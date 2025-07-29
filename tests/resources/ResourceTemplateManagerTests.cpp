@@ -28,7 +28,8 @@ struct ResourceTemplateManagerFixture {
   ResourcePtr createTestResource(const std::string &name,
                                  ResourceCategory category, ResourceType type) {
     auto handle = manager->generateHandle();
-    return std::make_shared<Resource>(handle, name, category, type);
+    std::string id = "test_" + name; // Use test_ prefix for ID
+    return std::make_shared<Resource>(handle, id, name, category, type);
   }
 };
 
@@ -92,7 +93,7 @@ BOOST_AUTO_TEST_CASE(TestDuplicateResourceRegistration) {
   // Use the same handle for both resources (simulate duplicate)
   auto handle = resource1->getHandle();
   auto duplicateResource = std::make_shared<Resource>(
-      handle, "Duplicate", ResourceCategory::Material,
+      handle, "test_duplicate", "Duplicate", ResourceCategory::Material,
       ResourceType::CraftingComponent);
 
   BOOST_CHECK(manager->registerResourceTemplate(resource1));

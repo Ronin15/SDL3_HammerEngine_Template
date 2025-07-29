@@ -52,7 +52,8 @@ struct ResourceEdgeCaseFixture {
                      ResourceCategory category = ResourceCategory::Material,
                      ResourceType type = ResourceType::RawResource) {
     auto handle = templateManager->generateHandle();
-    return std::make_shared<Resource>(handle, name, category, type);
+    std::string id = "test_" + name; // Use test_ prefix for ID
+    return std::make_shared<Resource>(handle, id, name, category, type);
   }
 };
 

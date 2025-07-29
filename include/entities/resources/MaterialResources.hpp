@@ -14,8 +14,8 @@
  */
 class Material : public Resource {
 public:
-  Material(HammerEngine::ResourceHandle handle, const std::string &name,
-           ResourceType type);
+  Material(HammerEngine::ResourceHandle handle, const std::string &id,
+           const std::string &name, ResourceType type);
   virtual ~Material() override = default;
 
   // Material-specific properties
@@ -46,7 +46,7 @@ public:
     COUNT = 7
   };
 
-  CraftingComponent(HammerEngine::ResourceHandle handle,
+  CraftingComponent(HammerEngine::ResourceHandle handle, const std::string &id,
                     const std::string &name, ComponentType componentType);
   virtual ~CraftingComponent() override = default;
 
@@ -80,8 +80,8 @@ public:
     COUNT = 6
   };
 
-  RawResource(HammerEngine::ResourceHandle handle, const std::string &name,
-              ResourceOrigin origin);
+  RawResource(HammerEngine::ResourceHandle handle, const std::string &id,
+              const std::string &name, ResourceOrigin origin);
   virtual ~RawResource() override = default;
 
   ResourceOrigin getOrigin() const { return m_origin; }

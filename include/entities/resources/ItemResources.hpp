@@ -14,8 +14,8 @@
  */
 class Item : public Resource {
 public:
-  Item(HammerEngine::ResourceHandle handle, const std::string &name,
-       ResourceType type);
+  Item(HammerEngine::ResourceHandle handle, const std::string &id,
+       const std::string &name, ResourceType type);
   virtual ~Item() override = default;
 
   // Item-specific properties
@@ -49,8 +49,8 @@ public:
     COUNT = 8
   };
 
-  Equipment(HammerEngine::ResourceHandle handle, const std::string &name,
-            EquipmentSlot slot);
+  Equipment(HammerEngine::ResourceHandle handle, const std::string &id,
+            const std::string &name, EquipmentSlot slot);
   virtual ~Equipment() override = default;
 
   EquipmentSlot getEquipmentSlot() const { return m_equipmentSlot; }
@@ -90,7 +90,8 @@ public:
     COUNT = 6
   };
 
-  Consumable(HammerEngine::ResourceHandle handle, const std::string &name);
+  Consumable(HammerEngine::ResourceHandle handle, const std::string &id,
+             const std::string &name);
   virtual ~Consumable() override = default;
 
   ConsumableEffect getEffect() const { return m_effect; }
@@ -118,8 +119,8 @@ private:
  */
 class QuestItem : public Item {
 public:
-  QuestItem(HammerEngine::ResourceHandle handle, const std::string &name,
-            const std::string &questId = "");
+  QuestItem(HammerEngine::ResourceHandle handle, const std::string &id,
+            const std::string &name, const std::string &questId = "");
   virtual ~QuestItem() override = default;
 
   const std::string &getQuestId() const { return m_questId; }

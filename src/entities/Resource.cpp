@@ -7,9 +7,11 @@
 #include "core/Logger.hpp"
 #include <unordered_map>
 
-Resource::Resource(HammerEngine::ResourceHandle handle, const std::string &name,
-                   ResourceCategory category, ResourceType type)
-    : m_handle(handle), m_name(name), m_category(category), m_type(type) {
+Resource::Resource(HammerEngine::ResourceHandle handle, const std::string &id,
+                   const std::string &name, ResourceCategory category,
+                   ResourceType type)
+    : m_handle(handle), m_id(id), m_name(name), m_category(category),
+      m_type(type) {
 
   // Initialize base Entity properties (resources don't render by default)
   m_position = Vector2D(0, 0);

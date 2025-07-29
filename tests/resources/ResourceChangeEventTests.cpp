@@ -48,11 +48,11 @@ public:
 
     // Create test resource handles through ResourceTemplateManager
     auto healthPotion = Resource::create<Resource>(
-        resourceManager->generateHandle(), "Health Potion",
+        resourceManager->generateHandle(), "health_potion", "Health Potion",
         ResourceCategory::Item, ResourceType::Consumable);
     auto ironSword = Resource::create<Resource>(
-        resourceManager->generateHandle(), "Iron Sword", ResourceCategory::Item,
-        ResourceType::Equipment);
+        resourceManager->generateHandle(), "iron_sword", "Iron Sword",
+        ResourceCategory::Item, ResourceType::Equipment);
 
     resourceManager->registerResourceTemplate(healthPotion);
     resourceManager->registerResourceTemplate(ironSword);

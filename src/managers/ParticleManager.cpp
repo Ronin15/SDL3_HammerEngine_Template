@@ -625,9 +625,6 @@ void ParticleManager::clearWeatherGeneration(uint8_t generationId,
 void ParticleManager::triggerWeatherEffect(const std::string &weatherType,
                                            float intensity,
                                            float transitionTime) {
-  PARTICLE_INFO("*** WEATHER EFFECT TRIGGERED: " + weatherType +
-                " intensity=" + std::to_string(intensity));
-
   // Convert string weather type to enum and delegate to enum-based method
   ParticleEffectType effectType = weatherStringToEnum(weatherType, intensity);
 
@@ -637,7 +634,7 @@ void ParticleManager::triggerWeatherEffect(const std::string &weatherType,
     return;
   }
 
-  // Use enum-based method
+  // Use enum-based method (this will handle the logging)
   triggerWeatherEffect(effectType, intensity, transitionTime);
 }
 

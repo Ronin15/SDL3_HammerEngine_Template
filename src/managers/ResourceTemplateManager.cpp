@@ -350,6 +350,21 @@ ResourceTemplateManager::getResourceByName(const std::string &name) const {
   return nullptr;
 }
 
+ResourcePtr
+ResourceTemplateManager::getResourceById(const std::string &id) const {
+  std::shared_lock<std::shared_mutex> lock(m_resourceMutex);
+
+  auto idIt = m_idIndex.find(id);
+  if (idIt != m_idIndex.end()) {
+    auto resourceIt = m_resourceTemplates.find(idIt->second);
+    if (resourceIt != m_resourceTemplates.end()) {
+      return resourceIt->second;
+    }
+  }
+
+  return nullptr;
+}
+
 HammerEngine::ResourceHandle
 ResourceTemplateManager::getHandleByName(const std::string &name) const {
   std::shared_lock<std::shared_mutex> lock(m_resourceMutex);
@@ -357,6 +372,18 @@ ResourceTemplateManager::getHandleByName(const std::string &name) const {
   auto nameIt = m_nameIndex.find(name);
   if (nameIt != m_nameIndex.end()) {
     return nameIt->second;
+  }
+
+  return HammerEngine::ResourceHandle(); // Invalid handle
+}
+
+HammerEngine::ResourceHandle
+ResourceTemplateManager::getHandleById(const std::string &id) const {
+  std::shared_lock<std::shared_mutex> lock(m_resourceMutex);
+
+  auto idIt = m_idIndex.find(id);
+  if (idIt != m_idIndex.end()) {
+    return idIt->second;
   }
 
   return HammerEngine::ResourceHandle(); // Invalid handle
@@ -443,13 +470,17 @@ bool ResourceTemplateManager::loadResourcesFromJsonString(
         if (registerResourceTemplateInternal(resource)) {
           loadedCount++;
 
-          // Extract the resource ID from JSON for debug logging
+          // Extract the resource ID from JSON for debug logging and ID index
           if (resourceJson.hasKey("id") && resourceJson["id"].isString()) {
+            std::string resourceId = resourceJson["id"].asString();
+
+            // Update ID index for fast JSON ID lookups
+            updateIdIndex(resource->getHandle(), resourceId);
+
             RESOURCE_DEBUG(
                 "ResourceTemplateManager::loadResourcesFromJsonString "
                 "- Loaded resource: " +
-                resourceJson["id"].asString() + " -> " +
-                resource->getHandle().toString());
+                resourceId + " -> " + resource->getHandle().toString());
           } else {
             RESOURCE_WARN(
                 "ResourceTemplateManager::loadResourcesFromJsonString - "
@@ -549,6 +580,12 @@ void ResourceTemplateManager::updateNameIndex(
   m_nameIndex[name] = handle;
 }
 
+void ResourceTemplateManager::updateIdIndex(HammerEngine::ResourceHandle handle,
+                                            const std::string &id) {
+  std::lock_guard<std::mutex> lock(m_indexMutex);
+  m_idIndex[id] = handle;
+}
+
 void ResourceTemplateManager::removeFromIndexes(
     HammerEngine::ResourceHandle handle) {
   std::lock_guard<std::mutex> lock(m_indexMutex);
@@ -576,6 +613,14 @@ void ResourceTemplateManager::removeFromIndexes(
   if (it != m_nameIndex.end()) {
     m_nameIndex.erase(it);
   }
+
+  // Remove from ID index
+  auto idIt = std::find_if(
+      m_idIndex.begin(), m_idIndex.end(),
+      [handle](const auto &pair) { return pair.second == handle; });
+  if (idIt != m_idIndex.end()) {
+    m_idIndex.erase(idIt);
+  }
 }
 
 void ResourceTemplateManager::rebuildIndexes() {
@@ -585,6 +630,7 @@ void ResourceTemplateManager::rebuildIndexes() {
   m_categoryIndex.clear();
   m_typeIndex.clear();
   m_nameIndex.clear();
+  m_idIndex.clear();
 
   // Initialize empty vectors for all categories and types
   for (int i = 0; i < static_cast<int>(ResourceCategory::COUNT); ++i) {
@@ -603,6 +649,7 @@ void ResourceTemplateManager::rebuildIndexes() {
       m_categoryIndex[resource->getCategory()].push_back(handle);
       m_typeIndex[resource->getType()].push_back(handle);
       m_nameIndex[resource->getName()] = handle;
+      m_idIndex[resource->getId()] = handle;
     }
   }
 }

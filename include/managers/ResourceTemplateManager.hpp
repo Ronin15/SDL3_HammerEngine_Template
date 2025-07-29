@@ -69,9 +69,13 @@ public:
       HammerEngine::ResourceHandle handle); // Remove and release handle
   ResourcePtr getResourceTemplate(HammerEngine::ResourceHandle handle) const;
   ResourcePtr
-  getResourceByName(const std::string &name) const; // O(1) name lookup
+  getResourceByName(const std::string &name) const; // O(1) display name lookup
+  ResourcePtr
+  getResourceById(const std::string &id) const; // O(1) JSON ID lookup
   HammerEngine::ResourceHandle
   getHandleByName(const std::string &name) const; // O(1) name to handle lookup
+  HammerEngine::ResourceHandle
+  getHandleById(const std::string &id) const; // O(1) ID to handle lookup
   std::vector<ResourcePtr>
   getResourcesByCategory(ResourceCategory category) const;
   std::vector<ResourcePtr> getResourcesByType(ResourceType type) const;
@@ -145,6 +149,9 @@ private:
   // Name index for O(1) name-based lookups
   std::unordered_map<std::string, HammerEngine::ResourceHandle> m_nameIndex;
 
+  // ID index for O(1) JSON ID-based lookups (primary identifier)
+  std::unordered_map<std::string, HammerEngine::ResourceHandle> m_idIndex;
+
   // Handle generation with proper generation tracking
   std::atomic<HammerEngine::ResourceHandle::HandleId> m_nextHandleId{
       1}; // Start from 1, 0 is invalid
@@ -171,6 +178,8 @@ private:
                      ResourceCategory category, ResourceType type);
   void updateNameIndex(HammerEngine::ResourceHandle handle,
                        const std::string &name);
+  void updateIdIndex(HammerEngine::ResourceHandle handle,
+                     const std::string &id);
   void removeFromIndexes(HammerEngine::ResourceHandle handle);
   void rebuildIndexes();
   bool isValidResourceHandle(HammerEngine::ResourceHandle handle) const;
