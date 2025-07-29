@@ -97,6 +97,22 @@
       "properties": {
         "questId": ""
       }
+    },
+    {
+      "id": "health_potion",
+      "name": "Health Potion",
+      "category": "Item",
+      "type": "Consumable",
+      "description": "A basic healing potion that restores health.",
+      "value": 50,
+      "maxStackSize": 50,
+      "consumable": true,
+      "iconTextureId": "health_potion_icon",
+      "properties": {
+        "effect": "HealHP",
+        "effectPower": 50,
+        "effectDuration": 0
+      }
     }
   ]
 }

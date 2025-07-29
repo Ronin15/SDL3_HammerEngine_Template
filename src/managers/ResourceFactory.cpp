@@ -65,7 +65,7 @@ ResourcePtr ResourceFactory::createFromJson(const JsonValue &json) {
 
   // Generate a handle for the new resource
   auto handle = ResourceTemplateManager::Instance().generateHandle();
-  auto resource = std::make_shared<Resource>(handle, name, category, type);
+  auto resource = std::make_shared<Resource>(handle, id, name, category, type);
   setCommonProperties(resource, json);
   return resource;
 }
@@ -171,6 +171,7 @@ void ResourceFactory::clear() {
 ResourcePtr
 ResourceFactory::createBaseResource(HammerEngine::ResourceHandle handle,
                                     const JsonValue &json) {
+  std::string id = json["id"].asString();
   std::string name = json["name"].asString();
   std::string categoryStr = json["category"].asString();
   std::string typeStr = json["type"].asString();
@@ -178,7 +179,7 @@ ResourceFactory::createBaseResource(HammerEngine::ResourceHandle handle,
   ResourceCategory category = Resource::stringToCategory(categoryStr);
   ResourceType type = Resource::stringToType(typeStr);
 
-  auto resource = std::make_shared<Resource>(handle, name, category, type);
+  auto resource = std::make_shared<Resource>(handle, id, name, category, type);
   setCommonProperties(resource, json);
 
   return resource;
@@ -187,6 +188,7 @@ ResourceFactory::createBaseResource(HammerEngine::ResourceHandle handle,
 ResourcePtr
 ResourceFactory::createEquipment(HammerEngine::ResourceHandle handle,
                                  const JsonValue &json) {
+  std::string id = json["id"].asString();
   std::string name = json["name"].asString();
 
   // Determine equipment slot from JSON or default to Weapon
@@ -213,7 +215,7 @@ ResourceFactory::createEquipment(HammerEngine::ResourceHandle handle,
     }
   }
 
-  auto equipment = std::make_shared<Equipment>(handle, name, slot);
+  auto equipment = std::make_shared<Equipment>(handle, id, name, slot);
   setCommonProperties(equipment, json);
 
   // Set equipment-specific properties
@@ -235,9 +237,10 @@ ResourceFactory::createEquipment(HammerEngine::ResourceHandle handle,
 ResourcePtr
 ResourceFactory::createConsumable(HammerEngine::ResourceHandle handle,
                                   const JsonValue &json) {
+  std::string id = json["id"].asString();
   std::string name = json["name"].asString();
 
-  auto consumable = std::make_shared<Consumable>(handle, name);
+  auto consumable = std::make_shared<Consumable>(handle, id, name);
   setCommonProperties(consumable, json);
 
   // Set consumable-specific properties
@@ -275,6 +278,7 @@ ResourceFactory::createConsumable(HammerEngine::ResourceHandle handle,
 ResourcePtr
 ResourceFactory::createQuestItem(HammerEngine::ResourceHandle handle,
                                  const JsonValue &json) {
+  std::string id = json["id"].asString();
   std::string name = json["name"].asString();
   std::string questId = "";
 
@@ -283,7 +287,7 @@ ResourceFactory::createQuestItem(HammerEngine::ResourceHandle handle,
     questId = props["questId"].tryAsString().value_or("");
   }
 
-  auto questItem = std::make_shared<QuestItem>(handle, name, questId);
+  auto questItem = std::make_shared<QuestItem>(handle, id, name, questId);
   setCommonProperties(questItem, json);
 
   return questItem;
@@ -291,6 +295,7 @@ ResourceFactory::createQuestItem(HammerEngine::ResourceHandle handle,
 
 ResourcePtr ResourceFactory::createMaterial(HammerEngine::ResourceHandle handle,
                                             const JsonValue &json) {
+  std::string id = json["id"].asString();
   std::string name = json["name"].asString();
   std::string typeStr = json["type"].asString();
 
@@ -321,7 +326,7 @@ ResourcePtr ResourceFactory::createMaterial(HammerEngine::ResourceHandle handle,
     }
 
     auto craftingComponent =
-        std::make_shared<CraftingComponent>(handle, name, componentType);
+        std::make_shared<CraftingComponent>(handle, id, name, componentType);
     setCommonProperties(craftingComponent, json);
 
     // Set crafting component specific properties
@@ -354,7 +359,7 @@ ResourcePtr ResourceFactory::createMaterial(HammerEngine::ResourceHandle handle,
       }
     }
 
-    auto rawResource = std::make_shared<RawResource>(handle, name, origin);
+    auto rawResource = std::make_shared<RawResource>(handle, id, name, origin);
     setCommonProperties(rawResource, json);
 
     // Set raw resource specific properties
@@ -368,7 +373,7 @@ ResourcePtr ResourceFactory::createMaterial(HammerEngine::ResourceHandle handle,
   }
 
   // Fallback to base Material class
-  auto material = std::make_shared<Material>(handle, name, type);
+  auto material = std::make_shared<Material>(handle, id, name, type);
   setCommonProperties(material, json);
 
   if (json.hasKey("properties") && json["properties"].isObject()) {
@@ -380,13 +385,14 @@ ResourcePtr ResourceFactory::createMaterial(HammerEngine::ResourceHandle handle,
 }
 ResourcePtr ResourceFactory::createCurrency(HammerEngine::ResourceHandle handle,
                                             const JsonValue &json) {
+  std::string id = json["id"].asString();
   std::string name = json["name"].asString();
   std::string typeStr = json["type"].asString();
 
   ResourceType type = Resource::stringToType(typeStr);
 
   if (type == ResourceType::Gold) {
-    auto gold = std::make_shared<Gold>(handle, name);
+    auto gold = std::make_shared<Gold>(handle, id, name);
     setCommonProperties(gold, json);
 
     // Set currency-specific properties
@@ -414,7 +420,7 @@ ResourcePtr ResourceFactory::createCurrency(HammerEngine::ResourceHandle handle,
       }
     }
 
-    auto gem = std::make_shared<Gem>(handle, name, gemType);
+    auto gem = std::make_shared<Gem>(handle, id, name, gemType);
     setCommonProperties(gem, json);
 
     // Set gem-specific properties
@@ -433,7 +439,8 @@ ResourcePtr ResourceFactory::createCurrency(HammerEngine::ResourceHandle handle,
       factionId = props["factionId"].tryAsString().value_or("");
     }
 
-    auto factionToken = std::make_shared<FactionToken>(handle, name, factionId);
+    auto factionToken =
+        std::make_shared<FactionToken>(handle, id, name, factionId);
     setCommonProperties(factionToken, json);
 
     // Set faction token specific properties
@@ -448,7 +455,7 @@ ResourcePtr ResourceFactory::createCurrency(HammerEngine::ResourceHandle handle,
   }
 
   // Fallback to base Currency class
-  auto currency = std::make_shared<Currency>(handle, name, type);
+  auto currency = std::make_shared<Currency>(handle, id, name, type);
   setCommonProperties(currency, json);
 
   if (json.hasKey("properties") && json["properties"].isObject()) {
@@ -462,13 +469,14 @@ ResourcePtr ResourceFactory::createCurrency(HammerEngine::ResourceHandle handle,
 ResourcePtr
 ResourceFactory::createGameResource(HammerEngine::ResourceHandle handle,
                                     const JsonValue &json) {
+  std::string id = json["id"].asString();
   std::string name = json["name"].asString();
   std::string typeStr = json["type"].asString();
 
   ResourceType type = Resource::stringToType(typeStr);
 
   if (type == ResourceType::Energy) {
-    auto energy = std::make_shared<Energy>(handle, name);
+    auto energy = std::make_shared<Energy>(handle, id, name);
     setCommonProperties(energy, json);
 
     // Set energy-specific properties
@@ -497,7 +505,7 @@ ResourceFactory::createGameResource(HammerEngine::ResourceHandle handle,
       }
     }
 
-    auto mana = std::make_shared<Mana>(handle, name, manaType);
+    auto mana = std::make_shared<Mana>(handle, id, name, manaType);
     setCommonProperties(mana, json);
 
     // Set mana-specific properties
@@ -528,7 +536,7 @@ ResourceFactory::createGameResource(HammerEngine::ResourceHandle handle,
     }
 
     auto buildingMaterial =
-        std::make_shared<BuildingMaterial>(handle, name, materialType);
+        std::make_shared<BuildingMaterial>(handle, id, name, materialType);
     setCommonProperties(buildingMaterial, json);
 
     // Set building material specific properties
@@ -560,7 +568,7 @@ ResourceFactory::createGameResource(HammerEngine::ResourceHandle handle,
       }
     }
 
-    auto ammunition = std::make_shared<Ammunition>(handle, name, ammoType);
+    auto ammunition = std::make_shared<Ammunition>(handle, id, name, ammoType);
     setCommonProperties(ammunition, json);
 
     // Set ammunition-specific properties
@@ -575,7 +583,7 @@ ResourceFactory::createGameResource(HammerEngine::ResourceHandle handle,
   }
 
   // Fallback to base GameResource class
-  auto gameResource = std::make_shared<GameResource>(handle, name, type);
+  auto gameResource = std::make_shared<GameResource>(handle, id, name, type);
   setCommonProperties(gameResource, json);
 
   if (json.hasKey("properties") && json["properties"].isObject()) {

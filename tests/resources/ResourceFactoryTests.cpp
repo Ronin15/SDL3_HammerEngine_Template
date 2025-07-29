@@ -392,9 +392,9 @@ BOOST_AUTO_TEST_CASE(TestCustomCreatorRegistration) {
       "CustomType", [](const JsonValue &json) -> ResourcePtr {
         // Create a proper ResourceHandle for the custom resource
         auto handle = ResourceTemplateManager::Instance().generateHandle();
-        return std::make_shared<Resource>(handle, json["name"].asString(),
-                                          ResourceCategory::Item,
-                                          ResourceType::Equipment);
+        return std::make_shared<Resource>(
+            handle, json["id"].asString(), json["name"].asString(),
+            ResourceCategory::Item, ResourceType::Equipment);
       });
 
   BOOST_CHECK(registered);
