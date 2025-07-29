@@ -8,6 +8,7 @@
 
 #include "events/WeatherEvent.hpp"
 #include "gameStates/GameState.hpp"
+#include "managers/EventManager.hpp" // For EventData
 
 #include "entities/NPC.hpp"
 #include "entities/Player.hpp"
@@ -66,6 +67,8 @@ private:
   void onWeatherChanged(const std::string &message);
   void onNPCSpawned(const std::string &message);
   void onSceneChanged(const std::string &message);
+  void onResourceChanged(
+      const EventData &data); // NEW: Resource change event handler
 
   // Demo state tracking
   enum class DemoPhase {
@@ -145,6 +148,13 @@ private:
   // Inventory UI
   bool m_showInventory{true}; // Show inventory panel by default
 
+  // Resource change tracking for demonstrations
+  std::unordered_map<HammerEngine::ResourceHandle, int>
+      m_achievementThresholds{};
+  std::unordered_map<HammerEngine::ResourceHandle, bool>
+      m_achievementsUnlocked{};
+  std::vector<std::string> m_resourceLog{}; // Detailed resource change log
+
   // Event manager accessed via singleton - no raw pointer needed
 
   // Helper methods
@@ -154,10 +164,20 @@ private:
   void updateInstructions();
   void cleanupSpawnedNPCs();
   void createNPCAtPosition(const std::string &npcType, float x, float y);
+  void setupResourceAchievements(); // Setup achievement demonstration
 
   // Inventory UI methods
   void updateInventoryUI();
   void renderInventoryPanel();
+
+  // Resource change event demonstration methods
+  void processResourceAchievements(HammerEngine::ResourceHandle handle,
+                                   int oldQty, int newQty);
+  void checkResourceWarnings(HammerEngine::ResourceHandle handle, int newQty);
+  void updateResourceUI(HammerEngine::ResourceHandle handle, int oldQty,
+                        int newQty);
+  void logResourceAnalytics(HammerEngine::ResourceHandle handle, int oldQty,
+                            int newQty, const std::string &source);
 
   // Helper methods for NPC creation with global batched behavior assignment
   std::shared_ptr<NPC>

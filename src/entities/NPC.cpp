@@ -7,9 +7,11 @@
 #include "core/GameEngine.hpp"
 #include "core/Logger.hpp"
 #include "events/ResourceChangeEvent.hpp"
+#include "managers/EventManager.hpp"
 #include "managers/ResourceTemplateManager.hpp"
 #include "managers/TextureManager.hpp"
 #include <SDL3/SDL.h>
+#include <chrono>
 #include <cmath>
 #include <random>
 #include <set>
@@ -249,18 +251,25 @@ void NPC::initializeInventory() {
 
 void NPC::onResourceChanged(HammerEngine::ResourceHandle resourceHandle,
                             int oldQuantity, int newQuantity) {
-  // Get resource name for the event
-  auto resourceTemplate =
-      ResourceTemplateManager::Instance().getResourceTemplate(resourceHandle);
-  std::string resourceId =
-      resourceTemplate ? resourceTemplate->getName() : "Unknown Resource";
+  const std::string resourceId = resourceHandle.toString();
 
-  // Create and fire resource change event
+  // Create and dispatch ResourceChangeEvent to EventManager
   auto resourceEvent = std::make_shared<ResourceChangeEvent>(
       shared_this(), resourceHandle, oldQuantity, newQuantity, "npc_action");
 
-  NPC_DEBUG("NPC Resource changed: " + resourceId + " from " +
-            std::to_string(oldQuantity) + " to " + std::to_string(newQuantity));
+  // Generate unique event name based on resource and timestamp
+  std::string eventName =
+      "npc_resource_change_" + resourceId + "_" +
+      std::to_string(
+          std::chrono::steady_clock::now().time_since_epoch().count());
+
+  // Register and dispatch the event to EventManager
+  EventManager::Instance().registerResourceChangeEvent(eventName,
+                                                       resourceEvent);
+
+  NPC_DEBUG("Resource changed: " + resourceId + " from " +
+            std::to_string(oldQuantity) + " to " + std::to_string(newQuantity) +
+            " - event dispatched to EventManager");
 }
 
 // Resource management methods - removed, use getInventory() directly with
@@ -269,6 +278,8 @@ void NPC::onResourceChanged(HammerEngine::ResourceHandle resourceHandle,
 // Trading system - updated to use ResourceHandle
 bool NPC::canTrade(const std::string &itemId, int quantity) const {
   if (!m_canTrade || !m_inventory) {
+    NPC_WARN(
+        "NPC::canTrade - Trading not available or inventory not initialized");
     return false;
   }
 
@@ -286,6 +297,17 @@ bool NPC::tradeWithPlayer(const std::string &itemId, int quantity,
                           InventoryComponent &playerInventory) {
   if (!canTrade(itemId, quantity)) {
     NPC_WARN("NPC::tradeWithPlayer - Cannot trade item: " + itemId);
+    return false;
+  }
+
+  if (itemId.empty()) {
+    NPC_ERROR("NPC::tradeWithPlayer - Item ID cannot be empty");
+    return false;
+  }
+
+  if (quantity <= 0) {
+    NPC_ERROR("NPC::tradeWithPlayer - Invalid quantity: " +
+              std::to_string(quantity));
     return false;
   }
 

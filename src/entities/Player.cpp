@@ -14,6 +14,7 @@
 #include "managers/ResourceTemplateManager.hpp"
 #include "managers/TextureManager.hpp"
 #include <SDL3/SDL.h>
+#include <chrono>
 
 Player::Player() {
   // Initialize player properties
@@ -218,23 +219,26 @@ void Player::initializeInventory() {
 
 void Player::onResourceChanged(HammerEngine::ResourceHandle resourceHandle,
                                int oldQuantity, int newQuantity) {
-  // Get resource name for the event
-  auto resourceTemplate =
-      ResourceTemplateManager::Instance().getResourceTemplate(resourceHandle);
-  std::string resourceId =
-      resourceTemplate ? resourceTemplate->getName() : "Unknown Resource";
+  const std::string resourceId = resourceHandle.toString();
 
-  // Create and fire resource change event
+  // Create and dispatch ResourceChangeEvent to EventManager
   auto resourceEvent = std::make_shared<ResourceChangeEvent>(
       shared_this(), resourceHandle, oldQuantity, newQuantity, "player_action");
 
-  // Send event to EventManager if available
-  // Note: We don't directly access EventManager here to avoid tight coupling
-  // Instead, the event system should be notified through the inventory callback
+  // Generate unique event name based on resource and timestamp
+  std::string eventName =
+      "player_resource_change_" + resourceId + "_" +
+      std::to_string(
+          std::chrono::steady_clock::now().time_since_epoch().count());
+
+  // Register and dispatch the event to EventManager
+  EventManager::Instance().registerResourceChangeEvent(eventName,
+                                                       resourceEvent);
 
   PLAYER_DEBUG("Resource changed: " + resourceId + " from " +
                std::to_string(oldQuantity) + " to " +
-               std::to_string(newQuantity));
+               std::to_string(newQuantity) +
+               " - event dispatched to EventManager");
 }
 
 // Resource management methods - removed, use getInventory() directly with
@@ -244,6 +248,11 @@ void Player::onResourceChanged(HammerEngine::ResourceHandle resourceHandle,
 bool Player::equipItem(const std::string &itemId) {
   if (!m_inventory) {
     PLAYER_WARN("Player::equipItem - Inventory not initialized");
+    return false;
+  }
+
+  if (itemId.empty()) {
+    PLAYER_ERROR("Player::equipItem - Item ID cannot be empty");
     return false;
   }
 
@@ -294,8 +303,14 @@ bool Player::equipItem(const std::string &itemId) {
 }
 
 bool Player::unequipItem(const std::string &slotName) {
+  if (slotName.empty()) {
+    PLAYER_ERROR("Player::unequipItem - Slot name cannot be empty");
+    return false;
+  }
+
   auto it = m_equippedItems.find(slotName);
   if (it == m_equippedItems.end() || it->second.empty()) {
+    PLAYER_WARN("Player::unequipItem - No item equipped in slot: " + slotName);
     return false; // Nothing equipped in this slot
   }
 
@@ -316,6 +331,11 @@ bool Player::unequipItem(const std::string &slotName) {
 }
 
 std::string Player::getEquippedItem(const std::string &slotName) const {
+  if (slotName.empty()) {
+    PLAYER_ERROR("Player::getEquippedItem - Slot name cannot be empty");
+    return "";
+  }
+
   auto it = m_equippedItems.find(slotName);
   return (it != m_equippedItems.end()) ? it->second : "";
 }
@@ -336,6 +356,12 @@ bool Player::craftItem(const std::string &recipeId) {
 
 bool Player::consumeItem(const std::string &itemId) {
   if (!m_inventory) {
+    PLAYER_WARN("Player::consumeItem - Inventory not initialized");
+    return false;
+  }
+
+  if (itemId.empty()) {
+    PLAYER_ERROR("Player::consumeItem - Item ID cannot be empty");
     return false;
   }
 
@@ -349,6 +375,7 @@ bool Player::consumeItem(const std::string &itemId) {
 
   auto handle = resource->getHandle();
   if (!m_inventory->hasResource(handle, 1)) {
+    PLAYER_WARN("Player::consumeItem - Item not available: " + itemId);
     return false;
   }
 
