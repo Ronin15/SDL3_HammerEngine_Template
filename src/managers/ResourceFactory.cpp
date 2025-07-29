@@ -105,7 +105,7 @@ std::vector<std::string> ResourceFactory::getRegisteredTypes() {
 
 void ResourceFactory::initialize() {
   // Check if already initialized to avoid duplicate registrations
-  auto &creators = getCreators();
+  const auto &creators = getCreators();
   if (!creators.empty()) {
     RESOURCE_DEBUG("ResourceFactory::initialize - Already initialized with " +
                    std::to_string(creators.size()) + " resource creators");
