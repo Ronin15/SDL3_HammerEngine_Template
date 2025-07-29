@@ -49,6 +49,17 @@ public:
     BOOST_REQUIRE(coinsHandle.isValid());
   }
 
+  ~InventoryComponentTestFixture() {
+    // Explicitly clean up before singletons are destroyed to prevent crashes
+    testInventory.reset();
+    mockPlayer.reset();
+
+    // Clean up the ResourceTemplateManager to prevent shutdown issues
+    if (resourceManager && resourceManager->isInitialized()) {
+      resourceManager->clean();
+    }
+  }
+
 protected:
   ResourceTemplateManager *resourceManager;
   std::shared_ptr<MockPlayer> mockPlayer;

@@ -367,16 +367,16 @@ BOOST_AUTO_TEST_CASE(TestReinitializationSafety) {
 BOOST_AUTO_TEST_CASE(TestMultipleResourceCategories) {
   std::vector<ResourcePtr> resources;
 
-  resources.push_back(createTestResource("Sword", ResourceCategory::Item,
+  resources.push_back(createTestResource("Test Sword", ResourceCategory::Item,
                                          ResourceType::Equipment));
   resources.push_back(createTestResource(
-      "Health Potion", ResourceCategory::Item, ResourceType::Consumable));
-  resources.push_back(createTestResource("Iron Ore", ResourceCategory::Material,
-                                         ResourceType::RawResource));
+      "Test Health Potion", ResourceCategory::Item, ResourceType::Consumable));
   resources.push_back(createTestResource(
-      "Gold Coin", ResourceCategory::Currency, ResourceType::Gold));
+      "Test Iron Ore", ResourceCategory::Material, ResourceType::RawResource));
   resources.push_back(createTestResource(
-      "Mana Crystal", ResourceCategory::GameResource, ResourceType::Mana));
+      "Test Gold Coin", ResourceCategory::Currency, ResourceType::Gold));
+  resources.push_back(createTestResource(
+      "Test Mana Crystal", ResourceCategory::GameResource, ResourceType::Mana));
 
   auto initialCount = manager->getResourceTemplateCount();
 
