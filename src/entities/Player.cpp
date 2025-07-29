@@ -195,9 +195,19 @@ void Player::initializeInventory() {
   m_equippedItems["ring"] = "";
   m_equippedItems["necklace"] = "";
 
-  // Give player some starting resources (only use resources that exist)
-  addResource("gold", 100);
-  addResource("health_potion", 3);
+  // Give player some starting resources using ResourceTemplateManager
+  auto &templateManager = ResourceTemplateManager::Instance();
+
+  auto goldResource = templateManager.getResourceByName("gold");
+  if (goldResource && m_inventory) {
+    m_inventory->addResource(goldResource->getHandle(), 100);
+  }
+
+  auto healthPotionResource =
+      templateManager.getResourceByName("health_potion");
+  if (healthPotionResource && m_inventory) {
+    m_inventory->addResource(healthPotionResource->getHandle(), 3);
+  }
   // Note: mana_potion doesn't exist in default resources
 
   PLAYER_DEBUG("Player inventory initialized with " +
@@ -225,58 +235,31 @@ void Player::onResourceChanged(HammerEngine::ResourceHandle resourceHandle,
                std::to_string(newQuantity));
 }
 
-// Resource management methods
-bool Player::addResource(const std::string &resourceId, int quantity) {
-  if (!m_inventory) {
-    PLAYER_ERROR("Player::addResource - Inventory not initialized");
-    return false;
-  }
-
-  return m_inventory->addResource(resourceId, quantity);
-}
-
-bool Player::removeResource(const std::string &resourceId, int quantity) {
-  if (!m_inventory) {
-    PLAYER_ERROR("Player::removeResource - Inventory not initialized");
-    return false;
-  }
-
-  return m_inventory->removeResource(resourceId, quantity);
-}
-
-bool Player::hasResource(const std::string &resourceId,
-                         int minimumQuantity) const {
-  if (!m_inventory) {
-    return false;
-  }
-
-  return m_inventory->hasResource(resourceId, minimumQuantity);
-}
-
-int Player::getResourceQuantity(const std::string &resourceId) const {
-  if (!m_inventory) {
-    return 0;
-  }
-
-  return m_inventory->getResourceQuantity(resourceId);
-}
+// Resource management methods - removed, use getInventory() directly with
+// ResourceHandle
 
 // Equipment management
 bool Player::equipItem(const std::string &itemId) {
-  if (!m_inventory || !hasResource(itemId, 1)) {
-    PLAYER_WARN("Player::equipItem - Item not available: " + itemId);
+  if (!m_inventory) {
+    PLAYER_WARN("Player::equipItem - Inventory not initialized");
     return false;
   }
 
-  // Find the resource handle and get the template
-  auto handle = m_inventory->getResourceHandle(itemId);
-  if (!handle.isValid()) {
+  // Find the resource handle using ResourceTemplateManager
+  auto &templateManager = ResourceTemplateManager::Instance();
+  auto resource = templateManager.getResourceByName(itemId);
+  if (!resource) {
     PLAYER_ERROR("Player::equipItem - Unknown item: " + itemId);
     return false;
   }
 
-  const auto *resourceManager = &ResourceTemplateManager::Instance();
-  auto itemTemplate = resourceManager->getResourceTemplate(handle);
+  auto handle = resource->getHandle();
+  if (!m_inventory->hasResource(handle, 1)) {
+    PLAYER_WARN("Player::equipItem - Item not available: " + itemId);
+    return false;
+  }
+
+  auto itemTemplate = templateManager.getResourceTemplate(handle);
   if (!itemTemplate) {
     PLAYER_ERROR("Player::equipItem - Cannot get template for item: " + itemId);
     return false;
@@ -299,7 +282,7 @@ bool Player::equipItem(const std::string &itemId) {
   }
 
   // Remove item from inventory and equip it
-  if (removeResource(itemId, 1)) {
+  if (m_inventory->removeResource(handle, 1)) {
     m_equippedItems[slotName] = itemId;
     PLAYER_DEBUG("Equipped item: " + itemId + " in slot: " + slotName);
     return true;
@@ -316,8 +299,10 @@ bool Player::unequipItem(const std::string &slotName) {
 
   std::string itemId = it->second;
 
-  // Try to add back to inventory
-  if (addResource(itemId, 1)) {
+  // Try to add back to inventory using ResourceTemplateManager
+  auto &templateManager = ResourceTemplateManager::Instance();
+  auto resource = templateManager.getResourceByName(itemId);
+  if (resource && m_inventory->addResource(resource->getHandle(), 1)) {
     it->second.clear();
     PLAYER_DEBUG("Unequipped item: " + itemId + " from slot: " + slotName);
     return true;
@@ -348,26 +333,31 @@ bool Player::craftItem(const std::string &recipeId) {
 }
 
 bool Player::consumeItem(const std::string &itemId) {
-  if (!hasResource(itemId, 1)) {
+  if (!m_inventory) {
     return false;
   }
 
-  // Get item template to check if it's consumable
-  auto handle = m_inventory->getResourceHandle(itemId);
-  if (!handle.isValid()) {
+  // Find the resource handle using ResourceTemplateManager
+  auto &templateManager = ResourceTemplateManager::Instance();
+  auto resource = templateManager.getResourceByName(itemId);
+  if (!resource) {
     PLAYER_WARN("Player::consumeItem - Unknown item: " + itemId);
     return false;
   }
 
-  const auto *resourceManager = &ResourceTemplateManager::Instance();
-  auto itemTemplate = resourceManager->getResourceTemplate(handle);
+  auto handle = resource->getHandle();
+  if (!m_inventory->hasResource(handle, 1)) {
+    return false;
+  }
+
+  auto itemTemplate = templateManager.getResourceTemplate(handle);
   if (!itemTemplate || !itemTemplate->isConsumable()) {
     PLAYER_WARN("Player::consumeItem - Item is not consumable: " + itemId);
     return false;
   }
 
   // Remove the item and apply its effects
-  if (removeResource(itemId, 1)) {
+  if (m_inventory->removeResource(handle, 1)) {
     PLAYER_DEBUG("Consumed item: " + itemId);
     // Here you would apply the item's effects (healing, buffs, etc.)
     return true;

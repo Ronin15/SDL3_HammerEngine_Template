@@ -56,12 +56,7 @@ public:
   // Initialization - call after construction to setup inventory
   void initializeInventory();
 
-  // NPC-specific resource operations
-  bool addResource(const std::string &resourceId, int quantity);
-  bool removeResource(const std::string &resourceId, int quantity);
-  bool hasResource(const std::string &resourceId,
-                   int minimumQuantity = 1) const;
-  int getResourceQuantity(const std::string &resourceId) const;
+  // NPC-specific resource operations (use ResourceHandle via getInventory())
 
   // Trading system
   bool canTrade(const std::string &itemId, int quantity = 1) const;

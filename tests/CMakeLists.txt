@@ -311,6 +311,22 @@ add_executable(resource_integration_tests
     mocks/MockPlayer.cpp
 )
 
+# Resource Edge Case tests
+add_executable(resource_edge_case_tests
+    resources/ResourceEdgeCaseTests.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/ResourceTemplateManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/WorldResourceManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/ResourceFactory.cpp
+    ${PROJECT_SOURCE_DIR}/src/utils/JsonReader.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/Resource.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/resources/InventoryComponent.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/resources/ItemResources.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/resources/MaterialResources.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/resources/CurrencyAndGameResources.cpp
+    ${PROJECT_SOURCE_DIR}/src/events/ResourceChangeEvent.cpp
+    ${PROJECT_SOURCE_DIR}/src/events/Event.cpp
+)
+
 # JsonReader tests
 add_executable(json_reader_tests
     utils/JsonReaderTest.cpp
@@ -433,6 +449,11 @@ target_compile_definitions(resource_integration_tests PRIVATE
 
 # JsonReader tests definitions
 target_compile_definitions(json_reader_tests PRIVATE
+    BOOST_TEST_NO_SIGNAL_HANDLING
+)
+
+# Resource Edge Case tests definitions
+target_compile_definitions(resource_edge_case_tests PRIVATE
     BOOST_TEST_NO_SIGNAL_HANDLING
 )
 
@@ -599,6 +620,14 @@ target_link_libraries(resource_integration_tests PRIVATE
     Boost::unit_test_framework
 )
 
+# Link Resource Edge Case tests with required libraries
+target_link_libraries(resource_edge_case_tests PRIVATE
+    SDL3::SDL3
+    SDL3_image::SDL3_image
+    SDL3_mixer::SDL3_mixer
+    Boost::unit_test_framework
+)
+
 # Link JsonReader tests with required libraries
 target_link_libraries(json_reader_tests PRIVATE
     SDL3::SDL3
@@ -636,4 +665,5 @@ add_test(NAME WorldResourceManagerTests COMMAND world_resource_manager_tests)
 add_test(NAME InventoryComponentTests COMMAND inventory_component_tests)
 add_test(NAME ResourceChangeEventTests COMMAND resource_change_event_tests)
 add_test(NAME ResourceIntegrationTests COMMAND resource_integration_tests)
+add_test(NAME ResourceEdgeCaseTests COMMAND resource_edge_case_tests)
 add_test(NAME JsonReaderTests COMMAND json_reader_tests)

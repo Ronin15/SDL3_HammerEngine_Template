@@ -232,6 +232,12 @@ inline std::mutex Logger::s_logMutex{};
 #define RESOURCE_INFO(msg) HAMMER_INFO("ResourceTemplateManager", msg)
 #define RESOURCE_DEBUG(msg) HAMMER_DEBUG("ResourceTemplateManager", msg)
 
+#define INVENTORY_CRITICAL(msg) HAMMER_CRITICAL("InventoryComponent", msg)
+#define INVENTORY_ERROR(msg) HAMMER_ERROR("InventoryComponent", msg)
+#define INVENTORY_WARN(msg) HAMMER_WARN("InventoryComponent", msg)
+#define INVENTORY_INFO(msg) HAMMER_INFO("InventoryComponent", msg)
+#define INVENTORY_DEBUG(msg) HAMMER_DEBUG("InventoryComponent", msg)
+
 #define WORLD_RESOURCE_CRITICAL(msg)                                           \
   HAMMER_CRITICAL("WorldResourceManager", msg)
 #define WORLD_RESOURCE_ERROR(msg) HAMMER_ERROR("WorldResourceManager", msg)

@@ -65,9 +65,13 @@ public:
 
   // Resource template management
   bool registerResourceTemplate(const ResourcePtr &resource);
+  bool removeResourceTemplate(
+      HammerEngine::ResourceHandle handle); // Remove and release handle
   ResourcePtr getResourceTemplate(HammerEngine::ResourceHandle handle) const;
   ResourcePtr
   getResourceByName(const std::string &name) const; // O(1) name lookup
+  HammerEngine::ResourceHandle
+  getHandleByName(const std::string &name) const; // O(1) name to handle lookup
   std::vector<ResourcePtr>
   getResourcesByCategory(ResourceCategory category) const;
   std::vector<ResourcePtr> getResourcesByType(ResourceType type) const;
@@ -93,6 +97,8 @@ public:
   // Handle management
   HammerEngine::ResourceHandle generateHandle();
   bool isValidHandle(HammerEngine::ResourceHandle handle) const;
+  void releaseHandle(
+      HammerEngine::ResourceHandle handle); // Mark handle as freed for reuse
 
   // Statistics
   ResourceStats getStats() const;
@@ -139,10 +145,18 @@ private:
   // Name index for O(1) name-based lookups
   std::unordered_map<std::string, HammerEngine::ResourceHandle> m_nameIndex;
 
-  // Handle generation
+  // Handle generation with proper generation tracking
   std::atomic<HammerEngine::ResourceHandle::HandleId> m_nextHandleId{
       1}; // Start from 1, 0 is invalid
-  std::atomic<HammerEngine::ResourceHandle::Generation> m_currentGeneration{1};
+
+  // Generation tracking for reused handles - prevents stale handle bugs
+  std::unordered_map<HammerEngine::ResourceHandle::HandleId,
+                     HammerEngine::ResourceHandle::Generation>
+      m_handleGenerations;
+  std::vector<HammerEngine::ResourceHandle::HandleId>
+      m_freedHandleIds; // Pool of freed IDs for reuse
+  mutable std::mutex
+      m_handleMutex; // Protects generation and freed ID management
 
   mutable ResourceStats m_stats;
   std::atomic<bool> m_initialized{false};

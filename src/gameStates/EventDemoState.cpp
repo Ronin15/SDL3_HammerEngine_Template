@@ -906,16 +906,26 @@ void EventDemoState::triggerResourceDemo() {
   }
 
   auto *inventory = m_player->getInventory();
-  int currentQuantity = inventory->getResourceQuantity(resourceId);
+
+  // Convert string to ResourceHandle using ResourceTemplateManager
+  auto &templateManager = ResourceTemplateManager::Instance();
+  auto resource = templateManager.getResourceByName(resourceId);
+  if (!resource) {
+    addLogEntry("Resource demo failed: Unknown resource: " + resourceId);
+    return;
+  }
+  auto handle = resource->getHandle();
+
+  int currentQuantity = inventory->getResourceQuantity(handle);
 
   if (isAdding) {
     // Add resources to player inventory
     addLogEntry("BEFORE ADD: " + resourceId + " = " +
                 std::to_string(currentQuantity));
 
-    bool success = m_player->addResource(resourceId, quantity);
+    bool success = inventory->addResource(handle, quantity);
     if (success) {
-      int newQuantity = inventory->getResourceQuantity(resourceId);
+      int newQuantity = inventory->getResourceQuantity(handle);
       addLogEntry("AFTER ADD: " + resourceId + " = " +
                   std::to_string(newQuantity) + " (+" +
                   std::to_string(quantity) + ")");
@@ -947,9 +957,9 @@ void EventDemoState::triggerResourceDemo() {
       addLogEntry("BEFORE REMOVE: " + resourceId + " = " +
                   std::to_string(currentQuantity));
 
-      bool success = m_player->removeResource(resourceId, removeQuantity);
+      bool success = inventory->removeResource(handle, removeQuantity);
       if (success) {
-        int newQuantity = inventory->getResourceQuantity(resourceId);
+        int newQuantity = inventory->getResourceQuantity(handle);
         addLogEntry("AFTER REMOVE: " + resourceId + " = " +
                     std::to_string(newQuantity) + " (-" +
                     std::to_string(removeQuantity) + ")");

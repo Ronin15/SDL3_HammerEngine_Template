@@ -68,6 +68,54 @@ void WorldResourceManager::clean() {
   WORLD_RESOURCE_INFO("WorldResourceManager cleaned up");
 }
 
+bool WorldResourceManager::configure(const WorldResourceManagerConfig &config) {
+  if (!config.isValid()) {
+    WORLD_RESOURCE_ERROR(
+        "WorldResourceManager::configure - Invalid configuration");
+    return false;
+  }
+
+  std::lock_guard<std::shared_mutex> lock(m_resourceMutex);
+  std::lock_guard<std::mutex> cacheLock(m_cacheMutex);
+
+  // Store old config for comparison
+  auto oldConfig = m_config;
+  m_config = config;
+
+  // If cache size changed, we need to resize existing caches
+  if (oldConfig.perWorldCacheSize != config.perWorldCacheSize) {
+    for (auto &[worldId, worldCache] : m_resourceCache) {
+      if (worldCache.size() > config.perWorldCacheSize) {
+        // Trim cache to new size, keeping most recently accessed entries
+        std::sort(worldCache.begin(), worldCache.end(),
+                  [](const ResourceCache &a, const ResourceCache &b) {
+                    return a.lastAccess > b.lastAccess; // Most recent first
+                  });
+        worldCache.resize(config.perWorldCacheSize);
+        m_stats.cacheEvictions +=
+            (worldCache.size() - config.perWorldCacheSize);
+      }
+    }
+  }
+
+  // If cache expiry time changed, invalidate aggregate cache
+  if (oldConfig.cacheExpiryTime != config.cacheExpiryTime) {
+    m_aggregateCache.valid = false;
+  }
+
+  WORLD_RESOURCE_INFO(
+      "WorldResourceManager configuration updated - "
+      "CacheSize: " +
+      std::to_string(config.perWorldCacheSize) +
+      ", ExpiryTime: " + std::to_string(config.cacheExpiryTime.count()) + "ms");
+  return true;
+}
+
+WorldResourceManagerConfig WorldResourceManager::getConfig() const {
+  std::shared_lock<std::shared_mutex> lock(m_resourceMutex);
+  return m_config;
+}
+
 bool WorldResourceManager::createWorld(const WorldId &worldId) {
   if (!isValidWorldId(worldId)) {
     WORLD_RESOURCE_ERROR(
@@ -86,6 +134,14 @@ bool WorldResourceManager::createWorld(const WorldId &worldId) {
   try {
     m_worldResources[worldId] = std::unordered_map<ResourceId, Quantity>();
     m_stats.worldsTracked.fetch_add(1, std::memory_order_relaxed);
+
+    // Check for performance warning
+    if (m_stats.worldsTracked.load() > m_config.maxWorldsBeforeWarning) {
+      WORLD_RESOURCE_WARN(
+          "WorldResourceManager::createWorld - High world count (" +
+          std::to_string(m_stats.worldsTracked.load()) +
+          ") may impact performance");
+    }
 
     WORLD_RESOURCE_INFO("Created world: " + worldId);
     return true;
@@ -635,7 +691,7 @@ void WorldResourceManager::updateResourceCache(const WorldId &worldId,
   }
 
   // Add new cache entry
-  if (worldCache.size() >= MAX_CACHE_SIZE) {
+  if (worldCache.size() >= m_config.perWorldCacheSize) {
     // Remove oldest entry (LRU)
     auto oldest =
         std::min_element(worldCache.begin(), worldCache.end(),
@@ -644,6 +700,9 @@ void WorldResourceManager::updateResourceCache(const WorldId &worldId,
                          });
     if (oldest != worldCache.end()) {
       worldCache.erase(oldest);
+      if (m_config.enablePerformanceMonitoring) {
+        m_stats.cacheEvictions++;
+      }
     }
   }
 
@@ -656,6 +715,9 @@ WorldResourceManager::Quantity WorldResourceManager::getCachedResourceQuantity(
 
   auto worldIt = m_resourceCache.find(worldId);
   if (worldIt == m_resourceCache.end()) {
+    if (m_config.enablePerformanceMonitoring) {
+      m_stats.cacheMisses++;
+    }
     return -1; // Cache miss
   }
 
@@ -663,10 +725,16 @@ WorldResourceManager::Quantity WorldResourceManager::getCachedResourceQuantity(
   for (auto &cache : worldIt->second) {
     if (cache.resourceId == resourceId && !cache.dirty) {
       cache.lastAccess = now; // Update access time
+      if (m_config.enablePerformanceMonitoring) {
+        m_stats.cacheHits++;
+      }
       return cache.quantity;
     }
   }
 
+  if (m_config.enablePerformanceMonitoring) {
+    m_stats.cacheMisses++;
+  }
   return -1; // Cache miss
 }
 
@@ -687,7 +755,7 @@ void WorldResourceManager::updateAggregateCache() const {
 
   auto now = std::chrono::steady_clock::now();
   if (m_aggregateCache.valid &&
-      (now - m_aggregateCache.lastUpdate) < CACHE_EXPIRY_TIME) {
+      (now - m_aggregateCache.lastUpdate) < m_config.cacheExpiryTime) {
     return; // Cache still valid
   }
 
@@ -703,4 +771,103 @@ void WorldResourceManager::updateAggregateCache() const {
 
   m_aggregateCache.lastUpdate = now;
   m_aggregateCache.valid = true;
+
+  if (m_config.enablePerformanceMonitoring) {
+    m_stats.aggregateCacheRebuilds++;
+  }
+}
+
+// Cache monitoring methods
+size_t WorldResourceManager::getCacheSize(const WorldId &worldId) const {
+  std::lock_guard<std::mutex> cacheLock(m_cacheMutex);
+
+  auto it = m_resourceCache.find(worldId);
+  return it != m_resourceCache.end() ? it->second.size() : 0;
+}
+
+size_t WorldResourceManager::getTotalCacheSize() const {
+  std::lock_guard<std::mutex> cacheLock(m_cacheMutex);
+
+  size_t total = 0;
+  for (const auto &[worldId, cache] : m_resourceCache) {
+    total += cache.size();
+  }
+  return total;
+}
+
+std::unordered_map<WorldResourceManager::WorldId, size_t>
+WorldResourceManager::getAllCacheSizes() const {
+  std::lock_guard<std::mutex> cacheLock(m_cacheMutex);
+
+  std::unordered_map<WorldId, size_t> sizes;
+  for (const auto &[worldId, cache] : m_resourceCache) {
+    sizes[worldId] = cache.size();
+  }
+  return sizes;
+}
+
+void WorldResourceManager::logCacheStatus() const {
+  auto stats = getStats();
+  auto config = getConfig();
+
+  WORLD_RESOURCE_INFO("=== WorldResourceManager Cache Status ===");
+  WORLD_RESOURCE_INFO("Configuration:");
+  WORLD_RESOURCE_INFO("  Per-world cache size: " +
+                      std::to_string(config.perWorldCacheSize));
+  WORLD_RESOURCE_INFO("  Cache expiry time: " +
+                      std::to_string(config.cacheExpiryTime.count()) + "ms");
+  WORLD_RESOURCE_INFO(
+      "  Performance monitoring: " +
+      std::string(config.enablePerformanceMonitoring ? "enabled" : "disabled"));
+
+  if (config.enablePerformanceMonitoring) {
+    WORLD_RESOURCE_INFO("Performance Stats:");
+    WORLD_RESOURCE_INFO("  Cache hit ratio: " +
+                        std::to_string(stats.getCacheHitRatio() * 100.0) + "%");
+    WORLD_RESOURCE_INFO("  Cache hits: " +
+                        std::to_string(stats.cacheHits.load()));
+    WORLD_RESOURCE_INFO("  Cache misses: " +
+                        std::to_string(stats.cacheMisses.load()));
+    WORLD_RESOURCE_INFO("  Cache evictions: " +
+                        std::to_string(stats.cacheEvictions.load()));
+    WORLD_RESOURCE_INFO("  Aggregate cache rebuilds: " +
+                        std::to_string(stats.aggregateCacheRebuilds.load()));
+  }
+
+  WORLD_RESOURCE_INFO("Current Usage:");
+  WORLD_RESOURCE_INFO("  Total cache entries: " +
+                      std::to_string(getTotalCacheSize()));
+  WORLD_RESOURCE_INFO("  Worlds tracked: " +
+                      std::to_string(stats.worldsTracked.load()));
+  WORLD_RESOURCE_INFO("  Memory usage: " + std::to_string(getMemoryUsage()) +
+                      " bytes");
+
+  // Warn if performance is sub-optimal
+  if (stats.worldsTracked.load() > config.maxWorldsBeforeWarning) {
+    WORLD_RESOURCE_WARN("High world count (" +
+                        std::to_string(stats.worldsTracked.load()) +
+                        ") may impact performance. Consider optimizing world "
+                        "lifecycle management.");
+  }
+
+  if (config.enablePerformanceMonitoring && stats.getCacheHitRatio() < 0.7) {
+    WORLD_RESOURCE_WARN("Low cache hit ratio (" +
+                        std::to_string(stats.getCacheHitRatio() * 100.0) +
+                        "%). Consider increasing per-world cache size.");
+  }
+}
+
+bool WorldResourceManager::isPerformanceOptimal() const {
+  auto stats = getStats();
+  auto config = getConfig();
+
+  // Check multiple performance indicators
+  bool worldCountOk =
+      stats.worldsTracked.load() <= config.maxWorldsBeforeWarning;
+  bool cacheRatioOk =
+      !config.enablePerformanceMonitoring || stats.getCacheHitRatio() >= 0.7;
+  bool memoryUsageOk =
+      getMemoryUsage() < (100 * 1024 * 1024); // Less than 100MB
+
+  return worldCountOk && cacheRatioOk && memoryUsageOk;
 }

@@ -20,7 +20,24 @@
 class EventManager;
 
 /**
- * @brief World resource quantity statistics
+ * @brief Configuration for WorldResourceManager caches
+ */
+struct WorldResourceManagerConfig {
+  size_t perWorldCacheSize{16};                   // Max cache entries per world
+  std::chrono::milliseconds cacheExpiryTime{100}; // Aggregate cache expiry time
+  bool enablePerformanceMonitoring{true}; // Enable detailed performance stats
+  size_t maxWorldsBeforeWarning{100};     // Warn when too many worlds tracked
+
+  // Validation
+  bool isValid() const {
+    return perWorldCacheSize > 0 && perWorldCacheSize <= 1000 &&
+           cacheExpiryTime.count() > 0 && cacheExpiryTime.count() <= 10000 &&
+           maxWorldsBeforeWarning > 0;
+  }
+};
+
+/**
+ * @brief Enhanced statistics with cache performance monitoring
  */
 struct WorldResourceStats {
   std::atomic<uint64_t> totalResourcesTracked{0};
@@ -29,6 +46,12 @@ struct WorldResourceStats {
   std::atomic<uint64_t> removeOperations{0};
   std::atomic<uint64_t> worldsTracked{0};
 
+  // Cache performance stats
+  std::atomic<uint64_t> cacheHits{0};
+  std::atomic<uint64_t> cacheMisses{0};
+  std::atomic<uint64_t> cacheEvictions{0};
+  std::atomic<uint64_t> aggregateCacheRebuilds{0};
+
   // Custom copy constructor
   WorldResourceStats() = default;
   WorldResourceStats(const WorldResourceStats &other)
@@ -36,7 +59,11 @@ struct WorldResourceStats {
         totalTransactions(other.totalTransactions.load()),
         addOperations(other.addOperations.load()),
         removeOperations(other.removeOperations.load()),
-        worldsTracked(other.worldsTracked.load()) {}
+        worldsTracked(other.worldsTracked.load()),
+        cacheHits(other.cacheHits.load()),
+        cacheMisses(other.cacheMisses.load()),
+        cacheEvictions(other.cacheEvictions.load()),
+        aggregateCacheRebuilds(other.aggregateCacheRebuilds.load()) {}
 
   // Custom assignment operator
   WorldResourceStats &operator=(const WorldResourceStats &other) {
@@ -46,6 +73,10 @@ struct WorldResourceStats {
       addOperations = other.addOperations.load();
       removeOperations = other.removeOperations.load();
       worldsTracked = other.worldsTracked.load();
+      cacheHits = other.cacheHits.load();
+      cacheMisses = other.cacheMisses.load();
+      cacheEvictions = other.cacheEvictions.load();
+      aggregateCacheRebuilds = other.aggregateCacheRebuilds.load();
     }
     return *this;
   }
@@ -56,6 +87,18 @@ struct WorldResourceStats {
     addOperations = 0;
     removeOperations = 0;
     worldsTracked = 0;
+    cacheHits = 0;
+    cacheMisses = 0;
+    cacheEvictions = 0;
+    aggregateCacheRebuilds = 0;
+  }
+
+  // Calculate cache hit ratio (0.0 to 1.0)
+  double getCacheHitRatio() const {
+    uint64_t hits = cacheHits.load();
+    uint64_t misses = cacheMisses.load();
+    uint64_t total = hits + misses;
+    return total > 0 ? static_cast<double>(hits) / total : 0.0;
   }
 };
 
@@ -127,10 +170,24 @@ public:
   bool transferAllResources(const WorldId &fromWorldId,
                             const WorldId &toWorldId);
 
+  // Configuration
+  bool configure(const WorldResourceManagerConfig &config);
+  WorldResourceManagerConfig getConfig() const;
+
   // Statistics and monitoring
   WorldResourceStats getStats() const;
   void resetStats() { m_stats.reset(); }
   size_t getMemoryUsage() const;
+
+  // Cache monitoring
+  size_t getCacheSize(const WorldId &worldId) const;
+  size_t getTotalCacheSize() const;
+  std::unordered_map<WorldId, size_t> getAllCacheSizes() const;
+  double getCacheHitRatio() const { return m_stats.getCacheHitRatio(); }
+
+  // Performance diagnostics
+  void logCacheStatus() const;
+  bool isPerformanceOptimal() const;
 
   // Validation
   bool isValidWorldId(const WorldId &worldId) const;
@@ -161,7 +218,6 @@ private:
   // Cache for the most recently accessed resources per world (LRU-style)
   mutable std::unordered_map<WorldId, std::vector<ResourceCache>>
       m_resourceCache;
-  static constexpr size_t MAX_CACHE_SIZE = 16; // Per world cache limit
 
   // Spatial partitioning for resource aggregation queries
   struct ResourceAggregateCache {
@@ -170,8 +226,9 @@ private:
     bool valid{false};
   };
   mutable ResourceAggregateCache m_aggregateCache;
-  static constexpr std::chrono::milliseconds CACHE_EXPIRY_TIME{
-      100}; // 100ms cache validity
+
+  // Configuration
+  WorldResourceManagerConfig m_config;
 
   mutable WorldResourceStats m_stats;
   std::atomic<bool> m_initialized{false};

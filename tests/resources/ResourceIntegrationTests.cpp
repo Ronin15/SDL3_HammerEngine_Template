@@ -12,23 +12,6 @@ __attribute__((constructor)) static void print_startup() {
 #include "managers/ResourceTemplateManager.hpp"
 #include <boost/test/unit_test.hpp>
 
-// Use direct resource handles instead of slow name-based lookup
-HammerEngine::ResourceHandle getHealthPotionHandle() {
-  return HammerEngine::ResourceHandle(3, 1); // Super Health Potion
-}
-
-HammerEngine::ResourceHandle getIronSwordHandle() {
-  return HammerEngine::ResourceHandle(1, 1); // Magic Sword
-}
-
-HammerEngine::ResourceHandle getIronOreHandle() {
-  return HammerEngine::ResourceHandle(7, 1); // Mithril Ore
-}
-
-HammerEngine::ResourceHandle getGoldHandle() {
-  return HammerEngine::ResourceHandle(11, 1); // Platinum Coins
-}
-
 // Force ResourceTemplateManager reset for test isolation
 struct ResourceTemplateManagerResetter {
   ResourceTemplateManagerResetter() {
@@ -83,13 +66,14 @@ public:
     npcInventory = std::make_unique<InventoryComponent>(
         nullptr, 60); // NPC with 60 slots (enough for 5000 iron ore)
 
-    // Get test resource handles directly
-    healthPotionHandle = getHealthPotionHandle();
-    ironSwordHandle = getIronSwordHandle();
-    ironOreHandle = getIronOreHandle();
-    goldHandle = getGoldHandle();
+    // Get test resource handles by name (more reliable than hardcoding)
+    healthPotionHandle =
+        resourceManager->getHandleByName("Super Health Potion");
+    ironSwordHandle = resourceManager->getHandleByName("Magic Sword");
+    ironOreHandle = resourceManager->getHandleByName("Mithril Ore");
+    goldHandle = resourceManager->getHandleByName("Platinum Coins");
 
-    // Get test resources using direct handles
+    // Get test resources using handles
     RESOURCE_DEBUG("Before getResourceTemplate super_health_potion");
     BOOST_REQUIRE(healthPotionHandle.isValid());
     healthPotion = resourceManager->getResourceTemplate(healthPotionHandle);
@@ -149,23 +133,23 @@ BOOST_AUTO_TEST_CASE(TestPlayerInventoryIntegration) {
   BOOST_CHECK_EQUAL(playerInventory->getMaxSlots(), 50);
   BOOST_CHECK(playerInventory->isEmpty());
 
-  // Test adding resources to player inventory using correct resource IDs
-  bool added = playerInventory->addResource("Super Health Potion", 10);
+  // Test adding resources to player inventory using handles
+  bool added = playerInventory->addResource(healthPotionHandle, 10);
   BOOST_CHECK(added);
-  BOOST_CHECK_EQUAL(playerInventory->getResourceQuantity("Super Health Potion"),
+  BOOST_CHECK_EQUAL(playerInventory->getResourceQuantity(healthPotionHandle),
                     10);
 
   // Test removing resources from inventory
-  bool removed = playerInventory->removeResource("Super Health Potion", 3);
+  bool removed = playerInventory->removeResource(healthPotionHandle, 3);
   BOOST_CHECK(removed);
-  BOOST_CHECK_EQUAL(playerInventory->getResourceQuantity("Super Health Potion"),
+  BOOST_CHECK_EQUAL(playerInventory->getResourceQuantity(healthPotionHandle),
                     7);
 
   // Test inventory has resource check
-  BOOST_CHECK(playerInventory->hasResource("Super Health Potion"));
-  BOOST_CHECK(playerInventory->hasResource("Super Health Potion", 5));
-  BOOST_CHECK(!playerInventory->hasResource("Super Health Potion", 10));
-  BOOST_CHECK(!playerInventory->hasResource("Magic Sword"));
+  BOOST_CHECK(playerInventory->hasResource(healthPotionHandle));
+  BOOST_CHECK(playerInventory->hasResource(healthPotionHandle, 5));
+  BOOST_CHECK(!playerInventory->hasResource(healthPotionHandle, 10));
+  BOOST_CHECK(!playerInventory->hasResource(ironSwordHandle));
 }
 
 BOOST_AUTO_TEST_CASE(TestNPCInventoryIntegration) {
@@ -176,123 +160,122 @@ BOOST_AUTO_TEST_CASE(TestNPCInventoryIntegration) {
   BOOST_CHECK_EQUAL(npcInventory->getMaxSlots(), 60);
   BOOST_CHECK(npcInventory->isEmpty());
 
-  // Test adding resources to NPC inventory using correct resource IDs
-  bool added = npcInventory->addResource("Mithril Ore", 15);
+  // Test adding resources to NPC inventory using handles
+  bool added = npcInventory->addResource(ironOreHandle, 15);
   BOOST_CHECK(added);
-  BOOST_CHECK_EQUAL(npcInventory->getResourceQuantity("Mithril Ore"), 15);
+  BOOST_CHECK_EQUAL(npcInventory->getResourceQuantity(ironOreHandle), 15);
 
   // Test removing resources from NPC inventory
-  bool removed = npcInventory->removeResource("Mithril Ore", 5);
+  bool removed = npcInventory->removeResource(ironOreHandle, 5);
   BOOST_CHECK(removed);
-  BOOST_CHECK_EQUAL(npcInventory->getResourceQuantity("Mithril Ore"), 10);
+  BOOST_CHECK_EQUAL(npcInventory->getResourceQuantity(ironOreHandle), 10);
 
   // Test NPC inventory has resource check
-  BOOST_CHECK(npcInventory->hasResource("Mithril Ore"));
-  BOOST_CHECK(npcInventory->hasResource("Mithril Ore", 8));
-  BOOST_CHECK(!npcInventory->hasResource("Mithril Ore", 15));
-  BOOST_CHECK(!npcInventory->hasResource("Super Health Potion"));
+  BOOST_CHECK(npcInventory->hasResource(ironOreHandle));
+  BOOST_CHECK(npcInventory->hasResource(ironOreHandle, 8));
+  BOOST_CHECK(!npcInventory->hasResource(ironOreHandle, 15));
+  BOOST_CHECK(!npcInventory->hasResource(healthPotionHandle));
 }
 
 BOOST_AUTO_TEST_CASE(TestResourceTransferBetweenEntities) {
   // Setup: Give player inventory some resources
-  playerInventory->addResource("Super Health Potion", 20);
-  playerInventory->addResource("Platinum Coins", 100);
+  playerInventory->addResource(healthPotionHandle, 20);
+  playerInventory->addResource(goldHandle, 100);
 
   // Setup: Give NPC inventory some resources
-  npcInventory->addResource("Magic Sword", 1);
-  npcInventory->addResource("Mithril Ore", 50);
+  npcInventory->addResource(ironSwordHandle, 1);
+  npcInventory->addResource(ironOreHandle, 50);
 
   // Test transferring resources from player to NPC inventory
-  BOOST_REQUIRE(playerInventory->hasResource("Super Health Potion", 5));
-  BOOST_REQUIRE(playerInventory->removeResource("Super Health Potion", 5));
-  BOOST_REQUIRE(npcInventory->addResource("Super Health Potion", 5));
+  BOOST_REQUIRE(playerInventory->hasResource(healthPotionHandle, 5));
+  BOOST_REQUIRE(playerInventory->removeResource(healthPotionHandle, 5));
+  BOOST_REQUIRE(npcInventory->addResource(healthPotionHandle, 5));
 
-  // Verify transfer
-  BOOST_CHECK_EQUAL(playerInventory->getResourceQuantity("Super Health Potion"),
+  // Check that quantities are correct after transfer
+  BOOST_CHECK_EQUAL(playerInventory->getResourceQuantity(healthPotionHandle),
                     15);
-  BOOST_CHECK_EQUAL(npcInventory->getResourceQuantity("Super Health Potion"),
-                    5);
+  BOOST_CHECK_EQUAL(npcInventory->getResourceQuantity(healthPotionHandle), 5);
 
-  // Test transferring resources from NPC to player inventory
-  BOOST_REQUIRE(npcInventory->hasResource("Mithril Ore", 10));
-  BOOST_REQUIRE(npcInventory->removeResource("Mithril Ore", 10));
-  BOOST_REQUIRE(playerInventory->addResource("Mithril Ore", 10));
+  // Test transferring materials from NPC to player inventory
+  BOOST_REQUIRE(npcInventory->hasResource(ironOreHandle, 10));
+  BOOST_REQUIRE(npcInventory->removeResource(ironOreHandle, 10));
+  BOOST_REQUIRE(playerInventory->addResource(ironOreHandle, 10));
 
-  // Verify transfer
-  BOOST_CHECK_EQUAL(npcInventory->getResourceQuantity("Mithril Ore"), 40);
-  BOOST_CHECK_EQUAL(playerInventory->getResourceQuantity("Mithril Ore"), 10);
+  // Check quantities after transfer
+  BOOST_CHECK_EQUAL(npcInventory->getResourceQuantity(ironOreHandle), 40);
+  BOOST_CHECK_EQUAL(playerInventory->getResourceQuantity(ironOreHandle), 10);
 }
 
 BOOST_AUTO_TEST_CASE(TestTradingScenario) {
   // Setup a trading scenario: Player trades gold for NPC's equipment
 
   // Initial setup
-  playerInventory->addResource("Platinum Coins", 500); // Player has gold
-  npcInventory->addResource("Magic Sword", 3);         // NPC has swords
+  playerInventory->addResource(goldHandle, 500); // Player has gold
+  npcInventory->addResource(ironSwordHandle, 3);         // NPC has swords
 
   const int swordPrice = 100;
   const int swordsToTrade = 2;
   const int totalCost = swordPrice * swordsToTrade;
 
   // Verify preconditions
-  BOOST_REQUIRE(playerInventory->hasResource("Platinum Coins", totalCost));
-  BOOST_REQUIRE(npcInventory->hasResource("Magic Sword", swordsToTrade));
+  BOOST_REQUIRE(playerInventory->hasResource(goldHandle, totalCost));
+  BOOST_REQUIRE(npcInventory->hasResource(ironSwordHandle, swordsToTrade));
 
   // Execute trade: Player gives gold, receives swords
   bool playerPaysGold =
-      playerInventory->removeResource("Platinum Coins", totalCost);
+      playerInventory->removeResource(goldHandle, totalCost);
   bool npcGivesSwords =
-      npcInventory->removeResource("Magic Sword", swordsToTrade);
+      npcInventory->removeResource(ironSwordHandle, swordsToTrade);
 
   BOOST_REQUIRE(playerPaysGold);
   BOOST_REQUIRE(npcGivesSwords);
 
   // Complete the trade
-  bool npcReceivesGold = npcInventory->addResource("Platinum Coins", totalCost);
+  bool npcReceivesGold = npcInventory->addResource(goldHandle, totalCost);
   bool playerReceivesSwords =
-      playerInventory->addResource("Magic Sword", swordsToTrade);
+      playerInventory->addResource(ironSwordHandle, swordsToTrade);
 
   BOOST_REQUIRE(npcReceivesGold);
   BOOST_REQUIRE(playerReceivesSwords);
 
   // Verify final state
-  BOOST_CHECK_EQUAL(playerInventory->getResourceQuantity("Platinum Coins"),
+  BOOST_CHECK_EQUAL(playerInventory->getResourceQuantity(goldHandle),
                     500 - totalCost);
-  BOOST_CHECK_EQUAL(playerInventory->getResourceQuantity("Magic Sword"),
+  BOOST_CHECK_EQUAL(playerInventory->getResourceQuantity(ironSwordHandle),
                     swordsToTrade);
-  BOOST_CHECK_EQUAL(npcInventory->getResourceQuantity("Platinum Coins"),
+  BOOST_CHECK_EQUAL(npcInventory->getResourceQuantity(goldHandle),
                     totalCost);
-  BOOST_CHECK_EQUAL(npcInventory->getResourceQuantity("Magic Sword"),
+  BOOST_CHECK_EQUAL(npcInventory->getResourceQuantity(ironSwordHandle),
                     3 - swordsToTrade);
 }
 
 BOOST_AUTO_TEST_CASE(TestResourceManagement) {
   // Test basic resource management operations
-  playerInventory->addResource("Magic Sword", 2);
+  playerInventory->addResource(ironSwordHandle, 2);
 
   // Test basic resource management
-  BOOST_CHECK_EQUAL(playerInventory->getResourceQuantity("Magic Sword"), 2);
-  BOOST_CHECK(playerInventory->hasResource("Magic Sword"));
+  BOOST_CHECK_EQUAL(playerInventory->getResourceQuantity(ironSwordHandle), 2);
+  BOOST_CHECK(playerInventory->hasResource(ironSwordHandle));
 
   // Test removing equipment
-  bool removed = playerInventory->removeResource("Magic Sword", 1);
+  bool removed = playerInventory->removeResource(ironSwordHandle, 1);
   BOOST_CHECK(removed);
-  BOOST_CHECK_EQUAL(playerInventory->getResourceQuantity("Magic Sword"), 1);
+  BOOST_CHECK_EQUAL(playerInventory->getResourceQuantity(ironSwordHandle), 1);
 
   // Test consuming resource
-  playerInventory->addResource("Super Health Potion", 1);
-  bool consumed = playerInventory->removeResource("Super Health Potion", 1);
+  playerInventory->addResource(healthPotionHandle, 1);
+  bool consumed = playerInventory->removeResource(healthPotionHandle, 1);
   BOOST_CHECK(consumed);
-  BOOST_CHECK_EQUAL(playerInventory->getResourceQuantity("Super Health Potion"),
+  BOOST_CHECK_EQUAL(playerInventory->getResourceQuantity(healthPotionHandle),
                     0);
 }
 
 BOOST_AUTO_TEST_CASE(TestResourceByCategory) {
   // Setup: Add various resources to player inventory
-  playerInventory->addResource("Super Health Potion", 5); // Item/Consumable
-  playerInventory->addResource("Magic Sword", 1);         // Item/Equipment
-  playerInventory->addResource("Mithril Ore", 20);        // Material
-  playerInventory->addResource("Platinum Coins", 100);    // Currency
+  playerInventory->addResource(healthPotionHandle, 5); // Item/Consumable
+  playerInventory->addResource(ironSwordHandle, 1);         // Item/Equipment
+  playerInventory->addResource(ironOreHandle, 20);        // Material
+  playerInventory->addResource(goldHandle, 100);    // Currency
 
   // Test getting resources by category
   auto itemResources =
@@ -317,7 +300,7 @@ BOOST_AUTO_TEST_CASE(TestInventoryCapacityLimits) {
   // Fill player inventory with iron swords
   int swordsAdded = 0;
   for (int i = 0; i < 55; ++i) { // Try to add more than capacity
-    if (playerInventory->addResource("Magic Sword", 1)) {
+    if (playerInventory->addResource(ironSwordHandle, 1)) {
       swordsAdded++;
     } else {
       break; // Inventory full
@@ -332,7 +315,7 @@ BOOST_AUTO_TEST_CASE(TestInventoryCapacityLimits) {
   // Test NPC inventory capacity (60 slots)
   int npcItemsAdded = 0;
   for (int i = 0; i < 65; ++i) { // Try to add more than capacity
-    if (npcInventory->addResource("Magic Sword", 1)) {
+    if (npcInventory->addResource(ironSwordHandle, 1)) {
       npcItemsAdded++;
     } else {
       break; // Inventory full
@@ -347,43 +330,43 @@ BOOST_AUTO_TEST_CASE(TestInventoryCapacityLimits) {
 
 BOOST_AUTO_TEST_CASE(TestResourceSerialization) {
   // Setup: Add resources to player inventory
-  playerInventory->addResource("Super Health Potion", 10);
-  playerInventory->addResource("Magic Sword", 2);
-  playerInventory->addResource("Platinum Coins", 500);
+  playerInventory->addResource(healthPotionHandle, 10);
+  playerInventory->addResource(ironSwordHandle, 2);
+  playerInventory->addResource(goldHandle, 500);
 
   // Note: InventoryComponent doesn't have serialize/deserialize methods
   // This test focuses on verifying resource state can be queried
 
   // Verify inventory state can be queried
-  BOOST_CHECK_EQUAL(playerInventory->getResourceQuantity("Super Health Potion"),
+  BOOST_CHECK_EQUAL(playerInventory->getResourceQuantity(healthPotionHandle),
                     10);
-  BOOST_CHECK_EQUAL(playerInventory->getResourceQuantity("Magic Sword"), 2);
-  BOOST_CHECK_EQUAL(playerInventory->getResourceQuantity("Platinum Coins"),
+  BOOST_CHECK_EQUAL(playerInventory->getResourceQuantity(ironSwordHandle), 2);
+  BOOST_CHECK_EQUAL(playerInventory->getResourceQuantity(goldHandle),
                     500);
 
   // Test NPC inventory resources as well
-  npcInventory->addResource("Mithril Ore", 25);
-  npcInventory->addResource("Platinum Coins", 200);
+  npcInventory->addResource(ironOreHandle, 25);
+  npcInventory->addResource(goldHandle, 200);
 
-  BOOST_CHECK_EQUAL(npcInventory->getResourceQuantity("Mithril Ore"), 25);
-  BOOST_CHECK_EQUAL(npcInventory->getResourceQuantity("Platinum Coins"), 200);
+  BOOST_CHECK_EQUAL(npcInventory->getResourceQuantity(ironOreHandle), 25);
+  BOOST_CHECK_EQUAL(npcInventory->getResourceQuantity(goldHandle), 200);
 }
 
 BOOST_AUTO_TEST_CASE(TestResourceConsumption) {
   // Test consuming resources (like using health potions)
-  playerInventory->addResource("Super Health Potion", 5);
+  playerInventory->addResource(healthPotionHandle, 5);
 
   // Simulate using a health potion
-  BOOST_REQUIRE(playerInventory->hasResource("Super Health Potion", 1));
-  bool consumed = playerInventory->removeResource("Super Health Potion", 1);
+  BOOST_REQUIRE(playerInventory->hasResource(healthPotionHandle, 1));
+  bool consumed = playerInventory->removeResource(healthPotionHandle, 1);
   BOOST_CHECK(consumed);
-  BOOST_CHECK_EQUAL(playerInventory->getResourceQuantity("Super Health Potion"),
+  BOOST_CHECK_EQUAL(playerInventory->getResourceQuantity(healthPotionHandle),
                     4);
 
   // Try to consume more than available
-  bool overConsume = playerInventory->removeResource("Super Health Potion", 10);
+  bool overConsume = playerInventory->removeResource(healthPotionHandle, 10);
   BOOST_CHECK(!overConsume);
-  BOOST_CHECK_EQUAL(playerInventory->getResourceQuantity("Super Health Potion"),
+  BOOST_CHECK_EQUAL(playerInventory->getResourceQuantity(healthPotionHandle),
                     4); // Should remain unchanged
 }
 
@@ -392,46 +375,46 @@ BOOST_AUTO_TEST_CASE(TestComplexTradingChain) {
   auto traderInventory = std::make_unique<InventoryComponent>(nullptr, 30);
 
   // Initial setup
-  playerInventory->addResource("Platinum Coins", 1000);
-  npcInventory->addResource("Mithril Ore", 100);
-  traderInventory->addResource("Magic Sword", 10);
+  playerInventory->addResource(goldHandle, 1000);
+  npcInventory->addResource(ironOreHandle, 100);
+  traderInventory->addResource(ironSwordHandle, 10);
 
   // Step 1: Player trades gold for iron ore from NPC
   const int orePrice = 5;
   const int oreQuantity = 20;
   const int oreCost = orePrice * oreQuantity;
 
-  BOOST_REQUIRE(playerInventory->removeResource("Platinum Coins", oreCost));
-  BOOST_REQUIRE(npcInventory->removeResource("Mithril Ore", oreQuantity));
-  BOOST_REQUIRE(npcInventory->addResource("Platinum Coins", oreCost));
-  BOOST_REQUIRE(playerInventory->addResource("Mithril Ore", oreQuantity));
+  BOOST_REQUIRE(playerInventory->removeResource(goldHandle, oreCost));
+  BOOST_REQUIRE(npcInventory->removeResource(ironOreHandle, oreQuantity));
+  BOOST_REQUIRE(npcInventory->addResource(goldHandle, oreCost));
+  BOOST_REQUIRE(playerInventory->addResource(ironOreHandle, oreQuantity));
 
   // Step 2: Player trades iron ore for sword from Trader
   const int swordOrePrice = 10; // 10 ore per sword
   const int swordsWanted = 2;
   const int oreNeeded = swordOrePrice * swordsWanted;
 
-  BOOST_REQUIRE(playerInventory->removeResource("Mithril Ore", oreNeeded));
-  BOOST_REQUIRE(traderInventory->removeResource("Magic Sword", swordsWanted));
-  BOOST_REQUIRE(traderInventory->addResource("Mithril Ore", oreNeeded));
-  BOOST_REQUIRE(playerInventory->addResource("Magic Sword", swordsWanted));
+  BOOST_REQUIRE(playerInventory->removeResource(ironOreHandle, oreNeeded));
+  BOOST_REQUIRE(traderInventory->removeResource(ironSwordHandle, swordsWanted));
+  BOOST_REQUIRE(traderInventory->addResource(ironOreHandle, oreNeeded));
+  BOOST_REQUIRE(playerInventory->addResource(ironSwordHandle, swordsWanted));
 
   // Verify final state
-  BOOST_CHECK_EQUAL(playerInventory->getResourceQuantity("Platinum Coins"),
+  BOOST_CHECK_EQUAL(playerInventory->getResourceQuantity(goldHandle),
                     1000 - oreCost);
-  BOOST_CHECK_EQUAL(playerInventory->getResourceQuantity("Mithril Ore"),
+  BOOST_CHECK_EQUAL(playerInventory->getResourceQuantity(ironOreHandle),
                     oreQuantity - oreNeeded);
-  BOOST_CHECK_EQUAL(playerInventory->getResourceQuantity("Magic Sword"),
+  BOOST_CHECK_EQUAL(playerInventory->getResourceQuantity(ironSwordHandle),
                     swordsWanted);
 
-  BOOST_CHECK_EQUAL(npcInventory->getResourceQuantity("Platinum Coins"),
+  BOOST_CHECK_EQUAL(npcInventory->getResourceQuantity(goldHandle),
                     oreCost);
-  BOOST_CHECK_EQUAL(npcInventory->getResourceQuantity("Mithril Ore"),
+  BOOST_CHECK_EQUAL(npcInventory->getResourceQuantity(ironOreHandle),
                     100 - oreQuantity);
 
-  BOOST_CHECK_EQUAL(traderInventory->getResourceQuantity("Mithril Ore"),
+  BOOST_CHECK_EQUAL(traderInventory->getResourceQuantity(ironOreHandle),
                     oreNeeded);
-  BOOST_CHECK_EQUAL(traderInventory->getResourceQuantity("Magic Sword"),
+  BOOST_CHECK_EQUAL(traderInventory->getResourceQuantity(ironSwordHandle),
                     10 - swordsWanted);
 }
 
@@ -445,8 +428,8 @@ BOOST_AUTO_TEST_CASE(TestConcurrentResourceOperations) {
   const int OPERATIONS_PER_THREAD = 20;
 
   // Pre-populate with resources
-  playerInventory->addResource("Platinum Coins", 10000);
-  npcInventory->addResource("Mithril Ore", 5000);
+  playerInventory->addResource(goldHandle, 10000);
+  npcInventory->addResource(ironOreHandle, 5000);
 
   std::vector<std::thread> threads;
   std::atomic<int> successfulPlayerOps{0};
@@ -456,15 +439,15 @@ BOOST_AUTO_TEST_CASE(TestConcurrentResourceOperations) {
     threads.emplace_back([&]() {
       for (int j = 0; j < OPERATIONS_PER_THREAD; ++j) {
         // Test concurrent player operations
-        if (playerInventory->addResource("Super Health Potion", 1)) {
-          if (playerInventory->removeResource("Super Health Potion", 1)) {
+        if (playerInventory->addResource(healthPotionHandle, 1)) {
+          if (playerInventory->removeResource(healthPotionHandle, 1)) {
             successfulPlayerOps++;
           }
         }
 
         // Test concurrent NPC operations
-        if (npcInventory->addResource("Magic Sword", 1)) {
-          if (npcInventory->removeResource("Magic Sword", 1)) {
+        if (npcInventory->addResource(ironSwordHandle, 1)) {
+          if (npcInventory->removeResource(ironSwordHandle, 1)) {
             successfulNPCOps++;
           }
         }
@@ -484,9 +467,9 @@ BOOST_AUTO_TEST_CASE(TestConcurrentResourceOperations) {
   BOOST_CHECK(successfulNPCOps.load() > 0);
 
   // Verify original resources are still intact
-  BOOST_CHECK_EQUAL(playerInventory->getResourceQuantity("Platinum Coins"),
+  BOOST_CHECK_EQUAL(playerInventory->getResourceQuantity(goldHandle),
                     10000);
-  BOOST_CHECK_EQUAL(npcInventory->getResourceQuantity("Mithril Ore"), 5000);
+  BOOST_CHECK_EQUAL(npcInventory->getResourceQuantity(ironOreHandle), 5000);
 }
 
 BOOST_AUTO_TEST_SUITE_END()
