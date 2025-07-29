@@ -8,6 +8,7 @@
 
 #include "entities/Entity.hpp"
 #include "events/Event.hpp"
+#include "utils/ResourceHandle.hpp"
 #include <memory>
 #include <string>
 
@@ -24,13 +25,14 @@ public:
   /**
    * @brief Constructs a resource change event
    * @param owner Entity that owns the inventory where the change occurred
-   * @param resourceId ID of the resource that changed
+   * @param resourceHandle Handle of the resource that changed
    * @param oldQuantity Previous quantity of the resource
    * @param newQuantity New quantity of the resource
    * @param changeReason Optional reason for the change (e.g., "crafted",
    * "consumed", "traded")
    */
-  ResourceChangeEvent(EntityPtr owner, const std::string &resourceId,
+  ResourceChangeEvent(EntityPtr owner,
+                      HammerEngine::ResourceHandle resourceHandle,
                       int oldQuantity, int newQuantity,
                       const std::string &changeReason = "");
 
@@ -48,7 +50,9 @@ public:
 
   // Resource change data
   EntityWeakPtr getOwner() const { return m_owner; }
-  const std::string &getResourceId() const { return m_resourceId; }
+  HammerEngine::ResourceHandle getResourceHandle() const {
+    return m_resourceHandle;
+  }
   int getOldQuantity() const { return m_oldQuantity; }
   int getNewQuantity() const { return m_newQuantity; }
   int getQuantityChange() const { return m_newQuantity - m_oldQuantity; }
@@ -65,8 +69,9 @@ public:
   }
 
 private:
-  EntityWeakPtr m_owner;      // Entity that owns the inventory
-  std::string m_resourceId;   // ID of the resource that changed
+  EntityWeakPtr m_owner; // Entity that owns the inventory
+  HammerEngine::ResourceHandle
+      m_resourceHandle;       // Handle of the resource that changed
   int m_oldQuantity;          // Previous quantity
   int m_newQuantity;          // New quantity
   std::string m_changeReason; // Reason for the change

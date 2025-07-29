@@ -37,7 +37,8 @@ bool WorldResourceManager::init() {
     m_worldResources.clear();
 
     // Create a default world for single-world scenarios
-    m_worldResources["default"] = std::unordered_map<ResourceId, Quantity>();
+    m_worldResources["default"] =
+        std::unordered_map<HammerEngine::ResourceHandle, Quantity>();
 
     m_initialized.store(true, std::memory_order_release);
     m_stats.reset();
@@ -132,7 +133,8 @@ bool WorldResourceManager::createWorld(const WorldId &worldId) {
   }
 
   try {
-    m_worldResources[worldId] = std::unordered_map<ResourceId, Quantity>();
+    m_worldResources[worldId] =
+        std::unordered_map<HammerEngine::ResourceHandle, Quantity>();
     m_stats.worldsTracked.fetch_add(1, std::memory_order_relaxed);
 
     // Check for performance warning
@@ -206,17 +208,18 @@ WorldResourceManager::getWorldIds() const {
 }
 
 ResourceTransactionResult WorldResourceManager::addResource(
-    const WorldId &worldId, const ResourceId &resourceId, Quantity quantity) {
+    const WorldId &worldId, const HammerEngine::ResourceHandle &resourceHandle,
+    Quantity quantity) {
   // Validate parameters individually to return appropriate error codes
   if (!isValidWorldId(worldId)) {
     WORLD_RESOURCE_ERROR("WorldResourceManager - Invalid world ID: " + worldId);
     return ResourceTransactionResult::InvalidWorldId;
   }
 
-  if (!isValidResourceId(resourceId)) {
-    WORLD_RESOURCE_ERROR("WorldResourceManager - Invalid resource ID: " +
-                         resourceId.toString());
-    return ResourceTransactionResult::InvalidResourceId;
+  if (!isValidResourceHandle(resourceHandle)) {
+    WORLD_RESOURCE_ERROR("WorldResourceManager - Invalid resource handle: " +
+                         resourceHandle.toString());
+    return ResourceTransactionResult::InvalidResourceHandle;
   }
 
   if (!isValidQuantity(quantity)) {
@@ -241,24 +244,24 @@ ResourceTransactionResult WorldResourceManager::addResource(
 
     // Check for overflow (only if quantity > 0)
     if (quantity > 0) {
-      Quantity currentQuantity = worldResources[resourceId];
+      Quantity currentQuantity = worldResources[resourceHandle];
       if (currentQuantity > std::numeric_limits<Quantity>::max() - quantity) {
         WORLD_RESOURCE_ERROR(
             "WorldResourceManager::addResource - Quantity overflow");
         return ResourceTransactionResult::SystemError;
       }
-      worldResources[resourceId] = currentQuantity + quantity;
+      worldResources[resourceHandle] = currentQuantity + quantity;
 
       // Invalidate caches when resources change
       invalidateAggregateCache();
-      updateResourceCache(worldId, resourceId, currentQuantity + quantity);
+      updateResourceCache(worldId, resourceHandle, currentQuantity + quantity);
     }
     // If quantity is 0, we do nothing but still consider it successful
 
     updateStats(true, quantity);
 
     WORLD_RESOURCE_DEBUG("Added " + std::to_string(quantity) + " " +
-                         resourceId.toString() + " to world " + worldId);
+                         resourceHandle.toString() + " to world " + worldId);
     return ResourceTransactionResult::Success;
   } catch (const std::exception &ex) {
     WORLD_RESOURCE_ERROR("WorldResourceManager::addResource - Exception: " +
@@ -268,17 +271,18 @@ ResourceTransactionResult WorldResourceManager::addResource(
 }
 
 ResourceTransactionResult WorldResourceManager::removeResource(
-    const WorldId &worldId, const ResourceId &resourceId, Quantity quantity) {
+    const WorldId &worldId, const HammerEngine::ResourceHandle &resourceHandle,
+    Quantity quantity) {
   // Validate parameters individually to return appropriate error codes
   if (!isValidWorldId(worldId)) {
     WORLD_RESOURCE_ERROR("WorldResourceManager - Invalid world ID: " + worldId);
     return ResourceTransactionResult::InvalidWorldId;
   }
 
-  if (!isValidResourceId(resourceId)) {
-    WORLD_RESOURCE_ERROR("WorldResourceManager - Invalid resource ID: " +
-                         resourceId.toString());
-    return ResourceTransactionResult::InvalidResourceId;
+  if (!isValidResourceHandle(resourceHandle)) {
+    WORLD_RESOURCE_ERROR("WorldResourceManager - Invalid resource handle: " +
+                         resourceHandle.toString());
+    return ResourceTransactionResult::InvalidResourceHandle;
   }
 
   if (!isValidQuantity(quantity)) {
@@ -300,12 +304,13 @@ ResourceTransactionResult WorldResourceManager::removeResource(
     ensureWorldExists(worldId);
 
     auto &worldResources = m_worldResources[worldId];
-    Quantity currentQuantity = worldResources[resourceId];
+    Quantity currentQuantity = worldResources[resourceHandle];
 
     // If quantity is 0, we do nothing but still consider it successful
     if (quantity == 0) {
       WORLD_RESOURCE_DEBUG("Removed " + std::to_string(quantity) + " " +
-                           resourceId.toString() + " from world " + worldId);
+                           resourceHandle.toString() + " from world " +
+                           worldId);
       return ResourceTransactionResult::Success;
     }
 
@@ -317,15 +322,15 @@ ResourceTransactionResult WorldResourceManager::removeResource(
       return ResourceTransactionResult::InsufficientResources;
     }
 
-    worldResources[resourceId] = currentQuantity - quantity;
+    worldResources[resourceHandle] = currentQuantity - quantity;
     updateStats(false, quantity);
 
     // Invalidate caches when resources change
     invalidateAggregateCache();
-    updateResourceCache(worldId, resourceId, currentQuantity - quantity);
+    updateResourceCache(worldId, resourceHandle, currentQuantity - quantity);
 
     WORLD_RESOURCE_DEBUG("Removed " + std::to_string(quantity) + " " +
-                         resourceId.toString() + " from world " + worldId);
+                         resourceHandle.toString() + " from world " + worldId);
     return ResourceTransactionResult::Success;
   } catch (const std::exception &ex) {
     WORLD_RESOURCE_ERROR("WorldResourceManager::removeResource - Exception: " +
@@ -335,17 +340,18 @@ ResourceTransactionResult WorldResourceManager::removeResource(
 }
 
 ResourceTransactionResult WorldResourceManager::setResource(
-    const WorldId &worldId, const ResourceId &resourceId, Quantity quantity) {
+    const WorldId &worldId, const HammerEngine::ResourceHandle &resourceHandle,
+    Quantity quantity) {
   // Validate parameters individually to return appropriate error codes
   if (!isValidWorldId(worldId)) {
     WORLD_RESOURCE_ERROR("WorldResourceManager - Invalid world ID: " + worldId);
     return ResourceTransactionResult::InvalidWorldId;
   }
 
-  if (!isValidResourceId(resourceId)) {
-    WORLD_RESOURCE_ERROR("WorldResourceManager - Invalid resource ID: " +
-                         resourceId.toString());
-    return ResourceTransactionResult::InvalidResourceId;
+  if (!isValidResourceHandle(resourceHandle)) {
+    WORLD_RESOURCE_ERROR("WorldResourceManager - Invalid resource handle: " +
+                         resourceHandle.toString());
+    return ResourceTransactionResult::InvalidResourceHandle;
   }
 
   if (!isValidQuantity(quantity)) {
@@ -367,8 +373,8 @@ ResourceTransactionResult WorldResourceManager::setResource(
     ensureWorldExists(worldId);
 
     auto &worldResources = m_worldResources[worldId];
-    Quantity oldQuantity = worldResources[resourceId];
-    worldResources[resourceId] = quantity;
+    Quantity oldQuantity = worldResources[resourceHandle];
+    worldResources[resourceHandle] = quantity;
 
     // Update stats based on the net change
     Quantity netChange = quantity - oldQuantity;
@@ -377,10 +383,10 @@ ResourceTransactionResult WorldResourceManager::setResource(
 
       // Invalidate caches when resources change
       invalidateAggregateCache();
-      updateResourceCache(worldId, resourceId, quantity);
+      updateResourceCache(worldId, resourceHandle, quantity);
     }
 
-    WORLD_RESOURCE_DEBUG("Set " + resourceId.toString() + " to " +
+    WORLD_RESOURCE_DEBUG("Set " + resourceHandle.toString() + " to " +
                          std::to_string(quantity) + " in world " + worldId);
     return ResourceTransactionResult::Success;
   } catch (const std::exception &ex) {
@@ -390,11 +396,11 @@ ResourceTransactionResult WorldResourceManager::setResource(
   }
 }
 
-WorldResourceManager::Quantity
-WorldResourceManager::getResourceQuantity(const WorldId &worldId,
-                                          const ResourceId &resourceId) const {
+WorldResourceManager::Quantity WorldResourceManager::getResourceQuantity(
+    const WorldId &worldId,
+    const HammerEngine::ResourceHandle &resourceHandle) const {
   // Try cache first for performance
-  Quantity cachedQuantity = getCachedResourceQuantity(worldId, resourceId);
+  Quantity cachedQuantity = getCachedResourceQuantity(worldId, resourceHandle);
   if (cachedQuantity >= 0) {
     return cachedQuantity;
   }
@@ -403,33 +409,33 @@ WorldResourceManager::getResourceQuantity(const WorldId &worldId,
 
   auto worldIt = m_worldResources.find(worldId);
   if (worldIt == m_worldResources.end()) {
-    updateResourceCache(worldId, resourceId, 0);
+    updateResourceCache(worldId, resourceHandle, 0);
     return 0;
   }
 
-  auto resourceIt = worldIt->second.find(resourceId);
+  auto resourceIt = worldIt->second.find(resourceHandle);
   Quantity quantity =
       (resourceIt != worldIt->second.end()) ? resourceIt->second : 0;
 
   // Update cache for future access
-  updateResourceCache(worldId, resourceId, quantity);
+  updateResourceCache(worldId, resourceHandle, quantity);
 
   return quantity;
 }
 
-bool WorldResourceManager::hasResource(const WorldId &worldId,
-                                       const ResourceId &resourceId,
-                                       Quantity minimumQuantity) const {
-  return getResourceQuantity(worldId, resourceId) >= minimumQuantity;
+bool WorldResourceManager::hasResource(
+    const WorldId &worldId, const HammerEngine::ResourceHandle &resourceHandle,
+    Quantity minimumQuantity) const {
+  return getResourceQuantity(worldId, resourceHandle) >= minimumQuantity;
 }
 
 WorldResourceManager::Quantity WorldResourceManager::getTotalResourceQuantity(
-    const ResourceId &resourceId) const {
+    const HammerEngine::ResourceHandle &resourceHandle) const {
   std::shared_lock<std::shared_mutex> lock(m_resourceMutex);
 
   Quantity total = 0;
   for (const auto &[worldId, worldResources] : m_worldResources) {
-    auto resourceIt = worldResources.find(resourceId);
+    auto resourceIt = worldResources.find(resourceHandle);
     if (resourceIt != worldResources.end()) {
       total += resourceIt->second;
     }
@@ -438,8 +444,7 @@ WorldResourceManager::Quantity WorldResourceManager::getTotalResourceQuantity(
   return total;
 }
 
-std::unordered_map<WorldResourceManager::ResourceId,
-                   WorldResourceManager::Quantity>
+std::unordered_map<HammerEngine::ResourceHandle, WorldResourceManager::Quantity>
 WorldResourceManager::getWorldResources(const WorldId &worldId) const {
   std::shared_lock<std::shared_mutex> lock(m_resourceMutex);
 
@@ -451,8 +456,7 @@ WorldResourceManager::getWorldResources(const WorldId &worldId) const {
   return {}; // Return empty map if world not found
 }
 
-std::unordered_map<WorldResourceManager::ResourceId,
-                   WorldResourceManager::Quantity>
+std::unordered_map<HammerEngine::ResourceHandle, WorldResourceManager::Quantity>
 WorldResourceManager::getAllResourceTotals() const {
   std::shared_lock<std::shared_mutex> lock(m_resourceMutex);
 
@@ -467,22 +471,21 @@ WorldResourceManager::getAllResourceTotals() const {
   }
 
   // Fallback to direct calculation if cache invalid
-  std::unordered_map<ResourceId, Quantity> totals;
+  std::unordered_map<HammerEngine::ResourceHandle, Quantity> totals;
 
   for (const auto &[worldId, worldResources] : m_worldResources) {
-    for (const auto &[resourceId, quantity] : worldResources) {
-      totals[resourceId] += quantity;
+    for (const auto &[resourceHandle, quantity] : worldResources) {
+      totals[resourceHandle] += quantity;
     }
   }
 
   return totals;
 }
 
-bool WorldResourceManager::transferResource(const WorldId &fromWorldId,
-                                            const WorldId &toWorldId,
-                                            const ResourceId &resourceId,
-                                            Quantity quantity) {
-  if (!validateParameters(fromWorldId, resourceId, quantity) ||
+bool WorldResourceManager::transferResource(
+    const WorldId &fromWorldId, const WorldId &toWorldId,
+    const HammerEngine::ResourceHandle &resourceHandle, Quantity quantity) {
+  if (!validateParameters(fromWorldId, resourceHandle, quantity) ||
       !isValidWorldId(toWorldId)) {
     return false;
   }
@@ -503,7 +506,7 @@ bool WorldResourceManager::transferResource(const WorldId &fromWorldId,
     auto &fromResources = m_worldResources[fromWorldId];
     auto &toResources = m_worldResources[toWorldId];
 
-    Quantity fromQuantity = fromResources[resourceId];
+    Quantity fromQuantity = fromResources[resourceHandle];
     if (fromQuantity < quantity) {
       WORLD_RESOURCE_WARN(
           "WorldResourceManager::transferResource - Insufficient resources");
@@ -511,25 +514,25 @@ bool WorldResourceManager::transferResource(const WorldId &fromWorldId,
     }
 
     // Check for overflow in destination
-    Quantity toQuantity = toResources[resourceId];
+    Quantity toQuantity = toResources[resourceHandle];
     if (toQuantity > std::numeric_limits<Quantity>::max() - quantity) {
       WORLD_RESOURCE_ERROR(
           "WorldResourceManager::transferResource - Quantity overflow");
       return false;
     }
 
-    fromResources[resourceId] = fromQuantity - quantity;
-    toResources[resourceId] = toQuantity + quantity;
+    fromResources[resourceHandle] = fromQuantity - quantity;
+    toResources[resourceHandle] = toQuantity + quantity;
 
     m_stats.totalTransactions.fetch_add(1, std::memory_order_relaxed);
 
     // Invalidate caches when resources change
     invalidateAggregateCache();
-    updateResourceCache(fromWorldId, resourceId, fromQuantity - quantity);
-    updateResourceCache(toWorldId, resourceId, toQuantity + quantity);
+    updateResourceCache(fromWorldId, resourceHandle, fromQuantity - quantity);
+    updateResourceCache(toWorldId, resourceHandle, toQuantity + quantity);
 
     WORLD_RESOURCE_DEBUG("Transferred " + std::to_string(quantity) + " " +
-                         resourceId.toString() + " from " + fromWorldId +
+                         resourceHandle.toString() + " from " + fromWorldId +
                          " to " + toWorldId);
     return true;
   } catch (const std::exception &ex) {
@@ -561,9 +564,9 @@ bool WorldResourceManager::transferAllResources(const WorldId &fromWorldId,
     auto &fromResources = m_worldResources[fromWorldId];
     auto &toResources = m_worldResources[toWorldId];
 
-    for (const auto &[resourceId, quantity] : fromResources) {
+    for (const auto &[resourceHandle, quantity] : fromResources) {
       if (quantity > 0) {
-        toResources[resourceId] += quantity;
+        toResources[resourceHandle] += quantity;
       }
     }
 
@@ -594,14 +597,14 @@ size_t WorldResourceManager::getMemoryUsage() const {
   // Account for m_worldResources map and nested maps
   for (const auto &[worldId, worldResources] : m_worldResources) {
     totalSize += worldId.size(); // Size of world ID string
-    totalSize +=
-        sizeof(std::unordered_map<ResourceId, Quantity>); // World resources map
+    totalSize += sizeof(std::unordered_map<HammerEngine::ResourceHandle,
+                                           Quantity>); // World resources map
 
-    for (const auto &[resourceId, quantity] : worldResources) {
-      totalSize += sizeof(resourceId); // Size of actual resource handle
-      totalSize += sizeof(quantity);   // Size of actual quantity value
+    for (const auto &[resourceHandle, quantity] : worldResources) {
+      totalSize += sizeof(resourceHandle); // Size of actual resource handle
+      totalSize += sizeof(quantity);       // Size of actual quantity value
       // Each resource entry also has overhead from hash table bucket
-      totalSize += sizeof(std::pair<ResourceId, Quantity>);
+      totalSize += sizeof(std::pair<HammerEngine::ResourceHandle, Quantity>);
     }
   }
 
@@ -615,9 +618,9 @@ bool WorldResourceManager::isValidWorldId(const WorldId &worldId) const {
          });
 }
 
-bool WorldResourceManager::isValidResourceId(
-    const ResourceId &resourceId) const {
-  return resourceId.isValid();
+bool WorldResourceManager::isValidResourceHandle(
+    const HammerEngine::ResourceHandle &resourceHandle) const {
+  return resourceHandle.isValid();
 }
 
 bool WorldResourceManager::isValidQuantity(Quantity quantity) const {
@@ -638,17 +641,17 @@ void WorldResourceManager::updateStats(bool isAdd, Quantity quantity) {
   // This stat should represent unique resource types, not quantities
 }
 
-bool WorldResourceManager::validateParameters(const WorldId &worldId,
-                                              const ResourceId &resourceId,
-                                              Quantity quantity) const {
+bool WorldResourceManager::validateParameters(
+    const WorldId &worldId, const HammerEngine::ResourceHandle &resourceHandle,
+    Quantity quantity) const {
   if (!isValidWorldId(worldId)) {
     WORLD_RESOURCE_ERROR("WorldResourceManager - Invalid world ID: " + worldId);
     return false;
   }
 
-  if (!isValidResourceId(resourceId)) {
-    WORLD_RESOURCE_ERROR("WorldResourceManager - Invalid resource ID: " +
-                         resourceId.toString());
+  if (!isValidResourceHandle(resourceHandle)) {
+    WORLD_RESOURCE_ERROR("WorldResourceManager - Invalid resource handle: " +
+                         resourceHandle.toString());
     return false;
   }
 
@@ -664,7 +667,7 @@ bool WorldResourceManager::validateParameters(const WorldId &worldId,
 void WorldResourceManager::ensureWorldExists(const WorldId &worldId) {
   // Assumes we already have a write lock
   auto [it, inserted] = m_worldResources.try_emplace(
-      worldId, std::unordered_map<ResourceId, Quantity>());
+      worldId, std::unordered_map<HammerEngine::ResourceHandle, Quantity>());
   if (inserted) {
     m_stats.worldsTracked.fetch_add(1, std::memory_order_relaxed);
     WORLD_RESOURCE_DEBUG("Auto-created world: " + worldId);
@@ -672,9 +675,9 @@ void WorldResourceManager::ensureWorldExists(const WorldId &worldId) {
 }
 
 // Cache management methods
-void WorldResourceManager::updateResourceCache(const WorldId &worldId,
-                                               const ResourceId &resourceId,
-                                               Quantity quantity) const {
+void WorldResourceManager::updateResourceCache(
+    const WorldId &worldId, const HammerEngine::ResourceHandle &resourceHandle,
+    Quantity quantity) const {
   std::lock_guard<std::mutex> cacheLock(m_cacheMutex);
 
   auto &worldCache = m_resourceCache[worldId];
@@ -682,8 +685,8 @@ void WorldResourceManager::updateResourceCache(const WorldId &worldId,
 
   // Look for existing cache entry
   auto cacheIt = std::find_if(worldCache.begin(), worldCache.end(),
-                              [resourceId](const ResourceCache &cache) {
-                                return cache.resourceId == resourceId;
+                              [resourceHandle](const ResourceCache &cache) {
+                                return cache.resourceHandle == resourceHandle;
                               });
 
   if (cacheIt != worldCache.end()) {
@@ -709,11 +712,12 @@ void WorldResourceManager::updateResourceCache(const WorldId &worldId,
     }
   }
 
-  worldCache.push_back({resourceId, quantity, now, false});
+  worldCache.push_back({resourceHandle, quantity, now, false});
 }
 
 WorldResourceManager::Quantity WorldResourceManager::getCachedResourceQuantity(
-    const WorldId &worldId, const ResourceId &resourceId) const {
+    const WorldId &worldId,
+    const HammerEngine::ResourceHandle &resourceHandle) const {
   std::lock_guard<std::mutex> cacheLock(m_cacheMutex);
 
   auto worldIt = m_resourceCache.find(worldId);
@@ -725,11 +729,11 @@ WorldResourceManager::Quantity WorldResourceManager::getCachedResourceQuantity(
   }
 
   auto now = std::chrono::steady_clock::now();
-  auto cacheIt =
-      std::find_if(worldIt->second.begin(), worldIt->second.end(),
-                   [resourceId](const ResourceCache &cache) {
-                     return cache.resourceId == resourceId && !cache.dirty;
-                   });
+  auto cacheIt = std::find_if(worldIt->second.begin(), worldIt->second.end(),
+                              [resourceHandle](const ResourceCache &cache) {
+                                return cache.resourceHandle == resourceHandle &&
+                                       !cache.dirty;
+                              });
 
   if (cacheIt != worldIt->second.end()) {
     cacheIt->lastAccess = now; // Update access time
@@ -771,8 +775,8 @@ void WorldResourceManager::updateAggregateCache() const {
 
   // Note: This requires the resource mutex to be held by caller
   for (const auto &[worldId, worldResources] : m_worldResources) {
-    for (const auto &[resourceId, quantity] : worldResources) {
-      m_aggregateCache.totals[resourceId] += quantity;
+    for (const auto &[resourceHandle, quantity] : worldResources) {
+      m_aggregateCache.totals[resourceHandle] += quantity;
     }
   }
 

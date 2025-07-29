@@ -226,7 +226,7 @@ void Player::onResourceChanged(HammerEngine::ResourceHandle resourceHandle,
 
   // Create and fire resource change event
   auto resourceEvent = std::make_shared<ResourceChangeEvent>(
-      shared_this(), resourceId, oldQuantity, newQuantity, "player_action");
+      shared_this(), resourceHandle, oldQuantity, newQuantity, "player_action");
 
   // Send event to EventManager if available
   // Note: We don't directly access EventManager here to avoid tight coupling

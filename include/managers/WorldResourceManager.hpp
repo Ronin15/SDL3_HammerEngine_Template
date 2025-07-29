@@ -108,7 +108,7 @@ struct WorldResourceStats {
 enum class ResourceTransactionResult {
   Success,
   InsufficientResources,
-  InvalidResourceId,
+  InvalidResourceHandle,
   InvalidWorldId,
   InvalidQuantity,
   SystemError
@@ -125,7 +125,6 @@ class WorldResourceManager {
 public:
   // World ID type - using string for flexibility (could be UUID, integer, etc.)
   using WorldId = std::string;
-  using ResourceId = HammerEngine::ResourceHandle;
   using Quantity = int64_t;
 
   static WorldResourceManager &Instance();
@@ -142,31 +141,39 @@ public:
   std::vector<WorldId> getWorldIds() const;
 
   // Resource quantity tracking
-  ResourceTransactionResult addResource(const WorldId &worldId,
-                                        const ResourceId &resourceId,
-                                        Quantity quantity);
-  ResourceTransactionResult removeResource(const WorldId &worldId,
-                                           const ResourceId &resourceId,
-                                           Quantity quantity);
-  ResourceTransactionResult setResource(const WorldId &worldId,
-                                        const ResourceId &resourceId,
-                                        Quantity quantity);
+  ResourceTransactionResult
+  addResource(const WorldId &worldId,
+              const HammerEngine::ResourceHandle &resourceHandle,
+              Quantity quantity);
+  ResourceTransactionResult
+  removeResource(const WorldId &worldId,
+                 const HammerEngine::ResourceHandle &resourceHandle,
+                 Quantity quantity);
+  ResourceTransactionResult
+  setResource(const WorldId &worldId,
+              const HammerEngine::ResourceHandle &resourceHandle,
+              Quantity quantity);
 
   // Resource quantity queries
-  Quantity getResourceQuantity(const WorldId &worldId,
-                               const ResourceId &resourceId) const;
-  bool hasResource(const WorldId &worldId, const ResourceId &resourceId,
+  Quantity
+  getResourceQuantity(const WorldId &worldId,
+                      const HammerEngine::ResourceHandle &resourceHandle) const;
+  bool hasResource(const WorldId &worldId,
+                   const HammerEngine::ResourceHandle &resourceHandle,
                    Quantity minimumQuantity = 1) const;
 
   // Aggregation queries
-  Quantity getTotalResourceQuantity(const ResourceId &resourceId) const;
-  std::unordered_map<ResourceId, Quantity>
+  Quantity getTotalResourceQuantity(
+      const HammerEngine::ResourceHandle &resourceHandle) const;
+  std::unordered_map<HammerEngine::ResourceHandle, Quantity>
   getWorldResources(const WorldId &worldId) const;
-  std::unordered_map<ResourceId, Quantity> getAllResourceTotals() const;
+  std::unordered_map<HammerEngine::ResourceHandle, Quantity>
+  getAllResourceTotals() const;
 
   // Batch operations
   bool transferResource(const WorldId &fromWorldId, const WorldId &toWorldId,
-                        const ResourceId &resourceId, Quantity quantity);
+                        const HammerEngine::ResourceHandle &resourceHandle,
+                        Quantity quantity);
   bool transferAllResources(const WorldId &fromWorldId,
                             const WorldId &toWorldId);
 
@@ -191,7 +198,8 @@ public:
 
   // Validation
   bool isValidWorldId(const WorldId &worldId) const;
-  bool isValidResourceId(const ResourceId &resourceId) const;
+  bool isValidResourceHandle(
+      const HammerEngine::ResourceHandle &resourceHandle) const;
   bool isValidQuantity(Quantity quantity) const;
 
 private:
@@ -203,13 +211,14 @@ private:
   WorldResourceManager &operator=(const WorldResourceManager &) = delete;
 
   // Internal data structures
-  // Map of WorldId -> Map of ResourceId -> Quantity
-  std::unordered_map<WorldId, std::unordered_map<ResourceId, Quantity>>
+  // Map of WorldId -> Map of ResourceHandle -> Quantity
+  std::unordered_map<WorldId,
+                     std::unordered_map<HammerEngine::ResourceHandle, Quantity>>
       m_worldResources;
 
   // Optimization: Resource access cache for frequently accessed resources
   struct ResourceCache {
-    ResourceId resourceId;
+    HammerEngine::ResourceHandle resourceHandle;
     Quantity quantity;
     std::chrono::steady_clock::time_point lastAccess;
     bool dirty{false};
@@ -221,7 +230,7 @@ private:
 
   // Spatial partitioning for resource aggregation queries
   struct ResourceAggregateCache {
-    std::unordered_map<ResourceId, Quantity> totals;
+    std::unordered_map<HammerEngine::ResourceHandle, Quantity> totals;
     std::chrono::steady_clock::time_point lastUpdate;
     bool valid{false};
   };
@@ -240,15 +249,18 @@ private:
 
   // Helper methods
   void updateStats(bool isAdd, Quantity quantity);
-  bool validateParameters(const WorldId &worldId, const ResourceId &resourceId,
+  bool validateParameters(const WorldId &worldId,
+                          const HammerEngine::ResourceHandle &resourceHandle,
                           Quantity quantity) const;
   void ensureWorldExists(const WorldId &worldId);
 
   // Cache management methods
-  void updateResourceCache(const WorldId &worldId, const ResourceId &resourceId,
+  void updateResourceCache(const WorldId &worldId,
+                           const HammerEngine::ResourceHandle &resourceHandle,
                            Quantity quantity) const;
-  Quantity getCachedResourceQuantity(const WorldId &worldId,
-                                     const ResourceId &resourceId) const;
+  Quantity getCachedResourceQuantity(
+      const WorldId &worldId,
+      const HammerEngine::ResourceHandle &resourceHandle) const;
   void invalidateAggregateCache() const;
   void updateAggregateCache() const;
 };
