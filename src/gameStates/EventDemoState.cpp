@@ -74,6 +74,9 @@ bool EventDemoState::enter() {
 
     // Initialize timing
 
+    // Setup achievement thresholds for demonstration
+    setupResourceAchievements();
+
     // Setup initial demo state
     m_currentPhase = DemoPhase::Initialization;
     m_phaseTimer = 0.0f;
@@ -457,6 +460,13 @@ void EventDemoState::setupEventSystem() {
                            [this](const EventData &data) {
                              if (data.isActive()) {
                                onSceneChanged("scene_changed");
+                             }
+                           });
+
+  eventMgr.registerHandler(EventTypeId::ResourceChange,
+                           [this](const EventData &data) {
+                             if (data.isActive()) {
+                               onResourceChanged(data);
                              }
                            });
 
@@ -1271,6 +1281,42 @@ void EventDemoState::onSceneChanged(const std::string &message) {
   addLogEntry("Scene Event Handler: " + message);
 }
 
+void EventDemoState::onResourceChanged(const EventData &data) {
+  // Extract ResourceChangeEvent from EventData
+  try {
+    if (!data.event) {
+      addLogEntry("Error: ResourceChangeEvent data is null");
+      return;
+    }
+
+    // Cast to ResourceChangeEvent to access its data
+    auto resourceEvent =
+        std::dynamic_pointer_cast<ResourceChangeEvent>(data.event);
+    if (!resourceEvent) {
+      addLogEntry("Error: Event is not a ResourceChangeEvent");
+      return;
+    }
+
+    addLogEntry("=== RESOURCE CHANGE EVENT HANDLER ACTIVATED ===");
+
+    // Get the resource change data
+    HammerEngine::ResourceHandle handle = resourceEvent->getResourceHandle();
+    int oldQty = resourceEvent->getOldQuantity();
+    int newQty = resourceEvent->getNewQuantity();
+    std::string source = resourceEvent->getChangeReason();
+
+    // Process different aspects of resource changes
+    processResourceAchievements(handle, oldQty, newQty);
+    checkResourceWarnings(handle, newQty);
+    updateResourceUI(handle, oldQty, newQty);
+    logResourceAnalytics(handle, oldQty, newQty, source);
+
+    addLogEntry("Resource change handler completed");
+  } catch (const std::exception &e) {
+    addLogEntry("Error in resource change handler: " + std::string(e.what()));
+  }
+}
+
 void EventDemoState::setupAIBehaviors() {
   std::cout
       << "EventDemoState: Setting up AI behaviors for NPC integration...\n";
@@ -1646,4 +1692,166 @@ void EventDemoState::updateInventoryUI() {
 void EventDemoState::renderInventoryPanel() {
   // Inventory panel rendering is handled by UIManager
   // This method exists for potential future custom rendering
+}
+
+void EventDemoState::setupResourceAchievements() {
+  // Set up achievement thresholds for different resource types for
+  // demonstration
+  auto &templateManager = ResourceTemplateManager::Instance();
+
+  if (!templateManager.isInitialized()) {
+    addLogEntry(
+        "Cannot setup achievements: ResourceTemplateManager not initialized");
+    return;
+  }
+
+  // Find some common resources and set thresholds
+  auto currencies =
+      templateManager.getResourcesByCategory(ResourceCategory::Currency);
+  auto materials =
+      templateManager.getResourcesByType(ResourceType::RawResource);
+  auto consumables =
+      templateManager.getResourcesByType(ResourceType::Consumable);
+
+  // Set achievement thresholds
+  for (const auto &resource : currencies) {
+    m_achievementThresholds[resource->getHandle()] =
+        100; // First 100 currency units
+  }
+
+  for (const auto &resource : materials) {
+    m_achievementThresholds[resource->getHandle()] = 25; // First 25 materials
+  }
+
+  for (const auto &resource : consumables) {
+    m_achievementThresholds[resource->getHandle()] = 10; // First 10 consumables
+  }
+
+  addLogEntry("Achievement thresholds set for " +
+              std::to_string(m_achievementThresholds.size()) +
+              " resource types");
+}
+
+void EventDemoState::processResourceAchievements(
+    HammerEngine::ResourceHandle handle, int oldQty, int newQty) {
+  auto thresholdIt = m_achievementThresholds.find(handle);
+  if (thresholdIt == m_achievementThresholds.end()) {
+    return; // No achievement for this resource
+  }
+
+  int threshold = thresholdIt->second;
+  bool wasUnlocked = m_achievementsUnlocked[handle];
+
+  // Check if we crossed the achievement threshold
+  if (!wasUnlocked && oldQty < threshold && newQty >= threshold) {
+    m_achievementsUnlocked[handle] = true;
+
+    // Get resource name for achievement message
+    auto resourceTemplate =
+        ResourceTemplateManager::Instance().getResourceTemplate(handle);
+    std::string resourceName =
+        resourceTemplate ? resourceTemplate->getName() : "Unknown";
+
+    addLogEntry("🏆 ACHIEVEMENT UNLOCKED: First " + std::to_string(threshold) +
+                " " + resourceName + "!");
+
+    // In a real game, this could trigger UI popups, sound effects, save to
+    // profile, etc.
+  }
+}
+
+void EventDemoState::checkResourceWarnings(HammerEngine::ResourceHandle handle,
+                                           int newQty) {
+  // Check for low resource warnings
+  auto resourceTemplate =
+      ResourceTemplateManager::Instance().getResourceTemplate(handle);
+  if (!resourceTemplate)
+    return;
+
+  std::string resourceName = resourceTemplate->getName();
+
+  // Warning for low quantities of important resources
+  if (resourceTemplate->getType() == ResourceType::Consumable && newQty <= 2 &&
+      newQty > 0) {
+    addLogEntry("⚠️ LOW SUPPLY WARNING: Only " + std::to_string(newQty) + " " +
+                resourceName + " remaining!");
+  }
+
+  // Warning when resources are completely depleted
+  if (newQty == 0) {
+    addLogEntry("❌ DEPLETED: " + resourceName + " is now empty!");
+  }
+
+  // Warning for high-value resources reaching storage limits
+  if (resourceTemplate->isStackable() &&
+      resourceTemplate->getMaxStackSize() > 0) {
+    int maxStack = resourceTemplate->getMaxStackSize();
+    if (newQty >= maxStack * 0.9f) { // 90% of stack limit
+      addLogEntry("📦 STORAGE WARNING: " + resourceName +
+                  " approaching stack limit (" + std::to_string(newQty) + "/" +
+                  std::to_string(maxStack) + ")");
+    }
+  }
+}
+
+void EventDemoState::updateResourceUI(HammerEngine::ResourceHandle handle,
+                                      int oldQty, int newQty) {
+  // Get resource information
+  auto resourceTemplate =
+      ResourceTemplateManager::Instance().getResourceTemplate(handle);
+  if (!resourceTemplate)
+    return;
+
+  std::string resourceName = resourceTemplate->getName();
+  int change = newQty - oldQty;
+
+  // Create UI notification message
+  std::string changeText;
+  if (change > 0) {
+    changeText = "+" + std::to_string(change);
+  } else {
+    changeText = std::to_string(change);
+  }
+
+  addLogEntry("📊 UI UPDATE: " + resourceName + " " + changeText + " (" +
+              std::to_string(oldQty) + " → " + std::to_string(newQty) + ")");
+
+  // In a real game, this could update:
+  // - Resource counters in HUD
+  // - Inventory displays with animations
+  // - Crafting availability indicators
+  // - Quest progress bars
+}
+
+void EventDemoState::logResourceAnalytics(HammerEngine::ResourceHandle handle,
+                                          int oldQty, int newQty,
+                                          const std::string &source) {
+  auto resourceTemplate =
+      ResourceTemplateManager::Instance().getResourceTemplate(handle);
+  if (!resourceTemplate)
+    return;
+
+  std::string resourceName = resourceTemplate->getName();
+  int change = newQty - oldQty;
+
+  // Create detailed analytics entry
+  std::string analyticsEntry =
+      "📈 ANALYTICS: [" + source + "] " + resourceName + " changed by " +
+      std::to_string(change) +
+      " (value: " + std::to_string(resourceTemplate->getValue() * change) +
+      " coins)";
+
+  m_resourceLog.push_back(analyticsEntry);
+  addLogEntry(analyticsEntry);
+
+  // Keep log size manageable
+  if (m_resourceLog.size() > 50) {
+    m_resourceLog.erase(m_resourceLog.begin());
+  }
+
+  // In a real game, this could:
+  // - Send data to analytics servers
+  // - Update economy balancing metrics
+  // - Track player behavior patterns
+  // - Generate reports for game designers
 }

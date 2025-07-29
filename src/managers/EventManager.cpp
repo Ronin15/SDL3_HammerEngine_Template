@@ -11,6 +11,7 @@
 #include "events/EventFactory.hpp"
 #include "events/NPCSpawnEvent.hpp"
 #include "events/ParticleEffectEvent.hpp"
+#include "events/ResourceChangeEvent.hpp"
 #include "events/SceneChangeEvent.hpp"
 #include "events/WeatherEvent.hpp"
 #include <algorithm>
@@ -143,6 +144,7 @@ void EventManager::update() {
     updateEventTypeBatchThreaded(EventTypeId::SceneChange);
     updateEventTypeBatchThreaded(EventTypeId::NPCSpawn);
     updateEventTypeBatchThreaded(EventTypeId::ParticleEffect);
+    updateEventTypeBatchThreaded(EventTypeId::ResourceChange);
     updateEventTypeBatchThreaded(EventTypeId::Custom);
   } else {
     // Use single-threaded for small event counts (better performance)
@@ -150,6 +152,7 @@ void EventManager::update() {
     updateEventTypeBatch(EventTypeId::SceneChange);
     updateEventTypeBatch(EventTypeId::NPCSpawn);
     updateEventTypeBatch(EventTypeId::ParticleEffect);
+    updateEventTypeBatch(EventTypeId::ResourceChange);
     updateEventTypeBatch(EventTypeId::Custom);
   }
 
@@ -191,6 +194,12 @@ bool EventManager::registerNPCSpawnEvent(const std::string &name,
                                          std::shared_ptr<NPCSpawnEvent> event) {
   return registerEventInternal(name, std::static_pointer_cast<Event>(event),
                                EventTypeId::NPCSpawn);
+}
+
+bool EventManager::registerResourceChangeEvent(
+    const std::string &name, std::shared_ptr<ResourceChangeEvent> event) {
+  return registerEventInternal(name, std::static_pointer_cast<Event>(event),
+                               EventTypeId::ResourceChange);
 }
 
 bool EventManager::registerEventInternal(const std::string &name,
@@ -734,6 +743,50 @@ bool EventManager::spawnNPC(const std::string &npcType, float x,
   return !localHandlers.empty();
 }
 
+bool EventManager::triggerResourceChange(
+    EntityPtr owner, HammerEngine::ResourceHandle resourceHandle,
+    int oldQuantity, int newQuantity, const std::string &changeReason) const {
+  // Copy handlers to avoid holding lock during execution
+  std::vector<FastEventHandler> localHandlers;
+  {
+    std::lock_guard<std::mutex> lock(m_handlersMutex);
+    const auto &handlers =
+        m_handlersByType[static_cast<size_t>(EventTypeId::ResourceChange)];
+    localHandlers.reserve(handlers.size());
+    std::copy_if(handlers.begin(), handlers.end(),
+                 std::back_inserter(localHandlers),
+                 [](const auto &handler) { return handler != nullptr; });
+  }
+
+  if (!localHandlers.empty()) {
+    EVENT_INFO(
+        "Triggering resource change for handle: " + resourceHandle.toString() +
+        " from " + std::to_string(oldQuantity) + " to " +
+        std::to_string(newQuantity) + " (reason: " + changeReason + ")");
+
+    // Create a temporary EventData for handler execution
+    EventData eventData;
+    eventData.typeId = EventTypeId::ResourceChange;
+    eventData.setActive(true);
+    // Create a temporary ResourceChangeEvent for the handler
+    eventData.event = std::make_shared<ResourceChangeEvent>(
+        owner, resourceHandle, oldQuantity, newQuantity, changeReason);
+
+    for (const auto &handler : localHandlers) {
+      try {
+        handler(eventData);
+      } catch (const std::exception &e) {
+        EVENT_ERROR("Handler exception in triggerResourceChange: " +
+                    std::string(e.what()));
+      } catch (...) {
+        EVENT_ERROR("Unknown handler exception in triggerResourceChange");
+      }
+    }
+  }
+
+  return !localHandlers.empty();
+}
+
 bool EventManager::createWeatherEvent(const std::string &name,
                                       const std::string &weatherType,
                                       float intensity, float transitionTime) {
@@ -790,6 +843,19 @@ bool EventManager::createNPCSpawnEvent(const std::string &name,
   }
 
   return registerEvent(name, event);
+}
+
+bool EventManager::createResourceChangeEvent(
+    const std::string &name, EntityPtr owner,
+    HammerEngine::ResourceHandle resourceHandle, int oldQuantity,
+    int newQuantity, const std::string &changeReason) {
+  auto event = std::make_shared<ResourceChangeEvent>(
+      owner, resourceHandle, oldQuantity, newQuantity, changeReason);
+  if (!event) {
+    return false;
+  }
+
+  return registerResourceChangeEvent(name, event);
 }
 
 bool EventManager::createParticleEffectEvent(const std::string &name,
@@ -898,6 +964,7 @@ void EventManager::clearEventPools() {
   m_weatherPool.clear();
   m_sceneChangePool.clear();
   m_npcSpawnPool.clear();
+  m_resourceChangePool.clear();
 }
 
 EventTypeId EventManager::getEventTypeId(const EventPtr &event) const {
@@ -913,6 +980,9 @@ EventTypeId EventManager::getEventTypeId(const EventPtr &event) const {
   if (std::dynamic_pointer_cast<ParticleEffectEvent>(event)) {
     return EventTypeId::ParticleEffect;
   }
+  if (std::dynamic_pointer_cast<ResourceChangeEvent>(event)) {
+    return EventTypeId::ResourceChange;
+  }
   return EventTypeId::Custom;
 }
 
@@ -926,11 +996,34 @@ std::string EventManager::getEventTypeName(EventTypeId typeId) const {
     return "NPCSpawn";
   case EventTypeId::ParticleEffect:
     return "ParticleEffect";
+  case EventTypeId::ResourceChange:
+    return "ResourceChange";
   case EventTypeId::Custom:
     return "Custom";
   default:
     return "Unknown";
   }
+}
+
+// Individual update methods for specific event types
+void EventManager::updateWeatherEvents() {
+  updateEventTypeBatch(EventTypeId::Weather);
+}
+
+void EventManager::updateSceneChangeEvents() {
+  updateEventTypeBatch(EventTypeId::SceneChange);
+}
+
+void EventManager::updateNPCSpawnEvents() {
+  updateEventTypeBatch(EventTypeId::NPCSpawn);
+}
+
+void EventManager::updateResourceChangeEvents() {
+  updateEventTypeBatch(EventTypeId::ResourceChange);
+}
+
+void EventManager::updateCustomEvents() {
+  updateEventTypeBatch(EventTypeId::Custom);
 }
 
 void EventManager::recordPerformance(EventTypeId typeId, double timeMs) const {

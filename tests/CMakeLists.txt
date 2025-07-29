@@ -69,6 +69,7 @@ add_executable(event_manager_scaling_benchmark
     ${PROJECT_SOURCE_DIR}/src/events/WeatherEvent.cpp
     ${PROJECT_SOURCE_DIR}/src/events/SceneChangeEvent.cpp
     ${PROJECT_SOURCE_DIR}/src/events/ParticleEffectEvent.cpp
+    ${PROJECT_SOURCE_DIR}/src/events/ResourceChangeEvent.cpp
     ${PROJECT_SOURCE_DIR}/src/events/EventFactory.cpp
     ${PROJECT_SOURCE_DIR}/src/core/GameTime.cpp
     mocks/NPCSpawnEventTest.cpp
@@ -102,8 +103,10 @@ add_executable(event_manager_tests
     ${PROJECT_SOURCE_DIR}/src/events/WeatherEvent.cpp
     ${PROJECT_SOURCE_DIR}/src/events/SceneChangeEvent.cpp
     ${PROJECT_SOURCE_DIR}/src/events/ParticleEffectEvent.cpp
+    ${PROJECT_SOURCE_DIR}/src/events/ResourceChangeEvent.cpp
     ${PROJECT_SOURCE_DIR}/src/events/EventFactory.cpp
     ${PROJECT_SOURCE_DIR}/src/core/GameTime.cpp
+    mocks/MockPlayer.cpp
     mocks/NPCSpawnEventTest.cpp
     mocks/MockNPC.cpp
     mocks/MockGameEngine.cpp
