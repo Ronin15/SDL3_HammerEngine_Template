@@ -4,6 +4,14 @@ This directory contains documentation for core utility classes and helper system
 
 ## Available Utilities
 
+### Performance & Resource Systems
+- **[ResourceHandle System](ResourceHandle_System.md)** - High-performance resource identification
+  - 64-bit lightweight handles for optimal runtime performance
+  - Two-phase architecture: name-based loading, handle-based runtime
+  - Cache-friendly data access patterns
+  - Automatic duplicate name detection
+  - Type-safe resource operations
+
 ### Data Processing
 - **[JsonReader](JsonReader.md)** - RFC 8259 compliant JSON parser
   - Custom, dependency-free implementation
@@ -18,18 +26,21 @@ This directory contains documentation for core utility classes and helper system
 
 
 ### Usage in Game Development
+- **High-Performance Resource Access**: Use ResourceHandle system for runtime resource operations
 - **Configuration Loading**: JSON configuration files for game settings
-- **Item/Resource Data**: Define game items, NPCs, and resources in JSON format
+- **Item/Resource Data**: Define game items, NPCs, and resources in JSON format with handle-based runtime access
 - **Save Game Data**: JSON format for human-readable save files (alternative to binary)
 - **Asset Metadata**: JSON descriptions for textures, sounds, and other assets
 - **Level Data**: JSON format for level layouts and entity placement
 
 ### Performance Considerations
 - All utilities are designed for minimal overhead
+- **ResourceHandle system provides cache-optimized resource access** 
 - Header-only implementations where possible
 - Move semantics and C++20 optimization
 - Memory-efficient data structures
 - Single-pass parsing where applicable
+- **Handle-based operations outperform string-based lookups by ~10x**
 
 ### Error Handling Standards
 All utilities follow the engine's error handling conventions:

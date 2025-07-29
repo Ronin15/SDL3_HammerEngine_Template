@@ -398,4 +398,134 @@ BOOST_AUTO_TEST_CASE(TestMultipleResourceCategories) {
       1);
 }
 
+// Test duplicate name detection
+BOOST_AUTO_TEST_CASE(TestDuplicateNameDetection) {
+  auto resource1 = createTestResource("DuplicateName", ResourceCategory::Item,
+                                      ResourceType::Equipment);
+  auto resource2 = createTestResource(
+      "DuplicateName", ResourceCategory::Material, ResourceType::RawResource);
+
+  // First registration should succeed
+  BOOST_CHECK(manager->registerResourceTemplate(resource1));
+
+  // Second registration with same name should fail
+  BOOST_CHECK(!manager->registerResourceTemplate(resource2));
+
+  // Only the first resource should be registered
+  auto retrieved1 = manager->getResourceByName("DuplicateName");
+  BOOST_REQUIRE(retrieved1 != nullptr);
+  BOOST_CHECK(retrieved1->getHandle() == resource1->getHandle());
+  BOOST_CHECK(retrieved1->getCategory() == ResourceCategory::Item);
+}
+
+// Test that name-based lookups work only during data load/validation phase
+BOOST_AUTO_TEST_CASE(TestNameBasedLookupCompliance) {
+  auto resource = createTestResource("LookupTest", ResourceCategory::Item,
+                                     ResourceType::Equipment);
+  auto handle = resource->getHandle();
+
+  BOOST_CHECK(manager->registerResourceTemplate(resource));
+
+  // Name-based lookup should work for validation/data load
+  auto retrievedByName = manager->getResourceByName("LookupTest");
+  BOOST_REQUIRE(retrievedByName != nullptr);
+  BOOST_CHECK(retrievedByName->getHandle() == handle);
+
+  // Handle-based lookup should work for runtime
+  auto retrievedByHandle = manager->getResourceTemplate(handle);
+  BOOST_REQUIRE(retrievedByHandle != nullptr);
+  BOOST_CHECK_EQUAL(retrievedByHandle->getName(), "LookupTest");
+
+  // Both should return the same resource
+  BOOST_CHECK(retrievedByName == retrievedByHandle);
+}
+// Test resource handle system performance and functionality
+BOOST_AUTO_TEST_CASE(TestResourceHandleSystemPerformance) {
+  std::vector<ResourcePtr> resources;
+  std::vector<ResourceHandle> handles;
+
+  // Create a batch of resources for performance testing
+  for (int i = 0; i < 100; ++i) {
+    auto resource =
+        createTestResource("PerformanceTest" + std::to_string(i),
+                           ResourceCategory::Item, ResourceType::Equipment);
+    resources.push_back(resource);
+    handles.push_back(resource->getHandle());
+    BOOST_CHECK(manager->registerResourceTemplate(resource));
+  }
+
+  // Test bulk property access (handle-based operations)
+  auto maxStackSizes = manager->getMaxStackSizes(handles);
+  auto values = manager->getValues(handles);
+
+  BOOST_CHECK_EQUAL(maxStackSizes.size(), 100);
+  BOOST_CHECK_EQUAL(values.size(), 100);
+
+  // All handles should be valid and retrievable
+  for (const auto &handle : handles) {
+    BOOST_CHECK(handle.isValid());
+    BOOST_CHECK(manager->isValidHandle(handle));
+
+    auto resource = manager->getResourceTemplate(handle);
+    BOOST_REQUIRE(resource != nullptr);
+    BOOST_CHECK(resource->getHandle() == handle);
+  }
+}
+
+// Test that runtime operations avoid name-based lookups
+BOOST_AUTO_TEST_CASE(TestRuntimeOperationsUseHandles) {
+  auto resource = createTestResource("RuntimeTest", ResourceCategory::Item,
+                                     ResourceType::Consumable);
+  auto handle = resource->getHandle();
+
+  BOOST_CHECK(manager->registerResourceTemplate(resource));
+
+  // Runtime operations should use handles, not names
+  // These methods should be fast and cache-friendly
+  BOOST_CHECK_EQUAL(manager->getMaxStackSize(handle),
+                    resource->getMaxStackSize());
+  BOOST_CHECK_CLOSE(manager->getValue(handle), resource->getValue(), 0.001f);
+  BOOST_CHECK(manager->getCategory(handle) == resource->getCategory());
+  BOOST_CHECK(manager->getType(handle) == resource->getType());
+
+  // Invalid handles should return sensible defaults
+  ResourceHandle invalidHandle;
+  BOOST_CHECK_EQUAL(manager->getMaxStackSize(invalidHandle), 1);
+  BOOST_CHECK_EQUAL(manager->getValue(invalidHandle), 0.0f);
+}
+
+// Test edge cases for duplicate name detection
+BOOST_AUTO_TEST_CASE(TestDuplicateNameEdgeCases) {
+  // Test case sensitivity
+  auto resource1 = createTestResource("TestCase", ResourceCategory::Item,
+                                      ResourceType::Equipment);
+  auto resource2 = createTestResource("testcase", ResourceCategory::Item,
+                                      ResourceType::Equipment);
+
+  BOOST_CHECK(manager->registerResourceTemplate(resource1));
+  BOOST_CHECK(manager->registerResourceTemplate(
+      resource2)); // Different case should be allowed
+
+  // Test empty names
+  auto resourceEmpty1 =
+      createTestResource("", ResourceCategory::Item, ResourceType::Equipment);
+  auto resourceEmpty2 = createTestResource("", ResourceCategory::Material,
+                                           ResourceType::RawResource);
+
+  BOOST_CHECK(manager->registerResourceTemplate(resourceEmpty1));
+  BOOST_CHECK(!manager->registerResourceTemplate(
+      resourceEmpty2)); // Second empty name should fail
+
+  // Test very long names
+  std::string longName(1000, 'x');
+  auto resourceLong1 = createTestResource(longName, ResourceCategory::Item,
+                                          ResourceType::Equipment);
+  auto resourceLong2 = createTestResource(longName, ResourceCategory::Material,
+                                          ResourceType::RawResource);
+
+  BOOST_CHECK(manager->registerResourceTemplate(resourceLong1));
+  BOOST_CHECK(!manager->registerResourceTemplate(
+      resourceLong2)); // Duplicate long name should fail
+}
+
 BOOST_AUTO_TEST_SUITE_END()

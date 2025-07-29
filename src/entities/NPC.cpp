@@ -275,33 +275,34 @@ void NPC::onResourceChanged(HammerEngine::ResourceHandle resourceHandle,
 // Resource management methods - removed, use getInventory() directly with
 // ResourceHandle
 
-// Trading system - updated to use ResourceHandle
-bool NPC::canTrade(const std::string &itemId, int quantity) const {
+// Trading system - updated to use ResourceHandle (resource handle system
+// compliance)
+bool NPC::canTrade(HammerEngine::ResourceHandle resourceHandle,
+                   int quantity) const {
   if (!m_canTrade || !m_inventory) {
     NPC_WARN(
         "NPC::canTrade - Trading not available or inventory not initialized");
     return false;
   }
 
-  // Convert string to handle via ResourceTemplateManager
-  const auto &templateManager = ResourceTemplateManager::Instance();
-  auto resource = templateManager.getResourceByName(itemId);
-  if (!resource) {
+  if (!resourceHandle.isValid()) {
+    NPC_WARN("NPC::canTrade - Invalid resource handle");
     return false;
   }
 
-  return m_inventory->hasResource(resource->getHandle(), quantity);
+  return m_inventory->hasResource(resourceHandle, quantity);
 }
 
-bool NPC::tradeWithPlayer(const std::string &itemId, int quantity,
-                          InventoryComponent &playerInventory) {
-  if (!canTrade(itemId, quantity)) {
-    NPC_WARN("NPC::tradeWithPlayer - Cannot trade item: " + itemId);
+bool NPC::tradeWithPlayer(HammerEngine::ResourceHandle resourceHandle,
+                          int quantity, InventoryComponent &playerInventory) {
+  if (!canTrade(resourceHandle, quantity)) {
+    NPC_WARN("NPC::tradeWithPlayer - Cannot trade resource (handle: " +
+             resourceHandle.toString() + ")");
     return false;
   }
 
-  if (itemId.empty()) {
-    NPC_ERROR("NPC::tradeWithPlayer - Item ID cannot be empty");
+  if (!resourceHandle.isValid()) {
+    NPC_ERROR("NPC::tradeWithPlayer - Invalid resource handle");
     return false;
   }
 
@@ -313,17 +314,10 @@ bool NPC::tradeWithPlayer(const std::string &itemId, int quantity,
 
   // Simple trade: NPC gives item to player for free (could be enhanced with
   // currency exchange)
-  const auto &templateManager = ResourceTemplateManager::Instance();
-  auto resource = templateManager.getResourceByName(itemId);
-  if (!resource) {
-    NPC_WARN("NPC::tradeWithPlayer - Unknown item: " + itemId);
-    return false;
-  }
-
-  if (m_inventory->transferTo(playerInventory, resource->getHandle(),
-                              quantity)) {
-    NPC_DEBUG("NPC traded " + std::to_string(quantity) + " " + itemId +
-              " to player");
+  if (m_inventory->transferTo(playerInventory, resourceHandle, quantity)) {
+    NPC_DEBUG("NPC traded " + std::to_string(quantity) +
+              " resources (handle: " + resourceHandle.toString() +
+              ") to player");
     return true;
   }
 
@@ -366,13 +360,36 @@ void NPC::initializeShopInventory() {
 void NPC::initializeLootDrops() {
   m_hasLootDrops = true;
 
-  // Set up drop rates (0.0 to 1.0)
-  m_dropRates["gold"] = 0.8f;          // 80% chance to drop gold
-  m_dropRates["health_potion"] = 0.3f; // 30% chance to drop health potion
-  m_dropRates["iron_ore"] = 0.2f;      // 20% chance to drop iron ore
-  m_dropRates["oak_wood"] = 0.15f;     // 15% chance to drop oak wood
+  // Set up drop rates using ResourceTemplateManager to get handles
+  const auto &templateManager = ResourceTemplateManager::Instance();
 
-  NPC_DEBUG("NPC loot drops initialized");
+  // Set up drop rates (0.0 to 1.0) using handles
+  auto goldResource = templateManager.getResourceByName("gold");
+  if (goldResource) {
+    m_dropRates[goldResource->getHandle()] = 0.8f; // 80% chance to drop gold
+  }
+
+  auto healthPotionResource =
+      templateManager.getResourceByName("health_potion");
+  if (healthPotionResource) {
+    m_dropRates[healthPotionResource->getHandle()] =
+        0.3f; // 30% chance to drop health potion
+  }
+
+  auto ironOreResource = templateManager.getResourceByName("iron_ore");
+  if (ironOreResource) {
+    m_dropRates[ironOreResource->getHandle()] =
+        0.2f; // 20% chance to drop iron ore
+  }
+
+  auto oakWoodResource = templateManager.getResourceByName("oak_wood");
+  if (oakWoodResource) {
+    m_dropRates[oakWoodResource->getHandle()] =
+        0.15f; // 15% chance to drop oak wood
+  }
+
+  NPC_DEBUG("NPC loot drops initialized with " +
+            std::to_string(m_dropRates.size()) + " possible drops");
 }
 
 void NPC::dropLoot() {
@@ -388,28 +405,53 @@ void NPC::dropLoot() {
   NPC_DEBUG("NPC dropping loot...");
 
   // Check each potential drop
-  for (const auto &[itemId, dropRate] : m_dropRates) {
+  for (const auto &[itemHandle, dropRate] : m_dropRates) {
     if (dis(gen) <= dropRate) {
-      // Determine quantity (simple random 1-3 for most items, more for gold)
+      // Determine quantity (simple random 1-3 for most items)
       int quantity = 1;
-      if (itemId == "gold") {
+
+      // Get resource template to check if it's gold
+      const auto &templateManager = ResourceTemplateManager::Instance();
+      auto resourceTemplate = templateManager.getResourceTemplate(itemHandle);
+      if (resourceTemplate && resourceTemplate->getName() == "gold") {
         quantity = 5 + (rand() % 15); // 5-19 gold
       } else {
         quantity = 1 + (rand() % 3); // 1-3 of other items
       }
 
-      dropSpecificItem(itemId, quantity);
+      dropSpecificItem(itemHandle, quantity);
     }
   }
 }
-
-void NPC::dropSpecificItem(const std::string &itemId, int quantity) {
+void NPC::dropSpecificItem(HammerEngine::ResourceHandle itemHandle,
+                           int quantity) {
   // In a real implementation, you would create a physical item drop in the
   // world For now, we'll just log the drop
-  NPC_DEBUG("NPC dropped " + std::to_string(quantity) + " " + itemId);
+  NPC_DEBUG("NPC dropped " + std::to_string(quantity) +
+            " items (handle: " + itemHandle.toString() + ")");
 
   // You could add the items to a world container, create pickup entities, etc.
   // This would integrate with your game's item pickup system
+}
+
+void NPC::setLootDropRate(HammerEngine::ResourceHandle itemHandle,
+                          float dropRate) {
+  if (!itemHandle.isValid()) {
+    NPC_ERROR("NPC::setLootDropRate - Invalid resource handle");
+    return;
+  }
+
+  if (dropRate < 0.0f || dropRate > 1.0f) {
+    NPC_ERROR(
+        "NPC::setLootDropRate - Drop rate must be between 0.0 and 1.0, got: " +
+        std::to_string(dropRate));
+    return;
+  }
+
+  m_dropRates[itemHandle] = dropRate;
+  m_hasLootDrops = !m_dropRates.empty();
+  NPC_DEBUG("Set drop rate for item (handle: " + itemHandle.toString() +
+            ") to " + std::to_string(dropRate));
 }
 // Animation handling removed - TextureManager handles this functionality
 

@@ -8,6 +8,7 @@
 
 #include "entities/Player.hpp"
 #include "gameStates/GameState.hpp"
+#include "utils/ResourceHandle.hpp"
 #include <memory>
 
 class GamePlayState : public GameState {
@@ -28,12 +29,23 @@ private:
   std::shared_ptr<Player> mp_Player{nullptr}; // Player object
   bool m_inventoryVisible{false}; // Flag to control inventory UI visibility
 
+  // Resource handles resolved at initialization (resource handle system
+  // compliance)
+  HammerEngine::ResourceHandle m_goldHandle;
+  HammerEngine::ResourceHandle m_healthPotionHandle;
+  HammerEngine::ResourceHandle m_ironOreHandle;
+  HammerEngine::ResourceHandle m_woodHandle;
+
   // Inventory UI methods
   void initializeInventoryUI();
   void updateInventoryUI();
   void toggleInventoryDisplay();
-  void addDemoResource(const std::string &resourceId, int quantity);
-  void removeDemoResource(const std::string &resourceId, int quantity);
+  void addDemoResource(HammerEngine::ResourceHandle resourceHandle,
+                       int quantity);
+  void removeDemoResource(HammerEngine::ResourceHandle resourceHandle,
+                          int quantity);
+  void
+  initializeResourceHandles(); // Resolve names to handles during initialization
 };
 
 #endif // GAME_PLAY_STATE_HPP
