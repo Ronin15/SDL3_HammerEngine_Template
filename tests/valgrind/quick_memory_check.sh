@@ -32,6 +32,7 @@ declare -A QUICK_TESTS=(
     ["world_resource"]="world_resource_manager_tests"
     ["json_reader"]="json_reader_tests"
     ["resource_factory"]="resource_factory_tests"
+    ["resource_edge_case"]="resource_edge_case_tests"
 )
 
 echo -e "${BLUE}========================================${NC}"

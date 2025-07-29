@@ -42,6 +42,7 @@ declare -A TEST_EXECUTABLES=(
     ["resource_integration"]="resource_integration_tests"
     ["resource_change_event"]="resource_change_event_tests"
     ["inventory_component"]="inventory_component_tests"
+    ["resource_edge_case"]="resource_edge_case_tests"
 )
 
 # Valgrind common options

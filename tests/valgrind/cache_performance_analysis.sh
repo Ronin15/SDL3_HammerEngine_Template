@@ -53,6 +53,7 @@ declare -A CACHE_TESTS=(
     ["json_reader"]="json_reader_tests"
     ["resource_factory"]="resource_factory_tests"
     ["resource_template_json"]="resource_template_manager_json_tests"
+    ["resource_edge_case"]="resource_edge_case_tests"
 )
 
 # Industry benchmark data for comparison

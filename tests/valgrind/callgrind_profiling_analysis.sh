@@ -55,6 +55,7 @@ declare -A PROFILE_TESTS=(
     ["json_reader"]="json_reader_tests"
     ["resource_factory"]="resource_factory_tests"
     ["resource_template_json"]="resource_template_manager_json_tests"
+    ["resource_edge_case"]="resource_edge_case_tests"
 )
 
 # Performance tracking
@@ -617,9 +618,8 @@ run_targeted_profiling() {
             ;;
         "resource_management"|"resources")
             section_header "RESOURCE MANAGEMENT PROFILING ANALYSIS"
-            for test_name in "resource_manager" "world_resource_manager" "resource_template_manager" "resource_integration" "resource_change_events" "inventory_components" "resource_factory" "resource_template_json" "json_reader"; do
-                if [[ -n "${PROFILE_TESTS[$test_name]}" ]]; then
-                    run_callgrind_profiling "${test_name}" "${PROFILE_TESTS[$test_name]}"
+            for test_name in "resource_manager" "world_resource_manager" "resource_template_manager" "resource_integration" "resource_change_events" "inventory_components" "resource_factory" "resource_template_json" "resource_edge_case" "json_reader"; do
+                if [[ -n "${PROFILE_TESTS[$test_name]}" ]]; then                    run_callgrind_profiling "${test_name}" "${PROFILE_TESTS[$test_name]}"
                     echo ""
                 fi
             done
