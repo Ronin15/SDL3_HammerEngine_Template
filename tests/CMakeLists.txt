@@ -230,6 +230,7 @@ add_executable(resource_template_manager_tests
 add_executable(resource_factory_tests
     resources/ResourceFactoryTests.cpp
     ${PROJECT_SOURCE_DIR}/src/managers/ResourceFactory.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/ResourceTemplateManager.cpp
     ${PROJECT_SOURCE_DIR}/src/entities/Resource.cpp
     ${PROJECT_SOURCE_DIR}/src/entities/resources/ItemResources.cpp
     ${PROJECT_SOURCE_DIR}/src/entities/resources/MaterialResources.cpp

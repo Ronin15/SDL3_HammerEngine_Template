@@ -13,7 +13,8 @@
  */
 class Currency : public Resource {
 public:
-  Currency(const std::string &id, const std::string &name, ResourceType type);
+  Currency(HammerEngine::ResourceHandle handle, const std::string &name,
+           ResourceType type);
   virtual ~Currency() = default;
 
   // Currency-specific properties
@@ -33,7 +34,7 @@ protected:
  */
 class Gold : public Currency {
 public:
-  Gold(const std::string &id, const std::string &name);
+  Gold(HammerEngine::ResourceHandle handle, const std::string &name);
   virtual ~Gold() = default;
 };
 
@@ -50,7 +51,8 @@ public:
     COUNT = 4
   };
 
-  Gem(const std::string &id, const std::string &name, GemType gemType);
+  Gem(HammerEngine::ResourceHandle handle, const std::string &name,
+      GemType gemType);
   virtual ~Gem() = default;
 
   GemType getGemType() const { return m_gemType; }
@@ -73,7 +75,7 @@ private:
  */
 class FactionToken : public Currency {
 public:
-  FactionToken(const std::string &id, const std::string &name,
+  FactionToken(HammerEngine::ResourceHandle handle, const std::string &name,
                const std::string &factionId);
   virtual ~FactionToken() = default;
 
@@ -96,7 +98,7 @@ private:
  */
 class GameResource : public Resource {
 public:
-  GameResource(const std::string &id, const std::string &name,
+  GameResource(HammerEngine::ResourceHandle handle, const std::string &name,
                ResourceType type);
   virtual ~GameResource() = default;
 
@@ -117,7 +119,7 @@ protected:
  */
 class Energy : public GameResource {
 public:
-  Energy(const std::string &id, const std::string &name);
+  Energy(HammerEngine::ResourceHandle handle, const std::string &name);
   virtual ~Energy() = default;
 
   int getMaxEnergy() const { return m_maxEnergy; }
@@ -144,7 +146,7 @@ public:
     COUNT = 4
   };
 
-  Mana(const std::string &id, const std::string &name,
+  Mana(HammerEngine::ResourceHandle handle, const std::string &name,
        ManaType manaType = ManaType::Arcane);
   virtual ~Mana() = default;
 
@@ -176,7 +178,7 @@ public:
     COUNT = 4
   };
 
-  BuildingMaterial(const std::string &id, const std::string &name,
+  BuildingMaterial(HammerEngine::ResourceHandle handle, const std::string &name,
                    MaterialType materialType);
   virtual ~BuildingMaterial() = default;
 
@@ -209,7 +211,8 @@ public:
     COUNT = 5
   };
 
-  Ammunition(const std::string &id, const std::string &name, AmmoType ammoType);
+  Ammunition(HammerEngine::ResourceHandle handle, const std::string &name,
+             AmmoType ammoType);
   virtual ~Ammunition() = default;
 
   AmmoType getAmmoType() const { return m_ammoType; }

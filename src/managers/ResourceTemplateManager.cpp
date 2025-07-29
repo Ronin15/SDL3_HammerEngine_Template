@@ -45,12 +45,13 @@ bool ResourceTemplateManager::init() {
     // Initialize category index
     for (int i = 0; i < static_cast<int>(ResourceCategory::COUNT); ++i) {
       m_categoryIndex[static_cast<ResourceCategory>(i)] =
-          std::vector<std::string>();
+          std::vector<HammerEngine::ResourceHandle>();
     }
 
     // Initialize type index
     for (int i = 0; i < static_cast<int>(ResourceType::COUNT); ++i) {
-      m_typeIndex[static_cast<ResourceType>(i)] = std::vector<std::string>();
+      m_typeIndex[static_cast<ResourceType>(i)] =
+          std::vector<HammerEngine::ResourceHandle>();
     }
 
     // Initialize ResourceFactory
@@ -79,6 +80,10 @@ void ResourceTemplateManager::clean() {
 
   // Clear all data structures
   m_resourceTemplates.clear();
+  m_maxStackSizes.clear();
+  m_values.clear();
+  m_categories.clear();
+  m_types.clear();
   m_categoryIndex.clear();
   m_typeIndex.clear();
 
@@ -96,52 +101,89 @@ bool ResourceTemplateManager::registerResourceTemplate(
     return false;
   }
 
-  if (!isValidResourceId(resource->getId())) {
+  HammerEngine::ResourceHandle handle = resource->getHandle();
+  if (!handle.isValid()) {
     RESOURCE_ERROR("ResourceTemplateManager::registerResourceTemplate - "
-                   "Invalid resource ID: " +
-                   resource->getId());
+                   "Invalid resource handle: " +
+                   handle.toString());
     return false;
   }
 
-  std::lock_guard<std::shared_mutex> lock(m_resourceMutex);
+  // Check if we're already holding the lock (to avoid deadlock during init)
+  // Try to acquire the lock with a timeout to detect deadlock
+  std::unique_lock<std::shared_mutex> lock(m_resourceMutex, std::try_to_lock);
+  if (!lock.owns_lock()) {
+    // This indicates we're likely in a recursive call during initialization
+    // Log the issue but use the internal method to avoid deadlock
+    RESOURCE_ERROR("ResourceTemplateManager::registerResourceTemplate - "
+                   "Resource deadlock avoided for: " +
+                   handle.toString());
+    return false;
+  }
 
-  const std::string &resourceId = resource->getId();
+  return registerResourceTemplateInternal(resource);
+}
+
+bool ResourceTemplateManager::registerResourceTemplateInternal(
+    const ResourcePtr &resource) {
+  // This method assumes the lock is already held
+  HammerEngine::ResourceHandle handle = resource->getHandle();
 
   // Check if already registered
-  if (m_resourceTemplates.find(resourceId) != m_resourceTemplates.end()) {
+  if (m_resourceTemplates.find(handle) != m_resourceTemplates.end()) {
     RESOURCE_WARN(
-        "ResourceTemplateManager::registerResourceTemplate - Resource "
+        "ResourceTemplateManager::registerResourceTemplateInternal - Resource "
         "already registered: " +
-        resourceId);
+        handle.toString());
     return false;
   }
 
   try {
+    // Cache frequently accessed properties for performance
+    m_maxStackSizes[handle] = resource->getMaxStackSize();
+    m_values[handle] = resource->getValue();
+    m_categories[handle] = resource->getCategory();
+    m_types[handle] = resource->getType();
+
     // Register the resource template
-    m_resourceTemplates[resourceId] = resource;
+    m_resourceTemplates[handle] = resource;
 
     // Update indexes
-    updateIndexes(resourceId, resource->getCategory(), resource->getType());
+    updateIndexes(handle, resource->getCategory(), resource->getType());
+    updateNameIndex(handle, resource->getName());
 
     m_stats.templatesLoaded.fetch_add(1, std::memory_order_relaxed);
 
-    RESOURCE_DEBUG(
-        "ResourceTemplateManager::registerResourceTemplate - Registered: " +
-        resourceId);
+    RESOURCE_DEBUG("ResourceTemplateManager::registerResourceTemplateInternal "
+                   "- Registered: " +
+                   handle.toString());
     return true;
   } catch (const std::exception &ex) {
-    RESOURCE_ERROR(
-        "ResourceTemplateManager::registerResourceTemplate - Exception: " +
-        std::string(ex.what()));
+    RESOURCE_ERROR("ResourceTemplateManager::registerResourceTemplateInternal "
+                   "- Exception: " +
+                   std::string(ex.what()));
     return false;
   }
 }
 
+HammerEngine::ResourceHandle ResourceTemplateManager::generateHandle() {
+  HammerEngine::ResourceHandle::HandleId id =
+      m_nextHandleId.fetch_add(1, std::memory_order_relaxed);
+  HammerEngine::ResourceHandle::Generation generation =
+      m_currentGeneration.load(std::memory_order_relaxed);
+  return HammerEngine::ResourceHandle(id, generation);
+}
+
+bool ResourceTemplateManager::isValidHandle(
+    HammerEngine::ResourceHandle handle) const {
+  return handle.isValid();
+}
+
 ResourcePtr ResourceTemplateManager::getResourceTemplate(
-    const std::string &resourceId) const {
+    HammerEngine::ResourceHandle handle) const {
   std::shared_lock<std::shared_mutex> lock(m_resourceMutex);
 
-  auto it = m_resourceTemplates.find(resourceId);
+  auto it = m_resourceTemplates.find(handle);
   if (it != m_resourceTemplates.end()) {
     return it->second;
   }
@@ -158,8 +200,8 @@ std::vector<ResourcePtr> ResourceTemplateManager::getResourcesByCategory(
   if (categoryIt != m_categoryIndex.end()) {
     result.reserve(categoryIt->second.size());
 
-    for (const auto &resourceId : categoryIt->second) {
-      auto resourceIt = m_resourceTemplates.find(resourceId);
+    for (const auto &handle : categoryIt->second) {
+      auto resourceIt = m_resourceTemplates.find(handle);
       if (resourceIt != m_resourceTemplates.end()) {
         result.push_back(resourceIt->second);
       }
@@ -178,8 +220,8 @@ ResourceTemplateManager::getResourcesByType(ResourceType type) const {
   if (typeIt != m_typeIndex.end()) {
     result.reserve(typeIt->second.size());
 
-    for (const auto &resourceId : typeIt->second) {
-      auto resourceIt = m_resourceTemplates.find(resourceId);
+    for (const auto &handle : typeIt->second) {
+      auto resourceIt = m_resourceTemplates.find(handle);
       if (resourceIt != m_resourceTemplates.end()) {
         result.push_back(resourceIt->second);
       }
@@ -189,14 +231,29 @@ ResourceTemplateManager::getResourcesByType(ResourceType type) const {
   return result;
 }
 
-ResourceStats ResourceTemplateManager::getStats() const { return m_stats; }
 ResourcePtr
-ResourceTemplateManager::createResource(const std::string &resourceId) const {
-  auto templateResource = getResourceTemplate(resourceId);
+ResourceTemplateManager::getResourceByName(const std::string &name) const {
+  std::shared_lock<std::shared_mutex> lock(m_resourceMutex);
+
+  auto nameIt = m_nameIndex.find(name);
+  if (nameIt != m_nameIndex.end()) {
+    auto resourceIt = m_resourceTemplates.find(nameIt->second);
+    if (resourceIt != m_resourceTemplates.end()) {
+      return resourceIt->second;
+    }
+  }
+
+  return nullptr;
+}
+
+ResourceStats ResourceTemplateManager::getStats() const { return m_stats; }
+ResourcePtr ResourceTemplateManager::createResource(
+    HammerEngine::ResourceHandle handle) const {
+  auto templateResource = getResourceTemplate(handle);
   if (!templateResource) {
     RESOURCE_ERROR(
         "ResourceTemplateManager::createResource - Unknown resource: " +
-        resourceId);
+        handle.toString());
     return nullptr;
   }
 
@@ -267,16 +324,33 @@ bool ResourceTemplateManager::loadResourcesFromJsonString(
     try {
       ResourcePtr resource = ResourceFactory::createFromJson(resourceJson);
       if (resource) {
-        if (registerResourceTemplate(resource)) {
+        if (registerResourceTemplateInternal(resource)) {
           loadedCount++;
+
+          // Extract the resource ID from JSON to create string-to-handle
+          // mapping after the internal registration is complete
+          if (resourceJson.hasKey("id") && resourceJson["id"].isString()) {
+            std::string resourceId = resourceJson["id"].asString();
+
+            RESOURCE_DEBUG(
+                "ResourceTemplateManager::loadResourcesFromJsonString "
+                "- Loaded resource: " +
+                resourceId + " -> " + resource->getHandle().toString());
+          } else {
+            RESOURCE_WARN(
+                "ResourceTemplateManager::loadResourcesFromJsonString - "
+                "Resource at index " +
+                std::to_string(i) + " missing or invalid 'id' field");
+          }
+
           RESOURCE_DEBUG("ResourceTemplateManager::loadResourcesFromJsonString "
                          "- Loaded resource: " +
-                         resource->getId());
+                         resource->getHandle().toString());
         } else {
           failedCount++;
           RESOURCE_WARN("ResourceTemplateManager::loadResourcesFromJsonString "
                         "- Failed to register resource: " +
-                        resource->getId());
+                        resource->getHandle().toString());
         }
       } else {
         failedCount++;
@@ -307,9 +381,9 @@ size_t ResourceTemplateManager::getResourceTemplateCount() const {
 }
 
 bool ResourceTemplateManager::hasResourceTemplate(
-    const std::string &resourceId) const {
+    HammerEngine::ResourceHandle handle) const {
   std::shared_lock<std::shared_mutex> lock(m_resourceMutex);
-  return m_resourceTemplates.find(resourceId) != m_resourceTemplates.end();
+  return m_resourceTemplates.find(handle) != m_resourceTemplates.end();
 }
 
 size_t ResourceTemplateManager::getMemoryUsage() const {
@@ -323,7 +397,7 @@ size_t ResourceTemplateManager::getMemoryUsage() const {
 
   // Account for the actual strings and Resource objects in m_resourceTemplates
   for (const auto &[resourceId, resource] : m_resourceTemplates) {
-    totalSize += resourceId.size(); // Size of the key string
+    totalSize += sizeof(resourceId); // Size of the handle
     if (resource) {
       totalSize += sizeof(Resource);           // Base Resource object size
       totalSize += resource->getName().size(); // Resource name
@@ -332,50 +406,65 @@ size_t ResourceTemplateManager::getMemoryUsage() const {
   }
 
   for (const auto &[categoryKey, resourceIds] : m_categoryIndex) {
-    totalSize += resourceIds.size() * sizeof(std::string);
-    for (const auto &id : resourceIds) {
-      totalSize += id.size();
+    totalSize += resourceIds.size() * sizeof(HammerEngine::ResourceHandle);
+    for (const auto &handle : resourceIds) {
+      totalSize += sizeof(handle);
     }
   }
 
   for (const auto &[typeKey, resourceIds] : m_typeIndex) {
-    totalSize += resourceIds.size() * sizeof(std::string);
-    for (const auto &id : resourceIds) {
-      totalSize += id.size();
+    totalSize += resourceIds.size() * sizeof(HammerEngine::ResourceHandle);
+    for (const auto &handle : resourceIds) {
+      totalSize += sizeof(handle);
     }
   }
 
   return totalSize;
 }
 
-void ResourceTemplateManager::updateIndexes(const std::string &resourceId,
+void ResourceTemplateManager::updateIndexes(HammerEngine::ResourceHandle handle,
                                             ResourceCategory category,
                                             ResourceType type) {
   std::lock_guard<std::mutex> lock(m_indexMutex);
 
   // Add to category index
-  m_categoryIndex[category].push_back(resourceId);
+  m_categoryIndex[category].push_back(handle);
 
   // Add to type index
-  m_typeIndex[type].push_back(resourceId);
+  m_typeIndex[type].push_back(handle);
 }
 
-void ResourceTemplateManager::removeFromIndexes(const std::string &resourceId) {
+void ResourceTemplateManager::updateNameIndex(
+    HammerEngine::ResourceHandle handle, const std::string &name) {
+  std::lock_guard<std::mutex> lock(m_indexMutex);
+  m_nameIndex[name] = handle;
+}
+
+void ResourceTemplateManager::removeFromIndexes(
+    HammerEngine::ResourceHandle handle) {
   std::lock_guard<std::mutex> lock(m_indexMutex);
 
   // Remove from category index
-  for (auto &[category, resourceIds] : m_categoryIndex) {
-    auto it = std::find(resourceIds.begin(), resourceIds.end(), resourceId);
-    if (it != resourceIds.end()) {
-      resourceIds.erase(it);
+  for (auto &[category, handles] : m_categoryIndex) {
+    auto it = std::find(handles.begin(), handles.end(), handle);
+    if (it != handles.end()) {
+      handles.erase(it);
     }
   }
 
   // Remove from type index
-  for (auto &[type, resourceIds] : m_typeIndex) {
-    auto it = std::find(resourceIds.begin(), resourceIds.end(), resourceId);
-    if (it != resourceIds.end()) {
-      resourceIds.erase(it);
+  for (auto &[type, handles] : m_typeIndex) {
+    auto it = std::find(handles.begin(), handles.end(), handle);
+    if (it != handles.end()) {
+      handles.erase(it);
+    }
+  }
+
+  // Remove from name index
+  for (auto it = m_nameIndex.begin(); it != m_nameIndex.end(); ++it) {
+    if (it->second == handle) {
+      m_nameIndex.erase(it);
+      break;
     }
   }
 }
@@ -386,32 +475,32 @@ void ResourceTemplateManager::rebuildIndexes() {
   // Clear existing indexes
   m_categoryIndex.clear();
   m_typeIndex.clear();
+  m_nameIndex.clear();
 
   // Initialize empty vectors for all categories and types
   for (int i = 0; i < static_cast<int>(ResourceCategory::COUNT); ++i) {
     m_categoryIndex[static_cast<ResourceCategory>(i)] =
-        std::vector<std::string>();
+        std::vector<HammerEngine::ResourceHandle>();
   }
 
   for (int i = 0; i < static_cast<int>(ResourceType::COUNT); ++i) {
-    m_typeIndex[static_cast<ResourceType>(i)] = std::vector<std::string>();
+    m_typeIndex[static_cast<ResourceType>(i)] =
+        std::vector<HammerEngine::ResourceHandle>();
   }
 
   // Rebuild indexes from current resources
-  for (const auto &[resourceId, resource] : m_resourceTemplates) {
+  for (const auto &[handle, resource] : m_resourceTemplates) {
     if (resource) {
-      m_categoryIndex[resource->getCategory()].push_back(resourceId);
-      m_typeIndex[resource->getType()].push_back(resourceId);
+      m_categoryIndex[resource->getCategory()].push_back(handle);
+      m_typeIndex[resource->getType()].push_back(handle);
+      m_nameIndex[resource->getName()] = handle;
     }
   }
 }
 
-bool ResourceTemplateManager::isValidResourceId(
-    const std::string &resourceId) const {
-  return !resourceId.empty() && resourceId.length() <= 64 && // Reasonable limit
-         std::all_of(resourceId.begin(), resourceId.end(), [](char c) {
-           return std::isalnum(c) || c == '_' || c == '-';
-         });
+bool ResourceTemplateManager::isValidResourceHandle(
+    HammerEngine::ResourceHandle handle) const {
+  return handle.isValid();
 }
 
 void ResourceTemplateManager::createDefaultResources() {
@@ -420,116 +509,119 @@ void ResourceTemplateManager::createDefaultResources() {
       "resource templates");
 
   try {
-    // Create basic items using base Resource class
-    auto sword = std::make_shared<Resource>(
-        "sword", "Iron Sword", ResourceCategory::Item, ResourceType::Equipment);
-    sword->setValue(100);
-    sword->setMaxStackSize(1); // Weapons don't stack
-    sword->setConsumable(false);
-    sword->setDescription("A sturdy iron sword with a sharp blade.");
+    // Load resources from JSON files
+    bool itemsLoaded = loadResourcesFromJson("res/data/items.json");
+    bool materialsLoaded =
+        loadResourcesFromJson("res/data/materials_and_currency.json");
 
-    auto shield = std::make_shared<Resource>("shield", "Wooden Shield",
-                                             ResourceCategory::Item,
-                                             ResourceType::Equipment);
-    shield->setValue(75);
-    shield->setMaxStackSize(1); // Armor doesn't stack
-    shield->setConsumable(false);
-    shield->setDescription("A reliable wooden shield for basic protection.");
+    if (!itemsLoaded || !materialsLoaded) {
+      RESOURCE_WARN("ResourceTemplateManager::createDefaultResources - Some "
+                    "resource files failed to load");
+    }
 
-    auto potion = std::make_shared<Resource>("health_potion", "Health Potion",
-                                             ResourceCategory::Item,
-                                             ResourceType::Consumable);
-    potion->setValue(50);
-    potion->setMaxStackSize(10); // Potions can stack
-    potion->setConsumable(true);
-    potion->setDescription(
-        "A magical potion that restores health when consumed.");
-
-    // Register resources directly (we already have the lock in init())
-    m_resourceTemplates["sword"] = sword;
-    updateIndexes("sword", sword->getCategory(), sword->getType());
-    m_stats.templatesLoaded.fetch_add(1, std::memory_order_relaxed);
-
-    m_resourceTemplates["shield"] = shield;
-    updateIndexes("shield", shield->getCategory(), shield->getType());
-    m_stats.templatesLoaded.fetch_add(1, std::memory_order_relaxed);
-
-    m_resourceTemplates["health_potion"] = potion;
-    updateIndexes("health_potion", potion->getCategory(), potion->getType());
-    m_stats.templatesLoaded.fetch_add(1, std::memory_order_relaxed);
-
-    // Create default materials
-    auto iron = std::make_shared<Resource>("iron_ore", "Iron Ore",
-                                           ResourceCategory::Material,
-                                           ResourceType::RawResource);
-    iron->setValue(25);
-    iron->setMaxStackSize(100); // Materials stack well
-    iron->setConsumable(false);
-    iron->setDescription("Raw iron ore that can be smelted into ingots.");
-
-    auto wood = std::make_shared<Resource>("wood", "Oak Wood",
-                                           ResourceCategory::Material,
-                                           ResourceType::RawResource);
-    wood->setValue(10);
-    wood->setMaxStackSize(100);
-    wood->setConsumable(false);
-    wood->setDescription("High-quality oak wood useful for crafting.");
-
-    m_resourceTemplates["iron_ore"] = iron;
-    updateIndexes("iron_ore", iron->getCategory(), iron->getType());
-    m_stats.templatesLoaded.fetch_add(1, std::memory_order_relaxed);
-
-    m_resourceTemplates["wood"] = wood;
-    updateIndexes("wood", wood->getCategory(), wood->getType());
-    m_stats.templatesLoaded.fetch_add(1, std::memory_order_relaxed);
-
-    // Create default currency
-    auto gold = std::make_shared<Resource>(
-        "gold", "Gold Coins", ResourceCategory::Currency, ResourceType::Gold);
-    gold->setValue(1);
-    gold->setMaxStackSize(10000); // Currency stacks high
-    gold->setConsumable(false);
-    gold->setDescription(
-        "Shiny gold coins, the standard currency of the realm.");
-
-    m_resourceTemplates["gold"] = gold;
-    updateIndexes("gold", gold->getCategory(), gold->getType());
-    m_stats.templatesLoaded.fetch_add(1, std::memory_order_relaxed);
-
-    // Create default game resources
-    auto xp = std::make_shared<Resource>("experience", "Experience Points",
-                                         ResourceCategory::GameResource,
-                                         ResourceType::Energy);
-    xp->setValue(0);
-    xp->setMaxStackSize(999999); // Experience can accumulate
-    xp->setConsumable(false);
-    xp->setDescription("Experience points gained through various activities.");
-
-    m_resourceTemplates["experience"] = xp;
-    updateIndexes("experience", xp->getCategory(), xp->getType());
-    m_stats.templatesLoaded.fetch_add(1, std::memory_order_relaxed);
-
-    // Add iron_sword for consistency with tests
-    auto ironSword = std::make_shared<Resource>("iron_sword", "Iron Sword",
-                                                ResourceCategory::Item,
-                                                ResourceType::Equipment);
-    ironSword->setValue(120);
-    ironSword->setMaxStackSize(1);
-    ironSword->setConsumable(false);
-    ironSword->setDescription(
-        "A well-crafted iron sword with excellent balance.");
-
-    m_resourceTemplates["iron_sword"] = ironSword;
-    updateIndexes("iron_sword", ironSword->getCategory(), ironSword->getType());
-    m_stats.templatesLoaded.fetch_add(1, std::memory_order_relaxed);
-
-    RESOURCE_INFO("ResourceTemplateManager::createDefaultResources - Created " +
-                  std::to_string(m_resourceTemplates.size()) +
-                  " default resources");
-
+    RESOURCE_INFO("ResourceTemplateManager::createDefaultResources - Default "
+                  "resources loaded from JSON files");
   } catch (const std::exception &ex) {
     RESOURCE_ERROR(
         "ResourceTemplateManager::createDefaultResources - Exception: " +
         std::string(ex.what()));
+  }
+}
+
+// Fast property access methods (cache-optimized)
+int ResourceTemplateManager::getMaxStackSize(
+    HammerEngine::ResourceHandle handle) const {
+  std::shared_lock<std::shared_mutex> lock(m_resourceMutex);
+  auto it = m_maxStackSizes.find(handle);
+  return (it != m_maxStackSizes.end()) ? it->second : 1; // Default stack size
+}
+
+float ResourceTemplateManager::getValue(
+    HammerEngine::ResourceHandle handle) const {
+  std::shared_lock<std::shared_mutex> lock(m_resourceMutex);
+  auto it = m_values.find(handle);
+  return (it != m_values.end()) ? it->second : 0.0f; // Default value
+}
+
+ResourceCategory ResourceTemplateManager::getCategory(
+    HammerEngine::ResourceHandle handle) const {
+  std::shared_lock<std::shared_mutex> lock(m_resourceMutex);
+  auto it = m_categories.find(handle);
+  return (it != m_categories.end())
+             ? it->second
+             : ResourceCategory::Item; // Default category
+}
+
+ResourceType
+ResourceTemplateManager::getType(HammerEngine::ResourceHandle handle) const {
+  std::shared_lock<std::shared_mutex> lock(m_resourceMutex);
+  auto it = m_types.find(handle);
+  return (it != m_types.end()) ? it->second
+                               : ResourceType::Equipment; // Default type
+}
+
+// Cache-friendly bulk operations for better performance
+std::vector<int> ResourceTemplateManager::getMaxStackSizes(
+    const std::vector<HammerEngine::ResourceHandle> &handles) const {
+  std::shared_lock<std::shared_mutex> lock(m_resourceMutex);
+  std::vector<int> results;
+  results.reserve(handles.size());
+
+  for (const auto &handle : handles) {
+    auto it = m_maxStackSizes.find(handle);
+    results.push_back((it != m_maxStackSizes.end()) ? it->second : 1);
+  }
+
+  return results;
+}
+
+std::vector<float> ResourceTemplateManager::getValues(
+    const std::vector<HammerEngine::ResourceHandle> &handles) const {
+  std::shared_lock<std::shared_mutex> lock(m_resourceMutex);
+  std::vector<float> results;
+  results.reserve(handles.size());
+
+  for (const auto &handle : handles) {
+    auto it = m_values.find(handle);
+    results.push_back((it != m_values.end()) ? it->second : 0.0f);
+  }
+
+  return results;
+}
+
+void ResourceTemplateManager::getPropertiesBatch(
+    const std::vector<HammerEngine::ResourceHandle> &handles,
+    std::vector<int> &maxStackSizes, std::vector<float> &values,
+    std::vector<ResourceCategory> &categories,
+    std::vector<ResourceType> &types) const {
+  std::shared_lock<std::shared_mutex> lock(m_resourceMutex);
+
+  const size_t count = handles.size();
+  maxStackSizes.clear();
+  values.clear();
+  categories.clear();
+  types.clear();
+
+  maxStackSizes.reserve(count);
+  values.reserve(count);
+  categories.reserve(count);
+  types.reserve(count);
+
+  // Single pass through all handles for maximum cache efficiency
+  for (const auto &handle : handles) {
+    // Look up all properties in one go
+    auto stackIt = m_maxStackSizes.find(handle);
+    auto valueIt = m_values.find(handle);
+    auto categoryIt = m_categories.find(handle);
+    auto typeIt = m_types.find(handle);
+
+    maxStackSizes.push_back((stackIt != m_maxStackSizes.end()) ? stackIt->second
+                                                               : 1);
+    values.push_back((valueIt != m_values.end()) ? valueIt->second : 0.0f);
+    categories.push_back((categoryIt != m_categories.end())
+                             ? categoryIt->second
+                             : ResourceCategory::Item);
+    types.push_back((typeIt != m_types.end()) ? typeIt->second
+                                              : ResourceType::Equipment);
   }
 }

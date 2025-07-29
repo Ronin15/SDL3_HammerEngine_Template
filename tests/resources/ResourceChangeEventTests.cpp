@@ -43,8 +43,8 @@ public:
     npc = std::make_shared<MockEntity>("test_npc");
 
     // Test resource IDs
-    healthPotionId = "health_potion";
-    ironSwordId = "iron_sword";
+    healthPotionId = "super_health_potion";
+    ironSwordId = "magic_sword";
   }
 
 protected:

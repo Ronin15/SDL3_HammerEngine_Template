@@ -6,7 +6,9 @@
 #ifndef WORLD_RESOURCE_MANAGER_HPP
 #define WORLD_RESOURCE_MANAGER_HPP
 
+#include "utils/ResourceHandle.hpp"
 #include <atomic>
+#include <chrono>
 #include <memory>
 #include <mutex>
 #include <shared_mutex>
@@ -80,7 +82,7 @@ class WorldResourceManager {
 public:
   // World ID type - using string for flexibility (could be UUID, integer, etc.)
   using WorldId = std::string;
-  using ResourceId = std::string;
+  using ResourceId = HammerEngine::ResourceHandle;
   using Quantity = int64_t;
 
   static WorldResourceManager &Instance();
@@ -148,18 +150,50 @@ private:
   std::unordered_map<WorldId, std::unordered_map<ResourceId, Quantity>>
       m_worldResources;
 
+  // Optimization: Resource access cache for frequently accessed resources
+  struct ResourceCache {
+    ResourceId resourceId;
+    Quantity quantity;
+    std::chrono::steady_clock::time_point lastAccess;
+    bool dirty{false};
+  };
+
+  // Cache for the most recently accessed resources per world (LRU-style)
+  mutable std::unordered_map<WorldId, std::vector<ResourceCache>>
+      m_resourceCache;
+  static constexpr size_t MAX_CACHE_SIZE = 16; // Per world cache limit
+
+  // Spatial partitioning for resource aggregation queries
+  struct ResourceAggregateCache {
+    std::unordered_map<ResourceId, Quantity> totals;
+    std::chrono::steady_clock::time_point lastUpdate;
+    bool valid{false};
+  };
+  mutable ResourceAggregateCache m_aggregateCache;
+  static constexpr std::chrono::milliseconds CACHE_EXPIRY_TIME{
+      100}; // 100ms cache validity
+
   mutable WorldResourceStats m_stats;
   std::atomic<bool> m_initialized{false};
   bool m_isShutdown{false};
 
   // Thread safety
   mutable std::shared_mutex m_resourceMutex;
+  mutable std::mutex m_cacheMutex;
 
   // Helper methods
   void updateStats(bool isAdd, Quantity quantity);
   bool validateParameters(const WorldId &worldId, const ResourceId &resourceId,
                           Quantity quantity) const;
   void ensureWorldExists(const WorldId &worldId);
+
+  // Cache management methods
+  void updateResourceCache(const WorldId &worldId, const ResourceId &resourceId,
+                           Quantity quantity) const;
+  Quantity getCachedResourceQuantity(const WorldId &worldId,
+                                     const ResourceId &resourceId) const;
+  void invalidateAggregateCache() const;
+  void updateAggregateCache() const;
 };
 
 #endif // WORLD_RESOURCE_MANAGER_HPP

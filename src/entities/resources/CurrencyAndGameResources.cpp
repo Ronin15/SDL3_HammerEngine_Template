@@ -8,17 +8,17 @@
 #include <unordered_map>
 
 // Currency base class implementation
-Currency::Currency(const std::string &id, const std::string &name,
+Currency::Currency(HammerEngine::ResourceHandle handle, const std::string &name,
                    ResourceType type)
-    : Resource(id, name, ResourceCategory::Currency, type) {
+    : Resource(handle, name, ResourceCategory::Currency, type) {
   // Currencies are highly stackable
   setMaxStackSize(9999999);
   setConsumable(false);
 }
 
 // Gold currency implementation
-Gold::Gold(const std::string &id, const std::string &name)
-    : Currency(id, name, ResourceType::Gold) {
+Gold::Gold(HammerEngine::ResourceHandle handle, const std::string &name)
+    : Currency(handle, name, ResourceType::Gold) {
   setValue(1.0f);
   setExchangeRate(1.0f); // Base currency
   setDescription("Standard gold currency");
@@ -26,8 +26,9 @@ Gold::Gold(const std::string &id, const std::string &name)
 }
 
 // Gem currency implementation
-Gem::Gem(const std::string &id, const std::string &name, GemType gemType)
-    : Currency(id, name, ResourceType::Gem), m_gemType(gemType) {
+Gem::Gem(HammerEngine::ResourceHandle handle, const std::string &name,
+         GemType gemType)
+    : Currency(handle, name, ResourceType::Gem), m_gemType(gemType) {
   // Set default values based on gem type
   switch (gemType) {
   case GemType::Ruby:
@@ -69,9 +70,11 @@ std::string Gem::gemTypeToString(GemType type) {
 }
 
 // FactionToken implementation
-FactionToken::FactionToken(const std::string &id, const std::string &name,
+FactionToken::FactionToken(HammerEngine::ResourceHandle handle,
+                           const std::string &name,
                            const std::string &factionId)
-    : Currency(id, name, ResourceType::FactionToken), m_factionId(factionId) {
+    : Currency(handle, name, ResourceType::FactionToken),
+      m_factionId(factionId) {
   setValue(1.0f);
   setExchangeRate(0.0f); // Cannot be exchanged for gold
   setDescription("Faction token for " + factionId);
@@ -79,17 +82,17 @@ FactionToken::FactionToken(const std::string &id, const std::string &name,
 }
 
 // GameResource base class implementation
-GameResource::GameResource(const std::string &id, const std::string &name,
-                           ResourceType type)
-    : Resource(id, name, ResourceCategory::GameResource, type) {
+GameResource::GameResource(HammerEngine::ResourceHandle handle,
+                           const std::string &name, ResourceType type)
+    : Resource(handle, name, ResourceCategory::GameResource, type) {
   // Game resources are highly stackable
   setMaxStackSize(99999);
   setConsumable(true); // Can be consumed/used
 }
 
 // Energy implementation
-Energy::Energy(const std::string &id, const std::string &name)
-    : GameResource(id, name, ResourceType::Energy) {
+Energy::Energy(HammerEngine::ResourceHandle handle, const std::string &name)
+    : GameResource(handle, name, ResourceType::Energy) {
   setValue(0.1f);
   setRegenerationRate(1.0f); // 1 energy per second
   setDescription("Energy for actions and abilities");
@@ -97,8 +100,9 @@ Energy::Energy(const std::string &id, const std::string &name)
 }
 
 // Mana implementation
-Mana::Mana(const std::string &id, const std::string &name, ManaType manaType)
-    : GameResource(id, name, ResourceType::Mana), m_manaType(manaType) {
+Mana::Mana(HammerEngine::ResourceHandle handle, const std::string &name,
+           ManaType manaType)
+    : GameResource(handle, name, ResourceType::Mana), m_manaType(manaType) {
   setValue(0.2f);
   setRegenerationRate(0.5f); // 0.5 mana per second
   setDescription("Magical energy: " + manaTypeToString(manaType));
@@ -117,10 +121,10 @@ std::string Mana::manaTypeToString(ManaType type) {
 }
 
 // BuildingMaterial implementation
-BuildingMaterial::BuildingMaterial(const std::string &id,
+BuildingMaterial::BuildingMaterial(HammerEngine::ResourceHandle handle,
                                    const std::string &name,
                                    MaterialType materialType)
-    : GameResource(id, name, ResourceType::BuildingMaterial),
+    : GameResource(handle, name, ResourceType::BuildingMaterial),
       m_materialType(materialType) {
   // Set default values based on material type
   switch (materialType) {
@@ -159,9 +163,10 @@ std::string BuildingMaterial::materialTypeToString(MaterialType type) {
 }
 
 // Ammunition implementation
-Ammunition::Ammunition(const std::string &id, const std::string &name,
-                       AmmoType ammoType)
-    : GameResource(id, name, ResourceType::Ammunition), m_ammoType(ammoType) {
+Ammunition::Ammunition(HammerEngine::ResourceHandle handle,
+                       const std::string &name, AmmoType ammoType)
+    : GameResource(handle, name, ResourceType::Ammunition),
+      m_ammoType(ammoType) {
   // Set default values based on ammo type
   switch (ammoType) {
   case AmmoType::Arrow:

@@ -180,8 +180,9 @@ void Player::initializeInventory() {
 
   // Set up resource change callback
   m_inventory->setResourceChangeCallback(
-      [this](const std::string &resourceId, int oldQuantity, int newQuantity) {
-        onResourceChanged(resourceId, oldQuantity, newQuantity);
+      [this](HammerEngine::ResourceHandle resourceHandle, int oldQuantity,
+             int newQuantity) {
+        onResourceChanged(resourceHandle, oldQuantity, newQuantity);
       });
 
   // Initialize equipment slots
@@ -203,8 +204,14 @@ void Player::initializeInventory() {
                std::to_string(m_inventory->getMaxSlots()) + " slots");
 }
 
-void Player::onResourceChanged(const std::string &resourceId, int oldQuantity,
-                               int newQuantity) {
+void Player::onResourceChanged(HammerEngine::ResourceHandle resourceHandle,
+                               int oldQuantity, int newQuantity) {
+  // Get resource name for the event
+  auto resourceTemplate =
+      ResourceTemplateManager::Instance().getResourceTemplate(resourceHandle);
+  std::string resourceId =
+      resourceTemplate ? resourceTemplate->getName() : "Unknown Resource";
+
   // Create and fire resource change event
   auto resourceEvent = std::make_shared<ResourceChangeEvent>(
       shared_this(), resourceId, oldQuantity, newQuantity, "player_action");
@@ -261,11 +268,17 @@ bool Player::equipItem(const std::string &itemId) {
     return false;
   }
 
-  // Get item template to determine equipment slot
-  const auto *resourceManager = &ResourceTemplateManager::Instance();
-  auto itemTemplate = resourceManager->getResourceTemplate(itemId);
-  if (!itemTemplate) {
+  // Find the resource handle and get the template
+  auto handle = m_inventory->getResourceHandle(itemId);
+  if (!handle.isValid()) {
     PLAYER_ERROR("Player::equipItem - Unknown item: " + itemId);
+    return false;
+  }
+
+  const auto *resourceManager = &ResourceTemplateManager::Instance();
+  auto itemTemplate = resourceManager->getResourceTemplate(handle);
+  if (!itemTemplate) {
+    PLAYER_ERROR("Player::equipItem - Cannot get template for item: " + itemId);
     return false;
   }
 
@@ -340,8 +353,14 @@ bool Player::consumeItem(const std::string &itemId) {
   }
 
   // Get item template to check if it's consumable
+  auto handle = m_inventory->getResourceHandle(itemId);
+  if (!handle.isValid()) {
+    PLAYER_WARN("Player::consumeItem - Unknown item: " + itemId);
+    return false;
+  }
+
   const auto *resourceManager = &ResourceTemplateManager::Instance();
-  auto itemTemplate = resourceManager->getResourceTemplate(itemId);
+  auto itemTemplate = resourceManager->getResourceTemplate(handle);
   if (!itemTemplate || !itemTemplate->isConsumable()) {
     PLAYER_WARN("Player::consumeItem - Item is not consumable: " + itemId);
     return false;

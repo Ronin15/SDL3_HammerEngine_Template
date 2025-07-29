@@ -9,6 +9,7 @@
 #include "managers/FontManager.hpp"
 #include "managers/GameStateManager.hpp"
 #include "managers/InputManager.hpp"
+#include "managers/ResourceTemplateManager.hpp"
 #include "managers/UIManager.hpp"
 #include <iostream>
 
@@ -221,10 +222,15 @@ void GamePlayState::updateInventoryUI() {
   // Update inventory list
   ui.clearList("gameplay_inventory_list");
   auto allResources = inventory->getAllResources();
-  for (const auto &[resourceId, quantity] : allResources) {
+  for (const auto &[resourceHandle, quantity] : allResources) {
     if (quantity > 0) {
+      auto resourceTemplate =
+          ResourceTemplateManager::Instance().getResourceTemplate(
+              resourceHandle);
+      std::string displayName =
+          resourceTemplate ? resourceTemplate->getName() : "Unknown Resource";
       ui.addListItem("gameplay_inventory_list",
-                     resourceId + " x" + std::to_string(quantity));
+                     displayName + " x" + std::to_string(quantity));
     }
   }
 }

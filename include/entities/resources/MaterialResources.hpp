@@ -14,7 +14,8 @@
  */
 class Material : public Resource {
 public:
-  Material(const std::string &id, const std::string &name, ResourceType type);
+  Material(HammerEngine::ResourceHandle handle, const std::string &name,
+           ResourceType type);
   virtual ~Material() = default;
 
   // Material-specific properties
@@ -45,8 +46,8 @@ public:
     COUNT = 7
   };
 
-  CraftingComponent(const std::string &id, const std::string &name,
-                    ComponentType componentType);
+  CraftingComponent(HammerEngine::ResourceHandle handle,
+                    const std::string &name, ComponentType componentType);
   virtual ~CraftingComponent() = default;
 
   ComponentType getComponentType() const { return m_componentType; }
@@ -79,7 +80,7 @@ public:
     COUNT = 6
   };
 
-  RawResource(const std::string &id, const std::string &name,
+  RawResource(HammerEngine::ResourceHandle handle, const std::string &name,
               ResourceOrigin origin);
   virtual ~RawResource() = default;
 

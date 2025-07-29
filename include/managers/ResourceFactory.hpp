@@ -8,6 +8,7 @@
 
 #include "entities/Resource.hpp"
 #include "utils/JsonReader.hpp"
+#include "utils/ResourceHandle.hpp"
 #include <functional>
 #include <memory>
 #include <string>
@@ -82,13 +83,20 @@ private:
     return s_creators;
   }
   // Helper methods for creating specific resource types
-  static ResourcePtr createBaseResource(const JsonValue &json);
-  static ResourcePtr createEquipment(const JsonValue &json);
-  static ResourcePtr createConsumable(const JsonValue &json);
-  static ResourcePtr createQuestItem(const JsonValue &json);
-  static ResourcePtr createMaterial(const JsonValue &json);
-  static ResourcePtr createCurrency(const JsonValue &json);
-  static ResourcePtr createGameResource(const JsonValue &json);
+  static ResourcePtr createBaseResource(HammerEngine::ResourceHandle handle,
+                                        const JsonValue &json);
+  static ResourcePtr createEquipment(HammerEngine::ResourceHandle handle,
+                                     const JsonValue &json);
+  static ResourcePtr createConsumable(HammerEngine::ResourceHandle handle,
+                                      const JsonValue &json);
+  static ResourcePtr createQuestItem(HammerEngine::ResourceHandle handle,
+                                     const JsonValue &json);
+  static ResourcePtr createMaterial(HammerEngine::ResourceHandle handle,
+                                    const JsonValue &json);
+  static ResourcePtr createCurrency(HammerEngine::ResourceHandle handle,
+                                    const JsonValue &json);
+  static ResourcePtr createGameResource(HammerEngine::ResourceHandle handle,
+                                        const JsonValue &json);
 
   // Helper method to extract common resource properties from JSON
   static void setCommonProperties(ResourcePtr resource, const JsonValue &json);

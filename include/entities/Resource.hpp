@@ -8,6 +8,7 @@
 
 #include "entities/Entity.hpp"
 #include "utils/BinarySerializer.hpp"
+#include "utils/ResourceHandle.hpp"
 #include <memory>
 #include <string>
 
@@ -63,7 +64,7 @@ enum class ResourceType : uint8_t {
  */
 class Resource : public Entity {
 public:
-  Resource(const std::string &id, const std::string &name,
+  Resource(HammerEngine::ResourceHandle handle, const std::string &name,
            ResourceCategory category, ResourceType type);
   virtual ~Resource() = default;
 
@@ -73,7 +74,7 @@ public:
   void clean() override;
 
   // Resource properties (immutable)
-  const std::string &getId() const { return m_id; }
+  HammerEngine::ResourceHandle getHandle() const { return m_handle; }
   const std::string &getName() const { return m_name; }
   const std::string &getDescription() const { return m_description; }
   ResourceCategory getCategory() const { return m_category; }
@@ -117,16 +118,16 @@ public:
   static ResourceType stringToType(const std::string &typeStr);
 
 protected:
-  std::string m_id;                // Unique identifier
-  std::string m_name;              // Display name
-  std::string m_description{""};   // Description text
-  ResourceCategory m_category;     // Resource category
-  ResourceType m_type;             // Specific resource type
-  float m_value{0.0f};             // Base value/cost
-  int m_maxStackSize{1};           // Maximum stack size
-  bool m_isStackable{false};       // Can be stacked
-  bool m_isConsumable{false};      // Can be consumed/used
-  std::string m_iconTextureId{""}; // Texture ID for icon
+  HammerEngine::ResourceHandle m_handle; // Unique handle identifier
+  std::string m_name;                    // Display name
+  std::string m_description{""};         // Description text
+  ResourceCategory m_category;           // Resource category
+  ResourceType m_type;                   // Specific resource type
+  float m_value{0.0f};                   // Base value/cost
+  int m_maxStackSize{1};                 // Maximum stack size
+  bool m_isStackable{false};             // Can be stacked
+  bool m_isConsumable{false};            // Can be consumed/used
+  std::string m_iconTextureId{""};       // Texture ID for icon
 };
 
 #endif // RESOURCE_HPP

@@ -77,8 +77,8 @@ public:
 private:
   void loadDimensionsFromTexture();
   void setupInventory();
-  void onResourceChanged(const std::string &resourceId, int oldQuantity,
-                         int newQuantity);
+  void onResourceChanged(HammerEngine::ResourceHandle resourceHandle,
+                         int oldQuantity, int newQuantity);
 
   std::unique_ptr<InventoryComponent>
       m_inventory;                    // NPC inventory for trading/loot
