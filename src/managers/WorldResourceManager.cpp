@@ -681,13 +681,16 @@ void WorldResourceManager::updateResourceCache(const WorldId &worldId,
   auto now = std::chrono::steady_clock::now();
 
   // Look for existing cache entry
-  for (auto &cache : worldCache) {
-    if (cache.resourceId == resourceId) {
-      cache.quantity = quantity;
-      cache.lastAccess = now;
-      cache.dirty = false;
-      return;
-    }
+  auto cacheIt = std::find_if(worldCache.begin(), worldCache.end(),
+                              [resourceId](const ResourceCache &cache) {
+                                return cache.resourceId == resourceId;
+                              });
+
+  if (cacheIt != worldCache.end()) {
+    cacheIt->quantity = quantity;
+    cacheIt->lastAccess = now;
+    cacheIt->dirty = false;
+    return;
   }
 
   // Add new cache entry
@@ -722,14 +725,18 @@ WorldResourceManager::Quantity WorldResourceManager::getCachedResourceQuantity(
   }
 
   auto now = std::chrono::steady_clock::now();
-  for (auto &cache : worldIt->second) {
-    if (cache.resourceId == resourceId && !cache.dirty) {
-      cache.lastAccess = now; // Update access time
-      if (m_config.enablePerformanceMonitoring) {
-        m_stats.cacheHits++;
-      }
-      return cache.quantity;
+  auto cacheIt =
+      std::find_if(worldIt->second.begin(), worldIt->second.end(),
+                   [resourceId](const ResourceCache &cache) {
+                     return cache.resourceId == resourceId && !cache.dirty;
+                   });
+
+  if (cacheIt != worldIt->second.end()) {
+    cacheIt->lastAccess = now; // Update access time
+    if (m_config.enablePerformanceMonitoring) {
+      m_stats.cacheHits++;
     }
+    return cacheIt->quantity;
   }
 
   if (m_config.enablePerformanceMonitoring) {

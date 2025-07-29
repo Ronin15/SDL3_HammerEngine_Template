@@ -224,9 +224,9 @@ HammerEngine::ResourceHandle ResourceTemplateManager::generateHandle() {
     if (genIt != m_handleGenerations.end()) {
       generation = genIt->second + 1;
 
-      // Handle generation overflow (wrap around, but never use 0)
-      if (generation == HammerEngine::ResourceHandle::INVALID_GENERATION ||
-          generation == 0) {
+      // Handle generation overflow (wrap around, but never use
+      // 0/INVALID_GENERATION)
+      if (generation == HammerEngine::ResourceHandle::INVALID_GENERATION) {
         generation = 1;
       }
 
@@ -443,15 +443,13 @@ bool ResourceTemplateManager::loadResourcesFromJsonString(
         if (registerResourceTemplateInternal(resource)) {
           loadedCount++;
 
-          // Extract the resource ID from JSON to create string-to-handle
-          // mapping after the internal registration is complete
+          // Extract the resource ID from JSON for debug logging
           if (resourceJson.hasKey("id") && resourceJson["id"].isString()) {
-            std::string resourceId = resourceJson["id"].asString();
-
             RESOURCE_DEBUG(
                 "ResourceTemplateManager::loadResourcesFromJsonString "
                 "- Loaded resource: " +
-                resourceId + " -> " + resource->getHandle().toString());
+                resourceJson["id"].asString() + " -> " +
+                resource->getHandle().toString());
           } else {
             RESOURCE_WARN(
                 "ResourceTemplateManager::loadResourcesFromJsonString - "
@@ -524,16 +522,10 @@ size_t ResourceTemplateManager::getMemoryUsage() const {
 
   for (const auto &[categoryKey, resourceIds] : m_categoryIndex) {
     totalSize += resourceIds.size() * sizeof(HammerEngine::ResourceHandle);
-    for (const auto &handle : resourceIds) {
-      totalSize += sizeof(handle);
-    }
   }
 
   for (const auto &[typeKey, resourceIds] : m_typeIndex) {
     totalSize += resourceIds.size() * sizeof(HammerEngine::ResourceHandle);
-    for (const auto &handle : resourceIds) {
-      totalSize += sizeof(handle);
-    }
   }
 
   return totalSize;
@@ -578,11 +570,11 @@ void ResourceTemplateManager::removeFromIndexes(
   }
 
   // Remove from name index
-  for (auto it = m_nameIndex.begin(); it != m_nameIndex.end(); ++it) {
-    if (it->second == handle) {
-      m_nameIndex.erase(it);
-      break;
-    }
+  auto it = std::find_if(
+      m_nameIndex.begin(), m_nameIndex.end(),
+      [handle](const auto &pair) { return pair.second == handle; });
+  if (it != m_nameIndex.end()) {
+    m_nameIndex.erase(it);
   }
 }
 

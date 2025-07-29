@@ -36,6 +36,7 @@ declare -A THREAD_TESTS=(
     ["resource_integration"]="resource_integration_tests"
     ["resource_manager"]="resource_manager_tests"
     ["world_resource_manager"]="world_resource_manager_tests"
+    ["resource_edge_case"]="resource_edge_case_tests"
 )
 
 run_helgrind_test() {

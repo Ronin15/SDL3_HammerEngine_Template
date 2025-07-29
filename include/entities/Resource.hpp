@@ -66,7 +66,7 @@ class Resource : public Entity {
 public:
   Resource(HammerEngine::ResourceHandle handle, const std::string &name,
            ResourceCategory category, ResourceType type);
-  virtual ~Resource() = default;
+  virtual ~Resource() override = default;
 
   // Entity interface implementation
   void update(float deltaTime) override;

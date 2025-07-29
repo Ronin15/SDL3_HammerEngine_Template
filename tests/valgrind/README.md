@@ -311,11 +311,13 @@ Update performance baselines when adding new optimizations:
 - **JSON Reader Tests** (`json_reader_tests`) - Memory and performance analysis of JSON parsing components
 - **Resource Factory Tests** (`resource_factory_tests`) - Resource creation and management validation
 - **Resource Template JSON Tests** (`resource_template_manager_json_tests`) - JSON-based template system analysis
+- **Resource Edge Case Tests** (`resource_edge_case_tests`) - Comprehensive edge case validation for resource system thread safety, memory pressure, and concurrent access patterns
 
 These tests are automatically included in:
-- Memory leak analysis (JSON reader)
-- Performance benchmarking (JSON reader)
-- Resource management validation (Factory and JSON template tests)
+- Memory leak analysis (JSON reader, resource edge cases)
+- Performance benchmarking (JSON reader, resource edge cases)
+- Thread safety validation (resource edge cases)
+- Resource management validation (Factory, JSON template tests, and edge cases)
 - Comprehensive analysis across all categories
 
 ### Key Files
