@@ -35,66 +35,98 @@ bool InventoryComponent::addResource(HammerEngine::ResourceHandle handle,
     return false;
   }
 
-  std::lock_guard<std::mutex> lock(m_inventoryMutex);
-
-  // Get resource template to check properties
-  auto resourceTemplate =
-      ResourceTemplateManager::Instance().getResourceTemplate(handle);
-  if (!resourceTemplate) {
-    RESOURCE_ERROR(
-        "InventoryComponent::addResource - Invalid resource handle: " +
-        handle.toString());
+  // Check for overflow before processing
+  if (!isValidQuantity(quantity)) {
+    INVENTORY_ERROR(
+        "addResource - Invalid quantity: " + std::to_string(quantity) +
+        " (max allowed: " + std::to_string(MAX_SAFE_QUANTITY) +
+        ") for handle: " + handle.toString());
     return false;
   }
 
-  int remainingQuantity = quantity;
-  int oldQuantity = getResourceQuantityUnlocked(handle);
-  // If resource is stackable, try to stack in existing slots first
-  if (resourceTemplate->isStackable()) {
-    for (auto &slot : m_slots) {
-      if (slot.resourceHandle == handle &&
-          slot.quantity < resourceTemplate->getMaxStackSize()) {
-        int canAdd = resourceTemplate->getMaxStackSize() - slot.quantity;
-        int toAdd = std::min(remainingQuantity, canAdd);
+  // Variables for callback (outside lock scope)
+  int oldQuantity, newQuantity;
+  bool success;
 
-        slot.quantity += toAdd;
-        remainingQuantity -= toAdd;
+  {
+    std::lock_guard<std::mutex> lock(m_inventoryMutex);
 
-        if (remainingQuantity <= 0) {
-          break;
-        }
-      }
-    }
-  }
-
-  // If still have remaining quantity, find empty slots
-  while (remainingQuantity > 0) {
-    int emptySlot = findEmptySlot();
-    if (emptySlot == -1) {
-      // No more space - notify about partial success if any was added
-      if (remainingQuantity < quantity) {
-        int newQuantity = getResourceQuantityUnlocked(handle);
-        notifyResourceChange(handle, oldQuantity, newQuantity);
-      }
+    // Get resource template to check properties
+    auto resourceTemplate =
+        ResourceTemplateManager::Instance().getResourceTemplate(handle);
+    if (!resourceTemplate) {
+      INVENTORY_ERROR(
+          "addResource - Invalid resource handle: " + handle.toString() +
+          " - template not found in ResourceTemplateManager");
       return false;
     }
 
-    int toAdd =
-        resourceTemplate->isStackable()
-            ? std::min(remainingQuantity, resourceTemplate->getMaxStackSize())
-            : std::min(remainingQuantity, 1);
+    int remainingQuantity = quantity;
+    oldQuantity = getResourceQuantityUnlocked(handle);
 
-    m_slots[emptySlot] = InventorySlot(handle, toAdd);
-    remainingQuantity -= toAdd;
+    // Check for overflow in total quantity
+    if (wouldOverflow(oldQuantity, quantity)) {
+      INVENTORY_ERROR(
+          "addResource - Would cause overflow: " + std::to_string(oldQuantity) +
+          " + " + std::to_string(quantity) +
+          " exceeds maximum safe quantity for handle: " + handle.toString());
+      return false;
+    }
+
+    // If resource is stackable, try to stack in existing slots first
+    if (resourceTemplate->isStackable()) {
+      for (auto &slot : m_slots) {
+        if (slot.resourceHandle == handle &&
+            slot.quantity < resourceTemplate->getMaxStackSize()) {
+          int canAdd = resourceTemplate->getMaxStackSize() - slot.quantity;
+          int toAdd = std::min(remainingQuantity, canAdd);
+
+          slot.quantity += toAdd;
+          remainingQuantity -= toAdd;
+
+          if (remainingQuantity <= 0) {
+            break;
+          }
+        }
+      }
+    }
+
+    // If still have remaining quantity, find empty slots
+    while (remainingQuantity > 0) {
+      int emptySlot = findEmptySlot();
+      if (emptySlot == -1) {
+        // No more space - partially successful but notify about what was added
+        break;
+      }
+
+      int toAdd =
+          resourceTemplate->isStackable()
+              ? std::min(remainingQuantity, resourceTemplate->getMaxStackSize())
+              : std::min(remainingQuantity, 1);
+
+      m_slots[emptySlot] = InventorySlot(handle, toAdd);
+      remainingQuantity -= toAdd;
+    }
+
+    // Update cache and get final quantities
+    newQuantity = getResourceQuantityUnlocked(handle);
+    int actualChange = newQuantity - oldQuantity;
+    updateQuantityCache(handle, actualChange);
+
+    // Update WorldResourceManager if tracking is enabled
+    if (actualChange != 0) {
+      updateWorldResourceManager(handle, actualChange);
+    }
+
+    success = (remainingQuantity == 0);
+  } // Release lock here
+
+  // Invoke callback outside of lock to prevent deadlocks
+  if (oldQuantity != newQuantity) {
+    notifyResourceChangeSafe(handle, oldQuantity, newQuantity);
   }
 
-  // Notify about the change and update cache incrementally
-  int newQuantity = getResourceQuantityUnlocked(handle);
-  int actualChange = newQuantity - oldQuantity;
-  updateQuantityCache(handle, actualChange);
-  notifyResourceChange(handle, oldQuantity, newQuantity);
-
-  return true;
+  return success;
 }
 
 bool InventoryComponent::removeResource(HammerEngine::ResourceHandle handle,
@@ -103,35 +135,66 @@ bool InventoryComponent::removeResource(HammerEngine::ResourceHandle handle,
     return false;
   }
 
-  std::lock_guard<std::mutex> lock(m_inventoryMutex);
-
-  int oldQuantity = getResourceQuantityUnlocked(handle);
-  if (oldQuantity < quantity) {
-    return false; // Not enough resources
+  // Check for invalid quantity
+  if (!isValidQuantity(quantity)) {
+    INVENTORY_ERROR(
+        "removeResource - Invalid quantity: " + std::to_string(quantity) +
+        " for handle: " + handle.toString());
+    return false;
   }
 
-  int remainingToRemove = quantity;
-  // Remove from slots (starting from the end to avoid fragmentation)
-  for (auto it = m_slots.rbegin();
-       it != m_slots.rend() && remainingToRemove > 0; ++it) {
-    if (it->resourceHandle == handle) {
-      int toRemove = std::min(remainingToRemove, it->quantity);
-      it->quantity -= toRemove;
-      remainingToRemove -= toRemove;
+  // Variables for callback (outside lock scope)
+  int oldQuantity, newQuantity;
+  bool success;
 
-      if (it->quantity <= 0) {
-        it->clear();
+  {
+    std::lock_guard<std::mutex> lock(m_inventoryMutex);
+
+    oldQuantity = getResourceQuantityUnlocked(handle);
+
+    // Check for underflow
+    if (wouldUnderflow(oldQuantity, quantity)) {
+      INVENTORY_WARN("removeResource - Would cause underflow: " +
+                     std::to_string(oldQuantity) + " - " +
+                     std::to_string(quantity) +
+                     " is less than minimum for handle: " + handle.toString());
+      return false; // Not enough resources
+    }
+
+    int remainingToRemove = quantity;
+    // Remove from slots (starting from the end to avoid fragmentation)
+    for (auto it = m_slots.rbegin();
+         it != m_slots.rend() && remainingToRemove > 0; ++it) {
+      if (it->resourceHandle == handle) {
+        int toRemove = std::min(remainingToRemove, it->quantity);
+        it->quantity -= toRemove;
+        remainingToRemove -= toRemove;
+
+        if (it->quantity <= 0) {
+          it->clear();
+        }
       }
     }
+
+    // Update cache and get final quantities
+    newQuantity = getResourceQuantityUnlocked(handle);
+    int actualChange = newQuantity - oldQuantity;
+    updateQuantityCache(handle, actualChange);
+
+    // Update WorldResourceManager if tracking is enabled
+    if (actualChange != 0) {
+      updateWorldResourceManager(handle, actualChange);
+    }
+
+    success = (remainingToRemove == 0);
+  } // Release lock here
+
+  // Invoke callback outside of lock to prevent deadlocks
+  if (oldQuantity != newQuantity) {
+    notifyResourceChangeSafe(handle, oldQuantity, newQuantity);
   }
 
-  // Notify about the change and update cache incrementally
-  int newQuantity = getResourceQuantityUnlocked(handle);
-  int actualChange = newQuantity - oldQuantity;
-  updateQuantityCache(handle, actualChange);
-  notifyResourceChange(handle, oldQuantity, newQuantity);
-
-  return remainingToRemove == 0;
+  return success;
 }
 
 int InventoryComponent::getResourceQuantity(
@@ -151,29 +214,38 @@ bool InventoryComponent::hasResource(HammerEngine::ResourceHandle handle,
 }
 
 void InventoryComponent::clearInventory() {
-  std::lock_guard<std::mutex> lock(m_inventoryMutex);
+  // Collect resource quantities for notifications (outside lock scope)
+  std::unordered_map<HammerEngine::ResourceHandle, int> resourcesToNotify;
 
-  // Notify about each resource being removed (build map here without calling
-  // getAllResources)
-  std::unordered_map<HammerEngine::ResourceHandle, int> resources;
-  for (const auto &slot : m_slots) {
-    if (!slot.isEmpty()) {
-      resources[slot.resourceHandle] += slot.quantity;
+  {
+    std::lock_guard<std::mutex> lock(m_inventoryMutex);
+
+    // Build map of resources to notify about
+    for (const auto &slot : m_slots) {
+      if (!slot.isEmpty()) {
+        resourcesToNotify[slot.resourceHandle] += slot.quantity;
+      }
     }
-  }
 
-  for (const auto &[resourceHandle, quantity] : resources) {
-    notifyResourceChange(resourceHandle, quantity, 0);
-  }
+    // Update WorldResourceManager for each resource
+    for (const auto &[resourceHandle, quantity] : resourcesToNotify) {
+      updateWorldResourceManager(resourceHandle, -quantity);
+    }
 
-  // Clear all slots
-  for (auto &slot : m_slots) {
-    slot.clear();
-  }
+    // Clear all slots
+    for (auto &slot : m_slots) {
+      slot.clear();
+    }
 
-  // Clear the quantity cache and mark as clean
-  m_resourceQuantityCache.clear();
-  m_cacheNeedsRebuild = false;
+    // Clear the quantity cache and mark as clean
+    m_resourceQuantityCache.clear();
+    m_cacheNeedsRebuild = false;
+  } // Release lock here
+
+  // Invoke callbacks outside of lock to prevent deadlocks
+  for (const auto &[resourceHandle, quantity] : resourcesToNotify) {
+    notifyResourceChangeSafe(resourceHandle, quantity, 0);
+  }
 }
 
 size_t InventoryComponent::getUsedSlots() const {
@@ -243,49 +315,106 @@ bool InventoryComponent::setSlot(size_t slotIndex,
                                  int quantity) {
   validateSlotIndex(slotIndex);
 
-  if (quantity < 0) {
+  if (quantity < 0 || !isValidQuantity(quantity)) {
+    INVENTORY_ERROR("setSlot - Invalid quantity: " + std::to_string(quantity) +
+                    " for slot " + std::to_string(slotIndex) +
+                    " with handle: " + handle.toString());
     return false;
   }
 
-  std::lock_guard<std::mutex> lock(m_inventoryMutex);
+  // Variables for callbacks (outside lock scope)
+  HammerEngine::ResourceHandle oldHandle;
+  int oldHandleOldQuantity = 0, oldHandleNewQuantity = 0;
+  int newHandleOldQuantity = 0, newHandleNewQuantity = 0;
+  bool needOldHandleCallback = false, needNewHandleCallback = false;
 
-  // Get old values for notification
-  HammerEngine::ResourceHandle oldHandle = m_slots[slotIndex].resourceHandle;
-  int oldQuantity =
-      oldHandle.isValid() ? getResourceQuantityUnlocked(oldHandle) : 0;
+  {
+    std::lock_guard<std::mutex> lock(m_inventoryMutex);
 
-  // Set new slot value
-  if (quantity == 0 || !handle.isValid()) {
-    m_slots[slotIndex].clear();
-  } else {
-    m_slots[slotIndex] = InventorySlot(handle, quantity);
+    // Get old values for notification
+    oldHandle = m_slots[slotIndex].resourceHandle;
+    if (oldHandle.isValid()) {
+      oldHandleOldQuantity = getResourceQuantityUnlocked(oldHandle);
+    }
+
+    if (handle.isValid()) {
+      newHandleOldQuantity = getResourceQuantityUnlocked(handle);
+    }
+
+    // Set new slot value
+    if (quantity == 0 || !handle.isValid()) {
+      m_slots[slotIndex].clear();
+    } else {
+      m_slots[slotIndex] = InventorySlot(handle, quantity);
+    }
+
+    // Mark cache for rebuild (complex operation involving multiple resources)
+    m_cacheNeedsRebuild = true;
+
+    // Calculate new quantities and update WorldResourceManager
+    if (oldHandle.isValid() && oldHandle != handle) {
+      oldHandleNewQuantity = getResourceQuantityUnlocked(oldHandle);
+      int oldChange = oldHandleNewQuantity - oldHandleOldQuantity;
+      if (oldChange != 0) {
+        updateWorldResourceManager(oldHandle, oldChange);
+        needOldHandleCallback = true;
+      }
+    }
+
+    if (handle.isValid()) {
+      newHandleNewQuantity = getResourceQuantityUnlocked(handle);
+      int newChange = newHandleNewQuantity - newHandleOldQuantity;
+      if (newChange != 0) {
+        updateWorldResourceManager(handle, newChange);
+        needNewHandleCallback = true;
+      }
+    }
+  } // Release lock here
+
+  // Invoke callbacks outside of lock to prevent deadlocks
+  if (needOldHandleCallback) {
+    notifyResourceChangeSafe(oldHandle, oldHandleOldQuantity,
+                             oldHandleNewQuantity);
   }
 
-  // Notify about changes and mark cache for rebuild (complex operation)
-  m_cacheNeedsRebuild = true;
-  if (oldHandle.isValid() && oldHandle != handle) {
-    int newOldQuantity = getResourceQuantityUnlocked(oldHandle);
-    notifyResourceChange(oldHandle, oldQuantity, newOldQuantity);
-  }
-
-  if (handle.isValid()) {
-    int newQuantity = getResourceQuantityUnlocked(handle);
-    notifyResourceChange(handle, oldQuantity, newQuantity);
+  if (needNewHandleCallback) {
+    notifyResourceChangeSafe(handle, newHandleOldQuantity,
+                             newHandleNewQuantity);
   }
 
   return true;
 }
 
 bool InventoryComponent::transferTo(InventoryComponent &target,
-                                    const std::string &resourceName,
+                                    HammerEngine::ResourceHandle handle,
                                     int quantity) {
-  auto handle = findResourceByName(resourceName);
-  if (!handle.isValid()) {
+  if (!handle.isValid() || quantity <= 0) {
     return false;
   }
-  return transferTo(target, handle, quantity);
-}
 
+  // Check if we have enough of the resource
+  if (getResourceQuantity(handle) < quantity) {
+    return false;
+  }
+
+  // Check if target can accept the resource
+  if (!target.canAddResource(handle, quantity)) {
+    return false;
+  }
+
+  // Perform the transfer
+  if (removeResource(handle, quantity)) {
+    if (target.addResource(handle, quantity)) {
+      return true;
+    } else {
+      // Rollback if target couldn't add
+      addResource(handle, quantity);
+      return false;
+    }
+  }
+
+  return false;
+}
 void InventoryComponent::compactInventory() {
   std::lock_guard<std::mutex> lock(m_inventoryMutex);
 
@@ -354,15 +483,26 @@ int InventoryComponent::findEmptySlot() const {
 
 void InventoryComponent::notifyResourceChange(
     HammerEngine::ResourceHandle handle, int oldQuantity, int newQuantity) {
+  // This method is now primarily for backward compatibility and
+  // WorldResourceManager For new code, use the direct approach of calling
+  // updateWorldResourceManager and notifyResourceChangeSafe separately for
+  // better thread safety
   if (oldQuantity != newQuantity) {
     // Update WorldResourceManager if tracking is enabled
     int quantityChange = newQuantity - oldQuantity;
     updateWorldResourceManager(handle, quantityChange);
 
-    // Call the user-defined callback
-    if (m_onResourceChanged) {
-      m_onResourceChanged(handle, oldQuantity, newQuantity);
-    }
+    // Call the user-defined callback safely (without holding lock)
+    notifyResourceChangeSafe(handle, oldQuantity, newQuantity);
+  }
+}
+
+void InventoryComponent::notifyResourceChangeSafe(
+    HammerEngine::ResourceHandle handle, int oldQuantity, int newQuantity) {
+  // This method should be called when NOT holding the inventory mutex
+  // to prevent deadlocks in callbacks
+  if (m_onResourceChanged) {
+    m_onResourceChanged(handle, oldQuantity, newQuantity);
   }
 }
 
@@ -386,8 +526,8 @@ void InventoryComponent::updateWorldResourceManager(
   }
 
   if (!handle.isValid()) {
-    RESOURCE_WARN("InventoryComponent::updateWorldResourceManager - Invalid "
-                  "resource handle");
+    INVENTORY_WARN("updateWorldResourceManager - Invalid resource handle: " +
+                   handle.toString());
     return;
   }
 
@@ -406,9 +546,12 @@ void InventoryComponent::updateWorldResourceManager(
         ResourceTemplateManager::Instance().getResourceTemplate(handle);
     std::string resourceName =
         resourceTemplate ? resourceTemplate->getName() : "Unknown Resource";
-    RESOURCE_WARN("InventoryComponent::updateWorldResourceManager - Failed to "
-                  "update world resources for " +
-                  resourceName + " in world " + m_worldId);
+    INVENTORY_WARN(
+        "updateWorldResourceManager - Failed to update world resources "
+        "for " +
+        resourceName + " (handle: " + handle.toString() + ") in world " +
+        m_worldId +
+        " - Transaction result: " + std::to_string(static_cast<int>(result)));
   }
 }
 
@@ -443,53 +586,7 @@ void InventoryComponent::rebuildQuantityCache() const {
   m_cacheNeedsRebuild = false;
 }
 
-// String-based convenience methods implementation
-HammerEngine::ResourceHandle
-InventoryComponent::findResourceByName(const std::string &name) const {
-  // ARCHITECTURAL FIX: Direct efficient lookup using ResourceTemplateManager
-  auto &templateManager = ResourceTemplateManager::Instance();
-  auto resource = templateManager.getResourceByName(name);
-  return resource ? resource->getHandle()
-                  : HammerEngine::INVALID_RESOURCE_HANDLE;
-}
-bool InventoryComponent::addResource(const std::string &resourceName,
-                                     int quantity) {
-  auto handle = findResourceByName(resourceName);
-  if (!handle.isValid()) {
-    RESOURCE_ERROR("InventoryComponent::addResource - Resource not found: " +
-                   resourceName);
-    return false;
-  }
-  return addResource(handle, quantity);
-}
-
-bool InventoryComponent::removeResource(const std::string &resourceName,
-                                        int quantity) {
-  auto handle = findResourceByName(resourceName);
-  if (!handle.isValid()) {
-    return false;
-  }
-  return removeResource(handle, quantity);
-}
-
-int InventoryComponent::getResourceQuantity(
-    const std::string &resourceName) const {
-  auto handle = findResourceByName(resourceName);
-  if (!handle.isValid()) {
-    return 0;
-  }
-  return getResourceQuantity(handle);
-}
-
-bool InventoryComponent::hasResource(const std::string &resourceName,
-                                     int minimumQuantity) const {
-  return getResourceQuantity(resourceName) >= minimumQuantity;
-}
-
-HammerEngine::ResourceHandle
-InventoryComponent::getResourceHandle(const std::string &resourceName) const {
-  return findResourceByName(resourceName);
-}
+// String-based convenience methods removed - use ResourceHandle only
 
 int InventoryComponent::getResourceQuantityUnlocked(
     HammerEngine::ResourceHandle handle) const {
@@ -543,33 +640,240 @@ bool InventoryComponent::canAddResource(HammerEngine::ResourceHandle handle,
   return (m_maxSlots - usedSlots) > 0;
 }
 
-bool InventoryComponent::transferTo(InventoryComponent &target,
-                                    HammerEngine::ResourceHandle handle,
-                                    int quantity) {
-  if (!handle.isValid() || quantity <= 0) {
-    return false;
+// Quantity validation and overflow/underflow checks
+bool InventoryComponent::isValidQuantity(int quantity) const {
+  return quantity >= MIN_SAFE_QUANTITY && quantity <= MAX_SAFE_QUANTITY;
+}
+
+bool InventoryComponent::wouldOverflow(int currentQuantity,
+                                       int addQuantity) const {
+  // Check if addition would exceed maximum safe quantity or cause integer
+  // overflow
+  if (addQuantity > MAX_SAFE_QUANTITY - currentQuantity) {
+    return true;
   }
 
-  // Check if we have enough of the resource
-  if (getResourceQuantity(handle) < quantity) {
-    return false;
-  }
-
-  // Check if target can accept the resource
-  if (!target.canAddResource(handle, quantity)) {
-    return false;
-  }
-
-  // Perform the transfer
-  if (removeResource(handle, quantity)) {
-    if (target.addResource(handle, quantity)) {
-      return true;
-    } else {
-      // Rollback if target couldn't add
-      addResource(handle, quantity);
-      return false;
-    }
+  // Check for integer overflow using safe arithmetic
+  if (currentQuantity > 0 && addQuantity > INT_MAX - currentQuantity) {
+    return true;
   }
 
   return false;
+}
+
+bool InventoryComponent::wouldUnderflow(int currentQuantity,
+                                        int removeQuantity) const {
+  // Check if subtraction would go below minimum or cause underflow
+  if (removeQuantity > currentQuantity) {
+    return true;
+  }
+
+  // Check for integer underflow
+  if (currentQuantity < 0 && removeQuantity > currentQuantity - INT_MIN) {
+    return true;
+  }
+
+  return false;
+}
+
+// Diagnostic and error recovery methods
+bool InventoryComponent::validateInventoryIntegrity() const {
+  std::lock_guard<std::mutex> lock(m_inventoryMutex);
+
+  bool isValid = true;
+  size_t issueCount = 0;
+
+  INVENTORY_DEBUG("Starting inventory integrity validation");
+
+  // Check slot consistency
+  for (size_t i = 0; i < m_slots.size(); ++i) {
+    const auto &slot = m_slots[i];
+
+    // Check for invalid quantities
+    if (!slot.isEmpty() && !isValidQuantity(slot.quantity)) {
+      INVENTORY_ERROR(
+          "validateInventoryIntegrity - Slot " + std::to_string(i) +
+          " has invalid quantity: " + std::to_string(slot.quantity) +
+          " for handle: " + slot.resourceHandle.toString());
+      isValid = false;
+      issueCount++;
+    }
+
+    // Check for invalid handles with non-zero quantities
+    if (!slot.isEmpty() && !slot.resourceHandle.isValid()) {
+      INVENTORY_ERROR("validateInventoryIntegrity - Slot " + std::to_string(i) +
+                      " has invalid handle but non-zero quantity: " +
+                      std::to_string(slot.quantity));
+      isValid = false;
+      issueCount++;
+    }
+
+    // Verify resource template exists for used slots
+    if (!slot.isEmpty()) {
+      auto resourceTemplate =
+          ResourceTemplateManager::Instance().getResourceTemplate(
+              slot.resourceHandle);
+      if (!resourceTemplate) {
+        INVENTORY_ERROR(
+            "validateInventoryIntegrity - Slot " + std::to_string(i) +
+            " references non-existent resource template for handle: " +
+            slot.resourceHandle.toString());
+        isValid = false;
+        issueCount++;
+      } else {
+        // Check if quantity exceeds stack size for stackable resources
+        if (resourceTemplate->isStackable() &&
+            slot.quantity > resourceTemplate->getMaxStackSize()) {
+          INVENTORY_ERROR("validateInventoryIntegrity - Slot " +
+                          std::to_string(i) + " quantity " +
+                          std::to_string(slot.quantity) +
+                          " exceeds max stack size " +
+                          std::to_string(resourceTemplate->getMaxStackSize()) +
+                          " for handle: " + slot.resourceHandle.toString());
+          isValid = false;
+          issueCount++;
+        }
+      }
+    }
+  }
+
+  // Validate cache consistency
+  if (!m_cacheNeedsRebuild) {
+    for (const auto &[handle, cachedQuantity] : m_resourceQuantityCache) {
+      int actualQuantity = 0;
+      for (const auto &slot : m_slots) {
+        if (slot.resourceHandle == handle) {
+          actualQuantity += slot.quantity;
+        }
+      }
+
+      if (actualQuantity != cachedQuantity) {
+        INVENTORY_ERROR(
+            "validateInventoryIntegrity - Cache mismatch for handle " +
+            handle.toString() + ": cached=" + std::to_string(cachedQuantity) +
+            ", actual=" + std::to_string(actualQuantity));
+        isValid = false;
+        issueCount++;
+      }
+    }
+  }
+
+  if (isValid) {
+    INVENTORY_DEBUG("Inventory integrity validation passed");
+  } else {
+    INVENTORY_ERROR("Inventory integrity validation failed with " +
+                    std::to_string(issueCount) + " issues");
+  }
+
+  return isValid;
+}
+
+void InventoryComponent::reportInventoryState() const {
+  std::lock_guard<std::mutex> lock(m_inventoryMutex);
+
+  INVENTORY_INFO("=== Inventory State Report ===");
+  INVENTORY_INFO("Owner: " + std::string(m_owner ? "Present" : "No Owner"));
+  INVENTORY_INFO("World ID: " + m_worldId);
+  INVENTORY_INFO("Max Slots: " + std::to_string(m_maxSlots));
+  INVENTORY_INFO("Used Slots: " + std::to_string(getUsedSlots()));
+  INVENTORY_INFO("World Resource Tracking: " +
+                 std::string(m_trackWorldResources ? "enabled" : "disabled"));
+  INVENTORY_INFO("Cache Needs Rebuild: " +
+                 std::string(m_cacheNeedsRebuild ? "yes" : "no"));
+
+  // Report non-empty slots
+  size_t nonEmptySlots = 0;
+  for (size_t i = 0; i < m_slots.size(); ++i) {
+    const auto &slot = m_slots[i];
+    if (!slot.isEmpty()) {
+      auto resourceTemplate =
+          ResourceTemplateManager::Instance().getResourceTemplate(
+              slot.resourceHandle);
+      std::string resourceName =
+          resourceTemplate ? resourceTemplate->getName() : "Unknown Resource";
+
+      INVENTORY_INFO("  Slot " + std::to_string(i) + ": " +
+                     std::to_string(slot.quantity) + "x " + resourceName +
+                     " (handle: " + slot.resourceHandle.toString() + ")");
+      nonEmptySlots++;
+    }
+  }
+
+  if (nonEmptySlots == 0) {
+    INVENTORY_INFO("  No items in inventory");
+  }
+
+  // Report cache state
+  if (!m_cacheNeedsRebuild && !m_resourceQuantityCache.empty()) {
+    INVENTORY_INFO("Cache entries: " +
+                   std::to_string(m_resourceQuantityCache.size()));
+    for (const auto &[handle, quantity] : m_resourceQuantityCache) {
+      auto resourceTemplate =
+          ResourceTemplateManager::Instance().getResourceTemplate(handle);
+      std::string resourceName =
+          resourceTemplate ? resourceTemplate->getName() : "Unknown Resource";
+      INVENTORY_INFO("  Cache: " + std::to_string(quantity) + "x " +
+                     resourceName);
+    }
+  }
+
+  INVENTORY_INFO("=== End Inventory State Report ===");
+}
+
+size_t InventoryComponent::repairInventoryCorruption() {
+  std::lock_guard<std::mutex> lock(m_inventoryMutex);
+
+  size_t repairCount = 0;
+
+  INVENTORY_INFO("Starting inventory corruption repair");
+
+  // Repair invalid quantities
+  for (auto &slot : m_slots) {
+    if (!slot.isEmpty()) {
+      // Fix negative quantities
+      if (slot.quantity < 0) {
+        INVENTORY_WARN("repairInventoryCorruption - Fixed negative quantity " +
+                       std::to_string(slot.quantity) +
+                       " to 0 for handle: " + slot.resourceHandle.toString());
+        slot.quantity = 0;
+        repairCount++;
+      }
+
+      // Fix excessive quantities
+      if (!isValidQuantity(slot.quantity)) {
+        INVENTORY_WARN(
+            "repairInventoryCorruption - Fixed excessive quantity " +
+            std::to_string(slot.quantity) +
+            " to maximum for handle: " + slot.resourceHandle.toString());
+        slot.quantity = MAX_SAFE_QUANTITY;
+        repairCount++;
+      }
+
+      // Clear slots with invalid handles
+      if (!slot.resourceHandle.isValid()) {
+        INVENTORY_WARN(
+            "repairInventoryCorruption - Cleared slot with invalid handle");
+        slot.clear();
+        repairCount++;
+      }
+
+      // Clear slots with zero quantity after repairs
+      if (slot.quantity == 0) {
+        slot.clear();
+      }
+    }
+  }
+
+  // Force cache rebuild after repairs
+  if (repairCount > 0) {
+    m_cacheNeedsRebuild = true;
+    m_resourceQuantityCache.clear();
+
+    INVENTORY_INFO("repairInventoryCorruption - Repaired " +
+                   std::to_string(repairCount) + " corruption issues");
+  } else {
+    INVENTORY_INFO("repairInventoryCorruption - No corruption found");
+  }
+
+  return repairCount;
 }

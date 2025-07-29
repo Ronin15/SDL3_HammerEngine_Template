@@ -45,12 +45,7 @@ public:
   InventoryComponent *getInventory() { return m_inventory.get(); }
   const InventoryComponent *getInventory() const { return m_inventory.get(); }
 
-  // Player-specific resource operations
-  bool addResource(const std::string &resourceId, int quantity);
-  bool removeResource(const std::string &resourceId, int quantity);
-  bool hasResource(const std::string &resourceId,
-                   int minimumQuantity = 1) const;
-  int getResourceQuantity(const std::string &resourceId) const;
+  // Player-specific resource operations (use ResourceHandle via getInventory())
 
   // Equipment management
   bool equipItem(const std::string &itemId);

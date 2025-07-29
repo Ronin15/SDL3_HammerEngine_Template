@@ -59,17 +59,6 @@ public:
   bool hasResource(HammerEngine::ResourceHandle handle,
                    int minimumQuantity = 1) const;
 
-  // Convenience methods (string ID-based - for compatibility)
-  bool addResource(const std::string &resourceName, int quantity);
-  bool removeResource(const std::string &resourceName, int quantity);
-  int getResourceQuantity(const std::string &resourceName) const;
-  bool hasResource(const std::string &resourceName,
-                   int minimumQuantity = 1) const;
-  bool transferTo(InventoryComponent &target, const std::string &resourceName,
-                  int quantity);
-  HammerEngine::ResourceHandle
-  getResourceHandle(const std::string &resourceName) const;
-
   // Inventory management
   void clearInventory();
   size_t getUsedSlots() const;
@@ -77,6 +66,18 @@ public:
   size_t getAvailableSlots() const;
   bool isFull() const;
   bool isEmpty() const;
+
+  // Safe quantity limits and validation
+  static constexpr int MAX_SAFE_QUANTITY = 1000000; // 1 million max per slot
+  static constexpr int MIN_SAFE_QUANTITY = 0;
+  bool isValidQuantity(int quantity) const;
+  bool wouldOverflow(int currentQuantity, int addQuantity) const;
+  bool wouldUnderflow(int currentQuantity, int removeQuantity) const;
+
+  // Diagnostic and error recovery
+  bool validateInventoryIntegrity() const;
+  void reportInventoryState() const;
+  size_t repairInventoryCorruption();
 
   // Category-based queries
   std::vector<InventorySlot>
@@ -102,6 +103,31 @@ public:
     m_onResourceChanged = callback;
   }
   void clearResourceChangeCallback() { m_onResourceChanged = nullptr; }
+
+  /**
+   * @brief Thread-safety documentation for resource change callbacks
+   *
+   * IMPORTANT: Resource change callbacks are invoked OUTSIDE of inventory locks
+   * to prevent deadlocks. However, this means:
+   *
+   * 1. Callbacks may be called from multiple threads simultaneously if the
+   *    inventory is accessed concurrently
+   * 2. Callbacks should NOT call back into this inventory's methods as this
+   *    could cause recursive locking or inconsistent state
+   * 3. If callbacks need to access shared state, they must provide their own
+   *    thread synchronization
+   * 4. Callbacks should be lightweight and non-blocking to avoid performance
+   * issues
+   * 5. Exception safety: callbacks should not throw exceptions as they are not
+   *    caught by the inventory component
+   *
+   * Best practices:
+   * - Use callbacks for notifications, logging, or queuing work for other
+   * threads
+   * - Avoid long-running operations in callbacks
+   * - Consider using event queues instead of direct callbacks for complex
+   * scenarios
+   */
 
   // Serialization support
   // TODO: Implement proper serialization later
@@ -155,12 +181,14 @@ protected:
                       HammerEngine::ResourceHandle handle) const;
   void notifyResourceChange(HammerEngine::ResourceHandle handle,
                             int oldQuantity, int newQuantity);
+  void notifyResourceChangeSafe(HammerEngine::ResourceHandle handle,
+                                int oldQuantity, int newQuantity);
   void validateSlotIndex(size_t slotIndex) const;
   int getResourceQuantityUnlocked(HammerEngine::ResourceHandle handle) const;
 
-  // Resource lookup helper
-  HammerEngine::ResourceHandle
-  findResourceByName(const std::string &name) const;
+  // Resource lookup helper (removed - use handles only)
+  // HammerEngine::ResourceHandle
+  // findResourceByName(const std::string &name) const;
 
   // Cache management for performance optimization
   void updateQuantityCache(HammerEngine::ResourceHandle handle,

@@ -37,10 +37,10 @@ public:
 
     // Get actual resource handles by name (more reliable than hard-coding)
     healthPotionHandle =
-        testInventory->getResourceHandle("Super Health Potion");
-    swordHandle = testInventory->getResourceHandle("Magic Sword");
-    oreHandle = testInventory->getResourceHandle("Mithril Ore");
-    coinsHandle = testInventory->getResourceHandle("Platinum Coins");
+        resourceManager->getHandleByName("Super Health Potion");
+    swordHandle = resourceManager->getHandleByName("Magic Sword");
+    oreHandle = resourceManager->getHandleByName("Mithril Ore");
+    coinsHandle = resourceManager->getHandleByName("Platinum Coins");
 
     // Verify we got valid handles
     BOOST_REQUIRE(healthPotionHandle.isValid());
@@ -281,27 +281,28 @@ BOOST_AUTO_TEST_CASE(TestCanAddResource) {
   BOOST_CHECK(!inventory->canAddResource(oreHandle, 1));
 }
 
-BOOST_AUTO_TEST_CASE(TestStringBasedOperations) {
+BOOST_AUTO_TEST_CASE(TestResourceHandleOperations) {
   auto inventory = std::make_unique<InventoryComponent>(mockPlayer.get(), 20);
 
-  // Test string-based resource operations
-  bool added = inventory->addResource("Super Health Potion", 5);
+  // Test handle-based resource operations
+  bool added = inventory->addResource(healthPotionHandle, 5);
   BOOST_CHECK(added);
-  BOOST_CHECK_EQUAL(inventory->getResourceQuantity("Super Health Potion"), 5);
+  BOOST_CHECK_EQUAL(inventory->getResourceQuantity(healthPotionHandle), 5);
 
-  // Test hasResource with string name
-  BOOST_CHECK(inventory->hasResource("Super Health Potion"));
-  BOOST_CHECK(inventory->hasResource("Super Health Potion", 5));
-  BOOST_CHECK(!inventory->hasResource("Super Health Potion", 6));
+  // Test hasResource with handle
+  BOOST_CHECK(inventory->hasResource(healthPotionHandle));
+  BOOST_CHECK(inventory->hasResource(healthPotionHandle, 5));
+  BOOST_CHECK(!inventory->hasResource(healthPotionHandle, 6));
 
-  // Test removing with string name
-  bool removed = inventory->removeResource("Super Health Potion", 2);
+  // Test removing with handle
+  bool removed = inventory->removeResource(healthPotionHandle, 2);
   BOOST_CHECK(removed);
-  BOOST_CHECK_EQUAL(inventory->getResourceQuantity("Super Health Potion"), 3);
+  BOOST_CHECK_EQUAL(inventory->getResourceQuantity(healthPotionHandle), 3);
 
   // Test non-existent resource
-  BOOST_CHECK(!inventory->hasResource("Non-Existent Resource"));
-  BOOST_CHECK_EQUAL(inventory->getResourceQuantity("Non-Existent Resource"), 0);
+  HammerEngine::ResourceHandle invalidHandle(99999, 1);
+  BOOST_CHECK(!inventory->hasResource(invalidHandle));
+  BOOST_CHECK_EQUAL(inventory->getResourceQuantity(invalidHandle), 0);
 }
 
 BOOST_AUTO_TEST_CASE(TestUtilityMethods) {
@@ -356,10 +357,10 @@ BOOST_AUTO_TEST_CASE(TestTransferOperations) {
   BOOST_CHECK_EQUAL(targetInventory->getResourceQuantity(healthPotionHandle),
                     5);
 
-  // Test transfer using string name
-  bool stringTransferred =
-      sourceInventory->transferTo(*targetInventory, "Platinum Coins", 50);
-  BOOST_CHECK(stringTransferred);
+  // Test transfer using handle for coins
+  bool coinsTransferred =
+      sourceInventory->transferTo(*targetInventory, coinsHandle, 50);
+  BOOST_CHECK(coinsTransferred);
   BOOST_CHECK_EQUAL(sourceInventory->getResourceQuantity(coinsHandle), 50);
   BOOST_CHECK_EQUAL(targetInventory->getResourceQuantity(coinsHandle), 50);
 

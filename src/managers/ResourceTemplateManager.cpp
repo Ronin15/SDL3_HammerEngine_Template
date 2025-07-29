@@ -124,6 +124,46 @@ bool ResourceTemplateManager::registerResourceTemplate(
   return registerResourceTemplateInternal(resource);
 }
 
+bool ResourceTemplateManager::removeResourceTemplate(
+    HammerEngine::ResourceHandle handle) {
+  if (!handle.isValid()) {
+    RESOURCE_ERROR(
+        "ResourceTemplateManager::removeResourceTemplate - Invalid handle");
+    return false;
+  }
+
+  std::unique_lock<std::shared_mutex> lock(m_resourceMutex);
+
+  // Check if resource exists
+  auto it = m_resourceTemplates.find(handle);
+  if (it == m_resourceTemplates.end()) {
+    RESOURCE_WARN("ResourceTemplateManager::removeResourceTemplate - Resource "
+                  "not found: " +
+                  handle.toString());
+    return false;
+  }
+
+  // Remove from all data structures
+  m_resourceTemplates.erase(it);
+  m_maxStackSizes.erase(handle);
+  m_values.erase(handle);
+  m_categories.erase(handle);
+  m_types.erase(handle);
+
+  // Remove from indexes
+  removeFromIndexes(handle);
+
+  // Release the handle for reuse with incremented generation
+  releaseHandle(handle);
+
+  m_stats.resourcesDestroyed.fetch_add(1, std::memory_order_relaxed);
+
+  RESOURCE_DEBUG(
+      "ResourceTemplateManager::removeResourceTemplate - Removed resource: " +
+      handle.toString());
+  return true;
+}
+
 bool ResourceTemplateManager::registerResourceTemplateInternal(
     const ResourcePtr &resource) {
   // This method assumes the lock is already held
@@ -131,10 +171,10 @@ bool ResourceTemplateManager::registerResourceTemplateInternal(
 
   // Check if already registered
   if (m_resourceTemplates.find(handle) != m_resourceTemplates.end()) {
-    RESOURCE_WARN(
-        "ResourceTemplateManager::registerResourceTemplateInternal - Resource "
-        "already registered: " +
-        handle.toString());
+    RESOURCE_WARN("ResourceTemplateManager::registerResourceTemplateInternal "
+                  "- Resource "
+                  "already registered: " +
+                  handle.toString());
     return false;
   }
 
@@ -167,16 +207,80 @@ bool ResourceTemplateManager::registerResourceTemplateInternal(
 }
 
 HammerEngine::ResourceHandle ResourceTemplateManager::generateHandle() {
-  HammerEngine::ResourceHandle::HandleId id =
-      m_nextHandleId.fetch_add(1, std::memory_order_relaxed);
-  HammerEngine::ResourceHandle::Generation generation =
-      m_currentGeneration.load(std::memory_order_relaxed);
+  std::lock_guard<std::mutex> lock(m_handleMutex);
+
+  HammerEngine::ResourceHandle::HandleId id;
+  HammerEngine::ResourceHandle::Generation generation;
+
+  // Check if we have any freed handles to reuse
+  if (!m_freedHandleIds.empty()) {
+    // Reuse a freed handle ID with incremented generation
+    id = m_freedHandleIds.back();
+    m_freedHandleIds.pop_back();
+
+    // Increment the generation for this reused ID to prevent stale handle
+    // bugs
+    auto genIt = m_handleGenerations.find(id);
+    if (genIt != m_handleGenerations.end()) {
+      generation = genIt->second + 1;
+
+      // Handle generation overflow (wrap around, but never use 0)
+      if (generation == HammerEngine::ResourceHandle::INVALID_GENERATION ||
+          generation == 0) {
+        generation = 1;
+      }
+
+      genIt->second = generation;
+    } else {
+      // First time using this ID (shouldn't happen with proper bookkeeping)
+      generation = 1;
+      m_handleGenerations[id] = generation;
+    }
+  } else {
+    // No freed handles available, allocate a new ID
+    id = m_nextHandleId.fetch_add(1, std::memory_order_relaxed);
+    generation = 1;
+    m_handleGenerations[id] = generation;
+  }
+
   return HammerEngine::ResourceHandle(id, generation);
+}
+
+void ResourceTemplateManager::releaseHandle(
+    HammerEngine::ResourceHandle handle) {
+  if (!handle.isValid()) {
+    return;
+  }
+
+  std::lock_guard<std::mutex> lock(m_handleMutex);
+
+  // Add the handle ID to the freed list for reuse
+  // Note: We don't increment generation here, that happens in
+  // generateHandle()
+  auto id = handle.getId();
+
+  // Only add if not already in the freed list (avoid duplicates)
+  if (std::find(m_freedHandleIds.begin(), m_freedHandleIds.end(), id) ==
+      m_freedHandleIds.end()) {
+    m_freedHandleIds.push_back(id);
+  }
 }
 
 bool ResourceTemplateManager::isValidHandle(
     HammerEngine::ResourceHandle handle) const {
-  return handle.isValid();
+  if (!handle.isValid()) {
+    return false;
+  }
+
+  std::lock_guard<std::mutex> lock(m_handleMutex);
+
+  // Check if the handle's generation matches our records
+  auto genIt = m_handleGenerations.find(handle.getId());
+  if (genIt == m_handleGenerations.end()) {
+    return false; // Unknown handle ID
+  }
+
+  return genIt->second == handle.getGeneration();
 }
 
 ResourcePtr ResourceTemplateManager::getResourceTemplate(
@@ -244,6 +348,18 @@ ResourceTemplateManager::getResourceByName(const std::string &name) const {
   }
 
   return nullptr;
+}
+
+HammerEngine::ResourceHandle
+ResourceTemplateManager::getHandleByName(const std::string &name) const {
+  std::shared_lock<std::shared_mutex> lock(m_resourceMutex);
+
+  auto nameIt = m_nameIndex.find(name);
+  if (nameIt != m_nameIndex.end()) {
+    return nameIt->second;
+  }
+
+  return HammerEngine::ResourceHandle(); // Invalid handle
 }
 
 ResourceStats ResourceTemplateManager::getStats() const { return m_stats; }
@@ -395,7 +511,8 @@ size_t ResourceTemplateManager::getMemoryUsage() const {
   totalSize +=
       m_resourceTemplates.size() * (sizeof(std::string) + sizeof(ResourcePtr));
 
-  // Account for the actual strings and Resource objects in m_resourceTemplates
+  // Account for the actual strings and Resource objects in
+  // m_resourceTemplates
   for (const auto &[resourceId, resource] : m_resourceTemplates) {
     totalSize += sizeof(resourceId); // Size of the handle
     if (resource) {

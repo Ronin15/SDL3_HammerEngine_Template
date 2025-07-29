@@ -263,45 +263,23 @@ void NPC::onResourceChanged(HammerEngine::ResourceHandle resourceHandle,
             std::to_string(oldQuantity) + " to " + std::to_string(newQuantity));
 }
 
-// Resource management methods
-bool NPC::addResource(const std::string &resourceId, int quantity) {
-  if (!m_inventory) {
-    NPC_ERROR("NPC::addResource - Inventory not initialized");
-    return false;
-  }
+// Resource management methods - removed, use getInventory() directly with
+// ResourceHandle
 
-  return m_inventory->addResource(resourceId, quantity);
-}
-
-bool NPC::removeResource(const std::string &resourceId, int quantity) {
-  if (!m_inventory) {
-    NPC_ERROR("NPC::removeResource - Inventory not initialized");
-    return false;
-  }
-
-  return m_inventory->removeResource(resourceId, quantity);
-}
-
-bool NPC::hasResource(const std::string &resourceId,
-                      int minimumQuantity) const {
-  if (!m_inventory) {
-    return false;
-  }
-
-  return m_inventory->hasResource(resourceId, minimumQuantity);
-}
-
-int NPC::getResourceQuantity(const std::string &resourceId) const {
-  if (!m_inventory) {
-    return 0;
-  }
-
-  return m_inventory->getResourceQuantity(resourceId);
-}
-
-// Trading system
+// Trading system - updated to use ResourceHandle
 bool NPC::canTrade(const std::string &itemId, int quantity) const {
-  return m_canTrade && hasResource(itemId, quantity);
+  if (!m_canTrade || !m_inventory) {
+    return false;
+  }
+
+  // Convert string to handle via ResourceTemplateManager
+  auto &templateManager = ResourceTemplateManager::Instance();
+  auto resource = templateManager.getResourceByName(itemId);
+  if (!resource) {
+    return false;
+  }
+
+  return m_inventory->hasResource(resource->getHandle(), quantity);
 }
 
 bool NPC::tradeWithPlayer(const std::string &itemId, int quantity,
@@ -313,7 +291,15 @@ bool NPC::tradeWithPlayer(const std::string &itemId, int quantity,
 
   // Simple trade: NPC gives item to player for free (could be enhanced with
   // currency exchange)
-  if (m_inventory->transferTo(playerInventory, itemId, quantity)) {
+  auto &templateManager = ResourceTemplateManager::Instance();
+  auto resource = templateManager.getResourceByName(itemId);
+  if (!resource) {
+    NPC_WARN("NPC::tradeWithPlayer - Unknown item: " + itemId);
+    return false;
+  }
+
+  if (m_inventory->transferTo(playerInventory, resource->getHandle(),
+                              quantity)) {
     NPC_DEBUG("NPC traded " + std::to_string(quantity) + " " + itemId +
               " to player");
     return true;
@@ -325,11 +311,32 @@ bool NPC::tradeWithPlayer(const std::string &itemId, int quantity,
 void NPC::initializeShopInventory() {
   m_canTrade = true;
 
-  // Add some basic shop items
-  addResource("health_potion", 10);
-  addResource("mana_potion", 8);
-  addResource("iron_sword", 1);
-  addResource("leather_helmet", 2);
+  // Add some basic shop items using ResourceTemplateManager
+  auto &templateManager = ResourceTemplateManager::Instance();
+
+  // Add health potions
+  auto healthPotion = templateManager.getResourceByName("health_potion");
+  if (healthPotion && m_inventory) {
+    m_inventory->addResource(healthPotion->getHandle(), 10);
+  }
+
+  // Add mana potions
+  auto manaPotion = templateManager.getResourceByName("mana_potion");
+  if (manaPotion && m_inventory) {
+    m_inventory->addResource(manaPotion->getHandle(), 8);
+  }
+
+  // Add iron sword
+  auto ironSword = templateManager.getResourceByName("iron_sword");
+  if (ironSword && m_inventory) {
+    m_inventory->addResource(ironSword->getHandle(), 1);
+  }
+
+  // Add leather helmet
+  auto leatherHelmet = templateManager.getResourceByName("leather_helmet");
+  if (leatherHelmet && m_inventory) {
+    m_inventory->addResource(leatherHelmet->getHandle(), 2);
+  }
 
   NPC_DEBUG("NPC shop inventory initialized");
 }

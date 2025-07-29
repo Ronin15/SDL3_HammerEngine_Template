@@ -207,9 +207,21 @@ void GamePlayState::updateInventoryUI() {
   auto &ui = UIManager::Instance();
   auto *inventory = mp_Player->getInventory();
 
-  // Update resource counts
-  int goldCount = inventory->getResourceQuantity("gold");
-  int potionCount = inventory->getResourceQuantity("health_potion");
+  // Update resource counts using ResourceTemplateManager
+  auto &templateManager = ResourceTemplateManager::Instance();
+
+  int goldCount = 0;
+  auto goldResource = templateManager.getResourceByName("gold");
+  if (goldResource) {
+    goldCount = inventory->getResourceQuantity(goldResource->getHandle());
+  }
+
+  int potionCount = 0;
+  auto potionResource = templateManager.getResourceByName("health_potion");
+  if (potionResource) {
+    potionCount = inventory->getResourceQuantity(potionResource->getHandle());
+  }
+
   size_t totalItems = inventory->getUsedSlots();
 
   ui.setText("gameplay_gold_label", "Gold: " + std::to_string(goldCount));
@@ -257,7 +269,15 @@ void GamePlayState::addDemoResource(const std::string &resourceId,
     return;
   }
 
-  bool success = mp_Player->addResource(resourceId, quantity);
+  auto &templateManager = ResourceTemplateManager::Instance();
+  auto resource = templateManager.getResourceByName(resourceId);
+  if (!resource) {
+    std::cout << "Unknown resource: " << resourceId << std::endl;
+    return;
+  }
+
+  bool success =
+      mp_Player->getInventory()->addResource(resource->getHandle(), quantity);
   if (success) {
     std::cout << "Added " << quantity << " " << resourceId
               << " to player inventory" << std::endl;
@@ -274,7 +294,15 @@ void GamePlayState::removeDemoResource(const std::string &resourceId,
     return;
   }
 
-  bool success = mp_Player->removeResource(resourceId, quantity);
+  auto &templateManager = ResourceTemplateManager::Instance();
+  auto resource = templateManager.getResourceByName(resourceId);
+  if (!resource) {
+    std::cout << "Unknown resource: " << resourceId << std::endl;
+    return;
+  }
+
+  bool success = mp_Player->getInventory()->removeResource(
+      resource->getHandle(), quantity);
   if (success) {
     std::cout << "Removed " << quantity << " " << resourceId
               << " from player inventory" << std::endl;
