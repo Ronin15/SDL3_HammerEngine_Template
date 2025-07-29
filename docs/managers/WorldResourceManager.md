@@ -93,31 +93,31 @@ std::vector<WorldId> getWorldIds() const;
 
 ### Resource Quantity Management
 ```cpp
-ResourceTransactionResult addResource(const WorldId& worldId, const ResourceId& resourceId, Quantity quantity);
+ResourceTransactionResult addResource(const WorldId& worldId, const HammerEngine::ResourceHandle& resourceHandle, Quantity quantity);
     // Adds quantity to a resource in a world.
-ResourceTransactionResult removeResource(const WorldId& worldId, const ResourceId& resourceId, Quantity quantity);
+ResourceTransactionResult removeResource(const WorldId& worldId, const HammerEngine::ResourceHandle& resourceHandle, Quantity quantity);
     // Removes quantity from a resource in a world.
-ResourceTransactionResult setResource(const WorldId& worldId, const ResourceId& resourceId, Quantity quantity);
+ResourceTransactionResult setResource(const WorldId& worldId, const HammerEngine::ResourceHandle& resourceHandle, Quantity quantity);
     // Sets the quantity of a resource in a world.
 ```
 
 ### Resource Queries
 ```cpp
-Quantity getResourceQuantity(const WorldId& worldId, const ResourceId& resourceId) const;
+Quantity getResourceQuantity(const WorldId& worldId, const HammerEngine::ResourceHandle& resourceHandle) const;
     // Gets the quantity of a resource in a world.
-bool hasResource(const WorldId& worldId, const ResourceId& resourceId, Quantity minimumQuantity = 1) const;
+bool hasResource(const WorldId& worldId, const HammerEngine::ResourceHandle& resourceHandle, Quantity minimumQuantity = 1) const;
     // Checks if a world has at least the given quantity of a resource.
-Quantity getTotalResourceQuantity(const ResourceId& resourceId) const;
+Quantity getTotalResourceQuantity(const HammerEngine::ResourceHandle& resourceHandle) const;
     // Gets the total quantity of a resource across all worlds.
-std::unordered_map<ResourceId, Quantity> getWorldResources(const WorldId& worldId) const;
+std::unordered_map<HammerEngine::ResourceHandle, Quantity> getWorldResources(const WorldId& worldId) const;
     // Gets all resources and quantities for a world.
-std::unordered_map<ResourceId, Quantity> getAllResourceTotals() const;
+std::unordered_map<HammerEngine::ResourceHandle, Quantity> getAllResourceTotals() const;
     // Gets total quantities for all resources across all worlds.
 ```
 
 ### Batch Operations
 ```cpp
-bool transferResource(const WorldId& fromWorldId, const WorldId& toWorldId, const ResourceId& resourceId, Quantity quantity);
+bool transferResource(const WorldId& fromWorldId, const WorldId& toWorldId, const HammerEngine::ResourceHandle& resourceHandle, Quantity quantity);
     // Transfers quantity of a resource from one world to another.
 bool transferAllResources(const WorldId& fromWorldId, const WorldId& toWorldId);
     // Transfers all resources from one world to another.
@@ -136,7 +136,7 @@ size_t getMemoryUsage() const;
 ### Validation
 ```cpp
 bool isValidWorldId(const WorldId& worldId) const;
-bool isValidResourceId(const ResourceId& resourceId) const;
+bool isValidResourceHandle(const HammerEngine::ResourceHandle& resourceHandle) const;
 bool isValidQuantity(Quantity quantity) const;
 ```
 
@@ -145,25 +145,31 @@ bool isValidQuantity(Quantity quantity) const;
 auto& wrm = WorldResourceManager::Instance();
 wrm.init();
 
-// Create a world and add resources
+// Get resource handles from ResourceTemplateManager first
+auto& rtm = ResourceTemplateManager::Instance();
+auto ironOreHandle = rtm.getHandleByName("iron_ore");
+
+// Create a world and add resources using handles
 wrm.createWorld("main_world");
-wrm.addResource("main_world", "iron_ore", 100);
+wrm.addResource("main_world", ironOreHandle, 100);
 
 // Query resource totals
-auto totalIron = wrm.getTotalResourceQuantity("iron_ore");
+auto totalIron = wrm.getTotalResourceQuantity(ironOreHandle);
 
 // Transfer resources between worlds
 wrm.createWorld("secondary_world");
-wrm.transferResource("main_world", "secondary_world", "iron_ore", 50);
+wrm.transferResource("main_world", "secondary_world", ironOreHandle, 50);
 ```
 
 ## Thread Safety
 All public methods are thread-safe via internal locking. For best performance, batch operations where possible.
 
 ## Best Practices
-- Use unique, descriptive world and resource IDs.
+- Use unique, descriptive world IDs (WorldId is a string type).
+- Always obtain ResourceHandles from ResourceTemplateManager before using them with WorldResourceManager.
 - Use `getStats()` and `getMemoryUsage()` for debugging and optimization.
 - Clean up unused worlds to free memory.
+- Cache ResourceHandles in your game objects rather than looking them up repeatedly.
 
 ## See Also
 - `ResourceTemplateManager` (for resource templates)

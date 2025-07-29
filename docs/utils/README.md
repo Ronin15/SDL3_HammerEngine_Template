@@ -6,7 +6,7 @@ This directory contains documentation for core utility classes and helper system
 
 ### Performance & Resource Systems
 - **[ResourceHandle System](ResourceHandle_System.md)** - High-performance resource identification
-  - 64-bit lightweight handles for optimal runtime performance
+  - 48-bit lightweight handles for optimal runtime performance
   - Two-phase architecture: name-based loading, handle-based runtime
   - Cache-friendly data access patterns
   - Automatic duplicate name detection
@@ -20,6 +20,13 @@ This directory contains documentation for core utility classes and helper system
   - File loading capabilities
   - Thread-safe for read operations (separate instances per thread)
 
+- **[JSON Resource Loading Guide](JSON_Resource_Loading_Guide.md)** - Complete resource loading system
+  - JSON-based resource definitions for items, materials, currency
+  - Integration with ResourceTemplateManager and ResourceFactory
+  - Extensible type system with custom resource creators
+  - Comprehensive examples and error handling
+  - Performance guidelines for handle-based runtime operations
+
 ### Future Utilities
 
 - **Configuration Manager** (planned)
@@ -27,8 +34,9 @@ This directory contains documentation for core utility classes and helper system
 
 ### Usage in Game Development
 - **High-Performance Resource Access**: Use ResourceHandle system for runtime resource operations
+- **JSON Resource Loading**: Define game items, materials, currency in JSON files with automatic loading
 - **Configuration Loading**: JSON configuration files for game settings
-- **Item/Resource Data**: Define game items, NPCs, and resources in JSON format with handle-based runtime access
+- **Handle-based Runtime**: Convert resource names to handles during initialization, use handles for all runtime operations
 - **Save Game Data**: JSON format for human-readable save files (alternative to binary)
 - **Asset Metadata**: JSON descriptions for textures, sounds, and other assets
 - **Level Data**: JSON format for level layouts and entity placement
