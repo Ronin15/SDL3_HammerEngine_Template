@@ -21,6 +21,42 @@
 #include "managers/ResourceTemplateManager.hpp"
 #include "managers/WorldResourceManager.hpp"
 
+// Helper function to find resource handle by name
+HammerEngine::ResourceHandle
+findResourceByName(ResourceTemplateManager *manager, const std::string &name) {
+  // Use a more efficient approach - iterate through resource handles we know
+  // exist rather than testing every possible handle ID
+  for (int cat = 0; cat < static_cast<int>(ResourceCategory::COUNT); ++cat) {
+    auto resources =
+        manager->getResourcesByCategory(static_cast<ResourceCategory>(cat));
+    for (const auto &resource : resources) {
+      if (resource && resource->getName() == name) {
+        return resource->getHandle();
+      }
+    }
+  }
+  return HammerEngine::ResourceHandle(); // Invalid handle
+}
+
+// Helper function to get or load resource by name
+HammerEngine::ResourceHandle
+getOrLoadResourceByName(ResourceTemplateManager *manager,
+                        const std::string &name) {
+  // First try to find existing resource
+  auto handle = findResourceByName(manager, name);
+  if (handle.isValid()) {
+    return handle;
+  }
+
+  // If not found, try loading JSON resources and try again
+  manager->loadResourcesFromJson("res/data/materials_and_currency.json");
+  manager->loadResourcesFromJson("res/data/items.json");
+
+  // Try finding again
+  handle = findResourceByName(manager, name);
+  return handle; // May still be invalid if resource doesn't exist
+}
+
 class WorldResourceManagerTestFixture {
 public:
   WorldResourceManagerTestFixture() {
@@ -116,7 +152,14 @@ BOOST_AUTO_TEST_CASE(TestWorldCreationAndRemoval) {
 }
 BOOST_AUTO_TEST_CASE(TestBasicResourceOperations) {
   const std::string worldId = "resource_test_world";
-  const std::string resourceId = "gold";
+
+  // Get a proper ResourceHandle from the template manager
+  auto resourceHandle = findResourceByName(templateManager, "Platinum Coins");
+  if (!resourceHandle.isValid()) {
+    // Register the resource if it doesn't exist
+    resourceHandle = getOrLoadResourceByName(templateManager, "Platinum Coins");
+  }
+  BOOST_REQUIRE(resourceHandle.isValid());
 
   // Create a test world
   bool created = worldManager->createWorld(worldId);
@@ -124,45 +167,45 @@ BOOST_AUTO_TEST_CASE(TestBasicResourceOperations) {
 
   // Test initial state - should have 0 of everything
   int64_t initialAmount =
-      worldManager->getResourceQuantity(worldId, resourceId);
+      worldManager->getResourceQuantity(worldId, resourceHandle);
   BOOST_CHECK_EQUAL(initialAmount, 0);
 
   // Test adding resources
-  auto result = worldManager->addResource(worldId, resourceId, 100);
+  auto result = worldManager->addResource(worldId, resourceHandle, 100);
   BOOST_CHECK(result == ResourceTransactionResult::Success);
 
   // Verify the resource was added
   int64_t currentAmount =
-      worldManager->getResourceQuantity(worldId, resourceId);
+      worldManager->getResourceQuantity(worldId, resourceHandle);
   BOOST_CHECK_EQUAL(currentAmount, 100);
 
   // Test adding more resources
-  result = worldManager->addResource(worldId, resourceId, 50);
+  result = worldManager->addResource(worldId, resourceHandle, 50);
   BOOST_CHECK(result == ResourceTransactionResult::Success);
 
-  currentAmount = worldManager->getResourceQuantity(worldId, resourceId);
+  currentAmount = worldManager->getResourceQuantity(worldId, resourceHandle);
   BOOST_CHECK_EQUAL(currentAmount, 150);
 
   // Test removing resources
-  result = worldManager->removeResource(worldId, resourceId, 30);
+  result = worldManager->removeResource(worldId, resourceHandle, 30);
   BOOST_CHECK(result == ResourceTransactionResult::Success);
 
-  currentAmount = worldManager->getResourceQuantity(worldId, resourceId);
+  currentAmount = worldManager->getResourceQuantity(worldId, resourceHandle);
   BOOST_CHECK_EQUAL(currentAmount, 120);
 
   // Test setting resource quantity
-  result = worldManager->setResource(worldId, resourceId, 200);
+  result = worldManager->setResource(worldId, resourceHandle, 200);
   BOOST_CHECK(result == ResourceTransactionResult::Success);
 
-  currentAmount = worldManager->getResourceQuantity(worldId, resourceId);
+  currentAmount = worldManager->getResourceQuantity(worldId, resourceHandle);
   BOOST_CHECK_EQUAL(currentAmount, 200);
 
   // Test removing more than available
-  result = worldManager->removeResource(worldId, resourceId, 300);
+  result = worldManager->removeResource(worldId, resourceHandle, 300);
   BOOST_CHECK(result == ResourceTransactionResult::InsufficientResources);
 
   // Should remain unchanged
-  currentAmount = worldManager->getResourceQuantity(worldId, resourceId);
+  currentAmount = worldManager->getResourceQuantity(worldId, resourceHandle);
   BOOST_CHECK_EQUAL(currentAmount, 200);
 
   // Clean up
@@ -176,30 +219,42 @@ BOOST_AUTO_TEST_CASE(TestMultipleResourceTypes) {
   bool created = worldManager->createWorld(worldId);
   BOOST_REQUIRE(created);
 
-  // Test with different resource types
-  std::vector<std::string> resourceIds = {"gold", "health_potion", "iron_ore",
-                                          "iron_sword"};
+  // Test with different resource types - get proper handles
+  std::vector<std::string> resourceStringIds = {
+      "Platinum Coins", "Super Health Potion", "Mithril Ore", "Magic Sword"};
+  std::vector<HammerEngine::ResourceHandle> resourceHandles;
   std::vector<int64_t> quantities = {1000, 50, 200, 5};
 
+  // Get ResourceHandles for all resource IDs
+  for (const auto &stringId : resourceStringIds) {
+    auto handle = findResourceByName(templateManager, stringId);
+    if (!handle.isValid()) {
+      handle = getOrLoadResourceByName(templateManager, stringId);
+    }
+    BOOST_REQUIRE(handle.isValid());
+    resourceHandles.push_back(handle);
+  }
+
   // Add all resources
-  for (size_t i = 0; i < resourceIds.size(); ++i) {
+  for (size_t i = 0; i < resourceHandles.size(); ++i) {
     auto result =
-        worldManager->addResource(worldId, resourceIds[i], quantities[i]);
+        worldManager->addResource(worldId, resourceHandles[i], quantities[i]);
     BOOST_CHECK(result == ResourceTransactionResult::Success);
   }
 
   // Verify all resources were added correctly
-  for (size_t i = 0; i < resourceIds.size(); ++i) {
-    int64_t amount = worldManager->getResourceQuantity(worldId, resourceIds[i]);
+  for (size_t i = 0; i < resourceHandles.size(); ++i) {
+    int64_t amount =
+        worldManager->getResourceQuantity(worldId, resourceHandles[i]);
     BOOST_CHECK_EQUAL(amount, quantities[i]);
   }
 
   // Test getting all resources for the world
   auto allResources = worldManager->getWorldResources(worldId);
-  BOOST_CHECK_EQUAL(allResources.size(), resourceIds.size());
+  BOOST_CHECK_EQUAL(allResources.size(), resourceHandles.size());
 
-  for (size_t i = 0; i < resourceIds.size(); ++i) {
-    auto it = allResources.find(resourceIds[i]);
+  for (size_t i = 0; i < resourceHandles.size(); ++i) {
+    auto it = allResources.find(resourceHandles[i]);
     BOOST_REQUIRE(it != allResources.end());
     BOOST_CHECK_EQUAL(it->second, quantities[i]);
   }
@@ -210,7 +265,13 @@ BOOST_AUTO_TEST_CASE(TestMultipleResourceTypes) {
 
 BOOST_AUTO_TEST_CASE(TestMultipleWorlds) {
   std::vector<std::string> worldIds = {"world1", "world2", "world3"};
-  const std::string resourceId = "gold";
+
+  // Get a proper ResourceHandle
+  auto resourceHandle = findResourceByName(templateManager, "Platinum Coins");
+  if (!resourceHandle.isValid()) {
+    resourceHandle = getOrLoadResourceByName(templateManager, "Platinum Coins");
+  }
+  BOOST_REQUIRE(resourceHandle.isValid());
 
   // Create multiple worlds
   for (const auto &worldId : worldIds) {
@@ -221,19 +282,21 @@ BOOST_AUTO_TEST_CASE(TestMultipleWorlds) {
   // Add different amounts of gold to each world
   for (size_t i = 0; i < worldIds.size(); ++i) {
     int64_t amount = (i + 1) * 100; // 100, 200, 300
-    auto result = worldManager->addResource(worldIds[i], resourceId, amount);
+    auto result =
+        worldManager->addResource(worldIds[i], resourceHandle, amount);
     BOOST_CHECK(result == ResourceTransactionResult::Success);
   }
 
   // Verify each world has the correct amount
   for (size_t i = 0; i < worldIds.size(); ++i) {
     int64_t expected = (i + 1) * 100;
-    int64_t actual = worldManager->getResourceQuantity(worldIds[i], resourceId);
+    int64_t actual =
+        worldManager->getResourceQuantity(worldIds[i], resourceHandle);
     BOOST_CHECK_EQUAL(actual, expected);
   }
 
   // Test aggregation across all worlds
-  int64_t totalGold = worldManager->getTotalResourceQuantity(resourceId);
+  int64_t totalGold = worldManager->getTotalResourceQuantity(resourceHandle);
   BOOST_CHECK_EQUAL(totalGold, 600); // 100 + 200 + 300
 
   // Clean up
@@ -245,8 +308,19 @@ BOOST_AUTO_TEST_CASE(TestMultipleWorlds) {
 BOOST_AUTO_TEST_CASE(TestInvalidOperations) {
   const std::string validWorldId = "valid_world";
   const std::string invalidWorldId = "invalid_world";
-  const std::string validResourceId = "gold";
-  const std::string invalidResourceId = "invalid_resource";
+
+  // Get valid and invalid resource handles
+  auto validResourceHandle =
+      findResourceByName(templateManager, "Platinum Coins");
+  if (!validResourceHandle.isValid()) {
+    validResourceHandle =
+        getOrLoadResourceByName(templateManager, "Platinum Coins");
+  }
+  BOOST_REQUIRE(validResourceHandle.isValid());
+
+  // Create an invalid resource handle (unregistered)
+  HammerEngine::ResourceHandle
+      invalidResourceHandle; // Default constructor gives invalid handle
 
   // Create a valid world
   bool created = worldManager->createWorld(validWorldId);
@@ -254,34 +328,37 @@ BOOST_AUTO_TEST_CASE(TestInvalidOperations) {
 
   // Test operations on non-existent world (note: WorldResourceManager
   // auto-creates worlds)
-  auto result = worldManager->addResource(invalidWorldId, validResourceId, 100);
+  auto result =
+      worldManager->addResource(invalidWorldId, validResourceHandle, 100);
   BOOST_CHECK(result == ResourceTransactionResult::Success); // Auto-created
 
-  result = worldManager->removeResource(invalidWorldId, validResourceId, 50);
+  result =
+      worldManager->removeResource(invalidWorldId, validResourceHandle, 50);
   BOOST_CHECK(result == ResourceTransactionResult::Success);
 
-  result = worldManager->setResource(invalidWorldId, validResourceId, 200);
+  result = worldManager->setResource(invalidWorldId, validResourceHandle, 200);
   BOOST_CHECK(result == ResourceTransactionResult::Success);
 
-  // Test operations with non-existent resource (note: WorldResourceManager
-  // allows any resource ID)
-  result = worldManager->addResource(validWorldId, invalidResourceId, 100);
-  BOOST_CHECK(result ==
-              ResourceTransactionResult::Success); // Allows any resource ID
+  // Test operations with invalid resource handle
+  result = worldManager->addResource(validWorldId, invalidResourceHandle, 100);
+  BOOST_CHECK(result == ResourceTransactionResult::InvalidResourceId);
 
-  result = worldManager->removeResource(validWorldId, invalidResourceId, 50);
-  BOOST_CHECK(result == ResourceTransactionResult::Success);
+  result =
+      worldManager->removeResource(validWorldId, invalidResourceHandle, 50);
+  BOOST_CHECK(result == ResourceTransactionResult::InvalidResourceId);
 
-  result = worldManager->setResource(validWorldId, invalidResourceId, 200);
-  BOOST_CHECK(result == ResourceTransactionResult::Success);
+  result = worldManager->setResource(validWorldId, invalidResourceHandle, 200);
+  BOOST_CHECK(result == ResourceTransactionResult::InvalidResourceId);
 
-  // Test getting quantity for both (should work due to auto-creation)
+  // Test getting quantity (should work for valid handle due to auto-creation)
   int64_t quantity =
-      worldManager->getResourceQuantity(invalidWorldId, validResourceId);
+      worldManager->getResourceQuantity(invalidWorldId, validResourceHandle);
   BOOST_CHECK_EQUAL(quantity, 200); // From set operation above
 
-  quantity = worldManager->getResourceQuantity(validWorldId, invalidResourceId);
-  BOOST_CHECK_EQUAL(quantity, 200); // From set operation above
+  // Test getting quantity for invalid resource handle (should return 0)
+  quantity =
+      worldManager->getResourceQuantity(validWorldId, invalidResourceHandle);
+  BOOST_CHECK_EQUAL(quantity, 0);
 
   // Clean up
   worldManager->removeWorld(validWorldId);
@@ -291,30 +368,38 @@ BOOST_AUTO_TEST_CASE(TestInvalidOperations) {
 BOOST_AUTO_TEST_CASE(TestWorldSwitching) {
   const std::string world1 = "world1";
   const std::string world2 = "world2";
-  const std::string resourceId = "gold";
+
+  // Get a proper ResourceHandle
+  auto resourceHandle = findResourceByName(templateManager, "Platinum Coins");
+  if (!resourceHandle.isValid()) {
+    resourceHandle = getOrLoadResourceByName(templateManager, "Platinum Coins");
+  }
+  BOOST_REQUIRE(resourceHandle.isValid());
 
   // Create two worlds
   BOOST_REQUIRE(worldManager->createWorld(world1));
   BOOST_REQUIRE(worldManager->createWorld(world2));
 
   // Add different amounts to each world
-  auto result1 = worldManager->addResource(world1, resourceId, 100);
+  auto result1 = worldManager->addResource(world1, resourceHandle, 100);
   BOOST_REQUIRE(result1 == ResourceTransactionResult::Success);
 
-  auto result2 = worldManager->addResource(world2, resourceId, 500);
+  auto result2 = worldManager->addResource(world2, resourceHandle, 500);
   BOOST_REQUIRE(result2 == ResourceTransactionResult::Success);
 
   // Test that each world maintains separate state
-  BOOST_CHECK_EQUAL(worldManager->getResourceQuantity(world1, resourceId), 100);
-  BOOST_CHECK_EQUAL(worldManager->getResourceQuantity(world2, resourceId), 500);
+  BOOST_CHECK_EQUAL(worldManager->getResourceQuantity(world1, resourceHandle),
+                    100);
+  BOOST_CHECK_EQUAL(worldManager->getResourceQuantity(world2, resourceHandle),
+                    500);
 
   // Modify one world and ensure the other is unaffected
-  auto result3 = worldManager->setResource(world1, resourceId, 1000);
+  auto result3 = worldManager->setResource(world1, resourceHandle, 1000);
   BOOST_REQUIRE(result3 == ResourceTransactionResult::Success);
 
-  BOOST_CHECK_EQUAL(worldManager->getResourceQuantity(world1, resourceId),
+  BOOST_CHECK_EQUAL(worldManager->getResourceQuantity(world1, resourceHandle),
                     1000);
-  BOOST_CHECK_EQUAL(worldManager->getResourceQuantity(world2, resourceId),
+  BOOST_CHECK_EQUAL(worldManager->getResourceQuantity(world2, resourceHandle),
                     500); // Unchanged
 
   // Clean up
@@ -328,15 +413,35 @@ BOOST_AUTO_TEST_CASE(TestResourceStatistics) {
   // Create a test world
   BOOST_REQUIRE(worldManager->createWorld(worldId));
 
+  // Get proper ResourceHandles
+  auto goldHandle = findResourceByName(templateManager, "Platinum Coins");
+  if (!goldHandle.isValid()) {
+    goldHandle = getOrLoadResourceByName(templateManager, "Platinum Coins");
+  }
+  auto potionHandle =
+      findResourceByName(templateManager, "Super Health Potion");
+  if (!potionHandle.isValid()) {
+    potionHandle =
+        getOrLoadResourceByName(templateManager, "Super Health Potion");
+  }
+  auto oreHandle = findResourceByName(templateManager, "Mithril Ore");
+  if (!oreHandle.isValid()) {
+    oreHandle = getOrLoadResourceByName(templateManager, "Mithril Ore");
+  }
+
+  BOOST_REQUIRE(goldHandle.isValid());
+  BOOST_REQUIRE(potionHandle.isValid());
+  BOOST_REQUIRE(oreHandle.isValid());
+
   // Get initial stats
   auto stats = worldManager->getStats();
   uint64_t initialOperations = stats.totalTransactions.load();
 
   // Perform some operations
-  worldManager->addResource(worldId, "gold", 100);
-  worldManager->addResource(worldId, "health_potion", 50);
-  worldManager->removeResource(worldId, "gold", 25);
-  worldManager->setResource(worldId, "iron_ore", 200);
+  worldManager->addResource(worldId, goldHandle, 100);
+  worldManager->addResource(worldId, potionHandle, 50);
+  worldManager->removeResource(worldId, goldHandle, 25);
+  worldManager->setResource(worldId, oreHandle, 200);
 
   // Check that stats were updated
   auto newStats = worldManager->getStats();
@@ -357,7 +462,13 @@ BOOST_AUTO_TEST_CASE(TestThreadSafety) {
   const int NUM_THREADS = 10;
   const int OPERATIONS_PER_THREAD = 100;
   const std::string worldId = "thread_test_world";
-  const std::string resourceId = "gold";
+
+  // Get a proper ResourceHandle
+  auto resourceHandle = findResourceByName(templateManager, "Platinum Coins");
+  if (!resourceHandle.isValid()) {
+    resourceHandle = getOrLoadResourceByName(templateManager, "Platinum Coins");
+  }
+  BOOST_REQUIRE(resourceHandle.isValid());
 
   // Create a test world
   BOOST_REQUIRE(worldManager->createWorld(worldId));
@@ -372,21 +483,21 @@ BOOST_AUTO_TEST_CASE(TestThreadSafety) {
     threads.emplace_back([&]() {
       for (int j = 0; j < OPERATIONS_PER_THREAD; ++j) {
         // Test concurrent adds
-        auto addResult = worldManager->addResource(worldId, resourceId, 10);
+        auto addResult = worldManager->addResource(worldId, resourceHandle, 10);
         if (addResult == ResourceTransactionResult::Success) {
           successfulAdds++;
         }
 
         // Test concurrent reads
         int64_t quantity =
-            worldManager->getResourceQuantity(worldId, resourceId);
+            worldManager->getResourceQuantity(worldId, resourceHandle);
         if (quantity >= 0) { // Always true, but counts the read
           successfulReads++;
         }
 
         // Test concurrent removes (some may fail due to insufficient resources)
         auto removeResult =
-            worldManager->removeResource(worldId, resourceId, 5);
+            worldManager->removeResource(worldId, resourceHandle, 5);
         if (removeResult == ResourceTransactionResult::Success) {
           successfulRemoves++;
         }
@@ -411,7 +522,7 @@ BOOST_AUTO_TEST_CASE(TestThreadSafety) {
 
   // Verify final state is consistent
   int64_t finalQuantity =
-      worldManager->getResourceQuantity(worldId, resourceId);
+      worldManager->getResourceQuantity(worldId, resourceHandle);
   int64_t expectedQuantity =
       successfulAdds.load() * 10 - successfulRemoves.load() * 5;
   BOOST_CHECK_EQUAL(finalQuantity, expectedQuantity);
@@ -440,8 +551,15 @@ BOOST_AUTO_TEST_CASE(TestConcurrentWorldOperations) {
           worldsCreated++;
 
           // Add some resources
-          worldManager->addResource(worldId, "gold", 100);
-
+          auto resourceHandle =
+              findResourceByName(templateManager, "Platinum Coins");
+          if (!resourceHandle.isValid()) {
+            resourceHandle =
+                getOrLoadResourceByName(templateManager, "Platinum Coins");
+          }
+          if (resourceHandle.isValid()) {
+            worldManager->addResource(worldId, resourceHandle, 100);
+          }
           // Remove world
           if (worldManager->removeWorld(worldId)) {
             worldsDestroyed++;
@@ -477,14 +595,39 @@ BOOST_AUTO_TEST_CASE(TestMemoryUsage) {
   std::vector<std::string> worldIds = {"mem_world1", "mem_world2",
                                        "mem_world3"};
 
+  // Get proper ResourceHandles
+  auto goldHandle = findResourceByName(templateManager, "Platinum Coins");
+  if (!goldHandle.isValid()) {
+    goldHandle = getOrLoadResourceByName(templateManager, "Platinum Coins");
+  }
+  auto potionHandle =
+      findResourceByName(templateManager, "Super Health Potion");
+  if (!potionHandle.isValid()) {
+    potionHandle =
+        getOrLoadResourceByName(templateManager, "Super Health Potion");
+  }
+  auto oreHandle = findResourceByName(templateManager, "Mithril Ore");
+  if (!oreHandle.isValid()) {
+    oreHandle = getOrLoadResourceByName(templateManager, "Mithril Ore");
+  }
+  auto swordHandle = findResourceByName(templateManager, "Magic Sword");
+  if (!swordHandle.isValid()) {
+    swordHandle = getOrLoadResourceByName(templateManager, "Magic Sword");
+  }
+
+  BOOST_REQUIRE(goldHandle.isValid());
+  BOOST_REQUIRE(potionHandle.isValid());
+  BOOST_REQUIRE(oreHandle.isValid());
+  BOOST_REQUIRE(swordHandle.isValid());
+
   for (const auto &worldId : worldIds) {
     BOOST_REQUIRE(worldManager->createWorld(worldId));
 
     // Add multiple resources to each world
-    worldManager->addResource(worldId, "gold", 1000);
-    worldManager->addResource(worldId, "health_potion", 50);
-    worldManager->addResource(worldId, "iron_ore", 200);
-    worldManager->addResource(worldId, "iron_sword", 10);
+    worldManager->addResource(worldId, goldHandle, 1000);
+    worldManager->addResource(worldId, potionHandle, 50);
+    worldManager->addResource(worldId, oreHandle, 200);
+    worldManager->addResource(worldId, swordHandle, 10);
   }
 
   size_t newMemoryUsage = worldManager->getMemoryUsage();
@@ -502,26 +645,39 @@ BOOST_AUTO_TEST_CASE(TestMemoryUsage) {
 BOOST_AUTO_TEST_CASE(TestResourceValidation) {
   const std::string worldId = "validation_world";
 
+  // Get a proper ResourceHandle
+  auto validResourceHandle =
+      findResourceByName(templateManager, "Platinum Coins");
+  if (!validResourceHandle.isValid()) {
+    validResourceHandle =
+        getOrLoadResourceByName(templateManager, "Platinum Coins");
+  }
+  BOOST_REQUIRE(validResourceHandle.isValid());
+
+  // Create an invalid resource handle
+  HammerEngine::ResourceHandle
+      invalidResourceHandle; // Default constructor gives invalid handle
+
   // Create a test world
   BOOST_REQUIRE(worldManager->createWorld(worldId));
 
   // Test with empty world ID
-  auto result = worldManager->addResource("", "gold", 100);
+  auto result = worldManager->addResource("", validResourceHandle, 100);
   BOOST_CHECK(result == ResourceTransactionResult::InvalidWorldId);
 
-  // Test with empty resource ID
-  result = worldManager->addResource(worldId, "", 100);
+  // Test with invalid resource handle
+  result = worldManager->addResource(worldId, invalidResourceHandle, 100);
   BOOST_CHECK(result == ResourceTransactionResult::InvalidResourceId);
 
   // Test with zero quantity (should succeed for add/set)
-  result = worldManager->addResource(worldId, "gold", 0);
+  result = worldManager->addResource(worldId, validResourceHandle, 0);
   BOOST_CHECK(result == ResourceTransactionResult::Success);
 
-  result = worldManager->setResource(worldId, "gold", 0);
+  result = worldManager->setResource(worldId, validResourceHandle, 0);
   BOOST_CHECK(result == ResourceTransactionResult::Success);
 
   // Test removing zero (should succeed but do nothing)
-  result = worldManager->removeResource(worldId, "gold", 0);
+  result = worldManager->removeResource(worldId, validResourceHandle, 0);
   BOOST_CHECK(result == ResourceTransactionResult::Success);
 
   // Clean up
@@ -530,7 +686,13 @@ BOOST_AUTO_TEST_CASE(TestResourceValidation) {
 
 BOOST_AUTO_TEST_CASE(TestLargeQuantities) {
   const std::string worldId = "large_quantity_world";
-  const std::string resourceId = "gold";
+
+  // Get a proper ResourceHandle
+  auto resourceHandle = findResourceByName(templateManager, "Platinum Coins");
+  if (!resourceHandle.isValid()) {
+    resourceHandle = getOrLoadResourceByName(templateManager, "Platinum Coins");
+  }
+  BOOST_REQUIRE(resourceHandle.isValid());
 
   // Create a test world
   BOOST_REQUIRE(worldManager->createWorld(worldId));
@@ -540,15 +702,15 @@ BOOST_AUTO_TEST_CASE(TestLargeQuantities) {
   const int64_t largeValue = maxValue - 1000;
 
   // Set a very large quantity
-  auto result = worldManager->setResource(worldId, resourceId, largeValue);
+  auto result = worldManager->setResource(worldId, resourceHandle, largeValue);
   BOOST_CHECK(result == ResourceTransactionResult::Success);
 
   // Verify we can read the value
-  int64_t quantity = worldManager->getResourceQuantity(worldId, resourceId);
+  int64_t quantity = worldManager->getResourceQuantity(worldId, resourceHandle);
   BOOST_CHECK_EQUAL(quantity, largeValue);
 
   // Try to add more (should handle overflow gracefully)
-  result = worldManager->addResource(worldId, resourceId, 2000);
+  result = worldManager->addResource(worldId, resourceHandle, 2000);
   // This might succeed or fail depending on overflow handling implementation
   // At minimum, it should not crash
 

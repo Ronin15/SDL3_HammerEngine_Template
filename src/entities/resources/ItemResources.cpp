@@ -7,8 +7,9 @@
 #include <unordered_map>
 
 // Item base class implementation
-Item::Item(const std::string &id, const std::string &name, ResourceType type)
-    : Resource(id, name, ResourceCategory::Item, type) {
+Item::Item(HammerEngine::ResourceHandle handle, const std::string &name,
+           ResourceType type)
+    : Resource(handle, name, ResourceCategory::Item, type) {
   // Items are moderately stackable
   setMaxStackSize(50);
   setConsumable(false);
@@ -20,9 +21,9 @@ void Item::setDurability(int durability, int maxDurability) {
 }
 
 // Equipment implementation
-Equipment::Equipment(const std::string &id, const std::string &name,
-                     EquipmentSlot slot)
-    : Item(id, name, ResourceType::Equipment), m_equipmentSlot(slot) {
+Equipment::Equipment(HammerEngine::ResourceHandle handle,
+                     const std::string &name, EquipmentSlot slot)
+    : Item(handle, name, ResourceType::Equipment), m_equipmentSlot(slot) {
   // Equipment is not stackable
   setMaxStackSize(1);
   setConsumable(false);
@@ -40,8 +41,9 @@ std::string Equipment::equipmentSlotToString(EquipmentSlot slot) {
 }
 
 // Consumable implementation
-Consumable::Consumable(const std::string &id, const std::string &name)
-    : Item(id, name, ResourceType::Consumable) {
+Consumable::Consumable(HammerEngine::ResourceHandle handle,
+                       const std::string &name)
+    : Item(handle, name, ResourceType::Consumable) {
   // Consumables are highly stackable
   setMaxStackSize(100);
   setConsumable(true);
@@ -61,9 +63,9 @@ std::string Consumable::consumableEffectToString(ConsumableEffect effect) {
 }
 
 // QuestItem implementation
-QuestItem::QuestItem(const std::string &id, const std::string &name,
-                     const std::string &questId)
-    : Item(id, name, ResourceType::QuestItem), m_questId(questId) {
+QuestItem::QuestItem(HammerEngine::ResourceHandle handle,
+                     const std::string &name, const std::string &questId)
+    : Item(handle, name, ResourceType::QuestItem), m_questId(questId) {
   // Quest items are not stackable and not consumable
   setMaxStackSize(1);
   setConsumable(false);

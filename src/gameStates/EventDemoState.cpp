@@ -17,6 +17,7 @@
 #include "managers/EventManager.hpp"
 #include "managers/InputManager.hpp"
 #include "managers/ParticleManager.hpp"
+#include "managers/ResourceTemplateManager.hpp"
 #include "managers/UIManager.hpp"
 #include <algorithm>
 #include <iomanip>
@@ -988,11 +989,18 @@ void EventDemoState::triggerResourceDemo() {
   auto allResources = inventory->getAllResources();
   std::string inventoryStatus = "Inventory Summary: ";
   bool hasItems = false;
-  for (const auto &[id, qty] : allResources) {
+  for (const auto &[handle, qty] : allResources) {
     if (qty > 0) {
       if (hasItems)
         inventoryStatus += ", ";
-      inventoryStatus += id + "(" + std::to_string(qty) + ")";
+
+      // Convert ResourceHandle to name
+      auto resourceTemplate =
+          ResourceTemplateManager::Instance().getResourceTemplate(handle);
+      std::string resourceName =
+          resourceTemplate ? resourceTemplate->getName() : "Unknown";
+
+      inventoryStatus += resourceName + "(" + std::to_string(qty) + ")";
       hasItems = true;
     }
   }
@@ -1502,9 +1510,15 @@ void EventDemoState::updateInventoryUI() {
 
   // Create sorted list for consistent display
   std::vector<std::pair<std::string, int>> sortedResources;
-  for (const auto &[resourceId, quantity] : allResources) {
+  for (const auto &[resourceHandle, quantity] : allResources) {
     if (quantity > 0) {
-      sortedResources.emplace_back(resourceId, quantity);
+      // Convert ResourceHandle to name
+      auto resourceTemplate =
+          ResourceTemplateManager::Instance().getResourceTemplate(
+              resourceHandle);
+      std::string resourceName =
+          resourceTemplate ? resourceTemplate->getName() : "Unknown";
+      sortedResources.emplace_back(resourceName, quantity);
     }
   }
   std::sort(sortedResources.begin(), sortedResources.end());

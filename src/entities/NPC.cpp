@@ -238,16 +238,23 @@ void NPC::initializeInventory() {
 
   // Set up resource change callback
   m_inventory->setResourceChangeCallback(
-      [this](const std::string &resourceId, int oldQuantity, int newQuantity) {
-        onResourceChanged(resourceId, oldQuantity, newQuantity);
+      [this](HammerEngine::ResourceHandle resourceHandle, int oldQuantity,
+             int newQuantity) {
+        onResourceChanged(resourceHandle, oldQuantity, newQuantity);
       });
 
   NPC_DEBUG("NPC inventory initialized with " +
             std::to_string(m_inventory->getMaxSlots()) + " slots");
 }
 
-void NPC::onResourceChanged(const std::string &resourceId, int oldQuantity,
-                            int newQuantity) {
+void NPC::onResourceChanged(HammerEngine::ResourceHandle resourceHandle,
+                            int oldQuantity, int newQuantity) {
+  // Get resource name for the event
+  auto resourceTemplate =
+      ResourceTemplateManager::Instance().getResourceTemplate(resourceHandle);
+  std::string resourceId =
+      resourceTemplate ? resourceTemplate->getName() : "Unknown Resource";
+
   // Create and fire resource change event
   auto resourceEvent = std::make_shared<ResourceChangeEvent>(
       shared_this(), resourceId, oldQuantity, newQuantity, "npc_action");

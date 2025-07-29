@@ -14,6 +14,7 @@
 #include "entities/resources/ItemResources.hpp"
 #include "entities/resources/MaterialResources.hpp"
 #include "managers/ResourceFactory.hpp"
+#include "managers/ResourceTemplateManager.hpp"
 #include "utils/JsonReader.hpp"
 
 using namespace HammerEngine;
@@ -83,7 +84,6 @@ BOOST_AUTO_TEST_CASE(TestCreateEquipmentFromJson) {
   ResourcePtr resource = ResourceFactory::createFromJson(json);
 
   BOOST_REQUIRE(resource != nullptr);
-  BOOST_CHECK_EQUAL(resource->getId(), "test_sword");
   BOOST_CHECK_EQUAL(resource->getName(), "Test Sword");
   BOOST_CHECK_EQUAL(static_cast<int>(resource->getCategory()),
                     static_cast<int>(ResourceCategory::Item));
@@ -120,7 +120,6 @@ BOOST_AUTO_TEST_CASE(TestCreateConsumableFromJson) {
   ResourcePtr resource = ResourceFactory::createFromJson(json);
 
   BOOST_REQUIRE(resource != nullptr);
-  BOOST_CHECK_EQUAL(resource->getId(), "test_potion");
   BOOST_CHECK_EQUAL(resource->getName(), "Test Potion");
   BOOST_CHECK(resource->isConsumable());
 
@@ -152,7 +151,6 @@ BOOST_AUTO_TEST_CASE(TestCreateQuestItemFromJson) {
   ResourcePtr resource = ResourceFactory::createFromJson(json);
 
   BOOST_REQUIRE(resource != nullptr);
-  BOOST_CHECK_EQUAL(resource->getId(), "test_key");
   BOOST_CHECK_EQUAL(resource->getName(), "Test Key");
 
   // Test that it's actually a QuestItem object
@@ -183,7 +181,6 @@ BOOST_AUTO_TEST_CASE(TestCreateCraftingComponentFromJson) {
   ResourcePtr resource = ResourceFactory::createFromJson(json);
 
   BOOST_REQUIRE(resource != nullptr);
-  BOOST_CHECK_EQUAL(resource->getId(), "test_essence");
   BOOST_CHECK_EQUAL(resource->getName(), "Test Essence");
 
   // Test that it's actually a CraftingComponent object
@@ -218,7 +215,6 @@ BOOST_AUTO_TEST_CASE(TestCreateRawResourceFromJson) {
   ResourcePtr resource = ResourceFactory::createFromJson(json);
 
   BOOST_REQUIRE(resource != nullptr);
-  BOOST_CHECK_EQUAL(resource->getId(), "test_ore");
   BOOST_CHECK_EQUAL(resource->getName(), "Test Ore");
 
   // Test that it's actually a RawResource object
@@ -249,7 +245,6 @@ BOOST_AUTO_TEST_CASE(TestCreateGoldFromJson) {
   ResourcePtr resource = ResourceFactory::createFromJson(json);
 
   BOOST_REQUIRE(resource != nullptr);
-  BOOST_CHECK_EQUAL(resource->getId(), "test_gold");
   BOOST_CHECK_EQUAL(resource->getName(), "Test Gold");
 
   // Test that it's actually a Gold object
@@ -279,7 +274,6 @@ BOOST_AUTO_TEST_CASE(TestCreateGemFromJson) {
   ResourcePtr resource = ResourceFactory::createFromJson(json);
 
   BOOST_REQUIRE(resource != nullptr);
-  BOOST_CHECK_EQUAL(resource->getId(), "test_emerald");
   BOOST_CHECK_EQUAL(resource->getName(), "Test Emerald");
 
   // Test that it's actually a Gem object
@@ -311,7 +305,6 @@ BOOST_AUTO_TEST_CASE(TestCreateEnergyFromJson) {
   ResourcePtr resource = ResourceFactory::createFromJson(json);
 
   BOOST_REQUIRE(resource != nullptr);
-  BOOST_CHECK_EQUAL(resource->getId(), "test_energy");
   BOOST_CHECK_EQUAL(resource->getName(), "Test Energy");
 
   // Test that it's actually an Energy object
@@ -342,7 +335,6 @@ BOOST_AUTO_TEST_CASE(TestCreateManaFromJson) {
   ResourcePtr resource = ResourceFactory::createFromJson(json);
 
   BOOST_REQUIRE(resource != nullptr);
-  BOOST_CHECK_EQUAL(resource->getId(), "test_mana");
   BOOST_CHECK_EQUAL(resource->getName(), "Test Mana");
 
   // Test that it's actually a Mana object
@@ -391,7 +383,6 @@ BOOST_AUTO_TEST_CASE(TestUnknownTypeHandling) {
 
   // Should fallback to base Resource class
   BOOST_REQUIRE(resource != nullptr);
-  BOOST_CHECK_EQUAL(resource->getId(), "test_unknown");
   BOOST_CHECK_EQUAL(resource->getName(), "Test Unknown");
 }
 
@@ -399,9 +390,11 @@ BOOST_AUTO_TEST_CASE(TestCustomCreatorRegistration) {
   // Test registering a custom creator
   bool registered = ResourceFactory::registerCreator(
       "CustomType", [](const JsonValue &json) -> ResourcePtr {
-        return std::make_shared<Resource>(
-            json["id"].asString(), json["name"].asString(),
-            ResourceCategory::Item, ResourceType::Equipment);
+        // Create a proper ResourceHandle for the custom resource
+        auto handle = ResourceTemplateManager::Instance().generateHandle();
+        return std::make_shared<Resource>(handle, json["name"].asString(),
+                                          ResourceCategory::Item,
+                                          ResourceType::Equipment);
       });
 
   BOOST_CHECK(registered);

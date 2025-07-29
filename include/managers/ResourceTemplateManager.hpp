@@ -7,6 +7,7 @@
 #define RESOURCE_TEMPLATE_MANAGER_HPP
 
 #include "entities/Resource.hpp"
+#include "utils/ResourceHandle.hpp"
 #include <atomic>
 #include <memory>
 #include <mutex>
@@ -64,17 +65,41 @@ public:
 
   // Resource template management
   bool registerResourceTemplate(const ResourcePtr &resource);
-  ResourcePtr getResourceTemplate(const std::string &resourceId) const;
+  ResourcePtr getResourceTemplate(HammerEngine::ResourceHandle handle) const;
+  ResourcePtr
+  getResourceByName(const std::string &name) const; // O(1) name lookup
   std::vector<ResourcePtr>
   getResourcesByCategory(ResourceCategory category) const;
   std::vector<ResourcePtr> getResourcesByType(ResourceType type) const;
+
+  // Fast property access (cache-optimized, no shared_ptr dereferencing)
+  int getMaxStackSize(HammerEngine::ResourceHandle handle) const;
+  float getValue(HammerEngine::ResourceHandle handle) const;
+  ResourceCategory getCategory(HammerEngine::ResourceHandle handle) const;
+  ResourceType getType(HammerEngine::ResourceHandle handle) const;
+
+  // Cache-friendly bulk operations for better performance
+  std::vector<int> getMaxStackSizes(
+      const std::vector<HammerEngine::ResourceHandle> &handles) const;
+  std::vector<float>
+  getValues(const std::vector<HammerEngine::ResourceHandle> &handles) const;
+  void
+  getPropertiesBatch(const std::vector<HammerEngine::ResourceHandle> &handles,
+                     std::vector<int> &maxStackSizes,
+                     std::vector<float> &values,
+                     std::vector<ResourceCategory> &categories,
+                     std::vector<ResourceType> &types) const;
+
+  // Handle management
+  HammerEngine::ResourceHandle generateHandle();
+  bool isValidHandle(HammerEngine::ResourceHandle handle) const;
 
   // Statistics
   ResourceStats getStats() const;
   void resetStats() { m_stats.reset(); }
 
   // Resource creation
-  ResourcePtr createResource(const std::string &resourceId) const;
+  ResourcePtr createResource(HammerEngine::ResourceHandle handle) const;
 
   // JSON loading methods
   bool loadResourcesFromJson(const std::string &filename);
@@ -82,7 +107,7 @@ public:
 
   // Query methods
   size_t getResourceTemplateCount() const;
-  bool hasResourceTemplate(const std::string &resourceId) const;
+  bool hasResourceTemplate(HammerEngine::ResourceHandle handle) const;
   size_t getMemoryUsage() const;
 
 private:
@@ -94,10 +119,30 @@ private:
   ResourceTemplateManager &operator=(const ResourceTemplateManager &) = delete;
 
   // Internal data
-  std::unordered_map<std::string, ResourcePtr> m_resourceTemplates;
-  std::unordered_map<ResourceCategory, std::vector<std::string>>
+  std::unordered_map<HammerEngine::ResourceHandle, ResourcePtr>
+      m_resourceTemplates;
+
+  // SoA optimization for frequently accessed properties (cache-friendly)
+  std::unordered_map<HammerEngine::ResourceHandle, int> m_maxStackSizes;
+  std::unordered_map<HammerEngine::ResourceHandle, float> m_values;
+  std::unordered_map<HammerEngine::ResourceHandle, ResourceCategory>
+      m_categories;
+  std::unordered_map<HammerEngine::ResourceHandle, ResourceType> m_types;
+
+  // Category and type indexes for fast filtering
+  std::unordered_map<ResourceCategory,
+                     std::vector<HammerEngine::ResourceHandle>>
       m_categoryIndex;
-  std::unordered_map<ResourceType, std::vector<std::string>> m_typeIndex;
+  std::unordered_map<ResourceType, std::vector<HammerEngine::ResourceHandle>>
+      m_typeIndex;
+
+  // Name index for O(1) name-based lookups
+  std::unordered_map<std::string, HammerEngine::ResourceHandle> m_nameIndex;
+
+  // Handle generation
+  std::atomic<HammerEngine::ResourceHandle::HandleId> m_nextHandleId{
+      1}; // Start from 1, 0 is invalid
+  std::atomic<HammerEngine::ResourceHandle::Generation> m_currentGeneration{1};
 
   mutable ResourceStats m_stats;
   std::atomic<bool> m_initialized{false};
@@ -108,11 +153,16 @@ private:
   mutable std::mutex m_indexMutex;
 
   // Helper methods
-  void updateIndexes(const std::string &resourceId, ResourceCategory category,
-                     ResourceType type);
-  void removeFromIndexes(const std::string &resourceId);
+  void updateIndexes(HammerEngine::ResourceHandle handle,
+                     ResourceCategory category, ResourceType type);
+  void updateNameIndex(HammerEngine::ResourceHandle handle,
+                       const std::string &name);
+  void removeFromIndexes(HammerEngine::ResourceHandle handle);
   void rebuildIndexes();
-  bool isValidResourceId(const std::string &resourceId) const;
+  bool isValidResourceHandle(HammerEngine::ResourceHandle handle) const;
+
+  // Internal registration method (no locking - assumes lock is already held)
+  bool registerResourceTemplateInternal(const ResourcePtr &resource);
 
   // Default resource creation
   void createDefaultResources();

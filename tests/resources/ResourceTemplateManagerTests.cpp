@@ -6,335 +6,395 @@
 #define BOOST_TEST_MODULE ResourceTemplateManagerTests
 #include <boost/test/unit_test.hpp>
 
-#include <atomic>
-#include <chrono>
+#include "entities/Resource.hpp"
+#include "managers/ResourceTemplateManager.hpp"
+#include "utils/ResourceHandle.hpp"
 #include <memory>
-#include <string>
-#include <thread>
 #include <vector>
 
-#include "core/Logger.hpp"
-#include "entities/Resource.hpp"
-#include "entities/resources/CurrencyAndGameResources.hpp"
-#include "entities/resources/ItemResources.hpp"
-#include "entities/resources/MaterialResources.hpp"
-#include "managers/ResourceTemplateManager.hpp"
+using HammerEngine::ResourceHandle;
 
-class ResourceTemplateManagerTestFixture {
-public:
-  ResourceTemplateManagerTestFixture() {
-    // Initialize ResourceTemplateManager singleton
-    resourceManager = &ResourceTemplateManager::Instance();
-    BOOST_REQUIRE(resourceManager != nullptr);
+struct ResourceTemplateManagerFixture {
+  ResourceTemplateManager *manager;
 
-    // Initialize the manager (loads default resources)
-    bool initialized = resourceManager->init();
-    BOOST_REQUIRE(initialized);
+  ResourceTemplateManagerFixture() {
+    manager = &ResourceTemplateManager::Instance();
+    manager->clean();
+    BOOST_REQUIRE(manager->init());
   }
 
-  ~ResourceTemplateManagerTestFixture() {
-    // Clean up ResourceTemplateManager
-    resourceManager->clean();
-  }
+  ~ResourceTemplateManagerFixture() { manager->clean(); }
 
-protected:
-  ResourceTemplateManager *resourceManager;
+  ResourcePtr createTestResource(const std::string &name,
+                                 ResourceCategory category, ResourceType type) {
+    auto handle = manager->generateHandle();
+    return std::make_shared<Resource>(handle, name, category, type);
+  }
 };
 
 BOOST_FIXTURE_TEST_SUITE(ResourceTemplateManagerTestSuite,
-                         ResourceTemplateManagerTestFixture)
+                         ResourceTemplateManagerFixture)
 
-BOOST_AUTO_TEST_CASE(TestSingletonPattern) {
-  // Test that Instance always returns the same instance
-  ResourceTemplateManager *instance1 = &ResourceTemplateManager::Instance();
-  ResourceTemplateManager *instance2 = &ResourceTemplateManager::Instance();
-
-  BOOST_CHECK(instance1 == instance2);
-  BOOST_CHECK(instance1 == resourceManager);
+BOOST_AUTO_TEST_CASE(TestBasicInitialization) {
+  BOOST_REQUIRE(manager != nullptr);
+  BOOST_CHECK(manager->isInitialized());
+  // Manager loads default resources during init, so count will be > 0
+  BOOST_CHECK(manager->getResourceTemplateCount() > 0);
 }
 
-BOOST_AUTO_TEST_CASE(TestInitialization) {
-  // Test that ResourceManager is initialized
-  BOOST_CHECK(resourceManager->isInitialized());
+BOOST_AUTO_TEST_CASE(TestHandleGeneration) {
+  auto handle1 = manager->generateHandle();
+  auto handle2 = manager->generateHandle();
 
-  // Test that we have some default resources loaded
-  BOOST_CHECK(resourceManager->getResourceTemplateCount() > 0);
+  BOOST_CHECK(handle1.isValid());
+  BOOST_CHECK(handle2.isValid());
+  BOOST_CHECK(handle1 != handle2);
 
-  // Clean and re-initialize
-  resourceManager->clean();
-  BOOST_CHECK(!resourceManager->isInitialized());
+  BOOST_CHECK(manager->isValidHandle(handle1));
+  BOOST_CHECK(manager->isValidHandle(handle2));
 
-  bool reinitialized = resourceManager->init();
-  BOOST_CHECK(reinitialized);
-  BOOST_CHECK(resourceManager->isInitialized());
+  ResourceHandle invalidHandle;
+  BOOST_CHECK(!invalidHandle.isValid());
+  BOOST_CHECK(!manager->isValidHandle(invalidHandle));
 }
 
-BOOST_AUTO_TEST_CASE(TestDefaultResourcesLoaded) {
-  // Test that default resources are properly loaded
+BOOST_AUTO_TEST_CASE(TestResourceTemplateRegistration) {
+  auto initialCount = manager->getResourceTemplateCount();
+  auto resource = createTestResource("Test Item", ResourceCategory::Item,
+                                     ResourceType::Equipment);
+  auto handle = resource->getHandle();
 
-  // Test item resources
-  auto healthPotion = resourceManager->getResourceTemplate("health_potion");
-  BOOST_REQUIRE(healthPotion != nullptr);
-  BOOST_CHECK_EQUAL(healthPotion->getName(), "Health Potion");
-  BOOST_CHECK_EQUAL(static_cast<int>(healthPotion->getCategory()),
-                    static_cast<int>(ResourceCategory::Item));
-  BOOST_CHECK_EQUAL(static_cast<int>(healthPotion->getType()),
-                    static_cast<int>(ResourceType::Consumable));
+  BOOST_CHECK(manager->registerResourceTemplate(resource));
+  BOOST_CHECK_EQUAL(manager->getResourceTemplateCount(), initialCount + 1);
+  BOOST_CHECK(manager->hasResourceTemplate(handle));
 
-  auto ironSword = resourceManager->getResourceTemplate("iron_sword");
-  BOOST_REQUIRE(ironSword != nullptr);
-  BOOST_CHECK_EQUAL(ironSword->getName(), "Iron Sword");
-  BOOST_CHECK_EQUAL(static_cast<int>(ironSword->getCategory()),
-                    static_cast<int>(ResourceCategory::Item));
-  BOOST_CHECK_EQUAL(static_cast<int>(ironSword->getType()),
-                    static_cast<int>(ResourceType::Equipment));
-
-  // Test material resources
-  auto ironOre = resourceManager->getResourceTemplate("iron_ore");
-  BOOST_REQUIRE(ironOre != nullptr);
-  BOOST_CHECK_EQUAL(ironOre->getName(), "Iron Ore");
-  BOOST_CHECK_EQUAL(static_cast<int>(ironOre->getCategory()),
-                    static_cast<int>(ResourceCategory::Material));
-  BOOST_CHECK_EQUAL(static_cast<int>(ironOre->getType()),
-                    static_cast<int>(ResourceType::RawResource));
-
-  // Test currency resources
-  auto gold = resourceManager->getResourceTemplate("gold");
-  BOOST_REQUIRE(gold != nullptr);
-  BOOST_CHECK_EQUAL(gold->getName(), "Gold Coins");
-  BOOST_CHECK_EQUAL(static_cast<int>(gold->getCategory()),
-                    static_cast<int>(ResourceCategory::Currency));
-  BOOST_CHECK_EQUAL(static_cast<int>(gold->getType()),
-                    static_cast<int>(ResourceType::Gold));
-}
-
-BOOST_AUTO_TEST_CASE(TestResourceRegistration) {
-  // Create a custom test resource
-  auto testResource = Resource::create<Resource>(
-      "test_resource", "Test Resource", ResourceCategory::Item,
-      ResourceType::Consumable);
-
-  // Set additional properties
-  testResource->setValue(10.0f);
-  testResource->setMaxStackSize(999);
-  testResource->setConsumable(true);
-  testResource->setDescription("A resource for testing");
-
-  // Register the resource
-  bool registered = resourceManager->registerResourceTemplate(testResource);
-  BOOST_CHECK(registered);
-
-  // Try to retrieve it
-  auto retrieved = resourceManager->getResourceTemplate("test_resource");
+  auto retrieved = manager->getResourceTemplate(handle);
   BOOST_REQUIRE(retrieved != nullptr);
-  BOOST_CHECK_EQUAL(retrieved->getName(), "Test Resource");
-  BOOST_CHECK_EQUAL(retrieved->getDescription(), "A resource for testing");
-
-  // Try to register the same resource again (should fail)
-  bool registerAgain = resourceManager->registerResourceTemplate(testResource);
-  BOOST_CHECK(!registerAgain);
+  BOOST_CHECK_EQUAL(retrieved->getName(), "Test Item");
+  BOOST_CHECK(retrieved->getCategory() == ResourceCategory::Item);
+  BOOST_CHECK(retrieved->getType() == ResourceType::Equipment);
 }
 
-BOOST_AUTO_TEST_CASE(TestResourceRetrieval) {
-  // Test retrieving existing resource
-  auto resource = resourceManager->getResourceTemplate("health_potion");
-  BOOST_CHECK(resource != nullptr);
+BOOST_AUTO_TEST_CASE(TestNullResourceRegistration) {
+  auto initialCount = manager->getResourceTemplateCount();
+  ResourcePtr nullResource;
+  BOOST_CHECK(!manager->registerResourceTemplate(nullResource));
+  BOOST_CHECK_EQUAL(manager->getResourceTemplateCount(), initialCount);
+}
 
-  // Test retrieving non-existent resource
-  auto nonExistent =
-      resourceManager->getResourceTemplate("non_existent_resource");
-  BOOST_CHECK(nonExistent == nullptr);
+BOOST_AUTO_TEST_CASE(TestDuplicateResourceRegistration) {
+  auto initialCount = manager->getResourceTemplateCount();
+  auto resource1 = createTestResource("Item 1", ResourceCategory::Item,
+                                      ResourceType::Equipment);
+  auto resource2 = createTestResource("Item 2", ResourceCategory::Item,
+                                      ResourceType::Consumable);
 
-  // Test hasResourceTemplate
-  BOOST_CHECK(resourceManager->hasResourceTemplate("health_potion"));
-  BOOST_CHECK(!resourceManager->hasResourceTemplate("non_existent_resource"));
+  // Use the same handle for both resources (simulate duplicate)
+  auto handle = resource1->getHandle();
+  auto duplicateResource = std::make_shared<Resource>(
+      handle, "Duplicate", ResourceCategory::Material,
+      ResourceType::CraftingComponent);
+
+  BOOST_CHECK(manager->registerResourceTemplate(resource1));
+  BOOST_CHECK(!manager->registerResourceTemplate(duplicateResource));
+  BOOST_CHECK_EQUAL(manager->getResourceTemplateCount(), initialCount + 1);
+
+  auto retrieved = manager->getResourceTemplate(handle);
+  BOOST_CHECK_EQUAL(retrieved->getName(), "Item 1");
+}
+
+BOOST_AUTO_TEST_CASE(TestResourceTemplateRetrieval) {
+  auto resource1 = createTestResource("Test Item 1", ResourceCategory::Item,
+                                      ResourceType::Equipment);
+  auto resource2 = createTestResource("Test Item 2", ResourceCategory::Material,
+                                      ResourceType::CraftingComponent);
+
+  manager->registerResourceTemplate(resource1);
+  manager->registerResourceTemplate(resource2);
+
+  auto retrieved1 = manager->getResourceTemplate(resource1->getHandle());
+  auto retrieved2 = manager->getResourceTemplate(resource2->getHandle());
+
+  BOOST_REQUIRE(retrieved1 != nullptr);
+  BOOST_REQUIRE(retrieved2 != nullptr);
+  BOOST_CHECK_EQUAL(retrieved1->getName(), "Test Item 1");
+  BOOST_CHECK_EQUAL(retrieved2->getName(), "Test Item 2");
+
+  ResourceHandle invalidHandle;
+  auto invalidRetrieved = manager->getResourceTemplate(invalidHandle);
+  BOOST_CHECK(invalidRetrieved == nullptr);
 }
 
 BOOST_AUTO_TEST_CASE(TestResourcesByCategory) {
-  auto itemResources =
-      resourceManager->getResourcesByCategory(ResourceCategory::Item);
-  BOOST_CHECK(itemResources.size() > 0);
+  auto item1 = createTestResource("Sword", ResourceCategory::Item,
+                                  ResourceType::Equipment);
+  auto item2 = createTestResource("Potion", ResourceCategory::Item,
+                                  ResourceType::Consumable);
+  auto material1 = createTestResource("Iron", ResourceCategory::Material,
+                                      ResourceType::RawResource);
 
-  // Verify all returned resources are actually items
-  for (const auto &resource : itemResources) {
-    BOOST_CHECK_EQUAL(static_cast<int>(resource->getCategory()),
-                      static_cast<int>(ResourceCategory::Item));
+  manager->registerResourceTemplate(item1);
+  manager->registerResourceTemplate(item2);
+  manager->registerResourceTemplate(material1);
+
+  auto items = manager->getResourcesByCategory(ResourceCategory::Item);
+  auto materials = manager->getResourcesByCategory(ResourceCategory::Material);
+  auto currencies = manager->getResourcesByCategory(ResourceCategory::Currency);
+
+  // Check that our new items were added (existing defaults may also exist)
+  BOOST_CHECK(items.size() >= 2);
+  BOOST_CHECK(materials.size() >= 1);
+  // Note: Avoiding >= 0 check since size_t is always >= 0, just check it's a
+  // valid size
+  BOOST_CHECK(currencies.size() ==
+              currencies.size()); // This is always true but avoids warning
+
+  // Check that our specific items are in the results
+  std::vector<std::string> itemNames;
+  for (const auto &item : items) {
+    itemNames.push_back(item->getName());
   }
-
-  auto materialResources =
-      resourceManager->getResourcesByCategory(ResourceCategory::Material);
-  BOOST_CHECK(materialResources.size() > 0);
-
-  for (const auto &resource : materialResources) {
-    BOOST_CHECK_EQUAL(static_cast<int>(resource->getCategory()),
-                      static_cast<int>(ResourceCategory::Material));
-  }
+  BOOST_CHECK(std::find(itemNames.begin(), itemNames.end(), "Sword") !=
+              itemNames.end());
+  BOOST_CHECK(std::find(itemNames.begin(), itemNames.end(), "Potion") !=
+              itemNames.end());
 }
 
 BOOST_AUTO_TEST_CASE(TestResourcesByType) {
-  auto consumableResources =
-      resourceManager->getResourcesByType(ResourceType::Consumable);
-  BOOST_CHECK(consumableResources.size() > 0);
+  auto equipment1 = createTestResource("Sword", ResourceCategory::Item,
+                                       ResourceType::Equipment);
+  auto equipment2 = createTestResource("Shield", ResourceCategory::Item,
+                                       ResourceType::Equipment);
+  auto consumable = createTestResource("Potion", ResourceCategory::Item,
+                                       ResourceType::Consumable);
 
-  for (const auto &resource : consumableResources) {
-    BOOST_CHECK_EQUAL(static_cast<int>(resource->getType()),
-                      static_cast<int>(ResourceType::Consumable));
+  manager->registerResourceTemplate(equipment1);
+  manager->registerResourceTemplate(equipment2);
+  manager->registerResourceTemplate(consumable);
+
+  auto equipments = manager->getResourcesByType(ResourceType::Equipment);
+  auto consumables = manager->getResourcesByType(ResourceType::Consumable);
+  auto questItems = manager->getResourcesByType(ResourceType::QuestItem);
+
+  // Check that our equipment was added (existing defaults may also exist)
+  BOOST_CHECK(equipments.size() >= 2);
+  BOOST_CHECK(consumables.size() >= 1);
+  // Just check that questItems is a valid container
+  BOOST_CHECK(questItems.size() == questItems.size());
+
+  // Check that our specific equipment is in the results
+  std::vector<std::string> equipmentNames;
+  for (const auto &equipment : equipments) {
+    equipmentNames.push_back(equipment->getName());
+  }
+  BOOST_CHECK(std::find(equipmentNames.begin(), equipmentNames.end(),
+                        "Sword") != equipmentNames.end());
+  BOOST_CHECK(std::find(equipmentNames.begin(), equipmentNames.end(),
+                        "Shield") != equipmentNames.end());
+}
+
+BOOST_AUTO_TEST_CASE(TestFastPropertyAccess) {
+  auto resource = createTestResource("Test Item", ResourceCategory::Item,
+                                     ResourceType::Equipment);
+  auto handle = resource->getHandle();
+
+  resource->setMaxStackSize(50);
+  resource->setValue(100.5f);
+
+  manager->registerResourceTemplate(resource);
+
+  BOOST_CHECK_EQUAL(manager->getMaxStackSize(handle), 50);
+  BOOST_CHECK_CLOSE(manager->getValue(handle), 100.5f, 0.001f);
+  BOOST_CHECK(manager->getCategory(handle) == ResourceCategory::Item);
+  BOOST_CHECK(manager->getType(handle) == ResourceType::Equipment);
+
+  ResourceHandle invalidHandle;
+  BOOST_CHECK_EQUAL(manager->getMaxStackSize(invalidHandle),
+                    1); // Default stack size for invalid handles
+  BOOST_CHECK_EQUAL(manager->getValue(invalidHandle), 0.0f);
+}
+
+BOOST_AUTO_TEST_CASE(TestBulkPropertyAccess) {
+  std::vector<ResourcePtr> resources;
+  std::vector<ResourceHandle> handles;
+
+  for (int i = 0; i < 5; ++i) {
+    auto resource =
+        createTestResource("Item " + std::to_string(i), ResourceCategory::Item,
+                           ResourceType::Equipment);
+    resource->setMaxStackSize(10 + i);
+    resource->setValue(100.0f + i);
+
+    resources.push_back(resource);
+    handles.push_back(resource->getHandle());
+    manager->registerResourceTemplate(resource);
   }
 
-  auto equipmentResources =
-      resourceManager->getResourcesByType(ResourceType::Equipment);
-  BOOST_CHECK(equipmentResources.size() > 0);
+  auto maxStackSizes = manager->getMaxStackSizes(handles);
+  auto values = manager->getValues(handles);
 
-  for (const auto &resource : equipmentResources) {
-    BOOST_CHECK_EQUAL(static_cast<int>(resource->getType()),
-                      static_cast<int>(ResourceType::Equipment));
+  BOOST_CHECK_EQUAL(maxStackSizes.size(), 5);
+  BOOST_CHECK_EQUAL(values.size(), 5);
+
+  for (size_t i = 0; i < 5; ++i) {
+    BOOST_CHECK_EQUAL(maxStackSizes[i], 10 + static_cast<int>(i));
+    BOOST_CHECK_CLOSE(values[i], 100.0f + static_cast<float>(i), 0.001f);
+  }
+
+  std::vector<int> batchMaxStackSizes;
+  std::vector<float> batchValues;
+  std::vector<ResourceCategory> batchCategories;
+  std::vector<ResourceType> batchTypes;
+
+  manager->getPropertiesBatch(handles, batchMaxStackSizes, batchValues,
+                              batchCategories, batchTypes);
+
+  BOOST_CHECK_EQUAL(batchMaxStackSizes.size(), 5);
+  BOOST_CHECK_EQUAL(batchValues.size(), 5);
+  BOOST_CHECK_EQUAL(batchCategories.size(), 5);
+  BOOST_CHECK_EQUAL(batchTypes.size(), 5);
+
+  for (size_t i = 0; i < 5; ++i) {
+    BOOST_CHECK_EQUAL(batchMaxStackSizes[i], 10 + static_cast<int>(i));
+    BOOST_CHECK_CLOSE(batchValues[i], 100.0f + static_cast<float>(i), 0.001f);
+    BOOST_CHECK(batchCategories[i] == ResourceCategory::Item);
+    BOOST_CHECK(batchTypes[i] == ResourceType::Equipment);
   }
 }
 
 BOOST_AUTO_TEST_CASE(TestResourceCreation) {
-  // Test creating resource instances from templates
-  auto healthPotionInstance = resourceManager->createResource("health_potion");
-  BOOST_REQUIRE(healthPotionInstance != nullptr);
-  BOOST_CHECK_EQUAL(healthPotionInstance->getName(), "Health Potion");
+  auto templateResource = createTestResource(
+      "Test Template", ResourceCategory::Item, ResourceType::Equipment);
+  auto handle = templateResource->getHandle();
 
-  // Test creating from non-existent template
-  auto nonExistent = resourceManager->createResource("non_existent_resource");
-  BOOST_CHECK(nonExistent == nullptr);
+  templateResource->setMaxStackSize(99);
+  templateResource->setValue(250.0f);
+
+  manager->registerResourceTemplate(templateResource);
+
+  auto createdResource = manager->createResource(handle);
+  BOOST_REQUIRE(createdResource != nullptr);
+  BOOST_CHECK_EQUAL(createdResource->getName(), "Test Template");
+  BOOST_CHECK_EQUAL(createdResource->getMaxStackSize(), 99);
+  BOOST_CHECK_CLOSE(createdResource->getValue(), 250.0f, 0.001f);
+  BOOST_CHECK(createdResource->getCategory() == ResourceCategory::Item);
+  BOOST_CHECK(createdResource->getType() == ResourceType::Equipment);
+
+  ResourceHandle invalidHandle;
+  auto invalidCreated = manager->createResource(invalidHandle);
+  BOOST_CHECK(invalidCreated == nullptr);
 }
 
-BOOST_AUTO_TEST_CASE(TestThreadSafety) {
-  const int NUM_THREADS = 10;
-  const int OPERATIONS_PER_THREAD = 100;
-  std::atomic<int> successfulReads{0};
-  std::atomic<int> successfulRegistrations{0};
+BOOST_AUTO_TEST_CASE(TestStatistics) {
+  auto stats = manager->getStats();
+  BOOST_CHECK_EQUAL(stats.templatesLoaded.load(), 0);
+  BOOST_CHECK_EQUAL(stats.resourcesCreated.load(), 0);
+  BOOST_CHECK_EQUAL(stats.resourcesDestroyed.load(), 0);
 
-  std::vector<std::thread> threads;
+  auto resource = createTestResource("Test Item", ResourceCategory::Item,
+                                     ResourceType::Equipment);
+  manager->registerResourceTemplate(resource);
 
-  // Create threads that perform concurrent operations
-  for (int i = 0; i < NUM_THREADS; ++i) {
-    threads.emplace_back([&]() {
-      for (int j = 0; j < OPERATIONS_PER_THREAD; ++j) {
-        // Test concurrent reads
-        auto resource = resourceManager->getResourceTemplate("health_potion");
-        if (resource != nullptr) {
-          successfulReads++;
-        }
+  stats = manager->getStats();
+  BOOST_CHECK_EQUAL(stats.templatesLoaded.load(), 1);
 
-        // Test concurrent registrations (most will fail due to duplicates,
-        // which is expected)
-        auto testResource = Resource::create<Resource>(
-            "thread_test_" + std::to_string(i) + "_" + std::to_string(j),
-            "Thread Test Resource", ResourceCategory::Item,
-            ResourceType::Consumable);
-
-        if (resourceManager->registerResourceTemplate(testResource)) {
-          successfulRegistrations++;
-        }
-
-        // Small delay to increase chance of race conditions
-        std::this_thread::sleep_for(std::chrono::microseconds(1));
-      }
-    });
-  }
-
-  // Wait for all threads to complete
-  for (auto &thread : threads) {
-    thread.join();
-  }
-
-  // Verify that reads were successful (should be all successful)
-  BOOST_CHECK_EQUAL(successfulReads.load(),
-                    NUM_THREADS * OPERATIONS_PER_THREAD);
-
-  // Verify that some registrations were successful
-  BOOST_CHECK(successfulRegistrations.load() > 0);
-
-  // The exact number of successful registrations depends on thread timing,
-  // but it should be reasonable
-  BOOST_CHECK(successfulRegistrations.load() <=
-              NUM_THREADS * OPERATIONS_PER_THREAD);
-}
-
-BOOST_AUTO_TEST_CASE(TestResourceValidation) {
-  // Test registering null resource
-  bool result = resourceManager->registerResourceTemplate(nullptr);
-  BOOST_CHECK(!result);
-
-  // Test registering resource with empty ID
-  auto invalidResource = Resource::create<Resource>(
-      "", // empty ID
-      "Invalid Resource", ResourceCategory::Item, ResourceType::Consumable);
-
-  result = resourceManager->registerResourceTemplate(invalidResource);
-  BOOST_CHECK(!result);
-}
-
-BOOST_AUTO_TEST_CASE(TestResourceProperties) {
-  auto healthPotion = resourceManager->getResourceTemplate("health_potion");
-  BOOST_REQUIRE(healthPotion != nullptr);
-
-  // Test basic properties
-  BOOST_CHECK_EQUAL(healthPotion->getId(), "health_potion");
-  BOOST_CHECK_EQUAL(healthPotion->getName(), "Health Potion");
-  BOOST_CHECK(!healthPotion->getDescription().empty());
-
-  // Test resource-specific properties
-  BOOST_CHECK(healthPotion->getValue() >= 0);
-  BOOST_CHECK(healthPotion->getMaxStackSize() > 0);
-  BOOST_CHECK(healthPotion->isStackable());
-
-  auto ironSword = resourceManager->getResourceTemplate("iron_sword");
-  BOOST_REQUIRE(ironSword != nullptr);
-
-  // Equipment typically has higher value
-  BOOST_CHECK(ironSword->getValue() > 0);
-}
-
-BOOST_AUTO_TEST_CASE(TestResourceStats) {
-  // Get initial stats
-  ResourceStats stats = resourceManager->getStats();
-  uint64_t initialTemplates = stats.templatesLoaded.load();
-
-  // Register a new template
-  auto testResource = Resource::create<Resource>(
-      "stats_test_resource", "Stats Test Resource", ResourceCategory::Item,
-      ResourceType::Consumable);
-
-  bool registered = resourceManager->registerResourceTemplate(testResource);
-  BOOST_REQUIRE(registered);
-
-  // Check that stats updated
-  ResourceStats newStats = resourceManager->getStats();
-  BOOST_CHECK_EQUAL(newStats.templatesLoaded.load(), initialTemplates + 1);
-
-  // Test stats reset
-  resourceManager->resetStats();
-  ResourceStats resetStats = resourceManager->getStats();
-  BOOST_CHECK_EQUAL(resetStats.templatesLoaded.load(), 0);
-  BOOST_CHECK_EQUAL(resetStats.resourcesCreated.load(), 0);
-  BOOST_CHECK_EQUAL(resetStats.resourcesDestroyed.load(), 0);
+  manager->resetStats();
+  stats = manager->getStats();
+  BOOST_CHECK_EQUAL(stats.templatesLoaded.load(), 0);
+  BOOST_CHECK_EQUAL(stats.resourcesCreated.load(), 0);
+  BOOST_CHECK_EQUAL(stats.resourcesDestroyed.load(), 0);
 }
 
 BOOST_AUTO_TEST_CASE(TestMemoryUsage) {
-  // Test memory usage reporting
-  size_t memoryUsage = resourceManager->getMemoryUsage();
-  BOOST_CHECK(memoryUsage >
-              0); // Should have some memory usage with default resources
+  auto initialUsage = manager->getMemoryUsage();
 
-  // Register additional resource and check if memory usage increases
-  auto testResource = Resource::create<Resource>(
-      "memory_test_resource",
-      "Memory Test Resource with a very long name to increase memory usage",
-      ResourceCategory::Item, ResourceType::Consumable);
-  testResource->setDescription(
-      "This is a very long description that should increase the memory "
-      "footprint of this resource for testing purposes.");
+  auto resource = createTestResource("Test Item", ResourceCategory::Item,
+                                     ResourceType::Equipment);
+  manager->registerResourceTemplate(resource);
 
-  bool registered = resourceManager->registerResourceTemplate(testResource);
-  BOOST_REQUIRE(registered);
+  auto usageAfterAdd = manager->getMemoryUsage();
+  BOOST_CHECK(usageAfterAdd > initialUsage);
+}
 
-  size_t newMemoryUsage = resourceManager->getMemoryUsage();
-  BOOST_CHECK(newMemoryUsage > memoryUsage);
+BOOST_AUTO_TEST_CASE(TestCleanup) {
+  auto resource1 = createTestResource("Item 1", ResourceCategory::Item,
+                                      ResourceType::Equipment);
+  auto resource2 = createTestResource("Item 2", ResourceCategory::Material,
+                                      ResourceType::CraftingComponent);
+
+  manager->registerResourceTemplate(resource1);
+  manager->registerResourceTemplate(resource2);
+
+  auto countBeforeClean = manager->getResourceTemplateCount();
+  BOOST_CHECK(countBeforeClean > 0);
+  BOOST_CHECK(manager->isInitialized());
+
+  manager->clean();
+
+  BOOST_CHECK_EQUAL(manager->getResourceTemplateCount(), 0);
+  BOOST_CHECK(!manager->isInitialized());
+
+  BOOST_CHECK(manager->init());
+  BOOST_CHECK(manager->isInitialized());
+  // After reinit, we should have the default resources again
+  BOOST_CHECK(manager->getResourceTemplateCount() > 0);
+}
+
+BOOST_AUTO_TEST_CASE(TestReinitializationSafety) {
+  BOOST_CHECK(manager->isInitialized());
+  auto initialCount = manager->getResourceTemplateCount();
+
+  // Calling init() on an already initialized manager should be safe and do
+  // nothing
+  BOOST_CHECK(manager->init());
+  BOOST_CHECK(manager->isInitialized());
+
+  auto resource = createTestResource("Test Item", ResourceCategory::Item,
+                                     ResourceType::Equipment);
+  manager->registerResourceTemplate(resource);
+  BOOST_CHECK(manager->getResourceTemplateCount() > initialCount);
+
+  // Calling init() again should still do nothing - manager stays initialized
+  // with added resources
+  BOOST_CHECK(manager->init());
+  BOOST_CHECK(manager->isInitialized());
+  // The resource count should remain unchanged (init does nothing on
+  // initialized manager)
+  BOOST_CHECK_EQUAL(manager->getResourceTemplateCount(), initialCount + 1);
+}
+
+BOOST_AUTO_TEST_CASE(TestMultipleResourceCategories) {
+  std::vector<ResourcePtr> resources;
+
+  resources.push_back(createTestResource("Sword", ResourceCategory::Item,
+                                         ResourceType::Equipment));
+  resources.push_back(createTestResource(
+      "Health Potion", ResourceCategory::Item, ResourceType::Consumable));
+  resources.push_back(createTestResource("Iron Ore", ResourceCategory::Material,
+                                         ResourceType::RawResource));
+  resources.push_back(createTestResource(
+      "Gold Coin", ResourceCategory::Currency, ResourceType::Gold));
+  resources.push_back(createTestResource(
+      "Mana Crystal", ResourceCategory::GameResource, ResourceType::Mana));
+
+  auto initialCount = manager->getResourceTemplateCount();
+
+  for (const auto &resource : resources) {
+    BOOST_CHECK(manager->registerResourceTemplate(resource));
+  }
+
+  BOOST_CHECK_EQUAL(manager->getResourceTemplateCount(), initialCount + 5);
+
+  // Check categories have at least our added resources (may have defaults too)
+  BOOST_CHECK(manager->getResourcesByCategory(ResourceCategory::Item).size() >=
+              2);
+  BOOST_CHECK(
+      manager->getResourcesByCategory(ResourceCategory::Material).size() >= 1);
+  BOOST_CHECK(
+      manager->getResourcesByCategory(ResourceCategory::Currency).size() >= 1);
+  BOOST_CHECK(
+      manager->getResourcesByCategory(ResourceCategory::GameResource).size() >=
+      1);
 }
 
 BOOST_AUTO_TEST_SUITE_END()

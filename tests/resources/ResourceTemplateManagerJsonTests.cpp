@@ -17,6 +17,23 @@
 #include "entities/resources/MaterialResources.hpp"
 #include "managers/ResourceTemplateManager.hpp"
 
+// Helper function to find resource handle by name
+HammerEngine::ResourceHandle
+findResourceByName(ResourceTemplateManager *manager, const std::string &name) {
+  // Use a more efficient approach - iterate through resource handles we know
+  // exist rather than testing every possible handle ID
+  for (int cat = 0; cat < static_cast<int>(ResourceCategory::COUNT); ++cat) {
+    auto resources =
+        manager->getResourcesByCategory(static_cast<ResourceCategory>(cat));
+    for (const auto &resource : resources) {
+      if (resource && resource->getName() == name) {
+        return resource->getHandle();
+      }
+    }
+  }
+  return HammerEngine::ResourceHandle(); // Invalid handle
+}
+
 class ResourceTemplateManagerJsonTestFixture {
 public:
   ResourceTemplateManagerJsonTestFixture() {
@@ -112,19 +129,27 @@ BOOST_AUTO_TEST_CASE(TestLoadValidJsonString) {
   BOOST_CHECK_EQUAL(newCount, initialCount + 3);
 
   // Test Equipment (sword)
-  auto sword = resourceManager->getResourceTemplate("json_test_sword");
+  auto swordHandle = findResourceByName(resourceManager, "JSON Test Sword");
+  BOOST_REQUIRE(swordHandle.isValid());
+  auto sword = resourceManager->getResourceTemplate(swordHandle);
   BOOST_REQUIRE(sword != nullptr);
   BOOST_CHECK_EQUAL(sword->getName(), "JSON Test Sword");
   BOOST_CHECK_EQUAL(sword->getValue(), 150.0f);
 
   // Test Consumable (potion)
-  auto potion = resourceManager->getResourceTemplate("json_test_potion");
+  auto potionHandle = findResourceByName(resourceManager, "JSON Test Potion");
+  BOOST_REQUIRE(potionHandle.isValid());
+  auto potion = resourceManager->getResourceTemplate(potionHandle);
   BOOST_REQUIRE(potion != nullptr);
   BOOST_CHECK_EQUAL(potion->getName(), "JSON Test Potion");
   BOOST_CHECK(potion->isConsumable());
 
   // Test Gem type casting and properties
-  auto gem = resourceManager->getResourceTemplate("json_test_gem");
+  auto gemHandle = findResourceByName(resourceManager, "JSON Test Gem");
+  BOOST_REQUIRE_MESSAGE(
+      gemHandle.isValid(),
+      "Failed to get handle for gem resource 'json_test_gem'");
+  auto gem = resourceManager->getResourceTemplate(gemHandle);
   BOOST_REQUIRE_MESSAGE(gem != nullptr,
                         "Failed to retrieve gem resource 'json_test_gem'");
   BOOST_CHECK_EQUAL(gem->getName(), "JSON Test Gem");
@@ -331,7 +356,9 @@ BOOST_AUTO_TEST_CASE(TestLoadDuplicateResources) {
   bool result1 = resourceManager->loadResourcesFromJsonString(jsonString1);
   BOOST_CHECK(result1);
 
-  auto resource1 = resourceManager->getResourceTemplate("duplicate_test");
+  auto resource1Handle = findResourceByName(resourceManager, "First Version");
+  BOOST_REQUIRE(resource1Handle.isValid());
+  auto resource1 = resourceManager->getResourceTemplate(resource1Handle);
   BOOST_REQUIRE(resource1 != nullptr);
   BOOST_CHECK_EQUAL(resource1->getName(), "First Version");
 
@@ -352,13 +379,21 @@ BOOST_AUTO_TEST_CASE(TestLoadDuplicateResources) {
     })";
 
   bool result2 = resourceManager->loadResourcesFromJsonString(jsonString2);
-  BOOST_CHECK(!result2); // Should fail due to duplicate
+  BOOST_CHECK(result2); // Should succeed - different resources can have same ID
+                        // but different handles
 
-  // Original resource should still be there unchanged
-  auto resource2 = resourceManager->getResourceTemplate("duplicate_test");
-  BOOST_REQUIRE(resource2 != nullptr);
-  BOOST_CHECK_EQUAL(resource2->getName(),
-                    "First Version"); // Should still be first version
+  // Both resources should now exist with different names and handles
+  auto firstHandle = findResourceByName(resourceManager, "First Version");
+  BOOST_REQUIRE(firstHandle.isValid());
+  auto firstResource = resourceManager->getResourceTemplate(firstHandle);
+  BOOST_REQUIRE(firstResource != nullptr);
+  BOOST_CHECK_EQUAL(firstResource->getName(), "First Version");
+
+  auto secondHandle = findResourceByName(resourceManager, "Second Version");
+  BOOST_REQUIRE(secondHandle.isValid());
+  auto secondResource = resourceManager->getResourceTemplate(secondHandle);
+  BOOST_REQUIRE(secondResource != nullptr);
+  BOOST_CHECK_EQUAL(secondResource->getName(), "Second Version");
 }
 
 BOOST_AUTO_TEST_CASE(TestLoadResourcesStatistics) {

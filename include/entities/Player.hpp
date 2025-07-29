@@ -71,8 +71,8 @@ private:
   void loadDimensionsFromTexture();
   void setupStates();
   void setupInventory();
-  void onResourceChanged(const std::string &resourceId, int oldQuantity,
-                         int newQuantity);
+  void onResourceChanged(HammerEngine::ResourceHandle resourceHandle,
+                         int oldQuantity, int newQuantity);
   EntityStateManager m_stateManager;
   std::unique_ptr<InventoryComponent> m_inventory; // Player inventory
   int m_frameWidth{0};                // Width of a single animation frame

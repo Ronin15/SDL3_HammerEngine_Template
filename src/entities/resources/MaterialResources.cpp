@@ -7,9 +7,9 @@
 #include <unordered_map>
 
 // Material base class implementation
-Material::Material(const std::string &id, const std::string &name,
+Material::Material(HammerEngine::ResourceHandle handle, const std::string &name,
                    ResourceType type)
-    : Resource(id, name, ResourceCategory::Material, type) {
+    : Resource(handle, name, ResourceCategory::Material, type) {
   // Materials are generally stackable
   setMaxStackSize(999);
   setConsumable(false);
@@ -18,10 +18,10 @@ Material::Material(const std::string &id, const std::string &name,
 void Material::setTier(int tier) { m_tier = std::max(1, std::min(tier, 10)); }
 
 // CraftingComponent implementation
-CraftingComponent::CraftingComponent(const std::string &id,
+CraftingComponent::CraftingComponent(HammerEngine::ResourceHandle handle,
                                      const std::string &name,
                                      ComponentType componentType)
-    : Material(id, name, ResourceType::CraftingComponent),
+    : Material(handle, name, ResourceType::CraftingComponent),
       m_componentType(componentType) {
   // Set default properties based on component type
   switch (componentType) {
@@ -70,9 +70,9 @@ std::string CraftingComponent::componentTypeToString(ComponentType type) {
 }
 
 // RawResource implementation
-RawResource::RawResource(const std::string &id, const std::string &name,
-                         ResourceOrigin origin)
-    : Material(id, name, ResourceType::RawResource), m_origin(origin) {
+RawResource::RawResource(HammerEngine::ResourceHandle handle,
+                         const std::string &name, ResourceOrigin origin)
+    : Material(handle, name, ResourceType::RawResource), m_origin(origin) {
   // Set default properties based on origin
   switch (origin) {
   case ResourceOrigin::Mining:

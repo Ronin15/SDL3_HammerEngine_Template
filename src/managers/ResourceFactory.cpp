@@ -8,6 +8,7 @@
 #include "entities/resources/CurrencyAndGameResources.hpp"
 #include "entities/resources/ItemResources.hpp"
 #include "entities/resources/MaterialResources.hpp"
+#include "managers/ResourceTemplateManager.hpp"
 
 namespace HammerEngine {
 
@@ -57,12 +58,14 @@ ResourcePtr ResourceFactory::createFromJson(const JsonValue &json) {
     }
   }
 
-  // Fallback to base Resource creation using the converted enums
+  // Fallback to base Resource creation using handles
   RESOURCE_WARN(
       "ResourceFactory::createFromJson - No specialized creator for type '" +
       typeStr + "', creating base Resource with category " + categoryStr);
 
-  auto resource = std::make_shared<Resource>(id, name, category, type);
+  // Generate a handle for the new resource
+  auto handle = ResourceTemplateManager::Instance().generateHandle();
+  auto resource = std::make_shared<Resource>(handle, name, category, type);
   setCommonProperties(resource, json);
   return resource;
 }
@@ -105,18 +108,55 @@ void ResourceFactory::initialize() {
       "ResourceFactory::initialize - Registering default resource creators");
 
   // Register creators for all resource types
-  registerCreator("Equipment", createEquipment);
-  registerCreator("Consumable", createConsumable);
-  registerCreator("QuestItem", createQuestItem);
-  registerCreator("CraftingComponent", createMaterial);
-  registerCreator("RawResource", createMaterial);
-  registerCreator("Gold", createCurrency);
-  registerCreator("Gem", createCurrency);
-  registerCreator("FactionToken", createCurrency);
-  registerCreator("Energy", createGameResource);
-  registerCreator("Mana", createGameResource);
-  registerCreator("BuildingMaterial", createGameResource);
-  registerCreator("Ammunition", createGameResource);
+  registerCreator("Equipment", [](const JsonValue &json) -> ResourcePtr {
+    return createEquipment(ResourceTemplateManager::Instance().generateHandle(),
+                           json);
+  });
+  registerCreator("Consumable", [](const JsonValue &json) -> ResourcePtr {
+    return createConsumable(
+        ResourceTemplateManager::Instance().generateHandle(), json);
+  });
+  registerCreator("QuestItem", [](const JsonValue &json) -> ResourcePtr {
+    return createQuestItem(ResourceTemplateManager::Instance().generateHandle(),
+                           json);
+  });
+  registerCreator(
+      "CraftingComponent", [](const JsonValue &json) -> ResourcePtr {
+        return createMaterial(
+            ResourceTemplateManager::Instance().generateHandle(), json);
+      });
+  registerCreator("RawResource", [](const JsonValue &json) -> ResourcePtr {
+    return createMaterial(ResourceTemplateManager::Instance().generateHandle(),
+                          json);
+  });
+  registerCreator("Gold", [](const JsonValue &json) -> ResourcePtr {
+    return createCurrency(ResourceTemplateManager::Instance().generateHandle(),
+                          json);
+  });
+  registerCreator("Gem", [](const JsonValue &json) -> ResourcePtr {
+    return createCurrency(ResourceTemplateManager::Instance().generateHandle(),
+                          json);
+  });
+  registerCreator("FactionToken", [](const JsonValue &json) -> ResourcePtr {
+    return createCurrency(ResourceTemplateManager::Instance().generateHandle(),
+                          json);
+  });
+  registerCreator("Energy", [](const JsonValue &json) -> ResourcePtr {
+    return createGameResource(
+        ResourceTemplateManager::Instance().generateHandle(), json);
+  });
+  registerCreator("Mana", [](const JsonValue &json) -> ResourcePtr {
+    return createGameResource(
+        ResourceTemplateManager::Instance().generateHandle(), json);
+  });
+  registerCreator("BuildingMaterial", [](const JsonValue &json) -> ResourcePtr {
+    return createGameResource(
+        ResourceTemplateManager::Instance().generateHandle(), json);
+  });
+  registerCreator("Ammunition", [](const JsonValue &json) -> ResourcePtr {
+    return createGameResource(
+        ResourceTemplateManager::Instance().generateHandle(), json);
+  });
 
   RESOURCE_INFO("ResourceFactory::initialize - Registered " +
                 std::to_string(getCreators().size()) + " resource creators");
@@ -128,8 +168,9 @@ void ResourceFactory::clear() {
   RESOURCE_DEBUG("ResourceFactory::clear - Cleared all resource creators");
 }
 
-ResourcePtr ResourceFactory::createBaseResource(const JsonValue &json) {
-  std::string id = json["id"].asString();
+ResourcePtr
+ResourceFactory::createBaseResource(HammerEngine::ResourceHandle handle,
+                                    const JsonValue &json) {
   std::string name = json["name"].asString();
   std::string categoryStr = json["category"].asString();
   std::string typeStr = json["type"].asString();
@@ -137,14 +178,15 @@ ResourcePtr ResourceFactory::createBaseResource(const JsonValue &json) {
   ResourceCategory category = Resource::stringToCategory(categoryStr);
   ResourceType type = Resource::stringToType(typeStr);
 
-  auto resource = std::make_shared<Resource>(id, name, category, type);
+  auto resource = std::make_shared<Resource>(handle, name, category, type);
   setCommonProperties(resource, json);
 
   return resource;
 }
 
-ResourcePtr ResourceFactory::createEquipment(const JsonValue &json) {
-  std::string id = json["id"].asString();
+ResourcePtr
+ResourceFactory::createEquipment(HammerEngine::ResourceHandle handle,
+                                 const JsonValue &json) {
   std::string name = json["name"].asString();
 
   // Determine equipment slot from JSON or default to Weapon
@@ -171,7 +213,7 @@ ResourcePtr ResourceFactory::createEquipment(const JsonValue &json) {
     }
   }
 
-  auto equipment = std::make_shared<Equipment>(id, name, slot);
+  auto equipment = std::make_shared<Equipment>(handle, name, slot);
   setCommonProperties(equipment, json);
 
   // Set equipment-specific properties
@@ -190,11 +232,12 @@ ResourcePtr ResourceFactory::createEquipment(const JsonValue &json) {
   return equipment;
 }
 
-ResourcePtr ResourceFactory::createConsumable(const JsonValue &json) {
-  std::string id = json["id"].asString();
+ResourcePtr
+ResourceFactory::createConsumable(HammerEngine::ResourceHandle handle,
+                                  const JsonValue &json) {
   std::string name = json["name"].asString();
 
-  auto consumable = std::make_shared<Consumable>(id, name);
+  auto consumable = std::make_shared<Consumable>(handle, name);
   setCommonProperties(consumable, json);
 
   // Set consumable-specific properties
@@ -229,8 +272,9 @@ ResourcePtr ResourceFactory::createConsumable(const JsonValue &json) {
   return consumable;
 }
 
-ResourcePtr ResourceFactory::createQuestItem(const JsonValue &json) {
-  std::string id = json["id"].asString();
+ResourcePtr
+ResourceFactory::createQuestItem(HammerEngine::ResourceHandle handle,
+                                 const JsonValue &json) {
   std::string name = json["name"].asString();
   std::string questId = "";
 
@@ -239,14 +283,14 @@ ResourcePtr ResourceFactory::createQuestItem(const JsonValue &json) {
     questId = props["questId"].tryAsString().value_or("");
   }
 
-  auto questItem = std::make_shared<QuestItem>(id, name, questId);
+  auto questItem = std::make_shared<QuestItem>(handle, name, questId);
   setCommonProperties(questItem, json);
 
   return questItem;
 }
 
-ResourcePtr ResourceFactory::createMaterial(const JsonValue &json) {
-  std::string id = json["id"].asString();
+ResourcePtr ResourceFactory::createMaterial(HammerEngine::ResourceHandle handle,
+                                            const JsonValue &json) {
   std::string name = json["name"].asString();
   std::string typeStr = json["type"].asString();
 
@@ -277,7 +321,7 @@ ResourcePtr ResourceFactory::createMaterial(const JsonValue &json) {
     }
 
     auto craftingComponent =
-        std::make_shared<CraftingComponent>(id, name, componentType);
+        std::make_shared<CraftingComponent>(handle, name, componentType);
     setCommonProperties(craftingComponent, json);
 
     // Set crafting component specific properties
@@ -310,7 +354,7 @@ ResourcePtr ResourceFactory::createMaterial(const JsonValue &json) {
       }
     }
 
-    auto rawResource = std::make_shared<RawResource>(id, name, origin);
+    auto rawResource = std::make_shared<RawResource>(handle, name, origin);
     setCommonProperties(rawResource, json);
 
     // Set raw resource specific properties
@@ -324,7 +368,7 @@ ResourcePtr ResourceFactory::createMaterial(const JsonValue &json) {
   }
 
   // Fallback to base Material class
-  auto material = std::make_shared<Material>(id, name, type);
+  auto material = std::make_shared<Material>(handle, name, type);
   setCommonProperties(material, json);
 
   if (json.hasKey("properties") && json["properties"].isObject()) {
@@ -334,15 +378,15 @@ ResourcePtr ResourceFactory::createMaterial(const JsonValue &json) {
 
   return material;
 }
-ResourcePtr ResourceFactory::createCurrency(const JsonValue &json) {
-  std::string id = json["id"].asString();
+ResourcePtr ResourceFactory::createCurrency(HammerEngine::ResourceHandle handle,
+                                            const JsonValue &json) {
   std::string name = json["name"].asString();
   std::string typeStr = json["type"].asString();
 
   ResourceType type = Resource::stringToType(typeStr);
 
   if (type == ResourceType::Gold) {
-    auto gold = std::make_shared<Gold>(id, name);
+    auto gold = std::make_shared<Gold>(handle, name);
     setCommonProperties(gold, json);
 
     // Set currency-specific properties
@@ -370,7 +414,7 @@ ResourcePtr ResourceFactory::createCurrency(const JsonValue &json) {
       }
     }
 
-    auto gem = std::make_shared<Gem>(id, name, gemType);
+    auto gem = std::make_shared<Gem>(handle, name, gemType);
     setCommonProperties(gem, json);
 
     // Set gem-specific properties
@@ -389,7 +433,7 @@ ResourcePtr ResourceFactory::createCurrency(const JsonValue &json) {
       factionId = props["factionId"].tryAsString().value_or("");
     }
 
-    auto factionToken = std::make_shared<FactionToken>(id, name, factionId);
+    auto factionToken = std::make_shared<FactionToken>(handle, name, factionId);
     setCommonProperties(factionToken, json);
 
     // Set faction token specific properties
@@ -404,7 +448,7 @@ ResourcePtr ResourceFactory::createCurrency(const JsonValue &json) {
   }
 
   // Fallback to base Currency class
-  auto currency = std::make_shared<Currency>(id, name, type);
+  auto currency = std::make_shared<Currency>(handle, name, type);
   setCommonProperties(currency, json);
 
   if (json.hasKey("properties") && json["properties"].isObject()) {
@@ -415,15 +459,16 @@ ResourcePtr ResourceFactory::createCurrency(const JsonValue &json) {
 
   return currency;
 }
-ResourcePtr ResourceFactory::createGameResource(const JsonValue &json) {
-  std::string id = json["id"].asString();
+ResourcePtr
+ResourceFactory::createGameResource(HammerEngine::ResourceHandle handle,
+                                    const JsonValue &json) {
   std::string name = json["name"].asString();
   std::string typeStr = json["type"].asString();
 
   ResourceType type = Resource::stringToType(typeStr);
 
   if (type == ResourceType::Energy) {
-    auto energy = std::make_shared<Energy>(id, name);
+    auto energy = std::make_shared<Energy>(handle, name);
     setCommonProperties(energy, json);
 
     // Set energy-specific properties
@@ -452,7 +497,7 @@ ResourcePtr ResourceFactory::createGameResource(const JsonValue &json) {
       }
     }
 
-    auto mana = std::make_shared<Mana>(id, name, manaType);
+    auto mana = std::make_shared<Mana>(handle, name, manaType);
     setCommonProperties(mana, json);
 
     // Set mana-specific properties
@@ -483,7 +528,7 @@ ResourcePtr ResourceFactory::createGameResource(const JsonValue &json) {
     }
 
     auto buildingMaterial =
-        std::make_shared<BuildingMaterial>(id, name, materialType);
+        std::make_shared<BuildingMaterial>(handle, name, materialType);
     setCommonProperties(buildingMaterial, json);
 
     // Set building material specific properties
@@ -515,7 +560,7 @@ ResourcePtr ResourceFactory::createGameResource(const JsonValue &json) {
       }
     }
 
-    auto ammunition = std::make_shared<Ammunition>(id, name, ammoType);
+    auto ammunition = std::make_shared<Ammunition>(handle, name, ammoType);
     setCommonProperties(ammunition, json);
 
     // Set ammunition-specific properties
@@ -530,7 +575,7 @@ ResourcePtr ResourceFactory::createGameResource(const JsonValue &json) {
   }
 
   // Fallback to base GameResource class
-  auto gameResource = std::make_shared<GameResource>(id, name, type);
+  auto gameResource = std::make_shared<GameResource>(handle, name, type);
   setCommonProperties(gameResource, json);
 
   if (json.hasKey("properties") && json["properties"].isObject()) {

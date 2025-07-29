@@ -7,6 +7,7 @@
 #define INVENTORY_COMPONENT_HPP
 
 #include "entities/Resource.hpp"
+#include "utils/ResourceHandle.hpp"
 #include <functional>
 #include <mutex>
 #include <string>
@@ -20,16 +21,17 @@ class Entity;
  * @brief Inventory slot data structure
  */
 struct InventorySlot {
-  std::string resourceId{""};
+  HammerEngine::ResourceHandle resourceHandle{
+      HammerEngine::INVALID_RESOURCE_HANDLE};
   int quantity{0};
 
   InventorySlot() = default;
-  InventorySlot(const std::string &id, int qty)
-      : resourceId(id), quantity(qty) {}
+  InventorySlot(HammerEngine::ResourceHandle handle, int qty)
+      : resourceHandle(handle), quantity(qty) {}
 
-  bool isEmpty() const { return resourceId.empty() || quantity <= 0; }
+  bool isEmpty() const { return !resourceHandle.isValid() || quantity <= 0; }
   void clear() {
-    resourceId.clear();
+    resourceHandle = HammerEngine::INVALID_RESOURCE_HANDLE;
     quantity = 0;
   }
 };
@@ -44,18 +46,29 @@ struct InventorySlot {
 class InventoryComponent {
 public:
   using ResourceChangeCallback =
-      std::function<void(const std::string &, int, int)>;
+      std::function<void(HammerEngine::ResourceHandle, int, int)>;
 
   explicit InventoryComponent(Entity *owner = nullptr, size_t maxSlots = 50,
                               const std::string &worldId = "default");
   virtual ~InventoryComponent() = default;
 
-  // Basic inventory operations
-  bool addResource(const std::string &resourceId, int quantity);
-  bool removeResource(const std::string &resourceId, int quantity);
-  int getResourceQuantity(const std::string &resourceId) const;
-  bool hasResource(const std::string &resourceId,
+  // Basic inventory operations (ResourceHandle-based)
+  bool addResource(HammerEngine::ResourceHandle handle, int quantity);
+  bool removeResource(HammerEngine::ResourceHandle handle, int quantity);
+  int getResourceQuantity(HammerEngine::ResourceHandle handle) const;
+  bool hasResource(HammerEngine::ResourceHandle handle,
                    int minimumQuantity = 1) const;
+
+  // Convenience methods (string ID-based - for compatibility)
+  bool addResource(const std::string &resourceName, int quantity);
+  bool removeResource(const std::string &resourceName, int quantity);
+  int getResourceQuantity(const std::string &resourceName) const;
+  bool hasResource(const std::string &resourceName,
+                   int minimumQuantity = 1) const;
+  bool transferTo(InventoryComponent &target, const std::string &resourceName,
+                  int quantity);
+  HammerEngine::ResourceHandle
+  getResourceHandle(const std::string &resourceName) const;
 
   // Inventory management
   void clearInventory();
@@ -68,18 +81,19 @@ public:
   // Category-based queries
   std::vector<InventorySlot>
   getResourcesByCategory(ResourceCategory category) const;
-  std::unordered_map<std::string, int> getAllResources() const;
-  std::vector<std::string> getResourceIds() const;
+  std::unordered_map<HammerEngine::ResourceHandle, int> getAllResources() const;
+  std::vector<HammerEngine::ResourceHandle> getResourceHandles() const;
 
   // Slot-based operations (for grid-based inventories)
   const InventorySlot &getSlot(size_t slotIndex) const;
-  bool setSlot(size_t slotIndex, const std::string &resourceId, int quantity);
+  bool setSlot(size_t slotIndex, HammerEngine::ResourceHandle handle,
+               int quantity);
   bool swapSlots(size_t slotA, size_t slotB);
   bool moveResource(size_t fromSlot, size_t toSlot, int quantity = -1);
 
   // Transfer operations
-  bool transferTo(InventoryComponent &target, const std::string &resourceId,
-                  int quantity);
+  bool transferTo(InventoryComponent &target,
+                  HammerEngine::ResourceHandle handle, int quantity);
   bool transferSlotTo(InventoryComponent &target, size_t slotIndex,
                       int quantity = -1);
 
@@ -96,8 +110,8 @@ public:
   // Utility functions
   float getTotalValue() const;
   float getTotalWeight() const;
-  bool canAddResource(const std::string &resourceId, int quantity) const;
-  int getStackableQuantity(const std::string &resourceId) const;
+  bool canAddResource(HammerEngine::ResourceHandle handle, int quantity) const;
+  int getStackableQuantity(HammerEngine::ResourceHandle handle) const;
 
   // Sorting and organization
   void sortByCategory();
@@ -130,24 +144,31 @@ protected:
                                               // WorldResourceManager
 
   // Performance optimization: cache resource quantities for O(1) lookups
-  mutable std::unordered_map<std::string, int> m_resourceQuantityCache;
+  mutable std::unordered_map<HammerEngine::ResourceHandle, int>
+      m_resourceQuantityCache;
   mutable bool m_cacheNeedsRebuild{false};
 
   // Helper methods
-  int findSlotWithResource(const std::string &resourceId) const;
+  int findSlotWithResource(HammerEngine::ResourceHandle handle) const;
   int findEmptySlot() const;
-  bool canStackInSlot(size_t slotIndex, const std::string &resourceId) const;
-  void notifyResourceChange(const std::string &resourceId, int oldQuantity,
-                            int newQuantity);
+  bool canStackInSlot(size_t slotIndex,
+                      HammerEngine::ResourceHandle handle) const;
+  void notifyResourceChange(HammerEngine::ResourceHandle handle,
+                            int oldQuantity, int newQuantity);
   void validateSlotIndex(size_t slotIndex) const;
-  int getResourceQuantityUnlocked(const std::string &resourceId) const;
+  int getResourceQuantityUnlocked(HammerEngine::ResourceHandle handle) const;
+
+  // Resource lookup helper
+  HammerEngine::ResourceHandle
+  findResourceByName(const std::string &name) const;
 
   // Cache management for performance optimization
-  void updateQuantityCache(const std::string &resourceId, int quantityChange);
+  void updateQuantityCache(HammerEngine::ResourceHandle handle,
+                           int quantityChange);
   void rebuildQuantityCache() const;
 
   // WorldResourceManager integration helpers
-  void updateWorldResourceManager(const std::string &resourceId,
+  void updateWorldResourceManager(HammerEngine::ResourceHandle handle,
                                   int quantityChange);
 };
 
