@@ -559,11 +559,11 @@ private:
     size_t tasksProcessed = 0;
     size_t highPriorityTasks = 0;
 
-    // Exponential backoff state (moved outside loop for efficiency)
-    size_t consecutiveEmptyPolls = 0;
-
     // Set thread as interruptible (platform-specific if needed)
     try {
+      // Exponential backoff state for idle polling
+      size_t consecutiveEmptyPolls = 0;
+
       // Main worker loop
       while (isRunning.load(std::memory_order_acquire)) {
         // Check for shutdown immediately at loop start
