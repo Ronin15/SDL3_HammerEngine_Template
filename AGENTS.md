@@ -14,7 +14,7 @@
   ```
 - **Run All Tests:**
   ```
-  ./run_all_tests.sh
+  ./run_all_tests.sh --core-only
   ```
 - **Run a Single Test:**
   ```
