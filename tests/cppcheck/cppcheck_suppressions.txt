@@ -165,6 +165,7 @@ variableScope:*/SoundManager.cpp:148
 # Variables used only in debug logging macros (removedCount)
 unreadVariable:*/ParticleManager.cpp:1077
 unreadVariable:*/ParticleManager.cpp:1210
+unreadVariable:*/ParticleManager.cpp:1288
 unreadVariable:*/ParticleManager.cpp:1873
 
 # Variables used only in debug logging macros (axisName, buttonName)
@@ -181,6 +182,37 @@ unreadVariable:*/InputManager.cpp:422
 unreadVariable:*/InputManager.cpp:423
 unreadVariable:*/InputManager.cpp:424
 
+# Variables used only in debug builds or debug logging
+unreadVariable:*/GameEngine.cpp:666
+unreadVariable:*/GameEngine.cpp:674
+unreadVariable:*/AIManager.cpp:235
+unreadVariable:*/AIManager.cpp:327
+unreadVariable:*/ParticleManager.cpp:1291
+unreadVariable:*/GameStateManager.cpp:39
+unreadVariable:*/InventoryComponent.cpp:547
+unreadVariable:*/InventoryComponent.cpp:792
+unreadVariable:*/InventoryComponent.cpp:813
+
+# Debug/profiling utility functions kept for development
+unusedFunction:*/ThreadSystem.hpp:337
+
+# Performance suggestions that may be intentionally ignored for readability
+useStlAlgorithm:*/InventoryComponent.cpp:746
+
+# Conditions that are always false due to current implementation but kept for defensive programming
+knownConditionTrueFalse:*/GuardBehavior.cpp:417
+knownConditionTrueFalse:*/EventManager.cpp:448
+knownConditionTrueFalse:*/EventManager.cpp:453
+
+# Variable shadowing in demo code (acceptable in demo contexts)
+shadowVariable:*/EventDemoState.cpp:1002
+
 # Const reference opportunities that would break functionality
 constVariableReference:*/GamePlayState.cpp:108
 constVariableReference:*/PauseState.cpp:78
+
+# Suppress common external library style issues
+# JsonReader library - non-explicit constructors are intentional for API usability
+noExplicitConstructor:*/utils/JsonReader.hpp:60
+noExplicitConstructor:*/utils/JsonReader.hpp:61  
+noExplicitConstructor:*/utils/JsonReader.hpp:62

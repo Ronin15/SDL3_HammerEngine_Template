@@ -19,12 +19,33 @@
 - **Run a Single Test:**
   ```
   ./tests/test_scripts/run_save_tests.sh --verbose
-  ./build/tests/SaveManagerTests --run_test="TestSaveAndLoad*"
+  ./tests/test_scripts/run_json_reader_tests.sh --verbose
+  ./bin/debug/SaveManagerTests --run_test="TestSaveAndLoad*"
+  ./bin/debug/json_reader_tests --run_test="TestBasicParsing"
   ```
 - **Static Analysis:**
   ```
   ./tests/test_scripts/run_cppcheck_focused.sh
   ```
+- **Valgrind Analysis:**
+  ```
+  # Complete analysis suite
+  ./tests/valgrind/run_complete_valgrind_suite.sh
+  
+  # Quick memory check
+  ./tests/valgrind/quick_memory_check.sh
+  
+  # Function profiling analysis
+  ./tests/valgrind/callgrind_profiling_analysis.sh
+  
+  # Resource management profiling
+  ./tests/valgrind/callgrind_profiling_analysis.sh resource_management
+  
+  # Cache performance analysis
+  ./tests/valgrind/cache_performance_analysis.sh
+  ```
+
+**IMPORTANT NOTE:** Test executables are located in `bin/debug/` directory (project root), NOT in `build/bin/debug/`. Test scripts look for binaries in the correct location.
 
 ## Code Style Guidelines
 
@@ -43,7 +64,68 @@
 - **Thread Safety:** Use std::atomic, std::shared_mutex, and lock-free structures. Follow cache-friendly data layout (SoA patterns).
 - **File/Directory Handling:** Use std::filesystem for cross-platform path handling. Validate file permissions and clean up test artifacts.
 - **Documentation:** Comment complex algorithms, document all public APIs with Doxygen-style comments, update relevant docs for new features.
-
+- **Serialization System:** HammerEngine uses ISerializable interface with serialize(std::ostream&) and deserialize(std::istream&) methods. Use BinarySerial::Writer and BinarySerial::Reader classes for binary serialization, NOT BinarySerializer. See SaveGameManager and MockPlayer for examples.
+- **Singleton Manager Pattern:** All singleton managers MUST implement proper shutdown handling to prevent double cleanup:
+  - Add `bool m_isShutdown{false};` member variable
+  - In destructor: `if (!m_isShutdown) { clean(); }`
+  - In `clean()` method: Set `m_isShutdown = true;` before cleanup
+  - Examples: SoundManager, EventManager, WorldResourceManager, ResourceTemplateManager
+- **Aditional Instructions:** Please ask before removing the build dir, Only remove it when absolutley necessary. Updating cmake and then re-configruing fixes most build problems.
 > For more details, see `README.md`, `docs/Logger.md`, `docs/ThreadSystem.md`, and `tests/TESTING.md`.
 
+## Warning Investigation and Fixes
+
+### Unused Variable Warnings
+When fixing unused variable warnings, **ALWAYS investigate whether the variable is actually needed** rather than just marking it as unused:
+
+**Investigation Process:**
+1. **Build with verbose output to identify all warnings:**
+   ```bash
+   ninja -C build clean && ninja -C build -v 2>&1 | grep -E "(warning|unused|error)"
+   ```
+
+2. **Examine the specific code context:**
+   - Read the function where the warning occurs
+   - Check if the variable serves a logical purpose
+   - Look for similar usage patterns in nearby code
+   - Verify if the variable was meant to be used but forgotten
+
+3. **Apply appropriate fix:**
+   - **Remove completely** if genuinely unused (preferred)
+   - **Fix the logic** if variable should be used but isn't
+   - **Only mark as unused** as last resort if needed for API compliance
+
+**Examples of Fixed Issues:**
+- `ChaseBehavior.cpp:69` - Removed unused `const AIManager &aiMgr = AIManager::Instance();` that was cached for "performance" but never used since function already uses cached player targets
+- `WorldResourceManagerTests.cpp:475` - Removed meaningless `BOOST_CHECK(initialMemoryUsage >= 0);` since `size_t` is unsigned and always >= 0
+
+**Warning Types to Fix:**
+- `-Wunused-variable`: Variable declared but never referenced
+- `-Wtype-limits`: Comparisons that are always true/false due to type limits
+- `-Wunused-parameter`: Function parameters that aren't used
+
 ---
+
+## Documentation Hygiene Checklist
+
+When updating documentation, always:
+
+1. **Check all links and anchors:**
+   - Verify that every `[text](link)` and `[text](file.md#anchor)` points to an existing file and section.
+   - Use your editor’s search or a script to find all Markdown links and anchors.
+2. **Update summaries and navigation:**
+   - If you add, remove, or rename a doc, update the relevant summary/index (e.g., this file, managers/README.md).
+   - Ensure the Table of Contents and quick links match the actual content.
+3. **Spot-check deep links:**
+   - For new or changed docs, check that the summary/description in the index matches the actual content.
+4. **Keep platform notes and setup instructions current:**
+   - Update platform-specific instructions if dependencies or build steps change.
+5. **Test documentation navigation:**
+   - Open docs in a Markdown viewer and click through links to ensure there are no dead ends.
+6. **Document new features:**
+   - Add new features to the appropriate section and update the index/quick links.
+7. **Remove or update outdated content:**
+   - Delete or revise obsolete instructions, links, or references.
+
+> Following this checklist ensures the documentation remains robust, accurate, and easy for new contributors to navigate.
+

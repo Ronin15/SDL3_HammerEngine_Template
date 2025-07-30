@@ -151,26 +151,52 @@ if exist "!LOG_FILE!" del "!LOG_FILE!"
     echo !BLUE!====================================!NC!
     
     :: Create test_results directory if it doesn't exist
-    if not exist "..\..\test_results" mkdir "..\..\test_results"
+    if not exist "..\..\test_results" (
+        echo Creating test_results directory...
+        mkdir "..\..\test_results"
+        if not exist "..\..\test_results" (
+            echo ERROR: Failed to create test_results directory
+            set FINAL_RESULT=1
+            goto :eof
+        )
+        echo Test_results directory created successfully
+    )
     
 :: Save test results with timestamp
 for /f "tokens=2 delims==" %%a in ('wmic OS Get localdatetime /value') do set "dt=%%a"
 set "TIMESTAMP=!dt:~0,8!_!dt:~8,6!"
-copy "!LOG_FILE!" "..\..\test_results\%test_name%_output_!TIMESTAMP!.txt" > nul
-:: Also save to the standard location for compatibility
-copy "!LOG_FILE!" "..\..\test_results\%test_name%_output.txt" > nul
 
+echo Saving test results for %test_name%...
+copy "!LOG_FILE!" "..\..\test_results\%test_name%_output_!TIMESTAMP!.txt"
+if !ERRORLEVEL! neq 0 (
+    echo WARNING: Failed to copy test output to timestamped file
+)
+
+:: Also save to the standard location for compatibility
+copy "!LOG_FILE!" "..\..\test_results\%test_name%_output.txt"
+if !ERRORLEVEL! neq 0 (
+    echo ERROR: Failed to copy test output to main results file
+    echo This may indicate a permissions or disk space issue
+)
 :: Extract performance metrics and test cases run
-echo !YELLOW!Saving test results for %test_name%...!NC!
-findstr /r /c:"time:" /c:"performance" /c:"TestEvent" /c:"TestWeatherEvent" /c:"TestSceneChange" /c:"TestNPCSpawn" /c:"TestEventFactory" /c:"TestEventManager" "!LOG_FILE!" > "..\..\test_results\%test_name%_performance_metrics.txt" 2>nul
+echo Extracting performance metrics...
+findstr /r /c:"time:" /c:"performance" /c:"TestEvent" /c:"TestWeatherEvent" /c:"TestSceneChange" /c:"TestNPCSpawn" /c:"TestEventFactory" /c:"TestEventManager" "!LOG_FILE!" > "..\..\test_results\%test_name%_performance_metrics.txt"
+if !ERRORLEVEL! neq 0 (
+    echo WARNING: No performance metrics found in test output
+)
 
 :: Extract test cases that were run
 echo === Test Cases Executed === > "..\..\test_results\%test_name%_test_cases.txt"
-findstr /r /c:"Entering test case" /c:"Test case.*passed" "!LOG_FILE!" >> "..\..\test_results\%test_name%_test_cases.txt" 2>nul
+findstr /r /c:"Entering test case" /c:"Test case.*passed" "!LOG_FILE!" >> "..\..\test_results\%test_name%_test_cases.txt"
+if !ERRORLEVEL! neq 0 (
+    echo WARNING: No test case entries found - test may not have run properly
+)
 
 :: Extract just the test case names for easy reporting
-findstr /r /c:"Entering test case" "!LOG_FILE!" > "..\..\test_results\%test_name%_test_cases_run.txt" 2>nul
-    
+findstr /r /c:"Entering test case" "!LOG_FILE!" > "..\..\test_results\%test_name%_test_cases_run.txt"
+if !ERRORLEVEL! neq 0 (
+    echo WARNING: No test case names found - unable to generate test case summary
+)    
 :: Report test results
 if !TEST_RESULT! equ 0 (
     echo !GREEN!All tests passed for %test_name%!!NC!
@@ -195,8 +221,11 @@ if !TEST_RESULT! equ 0 (
     :: Print a summary of failed tests if available
     echo.
     echo !YELLOW!Failed Test Summary:!NC!
-    findstr /r /c:"FAILED" /c:"ASSERT" "..\..\test_results\%test_name%_output.txt" >nul 2>&1 || echo !YELLOW!No specific failure details found.!NC!
-    
+    findstr /r /c:"FAILED" /c:"ASSERT" "..\..\test_results\%test_name%_output.txt"
+    if !ERRORLEVEL! neq 0 (
+        echo !YELLOW!No specific failure details found in output!NC!
+        echo !YELLOW!This may indicate a runtime crash or early termination!NC!
+    )    
     :: Print summary of test cases run
     echo.
     echo !BLUE!Test Cases Run:!NC!

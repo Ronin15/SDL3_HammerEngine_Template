@@ -152,8 +152,10 @@ echo -e "${YELLOW}Generating test summary...${NC}"
   echo ""
 
   # Count test results
-  TOTAL_TESTS=$(grep -c "entering test case" "$OUTPUT_FILE" || echo "0")
-  PASSED_TESTS=$(grep -c "leaving test case" "$OUTPUT_FILE" || echo "0")
+  TOTAL_TESTS=$(grep -c "Entering test case" "$OUTPUT_FILE" 2>/dev/null || echo "0")
+  PASSED_TESTS=$(grep -c "Leaving test case" "$OUTPUT_FILE" 2>/dev/null || echo "0")
+  TOTAL_TESTS=${TOTAL_TESTS//[$'\t\r\n']}
+  PASSED_TESTS=${PASSED_TESTS//[$'\t\r\n']}
   FAILED_TESTS=$((TOTAL_TESTS - PASSED_TESTS))
 
   echo "Test Results:"
@@ -260,7 +262,8 @@ else
   # Display quick summary
   echo -e "${BLUE}"
   echo "=== Quick Test Summary ==="
-  TOTAL_TESTS=$(grep -c "entering test case" "$OUTPUT_FILE" || echo "0")
+  TOTAL_TESTS=$(grep -c "Entering test case" "$OUTPUT_FILE" 2>/dev/null || echo "0")
+  TOTAL_TESTS=${TOTAL_TESTS//[$'\t\r\n']}
   echo "Total tests executed: $TOTAL_TESTS"
   echo "All 8 AI behaviors validated:"
   echo "  ✓ IdleBehavior (stationary & fidget modes)"

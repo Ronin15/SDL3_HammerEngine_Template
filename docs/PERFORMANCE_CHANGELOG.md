@@ -1,5 +1,56 @@
 # Performance Changelog
 
+## Version 4.5.0 - AI Behavior Staggering System (2025-01-25)
+
+### 🎯 Per-Entity Update Staggering for Expensive AI Behaviors
+
+#### New Performance Optimization System
+- **ADDED**: Per-entity update staggering framework for expensive AI behaviors
+- **IMPLEMENTED**: Frame-based distribution of computational load across multiple frames
+- **ENHANCED**: ChaseBehavior and WanderBehavior now both use staggered updates for expensive logic (direction changes, offscreen checks, etc.)
+- **CONFIGURABLE**: Runtime-adjustable update frequencies per behavior type (including WanderBehavior)
+
+**Core Features**:
+- **Automatic Stagger Distribution**: Entities automatically distributed across frames using hash-based offsets
+- **Cached State Management**: Expensive calculations cached and reused between staggered updates
+- **Configurable Frequency**: Per-behavior update frequency configuration (default: every 3 frames for Chase, 1-4 for Wander depending on mode)
+- **Backward Compatibility**: Existing behaviors continue to work without modification
+- **Debug Monitoring**: Performance profiling hooks for measuring staggering effectiveness
+
+#### Performance Improvements
+- **ChaseBehavior & WanderBehavior CPU Reduction**: Up to 67% reduction in expensive calculations (with frequency=3 for Chase, 4 for Wander/LARGE)
+- **Spike Prevention**: Distributes computational load to prevent frame-time spikes
+- **Maintained Responsiveness**: Smooth entity movement using cached calculation results
+- **Scalable Design**: Performance benefits increase with entity count
+
+**Implementation Details**:
+- **Base Class Enhancement**: Added `executeLogicWithStaggering()` to AIBehavior base class
+- **Frame Counter Integration**: Uses AIManager's existing frame counter for stagger calculations
+- **Hash-Based Distribution**: Entity pointer hash ensures even distribution across frames
+- **Cached State Validation**: Automatic fallback to immediate calculation if cache is invalid
+
+**Configuration Examples**:
+```cpp
+// Default staggering (every 3 frames for Chase, 1-4 for Wander)
+chaseBehavior->setUpdateFrequency(3);
+wanderBehavior->setUpdateFrequency(4); // For large groups, use 4+ for best performance
+
+// High-priority entities (every 2 frames)
+chaseBehavior->setUpdateFrequency(2);
+wanderBehavior->setUpdateFrequency(2);
+
+// Background entities (every 5+ frames)
+chaseBehavior->setUpdateFrequency(5);
+wanderBehavior->setUpdateFrequency(6);
+```
+
+---
+
+#### Migration Note
+- **WanderBehavior now uses per-entity update staggering by default.**
+- Default frequencies: SMALL=1, MEDIUM=2, LARGE=4, EVENT_TARGET=2. For large numbers of wandering NPCs, increase update frequency (e.g., 4+) for best performance.
+- No code changes required for existing users, but tuning is recommended for large-scale scenarios.
+
 ## Version 4.4.0 - Threading Architecture Simplification (2025-01-XX)
 
 ### 🎯 Architecture Simplification & Reliability Focus

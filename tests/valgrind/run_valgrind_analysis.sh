@@ -36,6 +36,13 @@ declare -A TEST_EXECUTABLES=(
     ["save_manager"]="save_manager_tests"
     ["weather_events"]="weather_event_tests"
     ["ui_stress"]="ui_stress_test"
+    ["resource_manager"]="resource_manager_tests"
+    ["world_resource_manager"]="world_resource_manager_tests"
+    ["resource_template_manager"]="resource_template_manager_tests"
+    ["resource_integration"]="resource_integration_tests"
+    ["resource_change_event"]="resource_change_event_tests"
+    ["inventory_component"]="inventory_component_tests"
+    ["resource_edge_case"]="resource_edge_case_tests"
 )
 
 # Valgrind common options

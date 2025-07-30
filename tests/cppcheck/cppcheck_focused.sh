@@ -24,20 +24,24 @@ fi
 echo -e "${YELLOW}Running focused analysis (errors, warnings, performance issues only)...${NC}"
 echo ""
 
+# Get script directory to handle relative paths correctly
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+
 # Run cppcheck and capture output for counting
 TEMP_OUTPUT=$(mktemp)
 cppcheck \
     --enable=warning,style,performance,portability \
     --library=std,posix \
-    --library=cppcheck_lib.cfg \
-    --suppressions-list=cppcheck_suppressions.txt \
-    -I../../include \
-    -I../../src \
+    --library="$SCRIPT_DIR/cppcheck_lib.cfg" \
+    --suppressions-list="$SCRIPT_DIR/cppcheck_suppressions.txt" \
+    -I"$PROJECT_ROOT/include" \
+    -I"$PROJECT_ROOT/src" \
     --platform=unix64 \
     --std=c++20 \
     --quiet \
     --template='{file}:{line}: [{severity}] {message}' \
-    ../../src/ ../../include/ 2>&1 | tee "$TEMP_OUTPUT"
+    "$PROJECT_ROOT/src/" "$PROJECT_ROOT/include/" 2>&1 | tee "$TEMP_OUTPUT"
 
 # Count issues with simple grep and wc
 ERROR_COUNT=$(grep '\[error\]' "$TEMP_OUTPUT" | wc -l | tr -d ' ')

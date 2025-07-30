@@ -69,6 +69,7 @@ add_executable(event_manager_scaling_benchmark
     ${PROJECT_SOURCE_DIR}/src/events/WeatherEvent.cpp
     ${PROJECT_SOURCE_DIR}/src/events/SceneChangeEvent.cpp
     ${PROJECT_SOURCE_DIR}/src/events/ParticleEffectEvent.cpp
+    ${PROJECT_SOURCE_DIR}/src/events/ResourceChangeEvent.cpp
     ${PROJECT_SOURCE_DIR}/src/events/EventFactory.cpp
     ${PROJECT_SOURCE_DIR}/src/core/GameTime.cpp
     mocks/NPCSpawnEventTest.cpp
@@ -102,8 +103,10 @@ add_executable(event_manager_tests
     ${PROJECT_SOURCE_DIR}/src/events/WeatherEvent.cpp
     ${PROJECT_SOURCE_DIR}/src/events/SceneChangeEvent.cpp
     ${PROJECT_SOURCE_DIR}/src/events/ParticleEffectEvent.cpp
+    ${PROJECT_SOURCE_DIR}/src/events/ResourceChangeEvent.cpp
     ${PROJECT_SOURCE_DIR}/src/events/EventFactory.cpp
     ${PROJECT_SOURCE_DIR}/src/core/GameTime.cpp
+    mocks/MockPlayer.cpp
     mocks/NPCSpawnEventTest.cpp
     mocks/MockNPC.cpp
     mocks/MockGameEngine.cpp
@@ -214,6 +217,125 @@ add_executable(behavior_functionality_tests
     mocks/AIBehavior.cpp
 )
 
+# Resource Template Manager tests
+add_executable(resource_template_manager_tests
+    resources/ResourceTemplateManagerTests.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/ResourceTemplateManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/ResourceFactory.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/Resource.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/resources/ItemResources.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/resources/MaterialResources.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/resources/CurrencyAndGameResources.cpp
+    ${PROJECT_SOURCE_DIR}/src/utils/JsonReader.cpp
+)
+
+# Resource Factory tests
+add_executable(resource_factory_tests
+    resources/ResourceFactoryTests.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/ResourceFactory.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/ResourceTemplateManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/Resource.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/resources/ItemResources.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/resources/MaterialResources.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/resources/CurrencyAndGameResources.cpp
+    ${PROJECT_SOURCE_DIR}/src/utils/JsonReader.cpp
+)
+
+# ResourceTemplateManager JSON tests
+add_executable(resource_template_manager_json_tests
+    resources/ResourceTemplateManagerJsonTests.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/ResourceTemplateManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/ResourceFactory.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/Resource.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/resources/ItemResources.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/resources/MaterialResources.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/resources/CurrencyAndGameResources.cpp
+    ${PROJECT_SOURCE_DIR}/src/utils/JsonReader.cpp
+)
+
+# World Resource Manager tests
+add_executable(world_resource_manager_tests
+    resources/WorldResourceManagerTests.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/ResourceTemplateManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/WorldResourceManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/ResourceFactory.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/Resource.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/resources/ItemResources.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/resources/MaterialResources.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/resources/CurrencyAndGameResources.cpp
+    ${PROJECT_SOURCE_DIR}/src/utils/JsonReader.cpp
+)
+
+# Inventory Component tests
+add_executable(inventory_component_tests
+    resources/InventoryComponentTests.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/ResourceTemplateManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/WorldResourceManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/ResourceFactory.cpp
+    ${PROJECT_SOURCE_DIR}/src/utils/JsonReader.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/Resource.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/resources/InventoryComponent.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/resources/ItemResources.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/resources/MaterialResources.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/resources/CurrencyAndGameResources.cpp
+    ${PROJECT_SOURCE_DIR}/src/events/ResourceChangeEvent.cpp
+    ${PROJECT_SOURCE_DIR}/src/events/Event.cpp
+    mocks/MockPlayer.cpp
+)
+
+# Resource Change Event tests
+add_executable(resource_change_event_tests
+    resources/ResourceChangeEventTests.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/ResourceTemplateManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/ResourceFactory.cpp
+    ${PROJECT_SOURCE_DIR}/src/utils/JsonReader.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/Resource.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/resources/ItemResources.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/resources/MaterialResources.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/resources/CurrencyAndGameResources.cpp
+    ${PROJECT_SOURCE_DIR}/src/events/ResourceChangeEvent.cpp
+    ${PROJECT_SOURCE_DIR}/src/events/Event.cpp
+)
+
+# Resource Integration tests
+add_executable(resource_integration_tests
+    resources/ResourceIntegrationTests.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/ResourceTemplateManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/WorldResourceManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/ResourceFactory.cpp
+    ${PROJECT_SOURCE_DIR}/src/utils/JsonReader.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/Resource.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/resources/InventoryComponent.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/resources/ItemResources.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/resources/MaterialResources.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/resources/CurrencyAndGameResources.cpp
+    ${PROJECT_SOURCE_DIR}/src/events/ResourceChangeEvent.cpp
+    ${PROJECT_SOURCE_DIR}/src/events/Event.cpp
+    mocks/MockPlayer.cpp
+)
+
+# Resource Edge Case tests
+add_executable(resource_edge_case_tests
+    resources/ResourceEdgeCaseTests.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/ResourceTemplateManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/WorldResourceManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/ResourceFactory.cpp
+    ${PROJECT_SOURCE_DIR}/src/utils/JsonReader.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/Resource.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/resources/InventoryComponent.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/resources/ItemResources.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/resources/MaterialResources.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/resources/CurrencyAndGameResources.cpp
+    ${PROJECT_SOURCE_DIR}/src/events/ResourceChangeEvent.cpp
+    ${PROJECT_SOURCE_DIR}/src/events/Event.cpp
+)
+
+# JsonReader tests
+add_executable(json_reader_tests
+    utils/JsonReaderTest.cpp
+    ${PROJECT_SOURCE_DIR}/src/utils/JsonReader.cpp
+)
+
 # Add compile definitions for Boost.Test
 target_compile_definitions(save_manager_tests PRIVATE
 )
@@ -290,6 +412,51 @@ target_compile_definitions(buffer_utilization_tests PRIVATE
 
 # Behavior Functionality tests definitions
 target_compile_definitions(behavior_functionality_tests PRIVATE
+    BOOST_TEST_NO_SIGNAL_HANDLING
+)
+
+# Resource Factory tests definitions
+target_compile_definitions(resource_factory_tests PRIVATE
+    BOOST_TEST_NO_SIGNAL_HANDLING
+)
+
+# ResourceTemplateManager JSON tests definitions
+target_compile_definitions(resource_template_manager_json_tests PRIVATE
+    BOOST_TEST_NO_SIGNAL_HANDLING
+)
+
+# Resource Manager tests definitions
+target_compile_definitions(resource_template_manager_tests PRIVATE
+    BOOST_TEST_NO_SIGNAL_HANDLING
+)
+
+# World Resource Manager tests definitions
+target_compile_definitions(world_resource_manager_tests PRIVATE
+    BOOST_TEST_NO_SIGNAL_HANDLING
+)
+
+# Inventory Component tests definitions
+target_compile_definitions(inventory_component_tests PRIVATE
+    BOOST_TEST_NO_SIGNAL_HANDLING
+)
+
+# Resource Change Event tests definitions
+target_compile_definitions(resource_change_event_tests PRIVATE
+    BOOST_TEST_NO_SIGNAL_HANDLING
+)
+
+# Resource Integration tests definitions
+target_compile_definitions(resource_integration_tests PRIVATE
+    BOOST_TEST_NO_SIGNAL_HANDLING
+)
+
+# JsonReader tests definitions
+target_compile_definitions(json_reader_tests PRIVATE
+    BOOST_TEST_NO_SIGNAL_HANDLING
+)
+
+# Resource Edge Case tests definitions
+target_compile_definitions(resource_edge_case_tests PRIVATE
     BOOST_TEST_NO_SIGNAL_HANDLING
 )
 
@@ -412,6 +579,64 @@ target_link_libraries(behavior_functionality_tests PRIVATE
     Boost::unit_test_framework
 )
 
+# Link Resource Manager tests with required libraries
+target_link_libraries(resource_template_manager_tests PRIVATE
+    SDL3::SDL3
+    Boost::unit_test_framework
+)
+
+target_link_libraries(resource_factory_tests PRIVATE
+    SDL3::SDL3
+    Boost::unit_test_framework
+)
+
+target_link_libraries(resource_template_manager_json_tests PRIVATE
+    SDL3::SDL3
+    Boost::unit_test_framework
+)
+
+# Link World Resource Manager tests with required libraries
+target_link_libraries(world_resource_manager_tests PRIVATE
+    SDL3::SDL3
+    Boost::unit_test_framework
+)
+
+# Link Inventory Component tests with required libraries
+target_link_libraries(inventory_component_tests PRIVATE
+    SDL3::SDL3
+    SDL3_image::SDL3_image
+    SDL3_mixer::SDL3_mixer
+    Boost::unit_test_framework
+)
+
+# Link Resource Change Event tests with required libraries
+target_link_libraries(resource_change_event_tests PRIVATE
+    SDL3::SDL3
+    Boost::unit_test_framework
+)
+
+# Link Resource Integration tests with required libraries
+target_link_libraries(resource_integration_tests PRIVATE
+    SDL3::SDL3
+    SDL3_image::SDL3_image
+    SDL3_mixer::SDL3_mixer
+    Boost::unit_test_framework
+)
+
+# Link Resource Edge Case tests with required libraries
+target_link_libraries(resource_edge_case_tests PRIVATE
+    SDL3::SDL3
+    SDL3_image::SDL3_image
+    SDL3_mixer::SDL3_mixer
+    Boost::unit_test_framework
+)
+
+# Link JsonReader tests with required libraries
+target_link_libraries(json_reader_tests PRIVATE
+    SDL3::SDL3
+    Boost::unit_test_framework
+)
+
 # Add HAVE_BOOST_SERIALIZATION to ui_stress_test as well
 target_compile_definitions(ui_stress_test PRIVATE
 )
@@ -436,3 +661,12 @@ add_test(NAME ParticleManagerThreadingTests COMMAND particle_manager_threading_t
 add_test(NAME WeatherEventTests COMMAND weather_event_tests)
 add_test(NAME BufferUtilizationTests COMMAND buffer_utilization_tests)
 add_test(NAME BehaviorFunctionalityTests COMMAND behavior_functionality_tests)
+add_test(NAME ResourceTemplateManagerTests COMMAND resource_template_manager_tests)
+add_test(NAME ResourceFactoryTests COMMAND resource_factory_tests)
+add_test(NAME ResourceTemplateManagerJsonTests COMMAND resource_template_manager_json_tests)
+add_test(NAME WorldResourceManagerTests COMMAND world_resource_manager_tests)
+add_test(NAME InventoryComponentTests COMMAND inventory_component_tests)
+add_test(NAME ResourceChangeEventTests COMMAND resource_change_event_tests)
+add_test(NAME ResourceIntegrationTests COMMAND resource_integration_tests)
+add_test(NAME ResourceEdgeCaseTests COMMAND resource_edge_case_tests)
+add_test(NAME JsonReaderTests COMMAND json_reader_tests)
