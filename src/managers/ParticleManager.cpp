@@ -1142,7 +1142,7 @@ ParticleEffectDefinition ParticleManager::createCloudyEffect() {
   cloudy.emitterConfig.minSpeed =
       25.0f; // Much faster horizontal movement for visible sweeping motion
   cloudy.emitterConfig.maxSpeed =
-      60.0f;                            // Very fast for dramatic cloud movement
+      45.0f; // Reduced speed for more gentle cloud movement
   cloudy.emitterConfig.minLife = 20.0f; // Shorter life for faster turnover
   cloudy.emitterConfig.maxLife =
       35.0f; // Reduced max life to prevent screen crowding
@@ -1172,7 +1172,8 @@ ParticleEffectDefinition ParticleManager::createFireEffect() {
       10.0f; // Slower minimum for realistic base flames
   fire.emitterConfig.maxSpeed = 100.0f; // Higher max for dramatic flame tips
   fire.emitterConfig.minLife = 0.3f;    // Very short min life for intense core
-  fire.emitterConfig.maxLife = 3.0f;  // Longer max life for outer flame trails
+  fire.emitterConfig.maxLife =
+      2.5f; // Slightly reduced duration for fire particles
   fire.emitterConfig.minSize = 1.0f;  // Very small min size for fine detail
   fire.emitterConfig.maxSize = 15.0f; // Larger max size for dramatic effect
   fire.emitterConfig.minColor = 0xFF1100FF; // Deep red for flame core
@@ -1202,8 +1203,9 @@ ParticleEffectDefinition ParticleManager::createSmokeEffect() {
       80.0f; // Reduced from 120 for better performance
   smoke.emitterConfig.minSpeed = 5.0f;  // Very slow minimum for realistic drift
   smoke.emitterConfig.maxSpeed = 60.0f; // Higher max for initial smoke burst
-  smoke.emitterConfig.minLife = 3.0f;   // Long-lived for realistic smoke trails
-  smoke.emitterConfig.maxLife = 10.0f; // Very long max life for lingering smoke
+  smoke.emitterConfig.minLife =
+      2.5f; // Slightly reduced duration for smoke trails
+  smoke.emitterConfig.maxLife = 8.5f;  // Reduced max life for smoke particles
   smoke.emitterConfig.minSize = 4.0f;  // Smaller minimum for initial puffs
   smoke.emitterConfig.maxSize = 45.0f; // Much larger for expanded smoke clouds
   smoke.emitterConfig.minColor = 0x101010AA;         // Very dark smoke
