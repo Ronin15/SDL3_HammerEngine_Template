@@ -108,6 +108,9 @@ public:
 
   // Utility
   std::string toString() const;
+
+private:
+  void writeToStream(std::ostream &stream) const;
 };
 
 enum class JsonTokenType {

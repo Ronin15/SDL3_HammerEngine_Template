@@ -110,46 +110,57 @@ size_t JsonValue::size() const {
 }
 
 std::string JsonValue::toString() const {
+  std::ostringstream oss;
+  writeToStream(oss);
+  return oss.str();
+}
+
+void JsonValue::writeToStream(std::ostream &stream) const {
   switch (getType()) {
   case JsonType::Null:
-    return "null";
+    stream << "null";
+    break;
   case JsonType::Boolean:
-    return asBool() ? "true" : "false";
+    stream << (asBool() ? "true" : "false");
+    break;
   case JsonType::Number: {
     double num = asNumber();
     if (std::floor(num) == num && std::abs(num) < 1e15) {
-      return std::to_string(static_cast<long long>(num));
+      stream << static_cast<long long>(num);
+    } else {
+      stream << num;
     }
-    return std::to_string(num);
+    break;
   }
   case JsonType::String:
-    return "\"" + asString() + "\"";
+    stream << "\"" << asString() << "\"";
+    break;
   case JsonType::Array: {
-    std::string result = "[";
+    stream << "[";
     const auto &arr = asArray();
     for (size_t i = 0; i < arr.size(); ++i) {
       if (i > 0)
-        result += ",";
-      result += arr[i].toString();
+        stream << ",";
+      arr[i].writeToStream(stream);
     }
-    result += "]";
-    return result;
+    stream << "]";
+    break;
   }
   case JsonType::Object: {
-    std::string result = "{";
+    stream << "{";
     const auto &obj = asObject();
     bool first = true;
     for (const auto &[key, value] : obj) {
       if (!first)
-        result += ",";
+        stream << ",";
       first = false;
-      result += "\"" + key + "\":" + value.toString();
+      stream << "\"" << key << "\":";
+      value.writeToStream(stream);
     }
-    result += "}";
-    return result;
+    stream << "}";
+    break;
   }
   }
-  return "";
 }
 
 // JsonReader implementation
@@ -197,6 +208,7 @@ void JsonReader::setError(const std::string &message) {
 // Tokenizer implementation
 std::vector<JsonToken> JsonReader::tokenize() {
   std::vector<JsonToken> tokens;
+  tokens.reserve(256); // PERFORMANCE: Pre-allocate reasonable size
 
   while (m_position < m_input.length()) {
     skipWhitespace();
@@ -207,47 +219,60 @@ std::vector<JsonToken> JsonReader::tokenize() {
     size_t tokenLine = m_line;
     size_t tokenColumn = m_column;
 
+    // PERFORMANCE OPTIMIZATION: Use static strings to avoid allocations
+    static const std::string LEFT_BRACE("{");
+    static const std::string RIGHT_BRACE("}");
+    static const std::string LEFT_BRACKET("[");
+    static const std::string RIGHT_BRACKET("]");
+    static const std::string COMMA(",");
+    static const std::string COLON(":");
+    static const std::string TRUE_STR("true");
+    static const std::string FALSE_STR("false");
+    static const std::string NULL_STR("null");
+
     switch (c) {
     case '{':
-      tokens.emplace_back(JsonTokenType::LeftBrace, std::string(1, c),
-                          tokenLine, tokenColumn);
+      tokens.emplace_back(JsonTokenType::LeftBrace, LEFT_BRACE, tokenLine,
+                          tokenColumn);
       advance();
       break;
     case '}':
-      tokens.emplace_back(JsonTokenType::RightBrace, std::string(1, c),
-                          tokenLine, tokenColumn);
+      tokens.emplace_back(JsonTokenType::RightBrace, RIGHT_BRACE, tokenLine,
+                          tokenColumn);
       advance();
       break;
     case '[':
-      tokens.emplace_back(JsonTokenType::LeftBracket, std::string(1, c),
-                          tokenLine, tokenColumn);
+      tokens.emplace_back(JsonTokenType::LeftBracket, LEFT_BRACKET, tokenLine,
+                          tokenColumn);
       advance();
       break;
     case ']':
-      tokens.emplace_back(JsonTokenType::RightBracket, std::string(1, c),
-                          tokenLine, tokenColumn);
+      tokens.emplace_back(JsonTokenType::RightBracket, RIGHT_BRACKET, tokenLine,
+                          tokenColumn);
       advance();
       break;
     case ',':
-      tokens.emplace_back(JsonTokenType::Comma, std::string(1, c), tokenLine,
-                          tokenColumn);
+      tokens.emplace_back(JsonTokenType::Comma, COMMA, tokenLine, tokenColumn);
       advance();
       break;
     case ':':
-      tokens.emplace_back(JsonTokenType::Colon, std::string(1, c), tokenLine,
-                          tokenColumn);
+      tokens.emplace_back(JsonTokenType::Colon, COLON, tokenLine, tokenColumn);
       advance();
       break;
     case '"': {
       std::string str = parseString();
       if (!m_lastError.empty())
         return tokens;
-      tokens.emplace_back(JsonTokenType::String, str, tokenLine, tokenColumn);
+      tokens.emplace_back(JsonTokenType::String, std::move(str), tokenLine,
+                          tokenColumn);
       break;
     }
     case 't':
-      if (m_input.substr(m_position, 4) == "true") {
-        tokens.emplace_back(JsonTokenType::True, "true", tokenLine,
+      // PERFORMANCE: Check characters directly instead of substr
+      if (m_position + 4 <= m_input.length() &&
+          m_input[m_position + 1] == 'r' && m_input[m_position + 2] == 'u' &&
+          m_input[m_position + 3] == 'e') {
+        tokens.emplace_back(JsonTokenType::True, TRUE_STR, tokenLine,
                             tokenColumn);
         m_position += 4;
         m_column += 4;
@@ -257,8 +282,11 @@ std::vector<JsonToken> JsonReader::tokenize() {
       }
       break;
     case 'f':
-      if (m_input.substr(m_position, 5) == "false") {
-        tokens.emplace_back(JsonTokenType::False, "false", tokenLine,
+      // PERFORMANCE: Check characters directly instead of substr
+      if (m_position + 5 <= m_input.length() &&
+          m_input[m_position + 1] == 'a' && m_input[m_position + 2] == 'l' &&
+          m_input[m_position + 3] == 's' && m_input[m_position + 4] == 'e') {
+        tokens.emplace_back(JsonTokenType::False, FALSE_STR, tokenLine,
                             tokenColumn);
         m_position += 5;
         m_column += 5;
@@ -268,8 +296,11 @@ std::vector<JsonToken> JsonReader::tokenize() {
       }
       break;
     case 'n':
-      if (m_input.substr(m_position, 4) == "null") {
-        tokens.emplace_back(JsonTokenType::Null, "null", tokenLine,
+      // PERFORMANCE: Check characters directly instead of substr
+      if (m_position + 4 <= m_input.length() &&
+          m_input[m_position + 1] == 'u' && m_input[m_position + 2] == 'l' &&
+          m_input[m_position + 3] == 'l') {
+        tokens.emplace_back(JsonTokenType::Null, NULL_STR, tokenLine,
                             tokenColumn);
         m_position += 4;
         m_column += 4;
@@ -283,7 +314,8 @@ std::vector<JsonToken> JsonReader::tokenize() {
         std::string num = parseNumber();
         if (!m_lastError.empty())
           return tokens;
-        tokens.emplace_back(JsonTokenType::Number, num, tokenLine, tokenColumn);
+        tokens.emplace_back(JsonTokenType::Number, std::move(num), tokenLine,
+                            tokenColumn);
       } else {
         setError("Unexpected character: " + std::string(1, c));
         return tokens;
