@@ -487,25 +487,23 @@ void PatrolBehavior::generateWaypointsAroundTarget() {
 }
 
 Vector2D PatrolBehavior::generateRandomPointInRectangle() const {
-  // Use static distributions to avoid repeated construction overhead
-  static thread_local std::uniform_real_distribution<float> xDist(0.0f, 1.0f);
-  static thread_local std::uniform_real_distribution<float> yDist(0.0f, 1.0f);
+  // Use uniform_real_distribution with actual area bounds for correct behavior
+  std::uniform_real_distribution<float> xDist(m_areaTopLeft.getX(),
+                                              m_areaBottomRight.getX());
+  std::uniform_real_distribution<float> yDist(m_areaTopLeft.getY(),
+                                              m_areaBottomRight.getY());
 
-  float x = m_areaTopLeft.getX() +
-            xDist(m_rng) * (m_areaBottomRight.getX() - m_areaTopLeft.getX());
-  float y = m_areaTopLeft.getY() +
-            yDist(m_rng) * (m_areaBottomRight.getY() - m_areaTopLeft.getY());
+  float x = xDist(m_rng);
+  float y = yDist(m_rng);
 
   return Vector2D(x, y);
 }
 
 Vector2D PatrolBehavior::generateRandomPointInCircle() const {
   // Generate random point in circle using polar coordinates
-  // Use static distributions to avoid repeated construction overhead
-  static thread_local std::uniform_real_distribution<float> angleDist(
-      0.0f, 2.0f * M_PI);
-  static thread_local std::uniform_real_distribution<float> radiusDist(0.0f,
-                                                                       1.0f);
+  // Use instance-specific distributions for correct behavior per patrol area
+  std::uniform_real_distribution<float> angleDist(0.0f, 2.0f * M_PI);
+  std::uniform_real_distribution<float> radiusDist(0.0f, 1.0f);
 
   float angle = angleDist(m_rng);
   float radius = std::sqrt(radiusDist(m_rng)) *
