@@ -60,10 +60,9 @@ if /i "%~1"=="--help" (
     echo   --no-benchmarks   Run core tests but skip benchmarks
     echo   --help            Show this help message
     echo.
-    echo Test Categories:
-    echo   Core Tests:       Static analysis, Thread, AI, Behavior, Save, Event, ParticleManager functionality tests
-    echo   Benchmarks:       AI scaling, EventManager scaling, UI stress, and ParticleManager performance benchmarks
-    echo.
+     echo Test Categories:
+     echo   Core Tests:       Static analysis, Thread, AI, Behavior, Save, Event, ParticleManager, Resource Manager functionality tests
+     echo   Benchmarks:       AI scaling, EventManager scaling, UI stress, and ParticleManager performance benchmarks    echo.
     echo Execution Time:
     echo   Core tests:       ~2-5 minutes total
     echo   Benchmarks:       ~5-15 minutes total
@@ -83,7 +82,7 @@ goto :parse_args
 
 :: Define test categories
 :: Core functionality tests (fast execution)
-set CORE_TEST_COUNT=10
+set CORE_TEST_COUNT=12
 set CORE_TEST_1=run_cppcheck_focused.bat
 set CORE_TEST_2=run_thread_tests.bat
 set CORE_TEST_3=run_buffer_utilization_tests.bat
@@ -94,7 +93,8 @@ set CORE_TEST_7=run_behavior_functionality_tests.bat
 set CORE_TEST_8=run_save_tests.bat
 set CORE_TEST_9=run_event_tests.bat
 set CORE_TEST_10=run_particle_manager_tests.bat
-
+set CORE_TEST_11=run_json_reader_tests.bat
+set CORE_TEST_12=run_resource_tests.bat
 :: Performance scaling benchmarks (slow execution)
 set BENCHMARK_TEST_COUNT=3
 set BENCHMARK_TEST_1=run_event_scaling_benchmark.bat

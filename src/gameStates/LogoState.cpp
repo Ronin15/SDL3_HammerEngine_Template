@@ -21,7 +21,7 @@ bool LogoState::enter() {
 
   // Cache SoundManager reference for better performance
   SoundManager& soundMgr = SoundManager::Instance();
-  soundMgr.playSFX("sfx_logo", 0, 5);
+  soundMgr.playSFX("sfx_logo", 0, 1);
   return true;
 }
 

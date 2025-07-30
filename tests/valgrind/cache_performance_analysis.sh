@@ -44,6 +44,16 @@ declare -A CACHE_TESTS=(
     ["ai_scaling"]="ai_scaling_benchmark"
     ["event_scaling"]="event_manager_scaling_benchmark"
     ["behavior_functionality"]="behavior_functionality_tests"
+    ["resource_manager"]="resource_manager_tests"
+    ["world_resource_manager"]="world_resource_manager_tests"
+    ["resource_template_manager"]="resource_template_manager_tests"
+    ["resource_integration"]="resource_integration_tests"
+    ["resource_change_event"]="resource_change_event_tests"
+    ["inventory_component"]="inventory_component_tests"
+    ["json_reader"]="json_reader_tests"
+    ["resource_factory"]="resource_factory_tests"
+    ["resource_template_json"]="resource_template_manager_json_tests"
+    ["resource_edge_case"]="resource_edge_case_tests"
 )
 
 # Industry benchmark data for comparison

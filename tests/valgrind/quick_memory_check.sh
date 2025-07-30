@@ -28,6 +28,12 @@ declare -A QUICK_TESTS=(
     ["ai_opt"]="ai_optimization_tests"
     ["thread_sys"]="thread_system_tests"
     ["particle_core"]="particle_manager_core_tests"
+    ["resource_mgr"]="resource_manager_tests"
+    ["world_resource"]="world_resource_manager_tests"
+    ["json_reader"]="json_reader_tests"
+    ["resource_factory"]="resource_factory_tests"
+    ["resource_edge_case"]="resource_edge_case_tests"
+    ["save_mgr"]="save_manager_tests"
 )
 
 echo -e "${BLUE}========================================${NC}"

@@ -32,6 +32,11 @@ bool AIManager::init() {
     m_storage.reserve(INITIAL_CAPACITY);
     m_entityToIndex.reserve(INITIAL_CAPACITY);
 
+    // Reserve capacity for assignment queues to prevent reallocations during
+    // batch processing
+    m_pendingAssignments.reserve(AIConfig::ASSIGNMENT_QUEUE_RESERVE);
+    m_pendingAssignmentIndex.reserve(AIConfig::ASSIGNMENT_QUEUE_RESERVE);
+
     // Initialize double buffers
     m_storage.doubleBuffer[0].reserve(INITIAL_CAPACITY);
     m_storage.doubleBuffer[1].reserve(INITIAL_CAPACITY);
@@ -91,6 +96,8 @@ void AIManager::clean() {
 
     m_entityToIndex.clear();
     m_behaviorTemplates.clear();
+    m_behaviorCache.clear();
+    m_behaviorTypeCache.clear();
     m_pendingAssignments.clear();
     m_pendingAssignmentIndex.clear();
     m_messageQueue.clear();
@@ -342,6 +349,11 @@ void AIManager::registerBehavior(const std::string &name,
 
   std::unique_lock<std::shared_mutex> lock(m_behaviorsMutex);
   m_behaviorTemplates[name] = behavior;
+
+  // Clear cache when adding new behavior
+  m_behaviorCache.clear();
+  m_behaviorTypeCache.clear();
+
   AI_LOG("Registered behavior: " + name);
 }
 
@@ -352,9 +364,21 @@ bool AIManager::hasBehavior(const std::string &name) const {
 
 std::shared_ptr<AIBehavior>
 AIManager::getBehavior(const std::string &name) const {
+  // Check cache first for O(1) lookup
+  auto cacheIt = m_behaviorCache.find(name);
+  if (cacheIt != m_behaviorCache.end()) {
+    return cacheIt->second;
+  }
+
+  // Cache miss - lookup and cache result
   std::shared_lock<std::shared_mutex> lock(m_behaviorsMutex);
   auto it = m_behaviorTemplates.find(name);
-  return (it != m_behaviorTemplates.end()) ? it->second : nullptr;
+  std::shared_ptr<AIBehavior> result =
+      (it != m_behaviorTemplates.end()) ? it->second : nullptr;
+
+  // Cache the result (even if nullptr)
+  m_behaviorCache[name] = result;
+  return result;
 }
 
 void AIManager::assignBehaviorToEntity(EntityPtr entity,
@@ -364,16 +388,11 @@ void AIManager::assignBehaviorToEntity(EntityPtr entity,
     return;
   }
 
-  // Get behavior template
-  std::shared_ptr<AIBehavior> behaviorTemplate;
-  {
-    std::shared_lock<std::shared_mutex> lock(m_behaviorsMutex);
-    auto it = m_behaviorTemplates.find(behaviorName);
-    if (it == m_behaviorTemplates.end()) {
-      AI_ERROR("Behavior not found: " + behaviorName);
-      return;
-    }
-    behaviorTemplate = it->second;
+  // Get behavior template (use cache for performance)
+  std::shared_ptr<AIBehavior> behaviorTemplate = getBehavior(behaviorName);
+  if (!behaviorTemplate) {
+    AI_ERROR("Behavior not found: " + behaviorName);
+    return;
   }
 
   // Clone behavior for this entity
@@ -488,26 +507,81 @@ void AIManager::queueBehaviorAssignment(EntityPtr entity,
 
 size_t AIManager::processPendingBehaviorAssignments() {
   std::vector<PendingAssignment> toProcess;
-
   {
     std::lock_guard<std::mutex> lock(m_assignmentsMutex);
     if (m_pendingAssignments.empty()) {
       return 0;
     }
-
+    // Move all pending assignments to local vector
     toProcess = std::move(m_pendingAssignments);
     m_pendingAssignments.clear();
     m_pendingAssignmentIndex.clear();
   }
 
   size_t processed = 0;
-  for (const auto &assignment : toProcess) {
-    if (assignment.entity) {
-      assignBehaviorToEntity(assignment.entity, assignment.behaviorName);
-      processed++;
+  size_t assignmentCount = toProcess.size();
+
+  // Threaded batch assignment using WorkerBudget
+  bool useThreading = m_useThreading.load(std::memory_order_acquire) &&
+                      HammerEngine::ThreadSystem::Exists();
+  if (useThreading && assignmentCount > 1000) {
+    auto &threadSystem = HammerEngine::ThreadSystem::Instance();
+    size_t availableWorkers =
+        static_cast<size_t>(threadSystem.getThreadCount());
+    size_t queueSize = threadSystem.getQueueSize();
+    size_t queueCapacity = threadSystem.getQueueCapacity();
+    double queuePressure = static_cast<double>(queueSize) / queueCapacity;
+
+    HammerEngine::WorkerBudget budget =
+        HammerEngine::calculateWorkerBudget(availableWorkers);
+    size_t optimalWorkerCount =
+        budget.getOptimalWorkerCount(budget.aiAllocated, assignmentCount, 1000);
+
+    size_t minAssignmentsPerBatch = 1000;
+    size_t maxBatches = 4;
+    if (queuePressure > 0.5) {
+      minAssignmentsPerBatch = 1500;
+      maxBatches = 2;
+    } else if (queuePressure < 0.25) {
+      minAssignmentsPerBatch = 800;
+      maxBatches = 4;
+    }
+    size_t batchCount =
+        std::min(optimalWorkerCount, assignmentCount / minAssignmentsPerBatch);
+    batchCount = std::max(size_t(1), std::min(batchCount, maxBatches));
+    size_t assignmentsPerBatch = assignmentCount / batchCount;
+    size_t remaining = assignmentCount % batchCount;
+
+    std::vector<std::future<void>> futures;
+    size_t start = 0;
+    for (size_t i = 0; i < batchCount; ++i) {
+      size_t end =
+          start + assignmentsPerBatch + (i == batchCount - 1 ? remaining : 0);
+      futures.push_back(threadSystem.enqueueTaskWithResult(
+          [this, &toProcess, start, end]() {
+            for (size_t j = start; j < end && j < toProcess.size(); ++j) {
+              if (toProcess[j].entity) {
+                assignBehaviorToEntity(toProcess[j].entity,
+                                       toProcess[j].behaviorName);
+              }
+            }
+          },
+          HammerEngine::TaskPriority::High, "AI_AssignmentBatch"));
+      start = end;
+    }
+    // Wait for all assignment batches to complete
+    for (auto &f : futures)
+      f.get();
+    processed = assignmentCount;
+  } else {
+    // Single-threaded fallback
+    for (const auto &assignment : toProcess) {
+      if (assignment.entity) {
+        assignBehaviorToEntity(assignment.entity, assignment.behaviorName);
+        processed++;
+      }
     }
   }
-
   return processed;
 }
 
@@ -751,8 +825,20 @@ void AIManager::processMessageQueue() {
 
 BehaviorType
 AIManager::inferBehaviorType(const std::string &behaviorName) const {
+  // Check cache first for O(1) lookup
+  auto cacheIt = m_behaviorTypeCache.find(behaviorName);
+  if (cacheIt != m_behaviorTypeCache.end()) {
+    return cacheIt->second;
+  }
+
+  // Cache miss - lookup and cache result
   auto it = m_behaviorTypeMap.find(behaviorName);
-  return (it != m_behaviorTypeMap.end()) ? it->second : BehaviorType::Custom;
+  BehaviorType result =
+      (it != m_behaviorTypeMap.end()) ? it->second : BehaviorType::Custom;
+
+  // Cache the result
+  m_behaviorTypeCache[behaviorName] = result;
+  return result;
 }
 
 void AIManager::processBatch(size_t start, size_t end, float deltaTime,
@@ -821,8 +907,9 @@ void AIManager::processBatch(size_t start, size_t end, float deltaTime,
       }
 
       if (shouldUpdate) {
-        // Execute behavior
-        behavior->executeLogic(entity);
+        // Execute behavior with staggering support
+        uint64_t currentFrame = m_frameCounter.load(std::memory_order_relaxed);
+        behavior->executeLogicWithStaggering(entity, currentFrame);
         batchExecutions++;
 
         // Update entity

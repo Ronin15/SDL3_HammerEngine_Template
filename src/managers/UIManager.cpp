@@ -1420,7 +1420,7 @@ void UIManager::setThemeMode(const std::string &mode) {
   }
 }
 
-std::string UIManager::getCurrentThemeMode() const {
+const std::string &UIManager::getCurrentThemeMode() const {
   return m_currentThemeMode;
 }
 

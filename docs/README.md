@@ -61,20 +61,105 @@ High-performance multithreading framework with intelligent WorkerBudget allocati
 - **Hardware Adaptive** - Automatic scaling from ultra low-end (single-threaded) to high-end (multi-threaded) systems
 
 ### Manager Systems
-Resource management systems for fonts, textures, audio, particles, and game data.
+Resource management systems for fonts, textures, audio, particles, game data, entity states, and world resources.
 
-- **[ParticleManager](ParticleManager.md)** - High-performance particle system with weather effects, visual effects, WorkerBudget threading, and EventManager integration
-- **[FontManager](managers/FontManager.md)** - Font loading, text rendering, and measurement utilities with DPI-aware scaling and auto-sizing integration
-- **[SoundManager](managers/SoundManager.md)** - Audio playback and sound management system with volume control and state integration
-- **[TextureManager](managers/TextureManager.md)** - Texture loading and sprite rendering system
-- **[SaveGameManager](SaveGameManager.md)** - Comprehensive binary save/load system with slot management, metadata extraction, and cross-platform compatibility
+See the [Manager Documentation Index](managers/README.md) for a complete, alphabetized list of all manager docs.
+
+- **[EntityStateManager](managers/EntityStateManager.md)** – Manages named state machines for entities (player, NPCs), supporting safe transitions and update delegation.
+- **[FontManager](managers/FontManager.md)** – Centralized font loading, management, and text rendering with DPI-aware scaling and UI integration.
+- **[GameStateManager](managers/GameStateManager.md)** – Handles the collection and switching of game states/screens, ensuring only one is active at a time.
+- **[InputManager](managers/InputManager.md)** – Centralized input handling for keyboard, mouse, and gamepad, with event-driven detection and coordinate conversion.
+- **[ParticleManager](managers/ParticleManager.md)** – High-performance particle system for real-time visual effects, weather, and custom effects.
+- **[ResourceTemplateManager](managers/ResourceTemplateManager.md)** – Registers, indexes, and instantiates resource templates (items, blueprints) with thread safety and statistics.
+- **[SaveGameManager](managers/SaveGameManager.md)** – Comprehensive save/load system with binary format, slot management, and robust error handling.
+- **[SoundManager](managers/SoundManager.md)** – Centralized audio system for sound effects and music playback, supporting multiple formats and volume control.
+- **[TextureManager](managers/TextureManager.md)** – Handles loading, management, and rendering of textures (PNG), with batch loading and animation support.
+- **[TimestepManager](managers/TimestepManager.md)** – Provides consistent game timing with fixed timestep updates and variable timestep rendering.
+- **[WorldResourceManager](managers/WorldResourceManager.md)** – Tracks and manipulates resource quantities across multiple worlds, supporting thread-safe operations and statistics.
+
+Some managers (e.g., ParticleManager, SaveGameManager) are tightly integrated with other systems and may have additional documentation in other folders. See the [Manager Documentation Index](managers/README.md) for details.
+
+**Resource System**: ResourceTemplateManager and WorldResourceManager work together to provide a complete resource management solution. See the [Resource System Integration](#resource-system-integration) section below for details on how these systems integrate with events, entities, and JSON loading.
 
 ### Utility Systems
 Core utility classes and helper systems used throughout the engine.
 
 - **[Logger System](Logger.md)** - Comprehensive logging system with debug/release optimization and system-specific macros
+- **[JsonReader](utils/JsonReader.md)** - RFC 8259 compliant JSON parser with type-safe accessors and robust error handling
+- **[JSON Resource Loading](utils/JSON_Resource_Loading_Guide.md)** - Complete guide to loading items, materials, currency, and game resources from JSON files with ResourceTemplateManager integration
 - **[Binary Serialization](SERIALIZATION.md)** - Fast, header-only serialization system for game data
 - **[Performance Changelog](PERFORMANCE_CHANGELOG.md)** - Detailed performance optimization history and benchmarks
+
+## Resource System Integration
+
+The HammerEngine features a comprehensive resource management system that integrates with multiple engine subsystems:
+
+### Core Components
+- **[ResourceTemplateManager](managers/ResourceTemplateManager.md)** - Central registry for all resource templates with fast lookup and handle management
+- **[WorldResourceManager](managers/WorldResourceManager.md)** - Runtime resource quantity tracking across multiple worlds with thread-safe operations
+- **[ResourceHandle System](utils/ResourceHandle_System.md)** - High-performance resource identification and validation
+- **[InventoryComponent](../include/entities/resources/InventoryComponent.hpp)** - Entity-based inventory management with resource stacking and validation
+
+### Integration Points
+- **JSON Loading**: Resources are loaded from `res/data/items.json` and `res/data/materials_and_currency.json` using the [JsonReader](utils/JsonReader.md) system
+- **Event System**: Resource changes trigger [ResourceChangeEvent](../include/events/ResourceChangeEvent.hpp) through the EventManager for real-time updates
+- **Entity System**: NPCs and Players can own and manipulate resources through the InventoryComponent
+- **Game States**: Resource interactions are demonstrated in EventDemoState and GamePlayState
+
+### Quick Start
+```cpp
+// Load resource templates
+ResourceTemplateManager::Instance().init();
+
+// Create world resource manager
+WorldResourceManager::Instance().init();
+
+// Get a resource handle by name
+auto handle = ResourceTemplateManager::Instance().getHandleByName("Iron Sword");
+
+// Add resources to world
+WorldResourceManager::Instance().addResource(worldId, handle, 5);
+```
+
+For complete integration examples, see the [JSON Resource Loading Guide](utils/JSON_Resource_Loading_Guide.md).
+
+## Platform Notes
+
+### Windows
+- Install MSYS2 for compiler and SDL3 dependencies (harfbuzz, freetype, etc.).
+- Use scoop or chocolatey to install Ninja and cppcheck.
+- CMake can be installed from the official website.
+- Ensure cppcheck is in your PATH.
+- Set environment variables for MSYS2:
+  - `C:\msys64\mingw64\lib`
+  - `C:\msys64\mingw64\include`
+  - `C:\msys64\mingw64\bin`
+- Required packages:
+  - `mingw-w64-x86_64-boost` (for testing)
+  - `mingw-w64-x86_64-harfbuzz` (SDL3 req)
+  - `mingw-w64-x86_64-freetype` (SDL3 req)
+- Install with:
+  ```
+  pacman -S mingw-w64-x86_64-boost mingw-w64-x86_64-harfbuzz mingw-w64-x86_64-freetype
+  ```
+
+### Linux
+- Follow the [official SDL3 Linux instructions](https://wiki.libsdl.org/SDL3/README-linux) for dependencies.
+- Install Boost for tests, Valgrind for memory/thread testing, and cppcheck for static analysis:
+  ```
+  sudo apt-get install libboost-all-dev valgrind cppcheck
+  ```
+- Example tested environment:
+  - Ubuntu 24.04.2 LTS
+  - Kernel: Linux 6.11.0-26-generic
+
+### macOS
+- Use Homebrew for SDL3 dependencies:
+  ```
+  brew install freetype harfbuzz boost cppcheck
+  ```
+- Note: CMake will use SDL3 libraries downloaded via FetchContent, not Homebrew, for the build. Homebrew SDL3 libs can conflict.
+- Xcode command line tools are required to compile.
 
 ## Getting Started
 
