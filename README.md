@@ -2,7 +2,7 @@
 
 A modern, production-ready C++20 SDL3 game engine template. Features robust entity, state, event, AI, UI, and resource management, with multi-threading, cross-platform support, and comprehensive testing. Designed for rapid prototyping and scalable game development.
 
----
+----
 
 ## Features
 
