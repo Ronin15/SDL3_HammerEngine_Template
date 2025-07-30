@@ -41,6 +41,6 @@ This directory contains documentation for all major manager systems in the Hamme
 
 ---
 
-**Note:** Some managers (e.g., ParticleManager, SaveGameManager) are tightly integrated with other systems and may have additional documentation in other folders (see [../ParticleManager.md](../ParticleManager.md), [../SaveGameManager.md](../SaveGameManager.md)).
+**Note:** All manager documentation is now centralized in this directory. For historical reference, some managers were previously documented in the parent folder but have been moved here for better organization.
 
 For a complete overview of all systems, see the [main documentation index](../README.md).

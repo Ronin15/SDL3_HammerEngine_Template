@@ -354,7 +354,7 @@ ResourcePtr getResourceByName(const std::string& name) {
 ```
 
 ## See Also
-- [ResourceTemplateManager Documentation](ResourceTemplateManager.md)
-- [InventoryComponent Usage Guide](../entities/InventoryComponent.md)
+- [ResourceTemplateManager Documentation](../managers/ResourceTemplateManager.md)
+- [InventoryComponent Usage Guide](../../include/entities/resources/InventoryComponent.hpp)
 - [Performance Guidelines](../PERFORMANCE_CHANGELOG.md)
 - [Resource System Tests](../../tests/resources/ResourceTemplateManagerTests.cpp)
