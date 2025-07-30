@@ -4,10 +4,10 @@
 
 # Navigate to script directory (in case script is run from elsewhere)
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-cd "$SCRIPT_DIR"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 # Create required directories
-mkdir -p ../../test_results
+mkdir -p "$PROJECT_ROOT/test_results"
 
 # Set default build type
 BUILD_TYPE="Debug"
@@ -43,8 +43,7 @@ done
 echo "Running Thread-Safe AI Manager tests..."
 
 # Get the directory where this script is located and find project root
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+# (Already defined above)
 
 # Determine test executable path based on build type
 if [ "$BUILD_TYPE" = "Debug" ]; then
@@ -71,10 +70,10 @@ fi
 # Run tests and save output
 
 # Ensure test_results directory exists
-mkdir -p ../../test_results
+mkdir -p "$PROJECT_ROOT/test_results"
 
 # Use the output file directly instead of a temporary file
-TEMP_OUTPUT="../../test_results/thread_safe_ai_test_output.txt"
+TEMP_OUTPUT="$PROJECT_ROOT/test_results/thread_safe_ai_test_output.txt"
 
 # Check for timeout command availability
 TIMEOUT_CMD=""
@@ -141,11 +140,11 @@ fi
 
 # Extract performance metrics
 echo "Extracting performance metrics..."
-grep -E "time:|entities:|processed:|Concurrent processing time" "$TEMP_OUTPUT" > "../../test_results/thread_safe_ai_performance_metrics.txt" || true
+grep -E "time:|entities:|processed:|Concurrent processing time" "$TEMP_OUTPUT" > "$PROJECT_ROOT/test_results/thread_safe_ai_performance_metrics.txt" || true
 
 # Check test status
 if [ $TEST_RESULT -eq 124 ]; then
-  echo "❌ Tests timed out! See ../../test_results/thread_safe_ai_test_output.txt for details."
+  echo "❌ Tests timed out! See $PROJECT_ROOT/test_results/thread_safe_ai_test_output.txt for details."
   exit $TEST_RESULT
 elif [ $TEST_RESULT -eq 139 ] && grep -q "No errors detected" "$TEMP_OUTPUT" && grep -q "Leaving test module \"ThreadSafeAIManagerTests\"" "$TEMP_OUTPUT"; then
   echo "⚠️ Tests completed successfully but crashed during cleanup. This is a known issue - treating as success."
@@ -163,7 +162,7 @@ elif [ $TEST_RESULT -ne 0 ] || grep -q "failure\|test cases failed\|assertion fa
     echo "⚠️ Tests completed with known threading cleanup issues, but all tests passed!"
     exit 0
   else
-    echo "❌ Some tests failed! See ../../test_results/thread_safe_ai_test_output.txt for details."
+    echo "❌ Some tests failed! See $PROJECT_ROOT/test_results/thread_safe_ai_test_output.txt for details."
     exit 1
   fi
 else
