@@ -132,12 +132,16 @@ struct UIComponent {
 
   // Component-specific data
   std::string m_text{};
+  std::function<std::string()> m_textBinding{}; // For data-bound text
   std::string m_textureID{};
   float m_value{0.0f};
   float m_minValue{0.0f};
   float m_maxValue{1.0f};
   bool m_checked{false};
   std::vector<std::string> m_listItems{};
+  std::vector<std::shared_ptr<SDL_Texture>> m_listItemTextures{}; // Texture cache
+  bool m_listItemsDirty{true}; // Flag to regenerate textures
+  std::function<std::vector<std::string>()> m_listBinding{}; // For data-bound lists
   int m_selectedIndex{-1};
   std::string m_placeholder{};
   int m_maxLength{256};
@@ -280,6 +284,11 @@ public:
   void setValue(const std::string &id, float value);
   void setChecked(const std::string &id, bool checked);
   void setStyle(const std::string &id, const UIStyle &style);
+
+  // Data binding methods
+  void bindText(const std::string &id, std::function<std::string()> binding);
+  void bindList(const std::string &id,
+                std::function<std::vector<std::string>()> binding);
 
   // Component property getters
   std::string getText(const std::string &id) const;

@@ -240,6 +240,34 @@ std::shared_ptr<SDL_Texture> FontManager::renderText(
   return texture;
 }
 
+SDL_Texture* FontManager::renderText(const std::string& text, const std::string& fontID,
+                                     SDL_Color color, SDL_Renderer* renderer, bool) {
+    if (text.empty()) {
+        return nullptr;
+    }
+
+    auto it = m_fontMap.find(fontID);
+    if (it == m_fontMap.end()) {
+        FONT_ERROR("Font not found: " + fontID);
+        return nullptr;
+    }
+
+    SDL_Surface* surface = TTF_RenderText_Blended(it->second.get(), text.c_str(), 0, color);
+    if (!surface) {
+        FONT_ERROR("Failed to render text surface: " + std::string(SDL_GetError()));
+        return nullptr;
+    }
+
+    SDL_Texture* texture = SDL_CreateTextureFromSurface(renderer, surface);
+    SDL_DestroySurface(surface);
+
+    if (!texture) {
+        FONT_ERROR("Failed to create text texture: " + std::string(SDL_GetError()));
+    }
+
+    return texture;
+}
+
 std::shared_ptr<SDL_Texture> FontManager::renderMultiLineText(
                                          const std::string& text, TTF_Font* font,
                                          SDL_Color color, SDL_Renderer* renderer) {

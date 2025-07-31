@@ -278,7 +278,10 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
       size_t entitiesPerBatch = entityCount / batchCount;
       size_t remainingEntities = entityCount % batchCount;
 
-      // Submit optimized batches
+      // Submit optimized batches and wait for them to complete
+      std::vector<std::future<void>> futures;
+      futures.reserve(batchCount);
+
       for (size_t i = 0; i < batchCount; ++i) {
         size_t start = i * entitiesPerBatch;
         size_t end = start + entitiesPerBatch;
@@ -288,11 +291,16 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
           end += remainingEntities;
         }
 
-        threadSystem.enqueueTask(
+        futures.push_back(threadSystem.enqueueTaskWithResult(
             [this, start, end, deltaTime, nextBuffer]() {
               processBatch(start, end, deltaTime, nextBuffer);
             },
-            HammerEngine::TaskPriority::High, "AI_OptimalBatch");
+            HammerEngine::TaskPriority::High, "AI_OptimalBatch"));
+      }
+
+      // Wait for all AI update batches to complete before proceeding
+      for (auto& future : futures) {
+          future.get();
       }
 
     } else {
