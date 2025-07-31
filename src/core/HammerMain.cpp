@@ -61,15 +61,7 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char* argv[]) {
   GameEngine::Instance().setGameLoop(gameLoop);
 
   // Configure TimestepManager for platform-specific frame limiting
-  // This must happen after GameLoop is set but before the game starts running
-  const std::string sessionTypeRaw = std::getenv("XDG_SESSION_TYPE") ? std::getenv("XDG_SESSION_TYPE") : "";
-  const std::string waylandDisplayRaw = std::getenv("WAYLAND_DISPLAY") ? std::getenv("WAYLAND_DISPLAY") : "";
-
-  std::string_view sessionType = sessionTypeRaw;
-  bool hasWaylandDisplay = !waylandDisplayRaw.empty();
-  bool isWayland = (sessionType == "wayland") || hasWaylandDisplay;
-
-  if (isWayland) {
+  if (GameEngine::Instance().isWayland()) {
     gameLoop->getTimestepManager().setSoftwareFrameLimiting(true);
     GAMELOOP_INFO("Configured TimestepManager for Wayland software frame limiting");
   } else {

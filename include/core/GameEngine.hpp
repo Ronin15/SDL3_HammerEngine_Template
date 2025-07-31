@@ -254,6 +254,12 @@ public:
    */
   bool setVSyncEnabled(bool enable);
 
+  /**
+   * @brief Checks if the engine is running on a Wayland session.
+   * @return true if Wayland is detected, false otherwise.
+   */
+  bool isWayland() const { return m_isWayland; }
+
 private:
   std::unique_ptr<GameStateManager> mp_gameStateManager{nullptr};
   std::unique_ptr<SDL_Window, decltype(&SDL_DestroyWindow)> mp_window{
@@ -282,6 +288,9 @@ private:
 
   // DPI scaling
   float m_dpiScale{1.0f};
+
+  // Platform-specific flags
+  bool m_isWayland{false};
 
   // Multithreading synchronization
   std::mutex m_updateMutex{};

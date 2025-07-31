@@ -88,20 +88,15 @@ private:
 
 // Debug build macros - full functionality
 #define HAMMER_CRITICAL(system, msg)                                           \
-  HammerEngine::Logger::Log(HammerEngine::LogLevel::CRITICAL, system,          \
-                            std::string(msg))
+  HammerEngine::Logger::Log(HammerEngine::LogLevel::CRITICAL, system, msg)
 #define HAMMER_ERROR(system, msg)                                              \
-  HammerEngine::Logger::Log(HammerEngine::LogLevel::ERROR, system,             \
-                            std::string(msg))
+  HammerEngine::Logger::Log(HammerEngine::LogLevel::ERROR, system, msg)
 #define HAMMER_WARN(system, msg)                                               \
-  HammerEngine::Logger::Log(HammerEngine::LogLevel::WARNING, system,           \
-                            std::string(msg))
+  HammerEngine::Logger::Log(HammerEngine::LogLevel::WARNING, system, msg)
 #define HAMMER_INFO(system, msg)                                               \
-  HammerEngine::Logger::Log(HammerEngine::LogLevel::INFO, system,              \
-                            std::string(msg))
+  HammerEngine::Logger::Log(HammerEngine::LogLevel::INFO, system, msg)
 #define HAMMER_DEBUG(system, msg)                                              \
-  HammerEngine::Logger::Log(HammerEngine::LogLevel::DEBUG_LEVEL, system,       \
-                            std::string(msg))
+  HammerEngine::Logger::Log(HammerEngine::LogLevel::DEBUG_LEVEL, system, msg)
 
 #else
 // Release builds - ultra-minimal overhead, lockless
@@ -119,27 +114,33 @@ public:
   static bool IsBenchmarkMode() {
     return s_benchmarkMode.load(std::memory_order_relaxed);
   }
+
+  static void Log(const char *level, const char *system,
+                  const std::string &message) {
+    if (s_benchmarkMode.load(std::memory_order_relaxed)) {
+      return;
+    }
+    std::lock_guard<std::mutex> lock(s_logMutex);
+    printf("Hammer Game Engine - [%s] %s: %s\n", system, level,
+           message.c_str());
+    fflush(stdout);
+  }
+
+  static void Log(const char *level, const char *system, const char *message) {
+    if (s_benchmarkMode.load(std::memory_order_relaxed)) {
+      return;
+    }
+    std::lock_guard<std::mutex> lock(s_logMutex);
+    printf("Hammer Game Engine - [%s] %s: %s\n", system, level, message);
+    fflush(stdout);
+  }
 };
 
 #define HAMMER_CRITICAL(system, msg)                                           \
-  do {                                                                         \
-    if (!HammerEngine::Logger::IsBenchmarkMode()) {                            \
-      std::lock_guard<std::mutex> lock(HammerEngine::Logger::s_logMutex);      \
-      printf("Hammer Game Engine - [%s] CRITICAL: %s\n", system,               \
-             std::string(msg).c_str());                                        \
-      fflush(stdout);                                                          \
-    }                                                                          \
-  } while (0)
+  HammerEngine::Logger::Log("CRITICAL", system, msg)
 
 #define HAMMER_ERROR(system, msg)                                              \
-  do {                                                                         \
-    if (!HammerEngine::Logger::IsBenchmarkMode()) {                            \
-      std::lock_guard<std::mutex> lock(HammerEngine::Logger::s_logMutex);      \
-      printf("Hammer Game Engine - [%s] ERROR: %s\n", system,                  \
-             std::string(msg).c_str());                                        \
-      fflush(stdout);                                                          \
-    }                                                                          \
-  } while (0)
+  HammerEngine::Logger::Log("ERROR", system, msg)
 
 #define HAMMER_WARN(system, msg) ((void)0)  // Zero overhead
 #define HAMMER_INFO(system, msg) ((void)0)  // Zero overhead

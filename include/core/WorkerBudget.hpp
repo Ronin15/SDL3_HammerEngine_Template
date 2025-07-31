@@ -150,6 +150,6 @@ inline WorkerBudget calculateWorkerBudget(size_t availableWorkers) {
     return budget;
 }
 
-} // namespace Hammer
+} // namespace HammerEngine
 
 #endif // WORKER_BUDGET_HPP
