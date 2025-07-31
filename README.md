@@ -1,22 +1,50 @@
-# SDL3 2D Game Template with Multi-Threading
+# SDL3 HammerEngine Template
 
-A modern, production-ready C++20 SDL3 game engine template. Features robust entity, state, event, AI, UI, and resource management, with multi-threading, cross-platform support, and comprehensive testing. Designed for rapid prototyping and scalable game development.
+A modern, production-ready C++20 SDL3 game engine template for 2D games. Built for rapid prototyping and scalable game development, it features robust multi-threading, high-performance AI, a professional UI system, and comprehensive resource and event management. Designed for cross-platform deployment (Windows, macOS, Linux) with a focus on performance, safety, and extensibility.
 
-----
+## Key Features
 
-## Features
+- **Modern C++20 & SDL3 Core**  
+  Clean, modular codebase with strict style, memory, and type safety.
 
-- SDL3 integration (image, ttf, mixer)
-- Multi-threaded task scheduling (WorkerBudget)
-- Entity, game, and event state machines
-- High-performance AI and particle systems
-- Automatic resource, texture, sound, and font management
-- JSON-based resource loading system for items, materials, and currency
-- UI system with auto-sizing, themes, and stress testing
-- Save/load system with fast binary serialization
-- RFC 8259 compliant JSON parser for configuration and data
-- Cross-platform: Windows, macOS, Linux
-- Comprehensive test suite and static analysis
+- **Advanced Multi-Threading**  
+  Production-grade thread pool with priority-based scheduling and WorkerBudget system for intelligent, hardware-adaptive resource allocation. Lock-free double buffering and batch task submission for optimal concurrency.
+
+- **High-Performance AI System**  
+  Cache-friendly, lock-free, and batch-processed AI manager. Supports 10K+ entities at 60+ FPS with only 4-6% CPU usage. Includes dynamic behaviors (Wander, Patrol, Guard, Flee, Attack, etc.), message system, and distance-based culling.
+
+- **Robust Event & State Management**  
+  Event-driven architecture with batch event processing, state machines for entities and game flow, and thread-safe manager updates.
+
+- **Professional UI System**  
+  Content-aware auto-sizing, professional theming (light/dark/custom), and a rich set of components (buttons, labels, input fields, lists, modals, etc.). Responsive, DPI-aware, and cross-platform with layout and animation support.
+
+- **Automatic Resource Management**  
+  JSON-based resource loading for items, materials, currency, and custom types. Handle-based runtime access for performance and extensibility.
+
+- **Fast, Safe Serialization**  
+  Header-only, cross-platform binary serialization system with smart pointer memory management. Used by SaveGameManager for robust, versioned save/load.
+
+- **Comprehensive Testing & Analysis**  
+  Extensive Boost.Test suite, static analysis (cppcheck), and Valgrind integration for performance, memory, and thread safety validation.
+
+- **Cross-Platform Optimizations**  
+  Unified codebase with platform-specific enhancements: macOS letterbox mode, Wayland detection, adaptive VSync, and DPI scaling.
+
+- **Extensive Documentation**  
+  Full guides, API references, best practices, and troubleshooting for all major systems.
+
+### Why Choose HammerEngine Template?
+
+- **Performance**: Engineered for cache efficiency, lock-free concurrency, and minimal CPU overhead—even with thousands of entities.
+- **Safety**: Smart pointers, RAII, strong typing, and robust error handling throughout.
+- **Extensibility**: Modular managers, clear APIs, and easy resource and UI customization.
+- **Developer Experience**: Clean code, strict style, automated testing, and comprehensive docs.
+- **Production-Ready**: Used for real-world projects, with proven reliability and scalability.
+
+---
+
+**Get started building your next 2D game with a foundation that’s fast, safe, and ready for anything.**
 
 ---
 
