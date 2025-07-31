@@ -167,15 +167,11 @@ private:
   void setupResourceAchievements(); // Setup achievement demonstration
 
   // Inventory UI methods
-  void updateInventoryUI();
-  void renderInventoryPanel();
 
   // Resource change event demonstration methods
   void processResourceAchievements(HammerEngine::ResourceHandle handle,
                                    int oldQty, int newQty);
   void checkResourceWarnings(HammerEngine::ResourceHandle handle, int newQty);
-  void updateResourceUI(HammerEngine::ResourceHandle handle, int oldQty,
-                        int newQty);
   void logResourceAnalytics(HammerEngine::ResourceHandle handle, int oldQty,
                             int newQty, const std::string &source);
 

@@ -67,6 +67,25 @@ void UIManager::update(float deltaTime) {
     return;
   }
 
+  // Process data bindings
+  for (auto const& [id, component] : m_components) {
+      if (component) {
+          // Handle text bindings
+          if (component->m_textBinding) {
+              setText(id, component->m_textBinding());
+          }
+          // Handle list bindings
+          if (component->m_listBinding) {
+              auto newListItems = component->m_listBinding();
+              if (component->m_listItems.size() != newListItems.size() || 
+                  !std::equal(component->m_listItems.begin(), component->m_listItems.end(), newListItems.begin())) {
+                  component->m_listItems = newListItems;
+                  component->m_listItemsDirty = true; // Mark as dirty when changed by binding
+              }
+          }
+      }
+  }
+
   // Clear frame-specific state
   m_clickedButtons.clear();
   m_mouseReleased = false;
@@ -545,6 +564,24 @@ void UIManager::setStyle(const std::string &id, const UIStyle &style) {
   }
 }
 
+// Data binding methods
+void UIManager::bindText(const std::string &id,
+                         std::function<std::string()> binding) {
+  auto component = getComponent(id);
+  if (component) {
+    component->m_textBinding = binding;
+  }
+}
+
+void UIManager::bindList(
+    const std::string &id,
+    std::function<std::vector<std::string>()> binding) {
+  auto component = getComponent(id);
+  if (component) {
+    component->m_listBinding = binding;
+  }
+}
+
 // Text background methods for label and title readability
 void UIManager::enableTextBackground(const std::string &id, bool enable) {
   auto component = getComponent(id);
@@ -759,6 +796,7 @@ void UIManager::addListItem(const std::string &listID,
   auto component = getComponent(listID);
   if (component && component->m_type == UIComponentType::LIST) {
     component->m_listItems.push_back(item);
+    component->m_listItemsDirty = true;
     // Trigger auto-sizing to accommodate new content
     calculateOptimalSize(component);
   }
@@ -769,6 +807,7 @@ void UIManager::removeListItem(const std::string &listID, int index) {
   if (component && component->m_type == UIComponentType::LIST && index >= 0 &&
       index < static_cast<int>(component->m_listItems.size())) {
     component->m_listItems.erase(component->m_listItems.begin() + index);
+    component->m_listItemsDirty = true;
     if (component->m_selectedIndex == index) {
       component->m_selectedIndex = -1;
     } else if (component->m_selectedIndex > index) {
@@ -783,6 +822,7 @@ void UIManager::clearList(const std::string &listID) {
   auto component = getComponent(listID);
   if (component && component->m_type == UIComponentType::LIST) {
     component->m_listItems.clear();
+    component->m_listItemsDirty = true;
     component->m_selectedIndex = -1;
   }
 }
@@ -816,6 +856,7 @@ void UIManager::setListMaxItems(const std::string &listID, int maxItems) {
       auto &items = component->m_listItems;
       auto startIt = items.end() - maxItems;
       items.erase(items.begin(), startIt);
+      component->m_listItemsDirty = true;
 
       // Adjust selected index if needed
       if (component->m_selectedIndex >= maxItems) {
@@ -832,6 +873,7 @@ void UIManager::addListItemWithAutoScroll(const std::string &listID,
   if (component && component->m_type == UIComponentType::LIST) {
     // Add the new item
     component->m_listItems.push_back(item);
+    component->m_listItemsDirty = true;
 
     // Check if we need to enforce max items limit
     int maxItems =
@@ -864,6 +906,7 @@ void UIManager::clearListItems(const std::string &listID) {
   auto component = getComponent(listID);
   if (component && component->m_type == UIComponentType::LIST) {
     component->m_listItems.clear();
+    component->m_listItemsDirty = true;
     component->m_selectedIndex = -1;
   }
 }
@@ -874,6 +917,7 @@ void UIManager::addEventLogEntry(const std::string &logID,
   if (component && component->m_type == UIComponentType::EVENT_LOG) {
     // Add the entry directly (let the caller handle timestamps if needed)
     component->m_listItems.push_back(entry);
+    component->m_listItemsDirty = true;
 
     // Enforce max entries limit - scroll old events out
     int maxEntries = component->m_maxLength;
@@ -896,6 +940,7 @@ void UIManager::clearEventLog(const std::string &logID) {
   auto component = getComponent(logID);
   if (component && component->m_type == UIComponentType::EVENT_LOG) {
     component->m_listItems.clear();
+    component->m_listItemsDirty = true;
     component->m_selectedIndex = -1;
 
     // Event logs use fixed size for game events display
@@ -907,6 +952,7 @@ void UIManager::setEventLogMaxEntries(const std::string &logID,
   auto component = getComponent(logID);
   if (component && component->m_type == UIComponentType::EVENT_LOG) {
     component->m_maxLength = maxEntries;
+    component->m_listItemsDirty = true;
 
     // Trim existing entries if needed
     if (static_cast<int>(component->m_listItems.size()) > maxEntries) {
@@ -2163,48 +2209,62 @@ void UIManager::renderCheckbox(SDL_Renderer *renderer,
   if (!component)
     return;
 
-  int checkboxSize = std::min(component->m_bounds.height - 4, 20);
-  UIRect checkRect = {component->m_bounds.x + 2,
-                      component->m_bounds.y +
-                          (component->m_bounds.height - checkboxSize) / 2,
-                      checkboxSize, checkboxSize};
+  // Draw box
+  UIRect boxBounds;
+  boxBounds.x = component->m_bounds.x;
+  boxBounds.y = component->m_bounds.y +
+                (component->m_bounds.height -
+                 24) / // Use fixed size for checkbox
+                    2;
+  boxBounds.width = 24;
+  boxBounds.height = 24;
 
-  // Draw checkbox background
-  SDL_Color bgColor = component->m_checked ? component->m_style.hoverColor
-                                         : component->m_style.backgroundColor;
-  drawRect(renderer, checkRect, bgColor, true);
-  drawBorder(renderer, checkRect, component->m_style.borderColor, 1);
+  SDL_Color boxColor = component->m_style.backgroundColor;
+  if (component->m_state == UIState::HOVERED) {
+    boxColor = component->m_style.hoverColor;
+  }
+  drawRect(renderer, boxBounds, boxColor, true);
 
   // Draw checkmark if checked
   if (component->m_checked) {
-    // Use dark color for checkmark on light checkbox background
-    SDL_SetRenderDrawColor(renderer, 20, 20, 20, 255);
-
-    int cx = checkRect.x + checkRect.width / 2;
-    int cy = checkRect.y + checkRect.height / 2;
-
-    SDL_RenderLine(renderer, cx - 4, cy, cx - 1, cy + 3);
-    SDL_RenderLine(renderer, cx - 1, cy + 3, cx + 4, cy - 2);
+    auto &fontManager = FontManager::Instance();
+    fontManager.drawTextAligned("X", component->m_style.fontID,
+                                boxBounds.x + boxBounds.width / 2,
+                                boxBounds.y + boxBounds.height / 2,
+                                component->m_style.textColor, renderer,
+                                0); // Center
   }
 
-  // Draw label text
+  // Draw text
   if (!component->m_text.empty()) {
     auto &fontManager = FontManager::Instance();
-#ifdef __APPLE__
-    // On macOS, use logical coordinates directly - SDL3 handles scaling
-    // automatically
-    int textX = checkRect.x + checkRect.width + component->m_style.padding;
+    int textX = boxBounds.x + boxBounds.width + component->m_style.padding;
     int textY = component->m_bounds.y + component->m_bounds.height / 2;
-#else
-    // Use logical coordinates directly - SDL3 logical presentation handles
-    // scaling
-    int textX = checkRect.x + checkRect.width + component->m_style.padding;
-    int textY = component->m_bounds.y + component->m_bounds.height / 2;
-#endif
-    fontManager.drawTextAligned(component->m_text, component->m_style.fontID, textX,
-                                textY, component->m_style.textColor, renderer,
-                                1); // 1 = left alignment
+    fontManager.drawTextAligned(component->m_text, component->m_style.fontID,
+                                textX, textY, component->m_style.textColor,
+                                renderer, 1); // Left-aligned
   }
+}
+
+void regenerateListTextures(const std::shared_ptr<UIComponent>& component, SDL_Renderer* renderer) {
+    if (!component || !component->m_listItemsDirty) {
+        return;
+    }
+
+    auto& fontManager = FontManager::Instance();
+    component->m_listItemTextures.clear();
+    component->m_listItemTextures.reserve(component->m_listItems.size());
+
+    for (const auto& itemText : component->m_listItems) {
+        if (itemText.empty()) {
+            component->m_listItemTextures.push_back(nullptr);
+            continue;
+        }
+        SDL_Texture* texture = fontManager.renderText(itemText, component->m_style.fontID, component->m_style.textColor, renderer, true);
+        component->m_listItemTextures.emplace_back(texture, SDL_DestroyTexture);
+    }
+
+    component->m_listItemsDirty = false;
 }
 
 void UIManager::renderList(SDL_Renderer *renderer,
@@ -2212,52 +2272,44 @@ void UIManager::renderList(SDL_Renderer *renderer,
   if (!component)
     return;
 
+  // Regenerate textures if the list has changed
+  regenerateListTextures(component, renderer);
+
   // Draw background
-  drawRect(renderer, component->m_bounds, component->m_style.backgroundColor, true);
-  drawBorder(renderer, component->m_bounds, component->m_style.borderColor, 1);
+  drawRect(renderer, component->m_bounds, component->m_style.backgroundColor,
+           true);
 
-  // Calculate item height dynamically based on current font metrics
-  auto &fontManager = FontManager::Instance();
-  int lineHeight = 0;
-  int itemHeight = 32; // Default fallback
-  if (fontManager.getFontMetrics(component->m_style.fontID, &lineHeight, nullptr,
-                                 nullptr)) {
-    itemHeight = lineHeight + 8; // Add padding for better mouse accuracy
+  // Draw border
+  if (component->m_style.borderWidth > 0) {
+    drawBorder(renderer, component->m_bounds, component->m_style.borderColor,
+               component->m_style.borderWidth);
   }
-  int y = component->m_bounds.y + component->m_style.padding;
-  int maxY =
-      component->m_bounds.y + component->m_bounds.height - component->m_style.padding;
 
-  for (size_t i = 0; i < component->m_listItems.size(); ++i) {
-    if (y + itemHeight > maxY)
-      break;
+  // Draw list items using cached textures
+  int itemY = component->m_bounds.y + component->m_style.padding;
+  int itemHeight = component->m_style.listItemHeight;
 
-    UIRect itemRect = {component->m_bounds.x + component->m_style.padding, y,
-                       component->m_bounds.width - (component->m_style.padding * 2),
-                       itemHeight};
+  for (int i = 0; i < static_cast<int>(component->m_listItemTextures.size()); ++i) {
+    UIRect itemBounds = {component->m_bounds.x, itemY, component->m_bounds.width,
+                         itemHeight};
 
     // Highlight selected item
-    if (static_cast<int>(i) == component->m_selectedIndex) {
-      drawRect(renderer, itemRect, component->m_style.hoverColor, true);
+    if (i == component->m_selectedIndex) {
+      drawRect(renderer, itemBounds, component->m_style.hoverColor, true);
     }
 
-// Draw item text
-#ifdef __APPLE__
-    // On macOS, use logical coordinates directly - SDL3 handles scaling
-    // automatically
-    int textX = itemRect.x + component->m_style.padding;
-    int textY = itemRect.y + itemHeight / 2;
-#else
-    // Use logical coordinates directly - SDL3 logical presentation handles
-    // scaling
-    int textX = itemRect.x + component->m_style.padding;
-    int textY = itemRect.y + itemHeight / 2;
-#endif
-    fontManager.drawTextAligned(
-        component->m_listItems[i], component->m_style.fontID, textX, textY,
-        component->m_style.textColor, renderer, 1); // 1 = left alignment
+    // Draw item texture
+    auto& texture = component->m_listItemTextures[i];
+    if (texture) {
+        float texW, texH;
+        SDL_GetTextureSize(texture.get(), &texW, &texH);
+        int textX = component->m_bounds.x + component->m_style.padding * 2;
+        int textY = itemY + (itemHeight - static_cast<int>(texH)) / 2; // Center vertically
+        SDL_FRect destRect = {static_cast<float>(textX), static_cast<float>(textY), texW, texH};
+        SDL_RenderTexture(renderer, texture.get(), nullptr, &destRect);
+    }
 
-    y += itemHeight;
+    itemY += itemHeight;
   }
 }
 
@@ -2266,124 +2318,40 @@ void UIManager::renderEventLog(SDL_Renderer *renderer,
   if (!component)
     return;
 
-  // Draw background panel
-  drawRect(renderer, component->m_bounds, component->m_style.backgroundColor, true);
-  drawBorder(renderer, component->m_bounds, component->m_style.borderColor, 1);
+  // Regenerate textures if the log has changed
+  regenerateListTextures(component, renderer);
 
-  if (component->m_listItems.empty()) {
-    return; // Nothing to render
+  // Draw background
+  drawRect(renderer, component->m_bounds, component->m_style.backgroundColor,
+           true);
+
+  // Draw border
+  if (component->m_style.borderWidth > 0) {
+    drawBorder(renderer, component->m_bounds, component->m_style.borderColor,
+               component->m_style.borderWidth);
   }
 
-  // Calculate available display area
-  int contentX = component->m_bounds.x + component->m_style.padding;
-  int contentY = component->m_bounds.y + component->m_style.padding;
-  int contentWidth = component->m_bounds.width - (component->m_style.padding * 2);
-  int contentHeight = component->m_bounds.height - (component->m_style.padding * 2);
-  int maxY =
-      component->m_bounds.y + component->m_bounds.height - component->m_style.padding;
+  // Draw log entries using cached textures
+  int itemHeight = component->m_style.listItemHeight;
+  int startY = component->m_bounds.y + component->m_bounds.height -
+               component->m_style.padding - itemHeight;
 
-  auto &fontManager = FontManager::Instance();
+  for (int i = static_cast<int>(component->m_listItemTextures.size()) - 1; i >= 0;
+       --i) {
+    if (startY < component->m_bounds.y)
+      break; // Stop if we run out of space
 
-  // Start from the bottom and work upward to show most recent entries
-  std::vector<std::pair<std::string, int>> wrappedEntries;
-  int totalHeight = 0;
-
-  // Pre-process entries to calculate wrapped text heights (from newest to
-  // oldest)
-  for (int i = static_cast<int>(component->m_listItems.size()) - 1; i >= 0; --i) {
-    const std::string &entry = component->m_listItems[i];
-    int entryWidth = 0, entryHeight = 0;
-
-    // Use FontManager's word wrapping to measure text
-    if (fontManager.measureTextWithWrapping(entry, component->m_style.fontID,
-                                            contentWidth, &entryWidth,
-                                            &entryHeight)) {
-      wrappedEntries.insert(wrappedEntries.begin(), {entry, entryHeight + 4});
-      totalHeight += entryHeight + 4;
-    } else {
-      // Fallback to single line height - calculate dynamically based on font
-      // metrics
-      int fontLineHeight = 0;
-      int lineHeight = 24; // Default fallback
-      if (fontManager.getFontMetrics(component->m_style.fontID, &fontLineHeight,
-                                     nullptr, nullptr)) {
-        lineHeight = fontLineHeight + 4; // Tighter spacing for event log
-      }
-      wrappedEntries.insert(wrappedEntries.begin(), {entry, lineHeight + 4});
-      totalHeight += lineHeight + 4;
+    auto& texture = component->m_listItemTextures[i];
+    if (texture) {
+        float texW, texH;
+        SDL_GetTextureSize(texture.get(), &texW, &texH);
+        int textX = component->m_bounds.x + component->m_style.padding * 2;
+        int textY = startY + (itemHeight - static_cast<int>(texH)) / 2;
+        SDL_FRect destRect = {static_cast<float>(textX), static_cast<float>(textY), texW, texH};
+        SDL_RenderTexture(renderer, texture.get(), nullptr, &destRect);
     }
 
-    // Stop if we have enough content to fill the display area
-    if (totalHeight >= contentHeight) {
-      break;
-    }
-  }
-
-  // Render visible entries
-  if (totalHeight > contentHeight) {
-    // Find how many entries we can fit starting from the bottom
-    int remainingHeight = contentHeight;
-    int visibleEntries = 0;
-
-    for (int i = static_cast<int>(wrappedEntries.size()) - 1; i >= 0; --i) {
-      if (remainingHeight >= wrappedEntries[i].second) {
-        remainingHeight -= wrappedEntries[i].second;
-        visibleEntries++;
-      } else {
-        break;
-      }
-    }
-
-    // Render only the visible entries
-    int startIndex = static_cast<int>(wrappedEntries.size()) - visibleEntries;
-    int y = contentY;
-
-    for (int i = startIndex; i < static_cast<int>(wrappedEntries.size()); ++i) {
-      if (y + wrappedEntries[i].second > maxY)
-        break;
-
-#ifdef __APPLE__
-      int textX = contentX;
-      int textY = y;
-#else
-      // Use logical coordinates directly - SDL3 logical presentation handles
-      // scaling
-      int textX = contentX;
-      int textY = y;
-#endif
-
-      // Use FontManager's word wrapping to draw text
-      fontManager.drawTextWithWrapping(
-          wrappedEntries[i].first, component->m_style.fontID, textX, textY,
-          contentWidth, component->m_style.textColor, renderer);
-
-      y += wrappedEntries[i].second;
-    }
-  } else {
-    // All content fits, render normally
-    int y = contentY;
-
-    for (const auto &entry : wrappedEntries) {
-      if (y + entry.second > maxY)
-        break;
-
-#ifdef __APPLE__
-      int textX = contentX;
-      int textY = y;
-#else
-      // Use logical coordinates directly - SDL3 logical presentation handles
-      // scaling
-      int textX = contentX;
-      int textY = y;
-#endif
-
-      // Use FontManager's word wrapping to draw text
-      fontManager.drawTextWithWrapping(entry.first, component->m_style.fontID,
-                                       textX, textY, contentWidth,
-                                       component->m_style.textColor, renderer);
-
-      y += entry.second;
-    }
+    startY -= itemHeight;
   }
 }
 

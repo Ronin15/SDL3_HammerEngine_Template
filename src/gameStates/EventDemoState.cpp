@@ -134,6 +134,42 @@ bool EventDemoState::enter() {
     // Create inventory list for smooth updates like GamePlayState
     ui.createList("inventory_list",
                   {inventoryX + 10, inventoryY + 75, inventoryWidth - 20, 220});
+
+    // --- DATA BINDING SETUP ---
+    // Bind the inventory capacity label to a function that gets the data
+    ui.bindText("inventory_status", [this]() -> std::string {
+        if (!m_player || !m_player->getInventory()) return "Capacity: 0/0";
+        auto* inventory = m_player->getInventory();
+        return "Capacity: " + std::to_string(inventory->getUsedSlots()) + "/" + std::to_string(inventory->getMaxSlots());
+    });
+
+    // Bind the inventory list to a function that gets the items, sorts them, and returns them
+    ui.bindList("inventory_list", [this]() -> std::vector<std::string> {
+        if (!m_player || !m_player->getInventory()) return {"(Empty)"};
+        
+        auto* inventory = m_player->getInventory();
+        auto allResources = inventory->getAllResources();
+
+        if (allResources.empty()) return {"(Empty)"};
+
+        std::vector<std::string> items;
+        std::vector<std::pair<std::string, int>> sortedResources;
+        for (const auto& [resourceHandle, quantity] : allResources) {
+            if (quantity > 0) {
+                auto resourceTemplate = ResourceTemplateManager::Instance().getResourceTemplate(resourceHandle);
+                std::string resourceName = resourceTemplate ? resourceTemplate->getName() : "Unknown";
+                sortedResources.emplace_back(resourceName, quantity);
+            }
+        }
+        std::sort(sortedResources.begin(), sortedResources.end());
+
+        for (const auto& [resourceId, quantity] : sortedResources) {
+            items.push_back(resourceId + " x" + std::to_string(quantity));
+        }
+        return items;
+    });
+
+
     std::cout
         << "Hammer Game Engine - EventDemoState initialized successfully\n";
     return true;
@@ -429,7 +465,7 @@ void EventDemoState::render(float deltaTime) {
     ui.setText("event_status", statusText.str());
 
     // Update inventory display
-    updateInventoryUI();
+    // updateInventoryUI(); // Now handled by data binding
   }
   ui.render();
 }
@@ -1316,7 +1352,7 @@ void EventDemoState::onResourceChanged(const EventData &data) {
     // Process different aspects of resource changes
     processResourceAchievements(handle, oldQty, newQty);
     checkResourceWarnings(handle, newQty);
-    updateResourceUI(handle, oldQty, newQty);
+    // updateResourceUI(handle, oldQty, newQty); // No longer needed, UI is data-bound
     logResourceAnalytics(handle, oldQty, newQty, source);
 
     addLogEntry("Resource change handler completed");
@@ -1651,57 +1687,6 @@ void EventDemoState::createNPCAtPosition(const std::string &npcType, float x,
   }
 }
 
-void EventDemoState::updateInventoryUI() {
-  if (!m_player || !m_player->getInventory()) {
-    return;
-  }
-
-  auto *inventory = m_player->getInventory();
-  auto &ui = UIManager::Instance();
-
-  // Update capacity status
-  size_t usedSlots = inventory->getUsedSlots();
-  size_t maxSlots = inventory->getMaxSlots();
-  std::string capacityText =
-      "Capacity: " + std::to_string(usedSlots) + "/" + std::to_string(maxSlots);
-  ui.setText("inventory_status", capacityText);
-
-  // Update inventory list (like GamePlayState for smooth updates)
-  ui.clearList("inventory_list");
-  auto allResources = inventory->getAllResources();
-
-  // Create sorted list for consistent display
-  std::vector<std::pair<std::string, int>> sortedResources;
-  for (const auto &[resourceHandle, quantity] : allResources) {
-    if (quantity > 0) {
-      // Convert ResourceHandle to name
-      auto resourceTemplate =
-          ResourceTemplateManager::Instance().getResourceTemplate(
-              resourceHandle);
-      std::string resourceName =
-          resourceTemplate ? resourceTemplate->getName() : "Unknown";
-      sortedResources.emplace_back(resourceName, quantity);
-    }
-  }
-  std::sort(sortedResources.begin(), sortedResources.end());
-
-  // Add resources to list
-  for (const auto &[resourceId, quantity] : sortedResources) {
-    ui.addListItem("inventory_list",
-                   resourceId + " x" + std::to_string(quantity));
-  }
-
-  // If inventory is empty, show a message
-  if (sortedResources.empty()) {
-    ui.addListItem("inventory_list", "(Empty)");
-  }
-}
-
-void EventDemoState::renderInventoryPanel() {
-  // Inventory panel rendering is handled by UIManager
-  // This method exists for potential future custom rendering
-}
-
 void EventDemoState::setupResourceAchievements() {
   // Set up achievement thresholds for different resource types for
   // demonstration
@@ -1802,34 +1787,7 @@ void EventDemoState::checkResourceWarnings(HammerEngine::ResourceHandle handle,
   }
 }
 
-void EventDemoState::updateResourceUI(HammerEngine::ResourceHandle handle,
-                                      int oldQty, int newQty) {
-  // Get resource information
-  auto resourceTemplate =
-      ResourceTemplateManager::Instance().getResourceTemplate(handle);
-  if (!resourceTemplate)
-    return;
 
-  std::string resourceName = resourceTemplate->getName();
-  int change = newQty - oldQty;
-
-  // Create UI notification message
-  std::string changeText;
-  if (change > 0) {
-    changeText = "+" + std::to_string(change);
-  } else {
-    changeText = std::to_string(change);
-  }
-
-  addLogEntry("📊 UI UPDATE: " + resourceName + " " + changeText + " (" +
-              std::to_string(oldQty) + " → " + std::to_string(newQty) + ")");
-
-  // In a real game, this could update:
-  // - Resource counters in HUD
-  // - Inventory displays with animations
-  // - Crafting availability indicators
-  // - Quest progress bars
-}
 
 void EventDemoState::logResourceAnalytics(HammerEngine::ResourceHandle handle,
                                           int oldQty, int newQty,

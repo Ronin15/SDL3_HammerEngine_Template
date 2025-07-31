@@ -73,6 +73,17 @@ class FontManager {
                           SDL_Color color, SDL_Renderer* renderer);
 
   /**
+   * @brief Renders text to a new texture (caller owns the texture)
+   * @param text Text string to render
+   * @param fontID Unique identifier of the font to use
+   * @param color Text color for rendering
+   * @param renderer SDL renderer for texture creation
+   * @return Raw pointer to a new SDL_Texture, or nullptr if failed. The caller is responsible for destroying this texture.
+   */
+  SDL_Texture* renderText(const std::string& text, const std::string& fontID,
+                        SDL_Color color, SDL_Renderer* renderer, bool dummy_for_overload);
+
+  /**
    * @brief Renders multi-line text to a texture (handles newlines)
    * @param text Multi-line text string to render
    * @param font TTF font to use for rendering

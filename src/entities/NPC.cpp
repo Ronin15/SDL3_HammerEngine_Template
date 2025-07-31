@@ -116,16 +116,15 @@ void NPC::update(float deltaTime) {
   m_velocity += m_acceleration * deltaTime;
   m_position += m_velocity * deltaTime;
 
-  // Apply frame-rate independent friction for smoother movement
-  if (m_velocity.length() > 0.1f) {
-    // Frame-rate independent friction using exponential decay
-    const float frictionRate =
-        0.05f; // Friction strength (higher = more friction)
-    float frictionFactor = std::pow(frictionRate, deltaTime);
-    m_velocity *= frictionFactor;
+  // --- PERFORMANCE OPTIMIZATION ---
+  // Use squared length to avoid expensive sqrt calls and use linear damping instead of pow().
+  const float stopThresholdSquared = 0.1f * 0.1f;
+  if (m_velocity.lengthSquared() > stopThresholdSquared) {
+    // Apply frame-rate independent linear damping for friction
+    const float frictionCoefficient = 8.0f; // Adjust this value for desired friction strength
+    m_velocity -= m_velocity * frictionCoefficient * deltaTime;
 
     // Update flip direction based on horizontal velocity
-    // Only flip if the horizontal speed is significant enough
     if (std::abs(m_velocity.getX()) > 0.5f) {
       if (m_velocity.getX() < 0) {
         m_flip = SDL_FLIP_HORIZONTAL;
@@ -133,7 +132,7 @@ void NPC::update(float deltaTime) {
         m_flip = SDL_FLIP_NONE;
       }
     }
-  } else if (m_velocity.length() < 0.1f) {
+  } else {
     // If velocity is very small, stop completely to avoid tiny sliding
     m_velocity = Vector2D(0, 0);
   }
