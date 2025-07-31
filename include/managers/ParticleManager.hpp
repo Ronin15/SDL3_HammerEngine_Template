@@ -763,8 +763,102 @@ private:
 
   // Lock-free high-performance storage with double buffering
   struct alignas(64) LockFreeParticleStorage {
+    // SoA data layout for cache-friendly updates
+    struct ParticleSoA {
+        std::vector<Vector2D> positions;
+        std::vector<Vector2D> velocities;
+        std::vector<Vector2D> accelerations;
+        std::vector<float> lives;
+        std::vector<float> maxLives;
+        std::vector<float> sizes;
+        std::vector<float> rotations;
+        std::vector<float> angularVelocities;
+        std::vector<uint32_t> colors;
+        std::vector<uint16_t> textureIndices;
+        std::vector<uint8_t> flags;
+        std::vector<uint8_t> generationIds;
+        std::vector<ParticleEffectType> effectTypes;
+        std::vector<UnifiedParticle::RenderLayer> layers;
+
+        void resize(size_t newSize) {
+            positions.resize(newSize);
+            velocities.resize(newSize);
+            accelerations.resize(newSize);
+            lives.resize(newSize);
+            maxLives.resize(newSize);
+            sizes.resize(newSize);
+            rotations.resize(newSize);
+            angularVelocities.resize(newSize);
+            colors.resize(newSize);
+            textureIndices.resize(newSize);
+            flags.resize(newSize);
+            generationIds.resize(newSize);
+            effectTypes.resize(newSize);
+            layers.resize(newSize);
+        }
+
+        void reserve(size_t newCapacity) {
+            positions.reserve(newCapacity);
+            velocities.reserve(newCapacity);
+            accelerations.reserve(newCapacity);
+            lives.reserve(newCapacity);
+            maxLives.reserve(newCapacity);
+            sizes.reserve(newCapacity);
+            rotations.reserve(newCapacity);
+            angularVelocities.reserve(newCapacity);
+            colors.reserve(newCapacity);
+            textureIndices.reserve(newCapacity);
+            flags.reserve(newCapacity);
+            generationIds.reserve(newCapacity);
+            effectTypes.reserve(newCapacity);
+            layers.reserve(newCapacity);
+        }
+
+        void push_back(const UnifiedParticle& p) {
+            positions.push_back(p.position);
+            velocities.push_back(p.velocity);
+            accelerations.push_back(p.acceleration);
+            lives.push_back(p.life);
+            maxLives.push_back(p.maxLife);
+            sizes.push_back(p.size);
+            rotations.push_back(p.rotation);
+            angularVelocities.push_back(p.angularVelocity);
+            colors.push_back(p.color);
+            textureIndices.push_back(p.textureIndex);
+            flags.push_back(p.flags);
+            generationIds.push_back(p.generationId);
+            effectTypes.push_back(p.effectType);
+            layers.push_back(p.layer);
+        }
+
+        void clear() {
+            positions.clear();
+            velocities.clear();
+            accelerations.clear();
+            lives.clear();
+            maxLives.clear();
+            sizes.clear();
+            rotations.clear();
+            angularVelocities.clear();
+            colors.clear();
+            textureIndices.clear();
+            flags.clear();
+            generationIds.clear();
+            effectTypes.clear();
+            layers.clear();
+        }
+
+        size_t size() const {
+            return positions.size();
+        }
+
+        bool empty() const {
+            return positions.empty();
+        }
+    };
+
     // Double-buffered particle arrays for lock-free updates
-    std::vector<UnifiedParticle> particles[2];
+    ParticleSoA particles[2];
     std::atomic<size_t> activeBuffer{0};  // Which buffer is currently active
     std::atomic<size_t> particleCount{0}; // Current particle count
     std::atomic<size_t> writeHead{0};     // Next write position
@@ -866,26 +960,31 @@ private:
     }
 
     // Get read-only access to particles
-    const std::vector<UnifiedParticle> &getParticlesForRead() const {
+    const ParticleSoA &getParticlesForRead() const {
       size_t activeIdx = activeBuffer.load(std::memory_order_acquire);
       return particles[activeIdx];
     }
 
     // Get writable access to particles (for updates)
-    std::vector<UnifiedParticle> &getCurrentBuffer() {
+    ParticleSoA &getCurrentBuffer() {
       size_t activeIdx = activeBuffer.load(std::memory_order_relaxed);
       return particles[activeIdx];
     }
 
     // Check if compaction is needed
     bool needsCompaction() const {
-      const auto &activeParticles = getParticlesForRead();
-      size_t inactiveCount =
-          std::count_if(activeParticles.begin(), activeParticles.end(),
-                        [](const UnifiedParticle &p) { return !p.isActive(); });
-      return inactiveCount >
-             activeParticles.size() * 0.5; // Less aggressive: 50% vs 30%
+        const auto& activeParticles = getParticlesForRead();
+        if (activeParticles.empty()) return false;
+
+        size_t inactiveCount = 0;
+        for (const auto& flag : activeParticles.flags) {
+            if (!(flag & UnifiedParticle::FLAG_ACTIVE)) {
+                inactiveCount++;
+            }
+        }
+        return inactiveCount > activeParticles.size() * 0.5;
     }
+
 
     // Submit new particle (lock-free)
     bool submitNewParticle(const NewParticleRequest &request) {
@@ -949,6 +1048,7 @@ private:
   mutable std::shared_mutex
       m_effectsMutex;              // Only for effect definitions (rare writes)
   mutable std::mutex m_statsMutex; // Only for performance stats
+  mutable std::mutex m_weatherMutex; // For weather effect changes
 
   // Update serialization for single-threaded update logic
   static std::mutex
@@ -1023,7 +1123,7 @@ private:
   void updateParticlesThreaded(float deltaTime, size_t activeParticleCount);
   void updateParticlesSingleThreaded(float deltaTime,
                                      size_t activeParticleCount);
-  void updateParticleRange(std::vector<UnifiedParticle> &particles,
+  void updateParticleRange(LockFreeParticleStorage::ParticleSoA &particles,
                            size_t startIdx, size_t endIdx, float deltaTime);
   void updateParticleWithColdData(ParticleData &particle,
                                   const ParticleColdData &coldData,
