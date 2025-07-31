@@ -791,89 +791,65 @@ void GameEngine::update([[maybe_unused]] float deltaTime) {
   const size_t updateBufferIndex =
       m_currentBufferIndex.load(std::memory_order_acquire);
 
-  try {
-    // HYBRID MANAGER UPDATE ARCHITECTURE
-    // =====================================
-    // HYBRID MANAGER UPDATE ARCHITECTURE - Step 1: Global Updates (No Caching)
-    // =====================================
-    // Core engine systems are updated globally for optimal performance and
-    // consistency State-specific systems are updated by individual states for
-    // flexibility and efficiency
+  // HYBRID MANAGER UPDATE ARCHITECTURE
+  // =====================================
+  // HYBRID MANAGER UPDATE ARCHITECTURE - Step 1: Global Updates (No Caching)
+  // =====================================
+  // Core engine systems are updated globally for optimal performance and
+  // consistency State-specific systems are updated by individual states for
+  // flexibility and efficiency
 
-    // GLOBAL SYSTEMS (Updated by GameEngine):
-    // - AIManager: World simulation with 10K+ entities, benefits from
-    // consistent global updates
-    // - EventManager: Global game events (weather, scene changes), batch
-    // processing optimization
-    // - ParticleManager: Global particle system with weather integration,
-    // cache-optimized SoA updates
-    // - InputManager: Handled in handleEvents() for proper SDL event polling
-    // architecture
+  // GLOBAL SYSTEMS (Updated by GameEngine):
+  // - AIManager: World simulation with 10K+ entities, benefits from
+  // consistent global updates
+  // - EventManager: Global game events (weather, scene changes), batch
+  // processing optimization
+  // - ParticleManager: Global particle system with weather integration,
+  // cache-optimized SoA updates
+  // - InputManager: Handled in handleEvents() for proper SDL event polling
+  // architecture
 
-    // AI system - manages world entities across all states (cached reference
-    // access)
-    if (mp_aiManager) {
-      try {
-        mp_aiManager->update(deltaTime);
-      } catch (const std::exception &e) {
-        GAMEENGINE_ERROR("AIManager exception: " + std::string(e.what()));
-      } catch (...) {
-        GAMEENGINE_ERROR("AIManager unknown exception");
-      }
-    } else {
-      GAMEENGINE_ERROR("AIManager cache is null!");
-    }
-
-    // Event system - global game events and world simulation (cached reference
-    // access)
-    if (mp_eventManager) {
-      try {
-        mp_eventManager->update();
-      } catch (const std::exception &e) {
-        GAMEENGINE_ERROR("EventManager exception: " + std::string(e.what()));
-      } catch (...) {
-        GAMEENGINE_ERROR("EventManager unknown exception");
-      }
-    } else {
-      GAMEENGINE_ERROR("EventManager cache is null!");
-    }
-
-    // Particle system - global weather and effect particles (cached reference
-    // access)
-    if (mp_particleManager) {
-      try {
-        mp_particleManager->update(deltaTime);
-      } catch (const std::exception &e) {
-        GAMEENGINE_ERROR("ParticleManager exception: " + std::string(e.what()));
-      } catch (...) {
-        GAMEENGINE_ERROR("ParticleManager unknown exception");
-      }
-    } else {
-      GAMEENGINE_ERROR("ParticleManager cache is null!");
-    }
-
-    // STATE-MANAGED SYSTEMS (Updated by individual states):
-    // - UIManager: Optional, state-specific, only updated when UI is actually
-    // used See UIExampleState::update() for proper state-managed pattern
-
-    // Update game states - states handle their specific system needs
-    mp_gameStateManager->update(deltaTime);
-
-    // Increment the frame counter atomically for thread-safe render
-    // synchronization
-    m_lastUpdateFrame.fetch_add(1, std::memory_order_relaxed);
-
-    // Mark this buffer as ready for rendering
-    m_bufferReady[updateBufferIndex].store(true, std::memory_order_release);
-
-    // Mark update as completed with relaxed ordering (protected by condition
-    // variable)
-    m_updateCompleted.store(true, std::memory_order_relaxed);
-  } catch (const std::exception &e) {
-    GAMEENGINE_ERROR("Exception in update: " + std::string(e.what()));
-  } catch (...) {
-    GAMEENGINE_ERROR("Unknown exception in update");
+  // AI system - manages world entities across all states (cached reference
+  // access)
+  if (mp_aiManager) {
+    mp_aiManager->update(deltaTime);
+  } else {
+    GAMEENGINE_ERROR("AIManager cache is null!");
   }
+
+  // Event system - global game events and world simulation (cached reference
+  // access)
+  if (mp_eventManager) {
+    mp_eventManager->update();
+  } else {
+    GAMEENGINE_ERROR("EventManager cache is null!");
+  }
+
+  // Particle system - global weather and effect particles (cached reference
+  // access)
+  if (mp_particleManager) {
+    mp_particleManager->update(deltaTime);
+  } else {
+    GAMEENGINE_ERROR("ParticleManager cache is null!");
+  }
+
+  // STATE-MANAGED SYSTEMS (Updated by individual states):
+  // - UIManager: Optional, state-specific, only updated when UI is actually
+  // used See UIExampleState::update() for proper state-managed pattern
+
+  // Update game states - states handle their specific system needs
+  mp_gameStateManager->update(deltaTime);
+
+  // Increment the frame counter atomically for thread-safe render
+  // synchronization
+  m_lastUpdateFrame.fetch_add(1, std::memory_order_relaxed);
+
+  // Mark this buffer as ready for rendering
+  m_bufferReady[updateBufferIndex].store(true, std::memory_order_release);
+
+  // Mark update as completed with relaxed ordering (protected by condition
+  // variable)
+  m_updateCompleted.store(true, std::memory_order_relaxed);
 
   m_updateRunning.store(false, std::memory_order_relaxed);
 
@@ -888,35 +864,27 @@ void GameEngine::render() {
 
   // Always render - optimized buffer management ensures render buffer is always
   // valid
-  {
-    try {
-      if (!SDL_SetRenderDrawColor(
-              mp_renderer.get(),
-              HAMMER_GRAY)) { // Hammer Game Engine gunmetal dark grey
-        GAMEENGINE_ERROR("Failed to set render draw color: " +
-                         std::string(SDL_GetError()));
-      }
-      if (!SDL_RenderClear(mp_renderer.get())) {
-        GAMEENGINE_ERROR("Failed to clear renderer: " +
-                         std::string(SDL_GetError()));
-      }
-
-      // Make sure GameStateManager knows which buffer to render from
-      mp_gameStateManager->render();
-
-      if (!SDL_RenderPresent(mp_renderer.get())) {
-        GAMEENGINE_ERROR("Failed to present renderer: " +
-                         std::string(SDL_GetError()));
-      }
-
-      // Increment rendered frame counter for fast synchronization
-      m_lastRenderedFrame.fetch_add(1, std::memory_order_relaxed);
-    } catch (const std::exception &e) {
-      GAMEENGINE_ERROR("Exception in render: " + std::string(e.what()));
-    } catch (...) {
-      GAMEENGINE_ERROR("Unknown exception in render");
-    }
+  if (!SDL_SetRenderDrawColor(
+          mp_renderer.get(),
+          HAMMER_GRAY)) { // Hammer Game Engine gunmetal dark grey
+    GAMEENGINE_ERROR("Failed to set render draw color: " +
+                     std::string(SDL_GetError()));
   }
+  if (!SDL_RenderClear(mp_renderer.get())) {
+    GAMEENGINE_ERROR("Failed to clear renderer: " +
+                     std::string(SDL_GetError()));
+  }
+
+  // Make sure GameStateManager knows which buffer to render from
+  mp_gameStateManager->render();
+
+  if (!SDL_RenderPresent(mp_renderer.get())) {
+    GAMEENGINE_ERROR("Failed to present renderer: " +
+                     std::string(SDL_GetError()));
+  }
+
+  // Increment rendered frame counter for fast synchronization
+  m_lastRenderedFrame.fetch_add(1, std::memory_order_relaxed);
 }
 
 void GameEngine::waitForUpdate() {

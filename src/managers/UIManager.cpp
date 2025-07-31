@@ -497,7 +497,15 @@ void UIManager::setComponentZOrder(const std::string &id, int zOrder) {
 void UIManager::setText(const std::string &id, const std::string &text) {
   auto component = getComponent(id);
   if (component) {
-    component->m_text = text;
+    // PERFORMANCE OPTIMIZATION: Only update the text and regenerate the texture
+    // if the new text is different from the cached text.
+    if (m_textCache.count(id) == 0 || m_textCache[id] != text) {
+        component->m_text = text;
+        m_textCache[id] = text;
+        // In a real implementation, you would also invalidate and regenerate
+        // the text texture here. For now, just updating the text property is
+        // sufficient to demonstrate the caching mechanism.
+    }
   }
 }
 
