@@ -4,6 +4,7 @@
  */
 
 #include "managers/ParticleManager.hpp"
+#include "core/GameEngine.hpp"
 #include "core/Logger.hpp"
 #include "core/ThreadSystem.hpp"
 #include "core/WorkerBudget.hpp"
@@ -327,58 +328,19 @@ void ParticleManager::renderBackground(SDL_Renderer *renderer, float cameraX,
   const auto &particles = m_storage.getParticlesForRead();
 
   for (const auto &particle : particles) {
-    if (!particle.isActive() || !particle.isVisible()) {
+    if (!particle.isActive() || !particle.isVisible() ||
+        particle.layer != UnifiedParticle::RenderLayer::Background) {
       continue;
     }
 
-    // Check if this is a background particle (rain, snow, fire, smoke, sparks)
-    uint32_t color = particle.color;
-    bool isBackground = false;
-
-    // Rain particles (including HeavyRain) - blue-dominant colors
-    uint8_t r = (color >> 24) & 0xFF;
-    uint8_t g = (color >> 16) & 0xFF;
-    uint8_t b = (color >> 8) & 0xFF;
-
-    // Rain/HeavyRain: blue is dominant (blue > red AND blue > green)
-    if (b > r && b > g && b >= 150) {
-      isBackground = true;
-    }
-    // Snow particles (including HeavySnow) - white (all RGB components high and
-    // similar)
-    else if (r >= 200 && g >= 200 && b >= 200 &&
-             abs(static_cast<int>(r) - static_cast<int>(g)) <= 30 &&
-             abs(static_cast<int>(r) - static_cast<int>(b)) <= 30 &&
-             abs(static_cast<int>(g) - static_cast<int>(b)) <= 30) {
-      isBackground = true;
-    }
-    // Fire particles - orange/red/yellow range (red component >= 0x45)
-    else if ((color & 0xFF000000) == 0xFF000000 &&
-             ((color & 0x00FF0000) >= 0x00450000)) {
-      isBackground = true;
-    }
-    // Smoke particles - grey range
-    else if ((color & 0xFF000000) >= 0x20000000 &&
-             (color & 0xFF000000) <= 0x80000000 &&
-             (color & 0x00FFFFFF) >= 0x00202020 &&
-             (color & 0x00FFFFFF) <= 0x00808080) {
-      isBackground = true;
-    }
-    // Sparks particles - bright yellow/orange
-    else if ((color & 0xFFFF0000) == 0xFFFF0000 || // Yellow (FFFF__)
-             (color & 0xFF8C0000) == 0xFF8C0000) { // Orange (FF8C__)
-      isBackground = true;
-    }
-
-    if (!isBackground) {
-      continue; // Skip foreground particles
-    }
-
-    // Use already extracted color components for rendering
-    // uint8_t a = color & 0xFF; // Already declared above
+    // Extract color components
+    uint8_t r = (particle.color >> 24) & 0xFF;
+    uint8_t g = (particle.color >> 16) & 0xFF;
+    uint8_t b = (particle.color >> 8) & 0xFF;
+    uint8_t a = particle.color & 0xFF;
 
     // Set particle color
-    SDL_SetRenderDrawColor(renderer, r, g, b, (color & 0xFF));
+    SDL_SetRenderDrawColor(renderer, r, g, b, a);
 
     // Use particle size directly without any size limits
     float size = particle.size;
@@ -389,8 +351,6 @@ void ParticleManager::renderBackground(SDL_Renderer *renderer, float cameraX,
                       size};
     SDL_RenderFillRect(renderer, &rect);
   }
-
-  // Background particle render complete
 }
 
 void ParticleManager::renderForeground(SDL_Renderer *renderer, float cameraX,
@@ -405,41 +365,16 @@ void ParticleManager::renderForeground(SDL_Renderer *renderer, float cameraX,
 
   for (const auto &particle : particles) {
 
-    if (!particle.isActive() || !particle.isVisible()) {
+    if (!particle.isActive() || !particle.isVisible() ||
+        particle.layer != UnifiedParticle::RenderLayer::Foreground) {
       continue;
     }
 
-    // Check if this is a foreground particle (fog = gray-ish, clouds = light
-    // white)
-    uint32_t color = particle.color;
-    bool isForeground = false;
-
     // Extract RGB components
-    uint8_t r = (color >> 24) & 0xFF;
-    uint8_t g = (color >> 16) & 0xFF;
-    uint8_t b = (color >> 8) & 0xFF;
-
-    // Fog particles: gray range (190-230 RGB as created in
-    // createParticleForEffect) Check if all RGB components are similar (gray)
-    // and in the fog range
-    if (r >= 180 && r <= 240 && g >= 180 && g <= 240 && b >= 180 && b <= 240 &&
-        abs(static_cast<int>(r) - static_cast<int>(g)) <= 25 &&
-        abs(static_cast<int>(r) - static_cast<int>(b)) <= 25 &&
-        abs(static_cast<int>(g) - static_cast<int>(b)) <= 25) {
-      isForeground = true;
-    }
-    // Cloudy particles: light white range (240-255 RGB as created in
-    // createParticleForEffect)
-    else if (r >= 235 && g >= 235 && b >= 235) {
-      isForeground = true;
-    }
-
-    if (!isForeground) {
-      continue; // Skip background particles
-    }
-
-    // Use already extracted color components
-    uint8_t a = color & 0xFF;
+    uint8_t r = (particle.color >> 24) & 0xFF;
+    uint8_t g = (particle.color >> 16) & 0xFF;
+    uint8_t b = (particle.color >> 8) & 0xFF;
+    uint8_t a = particle.color & 0xFF;
 
     // Set particle color
     SDL_SetRenderDrawColor(renderer, r, g, b, a);
@@ -453,8 +388,6 @@ void ParticleManager::renderForeground(SDL_Renderer *renderer, float cameraX,
                       size};
     SDL_RenderFillRect(renderer, &rect);
   }
-
-  // Foreground particle render complete
 }
 
 uint32_t ParticleManager::playEffect(ParticleEffectType effectType,
@@ -1013,66 +946,82 @@ void ParticleManager::registerBuiltInEffects() {
 }
 
 ParticleEffectDefinition ParticleManager::createRainEffect() {
+  const auto &gameEngine = GameEngine::Instance();
   ParticleEffectDefinition rain("Rain", ParticleEffectType::Rain);
-  rain.emitterConfig.spread =
-      600.0f; // Narrower spread for more vertical rain fall
+  rain.layer = UnifiedParticle::RenderLayer::Background;
+  rain.emitterConfig.spread = static_cast<float>(gameEngine.getLogicalWidth());
   rain.emitterConfig.emissionRate =
-      800.0f; // Reduced emission for better performance while maintaining
+      500.0f; // Reduced emission for better performance while maintaining
               // coverage
-  rain.emitterConfig.minSpeed = 250.0f; // Faster minimum speed for quicker rain
+  rain.emitterConfig.minSpeed = 100.0f; // Slower rain
   rain.emitterConfig.maxSpeed =
-      350.0f;                        // Much faster for more dynamic rain fall
+      280.0f;                        
   rain.emitterConfig.minLife = 4.0f; // Longer to ensure screen traversal
   rain.emitterConfig.maxLife = 7.0f;
   rain.emitterConfig.minSize = 2.0f; // Much smaller for realistic raindrops
   rain.emitterConfig.maxSize = 6.0f;
+  rain.emitterConfig.minColor = 0xADD8E6FF; // Light blue
+  rain.emitterConfig.maxColor = 0x87CEFAFF; // Lighter blue
   rain.emitterConfig.gravity =
       Vector2D(2.0f, 450.0f); // More vertical fall for 2D isometric view
   rain.emitterConfig.windForce =
       Vector2D(3.0f, 1.0f); // Minimal wind for straighter downward fall
   rain.emitterConfig.textureID = "raindrop";
   rain.emitterConfig.blendMode = ParticleBlendMode::Alpha;
-  rain.intensityMultiplier =
-      1.4f; // Higher multiplier for better intensity scaling
+  rain.emitterConfig.useWorldSpace = false;
+  rain.emitterConfig.position.setY(0);
+  rain.intensityMultiplier = 1.4f; // Higher multiplier for better intensity scaling
   return rain;
 }
 
 ParticleEffectDefinition ParticleManager::createHeavyRainEffect() {
+  const auto &gameEngine = GameEngine::Instance();
   ParticleEffectDefinition heavyRain("HeavyRain",
                                      ParticleEffectType::HeavyRain);
+  heavyRain.layer = UnifiedParticle::RenderLayer::Background;
   heavyRain.emitterConfig.spread =
-      800.0f; // Narrower spread for more intense, vertical heavy rain
+      static_cast<float>(gameEngine.getLogicalWidth());
   heavyRain.emitterConfig.emissionRate =
-      1200.0f; // Reduced emission while maintaining storm intensity
+      800.0f; // Reduced emission while maintaining storm intensity
   heavyRain.emitterConfig.minSpeed =
-      320.0f; // Much faster falling in heavy storm
+      200.0f; // Slower heavy rain
   heavyRain.emitterConfig.maxSpeed =
-      450.0f;                             // Very high speed for intense impact
+      300.0f;                             
   heavyRain.emitterConfig.minLife = 3.5f; // Good life for screen coverage
   heavyRain.emitterConfig.maxLife = 6.0f;
   heavyRain.emitterConfig.minSize = 1.5f; // Smaller but more numerous
   heavyRain.emitterConfig.maxSize = 5.0f;
+  heavyRain.emitterConfig.minColor = 0xADD8E6FF; // Light blue
+  heavyRain.emitterConfig.maxColor = 0x87CEFAFF; // Lighter blue
   heavyRain.emitterConfig.gravity = Vector2D(
       5.0f, 500.0f); // Strong vertical fall for intense rain in 2D isometric
   heavyRain.emitterConfig.windForce =
       Vector2D(5.0f, 2.0f); // Minimal wind for mostly vertical heavy rain
   heavyRain.emitterConfig.textureID = "raindrop";
   heavyRain.emitterConfig.blendMode = ParticleBlendMode::Alpha;
+  heavyRain.emitterConfig.useWorldSpace = false;
+  heavyRain.emitterConfig.position.setY(0);
   heavyRain.intensityMultiplier = 1.8f; // High intensity for storms
   return heavyRain;
 }
 
 ParticleEffectDefinition ParticleManager::createSnowEffect() {
+  const auto &gameEngine = GameEngine::Instance();
   ParticleEffectDefinition snow("Snow", ParticleEffectType::Snow);
-  snow.emitterConfig.spread = 1200.0f; // Moderate spread for gentle snow drift
+  snow.layer = UnifiedParticle::RenderLayer::Background;
+  snow.emitterConfig.spread =
+      static_cast<float>(gameEngine.getLogicalWidth()); // Moderate spread for
+                                                        // gentle snow drift
   snow.emitterConfig.emissionRate =
-      350.0f; // Further reduced emission for optimal density
+      180.0f; // Further reduced emission for optimal density
   snow.emitterConfig.minSpeed = 15.0f; // Faster minimum for quicker snow fall
   snow.emitterConfig.maxSpeed = 50.0f; // Much faster max for more dynamic drift
   snow.emitterConfig.minLife = 8.0f;   // Much longer life for coverage
   snow.emitterConfig.maxLife = 15.0f;  // Extended for slow drift
   snow.emitterConfig.minSize = 8.0f;   // Larger for better visibility
   snow.emitterConfig.maxSize = 16.0f;  // Good visible size range
+  snow.emitterConfig.minColor = 0xFFFAFAFF; // White
+  snow.emitterConfig.maxColor = 0xE6E6EAFF; // Light grey
   snow.emitterConfig.gravity = Vector2D(
       -2.0f,
       60.0f); // More vertical fall with minimal wind drift for 2D isometric
@@ -1080,23 +1029,29 @@ ParticleEffectDefinition ParticleManager::createSnowEffect() {
       Vector2D(3.0f, 0.5f); // Very gentle wind for mostly downward snow
   snow.emitterConfig.textureID = "snowflake";
   snow.emitterConfig.blendMode = ParticleBlendMode::Alpha;
+  snow.emitterConfig.useWorldSpace = false;
+  snow.emitterConfig.position.setY(0);
   snow.intensityMultiplier = 1.1f; // Slightly enhanced for visibility
   return snow;
 }
 
 ParticleEffectDefinition ParticleManager::createHeavySnowEffect() {
+  const auto &gameEngine = GameEngine::Instance();
   ParticleEffectDefinition heavySnow("HeavySnow",
                                      ParticleEffectType::HeavySnow);
+  heavySnow.layer = UnifiedParticle::RenderLayer::Background;
   heavySnow.emitterConfig.spread =
-      1800.0f; // Wider spread for blizzard but not extreme
+      static_cast<float>(gameEngine.getLogicalWidth());
   heavySnow.emitterConfig.emissionRate =
-      600.0f; // Further reduced emission for realistic blizzard
+      350.0f; // Further reduced emission for realistic blizzard
   heavySnow.emitterConfig.minSpeed = 25.0f; // Much faster in heavy blizzard
   heavySnow.emitterConfig.maxSpeed = 80.0f; // High wind speeds for blizzard
   heavySnow.emitterConfig.minLife = 5.0f;   // Good life for coverage
   heavySnow.emitterConfig.maxLife = 10.0f;
   heavySnow.emitterConfig.minSize = 6.0f; // Visible but numerous flakes
   heavySnow.emitterConfig.maxSize = 14.0f;
+  heavySnow.emitterConfig.minColor = 0xFFFAFAFF; // White
+  heavySnow.emitterConfig.maxColor = 0xE6E6EAFF; // Light grey
   heavySnow.emitterConfig.gravity =
       Vector2D(-5.0f, 80.0f); // Stronger vertical fall with some wind for
                               // blizzard in 2D isometric
@@ -1105,15 +1060,21 @@ ParticleEffectDefinition ParticleManager::createHeavySnowEffect() {
       2.0f); // Moderate wind for blizzard effect but still mostly downward
   heavySnow.emitterConfig.textureID = "snowflake";
   heavySnow.emitterConfig.blendMode = ParticleBlendMode::Alpha;
+  heavySnow.emitterConfig.useWorldSpace = false;
+  heavySnow.emitterConfig.position.setY(0);
   heavySnow.intensityMultiplier = 1.6f; // High intensity for blizzard
   return heavySnow;
 }
 
 ParticleEffectDefinition ParticleManager::createFogEffect() {
+  const auto &gameEngine = GameEngine::Instance();
   ParticleEffectDefinition fog("Fog", ParticleEffectType::Fog);
-  fog.emitterConfig.spread = 3000.0f; // Very wide spread to cover entire screen
+  fog.layer = UnifiedParticle::RenderLayer::Foreground;
+  fog.emitterConfig.spread =
+      static_cast<float>(gameEngine.getLogicalWidth()); // Very wide spread to
+                                                        // cover entire screen
   fog.emitterConfig.emissionRate =
-      50.0f;                          // Increased emission rate for denser fog
+      38.0f;                          // Increased emission rate for denser fog
   fog.emitterConfig.minSpeed = 2.0f;  // Slower movement for realistic fog drift
   fog.emitterConfig.maxSpeed = 15.0f; // Varied speeds for natural movement
   fog.emitterConfig.minLife = 8.0f;   // Reduced life for faster turnover
@@ -1126,23 +1087,26 @@ ParticleEffectDefinition ParticleManager::createFogEffect() {
   fog.emitterConfig.windForce = Vector2D(8.0f, 1.0f); // Variable wind effect
   fog.emitterConfig.textureID = "fog";
   fog.emitterConfig.blendMode = ParticleBlendMode::Alpha;
+  fog.emitterConfig.useWorldSpace = false;
   fog.intensityMultiplier = 0.9f; // Balanced intensity for fog
   return fog;
 }
 
 ParticleEffectDefinition ParticleManager::createCloudyEffect() {
+  const auto &gameEngine = GameEngine::Instance();
   ParticleEffectDefinition cloudy("Cloudy", ParticleEffectType::Cloudy);
+  cloudy.layer = UnifiedParticle::RenderLayer::Foreground;
   // No initial position - will be set by triggerWeatherEffect
   cloudy.emitterConfig.direction = Vector2D(
       1.0f, 0.0f); // Horizontal movement for clouds sweeping across sky
   cloudy.emitterConfig.spread =
-      2000.0f; // Wider spread to cover entire screen width
+      static_cast<float>(gameEngine.getLogicalWidth());
   cloudy.emitterConfig.emissionRate =
-      1.5f; // Further reduced for less dense cloud effect
+      1.2f; // Further reduced for less dense cloud effect
   cloudy.emitterConfig.minSpeed =
       25.0f; // Much faster horizontal movement for visible sweeping motion
   cloudy.emitterConfig.maxSpeed =
-      45.0f; // Reduced speed for more gentle cloud movement
+      35.0f; // Reduced speed for more gentle cloud movement
   cloudy.emitterConfig.minLife = 20.0f; // Shorter life for faster turnover
   cloudy.emitterConfig.maxLife =
       35.0f; // Reduced max life to prevent screen crowding
@@ -1156,82 +1120,84 @@ ParticleEffectDefinition ParticleManager::createCloudyEffect() {
   cloudy.emitterConfig.textureID = "cloud";
   cloudy.emitterConfig.blendMode =
       ParticleBlendMode::Alpha;      // Standard alpha blending
+  cloudy.emitterConfig.useWorldSpace = false;
   cloudy.intensityMultiplier = 1.2f; // Slightly enhanced intensity
   return cloudy;
 }
 
 ParticleEffectDefinition ParticleManager::createFireEffect() {
   ParticleEffectDefinition fire("Fire", ParticleEffectType::Fire);
+  fire.layer = UnifiedParticle::RenderLayer::World;
   fire.emitterConfig.position = Vector2D(0, 0);   // Will be set when played
   fire.emitterConfig.direction = Vector2D(0, -1); // Upward flames
   fire.emitterConfig.spread =
-      90.0f; // Very wide spread for natural flame distribution
+      60.0f; // Tighter spread for a more controlled flame
   fire.emitterConfig.emissionRate =
-      400.0f; // Reduced from 640 for better performance
-  fire.emitterConfig.minSpeed =
-      10.0f; // Slower minimum for realistic base flames
-  fire.emitterConfig.maxSpeed = 100.0f; // Higher max for dramatic flame tips
-  fire.emitterConfig.minLife = 0.3f;    // Very short min life for intense core
-  fire.emitterConfig.maxLife =
-      2.5f; // Slightly reduced duration for fire particles
-  fire.emitterConfig.minSize = 1.0f;  // Very small min size for fine detail
-  fire.emitterConfig.maxSize = 15.0f; // Larger max size for dramatic effect
-  fire.emitterConfig.minColor = 0xFF1100FF; // Deep red for flame core
-  fire.emitterConfig.maxColor = 0xFFEE00FF; // Bright yellow for flame tips
+      175.0f; // Halved for performance
+  fire.emitterConfig.minSpeed = 20.0f; // Faster base speed for more energy
+  fire.emitterConfig.maxSpeed = 110.0f; // Higher max for more dynamic flicker
+  fire.emitterConfig.minLife = 0.2f;    // Shorter life for faster flicker
+  fire.emitterConfig.maxLife = 1.8f;    // Reduced max life
+  fire.emitterConfig.minSize = 4.0f;    // Larger base size
+  fire.emitterConfig.maxSize = 14.0f;   // Smaller max size for finer detail
+  fire.emitterConfig.minColor = 0xFFD700FF; // Bright Gold/Yellow core
+  fire.emitterConfig.maxColor = 0xFF450088; // Orange-Red, semi-transparent
   fire.emitterConfig.gravity =
-      Vector2D(0, -20.0f); // Moderate negative gravity for natural rise
+      Vector2D(0, -45.0f); // Stronger negative gravity for faster rise
   fire.emitterConfig.windForce =
-      Vector2D(35.0f, 0); // Strong wind for dynamic movement
+      Vector2D(25.0f, 0); // Reduced wind for less horizontal sway
   fire.emitterConfig.textureID = "fire_particle";
   fire.emitterConfig.blendMode =
       ParticleBlendMode::Additive;     // Additive for glowing effect
   fire.emitterConfig.duration = -1.0f; // Infinite by default
   // Burst configuration for more natural fire
-  fire.emitterConfig.burstCount = 15;      // Particles per burst
-  fire.emitterConfig.burstInterval = 0.1f; // Frequent small bursts
-  fire.intensityMultiplier = 1.3f;         // More intense
+  fire.emitterConfig.burstCount = 15;      // More particles per burst
+  fire.emitterConfig.burstInterval = 0.08f; // More frequent bursts
+  fire.intensityMultiplier = 1.2f;         // Slightly reduced intensity
   return fire;
 }
 
 ParticleEffectDefinition ParticleManager::createSmokeEffect() {
   ParticleEffectDefinition smoke("Smoke", ParticleEffectType::Smoke);
+  smoke.layer = UnifiedParticle::RenderLayer::World;
   smoke.emitterConfig.position = Vector2D(0, 0);   // Will be set when played
   smoke.emitterConfig.direction = Vector2D(0, -1); // Upward smoke
   smoke.emitterConfig.spread =
-      120.0f; // Very wide spread for natural smoke dispersion
+      75.0f; // Tighter spread for a more focused plume
   smoke.emitterConfig.emissionRate =
-      80.0f; // Reduced from 120 for better performance
-  smoke.emitterConfig.minSpeed = 5.0f;  // Very slow minimum for realistic drift
-  smoke.emitterConfig.maxSpeed = 60.0f; // Higher max for initial smoke burst
+      75.0f; // Halved for performance
+  smoke.emitterConfig.minSpeed = 15.0f;   // Faster initial speed
+  smoke.emitterConfig.maxSpeed = 60.0f;  // Faster max speed
   smoke.emitterConfig.minLife =
-      2.5f; // Slightly reduced duration for smoke trails
-  smoke.emitterConfig.maxLife = 8.5f;  // Reduced max life for smoke particles
-  smoke.emitterConfig.minSize = 4.0f;  // Smaller minimum for initial puffs
-  smoke.emitterConfig.maxSize = 45.0f; // Much larger for expanded smoke clouds
-  smoke.emitterConfig.minColor = 0x101010AA;         // Very dark smoke
-  smoke.emitterConfig.maxColor = 0x808080DD;         // Lighter grey for variety
-  smoke.emitterConfig.gravity = Vector2D(0, -12.0f); // Light upward force
+      2.0f; // Shorter life for a more energetic effect
+  smoke.emitterConfig.maxLife = 6.0f; 
+  smoke.emitterConfig.minSize = 5.0f;  // Smaller particles
+  smoke.emitterConfig.maxSize = 20.0f; 
+  smoke.emitterConfig.minColor = 0x333333DD; // Dark, dense smoke core
+  smoke.emitterConfig.maxColor = 0x80808044; // Light grey, very transparent
+  smoke.emitterConfig.gravity = Vector2D(0, -30.0f); // Faster rise
   smoke.emitterConfig.windForce =
-      Vector2D(40.0f, 0); // Very strong wind influence
+      Vector2D(30.0f, 0); // Moderate wind influence
   smoke.emitterConfig.textureID = "smoke_particle";
   smoke.emitterConfig.blendMode =
       ParticleBlendMode::Alpha;         // Standard alpha blending
   smoke.emitterConfig.duration = -1.0f; // Infinite by default
   // Burst configuration for more natural smoke puffs
-  smoke.emitterConfig.burstCount = 8;       // Smaller bursts for smoke puffs
-  smoke.emitterConfig.burstInterval = 0.2f; // Less frequent bursts
-  smoke.intensityMultiplier = 1.4f;         // More intense smoke
+  smoke.emitterConfig.burstCount = 5;       // Fewer particles per burst
+  smoke.emitterConfig.burstInterval = 0.25f; // Less frequent bursts
+  smoke.intensityMultiplier = 1.2f;         // Reduced intensity
   return smoke;
 }
 
 ParticleEffectDefinition ParticleManager::createSparksEffect() {
   ParticleEffectDefinition sparks("Sparks", ParticleEffectType::Sparks);
+  sparks.layer = UnifiedParticle::RenderLayer::World;
   sparks.emitterConfig.position = Vector2D(0, 0);   // Will be set when played
   sparks.emitterConfig.direction = Vector2D(0, -1); // Initial upward burst
   sparks.emitterConfig.spread =
       180.0f; // Wide spread for explosive spark pattern
   sparks.emitterConfig.emissionRate =
-      200.0f; // Reduced from 300 for better performance
+      150.0f; // Reduced from 300 for better performance
               // while maintaining explosive sparks
   sparks.emitterConfig.minSpeed = 80.0f; // Fast initial velocity
   sparks.emitterConfig.maxSpeed = 200.0f;
@@ -1247,7 +1213,7 @@ ParticleEffectDefinition ParticleManager::createSparksEffect() {
   sparks.emitterConfig.blendMode =
       ParticleBlendMode::Additive;             // Bright additive blending
   sparks.emitterConfig.duration = 2.0f;        // Short burst effect
-  sparks.emitterConfig.burstCount = 50;        // Burst of sparks
+  sparks.emitterConfig.burstCount = 38;        // Burst of sparks
   sparks.emitterConfig.enableCollision = true; // Sparks bounce off surfaces
   sparks.emitterConfig.bounceDamping = 0.6f;   // Medium bounce damping
   sparks.intensityMultiplier = 1.0f;
@@ -1368,7 +1334,8 @@ void ParticleManager::updateEffectInstances(float deltaTime) {
         float emissionInterval = 1.0f / config.emissionRate;
         while (instance.emissionTimer >= emissionInterval) {
           // Create particle via lock-free system
-          createParticleForEffect(defIt->second, instance.position);
+          createParticleForEffect(defIt->second, instance.position,
+                                  instance.isWeatherEffect);
           instance.emissionTimer -= emissionInterval;
         }
       }
@@ -1466,13 +1433,13 @@ void ParticleManager::updateParticleRange(
   const float windPhase3_0 = windPhase * 3.0f;
   const float windPhase8_0 = windPhase * 8.0f;
   const float windPhase6_0 = windPhase * 6.0f;
-  const float windPhase12_0 = windPhase * 12.0f;
-  const float windPhase2_0 = windPhase * 2.0f;
-  const float windPhase1_5 = windPhase * 1.5f;
+
+  
+  
 
   // Cache texture indices to avoid string lookups
-  static const uint16_t fireTextureIndex = getTextureIndex("fire_particle");
-  static const uint16_t smokeTextureIndex = getTextureIndex("smoke_particle");
+  
+  
 
   for (size_t i = startIdx; i < endIdx; ++i) {
     if (i >= particles.size() || !particles[i].isActive())
@@ -1482,13 +1449,13 @@ void ParticleManager::updateParticleRange(
 
     // PRODUCTION OPTIMIZATION: Pre-compute per-particle values
     const float particleOffset = i * 0.1f;
-    const float particleOffset12 = i * 0.12f;
+    
     const float particleOffset15 = i * 0.15f;
     const float particleOffset2 = i * 0.2f;
     const float particleOffset25 = i * 0.25f;
     const float particleOffset3 = i * 0.3f;
-    const float particleOffset4 = i * 0.4f;
-    const float particleOffset08 = i * 0.08f;
+    
+    
 
     // Enhanced physics with natural atmospheric effects
     float windVariation = std::sin(windPhase + particleOffset) *
@@ -1498,14 +1465,8 @@ void ParticleManager::updateParticleRange(
     // PRODUCTION OPTIMIZATION: Extract color components once and cache
     // comparison results
     const uint32_t color = particle.color;
-    const uint8_t r = (color >> 24) & 0xFF;
-    const uint8_t g = (color >> 16) & 0xFF;
-    const uint8_t b = (color >> 8) & 0xFF;
 
-    // Cloud particles: light white/gray range (240-255 RGB)
-    const bool isCloud = (r >= 240 && g >= 240 && b >= 240);
-
-    if (isCloud) {
+    if (particle.effectType == ParticleEffectType::Cloudy) {
       // Apply horizontal movement for cloud drift
       particle.acceleration.setX(15.0f);
       particle.acceleration.setY(0.0f);
@@ -1531,14 +1492,16 @@ void ParticleManager::updateParticleRange(
       const float lifeRatio = particle.getLifeRatio();
 
       // Snow particles drift more with wind and have flutter
-      if (particle.generationId % 3 == 0) { // Assume snow-like behavior
+      if (particle.effectType == ParticleEffectType::Snow ||
+          particle.effectType == ParticleEffectType::HeavySnow) {
         const float flutter = std::sin(windPhase3_0 + particleOffset2) * 8.0f;
         particle.velocity.setX(particle.velocity.getX() + flutter * deltaTime);
         atmosphericDrag = 0.96f; // More air resistance for snow
       }
 
       // Rain particles are more affected by gravity as they age
-      else if (particle.generationId % 3 == 1) { // Assume rain-like behavior
+      else if (particle.effectType == ParticleEffectType::Rain ||
+               particle.effectType == ParticleEffectType::HeavyRain) {
         particle.acceleration.setY(particle.acceleration.getY() +
                                    (1.0f - lifeRatio) *
                                        50.0f); // Accelerate with age
@@ -1558,16 +1521,15 @@ void ParticleManager::updateParticleRange(
     // Special handling for fire and smoke particles for natural movement
     else {
       const float lifeRatio = particle.getLifeRatio();
+      float randomFactor = static_cast<float>(rand()) / RAND_MAX;
 
-      // PRODUCTION OPTIMIZATION: Use cached texture indices instead of string
-      // lookups Fire particles: flickering, turbulent movement with heat
-      // distortion
-      if (particle.textureIndex == fireTextureIndex ||
-          (color & 0xFF000000) == 0xFF000000) { // Detect fire by color/texture
+      // Fire particles: flickering, turbulent movement with heat distortion
+      if (particle.effectType == ParticleEffectType::Fire) {
 
-        // PRODUCTION OPTIMIZATION: Pre-computed trigonometric values
+        // More random turbulence for fire
         const float heatTurbulence =
-            std::sin(windPhase8_0 + particleOffset3) * 15.0f;
+            std::sin(windPhase8_0 + particleOffset3) * 15.0f +
+            (randomFactor - 0.5f) * 10.f;
         const float heatRise =
             std::cos(windPhase6_0 + particleOffset25) * 10.0f;
 
@@ -1578,41 +1540,34 @@ void ParticleManager::updateParticleRange(
         // Fire gets more chaotic as it ages (burns out)
         const float chaos = (1.0f - lifeRatio) * 25.0f;
         const float chaosValue =
-            std::sin(windPhase12_0 + particleOffset4) * chaos * deltaTime;
+            (randomFactor - 0.5f) * chaos * deltaTime;
         particle.acceleration.setX(particle.acceleration.getX() + chaosValue);
+
+        // Visuals: Change color and size over life
+        particle.color = interpolateColor(0xFFD700FF, 0xFF450088, 1.0f - lifeRatio);
+        particle.size *= (lifeRatio * 0.99f);
+
 
         atmosphericDrag = 0.94f; // High drag for fire flicker
       }
 
       // Smoke particles: billowing, wind-affected movement
-      else if (particle.textureIndex == smokeTextureIndex ||
-               ((color & 0xFF000000) >> 24) <
-                   200) { // Detect smoke by transparency
+      else if (particle.effectType == ParticleEffectType::Smoke) {
 
-        // PRODUCTION OPTIMIZATION: Pre-computed trigonometric values
-        const float smokeWind = windVariation * 40.0f;
-        const float smokeBillow =
-            std::sin(windPhase2_0 + particleOffset12) * 20.0f;
-        const float smokeRise =
-            std::cos(windPhase1_5 + particleOffset08) * 8.0f;
+        // Circular billowing motion
+        float angle = (i % 360) * 3.14159f / 180.0f; // Unique angle per particle
+        float speed = 15.0f + (randomFactor * 10.0f);
+        float circleX = std::cos(angle + windPhase) * speed * (1.0f - lifeRatio);
+        float circleY = std::sin(angle + windPhase) * speed * (1.0f - lifeRatio);
 
-        particle.velocity.setX(particle.velocity.getX() +
-                               (smokeWind + smokeBillow) * deltaTime);
-        particle.velocity.setY(particle.velocity.getY() +
-                               smokeRise * deltaTime);
+        particle.velocity.setX(particle.velocity.getX() + circleX * deltaTime);
+        particle.velocity.setY(particle.velocity.getY() + circleY * deltaTime - (20.0f * deltaTime)); // Upward motion
 
-        // Smoke disperses and slows down as it ages
-        const float dispersion =
-            lifeRatio * 0.5f; // Older smoke is more dispersed
-        particle.velocity.setX(particle.velocity.getX() *
-                               (1.0f - dispersion * deltaTime));
+        // Visuals: Shrink slightly over life
+        particle.size *= 0.998f;
 
-        // Wind affects smoke more as it gets older and lighter
-        const float windSensitivity = (1.0f - lifeRatio) * 30.0f;
-        particle.acceleration.setX(particle.acceleration.getX() +
-                                   windSensitivity * windVariation * deltaTime);
 
-        atmosphericDrag = 0.92f; // High drag for realistic smoke movement
+        atmosphericDrag = 0.96f; 
       }
 
       // Other particles (sparks, magic, etc.) - use standard turbulence
@@ -1673,230 +1628,63 @@ void ParticleManager::updateParticleRange(
 }
 
 void ParticleManager::createParticleForEffect(
-    const ParticleEffectDefinition &effectDef, const Vector2D &position) {
+    const ParticleEffectDefinition &effectDef, const Vector2D &position,
+    bool isWeatherEffect) {
   // Create a new particle request for the lock-free system
   const auto &config = effectDef.emitterConfig;
   NewParticleRequest request;
 
-  // WEATHER COVERAGE FIX: Spread weather particles across entire screen
-  Vector2D spawnPosition = position;
-  if (effectDef.type == ParticleEffectType::Rain ||
-      effectDef.type == ParticleEffectType::HeavyRain ||
-      effectDef.type == ParticleEffectType::Snow ||
-      effectDef.type == ParticleEffectType::HeavySnow ||
-      effectDef.type == ParticleEffectType::Fog ||
-      effectDef.type == ParticleEffectType::Cloudy) {
-
-    // Spread particles across full screen width (much wider for rain/snow)
-    float screenWidth = 3200.0f; // Much wider to ensure full coverage
-    float randomX = (static_cast<float>(rand()) / RAND_MAX) * screenWidth -
-                    600.0f; // -600 to 2600 for complete coverage
-    spawnPosition.setX(randomX);
-
-    // Different Y positioning for different effect types
-    if (effectDef.type == ParticleEffectType::Fog) {
-      // Fog spreads across full screen height for complete coverage
-      float screenHeight = 1080.0f; // Full screen height
-      float randomY = (static_cast<float>(rand()) / RAND_MAX) * screenHeight;
-      spawnPosition.setY(randomY);
-    } else if (effectDef.type == ParticleEffectType::Cloudy) {
-      // Clouds spread across full screen height for layered effect
-      float screenHeight = 1080.0f; // Full screen height
-      float randomY = (static_cast<float>(rand()) / RAND_MAX) * screenHeight;
-      spawnPosition.setY(randomY);
-    } else {
-      // Rain/snow need FULL SCREEN COVERAGE immediately
-      // Spawn particles across the entire screen height for instant coverage
-      float screenHeight = 1080.0f;
-      float randomY =
-          (static_cast<float>(rand()) / RAND_MAX) * (screenHeight + 200.0f) -
-          100.0f; // -100 to 1180 for coverage + some above/below
-      spawnPosition.setY(randomY);
+  if (!config.useWorldSpace) {
+    // Screen-space effect (like weather)
+    const auto &gameEngine = GameEngine::Instance();
+    float spawnX =
+        static_cast<float>(rand() % gameEngine.getLogicalWidth());
+    float spawnY = config.position.getY();
+    if (effectDef.type == ParticleEffectType::Fog ||
+        effectDef.type == ParticleEffectType::Cloudy ||
+        effectDef.type == ParticleEffectType::Rain ||
+        effectDef.type == ParticleEffectType::HeavyRain ||
+        effectDef.type == ParticleEffectType::Snow ||
+        effectDef.type == ParticleEffectType::HeavySnow) {
+      spawnY = static_cast<float>(rand() % gameEngine.getLogicalHeight());
+    }
+    request.position = Vector2D(spawnX, spawnY);
+  } else {
+    // World-space effect (like an explosion at a point)
+    request.position = position;
+    if (effectDef.type == ParticleEffectType::Smoke) {
+        float offsetX = (static_cast<float>(rand()) / RAND_MAX - 0.5f) * 20.0f; // Random offset in a 20px range
+        float offsetY = (static_cast<float>(rand()) / RAND_MAX - 0.5f) * 10.0f; // Smaller vertical offset
+        request.position.setX(request.position.getX() + offsetX);
+        request.position.setY(request.position.getY() + offsetY);
     }
   }
-  // FIRE AND SMOKE DISPERSION: Add random scatter around base position
-  else if (effectDef.type == ParticleEffectType::Fire) {
-    // Fire particles need random dispersion in a circular area
-    float disperseRadius = 25.0f; // Random spread radius
-    float randomAngle = (static_cast<float>(rand()) / RAND_MAX) * 2.0f * M_PI;
-    float randomRadius =
-        (static_cast<float>(rand()) / RAND_MAX) * disperseRadius;
 
-    spawnPosition.setX(position.getX() + randomRadius * cos(randomAngle));
-    spawnPosition.setY(position.getY() + randomRadius * sin(randomAngle));
-
-    // Add small vertical offset for natural fire base variation
-    float verticalOffset =
-        (static_cast<float>(rand()) / RAND_MAX - 0.5f) * 10.0f;
-    spawnPosition.setY(spawnPosition.getY() + verticalOffset);
-  } else if (effectDef.type == ParticleEffectType::Smoke) {
-    // Smoke particles need wider random dispersion
-    float disperseRadius = 40.0f; // Wider spread for smoke
-    float randomAngle = (static_cast<float>(rand()) / RAND_MAX) * 2.0f * M_PI;
-    float randomRadius =
-        (static_cast<float>(rand()) / RAND_MAX) * disperseRadius;
-
-    spawnPosition.setX(position.getX() + randomRadius * cos(randomAngle));
-    spawnPosition.setY(position.getY() + randomRadius * sin(randomAngle));
-
-    // Add more vertical variation for smoke sources
-    float verticalOffset =
-        (static_cast<float>(rand()) / RAND_MAX - 0.5f) * 20.0f;
-    spawnPosition.setY(spawnPosition.getY() + verticalOffset);
-  }
-
-  request.position = spawnPosition;
-
-  // FIXED: Use the old system's angular velocity calculation for correct
-  // behavior
+  // Simplified physics and color calculation
   float naturalRand = static_cast<float>(rand()) / RAND_MAX;
   float speed =
       config.minSpeed + (config.maxSpeed - config.minSpeed) * naturalRand;
-
-  // Convert spread to radians and apply random angle within spread
   float angleRange = config.spread * 0.017453f; // Convert degrees to radians
   float angle = (naturalRand * 2.0f - 1.0f) * angleRange;
 
-  // Apply effect-specific angle biasing for realistic movement patterns
-  if (effectDef.type == ParticleEffectType::Rain) {
-    angle = (M_PI * 0.5f) + (angle * 0.05f); // Very vertical with minimal drift
-  } else if (effectDef.type == ParticleEffectType::HeavyRain) {
-    angle = (M_PI * 0.5f) + (angle * 0.08f); // Slightly more drift in storms
-  } else if (effectDef.type == ParticleEffectType::Snow) {
-    angle = (M_PI * 0.5f) + (angle * 0.4f); // Gentle downward with more flutter
-  } else if (effectDef.type == ParticleEffectType::HeavySnow) {
-    angle = (M_PI * 0.5f) + (angle * 0.5f); // More chaotic movement in blizzard
-  } else if (effectDef.type == ParticleEffectType::Fire) {
-    // Fire goes upward with random spread and velocity variation
-    angle = (M_PI * 1.5f) + angle; // Upward direction with spread
-
-    // Add random velocity variation for natural fire movement
-    float velocityVariation =
-        (static_cast<float>(rand()) / RAND_MAX - 0.5f) * 0.4f;
-    speed *= (1.0f + velocityVariation); // ±20% speed variation
-
-    // Add random angular jitter for flickering effect
-    float angularJitter = (static_cast<float>(rand()) / RAND_MAX - 0.5f) * 0.3f;
-    angle += angularJitter;
-
-  } else if (effectDef.type == ParticleEffectType::Smoke) {
-    // Smoke goes upward with wider spread and more random movement
-    angle = (M_PI * 1.5f) + angle; // Upward direction with spread
-
-    // Add significant velocity variation for billowing smoke
-    float velocityVariation =
-        (static_cast<float>(rand()) / RAND_MAX - 0.5f) * 0.6f;
-    speed *= (1.0f + velocityVariation); // ±30% speed variation
-
-    // Add random angular variation for natural smoke dispersion
-    float angularVariation =
-        (static_cast<float>(rand()) / RAND_MAX - 0.5f) * 0.5f;
-    angle += angularVariation;
-
-  } else if (effectDef.type == ParticleEffectType::Fog ||
-             effectDef.type == ParticleEffectType::Cloudy) {
-    // Fog and clouds have gentle horizontal drift
-    if (effectDef.type == ParticleEffectType::Cloudy) {
-      // Clouds move horizontally - use 0 degrees for rightward movement
-      angle =
-          0.0f +
-          (angle *
-           0.05f); // Horizontal (0 degrees = rightward) with minimal variation
-      speed =
-          std::max(speed, 25.0f); // Ensure minimum horizontal speed for clouds
-    } else {
-      // Regular fog has minimal movement
-      angle = angle * 0.5f; // Very small movement in any direction
-    }
-  }
-
-  // Calculate velocity using trigonometric approach like the old system
   request.velocity = Vector2D(speed * sin(angle), speed * cos(angle));
   request.acceleration = config.gravity;
   request.life = config.minLife + (config.maxLife - config.minLife) *
                                       static_cast<float>(rand()) / RAND_MAX;
   request.size = config.minSize + (config.maxSize - config.minSize) *
                                       static_cast<float>(rand()) / RAND_MAX;
-
-  // CRITICAL FIX: Implement effect-based color assignment like the old system
-
-  if (effectDef.type == ParticleEffectType::Rain ||
-      effectDef.type == ParticleEffectType::HeavyRain) {
-    // Blue rain with slight variation
-    uint8_t blue = static_cast<uint8_t>(200 + naturalRand * 55);  // 200-255
-    uint8_t green = static_cast<uint8_t>(100 + naturalRand * 50); // 100-150
-    uint8_t red = static_cast<uint8_t>(50 + naturalRand * 30);    // 50-80
-    request.color = (red << 24) | (green << 16) | (blue << 8) | 0xFF;
-  } else if (effectDef.type == ParticleEffectType::Snow ||
-             effectDef.type == ParticleEffectType::HeavySnow) {
-    // Bright white snow with high opacity for visibility
-    uint8_t alphaVariation =
-        static_cast<uint8_t>(240 + naturalRand * 15); // 240-255 (very opaque)
-    request.color = 0xFFFFFF00 | alphaVariation;
-  } else if (effectDef.type == ParticleEffectType::Fog) {
-    // Natural fog variation with much more transparency
-    uint8_t grayLevel =
-        static_cast<uint8_t>(200 + naturalRand * 30); // 200-230 (lighter)
-    uint8_t alpha = static_cast<uint8_t>(
-        40 + naturalRand * 40); // 40-80 (much more transparent)
-    request.color =
-        (grayLevel << 24) | (grayLevel << 16) | (grayLevel << 8) | alpha;
-  } else if (effectDef.type == ParticleEffectType::Cloudy) {
-    // Natural cloud color variation
-    uint8_t grayLevel = static_cast<uint8_t>(240 + naturalRand * 15); // 240-255
-    uint8_t alpha = static_cast<uint8_t>(180 + naturalRand * 75);     // 180-255
-    request.color =
-        (grayLevel << 24) | (grayLevel << 16) | (grayLevel << 8) | alpha;
-  } else if (effectDef.type == ParticleEffectType::Fire) {
-    // Natural fire color generation with realistic color mixing
-    if (naturalRand < 0.3f) {
-      // Deep red-orange (base of flame)
-      uint8_t red = static_cast<uint8_t>(200 + naturalRand * 55);  // 200-255
-      uint8_t green = static_cast<uint8_t>(60 + naturalRand * 40); // 60-100
-      request.color = (red << 24) | (green << 16) | 0xFF;
-    } else if (naturalRand < 0.6f) {
-      // Orange (middle flame)
-      uint8_t red = 255;
-      uint8_t green = static_cast<uint8_t>(120 + naturalRand * 80); // 120-200
-      uint8_t blue = static_cast<uint8_t>(naturalRand * 30);        // 0-30
-      request.color = (red << 24) | (green << 16) | (blue << 8) | 0xFF;
-    } else {
-      // Yellow-white (tip of flame)
-      uint8_t red = 255;
-      uint8_t green = static_cast<uint8_t>(200 + naturalRand * 55); // 200-255
-      uint8_t blue = static_cast<uint8_t>(naturalRand * 60);        // 0-60
-      request.color = (red << 24) | (green << 16) | (blue << 8) | 0xFF;
-    }
-  } else if (effectDef.type == ParticleEffectType::Smoke) {
-    // Use original smoke colors variation
-    static const std::array<uint32_t, 8> smokeColors{
-        {0x404040FF, 0x606060FF, 0x808080FF, 0x202020FF, 0x4A4A4AFF, 0x505050FF,
-         0x707070FF, 0x303030FF}};
-    size_t colorIndex = static_cast<size_t>(naturalRand * smokeColors.size());
-    colorIndex = std::min(colorIndex, smokeColors.size() - 1);
-    request.color = smokeColors[colorIndex];
-  } else if (effectDef.type == ParticleEffectType::Sparks) {
-    // Natural spark colors with more variation
-    if (naturalRand < 0.7f) {
-      // Bright yellow sparks
-      uint8_t red = static_cast<uint8_t>(240 + naturalRand * 15);   // 240-255
-      uint8_t green = static_cast<uint8_t>(220 + naturalRand * 35); // 220-255
-      uint8_t blue = static_cast<uint8_t>(naturalRand * 40);        // 0-40
-      request.color = (red << 24) | (green << 16) | (blue << 8) | 0xFF;
-    } else {
-      // Orange-white sparks
-      uint8_t red = 255;
-      uint8_t green = static_cast<uint8_t>(140 + naturalRand * 60); // 140-200
-      uint8_t blue = static_cast<uint8_t>(naturalRand * 20);        // 0-20
-      request.color = (red << 24) | (green << 16) | (blue << 8) | 0xFF;
-    }
-  } else {
-    request.color = config.minColor; // Fallback to config color
-  }
-
+  request.color =
+      interpolateColor(config.minColor, config.maxColor, naturalRand);
   request.textureIndex = getTextureIndex(config.textureID);
   request.blendMode = config.blendMode;
   request.effectType = effectDef.type;
+
+  // Set weather flag
+  if (isWeatherEffect) {
+    request.flags = UnifiedParticle::FLAG_WEATHER;
+  } else {
+    request.flags = 0;
+  }
 
   // Submit to lock-free ring buffer
   m_storage.submitNewParticle(request);
@@ -2058,11 +1846,28 @@ std::string ParticleManager::effectTypeToString(ParticleEffectType type) const {
     return "Smoke";
   case ParticleEffectType::Sparks:
     return "Sparks";
-  case ParticleEffectType::Magic:
-    return "Magic";
-  case ParticleEffectType::Custom:
-    return "Custom";
   default:
-    return "Unknown";
+    return "Custom";
   }
+}
+
+uint32_t ParticleManager::interpolateColor(uint32_t color1, uint32_t color2,
+                                           float factor) {
+  uint8_t r1 = (color1 >> 24) & 0xFF;
+  uint8_t g1 = (color1 >> 16) & 0xFF;
+  uint8_t b1 = (color1 >> 8) & 0xFF;
+  uint8_t a1 = color1 & 0xFF;
+
+  uint8_t r2 = (color2 >> 24) & 0xFF;
+  uint8_t g2 = (color2 >> 16) & 0xFF;
+  uint8_t b2 = (color2 >> 8) & 0xFF;
+  uint8_t a2 = color2 & 0xFF;
+
+  uint8_t r = static_cast<uint8_t>(r1 + (r2 - r1) * factor);
+  uint8_t g = static_cast<uint8_t>(g1 + (g2 - g1) * factor);
+  uint8_t b = static_cast<uint8_t>(b1 + (b2 - b1) * factor);
+  uint8_t a = static_cast<uint8_t>(a1 + (a2 - a1) * factor);
+
+  return (static_cast<uint32_t>(r) << 24) | (static_cast<uint32_t>(g) << 16) |
+         (static_cast<uint32_t>(b) << 8) | static_cast<uint32_t>(a);
 }

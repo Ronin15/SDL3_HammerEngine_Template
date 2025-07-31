@@ -182,6 +182,92 @@ struct ParticleEmitterConfig {
   float bounceDamping{0.8f};   // Collision bounce damping
 };
 
+struct ParticleEffectDefinition;
+
+// Helper methods for enum-based classification system
+ParticleEffectType weatherStringToEnum(const std::string &weatherType,
+                                       float intensity);
+std::string effectTypeToString(ParticleEffectType type);
+
+// Built-in effect creation helpers
+ParticleEffectDefinition createRainEffect();
+ParticleEffectDefinition createHeavyRainEffect();
+ParticleEffectDefinition createSnowEffect();
+ParticleEffectDefinition createHeavySnowEffect();
+ParticleEffectDefinition createFogEffect();
+ParticleEffectDefinition createCloudyEffect();
+ParticleEffectDefinition createFireEffect();
+ParticleEffectDefinition createSmokeEffect();
+ParticleEffectDefinition createSparksEffect();
+ParticleEffectDefinition createMagicEffect();
+
+struct UnifiedParticle {
+  // All particle data in one structure - no synchronization issues
+  Vector2D position;
+  Vector2D velocity;
+  Vector2D acceleration;
+  float life;
+  float maxLife;
+  float size;
+  float rotation;
+  float angularVelocity;
+  uint32_t color;
+  uint16_t textureIndex;
+  uint8_t flags;
+  uint8_t generationId;
+  ParticleEffectType effectType; // Effect type for this particle
+
+  enum class RenderLayer : uint8_t { Background, World, Foreground } layer;
+
+  // Flags bit definitions
+  static constexpr uint8_t FLAG_ACTIVE = 1 << 0;
+  static constexpr uint8_t FLAG_VISIBLE = 1 << 1;
+  static constexpr uint8_t FLAG_GRAVITY = 1 << 2;
+  static constexpr uint8_t FLAG_COLLISION = 1 << 3;
+  static constexpr uint8_t FLAG_WEATHER = 1 << 4;
+  static constexpr uint8_t FLAG_FADE_OUT = 1 << 5;
+
+  UnifiedParticle()
+      : position(0, 0), velocity(0, 0), acceleration(0, 0), life(0.0f),
+        maxLife(1.0f), size(2.0f), rotation(0.0f), angularVelocity(0.0f),
+        color(0xFFFFFFFF), textureIndex(0), flags(0), generationId(0),
+        effectType(ParticleEffectType::Custom), layer(RenderLayer::World) {}
+
+  bool isActive() const { return flags & FLAG_ACTIVE; }
+  void setActive(bool active) {
+    if (active)
+      flags |= FLAG_ACTIVE;
+    else
+      flags &= ~FLAG_ACTIVE;
+  }
+
+  bool isVisible() const { return flags & FLAG_VISIBLE; }
+  void setVisible(bool visible) {
+    if (visible)
+      flags |= FLAG_VISIBLE;
+    else
+      flags &= ~FLAG_VISIBLE;
+  }
+
+  bool isWeatherParticle() const { return flags & FLAG_WEATHER; }
+  void setWeatherParticle(bool weather) {
+    if (weather)
+      flags |= FLAG_WEATHER;
+    else
+      flags &= ~FLAG_WEATHER;
+  }
+
+  bool isFadingOut() const { return flags & FLAG_FADE_OUT; }
+  void setFadingOut(bool fading) {
+    if (fading)
+      flags |= FLAG_FADE_OUT;
+    else
+      flags &= ~FLAG_FADE_OUT;
+  }
+
+  float getLifeRatio() const { return maxLife > 0 ? life / maxLife : 0.0f; }
+};
+
 /**
  * @brief Particle effect definition combining emitter and behavior
  */
@@ -192,6 +278,8 @@ struct ParticleEffectDefinition {
   std::vector<std::string> textureIDs; // Multiple textures for variety
   float intensityMultiplier{1.0f};     // Effect intensity scaling
   bool autoTriggerOnWeather{false};    // Auto-trigger on weather events
+  UnifiedParticle::RenderLayer layer{
+      UnifiedParticle::RenderLayer::World}; // Default render layer
 
   ParticleEffectDefinition() : type(ParticleEffectType::Custom) {}
   ParticleEffectDefinition(const std::string &n, ParticleEffectType t)
@@ -630,72 +718,6 @@ private:
   ParticleManager(const ParticleManager &) = delete;
   ParticleManager &operator=(const ParticleManager &) = delete;
 
-  // FIXED: Unified particle storage - no more data synchronization issues
-  struct UnifiedParticle {
-    // All particle data in one structure - no synchronization issues
-    Vector2D position;
-    Vector2D velocity;
-    Vector2D acceleration;
-    float life;
-    float maxLife;
-    float size;
-    float rotation;
-    float angularVelocity;
-    uint32_t color;
-    uint16_t textureIndex;
-    uint8_t flags;
-    uint8_t generationId;
-    ParticleEffectType effectType; // Effect type for this particle
-
-    // Flags bit definitions
-    static constexpr uint8_t FLAG_ACTIVE = 1 << 0;
-    static constexpr uint8_t FLAG_VISIBLE = 1 << 1;
-    static constexpr uint8_t FLAG_GRAVITY = 1 << 2;
-    static constexpr uint8_t FLAG_COLLISION = 1 << 3;
-    static constexpr uint8_t FLAG_WEATHER = 1 << 4;
-    static constexpr uint8_t FLAG_FADE_OUT = 1 << 5;
-
-    UnifiedParticle()
-        : position(0, 0), velocity(0, 0), acceleration(0, 0), life(0.0f),
-          maxLife(1.0f), size(2.0f), rotation(0.0f), angularVelocity(0.0f),
-          color(0xFFFFFFFF), textureIndex(0), flags(0), generationId(0),
-          effectType(ParticleEffectType::Custom) {}
-
-    bool isActive() const { return flags & FLAG_ACTIVE; }
-    void setActive(bool active) {
-      if (active)
-        flags |= FLAG_ACTIVE;
-      else
-        flags &= ~FLAG_ACTIVE;
-    }
-
-    bool isVisible() const { return flags & FLAG_VISIBLE; }
-    void setVisible(bool visible) {
-      if (visible)
-        flags |= FLAG_VISIBLE;
-      else
-        flags &= ~FLAG_VISIBLE;
-    }
-
-    bool isWeatherParticle() const { return flags & FLAG_WEATHER; }
-    void setWeatherParticle(bool weather) {
-      if (weather)
-        flags |= FLAG_WEATHER;
-      else
-        flags &= ~FLAG_WEATHER;
-    }
-
-    bool isFadingOut() const { return flags & FLAG_FADE_OUT; }
-    void setFadingOut(bool fading) {
-      if (fading)
-        flags |= FLAG_FADE_OUT;
-      else
-        flags &= ~FLAG_FADE_OUT;
-    }
-
-    float getLifeRatio() const { return maxLife > 0 ? life / maxLife : 0.0f; }
-  };
-
   // Effect instance tracking - effects only emit particles, don't own them
   struct EffectInstance {
     uint32_t id;
@@ -736,6 +758,7 @@ private:
     uint16_t textureIndex;
     ParticleBlendMode blendMode;
     ParticleEffectType effectType;
+    uint8_t flags;
   };
 
   // Lock-free high-performance storage with double buffering
@@ -1007,7 +1030,8 @@ private:
                                   float deltaTime);
   void updateUnifiedParticle(UnifiedParticle &particle, float deltaTime);
   void createParticleForEffect(const ParticleEffectDefinition &effectDef,
-                               const Vector2D &position);
+                               const Vector2D &position,
+                               bool isWeatherEffect = false);
   uint16_t getTextureIndex(const std::string &textureID);
   uint32_t interpolateColor(uint32_t color1, uint32_t color2, float factor);
   void recordPerformance(bool isRender, double timeMs, size_t particleCount);

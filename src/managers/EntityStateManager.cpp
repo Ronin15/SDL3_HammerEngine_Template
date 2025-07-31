@@ -45,11 +45,12 @@ void EntityStateManager::setState(const std::string& stateName) {
 
 std::string EntityStateManager::getCurrentStateName() const {
   if (auto current = currentState.lock()) {
-    auto it = std::find_if(states.begin(), states.end(),
-                          [&current](const auto& pair) {
-                            return pair.second == current;
-                          });
-    return (it != states.end()) ? it->first : "";
+    // Iterate through the map to find the key for the current state pointer
+    for (const auto& pair : states) {
+      if (pair.second == current) {
+        return pair.first;
+      }
+    }
   }
   return "";
 }

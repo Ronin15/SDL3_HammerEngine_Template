@@ -135,86 +135,29 @@ public:
   }
 
   bool pop(std::function<void()> &task) {
-    // Early check for stopping to prevent entering wait state during shutdown
-    if (stopping.load(std::memory_order_acquire)) {
-      return false;
-    }
-
-    // First try to get a task without waiting
-    if (tryPopTask(task)) {
-      return true;
-    }
-
-    // If no task available, wait for notification
     std::unique_lock<std::mutex> lock(queueMutex);
-
-    // Use short timeout for better work-stealing responsiveness
-    auto timeout = std::chrono::milliseconds(2);
-
-    condition.wait_for(lock, timeout, [this] {
+    condition.wait(lock, [this] {
       return stopping.load(std::memory_order_acquire) || hasAnyTasksLockFree();
     });
 
-    // Check stopping flag first with higher priority than tasks
     if (stopping.load(std::memory_order_acquire)) {
       return false;
     }
 
-    // Release lock and try to get task again
     lock.unlock();
     return tryPopTask(task);
   }
 
   void stop() {
-    // First set the stopping flag before locking to indicate shutdown quickly
     stopping.store(true, std::memory_order_release);
+    notifyAllThreads(); // Wake up all threads to exit
 
-    // Wake up all threads immediately
-    notifyAllThreads();
-
-    // Now take locks to clear all priority queues
-    std::unique_lock<std::mutex> lock(queueMutex);
-
-    // Count and clear all priority queues
-    size_t totalPending = 0;
-    std::array<size_t, 5> pendingByPriority{};
-
+    std::lock_guard<std::mutex> lock(queueMutex);
     for (int i = 0; i <= static_cast<int>(TaskPriority::Idle); ++i) {
-      std::unique_lock<std::mutex> priorityLock(m_priorityMutexes[i]);
-      auto &queue = m_priorityQueues[i];
-
-      if (m_enableProfiling && !queue.empty()) {
-        pendingByPriority[i] = queue.size();
-        totalPending += queue.size();
-      }
-
-      // Clear the queue and reset atomic counter
-      queue.clear();
+      std::lock_guard<std::mutex> priorityLock(m_priorityMutexes[i]);
+      m_priorityQueues[i].clear();
       m_priorityCounts[i].store(0, std::memory_order_relaxed);
     }
-
-    // Log statistics if any tasks were pending
-    if (m_enableProfiling && totalPending > 0) {
-      THREADSYSTEM_INFO("Stopping task queues with " +
-                        std::to_string(totalPending) + " pending tasks");
-
-      // Log pending tasks by priority
-      for (int i = 0; i <= static_cast<int>(TaskPriority::Idle); ++i) {
-        if (pendingByPriority[i] > 0) {
-          THREADSYSTEM_INFO("  Priority " + std::to_string(i) + ": " +
-                            std::to_string(pendingByPriority[i]) + " tasks");
-        }
-      }
-    }
-
-    // Memory fence for maximum visibility across all threads
-    std::atomic_thread_fence(std::memory_order_seq_cst);
-
-    // Wake all waiting threads again after clearing queues (mutex already held)
-    notifyAllThreadsUnsafe();
-
-    // Small delay to let threads notice the stop signal
-    std::this_thread::sleep_for(std::chrono::milliseconds(5));
   }
 
   bool isEmpty() const {
@@ -433,45 +376,17 @@ public:
   }
 
   ~ThreadPool() {
-    // Signal all threads to stop
+    // Signal all threads to stop and wake them up
     isRunning.store(false, std::memory_order_release);
-
-    // Ensure all threads see the update immediately
-    std::atomic_thread_fence(std::memory_order_seq_cst);
-
-    // First notify all threads without clearing the queue
-    taskQueue.notifyAllThreads();
-
-    // Small delay to allow threads to notice the shutdown signal
-    std::this_thread::sleep_for(std::chrono::milliseconds(10));
-
-    // Then stop and clear the queue
-    taskQueue.stop();
-
-    // Notify again after stopping
-    taskQueue.notifyAllThreads();
-
-    // A short delay to allow threads to exit naturally
-    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    taskQueue.stop(); // This will notify all threads
 
     // Join all worker threads
     for (auto &worker : m_workers) {
       if (worker.joinable()) {
-        try {
-          // Just join directly - we've given threads time to exit cleanly
-          worker.join();
-        } catch (const std::exception &e) {
-          THREADSYSTEM_ERROR("Error joining thread: " + std::string(e.what()));
-        } catch (...) {
-          THREADSYSTEM_ERROR("Unknown error joining thread");
-        }
+        worker.join();
       }
     }
-
     THREADSYSTEM_INFO("ThreadPool shutdown completed");
-
-    // Clear the worker threads
-    m_workers.clear();
   }
 
   /**

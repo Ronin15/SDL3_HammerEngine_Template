@@ -1,145 +1,127 @@
-/* Copyright (c) 2025 Hammer Forged Games
- * All rights reserved.
- * Licensed under the MIT License - see LICENSE file for details
-*/
-
 #include "managers/GameStateManager.hpp"
-#include "gameStates/GameState.hpp"
 #include "core/Logger.hpp"
+#include "gameStates/GameState.hpp"
 #include <algorithm>
+#include <stdexcept>
 
 // GameStateManager Implementation
-GameStateManager::GameStateManager() : currentState() {
-  // Reserve capacity for typical number of game states (performance optimization)
-  states.reserve(8);
+GameStateManager::GameStateManager() {
+  // Reserve capacity for typical number of game states (performance
+  // optimization)
+  m_registeredStates.reserve(8);
+  m_activeStates.reserve(3); // For the active stack
 }
 
 void GameStateManager::addState(std::unique_ptr<GameState> state) {
-  // Check if a state with the same name already exists
-  if (hasState(state->getName())) {
-    GAMESTATE_ERROR("State with name " + state->getName() + " already exists");
-    throw std::runtime_error("Hammer Game Engine - State with name " + state->getName() + " already exists");
+  const std::string name = state->getName();
+  if (hasState(name)) {
+    GAMESTATE_ERROR("State with name " + name + " already exists");
+    throw std::runtime_error("Hammer Game Engine - State with name " + name +
+                             " already exists");
   }
-  // Convert unique_ptr to shared_ptr and add to container
-  states.push_back(std::shared_ptr<GameState>(state.release()));
+  // Move the state into the map
+  m_registeredStates[name] = std::move(state);
 }
 
-void GameStateManager::setState(const std::string& stateName) {
-  // Find the new state
-  auto it = std::find_if(states.begin(), states.end(),
-                         [&stateName](const std::shared_ptr<GameState>& state) {
-                           return state->getName() == stateName;
-                         });
-
-  if (it != states.end()) {
-    try {
-      // Exit current state if exists
-      if (auto current = currentState.lock()) {
-        // Store the previous state name before changing (safe access via weak_ptr)
-        std::string prevStateName = current->getName();
-        GAMESTATE_INFO("Exiting state: " + prevStateName);
-        bool exitSuccess = current->exit();
-        if (!exitSuccess) {
-          GAMESTATE_WARN("Exit for state " + prevStateName + " returned false");
-        }
-        currentState.reset(); // Clear weak_ptr before entering new state
-      }
-
-      // Set new current state (non-owning observer via weak_ptr)
-      currentState = *it;
-
-      // Trigger enter of new state
-      if (auto current = currentState.lock()) {
-        GAMESTATE_INFO("Entering state: " + stateName);
-        bool enterSuccess = current->enter();
-        if (!enterSuccess) {
-          GAMESTATE_ERROR("Enter for state " + stateName + " failed");
-          currentState.reset(); // Clear invalid state
-        }
-      }
-    } catch (const std::exception& e) {
-      GAMESTATE_ERROR("Exception during state transition: " + std::string(e.what()));
-      currentState.reset(); // Safety measure
-    } catch (...) {
-      GAMESTATE_ERROR("Unknown exception during state transition");
-      currentState.reset(); // Safety measure
+void GameStateManager::pushState(const std::string &stateName) {
+  auto it = m_registeredStates.find(stateName);
+  if (it != m_registeredStates.end()) {
+    // Pause the current top state if it exists
+    if (!m_activeStates.empty()) {
+      m_activeStates.back()->pause();
     }
+
+    // Push the new state onto the stack and enter it
+    m_activeStates.push_back(it->second);
+    m_activeStates.back()->enter();
+    GAMESTATE_INFO("Pushed state: " + stateName);
   } else {
     GAMESTATE_ERROR("State not found: " + stateName);
+  }
+}
 
-    // Exit current state if it exists
-    if (auto current = currentState.lock()) {
-      try {
-        current->exit();
-      } catch (...) {
-        GAMESTATE_ERROR("Exception while exiting state");
-      }
-      currentState.reset();
+void GameStateManager::popState() {
+  if (!m_activeStates.empty()) {
+    // Exit and pop the current state
+    m_activeStates.back()->exit();
+    m_activeStates.pop_back();
+    GAMESTATE_INFO("Popped state");
+
+    // Resume the new top state if it exists
+    if (!m_activeStates.empty()) {
+      m_activeStates.back()->resume();
     }
   }
+}
+
+void GameStateManager::changeState(const std::string &stateName) {
+  // Pop the current state if one exists
+  if (!m_activeStates.empty()) {
+    popState();
+  }
+  // Push the new state
+  pushState(stateName);
 }
 
 void GameStateManager::update(float deltaTime) {
   m_lastDeltaTime = deltaTime; // Store deltaTime for render
-  if (auto current = currentState.lock()) {
-    current->update(deltaTime);
+  // Update all active states on the stack
+  for (const auto &state : m_activeStates) {
+    state->update(deltaTime);
   }
 }
 
 void GameStateManager::render() {
-  if (auto current = currentState.lock()) {
-    current->render(m_lastDeltaTime);
+  // Render all active states on the stack
+  for (const auto &state : m_activeStates) {
+    state->render(m_lastDeltaTime);
   }
 }
 
 void GameStateManager::handleInput() {
-  if (auto current = currentState.lock()) {
-    current->handleInput();
+  // Only the top state handles input
+  if (!m_activeStates.empty()) {
+    m_activeStates.back()->handleInput();
   }
 }
 
-bool GameStateManager::hasState(const std::string& stateName) const {
-  return std::any_of(states.begin(), states.end(),
-                     [&stateName](const std::shared_ptr<GameState>& state) {
-                       return state->getName() == stateName;
-                     });
+bool GameStateManager::hasState(const std::string &stateName) const {
+  return m_registeredStates.find(stateName) != m_registeredStates.end();
 }
 
-std::shared_ptr<GameState> GameStateManager::getState(const std::string& stateName) const {
-  auto it = std::find_if(states.begin(), states.end(),
-                         [&stateName](const std::shared_ptr<GameState>& state) {
-                           return state->getName() == stateName;
-                         });
-
-  return it != states.end() ? *it : nullptr;
+std::shared_ptr<GameState>
+GameStateManager::getState(const std::string &stateName) const {
+  auto it = m_registeredStates.find(stateName);
+  return it != m_registeredStates.end() ? it->second : nullptr;
 }
 
-void GameStateManager::removeState(const std::string& stateName) {
-  // If trying to remove the current state, first clear the current state
-  if (auto current = currentState.lock()) {
-    if (current->getName() == stateName) {
-      current->exit();
-      currentState.reset();
-    }
+void GameStateManager::removeState(const std::string &stateName) {
+  // First, remove the state from the active stack if it's there
+  m_activeStates.erase(
+      std::remove_if(m_activeStates.begin(), m_activeStates.end(),
+                     [&](const std::shared_ptr<GameState> &state) {
+                       if (state->getName() == stateName) {
+                         state->exit();
+                         return true;
+                       }
+                       return false;
+                     }),
+      m_activeStates.end());
+
+  // Resume the new top state if it exists
+  if (!m_activeStates.empty()) {
+    m_activeStates.back()->resume();
   }
 
-  // Remove the state from the vector
-  auto it =
-      std::remove_if(states.begin(), states.end(),
-                     [&stateName](const std::shared_ptr<GameState>& state) {
-                       return state->getName() == stateName;
-                     });
-
-  states.erase(it, states.end());
+  // Remove from the registered states map
+  m_registeredStates.erase(stateName);
 }
 
 void GameStateManager::clearAllStates() {
-  // Exit current state if exists
-  if (auto current = currentState.lock()) {
-    current->exit();
-    currentState.reset();
+  // Exit all active states
+  for (const auto &state : m_activeStates) {
+    state->exit();
   }
-
-  // Clear all states
-  states.clear();
+  m_activeStates.clear();
+  m_registeredStates.clear();
 }

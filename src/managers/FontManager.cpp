@@ -196,6 +196,13 @@ std::shared_ptr<SDL_Texture> FontManager::renderText(
     return nullptr;
   }
 
+  // Check cache first
+  TextCacheKey key = {text, fontID, color};
+  auto cacheIt = m_textCache.find(key);
+  if (cacheIt != m_textCache.end()) {
+    return cacheIt->second;
+  }
+
   auto fontIt = m_fontMap.find(fontID);
   if (fontIt == m_fontMap.end()) {
     FONT_ERROR("Font '" + fontID + "' not found");
@@ -226,6 +233,9 @@ std::shared_ptr<SDL_Texture> FontManager::renderText(
 
   // Set texture scale mode for crisp font rendering - use NEAREST to avoid blur when scaling
   SDL_SetTextureScaleMode(texture.get(), SDL_SCALEMODE_NEAREST);
+
+  // Store in cache
+  m_textCache[key] = texture;
 
   return texture;
 }
@@ -678,6 +688,7 @@ m_isShutdown = true;
 
   // No need to manually close fonts as the unique_ptr will handle it
   m_fontMap.clear();
+  m_textCache.clear();
 
   FONT_INFO(std::to_string(fontsFreed) + " fonts freed");
   FONT_INFO("FontManager resources cleaned");

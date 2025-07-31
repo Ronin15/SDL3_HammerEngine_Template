@@ -76,7 +76,7 @@ void PauseState::handleInput() {
       // Flag the GamePlayState transition
       // We'll do the actual removal in GamePlayState::enter()
       const auto& gameEngine = GameEngine::Instance();
-      gameEngine.getGameStateManager()->setState("GamePlayState");
+      gameEngine.getGameStateManager()->popState();
   }
   
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_ESCAPE)) {

@@ -108,13 +108,13 @@ void GamePlayState::handleInput() {
       std::cout << "Hammer Game Engine - Created PAUSE State\n";
     }
     m_transitioningToPause = true; // Set flag before transitioning
-    gameStateManager->setState("PauseState");
+    gameStateManager->pushState("PauseState");
   }
 
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_B)) {
     std::cout << "Hammer Game Engine - Transitioning to MainMenuState...\n";
     const auto &gameEngine = GameEngine::Instance();
-    gameEngine.getGameStateManager()->setState("MainMenuState");
+    gameEngine.getGameStateManager()->changeState("MainMenuState");
   }
 
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_ESCAPE)) {
