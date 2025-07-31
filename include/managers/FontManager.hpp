@@ -204,7 +204,33 @@ class FontManager {
                                           int maxWidth);
 
  private:
+  // Cache for rendered text textures to avoid re-creation
+  struct TextCacheKey {
+    std::string text;
+    std::string fontID;
+    SDL_Color color;
+
+    bool operator==(const TextCacheKey& other) const {
+      return text == other.text && fontID == other.fontID &&
+             color.r == other.color.r && color.g == other.color.g &&
+             color.b == other.color.b && color.a == other.color.a;
+    }
+  };
+
+  struct TextCacheKeyHash {
+    std::size_t operator()(const TextCacheKey& key) const {
+      // A simple hash combination
+      return std::hash<std::string>()(key.text) ^
+             std::hash<std::string>()(key.fontID) ^
+             (static_cast<std::size_t>(key.color.r) << 24 |
+              static_cast<std::size_t>(key.color.g) << 16 |
+              static_cast<std::size_t>(key.color.b) << 8 |
+              static_cast<std::size_t>(key.color.a));
+    }
+  };
+
   std::unordered_map<std::string, std::shared_ptr<TTF_Font>> m_fontMap{};
+  std::unordered_map<TextCacheKey, std::shared_ptr<SDL_Texture>, TextCacheKeyHash> m_textCache{};
   bool m_isShutdown{false}; // Flag to indicate if FontManager has been shut down
 
   // Delete copy constructor and assignment operator

@@ -75,7 +75,7 @@ void AdvancedAIDemoState::handleInput() {
     if (inputMgr.wasKeyPressed(SDL_SCANCODE_B)) {
         std::cout << "Hammer Game Engine - Preparing to exit AdvancedAIDemoState...\n";
         const GameEngine& gameEngine = GameEngine::Instance();
-        gameEngine.getGameStateManager()->setState("MainMenuState");
+        gameEngine.getGameStateManager()->changeState("MainMenuState");
     }
 
     if (inputMgr.wasKeyPressed(SDL_SCANCODE_1)) {

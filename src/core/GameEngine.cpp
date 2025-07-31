@@ -704,7 +704,7 @@ bool GameEngine::init(const std::string_view title, const int width,
   m_lastRenderedFrame.store(0, std::memory_order_release);
 
   // setting logo state for default state
-  mp_gameStateManager->setState(
+  mp_gameStateManager->pushState(
       "LogoState"); // set to "LogoState" for normal operation.
 
   return true;

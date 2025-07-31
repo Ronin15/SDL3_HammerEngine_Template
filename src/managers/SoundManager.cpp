@@ -229,13 +229,13 @@ void SoundManager::playSFX(const std::string &soundID, int loops,
     return;
   }
 
+  cleanupStoppedTracks();
+
   auto it = m_audioMap.find(soundID);
   if (it == m_audioMap.end()) {
     SOUND_WARN("Sound effect not found: " + soundID);
     return;
   }
-
-  cleanupStoppedTracks();
 
   // Create a new track for this SFX
   MIX_Track *track = createAndConfigureTrack(m_sfxGroup, "sfx");
@@ -287,14 +287,14 @@ void SoundManager::playMusic(const std::string &musicID, int loops,
     return;
   }
 
+  cleanupStoppedTracks();
+
   const std::string fullMusicID = "music_" + musicID;
   auto it = m_audioMap.find(fullMusicID);
   if (it == m_audioMap.end()) {
     SOUND_WARN("Music track not found: " + musicID);
     return;
   }
-
-  cleanupStoppedTracks();
 
   // Stop any currently playing music
   stopMusic();
@@ -396,6 +396,9 @@ bool SoundManager::isMusicPlaying() const {
   if (!m_initialized) {
     return false;
   }
+
+  // Cast away const for this method
+  const_cast<SoundManager*>(this)->cleanupStoppedTracks();
 
   // Check if any music track is currently playing
   for (MIX_Track *track : m_activeMusicTracks) {

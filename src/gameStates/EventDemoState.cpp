@@ -400,6 +400,11 @@ void EventDemoState::render(float deltaTime) {
     }
   }
 
+  // Render world-space particles
+  if (particleMgr.isInitialized() && !particleMgr.isShutdown()) {
+    particleMgr.render(renderer, 0.0f, 0.0f);
+  }
+
   // Render foreground particles last (fog) - in front of player/NPCs
   if (particleMgr.isInitialized() && !particleMgr.isShutdown()) {
     particleMgr.renderForeground(renderer, 0.0f, 0.0f);
@@ -692,7 +697,7 @@ void EventDemoState::handleInput() {
   }
 
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_B)) {
-    gameEngine.getGameStateManager()->setState("MainMenuState");
+    gameEngine.getGameStateManager()->changeState("MainMenuState");
   }
 }
 

@@ -32,7 +32,7 @@ void LogoState::update(float deltaTime) {
   if (stateTimer > 3.0f) {  // 3 seconds using deltaTime
     // Cache GameEngine reference for better performance
     const auto& gameEngine = GameEngine::Instance();
-    gameEngine.getGameStateManager()->setState("MainMenuState");
+    gameEngine.getGameStateManager()->changeState("MainMenuState");
   }
 }
 
