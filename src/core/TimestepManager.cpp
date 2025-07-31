@@ -60,10 +60,9 @@ void TimestepManager::startFrame() {
 }
 
 bool TimestepManager::shouldUpdate() {
-    // Always update once per frame for responsive input
-    // Use actual frame time instead of fixed timestep accumulator
-    if (m_accumulator > 0.0) {
-        m_accumulator = 0.0; // Reset for next frame
+    // Use a proper accumulator to allow for multiple updates per frame if needed
+    if (m_accumulator >= m_fixedTimestep) {
+        m_accumulator -= m_fixedTimestep;
         return true;
     }
     return false;
@@ -74,13 +73,7 @@ bool TimestepManager::shouldRender() const {
 }
 
 float TimestepManager::getUpdateDeltaTime() const {
-    // For VSync, use actual frame time (it's already perfectly smooth)
-    if (!m_usingSoftwareFrameLimiting) {
-        return static_cast<float>(m_lastFrameTimeMs) / 1000.0f;
-    }
-    
-    // For software frame limiting, use fixed timestep to eliminate ALL timing variations
-    // This ensures perfectly consistent movement regardless of SDL_Delay() precision
+    // Always return the fixed timestep for consistent game logic.
     return m_fixedTimestep;
 }
 

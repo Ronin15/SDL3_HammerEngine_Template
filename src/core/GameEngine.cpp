@@ -217,10 +217,10 @@ bool GameEngine::init(const std::string_view title, const int width,
   const std::string videoDriverRaw =
       SDL_GetCurrentVideoDriver() ? SDL_GetCurrentVideoDriver() : "";
   std::string_view videoDriver = videoDriverRaw;
-  bool isWayland = (videoDriver == "wayland");
+  m_isWayland = (videoDriver == "wayland");
 
   // Fallback to environment detection if driver info unavailable
-  if (!isWayland) {
+  if (!m_isWayland) {
     const std::string sessionTypeRaw =
         std::getenv("XDG_SESSION_TYPE") ? std::getenv("XDG_SESSION_TYPE") : "";
     const std::string waylandDisplayRaw =
@@ -229,10 +229,10 @@ bool GameEngine::init(const std::string_view title, const int width,
     std::string_view sessionType = sessionTypeRaw;
     bool hasWaylandDisplay = !waylandDisplayRaw.empty();
 
-    isWayland = (sessionType == "wayland") || hasWaylandDisplay;
+    m_isWayland = (sessionType == "wayland") || hasWaylandDisplay;
   }
 
-  if (isWayland) {
+  if (m_isWayland) {
     GAMEENGINE_WARN("Detected Wayland session - VSync may cause timing issues, "
                     "using software limiting");
     // Disable VSync on Wayland to avoid timing problems

@@ -196,8 +196,11 @@ void GameLoop::runUpdateWorker(const HammerEngine::WorkerBudget& budget) {
 
             if (!m_paused.load(std::memory_order_relaxed)) {
                 if (canUseParallelUpdates && HammerEngine::ThreadSystem::Exists()) {
-                    // Use enhanced processing for high-end systems
-                    processUpdatesParallel();
+                    // Use enhanced processing for high-end systems, which includes
+                    // more detailed performance monitoring. Note: This does NOT
+                    // parallelize the update loop itself, which runs sequentially
+                    // to maintain game logic consistency.
+                    processUpdatesHighPerformance();
                 } else {
                     // Standard processing for low-end systems
                     processUpdates();
@@ -281,7 +284,7 @@ void GameLoop::processUpdates() {
     }
 }
 
-void GameLoop::processUpdatesParallel() {
+void GameLoop::processUpdatesHighPerformance() {
     // Enhanced parallel processing for high-end systems with 2+ allocated workers
     // Still process updates sequentially to maintain game logic consistency
     // but optimized for systems with more worker budget allocation

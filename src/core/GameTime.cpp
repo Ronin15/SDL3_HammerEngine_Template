@@ -42,9 +42,9 @@ bool GameTime::init(float startHour, float timeScale) {
     return true;
 }
 
-void GameTime::update(float deltaTimeMs) {
+void GameTime::update(float deltaTime) {
     // Convert delta time to game seconds based on time scale
-    float deltaGameSeconds = (deltaTimeMs / 1000.0f) * m_timeScale;
+    float deltaGameSeconds = deltaTime * m_timeScale;
 
     // Advance game time
     advanceTime(deltaGameSeconds);

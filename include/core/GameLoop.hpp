@@ -158,7 +158,7 @@ private:
     void runUpdateWorker(const HammerEngine::WorkerBudget& budget);
     void processEvents();
     void processUpdates();
-    void processUpdatesParallel();
+    void processUpdatesHighPerformance();
     void processRender();
     void cleanup();
 
