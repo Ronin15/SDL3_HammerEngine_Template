@@ -536,6 +536,9 @@ private:
   // Cached renderer for performance
   SDL_Renderer *m_cachedRenderer{nullptr};
 
+  // Text cache for performance optimization
+  std::unordered_map<std::string, std::string> m_textCache{};
+
   // Delete copy constructor and assignment operator
   UIManager(const UIManager &) = delete;
   UIManager &operator=(const UIManager &) = delete;
