@@ -110,97 +110,97 @@ struct UIStyle {
 
 // Base UI Component
 struct UIComponent {
-  std::string id{};
-  UIComponentType type{};
-  UIRect bounds{};
-  UIState state{UIState::NORMAL};
-  UIStyle style{};
-  bool visible{true};
-  bool enabled{true};
-  int zOrder{0};
+  std::string m_id{};
+  UIComponentType m_type{};
+  UIRect m_bounds{};
+  UIState m_state{UIState::NORMAL};
+  UIStyle m_style{};
+  bool m_visible{true};
+  bool m_enabled{true};
+  int m_zOrder{0};
 
   // Auto-sizing properties
-  bool autoSize{true}; // Enable content-aware auto-sizing by default
-  UIRect minBounds{0, 0, 32,
+  bool m_autoSize{true}; // Enable content-aware auto-sizing by default
+  UIRect m_minBounds{0, 0, 32,
                    16}; // Minimum size constraints (only width/height used)
-  UIRect maxBounds{0, 0, 800,
+  UIRect m_maxBounds{0, 0, 800,
                    600};    // Maximum size constraints (only width/height used)
-  int contentPadding{8};    // Padding around content for size calculations
-  bool autoWidth{true};     // Auto-size width based on content
-  bool autoHeight{true};    // Auto-size height based on content
-  bool sizeToContent{true}; // Size exactly to fit content (vs. expand to fill)
+  int m_contentPadding{8};    // Padding around content for size calculations
+  bool m_autoWidth{true};     // Auto-size width based on content
+  bool m_autoHeight{true};    // Auto-size height based on content
+  bool m_sizeToContent{true}; // Size exactly to fit content (vs. expand to fill)
 
   // Component-specific data
-  std::string text{};
-  std::string textureID{};
-  float value{0.0f};
-  float minValue{0.0f};
-  float maxValue{1.0f};
-  bool checked{false};
-  std::vector<std::string> listItems{};
-  int selectedIndex{-1};
-  std::string placeholder{};
-  int maxLength{256};
+  std::string m_text{};
+  std::string m_textureID{};
+  float m_value{0.0f};
+  float m_minValue{0.0f};
+  float m_maxValue{1.0f};
+  bool m_checked{false};
+  std::vector<std::string> m_listItems{};
+  int m_selectedIndex{-1};
+  std::string m_placeholder{};
+  int m_maxLength{256};
 
   // Callbacks
-  std::function<void()> onClick{};
-  std::function<void(float)> onValueChanged{};
-  std::function<void(const std::string &)> onTextChanged{};
-  std::function<void()> onHover{};
-  std::function<void()> onFocus{};
+  std::function<void()> m_onClick{};
+  std::function<void(float)> m_onValueChanged{};
+  std::function<void(const std::string &)> m_onTextChanged{};
+  std::function<void()> m_onHover{};
+  std::function<void()> m_onFocus{};
   std::function<void()>
-      onContentChanged{}; // Called when content changes and resize is needed
+      m_onContentChanged{}; // Called when content changes and resize is needed
 
   virtual ~UIComponent() = default;
 };
 
 // Layout Container
 struct UILayout {
-  std::string id{};
-  UILayoutType type{UILayoutType::ABSOLUTE};
-  UIRect bounds{};
-  std::vector<std::string> childComponents{};
+  std::string m_id{};
+  UILayoutType m_type{UILayoutType::ABSOLUTE};
+  UIRect m_bounds{};
+  std::vector<std::string> m_childComponents{};
 
   // Layout-specific properties
-  int spacing{4};
-  int columns{1};
-  int rows{1};
-  UIAlignment alignment{UIAlignment::TOP_LEFT};
-  bool autoSize{false};
+  int m_spacing{4};
+  int m_columns{1};
+  int m_rows{1};
+  UIAlignment m_alignment{UIAlignment::TOP_LEFT};
+  bool m_autoSize{false};
 };
 
 // UI Theme
 struct UITheme {
-  std::string name{"default"};
-  std::unordered_map<UIComponentType, UIStyle> componentStyles{};
+  std::string m_name{"default"};
+  std::unordered_map<UIComponentType, UIStyle> m_componentStyles{};
 
   UIStyle getStyle(UIComponentType type) const {
-    auto it = componentStyles.find(type);
-    return (it != componentStyles.end()) ? it->second : UIStyle{};
+    auto it = m_componentStyles.find(type);
+    return (it != m_componentStyles.end()) ? it->second : UIStyle{};
   }
 };
 
 // Animation data
 struct UIAnimation {
-  std::string componentID{};
-  float duration{0.0f};
-  float elapsed{0.0f};
-  bool active{false};
+  std::string m_componentID{};
+  float m_duration{0.0f};
+  float m_elapsed{0.0f};
+  bool m_active{false};
 
-  UIRect startBounds{};
-  UIRect targetBounds{};
-  SDL_Color startColor{};
-  SDL_Color targetColor{};
+  UIRect m_startBounds{};
+  UIRect m_targetBounds{};
+  SDL_Color m_startColor{};
+  SDL_Color m_targetColor{};
 
-  std::function<void()> onComplete{};
+  std::function<void()> m_onComplete{};
 };
 
 // Event log state for auto-updating
 struct EventLogState {
-  float timer{0.0f};
-  int messageIndex{0};
-  float updateInterval{2.0f};
-  bool autoUpdate{false};
+  float m_timer{0.0f};
+  int m_messageIndex{0};
+  float m_updateInterval{2.0f};
+  bool m_autoUpdate{false};
 };
 
 class UIManager {
@@ -438,6 +438,8 @@ public:
 private:
   // Core data
   std::unordered_map<std::string, std::shared_ptr<UIComponent>> m_components{};
+  std::vector<std::shared_ptr<UIComponent>> m_sortedComponents{};
+  bool m_sortIsDirty{true};
   std::unordered_map<std::string, std::shared_ptr<UILayout>> m_layouts{};
   std::vector<std::shared_ptr<UIAnimation>> m_animations{};
 
