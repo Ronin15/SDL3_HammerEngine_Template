@@ -73,6 +73,20 @@
 - **Aditional Instructions:** Please ask before removing the build dir, Only remove it when absolutley necessary. Updating cmake and then re-configruing fixes most build problems.
 > For more details, see `README.md`, `docs/Logger.md`, `docs/ThreadSystem.md`, and `tests/TESTING.md`.
 
+## Core Architectural Concepts
+
+### Update/Render Synchronization
+
+The engine uses a decoupled, two-thread model for game logic and rendering, orchestrated by the `GameEngine` and `GameLoop` classes. It is critical to understand this flow to avoid introducing data races or performance bottlenecks.
+
+1.  **Two Main Threads:** The `GameLoop` starts and manages two primary threads: an **Update Thread** and a **Render Thread**.
+2.  **`GameEngine` as the Conductor:** The `GameEngine` is the central point of synchronization. It ensures that the Render Thread never reads game state data while the Update Thread is actively modifying it.
+3.  **Synchronization Mechanism:** The `GameEngine` uses a producer-consumer pattern with a `std::condition_variable` and atomic flags (`m_updateCondition`, `m_bufferReady`, etc.). This creates a clean "hand-off" at the end of each update cycle, guaranteeing that all asynchronous work is complete before rendering begins.
+4.  **Manager-Level Parallelism:**
+    *   The `GameEngine::update` method, running on the Update Thread, is the central dispatcher for all managers (`AIManager`, `EventManager`, etc.).
+    *   Managers like `AIManager` can use the `ThreadSystem` to further parallelize their own internal tasks (e.g., processing AI behaviors across multiple cores).
+5.  **Inherent Thread Safety:** Because the `GameEngine` waits for all update tasks to finish before the render phase begins, there is **no data race** between game logic (writers) and rendering (the reader). Do not add manual or redundant synchronization primitives like `waitForUpdatesToComplete()` inside the managers, as this will conflict with the engine's main synchronization loop and cause deadlocks.
+
 ## Warning Investigation and Fixes
 
 ### Unused Variable Warnings

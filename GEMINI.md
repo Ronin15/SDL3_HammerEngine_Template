@@ -65,8 +65,9 @@ The project uses CMake for building. The main executable is `SDL3_Template`.
 -   **Key Architectural Concepts:**
     -   **Singleton Managers:** Many core systems are implemented as singletons (e.g., `GameEngine::Instance()`, `TextureManager::Instance()`).
     -   **Game State Machine:** A `GameStateManager` manages different game states (e.g., `MainMenuState`, `GamePlayState`).
-    -   **Event System:** A decoupled `EventManager` handles game-wide events.
+    - **Event System:** A decoupled `EventManager` handles game-wide events.
     -   **Multithreading:** A `ThreadSystem` is used to manage background tasks for initialization and async operations.
+    -   **Update/Render Synchronization:** The `GameEngine` orchestrates a two-thread (update/render) model. It uses a condition variable and atomic flags to create a synchronization point, ensuring all update logic (including manager-level tasks from the `ThreadSystem`) is complete before the render phase begins. This architecture inherently prevents data races between updates and rendering. Do not add redundant, manual synchronization calls within individual managers.
     -   **Resource Management:** `TextureManager`, `FontManager`, `SoundManager`, and `ResourceTemplateManager` handle loading and managing game assets.
 
 ## Important Files
