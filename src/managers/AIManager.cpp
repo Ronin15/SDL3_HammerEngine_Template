@@ -933,21 +933,15 @@ void AIManager::processBatch(size_t start, size_t end, float deltaTime,
       }
 
       if (shouldUpdate) {
-        // Execute behavior with staggering support
+        // Execute behavior logic with staggering support
         uint64_t currentFrame = m_frameCounter.load(std::memory_order_relaxed);
         behavior->executeLogicWithStaggering(entity, currentFrame);
-        batchExecutions++;
-
-        // Perform physics update directly within the AIManager for performance
-        Vector2D velocity = entity->getVelocity();
-        Vector2D newPosition = hotData.position + velocity * deltaTime;
         
-        // Sync the new position back to the entity and the hot data cache
-        entity->setPosition(newPosition);
-        hotData.lastPosition = hotData.position;
-        hotData.position = newPosition;
+        // The entity is responsible for its own physics update.
+        entity->update(deltaTime);
+        
+        batchExecutions++;
       }
-
     } catch (const std::exception &e) {
       AI_ERROR("Error in batch processing: " + std::string(e.what()));
       hotData.active = false;

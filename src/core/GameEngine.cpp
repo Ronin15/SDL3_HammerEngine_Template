@@ -812,9 +812,6 @@ void GameEngine::update([[maybe_unused]] float deltaTime) {
   // AI system - manages world entities across all states (cached reference
   // access)
   if (mp_aiManager) {
-    // Synchronize with the previous frame's AI tasks before starting new ones.
-    mp_aiManager->waitForUpdatesToComplete();
-    // Kick off the new update asynchronously.
     mp_aiManager->update(deltaTime);
   } else {
     GAMEENGINE_ERROR("AIManager cache is null!");

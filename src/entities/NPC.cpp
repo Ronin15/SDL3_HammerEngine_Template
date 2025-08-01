@@ -113,22 +113,51 @@ void NPC::loadDimensionsFromTexture() {
 // State management removed - handled by AI Manager
 
 void NPC::update(float deltaTime) {
-  // Store previous position for interpolation
+  // The NPC is responsible for its own physics and animation.
   m_previousPosition = m_position;
-
-  // Update position based on velocity and acceleration using deltaTime
+  
+  // Apply acceleration and friction
   m_velocity += m_acceleration * deltaTime;
-  m_position += m_velocity * deltaTime;
-
-  // --- PERFORMANCE OPTIMIZATION ---
-  // Use squared length to avoid expensive sqrt calls and use linear damping instead of pow().
   const float stopThresholdSquared = 0.1f * 0.1f;
   if (m_velocity.lengthSquared() > stopThresholdSquared) {
-    // Apply frame-rate independent linear damping for friction
-    const float frictionCoefficient = 8.0f; // Adjust this value for desired friction strength
+    const float frictionCoefficient = 8.0f;
     m_velocity -= m_velocity * frictionCoefficient * deltaTime;
+  } else {
+    m_velocity = Vector2D(0, 0);
+  }
+  
+  // Update position
+  m_position += m_velocity * deltaTime;
+  
+  // Reset acceleration for the next frame.
+  m_acceleration = Vector2D(0, 0);
 
-    // Update flip direction based on horizontal velocity
+  // Handle world boundaries
+  if (m_boundsCheckEnabled) {
+    const float bounceBuffer = 20.0f;
+    if (m_position.getX() < m_minX - bounceBuffer) {
+      m_position.setX(m_minX);
+      m_velocity.setX(std::abs(m_velocity.getX()));
+    } else if (m_position.getX() + m_width > m_maxX + bounceBuffer) {
+      m_position.setX(m_maxX - m_width);
+      m_velocity.setX(-std::abs(m_velocity.getX()));
+    }
+    if (m_position.getY() < m_minY - bounceBuffer) {
+      m_position.setY(m_minY);
+      m_velocity.setY(std::abs(m_velocity.getY()));
+    } else if (m_position.getY() + m_height > m_maxY + bounceBuffer) {
+      m_position.setY(m_maxY - m_height);
+      m_velocity.setY(-std::abs(m_velocity.getY()));
+    }
+  }
+
+  // --- Animation ---
+  Uint64 currentTime = SDL_GetTicks();
+  if (m_velocity.lengthSquared() > 0.01f) {
+    if (currentTime > m_lastFrameTime + m_animSpeed) {
+      m_currentFrame = (m_currentFrame + 1) % m_numFrames;
+      m_lastFrameTime = currentTime;
+    }
     if (std::abs(m_velocity.getX()) > 0.5f) {
       if (m_velocity.getX() < 0) {
         m_flip = SDL_FLIP_HORIZONTAL;
@@ -137,49 +166,6 @@ void NPC::update(float deltaTime) {
       }
     }
   } else {
-    // If velocity is very small, stop completely to avoid tiny sliding
-    m_velocity = Vector2D(0, 0);
-  }
-
-  // Reset acceleration
-  m_acceleration = Vector2D(0, 0);
-
-  // Only apply bounds checking if enabled
-  if (m_boundsCheckEnabled) {
-    // Handle bounds checking with bounce behavior if outside permitted area
-    const float bounceBuffer = 20.0f; // Buffer zone before bouncing
-
-    if (m_position.getX() < m_minX - bounceBuffer) {
-      m_position.setX(m_minX);
-      m_velocity.setX(std::abs(m_velocity.getX())); // Move right
-      // Flip will be updated in the velocity section above
-    } else if (m_position.getX() + m_width > m_maxX + bounceBuffer) {
-      m_position.setX(m_maxX - m_width);
-      m_velocity.setX(-std::abs(m_velocity.getX())); // Move left
-      // Flip will be updated in the velocity section above
-    }
-
-    if (m_position.getY() < m_minY - bounceBuffer) {
-      m_position.setY(m_minY);
-      m_velocity.setY(std::abs(m_velocity.getY())); // Move down
-    } else if (m_position.getY() + m_height > m_maxY + bounceBuffer) {
-      m_position.setY(m_maxY - m_height);
-      m_velocity.setY(-std::abs(m_velocity.getY())); // Move up
-    }
-  }
-
-  // Update animation based on movement
-  Uint64 currentTime = SDL_GetTicks();
-
-  // Check if NPC is moving (velocity not close to zero)
-  if (m_velocity.length() > 0.1f) {
-    // Only update animation frame if enough time has passed
-    if (currentTime > m_lastFrameTime + m_animSpeed) {
-      m_currentFrame = (m_currentFrame + 1) % m_numFrames;
-      m_lastFrameTime = currentTime;
-    }
-  } else {
-    // When not moving, reset to first frame
     m_currentFrame = 0;
   }
 
@@ -188,9 +174,6 @@ void NPC::update(float deltaTime) {
       TextureManager::Instance().isTextureInMap(m_textureID)) {
     loadDimensionsFromTexture();
   }
-
-  // Note: Flip direction is now determined by the NPC's velocity in this update
-  // method AI behavior classes should no longer set flip directly
 }
 
 void NPC::render(double alpha) {

@@ -209,7 +209,7 @@ bool AIDemoState::enter() {
 
     // Create and register chase behavior - behaviors can get player via
     // getPlayerReference()
-    auto chaseBehavior = std::make_unique<ChaseBehavior>(120.0f, 500.0f, 50.0f);
+    auto chaseBehavior = std::make_unique<ChaseBehavior>(1200.0f, 500.0f, 50.0f);
     aiMgr.registerBehavior("Chase", std::move(chaseBehavior));
     std::cout << "Hammer Game Engine - Chase behavior registered (will use "
                  "AIManager::getPlayerReference())\n";
@@ -360,7 +360,7 @@ void AIDemoState::setupAIBehaviors() {
 
   if (!aiMgr.hasBehavior("Wander")) {
     auto wanderBehavior = std::make_unique<WanderBehavior>(
-        WanderBehavior::WanderMode::MEDIUM_AREA, 80.0f);
+        WanderBehavior::WanderMode::MEDIUM_AREA, 800.0f);
     wanderBehavior->setScreenDimensions(m_worldWidth, m_worldHeight);
     aiMgr.registerBehavior("Wander", std::move(wanderBehavior));
     std::cout << "AIDemoState: Registered Wander behavior\n";

@@ -24,6 +24,12 @@ class Entity : public std::enable_shared_from_this<Entity> {
    virtual void render(double alpha) = 0;
    
    /**
+    * @brief Synchronizes the entity's previous state with its current state.
+    * @details This is used to prevent interpolation jitter for entities that are not being updated.
+    */
+   virtual void syncState() { m_previousPosition = m_position; }
+   
+   /**
     * @brief Clean up the entity's resources before destruction
     * 
     * This method is called explicitly before an entity is destroyed.
