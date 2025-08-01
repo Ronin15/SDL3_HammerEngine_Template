@@ -83,7 +83,8 @@ void WanderBehavior::executeLogic(EntityPtr entity) {
   if (!state.movementStarted) {
     if (currentTime - state.lastDirectionChangeTime >= state.startDelay) {
       state.movementStarted = true;
-      entity->setVelocity(state.currentDirection * m_speed);
+      // Set acceleration instead of velocity
+      entity->setAcceleration(state.currentDirection * m_speed);
     }
     return;
   }
@@ -95,8 +96,8 @@ void WanderBehavior::executeLogic(EntityPtr entity) {
   // frames.
   updateWanderState(entity);
 
-  // Always apply velocity (in case something external changed it)
-  entity->setVelocity(state.currentDirection * m_speed);
+  // Always apply acceleration to counteract friction and maintain movement.
+  entity->setAcceleration(state.currentDirection * m_speed);
 }
 
 void WanderBehavior::updateWanderState(EntityPtr entity) {
@@ -183,12 +184,12 @@ void WanderBehavior::onMessage(EntityPtr entity, const std::string &message) {
   } else if (message == "increase_speed") {
     m_speed *= 1.5f;
     if (m_active && m_entityStates.find(entity) != m_entityStates.end()) {
-      entity->setVelocity(m_entityStates[entity].currentDirection * m_speed);
+      entity->setAcceleration(m_entityStates[entity].currentDirection * m_speed);
     }
   } else if (message == "decrease_speed") {
     m_speed *= 0.75f;
     if (m_active && m_entityStates.find(entity) != m_entityStates.end()) {
-      entity->setVelocity(m_entityStates[entity].currentDirection * m_speed);
+      entity->setAcceleration(m_entityStates[entity].currentDirection * m_speed);
     }
   } else if (message == "release_entities") {
     // Clear all entity state when asked to release entities
@@ -344,7 +345,7 @@ void WanderBehavior::chooseNewDirection(EntityPtr entity,
 
   // Apply the new direction to the entity only if movement has started
   if (applyVelocity) {
-    entity->setVelocity(state.currentDirection * m_speed);
+    entity->setAcceleration(state.currentDirection * m_speed);
   }
 
   // NPC class now handles sprite flipping based on velocity
