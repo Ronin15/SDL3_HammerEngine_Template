@@ -941,6 +941,12 @@ void AIManager::processBatch(size_t start, size_t end, float deltaTime,
         entity->update(deltaTime);
         
         batchExecutions++;
+      } else {
+        // If culled, explicitly stop the entity to prevent ghost movement.
+        entity->setVelocity(Vector2D(0, 0));
+        // We still call update to apply friction (which will do nothing at zero velocity)
+        // and to ensure the animation state is correctly reset to idle.
+        entity->update(deltaTime);
       }
     } catch (const std::exception &e) {
       AI_ERROR("Error in batch processing: " + std::string(e.what()));
