@@ -12,10 +12,17 @@
 #include <algorithm> // for std::clamp
 #include <chrono>
 #include <cmath>
+#include <thread>
 
 // A simple and fast pseudo-random number generator
 inline int fast_rand() {
-    static thread_local unsigned int g_seed = 0;
+    static thread_local unsigned int g_seed = []() {
+        // Initialize with a combination of time and thread ID for better distribution
+        auto now = std::chrono::high_resolution_clock::now();
+        auto time_seed = static_cast<unsigned int>(now.time_since_epoch().count());
+        auto thread_id = std::hash<std::thread::id>{}(std::this_thread::get_id());
+        return time_seed ^ static_cast<unsigned int>(thread_id);
+    }();
     g_seed = (214013 * g_seed + 2531011);
     return (g_seed >> 16) & 0x7FFF;
 }
@@ -1512,7 +1519,9 @@ void ParticleManager::updateParticleRange(
                                  windVariation * 20.0f);
 
       // Different atmospheric effects for different particle types
-      const float lifeRatio = particles.lives[i] / particles.maxLives[i];
+      // Safe division with zero check
+      const float lifeRatio = (particles.maxLives[i] > 0.0f) ? 
+                             (particles.lives[i] / particles.maxLives[i]) : 0.0f;
 
       // Snow particles drift more with wind and have flutter
       if (particles.effectTypes[i] == ParticleEffectType::Snow ||
@@ -1543,7 +1552,9 @@ void ParticleManager::updateParticleRange(
     }
     // Special handling for fire and smoke particles for natural movement
     else {
-      const float lifeRatio = particles.lives[i] / particles.maxLives[i];
+      // Safe division with zero check
+      const float lifeRatio = (particles.maxLives[i] > 0.0f) ? 
+                             (particles.lives[i] / particles.maxLives[i]) : 0.0f;
       float randomFactor = static_cast<float>(fast_rand()) / 32767.0f;
 
       // Fire particles: flickering, turbulent movement with heat distortion
@@ -1625,7 +1636,9 @@ void ParticleManager::updateParticleRange(
     }
 
     // Enhanced visual properties with natural fading
-    const float lifeRatio = particles.lives[i] / particles.maxLives[i];
+    // Safe division with zero check
+    const float lifeRatio = (particles.maxLives[i] > 0.0f) ? 
+                           (particles.lives[i] / particles.maxLives[i]) : 0.0f;
 
     // Natural fade-in and fade-out for weather particles
     float alphaMultiplier = 1.0f;

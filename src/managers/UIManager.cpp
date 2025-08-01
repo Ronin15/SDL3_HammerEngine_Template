@@ -152,6 +152,7 @@ void UIManager::clean() {
   }
 
   m_components.clear();
+  m_sortedComponents.clear(); // Fix: Also clear sorted components to prevent dangling pointers
   m_layouts.clear();
   m_animations.clear();
   m_clickedButtons.clear();
@@ -2252,16 +2253,37 @@ void regenerateListTextures(const std::shared_ptr<UIComponent>& component, SDL_R
     }
 
     auto& fontManager = FontManager::Instance();
-    component->m_listItemTextures.clear();
-    component->m_listItemTextures.reserve(component->m_listItems.size());
+    
+    // Implement cache size limit to prevent GPU memory pressure
+    constexpr size_t MAX_CACHED_TEXTURES = 1000;
+    
+    // Only clear and regenerate if we have too many textures or items changed significantly
+    bool needsFullRegeneration = component->m_listItemTextures.size() > MAX_CACHED_TEXTURES ||
+                                component->m_listItemTextures.size() != component->m_listItems.size();
+    
+    if (needsFullRegeneration) {
+        component->m_listItemTextures.clear();
+        component->m_listItemTextures.reserve(std::min(component->m_listItems.size(), MAX_CACHED_TEXTURES));
+    } else {
+        // Resize to match current list size
+        component->m_listItemTextures.resize(component->m_listItems.size());
+    }
 
-    for (const auto& itemText : component->m_listItems) {
+    // Generate textures for new or changed items
+    for (size_t i = 0; i < component->m_listItems.size() && i < MAX_CACHED_TEXTURES; ++i) {
+        const auto& itemText = component->m_listItems[i];
+        
         if (itemText.empty()) {
-            component->m_listItemTextures.push_back(nullptr);
+            component->m_listItemTextures[i] = nullptr;
             continue;
         }
-        SDL_Texture* texture = fontManager.renderText(itemText, component->m_style.fontID, component->m_style.textColor, renderer, true);
-        component->m_listItemTextures.emplace_back(texture, SDL_DestroyTexture);
+        
+        // Only regenerate if texture doesn't exist or if we cleared all textures
+        if (!component->m_listItemTextures[i] || needsFullRegeneration) {
+            SDL_Texture* texture = fontManager.renderText(itemText, component->m_style.fontID, 
+                                                        component->m_style.textColor, renderer, true);
+            component->m_listItemTextures[i] = std::shared_ptr<SDL_Texture>(texture, SDL_DestroyTexture);
+        }
     }
 
     component->m_listItemsDirty = false;
@@ -2289,24 +2311,27 @@ void UIManager::renderList(SDL_Renderer *renderer,
   int itemY = component->m_bounds.y + component->m_style.padding;
   int itemHeight = component->m_style.listItemHeight;
 
-  for (int i = 0; i < static_cast<int>(component->m_listItemTextures.size()); ++i) {
+  const size_t numItems = std::min(component->m_listItemTextures.size(), component->m_listItems.size());
+  for (size_t i = 0; i < numItems; ++i) {
     UIRect itemBounds = {component->m_bounds.x, itemY, component->m_bounds.width,
                          itemHeight};
 
     // Highlight selected item
-    if (i == component->m_selectedIndex) {
+    if (static_cast<int>(i) == component->m_selectedIndex) {
       drawRect(renderer, itemBounds, component->m_style.hoverColor, true);
     }
 
-    // Draw item texture
-    auto& texture = component->m_listItemTextures[i];
-    if (texture) {
-        float texW, texH;
-        SDL_GetTextureSize(texture.get(), &texW, &texH);
-        int textX = component->m_bounds.x + component->m_style.padding * 2;
-        int textY = itemY + (itemHeight - static_cast<int>(texH)) / 2; // Center vertically
-        SDL_FRect destRect = {static_cast<float>(textX), static_cast<float>(textY), texW, texH};
-        SDL_RenderTexture(renderer, texture.get(), nullptr, &destRect);
+    // Draw item texture with bounds checking
+    if (i < component->m_listItemTextures.size()) {
+        auto& texture = component->m_listItemTextures[i];
+        if (texture) {
+            float texW, texH;
+            SDL_GetTextureSize(texture.get(), &texW, &texH);
+            int textX = component->m_bounds.x + component->m_style.padding * 2;
+            int textY = itemY + (itemHeight - static_cast<int>(texH)) / 2; // Center vertically
+            SDL_FRect destRect = {static_cast<float>(textX), static_cast<float>(textY), texW, texH};
+            SDL_RenderTexture(renderer, texture.get(), nullptr, &destRect);
+        }
     }
 
     itemY += itemHeight;
@@ -2336,19 +2361,22 @@ void UIManager::renderEventLog(SDL_Renderer *renderer,
   int startY = component->m_bounds.y + component->m_bounds.height -
                component->m_style.padding - itemHeight;
 
-  for (int i = static_cast<int>(component->m_listItemTextures.size()) - 1; i >= 0;
-       --i) {
+  const size_t numItems = std::min(component->m_listItemTextures.size(), component->m_listItems.size());
+  for (int i = static_cast<int>(numItems) - 1; i >= 0; --i) {
     if (startY < component->m_bounds.y)
       break; // Stop if we run out of space
 
-    auto& texture = component->m_listItemTextures[i];
-    if (texture) {
-        float texW, texH;
-        SDL_GetTextureSize(texture.get(), &texW, &texH);
-        int textX = component->m_bounds.x + component->m_style.padding * 2;
-        int textY = startY + (itemHeight - static_cast<int>(texH)) / 2;
-        SDL_FRect destRect = {static_cast<float>(textX), static_cast<float>(textY), texW, texH};
-        SDL_RenderTexture(renderer, texture.get(), nullptr, &destRect);
+    // Bounds checking for texture access
+    if (static_cast<size_t>(i) < component->m_listItemTextures.size()) {
+        auto& texture = component->m_listItemTextures[i];
+        if (texture) {
+            float texW, texH;
+            SDL_GetTextureSize(texture.get(), &texW, &texH);
+            int textX = component->m_bounds.x + component->m_style.padding * 2;
+            int textY = startY + (itemHeight - static_cast<int>(texH)) / 2;
+            SDL_FRect destRect = {static_cast<float>(textX), static_cast<float>(textY), texW, texH};
+            SDL_RenderTexture(renderer, texture.get(), nullptr, &destRect);
+        }
     }
 
     startY -= itemHeight;
