@@ -245,10 +245,10 @@ void AdvancedAIDemoState::update(float deltaTime) {
     }
 }
 
-void AdvancedAIDemoState::render(float deltaTime) {
+void AdvancedAIDemoState::render(double alpha) {
     // Render all NPCs
     for (auto& npc : m_npcs) {
-        npc->render();
+        npc->render(alpha);
         
         // Render health bars for NPCs with combat attributes
         auto it = m_combatAttributes.find(npc);
@@ -262,7 +262,7 @@ void AdvancedAIDemoState::render(float deltaTime) {
 
     // Render player
     if (m_player) {
-        m_player->render();
+        m_player->render(alpha);
         
         // Render player health bar
         auto it = m_combatAttributes.find(m_player);
@@ -274,7 +274,7 @@ void AdvancedAIDemoState::render(float deltaTime) {
     // Update and render UI components
     auto& ui = UIManager::Instance();
     if (!ui.isShutdown()) {
-        ui.update(deltaTime);
+        ui.update(0.0); // UI updates are not time-dependent in this state
 
         // Update status display with combat information
         const auto& gameEngine = GameEngine::Instance();

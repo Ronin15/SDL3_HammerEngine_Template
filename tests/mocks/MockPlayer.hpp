@@ -24,7 +24,7 @@ public:
         
     // Required Entity interface implementations
     void update(float deltaTime) override { (void)deltaTime; /* Mock implementation */ }
-    void render() override { /* Mock implementation */ }
+    void render(double alpha) override { (void)alpha; /* Mock implementation */ }
     void clean() override { /* Mock implementation */ }
     
     // Factory method for proper creation with shared_ptr

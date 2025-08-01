@@ -25,6 +25,7 @@
 #include "entities/Entity.hpp"
 #include <array>
 #include <atomic>
+#include <future>
 #include <memory>
 #include <mutex>
 #include <shared_mutex>
@@ -172,6 +173,12 @@ public:
    * @param deltaTime Time elapsed since last update in seconds
    */
   void update(float deltaTime);
+
+  /**
+   * @brief Waits for all asynchronous AI update tasks from the last tick to complete.
+   * @details This is the synchronization point that ensures AI processing is finished before the next game logic step.
+   */
+  void waitForUpdatesToComplete();
 
   /**
    * @brief Checks if AIManager has been shut down
@@ -425,6 +432,7 @@ private:
   mutable std::mutex m_assignmentsMutex;
   mutable std::mutex m_messagesMutex;
   mutable std::mutex m_statsMutex;
+  std::vector<std::future<void>> m_updateFutures;
 
   // Optimized batch processing constants
   static constexpr size_t CACHE_LINE_SIZE = 64; // Standard cache line size

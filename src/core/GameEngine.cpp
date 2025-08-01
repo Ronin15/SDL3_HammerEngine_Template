@@ -812,6 +812,9 @@ void GameEngine::update([[maybe_unused]] float deltaTime) {
   // AI system - manages world entities across all states (cached reference
   // access)
   if (mp_aiManager) {
+    // Synchronize with the previous frame's AI tasks before starting new ones.
+    mp_aiManager->waitForUpdatesToComplete();
+    // Kick off the new update asynchronously.
     mp_aiManager->update(deltaTime);
   } else {
     GAMEENGINE_ERROR("AIManager cache is null!");
@@ -858,7 +861,7 @@ void GameEngine::update([[maybe_unused]] float deltaTime) {
   m_bufferCondition.notify_all();
 }
 
-void GameEngine::render() {
+void GameEngine::render(double alpha) {
   // Always on MAIN thread as its an - SDL REQUIREMENT
   std::lock_guard<std::mutex> lock(m_renderMutex);
 
@@ -876,7 +879,7 @@ void GameEngine::render() {
   }
 
   // Make sure GameStateManager knows which buffer to render from
-  mp_gameStateManager->render();
+  mp_gameStateManager->render(alpha);
 
   if (!SDL_RenderPresent(mp_renderer.get())) {
     GAMEENGINE_ERROR("Failed to present renderer: " +

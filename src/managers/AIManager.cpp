@@ -147,6 +147,17 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
   auto startTime = std::chrono::high_resolution_clock::now();
 
   try {
+    // First, synchronize all entity positions to the hot data cache.
+    // This ensures distance calculations use the most up-to-date information.
+    {
+        std::shared_lock<std::shared_mutex> lock(m_entitiesMutex);
+        for (size_t i = 0; i < m_storage.size(); ++i) {
+            if (m_storage.hotData[i].active && m_storage.entities[i]) {
+                m_storage.hotData[i].position = m_storage.entities[i]->getPosition();
+            }
+        }
+    }
+
     // Process pending assignments
     processPendingBehaviorAssignments();
 
@@ -278,9 +289,9 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
       size_t entitiesPerBatch = entityCount / batchCount;
       size_t remainingEntities = entityCount % batchCount;
 
-      // Submit optimized batches and wait for them to complete
-      std::vector<std::future<void>> futures;
-      futures.reserve(batchCount);
+      // Clear futures from the previous frame before dispatching new ones.
+      m_updateFutures.clear();
+      m_updateFutures.reserve(batchCount);
 
       for (size_t i = 0; i < batchCount; ++i) {
         size_t start = i * entitiesPerBatch;
@@ -291,16 +302,11 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
           end += remainingEntities;
         }
 
-        futures.push_back(threadSystem.enqueueTaskWithResult(
+        m_updateFutures.push_back(threadSystem.enqueueTaskWithResult(
             [this, start, end, deltaTime, nextBuffer]() {
               processBatch(start, end, deltaTime, nextBuffer);
             },
             HammerEngine::TaskPriority::High, "AI_OptimalBatch"));
-      }
-
-      // Wait for all AI update batches to complete before proceeding
-      for (auto& future : futures) {
-          future.get();
       }
 
     } else {
@@ -346,6 +352,21 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
   } catch (const std::exception &e) {
     AI_ERROR("Exception in AIManager::update: " + std::string(e.what()));
   }
+}
+
+void AIManager::waitForUpdatesToComplete() {
+  if (m_isShutdown) {
+    return;
+  }
+
+  // Wait for all futures from the last update to complete
+  for (auto& future : m_updateFutures) {
+    if (future.valid()) {
+      future.get();
+    }
+  }
+  // Clear the futures vector for the next update cycle
+  m_updateFutures.clear();
 }
 
 void AIManager::registerBehavior(const std::string &name,
@@ -899,9 +920,6 @@ void AIManager::processBatch(size_t start, size_t end, float deltaTime,
     }
 
     try {
-      // Update position
-      hotData.position = entity->getPosition();
-
       // Simple distance-based culling - no frame counting needed
       bool shouldUpdate = true;
       if (hasPlayer) {
@@ -920,12 +938,14 @@ void AIManager::processBatch(size_t start, size_t end, float deltaTime,
         behavior->executeLogicWithStaggering(entity, currentFrame);
         batchExecutions++;
 
-        // Update entity
-        entity->update(deltaTime);
-
-        // Update position after behavior execution
+        // Perform physics update directly within the AIManager for performance
+        Vector2D velocity = entity->getVelocity();
+        Vector2D newPosition = hotData.position + velocity * deltaTime;
+        
+        // Sync the new position back to the entity and the hot data cache
+        entity->setPosition(newPosition);
         hotData.lastPosition = hotData.position;
-        hotData.position = entity->getPosition();
+        hotData.position = newPosition;
       }
 
     } catch (const std::exception &e) {

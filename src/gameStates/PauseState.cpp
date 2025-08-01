@@ -32,7 +32,7 @@ void PauseState::update([[maybe_unused]] float deltaTime) {
   //std::cout << "Updating PAUSE State\n";
 }
 
-void PauseState::render(float deltaTime) {
+void PauseState::render(double alpha) {
     // Cache manager references for better performance
     FontManager& fontMgr = FontManager::Instance();
     const auto& gameEngine = GameEngine::Instance();
@@ -40,7 +40,7 @@ void PauseState::render(float deltaTime) {
     
     // Update and render UI components through UIManager using cached renderer for cleaner API
     if (!ui.isShutdown()) {
-        ui.update(deltaTime);
+        ui.update(0.0); // UI updates are not time-dependent in this state
     }
     ui.render();
     

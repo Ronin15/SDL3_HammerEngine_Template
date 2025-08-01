@@ -62,8 +62,9 @@ public:
         (void)deltaTime; // Suppress unused parameter warning
     }
     
-    void render() override {
+    void render(double alpha) override {
         // Mock render - do nothing
+        (void)alpha; // Suppress unused parameter warning
     }
     
     void clean() override {

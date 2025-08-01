@@ -20,6 +20,7 @@ Player::Player() {
   // Initialize player properties
   m_position =
       Vector2D(400, 300); // Start position in the middle of a typical screen
+  m_previousPosition = m_position; // Initialize previous position to avoid jitter
   m_velocity = Vector2D(0, 0);
   m_acceleration = Vector2D(0, 0);
   m_textureID =
@@ -129,8 +130,11 @@ std::string Player::getCurrentStateName() const {
 }
 
 void Player::update(float deltaTime) {
-  // Let the state machine handle ALL movement and input logic
+  // Let the state machine handle ALL movement and input logic first
   m_stateManager.update(deltaTime);
+
+  // Store previous position for interpolation *after* logic update
+  m_previousPosition = m_position;
 
   // Apply velocity to position
   m_position += m_velocity * deltaTime;
@@ -142,14 +146,23 @@ void Player::update(float deltaTime) {
   }
 }
 
-void Player::render() {
+void Player::render(double alpha) {
   // Cache manager references for better performance
   TextureManager &texMgr = TextureManager::Instance();
   SDL_Renderer *renderer = GameEngine::Instance().getRenderer();
 
+  Vector2D renderPosition;
+  // Add a threshold to prevent jitter when idle
+  if ((m_position - m_previousPosition).lengthSquared() < 0.0001f) {
+    renderPosition = m_position;
+  } else {
+    // Interpolate position for smooth rendering
+    renderPosition = m_position * alpha + m_previousPosition * (1.0 - alpha);
+  }
+
   // Calculate centered position for rendering (IDENTICAL to NPCs)
-  int renderX = static_cast<int>(m_position.getX() - (m_frameWidth / 2.0f));
-  int renderY = static_cast<int>(m_position.getY() - (m_height / 2.0f));
+  int renderX = static_cast<int>(renderPosition.getX() - (m_frameWidth / 2.0f));
+  int renderY = static_cast<int>(renderPosition.getY() - (m_height / 2.0f));
 
   // Render the Player with the current animation frame (IDENTICAL to NPCs)
   texMgr.drawFrame(m_textureID,

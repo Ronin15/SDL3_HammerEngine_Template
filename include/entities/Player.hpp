@@ -20,7 +20,7 @@ public:
   ~Player() override;
 
   void update(float deltaTime) override;
-  void render() override;
+  void render(double alpha) override;
   void clean() override;
 
   // State management

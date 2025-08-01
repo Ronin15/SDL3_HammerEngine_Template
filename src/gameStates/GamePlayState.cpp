@@ -46,7 +46,7 @@ void GamePlayState::update([[maybe_unused]] float deltaTime) {
   updateInventoryUI();
 }
 
-void GamePlayState::render([[maybe_unused]] float deltaTime) {
+void GamePlayState::render(double alpha) {
   // std::cout << "Rendering GAME State\n";
 
   // Cache manager references for better performance
@@ -60,7 +60,7 @@ void GamePlayState::render([[maybe_unused]] float deltaTime) {
                    gameEngine.getLogicalWidth() / 2, // Center horizontally
                    20, fontColor, gameEngine.getRenderer());
 
-  mp_Player->render();
+  mp_Player->render(alpha);
 
   // Render UI components
   auto &ui = UIManager::Instance();
