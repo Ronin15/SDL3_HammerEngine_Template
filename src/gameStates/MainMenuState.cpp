@@ -82,11 +82,11 @@ void MainMenuState::update([[maybe_unused]] float deltaTime) {
   // UI updates handled in render() for thread safety
 }
 
-void MainMenuState::render(float deltaTime) {
+void MainMenuState::render(double alpha) {
   // Update and render UI components through UIManager using cached renderer for cleaner API
   auto& ui = UIManager::Instance();
   if (!ui.isShutdown()) {
-      ui.update(deltaTime); // Use actual deltaTime from update cycle
+      ui.update(0.0); // UI updates are not time-dependent in this state
   }
   ui.render(); // Uses cached renderer from GameEngine
 }

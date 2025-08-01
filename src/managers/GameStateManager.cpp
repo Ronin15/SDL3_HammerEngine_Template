@@ -71,10 +71,10 @@ void GameStateManager::update(float deltaTime) {
   }
 }
 
-void GameStateManager::render() {
+void GameStateManager::render(double alpha) {
   // Render all active states on the stack
   for (const auto &state : m_activeStates) {
-    state->render(m_lastDeltaTime);
+    state->render(alpha);
   }
 }
 

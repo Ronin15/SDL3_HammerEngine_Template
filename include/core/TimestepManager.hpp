@@ -53,7 +53,12 @@ public:
      */
     float getUpdateDeltaTime() const;
 
-
+    /**
+     * Gets the interpolation factor (alpha) for smooth rendering between fixed updates.
+     * This represents the fraction of time into the next fixed update step.
+     * @return interpolation alpha value (typically between 0.0 and 1.0)
+     */
+    double getInterpolationAlpha() const;
 
     /**
      * Call this at the end of each frame.

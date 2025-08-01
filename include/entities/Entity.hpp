@@ -21,7 +21,7 @@ using EntityWeakPtr = std::weak_ptr<Entity>;
 class Entity : public std::enable_shared_from_this<Entity> {
  public:
    virtual void update(float deltaTime) = 0;
-   virtual void render() = 0;
+   virtual void render(double alpha) = 0;
    
    /**
     * @brief Clean up the entity's resources before destruction
@@ -104,6 +104,7 @@ class Entity : public std::enable_shared_from_this<Entity> {
     Vector2D m_acceleration{0, 0};
     Vector2D m_velocity{0, 0};
     Vector2D m_position{0, 0};
+    Vector2D m_previousPosition{0, 0};
     int m_width{0};
     int m_height{0};
     std::string m_textureID{};

@@ -71,7 +71,7 @@ public:
 
   // Entity interface implementation
   void update(float deltaTime) override;
-  void render() override;
+  void render(double alpha) override;
   void clean() override;
 
   // Resource properties (immutable)

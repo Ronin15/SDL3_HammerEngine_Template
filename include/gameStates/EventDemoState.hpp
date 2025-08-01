@@ -31,7 +31,7 @@ public:
   ~EventDemoState() override;
 
   void update(float deltaTime) override;
-  void render(float deltaTime) override;
+  void render(double alpha) override;
   void handleInput() override;
 
   bool enter() override;

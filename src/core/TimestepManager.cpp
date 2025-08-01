@@ -77,6 +77,13 @@ float TimestepManager::getUpdateDeltaTime() const {
     return m_fixedTimestep;
 }
 
+double TimestepManager::getInterpolationAlpha() const {
+    if (m_fixedTimestep > 0.0f) {
+        return m_accumulator / m_fixedTimestep;
+    }
+    return 1.0; // Default to 1.0 to avoid division by zero
+}
+
 void TimestepManager::endFrame() {
     // Mark render as completed for this frame
     m_shouldRender = false;

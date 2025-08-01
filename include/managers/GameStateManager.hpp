@@ -22,7 +22,7 @@ class GameStateManager {
   void changeState(const std::string& stateName); // Pops the current state and pushes a new one
 
   void update(float deltaTime);
-  void render();
+  void render(double alpha);
   void handleInput();
 
   bool hasState(const std::string& stateName) const;

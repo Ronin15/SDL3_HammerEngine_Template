@@ -57,7 +57,7 @@ public:
         
         setPosition(newPos);
     }
-    void render() override {}
+    void render(double alpha) override { (void)alpha; }
     void clean() override {}
 
 private:

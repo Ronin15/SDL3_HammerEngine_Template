@@ -310,7 +310,8 @@ void GameLoop::processUpdatesHighPerformance() {
 
 void GameLoop::processRender() {
     if (m_timestepManager->shouldRender()) {
-        invokeRenderHandler();
+        double alpha = m_timestepManager->getInterpolationAlpha();
+        invokeRenderHandler(alpha);
     }
 }
 
@@ -336,11 +337,11 @@ void GameLoop::invokeUpdateHandler(float deltaTime) {
     }
 }
 
-void GameLoop::invokeRenderHandler() {
+void GameLoop::invokeRenderHandler(double alpha) {
     std::lock_guard<std::mutex> lock(m_callbackMutex);
     if (m_renderHandler) {
         try {
-            m_renderHandler();
+            m_renderHandler(alpha);
         } catch (const std::exception& e) {
             GAMELOOP_ERROR("Exception in render handler: " + std::string(e.what()));
         }

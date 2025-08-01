@@ -321,22 +321,22 @@ void AIDemoState::update([[maybe_unused]] float deltaTime) {
   // Game logic only - UI updates moved to render() for thread safety
 }
 
-void AIDemoState::render(float deltaTime) {
+void AIDemoState::render(double alpha) {
   // Render all NPCs
   for (auto &npc : m_npcs) {
-    npc->render();
+    npc->render(alpha);
   }
 
   // Render player
   if (m_player) {
-    m_player->render();
+    m_player->render(alpha);
   }
 
   // Update and render UI components through UIManager using cached renderer for
   // cleaner API
   auto &ui = UIManager::Instance();
   if (!ui.isShutdown()) {
-    ui.update(deltaTime); // Use actual deltaTime from update cycle
+    ui.update(0.0); // UI updates are not time-dependent in this state
 
     // Update status display
     const auto &gameEngine = GameEngine::Instance();
@@ -439,7 +439,10 @@ void AIDemoState::createNPCs() {
     std::uniform_real_distribution<float> xDist(50.0f, m_worldWidth - 50.0f);
     std::uniform_real_distribution<float> yDist(50.0f, m_worldHeight - 50.0f);
 
-    // Create NPCs
+    // Step 1: Create all NPCs and store them locally first to avoid race conditions.
+    std::vector<std::shared_ptr<NPC>> local_npcs;
+    local_npcs.reserve(m_npcCount);
+
     for (int i = 0; i < m_npcCount; ++i) {
       try {
         // Create NPC with random position
@@ -453,18 +456,24 @@ void AIDemoState::createNPCs() {
         // Set wander area to keep NPCs on screen
         npc->setWanderArea(0, 0, m_worldWidth, m_worldHeight);
 
-        // Register with AIManager for centralized entity updates with priority
-        // and behavior
-        aiMgr.registerEntityForUpdates(npc, 5, "Wander");
-
-        // Add to collection
-        m_npcs.push_back(npc);
+        local_npcs.push_back(npc);
       } catch (const std::exception &e) {
         std::cerr << "Hammer Game Engine - ERROR: Exception creating NPC " << i
                   << ": " << e.what() << std::endl;
         continue;
       }
     }
+
+    // Step 2: Now that the vector is stable, add them to the member variable.
+    m_npcs = local_npcs;
+
+    // Step 3: Register all NPCs with the AIManager in a separate loop.
+    for (const auto& npc : m_npcs) {
+        // Register with AIManager for centralized entity updates with priority
+        // and behavior
+        aiMgr.registerEntityForUpdates(npc, 5, "Wander");
+    }
+
 
     // Chase behavior target is now automatically handled by AIManager
     // No manual setup needed - target is set during

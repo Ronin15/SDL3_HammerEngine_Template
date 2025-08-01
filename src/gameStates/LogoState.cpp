@@ -36,7 +36,7 @@ void LogoState::update(float deltaTime) {
   }
 }
 
-void LogoState::render([[maybe_unused]] float deltaTime) {
+void LogoState::render([[maybe_unused]] double alpha) {
   // Cache manager references for better performance
   TextureManager& texMgr = TextureManager::Instance();
   GameEngine& gameEngine = GameEngine::Instance();

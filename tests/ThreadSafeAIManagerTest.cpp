@@ -50,7 +50,7 @@ public:
     (void)deltaTime; // Suppress unused parameter warning
   }
 
-  void render() override {}
+  void render(double alpha) override { (void)alpha; }
   void clean() override {}
 
   void updatePosition(const Vector2D &velocity) {

@@ -102,8 +102,8 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char* argv[]) {
   });
 
   // Register render handler
-  gameLoop->setRenderHandler([]() {
-    GameEngine::Instance().render();
+  gameLoop->setRenderHandler([](double alpha) {
+    GameEngine::Instance().render(alpha);
   });
 
   GAMELOOP_INFO("Starting Game Loop");

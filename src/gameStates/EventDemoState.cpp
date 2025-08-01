@@ -411,7 +411,7 @@ void EventDemoState::update(float deltaTime) {
   // Input)
 }
 
-void EventDemoState::render(float deltaTime) {
+void EventDemoState::render(double alpha) {
   // Get renderer using the standard pattern (consistent with other states)
   auto &gameEngine = GameEngine::Instance();
   SDL_Renderer *renderer = gameEngine.getRenderer();
@@ -426,13 +426,13 @@ void EventDemoState::render(float deltaTime) {
 
   // Render player
   if (m_player) {
-    m_player->render();
+    m_player->render(alpha);
   }
 
   // Render spawned NPCs
   for (const auto &npc : m_spawnedNPCs) {
     if (npc) {
-      npc->render();
+      npc->render(alpha);
     }
   }
 
@@ -450,7 +450,7 @@ void EventDemoState::render(float deltaTime) {
   // cleaner API
   auto &ui = UIManager::Instance();
   if (!ui.isShutdown()) {
-    ui.update(deltaTime); // Use actual deltaTime from update cycle
+    ui.update(0.0); // UI updates are not time-dependent in this state
 
     // Update UI displays
     std::stringstream phaseText;
