@@ -183,6 +183,7 @@ file(GLOB_RECURSE SOURCES
     "src/entities/*.cpp"
     "src/events/*.cpp"
     "src/ai/*.cpp"
+    "src/world/*.cpp"
     "src/utils/JsonReader.cpp"
 )
 
@@ -347,6 +348,7 @@ target_include_directories(${PROJECT_NAME} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/include/ai/behaviors
     ${CMAKE_CURRENT_SOURCE_DIR}/include/utils
     ${CMAKE_CURRENT_SOURCE_DIR}/include/ui
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/world
 )
 
 # Copy SDL3 runtime libraries to build directory (Windows-specific)

@@ -336,6 +336,27 @@ add_executable(json_reader_tests
     ${PROJECT_SOURCE_DIR}/src/utils/JsonReader.cpp
 )
 
+# WorldGenerator tests
+add_executable(world_generator_tests
+    world/WorldGeneratorTests.cpp
+    ${PROJECT_SOURCE_DIR}/src/world/WorldGenerator.cpp
+)
+
+# WorldManager tests
+add_executable(world_manager_tests
+    world/WorldManagerTests.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/WorldManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/world/WorldGenerator.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/WorldResourceManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/Resource.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/resources/ItemResources.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/resources/MaterialResources.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/resources/CurrencyAndGameResources.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/ResourceTemplateManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/ResourceFactory.cpp
+    ${PROJECT_SOURCE_DIR}/src/utils/JsonReader.cpp
+)
+
 # Add compile definitions for Boost.Test
 target_compile_definitions(save_manager_tests PRIVATE
 )
@@ -637,6 +658,18 @@ target_link_libraries(json_reader_tests PRIVATE
     Boost::unit_test_framework
 )
 
+# Link WorldGenerator tests with required libraries
+target_link_libraries(world_generator_tests PRIVATE
+    SDL3::SDL3
+    Boost::unit_test_framework
+)
+
+# Link WorldManager tests with required libraries
+target_link_libraries(world_manager_tests PRIVATE
+    SDL3::SDL3
+    Boost::unit_test_framework
+)
+
 # Add HAVE_BOOST_SERIALIZATION to ui_stress_test as well
 target_compile_definitions(ui_stress_test PRIVATE
 )
@@ -670,3 +703,5 @@ add_test(NAME ResourceChangeEventTests COMMAND resource_change_event_tests)
 add_test(NAME ResourceIntegrationTests COMMAND resource_integration_tests)
 add_test(NAME ResourceEdgeCaseTests COMMAND resource_edge_case_tests)
 add_test(NAME JsonReaderTests COMMAND json_reader_tests)
+add_test(NAME WorldGeneratorTests COMMAND world_generator_tests)
+add_test(NAME WorldManagerTests COMMAND world_manager_tests)

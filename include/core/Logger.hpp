@@ -246,6 +246,12 @@ inline std::mutex Logger::s_logMutex{};
 #define WORLD_RESOURCE_INFO(msg) HAMMER_INFO("WorldResourceManager", msg)
 #define WORLD_RESOURCE_DEBUG(msg) HAMMER_DEBUG("WorldResourceManager", msg)
 
+#define WORLD_MANAGER_CRITICAL(msg) HAMMER_CRITICAL("WorldManager", msg)
+#define WORLD_MANAGER_ERROR(msg) HAMMER_ERROR("WorldManager", msg)
+#define WORLD_MANAGER_WARN(msg) HAMMER_WARN("WorldManager", msg)
+#define WORLD_MANAGER_INFO(msg) HAMMER_INFO("WorldManager", msg)
+#define WORLD_MANAGER_DEBUG(msg) HAMMER_DEBUG("WorldManager", msg)
+
 // Entity and State Systems
 #define GAMESTATE_CRITICAL(msg) HAMMER_CRITICAL("GameStateManager", msg)
 #define GAMESTATE_ERROR(msg) HAMMER_ERROR("GameStateManager", msg)
