@@ -38,7 +38,6 @@ void ChaseBehavior::init(EntityPtr entity) {
     m_isChasing = (distance <= m_maxRange);
     m_hasLineOfSight = checkLineOfSight(entity, target);
   }
-  entity->setAcceleration(Vector2D(0,0));
 }
 
 EntityPtr ChaseBehavior::getCachedPlayerTarget() const {
@@ -80,7 +79,7 @@ void ChaseBehavior::executeLogic(EntityPtr entity) {
 void ChaseBehavior::clean(EntityPtr entity) {
   // Stop the entity's movement when cleaning up
   if (entity) {
-    entity->setAcceleration(Vector2D(0, 0));
+    entity->setVelocity(Vector2D(0, 0));
   }
 
   // Reset all state
@@ -95,7 +94,7 @@ void ChaseBehavior::onMessage(EntityPtr entity, const std::string &message) {
   if (message == "pause") {
     setActive(false);
     if (entity) {
-      entity->setAcceleration(Vector2D(0, 0));
+      entity->setVelocity(Vector2D(0, 0));
     }
   } else if (message == "resume") {
     setActive(true);
@@ -116,7 +115,7 @@ void ChaseBehavior::onMessage(EntityPtr entity, const std::string &message) {
     invalidatePlayerCache();
     m_cachedStateValid = false;
     if (entity) {
-      entity->setAcceleration(Vector2D(0, 0));
+      entity->setVelocity(Vector2D(0, 0));
     }
   } else if (message == "release_entities") {
     // Reset state when asked to release entities
@@ -127,7 +126,7 @@ void ChaseBehavior::onMessage(EntityPtr entity, const std::string &message) {
     invalidatePlayerCache();
     m_cachedStateValid = false;
     if (entity) {
-      entity->setAcceleration(Vector2D(0, 0));
+      entity->setVelocity(Vector2D(0, 0));
     }
   }
 }
@@ -198,9 +197,9 @@ void ChaseBehavior::handleNoLineOfSight(EntityPtr entity) {
       // Optimized normalization with inverse sqrt
       float invDistance = 1.0f / std::sqrt(distanceSquared);
       Vector2D direction = toLastKnown * invDistance;
-      entity->setAcceleration(direction * (m_chaseSpeed * 0.8f));
+      entity->setVelocity(direction * (m_chaseSpeed * 0.8f));
     } else {
-      entity->setAcceleration(Vector2D(0, 0));
+      entity->setVelocity(Vector2D(0, 0));
     }
 
     m_timeWithoutSight++;
@@ -208,7 +207,7 @@ void ChaseBehavior::handleNoLineOfSight(EntityPtr entity) {
     // Timeout - stop chasing efficiently
     if (m_isChasing) {
       m_isChasing = false;
-      entity->setAcceleration(Vector2D(0, 0));
+      entity->setVelocity(Vector2D(0, 0));
       onTargetLost(entity);
     }
   }
@@ -265,11 +264,11 @@ void ChaseBehavior::executeLightweightLogic(EntityPtr entity) const {
         Vector2D direction = toTarget * invDistance;
 
         const_cast<ChaseBehavior *>(this)->m_isChasing = true;
-        entity->setAcceleration(direction * m_chaseSpeed);
+        entity->setVelocity(direction * m_chaseSpeed);
       } else {
         // Within minimum range - stop efficiently
         if (m_isChasing) {
-          entity->setAcceleration(Vector2D(0, 0));
+          entity->setVelocity(Vector2D(0, 0));
           const_cast<ChaseBehavior *>(this)->m_isChasing = false;
           const_cast<ChaseBehavior *>(this)->onTargetReached(entity);
         }
@@ -286,7 +285,7 @@ void ChaseBehavior::executeLightweightLogic(EntityPtr entity) const {
     // Out of range - only update state if needed
     if (m_isChasing) {
       const_cast<ChaseBehavior *>(this)->m_isChasing = false;
-      entity->setAcceleration(Vector2D(0, 0));
+      entity->setVelocity(Vector2D(0, 0));
       const_cast<ChaseBehavior *>(this)->onTargetLost(entity);
     }
   }
