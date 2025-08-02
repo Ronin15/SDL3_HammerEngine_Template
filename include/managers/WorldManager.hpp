@@ -73,6 +73,24 @@ public:
     
     const WorldData* getWorldData() const { return m_currentWorld.get(); }
     
+    /**
+     * @brief Gets the world dimensions in tiles
+     * @param width Output world width
+     * @param height Output world height  
+     * @return True if world is loaded and dimensions are valid
+     */
+    bool getWorldDimensions(int& width, int& height) const;
+    
+    /**
+     * @brief Gets world bounds in world coordinates
+     * @param minX Output minimum X coordinate
+     * @param minY Output minimum Y coordinate
+     * @param maxX Output maximum X coordinate  
+     * @param maxY Output maximum Y coordinate
+     * @return True if world is loaded and bounds are valid
+     */
+    bool getWorldBounds(float& minX, float& minY, float& maxX, float& maxY) const;
+    
 private:
     WorldManager() = default;
     ~WorldManager() {
@@ -85,8 +103,10 @@ private:
     
     void fireTileChangedEvent(int x, int y, const Tile& tile);
     void fireWorldLoadedEvent(const std::string& worldId);
+    void fireWorldUnloadedEvent(const std::string& worldId);
     void registerEventHandlers();
     void unregisterEventHandlers();
+    void initializeWorldResources();
     
     std::unique_ptr<WorldData> m_currentWorld;
     std::unique_ptr<TileRenderer> m_tileRenderer;

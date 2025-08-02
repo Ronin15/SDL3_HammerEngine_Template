@@ -30,6 +30,7 @@
 #include "managers/SoundManager.hpp"
 #include "managers/TextureManager.hpp"
 #include "managers/UIManager.hpp"
+#include "managers/WorldManager.hpp"
 #include "managers/WorldResourceManager.hpp"
 #include <chrono>
 #include <cstdlib>
@@ -559,6 +560,20 @@ bool GameEngine::init(const std::string_view title, const int width,
 
   // Add the world resource task to the initialization tasks
   initTasks.push_back(std::move(worldResourceTask));
+
+  // Initialize World Manager for world generation and management - #10
+  initTasks.push_back(
+      HammerEngine::ThreadSystem::Instance().enqueueTaskWithResult(
+          []() -> bool {
+            GAMEENGINE_INFO("Creating World Manager");
+            HammerEngine::WorldManager &worldMgr = HammerEngine::WorldManager::Instance();
+            if (!worldMgr.init()) {
+              GAMEENGINE_CRITICAL("Failed to initialize World Manager");
+              return false;
+            }
+            GAMEENGINE_INFO("World Manager initialized successfully");
+            return true;
+          }));
 
   // Initialize game state manager (on main thread because it directly calls
   // rendering) - MAIN THREAD

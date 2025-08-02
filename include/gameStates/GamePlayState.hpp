@@ -9,6 +9,7 @@
 #include "entities/Player.hpp"
 #include "gameStates/GameState.hpp"
 #include "utils/ResourceHandle.hpp"
+#include "utils/Camera.hpp"
 #include <memory>
 
 class GamePlayState : public GameState {
@@ -28,6 +29,9 @@ private:
       false}; // Flag to indicate we're transitioning to pause state
   std::shared_ptr<Player> mp_Player{nullptr}; // Player object
   bool m_inventoryVisible{false}; // Flag to control inventory UI visibility
+  
+  // Camera for world navigation and player following
+  std::unique_ptr<HammerEngine::Camera> m_camera{nullptr};
 
   // Resource handles resolved at initialization (resource handle system
   // compliance)
@@ -46,6 +50,11 @@ private:
                           int quantity);
   void
   initializeResourceHandles(); // Resolve names to handles during initialization
+  
+  // Camera management methods
+  void initializeCamera();
+  void updateCamera(float deltaTime);
+  void setupCameraForWorld();
 };
 
 #endif // GAME_PLAY_STATE_HPP

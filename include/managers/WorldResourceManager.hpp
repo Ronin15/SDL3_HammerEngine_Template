@@ -202,6 +202,15 @@ public:
       const HammerEngine::ResourceHandle &resourceHandle) const;
   bool isValidQuantity(Quantity quantity) const;
 
+  // Event handling methods
+  void registerEventHandlers();
+  void unregisterEventHandlers();
+  void handleWorldEvent(std::shared_ptr<class WorldEvent> worldEvent);
+  void fireResourceChangeEvent(const WorldId& worldId, 
+                              const HammerEngine::ResourceHandle& resourceHandle,
+                              Quantity oldQuantity, Quantity newQuantity, 
+                              const std::string& reason);
+
 private:
   WorldResourceManager() = default;
   ~WorldResourceManager();

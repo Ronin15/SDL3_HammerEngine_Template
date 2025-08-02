@@ -11,7 +11,10 @@
 #include "managers/InputManager.hpp"
 #include "managers/ResourceTemplateManager.hpp"
 #include "managers/UIManager.hpp"
+#include "managers/WorldManager.hpp"
+#include "world/WorldData.hpp"
 #include <iostream>
+#include <random>
 
 bool GamePlayState::enter() {
   // Create the player
@@ -24,6 +27,44 @@ bool GamePlayState::enter() {
   // Initialize resource handles (resolve names to handles once during
   // initialization)
   initializeResourceHandles();
+  
+  // Initialize camera for world navigation
+  initializeCamera();
+  
+  // Initialize and load a new world
+  auto& worldManager = HammerEngine::WorldManager::Instance();
+  if (!worldManager.isInitialized()) {
+    if (!worldManager.init()) {
+      std::cerr << "Failed to initialize WorldManager" << std::endl;
+      return false;
+    }
+  }
+  
+  // Create a default world configuration
+  // TODO: Make this configurable or load from settings
+  HammerEngine::WorldGenerationConfig config;
+  config.width = 100;
+  config.height = 100;
+  
+  // Generate a random seed for world variety
+  std::random_device rd;
+  config.seed = rd();
+  
+  // Set reasonable defaults for world generation
+  config.elevationFrequency = 0.05f;
+  config.humidityFrequency = 0.03f;
+  config.waterLevel = 0.3f;
+  config.mountainLevel = 0.7f;
+  
+  if (!worldManager.loadNewWorld(config)) {
+    std::cerr << "Failed to load new world in GamePlayState" << std::endl;
+    // Continue anyway - game can function without world
+  } else {
+    std::cout << "Successfully loaded world with seed: " << config.seed << std::endl;
+    
+    // Setup camera to work with the world
+    setupCameraForWorld();
+  }
 
   return true;
 }
@@ -35,6 +76,9 @@ void GamePlayState::update([[maybe_unused]] float deltaTime) {
   if (mp_Player) {
     mp_Player->update(deltaTime);
   }
+  
+  // Update camera (follows player automatically)
+  updateCamera(deltaTime);
 
   // Update UI
   auto &ui = UIManager::Instance();
@@ -68,6 +112,13 @@ void GamePlayState::render(double alpha) {
 }
 bool GamePlayState::exit() {
   std::cout << "Hammer Game Engine - Exiting GAME State\n";
+
+  // Unload the world when exiting gameplay
+  auto& worldManager = HammerEngine::WorldManager::Instance();
+  if (worldManager.isInitialized() && worldManager.hasActiveWorld()) {
+    worldManager.unloadWorld();
+    std::cout << "World unloaded from GamePlayState\n";
+  }
 
   // Clean up UI components
   auto &ui = UIManager::Instance();
@@ -316,4 +367,68 @@ void GamePlayState::initializeResourceHandles() {
   auto woodResource = templateManager.getResourceByName("wood");
   m_woodHandle =
       woodResource ? woodResource->getHandle() : HammerEngine::ResourceHandle();
+}
+
+void GamePlayState::initializeCamera() {
+  const auto &gameEngine = GameEngine::Instance();
+  
+  // Create camera with current screen dimensions
+  m_camera = std::make_unique<HammerEngine::Camera>(
+    0.0f, 0.0f, // Initial position
+    static_cast<float>(gameEngine.getLogicalWidth()),
+    static_cast<float>(gameEngine.getLogicalHeight())
+  );
+  
+  // Configure camera to follow player
+  if (mp_Player && m_camera) {
+    m_camera->setMode(HammerEngine::Camera::Mode::Follow);
+    // Cast Player to Entity since Player inherits from Entity
+    std::weak_ptr<Entity> playerAsEntity = std::static_pointer_cast<Entity>(mp_Player);
+    m_camera->setTarget(playerAsEntity);
+    
+    // Set up camera configuration for smooth following
+    HammerEngine::Camera::Config config;
+    config.followSpeed = 8.0f;        // Responsive following
+    config.deadZoneRadius = 16.0f;    // Small dead zone for tight control
+    config.smoothingFactor = 0.92f;   // Smooth interpolation
+    config.clampToWorldBounds = true; // Keep camera within world
+    m_camera->setConfig(config);
+    
+    // Set up world bounds based on current world (if available)
+    setupCameraForWorld();
+  }
+}
+
+void GamePlayState::updateCamera(float deltaTime) {
+  if (m_camera) {
+    m_camera->update(deltaTime);
+  }
+}
+
+void GamePlayState::setupCameraForWorld() {
+  if (!m_camera) {
+    return;
+  }
+  
+  // Get actual world bounds from WorldManager
+  HammerEngine::WorldManager& worldManager = HammerEngine::WorldManager::Instance();
+  
+  HammerEngine::Camera::Bounds worldBounds;
+  float minX, minY, maxX, maxY;
+  
+  if (worldManager.getWorldBounds(minX, minY, maxX, maxY)) {
+    // Use actual world bounds
+    worldBounds.minX = minX;
+    worldBounds.minY = minY;
+    worldBounds.maxX = maxX;
+    worldBounds.maxY = maxY;
+  } else {
+    // Fall back to default bounds if no world is loaded
+    worldBounds.minX = 0.0f;
+    worldBounds.minY = 0.0f;
+    worldBounds.maxX = 1000.0f;  // Default world width
+    worldBounds.maxY = 1000.0f;  // Default world height
+  }
+  
+  m_camera->setWorldBounds(worldBounds);
 }

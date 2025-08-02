@@ -184,7 +184,7 @@ file(GLOB_RECURSE SOURCES
     "src/events/*.cpp"
     "src/ai/*.cpp"
     "src/world/*.cpp"
-    "src/utils/JsonReader.cpp"
+    "src/utils/*.cpp"
 )
 
 # Create executable for your project with proper extensions

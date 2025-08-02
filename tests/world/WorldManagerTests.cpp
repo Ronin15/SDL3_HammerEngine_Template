@@ -8,16 +8,28 @@
 
 #include "managers/WorldManager.hpp"
 #include "managers/WorldResourceManager.hpp"
+#include "managers/EventManager.hpp"
+#include "managers/ResourceTemplateManager.hpp"
+#include "events/WorldEvent.hpp"
+#include "events/ResourceChangeEvent.hpp"
 #include "world/WorldData.hpp"
 #include "core/Logger.hpp"
 #include <memory>
+#include <vector>
+#include <atomic>
 
 using namespace HammerEngine;
 
 class WorldManagerTestFixture {
 public:
     WorldManagerTestFixture() {
-        // Initialize WorldResourceManager first (required dependency)
+        // Initialize ResourceTemplateManager first (required for resource creation)
+        resourceTemplateManager = &ResourceTemplateManager::Instance();
+        BOOST_REQUIRE(resourceTemplateManager != nullptr);
+        bool templateInitialized = resourceTemplateManager->init();
+        BOOST_REQUIRE(templateInitialized);
+        
+        // Initialize WorldResourceManager (required dependency)
         worldResourceManager = &WorldResourceManager::Instance();
         BOOST_REQUIRE(worldResourceManager != nullptr);
         bool resourceInitialized = worldResourceManager->init();
@@ -34,11 +46,13 @@ public:
         // Clean up in reverse order
         worldManager->clean();
         worldResourceManager->clean();
+        resourceTemplateManager->clean();
     }
     
 protected:
     WorldResourceManager* worldResourceManager;
     WorldManager* worldManager;
+    ResourceTemplateManager* resourceTemplateManager;
 };
 
 BOOST_FIXTURE_TEST_SUITE(WorldManagerTestSuite, WorldManagerTestFixture)
@@ -335,6 +349,77 @@ BOOST_AUTO_TEST_CASE(TestMultipleWorldLoads) {
     
     // World IDs should be different
     BOOST_CHECK_NE(firstWorldId, secondWorldId);
+}
+
+BOOST_AUTO_TEST_CASE(TestWorldResourceInitialization) {
+    // Configure a world with diverse biomes to ensure resource initialization
+    WorldGenerationConfig config;
+    config.width = 50;
+    config.height = 50;
+    config.seed = 999999;
+    config.elevationFrequency = 0.1f;
+    config.humidityFrequency = 0.1f;
+    config.waterLevel = 0.2f; // Low water level for more land biomes
+    config.mountainLevel = 0.6f; // Moderate mountain level
+    
+    // Load the world - this should trigger the resource initialization
+    bool loadResult = worldManager->loadNewWorld(config);
+    BOOST_REQUIRE(loadResult);
+    
+    // Verify basic world loading
+    BOOST_CHECK(worldManager->hasActiveWorld());
+    BOOST_CHECK(!worldManager->getCurrentWorldId().empty());
+    
+    std::string worldId = worldManager->getCurrentWorldId();
+    
+    // Check if resources were actually added to WorldResourceManager
+    // Test for common resources that should be initialized
+    auto woodHandle = resourceTemplateManager->getHandleById("wood");
+    if (woodHandle.isValid()) {
+        int woodQuantity = worldResourceManager->getResourceQuantity(worldId, woodHandle);
+        BOOST_CHECK_GT(woodQuantity, 0); // Should have some wood
+        // Log wood quantity
+    } else {
+        BOOST_WARN_MESSAGE(false, "Wood resource handle not found - this might indicate a resource template issue");
+    }
+    
+    auto ironHandle = resourceTemplateManager->getHandleById("iron_ore");
+    if (ironHandle.isValid()) {
+        int ironQuantity = worldResourceManager->getResourceQuantity(worldId, ironHandle);
+        BOOST_CHECK_GT(ironQuantity, 0); // Should have some iron
+        // Log iron quantity
+    } else {
+        BOOST_WARN_MESSAGE(false, "Iron ore resource handle not found");
+    }
+    
+    auto goldHandle = resourceTemplateManager->getHandleById("gold");
+    if (goldHandle.isValid()) {
+        int goldQuantity = worldResourceManager->getResourceQuantity(worldId, goldHandle);
+        BOOST_CHECK_GT(goldQuantity, 0); // Should have some gold
+        // Log gold quantity
+    } else {
+        BOOST_WARN_MESSAGE(false, "Gold resource handle not found");
+    }
+    
+    // Get all resources for this world to see what was actually initialized
+    auto allResources = worldResourceManager->getWorldResources(worldId);
+    BOOST_CHECK_GT(allResources.size(), 0); // Should have some resources
+    // Log total resource types
+    
+    // Verify multiple world loading works with resource initialization
+    WorldGenerationConfig config2 = config;
+    config2.seed = 888888; // Different seed
+    
+    bool loadResult2 = worldManager->loadNewWorld(config2);
+    BOOST_REQUIRE(loadResult2);
+    
+    std::string newWorldId = worldManager->getCurrentWorldId();
+    BOOST_CHECK_NE(newWorldId, worldId); // Should be different world
+    
+    // Verify new world also has resources
+    auto newWorldResources = worldResourceManager->getWorldResources(newWorldId);
+    BOOST_CHECK_GT(newWorldResources.size(), 0); // Should have resources too
+    // Log second world resource types
 }
 
 BOOST_AUTO_TEST_SUITE_END()

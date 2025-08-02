@@ -71,6 +71,7 @@ public:
 
     std::string getName() const override { return m_name; }
     std::string getType() const override { return "Mock"; }
+    std::string getTypeName() const override { return "MockEvent"; }
     bool checkConditions() override { return true; }
 
     int getUpdateCount() const { return m_updateCount; }

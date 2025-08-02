@@ -12,6 +12,7 @@
 
 #include "entities/NPC.hpp"
 #include "entities/Player.hpp"
+#include "utils/Camera.hpp"
 
 #include <memory>
 #include <string>
@@ -91,6 +92,9 @@ private:
   // Entities
   std::vector<NPCPtr> m_spawnedNPCs{};
   PlayerPtr m_player{};
+  
+  // Camera for world navigation
+  std::unique_ptr<HammerEngine::Camera> m_camera{nullptr};
 
   // Event tracking
   std::unordered_map<std::string, bool> m_eventStates{};
@@ -183,6 +187,11 @@ private:
 
   // AI behavior integration methods
   void setupAIBehaviors();
+  
+  // Camera management methods
+  void initializeCamera();
+  void updateCamera(float deltaTime);
+  void setupCameraForWorld();
 };
 
 #endif // EVENT_DEMO_STATE_HPP
