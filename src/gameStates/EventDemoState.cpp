@@ -139,19 +139,27 @@ bool EventDemoState::enter() {
     // --- DATA BINDING SETUP ---
     // Bind the inventory capacity label to a function that gets the data
     ui.bindText("inventory_status", [this]() -> std::string {
-        if (!m_player || !m_player->getInventory()) return "Capacity: 0/0";
+        if (!m_player || !m_player->getInventory()) {
+            return "Capacity: 0/0";
+        }
         auto* inventory = m_player->getInventory();
-        return "Capacity: " + std::to_string(inventory->getUsedSlots()) + "/" + std::to_string(inventory->getMaxSlots());
+        int used = inventory->getUsedSlots();
+        int max = inventory->getMaxSlots();
+        return "Capacity: " + std::to_string(used) + "/" + std::to_string(max);
     });
 
     // Bind the inventory list to a function that gets the items, sorts them, and returns them
     ui.bindList("inventory_list", [this]() -> std::vector<std::string> {
-        if (!m_player || !m_player->getInventory()) return {"(Empty)"};
+        if (!m_player || !m_player->getInventory()) {
+            return {"(Empty)"};
+        }
         
         auto* inventory = m_player->getInventory();
         auto allResources = inventory->getAllResources();
 
-        if (allResources.empty()) return {"(Empty)"};
+        if (allResources.empty()) {
+            return {"(Empty)"};
+        }
 
         std::vector<std::string> items;
         std::vector<std::pair<std::string, int>> sortedResources;
@@ -167,6 +175,7 @@ bool EventDemoState::enter() {
         for (const auto& [resourceId, quantity] : sortedResources) {
             items.push_back(resourceId + " x" + std::to_string(quantity));
         }
+        
         return items;
     });
 
