@@ -76,7 +76,7 @@ void WorldResourceManager::clean() {
   m_aggregateCache = ResourceAggregateCache{}; // Reset aggregate cache
 
   m_initialized.store(false, std::memory_order_release);
-  m_isShutdown = true;
+  m_isShutdown = false;
   m_stats.reset();
 
   WORLD_RESOURCE_INFO("WorldResourceManager cleaned up");
@@ -250,10 +250,12 @@ ResourceTransactionResult WorldResourceManager::addResource(
 
   std::lock_guard<std::shared_mutex> lock(m_resourceMutex);
 
-  try {
-    ensureWorldExists(worldId);
+  if (m_worldResources.find(worldId) == m_worldResources.end()) {
+    return ResourceTransactionResult::InvalidWorldId;
+  }
 
-    auto &worldResources = m_worldResources[worldId];
+  try {
+    auto &worldResources = m_worldResources.at(worldId);
 
     // Check for overflow (only if quantity > 0)
     if (quantity > 0) {
@@ -317,10 +319,12 @@ ResourceTransactionResult WorldResourceManager::removeResource(
 
   std::lock_guard<std::shared_mutex> lock(m_resourceMutex);
 
-  try {
-    ensureWorldExists(worldId);
+  if (m_worldResources.find(worldId) == m_worldResources.end()) {
+    return ResourceTransactionResult::InvalidWorldId;
+  }
 
-    auto &worldResources = m_worldResources[worldId];
+  try {
+    auto &worldResources = m_worldResources.at(worldId);
     Quantity currentQuantity = worldResources[resourceHandle];
 
     // If quantity is 0, we do nothing but still consider it successful
@@ -391,10 +395,12 @@ ResourceTransactionResult WorldResourceManager::setResource(
 
   std::lock_guard<std::shared_mutex> lock(m_resourceMutex);
 
-  try {
-    ensureWorldExists(worldId);
+  if (m_worldResources.find(worldId) == m_worldResources.end()) {
+    return ResourceTransactionResult::InvalidWorldId;
+  }
 
-    auto &worldResources = m_worldResources[worldId];
+  try {
+    auto &worldResources = m_worldResources.at(worldId);
     Quantity oldQuantity = worldResources[resourceHandle];
     worldResources[resourceHandle] = quantity;
 
@@ -521,12 +527,14 @@ bool WorldResourceManager::transferResource(
 
   std::lock_guard<std::shared_mutex> lock(m_resourceMutex);
 
-  try {
-    ensureWorldExists(fromWorldId);
-    ensureWorldExists(toWorldId);
+  if (m_worldResources.find(fromWorldId) == m_worldResources.end() ||
+      m_worldResources.find(toWorldId) == m_worldResources.end()) {
+    return false;
+  }
 
-    auto &fromResources = m_worldResources[fromWorldId];
-    auto &toResources = m_worldResources[toWorldId];
+  try {
+    auto &fromResources = m_worldResources.at(fromWorldId);
+    auto &toResources = m_worldResources.at(toWorldId);
 
     Quantity fromQuantity = fromResources[resourceHandle];
     if (fromQuantity < quantity) {
@@ -579,12 +587,14 @@ bool WorldResourceManager::transferAllResources(const WorldId &fromWorldId,
 
   std::lock_guard<std::shared_mutex> lock(m_resourceMutex);
 
-  try {
-    ensureWorldExists(fromWorldId);
-    ensureWorldExists(toWorldId);
+  if (m_worldResources.find(fromWorldId) == m_worldResources.end() ||
+      m_worldResources.find(toWorldId) == m_worldResources.end()) {
+    return false;
+  }
 
-    auto &fromResources = m_worldResources[fromWorldId];
-    auto &toResources = m_worldResources[toWorldId];
+  try {
+    auto &fromResources = m_worldResources.at(fromWorldId);
+    auto &toResources = m_worldResources.at(toWorldId);
 
     for (const auto &[resourceHandle, quantity] : fromResources) {
       if (quantity > 0) {
@@ -642,7 +652,13 @@ bool WorldResourceManager::isValidWorldId(const WorldId &worldId) const {
 
 bool WorldResourceManager::isValidResourceHandle(
     const HammerEngine::ResourceHandle &resourceHandle) const {
-  return resourceHandle.isValid();
+  // First check if the handle itself is valid
+  if (!resourceHandle.isValid()) {
+    return false;
+  }
+  
+  // Then check if the template exists in the ResourceTemplateManager
+  return ResourceTemplateManager::Instance().getResourceTemplate(resourceHandle) != nullptr;
 }
 
 bool WorldResourceManager::isValidQuantity(Quantity quantity) const {
@@ -686,15 +702,7 @@ bool WorldResourceManager::validateParameters(
   return true;
 }
 
-void WorldResourceManager::ensureWorldExists(const WorldId &worldId) {
-  // Assumes we already have a write lock
-  auto [it, inserted] = m_worldResources.try_emplace(
-      worldId, std::unordered_map<HammerEngine::ResourceHandle, Quantity>());
-  if (inserted) {
-    m_stats.worldsTracked.fetch_add(1, std::memory_order_relaxed);
-    WORLD_RESOURCE_DEBUG("Auto-created world: " + worldId);
-  }
-}
+
 
 // Cache management methods
 void WorldResourceManager::updateResourceCache(
@@ -944,8 +952,7 @@ void WorldResourceManager::handleWorldEvent(std::shared_ptr<WorldEvent> worldEve
           const std::string& worldId = loadedEvent->getWorldId();
           WORLD_RESOURCE_INFO("Received WorldLoadedEvent for: " + worldId);
           
-          // Ensure world exists in resource tracking
-          // Fix deadlock: Check existence and create in a single operation
+          // Check if world exists in resource tracking
           bool worldExists = false;
           {
             std::shared_lock<std::shared_mutex> lock(m_resourceMutex);
@@ -953,8 +960,13 @@ void WorldResourceManager::handleWorldEvent(std::shared_ptr<WorldEvent> worldEve
           }
           
           if (!worldExists) {
-            createWorld(worldId);
-            WORLD_RESOURCE_INFO("Created resource tracking for world: " + worldId);
+            // Only create resource tracking for worlds that actually exist
+            // Verify the world actually exists in the WorldManager before creating tracking
+            // NOTE: Removed auto-creation to prevent spurious world creation from events
+            WORLD_RESOURCE_WARN("Received WorldLoadedEvent for non-existent world: " + worldId + 
+                               " - skipping resource tracking creation");
+          } else {
+            WORLD_RESOURCE_INFO("World already tracked: " + worldId);
           }
         }
         break;
