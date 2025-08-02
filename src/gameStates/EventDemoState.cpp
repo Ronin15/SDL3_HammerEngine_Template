@@ -19,6 +19,7 @@
 #include "managers/ParticleManager.hpp"
 #include "managers/ResourceTemplateManager.hpp"
 #include "managers/UIManager.hpp"
+#include "managers/WorldManager.hpp"
 #include <algorithm>
 #include <iomanip>
 #include <iostream>
@@ -169,6 +170,8 @@ bool EventDemoState::enter() {
         return items;
     });
 
+    // Initialize camera for world navigation
+    initializeCamera();
 
     std::cout
         << "Hammer Game Engine - EventDemoState initialized successfully\n";
@@ -255,6 +258,9 @@ void EventDemoState::update(float deltaTime) {
   if (m_player) {
     m_player->update(deltaTime);
   }
+  
+  // Update camera (follows player automatically)
+  updateCamera(deltaTime);
 
   // AI Manager is updated globally by GameEngine for optimal performance
   // This prevents double-updating AI entities which was causing them to move
@@ -1820,4 +1826,68 @@ void EventDemoState::logResourceAnalytics(HammerEngine::ResourceHandle handle,
   // - Update economy balancing metrics
   // - Track player behavior patterns
   // - Generate reports for game designers
+}
+
+void EventDemoState::initializeCamera() {
+  const auto &gameEngine = GameEngine::Instance();
+  
+  // Create camera with current screen dimensions
+  m_camera = std::make_unique<HammerEngine::Camera>(
+    0.0f, 0.0f, // Initial position
+    static_cast<float>(gameEngine.getLogicalWidth()),
+    static_cast<float>(gameEngine.getLogicalHeight())
+  );
+  
+  // Configure camera to follow player
+  if (m_player && m_camera) {
+    m_camera->setMode(HammerEngine::Camera::Mode::Follow);
+    // Cast Player to Entity since Player inherits from Entity
+    std::weak_ptr<Entity> playerAsEntity = std::static_pointer_cast<Entity>(m_player);
+    m_camera->setTarget(playerAsEntity);
+    
+    // Set up camera configuration for smooth following
+    HammerEngine::Camera::Config config;
+    config.followSpeed = 6.0f;        // Smooth following for demo
+    config.deadZoneRadius = 24.0f;    // Larger dead zone for demo effect
+    config.smoothingFactor = 0.88f;   // Visible interpolation
+    config.clampToWorldBounds = true; // Keep camera within world
+    m_camera->setConfig(config);
+    
+    // Set up world bounds for demo
+    setupCameraForWorld();
+  }
+}
+
+void EventDemoState::updateCamera(float deltaTime) {
+  if (m_camera) {
+    m_camera->update(deltaTime);
+  }
+}
+
+void EventDemoState::setupCameraForWorld() {
+  if (!m_camera) {
+    return;
+  }
+  
+  // Get actual world bounds from WorldManager
+  HammerEngine::WorldManager& worldManager = HammerEngine::WorldManager::Instance();
+  
+  HammerEngine::Camera::Bounds worldBounds;
+  float minX, minY, maxX, maxY;
+  
+  if (worldManager.getWorldBounds(minX, minY, maxX, maxY)) {
+    // Use actual world bounds, expanded for demo effect
+    worldBounds.minX = minX;
+    worldBounds.minY = minY;
+    worldBounds.maxX = maxX * 2.0f;  // Larger demo area
+    worldBounds.maxY = maxY * 2.0f;
+  } else {
+    // Fall back to demo world dimensions if no world is loaded
+    worldBounds.minX = 0.0f;
+    worldBounds.minY = 0.0f;
+    worldBounds.maxX = m_worldWidth * 2.0f;  // Larger demo world
+    worldBounds.maxY = m_worldHeight * 2.0f;
+  }
+  
+  m_camera->setWorldBounds(worldBounds);
 }

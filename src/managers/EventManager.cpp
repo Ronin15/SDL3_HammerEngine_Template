@@ -14,6 +14,9 @@
 #include "events/ResourceChangeEvent.hpp"
 #include "events/SceneChangeEvent.hpp"
 #include "events/WeatherEvent.hpp"
+#include "events/WorldEvent.hpp"
+#include "events/CameraEvent.hpp"
+#include "events/HarvestResourceEvent.hpp"
 #include <algorithm>
 #include <chrono>
 #include <future>
@@ -145,6 +148,9 @@ void EventManager::update() {
     updateEventTypeBatchThreaded(EventTypeId::NPCSpawn);
     updateEventTypeBatchThreaded(EventTypeId::ParticleEffect);
     updateEventTypeBatchThreaded(EventTypeId::ResourceChange);
+    updateEventTypeBatchThreaded(EventTypeId::World);
+    updateEventTypeBatchThreaded(EventTypeId::Camera);
+    updateEventTypeBatchThreaded(EventTypeId::Harvest);
     updateEventTypeBatchThreaded(EventTypeId::Custom);
   } else {
     // Use single-threaded for small event counts (better performance)
@@ -153,6 +159,9 @@ void EventManager::update() {
     updateEventTypeBatch(EventTypeId::NPCSpawn);
     updateEventTypeBatch(EventTypeId::ParticleEffect);
     updateEventTypeBatch(EventTypeId::ResourceChange);
+    updateEventTypeBatch(EventTypeId::World);
+    updateEventTypeBatch(EventTypeId::Camera);
+    updateEventTypeBatch(EventTypeId::Harvest);
     updateEventTypeBatch(EventTypeId::Custom);
   }
 
@@ -200,6 +209,12 @@ bool EventManager::registerResourceChangeEvent(
     const std::string &name, std::shared_ptr<ResourceChangeEvent> event) {
   return registerEventInternal(name, std::static_pointer_cast<Event>(event),
                                EventTypeId::ResourceChange);
+}
+
+bool EventManager::registerWorldEvent(const std::string &name,
+                                      std::shared_ptr<WorldEvent> event) {
+  return registerEventInternal(name, std::static_pointer_cast<Event>(event),
+                               EventTypeId::World);
 }
 
 bool EventManager::registerEventInternal(const std::string &name,
@@ -286,6 +301,14 @@ EventManager::getEventsByType(const std::string &typeName) const {
     typeId = EventTypeId::NPCSpawn;
   else if (typeName == "ParticleEffect")
     typeId = EventTypeId::ParticleEffect;
+  else if (typeName == "ResourceChange")
+    typeId = EventTypeId::ResourceChange;
+  else if (typeName == "World")
+    typeId = EventTypeId::World;
+  else if (typeName == "Camera")
+    typeId = EventTypeId::Camera;
+  else if (typeName == "Harvest")
+    typeId = EventTypeId::Harvest;
 
   return getEventsByType(typeId);
 }
@@ -395,6 +418,16 @@ int EventManager::executeEventsByType(const std::string &eventType) const {
     typeId = EventTypeId::SceneChange;
   else if (eventType == "NPCSpawn")
     typeId = EventTypeId::NPCSpawn;
+  else if (eventType == "ParticleEffect")
+    typeId = EventTypeId::ParticleEffect;
+  else if (eventType == "ResourceChange")
+    typeId = EventTypeId::ResourceChange;
+  else if (eventType == "World")
+    typeId = EventTypeId::World;
+  else if (eventType == "Camera")
+    typeId = EventTypeId::Camera;
+  else if (eventType == "Harvest")
+    typeId = EventTypeId::Harvest;
 
   return executeEventsByType(typeId);
 }
@@ -898,6 +931,62 @@ bool EventManager::createParticleEffectEvent(const std::string &name,
                                    groupTag);
 }
 
+// World event convenience methods
+bool EventManager::createWorldLoadedEvent(const std::string &name, const std::string &worldId,
+                             int width, int height) {
+  try {
+    auto event = std::make_shared<WorldLoadedEvent>(worldId, width, height);
+    return registerWorldEvent(name, event);
+  } catch (const std::exception &e) {
+    EVENT_ERROR("Exception creating WorldLoadedEvent '" + name + "': " + e.what());
+    return false;
+  } catch (...) {
+    EVENT_ERROR("Unknown exception creating WorldLoadedEvent: " + name);
+    return false;
+  }
+}
+
+bool EventManager::createWorldUnloadedEvent(const std::string &name, const std::string &worldId) {
+  try {
+    auto event = std::make_shared<WorldUnloadedEvent>(worldId);
+    return registerWorldEvent(name, event);
+  } catch (const std::exception &e) {
+    EVENT_ERROR("Exception creating WorldUnloadedEvent '" + name + "': " + e.what());
+    return false;
+  } catch (...) {
+    EVENT_ERROR("Unknown exception creating WorldUnloadedEvent: " + name);
+    return false;
+  }
+}
+
+bool EventManager::createTileChangedEvent(const std::string &name, int x, int y,
+                             const std::string &changeType) {
+  try {
+    auto event = std::make_shared<TileChangedEvent>(x, y, changeType);
+    return registerWorldEvent(name, event);
+  } catch (const std::exception &e) {
+    EVENT_ERROR("Exception creating TileChangedEvent '" + name + "': " + e.what());
+    return false;
+  } catch (...) {
+    EVENT_ERROR("Unknown exception creating TileChangedEvent: " + name);
+    return false;
+  }
+}
+
+bool EventManager::createWorldGeneratedEvent(const std::string &name, const std::string &worldId,
+                                int width, int height, float generationTime) {
+  try {
+    auto event = std::make_shared<WorldGeneratedEvent>(worldId, width, height, generationTime);
+    return registerWorldEvent(name, event);
+  } catch (const std::exception &e) {
+    EVENT_ERROR("Exception creating WorldGeneratedEvent '" + name + "': " + e.what());
+    return false;
+  } catch (...) {
+    EVENT_ERROR("Unknown exception creating WorldGeneratedEvent: " + name);
+    return false;
+  }
+}
+
 PerformanceStats EventManager::getPerformanceStats(EventTypeId typeId) const {
   std::lock_guard<std::mutex> lock(m_perfMutex);
   return m_performanceStats[static_cast<size_t>(typeId)];
@@ -983,6 +1072,15 @@ EventTypeId EventManager::getEventTypeId(const EventPtr &event) const {
   if (std::dynamic_pointer_cast<ResourceChangeEvent>(event)) {
     return EventTypeId::ResourceChange;
   }
+  if (std::dynamic_pointer_cast<WorldEvent>(event)) {
+    return EventTypeId::World;
+  }
+  if (std::dynamic_pointer_cast<CameraEvent>(event)) {
+    return EventTypeId::Camera;
+  }
+  if (std::dynamic_pointer_cast<HarvestResourceEvent>(event)) {
+    return EventTypeId::Harvest;
+  }
   return EventTypeId::Custom;
 }
 
@@ -998,6 +1096,12 @@ std::string EventManager::getEventTypeName(EventTypeId typeId) const {
     return "ParticleEffect";
   case EventTypeId::ResourceChange:
     return "ResourceChange";
+  case EventTypeId::World:
+    return "World";
+  case EventTypeId::Camera:
+    return "Camera";
+  case EventTypeId::Harvest:
+    return "Harvest";
   case EventTypeId::Custom:
     return "Custom";
   default:
@@ -1024,6 +1128,18 @@ void EventManager::updateResourceChangeEvents() {
 
 void EventManager::updateCustomEvents() {
   updateEventTypeBatch(EventTypeId::Custom);
+}
+
+void EventManager::updateWorldEvents() {
+  updateEventTypeBatch(EventTypeId::World);
+}
+
+void EventManager::updateCameraEvents() {
+  updateEventTypeBatch(EventTypeId::Camera);
+}
+
+void EventManager::updateHarvestEvents() {
+  updateEventTypeBatch(EventTypeId::Harvest);
 }
 
 void EventManager::recordPerformance(EventTypeId typeId, double timeMs) const {
