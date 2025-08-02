@@ -117,47 +117,62 @@ bool FontManager::loadFont(const std::string& fontFile, const std::string& fontI
     int fontsLoaded = 0;  // Declare at appropriate scope
 
     try {
-      // Iterate through all files in the directory
+      std::vector<std::filesystem::path> fontFiles;
+      
+      // Collect all font files and sort them, with Arial first for UI font compatibility
       for (const auto& entry : std::filesystem::directory_iterator(fontFile)) {
         if (!entry.is_regular_file()) {
-          continue; // Skip directories and special files
+          continue;
         }
-
-        // Get file path and extension
+        
         std::filesystem::path path = entry.path();
         std::string extension = path.extension().string();
-
-        // Convert extension to lowercase for case-insensitive comparison
         std::transform(extension.begin(), extension.end(), extension.begin(),
                       [](unsigned char c) { return std::tolower(c); });
-
-        // Check if the file has a supported font extension
+        
         if (extension == ".ttf" || extension == ".otf") {
-          std::string fullPath = path.string();
-          std::string filename = path.stem().string(); // Get filename without extension
-
-          // Create font ID by combining the provided prefix and filename
-          std::string combinedID = fontID.empty() ? filename : fontID + "_" + filename;
-
-          // Load the individual file as a font with immediate RAII
-          auto font = std::shared_ptr<TTF_Font>(TTF_OpenFont(fullPath.c_str(), fontSize), TTF_CloseFont);
-
-          FONT_INFO("Loading font: " + fullPath);
-
-          if (!font) {
-            FONT_ERROR("Could not load font: " + std::string(SDL_GetError()));
-            continue;
-          }
-
-          // Configure font for better rendering quality
-          TTF_SetFontHinting(font.get(), TTF_HINTING_NORMAL);
-          TTF_SetFontKerning(font.get(), 1);
-          TTF_SetFontStyle(font.get(), TTF_STYLE_NORMAL);
-
-          m_fontMap[combinedID] = std::move(font);
-          loadedAny = true;
-          fontsLoaded++;
+          fontFiles.push_back(path);
         }
+      }
+      
+      // Sort files with Arial first to ensure UI font names are consistent
+      std::sort(fontFiles.begin(), fontFiles.end(), [](const std::filesystem::path& a, const std::filesystem::path& b) {
+        std::string filenameA = a.stem().string();
+        std::string filenameB = b.stem().string();
+        
+        // Arial should come first for UI font compatibility
+        if (filenameA == "Arial" && filenameB != "Arial") return true;
+        if (filenameA != "Arial" && filenameB == "Arial") return false;
+        
+        return filenameA < filenameB;
+      });
+      
+      // Load fonts in sorted order
+      for (const auto& path : fontFiles) {
+        std::string fullPath = path.string();
+        std::string filename = path.stem().string();
+
+        // Create font ID by combining the provided prefix and filename
+        std::string combinedID = fontID.empty() ? filename : fontID + "_" + filename;
+
+        // Load the individual file as a font with immediate RAII
+        auto font = std::shared_ptr<TTF_Font>(TTF_OpenFont(fullPath.c_str(), fontSize), TTF_CloseFont);
+
+        FONT_INFO("Loading font: " + fullPath);
+
+        if (!font) {
+          FONT_ERROR("Could not load font: " + std::string(SDL_GetError()));
+          continue;
+        }
+
+        // Configure font for better rendering quality
+        TTF_SetFontHinting(font.get(), TTF_HINTING_NORMAL);
+        TTF_SetFontKerning(font.get(), 1);
+        TTF_SetFontStyle(font.get(), TTF_STYLE_NORMAL);
+
+        m_fontMap[combinedID] = std::move(font);
+        loadedAny = true;
+        fontsLoaded++;
       }
     } catch (const std::filesystem::filesystem_error& e) {
       FONT_ERROR("Filesystem error: " + std::string(e.what()));

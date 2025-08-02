@@ -517,15 +517,9 @@ void UIManager::setComponentZOrder(const std::string &id, int zOrder) {
 void UIManager::setText(const std::string &id, const std::string &text) {
   auto component = getComponent(id);
   if (component) {
-    // PERFORMANCE OPTIMIZATION: Only update the text and regenerate the texture
-    // if the new text is different from the cached text.
-    if (m_textCache.count(id) == 0 || m_textCache[id] != text) {
-        component->m_text = text;
-        m_textCache[id] = text;
-        // In a real implementation, you would also invalidate and regenerate
-        // the text texture here. For now, just updating the text property is
-        // sufficient to demonstrate the caching mechanism.
-    }
+    // Always update the text - remove caching that prevents updates
+    component->m_text = text;
+    m_textCache[id] = text;
   }
 }
 
@@ -2248,7 +2242,7 @@ void UIManager::renderCheckbox(SDL_Renderer *renderer,
 }
 
 void regenerateListTextures(const std::shared_ptr<UIComponent>& component, SDL_Renderer* renderer) {
-    if (!component || !component->m_listItemsDirty) {
+    if (!component) {
         return;
     }
 
@@ -2257,13 +2251,14 @@ void regenerateListTextures(const std::shared_ptr<UIComponent>& component, SDL_R
     // Implement cache size limit to prevent GPU memory pressure
     constexpr size_t MAX_CACHED_TEXTURES = 1000;
     
-    // Only clear and regenerate if we have too many textures or items changed significantly
+    // Always regenerate if list items changed or textures don't match current list
     bool needsFullRegeneration = component->m_listItemTextures.size() > MAX_CACHED_TEXTURES ||
-                                component->m_listItemTextures.size() != component->m_listItems.size();
+                                component->m_listItemTextures.size() != component->m_listItems.size() ||
+                                component->m_listItemsDirty;
     
     if (needsFullRegeneration) {
         component->m_listItemTextures.clear();
-        component->m_listItemTextures.reserve(std::min(component->m_listItems.size(), MAX_CACHED_TEXTURES));
+        component->m_listItemTextures.resize(std::min(component->m_listItems.size(), MAX_CACHED_TEXTURES));
     } else {
         // Resize to match current list size
         component->m_listItemTextures.resize(component->m_listItems.size());
@@ -2272,6 +2267,11 @@ void regenerateListTextures(const std::shared_ptr<UIComponent>& component, SDL_R
     // Generate textures for new or changed items
     for (size_t i = 0; i < component->m_listItems.size() && i < MAX_CACHED_TEXTURES; ++i) {
         const auto& itemText = component->m_listItems[i];
+        
+        // Ensure vector is large enough
+        if (i >= component->m_listItemTextures.size()) {
+            component->m_listItemTextures.resize(i + 1);
+        }
         
         if (itemText.empty()) {
             component->m_listItemTextures[i] = nullptr;
@@ -2282,7 +2282,9 @@ void regenerateListTextures(const std::shared_ptr<UIComponent>& component, SDL_R
         if (!component->m_listItemTextures[i] || needsFullRegeneration) {
             SDL_Texture* texture = fontManager.renderText(itemText, component->m_style.fontID, 
                                                         component->m_style.textColor, renderer, true);
-            component->m_listItemTextures[i] = std::shared_ptr<SDL_Texture>(texture, SDL_DestroyTexture);
+            if (texture) {
+                component->m_listItemTextures[i] = std::shared_ptr<SDL_Texture>(texture, SDL_DestroyTexture);
+            }
         }
     }
 
@@ -2312,6 +2314,7 @@ void UIManager::renderList(SDL_Renderer *renderer,
   int itemHeight = component->m_style.listItemHeight;
 
   const size_t numItems = std::min(component->m_listItemTextures.size(), component->m_listItems.size());
+  
   for (size_t i = 0; i < numItems; ++i) {
     UIRect itemBounds = {component->m_bounds.x, itemY, component->m_bounds.width,
                          itemHeight};
@@ -2356,30 +2359,35 @@ void UIManager::renderEventLog(SDL_Renderer *renderer,
                component->m_style.borderWidth);
   }
 
-  // Draw log entries using cached textures
+  // Event logs scroll from bottom to top (newest entries at bottom)
   int itemHeight = component->m_style.listItemHeight;
-  int startY = component->m_bounds.y + component->m_bounds.height -
-               component->m_style.padding - itemHeight;
+  int availableHeight = component->m_bounds.height - (2 * component->m_style.padding);
+  int maxVisibleItems = availableHeight / itemHeight;
 
-  const size_t numItems = std::min(component->m_listItemTextures.size(), component->m_listItems.size());
-  for (int i = static_cast<int>(numItems) - 1; i >= 0; --i) {
-    if (startY < component->m_bounds.y)
-      break; // Stop if we run out of space
+  // Calculate which items to show (most recent at bottom)
+  size_t startIndex = 0;
+  if (component->m_listItems.size() > static_cast<size_t>(maxVisibleItems)) {
+    startIndex = component->m_listItems.size() - maxVisibleItems;
+  }
 
-    // Bounds checking for texture access
-    if (static_cast<size_t>(i) < component->m_listItemTextures.size()) {
+  int itemY = component->m_bounds.y + component->m_style.padding;
+  size_t renderedCount = 0;
+
+  for (size_t i = startIndex; i < component->m_listItems.size() && renderedCount < static_cast<size_t>(maxVisibleItems); ++i, ++renderedCount) {
+    // Draw item texture with bounds checking
+    if (i < component->m_listItemTextures.size()) {
         auto& texture = component->m_listItemTextures[i];
         if (texture) {
             float texW, texH;
             SDL_GetTextureSize(texture.get(), &texW, &texH);
-            int textX = component->m_bounds.x + component->m_style.padding * 2;
-            int textY = startY + (itemHeight - static_cast<int>(texH)) / 2;
+            int textX = component->m_bounds.x + component->m_style.padding;
+            int textY = itemY + (itemHeight - static_cast<int>(texH)) / 2; // Center vertically
             SDL_FRect destRect = {static_cast<float>(textX), static_cast<float>(textY), texW, texH};
             SDL_RenderTexture(renderer, texture.get(), nullptr, &destRect);
         }
     }
 
-    startY -= itemHeight;
+    itemY += itemHeight;
   }
 }
 
