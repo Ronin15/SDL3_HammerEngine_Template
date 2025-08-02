@@ -483,8 +483,6 @@ private:
 
     // Set thread as interruptible (platform-specific if needed)
     try {
-      // Exponential backoff state for idle polling
-      size_t consecutiveEmptyPolls = 0;
 
       // Main worker loop
       while (isRunning.load(std::memory_order_acquire)) {
@@ -518,9 +516,6 @@ private:
         }
 
         if (gotTask) {
-          // Reset idle counter when work is found
-          consecutiveEmptyPolls = 0;
-
           // Optimized: Only increment counter when we actually have work
           const size_t activeCount =
               m_activeTasks.fetch_add(1, std::memory_order_relaxed) + 1;
