@@ -125,12 +125,12 @@ public:
       }
     }
 
-    // Smart notification: Single mutex acquisition for efficiency
+    // Smart notification: notify all for critical, otherwise notify one.
     std::lock_guard<std::mutex> lock(queueMutex);
-    if (priority <= TaskPriority::High) {
-      condition.notify_all();
+    if (priority == TaskPriority::Critical) {
+      condition.notify_all(); // Wake all for critical tasks to ensure immediate pickup.
     } else {
-      condition.notify_one();
+      condition.notify_one(); // Wake one for all other tasks to prevent a thundering herd.
     }
   }
 
