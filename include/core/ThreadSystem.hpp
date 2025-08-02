@@ -238,6 +238,13 @@ public:
     return m_totalTasksEnqueued.load(std::memory_order_relaxed);
   }
 
+  // Public accessors for condition variable and mutex
+  std::condition_variable& getCondition() { return condition; }
+  std::mutex& getMutex() { return queueMutex; }
+
+  bool hasTasks() const {
+    return hasAnyTasksLockFree();
+  }
 private:
   // Separate deques for each priority level (O(1) pop_front, reduces lock
   // contention)
@@ -511,7 +518,7 @@ private:
         }
 
         if (gotTask) {
-          // Reset exponential backoff when work is found
+          // Reset idle counter when work is found
           consecutiveEmptyPolls = 0;
 
           // Optimized: Only increment counter when we actually have work
@@ -562,26 +569,11 @@ private:
           // Unused variable warning suppression
           (void)activeCount;
         } else {
-          // No task available, check shutdown and then sleep briefly
-          if (!isRunning.load(std::memory_order_acquire)) {
-            break;
-          }
-
-          // Less aggressive backoff sleep to reduce CPU usage and work stealing
-          // pressure
-          consecutiveEmptyPolls++;
-
-          // Simple exponential backoff for idle workers
-          auto sleepTime = std::chrono::microseconds(50); // Start with 50μs
-          if (consecutiveEmptyPolls > 5) {
-            sleepTime = std::chrono::microseconds(200); // Ramp to 200μs
-          }
-          if (consecutiveEmptyPolls > 15) {
-            sleepTime =
-                std::chrono::microseconds(500); // Max 500μs for responsiveness
-          }
-
-          std::this_thread::sleep_for(sleepTime);
+          // No task available, wait on condition variable
+          std::unique_lock<std::mutex> lock(taskQueue.getMutex());
+          taskQueue.getCondition().wait(lock, [this] {
+              return !isRunning.load(std::memory_order_acquire) || taskQueue.hasTasks();
+          });
         }
       }
     } catch (const std::exception &e) {
