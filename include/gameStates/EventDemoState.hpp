@@ -192,6 +192,24 @@ private:
   void initializeCamera();
   void updateCamera(float deltaTime);
   void setupCameraForWorld();
+  
+  // Thread-safe replacements for static variables
+  size_t m_manualWeatherIndex{0};
+  size_t m_particleEffectIndex{0};
+  size_t m_particlePositionIndex{0};
+  size_t m_resourceDemonstrationStep{0};
+  bool m_resourceIsAdding{true};
+  int m_convenienceDemoCounter{0};
+  
+  // Particle effect demo data (moved from static)
+  std::vector<std::string> m_particleEffectNames{"Fire", "Smoke", "Sparks"};
+  std::vector<Vector2D> m_particleEffectPositions{
+      Vector2D(200, 150), // Top-left area
+      Vector2D(600, 150), // Top-right area
+      Vector2D(400, 300), // Center
+      Vector2D(300, 450), // Bottom-left
+      Vector2D(500, 450), // Bottom-right
+  };
 };
 
 #endif // EVENT_DEMO_STATE_HPP

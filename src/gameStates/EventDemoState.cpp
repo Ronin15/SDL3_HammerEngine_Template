@@ -803,11 +803,9 @@ void EventDemoState::triggerWeatherDemoAuto() {
 }
 
 void EventDemoState::triggerWeatherDemoManual() {
-  static size_t manualWeatherIndex = 0;
-
-  size_t currentIndex = manualWeatherIndex;
-  WeatherType newWeather = m_weatherSequence[manualWeatherIndex];
-  std::string customType = m_customWeatherTypes[manualWeatherIndex];
+  size_t currentIndex = m_manualWeatherIndex;
+  WeatherType newWeather = m_weatherSequence[m_manualWeatherIndex];
+  std::string customType = m_customWeatherTypes[m_manualWeatherIndex];
 
   // Debug output
   addLogEntry("Manual weather index: " + std::to_string(currentIndex) + " of " +
@@ -816,7 +814,7 @@ void EventDemoState::triggerWeatherDemoManual() {
     addLogEntry("Using custom weather type: " + customType);
   }
 
-  manualWeatherIndex = (manualWeatherIndex + 1) % m_weatherSequence.size();
+  m_manualWeatherIndex = (m_manualWeatherIndex + 1) % m_weatherSequence.size();
 
   // Create weather event - use custom type if specified
   std::shared_ptr<WeatherEvent> weatherEvent;
@@ -903,26 +901,15 @@ void EventDemoState::triggerSceneTransitionDemo() {
 }
 
 void EventDemoState::triggerParticleEffectDemo() {
-  static std::vector<std::string> effectNames = {"Fire", "Smoke", "Sparks"};
-  static size_t effectIndex = 0;
-  static std::vector<Vector2D> effectPositions = {
-      Vector2D(200, 150), // Top-left area
-      Vector2D(600, 150), // Top-right area
-      Vector2D(400, 300), // Center
-      Vector2D(300, 450), // Bottom-left
-      Vector2D(500, 450), // Bottom-right
-  };
-  static size_t positionIndex = 0;
-
   // Get current effect and position
-  std::string effectName = effectNames[effectIndex];
-  Vector2D position = effectPositions[positionIndex];
+  std::string effectName = m_particleEffectNames[m_particleEffectIndex];
+  Vector2D position = m_particleEffectPositions[m_particlePositionIndex];
 
   // Create ParticleEffectEvent using EventManager convenience method
   EventManager &eventMgr = EventManager::Instance();
 
   std::string eventName =
-      "particle_demo_" + effectName + "_" + std::to_string(positionIndex);
+      "particle_demo_" + effectName + "_" + std::to_string(m_particlePositionIndex);
   bool success =
       eventMgr.createParticleEffectEvent(eventName, effectName, position,
                                          1.2f,          // intensity
@@ -942,14 +929,11 @@ void EventDemoState::triggerParticleEffectDemo() {
   }
 
   // Advance to next effect and position
-  effectIndex = (effectIndex + 1) % effectNames.size();
-  positionIndex = (positionIndex + 1) % effectPositions.size();
+  m_particleEffectIndex = (m_particleEffectIndex + 1) % m_particleEffectNames.size();
+  m_particlePositionIndex = (m_particlePositionIndex + 1) % m_particleEffectPositions.size();
 }
 
 void EventDemoState::triggerResourceDemo() {
-  static size_t demonstrationStep = 0;
-  static bool isAdding = true;
-
   if (!m_player || !m_player->getInventory()) {
     addLogEntry("Resource demo failed: Player inventory not available");
     return;
@@ -969,7 +953,7 @@ void EventDemoState::triggerResourceDemo() {
   std::string discoveryMethod;
   int quantity = 1;
 
-  switch (demonstrationStep % 6) {
+  switch (m_resourceDemonstrationStep % 6) {
   case 0: {
     // Discovery pattern: Find currency resources
     auto currencyResources =
@@ -1064,8 +1048,8 @@ void EventDemoState::triggerResourceDemo() {
 
   if (!selectedResource) {
     addLogEntry("Resource discovery failed: No resources found for step " +
-                std::to_string(demonstrationStep));
-    demonstrationStep++;
+                std::to_string(m_resourceDemonstrationStep));
+    m_resourceDemonstrationStep++;
     return;
   }
 
@@ -1074,7 +1058,7 @@ void EventDemoState::triggerResourceDemo() {
   std::string resourceName = selectedResource->getName();
   int currentQuantity = inventory->getResourceQuantity(handle);
 
-  if (isAdding) {
+  if (m_resourceIsAdding) {
     // Add resources to player inventory
     addLogEntry("BEFORE ADD (" + discoveryMethod + "): " + resourceName +
                 " = " + std::to_string(currentQuantity));
@@ -1097,7 +1081,7 @@ void EventDemoState::triggerResourceDemo() {
       // management
       EventManager &eventMgr = EventManager::Instance();
       std::string eventName =
-          "resource_demo_add_" + std::to_string(demonstrationStep);
+          "resource_demo_add_" + std::to_string(m_resourceDemonstrationStep);
       eventMgr.registerEvent(eventName, resourceEvent);
       eventMgr.executeEvent(eventName);
 
@@ -1130,7 +1114,7 @@ void EventDemoState::triggerResourceDemo() {
         // Register and execute the event
         EventManager &eventMgr = EventManager::Instance();
         std::string eventName =
-            "resource_demo_remove_" + std::to_string(demonstrationStep);
+            "resource_demo_remove_" + std::to_string(m_resourceDemonstrationStep);
         eventMgr.registerEvent(eventName, resourceEvent);
         eventMgr.executeEvent(eventName);
 
@@ -1145,12 +1129,12 @@ void EventDemoState::triggerResourceDemo() {
 
   // Progress through different discovery patterns and alternate between adding
   // and removing
-  demonstrationStep++;
-  if (demonstrationStep % 6 == 0) {
-    isAdding = !isAdding; // Switch between adding and removing after full cycle
-    std::string mode = isAdding ? "ADDING" : "REMOVING";
+  m_resourceDemonstrationStep++;
+  if (m_resourceDemonstrationStep % 6 == 0) {
+    m_resourceIsAdding = !m_resourceIsAdding; // Switch between adding and removing after full cycle
+    std::string mode = m_resourceIsAdding ? "ADDING" : "REMOVING";
     addLogEntry("--- Switched to " + mode + " mode (completed " +
-                std::to_string(demonstrationStep / 6) + " cycles) ---");
+                std::to_string(m_resourceDemonstrationStep / 6) + " cycles) ---");
   }
 
   // Log current inventory summary
@@ -1239,9 +1223,8 @@ void EventDemoState::triggerConvenienceMethodsDemo() {
   addLogEntry("=== CONVENIENCE METHODS DEMO ===");
   addLogEntry("Creating events with new one-line convenience methods");
 
-  static int demoCounter = 0;
-  demoCounter++;
-  std::string suffix = std::to_string(demoCounter);
+  m_convenienceDemoCounter++;
+  std::string suffix = std::to_string(m_convenienceDemoCounter);
 
   // Cache EventManager reference for better performance
   EventManager &eventMgr = EventManager::Instance();

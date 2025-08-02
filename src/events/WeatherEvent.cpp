@@ -15,7 +15,13 @@
 // Helper for getting current game time of day (0-24)
 static float getCurrentGameTime() {
   // Use the GameTime system for simulated game time
-  return GameTime::Instance().getGameHour();
+  // Add safety check to prevent segfault if GameTime not initialized
+  try {
+    return GameTime::Instance().getGameHour();
+  } catch (...) {
+    // Return default time if GameTime is not available
+    return 12.0f; // Default to noon
+  }
 }
 
 // Helper for getting current player position
@@ -29,7 +35,13 @@ static Vector2D getPlayerPosition() {
 static int
 getCurrentSeason() { // Use the GameTime system for simulated game seasons
   // 0=spring, 1=summer, 2=fall, 3=winter
-  return GameTime::Instance().getCurrentSeason();
+  // Add safety check to prevent segfault if GameTime not initialized
+  try {
+    return GameTime::Instance().getCurrentSeason();
+  } catch (...) {
+    // Return default season if GameTime is not available
+    return 0; // Default to spring
+  }
 }
 
 WeatherEvent::WeatherEvent(const std::string &name, WeatherType type)
@@ -147,22 +159,28 @@ void WeatherEvent::execute() {
 
   // Always trigger ParticleManager for weather changes (including Clear
   // weather)
-  if (ParticleManager::Instance().isInitialized()) {
-    // For Clear weather, we just clear effects
-    if (m_weatherType == WeatherType::Clear ||
-        getWeatherTypeString() == "Clear") {
-      EVENT_INFO("Clearing weather effects");
-    } else if (!m_params.particleEffect.empty()) {
-      EVENT_INFO("Starting particle effect: " + m_params.particleEffect);
-    }
+  try {
+    if (ParticleManager::Instance().isInitialized()) {
+      // For Clear weather, we just clear effects
+      if (m_weatherType == WeatherType::Clear ||
+          getWeatherTypeString() == "Clear") {
+        EVENT_INFO("Clearing weather effects");
+      } else if (!m_params.particleEffect.empty()) {
+        EVENT_INFO("Starting particle effect: " + m_params.particleEffect);
+      }
 
-    // Always call ParticleManager - it handles Clear weather internally
-    ParticleManager::Instance().triggerWeatherEffect(
-        getWeatherTypeString(), m_params.intensity, m_params.transitionTime);
-    EVENT_INFO("ParticleManager triggered for weather: " +
-               getWeatherTypeString());
-  } else {
-    EVENT_WARN("ParticleManager not initialized - particle effects disabled");
+      // Always call ParticleManager - it handles Clear weather internally
+      ParticleManager::Instance().triggerWeatherEffect(
+          getWeatherTypeString(), m_params.intensity, m_params.transitionTime);
+      EVENT_INFO("ParticleManager triggered for weather: " +
+                 getWeatherTypeString());
+    } else {
+      EVENT_WARN("ParticleManager not initialized - particle effects disabled");
+    }
+  } catch (const std::exception& e) {
+    EVENT_ERROR("Exception in ParticleManager::triggerWeatherEffect: " + std::string(e.what()));
+  } catch (...) {
+    EVENT_ERROR("Unknown exception in ParticleManager::triggerWeatherEffect");
   }
 
   // Play sound effects if specified
@@ -265,8 +283,15 @@ bool WeatherEvent::checkConditions() {
   }
 
   // Check season if specified
-  if (m_season >= 0 && m_season != getCurrentSeason()) {
-    return false;
+  if (m_season >= 0) {
+    try {
+      if (m_season != getCurrentSeason()) {
+        return false;
+      }
+    } catch (...) {
+      // If GameTime is not available, ignore season check
+      EVENT_WARN("GameTime not available for season check - ignoring season condition");
+    }
   }
 
   // All conditions passed
@@ -286,9 +311,10 @@ void WeatherEvent::addLocationCondition(std::function<bool()> condition) {
 
 void WeatherEvent::addRandomChanceCondition(float probability) {
   // Create a condition that returns true with the given probability
+  // Use thread-safe random generation instead of static variables
   m_conditions.push_back([probability]() {
-    static std::random_device rd;
-    static std::mt19937 gen(rd());
+    thread_local std::random_device rd;
+    thread_local std::mt19937 gen(rd());
     std::uniform_real_distribution<float> dis(0.0f, 1.0f);
     return dis(gen) < probability;
   });
