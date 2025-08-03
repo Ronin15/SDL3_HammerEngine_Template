@@ -45,6 +45,7 @@ void FleeBehavior::init(EntityPtr entity) {
     auto& state = m_entityStates[entity];
     state = EntityState(); // Reset to default state
     state.currentStamina = m_maxStamina;
+    state.lastThreatPosition = entity->getPosition();
 }
 
 void FleeBehavior::executeLogic(EntityPtr entity) {
