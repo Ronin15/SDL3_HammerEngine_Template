@@ -48,6 +48,13 @@ bool FontManager::init() {
 }
 
 bool FontManager::loadFontsForDisplay(const std::string& fontPath, int windowWidth, int windowHeight) {
+  // Check if we've already loaded fonts for this exact configuration
+  if (m_lastWindowWidth == windowWidth && m_lastWindowHeight == windowHeight && 
+      m_lastFontPath == fontPath && !m_fontMap.empty()) {
+    FONT_INFO("Fonts already loaded for " + std::to_string(windowWidth) + "x" + std::to_string(windowHeight) + " - skipping reload");
+    return true;
+  }
+
   #ifdef __APPLE__
   // On macOS, use logical font sizes - SDL3 logical presentation handles scaling
   float baseSizeFloat = APPLE_BASE_FONT_SIZE;
@@ -88,10 +95,24 @@ bool FontManager::loadFontsForDisplay(const std::string& fontPath, int windowWid
   success &= loadFont(fontPath, "fonts_title", titleFontSize);
   success &= loadFont(fontPath, "fonts_tooltip", tooltipFontSize);
   
+  // Store the configuration if successful
+  if (success) {
+    m_lastWindowWidth = windowWidth;
+    m_lastWindowHeight = windowHeight;
+    m_lastFontPath = fontPath;
+  }
+  
   return success;
 }
 
 bool FontManager::refreshFontsForDisplay(const std::string& fontPath, int windowWidth, int windowHeight) {
+  // Check if we need to refresh fonts - only refresh if display size actually changed
+  if (m_lastWindowWidth == windowWidth && m_lastWindowHeight == windowHeight && 
+      m_lastFontPath == fontPath && !m_fontMap.empty()) {
+    FONT_INFO("Display size unchanged (" + std::to_string(windowWidth) + "x" + std::to_string(windowHeight) + ") - skipping font refresh");
+    return true;
+  }
+
   FONT_INFO("Refreshing fonts for new display size: " + std::to_string(windowWidth) + "x" + std::to_string(windowHeight));
   
   // Clear existing display fonts to reload them with new sizes
@@ -732,6 +753,11 @@ m_isShutdown = true;
   // No need to manually close fonts as the unique_ptr will handle it
   m_fontMap.clear();
   m_textCache.clear();
+  
+  // Reset display tracking
+  m_lastWindowWidth = 0;
+  m_lastWindowHeight = 0;
+  m_lastFontPath.clear();
 
   FONT_INFO(std::to_string(fontsFreed) + " fonts freed");
   FONT_INFO("FontManager resources cleaned");

@@ -170,8 +170,7 @@ void GameLoop::runMainThread() {
 
 void GameLoop::runUpdateWorker(const HammerEngine::WorkerBudget& budget) {
     // WorkerBudget-aware update worker - respects allocated resources
-    GAMELOOP_INFO("Update worker started with " + std::to_string(budget.engineReserved) + " allocated workers");
-
+    
     // Adaptive timing system
     float targetFPS = m_timestepManager->getTargetFPS();
     const auto targetFrameTime = std::chrono::microseconds(static_cast<long>(1000000.0f / targetFPS));

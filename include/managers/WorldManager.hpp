@@ -44,6 +44,9 @@ public:
     bool isInitialized() const { return m_initialized.load(std::memory_order_acquire); }
     bool isShutdown() const { return m_isShutdown; }
     
+    // Post-initialization setup that requires other managers to be ready
+    void setupEventHandlers();
+    
     bool loadNewWorld(const WorldGenerationConfig& config);
     bool loadWorld(const std::string& worldId);
     void unloadWorld();
