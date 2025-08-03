@@ -108,6 +108,10 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char* argv[]) {
 
   GAMELOOP_INFO("Starting Game Loop");
 
+  // Push initial state after GameLoop is fully configured but before starting
+  // This ensures the game loop is ready to handle state updates
+  GameEngine::Instance().getGameStateManager()->pushState("LogoState");
+
   // Run the game loop - this blocks until the game ends
   if (!gameLoop->run()) {
     GAMELOOP_CRITICAL("Game loop failed");

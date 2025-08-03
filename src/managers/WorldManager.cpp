@@ -31,15 +31,29 @@ bool WorldManager::init() {
     
     try {
         m_tileRenderer = std::make_unique<TileRenderer>();
-        registerEventHandlers();
+        // Note: Event handlers will be registered later to avoid race conditions with EventManager
         
         m_isShutdown = false;
         m_initialized.store(true, std::memory_order_release);
-        WORLD_MANAGER_INFO("WorldManager initialized successfully");
+        WORLD_MANAGER_INFO("WorldManager initialized successfully (event handlers will be registered later)");
         return true;
     } catch (const std::exception& ex) {
         WORLD_MANAGER_ERROR("WorldManager::init - Exception: " + std::string(ex.what()));
         return false;
+    }
+}
+
+void WorldManager::setupEventHandlers() {
+    if (!m_initialized.load(std::memory_order_acquire)) {
+        WORLD_MANAGER_ERROR("WorldManager not initialized - cannot setup event handlers");
+        return;
+    }
+    
+    try {
+        registerEventHandlers();
+        WORLD_MANAGER_DEBUG("WorldManager event handlers setup complete");
+    } catch (const std::exception& ex) {
+        WORLD_MANAGER_ERROR("WorldManager::setupEventHandlers - Exception: " + std::string(ex.what()));
     }
 }
 

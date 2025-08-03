@@ -243,6 +243,11 @@ class FontManager {
   std::unordered_map<std::string, std::shared_ptr<TTF_Font>> m_fontMap{};
   std::unordered_map<TextCacheKey, std::shared_ptr<SDL_Texture>, TextCacheKeyHash> m_textCache{};
   bool m_isShutdown{false}; // Flag to indicate if FontManager has been shut down
+  
+  // Display size tracking to prevent unnecessary font reloads
+  int m_lastWindowWidth{0};
+  int m_lastWindowHeight{0};
+  std::string m_lastFontPath{};
 
   // Delete copy constructor and assignment operator
   FontManager(const FontManager&) = delete; // Prevent copying

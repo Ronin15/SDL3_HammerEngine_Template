@@ -700,6 +700,25 @@ bool GameEngine::init(const std::string_view title, const int width,
   }
   //_______________________________________________________________________________________________________________END
 
+  // Step 3: Post-initialization setup that requires manager dependencies
+  GAMEENGINE_INFO("Setting up manager cross-dependencies");
+  try {
+    // Setup WorldManager event handlers now that EventManager is guaranteed to be ready
+    HammerEngine::WorldManager &worldMgr = HammerEngine::WorldManager::Instance();
+    if (worldMgr.isInitialized()) {
+      worldMgr.setupEventHandlers();
+      GAMEENGINE_INFO("WorldManager event handlers setup complete");
+    } else {
+      GAMEENGINE_ERROR("WorldManager not initialized - cannot setup event handlers");
+      return false;
+    }
+    
+    GAMEENGINE_INFO("Manager cross-dependencies setup complete");
+  } catch (const std::exception &e) {
+    GAMEENGINE_ERROR("Error setting up manager cross-dependencies: " + std::string(e.what()));
+    return false;
+  }
+
   GAMEENGINE_INFO("Game " + std::string(title) + " initialized successfully!");
   GAMEENGINE_INFO("Running " + std::string(title) + " <]==={}");
 
@@ -715,9 +734,8 @@ bool GameEngine::init(const std::string_view title, const int width,
   m_lastUpdateFrame.store(0, std::memory_order_release);
   m_lastRenderedFrame.store(0, std::memory_order_release);
 
-  // setting logo state for default state
-  mp_gameStateManager->pushState(
-      "LogoState"); // set to "LogoState" for normal operation.
+  // NOTE: Initial state will be pushed after GameLoop setup is complete
+  // This ensures the game loop is ready to handle state updates before any state enters
 
   return true;
 }
