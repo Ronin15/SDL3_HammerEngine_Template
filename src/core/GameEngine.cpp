@@ -398,7 +398,7 @@ bool GameEngine::init(const std::string_view title, const int width,
 
   // Use multiple threads for initialization
   std::vector<std::future<bool>> initTasks; // Initialization tasks vector
-  initTasks.reserve(9); // Reserve capacity for typical number of init tasks
+  initTasks.reserve(10); // Reserve capacity for typical number of init tasks
 
   // Initialize input manager in a background thread - #1
   initTasks.push_back(
@@ -527,23 +527,23 @@ bool GameEngine::init(const std::string_view title, const int width,
         return true;
       }));
 
-  // Initialize Resource Manager in a separate thread - #8
+  // Initialize Resource Template Manager in a separate thread - #8
   initTasks.push_back(
       HammerEngine::ThreadSystem::Instance().enqueueTaskWithResult(
           []() -> bool {
-            GAMEENGINE_INFO("Creating Resource Manager");
+            GAMEENGINE_INFO("Creating Resource Template Manager");
             ResourceTemplateManager &resourceMgr =
                 ResourceTemplateManager::Instance();
             if (!resourceMgr.init()) {
-              GAMEENGINE_CRITICAL("Failed to initialize Resource Manager");
+              GAMEENGINE_CRITICAL("Failed to initialize Resource Template Manager");
               return false;
             }
-            GAMEENGINE_INFO("Resource Manager initialized successfully");
+            GAMEENGINE_INFO("Resource Template Manager initialized successfully");
             return true;
           }));
 
-  // Initialize World Resource Manager for global resource tracking
-  auto worldResourceTask =
+  // Initialize World Resource Manager for global resource tracking - #9
+  initTasks.push_back(
       HammerEngine::ThreadSystem::Instance().enqueueTaskWithResult(
           []() -> bool {
             GAMEENGINE_INFO("Creating World Resource Manager");
@@ -556,10 +556,7 @@ bool GameEngine::init(const std::string_view title, const int width,
             }
             GAMEENGINE_INFO("World Resource Manager initialized successfully");
             return true;
-          });
-
-  // Add the world resource task to the initialization tasks
-  initTasks.push_back(std::move(worldResourceTask));
+          }));
 
   // Initialize World Manager for world generation and management - #10
   initTasks.push_back(
