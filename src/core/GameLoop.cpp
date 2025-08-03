@@ -279,18 +279,9 @@ void GameLoop::processEvents() {
 void GameLoop::processUpdates() {
     // Process all pending fixed timestep updates
     while (m_timestepManager->shouldUpdate()) {
-        auto updateStart = std::chrono::high_resolution_clock::now();
         float deltaTime = m_timestepManager->getUpdateDeltaTime();
         invokeUpdateHandler(deltaTime);
         m_updateCount.fetch_add(1, std::memory_order_relaxed);
-
-        auto updateEnd = std::chrono::high_resolution_clock::now();
-        auto updateDuration = std::chrono::duration_cast<std::chrono::microseconds>(updateEnd - updateStart);
-
-        // Log a warning if the update took longer than the fixed timestep
-        if (updateDuration.count() > (m_timestepManager->getUpdateDeltaTime() * 1000000.0f)) {
-            GAMELOOP_WARN("Update loop took " + std::to_string(updateDuration.count() / 1000.0f) + "ms, which is longer than the target of " + std::to_string(m_timestepManager->getUpdateDeltaTime() * 1000.0f) + "ms.");
-        }
     }
 }
 
@@ -303,18 +294,9 @@ void GameLoop::processUpdatesHighPerformance() {
     auto highPrecisionStart = std::chrono::high_resolution_clock::now();
 
     while (m_timestepManager->shouldUpdate()) {
-        auto updateStart = std::chrono::high_resolution_clock::now();
         float deltaTime = m_timestepManager->getUpdateDeltaTime();
         invokeUpdateHandler(deltaTime);
         m_updateCount.fetch_add(1, std::memory_order_relaxed);
-
-        auto updateEnd = std::chrono::high_resolution_clock::now();
-        auto updateDuration = std::chrono::duration_cast<std::chrono::microseconds>(updateEnd - updateStart);
-
-        // Log a warning if the update took longer than the fixed timestep
-        if (updateDuration.count() > (m_timestepManager->getUpdateDeltaTime() * 1000000.0f)) {
-            GAMELOOP_WARN("High-performance update loop took " + std::to_string(updateDuration.count() / 1000.0f) + "ms, which is longer than the target of " + std::to_string(m_timestepManager->getUpdateDeltaTime() * 1000.0f) + "ms.");
-        }
     }
 
     // Monitor performance on high-end systems (every 1000 updates)

@@ -908,24 +908,10 @@ void GameEngine::waitForUpdate() {
   auto timeout = std::chrono::milliseconds(100);
 
   // Wait for update completion with timeout
-  bool completed = m_updateCondition.wait_for(lock, timeout, [this] {
+  m_updateCondition.wait_for(lock, timeout, [this] {
     return m_updateCompleted.load(std::memory_order_acquire) ||
            m_stopRequested.load(std::memory_order_acquire);
   });
-
-  if (!completed && !m_stopRequested.load(std::memory_order_acquire)) {
-    // Timeout occurred - check if update is actually stuck
-    if (m_updateRunning.load(std::memory_order_acquire)) {
-      // Update is still running, give it more time
-      GAMEENGINE_DEBUG(
-          "Update taking longer than expected, waiting additional time");
-      m_updateCondition.wait_for(lock, std::chrono::milliseconds(50));
-    } else {
-      // Update not running, safe to continue
-      GAMEENGINE_DEBUG(
-          "Update wait timeout but update not running, continuing");
-    }
-  }
 }
 
 void GameEngine::signalUpdateComplete() {
