@@ -1839,9 +1839,10 @@ void EventDemoState::initializeCamera() {
     
     // Set up camera configuration for smooth following
     HammerEngine::Camera::Config config;
-    config.followSpeed = 6.0f;        // Smooth following for demo
-    config.deadZoneRadius = 24.0f;    // Larger dead zone for demo effect
-    config.smoothingFactor = 0.88f;   // Visible interpolation
+    config.followSpeed = 3.0f;        // Reduced speed for smoother following
+    config.deadZoneRadius = 50.0f;    // Larger dead zone to reduce jitter
+    config.smoothingFactor = 0.75f;   // Less aggressive interpolation
+    config.maxFollowDistance = 800.0f; // Increased distance before catch-up
     config.clampToWorldBounds = true; // Keep camera within world
     m_camera->setConfig(config);
     

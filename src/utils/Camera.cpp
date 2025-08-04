@@ -298,10 +298,13 @@ void Camera::updateFollowMode(float deltaTime) {
     if (distance > m_config.deadZoneRadius) {
         // Check if target is too far away
         if (distance > m_config.maxFollowDistance) {
-            // Snap to within max follow distance
+            // Instead of snapping, gradually move towards target at max speed
             Vector2D direction = targetPos - currentPos;
             direction = direction.normalized();
-            m_targetPosition = targetPos - direction * (m_config.maxFollowDistance * 0.8f);
+            // Move towards target at maximum follow speed to catch up
+            float catchUpSpeed = m_config.followSpeed * 2.0f; // Faster catch-up
+            Vector2D movement = direction * catchUpSpeed * deltaTime;
+            m_targetPosition = currentPos + movement;
         } else {
             m_targetPosition = targetPos;
         }
