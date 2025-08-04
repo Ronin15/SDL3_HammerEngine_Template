@@ -11,6 +11,8 @@
 #include <unordered_map>
 #include <memory>
 #include <string>
+#include <atomic>
+#include <mutex>
 
 class TextureManager {
  public:
@@ -121,6 +123,8 @@ class TextureManager {
  private:
   std::string m_textureID{""};
   std::unordered_map<std::string, std::shared_ptr<SDL_Texture>> m_textureMap{};
+  std::atomic<bool> m_texturesLoaded{false};
+  std::mutex m_textureLoadMutex{};
   bool m_isShutdown{false};
 
   // Delete copy constructor and assignment operator

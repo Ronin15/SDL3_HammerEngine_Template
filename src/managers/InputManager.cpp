@@ -511,10 +511,12 @@ void InputManager::onWindowResize(const SDL_Event& event) {
     
     // Update FontManager with logical display characteristics (not actual window size)
     FontManager& fontManager = FontManager::Instance();
-    if (fontManager.refreshFontsForDisplay("res/fonts", gameEngine.getLogicalWidth(), gameEngine.getLogicalHeight())) {
-      INPUT_INFO("Successfully refreshed fonts for logical display size");
+    fontManager.clean();
+    fontManager.init();
+    if (fontManager.loadFontsForDisplay("res/fonts", gameEngine.getLogicalWidth(), gameEngine.getLogicalHeight())) {
+      INPUT_INFO("Successfully reloaded fonts for new display size");
     } else {
-      INPUT_WARN("Failed to refresh fonts for logical display size");
+      INPUT_WARN("Failed to reload fonts for new display size");
     }
     
   } catch (const std::exception& e) {

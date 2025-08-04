@@ -12,6 +12,8 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include <atomic>
+#include <mutex>
 // filesystem is used in the implementation file
 
 class FontManager {
@@ -58,7 +60,6 @@ class FontManager {
    * @param windowHeight New window height in pixels
    * @return true if fonts were refreshed successfully, false otherwise
    */
-  bool refreshFontsForDisplay(const std::string& fontPath, int windowWidth, int windowHeight);
 
   /**
    * @brief Renders text to a texture using specified font
@@ -242,7 +243,10 @@ class FontManager {
 
   std::unordered_map<std::string, std::shared_ptr<TTF_Font>> m_fontMap{};
   std::unordered_map<TextCacheKey, std::shared_ptr<SDL_Texture>, TextCacheKeyHash> m_textCache{};
-  bool m_isShutdown{false}; // Flag to indicate if FontManager has been shut down
+  std::atomic<bool> m_fontsLoaded{false};
+  bool m_isShutdown{false};
+  std::vector<std::string> m_fontFilePaths{};
+  std::mutex m_fontLoadMutex{};
   
   // Display size tracking to prevent unnecessary font reloads
   int m_lastWindowWidth{0};

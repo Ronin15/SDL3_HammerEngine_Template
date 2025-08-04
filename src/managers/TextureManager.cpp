@@ -13,6 +13,15 @@
 bool TextureManager::load(const std::string& fileName,
                           const std::string& textureID,
                           SDL_Renderer* p_renderer) {
+  if (m_texturesLoaded.load(std::memory_order_acquire)) {
+    return true;
+  }
+
+  std::lock_guard<std::mutex> lock(m_textureLoadMutex);
+  if (m_texturesLoaded.load(std::memory_order_acquire)) {
+    return true;
+  }
+
   // Check if the fileName is a directory
   if (std::filesystem::exists(fileName) && std::filesystem::is_directory(fileName)) {
     TEXTURE_INFO("Loading textures from directory: " + fileName);
@@ -77,6 +86,7 @@ bool TextureManager::load(const std::string& fileName,
 
     // Suppress unused variable warning in release builds
     (void)texturesLoaded;
+    if(loadedAny) m_texturesLoaded.store(true, std::memory_order_release);
     return loadedAny; // Return true if at least one texture was loaded successfully
   }
 
@@ -96,6 +106,7 @@ bool TextureManager::load(const std::string& fileName,
 
   if (texture) {
     m_textureMap[textureID] = std::shared_ptr<SDL_Texture>(texture.release(), SDL_DestroyTexture);
+    m_texturesLoaded.store(true, std::memory_order_release);
     return true;
   }
 
