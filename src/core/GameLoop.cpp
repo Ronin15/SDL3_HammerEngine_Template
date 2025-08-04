@@ -133,6 +133,10 @@ void GameLoop::setTargetFPS(float fps) {
     m_timestepManager->setTargetFPS(fps);
 }
 
+float GameLoop::getTargetFPS() const {
+    return m_timestepManager->getTargetFPS();
+}
+
 void GameLoop::setFixedTimestep(float timestep) {
     m_timestepManager->setFixedTimestep(timestep);
 }
