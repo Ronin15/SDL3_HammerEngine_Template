@@ -14,6 +14,8 @@
 #include <unordered_map>
 #include <vector>
 
+#include "managers/UIConstants.hpp" // Added for font constants
+
 // Forward declarations
 class FontManager;
 class InputManager;
@@ -541,12 +543,13 @@ private:
   SDL_Color interpolateColor(const SDL_Color &start, const SDL_Color &end,
                              float t);
   UIRect interpolateRect(const UIRect &start, const UIRect &end, float t);
+  void executeDeferredCallbacks();
 
   // Cached renderer for performance
   SDL_Renderer *m_cachedRenderer{nullptr};
 
-  // Text cache for performance optimization
-  std::unordered_map<std::string, std::string> m_textCache{};
+  // Deferred execution queue to prevent iterator invalidation
+  std::vector<std::function<void()>> m_deferredCallbacks{};
 
   // Delete copy constructor and assignment operator
   UIManager(const UIManager &) = delete;
