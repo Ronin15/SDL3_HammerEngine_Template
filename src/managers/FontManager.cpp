@@ -48,179 +48,89 @@ bool FontManager::init() {
 }
 
 bool FontManager::loadFontsForDisplay(const std::string& fontPath, int windowWidth, int windowHeight) {
-  // Check if we've already loaded fonts for this exact configuration
-  if (m_lastWindowWidth == windowWidth && m_lastWindowHeight == windowHeight && 
-      m_lastFontPath == fontPath && !m_fontMap.empty()) {
-    FONT_INFO("Fonts already loaded for " + std::to_string(windowWidth) + "x" + std::to_string(windowHeight) + " - skipping reload");
-    return true;
-  }
+    if (m_fontsLoaded.load(std::memory_order_acquire)) {
+        return true;
+    }
 
-  #ifdef __APPLE__
-  // On macOS, use logical font sizes - SDL3 logical presentation handles scaling
-  float baseSizeFloat = APPLE_BASE_FONT_SIZE;
-  #else
-  // On non-Apple platforms, calculate font sizes based on actual screen resolution
-  // Bounds checking for edge cases (ultra-high resolution, very small screens)
-  int clampedHeight = std::clamp(windowHeight, 480, 8640); // 480p minimum, 8K maximum
-  float baseSizeFloat = static_cast<float>(clampedHeight) / NON_APPLE_HEIGHT_RATIO;
-  #endif
-  
-  // Calculate sizes for different font types
-  int baseFontSize = static_cast<int>(std::round(baseSizeFloat));
-  int uiFontSize = static_cast<int>(std::round(baseSizeFloat * UI_FONT_RATIO));
-  int titleFontSize = static_cast<int>(std::round(baseSizeFloat * TITLE_FONT_RATIO));
-  int tooltipFontSize = static_cast<int>(std::round(baseSizeFloat * TOOLTIP_FONT_RATIO));
-  
-  // Apply bounds checking to prevent extreme font sizes
-  baseFontSize = std::clamp(baseFontSize, MIN_FONT_SIZE, MAX_FONT_SIZE);
-  uiFontSize = std::clamp(uiFontSize, MIN_FONT_SIZE, MAX_FONT_SIZE);
-  titleFontSize = std::clamp(titleFontSize, MIN_FONT_SIZE, MAX_FONT_SIZE);
-  tooltipFontSize = std::clamp(tooltipFontSize, MIN_FONT_SIZE, MAX_FONT_SIZE);
-  
-  // Ensure minimum readable sizes for specific font types
-  baseFontSize = std::max(baseFontSize, MIN_BASE_FONT_SIZE);
-  uiFontSize = std::max(uiFontSize, MIN_UI_FONT_SIZE);
-  titleFontSize = std::max(titleFontSize, MIN_TITLE_FONT_SIZE);
-  tooltipFontSize = std::max(tooltipFontSize, MIN_TOOLTIP_FONT_SIZE);
-  
-  FONT_INFO("Logical font sizes for " + std::to_string(windowWidth) + "x" + std::to_string(windowHeight) + 
-           ": base=" + std::to_string(baseFontSize) + 
-           ", UI=" + std::to_string(uiFontSize) + ", title=" + std::to_string(titleFontSize) + 
-           ", tooltip=" + std::to_string(tooltipFontSize));
-  
-  // Load the fonts with calculated sizes
-  bool success = true;
-  success &= loadFont(fontPath, "fonts", baseFontSize);
-  success &= loadFont(fontPath, "fonts_UI", uiFontSize);
-  success &= loadFont(fontPath, "fonts_title", titleFontSize);
-  success &= loadFont(fontPath, "fonts_tooltip", tooltipFontSize);
-  
-  // Store the configuration if successful
-  if (success) {
-    m_lastWindowWidth = windowWidth;
-    m_lastWindowHeight = windowHeight;
-    m_lastFontPath = fontPath;
-  }
-  
-  return success;
-}
+    std::lock_guard<std::mutex> lock(m_fontLoadMutex);
+    // Double-check after acquiring the lock
+    if (m_fontsLoaded.load(std::memory_order_acquire)) {
+        return true;
+    }
 
-bool FontManager::refreshFontsForDisplay(const std::string& fontPath, int windowWidth, int windowHeight) {
-  // Check if we need to refresh fonts - only refresh if display size actually changed
-  if (m_lastWindowWidth == windowWidth && m_lastWindowHeight == windowHeight && 
-      m_lastFontPath == fontPath && !m_fontMap.empty()) {
-    FONT_INFO("Display size unchanged (" + std::to_string(windowWidth) + "x" + std::to_string(windowHeight) + ") - skipping font refresh");
-    return true;
-  }
+    // Scan directory for font files if not already done
+    if (m_fontFilePaths.empty()) {
+        try {
+            for (const auto& entry : std::filesystem::directory_iterator(fontPath)) {
+                if (entry.is_regular_file()) {
+                    std::string extension = entry.path().extension().string();
+                    std::transform(extension.begin(), extension.end(), extension.begin(),
+                                   [](unsigned char c) { return std::tolower(c); });
+                    if (extension == ".ttf" || extension == ".otf") {
+                        m_fontFilePaths.push_back(entry.path().string());
+                    }
+                }
+            }
+            // Sort to ensure consistent loading order (e.g., Arial first)
+            std::sort(m_fontFilePaths.begin(), m_fontFilePaths.end());
+        } catch (const std::filesystem::filesystem_error& e) {
+            FONT_ERROR("Filesystem error while scanning for fonts: " + std::string(e.what()));
+            return false;
+        }
+    }
 
-  FONT_INFO("Refreshing fonts for new display size: " + std::to_string(windowWidth) + "x" + std::to_string(windowHeight));
-  
-  // Clear existing display fonts to reload them with new sizes
-  clearFont("fonts_Arial");
-  clearFont("fonts_UI_Arial");
-  clearFont("fonts_title_Arial");
-  clearFont("fonts_tooltip_Arial");
-  clearFont("fonts");
-  clearFont("fonts_UI");
-  clearFont("fonts_title");
-  clearFont("fonts_tooltip");
-  
-  // Reload fonts with new display characteristics
-  return loadFontsForDisplay(fontPath, windowWidth, windowHeight);
+    // Calculate font sizes
+    #ifdef __APPLE__
+    float baseSizeFloat = APPLE_BASE_FONT_SIZE;
+    #else
+    int clampedHeight = std::clamp(windowHeight, 480, 8640);
+    float baseSizeFloat = static_cast<float>(clampedHeight) / NON_APPLE_HEIGHT_RATIO;
+    #endif
+
+    int baseFontSize = std::clamp(static_cast<int>(std::round(baseSizeFloat)), MIN_BASE_FONT_SIZE, MAX_FONT_SIZE);
+    int uiFontSize = std::clamp(static_cast<int>(std::round(baseSizeFloat * UI_FONT_RATIO)), MIN_UI_FONT_SIZE, MAX_FONT_SIZE);
+    int titleFontSize = std::clamp(static_cast<int>(std::round(baseSizeFloat * TITLE_FONT_RATIO)), MIN_TITLE_FONT_SIZE, MAX_FONT_SIZE);
+    int tooltipFontSize = std::clamp(static_cast<int>(std::round(baseSizeFloat * TOOLTIP_FONT_RATIO)), MIN_TOOLTIP_FONT_SIZE, MAX_FONT_SIZE);
+
+    FONT_INFO("Calculated font sizes: base=" + std::to_string(baseFontSize) +
+              ", UI=" + std::to_string(uiFontSize) + ", title=" + std::to_string(titleFontSize) +
+              ", tooltip=" + std::to_string(tooltipFontSize));
+
+    bool success = true;
+    for (const auto& filePath : m_fontFilePaths) {
+        std::string filename = std::filesystem::path(filePath).stem().string();
+        success &= loadFont(filePath, "fonts_" + filename, baseFontSize);
+        success &= loadFont(filePath, "fonts_UI_" + filename, uiFontSize);
+        success &= loadFont(filePath, "fonts_title_" + filename, titleFontSize);
+        success &= loadFont(filePath, "fonts_tooltip_" + filename, tooltipFontSize);
+    }
+
+    if (success) {
+        m_lastWindowWidth = windowWidth;
+        m_lastWindowHeight = windowHeight;
+        m_lastFontPath = fontPath;
+        m_fontsLoaded.store(true, std::memory_order_release);
+        FONT_INFO("All font templates loaded successfully.");
+    }
+
+    return success;
 }
 
 bool FontManager::loadFont(const std::string& fontFile, const std::string& fontID, int fontSize) {
-  // Check if the fontFile is a directory
-  if (std::filesystem::exists(fontFile) && std::filesystem::is_directory(fontFile)) {
-    FONT_INFO("Loading fonts from directory: " + fontFile);
+    auto font = std::shared_ptr<TTF_Font>(TTF_OpenFont(fontFile.c_str(), fontSize), TTF_CloseFont);
 
-    bool loadedAny = false;
-    int fontsLoaded = 0;  // Declare at appropriate scope
-
-    try {
-      std::vector<std::filesystem::path> fontFiles;
-      
-      // Collect all font files and sort them, with Arial first for UI font compatibility
-      for (const auto& entry : std::filesystem::directory_iterator(fontFile)) {
-        if (!entry.is_regular_file()) {
-          continue;
-        }
-        
-        std::filesystem::path path = entry.path();
-        std::string extension = path.extension().string();
-        std::transform(extension.begin(), extension.end(), extension.begin(),
-                      [](unsigned char c) { return std::tolower(c); });
-        
-        if (extension == ".ttf" || extension == ".otf") {
-          fontFiles.push_back(path);
-        }
-      }
-      
-      // Sort files with Arial first to ensure UI font names are consistent
-      std::sort(fontFiles.begin(), fontFiles.end(), [](const std::filesystem::path& a, const std::filesystem::path& b) {
-        std::string filenameA = a.stem().string();
-        std::string filenameB = b.stem().string();
-        
-        // Arial should come first for UI font compatibility
-        if (filenameA == "Arial" && filenameB != "Arial") return true;
-        if (filenameA != "Arial" && filenameB == "Arial") return false;
-        
-        return filenameA < filenameB;
-      });
-      
-      // Load fonts in sorted order
-      for (const auto& path : fontFiles) {
-        std::string fullPath = path.string();
-        std::string filename = path.stem().string();
-
-        // Create font ID by combining the provided prefix and filename
-        std::string combinedID = fontID.empty() ? filename : fontID + "_" + filename;
-
-        // Load the individual file as a font with immediate RAII
-        auto font = std::shared_ptr<TTF_Font>(TTF_OpenFont(fullPath.c_str(), fontSize), TTF_CloseFont);
-
-        FONT_INFO("Loading font: " + fullPath);
-
-        if (!font) {
-          FONT_ERROR("Could not load font: " + std::string(SDL_GetError()));
-          continue;
-        }
-
-        // Configure font for better rendering quality
-        TTF_SetFontHinting(font.get(), TTF_HINTING_NORMAL);
-        TTF_SetFontKerning(font.get(), 1);
-        TTF_SetFontStyle(font.get(), TTF_STYLE_NORMAL);
-
-        m_fontMap[combinedID] = std::move(font);
-        loadedAny = true;
-        fontsLoaded++;
-      }
-    } catch (const std::filesystem::filesystem_error& e) {
-      FONT_ERROR("Filesystem error: " + std::string(e.what()));
-    } catch (const std::exception& e) {
-      FONT_ERROR("Error while loading fonts: " + std::string(e.what()));
+    if (!font) {
+        FONT_ERROR("Failed to load font '" + fontFile + "' with size " + std::to_string(fontSize) + ": " + std::string(SDL_GetError()));
+        return false;
     }
 
-    FONT_INFO("Loaded " + std::to_string(fontsLoaded) + " fonts from directory: " + fontFile);
-    return loadedAny; // Return true if at least one font was loaded successfully
-  }
+    TTF_SetFontHinting(font.get(), TTF_HINTING_NORMAL);
+    TTF_SetFontKerning(font.get(), 1);
+    TTF_SetFontStyle(font.get(), TTF_STYLE_NORMAL);
 
-  // Standard single file loading with immediate RAII
-  auto font = std::shared_ptr<TTF_Font>(TTF_OpenFont(fontFile.c_str(), fontSize), TTF_CloseFont);
-
-  if (!font) {
-    FONT_ERROR("Failed to load font '" + fontFile + "': " + std::string(SDL_GetError()));
-    return false;
-  }
-
-  // Configure font for better rendering quality
-  TTF_SetFontHinting(font.get(), TTF_HINTING_NORMAL);
-  TTF_SetFontKerning(font.get(), 1);
-  TTF_SetFontStyle(font.get(), TTF_STYLE_NORMAL);
-
-  m_fontMap[fontID] = std::move(font);
-  FONT_INFO("Loaded font '" + fontID + "' from '" + fontFile + "'");
-  return true;
+    m_fontMap[fontID] = std::move(font);
+    FONT_INFO("Loaded font '" + fontID + "' from '" + fontFile + "'");
+    return true;
 }
 
 std::shared_ptr<SDL_Texture> FontManager::renderText(
