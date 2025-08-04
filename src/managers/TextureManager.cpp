@@ -240,16 +240,7 @@ std::shared_ptr<SDL_Texture> TextureManager::getTexture(const std::string& textu
 }
 
 void TextureManager::clean() {
-
-  // Track the number of textures cleaned up
-  [[maybe_unused]] int texturesFreed = m_textureMap.size();
-
-  // Clear the map - shared_ptr will automatically destroy the textures
-  m_textureMap.clear();
-
-  // Set shutdown flag
-  m_isShutdown = true;
-
-  TEXTURE_INFO(std::to_string(texturesFreed) + " textures freed");
-  TEXTURE_INFO("TextureManager resources cleaned");
+  if (m_isShutdown) {
+    return;
+  }
 }

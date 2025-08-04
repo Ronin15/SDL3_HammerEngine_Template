@@ -1088,23 +1088,12 @@ void GameEngine::clean() {
   // Cache manager references for better performance
   HammerEngine::ThreadSystem &threadSystem =
       HammerEngine::ThreadSystem::Instance();
-  FontManager &fontMgr = FontManager::Instance();
-  SoundManager &soundMgr = SoundManager::Instance();
-  EventManager &eventMgr = EventManager::Instance();
-  AIManager &aiMgr = AIManager::Instance();
-  SaveGameManager &saveMgr = SaveGameManager::Instance();
-  InputManager &inputMgr = InputManager::Instance();
-  TextureManager &texMgr = TextureManager::Instance();
-  ResourceTemplateManager &resourceMgr = ResourceTemplateManager::Instance();
-  WorldResourceManager &worldResourceMgr = WorldResourceManager::Instance();
 
-  // Wait for any pending background tasks to complete
-  if (!threadSystem.isShutdown()) {
-    GAMEENGINE_INFO("Waiting for background tasks to complete...");
-    while (threadSystem.isBusy()) {
-      std::this_thread::sleep_for(
-          std::chrono::milliseconds(1)); // Short delay to avoid busy waiting
-    }
+  // Clean up the thread system FIRST to ensure all threads are joined
+  // before we destroy the managers they might be using.
+  GAMEENGINE_INFO("Cleaning up Thread System...");
+  if (HammerEngine::ThreadSystem::Exists() && !threadSystem.isShutdown()) {
+    threadSystem.clean();
   }
 
   // Clean up engine managers (non-singletons)
@@ -1116,45 +1105,43 @@ void GameEngine::clean() {
   auto window_to_destroy = std::move(mp_window);
   auto renderer_to_destroy = std::move(mp_renderer);
 
-  // Clean up Managers in reverse order of their initialization
-  GAMEENGINE_INFO("Cleaning up Particle Manager...");
-  ParticleManager &particleMgr = ParticleManager::Instance();
-  particleMgr.clean();
-
-  GAMEENGINE_INFO("Cleaning up Font Manager...");
-  fontMgr.clean();
-
-  GAMEENGINE_INFO("Cleaning up Sound Manager...");
-  soundMgr.clean();
-
+  // Clean up Managers in the correct order, respecting dependencies.
+  // Systems that are used by other systems must be cleaned up last.
   GAMEENGINE_INFO("Cleaning up UI Manager...");
-  UIManager &uiMgr = UIManager::Instance();
-  uiMgr.clean();
+  UIManager::Instance().clean();
 
-  GAMEENGINE_INFO("Cleaning up Event Manager...");
-  eventMgr.clean();
+  GAMEENGINE_INFO("Cleaning up Particle Manager...");
+  ParticleManager::Instance().clean();
 
   GAMEENGINE_INFO("Cleaning up AI Manager...");
-  aiMgr.clean();
+  AIManager::Instance().clean();
+
+  GAMEENGINE_INFO("Cleaning up World Manager...");
+  HammerEngine::WorldManager::Instance().clean();
+
+  GAMEENGINE_INFO("Cleaning up World Resource Manager...");
+  WorldResourceManager::Instance().clean();
+
+  GAMEENGINE_INFO("Cleaning up Event Manager...");
+  EventManager::Instance().clean();
 
   GAMEENGINE_INFO("Cleaning up Save Game Manager...");
-  saveMgr.clean();
+  SaveGameManager::Instance().clean();
 
   GAMEENGINE_INFO("Cleaning up Input Manager...");
-  inputMgr.clean();
+  InputManager::Instance().clean();
+
+  GAMEENGINE_INFO("Cleaning up Sound Manager...");
+  SoundManager::Instance().clean();
+
+  GAMEENGINE_INFO("Cleaning up Font Manager...");
+  FontManager::Instance().clean();
 
   GAMEENGINE_INFO("Cleaning up Texture Manager...");
-  texMgr.clean();
+  TextureManager::Instance().clean();
 
-  GAMEENGINE_INFO("Cleaning up Resource Managers...");
-  resourceMgr.clean();
-  worldResourceMgr.clean();
-
-  // Clean up the thread system
-  GAMEENGINE_INFO("Cleaning up Thread System...");
-  if (!threadSystem.isShutdown()) {
-    threadSystem.clean();
-  }
+  GAMEENGINE_INFO("Cleaning up Resource Template Manager...");
+  ResourceTemplateManager::Instance().clean();
 
   // Clear manager cache references
   GAMEENGINE_INFO("Clearing manager caches...");

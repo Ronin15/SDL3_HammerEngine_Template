@@ -654,11 +654,14 @@ bool FontManager::measureMultilineText(const std::string& text, const std::strin
 }
 
 void FontManager::clean() {
+  if (m_isShutdown) {
+    return;
+  }
 
-// Track the number of fonts cleaned up
-[[maybe_unused]] int fontsFreed = m_fontMap.size();
-// Mark the manager as shutting down before freeing resources
-m_isShutdown = true;
+  // Track the number of fonts cleaned up
+  [[maybe_unused]] int fontsFreed = m_fontMap.size();
+  // Mark the manager as shutting down before freeing resources
+  m_isShutdown = true;
 
   // No need to manually close fonts as the unique_ptr will handle it
   m_fontMap.clear();
@@ -671,6 +674,4 @@ m_isShutdown = true;
 
   FONT_INFO(std::to_string(fontsFreed) + " fonts freed");
   FONT_INFO("FontManager resources cleaned");
-  // Ensure TTF system is properly shut down
-  TTF_Quit();
 }

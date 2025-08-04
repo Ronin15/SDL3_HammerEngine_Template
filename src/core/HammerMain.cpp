@@ -48,6 +48,12 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char* argv[]) {
   // Initialize GameEngine
   if (!GameEngine::Instance().init(GAME_NAME, WINDOW_WIDTH, WINDOW_HEIGHT, false)) {
     GAMEENGINE_CRITICAL("Init " + GAME_NAME + " Failed: " + std::string(SDL_GetError()));
+    
+    // CRITICAL: Always clean up on init failure to prevent memory corruption
+    // during static destruction of partially initialized managers
+    GAMEENGINE_INFO("Cleaning up after initialization failure");
+    GameEngine::Instance().clean();
+    
     return -1;
   }
 

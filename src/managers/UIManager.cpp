@@ -165,18 +165,6 @@ void UIManager::clean() {
   if (m_isShutdown) {
     return;
   }
-
-  m_components.clear();
-  m_sortedComponents.clear(); // Fix: Also clear sorted components to prevent dangling pointers
-  m_layouts.clear();
-  m_animations.clear();
-  m_clickedButtons.clear();
-  m_hoveredComponents.clear();
-  m_focusedComponent.clear();
-  m_hoveredTooltip.clear();
-  m_cachedRenderer = nullptr;
-
-  m_isShutdown = true;
 }
 
 void UIManager::sortComponentsByZOrder() {

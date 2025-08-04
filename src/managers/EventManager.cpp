@@ -69,7 +69,7 @@ bool EventManager::init() {
 }
 
 void EventManager::clean() {
-  if (!m_initialized.load()) {
+  if (!m_initialized.load(std::memory_order_acquire) || m_isShutdown) {
     return;
   }
 

@@ -525,34 +525,7 @@ void InputManager::onWindowResize(const SDL_Event& event) {
 }
 
 void InputManager::clean() {
-  if(m_gamePadInitialized) {
-    [[maybe_unused]] int gamepadCount{0};
-    // Close all gamepads if detected
-    for (auto& gamepad : m_joysticks) {
-      SDL_CloseGamepad(gamepad);
-      gamepadCount++;
-    }
-
-    // No need to delete joystick values - smart pointers handle it
-    // m_joystickValues will be cleared below
-
-    m_joysticks.clear();
-    m_joystickValues.clear();
-    m_gamePadInitialized = false;
-    SDL_QuitSubSystem(SDL_INIT_GAMEPAD);
-    INPUT_INFO(std::to_string(gamepadCount) + " gamepads freed");
-    INPUT_INFO("InputManager resources cleaned");
-
-  } else {
-    INPUT_INFO("No gamepads to free");
-    INPUT_INFO("InputManager resources cleaned");
-    SDL_QuitSubSystem(SDL_INIT_GAMEPAD);
+  if (m_isShutdown) {
+    return;
   }
-
-  // Clear all button states and mouse states (previously done in destructor)
-  m_buttonStates.clear();
-  m_mouseButtonStates.clear();
-
-  // Set shutdown flag
-  m_isShutdown = true;
 }
