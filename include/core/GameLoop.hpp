@@ -119,6 +119,12 @@ public:
     void setTargetFPS(float fps);
 
     /**
+     * Get the current target FPS
+     * @return target frames per second
+     */
+    float getTargetFPS() const;
+
+    /**
      * Set new fixed timestep for updates
      * @param timestep new fixed timestep in seconds
      */
