@@ -32,7 +32,7 @@ void PauseState::update([[maybe_unused]] float deltaTime) {
   //std::cout << "Updating PAUSE State\n";
 }
 
-void PauseState::render(double alpha) {
+void PauseState::render([[maybe_unused]] double alpha) {
     // Cache manager references for better performance
     FontManager& fontMgr = FontManager::Instance();
     const auto& gameEngine = GameEngine::Instance();

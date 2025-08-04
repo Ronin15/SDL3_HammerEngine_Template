@@ -4,6 +4,7 @@
  */
 
 #include "managers/UIManager.hpp"
+#include "managers/UIConstants.hpp"
 #include "core/GameEngine.hpp"
 #include "managers/FontManager.hpp"
 #include "managers/InputManager.hpp"
@@ -20,9 +21,9 @@ bool UIManager::init() {
 
   // Set global fonts to match what's loaded by FontManager's
   // loadFontsForDisplay
-  m_globalFontID = "fonts_UI_Arial";
-  m_titleFontID = "fonts_title_Arial";
-  m_uiFontID = "fonts_UI_Arial";
+  m_globalFontID = UIConstants::DEFAULT_FONT;
+  m_titleFontID = UIConstants::TITLE_FONT;
+  m_uiFontID = UIConstants::UI_FONT;
 
 // Platform-specific scaling approach to ensure compatibility
 #ifdef __APPLE__
@@ -101,6 +102,20 @@ void UIManager::update(float deltaTime) {
 
   // Update event logs
   updateEventLogs(deltaTime);
+
+  // Execute any deferred callbacks now that the main update/input loop is complete
+  executeDeferredCallbacks();
+}
+
+void UIManager::executeDeferredCallbacks() {
+    // Safely execute all queued callbacks
+    for (const auto& callback : m_deferredCallbacks) {
+        if (callback) {
+            callback();
+        }
+    }
+    // Clear the queue for the next frame
+    m_deferredCallbacks.clear();
 }
 
 void UIManager::render(SDL_Renderer *renderer) {
@@ -519,7 +534,6 @@ void UIManager::setText(const std::string &id, const std::string &text) {
   if (component) {
     // Always update the text - remove caching that prevents updates
     component->m_text = text;
-    m_textCache[id] = text;
   }
 }
 
@@ -1155,7 +1169,7 @@ void UIManager::setLightTheme() {
   buttonStyle.pressedColor = {40, 100, 160, 255};
   buttonStyle.borderWidth = 1;
   buttonStyle.textAlign = UIAlignment::CENTER_CENTER;
-  buttonStyle.fontID = "fonts_UI_Arial";
+  buttonStyle.fontID = UIConstants::UI_FONT;
   lightTheme.m_componentStyles[UIComponentType::BUTTON] = buttonStyle;
 
   // Button Danger style - red buttons for Back, Quit, Exit, Delete, etc.
@@ -1187,7 +1201,7 @@ void UIManager::setLightTheme() {
   labelStyle.backgroundColor = {0, 0, 0, 0}; // Transparent
   labelStyle.textColor = {20, 20, 20, 255};  // Dark text for light backgrounds
   labelStyle.textAlign = UIAlignment::CENTER_LEFT;
-  labelStyle.fontID = "fonts_UI_Arial";
+  labelStyle.fontID = UIConstants::UI_FONT;
   // Text background enabled by default for readability on any background
   labelStyle.useTextBackground = true;
   labelStyle.textBackgroundColor = {255, 255, 255,
@@ -1200,7 +1214,7 @@ void UIManager::setLightTheme() {
   panelStyle.backgroundColor = {0, 0, 0,
                                 40}; // Very light overlay (15% opacity)
   panelStyle.borderWidth = 0;
-  panelStyle.fontID = "fonts_UI_Arial";
+  panelStyle.fontID = UIConstants::UI_FONT;
   lightTheme.m_componentStyles[UIComponentType::PANEL] = panelStyle;
 
   // Progress bar style - enhanced visibility
@@ -1209,7 +1223,7 @@ void UIManager::setLightTheme() {
   progressStyle.borderColor = {180, 180, 180, 255}; // Stronger borders
   progressStyle.hoverColor = {0, 180, 0, 255};      // Green fill
   progressStyle.borderWidth = 1;
-  progressStyle.fontID = "fonts_UI_Arial";
+  progressStyle.fontID = UIConstants::UI_FONT;
   lightTheme.m_componentStyles[UIComponentType::PROGRESS_BAR] = progressStyle;
 
   // Input field style - light background with dark text
@@ -1220,7 +1234,7 @@ void UIManager::setLightTheme() {
   inputStyle.hoverColor = {235, 245, 255, 255};
   inputStyle.borderWidth = 1;
   inputStyle.textAlign = UIAlignment::CENTER_LEFT;
-  inputStyle.fontID = "fonts_UI_Arial";
+  inputStyle.fontID = UIConstants::UI_FONT;
   lightTheme.m_componentStyles[UIComponentType::INPUT_FIELD] = inputStyle;
 
   // List style - light background with enhanced item height
@@ -1233,7 +1247,7 @@ void UIManager::setLightTheme() {
   // Calculate list item height based on font metrics
   listStyle.listItemHeight =
       32; // Will be calculated dynamically during rendering
-  listStyle.fontID = "fonts_UI_Arial";
+  listStyle.fontID = UIConstants::UI_FONT;
   lightTheme.m_componentStyles[UIComponentType::LIST] = listStyle;
 
   // Slider style - enhanced borders
@@ -1243,7 +1257,7 @@ void UIManager::setLightTheme() {
   sliderStyle.hoverColor = {60, 120, 180, 255}; // Blue handle
   sliderStyle.pressedColor = {40, 100, 160, 255};
   sliderStyle.borderWidth = 1;
-  sliderStyle.fontID = "fonts_UI_Arial";
+  sliderStyle.fontID = UIConstants::UI_FONT;
   lightTheme.m_componentStyles[UIComponentType::SLIDER] = sliderStyle;
 
   // Checkbox style - enhanced visibility
@@ -1253,7 +1267,7 @@ void UIManager::setLightTheme() {
   checkboxStyle.textColor = {20, 20, 20,
                              255}; // Dark text for light backgrounds
   checkboxStyle.textAlign = UIAlignment::CENTER_LEFT;
-  checkboxStyle.fontID = "fonts_UI_Arial";
+  checkboxStyle.fontID = UIConstants::UI_FONT;
   lightTheme.m_componentStyles[UIComponentType::CHECKBOX] = checkboxStyle;
 
   // Tooltip style
@@ -1263,13 +1277,13 @@ void UIManager::setLightTheme() {
   tooltipStyle.borderWidth = 1;
   tooltipStyle.textColor = {255, 255, 255,
                             255}; // White text for dark tooltip background
-  tooltipStyle.fontID = "fonts_tooltip_Arial";
+  tooltipStyle.fontID = UIConstants::TOOLTIP_FONT;
   lightTheme.m_componentStyles[UIComponentType::TOOLTIP] = tooltipStyle;
 
   // Image component uses transparent background
   UIStyle imageStyle;
   imageStyle.backgroundColor = {0, 0, 0, 0};
-  imageStyle.fontID = "fonts_UI_Arial";
+  imageStyle.fontID = UIConstants::UI_FONT;
   lightTheme.m_componentStyles[UIComponentType::IMAGE] = imageStyle;
 
   // Event log style - similar to list but optimized for display-only
@@ -1289,7 +1303,7 @@ void UIManager::setLightTheme() {
   titleStyle.textColor = {0, 198, 230, 255}; // Dark Cyan color for titles
   titleStyle.fontSize = 24;                  // Use native 24px font size
   titleStyle.textAlign = UIAlignment::CENTER_LEFT;
-  titleStyle.fontID = "fonts_title_Arial";
+  titleStyle.fontID = UIConstants::TITLE_FONT;
   // Text background enabled by default for readability on any background
   titleStyle.useTextBackground = true;
   titleStyle.textBackgroundColor = {20, 20, 20,
@@ -1302,7 +1316,7 @@ void UIManager::setLightTheme() {
   dialogStyle.backgroundColor = {245, 245, 245, 255}; // Light solid background
   dialogStyle.borderColor = {120, 120, 120, 255}; // Dark border for definition
   dialogStyle.borderWidth = 2;
-  dialogStyle.fontID = "fonts_UI_Arial";
+  dialogStyle.fontID = UIConstants::UI_FONT;
   lightTheme.m_componentStyles[UIComponentType::DIALOG] = dialogStyle;
 
   m_currentTheme = lightTheme;
@@ -1331,7 +1345,7 @@ void UIManager::setDarkTheme() {
   buttonStyle.pressedColor = {30, 30, 40, 255};
   buttonStyle.borderWidth = 1;
   buttonStyle.textAlign = UIAlignment::CENTER_CENTER;
-  buttonStyle.fontID = "fonts_UI_Arial";
+  buttonStyle.fontID = UIConstants::UI_FONT;
   darkTheme.m_componentStyles[UIComponentType::BUTTON] = buttonStyle;
 
   // Button Danger style - red buttons for Back, Quit, Exit, Delete, etc.
@@ -1362,7 +1376,7 @@ void UIManager::setDarkTheme() {
   labelStyle.backgroundColor = {0, 0, 0, 0};   // Transparent
   labelStyle.textColor = {255, 255, 255, 255}; // Pure white
   labelStyle.textAlign = UIAlignment::CENTER_LEFT;
-  labelStyle.fontID = "fonts_UI_Arial";
+  labelStyle.fontID = UIConstants::UI_FONT;
   // Text background enabled by default for readability on any background
   labelStyle.useTextBackground = true;
   labelStyle.textBackgroundColor = {0, 0, 0, 100}; // More transparent black
@@ -1373,7 +1387,7 @@ void UIManager::setDarkTheme() {
   UIStyle panelStyle;
   panelStyle.backgroundColor = {0, 0, 0, 50}; // 19% opacity
   panelStyle.borderWidth = 0;
-  panelStyle.fontID = "fonts_UI_Arial";
+  panelStyle.fontID = UIConstants::UI_FONT;
   darkTheme.m_componentStyles[UIComponentType::PANEL] = panelStyle;
 
   // Progress bar style
@@ -1382,7 +1396,7 @@ void UIManager::setDarkTheme() {
   progressStyle.borderColor = {180, 180, 180, 255};
   progressStyle.hoverColor = {0, 180, 0, 255}; // Green fill
   progressStyle.borderWidth = 1;
-  progressStyle.fontID = "fonts_UI_Arial";
+  progressStyle.fontID = UIConstants::UI_FONT;
   darkTheme.m_componentStyles[UIComponentType::PROGRESS_BAR] = progressStyle;
 
   // Input field style - dark theme
@@ -1393,7 +1407,7 @@ void UIManager::setDarkTheme() {
   inputStyle.hoverColor = {50, 50, 50, 255};
   inputStyle.borderWidth = 1;
   inputStyle.textAlign = UIAlignment::CENTER_LEFT;
-  inputStyle.fontID = "fonts_UI_Arial";
+  inputStyle.fontID = UIConstants::UI_FONT;
   darkTheme.m_componentStyles[UIComponentType::INPUT_FIELD] = inputStyle;
 
   // List style - dark theme
@@ -1406,7 +1420,7 @@ void UIManager::setDarkTheme() {
   // Calculate list item height based on font metrics
   listStyle.listItemHeight =
       32; // Will be calculated dynamically during rendering
-  listStyle.fontID = "fonts_UI_Arial";
+  listStyle.fontID = UIConstants::UI_FONT;
   darkTheme.m_componentStyles[UIComponentType::LIST] = listStyle;
 
   // Slider style
@@ -1416,7 +1430,7 @@ void UIManager::setDarkTheme() {
   sliderStyle.hoverColor = {60, 120, 180, 255}; // Blue handle
   sliderStyle.pressedColor = {40, 100, 160, 255};
   sliderStyle.borderWidth = 1;
-  sliderStyle.fontID = "fonts_UI_Arial";
+  sliderStyle.fontID = UIConstants::UI_FONT;
   darkTheme.m_componentStyles[UIComponentType::SLIDER] = sliderStyle;
 
   // Checkbox style
@@ -1425,7 +1439,7 @@ void UIManager::setDarkTheme() {
   checkboxStyle.hoverColor = {80, 80, 80, 255};
   checkboxStyle.textColor = {255, 255, 255, 255};
   checkboxStyle.textAlign = UIAlignment::CENTER_LEFT;
-  checkboxStyle.fontID = "fonts_UI_Arial";
+  checkboxStyle.fontID = UIConstants::UI_FONT;
   darkTheme.m_componentStyles[UIComponentType::CHECKBOX] = checkboxStyle;
 
   // Tooltip style
@@ -1434,13 +1448,13 @@ void UIManager::setDarkTheme() {
   tooltipStyle.borderColor = {180, 180, 180, 255};
   tooltipStyle.borderWidth = 1;
   tooltipStyle.textColor = {255, 255, 255, 255};
-  tooltipStyle.fontID = "fonts_tooltip_Arial";
+  tooltipStyle.fontID = UIConstants::TOOLTIP_FONT;
   darkTheme.m_componentStyles[UIComponentType::TOOLTIP] = tooltipStyle;
 
   // Image component uses transparent background
   UIStyle imageStyle;
   imageStyle.backgroundColor = {0, 0, 0, 0};
-  imageStyle.fontID = "fonts_UI_Arial";
+  imageStyle.fontID = UIConstants::UI_FONT;
   darkTheme.m_componentStyles[UIComponentType::IMAGE] = imageStyle;
 
   // Event log style - similar to list but optimized for display-only
@@ -1462,7 +1476,7 @@ void UIManager::setDarkTheme() {
   titleStyle.textColor = {0, 198, 230, 255}; // Dark Cyan color for titles
   titleStyle.fontSize = 24;                  // Use native 24px font size
   titleStyle.textAlign = UIAlignment::CENTER_LEFT;
-  titleStyle.fontID = "fonts_title_Arial";
+  titleStyle.fontID = UIConstants::TITLE_FONT;
   // Text background enabled by default for readability on any background
   titleStyle.useTextBackground = true;
   titleStyle.textBackgroundColor = {
@@ -1475,7 +1489,7 @@ void UIManager::setDarkTheme() {
   dialogStyle.backgroundColor = {45, 45, 45, 255}; // Dark solid background
   dialogStyle.borderColor = {160, 160, 160, 255}; // Light border for definition
   dialogStyle.borderWidth = 2;
-  dialogStyle.fontID = "fonts_UI_Arial";
+  dialogStyle.fontID = UIConstants::UI_FONT;
   darkTheme.m_componentStyles[UIComponentType::DIALOG] = dialogStyle;
 
   m_currentTheme = darkTheme;
@@ -1608,7 +1622,7 @@ void UIManager::cleanupForStateTransition() {
 
   // Reset global settings to defaults
   m_globalStyle = UIStyle{};
-  m_globalFontID = "fonts_UI_Arial";
+  m_globalFontID = UIConstants::DEFAULT_FONT;
   m_globalScale = 1.0f;
 
   UI_INFO("UIManager prepared for state transition");
@@ -1679,24 +1693,13 @@ void UIManager::handleInput() {
   m_hoveredComponents.clear();
 
   // Process components in reverse z-order (top to bottom)
-  std::vector<std::pair<std::string, std::shared_ptr<UIComponent>>>
-      sortedComponents;
-  sortedComponents.reserve(32); // Reserve capacity for performance
-  for (const auto &[id, component] : m_components) {
-    if (component && component->m_visible && component->m_enabled) {
-      sortedComponents.emplace_back(id, component);
-    }
-  }
-
-  std::sort(sortedComponents.begin(), sortedComponents.end(),
-            [](const std::pair<std::string, std::shared_ptr<UIComponent>> &a,
-               const std::pair<std::string, std::shared_ptr<UIComponent>> &b) {
-              return a.second->m_zOrder > b.second->m_zOrder;
-            });
-
   bool mouseHandled = false;
+  for (auto it = m_sortedComponents.rbegin(); it != m_sortedComponents.rend(); ++it) {
+    auto& component = *it;
+    if (!component || !component->m_visible || !component->m_enabled) {
+        continue;
+    }
 
-  for (const auto &[id, component] : sortedComponents) {
     if (mouseHandled) {
       // Reset state for components below
       if (component->m_state == UIState::HOVERED ||
@@ -1713,13 +1716,13 @@ void UIManager::handleInput() {
     bool isHovered = component->m_bounds.contains(mouseX, mouseY);
 
     if (isHovered) {
-      m_hoveredComponents.push_back(id);
+      m_hoveredComponents.push_back(component->m_id);
 
       // Handle hover state
       if (component->m_state == UIState::NORMAL) {
         component->m_state = UIState::HOVERED;
         if (component->m_onHover) {
-          component->m_onHover();
+          m_deferredCallbacks.push_back(component->m_onHover);
         }
       }
 
@@ -1733,9 +1736,9 @@ void UIManager::handleInput() {
 
         if (mouseJustPressed) {
           component->m_state = UIState::PRESSED;
-          m_focusedComponent = id;
+          m_focusedComponent = component->m_id;
           if (component->m_onFocus) {
-            component->m_onFocus();
+            m_deferredCallbacks.push_back(component->m_onFocus);
           }
         }
 
@@ -1745,17 +1748,18 @@ void UIManager::handleInput() {
               component->m_type == UIComponentType::BUTTON_DANGER ||
               component->m_type == UIComponentType::BUTTON_SUCCESS ||
               component->m_type == UIComponentType::BUTTON_WARNING) {
-            m_clickedButtons.push_back(id);
+            m_clickedButtons.push_back(component->m_id);
             if (component->m_onClick) {
-              component->m_onClick();
+              m_deferredCallbacks.push_back(component->m_onClick);
             }
           } else if (component->m_type == UIComponentType::CHECKBOX) {
             component->m_checked = !component->m_checked;
             if (component->m_onClick) {
-              component->m_onClick();
+              m_deferredCallbacks.push_back(component->m_onClick);
             }
           }
           component->m_state = UIState::HOVERED;
+          mouseHandled = true;
         }
 
         // Handle slider dragging
@@ -1766,7 +1770,7 @@ void UIManager::handleInput() {
           float newValue =
               component->m_minValue +
               relativeX * (component->m_maxValue - component->m_minValue);
-          setValue(id, newValue);
+          setValue(component->m_id, newValue);
         }
 
         mouseHandled = true;
@@ -1774,10 +1778,10 @@ void UIManager::handleInput() {
 
       // Handle input field focus
       if (component->m_type == UIComponentType::INPUT_FIELD && mouseJustPressed) {
-        m_focusedComponent = id;
+        m_focusedComponent = component->m_id;
         component->m_state = UIState::FOCUSED;
         if (component->m_onFocus) {
-          component->m_onFocus();
+          m_deferredCallbacks.push_back(component->m_onFocus);
         }
         mouseHandled = true;
       }
@@ -1798,7 +1802,7 @@ void UIManager::handleInput() {
             itemIndex < static_cast<int>(component->m_listItems.size())) {
           component->m_selectedIndex = itemIndex;
           if (component->m_onClick) {
-            component->m_onClick();
+            m_deferredCallbacks.push_back(component->m_onClick);
           }
         }
         mouseHandled = true;
