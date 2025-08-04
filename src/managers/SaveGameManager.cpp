@@ -379,6 +379,10 @@ void SaveGameManager::setSaveDirectory(const std::string &directory) {
 }
 
 void SaveGameManager::clean() {
+  if (m_isShutdown) {
+    return;
+  }
+
   // Set shutdown flag
   m_isShutdown = true;
 

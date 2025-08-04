@@ -66,7 +66,7 @@ bool AIManager::init() {
 }
 
 void AIManager::clean() {
-  if (m_isShutdown) {
+  if (!m_initialized.load(std::memory_order_acquire) || m_isShutdown) {
     return;
   }
 

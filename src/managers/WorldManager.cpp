@@ -58,7 +58,7 @@ void WorldManager::setupEventHandlers() {
 }
 
 void WorldManager::clean() {
-    if (m_isShutdown) {
+    if (!m_initialized.load(std::memory_order_acquire) || m_isShutdown) {
         return;
     }
     

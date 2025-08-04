@@ -60,8 +60,8 @@ bool WorldResourceManager::init() {
 }
 
 void WorldResourceManager::clean() {
-  if (m_isShutdown) {
-    return; // Already shut down
+  if (!m_initialized.load(std::memory_order_acquire) || m_isShutdown) {
+    return; // Already shut down or not initialized
   }
 
   // Unregister event handlers before cleanup
@@ -76,7 +76,7 @@ void WorldResourceManager::clean() {
   m_aggregateCache = ResourceAggregateCache{}; // Reset aggregate cache
 
   m_initialized.store(false, std::memory_order_release);
-  m_isShutdown = false;
+  m_isShutdown = true;
   m_stats.reset();
 
   WORLD_RESOURCE_INFO("WorldResourceManager cleaned up");
