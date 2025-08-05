@@ -89,3 +89,23 @@ Use the following command to compile the project:
 ```bash
 ninja -C build -v 2>&1 | grep -E "(warning|unused|error)"
 ```
+
+## Critical InputManager SDL Cleanup Issue
+
+**CRITICAL:** The InputManager has a very specific SDL gamepad subsystem cleanup pattern that must be maintained exactly as implemented. Do NOT modify this pattern without extreme caution.
+
+**The Issue:** When no gamepads are detected during initialization, the SDL gamepad subsystem is still initialized via `SDL_InitSubSystem(SDL_INIT_GAMEPAD)` but if not properly cleaned up, it causes a "trace trap" crash during `SDL_Quit()` on macOS.
+
+**The Correct Pattern:**
+1. In `initializeGamePad()`: Use `SDL_InitSubSystem(SDL_INIT_GAMEPAD)` to initialize the subsystem
+2. If no gamepads are found: Immediately call `SDL_QuitSubSystem(SDL_INIT_GAMEPAD)` before returning
+3. If gamepads are found: Set `m_gamePadInitialized = true` and let normal cleanup handle it
+4. In `clean()`: Only call `SDL_QuitSubSystem(SDL_INIT_GAMEPAD)` if `m_gamePadInitialized` is true
+
+**What NOT to do:**
+- Do NOT call `SDL_QuitSubSystem()` in both initialization and cleanup paths
+- Do NOT use platform-specific `#ifdef` blocks to skip SDL cleanup
+- Do NOT rely solely on `SDL_Quit()` to clean up subsystems if they were individually initialized
+- Do NOT remove or modify the `m_gamePadInitialized` flag logic
+
+This pattern has been broken multiple times by well-meaning "fixes" that cause crashes. The current implementation is correct and tested.

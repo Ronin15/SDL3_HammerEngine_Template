@@ -45,6 +45,7 @@ private:
   void setupEventSystem();
   void createTestEvents();
   void updateDemoTimer(float deltaTime);
+  void initializeWorld();
 
   void renderUI();
   void renderEventStatus() const;

@@ -56,19 +56,7 @@ class InputManager {
     bool getMouseButtonState(int buttonNumber) const;
     const Vector2D& getMousePosition() const; // Returns const reference for safety
 
-    /**
-     * @brief Check if gamepad subsystem was initialized
-     * @return true if gamepad subsystem needs to be quit
-     */
-    bool needsGamepadSubsystemCleanup() const { return m_gamepadSubsystemInitialized; }
-
-    /**
-     * @brief Quit the gamepad subsystem - called from GameEngine during final cleanup
-     */
-    void quitGamepadSubsystem();
-
  private:
-
     // Keyboard specific
     const bool* m_keystates{nullptr}; // Owned by SDL, don't delete
     std::vector<SDL_Scancode> m_pressedThisFrame{}; // Keys pressed this frame
@@ -80,7 +68,6 @@ class InputManager {
     std::vector<std::vector<bool>> m_buttonStates{};
     const int m_joystickDeadZone{10000};
     bool m_gamePadInitialized{false};
-    bool m_gamepadSubsystemInitialized{false};
     // Mouse specific
     std::vector<bool> m_mouseButtonStates{};
     std::unique_ptr<Vector2D> m_mousePosition{nullptr};

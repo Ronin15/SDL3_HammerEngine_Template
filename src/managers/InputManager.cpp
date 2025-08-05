@@ -43,13 +43,12 @@ void InputManager::initializeGamePad() {
   }
 
   // Initialize gamepad subsystem
-  if (!SDL_Init(SDL_INIT_GAMEPAD)) {
+  if (!SDL_InitSubSystem(SDL_INIT_GAMEPAD)) {
     INPUT_CRITICAL("Unable to initialize gamepad subsystem: " + std::string(SDL_GetError()));
     return;
   }
   
   // Mark that we successfully initialized the gamepad subsystem
-  m_gamepadSubsystemInitialized = true;
 
   // Get all available gamepads with RAII management
   int numGamepads = 0;
@@ -89,6 +88,8 @@ void InputManager::initializeGamePad() {
     }
   } else {
     INPUT_INFO("No gamepads found");
+    // Still need to quit the subsystem we initialized
+    SDL_QuitSubSystem(SDL_INIT_GAMEPAD);
     return; //return without setting m_gamePadInitialized to true.
   }
 
@@ -591,51 +592,31 @@ void InputManager::onDisplayChange(const SDL_Event& event) {
 }
 
 void InputManager::clean() {
-  if(m_gamepadSubsystemInitialized) {
-    [[maybe_unused]] int gamepadCount{0};
+  if(m_gamePadInitialized) {
+    int gamepadCount{0};
     // Close all gamepads if detected
     for (auto& gamepad : m_joysticks) {
-      SDL_CloseGamepad(gamepad);
-      gamepadCount++;
+      if (gamepad) {
+        SDL_CloseGamepad(gamepad);
+        gamepadCount++;
+      }
     }
-
-    // No need to delete joystick values - smart pointers handle it
-    // m_joystickValues will be cleared below
 
     m_joysticks.clear();
     m_joystickValues.clear();
-    m_gamepadSubsystemInitialized = false;
+    m_gamePadInitialized = false;
     SDL_QuitSubSystem(SDL_INIT_GAMEPAD);
     INPUT_INFO(std::to_string(gamepadCount) + " gamepads freed");
-    INPUT_INFO("InputManager resources cleaned");
 
   } else {
     INPUT_INFO("No gamepads to free");
-    INPUT_INFO("InputManager resources cleaned");
-    if (SDL_WasInit(SDL_INIT_GAMEPAD)) {
-      SDL_QuitSubSystem(SDL_INIT_GAMEPAD);
-    }
   }
 
-  // Clear all button states and mouse states (previously done in destructor)
+  // Clear all button states and mouse states
   m_buttonStates.clear();
   m_mouseButtonStates.clear();
 
   // Set shutdown flag
   m_isShutdown = true;
-}
-
-void InputManager::quitGamepadSubsystem() {
-  if (m_gamepadSubsystemInitialized) {
-    INPUT_INFO("Quitting gamepad subsystem from GameEngine cleanup");
-    if (SDL_WasInit(SDL_INIT_GAMEPAD)) {
-      SDL_QuitSubSystem(SDL_INIT_GAMEPAD);
-      INPUT_INFO("Gamepad subsystem quit successfully");
-    } else {
-      INPUT_INFO("Gamepad subsystem was not initialized, skipping quit");
-    }
-    m_gamepadSubsystemInitialized = false;
-  } else {
-    INPUT_INFO("Gamepad subsystem cleanup not needed - never initialized");
-  }
+  INPUT_INFO("InputManager resources cleaned");
 }

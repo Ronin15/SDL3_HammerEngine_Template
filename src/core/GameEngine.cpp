@@ -1177,14 +1177,7 @@ void GameEngine::clean() {
   GAMEENGINE_INFO("Window destroyed successfully");
   
   GAMEENGINE_INFO("Calling SDL_Quit...");
-  
-#ifdef __APPLE__
-  // SDL_Quit() causes crashes on macOS with SDL3 due to Metal backend cleanup issues
-  // The OS will clean up SDL resources when the process exits
-  GAMEENGINE_INFO("macOS: Skipping SDL_Quit() due to platform-specific crash with Metal backend");
-#else
   SDL_Quit();
-#endif
   
   GAMEENGINE_INFO("SDL resources cleaned!");
   GAMEENGINE_INFO("Shutdown complete!");
