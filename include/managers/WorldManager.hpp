@@ -14,16 +14,19 @@
 #include <atomic>
 #include <shared_mutex>
 
+struct SDL_Renderer;
+
 namespace HammerEngine {
 
 class TileRenderer {
 private:
+    static constexpr int TILE_SIZE = 32;
     static constexpr int VIEWPORT_PADDING = 2;
     
 public:
-    void renderVisibleTiles(const WorldData& world, int cameraX, int cameraY, 
-                           int viewportWidth, int viewportHeight);
-    void renderTile(const Tile& tile, int screenX, int screenY);
+    void renderVisibleTiles(const WorldData& world, SDL_Renderer* renderer, 
+                           float cameraX, float cameraY, int viewportWidth, int viewportHeight);
+    void renderTile(const Tile& tile, SDL_Renderer* renderer, int screenX, int screenY);
     
 private:
     std::string getBiomeTexture(HammerEngine::Biome biome) const;
@@ -59,8 +62,8 @@ public:
     bool hasActiveWorld() const;
     
     void update();
-    void render(int cameraX = 0, int cameraY = 0, 
-               int viewportWidth = 80, int viewportHeight = 25);
+    void render(SDL_Renderer* renderer, float cameraX, float cameraY, 
+               int viewportWidth, int viewportHeight);
     
     bool handleHarvestResource(int entityId, int targetX, int targetY);
     bool updateTile(int x, int y, const HammerEngine::Tile& newTile);

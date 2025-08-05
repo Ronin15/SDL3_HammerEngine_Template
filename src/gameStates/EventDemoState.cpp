@@ -21,6 +21,7 @@
 #include "managers/UIManager.hpp"
 #include "managers/WorldManager.hpp"
 #include <algorithm>
+#include <ctime>
 #include <iomanip>
 #include <iostream>
 #include <sstream>
@@ -180,6 +181,7 @@ bool EventDemoState::enter() {
     });
 
     // Initialize camera for world navigation
+    initializeWorld();
     initializeCamera();
 
     std::cout
@@ -430,6 +432,16 @@ void EventDemoState::render(double alpha) {
   // Get renderer using the standard pattern (consistent with other states)
   auto &gameEngine = GameEngine::Instance();
   SDL_Renderer *renderer = gameEngine.getRenderer();
+
+  // Render world first (background layer)
+  if (m_camera) {
+    auto &worldMgr = WorldManager::Instance();
+    worldMgr.render(renderer, 
+                   m_camera->getX(), 
+                   m_camera->getY(),
+                   gameEngine.getLogicalWidth(),
+                   gameEngine.getLogicalHeight());
+  }
 
   // Render background particles first (rain, snow) - behind player/NPCs
   ParticleManager &particleMgr = ParticleManager::Instance();
@@ -1820,6 +1832,30 @@ void EventDemoState::logResourceAnalytics(HammerEngine::ResourceHandle handle,
   // - Generate reports for game designers
 }
 
+void EventDemoState::initializeWorld() {
+  // Create world manager and generate a world for event demo
+  WorldManager& worldManager = WorldManager::Instance();
+  
+  // Create a moderately-sized world configuration for event demo (focused on events, but with exploration)
+  HammerEngine::WorldGenerationConfig config;
+  config.width = 100;  // Increased from 50 to 100 for more exploration
+  config.height = 100; // Increased from 50 to 100 for more exploration
+  config.seed = static_cast<int>(std::time(nullptr)); // Random seed for variety
+  config.elevationFrequency = 0.1f;
+  config.humidityFrequency = 0.1f;
+  config.waterLevel = 0.25f;
+  config.mountainLevel = 0.75f;
+  
+  if (!worldManager.loadNewWorld(config)) {
+    std::cerr << "Failed to load new world in EventDemoState" << std::endl;
+    // Continue anyway - event demo can function without world
+  } else {
+    std::cout << "Successfully loaded event demo world with seed: " << config.seed << std::endl;
+    
+    // Setup camera to work with the world (will be called in initializeCamera)
+  }
+}
+
 void EventDemoState::initializeCamera() {
   const auto &gameEngine = GameEngine::Instance();
   
@@ -1869,17 +1905,21 @@ void EventDemoState::setupCameraForWorld() {
   float minX, minY, maxX, maxY;
   
   if (worldManager.getWorldBounds(minX, minY, maxX, maxY)) {
-    // Use actual world bounds, expanded for demo effect
-    worldBounds.minX = minX;
-    worldBounds.minY = minY;
-    worldBounds.maxX = maxX * 2.0f;  // Larger demo area
-    worldBounds.maxY = maxY * 2.0f;
+    // Convert tile coordinates to pixel coordinates (WorldManager returns tile coords)
+    // TileRenderer uses 32px per tile
+    const float TILE_SIZE = 32.0f;
+    worldBounds.minX = minX * TILE_SIZE;
+    worldBounds.minY = minY * TILE_SIZE;
+    worldBounds.maxX = maxX * TILE_SIZE;
+    worldBounds.maxY = maxY * TILE_SIZE;
   } else {
     // Fall back to demo world dimensions if no world is loaded
+    // EventDemoState uses 100x100 tiles
+    const float TILE_SIZE = 32.0f;
     worldBounds.minX = 0.0f;
     worldBounds.minY = 0.0f;
-    worldBounds.maxX = m_worldWidth * 2.0f;  // Larger demo world
-    worldBounds.maxY = m_worldHeight * 2.0f;
+    worldBounds.maxX = 100.0f * TILE_SIZE;  // 100 tiles * 32px = 3200px
+    worldBounds.maxY = 100.0f * TILE_SIZE;  // 100 tiles * 32px = 3200px
   }
   
   m_camera->setWorldBounds(worldBounds);

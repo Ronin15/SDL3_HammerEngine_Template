@@ -13,6 +13,7 @@
 #include "events/ResourceChangeEvent.hpp"
 #include "events/WorldEvent.hpp"
 #include "events/HarvestResourceEvent.hpp"
+#include "SDL3/SDL_render.h"
 #include <algorithm>
 #include <thread>
 #include <chrono>
@@ -195,15 +196,16 @@ void WorldManager::update() {
     // This could be extended for dynamic world changes, weather effects, etc.
 }
 
-void WorldManager::render(int cameraX, int cameraY, int viewportWidth, int viewportHeight) {
-    if (!m_initialized.load(std::memory_order_acquire) || !m_currentWorld || !m_renderingEnabled) {
+void WorldManager::render(SDL_Renderer* renderer, float cameraX, float cameraY, 
+                         int viewportWidth, int viewportHeight) {
+    if (!m_initialized.load(std::memory_order_acquire) || !m_currentWorld || !m_renderingEnabled || !renderer) {
         return;
     }
     
     std::shared_lock<std::shared_mutex> lock(m_worldMutex);
     
     if (m_tileRenderer) {
-        m_tileRenderer->renderVisibleTiles(*m_currentWorld, cameraX, cameraY, viewportWidth, viewportHeight);
+        m_tileRenderer->renderVisibleTiles(*m_currentWorld, renderer, cameraX, cameraY, viewportWidth, viewportHeight);
     }
 }
 
@@ -589,39 +591,53 @@ void WorldManager::initializeWorldResources() {
 
 // TileRenderer Implementation
 
-void HammerEngine::TileRenderer::renderVisibleTiles(const HammerEngine::WorldData& world, int cameraX, int cameraY, 
-                                     int viewportWidth, int viewportHeight) {
-    if (world.grid.empty()) {
+void HammerEngine::TileRenderer::renderVisibleTiles(const HammerEngine::WorldData& world, SDL_Renderer* renderer,
+                                     float cameraX, float cameraY, int viewportWidth, int viewportHeight) {
+    if (world.grid.empty() || !renderer) {
         return;
     }
     
     int worldHeight = static_cast<int>(world.grid.size());
     int worldWidth = static_cast<int>(world.grid[0].size());
     
+    // Convert camera position to tile coordinates
+    int cameraTileX = static_cast<int>(cameraX / TILE_SIZE);
+    int cameraTileY = static_cast<int>(cameraY / TILE_SIZE);
+    
+    // Calculate how many tiles fit in the viewport
+    int tilesPerScreenWidth = (viewportWidth / TILE_SIZE) + 1;
+    int tilesPerScreenHeight = (viewportHeight / TILE_SIZE) + 1;
+    
     // Calculate visible tile range with padding
-    int startX = std::max(0, cameraX - VIEWPORT_PADDING);
-    int endX = std::min(worldWidth, cameraX + viewportWidth + VIEWPORT_PADDING);
-    int startY = std::max(0, cameraY - VIEWPORT_PADDING);
-    int endY = std::min(worldHeight, cameraY + viewportHeight + VIEWPORT_PADDING);
+    int startX = std::max(0, cameraTileX - VIEWPORT_PADDING);
+    int endX = std::min(worldWidth, cameraTileX + tilesPerScreenWidth + VIEWPORT_PADDING);
+    int startY = std::max(0, cameraTileY - VIEWPORT_PADDING);
+    int endY = std::min(worldHeight, cameraTileY + tilesPerScreenHeight + VIEWPORT_PADDING);
     
     // Render visible tiles
     for (int y = startY; y < endY; ++y) {
         for (int x = startX; x < endX; ++x) {
-            int screenX = x - cameraX;
-            int screenY = y - cameraY;
+            // Calculate screen position
+            int screenX = (x * TILE_SIZE) - static_cast<int>(cameraX);
+            int screenY = (y * TILE_SIZE) - static_cast<int>(cameraY);
             
-            // Only render if within actual viewport
-            if (screenX >= 0 && screenX < viewportWidth && screenY >= 0 && screenY < viewportHeight) {
-                renderTile(world.grid[y][x], screenX, screenY);
+            // Only render if tile is actually visible on screen
+            if (screenX + TILE_SIZE >= 0 && screenX < viewportWidth && 
+                screenY + TILE_SIZE >= 0 && screenY < viewportHeight) {
+                renderTile(world.grid[y][x], renderer, screenX, screenY);
             }
         }
     }
 }
 
-void HammerEngine::TileRenderer::renderTile(const HammerEngine::Tile& tile, int screenX, int screenY) {
+void HammerEngine::TileRenderer::renderTile(const HammerEngine::Tile& tile, SDL_Renderer* renderer, int screenX, int screenY) {
+    if (!renderer) {
+        return;
+    }
+    
     std::string textureID;
     
-    // Determine character and color based on tile content
+    // Determine texture based on tile content (prioritize obstacles over biome)
     if (tile.obstacleType != HammerEngine::ObstacleType::NONE) {
         textureID = getObstacleTexture(tile.obstacleType);
     } else if (tile.isWater) {
@@ -631,7 +647,7 @@ void HammerEngine::TileRenderer::renderTile(const HammerEngine::Tile& tile, int 
     }
     
     // Use TextureManager to render the tile
-    TextureManager::Instance().draw(textureID, screenX, screenY, 32, 32, GameEngine::Instance().getRenderer());
+    TextureManager::Instance().draw(textureID, screenX, screenY, TILE_SIZE, TILE_SIZE, renderer);
 }
 
 std::string HammerEngine::TileRenderer::getBiomeTexture(HammerEngine::Biome biome) const {

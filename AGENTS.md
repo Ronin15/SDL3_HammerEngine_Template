@@ -45,7 +45,10 @@
   ./tests/valgrind/cache_performance_analysis.sh
   ```
 
-**IMPORTANT NOTE:** Test executables are located in `bin/debug/` directory (project root), NOT in `build/bin/debug/`. Test scripts look for binaries in the correct location.
+**IMPORTANT NOTE:** 
+- **Main Executable:** `./bin/debug/SDL3_Template` (for debug builds) or `./bin/release/SDL3_Template` (for release builds)
+- **Test Executables:** Located in `bin/debug/` directory (project root), NOT in `build/bin/debug/`. Test scripts look for binaries in the correct location.
+- **Project Name:** The CMake project is named "SDL3_Template" so the executable is `SDL3_Template`, NOT `HammerEngine`.
 
 ## Code Style Guidelines
 
@@ -70,6 +73,7 @@
   - In destructor: `if (!m_isShutdown) { clean(); }`
   - In `clean()` method: Set `m_isShutdown = true;` before cleanup
   - Examples: SoundManager, EventManager, WorldResourceManager, ResourceTemplateManager
+- **InputManager SDL Gamepad Cleanup:** CRITICAL - Do NOT modify the InputManager SDL gamepad cleanup pattern. When no gamepads are found, `SDL_InitSubSystem(SDL_INIT_GAMEPAD)` is still called but must be immediately followed by `SDL_QuitSubSystem(SDL_INIT_GAMEPAD)` to prevent crashes during `SDL_Quit()`. Only call `SDL_QuitSubSystem()` in `clean()` if `m_gamePadInitialized` is true (gamepads were actually found and opened). This exact pattern prevents "trace trap" crashes on macOS.
 - **Aditional Instructions:** Please ask before removing the build dir, Only remove it when absolutley necessary. Updating cmake and then re-configruing fixes most build problems.
 > For more details, see `README.md`, `docs/Logger.md`, `docs/ThreadSystem.md`, and `tests/TESTING.md`.
 

@@ -97,6 +97,16 @@ void GamePlayState::render(double alpha) {
   FontManager &fontMgr = FontManager::Instance();
   const auto &gameEngine = GameEngine::Instance();
 
+  // Render world first (background layer)
+  if (m_camera) {
+    auto &worldMgr = WorldManager::Instance();
+    worldMgr.render(gameEngine.getRenderer(), 
+                   m_camera->getX(), 
+                   m_camera->getY(),
+                   gameEngine.getLogicalWidth(),
+                   gameEngine.getLogicalHeight());
+  }
+
   SDL_Color fontColor = {200, 200, 200, 255};
   fontMgr.drawText("Game State with Inventory Demo <-> [P] Pause <-> [B] Main "
                    "Menu <-> [I] Toggle Inventory <-> [1-5] Add Items",
@@ -417,17 +427,19 @@ void GamePlayState::setupCameraForWorld() {
   float minX, minY, maxX, maxY;
   
   if (worldManager.getWorldBounds(minX, minY, maxX, maxY)) {
-    // Use actual world bounds
-    worldBounds.minX = minX;
-    worldBounds.minY = minY;
-    worldBounds.maxX = maxX;
-    worldBounds.maxY = maxY;
+    // Convert tile coordinates to pixel coordinates (WorldManager returns tile coords)
+    // TileRenderer uses 32px per tile
+    const float TILE_SIZE = 32.0f;
+    worldBounds.minX = minX * TILE_SIZE;
+    worldBounds.minY = minY * TILE_SIZE;
+    worldBounds.maxX = maxX * TILE_SIZE;
+    worldBounds.maxY = maxY * TILE_SIZE;
   } else {
     // Fall back to default bounds if no world is loaded
     worldBounds.minX = 0.0f;
     worldBounds.minY = 0.0f;
-    worldBounds.maxX = 1000.0f;  // Default world width
-    worldBounds.maxY = 1000.0f;  // Default world height
+    worldBounds.maxX = 3200.0f;  // 100 tiles * 32px = 3200px
+    worldBounds.maxY = 3200.0f;  // 100 tiles * 32px = 3200px
   }
   
   m_camera->setWorldBounds(worldBounds);
