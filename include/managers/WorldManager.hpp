@@ -32,6 +32,8 @@ private:
     std::pair<uint8_t, uint8_t> getObstacleColor(ObstacleType obstacle) const;
 };
 
+}
+
 class WorldManager {
 public:
     static WorldManager& Instance() {
@@ -47,12 +49,12 @@ public:
     // Post-initialization setup that requires other managers to be ready
     void setupEventHandlers();
     
-    bool loadNewWorld(const WorldGenerationConfig& config);
+    bool loadNewWorld(const HammerEngine::WorldGenerationConfig& config);
     bool loadWorld(const std::string& worldId);
     void unloadWorld();
     
-    const Tile* getTileAt(int x, int y) const;
-    Tile* getTileAt(int x, int y);
+    const HammerEngine::Tile* getTileAt(int x, int y) const;
+    HammerEngine::Tile* getTileAt(int x, int y);
     
     bool isValidPosition(int x, int y) const;
     std::string getCurrentWorldId() const;
@@ -63,7 +65,7 @@ public:
                int viewportWidth = 80, int viewportHeight = 25);
     
     bool handleHarvestResource(int entityId, int targetX, int targetY);
-    bool updateTile(int x, int y, const Tile& newTile);
+    bool updateTile(int x, int y, const HammerEngine::Tile& newTile);
     
     void enableRendering(bool enable) { m_renderingEnabled = enable; }
     bool isRenderingEnabled() const { return m_renderingEnabled; }
@@ -74,7 +76,7 @@ public:
         m_viewportHeight = height; 
     }
     
-    const WorldData* getWorldData() const { return m_currentWorld.get(); }
+    const HammerEngine::WorldData* getWorldData() const { return m_currentWorld.get(); }
     
     /**
      * @brief Gets the world dimensions in tiles
@@ -104,15 +106,15 @@ private:
     WorldManager(const WorldManager&) = delete;
     WorldManager& operator=(const WorldManager&) = delete;
     
-    void fireTileChangedEvent(int x, int y, const Tile& tile);
+    void fireTileChangedEvent(int x, int y, const HammerEngine::Tile& tile);
     void fireWorldLoadedEvent(const std::string& worldId);
     void fireWorldUnloadedEvent(const std::string& worldId);
     void registerEventHandlers();
     void unregisterEventHandlers();
     void initializeWorldResources();
     
-    std::unique_ptr<WorldData> m_currentWorld;
-    std::unique_ptr<TileRenderer> m_tileRenderer;
+    std::unique_ptr<HammerEngine::WorldData> m_currentWorld;
+    std::unique_ptr<HammerEngine::TileRenderer> m_tileRenderer;
     
     mutable std::shared_mutex m_worldMutex;
     std::atomic<bool> m_initialized{false};
@@ -124,7 +126,5 @@ private:
     int m_viewportWidth{80};
     int m_viewportHeight{25};
 };
-
-}
 
 #endif // WORLD_MANAGER_HPP

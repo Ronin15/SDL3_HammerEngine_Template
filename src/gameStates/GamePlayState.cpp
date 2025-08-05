@@ -32,7 +32,7 @@ bool GamePlayState::enter() {
   initializeCamera();
   
   // Initialize and load a new world
-  auto& worldManager = HammerEngine::WorldManager::Instance();
+  auto& worldManager = WorldManager::Instance();
   if (!worldManager.isInitialized()) {
     if (!worldManager.init()) {
       std::cerr << "Failed to initialize WorldManager" << std::endl;
@@ -114,7 +114,7 @@ bool GamePlayState::exit() {
   std::cout << "Hammer Game Engine - Exiting GAME State\n";
 
   // Unload the world when exiting gameplay
-  auto& worldManager = HammerEngine::WorldManager::Instance();
+  auto& worldManager = WorldManager::Instance();
   if (worldManager.isInitialized() && worldManager.hasActiveWorld()) {
     worldManager.unloadWorld();
     std::cout << "World unloaded from GamePlayState\n";
@@ -411,7 +411,7 @@ void GamePlayState::setupCameraForWorld() {
   }
   
   // Get actual world bounds from WorldManager
-  HammerEngine::WorldManager& worldManager = HammerEngine::WorldManager::Instance();
+  WorldManager& worldManager = WorldManager::Instance();
   
   HammerEngine::Camera::Bounds worldBounds;
   float minX, minY, maxX, maxY;
