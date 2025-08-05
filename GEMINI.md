@@ -38,7 +38,7 @@ The project uses CMake for building. The main executable is `SDL3_Template`.
 
 -   **Run All Tests:**
     ```bash
-    ./run_all_tests.sh --core-only
+    ./run_all_tests.sh --core-only --errors-only
     ```
 -   **Run a Single Test:**
     There are two ways to run a single test:
