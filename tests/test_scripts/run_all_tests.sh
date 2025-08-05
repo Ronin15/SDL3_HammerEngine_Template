@@ -25,6 +25,10 @@ for arg in "$@"; do
       VERBOSE=true
       shift
       ;;
+    --errors-only)
+      ERRORS_ONLY=true
+      shift
+      ;;
     --core-only)
       RUN_CORE=true
       RUN_BENCHMARKS=false
@@ -45,6 +49,7 @@ for arg in "$@"; do
       echo -e "Usage: ./run_all_tests.sh [options]"
       echo -e "\nOptions:"
       echo -e "  --verbose         Run tests with verbose output"
+      echo -e "  --errors-only     Filter output to show only warnings and errors"
       echo -e "  --core-only       Run only core functionality tests (fast)"
       echo -e "  --benchmarks-only Run only performance benchmarks (slow)"
       echo -e "  --no-benchmarks   Run core tests but skip benchmarks"
@@ -58,7 +63,8 @@ for arg in "$@"; do
       echo -e "  All tests:        ~7-20 minutes total"
       echo -e "\nExamples:"
       echo -e "  ./run_all_tests.sh                 # Run all tests"
-      echo -e "  ./run_all_tests.sh --core-only     # Quick validation"
+      echo -e "  # Run the test
+  $TEST_EXECUTABLE     # Quick validation"
       echo -e "  ./run_all_tests.sh --no-benchmarks # Skip slow benchmarks"
       echo -e "  ./run_all_tests.sh --benchmarks-only --verbose # Performance testing"
       exit 0
@@ -82,6 +88,10 @@ CORE_TEST_SCRIPTS=(
   "$SCRIPT_DIR/run_resource_tests.sh"
   "$SCRIPT_DIR/run_resource_edge_case_tests.sh"
   "$SCRIPT_DIR/run_json_reader_tests.sh"
+  "$SCRIPT_DIR/run_world_generator_tests.sh"
+  "$SCRIPT_DIR/run_world_manager_tests.sh"
+  "$SCRIPT_DIR/run_world_manager_event_integration_tests.sh"
+  "$SCRIPT_DIR/run_world_resource_manager_tests.sh"
 )
 
 # Performance scaling benchmarks (slow execution)
@@ -149,7 +159,11 @@ run_test_script() {
   chmod +x "$script"
 
   # Run the script with provided arguments
-  $script $args
+  if [ "$ERRORS_ONLY" = true ]; then
+    $script $args 2>&1 | grep -E "(warning|error|FAIL|FAILED)"
+  else
+    $script $args
+  fi
   local result=$?
 
   if [ $result -eq 0 ]; then
