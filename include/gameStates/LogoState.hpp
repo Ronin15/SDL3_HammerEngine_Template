@@ -16,6 +16,9 @@ class LogoState : public GameState {
   void handleInput() override;
   bool exit() override;
   std::string getName() const override;
+
+ private:
+  float m_stateTimer{0.0f};
 };
 
 #endif  // LOGO_STATE_HPP

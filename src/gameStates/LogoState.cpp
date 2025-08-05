@@ -1,7 +1,7 @@
 /* Copyright (c) 2025 Hammer Forged Games
  * All rights reserved.
  * Licensed under the MIT License - see LICENSE file for details
-*/
+ */
 
 #include "gameStates/LogoState.hpp"
 #include "core/GameEngine.hpp"
@@ -11,13 +11,11 @@
 #include "managers/UIManager.hpp"
 #include <iostream>
 
-float stateTimer{0.0f};
-
 bool LogoState::enter() {
   std::cout << "Hammer Game Engine - Entering LOGO State\n";
 
   // Reset timer when entering state
-  stateTimer = 0.0f;
+  m_stateTimer = 0.0f;
 
   // Cache SoundManager reference for better performance
   SoundManager& soundMgr = SoundManager::Instance();
@@ -26,16 +24,13 @@ bool LogoState::enter() {
 }
 
 void LogoState::update(float deltaTime) {
-  // std::cout << "Hammer Game Engine - Updating LOGO State\n";
-
-  stateTimer += deltaTime;
-  if (stateTimer > 3.0f) {  // 3 seconds using deltaTime
+  m_stateTimer += deltaTime;
+  if (m_stateTimer > 3.0f) {  // 3 seconds using deltaTime
     // Cache GameEngine reference for better performance
     const auto& gameEngine = GameEngine::Instance();
     gameEngine.getGameStateManager()->changeState("MainMenuState");
   }
 }
-
 void LogoState::render([[maybe_unused]] double alpha) {
   // Cache manager references for better performance
   TextureManager& texMgr = TextureManager::Instance();
