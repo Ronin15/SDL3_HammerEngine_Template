@@ -6,13 +6,23 @@
 #include "gameStates/MainMenuState.hpp"
 #include "managers/UIManager.hpp"
 #include "managers/InputManager.hpp"
+#include "managers/FontManager.hpp"
 #include "core/GameEngine.hpp"
 #include <iostream>
+#include <thread>
+#include <chrono>
 
 bool MainMenuState::enter() {
   std::cout << "Hammer Game Engine - Entering MAIN MENU State\n";
 
   auto& ui = UIManager::Instance();
+  auto& fontMgr = FontManager::Instance();
+
+  // Wait for fonts to be loaded before creating UI components
+  // This prevents UI creation during font reload operations
+  while (!fontMgr.areFontsLoaded()) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+  }
 
   // No overlay needed for main menu - keep clean appearance
 

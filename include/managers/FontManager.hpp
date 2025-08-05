@@ -156,6 +156,12 @@ class FontManager {
   bool isShutdown() const { return m_isShutdown; }
 
   /**
+   * @brief Checks if all fonts have been loaded successfully
+   * @return true if fonts are loaded and ready, false otherwise
+   */
+  bool areFontsLoaded() const { return m_fontsLoaded.load(std::memory_order_acquire); }
+
+  /**
    * @brief Measures text dimensions for a given font and string
    * @param text Text string to measure
    * @param fontID Font identifier to use for measurement
