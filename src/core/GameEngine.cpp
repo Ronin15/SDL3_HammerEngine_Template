@@ -1107,23 +1107,23 @@ void GameEngine::clean() {
 
   // Clean up Managers in the correct order, respecting dependencies.
   // Systems that are used by other systems must be cleaned up last.
-  GAMEENGINE_INFO("Cleaning up UI Manager...");
-  UIManager::Instance().clean();
-
   GAMEENGINE_INFO("Cleaning up Particle Manager...");
   ParticleManager::Instance().clean();
 
-  GAMEENGINE_INFO("Cleaning up AI Manager...");
-  AIManager::Instance().clean();
+  GAMEENGINE_INFO("Cleaning up Font Manager...");
+  FontManager::Instance().clean();
 
-  GAMEENGINE_INFO("Cleaning up World Manager...");
-  HammerEngine::WorldManager::Instance().clean();
+  GAMEENGINE_INFO("Cleaning up Sound Manager...");
+  SoundManager::Instance().clean();
 
-  GAMEENGINE_INFO("Cleaning up World Resource Manager...");
-  WorldResourceManager::Instance().clean();
+  GAMEENGINE_INFO("Cleaning up UI Manager...");
+  UIManager::Instance().clean();
 
   GAMEENGINE_INFO("Cleaning up Event Manager...");
   EventManager::Instance().clean();
+
+  GAMEENGINE_INFO("Cleaning up AI Manager...");
+  AIManager::Instance().clean();
 
   GAMEENGINE_INFO("Cleaning up Save Game Manager...");
   SaveGameManager::Instance().clean();
@@ -1131,11 +1131,11 @@ void GameEngine::clean() {
   GAMEENGINE_INFO("Cleaning up Input Manager...");
   InputManager::Instance().clean();
 
-  GAMEENGINE_INFO("Cleaning up Sound Manager...");
-  SoundManager::Instance().clean();
+  GAMEENGINE_INFO("Cleaning up World Manager...");
+  HammerEngine::WorldManager::Instance().clean();
 
-  GAMEENGINE_INFO("Cleaning up Font Manager...");
-  FontManager::Instance().clean();
+  GAMEENGINE_INFO("Cleaning up World Resource Manager...");
+  WorldResourceManager::Instance().clean();
 
   GAMEENGINE_INFO("Cleaning up Texture Manager...");
   TextureManager::Instance().clean();
@@ -1158,9 +1158,24 @@ void GameEngine::clean() {
 
   // Explicitly reset smart pointers at the end, after all subsystems
   // are done using them - this will trigger their custom deleters
+  GAMEENGINE_INFO("Destroying renderer...");
   renderer_to_destroy.reset();
+  GAMEENGINE_INFO("Renderer destroyed successfully");
+  
+  GAMEENGINE_INFO("Destroying window...");
   window_to_destroy.reset();
+  GAMEENGINE_INFO("Window destroyed successfully");
+  
+  GAMEENGINE_INFO("Calling SDL_Quit...");
+  
+#ifdef __APPLE__
+  // SDL_Quit() causes crashes on macOS with SDL3 due to Metal backend cleanup issues
+  // The OS will clean up SDL resources when the process exits
+  GAMEENGINE_INFO("macOS: Skipping SDL_Quit() due to platform-specific crash with Metal backend");
+#else
   SDL_Quit();
+#endif
+  
   GAMEENGINE_INFO("SDL resources cleaned!");
   GAMEENGINE_INFO("Shutdown complete!");
 }

@@ -514,6 +514,11 @@ void SoundManager::clean() {
     m_mixer = nullptr;
   }
 
+  // Quit SDL audio subsystem if we initialized it
+  if (SDL_WasInit(SDL_INIT_AUDIO)) {
+    SDL_QuitSubSystem(SDL_INIT_AUDIO);
+  }
+
   m_initialized = false;
   m_isShutdown = true;
   SOUND_INFO("SoundManager cleaned up");

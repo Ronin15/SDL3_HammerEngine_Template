@@ -42,6 +42,8 @@ bool FontManager::init() {
     FONT_CRITICAL("Font system initialization failed: " + std::string(SDL_GetError()));
       return false;
   } else {
+    // Reset shutdown flag when reinitializing
+    m_isShutdown = false;
     FONT_INFO("Font system initialized with quality hints!");
       return true;
   }
@@ -559,6 +561,28 @@ void FontManager::clearFont(const std::string& fontID) {
   }
 }
 
+bool FontManager::reloadFontsForDisplay(const std::string& fontPath, int windowWidth, int windowHeight) {
+  if (m_isShutdown) {
+    FONT_WARN("Cannot reload fonts - FontManager is shut down");
+    return false;
+  }
+
+  FONT_INFO("Reloading fonts for display change...");
+  
+  // Clear existing fonts and caches without shutting down the manager
+  m_fontMap.clear();
+  m_textCache.clear();
+  m_fontsLoaded.store(false, std::memory_order_release);
+  
+  // Reset display tracking
+  m_lastWindowWidth = 0;
+  m_lastWindowHeight = 0;
+  m_lastFontPath.clear();
+  
+  // Reload fonts with new dimensions
+  return loadFontsForDisplay(fontPath, windowWidth, windowHeight);
+}
+
 bool FontManager::measureText(const std::string& text, const std::string& fontID, int* width, int* height) {
   if (m_isShutdown || !width || !height) {
     return false;
@@ -667,11 +691,11 @@ void FontManager::clean() {
   m_fontMap.clear();
   m_textCache.clear();
   
-  // Reset display tracking
+  // Clear display tracking
   m_lastWindowWidth = 0;
   m_lastWindowHeight = 0;
   m_lastFontPath.clear();
 
   FONT_INFO(std::to_string(fontsFreed) + " fonts freed");
-  FONT_INFO("FontManager resources cleaned");
+  FONT_INFO("FontManager resources cleaned - TTF will be cleaned by SDL_Quit()");
 }

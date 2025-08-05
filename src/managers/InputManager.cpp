@@ -47,6 +47,9 @@ void InputManager::initializeGamePad() {
     INPUT_CRITICAL("Unable to initialize gamepad subsystem: " + std::string(SDL_GetError()));
     return;
   }
+  
+  // Mark that we successfully initialized the gamepad subsystem
+  m_gamepadSubsystemInitialized = true;
 
   // Get all available gamepads with RAII management
   int numGamepads = 0;
@@ -222,6 +225,14 @@ void InputManager::update() {
 
       case SDL_EVENT_WINDOW_RESIZED:
         onWindowResize(event);
+        break;
+
+      case SDL_EVENT_DISPLAY_ORIENTATION:
+      case SDL_EVENT_DISPLAY_ADDED:
+      case SDL_EVENT_DISPLAY_REMOVED:
+      case SDL_EVENT_DISPLAY_MOVED:
+      case SDL_EVENT_DISPLAY_CONTENT_SCALE_CHANGED:
+        onDisplayChange(event);
         break;
 
       default:
@@ -495,9 +506,66 @@ void InputManager::onWindowResize(const SDL_Event& event) {
   // Update renderer to native resolution
   SDL_SetRenderLogicalPresentation(gameEngine.getRenderer(), actualWidth, actualHeight, SDL_LOGICAL_PRESENTATION_DISABLED);
   
-  INPUT_INFO("Updated to native resolution: " + std::to_string(actualWidth) + "x" + std::to_string(actualHeight));
-  #endif
+   INPUT_INFO("Updated to native resolution: " + std::to_string(actualWidth) + "x" + std::to_string(actualHeight));
+   #endif
+   
+   // Reload fonts for new display configuration
+   INPUT_INFO("Reloading fonts for display configuration change...");
+   FontManager& fontManager = FontManager::Instance();
+   if (!fontManager.reloadFontsForDisplay("res/fonts", gameEngine.getLogicalWidth(), gameEngine.getLogicalHeight())) {
+     INPUT_ERROR("Failed to reinitialize font system after window resize");
+   } else {
+     INPUT_INFO("Font system reinitialized successfully after window resize");
+   }
+}
+
+void InputManager::onDisplayChange(const SDL_Event& event) {
+  // Cache GameEngine reference for better performance
+  GameEngine& gameEngine = GameEngine::Instance();
   
+  const char* eventName = "Unknown";
+  switch (event.type) {
+    case SDL_EVENT_DISPLAY_ORIENTATION:
+      eventName = "Orientation Change";
+      break;
+    case SDL_EVENT_DISPLAY_ADDED:
+      eventName = "Display Added";
+      break;
+    case SDL_EVENT_DISPLAY_REMOVED:
+      eventName = "Display Removed";
+      break;
+    case SDL_EVENT_DISPLAY_MOVED:
+      eventName = "Display Moved";
+      break;
+    case SDL_EVENT_DISPLAY_CONTENT_SCALE_CHANGED:
+      eventName = "Content Scale Changed";
+      break;
+  }
+  
+  INPUT_INFO("Display event detected: " + std::string(eventName));
+  
+  // On Apple platforms, display changes often invalidate font textures
+  // due to different DPI scaling or context changes
+  #ifdef __APPLE__
+  INPUT_INFO("Apple platform: Reinitializing font system due to display change...");
+  
+  // Reload fonts for new display configuration
+  INPUT_INFO("Reloading fonts for display configuration change...");
+  FontManager& fontManager = FontManager::Instance();
+  if (!fontManager.isShutdown()) {
+    // Get current window dimensions
+    int windowWidth, windowHeight;
+    SDL_GetWindowSize(gameEngine.getWindow(), &windowWidth, &windowHeight);
+    
+    if (!fontManager.reloadFontsForDisplay("res/fonts/", windowWidth, windowHeight)) {
+      INPUT_ERROR("Failed to reload fonts after display change");
+    } else {
+      INPUT_INFO("Fonts reloaded successfully for new display configuration");
+    }
+  }
+  #else
+  INPUT_INFO("Non-Apple platform: Display change handled by existing window resize logic");
+  #endif  
   // Update UI systems with consistent scaling
   try {
     // Update UIManager with consistent 1.0 scale (our logical resolution handles sizing)
@@ -511,12 +579,10 @@ void InputManager::onWindowResize(const SDL_Event& event) {
     
     // Update FontManager with logical display characteristics (not actual window size)
     FontManager& fontManager = FontManager::Instance();
-    fontManager.clean();
-    fontManager.init();
-    if (fontManager.loadFontsForDisplay("res/fonts", gameEngine.getLogicalWidth(), gameEngine.getLogicalHeight())) {
-      INPUT_INFO("Successfully reloaded fonts for new display size");
-    } else {
+    if (!fontManager.reloadFontsForDisplay("res/fonts", gameEngine.getLogicalWidth(), gameEngine.getLogicalHeight())) {
       INPUT_WARN("Failed to reload fonts for new display size");
+    } else {
+      INPUT_INFO("Successfully reloaded fonts for new display size");
     }
     
   } catch (const std::exception& e) {
@@ -525,7 +591,51 @@ void InputManager::onWindowResize(const SDL_Event& event) {
 }
 
 void InputManager::clean() {
-  if (m_isShutdown) {
-    return;
+  if(m_gamepadSubsystemInitialized) {
+    [[maybe_unused]] int gamepadCount{0};
+    // Close all gamepads if detected
+    for (auto& gamepad : m_joysticks) {
+      SDL_CloseGamepad(gamepad);
+      gamepadCount++;
+    }
+
+    // No need to delete joystick values - smart pointers handle it
+    // m_joystickValues will be cleared below
+
+    m_joysticks.clear();
+    m_joystickValues.clear();
+    m_gamepadSubsystemInitialized = false;
+    SDL_QuitSubSystem(SDL_INIT_GAMEPAD);
+    INPUT_INFO(std::to_string(gamepadCount) + " gamepads freed");
+    INPUT_INFO("InputManager resources cleaned");
+
+  } else {
+    INPUT_INFO("No gamepads to free");
+    INPUT_INFO("InputManager resources cleaned");
+    if (SDL_WasInit(SDL_INIT_GAMEPAD)) {
+      SDL_QuitSubSystem(SDL_INIT_GAMEPAD);
+    }
+  }
+
+  // Clear all button states and mouse states (previously done in destructor)
+  m_buttonStates.clear();
+  m_mouseButtonStates.clear();
+
+  // Set shutdown flag
+  m_isShutdown = true;
+}
+
+void InputManager::quitGamepadSubsystem() {
+  if (m_gamepadSubsystemInitialized) {
+    INPUT_INFO("Quitting gamepad subsystem from GameEngine cleanup");
+    if (SDL_WasInit(SDL_INIT_GAMEPAD)) {
+      SDL_QuitSubSystem(SDL_INIT_GAMEPAD);
+      INPUT_INFO("Gamepad subsystem quit successfully");
+    } else {
+      INPUT_INFO("Gamepad subsystem was not initialized, skipping quit");
+    }
+    m_gamepadSubsystemInitialized = false;
+  } else {
+    INPUT_INFO("Gamepad subsystem cleanup not needed - never initialized");
   }
 }
