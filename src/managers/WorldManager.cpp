@@ -4,8 +4,10 @@
  */
 
 #include "managers/WorldManager.hpp"
+#include "core/GameEngine.hpp"
 #include "core/Logger.hpp"
 #include "managers/EventManager.hpp"
+#include "managers/TextureManager.hpp"
 #include "managers/ResourceTemplateManager.hpp"
 #include "managers/WorldResourceManager.hpp"
 #include "events/ResourceChangeEvent.hpp"
@@ -617,70 +619,46 @@ void HammerEngine::TileRenderer::renderVisibleTiles(const HammerEngine::WorldDat
 }
 
 void HammerEngine::TileRenderer::renderTile(const HammerEngine::Tile& tile, int screenX, int screenY) {
-    char character;
-    std::pair<uint8_t, uint8_t> colors;
+    std::string textureID;
     
     // Determine character and color based on tile content
     if (tile.obstacleType != HammerEngine::ObstacleType::NONE) {
-        character = getObstacleCharacter(tile.obstacleType);
-        colors = getObstacleColor(tile.obstacleType);
+        textureID = getObstacleTexture(tile.obstacleType);
     } else if (tile.isWater) {
-        character = '~';
-        colors = {4, 0}; // Blue on black
+        textureID = "obstacle_water";
     } else {
-        character = getBiomeCharacter(tile.biome);
-        colors = getBiomeColor(tile.biome);
+        textureID = getBiomeTexture(tile.biome);
     }
     
-    // Use FontManager to render the character
-    FontManager::Instance().drawText(std::string(1, character), "fonts_Arial", screenX, screenY, {colors.first, colors.second, 0, 255}, GameEngine::Instance().getRenderer());
+    // Use TextureManager to render the tile
+    TextureManager::Instance().draw(textureID, screenX, screenY, 32, 32, GameEngine::Instance().getRenderer());
 }
 
-char HammerEngine::TileRenderer::getBiomeCharacter(HammerEngine::Biome biome) const {
+std::string HammerEngine::TileRenderer::getBiomeTexture(HammerEngine::Biome biome) const {
     switch (biome) {
-        case HammerEngine::Biome::DESERT:     return '.';
-        case HammerEngine::Biome::FOREST:     return '"';
-        case HammerEngine::Biome::MOUNTAIN:   return '^';
-        case HammerEngine::Biome::SWAMP:      return '%';
-        case HammerEngine::Biome::HAUNTED:    return 'H';
-        case HammerEngine::Biome::CELESTIAL:  return '*';
-        case HammerEngine::Biome::OCEAN:      return '~';
-        default:                return ' ';
+        case HammerEngine::Biome::DESERT:     return "biome_desert";
+        case HammerEngine::Biome::FOREST:     return "biome_forest";
+        case HammerEngine::Biome::MOUNTAIN:   return "biome_mountain";
+        case HammerEngine::Biome::SWAMP:      return "biome_swamp";
+        case HammerEngine::Biome::HAUNTED:    return "biome_haunted";
+        case HammerEngine::Biome::CELESTIAL:  return "biome_celestial";
+        case HammerEngine::Biome::OCEAN:      return "biome_ocean";
+        default:                return "biome_default";
     }
 }
 
-char HammerEngine::TileRenderer::getObstacleCharacter(HammerEngine::ObstacleType obstacle) const {
+std::string HammerEngine::TileRenderer::getObstacleTexture(HammerEngine::ObstacleType obstacle) const {
     switch (obstacle) {
-        case HammerEngine::ObstacleType::TREE:    return 'T';
-        case HammerEngine::ObstacleType::WATER:   return '~';
-        case HammerEngine::ObstacleType::ROCK:    return '#';
-        case HammerEngine::ObstacleType::BUILDING: return 'B';
-        default:                    return ' ';
+        case HammerEngine::ObstacleType::TREE:    return "obstacle_tree";
+        case HammerEngine::ObstacleType::ROCK:    return "obstacle_rock";
+        case HammerEngine::ObstacleType::WATER:   return "obstacle_water";
+        case HammerEngine::ObstacleType::BUILDING: return "obstacle_building";
+        default:                    return "biome_default";
     }
 }
 
-std::pair<uint8_t, uint8_t> HammerEngine::TileRenderer::getBiomeColor(HammerEngine::Biome biome) const {
-    // Returns foreground, background color pair
-    switch (biome) {
-        case HammerEngine::Biome::DESERT:     return {14, 0}; // Yellow on black
-        case HammerEngine::Biome::FOREST:     return {2, 0};  // Green on black
-        case HammerEngine::Biome::MOUNTAIN:   return {8, 0};  // Gray on black
-        case HammerEngine::Biome::SWAMP:      return {6, 0};  // Brown on black
-        case HammerEngine::Biome::HAUNTED:    return {5, 0};  // Purple on black
-        case HammerEngine::Biome::CELESTIAL:  return {11, 0}; // Cyan on black
-        case HammerEngine::Biome::OCEAN:      return {1, 0};  // Blue on black
-        default:                return {7, 0};  // White on black
-    }
-}
 
-std::pair<uint8_t, uint8_t> HammerEngine::TileRenderer::getObstacleColor(HammerEngine::ObstacleType obstacle) const {
-    // Returns foreground, background color pair
-    switch (obstacle) {
-        case HammerEngine::ObstacleType::TREE:    return {2, 0};  // Green on black
-        case HammerEngine::ObstacleType::ROCK:    return {8, 0};  // Gray on black
-        case HammerEngine::ObstacleType::WATER:   return {1, 0};  // Blue on black
-        case HammerEngine::ObstacleType::BUILDING: return {11, 0}; // Cyan on black
-        default:                    return {7, 0};  // White on black
-    }
-}
+        
+
+
         

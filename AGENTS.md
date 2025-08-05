@@ -14,7 +14,7 @@
   ```
 - **Run All Tests:**
   ```
-  ./run_all_tests.sh --core-only --errors-only
+   timeout 95s ./run_all_tests.sh --core-only --errors-only
   ```
 - **Run a Single Test:**
   ```

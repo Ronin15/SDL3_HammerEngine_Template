@@ -1056,6 +1056,15 @@ void EventManager::clearEventPools() {
   m_resourceChangePool.clear();
 }
 
+void EventManager::clearAllEvents() {
+    std::lock_guard<std::shared_mutex> lock(m_eventsMutex);
+    for (auto& event_list : m_eventsByType) {
+        event_list.clear();
+    }
+    m_nameToIndex.clear();
+    m_nameToType.clear();
+}
+
 EventTypeId EventManager::getEventTypeId(const EventPtr &event) const {
   if (std::dynamic_pointer_cast<WeatherEvent>(event)) {
     return EventTypeId::Weather;

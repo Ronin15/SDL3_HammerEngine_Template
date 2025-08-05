@@ -47,6 +47,7 @@ bool WorldResourceManager::init() {
     registerEventHandlers();
 
     m_initialized.store(true, std::memory_order_release);
+    m_isShutdown = false; // Explicitly mark as not shut down
     m_stats.reset();
     m_stats.worldsTracked = 1; // Default world
 

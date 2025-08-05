@@ -26,10 +26,8 @@ public:
     void renderTile(const Tile& tile, int screenX, int screenY);
     
 private:
-    char getBiomeCharacter(Biome biome) const;
-    char getObstacleCharacter(ObstacleType obstacle) const;
-    std::pair<uint8_t, uint8_t> getBiomeColor(Biome biome) const;
-    std::pair<uint8_t, uint8_t> getObstacleColor(ObstacleType obstacle) const;
+    std::string getBiomeTexture(HammerEngine::Biome biome) const;
+    std::string getObstacleTexture(HammerEngine::ObstacleType obstacle) const;
 };
 
 }
