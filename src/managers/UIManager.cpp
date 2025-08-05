@@ -165,6 +165,12 @@ void UIManager::clean() {
   if (m_isShutdown) {
     return;
   }
+  
+  // Perform comprehensive cleanup to clear all cached textures
+  cleanupForStateTransition();
+  
+  // Mark as shutdown
+  m_isShutdown = true;
 }
 
 void UIManager::sortComponentsByZOrder() {

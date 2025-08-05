@@ -136,6 +136,15 @@ class FontManager {
   void clearFont(const std::string& fontID);
 
   /**
+   * @brief Safely reloads all fonts for display changes (e.g., DPI changes)
+   * @param fontPath Directory containing font files
+   * @param windowWidth Current window width
+   * @param windowHeight Current window height
+   * @return true if fonts were successfully reloaded, false otherwise
+   */
+  bool reloadFontsForDisplay(const std::string& fontPath, int windowWidth, int windowHeight);
+
+  /**
    * @brief Cleans up all font resources and shuts down TTF system
    */
   void clean();
