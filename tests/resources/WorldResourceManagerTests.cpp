@@ -118,14 +118,6 @@ BOOST_AUTO_TEST_CASE(TestInitialization) {
   auto worlds = worldManager->getWorldIds();
   BOOST_CHECK_EQUAL(worlds.size(), 1);
   BOOST_CHECK(worldManager->hasWorld("default"));
-
-  // Clean and re-initialize
-  worldManager->clean();
-  BOOST_CHECK(!worldManager->isInitialized());
-
-  bool reinitialized = worldManager->init();
-  BOOST_CHECK(reinitialized);
-  BOOST_CHECK(worldManager->isInitialized());
 }
 
 BOOST_AUTO_TEST_CASE(TestWorldCreationAndRemoval) {

@@ -22,7 +22,7 @@ The project uses CMake for building. The main executable is `SDL3_Template`.
 
 -   **Build (Debug):**
     ```bash
-    ninja -C build -v 2>&1 | grep -E "(warning|unused|error)"
+    ninja -C build -v 2>&1 | grep -E "(warning|unused|error) | head -n 100"
     ```
 -   **Build (Release):**
     ```bash
@@ -38,7 +38,7 @@ The project uses CMake for building. The main executable is `SDL3_Template`.
 
 -   **Run All Tests:**
     ```bash
-    ./run_all_tests.sh --core-only --errors-only
+     timeout 95s ./run_all_tests.sh --core-only --errors-only
     ```
 -   **Run a Single Test:**
     There are two ways to run a single test:
@@ -77,3 +77,15 @@ The project uses CMake for building. The main executable is `SDL3_Template`.
 -   `run_all_tests.sh`: The script for executing the test suite.
 -   `docs/`: Contains extensive documentation on various engine systems.
 -   `res/`: Contains all game assets (images, fonts, sounds, data).
+
+## Critical Workflow Reminder
+
+**ALWAYS COMPILE BEFORE TESTING.**
+
+After making any code changes, you must compile the project before running any tests. This ensures that the tests are running against the latest version of the code.
+
+Use the following command to compile the project:
+
+```bash
+ninja -C build -v 2>&1 | grep -E "(warning|unused|error)"
+```

@@ -52,7 +52,7 @@ struct ResourceEdgeCaseFixture {
     BOOST_REQUIRE(worldManager->init());
   }
 
-  ~ResourceEdgeCaseFixture() {
+    ~ResourceEdgeCaseFixture() {
     worldManager->clean();
     templateManager->clean();
     // Note: Don't clean ThreadSystem here as it's shared across tests

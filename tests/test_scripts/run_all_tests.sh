@@ -127,7 +127,7 @@ run_test_script() {
   local script_name=$(basename "$script")
   local args=""
 
-  # Pass along relevant flags
+  # Pass along relevant flags (but not --errors-only, we handle that here)
   if [ "$VERBOSE" = true ]; then
     args="$args --verbose"
   fi
@@ -160,11 +160,22 @@ run_test_script() {
 
   # Run the script with provided arguments
   if [ "$ERRORS_ONLY" = true ]; then
-    $script $args 2>&1 | grep -E "(warning|error|FAIL|FAILED)"
+    # Redirect all output to temp file, preserve exit code
+    local temp_output=$(mktemp)
+    $script $args >"$temp_output" 2>&1
+    local result=$?
+    
+    # Show only script name and result - suppress all normal output
+    # Only show content if there are actual test failures
+    if [ $result -ne 0 ] || grep -qE "(BOOST_CHECK.*failed|BOOST_REQUIRE.*failed|Test.*failed|FAILED.*test|BUILD FAILED|compilation.*failed|Segmentation fault|Assertion.*failed|\[error\].*test|\*\*\* FAILURE|✗.*failed)" "$temp_output"; then
+      echo -e "\n${RED}Test failures detected in $script_name:${NC}"
+      grep -E "(BOOST_CHECK.*failed|BOOST_REQUIRE.*failed|Test.*failed|FAILED.*test|BUILD FAILED|compilation.*failed|Segmentation fault|Assertion.*failed|\[error\].*test|\*\*\* FAILURE|✗.*failed)" "$temp_output" || echo "Script failed with exit code $result"
+    fi
+    rm -f "$temp_output"
   else
     $script $args
+    local result=$?
   fi
-  local result=$?
 
   if [ $result -eq 0 ]; then
     if [ "$is_benchmark" = true ]; then
