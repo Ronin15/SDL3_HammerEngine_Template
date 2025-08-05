@@ -15,8 +15,6 @@
 #include <thread>
 #include <chrono>
 
-namespace HammerEngine {
-
 bool WorldManager::init() {
     if (m_initialized.load(std::memory_order_acquire)) {
         WORLD_MANAGER_WARN("WorldManager already initialized");
@@ -30,7 +28,7 @@ bool WorldManager::init() {
     }
     
     try {
-        m_tileRenderer = std::make_unique<TileRenderer>();
+        m_tileRenderer = std::make_unique<HammerEngine::TileRenderer>();
         // Note: Event handlers will be registered later to avoid race conditions with EventManager
         
         m_isShutdown = false;
@@ -74,7 +72,7 @@ void WorldManager::clean() {
     WORLD_MANAGER_INFO("WorldManager cleaned up");
 }
 
-bool WorldManager::loadNewWorld(const WorldGenerationConfig& config) {
+bool WorldManager::loadNewWorld(const HammerEngine::WorldGenerationConfig& config) {
     if (!m_initialized.load(std::memory_order_acquire)) {
         WORLD_MANAGER_ERROR("WorldManager not initialized");
         return false;
@@ -83,7 +81,7 @@ bool WorldManager::loadNewWorld(const WorldGenerationConfig& config) {
     std::lock_guard<std::shared_mutex> lock(m_worldMutex);
     
     try {
-        auto newWorld = WorldGenerator::generateWorld(config);
+        auto newWorld = HammerEngine::WorldGenerator::generateWorld(config);
         if (!newWorld) {
             WORLD_MANAGER_ERROR("Failed to generate new world");
             return false;
@@ -145,7 +143,7 @@ void WorldManager::unloadWorld() {
     }
 }
 
-const Tile* WorldManager::getTileAt(int x, int y) const {
+const HammerEngine::Tile* WorldManager::getTileAt(int x, int y) const {
     std::shared_lock<std::shared_mutex> lock(m_worldMutex);
     
     if (!m_currentWorld || !isValidPosition(x, y)) {
@@ -155,7 +153,7 @@ const Tile* WorldManager::getTileAt(int x, int y) const {
     return &m_currentWorld->grid[y][x];
 }
 
-Tile* WorldManager::getTileAt(int x, int y) {
+HammerEngine::Tile* WorldManager::getTileAt(int x, int y) {
     std::shared_lock<std::shared_mutex> lock(m_worldMutex);
     
     if (!m_currentWorld || !isValidPosition(x, y)) {
@@ -223,19 +221,19 @@ bool WorldManager::handleHarvestResource(int entityId, int targetX, int targetY)
         return false;
     }
     
-    Tile& tile = m_currentWorld->grid[targetY][targetX];
+    HammerEngine::Tile& tile = m_currentWorld->grid[targetY][targetX];
     
-    if (tile.obstacleType == ObstacleType::NONE) {
+    if (tile.obstacleType == HammerEngine::ObstacleType::NONE) {
         WORLD_MANAGER_WARN("No harvestable resource at position: (" + std::to_string(targetX) + ", " + std::to_string(targetY) + ")");
         return false;
     }
     
     // Store the original obstacle type for resource tracking
-    ObstacleType harvestedType = tile.obstacleType;
+    HammerEngine::ObstacleType harvestedType = tile.obstacleType;
     (void)harvestedType; // Suppress unused warning
     
     // Remove the obstacle
-    tile.obstacleType = ObstacleType::NONE;
+    tile.obstacleType = HammerEngine::ObstacleType::NONE;
     tile.resourceHandle = HammerEngine::ResourceHandle{};
     
     // Fire tile changed event
@@ -248,7 +246,7 @@ bool WorldManager::handleHarvestResource(int entityId, int targetX, int targetY)
     return true;
 }
 
-bool WorldManager::updateTile(int x, int y, const Tile& newTile) {
+bool WorldManager::updateTile(int x, int y, const HammerEngine::Tile& newTile) {
     if (!m_initialized.load(std::memory_order_acquire) || !m_currentWorld) {
         WORLD_MANAGER_ERROR("WorldManager not initialized or no active world");
         return false;
@@ -267,15 +265,15 @@ bool WorldManager::updateTile(int x, int y, const Tile& newTile) {
     return true;
 }
 
-void WorldManager::fireTileChangedEvent(int x, int y, const Tile& tile) {
+void WorldManager::fireTileChangedEvent(int x, int y, const HammerEngine::Tile& tile) {
     try {
         // Use tile information to determine change type based on tile properties
         std::string changeType = "tile_modified";
         if (tile.isWater) {
             changeType = "water_tile_changed";
-        } else if (tile.biome == Biome::FOREST) {
+        } else if (tile.biome == HammerEngine::Biome::FOREST) {
             changeType = "forest_tile_changed";
-        } else if (tile.biome == Biome::MOUNTAIN) {
+        } else if (tile.biome == HammerEngine::Biome::MOUNTAIN) {
             changeType = "mountain_tile_changed";
         }
         
@@ -468,16 +466,16 @@ void WorldManager::initializeWorldResources() {
                 totalTiles++;
                 
                 switch (tile.biome) {
-                    case Biome::FOREST:
+                    case HammerEngine::Biome::FOREST:
                         forestTiles++;
                         break;
-                    case Biome::MOUNTAIN:
+                    case HammerEngine::Biome::MOUNTAIN:
                         mountainTiles++;
                         break;
-                    case Biome::SWAMP:
+                    case HammerEngine::Biome::SWAMP:
                         swampTiles++;
                         break;
-                    case Biome::CELESTIAL:
+                    case HammerEngine::Biome::CELESTIAL:
                         celestialTiles++;
                         break;
                     default:
@@ -589,7 +587,7 @@ void WorldManager::initializeWorldResources() {
 
 // TileRenderer Implementation
 
-void TileRenderer::renderVisibleTiles(const WorldData& world, int cameraX, int cameraY, 
+void HammerEngine::TileRenderer::renderVisibleTiles(const HammerEngine::WorldData& world, int cameraX, int cameraY, 
                                      int viewportWidth, int viewportHeight) {
     if (world.grid.empty()) {
         return;
@@ -618,12 +616,12 @@ void TileRenderer::renderVisibleTiles(const WorldData& world, int cameraX, int c
     }
 }
 
-void TileRenderer::renderTile(const Tile& tile, int screenX, int screenY) {
+void HammerEngine::TileRenderer::renderTile(const HammerEngine::Tile& tile, int screenX, int screenY) {
     char character;
     std::pair<uint8_t, uint8_t> colors;
     
     // Determine character and color based on tile content
-    if (tile.obstacleType != ObstacleType::NONE) {
+    if (tile.obstacleType != HammerEngine::ObstacleType::NONE) {
         character = getObstacleCharacter(tile.obstacleType);
         colors = getObstacleColor(tile.obstacleType);
     } else if (tile.isWater) {
@@ -634,63 +632,55 @@ void TileRenderer::renderTile(const Tile& tile, int screenX, int screenY) {
         colors = getBiomeColor(tile.biome);
     }
     
-    // Suppress unused warnings for now - actual FontManager integration would use these
-    (void)character;
-    (void)colors;
-    (void)screenX;
-    (void)screenY;
-    
     // Use FontManager to render the character
-    // This is a simplified version - actual implementation would use FontManager
-    // FontManager::Instance().renderCharacter(character, screenX, screenY, colors.first, colors.second);
+    FontManager::Instance().drawText(std::string(1, character), "fonts_Arial", screenX, screenY, {colors.first, colors.second, 0, 255}, GameEngine::Instance().getRenderer());
 }
 
-char TileRenderer::getBiomeCharacter(Biome biome) const {
+char HammerEngine::TileRenderer::getBiomeCharacter(HammerEngine::Biome biome) const {
     switch (biome) {
-        case Biome::DESERT:     return '.';
-        case Biome::FOREST:     return '"';
-        case Biome::MOUNTAIN:   return '^';
-        case Biome::SWAMP:      return '%';
-        case Biome::HAUNTED:    return 'H';
-        case Biome::CELESTIAL:  return '*';
-        case Biome::OCEAN:      return '~';
+        case HammerEngine::Biome::DESERT:     return '.';
+        case HammerEngine::Biome::FOREST:     return '"';
+        case HammerEngine::Biome::MOUNTAIN:   return '^';
+        case HammerEngine::Biome::SWAMP:      return '%';
+        case HammerEngine::Biome::HAUNTED:    return 'H';
+        case HammerEngine::Biome::CELESTIAL:  return '*';
+        case HammerEngine::Biome::OCEAN:      return '~';
         default:                return ' ';
     }
 }
 
-char TileRenderer::getObstacleCharacter(ObstacleType obstacle) const {
+char HammerEngine::TileRenderer::getObstacleCharacter(HammerEngine::ObstacleType obstacle) const {
     switch (obstacle) {
-        case ObstacleType::TREE:    return 'T';
-        case ObstacleType::WATER:   return '~';
-        case ObstacleType::ROCK:    return '#';
-        case ObstacleType::BUILDING: return 'B';
+        case HammerEngine::ObstacleType::TREE:    return 'T';
+        case HammerEngine::ObstacleType::WATER:   return '~';
+        case HammerEngine::ObstacleType::ROCK:    return '#';
+        case HammerEngine::ObstacleType::BUILDING: return 'B';
         default:                    return ' ';
     }
 }
 
-std::pair<uint8_t, uint8_t> TileRenderer::getBiomeColor(Biome biome) const {
+std::pair<uint8_t, uint8_t> HammerEngine::TileRenderer::getBiomeColor(HammerEngine::Biome biome) const {
     // Returns foreground, background color pair
     switch (biome) {
-        case Biome::DESERT:     return {14, 0}; // Yellow on black
-        case Biome::FOREST:     return {2, 0};  // Green on black
-        case Biome::MOUNTAIN:   return {8, 0};  // Gray on black
-        case Biome::SWAMP:      return {6, 0};  // Brown on black
-        case Biome::HAUNTED:    return {5, 0};  // Purple on black
-        case Biome::CELESTIAL:  return {11, 0}; // Cyan on black
-        case Biome::OCEAN:      return {1, 0};  // Blue on black
+        case HammerEngine::Biome::DESERT:     return {14, 0}; // Yellow on black
+        case HammerEngine::Biome::FOREST:     return {2, 0};  // Green on black
+        case HammerEngine::Biome::MOUNTAIN:   return {8, 0};  // Gray on black
+        case HammerEngine::Biome::SWAMP:      return {6, 0};  // Brown on black
+        case HammerEngine::Biome::HAUNTED:    return {5, 0};  // Purple on black
+        case HammerEngine::Biome::CELESTIAL:  return {11, 0}; // Cyan on black
+        case HammerEngine::Biome::OCEAN:      return {1, 0};  // Blue on black
         default:                return {7, 0};  // White on black
     }
 }
 
-std::pair<uint8_t, uint8_t> TileRenderer::getObstacleColor(ObstacleType obstacle) const {
+std::pair<uint8_t, uint8_t> HammerEngine::TileRenderer::getObstacleColor(HammerEngine::ObstacleType obstacle) const {
     // Returns foreground, background color pair
     switch (obstacle) {
-        case ObstacleType::TREE:    return {2, 0};  // Green on black
-        case ObstacleType::ROCK:    return {8, 0};  // Gray on black
-        case ObstacleType::WATER:   return {1, 0};  // Blue on black
-        case ObstacleType::BUILDING: return {11, 0}; // Cyan on black
+        case HammerEngine::ObstacleType::TREE:    return {2, 0};  // Green on black
+        case HammerEngine::ObstacleType::ROCK:    return {8, 0};  // Gray on black
+        case HammerEngine::ObstacleType::WATER:   return {1, 0};  // Blue on black
+        case HammerEngine::ObstacleType::BUILDING: return {11, 0}; // Cyan on black
         default:                    return {7, 0};  // White on black
     }
 }
-
-}
+        

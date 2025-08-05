@@ -563,7 +563,7 @@ bool GameEngine::init(const std::string_view title, const int width,
       HammerEngine::ThreadSystem::Instance().enqueueTaskWithResult(
           []() -> bool {
             GAMEENGINE_INFO("Creating World Manager");
-            HammerEngine::WorldManager &worldMgr = HammerEngine::WorldManager::Instance();
+            WorldManager &worldMgr = WorldManager::Instance();
             if (!worldMgr.init()) {
               GAMEENGINE_CRITICAL("Failed to initialize World Manager");
               return false;
@@ -667,6 +667,14 @@ bool GameEngine::init(const std::string_view title, const int width,
     }
     mp_worldResourceManager = &worldResourceMgrTest;
 
+    // Validate World Manager before caching
+    WorldManager &worldMgrTest = WorldManager::Instance();
+    if (!worldMgrTest.isInitialized()) {
+      GAMEENGINE_CRITICAL("WorldManager not properly initialized before caching!");
+      return false;
+    }
+    mp_worldManager = &worldMgrTest;
+
     // InputManager not cached - handled in handleEvents() for proper SDL
     // architecture
 
@@ -704,7 +712,7 @@ bool GameEngine::init(const std::string_view title, const int width,
   GAMEENGINE_INFO("Setting up manager cross-dependencies");
   try {
     // Setup WorldManager event handlers now that EventManager is guaranteed to be ready
-    HammerEngine::WorldManager &worldMgr = HammerEngine::WorldManager::Instance();
+    WorldManager &worldMgr = WorldManager::Instance();
     if (worldMgr.isInitialized()) {
       worldMgr.setupEventHandlers();
       GAMEENGINE_INFO("WorldManager event handlers setup complete");
@@ -1132,7 +1140,7 @@ void GameEngine::clean() {
   InputManager::Instance().clean();
 
   GAMEENGINE_INFO("Cleaning up World Manager...");
-  HammerEngine::WorldManager::Instance().clean();
+  WorldManager::Instance().clean();
 
   GAMEENGINE_INFO("Cleaning up World Resource Manager...");
   WorldResourceManager::Instance().clean();
@@ -1150,6 +1158,8 @@ void GameEngine::clean() {
   mp_particleManager = nullptr;
   mp_resourceTemplateManager = nullptr;
   mp_worldResourceManager = nullptr;
+  mp_worldManager = nullptr;
+
   // InputManager not cached
   GAMEENGINE_INFO("Manager caches cleared");
 

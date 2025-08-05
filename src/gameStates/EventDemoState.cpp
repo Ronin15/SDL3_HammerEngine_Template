@@ -1863,7 +1863,7 @@ void EventDemoState::setupCameraForWorld() {
   }
   
   // Get actual world bounds from WorldManager
-  HammerEngine::WorldManager& worldManager = HammerEngine::WorldManager::Instance();
+  WorldManager& worldManager = WorldManager::Instance();
   
   HammerEngine::Camera::Bounds worldBounds;
   float minX, minY, maxX, maxY;
