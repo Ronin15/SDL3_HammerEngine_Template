@@ -600,9 +600,13 @@ void HammerEngine::TileRenderer::renderVisibleTiles(const HammerEngine::WorldDat
     int worldHeight = static_cast<int>(world.grid.size());
     int worldWidth = static_cast<int>(world.grid[0].size());
     
+    // Floor camera coordinates to prevent sub-pixel rendering issues on macOS
+    float flooredCameraX = floorf(cameraX);
+    float flooredCameraY = floorf(cameraY);
+
     // Convert camera position to tile coordinates
-    int cameraTileX = static_cast<int>(cameraX / TILE_SIZE);
-    int cameraTileY = static_cast<int>(cameraY / TILE_SIZE);
+    int cameraTileX = static_cast<int>(flooredCameraX / TILE_SIZE);
+    int cameraTileY = static_cast<int>(flooredCameraY / TILE_SIZE);
     
     // Calculate how many tiles fit in the viewport
     int tilesPerScreenWidth = (viewportWidth / TILE_SIZE) + 1;
@@ -618,8 +622,8 @@ void HammerEngine::TileRenderer::renderVisibleTiles(const HammerEngine::WorldDat
     for (int y = startY; y < endY; ++y) {
         for (int x = startX; x < endX; ++x) {
             // Calculate screen position
-            int screenX = (x * TILE_SIZE) - static_cast<int>(cameraX);
-            int screenY = (y * TILE_SIZE) - static_cast<int>(cameraY);
+            int screenX = (x * TILE_SIZE) - static_cast<int>(flooredCameraX);
+            int screenY = (y * TILE_SIZE) - static_cast<int>(flooredCameraY);
             
             // Only render if tile is actually visible on screen
             if (screenX + TILE_SIZE >= 0 && screenX < viewportWidth && 
