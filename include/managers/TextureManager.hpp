@@ -77,6 +77,7 @@ class TextureManager {
                  int currentFrame,
                  SDL_Renderer* p_renderer,
                  SDL_FlipMode flip = SDL_FLIP_NONE);
+
   /**
    * @brief Draws a texture with parallax scrolling effect
    * @param textureID Unique identifier of the texture to draw

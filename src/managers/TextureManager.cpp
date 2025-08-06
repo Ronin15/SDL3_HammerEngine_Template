@@ -67,6 +67,7 @@ bool TextureManager::load(const std::string& fileName,
               SDL_CreateTextureFromSurface(p_renderer, surface.get()), SDL_DestroyTexture);
 
           if (texture) {
+            SDL_SetTextureScaleMode(texture.get(), SDL_SCALEMODE_NEAREST);
             //SDL_SetTextureBlendMode(texture.get(), SDL_BLENDMODE_ADD); //for lighting // this puts light on by default
             m_textureMap[combinedID] = std::shared_ptr<SDL_Texture>(texture.release(), SDL_DestroyTexture);
             loadedAny = true;
@@ -105,6 +106,7 @@ bool TextureManager::load(const std::string& fileName,
       SDL_CreateTextureFromSurface(p_renderer, surface.get()), SDL_DestroyTexture);
 
   if (texture) {
+    SDL_SetTextureScaleMode(texture.get(), SDL_SCALEMODE_NEAREST);
     m_textureMap[textureID] = std::shared_ptr<SDL_Texture>(texture.release(), SDL_DestroyTexture);
     m_texturesLoaded.store(true, std::memory_order_release);
     return true;
@@ -124,17 +126,19 @@ void TextureManager::draw(const std::string& textureID,
                           SDL_FlipMode flip) {
   SDL_FRect srcRect;
   SDL_FRect destRect;
-  SDL_FPoint center = {width / 2.0f, height / 2.0f};  // Center point in the middle of the image
+  SDL_FPoint center = {static_cast<float>(width) / 2.0f, static_cast<float>(height) / 2.0f};  // Center point in the middle of the image
   double angle = 0.0;
 
-  srcRect.x = 0;
-  srcRect.y = 0;
-  srcRect.w = width;
-  srcRect.h = height;
-  destRect.w = width;
-  destRect.h = height;
-  destRect.x = x;
-  destRect.y = y;
+  // Inset source rectangle by a small amount to prevent texture bleeding
+  srcRect.x = 0.1f;
+  srcRect.y = 0.1f;
+  srcRect.w = static_cast<float>(width) - 0.2f;
+  srcRect.h = static_cast<float>(height) - 0.2f;
+
+  destRect.w = static_cast<float>(width);
+  destRect.h = static_cast<float>(height);
+  destRect.x = static_cast<float>(x);
+  destRect.y = static_cast<float>(y);
 
   SDL_RenderTextureRotated(p_renderer, m_textureMap[textureID].get(), &srcRect, &destRect, angle, &center, flip);
 }
@@ -150,17 +154,19 @@ void TextureManager::drawFrame(const std::string& textureID,
                                SDL_FlipMode flip) {
   SDL_FRect srcRect;
   SDL_FRect destRect;
-  SDL_FPoint center = {width / 2.0f, height / 2.0f};  // Center point in the middle of the image
+  SDL_FPoint center = {static_cast<float>(width) / 2.0f, static_cast<float>(height) / 2.0f};  // Center point in the middle of the image
   double angle = 0.0;
 
-  srcRect.x = width * currentFrame;
-  srcRect.y = height * (currentRow - 1);
-  srcRect.w = width;
-  srcRect.h = height;
-  destRect.w = width;
-  destRect.h = height;
-  destRect.x = x;
-  destRect.y = y;
+  // Inset source rectangle to prevent texture bleeding
+  srcRect.x = static_cast<float>(width * currentFrame) + 0.1f;
+  srcRect.y = static_cast<float>(height * (currentRow - 1)) + 0.1f;
+  srcRect.w = static_cast<float>(width) - 0.2f;
+  srcRect.h = static_cast<float>(height) - 0.2f;
+
+  destRect.w = static_cast<float>(width);
+  destRect.h = static_cast<float>(height);
+  destRect.x = static_cast<float>(x);
+  destRect.y = static_cast<float>(y);
 
   SDL_RenderTextureRotated(p_renderer, m_textureMap[textureID].get(), &srcRect, &destRect, angle, &center, flip);
 }
