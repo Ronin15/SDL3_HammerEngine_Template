@@ -67,6 +67,7 @@ bool TextureManager::load(const std::string& fileName,
               SDL_CreateTextureFromSurface(p_renderer, surface.get()), SDL_DestroyTexture);
 
           if (texture) {
+            // Fix for tile rendering artifacts on macOS (Metal backend) by forcing nearest-pixel sampling.
             SDL_SetTextureScaleMode(texture.get(), SDL_SCALEMODE_NEAREST);
             //SDL_SetTextureBlendMode(texture.get(), SDL_BLENDMODE_ADD); //for lighting // this puts light on by default
             m_textureMap[combinedID] = std::shared_ptr<SDL_Texture>(texture.release(), SDL_DestroyTexture);
@@ -106,6 +107,7 @@ bool TextureManager::load(const std::string& fileName,
       SDL_CreateTextureFromSurface(p_renderer, surface.get()), SDL_DestroyTexture);
 
   if (texture) {
+    // Fix for tile rendering artifacts on macOS (Metal backend) by forcing nearest-pixel sampling.
     SDL_SetTextureScaleMode(texture.get(), SDL_SCALEMODE_NEAREST);
     m_textureMap[textureID] = std::shared_ptr<SDL_Texture>(texture.release(), SDL_DestroyTexture);
     m_texturesLoaded.store(true, std::memory_order_release);

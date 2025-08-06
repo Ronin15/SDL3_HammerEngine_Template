@@ -257,6 +257,18 @@ void Camera::screenToWorld(float screenX, float screenY, float& worldX, float& w
     worldY = screenY + view.y;
 }
 
+Vector2D Camera::screenToWorld(const Vector2D& screenCoords) const {
+    float worldX, worldY;
+    screenToWorld(screenCoords.getX(), screenCoords.getY(), worldX, worldY);
+    return Vector2D(worldX, worldY);
+}
+
+Vector2D Camera::worldToScreen(const Vector2D& worldCoords) const {
+    float screenX, screenY;
+    worldToScreen(worldCoords.getX(), worldCoords.getY(), screenX, screenY);
+    return Vector2D(screenX, screenY);
+}
+
 void Camera::snapToTarget() {
     if (hasTarget()) {
         Vector2D targetPos = getTargetPosition();
