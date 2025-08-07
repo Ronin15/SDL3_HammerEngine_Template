@@ -151,7 +151,7 @@ private:
   bool m_limitMessageShown{false}; // Track if limit message has been shown
 
   // Inventory UI
-  bool m_showInventory{true}; // Show inventory panel by default
+  bool m_showInventory{false}; // Hide inventory panel by default like GamePlayState
 
   // Resource change tracking for demonstrations
   std::unordered_map<HammerEngine::ResourceHandle, int>
@@ -172,6 +172,7 @@ private:
   void setupResourceAchievements(); // Setup achievement demonstration
 
   // Inventory UI methods
+  void toggleInventoryDisplay(); // Toggle inventory visibility like GamePlayState
 
   // Resource change event demonstration methods
   void processResourceAchievements(HammerEngine::ResourceHandle handle,

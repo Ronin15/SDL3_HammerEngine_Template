@@ -101,42 +101,48 @@ bool EventDemoState::enter() {
     // Add initial log entry
     addLogEntry("Event Demo System Initialized");
 
-    // Create simple UI components using auto-detecting methods
+    // Create simple UI components using auto-detecting methods with dramatic spacing
     auto &ui = UIManager::Instance();
-    ui.createTitleAtTop("event_title", "Event Demo State", 25);
-    ui.createLabel("event_phase", {10, 40, 300, 20}, "Phase: Initialization");
-    ui.createLabel("event_status", {10, 65, 400, 20},
+    ui.createTitleAtTop("event_title", "Event Demo State", 35);  // Increased title height from 25 to 35
+    ui.createLabel("event_phase", {10, 60, 300, 25}, "Phase: Initialization");  // Increased height from 20 to 25
+    ui.createLabel("event_status", {10, 95, 400, 25},  // Increased height from 20 to 25
                    "FPS: -- | Weather: Clear | NPCs: 0");
     ui.createLabel(
-        "event_controls", {10, 90, ui.getLogicalWidth() - 20, 20},
+        "event_controls", {10, 130, ui.getLogicalWidth() - 20, 25},  // Increased height from 20 to 25
         "[B] Exit | [SPACE] Manual | [1-6] Events | [A] Auto | [R] "
-        "Reset | [F] Fire | [S] Smoke | [K] Sparks | Inventory Panel →");
+        "Reset | [F] Fire | [S] Smoke | [K] Sparks | [I] Inventory");
 
     // Create event log component using auto-detected dimensions
     ui.createEventLog("event_log", {10, ui.getLogicalHeight() - 200, 730, 180},
                       7);
     ui.addEventLogEntry("event_log", "Event Demo System Initialized");
 
-    // Create right-aligned inventory panel for resource demo visualization
+    // Create right-aligned inventory panel for resource demo visualization with dramatic spacing
     int windowWidth = ui.getLogicalWidth();
     int inventoryWidth = 280;
-    int inventoryHeight = 320;
+    int inventoryHeight = 400;  // Increased height dramatically
     int inventoryX =
         windowWidth - inventoryWidth - 20; // Right-aligned with 20px margin
-    int inventoryY = 120;
+    int inventoryY = 170;  // Moved down dramatically to avoid overlap
 
     ui.createPanel("inventory_panel",
                    {inventoryX, inventoryY, inventoryWidth, inventoryHeight});
+    ui.setComponentVisible("inventory_panel", false);
+    
     ui.createTitle("inventory_title",
-                   {inventoryX + 10, inventoryY + 10, inventoryWidth - 20, 30},
+                   {inventoryX + 10, inventoryY + 25, inventoryWidth - 20, 35},  // Increased height from 30 to 35
                    "Player Inventory");
+    ui.setComponentVisible("inventory_title", false);
+    
     ui.createLabel("inventory_status",
-                   {inventoryX + 10, inventoryY + 45, inventoryWidth - 20, 20},
+                   {inventoryX + 10, inventoryY + 75, inventoryWidth - 20, 25},  // Increased height from 20 to 25
                    "Capacity: 0/50");
+    ui.setComponentVisible("inventory_status", false);
 
     // Create inventory list for smooth updates like GamePlayState
     ui.createList("inventory_list",
-                  {inventoryX + 10, inventoryY + 75, inventoryWidth - 20, 220});
+                  {inventoryX + 10, inventoryY + 110, inventoryWidth - 20, 270});  // Moved down from 95 to 110, increased height
+    ui.setComponentVisible("inventory_list", false);
 
     // --- DATA BINDING SETUP ---
     // Bind the inventory capacity label to a function that gets the data
@@ -758,6 +764,11 @@ void EventDemoState::handleInput() {
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_K)) {
     particleMgr.toggleSparksEffect();
     addLogEntry("Sparks effect toggled");
+  }
+
+  // Inventory toggle (I key)
+  if (inputMgr.wasKeyPressed(SDL_SCANCODE_I)) {
+    toggleInventoryDisplay();
   }
 
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_B)) {
@@ -1937,4 +1948,16 @@ void EventDemoState::setupCameraForWorld() {
   }
   
   m_camera->setWorldBounds(worldBounds);
+}
+
+void EventDemoState::toggleInventoryDisplay() {
+  auto &ui = UIManager::Instance();
+  m_showInventory = !m_showInventory;
+
+  ui.setComponentVisible("inventory_panel", m_showInventory);
+  ui.setComponentVisible("inventory_title", m_showInventory);
+  ui.setComponentVisible("inventory_status", m_showInventory);
+  ui.setComponentVisible("inventory_list", m_showInventory);
+
+  addLogEntry("Inventory " + std::string(m_showInventory ? "shown" : "hidden"));
 }
