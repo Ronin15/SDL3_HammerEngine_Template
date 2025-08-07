@@ -227,40 +227,31 @@ void GamePlayState::initializeInventoryUI() {
   const auto &gameEngine = GameEngine::Instance();
   int windowWidth = gameEngine.getLogicalWidth();
 
-  // Create inventory panel (initially hidden)
-  int inventoryWidth = 300;
-  int inventoryHeight = 420; // Increased height to accommodate better spacing
+  // Create inventory panel (initially hidden) matching EventDemoState layout
+  int inventoryWidth = 280;  // Match EventDemoState width
+  int inventoryHeight = 400; // Match EventDemoState height
   int inventoryX = windowWidth - inventoryWidth - 20;
-  int inventoryY = 60;
+  int inventoryY = 170;  // Match EventDemoState Y position
 
   ui.createPanel("gameplay_inventory_panel",
                  {inventoryX, inventoryY, inventoryWidth, inventoryHeight});
-  ui.createTitle("gameplay_inventory_title",
-                 {inventoryX + 10, inventoryY + 10, inventoryWidth - 20, 30},
-                 "Player Inventory");
-
-  // Create inventory list for displaying items with better spacing
-  ui.createList("gameplay_inventory_list",
-                {inventoryX + 10, inventoryY + 50, inventoryWidth - 20, 260});
-
-  // Create resource status labels with better vertical spacing
-  ui.createLabel("gameplay_gold_label",
-                 {inventoryX + 10, inventoryY + 330, inventoryWidth - 20, 20},
-                 "Gold: 0");
-  ui.createLabel("gameplay_potions_label",
-                 {inventoryX + 10, inventoryY + 355, inventoryWidth - 20, 20},
-                 "Health Potions: 0");
-  ui.createLabel("gameplay_total_items",
-                 {inventoryX + 10, inventoryY + 380, inventoryWidth - 20, 20},
-                 "Total Items: 0");
-
-  // Hide inventory initially
   ui.setComponentVisible("gameplay_inventory_panel", false);
+  
+  ui.createTitle("gameplay_inventory_title",
+                 {inventoryX + 10, inventoryY + 25, inventoryWidth - 20, 35},
+                 "Player Inventory");
   ui.setComponentVisible("gameplay_inventory_title", false);
+  
+  ui.createLabel("gameplay_inventory_status",
+                 {inventoryX + 10, inventoryY + 75, inventoryWidth - 20, 25},
+                 "Capacity: 0/50");
+  ui.setComponentVisible("gameplay_inventory_status", false);
+
+  // Create inventory list for displaying items matching EventDemoState
+  ui.createList("gameplay_inventory_list",
+                {inventoryX + 10, inventoryY + 110, inventoryWidth - 20, 270});
   ui.setComponentVisible("gameplay_inventory_list", false);
-  ui.setComponentVisible("gameplay_gold_label", false);
-  ui.setComponentVisible("gameplay_potions_label", false);
-  ui.setComponentVisible("gameplay_total_items", false);
+
 }
 
 void GamePlayState::updateInventoryUI() {
@@ -268,38 +259,36 @@ void GamePlayState::updateInventoryUI() {
     return;
   }
 
+  auto &ui = UIManager::Instance();
   auto *inventory = mp_Player->getInventory();
-  UIManager &ui = UIManager::Instance();
+  if (!inventory) return;
 
-  int goldCount = 0;
-  if (m_goldHandle.isValid()) {
-    goldCount = inventory->getResourceQuantity(m_goldHandle);
-  }
-
-  int potionCount = 0;
-  if (m_healthPotionHandle.isValid()) {
-    potionCount = inventory->getResourceQuantity(m_healthPotionHandle);
-  }
-
-  size_t totalItems = inventory->getUsedSlots();
-
-  ui.setText("gameplay_gold_label", "Gold: " + std::to_string(goldCount));
-  ui.setText("gameplay_potions_label",
-             "Health Potions: " + std::to_string(potionCount));
-  ui.setText("gameplay_total_items",
-             "Total Items: " + std::to_string(totalItems) + "/" +
-                 std::to_string(inventory->getMaxSlots()));
+  // Update capacity status like EventDemoState
+  size_t usedSlots = inventory->getUsedSlots();
+  size_t maxSlots = inventory->getMaxSlots();
+  ui.setText("gameplay_inventory_status", "Capacity: " + std::to_string(usedSlots) + "/" + std::to_string(maxSlots));
 
   // Update inventory list
   ui.clearList("gameplay_inventory_list");
   auto allResources = inventory->getAllResources();
-  for (const auto &[resourceHandle, quantity] : allResources) {
-    if (quantity > 0) {
-      auto resourceTemplate =
-          ResourceTemplateManager::Instance().getResourceTemplate(
-              resourceHandle);
-      std::string displayName =
-          resourceTemplate ? resourceTemplate->getName() : "Unknown Resource";
+  
+  if (allResources.empty() || usedSlots == 0) {
+    ui.addListItem("gameplay_inventory_list", "(Empty)");
+  } else {
+    // Sort resources by name like EventDemoState
+    std::vector<std::pair<std::string, int>> sortedResources;
+    for (const auto &[resourceHandle, quantity] : allResources) {
+      if (quantity > 0) {
+        auto resourceTemplate =
+            ResourceTemplateManager::Instance().getResourceTemplate(resourceHandle);
+        std::string displayName =
+            resourceTemplate ? resourceTemplate->getName() : "Unknown Resource";
+        sortedResources.emplace_back(displayName, quantity);
+      }
+    }
+    std::sort(sortedResources.begin(), sortedResources.end());
+    
+    for (const auto &[displayName, quantity] : sortedResources) {
       ui.addListItem("gameplay_inventory_list",
                      displayName + " x" + std::to_string(quantity));
     }
@@ -312,10 +301,8 @@ void GamePlayState::toggleInventoryDisplay() {
 
   ui.setComponentVisible("gameplay_inventory_panel", m_inventoryVisible);
   ui.setComponentVisible("gameplay_inventory_title", m_inventoryVisible);
+  ui.setComponentVisible("gameplay_inventory_status", m_inventoryVisible);
   ui.setComponentVisible("gameplay_inventory_list", m_inventoryVisible);
-  ui.setComponentVisible("gameplay_gold_label", m_inventoryVisible);
-  ui.setComponentVisible("gameplay_potions_label", m_inventoryVisible);
-  ui.setComponentVisible("gameplay_total_items", m_inventoryVisible);
 
   std::cout << "Inventory " << (m_inventoryVisible ? "shown" : "hidden")
             << std::endl;
