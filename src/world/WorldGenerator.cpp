@@ -136,7 +136,7 @@ void WorldGenerator::assignBiomes(
             if (elevation < config.waterLevel) {
                 biome = Biome::OCEAN;
                 world.grid[y][x].isWater = true;
-            } else if (elevation > config.mountainLevel) {
+            } else if (elevation >= config.mountainLevel) {
                 biome = Biome::MOUNTAIN;
             } else {
                 // Assign biome based on humidity and elevation
