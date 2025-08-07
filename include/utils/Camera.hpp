@@ -305,7 +305,9 @@ public:
      * @param worldX Output world X coordinate
      * @param worldY Output world Y coordinate
      */
-    void screenToWorld(float screenX, float screenY, float& worldX, float& worldY) const;
+     void screenToWorld(float screenX, float screenY, float& worldX, float& worldY) const;
+     Vector2D screenToWorld(const Vector2D& screenCoords) const;
+     Vector2D worldToScreen(const Vector2D& worldCoords) const;
     
     /**
      * @brief Immediately snaps camera to target position (no interpolation)

@@ -20,6 +20,7 @@
 #include "managers/ResourceTemplateManager.hpp"
 #include "managers/UIManager.hpp"
 #include "managers/WorldManager.hpp"
+#include "utils/Camera.hpp"
 #include <algorithm>
 #include <ctime>
 #include <iomanip>
@@ -762,6 +763,19 @@ void EventDemoState::handleInput() {
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_B)) {
     gameEngine.getGameStateManager()->changeState("MainMenuState");
   }
+
+  // Mouse input for world interaction
+    if (inputMgr.getMouseButtonState(LEFT) && m_camera) {
+        Vector2D mousePos = inputMgr.getMousePosition();
+        auto& ui = UIManager::Instance();
+
+        if (!ui.isClickOnUI(mousePos)) {
+            Vector2D worldPos = m_camera->screenToWorld(mousePos);
+            // TODO: Implement world interaction at worldPos
+            // For now, we just log the coordinates
+            addLogEntry("World click at: (" + std::to_string(worldPos.getX()) + ", " + std::to_string(worldPos.getY()) + ")");
+        }
+    }
 }
 
 void EventDemoState::updateDemoTimer(float deltaTime) {

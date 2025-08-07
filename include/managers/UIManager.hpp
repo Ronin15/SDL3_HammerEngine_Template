@@ -444,7 +444,8 @@ public:
 
   // Debug methods
   void setDebugMode(bool enable) { m_debugMode = enable; }
-  void drawDebugBounds(bool enable) { m_drawDebugBounds = enable; }
+   void drawDebugBounds(bool enable) { m_drawDebugBounds = enable; }
+  bool isClickOnUI(const Vector2D& screenPos) const;
 
 private:
   // Core data

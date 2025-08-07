@@ -13,8 +13,11 @@
 #include "managers/UIManager.hpp"
 #include "managers/WorldManager.hpp"
 #include "world/WorldData.hpp"
+#include "utils/Camera.hpp"
 #include <iostream>
 #include <random>
+
+
 
 bool GamePlayState::enter() {
   // Create the player
@@ -204,6 +207,19 @@ void GamePlayState::handleInput() {
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_5)) {
     removeDemoResource(m_goldHandle, 5);
   }
+
+  // Mouse input for world interaction
+    if (inputMgr.getMouseButtonState(LEFT) && m_camera) {
+        Vector2D mousePos = inputMgr.getMousePosition();
+        auto& ui = UIManager::Instance();
+
+        if (!ui.isClickOnUI(mousePos)) {
+            Vector2D worldPos = m_camera->screenToWorld(mousePos);
+            // TODO: Implement world interaction at worldPos
+            // For now, we just log the coordinates
+            std::cout << "World click at: (" << worldPos.getX() << ", " << worldPos.getY() << ")\n";
+        }
+    }
 }
 
 void GamePlayState::initializeInventoryUI() {

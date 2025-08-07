@@ -2233,11 +2233,30 @@ void UIManager::renderCheckbox(SDL_Renderer *renderer,
     auto &fontManager = FontManager::Instance();
     int textX = boxBounds.x + boxBounds.width + component->m_style.padding;
     int textY = component->m_bounds.y + component->m_bounds.height / 2;
-    fontManager.drawTextAligned(component->m_text, component->m_style.fontID,
+  fontManager.drawTextAligned(component->m_text, component->m_style.fontID,
                                 textX, textY, component->m_style.textColor,
-                                renderer, 1); // Left-aligned
-  }
+renderer, static_cast<int>(component->m_style.textAlign));
 }
+}
+
+
+
+
+bool UIManager::isClickOnUI(const Vector2D& screenPos) const {
+    int mouseX = static_cast<int>(screenPos.getX());
+    int mouseY = static_cast<int>(screenPos.getY());
+
+    for (const auto& component : m_sortedComponents) {
+        if (component && component->m_visible && component->m_enabled) {
+            if (component->m_bounds.contains(mouseX, mouseY)) {
+                return true; // Click is on a UI element
+            }
+        }
+    }
+
+    return false; // Click is not on any UI element
+}
+
 
 void regenerateListTextures(const std::shared_ptr<UIComponent>& component, SDL_Renderer* renderer) {
     if (!component) {
