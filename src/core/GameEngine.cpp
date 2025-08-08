@@ -32,6 +32,7 @@
 #include "managers/UIManager.hpp"
 #include "managers/WorldManager.hpp"
 #include "managers/WorldResourceManager.hpp"
+#include <atomic>
 #include <chrono>
 #include <cstdlib>
 #include <future>
@@ -617,6 +618,12 @@ bool GameEngine::init(const std::string_view title, const int width,
     GAMEENGINE_ERROR("One or more initialization tasks failed");
     return false;
   }
+
+  // Ensure all memory writes from background threads are visible to main thread
+  std::atomic_thread_fence(std::memory_order_acquire);
+  
+  // Brief wait to ensure all initialization state changes are visible
+  std::this_thread::sleep_for(std::chrono::milliseconds(10));
 
   // Step 2: Cache manager references for performance (after all background init
   // complete)
