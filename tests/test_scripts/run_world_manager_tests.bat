@@ -70,16 +70,18 @@ if not exist "..\..\test_results" mkdir "..\..\test_results"
 :: Set up test environment
 set SDL_VIDEODRIVER=dummy
 
-:: Run the test
+:: Run the test from project root for resource file access
 echo !GREEN!Running tests...!NC!
+for %%f in ("!TEST_EXECUTABLE!") do set "ABS_TEST_EXECUTABLE=%%~ff"
+cd /d "%~dp0..\.."
 if "%VERBOSE%"=="true" (
-    "!TEST_EXECUTABLE!" --log_level=all --report_level=detailed
+    "!ABS_TEST_EXECUTABLE!" --log_level=all --report_level=detailed
 ) else (
-    "!TEST_EXECUTABLE!" --log_level=error --report_level=short
+    "!ABS_TEST_EXECUTABLE!" --log_level=error --report_level=short
 )
 
 set TEST_RESULT=!ERRORLEVEL!
-
+cd /d "%~dp0"
 if !TEST_RESULT! equ 0 (
     echo !GREEN!✓ WorldManager tests passed!!NC!
 ) else (
