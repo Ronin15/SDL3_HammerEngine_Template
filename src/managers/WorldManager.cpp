@@ -312,11 +312,12 @@ void WorldManager::fireWorldLoadedEvent(const std::string& worldId) {
         EventManager& eventMgr = EventManager::Instance();
         std::string eventName = "world_loaded_" + worldId;
         
-        // Register the event for asynchronous processing
+        // Register and execute the event for asynchronous processing
         // Don't execute immediately to avoid deadlocks
         eventMgr.registerEvent(eventName, worldEvent);
+        eventMgr.executeEvent(eventName);
         
-        WORLD_MANAGER_INFO("WorldLoadedEvent registered for world: " + worldId + " (" + std::to_string(width) + "x" + std::to_string(height) + ")");
+        WORLD_MANAGER_INFO("WorldLoadedEvent registered and executed for world: " + worldId + " (" + std::to_string(width) + "x" + std::to_string(height) + ")");
     } catch (const std::exception& ex) {
         WORLD_MANAGER_ERROR("Failed to fire WorldLoadedEvent: " + std::string(ex.what()));
     }

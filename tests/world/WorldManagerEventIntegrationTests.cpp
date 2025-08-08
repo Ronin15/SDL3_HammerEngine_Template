@@ -44,12 +44,15 @@ BOOST_AUTO_TEST_CASE(TestWorldLoadedEventPayload) {
     cfg.width = 5; cfg.height = 5; cfg.seed = 4242; cfg.elevationFrequency = 0.1f; cfg.humidityFrequency = 0.1f; cfg.waterLevel = 0.3f; cfg.mountainLevel = 0.7f;
     BOOST_REQUIRE(WorldManager::Instance().loadNewWorld(cfg));
 
+    // Process any immediate events
+    EventManager::Instance().update();
+
     // WorldManager posts event asynchronously; give time and pump EventManager
     auto start = std::chrono::steady_clock::now();
     auto timeout = std::chrono::milliseconds(500);
     while (std::chrono::steady_clock::now() - start < timeout && !gotLoaded.load()) {
         EventManager::Instance().update();
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
     }
 
     // Validate
@@ -97,8 +100,13 @@ BOOST_AUTO_TEST_CASE(TestHarvestResourceIntegration) {
     BOOST_REQUIRE(EventManager::Instance().registerEvent("harvest_test", harvest));
     BOOST_CHECK(EventManager::Instance().executeEvent("harvest_test"));
 
-    // Allow processing
-    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    // Allow processing with event pumping
+    auto start = std::chrono::steady_clock::now();
+    auto timeout = std::chrono::milliseconds(200);
+    while (std::chrono::steady_clock::now() - start < timeout && tileChangedCount.load() == 0) {
+        EventManager::Instance().update();
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
 
     const Tile* after = WorldManager::Instance().getTileAt(targetX, targetY);
     BOOST_REQUIRE(after != nullptr);

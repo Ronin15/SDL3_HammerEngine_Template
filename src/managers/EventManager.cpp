@@ -393,7 +393,43 @@ bool EventManager::executeEvent(const std::string &eventName) const {
     return false;
   }
 
+  // Get the event's type ID to find the appropriate handlers
+  EventTypeId typeId = getEventTypeId(event);
+  
+  // Execute the event itself
   event->execute();
+  
+  // Also trigger any registered handlers for this event type
+  std::vector<FastEventHandler> localHandlers;
+  {
+    std::lock_guard<std::mutex> lock(m_handlersMutex);
+    const auto &handlers = m_handlersByType[static_cast<size_t>(typeId)];
+    localHandlers.reserve(handlers.size());
+    std::copy_if(handlers.begin(), handlers.end(),
+                 std::back_inserter(localHandlers),
+                 [](const auto &handler) { return handler != nullptr; });
+  }
+  
+  if (!localHandlers.empty()) {
+    // Create a temporary EventData for handler execution
+    EventData eventData;
+    eventData.event = event;
+    eventData.typeId = typeId;
+    eventData.setActive(true);
+    
+    // Call all registered handlers
+    for (const auto &handler : localHandlers) {
+      try {
+        handler(eventData);
+      } catch (const std::exception &e) {
+        EVENT_ERROR("Handler exception in executeEvent '" + eventName + "': " + 
+                    std::string(e.what()));
+      } catch (...) {
+        EVENT_ERROR("Unknown handler exception in executeEvent '" + eventName + "'");
+      }
+    }
+  }
+  
   return true;
 }
 
