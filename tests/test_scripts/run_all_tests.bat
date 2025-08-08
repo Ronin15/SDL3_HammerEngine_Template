@@ -61,13 +61,12 @@ if /i "%~1"=="--help" (
     echo   --help            Show this help message
     echo.
      echo Test Categories:
-     echo   Core Tests:       Static analysis, Thread, AI, Behavior, Save, Event, ParticleManager, Resource Manager functionality tests
+     echo   Core Tests:       Static analysis, Thread, AI, Behavior, Save, Event, ParticleManager, Resource Manager, World functionality tests
      echo   Benchmarks:       AI scaling, EventManager scaling, UI stress, and ParticleManager performance benchmarks    echo.
-    echo Execution Time:
-    echo   Core tests:       ~2-5 minutes total
-    echo   Benchmarks:       ~5-15 minutes total
-    echo   All tests:        ~7-20 minutes total
-    echo.
+echo Execution Time:
+     echo   Core tests:       ~3-7 minutes total
+     echo   Benchmarks:       ~5-15 minutes total
+     echo   All tests:        ~8-22 minutes total    echo.
     echo Examples:
     echo   run_all_tests.bat                 # Run all tests
     echo   run_all_tests.bat --core-only     # Quick validation
@@ -82,7 +81,7 @@ goto :parse_args
 
 :: Define test categories
 :: Core functionality tests (fast execution)
-set CORE_TEST_COUNT=12
+set CORE_TEST_COUNT=17
 set CORE_TEST_1=run_cppcheck_focused.bat
 set CORE_TEST_2=run_thread_tests.bat
 set CORE_TEST_3=run_buffer_utilization_tests.bat
@@ -95,6 +94,11 @@ set CORE_TEST_9=run_event_tests.bat
 set CORE_TEST_10=run_particle_manager_tests.bat
 set CORE_TEST_11=run_json_reader_tests.bat
 set CORE_TEST_12=run_resource_tests.bat
+set CORE_TEST_13=run_resource_edge_case_tests.bat
+set CORE_TEST_14=run_world_generator_tests.bat
+set CORE_TEST_15=run_world_manager_event_integration_tests.bat
+set CORE_TEST_16=run_world_manager_tests.bat
+set CORE_TEST_17=run_world_resource_manager_tests.bat
 :: Performance scaling benchmarks (slow execution)
 set BENCHMARK_TEST_COUNT=3
 set BENCHMARK_TEST_1=run_event_scaling_benchmark.bat
