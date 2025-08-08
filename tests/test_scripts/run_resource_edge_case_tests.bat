@@ -81,17 +81,21 @@ if not exist "..\..\test_results" mkdir "..\..\test_results"
 :: Set up test environment
 set SDL_VIDEODRIVER=dummy
 
-echo !GREEN!Executing edge case tests with 60 second timeout...!NC!
+echo !GREEN!Executing edge case tests...!NC!
 
-:: Run tests with timeout to prevent hanging on concurrent tests
+:: Convert to absolute path and run from project root for resource file access
+for %%f in ("!TEST_EXECUTABLE!") do set "ABS_TEST_EXECUTABLE=%%~ff"
+cd /d "%~dp0..\.."
+
+:: Run tests directly (removed timeout as it doesn't work as expected on Windows)
 if "%VERBOSE%"=="true" (
-    timeout 60 "!TEST_EXECUTABLE!" --log_level=all --report_level=detailed
+    "!ABS_TEST_EXECUTABLE!" --log_level=all --report_level=detailed
 ) else (
-    timeout 60 "!TEST_EXECUTABLE!" --log_level=error --report_level=short
+    "!ABS_TEST_EXECUTABLE!" --log_level=error --report_level=short
 )
 
 set TEST_RESULT=!ERRORLEVEL!
-
+cd /d "%~dp0"
 if !TEST_RESULT! equ 0 (
     echo.
     echo !GREEN!✅ All edge case tests PASSED!!NC!
