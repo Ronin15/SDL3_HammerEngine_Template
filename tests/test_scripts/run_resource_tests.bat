@@ -128,9 +128,13 @@ if "!VERBOSE!"=="true" (
     set "TEST_OPTS=--log_level=error --report_level=short"
 )
 
-REM Run the test and capture output
-"!TEST_EXECUTABLE!" !TEST_OPTS! > "..\..\test_results\!test_name!_output.txt" 2>&1
+REM Run the test and capture output - ensure we run from project root for resource file access
+REM Convert relative path to absolute path first
+for %%f in ("!TEST_EXECUTABLE!") do set "ABS_TEST_EXECUTABLE=%%~ff"
+cd /d "%~dp0..\.."
+"!ABS_TEST_EXECUTABLE!" !TEST_OPTS! > "test_results\!test_name!_output.txt" 2>&1
 set "EXECUTABLE_EXIT_CODE=!ERRORLEVEL!"
+cd /d "%~dp0"
 
 REM Analyze test results by examining output content rather than just exit code
 set "TEST_PASSED=false"
@@ -138,8 +142,8 @@ set "ERROR_COUNT=0"
 set "FAILURE_COUNT=0"
 
 REM Count errors and failures in the output
-for /f %%i in ('findstr /r /c:"error:" "..\..\test_results\!test_name!_output.txt" ^| find /c /v ""') do set ERROR_COUNT=%%i
-for /f %%i in ('findstr /r /c:"has failed" "..\..\test_results\!test_name!_output.txt" ^| find /c /v ""') do set FAILURE_COUNT=%%i
+for /f %%i in ('findstr /r /c:"error:" "..\..\test_results\!test_name!_output.txt" 2^>nul ^| find /c /v ""') do set ERROR_COUNT=%%i
+for /f %%i in ('findstr /r /c:"has failed" "..\..\test_results\!test_name!_output.txt" 2^>nul ^| find /c /v ""') do set FAILURE_COUNT=%%i
 
 REM Check for success indicators - look for "has passed" message
 findstr /r /c:"has passed with" /c:"All.*passed" /c:"No errors detected" "..\..\test_results\!test_name!_output.txt" >nul 2>&1

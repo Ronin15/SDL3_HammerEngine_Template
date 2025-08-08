@@ -14,9 +14,9 @@
 #include "managers/WorldManager.hpp"
 #include "world/WorldData.hpp"
 #include "utils/Camera.hpp"
+#include <algorithm>
 #include <iostream>
 #include <random>
-
 
 
 bool GamePlayState::enter() {
