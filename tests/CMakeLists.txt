@@ -67,6 +67,17 @@ add_executable(event_manager_scaling_benchmark
     ${PROJECT_SOURCE_DIR}/src/managers/SoundManager.cpp
     ${PROJECT_SOURCE_DIR}/src/events/Event.cpp
     ${PROJECT_SOURCE_DIR}/src/events/WeatherEvent.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/WorldManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/world/WorldGenerator.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/WorldResourceManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/ResourceTemplateManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/ResourceFactory.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/Resource.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/resources/ItemResources.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/resources/MaterialResources.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/resources/CurrencyAndGameResources.cpp
+    ${PROJECT_SOURCE_DIR}/src/utils/JsonReader.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/TextureManager.cpp
     ${PROJECT_SOURCE_DIR}/src/events/SceneChangeEvent.cpp
     ${PROJECT_SOURCE_DIR}/src/events/ParticleEffectEvent.cpp
     ${PROJECT_SOURCE_DIR}/src/events/ResourceChangeEvent.cpp
@@ -101,6 +112,17 @@ add_executable(event_manager_tests
     ${PROJECT_SOURCE_DIR}/src/managers/SoundManager.cpp
     ${PROJECT_SOURCE_DIR}/src/events/Event.cpp
     ${PROJECT_SOURCE_DIR}/src/events/WeatherEvent.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/WorldManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/world/WorldGenerator.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/WorldResourceManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/ResourceTemplateManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/ResourceFactory.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/Resource.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/resources/ItemResources.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/resources/MaterialResources.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/resources/CurrencyAndGameResources.cpp
+    ${PROJECT_SOURCE_DIR}/src/utils/JsonReader.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/TextureManager.cpp
     ${PROJECT_SOURCE_DIR}/src/events/SceneChangeEvent.cpp
     ${PROJECT_SOURCE_DIR}/src/events/ParticleEffectEvent.cpp
     ${PROJECT_SOURCE_DIR}/src/events/ResourceChangeEvent.cpp
@@ -117,9 +139,22 @@ add_executable(event_types_tests
     events/EventTypesTest.cpp
     ${PROJECT_SOURCE_DIR}/src/events/Event.cpp
     ${PROJECT_SOURCE_DIR}/src/events/WeatherEvent.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/WorldManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/world/WorldGenerator.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/WorldResourceManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/ResourceTemplateManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/ResourceFactory.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/Resource.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/resources/ItemResources.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/resources/MaterialResources.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/resources/CurrencyAndGameResources.cpp
+    ${PROJECT_SOURCE_DIR}/src/utils/JsonReader.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/EventManager.cpp
     ${PROJECT_SOURCE_DIR}/src/managers/ParticleManager.cpp
     ${PROJECT_SOURCE_DIR}/src/managers/SoundManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/TextureManager.cpp
     ${PROJECT_SOURCE_DIR}/src/events/SceneChangeEvent.cpp
+    ${PROJECT_SOURCE_DIR}/src/events/ResourceChangeEvent.cpp
     ${PROJECT_SOURCE_DIR}/src/events/ParticleEffectEvent.cpp
     ${PROJECT_SOURCE_DIR}/src/events/EventFactory.cpp
     ${PROJECT_SOURCE_DIR}/src/core/GameTime.cpp
@@ -135,8 +170,21 @@ add_executable(particle_manager_core_tests
     ${PROJECT_SOURCE_DIR}/src/managers/SoundManager.cpp
     ${PROJECT_SOURCE_DIR}/src/events/Event.cpp
     ${PROJECT_SOURCE_DIR}/src/events/WeatherEvent.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/WorldManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/world/WorldGenerator.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/WorldResourceManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/ResourceTemplateManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/ResourceFactory.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/Resource.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/resources/ItemResources.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/resources/MaterialResources.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/resources/CurrencyAndGameResources.cpp
+    ${PROJECT_SOURCE_DIR}/src/utils/JsonReader.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/EventManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/TextureManager.cpp
     ${PROJECT_SOURCE_DIR}/src/events/SceneChangeEvent.cpp
     ${PROJECT_SOURCE_DIR}/src/events/ParticleEffectEvent.cpp
+    ${PROJECT_SOURCE_DIR}/src/events/ResourceChangeEvent.cpp
     ${PROJECT_SOURCE_DIR}/src/events/EventFactory.cpp
     ${PROJECT_SOURCE_DIR}/src/core/GameTime.cpp
     mocks/NPCSpawnEventTest.cpp
@@ -147,9 +195,24 @@ add_executable(particle_manager_core_tests
 add_executable(particle_manager_performance_tests
     particle/ParticleManagerPerformanceTest.cpp
     ${PROJECT_SOURCE_DIR}/src/managers/ParticleManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/SoundManager.cpp
     ${PROJECT_SOURCE_DIR}/src/events/Event.cpp
     ${PROJECT_SOURCE_DIR}/src/events/WeatherEvent.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/WorldManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/world/WorldGenerator.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/WorldResourceManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/ResourceTemplateManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/ResourceFactory.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/Resource.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/resources/ItemResources.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/resources/MaterialResources.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/resources/CurrencyAndGameResources.cpp
+    ${PROJECT_SOURCE_DIR}/src/utils/JsonReader.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/EventManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/TextureManager.cpp
     ${PROJECT_SOURCE_DIR}/src/events/SceneChangeEvent.cpp
+    ${PROJECT_SOURCE_DIR}/src/events/ResourceChangeEvent.cpp
+    ${PROJECT_SOURCE_DIR}/src/events/ParticleEffectEvent.cpp
     ${PROJECT_SOURCE_DIR}/src/events/EventFactory.cpp
     ${PROJECT_SOURCE_DIR}/src/core/GameTime.cpp
     mocks/NPCSpawnEventTest.cpp
@@ -160,9 +223,24 @@ add_executable(particle_manager_performance_tests
 add_executable(particle_manager_weather_tests
     particle/ParticleManagerWeatherTest.cpp
     ${PROJECT_SOURCE_DIR}/src/managers/ParticleManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/SoundManager.cpp
     ${PROJECT_SOURCE_DIR}/src/events/Event.cpp
     ${PROJECT_SOURCE_DIR}/src/events/WeatherEvent.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/WorldManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/world/WorldGenerator.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/WorldResourceManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/ResourceTemplateManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/ResourceFactory.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/Resource.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/resources/ItemResources.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/resources/MaterialResources.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/resources/CurrencyAndGameResources.cpp
+    ${PROJECT_SOURCE_DIR}/src/utils/JsonReader.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/EventManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/TextureManager.cpp
     ${PROJECT_SOURCE_DIR}/src/events/SceneChangeEvent.cpp
+    ${PROJECT_SOURCE_DIR}/src/events/ResourceChangeEvent.cpp
+    ${PROJECT_SOURCE_DIR}/src/events/ParticleEffectEvent.cpp
     ${PROJECT_SOURCE_DIR}/src/events/EventFactory.cpp
     ${PROJECT_SOURCE_DIR}/src/core/GameTime.cpp
     mocks/NPCSpawnEventTest.cpp
@@ -173,9 +251,24 @@ add_executable(particle_manager_weather_tests
 add_executable(particle_manager_threading_tests
     particle/ParticleManagerThreadingTest.cpp
     ${PROJECT_SOURCE_DIR}/src/managers/ParticleManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/SoundManager.cpp
     ${PROJECT_SOURCE_DIR}/src/events/Event.cpp
     ${PROJECT_SOURCE_DIR}/src/events/WeatherEvent.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/WorldManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/world/WorldGenerator.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/WorldResourceManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/ResourceTemplateManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/ResourceFactory.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/Resource.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/resources/ItemResources.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/resources/MaterialResources.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/resources/CurrencyAndGameResources.cpp
+    ${PROJECT_SOURCE_DIR}/src/utils/JsonReader.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/EventManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/TextureManager.cpp
     ${PROJECT_SOURCE_DIR}/src/events/SceneChangeEvent.cpp
+    ${PROJECT_SOURCE_DIR}/src/events/ResourceChangeEvent.cpp
+    ${PROJECT_SOURCE_DIR}/src/events/ParticleEffectEvent.cpp
     ${PROJECT_SOURCE_DIR}/src/events/EventFactory.cpp
     ${PROJECT_SOURCE_DIR}/src/core/GameTime.cpp
     mocks/NPCSpawnEventTest.cpp
@@ -187,8 +280,27 @@ add_executable(weather_event_tests
     events/WeatherEventTest.cpp
     ${PROJECT_SOURCE_DIR}/src/events/Event.cpp
     ${PROJECT_SOURCE_DIR}/src/events/WeatherEvent.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/WorldManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/world/WorldGenerator.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/WorldResourceManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/ResourceTemplateManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/ResourceFactory.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/Resource.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/resources/ItemResources.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/resources/MaterialResources.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/resources/CurrencyAndGameResources.cpp
+    ${PROJECT_SOURCE_DIR}/src/utils/JsonReader.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/EventManager.cpp
     ${PROJECT_SOURCE_DIR}/src/managers/ParticleManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/SoundManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/TextureManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/events/SceneChangeEvent.cpp
+    ${PROJECT_SOURCE_DIR}/src/events/ResourceChangeEvent.cpp
+    ${PROJECT_SOURCE_DIR}/src/events/ParticleEffectEvent.cpp
+    ${PROJECT_SOURCE_DIR}/src/events/EventFactory.cpp
     ${PROJECT_SOURCE_DIR}/src/core/GameTime.cpp
+    mocks/NPCSpawnEventTest.cpp
+    mocks/MockNPC.cpp
 )
 
 # UI Stress Test executable (minimal dependencies)
@@ -653,6 +765,7 @@ target_link_libraries(particle_manager_core_tests PRIVATE
 target_link_libraries(particle_manager_performance_tests PRIVATE
     SDL3::SDL3
     SDL3_image::SDL3_image
+    SDL3_mixer::SDL3_mixer
     Boost::unit_test_framework
 )
 
@@ -660,6 +773,7 @@ target_link_libraries(particle_manager_performance_tests PRIVATE
 target_link_libraries(particle_manager_weather_tests PRIVATE
     SDL3::SDL3
     SDL3_image::SDL3_image
+    SDL3_mixer::SDL3_mixer
     Boost::unit_test_framework
 )
 
@@ -667,6 +781,7 @@ target_link_libraries(particle_manager_weather_tests PRIVATE
 target_link_libraries(particle_manager_threading_tests PRIVATE
     SDL3::SDL3
     SDL3_image::SDL3_image
+    SDL3_mixer::SDL3_mixer
     Boost::unit_test_framework
 )
 
@@ -674,6 +789,7 @@ target_link_libraries(particle_manager_threading_tests PRIVATE
 target_link_libraries(weather_event_tests PRIVATE
     SDL3::SDL3
     SDL3_image::SDL3_image
+    SDL3_mixer::SDL3_mixer
     Boost::unit_test_framework
 )
 
