@@ -370,6 +370,7 @@ add_executable(world_resource_manager_tests
     resources/WorldResourceManagerTests.cpp
     ${PROJECT_SOURCE_DIR}/src/managers/ResourceTemplateManager.cpp
     ${PROJECT_SOURCE_DIR}/src/managers/WorldResourceManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/WorldManager.cpp
     ${PROJECT_SOURCE_DIR}/src/managers/EventManager.cpp
     ${PROJECT_SOURCE_DIR}/src/managers/ParticleManager.cpp
     ${PROJECT_SOURCE_DIR}/src/managers/SoundManager.cpp
@@ -391,6 +392,7 @@ add_executable(world_resource_manager_tests
     ${PROJECT_SOURCE_DIR}/src/events/ParticleEffectEvent.cpp
     ${PROJECT_SOURCE_DIR}/src/events/EventFactory.cpp
     ${PROJECT_SOURCE_DIR}/src/utils/JsonReader.cpp
+    ${PROJECT_SOURCE_DIR}/src/world/WorldGenerator.cpp
 )
 
 # Inventory Component tests
@@ -398,6 +400,7 @@ add_executable(inventory_component_tests
     resources/InventoryComponentTests.cpp
     ${PROJECT_SOURCE_DIR}/src/managers/ResourceTemplateManager.cpp
     ${PROJECT_SOURCE_DIR}/src/managers/WorldResourceManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/WorldManager.cpp
     ${PROJECT_SOURCE_DIR}/src/managers/EventManager.cpp
     ${PROJECT_SOURCE_DIR}/src/managers/ParticleManager.cpp
     ${PROJECT_SOURCE_DIR}/src/managers/SoundManager.cpp
@@ -419,6 +422,7 @@ add_executable(inventory_component_tests
     ${PROJECT_SOURCE_DIR}/src/events/NPCSpawnEvent.cpp
     ${PROJECT_SOURCE_DIR}/src/events/ParticleEffectEvent.cpp
     ${PROJECT_SOURCE_DIR}/src/events/EventFactory.cpp
+    ${PROJECT_SOURCE_DIR}/src/world/WorldGenerator.cpp
     mocks/MockPlayer.cpp
 )
 
@@ -441,6 +445,7 @@ add_executable(resource_integration_tests
     resources/ResourceIntegrationTests.cpp
     ${PROJECT_SOURCE_DIR}/src/managers/ResourceTemplateManager.cpp
     ${PROJECT_SOURCE_DIR}/src/managers/WorldResourceManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/WorldManager.cpp
     ${PROJECT_SOURCE_DIR}/src/managers/EventManager.cpp
     ${PROJECT_SOURCE_DIR}/src/managers/ParticleManager.cpp
     ${PROJECT_SOURCE_DIR}/src/managers/SoundManager.cpp
@@ -462,6 +467,7 @@ add_executable(resource_integration_tests
     ${PROJECT_SOURCE_DIR}/src/events/NPCSpawnEvent.cpp
     ${PROJECT_SOURCE_DIR}/src/events/ParticleEffectEvent.cpp
     ${PROJECT_SOURCE_DIR}/src/events/EventFactory.cpp
+    ${PROJECT_SOURCE_DIR}/src/world/WorldGenerator.cpp
     mocks/MockPlayer.cpp
 )
 
@@ -470,6 +476,7 @@ add_executable(resource_edge_case_tests
     resources/ResourceEdgeCaseTests.cpp
     ${PROJECT_SOURCE_DIR}/src/managers/ResourceTemplateManager.cpp
     ${PROJECT_SOURCE_DIR}/src/managers/WorldResourceManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/WorldManager.cpp
     ${PROJECT_SOURCE_DIR}/src/managers/EventManager.cpp
     ${PROJECT_SOURCE_DIR}/src/managers/ParticleManager.cpp
     ${PROJECT_SOURCE_DIR}/src/managers/SoundManager.cpp
@@ -491,6 +498,7 @@ add_executable(resource_edge_case_tests
     ${PROJECT_SOURCE_DIR}/src/events/NPCSpawnEvent.cpp
     ${PROJECT_SOURCE_DIR}/src/events/ParticleEffectEvent.cpp
     ${PROJECT_SOURCE_DIR}/src/events/EventFactory.cpp
+    ${PROJECT_SOURCE_DIR}/src/world/WorldGenerator.cpp
 )
 
 # JsonReader tests
