@@ -5,7 +5,7 @@
 - **Build (Debug):**
   ```
   cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Debug
-  ninja -C build
+  ninja -C build -v 2>&1 | grep -E "(warning|unused|error) | head -n 100"
   ```
 - **Build (Release):**
   ```

@@ -18,6 +18,96 @@ using namespace HammerEngine;
 
 BOOST_AUTO_TEST_SUITE(WorldManagerEventIntegrationTests)
 
+// New: Verify WorldLoadedEvent payload matches WorldManager dimensions
+BOOST_AUTO_TEST_CASE(TestWorldLoadedEventPayload) {
+    // Init managers
+    BOOST_REQUIRE(WorldManager::Instance().init());
+    BOOST_REQUIRE(EventManager::Instance().init());
+
+    std::atomic<bool> gotLoaded{false};
+    std::string capturedWorldId;
+    int capturedW = -1, capturedH = -1;
+
+    EventManager::Instance().registerHandler(EventTypeId::World, [&](const EventData& data){
+        if (!data.event) return;
+        auto loaded = std::dynamic_pointer_cast<WorldLoadedEvent>(data.event);
+        if (loaded) {
+            gotLoaded.store(true);
+            capturedWorldId = loaded->getWorldId();
+            capturedW = loaded->getWidth();
+            capturedH = loaded->getHeight();
+        }
+    });
+
+    WorldGenerationConfig cfg{};
+    cfg.width = 5; cfg.height = 5; cfg.seed = 4242; cfg.elevationFrequency = 0.1f; cfg.humidityFrequency = 0.1f; cfg.waterLevel = 0.3f; cfg.mountainLevel = 0.7f;
+    BOOST_REQUIRE(WorldManager::Instance().loadNewWorld(cfg));
+
+    // WorldManager posts event asynchronously; give time and pump EventManager
+    auto start = std::chrono::steady_clock::now();
+    auto timeout = std::chrono::milliseconds(500);
+    while (std::chrono::steady_clock::now() - start < timeout && !gotLoaded.load()) {
+        EventManager::Instance().update();
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+
+    // Validate
+    int w=0, h=0;
+    WorldManager::Instance().getWorldDimensions(w,h);
+    BOOST_CHECK(gotLoaded.load());
+    BOOST_CHECK_EQUAL(capturedW, w);
+    BOOST_CHECK_EQUAL(capturedH, h);
+    BOOST_CHECK_EQUAL(capturedWorldId, WorldManager::Instance().getCurrentWorldId());
+
+    WorldManager::Instance().clean();
+    EventManager::Instance().clean();
+}
+
+// New: End-to-end harvest integration via EventManager -> WorldManager
+BOOST_AUTO_TEST_CASE(TestHarvestResourceIntegration) {
+    BOOST_REQUIRE(WorldManager::Instance().init());
+    BOOST_REQUIRE(EventManager::Instance().init());
+
+    // Ensure WorldManager registers its handlers (including Harvest)
+    WorldManager::Instance().setupEventHandlers();
+
+    WorldGenerationConfig cfg{};
+    cfg.width = 20; cfg.height = 20; cfg.seed = 7777; cfg.elevationFrequency = 0.1f; cfg.humidityFrequency = 0.1f; cfg.waterLevel = 0.2f; cfg.mountainLevel = 0.8f;
+    BOOST_REQUIRE(WorldManager::Instance().loadNewWorld(cfg));
+
+    int targetX=-1, targetY=-1;
+    for (int y=0; y<cfg.height && targetX==-1; ++y) {
+        for (int x=0; x<cfg.width; ++x) {
+            const Tile* t = WorldManager::Instance().getTileAt(x,y);
+            if (t && t->obstacleType != ObstacleType::NONE) { targetX=x; targetY=y; break; }
+        }
+    }
+    BOOST_REQUIRE_MESSAGE(targetX!=-1 && targetY!=-1, "No obstacle tile found to harvest in generated world");
+
+    std::atomic<int> tileChangedCount{0};
+    EventManager::Instance().registerHandler(EventTypeId::World, [&](const EventData& data){
+        if (!data.event) return;
+        auto changed = std::dynamic_pointer_cast<TileChangedEvent>(data.event);
+        if (changed) { tileChangedCount.fetch_add(1); }
+    });
+
+    // Create and execute a HarvestResourceEvent via EventManager
+    auto harvest = std::make_shared<HarvestResourceEvent>(1, targetX, targetY, "");
+    BOOST_REQUIRE(EventManager::Instance().registerEvent("harvest_test", harvest));
+    BOOST_CHECK(EventManager::Instance().executeEvent("harvest_test"));
+
+    // Allow processing
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+
+    const Tile* after = WorldManager::Instance().getTileAt(targetX, targetY);
+    BOOST_REQUIRE(after != nullptr);
+    BOOST_CHECK_EQUAL(after->obstacleType, ObstacleType::NONE);
+    BOOST_CHECK_GE(tileChangedCount.load(), 1);
+
+    WorldManager::Instance().clean();
+    EventManager::Instance().clean();
+}
+
 /**
  * @brief Test basic WorldManager and EventManager integration
  * Simple test that verifies both managers can be initialized and work together

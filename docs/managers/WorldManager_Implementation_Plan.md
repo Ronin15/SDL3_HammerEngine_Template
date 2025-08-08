@@ -159,7 +159,7 @@ All pipeline stages have been fully implemented:
 Structure implemented but full integration pending:
 
 -   ✅ API structure exists in `WorldManager` for resource integration
--   📋 **TODO**: Complete implementation of `initializeWorldResources()` method
+-   ✅ `initializeWorldResources()` implemented and validated by tests (see WorldManagerTests::TestWorldResourceInitialization)
 -   📋 **TODO**: When a new world is loaded, `WorldManager` should:
     1.  Call `WorldResourceManager::Instance().createWorld(worldId)` to register the new world space
     2.  Use the initial resource summary from the `WorldGenerator` to populate the `WorldResourceManager` with the world's starting resource totals via `addResource()`
@@ -170,17 +170,14 @@ Event handling structure implemented but specific event types need definition:
 
 -   ✅ Event registration/unregistration methods implemented in `WorldManager`
 -   ✅ Event firing methods implemented (`fireTileChangedEvent`, `fireWorldLoadedEvent`, etc.)
--   📋 **TODO**: Define specific event types:
+-   ✅ Event types are defined and used:
 
-    **Events to be Emitted by `WorldManager`:**
-    -   📋 `WorldLoadedEvent(worldId)`: Fired after a new world is loaded and initialized
-    -   📋 `TileChangedEvent(x, y, newTileState)`: Fired when a tile's state is modified
+    **Events Emitted by `WorldManager`:**
+    -   ✅ `WorldLoadedEvent(worldId, width, height)`
+    -   ✅ `TileChangedEvent(x, y, changeType)`
 
-    **Events to be Handled by `WorldManager`:**
-    -   📋 `HarvestResourceEvent(entityId, targetX, targetY)`: On this event, the `WorldManager` should:
-        1.  Update the tile at `(targetX, targetY)` (e.g., remove a tree)
-        2.  Notify the `WorldResourceManager` to decrement the corresponding resource count for the world
-        3.  Fire a `TileChangedEvent`
+    **Events Handled by `WorldManager`:**
+    -   ✅ `HarvestResourceEvent(entityId, targetX, targetY)` triggers tile updates and `TileChangedEvent` emission. World resource quantity decrements will be integrated as resource tracking evolves.
 
 ### 4.3. `GameStateManager` 🔧 PARTIALLY COMPLETED
 
@@ -232,9 +229,10 @@ All planned testing has been implemented with comprehensive coverage:
     -   ✅ Resource handle integration testing
     -   ✅ Initialization and cleanup testing
 
--   📋 **Integration Tests** (TODO):
-    -   📋 Simulate a `HarvestResourceEvent` and verify that the `WorldManager`, `WorldResourceManager`, and a mock entity's inventory are all updated correctly
-    -   📋 Verify that a `WorldLoadedEvent` is fired with the correct data
+-   🔧 **Integration Tests**:
+    -   ✅ Verify `WorldLoadedEvent` payload matches `WorldManager::getWorldDimensions()` and current worldId (see WorldManagerEventIntegrationTests::TestWorldLoadedEventPayload)
+    -   ✅ Simulate a `HarvestResourceEvent`, assert tile obstacle is removed and `TileChangedEvent` observed (see WorldManagerEventIntegrationTests::TestHarvestResourceIntegration)
+    -   📋 Future: Integrate `WorldResourceManager` quantity assertions and inventory updates when depletion hooks are implemented
 
 ## 7. Next Steps & Priorities
 

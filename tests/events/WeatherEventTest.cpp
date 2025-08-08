@@ -7,19 +7,34 @@
 #include <boost/test/unit_test.hpp>
 
 #include "events/WeatherEvent.hpp"
+#include "managers/WorldManager.hpp"
+#include "managers/EventManager.hpp"
+#include "world/WorldData.hpp"
 #include <memory>
 #include <string>
 #include <functional>
+#include <thread>
+#include <chrono>
 #include <iostream>
 
 // Simple test fixture for WeatherEvent
 struct WeatherEventFixture {
     WeatherEventFixture() {
-        // Setup common test environment
+        // Initialize managers used by region tests if not already
+        EventManager::Instance().prepareForStateTransition();
+        EventManager::Instance().clearAllEvents();
+        EventManager::Instance().clearAllHandlers();
+        EventManager::Instance().init();
+        WorldManager::Instance().init();
     }
 
     ~WeatherEventFixture() {
         // Cleanup after tests
+        EventManager::Instance().prepareForStateTransition();
+        EventManager::Instance().clearAllEvents();
+        EventManager::Instance().clearAllHandlers();
+        EventManager::Instance().clean();
+        WorldManager::Instance().clean();
     }
 };
 
@@ -148,4 +163,60 @@ BOOST_FIXTURE_TEST_CASE(EventExecution, WeatherEventFixture) {
 
     // Check that the event is marked as triggered
     BOOST_CHECK(event->hasTriggered());
+}
+
+// New tests for region + bounds logic using biome as region
+BOOST_FIXTURE_TEST_CASE(RegionNameOnly_MismatchFails_MatchPasses, WeatherEventFixture) {
+    // Generate a small world
+    HammerEngine::WorldGenerationConfig cfg{};
+    cfg.width = 10; cfg.height = 10; cfg.seed = 1234; cfg.elevationFrequency = 0.1f; cfg.humidityFrequency = 0.1f; cfg.waterLevel = 0.3f; cfg.mountainLevel = 0.7f;
+    BOOST_REQUIRE(WorldManager::Instance().loadNewWorld(cfg));
+
+    // Force tile (0,0) biome to FOREST deterministically
+    auto* tile = WorldManager::Instance().getTileAt(0,0);
+    BOOST_REQUIRE(tile != nullptr);
+    tile->biome = HammerEngine::Biome::FOREST;
+
+    auto evt = std::make_shared<WeatherEvent>("RegionTest", WeatherType::Cloudy);
+    evt->setGeographicRegion("FOREST");
+
+    // With matching region, conditions should pass (no other conditions set)
+    BOOST_CHECK(evt->checkConditions());
+
+    // Change biome to DESERT, now region should not match
+    tile->biome = HammerEngine::Biome::DESERT;
+    BOOST_CHECK(!evt->checkConditions());
+}
+
+BOOST_FIXTURE_TEST_CASE(RegionAndBounds_BothMustPass, WeatherEventFixture) {
+    // Generate a small world and set (0,0) biome FOREST
+    HammerEngine::WorldGenerationConfig cfg{};
+    cfg.width = 8; cfg.height = 8; cfg.seed = 5678; cfg.elevationFrequency = 0.1f; cfg.humidityFrequency = 0.1f; cfg.waterLevel = 0.3f; cfg.mountainLevel = 0.7f;
+    BOOST_REQUIRE(WorldManager::Instance().loadNewWorld(cfg));
+    auto* tile = WorldManager::Instance().getTileAt(0,0);
+    BOOST_REQUIRE(tile != nullptr);
+    tile->biome = HammerEngine::Biome::FOREST;
+
+    auto evt = std::make_shared<WeatherEvent>("RegionBoundsTest", WeatherType::Cloudy);
+    evt->setGeographicRegion("FOREST");
+
+    // Bounds including (0,0) should pass
+    evt->setBoundingArea(-1.0f, -1.0f, 1.0f, 1.0f);
+    BOOST_CHECK(evt->checkConditions());
+
+    // Bounds excluding (0,0) should fail even though region matches
+    evt->setBoundingArea(10.0f, 10.0f, 20.0f, 20.0f);
+    BOOST_CHECK(!evt->checkConditions());
+}
+
+BOOST_FIXTURE_TEST_CASE(NoRegion_BoundsOnly, WeatherEventFixture) {
+    auto evt = std::make_shared<WeatherEvent>("BoundsOnly", WeatherType::Clear);
+
+    // Include (0,0)
+    evt->setBoundingArea(-1.0f, -1.0f, 1.0f, 1.0f);
+    BOOST_CHECK(evt->checkConditions());
+
+    // Exclude (0,0)
+    evt->setBoundingArea(10.0f, 10.0f, 20.0f, 20.0f);
+    BOOST_CHECK(!evt->checkConditions());
 }

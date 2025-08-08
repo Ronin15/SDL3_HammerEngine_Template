@@ -7,9 +7,12 @@
 #include "core/GameTime.hpp"
 #include "core/Logger.hpp"
 #include "managers/ParticleManager.hpp"
+#include "managers/WorldManager.hpp"
+#include "world/WorldData.hpp"
 #include "utils/Vector2D.hpp"
 #include <algorithm>
 #include <random>
+#include <cctype>
 
 // Helper for getting current game time (hour of day)
 // Helper for getting current game time of day (0-24)
@@ -386,14 +389,12 @@ bool WeatherEvent::checkLocationCondition() const {
     return true; // No location restriction
   }
 
-  // Check region first
-  // TODO: Implement proper region checking when region system is available
-  // Currently region checking is disabled (placeholder always returns true)
-  // if (!m_regionName.empty() && !isInRegion()) {
-  //     return false;
-  // }
+  // Enforce region gating if specified
+  if (!m_regionName.empty() && !isInRegion()) {
+    return false;
+  }
 
-  // Then check bounding area
+  // Then check bounding area if enabled
   if (m_useGeographicBounds && !isInBounds()) {
     return false;
   }
@@ -402,10 +403,56 @@ bool WeatherEvent::checkLocationCondition() const {
 }
 
 bool WeatherEvent::isInRegion() const {
-  // TODO: Implement proper region checking when region system is available
-  // This should check the player's current region against m_regionName
-  // For now, always return true to allow all weather events
-  return true;
+  // No region restriction
+  if (m_regionName.empty()) {
+    return true;
+  }
+
+  // If WorldManager is unavailable, permit by default to avoid false negatives
+  // in contexts where the world isn't loaded yet
+  bool worldAvailable = false;
+  const WorldManager* wmPtr = nullptr;
+  try {
+    wmPtr = &WorldManager::Instance();
+    worldAvailable = wmPtr->isInitialized() && wmPtr->hasActiveWorld();
+  } catch (...) {
+    worldAvailable = false;
+  }
+  if (!worldAvailable) {
+    return true;
+  }
+
+  // Determine player tile position (current helper returns 0,0)
+  Vector2D playerPos = getPlayerPosition();
+  int tx = static_cast<int>(playerPos.getX());
+  int ty = static_cast<int>(playerPos.getY());
+
+  const HammerEngine::Tile* tile = wmPtr->getTileAt(tx, ty);
+  if (!tile) {
+    return false;
+  }
+
+  // Map biome to canonical uppercase string
+  auto biomeToString = [](HammerEngine::Biome b) -> std::string {
+    switch (b) {
+    case HammerEngine::Biome::DESERT: return "DESERT";
+    case HammerEngine::Biome::FOREST: return "FOREST";
+    case HammerEngine::Biome::MOUNTAIN: return "MOUNTAIN";
+    case HammerEngine::Biome::SWAMP: return "SWAMP";
+    case HammerEngine::Biome::HAUNTED: return "HAUNTED";
+    case HammerEngine::Biome::CELESTIAL: return "CELESTIAL";
+    case HammerEngine::Biome::OCEAN: return "OCEAN";
+    default: return "";
+    }
+  };
+
+  std::string currentRegion = biomeToString(tile->biome);
+
+  // Normalize m_regionName to uppercase for comparison
+  std::string desired = m_regionName;
+  std::transform(desired.begin(), desired.end(), desired.begin(), [](unsigned char c){ return static_cast<char>(std::toupper(c)); });
+
+  return !currentRegion.empty() && currentRegion == desired;
 }
 
 bool WeatherEvent::isInBounds() const {
