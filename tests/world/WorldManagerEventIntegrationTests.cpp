@@ -11,6 +11,7 @@
 #include "managers/WorldManager.hpp"
 #include "managers/EventManager.hpp"
 #include "events/WorldEvent.hpp"
+#include "events/HarvestResourceEvent.hpp"
 #include "world/WorldData.hpp"
 #include "core/Logger.hpp"
 
