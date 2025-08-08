@@ -104,11 +104,11 @@ bool EventDemoState::enter() {
     // Create simple UI components using auto-detecting methods with dramatic spacing
     auto &ui = UIManager::Instance();
     ui.createTitleAtTop("event_title", "Event Demo State", 35);  // Increased title height from 25 to 35
-    ui.createLabel("event_phase", {10, 60, 300, 25}, "Phase: Initialization");  // Increased height from 20 to 25
-    ui.createLabel("event_status", {10, 95, 400, 25},  // Increased height from 20 to 25
+    ui.createLabel("event_phase", {10, 25, 300, 25}, "Phase: Initialization");  // Moved up from y=45 to y=25
+    ui.createLabel("event_status", {10, 60, 400, 25},  // Moved up from y=80 to y=60
                    "FPS: -- | Weather: Clear | NPCs: 0");
     ui.createLabel(
-        "event_controls", {10, 130, ui.getLogicalWidth() - 20, 25},  // Increased height from 20 to 25
+        "event_controls", {10, 95, ui.getLogicalWidth() - 20, 25},  // Moved up from y=115 to y=95
         "[B] Exit | [SPACE] Manual | [1-6] Events | [A] Auto | [R] "
         "Reset | [F] Fire | [S] Smoke | [K] Sparks | [I] Inventory");
 
