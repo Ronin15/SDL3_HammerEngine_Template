@@ -11,6 +11,11 @@
 #include <memory>
 #include <string>
 
+// Forward declaration
+namespace HammerEngine {
+    class Camera;
+}
+
 /**
  * @brief Mock NPC class for testing NPCSpawnEvent without full game dependencies
  */
@@ -62,8 +67,9 @@ public:
         (void)deltaTime; // Suppress unused parameter warning
     }
     
-    void render() override {
-        // Mock render - do nothing
+    void render(const HammerEngine::Camera* camera) override {
+        // Mock render with camera - do nothing
+        (void)camera; // Suppress unused parameter warning
     }
     
     void clean() override {

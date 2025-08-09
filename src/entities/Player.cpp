@@ -12,6 +12,7 @@
 #include "managers/EventManager.hpp"
 #include "managers/ResourceTemplateManager.hpp"
 #include "managers/TextureManager.hpp"
+#include "utils/Camera.hpp"
 #include <SDL3/SDL.h>
 #include <chrono>
 
@@ -141,13 +142,20 @@ void Player::update(float deltaTime) {
   }
 }
 
-void Player::render() {
+void Player::render(const HammerEngine::Camera* camera) {
   // Cache manager references for better performance
   TextureManager &texMgr = TextureManager::Instance();
   SDL_Renderer *renderer = GameEngine::Instance().getRenderer();
 
-  // Use current position directly - no interpolation
-  Vector2D renderPosition = m_position;
+  // Determine render position based on camera
+  Vector2D renderPosition;
+  if (camera) {
+    // Transform world position to screen coordinates using camera
+    renderPosition = camera->worldToScreen(m_position);
+  } else {
+    // No camera transformation - render at world coordinates directly
+    renderPosition = m_position;
+  }
 
   // Calculate centered position for rendering (no early static casting)
   float renderX = renderPosition.getX() - (m_frameWidth / 2.0f);

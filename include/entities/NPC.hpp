@@ -30,10 +30,9 @@ public:
                                  frameHeight);
   }
 
-  void update(float deltaTime) override;
-  void render() override;
-  void clean() override;
-
+    void update(float deltaTime) override;
+    void render(const HammerEngine::Camera* camera) override;
+    void clean() override;
   // No state management - handled by AI Manager
 
   // NPC-specific accessor methods

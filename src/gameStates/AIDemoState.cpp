@@ -324,12 +324,12 @@ void AIDemoState::update([[maybe_unused]] float deltaTime) {
 void AIDemoState::render() {
   // Render all NPCs
   for (auto &npc : m_npcs) {
-    npc->render();
+    npc->render(nullptr);  // No camera transformation needed in AI demo
   }
 
   // Render player
   if (m_player) {
-    m_player->render();
+    m_player->render(nullptr);  // No camera transformation needed in AI demo
   }
 
   // Update and render UI components through UIManager using cached renderer for

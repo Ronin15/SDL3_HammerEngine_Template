@@ -22,6 +22,11 @@
 #include "managers/AIManager.hpp"
 #include "core/ThreadSystem.hpp"
 
+// Forward declaration
+namespace HammerEngine {
+    class Camera;
+}
+
 // Global state to track initialization status
 namespace {
     std::mutex g_setupMutex;
@@ -47,7 +52,7 @@ public:
         m_updateCount++;
         (void)deltaTime; // Suppress unused parameter warning
     }
-    void render() override {  }
+    void render(const HammerEngine::Camera* camera) override { (void)camera; }
     void clean() override {}
 
     void updatePosition(float dx, float dy) {

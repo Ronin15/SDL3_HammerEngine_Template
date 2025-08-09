@@ -384,6 +384,7 @@ add_executable(world_resource_manager_tests
     ${PROJECT_SOURCE_DIR}/src/managers/ResourceFactory.cpp
     ${PROJECT_SOURCE_DIR}/src/entities/Resource.cpp
     ${PROJECT_SOURCE_DIR}/src/entities/NPC.cpp
+    ${PROJECT_SOURCE_DIR}/src/utils/Camera.cpp
     ${PROJECT_SOURCE_DIR}/src/entities/resources/ItemResources.cpp
     ${PROJECT_SOURCE_DIR}/src/entities/resources/MaterialResources.cpp
     ${PROJECT_SOURCE_DIR}/src/entities/resources/CurrencyAndGameResources.cpp
@@ -415,6 +416,7 @@ add_executable(inventory_component_tests
     ${PROJECT_SOURCE_DIR}/src/utils/JsonReader.cpp
     ${PROJECT_SOURCE_DIR}/src/entities/Resource.cpp
     ${PROJECT_SOURCE_DIR}/src/entities/NPC.cpp
+    ${PROJECT_SOURCE_DIR}/src/utils/Camera.cpp
     ${PROJECT_SOURCE_DIR}/src/entities/resources/InventoryComponent.cpp
     ${PROJECT_SOURCE_DIR}/src/entities/resources/ItemResources.cpp
     ${PROJECT_SOURCE_DIR}/src/entities/resources/MaterialResources.cpp
@@ -460,6 +462,7 @@ add_executable(resource_integration_tests
     ${PROJECT_SOURCE_DIR}/src/utils/JsonReader.cpp
     ${PROJECT_SOURCE_DIR}/src/entities/Resource.cpp
     ${PROJECT_SOURCE_DIR}/src/entities/NPC.cpp
+    ${PROJECT_SOURCE_DIR}/src/utils/Camera.cpp
     ${PROJECT_SOURCE_DIR}/src/entities/resources/InventoryComponent.cpp
     ${PROJECT_SOURCE_DIR}/src/entities/resources/ItemResources.cpp
     ${PROJECT_SOURCE_DIR}/src/entities/resources/MaterialResources.cpp
@@ -491,6 +494,7 @@ add_executable(resource_edge_case_tests
     ${PROJECT_SOURCE_DIR}/src/utils/JsonReader.cpp
     ${PROJECT_SOURCE_DIR}/src/entities/Resource.cpp
     ${PROJECT_SOURCE_DIR}/src/entities/NPC.cpp
+    ${PROJECT_SOURCE_DIR}/src/utils/Camera.cpp
     ${PROJECT_SOURCE_DIR}/src/entities/resources/InventoryComponent.cpp
     ${PROJECT_SOURCE_DIR}/src/entities/resources/ItemResources.cpp
     ${PROJECT_SOURCE_DIR}/src/entities/resources/MaterialResources.cpp
@@ -531,6 +535,7 @@ add_executable(world_manager_tests
     ${PROJECT_SOURCE_DIR}/src/managers/TextureManager.cpp
     ${PROJECT_SOURCE_DIR}/src/entities/Resource.cpp
     ${PROJECT_SOURCE_DIR}/src/entities/NPC.cpp
+    ${PROJECT_SOURCE_DIR}/src/utils/Camera.cpp
     ${PROJECT_SOURCE_DIR}/src/entities/resources/InventoryComponent.cpp
     ${PROJECT_SOURCE_DIR}/src/entities/resources/ItemResources.cpp
     ${PROJECT_SOURCE_DIR}/src/entities/resources/MaterialResources.cpp
@@ -561,6 +566,7 @@ add_executable(world_manager_event_integration_tests
     ${PROJECT_SOURCE_DIR}/src/managers/TextureManager.cpp
     ${PROJECT_SOURCE_DIR}/src/entities/Resource.cpp
     ${PROJECT_SOURCE_DIR}/src/entities/NPC.cpp
+    ${PROJECT_SOURCE_DIR}/src/utils/Camera.cpp
     ${PROJECT_SOURCE_DIR}/src/entities/resources/InventoryComponent.cpp
     ${PROJECT_SOURCE_DIR}/src/entities/resources/ItemResources.cpp
     ${PROJECT_SOURCE_DIR}/src/entities/resources/MaterialResources.cpp

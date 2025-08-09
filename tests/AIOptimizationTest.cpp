@@ -29,11 +29,16 @@ private:
     float m_x, m_y;
 };
 
+// Forward declarations
+namespace HammerEngine {
+    class Camera;
+}
+
 // Simplified Entity class for tests
 class Entity : public std::enable_shared_from_this<Entity> {
 public:
     virtual void update(float deltaTime) = 0;
-    virtual void render() = 0;
+    virtual void render(const HammerEngine::Camera* camera) = 0;
     virtual void clean() = 0;
     virtual ~Entity() = default;
 
@@ -86,7 +91,7 @@ public:
     void update(float deltaTime) override {
         (void)deltaTime; // Suppress unused parameter warning
     }
-    void render() override {}
+    void render(const HammerEngine::Camera* camera) override { (void)camera; }
     void clean() override {
         // Safe cleanup - we're not calling shared_from_this() here
     }

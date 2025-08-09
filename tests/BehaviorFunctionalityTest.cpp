@@ -57,7 +57,7 @@ public:
         
         setPosition(newPos);
     }
-    void render() override {  }
+    void render(const HammerEngine::Camera* camera) override { (void)camera; }
     void clean() override {}
 
 private:

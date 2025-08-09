@@ -13,6 +13,11 @@
 #include <memory>
 #include <SDL3/SDL.h>
 
+// Forward declaration
+namespace HammerEngine {
+    class Camera;
+}
+
 // A mock player that extends Entity for testing SaveGameManager
 class MockPlayer : public Entity, public ISerializable {
 public:
@@ -24,7 +29,7 @@ public:
         
     // Required Entity interface implementations
     void update(float deltaTime) override { (void)deltaTime; /* Mock implementation */ }
-    void render() override { /* Mock implementation */ }
+    void render(const HammerEngine::Camera* camera) override { (void)camera; /* Mock implementation */ }
     void clean() override { /* Mock implementation */ }
     
     // Factory method for proper creation with shared_ptr

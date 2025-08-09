@@ -248,7 +248,7 @@ void AdvancedAIDemoState::update(float deltaTime) {
 void AdvancedAIDemoState::render() {
     // Render all NPCs
     for (auto& npc : m_npcs) {
-        npc->render();
+        npc->render(nullptr);  // No camera transformation needed in advanced AI demo
         
         // Render health bars for NPCs with combat attributes
         auto it = m_combatAttributes.find(npc);
@@ -262,7 +262,7 @@ void AdvancedAIDemoState::render() {
 
     // Render player
     if (m_player) {
-        m_player->render();
+        m_player->render(nullptr);  // No camera transformation needed in advanced AI demo
         
         // Render player health bar
         auto it = m_combatAttributes.find(m_player);
