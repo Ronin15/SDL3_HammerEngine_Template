@@ -157,19 +157,19 @@ void Player::render(const HammerEngine::Camera* camera) {
     renderPosition = m_position;
   }
 
-  // Calculate centered position for rendering (no early static casting)
+  // Calculate centered position for rendering (preserve float precision)
   float renderX = renderPosition.getX() - (m_frameWidth / 2.0f);
   float renderY = renderPosition.getY() - (m_height / 2.0f);
 
-  // Render the Player with the current animation frame
-  texMgr.drawFrame(m_textureID,
-                   static_cast<int>(renderX),        // Only cast for final SDL call
-                   static_cast<int>(renderY),        // Only cast for final SDL call
-                   m_frameWidth,   // Use the calculated frame width
-                   m_height,       // Height stays the same
-                   m_currentRow,   // Current animation row
-                   m_currentFrame, // Current animation frame
-                   renderer, m_flip);
+  // Render the Player with the current animation frame using float precision
+  texMgr.drawFrameF(m_textureID,
+                    renderX,        // Keep float precision for smooth camera movement
+                    renderY,        // Keep float precision for smooth camera movement
+                    m_frameWidth,   // Use the calculated frame width
+                    m_height,       // Height stays the same
+                    m_currentRow,   // Current animation row
+                    m_currentFrame, // Current animation frame
+                    renderer, m_flip);
 }
 
 void Player::clean() {

@@ -234,8 +234,8 @@ void GameLoop::runUpdateWorker(const HammerEngine::WorkerBudget& budget) {
 
             lastUpdateStart = updateStart;
 
-            // Periodic recalibration and logging
-            const int recalibrationInterval = 300; // Every 5 seconds at 60 FPS
+            // Periodic recalibration and logging (reduced frequency to minimize jitter)
+            const int recalibrationInterval = 1800; // Every 30 seconds at 60 FPS (was 5 seconds)
 
             if (++m_updateCount % recalibrationInterval == 0) {
                 float newTargetFPS = m_timestepManager->getTargetFPS();
@@ -244,11 +244,13 @@ void GameLoop::runUpdateWorker(const HammerEngine::WorkerBudget& budget) {
                     GAMELOOP_DEBUG("Target FPS changed to: " + std::to_string(targetFPS));
                 }
 
-                // Log performance metrics
-                if (avgUpdateTime.count() > 0) {
+                // Log performance metrics (only if logging is enabled and not in benchmark mode)
+                #ifdef DEBUG
+                if (avgUpdateTime.count() > 0 && !HammerEngine::Logger::IsBenchmarkMode()) {
                     GAMELOOP_DEBUG("Update performance: " + std::to_string(avgUpdateTime.count() / 1000.0f) +
                                  "ms avg (" + std::to_string((avgUpdateTime.count() / 1000.0f) / (1000.0f / targetFPS) * 100.0f) + "% frame budget)");
                 }
+                #endif
             }
 
         } catch (const std::exception& e) {
