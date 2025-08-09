@@ -26,7 +26,7 @@ private:
 public:
     void renderVisibleTiles(const WorldData& world, SDL_Renderer* renderer, 
                            float cameraX, float cameraY, int viewportWidth, int viewportHeight);
-    void renderTile(const Tile& tile, SDL_Renderer* renderer, int screenX, int screenY);
+    void renderTile(const Tile& tile, SDL_Renderer* renderer, float screenX, float screenY);
     
 private:
     std::string getBiomeTexture(HammerEngine::Biome biome) const;

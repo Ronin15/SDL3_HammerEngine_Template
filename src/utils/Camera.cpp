@@ -303,11 +303,14 @@ void Camera::updateFollowMode(float deltaTime) {
     Vector2D targetPos = getTargetPosition();
     Vector2D currentPos = m_position;
     
-    // Simple linear interpolation toward target - no complex logic
-    float lerpSpeed = m_config.followSpeed * deltaTime;
-    lerpSpeed = std::clamp(lerpSpeed, 0.0f, 1.0f); // Ensure valid lerp factor
+    // Use exponential smoothing for more natural camera movement
+    Vector2D delta = targetPos - currentPos;
     
-    m_position = lerp(currentPos, targetPos, lerpSpeed);
+    // Smooth exponential interpolation - frame-rate independent
+    float smoothFactor = m_config.smoothingFactor;
+    float adaptiveFactor = std::pow(smoothFactor, deltaTime * 60.0f); 
+    
+    m_position = currentPos + delta * (1.0f - adaptiveFactor);
 }
 
 void Camera::updateCameraShake(float deltaTime) {

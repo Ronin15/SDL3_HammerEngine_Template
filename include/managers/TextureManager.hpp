@@ -57,6 +57,42 @@ class TextureManager {
             SDL_FlipMode flip = SDL_FLIP_NONE);
 
   /**
+   * @brief Draws a texture with float precision for smooth camera movement
+   * @param textureID Unique identifier of the texture to draw
+   * @param x X coordinate for drawing position (float precision)
+   * @param y Y coordinate for drawing position (float precision)
+   * @param width Width to draw the texture
+   * @param height Height to draw the texture
+   * @param p_renderer SDL renderer to draw to
+   * @param flip Flip mode for the texture (default: SDL_FLIP_NONE)
+   */
+  void drawF(const std::string& textureID,
+             float x,
+             float y,
+             int width,
+             int height,
+             SDL_Renderer* p_renderer,
+             SDL_FlipMode flip = SDL_FLIP_NONE);
+
+  /**
+   * @brief Draws a tile texture with perfect pixel alignment for tiled rendering
+   * @param textureID Unique identifier of the texture to draw
+   * @param x X coordinate for drawing position (float precision)
+   * @param y Y coordinate for drawing position (float precision)
+   * @param width Width to draw the texture
+   * @param height Height to draw the texture
+   * @param p_renderer SDL renderer to draw to
+   * @param flip Flip mode for the texture (default: SDL_FLIP_NONE)
+   */
+  void drawTileF(const std::string& textureID,
+                 float x,
+                 float y,
+                 int width,
+                 int height,
+                 SDL_Renderer* p_renderer,
+                 SDL_FlipMode flip = SDL_FLIP_NONE);
+
+  /**
    * @brief Draws a specific frame from a sprite sheet texture
    * @param textureID Unique identifier of the sprite sheet texture
    * @param x X coordinate for drawing position
