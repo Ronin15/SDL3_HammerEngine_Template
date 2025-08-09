@@ -12,6 +12,7 @@
 #include "SDL3/SDL_joystick.h"
 #include "utils/Vector2D.hpp"
 #include <memory>
+#include <algorithm>
 
 // Removed global pointer - now managed as member variable
 
