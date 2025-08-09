@@ -64,6 +64,9 @@ void GamePlayState::update([[maybe_unused]] float deltaTime) {
   
   // Update camera (follows player automatically)
   updateCamera(deltaTime);
+  
+  // Apply camera transformation to renderer
+  applyCameraTransformation();
 
   // Update UI
   auto &ui = UIManager::Instance();
@@ -85,14 +88,21 @@ void GamePlayState::render() {
 
   // Render world first (background layer)
   if (m_camera) {
+    auto viewRect = m_camera->getViewRect();
     auto &worldMgr = WorldManager::Instance();
     worldMgr.render(renderer, 
-                   m_camera->getX(), 
-                   m_camera->getY(),
+                   viewRect.x,
+                   viewRect.y,
                    gameEngine.getLogicalWidth(),
                    gameEngine.getLogicalHeight());
   }
 
+  // Render player using camera-aware rendering
+  if (mp_Player) {
+    mp_Player->render(m_camera.get());
+  }
+
+  // Render UI components (no camera transformation)
   SDL_Color fontColor = {200, 200, 200, 255};
   fontMgr.drawText("Game State with Inventory Demo <-> [P] Pause <-> [B] Main "
                    "Menu <-> [I] Toggle Inventory <-> [1-5] Add Items",
@@ -100,12 +110,6 @@ void GamePlayState::render() {
                    gameEngine.getLogicalWidth() / 2, // Center horizontally
                    20, fontColor, renderer);
 
-  // Render player (matching EventDemoState simple pattern)
-  if (mp_Player) {
-    mp_Player->render();
-  }
-
-  // Render UI components
   auto &ui = UIManager::Instance();
   ui.render(renderer);
 }
@@ -452,5 +456,16 @@ void GamePlayState::setupCameraForWorld() {
   }
   
   m_camera->setWorldBounds(worldBounds);
+}
+
+void GamePlayState::applyCameraTransformation() {
+  if (!m_camera) {
+    return;
+  }
+  
+  // Calculate camera offset for later use in rendering
+  auto viewRect = m_camera->getViewRect();
+  m_cameraOffsetX = viewRect.x;
+  m_cameraOffsetY = viewRect.y;
 }
 

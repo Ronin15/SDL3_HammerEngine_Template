@@ -40,7 +40,7 @@ public:
         m_updateCount++;
         (void)deltaTime; // Suppress unused parameter warning
     }
-    void render() override {  }
+    void render(const HammerEngine::Camera* camera) override { (void)camera; }
     void clean() override {
         // Proper cleanup to avoid bad_weak_ptr exceptions
         // Never call shared_from_this() in the destructor!

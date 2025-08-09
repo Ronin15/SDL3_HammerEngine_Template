@@ -26,7 +26,7 @@ public:
   MockEntity(const std::string &id) : m_id(id) {}
 
   void update(float deltaTime) override { (void)deltaTime; }
-  void render() override {  }
+  void render(const HammerEngine::Camera* camera) override { (void)camera; }
   void clean() override {}
 
   std::string getId() const { return m_id; }

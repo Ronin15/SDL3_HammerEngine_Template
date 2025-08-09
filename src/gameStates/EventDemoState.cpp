@@ -279,6 +279,9 @@ void EventDemoState::update(float deltaTime) {
   
   // Update camera (follows player automatically)
   updateCamera(deltaTime);
+  
+  // Apply camera transformation to renderer
+  applyCameraTransformation();
 
   // AI Manager is updated globally by GameEngine for optimal performance
   // This prevents double-updating AI entities which was causing them to move
@@ -442,10 +445,11 @@ void EventDemoState::render() {
 
   // Render world first (background layer)
   if (m_camera) {
+    auto viewRect = m_camera->getViewRect();
     auto &worldMgr = WorldManager::Instance();
     worldMgr.render(renderer, 
-                   m_camera->getX(), 
-                   m_camera->getY(),
+                   viewRect.x,
+                   viewRect.y,
                    gameEngine.getLogicalWidth(),
                    gameEngine.getLogicalHeight());
   }
@@ -453,31 +457,36 @@ void EventDemoState::render() {
   // Render background particles first (rain, snow) - behind player/NPCs
   ParticleManager &particleMgr = ParticleManager::Instance();
   if (particleMgr.isInitialized() && !particleMgr.isShutdown()) {
-    // Render background particles with camera offset (for world-space effects)
-    // Using 0,0 for now since EventDemoState doesn't have camera movement
-    particleMgr.renderBackground(renderer, 0.0f, 0.0f);
+    // Render background particles with camera offset
+    float cameraX = m_camera ? m_cameraOffsetX : 0.0f;
+    float cameraY = m_camera ? m_cameraOffsetY : 0.0f;
+    particleMgr.renderBackground(renderer, cameraX, cameraY);
   }
 
-  // Render player
+  // Render player using camera-aware rendering
   if (m_player) {
-    m_player->render();
+    m_player->render(m_camera.get());
   }
 
-  // Render spawned NPCs
+  // Render spawned NPCs using camera-aware rendering
   for (const auto &npc : m_spawnedNPCs) {
     if (npc) {
-      npc->render();
+      npc->render(m_camera.get());
     }
   }
 
   // Render world-space particles
   if (particleMgr.isInitialized() && !particleMgr.isShutdown()) {
-    particleMgr.render(renderer, 0.0f, 0.0f);
+    float cameraX = m_camera ? m_cameraOffsetX : 0.0f;
+    float cameraY = m_camera ? m_cameraOffsetY : 0.0f;
+    particleMgr.render(renderer, cameraX, cameraY);
   }
 
   // Render foreground particles last (fog) - in front of player/NPCs
   if (particleMgr.isInitialized() && !particleMgr.isShutdown()) {
-    particleMgr.renderForeground(renderer, 0.0f, 0.0f);
+    float cameraX = m_camera ? m_cameraOffsetX : 0.0f;
+    float cameraY = m_camera ? m_cameraOffsetY : 0.0f;
+    particleMgr.renderForeground(renderer, cameraX, cameraY);
   }
 
   // Update and render UI components through UIManager using cached renderer for
@@ -1948,6 +1957,17 @@ void EventDemoState::setupCameraForWorld() {
   }
   
   m_camera->setWorldBounds(worldBounds);
+}
+
+void EventDemoState::applyCameraTransformation() {
+  if (!m_camera) {
+    return;
+  }
+  
+  // Calculate camera offset for later use in rendering
+  auto viewRect = m_camera->getViewRect();
+  m_cameraOffsetX = viewRect.x;
+  m_cameraOffsetY = viewRect.y;
 }
 
 void EventDemoState::toggleInventoryDisplay() {

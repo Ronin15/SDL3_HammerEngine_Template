@@ -4,17 +4,18 @@
  */
 
 #include "entities/NPC.hpp"
+#include "ai/AIBehavior.hpp"
 #include "core/GameEngine.hpp"
 #include "core/Logger.hpp"
 #include "events/ResourceChangeEvent.hpp"
+#include "managers/AIManager.hpp"
 #include "managers/EventManager.hpp"
 #include "managers/ResourceTemplateManager.hpp"
 #include "managers/TextureManager.hpp"
-#include <SDL3/SDL.h>
-#include <chrono>
-#include <cmath>
-#include <random>
+#include "utils/Camera.hpp"
+#include <iostream>
 #include <set>
+#include <random>
 
 NPC::NPC(const std::string &textureID, const Vector2D &startPosition,
          int frameWidth, int frameHeight)
@@ -174,13 +175,20 @@ void NPC::update(float deltaTime) {
   }
 }
 
-void NPC::render() {
+void NPC::render(const HammerEngine::Camera* camera) {
   // Cache manager references for better performance
   TextureManager &texMgr = TextureManager::Instance();
   SDL_Renderer *renderer = GameEngine::Instance().getRenderer();
 
-  // Use current position directly - no interpolation
-  Vector2D renderPosition = m_position;
+  // Determine render position based on camera
+  Vector2D renderPosition;
+  if (camera) {
+    // Transform world position to screen coordinates using camera
+    renderPosition = camera->worldToScreen(m_position);
+  } else {
+    // No camera transformation - render at world coordinates directly
+    renderPosition = m_position;
+  }
 
   // Calculate centered position for rendering (no static casting)
   float renderX = renderPosition.getX() - (m_frameWidth / 2.0f);

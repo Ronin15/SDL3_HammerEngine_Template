@@ -7,21 +7,22 @@
 #define ENTITY_HPP
 
 #include "utils/Vector2D.hpp"
-#include <string>
+#include <SDL3/SDL.h>
 #include <memory>
-#include <SDL3/SDL_render.h>
+#include <string>
 
-// Forward declaration for Entity shared_ptr typedef
-class Entity;
+// Forward declaration
+namespace HammerEngine {
+    class Camera;
+}
 
-// Define standard smart pointer types for Entity
-using EntityPtr = std::shared_ptr<Entity>;
-using EntityWeakPtr = std::weak_ptr<Entity>;
+using EntityPtr = std::shared_ptr<class Entity>;
+using EntityWeakPtr = std::weak_ptr<class Entity>;
 
 class Entity : public std::enable_shared_from_this<Entity> {
  public:
     virtual void update(float deltaTime) = 0;
-    virtual void render() = 0;   
+    virtual void render(const HammerEngine::Camera* camera) = 0; // Camera-aware rendering
     /**
      * @brief Clean up the entity's resources before destruction    * 
     * This method is called explicitly before an entity is destroyed.

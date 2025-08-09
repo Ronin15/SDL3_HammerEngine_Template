@@ -33,6 +33,10 @@ private:
   
   // Camera for world navigation and player following
   std::unique_ptr<HammerEngine::Camera> m_camera{nullptr};
+  
+  // Camera transformation state (calculated in update, used in render)
+  float m_cameraOffsetX{0.0f};
+  float m_cameraOffsetY{0.0f};
 
   // Resource handles resolved at initialization (resource handle system
   // compliance)
@@ -57,6 +61,7 @@ private:
   void initializeCamera();
   void updateCamera(float deltaTime);
   void setupCameraForWorld();
+  void applyCameraTransformation();
 };
 
 #endif // GAME_PLAY_STATE_HPP
