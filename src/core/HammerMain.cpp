@@ -3,13 +3,13 @@
  * Licensed under the MIT License - see LICENSE file for details
 */
 
-#include <string>
-#include <string_view>
-#include <cstdlib>
 #include "core/GameEngine.hpp"
 #include "core/ThreadSystem.hpp"
 #include "core/GameLoop.hpp"
 #include "core/Logger.hpp"
+#include <string>
+#include <string_view>
+#include <cstdlib>
 
 const int WINDOW_WIDTH{1920};
 const int WINDOW_HEIGHT{1080};

@@ -8,7 +8,6 @@
 #include "managers/FontManager.hpp"
 #include "managers/UIManager.hpp"
 #include "core/GameEngine.hpp"
-#include <iostream>
 
 bool PauseState::enter() {
   // Create pause state UI

@@ -9,7 +9,6 @@
 #include "core/ThreadSystem.hpp"
 #include "core/WorkerBudget.hpp"
 #include <algorithm>
-#include <algorithm> // for std::clamp
 #include <chrono>
 #include <cmath>
 #include <thread>

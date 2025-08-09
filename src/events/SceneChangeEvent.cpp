@@ -6,7 +6,6 @@
 #include "events/SceneChangeEvent.hpp"
 #include "utils/Vector2D.hpp"
 #include "core/Logger.hpp"
-#include <algorithm>
 
 // Helper function to get player position
 static Vector2D getPlayerPosition() {
