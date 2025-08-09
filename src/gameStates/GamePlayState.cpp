@@ -25,15 +25,11 @@ bool GamePlayState::enter() {
   
   // Check if already initialized (resuming from pause)
   if (m_initialized) {
-    std::cout << "Hammer Game Engine - Resuming GamePlayState from pause\n";
-    
     // No longer need to unpause GameLoop - PauseState simply pops off the stack
     // GameStateManager will resume updating this state automatically
     
     return true;
   }
-  
-  std::cout << "Hammer Game Engine - Fresh GamePlayState initialization\n";
   
   // Initialize resource handles first
   initializeResourceHandles();
@@ -64,8 +60,6 @@ bool GamePlayState::enter() {
 }
 
 void GamePlayState::update([[maybe_unused]] float deltaTime) {
-  // std::cout << "Updating GAME State\n";
-
   // Update player if it exists
   if (mp_Player) {
     mp_Player->update(deltaTime);
@@ -85,16 +79,17 @@ void GamePlayState::update([[maybe_unused]] float deltaTime) {
 }
 
 void GamePlayState::render(double alpha) {
-  // std::cout << "Rendering GAME State\n";
+  // Get renderer using the standard pattern (consistent with other states)
+  auto &gameEngine = GameEngine::Instance();
+  SDL_Renderer *renderer = gameEngine.getRenderer();
 
   // Cache manager references for better performance
   FontManager &fontMgr = FontManager::Instance();
-  const auto &gameEngine = GameEngine::Instance();
 
   // Render world first (background layer)
   if (m_camera) {
     auto &worldMgr = WorldManager::Instance();
-    worldMgr.render(gameEngine.getRenderer(), 
+    worldMgr.render(renderer, 
                    m_camera->getX(), 
                    m_camera->getY(),
                    gameEngine.getLogicalWidth(),
@@ -106,21 +101,18 @@ void GamePlayState::render(double alpha) {
                    "Menu <-> [I] Toggle Inventory <-> [1-5] Add Items",
                    "fonts_Arial",
                    gameEngine.getLogicalWidth() / 2, // Center horizontally
-                   20, fontColor, gameEngine.getRenderer());
+                   20, fontColor, renderer);
 
   mp_Player->render(alpha);
 
   // Render UI components
   auto &ui = UIManager::Instance();
-  ui.render(gameEngine.getRenderer());
+  ui.render(renderer);
 }
 bool GamePlayState::exit() {
-  std::cout << "Hammer Game Engine - Exiting GAME State\n";
-
   if (m_transitioningToPause) {
     // Transitioning to pause - PRESERVE ALL GAMEPLAY DATA
     // PauseState will overlay on top, and GameStateManager will only update PauseState
-    std::cout << "Hammer Game Engine - Transitioning to PauseState (preserving data)\n";
     
     // Reset the flag after using it
     m_transitioningToPause = false;
@@ -130,13 +122,11 @@ bool GamePlayState::exit() {
   }
 
   // Full exit (going to main menu, other states, or shutting down)
-  std::cout << "Hammer Game Engine - Full cleanup - not preserving data\n";
   
   // Unload the world when fully exiting gameplay
   auto& worldManager = WorldManager::Instance();
   if (worldManager.isInitialized() && worldManager.hasActiveWorld()) {
     worldManager.unloadWorld();
-    std::cout << "World unloaded from GamePlayState\n";
   }
 
   // Full UI cleanup using standard pattern
@@ -164,7 +154,6 @@ void GamePlayState::handleInput() {
     auto *gameStateManager = gameEngine.getGameStateManager();
     if (!gameStateManager->hasState("PauseState")) {
       gameStateManager->addState(std::make_unique<PauseState>());
-      std::cout << "Hammer Game Engine - Created PAUSE State\n";
     }
     // Stop player movement to prevent jittering during pause
     if (mp_Player) {
@@ -177,7 +166,6 @@ void GamePlayState::handleInput() {
   }
 
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_B)) {
-    std::cout << "Hammer Game Engine - Transitioning to MainMenuState...\n";
     const auto &gameEngine = GameEngine::Instance();
     gameEngine.getGameStateManager()->changeState("MainMenuState");
   }
@@ -217,8 +205,6 @@ void GamePlayState::handleInput() {
         if (!ui.isClickOnUI(mousePos)) {
             Vector2D worldPos = m_camera->screenToWorld(mousePos);
             // TODO: Implement world interaction at worldPos
-            // For now, we just log the coordinates
-            std::cout << "World click at: (" << worldPos.getX() << ", " << worldPos.getY() << ")\n";
         }
     }
 }
@@ -304,58 +290,32 @@ void GamePlayState::toggleInventoryDisplay() {
   ui.setComponentVisible("gameplay_inventory_title", m_inventoryVisible);
   ui.setComponentVisible("gameplay_inventory_status", m_inventoryVisible);
   ui.setComponentVisible("gameplay_inventory_list", m_inventoryVisible);
-
-  std::cout << "Inventory " << (m_inventoryVisible ? "shown" : "hidden")
-            << std::endl;
 }
 
 void GamePlayState::addDemoResource(HammerEngine::ResourceHandle resourceHandle,
                                     int quantity) {
   if (!mp_Player) {
-    std::cout << "Player not available for resource addition" << std::endl;
     return;
   }
 
   if (!resourceHandle.isValid()) {
-    std::cout << "Invalid resource handle" << std::endl;
     return;
   }
 
-  bool success =
-      mp_Player->getInventory()->addResource(resourceHandle, quantity);
-  if (success) {
-    std::cout << "Added " << quantity
-              << " resources (handle: " << resourceHandle.toString()
-              << ") to player inventory" << std::endl;
-  } else {
-    std::cout << "Failed to add resources to inventory (might be full)"
-              << std::endl;
-  }
+  mp_Player->getInventory()->addResource(resourceHandle, quantity);
 }
 
 void GamePlayState::removeDemoResource(
     HammerEngine::ResourceHandle resourceHandle, int quantity) {
   if (!mp_Player) {
-    std::cout << "Player not available for resource removal" << std::endl;
     return;
   }
 
   if (!resourceHandle.isValid()) {
-    std::cout << "Invalid resource handle" << std::endl;
     return;
   }
 
-  bool success =
-      mp_Player->getInventory()->removeResource(resourceHandle, quantity);
-  if (success) {
-    std::cout << "Removed " << quantity
-              << " resources (handle: " << resourceHandle.toString()
-              << ") from player inventory" << std::endl;
-  } else {
-    std::cout
-        << "Failed to remove resources from inventory (insufficient quantity)"
-        << std::endl;
-  }
+  mp_Player->getInventory()->removeResource(resourceHandle, quantity);
 }
 
 void GamePlayState::initializeResourceHandles() {
@@ -412,8 +372,6 @@ void GamePlayState::initializeWorld() {
   if (!worldManager.loadNewWorld(config)) {
     std::cerr << "Failed to load new world in GamePlayState" << std::endl;
     // Continue anyway like EventDemoState - game can function without world
-  } else {
-    std::cout << "Successfully loaded world with seed: " << config.seed << std::endl;
   }
 }
 

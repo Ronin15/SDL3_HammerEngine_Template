@@ -63,12 +63,28 @@ void GameStateManager::changeState(const std::string &stateName) {
   pushState(stateName);
 }
 
+void GameStateManager::requestStateChange(const std::string &stateName) {
+  // Request a deferred state change to avoid self-destruction during update
+  m_pendingStateChange = stateName;
+  m_hasPendingStateChange = true;
+  GAMESTATE_INFO("Requested deferred state change to: " + stateName);
+}
+
 void GameStateManager::update(float deltaTime) {
   m_lastDeltaTime = deltaTime; // Store deltaTime for render
+  
   // Only update the top state when multiple states are active (e.g., PauseState over GamePlayState)
   // This prevents underlying states from processing game logic when paused
   if (!m_activeStates.empty()) {
     m_activeStates.back()->update(deltaTime);
+  }
+  
+  // Process any pending state changes after update cycle completes
+  if (m_hasPendingStateChange) {
+    GAMESTATE_INFO("Processing deferred state change to: " + m_pendingStateChange);
+    changeState(m_pendingStateChange);
+    m_hasPendingStateChange = false;
+    m_pendingStateChange.clear();
   }
 }
 

@@ -11,8 +11,6 @@
 #include <iostream>
 
 bool PauseState::enter() {
-  std::cout << "Hammer Game Engine - Entering PAUSE State\n";
-
   // Create pause state UI
   auto& gameEngine = GameEngine::Instance();
   auto& ui = UIManager::Instance();
@@ -29,7 +27,6 @@ bool PauseState::enter() {
 }
 
 void PauseState::update([[maybe_unused]] float deltaTime) {
-  //std::cout << "Updating PAUSE State\n";
 }
 
 void PauseState::render([[maybe_unused]] double alpha) {
@@ -55,15 +52,11 @@ void PauseState::render([[maybe_unused]] double alpha) {
        gameEngine.getRenderer());
 }
 bool PauseState::exit() {
-  std::cout << "Hammer Game Engine - Exiting PAUSE State\n";
-
   // Only clean up PauseState-specific UI components
   // Do NOT use prepareForStateTransition() as it would clear GamePlayState's preserved UI
   auto& ui = UIManager::Instance();
   ui.removeComponent("pause_title");
   ui.removeOverlay(); // Remove the pause overlay to restore GamePlayState visibility
-  
-  std::cout << "Hammer Game Engine - PauseState UI cleaned, GamePlayState UI preserved\n";
 
   return true;
 }

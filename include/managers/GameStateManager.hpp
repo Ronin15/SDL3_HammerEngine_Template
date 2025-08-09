@@ -20,6 +20,7 @@ class GameStateManager {
   void pushState(const std::string& stateName);
   void popState();
   void changeState(const std::string& stateName); // Pops the current state and pushes a new one
+  void requestStateChange(const std::string& stateName); // Request deferred state change
 
   void update(float deltaTime);
   void render(double alpha);
@@ -37,6 +38,10 @@ class GameStateManager {
   std::vector<std::shared_ptr<GameState>> m_activeStates;
 
   float m_lastDeltaTime{0.0f}; // Store deltaTime from update to pass to render
+  
+  // Deferred state change mechanism
+  std::string m_pendingStateChange;
+  bool m_hasPendingStateChange{false};
 };
 
 #endif  // GAME_STATE_MANAGER_HPP
