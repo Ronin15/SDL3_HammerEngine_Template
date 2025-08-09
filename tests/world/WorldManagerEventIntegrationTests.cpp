@@ -122,7 +122,7 @@ BOOST_AUTO_TEST_CASE(TestHarvestResourceIntegration) {
  * Simple test that verifies both managers can be initialized and work together
  */
 BOOST_AUTO_TEST_CASE(TestBasicWorldManagerEventIntegration) {
-    GAMEENGINE_INFO("Starting basic WorldManager event integration test");
+    WORLD_MANAGER_INFO("Starting basic WorldManager event integration test");
     
     // Initialize managers
     bool worldInit = WorldManager::Instance().init();
@@ -151,7 +151,7 @@ BOOST_AUTO_TEST_CASE(TestBasicWorldManagerEventIntegration) {
     WorldManager::Instance().clean();
     EventManager::Instance().clean();
     
-    GAMEENGINE_INFO("Basic WorldManager event integration test completed successfully");
+    WORLD_MANAGER_INFO("Basic WorldManager event integration test completed successfully");
 }
 
 /**
@@ -159,7 +159,7 @@ BOOST_AUTO_TEST_CASE(TestBasicWorldManagerEventIntegration) {
  * Uses a very small world to avoid performance issues
  */
 BOOST_AUTO_TEST_CASE(TestSimpleWorldGeneration) {
-    GAMEENGINE_INFO("Starting simple world generation test");
+    WORLD_MANAGER_INFO("Starting simple world generation test");
     
     // Initialize managers
     BOOST_REQUIRE(WorldManager::Instance().init());
@@ -175,15 +175,15 @@ BOOST_AUTO_TEST_CASE(TestSimpleWorldGeneration) {
     config.waterLevel = 0.3f;
     config.mountainLevel = 0.7f;
     
-    GAMEENGINE_INFO("Generating 5x5 world...");
+    WORLD_MANAGER_INFO("Generating 5x5 world...");
     bool generateResult = WorldManager::Instance().loadNewWorld(config);
     
     BOOST_REQUIRE(generateResult);
-    GAMEENGINE_INFO("World generation completed");
+    WORLD_MANAGER_INFO("World generation completed");
     
     // Single event processing call (no loop to avoid hanging)
     EventManager::Instance().update();
-    GAMEENGINE_INFO("Event processing completed");
+    WORLD_MANAGER_INFO("Event processing completed");
     
     // Verify world is active
     BOOST_CHECK(WorldManager::Instance().hasActiveWorld());
@@ -192,7 +192,7 @@ BOOST_AUTO_TEST_CASE(TestSimpleWorldGeneration) {
     WorldManager::Instance().clean();
     EventManager::Instance().clean();
     
-    GAMEENGINE_INFO("Simple world generation test completed successfully");
+    WORLD_MANAGER_INFO("Simple world generation test completed successfully");
 }
 
 /**
@@ -200,7 +200,7 @@ BOOST_AUTO_TEST_CASE(TestSimpleWorldGeneration) {
  * Focuses purely on event system functionality
  */
 BOOST_AUTO_TEST_CASE(TestEventCreationAndProcessing) {
-    GAMEENGINE_INFO("Starting event creation and processing test");
+    WORLD_MANAGER_INFO("Starting event creation and processing test");
     
     // Initialize only EventManager to avoid WorldManager complexity
     BOOST_REQUIRE(EventManager::Instance().init());
@@ -247,7 +247,7 @@ BOOST_AUTO_TEST_CASE(TestEventCreationAndProcessing) {
     // Clean up
     EventManager::Instance().clean();
     
-    GAMEENGINE_INFO("Event creation and processing test completed successfully");
+    WORLD_MANAGER_INFO("Event creation and processing test completed successfully");
 }
 
 BOOST_AUTO_TEST_SUITE_END()

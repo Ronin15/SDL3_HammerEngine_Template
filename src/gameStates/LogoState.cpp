@@ -25,14 +25,15 @@ bool LogoState::enter() {
 
 void LogoState::update(float deltaTime) {
   m_stateTimer += deltaTime;
-  if (m_stateTimer > 3.0f) {  // 3 seconds using deltaTime
+  
+  if (m_stateTimer > 3.0f) {
     // Cache GameEngine reference for better performance
     const auto& gameEngine = GameEngine::Instance();
     auto* gameStateManager = gameEngine.getGameStateManager();
     
-    // Ensure MainMenuState exists before transitioning (prevents race condition)
+    // Use deferred state change to avoid self-destruction during update
     if (gameStateManager && gameStateManager->hasState("MainMenuState")) {
-      gameStateManager->changeState("MainMenuState");
+      gameStateManager->requestStateChange("MainMenuState");
     }
   }
 }
