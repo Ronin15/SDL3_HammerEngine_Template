@@ -5,6 +5,7 @@
 
 #include "managers/TextureManager.hpp"
 #include "core/Logger.hpp"
+#include <algorithm>
 #include <filesystem>
 
 
