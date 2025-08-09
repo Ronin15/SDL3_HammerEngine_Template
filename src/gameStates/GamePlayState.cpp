@@ -34,11 +34,11 @@ bool GamePlayState::enter() {
   // Initialize resource handles first
   initializeResourceHandles();
   
-  // Create player and position at screen center (like EventDemoState)
+  // Create player and position at screen center
   mp_Player = std::make_shared<Player>();
   mp_Player->initializeInventory();
   
-  // Position player at screen center (like EventDemoState - and KEEP IT THERE)
+  // Position player at screen center
   const auto &gameEngine = GameEngine::Instance();
   Vector2D screenCenter(gameEngine.getLogicalWidth() / 2, gameEngine.getLogicalHeight() / 2);
   mp_Player->setPosition(screenCenter);
@@ -47,11 +47,9 @@ bool GamePlayState::enter() {
   // Initialize the inventory UI
   initializeInventoryUI();
   
-  // Initialize world and camera (following EventDemoState pattern exactly)
+  // Initialize world and camera
   initializeWorld();
   initializeCamera();
-  
-  // DO NOT reposition player - keep at screen center like EventDemoState!
 
   // Mark as initialized for future pause/resume cycles
   m_initialized = true;
@@ -204,7 +202,20 @@ void GamePlayState::handleInput() {
 
         if (!ui.isClickOnUI(mousePos)) {
             Vector2D worldPos = m_camera->screenToWorld(mousePos);
-            // TODO: Implement world interaction at worldPos
+            int tileX = static_cast<int>(worldPos.getX() / 32);
+            int tileY = static_cast<int>(worldPos.getY() / 32);
+
+            auto& worldMgr = WorldManager::Instance();
+            if (worldMgr.isValidPosition(tileX, tileY)) {
+                const auto* tile = worldMgr.getTileAt(tileX, tileY);
+                if (tile) {
+                    // Log tile information for now
+                    // Later, this could trigger events or actions
+                    std::cout << "Clicked tile (" << tileX << ", " << tileY << ") - Biome: " 
+                              << static_cast<int>(tile->biome) << ", Obstacle: " 
+                              << static_cast<int>(tile->obstacleType) << std::endl;
+                }
+            }
         }
     }
 }
