@@ -20,8 +20,17 @@
   ```
   ./tests/test_scripts/run_save_tests.sh --verbose
   ./tests/test_scripts/run_json_reader_tests.sh --verbose
+  ./tests/test_scripts/run_game_state_manager_tests.sh --verbose
   ./bin/debug/SaveManagerTests --run_test="TestSaveAndLoad*"
   ./bin/debug/json_reader_tests --run_test="TestBasicParsing"
+  ./bin/debug/game_state_manager_tests --run_test="*StateStack*"
+  ```
+- **Windows Batch Files:**
+  ```
+  tests\test_scripts\run_save_tests.bat --verbose
+  tests\test_scripts\run_json_reader_tests.bat --verbose
+  tests\test_scripts\run_game_state_manager_tests.bat --verbose
+  bin\debug\game_state_manager_tests.exe --run_test="*StateStack*"
   ```
 - **Static Analysis:**
   ```

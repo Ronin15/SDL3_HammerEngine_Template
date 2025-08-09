@@ -46,6 +46,12 @@ add_executable(thread_system_tests
     ThreadSystemTests.cpp
 )
 
+# GameStateManager tests
+add_executable(game_state_manager_tests
+    GameStateManagerTests.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/GameStateManager.cpp
+)
+
 # AI Optimization tests
 add_executable(ai_optimization_tests
     AIOptimizationTest.cpp
@@ -710,6 +716,12 @@ target_link_libraries(thread_system_tests PRIVATE
     Boost::unit_test_framework
 )
 
+# Link GameStateManager tests with required libraries
+target_link_libraries(game_state_manager_tests PRIVATE
+    SDL3::SDL3
+    Boost::unit_test_framework
+)
+
 # Link AI optimization tests with required libraries
 target_link_libraries(ai_optimization_tests PRIVATE
     SDL3::SDL3
@@ -915,6 +927,7 @@ target_compile_definitions(ui_stress_test PRIVATE
 # Add the tests to CTest
 add_test(NAME SaveManagerTests COMMAND save_manager_tests)
 add_test(NAME ThreadSystemTests COMMAND thread_system_tests)
+add_test(NAME GameStateManagerTests COMMAND game_state_manager_tests)
 add_test(NAME AIOptimizationTests COMMAND ai_optimization_tests)
 add_test(NAME AIScalingBenchmark COMMAND ai_scaling_benchmark)
 add_test(NAME EventManagerScalingBenchmark
