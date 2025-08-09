@@ -435,7 +435,7 @@ void EventDemoState::update(float deltaTime) {
   // Input)
 }
 
-void EventDemoState::render(double alpha) {
+void EventDemoState::render() {
   // Get renderer using the standard pattern (consistent with other states)
   auto &gameEngine = GameEngine::Instance();
   SDL_Renderer *renderer = gameEngine.getRenderer();
@@ -460,13 +460,13 @@ void EventDemoState::render(double alpha) {
 
   // Render player
   if (m_player) {
-    m_player->render(alpha);
+    m_player->render();
   }
 
   // Render spawned NPCs
   for (const auto &npc : m_spawnedNPCs) {
     if (npc) {
-      npc->render(alpha);
+      npc->render();
     }
   }
 

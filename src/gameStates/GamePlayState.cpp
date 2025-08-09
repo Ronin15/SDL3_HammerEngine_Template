@@ -42,7 +42,6 @@ bool GamePlayState::enter() {
   const auto &gameEngine = GameEngine::Instance();
   Vector2D screenCenter(gameEngine.getLogicalWidth() / 2, gameEngine.getLogicalHeight() / 2);
   mp_Player->setPosition(screenCenter);
-  mp_Player->syncState();
 
   // Initialize the inventory UI
   initializeInventoryUI();
@@ -76,7 +75,7 @@ void GamePlayState::update([[maybe_unused]] float deltaTime) {
   updateInventoryUI();
 }
 
-void GamePlayState::render(double alpha) {
+void GamePlayState::render() {
   // Get renderer using the standard pattern (consistent with other states)
   auto &gameEngine = GameEngine::Instance();
   SDL_Renderer *renderer = gameEngine.getRenderer();
@@ -101,7 +100,10 @@ void GamePlayState::render(double alpha) {
                    gameEngine.getLogicalWidth() / 2, // Center horizontally
                    20, fontColor, renderer);
 
-  mp_Player->render(alpha);
+  // Render player (matching EventDemoState simple pattern)
+  if (mp_Player) {
+    mp_Player->render();
+  }
 
   // Render UI components
   auto &ui = UIManager::Instance();
@@ -156,7 +158,6 @@ void GamePlayState::handleInput() {
     // Stop player movement to prevent jittering during pause
     if (mp_Player) {
       mp_Player->setVelocity(Vector2D(0, 0));
-      mp_Player->syncState();
     }
     
     m_transitioningToPause = true; // Set flag before transitioning

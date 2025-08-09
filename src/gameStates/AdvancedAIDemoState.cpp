@@ -245,10 +245,10 @@ void AdvancedAIDemoState::update(float deltaTime) {
     }
 }
 
-void AdvancedAIDemoState::render(double alpha) {
+void AdvancedAIDemoState::render() {
     // Render all NPCs
     for (auto& npc : m_npcs) {
-        npc->render(alpha);
+        npc->render();
         
         // Render health bars for NPCs with combat attributes
         auto it = m_combatAttributes.find(npc);
@@ -262,7 +262,7 @@ void AdvancedAIDemoState::render(double alpha) {
 
     // Render player
     if (m_player) {
-        m_player->render(alpha);
+        m_player->render();
         
         // Render player health bar
         auto it = m_combatAttributes.find(m_player);

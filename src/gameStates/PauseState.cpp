@@ -28,7 +28,7 @@ bool PauseState::enter() {
 void PauseState::update([[maybe_unused]] float deltaTime) {
 }
 
-void PauseState::render([[maybe_unused]] double alpha) {
+void PauseState::render() {
     // Cache manager references for better performance
     FontManager& fontMgr = FontManager::Instance();
     const auto& gameEngine = GameEngine::Instance();

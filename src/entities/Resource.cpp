@@ -58,7 +58,7 @@ void Resource::update(float) {
   // Individual instances are managed by InventoryComponent
 }
 
-void Resource::render(double) {
+void Resource::render() {
   // Resources don't render themselves (they're templates)
   // Individual instances are rendered by UI systems using the icon texture
 }

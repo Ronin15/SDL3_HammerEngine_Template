@@ -21,7 +21,6 @@ NPC::NPC(const std::string &textureID, const Vector2D &startPosition,
     : m_frameWidth(frameWidth), m_frameHeight(frameHeight) {
   // Initialize entity properties
   m_position = startPosition;
-  m_previousPosition = m_position; // Initialize previous position to avoid jitter
   m_velocity = Vector2D(0, 0);
   m_acceleration = Vector2D(0, 0);
   m_textureID = textureID;
@@ -114,7 +113,6 @@ void NPC::loadDimensionsFromTexture() {
 
 void NPC::update(float deltaTime) {
   // The NPC is responsible for its own physics and animation.
-  m_previousPosition = m_position;
   
   // Apply acceleration and friction
   m_velocity += m_acceleration * deltaTime;
@@ -176,21 +174,22 @@ void NPC::update(float deltaTime) {
   }
 }
 
-void NPC::render(double alpha) {
+void NPC::render() {
   // Cache manager references for better performance
   TextureManager &texMgr = TextureManager::Instance();
   SDL_Renderer *renderer = GameEngine::Instance().getRenderer();
 
-  // Interpolate position for smooth rendering
-  Vector2D renderPosition = m_position * alpha + m_previousPosition * (1.0 - alpha);
+  // Use current position directly - no interpolation
+  Vector2D renderPosition = m_position;
 
-  // Calculate centered position for rendering
-  // This ensures the NPC is centered at its position coordinates
-  int renderX = static_cast<int>(renderPosition.getX() - (m_frameWidth / 2.0f));
-  int renderY = static_cast<int>(renderPosition.getY() - (m_height / 2.0f));
+  // Calculate centered position for rendering (no static casting)
+  float renderX = renderPosition.getX() - (m_frameWidth / 2.0f);
+  float renderY = renderPosition.getY() - (m_height / 2.0f);
 
   // Render the NPC with the current animation frame
-  texMgr.drawFrame(m_textureID, renderX, renderY, m_frameWidth, m_height,
+  texMgr.drawFrame(m_textureID, 
+                   static_cast<int>(renderX), static_cast<int>(renderY), 
+                   m_frameWidth, m_height,
                    m_currentRow, m_currentFrame, renderer, m_flip);
 }
 
