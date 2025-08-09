@@ -26,7 +26,7 @@ public:
   MockEntity(const std::string &id) : m_id(id) {}
 
   void update(float deltaTime) override { (void)deltaTime; }
-  void render(double alpha) override { (void)alpha; }
+  void render() override {  }
   void clean() override {}
 
   std::string getId() const { return m_id; }

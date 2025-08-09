@@ -28,9 +28,8 @@ public:
         m_lastDeltaTime = deltaTime;
     }
     
-    void render(double alpha) override { 
+    void render() override { 
         m_renderCalled = true; 
-        m_lastAlpha = alpha;
     }
     
     void handleInput() override { 
@@ -63,7 +62,6 @@ public:
     bool wasPauseCalled() const { return m_pauseCalled; }
     bool wasResumeCalled() const { return m_resumeCalled; }
     float getLastDeltaTime() const { return m_lastDeltaTime; }
-    double getLastAlpha() const { return m_lastAlpha; }
 
     void resetFlags() {
         m_enterCalled = m_exitCalled = m_updateCalled = m_renderCalled = 
@@ -75,7 +73,6 @@ private:
     bool m_enterCalled, m_exitCalled, m_updateCalled, m_renderCalled, 
          m_handleInputCalled, m_pauseCalled, m_resumeCalled;
     float m_lastDeltaTime{0.0f};
-    double m_lastAlpha{0.0};
 };
 
 struct GameStateManagerFixture {
@@ -241,18 +238,15 @@ BOOST_AUTO_TEST_CASE(TestRender) {
     state2Ptr->resetFlags();
     
     // Render should call render on all active states
-    const double alpha = 0.5;
-    manager.render(alpha);
+    manager.render();
     
     BOOST_CHECK(state1Ptr->wasRenderCalled());
     BOOST_CHECK(state2Ptr->wasRenderCalled());
-    BOOST_CHECK_EQUAL(state1Ptr->getLastAlpha(), alpha);
-    BOOST_CHECK_EQUAL(state2Ptr->getLastAlpha(), alpha);
 }
 
 BOOST_AUTO_TEST_CASE(TestRenderEmptyStack) {
     // Render with no active states should not crash
-    BOOST_CHECK_NO_THROW(manager.render(0.5));
+    BOOST_CHECK_NO_THROW(manager.render());
 }
 
 BOOST_AUTO_TEST_CASE(TestHandleInput) {
@@ -420,7 +414,7 @@ BOOST_AUTO_TEST_CASE(TestStateStackBehavior) {
     state2Ptr->resetFlags();
     state3Ptr->resetFlags();
     
-    manager.render(0.5);
+    manager.render();
     
     BOOST_CHECK(state1Ptr->wasRenderCalled());
     BOOST_CHECK(state2Ptr->wasRenderCalled());

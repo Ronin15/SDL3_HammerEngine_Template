@@ -321,15 +321,15 @@ void AIDemoState::update([[maybe_unused]] float deltaTime) {
   // Game logic only - UI updates moved to render() for thread safety
 }
 
-void AIDemoState::render(double alpha) {
+void AIDemoState::render() {
   // Render all NPCs
   for (auto &npc : m_npcs) {
-    npc->render(alpha);
+    npc->render();
   }
 
   // Render player
   if (m_player) {
-    m_player->render(alpha);
+    m_player->render();
   }
 
   // Update and render UI components through UIManager using cached renderer for

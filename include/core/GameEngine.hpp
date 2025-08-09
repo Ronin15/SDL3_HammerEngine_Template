@@ -61,9 +61,8 @@ public:
 
   /**
    * @brief Main rendering function called from game loop
-   * @param alpha Interpolation factor for smooth rendering
    */
-  void render(double alpha);
+  void render();
 
   /**
    * @brief Cleans up all engine resources and shuts down systems

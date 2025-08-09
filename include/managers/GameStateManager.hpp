@@ -23,7 +23,7 @@ class GameStateManager {
   void requestStateChange(const std::string& stateName); // Request deferred state change
 
   void update(float deltaTime);
-  void render(double alpha);
+  void render();
   void handleInput();
 
   bool hasState(const std::string& stateName) const;

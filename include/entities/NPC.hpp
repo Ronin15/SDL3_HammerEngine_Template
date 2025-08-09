@@ -31,7 +31,7 @@ public:
   }
 
   void update(float deltaTime) override;
-  void render(double alpha) override;
+  void render() override;
   void clean() override;
 
   // No state management - handled by AI Manager

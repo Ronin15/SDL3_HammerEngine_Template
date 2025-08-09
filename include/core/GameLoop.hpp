@@ -33,7 +33,7 @@ public:
     // Callback function types
     using EventHandler = std::function<void()>;
     using UpdateHandler = std::function<void(float deltaTime)>;
-    using RenderHandler = std::function<void(double alpha)>;
+    using RenderHandler = std::function<void()>;
 
     /**
      * Constructor
@@ -64,7 +64,7 @@ public:
 
     /**
      * Set the render callback
-     * Rendering runs with variable timestep and interpolation
+     * Rendering runs after all updates are complete
      * @param handler Function to call for rendering
      */
     void setRenderHandler(RenderHandler handler);
@@ -158,7 +158,7 @@ private:
     // Thread-safe callback invocation
     void invokeEventHandler();
     void invokeUpdateHandler(float deltaTime);
-    void invokeRenderHandler(double alpha);
+    void invokeRenderHandler();
 
     // Prevent copying
     GameLoop(const GameLoop&) = delete;

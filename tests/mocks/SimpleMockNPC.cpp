@@ -30,7 +30,7 @@ public:
         setPosition(pos + (vel * deltaTime));
     }
     
-    void render(double alpha) override { (void)alpha; /* No rendering in tests */ }
+    void render() override {  /* No rendering in tests */ }
     void clean() override { /* No cleanup needed */ }
 
     // NPC-specific methods that PatrolBehavior uses

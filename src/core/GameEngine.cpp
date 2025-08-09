@@ -904,7 +904,7 @@ void GameEngine::update([[maybe_unused]] float deltaTime) {
   m_bufferCondition.notify_all();
 }
 
-void GameEngine::render(double alpha) {
+void GameEngine::render() {
   // Always on MAIN thread as its an - SDL REQUIREMENT
   std::lock_guard<std::mutex> lock(m_renderMutex);
 
@@ -922,7 +922,7 @@ void GameEngine::render(double alpha) {
   }
 
   // Make sure GameStateManager knows which buffer to render from
-  mp_gameStateManager->render(alpha);
+  mp_gameStateManager->render();
 
   if (!SDL_RenderPresent(mp_renderer.get())) {
     GAMEENGINE_ERROR("Failed to present renderer: " +

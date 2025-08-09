@@ -19,7 +19,6 @@ Player::Player() {
   // Initialize player properties
   m_position =
       Vector2D(400, 300); // Start position in the middle of a typical screen
-  m_previousPosition = m_position; // Initialize previous position to avoid jitter
   m_velocity = Vector2D(0, 0);
   m_acceleration = Vector2D(0, 0);
   m_textureID =
@@ -129,9 +128,6 @@ std::string Player::getCurrentStateName() const {
 }
 
 void Player::update(float deltaTime) {
-  // Store previous position for interpolation BEFORE any updates
-  m_previousPosition = m_position;
-
   // Let the state machine handle ALL movement and input logic
   m_stateManager.update(deltaTime);
 
@@ -145,28 +141,22 @@ void Player::update(float deltaTime) {
   }
 }
 
-void Player::render(double alpha) {
+void Player::render() {
   // Cache manager references for better performance
   TextureManager &texMgr = TextureManager::Instance();
   SDL_Renderer *renderer = GameEngine::Instance().getRenderer();
 
-  Vector2D renderPosition;
-  // Add a threshold to prevent jitter when idle
-  if ((m_position - m_previousPosition).lengthSquared() < 0.0001f) {
-    renderPosition = m_position;
-  } else {
-    // Interpolate position for smooth rendering
-    renderPosition = m_position * alpha + m_previousPosition * (1.0 - alpha);
-  }
+  // Use current position directly - no interpolation
+  Vector2D renderPosition = m_position;
 
-  // Calculate centered position for rendering (IDENTICAL to NPCs)
-  int renderX = static_cast<int>(renderPosition.getX() - (m_frameWidth / 2.0f));
-  int renderY = static_cast<int>(renderPosition.getY() - (m_height / 2.0f));
+  // Calculate centered position for rendering (no early static casting)
+  float renderX = renderPosition.getX() - (m_frameWidth / 2.0f);
+  float renderY = renderPosition.getY() - (m_height / 2.0f);
 
-  // Render the Player with the current animation frame (IDENTICAL to NPCs)
+  // Render the Player with the current animation frame
   texMgr.drawFrame(m_textureID,
-                   renderX,        // Center horizontally
-                   renderY,        // Center vertically
+                   static_cast<int>(renderX),        // Only cast for final SDL call
+                   static_cast<int>(renderY),        // Only cast for final SDL call
                    m_frameWidth,   // Use the calculated frame width
                    m_height,       // Height stays the same
                    m_currentRow,   // Current animation row
