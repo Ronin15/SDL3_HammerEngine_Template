@@ -57,9 +57,13 @@ void PauseState::render([[maybe_unused]] double alpha) {
 bool PauseState::exit() {
   std::cout << "Hammer Game Engine - Exiting PAUSE State\n";
 
-  // Clean up UI components using simplified method
+  // Only clean up PauseState-specific UI components
+  // Do NOT use prepareForStateTransition() as it would clear GamePlayState's preserved UI
   auto& ui = UIManager::Instance();
-  ui.prepareForStateTransition();
+  ui.removeComponent("pause_title");
+  ui.removeOverlay(); // Remove the pause overlay to restore GamePlayState visibility
+  
+  std::cout << "Hammer Game Engine - PauseState UI cleaned, GamePlayState UI preserved\n";
 
   return true;
 }

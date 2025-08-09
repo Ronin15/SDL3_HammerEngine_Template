@@ -27,7 +27,6 @@ namespace {
   constexpr float TOOLTIP_FONT_RATIO = 0.6f;  // 60% of base
   
   // Font size bounds for edge case protection
-  constexpr int MIN_FONT_SIZE = 8;
   constexpr int MAX_FONT_SIZE = 100;
   
   // Minimum readable sizes for specific font types (ensure good readability at 1080p)

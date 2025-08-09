@@ -89,18 +89,6 @@ public:
     bool isRunning() const;
 
     /**
-     * Pause the game loop (stops updates but continues rendering)
-     * @param paused true to pause, false to resume
-     */
-    void setPaused(bool paused);
-
-    /**
-     * Check if the game loop is paused
-     * @return true if paused
-     */
-    bool isPaused() const;
-
-    /**
      * Get current FPS from the timestep manager
      * @return current frames per second
      */
@@ -147,7 +135,6 @@ private:
 
     // Loop state
     std::atomic<bool> m_running;
-    std::atomic<bool> m_paused;
     std::atomic<bool> m_stopRequested;
 
     // Threading

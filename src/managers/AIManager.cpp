@@ -120,13 +120,32 @@ void AIManager::prepareForStateTransition() {
   // Process any pending messages
   processMessageQueue();
 
-  // Clean up all entities safely
-  cleanupAllEntities();
-
-  // Clear managed entities list
+  // Clean up all entities safely and clear managed entities list in one lock
   {
     std::unique_lock<std::shared_mutex> lock(m_entitiesMutex);
+    
+    // Clean all behaviors
+    for (size_t i = 0; i < m_storage.size(); ++i) {
+      if (m_storage.behaviors[i] && m_storage.entities[i]) {
+        try {
+          m_storage.behaviors[i]->clean(m_storage.entities[i]);
+        } catch (const std::exception &e) {
+          AI_ERROR("Exception cleaning behavior: " + std::string(e.what()));
+        }
+      }
+    }
+
+    // Clear all storage
+    m_storage.hotData.clear();
+    m_storage.entities.clear();
+    m_storage.behaviors.clear();
+    m_storage.lastUpdateTimes.clear();
+    m_entityToIndex.clear();
+    
+    // Clear managed entities list
     m_managedEntities.clear();
+    
+    AI_DEBUG("Cleaned up all entities for state transition");
   }
 
   // Reset behaviors

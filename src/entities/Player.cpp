@@ -130,13 +130,13 @@ std::string Player::getCurrentStateName() const {
 }
 
 void Player::update(float deltaTime) {
-  // Let the state machine handle ALL movement and input logic first
-  m_stateManager.update(deltaTime);
-
-  // Store previous position for interpolation *after* logic update
+  // Store previous position for interpolation BEFORE any updates
   m_previousPosition = m_position;
 
-  // Apply velocity to position
+  // Let the state machine handle ALL movement and input logic
+  m_stateManager.update(deltaTime);
+
+  // Apply velocity to position AFTER state update
   m_position += m_velocity * deltaTime;
 
   // If the texture dimensions haven't been loaded yet, try loading them

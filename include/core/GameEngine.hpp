@@ -161,6 +161,14 @@ public:
   bool getRunning() const;
 
   /**
+   * @brief Gets the GameLoop instance
+   * @return Shared pointer to GameLoop, null if not set
+   */
+  std::shared_ptr<GameLoop> getGameLoop() const {
+    return m_gameLoop.lock();
+  }
+
+  /**
    * @brief Gets the SDL renderer instance
    * @return Pointer to SDL renderer
    */
