@@ -173,6 +173,35 @@ void TextureManager::drawFrame(const std::string& textureID,
   SDL_RenderTextureRotated(p_renderer, m_textureMap[textureID].get(), &srcRect, &destRect, angle, &center, flip);
 }
 
+void TextureManager::drawFrameF(const std::string& textureID,
+                                float x,
+                                float y,
+                                int width,
+                                int height,
+                                int currentRow,
+                                int currentFrame,
+                                SDL_Renderer* p_renderer,
+                                SDL_FlipMode flip) {
+  SDL_FRect srcRect;
+  SDL_FRect destRect;
+  SDL_FPoint center = {static_cast<float>(width) / 2.0f, static_cast<float>(height) / 2.0f};  // Center point in the middle of the image
+  double angle = 0.0;
+
+  // Inset source rectangle to prevent texture bleeding
+  srcRect.x = static_cast<float>(width * currentFrame) + 0.1f;
+  srcRect.y = static_cast<float>(height * (currentRow - 1)) + 0.1f;
+  srcRect.w = static_cast<float>(width) - 0.2f;
+  srcRect.h = static_cast<float>(height) - 0.2f;
+
+  // Use float precision directly - no casting from integer
+  destRect.w = static_cast<float>(width);
+  destRect.h = static_cast<float>(height);
+  destRect.x = x;  // Direct float assignment
+  destRect.y = y;  // Direct float assignment
+
+  SDL_RenderTextureRotated(p_renderer, m_textureMap[textureID].get(), &srcRect, &destRect, angle, &center, flip);
+}
+
 void TextureManager::drawParallax(const std::string& textureID,
                     int x,
                     int y,

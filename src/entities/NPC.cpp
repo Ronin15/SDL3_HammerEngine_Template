@@ -190,15 +190,16 @@ void NPC::render(const HammerEngine::Camera* camera) {
     renderPosition = m_position;
   }
 
-  // Calculate centered position for rendering (no static casting)
+  // Calculate centered position for rendering (preserve float precision)
   float renderX = renderPosition.getX() - (m_frameWidth / 2.0f);
   float renderY = renderPosition.getY() - (m_height / 2.0f);
 
-  // Render the NPC with the current animation frame
-  texMgr.drawFrame(m_textureID, 
-                   static_cast<int>(renderX), static_cast<int>(renderY), 
-                   m_frameWidth, m_height,
-                   m_currentRow, m_currentFrame, renderer, m_flip);
+  // Render the NPC with the current animation frame using float precision
+  texMgr.drawFrameF(m_textureID, 
+                    renderX,        // Keep float precision for smooth camera movement
+                    renderY,        // Keep float precision for smooth camera movement
+                    m_frameWidth, m_height,
+                    m_currentRow, m_currentFrame, renderer, m_flip);
 }
 
 void NPC::clean() {
