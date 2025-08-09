@@ -20,54 +20,45 @@
 
 
 bool GamePlayState::enter() {
-  // Create the player
-  mp_Player = std::make_shared<Player>();
-  mp_Player->initializeInventory(); // Initialize after construction
-
-  // Initialize the inventory UI first
-  initializeInventoryUI();
-
-  // Initialize resource handles (resolve names to handles once during
-  // initialization)
+  // Reset transition flag when entering state
+  m_transitioningToPause = false;
+  
+  // Check if already initialized (resuming from pause)
+  if (m_initialized) {
+    std::cout << "Hammer Game Engine - Resuming GamePlayState from pause\n";
+    
+    // No longer need to unpause GameLoop - PauseState simply pops off the stack
+    // GameStateManager will resume updating this state automatically
+    
+    return true;
+  }
+  
+  std::cout << "Hammer Game Engine - Fresh GamePlayState initialization\n";
+  
+  // Initialize resource handles first
   initializeResourceHandles();
   
-  // Initialize camera for world navigation
+  // Create player and position at screen center (like EventDemoState)
+  mp_Player = std::make_shared<Player>();
+  mp_Player->initializeInventory();
+  
+  // Position player at screen center (like EventDemoState - and KEEP IT THERE)
+  const auto &gameEngine = GameEngine::Instance();
+  Vector2D screenCenter(gameEngine.getLogicalWidth() / 2, gameEngine.getLogicalHeight() / 2);
+  mp_Player->setPosition(screenCenter);
+  mp_Player->syncState();
+
+  // Initialize the inventory UI
+  initializeInventoryUI();
+  
+  // Initialize world and camera (following EventDemoState pattern exactly)
+  initializeWorld();
   initializeCamera();
   
-  // Initialize and load a new world
-  auto& worldManager = WorldManager::Instance();
-  if (!worldManager.isInitialized()) {
-    if (!worldManager.init()) {
-      std::cerr << "Failed to initialize WorldManager" << std::endl;
-      return false;
-    }
-  }
-  
-  // Create a default world configuration
-  // TODO: Make this configurable or load from settings
-  HammerEngine::WorldGenerationConfig config;
-  config.width = 100;
-  config.height = 100;
-  
-  // Generate a random seed for world variety
-  std::random_device rd;
-  config.seed = rd();
-  
-  // Set reasonable defaults for world generation
-  config.elevationFrequency = 0.05f;
-  config.humidityFrequency = 0.03f;
-  config.waterLevel = 0.3f;
-  config.mountainLevel = 0.7f;
-  
-  if (!worldManager.loadNewWorld(config)) {
-    std::cerr << "Failed to load new world in GamePlayState" << std::endl;
-    // Continue anyway - game can function without world
-  } else {
-    std::cout << "Successfully loaded world with seed: " << config.seed << std::endl;
-    
-    // Setup camera to work with the world
-    setupCameraForWorld();
-  }
+  // DO NOT reposition player - keep at screen center like EventDemoState!
+
+  // Mark as initialized for future pause/resume cycles
+  m_initialized = true;
 
   return true;
 }
@@ -126,33 +117,37 @@ void GamePlayState::render(double alpha) {
 bool GamePlayState::exit() {
   std::cout << "Hammer Game Engine - Exiting GAME State\n";
 
-  // Unload the world when exiting gameplay
+  if (m_transitioningToPause) {
+    // Transitioning to pause - PRESERVE ALL GAMEPLAY DATA
+    // PauseState will overlay on top, and GameStateManager will only update PauseState
+    std::cout << "Hammer Game Engine - Transitioning to PauseState (preserving data)\n";
+    
+    // Reset the flag after using it
+    m_transitioningToPause = false;
+    
+    // Return early - NO cleanup when going to pause, keep m_initialized = true
+    return true;
+  }
+
+  // Full exit (going to main menu, other states, or shutting down)
+  std::cout << "Hammer Game Engine - Full cleanup - not preserving data\n";
+  
+  // Unload the world when fully exiting gameplay
   auto& worldManager = WorldManager::Instance();
   if (worldManager.isInitialized() && worldManager.hasActiveWorld()) {
     worldManager.unloadWorld();
     std::cout << "World unloaded from GamePlayState\n";
   }
 
-  // Clean up UI components
+  // Full UI cleanup using standard pattern
   auto &ui = UIManager::Instance();
-  ui.removeComponentsWithPrefix("gameplay_");
+  ui.prepareForStateTransition();
+  
+  // Reset player
+  mp_Player = nullptr;
 
-  // Only clear specific textures if we're not transitioning to pause state
-  if (!m_transitioningToPause) {
-    // Reset player
-    mp_Player = nullptr;
-    // TODO need to evaluate if this entire block is needed. I want to keep all
-    // texture in the MAP
-    //  and not clear any as they may be needed. left over from testing but not
-    //  hurting anything currently.
-    std::cout << "Hammer Game Engine - reset player pointer to null, not going "
-                 "to pause\n";
-  } else {
-    std::cout << "Hammer Game Engine - Not clearing player and textures, "
-                 "transitioning to pause\n";
-  }
-
-  // GamePlayState doesn't create UI components, so no UI cleanup needed
+  // Reset initialization flag for next fresh start
+  m_initialized = false;
 
   return true;
 }
@@ -171,6 +166,12 @@ void GamePlayState::handleInput() {
       gameStateManager->addState(std::make_unique<PauseState>());
       std::cout << "Hammer Game Engine - Created PAUSE State\n";
     }
+    // Stop player movement to prevent jittering during pause
+    if (mp_Player) {
+      mp_Player->setVelocity(Vector2D(0, 0));
+      mp_Player->syncState();
+    }
+    
     m_transitioningToPause = true; // Set flag before transitioning
     gameStateManager->pushState("PauseState");
   }
@@ -382,6 +383,40 @@ void GamePlayState::initializeResourceHandles() {
       woodResource ? woodResource->getHandle() : HammerEngine::ResourceHandle();
 }
 
+void GamePlayState::initializeWorld() {
+  // Initialize and load a new world following EventDemoState pattern
+  auto& worldManager = WorldManager::Instance();
+  if (!worldManager.isInitialized()) {
+    if (!worldManager.init()) {
+      std::cerr << "Failed to initialize WorldManager" << std::endl;
+      return;
+    }
+  }
+  
+  // Create a default world configuration
+  // TODO: Make this configurable or load from settings
+  HammerEngine::WorldGenerationConfig config;
+  config.width = 100;
+  config.height = 100;
+  
+  // Generate a random seed for world variety
+  std::random_device rd;
+  config.seed = rd();
+  
+  // Set reasonable defaults for world generation
+  config.elevationFrequency = 0.05f;
+  config.humidityFrequency = 0.03f;
+  config.waterLevel = 0.3f;
+  config.mountainLevel = 0.7f;
+  
+  if (!worldManager.loadNewWorld(config)) {
+    std::cerr << "Failed to load new world in GamePlayState" << std::endl;
+    // Continue anyway like EventDemoState - game can function without world
+  } else {
+    std::cout << "Successfully loaded world with seed: " << config.seed << std::endl;
+  }
+}
+
 void GamePlayState::initializeCamera() {
   const auto &gameEngine = GameEngine::Instance();
   
@@ -392,22 +427,23 @@ void GamePlayState::initializeCamera() {
     static_cast<float>(gameEngine.getLogicalHeight())
   );
   
-  // Configure camera to follow player
+  // Configure camera to follow player (like EventDemoState)
   if (mp_Player && m_camera) {
     m_camera->setMode(HammerEngine::Camera::Mode::Follow);
     // Cast Player to Entity since Player inherits from Entity
     std::weak_ptr<Entity> playerAsEntity = std::static_pointer_cast<Entity>(mp_Player);
     m_camera->setTarget(playerAsEntity);
     
-    // Set up camera configuration for smooth following
+    // Set up camera configuration for smooth following (matching EventDemoState)
     HammerEngine::Camera::Config config;
-    config.followSpeed = 8.0f;        // Responsive following
-    config.deadZoneRadius = 16.0f;    // Small dead zone for tight control
-    config.smoothingFactor = 0.92f;   // Smooth interpolation
+    config.followSpeed = 3.0f;        // Reduced speed for smoother following
+    config.deadZoneRadius = 50.0f;    // Larger dead zone to reduce jitter
+    config.smoothingFactor = 0.75f;   // Less aggressive interpolation
+    config.maxFollowDistance = 800.0f; // Increased distance before catch-up
     config.clampToWorldBounds = true; // Keep camera within world
     m_camera->setConfig(config);
     
-    // Set up world bounds based on current world (if available)
+    // Set up world bounds for camera (called after world is loaded)
     setupCameraForWorld();
   }
 }
@@ -447,3 +483,4 @@ void GamePlayState::setupCameraForWorld() {
   
   m_camera->setWorldBounds(worldBounds);
 }
+

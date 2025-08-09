@@ -13,7 +13,6 @@
 GameLoop::GameLoop(float targetFPS, float fixedTimestep, bool threaded)
     : m_timestepManager(std::make_unique<TimestepManager>(targetFPS, fixedTimestep))
     , m_running(false)
-    , m_paused(false)
     , m_stopRequested(false)
     , m_threaded(threaded)
     , m_updateTaskRunning(false)
@@ -51,7 +50,6 @@ bool GameLoop::run() {
 
     m_running.store(true, std::memory_order_relaxed);
     m_stopRequested.store(false, std::memory_order_relaxed);
-    m_paused.store(false, std::memory_order_relaxed);
 
     // Reset timestep manager for clean start
     m_timestepManager->reset();
@@ -108,19 +106,6 @@ bool GameLoop::isRunning() const {
     return m_running.load(std::memory_order_relaxed);
 }
 
-void GameLoop::setPaused(bool paused) {
-    bool wasPaused = m_paused.exchange(paused, std::memory_order_relaxed);
-
-    // If transitioning from paused to unpaused, reset timing to avoid time jump
-    if (wasPaused && !paused) {
-        m_timestepManager->reset();
-    }
-}
-
-bool GameLoop::isPaused() const {
-    return m_paused.load(std::memory_order_relaxed);
-}
-
 float GameLoop::getCurrentFPS() const {
     return m_timestepManager->getCurrentFPS();
 }
@@ -155,7 +140,7 @@ void GameLoop::runMainThread() {
             processEvents();
 
             // Process updates (single-threaded mode only)
-            if (!m_threaded && !m_paused.load()) {
+            if (!m_threaded) {
                 processUpdates();
             }
 
@@ -198,17 +183,15 @@ void GameLoop::runUpdateWorker(const HammerEngine::WorkerBudget& budget) {
         try {
             auto updateStart = std::chrono::high_resolution_clock::now();
 
-            if (!m_paused.load(std::memory_order_relaxed)) {
-                if (canUseParallelUpdates && HammerEngine::ThreadSystem::Exists()) {
-                    // Use enhanced processing for high-end systems, which includes
-                    // more detailed performance monitoring. Note: This does NOT
-                    // parallelize the update loop itself, which runs sequentially
-                    // to maintain game logic consistency.
-                    processUpdatesHighPerformance();
-                } else {
-                    // Standard processing for low-end systems
-                    processUpdates();
-                }
+            if (canUseParallelUpdates && HammerEngine::ThreadSystem::Exists()) {
+                // Use enhanced processing for high-end systems, which includes
+                // more detailed performance monitoring. Note: This does NOT
+                // parallelize the update loop itself, which runs sequentially
+                // to maintain game logic consistency.
+                processUpdatesHighPerformance();
+            } else {
+                // Standard processing for low-end systems
+                processUpdates();
             }
 
             auto updateEnd = std::chrono::high_resolution_clock::now();

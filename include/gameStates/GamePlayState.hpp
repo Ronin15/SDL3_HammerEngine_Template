@@ -16,7 +16,7 @@ class GamePlayState : public GameState {
 public:
   GamePlayState()
       : m_transitioningToPause{false}, mp_Player{nullptr},
-        m_inventoryVisible{false} {}
+        m_inventoryVisible{false}, m_initialized{false} {}
   bool enter() override;
   void update(float deltaTime) override;
   void render(double alpha) override;
@@ -29,6 +29,7 @@ private:
       false}; // Flag to indicate we're transitioning to pause state
   std::shared_ptr<Player> mp_Player{nullptr}; // Player object
   bool m_inventoryVisible{false}; // Flag to control inventory UI visibility
+  bool m_initialized{false}; // Flag to track if state is already initialized (for pause/resume)
   
   // Camera for world navigation and player following
   std::unique_ptr<HammerEngine::Camera> m_camera{nullptr};
@@ -52,6 +53,7 @@ private:
   initializeResourceHandles(); // Resolve names to handles during initialization
   
   // Camera management methods
+  void initializeWorld();
   void initializeCamera();
   void updateCamera(float deltaTime);
   void setupCameraForWorld();

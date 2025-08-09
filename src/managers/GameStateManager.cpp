@@ -65,9 +65,10 @@ void GameStateManager::changeState(const std::string &stateName) {
 
 void GameStateManager::update(float deltaTime) {
   m_lastDeltaTime = deltaTime; // Store deltaTime for render
-  // Update all active states on the stack
-  for (const auto &state : m_activeStates) {
-    state->update(deltaTime);
+  // Only update the top state when multiple states are active (e.g., PauseState over GamePlayState)
+  // This prevents underlying states from processing game logic when paused
+  if (!m_activeStates.empty()) {
+    m_activeStates.back()->update(deltaTime);
   }
 }
 
