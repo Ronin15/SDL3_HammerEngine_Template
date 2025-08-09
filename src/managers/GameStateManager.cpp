@@ -19,8 +19,8 @@ void GameStateManager::addState(std::unique_ptr<GameState> state) {
     throw std::runtime_error("Hammer Game Engine - State with name " + name +
                              " already exists");
   }
-  // Move the state into the map
-  m_registeredStates[name] = std::move(state);
+  // Move the state into the map as shared_ptr
+  m_registeredStates[name] = std::shared_ptr<GameState>(state.release());
 }
 
 void GameStateManager::pushState(const std::string &stateName) {

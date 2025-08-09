@@ -68,7 +68,7 @@ if /i "%~1"=="--help" (
     echo   --help            Show this help message
     echo.
     echo Test Categories:
-    echo   Core Tests:       Static analysis, Thread, AI, Behavior, Save, Event, ParticleManager, Resource Manager, World functionality tests
+    echo   Core Tests:       Static analysis, Thread, AI, Behavior, GameState, Save, Event, ParticleManager, Resource Manager, World functionality tests
     echo   Benchmarks:       AI scaling, EventManager scaling, UI stress, and ParticleManager performance benchmarks
     echo.
     echo Execution Time:
@@ -91,7 +91,7 @@ goto :parse_args
 
 :: Define test categories
 :: Core functionality tests (fast execution)
-set CORE_TEST_COUNT=17
+set CORE_TEST_COUNT=18
 
 :: Performance scaling benchmarks (slow execution)
 set BENCHMARK_TEST_COUNT=3
@@ -153,6 +153,7 @@ if "%RUN_CORE%"=="true" (
     call :run_single_test "run_ai_optimization_tests.bat" false
     call :run_single_test "run_behavior_functionality_tests.bat" false
     call :run_single_test "run_save_tests.bat" false
+    call :run_single_test "run_game_state_manager_tests.bat" false
     call :run_single_test "run_event_tests.bat" false
     call :run_single_test "run_particle_manager_tests.bat" false
     call :run_single_test "run_json_reader_tests.bat" false
