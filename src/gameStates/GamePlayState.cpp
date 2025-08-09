@@ -394,27 +394,33 @@ void GamePlayState::initializeWorld() {
 void GamePlayState::initializeCamera() {
   const auto &gameEngine = GameEngine::Instance();
   
-  // Create camera with current screen dimensions
+  // Initialize camera at player's position to avoid any interpolation jitter
+  Vector2D playerPosition = mp_Player ? mp_Player->getPosition() : Vector2D(0, 0);
+  
+  // Create camera starting at player position
   m_camera = std::make_unique<HammerEngine::Camera>(
-    0.0f, 0.0f, // Initial position
+    playerPosition.getX(), playerPosition.getY(), // Start at player position
     static_cast<float>(gameEngine.getLogicalWidth()),
     static_cast<float>(gameEngine.getLogicalHeight())
   );
   
-  // Configure camera to follow player (like EventDemoState)
+  // Configure camera to follow player
   if (mp_Player && m_camera) {
-    m_camera->setMode(HammerEngine::Camera::Mode::Follow);
-    // Cast Player to Entity since Player inherits from Entity
+    // DISABLE EVENT FIRING for testing jitter
+    m_camera->setEventFiringEnabled(false);
+    
+    // Set target and enable follow mode
     std::weak_ptr<Entity> playerAsEntity = std::static_pointer_cast<Entity>(mp_Player);
     m_camera->setTarget(playerAsEntity);
+    m_camera->setMode(HammerEngine::Camera::Mode::Follow);
     
-    // Set up camera configuration for smooth following (matching EventDemoState)
+    // Set up camera configuration for smooth following (SIMPLIFIED for testing jitter)
     HammerEngine::Camera::Config config;
-    config.followSpeed = 3.0f;        // Reduced speed for smoother following
-    config.deadZoneRadius = 50.0f;    // Larger dead zone to reduce jitter
-    config.smoothingFactor = 0.75f;   // Less aggressive interpolation
-    config.maxFollowDistance = 800.0f; // Increased distance before catch-up
-    config.clampToWorldBounds = true; // Keep camera within world
+    config.followSpeed = 5.0f;         // Faster response for testing
+    config.deadZoneRadius = 0.0f;      // No dead zone - always follow
+    config.smoothingFactor = 0.95f;    // Simple smoothing
+    config.maxFollowDistance = 9999.0f; // No distance limit
+    config.clampToWorldBounds = false; // DISABLE clamping for testing jitter
     m_camera->setConfig(config);
     
     // Set up world bounds for camera (called after world is loaded)

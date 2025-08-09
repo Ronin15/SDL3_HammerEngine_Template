@@ -303,28 +303,11 @@ void Camera::updateFollowMode(float deltaTime) {
     Vector2D targetPos = getTargetPosition();
     Vector2D currentPos = m_position;
     
-    // Calculate distance to target
-    float distance = calculateDistance(currentPos, targetPos);
+    // Simple linear interpolation toward target - no complex logic
+    float lerpSpeed = m_config.followSpeed * deltaTime;
+    lerpSpeed = std::clamp(lerpSpeed, 0.0f, 1.0f); // Ensure valid lerp factor
     
-    // Check if target is outside dead zone
-    if (distance > m_config.deadZoneRadius) {
-        // Check if target is too far away
-        if (distance > m_config.maxFollowDistance) {
-            // Instead of snapping, gradually move towards target at max speed
-            Vector2D direction = targetPos - currentPos;
-            direction = direction.normalized();
-            // Move towards target at maximum follow speed to catch up
-            float catchUpSpeed = m_config.followSpeed * 2.0f; // Faster catch-up
-            Vector2D movement = direction * catchUpSpeed * deltaTime;
-            m_targetPosition = currentPos + movement;
-        } else {
-            m_targetPosition = targetPos;
-        }
-        
-        // Smooth interpolation to target position
-        float lerpFactor = 1.0f - std::pow(1.0f - m_config.smoothingFactor, deltaTime * m_config.followSpeed);
-        m_position = lerp(currentPos, m_targetPosition, lerpFactor);
-    }
+    m_position = lerp(currentPos, targetPos, lerpSpeed);
 }
 
 void Camera::updateCameraShake(float deltaTime) {

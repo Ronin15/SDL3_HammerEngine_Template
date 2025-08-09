@@ -1893,26 +1893,29 @@ void EventDemoState::initializeWorld() {
 void EventDemoState::initializeCamera() {
   const auto &gameEngine = GameEngine::Instance();
   
-  // Create camera with current screen dimensions
+  // Initialize camera at player's position to avoid any interpolation jitter
+  Vector2D playerPosition = m_player ? m_player->getPosition() : Vector2D(0, 0);
+  
+  // Create camera starting at player position
   m_camera = std::make_unique<HammerEngine::Camera>(
-    0.0f, 0.0f, // Initial position
+    playerPosition.getX(), playerPosition.getY(), // Start at player position
     static_cast<float>(gameEngine.getLogicalWidth()),
     static_cast<float>(gameEngine.getLogicalHeight())
   );
   
   // Configure camera to follow player
   if (m_player && m_camera) {
-    m_camera->setMode(HammerEngine::Camera::Mode::Follow);
-    // Cast Player to Entity since Player inherits from Entity
+    // Set target and enable follow mode
     std::weak_ptr<Entity> playerAsEntity = std::static_pointer_cast<Entity>(m_player);
     m_camera->setTarget(playerAsEntity);
+    m_camera->setMode(HammerEngine::Camera::Mode::Follow);
     
-    // Set up camera configuration for smooth following
+    // Set up camera configuration for smooth following (SIMPLIFIED for testing jitter)
     HammerEngine::Camera::Config config;
-    config.followSpeed = 3.0f;        // Reduced speed for smoother following
-    config.deadZoneRadius = 50.0f;    // Larger dead zone to reduce jitter
-    config.smoothingFactor = 0.75f;   // Less aggressive interpolation
-    config.maxFollowDistance = 800.0f; // Increased distance before catch-up
+    config.followSpeed = 5.0f;         // Faster response for testing
+    config.deadZoneRadius = 0.0f;      // No dead zone - always follow
+    config.smoothingFactor = 0.95f;    // Simple smoothing
+    config.maxFollowDistance = 9999.0f; // No distance limit
     config.clampToWorldBounds = true; // Keep camera within world
     m_camera->setConfig(config);
     
