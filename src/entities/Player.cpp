@@ -4,7 +4,6 @@
  */
 
 #include "entities/Player.hpp"
-#include "SDL3/SDL_surface.h"
 #include "core/GameEngine.hpp"
 #include "core/Logger.hpp"
 #include "entities/playerStates/PlayerIdleState.hpp"

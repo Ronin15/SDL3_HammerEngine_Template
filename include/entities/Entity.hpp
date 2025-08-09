@@ -9,7 +9,7 @@
 #include "utils/Vector2D.hpp"
 #include <string>
 #include <memory>
-#include <SDL3/SDL_surface.h>
+#include <SDL3/SDL_render.h>
 
 // Forward declaration for Entity shared_ptr typedef
 class Entity;

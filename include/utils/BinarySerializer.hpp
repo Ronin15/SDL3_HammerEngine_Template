@@ -6,7 +6,7 @@
 #ifndef BINARY_SERIALIZER_HPP
 #define BINARY_SERIALIZER_HPP
 
-#include "Logger.hpp"
+#include "core/Logger.hpp"
 #include <cstring>
 #include <fstream>
 #include <iostream>

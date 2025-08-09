@@ -4,7 +4,6 @@
  */
 
 #include "ai/behaviors/WanderBehavior.hpp"
-
 #include <algorithm>
 #include <cmath>
 

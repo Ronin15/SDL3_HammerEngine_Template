@@ -10,7 +10,7 @@
 #include "entities/resources/InventoryComponent.hpp"
 #include "utils/ResourceHandle.hpp"
 #include "utils/Vector2D.hpp"
-#include <SDL3/SDL.h>
+#include <SDL3/SDL_render.h>
 #include <memory>
 #include <string>
 #include <unordered_map>
