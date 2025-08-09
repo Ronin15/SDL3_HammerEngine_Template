@@ -1912,9 +1912,9 @@ void EventDemoState::initializeCamera() {
     
     // Set up camera configuration for smooth following (SIMPLIFIED for testing jitter)
     HammerEngine::Camera::Config config;
-    config.followSpeed = 5.0f;         // Faster response for testing
+    config.followSpeed = 2.5f;         // Slower, smoother response
     config.deadZoneRadius = 0.0f;      // No dead zone - always follow
-    config.smoothingFactor = 0.95f;    // Simple smoothing
+    config.smoothingFactor = 0.85f;    // Exponential smoothing (lower = smoother)
     config.maxFollowDistance = 9999.0f; // No distance limit
     config.clampToWorldBounds = true; // Keep camera within world
     m_camera->setConfig(config);

@@ -145,6 +145,58 @@ void TextureManager::draw(const std::string& textureID,
   SDL_RenderTextureRotated(p_renderer, m_textureMap[textureID].get(), &srcRect, &destRect, angle, &center, flip);
 }
 
+void TextureManager::drawF(const std::string& textureID,
+                           float x,
+                           float y,
+                           int width,
+                           int height,
+                           SDL_Renderer* p_renderer,
+                           SDL_FlipMode flip) {
+  SDL_FRect srcRect;
+  SDL_FRect destRect;
+  SDL_FPoint center = {static_cast<float>(width) / 2.0f, static_cast<float>(height) / 2.0f};  // Center point in the middle of the image
+  double angle = 0.0;
+
+  // Inset source rectangle by a small amount to prevent texture bleeding
+  srcRect.x = 0.1f;
+  srcRect.y = 0.1f;
+  srcRect.w = static_cast<float>(width) - 0.2f;
+  srcRect.h = static_cast<float>(height) - 0.2f;
+
+  destRect.w = static_cast<float>(width);
+  destRect.h = static_cast<float>(height);
+  destRect.x = x;  // Use float precision directly
+  destRect.y = y;  // Use float precision directly
+
+  SDL_RenderTextureRotated(p_renderer, m_textureMap[textureID].get(), &srcRect, &destRect, angle, &center, flip);
+}
+
+void TextureManager::drawTileF(const std::string& textureID,
+                               float x,
+                               float y,
+                               int width,
+                               int height,
+                               SDL_Renderer* p_renderer,
+                               SDL_FlipMode flip) {
+  SDL_FRect srcRect;
+  SDL_FRect destRect;
+  SDL_FPoint center = {static_cast<float>(width) / 2.0f, static_cast<float>(height) / 2.0f};
+  double angle = 0.0;
+
+  // Perfect pixel source rectangle - no inset for seamless tiling
+  srcRect.x = 0.0f;
+  srcRect.y = 0.0f;
+  srcRect.w = static_cast<float>(width);
+  srcRect.h = static_cast<float>(height);
+
+  destRect.w = static_cast<float>(width);
+  destRect.h = static_cast<float>(height);
+  destRect.x = x;  // Use float precision directly
+  destRect.y = y;  // Use float precision directly
+
+  SDL_RenderTextureRotated(p_renderer, m_textureMap[textureID].get(), &srcRect, &destRect, angle, &center, flip);
+}
+
 void TextureManager::drawFrame(const std::string& textureID,
                                int x,
                                int y,

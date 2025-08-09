@@ -601,30 +601,34 @@ void HammerEngine::TileRenderer::renderVisibleTiles(const HammerEngine::WorldDat
     int worldHeight = static_cast<int>(world.grid.size());
     int worldWidth = static_cast<int>(world.grid[0].size());
     
-    // Floor camera coordinates to prevent sub-pixel rendering issues on macOS
-    float flooredCameraX = floorf(cameraX);
-    float flooredCameraY = floorf(cameraY);
-
-    // Convert camera position to tile coordinates
-    int cameraTileX = static_cast<int>(flooredCameraX / TILE_SIZE);
-    int cameraTileY = static_cast<int>(flooredCameraY / TILE_SIZE);
+    // Use high-precision float calculations for camera-to-tile conversion
+    float cameraTileX_f = cameraX / TILE_SIZE;
+    float cameraTileY_f = cameraY / TILE_SIZE;
     
-    // Calculate how many tiles fit in the viewport
-    int tilesPerScreenWidth = (viewportWidth / TILE_SIZE) + 1;
-    int tilesPerScreenHeight = (viewportHeight / TILE_SIZE) + 1;
+    // Convert to tile indices for array access
+    int cameraTileX = static_cast<int>(std::floor(cameraTileX_f));
+    int cameraTileY = static_cast<int>(std::floor(cameraTileY_f));
     
-    // Calculate visible tile range with padding
+    // Calculate viewport in tiles using float precision
+    float tilesPerScreenWidth_f = static_cast<float>(viewportWidth) / TILE_SIZE + 2.0f;
+    float tilesPerScreenHeight_f = static_cast<float>(viewportHeight) / TILE_SIZE + 2.0f;
+    
+    // Calculate visible tile range
     int startX = std::max(0, cameraTileX - VIEWPORT_PADDING);
-    int endX = std::min(worldWidth, cameraTileX + tilesPerScreenWidth + VIEWPORT_PADDING);
+    int endX = std::min(worldWidth, cameraTileX + static_cast<int>(std::ceil(tilesPerScreenWidth_f)) + VIEWPORT_PADDING);
     int startY = std::max(0, cameraTileY - VIEWPORT_PADDING);
-    int endY = std::min(worldHeight, cameraTileY + tilesPerScreenHeight + VIEWPORT_PADDING);
+    int endY = std::min(worldHeight, cameraTileY + static_cast<int>(std::ceil(tilesPerScreenHeight_f)) + VIEWPORT_PADDING);
     
     // Render visible tiles
     for (int y = startY; y < endY; ++y) {
         for (int x = startX; x < endX; ++x) {
-            // Calculate screen position
-            int screenX = (x * TILE_SIZE) - static_cast<int>(flooredCameraX);
-            int screenY = (y * TILE_SIZE) - static_cast<int>(flooredCameraY);
+            // Calculate tile world position
+            float tileWorldX = static_cast<float>(x) * TILE_SIZE;
+            float tileWorldY = static_cast<float>(y) * TILE_SIZE;
+            
+            // Calculate screen position (simple world-to-screen conversion)
+            float screenX = tileWorldX - cameraX;
+            float screenY = tileWorldY - cameraY;
             
             // Only render if tile is actually visible on screen
             if (screenX + TILE_SIZE >= 0 && screenX < viewportWidth && 
@@ -635,7 +639,7 @@ void HammerEngine::TileRenderer::renderVisibleTiles(const HammerEngine::WorldDat
     }
 }
 
-void HammerEngine::TileRenderer::renderTile(const HammerEngine::Tile& tile, SDL_Renderer* renderer, int screenX, int screenY) {
+void HammerEngine::TileRenderer::renderTile(const HammerEngine::Tile& tile, SDL_Renderer* renderer, float screenX, float screenY) {
     if (!renderer) {
         return;
     }
@@ -651,8 +655,8 @@ void HammerEngine::TileRenderer::renderTile(const HammerEngine::Tile& tile, SDL_
         textureID = getBiomeTexture(tile.biome);
     }
     
-    // Use TextureManager to render the tile
-    TextureManager::Instance().draw(textureID, screenX, screenY, TILE_SIZE, TILE_SIZE, renderer);
+    // Use TextureManager's tile-optimized float precision rendering
+    TextureManager::Instance().drawTileF(textureID, screenX, screenY, TILE_SIZE, TILE_SIZE, renderer);
 }
 
 std::string HammerEngine::TileRenderer::getBiomeTexture(HammerEngine::Biome biome) const {

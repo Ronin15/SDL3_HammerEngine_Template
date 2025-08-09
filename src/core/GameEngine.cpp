@@ -63,7 +63,7 @@ bool GameEngine::init(const std::string_view title, const int width,
   SDL_SetHint("SDL_MOUSE_AUTO_CAPTURE", "0"); // Prevent mouse capture issues
 
   // Performance hints for rendering
-  SDL_SetHint("SDL_RENDER_SCALE_QUALITY", "0"); // Use nearest pixel sampling
+  SDL_SetHint("SDL_RENDER_SCALE_QUALITY", "0"); // Use nearest pixel sampling for crisp tiles
   SDL_SetHint("SDL_RENDER_BATCHING",
               "1"); // Enable render batching for performance
 
