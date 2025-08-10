@@ -20,14 +20,23 @@ This is a C++ game engine template named "Hammer Engine". It uses SDL3 for cross
 
 The project uses CMake for building. The main executable is `SDL3_Template`.
 
--   **Build (Debug):**
+-   **Configure (Debug):**
     ```bash
-    ninja -C build -v 2>&1 | grep -E "(warning|unused|error) | head -n 100"
+    cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug
     ```
--   **Build (Release):**
+-   **Configure (Release):**
     ```bash
-    cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Release
+    cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+    ```
+-   **Build:**
+    After configuring, build the project with:
+    ```bash
     ninja -C build
+    ```
+-   **Build and Check for Issues (Debug):**
+    A useful command for development to build and filter for warnings/errors:
+    ```bash
+    ninja -C build -v 2>&1 | grep -E "(warning|unused|error)"
     ```
 -   **Output Directories:**
     -   Debug builds: `bin/debug/`
@@ -82,10 +91,13 @@ The project uses CMake for building. The main executable is `SDL3_Template`.
 
 **ALWAYS COMPILE BEFORE TESTING.**
 
-After making any code changes, you must compile the project before running any tests. This ensures that the tests are running against the latest version of the code.
+After making any code changes, you must compile the project to ensure tests run against the latest version.
 
-Use the following command to compile the project:
-
+Use the following command to compile:
+```bash
+ninja -C build
+```
+For a more thorough check for warnings and errors during compilation, use:
 ```bash
 ninja -C build -v 2>&1 | grep -E "(warning|unused|error)"
 ```

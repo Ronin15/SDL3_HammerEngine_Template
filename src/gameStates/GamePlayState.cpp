@@ -71,8 +71,7 @@ void GamePlayState::update([[maybe_unused]] float deltaTime) {
     ui.update(deltaTime);
   }
 
-  // Update inventory display
-  updateInventoryUI();
+  // Inventory display is now updated automatically via data binding.
 }
 
 void GamePlayState::render() {
@@ -250,48 +249,55 @@ void GamePlayState::initializeInventoryUI() {
                 {inventoryX + 10, inventoryY + 110, inventoryWidth - 20, 270});
   ui.setComponentVisible("gameplay_inventory_list", false);
 
-}
-
-void GamePlayState::updateInventoryUI() {
-  if (!mp_Player || !mp_Player->getInventory()) {
-    return;
-  }
-
-  auto &ui = UIManager::Instance();
-  auto *inventory = mp_Player->getInventory();
-  if (!inventory) return;
-
-  // Update capacity status like EventDemoState
-  size_t usedSlots = inventory->getUsedSlots();
-  size_t maxSlots = inventory->getMaxSlots();
-  ui.setText("gameplay_inventory_status", "Capacity: " + std::to_string(usedSlots) + "/" + std::to_string(maxSlots));
-
-  // Update inventory list
-  ui.clearList("gameplay_inventory_list");
-  auto allResources = inventory->getAllResources();
-  
-  if (allResources.empty() || usedSlots == 0) {
-    ui.addListItem("gameplay_inventory_list", "(Empty)");
-  } else {
-    // Sort resources by name like EventDemoState
-    std::vector<std::pair<std::string, int>> sortedResources;
-    for (const auto &[resourceHandle, quantity] : allResources) {
-      if (quantity > 0) {
-        auto resourceTemplate =
-            ResourceTemplateManager::Instance().getResourceTemplate(resourceHandle);
-        std::string displayName =
-            resourceTemplate ? resourceTemplate->getName() : "Unknown Resource";
-        sortedResources.emplace_back(displayName, quantity);
+  // --- DATA BINDING SETUP ---
+  // Bind the inventory capacity label to a function that gets the data
+  ui.bindText("gameplay_inventory_status", [this]() -> std::string {
+      if (!mp_Player || !mp_Player->getInventory()) {
+          return "Capacity: 0/0";
       }
-    }
-    std::sort(sortedResources.begin(), sortedResources.end());
-    
-    for (const auto &[displayName, quantity] : sortedResources) {
-      ui.addListItem("gameplay_inventory_list",
-                     displayName + " x" + std::to_string(quantity));
-    }
-  }
+      auto* inventory = mp_Player->getInventory();
+      int used = inventory->getUsedSlots();
+      int max = inventory->getMaxSlots();
+      return "Capacity: " + std::to_string(used) + "/" + std::to_string(max);
+  });
+
+  // Bind the inventory list to a function that gets the items, sorts them, and returns them
+  ui.bindList("gameplay_inventory_list", [this]() -> std::vector<std::string> {
+      if (!mp_Player || !mp_Player->getInventory()) {
+          return {"(Empty)"};
+      }
+      
+      auto* inventory = mp_Player->getInventory();
+      auto allResources = inventory->getAllResources();
+
+      if (allResources.empty()) {
+          return {"(Empty)"};
+      }
+
+      std::vector<std::string> items;
+      std::vector<std::pair<std::string, int>> sortedResources;
+      for (const auto& [resourceHandle, quantity] : allResources) {
+          if (quantity > 0) {
+              auto resourceTemplate = ResourceTemplateManager::Instance().getResourceTemplate(resourceHandle);
+              std::string resourceName = resourceTemplate ? resourceTemplate->getName() : "Unknown";
+              sortedResources.emplace_back(resourceName, quantity);
+          }
+      }
+      std::sort(sortedResources.begin(), sortedResources.end());
+
+      for (const auto& [resourceId, quantity] : sortedResources) {
+          items.push_back(resourceId + " x" + std::to_string(quantity));
+      }
+      
+      if (items.empty()) {
+          return {"(Empty)"};
+      }
+      
+      return items;
+  });
 }
+
+
 
 void GamePlayState::toggleInventoryDisplay() {
   auto &ui = UIManager::Instance();
