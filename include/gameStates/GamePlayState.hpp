@@ -47,7 +47,6 @@ private:
 
   // Inventory UI methods
   void initializeInventoryUI();
-  void updateInventoryUI();
   void toggleInventoryDisplay();
   void addDemoResource(HammerEngine::ResourceHandle resourceHandle,
                        int quantity);
