@@ -12,6 +12,7 @@
 
 // Forward declarations
 class Entity;
+struct SDL_Renderer;
 
 namespace HammerEngine {
 
@@ -338,6 +339,8 @@ public:
      * @return True if events are fired on state changes
      */
     bool isEventFiringEnabled() const { return m_eventFiringEnabled; }
+    
+
 
 private:
     // Core camera state
