@@ -13,6 +13,11 @@
 #include <string>
 #include <atomic>
 #include <shared_mutex>
+#include <unordered_map>
+
+// Forward declarations
+struct SDL_Renderer;
+struct SDL_Texture;
 
 struct SDL_Renderer;
 
@@ -20,15 +25,31 @@ namespace HammerEngine {
 
 class TileRenderer {
 private:
-    static constexpr int TILE_SIZE = 32;
+    static constexpr float TILE_SIZE = 32.0f;  // Use float for smooth movement
     static constexpr int VIEWPORT_PADDING = 2;
+    
+    // Chunk-based rendering for scalability to massive maps
+    static constexpr int CHUNK_SIZE = 32;  // 32x32 tiles per chunk
     
 public:
     void renderVisibleTiles(const WorldData& world, SDL_Renderer* renderer, 
                            float cameraX, float cameraY, int viewportWidth, int viewportHeight);
-    void renderTile(const Tile& tile, SDL_Renderer* renderer, float screenX, float screenY);
+    void renderTile(const Tile& tile, SDL_Renderer* renderer, float screenX, float screenY) const;
+    
+    // Chunk texture management
+    void invalidateChunk(int chunkX, int chunkY);  // Mark chunk for re-rendering
+    void clearChunkCache();  // Clean up all chunk textures
     
 private:
+    // Chunk-based rendering helpers
+    struct ChunkBounds {
+        int startChunkX, endChunkX;
+        int startChunkY, endChunkY;
+    };
+    
+    ChunkBounds calculateVisibleChunks(float cameraX, float cameraY, int viewportWidth, int viewportHeight) const;
+    
+    void renderChunkToTexture(const WorldData& world, SDL_Renderer* renderer, SDL_Texture* chunkTexture, int chunkX, int chunkY);
     std::string getBiomeTexture(HammerEngine::Biome biome) const;
     std::string getObstacleTexture(HammerEngine::ObstacleType obstacle) const;
 };

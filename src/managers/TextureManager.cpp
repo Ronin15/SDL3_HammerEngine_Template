@@ -328,6 +328,40 @@ std::shared_ptr<SDL_Texture> TextureManager::getTexture(const std::string& textu
   return nullptr;
 }
 
+std::shared_ptr<SDL_Texture> TextureManager::getOrCreateDynamicTexture(const std::string& textureID,
+                                                                       int width, int height,
+                                                                       SDL_Renderer* p_renderer,
+                                                                       bool forceRecreate) {
+  if (m_isShutdown || !p_renderer) {
+    return nullptr;
+  }
+
+  // Check if texture already exists in cache
+  auto it = m_textureMap.find(textureID);
+  if (it != m_textureMap.end() && !forceRecreate) {
+    return it->second;
+  }
+
+  // Remove old texture if recreating
+  if (forceRecreate && it != m_textureMap.end()) {
+    m_textureMap.erase(it);
+  }
+
+  // Create new dynamic texture
+  SDL_Texture* rawTexture = SDL_CreateTexture(p_renderer, SDL_PIXELFORMAT_RGBA8888, 
+                                             SDL_TEXTUREACCESS_TARGET, width, height);
+  if (!rawTexture) {
+    TEXTURE_ERROR("Failed to create dynamic texture: " + textureID);
+    return nullptr;
+  }
+
+  // Wrap in shared_ptr and add to cache
+  std::shared_ptr<SDL_Texture> texture(rawTexture, SDL_DestroyTexture);
+  m_textureMap[textureID] = texture;
+
+  return texture;
+}
+
 void TextureManager::clean() {
   if (m_isShutdown) {
     return;
