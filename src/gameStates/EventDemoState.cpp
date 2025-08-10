@@ -279,9 +279,6 @@ void EventDemoState::update(float deltaTime) {
   
   // Update camera (follows player automatically)
   updateCamera(deltaTime);
-  
-  // Apply camera transformation to renderer
-  applyCameraTransformation();
 
   // AI Manager is updated globally by GameEngine for optimal performance
   // This prevents double-updating AI entities which was causing them to move
@@ -443,13 +440,19 @@ void EventDemoState::render() {
   auto &gameEngine = GameEngine::Instance();
   SDL_Renderer *renderer = gameEngine.getRenderer();
 
-  // Render world first (background layer)
+  // Calculate camera view rect ONCE for all rendering to ensure perfect synchronization
+  HammerEngine::Camera::ViewRect cameraView{0.0f, 0.0f, 0.0f, 0.0f};
   if (m_camera) {
-    auto viewRect = m_camera->getViewRect();
+    cameraView = m_camera->getViewRect();
+  }
+
+  // Render world first (background layer) using camera center position
+  if (m_camera) {
     auto &worldMgr = WorldManager::Instance();
+    auto cameraView = m_camera->getViewRect();
     worldMgr.render(renderer, 
-                   viewRect.x,
-                   viewRect.y,
+                   cameraView.x,
+                   cameraView.y,
                    gameEngine.getLogicalWidth(),
                    gameEngine.getLogicalHeight());
   }
@@ -457,10 +460,8 @@ void EventDemoState::render() {
   // Render background particles first (rain, snow) - behind player/NPCs
   ParticleManager &particleMgr = ParticleManager::Instance();
   if (particleMgr.isInitialized() && !particleMgr.isShutdown()) {
-    // Render background particles with camera offset
-    float cameraX = m_camera ? m_cameraOffsetX : 0.0f;
-    float cameraY = m_camera ? m_cameraOffsetY : 0.0f;
-    particleMgr.renderBackground(renderer, cameraX, cameraY);
+    // Use unified camera position for perfect sync with tiles
+    particleMgr.renderBackground(renderer, cameraView.x, cameraView.y);
   }
 
   // Render player using camera-aware rendering
@@ -475,18 +476,14 @@ void EventDemoState::render() {
     }
   }
 
-  // Render world-space particles
+  // Render world-space particles using unified camera position
   if (particleMgr.isInitialized() && !particleMgr.isShutdown()) {
-    float cameraX = m_camera ? m_cameraOffsetX : 0.0f;
-    float cameraY = m_camera ? m_cameraOffsetY : 0.0f;
-    particleMgr.render(renderer, cameraX, cameraY);
+    particleMgr.render(renderer, cameraView.x, cameraView.y);
   }
 
   // Render foreground particles last (fog) - in front of player/NPCs
   if (particleMgr.isInitialized() && !particleMgr.isShutdown()) {
-    float cameraX = m_camera ? m_cameraOffsetX : 0.0f;
-    float cameraY = m_camera ? m_cameraOffsetY : 0.0f;
-    particleMgr.renderForeground(renderer, cameraX, cameraY);
+    particleMgr.renderForeground(renderer, cameraView.x, cameraView.y);
   }
 
   // Update and render UI components through UIManager using cached renderer for
@@ -1910,11 +1907,11 @@ void EventDemoState::initializeCamera() {
     m_camera->setTarget(playerAsEntity);
     m_camera->setMode(HammerEngine::Camera::Mode::Follow);
     
-    // Set up camera configuration for smooth following (SIMPLIFIED for testing jitter)
+    // Set up camera configuration for smooth following (RESTORED ORIGINAL SMOOTH SETTINGS)
     HammerEngine::Camera::Config config;
-    config.followSpeed = 2.5f;         // Slower, smoother response
+    config.followSpeed = 2.5f;         // Original smooth settings
     config.deadZoneRadius = 0.0f;      // No dead zone - always follow
-    config.smoothingFactor = 0.85f;    // Exponential smoothing (lower = smoother)
+    config.smoothingFactor = 0.85f;    // Original exponential smoothing
     config.maxFollowDistance = 9999.0f; // No distance limit
     config.clampToWorldBounds = true; // Keep camera within world
     m_camera->setConfig(config);

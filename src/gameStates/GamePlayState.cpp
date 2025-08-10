@@ -64,9 +64,6 @@ void GamePlayState::update([[maybe_unused]] float deltaTime) {
   
   // Update camera (follows player automatically)
   updateCamera(deltaTime);
-  
-  // Apply camera transformation to renderer
-  applyCameraTransformation();
 
   // Update UI
   auto &ui = UIManager::Instance();
@@ -86,20 +83,18 @@ void GamePlayState::render() {
   // Cache manager references for better performance
   FontManager &fontMgr = FontManager::Instance();
 
-  // Render world first (background layer)
-  if (m_camera) {
-    auto viewRect = m_camera->getViewRect();
-    auto &worldMgr = WorldManager::Instance();
-    worldMgr.render(renderer, 
-                   viewRect.x,
-                   viewRect.y,
-                   gameEngine.getLogicalWidth(),
-                   gameEngine.getLogicalHeight());
-  }
+  // Get camera view area for culling and rendering
+  HammerEngine::Camera::ViewRect viewRect = m_camera->getViewRect();
 
-  // Render player using camera-aware rendering
+  // Render world using camera coordinate transformations
+  auto &worldMgr = WorldManager::Instance();
+  worldMgr.render(renderer, 
+                 viewRect.x, viewRect.y,  // Camera view area
+                 viewRect.width, viewRect.height);
+
+  // Render player using camera coordinate transformations
   if (mp_Player) {
-    mp_Player->render(m_camera.get());
+    mp_Player->render(m_camera.get());  // Pass camera for coordinate transformation
   }
 
   // Render UI components (no camera transformation)
@@ -414,11 +409,11 @@ void GamePlayState::initializeCamera() {
     m_camera->setTarget(playerAsEntity);
     m_camera->setMode(HammerEngine::Camera::Mode::Follow);
     
-    // Set up camera configuration for smooth following (OPTIMIZED for smooth movement)
+    // Set up camera configuration for smooth following (RESTORED ORIGINAL SMOOTH SETTINGS)
     HammerEngine::Camera::Config config;
-    config.followSpeed = 2.5f;         // Slower, smoother response
+    config.followSpeed = 2.5f;         // Original smooth settings
     config.deadZoneRadius = 0.0f;      // No dead zone - always follow
-    config.smoothingFactor = 0.85f;    // Exponential smoothing (lower = smoother)
+    config.smoothingFactor = 0.85f;    // Original exponential smoothing
     config.maxFollowDistance = 9999.0f; // No distance limit
     config.clampToWorldBounds = false; // DISABLE clamping for testing jitter
     m_camera->setConfig(config);

@@ -41,37 +41,34 @@ Camera::Camera(float x, float y, float viewportWidth, float viewportHeight)
 }
 
 void Camera::update(float deltaTime) {
-    // Store old position for event firing
-    Vector2D oldPosition = m_position;
+    // Minimal update - only what's absolutely necessary
     
-    // Update camera shake
-    updateCameraShake(deltaTime);
+    // Update shake if active
+    if (m_shakeTimeRemaining > 0.0f) {
+        m_shakeTimeRemaining -= deltaTime;
+        if (m_shakeTimeRemaining <= 0.0f) {
+            m_shakeTimeRemaining = 0.0f;
+            m_shakeOffset = Vector2D{0.0f, 0.0f};
+        } else {
+            m_shakeOffset = generateShakeOffset();
+        }
+    }
     
-    // Update based on mode
-    switch (m_mode) {
-        case Mode::Follow:
-            updateFollowMode(deltaTime);
-            break;
-        case Mode::Free:
-            // Free mode - no automatic updates
-            break;
-        case Mode::Fixed:
-            // Fixed mode - camera doesn't move
-            break;
+    // Smooth follow mode - eliminate micro-stutters from instant snapping
+    if (m_mode == Mode::Follow && hasTarget()) {
+        Vector2D targetPos = getTargetPosition();
+        
+        // Use high-speed interpolation instead of instant snapping
+        float followSpeed = 20.0f; // Very responsive but smooth
+        float t = std::min(1.0f, followSpeed * deltaTime);
+        
+        m_position.setX(m_position.getX() + (targetPos.getX() - m_position.getX()) * t);
+        m_position.setY(m_position.getY() + (targetPos.getY() - m_position.getY()) * t);
     }
     
     // Apply world bounds clamping if enabled
     if (m_config.clampToWorldBounds) {
         clampToWorldBounds();
-    }
-    
-    // Fire position changed event if position changed significantly
-    if (m_eventFiringEnabled) {
-        float deltaX = std::abs(m_position.getX() - oldPosition.getX());
-        float deltaY = std::abs(m_position.getY() - oldPosition.getY());
-        if (deltaX > 1.0f || deltaY > 1.0f) { // Only fire for significant changes
-            firePositionChangedEvent(oldPosition, m_position);
-        }
     }
 }
 
@@ -216,16 +213,16 @@ bool Camera::setConfig(const Config& config) {
 }
 
 Camera::ViewRect Camera::getViewRect() const {
-    // Apply shake offset to the position
-    Vector2D finalPos = m_position + m_shakeOffset;
-    
+    // Return the camera's world position directly - SDL viewport will handle transformation
     return ViewRect{
-        finalPos.getX() - m_viewport.halfWidth(),
-        finalPos.getY() - m_viewport.halfHeight(),
+        m_position.getX() - m_viewport.halfWidth(),
+        m_position.getY() - m_viewport.halfHeight(),
         m_viewport.width,
         m_viewport.height
     };
 }
+
+
 
 bool Camera::isPointVisible(float x, float y) const {
     ViewRect view = getViewRect();
@@ -295,24 +292,6 @@ void Camera::shake(float duration, float intensity) {
     }
 }
 
-void Camera::updateFollowMode(float deltaTime) {
-    if (!hasTarget()) {
-        return;
-    }
-    
-    Vector2D targetPos = getTargetPosition();
-    Vector2D currentPos = m_position;
-    
-    // Use exponential smoothing for more natural camera movement
-    Vector2D delta = targetPos - currentPos;
-    
-    // Smooth exponential interpolation - frame-rate independent
-    float smoothFactor = m_config.smoothingFactor;
-    float adaptiveFactor = std::pow(smoothFactor, deltaTime * 60.0f); 
-    
-    m_position = currentPos + delta * (1.0f - adaptiveFactor);
-}
-
 void Camera::updateCameraShake(float deltaTime) {
     if (m_shakeTimeRemaining > 0.0f) {
         bool wasShaking = true;
@@ -331,6 +310,19 @@ void Camera::updateCameraShake(float deltaTime) {
             m_shakeOffset = generateShakeOffset();
         }
     }
+}
+
+void Camera::updateFollowMode(float deltaTime) {
+    (void)deltaTime; // Suppress unused parameter warning
+    
+    if (!hasTarget()) {
+        return;
+    }
+    
+    Vector2D targetPos = getTargetPosition();
+    
+    // Direct follow - no smoothing lag for tight, responsive camera control
+    m_position = targetPos;
 }
 
 void Camera::clampToWorldBounds() {
