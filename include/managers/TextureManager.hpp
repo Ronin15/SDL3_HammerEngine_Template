@@ -169,6 +169,20 @@ class TextureManager {
   std::shared_ptr<SDL_Texture> getTexture(const std::string& textureID) const;
 
   /**
+   * @brief Creates or retrieves a cached dynamic texture (e.g., for chunk rendering)
+   * @param textureID Unique identifier for the dynamic texture
+   * @param width Width of the texture to create
+   * @param height Height of the texture to create
+   * @param p_renderer SDL renderer for texture creation
+   * @param forceRecreate Force recreation even if texture exists
+   * @return Shared pointer to the texture, creating it if it doesn't exist
+   */
+  std::shared_ptr<SDL_Texture> getOrCreateDynamicTexture(const std::string& textureID,
+                                                         int width, int height,
+                                                         SDL_Renderer* p_renderer,
+                                                         bool forceRecreate = false);
+
+  /**
    * @brief Cleans up all texture resources and marks manager as shut down
    */
   void clean();
