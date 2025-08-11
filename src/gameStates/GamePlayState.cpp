@@ -164,7 +164,7 @@ void GamePlayState::handleInput() {
 
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_B)) {
     const auto &gameEngine = GameEngine::Instance();
-    gameEngine.getGameStateManager()->changeState("MainMenuState");
+    gameEngine.getGameStateManager()->requestStateChange("MainMenuState");
   }
 
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_ESCAPE)) {

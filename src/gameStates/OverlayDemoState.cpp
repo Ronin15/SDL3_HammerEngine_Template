@@ -290,7 +290,7 @@ void OverlayDemoState::handleInput() {
 void OverlayDemoState::handleBackButton() {
     auto& gameEngine = GameEngine::Instance();
     auto* gameStateManager = gameEngine.getGameStateManager();
-    gameStateManager->changeState("MainMenuState");
+    gameStateManager->requestStateChange("MainMenuState");
 }
 
 // Pure UIManager implementation - no UIScreen needed
