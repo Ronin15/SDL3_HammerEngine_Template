@@ -38,7 +38,6 @@
 #include <future>
 #include <string>
 #include <string_view>
-#include <thread>
 #include <vector>
 
 #define HAMMER_GRAY 31, 32, 34, 255
@@ -80,7 +79,7 @@ bool GameEngine::init(const std::string_view title, const int width,
               "1"); // Use Spaces for fullscreen
 #endif
 
-  GAMEENGINE_INFO("SDL rendering hints configured for optimal quality");
+  GAMEENGINE_DEBUG("SDL rendering hints configured for optimal quality");
 
   // Use reliable window sizing approach instead of potentially corrupted
   // display bounds
@@ -148,7 +147,7 @@ bool GameEngine::init(const std::string_view title, const int width,
     return false;
   }
 
-  GAMEENGINE_INFO("Window creation system online");
+  GAMEENGINE_DEBUG("Window creation system online");
 
 #ifdef __APPLE__
   // On macOS, set fullscreen mode to null for borderless fullscreen desktop
@@ -208,7 +207,7 @@ bool GameEngine::init(const std::string_view title, const int width,
     GAMEENGINE_WARN("Could not determine selected renderer backend");
   }
 
-  GAMEENGINE_INFO("Rendering system online");
+  GAMEENGINE_DEBUG("Rendering system online");
 
   // Platform-specific VSync handling for timing issues
   // Check if we're using Wayland (known to have VSync timing issues with some
@@ -231,19 +230,20 @@ bool GameEngine::init(const std::string_view title, const int width,
     m_isWayland = (sessionType == "wayland") || hasWaylandDisplay;
   }
 
+  // Platform-aware VSync configuration
+  // Wayland: disable VSync and rely on software frame limiting
+  // Others: try enabling VSync; fall back to software limiting on failure
   if (m_isWayland) {
-    GAMEENGINE_WARN("Detected Wayland session - VSync may cause timing issues, using software limiting");
-    // Disable VSync on Wayland to avoid timing problems
     if (!SDL_SetRenderVSync(mp_renderer.get(), 0)) {
-      GAMEENGINE_ERROR("Failed to disable VSync: " + std::string(SDL_GetError()));
-    }
-    GAMEENGINE_INFO("Using software frame rate limiting for consistent timing on Wayland");
-  } else {
-    // Try to enable VSync on X11 and other stable platforms
-    if (SDL_SetRenderVSync(mp_renderer.get(), 1)) {
-      GAMEENGINE_INFO("VSync enabled - hardware-synchronized frame presentation active");
+      GAMEENGINE_ERROR("Failed to disable VSync on Wayland: " + std::string(SDL_GetError()));
     } else {
-      GAMEENGINE_WARN("VSync unavailable; falling back to software frame limiting");
+      GAMEENGINE_INFO("Wayland detected: VSync disabled; using software frame limiting");
+    }
+  } else {
+    if (!SDL_SetRenderVSync(mp_renderer.get(), 1)) {
+      GAMEENGINE_WARN("Failed to enable VSync; will rely on software frame limiting: " + std::string(SDL_GetError()));
+    } else {
+      GAMEENGINE_INFO("VSync enabled successfully");
     }
   }
 
@@ -356,7 +356,22 @@ bool GameEngine::init(const std::string_view title, const int width,
   std::vector<std::future<bool>> initTasks; // Initialization tasks vector
   initTasks.reserve(10); // Reserve capacity for typical number of init tasks
 
-  // Initialize input manager in a background thread - #1
+  // CRITICAL: Initialize Event Manager FIRST - #1
+  // All other managers that register event handlers depend on this
+  initTasks.push_back(
+      HammerEngine::ThreadSystem::Instance().enqueueTaskWithResult(
+          []() -> bool {
+            GAMEENGINE_INFO("Creating Event Manager");
+            EventManager &eventMgr = EventManager::Instance();
+            if (!eventMgr.init()) {
+              GAMEENGINE_CRITICAL("Failed to initialize Event Manager");
+              return false;
+            }
+            GAMEENGINE_INFO("Event Manager initialized successfully");
+            return true;
+          }));
+
+  // Initialize input manager in a background thread - #2
   initTasks.push_back(
       HammerEngine::ThreadSystem::Instance().enqueueTaskWithResult(
           []() -> bool {
@@ -378,7 +393,7 @@ bool GameEngine::init(const std::string_view title, const int width,
   texMgr.load(std::string(textureResPath), std::string(texturePrefix),
               mp_renderer.get());
 
-  // Initialize sound manager in a separate thread - #2
+  // Initialize sound manager in a separate thread - #3
   initTasks.push_back(
       HammerEngine::ThreadSystem::Instance().enqueueTaskWithResult(
           []() -> bool {
@@ -400,7 +415,7 @@ bool GameEngine::init(const std::string_view title, const int width,
             return true;
           }));
 
-  // Initialize font manager in a separate thread - #3
+  // Initialize font manager in a separate thread - #4
   initTasks.push_back(
       HammerEngine::ThreadSystem::Instance().enqueueTaskWithResult(
           [this]() -> bool {
@@ -423,7 +438,7 @@ bool GameEngine::init(const std::string_view title, const int width,
             return true;
           }));
 
-  // Initialize save game manager in a separate thread - #4
+  // Initialize save game manager in a separate thread - #5
   initTasks.push_back(
       HammerEngine::ThreadSystem::Instance().enqueueTaskWithResult(
           []() -> bool {
@@ -436,7 +451,7 @@ bool GameEngine::init(const std::string_view title, const int width,
             return true;
           }));
 
-  // Initialize AI Manager in a separate thread - #5
+  // Initialize AI Manager in a separate thread - #6
   initTasks.push_back(
       HammerEngine::ThreadSystem::Instance().enqueueTaskWithResult(
           []() -> bool {
@@ -447,20 +462,6 @@ bool GameEngine::init(const std::string_view title, const int width,
               return false;
             }
             GAMEENGINE_INFO("AI Manager initialized successfully");
-            return true;
-          }));
-
-  // Initialize Event Manager in a separate thread - #6
-  initTasks.push_back(
-      HammerEngine::ThreadSystem::Instance().enqueueTaskWithResult(
-          []() -> bool {
-            GAMEENGINE_INFO("Creating Event Manager");
-            EventManager &eventMgr = EventManager::Instance();
-            if (!eventMgr.init()) {
-              GAMEENGINE_CRITICAL("Failed to initialize Event Manager");
-              return false;
-            }
-            GAMEENGINE_INFO("Event Manager initialized successfully");
             return true;
           }));
 
@@ -545,7 +546,7 @@ bool GameEngine::init(const std::string_view title, const int width,
 
   // Set cached renderer for performance optimization
   uiMgr.setRenderer(mp_renderer.get());
-  GAMEENGINE_INFO("UI Manager initialized successfully with cached renderer");
+  GAMEENGINE_DEBUG("UI Manager initialized successfully with cached renderer");
 
   // Setting Up initial game states
   mp_gameStateManager->addState(std::make_unique<LogoState>());
@@ -962,13 +963,13 @@ void GameEngine::setLogicalPresentationMode(
     SDL_RendererLogicalPresentation mode) {
   m_logicalPresentationMode = mode;
   if (mp_renderer) {
-    int width, height;
-    if (!SDL_GetWindowSize(mp_window.get(), &width, &height)) {
+    int width = m_windowWidth;
+    int height = m_windowHeight;
+    if (SDL_GetWindowSize(mp_window.get(), &width, &height)) {
+      // width/height updated
+    } else {
       GAMEENGINE_ERROR("Failed to get window size for logical presentation: " +
                        std::string(SDL_GetError()));
-      // Use stored dimensions as fallback
-      width = m_windowWidth;
-      height = m_windowHeight;
     }
     if (!SDL_SetRenderLogicalPresentation(mp_renderer.get(), width, height,
                                           mode)) {

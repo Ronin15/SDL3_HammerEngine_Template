@@ -6,6 +6,7 @@
 #include "managers/WorldManager.hpp"
 #include "core/GameEngine.hpp"
 #include "core/Logger.hpp"
+#include "core/ThreadSystem.hpp"
 #include "managers/EventManager.hpp"
 #include "managers/TextureManager.hpp"
 #include "managers/ResourceTemplateManager.hpp"
@@ -16,8 +17,6 @@
 #include "events/HarvestResourceEvent.hpp"
 #include "SDL3/SDL_render.h"
 #include <algorithm>
-#include <thread>
-#include <chrono>
 
 bool WorldManager::init() {
     if (m_initialized.load(std::memory_order_acquire)) {
@@ -107,13 +106,14 @@ bool WorldManager::loadNewWorld(const HammerEngine::WorldGenerationConfig& confi
         
         WORLD_MANAGER_INFO("Successfully loaded new world: " + m_currentWorld->worldId);
         
-        // Schedule world loaded event for next frame to avoid deadlocks
-        // Don't fire event while holding world mutex
+        // Schedule world loaded event for next frame using ThreadSystem
+        // Don't fire event while holding world mutex - use low priority to avoid blocking critical tasks
         std::string worldIdCopy = m_currentWorld->worldId;
-        std::thread([worldIdCopy, this]() {
+        HammerEngine::ThreadSystem::Instance().enqueueTask([worldIdCopy, this]() {
+            // Small delay to ensure we're not in the middle of world loading operations
             std::this_thread::sleep_for(std::chrono::milliseconds(1));
             fireWorldLoadedEvent(worldIdCopy);
-        }).detach();
+        }, HammerEngine::TaskPriority::Low, "WorldLoadedEvent_" + worldIdCopy);
         
         return true;
     } catch (const std::exception& ex) {

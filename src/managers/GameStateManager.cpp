@@ -31,9 +31,15 @@ void GameStateManager::pushState(const std::string &stateName) {
       m_activeStates.back()->pause();
     }
 
-    // Push the new state onto the stack and enter it
-    m_activeStates.push_back(it->second);
-    m_activeStates.back()->enter();
+    // CRITICAL: Enter the state BEFORE adding to active stack to prevent rendering before initialization
+    auto newState = it->second;
+    if (!newState->enter()) {
+      GAMESTATE_ERROR("Failed to enter state: " + stateName);
+      return;
+    }
+
+    // Now push the fully initialized state onto the stack
+    m_activeStates.push_back(newState);
     GAMESTATE_INFO("Pushed state: " + stateName);
   } else {
     GAMESTATE_ERROR("State not found: " + stateName);
@@ -89,9 +95,10 @@ void GameStateManager::update(float deltaTime) {
 }
 
 void GameStateManager::render() {
-  // Render all active states on the stack
-  for (const auto &state : m_activeStates) {
-    state->render();
+  // Only render the current active state (top of stack)
+  // Pause functionality preserves the previous state but doesn't render it
+  if (!m_activeStates.empty()) {
+    m_activeStates.back()->render();
   }
 }
 

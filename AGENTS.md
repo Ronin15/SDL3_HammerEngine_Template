@@ -7,6 +7,10 @@
   cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Debug
   ninja -C build -v 2>&1 | grep -E "(warning|unused|error) | head -n 100"
   ```
+- **Build (Debug with AddressSanitizer):**
+  ```
+  cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_FLAGS="-fsanitize=address" && ninja -C build
+  ```
 - **Build (Release):**
   ```
   cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Release
