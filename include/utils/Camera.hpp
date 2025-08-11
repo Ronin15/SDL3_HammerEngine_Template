@@ -379,7 +379,6 @@ private:
     void fireTargetChangedEvent(std::weak_ptr<Entity> oldTarget, std::weak_ptr<Entity> newTarget);
     void fireShakeStartedEvent(float duration, float intensity);
     void fireShakeEndedEvent();
-    void fireViewportChangedEvent(float oldWidth, float oldHeight, float newWidth, float newHeight);
 };
 
 } // namespace HammerEngine

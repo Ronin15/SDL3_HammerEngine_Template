@@ -88,32 +88,6 @@ void Camera::setPosition(const Vector2D& position) {
     setPosition(position.getX(), position.getY());
 }
 
-void Camera::setViewport(float width, float height) {
-    if (width > 0.0f && height > 0.0f) {
-        float oldWidth = m_viewport.width;
-        float oldHeight = m_viewport.height;
-        
-        m_viewport.width = width;
-        m_viewport.height = height;
-        
-        // Fire viewport changed event if enabled
-        if (m_eventFiringEnabled) {
-            fireViewportChangedEvent(oldWidth, oldHeight, width, height);
-        }
-    } else {
-        GAMEENGINE_WARN("Invalid viewport dimensions provided: " + 
-                       std::to_string(width) + "x" + std::to_string(height));
-    }
-}
-
-void Camera::setViewport(const Viewport& viewport) {
-    if (viewport.isValid()) {
-        m_viewport = viewport;
-    } else {
-        GAMEENGINE_WARN("Invalid viewport provided");
-    }
-}
-
 void Camera::setWorldBounds(float minX, float minY, float maxX, float maxY) {
     if (maxX > minX && maxY > minY) {
         m_worldBounds.minX = minX;
@@ -467,20 +441,6 @@ void Camera::fireShakeEndedEvent() {
         eventMgr.executeEvent(eventName);
     } catch (const std::exception& ex) {
         GAMEENGINE_ERROR("Failed to fire CameraShakeEndedEvent: " + std::string(ex.what()));
-    }
-}
-
-void Camera::fireViewportChangedEvent(float oldWidth, float oldHeight, float newWidth, float newHeight) {
-    try {
-        auto event = std::make_shared<ViewportChangedEvent>(newWidth, newHeight, oldWidth, oldHeight);
-        EventManager& eventMgr = EventManager::Instance();
-        
-        std::string eventName = "camera_viewport_changed";
-        
-        eventMgr.registerEvent(eventName, event);
-        eventMgr.executeEvent(eventName);
-    } catch (const std::exception& ex) {
-        GAMEENGINE_ERROR("Failed to fire ViewportChangedEvent: " + std::string(ex.what()));
     }
 }
 
