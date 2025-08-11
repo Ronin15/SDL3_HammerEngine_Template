@@ -619,12 +619,6 @@ bool GameEngine::init(const std::string_view title, const int width,
     return false;
   }
 
-  // Ensure all memory writes from background threads are visible to main thread
-  std::atomic_thread_fence(std::memory_order_acquire);
-  
-  // Brief wait to ensure all initialization state changes are visible
-  std::this_thread::sleep_for(std::chrono::milliseconds(10));
-
   // Step 2: Cache manager references for performance (after all background init
   // complete)
   GAMEENGINE_INFO("Caching and validating manager references");
@@ -796,39 +790,9 @@ float GameEngine::getCurrentFPS() const {
   return 0.0f;
 }
 
-void GameEngine::update([[maybe_unused]] float deltaTime) {
+void GameEngine::update(float deltaTime) {
   // This method is now thread-safe and can be called from a worker thread
   std::lock_guard<std::mutex> lock(m_updateMutex);
-
-  // Use WorkerBudget system for coordinated task submission
-  if (HammerEngine::ThreadSystem::Exists()) {
-    auto &threadSystem = HammerEngine::ThreadSystem::Instance();
-
-    // Calculate worker budget for this frame
-    size_t availableWorkers =
-        static_cast<size_t>(threadSystem.getThreadCount());
-    HammerEngine::WorkerBudget budget =
-        HammerEngine::calculateWorkerBudget(availableWorkers);
-
-    // Submit engine coordination tasks respecting our worker budget
-    // Use high priority for engine tasks to ensure timely processing
-    threadSystem.enqueueTask(
-        [this, deltaTime]() {
-          // Critical game engine coordination
-          processEngineCoordination(deltaTime);
-        },
-        HammerEngine::TaskPriority::High, "GameEngine_Coordination");
-
-    // Only submit additional tasks if we have multiple workers allocated
-    if (budget.engineReserved > 1) {
-      threadSystem.enqueueTask(
-          [this]() {
-            // Secondary engine tasks (resource management, cleanup, etc.)
-            processEngineSecondaryTasks();
-          },
-          HammerEngine::TaskPriority::Normal, "GameEngine_Secondary");
-    }
-  }
 
   // Mark update as running with relaxed ordering (protected by mutex)
   m_updateRunning.store(true, std::memory_order_relaxed);
@@ -1077,20 +1041,6 @@ bool GameEngine::isVSyncEnabled() const noexcept {
 SDL_RendererLogicalPresentation
 GameEngine::getLogicalPresentationMode() const noexcept {
   return m_logicalPresentationMode;
-}
-
-void GameEngine::processEngineCoordination(float deltaTime) {
-  // Critical engine coordination tasks
-  // This runs with high priority in the WorkerBudget system
-  (void)deltaTime; // Avoid unused parameter warning
-
-  // Engine-specific coordination logic can be added here
-  // Examples: state synchronization, resource coordination, etc.
-}
-
-void GameEngine::processEngineSecondaryTasks() {
-  // Secondary engine tasks that only run when we have multiple workers
-  // allocated Examples: performance monitoring, resource cleanup, etc.
 }
 
 void GameEngine::clean() {
