@@ -67,12 +67,15 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char* argv[]) {
   GameEngine::Instance().setGameLoop(gameLoop);
 
   // Configure TimestepManager for platform-specific frame limiting
-  if (GameEngine::Instance().isWayland()) {
-    gameLoop->getTimestepManager().setSoftwareFrameLimiting(true);
-    GAMELOOP_INFO("Configured TimestepManager for Wayland software frame limiting");
+  // Wayland: use software frame limiting; Others: prefer hardware VSync
+  const char* sessionType = std::getenv("XDG_SESSION_TYPE");
+  const char* waylandDisplay = std::getenv("WAYLAND_DISPLAY");
+  const bool isWayland = (sessionType && std::string_view(sessionType) == "wayland") || (waylandDisplay && *waylandDisplay);
+  gameLoop->getTimestepManager().setSoftwareFrameLimiting(isWayland);
+  if (isWayland) {
+    GAMELOOP_INFO("Wayland detected: using software frame limiting (VSync off)");
   } else {
-    gameLoop->getTimestepManager().setSoftwareFrameLimiting(false);
-    GAMELOOP_INFO("Configured TimestepManager for hardware VSync");
+    GAMELOOP_INFO("Non-Wayland: relying on hardware VSync; software limiting off");
   }
 
   // Cache GameEngine reference for better performance in game loop

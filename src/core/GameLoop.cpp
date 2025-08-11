@@ -304,10 +304,14 @@ void GameLoop::processRender() {
 }
 
 void GameLoop::invokeEventHandler() {
-    std::lock_guard<std::mutex> lock(m_callbackMutex);
-    if (m_eventHandler) {
+    EventHandler handlerCopy;
+    {
+        std::lock_guard<std::mutex> lock(m_callbackMutex);
+        handlerCopy = m_eventHandler;
+    }
+    if (handlerCopy) {
         try {
-            m_eventHandler();
+            handlerCopy();
         } catch (const std::exception& e) {
             GAMELOOP_ERROR("Exception in event handler: " + std::string(e.what()));
         }
@@ -315,10 +319,14 @@ void GameLoop::invokeEventHandler() {
 }
 
 void GameLoop::invokeUpdateHandler(float deltaTime) {
-    std::lock_guard<std::mutex> lock(m_callbackMutex);
-    if (m_updateHandler) {
+    UpdateHandler handlerCopy;
+    {
+        std::lock_guard<std::mutex> lock(m_callbackMutex);
+        handlerCopy = m_updateHandler;
+    }
+    if (handlerCopy) {
         try {
-            m_updateHandler(deltaTime);
+            handlerCopy(deltaTime);
         } catch (const std::exception& e) {
             GAMELOOP_ERROR("Exception in update handler: " + std::string(e.what()));
         }
@@ -326,10 +334,14 @@ void GameLoop::invokeUpdateHandler(float deltaTime) {
 }
 
 void GameLoop::invokeRenderHandler() {
-    std::lock_guard<std::mutex> lock(m_callbackMutex);
-    if (m_renderHandler) {
+    RenderHandler handlerCopy;
+    {
+        std::lock_guard<std::mutex> lock(m_callbackMutex);
+        handlerCopy = m_renderHandler;
+    }
+    if (handlerCopy) {
         try {
-            m_renderHandler();
+            handlerCopy();
         } catch (const std::exception& e) {
             GAMELOOP_ERROR("Exception in render handler: " + std::string(e.what()));
         }

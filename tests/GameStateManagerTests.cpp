@@ -237,11 +237,11 @@ BOOST_AUTO_TEST_CASE(TestRender) {
     state1Ptr->resetFlags();
     state2Ptr->resetFlags();
     
-    // Render should call render on all active states
+    // Render should only call render on the top (current) active state
     manager.render();
     
-    BOOST_CHECK(state1Ptr->wasRenderCalled());
-    BOOST_CHECK(state2Ptr->wasRenderCalled());
+    BOOST_CHECK(!state1Ptr->wasRenderCalled()); // State1 is paused, should not render
+    BOOST_CHECK(state2Ptr->wasRenderCalled());  // State2 is active, should render
 }
 
 BOOST_AUTO_TEST_CASE(TestRenderEmptyStack) {
@@ -409,16 +409,16 @@ BOOST_AUTO_TEST_CASE(TestStateStackBehavior) {
     BOOST_CHECK(!state2Ptr->wasHandleInputCalled());
     BOOST_CHECK(state3Ptr->wasHandleInputCalled());
     
-    // But all states should render
+    // Only the top state should render (correct behavior for game state management)
     state1Ptr->resetFlags();
     state2Ptr->resetFlags();
     state3Ptr->resetFlags();
     
     manager.render();
     
-    BOOST_CHECK(state1Ptr->wasRenderCalled());
-    BOOST_CHECK(state2Ptr->wasRenderCalled());
-    BOOST_CHECK(state3Ptr->wasRenderCalled());
+    BOOST_CHECK(!state1Ptr->wasRenderCalled()); // State1 is paused, should not render
+    BOOST_CHECK(!state2Ptr->wasRenderCalled()); // State2 is paused, should not render  
+    BOOST_CHECK(state3Ptr->wasRenderCalled());  // State3 is active, should render
 }
 
 BOOST_AUTO_TEST_CASE(TestComplexStateTransitions) {

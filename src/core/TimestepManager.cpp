@@ -157,6 +157,11 @@ void TimestepManager::updateFPS() {
 }
 
 void TimestepManager::limitFrameRate() const {
+    // If using hardware VSync (typical non-Wayland), avoid additional sleeping
+    if (!m_usingSoftwareFrameLimiting) {
+        return;
+    }
+
     Uint64 currentTime = SDL_GetTicks();
     double frameTimeMs = static_cast<double>(currentTime - m_frameStart);
     double frameTime = frameTimeMs / 1000.0; // Convert to seconds
