@@ -49,7 +49,6 @@ private:
     
     ChunkBounds calculateVisibleChunks(float cameraX, float cameraY, int viewportWidth, int viewportHeight) const;
     
-    void renderChunkToTexture(const WorldData& world, SDL_Renderer* renderer, SDL_Texture* chunkTexture, int chunkX, int chunkY);
     std::string getBiomeTexture(HammerEngine::Biome biome) const;
     std::string getObstacleTexture(HammerEngine::ObstacleType obstacle) const;
 };
