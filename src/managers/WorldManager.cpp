@@ -599,81 +599,26 @@ void HammerEngine::TileRenderer::renderVisibleTiles(const HammerEngine::WorldDat
         return;
     }
     
-    // Calculate visible chunks for performance
-    ChunkBounds chunkBounds = calculateVisibleChunks(cameraX, cameraY, viewportWidth, viewportHeight);
+    // Calculate visible tile range directly (no chunking during render)
+    int startTileX = std::max(0, static_cast<int>(cameraX / TILE_SIZE) - 1);
+    int endTileX = std::min(static_cast<int>(world.grid[0].size()), 
+                           static_cast<int>((cameraX + viewportWidth) / TILE_SIZE) + 2);
+    int startTileY = std::max(0, static_cast<int>(cameraY / TILE_SIZE) - 1);
+    int endTileY = std::min(static_cast<int>(world.grid.size()), 
+                           static_cast<int>((cameraY + viewportHeight) / TILE_SIZE) + 2);
     
-    auto& textureMgr = TextureManager::Instance();
-    const int chunkPixelSize = CHUNK_SIZE * static_cast<int>(TILE_SIZE);
-    
-    // Render visible chunks using TextureManager (proper architecture)
-    for (int chunkY = chunkBounds.startChunkY; chunkY <= chunkBounds.endChunkY; ++chunkY) {
-        for (int chunkX = chunkBounds.startChunkX; chunkX <= chunkBounds.endChunkX; ++chunkX) {
-            // Create unique chunk ID
-            std::string chunkID = "chunk_" + std::to_string(chunkX) + "_" + std::to_string(chunkY);
-            
-            // Check if chunk texture already exists
-            bool chunkExists = textureMgr.isTextureInMap(chunkID);
-            
-            // Get or create chunk texture through TextureManager
-            auto chunkTexture = textureMgr.getOrCreateDynamicTexture(chunkID, chunkPixelSize, chunkPixelSize, renderer);
-            if (!chunkTexture) continue;
-            
-            // Only render chunk to texture if it's newly created
-            if (!chunkExists) {
-                std::cout << "Creating new chunk texture: " << chunkID << std::endl;
-                renderChunkToTexture(world, renderer, chunkTexture.get(), chunkX, chunkY);
-            } else {
-                // Debug: This should print for cached chunks
-                // std::cout << "Using cached chunk: " << chunkID << std::endl;
-            }
-            
-            // Calculate chunk screen position
-            float chunkWorldX = static_cast<float>(chunkX * chunkPixelSize);
-            float chunkWorldY = static_cast<float>(chunkY * chunkPixelSize);
-            float screenX = chunkWorldX - cameraX;
-            float screenY = chunkWorldY - cameraY;
-            
-            // Draw cached chunk using TextureManager (proper architecture)
-            textureMgr.drawF(chunkID, screenX, screenY, chunkPixelSize, chunkPixelSize, renderer);
-        }
-    }
-}
-
-void HammerEngine::TileRenderer::renderChunkToTexture(const HammerEngine::WorldData& world, SDL_Renderer* renderer,
-                                                     SDL_Texture* chunkTexture, int chunkX, int chunkY) {
-    // Set the chunk texture as render target (managed by TextureManager)
-    SDL_Texture* originalTarget = SDL_GetRenderTarget(renderer);
-    SDL_SetRenderTarget(renderer, chunkTexture);
-    
-    // Clear chunk texture
-    SDL_SetRenderDrawColor(renderer, 0, 0, 0, 0);
-    SDL_RenderClear(renderer);
-    
-    int worldHeight = static_cast<int>(world.grid.size());
-    int worldWidth = static_cast<int>(world.grid[0].size());
-    
-    // Calculate tile range for this chunk
-    int startTileX = chunkX * CHUNK_SIZE;
-    int endTileX = std::min(worldWidth, startTileX + CHUNK_SIZE);
-    int startTileY = chunkY * CHUNK_SIZE;
-    int endTileY = std::min(worldHeight, startTileY + CHUNK_SIZE);
-    
-    // Render all tiles in this chunk to the texture
+    // Render visible tiles directly to the main renderer (no render target switching)
     for (int y = startTileY; y < endTileY; ++y) {
         for (int x = startTileX; x < endTileX; ++x) {
-            // Calculate tile position within the chunk texture
-            float tileX = static_cast<float>((x - startTileX) * static_cast<int>(TILE_SIZE));
-            float tileY = static_cast<float>((y - startTileY) * static_cast<int>(TILE_SIZE));
+            // Calculate screen position
+            float screenX = (x * TILE_SIZE) - cameraX;
+            float screenY = (y * TILE_SIZE) - cameraY;
             
-            // Render tile to chunk texture using TextureManager
-            renderTile(world.grid[y][x], renderer, tileX, tileY);
+            // Render tile directly using the GameEngine renderer
+            renderTile(world.grid[y][x], renderer, screenX, screenY);
         }
     }
-    
-    // Restore original render target
-    SDL_SetRenderTarget(renderer, originalTarget);
 }
-
 
 HammerEngine::TileRenderer::ChunkBounds HammerEngine::TileRenderer::calculateVisibleChunks(
     float cameraX, float cameraY, int viewportWidth, int viewportHeight) const {

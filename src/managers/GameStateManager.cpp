@@ -4,6 +4,11 @@
 #include <algorithm>
 #include <stdexcept>
 
+// Forward declaration for SDL renderer access
+extern "C" {
+#include <SDL3/SDL.h>
+}
+
 // GameStateManager Implementation
 GameStateManager::GameStateManager() {
   // Reserve capacity for typical number of game states (performance
@@ -79,18 +84,19 @@ void GameStateManager::requestStateChange(const std::string &stateName) {
 void GameStateManager::update(float deltaTime) {
   m_lastDeltaTime = deltaTime; // Store deltaTime for render
   
-  // Only update the top state when multiple states are active (e.g., PauseState over GamePlayState)
-  // This prevents underlying states from processing game logic when paused
-  if (!m_activeStates.empty()) {
-    m_activeStates.back()->update(deltaTime);
-  }
-  
-  // Process any pending state changes after update cycle completes
+  // Process any pending state changes at the BEGINNING of the update cycle
+  // This ensures the previous render cycle has completed before changing states
   if (m_hasPendingStateChange) {
     GAMESTATE_INFO("Processing deferred state change to: " + m_pendingStateChange);
     changeState(m_pendingStateChange);
     m_hasPendingStateChange = false;
     m_pendingStateChange.clear();
+  }
+  
+  // Only update the top state when multiple states are active (e.g., PauseState over GamePlayState)
+  // This prevents underlying states from processing game logic when paused
+  if (!m_activeStates.empty()) {
+    m_activeStates.back()->update(deltaTime);
   }
 }
 
