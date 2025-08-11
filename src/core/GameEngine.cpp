@@ -175,23 +175,19 @@ bool GameEngine::init(const std::string_view title, const int width,
           });
 
   // Continue with initialization while icon loads
-  // account for pixel density for rendering
-  int pixelWidth, pixelHeight;
+  // Cache window sizes once for subsequent initialization steps
+  int pixelWidth = m_windowWidth;
+  int pixelHeight = m_windowHeight;
+  int logicalWidth = m_windowWidth;
+  int logicalHeight = m_windowHeight;
+
   if (!SDL_GetWindowSizeInPixels(mp_window.get(), &pixelWidth, &pixelHeight)) {
     GAMEENGINE_ERROR("Failed to get window pixel size: " +
                      std::string(SDL_GetError()));
-    // Use logical size as fallback
-    pixelWidth = m_windowWidth;
-    pixelHeight = m_windowHeight;
   }
-  // Get logical dimensions
-  int logicalWidth, logicalHeight;
   if (!SDL_GetWindowSize(mp_window.get(), &logicalWidth, &logicalHeight)) {
     GAMEENGINE_ERROR("Failed to get window logical size: " +
                      std::string(SDL_GetError()));
-    // Use stored dimensions as fallback
-    logicalWidth = m_windowWidth;
-    logicalHeight = m_windowHeight;
   }
 
   // Create renderer (let SDL3 choose the best available backend)
@@ -236,25 +232,18 @@ bool GameEngine::init(const std::string_view title, const int width,
   }
 
   if (m_isWayland) {
-    GAMEENGINE_WARN("Detected Wayland session - VSync may cause timing issues, "
-                    "using software limiting");
+    GAMEENGINE_WARN("Detected Wayland session - VSync may cause timing issues, using software limiting");
     // Disable VSync on Wayland to avoid timing problems
     if (!SDL_SetRenderVSync(mp_renderer.get(), 0)) {
-      GAMEENGINE_ERROR("Failed to disable VSync: " +
-                       std::string(SDL_GetError()));
+      GAMEENGINE_ERROR("Failed to disable VSync: " + std::string(SDL_GetError()));
     }
-    GAMEENGINE_INFO(
-        "Using software frame rate limiting for consistent timing on Wayland");
+    GAMEENGINE_INFO("Using software frame rate limiting for consistent timing on Wayland");
   } else {
     // Try to enable VSync on X11 and other stable platforms
     if (SDL_SetRenderVSync(mp_renderer.get(), 1)) {
-      GAMEENGINE_INFO(
-          "VSync enabled - hardware-synchronized frame presentation active");
+      GAMEENGINE_INFO("VSync enabled - hardware-synchronized frame presentation active");
     } else {
-      GAMEENGINE_WARN("Failed to enable VSync: " + std::string(SDL_GetError()) +
-                      " - falling back to software limiting");
-      GAMEENGINE_INFO(
-          "Using software frame rate limiting for consistent timing");
+      GAMEENGINE_WARN("VSync unavailable; falling back to software frame limiting");
     }
   }
 
@@ -267,15 +256,8 @@ bool GameEngine::init(const std::string_view title, const int width,
 #ifdef __APPLE__
   // On macOS, use logical presentation with stretch mode for consistent UI
   // scaling
-  int actualWidth, actualHeight;
-  if (!SDL_GetWindowSizeInPixels(mp_window.get(), &actualWidth,
-                                 &actualHeight)) {
-    GAMEENGINE_ERROR("Failed to get actual window pixel size: " +
-                     std::string(SDL_GetError()));
-    // Fallback to window dimensions
-    actualWidth = m_windowWidth;
-    actualHeight = m_windowHeight;
-  }
+  int actualWidth = pixelWidth;
+  int actualHeight = pixelHeight;
 
   // Use standard logical resolution to ensure UI elements are positioned
   // correctly This prevents buttons from going off-screen while maintaining
@@ -302,15 +284,8 @@ bool GameEngine::init(const std::string_view title, const int width,
 #else
   // On non-Apple platforms, use actual screen resolution to eliminate scaling
   // blur
-  int actualWidth, actualHeight;
-  if (!SDL_GetWindowSizeInPixels(mp_window.get(), &actualWidth,
-                                 &actualHeight)) {
-    GAMEENGINE_ERROR("Failed to get actual window pixel size: " +
-                     std::string(SDL_GetError()));
-    // Fallback to window dimensions
-    actualWidth = m_windowWidth;
-    actualHeight = m_windowHeight;
-  }
+  int actualWidth = pixelWidth;
+  int actualHeight = pixelHeight;
 
   // Store actual dimensions for UI positioning (no scaling needed)
   m_logicalWidth = actualWidth;
@@ -337,8 +312,7 @@ bool GameEngine::init(const std::string_view title, const int width,
       // No need to manually destroy the surface, smart pointer will handle it
       GAMEENGINE_INFO("Window icon set successfully");
     } else {
-      GAMEENGINE_WARN("Failed to load window icon: " +
-                      std::string(SDL_GetError()));
+      GAMEENGINE_WARN("Failed to load window icon");
     }
   } catch (const std::exception &e) {
     GAMEENGINE_WARN("Error loading window icon: " + std::string(e.what()));
@@ -349,42 +323,22 @@ bool GameEngine::init(const std::string_view title, const int width,
 
   // Calculate DPI-aware font sizes before threading
   float dpiScale = 1.0f;
-  int dpiPixelWidth, dpiPixelHeight;
-  int dpiLogicalWidth, dpiLogicalHeight;
-  if (!SDL_GetWindowSizeInPixels(mp_window.get(), &dpiPixelWidth,
-                                 &dpiPixelHeight)) {
-    GAMEENGINE_ERROR("Failed to get window pixel size for DPI calculation: " +
-                     std::string(SDL_GetError()));
-    // Use window dimensions as fallback
-    dpiPixelWidth = m_windowWidth;
-    dpiPixelHeight = m_windowHeight;
-  }
-  if (!SDL_GetWindowSize(mp_window.get(), &dpiLogicalWidth,
-                         &dpiLogicalHeight)) {
-    GAMEENGINE_ERROR("Failed to get window logical size for DPI calculation: " +
-                     std::string(SDL_GetError()));
-    // Use stored dimensions as fallback
-    dpiLogicalWidth = m_windowWidth;
-    dpiLogicalHeight = m_windowHeight;
-  }
+
+  const int dpiLogicalWidth = logicalWidth;
+  const int dpiLogicalHeight = logicalHeight;
 
   if (dpiLogicalWidth > 0 && dpiLogicalHeight > 0) {
 #ifdef __APPLE__
     // On macOS, use the native display content scale for proper text rendering
     float displayScale = SDL_GetWindowDisplayScale(mp_window.get());
-    if (displayScale > 0.0f) {
-      dpiScale = displayScale;
-    } else {
-      dpiScale = 1.0f;
-    }
+    dpiScale = (displayScale > 0.0f) ? displayScale : 1.0f;
     GAMEENGINE_INFO("macOS display content scale: " + std::to_string(dpiScale) +
                     (displayScale > 0.0f ? " (detected)" : " (fallback)"));
 #else
     // On other platforms, don't apply additional DPI scaling - SDL3 logical
     // presentation handles it
     dpiScale = 1.0f;
-    GAMEENGINE_INFO("Non-macOS: Using DPI scale 1.0 (SDL3 logical presentation "
-                    "handles scaling)");
+    GAMEENGINE_INFO("Non-macOS: Using DPI scale 1.0 (SDL3 logical presentation handles scaling)");
 #endif
   }
 
