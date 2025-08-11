@@ -18,10 +18,14 @@ bool MainMenuState::enter() {
   auto& ui = UIManager::Instance();
   auto& fontMgr = FontManager::Instance();
 
-  // Wait for fonts to be loaded before creating UI components
-  // This prevents UI creation during font reload operations
-  while (!fontMgr.areFontsLoaded()) {
+  // Wait briefly for fonts to be loaded before creating UI components.
+  // Avoid unbounded waits on macOS where early resize/display events can trigger
+  // a reload loop. Proceed after a short timeout and let UI relayout when fonts finish.
+  constexpr int kMaxWaitMs = 1500; // 1.5s max wait
+  int waitedMs = 0;
+  while (!fontMgr.areFontsLoaded() && waitedMs < kMaxWaitMs) {
     std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    waitedMs += 1;
   }
 
   // No overlay needed for main menu - keep clean appearance
@@ -47,37 +51,37 @@ bool MainMenuState::enter() {
   ui.setOnClick("mainmenu_start_game_btn", []() {
     auto& gameEngine = GameEngine::Instance();
     auto* gameStateManager = gameEngine.getGameStateManager();
-    gameStateManager->changeState("GamePlayState");
+    gameStateManager->requestStateChange("GamePlayState");
   });
 
   ui.setOnClick("mainmenu_ai_demo_btn", []() {
     auto& gameEngine = GameEngine::Instance();
     auto* gameStateManager = gameEngine.getGameStateManager();
-    gameStateManager->changeState("AIDemo");
+    gameStateManager->requestStateChange("AIDemo");
   });
 
   ui.setOnClick("mainmenu_advanced_ai_demo_btn", []() {
     auto& gameEngine = GameEngine::Instance();
     auto* gameStateManager = gameEngine.getGameStateManager();
-    gameStateManager->changeState("AdvancedAIDemo");
+    gameStateManager->requestStateChange("AdvancedAIDemo");
   });
 
   ui.setOnClick("mainmenu_event_demo_btn", []() {
     auto& gameEngine = GameEngine::Instance();
     auto* gameStateManager = gameEngine.getGameStateManager();
-    gameStateManager->changeState("EventDemo");
+    gameStateManager->requestStateChange("EventDemo");
   });
 
   ui.setOnClick("mainmenu_ui_example_btn", []() {
     auto& gameEngine = GameEngine::Instance();
     auto* gameStateManager = gameEngine.getGameStateManager();
-    gameStateManager->changeState("UIExampleState");
+    gameStateManager->requestStateChange("UIExampleState");
   });
 
   ui.setOnClick("mainmenu_overlay_demo_btn", []() {
     auto& gameEngine = GameEngine::Instance();
     auto* gameStateManager = gameEngine.getGameStateManager();
-    gameStateManager->changeState("OverlayDemoState");
+    gameStateManager->requestStateChange("OverlayDemoState");
   });
 
   ui.setOnClick("mainmenu_exit_btn", []() {
@@ -118,31 +122,31 @@ void MainMenuState::handleInput() {
   if (inputManager.wasKeyPressed(SDL_SCANCODE_RETURN)) {
       auto& gameEngine = GameEngine::Instance();
       auto* gameStateManager = gameEngine.getGameStateManager();
-      gameStateManager->changeState("GamePlayState");
+      gameStateManager->requestStateChange("GamePlayState");
   }
 
   if (inputManager.wasKeyPressed(SDL_SCANCODE_A)) {
       auto& gameEngine = GameEngine::Instance();
       auto* gameStateManager = gameEngine.getGameStateManager();
-      gameStateManager->changeState("AIDemo");
+      gameStateManager->requestStateChange("AIDemo");
   }
 
   if (inputManager.wasKeyPressed(SDL_SCANCODE_E)) {
       auto& gameEngine = GameEngine::Instance();
       auto* gameStateManager = gameEngine.getGameStateManager();
-      gameStateManager->changeState("EventDemo");
+      gameStateManager->requestStateChange("EventDemo");
   }
 
   if (inputManager.wasKeyPressed(SDL_SCANCODE_U)) {
       auto& gameEngine = GameEngine::Instance();
       auto* gameStateManager = gameEngine.getGameStateManager();
-      gameStateManager->changeState("UIExampleState");
+      gameStateManager->requestStateChange("UIExampleState");
   }
 
   if (inputManager.wasKeyPressed(SDL_SCANCODE_O)) {
       auto& gameEngine = GameEngine::Instance();
       auto* gameStateManager = gameEngine.getGameStateManager();
-      gameStateManager->changeState("OverlayDemoState");
+      gameStateManager->requestStateChange("OverlayDemoState");
   }
 
   if (inputManager.wasKeyPressed(SDL_SCANCODE_ESCAPE)) {

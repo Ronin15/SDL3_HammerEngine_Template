@@ -464,6 +464,12 @@ void InputManager::onGamepadButtonUp(const SDL_Event& event) {
 }
 
 void InputManager::onWindowResize(const SDL_Event& event) {
+  // Centralized resize pipeline:
+  // 1) Update GameEngine window size (authoritative source)
+  // 2) Update SDL logical presentation (macOS: 1920x1080 letterbox; others: native)
+  // 3) Reload fonts via FontManager for new display characteristics
+  // 4) UI scales from logical size; UIManager layout recalculates on next render
+
   // Cache GameEngine reference for better performance
   GameEngine& gameEngine = GameEngine::Instance();
   
@@ -521,6 +527,11 @@ void InputManager::onWindowResize(const SDL_Event& event) {
 }
 
 void InputManager::onDisplayChange(const SDL_Event& event) {
+  // Centralized display-change pipeline:
+  // - Log event and, on Apple, refresh fonts due to DPI/content-scale changes
+  // - Normalize UI scale (UIManager::setGlobalScale(1.0f))
+  // - Force UI layout refresh and reload fonts using GameEngine logical size
+
   // Cache GameEngine reference for better performance
   GameEngine& gameEngine = GameEngine::Instance();
   
@@ -549,43 +560,24 @@ void InputManager::onDisplayChange(const SDL_Event& event) {
   // due to different DPI scaling or context changes
   #ifdef __APPLE__
   INPUT_INFO("Apple platform: Reinitializing font system due to display change...");
-  
-  // Reload fonts for new display configuration
-  INPUT_INFO("Reloading fonts for display configuration change...");
-  FontManager& fontManager = FontManager::Instance();
-  if (!fontManager.isShutdown()) {
-    // Get current window dimensions
-    int windowWidth, windowHeight;
-    SDL_GetWindowSize(gameEngine.getWindow(), &windowWidth, &windowHeight);
-    
-    if (!fontManager.reloadFontsForDisplay("res/fonts/", windowWidth, windowHeight)) {
-      INPUT_ERROR("Failed to reload fonts after display change");
-    } else {
-      INPUT_INFO("Fonts reloaded successfully for new display configuration");
-    }
-  }
   #else
   INPUT_INFO("Non-Apple platform: Display change handled by existing window resize logic");
-  #endif  
-  // Update UI systems with consistent scaling
+  #endif
+
+  // Update UI systems with consistent scaling and reload fonts ONCE using logical dimensions
   try {
-    // Update UIManager with consistent 1.0 scale (our logical resolution handles sizing)
     UIManager& uiManager = UIManager::Instance();
     uiManager.setGlobalScale(1.0f);
     INPUT_INFO("Updated UIManager with consistent 1.0 scale");
-    
-    // Force UI layout recalculation by cleaning up and reinitializing for the new scale
-    // This ensures all UI elements are repositioned correctly
+
     uiManager.cleanupForStateTransition();
-    
-    // Update FontManager with logical display characteristics (not actual window size)
+
     FontManager& fontManager = FontManager::Instance();
     if (!fontManager.reloadFontsForDisplay("res/fonts", gameEngine.getLogicalWidth(), gameEngine.getLogicalHeight())) {
       INPUT_WARN("Failed to reload fonts for new display size");
     } else {
       INPUT_INFO("Successfully reloaded fonts for new display size");
     }
-    
   } catch (const std::exception& e) {
     INPUT_ERROR("Error updating UI scaling after window resize: " + std::string(e.what()));
   }

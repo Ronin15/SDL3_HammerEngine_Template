@@ -20,6 +20,8 @@ class GameStateManager {
   void pushState(const std::string& stateName);
   void popState();
   void changeState(const std::string& stateName); // Pops the current state and pushes a new one
+  // Use requestStateChange() for all runtime transitions (from update/input/UI callbacks).
+  // Deferred processing at end of update avoids destroying the active state mid-cycle.
   void requestStateChange(const std::string& stateName); // Request deferred state change
 
   void update(float deltaTime);

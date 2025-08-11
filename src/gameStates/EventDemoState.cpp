@@ -778,7 +778,7 @@ void EventDemoState::handleInput() {
   }
 
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_B)) {
-    gameEngine.getGameStateManager()->changeState("MainMenuState");
+    gameEngine.getGameStateManager()->requestStateChange("MainMenuState");
   }
 
   // Mouse input for world interaction
