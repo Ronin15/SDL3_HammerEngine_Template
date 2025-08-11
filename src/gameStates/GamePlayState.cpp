@@ -398,9 +398,9 @@ void GamePlayState::initializeCamera() {
   // Initialize camera at player's position to avoid any interpolation jitter
   Vector2D playerPosition = mp_Player ? mp_Player->getPosition() : Vector2D(0, 0);
   
-  // Create camera starting at player position
+  // Create camera starting at player position with logical viewport dimensions
   m_camera = std::make_unique<HammerEngine::Camera>(
-    playerPosition.getX(), playerPosition.getY(), // Start at player position
+    playerPosition.getX(), playerPosition.getY(), 
     static_cast<float>(gameEngine.getLogicalWidth()),
     static_cast<float>(gameEngine.getLogicalHeight())
   );
@@ -475,4 +475,3 @@ void GamePlayState::applyCameraTransformation() {
   m_cameraOffsetX = viewRect.x;
   m_cameraOffsetY = viewRect.y;
 }
-
