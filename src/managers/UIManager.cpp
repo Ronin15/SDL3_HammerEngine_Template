@@ -6,6 +6,7 @@
 #include "managers/UIManager.hpp"
 #include "managers/UIConstants.hpp"
 #include "core/GameEngine.hpp"
+#include "core/Logger.hpp"
 #include "managers/FontManager.hpp"
 #include "managers/InputManager.hpp"
 #include "managers/TextureManager.hpp"
