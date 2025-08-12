@@ -456,11 +456,11 @@ void EventDemoState::render() {
     cameraView = m_camera->getViewRect();
   }
 
-  // Render world first (background layer) using camera center position
+  // Render world first (background layer) using unified camera position
   if (m_camera) {
     auto &worldMgr = WorldManager::Instance();
     if (worldMgr.isInitialized() && worldMgr.hasActiveWorld()) {
-      auto cameraView = m_camera->getViewRect();
+      // Use the SAME cameraView calculated above for consistency
       worldMgr.render(renderer, 
                      cameraView.x,
                      cameraView.y,
