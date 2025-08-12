@@ -281,6 +281,8 @@ void ParticleManager::render(SDL_Renderer *renderer, float cameraX,
   // PERFORMANCE: Lock-free rendering using read-only snapshot
   const auto &particles = m_storage.getParticlesForRead();
   int renderCount = 0;
+  
+  // THREAD SAFETY: Use buffer-specific size to avoid container-overflow during double-buffering
   const size_t particleCount = particles.size();
 
   for (size_t i = 0; i < particleCount; ++i) {
@@ -300,11 +302,9 @@ void ParticleManager::render(SDL_Renderer *renderer, float cameraX,
     uint8_t r = (particles.colors[i] >> 24) & 0xFF;
     uint8_t g = (particles.colors[i] >> 16) & 0xFF;
     uint8_t b = (particles.colors[i] >> 8) & 0xFF;
-
-    // Set particle color
     SDL_SetRenderDrawColor(renderer, r, g, b, alpha);
 
-    // Use particle size directly without any size limits
+    // Get particle size
     float size = particles.sizes[i];
 
     // Render particle as a filled rectangle (accounting for camera offset)
@@ -1264,45 +1264,78 @@ void ParticleManager::compactParticleStorage() {
     return;
   }
 
-  size_t activeIdx = m_storage.activeBuffer.load(std::memory_order_relaxed);
-  auto &particles = m_storage.particles[activeIdx];
+  // Increment epoch to signal start of compaction
+  uint64_t currentEpoch = m_storage.currentEpoch.fetch_add(1, std::memory_order_acq_rel);
+  
+  size_t activeIdx = m_storage.activeBuffer.load(std::memory_order_acquire);
+  size_t inactiveIdx = 1 - activeIdx;
+  
+  // Read from active buffer, write to inactive buffer
+  const auto &sourceParticles = m_storage.particles[activeIdx];
+  auto &targetParticles = m_storage.particles[inactiveIdx];
 
+  // Clear target buffer and prepare for compaction
+  targetParticles.clear();
+  
   size_t writeIndex = 0;
-  for (size_t readIndex = 0; readIndex < particles.size(); ++readIndex) {
-    if (particles.flags[readIndex] & UnifiedParticle::FLAG_ACTIVE) {
-      if (writeIndex != readIndex) {
-        particles.positions[writeIndex] = particles.positions[readIndex];
-        particles.velocities[writeIndex] = particles.velocities[readIndex];
-        particles.accelerations[writeIndex] = particles.accelerations[readIndex];
-        particles.lives[writeIndex] = particles.lives[readIndex];
-        particles.maxLives[writeIndex] = particles.maxLives[readIndex];
-        particles.sizes[writeIndex] = particles.sizes[readIndex];
-        particles.rotations[writeIndex] = particles.rotations[readIndex];
-        particles.angularVelocities[writeIndex] = particles.angularVelocities[readIndex];
-        particles.colors[writeIndex] = particles.colors[readIndex];
-        particles.textureIndices[writeIndex] = particles.textureIndices[readIndex];
-        particles.flags[writeIndex] = particles.flags[readIndex];
-        particles.generationIds[writeIndex] = particles.generationIds[readIndex];
-        particles.effectTypes[writeIndex] = particles.effectTypes[readIndex];
-        particles.layers[writeIndex] = particles.layers[readIndex];
+  for (size_t readIndex = 0; readIndex < sourceParticles.size(); ++readIndex) {
+    if (sourceParticles.flags[readIndex] & UnifiedParticle::FLAG_ACTIVE) {
+      // Expand target buffer if needed
+      if (writeIndex >= targetParticles.size()) {
+        targetParticles.positions.push_back(sourceParticles.positions[readIndex]);
+        targetParticles.velocities.push_back(sourceParticles.velocities[readIndex]);
+        targetParticles.accelerations.push_back(sourceParticles.accelerations[readIndex]);
+        targetParticles.lives.push_back(sourceParticles.lives[readIndex]);
+        targetParticles.maxLives.push_back(sourceParticles.maxLives[readIndex]);
+        targetParticles.sizes.push_back(sourceParticles.sizes[readIndex]);
+        targetParticles.rotations.push_back(sourceParticles.rotations[readIndex]);
+        targetParticles.angularVelocities.push_back(sourceParticles.angularVelocities[readIndex]);
+        targetParticles.colors.push_back(sourceParticles.colors[readIndex]);
+        targetParticles.textureIndices.push_back(sourceParticles.textureIndices[readIndex]);
+        targetParticles.flags.push_back(sourceParticles.flags[readIndex]);
+        targetParticles.generationIds.push_back(sourceParticles.generationIds[readIndex]);
+        targetParticles.effectTypes.push_back(sourceParticles.effectTypes[readIndex]);
+        targetParticles.layers.push_back(sourceParticles.layers[readIndex]);
+      } else {
+        // Overwrite existing entries
+        targetParticles.positions[writeIndex] = sourceParticles.positions[readIndex];
+        targetParticles.velocities[writeIndex] = sourceParticles.velocities[readIndex];
+        targetParticles.accelerations[writeIndex] = sourceParticles.accelerations[readIndex];
+        targetParticles.lives[writeIndex] = sourceParticles.lives[readIndex];
+        targetParticles.maxLives[writeIndex] = sourceParticles.maxLives[readIndex];
+        targetParticles.sizes[writeIndex] = sourceParticles.sizes[readIndex];
+        targetParticles.rotations[writeIndex] = sourceParticles.rotations[readIndex];
+        targetParticles.angularVelocities[writeIndex] = sourceParticles.angularVelocities[readIndex];
+        targetParticles.colors[writeIndex] = sourceParticles.colors[readIndex];
+        targetParticles.textureIndices[writeIndex] = sourceParticles.textureIndices[readIndex];
+        targetParticles.flags[writeIndex] = sourceParticles.flags[readIndex];
+        targetParticles.generationIds[writeIndex] = sourceParticles.generationIds[readIndex];
+        targetParticles.effectTypes[writeIndex] = sourceParticles.effectTypes[readIndex];
+        targetParticles.layers[writeIndex] = sourceParticles.layers[readIndex];
       }
       writeIndex++;
     }
   }
 
-  if (writeIndex < particles.size()) {
-    size_t removedCount = particles.size() - writeIndex;
-    particles.resize(writeIndex);
-    m_storage.particleCount.store(writeIndex, std::memory_order_release);
+  size_t originalCount = sourceParticles.size();
+  size_t compactedCount = writeIndex;
+  
+  if (compactedCount < originalCount) {
+    // Atomically switch to the compacted buffer
+    m_storage.activeBuffer.store(inactiveIdx, std::memory_order_release);
+    m_storage.particleCount.store(compactedCount, std::memory_order_release);
+    
+    // Update safe epoch - only modify old buffer after this point
+    // Use seq_cst only for the critical buffer safety signal
+    m_storage.safeEpoch.store(currentEpoch, std::memory_order_seq_cst);
+    
+    size_t removedCount = originalCount - compactedCount;
     PARTICLE_DEBUG("Compacted storage: removed " +
                    std::to_string(removedCount) + " inactive/faded particles");
-  }
-
-  // Shrink vector capacity if we have excessive unused space
-  if (particles.positions.capacity() > particles.size() * 2 &&
-      particles.positions.capacity() > DEFAULT_MAX_PARTICLES) {
-    particles.reserve(particles.size()); // shrink_to_fit is not available for the SoA struct
-    PARTICLE_DEBUG("Shrunk particle storage capacity to fit actual usage");
+  } else {
+    // No compaction needed, update safe epoch with release ordering
+    m_storage.safeEpoch.store(currentEpoch, std::memory_order_release);
+    PARTICLE_DEBUG("No compaction needed - all particles are active");
   }
 }
 

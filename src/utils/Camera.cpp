@@ -54,16 +54,35 @@ void Camera::update(float deltaTime) {
         }
     }
     
-    // Smooth follow mode - eliminate micro-stutters from instant snapping
+    // Smooth follow mode - use dead zone approach to eliminate jitter
     if (m_mode == Mode::Follow && hasTarget()) {
         Vector2D targetPos = getTargetPosition();
         
-        // Use high-speed interpolation instead of instant snapping
-        float followSpeed = 20.0f; // Very responsive but smooth
-        float t = std::min(1.0f, followSpeed * deltaTime);
+        // Calculate distance to target
+        float dx = targetPos.getX() - m_position.getX();
+        float dy = targetPos.getY() - m_position.getY();
+        float distance = std::sqrt(dx * dx + dy * dy);
         
-        m_position.setX(m_position.getX() + (targetPos.getX() - m_position.getX()) * t);
-        m_position.setY(m_position.getY() + (targetPos.getY() - m_position.getY()) * t);
+        // Use a smaller dead zone but faster movement for better responsiveness
+        const float deadZone = 4.0f; // Camera moves when player is 4+ pixels away (reduced from 8)
+        
+        if (distance > deadZone) {
+            // Moderate movement speed for balanced responsiveness
+            float moveSpeed = 140.0f; // 120 pixels per second (back to original)
+            float moveDistance = moveSpeed * deltaTime;
+            
+            // Don't overshoot the target
+            if (moveDistance >= distance - deadZone) {
+                moveDistance = distance - deadZone;
+            }
+            
+            // Move in the direction of the target
+            float moveX = (dx / distance) * moveDistance;
+            float moveY = (dy / distance) * moveDistance;
+            
+            m_position.setX(m_position.getX() + moveX);
+            m_position.setY(m_position.getY() + moveY);
+        }
     }
     
     // Apply world bounds clamping if enabled

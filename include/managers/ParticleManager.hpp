@@ -967,7 +967,7 @@ private:
 
     // Get writable access to particles (for updates)
     ParticleSoA &getCurrentBuffer() {
-      size_t activeIdx = activeBuffer.load(std::memory_order_relaxed);
+      size_t activeIdx = activeBuffer.load(std::memory_order_acquire);
       return particles[activeIdx];
     }
 
