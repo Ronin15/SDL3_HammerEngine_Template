@@ -14,6 +14,7 @@
 #include "events/HarvestResourceEvent.hpp"
 #include "world/WorldData.hpp"
 #include "core/Logger.hpp"
+#include "core/ThreadSystem.hpp"
 
 using namespace HammerEngine;
 
@@ -21,9 +22,21 @@ BOOST_AUTO_TEST_SUITE(WorldManagerEventIntegrationTests)
 
 // New: Verify WorldLoadedEvent payload matches WorldManager dimensions
 BOOST_AUTO_TEST_CASE(TestWorldLoadedEventPayload) {
+    // Initialize ThreadSystem to ensure async tasks can execute
+    if (!HammerEngine::ThreadSystem::Exists()) {
+        HammerEngine::ThreadSystem::Instance().init();
+    }
+    HammerEngine::ThreadSystem::Instance().init(4); // Ensure we have enough threads
+    
     // Init managers
     BOOST_REQUIRE(WorldManager::Instance().init());
     BOOST_REQUIRE(EventManager::Instance().init());
+
+    // Setup event handlers
+    WorldManager::Instance().setupEventHandlers();
+
+    // Setup event handlers
+    WorldManager::Instance().setupEventHandlers();
 
     std::atomic<bool> gotLoaded{false};
     std::string capturedWorldId;
@@ -44,15 +57,13 @@ BOOST_AUTO_TEST_CASE(TestWorldLoadedEventPayload) {
     cfg.width = 5; cfg.height = 5; cfg.seed = 4242; cfg.elevationFrequency = 0.1f; cfg.humidityFrequency = 0.1f; cfg.waterLevel = 0.3f; cfg.mountainLevel = 0.7f;
     BOOST_REQUIRE(WorldManager::Instance().loadNewWorld(cfg));
 
-    // Process any immediate events
-    EventManager::Instance().update();
-
-    // WorldManager posts event asynchronously; give time and pump EventManager
-    auto start = std::chrono::steady_clock::now();
-    auto timeout = std::chrono::milliseconds(500);
-    while (std::chrono::steady_clock::now() - start < timeout && !gotLoaded.load()) {
+    // Wait for ThreadSystem task execution like working tests do
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+    
+    // Process events 
+    for (int i = 0; i < 10 && !gotLoaded.load(); ++i) {
         EventManager::Instance().update();
-        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 
     // Validate
@@ -65,6 +76,7 @@ BOOST_AUTO_TEST_CASE(TestWorldLoadedEventPayload) {
 
     WorldManager::Instance().clean();
     EventManager::Instance().clean();
+    // DON'T clean ThreadSystem - let it persist for subsequent tests like EventManager tests do
 }
 
 // New: End-to-end harvest integration via EventManager -> WorldManager

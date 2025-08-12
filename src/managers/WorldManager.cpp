@@ -109,11 +109,13 @@ bool WorldManager::loadNewWorld(const HammerEngine::WorldGenerationConfig& confi
         // Schedule world loaded event for next frame using ThreadSystem
         // Don't fire event while holding world mutex - use low priority to avoid blocking critical tasks
         std::string worldIdCopy = m_currentWorld->worldId;
+        // Schedule world loaded event for next frame using ThreadSystem to avoid deadlocks
+        // Use high priority to ensure it executes quickly for tests
+        WORLD_MANAGER_INFO("Enqueuing WorldLoadedEvent task for world: " + worldIdCopy);
         HammerEngine::ThreadSystem::Instance().enqueueTask([worldIdCopy, this]() {
-            // Small delay to ensure we're not in the middle of world loading operations
-            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            WORLD_MANAGER_INFO("Executing WorldLoadedEvent task for world: " + worldIdCopy);
             fireWorldLoadedEvent(worldIdCopy);
-        }, HammerEngine::TaskPriority::Low, "WorldLoadedEvent_" + worldIdCopy);
+        }, HammerEngine::TaskPriority::High, "WorldLoadedEvent_" + worldIdCopy);
         
         return true;
     } catch (const std::exception& ex) {
