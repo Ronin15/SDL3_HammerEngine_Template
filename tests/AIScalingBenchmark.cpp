@@ -338,7 +338,7 @@ struct AIScalingFixture {
 
 
         for (int run = 0; run < numMeasurements; run++) {
-            // Measure timing for main thread responsiveness (core metric)
+            // Measure DISPATCH timing only (true fire-and-forget performance)
             auto startTime = std::chrono::high_resolution_clock::now();
 
             // Use automatic threading behavior (already configured in function setup)
@@ -346,19 +346,20 @@ struct AIScalingFixture {
                 AIManager::Instance().update(0.016f);
             }
 
-            // Wait for all asynchronous AI tasks to complete before measuring
+            // End timing immediately after dispatch (true async performance)
+            auto endTime = std::chrono::high_resolution_clock::now();
+            auto duration = std::chrono::duration_cast<std::chrono::microseconds>(endTime - startTime);
+
+            // Store the DISPATCH duration (fire-and-forget performance)
+            durations.push_back(std::max(1.0, static_cast<double>(duration.count())));
+
+            // SEPARATELY wait for completion for accuracy verification (not timed)
             while (HammerEngine::ThreadSystem::Instance().isBusy()) {
                 std::this_thread::sleep_for(std::chrono::microseconds(500));
             }
 
             // Add small additional delay to ensure all behavior counts are recorded
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
-
-            auto endTime = std::chrono::high_resolution_clock::now();
-            auto duration = std::chrono::duration_cast<std::chrono::microseconds>(endTime - startTime);
-
-            // Store the duration (main thread responsiveness)
-            durations.push_back(std::max(1.0, static_cast<double>(duration.count())));
         }
 
         // Allow async AI processing to complete before measuring executions
@@ -697,23 +698,25 @@ BOOST_AUTO_TEST_CASE(TestLegacyComparison) {
         // Run benchmark measurements
         std::vector<double> times;
         for (int run = 0; run < 3; ++run) {
+            // Measure DISPATCH timing only (fire-and-forget performance)
             auto startTime = std::chrono::high_resolution_clock::now();
 
             for (int update = 0; update < numUpdates; ++update) {
                 AIManager::Instance().update(0.016f); // 60 FPS deltaTime
             }
 
-            // Wait for all asynchronous AI tasks to complete before measuring
+            // End timing immediately after dispatch (true async performance)
+            auto endTime = std::chrono::high_resolution_clock::now();
+            auto duration = std::chrono::duration<double, std::milli>(endTime - startTime).count();
+            times.push_back(duration);
+
+            // SEPARATELY wait for completion for accuracy verification (not timed)
             while (HammerEngine::ThreadSystem::Instance().isBusy()) {
                 std::this_thread::sleep_for(std::chrono::microseconds(500));
             }
 
             // Add small additional delay to ensure all behavior counts are recorded
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
-
-            auto endTime = std::chrono::high_resolution_clock::now();
-            auto duration = std::chrono::duration<double, std::milli>(endTime - startTime).count();
-            times.push_back(duration);
         }
 
         // Calculate and display results

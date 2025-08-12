@@ -842,16 +842,13 @@ BOOST_FIXTURE_TEST_CASE(TestThreadSafeCacheInvalidation,
     futures.push_back(std::move(future));
   }
 
-  for (int i = 0; i < 10; ++i) {
-    auto future =
-        HammerEngine::ThreadSystem::Instance().enqueueTaskWithResult([]() {
-          for (int j = 0; j < 5; ++j) {
-            AIManager::Instance().update(0.016f);
-            std::this_thread::sleep_for(std::chrono::milliseconds(2));
-          }
-        });
-    futures.push_back(std::move(future));
-  }
+  // FIXED: AIManager::update() should ONLY be called from a single thread (GameEngine)
+  // This test should verify cache invalidation during concurrent behavior operations,
+  // NOT test concurrent update() calls which violate the design.
+  // 
+  // Instead, we call update() once from the main thread while other operations continue
+  std::this_thread::sleep_for(std::chrono::milliseconds(10)); // Let operations start
+  AIManager::Instance().update(0.016f); // Single update call as designed
 
   // Wait for all operations to complete
   waitForThreadSystemTasks(futures);
@@ -945,6 +942,10 @@ BOOST_FIXTURE_TEST_CASE(TestConcurrentBehaviorProcessing,
 }
 
 // Stress test for the thread-safe AIManager
+// IMPORTANT: This test reflects the actual engine thread safety design:
+// - AIManager::update() is called from SINGLE thread only (like GameEngine::update())
+// - Thread-safe operations: assignBehavior, unassignBehavior, sendMessage, broadcast, queries
+// - See src/core/GameEngine.cpp:780 for the real single-threaded update pattern
 BOOST_FIXTURE_TEST_CASE(StressTestThreadSafeAIManager, ThreadedAITestFixture) {
   std::cout << "Starting StressTestThreadSafeAIManager..." << std::endl;
 
@@ -1016,21 +1017,22 @@ BOOST_FIXTURE_TEST_CASE(StressTestThreadSafeAIManager, ThreadedAITestFixture) {
                 break;
               }
               case 2: {
-                // Update entities
-                AIManager::Instance().update(0.016f);
-                break;
-              }
-              case 3: {
                 // Send message to random entity
                 int entityIdx = rng() % entityPtrs.size();
                 AIManager::Instance().sendMessageToEntity(
                     entityPtrs[entityIdx], "StressMessage" + std::to_string(i));
                 break;
               }
-              case 4: {
+              case 3: {
                 // Broadcast message
                 AIManager::Instance().broadcastMessage("BroadcastMessage" +
                                                        std::to_string(i));
+                break;
+              }
+              case 4: {
+                // Query entity behavior status (thread-safe read operation)
+                int entityIdx = rng() % entityPtrs.size();
+                AIManager::Instance().entityHasBehavior(entityPtrs[entityIdx]);
                 break;
               }
               }
@@ -1067,7 +1069,8 @@ BOOST_FIXTURE_TEST_CASE(StressTestThreadSafeAIManager, ThreadedAITestFixture) {
       }
     }
 
-    // Force final update to process any pending operations
+    // SINGLE-THREADED UPDATE SECTION - Only after all multi-threaded operations complete
+    // This reflects the real engine design where update() is called from one thread only
     AIManager::Instance().update(0.016f);
 
     // Verify the system is still in a consistent state
