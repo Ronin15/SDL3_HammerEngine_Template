@@ -66,7 +66,7 @@ void WorldManager::clean() {
     std::lock_guard<std::shared_mutex> lock(m_worldMutex);
     
     unregisterEventHandlers();
-    unloadWorld();
+    unloadWorldUnsafe();  // Use unsafe version to avoid double-locking
     m_tileRenderer.reset();
     
     m_initialized.store(false, std::memory_order_release);
@@ -136,6 +136,15 @@ bool WorldManager::loadWorld(const std::string& worldId) {
 }
 
 void WorldManager::unloadWorld() {
+    // Take exclusive lock to ensure atomic unload operation
+    // This prevents render thread from accessing world data during deallocation
+    std::lock_guard<std::shared_mutex> lock(m_worldMutex);
+    
+    unloadWorldUnsafe();
+}
+
+void WorldManager::unloadWorldUnsafe() {
+    // Internal method - assumes caller already holds the lock
     if (m_currentWorld) {
         std::string worldId = m_currentWorld->worldId;
         WORLD_MANAGER_INFO("Unloading world: " + worldId);
@@ -199,15 +208,18 @@ void WorldManager::update() {
 
 void WorldManager::render(SDL_Renderer* renderer, float cameraX, float cameraY, 
                          int viewportWidth, int viewportHeight) {
-    if (!m_initialized.load(std::memory_order_acquire) || !m_currentWorld || !m_renderingEnabled || !renderer) {
+    if (!m_initialized.load(std::memory_order_acquire) || !m_renderingEnabled || !renderer) {
         return;
     }
     
     std::shared_lock<std::shared_mutex> lock(m_worldMutex);
     
-    if (m_tileRenderer) {
-        m_tileRenderer->renderVisibleTiles(*m_currentWorld, renderer, cameraX, cameraY, viewportWidth, viewportHeight);
+    // Check m_currentWorld AFTER acquiring lock to prevent TOCTOU race condition
+    if (!m_currentWorld || !m_tileRenderer) {
+        return;
     }
+    
+    m_tileRenderer->renderVisibleTiles(*m_currentWorld, renderer, cameraX, cameraY, viewportWidth, viewportHeight);
 }
 
 bool WorldManager::handleHarvestResource(int entityId, int targetX, int targetY) {
