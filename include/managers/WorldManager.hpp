@@ -133,6 +133,7 @@ private:
     void registerEventHandlers();
     void unregisterEventHandlers();
     void initializeWorldResources();
+    void unloadWorldUnsafe();  // Internal method - assumes caller already holds lock
     
     std::unique_ptr<HammerEngine::WorldData> m_currentWorld;
     std::unique_ptr<HammerEngine::TileRenderer> m_tileRenderer;
