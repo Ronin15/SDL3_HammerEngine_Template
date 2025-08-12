@@ -31,9 +31,9 @@ void LogoState::update(float deltaTime) {
     const auto& gameEngine = GameEngine::Instance();
     auto* gameStateManager = gameEngine.getGameStateManager();
     
-    // Use deferred state change to avoid self-destruction during update
+    // Use immediate state change - proper enter/exit sequencing handles timing
     if (gameStateManager && gameStateManager->hasState("MainMenuState")) {
-      gameStateManager->requestStateChange("MainMenuState");
+      gameStateManager->changeState("MainMenuState");
     }
   }
 }

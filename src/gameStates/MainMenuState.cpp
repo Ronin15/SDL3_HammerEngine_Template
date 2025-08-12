@@ -51,37 +51,37 @@ bool MainMenuState::enter() {
   ui.setOnClick("mainmenu_start_game_btn", []() {
     auto& gameEngine = GameEngine::Instance();
     auto* gameStateManager = gameEngine.getGameStateManager();
-    gameStateManager->requestStateChange("GamePlayState");
+    gameStateManager->changeState("GamePlayState");
   });
 
   ui.setOnClick("mainmenu_ai_demo_btn", []() {
     auto& gameEngine = GameEngine::Instance();
     auto* gameStateManager = gameEngine.getGameStateManager();
-    gameStateManager->requestStateChange("AIDemo");
+    gameStateManager->changeState("AIDemo");
   });
 
   ui.setOnClick("mainmenu_advanced_ai_demo_btn", []() {
     auto& gameEngine = GameEngine::Instance();
     auto* gameStateManager = gameEngine.getGameStateManager();
-    gameStateManager->requestStateChange("AdvancedAIDemo");
+    gameStateManager->changeState("AdvancedAIDemo");
   });
 
   ui.setOnClick("mainmenu_event_demo_btn", []() {
     auto& gameEngine = GameEngine::Instance();
     auto* gameStateManager = gameEngine.getGameStateManager();
-    gameStateManager->requestStateChange("EventDemo");
+    gameStateManager->changeState("EventDemo");
   });
 
   ui.setOnClick("mainmenu_ui_example_btn", []() {
     auto& gameEngine = GameEngine::Instance();
     auto* gameStateManager = gameEngine.getGameStateManager();
-    gameStateManager->requestStateChange("UIExampleState");
+    gameStateManager->changeState("UIExampleState");
   });
 
   ui.setOnClick("mainmenu_overlay_demo_btn", []() {
     auto& gameEngine = GameEngine::Instance();
     auto* gameStateManager = gameEngine.getGameStateManager();
-    gameStateManager->requestStateChange("OverlayDemoState");
+    gameStateManager->changeState("OverlayDemoState");
   });
 
   ui.setOnClick("mainmenu_exit_btn", []() {
@@ -122,31 +122,31 @@ void MainMenuState::handleInput() {
   if (inputManager.wasKeyPressed(SDL_SCANCODE_RETURN)) {
       auto& gameEngine = GameEngine::Instance();
       auto* gameStateManager = gameEngine.getGameStateManager();
-      gameStateManager->requestStateChange("GamePlayState");
+      gameStateManager->changeState("GamePlayState");
   }
 
   if (inputManager.wasKeyPressed(SDL_SCANCODE_A)) {
       auto& gameEngine = GameEngine::Instance();
       auto* gameStateManager = gameEngine.getGameStateManager();
-      gameStateManager->requestStateChange("AIDemo");
+      gameStateManager->changeState("AIDemo");
   }
 
   if (inputManager.wasKeyPressed(SDL_SCANCODE_E)) {
       auto& gameEngine = GameEngine::Instance();
       auto* gameStateManager = gameEngine.getGameStateManager();
-      gameStateManager->requestStateChange("EventDemo");
+      gameStateManager->changeState("EventDemo");
   }
 
   if (inputManager.wasKeyPressed(SDL_SCANCODE_U)) {
       auto& gameEngine = GameEngine::Instance();
       auto* gameStateManager = gameEngine.getGameStateManager();
-      gameStateManager->requestStateChange("UIExampleState");
+      gameStateManager->changeState("UIExampleState");
   }
 
   if (inputManager.wasKeyPressed(SDL_SCANCODE_O)) {
       auto& gameEngine = GameEngine::Instance();
       auto* gameStateManager = gameEngine.getGameStateManager();
-      gameStateManager->requestStateChange("OverlayDemoState");
+      gameStateManager->changeState("OverlayDemoState");
   }
 
   if (inputManager.wasKeyPressed(SDL_SCANCODE_ESCAPE)) {
