@@ -63,25 +63,32 @@ void Camera::update(float deltaTime) {
         float dy = targetPos.getY() - m_position.getY();
         float distance = std::sqrt(dx * dx + dy * dy);
         
-        // Use a smaller dead zone but faster movement for better responsiveness
-        const float deadZone = 4.0f; // Camera moves when player is 4+ pixels away (reduced from 8)
+        // Use a dead zone to prevent oscillation when very close to target
+        const float deadZone = 2.0f; // Camera stops moving when within 2 pixels of target
         
         if (distance > deadZone) {
-            // Moderate movement speed for balanced responsiveness
-            float moveSpeed = 140.0f; // 120 pixels per second (back to original)
-            float moveDistance = moveSpeed * deltaTime;
+            // Use exponential smoothing to prevent oscillation
+            float smoothingFactor = 8.0f; // Higher = more responsive, lower = smoother
+            float moveRatio = std::min(1.0f, smoothingFactor * deltaTime);
             
-            // Don't overshoot the target
-            if (moveDistance >= distance - deadZone) {
-                moveDistance = distance - deadZone;
+            // Apply exponential smoothing
+            float newX = m_position.getX() + dx * moveRatio;
+            float newY = m_position.getY() + dy * moveRatio;
+            
+            // Ensure we don't overshoot into the dead zone
+            float newDx = targetPos.getX() - newX;
+            float newDy = targetPos.getY() - newY;
+            float newDistance = std::sqrt(newDx * newDx + newDy * newDy);
+            
+            if (newDistance < deadZone) {
+                // Stop at the edge of the dead zone to prevent oscillation
+                float ratio = (distance - deadZone) / distance;
+                newX = m_position.getX() + dx * ratio;
+                newY = m_position.getY() + dy * ratio;
             }
             
-            // Move in the direction of the target
-            float moveX = (dx / distance) * moveDistance;
-            float moveY = (dy / distance) * moveDistance;
-            
-            m_position.setX(m_position.getX() + moveX);
-            m_position.setY(m_position.getY() + moveY);
+            m_position.setX(newX);
+            m_position.setY(newY);
         }
     }
     
