@@ -1473,7 +1473,14 @@ void ParticleManager::updateParticlesThreaded(float deltaTime,
     size_t startIdx = i * particlesPerBatch;
     size_t endIdx = startIdx + particlesPerBatch +
                     (i == batchCount - 1 ? remainingParticles : 0);
-
+    
+    // Ensure endIdx doesn't exceed actual particle buffer size
+    endIdx = std::min(endIdx, currentBuffer.size());
+    
+    // Skip empty batches
+    if (startIdx >= currentBuffer.size()) {
+      continue;
+    }
     futures.push_back(threadSystem.enqueueTaskWithResult(
         [this, &currentBuffer, startIdx, endIdx, deltaTime]() {
           updateParticleRange(currentBuffer, startIdx, endIdx, deltaTime);
@@ -1505,10 +1512,12 @@ void ParticleManager::updateParticleRange(
   const float windPhase8_0 = windPhase * 8.0f;
   const float windPhase6_0 = windPhase * 6.0f;
 
+  // Ensure we don't exceed the actual particle buffer size
+  endIdx = std::min(endIdx, particles.size());
+  
   for (size_t i = startIdx; i < endIdx; ++i) {
-    if (i >= particles.size() || !(particles.flags[i] & UnifiedParticle::FLAG_ACTIVE))
+    if (!(particles.flags[i] & UnifiedParticle::FLAG_ACTIVE))
       continue;
-
     // PRODUCTION OPTIMIZATION: Pre-compute per-particle values
     const float particleOffset = i * 0.1f;
     
