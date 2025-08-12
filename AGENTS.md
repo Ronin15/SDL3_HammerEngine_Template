@@ -76,6 +76,7 @@
 - **Logging:** Use provided logging macros extensively (see docs/Logger.md). CRITICAL/ERROR logs only in release builds for performance.
 - **Testing:** Use Boost.Test framework with BOOST_AUTO_TEST_CASE, BOOST_CHECK, BOOST_REQUIRE. Clean up test artifacts and test error conditions.
 - **Types:** Prefer STL types (std::string, std::vector, std::unordered_map). Use const and references where possible. Use std::string_view for read-only parameters.
+- **Avoid:** Using static_cast<size_t>(signedIndex) for container indexing. First guard: if (idx < 0 || idx >= vec.size()) handle/return; then index with vec[static_cast<size_t>(idx)].
 - **Threading:** Use ThreadSystem with WorkerBudget for all threading. Avoid raw std::thread - use engine's task scheduling system.
 - **Thread Safety:** Use std::atomic, std::shared_mutex, and lock-free structures. Follow cache-friendly data layout (SoA patterns).
 - **File/Directory Handling:** Use std::filesystem for cross-platform path handling. Validate file permissions and clean up test artifacts.

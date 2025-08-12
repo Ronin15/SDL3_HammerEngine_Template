@@ -10,7 +10,6 @@
 #include "managers/EventManager.hpp"
 #include "managers/TextureManager.hpp"
 #include "managers/ResourceTemplateManager.hpp"
-#include <unordered_map>
 #include "managers/WorldResourceManager.hpp"
 #include "events/ResourceChangeEvent.hpp"
 #include "events/WorldEvent.hpp"
@@ -609,7 +608,13 @@ void WorldManager::initializeWorldResources() {
 
 void HammerEngine::TileRenderer::renderVisibleTiles(const HammerEngine::WorldData& world, SDL_Renderer* renderer,
                                      float cameraX, float cameraY, int viewportWidth, int viewportHeight) {
-    if (world.grid.empty() || !renderer) {
+    if (world.grid.empty()) {
+        WORLD_MANAGER_WARN("TileRenderer: Cannot render tiles - world grid is empty");
+        return;
+    }
+    
+    if (!renderer) {
+        WORLD_MANAGER_ERROR("TileRenderer: Cannot render tiles - renderer is null");
         return;
     }
     
@@ -659,6 +664,7 @@ HammerEngine::TileRenderer::ChunkBounds HammerEngine::TileRenderer::calculateVis
 
 void HammerEngine::TileRenderer::renderTile(const HammerEngine::Tile& tile, SDL_Renderer* renderer, float screenX, float screenY) const {
     if (!renderer) {
+        WORLD_MANAGER_ERROR("TileRenderer: Cannot render tile - renderer is null");
         return;
     }
     
@@ -675,6 +681,13 @@ void HammerEngine::TileRenderer::renderTile(const HammerEngine::Tile& tile, SDL_
     
     // Use TextureManager's tile-optimized float precision rendering
     TextureManager::Instance().drawTileF(textureID, screenX, screenY, TILE_SIZE, TILE_SIZE, renderer);
+    
+    // Debug logging for texture issues (only in debug builds)
+    #ifdef DEBUG
+    if (textureID.empty()) {
+        WORLD_MANAGER_WARN("TileRenderer: Empty texture ID for tile at screen position (" + std::to_string(screenX) + ", " + std::to_string(screenY) + ")");
+    }
+    #endif
 }
 
 std::string HammerEngine::TileRenderer::getBiomeTexture(HammerEngine::Biome biome) const {
