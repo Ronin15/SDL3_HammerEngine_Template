@@ -119,24 +119,21 @@ void UIManager::executeDeferredCallbacks() {
 }
 
 void UIManager::render(SDL_Renderer *renderer) {
-  if (m_isShutdown || !renderer) {
+  if (!renderer) {
+    UI_ERROR("UIManager::render() called with null renderer");
     return;
   }
 
-  // Re-sort components if needed
-  if (m_sortIsDirty) {
-    std::sort(m_sortedComponents.begin(), m_sortedComponents.end(),
-              [](const std::shared_ptr<UIComponent> &a,
-                 const std::shared_ptr<UIComponent> &b) {
-                return a->m_zOrder < b->m_zOrder;
-              });
-    m_sortIsDirty = false;
+  // Early exit if no components to render
+  if (m_components.empty()) {
+    return;
   }
 
   // Render components in z-order
-  for (const auto &component : m_sortedComponents) {
+  auto sortedComponents = getSortedComponents();
+  for (const auto &component : sortedComponents) {
     if (component && component->m_visible) {
-        renderComponent(renderer, component);
+      renderComponent(renderer, component);
     }
   }
 
@@ -173,11 +170,23 @@ void UIManager::clean() {
   m_isShutdown = true;
 }
 
-void UIManager::sortComponentsByZOrder() {
-  // Components are rendered in order, so we don't need to actually sort the map
-  // since flat_map maintains insertion order. The rendering order is handled
-  // during the render phase by processing components by their zOrder value.
-  // This method is kept for interface compatibility.
+std::vector<std::shared_ptr<UIComponent>> UIManager::getSortedComponents() const {
+  std::vector<std::shared_ptr<UIComponent>> sorted;
+  sorted.reserve(m_components.size());
+  
+  for (const auto &[id, component] : m_components) {
+    if (component) {
+      sorted.push_back(component);
+    }
+  }
+  
+  std::sort(sorted.begin(), sorted.end(),
+            [](const std::shared_ptr<UIComponent> &a,
+               const std::shared_ptr<UIComponent> &b) {
+              return a->m_zOrder < b->m_zOrder;
+            });
+  
+  return sorted;
 }
 
 // Component creation methods
@@ -192,8 +201,6 @@ void UIManager::createButton(const std::string &id, const UIRect &bounds,
   component->m_zOrder = 10; // Interactive elements on top
 
   m_components[id] = component;
-  m_sortedComponents.push_back(component);
-  m_sortIsDirty = true;
 }
 
 void UIManager::createButtonDanger(const std::string &id, const UIRect &bounds,
@@ -207,8 +214,6 @@ void UIManager::createButtonDanger(const std::string &id, const UIRect &bounds,
   component->m_zOrder = 10; // Interactive elements on top
 
   m_components[id] = component;
-  m_sortedComponents.push_back(component);
-  m_sortIsDirty = true;
 }
 
 void UIManager::createButtonSuccess(const std::string &id, const UIRect &bounds,
@@ -222,8 +227,6 @@ void UIManager::createButtonSuccess(const std::string &id, const UIRect &bounds,
   component->m_zOrder = 10; // Interactive elements on top
 
   m_components[id] = component;
-  m_sortedComponents.push_back(component);
-  m_sortIsDirty = true;
 }
 
 void UIManager::createButtonWarning(const std::string &id, const UIRect &bounds,
@@ -237,8 +240,6 @@ void UIManager::createButtonWarning(const std::string &id, const UIRect &bounds,
   component->m_zOrder = 10; // Interactive elements on top
 
   m_components[id] = component;
-  m_sortedComponents.push_back(component);
-  m_sortIsDirty = true;
 }
 
 void UIManager::createLabel(const std::string &id, const UIRect &bounds,
@@ -252,8 +253,6 @@ void UIManager::createLabel(const std::string &id, const UIRect &bounds,
   component->m_zOrder = 20; // Text on top
 
   m_components[id] = component;
-  m_sortedComponents.push_back(component);
-  m_sortIsDirty = true;
 
   // Apply auto-sizing after creation
   calculateOptimalSize(component);
@@ -270,8 +269,6 @@ void UIManager::createTitle(const std::string &id, const UIRect &bounds,
   component->m_zOrder = 25; // Titles on top
 
   m_components[id] = component;
-  m_sortedComponents.push_back(component);
-  m_sortIsDirty = true;
 
   // Apply auto-sizing after creation
   calculateOptimalSize(component);
@@ -286,8 +283,6 @@ void UIManager::createPanel(const std::string &id, const UIRect &bounds) {
   component->m_zOrder = 0; // Background panels
 
   m_components[id] = component;
-  m_sortedComponents.push_back(component);
-  m_sortIsDirty = true;
 }
 
 void UIManager::createProgressBar(const std::string &id, const UIRect &bounds,
@@ -303,8 +298,6 @@ void UIManager::createProgressBar(const std::string &id, const UIRect &bounds,
   component->m_zOrder = 5; // UI elements
 
   m_components[id] = component;
-  m_sortedComponents.push_back(component);
-  m_sortIsDirty = true;
 }
 
 void UIManager::createInputField(const std::string &id, const UIRect &bounds,
@@ -318,8 +311,6 @@ void UIManager::createInputField(const std::string &id, const UIRect &bounds,
   component->m_zOrder = 15; // Interactive elements
 
   m_components[id] = component;
-  m_sortedComponents.push_back(component);
-  m_sortIsDirty = true;
 }
 
 void UIManager::createImage(const std::string &id, const UIRect &bounds,
@@ -333,8 +324,6 @@ void UIManager::createImage(const std::string &id, const UIRect &bounds,
   component->m_zOrder = 1; // Background images
 
   m_components[id] = component;
-  m_sortedComponents.push_back(component);
-  m_sortIsDirty = true;
 }
 
 void UIManager::createSlider(const std::string &id, const UIRect &bounds,
@@ -350,8 +339,6 @@ void UIManager::createSlider(const std::string &id, const UIRect &bounds,
   component->m_zOrder = 12; // Interactive elements
 
   m_components[id] = component;
-  m_sortedComponents.push_back(component);
-  m_sortIsDirty = true;
 }
 
 void UIManager::createCheckbox(const std::string &id, const UIRect &bounds,
@@ -366,8 +353,6 @@ void UIManager::createCheckbox(const std::string &id, const UIRect &bounds,
   component->m_zOrder = 13; // Interactive elements
 
   m_components[id] = component;
-  m_sortedComponents.push_back(component);
-  m_sortIsDirty = true;
 }
 
 void UIManager::createList(const std::string &id, const UIRect &bounds) {
@@ -380,8 +365,6 @@ void UIManager::createList(const std::string &id, const UIRect &bounds) {
   component->m_zOrder = 8; // UI elements
 
   m_components[id] = component;
-  m_sortedComponents.push_back(component);
-  m_sortIsDirty = true;
 
   // Enable auto-sizing for dynamic content-based sizing
   calculateOptimalSize(component);
@@ -397,8 +380,6 @@ void UIManager::createTooltip(const std::string &id, const std::string &text) {
   component->m_zOrder = 1000; // Always on top
 
   m_components[id] = component;
-  m_sortedComponents.push_back(component);
-  m_sortIsDirty = true;
 }
 
 void UIManager::createEventLog(const std::string &id, const UIRect &bounds,
@@ -413,8 +394,6 @@ void UIManager::createEventLog(const std::string &id, const UIRect &bounds,
   component->m_zOrder = 6;           // UI elements
 
   m_components[id] = component;
-  m_sortedComponents.push_back(component);
-  m_sortIsDirty = true;
 }
 
 void UIManager::createDialog(const std::string &id, const UIRect &bounds) {
@@ -426,8 +405,6 @@ void UIManager::createDialog(const std::string &id, const UIRect &bounds) {
   component->m_zOrder = -10; // Render behind other elements by default
 
   m_components[id] = component;
-  m_sortedComponents.push_back(component);
-  m_sortIsDirty = true;
 }
 
 void UIManager::createModal(const std::string &dialogId, const UIRect &bounds,
@@ -461,14 +438,6 @@ void UIManager::refreshAllComponentThemes() {
 // Component manipulation
 void UIManager::removeComponent(const std::string &id) {
   m_components.erase(id);
-
-  // Remove from sorted list
-  m_sortedComponents.erase(
-    std::remove_if(m_sortedComponents.begin(), m_sortedComponents.end(),
-                   [&](const std::shared_ptr<UIComponent>& comp) {
-                     return comp->m_id == id;
-                   }),
-    m_sortedComponents.end());
 
   // Remove from any layouts
   for (auto &[layoutId, layout] : m_layouts) {
@@ -518,7 +487,6 @@ void UIManager::setComponentZOrder(const std::string &id, int zOrder) {
   auto component = getComponent(id);
   if (component) {
     component->m_zOrder = zOrder;
-    m_sortIsDirty = true;
   }
 }
 
@@ -1568,8 +1536,6 @@ void UIManager::clearAllComponents() {
   m_hoveredComponents.clear();
   m_focusedComponent.clear();
   m_hoveredTooltip.clear();
-  m_sortedComponents.clear();
-  m_sortIsDirty = true;
 }
 
 void UIManager::resetToDefaultTheme() {
@@ -1584,8 +1550,6 @@ void UIManager::cleanupForStateTransition() {
 
   // Clear all UI components
   m_components.clear();
-  m_sortedComponents.clear();
-  m_sortIsDirty = true;
 
   // Clear all layouts
   m_layouts.clear();
@@ -1688,7 +1652,8 @@ void UIManager::handleInput() {
 
   // Process components in reverse z-order (top to bottom)
   bool mouseHandled = false;
-  for (auto it = m_sortedComponents.rbegin(); it != m_sortedComponents.rend(); ++it) {
+  auto sortedComponents = getSortedComponents();
+  for (auto it = sortedComponents.rbegin(); it != sortedComponents.rend(); ++it) {
     auto& component = *it;
     if (!component || !component->m_visible || !component->m_enabled) {
         continue;
@@ -1932,7 +1897,7 @@ void UIManager::renderComponent(SDL_Renderer *renderer,
 
 void UIManager::renderButton(SDL_Renderer *renderer,
                              const std::shared_ptr<UIComponent> &component) {
-  if (!component)
+  if (!component || !renderer)
     return;
 
   SDL_Color bgColor = component->m_style.backgroundColor;
@@ -2246,7 +2211,7 @@ bool UIManager::isClickOnUI(const Vector2D& screenPos) const {
     int mouseX = static_cast<int>(screenPos.getX());
     int mouseY = static_cast<int>(screenPos.getY());
 
-    for (const auto& component : m_sortedComponents) {
+    for (const auto& [id, component] : m_components) {
         if (component && component->m_visible && component->m_enabled) {
             if (component->m_bounds.contains(mouseX, mouseY)) {
                 return true; // Click is on a UI element

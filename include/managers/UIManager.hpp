@@ -450,8 +450,6 @@ public:
 private:
   // Core data
   std::unordered_map<std::string, std::shared_ptr<UIComponent>> m_components{};
-  std::vector<std::shared_ptr<UIComponent>> m_sortedComponents{};
-  bool m_sortIsDirty{true};
   std::unordered_map<std::string, std::shared_ptr<UILayout>> m_layouts{};
   std::vector<std::shared_ptr<UIAnimation>> m_animations{};
 
@@ -498,7 +496,7 @@ private:
   void renderComponent(SDL_Renderer *renderer,
                        const std::shared_ptr<UIComponent> &component);
   void renderTooltip(SDL_Renderer *renderer);
-  void sortComponentsByZOrder();
+  std::vector<std::shared_ptr<UIComponent>> getSortedComponents() const;
 
   // Component-specific rendering
   void renderButton(SDL_Renderer *renderer,
