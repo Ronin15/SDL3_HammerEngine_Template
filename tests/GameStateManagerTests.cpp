@@ -172,7 +172,7 @@ BOOST_AUTO_TEST_CASE(TestChangeState) {
     BOOST_CHECK(state2Ptr->wasEnterCalled());
 }
 
-BOOST_AUTO_TEST_CASE(TestRequestStateChange) {
+BOOST_AUTO_TEST_CASE(TestImmediateStateChange) {
     auto mockState1 = std::make_unique<MockGameState>("State1");
     auto mockState2 = std::make_unique<MockGameState>("State2");
     MockGameState* state1Ptr = mockState1.get();
@@ -185,16 +185,10 @@ BOOST_AUTO_TEST_CASE(TestRequestStateChange) {
     state1Ptr->resetFlags();
     state2Ptr->resetFlags();
     
-    // Request deferred state change
-    manager.requestStateChange("State2");
+    // State change should happen immediately
+    manager.changeState("State2");
     
-    // Change should not happen immediately
-    BOOST_CHECK(!state1Ptr->wasExitCalled());
-    BOOST_CHECK(!state2Ptr->wasEnterCalled());
-    
-    // Update should process the deferred change
-    manager.update(0.016f);
-    
+    // Change should happen immediately
     BOOST_CHECK(state1Ptr->wasExitCalled());
     BOOST_CHECK(state2Ptr->wasEnterCalled());
 }

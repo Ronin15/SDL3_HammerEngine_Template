@@ -53,8 +53,11 @@ void GameStateManager::pushState(const std::string &stateName) {
 
 void GameStateManager::popState() {
   if (!m_activeStates.empty()) {
-    // Exit and pop the current state
-    m_activeStates.back()->exit();
+    // CRITICAL: Wait for exit to complete BEFORE removing from stack
+    auto currentState = m_activeStates.back();
+    currentState->exit(); // Wait for exit to complete fully
+    
+    // Only remove after exit is complete
     m_activeStates.pop_back();
     GAMESTATE_INFO("Popped state");
 
@@ -66,32 +69,16 @@ void GameStateManager::popState() {
 }
 
 void GameStateManager::changeState(const std::string &stateName) {
-  // Pop the current state if one exists
+  // Pop the current state if one exists (waits for exit to complete)
   if (!m_activeStates.empty()) {
     popState();
   }
-  // Push the new state
+  // Push the new state (waits for enter to complete)
   pushState(stateName);
-}
-
-void GameStateManager::requestStateChange(const std::string &stateName) {
-  // Request a deferred state change to avoid self-destruction during update
-  m_pendingStateChange = stateName;
-  m_hasPendingStateChange = true;
-  GAMESTATE_INFO("Requested deferred state change to: " + stateName);
 }
 
 void GameStateManager::update(float deltaTime) {
   m_lastDeltaTime = deltaTime; // Store deltaTime for render
-  
-  // Process any pending state changes at the BEGINNING of the update cycle
-  // This ensures the previous render cycle has completed before changing states
-  if (m_hasPendingStateChange) {
-    GAMESTATE_INFO("Processing deferred state change to: " + m_pendingStateChange);
-    changeState(m_pendingStateChange);
-    m_hasPendingStateChange = false;
-    m_pendingStateChange.clear();
-  }
   
   // Only update the top state when multiple states are active (e.g., PauseState over GamePlayState)
   // This prevents underlying states from processing game logic when paused

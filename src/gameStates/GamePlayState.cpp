@@ -87,9 +87,11 @@ void GamePlayState::render() {
 
   // Render world using camera coordinate transformations
   auto &worldMgr = WorldManager::Instance();
-  worldMgr.render(renderer, 
-                 viewRect.x, viewRect.y,  // Camera view area
-                 viewRect.width, viewRect.height);
+  if (worldMgr.isInitialized() && worldMgr.hasActiveWorld()) {
+    worldMgr.render(renderer, 
+                   viewRect.x, viewRect.y,  // Camera view area
+                   viewRect.width, viewRect.height);
+  }
 
   // Render player using camera coordinate transformations
   if (mp_Player) {
@@ -164,7 +166,7 @@ void GamePlayState::handleInput() {
 
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_B)) {
     const auto &gameEngine = GameEngine::Instance();
-    gameEngine.getGameStateManager()->requestStateChange("MainMenuState");
+    gameEngine.getGameStateManager()->changeState("MainMenuState");
   }
 
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_ESCAPE)) {

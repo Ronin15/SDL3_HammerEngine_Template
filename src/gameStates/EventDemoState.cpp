@@ -245,9 +245,19 @@ bool EventDemoState::exit() {
                                                // and cleanup
     }
 
-    // Clean up UI components using simplified method
+    // Clean up camera first to stop world rendering
+    m_camera.reset();
+
+    // Clean up UI components before world cleanup
     auto &ui = UIManager::Instance();
     ui.prepareForStateTransition();
+
+    // Unload the world when fully exiting, but only if there's actually a world loaded
+    // This matches GamePlayState's safety pattern and prevents Metal renderer crashes
+    WorldManager &worldMgr = WorldManager::Instance();
+    if (worldMgr.isInitialized() && worldMgr.hasActiveWorld()) {
+      worldMgr.unloadWorld();
+    }
 
     std::cout << "Hammer Game Engine - EventDemoState cleanup complete\n";
     return true;
@@ -449,12 +459,14 @@ void EventDemoState::render() {
   // Render world first (background layer) using camera center position
   if (m_camera) {
     auto &worldMgr = WorldManager::Instance();
-    auto cameraView = m_camera->getViewRect();
-    worldMgr.render(renderer, 
-                   cameraView.x,
-                   cameraView.y,
-                   gameEngine.getLogicalWidth(),
-                   gameEngine.getLogicalHeight());
+    if (worldMgr.isInitialized() && worldMgr.hasActiveWorld()) {
+      auto cameraView = m_camera->getViewRect();
+      worldMgr.render(renderer, 
+                     cameraView.x,
+                     cameraView.y,
+                     gameEngine.getLogicalWidth(),
+                     gameEngine.getLogicalHeight());
+    }
   }
 
   // Render background particles first (rain, snow) - behind player/NPCs
@@ -778,7 +790,7 @@ void EventDemoState::handleInput() {
   }
 
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_B)) {
-    gameEngine.getGameStateManager()->requestStateChange("MainMenuState");
+    gameEngine.getGameStateManager()->changeState("MainMenuState");
   }
 
   // Mouse input for world interaction
