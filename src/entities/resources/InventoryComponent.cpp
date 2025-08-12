@@ -104,8 +104,15 @@ bool InventoryComponent::addResource(HammerEngine::ResourceHandle handle,
               ? std::min(remainingQuantity, resourceTemplate->getMaxStackSize())
               : std::min(remainingQuantity, 1);
 
-      m_slots[emptySlot] = InventorySlot(handle, toAdd);
-      remainingQuantity -= toAdd;
+      // Normalize emptySlot to size_t and ensure in-bounds without throwing
+      size_t sidx = emptySlot < 0 ? size_t{0} : static_cast<size_t>(emptySlot);
+      if (sidx < m_slots.size()) {
+        m_slots[sidx] = InventorySlot(handle, toAdd);
+        remainingQuantity -= toAdd;
+      } else {
+        INVENTORY_WARN("Empty slot index " + std::to_string(emptySlot) + " out of bounds (slots size: " + std::to_string(m_slots.size()) + ")");
+        break;
+      }
     }
 
     // Update cache and get final quantities
