@@ -7,6 +7,7 @@
 #define BINARY_SERIALIZER_HPP
 
 #include "core/Logger.hpp"
+#include "utils/Vector2D.hpp"
 #include <cstring>
 #include <fstream>
 #include <iostream>
@@ -235,6 +236,23 @@ bool loadFromFile(const std::string &filename, T &object) {
   }
 
   return result;
+}
+
+// Template specialization for Vector2D serialization
+template <>
+inline bool Writer::writeSerializable<Vector2D>(const Vector2D &vec) {
+  return write(vec.getX()) && write(vec.getY());
+}
+
+template <>
+inline bool Reader::readSerializable<Vector2D>(Vector2D &vec) {
+  float x, y;
+  if (read(x) && read(y)) {
+    vec.setX(x);
+    vec.setY(y);
+    return true;
+  }
+  return false;
 }
 
 } // namespace BinarySerial
