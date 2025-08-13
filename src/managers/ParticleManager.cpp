@@ -270,7 +270,7 @@ void ParticleManager::update(float deltaTime) {
 }
 
 void ParticleManager::render(SDL_Renderer *renderer, float cameraX,
-                             float cameraY) {
+                              float cameraY) {
   if (m_globallyPaused.load(std::memory_order_acquire) ||
       !m_globallyVisible.load(std::memory_order_acquire)) {
     return;
@@ -278,14 +278,29 @@ void ParticleManager::render(SDL_Renderer *renderer, float cameraX,
 
   auto startTime = std::chrono::high_resolution_clock::now();
 
-  // PERFORMANCE: Lock-free rendering using read-only snapshot
+  // THREAD SAFETY: Get immutable snapshot of particle data for rendering
   const auto &particles = m_storage.getParticlesForRead();
   int renderCount = 0;
   
-  // THREAD SAFETY: Use buffer-specific size to avoid container-overflow during double-buffering
-  const size_t particleCount = particles.size();
+  // CRITICAL FIX: Cache buffer size at start to avoid race conditions
+  // This prevents accessing invalid indices if buffer changes during iteration
+  const size_t particleCount = particles.positions.size();
+  
+  // BOUNDS SAFETY: Validate all vector sizes are consistent before iteration
+  if (particleCount == 0 || 
+      particles.flags.size() != particleCount ||
+      particles.colors.size() != particleCount ||
+      particles.sizes.size() != particleCount) {
+    return; // Skip rendering if buffer is inconsistent
+  }
 
   for (size_t i = 0; i < particleCount; ++i) {
+    // BOUNDS CHECK: Additional safety for Windows gcc strictness
+    if (i >= particles.flags.size() || i >= particles.colors.size() || 
+        i >= particles.sizes.size() || i >= particles.positions.size()) {
+      break; // Exit safely if we hit inconsistent buffer
+    }
+    
     if (!(particles.flags[i] & UnifiedParticle::FLAG_ACTIVE) || !(particles.flags[i] & UnifiedParticle::FLAG_VISIBLE)) {
       continue;
     }
@@ -339,11 +354,29 @@ void ParticleManager::renderBackground(SDL_Renderer *renderer, float cameraX,
     return;
   }
 
-  // PERFORMANCE: Lock-free rendering using read-only snapshot
+  // THREAD SAFETY: Get immutable snapshot of particle data
   const auto &particles = m_storage.getParticlesForRead();
-  const size_t particleCount = particles.size();
+  
+  // CRITICAL FIX: Cache buffer size and validate consistency
+  const size_t particleCount = particles.positions.size();
+  
+  // BOUNDS SAFETY: Validate all vector sizes are consistent before iteration
+  if (particleCount == 0 || 
+      particles.flags.size() != particleCount ||
+      particles.colors.size() != particleCount ||
+      particles.sizes.size() != particleCount ||
+      particles.layers.size() != particleCount) {
+    return; // Skip rendering if buffer is inconsistent
+  }
 
   for (size_t i = 0; i < particleCount; ++i) {
+    // BOUNDS CHECK: Additional safety for Windows gcc strictness
+    if (i >= particles.flags.size() || i >= particles.colors.size() || 
+        i >= particles.sizes.size() || i >= particles.positions.size() ||
+        i >= particles.layers.size()) {
+      break; // Exit safely if we hit inconsistent buffer
+    }
+    
     if (!(particles.flags[i] & UnifiedParticle::FLAG_ACTIVE) || !(particles.flags[i] & UnifiedParticle::FLAG_VISIBLE) ||
         particles.layers[i] != UnifiedParticle::RenderLayer::Background) {
       continue;
@@ -376,11 +409,28 @@ void ParticleManager::renderForeground(SDL_Renderer *renderer, float cameraX,
     return;
   }
 
-  // PERFORMANCE: Lock-free rendering using read-only snapshot
+  // THREAD SAFETY: Get immutable snapshot of particle data
   const auto &particles = m_storage.getParticlesForRead();
-  const size_t particleCount = particles.size();
+  
+  // CRITICAL FIX: Cache buffer size and validate consistency
+  const size_t particleCount = particles.positions.size();
+  
+  // BOUNDS SAFETY: Validate all vector sizes are consistent before iteration
+  if (particleCount == 0 || 
+      particles.flags.size() != particleCount ||
+      particles.colors.size() != particleCount ||
+      particles.sizes.size() != particleCount ||
+      particles.layers.size() != particleCount) {
+    return; // Skip rendering if buffer is inconsistent
+  }
 
   for (size_t i = 0; i < particleCount; ++i) {
+    // BOUNDS CHECK: Additional safety for Windows gcc strictness
+    if (i >= particles.flags.size() || i >= particles.colors.size() || 
+        i >= particles.sizes.size() || i >= particles.positions.size() ||
+        i >= particles.layers.size()) {
+      break; // Exit safely if we hit inconsistent buffer
+    }
 
     if (!(particles.flags[i] & UnifiedParticle::FLAG_ACTIVE) || !(particles.flags[i] & UnifiedParticle::FLAG_VISIBLE) ||
         particles.layers[i] != UnifiedParticle::RenderLayer::Foreground) {
@@ -1248,13 +1298,22 @@ size_t ParticleManager::getActiveParticleCount() const {
     return 0;
   }
 
-  // PERFORMANCE: Lock-free particle counting
+  // THREAD SAFETY: Get immutable snapshot of particle data
   const auto &particles = m_storage.getParticlesForRead();
+  
+  // CRITICAL FIX: Cache flag vector size to avoid race conditions
+  const size_t flagCount = particles.flags.size();
+  
   size_t activeCount = 0;
-  for(const auto& flag : particles.flags) {
-      if (flag & UnifiedParticle::FLAG_ACTIVE) {
-          activeCount++;
-      }
+  for (size_t i = 0; i < flagCount; ++i) {
+    // BOUNDS CHECK: Additional safety for Windows gcc strictness
+    if (i >= particles.flags.size()) {
+      break; // Exit safely if buffer changed during iteration
+    }
+    
+    if (particles.flags[i] & UnifiedParticle::FLAG_ACTIVE) {
+      activeCount++;
+    }
   }
   return activeCount;
 }
@@ -1277,11 +1336,39 @@ void ParticleManager::compactParticleStorage() {
   // Clear target buffer and prepare for compaction
   targetParticles.clear();
   
+  // CRITICAL FIX: Cache source buffer size to avoid race conditions
+  const size_t sourceSize = sourceParticles.positions.size();
+  
+  // BOUNDS SAFETY: Validate source buffer consistency
+  if (sourceSize == 0 ||
+      sourceParticles.flags.size() != sourceSize ||
+      sourceParticles.velocities.size() != sourceSize ||
+      sourceParticles.lives.size() != sourceSize) {
+    // Source buffer is inconsistent, abort compaction
+    m_storage.safeEpoch.store(currentEpoch, std::memory_order_release);
+    return;
+  }
+  
   size_t writeIndex = 0;
-  for (size_t readIndex = 0; readIndex < sourceParticles.size(); ++readIndex) {
+  for (size_t readIndex = 0; readIndex < sourceSize; ++readIndex) {
+    // BOUNDS CHECK: Ensure we don't access invalid indices
+    if (readIndex >= sourceParticles.flags.size()) {
+      break; // Exit safely if buffer changed during iteration
+    }
+    
     if (sourceParticles.flags[readIndex] & UnifiedParticle::FLAG_ACTIVE) {
+      // BOUNDS CHECK: Verify all array accesses are safe
+      if (readIndex >= sourceParticles.positions.size() ||
+          readIndex >= sourceParticles.velocities.size() ||
+          readIndex >= sourceParticles.accelerations.size() ||
+          readIndex >= sourceParticles.lives.size() ||
+          readIndex >= sourceParticles.maxLives.size() ||
+          readIndex >= sourceParticles.sizes.size()) {
+        break; // Exit safely if any buffer is inconsistent
+      }
+      
       // Expand target buffer if needed
-      if (writeIndex >= targetParticles.size()) {
+      if (writeIndex >= targetParticles.positions.size()) {
         targetParticles.positions.push_back(sourceParticles.positions[readIndex]);
         targetParticles.velocities.push_back(sourceParticles.velocities[readIndex]);
         targetParticles.accelerations.push_back(sourceParticles.accelerations[readIndex]);
@@ -1317,7 +1404,7 @@ void ParticleManager::compactParticleStorage() {
     }
   }
 
-  size_t originalCount = sourceParticles.size();
+  size_t originalCount = sourceSize;
   size_t compactedCount = writeIndex;
   
   if (compactedCount < originalCount) {
@@ -1416,9 +1503,22 @@ void ParticleManager::updateEffectInstances(float deltaTime) {
   }
 }
 void ParticleManager::updateParticlesThreaded(float deltaTime,
-                                              size_t activeParticleCount) {
+                                               size_t activeParticleCount) {
   // Use lock-free double buffering for threaded updates
   auto &currentBuffer = m_storage.getCurrentBuffer();
+
+  // CRITICAL FIX: Validate buffer consistency before threading
+  const size_t bufferSize = currentBuffer.positions.size();
+  
+  // BOUNDS SAFETY: Ensure all vectors have consistent sizes
+  if (bufferSize == 0 ||
+      currentBuffer.velocities.size() != bufferSize ||
+      currentBuffer.flags.size() != bufferSize ||
+      currentBuffer.lives.size() != bufferSize) {
+    // Buffer is inconsistent, fall back to single-threaded update
+    updateParticlesSingleThreaded(deltaTime, activeParticleCount);
+    return;
+  }
 
   // WorkerBudget-aware threading following engine architecture
   // This implementation follows the same patterns as AIManager for consistent
@@ -1474,13 +1574,14 @@ void ParticleManager::updateParticlesThreaded(float deltaTime,
     size_t endIdx = startIdx + particlesPerBatch +
                     (i == batchCount - 1 ? remainingParticles : 0);
     
-    // Ensure endIdx doesn't exceed actual particle buffer size
-    endIdx = std::min(endIdx, currentBuffer.size());
+    // CRITICAL FIX: Ensure endIdx doesn't exceed buffer size
+    endIdx = std::min(endIdx, bufferSize);
     
-    // Skip empty batches
-    if (startIdx >= currentBuffer.size()) {
+    // Skip empty batches or invalid ranges
+    if (startIdx >= bufferSize || startIdx >= endIdx) {
       continue;
     }
+    
     futures.push_back(threadSystem.enqueueTaskWithResult(
         [this, &currentBuffer, startIdx, endIdx, deltaTime]() {
           updateParticleRange(currentBuffer, startIdx, endIdx, deltaTime);
@@ -1512,12 +1613,43 @@ void ParticleManager::updateParticleRange(
   const float windPhase8_0 = windPhase * 8.0f;
   const float windPhase6_0 = windPhase * 6.0f;
 
-  // Ensure we don't exceed the actual particle buffer size
-  endIdx = std::min(endIdx, particles.size());
+  // CRITICAL FIX: Cache all buffer sizes and validate consistency before processing
+  const size_t positionsSize = particles.positions.size();
+  const size_t velocitiesSize = particles.velocities.size();
+  const size_t accelerationsSize = particles.accelerations.size();
+  const size_t livesSize = particles.lives.size();
+  const size_t maxLivesSize = particles.maxLives.size();
+  const size_t sizesSize = particles.sizes.size();
+  const size_t flagsSize = particles.flags.size();
+  const size_t colorsSize = particles.colors.size();
+  const size_t effectTypesSize = particles.effectTypes.size();
+  
+  // BOUNDS SAFETY: Find minimum consistent size across all vectors
+  const size_t safeSize = std::min({positionsSize, velocitiesSize, accelerationsSize,
+                                   livesSize, maxLivesSize, sizesSize, flagsSize,
+                                   colorsSize, effectTypesSize});
+  
+  // Ensure we don't exceed the actual safe particle buffer size
+  endIdx = std::min(endIdx, safeSize);
+  startIdx = std::min(startIdx, safeSize);
+  
+  if (startIdx >= endIdx || safeSize == 0) {
+    return; // Nothing to process
+  }
   
   for (size_t i = startIdx; i < endIdx; ++i) {
-    if (!(particles.flags[i] & UnifiedParticle::FLAG_ACTIVE))
+    // BOUNDS CHECK: Double-check index is still valid (Windows gcc strictness)
+    if (i >= flagsSize || !(particles.flags[i] & UnifiedParticle::FLAG_ACTIVE)) {
       continue;
+    }
+    
+    // BOUNDS CHECK: Verify all array accesses are safe before proceeding
+    if (i >= positionsSize || i >= velocitiesSize || i >= accelerationsSize ||
+        i >= livesSize || i >= maxLivesSize || i >= sizesSize ||
+        i >= colorsSize || i >= effectTypesSize) {
+      break; // Exit safely if any buffer is inconsistent
+    }
+    
     // PRODUCTION OPTIMIZATION: Pre-compute per-particle values
     const float particleOffset = i * 0.1f;
     

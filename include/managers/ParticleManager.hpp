@@ -22,13 +22,10 @@
  * - Thread-safe design with minimal lock contention
  */
 
-#include "core/WorkerBudget.hpp"
 #include "utils/Vector2D.hpp"
 #include <SDL3/SDL.h>
 #include <array>
 #include <atomic>
-#include <functional>
-#include <memory>
 #include <mutex>
 #include <shared_mutex>
 #include <string>
@@ -38,6 +35,10 @@
 // Forward declarations
 class TextureManager;
 class EventManager;
+
+namespace HammerEngine {
+struct WorkerBudget;
+}
 
 // Use the proper logging system for thread-safe logging
 // Note: This header only contains the LOG macro declaration, the actual include
@@ -849,7 +850,18 @@ private:
         }
 
         size_t size() const {
-            return positions.size();
+            // CRITICAL FIX: Return minimum size across all vectors for thread safety
+            // This prevents out-of-bounds access when vectors have inconsistent sizes
+            if (positions.empty()) return 0;
+            
+            const size_t minSize = std::min({
+                positions.size(), velocities.size(), accelerations.size(),
+                lives.size(), maxLives.size(), sizes.size(), rotations.size(),
+                angularVelocities.size(), colors.size(), textureIndices.size(),
+                flags.size(), generationIds.size(), effectTypes.size(), layers.size()
+            });
+            
+            return minSize;
         }
 
         bool empty() const {
@@ -932,8 +944,13 @@ private:
           size_t activeIdx = activeBuffer.load(std::memory_order_relaxed);
           auto &activeParticles = particles[activeIdx];
 
-          if (activeParticles.size() <
-              capacity.load(std::memory_order_relaxed)) {
+          const size_t currentCapacity = capacity.load(std::memory_order_relaxed);
+          const size_t currentSize = activeParticles.positions.size();
+          
+          // CRITICAL FIX: Check buffer consistency before adding particles
+          if (currentSize < currentCapacity &&
+              activeParticles.velocities.size() == currentSize &&
+              activeParticles.flags.size() == currentSize) {
             UnifiedParticle particle;
             particle.position = req.position;
             particle.velocity = req.velocity;
@@ -971,18 +988,32 @@ private:
       return particles[activeIdx];
     }
 
-    // Check if compaction is needed
+    // CRITICAL FIX: Check if compaction is needed with proper bounds checking
     bool needsCompaction() const {
         const auto& activeParticles = getParticlesForRead();
-        if (activeParticles.empty()) return false;
+        
+        // BOUNDS SAFETY: Check for empty or inconsistent buffer
+        const size_t flagsSize = activeParticles.flags.size();
+        if (flagsSize == 0) return false;
+        
+        // Validate buffer consistency before checking compaction need
+        if (activeParticles.positions.size() != flagsSize ||
+            activeParticles.velocities.size() != flagsSize) {
+            return true; // Force compaction if buffer is inconsistent
+        }
 
         size_t inactiveCount = 0;
-        for (const auto& flag : activeParticles.flags) {
-            if (!(flag & UnifiedParticle::FLAG_ACTIVE)) {
+        for (size_t i = 0; i < flagsSize; ++i) {
+            // BOUNDS CHECK: Additional safety
+            if (i >= activeParticles.flags.size()) {
+                break; // Exit safely if buffer changed
+            }
+            
+            if (!(activeParticles.flags[i] & UnifiedParticle::FLAG_ACTIVE)) {
                 inactiveCount++;
             }
         }
-        return inactiveCount > activeParticles.size() * 0.5;
+        return inactiveCount > flagsSize * 0.5;
     }
 
 
@@ -1000,8 +1031,22 @@ private:
       size_t current = activeBuffer.load(std::memory_order_relaxed);
       size_t next = 1 - current;
 
-      // Copy active particles to next buffer
-      particles[next] = particles[current];
+      // CRITICAL FIX: Ensure buffer consistency before copying
+      const auto& currentParticles = particles[current];
+      auto& nextParticles = particles[next];
+      
+      // BOUNDS SAFETY: Validate source buffer before copying
+      const size_t currentSize = currentParticles.positions.size();
+      if (currentSize == 0 ||
+          currentParticles.velocities.size() != currentSize ||
+          currentParticles.flags.size() != currentSize) {
+        // Don't swap if current buffer is inconsistent
+        currentEpoch.fetch_add(1, std::memory_order_acq_rel);
+        return;
+      }
+
+      // Copy active particles to next buffer safely
+      nextParticles = currentParticles;
 
       // Atomic swap
       activeBuffer.store(next, std::memory_order_release);
