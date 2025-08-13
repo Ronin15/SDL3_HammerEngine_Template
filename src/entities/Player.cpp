@@ -12,9 +12,11 @@
 #include "managers/EventManager.hpp"
 #include "managers/ResourceTemplateManager.hpp"
 #include "managers/TextureManager.hpp"
+#include "managers/WorldManager.hpp"
 #include "utils/Camera.hpp"
 #include <SDL3/SDL.h>
 #include <chrono>
+#include <algorithm>
 
 Player::Player() {
   // Initialize player properties
@@ -133,7 +135,46 @@ void Player::update(float deltaTime) {
   m_stateManager.update(deltaTime);
 
   // Apply velocity to position AFTER state update
-  m_position += m_velocity * deltaTime;
+  Vector2D newPosition = m_position + m_velocity * deltaTime;
+  
+  // Constrain player position to world boundaries
+  const WorldManager& worldManager = WorldManager::Instance();
+  float minX, minY, maxX, maxY;
+  
+  if (worldManager.getWorldBounds(minX, minY, maxX, maxY)) {
+    // Convert tile coordinates to pixel coordinates (32px per tile)
+    const float TILE_SIZE = 32.0f;
+    float worldMinX = minX * TILE_SIZE;
+    float worldMinY = minY * TILE_SIZE;
+    float worldMaxX = maxX * TILE_SIZE;
+    float worldMaxY = maxY * TILE_SIZE;
+    
+    // Account for player size (half width/height for center-based positioning)
+    float playerHalfWidth = m_frameWidth * 0.5f;
+    float playerHalfHeight = m_height * 0.5f;
+    
+    // Clamp player position to stay within world bounds
+    newPosition.setX(std::clamp(newPosition.getX(), 
+                               worldMinX + playerHalfWidth, 
+                               worldMaxX - playerHalfWidth));
+    newPosition.setY(std::clamp(newPosition.getY(), 
+                               worldMinY + playerHalfHeight, 
+                               worldMaxY - playerHalfHeight));
+  } else {
+    // Fallback to default bounds if no world is loaded (matches GamePlayState.cpp)
+    const float DEFAULT_WORLD_SIZE = 3200.0f; // 100 tiles * 32px
+    float playerHalfWidth = m_frameWidth * 0.5f;
+    float playerHalfHeight = m_height * 0.5f;
+    
+    newPosition.setX(std::clamp(newPosition.getX(), 
+                               playerHalfWidth, 
+                               DEFAULT_WORLD_SIZE - playerHalfWidth));
+    newPosition.setY(std::clamp(newPosition.getY(), 
+                               playerHalfHeight, 
+                               DEFAULT_WORLD_SIZE - playerHalfHeight));
+  }
+  
+  m_position = newPosition;
 
   // If the texture dimensions haven't been loaded yet, try loading them
   if (m_frameWidth == 0 &&

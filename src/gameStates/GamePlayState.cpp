@@ -417,13 +417,13 @@ void GamePlayState::initializeCamera() {
     m_camera->setTarget(playerAsEntity);
     m_camera->setMode(HammerEngine::Camera::Mode::Follow);
     
-    // Set up camera configuration for smooth following (RESTORED ORIGINAL SMOOTH SETTINGS)
+    // Set up camera configuration for smooth following
     HammerEngine::Camera::Config config;
-    config.followSpeed = 2.5f;         // Original smooth settings
+    config.followSpeed = 2.5f;         // Smooth following speed
     config.deadZoneRadius = 0.0f;      // No dead zone - always follow
-    config.smoothingFactor = 0.85f;    // Original exponential smoothing
+    config.smoothingFactor = 0.85f;    // Exponential smoothing
     config.maxFollowDistance = 9999.0f; // No distance limit
-    config.clampToWorldBounds = false; // DISABLE clamping for testing jitter
+    config.clampToWorldBounds = true;  // ENABLE clamping - player is now bounded so no jitter
     m_camera->setConfig(config);
     
     // Set up world bounds for camera (called after world is loaded)
