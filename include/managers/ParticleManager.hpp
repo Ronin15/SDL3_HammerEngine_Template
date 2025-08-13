@@ -24,6 +24,7 @@
 
 #include "utils/Vector2D.hpp"
 #include <SDL3/SDL.h>
+#include <algorithm>
 #include <array>
 #include <atomic>
 #include <mutex>
