@@ -282,23 +282,25 @@ void ParticleManager::render(SDL_Renderer *renderer, float cameraX,
   const auto &particles = m_storage.getParticlesForRead();
   int renderCount = 0;
   
-  // CRITICAL FIX: Cache buffer size at start to avoid race conditions
-  // This prevents accessing invalid indices if buffer changes during iteration
-  const size_t particleCount = particles.positions.size();
+  // IMPROVED FIX: Use safest available particle count for rendering
+  // This allows partial rendering when buffers are mostly consistent
+  const size_t safeParticleCount = std::min({
+    particles.positions.size(),
+    particles.flags.size(), 
+    particles.colors.size(),
+    particles.sizes.size()
+  });
   
-  // BOUNDS SAFETY: Validate all vector sizes are consistent before iteration
-  if (particleCount == 0 || 
-      particles.flags.size() != particleCount ||
-      particles.colors.size() != particleCount ||
-      particles.sizes.size() != particleCount) {
-    return; // Skip rendering if buffer is inconsistent
+  // Only skip rendering if no particles are available
+  if (safeParticleCount == 0) {
+    return;
   }
 
-  for (size_t i = 0; i < particleCount; ++i) {
-    // BOUNDS CHECK: Additional safety for Windows gcc strictness
+  for (size_t i = 0; i < safeParticleCount; ++i) {
+    // BOUNDS CHECK: Defensive programming for edge cases
     if (i >= particles.flags.size() || i >= particles.colors.size() || 
         i >= particles.sizes.size() || i >= particles.positions.size()) {
-      break; // Exit safely if we hit inconsistent buffer
+      break; // Exit safely if we somehow exceed bounds
     }
     
     if (!(particles.flags[i] & UnifiedParticle::FLAG_ACTIVE) || !(particles.flags[i] & UnifiedParticle::FLAG_VISIBLE)) {
@@ -334,7 +336,7 @@ void ParticleManager::render(SDL_Renderer *renderer, float cameraX,
       m_frameCounter.fetch_add(1, std::memory_order_relaxed);
   if (currentFrame % 900 == 0 && renderCount > 0) {
     PARTICLE_DEBUG(
-        "Particle Summary - Total: " + std::to_string(particleCount) +
+        "Particle Summary - Total: " + std::to_string(safeParticleCount) +
         ", Active: " + std::to_string(renderCount) +
         ", Effects: " + std::to_string(m_effectInstances.size()));
   }
@@ -344,7 +346,7 @@ void ParticleManager::render(SDL_Renderer *renderer, float cameraX,
       std::chrono::duration_cast<std::chrono::microseconds>(endTime - startTime)
           .count() /
       1000.0;
-  recordPerformance(true, timeMs, particleCount);
+  recordPerformance(true, timeMs, safeParticleCount);
 }
 
 void ParticleManager::renderBackground(SDL_Renderer *renderer, float cameraX,
@@ -357,24 +359,27 @@ void ParticleManager::renderBackground(SDL_Renderer *renderer, float cameraX,
   // THREAD SAFETY: Get immutable snapshot of particle data
   const auto &particles = m_storage.getParticlesForRead();
   
-  // CRITICAL FIX: Cache buffer size and validate consistency
-  const size_t particleCount = particles.positions.size();
+  // IMPROVED FIX: Use safest available particle count for background rendering
+  // This allows partial rendering when buffers are mostly consistent
+  const size_t safeParticleCount = std::min({
+    particles.positions.size(),
+    particles.flags.size(),
+    particles.colors.size(),
+    particles.sizes.size(),
+    particles.layers.size()
+  });
   
-  // BOUNDS SAFETY: Validate all vector sizes are consistent before iteration
-  if (particleCount == 0 || 
-      particles.flags.size() != particleCount ||
-      particles.colors.size() != particleCount ||
-      particles.sizes.size() != particleCount ||
-      particles.layers.size() != particleCount) {
-    return; // Skip rendering if buffer is inconsistent
+  // Only skip rendering if no particles are available
+  if (safeParticleCount == 0) {
+    return;
   }
 
-  for (size_t i = 0; i < particleCount; ++i) {
-    // BOUNDS CHECK: Additional safety for Windows gcc strictness
+  for (size_t i = 0; i < safeParticleCount; ++i) {
+    // BOUNDS CHECK: Defensive programming for edge cases
     if (i >= particles.flags.size() || i >= particles.colors.size() || 
         i >= particles.sizes.size() || i >= particles.positions.size() ||
         i >= particles.layers.size()) {
-      break; // Exit safely if we hit inconsistent buffer
+      break; // Exit safely if we somehow exceed bounds
     }
     
     if (!(particles.flags[i] & UnifiedParticle::FLAG_ACTIVE) || !(particles.flags[i] & UnifiedParticle::FLAG_VISIBLE) ||
@@ -412,24 +417,27 @@ void ParticleManager::renderForeground(SDL_Renderer *renderer, float cameraX,
   // THREAD SAFETY: Get immutable snapshot of particle data
   const auto &particles = m_storage.getParticlesForRead();
   
-  // CRITICAL FIX: Cache buffer size and validate consistency
-  const size_t particleCount = particles.positions.size();
+  // IMPROVED FIX: Use safest available particle count for foreground rendering
+  // This allows partial rendering when buffers are mostly consistent
+  const size_t safeParticleCount = std::min({
+    particles.positions.size(),
+    particles.flags.size(),
+    particles.colors.size(),
+    particles.sizes.size(),
+    particles.layers.size()
+  });
   
-  // BOUNDS SAFETY: Validate all vector sizes are consistent before iteration
-  if (particleCount == 0 || 
-      particles.flags.size() != particleCount ||
-      particles.colors.size() != particleCount ||
-      particles.sizes.size() != particleCount ||
-      particles.layers.size() != particleCount) {
-    return; // Skip rendering if buffer is inconsistent
+  // Only skip rendering if no particles are available
+  if (safeParticleCount == 0) {
+    return;
   }
 
-  for (size_t i = 0; i < particleCount; ++i) {
-    // BOUNDS CHECK: Additional safety for Windows gcc strictness
+  for (size_t i = 0; i < safeParticleCount; ++i) {
+    // BOUNDS CHECK: Defensive programming for edge cases
     if (i >= particles.flags.size() || i >= particles.colors.size() || 
         i >= particles.sizes.size() || i >= particles.positions.size() ||
         i >= particles.layers.size()) {
-      break; // Exit safely if we hit inconsistent buffer
+      break; // Exit safely if we somehow exceed bounds
     }
 
     if (!(particles.flags[i] & UnifiedParticle::FLAG_ACTIVE) || !(particles.flags[i] & UnifiedParticle::FLAG_VISIBLE) ||

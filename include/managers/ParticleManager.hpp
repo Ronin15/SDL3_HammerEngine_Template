@@ -850,18 +850,21 @@ private:
         }
 
         size_t size() const {
-            // CRITICAL FIX: Return minimum size across all vectors for thread safety
-            // This prevents out-of-bounds access when vectors have inconsistent sizes
-            if (positions.empty()) return 0;
+            // IMPROVED FIX: Use positions as authoritative size for thread safety
+            // Allow slightly inconsistent vectors during brief buffer updates
+            // This reduces unnecessary skipping of particle rendering
+            const size_t baseSize = positions.size();
             
-            const size_t minSize = std::min({
-                positions.size(), velocities.size(), accelerations.size(),
-                lives.size(), maxLives.size(), sizes.size(), rotations.size(),
-                angularVelocities.size(), colors.size(), textureIndices.size(),
-                flags.size(), generationIds.size(), effectTypes.size(), layers.size()
+            // Only return 0 if completely empty
+            if (baseSize == 0) return 0;
+            
+            // Use minimum safe size across all critical vectors for iteration
+            // This allows partial rendering when buffers are mostly consistent
+            const size_t safeSize = std::min({
+                baseSize, flags.size(), colors.size(), sizes.size()
             });
             
-            return minSize;
+            return safeSize;
         }
 
         bool empty() const {
