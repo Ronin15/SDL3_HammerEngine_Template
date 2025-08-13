@@ -29,6 +29,381 @@ inline int fast_rand() {
 // Static mutex for update serialization
 std::mutex ParticleManager::updateMutex;
 
+// ParticleData method implementations
+bool ParticleData::isActive() const {
+    return flags & FLAG_ACTIVE;
+}
+
+void ParticleData::setActive(bool active) {
+    if (active)
+        flags |= FLAG_ACTIVE;
+    else
+        flags &= ~FLAG_ACTIVE;
+}
+
+bool ParticleData::isVisible() const {
+    return flags & FLAG_VISIBLE;
+}
+
+void ParticleData::setVisible(bool visible) {
+    if (visible)
+        flags |= FLAG_VISIBLE;
+    else
+        flags &= ~FLAG_VISIBLE;
+}
+
+bool ParticleData::isWeatherParticle() const {
+    return flags & FLAG_WEATHER;
+}
+
+void ParticleData::setWeatherParticle(bool weather) {
+    if (weather)
+        flags |= FLAG_WEATHER;
+    else
+        flags &= ~FLAG_WEATHER;
+}
+
+bool ParticleData::isFadingOut() const {
+    return flags & FLAG_FADE_OUT;
+}
+
+void ParticleData::setFadingOut(bool fading) {
+    if (fading)
+        flags |= FLAG_FADE_OUT;
+    else
+        flags &= ~FLAG_FADE_OUT;
+}
+
+float ParticleData::getLifeRatio() const {
+    return maxLife > 0 ? life / maxLife : 0.0f;
+}
+
+// UnifiedParticle method implementations
+bool UnifiedParticle::isActive() const {
+    return flags & FLAG_ACTIVE;
+}
+
+void UnifiedParticle::setActive(bool active) {
+    if (active)
+        flags |= FLAG_ACTIVE;
+    else
+        flags &= ~FLAG_ACTIVE;
+}
+
+bool UnifiedParticle::isVisible() const {
+    return flags & FLAG_VISIBLE;
+}
+
+void UnifiedParticle::setVisible(bool visible) {
+    if (visible)
+        flags |= FLAG_VISIBLE;
+    else
+        flags &= ~FLAG_VISIBLE;
+}
+
+bool UnifiedParticle::isWeatherParticle() const {
+    return flags & FLAG_WEATHER;
+}
+
+void UnifiedParticle::setWeatherParticle(bool weather) {
+    if (weather)
+        flags |= FLAG_WEATHER;
+    else
+        flags &= ~FLAG_WEATHER;
+}
+
+bool UnifiedParticle::isFadingOut() const {
+    return flags & FLAG_FADE_OUT;
+}
+
+void UnifiedParticle::setFadingOut(bool fading) {
+    if (fading)
+        flags |= FLAG_FADE_OUT;
+    else
+        flags &= ~FLAG_FADE_OUT;
+}
+
+float UnifiedParticle::getLifeRatio() const {
+    return maxLife > 0 ? life / maxLife : 0.0f;
+}
+
+// ParticlePerformanceStats method implementations
+void ParticlePerformanceStats::addUpdateSample(double timeMs, size_t particleCount) {
+    totalUpdateTime += timeMs;
+    updateCount++;
+    activeParticles = particleCount;
+    if (totalUpdateTime > 0) {
+        particlesPerSecond = (activeParticles * updateCount * 1000.0) / totalUpdateTime;
+    }
+}
+
+void ParticlePerformanceStats::addRenderSample(double timeMs) {
+    totalRenderTime += timeMs;
+    renderCount++;
+}
+
+void ParticlePerformanceStats::reset() {
+    totalUpdateTime = 0.0;
+    totalRenderTime = 0.0;
+    updateCount = 0;
+    renderCount = 0;
+    activeParticles = 0;
+    particlesPerSecond = 0.0;
+}
+
+// ParticleManager method implementations
+bool ParticleManager::isInitialized() const {
+    return m_initialized.load(std::memory_order_acquire);
+}
+
+bool ParticleManager::isShutdown() const {
+    return m_isShutdown;
+}
+
+// ParticleSoA method implementations
+void ParticleManager::LockFreeParticleStorage::ParticleSoA::resize(size_t newSize) {
+    positions.resize(newSize);
+    velocities.resize(newSize);
+    accelerations.resize(newSize);
+    lives.resize(newSize);
+    maxLives.resize(newSize);
+    sizes.resize(newSize);
+    rotations.resize(newSize);
+    angularVelocities.resize(newSize);
+    colors.resize(newSize);
+    textureIndices.resize(newSize);
+    flags.resize(newSize);
+    generationIds.resize(newSize);
+    effectTypes.resize(newSize);
+    layers.resize(newSize);
+}
+
+void ParticleManager::LockFreeParticleStorage::ParticleSoA::reserve(size_t newCapacity) {
+    positions.reserve(newCapacity);
+    velocities.reserve(newCapacity);
+    accelerations.reserve(newCapacity);
+    lives.reserve(newCapacity);
+    maxLives.reserve(newCapacity);
+    sizes.reserve(newCapacity);
+    rotations.reserve(newCapacity);
+    angularVelocities.reserve(newCapacity);
+    colors.reserve(newCapacity);
+    textureIndices.reserve(newCapacity);
+    flags.reserve(newCapacity);
+    generationIds.reserve(newCapacity);
+    effectTypes.reserve(newCapacity);
+    layers.reserve(newCapacity);
+}
+
+void ParticleManager::LockFreeParticleStorage::ParticleSoA::push_back(const UnifiedParticle& p) {
+    positions.push_back(p.position);
+    velocities.push_back(p.velocity);
+    accelerations.push_back(p.acceleration);
+    lives.push_back(p.life);
+    maxLives.push_back(p.maxLife);
+    sizes.push_back(p.size);
+    rotations.push_back(p.rotation);
+    angularVelocities.push_back(p.angularVelocity);
+    colors.push_back(p.color);
+    textureIndices.push_back(p.textureIndex);
+    flags.push_back(p.flags);
+    generationIds.push_back(p.generationId);
+    effectTypes.push_back(p.effectType);
+    layers.push_back(p.layer);
+}
+
+void ParticleManager::LockFreeParticleStorage::ParticleSoA::clear() {
+    positions.clear();
+    velocities.clear();
+    accelerations.clear();
+    lives.clear();
+    maxLives.clear();
+    sizes.clear();
+    rotations.clear();
+    angularVelocities.clear();
+    colors.clear();
+    textureIndices.clear();
+    flags.clear();
+    generationIds.clear();
+    effectTypes.clear();
+    layers.clear();
+}
+
+size_t ParticleManager::LockFreeParticleStorage::ParticleSoA::size() const {
+    // UNIFIED FIX: Strict consistency check for all platforms
+    // This prevents Windows vector assertions while maintaining performance
+    const size_t baseSize = positions.size();
+    if (baseSize == 0) return 0;
+    
+    if (flags.size() != baseSize || colors.size() != baseSize || 
+        sizes.size() != baseSize || velocities.size() != baseSize) {
+        return 0; // Return 0 if core rendering vectors are inconsistent
+    }
+    
+    return baseSize;
+}
+
+bool ParticleManager::LockFreeParticleStorage::ParticleSoA::empty() const {
+    return positions.empty();
+}
+
+// LockFreeParticleStorage constructor implementation
+ParticleManager::LockFreeParticleStorage::LockFreeParticleStorage() : creationRing{} {
+    // Pre-allocate both buffers
+    particles[0].reserve(DEFAULT_MAX_PARTICLES);
+    particles[1].reserve(DEFAULT_MAX_PARTICLES);
+    capacity.store(DEFAULT_MAX_PARTICLES, std::memory_order_relaxed);
+}
+
+// Lock-free particle creation implementation
+bool ParticleManager::LockFreeParticleStorage::tryCreateParticle(const Vector2D &pos, const Vector2D &vel,
+                       uint32_t color, float life, float size,
+                       uint8_t flags, uint8_t genId,
+                       ParticleEffectType effectType) {
+    size_t head = creationHead.load(std::memory_order_acquire);
+    size_t next = (head + 1) & (CREATION_RING_SIZE - 1);
+
+    if (next == creationTail.load(std::memory_order_acquire)) {
+        return false; // Ring buffer full
+    }
+
+    auto &req = creationRing[head];
+    req.position = pos;
+    req.velocity = vel;
+    req.color = color;
+    req.life = life;
+    req.size = size;
+    req.flags = flags;
+    req.generationId = genId;
+    req.effectType = effectType;
+    req.ready.store(true, std::memory_order_release);
+
+    creationHead.store(next, std::memory_order_release);
+    return true;
+}
+
+// Process creation requests implementation
+void ParticleManager::LockFreeParticleStorage::processCreationRequests() {
+    size_t tail = creationTail.load(std::memory_order_acquire);
+    size_t head = creationHead.load(std::memory_order_acquire);
+
+    while (tail != head) {
+        auto &req = creationRing[tail];
+        if (req.ready.load(std::memory_order_acquire)) {
+            // Add particle to active buffer
+            size_t activeIdx = activeBuffer.load(std::memory_order_relaxed);
+            auto &activeParticles = particles[activeIdx];
+
+            const size_t currentCapacity = capacity.load(std::memory_order_relaxed);
+            const size_t currentSize = activeParticles.positions.size();
+            
+            // CRITICAL FIX: Check buffer consistency before adding particles
+            if (currentSize < currentCapacity &&
+                activeParticles.velocities.size() == currentSize &&
+                activeParticles.flags.size() == currentSize) {
+                UnifiedParticle particle;
+                particle.position = req.position;
+                particle.velocity = req.velocity;
+                particle.color = req.color;
+                particle.life = req.life;
+                particle.maxLife = req.life;
+                particle.size = req.size;
+                particle.flags = req.flags;
+                particle.generationId = req.generationId;
+                particle.effectType = req.effectType;
+
+                activeParticles.push_back(particle);
+                particleCount.fetch_add(1, std::memory_order_acq_rel);
+            }
+
+            req.ready.store(false, std::memory_order_release);
+        }
+        tail = (tail + 1) & (CREATION_RING_SIZE - 1);
+    }
+
+    creationTail.store(tail, std::memory_order_release);
+}
+
+// Get read-only access to particles implementation
+const ParticleManager::LockFreeParticleStorage::ParticleSoA &
+ParticleManager::LockFreeParticleStorage::getParticlesForRead() const {
+    size_t activeIdx = activeBuffer.load(std::memory_order_acquire);
+    return particles[activeIdx];
+}
+
+// Get writable access to particles implementation
+ParticleManager::LockFreeParticleStorage::ParticleSoA &
+ParticleManager::LockFreeParticleStorage::getCurrentBuffer() {
+    size_t activeIdx = activeBuffer.load(std::memory_order_acquire);
+    return particles[activeIdx];
+}
+
+// Check if compaction is needed implementation
+bool ParticleManager::LockFreeParticleStorage::needsCompaction() const {
+    const auto& activeParticles = getParticlesForRead();
+    
+    // BOUNDS SAFETY: Check for empty or inconsistent buffer
+    const size_t flagsSize = activeParticles.flags.size();
+    if (flagsSize == 0) return false;
+    
+    // Validate buffer consistency before checking compaction need
+    if (activeParticles.positions.size() != flagsSize ||
+        activeParticles.velocities.size() != flagsSize) {
+        return true; // Force compaction if buffer is inconsistent
+    }
+
+    size_t inactiveCount = 0;
+    for (size_t i = 0; i < flagsSize; ++i) {
+        // BOUNDS CHECK: Additional safety
+        if (i >= activeParticles.flags.size()) {
+            break; // Exit safely if buffer changed
+        }
+        
+        if (!(activeParticles.flags[i] & UnifiedParticle::FLAG_ACTIVE)) {
+            inactiveCount++;
+        }
+    }
+    return inactiveCount > flagsSize * 0.5;
+}
+
+// Submit new particle implementation
+bool ParticleManager::LockFreeParticleStorage::submitNewParticle(const NewParticleRequest &request) {
+    return tryCreateParticle(request.position, request.velocity,
+                            request.color, request.life, request.size,
+                            UnifiedParticle::FLAG_ACTIVE |
+                                UnifiedParticle::FLAG_VISIBLE,
+                            0, request.effectType);
+}
+
+// Swap buffers implementation
+void ParticleManager::LockFreeParticleStorage::swapBuffers() {
+    size_t current = activeBuffer.load(std::memory_order_relaxed);
+    size_t next = 1 - current;
+
+    // CRITICAL FIX: Ensure buffer consistency before copying
+    const auto& currentParticles = particles[current];
+    auto& nextParticles = particles[next];
+    
+    // BOUNDS SAFETY: Validate source buffer before copying
+    const size_t currentSize = currentParticles.positions.size();
+    if (currentSize == 0 ||
+        currentParticles.velocities.size() != currentSize ||
+        currentParticles.flags.size() != currentSize) {
+        // Don't swap if current buffer is inconsistent
+        currentEpoch.fetch_add(1, std::memory_order_acq_rel);
+        return;
+    }
+
+    // Copy active particles to next buffer safely
+    nextParticles = currentParticles;
+
+    // Atomic swap
+    activeBuffer.store(next, std::memory_order_release);
+
+    // Advance epoch for memory reclamation
+    currentEpoch.fetch_add(1, std::memory_order_acq_rel);
+}
+
 bool ParticleManager::init() {
   if (m_initialized.load(std::memory_order_acquire)) {
     PARTICLE_INFO("ParticleManager already initialized");
