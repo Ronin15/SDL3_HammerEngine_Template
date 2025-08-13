@@ -102,39 +102,19 @@ struct alignas(32) ParticleData {
       : position(0, 0), velocity(0, 0), life(0.0f), maxLife(1.0f),
         color(0xFFFFFFFF), textureIndex(0), flags(0), generationId(0) {}
 
-  bool isActive() const { return flags & FLAG_ACTIVE; }
-  void setActive(bool active) {
-    if (active)
-      flags |= FLAG_ACTIVE;
-    else
-      flags &= ~FLAG_ACTIVE;
-  }
+  bool isActive() const;
+  void setActive(bool active);
 
-  bool isVisible() const { return flags & FLAG_VISIBLE; }
-  void setVisible(bool visible) {
-    if (visible)
-      flags |= FLAG_VISIBLE;
-    else
-      flags &= ~FLAG_VISIBLE;
-  }
+  bool isVisible() const;
+  void setVisible(bool visible);
 
-  bool isWeatherParticle() const { return flags & FLAG_WEATHER; }
-  void setWeatherParticle(bool weather) {
-    if (weather)
-      flags |= FLAG_WEATHER;
-    else
-      flags &= ~FLAG_WEATHER;
-  }
+  bool isWeatherParticle() const;
+  void setWeatherParticle(bool weather);
 
-  bool isFadingOut() const { return flags & FLAG_FADE_OUT; }
-  void setFadingOut(bool fading) {
-    if (fading)
-      flags |= FLAG_FADE_OUT;
-    else
-      flags &= ~FLAG_FADE_OUT;
-  }
+  bool isFadingOut() const;
+  void setFadingOut(bool fading);
 
-  float getLifeRatio() const { return maxLife > 0 ? life / maxLife : 0.0f; }
+  float getLifeRatio() const;
 };
 
 /**
@@ -233,41 +213,21 @@ struct UnifiedParticle {
       : position(0, 0), velocity(0, 0), acceleration(0, 0), life(0.0f),
         maxLife(1.0f), size(2.0f), rotation(0.0f), angularVelocity(0.0f),
         color(0xFFFFFFFF), textureIndex(0), flags(0), generationId(0),
-        effectType(ParticleEffectType::Custom), layer(RenderLayer::World) {}
+         effectType(ParticleEffectType::Custom), layer(RenderLayer::World) {}
 
-  bool isActive() const { return flags & FLAG_ACTIVE; }
-  void setActive(bool active) {
-    if (active)
-      flags |= FLAG_ACTIVE;
-    else
-      flags &= ~FLAG_ACTIVE;
-  }
+  bool isActive() const;
+  void setActive(bool active);
 
-  bool isVisible() const { return flags & FLAG_VISIBLE; }
-  void setVisible(bool visible) {
-    if (visible)
-      flags |= FLAG_VISIBLE;
-    else
-      flags &= ~FLAG_VISIBLE;
-  }
+  bool isVisible() const;
+  void setVisible(bool visible);
 
-  bool isWeatherParticle() const { return flags & FLAG_WEATHER; }
-  void setWeatherParticle(bool weather) {
-    if (weather)
-      flags |= FLAG_WEATHER;
-    else
-      flags &= ~FLAG_WEATHER;
-  }
+  bool isWeatherParticle() const;
+  void setWeatherParticle(bool weather);
 
-  bool isFadingOut() const { return flags & FLAG_FADE_OUT; }
-  void setFadingOut(bool fading) {
-    if (fading)
-      flags |= FLAG_FADE_OUT;
-    else
-      flags &= ~FLAG_FADE_OUT;
-  }
+  bool isFadingOut() const;
+  void setFadingOut(bool fading);
 
-  float getLifeRatio() const { return maxLife > 0 ? life / maxLife : 0.0f; }
+  float getLifeRatio() const;
 };
 
 /**
@@ -300,29 +260,9 @@ struct ParticlePerformanceStats {
   size_t maxParticles{0};
   double particlesPerSecond{0.0};
 
-  void addUpdateSample(double timeMs, size_t particleCount) {
-    totalUpdateTime += timeMs;
-    updateCount++;
-    activeParticles = particleCount;
-    if (totalUpdateTime > 0) {
-      particlesPerSecond =
-          (activeParticles * updateCount * 1000.0) / totalUpdateTime;
-    }
-  }
-
-  void addRenderSample(double timeMs) {
-    totalRenderTime += timeMs;
-    renderCount++;
-  }
-
-  void reset() {
-    totalUpdateTime = 0.0;
-    totalRenderTime = 0.0;
-    updateCount = 0;
-    renderCount = 0;
-    activeParticles = 0;
-    particlesPerSecond = 0.0;
-  }
+  void addUpdateSample(double timeMs, size_t particleCount);
+  void addRenderSample(double timeMs);
+  void reset();
 };
 
 /**
@@ -345,9 +285,7 @@ public:
    * @brief Checks if the Particle Manager has been initialized
    * @return true if initialized, false otherwise
    */
-  bool isInitialized() const {
-    return m_initialized.load(std::memory_order_acquire);
-  }
+  bool isInitialized() const;
 
   /**
    * @brief Cleans up all particle resources and marks manager as shut down
@@ -409,7 +347,7 @@ public:
    * @brief Checks if ParticleManager has been shut down
    * @return true if manager is shut down, false otherwise
    */
-  bool isShutdown() const { return m_isShutdown; }
+  bool isShutdown() const;
 
   // Effect Management
   /**
@@ -782,95 +720,12 @@ private:
         std::vector<ParticleEffectType> effectTypes;
         std::vector<UnifiedParticle::RenderLayer> layers;
 
-        void resize(size_t newSize) {
-            positions.resize(newSize);
-            velocities.resize(newSize);
-            accelerations.resize(newSize);
-            lives.resize(newSize);
-            maxLives.resize(newSize);
-            sizes.resize(newSize);
-            rotations.resize(newSize);
-            angularVelocities.resize(newSize);
-            colors.resize(newSize);
-            textureIndices.resize(newSize);
-            flags.resize(newSize);
-            generationIds.resize(newSize);
-            effectTypes.resize(newSize);
-            layers.resize(newSize);
-        }
-
-        void reserve(size_t newCapacity) {
-            positions.reserve(newCapacity);
-            velocities.reserve(newCapacity);
-            accelerations.reserve(newCapacity);
-            lives.reserve(newCapacity);
-            maxLives.reserve(newCapacity);
-            sizes.reserve(newCapacity);
-            rotations.reserve(newCapacity);
-            angularVelocities.reserve(newCapacity);
-            colors.reserve(newCapacity);
-            textureIndices.reserve(newCapacity);
-            flags.reserve(newCapacity);
-            generationIds.reserve(newCapacity);
-            effectTypes.reserve(newCapacity);
-            layers.reserve(newCapacity);
-        }
-
-        void push_back(const UnifiedParticle& p) {
-            positions.push_back(p.position);
-            velocities.push_back(p.velocity);
-            accelerations.push_back(p.acceleration);
-            lives.push_back(p.life);
-            maxLives.push_back(p.maxLife);
-            sizes.push_back(p.size);
-            rotations.push_back(p.rotation);
-            angularVelocities.push_back(p.angularVelocity);
-            colors.push_back(p.color);
-            textureIndices.push_back(p.textureIndex);
-            flags.push_back(p.flags);
-            generationIds.push_back(p.generationId);
-            effectTypes.push_back(p.effectType);
-            layers.push_back(p.layer);
-        }
-
-        void clear() {
-            positions.clear();
-            velocities.clear();
-            accelerations.clear();
-            lives.clear();
-            maxLives.clear();
-            sizes.clear();
-            rotations.clear();
-            angularVelocities.clear();
-            colors.clear();
-            textureIndices.clear();
-            flags.clear();
-            generationIds.clear();
-            effectTypes.clear();
-            layers.clear();
-        }
-
-        size_t size() const {
-            // IMPROVED FIX: Use positions as authoritative size for thread safety
-            // Allow slightly inconsistent vectors during brief buffer updates
-            // This reduces unnecessary skipping of particle rendering
-            const size_t baseSize = positions.size();
-            
-            // Only return 0 if completely empty
-            if (baseSize == 0) return 0;
-            
-            // Use minimum safe size across all critical vectors for iteration
-            // This allows partial rendering when buffers are mostly consistent
-            const size_t safeSize = std::min({
-                baseSize, flags.size(), colors.size(), sizes.size()
-            });
-            
-            return safeSize;
-        }
-
-        bool empty() const {
-            return positions.empty();
-        }
+        void resize(size_t newSize);
+        void reserve(size_t newCapacity);
+        void push_back(const UnifiedParticle& p);
+        void clear();
+        size_t size() const;
+        bool empty() const;
     };
 
     // Double-buffered particle arrays for lock-free updates
@@ -902,162 +757,32 @@ private:
     std::atomic<uint64_t> currentEpoch{0};
     std::atomic<uint64_t> safeEpoch{0};
 
-    LockFreeParticleStorage() : creationRing{} {
-      // Pre-allocate both buffers
-      particles[0].reserve(DEFAULT_MAX_PARTICLES);
-      particles[1].reserve(DEFAULT_MAX_PARTICLES);
-      capacity.store(DEFAULT_MAX_PARTICLES, std::memory_order_relaxed);
-    }
+    LockFreeParticleStorage();
 
     // Lock-free particle creation
     bool tryCreateParticle(const Vector2D &pos, const Vector2D &vel,
                            uint32_t color, float life, float size,
                            uint8_t flags, uint8_t genId,
-                           ParticleEffectType effectType) {
-      size_t head = creationHead.load(std::memory_order_acquire);
-      size_t next = (head + 1) & (CREATION_RING_SIZE - 1);
-
-      if (next == creationTail.load(std::memory_order_acquire)) {
-        return false; // Ring buffer full
-      }
-
-      auto &req = creationRing[head];
-      req.position = pos;
-      req.velocity = vel;
-      req.color = color;
-      req.life = life;
-      req.size = size;
-      req.flags = flags;
-      req.generationId = genId;
-      req.effectType = effectType;
-      req.ready.store(true, std::memory_order_release);
-
-      creationHead.store(next, std::memory_order_release);
-      return true;
-    }
+                           ParticleEffectType effectType);
 
     // Process creation requests (called from update thread)
-    void processCreationRequests() {
-      size_t tail = creationTail.load(std::memory_order_acquire);
-      size_t head = creationHead.load(std::memory_order_acquire);
-
-      while (tail != head) {
-        auto &req = creationRing[tail];
-        if (req.ready.load(std::memory_order_acquire)) {
-          // Add particle to active buffer
-          size_t activeIdx = activeBuffer.load(std::memory_order_relaxed);
-          auto &activeParticles = particles[activeIdx];
-
-          const size_t currentCapacity = capacity.load(std::memory_order_relaxed);
-          const size_t currentSize = activeParticles.positions.size();
-          
-          // CRITICAL FIX: Check buffer consistency before adding particles
-          if (currentSize < currentCapacity &&
-              activeParticles.velocities.size() == currentSize &&
-              activeParticles.flags.size() == currentSize) {
-            UnifiedParticle particle;
-            particle.position = req.position;
-            particle.velocity = req.velocity;
-            particle.color = req.color;
-            particle.life = req.life;
-            particle.maxLife = req.life;
-            particle.size = req.size;
-            particle.flags = req.flags;
-            particle.generationId = req.generationId;
-            particle.effectType = req.effectType;
-
-            activeParticles.push_back(particle);
-            particleCount.fetch_add(1, std::memory_order_acq_rel);
-          }
-
-          req.ready.store(false, std::memory_order_release);
-        }
-        tail = (tail + 1) & (CREATION_RING_SIZE - 1);
-      }
-
-      // Particle processing tracking (debug removed for cleaner output)
-
-      creationTail.store(tail, std::memory_order_release);
-    }
+    void processCreationRequests();
 
     // Get read-only access to particles
-    const ParticleSoA &getParticlesForRead() const {
-      size_t activeIdx = activeBuffer.load(std::memory_order_acquire);
-      return particles[activeIdx];
-    }
+    const ParticleSoA &getParticlesForRead() const;
 
     // Get writable access to particles (for updates)
-    ParticleSoA &getCurrentBuffer() {
-      size_t activeIdx = activeBuffer.load(std::memory_order_acquire);
-      return particles[activeIdx];
-    }
+    ParticleSoA &getCurrentBuffer();
 
     // CRITICAL FIX: Check if compaction is needed with proper bounds checking
-    bool needsCompaction() const {
-        const auto& activeParticles = getParticlesForRead();
-        
-        // BOUNDS SAFETY: Check for empty or inconsistent buffer
-        const size_t flagsSize = activeParticles.flags.size();
-        if (flagsSize == 0) return false;
-        
-        // Validate buffer consistency before checking compaction need
-        if (activeParticles.positions.size() != flagsSize ||
-            activeParticles.velocities.size() != flagsSize) {
-            return true; // Force compaction if buffer is inconsistent
-        }
-
-        size_t inactiveCount = 0;
-        for (size_t i = 0; i < flagsSize; ++i) {
-            // BOUNDS CHECK: Additional safety
-            if (i >= activeParticles.flags.size()) {
-                break; // Exit safely if buffer changed
-            }
-            
-            if (!(activeParticles.flags[i] & UnifiedParticle::FLAG_ACTIVE)) {
-                inactiveCount++;
-            }
-        }
-        return inactiveCount > flagsSize * 0.5;
-    }
+    bool needsCompaction() const;
 
 
     // Submit new particle (lock-free)
-    bool submitNewParticle(const NewParticleRequest &request) {
-      return tryCreateParticle(request.position, request.velocity,
-                               request.color, request.life, request.size,
-                               UnifiedParticle::FLAG_ACTIVE |
-                                   UnifiedParticle::FLAG_VISIBLE,
-                               0, request.effectType);
-    }
+    bool submitNewParticle(const NewParticleRequest &request);
 
     // Swap buffers for lock-free updates
-    void swapBuffers() {
-      size_t current = activeBuffer.load(std::memory_order_relaxed);
-      size_t next = 1 - current;
-
-      // CRITICAL FIX: Ensure buffer consistency before copying
-      const auto& currentParticles = particles[current];
-      auto& nextParticles = particles[next];
-      
-      // BOUNDS SAFETY: Validate source buffer before copying
-      const size_t currentSize = currentParticles.positions.size();
-      if (currentSize == 0 ||
-          currentParticles.velocities.size() != currentSize ||
-          currentParticles.flags.size() != currentSize) {
-        // Don't swap if current buffer is inconsistent
-        currentEpoch.fetch_add(1, std::memory_order_acq_rel);
-        return;
-      }
-
-      // Copy active particles to next buffer safely
-      nextParticles = currentParticles;
-
-      // Atomic swap
-      activeBuffer.store(next, std::memory_order_release);
-
-      // Advance epoch for memory reclamation
-      currentEpoch.fetch_add(1, std::memory_order_acq_rel);
-    }
+    void swapBuffers();
   };
 
   // Core storage - now lock-free
