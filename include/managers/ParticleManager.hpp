@@ -720,12 +720,26 @@ private:
         std::vector<ParticleEffectType> effectTypes;
         std::vector<UnifiedParticle::RenderLayer> layers;
 
+        // CRITICAL: Unified SOA operations to prevent desynchronization
         void resize(size_t newSize);
         void reserve(size_t newCapacity);
         void push_back(const UnifiedParticle& p);
         void clear();
         size_t size() const;
         bool empty() const;
+        
+        // NEW: Safe erase operations for SOA consistency
+        void eraseParticle(size_t index);
+        void eraseParticleRange(size_t start, size_t end);
+        void compactInactive();
+        
+        // NEW: Comprehensive validation for Windows UCRT compatibility
+        bool isFullyConsistent() const;
+        size_t getSafeAccessCount() const;
+        
+        // NEW: Safe random access with bounds checking
+        bool isValidIndex(size_t index) const;
+        void swapParticles(size_t indexA, size_t indexB);
     };
 
     // Double-buffered particle arrays for lock-free updates

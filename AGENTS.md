@@ -9,7 +9,7 @@
   ```
 - **Build (Debug with AddressSanitizer):**
   ```
-  cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_FLAGS="-fsanitize=address" && ninja -C build
+  cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_FLAGS="-D_GLIBCXX_DEBUG -fsanitize=address" -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address" && ninja -C build
   ```
 - **Build (Release):**
   ```
@@ -135,6 +135,8 @@ When fixing unused variable warnings, **ALWAYS investigate whether the variable 
 - `-Wunused-variable`: Variable declared but never referenced
 - `-Wtype-limits`: Comparisons that are always true/false due to type limits
 - `-Wunused-parameter`: Function parameters that aren't used
+
+**NOTE:** For enhanced debugging with libstdc++ debug mode and AddressSanitizer, use the "Debug with AddressSanitizer" build command above. This enables memory error detection and STL container validation but significantly impacts performance and memory usage.
 
 ---
 

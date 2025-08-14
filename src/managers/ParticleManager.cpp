@@ -230,14 +230,20 @@ void ParticleManager::LockFreeParticleStorage::ParticleSoA::clear() {
 }
 
 size_t ParticleManager::LockFreeParticleStorage::ParticleSoA::size() const {
-    // UNIFIED FIX: Strict consistency check for all platforms
-    // This prevents Windows vector assertions while maintaining performance
+    // CRITICAL: Complete SOA consistency check for Windows UCRT compatibility
+    // Check ALL 14 arrays for perfect synchronization
     const size_t baseSize = positions.size();
     if (baseSize == 0) return 0;
     
-    if (flags.size() != baseSize || colors.size() != baseSize || 
-        sizes.size() != baseSize || velocities.size() != baseSize) {
-        return 0; // Return 0 if core rendering vectors are inconsistent
+    // Validate all SOA arrays have identical sizes
+    if (velocities.size() != baseSize || accelerations.size() != baseSize ||
+        lives.size() != baseSize || maxLives.size() != baseSize ||
+        sizes.size() != baseSize || rotations.size() != baseSize ||
+        angularVelocities.size() != baseSize || colors.size() != baseSize ||
+        textureIndices.size() != baseSize || flags.size() != baseSize ||
+        generationIds.size() != baseSize || effectTypes.size() != baseSize ||
+        layers.size() != baseSize) {
+        return 0; // Return 0 if ANY array is inconsistent
     }
     
     return baseSize;
@@ -245,6 +251,106 @@ size_t ParticleManager::LockFreeParticleStorage::ParticleSoA::size() const {
 
 bool ParticleManager::LockFreeParticleStorage::ParticleSoA::empty() const {
     return positions.empty();
+}
+
+// NEW: Complete SOA validation for cross-platform safety
+bool ParticleManager::LockFreeParticleStorage::ParticleSoA::isFullyConsistent() const {
+    const size_t baseSize = positions.size();
+    return (velocities.size() == baseSize && accelerations.size() == baseSize &&
+            lives.size() == baseSize && maxLives.size() == baseSize &&
+            sizes.size() == baseSize && rotations.size() == baseSize &&
+            angularVelocities.size() == baseSize && colors.size() == baseSize &&
+            textureIndices.size() == baseSize && flags.size() == baseSize &&
+            generationIds.size() == baseSize && effectTypes.size() == baseSize &&
+            layers.size() == baseSize);
+}
+
+// NEW: Safe access count that works across all platforms
+size_t ParticleManager::LockFreeParticleStorage::ParticleSoA::getSafeAccessCount() const {
+    // Return minimum size of ALL arrays to prevent any out-of-bounds access
+    return std::min({
+        positions.size(), velocities.size(), accelerations.size(),
+        lives.size(), maxLives.size(), sizes.size(), rotations.size(),
+        angularVelocities.size(), colors.size(), textureIndices.size(),
+        flags.size(), generationIds.size(), effectTypes.size(), layers.size()
+    });
+}
+
+// NEW: Bounds checking for iterator safety
+bool ParticleManager::LockFreeParticleStorage::ParticleSoA::isValidIndex(size_t index) const {
+    return index < getSafeAccessCount();
+}
+
+// NEW: Safe erase single particle (swap-and-pop pattern)
+void ParticleManager::LockFreeParticleStorage::ParticleSoA::eraseParticle(size_t index) {
+    if (!isValidIndex(index)) return;
+    
+    const size_t lastIndex = positions.size() - 1;
+    if (index != lastIndex) {
+        // Swap with last element (all arrays must stay synchronized)
+        swapParticles(index, lastIndex);
+    }
+    
+    // Remove last element from ALL arrays atomically
+    positions.pop_back();
+    velocities.pop_back();
+    accelerations.pop_back();
+    lives.pop_back();
+    maxLives.pop_back();
+    sizes.pop_back();
+    rotations.pop_back();
+    angularVelocities.pop_back();
+    colors.pop_back();
+    textureIndices.pop_back();
+    flags.pop_back();
+    generationIds.pop_back();
+    effectTypes.pop_back();
+    layers.pop_back();
+}
+
+// NEW: Safe swap operation for all SOA arrays
+void ParticleManager::LockFreeParticleStorage::ParticleSoA::swapParticles(size_t indexA, size_t indexB) {
+    if (!isValidIndex(indexA) || !isValidIndex(indexB) || indexA == indexB) return;
+    
+    // Swap all particle data atomically
+    std::swap(positions[indexA], positions[indexB]);
+    std::swap(velocities[indexA], velocities[indexB]);
+    std::swap(accelerations[indexA], accelerations[indexB]);
+    std::swap(lives[indexA], lives[indexB]);
+    std::swap(maxLives[indexA], maxLives[indexB]);
+    std::swap(sizes[indexA], sizes[indexB]);
+    std::swap(rotations[indexA], rotations[indexB]);
+    std::swap(angularVelocities[indexA], angularVelocities[indexB]);
+    std::swap(colors[indexA], colors[indexB]);
+    std::swap(textureIndices[indexA], textureIndices[indexB]);
+    std::swap(flags[indexA], flags[indexB]);
+    std::swap(generationIds[indexA], generationIds[indexB]);
+    std::swap(effectTypes[indexA], effectTypes[indexB]);
+    std::swap(layers[indexA], layers[indexB]);
+}
+
+// NEW: Efficient in-place compaction without iterator invalidation
+void ParticleManager::LockFreeParticleStorage::ParticleSoA::compactInactive() {
+    if (empty()) return;
+    
+    size_t writeIndex = 0;
+    const size_t totalCount = getSafeAccessCount();
+    
+    // Single-pass compaction: move active particles to front
+    for (size_t readIndex = 0; readIndex < totalCount; ++readIndex) {
+        if (flags[readIndex] & UnifiedParticle::FLAG_ACTIVE) {
+            if (writeIndex != readIndex) {
+                swapParticles(writeIndex, readIndex);
+            }
+            ++writeIndex;
+        }
+    }
+    
+    // Resize all arrays to remove inactive particles
+    const size_t newSize = writeIndex;
+    if (newSize < totalCount) {
+        resize(newSize);
+    }
 }
 
 // LockFreeParticleStorage constructor implementation
@@ -734,15 +840,8 @@ void ParticleManager::renderBackground(SDL_Renderer *renderer, float cameraX,
   // THREAD SAFETY: Get immutable snapshot of particle data
   const auto &particles = m_storage.getParticlesForRead();
   
-  // IMPROVED FIX: Use safest available particle count for background rendering
-  // This allows partial rendering when buffers are mostly consistent
-  const size_t safeParticleCount = std::min({
-    particles.positions.size(),
-    particles.flags.size(),
-    particles.colors.size(),
-    particles.sizes.size(),
-    particles.layers.size()
-  });
+  // CRITICAL FIX: Use comprehensive bounds checking for Windows UCRT
+  const size_t safeParticleCount = particles.getSafeAccessCount();
   
   // Only skip rendering if no particles are available
   if (safeParticleCount == 0) {
@@ -792,15 +891,8 @@ void ParticleManager::renderForeground(SDL_Renderer *renderer, float cameraX,
   // THREAD SAFETY: Get immutable snapshot of particle data
   const auto &particles = m_storage.getParticlesForRead();
   
-  // IMPROVED FIX: Use safest available particle count for foreground rendering
-  // This allows partial rendering when buffers are mostly consistent
-  const size_t safeParticleCount = std::min({
-    particles.positions.size(),
-    particles.flags.size(),
-    particles.colors.size(),
-    particles.sizes.size(),
-    particles.layers.size()
-  });
+  // CRITICAL FIX: Use comprehensive bounds checking for Windows UCRT
+  const size_t safeParticleCount = particles.getSafeAccessCount();
   
   // Only skip rendering if no particles are available
   if (safeParticleCount == 0) {
@@ -1702,111 +1794,42 @@ size_t ParticleManager::getActiveParticleCount() const {
 }
 
 void ParticleManager::compactParticleStorage() {
-  if (!m_initialized.load(std::memory_order_acquire)) {
-    return;
-  }
+    if (!m_initialized.load(std::memory_order_acquire) || 
+        m_isShutdown.load(std::memory_order_acquire)) {
+        return;
+    }
 
-  // Increment epoch to signal start of compaction
-  uint64_t currentEpoch = m_storage.currentEpoch.fetch_add(1, std::memory_order_acq_rel);
-  
-  size_t activeIdx = m_storage.activeBuffer.load(std::memory_order_acquire);
-  size_t inactiveIdx = 1 - activeIdx;
-  
-  // Read from active buffer, write to inactive buffer
-  const auto &sourceParticles = m_storage.particles[activeIdx];
-  auto &targetParticles = m_storage.particles[inactiveIdx];
-
-  // Clear target buffer and prepare for compaction
-  targetParticles.clear();
-  
-  // CRITICAL FIX: Cache source buffer size to avoid race conditions
-  const size_t sourceSize = sourceParticles.positions.size();
-  
-  // BOUNDS SAFETY: Validate source buffer consistency
-  if (sourceSize == 0 ||
-      sourceParticles.flags.size() != sourceSize ||
-      sourceParticles.velocities.size() != sourceSize ||
-      sourceParticles.lives.size() != sourceSize) {
-    // Source buffer is inconsistent, abort compaction
-    m_storage.safeEpoch.store(currentEpoch, std::memory_order_release);
-    return;
-  }
-  
-  size_t writeIndex = 0;
-  for (size_t readIndex = 0; readIndex < sourceSize; ++readIndex) {
-    // BOUNDS CHECK: Ensure we don't access invalid indices
-    if (readIndex >= sourceParticles.flags.size()) {
-      break; // Exit safely if buffer changed during iteration
+    // CRITICAL FIX: Use new safe compaction method
+    const size_t activeIdx = m_storage.activeBuffer.load(std::memory_order_acquire);
+    auto &particles = m_storage.particles[activeIdx];
+    
+    // Record original count for logging
+    const size_t originalCount = particles.getSafeAccessCount();
+    if (originalCount == 0) {
+        return;
     }
     
-    if (sourceParticles.flags[readIndex] & UnifiedParticle::FLAG_ACTIVE) {
-      // BOUNDS CHECK: Verify all array accesses are safe
-      if (readIndex >= sourceParticles.positions.size() ||
-          readIndex >= sourceParticles.velocities.size() ||
-          readIndex >= sourceParticles.accelerations.size() ||
-          readIndex >= sourceParticles.lives.size() ||
-          readIndex >= sourceParticles.maxLives.size() ||
-          readIndex >= sourceParticles.sizes.size()) {
-        break; // Exit safely if any buffer is inconsistent
-      }
-      
-      // Expand target buffer if needed
-      if (writeIndex >= targetParticles.positions.size()) {
-        targetParticles.positions.push_back(sourceParticles.positions[readIndex]);
-        targetParticles.velocities.push_back(sourceParticles.velocities[readIndex]);
-        targetParticles.accelerations.push_back(sourceParticles.accelerations[readIndex]);
-        targetParticles.lives.push_back(sourceParticles.lives[readIndex]);
-        targetParticles.maxLives.push_back(sourceParticles.maxLives[readIndex]);
-        targetParticles.sizes.push_back(sourceParticles.sizes[readIndex]);
-        targetParticles.rotations.push_back(sourceParticles.rotations[readIndex]);
-        targetParticles.angularVelocities.push_back(sourceParticles.angularVelocities[readIndex]);
-        targetParticles.colors.push_back(sourceParticles.colors[readIndex]);
-        targetParticles.textureIndices.push_back(sourceParticles.textureIndices[readIndex]);
-        targetParticles.flags.push_back(sourceParticles.flags[readIndex]);
-        targetParticles.generationIds.push_back(sourceParticles.generationIds[readIndex]);
-        targetParticles.effectTypes.push_back(sourceParticles.effectTypes[readIndex]);
-        targetParticles.layers.push_back(sourceParticles.layers[readIndex]);
-      } else {
-        // Overwrite existing entries
-        targetParticles.positions[writeIndex] = sourceParticles.positions[readIndex];
-        targetParticles.velocities[writeIndex] = sourceParticles.velocities[readIndex];
-        targetParticles.accelerations[writeIndex] = sourceParticles.accelerations[readIndex];
-        targetParticles.lives[writeIndex] = sourceParticles.lives[readIndex];
-        targetParticles.maxLives[writeIndex] = sourceParticles.maxLives[readIndex];
-        targetParticles.sizes[writeIndex] = sourceParticles.sizes[readIndex];
-        targetParticles.rotations[writeIndex] = sourceParticles.rotations[readIndex];
-        targetParticles.angularVelocities[writeIndex] = sourceParticles.angularVelocities[readIndex];
-        targetParticles.colors[writeIndex] = sourceParticles.colors[readIndex];
-        targetParticles.textureIndices[writeIndex] = sourceParticles.textureIndices[readIndex];
-        targetParticles.flags[writeIndex] = sourceParticles.flags[readIndex];
-        targetParticles.generationIds[writeIndex] = sourceParticles.generationIds[readIndex];
-        targetParticles.effectTypes[writeIndex] = sourceParticles.effectTypes[readIndex];
-        targetParticles.layers[writeIndex] = sourceParticles.layers[readIndex];
-      }
-      writeIndex++;
-    }
-  }
-
-  size_t originalCount = sourceSize;
-  size_t compactedCount = writeIndex;
-  
-  if (compactedCount < originalCount) {
-    // Atomically switch to the compacted buffer
-    m_storage.activeBuffer.store(inactiveIdx, std::memory_order_release);
+    // THREAD SAFETY: Use atomic epoch for safe buffer management
+    const uint64_t currentEpoch = m_storage.currentEpoch.fetch_add(1, std::memory_order_acq_rel);
+    
+    // Use the new safe compaction method
+    particles.compactInactive();
+    
+    const size_t compactedCount = particles.getSafeAccessCount();
+    
+    // Update particle count atomically
     m_storage.particleCount.store(compactedCount, std::memory_order_release);
     
-    // Update safe epoch - only modify old buffer after this point
-    // Use seq_cst only for the critical buffer safety signal
+    // Update safe epoch to signal completion
     m_storage.safeEpoch.store(currentEpoch, std::memory_order_seq_cst);
     
-    size_t removedCount = originalCount - compactedCount;
-    PARTICLE_DEBUG("Compacted storage: removed " +
-                   std::to_string(removedCount) + " inactive/faded particles");
-  } else {
-    // No compaction needed, update safe epoch with release ordering
-    m_storage.safeEpoch.store(currentEpoch, std::memory_order_release);
-    PARTICLE_DEBUG("No compaction needed - all particles are active");
-  }
+    if (compactedCount < originalCount) {
+        size_t removedCount = originalCount - compactedCount;
+        PARTICLE_DEBUG("Safe compacted storage: removed " +
+                       std::to_string(removedCount) + " inactive/faded particles");
+    } else {
+        PARTICLE_DEBUG("No compaction needed - all particles are active");
+    }
 }
 
 // New helper method for more frequent, lightweight cleanup
