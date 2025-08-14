@@ -18,7 +18,8 @@ WorldGenerator::PerlinNoise::PerlinNoise(int seed) {
     std::default_random_engine engine(seed);
     std::shuffle(permutation.begin(), permutation.end(), engine);
     
-    permutation.insert(permutation.end(), permutation.begin(), permutation.end());
+    auto copy = permutation;
+    permutation.insert(permutation.end(), copy.begin(), copy.end());
 }
 
 float WorldGenerator::PerlinNoise::fade(float t) const {
