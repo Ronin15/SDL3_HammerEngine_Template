@@ -1731,9 +1731,8 @@ void UIManager::handleInput() {
               component->m_minValue +
               relativeX * (component->m_maxValue - component->m_minValue);
           setValue(component->m_id, newValue);
-        }
+         }
 
-        mouseHandled = true;
       }
 
       // Handle input field focus

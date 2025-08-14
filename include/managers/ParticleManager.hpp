@@ -951,8 +951,8 @@ private:
   // PERFORMANCE OPTIMIZATION: Trigonometric lookup tables for fast math
   static constexpr size_t TRIG_LUT_SIZE = 1024;
   static constexpr float TRIG_LUT_SCALE = TRIG_LUT_SIZE / (2.0f * 3.14159265f);
-  std::array<float, TRIG_LUT_SIZE> m_sinLUT;
-  std::array<float, TRIG_LUT_SIZE> m_cosLUT;
+  std::array<float, TRIG_LUT_SIZE> m_sinLUT{};
+  std::array<float, TRIG_LUT_SIZE> m_cosLUT{};
   void initTrigLookupTables();
   
   // Fast trigonometric functions using lookup tables

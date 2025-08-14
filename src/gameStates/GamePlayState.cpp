@@ -257,7 +257,7 @@ void GamePlayState::initializeInventoryUI() {
       if (!mp_Player || !mp_Player->getInventory()) {
           return "Capacity: 0/0";
       }
-      auto* inventory = mp_Player->getInventory();
+      const auto* inventory = mp_Player->getInventory();
       int used = inventory->getUsedSlots();
       int max = inventory->getMaxSlots();
       return "Capacity: " + std::to_string(used) + "/" + std::to_string(max);
@@ -269,7 +269,7 @@ void GamePlayState::initializeInventoryUI() {
           return {"(Empty)"};
       }
       
-      auto* inventory = mp_Player->getInventory();
+      const auto* inventory = mp_Player->getInventory();
       auto allResources = inventory->getAllResources();
 
       if (allResources.empty()) {
@@ -443,7 +443,7 @@ void GamePlayState::setupCameraForWorld() {
   }
   
   // Get actual world bounds from WorldManager
-  WorldManager& worldManager = WorldManager::Instance();
+  const WorldManager& worldManager = WorldManager::Instance();
   
   HammerEngine::Camera::Bounds worldBounds;
   float minX, minY, maxX, maxY;

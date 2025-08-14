@@ -118,7 +118,6 @@ private:
     bool writeString(std::ofstream& file, const std::string& str) const;
     bool readString(std::ifstream& file, std::string& str) const;
     // Fast binary serialization
-    bool writeVector2D(std::ofstream& file, const Vector2D& vec) const;
     bool readVector2D(std::ifstream& file, Vector2D& vec) const;
 
     // Delete copy constructor and assignment operator

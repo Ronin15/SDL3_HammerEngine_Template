@@ -58,13 +58,43 @@ void Camera::update(float deltaTime) {
     if (m_mode == Mode::Follow && hasTarget()) {
         Vector2D targetPos = getTargetPosition();
         
-        // Calculate distance to target
-        float dx = targetPos.getX() - m_position.getX();
-        float dy = targetPos.getY() - m_position.getY();
+        // Calculate ideal camera position (following target)
+        Vector2D idealPosition = targetPos;
+        
+        // Apply world bounds clamping to ideal position if enabled
+        if (m_config.clampToWorldBounds) {
+            float halfViewWidth = m_viewport.halfWidth();
+            float halfViewHeight = m_viewport.halfHeight();
+            
+            // Calculate effective bounds (world bounds minus half viewport)
+            float minX = m_worldBounds.minX + halfViewWidth;
+            float maxX = m_worldBounds.maxX - halfViewWidth;
+            float minY = m_worldBounds.minY + halfViewHeight;
+            float maxY = m_worldBounds.maxY - halfViewHeight;
+            
+            // Only clamp if the world is larger than the viewport
+            if (maxX > minX) {
+                idealPosition.setX(std::clamp(idealPosition.getX(), minX, maxX));
+            } else {
+                // World is smaller than viewport, center camera
+                idealPosition.setX((m_worldBounds.minX + m_worldBounds.maxX) * 0.5f);
+            }
+            
+            if (maxY > minY) {
+                idealPosition.setY(std::clamp(idealPosition.getY(), minY, maxY));
+            } else {
+                // World is smaller than viewport, center camera
+                idealPosition.setY((m_worldBounds.minY + m_worldBounds.maxY) * 0.5f);
+            }
+        }
+        
+        // Calculate distance to ideal position
+        float dx = idealPosition.getX() - m_position.getX();
+        float dy = idealPosition.getY() - m_position.getY();
         float distance = std::sqrt(dx * dx + dy * dy);
         
-        // Use a dead zone to prevent oscillation when very close to target
-        const float deadZone = 2.0f; // Camera stops moving when within 2 pixels of target
+        // Use a dead zone to prevent oscillation when very close to ideal position
+        const float deadZone = 2.0f; // Camera stops moving when within 2 pixels of ideal position
         
         if (distance > deadZone) {
             // Use exponential smoothing to prevent oscillation
@@ -76,8 +106,8 @@ void Camera::update(float deltaTime) {
             float newY = m_position.getY() + dy * moveRatio;
             
             // Ensure we don't overshoot into the dead zone
-            float newDx = targetPos.getX() - newX;
-            float newDy = targetPos.getY() - newY;
+            float newDx = idealPosition.getX() - newX;
+            float newDy = idealPosition.getY() - newY;
             float newDistance = std::sqrt(newDx * newDx + newDy * newDy);
             
             if (newDistance < deadZone) {
@@ -92,10 +122,8 @@ void Camera::update(float deltaTime) {
         }
     }
     
-    // Apply world bounds clamping if enabled
-    if (m_config.clampToWorldBounds) {
-        clampToWorldBounds();
-    }
+    // Note: World bounds clamping is now integrated into follow mode logic above
+    // This prevents hitching when camera reaches boundaries while target continues moving
 }
 
 void Camera::setPosition(float x, float y) {
@@ -294,15 +322,14 @@ void Camera::shake(float duration, float intensity) {
 
 void Camera::updateCameraShake(float deltaTime) {
     if (m_shakeTimeRemaining > 0.0f) {
-        bool wasShaking = true;
         m_shakeTimeRemaining -= deltaTime;
         
         if (m_shakeTimeRemaining <= 0.0f) {
             m_shakeTimeRemaining = 0.0f;
             m_shakeOffset = Vector2D{0.0f, 0.0f};
             
-            // Fire shake ended event if enabled
-            if (m_eventFiringEnabled && wasShaking) {
+            // Fire shake ended event if enabled (we were definitely shaking if we're here)
+            if (m_eventFiringEnabled) {
                 fireShakeEndedEvent();
             }
         } else {

@@ -31,7 +31,7 @@ public:
     explicit WorldEvent(WorldEventType eventType) 
         : Event(), m_eventType(eventType) {}
     
-    virtual ~WorldEvent() = default;
+    virtual ~WorldEvent() override = default;
     
     WorldEventType getEventType() const { return m_eventType; }
     

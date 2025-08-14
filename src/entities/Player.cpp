@@ -149,29 +149,30 @@ void Player::update(float deltaTime) {
     float worldMaxX = maxX * TILE_SIZE;
     float worldMaxY = maxY * TILE_SIZE;
     
-    // Account for player size (half width/height for center-based positioning)
-    float playerHalfWidth = m_frameWidth * 0.5f;
-    float playerHalfHeight = m_height * 0.5f;
+    // Use player sprite dimensions for proper boundary constraints
+    // Player should be able to reach actual world boundaries
+    const float HALF_SPRITE_WIDTH = m_frameWidth / 2.0f;   // Half of player sprite width
+    const float HALF_SPRITE_HEIGHT = m_height / 2.0f;      // Half of player sprite height
     
-    // Clamp player position to stay within world bounds
+    // Constrain player to actual world boundaries (accounting for sprite size)
     newPosition.setX(std::clamp(newPosition.getX(), 
-                               worldMinX + playerHalfWidth, 
-                               worldMaxX - playerHalfWidth));
+                               worldMinX + HALF_SPRITE_WIDTH, 
+                               worldMaxX - HALF_SPRITE_WIDTH));
     newPosition.setY(std::clamp(newPosition.getY(), 
-                               worldMinY + playerHalfHeight, 
-                               worldMaxY - playerHalfHeight));
+                               worldMinY + HALF_SPRITE_HEIGHT, 
+                               worldMaxY - HALF_SPRITE_HEIGHT));
   } else {
     // Fallback to default bounds if no world is loaded (matches GamePlayState.cpp)
     const float DEFAULT_WORLD_SIZE = 3200.0f; // 100 tiles * 32px
-    float playerHalfWidth = m_frameWidth * 0.5f;
-    float playerHalfHeight = m_height * 0.5f;
+    const float HALF_SPRITE_WIDTH = m_frameWidth / 2.0f;
+    const float HALF_SPRITE_HEIGHT = m_height / 2.0f;
     
     newPosition.setX(std::clamp(newPosition.getX(), 
-                               playerHalfWidth, 
-                               DEFAULT_WORLD_SIZE - playerHalfWidth));
+                               HALF_SPRITE_WIDTH, 
+                               DEFAULT_WORLD_SIZE - HALF_SPRITE_WIDTH));
     newPosition.setY(std::clamp(newPosition.getY(), 
-                               playerHalfHeight, 
-                               DEFAULT_WORLD_SIZE - playerHalfHeight));
+                               HALF_SPRITE_HEIGHT, 
+                               DEFAULT_WORLD_SIZE - HALF_SPRITE_HEIGHT));
   }
   
   m_position = newPosition;

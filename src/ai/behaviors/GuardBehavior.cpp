@@ -800,7 +800,7 @@ void GuardBehavior::callForHelp(EntityPtr entity,
   AIManager::Instance().broadcastMessage(helpMessage, false);
 }
 
-void GuardBehavior::broadcastAlert(EntityPtr entity, AlertLevel level,
+[[maybe_unused]] void GuardBehavior::broadcastAlert(EntityPtr entity, AlertLevel level,
                                    const Vector2D & /*alertPosition*/) {
   if (!entity)
     return;

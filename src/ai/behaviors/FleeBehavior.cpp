@@ -294,7 +294,7 @@ Vector2D FleeBehavior::findNearestSafeZone(const Vector2D& position) const {
     return nearest ? (nearest->center - position) : Vector2D(0, 0);
 }
 
-bool FleeBehavior::isPositionSafe(const Vector2D& position) const {
+[[maybe_unused]] bool FleeBehavior::isPositionSafe(const Vector2D& position) const {
     EntityPtr threat = getThreat();
     if (!threat) return true;
     
@@ -302,7 +302,7 @@ bool FleeBehavior::isPositionSafe(const Vector2D& position) const {
     return distanceToThreat >= m_safeDistance;
 }
 
-bool FleeBehavior::isNearBoundary(const Vector2D& position) const {
+[[maybe_unused]] bool FleeBehavior::isNearBoundary(const Vector2D& position) const {
     return (position.getX() < m_boundaryPadding || 
             position.getX() > m_screenWidth - m_boundaryPadding ||
             position.getY() < m_boundaryPadding || 
