@@ -27,7 +27,7 @@ inline int fast_rand() {
 }
 
 // Static mutex for update serialization
-std::mutex ParticleManager::updateMutex;
+// Remove static mutex - GameEngine handles synchronization
 
 // ParticleData method implementations
 bool ParticleData::isActive() const {
@@ -673,8 +673,8 @@ void ParticleManager::update(float deltaTime) {
     return;
   }
 
-  // PERFORMANCE-OPTIMIZED: Single update serialization only
-  std::lock_guard<std::mutex> updateLock(updateMutex);
+  // TRUST GAME ENGINE: GameEngine and GameLoop handle update/render synchronization
+  // No blocking mutexes needed - the engine ensures thread safety at a higher level
 
   auto startTime = std::chrono::high_resolution_clock::now();
 
