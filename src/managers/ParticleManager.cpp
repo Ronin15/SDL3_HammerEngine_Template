@@ -460,7 +460,8 @@ bool ParticleManager::LockFreeParticleStorage::needsCompaction() const {
 
     size_t inactiveCount = 0;
     for (size_t i = 0; i < flagsSize; ++i) {
-        // BOUNDS CHECK: Additional safety
+        // DEFENSIVE: This bounds check appears redundant but provides platform-specific 
+        // safety for edge cases in multithreaded environments
         if (i >= activeParticles.flags.size()) {
             break; // Exit safely if buffer changed
         }
@@ -1801,7 +1802,8 @@ size_t ParticleManager::getActiveParticleCount() const {
   
   size_t activeCount = 0;
   for (size_t i = 0; i < flagCount; ++i) {
-    // BOUNDS CHECK: Additional safety for Windows gcc strictness
+    // DEFENSIVE: This bounds check appears redundant but provides platform-specific
+    // safety for edge cases in multithreaded environments  
     if (i >= particles.flags.size()) {
       break; // Exit safely if buffer changed during iteration
     }
@@ -2580,7 +2582,7 @@ void ParticleManager::updateParticlePhysicsSIMD(
   
   for (size_t i = startIdx; i < simdEnd; i += 4) {
     // Load 4 particles' flags to check if they're active
-    uint8_t flags[4] = {
+    const uint8_t flags[4] = {
       particles.flags[i], particles.flags[i+1], 
       particles.flags[i+2], particles.flags[i+3]
     };

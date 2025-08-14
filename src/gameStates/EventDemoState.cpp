@@ -150,7 +150,7 @@ bool EventDemoState::enter() {
         if (!m_player || !m_player->getInventory()) {
             return "Capacity: 0/0";
         }
-        auto* inventory = m_player->getInventory();
+        const auto* inventory = m_player->getInventory();
         int used = inventory->getUsedSlots();
         int max = inventory->getMaxSlots();
         return "Capacity: " + std::to_string(used) + "/" + std::to_string(max);
@@ -162,7 +162,7 @@ bool EventDemoState::enter() {
             return {"(Empty)"};
         }
         
-        auto* inventory = m_player->getInventory();
+        const auto* inventory = m_player->getInventory();
         auto allResources = inventory->getAllResources();
 
         if (allResources.empty()) {
@@ -796,7 +796,7 @@ void EventDemoState::handleInput() {
   // Mouse input for world interaction
     if (inputMgr.getMouseButtonState(LEFT) && m_camera) {
         Vector2D mousePos = inputMgr.getMousePosition();
-        auto& ui = UIManager::Instance();
+        const auto& ui = UIManager::Instance();
 
         if (!ui.isClickOnUI(mousePos)) {
             Vector2D worldPos = m_camera->screenToWorld(mousePos);
@@ -1945,7 +1945,7 @@ void EventDemoState::setupCameraForWorld() {
   }
   
   // Get actual world bounds from WorldManager
-  WorldManager& worldManager = WorldManager::Instance();
+  const WorldManager& worldManager = WorldManager::Instance();
   
   HammerEngine::Camera::Bounds worldBounds;
   float minX, minY, maxX, maxY;
