@@ -46,13 +46,6 @@ bool AIManager::init() {
       msg.ready.store(false, std::memory_order_relaxed);
     }
 
-    // Configure threading based on system capabilities
-    if (HammerEngine::ThreadSystem::Exists()) {
-      const auto &threadSystem = HammerEngine::ThreadSystem::Instance();
-      m_maxThreads = threadSystem.getThreadCount();
-      m_useThreading.store(m_maxThreads > 1, std::memory_order_release);
-    }
-
     m_initialized.store(true, std::memory_order_release);
     m_isShutdown = false;
 
@@ -237,6 +230,7 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
         AI_DEBUG("Queue pressure detected (" + std::to_string(queueSize) + "/" +
                  std::to_string(queueCapacity) +
                  "), using single-threaded processing");
+        m_lastWasThreaded.store(false, std::memory_order_relaxed);
         processBatch(0, entityCount, deltaTime, nextBuffer);
 
         // Swap buffers atomically
@@ -269,7 +263,8 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
             AI_DEBUG("AI Summary - Entities: " + std::to_string(entityCount) +
                      ", Avg Update: " + std::to_string(avgDuration) + "ms" +
                      ", Entities/sec: " +
-                     std::to_string(m_globalStats.entitiesPerSecond));
+                     std::to_string(m_globalStats.entitiesPerSecond) +
+                     " [Single-threaded]");
           }
         }
         return; // Exit early after single-threaded processing
@@ -281,6 +276,12 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
       // Use WorkerBudget system properly with threshold-based buffer allocation
       size_t optimalWorkerCount =
           budget.getOptimalWorkerCount(budget.aiAllocated, entityCount, 1000);
+
+      // Store thread allocation info for debug output
+      m_lastOptimalWorkerCount.store(optimalWorkerCount, std::memory_order_relaxed);
+      m_lastAvailableWorkers.store(availableWorkers, std::memory_order_relaxed);
+      m_lastAIBudget.store(budget.aiAllocated, std::memory_order_relaxed);
+      m_lastWasThreaded.store(true, std::memory_order_relaxed);
 
       // Dynamic batch sizing based on queue pressure for optimal performance
       size_t minEntitiesPerBatch = 1000;
@@ -304,6 +305,14 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
       size_t batchCount =
           std::min(optimalWorkerCount, entityCount / minEntitiesPerBatch);
       batchCount = std::max(size_t(1), std::min(batchCount, maxBatches));
+
+      // Debug thread allocation info periodically
+      if (currentFrame % 300 == 0 && entityCount > 0) {
+        AI_DEBUG("Thread Allocation - Workers: " + std::to_string(optimalWorkerCount) + "/" +
+                 std::to_string(availableWorkers) + 
+                 ", AI Budget: " + std::to_string(budget.aiAllocated) +
+                 ", Batches: " + std::to_string(batchCount));
+      }
 
       size_t entitiesPerBatch = entityCount / batchCount;
       size_t remainingEntities = entityCount % batchCount;
@@ -360,10 +369,25 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
             m_globalStats.updateCount > 0
                 ? (m_globalStats.totalUpdateTime / m_globalStats.updateCount)
                 : 0.0;
-        AI_DEBUG("AI Summary - Entities: " + std::to_string(entityCount) +
-                 ", Avg Update: " + std::to_string(avgDuration) + "ms" +
-                 ", Entities/sec: " +
-                 std::to_string(m_globalStats.entitiesPerSecond));
+        
+        bool wasThreaded = m_lastWasThreaded.load(std::memory_order_relaxed);
+        if (wasThreaded) {
+          size_t optimalWorkers = m_lastOptimalWorkerCount.load(std::memory_order_relaxed);
+          size_t availableWorkers = m_lastAvailableWorkers.load(std::memory_order_relaxed);
+          size_t aiBudget = m_lastAIBudget.load(std::memory_order_relaxed);
+          
+          AI_DEBUG("AI Summary - Entities: " + std::to_string(entityCount) +
+                   ", Avg Update: " + std::to_string(avgDuration) + "ms" +
+                   ", Entities/sec: " + std::to_string(m_globalStats.entitiesPerSecond) +
+                   " [Threaded: " + std::to_string(optimalWorkers) + "/" +
+                   std::to_string(availableWorkers) + " workers, Budget: " +
+                   std::to_string(aiBudget) + "]");
+        } else {
+          AI_DEBUG("AI Summary - Entities: " + std::to_string(entityCount) +
+                   ", Avg Update: " + std::to_string(avgDuration) + "ms" +
+                   ", Entities/sec: " + std::to_string(m_globalStats.entitiesPerSecond) +
+                   " [Single-threaded]");
+        }
       }
     }
 

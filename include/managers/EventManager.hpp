@@ -498,6 +498,12 @@ private:
   // Timing
   std::atomic<uint64_t> m_lastUpdateTime{0};
 
+  // Thread allocation tracking for debug output
+  std::atomic<size_t> m_lastOptimalWorkerCount{0};
+  std::atomic<size_t> m_lastAvailableWorkers{0};
+  std::atomic<size_t> m_lastEventBudget{0};
+  std::atomic<bool> m_lastWasThreaded{false};
+
   // Double buffering for lock-free reads during updates
   std::atomic<size_t> m_currentBuffer{0};
   std::array<std::vector<EventData>, 2>
