@@ -626,15 +626,45 @@ void HammerEngine::TileRenderer::renderVisibleTiles(const HammerEngine::WorldDat
     int endTileY = std::min(static_cast<int>(world.grid.size()), 
                            static_cast<int>((cameraY + viewportHeight) / TILE_SIZE) + 2);
     
-    // Render visible tiles directly to the main renderer (no render target switching)
+    // PERFORMANCE OPTIMIZATION: Inline tile rendering to reduce function call overhead
     for (int y = startTileY; y < endTileY; ++y) {
         for (int x = startTileX; x < endTileX; ++x) {
             // Calculate screen position
             float screenX = (x * TILE_SIZE) - cameraX;
             float screenY = (y * TILE_SIZE) - cameraY;
             
-            // Render tile directly using the GameEngine renderer
-            renderTile(world.grid[y][x], renderer, screenX, screenY);
+            // OPTIMIZATION: Inline texture selection logic to avoid string allocations
+            const HammerEngine::Tile& tile = world.grid[y][x];
+            const char* textureID;
+            
+            // Determine texture based on tile content (prioritize obstacles over biome)
+            if (tile.obstacleType != HammerEngine::ObstacleType::NONE) {
+                // OPTIMIZATION: Direct lookup without string allocation
+                switch (tile.obstacleType) {
+                    case HammerEngine::ObstacleType::TREE:    textureID = "obstacle_tree"; break;
+                    case HammerEngine::ObstacleType::ROCK:    textureID = "obstacle_rock"; break;
+                    case HammerEngine::ObstacleType::WATER:   textureID = "obstacle_water"; break;
+                    case HammerEngine::ObstacleType::BUILDING: textureID = "obstacle_building"; break;
+                    default:                    textureID = "biome_default"; break;
+                }
+            } else if (tile.isWater) {
+                textureID = "obstacle_water";
+            } else {
+                // OPTIMIZATION: Direct biome lookup without string allocation
+                switch (tile.biome) {
+                    case HammerEngine::Biome::DESERT:     textureID = "biome_desert"; break;
+                    case HammerEngine::Biome::FOREST:     textureID = "biome_forest"; break;
+                    case HammerEngine::Biome::MOUNTAIN:   textureID = "biome_mountain"; break;
+                    case HammerEngine::Biome::SWAMP:      textureID = "biome_swamp"; break;
+                    case HammerEngine::Biome::HAUNTED:    textureID = "biome_haunted"; break;
+                    case HammerEngine::Biome::CELESTIAL:  textureID = "biome_celestial"; break;
+                    case HammerEngine::Biome::OCEAN:      textureID = "biome_ocean"; break;
+                    default:                textureID = "biome_default"; break;
+                }
+            }
+            
+            // Use TextureManager's tile-optimized float precision rendering
+            TextureManager::Instance().drawTileF(textureID, screenX, screenY, TILE_SIZE, TILE_SIZE, renderer);
         }
     }
 }

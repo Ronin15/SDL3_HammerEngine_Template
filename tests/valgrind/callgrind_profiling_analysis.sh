@@ -48,6 +48,9 @@ declare -A PROFILE_TESTS=(
     ["ui_stress"]="ui_stress_test"
     ["resource_manager"]="resource_manager_tests"
     ["world_resource_manager"]="world_resource_manager_tests"
+    ["world_generator"]="world_generator_tests"
+    ["world_manager"]="world_manager_tests"
+    ["world_manager_events"]="world_manager_event_integration_tests"
     ["resource_template_manager"]="resource_template_manager_tests"
     ["resource_integration"]="resource_integration_tests"
     ["resource_change_events"]="resource_change_event_tests"
@@ -224,25 +227,52 @@ analyze_callgrind_results() {
         
         # Try to extract metrics from callgrind_annotate output
         if grep -q "Ir" "${summary_file}"; then
-            top_function=$(grep -A 1 "Ir" "${summary_file}" | tail -1 | awk '{print $2}' 2>/dev/null || echo "N/A")
+            # Extract top function and total from callgrind_annotate format
+            top_function=$(awk '/^[[:space:]]*[0-9]/ && !/^PROGRAM TOTALS/ && !/^[[:space:]]*Ir/ { print $2; exit }' "${summary_file}" 2>/dev/null || echo "N/A")
             total_instructions=$(grep "^PROGRAM TOTALS" "${summary_file}" | awk '{print $2}' 2>/dev/null || echo "N/A")
-            function_count=$(grep -c "^[[:space:]]*[0-9]" "${summary_file}" 2>/dev/null || echo "N/A")
             
-            # Analyze function performance distribution with realistic thresholds
-            critical_functions=$(awk '/^[[:space:]]*[0-9]/ { 
-                gsub(/[^0-9.]/, "", $1)
-                if ($1 >= 10.0) count++
-            } END { print count+0 }' "${summary_file}" 2>/dev/null || echo "0")
+            # Count functions with meaningful instruction counts (skip headers and totals)
+            function_count=$(awk '/^[[:space:]]*[0-9]/ && !/^PROGRAM TOTALS/ && !/^[[:space:]]*Ir/ && $1 > 0 { count++ } END { print count+0 }' "${summary_file}" 2>/dev/null || echo "0")
             
-            moderate_functions=$(awk '/^[[:space:]]*[0-9]/ { 
-                gsub(/[^0-9.]/, "", $1)
-                if ($1 >= 2.0 && $1 < 10.0) count++
-            } END { print count+0 }' "${summary_file}" 2>/dev/null || echo "0")
+            # Extract percentage values properly from callgrind_annotate output format
+            # Format: "  percentage  instruction_count  function_name:file_location"
+            critical_functions=$(awk '/^[[:space:]]*[0-9]/ && !/^PROGRAM TOTALS/ && !/^[[:space:]]*Ir/ { 
+                # Extract percentage from parentheses or calculate from instruction ratio
+                if (match($0, /\(([0-9.]+)%\)/, arr)) {
+                    percent = arr[1]
+                } else if ($1 > 0 && total > 0) {
+                    # Calculate percentage if not in parentheses format
+                    gsub(/,/, "", $1)
+                    percent = ($1 / total) * 100
+                } else {
+                    percent = 0
+                }
+                if (percent >= 10.0) count++
+            } END { print count+0 }' total="$(echo "$total_instructions" | sed 's/,//g')" "${summary_file}" 2>/dev/null || echo "0")
             
-            minor_functions=$(awk '/^[[:space:]]*[0-9]/ { 
-                gsub(/[^0-9.]/, "", $1)
-                if ($1 >= 1.0 && $1 < 2.0) count++
-            } END { print count+0 }' "${summary_file}" 2>/dev/null || echo "0")
+            moderate_functions=$(awk '/^[[:space:]]*[0-9]/ && !/^PROGRAM TOTALS/ && !/^[[:space:]]*Ir/ { 
+                if (match($0, /\(([0-9.]+)%\)/, arr)) {
+                    percent = arr[1]
+                } else if ($1 > 0 && total > 0) {
+                    gsub(/,/, "", $1)
+                    percent = ($1 / total) * 100
+                } else {
+                    percent = 0
+                }
+                if (percent >= 2.0 && percent < 10.0) count++
+            } END { print count+0 }' total="$(echo "$total_instructions" | sed 's/,//g')" "${summary_file}" 2>/dev/null || echo "0")
+            
+            minor_functions=$(awk '/^[[:space:]]*[0-9]/ && !/^PROGRAM TOTALS/ && !/^[[:space:]]*Ir/ { 
+                if (match($0, /\(([0-9.]+)%\)/, arr)) {
+                    percent = arr[1]
+                } else if ($1 > 0 && total > 0) {
+                    gsub(/,/, "", $1)
+                    percent = ($1 / total) * 100
+                } else {
+                    percent = 0
+                }
+                if (percent >= 1.0 && percent < 2.0) count++
+            } END { print count+0 }' total="$(echo "$total_instructions" | sed 's/,//g')" "${summary_file}" 2>/dev/null || echo "0")
         fi
         
         CRITICAL_HOTSPOTS=$((CRITICAL_HOTSPOTS + critical_functions))
@@ -302,24 +332,45 @@ generate_function_analysis() {
         echo "" >> "${analysis_file}"
         
         echo "## Critical Hotspots (≥10% of instructions)" >> "${analysis_file}"
-        awk '/^[[:space:]]*[0-9]/ { 
-            gsub(/[^0-9.]/, "", $1)
-            if ($1 >= 10.0) print "- " $0
-        }' "${summary_file}" >> "${analysis_file}" 2>/dev/null || echo "None found" >> "${analysis_file}"
+        awk '/^[[:space:]]*[0-9]/ && !/^PROGRAM TOTALS/ && !/^[[:space:]]*Ir/ { 
+            if (match($0, /\(([0-9.]+)%\)/, arr)) {
+                percent = arr[1]
+            } else if ($1 > 0 && total > 0) {
+                gsub(/,/, "", $1)
+                percent = ($1 / total) * 100
+            } else {
+                percent = 0
+            }
+            if (percent >= 10.0) print "- " $0
+        }' total="$(grep "^PROGRAM TOTALS" "${summary_file}" | awk '{gsub(/,/, "", $2); print $2}')" "${summary_file}" >> "${analysis_file}" 2>/dev/null || echo "None found" >> "${analysis_file}"
         echo "" >> "${analysis_file}"
         
         echo "## Moderate Optimization Targets (2-10% of instructions)" >> "${analysis_file}"
-        awk '/^[[:space:]]*[0-9]/ { 
-            gsub(/[^0-9.]/, "", $1)
-            if ($1 >= 2.0 && $1 < 10.0) print "- " $0
-        }' "${summary_file}" >> "${analysis_file}" 2>/dev/null || echo "None found" >> "${analysis_file}"
+        awk '/^[[:space:]]*[0-9]/ && !/^PROGRAM TOTALS/ && !/^[[:space:]]*Ir/ { 
+            if (match($0, /\(([0-9.]+)%\)/, arr)) {
+                percent = arr[1]
+            } else if ($1 > 0 && total > 0) {
+                gsub(/,/, "", $1)
+                percent = ($1 / total) * 100
+            } else {
+                percent = 0
+            }
+            if (percent >= 2.0 && percent < 10.0) print "- " $0
+        }' total="$(grep "^PROGRAM TOTALS" "${summary_file}" | awk '{gsub(/,/, "", $2); print $2}')" "${summary_file}" >> "${analysis_file}" 2>/dev/null || echo "None found" >> "${analysis_file}"
         echo "" >> "${analysis_file}"
         
         echo "## Minor Opportunities (1-2% of instructions)" >> "${analysis_file}"
-        awk '/^[[:space:]]*[0-9]/ { 
-            gsub(/[^0-9.]/, "", $1)
-            if ($1 >= 1.0 && $1 < 2.0) print "- " $0
-        }' "${summary_file}" >> "${analysis_file}" 2>/dev/null || echo "None found" >> "${analysis_file}"
+        awk '/^[[:space:]]*[0-9]/ && !/^PROGRAM TOTALS/ && !/^[[:space:]]*Ir/ { 
+            if (match($0, /\(([0-9.]+)%\)/, arr)) {
+                percent = arr[1]
+            } else if ($1 > 0 && total > 0) {
+                gsub(/,/, "", $1)
+                percent = ($1 / total) * 100
+            } else {
+                percent = 0
+            }
+            if (percent >= 1.0 && percent < 2.0) print "- " $0
+        }' total="$(grep "^PROGRAM TOTALS" "${summary_file}" | awk '{gsub(/,/, "", $2); print $2}')" "${summary_file}" >> "${analysis_file}" 2>/dev/null || echo "None found" >> "${analysis_file}"
         
         echo "Function analysis saved to: ${analysis_file}"
     fi
@@ -441,7 +492,7 @@ EOF
 EOF
 
     # Add resource management analysis
-    for test_name in "resource_manager" "world_resource_manager" "resource_template_manager" "resource_integration" "resource_change_events" "inventory_components" "resource_factory" "resource_template_json" "json_reader"; do
+    for test_name in "resource_manager" "world_resource_manager" "world_generator" "world_manager" "world_manager_events" "resource_template_manager" "resource_integration" "resource_change_events" "inventory_components" "resource_factory" "resource_template_json" "json_reader"; do
         if [[ -n "${PROFILE_TESTS[$test_name]}" ]]; then
             local summary_file="${RESULTS_DIR}/summaries/${test_name}_summary.txt"
             if [[ -f "${summary_file}" ]]; then
@@ -618,7 +669,7 @@ run_targeted_profiling() {
             ;;
         "resource_management"|"resources")
             section_header "RESOURCE MANAGEMENT PROFILING ANALYSIS"
-            for test_name in "resource_manager" "world_resource_manager" "resource_template_manager" "resource_integration" "resource_change_events" "inventory_components" "resource_factory" "resource_template_json" "resource_edge_case" "json_reader"; do
+            for test_name in "resource_manager" "world_resource_manager" "world_generator" "world_manager" "world_manager_events" "resource_template_manager" "resource_integration" "resource_change_events" "inventory_components" "resource_factory" "resource_template_json" "resource_edge_case" "json_reader"; do
                 if [[ -n "${PROFILE_TESTS[$test_name]}" ]]; then                    run_callgrind_profiling "${test_name}" "${PROFILE_TESTS[$test_name]}"
                     echo ""
                 fi
