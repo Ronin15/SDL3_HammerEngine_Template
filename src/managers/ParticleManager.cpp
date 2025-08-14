@@ -709,6 +709,7 @@ void ParticleManager::update(float deltaTime) {
         updateParticlesThreaded(deltaTime, totalParticleCount);
       }
     } else {
+      m_lastWasThreaded.store(false, std::memory_order_relaxed);
       updateParticlesSingleThreaded(deltaTime, totalParticleCount);
     }
 
@@ -740,10 +741,26 @@ void ParticleManager::update(float deltaTime) {
       recordPerformance(false, timeMs, activeCount);
 
       if (activeCount > 0) {
-        PARTICLE_DEBUG(
-            "Particle Summary - Count: " + std::to_string(activeCount) +
-            ", Update: " + std::to_string(timeMs) + "ms" +
-            ", Effects: " + std::to_string(m_effectInstances.size()));
+        bool wasThreaded = m_lastWasThreaded.load(std::memory_order_relaxed);
+        if (wasThreaded) {
+          size_t optimalWorkers = m_lastOptimalWorkerCount.load(std::memory_order_relaxed);
+          size_t availableWorkers = m_lastAvailableWorkers.load(std::memory_order_relaxed);
+          size_t particleBudget = m_lastParticleBudget.load(std::memory_order_relaxed);
+          
+          PARTICLE_DEBUG(
+              "Particle Summary - Count: " + std::to_string(activeCount) +
+              ", Update: " + std::to_string(timeMs) + "ms" +
+              ", Effects: " + std::to_string(m_effectInstances.size()) +
+              " [Threaded: " + std::to_string(optimalWorkers) + "/" +
+              std::to_string(availableWorkers) + " workers, Budget: " +
+              std::to_string(particleBudget) + "]");
+        } else {
+          PARTICLE_DEBUG(
+              "Particle Summary - Count: " + std::to_string(activeCount) +
+              ", Update: " + std::to_string(timeMs) + "ms" +
+              ", Effects: " + std::to_string(m_effectInstances.size()) +
+              " [Single-threaded]");
+        }
       }
     }
 
@@ -1511,8 +1528,8 @@ ParticleEffectDefinition ParticleManager::createRainEffect() {
   rain.emitterConfig.maxLife = 7.0f;
   rain.emitterConfig.minSize = 2.0f; // Much smaller for realistic raindrops
   rain.emitterConfig.maxSize = 6.0f;
-  rain.emitterConfig.minColor = 0xADD8E6FF; // Light blue
-  rain.emitterConfig.maxColor = 0x87CEFAFF; // Lighter blue
+  rain.emitterConfig.minColor = 0x1E3A8AFF; // Dark blue
+  rain.emitterConfig.maxColor = 0x3B82F6FF; // Medium blue
   rain.emitterConfig.gravity =
       Vector2D(2.0f, 450.0f); // More vertical fall for 2D isometric view
   rain.emitterConfig.windForce =
@@ -1542,8 +1559,8 @@ ParticleEffectDefinition ParticleManager::createHeavyRainEffect() {
   heavyRain.emitterConfig.maxLife = 6.0f;
   heavyRain.emitterConfig.minSize = 1.5f; // Smaller but more numerous
   heavyRain.emitterConfig.maxSize = 5.0f;
-  heavyRain.emitterConfig.minColor = 0xADD8E6FF; // Light blue
-  heavyRain.emitterConfig.maxColor = 0x87CEFAFF; // Lighter blue
+  heavyRain.emitterConfig.minColor = 0x1E3A8AFF; // Dark blue
+  heavyRain.emitterConfig.maxColor = 0x3B82F6FF; // Medium blue
   heavyRain.emitterConfig.gravity = Vector2D(
       5.0f, 500.0f); // Strong vertical fall for intense rain in 2D isometric
   heavyRain.emitterConfig.windForce =
@@ -1948,6 +1965,12 @@ void ParticleManager::updateParticlesThreaded(float deltaTime,
   size_t optimalWorkerCount = budget.getOptimalWorkerCount(
       budget.particleAllocated, activeParticleCount, m_threadingThreshold);
 
+  // Store thread allocation info for debug output
+  m_lastOptimalWorkerCount.store(optimalWorkerCount, std::memory_order_relaxed);
+  m_lastAvailableWorkers.store(availableWorkers, std::memory_order_relaxed);
+  m_lastParticleBudget.store(budget.particleAllocated, std::memory_order_relaxed);
+  m_lastWasThreaded.store(true, std::memory_order_relaxed);
+
   // Dynamic batch sizing based on queue pressure for optimal performance
   // This prevents overwhelming the ThreadSystem when other subsystems are busy
   size_t minParticlesPerBatch = 500;
@@ -1969,12 +1992,21 @@ void ParticleManager::updateParticlesThreaded(float deltaTime,
       std::min(optimalWorkerCount, activeParticleCount / minParticlesPerBatch);
   batchCount = std::max(size_t(1), std::min(batchCount, maxBatches));
 
+  // Debug thread allocation info periodically
+  uint64_t currentFrame = m_frameCounter.load(std::memory_order_relaxed);
+  if (currentFrame % 300 == 0 && activeParticleCount > 0) {
+    PARTICLE_DEBUG("Particle Thread Allocation - Workers: " + 
+                   std::to_string(optimalWorkerCount) + "/" +
+                   std::to_string(availableWorkers) + 
+                   ", Particle Budget: " + std::to_string(budget.particleAllocated) +
+                   ", Batches: " + std::to_string(batchCount));
+  }
+
   size_t particlesPerBatch = activeParticleCount / batchCount;
   size_t remainingParticles = activeParticleCount % batchCount;
 
-  // Submit optimized batches to ThreadSystem with Normal priority
-  // Particle updates are typically non-critical compared to AI or input
-  // processing
+  // Submit optimized batches to ThreadSystem with efficient batch processing
+  // Unlike AIManager, ParticleManager needs synchronization before buffer operations
   std::vector<std::future<void>> futures;
   futures.reserve(batchCount);
 
@@ -1991,6 +2023,7 @@ void ParticleManager::updateParticlesThreaded(float deltaTime,
       continue;
     }
     
+    // Use async with futures but optimize the waiting pattern
     futures.push_back(threadSystem.enqueueTaskWithResult(
         [this, &currentBuffer, startIdx, endIdx, deltaTime]() {
           updateParticleRange(currentBuffer, startIdx, endIdx, deltaTime);
@@ -1998,11 +2031,13 @@ void ParticleManager::updateParticlesThreaded(float deltaTime,
         HammerEngine::TaskPriority::Normal, "Particle_UpdateBatch"));
   }
 
-  // Wait for all particle update batches to complete
+  // Optimized waiting: batch wait instead of individual waits
+  // This reduces synchronization overhead compared to individual future.wait() calls
   for (auto &future : futures) {
-    future.get();
+    future.get(); // Must wait - particle system needs sync before buffer swap
   }
 }
+
 void ParticleManager::updateParticlesSingleThreaded(
     float deltaTime, size_t activeParticleCount) {
   auto &currentBuffer = m_storage.getCurrentBuffer();

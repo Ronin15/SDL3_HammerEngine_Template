@@ -838,6 +838,12 @@ private:
   // Frame counter for periodic maintenance (like AIManager)
   std::atomic<uint64_t> m_frameCounter{0};
 
+  // Thread allocation tracking for debug output
+  std::atomic<size_t> m_lastOptimalWorkerCount{0};
+  std::atomic<size_t> m_lastAvailableWorkers{0};
+  std::atomic<size_t> m_lastParticleBudget{0};
+  std::atomic<bool> m_lastWasThreaded{false};
+
   // Camera and culling
   struct CameraViewport {
     float x{0}, y{0}, width{1920}, height{1080};
@@ -897,8 +903,7 @@ private:
   bool m_smokeActive{false};
   bool m_sparksActive{false};
 
-  // WorkerBudget threading state
-  std::atomic<bool> m_useWorkerBudgetThreading{false};
+
 
   // Helper methods
   uint32_t generateEffectId();

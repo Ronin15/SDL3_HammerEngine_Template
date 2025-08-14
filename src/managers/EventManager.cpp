@@ -171,8 +171,20 @@ void EventManager::update() {
 
   // Only log severe performance issues (>10ms) to reduce noise
   if (totalTimeMs > 10.0) {
-    EVENT_DEBUG("EventManager update took " + std::to_string(totalTimeMs) +
-                "ms (slow frame)");
+    bool wasThreaded = m_lastWasThreaded.load(std::memory_order_relaxed);
+    if (wasThreaded) {
+      size_t optimalWorkers = m_lastOptimalWorkerCount.load(std::memory_order_relaxed);
+      size_t availableWorkers = m_lastAvailableWorkers.load(std::memory_order_relaxed);
+      size_t eventBudget = m_lastEventBudget.load(std::memory_order_relaxed);
+      
+      EVENT_DEBUG("EventManager update took " + std::to_string(totalTimeMs) +
+                  "ms (slow frame) [Threaded: " + std::to_string(optimalWorkers) + "/" +
+                  std::to_string(availableWorkers) + " workers, Budget: " +
+                  std::to_string(eventBudget) + "]");
+    } else {
+      EVENT_DEBUG("EventManager update took " + std::to_string(totalTimeMs) +
+                  "ms (slow frame) [Single-threaded]");
+    }
   }
   m_lastUpdateTime.store(endTime);
 }
@@ -572,6 +584,10 @@ void EventManager::updateEventTypeBatchThreaded(EventTypeId typeId) {
       HammerEngine::calculateWorkerBudget(availableWorkers);
   size_t eventWorkerBudget = budget.eventAllocated;
 
+  // Store thread allocation info for debug output
+  m_lastAvailableWorkers.store(availableWorkers, std::memory_order_relaxed);
+  m_lastEventBudget.store(eventWorkerBudget, std::memory_order_relaxed);
+
   // Check queue pressure before submitting tasks
   size_t queueSize = threadSystem.getQueueSize();
   size_t queueCapacity = threadSystem.getQueueCapacity();
@@ -582,6 +598,7 @@ void EventManager::updateEventTypeBatchThreaded(EventTypeId typeId) {
     EVENT_DEBUG("Queue pressure detected (" + std::to_string(queueSize) + "/" +
                 std::to_string(queueCapacity) +
                 "), using single-threaded processing");
+    m_lastWasThreaded.store(false, std::memory_order_relaxed);
     for (auto &eventData : localEvents) {
       if (eventData.event) {
         eventData.event->update();
@@ -600,6 +617,10 @@ void EventManager::updateEventTypeBatchThreaded(EventTypeId typeId) {
   // Use buffer capacity for high workloads
   size_t optimalWorkerCount =
       budget.getOptimalWorkerCount(eventWorkerBudget, localEvents.size(), 100);
+
+  // Store optimal worker count and mark as threaded
+  m_lastOptimalWorkerCount.store(optimalWorkerCount, std::memory_order_relaxed);
+  m_lastWasThreaded.store(true, std::memory_order_relaxed);
 
   // Dynamic batch sizing based on queue pressure for optimal performance
   size_t minEventsPerBatch = 10;
@@ -622,9 +643,19 @@ void EventManager::updateEventTypeBatchThreaded(EventTypeId typeId) {
 
   // Simple batch processing without complex spin-wait
   if (optimalWorkerCount > 1 && localEvents.size() > 20) {
-    size_t batchCount =
-        std::min(optimalWorkerCount, localEvents.size() / minEventsPerBatch);
-    batchCount = std::max(size_t(1), std::min(batchCount, maxBatches));
+  size_t batchCount =
+      std::min(optimalWorkerCount, localEvents.size() / minEventsPerBatch);
+  batchCount = std::max(size_t(1), std::min(batchCount, maxBatches));
+
+  // Debug thread allocation info periodically
+  static uint64_t debugFrameCounter = 0;
+  if (++debugFrameCounter % 300 == 0 && !localEvents.empty()) {
+    EVENT_DEBUG("Event Thread Allocation - Workers: " + 
+                std::to_string(optimalWorkerCount) + "/" +
+                std::to_string(availableWorkers) + 
+                ", Event Budget: " + std::to_string(eventWorkerBudget) +
+                ", Batches: " + std::to_string(batchCount));
+  }
 
     size_t batchSize = localEvents.size() / batchCount;
     size_t remainingEvents = localEvents.size() % batchCount;

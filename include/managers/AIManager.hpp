@@ -360,6 +360,12 @@ private:
       m_behaviorStats;
   AIPerformanceStats m_globalStats;
 
+  // Thread allocation tracking for debug output
+  std::atomic<size_t> m_lastOptimalWorkerCount{0};
+  std::atomic<size_t> m_lastAvailableWorkers{0};
+  std::atomic<size_t> m_lastAIBudget{0};
+  std::atomic<bool> m_lastWasThreaded{false};
+
   // Player reference
   EntityWeakPtr m_playerEntity;
 
