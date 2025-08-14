@@ -46,6 +46,7 @@ public:
   std::string getName() const override { return "ResourceChange"; }
   bool checkConditions() override { return true; }
   std::string getType() const override { return EVENT_TYPE; }
+  std::string getTypeName() const override { return "ResourceChangeEvent"; }
   static const std::string EVENT_TYPE;
 
   // Resource change data

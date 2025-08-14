@@ -37,13 +37,14 @@ struct ResourceTemplateManagerResetter {
 static ResourceTemplateManagerResetter resourceTemplateManagerResetterInstance;
 
 #include <chrono>
+#include <future>
 #include <memory>
 #include <string>
-#include <thread>
 #include <vector>
 
 #include "../mocks/MockPlayer.hpp"
 #include "core/Logger.hpp"
+#include "core/ThreadSystem.hpp"
 #include "entities/Resource.hpp"
 #include "entities/resources/InventoryComponent.hpp"
 #include "events/ResourceChangeEvent.hpp"
@@ -52,6 +53,15 @@ static ResourceTemplateManagerResetter resourceTemplateManagerResetterInstance;
 class ResourceIntegrationTestFixture {
 public:
   ResourceIntegrationTestFixture() {
+    // Initialize ThreadSystem first for threading tests
+    threadSystem = &HammerEngine::ThreadSystem::Instance();
+    if (threadSystem->isShutdown() || threadSystem->getThreadCount() == 0) {
+      bool initSuccess = threadSystem->init();
+      if (!initSuccess && threadSystem->getThreadCount() == 0) {
+        throw std::runtime_error("Failed to initialize ThreadSystem for threading tests");
+      }
+    }
+
     // Initialize ResourceTemplateManager
     resourceManager = &ResourceTemplateManager::Instance();
 
@@ -105,10 +115,12 @@ public:
   ~ResourceIntegrationTestFixture() {
     playerInventory.reset();
     npcInventory.reset();
+    // Note: Don't clean ThreadSystem here as it's shared across tests
   }
 
 protected:
   ResourceTemplateManager *resourceManager;
+  HammerEngine::ThreadSystem *threadSystem;
   std::unique_ptr<InventoryComponent> playerInventory;
   std::unique_ptr<InventoryComponent> npcInventory;
   std::shared_ptr<Resource> healthPotion;
@@ -431,34 +443,36 @@ BOOST_AUTO_TEST_CASE(TestConcurrentResourceOperations) {
   playerInventory->addResource(goldHandle, 10000);
   npcInventory->addResource(ironOreHandle, 5000);
 
-  std::vector<std::thread> threads;
+  std::vector<std::future<void>> futures;
   std::atomic<int> successfulPlayerOps{0};
   std::atomic<int> successfulNPCOps{0};
 
   for (int i = 0; i < NUM_THREADS; ++i) {
-    threads.emplace_back([&]() {
+    auto future = threadSystem->enqueueTaskWithResult([=, this, &successfulPlayerOps, &successfulNPCOps]() -> void {
       for (int j = 0; j < OPERATIONS_PER_THREAD; ++j) {
         // Test concurrent player operations
         if (playerInventory->addResource(healthPotionHandle, 1)) {
           if (playerInventory->removeResource(healthPotionHandle, 1)) {
-            successfulPlayerOps++;
+            successfulPlayerOps.fetch_add(1, std::memory_order_relaxed);
           }
         }
 
         // Test concurrent NPC operations
         if (npcInventory->addResource(ironSwordHandle, 1)) {
           if (npcInventory->removeResource(ironSwordHandle, 1)) {
-            successfulNPCOps++;
+            successfulNPCOps.fetch_add(1, std::memory_order_relaxed);
           }
         }
 
         std::this_thread::sleep_for(std::chrono::microseconds(1));
       }
-    });
+    }, HammerEngine::TaskPriority::Normal, "ResourceIntegrationTask");
+
+    futures.push_back(std::move(future));
   }
 
-  for (auto &thread : threads) {
-    thread.join();
+  for (auto &future : futures) {
+    future.wait();
   }
 
   // Verify operations were successful (should be mostly successful due to

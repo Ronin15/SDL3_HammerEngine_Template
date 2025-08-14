@@ -55,11 +55,11 @@ void OverlayDemoState::update(float deltaTime) {
     m_transitionTimer += deltaTime;
 }
 
-void OverlayDemoState::render(float deltaTime) {
+void OverlayDemoState::render() {
     // Update and render UI components through UIManager using cached renderer for cleaner API
     auto& ui = UIManager::Instance();
     if (!ui.isShutdown()) {
-        ui.update(deltaTime);
+        ui.update(0.0); // UI updates are not time-dependent in this state
     }
     ui.render();
 }
@@ -290,7 +290,7 @@ void OverlayDemoState::handleInput() {
 void OverlayDemoState::handleBackButton() {
     auto& gameEngine = GameEngine::Instance();
     auto* gameStateManager = gameEngine.getGameStateManager();
-    gameStateManager->setState("MainMenuState");
+    gameStateManager->changeState("MainMenuState");
 }
 
 // Pure UIManager implementation - no UIScreen needed

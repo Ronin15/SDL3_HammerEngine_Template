@@ -24,6 +24,7 @@ void ChaseBehavior::init(EntityPtr entity) {
   m_isChasing = false;
   m_hasLineOfSight = false;
   m_cachedStateValid = false;
+  m_lastKnownTargetPos = entity->getPosition();
 
   // Invalidate cache on initialization
   invalidatePlayerCache();

@@ -4,12 +4,10 @@
  */
 
 #include "ai/behaviors/WanderBehavior.hpp"
-
 #include <algorithm>
 #include <cmath>
 
 // Static thread-local RNG pool for memory optimization
-thread_local std::mt19937 *s_wanderRng = nullptr;
 thread_local std::uniform_real_distribution<float>
     WanderBehavior::s_angleDistribution{0.0f, 2.0f * M_PI};
 thread_local std::uniform_real_distribution<float>
@@ -18,11 +16,8 @@ thread_local std::uniform_int_distribution<Uint64>
     WanderBehavior::s_delayDistribution{0, 5000};
 
 std::mt19937 &WanderBehavior::getSharedRNG() {
-  if (!s_wanderRng) {
-    static thread_local std::random_device rd;
-    s_wanderRng = new std::mt19937(rd());
-  }
-  return *s_wanderRng;
+  static thread_local std::mt19937 rng{std::random_device{}()};
+  return rng;
 }
 
 WanderBehavior::WanderBehavior(float speed, float changeDirectionInterval,

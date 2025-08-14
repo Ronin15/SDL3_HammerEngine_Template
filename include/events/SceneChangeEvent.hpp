@@ -23,6 +23,7 @@
 #include <functional>
 #include <vector>
 #include <iostream>
+#include <unordered_map>
 
 enum class TransitionType {
     Fade,
@@ -108,6 +109,7 @@ public:
     // Event identification
     std::string getName() const override { return m_name; }
     std::string getType() const override { return "SceneChange"; }
+    std::string getTypeName() const override { return "SceneChangeEvent"; }
     
     // Scene-specific methods
     const std::string& getTargetSceneID() const { return m_targetSceneID; }

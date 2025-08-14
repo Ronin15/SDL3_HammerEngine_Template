@@ -58,9 +58,11 @@ void Resource::update(float) {
   // Individual instances are managed by InventoryComponent
 }
 
-void Resource::render() {
+void Resource::render(const HammerEngine::Camera* camera) {
   // Resources don't render themselves (they're templates)
   // Individual instances are rendered by UI systems using the icon texture
+  // Camera parameter is ignored since resources don't have world positions
+  (void)camera; // Suppress unused parameter warning
 }
 
 void Resource::clean() {

@@ -7,16 +7,11 @@
 #define BOOST_TEST_MODULE SaveManagerTests
 #include <boost/test/unit_test.hpp>
 #include "utils/BinarySerializer.hpp"
+#include "mocks/MockPlayer.hpp"
 #include <filesystem>
 #include <csignal>
 #include <chrono>
 #include <thread>
-
-// Forward declarations to avoid dependencies
-class Player;
-
-// Include our standalone MockPlayer for testing
-#include "mocks/MockPlayer.hpp"
 
 // Helper function for safely cleaning up resources
 void performSafeCleanup() {

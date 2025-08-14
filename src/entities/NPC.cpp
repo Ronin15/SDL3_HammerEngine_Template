@@ -4,17 +4,18 @@
  */
 
 #include "entities/NPC.hpp"
+#include "ai/AIBehavior.hpp"
 #include "core/GameEngine.hpp"
 #include "core/Logger.hpp"
 #include "events/ResourceChangeEvent.hpp"
+#include "managers/AIManager.hpp"
 #include "managers/EventManager.hpp"
 #include "managers/ResourceTemplateManager.hpp"
 #include "managers/TextureManager.hpp"
-#include <SDL3/SDL.h>
-#include <chrono>
-#include <cmath>
-#include <random>
+#include "utils/Camera.hpp"
+#include <iostream>
 #include <set>
+#include <random>
 
 NPC::NPC(const std::string &textureID, const Vector2D &startPosition,
          int frameWidth, int frameHeight)
@@ -112,20 +113,50 @@ void NPC::loadDimensionsFromTexture() {
 // State management removed - handled by AI Manager
 
 void NPC::update(float deltaTime) {
-  // Update position based on velocity and acceleration using deltaTime
+  // The NPC is responsible for its own physics and animation.
+  
+  // Apply acceleration and friction
   m_velocity += m_acceleration * deltaTime;
+  const float stopThresholdSquared = 0.1f * 0.1f;
+  if (m_velocity.lengthSquared() > stopThresholdSquared) {
+    const float frictionCoefficient = 8.0f;
+    m_velocity -= m_velocity * frictionCoefficient * deltaTime;
+  } else {
+    m_velocity = Vector2D(0, 0);
+  }
+  
+  // Update position
   m_position += m_velocity * deltaTime;
+  
+  // Reset acceleration for the next frame.
+  m_acceleration = Vector2D(0, 0);
 
-  // Apply frame-rate independent friction for smoother movement
-  if (m_velocity.length() > 0.1f) {
-    // Frame-rate independent friction using exponential decay
-    const float frictionRate =
-        0.05f; // Friction strength (higher = more friction)
-    float frictionFactor = std::pow(frictionRate, deltaTime);
-    m_velocity *= frictionFactor;
+  // Handle world boundaries
+  if (m_boundsCheckEnabled) {
+    const float bounceBuffer = 20.0f;
+    if (m_position.getX() < m_minX - bounceBuffer) {
+      m_position.setX(m_minX);
+      m_velocity.setX(std::abs(m_velocity.getX()));
+    } else if (m_position.getX() + m_width > m_maxX + bounceBuffer) {
+      m_position.setX(m_maxX - m_width);
+      m_velocity.setX(-std::abs(m_velocity.getX()));
+    }
+    if (m_position.getY() < m_minY - bounceBuffer) {
+      m_position.setY(m_minY);
+      m_velocity.setY(std::abs(m_velocity.getY()));
+    } else if (m_position.getY() + m_height > m_maxY + bounceBuffer) {
+      m_position.setY(m_maxY - m_height);
+      m_velocity.setY(-std::abs(m_velocity.getY()));
+    }
+  }
 
-    // Update flip direction based on horizontal velocity
-    // Only flip if the horizontal speed is significant enough
+  // --- Animation ---
+  Uint64 currentTime = SDL_GetTicks();
+  if (m_velocity.lengthSquared() > 0.01f) {
+    if (currentTime > m_lastFrameTime + m_animSpeed) {
+      m_currentFrame = (m_currentFrame + 1) % m_numFrames;
+      m_lastFrameTime = currentTime;
+    }
     if (std::abs(m_velocity.getX()) > 0.5f) {
       if (m_velocity.getX() < 0) {
         m_flip = SDL_FLIP_HORIZONTAL;
@@ -133,50 +164,7 @@ void NPC::update(float deltaTime) {
         m_flip = SDL_FLIP_NONE;
       }
     }
-  } else if (m_velocity.length() < 0.1f) {
-    // If velocity is very small, stop completely to avoid tiny sliding
-    m_velocity = Vector2D(0, 0);
-  }
-
-  // Reset acceleration
-  m_acceleration = Vector2D(0, 0);
-
-  // Only apply bounds checking if enabled
-  if (m_boundsCheckEnabled) {
-    // Handle bounds checking with bounce behavior if outside permitted area
-    const float bounceBuffer = 20.0f; // Buffer zone before bouncing
-
-    if (m_position.getX() < m_minX - bounceBuffer) {
-      m_position.setX(m_minX);
-      m_velocity.setX(std::abs(m_velocity.getX())); // Move right
-      // Flip will be updated in the velocity section above
-    } else if (m_position.getX() + m_width > m_maxX + bounceBuffer) {
-      m_position.setX(m_maxX - m_width);
-      m_velocity.setX(-std::abs(m_velocity.getX())); // Move left
-      // Flip will be updated in the velocity section above
-    }
-
-    if (m_position.getY() < m_minY - bounceBuffer) {
-      m_position.setY(m_minY);
-      m_velocity.setY(std::abs(m_velocity.getY())); // Move down
-    } else if (m_position.getY() + m_height > m_maxY + bounceBuffer) {
-      m_position.setY(m_maxY - m_height);
-      m_velocity.setY(-std::abs(m_velocity.getY())); // Move up
-    }
-  }
-
-  // Update animation based on movement
-  Uint64 currentTime = SDL_GetTicks();
-
-  // Check if NPC is moving (velocity not close to zero)
-  if (m_velocity.length() > 0.1f) {
-    // Only update animation frame if enough time has passed
-    if (currentTime > m_lastFrameTime + m_animSpeed) {
-      m_currentFrame = (m_currentFrame + 1) % m_numFrames;
-      m_lastFrameTime = currentTime;
-    }
   } else {
-    // When not moving, reset to first frame
     m_currentFrame = 0;
   }
 
@@ -185,24 +173,33 @@ void NPC::update(float deltaTime) {
       TextureManager::Instance().isTextureInMap(m_textureID)) {
     loadDimensionsFromTexture();
   }
-
-  // Note: Flip direction is now determined by the NPC's velocity in this update
-  // method AI behavior classes should no longer set flip directly
 }
 
-void NPC::render() {
+void NPC::render(const HammerEngine::Camera* camera) {
   // Cache manager references for better performance
   TextureManager &texMgr = TextureManager::Instance();
   SDL_Renderer *renderer = GameEngine::Instance().getRenderer();
 
-  // Calculate centered position for rendering
-  // This ensures the NPC is centered at its position coordinates
-  int renderX = static_cast<int>(m_position.getX() - (m_frameWidth / 2.0f));
-  int renderY = static_cast<int>(m_position.getY() - (m_height / 2.0f));
+  // Determine render position based on camera
+  Vector2D renderPosition;
+  if (camera) {
+    // Transform world position to screen coordinates using camera
+    renderPosition = camera->worldToScreen(m_position);
+  } else {
+    // No camera transformation - render at world coordinates directly
+    renderPosition = m_position;
+  }
 
-  // Render the NPC with the current animation frame
-  texMgr.drawFrame(m_textureID, renderX, renderY, m_frameWidth, m_height,
-                   m_currentRow, m_currentFrame, renderer, m_flip);
+  // Calculate centered position for rendering (preserve float precision)
+  float renderX = renderPosition.getX() - (m_frameWidth / 2.0f);
+  float renderY = renderPosition.getY() - (m_height / 2.0f);
+
+  // Render the NPC with the current animation frame using float precision
+  texMgr.drawFrameF(m_textureID, 
+                    renderX,        // Keep float precision for smooth camera movement
+                    renderY,        // Keep float precision for smooth camera movement
+                    m_frameWidth, m_height,
+                    m_currentRow, m_currentFrame, renderer, m_flip);
 }
 
 void NPC::clean() {

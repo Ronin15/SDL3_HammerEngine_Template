@@ -12,6 +12,8 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include <atomic>
+#include <mutex>
 // filesystem is used in the implementation file
 
 class FontManager {
@@ -58,7 +60,6 @@ class FontManager {
    * @param windowHeight New window height in pixels
    * @return true if fonts were refreshed successfully, false otherwise
    */
-  bool refreshFontsForDisplay(const std::string& fontPath, int windowWidth, int windowHeight);
 
   /**
    * @brief Renders text to a texture using specified font
@@ -71,6 +72,17 @@ class FontManager {
   std::shared_ptr<SDL_Texture> renderText(
                           const std::string& text, const std::string& fontID,
                           SDL_Color color, SDL_Renderer* renderer);
+
+  /**
+   * @brief Renders text to a new texture (caller owns the texture)
+   * @param text Text string to render
+   * @param fontID Unique identifier of the font to use
+   * @param color Text color for rendering
+   * @param renderer SDL renderer for texture creation
+   * @return Raw pointer to a new SDL_Texture, or nullptr if failed. The caller is responsible for destroying this texture.
+   */
+  SDL_Texture* renderText(const std::string& text, const std::string& fontID,
+                        SDL_Color color, SDL_Renderer* renderer, bool dummy_for_overload);
 
   /**
    * @brief Renders multi-line text to a texture (handles newlines)
@@ -124,6 +136,15 @@ class FontManager {
   void clearFont(const std::string& fontID);
 
   /**
+   * @brief Safely reloads all fonts for display changes (e.g., DPI changes)
+   * @param fontPath Directory containing font files
+   * @param windowWidth Current window width
+   * @param windowHeight Current window height
+   * @return true if fonts were successfully reloaded, false otherwise
+   */
+  bool reloadFontsForDisplay(const std::string& fontPath, int windowWidth, int windowHeight);
+
+  /**
    * @brief Cleans up all font resources and shuts down TTF system
    */
   void clean();
@@ -133,6 +154,12 @@ class FontManager {
    * @return true if manager is shut down, false otherwise
    */
   bool isShutdown() const { return m_isShutdown; }
+
+  /**
+   * @brief Checks if all fonts have been loaded successfully
+   * @return true if fonts are loaded and ready, false otherwise
+   */
+  bool areFontsLoaded() const { return m_fontsLoaded.load(std::memory_order_acquire); }
 
   /**
    * @brief Measures text dimensions for a given font and string
@@ -204,8 +231,42 @@ class FontManager {
                                           int maxWidth);
 
  private:
+  // Cache for rendered text textures to avoid re-creation
+  struct TextCacheKey {
+    std::string text;
+    std::string fontID;
+    SDL_Color color;
+
+    bool operator==(const TextCacheKey& other) const {
+      return text == other.text && fontID == other.fontID &&
+             color.r == other.color.r && color.g == other.color.g &&
+             color.b == other.color.b && color.a == other.color.a;
+    }
+  };
+
+  struct TextCacheKeyHash {
+    std::size_t operator()(const TextCacheKey& key) const {
+      // A simple hash combination
+      return std::hash<std::string>()(key.text) ^
+             std::hash<std::string>()(key.fontID) ^
+             (static_cast<std::size_t>(key.color.r) << 24 |
+              static_cast<std::size_t>(key.color.g) << 16 |
+              static_cast<std::size_t>(key.color.b) << 8 |
+              static_cast<std::size_t>(key.color.a));
+    }
+  };
+
   std::unordered_map<std::string, std::shared_ptr<TTF_Font>> m_fontMap{};
-  bool m_isShutdown{false}; // Flag to indicate if FontManager has been shut down
+  std::unordered_map<TextCacheKey, std::shared_ptr<SDL_Texture>, TextCacheKeyHash> m_textCache{};
+  std::atomic<bool> m_fontsLoaded{false};
+  bool m_isShutdown{false};
+  std::vector<std::string> m_fontFilePaths{};
+  std::mutex m_fontLoadMutex{};
+  
+  // Display size tracking to prevent unnecessary font reloads
+  int m_lastWindowWidth{0};
+  int m_lastWindowHeight{0};
+  std::string m_lastFontPath{};
 
   // Delete copy constructor and assignment operator
   FontManager(const FontManager&) = delete; // Prevent copying

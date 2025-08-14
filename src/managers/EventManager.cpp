@@ -14,6 +14,9 @@
 #include "events/ResourceChangeEvent.hpp"
 #include "events/SceneChangeEvent.hpp"
 #include "events/WeatherEvent.hpp"
+#include "events/WorldEvent.hpp"
+#include "events/CameraEvent.hpp"
+#include "events/HarvestResourceEvent.hpp"
 #include <algorithm>
 #include <chrono>
 #include <future>
@@ -66,7 +69,7 @@ bool EventManager::init() {
 }
 
 void EventManager::clean() {
-  if (!m_initialized.load()) {
+  if (!m_initialized.load(std::memory_order_acquire) || m_isShutdown) {
     return;
   }
 
@@ -145,6 +148,9 @@ void EventManager::update() {
     updateEventTypeBatchThreaded(EventTypeId::NPCSpawn);
     updateEventTypeBatchThreaded(EventTypeId::ParticleEffect);
     updateEventTypeBatchThreaded(EventTypeId::ResourceChange);
+    updateEventTypeBatchThreaded(EventTypeId::World);
+    updateEventTypeBatchThreaded(EventTypeId::Camera);
+    updateEventTypeBatchThreaded(EventTypeId::Harvest);
     updateEventTypeBatchThreaded(EventTypeId::Custom);
   } else {
     // Use single-threaded for small event counts (better performance)
@@ -153,6 +159,9 @@ void EventManager::update() {
     updateEventTypeBatch(EventTypeId::NPCSpawn);
     updateEventTypeBatch(EventTypeId::ParticleEffect);
     updateEventTypeBatch(EventTypeId::ResourceChange);
+    updateEventTypeBatch(EventTypeId::World);
+    updateEventTypeBatch(EventTypeId::Camera);
+    updateEventTypeBatch(EventTypeId::Harvest);
     updateEventTypeBatch(EventTypeId::Custom);
   }
 
@@ -162,8 +171,20 @@ void EventManager::update() {
 
   // Only log severe performance issues (>10ms) to reduce noise
   if (totalTimeMs > 10.0) {
-    EVENT_DEBUG("EventManager update took " + std::to_string(totalTimeMs) +
-                "ms (slow frame)");
+    bool wasThreaded = m_lastWasThreaded.load(std::memory_order_relaxed);
+    if (wasThreaded) {
+      size_t optimalWorkers = m_lastOptimalWorkerCount.load(std::memory_order_relaxed);
+      size_t availableWorkers = m_lastAvailableWorkers.load(std::memory_order_relaxed);
+      size_t eventBudget = m_lastEventBudget.load(std::memory_order_relaxed);
+      
+      EVENT_DEBUG("EventManager update took " + std::to_string(totalTimeMs) +
+                  "ms (slow frame) [Threaded: " + std::to_string(optimalWorkers) + "/" +
+                  std::to_string(availableWorkers) + " workers, Budget: " +
+                  std::to_string(eventBudget) + "]");
+    } else {
+      EVENT_DEBUG("EventManager update took " + std::to_string(totalTimeMs) +
+                  "ms (slow frame) [Single-threaded]");
+    }
   }
   m_lastUpdateTime.store(endTime);
 }
@@ -200,6 +221,12 @@ bool EventManager::registerResourceChangeEvent(
     const std::string &name, std::shared_ptr<ResourceChangeEvent> event) {
   return registerEventInternal(name, std::static_pointer_cast<Event>(event),
                                EventTypeId::ResourceChange);
+}
+
+bool EventManager::registerWorldEvent(const std::string &name,
+                                      std::shared_ptr<WorldEvent> event) {
+  return registerEventInternal(name, std::static_pointer_cast<Event>(event),
+                               EventTypeId::World);
 }
 
 bool EventManager::registerEventInternal(const std::string &name,
@@ -286,6 +313,14 @@ EventManager::getEventsByType(const std::string &typeName) const {
     typeId = EventTypeId::NPCSpawn;
   else if (typeName == "ParticleEffect")
     typeId = EventTypeId::ParticleEffect;
+  else if (typeName == "ResourceChange")
+    typeId = EventTypeId::ResourceChange;
+  else if (typeName == "World")
+    typeId = EventTypeId::World;
+  else if (typeName == "Camera")
+    typeId = EventTypeId::Camera;
+  else if (typeName == "Harvest")
+    typeId = EventTypeId::Harvest;
 
   return getEventsByType(typeId);
 }
@@ -370,7 +405,43 @@ bool EventManager::executeEvent(const std::string &eventName) const {
     return false;
   }
 
+  // Get the event's type ID to find the appropriate handlers
+  EventTypeId typeId = getEventTypeId(event);
+  
+  // Execute the event itself
   event->execute();
+  
+  // Also trigger any registered handlers for this event type
+  std::vector<FastEventHandler> localHandlers;
+  {
+    std::lock_guard<std::mutex> lock(m_handlersMutex);
+    const auto &handlers = m_handlersByType[static_cast<size_t>(typeId)];
+    localHandlers.reserve(handlers.size());
+    std::copy_if(handlers.begin(), handlers.end(),
+                 std::back_inserter(localHandlers),
+                 [](const auto &handler) { return handler != nullptr; });
+  }
+  
+  if (!localHandlers.empty()) {
+    // Create a temporary EventData for handler execution
+    EventData eventData;
+    eventData.event = event;
+    eventData.typeId = typeId;
+    eventData.setActive(true);
+    
+    // Call all registered handlers
+    for (const auto &handler : localHandlers) {
+      try {
+        handler(eventData);
+      } catch (const std::exception &e) {
+        EVENT_ERROR("Handler exception in executeEvent '" + eventName + "': " + 
+                    std::string(e.what()));
+      } catch (...) {
+        EVENT_ERROR("Unknown handler exception in executeEvent '" + eventName + "'");
+      }
+    }
+  }
+  
   return true;
 }
 
@@ -395,6 +466,16 @@ int EventManager::executeEventsByType(const std::string &eventType) const {
     typeId = EventTypeId::SceneChange;
   else if (eventType == "NPCSpawn")
     typeId = EventTypeId::NPCSpawn;
+  else if (eventType == "ParticleEffect")
+    typeId = EventTypeId::ParticleEffect;
+  else if (eventType == "ResourceChange")
+    typeId = EventTypeId::ResourceChange;
+  else if (eventType == "World")
+    typeId = EventTypeId::World;
+  else if (eventType == "Camera")
+    typeId = EventTypeId::Camera;
+  else if (eventType == "Harvest")
+    typeId = EventTypeId::Harvest;
 
   return executeEventsByType(typeId);
 }
@@ -503,6 +584,10 @@ void EventManager::updateEventTypeBatchThreaded(EventTypeId typeId) {
       HammerEngine::calculateWorkerBudget(availableWorkers);
   size_t eventWorkerBudget = budget.eventAllocated;
 
+  // Store thread allocation info for debug output
+  m_lastAvailableWorkers.store(availableWorkers, std::memory_order_relaxed);
+  m_lastEventBudget.store(eventWorkerBudget, std::memory_order_relaxed);
+
   // Check queue pressure before submitting tasks
   size_t queueSize = threadSystem.getQueueSize();
   size_t queueCapacity = threadSystem.getQueueCapacity();
@@ -513,6 +598,7 @@ void EventManager::updateEventTypeBatchThreaded(EventTypeId typeId) {
     EVENT_DEBUG("Queue pressure detected (" + std::to_string(queueSize) + "/" +
                 std::to_string(queueCapacity) +
                 "), using single-threaded processing");
+    m_lastWasThreaded.store(false, std::memory_order_relaxed);
     for (auto &eventData : localEvents) {
       if (eventData.event) {
         eventData.event->update();
@@ -531,6 +617,10 @@ void EventManager::updateEventTypeBatchThreaded(EventTypeId typeId) {
   // Use buffer capacity for high workloads
   size_t optimalWorkerCount =
       budget.getOptimalWorkerCount(eventWorkerBudget, localEvents.size(), 100);
+
+  // Store optimal worker count and mark as threaded
+  m_lastOptimalWorkerCount.store(optimalWorkerCount, std::memory_order_relaxed);
+  m_lastWasThreaded.store(true, std::memory_order_relaxed);
 
   // Dynamic batch sizing based on queue pressure for optimal performance
   size_t minEventsPerBatch = 10;
@@ -553,9 +643,19 @@ void EventManager::updateEventTypeBatchThreaded(EventTypeId typeId) {
 
   // Simple batch processing without complex spin-wait
   if (optimalWorkerCount > 1 && localEvents.size() > 20) {
-    size_t batchCount =
-        std::min(optimalWorkerCount, localEvents.size() / minEventsPerBatch);
-    batchCount = std::max(size_t(1), std::min(batchCount, maxBatches));
+  size_t batchCount =
+      std::min(optimalWorkerCount, localEvents.size() / minEventsPerBatch);
+  batchCount = std::max(size_t(1), std::min(batchCount, maxBatches));
+
+  // Debug thread allocation info periodically
+  static uint64_t debugFrameCounter = 0;
+  if (++debugFrameCounter % 300 == 0 && !localEvents.empty()) {
+    EVENT_DEBUG("Event Thread Allocation - Workers: " + 
+                std::to_string(optimalWorkerCount) + "/" +
+                std::to_string(availableWorkers) + 
+                ", Event Budget: " + std::to_string(eventWorkerBudget) +
+                ", Batches: " + std::to_string(batchCount));
+  }
 
     size_t batchSize = localEvents.size() / batchCount;
     size_t remainingEvents = localEvents.size() % batchCount;
@@ -871,7 +971,7 @@ bool EventManager::createParticleEffectEvent(const std::string &name,
     // Create ParticleEffectEvent directly (no factory needed for this simple
     // event)
     auto event = std::make_shared<ParticleEffectEvent>(
-        name, effectType, x, y, intensity, duration, groupTag);
+        name, effectType, x, y, intensity, duration, groupTag, "");
     // Note: std::make_shared never returns nullptr for successful allocation
     // If allocation fails, it throws std::bad_alloc instead
 
@@ -896,6 +996,62 @@ bool EventManager::createParticleEffectEvent(const std::string &name,
   return createParticleEffectEvent(name, effectName, position.getX(),
                                    position.getY(), intensity, duration,
                                    groupTag);
+}
+
+// World event convenience methods
+bool EventManager::createWorldLoadedEvent(const std::string &name, const std::string &worldId,
+                             int width, int height) {
+  try {
+    auto event = std::make_shared<WorldLoadedEvent>(worldId, width, height);
+    return registerWorldEvent(name, event);
+  } catch (const std::exception &e) {
+    EVENT_ERROR("Exception creating WorldLoadedEvent '" + name + "': " + e.what());
+    return false;
+  } catch (...) {
+    EVENT_ERROR("Unknown exception creating WorldLoadedEvent: " + name);
+    return false;
+  }
+}
+
+bool EventManager::createWorldUnloadedEvent(const std::string &name, const std::string &worldId) {
+  try {
+    auto event = std::make_shared<WorldUnloadedEvent>(worldId);
+    return registerWorldEvent(name, event);
+  } catch (const std::exception &e) {
+    EVENT_ERROR("Exception creating WorldUnloadedEvent '" + name + "': " + e.what());
+    return false;
+  } catch (...) {
+    EVENT_ERROR("Unknown exception creating WorldUnloadedEvent: " + name);
+    return false;
+  }
+}
+
+bool EventManager::createTileChangedEvent(const std::string &name, int x, int y,
+                             const std::string &changeType) {
+  try {
+    auto event = std::make_shared<TileChangedEvent>(x, y, changeType);
+    return registerWorldEvent(name, event);
+  } catch (const std::exception &e) {
+    EVENT_ERROR("Exception creating TileChangedEvent '" + name + "': " + e.what());
+    return false;
+  } catch (...) {
+    EVENT_ERROR("Unknown exception creating TileChangedEvent: " + name);
+    return false;
+  }
+}
+
+bool EventManager::createWorldGeneratedEvent(const std::string &name, const std::string &worldId,
+                                int width, int height, float generationTime) {
+  try {
+    auto event = std::make_shared<WorldGeneratedEvent>(worldId, width, height, generationTime);
+    return registerWorldEvent(name, event);
+  } catch (const std::exception &e) {
+    EVENT_ERROR("Exception creating WorldGeneratedEvent '" + name + "': " + e.what());
+    return false;
+  } catch (...) {
+    EVENT_ERROR("Unknown exception creating WorldGeneratedEvent: " + name);
+    return false;
+  }
 }
 
 PerformanceStats EventManager::getPerformanceStats(EventTypeId typeId) const {
@@ -967,6 +1123,15 @@ void EventManager::clearEventPools() {
   m_resourceChangePool.clear();
 }
 
+void EventManager::clearAllEvents() {
+    std::lock_guard<std::shared_mutex> lock(m_eventsMutex);
+    for (auto& event_list : m_eventsByType) {
+        event_list.clear();
+    }
+    m_nameToIndex.clear();
+    m_nameToType.clear();
+}
+
 EventTypeId EventManager::getEventTypeId(const EventPtr &event) const {
   if (std::dynamic_pointer_cast<WeatherEvent>(event)) {
     return EventTypeId::Weather;
@@ -983,6 +1148,15 @@ EventTypeId EventManager::getEventTypeId(const EventPtr &event) const {
   if (std::dynamic_pointer_cast<ResourceChangeEvent>(event)) {
     return EventTypeId::ResourceChange;
   }
+  if (std::dynamic_pointer_cast<WorldEvent>(event)) {
+    return EventTypeId::World;
+  }
+  if (std::dynamic_pointer_cast<CameraEvent>(event)) {
+    return EventTypeId::Camera;
+  }
+  if (std::dynamic_pointer_cast<HarvestResourceEvent>(event)) {
+    return EventTypeId::Harvest;
+  }
   return EventTypeId::Custom;
 }
 
@@ -998,6 +1172,12 @@ std::string EventManager::getEventTypeName(EventTypeId typeId) const {
     return "ParticleEffect";
   case EventTypeId::ResourceChange:
     return "ResourceChange";
+  case EventTypeId::World:
+    return "World";
+  case EventTypeId::Camera:
+    return "Camera";
+  case EventTypeId::Harvest:
+    return "Harvest";
   case EventTypeId::Custom:
     return "Custom";
   default:
@@ -1024,6 +1204,18 @@ void EventManager::updateResourceChangeEvents() {
 
 void EventManager::updateCustomEvents() {
   updateEventTypeBatch(EventTypeId::Custom);
+}
+
+void EventManager::updateWorldEvents() {
+  updateEventTypeBatch(EventTypeId::World);
+}
+
+void EventManager::updateCameraEvents() {
+  updateEventTypeBatch(EventTypeId::Camera);
+}
+
+void EventManager::updateHarvestEvents() {
+  updateEventTypeBatch(EventTypeId::Harvest);
 }
 
 void EventManager::recordPerformance(EventTypeId typeId, double timeMs) const {

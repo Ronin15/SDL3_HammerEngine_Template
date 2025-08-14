@@ -43,10 +43,12 @@ void InputManager::initializeGamePad() {
   }
 
   // Initialize gamepad subsystem
-  if (!SDL_Init(SDL_INIT_GAMEPAD)) {
+  if (!SDL_InitSubSystem(SDL_INIT_GAMEPAD)) {
     INPUT_CRITICAL("Unable to initialize gamepad subsystem: " + std::string(SDL_GetError()));
     return;
   }
+  
+  // Mark that we successfully initialized the gamepad subsystem
 
   // Get all available gamepads with RAII management
   int numGamepads = 0;
@@ -86,6 +88,8 @@ void InputManager::initializeGamePad() {
     }
   } else {
     INPUT_INFO("No gamepads found");
+    // Still need to quit the subsystem we initialized
+    SDL_QuitSubSystem(SDL_INIT_GAMEPAD);
     return; //return without setting m_gamePadInitialized to true.
   }
 
@@ -222,6 +226,14 @@ void InputManager::update() {
 
       case SDL_EVENT_WINDOW_RESIZED:
         onWindowResize(event);
+        break;
+
+      case SDL_EVENT_DISPLAY_ORIENTATION:
+      case SDL_EVENT_DISPLAY_ADDED:
+      case SDL_EVENT_DISPLAY_REMOVED:
+      case SDL_EVENT_DISPLAY_MOVED:
+      case SDL_EVENT_DISPLAY_CONTENT_SCALE_CHANGED:
+        onDisplayChange(event);
         break;
 
       default:
@@ -452,6 +464,12 @@ void InputManager::onGamepadButtonUp(const SDL_Event& event) {
 }
 
 void InputManager::onWindowResize(const SDL_Event& event) {
+  // Centralized resize pipeline:
+  // 1) Update GameEngine window size (authoritative source)
+  // 2) Update SDL logical presentation (macOS: 1920x1080 letterbox; others: native)
+  // 3) Reload fonts via FontManager for new display characteristics
+  // 4) UI scales from logical size; UIManager layout recalculates on next render
+
   // Cache GameEngine reference for better performance
   GameEngine& gameEngine = GameEngine::Instance();
   
@@ -495,28 +513,71 @@ void InputManager::onWindowResize(const SDL_Event& event) {
   // Update renderer to native resolution
   SDL_SetRenderLogicalPresentation(gameEngine.getRenderer(), actualWidth, actualHeight, SDL_LOGICAL_PRESENTATION_DISABLED);
   
-  INPUT_INFO("Updated to native resolution: " + std::to_string(actualWidth) + "x" + std::to_string(actualHeight));
-  #endif
+   INPUT_INFO("Updated to native resolution: " + std::to_string(actualWidth) + "x" + std::to_string(actualHeight));
+   #endif
+   
+   // Reload fonts for new display configuration
+   INPUT_INFO("Reloading fonts for display configuration change...");
+   FontManager& fontManager = FontManager::Instance();
+   if (!fontManager.reloadFontsForDisplay("res/fonts", gameEngine.getLogicalWidth(), gameEngine.getLogicalHeight())) {
+     INPUT_ERROR("Failed to reinitialize font system after window resize");
+   } else {
+     INPUT_INFO("Font system reinitialized successfully after window resize");
+   }
+}
+
+void InputManager::onDisplayChange(const SDL_Event& event) {
+  // Centralized display-change pipeline:
+  // - Log event and, on Apple, refresh fonts due to DPI/content-scale changes
+  // - Normalize UI scale (UIManager::setGlobalScale(1.0f))
+  // - Force UI layout refresh and reload fonts using GameEngine logical size
+
+  // Cache GameEngine reference for better performance
+  GameEngine& gameEngine = GameEngine::Instance();
   
-  // Update UI systems with consistent scaling
+  const char* eventName = "Unknown";
+  switch (event.type) {
+    case SDL_EVENT_DISPLAY_ORIENTATION:
+      eventName = "Orientation Change";
+      break;
+    case SDL_EVENT_DISPLAY_ADDED:
+      eventName = "Display Added";
+      break;
+    case SDL_EVENT_DISPLAY_REMOVED:
+      eventName = "Display Removed";
+      break;
+    case SDL_EVENT_DISPLAY_MOVED:
+      eventName = "Display Moved";
+      break;
+    case SDL_EVENT_DISPLAY_CONTENT_SCALE_CHANGED:
+      eventName = "Content Scale Changed";
+      break;
+  }
+  
+  INPUT_INFO("Display event detected: " + std::string(eventName));
+  
+  // On Apple platforms, display changes often invalidate font textures
+  // due to different DPI scaling or context changes
+  #ifdef __APPLE__
+  INPUT_INFO("Apple platform: Reinitializing font system due to display change...");
+  #else
+  INPUT_INFO("Non-Apple platform: Display change handled by existing window resize logic");
+  #endif
+
+  // Update UI systems with consistent scaling and reload fonts ONCE using logical dimensions
   try {
-    // Update UIManager with consistent 1.0 scale (our logical resolution handles sizing)
     UIManager& uiManager = UIManager::Instance();
     uiManager.setGlobalScale(1.0f);
     INPUT_INFO("Updated UIManager with consistent 1.0 scale");
-    
-    // Force UI layout recalculation by cleaning up and reinitializing for the new scale
-    // This ensures all UI elements are repositioned correctly
+
     uiManager.cleanupForStateTransition();
-    
-    // Update FontManager with logical display characteristics (not actual window size)
+
     FontManager& fontManager = FontManager::Instance();
-    if (fontManager.refreshFontsForDisplay("res/fonts", gameEngine.getLogicalWidth(), gameEngine.getLogicalHeight())) {
-      INPUT_INFO("Successfully refreshed fonts for logical display size");
+    if (!fontManager.reloadFontsForDisplay("res/fonts", gameEngine.getLogicalWidth(), gameEngine.getLogicalHeight())) {
+      INPUT_WARN("Failed to reload fonts for new display size");
     } else {
-      INPUT_WARN("Failed to refresh fonts for logical display size");
+      INPUT_INFO("Successfully reloaded fonts for new display size");
     }
-    
   } catch (const std::exception& e) {
     INPUT_ERROR("Error updating UI scaling after window resize: " + std::string(e.what()));
   }
@@ -524,33 +585,30 @@ void InputManager::onWindowResize(const SDL_Event& event) {
 
 void InputManager::clean() {
   if(m_gamePadInitialized) {
-    [[maybe_unused]] int gamepadCount{0};
+    int gamepadCount{0};
     // Close all gamepads if detected
     for (auto& gamepad : m_joysticks) {
-      SDL_CloseGamepad(gamepad);
-      gamepadCount++;
+      if (gamepad) {
+        SDL_CloseGamepad(gamepad);
+        gamepadCount++;
+      }
     }
-
-    // No need to delete joystick values - smart pointers handle it
-    // m_joystickValues will be cleared below
 
     m_joysticks.clear();
     m_joystickValues.clear();
     m_gamePadInitialized = false;
     SDL_QuitSubSystem(SDL_INIT_GAMEPAD);
     INPUT_INFO(std::to_string(gamepadCount) + " gamepads freed");
-    INPUT_INFO("InputManager resources cleaned");
 
   } else {
     INPUT_INFO("No gamepads to free");
-    INPUT_INFO("InputManager resources cleaned");
-    SDL_QuitSubSystem(SDL_INIT_GAMEPAD);
   }
 
-  // Clear all button states and mouse states (previously done in destructor)
+  // Clear all button states and mouse states
   m_buttonStates.clear();
   m_mouseButtonStates.clear();
 
   // Set shutdown flag
   m_isShutdown = true;
+  INPUT_INFO("InputManager resources cleaned");
 }

@@ -230,9 +230,9 @@ AIManager::Instance().setPlayerForDistanceOptimization(player);
 ### Game Loop Integration
 
 ```cpp
-void GameState::update() {
+void GameState::update(float dt) {
     // Update player first
-    player->update();
+    player->update(dt);
     
     // AI Manager handles all entity updates automatically via GameEngine
     // No manual AIManager::update() call needed in game states
@@ -688,7 +688,6 @@ void GameState::exit() {
     // Unregister entities before state change
     for (auto& npc : m_npcs) {
         AIManager::Instance().unregisterEntityFromUpdates(npc);
-        AIManager::Instance().unassignBehaviorFromEntity(npc);
     }
 
     // Note: Don't clean AIManager - it's used across game states

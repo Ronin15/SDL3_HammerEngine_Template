@@ -36,6 +36,9 @@ class WeatherEvent;
 class SceneChangeEvent;
 class NPCSpawnEvent;
 class ResourceChangeEvent;
+class WorldEvent;
+class CameraEvent;
+class HarvestResourceEvent;
 class EventFactory;
 class Entity;
 
@@ -52,8 +55,11 @@ enum class EventTypeId : uint8_t {
   NPCSpawn = 2,
   ParticleEffect = 3,
   ResourceChange = 4,
-  Custom = 5,
-  COUNT = 6
+  World = 5,
+  Camera = 6,
+  Harvest = 7,
+  Custom = 8,
+  COUNT = 9
 };
 
 /**
@@ -261,6 +267,24 @@ public:
                                    std::shared_ptr<ResourceChangeEvent> event);
 
   /**
+   * @brief Registers a world event with the event system
+   * @param name Unique name identifier for the world event
+   * @param event Shared pointer to the world event to register
+   * @return true if registration successful, false otherwise
+   */
+  bool registerWorldEvent(const std::string &name,
+                         std::shared_ptr<WorldEvent> event);
+
+  /**
+   * @brief Registers a camera event with the event system
+   * @param name Unique name identifier for the camera event
+   * @param event Shared pointer to the camera event to register
+   * @return true if registration successful, false otherwise
+   */
+  bool registerCameraEvent(const std::string &name,
+                          std::shared_ptr<CameraEvent> event);
+
+  /**
    * @brief Retrieves an event by its name
    * @param name Name of the event to retrieve
    * @return Shared pointer to the event, or nullptr if not found
@@ -326,6 +350,9 @@ public:
   void updateSceneChangeEvents();
   void updateNPCSpawnEvents();
   void updateResourceChangeEvents();
+  void updateWorldEvents();
+  void updateCameraEvents();
+  void updateHarvestEvents();
   void updateCustomEvents();
 
   // Threading control
@@ -373,6 +400,21 @@ public:
                                  float intensity = 1.0f, float duration = -1.0f,
                                  const std::string &groupTag = "");
 
+  // World event convenience methods
+  bool createWorldLoadedEvent(const std::string &name, const std::string &worldId,
+                             int width, int height);
+  bool createWorldUnloadedEvent(const std::string &name, const std::string &worldId);
+  bool createTileChangedEvent(const std::string &name, int x, int y,
+                             const std::string &changeType);
+  bool createWorldGeneratedEvent(const std::string &name, const std::string &worldId,
+                                int width, int height, float generationTime);
+
+  // Camera event convenience methods
+  bool createCameraMovedEvent(const std::string &name, const Vector2D &newPos,
+                             const Vector2D &oldPos);
+  bool createCameraModeChangedEvent(const std::string &name, int newMode, int oldMode);
+  bool createCameraShakeEvent(const std::string &name, float duration, float intensity);
+
   // Alternative trigger methods (aliases for compatibility)
   bool triggerWeatherChange(const std::string &weatherType,
                             float transitionTime = 5.0f) const {
@@ -403,6 +445,9 @@ public:
   void compactEventStorage();
   void clearEventPools();
 
+  // Test-only methods
+  void clearAllEvents();
+
 private:
   EventManager() = default;
 
@@ -429,6 +474,8 @@ private:
   EventPool<SceneChangeEvent> m_sceneChangePool;
   EventPool<NPCSpawnEvent> m_npcSpawnPool;
   EventPool<ResourceChangeEvent> m_resourceChangePool;
+  EventPool<WorldEvent> m_worldPool;
+  EventPool<CameraEvent> m_cameraPool;
 
   // Handler storage (type-indexed for speed)
   std::array<std::vector<FastEventHandler>,
@@ -450,6 +497,12 @@ private:
 
   // Timing
   std::atomic<uint64_t> m_lastUpdateTime{0};
+
+  // Thread allocation tracking for debug output
+  std::atomic<size_t> m_lastOptimalWorkerCount{0};
+  std::atomic<size_t> m_lastAvailableWorkers{0};
+  std::atomic<size_t> m_lastEventBudget{0};
+  std::atomic<bool> m_lastWasThreaded{false};
 
   // Double buffering for lock-free reads during updates
   std::atomic<size_t> m_currentBuffer{0};

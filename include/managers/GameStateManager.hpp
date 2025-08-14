@@ -7,6 +7,8 @@
 #define GAME_STATE_MANAGER_HPP
 
 #include <memory>
+#include <string>
+#include <unordered_map>
 #include <vector>
 #include "gameStates/GameState.hpp"
 
@@ -15,22 +17,33 @@ class GameStateManager {
  public:
   GameStateManager();
   void addState(std::unique_ptr<GameState> state);
-  void setState(const std::string& stateName);
+  void pushState(const std::string& stateName);
+  void popState();
+  void changeState(const std::string& stateName); // Pops the current state and pushes a new one
+  // Use requestStateChange() for all runtime transitions (from update/input/UI callbacks).
+  // Deferred processing at end of update avoids destroying the active state mid-cycle.
+  void requestStateChange(const std::string& stateName); // Request deferred state change
+
   void update(float deltaTime);
   void render();
   void handleInput();
+
   bool hasState(const std::string& stateName) const;
   std::shared_ptr<GameState> getState(const std::string& stateName) const;
   void removeState(const std::string& stateName);
   void clearAllStates();
 
-  private:
-    std::vector<std::shared_ptr<GameState>> states{}; // STL vector for game states
-    // Non-owning observer to the current active state
-    // This state is owned by the 'states' container above
-    std::weak_ptr<GameState> currentState;
-    float m_lastDeltaTime{0.0f}; // Store deltaTime from update to pass to render
+ private:
+  // All registered states, available for activation
+  std::unordered_map<std::string, std::shared_ptr<GameState>> m_registeredStates;
+  // The stack of active states
+  std::vector<std::shared_ptr<GameState>> m_activeStates;
 
+  float m_lastDeltaTime{0.0f}; // Store deltaTime from update to pass to render
+  
+  // Deferred state change mechanism
+  std::string m_pendingStateChange;
+  bool m_hasPendingStateChange{false};
 };
 
 #endif  // GAME_STATE_MANAGER_HPP

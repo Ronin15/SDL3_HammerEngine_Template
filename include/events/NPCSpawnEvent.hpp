@@ -78,6 +78,7 @@ public:
     // Event identification
     std::string getName() const override { return m_name; }
     std::string getType() const override { return "NPCSpawn"; }
+    std::string getTypeName() const override { return "NPCSpawnEvent"; }
 
     // Message handling for spawn requests
     void onMessage(const std::string& message) override;

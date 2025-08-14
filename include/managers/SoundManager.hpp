@@ -12,6 +12,7 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
+#include <mutex>
 
 class SoundManager {
 public:
@@ -163,11 +164,15 @@ private:
 
   // State management
   bool m_initialized{false};
+  std::atomic<bool> m_sfxLoaded{false};
+  std::atomic<bool> m_musicLoaded{false};
+  std::mutex m_loadMutex{};
   std::atomic<bool> m_isShutdown{false};
   float m_musicVolume{1.0f};
   float m_sfxVolume{1.0f};
 
   // Internal helper methods
+  bool loadAudio(const std::string &filePath, const std::string &idPrefix);
   MIX_Track *createAndConfigureTrack(MIX_Group *group, const std::string &tag);
   void cleanupStoppedTracks();
   std::vector<std::string> getSupportedExtensions() const;

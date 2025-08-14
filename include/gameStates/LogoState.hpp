@@ -12,10 +12,13 @@ class LogoState : public GameState {
  public:
   bool enter() override;
   void update(float deltaTime) override;
-  void render(float deltaTime) override;
+  void render() override;
   void handleInput() override;
   bool exit() override;
   std::string getName() const override;
+
+ private:
+  float m_stateTimer{0.0f};
 };
 
 #endif  // LOGO_STATE_HPP

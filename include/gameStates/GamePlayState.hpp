@@ -9,16 +9,17 @@
 #include "entities/Player.hpp"
 #include "gameStates/GameState.hpp"
 #include "utils/ResourceHandle.hpp"
+#include "utils/Camera.hpp"
 #include <memory>
 
 class GamePlayState : public GameState {
 public:
   GamePlayState()
       : m_transitioningToPause{false}, mp_Player{nullptr},
-        m_inventoryVisible{false} {}
+        m_inventoryVisible{false}, m_initialized{false} {}
   bool enter() override;
   void update(float deltaTime) override;
-  void render(float deltaTime) override;
+  void render() override;
   void handleInput() override;
   bool exit() override;
   std::string getName() const override;
@@ -28,6 +29,14 @@ private:
       false}; // Flag to indicate we're transitioning to pause state
   std::shared_ptr<Player> mp_Player{nullptr}; // Player object
   bool m_inventoryVisible{false}; // Flag to control inventory UI visibility
+  bool m_initialized{false}; // Flag to track if state is already initialized (for pause/resume)
+  
+  // Camera for world navigation and player following
+  std::unique_ptr<HammerEngine::Camera> m_camera{nullptr};
+  
+  // Camera transformation state (calculated in update, used in render)
+  float m_cameraOffsetX{0.0f};
+  float m_cameraOffsetY{0.0f};
 
   // Resource handles resolved at initialization (resource handle system
   // compliance)
@@ -38,7 +47,6 @@ private:
 
   // Inventory UI methods
   void initializeInventoryUI();
-  void updateInventoryUI();
   void toggleInventoryDisplay();
   void addDemoResource(HammerEngine::ResourceHandle resourceHandle,
                        int quantity);
@@ -46,6 +54,13 @@ private:
                           int quantity);
   void
   initializeResourceHandles(); // Resolve names to handles during initialization
+  
+  // Camera management methods
+  void initializeWorld();
+  void initializeCamera();
+  void updateCamera(float deltaTime);
+  void setupCameraForWorld();
+  void applyCameraTransformation();
 };
 
 #endif // GAME_PLAY_STATE_HPP

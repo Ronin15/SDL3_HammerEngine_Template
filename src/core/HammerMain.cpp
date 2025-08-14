@@ -3,13 +3,13 @@
  * Licensed under the MIT License - see LICENSE file for details
 */
 
-#include <string>
-#include <string_view>
-#include <cstdlib>
 #include "core/GameEngine.hpp"
 #include "core/ThreadSystem.hpp"
 #include "core/GameLoop.hpp"
 #include "core/Logger.hpp"
+#include <string>
+#include <string_view>
+#include <cstdlib>
 
 const int WINDOW_WIDTH{1920};
 const int WINDOW_HEIGHT{1080};
@@ -48,6 +48,12 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char* argv[]) {
   // Initialize GameEngine
   if (!GameEngine::Instance().init(GAME_NAME, WINDOW_WIDTH, WINDOW_HEIGHT, false)) {
     GAMEENGINE_CRITICAL("Init " + GAME_NAME + " Failed: " + std::string(SDL_GetError()));
+    
+    // CRITICAL: Always clean up on init failure to prevent memory corruption
+    // during static destruction of partially initialized managers
+    GAMEENGINE_INFO("Cleaning up after initialization failure");
+    GameEngine::Instance().clean();
+    
     return -1;
   }
 
@@ -61,20 +67,15 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char* argv[]) {
   GameEngine::Instance().setGameLoop(gameLoop);
 
   // Configure TimestepManager for platform-specific frame limiting
-  // This must happen after GameLoop is set but before the game starts running
-  const std::string sessionTypeRaw = std::getenv("XDG_SESSION_TYPE") ? std::getenv("XDG_SESSION_TYPE") : "";
-  const std::string waylandDisplayRaw = std::getenv("WAYLAND_DISPLAY") ? std::getenv("WAYLAND_DISPLAY") : "";
-
-  std::string_view sessionType = sessionTypeRaw;
-  bool hasWaylandDisplay = !waylandDisplayRaw.empty();
-  bool isWayland = (sessionType == "wayland") || hasWaylandDisplay;
-
+  // Wayland: use software frame limiting; Others: prefer hardware VSync
+  const char* sessionType = std::getenv("XDG_SESSION_TYPE");
+  const char* waylandDisplay = std::getenv("WAYLAND_DISPLAY");
+  const bool isWayland = (sessionType && std::string_view(sessionType) == "wayland") || (waylandDisplay && *waylandDisplay);
+  gameLoop->getTimestepManager().setSoftwareFrameLimiting(isWayland);
   if (isWayland) {
-    gameLoop->getTimestepManager().setSoftwareFrameLimiting(true);
-    GAMELOOP_INFO("Configured TimestepManager for Wayland software frame limiting");
+    GAMELOOP_INFO("Wayland detected: using software frame limiting (VSync off)");
   } else {
-    gameLoop->getTimestepManager().setSoftwareFrameLimiting(false);
-    GAMELOOP_INFO("Configured TimestepManager for hardware VSync");
+    GAMELOOP_INFO("Non-Wayland: relying on hardware VSync; software limiting off");
   }
 
   // Cache GameEngine reference for better performance in game loop
@@ -115,6 +116,10 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char* argv[]) {
   });
 
   GAMELOOP_INFO("Starting Game Loop");
+
+  // Push initial state after GameLoop is fully configured but before starting
+  // This ensures the game loop is ready to handle state updates
+  GameEngine::Instance().getGameStateManager()->pushState("LogoState");
 
   // Run the game loop - this blocks until the game ends
   if (!gameLoop->run()) {

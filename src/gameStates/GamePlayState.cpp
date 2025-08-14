@@ -11,30 +11,59 @@
 #include "managers/InputManager.hpp"
 #include "managers/ResourceTemplateManager.hpp"
 #include "managers/UIManager.hpp"
+#include "managers/WorldManager.hpp"
+#include "world/WorldData.hpp"
+#include "utils/Camera.hpp"
+#include <algorithm>
 #include <iostream>
+#include <random>
+
 
 bool GamePlayState::enter() {
-  // Create the player
-  mp_Player = std::make_shared<Player>();
-  mp_Player->initializeInventory(); // Initialize after construction
-
-  // Initialize the inventory UI first
-  initializeInventoryUI();
-
-  // Initialize resource handles (resolve names to handles once during
-  // initialization)
+  // Reset transition flag when entering state
+  m_transitioningToPause = false;
+  
+  // Check if already initialized (resuming from pause)
+  if (m_initialized) {
+    // No longer need to unpause GameLoop - PauseState simply pops off the stack
+    // GameStateManager will resume updating this state automatically
+    
+    return true;
+  }
+  
+  // Initialize resource handles first
   initializeResourceHandles();
+  
+  // Create player and position at screen center
+  mp_Player = std::make_shared<Player>();
+  mp_Player->initializeInventory();
+  
+  // Position player at screen center
+  const auto &gameEngine = GameEngine::Instance();
+  Vector2D screenCenter(gameEngine.getLogicalWidth() / 2, gameEngine.getLogicalHeight() / 2);
+  mp_Player->setPosition(screenCenter);
+
+  // Initialize the inventory UI
+  initializeInventoryUI();
+  
+  // Initialize world and camera
+  initializeWorld();
+  initializeCamera();
+
+  // Mark as initialized for future pause/resume cycles
+  m_initialized = true;
 
   return true;
 }
 
 void GamePlayState::update([[maybe_unused]] float deltaTime) {
-  // std::cout << "Updating GAME State\n";
-
   // Update player if it exists
   if (mp_Player) {
     mp_Player->update(deltaTime);
   }
+  
+  // Update camera (follows player automatically)
+  updateCamera(deltaTime);
 
   // Update UI
   auto &ui = UIManager::Instance();
@@ -42,53 +71,73 @@ void GamePlayState::update([[maybe_unused]] float deltaTime) {
     ui.update(deltaTime);
   }
 
-  // Update inventory display
-  updateInventoryUI();
+  // Inventory display is now updated automatically via data binding.
 }
 
-void GamePlayState::render([[maybe_unused]] float deltaTime) {
-  // std::cout << "Rendering GAME State\n";
+void GamePlayState::render() {
+  // Get renderer using the standard pattern (consistent with other states)
+  auto &gameEngine = GameEngine::Instance();
+  SDL_Renderer *renderer = gameEngine.getRenderer();
 
   // Cache manager references for better performance
   FontManager &fontMgr = FontManager::Instance();
-  const auto &gameEngine = GameEngine::Instance();
 
+  // Get camera view area for culling and rendering
+  HammerEngine::Camera::ViewRect viewRect = m_camera->getViewRect();
+
+  // Render world using camera coordinate transformations
+  auto &worldMgr = WorldManager::Instance();
+  if (worldMgr.isInitialized() && worldMgr.hasActiveWorld()) {
+    worldMgr.render(renderer, 
+                   viewRect.x, viewRect.y,  // Camera view area
+                   viewRect.width, viewRect.height);
+  }
+
+  // Render player using camera coordinate transformations
+  if (mp_Player) {
+    mp_Player->render(m_camera.get());  // Pass camera for coordinate transformation
+  }
+
+  // Render UI components (no camera transformation)
   SDL_Color fontColor = {200, 200, 200, 255};
   fontMgr.drawText("Game State with Inventory Demo <-> [P] Pause <-> [B] Main "
                    "Menu <-> [I] Toggle Inventory <-> [1-5] Add Items",
                    "fonts_Arial",
                    gameEngine.getLogicalWidth() / 2, // Center horizontally
-                   20, fontColor, gameEngine.getRenderer());
+                   20, fontColor, renderer);
 
-  mp_Player->render();
-
-  // Render UI components
   auto &ui = UIManager::Instance();
-  ui.render(gameEngine.getRenderer());
+  ui.render(renderer);
 }
 bool GamePlayState::exit() {
-  std::cout << "Hammer Game Engine - Exiting GAME State\n";
-
-  // Clean up UI components
-  auto &ui = UIManager::Instance();
-  ui.removeComponentsWithPrefix("gameplay_");
-
-  // Only clear specific textures if we're not transitioning to pause state
-  if (!m_transitioningToPause) {
-    // Reset player
-    mp_Player = nullptr;
-    // TODO need to evaluate if this entire block is needed. I want to keep all
-    // texture in the MAP
-    //  and not clear any as they may be needed. left over from testing but not
-    //  hurting anything currently.
-    std::cout << "Hammer Game Engine - reset player pointer to null, not going "
-                 "to pause\n";
-  } else {
-    std::cout << "Hammer Game Engine - Not clearing player and textures, "
-                 "transitioning to pause\n";
+  if (m_transitioningToPause) {
+    // Transitioning to pause - PRESERVE ALL GAMEPLAY DATA
+    // PauseState will overlay on top, and GameStateManager will only update PauseState
+    
+    // Reset the flag after using it
+    m_transitioningToPause = false;
+    
+    // Return early - NO cleanup when going to pause, keep m_initialized = true
+    return true;
   }
 
-  // GamePlayState doesn't create UI components, so no UI cleanup needed
+  // Full exit (going to main menu, other states, or shutting down)
+  
+  // Unload the world when fully exiting gameplay
+  auto& worldManager = WorldManager::Instance();
+  if (worldManager.isInitialized() && worldManager.hasActiveWorld()) {
+    worldManager.unloadWorld();
+  }
+
+  // Full UI cleanup using standard pattern
+  auto &ui = UIManager::Instance();
+  ui.prepareForStateTransition();
+  
+  // Reset player
+  mp_Player = nullptr;
+
+  // Reset initialization flag for next fresh start
+  m_initialized = false;
 
   return true;
 }
@@ -105,16 +154,19 @@ void GamePlayState::handleInput() {
     auto *gameStateManager = gameEngine.getGameStateManager();
     if (!gameStateManager->hasState("PauseState")) {
       gameStateManager->addState(std::make_unique<PauseState>());
-      std::cout << "Hammer Game Engine - Created PAUSE State\n";
     }
+    // Stop player movement to prevent jittering during pause
+    if (mp_Player) {
+      mp_Player->setVelocity(Vector2D(0, 0));
+    }
+    
     m_transitioningToPause = true; // Set flag before transitioning
-    gameStateManager->setState("PauseState");
+    gameStateManager->pushState("PauseState");
   }
 
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_B)) {
-    std::cout << "Hammer Game Engine - Transitioning to MainMenuState...\n";
     const auto &gameEngine = GameEngine::Instance();
-    gameEngine.getGameStateManager()->setState("MainMenuState");
+    gameEngine.getGameStateManager()->changeState("MainMenuState");
   }
 
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_ESCAPE)) {
@@ -143,6 +195,30 @@ void GamePlayState::handleInput() {
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_5)) {
     removeDemoResource(m_goldHandle, 5);
   }
+
+  // Mouse input for world interaction
+    if (inputMgr.getMouseButtonState(LEFT) && m_camera) {
+        Vector2D mousePos = inputMgr.getMousePosition();
+        auto& ui = UIManager::Instance();
+
+        if (!ui.isClickOnUI(mousePos)) {
+            Vector2D worldPos = m_camera->screenToWorld(mousePos);
+            int tileX = static_cast<int>(worldPos.getX() / 32);
+            int tileY = static_cast<int>(worldPos.getY() / 32);
+
+            auto& worldMgr = WorldManager::Instance();
+            if (worldMgr.isValidPosition(tileX, tileY)) {
+                const auto* tile = worldMgr.getTileAt(tileX, tileY);
+                if (tile) {
+                    // Log tile information for now
+                    // Later, this could trigger events or actions
+                    std::cout << "Clicked tile (" << tileX << ", " << tileY << ") - Biome: " 
+                              << static_cast<int>(tile->biome) << ", Obstacle: " 
+                              << static_cast<int>(tile->obstacleType) << std::endl;
+                }
+            }
+        }
+    }
 }
 
 void GamePlayState::initializeInventoryUI() {
@@ -150,84 +226,80 @@ void GamePlayState::initializeInventoryUI() {
   const auto &gameEngine = GameEngine::Instance();
   int windowWidth = gameEngine.getLogicalWidth();
 
-  // Create inventory panel (initially hidden)
-  int inventoryWidth = 300;
-  int inventoryHeight = 420; // Increased height to accommodate better spacing
+  // Create inventory panel (initially hidden) matching EventDemoState layout
+  int inventoryWidth = 280;  // Match EventDemoState width
+  int inventoryHeight = 400; // Match EventDemoState height
   int inventoryX = windowWidth - inventoryWidth - 20;
-  int inventoryY = 60;
+  int inventoryY = 170;  // Match EventDemoState Y position
 
   ui.createPanel("gameplay_inventory_panel",
                  {inventoryX, inventoryY, inventoryWidth, inventoryHeight});
-  ui.createTitle("gameplay_inventory_title",
-                 {inventoryX + 10, inventoryY + 10, inventoryWidth - 20, 30},
-                 "Player Inventory");
-
-  // Create inventory list for displaying items with better spacing
-  ui.createList("gameplay_inventory_list",
-                {inventoryX + 10, inventoryY + 50, inventoryWidth - 20, 260});
-
-  // Create resource status labels with better vertical spacing
-  ui.createLabel("gameplay_gold_label",
-                 {inventoryX + 10, inventoryY + 330, inventoryWidth - 20, 20},
-                 "Gold: 0");
-  ui.createLabel("gameplay_potions_label",
-                 {inventoryX + 10, inventoryY + 355, inventoryWidth - 20, 20},
-                 "Health Potions: 0");
-  ui.createLabel("gameplay_total_items",
-                 {inventoryX + 10, inventoryY + 380, inventoryWidth - 20, 20},
-                 "Total Items: 0");
-
-  // Hide inventory initially
   ui.setComponentVisible("gameplay_inventory_panel", false);
+  
+  ui.createTitle("gameplay_inventory_title",
+                 {inventoryX + 10, inventoryY + 25, inventoryWidth - 20, 35},
+                 "Player Inventory");
   ui.setComponentVisible("gameplay_inventory_title", false);
+  
+  ui.createLabel("gameplay_inventory_status",
+                 {inventoryX + 10, inventoryY + 75, inventoryWidth - 20, 25},
+                 "Capacity: 0/50");
+  ui.setComponentVisible("gameplay_inventory_status", false);
+
+  // Create inventory list for displaying items matching EventDemoState
+  ui.createList("gameplay_inventory_list",
+                {inventoryX + 10, inventoryY + 110, inventoryWidth - 20, 270});
   ui.setComponentVisible("gameplay_inventory_list", false);
-  ui.setComponentVisible("gameplay_gold_label", false);
-  ui.setComponentVisible("gameplay_potions_label", false);
-  ui.setComponentVisible("gameplay_total_items", false);
+
+  // --- DATA BINDING SETUP ---
+  // Bind the inventory capacity label to a function that gets the data
+  ui.bindText("gameplay_inventory_status", [this]() -> std::string {
+      if (!mp_Player || !mp_Player->getInventory()) {
+          return "Capacity: 0/0";
+      }
+      const auto* inventory = mp_Player->getInventory();
+      int used = inventory->getUsedSlots();
+      int max = inventory->getMaxSlots();
+      return "Capacity: " + std::to_string(used) + "/" + std::to_string(max);
+  });
+
+  // Bind the inventory list to a function that gets the items, sorts them, and returns them
+  ui.bindList("gameplay_inventory_list", [this]() -> std::vector<std::string> {
+      if (!mp_Player || !mp_Player->getInventory()) {
+          return {"(Empty)"};
+      }
+      
+      const auto* inventory = mp_Player->getInventory();
+      auto allResources = inventory->getAllResources();
+
+      if (allResources.empty()) {
+          return {"(Empty)"};
+      }
+
+      std::vector<std::string> items;
+      std::vector<std::pair<std::string, int>> sortedResources;
+      for (const auto& [resourceHandle, quantity] : allResources) {
+          if (quantity > 0) {
+              auto resourceTemplate = ResourceTemplateManager::Instance().getResourceTemplate(resourceHandle);
+              std::string resourceName = resourceTemplate ? resourceTemplate->getName() : "Unknown";
+              sortedResources.emplace_back(resourceName, quantity);
+          }
+      }
+      std::sort(sortedResources.begin(), sortedResources.end());
+
+      for (const auto& [resourceId, quantity] : sortedResources) {
+          items.push_back(resourceId + " x" + std::to_string(quantity));
+      }
+      
+      if (items.empty()) {
+          return {"(Empty)"};
+      }
+      
+      return items;
+  });
 }
 
-void GamePlayState::updateInventoryUI() {
-  if (!mp_Player || !mp_Player->getInventory()) {
-    return;
-  }
 
-  auto *inventory = mp_Player->getInventory();
-  UIManager &ui = UIManager::Instance();
-
-  int goldCount = 0;
-  if (m_goldHandle.isValid()) {
-    goldCount = inventory->getResourceQuantity(m_goldHandle);
-  }
-
-  int potionCount = 0;
-  if (m_healthPotionHandle.isValid()) {
-    potionCount = inventory->getResourceQuantity(m_healthPotionHandle);
-  }
-
-  size_t totalItems = inventory->getUsedSlots();
-
-  ui.setText("gameplay_gold_label", "Gold: " + std::to_string(goldCount));
-  ui.setText("gameplay_potions_label",
-             "Health Potions: " + std::to_string(potionCount));
-  ui.setText("gameplay_total_items",
-             "Total Items: " + std::to_string(totalItems) + "/" +
-                 std::to_string(inventory->getMaxSlots()));
-
-  // Update inventory list
-  ui.clearList("gameplay_inventory_list");
-  auto allResources = inventory->getAllResources();
-  for (const auto &[resourceHandle, quantity] : allResources) {
-    if (quantity > 0) {
-      auto resourceTemplate =
-          ResourceTemplateManager::Instance().getResourceTemplate(
-              resourceHandle);
-      std::string displayName =
-          resourceTemplate ? resourceTemplate->getName() : "Unknown Resource";
-      ui.addListItem("gameplay_inventory_list",
-                     displayName + " x" + std::to_string(quantity));
-    }
-  }
-}
 
 void GamePlayState::toggleInventoryDisplay() {
   auto &ui = UIManager::Instance();
@@ -235,62 +307,34 @@ void GamePlayState::toggleInventoryDisplay() {
 
   ui.setComponentVisible("gameplay_inventory_panel", m_inventoryVisible);
   ui.setComponentVisible("gameplay_inventory_title", m_inventoryVisible);
+  ui.setComponentVisible("gameplay_inventory_status", m_inventoryVisible);
   ui.setComponentVisible("gameplay_inventory_list", m_inventoryVisible);
-  ui.setComponentVisible("gameplay_gold_label", m_inventoryVisible);
-  ui.setComponentVisible("gameplay_potions_label", m_inventoryVisible);
-  ui.setComponentVisible("gameplay_total_items", m_inventoryVisible);
-
-  std::cout << "Inventory " << (m_inventoryVisible ? "shown" : "hidden")
-            << std::endl;
 }
 
 void GamePlayState::addDemoResource(HammerEngine::ResourceHandle resourceHandle,
                                     int quantity) {
   if (!mp_Player) {
-    std::cout << "Player not available for resource addition" << std::endl;
     return;
   }
 
   if (!resourceHandle.isValid()) {
-    std::cout << "Invalid resource handle" << std::endl;
     return;
   }
 
-  bool success =
-      mp_Player->getInventory()->addResource(resourceHandle, quantity);
-  if (success) {
-    std::cout << "Added " << quantity
-              << " resources (handle: " << resourceHandle.toString()
-              << ") to player inventory" << std::endl;
-  } else {
-    std::cout << "Failed to add resources to inventory (might be full)"
-              << std::endl;
-  }
+  mp_Player->getInventory()->addResource(resourceHandle, quantity);
 }
 
 void GamePlayState::removeDemoResource(
     HammerEngine::ResourceHandle resourceHandle, int quantity) {
   if (!mp_Player) {
-    std::cout << "Player not available for resource removal" << std::endl;
     return;
   }
 
   if (!resourceHandle.isValid()) {
-    std::cout << "Invalid resource handle" << std::endl;
     return;
   }
 
-  bool success =
-      mp_Player->getInventory()->removeResource(resourceHandle, quantity);
-  if (success) {
-    std::cout << "Removed " << quantity
-              << " resources (handle: " << resourceHandle.toString()
-              << ") from player inventory" << std::endl;
-  } else {
-    std::cout
-        << "Failed to remove resources from inventory (insufficient quantity)"
-        << std::endl;
-  }
+  mp_Player->getInventory()->removeResource(resourceHandle, quantity);
 }
 
 void GamePlayState::initializeResourceHandles() {
@@ -316,4 +360,120 @@ void GamePlayState::initializeResourceHandles() {
   auto woodResource = templateManager.getResourceByName("wood");
   m_woodHandle =
       woodResource ? woodResource->getHandle() : HammerEngine::ResourceHandle();
+}
+
+void GamePlayState::initializeWorld() {
+  // Initialize and load a new world following EventDemoState pattern
+  auto& worldManager = WorldManager::Instance();
+  if (!worldManager.isInitialized()) {
+    if (!worldManager.init()) {
+      std::cerr << "Failed to initialize WorldManager" << std::endl;
+      return;
+    }
+  }
+  
+  // Create a default world configuration
+  // TODO: Make this configurable or load from settings
+  HammerEngine::WorldGenerationConfig config;
+  config.width = 100;
+  config.height = 100;
+  
+  // Generate a random seed for world variety
+  std::random_device rd;
+  config.seed = rd();
+  
+  // Set reasonable defaults for world generation
+  config.elevationFrequency = 0.05f;
+  config.humidityFrequency = 0.03f;
+  config.waterLevel = 0.3f;
+  config.mountainLevel = 0.7f;
+  
+  if (!worldManager.loadNewWorld(config)) {
+    std::cerr << "Failed to load new world in GamePlayState" << std::endl;
+    // Continue anyway like EventDemoState - game can function without world
+  }
+}
+
+void GamePlayState::initializeCamera() {
+  const auto &gameEngine = GameEngine::Instance();
+  
+  // Initialize camera at player's position to avoid any interpolation jitter
+  Vector2D playerPosition = mp_Player ? mp_Player->getPosition() : Vector2D(0, 0);
+  
+  // Create camera starting at player position with logical viewport dimensions
+  m_camera = std::make_unique<HammerEngine::Camera>(
+    playerPosition.getX(), playerPosition.getY(), 
+    static_cast<float>(gameEngine.getLogicalWidth()),
+    static_cast<float>(gameEngine.getLogicalHeight())
+  );
+  
+  // Configure camera to follow player
+  if (mp_Player && m_camera) {
+    // DISABLE EVENT FIRING for testing jitter
+    m_camera->setEventFiringEnabled(false);
+    
+    // Set target and enable follow mode
+    std::weak_ptr<Entity> playerAsEntity = std::static_pointer_cast<Entity>(mp_Player);
+    m_camera->setTarget(playerAsEntity);
+    m_camera->setMode(HammerEngine::Camera::Mode::Follow);
+    
+    // Set up camera configuration for smooth following
+    HammerEngine::Camera::Config config;
+    config.followSpeed = 2.5f;         // Smooth following speed
+    config.deadZoneRadius = 0.0f;      // No dead zone - always follow
+    config.smoothingFactor = 0.85f;    // Exponential smoothing
+    config.maxFollowDistance = 9999.0f; // No distance limit
+    config.clampToWorldBounds = true;  // ENABLE clamping - player is now bounded so no jitter
+    m_camera->setConfig(config);
+    
+    // Set up world bounds for camera (called after world is loaded)
+    setupCameraForWorld();
+  }
+}
+
+void GamePlayState::updateCamera(float deltaTime) {
+  if (m_camera) {
+    m_camera->update(deltaTime);
+  }
+}
+
+void GamePlayState::setupCameraForWorld() {
+  if (!m_camera) {
+    return;
+  }
+  
+  // Get actual world bounds from WorldManager
+  const WorldManager& worldManager = WorldManager::Instance();
+  
+  HammerEngine::Camera::Bounds worldBounds;
+  float minX, minY, maxX, maxY;
+  
+  if (worldManager.getWorldBounds(minX, minY, maxX, maxY)) {
+    // Convert tile coordinates to pixel coordinates (WorldManager returns tile coords)
+    // TileRenderer uses 32px per tile
+    const float TILE_SIZE = 32.0f;
+    worldBounds.minX = minX * TILE_SIZE;
+    worldBounds.minY = minY * TILE_SIZE;
+    worldBounds.maxX = maxX * TILE_SIZE;
+    worldBounds.maxY = maxY * TILE_SIZE;
+  } else {
+    // Fall back to default bounds if no world is loaded
+    worldBounds.minX = 0.0f;
+    worldBounds.minY = 0.0f;
+    worldBounds.maxX = 3200.0f;  // 100 tiles * 32px = 3200px
+    worldBounds.maxY = 3200.0f;  // 100 tiles * 32px = 3200px
+  }
+  
+  m_camera->setWorldBounds(worldBounds);
+}
+
+void GamePlayState::applyCameraTransformation() {
+  if (!m_camera) {
+    return;
+  }
+  
+  // Calculate camera offset for later use in rendering
+  auto viewRect = m_camera->getViewRect();
+  m_cameraOffsetX = viewRect.x;
+  m_cameraOffsetY = viewRect.y;
 }

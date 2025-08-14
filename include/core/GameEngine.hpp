@@ -22,6 +22,7 @@ class InputManager;
 class ParticleManager;
 class ResourceTemplateManager;
 class WorldResourceManager;
+class WorldManager;
 
 class GameEngine {
 public:
@@ -72,17 +73,6 @@ public:
    * @brief Processes background tasks using the thread system
    */
   void processBackgroundTasks();
-
-  /**
-   * @brief Processes critical engine coordination tasks
-   * @param deltaTime Time elapsed since last update in seconds
-   */
-  void processEngineCoordination(float deltaTime);
-
-  /**
-   * @brief Processes secondary engine tasks when multiple workers are allocated
-   */
-  void processEngineSecondaryTasks();
 
   /**
    * @brief Loads resources asynchronously in background threads
@@ -157,6 +147,14 @@ public:
    * @return true if engine is running, false otherwise
    */
   bool getRunning() const;
+
+  /**
+   * @brief Gets the GameLoop instance
+   * @return Shared pointer to GameLoop, null if not set
+   */
+  std::shared_ptr<GameLoop> getGameLoop() const {
+    return m_gameLoop.lock();
+  }
 
   /**
    * @brief Gets the SDL renderer instance
@@ -254,6 +252,12 @@ public:
    */
   bool setVSyncEnabled(bool enable);
 
+  /**
+   * @brief Checks if the engine is running on a Wayland session.
+   * @return true if Wayland is detected, false otherwise.
+   */
+  bool isWayland() const { return m_isWayland; }
+
 private:
   std::unique_ptr<GameStateManager> mp_gameStateManager{nullptr};
   std::unique_ptr<SDL_Window, decltype(&SDL_DestroyWindow)> mp_window{
@@ -275,6 +279,7 @@ private:
   ParticleManager *mp_particleManager{nullptr};
   ResourceTemplateManager *mp_resourceTemplateManager{nullptr};
   WorldResourceManager *mp_worldResourceManager{nullptr};
+  WorldManager *mp_worldManager{nullptr};
 
   // Logical presentation settings
   SDL_RendererLogicalPresentation m_logicalPresentationMode{
@@ -282,6 +287,9 @@ private:
 
   // DPI scaling
   float m_dpiScale{1.0f};
+
+  // Platform-specific flags
+  bool m_isWayland{false};
 
   // Multithreading synchronization
   std::mutex m_updateMutex{};

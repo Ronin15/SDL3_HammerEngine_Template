@@ -7,12 +7,12 @@
 #include "core/Logger.hpp"
 #include "core/ThreadSystem.hpp"
 #include "core/WorkerBudget.hpp"
+#include <chrono>
 #include <exception>
 
 GameLoop::GameLoop(float targetFPS, float fixedTimestep, bool threaded)
     : m_timestepManager(std::make_unique<TimestepManager>(targetFPS, fixedTimestep))
     , m_running(false)
-    , m_paused(false)
     , m_stopRequested(false)
     , m_threaded(threaded)
     , m_updateTaskRunning(false)
@@ -50,7 +50,6 @@ bool GameLoop::run() {
 
     m_running.store(true, std::memory_order_relaxed);
     m_stopRequested.store(false, std::memory_order_relaxed);
-    m_paused.store(false, std::memory_order_relaxed);
 
     // Reset timestep manager for clean start
     m_timestepManager->reset();
@@ -107,19 +106,6 @@ bool GameLoop::isRunning() const {
     return m_running.load(std::memory_order_relaxed);
 }
 
-void GameLoop::setPaused(bool paused) {
-    bool wasPaused = m_paused.exchange(paused, std::memory_order_relaxed);
-
-    // If transitioning from paused to unpaused, reset timing to avoid time jump
-    if (wasPaused && !paused) {
-        m_timestepManager->reset();
-    }
-}
-
-bool GameLoop::isPaused() const {
-    return m_paused.load(std::memory_order_relaxed);
-}
-
 float GameLoop::getCurrentFPS() const {
     return m_timestepManager->getCurrentFPS();
 }
@@ -130,6 +116,10 @@ uint32_t GameLoop::getFrameTimeMs() const {
 
 void GameLoop::setTargetFPS(float fps) {
     m_timestepManager->setTargetFPS(fps);
+}
+
+float GameLoop::getTargetFPS() const {
+    return m_timestepManager->getTargetFPS();
 }
 
 void GameLoop::setFixedTimestep(float timestep) {
@@ -150,7 +140,7 @@ void GameLoop::runMainThread() {
             processEvents();
 
             // Process updates (single-threaded mode only)
-            if (!m_threaded && !m_paused.load()) {
+            if (!m_threaded) {
                 processUpdates();
             }
 
@@ -169,8 +159,7 @@ void GameLoop::runMainThread() {
 
 void GameLoop::runUpdateWorker(const HammerEngine::WorkerBudget& budget) {
     // WorkerBudget-aware update worker - respects allocated resources
-    GAMELOOP_INFO("Update worker started with " + std::to_string(budget.engineReserved) + " allocated workers");
-
+    
     // Adaptive timing system
     float targetFPS = m_timestepManager->getTargetFPS();
     const auto targetFrameTime = std::chrono::microseconds(static_cast<long>(1000000.0f / targetFPS));
@@ -194,14 +183,15 @@ void GameLoop::runUpdateWorker(const HammerEngine::WorkerBudget& budget) {
         try {
             auto updateStart = std::chrono::high_resolution_clock::now();
 
-            if (!m_paused.load(std::memory_order_relaxed)) {
-                if (canUseParallelUpdates && HammerEngine::ThreadSystem::Exists()) {
-                    // Use enhanced processing for high-end systems
-                    processUpdatesParallel();
-                } else {
-                    // Standard processing for low-end systems
-                    processUpdates();
-                }
+            if (canUseParallelUpdates && HammerEngine::ThreadSystem::Exists()) {
+                // Use enhanced processing for high-end systems, which includes
+                // more detailed performance monitoring. Note: This does NOT
+                // parallelize the update loop itself, which runs sequentially
+                // to maintain game logic consistency.
+                processUpdatesHighPerformance();
+            } else {
+                // Standard processing for low-end systems
+                processUpdates();
             }
 
             auto updateEnd = std::chrono::high_resolution_clock::now();
@@ -244,8 +234,8 @@ void GameLoop::runUpdateWorker(const HammerEngine::WorkerBudget& budget) {
 
             lastUpdateStart = updateStart;
 
-            // Periodic recalibration and logging
-            const int recalibrationInterval = 300; // Every 5 seconds at 60 FPS
+            // Periodic recalibration and logging (reduced frequency to minimize jitter)
+            const int recalibrationInterval = 1800; // Every 30 seconds at 60 FPS (was 5 seconds)
 
             if (++m_updateCount % recalibrationInterval == 0) {
                 float newTargetFPS = m_timestepManager->getTargetFPS();
@@ -254,11 +244,13 @@ void GameLoop::runUpdateWorker(const HammerEngine::WorkerBudget& budget) {
                     GAMELOOP_DEBUG("Target FPS changed to: " + std::to_string(targetFPS));
                 }
 
-                // Log performance metrics
-                if (avgUpdateTime.count() > 0) {
+                // Log performance metrics (only if logging is enabled and not in benchmark mode)
+                #ifdef DEBUG
+                if (avgUpdateTime.count() > 0 && !HammerEngine::Logger::IsBenchmarkMode()) {
                     GAMELOOP_DEBUG("Update performance: " + std::to_string(avgUpdateTime.count() / 1000.0f) +
                                  "ms avg (" + std::to_string((avgUpdateTime.count() / 1000.0f) / (1000.0f / targetFPS) * 100.0f) + "% frame budget)");
                 }
+                #endif
             }
 
         } catch (const std::exception& e) {
@@ -281,7 +273,7 @@ void GameLoop::processUpdates() {
     }
 }
 
-void GameLoop::processUpdatesParallel() {
+void GameLoop::processUpdatesHighPerformance() {
     // Enhanced parallel processing for high-end systems with 2+ allocated workers
     // Still process updates sequentially to maintain game logic consistency
     // but optimized for systems with more worker budget allocation
@@ -312,10 +304,14 @@ void GameLoop::processRender() {
 }
 
 void GameLoop::invokeEventHandler() {
-    std::lock_guard<std::mutex> lock(m_callbackMutex);
-    if (m_eventHandler) {
+    EventHandler handlerCopy;
+    {
+        std::lock_guard<std::mutex> lock(m_callbackMutex);
+        handlerCopy = m_eventHandler;
+    }
+    if (handlerCopy) {
         try {
-            m_eventHandler();
+            handlerCopy();
         } catch (const std::exception& e) {
             GAMELOOP_ERROR("Exception in event handler: " + std::string(e.what()));
         }
@@ -323,10 +319,14 @@ void GameLoop::invokeEventHandler() {
 }
 
 void GameLoop::invokeUpdateHandler(float deltaTime) {
-    std::lock_guard<std::mutex> lock(m_callbackMutex);
-    if (m_updateHandler) {
+    UpdateHandler handlerCopy;
+    {
+        std::lock_guard<std::mutex> lock(m_callbackMutex);
+        handlerCopy = m_updateHandler;
+    }
+    if (handlerCopy) {
         try {
-            m_updateHandler(deltaTime);
+            handlerCopy(deltaTime);
         } catch (const std::exception& e) {
             GAMELOOP_ERROR("Exception in update handler: " + std::string(e.what()));
         }
@@ -334,10 +334,14 @@ void GameLoop::invokeUpdateHandler(float deltaTime) {
 }
 
 void GameLoop::invokeRenderHandler() {
-    std::lock_guard<std::mutex> lock(m_callbackMutex);
-    if (m_renderHandler) {
+    RenderHandler handlerCopy;
+    {
+        std::lock_guard<std::mutex> lock(m_callbackMutex);
+        handlerCopy = m_renderHandler;
+    }
+    if (handlerCopy) {
         try {
-            m_renderHandler();
+            handlerCopy();
         } catch (const std::exception& e) {
             GAMELOOP_ERROR("Exception in render handler: " + std::string(e.what()));
         }

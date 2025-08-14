@@ -89,6 +89,7 @@ public:
     // Event identification
     std::string getName() const override { return m_name; }
     std::string getType() const override { return "Weather"; }
+    std::string getTypeName() const override { return "WeatherEvent"; }
 
     // Weather-specific methods
     WeatherType getWeatherType() const { return m_weatherType; }

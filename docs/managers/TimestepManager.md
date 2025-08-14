@@ -1,5 +1,8 @@
 # TimestepManager Documentation
 
+> **Note:**
+> There is no `TimestepManager` C++ class in the codebase. This documentation describes a conceptual timing pattern and utility API used by the engine's `GameLoop` and related timing systems. All timing is handled by the `GameLoop` and related classes, not by a standalone manager.
+
 ## Overview
 
 The `TimestepManager` class provides consistent game timing with simplified accumulator handling that separates update timing (fixed timestep for consistent physics/logic) from render timing (variable timestep for smooth visuals). It uses a 1:1 frame-to-update mapping to eliminate timing drift and micro-stuttering that can occur with traditional accumulator patterns.

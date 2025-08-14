@@ -6,6 +6,9 @@
 #include "managers/WorldResourceManager.hpp"
 #include "core/Logger.hpp"
 #include "managers/ResourceTemplateManager.hpp"
+#include "managers/EventManager.hpp"
+#include "events/WorldEvent.hpp"
+#include "events/ResourceChangeEvent.hpp"
 #include <algorithm>
 #include <cassert>
 
@@ -40,7 +43,11 @@ bool WorldResourceManager::init() {
     m_worldResources["default"] =
         std::unordered_map<HammerEngine::ResourceHandle, Quantity>();
 
+    // Register event handlers for world events
+    registerEventHandlers();
+
     m_initialized.store(true, std::memory_order_release);
+    m_isShutdown = false; // Explicitly mark as not shut down
     m_stats.reset();
     m_stats.worldsTracked = 1; // Default world
 
@@ -54,6 +61,13 @@ bool WorldResourceManager::init() {
 }
 
 void WorldResourceManager::clean() {
+  if (!m_initialized.load(std::memory_order_acquire) || m_isShutdown) {
+    return; // Already shut down or not initialized
+  }
+
+  // Unregister event handlers before cleanup
+  unregisterEventHandlers();
+
   std::lock_guard<std::shared_mutex> lock(m_resourceMutex);
   std::lock_guard<std::mutex> cacheLock(m_cacheMutex);
 
@@ -237,10 +251,12 @@ ResourceTransactionResult WorldResourceManager::addResource(
 
   std::lock_guard<std::shared_mutex> lock(m_resourceMutex);
 
-  try {
-    ensureWorldExists(worldId);
+  if (m_worldResources.find(worldId) == m_worldResources.end()) {
+    return ResourceTransactionResult::InvalidWorldId;
+  }
 
-    auto &worldResources = m_worldResources[worldId];
+  try {
+    auto &worldResources = m_worldResources.at(worldId);
 
     // Check for overflow (only if quantity > 0)
     if (quantity > 0) {
@@ -250,11 +266,15 @@ ResourceTransactionResult WorldResourceManager::addResource(
             "WorldResourceManager::addResource - Quantity overflow");
         return ResourceTransactionResult::SystemError;
       }
-      worldResources[resourceHandle] = currentQuantity + quantity;
+      Quantity newQuantity = currentQuantity + quantity;
+      worldResources[resourceHandle] = newQuantity;
+
+      // Fire resource change event
+      fireResourceChangeEvent(worldId, resourceHandle, currentQuantity, newQuantity, "added");
 
       // Invalidate caches when resources change
       invalidateAggregateCache();
-      updateResourceCache(worldId, resourceHandle, currentQuantity + quantity);
+      updateResourceCache(worldId, resourceHandle, newQuantity);
     }
     // If quantity is 0, we do nothing but still consider it successful
 
@@ -300,10 +320,12 @@ ResourceTransactionResult WorldResourceManager::removeResource(
 
   std::lock_guard<std::shared_mutex> lock(m_resourceMutex);
 
-  try {
-    ensureWorldExists(worldId);
+  if (m_worldResources.find(worldId) == m_worldResources.end()) {
+    return ResourceTransactionResult::InvalidWorldId;
+  }
 
-    auto &worldResources = m_worldResources[worldId];
+  try {
+    auto &worldResources = m_worldResources.at(worldId);
     Quantity currentQuantity = worldResources[resourceHandle];
 
     // If quantity is 0, we do nothing but still consider it successful
@@ -322,12 +344,17 @@ ResourceTransactionResult WorldResourceManager::removeResource(
       return ResourceTransactionResult::InsufficientResources;
     }
 
-    worldResources[resourceHandle] = currentQuantity - quantity;
+    Quantity newQuantity = currentQuantity - quantity;
+    worldResources[resourceHandle] = newQuantity;
+    
+    // Fire resource change event
+    fireResourceChangeEvent(worldId, resourceHandle, currentQuantity, newQuantity, "removed");
+    
     updateStats(false, quantity);
 
     // Invalidate caches when resources change
     invalidateAggregateCache();
-    updateResourceCache(worldId, resourceHandle, currentQuantity - quantity);
+    updateResourceCache(worldId, resourceHandle, newQuantity);
 
     WORLD_RESOURCE_DEBUG("Removed " + std::to_string(quantity) + " " +
                          resourceHandle.toString() + " from world " + worldId);
@@ -369,10 +396,12 @@ ResourceTransactionResult WorldResourceManager::setResource(
 
   std::lock_guard<std::shared_mutex> lock(m_resourceMutex);
 
-  try {
-    ensureWorldExists(worldId);
+  if (m_worldResources.find(worldId) == m_worldResources.end()) {
+    return ResourceTransactionResult::InvalidWorldId;
+  }
 
-    auto &worldResources = m_worldResources[worldId];
+  try {
+    auto &worldResources = m_worldResources.at(worldId);
     Quantity oldQuantity = worldResources[resourceHandle];
     worldResources[resourceHandle] = quantity;
 
@@ -499,12 +528,14 @@ bool WorldResourceManager::transferResource(
 
   std::lock_guard<std::shared_mutex> lock(m_resourceMutex);
 
-  try {
-    ensureWorldExists(fromWorldId);
-    ensureWorldExists(toWorldId);
+  if (m_worldResources.find(fromWorldId) == m_worldResources.end() ||
+      m_worldResources.find(toWorldId) == m_worldResources.end()) {
+    return false;
+  }
 
-    auto &fromResources = m_worldResources[fromWorldId];
-    auto &toResources = m_worldResources[toWorldId];
+  try {
+    auto &fromResources = m_worldResources.at(fromWorldId);
+    auto &toResources = m_worldResources.at(toWorldId);
 
     Quantity fromQuantity = fromResources[resourceHandle];
     if (fromQuantity < quantity) {
@@ -557,12 +588,14 @@ bool WorldResourceManager::transferAllResources(const WorldId &fromWorldId,
 
   std::lock_guard<std::shared_mutex> lock(m_resourceMutex);
 
-  try {
-    ensureWorldExists(fromWorldId);
-    ensureWorldExists(toWorldId);
+  if (m_worldResources.find(fromWorldId) == m_worldResources.end() ||
+      m_worldResources.find(toWorldId) == m_worldResources.end()) {
+    return false;
+  }
 
-    auto &fromResources = m_worldResources[fromWorldId];
-    auto &toResources = m_worldResources[toWorldId];
+  try {
+    auto &fromResources = m_worldResources.at(fromWorldId);
+    auto &toResources = m_worldResources.at(toWorldId);
 
     for (const auto &[resourceHandle, quantity] : fromResources) {
       if (quantity > 0) {
@@ -620,7 +653,13 @@ bool WorldResourceManager::isValidWorldId(const WorldId &worldId) const {
 
 bool WorldResourceManager::isValidResourceHandle(
     const HammerEngine::ResourceHandle &resourceHandle) const {
-  return resourceHandle.isValid();
+  // First check if the handle itself is valid
+  if (!resourceHandle.isValid()) {
+    return false;
+  }
+  
+  // Then check if the template exists in the ResourceTemplateManager
+  return ResourceTemplateManager::Instance().getResourceTemplate(resourceHandle) != nullptr;
 }
 
 bool WorldResourceManager::isValidQuantity(Quantity quantity) const {
@@ -664,15 +703,7 @@ bool WorldResourceManager::validateParameters(
   return true;
 }
 
-void WorldResourceManager::ensureWorldExists(const WorldId &worldId) {
-  // Assumes we already have a write lock
-  auto [it, inserted] = m_worldResources.try_emplace(
-      worldId, std::unordered_map<HammerEngine::ResourceHandle, Quantity>());
-  if (inserted) {
-    m_stats.worldsTracked.fetch_add(1, std::memory_order_relaxed);
-    WORLD_RESOURCE_DEBUG("Auto-created world: " + worldId);
-  }
-}
+
 
 // Cache management methods
 void WorldResourceManager::updateResourceCache(
@@ -881,4 +912,134 @@ bool WorldResourceManager::isPerformanceOptimal() const {
       getMemoryUsage() < (100 * 1024 * 1024); // Less than 100MB
 
   return worldCountOk && cacheRatioOk && memoryUsageOk;
+}
+
+void WorldResourceManager::registerEventHandlers() {
+  try {
+    EventManager& eventMgr = EventManager::Instance();
+    
+    // Register handler for world events (world loaded/unloaded)
+    eventMgr.registerHandler(EventTypeId::World, [this](const EventData& data) {
+      if (data.isActive() && data.event) {
+        // Handle world-related events from WorldManager
+        auto worldEvent = std::dynamic_pointer_cast<WorldEvent>(data.event);
+        if (worldEvent) {
+          handleWorldEvent(worldEvent);
+        }
+      }
+    });
+    
+    WORLD_RESOURCE_DEBUG("WorldResourceManager event handlers registered");
+  } catch (const std::exception& ex) {
+    WORLD_RESOURCE_ERROR("Failed to register event handlers: " + std::string(ex.what()));
+  }
+}
+
+void WorldResourceManager::unregisterEventHandlers() {
+  try {
+    // EventManager handles cleanup automatically during shutdown
+    WORLD_RESOURCE_DEBUG("WorldResourceManager event handlers unregistered");
+  } catch (const std::exception& ex) {
+    WORLD_RESOURCE_ERROR("Failed to unregister event handlers: " + std::string(ex.what()));
+  }
+}
+
+void WorldResourceManager::handleWorldEvent(std::shared_ptr<WorldEvent> worldEvent) {
+  try {
+    switch (worldEvent->getEventType()) {
+      case WorldEventType::WorldLoaded: {
+        auto loadedEvent = std::dynamic_pointer_cast<WorldLoadedEvent>(worldEvent);
+        if (loadedEvent) {
+          const std::string& worldId = loadedEvent->getWorldId();
+          WORLD_RESOURCE_INFO("Received WorldLoadedEvent for: " + worldId);
+          
+          // Check if world exists in resource tracking
+          bool worldExists = false;
+          {
+            std::shared_lock<std::shared_mutex> lock(m_resourceMutex);
+            worldExists = m_worldResources.find(worldId) != m_worldResources.end();
+          }
+          
+          if (!worldExists) {
+            // Only create resource tracking for worlds that actually exist
+            // Verify the world actually exists in the WorldManager before creating tracking
+            // NOTE: Removed auto-creation to prevent spurious world creation from events
+            WORLD_RESOURCE_WARN("Received WorldLoadedEvent for non-existent world: " + worldId + 
+                               " - skipping resource tracking creation");
+          } else {
+            WORLD_RESOURCE_INFO("World already tracked: " + worldId);
+          }
+        }
+        break;
+      }
+      
+      case WorldEventType::WorldUnloaded: {
+        auto unloadedEvent = std::dynamic_pointer_cast<WorldUnloadedEvent>(worldEvent);
+        if (unloadedEvent) {
+          const std::string& worldId = unloadedEvent->getWorldId();
+          WORLD_RESOURCE_INFO("Received WorldUnloadedEvent for: " + worldId);
+          
+          // Optional: Remove world resources when unloaded
+          // For now, keep the data in case world is reloaded
+          // removeWorld(worldId);
+        }
+        break;
+      }
+      
+      case WorldEventType::TileChanged: {
+        auto tileEvent = std::dynamic_pointer_cast<TileChangedEvent>(worldEvent);
+        if (tileEvent) {
+          // Handle tile changes - could affect resource distributions
+          WORLD_RESOURCE_DEBUG("Tile changed at (" + 
+                              std::to_string(tileEvent->getX()) + ", " + 
+                              std::to_string(tileEvent->getY()) + ") - " + 
+                              tileEvent->getChangeType());
+        }
+        break;
+      }
+      
+      default:
+        // Handle other world event types as needed
+        WORLD_RESOURCE_DEBUG("Received world event: " + worldEvent->getName());
+        break;
+    }
+  } catch (const std::exception& ex) {
+    WORLD_RESOURCE_ERROR("Error handling world event: " + std::string(ex.what()));
+  }
+}
+
+void WorldResourceManager::fireResourceChangeEvent(const WorldId& worldId, 
+                                                   const HammerEngine::ResourceHandle& resourceHandle,
+                                                   Quantity oldQuantity, Quantity newQuantity, 
+                                                   const std::string& reason) {
+  try {
+    // Only fire events for actual changes
+    if (oldQuantity == newQuantity) {
+      return;
+    }
+    
+    // Create ResourceChangeEvent 
+    // Note: ResourceChangeEvent constructor expects EntityPtr, but for world-level resources,
+    // we can pass nullptr or create a world entity representation
+    auto resourceEvent = std::make_shared<ResourceChangeEvent>(
+        nullptr,  // No specific entity owner for world-level resources
+        resourceHandle,
+        static_cast<int>(oldQuantity),
+        static_cast<int>(newQuantity),
+        reason + "_world_" + worldId
+    );
+    
+    EventManager& eventMgr = EventManager::Instance();
+    std::string eventName = "resource_change_" + worldId + "_" + resourceHandle.toString();
+    
+    // Register and execute the event
+    eventMgr.registerEvent(eventName, resourceEvent);
+    eventMgr.executeEvent(eventName);
+    
+    WORLD_RESOURCE_DEBUG("ResourceChangeEvent fired for " + resourceHandle.toString() + 
+                        " in world " + worldId + ": " + std::to_string(oldQuantity) + 
+                        " -> " + std::to_string(newQuantity));
+  } catch (const std::exception& ex) {
+    WORLD_RESOURCE_ERROR("Failed to fire ResourceChangeEvent: " + std::string(ex.what()));
+  }
 }

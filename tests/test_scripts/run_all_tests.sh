@@ -25,6 +25,10 @@ for arg in "$@"; do
       VERBOSE=true
       shift
       ;;
+    --errors-only)
+      ERRORS_ONLY=true
+      shift
+      ;;
     --core-only)
       RUN_CORE=true
       RUN_BENCHMARKS=false
@@ -45,12 +49,13 @@ for arg in "$@"; do
       echo -e "Usage: ./run_all_tests.sh [options]"
       echo -e "\nOptions:"
       echo -e "  --verbose         Run tests with verbose output"
+      echo -e "  --errors-only     Filter output to show only warnings and errors"
       echo -e "  --core-only       Run only core functionality tests (fast)"
       echo -e "  --benchmarks-only Run only performance benchmarks (slow)"
       echo -e "  --no-benchmarks   Run core tests but skip benchmarks"
       echo -e "  --help            Show this help message"
       echo -e "\nTest Categories:"
-      echo -e "  Core Tests:       Static analysis, Thread, AI, Behavior, Save, Event functionality tests"
+      echo -e "  Core Tests:       Static analysis, Thread, AI, Behavior, GameState, Save, Event functionality tests"
       echo -e "  Benchmarks:       AI scaling, EventManager scaling, and UI stress benchmarks"
       echo -e "\nExecution Time:"
       echo -e "  Core tests:       ~2-5 minutes total"
@@ -58,7 +63,8 @@ for arg in "$@"; do
       echo -e "  All tests:        ~7-20 minutes total"
       echo -e "\nExamples:"
       echo -e "  ./run_all_tests.sh                 # Run all tests"
-      echo -e "  ./run_all_tests.sh --core-only     # Quick validation"
+      echo -e "  # Run the test
+  $TEST_EXECUTABLE     # Quick validation"
       echo -e "  ./run_all_tests.sh --no-benchmarks # Skip slow benchmarks"
       echo -e "  ./run_all_tests.sh --benchmarks-only --verbose # Performance testing"
       exit 0
@@ -77,11 +83,17 @@ CORE_TEST_SCRIPTS=(
   "$SCRIPT_DIR/run_ai_optimization_tests.sh"
   "$SCRIPT_DIR/run_behavior_functionality_tests.sh"
   "$SCRIPT_DIR/run_save_tests.sh"
+  "$SCRIPT_DIR/run_game_state_manager_tests.sh"
   "$SCRIPT_DIR/run_event_tests.sh"
+  "$SCRIPT_DIR/run_weather_event_tests.sh"
   "$SCRIPT_DIR/run_particle_manager_tests.sh"
   "$SCRIPT_DIR/run_resource_tests.sh"
   "$SCRIPT_DIR/run_resource_edge_case_tests.sh"
   "$SCRIPT_DIR/run_json_reader_tests.sh"
+  "$SCRIPT_DIR/run_world_generator_tests.sh"
+  "$SCRIPT_DIR/run_world_manager_tests.sh"
+  "$SCRIPT_DIR/run_world_manager_event_integration_tests.sh"
+  "$SCRIPT_DIR/run_world_resource_manager_tests.sh"
 )
 
 # Performance scaling benchmarks (slow execution)
@@ -117,7 +129,7 @@ run_test_script() {
   local script_name=$(basename "$script")
   local args=""
 
-  # Pass along relevant flags
+  # Pass along relevant flags (but not --errors-only, we handle that here)
   if [ "$VERBOSE" = true ]; then
     args="$args --verbose"
   fi
@@ -149,8 +161,23 @@ run_test_script() {
   chmod +x "$script"
 
   # Run the script with provided arguments
-  $script $args
-  local result=$?
+  if [ "$ERRORS_ONLY" = true ]; then
+    # Redirect all output to temp file, preserve exit code
+    local temp_output=$(mktemp)
+    $script $args >"$temp_output" 2>&1
+    local result=$?
+    
+    # Show only script name and result - suppress all normal output
+    # Only show content if there are actual test failures
+    if [ $result -ne 0 ] || grep -qE "(BOOST_CHECK.*failed|BOOST_REQUIRE.*failed|Test.*failed|FAILED.*test|BUILD FAILED|compilation.*failed|Segmentation fault|Assertion.*failed|\[error\].*test|\*\*\* FAILURE|✗.*failed)" "$temp_output"; then
+      echo -e "\n${RED}Test failures detected in $script_name:${NC}"
+      grep -E "(BOOST_CHECK.*failed|BOOST_REQUIRE.*failed|Test.*failed|FAILED.*test|BUILD FAILED|compilation.*failed|Segmentation fault|Assertion.*failed|\[error\].*test|\*\*\* FAILURE|✗.*failed)" "$temp_output" || echo "Script failed with exit code $result"
+    fi
+    rm -f "$temp_output"
+  else
+    $script $args
+    local result=$?
+  fi
 
   if [ $result -eq 0 ]; then
     if [ "$is_benchmark" = true ]; then

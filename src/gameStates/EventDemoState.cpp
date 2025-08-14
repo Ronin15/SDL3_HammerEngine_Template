@@ -19,7 +19,10 @@
 #include "managers/ParticleManager.hpp"
 #include "managers/ResourceTemplateManager.hpp"
 #include "managers/UIManager.hpp"
+#include "managers/WorldManager.hpp"
+#include "utils/Camera.hpp"
 #include <algorithm>
+#include <ctime>
 #include <iomanip>
 #include <iostream>
 #include <sstream>
@@ -98,42 +101,96 @@ bool EventDemoState::enter() {
     // Add initial log entry
     addLogEntry("Event Demo System Initialized");
 
-    // Create simple UI components using auto-detecting methods
+    // Create simple UI components using auto-detecting methods with dramatic spacing
     auto &ui = UIManager::Instance();
-    ui.createTitleAtTop("event_title", "Event Demo State", 25);
-    ui.createLabel("event_phase", {10, 40, 300, 20}, "Phase: Initialization");
-    ui.createLabel("event_status", {10, 65, 400, 20},
+    ui.createTitleAtTop("event_title", "Event Demo State", 35);  // Increased title height from 25 to 35
+    ui.createLabel("event_phase", {10, 25, 300, 25}, "Phase: Initialization");  // Moved up from y=45 to y=25
+    ui.createLabel("event_status", {10, 60, 400, 25},  // Moved up from y=80 to y=60
                    "FPS: -- | Weather: Clear | NPCs: 0");
     ui.createLabel(
-        "event_controls", {10, 90, ui.getLogicalWidth() - 20, 20},
+        "event_controls", {10, 95, ui.getLogicalWidth() - 20, 25},  // Moved up from y=115 to y=95
         "[B] Exit | [SPACE] Manual | [1-6] Events | [A] Auto | [R] "
-        "Reset | [F] Fire | [S] Smoke | [K] Sparks | Inventory Panel →");
+        "Reset | [F] Fire | [S] Smoke | [K] Sparks | [I] Inventory");
 
     // Create event log component using auto-detected dimensions
     ui.createEventLog("event_log", {10, ui.getLogicalHeight() - 200, 730, 180},
                       7);
     ui.addEventLogEntry("event_log", "Event Demo System Initialized");
 
-    // Create right-aligned inventory panel for resource demo visualization
+    // Create right-aligned inventory panel for resource demo visualization with dramatic spacing
     int windowWidth = ui.getLogicalWidth();
     int inventoryWidth = 280;
-    int inventoryHeight = 320;
+    int inventoryHeight = 400;  // Increased height dramatically
     int inventoryX =
         windowWidth - inventoryWidth - 20; // Right-aligned with 20px margin
-    int inventoryY = 120;
+    int inventoryY = 170;  // Moved down dramatically to avoid overlap
 
     ui.createPanel("inventory_panel",
                    {inventoryX, inventoryY, inventoryWidth, inventoryHeight});
+    ui.setComponentVisible("inventory_panel", false);
+    
     ui.createTitle("inventory_title",
-                   {inventoryX + 10, inventoryY + 10, inventoryWidth - 20, 30},
+                   {inventoryX + 10, inventoryY + 25, inventoryWidth - 20, 35},  // Increased height from 30 to 35
                    "Player Inventory");
+    ui.setComponentVisible("inventory_title", false);
+    
     ui.createLabel("inventory_status",
-                   {inventoryX + 10, inventoryY + 45, inventoryWidth - 20, 20},
+                   {inventoryX + 10, inventoryY + 75, inventoryWidth - 20, 25},  // Increased height from 20 to 25
                    "Capacity: 0/50");
+    ui.setComponentVisible("inventory_status", false);
 
     // Create inventory list for smooth updates like GamePlayState
     ui.createList("inventory_list",
-                  {inventoryX + 10, inventoryY + 75, inventoryWidth - 20, 220});
+                  {inventoryX + 10, inventoryY + 110, inventoryWidth - 20, 270});  // Moved down from 95 to 110, increased height
+    ui.setComponentVisible("inventory_list", false);
+
+    // --- DATA BINDING SETUP ---
+    // Bind the inventory capacity label to a function that gets the data
+    ui.bindText("inventory_status", [this]() -> std::string {
+        if (!m_player || !m_player->getInventory()) {
+            return "Capacity: 0/0";
+        }
+        const auto* inventory = m_player->getInventory();
+        int used = inventory->getUsedSlots();
+        int max = inventory->getMaxSlots();
+        return "Capacity: " + std::to_string(used) + "/" + std::to_string(max);
+    });
+
+    // Bind the inventory list to a function that gets the items, sorts them, and returns them
+    ui.bindList("inventory_list", [this]() -> std::vector<std::string> {
+        if (!m_player || !m_player->getInventory()) {
+            return {"(Empty)"};
+        }
+        
+        const auto* inventory = m_player->getInventory();
+        auto allResources = inventory->getAllResources();
+
+        if (allResources.empty()) {
+            return {"(Empty)"};
+        }
+
+        std::vector<std::string> items;
+        std::vector<std::pair<std::string, int>> sortedResources;
+        for (const auto& [resourceHandle, quantity] : allResources) {
+            if (quantity > 0) {
+                auto resourceTemplate = ResourceTemplateManager::Instance().getResourceTemplate(resourceHandle);
+                std::string resourceName = resourceTemplate ? resourceTemplate->getName() : "Unknown";
+                sortedResources.emplace_back(resourceName, quantity);
+            }
+        }
+        std::sort(sortedResources.begin(), sortedResources.end());
+
+        for (const auto& [resourceId, quantity] : sortedResources) {
+            items.push_back(resourceId + " x" + std::to_string(quantity));
+        }
+        
+        return items;
+    });
+
+    // Initialize camera for world navigation
+    initializeWorld();
+    initializeCamera();
+
     std::cout
         << "Hammer Game Engine - EventDemoState initialized successfully\n";
     return true;
@@ -188,9 +245,19 @@ bool EventDemoState::exit() {
                                                // and cleanup
     }
 
-    // Clean up UI components using simplified method
+    // Clean up camera first to stop world rendering
+    m_camera.reset();
+
+    // Clean up UI components before world cleanup
     auto &ui = UIManager::Instance();
     ui.prepareForStateTransition();
+
+    // Unload the world when fully exiting, but only if there's actually a world loaded
+    // This matches GamePlayState's safety pattern and prevents Metal renderer crashes
+    WorldManager &worldMgr = WorldManager::Instance();
+    if (worldMgr.isInitialized() && worldMgr.hasActiveWorld()) {
+      worldMgr.unloadWorld();
+    }
 
     std::cout << "Hammer Game Engine - EventDemoState cleanup complete\n";
     return true;
@@ -219,6 +286,9 @@ void EventDemoState::update(float deltaTime) {
   if (m_player) {
     m_player->update(deltaTime);
   }
+  
+  // Update camera (follows player automatically)
+  updateCamera(deltaTime);
 
   // AI Manager is updated globally by GameEngine for optimal performance
   // This prevents double-updating AI entities which was causing them to move
@@ -375,41 +445,64 @@ void EventDemoState::update(float deltaTime) {
   // Input)
 }
 
-void EventDemoState::render(float deltaTime) {
+void EventDemoState::render() {
   // Get renderer using the standard pattern (consistent with other states)
   auto &gameEngine = GameEngine::Instance();
   SDL_Renderer *renderer = gameEngine.getRenderer();
 
+  // Calculate camera view rect ONCE for all rendering to ensure perfect synchronization
+  HammerEngine::Camera::ViewRect cameraView{0.0f, 0.0f, 0.0f, 0.0f};
+  if (m_camera) {
+    cameraView = m_camera->getViewRect();
+  }
+
+  // Render world first (background layer) using unified camera position
+  if (m_camera) {
+    auto &worldMgr = WorldManager::Instance();
+    if (worldMgr.isInitialized() && worldMgr.hasActiveWorld()) {
+      // Use the SAME cameraView calculated above for consistency
+      worldMgr.render(renderer, 
+                     cameraView.x,
+                     cameraView.y,
+                     gameEngine.getLogicalWidth(),
+                     gameEngine.getLogicalHeight());
+    }
+  }
+
   // Render background particles first (rain, snow) - behind player/NPCs
   ParticleManager &particleMgr = ParticleManager::Instance();
   if (particleMgr.isInitialized() && !particleMgr.isShutdown()) {
-    // Render background particles with camera offset (for world-space effects)
-    // Using 0,0 for now since EventDemoState doesn't have camera movement
-    particleMgr.renderBackground(renderer, 0.0f, 0.0f);
+    // Use unified camera position for perfect sync with tiles
+    particleMgr.renderBackground(renderer, cameraView.x, cameraView.y);
   }
 
-  // Render player
+  // Render player using camera-aware rendering
   if (m_player) {
-    m_player->render();
+    m_player->render(m_camera.get());
   }
 
-  // Render spawned NPCs
+  // Render spawned NPCs using camera-aware rendering
   for (const auto &npc : m_spawnedNPCs) {
     if (npc) {
-      npc->render();
+      npc->render(m_camera.get());
     }
+  }
+
+  // Render world-space particles using unified camera position
+  if (particleMgr.isInitialized() && !particleMgr.isShutdown()) {
+    particleMgr.render(renderer, cameraView.x, cameraView.y);
   }
 
   // Render foreground particles last (fog) - in front of player/NPCs
   if (particleMgr.isInitialized() && !particleMgr.isShutdown()) {
-    particleMgr.renderForeground(renderer, 0.0f, 0.0f);
+    particleMgr.renderForeground(renderer, cameraView.x, cameraView.y);
   }
 
   // Update and render UI components through UIManager using cached renderer for
   // cleaner API
   auto &ui = UIManager::Instance();
   if (!ui.isShutdown()) {
-    ui.update(deltaTime); // Use actual deltaTime from update cycle
+    ui.update(0.0); // UI updates are not time-dependent in this state
 
     // Update UI displays
     std::stringstream phaseText;
@@ -424,7 +517,7 @@ void EventDemoState::render(float deltaTime) {
     ui.setText("event_status", statusText.str());
 
     // Update inventory display
-    updateInventoryUI();
+    // updateInventoryUI(); // Now handled by data binding
   }
   ui.render();
 }
@@ -691,9 +784,27 @@ void EventDemoState::handleInput() {
     addLogEntry("Sparks effect toggled");
   }
 
-  if (inputMgr.wasKeyPressed(SDL_SCANCODE_B)) {
-    gameEngine.getGameStateManager()->setState("MainMenuState");
+  // Inventory toggle (I key)
+  if (inputMgr.wasKeyPressed(SDL_SCANCODE_I)) {
+    toggleInventoryDisplay();
   }
+
+  if (inputMgr.wasKeyPressed(SDL_SCANCODE_B)) {
+    gameEngine.getGameStateManager()->changeState("MainMenuState");
+  }
+
+  // Mouse input for world interaction
+    if (inputMgr.getMouseButtonState(LEFT) && m_camera) {
+        Vector2D mousePos = inputMgr.getMousePosition();
+        const auto& ui = UIManager::Instance();
+
+        if (!ui.isClickOnUI(mousePos)) {
+            Vector2D worldPos = m_camera->screenToWorld(mousePos);
+            // TODO: Implement world interaction at worldPos
+            // For now, we just log the coordinates
+            addLogEntry("World click at: (" + std::to_string(worldPos.getX()) + ", " + std::to_string(worldPos.getY()) + ")");
+        }
+    }
 }
 
 void EventDemoState::updateDemoTimer(float deltaTime) {
@@ -756,11 +867,9 @@ void EventDemoState::triggerWeatherDemoAuto() {
 }
 
 void EventDemoState::triggerWeatherDemoManual() {
-  static size_t manualWeatherIndex = 0;
-
-  size_t currentIndex = manualWeatherIndex;
-  WeatherType newWeather = m_weatherSequence[manualWeatherIndex];
-  std::string customType = m_customWeatherTypes[manualWeatherIndex];
+  size_t currentIndex = m_manualWeatherIndex;
+  WeatherType newWeather = m_weatherSequence[m_manualWeatherIndex];
+  std::string customType = m_customWeatherTypes[m_manualWeatherIndex];
 
   // Debug output
   addLogEntry("Manual weather index: " + std::to_string(currentIndex) + " of " +
@@ -769,7 +878,7 @@ void EventDemoState::triggerWeatherDemoManual() {
     addLogEntry("Using custom weather type: " + customType);
   }
 
-  manualWeatherIndex = (manualWeatherIndex + 1) % m_weatherSequence.size();
+  m_manualWeatherIndex = (m_manualWeatherIndex + 1) % m_weatherSequence.size();
 
   // Create weather event - use custom type if specified
   std::shared_ptr<WeatherEvent> weatherEvent;
@@ -856,26 +965,15 @@ void EventDemoState::triggerSceneTransitionDemo() {
 }
 
 void EventDemoState::triggerParticleEffectDemo() {
-  static std::vector<std::string> effectNames = {"Fire", "Smoke", "Sparks"};
-  static size_t effectIndex = 0;
-  static std::vector<Vector2D> effectPositions = {
-      Vector2D(200, 150), // Top-left area
-      Vector2D(600, 150), // Top-right area
-      Vector2D(400, 300), // Center
-      Vector2D(300, 450), // Bottom-left
-      Vector2D(500, 450), // Bottom-right
-  };
-  static size_t positionIndex = 0;
-
   // Get current effect and position
-  std::string effectName = effectNames[effectIndex];
-  Vector2D position = effectPositions[positionIndex];
+  std::string effectName = m_particleEffectNames[m_particleEffectIndex];
+  Vector2D position = m_particleEffectPositions[m_particlePositionIndex];
 
   // Create ParticleEffectEvent using EventManager convenience method
   EventManager &eventMgr = EventManager::Instance();
 
   std::string eventName =
-      "particle_demo_" + effectName + "_" + std::to_string(positionIndex);
+      "particle_demo_" + effectName + "_" + std::to_string(m_particlePositionIndex);
   bool success =
       eventMgr.createParticleEffectEvent(eventName, effectName, position,
                                          1.2f,          // intensity
@@ -895,14 +993,11 @@ void EventDemoState::triggerParticleEffectDemo() {
   }
 
   // Advance to next effect and position
-  effectIndex = (effectIndex + 1) % effectNames.size();
-  positionIndex = (positionIndex + 1) % effectPositions.size();
+  m_particleEffectIndex = (m_particleEffectIndex + 1) % m_particleEffectNames.size();
+  m_particlePositionIndex = (m_particlePositionIndex + 1) % m_particleEffectPositions.size();
 }
 
 void EventDemoState::triggerResourceDemo() {
-  static size_t demonstrationStep = 0;
-  static bool isAdding = true;
-
   if (!m_player || !m_player->getInventory()) {
     addLogEntry("Resource demo failed: Player inventory not available");
     return;
@@ -922,7 +1017,7 @@ void EventDemoState::triggerResourceDemo() {
   std::string discoveryMethod;
   int quantity = 1;
 
-  switch (demonstrationStep % 6) {
+  switch (m_resourceDemonstrationStep % 6) {
   case 0: {
     // Discovery pattern: Find currency resources
     auto currencyResources =
@@ -1017,8 +1112,8 @@ void EventDemoState::triggerResourceDemo() {
 
   if (!selectedResource) {
     addLogEntry("Resource discovery failed: No resources found for step " +
-                std::to_string(demonstrationStep));
-    demonstrationStep++;
+                std::to_string(m_resourceDemonstrationStep));
+    m_resourceDemonstrationStep++;
     return;
   }
 
@@ -1027,7 +1122,7 @@ void EventDemoState::triggerResourceDemo() {
   std::string resourceName = selectedResource->getName();
   int currentQuantity = inventory->getResourceQuantity(handle);
 
-  if (isAdding) {
+  if (m_resourceIsAdding) {
     // Add resources to player inventory
     addLogEntry("BEFORE ADD (" + discoveryMethod + "): " + resourceName +
                 " = " + std::to_string(currentQuantity));
@@ -1050,7 +1145,7 @@ void EventDemoState::triggerResourceDemo() {
       // management
       EventManager &eventMgr = EventManager::Instance();
       std::string eventName =
-          "resource_demo_add_" + std::to_string(demonstrationStep);
+          "resource_demo_add_" + std::to_string(m_resourceDemonstrationStep);
       eventMgr.registerEvent(eventName, resourceEvent);
       eventMgr.executeEvent(eventName);
 
@@ -1083,7 +1178,7 @@ void EventDemoState::triggerResourceDemo() {
         // Register and execute the event
         EventManager &eventMgr = EventManager::Instance();
         std::string eventName =
-            "resource_demo_remove_" + std::to_string(demonstrationStep);
+            "resource_demo_remove_" + std::to_string(m_resourceDemonstrationStep);
         eventMgr.registerEvent(eventName, resourceEvent);
         eventMgr.executeEvent(eventName);
 
@@ -1098,12 +1193,12 @@ void EventDemoState::triggerResourceDemo() {
 
   // Progress through different discovery patterns and alternate between adding
   // and removing
-  demonstrationStep++;
-  if (demonstrationStep % 6 == 0) {
-    isAdding = !isAdding; // Switch between adding and removing after full cycle
-    std::string mode = isAdding ? "ADDING" : "REMOVING";
+  m_resourceDemonstrationStep++;
+  if (m_resourceDemonstrationStep % 6 == 0) {
+    m_resourceIsAdding = !m_resourceIsAdding; // Switch between adding and removing after full cycle
+    std::string mode = m_resourceIsAdding ? "ADDING" : "REMOVING";
     addLogEntry("--- Switched to " + mode + " mode (completed " +
-                std::to_string(demonstrationStep / 6) + " cycles) ---");
+                std::to_string(m_resourceDemonstrationStep / 6) + " cycles) ---");
   }
 
   // Log current inventory summary
@@ -1192,9 +1287,8 @@ void EventDemoState::triggerConvenienceMethodsDemo() {
   addLogEntry("=== CONVENIENCE METHODS DEMO ===");
   addLogEntry("Creating events with new one-line convenience methods");
 
-  static int demoCounter = 0;
-  demoCounter++;
-  std::string suffix = std::to_string(demoCounter);
+  m_convenienceDemoCounter++;
+  std::string suffix = std::to_string(m_convenienceDemoCounter);
 
   // Cache EventManager reference for better performance
   EventManager &eventMgr = EventManager::Instance();
@@ -1311,7 +1405,7 @@ void EventDemoState::onResourceChanged(const EventData &data) {
     // Process different aspects of resource changes
     processResourceAchievements(handle, oldQty, newQty);
     checkResourceWarnings(handle, newQty);
-    updateResourceUI(handle, oldQty, newQty);
+    // updateResourceUI(handle, oldQty, newQty); // No longer needed, UI is data-bound
     logResourceAnalytics(handle, oldQty, newQty, source);
 
     addLogEntry("Resource change handler completed");
@@ -1646,57 +1740,6 @@ void EventDemoState::createNPCAtPosition(const std::string &npcType, float x,
   }
 }
 
-void EventDemoState::updateInventoryUI() {
-  if (!m_player || !m_player->getInventory()) {
-    return;
-  }
-
-  auto *inventory = m_player->getInventory();
-  auto &ui = UIManager::Instance();
-
-  // Update capacity status
-  size_t usedSlots = inventory->getUsedSlots();
-  size_t maxSlots = inventory->getMaxSlots();
-  std::string capacityText =
-      "Capacity: " + std::to_string(usedSlots) + "/" + std::to_string(maxSlots);
-  ui.setText("inventory_status", capacityText);
-
-  // Update inventory list (like GamePlayState for smooth updates)
-  ui.clearList("inventory_list");
-  auto allResources = inventory->getAllResources();
-
-  // Create sorted list for consistent display
-  std::vector<std::pair<std::string, int>> sortedResources;
-  for (const auto &[resourceHandle, quantity] : allResources) {
-    if (quantity > 0) {
-      // Convert ResourceHandle to name
-      auto resourceTemplate =
-          ResourceTemplateManager::Instance().getResourceTemplate(
-              resourceHandle);
-      std::string resourceName =
-          resourceTemplate ? resourceTemplate->getName() : "Unknown";
-      sortedResources.emplace_back(resourceName, quantity);
-    }
-  }
-  std::sort(sortedResources.begin(), sortedResources.end());
-
-  // Add resources to list
-  for (const auto &[resourceId, quantity] : sortedResources) {
-    ui.addListItem("inventory_list",
-                   resourceId + " x" + std::to_string(quantity));
-  }
-
-  // If inventory is empty, show a message
-  if (sortedResources.empty()) {
-    ui.addListItem("inventory_list", "(Empty)");
-  }
-}
-
-void EventDemoState::renderInventoryPanel() {
-  // Inventory panel rendering is handled by UIManager
-  // This method exists for potential future custom rendering
-}
-
 void EventDemoState::setupResourceAchievements() {
   // Set up achievement thresholds for different resource types for
   // demonstration
@@ -1797,34 +1840,7 @@ void EventDemoState::checkResourceWarnings(HammerEngine::ResourceHandle handle,
   }
 }
 
-void EventDemoState::updateResourceUI(HammerEngine::ResourceHandle handle,
-                                      int oldQty, int newQty) {
-  // Get resource information
-  auto resourceTemplate =
-      ResourceTemplateManager::Instance().getResourceTemplate(handle);
-  if (!resourceTemplate)
-    return;
 
-  std::string resourceName = resourceTemplate->getName();
-  int change = newQty - oldQty;
-
-  // Create UI notification message
-  std::string changeText;
-  if (change > 0) {
-    changeText = "+" + std::to_string(change);
-  } else {
-    changeText = std::to_string(change);
-  }
-
-  addLogEntry("📊 UI UPDATE: " + resourceName + " " + changeText + " (" +
-              std::to_string(oldQty) + " → " + std::to_string(newQty) + ")");
-
-  // In a real game, this could update:
-  // - Resource counters in HUD
-  // - Inventory displays with animations
-  // - Crafting availability indicators
-  // - Quest progress bars
-}
 
 void EventDemoState::logResourceAnalytics(HammerEngine::ResourceHandle handle,
                                           int oldQty, int newQty,
@@ -1857,4 +1873,123 @@ void EventDemoState::logResourceAnalytics(HammerEngine::ResourceHandle handle,
   // - Update economy balancing metrics
   // - Track player behavior patterns
   // - Generate reports for game designers
+}
+
+void EventDemoState::initializeWorld() {
+  // Create world manager and generate a world for event demo
+  WorldManager& worldManager = WorldManager::Instance();
+  
+  // Create a moderately-sized world configuration for event demo (focused on events, but with exploration)
+  HammerEngine::WorldGenerationConfig config;
+  config.width = 100;  // Increased from 50 to 100 for more exploration
+  config.height = 100; // Increased from 50 to 100 for more exploration
+  config.seed = static_cast<int>(std::time(nullptr)); // Random seed for variety
+  config.elevationFrequency = 0.1f;
+  config.humidityFrequency = 0.1f;
+  config.waterLevel = 0.25f;
+  config.mountainLevel = 0.75f;
+  
+  if (!worldManager.loadNewWorld(config)) {
+    std::cerr << "Failed to load new world in EventDemoState" << std::endl;
+    // Continue anyway - event demo can function without world
+  } else {
+    std::cout << "Successfully loaded event demo world with seed: " << config.seed << std::endl;
+    
+    // Setup camera to work with the world (will be called in initializeCamera)
+  }
+}
+
+void EventDemoState::initializeCamera() {
+  const auto &gameEngine = GameEngine::Instance();
+  
+  // Initialize camera at player's position to avoid any interpolation jitter
+  Vector2D playerPosition = m_player ? m_player->getPosition() : Vector2D(0, 0);
+  
+  // Create camera starting at player position
+  m_camera = std::make_unique<HammerEngine::Camera>(
+    playerPosition.getX(), playerPosition.getY(), // Start at player position
+    static_cast<float>(gameEngine.getLogicalWidth()),
+    static_cast<float>(gameEngine.getLogicalHeight())
+  );
+  
+  // Configure camera to follow player
+  if (m_player && m_camera) {
+    // Set target and enable follow mode
+    std::weak_ptr<Entity> playerAsEntity = std::static_pointer_cast<Entity>(m_player);
+    m_camera->setTarget(playerAsEntity);
+    m_camera->setMode(HammerEngine::Camera::Mode::Follow);
+    
+    // Set up camera configuration for smooth following (RESTORED ORIGINAL SMOOTH SETTINGS)
+    HammerEngine::Camera::Config config;
+    config.followSpeed = 2.5f;         // Original smooth settings
+    config.deadZoneRadius = 0.0f;      // No dead zone - always follow
+    config.smoothingFactor = 0.85f;    // Original exponential smoothing
+    config.maxFollowDistance = 9999.0f; // No distance limit
+    config.clampToWorldBounds = true; // Keep camera within world
+    m_camera->setConfig(config);
+    
+    // Set up world bounds for demo
+    setupCameraForWorld();
+  }
+}
+
+void EventDemoState::updateCamera(float deltaTime) {
+  if (m_camera) {
+    m_camera->update(deltaTime);
+  }
+}
+
+void EventDemoState::setupCameraForWorld() {
+  if (!m_camera) {
+    return;
+  }
+  
+  // Get actual world bounds from WorldManager
+  const WorldManager& worldManager = WorldManager::Instance();
+  
+  HammerEngine::Camera::Bounds worldBounds;
+  float minX, minY, maxX, maxY;
+  
+  if (worldManager.getWorldBounds(minX, minY, maxX, maxY)) {
+    // Convert tile coordinates to pixel coordinates (WorldManager returns tile coords)
+    // TileRenderer uses 32px per tile
+    const float TILE_SIZE = 32.0f;
+    worldBounds.minX = minX * TILE_SIZE;
+    worldBounds.minY = minY * TILE_SIZE;
+    worldBounds.maxX = maxX * TILE_SIZE;
+    worldBounds.maxY = maxY * TILE_SIZE;
+  } else {
+    // Fall back to demo world dimensions if no world is loaded
+    // EventDemoState uses 100x100 tiles
+    const float TILE_SIZE = 32.0f;
+    worldBounds.minX = 0.0f;
+    worldBounds.minY = 0.0f;
+    worldBounds.maxX = 100.0f * TILE_SIZE;  // 100 tiles * 32px = 3200px
+    worldBounds.maxY = 100.0f * TILE_SIZE;  // 100 tiles * 32px = 3200px
+  }
+  
+  m_camera->setWorldBounds(worldBounds);
+}
+
+void EventDemoState::applyCameraTransformation() {
+  if (!m_camera) {
+    return;
+  }
+  
+  // Calculate camera offset for later use in rendering
+  auto viewRect = m_camera->getViewRect();
+  m_cameraOffsetX = viewRect.x;
+  m_cameraOffsetY = viewRect.y;
+}
+
+void EventDemoState::toggleInventoryDisplay() {
+  auto &ui = UIManager::Instance();
+  m_showInventory = !m_showInventory;
+
+  ui.setComponentVisible("inventory_panel", m_showInventory);
+  ui.setComponentVisible("inventory_title", m_showInventory);
+  ui.setComponentVisible("inventory_status", m_showInventory);
+  ui.setComponentVisible("inventory_list", m_showInventory);
+
+  addLogEntry("Inventory " + std::string(m_showInventory ? "shown" : "hidden"));
 }

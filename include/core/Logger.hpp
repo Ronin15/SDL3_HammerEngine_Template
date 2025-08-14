@@ -88,20 +88,15 @@ private:
 
 // Debug build macros - full functionality
 #define HAMMER_CRITICAL(system, msg)                                           \
-  HammerEngine::Logger::Log(HammerEngine::LogLevel::CRITICAL, system,          \
-                            std::string(msg))
+  HammerEngine::Logger::Log(HammerEngine::LogLevel::CRITICAL, system, msg)
 #define HAMMER_ERROR(system, msg)                                              \
-  HammerEngine::Logger::Log(HammerEngine::LogLevel::ERROR, system,             \
-                            std::string(msg))
+  HammerEngine::Logger::Log(HammerEngine::LogLevel::ERROR, system, msg)
 #define HAMMER_WARN(system, msg)                                               \
-  HammerEngine::Logger::Log(HammerEngine::LogLevel::WARNING, system,           \
-                            std::string(msg))
+  HammerEngine::Logger::Log(HammerEngine::LogLevel::WARNING, system, msg)
 #define HAMMER_INFO(system, msg)                                               \
-  HammerEngine::Logger::Log(HammerEngine::LogLevel::INFO, system,              \
-                            std::string(msg))
+  HammerEngine::Logger::Log(HammerEngine::LogLevel::INFO, system, msg)
 #define HAMMER_DEBUG(system, msg)                                              \
-  HammerEngine::Logger::Log(HammerEngine::LogLevel::DEBUG_LEVEL, system,       \
-                            std::string(msg))
+  HammerEngine::Logger::Log(HammerEngine::LogLevel::DEBUG_LEVEL, system, msg)
 
 #else
 // Release builds - ultra-minimal overhead, lockless
@@ -119,27 +114,33 @@ public:
   static bool IsBenchmarkMode() {
     return s_benchmarkMode.load(std::memory_order_relaxed);
   }
+
+  static void Log(const char *level, const char *system,
+                  const std::string &message) {
+    if (s_benchmarkMode.load(std::memory_order_relaxed)) {
+      return;
+    }
+    std::lock_guard<std::mutex> lock(s_logMutex);
+    printf("Hammer Game Engine - [%s] %s: %s\n", system, level,
+           message.c_str());
+    fflush(stdout);
+  }
+
+  static void Log(const char *level, const char *system, const char *message) {
+    if (s_benchmarkMode.load(std::memory_order_relaxed)) {
+      return;
+    }
+    std::lock_guard<std::mutex> lock(s_logMutex);
+    printf("Hammer Game Engine - [%s] %s: %s\n", system, level, message);
+    fflush(stdout);
+  }
 };
 
 #define HAMMER_CRITICAL(system, msg)                                           \
-  do {                                                                         \
-    if (!HammerEngine::Logger::IsBenchmarkMode()) {                            \
-      std::lock_guard<std::mutex> lock(HammerEngine::Logger::s_logMutex);      \
-      printf("Hammer Game Engine - [%s] CRITICAL: %s\n", system,               \
-             std::string(msg).c_str());                                        \
-      fflush(stdout);                                                          \
-    }                                                                          \
-  } while (0)
+  HammerEngine::Logger::Log("CRITICAL", system, msg)
 
 #define HAMMER_ERROR(system, msg)                                              \
-  do {                                                                         \
-    if (!HammerEngine::Logger::IsBenchmarkMode()) {                            \
-      std::lock_guard<std::mutex> lock(HammerEngine::Logger::s_logMutex);      \
-      printf("Hammer Game Engine - [%s] ERROR: %s\n", system,                  \
-             std::string(msg).c_str());                                        \
-      fflush(stdout);                                                          \
-    }                                                                          \
-  } while (0)
+  HammerEngine::Logger::Log("ERROR", system, msg)
 
 #define HAMMER_WARN(system, msg) ((void)0)  // Zero overhead
 #define HAMMER_INFO(system, msg) ((void)0)  // Zero overhead
@@ -244,6 +245,12 @@ inline std::mutex Logger::s_logMutex{};
 #define WORLD_RESOURCE_WARN(msg) HAMMER_WARN("WorldResourceManager", msg)
 #define WORLD_RESOURCE_INFO(msg) HAMMER_INFO("WorldResourceManager", msg)
 #define WORLD_RESOURCE_DEBUG(msg) HAMMER_DEBUG("WorldResourceManager", msg)
+
+#define WORLD_MANAGER_CRITICAL(msg) HAMMER_CRITICAL("WorldManager", msg)
+#define WORLD_MANAGER_ERROR(msg) HAMMER_ERROR("WorldManager", msg)
+#define WORLD_MANAGER_WARN(msg) HAMMER_WARN("WorldManager", msg)
+#define WORLD_MANAGER_INFO(msg) HAMMER_INFO("WorldManager", msg)
+#define WORLD_MANAGER_DEBUG(msg) HAMMER_DEBUG("WorldManager", msg)
 
 // Entity and State Systems
 #define GAMESTATE_CRITICAL(msg) HAMMER_CRITICAL("GameStateManager", msg)

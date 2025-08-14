@@ -45,6 +45,7 @@ public:
 
   std::string getName() const override { return m_name; }
   std::string getType() const override { return "Mock"; }
+  std::string getTypeName() const override { return "MockEvent"; }
 
   bool checkConditions() override { return m_conditionsMet; }
 
@@ -83,7 +84,7 @@ BOOST_GLOBAL_FIXTURE(GlobalEventTestFixture);
 struct EventManagerFixture {
   EventManagerFixture() {
     // Don't reinitialize ThreadSystem - use the global one
-    EventManager::Instance().clean();
+    resetEventManager();
     BOOST_CHECK(EventManager::Instance().init());
   }
 
@@ -93,7 +94,14 @@ struct EventManagerFixture {
     std::this_thread::sleep_for(std::chrono::milliseconds(20));
 
     // Clean up the EventManager
+    resetEventManager();
     EventManager::Instance().clean();
+  }
+
+  void resetEventManager() {
+    EventManager::Instance().prepareForStateTransition();
+    EventManager::Instance().clearAllEvents();
+    EventManager::Instance().clearAllHandlers();
   }
 };
 

@@ -64,7 +64,7 @@ public:
 
     /**
      * Set the render callback
-     * Rendering runs with variable timestep and interpolation
+     * Rendering runs after all updates are complete
      * @param handler Function to call for rendering
      */
     void setRenderHandler(RenderHandler handler);
@@ -89,18 +89,6 @@ public:
     bool isRunning() const;
 
     /**
-     * Pause the game loop (stops updates but continues rendering)
-     * @param paused true to pause, false to resume
-     */
-    void setPaused(bool paused);
-
-    /**
-     * Check if the game loop is paused
-     * @return true if paused
-     */
-    bool isPaused() const;
-
-    /**
      * Get current FPS from the timestep manager
      * @return current frames per second
      */
@@ -117,6 +105,12 @@ public:
      * @param fps new target frames per second
      */
     void setTargetFPS(float fps);
+
+    /**
+     * Get the current target FPS
+     * @return target frames per second
+     */
+    float getTargetFPS() const;
 
     /**
      * Set new fixed timestep for updates
@@ -141,7 +135,6 @@ private:
 
     // Loop state
     std::atomic<bool> m_running;
-    std::atomic<bool> m_paused;
     std::atomic<bool> m_stopRequested;
 
     // Threading
@@ -158,7 +151,7 @@ private:
     void runUpdateWorker(const HammerEngine::WorkerBudget& budget);
     void processEvents();
     void processUpdates();
-    void processUpdatesParallel();
+    void processUpdatesHighPerformance();
     void processRender();
     void cleanup();
 
