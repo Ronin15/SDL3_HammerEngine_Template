@@ -41,6 +41,21 @@ This directory contains documentation for all major manager systems in the Hamme
 
 ---
 
-**Note:** All manager documentation is now centralized in this directory. For historical reference, some managers were previously documented in the parent folder but have been moved here for better organization.
+## Additional Major Managers (Documented in Subfolders)
+
+Some advanced managers have their own dedicated documentation folders:
+
+- **[AIManager](../ai/AIManager.md)**  
+  High-performance, multi-threaded AI system for managing autonomous entity behaviors, with advanced optimizations and performance monitoring.
+
+- **[EventManager](../events/EventManager.md)**  
+  Centralized, type-indexed event system for all game events, with batch processing, threading, and performance tracking.
+
+- **[UIManager](../ui/UIManager_Guide.md)**  
+  Comprehensive UI system for SDL3 games, supporting auto-sizing, theming, animation, and advanced layout management.
+
+---
+
+**Note:** All manager documentation is indexed here for discoverability. Some managers are documented in subfolders for clarity and depth.
 
 For a complete overview of all systems, see the [main documentation index](../README.md).

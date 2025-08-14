@@ -75,7 +75,7 @@ ninja -C build
 
 - Run all tests: `./run_all_tests.sh`
 - See [tests/TESTING.md](tests/TESTING.md) for test details and options
-- Static analysis: `./tests/cppcheck/cppcheck_focused.sh`  
+- Static analysis: `./tests/test_scripts/run_cppcheck_focused.sh`  
   See [tests/cppcheck/README.md](tests/cppcheck/README.md) for more.
 
 ### Valgrind Analysis Suite
