@@ -46,9 +46,9 @@ int main() {
         }
     });
 
-    gameLoop.setUpdateHandler([](float deltaTime) {
+    gameLoop.setUpdateHandler([](float dt) {
         // Update game logic at fixed timestep
-        updateGameWorld(deltaTime);
+        updateGameWorld(dt);
     });
 
     gameLoop.setRenderHandler([]() {
@@ -154,8 +154,8 @@ The GameLoop uses TimestepManager for precise timing control:
 void GameLoop::processUpdates() {
     // Process all pending fixed timestep updates
     while (m_timestepManager->shouldUpdate()) {
-        float deltaTime = m_timestepManager->getUpdateDeltaTime();
-        invokeUpdateHandler(deltaTime);
+        float dt = m_timestepManager->getUpdateDeltaTime();
+        invokeUpdateHandler(dt);
         m_updateCount.fetch_add(1, std::memory_order_relaxed);
     }
 }
@@ -293,7 +293,7 @@ private:
 
 ```cpp
 using EventHandler = std::function<void()>;
-using UpdateHandler = std::function<void(float deltaTime)>;
+using UpdateHandler = std::function<void(float dt)>;
 using RenderHandler = std::function<void()>;
 ```
 
@@ -445,9 +445,9 @@ TimestepManager& getTimestepManager();
 **DO:**
 ```cpp
 // Keep callbacks focused and efficient
-gameLoop.setUpdateHandler([&gameWorld](float deltaTime) {
-    gameWorld.update(deltaTime);
-    physics.step(deltaTime);
+gameLoop.setUpdateHandler([&gameWorld](float dt) {
+    gameWorld.update(dt);
+    physics.step(dt);
 });
 
 // Use RAII for resource management
@@ -467,7 +467,7 @@ gameLoop.setEventHandler([]() {
 });
 
 // Don't ignore exceptions
-gameLoop.setUpdateHandler([](float deltaTime) {
+gameLoop.setUpdateHandler([](float dt) {
     riskyOperation();        // Unhandled exceptions crash the update worker!
 });
 ```
@@ -481,11 +481,11 @@ private:
     GameState m_gameState;
 
 public:
-    // Write operations (updates) use exclusive lock
-    void update(float deltaTime) {
-        std::unique_lock<std::shared_mutex> lock(m_stateMutex);
-        m_gameState.update(deltaTime);
-    }
+// Write operations (updates) use exclusive lock
+void update(float dt) {
+    std::unique_lock<std::shared_mutex> lock(m_stateMutex);
+    m_gameState.update(dt);
+}
 
     // Read operations (rendering) use shared lock
     void render() const {
@@ -616,11 +616,11 @@ private:
         });
 
         // Game logic updates (update worker thread)
-        m_gameLoop->setUpdateHandler([this](float deltaTime) {
+        m_gameLoop->setUpdateHandler([this](float dt) {
             if (m_running.load()) {
-                updateGameWorld(deltaTime);
-                updatePhysics(deltaTime);
-                updateAI(deltaTime);
+                updateGameWorld(dt);
+                updatePhysics(dt);
+                updateAI(dt);
             }
         });
 
@@ -663,12 +663,12 @@ public:
 private:
     void configureTiming() {
         // Enable high-frequency updates for competitive gaming
-        m_gameLoop->setUpdateHandler([this](float deltaTime) {
+        m_gameLoop->setUpdateHandler([this](float dt) {
             // Track update frequency
             static int updateCount = 0;
             static auto lastTime = std::chrono::high_resolution_clock::now();
 
-            updateHighFrequencyLogic(deltaTime);
+            updateHighFrequencyLogic(dt);
 
             if (++updateCount % 1200 == 0) { // Every 10 seconds at 120 FPS
                 auto now = std::chrono::high_resolution_clock::now();
@@ -682,11 +682,11 @@ private:
         });
     }
 
-    void updateHighFrequencyLogic(float deltaTime) {
+    void updateHighFrequencyLogic(float dt) {
         // Critical game logic that benefits from high update rates
-        updatePlayerInput(deltaTime);
-        updateNetworking(deltaTime);
-        updatePrecisionPhysics(deltaTime);
+        updatePlayerInput(dt);
+        updateNetworking(dt);
+        updatePrecisionPhysics(dt);
     }
 };
 ```
@@ -719,11 +719,11 @@ private:
             }
         });
 
-        m_gameLoop->setUpdateHandler([this](float deltaTime) {
+        m_gameLoop->setUpdateHandler([this](float dt) {
             if (m_gameLoop->isPaused()) {
-                updatePauseMenu(deltaTime);
+                updatePauseMenu(dt);
             } else {
-                updateGameLogic(deltaTime);
+                updateGameLogic(dt);
             }
         });
 
@@ -743,11 +743,11 @@ private:
         GAMELOOP_INFO(m_gameMenuOpen ? "Game paused" : "Game resumed");
     }
 
-    void updateGameLogic(float deltaTime) {
+    void updateGameLogic(float dt) {
         // Normal game updates
     }
 
-    void updatePauseMenu(float deltaTime) {
+    void updatePauseMenu(float dt) {
         // Update pause menu UI
     }
 

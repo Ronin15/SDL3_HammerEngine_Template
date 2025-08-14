@@ -42,96 +42,96 @@ The Hammer Game Engine has the following test suites:
 
 ### Available Test Scripts
 
-Each test suite has dedicated scripts in the project root directory:
+Each test suite has dedicated scripts in the `tests/test_scripts/` directory:
 
 #### Linux/macOS
 ```bash
 # Core functionality tests (fast execution)
-./run_thread_tests.sh                # Thread system tests
-./run_buffer_utilization_tests.sh    # WorkerBudget buffer thread utilization tests
-./run_thread_safe_ai_tests.sh        # Thread-safe AI tests
-./run_thread_safe_ai_integration_tests.sh  # Thread-safe AI integration tests
-./run_ai_optimization_tests.sh       # AI optimization tests
-./run_behavior_functionality_tests.sh # Comprehensive AI behavior validation tests
-./run_save_tests.sh                  # Save manager and BinarySerializer tests
-./run_event_tests.sh                 # Event manager tests
-./run_json_reader_tests.sh           # JSON parser validation tests
+./tests/test_scripts/run_thread_tests.sh                # Thread system tests
+./tests/test_scripts/run_buffer_utilization_tests.sh    # WorkerBudget buffer thread utilization tests
+./tests/test_scripts/run_thread_safe_ai_tests.sh        # Thread-safe AI tests
+./tests/test_scripts/run_thread_safe_ai_integration_tests.sh  # Thread-safe AI integration tests
+./tests/test_scripts/run_ai_optimization_tests.sh       # AI optimization tests
+./tests/test_scripts/run_behavior_functionality_tests.sh # Comprehensive AI behavior validation tests
+./tests/test_scripts/run_save_tests.sh                  # Save manager and BinarySerializer tests
+./tests/test_scripts/run_event_tests.sh                 # Event manager tests
+./tests/test_scripts/run_json_reader_tests.sh           # JSON parser validation tests
 
 # Performance scaling benchmarks (slow execution)
-./run_event_scaling_benchmark.sh     # Event manager scaling benchmark
-./run_ai_benchmark.sh                # AI scaling benchmark with realistic automatic threading
-./run_ui_stress_tests.sh             # UI stress and performance tests
+./tests/test_scripts/run_event_scaling_benchmark.sh     # Event manager scaling benchmark
+./tests/test_scripts/run_ai_benchmark.sh                # AI scaling benchmark with realistic automatic threading
+./tests/test_scripts/run_ui_stress_tests.sh             # UI stress and performance tests
 
 # Run all tests
-./run_all_tests.sh                   # Run all test scripts sequentially
+./tests/test_scripts/run_all_tests.sh                   # Run all test scripts sequentially
 
 # AI benchmark test examples with automatic threading
-./run_ai_benchmark.sh                                   # Full realistic benchmark suite
-./run_ai_benchmark.sh --realistic-only                  # Clean realistic performance tests
-./run_ai_benchmark.sh --stress-test                     # 100K entity stress test only
-./run_ai_benchmark.sh --threshold-test                  # Threading threshold validation (200 entities)
+./tests/test_scripts/run_ai_benchmark.sh                                   # Full realistic benchmark suite
+./tests/test_scripts/run_ai_benchmark.sh --realistic-only                  # Clean realistic performance tests
+./tests/test_scripts/run_ai_benchmark.sh --stress-test                     # 100K entity stress test only
+./tests/test_scripts/run_ai_benchmark.sh --threshold-test                  # Threading threshold validation (200 entities)
 
 # Individual UI stress test examples
-./run_ui_stress_tests.sh --level light --duration 30    # Quick UI test
-./run_ui_stress_tests.sh --level heavy --duration 60    # Heavy load test
-./run_ui_stress_tests.sh --benchmark                    # UI benchmark suite
-./run_ui_stress_tests.sh --level medium --verbose       # Detailed output
+./tests/test_scripts/run_ui_stress_tests.sh --level light --duration 30    # Quick UI test
+./tests/test_scripts/run_ui_stress_tests.sh --level heavy --duration 60    # Heavy load test
+./tests/test_scripts/run_ui_stress_tests.sh --benchmark                    # UI benchmark suite
+./tests/test_scripts/run_ui_stress_tests.sh --level medium --verbose       # Detailed output
 
 # Save manager test examples with BinarySerializer
-./run_save_tests.sh --save-test                         # Basic save/load operations
-./run_save_tests.sh --serialization-test                # New BinarySerializer system tests
-./run_save_tests.sh --performance-test                  # Serialization performance benchmarks
-./run_save_tests.sh --integration-test                  # BinarySerializer integration tests
-./run_save_tests.sh --error-test                        # Error handling tests
-./run_save_tests.sh --verbose                           # Detailed test output
+./tests/test_scripts/run_save_tests.sh --save-test                         # Basic save/load operations
+./tests/test_scripts/run_save_tests.sh --serialization-test                # New BinarySerializer system tests
+./tests/test_scripts/run_save_tests.sh --performance-test                  # Serialization performance benchmarks
+./tests/test_scripts/run_save_tests.sh --integration-test                  # BinarySerializer integration tests
+./tests/test_scripts/run_save_tests.sh --error-test                        # Error handling tests
+./tests/test_scripts/run_save_tests.sh --verbose                           # Detailed test output
 
 # JSON reader test examples
-./run_json_reader_tests.sh --parse-test                 # Basic JSON parsing validation
-./run_json_reader_tests.sh --error-test                 # Error handling and malformed JSON tests
-./run_json_reader_tests.sh --file-test                  # File loading functionality tests
-./run_json_reader_tests.sh --game-test                  # Game item data parsing tests
-./run_json_reader_tests.sh --verbose                    # Detailed test output with all test cases
+./tests/test_scripts/run_json_reader_tests.sh --parse-test                 # Basic JSON parsing validation
+./tests/test_scripts/run_json_reader_tests.sh --error-test                 # Error handling and malformed JSON tests
+./tests/test_scripts/run_json_reader_tests.sh --file-test                  # File loading functionality tests
+./tests/test_scripts/run_json_reader_tests.sh --game-test                  # Game item data parsing tests
+./tests/test_scripts/run_json_reader_tests.sh --verbose                    # Detailed test output with all test cases
 ```
 
 #### Windows
 ```
 # Core functionality tests (fast execution)
-run_thread_tests.bat                 # Thread system tests
-run_thread_safe_ai_tests.bat         # Thread-safe AI tests
-run_thread_safe_ai_integration_tests.bat  # Thread-safe AI integration tests
-run_ai_optimization_tests.bat        # AI optimization tests
-run_behavior_functionality_tests.bat # Comprehensive AI behavior validation tests
-run_ai_benchmark.bat                 # AI scaling benchmark with realistic automatic threading
-run_save_tests.bat                   # Save manager and BinarySerializer tests
-run_event_tests.bat                  # Event manager tests
-run_json_reader_tests.bat            # JSON parser validation tests
+tests/test_scripts/run_thread_tests.bat                 # Thread system tests
+tests/test_scripts/run_thread_safe_ai_tests.bat         # Thread-safe AI tests
+tests/test_scripts/run_thread_safe_ai_integration_tests.bat  # Thread-safe AI integration tests
+tests/test_scripts/run_ai_optimization_tests.bat        # AI optimization tests
+tests/test_scripts/run_behavior_functionality_tests.bat # Comprehensive AI behavior validation tests
+tests/test_scripts/run_ai_benchmark.bat                 # AI scaling benchmark with realistic automatic threading
+tests/test_scripts/run_save_tests.bat                   # Save manager and BinarySerializer tests
+tests/test_scripts/run_event_tests.bat                  # Event manager tests
+tests/test_scripts/run_json_reader_tests.bat            # JSON parser validation tests
 
 # Performance scaling benchmarks (slow execution)
-run_event_scaling_benchmark.bat      # Event manager scaling benchmark
-run_ai_benchmark.bat                 # AI scaling benchmark
-run_ui_stress_tests.bat              # UI stress and performance tests
+tests/test_scripts/run_event_scaling_benchmark.bat      # Event manager scaling benchmark
+tests/test_scripts/run_ai_benchmark.bat                 # AI scaling benchmark
+tests/test_scripts/run_ui_stress_tests.bat              # UI stress and performance tests
 
 # Run all tests
-run_all_tests.bat                    # Run all test scripts sequentially
+tests/test_scripts/run_all_tests.bat                    # Run all test scripts sequentially
 
 # Individual UI stress test examples
-run_ui_stress_tests.bat /l light /d 30    # Quick UI test
-run_ui_stress_tests.bat /l heavy /d 60    # Heavy load test
-run_ui_stress_tests.bat /b                # UI benchmark suite
-run_ui_stress_tests.bat /l medium /v      # Detailed output
+tests/test_scripts/run_ui_stress_tests.bat /l light /d 30    # Quick UI test
+tests/test_scripts/run_ui_stress_tests.bat /l heavy /d 60    # Heavy load test
+tests/test_scripts/run_ui_stress_tests.bat /b                # UI benchmark suite
+tests/test_scripts/run_ui_stress_tests.bat /l medium /v      # Detailed output
 
 # Save manager test examples with BinarySerializer
-run_save_tests.bat --save-test                          # Basic save/load operations
-run_save_tests.bat --serialization-test                 # New BinarySerializer system tests
-run_save_tests.bat --performance-test                   # Serialization performance benchmarks
-run_save_tests.bat --integration-test                   # BinarySerializer integration tests
-run_save_tests.bat --error-test                         # Error handling tests
-run_save_tests.bat --verbose                            # Detailed test output
+tests/test_scripts/run_save_tests.bat --save-test                          # Basic save/load operations
+tests/test_scripts/run_save_tests.bat --serialization-test                 # New BinarySerializer system tests
+tests/test_scripts/run_save_tests.bat --performance-test                   # Serialization performance benchmarks
+tests/test_scripts/run_save_tests.bat --integration-test                   # BinarySerializer integration tests
+tests/test_scripts/run_save_tests.bat --error-test                         # Error handling tests
+tests/test_scripts/run_save_tests.bat --verbose                            # Detailed test output
 ```
 
 ### Test Execution Control
 
-The `run_all_tests.sh` script provides flexible execution control:
+The `tests/test_scripts/run_all_tests.sh` script provides flexible execution control:
 
 #### Test Category Options
 | Option | Description | Duration |
@@ -144,16 +144,16 @@ The `run_all_tests.sh` script provides flexible execution control:
 #### Examples
 ```bash
 # Quick validation during development
-./run_all_tests.sh --core-only
+./tests/test_scripts/run_all_tests.sh --core-only
 
 # Skip slow benchmarks in CI
-./run_all_tests.sh --no-benchmarks
+./tests/test_scripts/run_all_tests.sh --no-benchmarks
 
 # Performance testing only
-./run_all_tests.sh --benchmarks-only --verbose
+./tests/test_scripts/run_all_tests.sh --benchmarks-only --verbose
 
 # Complete test suite
-./run_all_tests.sh
+./tests/test_scripts/run_all_tests.sh
 ```
 
 ### Common Command-Line Options
@@ -198,7 +198,7 @@ Test results are saved in the `test_results` directory:
 - `event_types_test_output.txt` - Output from event types tests
 - `weather_event_test_output.txt` - Output from weather event tests
 
-When using the `run_all_tests` scripts, combined results are also saved:
+When using the `tests/test_scripts/run_all_tests` scripts, combined results are also saved:
 
 - `combined/all_tests_results.txt` - Summary of all test script results
 
@@ -304,16 +304,16 @@ This approach provides actionable insights for UI system optimization rather tha
 **Usage Examples:**
 ```bash
 # Quick development validation
-./run_ui_stress_tests.sh --level light --duration 10
+./tests/test_scripts/run_ui_stress_tests.sh --level light --duration 10
 
 # CI/CD pipeline validation
-./run_ui_stress_tests.sh --level medium --duration 30
+./tests/test_scripts/run_ui_stress_tests.sh --level medium --duration 30
 
 # Performance profiling
-./run_ui_stress_tests.sh --benchmark --verbose
+./tests/test_scripts/run_ui_stress_tests.sh --benchmark --verbose
 
 # Stress testing with custom parameters
-./run_ui_stress_tests.sh --level extreme --duration 120 --max-components 2000
+./tests/test_scripts/run_ui_stress_tests.sh --level extreme --duration 120 --max-components 2000
 ```
 
 ### Save Manager Tests
@@ -853,16 +853,16 @@ For thread-safety tests, follow these guidelines:
 
 ## Running All Tests
 
-The `run_all_tests` scripts provide a convenient way to run all test suites sequentially:
+The `tests/test_scripts/run_all_tests` scripts provide a convenient way to run all test suites sequentially:
 
 ### Linux/macOS
 ```bash
-./run_all_tests.sh [options]
+./tests/test_scripts/run_all_tests.sh [options]
 ```
 
 ### Windows
 ```
-run_all_tests.bat [options]
+tests/test_scripts/run_all_tests.bat [options]
 ```
 
 These scripts:
@@ -887,5 +887,5 @@ For thread-safe tests, ensure `BOOST_TEST_NO_SIGNAL_HANDLING` is defined.
 
 For specific testing scenarios and troubleshooting, refer to these additional documents:
 
-- `AI_TESTING.md` - Specific guidance for AI thread testing scenarios
+- `BEHAVIOR_TESTING.md` - Specific guidance for AI thread testing scenarios
 - `TROUBLESHOOTING.md` - Common issues and their solutions across all components
