@@ -52,7 +52,7 @@ A modern, production-ready C++20 SDL3 game engine template for 2D games. Built f
 
 ### Prerequisites
 
-- CMake 3.28+, Ninja, C++20 compiler (GCC/Clang/MSVC)
+- CMake 3.28+, Ninja, C++20 compiler (GCC/Clang/MSVC) - MSVC planned
 - [SDL3 dependencies](https://wiki.libsdl.org/SDL3/README-linux) (image, ttf, mixer)
 - Boost (for tests), cppcheck (for static analysis)
 
