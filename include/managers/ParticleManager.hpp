@@ -850,9 +850,7 @@ private:
   mutable std::mutex m_statsMutex; // Only for performance stats
   mutable std::mutex m_weatherMutex; // For weather effect changes
 
-  // Update serialization for single-threaded update logic
-  static std::mutex
-      updateMutex; // Static to prevent multiple update() calls system-wide
+  // NOTE: No update mutex - GameEngine handles update/render synchronization
 
   // Constants for optimization
   static constexpr size_t CACHE_LINE_SIZE = 64;
