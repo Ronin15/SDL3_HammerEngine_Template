@@ -27,11 +27,23 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <cmath>
 #include <mutex>
 #include <shared_mutex>
 #include <string>
 #include <unordered_map>
 #include <vector>
+
+// SIMD support detection
+#if defined(__SSE2__) || (defined(_MSC_VER) && (defined(_M_X64) || defined(_M_IX86_FP) && _M_IX86_FP >= 2))
+#define PARTICLE_SIMD_SSE2 1
+#include <emmintrin.h>
+#endif
+
+#if defined(__SSE4_1__) || (defined(_MSC_VER) && defined(__AVX__))
+#define PARTICLE_SIMD_SSE4 1
+#include <smmintrin.h>
+#endif
 
 // Forward declarations
 class TextureManager;
@@ -913,6 +925,14 @@ private:
                                      size_t activeParticleCount);
   void updateParticleRange(LockFreeParticleStorage::ParticleSoA &particles,
                            size_t startIdx, size_t endIdx, float deltaTime);
+                           
+  // SIMD-optimized batch physics update for high-performance processing
+  void updateParticlePhysicsSIMD(LockFreeParticleStorage::ParticleSoA &particles,
+                                size_t startIdx, size_t endIdx, float deltaTime);
+                                
+  // Batch color processing for alpha fading and color transitions
+  void batchProcessParticleColors(LockFreeParticleStorage::ParticleSoA &particles,
+                                 size_t startIdx, size_t endIdx);
   void updateParticleWithColdData(ParticleData &particle,
                                   const ParticleColdData &coldData,
                                   float deltaTime);
@@ -924,6 +944,28 @@ private:
   uint32_t interpolateColor(uint32_t color1, uint32_t color2, float factor);
   void recordPerformance(bool isRender, double timeMs, size_t particleCount);
   uint64_t getCurrentTimeNanos() const;
+
+  // PERFORMANCE OPTIMIZATION: Trigonometric lookup tables for fast math
+  static constexpr size_t TRIG_LUT_SIZE = 1024;
+  static constexpr float TRIG_LUT_SCALE = TRIG_LUT_SIZE / (2.0f * 3.14159265f);
+  std::array<float, TRIG_LUT_SIZE> m_sinLUT;
+  std::array<float, TRIG_LUT_SIZE> m_cosLUT;
+  void initTrigLookupTables();
+  
+  // Fast trigonometric functions using lookup tables
+  inline float fastSin(float x) const {
+    x = fmodf(x, 2.0f * 3.14159265f);
+    if (x < 0) x += 2.0f * 3.14159265f;
+    const size_t index = static_cast<size_t>(x * TRIG_LUT_SCALE) % TRIG_LUT_SIZE;
+    return m_sinLUT[index];
+  }
+  
+  inline float fastCos(float x) const {
+    x = fmodf(x, 2.0f * 3.14159265f);
+    if (x < 0) x += 2.0f * 3.14159265f;
+    const size_t index = static_cast<size_t>(x * TRIG_LUT_SCALE) % TRIG_LUT_SIZE;
+    return m_cosLUT[index];
+  }
 
   // Weather type conversion helpers
   ParticleEffectType weatherStringToEnum(const std::string &weatherType,

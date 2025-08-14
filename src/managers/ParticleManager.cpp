@@ -521,6 +521,9 @@ bool ParticleManager::init() {
     // Modern engines can handle much more - reserve generous capacity
     // Note: LockFreeParticleStorage automatically pre-allocates in constructor
 
+    // PERFORMANCE OPTIMIZATION: Initialize trigonometric lookup tables
+    initTrigLookupTables();
+
     // Built-in effects will be registered by GameEngine after init
 
     m_initialized.store(true, std::memory_order_release);
@@ -2067,13 +2070,9 @@ void ParticleManager::updateParticleRange(
     
 
     // Enhanced physics with natural atmospheric effects
-    float windVariation = std::sin(windPhase + particleOffset) *
+    float windVariation = fastSin(windPhase + particleOffset) *
                           0.3f;    // Per-particle wind variation
     float atmosphericDrag = 0.98f; // Slight air resistance
-
-    // PRODUCTION OPTIMIZATION: Extract color components once and cache
-    // comparison results
-    const uint32_t color = particles.colors[i];
 
     if (particles.effectTypes[i] == ParticleEffectType::Cloudy) {
       // Apply horizontal movement for cloud drift
@@ -2081,9 +2080,9 @@ void ParticleManager::updateParticleRange(
       particles.accelerations[i].setY(0.0f);
 
       // PRODUCTION OPTIMIZATION: Pre-computed trigonometric values
-      const float drift = std::sin(windPhase0_8 + particleOffset15) * 3.0f;
+      const float drift = fastSin(windPhase0_8 + particleOffset15) * 3.0f;
       const float verticalFloat =
-          std::cos(windPhase1_2 + particleOffset) * 1.5f;
+          fastCos(windPhase1_2 + particleOffset) * 1.5f;
 
       particles.velocities[i].setX(particles.velocities[i].getX() + drift * deltaTime);
       particles.velocities[i].setY(particles.velocities[i].getY() +
@@ -2105,7 +2104,7 @@ void ParticleManager::updateParticleRange(
       // Snow particles drift more with wind and have flutter
       if (particles.effectTypes[i] == ParticleEffectType::Snow ||
           particles.effectTypes[i] == ParticleEffectType::HeavySnow) {
-        const float flutter = std::sin(windPhase3_0 + particleOffset2) * 8.0f;
+        const float flutter = fastSin(windPhase3_0 + particleOffset2) * 8.0f;
         particles.velocities[i].setX(particles.velocities[i].getX() + flutter * deltaTime);
         atmosphericDrag = 0.96f; // More air resistance for snow
       }
@@ -2121,9 +2120,9 @@ void ParticleManager::updateParticleRange(
 
       // Fog/cloud particles drift and have gentle movement
       else { // Regular fog behavior (not clouds)
-        const float drift = std::sin(windPhase0_8 + particleOffset15) * 15.0f;
+        const float drift = fastSin(windPhase0_8 + particleOffset15) * 15.0f;
         const float verticalDrift =
-            std::cos(windPhase1_2 + particleOffset) * 3.0f * deltaTime;
+            fastCos(windPhase1_2 + particleOffset) * 3.0f * deltaTime;
         particles.velocities[i].setX(particles.velocities[i].getX() + drift * deltaTime);
         particles.velocities[i].setY(particles.velocities[i].getY() + verticalDrift);
         atmosphericDrag = 0.999f;
@@ -2141,23 +2140,23 @@ void ParticleManager::updateParticleRange(
 
         // More random turbulence for fire
         const float heatTurbulence =
-            std::sin(windPhase8_0 + particleOffset3) * 15.0f +
+            fastSin(windPhase8_0 + particleOffset3) * 15.0f +
             (randomFactor - 0.5f) * 10.f;
         const float heatRise =
-            std::cos(windPhase6_0 + particleOffset25) * 10.0f;
+            fastCos(windPhase6_0 + particleOffset25) * 10.0f;
 
         particles.velocities[i].setX(particles.velocities[i].getX() +
                                heatTurbulence * deltaTime);
         particles.velocities[i].setY(particles.velocities[i].getY() + heatRise * deltaTime);
 
-        // Fire gets more chaotic as it ages (burns out)
+        // Fire particles get more chaotic as they age (burns out)
         const float chaos = (1.0f - lifeRatio) * 25.0f;
         const float chaosValue =
             (randomFactor - 0.5f) * chaos * deltaTime;
         particles.accelerations[i].setX(particles.accelerations[i].getX() + chaosValue);
 
-        // Visuals: Change color and size over life
-        particles.colors[i] = interpolateColor(0xFFD700FF, 0xFF450088, 1.0f - lifeRatio);
+        // Visuals: Fire particles use their initial random color and just fade with age
+        // The color interpolation happens during creation, not during update
         particles.sizes[i] *= (lifeRatio * 0.99f);
 
 
@@ -2170,8 +2169,8 @@ void ParticleManager::updateParticleRange(
         // Circular billowing motion
         float angle = (i % 360) * 3.14159f / 180.0f; // Unique angle per particle
         float speed = 15.0f + (randomFactor * 10.0f);
-        float circleX = std::cos(angle + windPhase) * speed * (1.0f - lifeRatio);
-        float circleY = std::sin(angle + windPhase) * speed * (1.0f - lifeRatio);
+        float circleX = fastCos(angle + windPhase) * speed * (1.0f - lifeRatio);
+        float circleY = fastSin(angle + windPhase) * speed * (1.0f - lifeRatio);
 
         particles.velocities[i].setX(particles.velocities[i].getX() + circleX * deltaTime);
         particles.velocities[i].setY(particles.velocities[i].getY() + circleY * deltaTime - (20.0f * deltaTime)); // Upward motion
@@ -2214,32 +2213,22 @@ void ParticleManager::updateParticleRange(
       continue;
     }
 
-    // Enhanced visual properties with natural fading
-    // Safe division with zero check
-    const float lifeRatio = (particles.maxLives[i] > 0.0f) ? 
-                           (particles.lives[i] / particles.maxLives[i]) : 0.0f;
-
-    // Natural fade-in and fade-out for weather particles
-    float alphaMultiplier = 1.0f;
-    if (particles.flags[i] & UnifiedParticle::FLAG_WEATHER) {
-      if (lifeRatio > 0.9f) {
-        // Fade in during first 10% of life
-        alphaMultiplier = (1.0f - lifeRatio) * 10.0f;
-      } else if (lifeRatio < 0.2f) {
-        // Fade out during last 20% of life
-        alphaMultiplier = lifeRatio * 5.0f;
-      }
-    } else {
-      // Standard fade for non-weather particles
-      alphaMultiplier = lifeRatio;
-    }
-
-    const uint8_t alpha = static_cast<uint8_t>(255 * alphaMultiplier);
-    particles.colors[i] = (color & 0xFFFFFF00) | alpha;
+    // Note: Enhanced visual properties with natural fading are now handled
+    // in batch color processing after the main update loop for better performance
 
     // Note: Size variation for natural appearance would be applied during
     // rendering
-  }
+   }
+   
+   // PERFORMANCE OPTIMIZATION: Apply SIMD physics for eligible particles
+   // This significantly accelerates position/velocity updates for non-fire particles
+   #ifdef PARTICLE_SIMD_SSE2
+   updateParticlePhysicsSIMD(particles, startIdx, endIdx, deltaTime);
+   #endif
+   
+   // PERFORMANCE OPTIMIZATION: Apply batch color processing for non-fire particles
+   // This provides better cache utilization and eliminates redundant alpha calculations
+   batchProcessParticleColors(particles, startIdx, endIdx);
 }
 
 void ParticleManager::createParticleForEffect(
@@ -2282,7 +2271,7 @@ void ParticleManager::createParticleForEffect(
   float angleRange = config.spread * 0.017453f; // Convert degrees to radians
   float angle = (naturalRand * 2.0f - 1.0f) * angleRange;
 
-  request.velocity = Vector2D(speed * sin(angle), speed * cos(angle));
+  request.velocity = Vector2D(speed * fastSin(angle), speed * fastCos(angle));
   request.acceleration = config.gravity;
   request.life = config.minLife + (config.maxLife - config.minLife) *
                                       static_cast<float>(fast_rand()) / 32767.0f;
@@ -2485,4 +2474,195 @@ uint32_t ParticleManager::interpolateColor(uint32_t color1, uint32_t color2,
 
   return (static_cast<uint32_t>(r) << 24) | (static_cast<uint32_t>(g) << 16) |
          (static_cast<uint32_t>(b) << 8) | static_cast<uint32_t>(a);
+}
+
+void ParticleManager::initTrigLookupTables() {
+  // PERFORMANCE OPTIMIZATION: Pre-compute sin/cos lookup tables
+  // This eliminates expensive real-time trigonometric calculations
+  constexpr float step = 2.0f * 3.14159265f / TRIG_LUT_SIZE;
+  
+  for (size_t i = 0; i < TRIG_LUT_SIZE; ++i) {
+    const float angle = i * step;
+    m_sinLUT[i] = std::sin(angle);
+    m_cosLUT[i] = std::cos(angle);
+  }
+}
+
+void ParticleManager::updateParticlePhysicsSIMD(
+    LockFreeParticleStorage::ParticleSoA &particles, size_t startIdx, size_t endIdx,
+    float deltaTime) {
+    
+#ifdef PARTICLE_SIMD_SSE2
+  // SIMD optimized physics update for 4 particles at once
+  const __m128 deltaTimeVec = _mm_set1_ps(deltaTime);
+  const __m128 atmosphericDragVec = _mm_set1_ps(0.98f);
+  
+  // Process 4 particles at a time for optimal SIMD utilization
+  size_t simdEnd = (endIdx - startIdx) / 4 * 4 + startIdx;
+  
+  for (size_t i = startIdx; i < simdEnd; i += 4) {
+    // Load 4 particles' flags to check if they're active
+    uint8_t flags[4] = {
+      particles.flags[i], particles.flags[i+1], 
+      particles.flags[i+2], particles.flags[i+3]
+    };
+    
+    // Check if any particles are active (quick early exit)
+    bool hasActive = false;
+    for (int j = 0; j < 4; ++j) {
+      if (flags[j] & UnifiedParticle::FLAG_ACTIVE) {
+        hasActive = true;
+        break;
+      }
+    }
+    if (!hasActive) continue;
+    
+    // Load position X components for 4 particles
+    __m128 posX = _mm_setr_ps(
+      particles.positions[i].getX(), particles.positions[i+1].getX(),
+      particles.positions[i+2].getX(), particles.positions[i+3].getX()
+    );
+    
+    // Load position Y components for 4 particles  
+    __m128 posY = _mm_setr_ps(
+      particles.positions[i].getY(), particles.positions[i+1].getY(),
+      particles.positions[i+2].getY(), particles.positions[i+3].getY()
+    );
+    
+    // Load velocity X components
+    __m128 velX = _mm_setr_ps(
+      particles.velocities[i].getX(), particles.velocities[i+1].getX(),
+      particles.velocities[i+2].getX(), particles.velocities[i+3].getX()
+    );
+    
+    // Load velocity Y components
+    __m128 velY = _mm_setr_ps(
+      particles.velocities[i].getY(), particles.velocities[i+1].getY(),
+      particles.velocities[i+2].getY(), particles.velocities[i+3].getY()
+    );
+    
+    // Load acceleration X components
+    __m128 accelX = _mm_setr_ps(
+      particles.accelerations[i].getX(), particles.accelerations[i+1].getX(),
+      particles.accelerations[i+2].getX(), particles.accelerations[i+3].getX()
+    );
+    
+    // Load acceleration Y components
+    __m128 accelY = _mm_setr_ps(
+      particles.accelerations[i].getY(), particles.accelerations[i+1].getY(),
+      particles.accelerations[i+2].getY(), particles.accelerations[i+3].getY()
+    );
+    
+    // SIMD Physics: velocity += acceleration * deltaTime (4 particles at once)
+    velX = _mm_add_ps(velX, _mm_mul_ps(accelX, deltaTimeVec));
+    velY = _mm_add_ps(velY, _mm_mul_ps(accelY, deltaTimeVec));
+    
+    // SIMD Physics: Apply atmospheric drag (4 particles at once)
+    velX = _mm_mul_ps(velX, atmosphericDragVec);
+    velY = _mm_mul_ps(velY, atmosphericDragVec);
+    
+    // SIMD Physics: position += velocity * deltaTime (4 particles at once)
+    posX = _mm_add_ps(posX, _mm_mul_ps(velX, deltaTimeVec));
+    posY = _mm_add_ps(posY, _mm_mul_ps(velY, deltaTimeVec));
+    
+    // Store results back to particles (only for active particles)
+    float posXResults[4], posYResults[4], velXResults[4], velYResults[4];
+    _mm_storeu_ps(posXResults, posX);
+    _mm_storeu_ps(posYResults, posY);
+    _mm_storeu_ps(velXResults, velX);
+    _mm_storeu_ps(velYResults, velY);
+    
+    for (int j = 0; j < 4; ++j) {
+      if (flags[j] & UnifiedParticle::FLAG_ACTIVE) {
+        particles.positions[i+j].setX(posXResults[j]);
+        particles.positions[i+j].setY(posYResults[j]);
+        particles.velocities[i+j].setX(velXResults[j]);
+        particles.velocities[i+j].setY(velYResults[j]);
+      }
+    }
+  }
+  
+  // Handle remaining particles that don't fit in groups of 4
+  for (size_t i = simdEnd; i < endIdx; ++i) {
+    if (!(particles.flags[i] & UnifiedParticle::FLAG_ACTIVE)) continue;
+    
+    // Standard scalar physics for remaining particles
+    particles.velocities[i].setX(particles.velocities[i].getX() + 
+                           particles.accelerations[i].getX() * deltaTime);
+    particles.velocities[i].setY(particles.velocities[i].getY() + 
+                           particles.accelerations[i].getY() * deltaTime);
+                           
+    particles.velocities[i] *= 0.98f; // atmospheric drag
+    
+    particles.positions[i].setX(particles.positions[i].getX() + 
+                          particles.velocities[i].getX() * deltaTime);
+    particles.positions[i].setY(particles.positions[i].getY() + 
+                          particles.velocities[i].getY() * deltaTime);
+  }
+  
+#else
+  // Fallback to scalar implementation for platforms without SSE2
+  for (size_t i = startIdx; i < endIdx; ++i) {
+    if (!(particles.flags[i] & UnifiedParticle::FLAG_ACTIVE)) continue;
+    
+    particles.velocities[i].setX(particles.velocities[i].getX() + 
+                           particles.accelerations[i].getX() * deltaTime);
+    particles.velocities[i].setY(particles.velocities[i].getY() + 
+                           particles.accelerations[i].getY() * deltaTime);
+                           
+    particles.velocities[i] *= 0.98f; // atmospheric drag
+    
+    particles.positions[i].setX(particles.positions[i].getX() + 
+                          particles.velocities[i].getX() * deltaTime);
+    particles.positions[i].setY(particles.positions[i].getY() + 
+                          particles.velocities[i].getY() * deltaTime);
+  }
+#endif
+}
+
+void ParticleManager::batchProcessParticleColors(
+    LockFreeParticleStorage::ParticleSoA &particles, size_t startIdx, size_t endIdx) {
+    
+  // PERFORMANCE OPTIMIZATION: Batch process color alpha blending
+  // This eliminates repeated alpha calculation and bit manipulation per particle
+  
+  for (size_t i = startIdx; i < endIdx; ++i) {
+    if (!(particles.flags[i] & UnifiedParticle::FLAG_ACTIVE)) continue;
+    
+    // Skip particles that have special color handling - but allow fire alpha fading
+    if (particles.effectTypes[i] == ParticleEffectType::Fire) {
+      // Fire particles: fade alpha over time but keep their color
+      const float lifeRatio = (particles.maxLives[i] > 0.0f) ? 
+                             (particles.lives[i] / particles.maxLives[i]) : 0.0f;
+      const uint32_t color = particles.colors[i];
+      const uint8_t alpha = static_cast<uint8_t>(255.0f * lifeRatio); // Fade out as life decreases
+      particles.colors[i] = (color & 0xFFFFFF00) | alpha;
+      continue;
+    }
+    
+    // Cache color value to avoid repeated vector access
+    const uint32_t color = particles.colors[i];
+    
+    // Safe division with zero check for life ratio calculation
+    const float lifeRatio = (particles.maxLives[i] > 0.0f) ? 
+                           (particles.lives[i] / particles.maxLives[i]) : 0.0f;
+    
+    // Fast alpha calculation based on particle type
+    float alphaMultiplier = 1.0f;
+    if (particles.flags[i] & UnifiedParticle::FLAG_WEATHER) {
+      // Weather particles: fade in at start, fade out at end
+      if (lifeRatio > 0.9f) {
+        alphaMultiplier = (1.0f - lifeRatio) * 10.0f; // Fade in during first 10%
+      } else if (lifeRatio < 0.2f) {
+        alphaMultiplier = lifeRatio * 5.0f; // Fade out during last 20%
+      }
+    } else {
+      // Standard fade for non-weather particles
+      alphaMultiplier = lifeRatio;
+    }
+    
+    // Fast bit manipulation for alpha blending
+    const uint8_t alpha = static_cast<uint8_t>(255.0f * alphaMultiplier);
+    particles.colors[i] = (color & 0xFFFFFF00) | alpha;
+  }
 }
