@@ -4,7 +4,6 @@
  */
 
 #include "entities/Player.hpp"
-#include "SDL3/SDL_surface.h"
 #include "core/GameEngine.hpp"
 #include "core/Logger.hpp"
 #include "entities/playerStates/PlayerIdleState.hpp"
@@ -13,8 +12,11 @@
 #include "managers/EventManager.hpp"
 #include "managers/ResourceTemplateManager.hpp"
 #include "managers/TextureManager.hpp"
+#include "managers/WorldManager.hpp"
+#include "utils/Camera.hpp"
 #include <SDL3/SDL.h>
 #include <chrono>
+#include <algorithm>
 
 Player::Player() {
   // Initialize player properties
@@ -132,8 +134,48 @@ void Player::update(float deltaTime) {
   // Let the state machine handle ALL movement and input logic
   m_stateManager.update(deltaTime);
 
-  // Apply velocity to position
-  m_position += m_velocity * deltaTime;
+  // Apply velocity to position AFTER state update
+  Vector2D newPosition = m_position + m_velocity * deltaTime;
+  
+  // Constrain player position to world boundaries
+  const WorldManager& worldManager = WorldManager::Instance();
+  float minX, minY, maxX, maxY;
+  
+  if (worldManager.getWorldBounds(minX, minY, maxX, maxY)) {
+    // Convert tile coordinates to pixel coordinates (32px per tile)
+    const float TILE_SIZE = 32.0f;
+    float worldMinX = minX * TILE_SIZE;
+    float worldMinY = minY * TILE_SIZE;
+    float worldMaxX = maxX * TILE_SIZE;
+    float worldMaxY = maxY * TILE_SIZE;
+    
+    // Use player sprite dimensions for proper boundary constraints
+    // Player should be able to reach actual world boundaries
+    const float HALF_SPRITE_WIDTH = m_frameWidth / 2.0f;   // Half of player sprite width
+    const float HALF_SPRITE_HEIGHT = m_height / 2.0f;      // Half of player sprite height
+    
+    // Constrain player to actual world boundaries (accounting for sprite size)
+    newPosition.setX(std::clamp(newPosition.getX(), 
+                               worldMinX + HALF_SPRITE_WIDTH, 
+                               worldMaxX - HALF_SPRITE_WIDTH));
+    newPosition.setY(std::clamp(newPosition.getY(), 
+                               worldMinY + HALF_SPRITE_HEIGHT, 
+                               worldMaxY - HALF_SPRITE_HEIGHT));
+  } else {
+    // Fallback to default bounds if no world is loaded (matches GamePlayState.cpp)
+    const float DEFAULT_WORLD_SIZE = 3200.0f; // 100 tiles * 32px
+    const float HALF_SPRITE_WIDTH = m_frameWidth / 2.0f;
+    const float HALF_SPRITE_HEIGHT = m_height / 2.0f;
+    
+    newPosition.setX(std::clamp(newPosition.getX(), 
+                               HALF_SPRITE_WIDTH, 
+                               DEFAULT_WORLD_SIZE - HALF_SPRITE_WIDTH));
+    newPosition.setY(std::clamp(newPosition.getY(), 
+                               HALF_SPRITE_HEIGHT, 
+                               DEFAULT_WORLD_SIZE - HALF_SPRITE_HEIGHT));
+  }
+  
+  m_position = newPosition;
 
   // If the texture dimensions haven't been loaded yet, try loading them
   if (m_frameWidth == 0 &&
@@ -142,24 +184,34 @@ void Player::update(float deltaTime) {
   }
 }
 
-void Player::render() {
+void Player::render(const HammerEngine::Camera* camera) {
   // Cache manager references for better performance
   TextureManager &texMgr = TextureManager::Instance();
   SDL_Renderer *renderer = GameEngine::Instance().getRenderer();
 
-  // Calculate centered position for rendering (IDENTICAL to NPCs)
-  int renderX = static_cast<int>(m_position.getX() - (m_frameWidth / 2.0f));
-  int renderY = static_cast<int>(m_position.getY() - (m_height / 2.0f));
+  // Determine render position based on camera
+  Vector2D renderPosition;
+  if (camera) {
+    // Transform world position to screen coordinates using camera
+    renderPosition = camera->worldToScreen(m_position);
+  } else {
+    // No camera transformation - render at world coordinates directly
+    renderPosition = m_position;
+  }
 
-  // Render the Player with the current animation frame (IDENTICAL to NPCs)
-  texMgr.drawFrame(m_textureID,
-                   renderX,        // Center horizontally
-                   renderY,        // Center vertically
-                   m_frameWidth,   // Use the calculated frame width
-                   m_height,       // Height stays the same
-                   m_currentRow,   // Current animation row
-                   m_currentFrame, // Current animation frame
-                   renderer, m_flip);
+  // Calculate centered position for rendering (preserve float precision)
+  float renderX = renderPosition.getX() - (m_frameWidth / 2.0f);
+  float renderY = renderPosition.getY() - (m_height / 2.0f);
+
+  // Render the Player with the current animation frame using float precision
+  texMgr.drawFrameF(m_textureID,
+                    renderX,        // Keep float precision for smooth camera movement
+                    renderY,        // Keep float precision for smooth camera movement
+                    m_frameWidth,   // Use the calculated frame width
+                    m_height,       // Height stays the same
+                    m_currentRow,   // Current animation row
+                    m_currentFrame, // Current animation frame
+                    renderer, m_flip);
 }
 
 void Player::clean() {

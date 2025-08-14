@@ -14,25 +14,20 @@ if errorlevel 1 (
     echo Please install cppcheck and ensure it's in your PATH
     echo.
     echo Download from: https://cppcheck.sourceforge.io/
-    pause
     exit /b 1
 )
-
 REM Verify configuration files exist
 if not exist "cppcheck_lib.cfg" (
     echo Error: cppcheck_lib.cfg not found
     echo Please ensure you're running this from the project root directory
-    pause
     exit /b 1
 )
 
 if not exist "cppcheck_suppressions.txt" (
     echo Error: cppcheck_suppressions.txt not found
     echo Please ensure you're running this from the project root directory
-    pause
     exit /b 1
 )
-
 echo Running focused analysis ^(errors, warnings, performance issues only^)...
 echo.
 
@@ -110,4 +105,3 @@ echo.
 echo Note: This configuration filters out ~2,500 false positives
 echo to focus on genuine code quality issues.
 echo.
-pause

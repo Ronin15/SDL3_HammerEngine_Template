@@ -8,11 +8,8 @@
 #include "managers/FontManager.hpp"
 #include "managers/UIManager.hpp"
 #include "core/GameEngine.hpp"
-#include <iostream>
 
 bool PauseState::enter() {
-  std::cout << "Hammer Game Engine - Entering PAUSE State\n";
-
   // Create pause state UI
   auto& gameEngine = GameEngine::Instance();
   auto& ui = UIManager::Instance();
@@ -29,10 +26,9 @@ bool PauseState::enter() {
 }
 
 void PauseState::update([[maybe_unused]] float deltaTime) {
-  //std::cout << "Updating PAUSE State\n";
 }
 
-void PauseState::render(float deltaTime) {
+void PauseState::render() {
     // Cache manager references for better performance
     FontManager& fontMgr = FontManager::Instance();
     const auto& gameEngine = GameEngine::Instance();
@@ -40,7 +36,7 @@ void PauseState::render(float deltaTime) {
     
     // Update and render UI components through UIManager using cached renderer for cleaner API
     if (!ui.isShutdown()) {
-        ui.update(deltaTime);
+        ui.update(0.0); // UI updates are not time-dependent in this state
     }
     ui.render();
     
@@ -55,11 +51,11 @@ void PauseState::render(float deltaTime) {
        gameEngine.getRenderer());
 }
 bool PauseState::exit() {
-  std::cout << "Hammer Game Engine - Exiting PAUSE State\n";
-
-  // Clean up UI components using simplified method
+  // Only clean up PauseState-specific UI components
+  // Do NOT use prepareForStateTransition() as it would clear GamePlayState's preserved UI
   auto& ui = UIManager::Instance();
-  ui.prepareForStateTransition();
+  ui.removeComponent("pause_title");
+  ui.removeOverlay(); // Remove the pause overlay to restore GamePlayState visibility
 
   return true;
 }
@@ -76,7 +72,7 @@ void PauseState::handleInput() {
       // Flag the GamePlayState transition
       // We'll do the actual removal in GamePlayState::enter()
       const auto& gameEngine = GameEngine::Instance();
-      gameEngine.getGameStateManager()->setState("GamePlayState");
+      gameEngine.getGameStateManager()->popState();
   }
   
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_ESCAPE)) {

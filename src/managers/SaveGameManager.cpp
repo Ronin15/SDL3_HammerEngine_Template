@@ -379,6 +379,10 @@ void SaveGameManager::setSaveDirectory(const std::string &directory) {
 }
 
 void SaveGameManager::clean() {
+  if (m_isShutdown) {
+    return;
+  }
+
   // Set shutdown flag
   m_isShutdown = true;
 
@@ -567,13 +571,6 @@ bool SaveGameManager::readString(std::ifstream &file, std::string &str) const {
   auto reader = std::make_unique<BinarySerial::Reader>(
       std::shared_ptr<std::istream>(&file, [](std::istream *) {}));
   return reader->readString(str);
-}
-
-bool SaveGameManager::writeVector2D(std::ofstream &file,
-                                    const Vector2D &vec) const {
-  auto writer = std::make_unique<BinarySerial::Writer>(
-      std::shared_ptr<std::ostream>(&file, [](std::ostream *) {}));
-  return writer->writeSerializable(vec);
 }
 
 bool SaveGameManager::readVector2D(std::ifstream &file, Vector2D &vec) const {

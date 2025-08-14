@@ -22,22 +22,36 @@
  * - Thread-safe design with minimal lock contention
  */
 
-#include "core/WorkerBudget.hpp"
 #include "utils/Vector2D.hpp"
 #include <SDL3/SDL.h>
+#include <algorithm>
 #include <array>
 #include <atomic>
-#include <functional>
-#include <memory>
+#include <cmath>
 #include <mutex>
 #include <shared_mutex>
 #include <string>
 #include <unordered_map>
 #include <vector>
 
+// SIMD support detection
+#if defined(__SSE2__) || (defined(_MSC_VER) && (defined(_M_X64) || defined(_M_IX86_FP) && _M_IX86_FP >= 2))
+#define PARTICLE_SIMD_SSE2 1
+#include <emmintrin.h>
+#endif
+
+#if defined(__SSE4_1__) || (defined(_MSC_VER) && defined(__AVX__))
+#define PARTICLE_SIMD_SSE4 1
+#include <smmintrin.h>
+#endif
+
 // Forward declarations
 class TextureManager;
 class EventManager;
+
+namespace HammerEngine {
+struct WorkerBudget;
+}
 
 // Use the proper logging system for thread-safe logging
 // Note: This header only contains the LOG macro declaration, the actual include
@@ -100,39 +114,19 @@ struct alignas(32) ParticleData {
       : position(0, 0), velocity(0, 0), life(0.0f), maxLife(1.0f),
         color(0xFFFFFFFF), textureIndex(0), flags(0), generationId(0) {}
 
-  bool isActive() const { return flags & FLAG_ACTIVE; }
-  void setActive(bool active) {
-    if (active)
-      flags |= FLAG_ACTIVE;
-    else
-      flags &= ~FLAG_ACTIVE;
-  }
+  bool isActive() const;
+  void setActive(bool active);
 
-  bool isVisible() const { return flags & FLAG_VISIBLE; }
-  void setVisible(bool visible) {
-    if (visible)
-      flags |= FLAG_VISIBLE;
-    else
-      flags &= ~FLAG_VISIBLE;
-  }
+  bool isVisible() const;
+  void setVisible(bool visible);
 
-  bool isWeatherParticle() const { return flags & FLAG_WEATHER; }
-  void setWeatherParticle(bool weather) {
-    if (weather)
-      flags |= FLAG_WEATHER;
-    else
-      flags &= ~FLAG_WEATHER;
-  }
+  bool isWeatherParticle() const;
+  void setWeatherParticle(bool weather);
 
-  bool isFadingOut() const { return flags & FLAG_FADE_OUT; }
-  void setFadingOut(bool fading) {
-    if (fading)
-      flags |= FLAG_FADE_OUT;
-    else
-      flags &= ~FLAG_FADE_OUT;
-  }
+  bool isFadingOut() const;
+  void setFadingOut(bool fading);
 
-  float getLifeRatio() const { return maxLife > 0 ? life / maxLife : 0.0f; }
+  float getLifeRatio() const;
 };
 
 /**
@@ -182,6 +176,72 @@ struct ParticleEmitterConfig {
   float bounceDamping{0.8f};   // Collision bounce damping
 };
 
+struct ParticleEffectDefinition;
+
+// Helper methods for enum-based classification system
+ParticleEffectType weatherStringToEnum(const std::string &weatherType,
+                                       float intensity);
+std::string effectTypeToString(ParticleEffectType type);
+
+// Built-in effect creation helpers
+ParticleEffectDefinition createRainEffect();
+ParticleEffectDefinition createHeavyRainEffect();
+ParticleEffectDefinition createSnowEffect();
+ParticleEffectDefinition createHeavySnowEffect();
+ParticleEffectDefinition createFogEffect();
+ParticleEffectDefinition createCloudyEffect();
+ParticleEffectDefinition createFireEffect();
+ParticleEffectDefinition createSmokeEffect();
+ParticleEffectDefinition createSparksEffect();
+ParticleEffectDefinition createMagicEffect();
+
+struct UnifiedParticle {
+  // All particle data in one structure - no synchronization issues
+  Vector2D position;
+  Vector2D velocity;
+  Vector2D acceleration;
+  float life;
+  float maxLife;
+  float size;
+  float rotation;
+  float angularVelocity;
+  uint32_t color;
+  uint16_t textureIndex;
+  uint8_t flags;
+  uint8_t generationId;
+  ParticleEffectType effectType; // Effect type for this particle
+
+  enum class RenderLayer : uint8_t { Background, World, Foreground } layer;
+
+  // Flags bit definitions
+  static constexpr uint8_t FLAG_ACTIVE = 1 << 0;
+  static constexpr uint8_t FLAG_VISIBLE = 1 << 1;
+  static constexpr uint8_t FLAG_GRAVITY = 1 << 2;
+  static constexpr uint8_t FLAG_COLLISION = 1 << 3;
+  static constexpr uint8_t FLAG_WEATHER = 1 << 4;
+  static constexpr uint8_t FLAG_FADE_OUT = 1 << 5;
+
+  UnifiedParticle()
+      : position(0, 0), velocity(0, 0), acceleration(0, 0), life(0.0f),
+        maxLife(1.0f), size(2.0f), rotation(0.0f), angularVelocity(0.0f),
+        color(0xFFFFFFFF), textureIndex(0), flags(0), generationId(0),
+         effectType(ParticleEffectType::Custom), layer(RenderLayer::World) {}
+
+  bool isActive() const;
+  void setActive(bool active);
+
+  bool isVisible() const;
+  void setVisible(bool visible);
+
+  bool isWeatherParticle() const;
+  void setWeatherParticle(bool weather);
+
+  bool isFadingOut() const;
+  void setFadingOut(bool fading);
+
+  float getLifeRatio() const;
+};
+
 /**
  * @brief Particle effect definition combining emitter and behavior
  */
@@ -192,6 +252,8 @@ struct ParticleEffectDefinition {
   std::vector<std::string> textureIDs; // Multiple textures for variety
   float intensityMultiplier{1.0f};     // Effect intensity scaling
   bool autoTriggerOnWeather{false};    // Auto-trigger on weather events
+  UnifiedParticle::RenderLayer layer{
+      UnifiedParticle::RenderLayer::World}; // Default render layer
 
   ParticleEffectDefinition() : type(ParticleEffectType::Custom) {}
   ParticleEffectDefinition(const std::string &n, ParticleEffectType t)
@@ -210,29 +272,9 @@ struct ParticlePerformanceStats {
   size_t maxParticles{0};
   double particlesPerSecond{0.0};
 
-  void addUpdateSample(double timeMs, size_t particleCount) {
-    totalUpdateTime += timeMs;
-    updateCount++;
-    activeParticles = particleCount;
-    if (totalUpdateTime > 0) {
-      particlesPerSecond =
-          (activeParticles * updateCount * 1000.0) / totalUpdateTime;
-    }
-  }
-
-  void addRenderSample(double timeMs) {
-    totalRenderTime += timeMs;
-    renderCount++;
-  }
-
-  void reset() {
-    totalUpdateTime = 0.0;
-    totalRenderTime = 0.0;
-    updateCount = 0;
-    renderCount = 0;
-    activeParticles = 0;
-    particlesPerSecond = 0.0;
-  }
+  void addUpdateSample(double timeMs, size_t particleCount);
+  void addRenderSample(double timeMs);
+  void reset();
 };
 
 /**
@@ -255,9 +297,7 @@ public:
    * @brief Checks if the Particle Manager has been initialized
    * @return true if initialized, false otherwise
    */
-  bool isInitialized() const {
-    return m_initialized.load(std::memory_order_acquire);
-  }
+  bool isInitialized() const;
 
   /**
    * @brief Cleans up all particle resources and marks manager as shut down
@@ -319,7 +359,7 @@ public:
    * @brief Checks if ParticleManager has been shut down
    * @return true if manager is shut down, false otherwise
    */
-  bool isShutdown() const { return m_isShutdown; }
+  bool isShutdown() const;
 
   // Effect Management
   /**
@@ -630,72 +670,6 @@ private:
   ParticleManager(const ParticleManager &) = delete;
   ParticleManager &operator=(const ParticleManager &) = delete;
 
-  // FIXED: Unified particle storage - no more data synchronization issues
-  struct UnifiedParticle {
-    // All particle data in one structure - no synchronization issues
-    Vector2D position;
-    Vector2D velocity;
-    Vector2D acceleration;
-    float life;
-    float maxLife;
-    float size;
-    float rotation;
-    float angularVelocity;
-    uint32_t color;
-    uint16_t textureIndex;
-    uint8_t flags;
-    uint8_t generationId;
-    ParticleEffectType effectType; // Effect type for this particle
-
-    // Flags bit definitions
-    static constexpr uint8_t FLAG_ACTIVE = 1 << 0;
-    static constexpr uint8_t FLAG_VISIBLE = 1 << 1;
-    static constexpr uint8_t FLAG_GRAVITY = 1 << 2;
-    static constexpr uint8_t FLAG_COLLISION = 1 << 3;
-    static constexpr uint8_t FLAG_WEATHER = 1 << 4;
-    static constexpr uint8_t FLAG_FADE_OUT = 1 << 5;
-
-    UnifiedParticle()
-        : position(0, 0), velocity(0, 0), acceleration(0, 0), life(0.0f),
-          maxLife(1.0f), size(2.0f), rotation(0.0f), angularVelocity(0.0f),
-          color(0xFFFFFFFF), textureIndex(0), flags(0), generationId(0),
-          effectType(ParticleEffectType::Custom) {}
-
-    bool isActive() const { return flags & FLAG_ACTIVE; }
-    void setActive(bool active) {
-      if (active)
-        flags |= FLAG_ACTIVE;
-      else
-        flags &= ~FLAG_ACTIVE;
-    }
-
-    bool isVisible() const { return flags & FLAG_VISIBLE; }
-    void setVisible(bool visible) {
-      if (visible)
-        flags |= FLAG_VISIBLE;
-      else
-        flags &= ~FLAG_VISIBLE;
-    }
-
-    bool isWeatherParticle() const { return flags & FLAG_WEATHER; }
-    void setWeatherParticle(bool weather) {
-      if (weather)
-        flags |= FLAG_WEATHER;
-      else
-        flags &= ~FLAG_WEATHER;
-    }
-
-    bool isFadingOut() const { return flags & FLAG_FADE_OUT; }
-    void setFadingOut(bool fading) {
-      if (fading)
-        flags |= FLAG_FADE_OUT;
-      else
-        flags &= ~FLAG_FADE_OUT;
-    }
-
-    float getLifeRatio() const { return maxLife > 0 ? life / maxLife : 0.0f; }
-  };
-
   // Effect instance tracking - effects only emit particles, don't own them
   struct EffectInstance {
     uint32_t id;
@@ -736,12 +710,52 @@ private:
     uint16_t textureIndex;
     ParticleBlendMode blendMode;
     ParticleEffectType effectType;
+    uint8_t flags;
   };
 
   // Lock-free high-performance storage with double buffering
   struct alignas(64) LockFreeParticleStorage {
+    // SoA data layout for cache-friendly updates
+    struct ParticleSoA {
+        std::vector<Vector2D> positions;
+        std::vector<Vector2D> velocities;
+        std::vector<Vector2D> accelerations;
+        std::vector<float> lives;
+        std::vector<float> maxLives;
+        std::vector<float> sizes;
+        std::vector<float> rotations;
+        std::vector<float> angularVelocities;
+        std::vector<uint32_t> colors;
+        std::vector<uint16_t> textureIndices;
+        std::vector<uint8_t> flags;
+        std::vector<uint8_t> generationIds;
+        std::vector<ParticleEffectType> effectTypes;
+        std::vector<UnifiedParticle::RenderLayer> layers;
+
+        // CRITICAL: Unified SOA operations to prevent desynchronization
+        void resize(size_t newSize);
+        void reserve(size_t newCapacity);
+        void push_back(const UnifiedParticle& p);
+        void clear();
+        size_t size() const;
+        bool empty() const;
+        
+        // NEW: Safe erase operations for SOA consistency
+        void eraseParticle(size_t index);
+        void eraseParticleRange(size_t start, size_t end);
+        void compactInactive();
+        
+        // NEW: Comprehensive validation for Windows UCRT compatibility
+        bool isFullyConsistent() const;
+        size_t getSafeAccessCount() const;
+        
+        // NEW: Safe random access with bounds checking
+        bool isValidIndex(size_t index) const;
+        void swapParticles(size_t indexA, size_t indexB);
+    };
+
     // Double-buffered particle arrays for lock-free updates
-    std::vector<UnifiedParticle> particles[2];
+    ParticleSoA particles[2];
     std::atomic<size_t> activeBuffer{0};  // Which buffer is currently active
     std::atomic<size_t> particleCount{0}; // Current particle count
     std::atomic<size_t> writeHead{0};     // Next write position
@@ -769,124 +783,32 @@ private:
     std::atomic<uint64_t> currentEpoch{0};
     std::atomic<uint64_t> safeEpoch{0};
 
-    LockFreeParticleStorage() : creationRing{} {
-      // Pre-allocate both buffers
-      particles[0].reserve(DEFAULT_MAX_PARTICLES);
-      particles[1].reserve(DEFAULT_MAX_PARTICLES);
-      capacity.store(DEFAULT_MAX_PARTICLES, std::memory_order_relaxed);
-    }
+    LockFreeParticleStorage();
 
     // Lock-free particle creation
     bool tryCreateParticle(const Vector2D &pos, const Vector2D &vel,
                            uint32_t color, float life, float size,
                            uint8_t flags, uint8_t genId,
-                           ParticleEffectType effectType) {
-      size_t head = creationHead.load(std::memory_order_acquire);
-      size_t next = (head + 1) & (CREATION_RING_SIZE - 1);
-
-      if (next == creationTail.load(std::memory_order_acquire)) {
-        return false; // Ring buffer full
-      }
-
-      auto &req = creationRing[head];
-      req.position = pos;
-      req.velocity = vel;
-      req.color = color;
-      req.life = life;
-      req.size = size;
-      req.flags = flags;
-      req.generationId = genId;
-      req.effectType = effectType;
-      req.ready.store(true, std::memory_order_release);
-
-      creationHead.store(next, std::memory_order_release);
-      return true;
-    }
+                           ParticleEffectType effectType);
 
     // Process creation requests (called from update thread)
-    void processCreationRequests() {
-      size_t tail = creationTail.load(std::memory_order_acquire);
-      size_t head = creationHead.load(std::memory_order_acquire);
-
-      while (tail != head) {
-        auto &req = creationRing[tail];
-        if (req.ready.load(std::memory_order_acquire)) {
-          // Add particle to active buffer
-          size_t activeIdx = activeBuffer.load(std::memory_order_relaxed);
-          auto &activeParticles = particles[activeIdx];
-
-          if (activeParticles.size() <
-              capacity.load(std::memory_order_relaxed)) {
-            UnifiedParticle particle;
-            particle.position = req.position;
-            particle.velocity = req.velocity;
-            particle.color = req.color;
-            particle.life = req.life;
-            particle.maxLife = req.life;
-            particle.size = req.size;
-            particle.flags = req.flags;
-            particle.generationId = req.generationId;
-            particle.effectType = req.effectType;
-
-            activeParticles.push_back(particle);
-            particleCount.fetch_add(1, std::memory_order_acq_rel);
-          }
-
-          req.ready.store(false, std::memory_order_release);
-        }
-        tail = (tail + 1) & (CREATION_RING_SIZE - 1);
-      }
-
-      // Particle processing tracking (debug removed for cleaner output)
-
-      creationTail.store(tail, std::memory_order_release);
-    }
+    void processCreationRequests();
 
     // Get read-only access to particles
-    const std::vector<UnifiedParticle> &getParticlesForRead() const {
-      size_t activeIdx = activeBuffer.load(std::memory_order_acquire);
-      return particles[activeIdx];
-    }
+    const ParticleSoA &getParticlesForRead() const;
 
     // Get writable access to particles (for updates)
-    std::vector<UnifiedParticle> &getCurrentBuffer() {
-      size_t activeIdx = activeBuffer.load(std::memory_order_relaxed);
-      return particles[activeIdx];
-    }
+    ParticleSoA &getCurrentBuffer();
 
-    // Check if compaction is needed
-    bool needsCompaction() const {
-      const auto &activeParticles = getParticlesForRead();
-      size_t inactiveCount =
-          std::count_if(activeParticles.begin(), activeParticles.end(),
-                        [](const UnifiedParticle &p) { return !p.isActive(); });
-      return inactiveCount >
-             activeParticles.size() * 0.5; // Less aggressive: 50% vs 30%
-    }
+    // CRITICAL FIX: Check if compaction is needed with proper bounds checking
+    bool needsCompaction() const;
+
 
     // Submit new particle (lock-free)
-    bool submitNewParticle(const NewParticleRequest &request) {
-      return tryCreateParticle(request.position, request.velocity,
-                               request.color, request.life, request.size,
-                               UnifiedParticle::FLAG_ACTIVE |
-                                   UnifiedParticle::FLAG_VISIBLE,
-                               0, request.effectType);
-    }
+    bool submitNewParticle(const NewParticleRequest &request);
 
     // Swap buffers for lock-free updates
-    void swapBuffers() {
-      size_t current = activeBuffer.load(std::memory_order_relaxed);
-      size_t next = 1 - current;
-
-      // Copy active particles to next buffer
-      particles[next] = particles[current];
-
-      // Atomic swap
-      activeBuffer.store(next, std::memory_order_release);
-
-      // Advance epoch for memory reclamation
-      currentEpoch.fetch_add(1, std::memory_order_acq_rel);
-    }
+    void swapBuffers();
   };
 
   // Core storage - now lock-free
@@ -916,6 +838,12 @@ private:
   // Frame counter for periodic maintenance (like AIManager)
   std::atomic<uint64_t> m_frameCounter{0};
 
+  // Thread allocation tracking for debug output
+  std::atomic<size_t> m_lastOptimalWorkerCount{0};
+  std::atomic<size_t> m_lastAvailableWorkers{0};
+  std::atomic<size_t> m_lastParticleBudget{0};
+  std::atomic<bool> m_lastWasThreaded{false};
+
   // Camera and culling
   struct CameraViewport {
     float x{0}, y{0}, width{1920}, height{1080};
@@ -926,10 +854,9 @@ private:
   mutable std::shared_mutex
       m_effectsMutex;              // Only for effect definitions (rare writes)
   mutable std::mutex m_statsMutex; // Only for performance stats
+  mutable std::mutex m_weatherMutex; // For weather effect changes
 
-  // Update serialization for single-threaded update logic
-  static std::mutex
-      updateMutex; // Static to prevent multiple update() calls system-wide
+  // NOTE: No update mutex - GameEngine handles update/render synchronization
 
   // Constants for optimization
   static constexpr size_t CACHE_LINE_SIZE = 64;
@@ -976,8 +903,7 @@ private:
   bool m_smokeActive{false};
   bool m_sparksActive{false};
 
-  // WorkerBudget threading state
-  std::atomic<bool> m_useWorkerBudgetThreading{false};
+
 
   // Helper methods
   uint32_t generateEffectId();
@@ -1000,18 +926,49 @@ private:
   void updateParticlesThreaded(float deltaTime, size_t activeParticleCount);
   void updateParticlesSingleThreaded(float deltaTime,
                                      size_t activeParticleCount);
-  void updateParticleRange(std::vector<UnifiedParticle> &particles,
+  void updateParticleRange(LockFreeParticleStorage::ParticleSoA &particles,
                            size_t startIdx, size_t endIdx, float deltaTime);
+                           
+  // SIMD-optimized batch physics update for high-performance processing
+  void updateParticlePhysicsSIMD(LockFreeParticleStorage::ParticleSoA &particles,
+                                size_t startIdx, size_t endIdx, float deltaTime);
+                                
+  // Batch color processing for alpha fading and color transitions
+  void batchProcessParticleColors(LockFreeParticleStorage::ParticleSoA &particles,
+                                 size_t startIdx, size_t endIdx);
   void updateParticleWithColdData(ParticleData &particle,
                                   const ParticleColdData &coldData,
                                   float deltaTime);
   void updateUnifiedParticle(UnifiedParticle &particle, float deltaTime);
   void createParticleForEffect(const ParticleEffectDefinition &effectDef,
-                               const Vector2D &position);
+                               const Vector2D &position,
+                               bool isWeatherEffect = false);
   uint16_t getTextureIndex(const std::string &textureID);
   uint32_t interpolateColor(uint32_t color1, uint32_t color2, float factor);
   void recordPerformance(bool isRender, double timeMs, size_t particleCount);
   uint64_t getCurrentTimeNanos() const;
+
+  // PERFORMANCE OPTIMIZATION: Trigonometric lookup tables for fast math
+  static constexpr size_t TRIG_LUT_SIZE = 1024;
+  static constexpr float TRIG_LUT_SCALE = TRIG_LUT_SIZE / (2.0f * 3.14159265f);
+  std::array<float, TRIG_LUT_SIZE> m_sinLUT{};
+  std::array<float, TRIG_LUT_SIZE> m_cosLUT{};
+  void initTrigLookupTables();
+  
+  // Fast trigonometric functions using lookup tables
+  inline float fastSin(float x) const {
+    x = fmodf(x, 2.0f * 3.14159265f);
+    if (x < 0) x += 2.0f * 3.14159265f;
+    const size_t index = static_cast<size_t>(x * TRIG_LUT_SCALE) % TRIG_LUT_SIZE;
+    return m_sinLUT[index];
+  }
+  
+  inline float fastCos(float x) const {
+    x = fmodf(x, 2.0f * 3.14159265f);
+    if (x < 0) x += 2.0f * 3.14159265f;
+    const size_t index = static_cast<size_t>(x * TRIG_LUT_SCALE) % TRIG_LUT_SIZE;
+    return m_cosLUT[index];
+  }
 
   // Weather type conversion helpers
   ParticleEffectType weatherStringToEnum(const std::string &weatherType,

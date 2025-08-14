@@ -7,25 +7,24 @@
 #define ENTITY_HPP
 
 #include "utils/Vector2D.hpp"
-#include <string>
+#include <SDL3/SDL.h>
 #include <memory>
-#include <SDL3/SDL_surface.h>
+#include <string>
 
-// Forward declaration for Entity shared_ptr typedef
-class Entity;
+// Forward declaration
+namespace HammerEngine {
+    class Camera;
+}
 
-// Define standard smart pointer types for Entity
-using EntityPtr = std::shared_ptr<Entity>;
-using EntityWeakPtr = std::weak_ptr<Entity>;
+using EntityPtr = std::shared_ptr<class Entity>;
+using EntityWeakPtr = std::weak_ptr<class Entity>;
 
 class Entity : public std::enable_shared_from_this<Entity> {
  public:
-   virtual void update(float deltaTime) = 0;
-   virtual void render() = 0;
-   
-   /**
-    * @brief Clean up the entity's resources before destruction
-    * 
+    virtual void update(float deltaTime) = 0;
+    virtual void render(const HammerEngine::Camera* camera) = 0; // Camera-aware rendering
+    /**
+     * @brief Clean up the entity's resources before destruction    * 
     * This method is called explicitly before an entity is destroyed.
     * It's safe to use shared_from_this() here.
     * 
@@ -72,13 +71,12 @@ class Entity : public std::enable_shared_from_this<Entity> {
      return shared_from_this();
    }
 
-   // Accessor methods
-   Vector2D getPosition() const { return m_position; }
-   Vector2D getVelocity() const { return m_velocity; }
-   Vector2D getAcceleration() const { return m_acceleration; }
-   int getWidth() const { return m_width; }
-   int getHeight() const { return m_height; }
-   const std::string& getTextureID() const { return m_textureID; }
+    // Accessor methods
+    Vector2D getPosition() const { return m_position; }
+    Vector2D getVelocity() const { return m_velocity; }
+    Vector2D getAcceleration() const { return m_acceleration; }
+    int getWidth() const { return m_width; }
+    int getHeight() const { return m_height; }   const std::string& getTextureID() const { return m_textureID; }
    int getCurrentFrame() const { return m_currentFrame; }
    int getCurrentRow() const { return m_currentRow; }
    int getNumFrames() const { return m_numFrames; }
@@ -100,11 +98,10 @@ class Entity : public std::enable_shared_from_this<Entity> {
    virtual void setFlip(SDL_FlipMode flip) { (void)flip; /* Unused in base class */ }
    virtual SDL_FlipMode getFlip() const { return SDL_FLIP_NONE; }
 
-   protected:
-    Vector2D m_acceleration{0, 0};
-    Vector2D m_velocity{0, 0};
-    Vector2D m_position{0, 0};
-    int m_width{0};
+    protected:
+     Vector2D m_acceleration{0, 0};
+     Vector2D m_velocity{0, 0};
+     Vector2D m_position{0, 0};    int m_width{0};
     int m_height{0};
     std::string m_textureID{};
     int m_currentFrame{0};

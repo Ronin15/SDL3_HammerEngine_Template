@@ -26,19 +26,18 @@ public:
     }
     
     void setPosition(const Vector2D& pos) override { 
-        Vector2D oldPos = getPosition();
         Entity::setPosition(pos);
         m_updateCount++;
         
         // Debug logging for position changes (disabled for normal testing)
+        // Vector2D oldPos = getPosition();
         // float distanceMoved = (pos - oldPos).length();
         // if (distanceMoved > 0.01f) {
         //     std::cout << "TestEntity position changed: " << oldPos.getX() << "," << oldPos.getY() 
         //               << " -> " << pos.getX() << "," << pos.getY() 
         //               << " distance=" << distanceMoved << " updateCount=" << m_updateCount << std::endl;
         // }
-    }
-    
+    }    
     int getUpdateCount() const { return m_updateCount; }
     void resetUpdateCount() { m_updateCount = 0; }
     
@@ -57,7 +56,7 @@ public:
         
         setPosition(newPos);
     }
-    void render() override {}
+    void render(const HammerEngine::Camera* camera) override { (void)camera; }
     void clean() override {}
 
 private:
@@ -204,7 +203,6 @@ BOOST_AUTO_TEST_CASE(TestIdleStationaryMode) {
 
 BOOST_AUTO_TEST_CASE(TestIdleFidgetMode) {
     auto entity = testEntities[0];
-    Vector2D initialPos = entity->getPosition();
     getTestEntity(entity)->resetUpdateCount();
     
     AIManager::Instance().assignBehaviorToEntity(entity, "IdleFidget");
@@ -219,7 +217,6 @@ BOOST_AUTO_TEST_CASE(TestIdleFidgetMode) {
     // Should have some movement for fidget mode
     BOOST_CHECK_GT(getTestEntity(entity)->getUpdateCount(), 0);
 }
-
 BOOST_AUTO_TEST_CASE(TestIdleMessageHandling) {
     auto entity = testEntities[0];
     AIManager::Instance().assignBehaviorToEntity(entity, "Idle");
@@ -713,7 +710,6 @@ BOOST_AUTO_TEST_CASE(TestGuardAlertSystem) {
     }
     
     // Guard should respond to nearby threat
-    Vector2D currentPos = entity->getPosition();
     // Guard might move toward threat or stay alert at post
     BOOST_CHECK(true); // Main test is that no crashes occur
 }

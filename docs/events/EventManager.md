@@ -80,9 +80,9 @@ EventManager::Instance().spawnNPC("Merchant", 100.0f, 200.0f);
 
 ### Update Loop Integration
 ```cpp
-void gameUpdate() {
+void gameUpdate(float dt) {
     // Single call to EventManager processes all events
-    EventManager::Instance().update();
+    EventManager::Instance().update(dt);
 }
 ```
 
@@ -257,7 +257,7 @@ EventManager::Instance().createCustomEvent("Quest", "FindTreasure", questParams,
 bool init()                    // Initialize the event manager
 void clean()                   // Clean shutdown
 bool isShutdown()             // Check shutdown state
-void update()                 // Process all events (call each frame)
+void update(float dt)                 // Process all events (call each frame)
 ```
 
 #### Event Registration
@@ -333,10 +333,10 @@ void setThreadingThreshold(size_t threshold)
 
 #### Batch Processing
 ```cpp
-void updateWeatherEvents()
-void updateSceneChangeEvents()
-void updateNPCSpawnEvents()
-void updateCustomEvents()
+void updateWeatherEvents(float dt)
+void updateSceneChangeEvents(float dt)
+void updateNPCSpawnEvents(float dt)
+void updateCustomEvents(float dt)
 ```
 
 #### Performance and Monitoring
@@ -562,18 +562,18 @@ public:
         EventManager::Instance().createAdvancedNPCSpawnEvent("Villagers", "Villager", 8, 40.0f, 5, false);
     }
 
-    void update() {
-        if (!m_initialized) return;
+void update(float dt) {
+    if (!m_initialized) return;
 
-        // Single call to EventManager processes everything
-        EventManager::Instance().update();
+    // Single call to EventManager processes everything
+    EventManager::Instance().update(dt);
 
-        // Monitor performance through EventManager
-        static int frameCount = 0;
-        if (++frameCount % 300 == 0) { // Every 5 seconds at 60fps
-            monitorPerformance();
-        }
+    // Monitor performance through EventManager
+    static int frameCount = 0;
+    if (++frameCount % 300 == 0) { // Every 5 seconds at 60fps
+        monitorPerformance();
     }
+}
 
     void handleWeatherEvent(const EventData& data) {
         std::cout << "Weather event triggered!" << std::endl;

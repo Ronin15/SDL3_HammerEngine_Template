@@ -25,6 +25,7 @@ mkdir -p "${RESULTS_DIR}"
 declare -A QUICK_TESTS=(
     ["buffer_util"]="buffer_utilization_tests"
     ["event_mgr"]="event_manager_tests"
+    ["weather_events"]="weather_event_tests"
     ["ai_opt"]="ai_optimization_tests"
     ["thread_sys"]="thread_system_tests"
     ["particle_core"]="particle_manager_core_tests"
@@ -34,6 +35,10 @@ declare -A QUICK_TESTS=(
     ["resource_factory"]="resource_factory_tests"
     ["resource_edge_case"]="resource_edge_case_tests"
     ["save_mgr"]="save_manager_tests"
+    ["game_state_mgr"]="game_state_manager_tests"
+    ["world_gen"]="world_generator_tests"
+    ["world_mgr_evt"]="world_manager_event_integration_tests"
+    ["world_mgr"]="world_manager_tests"
 )
 
 echo -e "${BLUE}========================================${NC}"

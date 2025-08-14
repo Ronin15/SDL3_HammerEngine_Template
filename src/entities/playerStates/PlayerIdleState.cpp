@@ -12,7 +12,9 @@ PlayerIdleState::PlayerIdleState(Player& player) : m_player(player) {}
 void PlayerIdleState::enter() {
     // Set animation for idle
     m_player.get().setCurrentFrame(0);
-    // Let velocity naturally decelerate instead of immediate stop
+    // Stop movement immediately upon entering idle state
+    m_player.get().setVelocity(Vector2D(0, 0));
+    m_player.get().setAcceleration(Vector2D(0, 0));
 }
 
 void PlayerIdleState::update(float deltaTime) {
@@ -23,10 +25,6 @@ void PlayerIdleState::update(float deltaTime) {
         m_player.get().changeState("running");
         return;
     }
-    
-    // Stop movement immediately when in idle (no input)
-    m_player.get().setVelocity(Vector2D(0, 0));
-    m_player.get().setAcceleration(Vector2D(0, 0));
     
     // Keep idle animation frame
     m_player.get().setCurrentFrame(0);

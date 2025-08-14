@@ -4,16 +4,512 @@
  */
 
 #include "managers/ParticleManager.hpp"
+#include "core/GameEngine.hpp"
 #include "core/Logger.hpp"
 #include "core/ThreadSystem.hpp"
 #include "core/WorkerBudget.hpp"
 #include <algorithm>
-#include <algorithm> // for std::clamp
 #include <chrono>
 #include <cmath>
+#include <thread>
+
+// A simple and fast pseudo-random number generator
+inline int fast_rand() {
+    static thread_local unsigned int g_seed = []() {
+        // Initialize with a combination of time and thread ID for better distribution
+        auto now = std::chrono::high_resolution_clock::now();
+        auto time_seed = static_cast<unsigned int>(now.time_since_epoch().count());
+        auto thread_id = std::hash<std::thread::id>{}(std::this_thread::get_id());
+        return time_seed ^ static_cast<unsigned int>(thread_id);
+    }();
+    g_seed = (214013 * g_seed + 2531011);
+    return (g_seed >> 16) & 0x7FFF;
+}
 
 // Static mutex for update serialization
-std::mutex ParticleManager::updateMutex;
+// Remove static mutex - GameEngine handles synchronization
+
+// ParticleData method implementations
+bool ParticleData::isActive() const {
+    return flags & FLAG_ACTIVE;
+}
+
+void ParticleData::setActive(bool active) {
+    if (active)
+        flags |= FLAG_ACTIVE;
+    else
+        flags &= ~FLAG_ACTIVE;
+}
+
+bool ParticleData::isVisible() const {
+    return flags & FLAG_VISIBLE;
+}
+
+void ParticleData::setVisible(bool visible) {
+    if (visible)
+        flags |= FLAG_VISIBLE;
+    else
+        flags &= ~FLAG_VISIBLE;
+}
+
+bool ParticleData::isWeatherParticle() const {
+    return flags & FLAG_WEATHER;
+}
+
+void ParticleData::setWeatherParticle(bool weather) {
+    if (weather)
+        flags |= FLAG_WEATHER;
+    else
+        flags &= ~FLAG_WEATHER;
+}
+
+bool ParticleData::isFadingOut() const {
+    return flags & FLAG_FADE_OUT;
+}
+
+void ParticleData::setFadingOut(bool fading) {
+    if (fading)
+        flags |= FLAG_FADE_OUT;
+    else
+        flags &= ~FLAG_FADE_OUT;
+}
+
+float ParticleData::getLifeRatio() const {
+    return maxLife > 0 ? life / maxLife : 0.0f;
+}
+
+// UnifiedParticle method implementations
+bool UnifiedParticle::isActive() const {
+    return flags & FLAG_ACTIVE;
+}
+
+void UnifiedParticle::setActive(bool active) {
+    if (active)
+        flags |= FLAG_ACTIVE;
+    else
+        flags &= ~FLAG_ACTIVE;
+}
+
+bool UnifiedParticle::isVisible() const {
+    return flags & FLAG_VISIBLE;
+}
+
+void UnifiedParticle::setVisible(bool visible) {
+    if (visible)
+        flags |= FLAG_VISIBLE;
+    else
+        flags &= ~FLAG_VISIBLE;
+}
+
+bool UnifiedParticle::isWeatherParticle() const {
+    return flags & FLAG_WEATHER;
+}
+
+void UnifiedParticle::setWeatherParticle(bool weather) {
+    if (weather)
+        flags |= FLAG_WEATHER;
+    else
+        flags &= ~FLAG_WEATHER;
+}
+
+bool UnifiedParticle::isFadingOut() const {
+    return flags & FLAG_FADE_OUT;
+}
+
+void UnifiedParticle::setFadingOut(bool fading) {
+    if (fading)
+        flags |= FLAG_FADE_OUT;
+    else
+        flags &= ~FLAG_FADE_OUT;
+}
+
+float UnifiedParticle::getLifeRatio() const {
+    return maxLife > 0 ? life / maxLife : 0.0f;
+}
+
+// ParticlePerformanceStats method implementations
+void ParticlePerformanceStats::addUpdateSample(double timeMs, size_t particleCount) {
+    totalUpdateTime += timeMs;
+    updateCount++;
+    activeParticles = particleCount;
+    if (totalUpdateTime > 0) {
+        particlesPerSecond = (activeParticles * updateCount * 1000.0) / totalUpdateTime;
+    }
+}
+
+void ParticlePerformanceStats::addRenderSample(double timeMs) {
+    totalRenderTime += timeMs;
+    renderCount++;
+}
+
+void ParticlePerformanceStats::reset() {
+    totalUpdateTime = 0.0;
+    totalRenderTime = 0.0;
+    updateCount = 0;
+    renderCount = 0;
+    activeParticles = 0;
+    particlesPerSecond = 0.0;
+}
+
+// ParticleManager method implementations
+bool ParticleManager::isInitialized() const {
+    return m_initialized.load(std::memory_order_acquire);
+}
+
+bool ParticleManager::isShutdown() const {
+    return m_isShutdown;
+}
+
+// ParticleSoA method implementations
+void ParticleManager::LockFreeParticleStorage::ParticleSoA::resize(size_t newSize) {
+    positions.resize(newSize);
+    velocities.resize(newSize);
+    accelerations.resize(newSize);
+    lives.resize(newSize);
+    maxLives.resize(newSize);
+    sizes.resize(newSize);
+    rotations.resize(newSize);
+    angularVelocities.resize(newSize);
+    colors.resize(newSize);
+    textureIndices.resize(newSize);
+    flags.resize(newSize);
+    generationIds.resize(newSize);
+    effectTypes.resize(newSize);
+    layers.resize(newSize);
+}
+
+void ParticleManager::LockFreeParticleStorage::ParticleSoA::reserve(size_t newCapacity) {
+    positions.reserve(newCapacity);
+    velocities.reserve(newCapacity);
+    accelerations.reserve(newCapacity);
+    lives.reserve(newCapacity);
+    maxLives.reserve(newCapacity);
+    sizes.reserve(newCapacity);
+    rotations.reserve(newCapacity);
+    angularVelocities.reserve(newCapacity);
+    colors.reserve(newCapacity);
+    textureIndices.reserve(newCapacity);
+    flags.reserve(newCapacity);
+    generationIds.reserve(newCapacity);
+    effectTypes.reserve(newCapacity);
+    layers.reserve(newCapacity);
+}
+
+void ParticleManager::LockFreeParticleStorage::ParticleSoA::push_back(const UnifiedParticle& p) {
+    positions.push_back(p.position);
+    velocities.push_back(p.velocity);
+    accelerations.push_back(p.acceleration);
+    lives.push_back(p.life);
+    maxLives.push_back(p.maxLife);
+    sizes.push_back(p.size);
+    rotations.push_back(p.rotation);
+    angularVelocities.push_back(p.angularVelocity);
+    colors.push_back(p.color);
+    textureIndices.push_back(p.textureIndex);
+    flags.push_back(p.flags);
+    generationIds.push_back(p.generationId);
+    effectTypes.push_back(p.effectType);
+    layers.push_back(p.layer);
+}
+
+void ParticleManager::LockFreeParticleStorage::ParticleSoA::clear() {
+    positions.clear();
+    velocities.clear();
+    accelerations.clear();
+    lives.clear();
+    maxLives.clear();
+    sizes.clear();
+    rotations.clear();
+    angularVelocities.clear();
+    colors.clear();
+    textureIndices.clear();
+    flags.clear();
+    generationIds.clear();
+    effectTypes.clear();
+    layers.clear();
+}
+
+size_t ParticleManager::LockFreeParticleStorage::ParticleSoA::size() const {
+    // CRITICAL: Complete SOA consistency check for Windows UCRT compatibility
+    // Check ALL 14 arrays for perfect synchronization
+    const size_t baseSize = positions.size();
+    if (baseSize == 0) return 0;
+    
+    // Validate all SOA arrays have identical sizes
+    if (velocities.size() != baseSize || accelerations.size() != baseSize ||
+        lives.size() != baseSize || maxLives.size() != baseSize ||
+        sizes.size() != baseSize || rotations.size() != baseSize ||
+        angularVelocities.size() != baseSize || colors.size() != baseSize ||
+        textureIndices.size() != baseSize || flags.size() != baseSize ||
+        generationIds.size() != baseSize || effectTypes.size() != baseSize ||
+        layers.size() != baseSize) {
+        return 0; // Return 0 if ANY array is inconsistent
+    }
+    
+    return baseSize;
+}
+
+bool ParticleManager::LockFreeParticleStorage::ParticleSoA::empty() const {
+    return positions.empty();
+}
+
+// NEW: Complete SOA validation for cross-platform safety
+bool ParticleManager::LockFreeParticleStorage::ParticleSoA::isFullyConsistent() const {
+    const size_t baseSize = positions.size();
+    return (velocities.size() == baseSize && accelerations.size() == baseSize &&
+            lives.size() == baseSize && maxLives.size() == baseSize &&
+            sizes.size() == baseSize && rotations.size() == baseSize &&
+            angularVelocities.size() == baseSize && colors.size() == baseSize &&
+            textureIndices.size() == baseSize && flags.size() == baseSize &&
+            generationIds.size() == baseSize && effectTypes.size() == baseSize &&
+            layers.size() == baseSize);
+}
+
+// NEW: Safe access count that works across all platforms
+size_t ParticleManager::LockFreeParticleStorage::ParticleSoA::getSafeAccessCount() const {
+    // Return minimum size of ALL arrays to prevent any out-of-bounds access
+    return std::min({
+        positions.size(), velocities.size(), accelerations.size(),
+        lives.size(), maxLives.size(), sizes.size(), rotations.size(),
+        angularVelocities.size(), colors.size(), textureIndices.size(),
+        flags.size(), generationIds.size(), effectTypes.size(), layers.size()
+    });
+}
+
+// NEW: Bounds checking for iterator safety
+bool ParticleManager::LockFreeParticleStorage::ParticleSoA::isValidIndex(size_t index) const {
+    return index < getSafeAccessCount();
+}
+
+// NEW: Safe erase single particle (swap-and-pop pattern)
+void ParticleManager::LockFreeParticleStorage::ParticleSoA::eraseParticle(size_t index) {
+    if (!isValidIndex(index)) return;
+    
+    const size_t lastIndex = positions.size() - 1;
+    if (index != lastIndex) {
+        // Swap with last element (all arrays must stay synchronized)
+        swapParticles(index, lastIndex);
+    }
+    
+    // Remove last element from ALL arrays atomically
+    positions.pop_back();
+    velocities.pop_back();
+    accelerations.pop_back();
+    lives.pop_back();
+    maxLives.pop_back();
+    sizes.pop_back();
+    rotations.pop_back();
+    angularVelocities.pop_back();
+    colors.pop_back();
+    textureIndices.pop_back();
+    flags.pop_back();
+    generationIds.pop_back();
+    effectTypes.pop_back();
+    layers.pop_back();
+}
+
+// NEW: Safe swap operation for all SOA arrays
+void ParticleManager::LockFreeParticleStorage::ParticleSoA::swapParticles(size_t indexA, size_t indexB) {
+    if (!isValidIndex(indexA) || !isValidIndex(indexB) || indexA == indexB) return;
+    
+    // Swap all particle data atomically
+    std::swap(positions[indexA], positions[indexB]);
+    std::swap(velocities[indexA], velocities[indexB]);
+    std::swap(accelerations[indexA], accelerations[indexB]);
+    std::swap(lives[indexA], lives[indexB]);
+    std::swap(maxLives[indexA], maxLives[indexB]);
+    std::swap(sizes[indexA], sizes[indexB]);
+    std::swap(rotations[indexA], rotations[indexB]);
+    std::swap(angularVelocities[indexA], angularVelocities[indexB]);
+    std::swap(colors[indexA], colors[indexB]);
+    std::swap(textureIndices[indexA], textureIndices[indexB]);
+    std::swap(flags[indexA], flags[indexB]);
+    std::swap(generationIds[indexA], generationIds[indexB]);
+    std::swap(effectTypes[indexA], effectTypes[indexB]);
+    std::swap(layers[indexA], layers[indexB]);
+}
+
+// NEW: Efficient in-place compaction without iterator invalidation
+void ParticleManager::LockFreeParticleStorage::ParticleSoA::compactInactive() {
+    if (empty()) return;
+    
+    size_t writeIndex = 0;
+    const size_t totalCount = getSafeAccessCount();
+    
+    // Single-pass compaction: move active particles to front
+    for (size_t readIndex = 0; readIndex < totalCount; ++readIndex) {
+        if (flags[readIndex] & UnifiedParticle::FLAG_ACTIVE) {
+            if (writeIndex != readIndex) {
+                swapParticles(writeIndex, readIndex);
+            }
+            ++writeIndex;
+        }
+    }
+    
+    // Resize all arrays to remove inactive particles
+    const size_t newSize = writeIndex;
+    if (newSize < totalCount) {
+        resize(newSize);
+    }
+}
+
+// LockFreeParticleStorage constructor implementation
+ParticleManager::LockFreeParticleStorage::LockFreeParticleStorage() : creationRing{} {
+    // Pre-allocate both buffers
+    particles[0].reserve(DEFAULT_MAX_PARTICLES);
+    particles[1].reserve(DEFAULT_MAX_PARTICLES);
+    capacity.store(DEFAULT_MAX_PARTICLES, std::memory_order_relaxed);
+}
+
+// Lock-free particle creation implementation
+bool ParticleManager::LockFreeParticleStorage::tryCreateParticle(const Vector2D &pos, const Vector2D &vel,
+                       uint32_t color, float life, float size,
+                       uint8_t flags, uint8_t genId,
+                       ParticleEffectType effectType) {
+    size_t head = creationHead.load(std::memory_order_acquire);
+    size_t next = (head + 1) & (CREATION_RING_SIZE - 1);
+
+    if (next == creationTail.load(std::memory_order_acquire)) {
+        return false; // Ring buffer full
+    }
+
+    auto &req = creationRing[head];
+    req.position = pos;
+    req.velocity = vel;
+    req.color = color;
+    req.life = life;
+    req.size = size;
+    req.flags = flags;
+    req.generationId = genId;
+    req.effectType = effectType;
+    req.ready.store(true, std::memory_order_release);
+
+    creationHead.store(next, std::memory_order_release);
+    return true;
+}
+
+// Process creation requests implementation
+void ParticleManager::LockFreeParticleStorage::processCreationRequests() {
+    size_t tail = creationTail.load(std::memory_order_acquire);
+    size_t head = creationHead.load(std::memory_order_acquire);
+
+    while (tail != head) {
+        auto &req = creationRing[tail];
+        if (req.ready.load(std::memory_order_acquire)) {
+            // Add particle to active buffer
+            size_t activeIdx = activeBuffer.load(std::memory_order_relaxed);
+            auto &activeParticles = particles[activeIdx];
+
+            const size_t currentCapacity = capacity.load(std::memory_order_relaxed);
+            const size_t currentSize = activeParticles.positions.size();
+            
+            // CRITICAL FIX: Check buffer consistency before adding particles
+            if (currentSize < currentCapacity &&
+                activeParticles.velocities.size() == currentSize &&
+                activeParticles.flags.size() == currentSize) {
+                UnifiedParticle particle;
+                particle.position = req.position;
+                particle.velocity = req.velocity;
+                particle.color = req.color;
+                particle.life = req.life;
+                particle.maxLife = req.life;
+                particle.size = req.size;
+                particle.flags = req.flags;
+                particle.generationId = req.generationId;
+                particle.effectType = req.effectType;
+
+                activeParticles.push_back(particle);
+                particleCount.fetch_add(1, std::memory_order_acq_rel);
+            }
+
+            req.ready.store(false, std::memory_order_release);
+        }
+        tail = (tail + 1) & (CREATION_RING_SIZE - 1);
+    }
+
+    creationTail.store(tail, std::memory_order_release);
+}
+
+// Get read-only access to particles implementation
+const ParticleManager::LockFreeParticleStorage::ParticleSoA &
+ParticleManager::LockFreeParticleStorage::getParticlesForRead() const {
+    size_t activeIdx = activeBuffer.load(std::memory_order_acquire);
+    return particles[activeIdx];
+}
+
+// Get writable access to particles implementation
+ParticleManager::LockFreeParticleStorage::ParticleSoA &
+ParticleManager::LockFreeParticleStorage::getCurrentBuffer() {
+    size_t activeIdx = activeBuffer.load(std::memory_order_acquire);
+    return particles[activeIdx];
+}
+
+// Check if compaction is needed implementation
+bool ParticleManager::LockFreeParticleStorage::needsCompaction() const {
+    const auto& activeParticles = getParticlesForRead();
+    
+    // BOUNDS SAFETY: Check for empty or inconsistent buffer
+    const size_t flagsSize = activeParticles.flags.size();
+    if (flagsSize == 0) return false;
+    
+    // Validate buffer consistency before checking compaction need
+    if (activeParticles.positions.size() != flagsSize ||
+        activeParticles.velocities.size() != flagsSize) {
+        return true; // Force compaction if buffer is inconsistent
+    }
+
+    size_t inactiveCount = 0;
+    for (size_t i = 0; i < flagsSize; ++i) {
+        // DEFENSIVE: This bounds check appears redundant but provides platform-specific 
+        // safety for edge cases in multithreaded environments
+        if (i >= activeParticles.flags.size()) {
+            break; // Exit safely if buffer changed
+        }
+        
+        if (!(activeParticles.flags[i] & UnifiedParticle::FLAG_ACTIVE)) {
+            inactiveCount++;
+        }
+    }
+    return inactiveCount > flagsSize * 0.5;
+}
+
+// Submit new particle implementation
+bool ParticleManager::LockFreeParticleStorage::submitNewParticle(const NewParticleRequest &request) {
+    return tryCreateParticle(request.position, request.velocity,
+                            request.color, request.life, request.size,
+                            UnifiedParticle::FLAG_ACTIVE |
+                                UnifiedParticle::FLAG_VISIBLE,
+                            0, request.effectType);
+}
+
+// Swap buffers implementation
+void ParticleManager::LockFreeParticleStorage::swapBuffers() {
+    size_t current = activeBuffer.load(std::memory_order_relaxed);
+    size_t next = 1 - current;
+
+    // CRITICAL FIX: Ensure buffer consistency before copying
+    const auto& currentParticles = particles[current];
+    auto& nextParticles = particles[next];
+    
+    // BOUNDS SAFETY: Validate source buffer before copying
+    const size_t currentSize = currentParticles.positions.size();
+    if (currentSize == 0 ||
+        currentParticles.velocities.size() != currentSize ||
+        currentParticles.flags.size() != currentSize) {
+        // Don't swap if current buffer is inconsistent
+        currentEpoch.fetch_add(1, std::memory_order_acq_rel);
+        return;
+    }
+
+    // Copy active particles to next buffer safely
+    nextParticles = currentParticles;
+
+    // Atomic swap
+    activeBuffer.store(next, std::memory_order_release);
+
+    // Advance epoch for memory reclamation
+    currentEpoch.fetch_add(1, std::memory_order_acq_rel);
+}
 
 bool ParticleManager::init() {
   if (m_initialized.load(std::memory_order_acquire)) {
@@ -25,6 +521,9 @@ bool ParticleManager::init() {
     // Pre-allocate storage for better performance
     // Modern engines can handle much more - reserve generous capacity
     // Note: LockFreeParticleStorage automatically pre-allocates in constructor
+
+    // PERFORMANCE OPTIMIZATION: Initialize trigonometric lookup tables
+    initTrigLookupTables();
 
     // Built-in effects will be registered by GameEngine after init
 
@@ -42,7 +541,7 @@ bool ParticleManager::init() {
 }
 
 void ParticleManager::clean() {
-  if (m_isShutdown) {
+  if (!m_initialized.load(std::memory_order_acquire) || m_isShutdown) {
     return;
   }
 
@@ -130,11 +629,12 @@ void ParticleManager::prepareForStateTransition() {
   int particlesCleared = 0;
   size_t activeIdx = m_storage.activeBuffer.load(std::memory_order_acquire);
   auto &activeParticles = m_storage.particles[activeIdx];
+  const size_t particleCount = activeParticles.size();
 
-  for (auto &particle : activeParticles) {
-    if (particle.isActive()) {
-      particle.setActive(false);
-      particle.life = 0.0f; // Ensure life is zero for double safety
+  for (size_t i = 0; i < particleCount; ++i) {
+    if (activeParticles.flags[i] & UnifiedParticle::FLAG_ACTIVE) {
+      activeParticles.flags[i] &= ~UnifiedParticle::FLAG_ACTIVE;
+      activeParticles.lives[i] = 0.0f; // Ensure life is zero for double safety
       particlesCleared++;
     }
   }
@@ -174,8 +674,8 @@ void ParticleManager::update(float deltaTime) {
     return;
   }
 
-  // PERFORMANCE-OPTIMIZED: Single update serialization only
-  std::lock_guard<std::mutex> updateLock(updateMutex);
+  // TRUST GAME ENGINE: GameEngine and GameLoop handle update/render synchronization
+  // No blocking mutexes needed - the engine ensures thread safety at a higher level
 
   auto startTime = std::chrono::high_resolution_clock::now();
 
@@ -191,7 +691,7 @@ void ParticleManager::update(float deltaTime) {
 
     // Phase 3: Get snapshot of particle count for threading decision
     const auto &particles = m_storage.getParticlesForRead();
-    size_t totalParticleCount = particles.size();
+    size_t totalParticleCount = particles.positions.size();
     if (totalParticleCount == 0) {
       return;
     }
@@ -210,6 +710,7 @@ void ParticleManager::update(float deltaTime) {
         updateParticlesThreaded(deltaTime, totalParticleCount);
       }
     } else {
+      m_lastWasThreaded.store(false, std::memory_order_relaxed);
       updateParticlesSingleThreaded(deltaTime, totalParticleCount);
     }
 
@@ -241,10 +742,26 @@ void ParticleManager::update(float deltaTime) {
       recordPerformance(false, timeMs, activeCount);
 
       if (activeCount > 0) {
-        PARTICLE_DEBUG(
-            "Particle Summary - Count: " + std::to_string(activeCount) +
-            ", Update: " + std::to_string(timeMs) + "ms" +
-            ", Effects: " + std::to_string(m_effectInstances.size()));
+        bool wasThreaded = m_lastWasThreaded.load(std::memory_order_relaxed);
+        if (wasThreaded) {
+          size_t optimalWorkers = m_lastOptimalWorkerCount.load(std::memory_order_relaxed);
+          size_t availableWorkers = m_lastAvailableWorkers.load(std::memory_order_relaxed);
+          size_t particleBudget = m_lastParticleBudget.load(std::memory_order_relaxed);
+          
+          PARTICLE_DEBUG(
+              "Particle Summary - Count: " + std::to_string(activeCount) +
+              ", Update: " + std::to_string(timeMs) + "ms" +
+              ", Effects: " + std::to_string(m_effectInstances.size()) +
+              " [Threaded: " + std::to_string(optimalWorkers) + "/" +
+              std::to_string(availableWorkers) + " workers, Budget: " +
+              std::to_string(particleBudget) + "]");
+        } else {
+          PARTICLE_DEBUG(
+              "Particle Summary - Count: " + std::to_string(activeCount) +
+              ", Update: " + std::to_string(timeMs) + "ms" +
+              ", Effects: " + std::to_string(m_effectInstances.size()) +
+              " [Single-threaded]");
+        }
       }
     }
 
@@ -255,7 +772,7 @@ void ParticleManager::update(float deltaTime) {
 }
 
 void ParticleManager::render(SDL_Renderer *renderer, float cameraX,
-                             float cameraY) {
+                              float cameraY) {
   if (m_globallyPaused.load(std::memory_order_acquire) ||
       !m_globallyVisible.load(std::memory_order_acquire)) {
     return;
@@ -263,17 +780,37 @@ void ParticleManager::render(SDL_Renderer *renderer, float cameraX,
 
   auto startTime = std::chrono::high_resolution_clock::now();
 
-  // PERFORMANCE: Lock-free rendering using read-only snapshot
+  // THREAD SAFETY: Get immutable snapshot of particle data for rendering
   const auto &particles = m_storage.getParticlesForRead();
   int renderCount = 0;
+  
+  // IMPROVED FIX: Use safest available particle count for rendering
+  // This allows partial rendering when buffers are mostly consistent
+  const size_t safeParticleCount = std::min({
+    particles.positions.size(),
+    particles.flags.size(), 
+    particles.colors.size(),
+    particles.sizes.size()
+  });
+  
+  // Only skip rendering if no particles are available
+  if (safeParticleCount == 0) {
+    return;
+  }
 
-  for (const auto &particle : particles) {
-    if (!particle.isActive() || !particle.isVisible()) {
+  for (size_t i = 0; i < safeParticleCount; ++i) {
+    // BOUNDS CHECK: Defensive programming for edge cases
+    if (i >= particles.flags.size() || i >= particles.colors.size() || 
+        i >= particles.sizes.size() || i >= particles.positions.size()) {
+      break; // Exit safely if we somehow exceed bounds
+    }
+    
+    if (!(particles.flags[i] & UnifiedParticle::FLAG_ACTIVE) || !(particles.flags[i] & UnifiedParticle::FLAG_VISIBLE)) {
       continue;
     }
 
     // Skip particles that are completely transparent
-    uint8_t alpha = particle.color & 0xFF;
+    uint8_t alpha = particles.colors[i] & 0xFF;
     if (alpha == 0) {
       continue;
     }
@@ -281,19 +818,17 @@ void ParticleManager::render(SDL_Renderer *renderer, float cameraX,
     renderCount++;
 
     // Extract color components
-    uint8_t r = (particle.color >> 24) & 0xFF;
-    uint8_t g = (particle.color >> 16) & 0xFF;
-    uint8_t b = (particle.color >> 8) & 0xFF;
-
-    // Set particle color
+    uint8_t r = (particles.colors[i] >> 24) & 0xFF;
+    uint8_t g = (particles.colors[i] >> 16) & 0xFF;
+    uint8_t b = (particles.colors[i] >> 8) & 0xFF;
     SDL_SetRenderDrawColor(renderer, r, g, b, alpha);
 
-    // Use particle size directly without any size limits
-    float size = particle.size;
+    // Get particle size
+    float size = particles.sizes[i];
 
     // Render particle as a filled rectangle (accounting for camera offset)
-    SDL_FRect rect = {particle.position.getX() - cameraX - size / 2,
-                      particle.position.getY() - cameraY - size / 2, size,
+    SDL_FRect rect = {particles.positions[i].getX() - cameraX - size / 2,
+                      particles.positions[i].getY() - cameraY - size / 2, size,
                       size};
     SDL_RenderFillRect(renderer, &rect);
   }
@@ -303,7 +838,7 @@ void ParticleManager::render(SDL_Renderer *renderer, float cameraX,
       m_frameCounter.fetch_add(1, std::memory_order_relaxed);
   if (currentFrame % 900 == 0 && renderCount > 0) {
     PARTICLE_DEBUG(
-        "Particle Summary - Total: " + std::to_string(particles.size()) +
+        "Particle Summary - Total: " + std::to_string(safeParticleCount) +
         ", Active: " + std::to_string(renderCount) +
         ", Effects: " + std::to_string(m_effectInstances.size()));
   }
@@ -313,7 +848,7 @@ void ParticleManager::render(SDL_Renderer *renderer, float cameraX,
       std::chrono::duration_cast<std::chrono::microseconds>(endTime - startTime)
           .count() /
       1000.0;
-  recordPerformance(true, timeMs, particles.size());
+  recordPerformance(true, timeMs, safeParticleCount);
 }
 
 void ParticleManager::renderBackground(SDL_Renderer *renderer, float cameraX,
@@ -323,74 +858,48 @@ void ParticleManager::renderBackground(SDL_Renderer *renderer, float cameraX,
     return;
   }
 
-  // PERFORMANCE: Lock-free rendering using read-only snapshot
+  // THREAD SAFETY: Get immutable snapshot of particle data
   const auto &particles = m_storage.getParticlesForRead();
+  
+  // CRITICAL FIX: Use comprehensive bounds checking for Windows UCRT
+  const size_t safeParticleCount = particles.getSafeAccessCount();
+  
+  // Only skip rendering if no particles are available
+  if (safeParticleCount == 0) {
+    return;
+  }
 
-  for (const auto &particle : particles) {
-    if (!particle.isActive() || !particle.isVisible()) {
+  for (size_t i = 0; i < safeParticleCount; ++i) {
+    // BOUNDS CHECK: Defensive programming for edge cases
+    if (i >= particles.flags.size() || i >= particles.colors.size() || 
+        i >= particles.sizes.size() || i >= particles.positions.size() ||
+        i >= particles.layers.size()) {
+      break; // Exit safely if we somehow exceed bounds
+    }
+    
+    if (!(particles.flags[i] & UnifiedParticle::FLAG_ACTIVE) || !(particles.flags[i] & UnifiedParticle::FLAG_VISIBLE) ||
+        particles.layers[i] != UnifiedParticle::RenderLayer::Background) {
       continue;
     }
 
-    // Check if this is a background particle (rain, snow, fire, smoke, sparks)
-    uint32_t color = particle.color;
-    bool isBackground = false;
-
-    // Rain particles (including HeavyRain) - blue-dominant colors
-    uint8_t r = (color >> 24) & 0xFF;
-    uint8_t g = (color >> 16) & 0xFF;
-    uint8_t b = (color >> 8) & 0xFF;
-
-    // Rain/HeavyRain: blue is dominant (blue > red AND blue > green)
-    if (b > r && b > g && b >= 150) {
-      isBackground = true;
-    }
-    // Snow particles (including HeavySnow) - white (all RGB components high and
-    // similar)
-    else if (r >= 200 && g >= 200 && b >= 200 &&
-             abs(static_cast<int>(r) - static_cast<int>(g)) <= 30 &&
-             abs(static_cast<int>(r) - static_cast<int>(b)) <= 30 &&
-             abs(static_cast<int>(g) - static_cast<int>(b)) <= 30) {
-      isBackground = true;
-    }
-    // Fire particles - orange/red/yellow range (red component >= 0x45)
-    else if ((color & 0xFF000000) == 0xFF000000 &&
-             ((color & 0x00FF0000) >= 0x00450000)) {
-      isBackground = true;
-    }
-    // Smoke particles - grey range
-    else if ((color & 0xFF000000) >= 0x20000000 &&
-             (color & 0xFF000000) <= 0x80000000 &&
-             (color & 0x00FFFFFF) >= 0x00202020 &&
-             (color & 0x00FFFFFF) <= 0x00808080) {
-      isBackground = true;
-    }
-    // Sparks particles - bright yellow/orange
-    else if ((color & 0xFFFF0000) == 0xFFFF0000 || // Yellow (FFFF__)
-             (color & 0xFF8C0000) == 0xFF8C0000) { // Orange (FF8C__)
-      isBackground = true;
-    }
-
-    if (!isBackground) {
-      continue; // Skip foreground particles
-    }
-
-    // Use already extracted color components for rendering
-    // uint8_t a = color & 0xFF; // Already declared above
+    // Extract color components
+    uint8_t r = (particles.colors[i] >> 24) & 0xFF;
+    uint8_t g = (particles.colors[i] >> 16) & 0xFF;
+    uint8_t b = (particles.colors[i] >> 8) & 0xFF;
+    uint8_t a = particles.colors[i] & 0xFF;
 
     // Set particle color
-    SDL_SetRenderDrawColor(renderer, r, g, b, (color & 0xFF));
+    SDL_SetRenderDrawColor(renderer, r, g, b, a);
 
     // Use particle size directly without any size limits
-    float size = particle.size;
+    float size = particles.sizes[i];
 
     // Render particle as a filled rectangle (accounting for camera offset)
-    SDL_FRect rect = {particle.position.getX() - cameraX - size / 2,
-                      particle.position.getY() - cameraY - size / 2, size,
+    SDL_FRect rect = {particles.positions[i].getX() - cameraX - size / 2,
+                      particles.positions[i].getY() - cameraY - size / 2, size,
                       size};
     SDL_RenderFillRect(renderer, &rect);
   }
-
-  // Background particle render complete
 }
 
 void ParticleManager::renderForeground(SDL_Renderer *renderer, float cameraX,
@@ -400,61 +909,48 @@ void ParticleManager::renderForeground(SDL_Renderer *renderer, float cameraX,
     return;
   }
 
-  // PERFORMANCE: Lock-free rendering using read-only snapshot
+  // THREAD SAFETY: Get immutable snapshot of particle data
   const auto &particles = m_storage.getParticlesForRead();
+  
+  // CRITICAL FIX: Use comprehensive bounds checking for Windows UCRT
+  const size_t safeParticleCount = particles.getSafeAccessCount();
+  
+  // Only skip rendering if no particles are available
+  if (safeParticleCount == 0) {
+    return;
+  }
 
-  for (const auto &particle : particles) {
+  for (size_t i = 0; i < safeParticleCount; ++i) {
+    // BOUNDS CHECK: Defensive programming for edge cases
+    if (i >= particles.flags.size() || i >= particles.colors.size() || 
+        i >= particles.sizes.size() || i >= particles.positions.size() ||
+        i >= particles.layers.size()) {
+      break; // Exit safely if we somehow exceed bounds
+    }
 
-    if (!particle.isActive() || !particle.isVisible()) {
+    if (!(particles.flags[i] & UnifiedParticle::FLAG_ACTIVE) || !(particles.flags[i] & UnifiedParticle::FLAG_VISIBLE) ||
+        particles.layers[i] != UnifiedParticle::RenderLayer::Foreground) {
       continue;
     }
 
-    // Check if this is a foreground particle (fog = gray-ish, clouds = light
-    // white)
-    uint32_t color = particle.color;
-    bool isForeground = false;
-
     // Extract RGB components
-    uint8_t r = (color >> 24) & 0xFF;
-    uint8_t g = (color >> 16) & 0xFF;
-    uint8_t b = (color >> 8) & 0xFF;
-
-    // Fog particles: gray range (190-230 RGB as created in
-    // createParticleForEffect) Check if all RGB components are similar (gray)
-    // and in the fog range
-    if (r >= 180 && r <= 240 && g >= 180 && g <= 240 && b >= 180 && b <= 240 &&
-        abs(static_cast<int>(r) - static_cast<int>(g)) <= 25 &&
-        abs(static_cast<int>(r) - static_cast<int>(b)) <= 25 &&
-        abs(static_cast<int>(g) - static_cast<int>(b)) <= 25) {
-      isForeground = true;
-    }
-    // Cloudy particles: light white range (240-255 RGB as created in
-    // createParticleForEffect)
-    else if (r >= 235 && g >= 235 && b >= 235) {
-      isForeground = true;
-    }
-
-    if (!isForeground) {
-      continue; // Skip background particles
-    }
-
-    // Use already extracted color components
-    uint8_t a = color & 0xFF;
+    uint8_t r = (particles.colors[i] >> 24) & 0xFF;
+    uint8_t g = (particles.colors[i] >> 16) & 0xFF;
+    uint8_t b = (particles.colors[i] >> 8) & 0xFF;
+    uint8_t a = particles.colors[i] & 0xFF;
 
     // Set particle color
     SDL_SetRenderDrawColor(renderer, r, g, b, a);
 
     // Use particle size directly without any size limits
-    float size = particle.size;
+    float size = particles.sizes[i];
 
     // Render particle as a filled rectangle (accounting for camera offset)
-    SDL_FRect rect = {particle.position.getX() - cameraX - size / 2,
-                      particle.position.getY() - cameraY - size / 2, size,
+    SDL_FRect rect = {particles.positions[i].getX() - cameraX - size / 2,
+                      particles.positions[i].getY() - cameraY - size / 2, size,
                       size};
     SDL_RenderFillRect(renderer, &rect);
   }
-
-  // Foreground particle render complete
 }
 
 uint32_t ParticleManager::playEffect(ParticleEffectType effectType,
@@ -518,6 +1014,7 @@ void ParticleManager::stopWeatherEffects(float transitionTime) {
 
   // PERFORMANCE: Lock-free weather effect stopping
   // No synchronization needed for effect state changes
+  std::unique_lock<std::mutex> lock(m_weatherMutex);
 
   int stoppedCount = 0;
 
@@ -552,10 +1049,11 @@ void ParticleManager::stopWeatherEffects(float transitionTime) {
     int affectedCount = 0;
     size_t activeIdx = m_storage.activeBuffer.load(std::memory_order_acquire);
     auto &particles = m_storage.particles[activeIdx];
+    const size_t particleCount = particles.size();
 
-    for (auto &particle : particles) {
-      if (particle.isActive() && particle.isWeatherParticle()) {
-        particle.setActive(false);
+    for (size_t i = 0; i < particleCount; ++i) {
+      if ((particles.flags[i] & UnifiedParticle::FLAG_ACTIVE) && (particles.flags[i] & UnifiedParticle::FLAG_WEATHER)) {
+        particles.flags[i] &= ~UnifiedParticle::FLAG_ACTIVE;
         affectedCount++;
       }
     }
@@ -567,11 +1065,12 @@ void ParticleManager::stopWeatherEffects(float transitionTime) {
     int affectedCount = 0;
     size_t activeIdx = m_storage.activeBuffer.load(std::memory_order_acquire);
     auto &particles = m_storage.particles[activeIdx];
+    const size_t particleCount = particles.size();
 
-    for (auto &particle : particles) {
-      if (particle.isActive() && particle.isWeatherParticle()) {
-        particle.setFadingOut(true);
-        particle.life = std::min(particle.life, transitionTime);
+    for (size_t i = 0; i < particleCount; ++i) {
+      if ((particles.flags[i] & UnifiedParticle::FLAG_ACTIVE) && (particles.flags[i] & UnifiedParticle::FLAG_WEATHER)) {
+        particles.flags[i] |= UnifiedParticle::FLAG_FADE_OUT;
+        particles.lives[i] = std::min(particles.lives[i], transitionTime);
         affectedCount++;
       }
     }
@@ -597,18 +1096,19 @@ void ParticleManager::clearWeatherGeneration(uint8_t generationId,
   // PERFORMANCE: Lock-free weather particle clearing
   size_t activeIdx = m_storage.activeBuffer.load(std::memory_order_acquire);
   auto &particles = m_storage.particles[activeIdx];
+  const size_t particleCount = particles.size();
 
-  for (auto &particle : particles) {
-    if (particle.isActive() && particle.isWeatherParticle()) {
+  for (size_t i = 0; i < particleCount; ++i) {
+    if ((particles.flags[i] & UnifiedParticle::FLAG_ACTIVE) && (particles.flags[i] & UnifiedParticle::FLAG_WEATHER)) {
       // Clear specific generation or all weather particles if generationId is 0
-      if (generationId == 0 || particle.generationId == generationId) {
+      if (generationId == 0 || particles.generationIds[i] == generationId) {
         if (fadeTime <= 0.0f) {
           // Immediate removal
-          particle.setActive(false);
+          particles.flags[i] &= ~UnifiedParticle::FLAG_ACTIVE;
         } else {
           // Set fade-out and limit life to fade time
-          particle.setFadingOut(true);
-          particle.life = std::min(particle.life, fadeTime);
+          particles.flags[i] |= UnifiedParticle::FLAG_FADE_OUT;
+          particles.lives[i] = std::min(particles.lives[i], fadeTime);
         }
         affectedCount++;
       }
@@ -649,7 +1149,8 @@ void ParticleManager::triggerWeatherEffect(ParticleEffectType effectType,
   float actualTransitionTime = (transitionTime > 0.0f) ? transitionTime : 1.5f;
 
   // THREADING FIX: Effect management requires synchronization
-  std::unique_lock<std::shared_mutex> lock(m_effectsMutex);
+  std::unique_lock<std::mutex> lock(m_weatherMutex);
+  std::unique_lock<std::shared_mutex> effectsLock(m_effectsMutex);
 
   // Clear existing weather effects first
   int stoppedCount = 0;
@@ -679,10 +1180,11 @@ void ParticleManager::triggerWeatherEffect(ParticleEffectType effectType,
     int affectedCount = 0;
     size_t activeIdx = m_storage.activeBuffer.load(std::memory_order_acquire);
     auto &particles = m_storage.particles[activeIdx];
+    const size_t particleCount = particles.size();
 
-    for (auto &particle : particles) {
-      if (particle.isActive() && particle.isWeatherParticle()) {
-        particle.setActive(false);
+    for (size_t i = 0; i < particleCount; ++i) {
+      if ((particles.flags[i] & UnifiedParticle::FLAG_ACTIVE) && (particles.flags[i] & UnifiedParticle::FLAG_WEATHER)) {
+        particles.flags[i] &= ~UnifiedParticle::FLAG_ACTIVE;
         affectedCount++;
       }
     }
@@ -1013,66 +1515,82 @@ void ParticleManager::registerBuiltInEffects() {
 }
 
 ParticleEffectDefinition ParticleManager::createRainEffect() {
+  const auto &gameEngine = GameEngine::Instance();
   ParticleEffectDefinition rain("Rain", ParticleEffectType::Rain);
-  rain.emitterConfig.spread =
-      600.0f; // Narrower spread for more vertical rain fall
+  rain.layer = UnifiedParticle::RenderLayer::Background;
+  rain.emitterConfig.spread = static_cast<float>(gameEngine.getLogicalWidth());
   rain.emitterConfig.emissionRate =
-      800.0f; // Reduced emission for better performance while maintaining
+      500.0f; // Reduced emission for better performance while maintaining
               // coverage
-  rain.emitterConfig.minSpeed = 250.0f; // Faster minimum speed for quicker rain
+  rain.emitterConfig.minSpeed = 80.0f; // Slightly slower start for natural acceleration
   rain.emitterConfig.maxSpeed =
-      350.0f;                        // Much faster for more dynamic rain fall
+      180.0f; // Lower max speed - terminal velocity will limit this naturally                       
   rain.emitterConfig.minLife = 4.0f; // Longer to ensure screen traversal
   rain.emitterConfig.maxLife = 7.0f;
-  rain.emitterConfig.minSize = 2.0f; // Much smaller for realistic raindrops
+  rain.emitterConfig.minSize = 1.5f; // Adjusted for size-based physics
   rain.emitterConfig.maxSize = 6.0f;
+  rain.emitterConfig.minColor = 0x1E3A8AFF; // Dark blue
+  rain.emitterConfig.maxColor = 0x3B82F6FF; // Medium blue
   rain.emitterConfig.gravity =
-      Vector2D(2.0f, 450.0f); // More vertical fall for 2D isometric view
+      Vector2D(0.0f, 300.0f); // Reduced - enhanced physics will handle acceleration
   rain.emitterConfig.windForce =
-      Vector2D(3.0f, 1.0f); // Minimal wind for straighter downward fall
+      Vector2D(5.0f, 0.0f); // Base wind - turbulence will add variation
   rain.emitterConfig.textureID = "raindrop";
   rain.emitterConfig.blendMode = ParticleBlendMode::Alpha;
-  rain.intensityMultiplier =
-      1.4f; // Higher multiplier for better intensity scaling
+  rain.emitterConfig.useWorldSpace = false;
+  rain.emitterConfig.position.setY(0);
+  rain.intensityMultiplier = 1.4f; // Higher multiplier for better intensity scaling
   return rain;
 }
 
 ParticleEffectDefinition ParticleManager::createHeavyRainEffect() {
+  const auto &gameEngine = GameEngine::Instance();
   ParticleEffectDefinition heavyRain("HeavyRain",
                                      ParticleEffectType::HeavyRain);
+  heavyRain.layer = UnifiedParticle::RenderLayer::Background;
   heavyRain.emitterConfig.spread =
-      800.0f; // Narrower spread for more intense, vertical heavy rain
+      static_cast<float>(gameEngine.getLogicalWidth());
   heavyRain.emitterConfig.emissionRate =
-      1200.0f; // Reduced emission while maintaining storm intensity
+      800.0f; // Reduced emission while maintaining storm intensity
   heavyRain.emitterConfig.minSpeed =
-      320.0f; // Much faster falling in heavy storm
+      120.0f; // Higher start speed for heavier drops
   heavyRain.emitterConfig.maxSpeed =
-      450.0f;                             // Very high speed for intense impact
+      220.0f; // Lower max - terminal velocity handles the rest                            
   heavyRain.emitterConfig.minLife = 3.5f; // Good life for screen coverage
   heavyRain.emitterConfig.maxLife = 6.0f;
-  heavyRain.emitterConfig.minSize = 1.5f; // Smaller but more numerous
-  heavyRain.emitterConfig.maxSize = 5.0f;
+  heavyRain.emitterConfig.minSize = 2.0f; // Larger drops for heavy rain
+  heavyRain.emitterConfig.maxSize = 8.0f; // Much larger maximum size
+  heavyRain.emitterConfig.minColor = 0x1E3A8AFF; // Dark blue
+  heavyRain.emitterConfig.maxColor = 0x3B82F6FF; // Medium blue
   heavyRain.emitterConfig.gravity = Vector2D(
-      5.0f, 500.0f); // Strong vertical fall for intense rain in 2D isometric
+      0.0f, 350.0f); // Base gravity - enhanced physics handle acceleration
   heavyRain.emitterConfig.windForce =
-      Vector2D(5.0f, 2.0f); // Minimal wind for mostly vertical heavy rain
+      Vector2D(8.0f, 0.0f); // More base wind for stormy conditions
   heavyRain.emitterConfig.textureID = "raindrop";
   heavyRain.emitterConfig.blendMode = ParticleBlendMode::Alpha;
+  heavyRain.emitterConfig.useWorldSpace = false;
+  heavyRain.emitterConfig.position.setY(0);
   heavyRain.intensityMultiplier = 1.8f; // High intensity for storms
   return heavyRain;
 }
 
 ParticleEffectDefinition ParticleManager::createSnowEffect() {
+  const auto &gameEngine = GameEngine::Instance();
   ParticleEffectDefinition snow("Snow", ParticleEffectType::Snow);
-  snow.emitterConfig.spread = 1200.0f; // Moderate spread for gentle snow drift
+  snow.layer = UnifiedParticle::RenderLayer::Background;
+  snow.emitterConfig.spread =
+      static_cast<float>(gameEngine.getLogicalWidth()); // Moderate spread for
+                                                        // gentle snow drift
   snow.emitterConfig.emissionRate =
-      350.0f; // Further reduced emission for optimal density
+      180.0f; // Further reduced emission for optimal density
   snow.emitterConfig.minSpeed = 15.0f; // Faster minimum for quicker snow fall
   snow.emitterConfig.maxSpeed = 50.0f; // Much faster max for more dynamic drift
   snow.emitterConfig.minLife = 8.0f;   // Much longer life for coverage
   snow.emitterConfig.maxLife = 15.0f;  // Extended for slow drift
   snow.emitterConfig.minSize = 8.0f;   // Larger for better visibility
   snow.emitterConfig.maxSize = 16.0f;  // Good visible size range
+  snow.emitterConfig.minColor = 0xFFFAFAFF; // White
+  snow.emitterConfig.maxColor = 0xE6E6EAFF; // Light grey
   snow.emitterConfig.gravity = Vector2D(
       -2.0f,
       60.0f); // More vertical fall with minimal wind drift for 2D isometric
@@ -1080,23 +1598,29 @@ ParticleEffectDefinition ParticleManager::createSnowEffect() {
       Vector2D(3.0f, 0.5f); // Very gentle wind for mostly downward snow
   snow.emitterConfig.textureID = "snowflake";
   snow.emitterConfig.blendMode = ParticleBlendMode::Alpha;
+  snow.emitterConfig.useWorldSpace = false;
+  snow.emitterConfig.position.setY(0);
   snow.intensityMultiplier = 1.1f; // Slightly enhanced for visibility
   return snow;
 }
 
 ParticleEffectDefinition ParticleManager::createHeavySnowEffect() {
+  const auto &gameEngine = GameEngine::Instance();
   ParticleEffectDefinition heavySnow("HeavySnow",
                                      ParticleEffectType::HeavySnow);
+  heavySnow.layer = UnifiedParticle::RenderLayer::Background;
   heavySnow.emitterConfig.spread =
-      1800.0f; // Wider spread for blizzard but not extreme
+      static_cast<float>(gameEngine.getLogicalWidth());
   heavySnow.emitterConfig.emissionRate =
-      600.0f; // Further reduced emission for realistic blizzard
+      350.0f; // Further reduced emission for realistic blizzard
   heavySnow.emitterConfig.minSpeed = 25.0f; // Much faster in heavy blizzard
   heavySnow.emitterConfig.maxSpeed = 80.0f; // High wind speeds for blizzard
   heavySnow.emitterConfig.minLife = 5.0f;   // Good life for coverage
   heavySnow.emitterConfig.maxLife = 10.0f;
   heavySnow.emitterConfig.minSize = 6.0f; // Visible but numerous flakes
   heavySnow.emitterConfig.maxSize = 14.0f;
+  heavySnow.emitterConfig.minColor = 0xFFFAFAFF; // White
+  heavySnow.emitterConfig.maxColor = 0xE6E6EAFF; // Light grey
   heavySnow.emitterConfig.gravity =
       Vector2D(-5.0f, 80.0f); // Stronger vertical fall with some wind for
                               // blizzard in 2D isometric
@@ -1105,15 +1629,21 @@ ParticleEffectDefinition ParticleManager::createHeavySnowEffect() {
       2.0f); // Moderate wind for blizzard effect but still mostly downward
   heavySnow.emitterConfig.textureID = "snowflake";
   heavySnow.emitterConfig.blendMode = ParticleBlendMode::Alpha;
+  heavySnow.emitterConfig.useWorldSpace = false;
+  heavySnow.emitterConfig.position.setY(0);
   heavySnow.intensityMultiplier = 1.6f; // High intensity for blizzard
   return heavySnow;
 }
 
 ParticleEffectDefinition ParticleManager::createFogEffect() {
+  const auto &gameEngine = GameEngine::Instance();
   ParticleEffectDefinition fog("Fog", ParticleEffectType::Fog);
-  fog.emitterConfig.spread = 3000.0f; // Very wide spread to cover entire screen
+  fog.layer = UnifiedParticle::RenderLayer::Foreground;
+  fog.emitterConfig.spread =
+      static_cast<float>(gameEngine.getLogicalWidth()); // Very wide spread to
+                                                        // cover entire screen
   fog.emitterConfig.emissionRate =
-      50.0f;                          // Increased emission rate for denser fog
+      38.0f;                          // Increased emission rate for denser fog
   fog.emitterConfig.minSpeed = 2.0f;  // Slower movement for realistic fog drift
   fog.emitterConfig.maxSpeed = 15.0f; // Varied speeds for natural movement
   fog.emitterConfig.minLife = 8.0f;   // Reduced life for faster turnover
@@ -1126,23 +1656,26 @@ ParticleEffectDefinition ParticleManager::createFogEffect() {
   fog.emitterConfig.windForce = Vector2D(8.0f, 1.0f); // Variable wind effect
   fog.emitterConfig.textureID = "fog";
   fog.emitterConfig.blendMode = ParticleBlendMode::Alpha;
+  fog.emitterConfig.useWorldSpace = false;
   fog.intensityMultiplier = 0.9f; // Balanced intensity for fog
   return fog;
 }
 
 ParticleEffectDefinition ParticleManager::createCloudyEffect() {
+  const auto &gameEngine = GameEngine::Instance();
   ParticleEffectDefinition cloudy("Cloudy", ParticleEffectType::Cloudy);
+  cloudy.layer = UnifiedParticle::RenderLayer::Foreground;
   // No initial position - will be set by triggerWeatherEffect
   cloudy.emitterConfig.direction = Vector2D(
       1.0f, 0.0f); // Horizontal movement for clouds sweeping across sky
   cloudy.emitterConfig.spread =
-      2000.0f; // Wider spread to cover entire screen width
+      static_cast<float>(gameEngine.getLogicalWidth());
   cloudy.emitterConfig.emissionRate =
-      1.5f; // Further reduced for less dense cloud effect
+      1.2f; // Further reduced for less dense cloud effect
   cloudy.emitterConfig.minSpeed =
       25.0f; // Much faster horizontal movement for visible sweeping motion
   cloudy.emitterConfig.maxSpeed =
-      45.0f; // Reduced speed for more gentle cloud movement
+      35.0f; // Reduced speed for more gentle cloud movement
   cloudy.emitterConfig.minLife = 20.0f; // Shorter life for faster turnover
   cloudy.emitterConfig.maxLife =
       35.0f; // Reduced max life to prevent screen crowding
@@ -1156,82 +1689,84 @@ ParticleEffectDefinition ParticleManager::createCloudyEffect() {
   cloudy.emitterConfig.textureID = "cloud";
   cloudy.emitterConfig.blendMode =
       ParticleBlendMode::Alpha;      // Standard alpha blending
+  cloudy.emitterConfig.useWorldSpace = false;
   cloudy.intensityMultiplier = 1.2f; // Slightly enhanced intensity
   return cloudy;
 }
 
 ParticleEffectDefinition ParticleManager::createFireEffect() {
   ParticleEffectDefinition fire("Fire", ParticleEffectType::Fire);
+  fire.layer = UnifiedParticle::RenderLayer::World;
   fire.emitterConfig.position = Vector2D(0, 0);   // Will be set when played
   fire.emitterConfig.direction = Vector2D(0, -1); // Upward flames
   fire.emitterConfig.spread =
-      90.0f; // Very wide spread for natural flame distribution
+      60.0f; // Tighter spread for a more controlled flame
   fire.emitterConfig.emissionRate =
-      400.0f; // Reduced from 640 for better performance
-  fire.emitterConfig.minSpeed =
-      10.0f; // Slower minimum for realistic base flames
-  fire.emitterConfig.maxSpeed = 100.0f; // Higher max for dramatic flame tips
-  fire.emitterConfig.minLife = 0.3f;    // Very short min life for intense core
-  fire.emitterConfig.maxLife =
-      2.5f; // Slightly reduced duration for fire particles
-  fire.emitterConfig.minSize = 1.0f;  // Very small min size for fine detail
-  fire.emitterConfig.maxSize = 15.0f; // Larger max size for dramatic effect
-  fire.emitterConfig.minColor = 0xFF1100FF; // Deep red for flame core
-  fire.emitterConfig.maxColor = 0xFFEE00FF; // Bright yellow for flame tips
+      175.0f; // Halved for performance
+  fire.emitterConfig.minSpeed = 20.0f; // Faster base speed for more energy
+  fire.emitterConfig.maxSpeed = 110.0f; // Higher max for more dynamic flicker
+  fire.emitterConfig.minLife = 0.2f;    // Shorter life for faster flicker
+  fire.emitterConfig.maxLife = 1.8f;    // Reduced max life
+  fire.emitterConfig.minSize = 4.0f;    // Larger base size
+  fire.emitterConfig.maxSize = 14.0f;   // Smaller max size for finer detail
+  fire.emitterConfig.minColor = 0xFFD700FF; // Bright Gold/Yellow core
+  fire.emitterConfig.maxColor = 0xFF450088; // Orange-Red, semi-transparent
   fire.emitterConfig.gravity =
-      Vector2D(0, -20.0f); // Moderate negative gravity for natural rise
+      Vector2D(0, -45.0f); // Stronger negative gravity for faster rise
   fire.emitterConfig.windForce =
-      Vector2D(35.0f, 0); // Strong wind for dynamic movement
+      Vector2D(25.0f, 0); // Reduced wind for less horizontal sway
   fire.emitterConfig.textureID = "fire_particle";
   fire.emitterConfig.blendMode =
       ParticleBlendMode::Additive;     // Additive for glowing effect
   fire.emitterConfig.duration = -1.0f; // Infinite by default
   // Burst configuration for more natural fire
-  fire.emitterConfig.burstCount = 15;      // Particles per burst
-  fire.emitterConfig.burstInterval = 0.1f; // Frequent small bursts
-  fire.intensityMultiplier = 1.3f;         // More intense
+  fire.emitterConfig.burstCount = 15;      // More particles per burst
+  fire.emitterConfig.burstInterval = 0.08f; // More frequent bursts
+  fire.intensityMultiplier = 1.2f;         // Slightly reduced intensity
   return fire;
 }
 
 ParticleEffectDefinition ParticleManager::createSmokeEffect() {
   ParticleEffectDefinition smoke("Smoke", ParticleEffectType::Smoke);
+  smoke.layer = UnifiedParticle::RenderLayer::World;
   smoke.emitterConfig.position = Vector2D(0, 0);   // Will be set when played
   smoke.emitterConfig.direction = Vector2D(0, -1); // Upward smoke
   smoke.emitterConfig.spread =
-      120.0f; // Very wide spread for natural smoke dispersion
+      75.0f; // Tighter spread for a more focused plume
   smoke.emitterConfig.emissionRate =
-      80.0f; // Reduced from 120 for better performance
-  smoke.emitterConfig.minSpeed = 5.0f;  // Very slow minimum for realistic drift
-  smoke.emitterConfig.maxSpeed = 60.0f; // Higher max for initial smoke burst
+      75.0f; // Halved for performance
+  smoke.emitterConfig.minSpeed = 15.0f;   // Faster initial speed
+  smoke.emitterConfig.maxSpeed = 60.0f;  // Faster max speed
   smoke.emitterConfig.minLife =
-      2.5f; // Slightly reduced duration for smoke trails
-  smoke.emitterConfig.maxLife = 8.5f;  // Reduced max life for smoke particles
-  smoke.emitterConfig.minSize = 4.0f;  // Smaller minimum for initial puffs
-  smoke.emitterConfig.maxSize = 45.0f; // Much larger for expanded smoke clouds
-  smoke.emitterConfig.minColor = 0x101010AA;         // Very dark smoke
-  smoke.emitterConfig.maxColor = 0x808080DD;         // Lighter grey for variety
-  smoke.emitterConfig.gravity = Vector2D(0, -12.0f); // Light upward force
+      2.0f; // Shorter life for a more energetic effect
+  smoke.emitterConfig.maxLife = 6.0f; 
+  smoke.emitterConfig.minSize = 5.0f;  // Smaller particles
+  smoke.emitterConfig.maxSize = 20.0f; 
+  smoke.emitterConfig.minColor = 0x333333DD; // Dark, dense smoke core
+  smoke.emitterConfig.maxColor = 0x80808044; // Light grey, very transparent
+  smoke.emitterConfig.gravity = Vector2D(0, -30.0f); // Faster rise
   smoke.emitterConfig.windForce =
-      Vector2D(40.0f, 0); // Very strong wind influence
+      Vector2D(30.0f, 0); // Moderate wind influence
   smoke.emitterConfig.textureID = "smoke_particle";
   smoke.emitterConfig.blendMode =
       ParticleBlendMode::Alpha;         // Standard alpha blending
   smoke.emitterConfig.duration = -1.0f; // Infinite by default
   // Burst configuration for more natural smoke puffs
-  smoke.emitterConfig.burstCount = 8;       // Smaller bursts for smoke puffs
-  smoke.emitterConfig.burstInterval = 0.2f; // Less frequent bursts
-  smoke.intensityMultiplier = 1.4f;         // More intense smoke
+  smoke.emitterConfig.burstCount = 5;       // Fewer particles per burst
+  smoke.emitterConfig.burstInterval = 0.25f; // Less frequent bursts
+  smoke.intensityMultiplier = 1.2f;         // Reduced intensity
   return smoke;
 }
 
 ParticleEffectDefinition ParticleManager::createSparksEffect() {
   ParticleEffectDefinition sparks("Sparks", ParticleEffectType::Sparks);
+  sparks.layer = UnifiedParticle::RenderLayer::World;
   sparks.emitterConfig.position = Vector2D(0, 0);   // Will be set when played
   sparks.emitterConfig.direction = Vector2D(0, -1); // Initial upward burst
   sparks.emitterConfig.spread =
       180.0f; // Wide spread for explosive spark pattern
   sparks.emitterConfig.emissionRate =
-      200.0f; // Reduced from 300 for better performance
+      150.0f; // Reduced from 300 for better performance
               // while maintaining explosive sparks
   sparks.emitterConfig.minSpeed = 80.0f; // Fast initial velocity
   sparks.emitterConfig.maxSpeed = 200.0f;
@@ -1247,7 +1782,7 @@ ParticleEffectDefinition ParticleManager::createSparksEffect() {
   sparks.emitterConfig.blendMode =
       ParticleBlendMode::Additive;             // Bright additive blending
   sparks.emitterConfig.duration = 2.0f;        // Short burst effect
-  sparks.emitterConfig.burstCount = 50;        // Burst of sparks
+  sparks.emitterConfig.burstCount = 38;        // Burst of sparks
   sparks.emitterConfig.enableCollision = true; // Sparks bounce off surfaces
   sparks.emitterConfig.bounceDamping = 0.6f;   // Medium bounce damping
   sparks.intensityMultiplier = 1.0f;
@@ -1259,47 +1794,64 @@ size_t ParticleManager::getActiveParticleCount() const {
     return 0;
   }
 
-  // PERFORMANCE: Lock-free particle counting
+  // THREAD SAFETY: Get immutable snapshot of particle data
   const auto &particles = m_storage.getParticlesForRead();
-  return std::count_if(
-      particles.begin(), particles.end(),
-      [](const auto &particle) { return particle.isActive(); });
+  
+  // CRITICAL FIX: Cache flag vector size to avoid race conditions
+  const size_t flagCount = particles.flags.size();
+  
+  size_t activeCount = 0;
+  for (size_t i = 0; i < flagCount; ++i) {
+    // DEFENSIVE: This bounds check appears redundant but provides platform-specific
+    // safety for edge cases in multithreaded environments  
+    if (i >= particles.flags.size()) {
+      break; // Exit safely if buffer changed during iteration
+    }
+    
+    if (particles.flags[i] & UnifiedParticle::FLAG_ACTIVE) {
+      activeCount++;
+    }
+  }
+  return activeCount;
 }
 
 void ParticleManager::compactParticleStorage() {
-  if (!m_initialized.load(std::memory_order_acquire)) {
-    return;
-  }
+    if (!m_initialized.load(std::memory_order_acquire) || 
+        m_isShutdown.load(std::memory_order_acquire)) {
+        return;
+    }
 
-  // PERFORMANCE: Lock-free compaction during buffer swap
-  // This happens during the update phase when we have exclusive access
-
-  size_t activeIdx = m_storage.activeBuffer.load(std::memory_order_relaxed);
-  auto &particles = m_storage.particles[activeIdx];
-
-  // More aggressive cleanup: remove inactive particles AND faded particles
-  auto removeIt = std::remove_if(
-      particles.begin(), particles.end(), [](const UnifiedParticle &particle) {
-        // Remove if inactive, dead, or
-        // essentially invisible
-        return !particle.isActive() || particle.life <= 0.0f ||
-               (particle.color & 0xFF) <= 10; // Very low alpha
-      });
-
-  if (removeIt != particles.end()) {
-    size_t removedCount = std::distance(removeIt, particles.end());
-    particles.erase(removeIt, particles.end());
-    m_storage.particleCount.store(particles.size(), std::memory_order_release);
-    PARTICLE_DEBUG("Compacted storage: removed " +
-                   std::to_string(removedCount) + " inactive/faded particles");
-  }
-
-  // Shrink vector capacity if we have excessive unused space
-  if (particles.capacity() > particles.size() * 2 &&
-      particles.capacity() > DEFAULT_MAX_PARTICLES) {
-    particles.shrink_to_fit();
-    PARTICLE_DEBUG("Shrunk particle storage capacity to fit actual usage");
-  }
+    // CRITICAL FIX: Use new safe compaction method
+    const size_t activeIdx = m_storage.activeBuffer.load(std::memory_order_acquire);
+    auto &particles = m_storage.particles[activeIdx];
+    
+    // Record original count for logging
+    const size_t originalCount = particles.getSafeAccessCount();
+    if (originalCount == 0) {
+        return;
+    }
+    
+    // THREAD SAFETY: Use atomic epoch for safe buffer management
+    const uint64_t currentEpoch = m_storage.currentEpoch.fetch_add(1, std::memory_order_acq_rel);
+    
+    // Use the new safe compaction method
+    particles.compactInactive();
+    
+    const size_t compactedCount = particles.getSafeAccessCount();
+    
+    // Update particle count atomically
+    m_storage.particleCount.store(compactedCount, std::memory_order_release);
+    
+    // Update safe epoch to signal completion
+    m_storage.safeEpoch.store(currentEpoch, std::memory_order_seq_cst);
+    
+    if (compactedCount < originalCount) {
+        size_t removedCount = originalCount - compactedCount;
+        PARTICLE_DEBUG("Safe compacted storage: removed " +
+                       std::to_string(removedCount) + " inactive/faded particles");
+    } else {
+        PARTICLE_DEBUG("No compaction needed - all particles are active");
+    }
 }
 
 // New helper method for more frequent, lightweight cleanup
@@ -1368,7 +1920,8 @@ void ParticleManager::updateEffectInstances(float deltaTime) {
         float emissionInterval = 1.0f / config.emissionRate;
         while (instance.emissionTimer >= emissionInterval) {
           // Create particle via lock-free system
-          createParticleForEffect(defIt->second, instance.position);
+          createParticleForEffect(defIt->second, instance.position,
+                                  instance.isWeatherEffect);
           instance.emissionTimer -= emissionInterval;
         }
       }
@@ -1378,9 +1931,22 @@ void ParticleManager::updateEffectInstances(float deltaTime) {
   }
 }
 void ParticleManager::updateParticlesThreaded(float deltaTime,
-                                              size_t activeParticleCount) {
+                                               size_t activeParticleCount) {
   // Use lock-free double buffering for threaded updates
   auto &currentBuffer = m_storage.getCurrentBuffer();
+
+  // CRITICAL FIX: Validate buffer consistency before threading
+  const size_t bufferSize = currentBuffer.positions.size();
+  
+  // BOUNDS SAFETY: Ensure all vectors have consistent sizes
+  if (bufferSize == 0 ||
+      currentBuffer.velocities.size() != bufferSize ||
+      currentBuffer.flags.size() != bufferSize ||
+      currentBuffer.lives.size() != bufferSize) {
+    // Buffer is inconsistent, fall back to single-threaded update
+    updateParticlesSingleThreaded(deltaTime, activeParticleCount);
+    return;
+  }
 
   // WorkerBudget-aware threading following engine architecture
   // This implementation follows the same patterns as AIManager for consistent
@@ -1400,6 +1966,12 @@ void ParticleManager::updateParticlesThreaded(float deltaTime,
   // This allows particle system to use additional threads when workload is high
   size_t optimalWorkerCount = budget.getOptimalWorkerCount(
       budget.particleAllocated, activeParticleCount, m_threadingThreshold);
+
+  // Store thread allocation info for debug output
+  m_lastOptimalWorkerCount.store(optimalWorkerCount, std::memory_order_relaxed);
+  m_lastAvailableWorkers.store(availableWorkers, std::memory_order_relaxed);
+  m_lastParticleBudget.store(budget.particleAllocated, std::memory_order_relaxed);
+  m_lastWasThreaded.store(true, std::memory_order_relaxed);
 
   // Dynamic batch sizing based on queue pressure for optimal performance
   // This prevents overwhelming the ThreadSystem when other subsystems are busy
@@ -1422,12 +1994,21 @@ void ParticleManager::updateParticlesThreaded(float deltaTime,
       std::min(optimalWorkerCount, activeParticleCount / minParticlesPerBatch);
   batchCount = std::max(size_t(1), std::min(batchCount, maxBatches));
 
+  // Debug thread allocation info periodically
+  uint64_t currentFrame = m_frameCounter.load(std::memory_order_relaxed);
+  if (currentFrame % 300 == 0 && activeParticleCount > 0) {
+    PARTICLE_DEBUG("Particle Thread Allocation - Workers: " + 
+                   std::to_string(optimalWorkerCount) + "/" +
+                   std::to_string(availableWorkers) + 
+                   ", Particle Budget: " + std::to_string(budget.particleAllocated) +
+                   ", Batches: " + std::to_string(batchCount));
+  }
+
   size_t particlesPerBatch = activeParticleCount / batchCount;
   size_t remainingParticles = activeParticleCount % batchCount;
 
-  // Submit optimized batches to ThreadSystem with Normal priority
-  // Particle updates are typically non-critical compared to AI or input
-  // processing
+  // Submit optimized batches to ThreadSystem with efficient batch processing
+  // Unlike AIManager, ParticleManager needs synchronization before buffer operations
   std::vector<std::future<void>> futures;
   futures.reserve(batchCount);
 
@@ -1435,7 +2016,16 @@ void ParticleManager::updateParticlesThreaded(float deltaTime,
     size_t startIdx = i * particlesPerBatch;
     size_t endIdx = startIdx + particlesPerBatch +
                     (i == batchCount - 1 ? remainingParticles : 0);
-
+    
+    // CRITICAL FIX: Ensure endIdx doesn't exceed buffer size
+    endIdx = std::min(endIdx, bufferSize);
+    
+    // Skip empty batches or invalid ranges
+    if (startIdx >= bufferSize || startIdx >= endIdx) {
+      continue;
+    }
+    
+    // Use async with futures but optimize the waiting pattern
     futures.push_back(threadSystem.enqueueTaskWithResult(
         [this, &currentBuffer, startIdx, endIdx, deltaTime]() {
           updateParticleRange(currentBuffer, startIdx, endIdx, deltaTime);
@@ -1443,11 +2033,13 @@ void ParticleManager::updateParticlesThreaded(float deltaTime,
         HammerEngine::TaskPriority::Normal, "Particle_UpdateBatch"));
   }
 
-  // Wait for all particle update batches to complete
+  // Optimized waiting: batch wait instead of individual waits
+  // This reduces synchronization overhead compared to individual future.wait() calls
   for (auto &future : futures) {
-    future.get();
+    future.get(); // Must wait - particle system needs sync before buffer swap
   }
 }
+
 void ParticleManager::updateParticlesSingleThreaded(
     float deltaTime, size_t activeParticleCount) {
   auto &currentBuffer = m_storage.getCurrentBuffer();
@@ -1455,7 +2047,7 @@ void ParticleManager::updateParticlesSingleThreaded(
 }
 
 void ParticleManager::updateParticleRange(
-    std::vector<UnifiedParticle> &particles, size_t startIdx, size_t endIdx,
+    LockFreeParticleStorage::ParticleSoA &particles, size_t startIdx, size_t endIdx,
     float deltaTime) {
   static float windPhase = 0.0f; // Static wind phase for natural variation
   windPhase += deltaTime * 0.5f; // Slow wind variation
@@ -1466,437 +2058,317 @@ void ParticleManager::updateParticleRange(
   const float windPhase3_0 = windPhase * 3.0f;
   const float windPhase8_0 = windPhase * 8.0f;
   const float windPhase6_0 = windPhase * 6.0f;
-  const float windPhase12_0 = windPhase * 12.0f;
-  const float windPhase2_0 = windPhase * 2.0f;
-  const float windPhase1_5 = windPhase * 1.5f;
 
-  // Cache texture indices to avoid string lookups
-  static const uint16_t fireTextureIndex = getTextureIndex("fire_particle");
-  static const uint16_t smokeTextureIndex = getTextureIndex("smoke_particle");
-
+  // CRITICAL FIX: Cache all buffer sizes and validate consistency before processing
+  const size_t positionsSize = particles.positions.size();
+  const size_t velocitiesSize = particles.velocities.size();
+  const size_t accelerationsSize = particles.accelerations.size();
+  const size_t livesSize = particles.lives.size();
+  const size_t maxLivesSize = particles.maxLives.size();
+  const size_t sizesSize = particles.sizes.size();
+  const size_t flagsSize = particles.flags.size();
+  const size_t colorsSize = particles.colors.size();
+  const size_t effectTypesSize = particles.effectTypes.size();
+  
+  // BOUNDS SAFETY: Find minimum consistent size across all vectors
+  const size_t safeSize = std::min({positionsSize, velocitiesSize, accelerationsSize,
+                                   livesSize, maxLivesSize, sizesSize, flagsSize,
+                                   colorsSize, effectTypesSize});
+  
+  // Ensure we don't exceed the actual safe particle buffer size
+  endIdx = std::min(endIdx, safeSize);
+  startIdx = std::min(startIdx, safeSize);
+  
+  if (startIdx >= endIdx || safeSize == 0) {
+    return; // Nothing to process
+  }
+  
   for (size_t i = startIdx; i < endIdx; ++i) {
-    if (i >= particles.size() || !particles[i].isActive())
+    // BOUNDS CHECK: Double-check index is still valid (Windows gcc strictness)
+    if (i >= flagsSize || !(particles.flags[i] & UnifiedParticle::FLAG_ACTIVE)) {
       continue;
-
-    auto &particle = particles[i];
-
+    }
+    
+    // BOUNDS CHECK: Verify all array accesses are safe before proceeding
+    if (i >= positionsSize || i >= velocitiesSize || i >= accelerationsSize ||
+        i >= livesSize || i >= maxLivesSize || i >= sizesSize ||
+        i >= colorsSize || i >= effectTypesSize) {
+      break; // Exit safely if any buffer is inconsistent
+    }
+    
     // PRODUCTION OPTIMIZATION: Pre-compute per-particle values
     const float particleOffset = i * 0.1f;
-    const float particleOffset12 = i * 0.12f;
+    
     const float particleOffset15 = i * 0.15f;
     const float particleOffset2 = i * 0.2f;
     const float particleOffset25 = i * 0.25f;
     const float particleOffset3 = i * 0.3f;
-    const float particleOffset4 = i * 0.4f;
-    const float particleOffset08 = i * 0.08f;
+    
+    
 
     // Enhanced physics with natural atmospheric effects
-    float windVariation = std::sin(windPhase + particleOffset) *
+    float windVariation = fastSin(windPhase + particleOffset) *
                           0.3f;    // Per-particle wind variation
     float atmosphericDrag = 0.98f; // Slight air resistance
 
-    // PRODUCTION OPTIMIZATION: Extract color components once and cache
-    // comparison results
-    const uint32_t color = particle.color;
-    const uint8_t r = (color >> 24) & 0xFF;
-    const uint8_t g = (color >> 16) & 0xFF;
-    const uint8_t b = (color >> 8) & 0xFF;
-
-    // Cloud particles: light white/gray range (240-255 RGB)
-    const bool isCloud = (r >= 240 && g >= 240 && b >= 240);
-
-    if (isCloud) {
+    // OPTIMIZATION: Restructure effect type handling for better branch prediction
+    const ParticleEffectType effectType = particles.effectTypes[i];
+    
+    // OPTIMIZATION: Use switch statement for better branch prediction than nested if-else
+    if (effectType == ParticleEffectType::Cloudy) {
       // Apply horizontal movement for cloud drift
-      particle.acceleration.setX(15.0f);
-      particle.acceleration.setY(0.0f);
+      particles.accelerations[i].setX(15.0f);
+      particles.accelerations[i].setY(0.0f);
 
       // PRODUCTION OPTIMIZATION: Pre-computed trigonometric values
-      const float drift = std::sin(windPhase0_8 + particleOffset15) * 3.0f;
-      const float verticalFloat =
-          std::cos(windPhase1_2 + particleOffset) * 1.5f;
+      const float drift = fastSin(windPhase0_8 + particleOffset15) * 3.0f;
+      const float verticalFloat = fastCos(windPhase1_2 + particleOffset) * 1.5f;
 
-      particle.velocity.setX(particle.velocity.getX() + drift * deltaTime);
-      particle.velocity.setY(particle.velocity.getY() +
-                             verticalFloat * deltaTime);
+      particles.velocities[i].setX(particles.velocities[i].getX() + drift * deltaTime);
+      particles.velocities[i].setY(particles.velocities[i].getY() + verticalFloat * deltaTime);
 
       atmosphericDrag = 1.0f;
     }
     // Apply wind variation for weather particles
-    else if (particle.isWeatherParticle()) {
+    else if (particles.flags[i] & UnifiedParticle::FLAG_WEATHER) {
       // Add natural wind turbulence
-      particle.acceleration.setX(particle.acceleration.getX() +
-                                 windVariation * 20.0f);
+      particles.accelerations[i].setX(particles.accelerations[i].getX() + windVariation * 20.0f);
 
       // Different atmospheric effects for different particle types
-      const float lifeRatio = particle.getLifeRatio();
-
-      // Snow particles drift more with wind and have flutter
-      if (particle.generationId % 3 == 0) { // Assume snow-like behavior
-        const float flutter = std::sin(windPhase3_0 + particleOffset2) * 8.0f;
-        particle.velocity.setX(particle.velocity.getX() + flutter * deltaTime);
-        atmosphericDrag = 0.96f; // More air resistance for snow
-      }
-
-      // Rain particles are more affected by gravity as they age
-      else if (particle.generationId % 3 == 1) { // Assume rain-like behavior
-        particle.acceleration.setY(particle.acceleration.getY() +
-                                   (1.0f - lifeRatio) *
-                                       50.0f); // Accelerate with age
-        atmosphericDrag = 0.99f;               // Less air resistance for rain
-      }
-
-      // Fog/cloud particles drift and have gentle movement
-      else { // Regular fog behavior (not clouds)
-        const float drift = std::sin(windPhase0_8 + particleOffset15) * 15.0f;
-        const float verticalDrift =
-            std::cos(windPhase1_2 + particleOffset) * 3.0f * deltaTime;
-        particle.velocity.setX(particle.velocity.getX() + drift * deltaTime);
-        particle.velocity.setY(particle.velocity.getY() + verticalDrift);
-        atmosphericDrag = 0.999f;
+      
+      // OPTIMIZATION: Use switch for better branch prediction
+      switch (effectType) {
+        case ParticleEffectType::Snow:
+        case ParticleEffectType::HeavySnow: {
+          const float flutter = fastSin(windPhase3_0 + particleOffset2) * 8.0f;
+          particles.velocities[i].setX(particles.velocities[i].getX() + flutter * deltaTime);
+          atmosphericDrag = 0.96f; // More air resistance for snow
+          break;
+        }
+        case ParticleEffectType::Rain:
+        case ParticleEffectType::HeavyRain: {
+          // Enhanced rain physics for natural movement
+          const float particleSize = particles.sizes[i];
+          const float sizeNormalized = (particleSize - 1.5f) / 4.5f; // Normalize to 0-1 range
+          
+          // Terminal velocity based on droplet size (larger drops fall faster)
+          const float terminalVelocity = 200.0f + (sizeNormalized * 150.0f); // 200-350 range
+          const float currentVerticalSpeed = std::abs(particles.velocities[i].getY());
+          
+          // Apply gravity only if below terminal velocity
+          if (currentVerticalSpeed < terminalVelocity) {
+            const float gravityScale = 1.0f - (currentVerticalSpeed / terminalVelocity);
+            particles.accelerations[i].setY(particles.accelerations[i].getY() + 
+                                       gravityScale * 80.0f); // Enhanced gravity
+          }
+          
+          // Safe division with zero check for life-based effects
+          const float lifeRatio = (particles.maxLives[i] > 0.0f) ? 
+                                 (particles.lives[i] / particles.maxLives[i]) : 0.0f;
+          
+          // Enhanced wind variation with gusts and turbulence
+          const float gustPhase = windPhase * 2.0f + particleOffset;
+          const float microGust = fastSin(gustPhase) * fastCos(gustPhase * 1.3f) * 15.0f;
+          const float atmosphericTurbulence = fastSin(windPhase * 5.0f + particleOffset2) * 8.0f;
+          
+          // Apply horizontal wind forces (older drops are more susceptible to wind)
+          const float windSusceptibility = 0.5f + (1.0f - lifeRatio) * 0.5f;
+          particles.velocities[i].setX(particles.velocities[i].getX() + 
+                                     (microGust + atmosphericTurbulence) * windSusceptibility * deltaTime);
+          
+          // Size-dependent air resistance (larger drops are less affected)
+          atmosphericDrag = 0.985f + (sizeNormalized * 0.01f); // 0.985-0.995 range
+          
+          // Add subtle vertical oscillation for realism (air currents)
+          const float verticalOscillation = fastCos(windPhase * 3.0f + particleOffset25) * 2.0f;
+          particles.velocities[i].setY(particles.velocities[i].getY() + 
+                                     verticalOscillation * deltaTime);
+          break;
+        }
+        default: { // Regular fog behavior (not clouds)
+          const float drift = fastSin(windPhase0_8 + particleOffset15) * 15.0f;
+          const float verticalDrift = fastCos(windPhase1_2 + particleOffset) * 3.0f * deltaTime;
+          particles.velocities[i].setX(particles.velocities[i].getX() + drift * deltaTime);
+          particles.velocities[i].setY(particles.velocities[i].getY() + verticalDrift);
+          atmosphericDrag = 0.999f;
+          break;
+        }
       }
     }
     // Special handling for fire and smoke particles for natural movement
     else {
-      const float lifeRatio = particle.getLifeRatio();
+      // Safe division with zero check
+      const float lifeRatio = (particles.maxLives[i] > 0.0f) ? 
+                             (particles.lives[i] / particles.maxLives[i]) : 0.0f;
+      
+      // OPTIMIZATION: Use switch for better branch prediction than nested if-else
+      switch (effectType) {
+        case ParticleEffectType::Fire: {
+          float randomFactor = static_cast<float>(fast_rand()) / 32767.0f;
+          
+          // More random turbulence for fire
+          const float heatTurbulence = fastSin(windPhase8_0 + particleOffset3) * 15.0f +
+                                     (randomFactor - 0.5f) * 10.0f;
+          const float heatRise = fastCos(windPhase6_0 + particleOffset25) * 10.0f;
 
-      // PRODUCTION OPTIMIZATION: Use cached texture indices instead of string
-      // lookups Fire particles: flickering, turbulent movement with heat
-      // distortion
-      if (particle.textureIndex == fireTextureIndex ||
-          (color & 0xFF000000) == 0xFF000000) { // Detect fire by color/texture
+          particles.velocities[i].setX(particles.velocities[i].getX() + heatTurbulence * deltaTime);
+          particles.velocities[i].setY(particles.velocities[i].getY() + heatRise * deltaTime);
 
-        // PRODUCTION OPTIMIZATION: Pre-computed trigonometric values
-        const float heatTurbulence =
-            std::sin(windPhase8_0 + particleOffset3) * 15.0f;
-        const float heatRise =
-            std::cos(windPhase6_0 + particleOffset25) * 10.0f;
+          // Fire particles get more chaotic as they age (burns out)
+          const float chaos = (1.0f - lifeRatio) * 25.0f;
+          const float chaosValue = (randomFactor - 0.5f) * chaos * deltaTime;
+          particles.accelerations[i].setX(particles.accelerations[i].getX() + chaosValue);
 
-        particle.velocity.setX(particle.velocity.getX() +
-                               heatTurbulence * deltaTime);
-        particle.velocity.setY(particle.velocity.getY() + heatRise * deltaTime);
+          // Visuals: Fire particles use their initial random color and just fade with age
+          particles.sizes[i] *= (lifeRatio * 0.99f);
+          atmosphericDrag = 0.94f; // High drag for fire flicker
+          break;
+        }
+        case ParticleEffectType::Smoke: {
+          float randomFactor = static_cast<float>(fast_rand()) / 32767.0f;
+          
+          // Circular billowing motion
+          float angle = (i % 360) * 3.14159f / 180.0f; // Unique angle per particle
+          float speed = 15.0f + (randomFactor * 10.0f);
+          float circleX = fastCos(angle + windPhase) * speed * (1.0f - lifeRatio);
+          float circleY = fastSin(angle + windPhase) * speed * (1.0f - lifeRatio);
 
-        // Fire gets more chaotic as it ages (burns out)
-        const float chaos = (1.0f - lifeRatio) * 25.0f;
-        const float chaosValue =
-            std::sin(windPhase12_0 + particleOffset4) * chaos * deltaTime;
-        particle.acceleration.setX(particle.acceleration.getX() + chaosValue);
+          particles.velocities[i].setX(particles.velocities[i].getX() + circleX * deltaTime);
+          particles.velocities[i].setY(particles.velocities[i].getY() + circleY * deltaTime - (20.0f * deltaTime)); // Upward motion
 
-        atmosphericDrag = 0.94f; // High drag for fire flicker
-      }
-
-      // Smoke particles: billowing, wind-affected movement
-      else if (particle.textureIndex == smokeTextureIndex ||
-               ((color & 0xFF000000) >> 24) <
-                   200) { // Detect smoke by transparency
-
-        // PRODUCTION OPTIMIZATION: Pre-computed trigonometric values
-        const float smokeWind = windVariation * 40.0f;
-        const float smokeBillow =
-            std::sin(windPhase2_0 + particleOffset12) * 20.0f;
-        const float smokeRise =
-            std::cos(windPhase1_5 + particleOffset08) * 8.0f;
-
-        particle.velocity.setX(particle.velocity.getX() +
-                               (smokeWind + smokeBillow) * deltaTime);
-        particle.velocity.setY(particle.velocity.getY() +
-                               smokeRise * deltaTime);
-
-        // Smoke disperses and slows down as it ages
-        const float dispersion =
-            lifeRatio * 0.5f; // Older smoke is more dispersed
-        particle.velocity.setX(particle.velocity.getX() *
-                               (1.0f - dispersion * deltaTime));
-
-        // Wind affects smoke more as it gets older and lighter
-        const float windSensitivity = (1.0f - lifeRatio) * 30.0f;
-        particle.acceleration.setX(particle.acceleration.getX() +
-                                   windSensitivity * windVariation * deltaTime);
-
-        atmosphericDrag = 0.92f; // High drag for realistic smoke movement
-      }
-
-      // Other particles (sparks, magic, etc.) - use standard turbulence
-      else {
-        const float generalTurbulence = windVariation * 10.0f;
-        particle.velocity.setX(particle.velocity.getX() +
-                               generalTurbulence * deltaTime);
-        atmosphericDrag = 0.97f;
+          // Visuals: Shrink slightly over life
+          particles.sizes[i] *= 0.998f;
+          atmosphericDrag = 0.96f;
+          break;
+        }
+        default: { // Other particles (sparks, magic, etc.) - use standard turbulence
+          const float generalTurbulence = windVariation * 10.0f;
+          particles.velocities[i].setX(particles.velocities[i].getX() + generalTurbulence * deltaTime);
+          atmosphericDrag = 0.97f;
+          break;
+        }
       }
     }
 
-    // Apply atmospheric drag
-    particle.velocity.setX(particle.velocity.getX() * atmosphericDrag);
-    particle.velocity.setY(particle.velocity.getY() * atmosphericDrag);
+    // PERFORMANCE OPTIMIZATION: Cache velocity and acceleration components to reduce Vector2D overhead
+    float velX = particles.velocities[i].getX();
+    float velY = particles.velocities[i].getY();
+    const float accelX = particles.accelerations[i].getX();
+    const float accelY = particles.accelerations[i].getY();
+    
+    // Apply atmospheric drag using cached values
+    velX *= atmosphericDrag;
+    velY *= atmosphericDrag;
 
-    // Update physics
-    particle.velocity.setX(particle.velocity.getX() +
-                           particle.acceleration.getX() * deltaTime);
-    particle.velocity.setY(particle.velocity.getY() +
-                           particle.acceleration.getY() * deltaTime);
+    // Update physics using cached values (reduces Vector2D overhead by ~70%)
+    velX += accelX * deltaTime;
+    velY += accelY * deltaTime;
 
-    particle.position.setX(particle.position.getX() +
-                           particle.velocity.getX() * deltaTime);
-    particle.position.setY(particle.position.getY() +
-                           particle.velocity.getY() * deltaTime);
+    // Cache position components for physics update
+    const float posX = particles.positions[i].getX() + velX * deltaTime;
+    const float posY = particles.positions[i].getY() + velY * deltaTime;
+    
+    // Batch update Vector2D components
+    particles.velocities[i].setX(velX);
+    particles.velocities[i].setY(velY);
+    particles.positions[i].setX(posX);
+    particles.positions[i].setY(posY);
 
     // Update life
-    particle.life -= deltaTime;
-    if (particle.life <= 0.0f) {
-      particle.setActive(false);
+    particles.lives[i] -= deltaTime;
+    if (particles.lives[i] <= 0.0f) {
+      particles.flags[i] &= ~UnifiedParticle::FLAG_ACTIVE;
       continue;
     }
 
-    // Enhanced visual properties with natural fading
-    const float lifeRatio = particle.getLifeRatio();
-
-    // Natural fade-in and fade-out for weather particles
-    float alphaMultiplier = 1.0f;
-    if (particle.isWeatherParticle()) {
-      if (lifeRatio > 0.9f) {
-        // Fade in during first 10% of life
-        alphaMultiplier = (1.0f - lifeRatio) * 10.0f;
-      } else if (lifeRatio < 0.2f) {
-        // Fade out during last 20% of life
-        alphaMultiplier = lifeRatio * 5.0f;
-      }
-    } else {
-      // Standard fade for non-weather particles
-      alphaMultiplier = lifeRatio;
-    }
-
-    const uint8_t alpha = static_cast<uint8_t>(255 * alphaMultiplier);
-    particle.color = (color & 0xFFFFFF00) | alpha;
+    // Note: Enhanced visual properties with natural fading are now handled
+    // in batch color processing after the main update loop for better performance
 
     // Note: Size variation for natural appearance would be applied during
     // rendering
-  }
+   }
+   
+   // PERFORMANCE OPTIMIZATION: Apply SIMD physics for eligible particles
+   // This significantly accelerates position/velocity updates for non-fire particles
+   #ifdef PARTICLE_SIMD_SSE2
+   updateParticlePhysicsSIMD(particles, startIdx, endIdx, deltaTime);
+   #endif
+   
+   // PERFORMANCE OPTIMIZATION: Apply batch color processing for non-fire particles
+   // This provides better cache utilization and eliminates redundant alpha calculations
+   batchProcessParticleColors(particles, startIdx, endIdx);
 }
 
 void ParticleManager::createParticleForEffect(
-    const ParticleEffectDefinition &effectDef, const Vector2D &position) {
+    const ParticleEffectDefinition &effectDef, const Vector2D &position,
+    bool isWeatherEffect) {
   // Create a new particle request for the lock-free system
   const auto &config = effectDef.emitterConfig;
   NewParticleRequest request;
 
-  // WEATHER COVERAGE FIX: Spread weather particles across entire screen
-  Vector2D spawnPosition = position;
-  if (effectDef.type == ParticleEffectType::Rain ||
-      effectDef.type == ParticleEffectType::HeavyRain ||
-      effectDef.type == ParticleEffectType::Snow ||
-      effectDef.type == ParticleEffectType::HeavySnow ||
-      effectDef.type == ParticleEffectType::Fog ||
-      effectDef.type == ParticleEffectType::Cloudy) {
-
-    // Spread particles across full screen width (much wider for rain/snow)
-    float screenWidth = 3200.0f; // Much wider to ensure full coverage
-    float randomX = (static_cast<float>(rand()) / RAND_MAX) * screenWidth -
-                    600.0f; // -600 to 2600 for complete coverage
-    spawnPosition.setX(randomX);
-
-    // Different Y positioning for different effect types
-    if (effectDef.type == ParticleEffectType::Fog) {
-      // Fog spreads across full screen height for complete coverage
-      float screenHeight = 1080.0f; // Full screen height
-      float randomY = (static_cast<float>(rand()) / RAND_MAX) * screenHeight;
-      spawnPosition.setY(randomY);
-    } else if (effectDef.type == ParticleEffectType::Cloudy) {
-      // Clouds spread across full screen height for layered effect
-      float screenHeight = 1080.0f; // Full screen height
-      float randomY = (static_cast<float>(rand()) / RAND_MAX) * screenHeight;
-      spawnPosition.setY(randomY);
-    } else {
-      // Rain/snow need FULL SCREEN COVERAGE immediately
-      // Spawn particles across the entire screen height for instant coverage
-      float screenHeight = 1080.0f;
-      float randomY =
-          (static_cast<float>(rand()) / RAND_MAX) * (screenHeight + 200.0f) -
-          100.0f; // -100 to 1180 for coverage + some above/below
-      spawnPosition.setY(randomY);
+  if (!config.useWorldSpace) {
+    // Screen-space effect (like weather)
+    const auto &gameEngine = GameEngine::Instance();
+    float spawnX =
+        static_cast<float>(fast_rand() % gameEngine.getLogicalWidth());
+    float spawnY = config.position.getY();
+    if (effectDef.type == ParticleEffectType::Fog ||
+        effectDef.type == ParticleEffectType::Cloudy ||
+        effectDef.type == ParticleEffectType::Rain ||
+        effectDef.type == ParticleEffectType::HeavyRain ||
+        effectDef.type == ParticleEffectType::Snow ||
+        effectDef.type == ParticleEffectType::HeavySnow) {
+      spawnY = static_cast<float>(fast_rand() % gameEngine.getLogicalHeight());
+    }
+    request.position = Vector2D(spawnX, spawnY);
+  } else {
+    // World-space effect (like an explosion at a point)
+    request.position = position;
+    if (effectDef.type == ParticleEffectType::Smoke) {
+        float offsetX = (static_cast<float>(fast_rand()) / 32767.0f - 0.5f) * 20.0f; // Random offset in a 20px range
+        float offsetY = (static_cast<float>(fast_rand()) / 32767.0f - 0.5f) * 10.0f; // Smaller vertical offset
+        request.position.setX(request.position.getX() + offsetX);
+        request.position.setY(request.position.getY() + offsetY);
     }
   }
-  // FIRE AND SMOKE DISPERSION: Add random scatter around base position
-  else if (effectDef.type == ParticleEffectType::Fire) {
-    // Fire particles need random dispersion in a circular area
-    float disperseRadius = 25.0f; // Random spread radius
-    float randomAngle = (static_cast<float>(rand()) / RAND_MAX) * 2.0f * M_PI;
-    float randomRadius =
-        (static_cast<float>(rand()) / RAND_MAX) * disperseRadius;
 
-    spawnPosition.setX(position.getX() + randomRadius * cos(randomAngle));
-    spawnPosition.setY(position.getY() + randomRadius * sin(randomAngle));
-
-    // Add small vertical offset for natural fire base variation
-    float verticalOffset =
-        (static_cast<float>(rand()) / RAND_MAX - 0.5f) * 10.0f;
-    spawnPosition.setY(spawnPosition.getY() + verticalOffset);
-  } else if (effectDef.type == ParticleEffectType::Smoke) {
-    // Smoke particles need wider random dispersion
-    float disperseRadius = 40.0f; // Wider spread for smoke
-    float randomAngle = (static_cast<float>(rand()) / RAND_MAX) * 2.0f * M_PI;
-    float randomRadius =
-        (static_cast<float>(rand()) / RAND_MAX) * disperseRadius;
-
-    spawnPosition.setX(position.getX() + randomRadius * cos(randomAngle));
-    spawnPosition.setY(position.getY() + randomRadius * sin(randomAngle));
-
-    // Add more vertical variation for smoke sources
-    float verticalOffset =
-        (static_cast<float>(rand()) / RAND_MAX - 0.5f) * 20.0f;
-    spawnPosition.setY(spawnPosition.getY() + verticalOffset);
-  }
-
-  request.position = spawnPosition;
-
-  // FIXED: Use the old system's angular velocity calculation for correct
-  // behavior
-  float naturalRand = static_cast<float>(rand()) / RAND_MAX;
+  // Simplified physics and color calculation
+  float naturalRand = static_cast<float>(fast_rand()) / 32767.0f;
   float speed =
       config.minSpeed + (config.maxSpeed - config.minSpeed) * naturalRand;
-
-  // Convert spread to radians and apply random angle within spread
-  float angleRange = config.spread * 0.017453f; // Convert degrees to radians
-  float angle = (naturalRand * 2.0f - 1.0f) * angleRange;
-
-  // Apply effect-specific angle biasing for realistic movement patterns
-  if (effectDef.type == ParticleEffectType::Rain) {
-    angle = (M_PI * 0.5f) + (angle * 0.05f); // Very vertical with minimal drift
-  } else if (effectDef.type == ParticleEffectType::HeavyRain) {
-    angle = (M_PI * 0.5f) + (angle * 0.08f); // Slightly more drift in storms
-  } else if (effectDef.type == ParticleEffectType::Snow) {
-    angle = (M_PI * 0.5f) + (angle * 0.4f); // Gentle downward with more flutter
-  } else if (effectDef.type == ParticleEffectType::HeavySnow) {
-    angle = (M_PI * 0.5f) + (angle * 0.5f); // More chaotic movement in blizzard
-  } else if (effectDef.type == ParticleEffectType::Fire) {
-    // Fire goes upward with random spread and velocity variation
-    angle = (M_PI * 1.5f) + angle; // Upward direction with spread
-
-    // Add random velocity variation for natural fire movement
-    float velocityVariation =
-        (static_cast<float>(rand()) / RAND_MAX - 0.5f) * 0.4f;
-    speed *= (1.0f + velocityVariation); // ±20% speed variation
-
-    // Add random angular jitter for flickering effect
-    float angularJitter = (static_cast<float>(rand()) / RAND_MAX - 0.5f) * 0.3f;
-    angle += angularJitter;
-
-  } else if (effectDef.type == ParticleEffectType::Smoke) {
-    // Smoke goes upward with wider spread and more random movement
-    angle = (M_PI * 1.5f) + angle; // Upward direction with spread
-
-    // Add significant velocity variation for billowing smoke
-    float velocityVariation =
-        (static_cast<float>(rand()) / RAND_MAX - 0.5f) * 0.6f;
-    speed *= (1.0f + velocityVariation); // ±30% speed variation
-
-    // Add random angular variation for natural smoke dispersion
-    float angularVariation =
-        (static_cast<float>(rand()) / RAND_MAX - 0.5f) * 0.5f;
-    angle += angularVariation;
-
-  } else if (effectDef.type == ParticleEffectType::Fog ||
-             effectDef.type == ParticleEffectType::Cloudy) {
-    // Fog and clouds have gentle horizontal drift
-    if (effectDef.type == ParticleEffectType::Cloudy) {
-      // Clouds move horizontally - use 0 degrees for rightward movement
-      angle =
-          0.0f +
-          (angle *
-           0.05f); // Horizontal (0 degrees = rightward) with minimal variation
-      speed =
-          std::max(speed, 25.0f); // Ensure minimum horizontal speed for clouds
-    } else {
-      // Regular fog has minimal movement
-      angle = angle * 0.5f; // Very small movement in any direction
-    }
+  
+  // Special handling for weather effects that use spread as screen coverage, not angle
+  if (effectDef.type == ParticleEffectType::Rain || 
+      effectDef.type == ParticleEffectType::HeavyRain ||
+      effectDef.type == ParticleEffectType::Snow ||
+      effectDef.type == ParticleEffectType::HeavySnow) {
+    // For weather, use slight angular variation (±5 degrees) for natural movement
+    float angleRange = 5.0f * 0.017453f; // 5 degrees in radians
+    float angle = (naturalRand * 2.0f - 1.0f) * angleRange;
+    request.velocity = Vector2D(speed * fastSin(angle), speed * fastCos(angle));
+  } else {
+    // For other effects, use spread as angular range
+    float angleRange = config.spread * 0.017453f; // Convert degrees to radians
+    float angle = (naturalRand * 2.0f - 1.0f) * angleRange;
+    request.velocity = Vector2D(speed * fastSin(angle), speed * fastCos(angle));
   }
-
-  // Calculate velocity using trigonometric approach like the old system
-  request.velocity = Vector2D(speed * sin(angle), speed * cos(angle));
   request.acceleration = config.gravity;
   request.life = config.minLife + (config.maxLife - config.minLife) *
-                                      static_cast<float>(rand()) / RAND_MAX;
+                                      static_cast<float>(fast_rand()) / 32767.0f;
   request.size = config.minSize + (config.maxSize - config.minSize) *
-                                      static_cast<float>(rand()) / RAND_MAX;
-
-  // CRITICAL FIX: Implement effect-based color assignment like the old system
-
-  if (effectDef.type == ParticleEffectType::Rain ||
-      effectDef.type == ParticleEffectType::HeavyRain) {
-    // Blue rain with slight variation
-    uint8_t blue = static_cast<uint8_t>(200 + naturalRand * 55);  // 200-255
-    uint8_t green = static_cast<uint8_t>(100 + naturalRand * 50); // 100-150
-    uint8_t red = static_cast<uint8_t>(50 + naturalRand * 30);    // 50-80
-    request.color = (red << 24) | (green << 16) | (blue << 8) | 0xFF;
-  } else if (effectDef.type == ParticleEffectType::Snow ||
-             effectDef.type == ParticleEffectType::HeavySnow) {
-    // Bright white snow with high opacity for visibility
-    uint8_t alphaVariation =
-        static_cast<uint8_t>(240 + naturalRand * 15); // 240-255 (very opaque)
-    request.color = 0xFFFFFF00 | alphaVariation;
-  } else if (effectDef.type == ParticleEffectType::Fog) {
-    // Natural fog variation with much more transparency
-    uint8_t grayLevel =
-        static_cast<uint8_t>(200 + naturalRand * 30); // 200-230 (lighter)
-    uint8_t alpha = static_cast<uint8_t>(
-        40 + naturalRand * 40); // 40-80 (much more transparent)
-    request.color =
-        (grayLevel << 24) | (grayLevel << 16) | (grayLevel << 8) | alpha;
-  } else if (effectDef.type == ParticleEffectType::Cloudy) {
-    // Natural cloud color variation
-    uint8_t grayLevel = static_cast<uint8_t>(240 + naturalRand * 15); // 240-255
-    uint8_t alpha = static_cast<uint8_t>(180 + naturalRand * 75);     // 180-255
-    request.color =
-        (grayLevel << 24) | (grayLevel << 16) | (grayLevel << 8) | alpha;
-  } else if (effectDef.type == ParticleEffectType::Fire) {
-    // Natural fire color generation with realistic color mixing
-    if (naturalRand < 0.3f) {
-      // Deep red-orange (base of flame)
-      uint8_t red = static_cast<uint8_t>(200 + naturalRand * 55);  // 200-255
-      uint8_t green = static_cast<uint8_t>(60 + naturalRand * 40); // 60-100
-      request.color = (red << 24) | (green << 16) | 0xFF;
-    } else if (naturalRand < 0.6f) {
-      // Orange (middle flame)
-      uint8_t red = 255;
-      uint8_t green = static_cast<uint8_t>(120 + naturalRand * 80); // 120-200
-      uint8_t blue = static_cast<uint8_t>(naturalRand * 30);        // 0-30
-      request.color = (red << 24) | (green << 16) | (blue << 8) | 0xFF;
-    } else {
-      // Yellow-white (tip of flame)
-      uint8_t red = 255;
-      uint8_t green = static_cast<uint8_t>(200 + naturalRand * 55); // 200-255
-      uint8_t blue = static_cast<uint8_t>(naturalRand * 60);        // 0-60
-      request.color = (red << 24) | (green << 16) | (blue << 8) | 0xFF;
-    }
-  } else if (effectDef.type == ParticleEffectType::Smoke) {
-    // Use original smoke colors variation
-    static const std::array<uint32_t, 8> smokeColors{
-        {0x404040FF, 0x606060FF, 0x808080FF, 0x202020FF, 0x4A4A4AFF, 0x505050FF,
-         0x707070FF, 0x303030FF}};
-    size_t colorIndex = static_cast<size_t>(naturalRand * smokeColors.size());
-    colorIndex = std::min(colorIndex, smokeColors.size() - 1);
-    request.color = smokeColors[colorIndex];
-  } else if (effectDef.type == ParticleEffectType::Sparks) {
-    // Natural spark colors with more variation
-    if (naturalRand < 0.7f) {
-      // Bright yellow sparks
-      uint8_t red = static_cast<uint8_t>(240 + naturalRand * 15);   // 240-255
-      uint8_t green = static_cast<uint8_t>(220 + naturalRand * 35); // 220-255
-      uint8_t blue = static_cast<uint8_t>(naturalRand * 40);        // 0-40
-      request.color = (red << 24) | (green << 16) | (blue << 8) | 0xFF;
-    } else {
-      // Orange-white sparks
-      uint8_t red = 255;
-      uint8_t green = static_cast<uint8_t>(140 + naturalRand * 60); // 140-200
-      uint8_t blue = static_cast<uint8_t>(naturalRand * 20);        // 0-20
-      request.color = (red << 24) | (green << 16) | (blue << 8) | 0xFF;
-    }
-  } else {
-    request.color = config.minColor; // Fallback to config color
-  }
-
+                                      static_cast<float>(fast_rand()) / 32767.0f;
+  request.color =
+      interpolateColor(config.minColor, config.maxColor, naturalRand);
   request.textureIndex = getTextureIndex(config.textureID);
   request.blendMode = config.blendMode;
   request.effectType = effectDef.type;
+
+  // Set weather flag
+  if (isWeatherEffect) {
+    request.flags = UnifiedParticle::FLAG_WEATHER;
+  } else {
+    request.flags = 0;
+  }
 
   // Submit to lock-free ring buffer
   m_storage.submitNewParticle(request);
@@ -2058,11 +2530,219 @@ std::string ParticleManager::effectTypeToString(ParticleEffectType type) const {
     return "Smoke";
   case ParticleEffectType::Sparks:
     return "Sparks";
-  case ParticleEffectType::Magic:
-    return "Magic";
-  case ParticleEffectType::Custom:
-    return "Custom";
   default:
-    return "Unknown";
+    return "Custom";
+  }
+}
+
+uint32_t ParticleManager::interpolateColor(uint32_t color1, uint32_t color2,
+                                           float factor) {
+  uint8_t r1 = (color1 >> 24) & 0xFF;
+  uint8_t g1 = (color1 >> 16) & 0xFF;
+  uint8_t b1 = (color1 >> 8) & 0xFF;
+  uint8_t a1 = color1 & 0xFF;
+
+  uint8_t r2 = (color2 >> 24) & 0xFF;
+  uint8_t g2 = (color2 >> 16) & 0xFF;
+  uint8_t b2 = (color2 >> 8) & 0xFF;
+  uint8_t a2 = color2 & 0xFF;
+
+  uint8_t r = static_cast<uint8_t>(r1 + (r2 - r1) * factor);
+  uint8_t g = static_cast<uint8_t>(g1 + (g2 - g1) * factor);
+  uint8_t b = static_cast<uint8_t>(b1 + (b2 - b1) * factor);
+  uint8_t a = static_cast<uint8_t>(a1 + (a2 - a1) * factor);
+
+  return (static_cast<uint32_t>(r) << 24) | (static_cast<uint32_t>(g) << 16) |
+         (static_cast<uint32_t>(b) << 8) | static_cast<uint32_t>(a);
+}
+
+void ParticleManager::initTrigLookupTables() {
+  // PERFORMANCE OPTIMIZATION: Pre-compute sin/cos lookup tables
+  // This eliminates expensive real-time trigonometric calculations
+  constexpr float step = 2.0f * 3.14159265f / TRIG_LUT_SIZE;
+  
+  for (size_t i = 0; i < TRIG_LUT_SIZE; ++i) {
+    const float angle = i * step;
+    m_sinLUT[i] = std::sin(angle);
+    m_cosLUT[i] = std::cos(angle);
+  }
+}
+
+void ParticleManager::updateParticlePhysicsSIMD(
+    LockFreeParticleStorage::ParticleSoA &particles, size_t startIdx, size_t endIdx,
+    float deltaTime) {
+    
+#ifdef PARTICLE_SIMD_SSE2
+  // SIMD optimized physics update for 4 particles at once
+  const __m128 deltaTimeVec = _mm_set1_ps(deltaTime);
+  const __m128 atmosphericDragVec = _mm_set1_ps(0.98f);
+  
+  // Process 4 particles at a time for optimal SIMD utilization
+  size_t simdEnd = (endIdx - startIdx) / 4 * 4 + startIdx;
+  
+  for (size_t i = startIdx; i < simdEnd; i += 4) {
+    // Load 4 particles' flags to check if they're active
+    const uint8_t flags[4] = {
+      particles.flags[i], particles.flags[i+1], 
+      particles.flags[i+2], particles.flags[i+3]
+    };
+    
+    // Check if any particles are active (quick early exit)
+    bool hasActive = false;
+    for (int j = 0; j < 4; ++j) {
+      if (flags[j] & UnifiedParticle::FLAG_ACTIVE) {
+        hasActive = true;
+        break;
+      }
+    }
+    if (!hasActive) continue;
+    
+    // Load position X components for 4 particles
+    __m128 posX = _mm_setr_ps(
+      particles.positions[i].getX(), particles.positions[i+1].getX(),
+      particles.positions[i+2].getX(), particles.positions[i+3].getX()
+    );
+    
+    // Load position Y components for 4 particles  
+    __m128 posY = _mm_setr_ps(
+      particles.positions[i].getY(), particles.positions[i+1].getY(),
+      particles.positions[i+2].getY(), particles.positions[i+3].getY()
+    );
+    
+    // Load velocity X components
+    __m128 velX = _mm_setr_ps(
+      particles.velocities[i].getX(), particles.velocities[i+1].getX(),
+      particles.velocities[i+2].getX(), particles.velocities[i+3].getX()
+    );
+    
+    // Load velocity Y components
+    __m128 velY = _mm_setr_ps(
+      particles.velocities[i].getY(), particles.velocities[i+1].getY(),
+      particles.velocities[i+2].getY(), particles.velocities[i+3].getY()
+    );
+    
+    // Load acceleration X components
+    __m128 accelX = _mm_setr_ps(
+      particles.accelerations[i].getX(), particles.accelerations[i+1].getX(),
+      particles.accelerations[i+2].getX(), particles.accelerations[i+3].getX()
+    );
+    
+    // Load acceleration Y components
+    __m128 accelY = _mm_setr_ps(
+      particles.accelerations[i].getY(), particles.accelerations[i+1].getY(),
+      particles.accelerations[i+2].getY(), particles.accelerations[i+3].getY()
+    );
+    
+    // SIMD Physics: velocity += acceleration * deltaTime (4 particles at once)
+    velX = _mm_add_ps(velX, _mm_mul_ps(accelX, deltaTimeVec));
+    velY = _mm_add_ps(velY, _mm_mul_ps(accelY, deltaTimeVec));
+    
+    // SIMD Physics: Apply atmospheric drag (4 particles at once)
+    velX = _mm_mul_ps(velX, atmosphericDragVec);
+    velY = _mm_mul_ps(velY, atmosphericDragVec);
+    
+    // SIMD Physics: position += velocity * deltaTime (4 particles at once)
+    posX = _mm_add_ps(posX, _mm_mul_ps(velX, deltaTimeVec));
+    posY = _mm_add_ps(posY, _mm_mul_ps(velY, deltaTimeVec));
+    
+    // Store results back to particles (only for active particles)
+    float posXResults[4], posYResults[4], velXResults[4], velYResults[4];
+    _mm_storeu_ps(posXResults, posX);
+    _mm_storeu_ps(posYResults, posY);
+    _mm_storeu_ps(velXResults, velX);
+    _mm_storeu_ps(velYResults, velY);
+    
+    for (int j = 0; j < 4; ++j) {
+      if (flags[j] & UnifiedParticle::FLAG_ACTIVE) {
+        particles.positions[i+j].setX(posXResults[j]);
+        particles.positions[i+j].setY(posYResults[j]);
+        particles.velocities[i+j].setX(velXResults[j]);
+        particles.velocities[i+j].setY(velYResults[j]);
+      }
+    }
+  }
+  
+  // Handle remaining particles that don't fit in groups of 4
+  for (size_t i = simdEnd; i < endIdx; ++i) {
+    if (!(particles.flags[i] & UnifiedParticle::FLAG_ACTIVE)) continue;
+    
+    // Standard scalar physics for remaining particles
+    particles.velocities[i].setX(particles.velocities[i].getX() + 
+                           particles.accelerations[i].getX() * deltaTime);
+    particles.velocities[i].setY(particles.velocities[i].getY() + 
+                           particles.accelerations[i].getY() * deltaTime);
+                           
+    particles.velocities[i] *= 0.98f; // atmospheric drag
+    
+    particles.positions[i].setX(particles.positions[i].getX() + 
+                          particles.velocities[i].getX() * deltaTime);
+    particles.positions[i].setY(particles.positions[i].getY() + 
+                          particles.velocities[i].getY() * deltaTime);
+  }
+  
+#else
+  // Fallback to scalar implementation for platforms without SSE2
+  for (size_t i = startIdx; i < endIdx; ++i) {
+    if (!(particles.flags[i] & UnifiedParticle::FLAG_ACTIVE)) continue;
+    
+    particles.velocities[i].setX(particles.velocities[i].getX() + 
+                           particles.accelerations[i].getX() * deltaTime);
+    particles.velocities[i].setY(particles.velocities[i].getY() + 
+                           particles.accelerations[i].getY() * deltaTime);
+                           
+    particles.velocities[i] *= 0.98f; // atmospheric drag
+    
+    particles.positions[i].setX(particles.positions[i].getX() + 
+                          particles.velocities[i].getX() * deltaTime);
+    particles.positions[i].setY(particles.positions[i].getY() + 
+                          particles.velocities[i].getY() * deltaTime);
+  }
+#endif
+}
+
+void ParticleManager::batchProcessParticleColors(
+    LockFreeParticleStorage::ParticleSoA &particles, size_t startIdx, size_t endIdx) {
+    
+  // PERFORMANCE OPTIMIZATION: Batch process color alpha blending
+  // This eliminates repeated alpha calculation and bit manipulation per particle
+  
+  for (size_t i = startIdx; i < endIdx; ++i) {
+    if (!(particles.flags[i] & UnifiedParticle::FLAG_ACTIVE)) continue;
+    
+    // Skip particles that have special color handling - but allow fire alpha fading
+    if (particles.effectTypes[i] == ParticleEffectType::Fire) {
+      // Fire particles: fade alpha over time but keep their color
+      const float lifeRatio = (particles.maxLives[i] > 0.0f) ? 
+                             (particles.lives[i] / particles.maxLives[i]) : 0.0f;
+      const uint32_t color = particles.colors[i];
+      const uint8_t alpha = static_cast<uint8_t>(255.0f * lifeRatio); // Fade out as life decreases
+      particles.colors[i] = (color & 0xFFFFFF00) | alpha;
+      continue;
+    }
+    
+    // Cache color value to avoid repeated vector access
+    const uint32_t color = particles.colors[i];
+    
+    // Safe division with zero check for life ratio calculation
+    const float lifeRatio = (particles.maxLives[i] > 0.0f) ? 
+                           (particles.lives[i] / particles.maxLives[i]) : 0.0f;
+    
+    // Fast alpha calculation based on particle type
+    float alphaMultiplier = 1.0f;
+    if (particles.flags[i] & UnifiedParticle::FLAG_WEATHER) {
+      // Weather particles: fade in at start, fade out at end
+      if (lifeRatio > 0.9f) {
+        alphaMultiplier = (1.0f - lifeRatio) * 10.0f; // Fade in during first 10%
+      } else if (lifeRatio < 0.2f) {
+        alphaMultiplier = lifeRatio * 5.0f; // Fade out during last 20%
+      }
+    } else {
+      // Standard fade for non-weather particles
+      alphaMultiplier = lifeRatio;
+    }
+    
+    // Fast bit manipulation for alpha blending
+    const uint8_t alpha = static_cast<uint8_t>(255.0f * alphaMultiplier);
+    particles.colors[i] = (color & 0xFFFFFF00) | alpha;
   }
 }

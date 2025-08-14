@@ -26,7 +26,7 @@ Foundation systems that power the game engine architecture and timing.
 
 - **[GameEngine](GameEngine.md)** - Central engine singleton managing all systems and coordination
 - **[GameLoop](GameLoop.md)** - Industry-standard timing with fixed/variable timestep support
-- **[TimestepManager](TimestepManager.md)** - Simplified timing system with 1:1 frame mapping
+- **[TimestepManager](managers/TimestepManager.md)** - Simplified timing system with 1:1 frame mapping
 
 ### AI System
 The AI system provides flexible, thread-safe behavior management for game entities with individual behavior instances and mode-based configuration.
@@ -98,11 +98,11 @@ The HammerEngine features a comprehensive resource management system that integr
 - **[ResourceTemplateManager](managers/ResourceTemplateManager.md)** - Central registry for all resource templates with fast lookup and handle management
 - **[WorldResourceManager](managers/WorldResourceManager.md)** - Runtime resource quantity tracking across multiple worlds with thread-safe operations
 - **[ResourceHandle System](utils/ResourceHandle_System.md)** - High-performance resource identification and validation
-- **[InventoryComponent](../include/entities/resources/InventoryComponent.hpp)** - Entity-based inventory management with resource stacking and validation
+- **[InventoryComponent](../../include/entities/resources/InventoryComponent.hpp)** - Entity-based inventory management with resource stacking and validation
 
 ### Integration Points
 - **JSON Loading**: Resources are loaded from `res/data/items.json` and `res/data/materials_and_currency.json` using the [JsonReader](utils/JsonReader.md) system
-- **Event System**: Resource changes trigger [ResourceChangeEvent](../include/events/ResourceChangeEvent.hpp) through the EventManager for real-time updates
+- **Event System**: Resource changes trigger [ResourceChangeEvent](../../include/events/ResourceChangeEvent.hpp) through the EventManager for real-time updates
 - **Entity System**: NPCs and Players can own and manipulate resources through the InventoryComponent
 - **Game States**: Resource interactions are demonstrated in EventDemoState and GamePlayState
 

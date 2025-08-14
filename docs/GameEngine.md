@@ -238,7 +238,7 @@ void GameEngine::update(float deltaTime) {
         mp_aiManager->update(deltaTime);
     }
     if (mp_eventManager) {
-        mp_eventManager->update();
+        mp_eventManager->update(deltaTime);
     }
 
     // State-managed systems updated by individual game states
@@ -252,14 +252,14 @@ void GameEngine::update(float deltaTime) {
 
 #### Rendering
 ```cpp
-void GameEngine::render() {
+void GameEngine::render(float dt) {
     // Always on MAIN thread (SDL requirement)
     std::lock_guard<std::mutex> lock(m_renderMutex);
 
     SDL_SetRenderDrawColor(mp_renderer.get(), HAMMER_GRAY);
     SDL_RenderClear(mp_renderer.get());
 
-    mp_gameStateManager->render();
+    mp_gameStateManager->render(dt);
 
     SDL_RenderPresent(mp_renderer.get());
     m_lastRenderedFrame.fetch_add(1, std::memory_order_relaxed);
@@ -635,8 +635,8 @@ float GameEngine::getCurrentFPS() const {
 static GameEngine& Instance();                                    // Get singleton instance
 bool init(std::string_view title, int width, int height, bool fullscreen); // Initialize engine
 void handleEvents();                                             // Handle SDL events and input
-void update(float deltaTime);                                    // Update game logic (thread-safe)
-void render();                                                   // Render frame (main thread only)
+void update(float dt);                                    // Update game logic (thread-safe)
+void render(float dt);                                                   // Render frame (main thread only)
 void clean();                                                    // Cleanup all resources
 ```
 
@@ -644,7 +644,7 @@ void clean();                                                    // Cleanup all 
 
 ```cpp
 void processBackgroundTasks();                                   // Process background tasks
-void processEngineCoordination(float deltaTime);                // Engine coordination (high priority)
+void processEngineCoordination(float dt);                // Engine coordination (high priority)
 void processEngineSecondaryTasks();                            // Secondary tasks (normal priority)
 void waitForUpdate();                                           // Wait for update completion
 void signalUpdateComplete();                                    // Signal update complete
@@ -829,9 +829,9 @@ bool safeEngineOperation() {
 **Cause**: Usually related to timing or buffer synchronization
 **Solution**:
 ```cpp
-void Entity::update(float deltaTime) {
-    // Use provided deltaTime for consistent movement
-    position += velocity * deltaTime;
+void Entity::update(float dt) {
+    // Use provided dt for consistent movement
+    position += velocity * dt;
 
     // Don't create your own timing system
 }

@@ -11,6 +11,8 @@
 #include <unordered_map>
 #include <memory>
 #include <string>
+#include <atomic>
+#include <mutex>
 
 class TextureManager {
  public:
@@ -55,6 +57,42 @@ class TextureManager {
             SDL_FlipMode flip = SDL_FLIP_NONE);
 
   /**
+   * @brief Draws a texture with float precision for smooth camera movement
+   * @param textureID Unique identifier of the texture to draw
+   * @param x X coordinate for drawing position (float precision)
+   * @param y Y coordinate for drawing position (float precision)
+   * @param width Width to draw the texture
+   * @param height Height to draw the texture
+   * @param p_renderer SDL renderer to draw to
+   * @param flip Flip mode for the texture (default: SDL_FLIP_NONE)
+   */
+  void drawF(const std::string& textureID,
+             float x,
+             float y,
+             int width,
+             int height,
+             SDL_Renderer* p_renderer,
+             SDL_FlipMode flip = SDL_FLIP_NONE);
+
+  /**
+   * @brief Draws a tile texture with perfect pixel alignment for tiled rendering
+   * @param textureID Unique identifier of the texture to draw
+   * @param x X coordinate for drawing position (float precision)
+   * @param y Y coordinate for drawing position (float precision)
+   * @param width Width to draw the texture
+   * @param height Height to draw the texture
+   * @param p_renderer SDL renderer to draw to
+   * @param flip Flip mode for the texture (default: SDL_FLIP_NONE)
+   */
+  void drawTileF(const std::string& textureID,
+                 float x,
+                 float y,
+                 int width,
+                 int height,
+                 SDL_Renderer* p_renderer,
+                 SDL_FlipMode flip = SDL_FLIP_NONE);
+
+  /**
    * @brief Draws a specific frame from a sprite sheet texture
    * @param textureID Unique identifier of the sprite sheet texture
    * @param x X coordinate for drawing position
@@ -75,6 +113,29 @@ class TextureManager {
                  int currentFrame,
                  SDL_Renderer* p_renderer,
                  SDL_FlipMode flip = SDL_FLIP_NONE);
+
+  /**
+   * @brief Draws a sprite frame with float precision for smooth camera movement
+   * @param textureID Unique identifier of the texture to draw
+   * @param x X coordinate for drawing position (float precision)
+   * @param y Y coordinate for drawing position (float precision)
+   * @param width Width of the frame
+   * @param height Height of the frame
+   * @param currentRow Current animation row
+   * @param currentFrame Current animation frame
+   * @param p_renderer SDL renderer to draw to
+   * @param flip Flip mode for the texture
+   */
+  void drawFrameF(const std::string& textureID,
+                  float x,
+                  float y,
+                  int width,
+                  int height,
+                  int currentRow,
+                  int currentFrame,
+                  SDL_Renderer* p_renderer,
+                  SDL_FlipMode flip = SDL_FLIP_NONE);
+
   /**
    * @brief Draws a texture with parallax scrolling effect
    * @param textureID Unique identifier of the texture to draw
@@ -108,6 +169,20 @@ class TextureManager {
   std::shared_ptr<SDL_Texture> getTexture(const std::string& textureID) const;
 
   /**
+   * @brief Creates or retrieves a cached dynamic texture (e.g., for chunk rendering)
+   * @param textureID Unique identifier for the dynamic texture
+   * @param width Width of the texture to create
+   * @param height Height of the texture to create
+   * @param p_renderer SDL renderer for texture creation
+   * @param forceRecreate Force recreation even if texture exists
+   * @return Shared pointer to the texture, creating it if it doesn't exist
+   */
+  std::shared_ptr<SDL_Texture> getOrCreateDynamicTexture(const std::string& textureID,
+                                                         int width, int height,
+                                                         SDL_Renderer* p_renderer,
+                                                         bool forceRecreate = false);
+
+  /**
    * @brief Cleans up all texture resources and marks manager as shut down
    */
   void clean();
@@ -121,6 +196,8 @@ class TextureManager {
  private:
   std::string m_textureID{""};
   std::unordered_map<std::string, std::shared_ptr<SDL_Texture>> m_textureMap{};
+  std::atomic<bool> m_texturesLoaded{false};
+  std::mutex m_textureLoadMutex{};
   bool m_isShutdown{false};
 
   // Delete copy constructor and assignment operator

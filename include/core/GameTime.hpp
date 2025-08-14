@@ -41,9 +41,9 @@ public:
 
     /**
      * @brief Update game time based on real elapsed time
-     * @param deltaTimeMs Real time elapsed in milliseconds since last update
+     * @param deltaTime Real time elapsed in seconds since last update
      */
-    void update(float deltaTimeMs);
+    void update(float deltaTime);
 
     /**
      * @brief Get current game hour (0-23.999)

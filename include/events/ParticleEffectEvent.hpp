@@ -80,6 +80,7 @@ public:
   // Event identification
   std::string getName() const override { return m_name; }
   std::string getType() const override { return "ParticleEffect"; }
+  std::string getTypeName() const override { return "ParticleEffectEvent"; }
 
   // Condition checking
   bool checkConditions() override;

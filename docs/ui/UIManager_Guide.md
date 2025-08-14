@@ -45,11 +45,11 @@ ui.setOnClick("play_btn", [this]() {
 ```cpp
 class MyGameState : public GameState {
 public:
-    void update(float deltaTime) override {
+    void update(float dt) override {
         // Update UIManager for states using UI
         auto& ui = UIManager::Instance();
         if (!ui.isShutdown()) {
-            ui.update(deltaTime);
+            ui.update(dt);
         }
         // Your state logic...
     }
@@ -342,7 +342,7 @@ ui.setOnFocus("component_id", []() { /* handle focus */ });
 ### State-Based Event Checking
 
 ```cpp
-void MyState::update(float deltaTime) {
+void MyState::update(float dt) {
     auto& ui = UIManager::Instance();
     
     if (ui.isButtonClicked("my_button")) {
@@ -506,10 +506,10 @@ class PlayerHUDState : public EntityState {
         ui.createPanel("hud_minimap", {650, 10, 140, 140});
     }
     
-    void update(float deltaTime) override {
+    void update(float dt) override {
         auto& ui = UIManager::Instance();
         if (!ui.isShutdown()) {
-            ui.update(deltaTime);
+            ui.update(dt);
             
             // Update HUD with game data
             ui.setValue("hud_health", player->getHealth());
@@ -594,11 +594,11 @@ ui.createLabel("status", {x, y, 0, 0}, dynamicText);  // Auto-sizes
 ### Error Handling
 
 ```cpp
-void YourState::update(float deltaTime) {
+void YourState::update(float dt) {
     auto& ui = UIManager::Instance();
     if (!ui.isShutdown()) {
         try {
-            ui.update(deltaTime);
+            ui.update(dt);
             updateDynamicUI();
         } catch (const std::exception& e) {
             std::cerr << "UI error: " << e.what() << std::endl;
@@ -716,10 +716,10 @@ public:
         return true;
     }
     
-    void update(float deltaTime) override {
+    void update(float dt) override {
         auto& ui = UIManager::Instance();
         if (!ui.isShutdown()) {
-            ui.update(deltaTime);
+            ui.update(dt);
         }
     }
     
@@ -798,10 +798,10 @@ public:
         ui.addListItem("inventory_list", "Total Items: " + std::to_string(totalItems));
     }
     
-    void update(float deltaTime) override {
+    void update(float dt) override {
         auto& ui = UIManager::Instance();
         if (!ui.isShutdown()) {
-            ui.update(deltaTime);
+            ui.update(dt);
             
             // Update inventory if resources changed
             static size_t lastResourceCount = 0;
@@ -844,7 +844,7 @@ public:
 bool init()                              // Initialize UIManager
 void clean()                            // Clean shutdown
 bool isShutdown() const                 // Check shutdown state
-void update(float deltaTime)            // Update animations and input
+void update(float dt)            // Update animations and input
 void render(SDL_Renderer* renderer)    // Render all components
 void render()                           // Render using cached renderer
 void setRenderer(SDL_Renderer* renderer) // Set cached renderer

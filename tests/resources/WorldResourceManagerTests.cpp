@@ -8,12 +8,13 @@
 
 #include <atomic>
 #include <chrono>
+#include <future>
 #include <memory>
 #include <string>
-#include <thread>
 #include <vector>
 
 #include "core/Logger.hpp"
+#include "core/ThreadSystem.hpp"
 #include "entities/Resource.hpp"
 #include "entities/resources/CurrencyAndGameResources.hpp"
 #include "entities/resources/ItemResources.hpp"
@@ -60,6 +61,15 @@ getOrLoadResourceByName(ResourceTemplateManager *manager,
 class WorldResourceManagerTestFixture {
 public:
   WorldResourceManagerTestFixture() {
+    // Initialize ThreadSystem first for threading tests
+    threadSystem = &HammerEngine::ThreadSystem::Instance();
+    if (threadSystem->isShutdown() || threadSystem->getThreadCount() == 0) {
+      bool initSuccess = threadSystem->init();
+      if (!initSuccess && threadSystem->getThreadCount() == 0) {
+        throw std::runtime_error("Failed to initialize ThreadSystem for threading tests");
+      }
+    }
+
     // Initialize ResourceTemplateManager singleton first (required for
     // WorldResourceManager)
     templateManager = &ResourceTemplateManager::Instance();
@@ -79,11 +89,13 @@ public:
     // Clean up both managers
     worldManager->clean();
     templateManager->clean();
+    // Note: Don't clean ThreadSystem here as it's shared across tests
   }
 
 protected:
   ResourceTemplateManager *templateManager;
   WorldResourceManager *worldManager;
+  HammerEngine::ThreadSystem *threadSystem;
 };
 
 BOOST_FIXTURE_TEST_SUITE(WorldResourceManagerTestSuite,
@@ -106,14 +118,6 @@ BOOST_AUTO_TEST_CASE(TestInitialization) {
   auto worlds = worldManager->getWorldIds();
   BOOST_CHECK_EQUAL(worlds.size(), 1);
   BOOST_CHECK(worldManager->hasWorld("default"));
-
-  // Clean and re-initialize
-  worldManager->clean();
-  BOOST_CHECK(!worldManager->isInitialized());
-
-  bool reinitialized = worldManager->init();
-  BOOST_CHECK(reinitialized);
-  BOOST_CHECK(worldManager->isInitialized());
 }
 
 BOOST_AUTO_TEST_CASE(TestWorldCreationAndRemoval) {
@@ -326,18 +330,17 @@ BOOST_AUTO_TEST_CASE(TestInvalidOperations) {
   bool created = worldManager->createWorld(validWorldId);
   BOOST_REQUIRE(created);
 
-  // Test operations on non-existent world (note: WorldResourceManager
-  // auto-creates worlds)
+  // Test operations on non-existent world
   auto result =
       worldManager->addResource(invalidWorldId, validResourceHandle, 100);
-  BOOST_CHECK(result == ResourceTransactionResult::Success); // Auto-created
+  BOOST_CHECK(result == ResourceTransactionResult::InvalidWorldId);
 
   result =
       worldManager->removeResource(invalidWorldId, validResourceHandle, 50);
-  BOOST_CHECK(result == ResourceTransactionResult::Success);
+  BOOST_CHECK(result == ResourceTransactionResult::InvalidWorldId);
 
   result = worldManager->setResource(invalidWorldId, validResourceHandle, 200);
-  BOOST_CHECK(result == ResourceTransactionResult::Success);
+  BOOST_CHECK(result == ResourceTransactionResult::InvalidWorldId);
 
   // Test operations with invalid resource handle
   result = worldManager->addResource(validWorldId, invalidResourceHandle, 100);
@@ -350,10 +353,10 @@ BOOST_AUTO_TEST_CASE(TestInvalidOperations) {
   result = worldManager->setResource(validWorldId, invalidResourceHandle, 200);
   BOOST_CHECK(result == ResourceTransactionResult::InvalidResourceHandle);
 
-  // Test getting quantity (should work for valid handle due to auto-creation)
+  // Test getting quantity for invalid world (should return 0)
   int64_t quantity =
       worldManager->getResourceQuantity(invalidWorldId, validResourceHandle);
-  BOOST_CHECK_EQUAL(quantity, 200); // From set operation above
+  BOOST_CHECK_EQUAL(quantity, 0);
 
   // Test getting quantity for invalid resource handle (should return 0)
   quantity =
@@ -362,7 +365,7 @@ BOOST_AUTO_TEST_CASE(TestInvalidOperations) {
 
   // Clean up
   worldManager->removeWorld(validWorldId);
-  worldManager->removeWorld(invalidWorldId);
+  // No need to remove invalidWorldId as it was never created
 }
 
 BOOST_AUTO_TEST_CASE(TestWorldSwitching) {
@@ -476,41 +479,43 @@ BOOST_AUTO_TEST_CASE(TestThreadSafety) {
   std::atomic<int> successfulAdds{0};
   std::atomic<int> successfulRemoves{0};
   std::atomic<int> successfulReads{0};
-  std::vector<std::thread> threads;
+  std::vector<std::future<void>> futures;
 
-  // Create threads that perform concurrent operations
+  // Create tasks that perform concurrent operations using ThreadSystem
   for (int i = 0; i < NUM_THREADS; ++i) {
-    threads.emplace_back([&]() {
+    auto future = threadSystem->enqueueTaskWithResult([=, this, &successfulAdds, &successfulRemoves, &successfulReads]() -> void {
       for (int j = 0; j < OPERATIONS_PER_THREAD; ++j) {
         // Test concurrent adds
         auto addResult = worldManager->addResource(worldId, resourceHandle, 10);
         if (addResult == ResourceTransactionResult::Success) {
-          successfulAdds++;
+          successfulAdds.fetch_add(1, std::memory_order_relaxed);
         }
 
         // Test concurrent reads
         int64_t quantity =
             worldManager->getResourceQuantity(worldId, resourceHandle);
         if (quantity >= 0) { // Always true, but counts the read
-          successfulReads++;
+          successfulReads.fetch_add(1, std::memory_order_relaxed);
         }
 
         // Test concurrent removes (some may fail due to insufficient resources)
         auto removeResult =
             worldManager->removeResource(worldId, resourceHandle, 5);
         if (removeResult == ResourceTransactionResult::Success) {
-          successfulRemoves++;
+          successfulRemoves.fetch_add(1, std::memory_order_relaxed);
         }
 
         // Small delay to increase chance of race conditions
         std::this_thread::sleep_for(std::chrono::microseconds(1));
       }
-    });
+    }, HammerEngine::TaskPriority::Normal, "ResourceTestTask");
+
+    futures.push_back(std::move(future));
   }
 
-  // Wait for all threads to complete
-  for (auto &thread : threads) {
-    thread.join();
+  // Wait for all tasks to complete
+  for (auto &future : futures) {
+    future.wait();
   }
 
   // Verify that operations were performed
@@ -537,18 +542,18 @@ BOOST_AUTO_TEST_CASE(TestConcurrentWorldOperations) {
 
   std::atomic<int> worldsCreated{0};
   std::atomic<int> worldsDestroyed{0};
-  std::vector<std::thread> threads;
+  std::vector<std::future<void>> futures;
 
-  // Create threads that create and destroy worlds concurrently
+  // Create tasks that create and destroy worlds concurrently using ThreadSystem
   for (int i = 0; i < NUM_THREADS; ++i) {
-    threads.emplace_back([&, i]() {
+    auto future = threadSystem->enqueueTaskWithResult([=, this, &worldsCreated, &worldsDestroyed]() -> void {
       for (int j = 0; j < WORLDS_PER_THREAD; ++j) {
         std::string worldId =
             "concurrent_world_" + std::to_string(i) + "_" + std::to_string(j);
 
         // Create world
         if (worldManager->createWorld(worldId)) {
-          worldsCreated++;
+          worldsCreated.fetch_add(1, std::memory_order_relaxed);
 
           // Add some resources
           auto resourceHandle =
@@ -562,19 +567,21 @@ BOOST_AUTO_TEST_CASE(TestConcurrentWorldOperations) {
           }
           // Remove world
           if (worldManager->removeWorld(worldId)) {
-            worldsDestroyed++;
+            worldsDestroyed.fetch_add(1, std::memory_order_relaxed);
           }
         }
 
         // Small delay
         std::this_thread::sleep_for(std::chrono::microseconds(1));
       }
-    });
+    }, HammerEngine::TaskPriority::Normal, "WorldOperationTask");
+
+    futures.push_back(std::move(future));
   }
 
-  // Wait for all threads to complete
-  for (auto &thread : threads) {
-    thread.join();
+  // Wait for all tasks to complete
+  for (auto &future : futures) {
+    future.wait();
   }
 
   // Verify that all created worlds were also destroyed

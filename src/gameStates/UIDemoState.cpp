@@ -84,7 +84,7 @@ bool UIExampleState::enter() {
     ui.setOnClick("uiexample_back_btn", []() {
         auto& gameEngine = GameEngine::Instance();
         auto* gameStateManager = gameEngine.getGameStateManager();
-        gameStateManager->setState("MainMenuState");
+        gameStateManager->changeState("MainMenuState");
     });
 
     ui.setOnClick("uiexample_animate_btn", [this]() {
@@ -121,13 +121,13 @@ void UIExampleState::update(float deltaTime) {
     updateProgressBar(deltaTime);
 }
 
-void UIExampleState::render(float deltaTime) {
+void UIExampleState::render() {
     // Update and render UI components through UIManager using cached renderer for cleaner API
     // Each state that uses UI is responsible for rendering its own UI components
     // This ensures proper render order and state-specific UI management
     auto& ui = UIManager::Instance();
     if (!ui.isShutdown()) {
-        ui.update(deltaTime);
+        ui.update(0.0); // UI updates are not time-dependent in this state
     }
     ui.render();
 }
@@ -193,7 +193,7 @@ void UIExampleState::handleInput() {
     if (inputManager.wasKeyPressed(SDL_SCANCODE_B)) {
         const auto& gameEngine = GameEngine::Instance();
         auto* gameStateManager = gameEngine.getGameStateManager();
-        gameStateManager->setState("MainMenuState");
+        gameStateManager->changeState("MainMenuState");
     }
 }
 

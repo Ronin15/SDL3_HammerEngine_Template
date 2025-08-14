@@ -10,7 +10,7 @@
 #include "entities/resources/InventoryComponent.hpp"
 #include "managers/EntityStateManager.hpp"
 #include "utils/ResourceHandle.hpp"
-#include <SDL3/SDL.h>
+#include <SDL3/SDL_render.h>
 #include <memory>
 #include <unordered_map>
 
@@ -19,9 +19,8 @@ public:
   Player();
   ~Player() override;
 
-  void update(float deltaTime) override;
-  void render() override;
-  void clean() override;
+    void update(float deltaTime) override;
+    void render(const HammerEngine::Camera* camera) override;  void clean() override;
 
   // State management
   void changeState(const std::string &stateName);

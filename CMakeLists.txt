@@ -116,8 +116,8 @@ message(STATUS
 # Specify the stable release tags for each SDL3 component
 # SDL3 must use main to provide SDL_ALIGNED macro needed by SDL3_mixer
 set(SDL3_GIT_TAG "main")                   # Use main to get SDL_ALIGNED macro needed by SDL3_mixer
-set(SDL3_IMAGE_GIT_TAG "release-3.2.4")   # Latest stable SDL3_image release  
-set(SDL3_TTF_GIT_TAG "release-3.2.2")     # Latest stable SDL3_ttf release
+set(SDL3_IMAGE_GIT_TAG "release-3.2.4")    # Latest stable SDL3_image release  
+set(SDL3_TTF_GIT_TAG "release-3.2.2")      # Latest stable SDL3_ttf release
 set(SDL3_MIXER_GIT_TAG "main")             # Keep on main for latest SDL3_mixer features
 
 # Download and configure SDL3
@@ -183,7 +183,8 @@ file(GLOB_RECURSE SOURCES
     "src/entities/*.cpp"
     "src/events/*.cpp"
     "src/ai/*.cpp"
-    "src/utils/JsonReader.cpp"
+    "src/world/*.cpp"
+    "src/utils/*.cpp"
 )
 
 # Create executable for your project with proper extensions
@@ -347,6 +348,7 @@ target_include_directories(${PROJECT_NAME} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/include/ai/behaviors
     ${CMAKE_CURRENT_SOURCE_DIR}/include/utils
     ${CMAKE_CURRENT_SOURCE_DIR}/include/ui
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/world
 )
 
 # Copy SDL3 runtime libraries to build directory (Windows-specific)

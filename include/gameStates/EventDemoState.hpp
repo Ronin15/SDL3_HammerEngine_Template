@@ -12,6 +12,7 @@
 
 #include "entities/NPC.hpp"
 #include "entities/Player.hpp"
+#include "utils/Camera.hpp"
 
 #include <memory>
 #include <string>
@@ -31,7 +32,7 @@ public:
   ~EventDemoState() override;
 
   void update(float deltaTime) override;
-  void render(float deltaTime) override;
+  void render() override;
   void handleInput() override;
 
   bool enter() override;
@@ -44,6 +45,7 @@ private:
   void setupEventSystem();
   void createTestEvents();
   void updateDemoTimer(float deltaTime);
+  void initializeWorld();
 
   void renderUI();
   void renderEventStatus() const;
@@ -91,6 +93,13 @@ private:
   // Entities
   std::vector<NPCPtr> m_spawnedNPCs{};
   PlayerPtr m_player{};
+  
+  // Camera for world navigation
+  std::unique_ptr<HammerEngine::Camera> m_camera{nullptr};
+  
+  // Camera transformation state (calculated in update, used in render)
+  float m_cameraOffsetX{0.0f};
+  float m_cameraOffsetY{0.0f};
 
   // Event tracking
   std::unordered_map<std::string, bool> m_eventStates{};
@@ -146,7 +155,7 @@ private:
   bool m_limitMessageShown{false}; // Track if limit message has been shown
 
   // Inventory UI
-  bool m_showInventory{true}; // Show inventory panel by default
+  bool m_showInventory{false}; // Hide inventory panel by default like GamePlayState
 
   // Resource change tracking for demonstrations
   std::unordered_map<HammerEngine::ResourceHandle, int>
@@ -167,15 +176,12 @@ private:
   void setupResourceAchievements(); // Setup achievement demonstration
 
   // Inventory UI methods
-  void updateInventoryUI();
-  void renderInventoryPanel();
+  void toggleInventoryDisplay(); // Toggle inventory visibility like GamePlayState
 
   // Resource change event demonstration methods
   void processResourceAchievements(HammerEngine::ResourceHandle handle,
                                    int oldQty, int newQty);
   void checkResourceWarnings(HammerEngine::ResourceHandle handle, int newQty);
-  void updateResourceUI(HammerEngine::ResourceHandle handle, int oldQty,
-                        int newQty);
   void logResourceAnalytics(HammerEngine::ResourceHandle handle, int oldQty,
                             int newQty, const std::string &source);
 
@@ -187,6 +193,30 @@ private:
 
   // AI behavior integration methods
   void setupAIBehaviors();
+  
+  // Camera management methods
+  void initializeCamera();
+  void updateCamera(float deltaTime);
+  void setupCameraForWorld();
+  void applyCameraTransformation();
+  
+  // Thread-safe replacements for static variables
+  size_t m_manualWeatherIndex{0};
+  size_t m_particleEffectIndex{0};
+  size_t m_particlePositionIndex{0};
+  size_t m_resourceDemonstrationStep{0};
+  bool m_resourceIsAdding{true};
+  int m_convenienceDemoCounter{0};
+  
+  // Particle effect demo data (moved from static)
+  std::vector<std::string> m_particleEffectNames{"Fire", "Smoke", "Sparks"};
+  std::vector<Vector2D> m_particleEffectPositions{
+      Vector2D(200, 150), // Top-left area
+      Vector2D(600, 150), // Top-right area
+      Vector2D(400, 300), // Center
+      Vector2D(300, 450), // Bottom-left
+      Vector2D(500, 450), // Bottom-right
+  };
 };
 
 #endif // EVENT_DEMO_STATE_HPP

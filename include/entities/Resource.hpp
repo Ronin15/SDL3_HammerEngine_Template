@@ -70,10 +70,9 @@ public:
   virtual ~Resource() override = default;
 
   // Entity interface implementation
-  void update(float deltaTime) override;
-  void render() override;
-  void clean() override;
-
+    void update(float deltaTime) override;
+    void render(const HammerEngine::Camera* camera) override;
+    void clean() override;
   // Resource properties (immutable)
   HammerEngine::ResourceHandle getHandle() const { return m_handle; }
   const std::string &getId() const { return m_id; }

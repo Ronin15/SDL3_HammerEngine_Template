@@ -57,7 +57,6 @@ class InputManager {
     const Vector2D& getMousePosition() const; // Returns const reference for safety
 
  private:
-
     // Keyboard specific
     const bool* m_keystates{nullptr}; // Owned by SDL, don't delete
     std::vector<SDL_Scancode> m_pressedThisFrame{}; // Keys pressed this frame
@@ -92,6 +91,9 @@ class InputManager {
 
     // Handle window events
     void onWindowResize(const SDL_Event& event);
+    
+    // Handle display events
+    void onDisplayChange(const SDL_Event& event);
 
     // Delete copy constructor and assignment operator
     InputManager(const InputManager&) = delete; // Prevent copying

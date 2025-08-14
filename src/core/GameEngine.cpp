@@ -30,13 +30,14 @@
 #include "managers/SoundManager.hpp"
 #include "managers/TextureManager.hpp"
 #include "managers/UIManager.hpp"
+#include "managers/WorldManager.hpp"
 #include "managers/WorldResourceManager.hpp"
+#include <atomic>
 #include <chrono>
 #include <cstdlib>
 #include <future>
 #include <string>
 #include <string_view>
-#include <thread>
 #include <vector>
 
 #define HAMMER_GRAY 31, 32, 34, 255
@@ -61,6 +62,7 @@ bool GameEngine::init(const std::string_view title, const int width,
   SDL_SetHint("SDL_MOUSE_AUTO_CAPTURE", "0"); // Prevent mouse capture issues
 
   // Performance hints for rendering
+  SDL_SetHint("SDL_RENDER_SCALE_QUALITY", "0"); // Use nearest pixel sampling for crisp tiles
   SDL_SetHint("SDL_RENDER_BATCHING",
               "1"); // Enable render batching for performance
 
@@ -77,7 +79,7 @@ bool GameEngine::init(const std::string_view title, const int width,
               "1"); // Use Spaces for fullscreen
 #endif
 
-  GAMEENGINE_INFO("SDL rendering hints configured for optimal quality");
+  GAMEENGINE_DEBUG("SDL rendering hints configured for optimal quality");
 
   // Use reliable window sizing approach instead of potentially corrupted
   // display bounds
@@ -145,7 +147,7 @@ bool GameEngine::init(const std::string_view title, const int width,
     return false;
   }
 
-  GAMEENGINE_INFO("Window creation system online");
+  GAMEENGINE_DEBUG("Window creation system online");
 
 #ifdef __APPLE__
   // On macOS, set fullscreen mode to null for borderless fullscreen desktop
@@ -172,23 +174,19 @@ bool GameEngine::init(const std::string_view title, const int width,
           });
 
   // Continue with initialization while icon loads
-  // account for pixel density for rendering
-  int pixelWidth, pixelHeight;
+  // Cache window sizes once for subsequent initialization steps
+  int pixelWidth = m_windowWidth;
+  int pixelHeight = m_windowHeight;
+  int logicalWidth = m_windowWidth;
+  int logicalHeight = m_windowHeight;
+
   if (!SDL_GetWindowSizeInPixels(mp_window.get(), &pixelWidth, &pixelHeight)) {
     GAMEENGINE_ERROR("Failed to get window pixel size: " +
                      std::string(SDL_GetError()));
-    // Use logical size as fallback
-    pixelWidth = m_windowWidth;
-    pixelHeight = m_windowHeight;
   }
-  // Get logical dimensions
-  int logicalWidth, logicalHeight;
   if (!SDL_GetWindowSize(mp_window.get(), &logicalWidth, &logicalHeight)) {
     GAMEENGINE_ERROR("Failed to get window logical size: " +
                      std::string(SDL_GetError()));
-    // Use stored dimensions as fallback
-    logicalWidth = m_windowWidth;
-    logicalHeight = m_windowHeight;
   }
 
   // Create renderer (let SDL3 choose the best available backend)
@@ -209,7 +207,7 @@ bool GameEngine::init(const std::string_view title, const int width,
     GAMEENGINE_WARN("Could not determine selected renderer backend");
   }
 
-  GAMEENGINE_INFO("Rendering system online");
+  GAMEENGINE_DEBUG("Rendering system online");
 
   // Platform-specific VSync handling for timing issues
   // Check if we're using Wayland (known to have VSync timing issues with some
@@ -217,10 +215,10 @@ bool GameEngine::init(const std::string_view title, const int width,
   const std::string videoDriverRaw =
       SDL_GetCurrentVideoDriver() ? SDL_GetCurrentVideoDriver() : "";
   std::string_view videoDriver = videoDriverRaw;
-  bool isWayland = (videoDriver == "wayland");
+  m_isWayland = (videoDriver == "wayland");
 
   // Fallback to environment detection if driver info unavailable
-  if (!isWayland) {
+  if (!m_isWayland) {
     const std::string sessionTypeRaw =
         std::getenv("XDG_SESSION_TYPE") ? std::getenv("XDG_SESSION_TYPE") : "";
     const std::string waylandDisplayRaw =
@@ -229,29 +227,23 @@ bool GameEngine::init(const std::string_view title, const int width,
     std::string_view sessionType = sessionTypeRaw;
     bool hasWaylandDisplay = !waylandDisplayRaw.empty();
 
-    isWayland = (sessionType == "wayland") || hasWaylandDisplay;
+    m_isWayland = (sessionType == "wayland") || hasWaylandDisplay;
   }
 
-  if (isWayland) {
-    GAMEENGINE_WARN("Detected Wayland session - VSync may cause timing issues, "
-                    "using software limiting");
-    // Disable VSync on Wayland to avoid timing problems
+  // Platform-aware VSync configuration
+  // Wayland: disable VSync and rely on software frame limiting
+  // Others: try enabling VSync; fall back to software limiting on failure
+  if (m_isWayland) {
     if (!SDL_SetRenderVSync(mp_renderer.get(), 0)) {
-      GAMEENGINE_ERROR("Failed to disable VSync: " +
-                       std::string(SDL_GetError()));
-    }
-    GAMEENGINE_INFO(
-        "Using software frame rate limiting for consistent timing on Wayland");
-  } else {
-    // Try to enable VSync on X11 and other stable platforms
-    if (SDL_SetRenderVSync(mp_renderer.get(), 1)) {
-      GAMEENGINE_INFO(
-          "VSync enabled - hardware-synchronized frame presentation active");
+      GAMEENGINE_ERROR("Failed to disable VSync on Wayland: " + std::string(SDL_GetError()));
     } else {
-      GAMEENGINE_WARN("Failed to enable VSync: " + std::string(SDL_GetError()) +
-                      " - falling back to software limiting");
-      GAMEENGINE_INFO(
-          "Using software frame rate limiting for consistent timing");
+      GAMEENGINE_INFO("Wayland detected: VSync disabled; using software frame limiting");
+    }
+  } else {
+    if (!SDL_SetRenderVSync(mp_renderer.get(), 1)) {
+      GAMEENGINE_WARN("Failed to enable VSync; will rely on software frame limiting: " + std::string(SDL_GetError()));
+    } else {
+      GAMEENGINE_INFO("VSync enabled successfully");
     }
   }
 
@@ -264,15 +256,8 @@ bool GameEngine::init(const std::string_view title, const int width,
 #ifdef __APPLE__
   // On macOS, use logical presentation with stretch mode for consistent UI
   // scaling
-  int actualWidth, actualHeight;
-  if (!SDL_GetWindowSizeInPixels(mp_window.get(), &actualWidth,
-                                 &actualHeight)) {
-    GAMEENGINE_ERROR("Failed to get actual window pixel size: " +
-                     std::string(SDL_GetError()));
-    // Fallback to window dimensions
-    actualWidth = m_windowWidth;
-    actualHeight = m_windowHeight;
-  }
+  int actualWidth = pixelWidth;
+  int actualHeight = pixelHeight;
 
   // Use standard logical resolution to ensure UI elements are positioned
   // correctly This prevents buttons from going off-screen while maintaining
@@ -299,15 +284,8 @@ bool GameEngine::init(const std::string_view title, const int width,
 #else
   // On non-Apple platforms, use actual screen resolution to eliminate scaling
   // blur
-  int actualWidth, actualHeight;
-  if (!SDL_GetWindowSizeInPixels(mp_window.get(), &actualWidth,
-                                 &actualHeight)) {
-    GAMEENGINE_ERROR("Failed to get actual window pixel size: " +
-                     std::string(SDL_GetError()));
-    // Fallback to window dimensions
-    actualWidth = m_windowWidth;
-    actualHeight = m_windowHeight;
-  }
+  int actualWidth = pixelWidth;
+  int actualHeight = pixelHeight;
 
   // Store actual dimensions for UI positioning (no scaling needed)
   m_logicalWidth = actualWidth;
@@ -334,8 +312,7 @@ bool GameEngine::init(const std::string_view title, const int width,
       // No need to manually destroy the surface, smart pointer will handle it
       GAMEENGINE_INFO("Window icon set successfully");
     } else {
-      GAMEENGINE_WARN("Failed to load window icon: " +
-                      std::string(SDL_GetError()));
+      GAMEENGINE_WARN("Failed to load window icon");
     }
   } catch (const std::exception &e) {
     GAMEENGINE_WARN("Error loading window icon: " + std::string(e.what()));
@@ -346,42 +323,22 @@ bool GameEngine::init(const std::string_view title, const int width,
 
   // Calculate DPI-aware font sizes before threading
   float dpiScale = 1.0f;
-  int dpiPixelWidth, dpiPixelHeight;
-  int dpiLogicalWidth, dpiLogicalHeight;
-  if (!SDL_GetWindowSizeInPixels(mp_window.get(), &dpiPixelWidth,
-                                 &dpiPixelHeight)) {
-    GAMEENGINE_ERROR("Failed to get window pixel size for DPI calculation: " +
-                     std::string(SDL_GetError()));
-    // Use window dimensions as fallback
-    dpiPixelWidth = m_windowWidth;
-    dpiPixelHeight = m_windowHeight;
-  }
-  if (!SDL_GetWindowSize(mp_window.get(), &dpiLogicalWidth,
-                         &dpiLogicalHeight)) {
-    GAMEENGINE_ERROR("Failed to get window logical size for DPI calculation: " +
-                     std::string(SDL_GetError()));
-    // Use stored dimensions as fallback
-    dpiLogicalWidth = m_windowWidth;
-    dpiLogicalHeight = m_windowHeight;
-  }
+
+  const int dpiLogicalWidth = logicalWidth;
+  const int dpiLogicalHeight = logicalHeight;
 
   if (dpiLogicalWidth > 0 && dpiLogicalHeight > 0) {
 #ifdef __APPLE__
     // On macOS, use the native display content scale for proper text rendering
     float displayScale = SDL_GetWindowDisplayScale(mp_window.get());
-    if (displayScale > 0.0f) {
-      dpiScale = displayScale;
-    } else {
-      dpiScale = 1.0f;
-    }
+    dpiScale = (displayScale > 0.0f) ? displayScale : 1.0f;
     GAMEENGINE_INFO("macOS display content scale: " + std::to_string(dpiScale) +
                     (displayScale > 0.0f ? " (detected)" : " (fallback)"));
 #else
     // On other platforms, don't apply additional DPI scaling - SDL3 logical
     // presentation handles it
     dpiScale = 1.0f;
-    GAMEENGINE_INFO("Non-macOS: Using DPI scale 1.0 (SDL3 logical presentation "
-                    "handles scaling)");
+    GAMEENGINE_INFO("Non-macOS: Using DPI scale 1.0 (SDL3 logical presentation handles scaling)");
 #endif
   }
 
@@ -397,9 +354,24 @@ bool GameEngine::init(const std::string_view title, const int width,
 
   // Use multiple threads for initialization
   std::vector<std::future<bool>> initTasks; // Initialization tasks vector
-  initTasks.reserve(9); // Reserve capacity for typical number of init tasks
+  initTasks.reserve(10); // Reserve capacity for typical number of init tasks
 
-  // Initialize input manager in a background thread - #1
+  // CRITICAL: Initialize Event Manager FIRST - #1
+  // All other managers that register event handlers depend on this
+  initTasks.push_back(
+      HammerEngine::ThreadSystem::Instance().enqueueTaskWithResult(
+          []() -> bool {
+            GAMEENGINE_INFO("Creating Event Manager");
+            EventManager &eventMgr = EventManager::Instance();
+            if (!eventMgr.init()) {
+              GAMEENGINE_CRITICAL("Failed to initialize Event Manager");
+              return false;
+            }
+            GAMEENGINE_INFO("Event Manager initialized successfully");
+            return true;
+          }));
+
+  // Initialize input manager in a background thread - #2
   initTasks.push_back(
       HammerEngine::ThreadSystem::Instance().enqueueTaskWithResult(
           []() -> bool {
@@ -421,7 +393,7 @@ bool GameEngine::init(const std::string_view title, const int width,
   texMgr.load(std::string(textureResPath), std::string(texturePrefix),
               mp_renderer.get());
 
-  // Initialize sound manager in a separate thread - #2
+  // Initialize sound manager in a separate thread - #3
   initTasks.push_back(
       HammerEngine::ThreadSystem::Instance().enqueueTaskWithResult(
           []() -> bool {
@@ -443,7 +415,7 @@ bool GameEngine::init(const std::string_view title, const int width,
             return true;
           }));
 
-  // Initialize font manager in a separate thread - #3
+  // Initialize font manager in a separate thread - #4
   initTasks.push_back(
       HammerEngine::ThreadSystem::Instance().enqueueTaskWithResult(
           [this]() -> bool {
@@ -466,7 +438,7 @@ bool GameEngine::init(const std::string_view title, const int width,
             return true;
           }));
 
-  // Initialize save game manager in a separate thread - #4
+  // Initialize save game manager in a separate thread - #5
   initTasks.push_back(
       HammerEngine::ThreadSystem::Instance().enqueueTaskWithResult(
           []() -> bool {
@@ -479,7 +451,7 @@ bool GameEngine::init(const std::string_view title, const int width,
             return true;
           }));
 
-  // Initialize AI Manager in a separate thread - #5
+  // Initialize AI Manager in a separate thread - #6
   initTasks.push_back(
       HammerEngine::ThreadSystem::Instance().enqueueTaskWithResult(
           []() -> bool {
@@ -490,20 +462,6 @@ bool GameEngine::init(const std::string_view title, const int width,
               return false;
             }
             GAMEENGINE_INFO("AI Manager initialized successfully");
-            return true;
-          }));
-
-  // Initialize Event Manager in a separate thread - #6
-  initTasks.push_back(
-      HammerEngine::ThreadSystem::Instance().enqueueTaskWithResult(
-          []() -> bool {
-            GAMEENGINE_INFO("Creating Event Manager");
-            EventManager &eventMgr = EventManager::Instance();
-            if (!eventMgr.init()) {
-              GAMEENGINE_CRITICAL("Failed to initialize Event Manager");
-              return false;
-            }
-            GAMEENGINE_INFO("Event Manager initialized successfully");
             return true;
           }));
 
@@ -526,23 +484,23 @@ bool GameEngine::init(const std::string_view title, const int width,
         return true;
       }));
 
-  // Initialize Resource Manager in a separate thread - #8
+  // Initialize Resource Template Manager in a separate thread - #8
   initTasks.push_back(
       HammerEngine::ThreadSystem::Instance().enqueueTaskWithResult(
           []() -> bool {
-            GAMEENGINE_INFO("Creating Resource Manager");
+            GAMEENGINE_INFO("Creating Resource Template Manager");
             ResourceTemplateManager &resourceMgr =
                 ResourceTemplateManager::Instance();
             if (!resourceMgr.init()) {
-              GAMEENGINE_CRITICAL("Failed to initialize Resource Manager");
+              GAMEENGINE_CRITICAL("Failed to initialize Resource Template Manager");
               return false;
             }
-            GAMEENGINE_INFO("Resource Manager initialized successfully");
+            GAMEENGINE_INFO("Resource Template Manager initialized successfully");
             return true;
           }));
 
-  // Initialize World Resource Manager for global resource tracking
-  auto worldResourceTask =
+  // Initialize World Resource Manager for global resource tracking - #9
+  initTasks.push_back(
       HammerEngine::ThreadSystem::Instance().enqueueTaskWithResult(
           []() -> bool {
             GAMEENGINE_INFO("Creating World Resource Manager");
@@ -555,10 +513,21 @@ bool GameEngine::init(const std::string_view title, const int width,
             }
             GAMEENGINE_INFO("World Resource Manager initialized successfully");
             return true;
-          });
+          }));
 
-  // Add the world resource task to the initialization tasks
-  initTasks.push_back(std::move(worldResourceTask));
+  // Initialize World Manager for world generation and management - #10
+  initTasks.push_back(
+      HammerEngine::ThreadSystem::Instance().enqueueTaskWithResult(
+          []() -> bool {
+            GAMEENGINE_INFO("Creating World Manager");
+            WorldManager &worldMgr = WorldManager::Instance();
+            if (!worldMgr.init()) {
+              GAMEENGINE_CRITICAL("Failed to initialize World Manager");
+              return false;
+            }
+            GAMEENGINE_INFO("World Manager initialized successfully");
+            return true;
+          }));
 
   // Initialize game state manager (on main thread because it directly calls
   // rendering) - MAIN THREAD
@@ -577,7 +546,7 @@ bool GameEngine::init(const std::string_view title, const int width,
 
   // Set cached renderer for performance optimization
   uiMgr.setRenderer(mp_renderer.get());
-  GAMEENGINE_INFO("UI Manager initialized successfully with cached renderer");
+  GAMEENGINE_DEBUG("UI Manager initialized successfully with cached renderer");
 
   // Setting Up initial game states
   mp_gameStateManager->addState(std::make_unique<LogoState>());
@@ -655,6 +624,14 @@ bool GameEngine::init(const std::string_view title, const int width,
     }
     mp_worldResourceManager = &worldResourceMgrTest;
 
+    // Validate World Manager before caching
+    WorldManager &worldMgrTest = WorldManager::Instance();
+    if (!worldMgrTest.isInitialized()) {
+      GAMEENGINE_CRITICAL("WorldManager not properly initialized before caching!");
+      return false;
+    }
+    mp_worldManager = &worldMgrTest;
+
     // InputManager not cached - handled in handleEvents() for proper SDL
     // architecture
 
@@ -688,6 +665,25 @@ bool GameEngine::init(const std::string_view title, const int width,
   }
   //_______________________________________________________________________________________________________________END
 
+  // Step 3: Post-initialization setup that requires manager dependencies
+  GAMEENGINE_INFO("Setting up manager cross-dependencies");
+  try {
+    // Setup WorldManager event handlers now that EventManager is guaranteed to be ready
+    WorldManager &worldMgr = WorldManager::Instance();
+    if (worldMgr.isInitialized()) {
+      worldMgr.setupEventHandlers();
+      GAMEENGINE_INFO("WorldManager event handlers setup complete");
+    } else {
+      GAMEENGINE_ERROR("WorldManager not initialized - cannot setup event handlers");
+      return false;
+    }
+    
+    GAMEENGINE_INFO("Manager cross-dependencies setup complete");
+  } catch (const std::exception &e) {
+    GAMEENGINE_ERROR("Error setting up manager cross-dependencies: " + std::string(e.what()));
+    return false;
+  }
+
   GAMEENGINE_INFO("Game " + std::string(title) + " initialized successfully!");
   GAMEENGINE_INFO("Running " + std::string(title) + " <]==={}");
 
@@ -703,9 +699,8 @@ bool GameEngine::init(const std::string_view title, const int width,
   m_lastUpdateFrame.store(0, std::memory_order_release);
   m_lastRenderedFrame.store(0, std::memory_order_release);
 
-  // setting logo state for default state
-  mp_gameStateManager->setState(
-      "LogoState"); // set to "LogoState" for normal operation.
+  // NOTE: Initial state will be pushed after GameLoop setup is complete
+  // This ensures the game loop is ready to handle state updates before any state enters
 
   return true;
 }
@@ -750,39 +745,9 @@ float GameEngine::getCurrentFPS() const {
   return 0.0f;
 }
 
-void GameEngine::update([[maybe_unused]] float deltaTime) {
+void GameEngine::update(float deltaTime) {
   // This method is now thread-safe and can be called from a worker thread
   std::lock_guard<std::mutex> lock(m_updateMutex);
-
-  // Use WorkerBudget system for coordinated task submission
-  if (HammerEngine::ThreadSystem::Exists()) {
-    auto &threadSystem = HammerEngine::ThreadSystem::Instance();
-
-    // Calculate worker budget for this frame
-    size_t availableWorkers =
-        static_cast<size_t>(threadSystem.getThreadCount());
-    HammerEngine::WorkerBudget budget =
-        HammerEngine::calculateWorkerBudget(availableWorkers);
-
-    // Submit engine coordination tasks respecting our worker budget
-    // Use high priority for engine tasks to ensure timely processing
-    threadSystem.enqueueTask(
-        [this, deltaTime]() {
-          // Critical game engine coordination
-          processEngineCoordination(deltaTime);
-        },
-        HammerEngine::TaskPriority::High, "GameEngine_Coordination");
-
-    // Only submit additional tasks if we have multiple workers allocated
-    if (budget.engineReserved > 1) {
-      threadSystem.enqueueTask(
-          [this]() {
-            // Secondary engine tasks (resource management, cleanup, etc.)
-            processEngineSecondaryTasks();
-          },
-          HammerEngine::TaskPriority::Normal, "GameEngine_Secondary");
-    }
-  }
 
   // Mark update as running with relaxed ordering (protected by mutex)
   m_updateRunning.store(true, std::memory_order_relaxed);
@@ -791,89 +756,65 @@ void GameEngine::update([[maybe_unused]] float deltaTime) {
   const size_t updateBufferIndex =
       m_currentBufferIndex.load(std::memory_order_acquire);
 
-  try {
-    // HYBRID MANAGER UPDATE ARCHITECTURE
-    // =====================================
-    // HYBRID MANAGER UPDATE ARCHITECTURE - Step 1: Global Updates (No Caching)
-    // =====================================
-    // Core engine systems are updated globally for optimal performance and
-    // consistency State-specific systems are updated by individual states for
-    // flexibility and efficiency
+  // HYBRID MANAGER UPDATE ARCHITECTURE
+  // =====================================
+  // HYBRID MANAGER UPDATE ARCHITECTURE - Step 1: Global Updates (No Caching)
+  // =====================================
+  // Core engine systems are updated globally for optimal performance and
+  // consistency State-specific systems are updated by individual states for
+  // flexibility and efficiency
 
-    // GLOBAL SYSTEMS (Updated by GameEngine):
-    // - AIManager: World simulation with 10K+ entities, benefits from
-    // consistent global updates
-    // - EventManager: Global game events (weather, scene changes), batch
-    // processing optimization
-    // - ParticleManager: Global particle system with weather integration,
-    // cache-optimized SoA updates
-    // - InputManager: Handled in handleEvents() for proper SDL event polling
-    // architecture
+  // GLOBAL SYSTEMS (Updated by GameEngine):
+  // - AIManager: World simulation with 10K+ entities, benefits from
+  // consistent global updates
+  // - EventManager: Global game events (weather, scene changes), batch
+  // processing optimization
+  // - ParticleManager: Global particle system with weather integration,
+  // cache-optimized SoA updates
+  // - InputManager: Handled in handleEvents() for proper SDL event polling
+  // architecture
 
-    // AI system - manages world entities across all states (cached reference
-    // access)
-    if (mp_aiManager) {
-      try {
-        mp_aiManager->update(deltaTime);
-      } catch (const std::exception &e) {
-        GAMEENGINE_ERROR("AIManager exception: " + std::string(e.what()));
-      } catch (...) {
-        GAMEENGINE_ERROR("AIManager unknown exception");
-      }
-    } else {
-      GAMEENGINE_ERROR("AIManager cache is null!");
-    }
-
-    // Event system - global game events and world simulation (cached reference
-    // access)
-    if (mp_eventManager) {
-      try {
-        mp_eventManager->update();
-      } catch (const std::exception &e) {
-        GAMEENGINE_ERROR("EventManager exception: " + std::string(e.what()));
-      } catch (...) {
-        GAMEENGINE_ERROR("EventManager unknown exception");
-      }
-    } else {
-      GAMEENGINE_ERROR("EventManager cache is null!");
-    }
-
-    // Particle system - global weather and effect particles (cached reference
-    // access)
-    if (mp_particleManager) {
-      try {
-        mp_particleManager->update(deltaTime);
-      } catch (const std::exception &e) {
-        GAMEENGINE_ERROR("ParticleManager exception: " + std::string(e.what()));
-      } catch (...) {
-        GAMEENGINE_ERROR("ParticleManager unknown exception");
-      }
-    } else {
-      GAMEENGINE_ERROR("ParticleManager cache is null!");
-    }
-
-    // STATE-MANAGED SYSTEMS (Updated by individual states):
-    // - UIManager: Optional, state-specific, only updated when UI is actually
-    // used See UIExampleState::update() for proper state-managed pattern
-
-    // Update game states - states handle their specific system needs
-    mp_gameStateManager->update(deltaTime);
-
-    // Increment the frame counter atomically for thread-safe render
-    // synchronization
-    m_lastUpdateFrame.fetch_add(1, std::memory_order_relaxed);
-
-    // Mark this buffer as ready for rendering
-    m_bufferReady[updateBufferIndex].store(true, std::memory_order_release);
-
-    // Mark update as completed with relaxed ordering (protected by condition
-    // variable)
-    m_updateCompleted.store(true, std::memory_order_relaxed);
-  } catch (const std::exception &e) {
-    GAMEENGINE_ERROR("Exception in update: " + std::string(e.what()));
-  } catch (...) {
-    GAMEENGINE_ERROR("Unknown exception in update");
+  // AI system - manages world entities across all states (cached reference
+  // access)
+  if (mp_aiManager) {
+    mp_aiManager->update(deltaTime);
+  } else {
+    GAMEENGINE_ERROR("AIManager cache is null!");
   }
+
+  // Event system - global game events and world simulation (cached reference
+  // access)
+  if (mp_eventManager) {
+    mp_eventManager->update();
+  } else {
+    GAMEENGINE_ERROR("EventManager cache is null!");
+  }
+
+  // Particle system - global weather and effect particles (cached reference
+  // access)
+  if (mp_particleManager) {
+    mp_particleManager->update(deltaTime);
+  } else {
+    GAMEENGINE_ERROR("ParticleManager cache is null!");
+  }
+
+  // STATE-MANAGED SYSTEMS (Updated by individual states):
+  // - UIManager: Optional, state-specific, only updated when UI is actually
+  // used See UIExampleState::update() for proper state-managed pattern
+
+  // Update game states - states handle their specific system needs
+  mp_gameStateManager->update(deltaTime);
+
+  // Increment the frame counter atomically for thread-safe render
+  // synchronization
+  m_lastUpdateFrame.fetch_add(1, std::memory_order_relaxed);
+
+  // Mark this buffer as ready for rendering
+  m_bufferReady[updateBufferIndex].store(true, std::memory_order_release);
+
+  // Mark update as completed with relaxed ordering (protected by condition
+  // variable)
+  m_updateCompleted.store(true, std::memory_order_relaxed);
 
   m_updateRunning.store(false, std::memory_order_relaxed);
 
@@ -888,61 +829,49 @@ void GameEngine::render() {
 
   // Always render - optimized buffer management ensures render buffer is always
   // valid
-  {
-    try {
-      if (!SDL_SetRenderDrawColor(
-              mp_renderer.get(),
-              HAMMER_GRAY)) { // Hammer Game Engine gunmetal dark grey
-        GAMEENGINE_ERROR("Failed to set render draw color: " +
-                         std::string(SDL_GetError()));
-      }
-      if (!SDL_RenderClear(mp_renderer.get())) {
-        GAMEENGINE_ERROR("Failed to clear renderer: " +
-                         std::string(SDL_GetError()));
-      }
-
-      // Make sure GameStateManager knows which buffer to render from
-      mp_gameStateManager->render();
-
-      if (!SDL_RenderPresent(mp_renderer.get())) {
-        GAMEENGINE_ERROR("Failed to present renderer: " +
-                         std::string(SDL_GetError()));
-      }
-
-      // Increment rendered frame counter for fast synchronization
-      m_lastRenderedFrame.fetch_add(1, std::memory_order_relaxed);
-    } catch (const std::exception &e) {
-      GAMEENGINE_ERROR("Exception in render: " + std::string(e.what()));
-    } catch (...) {
-      GAMEENGINE_ERROR("Unknown exception in render");
-    }
+  if (!SDL_SetRenderDrawColor(
+          mp_renderer.get(),
+          HAMMER_GRAY)) { // Hammer Game Engine gunmetal dark grey
+    GAMEENGINE_ERROR("Failed to set render draw color: " +
+                     std::string(SDL_GetError()));
   }
+  if (!SDL_RenderClear(mp_renderer.get())) {
+    GAMEENGINE_ERROR("Failed to clear renderer: " +
+                     std::string(SDL_GetError()));
+  }
+
+  // Make sure GameStateManager knows which buffer to render from
+  mp_gameStateManager->render();
+
+  if (!SDL_RenderPresent(mp_renderer.get())) {
+    GAMEENGINE_ERROR("Failed to present renderer: " +
+                     std::string(SDL_GetError()));
+  }
+
+  // Increment rendered frame counter for fast synchronization
+  m_lastRenderedFrame.fetch_add(1, std::memory_order_relaxed);
 }
 
 void GameEngine::waitForUpdate() {
   std::unique_lock<std::mutex> lock(m_updateMutex);
-  // Adaptive timeout based on system load
-  auto timeout = std::chrono::milliseconds(100);
 
-  // Wait for update completion with timeout
-  bool completed = m_updateCondition.wait_for(lock, timeout, [this] {
+  // Calculate an adaptive timeout based on the target FPS.
+  auto timeout = std::chrono::milliseconds(100); // Default timeout
+  if (auto gameLoop = m_gameLoop.lock()) {
+    const float targetFPS = gameLoop->getTargetFPS();
+    if (targetFPS > 0) {
+      // Set timeout to 2x the frame time as a responsive safety net
+      const auto frameTimeMs =
+          static_cast<long long>(1000.0 / targetFPS);
+      timeout = std::chrono::milliseconds(frameTimeMs * 2);
+    }
+  }
+
+  // Wait for update completion with the adaptive timeout
+  m_updateCondition.wait_for(lock, timeout, [this] {
     return m_updateCompleted.load(std::memory_order_acquire) ||
            m_stopRequested.load(std::memory_order_acquire);
   });
-
-  if (!completed && !m_stopRequested.load(std::memory_order_acquire)) {
-    // Timeout occurred - check if update is actually stuck
-    if (m_updateRunning.load(std::memory_order_acquire)) {
-      // Update is still running, give it more time
-      GAMEENGINE_DEBUG(
-          "Update taking longer than expected, waiting additional time");
-      m_updateCondition.wait_for(lock, std::chrono::milliseconds(50));
-    } else {
-      // Update not running, safe to continue
-      GAMEENGINE_DEBUG(
-          "Update wait timeout but update not running, continuing");
-    }
-  }
 }
 
 void GameEngine::signalUpdateComplete() {
@@ -1034,13 +963,13 @@ void GameEngine::setLogicalPresentationMode(
     SDL_RendererLogicalPresentation mode) {
   m_logicalPresentationMode = mode;
   if (mp_renderer) {
-    int width, height;
-    if (!SDL_GetWindowSize(mp_window.get(), &width, &height)) {
+    int width = m_windowWidth;
+    int height = m_windowHeight;
+    if (SDL_GetWindowSize(mp_window.get(), &width, &height)) {
+      // width/height updated
+    } else {
       GAMEENGINE_ERROR("Failed to get window size for logical presentation: " +
                        std::string(SDL_GetError()));
-      // Use stored dimensions as fallback
-      width = m_windowWidth;
-      height = m_windowHeight;
     }
     if (!SDL_SetRenderLogicalPresentation(mp_renderer.get(), width, height,
                                           mode)) {
@@ -1069,20 +998,6 @@ GameEngine::getLogicalPresentationMode() const noexcept {
   return m_logicalPresentationMode;
 }
 
-void GameEngine::processEngineCoordination(float deltaTime) {
-  // Critical engine coordination tasks
-  // This runs with high priority in the WorkerBudget system
-  (void)deltaTime; // Avoid unused parameter warning
-
-  // Engine-specific coordination logic can be added here
-  // Examples: state synchronization, resource coordination, etc.
-}
-
-void GameEngine::processEngineSecondaryTasks() {
-  // Secondary engine tasks that only run when we have multiple workers
-  // allocated Examples: performance monitoring, resource cleanup, etc.
-}
-
 void GameEngine::clean() {
   GAMEENGINE_INFO("Starting shutdown sequence...");
 
@@ -1094,23 +1009,12 @@ void GameEngine::clean() {
   // Cache manager references for better performance
   HammerEngine::ThreadSystem &threadSystem =
       HammerEngine::ThreadSystem::Instance();
-  FontManager &fontMgr = FontManager::Instance();
-  SoundManager &soundMgr = SoundManager::Instance();
-  EventManager &eventMgr = EventManager::Instance();
-  AIManager &aiMgr = AIManager::Instance();
-  SaveGameManager &saveMgr = SaveGameManager::Instance();
-  InputManager &inputMgr = InputManager::Instance();
-  TextureManager &texMgr = TextureManager::Instance();
-  ResourceTemplateManager &resourceMgr = ResourceTemplateManager::Instance();
-  WorldResourceManager &worldResourceMgr = WorldResourceManager::Instance();
 
-  // Wait for any pending background tasks to complete
-  if (!threadSystem.isShutdown()) {
-    GAMEENGINE_INFO("Waiting for background tasks to complete...");
-    while (threadSystem.isBusy()) {
-      std::this_thread::sleep_for(
-          std::chrono::milliseconds(1)); // Short delay to avoid busy waiting
-    }
+  // Clean up the thread system FIRST to ensure all threads are joined
+  // before we destroy the managers they might be using.
+  GAMEENGINE_INFO("Cleaning up Thread System...");
+  if (HammerEngine::ThreadSystem::Exists() && !threadSystem.isShutdown()) {
+    threadSystem.clean();
   }
 
   // Clean up engine managers (non-singletons)
@@ -1122,45 +1026,43 @@ void GameEngine::clean() {
   auto window_to_destroy = std::move(mp_window);
   auto renderer_to_destroy = std::move(mp_renderer);
 
-  // Clean up Managers in reverse order of their initialization
+  // Clean up Managers in the correct order, respecting dependencies.
+  // Systems that are used by other systems must be cleaned up last.
   GAMEENGINE_INFO("Cleaning up Particle Manager...");
-  ParticleManager &particleMgr = ParticleManager::Instance();
-  particleMgr.clean();
+  ParticleManager::Instance().clean();
 
   GAMEENGINE_INFO("Cleaning up Font Manager...");
-  fontMgr.clean();
+  FontManager::Instance().clean();
 
   GAMEENGINE_INFO("Cleaning up Sound Manager...");
-  soundMgr.clean();
+  SoundManager::Instance().clean();
 
   GAMEENGINE_INFO("Cleaning up UI Manager...");
-  UIManager &uiMgr = UIManager::Instance();
-  uiMgr.clean();
+  UIManager::Instance().clean();
 
   GAMEENGINE_INFO("Cleaning up Event Manager...");
-  eventMgr.clean();
+  EventManager::Instance().clean();
 
   GAMEENGINE_INFO("Cleaning up AI Manager...");
-  aiMgr.clean();
+  AIManager::Instance().clean();
 
   GAMEENGINE_INFO("Cleaning up Save Game Manager...");
-  saveMgr.clean();
+  SaveGameManager::Instance().clean();
 
   GAMEENGINE_INFO("Cleaning up Input Manager...");
-  inputMgr.clean();
+  InputManager::Instance().clean();
+
+  GAMEENGINE_INFO("Cleaning up World Manager...");
+  WorldManager::Instance().clean();
+
+  GAMEENGINE_INFO("Cleaning up World Resource Manager...");
+  WorldResourceManager::Instance().clean();
 
   GAMEENGINE_INFO("Cleaning up Texture Manager...");
-  texMgr.clean();
+  TextureManager::Instance().clean();
 
-  GAMEENGINE_INFO("Cleaning up Resource Managers...");
-  resourceMgr.clean();
-  worldResourceMgr.clean();
-
-  // Clean up the thread system
-  GAMEENGINE_INFO("Cleaning up Thread System...");
-  if (!threadSystem.isShutdown()) {
-    threadSystem.clean();
-  }
+  GAMEENGINE_INFO("Cleaning up Resource Template Manager...");
+  ResourceTemplateManager::Instance().clean();
 
   // Clear manager cache references
   GAMEENGINE_INFO("Clearing manager caches...");
@@ -1169,6 +1071,8 @@ void GameEngine::clean() {
   mp_particleManager = nullptr;
   mp_resourceTemplateManager = nullptr;
   mp_worldResourceManager = nullptr;
+  mp_worldManager = nullptr;
+
   // InputManager not cached
   GAMEENGINE_INFO("Manager caches cleared");
 
@@ -1177,9 +1081,17 @@ void GameEngine::clean() {
 
   // Explicitly reset smart pointers at the end, after all subsystems
   // are done using them - this will trigger their custom deleters
+  GAMEENGINE_INFO("Destroying renderer...");
   renderer_to_destroy.reset();
+  GAMEENGINE_INFO("Renderer destroyed successfully");
+  
+  GAMEENGINE_INFO("Destroying window...");
   window_to_destroy.reset();
+  GAMEENGINE_INFO("Window destroyed successfully");
+  
+  GAMEENGINE_INFO("Calling SDL_Quit...");
   SDL_Quit();
+  
   GAMEENGINE_INFO("SDL resources cleaned!");
   GAMEENGINE_INFO("Shutdown complete!");
 }
