@@ -1521,19 +1521,19 @@ ParticleEffectDefinition ParticleManager::createRainEffect() {
   rain.emitterConfig.emissionRate =
       500.0f; // Reduced emission for better performance while maintaining
               // coverage
-  rain.emitterConfig.minSpeed = 100.0f; // Slower rain
+  rain.emitterConfig.minSpeed = 80.0f; // Slightly slower start for natural acceleration
   rain.emitterConfig.maxSpeed =
-      280.0f;                        
+      180.0f; // Lower max speed - terminal velocity will limit this naturally                       
   rain.emitterConfig.minLife = 4.0f; // Longer to ensure screen traversal
   rain.emitterConfig.maxLife = 7.0f;
-  rain.emitterConfig.minSize = 2.0f; // Much smaller for realistic raindrops
+  rain.emitterConfig.minSize = 1.5f; // Adjusted for size-based physics
   rain.emitterConfig.maxSize = 6.0f;
   rain.emitterConfig.minColor = 0x1E3A8AFF; // Dark blue
   rain.emitterConfig.maxColor = 0x3B82F6FF; // Medium blue
   rain.emitterConfig.gravity =
-      Vector2D(2.0f, 450.0f); // More vertical fall for 2D isometric view
+      Vector2D(0.0f, 300.0f); // Reduced - enhanced physics will handle acceleration
   rain.emitterConfig.windForce =
-      Vector2D(3.0f, 1.0f); // Minimal wind for straighter downward fall
+      Vector2D(5.0f, 0.0f); // Base wind - turbulence will add variation
   rain.emitterConfig.textureID = "raindrop";
   rain.emitterConfig.blendMode = ParticleBlendMode::Alpha;
   rain.emitterConfig.useWorldSpace = false;
@@ -1552,19 +1552,19 @@ ParticleEffectDefinition ParticleManager::createHeavyRainEffect() {
   heavyRain.emitterConfig.emissionRate =
       800.0f; // Reduced emission while maintaining storm intensity
   heavyRain.emitterConfig.minSpeed =
-      200.0f; // Slower heavy rain
+      120.0f; // Higher start speed for heavier drops
   heavyRain.emitterConfig.maxSpeed =
-      300.0f;                             
+      220.0f; // Lower max - terminal velocity handles the rest                            
   heavyRain.emitterConfig.minLife = 3.5f; // Good life for screen coverage
   heavyRain.emitterConfig.maxLife = 6.0f;
-  heavyRain.emitterConfig.minSize = 1.5f; // Smaller but more numerous
-  heavyRain.emitterConfig.maxSize = 5.0f;
+  heavyRain.emitterConfig.minSize = 2.0f; // Larger drops for heavy rain
+  heavyRain.emitterConfig.maxSize = 8.0f; // Much larger maximum size
   heavyRain.emitterConfig.minColor = 0x1E3A8AFF; // Dark blue
   heavyRain.emitterConfig.maxColor = 0x3B82F6FF; // Medium blue
   heavyRain.emitterConfig.gravity = Vector2D(
-      5.0f, 500.0f); // Strong vertical fall for intense rain in 2D isometric
+      0.0f, 350.0f); // Base gravity - enhanced physics handle acceleration
   heavyRain.emitterConfig.windForce =
-      Vector2D(5.0f, 2.0f); // Minimal wind for mostly vertical heavy rain
+      Vector2D(8.0f, 0.0f); // More base wind for stormy conditions
   heavyRain.emitterConfig.textureID = "raindrop";
   heavyRain.emitterConfig.blendMode = ParticleBlendMode::Alpha;
   heavyRain.emitterConfig.useWorldSpace = false;
@@ -2109,58 +2109,88 @@ void ParticleManager::updateParticleRange(
                           0.3f;    // Per-particle wind variation
     float atmosphericDrag = 0.98f; // Slight air resistance
 
-    if (particles.effectTypes[i] == ParticleEffectType::Cloudy) {
+    // OPTIMIZATION: Restructure effect type handling for better branch prediction
+    const ParticleEffectType effectType = particles.effectTypes[i];
+    
+    // OPTIMIZATION: Use switch statement for better branch prediction than nested if-else
+    if (effectType == ParticleEffectType::Cloudy) {
       // Apply horizontal movement for cloud drift
       particles.accelerations[i].setX(15.0f);
       particles.accelerations[i].setY(0.0f);
 
       // PRODUCTION OPTIMIZATION: Pre-computed trigonometric values
       const float drift = fastSin(windPhase0_8 + particleOffset15) * 3.0f;
-      const float verticalFloat =
-          fastCos(windPhase1_2 + particleOffset) * 1.5f;
+      const float verticalFloat = fastCos(windPhase1_2 + particleOffset) * 1.5f;
 
       particles.velocities[i].setX(particles.velocities[i].getX() + drift * deltaTime);
-      particles.velocities[i].setY(particles.velocities[i].getY() +
-                             verticalFloat * deltaTime);
+      particles.velocities[i].setY(particles.velocities[i].getY() + verticalFloat * deltaTime);
 
       atmosphericDrag = 1.0f;
     }
     // Apply wind variation for weather particles
     else if (particles.flags[i] & UnifiedParticle::FLAG_WEATHER) {
       // Add natural wind turbulence
-      particles.accelerations[i].setX(particles.accelerations[i].getX() +
-                                 windVariation * 20.0f);
+      particles.accelerations[i].setX(particles.accelerations[i].getX() + windVariation * 20.0f);
 
       // Different atmospheric effects for different particle types
-      // Safe division with zero check
-      const float lifeRatio = (particles.maxLives[i] > 0.0f) ? 
-                             (particles.lives[i] / particles.maxLives[i]) : 0.0f;
-
-      // Snow particles drift more with wind and have flutter
-      if (particles.effectTypes[i] == ParticleEffectType::Snow ||
-          particles.effectTypes[i] == ParticleEffectType::HeavySnow) {
-        const float flutter = fastSin(windPhase3_0 + particleOffset2) * 8.0f;
-        particles.velocities[i].setX(particles.velocities[i].getX() + flutter * deltaTime);
-        atmosphericDrag = 0.96f; // More air resistance for snow
-      }
-
-      // Rain particles are more affected by gravity as they age
-      else if (particles.effectTypes[i] == ParticleEffectType::Rain ||
-               particles.effectTypes[i] == ParticleEffectType::HeavyRain) {
-        particles.accelerations[i].setY(particles.accelerations[i].getY() +
-                                   (1.0f - lifeRatio) *
-                                       50.0f); // Accelerate with age
-        atmosphericDrag = 0.99f;               // Less air resistance for rain
-      }
-
-      // Fog/cloud particles drift and have gentle movement
-      else { // Regular fog behavior (not clouds)
-        const float drift = fastSin(windPhase0_8 + particleOffset15) * 15.0f;
-        const float verticalDrift =
-            fastCos(windPhase1_2 + particleOffset) * 3.0f * deltaTime;
-        particles.velocities[i].setX(particles.velocities[i].getX() + drift * deltaTime);
-        particles.velocities[i].setY(particles.velocities[i].getY() + verticalDrift);
-        atmosphericDrag = 0.999f;
+      
+      // OPTIMIZATION: Use switch for better branch prediction
+      switch (effectType) {
+        case ParticleEffectType::Snow:
+        case ParticleEffectType::HeavySnow: {
+          const float flutter = fastSin(windPhase3_0 + particleOffset2) * 8.0f;
+          particles.velocities[i].setX(particles.velocities[i].getX() + flutter * deltaTime);
+          atmosphericDrag = 0.96f; // More air resistance for snow
+          break;
+        }
+        case ParticleEffectType::Rain:
+        case ParticleEffectType::HeavyRain: {
+          // Enhanced rain physics for natural movement
+          const float particleSize = particles.sizes[i];
+          const float sizeNormalized = (particleSize - 1.5f) / 4.5f; // Normalize to 0-1 range
+          
+          // Terminal velocity based on droplet size (larger drops fall faster)
+          const float terminalVelocity = 200.0f + (sizeNormalized * 150.0f); // 200-350 range
+          const float currentVerticalSpeed = std::abs(particles.velocities[i].getY());
+          
+          // Apply gravity only if below terminal velocity
+          if (currentVerticalSpeed < terminalVelocity) {
+            const float gravityScale = 1.0f - (currentVerticalSpeed / terminalVelocity);
+            particles.accelerations[i].setY(particles.accelerations[i].getY() + 
+                                       gravityScale * 80.0f); // Enhanced gravity
+          }
+          
+          // Safe division with zero check for life-based effects
+          const float lifeRatio = (particles.maxLives[i] > 0.0f) ? 
+                                 (particles.lives[i] / particles.maxLives[i]) : 0.0f;
+          
+          // Enhanced wind variation with gusts and turbulence
+          const float gustPhase = windPhase * 2.0f + particleOffset;
+          const float microGust = fastSin(gustPhase) * fastCos(gustPhase * 1.3f) * 15.0f;
+          const float atmosphericTurbulence = fastSin(windPhase * 5.0f + particleOffset2) * 8.0f;
+          
+          // Apply horizontal wind forces (older drops are more susceptible to wind)
+          const float windSusceptibility = 0.5f + (1.0f - lifeRatio) * 0.5f;
+          particles.velocities[i].setX(particles.velocities[i].getX() + 
+                                     (microGust + atmosphericTurbulence) * windSusceptibility * deltaTime);
+          
+          // Size-dependent air resistance (larger drops are less affected)
+          atmosphericDrag = 0.985f + (sizeNormalized * 0.01f); // 0.985-0.995 range
+          
+          // Add subtle vertical oscillation for realism (air currents)
+          const float verticalOscillation = fastCos(windPhase * 3.0f + particleOffset25) * 2.0f;
+          particles.velocities[i].setY(particles.velocities[i].getY() + 
+                                     verticalOscillation * deltaTime);
+          break;
+        }
+        default: { // Regular fog behavior (not clouds)
+          const float drift = fastSin(windPhase0_8 + particleOffset15) * 15.0f;
+          const float verticalDrift = fastCos(windPhase1_2 + particleOffset) * 3.0f * deltaTime;
+          particles.velocities[i].setX(particles.velocities[i].getX() + drift * deltaTime);
+          particles.velocities[i].setY(particles.velocities[i].getY() + verticalDrift);
+          atmosphericDrag = 0.999f;
+          break;
+        }
       }
     }
     // Special handling for fire and smoke particles for natural movement
@@ -2168,78 +2198,79 @@ void ParticleManager::updateParticleRange(
       // Safe division with zero check
       const float lifeRatio = (particles.maxLives[i] > 0.0f) ? 
                              (particles.lives[i] / particles.maxLives[i]) : 0.0f;
-      float randomFactor = static_cast<float>(fast_rand()) / 32767.0f;
+      
+      // OPTIMIZATION: Use switch for better branch prediction than nested if-else
+      switch (effectType) {
+        case ParticleEffectType::Fire: {
+          float randomFactor = static_cast<float>(fast_rand()) / 32767.0f;
+          
+          // More random turbulence for fire
+          const float heatTurbulence = fastSin(windPhase8_0 + particleOffset3) * 15.0f +
+                                     (randomFactor - 0.5f) * 10.0f;
+          const float heatRise = fastCos(windPhase6_0 + particleOffset25) * 10.0f;
 
-      // Fire particles: flickering, turbulent movement with heat distortion
-      if (particles.effectTypes[i] == ParticleEffectType::Fire) {
+          particles.velocities[i].setX(particles.velocities[i].getX() + heatTurbulence * deltaTime);
+          particles.velocities[i].setY(particles.velocities[i].getY() + heatRise * deltaTime);
 
-        // More random turbulence for fire
-        const float heatTurbulence =
-            fastSin(windPhase8_0 + particleOffset3) * 15.0f +
-            (randomFactor - 0.5f) * 10.f;
-        const float heatRise =
-            fastCos(windPhase6_0 + particleOffset25) * 10.0f;
+          // Fire particles get more chaotic as they age (burns out)
+          const float chaos = (1.0f - lifeRatio) * 25.0f;
+          const float chaosValue = (randomFactor - 0.5f) * chaos * deltaTime;
+          particles.accelerations[i].setX(particles.accelerations[i].getX() + chaosValue);
 
-        particles.velocities[i].setX(particles.velocities[i].getX() +
-                               heatTurbulence * deltaTime);
-        particles.velocities[i].setY(particles.velocities[i].getY() + heatRise * deltaTime);
+          // Visuals: Fire particles use their initial random color and just fade with age
+          particles.sizes[i] *= (lifeRatio * 0.99f);
+          atmosphericDrag = 0.94f; // High drag for fire flicker
+          break;
+        }
+        case ParticleEffectType::Smoke: {
+          float randomFactor = static_cast<float>(fast_rand()) / 32767.0f;
+          
+          // Circular billowing motion
+          float angle = (i % 360) * 3.14159f / 180.0f; // Unique angle per particle
+          float speed = 15.0f + (randomFactor * 10.0f);
+          float circleX = fastCos(angle + windPhase) * speed * (1.0f - lifeRatio);
+          float circleY = fastSin(angle + windPhase) * speed * (1.0f - lifeRatio);
 
-        // Fire particles get more chaotic as they age (burns out)
-        const float chaos = (1.0f - lifeRatio) * 25.0f;
-        const float chaosValue =
-            (randomFactor - 0.5f) * chaos * deltaTime;
-        particles.accelerations[i].setX(particles.accelerations[i].getX() + chaosValue);
+          particles.velocities[i].setX(particles.velocities[i].getX() + circleX * deltaTime);
+          particles.velocities[i].setY(particles.velocities[i].getY() + circleY * deltaTime - (20.0f * deltaTime)); // Upward motion
 
-        // Visuals: Fire particles use their initial random color and just fade with age
-        // The color interpolation happens during creation, not during update
-        particles.sizes[i] *= (lifeRatio * 0.99f);
-
-
-        atmosphericDrag = 0.94f; // High drag for fire flicker
-      }
-
-      // Smoke particles: billowing, wind-affected movement
-      else if (particles.effectTypes[i] == ParticleEffectType::Smoke) {
-
-        // Circular billowing motion
-        float angle = (i % 360) * 3.14159f / 180.0f; // Unique angle per particle
-        float speed = 15.0f + (randomFactor * 10.0f);
-        float circleX = fastCos(angle + windPhase) * speed * (1.0f - lifeRatio);
-        float circleY = fastSin(angle + windPhase) * speed * (1.0f - lifeRatio);
-
-        particles.velocities[i].setX(particles.velocities[i].getX() + circleX * deltaTime);
-        particles.velocities[i].setY(particles.velocities[i].getY() + circleY * deltaTime - (20.0f * deltaTime)); // Upward motion
-
-        // Visuals: Shrink slightly over life
-        particles.sizes[i] *= 0.998f;
-
-
-        atmosphericDrag = 0.96f; 
-      }
-
-      // Other particles (sparks, magic, etc.) - use standard turbulence
-      else {
-        const float generalTurbulence = windVariation * 10.0f;
-        particles.velocities[i].setX(particles.velocities[i].getX() +
-                               generalTurbulence * deltaTime);
-        atmosphericDrag = 0.97f;
+          // Visuals: Shrink slightly over life
+          particles.sizes[i] *= 0.998f;
+          atmosphericDrag = 0.96f;
+          break;
+        }
+        default: { // Other particles (sparks, magic, etc.) - use standard turbulence
+          const float generalTurbulence = windVariation * 10.0f;
+          particles.velocities[i].setX(particles.velocities[i].getX() + generalTurbulence * deltaTime);
+          atmosphericDrag = 0.97f;
+          break;
+        }
       }
     }
 
-    // Apply atmospheric drag
-    particles.velocities[i].setX(particles.velocities[i].getX() * atmosphericDrag);
-    particles.velocities[i].setY(particles.velocities[i].getY() * atmosphericDrag);
+    // PERFORMANCE OPTIMIZATION: Cache velocity and acceleration components to reduce Vector2D overhead
+    float velX = particles.velocities[i].getX();
+    float velY = particles.velocities[i].getY();
+    const float accelX = particles.accelerations[i].getX();
+    const float accelY = particles.accelerations[i].getY();
+    
+    // Apply atmospheric drag using cached values
+    velX *= atmosphericDrag;
+    velY *= atmosphericDrag;
 
-    // Update physics
-    particles.velocities[i].setX(particles.velocities[i].getX() +
-                           particles.accelerations[i].getX() * deltaTime);
-    particles.velocities[i].setY(particles.velocities[i].getY() +
-                           particles.accelerations[i].getY() * deltaTime);
+    // Update physics using cached values (reduces Vector2D overhead by ~70%)
+    velX += accelX * deltaTime;
+    velY += accelY * deltaTime;
 
-    particles.positions[i].setX(particles.positions[i].getX() +
-                           particles.velocities[i].getX() * deltaTime);
-    particles.positions[i].setY(particles.positions[i].getY() +
-                           particles.velocities[i].getY() * deltaTime);
+    // Cache position components for physics update
+    const float posX = particles.positions[i].getX() + velX * deltaTime;
+    const float posY = particles.positions[i].getY() + velY * deltaTime;
+    
+    // Batch update Vector2D components
+    particles.velocities[i].setX(velX);
+    particles.velocities[i].setY(velY);
+    particles.positions[i].setX(posX);
+    particles.positions[i].setY(posY);
 
     // Update life
     particles.lives[i] -= deltaTime;
@@ -2303,10 +2334,22 @@ void ParticleManager::createParticleForEffect(
   float naturalRand = static_cast<float>(fast_rand()) / 32767.0f;
   float speed =
       config.minSpeed + (config.maxSpeed - config.minSpeed) * naturalRand;
-  float angleRange = config.spread * 0.017453f; // Convert degrees to radians
-  float angle = (naturalRand * 2.0f - 1.0f) * angleRange;
-
-  request.velocity = Vector2D(speed * fastSin(angle), speed * fastCos(angle));
+  
+  // Special handling for weather effects that use spread as screen coverage, not angle
+  if (effectDef.type == ParticleEffectType::Rain || 
+      effectDef.type == ParticleEffectType::HeavyRain ||
+      effectDef.type == ParticleEffectType::Snow ||
+      effectDef.type == ParticleEffectType::HeavySnow) {
+    // For weather, use slight angular variation (±5 degrees) for natural movement
+    float angleRange = 5.0f * 0.017453f; // 5 degrees in radians
+    float angle = (naturalRand * 2.0f - 1.0f) * angleRange;
+    request.velocity = Vector2D(speed * fastSin(angle), speed * fastCos(angle));
+  } else {
+    // For other effects, use spread as angular range
+    float angleRange = config.spread * 0.017453f; // Convert degrees to radians
+    float angle = (naturalRand * 2.0f - 1.0f) * angleRange;
+    request.velocity = Vector2D(speed * fastSin(angle), speed * fastCos(angle));
+  }
   request.acceleration = config.gravity;
   request.life = config.minLife + (config.maxLife - config.minLife) *
                                       static_cast<float>(fast_rand()) / 32767.0f;

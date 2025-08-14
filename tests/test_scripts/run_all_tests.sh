@@ -85,6 +85,7 @@ CORE_TEST_SCRIPTS=(
   "$SCRIPT_DIR/run_save_tests.sh"
   "$SCRIPT_DIR/run_game_state_manager_tests.sh"
   "$SCRIPT_DIR/run_event_tests.sh"
+  "$SCRIPT_DIR/run_weather_event_tests.sh"
   "$SCRIPT_DIR/run_particle_manager_tests.sh"
   "$SCRIPT_DIR/run_resource_tests.sh"
   "$SCRIPT_DIR/run_resource_edge_case_tests.sh"

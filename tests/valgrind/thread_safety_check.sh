@@ -31,11 +31,15 @@ declare -A THREAD_TESTS=(
     ["thread_safe_ai_mgr"]="thread_safe_ai_manager_tests"
     ["thread_safe_ai_integ"]="thread_safe_ai_integration_tests"
     ["event_manager"]="event_manager_tests"
+    ["weather_events"]="weather_event_tests"
     ["ai_optimization"]="ai_optimization_tests"
     ["particle_threading"]="particle_manager_threading_tests"
     ["resource_integration"]="resource_integration_tests"
     ["resource_manager"]="resource_manager_tests"
     ["world_resource_manager"]="world_resource_manager_tests"
+    ["world_generator"]="world_generator_tests"
+    ["world_manager_events"]="world_manager_event_integration_tests"
+    ["world_manager"]="world_manager_tests"
     ["resource_edge_case"]="resource_edge_case_tests"
 )
 

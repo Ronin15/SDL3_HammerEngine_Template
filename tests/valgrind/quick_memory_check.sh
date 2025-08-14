@@ -25,6 +25,7 @@ mkdir -p "${RESULTS_DIR}"
 declare -A QUICK_TESTS=(
     ["buffer_util"]="buffer_utilization_tests"
     ["event_mgr"]="event_manager_tests"
+    ["weather_events"]="weather_event_tests"
     ["ai_opt"]="ai_optimization_tests"
     ["thread_sys"]="thread_system_tests"
     ["particle_core"]="particle_manager_core_tests"
