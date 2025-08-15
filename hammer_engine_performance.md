@@ -1,4 +1,4 @@
-# Hammer Game Engine Performance Summary
+# Hammer Game Engine Performance Summary - Debug build
 
 ## System Specifications
 - **CPU**: Intel 13th Gen i5-1340P
