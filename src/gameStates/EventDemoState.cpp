@@ -578,7 +578,7 @@ void EventDemoState::createTestEvents() {
   bool success1 =
       eventMgr.createWeatherEvent("demo_clear", "Clear", 1.0f, 2.0f);
   bool success2 =
-      eventMgr.createWeatherEvent("demo_rainy", "Rainy", 0.8f, 3.0f);
+      eventMgr.createWeatherEvent("demo_rainy", "Rainy", 0.1f, 3.0f);
   bool success3 =
       eventMgr.createWeatherEvent("demo_stormy", "Stormy", 0.9f, 1.5f);
   bool success4 =
