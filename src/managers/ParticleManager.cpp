@@ -1521,7 +1521,7 @@ ParticleEffectDefinition ParticleManager::createRainEffect() {
   rain.layer = UnifiedParticle::RenderLayer::Background;
   rain.emitterConfig.spread = static_cast<float>(gameEngine.getLogicalWidth());
   rain.emitterConfig.emissionRate =
-      400.0f; // Reduced emission for better performance while maintaining
+      300.0f; // Reduced emission for better performance while maintaining
               // coverage
 rain.emitterConfig.minSpeed = 600.0f; // Moderate speed for visibility
 rain.emitterConfig.maxSpeed =
@@ -1552,7 +1552,7 @@ ParticleEffectDefinition ParticleManager::createHeavyRainEffect() {
   heavyRain.emitterConfig.spread =
       static_cast<float>(gameEngine.getLogicalWidth());
   heavyRain.emitterConfig.emissionRate =
-      800.0f; // Reduced emission while maintaining storm intensity
+      500.0f; // Reduced emission while maintaining storm intensity
   heavyRain.emitterConfig.minSpeed =
       120.0f; // Higher start speed for heavier drops
   heavyRain.emitterConfig.maxSpeed =
@@ -1703,7 +1703,7 @@ ParticleEffectDefinition ParticleManager::createFireEffect() {
   fire.emitterConfig.spread =
       60.0f; // Tighter spread for a more controlled flame
   fire.emitterConfig.emissionRate =
-      175.0f; // Halved for performance
+      100.0f; // Halved for performance
   fire.emitterConfig.minSpeed = 20.0f; // Faster base speed for more energy
   fire.emitterConfig.maxSpeed = 110.0f; // Higher max for more dynamic flicker
   fire.emitterConfig.minLife = 0.2f;    // Shorter life for faster flicker
@@ -1767,7 +1767,7 @@ ParticleEffectDefinition ParticleManager::createSparksEffect() {
   sparks.emitterConfig.spread =
       180.0f; // Wide spread for explosive spark pattern
   sparks.emitterConfig.emissionRate =
-      150.0f; // Reduced from 300 for better performance
+      100.0f; // Reduced from 300 for better performance
               // while maintaining explosive sparks
   sparks.emitterConfig.minSpeed = 80.0f; // Fast initial velocity
   sparks.emitterConfig.maxSpeed = 200.0f;
