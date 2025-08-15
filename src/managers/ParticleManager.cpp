@@ -1523,11 +1523,11 @@ ParticleEffectDefinition ParticleManager::createRainEffect() {
   rain.emitterConfig.emissionRate =
       300.0f; // Reduced emission for better performance while maintaining
               // coverage
-rain.emitterConfig.minSpeed = 600.0f; // Moderate speed for visibility
+rain.emitterConfig.minSpeed = 400.0f; // Moderate speed for visibility
 rain.emitterConfig.maxSpeed =
-    220.0f; // Fast but not too fast to see
-  rain.emitterConfig.minLife = 3.5f; // Shorter life for faster transition
-  rain.emitterConfig.maxLife = 6.0f;
+    600.0f; // Fast but not too fast to see
+  rain.emitterConfig.minLife = 1.5f; // Shorter life for faster transition
+  rain.emitterConfig.maxLife = 2.5f;
 rain.emitterConfig.minSize = 3.0f; // Much smaller raindrops
 rain.emitterConfig.maxSize = 3.5f; // Smaller max size
   rain.emitterConfig.minColor = 0x1E3A8AFF; // Dark blue
