@@ -1515,24 +1515,25 @@ void ParticleManager::registerBuiltInEffects() {
 }
 
 ParticleEffectDefinition ParticleManager::createRainEffect() {
+  PARTICLE_INFO("Creating Rain effect: minSize=0.3f, maxSize=0.7f, minSpeed=220f, maxSpeed=380f");
   const auto &gameEngine = GameEngine::Instance();
   ParticleEffectDefinition rain("Rain", ParticleEffectType::Rain);
   rain.layer = UnifiedParticle::RenderLayer::Background;
   rain.emitterConfig.spread = static_cast<float>(gameEngine.getLogicalWidth());
   rain.emitterConfig.emissionRate =
-      500.0f; // Reduced emission for better performance while maintaining
+      400.0f; // Reduced emission for better performance while maintaining
               // coverage
-  rain.emitterConfig.minSpeed = 80.0f; // Slightly slower start for natural acceleration
-  rain.emitterConfig.maxSpeed =
-      180.0f; // Lower max speed - terminal velocity will limit this naturally                       
-  rain.emitterConfig.minLife = 4.0f; // Longer to ensure screen traversal
-  rain.emitterConfig.maxLife = 7.0f;
-  rain.emitterConfig.minSize = 1.5f; // Adjusted for size-based physics
-  rain.emitterConfig.maxSize = 6.0f;
+rain.emitterConfig.minSpeed = 600.0f; // Moderate speed for visibility
+rain.emitterConfig.maxSpeed =
+    220.0f; // Fast but not too fast to see
+  rain.emitterConfig.minLife = 3.5f; // Shorter life for faster transition
+  rain.emitterConfig.maxLife = 6.0f;
+rain.emitterConfig.minSize = 3.0f; // Much smaller raindrops
+rain.emitterConfig.maxSize = 3.5f; // Smaller max size
   rain.emitterConfig.minColor = 0x1E3A8AFF; // Dark blue
   rain.emitterConfig.maxColor = 0x3B82F6FF; // Medium blue
-  rain.emitterConfig.gravity =
-      Vector2D(0.0f, 300.0f); // Reduced - enhanced physics will handle acceleration
+rain.emitterConfig.gravity =
+    Vector2D(0.0f, 400.0f); // Moderate gravity for visibility
   rain.emitterConfig.windForce =
       Vector2D(5.0f, 0.0f); // Base wind - turbulence will add variation
   rain.emitterConfig.textureID = "raindrop";
@@ -2489,8 +2490,11 @@ ParticleEffectType
 ParticleManager::weatherStringToEnum(const std::string &weatherType,
                                      float intensity) const {
   if (weatherType == "Rainy") {
-    return (intensity > 0.7f) ? ParticleEffectType::HeavyRain
+    ParticleEffectType result = (intensity > 0.9f) ? ParticleEffectType::HeavyRain
                               : ParticleEffectType::Rain;
+    PARTICLE_INFO("Weather mapping: \"" + weatherType + "\" intensity=" + std::to_string(intensity) + 
+                  " -> " + (result == ParticleEffectType::Rain ? "Rain" : "HeavyRain"));
+    return result;
   } else if (weatherType == "Snowy") {
     return (intensity > 0.7f) ? ParticleEffectType::HeavySnow
                               : ParticleEffectType::Snow;
