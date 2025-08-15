@@ -91,8 +91,7 @@ goto :parse_args
 
 :: Define test categories
 :: Core functionality tests (fast execution)
-set CORE_TEST_COUNT=18
-
+set CORE_TEST_COUNT=19
 :: Performance scaling benchmarks (slow execution)
 set BENCHMARK_TEST_COUNT=3
 
@@ -155,6 +154,7 @@ if "%RUN_CORE%"=="true" (
     call :run_single_test "run_save_tests.bat" false
     call :run_single_test "run_game_state_manager_tests.bat" false
     call :run_single_test "run_event_tests.bat" false
+    call :run_single_test "run_weather_event_tests.bat" false
     call :run_single_test "run_particle_manager_tests.bat" false
     call :run_single_test "run_json_reader_tests.bat" false
     call :run_single_test "run_resource_tests.bat" false
@@ -259,7 +259,7 @@ if "%VERBOSE%"=="true" set test_args=%test_args% --verbose
 if "%ERRORS_ONLY%"=="true" (
     :: Errors-only mode: capture output and filter
     set "temp_file=%TEMP%\test_output_%RANDOM%.txt"
-    call "%test_script%" %test_args% >!temp_file! 2>&1
+    call "%test_script%" %test_args% >"!temp_file!" 2>&1
     set test_exit_code=!ERRORLEVEL!
     
     :: Check for failures - use more specific patterns for actual test failures
@@ -278,8 +278,7 @@ if "%ERRORS_ONLY%"=="true" (
     )
     
     :: Clean up temp file
-    if exist "!temp_file!" del "!temp_file!" >nul 2>&1
-) else (
+    if exist "!temp_file!" del "!temp_file!" >nul 2>&1) else (
     :: Normal mode: show all output
     call "%test_script%" %test_args%
     set test_exit_code=!ERRORLEVEL!
