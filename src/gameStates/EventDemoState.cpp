@@ -1914,16 +1914,19 @@ void EventDemoState::initializeCamera() {
   
   // Configure camera to follow player
   if (m_player && m_camera) {
+    // Match GamePlayState: disable camera event firing for consistency
+    m_camera->setEventFiringEnabled(false);
+
     // Set target and enable follow mode
     std::weak_ptr<Entity> playerAsEntity = std::static_pointer_cast<Entity>(m_player);
     m_camera->setTarget(playerAsEntity);
     m_camera->setMode(HammerEngine::Camera::Mode::Follow);
     
-    // Set up camera configuration for smooth following (RESTORED ORIGINAL SMOOTH SETTINGS)
+    // Set up camera configuration for fast, smooth following (match GamePlayState)
     HammerEngine::Camera::Config config;
-    config.followSpeed = 2.5f;         // Original smooth settings
+    config.followSpeed = 8.0f;         // Faster follow for action gameplay
     config.deadZoneRadius = 0.0f;      // No dead zone - always follow
-    config.smoothingFactor = 0.85f;    // Original exponential smoothing
+    config.smoothingFactor = 0.80f;    // Quicker response smoothing
     config.maxFollowDistance = 9999.0f; // No distance limit
     config.clampToWorldBounds = true; // Keep camera within world
     m_camera->setConfig(config);
