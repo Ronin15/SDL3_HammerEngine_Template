@@ -419,9 +419,9 @@ void GamePlayState::initializeCamera() {
     
     // Set up camera configuration for smooth following
     HammerEngine::Camera::Config config;
-    config.followSpeed = 2.5f;         // Smooth following speed
+    config.followSpeed = 8.0f;         // Faster follow for action gameplay
     config.deadZoneRadius = 0.0f;      // No dead zone - always follow
-    config.smoothingFactor = 0.85f;    // Exponential smoothing
+    config.smoothingFactor = 0.80f;    // Quicker response smoothing
     config.maxFollowDistance = 9999.0f; // No distance limit
     config.clampToWorldBounds = true;  // ENABLE clamping - player is now bounded so no jitter
     m_camera->setConfig(config);

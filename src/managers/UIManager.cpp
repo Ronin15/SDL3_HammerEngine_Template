@@ -2198,10 +2198,37 @@ void UIManager::renderCheckbox(SDL_Renderer *renderer,
     auto &fontManager = FontManager::Instance();
     int textX = boxBounds.x + boxBounds.width + component->m_style.padding;
     int textY = component->m_bounds.y + component->m_bounds.height / 2;
-  fontManager.drawTextAligned(component->m_text, component->m_style.fontID,
+
+    // Map UIAlignment enum to FontManager alignment codes
+    int alignmentCode = 1; // default to left alignment
+    switch (component->m_style.textAlign) {
+    case UIAlignment::CENTER_CENTER:
+      alignmentCode = 0; // center
+      break;
+    case UIAlignment::CENTER_RIGHT:
+      alignmentCode = 2; // right
+      break;
+    case UIAlignment::CENTER_LEFT:
+      alignmentCode = 1; // left
+      break;
+    case UIAlignment::TOP_CENTER:
+      alignmentCode = 4; // top-center
+      break;
+    case UIAlignment::TOP_LEFT:
+      alignmentCode = 3; // top-left
+      break;
+    case UIAlignment::TOP_RIGHT:
+      alignmentCode = 5; // top-right
+      break;
+    default:
+      alignmentCode = 1; // left
+      break;
+    }
+
+    fontManager.drawTextAligned(component->m_text, component->m_style.fontID,
                                 textX, textY, component->m_style.textColor,
-renderer, static_cast<int>(component->m_style.textAlign));
-}
+                                renderer, alignmentCode);
+  }
 }
 
 

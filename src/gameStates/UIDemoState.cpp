@@ -117,6 +117,9 @@ bool UIExampleState::enter() {
 }
 
 void UIExampleState::update(float deltaTime) {
+    // Advance UI animations and interactions
+    UIManager::Instance().update(deltaTime);
+
     // Update progress bar animation
     updateProgressBar(deltaTime);
 }
@@ -126,9 +129,6 @@ void UIExampleState::render() {
     // Each state that uses UI is responsible for rendering its own UI components
     // This ensures proper render order and state-specific UI management
     auto& ui = UIManager::Instance();
-    if (!ui.isShutdown()) {
-        ui.update(0.0); // UI updates are not time-dependent in this state
-    }
     ui.render();
 }
 

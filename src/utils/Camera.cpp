@@ -41,9 +41,7 @@ Camera::Camera(float x, float y, float viewportWidth, float viewportHeight)
 }
 
 void Camera::update(float deltaTime) {
-    // Minimal update - only what's absolutely necessary
-    
-    // Update shake if active
+    // Update camera shake first (no-ops if inactive)
     if (m_shakeTimeRemaining > 0.0f) {
         m_shakeTimeRemaining -= deltaTime;
         if (m_shakeTimeRemaining <= 0.0f) {
@@ -53,77 +51,68 @@ void Camera::update(float deltaTime) {
             m_shakeOffset = generateShakeOffset();
         }
     }
-    
-    // Smooth follow mode - use dead zone approach to eliminate jitter
+
+    // Smooth follow mode using configured parameters
     if (m_mode == Mode::Follow && hasTarget()) {
         Vector2D targetPos = getTargetPosition();
-        
-        // Calculate ideal camera position (following target)
+
+        // Ideal camera position is the target's position (camera centers on target)
         Vector2D idealPosition = targetPos;
-        
-        // Apply world bounds clamping to ideal position if enabled
+
+        // Clamp ideal position to world bounds, accounting for viewport size
         if (m_config.clampToWorldBounds) {
-            float halfViewWidth = m_viewport.halfWidth();
-            float halfViewHeight = m_viewport.halfHeight();
-            
-            // Calculate effective bounds (world bounds minus half viewport)
-            float minX = m_worldBounds.minX + halfViewWidth;
-            float maxX = m_worldBounds.maxX - halfViewWidth;
-            float minY = m_worldBounds.minY + halfViewHeight;
-            float maxY = m_worldBounds.maxY - halfViewHeight;
-            
-            // Only clamp if the world is larger than the viewport
+            const float halfW = m_viewport.halfWidth();
+            const float halfH = m_viewport.halfHeight();
+
+            const float minX = m_worldBounds.minX + halfW;
+            const float maxX = m_worldBounds.maxX - halfW;
+            const float minY = m_worldBounds.minY + halfH;
+            const float maxY = m_worldBounds.maxY - halfH;
+
             if (maxX > minX) {
                 idealPosition.setX(std::clamp(idealPosition.getX(), minX, maxX));
             } else {
-                // World is smaller than viewport, center camera
                 idealPosition.setX((m_worldBounds.minX + m_worldBounds.maxX) * 0.5f);
             }
-            
+
             if (maxY > minY) {
                 idealPosition.setY(std::clamp(idealPosition.getY(), minY, maxY));
             } else {
-                // World is smaller than viewport, center camera
                 idealPosition.setY((m_worldBounds.minY + m_worldBounds.maxY) * 0.5f);
             }
         }
-        
-        // Calculate distance to ideal position
-        float dx = idealPosition.getX() - m_position.getX();
-        float dy = idealPosition.getY() - m_position.getY();
-        float distance = std::sqrt(dx * dx + dy * dy);
-        
-        // Use a dead zone to prevent oscillation when very close to ideal position
-        const float deadZone = 2.0f; // Camera stops moving when within 2 pixels of ideal position
-        
+
+        // Offset from current to ideal
+        const float dx = idealPosition.getX() - m_position.getX();
+        const float dy = idealPosition.getY() - m_position.getY();
+        const float distance = std::sqrt(dx * dx + dy * dy);
+
+        // Dead zone from config to avoid micro-oscillations
+        const float deadZone = std::max(0.0f, m_config.deadZoneRadius);
         if (distance > deadZone) {
-            // Use exponential smoothing to prevent oscillation
-            float smoothingFactor = 8.0f; // Higher = more responsive, lower = smoother
-            float moveRatio = std::min(1.0f, smoothingFactor * deltaTime);
-            
-            // Apply exponential smoothing
-            float newX = m_position.getX() + dx * moveRatio;
-            float newY = m_position.getY() + dy * moveRatio;
-            
-            // Ensure we don't overshoot into the dead zone
-            float newDx = idealPosition.getX() - newX;
-            float newDy = idealPosition.getY() - newY;
-            float newDistance = std::sqrt(newDx * newDx + newDy * newDy);
-            
-            if (newDistance < deadZone) {
-                // Stop at the edge of the dead zone to prevent oscillation
-                float ratio = (distance - deadZone) / distance;
+            // Exponential smoothing with configurable responsiveness
+            // alpha = 1 - smoothingFactor^(dt * followSpeed)
+            float alpha = 1.0f - std::pow(std::clamp(m_config.smoothingFactor, 0.0f, 1.0f),
+                                          std::max(0.0f, deltaTime * std::max(0.0f, m_config.followSpeed)));
+            alpha = std::clamp(alpha, 0.0f, 1.0f);
+
+            float newX = m_position.getX() + dx * alpha;
+            float newY = m_position.getY() + dy * alpha;
+
+            // If we would end up inside the dead zone, stop at its edge
+            const float ndx = idealPosition.getX() - newX;
+            const float ndy = idealPosition.getY() - newY;
+            const float newDistance = std::sqrt(ndx * ndx + ndy * ndy);
+            if (newDistance < deadZone && distance > 0.0f) {
+                const float ratio = (distance - deadZone) / distance;
                 newX = m_position.getX() + dx * ratio;
                 newY = m_position.getY() + dy * ratio;
             }
-            
+
             m_position.setX(newX);
             m_position.setY(newY);
         }
     }
-    
-    // Note: World bounds clamping is now integrated into follow mode logic above
-    // This prevents hitching when camera reaches boundaries while target continues moving
 }
 
 void Camera::setPosition(float x, float y) {
