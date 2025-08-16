@@ -25,10 +25,12 @@
 #include <functional>
 #include <memory>
 #include <queue>
+#include <deque>
 #include <shared_mutex>
 #include <string>
 #include <unordered_map>
 #include <vector>
+#include <mutex>
 
 // Forward declarations
 class Event;
@@ -184,6 +186,9 @@ public:
     static EventManager instance;
     return instance;
   }
+
+  // Dispatch control for handler execution
+  enum class DispatchMode : uint8_t { Deferred = 0, Immediate = 1 };
 
   /**
    * @brief Initializes the EventManager and its internal systems
@@ -364,11 +369,25 @@ public:
 
   // High-level convenience methods
   bool changeWeather(const std::string &weatherType,
-                     float transitionTime = 5.0f) const;
+                     float transitionTime = 5.0f,
+                     DispatchMode mode = DispatchMode::Deferred) const;
   bool changeScene(const std::string &sceneId,
                    const std::string &transitionType = "fade",
-                   float transitionTime = 1.0f) const;
-  bool spawnNPC(const std::string &npcType, float x, float y) const;
+                   float transitionTime = 1.0f,
+                   DispatchMode mode = DispatchMode::Deferred) const;
+  bool spawnNPC(const std::string &npcType, float x, float y,
+                DispatchMode mode = DispatchMode::Deferred) const;
+
+  // Particle effect trigger (stateless, no registration required)
+  bool triggerParticleEffect(const std::string &effectName, float x, float y,
+                             float intensity = 1.0f, float duration = -1.0f,
+                             const std::string &groupTag = "",
+                             DispatchMode mode = DispatchMode::Deferred) const;
+  bool triggerParticleEffect(const std::string &effectName,
+                             const Vector2D &position,
+                             float intensity = 1.0f, float duration = -1.0f,
+                             const std::string &groupTag = "",
+                             DispatchMode mode = DispatchMode::Deferred) const;
 
   // Event creation convenience methods (create and register in one call using
   // EventFactory)
@@ -433,7 +452,8 @@ public:
   bool triggerResourceChange(EntityPtr owner,
                              HammerEngine::ResourceHandle resourceHandle,
                              int oldQuantity, int newQuantity,
-                             const std::string &changeReason = "") const;
+                             const std::string &changeReason = "",
+                             DispatchMode mode = DispatchMode::Deferred) const;
 
   // Performance monitoring
   PerformanceStats getPerformanceStats(EventTypeId typeId) const;
@@ -509,6 +529,14 @@ private:
   std::array<std::vector<EventData>, 2>
       m_updateBuffers[static_cast<size_t>(EventTypeId::COUNT)];
 
+  // Deferred dispatch queue (processed in update())
+  struct PendingDispatch {
+    EventTypeId typeId;
+    EventData data;
+  };
+  mutable std::mutex m_dispatchMutex;
+  mutable std::deque<PendingDispatch> m_pendingDispatch;
+
   // Helper methods
   EventTypeId getEventTypeId(const EventPtr &event) const;
   std::string getEventTypeName(EventTypeId typeId) const;
@@ -517,6 +545,8 @@ private:
   void processEventDirect(EventData &eventData);
   void recordPerformance(EventTypeId typeId, double timeMs) const;
   uint64_t getCurrentTimeNanos() const;
+  void enqueueDispatch(EventTypeId typeId, const EventData &data) const;
+  void drainDispatchQueueWithBudget();
 
   // Internal registration helper
   bool registerEventInternal(const std::string &name, EventPtr event,
