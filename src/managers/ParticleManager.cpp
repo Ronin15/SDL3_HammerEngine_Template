@@ -8,6 +8,8 @@
 #include "core/Logger.hpp"
 #include "core/ThreadSystem.hpp"
 #include "core/WorkerBudget.hpp"
+#include "managers/EventManager.hpp"
+#include "events/ParticleEffectEvent.hpp"
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -529,6 +531,18 @@ bool ParticleManager::init() {
 
     m_initialized.store(true, std::memory_order_release);
     m_isShutdown = false;
+
+    // Register EventManager handler for ParticleEffect events
+    {
+      auto &eventMgr = EventManager::Instance();
+      eventMgr.registerHandler(EventTypeId::ParticleEffect, [](const EventData &data) {
+        if (!data.isActive() || !data.event) return;
+        auto pe = std::dynamic_pointer_cast<ParticleEffectEvent>(data.event);
+        if (pe) {
+          pe->execute();
+        }
+      });
+    }
 
     PARTICLE_INFO("ParticleManager initialized successfully");
     return true;

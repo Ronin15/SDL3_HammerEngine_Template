@@ -34,6 +34,10 @@ include_directories(
     ${PROJECT_SOURCE_DIR}/include/events
     ${CMAKE_CURRENT_SOURCE_DIR}/mocks
     ${Boost_INCLUDE_DIRS}
+    ${SDL3_SOURCE_DIR}/include
+    ${SDL3_image_SOURCE_DIR}/include
+    ${SDL3_ttf_SOURCE_DIR}/include
+    ${SDL3_mixer_SOURCE_DIR}/include
 )
 
 # Add test executables
@@ -61,7 +65,74 @@ add_executable(ai_optimization_tests
 add_executable(ai_scaling_benchmark
     AIScalingBenchmark.cpp
     ${PROJECT_SOURCE_DIR}/src/managers/AIManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/EventManager.cpp
     ${PROJECT_SOURCE_DIR}/src/ai/behaviors/ChaseBehavior.cpp
+    ${PROJECT_SOURCE_DIR}/src/events/Event.cpp
+    ${PROJECT_SOURCE_DIR}/src/events/NPCSpawnEvent.cpp
+    ${PROJECT_SOURCE_DIR}/src/events/EventFactory.cpp
+    ${PROJECT_SOURCE_DIR}/src/events/WeatherEvent.cpp
+    ${PROJECT_SOURCE_DIR}/src/events/SceneChangeEvent.cpp
+    ${PROJECT_SOURCE_DIR}/src/events/ParticleEffectEvent.cpp
+    ${PROJECT_SOURCE_DIR}/src/events/ResourceChangeEvent.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/NPC.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/resources/InventoryComponent.cpp
+    ${PROJECT_SOURCE_DIR}/src/utils/Camera.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/TextureManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/ParticleManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/SoundManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/WorldManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/world/WorldGenerator.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/WorldResourceManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/ResourceTemplateManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/ResourceFactory.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/Resource.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/resources/ItemResources.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/resources/MaterialResources.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/resources/CurrencyAndGameResources.cpp
+    ${PROJECT_SOURCE_DIR}/src/utils/JsonReader.cpp
+    ${PROJECT_SOURCE_DIR}/src/events/EventFactory.cpp
+    ${PROJECT_SOURCE_DIR}/src/events/WeatherEvent.cpp
+    ${PROJECT_SOURCE_DIR}/src/events/SceneChangeEvent.cpp
+    ${PROJECT_SOURCE_DIR}/src/events/ParticleEffectEvent.cpp
+    ${PROJECT_SOURCE_DIR}/src/events/ResourceChangeEvent.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/NPC.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/resources/InventoryComponent.cpp
+    ${PROJECT_SOURCE_DIR}/src/utils/Camera.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/TextureManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/ParticleManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/SoundManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/WorldManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/world/WorldGenerator.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/WorldResourceManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/ResourceTemplateManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/ResourceFactory.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/Resource.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/resources/ItemResources.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/resources/MaterialResources.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/resources/CurrencyAndGameResources.cpp
+    ${PROJECT_SOURCE_DIR}/src/utils/JsonReader.cpp
+    ${PROJECT_SOURCE_DIR}/src/events/EventFactory.cpp
+    ${PROJECT_SOURCE_DIR}/src/events/WeatherEvent.cpp
+    ${PROJECT_SOURCE_DIR}/src/events/SceneChangeEvent.cpp
+    ${PROJECT_SOURCE_DIR}/src/events/ParticleEffectEvent.cpp
+    ${PROJECT_SOURCE_DIR}/src/events/ResourceChangeEvent.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/NPC.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/resources/InventoryComponent.cpp
+    ${PROJECT_SOURCE_DIR}/src/utils/Camera.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/TextureManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/ParticleManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/SoundManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/WorldManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/world/WorldGenerator.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/WorldResourceManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/ResourceTemplateManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/ResourceFactory.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/Resource.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/resources/ItemResources.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/resources/MaterialResources.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/resources/CurrencyAndGameResources.cpp
+    ${PROJECT_SOURCE_DIR}/src/utils/JsonReader.cpp
+    ${PROJECT_SOURCE_DIR}/src/core/GameTime.cpp
     mocks/AIBehavior.cpp
 )
 
@@ -98,7 +169,32 @@ add_executable(event_manager_scaling_benchmark
 add_executable(thread_safe_ai_manager_tests
     ThreadSafeAIManagerTest.cpp
     ${PROJECT_SOURCE_DIR}/src/managers/AIManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/EventManager.cpp
     ${PROJECT_SOURCE_DIR}/src/ai/behaviors/ChaseBehavior.cpp
+    ${PROJECT_SOURCE_DIR}/src/events/Event.cpp
+    ${PROJECT_SOURCE_DIR}/src/events/NPCSpawnEvent.cpp
+    ${PROJECT_SOURCE_DIR}/src/events/EventFactory.cpp
+    ${PROJECT_SOURCE_DIR}/src/events/WeatherEvent.cpp
+    ${PROJECT_SOURCE_DIR}/src/events/SceneChangeEvent.cpp
+    ${PROJECT_SOURCE_DIR}/src/events/ParticleEffectEvent.cpp
+    ${PROJECT_SOURCE_DIR}/src/events/ResourceChangeEvent.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/NPC.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/resources/InventoryComponent.cpp
+    ${PROJECT_SOURCE_DIR}/src/utils/Camera.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/TextureManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/ParticleManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/SoundManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/WorldManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/world/WorldGenerator.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/WorldResourceManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/ResourceTemplateManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/ResourceFactory.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/Resource.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/resources/ItemResources.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/resources/MaterialResources.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/resources/CurrencyAndGameResources.cpp
+    ${PROJECT_SOURCE_DIR}/src/utils/JsonReader.cpp
+    ${PROJECT_SOURCE_DIR}/src/core/GameTime.cpp
     mocks/AIBehavior.cpp
 )
 
@@ -106,7 +202,32 @@ add_executable(thread_safe_ai_manager_tests
 add_executable(thread_safe_ai_integration_tests
     ThreadSafeAIIntegrationTest.cpp
     ${PROJECT_SOURCE_DIR}/src/managers/AIManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/EventManager.cpp
     ${PROJECT_SOURCE_DIR}/src/ai/behaviors/ChaseBehavior.cpp
+    ${PROJECT_SOURCE_DIR}/src/events/Event.cpp
+    ${PROJECT_SOURCE_DIR}/src/events/NPCSpawnEvent.cpp
+    ${PROJECT_SOURCE_DIR}/src/events/EventFactory.cpp
+    ${PROJECT_SOURCE_DIR}/src/events/WeatherEvent.cpp
+    ${PROJECT_SOURCE_DIR}/src/events/SceneChangeEvent.cpp
+    ${PROJECT_SOURCE_DIR}/src/events/ParticleEffectEvent.cpp
+    ${PROJECT_SOURCE_DIR}/src/events/ResourceChangeEvent.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/NPC.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/resources/InventoryComponent.cpp
+    ${PROJECT_SOURCE_DIR}/src/utils/Camera.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/TextureManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/ParticleManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/SoundManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/WorldManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/world/WorldGenerator.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/WorldResourceManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/ResourceTemplateManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/ResourceFactory.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/Resource.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/resources/ItemResources.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/resources/MaterialResources.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/resources/CurrencyAndGameResources.cpp
+    ${PROJECT_SOURCE_DIR}/src/utils/JsonReader.cpp
+    ${PROJECT_SOURCE_DIR}/src/core/GameTime.cpp
     mocks/AIBehavior.cpp
 )
 
@@ -323,6 +444,23 @@ add_executable(buffer_utilization_tests
 add_executable(behavior_functionality_tests
     BehaviorFunctionalityTest.cpp
     ${PROJECT_SOURCE_DIR}/src/managers/AIManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/EventManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/ParticleManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/SoundManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/WorldManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/world/WorldGenerator.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/WorldResourceManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/ResourceTemplateManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/ResourceFactory.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/TextureManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/Resource.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/resources/ItemResources.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/resources/MaterialResources.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/resources/CurrencyAndGameResources.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/NPC.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/resources/InventoryComponent.cpp
+    ${PROJECT_SOURCE_DIR}/src/utils/Camera.cpp
+    ${PROJECT_SOURCE_DIR}/src/utils/JsonReader.cpp
     ${PROJECT_SOURCE_DIR}/src/ai/behaviors/IdleBehavior.cpp
     ${PROJECT_SOURCE_DIR}/src/ai/behaviors/WanderBehavior.cpp
     ${PROJECT_SOURCE_DIR}/src/ai/behaviors/PatrolBehavior.cpp
@@ -331,6 +469,14 @@ add_executable(behavior_functionality_tests
     ${PROJECT_SOURCE_DIR}/src/ai/behaviors/FollowBehavior.cpp
     ${PROJECT_SOURCE_DIR}/src/ai/behaviors/GuardBehavior.cpp
     ${PROJECT_SOURCE_DIR}/src/ai/behaviors/AttackBehavior.cpp
+    ${PROJECT_SOURCE_DIR}/src/events/Event.cpp
+    ${PROJECT_SOURCE_DIR}/src/events/WeatherEvent.cpp
+    ${PROJECT_SOURCE_DIR}/src/events/SceneChangeEvent.cpp
+    ${PROJECT_SOURCE_DIR}/src/events/ParticleEffectEvent.cpp
+    ${PROJECT_SOURCE_DIR}/src/events/ResourceChangeEvent.cpp
+    ${PROJECT_SOURCE_DIR}/src/events/EventFactory.cpp
+    ${PROJECT_SOURCE_DIR}/src/events/NPCSpawnEvent.cpp
+    ${PROJECT_SOURCE_DIR}/src/core/GameTime.cpp
     mocks/SimpleMockNPC.cpp
     mocks/AIBehavior.cpp
 )
@@ -739,6 +885,7 @@ target_link_libraries(ai_optimization_tests PRIVATE
 target_link_libraries(ai_scaling_benchmark PRIVATE
     SDL3::SDL3
     SDL3_image::SDL3_image
+    SDL3_mixer::SDL3_mixer
     Boost::unit_test_framework
 )
 
@@ -753,6 +900,7 @@ target_link_libraries(event_manager_scaling_benchmark PRIVATE
 target_link_libraries(thread_safe_ai_manager_tests PRIVATE
     SDL3::SDL3
     SDL3_image::SDL3_image
+    SDL3_mixer::SDL3_mixer
     Boost::unit_test_framework
 )
 
@@ -760,6 +908,7 @@ target_link_libraries(thread_safe_ai_manager_tests PRIVATE
 target_link_libraries(thread_safe_ai_integration_tests PRIVATE
     SDL3::SDL3
     SDL3_image::SDL3_image
+    SDL3_mixer::SDL3_mixer
     Boost::unit_test_framework
 )
 
@@ -835,6 +984,7 @@ target_link_libraries(buffer_utilization_tests PRIVATE
 target_link_libraries(behavior_functionality_tests PRIVATE
     SDL3::SDL3
     SDL3_image::SDL3_image
+    SDL3_mixer::SDL3_mixer
     Boost::unit_test_framework
 )
 

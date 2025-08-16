@@ -929,7 +929,9 @@ void EventDemoState::triggerNPCSpawnDemo() {
   spawnX = std::max(100.0f, std::min(spawnX, m_worldWidth - 100.0f));
   spawnY = std::max(100.0f, std::min(spawnY, m_worldHeight - 100.0f));
 
-  createNPCAtPosition(npcType, spawnX, spawnY);
+  // Use EventManager to spawn NPC via the unified event hub
+  EventManager &eventMgr = EventManager::Instance();
+  eventMgr.spawnNPC(npcType, spawnX, spawnY);
   addLogEntry("Spawned NPC: " + npcType + " at (" +
               std::to_string((int)spawnX) + ", " + std::to_string((int)spawnY) +
               ")");
@@ -969,27 +971,16 @@ void EventDemoState::triggerParticleEffectDemo() {
   std::string effectName = m_particleEffectNames[m_particleEffectIndex];
   Vector2D position = m_particleEffectPositions[m_particlePositionIndex];
 
-  // Create ParticleEffectEvent using EventManager convenience method
+  // Trigger particle effect via EventManager (deferred by default)
   EventManager &eventMgr = EventManager::Instance();
-
-  std::string eventName =
-      "particle_demo_" + effectName + "_" + std::to_string(m_particlePositionIndex);
-  bool success =
-      eventMgr.createParticleEffectEvent(eventName, effectName, position,
-                                         1.2f,          // intensity
-                                         5.0f,          // duration (5 seconds)
-                                         "demo_effects" // group tag
-      );
-
-  if (success) {
-    // Execute the created event
-    eventMgr.executeEvent(eventName);
-
-    addLogEntry("ParticleEffectEvent created and executed: " + effectName +
-                " at (" + std::to_string((int)position.getX()) + ", " +
-                std::to_string((int)position.getY()) + ") via EventManager");
+  bool queued = eventMgr.triggerParticleEffect(effectName, position,
+                                               1.2f, 5.0f, "demo_effects");
+  if (queued) {
+    addLogEntry("Particle effect queued: " + effectName + " at (" +
+                std::to_string((int)position.getX()) + ", " +
+                std::to_string((int)position.getY()) + ")");
   } else {
-    addLogEntry("Failed to create ParticleEffectEvent: " + effectName);
+    addLogEntry("No particle handlers registered; effect not queued");
   }
 
   // Advance to next effect and position
@@ -1141,15 +1132,12 @@ void EventDemoState::triggerResourceDemo() {
                                                 newQuantity,     // new quantity
                                                 "event_demo");
 
-      // Register and execute the event to demonstrate event-based resource
-      // management
+      // Trigger resource change via EventManager (deferred by default)
       EventManager &eventMgr = EventManager::Instance();
-      std::string eventName =
-          "resource_demo_add_" + std::to_string(m_resourceDemonstrationStep);
-      eventMgr.registerEvent(eventName, resourceEvent);
-      eventMgr.executeEvent(eventName);
+      eventMgr.triggerResourceChange(m_player, handle, currentQuantity,
+                                     newQuantity, "event_demo");
 
-      addLogEntry("ResourceChangeEvent executed for ADD operation");
+      addLogEntry("ResourceChangeEvent queued for ADD operation");
     } else {
       addLogEntry("FAILED to add " + resourceName + " - inventory may be full");
     }
@@ -1175,14 +1163,12 @@ void EventDemoState::triggerResourceDemo() {
             newQuantity,     // new quantity
             "event_demo");
 
-        // Register and execute the event
+        // Trigger resource change via EventManager (deferred by default)
         EventManager &eventMgr = EventManager::Instance();
-        std::string eventName =
-            "resource_demo_remove_" + std::to_string(m_resourceDemonstrationStep);
-        eventMgr.registerEvent(eventName, resourceEvent);
-        eventMgr.executeEvent(eventName);
+        eventMgr.triggerResourceChange(m_player, handle, currentQuantity,
+                                       newQuantity, "event_demo");
 
-        addLogEntry("ResourceChangeEvent executed for REMOVE operation");
+        addLogEntry("ResourceChangeEvent queued for REMOVE operation");
       } else {
         addLogEntry("FAILED to remove " + resourceName + " from inventory");
       }
@@ -1574,10 +1560,10 @@ void EventDemoState::addLogEntry(const std::string &entry) {
     auto &ui = UIManager::Instance();
     ui.addEventLogEntry("event_log", timestampedEntry);
 
-    // Also log to console for debugging
-    std::cout << "EventDemo: " << timestampedEntry << std::endl;
+    // Also log to console for debugging (avoid flushing)
+    std::cout << "EventDemo: " << timestampedEntry << '\n';
   } catch (const std::exception &e) {
-    std::cerr << "Error adding log entry: " << e.what() << std::endl;
+    std::cerr << "Error adding log entry: " << e.what() << '\n';
   }
 }
 

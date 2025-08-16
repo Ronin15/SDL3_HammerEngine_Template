@@ -91,6 +91,8 @@ public:
     void addSpawnPoint(float x, float y);
     void addSpawnPoint(const Vector2D& point);
     void clearSpawnPoints();
+    // Access spawn points
+    const std::vector<Vector2D>& getSpawnPoints() const { return m_spawnPoints; }
     void setSpawnArea(float x1, float y1, float x2, float y2); // Rectangular area
     void setSpawnArea(float centerX, float centerY, float radius); // Circular area
 
