@@ -290,6 +290,7 @@ private:
 
   // Platform-specific flags
   bool m_isWayland{false};
+  bool m_usingSoftwareFrameLimiting{false};
 
   // Multithreading synchronization
   std::mutex m_updateMutex{};
