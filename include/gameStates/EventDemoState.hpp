@@ -67,7 +67,7 @@ private:
 
   // Event handler methods
   void onWeatherChanged(const std::string &message);
-  void onNPCSpawned(const std::string &message);
+  void onNPCSpawned(const EventData &data);
   void onSceneChanged(const std::string &message);
   void onResourceChanged(
       const EventData &data); // NEW: Resource change event handler
