@@ -45,3 +45,17 @@
 - Update/Render: GameEngine coordinates update/render; don’t add extra sync in managers.
 - Managers: Follow Singleton shutdown pattern (`m_isShutdown` guard).
 - InputManager: Preserve SDL gamepad init/quit pattern to avoid macOS crashes.
+
+## Engine Loop & Render Flow
+- GameLoop: Drives three callbacks — events (main thread), fixed-timestep updates, and rendering. Target FPS and fixed timestep are configured in `HammerMain.cpp` via `GameLoop`.
+- Update (thread-safe): `GameEngine::update(deltaTime)` runs under a mutex to guarantee completion before any render. It updates global systems (AIManager, EventManager, ParticleManager), then delegates to the current `GameStateManager::update`.
+- Double buffering: `GameEngine` maintains `m_currentBufferIndex` (update) and `m_renderBufferIndex` (render) with `m_bufferReady[]`. The main loop calls `hasNewFrameToRender()` and `swapBuffers()` before each update, allowing render to consume a stable buffer from the previous tick.
+- Render (main thread): `GameEngine::render()` clears the renderer and calls `GameStateManager::render()`. States render world, entities, particles, and UI in a deterministic order using the current camera view.
+- World tiles: `WorldManager::render(renderer, cameraX, cameraY, viewportW, viewportH)` renders visible tiles using the same camera view for consistent alignment with entities.
+- Entities: `Entity::render(const Camera*)` converts world → screen using the provided camera; do not compute per-entity camera offsets outside this path.
+- Threading: No rendering from background threads. AI/particles may schedule work but all drawing occurs during `GameEngine::render()` on the main thread.
+
+Guidelines
+- Do not introduce additional synchronization between managers for rendering; rely on `GameEngine`’s mutexed update and double-buffer swap.
+- When adding a new state, snapshot camera/view once per render pass and reuse it for all world-space systems.
+- Keep camera-aware rendering centralized; avoid ad-hoc camera math inside managers that don’t own presentation.
