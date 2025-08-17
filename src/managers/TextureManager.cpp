@@ -239,11 +239,12 @@ void TextureManager::drawFrameF(const std::string& textureID,
   SDL_FPoint center = {static_cast<float>(width) / 2.0f, static_cast<float>(height) / 2.0f};  // Center point in the middle of the image
   double angle = 0.0;
 
-  // Inset source rectangle to prevent texture bleeding
-  srcRect.x = static_cast<float>(width * currentFrame) + 0.1f;
-  srcRect.y = static_cast<float>(height * (currentRow - 1)) + 0.1f;
-  srcRect.w = static_cast<float>(width) - 0.2f;
-  srcRect.h = static_cast<float>(height) - 0.2f;
+  // Use exact source pixel bounds for sprite frames to avoid subpixel sampling jitter
+  // Entities render at integer-aligned screen positions; exact src rects prevent hitching when camera moves
+  srcRect.x = static_cast<float>(width * currentFrame);
+  srcRect.y = static_cast<float>(height * (currentRow - 1));
+  srcRect.w = static_cast<float>(width);
+  srcRect.h = static_cast<float>(height);
 
   // Use float precision directly - no casting from integer
   destRect.w = static_cast<float>(width);
