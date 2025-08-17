@@ -247,6 +247,9 @@ bool GameEngine::init(const std::string_view title, const int width,
     }
   }
 
+  // Store Wayland detection for GameLoop configuration
+  m_usingSoftwareFrameLimiting = m_isWayland;
+
   if (!SDL_SetRenderDrawColor(
           mp_renderer.get(),
           HAMMER_GRAY)) { // Hammer Game Engine gunmetal dark grey
