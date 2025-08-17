@@ -545,7 +545,7 @@ void EventDemoState::setupEventSystem() {
   eventMgr.registerHandler(EventTypeId::NPCSpawn,
                            [this](const EventData &data) {
                              if (data.isActive()) {
-                               onNPCSpawned("npc_spawned");
+                               onNPCSpawned(data);
                              }
                            });
 
@@ -708,20 +708,12 @@ void EventDemoState::handleInput() {
     addLogEntry("Manual custom event triggered");
     m_lastEventTriggerTime = m_totalDemoTime;
   }
-
-  if (inputMgr.wasKeyPressed(SDL_SCANCODE_4) &&
-      (m_totalDemoTime - m_lastEventTriggerTime) >= 0.2f) {
-    if (m_spawnedNPCs.size() < 100) {
-      if (m_autoMode && m_currentPhase == DemoPhase::CustomEventDemo) {
-        m_phaseTimer = 0.0f;
-      }
-      triggerCustomEventDemo();
-      addLogEntry("Manual custom event triggered");
-      m_lastEventTriggerTime = m_totalDemoTime;
-    } else {
-      addLogEntry(
-          "NPC limit reached (100) - press 'R' to reset or '5' to clear NPCs");
-    }
+  // Provide feedback when NPC cap reached
+  else if (inputMgr.wasKeyPressed(SDL_SCANCODE_4) &&
+           (m_totalDemoTime - m_lastEventTriggerTime) >= 0.2f &&
+           m_spawnedNPCs.size() >= 5000) {
+    addLogEntry(
+        "NPC limit reached (5000) - press 'R' to reset or '5' to clear NPCs");
   }
 
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_5)) {
@@ -1356,8 +1348,62 @@ void EventDemoState::onWeatherChanged(const std::string &message) {
   addLogEntry("Weather Event Handler: " + message);
 }
 
-void EventDemoState::onNPCSpawned(const std::string &message) {
-  addLogEntry("NPC Event Handler: " + message);
+void EventDemoState::onNPCSpawned(const EventData &data) {
+  try {
+    if (!data.event) {
+      addLogEntry("Error: NPCSpawnEvent data is null");
+      return;
+    }
+
+    auto npcEvent = std::dynamic_pointer_cast<NPCSpawnEvent>(data.event);
+    if (!npcEvent) {
+      addLogEntry("Error: Event is not an NPCSpawnEvent");
+      return;
+    }
+
+    const auto &params = npcEvent->getSpawnParameters();
+    std::string npcType = params.npcType.empty() ? std::string("NPC") : params.npcType;
+    int count = std::max(1, params.count);
+
+    // Determine spawn anchors: event-provided points or player position
+    std::vector<Vector2D> anchors = npcEvent->getSpawnPoints();
+    if (anchors.empty()) {
+      Vector2D fallback = m_player ? m_player->getPosition()
+                                   : Vector2D(m_worldWidth * 0.5f, m_worldHeight * 0.5f);
+      anchors.push_back(fallback);
+    }
+
+    // Deterministic offset pattern based on radius/count for visible spread
+    float base = (params.spawnRadius > 0.0f) ? params.spawnRadius : 30.0f;
+    float stepX = 0.6f * base + 20.0f;
+    float stepY = 0.4f * base + 15.0f;
+
+    int spawned = 0;
+    AIManager &aiMgr = AIManager::Instance();
+
+    for (const auto &anchor : anchors) {
+      for (int i = 0; i < count; ++i) {
+        float offX = ((spawned % 8) - 4) * stepX;
+        float offY = (((spawned / 8) % 6) - 3) * stepY;
+
+        float x = std::clamp(anchor.getX() + offX, 100.0f, m_worldWidth - 100.0f);
+        float y = std::clamp(anchor.getY() + offY, 100.0f, m_worldHeight - 100.0f);
+
+        auto npc = createNPCAtPositionWithoutBehavior(npcType, x, y);
+        if (npc) {
+          std::string behavior = params.aiBehavior.empty()
+                                     ? determineBehaviorForNPCType(npcType)
+                                     : params.aiBehavior;
+          aiMgr.registerEntityForUpdates(npc, rand() % 9 + 1, behavior);
+          spawned++;
+        }
+      }
+    }
+
+    addLogEntry("NPCSpawn handled: " + npcType + " x" + std::to_string(spawned));
+  } catch (const std::exception &e) {
+    addLogEntry(std::string("Error in NPC spawn handler: ") + e.what());
+  }
 }
 
 void EventDemoState::onSceneChanged(const std::string &message) {

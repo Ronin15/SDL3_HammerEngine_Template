@@ -51,37 +51,7 @@ bool AIManager::init() {
     m_initialized.store(true, std::memory_order_release);
     m_isShutdown = false;
 
-    // Register NPC spawn handler with EventManager: enqueue work into AI system
-    try {
-      auto &eventMgr = EventManager::Instance();
-      eventMgr.registerHandler(EventTypeId::NPCSpawn, [this](const EventData &data) {
-        if (!data.isActive() || !data.event) return;
-        auto npcEvent = std::dynamic_pointer_cast<NPCSpawnEvent>(data.event);
-        if (!npcEvent) return;
-
-        // Determine spawn base position: event-provided point -> player position -> origin
-        Vector2D basePos{0.0f, 0.0f};
-        const auto &points = npcEvent->getSpawnPoints();
-        if (!points.empty()) {
-          basePos = points.front();
-        } else if (isPlayerValid()) {
-          basePos = getPlayerPosition();
-        }
-
-        const auto &params = npcEvent->getSpawnParameters();
-
-        // Spawn entities using helper and register with AI
-        auto spawned = NPCSpawnEvent::forceSpawnNPCs(params, basePos.getX(), basePos.getY());
-        for (auto &entity : spawned) {
-          if (!entity) continue;
-          registerEntityForUpdates(entity, DEFAULT_PRIORITY);
-          const std::string behavior = params.aiBehavior.empty() ? std::string("Wander") : params.aiBehavior;
-          queueBehaviorAssignment(entity, behavior);
-        }
-      });
-    } catch (const std::exception &e) {
-      AI_WARN(std::string("AIManager: failed to register NPCSpawn handler: ") + e.what());
-    }
+    // No NPCSpawn handler in AIManager: state owns creation; AI manages behavior only.
 
     AI_LOG("AIManager initialized successfully");
     return true;
