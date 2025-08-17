@@ -273,8 +273,10 @@ bool GameEngine::init(const std::string_view title, const int width,
   // sharp text)
   SDL_RendererLogicalPresentation presentationMode =
       SDL_LOGICAL_PRESENTATION_LETTERBOX;
-  SDL_SetRenderLogicalPresentation(mp_renderer.get(), targetLogicalWidth,
-                                   targetLogicalHeight, presentationMode);
+  if (!SDL_SetRenderLogicalPresentation(mp_renderer.get(), targetLogicalWidth,
+                                    targetLogicalHeight, presentationMode)) {
+    GAMEENGINE_ERROR("Failed to set render logical presentation: " + std::string(SDL_GetError()));
+  }
 
   GAMEENGINE_INFO(
       "macOS using standard logical resolution with letterbox mode: " +
@@ -294,8 +296,10 @@ bool GameEngine::init(const std::string_view title, const int width,
   // Disable logical presentation to render at native resolution
   SDL_RendererLogicalPresentation presentationMode =
       SDL_LOGICAL_PRESENTATION_DISABLED;
-  SDL_SetRenderLogicalPresentation(mp_renderer.get(), actualWidth, actualHeight,
-                                   presentationMode);
+  if (!SDL_SetRenderLogicalPresentation(mp_renderer.get(), actualWidth, actualHeight,
+                                    presentationMode)) {
+    GAMEENGINE_ERROR("Failed to set render logical presentation: " + std::string(SDL_GetError()));
+  }
 
   GAMEENGINE_INFO("Using native resolution for crisp rendering: " +
                   std::to_string(actualWidth) + "x" +
@@ -847,6 +851,10 @@ void GameEngine::render() {
     GAMEENGINE_ERROR("Failed to present renderer: " +
                      std::string(SDL_GetError()));
   }
+
+  // After presenting, mark the render buffer as consumed to avoid stale re-renders
+  size_t renderIndex = m_renderBufferIndex.load(std::memory_order_acquire);
+  m_bufferReady[renderIndex].store(false, std::memory_order_release);
 
   // Increment rendered frame counter for fast synchronization
   m_lastRenderedFrame.fetch_add(1, std::memory_order_relaxed);
