@@ -42,6 +42,7 @@ public:
     std::string getName() const override { return "HarvestResource"; }
     std::string getType() const override { return EVENT_TYPE; }
     std::string getTypeName() const override { return "HarvestResourceEvent"; }
+    EventTypeId getTypeId() const override { return EventTypeId::Harvest; }
     bool checkConditions() override { return true; }
     
     void reset() override {

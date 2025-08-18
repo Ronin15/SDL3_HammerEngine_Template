@@ -20,6 +20,7 @@
 
 #include "utils/ResourceHandle.hpp"
 #include "utils/Vector2D.hpp"
+#include "events/EventTypeId.hpp"
 #include <array>
 #include <atomic>
 #include <functional>
@@ -48,33 +49,20 @@ using EventPtr = std::shared_ptr<Event>;
 using EventWeakPtr = std::weak_ptr<Event>;
 using EntityPtr = std::shared_ptr<Entity>;
 
-/**
- * @brief Strongly typed event type enumeration for fast lookups
- */
-enum class EventTypeId : uint8_t {
-  Weather = 0,
-  SceneChange = 1,
-  NPCSpawn = 2,
-  ParticleEffect = 3,
-  ResourceChange = 4,
-  World = 5,
-  Camera = 6,
-  Harvest = 7,
-  Custom = 8,
-  COUNT = 9
-};
+// EventTypeId now lives in include/events/EventTypeId.hpp
 
 /**
  * @brief Cache-friendly event data structure (data-oriented design)
  * Optimized for 32-byte cache line alignment
  */
-struct EventData {
-  EventPtr event;       // Smart pointer to event (8 bytes)
-  float lastUpdateTime; // For delta time calculations (4 bytes)
-  uint32_t flags;       // Active, dirty, etc. (4 bytes)
-  uint32_t priority;    // For priority-based processing (4 bytes)
-  EventTypeId typeId;   // Type for fast dispatch (1 byte)
-  uint8_t padding[11];  // Padding to 32 bytes for cache alignment
+struct alignas(32) EventData {
+  EventPtr event;       // Smart pointer to event
+  std::string name;     // Stable name for mapping/compaction
+  float lastUpdateTime; // For delta time calculations
+  uint32_t flags;       // Active, dirty, etc.
+  uint32_t priority;    // For priority-based processing
+  EventTypeId typeId;   // Type for fast dispatch
+  std::function<void()> onConsumed; // Optional callback after dispatch
 
   // Flags bit definitions
   static constexpr uint32_t FLAG_ACTIVE = 1 << 0;
@@ -82,8 +70,8 @@ struct EventData {
   static constexpr uint32_t FLAG_PENDING_REMOVAL = 1 << 2;
 
   EventData()
-      : event(nullptr), lastUpdateTime(0.0f), flags(0), priority(0),
-        typeId(EventTypeId::Custom), padding{} {}
+      : event(nullptr), name(), lastUpdateTime(0.0f), flags(0), priority(0),
+        typeId(EventTypeId::Custom) {}
 
   bool isActive() const { return flags & FLAG_ACTIVE; }
   void setActive(bool active) {
@@ -100,7 +88,7 @@ struct EventData {
     else
       flags &= ~FLAG_DIRTY;
   }
-} __attribute__((aligned(32)));
+};
 
 /**
  * @brief Fast event handler function type
@@ -112,6 +100,9 @@ using FastEventHandler = std::function<void(const EventData &)>;
  */
 template <typename EventType> class EventPool {
 public:
+  using Creator = std::function<std::shared_ptr<EventType>()>;
+  explicit EventPool(Creator creator = Creator{}) : m_creator(std::move(creator)) {}
+
   std::shared_ptr<EventType> acquire() {
     std::lock_guard<std::mutex> lock(m_mutex);
 
@@ -121,10 +112,14 @@ public:
       return event;
     }
 
-    // Create new event if pool is empty
-    auto event = std::make_shared<EventType>();
-    m_allEvents.push_back(event);
-    return event;
+    // Create new event via creator if provided
+    if (m_creator) {
+      auto event = m_creator();
+      m_allEvents.push_back(event);
+      return event;
+    }
+    // No creator set; caller must handle nullptr
+    return nullptr;
   }
 
   void release(std::shared_ptr<EventType> event) {
@@ -144,10 +139,16 @@ public:
     m_allEvents.clear();
   }
 
+  void setCreator(Creator creator) {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    m_creator = std::move(creator);
+  }
+
 private:
   std::vector<std::shared_ptr<EventType>> m_allEvents;
   std::queue<std::shared_ptr<EventType>> m_available;
   std::mutex m_mutex;
+  Creator m_creator;
 };
 
 /**
@@ -350,6 +351,12 @@ public:
   void clearAllHandlers();
   size_t getHandlerCount(EventTypeId typeId) const;
 
+  // Token-based handler management (extensible removal)
+  struct HandlerToken { EventTypeId typeId; uint64_t id; bool forName{false}; std::string name; };
+  HandlerToken registerHandlerWithToken(EventTypeId typeId, FastEventHandler handler);
+  HandlerToken registerHandlerForName(const std::string& name, FastEventHandler handler);
+  bool removeHandler(const HandlerToken& token);
+
   // Batch processing (AIManager-style)
   void updateWeatherEvents();
   void updateSceneChangeEvents();
@@ -490,17 +497,24 @@ private:
       m_nameToType; // Name -> type for fast lookup
 
   // Event pools for memory efficiency
-  EventPool<WeatherEvent> m_weatherPool;
-  EventPool<SceneChangeEvent> m_sceneChangePool;
-  EventPool<NPCSpawnEvent> m_npcSpawnPool;
-  EventPool<ResourceChangeEvent> m_resourceChangePool;
-  EventPool<WorldEvent> m_worldPool;
-  EventPool<CameraEvent> m_cameraPool;
+  mutable EventPool<WeatherEvent> m_weatherPool;
+  mutable EventPool<SceneChangeEvent> m_sceneChangePool;
+  mutable EventPool<NPCSpawnEvent> m_npcSpawnPool;
+  mutable EventPool<ResourceChangeEvent> m_resourceChangePool;
+  mutable EventPool<WorldEvent> m_worldPool;
+  mutable EventPool<CameraEvent> m_cameraPool;
 
-  // Handler storage (type-indexed for speed)
+  // Handler storage (type-indexed). Keep parallel id vectors for token removal
   std::array<std::vector<FastEventHandler>,
              static_cast<size_t>(EventTypeId::COUNT)>
       m_handlersByType;
+  std::array<std::vector<uint64_t>, static_cast<size_t>(EventTypeId::COUNT)>
+      m_handlerIdsByType;
+  std::atomic<uint64_t> m_nextHandlerId{1};
+
+  // Per-name handlers
+  std::unordered_map<std::string, std::vector<FastEventHandler>> m_nameHandlers;
+  std::unordered_map<std::string, std::vector<uint64_t>> m_nameHandlerIds;
 
   // Threading and synchronization
   mutable std::shared_mutex m_eventsMutex;
@@ -524,11 +538,6 @@ private:
   std::atomic<size_t> m_lastEventBudget{0};
   std::atomic<bool> m_lastWasThreaded{false};
 
-  // Double buffering for lock-free reads during updates
-  std::atomic<size_t> m_currentBuffer{0};
-  std::array<std::vector<EventData>, 2>
-      m_updateBuffers[static_cast<size_t>(EventTypeId::COUNT)];
-
   // Deferred dispatch queue (processed in update())
   struct PendingDispatch {
     EventTypeId typeId;
@@ -536,6 +545,7 @@ private:
   };
   mutable std::mutex m_dispatchMutex;
   mutable std::deque<PendingDispatch> m_pendingDispatch;
+  size_t m_maxDispatchQueue{8192};
 
   // Helper methods
   EventTypeId getEventTypeId(const EventPtr &event) const;

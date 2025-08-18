@@ -227,12 +227,10 @@ bool EventDemoState::exit() {
     m_currentPhase = DemoPhase::Initialization;
     m_phaseTimer = 0.0f;
 
-    // Cache EventManager reference for better performance
-    EventManager &eventMgr = EventManager::Instance();
+    // Unregister our specific handlers via tokens
+    unregisterEventHandlers();
 
-    // Use EventManager's prepareForStateTransition for safer cleanup
-    // This handles clearing all handlers and events in one operation
-    eventMgr.prepareForStateTransition();
+    // Optional: leave global handlers intact for other states; no blanket clear here
 
     // Use AIManager's prepareForStateTransition for architectural consistency
     AIManager &aiMgr = AIManager::Instance();
@@ -272,6 +270,18 @@ bool EventDemoState::exit() {
                  "EventDemoState::exit()"
               << std::endl;
     return false;
+  }
+}
+
+void EventDemoState::unregisterEventHandlers() {
+  try {
+    EventManager &eventMgr = EventManager::Instance();
+    for (const auto &tok : m_handlerTokens) {
+      (void)eventMgr.removeHandler(tok);
+    }
+    m_handlerTokens.clear();
+  } catch (...) {
+    // Swallow errors to avoid exit() failure
   }
 }
 
@@ -535,33 +545,26 @@ void EventDemoState::setupEventSystem() {
                "EventManager\n";
   addLogEntry("EventManager ready for use");
 
-  // Register event handlers using new optimized API
-  eventMgr.registerHandler(EventTypeId::Weather, [this](const EventData &data) {
-    if (data.isActive()) {
-      onWeatherChanged("weather_changed");
-    }
-  });
+  // Register event handlers using token-based API for easy removal
+  m_handlerTokens.push_back(
+      eventMgr.registerHandlerWithToken(EventTypeId::Weather, [this](const EventData &data) {
+        if (data.isActive()) onWeatherChanged("weather_changed");
+      }));
 
-  eventMgr.registerHandler(EventTypeId::NPCSpawn,
-                           [this](const EventData &data) {
-                             if (data.isActive()) {
-                               onNPCSpawned(data);
-                             }
-                           });
+  m_handlerTokens.push_back(
+      eventMgr.registerHandlerWithToken(EventTypeId::NPCSpawn, [this](const EventData &data) {
+        if (data.isActive()) onNPCSpawned(data);
+      }));
 
-  eventMgr.registerHandler(EventTypeId::SceneChange,
-                           [this](const EventData &data) {
-                             if (data.isActive()) {
-                               onSceneChanged("scene_changed");
-                             }
-                           });
+  m_handlerTokens.push_back(
+      eventMgr.registerHandlerWithToken(EventTypeId::SceneChange, [this](const EventData &data) {
+        if (data.isActive()) onSceneChanged("scene_changed");
+      }));
 
-  eventMgr.registerHandler(EventTypeId::ResourceChange,
-                           [this](const EventData &data) {
-                             if (data.isActive()) {
-                               onResourceChanged(data);
-                             }
-                           });
+  m_handlerTokens.push_back(
+      eventMgr.registerHandlerWithToken(EventTypeId::ResourceChange, [this](const EventData &data) {
+        if (data.isActive()) onResourceChanged(data);
+      }));
 
   std::cout
       << "Hammer Game Engine - EventDemoState: Event handlers registered\n";
@@ -614,6 +617,10 @@ void EventDemoState::createTestEvents() {
   } else {
     addLogEntry("Some events failed to create - check logs");
   }
+
+  // Register per-name handlers for a few demo events to showcase the API
+  m_handlerTokens.push_back(eventMgr.registerHandlerForName("demo_forest", [this](const EventData &data){ if (data.isActive()) onSceneChanged("demo_forest"); }));
+  m_handlerTokens.push_back(eventMgr.registerHandlerForName("demo_rainy", [this](const EventData &data){ if (data.isActive()) onWeatherChanged("demo_rainy"); }));
 
   // Show current event counts by type for monitoring
   size_t weatherCount = eventMgr.getEventCount(EventTypeId::Weather);
