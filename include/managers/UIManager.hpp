@@ -104,7 +104,7 @@ struct UIStyle {
   int listItemHeight{32}; // Configurable height for list items (increased from
                           // 20 for better mouse accuracy)
 
-  std::string fontID{"fonts_UI_Arial"};
+  std::string fontID{UIConstants::UI_FONT};
   int fontSize{16};
 
   UIAlignment textAlign{UIAlignment::CENTER_CENTER};
@@ -463,9 +463,9 @@ private:
   // Theme and styling
   UITheme m_currentTheme{};
   UIStyle m_globalStyle{};
-  std::string m_globalFontID{"default"};
-  std::string m_titleFontID{"fonts_Arial"};
-  std::string m_uiFontID{"fonts_UI_Arial"};
+  std::string m_globalFontID{UIConstants::DEFAULT_FONT};
+  std::string m_titleFontID{UIConstants::TITLE_FONT};
+  std::string m_uiFontID{UIConstants::UI_FONT};
   float m_globalScale{1.0f};
   std::string m_currentThemeMode{"light"};
 
