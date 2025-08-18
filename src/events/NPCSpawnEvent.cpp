@@ -96,15 +96,32 @@ void NPCSpawnEvent::execute() {
 }
 
 void NPCSpawnEvent::reset() {
+    // Core event flags/timers
     m_onCooldown = false;
     m_cooldownTimer = 0.0f;
     m_hasTriggered = false;
     m_respawnTimer = 0.0f;
 
-    // Clear spawned entities
-    clearSpawnedEntities();
+    // Clear dynamic state accumulated during dispatch/use
+    // Important when this event is reused from an EventPool
+    m_spawnPoints.clear();
+    m_areaType = SpawnAreaType::Points;
+    m_areaX1 = m_areaY1 = m_areaX2 = m_areaY2 = 0.0f;
+    m_areaCenter = Vector2D(0.0f, 0.0f);
+    m_areaRadius = 0.0f;
+    m_useProximityTrigger = false;
+    m_proximityDistance = 0.0f;
+    m_useTimeOfDay = false;
+    m_startHour = 0.0f;
+    m_endHour = 0.0f;
+    m_canRespawn = false;
+    m_respawnTime = 0.0f;
 
-    // Reset spawn counters
+    // Clear any transient conditions
+    m_conditions.clear();
+
+    // Clear spawned-entity tracking and counters
+    clearSpawnedEntities();
     m_currentSpawnCount = 0;
     m_totalSpawned = 0;
 }
