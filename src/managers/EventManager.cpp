@@ -623,7 +623,10 @@ void EventManager::updateEventTypeBatchThreaded(EventTypeId typeId) {
   auto startTime = getCurrentTimeNanos();
 
   // Copy events to local vector to minimize lock time
-  thread_local std::vector<EventPtr> localEvents;
+  // Note: use an automatic storage vector here since work is dispatched to
+  // worker threads and capturing a thread_local by reference is unsafe and
+  // triggers compiler warnings.
+  std::vector<EventPtr> localEvents;
   {
     std::shared_lock<std::shared_mutex> lock(m_eventsMutex);
     auto &container = m_eventsByType[static_cast<size_t>(typeId)];
