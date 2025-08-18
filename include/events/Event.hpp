@@ -20,6 +20,7 @@
 
 #include <string>
 #include <memory>
+#include "events/EventTypeId.hpp"
 
 // Forward declarations
 class Event;
@@ -42,6 +43,7 @@ public:
     virtual std::string getName() const = 0;
     virtual std::string getType() const = 0;
     virtual std::string getTypeName() const = 0;
+    virtual EventTypeId getTypeId() const = 0;
 
     // Event state access
     virtual bool isActive() const { return m_active; }

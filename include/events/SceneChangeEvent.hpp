@@ -110,6 +110,7 @@ public:
     std::string getName() const override { return m_name; }
     std::string getType() const override { return "SceneChange"; }
     std::string getTypeName() const override { return "SceneChangeEvent"; }
+    EventTypeId getTypeId() const override { return EventTypeId::SceneChange; }
     
     // Scene-specific methods
     const std::string& getTargetSceneID() const { return m_targetSceneID; }

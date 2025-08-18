@@ -81,6 +81,7 @@ public:
   std::string getName() const override { return m_name; }
   std::string getType() const override { return "ParticleEffect"; }
   std::string getTypeName() const override { return "ParticleEffectEvent"; }
+  EventTypeId getTypeId() const override { return EventTypeId::ParticleEffect; }
 
   // Condition checking
   bool checkConditions() override;
