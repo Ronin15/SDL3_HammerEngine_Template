@@ -440,7 +440,7 @@ add_executable(buffer_utilization_tests
     BufferUtilizationTest.cpp
 )
 
-# Behavior Functionality tests
+# Behavior Functionality tests - AI behavior testing with TestEntity 
 add_executable(behavior_functionality_tests
     BehaviorFunctionalityTest.cpp
     ${PROJECT_SOURCE_DIR}/src/managers/AIManager.cpp
@@ -457,8 +457,8 @@ add_executable(behavior_functionality_tests
     ${PROJECT_SOURCE_DIR}/src/entities/resources/ItemResources.cpp
     ${PROJECT_SOURCE_DIR}/src/entities/resources/MaterialResources.cpp
     ${PROJECT_SOURCE_DIR}/src/entities/resources/CurrencyAndGameResources.cpp
-    ${PROJECT_SOURCE_DIR}/src/entities/NPC.cpp
     ${PROJECT_SOURCE_DIR}/src/entities/resources/InventoryComponent.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/NPC.cpp
     ${PROJECT_SOURCE_DIR}/src/utils/Camera.cpp
     ${PROJECT_SOURCE_DIR}/src/utils/JsonReader.cpp
     ${PROJECT_SOURCE_DIR}/src/ai/behaviors/IdleBehavior.cpp
@@ -474,13 +474,11 @@ add_executable(behavior_functionality_tests
     ${PROJECT_SOURCE_DIR}/src/events/SceneChangeEvent.cpp
     ${PROJECT_SOURCE_DIR}/src/events/ParticleEffectEvent.cpp
     ${PROJECT_SOURCE_DIR}/src/events/ResourceChangeEvent.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/EventFactory.cpp
     ${PROJECT_SOURCE_DIR}/src/events/NPCSpawnEvent.cpp
+    ${PROJECT_SOURCE_DIR}/src/events/EventFactory.cpp
     ${PROJECT_SOURCE_DIR}/src/core/GameTime.cpp
-    mocks/SimpleMockNPC.cpp
     mocks/AIBehavior.cpp
 )
-
 # Resource Template Manager tests
 add_executable(resource_template_manager_tests
     resources/ResourceTemplateManagerTests.cpp
@@ -809,7 +807,6 @@ target_compile_definitions(buffer_utilization_tests PRIVATE
 target_compile_definitions(behavior_functionality_tests PRIVATE
     BOOST_TEST_NO_SIGNAL_HANDLING
 )
-
 # Resource Factory tests definitions
 target_compile_definitions(resource_factory_tests PRIVATE
     BOOST_TEST_NO_SIGNAL_HANDLING
@@ -987,7 +984,6 @@ target_link_libraries(behavior_functionality_tests PRIVATE
     SDL3_mixer::SDL3_mixer
     Boost::unit_test_framework
 )
-
 # Link Resource Manager tests with required libraries
 target_link_libraries(resource_template_manager_tests PRIVATE
     SDL3::SDL3
