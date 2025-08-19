@@ -163,7 +163,7 @@ void UIExampleState::handleInputChange(const std::string& text) {
 void UIExampleState::handleListSelection() {
     const auto& ui = UIManager::Instance();
     m_selectedListItem = ui.getSelectedListItem("uiexample_demo_list");
-    GAMESTATE_DEBUG("List item selected: " + m_selectedListItem);
+    GAMESTATE_DEBUG("List item selected: " + std::to_string(m_selectedListItem));
 }
 
 void UIExampleState::handleAnimation() {

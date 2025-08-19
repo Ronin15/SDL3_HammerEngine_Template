@@ -153,7 +153,7 @@ foreach(test_name ${MOCK_TESTS})
     endif()
 
     add_executable(${test_name} ${test_source})
-    target_link_libraries(${test_name} PRIVATE HammerEngineLib TestMocks Boost::unit_test_framework)
+    target_link_libraries(${test_name} PRIVATE TestMocks Boost::unit_test_framework)
     target_compile_definitions(${test_name} PRIVATE BOOST_TEST_NO_SIGNAL_HANDLING)
 endforeach()
 
