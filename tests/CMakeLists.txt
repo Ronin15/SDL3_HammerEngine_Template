@@ -13,252 +13,45 @@ endif()
 
 message(STATUS "Building tests with Boost Test support")
 
-include(FetchContent)
-
-# --- Source Groups for Tests ---
-set(HAMMER_ENGINE_SOURCES
-    ${PROJECT_SOURCE_DIR}/src/managers/EventManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/Event.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/EventFactory.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/NPCSpawnEvent.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/WeatherEvent.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/SceneChangeEvent.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/ParticleEffectEvent.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/ResourceChangeEvent.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/HarvestResourceEvent.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/ResourceTemplateManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/ResourceFactory.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/WorldResourceManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/entities/Resource.cpp
-    ${PROJECT_SOURCE_DIR}/src/entities/resources/ItemResources.cpp
-    ${PROJECT_SOURCE_DIR}/src/entities/resources/MaterialResources.cpp
-    ${PROJECT_SOURCE_DIR}/src/entities/resources/CurrencyAndGameResources.cpp
-    ${PROJECT_SOURCE_DIR}/src/entities/resources/InventoryComponent.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/WorldManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/world/WorldGenerator.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/AIManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/ai/AIBehavior.cpp
-    ${PROJECT_SOURCE_DIR}/src/ai/behaviors/ChaseBehavior.cpp
-    ${PROJECT_SOURCE_DIR}/src/ai/behaviors/IdleBehavior.cpp
-    ${PROJECT_SOURCE_DIR}/src/ai/behaviors/WanderBehavior.cpp
-    ${PROJECT_SOURCE_DIR}/src/ai/behaviors/PatrolBehavior.cpp
-    ${PROJECT_SOURCE_DIR}/src/ai/behaviors/FleeBehavior.cpp
-    ${PROJECT_SOURCE_DIR}/src/ai/behaviors/FollowBehavior.cpp
-    ${PROJECT_SOURCE_DIR}/src/ai/behaviors/GuardBehavior.cpp
-    ${PROJECT_SOURCE_DIR}/src/ai/behaviors/AttackBehavior.cpp
-    ${PROJECT_SOURCE_DIR}/src/entities/NPC.cpp
-    ${PROJECT_SOURCE_DIR}/src/entities/Player.cpp
-    ${PROJECT_SOURCE_DIR}/src/entities/playerStates/PlayerIdleState.cpp
-    ${PROJECT_SOURCE_DIR}/src/entities/playerStates/PlayerRunningState.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/TextureManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/ParticleManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/SoundManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/FontManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/GameStateManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/InputManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/SaveGameManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/UIManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/core/GameEngine.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/EntityStateManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/utils/JsonReader.cpp
-    ${PROJECT_SOURCE_DIR}/src/utils/Camera.cpp
-    ${PROJECT_SOURCE_DIR}/src/core/GameTime.cpp
-    ${PROJECT_SOURCE_DIR}/src/core/TimestepManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/gameStates/AIDemoState.cpp
-    ${PROJECT_SOURCE_DIR}/src/gameStates/GamePlayState.cpp
-    ${PROJECT_SOURCE_DIR}/src/gameStates/MainMenuState.cpp
-    ${PROJECT_SOURCE_DIR}/src/gameStates/AdvancedAIDemoState.cpp
-    ${PROJECT_SOURCE_DIR}/src/gameStates/LogoState.cpp
-    ${PROJECT_SOURCE_DIR}/src/gameStates/EventDemoState.cpp
-    ${PROJECT_SOURCE_DIR}/src/gameStates/UIDemoState.cpp
-    ${PROJECT_SOURCE_DIR}/src/gameStates/OverlayDemoState.cpp
-    ${PROJECT_SOURCE_DIR}/src/gameStates/PauseState.cpp
-    ${PROJECT_SOURCE_DIR}/src/core/GameLoop.cpp
+# --- Create TestMocks Library ---
+set(MOCK_SOURCES
+    mocks/MockAIBehavior.cpp
+    mocks/MockPlayer.cpp
+    mocks/MockNPC.cpp
+    mocks/MockGameEngine.cpp
 )
 
-add_library(HammerEngine STATIC ${HAMMER_ENGINE_SOURCES})
-target_include_directories(HammerEngine PUBLIC ${PROJECT_SOURCE_DIR}/include)
-target_link_libraries(HammerEngine PUBLIC SDL3::SDL3 SDL3_image::SDL3_image SDL3_ttf::SDL3_ttf SDL3_mixer::SDL3_mixer)
+add_library(TestMocks STATIC ${MOCK_SOURCES})
+target_include_directories(TestMocks PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/mocks
+    ${PROJECT_SOURCE_DIR}/include
+)
+target_link_libraries(TestMocks PUBLIC HammerEngineLib)
 
 # --- Test Executables ---
 
-add_executable(save_manager_tests
-    SaveManagerTests.cpp
-    mocks/MockPlayer.cpp
-)
-
-add_executable(thread_system_tests
-    ThreadSystemTests.cpp
-)
-
-add_executable(game_state_manager_tests
-    GameStateManagerTests.cpp
-)
-
-add_executable(ai_optimization_tests
-    AIOptimizationTest.cpp
-)
-
-add_executable(ai_scaling_benchmark
-    AIScalingBenchmark.cpp
-    mocks/MockAIBehavior.cpp
-    mocks/MockPlayer.cpp
-    mocks/MockNPC.cpp
-    mocks/MockGameEngine.cpp
-)
-
-add_executable(event_manager_scaling_benchmark
-    EventManagerScalingBenchmark.cpp
-    mocks/MockAIBehavior.cpp
-    mocks/MockPlayer.cpp
-    mocks/MockNPC.cpp
-    mocks/MockGameEngine.cpp
-)
-
-add_executable(thread_safe_ai_manager_tests
-    ThreadSafeAIManagerTest.cpp
-    mocks/MockAIBehavior.cpp
-    mocks/MockPlayer.cpp
-    mocks/MockNPC.cpp
-    mocks/MockGameEngine.cpp
-)
-
-add_executable(thread_safe_ai_integration_tests
-    ThreadSafeAIIntegrationTest.cpp
-    mocks/MockAIBehavior.cpp
-    mocks/MockPlayer.cpp
-    mocks/MockNPC.cpp
-    mocks/MockGameEngine.cpp
-)
-
-add_executable(event_manager_tests
-    events/EventManagerTest.cpp
-    mocks/MockAIBehavior.cpp
-    mocks/MockPlayer.cpp
-    mocks/MockNPC.cpp
-    mocks/MockGameEngine.cpp
-)
-
-add_executable(event_types_tests
-    events/EventTypesTest.cpp
-    mocks/MockAIBehavior.cpp
-    mocks/MockPlayer.cpp
-    mocks/MockNPC.cpp
-    mocks/MockGameEngine.cpp
-)
-
-add_executable(particle_manager_core_tests
-    particle/ParticleManagerCoreTest.cpp
-    mocks/MockAIBehavior.cpp
-    mocks/MockPlayer.cpp
-    mocks/MockNPC.cpp
-    mocks/MockGameEngine.cpp
-)
-
-add_executable(particle_manager_performance_tests
-    particle/ParticleManagerPerformanceTest.cpp
-    mocks/MockAIBehavior.cpp
-    mocks/MockPlayer.cpp
-    mocks/MockNPC.cpp
-    mocks/MockGameEngine.cpp
-)
-
-add_executable(particle_manager_weather_tests
-    particle/ParticleManagerWeatherTest.cpp
-    mocks/MockAIBehavior.cpp
-    mocks/MockPlayer.cpp
-    mocks/MockNPC.cpp
-    mocks/MockGameEngine.cpp
-)
-
-add_executable(particle_manager_threading_tests
-    particle/ParticleManagerThreadingTest.cpp
-    mocks/MockAIBehavior.cpp
-    mocks/MockPlayer.cpp
-    mocks/MockNPC.cpp
-    mocks/MockGameEngine.cpp
-)
-
-add_executable(weather_event_tests
-    events/WeatherEventTest.cpp
-    mocks/MockAIBehavior.cpp
-    mocks/MockPlayer.cpp
-    mocks/MockNPC.cpp
-    mocks/MockGameEngine.cpp
-)
-
-add_executable(ui_stress_test
-    ui/ui_stress_test_main.cpp
-)
-
-add_executable(buffer_utilization_tests
-    BufferUtilizationTest.cpp
-)
-
-add_executable(behavior_functionality_tests
-    BehaviorFunctionalityTest.cpp
-    mocks/MockAIBehavior.cpp
-    mocks/MockPlayer.cpp
-    mocks/MockNPC.cpp
-    mocks/MockGameEngine.cpp
-)
-
-add_executable(resource_template_manager_tests
-    resources/ResourceTemplateManagerTests.cpp
-)
-
-add_executable(resource_factory_tests
-    resources/ResourceFactoryTests.cpp
-)
-
-add_executable(resource_template_manager_json_tests
-    resources/ResourceTemplateManagerJsonTests.cpp
-)
-
-add_executable(world_resource_manager_tests
-    resources/WorldResourceManagerTests.cpp
-)
-
-add_executable(inventory_component_tests
-    resources/InventoryComponentTests.cpp
-    mocks/MockPlayer.cpp
-)
-
-add_executable(resource_change_event_tests
-    resources/ResourceChangeEventTests.cpp
-)
-
-add_executable(resource_integration_tests
-    resources/ResourceIntegrationTests.cpp
-    mocks/MockPlayer.cpp
-)
-
-add_executable(resource_edge_case_tests
-    resources/ResourceEdgeCaseTests.cpp
-)
-
-add_executable(json_reader_tests
-    utils/JsonReaderTest.cpp
-)
-
-add_executable(world_generator_tests
-    world/WorldGeneratorTests.cpp
-)
-
-add_executable(world_manager_tests
-    world/WorldManagerTests.cpp
-)
-
-add_executable(world_manager_event_integration_tests
-    world/WorldManagerEventIntegrationTests.cpp
-)
-
-# --- Target Properties ---
-set(ALL_TESTS
+# Simple tests (no mocks needed)
+set(SIMPLE_TESTS
     save_manager_tests
     thread_system_tests
     game_state_manager_tests
     ai_optimization_tests
+    buffer_utilization_tests
+    resource_template_manager_tests
+    resource_factory_tests
+    resource_template_manager_json_tests
+    world_resource_manager_tests
+    resource_change_event_tests
+    resource_edge_case_tests
+    json_reader_tests
+    world_generator_tests
+    world_manager_tests
+    world_manager_event_integration_tests
+    ui_stress_test
+)
+
+# Complex tests (need mocks)
+set(MOCK_TESTS
     ai_scaling_benchmark
     event_manager_scaling_benchmark
     thread_safe_ai_manager_tests
@@ -270,42 +63,126 @@ set(ALL_TESTS
     particle_manager_weather_tests
     particle_manager_threading_tests
     weather_event_tests
-    ui_stress_test
-    buffer_utilization_tests
     behavior_functionality_tests
-    resource_template_manager_tests
-    resource_factory_tests
-    resource_template_manager_json_tests
-    world_resource_manager_tests
-    inventory_component_tests
-    resource_change_event_tests
-    resource_integration_tests
-    resource_edge_case_tests
-    json_reader_tests
-    world_generator_tests
-    world_manager_tests
-    world_manager_event_integration_tests
 )
 
-foreach(test_name ${ALL_TESTS})
-    target_link_libraries(${test_name} PRIVATE
-        HammerEngine
-        Boost::unit_test_framework
-    )
-    target_include_directories(${test_name} PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}/mocks
-    )
+# Tests that need special mock combinations
+set(INVENTORY_TESTS
+    inventory_component_tests
+    resource_integration_tests
+)
+
+# Create simple test executables
+foreach(test_name ${SIMPLE_TESTS})
+    # Determine source file based on test name
+    if(${test_name} STREQUAL "save_manager_tests")
+        set(test_source "SaveManagerTests.cpp")
+    elseif(${test_name} STREQUAL "thread_system_tests")
+        set(test_source "ThreadSystemTests.cpp")
+    elseif(${test_name} STREQUAL "game_state_manager_tests")
+        set(test_source "GameStateManagerTests.cpp")
+    elseif(${test_name} STREQUAL "ai_optimization_tests")
+        set(test_source "AIOptimizationTest.cpp")
+    elseif(${test_name} STREQUAL "buffer_utilization_tests")
+        set(test_source "BufferUtilizationTest.cpp")
+    elseif(${test_name} STREQUAL "ui_stress_test")
+        set(test_source "ui/ui_stress_test_main.cpp")
+    elseif(${test_name} MATCHES "^resource_")
+        string(REPLACE "resource_" "" suffix ${test_name})
+        string(REPLACE "_tests" "" suffix ${suffix})
+        string(REPLACE "_" "" suffix ${suffix})
+        if(${suffix} STREQUAL "templatemanager")
+            set(test_source "resources/ResourceTemplateManagerTests.cpp")
+        elseif(${suffix} STREQUAL "factory")
+            set(test_source "resources/ResourceFactoryTests.cpp")
+        elseif(${suffix} STREQUAL "templatemanagerjson")
+            set(test_source "resources/ResourceTemplateManagerJsonTests.cpp")
+        elseif(${suffix} STREQUAL "changeevent")
+            set(test_source "resources/ResourceChangeEventTests.cpp")
+        elseif(${suffix} STREQUAL "edgecase")
+            set(test_source "resources/ResourceEdgeCaseTests.cpp")
+        endif()
+    elseif(${test_name} STREQUAL "world_resource_manager_tests")
+        set(test_source "resources/WorldResourceManagerTests.cpp")
+    elseif(${test_name} STREQUAL "json_reader_tests")
+        set(test_source "utils/JsonReaderTest.cpp")
+    elseif(${test_name} STREQUAL "world_generator_tests")
+        set(test_source "world/WorldGeneratorTests.cpp")
+    elseif(${test_name} STREQUAL "world_manager_tests")
+        set(test_source "world/WorldManagerTests.cpp")
+    elseif(${test_name} STREQUAL "world_manager_event_integration_tests")
+        set(test_source "world/WorldManagerEventIntegrationTests.cpp")
+    endif()
+
+    add_executable(${test_name} ${test_source})
+    target_link_libraries(${test_name} PRIVATE HammerEngineLib Boost::unit_test_framework)
     target_compile_definitions(${test_name} PRIVATE BOOST_TEST_NO_SIGNAL_HANDLING)
 endforeach()
 
-target_link_libraries(ui_stress_test PRIVATE Boost::container)
+# Create mock test executables
+foreach(test_name ${MOCK_TESTS})
+    # Determine source file based on test name
+    if(${test_name} STREQUAL "ai_scaling_benchmark")
+        set(test_source "AIScalingBenchmark.cpp")
+    elseif(${test_name} STREQUAL "event_manager_scaling_benchmark")
+        set(test_source "EventManagerScalingBenchmark.cpp")
+    elseif(${test_name} STREQUAL "thread_safe_ai_manager_tests")
+        set(test_source "ThreadSafeAIManagerTest.cpp")
+    elseif(${test_name} STREQUAL "thread_safe_ai_integration_tests")
+        set(test_source "ThreadSafeAIIntegrationTest.cpp")
+    elseif(${test_name} STREQUAL "event_manager_tests")
+        set(test_source "events/EventManagerTest.cpp")
+    elseif(${test_name} STREQUAL "event_types_tests")
+        set(test_source "events/EventTypesTest.cpp")
+    elseif(${test_name} STREQUAL "weather_event_tests")
+        set(test_source "events/WeatherEventTest.cpp")
+    elseif(${test_name} STREQUAL "behavior_functionality_tests")
+        set(test_source "BehaviorFunctionalityTest.cpp")
+    elseif(${test_name} MATCHES "^particle_manager_")
+        string(REPLACE "particle_manager_" "" suffix ${test_name})
+        string(REPLACE "_tests" "" suffix ${suffix})
+        if(${suffix} STREQUAL "core")
+            set(test_source "particle/ParticleManagerCoreTest.cpp")
+        elseif(${suffix} STREQUAL "performance")
+            set(test_source "particle/ParticleManagerPerformanceTest.cpp")
+        elseif(${suffix} STREQUAL "weather")
+            set(test_source "particle/ParticleManagerWeatherTest.cpp")
+        elseif(${suffix} STREQUAL "threading")
+            set(test_source "particle/ParticleManagerThreadingTest.cpp")
+        endif()
+    endif()
 
+    add_executable(${test_name} ${test_source})
+    target_link_libraries(${test_name} PRIVATE HammerEngineLib TestMocks Boost::unit_test_framework)
+    target_compile_definitions(${test_name} PRIVATE BOOST_TEST_NO_SIGNAL_HANDLING)
+endforeach()
+
+# Create inventory tests (need specific mock combination)
+foreach(test_name ${INVENTORY_TESTS})
+    if(${test_name} STREQUAL "inventory_component_tests")
+        set(test_source "resources/InventoryComponentTests.cpp")
+    elseif(${test_name} STREQUAL "resource_integration_tests")
+        set(test_source "resources/ResourceIntegrationTests.cpp")
+    endif()
+
+    add_executable(${test_name} ${test_source} mocks/MockPlayer.cpp)
+    target_link_libraries(${test_name} PRIVATE HammerEngineLib Boost::unit_test_framework)
+    target_include_directories(${test_name} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/mocks)
+    target_compile_definitions(${test_name} PRIVATE BOOST_TEST_NO_SIGNAL_HANDLING)
+endforeach()
+
+# Special configurations
+target_link_libraries(ui_stress_test PRIVATE Boost::container)
 target_compile_definitions(event_manager_tests PRIVATE RUNNING_TESTS)
 target_compile_definitions(event_types_tests PRIVATE RUNNING_TESTS)
 target_compile_definitions(ui_stress_test PRIVATE UI_STRESS_TEST_BUILD)
 
+# Add save_manager_tests special mock
+target_sources(save_manager_tests PRIVATE mocks/MockPlayer.cpp)
+target_include_directories(save_manager_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/mocks)
+
 # --- CTest Registration ---
+set(ALL_TESTS ${SIMPLE_TESTS} ${MOCK_TESTS} ${INVENTORY_TESTS})
 foreach(test_name ${ALL_TESTS})
-    string(TOLOWER ${test_name} test_command)
-    add_test(NAME ${test_name} COMMAND ${test_command})
+    add_test(NAME ${test_name} COMMAND ${test_name})
 endforeach()
