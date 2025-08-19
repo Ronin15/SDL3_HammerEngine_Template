@@ -80,10 +80,12 @@ set FINAL_RESULT=0
 :: Run tests based on selection
 if "%RUN_ALL%"=="true" (
     call :run_single_test event_manager_tests
+    call :run_single_test event_manager_behavior_tests
     call :run_single_test event_types_tests
 ) else (
     if "%RUN_MANAGER%"=="true" (
         call :run_single_test event_manager_tests
+        call :run_single_test event_manager_behavior_tests
     )
     if "%RUN_TYPES%"=="true" (
         call :run_single_test event_types_tests

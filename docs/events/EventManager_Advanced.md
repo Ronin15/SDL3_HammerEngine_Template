@@ -1,5 +1,7 @@
 # EventManager Advanced Documentation
 
+Note: API examples that reference “createAdvanced*” methods on EventManager reflect older drafts. In the current architecture, advanced/definition-driven creation should use `EventFactory` (see EventManager.md and EventManager_QuickReference.md). Trigger helpers and handler/dispatch semantics described here remain valid.
+
 **Where to find the code:**
 - Implementation: `src/managers/EventManager.cpp`
 - Header: `include/managers/EventManager.hpp`

@@ -58,7 +58,6 @@ using EntityPtr = std::shared_ptr<Entity>;
 struct alignas(32) EventData {
   EventPtr event;       // Smart pointer to event
   std::string name;     // Stable name for mapping/compaction
-  float lastUpdateTime; // For delta time calculations
   uint32_t flags;       // Active, dirty, etc.
   uint32_t priority;    // For priority-based processing
   EventTypeId typeId;   // Type for fast dispatch
@@ -70,8 +69,7 @@ struct alignas(32) EventData {
   static constexpr uint32_t FLAG_PENDING_REMOVAL = 1 << 2;
 
   EventData()
-      : event(nullptr), name(), lastUpdateTime(0.0f), flags(0), priority(0),
-        typeId(EventTypeId::Custom) {}
+      : event(nullptr), name(), flags(0), priority(0), typeId(EventTypeId::Custom) {}
 
   bool isActive() const { return flags & FLAG_ACTIVE; }
   void setActive(bool active) {
@@ -350,6 +348,8 @@ public:
   void removeHandlers(EventTypeId typeId);
   void clearAllHandlers();
   size_t getHandlerCount(EventTypeId typeId) const;
+  // Per-name handler management
+  void removeNameHandlers(const std::string& name);
 
   // Token-based handler management (extensible removal)
   struct HandlerToken { EventTypeId typeId; uint64_t id; bool forName{false}; std::string name; };

@@ -14,6 +14,8 @@
 #include <atomic>
 #include <shared_mutex>
 #include <unordered_map>
+#include <vector>
+#include "managers/EventManager.hpp"
 
 // Forward declarations
 struct SDL_Renderer;
@@ -147,6 +149,9 @@ private:
     int m_cameraY{0};
     int m_viewportWidth{80};
     int m_viewportHeight{25};
+
+    // Handler tokens for clean unregister
+    std::vector<EventManager::HandlerToken> m_handlerTokens;
 };
 
 #endif // WORLD_MANAGER_HPP

@@ -237,6 +237,12 @@ bool EventManager::registerWorldEvent(const std::string &name,
                                EventTypeId::World);
 }
 
+bool EventManager::registerCameraEvent(const std::string &name,
+                                       std::shared_ptr<CameraEvent> event) {
+  return registerEventInternal(name, std::static_pointer_cast<Event>(event),
+                               EventTypeId::Camera);
+}
+
 bool EventManager::registerEventInternal(const std::string &name,
                                          EventPtr event, EventTypeId typeId) {
   if (!event) {
@@ -256,7 +262,6 @@ bool EventManager::registerEventInternal(const std::string &name,
   eventData.name = name;
   eventData.typeId = typeId;
   eventData.setActive(true);
-  eventData.lastUpdateTime = 0.0f;
   eventData.priority = 0;
 
   // Add to type-indexed storage
@@ -312,26 +317,19 @@ std::vector<EventPtr> EventManager::getEventsByType(EventTypeId typeId) const {
 
 std::vector<EventPtr>
 EventManager::getEventsByType(const std::string &typeName) const {
-  EventTypeId typeId = EventTypeId::Custom;
-
-  if (typeName == "Weather")
-    typeId = EventTypeId::Weather;
-  else if (typeName == "SceneChange")
-    typeId = EventTypeId::SceneChange;
-  else if (typeName == "NPCSpawn")
-    typeId = EventTypeId::NPCSpawn;
-  else if (typeName == "ParticleEffect")
-    typeId = EventTypeId::ParticleEffect;
-  else if (typeName == "ResourceChange")
-    typeId = EventTypeId::ResourceChange;
-  else if (typeName == "World")
-    typeId = EventTypeId::World;
-  else if (typeName == "Camera")
-    typeId = EventTypeId::Camera;
-  else if (typeName == "Harvest")
-    typeId = EventTypeId::Harvest;
-
-  return getEventsByType(typeId);
+  static const std::unordered_map<std::string, EventTypeId> kMap = {
+      {"Weather", EventTypeId::Weather},
+      {"SceneChange", EventTypeId::SceneChange},
+      {"NPCSpawn", EventTypeId::NPCSpawn},
+      {"ParticleEffect", EventTypeId::ParticleEffect},
+      {"ResourceChange", EventTypeId::ResourceChange},
+      {"World", EventTypeId::World},
+      {"Camera", EventTypeId::Camera},
+      {"Harvest", EventTypeId::Harvest},
+      {"Custom", EventTypeId::Custom},
+  };
+  auto it = kMap.find(typeName);
+  return getEventsByType(it == kMap.end() ? EventTypeId::Custom : it->second);
 }
 
 bool EventManager::setEventActive(const std::string &name, bool active) {
@@ -416,10 +414,6 @@ bool EventManager::executeEvent(const std::string &eventName) const {
 
   // Get the event's type ID to find the appropriate handlers
   EventTypeId typeId = event->getTypeId();
-  
-  // Execute the event itself
-  event->execute();
-  
   // Also trigger any registered handlers for this event type
   std::vector<FastEventHandler> localHandlers;
   {
@@ -428,14 +422,18 @@ bool EventManager::executeEvent(const std::string &eventName) const {
     localHandlers.reserve(handlers.size());
     for (const auto &h : handlers) { if (h) localHandlers.push_back(h); }
   }
-  
-  if (!localHandlers.empty()) {
+  if (localHandlers.empty()) {
+    // No handlers registered for this type: execute directly
+    try { event->execute(); }
+    catch (const std::exception &e) { EVENT_ERROR(std::string("Exception in executeEvent direct exec: ") + e.what()); }
+    catch (...) { EVENT_ERROR("Unknown exception in executeEvent direct exec"); }
+  } else {
     // Create a temporary EventData for handler execution
     EventData eventData;
     eventData.event = event;
     eventData.typeId = typeId;
     eventData.setActive(true);
-    
+
     // Call all registered handlers (type)
     for (const auto &handler : localHandlers) {
       try {
@@ -787,13 +785,6 @@ bool EventManager::changeWeather(const std::string &weatherType,
     std::lock_guard<std::mutex> lock(m_handlersMutex);
     handlerCount = m_handlersByType[static_cast<size_t>(EventTypeId::Weather)].size();
   }
-
-  if (handlerCount == 0) {
-    (void)weatherType;
-    (void)transitionTime;
-    return false;
-  }
-
   // Build payload (use pool)
   std::shared_ptr<WeatherEvent> weatherEvent = m_weatherPool.acquire();
   if (!weatherEvent) weatherEvent = std::make_shared<WeatherEvent>("trigger_weather", weatherType);
@@ -801,6 +792,13 @@ bool EventManager::changeWeather(const std::string &weatherType,
   WeatherParams params = weatherEvent->getWeatherParams();
   params.transitionTime = transitionTime;
   weatherEvent->setWeatherParams(params);
+
+  if (handlerCount == 0) {
+    // Fallback: execute directly
+    try { weatherEvent->execute(); } catch (...) {}
+    m_weatherPool.release(weatherEvent);
+    return true;
+  }
 
   if (mode == DispatchMode::Immediate) {
     std::vector<FastEventHandler> localHandlers;
@@ -864,9 +862,6 @@ bool EventManager::changeScene(const std::string &sceneId,
     std::lock_guard<std::mutex> lock(m_handlersMutex);
     handlerCount = m_handlersByType[static_cast<size_t>(EventTypeId::SceneChange)].size();
   }
-  if (handlerCount == 0) {
-    (void)sceneId; (void)transitionType; (void)transitionTime; return false;
-  }
 
   // Build payload
   auto sceneEvent = m_sceneChangePool.acquire();
@@ -880,6 +875,12 @@ bool EventManager::changeScene(const std::string &sceneId,
   sceneEvent->setTransitionType(t);
   TransitionParams params(transitionTime, t);
   sceneEvent->setTransitionParams(params);
+
+  if (handlerCount == 0) {
+    try { sceneEvent->execute(); } catch (...) {}
+    m_sceneChangePool.release(sceneEvent);
+    return true;
+  }
 
   if (mode == DispatchMode::Immediate) {
     std::vector<FastEventHandler> localHandlers;
@@ -930,7 +931,19 @@ bool EventManager::spawnNPC(const std::string &npcType, float x,
     std::lock_guard<std::mutex> lock(m_handlersMutex);
     handlerCount = m_handlersByType[static_cast<size_t>(EventTypeId::NPCSpawn)].size();
   }
-  if (handlerCount == 0) { (void)npcType; (void)x; (void)y; return false; }
+  if (handlerCount == 0) {
+    auto ev = m_npcSpawnPool.acquire();
+    if (!ev) ev = std::make_shared<NPCSpawnEvent>("trigger_npc_spawn", npcType);
+    else {
+      SpawnParameters p = ev->getSpawnParameters();
+      p.npcType = npcType;
+      ev->setSpawnParameters(p);
+    }
+    ev->addSpawnPoint(x, y);
+    try { ev->execute(); } catch (...) {}
+    m_npcSpawnPool.release(ev);
+    return true;
+  }
 
   // Build payload
   SpawnParameters params(npcType, 1, 0.0f);
@@ -991,7 +1004,17 @@ bool EventManager::triggerParticleEffect(const std::string &effectName, float x,
     std::lock_guard<std::mutex> lock(m_handlersMutex);
     handlerCount = m_handlersByType[static_cast<size_t>(EventTypeId::ParticleEffect)].size();
   }
-  if (handlerCount == 0) { return false; }
+  if (handlerCount == 0) {
+    // Fallback: execute effect directly
+    try {
+      auto pe = std::make_shared<ParticleEffectEvent>(
+          "trigger_particle_effect",
+          ParticleEffectEvent::stringToEffectType(effectName),
+          x, y, intensity, duration, groupTag, "");
+      pe->execute();
+    } catch (...) {}
+    return true;
+  }
 
   ParticleEffectType effectType = ParticleEffectEvent::stringToEffectType(effectName);
   auto pe = std::make_shared<ParticleEffectEvent>("trigger_particle_effect", effectType,
@@ -1323,6 +1346,8 @@ void EventManager::clearEventPools() {
   m_sceneChangePool.clear();
   m_npcSpawnPool.clear();
   m_resourceChangePool.clear();
+  m_worldPool.clear();
+  m_cameraPool.clear();
 }
 
 void EventManager::clearAllEvents() {
@@ -1418,6 +1443,12 @@ void EventManager::enqueueDispatch(EventTypeId typeId, const EventData &data) co
     m_pendingDispatch.pop_front();
   }
   m_pendingDispatch.push_back(PendingDispatch{typeId, data});
+}
+
+void EventManager::removeNameHandlers(const std::string &name) {
+  std::lock_guard<std::mutex> lock(m_handlersMutex);
+  m_nameHandlers.erase(name);
+  m_nameHandlerIds.erase(name);
 }
 
 void EventManager::drainDispatchQueueWithBudget() {

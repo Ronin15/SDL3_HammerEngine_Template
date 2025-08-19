@@ -65,6 +65,7 @@ EXECUTABLES=()
 
 if [ "$RUN_ALL" = true ] || [ "$RUN_MANAGER" = true ]; then
   EXECUTABLES+=("event_manager_tests")
+  EXECUTABLES+=("event_manager_behavior_tests")
 fi
 
 if [ "$RUN_ALL" = true ] || [ "$RUN_TYPES" = true ]; then
