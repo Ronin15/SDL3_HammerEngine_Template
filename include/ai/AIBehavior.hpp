@@ -11,7 +11,7 @@
 
 class AIBehavior {
 public:
-  virtual ~AIBehavior() = default;
+  virtual ~AIBehavior();
 
   // Core behavior methods - pure logic only
   virtual void executeLogic(EntityPtr entity) = 0;
@@ -29,15 +29,7 @@ public:
   virtual bool isActive() const { return m_active; }
   virtual void setActive(bool active) { m_active = active; }
 
-  // Frame-based update staggering system
-  virtual void executeLogicWithStaggering(EntityPtr entity,
-                                          uint64_t globalFrame);
-  virtual uint32_t getUpdateFrequency() const {
-    return 1;
-  } // Update every frame by default
-  virtual bool useStaggering() const {
-    return false;
-  } // Override in behaviors that want staggering
+  
 
   // Entity range checks (behavior-specific logic)
   virtual bool isEntityInRange([[maybe_unused]] EntityPtr entity) const {
@@ -56,13 +48,7 @@ public:
 protected:
   bool m_active{true};
 
-  // Staggering system state
-  mutable uint64_t m_lastUpdateFrame{0};
-  mutable uint32_t m_entityStaggerOffset{0};
-  mutable bool m_staggerOffsetInitialized{false};
-
-  // Helper to calculate if this entity should update on this frame
-  bool shouldUpdateThisFrame(EntityPtr entity, uint64_t globalFrame) const;
+  
 };
 
 #endif // AI_BEHAVIOR_HPP

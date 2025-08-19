@@ -10,7 +10,7 @@
 
 GuardBehavior::GuardBehavior(const Vector2D &guardPosition, float guardRadius,
                              float alertRadius)
-    : m_updateFrequency(2), m_entityStates(),
+    : m_entityStates(),
       m_guardMode(GuardMode::STATIC_GUARD), m_guardPosition(guardPosition),
       m_guardRadius(guardRadius), m_alertRadius(alertRadius),
       m_movementSpeed(1.5f), m_alertSpeed(3.0f), m_patrolWaypoints(),
@@ -20,7 +20,7 @@ GuardBehavior::GuardBehavior(const Vector2D &guardPosition, float guardRadius,
 
 GuardBehavior::GuardBehavior(GuardMode mode, const Vector2D &guardPosition,
                              float guardRadius)
-    : m_updateFrequency(2), m_entityStates(), m_guardMode(mode),
+    : m_entityStates(), m_guardMode(mode),
       m_guardPosition(guardPosition), m_guardRadius(guardRadius),
       m_alertRadius(guardRadius * 1.5f), m_movementSpeed(1.5f),
       m_alertSpeed(3.0f), m_patrolWaypoints(), m_patrolReverse(false),

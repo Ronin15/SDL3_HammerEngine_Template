@@ -66,8 +66,8 @@ public:
 
 public:
   // --- Staggering system overrides ---
-  bool useStaggering() const override { return true; }
-  uint32_t getUpdateFrequency() const override { return m_updateFrequency; }
+  bool useStaggering() const { return true; }
+  uint32_t getUpdateFrequency() const { return m_updateFrequency; }
 
 private:
   // Called only on staggered frames for expensive logic
