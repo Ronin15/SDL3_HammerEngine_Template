@@ -270,6 +270,7 @@ set(ALL_TESTS
     particle_manager_weather_tests
     particle_manager_threading_tests
     weather_event_tests
+    ui_stress_test
     buffer_utilization_tests
     behavior_functionality_tests
     resource_template_manager_tests
