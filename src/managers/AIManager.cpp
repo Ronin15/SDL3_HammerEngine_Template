@@ -979,9 +979,7 @@ void AIManager::processBatch(size_t start, size_t end, float deltaTime,
       }
 
       if (shouldUpdate) {
-        // Execute behavior logic with staggering support
-        uint64_t currentFrame = m_frameCounter.load(std::memory_order_relaxed);
-        behavior->executeLogicWithStaggering(entity, currentFrame);
+        behavior->executeLogic(entity);
         
         // The entity is responsible for its own physics update.
         entity->update(deltaTime);
