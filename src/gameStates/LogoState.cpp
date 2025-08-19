@@ -5,14 +5,15 @@
 
 #include "gameStates/LogoState.hpp"
 #include "core/GameEngine.hpp"
+#include "core/Logger.hpp"
 #include "managers/SoundManager.hpp"
 #include "managers/FontManager.hpp"
 #include "managers/TextureManager.hpp"
 #include "managers/UIManager.hpp"
-#include <iostream>
+
 
 bool LogoState::enter() {
-  std::cout << "Hammer Game Engine - Entering LOGO State\n";
+  GAMESTATE_INFO("Entering LOGO State");
 
   // Reset timer when entering state
   m_stateTimer = 0.0f;
@@ -47,7 +48,7 @@ void LogoState::render() {
   int windowWidth = gameEngine.getLogicalWidth();
   int windowHeight = gameEngine.getLogicalHeight();
 
-  // std::cout << "Rendering Main Menu State\n";
+  // GAMESTATE_DEBUG("Rendering Main Menu State");
   texMgr.draw(
       "HammerForgeBanner",
       windowWidth / 2 - 128,  // Center horizontally (256/2 = 128)
@@ -109,7 +110,7 @@ void LogoState::render() {
 }
 
 bool LogoState::exit() {
-  std::cout << "Hammer Game Engine - Exiting LOGO State\n";
+  GAMESTATE_INFO("Exiting LOGO State");
 
   // LogoState doesn't create UI components, so no UI cleanup needed
 

@@ -7,7 +7,8 @@
 #include "managers/UIManager.hpp"
 #include "managers/InputManager.hpp"
 #include "core/GameEngine.hpp"
-#include <iostream>
+#include "core/Logger.hpp"
+
 #include <string>
 
 // OverlayDemoState Implementation
@@ -16,7 +17,7 @@ OverlayDemoState::OverlayDemoState() {
 }
 
 bool OverlayDemoState::enter() {
-    std::cout << "Entering Overlay Demo State\n";
+    GAMESTATE_INFO("Entering Overlay Demo State");
 
     // Reset theme to prevent contamination from other states
     auto& ui = UIManager::Instance();
@@ -65,7 +66,7 @@ void OverlayDemoState::render() {
 }
 
 bool OverlayDemoState::exit() {
-    std::cout << "Exiting Overlay Demo State\n";
+    GAMESTATE_INFO("Exiting Overlay Demo State");
 
     // Clean up UI components using simplified method
     auto& ui = UIManager::Instance();
@@ -271,7 +272,7 @@ std::string OverlayDemoState::getModeDescription() const {
 
 void OverlayDemoState::handleModeSwitch() {
     switchToNextMode();
-    std::cout << "Switched to: " << getModeDescription() << "\n";
+    GAMESTATE_DEBUG("Switched to: " + getModeDescription());
 }
 
 void OverlayDemoState::handleInput() {

@@ -13,7 +13,7 @@
 #include "managers/ResourceTemplateManager.hpp"
 #include "managers/TextureManager.hpp"
 #include "utils/Camera.hpp"
-#include <iostream>
+
 #include <set>
 #include <random>
 
@@ -56,8 +56,7 @@ NPC::NPC(const std::string &textureID, const Vector2D &startPosition,
   // Initialize inventory system - NOTE: Do NOT call setupInventory() here
   // because it can trigger shared_this() during construction.
   // Call initializeInventory() after construction completes.
-  // std::cout << "Hammer Game Engine - NPC created at position: " <<
-  // m_position.getX() << ", " << m_position.getY() << "\n";
+  // NPC_DEBUG("NPC created at position: " + m_position.toString());
 }
 
 NPC::~NPC() {

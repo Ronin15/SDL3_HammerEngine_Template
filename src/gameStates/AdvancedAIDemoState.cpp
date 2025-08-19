@@ -17,12 +17,10 @@
 #include "managers/InputManager.hpp"
 #include <SDL3/SDL.h>
 
-#include <iostream>
-#include <memory>
-#include <random>
 #include <sstream>
 #include <iomanip>
-#include <unordered_map>
+
+
 
 AdvancedAIDemoState::~AdvancedAIDemoState() {
     // Don't call virtual functions from destructors
@@ -69,18 +67,18 @@ void AdvancedAIDemoState::handleInput() {
         aiMgr.broadcastMessage(message, true);
 
         // Simple feedback
-        std::cout << "Hammer Game Engine - Advanced AI " << (m_aiPaused ? "PAUSED" : "RESUMED") << std::endl;
+        GAMESTATE_INFO("Advanced AI " + std::string(m_aiPaused ? "PAUSED" : "RESUMED"));
     }
 
     if (inputMgr.wasKeyPressed(SDL_SCANCODE_B)) {
-        std::cout << "Hammer Game Engine - Preparing to exit AdvancedAIDemoState...\n";
+        GAMESTATE_INFO("Preparing to exit AdvancedAIDemoState...");
         const GameEngine& gameEngine = GameEngine::Instance();
         gameEngine.getGameStateManager()->changeState("MainMenuState");
     }
 
     if (inputMgr.wasKeyPressed(SDL_SCANCODE_1)) {
         // Assign Idle behavior to all NPCs
-        std::cout << "Hammer Game Engine - Switching all NPCs to IDLE behavior\n";
+        GAMESTATE_INFO("Switching all NPCs to IDLE behavior");
         AIManager& aiMgr = AIManager::Instance();
         for (auto& npc : m_npcs) {
             aiMgr.queueBehaviorAssignment(npc, "Idle");
@@ -89,7 +87,7 @@ void AdvancedAIDemoState::handleInput() {
 
     if (inputMgr.wasKeyPressed(SDL_SCANCODE_2)) {
         // Assign Flee behavior to all NPCs
-        std::cout << "Hammer Game Engine - Switching all NPCs to FLEE behavior\n";
+        GAMESTATE_INFO("Switching all NPCs to FLEE behavior");
         AIManager& aiMgr = AIManager::Instance();
         for (auto& npc : m_npcs) {
             aiMgr.queueBehaviorAssignment(npc, "Flee");
@@ -98,7 +96,7 @@ void AdvancedAIDemoState::handleInput() {
 
     if (inputMgr.wasKeyPressed(SDL_SCANCODE_3)) {
         // Assign Follow behavior to all NPCs
-        std::cout << "Hammer Game Engine - Switching all NPCs to FOLLOW behavior\n";
+        GAMESTATE_INFO("Switching all NPCs to FOLLOW behavior");
         AIManager& aiMgr = AIManager::Instance();
         for (auto& npc : m_npcs) {
             aiMgr.queueBehaviorAssignment(npc, "Follow");
@@ -107,7 +105,7 @@ void AdvancedAIDemoState::handleInput() {
 
     if (inputMgr.wasKeyPressed(SDL_SCANCODE_4)) {
         // Assign Guard behavior to all NPCs
-        std::cout << "Hammer Game Engine - Switching all NPCs to GUARD behavior\n";
+        GAMESTATE_INFO("Switching all NPCs to GUARD behavior");
         AIManager& aiMgr = AIManager::Instance();
         for (auto& npc : m_npcs) {
             aiMgr.queueBehaviorAssignment(npc, "Guard");
@@ -116,7 +114,7 @@ void AdvancedAIDemoState::handleInput() {
 
     if (inputMgr.wasKeyPressed(SDL_SCANCODE_5)) {
         // Assign Attack behavior to all NPCs
-        std::cout << "Hammer Game Engine - Switching all NPCs to ATTACK behavior\n";
+        GAMESTATE_INFO("Switching all NPCs to ATTACK behavior");
         AIManager& aiMgr = AIManager::Instance();
         for (auto& npc : m_npcs) {
             aiMgr.queueBehaviorAssignment(npc, "Attack");
@@ -125,7 +123,7 @@ void AdvancedAIDemoState::handleInput() {
 }
 
 bool AdvancedAIDemoState::enter() {
-    std::cout << "Hammer Game Engine - Entering AdvancedAIDemoState...\n";
+    GAMESTATE_INFO("Entering AdvancedAIDemoState...");
 
     try {
         // Cache GameEngine reference for better performance
@@ -171,21 +169,21 @@ bool AdvancedAIDemoState::enter() {
         ui.createLabel("advanced_ai_status", {10, 110, 400, 20}, "FPS: -- | NPCs: -- | AI: RUNNING | Combat: ON");
 
         // Log status
-        std::cout << "Hammer Game Engine - Created " << m_npcs.size() << " NPCs with advanced AI behaviors\n";
-        std::cout << "Hammer Game Engine - Combat system initialized with health/damage attributes\n";
+        GAMESTATE_INFO("Created " + std::to_string(m_npcs.size()) + " NPCs with advanced AI behaviors");
+        GAMESTATE_INFO("Combat system initialized with health/damage attributes");
 
         return true;
     } catch (const std::exception& e) {
-        std::cerr << "Hammer Game Engine - ERROR: Exception in AdvancedAIDemoState::enter(): " << e.what() << std::endl;
+        GAMESTATE_ERROR("Exception in AdvancedAIDemoState::enter(): " + std::string(e.what()));
         return false;
     } catch (...) {
-        std::cerr << "Hammer Game Engine - ERROR: Unknown exception in AdvancedAIDemoState::enter()" << std::endl;
+        GAMESTATE_ERROR("Unknown exception in AdvancedAIDemoState::enter()");
         return false;
     }
 }
 
 bool AdvancedAIDemoState::exit() {
-    std::cout << "Hammer Game Engine - Exiting AdvancedAIDemoState...\n";
+    GAMESTATE_INFO("Exiting AdvancedAIDemoState...");
 
     // Cache AIManager reference for better performance
     AIManager& aiMgr = AIManager::Instance();
@@ -218,7 +216,7 @@ bool AdvancedAIDemoState::exit() {
     aiMgr.setGlobalPause(false);
     m_aiPaused = false;
 
-    std::cout << "Hammer Game Engine - AdvancedAIDemoState exit complete\n";
+    GAMESTATE_INFO("AdvancedAIDemoState exit complete");
     return true;
 }
 
@@ -239,13 +237,14 @@ void AdvancedAIDemoState::update(float deltaTime) {
         // Entity updates are handled by AIManager::update() in GameEngine
 
     } catch (const std::exception& e) {
-        std::cerr << "Hammer Game Engine - ERROR: Exception in AdvancedAIDemoState::update(): " << e.what() << std::endl;
+        GAMESTATE_ERROR("Exception in AdvancedAIDemoState::update(): " + std::string(e.what()));
     } catch (...) {
-        std::cerr << "Hammer Game Engine - ERROR: Unknown exception in AdvancedAIDemoState::update()" << std::endl;
+        GAMESTATE_ERROR("Unknown exception in AdvancedAIDemoState::update()");
     }
 }
 
 void AdvancedAIDemoState::render() {
+    
     // Render all NPCs
     for (auto& npc : m_npcs) {
         npc->render(nullptr);  // No camera transformation needed in advanced AI demo
@@ -290,7 +289,7 @@ void AdvancedAIDemoState::render() {
 }
 
 void AdvancedAIDemoState::setupAdvancedAIBehaviors() {
-    std::cout << "AdvancedAIDemoState: Setting up advanced AI behaviors...\n";
+    GAMESTATE_INFO("AdvancedAIDemoState: Setting up advanced AI behaviors...");
 
     // Cache AIManager reference for better performance
     AIManager& aiMgr = AIManager::Instance();
@@ -299,38 +298,38 @@ void AdvancedAIDemoState::setupAdvancedAIBehaviors() {
     if (!aiMgr.hasBehavior("Idle")) {
         auto idleBehavior = std::make_unique<IdleBehavior>(IdleBehavior::IdleMode::LIGHT_FIDGET, 50.0f);
         aiMgr.registerBehavior("Idle", std::move(idleBehavior));
-        std::cout << "AdvancedAIDemoState: Registered Idle behavior\n";
+        GAMESTATE_INFO("AdvancedAIDemoState: Registered Idle behavior");
     }
 
     // Register Flee behavior
     if (!aiMgr.hasBehavior("Flee")) {
         auto fleeBehavior = std::make_unique<FleeBehavior>(80.0f, 150.0f, 200.0f); // speed, detection range, safe distance
         aiMgr.registerBehavior("Flee", std::move(fleeBehavior));
-        std::cout << "AdvancedAIDemoState: Registered Flee behavior\n";
+        GAMESTATE_INFO("AdvancedAIDemoState: Registered Flee behavior");
     }
 
     // Register Follow behavior
     if (!aiMgr.hasBehavior("Follow")) {
         auto followBehavior = std::make_unique<FollowBehavior>(75.0f, 50.0f, 90.0f); // follow speed, follow distance, max distance
         aiMgr.registerBehavior("Follow", std::move(followBehavior));
-        std::cout << "AdvancedAIDemoState: Registered Follow behavior\n";
+        GAMESTATE_INFO("AdvancedAIDemoState: Registered Follow behavior");
     }
 
     // Register Guard behavior
     if (!aiMgr.hasBehavior("Guard")) {
         auto guardBehavior = std::make_unique<GuardBehavior>(Vector2D(m_worldWidth/2, m_worldHeight/2), 150.0f, 200.0f); // position, guard radius, alert radius
         aiMgr.registerBehavior("Guard", std::move(guardBehavior));
-        std::cout << "AdvancedAIDemoState: Registered Guard behavior\n";
+        GAMESTATE_INFO("AdvancedAIDemoState: Registered Guard behavior");
     }
 
     // Register Attack behavior
     if (!aiMgr.hasBehavior("Attack")) {
         auto attackBehavior = std::make_unique<AttackBehavior>(80.0f, 1.0f, 85.0f); // range, cooldown, speed
         aiMgr.registerBehavior("Attack", std::move(attackBehavior));
-        std::cout << "AdvancedAIDemoState: Registered Attack behavior\n";
+        GAMESTATE_INFO("AdvancedAIDemoState: Registered Attack behavior");
     }
 
-    std::cout << "AdvancedAIDemoState: Advanced AI behaviors setup complete.\n";
+    GAMESTATE_INFO("AdvancedAIDemoState: Advanced AI behaviors setup complete.");
 }
 
 void AdvancedAIDemoState::createAdvancedNPCs() {
@@ -396,16 +395,16 @@ void AdvancedAIDemoState::createAdvancedNPCs() {
                 // Add to collection
                 m_npcs.push_back(npc);
             } catch (const std::exception& e) {
-                std::cerr << "Hammer Game Engine - ERROR: Exception creating advanced NPC " << i << ": " << e.what() << std::endl;
+                GAMESTATE_ERROR("Exception creating advanced NPC " + std::to_string(i) + ": " + std::string(e.what()));
                 continue;
             }
         }
 
-        std::cout << "AdvancedAIDemoState: Created " << m_npcs.size() << " NPCs with combat attributes\n";
+        GAMESTATE_INFO("AdvancedAIDemoState: Created " + std::to_string(m_npcs.size()) + " NPCs with combat attributes");
     } catch (const std::exception& e) {
-        std::cerr << "Hammer Game Engine - ERROR: Exception in createAdvancedNPCs(): " << e.what() << std::endl;
+        GAMESTATE_ERROR("Exception in createAdvancedNPCs(): " + std::string(e.what()));
     } catch (...) {
-        std::cerr << "Hammer Game Engine - ERROR: Unknown exception in createAdvancedNPCs()" << std::endl;
+        GAMESTATE_ERROR("Unknown exception in createAdvancedNPCs()");
     }
 }
 

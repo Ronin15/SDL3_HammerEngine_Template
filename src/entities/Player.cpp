@@ -14,7 +14,7 @@
 #include "managers/TextureManager.hpp"
 #include "managers/WorldManager.hpp"
 #include "utils/Camera.hpp"
-#include <SDL3/SDL.h>
+
 #include <chrono>
 #include <algorithm>
 
@@ -49,7 +49,7 @@ Player::Player() {
   // Set default state
   changeState("idle");
 
-  // std::cout << "Hammer Game Engine - Player created" << "\n";
+  // PLAYER_DEBUG("Player created");
 }
 
 // Helper method to get dimensions from the loaded texture
