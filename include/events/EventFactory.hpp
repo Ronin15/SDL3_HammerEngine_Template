@@ -21,6 +21,11 @@
 #include "Event.hpp"
 #include "WeatherEvent.hpp"
 #include "SceneChangeEvent.hpp"
+#include "ParticleEffectEvent.hpp"
+#include "WorldEvent.hpp"
+#include "CameraEvent.hpp"
+#include "ResourceChangeEvent.hpp"
+#include "utils/Vector2D.hpp"
 
 
 // Simplify creation of event JSON definition
@@ -88,6 +93,38 @@ public:
      */
     EventPtr createNPCSpawnEvent(const std::string& name, const std::string& npcType,
                                int count = 1, float spawnRadius = 0.0f);
+
+    // Particle effect event
+    EventPtr createParticleEffectEvent(const std::string& name,
+                                       const std::string& effectName,
+                                       float x, float y,
+                                       float intensity = 1.0f,
+                                       float duration = -1.0f,
+                                       const std::string& groupTag = "",
+                                       const std::string& soundEffect = "");
+
+    // World events
+    EventPtr createWorldLoadedEvent(const std::string& name, const std::string& worldId,
+                                    int width, int height);
+    EventPtr createWorldUnloadedEvent(const std::string& name, const std::string& worldId);
+    EventPtr createTileChangedEvent(const std::string& name, int x, int y, const std::string& changeType);
+    EventPtr createWorldGeneratedEvent(const std::string& name, const std::string& worldId,
+                                       int width, int height, float generationTime);
+
+    // Camera events
+    EventPtr createCameraMovedEvent(const std::string& name,
+                                    float newX, float newY, float oldX, float oldY);
+    EventPtr createCameraModeChangedEvent(const std::string& name, int newMode, int oldMode);
+    EventPtr createCameraShakeEvent(const std::string& name, float duration, float intensity);
+
+    // Resource change event
+    // Expects numeric params: resourceId (uint32), resourceGen (uint16), oldQuantity, newQuantity
+    EventPtr createResourceChangeEvent(const std::string& name,
+                                       uint32_t resourceId,
+                                       uint16_t resourceGen,
+                                       int oldQuantity,
+                                       int newQuantity,
+                                       const std::string& reason = "");
 
     /**
      * @brief Register a custom event creator function

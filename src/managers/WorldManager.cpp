@@ -358,25 +358,26 @@ void WorldManager::fireWorldUnloadedEvent(const std::string& worldId) {
 void WorldManager::registerEventHandlers() {
     try {
         EventManager& eventMgr = EventManager::Instance();
-        
+        m_handlerTokens.clear();
+
         // Register handler for world events (to respond to events from other systems)
-        eventMgr.registerHandler(EventTypeId::World, [](const EventData& data) {
+        m_handlerTokens.push_back(eventMgr.registerHandlerWithToken(EventTypeId::World, [](const EventData& data) {
             if (data.isActive() && data.event) {
                 // Handle world-related events from other systems
                 WORLD_MANAGER_DEBUG("WorldManager received world event: " + data.event->getName());
             }
-        });
-        
+        }));
+
         // Register handler for camera events (world bounds may affect camera)
-        eventMgr.registerHandler(EventTypeId::Camera, [](const EventData& data) {
+        m_handlerTokens.push_back(eventMgr.registerHandlerWithToken(EventTypeId::Camera, [](const EventData& data) {
             if (data.isActive() && data.event) {
                 // Handle camera events that may require world data updates
                 WORLD_MANAGER_DEBUG("WorldManager received camera event: " + data.event->getName());
             }
-        });
-        
+        }));
+
         // Register handler for resource change events (resource changes may affect world state)
-        eventMgr.registerHandler(EventTypeId::ResourceChange, [](const EventData& data) {
+        m_handlerTokens.push_back(eventMgr.registerHandlerWithToken(EventTypeId::ResourceChange, [](const EventData& data) {
             if (data.isActive() && data.event) {
                 // Handle resource changes that may affect world generation or state
                 auto resourceEvent = std::dynamic_pointer_cast<ResourceChangeEvent>(data.event);
@@ -386,10 +387,10 @@ void WorldManager::registerEventHandlers() {
                                        " changed by " + std::to_string(resourceEvent->getQuantityChange()));
                 }
             }
-        });
-        
+        }));
+
         // Register handler for harvest resource events
-        eventMgr.registerHandler(EventTypeId::Harvest, [this](const EventData& data) {
+        m_handlerTokens.push_back(eventMgr.registerHandlerWithToken(EventTypeId::Harvest, [this](const EventData& data) {
             if (data.isActive() && data.event) {
                 auto harvestEvent = std::dynamic_pointer_cast<HarvestResourceEvent>(data.event);
                 if (harvestEvent) {
@@ -404,7 +405,7 @@ void WorldManager::registerEventHandlers() {
                                         harvestEvent->getTargetY());
                 }
             }
-        });
+        }));
         
         WORLD_MANAGER_DEBUG("WorldManager event handlers registered");
     } catch (const std::exception& ex) {
@@ -413,12 +414,13 @@ void WorldManager::registerEventHandlers() {
 }
 
 void WorldManager::unregisterEventHandlers() {
-    try {        
-        // Unregister world event handlers
-        // Note: EventManager should handle cleanup automatically during shutdown
-        // but we can be explicit about it for clarity
-        
-        WORLD_MANAGER_DEBUG("WorldManager event handlers unregistered");
+    try {
+        auto &eventMgr = EventManager::Instance();
+        for (const auto &tok : m_handlerTokens) {
+            (void)eventMgr.removeHandler(tok);
+        }
+        m_handlerTokens.clear();
+        WORLD_MANAGER_DEBUG("WorldManager event handlers unregistered (tokens cleared)");
     } catch (const std::exception& ex) {
         WORLD_MANAGER_ERROR("Failed to unregister event handlers: " + std::string(ex.what()));
     }

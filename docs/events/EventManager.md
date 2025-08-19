@@ -80,9 +80,9 @@ EventManager::Instance().spawnNPC("Merchant", 100.0f, 200.0f);
 
 ### Update Loop Integration
 ```cpp
-void gameUpdate(float dt) {
+void gameUpdate() {
     // Single call to EventManager processes all events
-    EventManager::Instance().update(dt);
+    EventManager::Instance().update();
 }
 ```
 
@@ -119,7 +119,6 @@ struct EventData {
     EventPtr event;           // Smart pointer to event
     EventTypeId typeId;       // Type for fast dispatch
     uint32_t flags;           // Active, dirty, pending removal
-    float lastUpdateTime;     // For delta time calculations
     uint32_t priority;        // Processing priority
 
     // Helper methods (internal use)
@@ -135,12 +134,16 @@ struct EventData {
 ### EventTypeId Enumeration
 ```cpp
 enum class EventTypeId : uint8_t {
-    Weather = 0,      // Weather system events
-    SceneChange = 1,  // Scene transition events
-    NPCSpawn = 2,     // NPC creation events
-    ParticleEffect = 3, // Particle effect events
-    Custom = 4,       // User-defined events
-    COUNT = 5         // Total count (internal use)
+    Weather = 0,
+    SceneChange = 1,
+    NPCSpawn = 2,
+    ParticleEffect = 3,
+    ResourceChange = 4,
+    World = 5,
+    Camera = 6,
+    Harvest = 7,
+    Custom = 8,
+    COUNT = 9
 };
 ```
 
@@ -151,9 +154,11 @@ Control game atmosphere and environmental conditions through EventManager:
 // Simple weather event creation
 EventManager::Instance().createWeatherEvent("Storm", "Stormy", 0.9f, 2.0f);
 
-// Advanced weather event with custom properties
-EventManager::Instance().createAdvancedWeatherEvent("EpicStorm", "Stormy", 0.95f, 1.5f, 8, 30.0f, false, true);
-// Parameters: (name, weatherType, intensity, transitionTime, priority, cooldown, oneTime, active)
+// Advanced/definition-driven creation via EventFactory
+#include "events/EventFactory.hpp"
+EventDefinition w{.type="Weather", .name="EpicStorm", .params={{"weatherType","Stormy"}}, .numParams={{"intensity",0.95f},{"transitionTime",1.5f}}};
+auto wptr = EventFactory::Instance().createEvent(w);
+EventManager::Instance().registerEvent(w.name, wptr);
 ```
 
 **Weather Types**: Clear, Cloudy, Rainy, Stormy, Foggy, Snowy, Windy, Custom
@@ -166,9 +171,10 @@ Handle scene transitions and navigation through EventManager:
 // Simple scene change
 EventManager::Instance().createSceneChangeEvent("ToShop", "ShopScene", "dissolve", 1.5f);
 
-// Advanced scene change with custom properties
-EventManager::Instance().createAdvancedSceneChangeEvent("MagicPortal", "MagicRealm", "dissolve", 3.0f, 5, true);
-// Parameters: (name, targetScene, transitionType, duration, priority, oneTime)
+// Advanced/definition-driven via EventFactory
+EventDefinition s{.type="SceneChange", .name="MagicPortal", .params={{"targetScene","MagicRealm"},{"transitionType","dissolve"}}, .numParams={{"duration",3.0f}}};
+auto sptr = EventFactory::Instance().createEvent(s);
+EventManager::Instance().registerEvent(s.name, sptr);
 ```
 
 **Transition Types**: fade, dissolve, slide, wipe, custom
@@ -180,9 +186,10 @@ Manage dynamic NPC creation through EventManager:
 // Simple NPC spawn
 EventManager::Instance().createNPCSpawnEvent("Villagers", "Villager", 5, 30.0f);
 
-// Advanced NPC spawn with custom properties
-EventManager::Instance().createAdvancedNPCSpawnEvent("OrcInvasion", "OrcWarrior", 10, 100.0f, 9, true);
-// Parameters: (name, npcType, count, spawnRadius, priority, oneTime)
+// Advanced/definition-driven via EventFactory
+EventDefinition n{.type="NPCSpawn", .name="OrcInvasion", .params={{"npcType","OrcWarrior"}}, .numParams={{"count",10.0f},{"spawnRadius",100.0f}}};
+auto nptr = EventFactory::Instance().createEvent(n);
+EventManager::Instance().registerEvent(n.name, nptr);
 ```
 
 ### Particle Effect Events
@@ -202,6 +209,55 @@ EventManager::Instance().createParticleEffectEvent("Sparks", "Sparks", 100.0f, 2
 
 **Effect Types**: Fire, Smoke, Sparks, Rain, Snow, Fog, Cloudy, Custom
 **Features**: Position-based triggering, intensity control, duration settings, group tagging, sound integration
+
+## Handlers & Dispatch
+
+### Handler registration
+```cpp
+// Type-safe handlers
+EventManager::Instance().registerHandler(EventTypeId::ResourceChange,
+    [](const EventData& data) { /* handle resource changes */ });
+
+// Per-name handlers
+auto token = EventManager::Instance().registerHandlerForName("demo_rainy",
+    [](const EventData& data) { /* named demo event */ });
+
+// Bulk remove per-name handlers or remove a single token
+EventManager::Instance().removeNameHandlers("demo_rainy");
+EventManager::Instance().removeHandler(token);
+```
+
+### Dispatch modes & fallbacks
+- Immediate: Handlers invoked on the calling thread.
+- Deferred: Enqueued and drained in `update()` with a time budget.
+- No-handler fallback: If no handlers exist for `changeWeather`, `changeScene`, `spawnNPC`, or `triggerParticleEffect`, EventManager performs a sensible default action.
+
+## Factory-Based Creation
+Use `EventFactory` for advanced/definition-driven creation:
+```cpp
+#include "events/EventFactory.hpp"
+
+EventDefinition def{.type = "Weather", .name = "Storm",
+    .params = {{"weatherType","Stormy"}}, .numParams={{"intensity",0.8f},{"transitionTime",2.0f}}};
+auto ev = EventFactory::Instance().createEvent(def);
+EventManager::Instance().registerEvent(def.name, ev);
+```
+
+### Factory Quick Guide
+- Particle: `createParticleEffectEvent(name, effectName, x, y, intensity, duration, groupTag, soundEffect)`
+- World:
+  - `createWorldLoadedEvent(name, worldId, width, height)`
+  - `createWorldUnloadedEvent(name, worldId)`
+  - `createTileChangedEvent(name, x, y, changeType)`
+  - `createWorldGeneratedEvent(name, worldId, width, height, generationTime)`
+- Camera:
+  - `createCameraMovedEvent(name, newX, newY, oldX, oldY)`
+  - `createCameraModeChangedEvent(name, newMode, oldMode)`
+  - `createCameraShakeEvent(name, duration, intensity)`
+- Resource: `createResourceChangeEvent(name, resourceId, resourceGen, oldQuantity, newQuantity, reason)`
+
+Tip: You can also use `EventFactory::createEvent(def)` with `EventDefinition::type` set to:
+`"Weather"`, `"SceneChange"`, `"NPCSpawn"`, `"ParticleEffect"`, `"WorldLoaded"`, `"WorldUnloaded"`, `"TileChanged"`, `"WorldGenerated"`, `"CameraMoved"`, `"CameraModeChanged"`, `"CameraShake"`, or `"ResourceChange"`.
 
 #### Particle Effect Parameters
 - **effectName**: Name of the particle effect to trigger (must be registered with ParticleManager)

@@ -34,6 +34,72 @@ EventFactory::EventFactory() {
 
         return createNPCSpawnEvent(def.name, npcType, count, spawnRadius);
     });
+
+    // Particle effect creator
+    registerCustomEventCreator("ParticleEffect", [this](const EventDefinition& def) {
+        std::string effectName = def.params.count("effectName") ? def.params.at("effectName") : "Fire";
+        float x = def.numParams.count("x") ? def.numParams.at("x") : 0.0f;
+        float y = def.numParams.count("y") ? def.numParams.at("y") : 0.0f;
+        float intensity = def.numParams.count("intensity") ? def.numParams.at("intensity") : 1.0f;
+        float duration = def.numParams.count("duration") ? def.numParams.at("duration") : -1.0f;
+        std::string groupTag = def.params.count("groupTag") ? def.params.at("groupTag") : "";
+        std::string sound = def.params.count("soundEffect") ? def.params.at("soundEffect") : "";
+        return createParticleEffectEvent(def.name, effectName, x, y, intensity, duration, groupTag, sound);
+    });
+
+    // World event creators
+    registerCustomEventCreator("WorldLoaded", [this](const EventDefinition& def) {
+        std::string worldId = def.params.count("worldId") ? def.params.at("worldId") : "";
+        int width = static_cast<int>(def.numParams.count("width") ? def.numParams.at("width") : 0.0f);
+        int height = static_cast<int>(def.numParams.count("height") ? def.numParams.at("height") : 0.0f);
+        return createWorldLoadedEvent(def.name, worldId, width, height);
+    });
+    registerCustomEventCreator("WorldUnloaded", [this](const EventDefinition& def) {
+        std::string worldId = def.params.count("worldId") ? def.params.at("worldId") : "";
+        return createWorldUnloadedEvent(def.name, worldId);
+    });
+    registerCustomEventCreator("TileChanged", [this](const EventDefinition& def) {
+        int x = static_cast<int>(def.numParams.count("x") ? def.numParams.at("x") : 0.0f);
+        int y = static_cast<int>(def.numParams.count("y") ? def.numParams.at("y") : 0.0f);
+        std::string changeType = def.params.count("changeType") ? def.params.at("changeType") : "";
+        return createTileChangedEvent(def.name, x, y, changeType);
+    });
+    registerCustomEventCreator("WorldGenerated", [this](const EventDefinition& def) {
+        std::string worldId = def.params.count("worldId") ? def.params.at("worldId") : "";
+        int width = static_cast<int>(def.numParams.count("width") ? def.numParams.at("width") : 0.0f);
+        int height = static_cast<int>(def.numParams.count("height") ? def.numParams.at("height") : 0.0f);
+        float genTime = def.numParams.count("generationTime") ? def.numParams.at("generationTime") : 0.0f;
+        return createWorldGeneratedEvent(def.name, worldId, width, height, genTime);
+    });
+
+    // Camera event creators
+    registerCustomEventCreator("CameraMoved", [this](const EventDefinition& def) {
+        float newX = def.numParams.count("newX") ? def.numParams.at("newX") : 0.0f;
+        float newY = def.numParams.count("newY") ? def.numParams.at("newY") : 0.0f;
+        float oldX = def.numParams.count("oldX") ? def.numParams.at("oldX") : 0.0f;
+        float oldY = def.numParams.count("oldY") ? def.numParams.at("oldY") : 0.0f;
+        return createCameraMovedEvent(def.name, newX, newY, oldX, oldY);
+    });
+    registerCustomEventCreator("CameraModeChanged", [this](const EventDefinition& def) {
+        int newMode = static_cast<int>(def.numParams.count("newMode") ? def.numParams.at("newMode") : 0.0f);
+        int oldMode = static_cast<int>(def.numParams.count("oldMode") ? def.numParams.at("oldMode") : 0.0f);
+        return createCameraModeChangedEvent(def.name, newMode, oldMode);
+    });
+    registerCustomEventCreator("CameraShake", [this](const EventDefinition& def) {
+        float duration = def.numParams.count("duration") ? def.numParams.at("duration") : 0.0f;
+        float intensity = def.numParams.count("intensity") ? def.numParams.at("intensity") : 0.0f;
+        return createCameraShakeEvent(def.name, duration, intensity);
+    });
+
+    // Resource change (numeric handle inputs expected)
+    registerCustomEventCreator("ResourceChange", [this](const EventDefinition& def) {
+        uint32_t resId = static_cast<uint32_t>(def.numParams.count("resourceId") ? def.numParams.at("resourceId") : 0.0f);
+        uint16_t resGen = static_cast<uint16_t>(def.numParams.count("resourceGen") ? def.numParams.at("resourceGen") : 0.0f);
+        int oldQ = static_cast<int>(def.numParams.count("oldQuantity") ? def.numParams.at("oldQuantity") : 0.0f);
+        int newQ = static_cast<int>(def.numParams.count("newQuantity") ? def.numParams.at("newQuantity") : 0.0f);
+        std::string reason = def.params.count("reason") ? def.params.at("reason") : "";
+        return createResourceChangeEvent(def.name, resId, resGen, oldQ, newQ, reason);
+    });
 }
 
 bool EventFactory::init() {
@@ -221,6 +287,78 @@ EventPtr EventFactory::createNPCSpawnEvent(const std::string& name, const std::s
     // Default to a circle spawn area around origin
     event->setSpawnArea(0.0f, 0.0f, spawnRadius);
 
+    return std::static_pointer_cast<Event>(event);
+}
+
+EventPtr EventFactory::createParticleEffectEvent(const std::string& name,
+                                       const std::string& effectName,
+                                       float x, float y,
+                                       float intensity,
+                                       float duration,
+                                       const std::string& groupTag,
+                                       const std::string& soundEffect) {
+    ParticleEffectType effectType = ParticleEffectEvent::stringToEffectType(effectName);
+    auto event = std::make_shared<ParticleEffectEvent>(name, effectType, x, y, intensity, duration, groupTag, soundEffect);
+    return std::static_pointer_cast<Event>(event);
+}
+
+EventPtr EventFactory::createWorldLoadedEvent(const std::string& name, const std::string& worldId,
+                                    int width, int height) {
+    (void)name; // World events don't use name parameter
+    auto event = std::make_shared<WorldLoadedEvent>(worldId, width, height);
+    return std::static_pointer_cast<Event>(event);
+}
+
+EventPtr EventFactory::createWorldUnloadedEvent(const std::string& name, const std::string& worldId) {
+    (void)name; // World events don't use name parameter
+    auto event = std::make_shared<WorldUnloadedEvent>(worldId);
+    return std::static_pointer_cast<Event>(event);
+}
+
+EventPtr EventFactory::createTileChangedEvent(const std::string& name, int x, int y, const std::string& changeType) {
+    (void)name; // Tile events don't use name parameter
+    auto event = std::make_shared<TileChangedEvent>(x, y, changeType);
+    return std::static_pointer_cast<Event>(event);
+}
+
+EventPtr EventFactory::createWorldGeneratedEvent(const std::string& name, const std::string& worldId,
+                                       int width, int height, float generationTime) {
+    (void)name; // World events don't use name parameter
+    auto event = std::make_shared<WorldGeneratedEvent>(worldId, width, height, generationTime);
+    return std::static_pointer_cast<Event>(event);
+}
+
+EventPtr EventFactory::createCameraMovedEvent(const std::string& name,
+                                    float newX, float newY, float oldX, float oldY) {
+    (void)name; // Camera events are typed; keep name unused
+    auto event = std::make_shared<CameraMovedEvent>(Vector2D(newX, newY), Vector2D(oldX, oldY));
+    return std::static_pointer_cast<Event>(event);
+}
+
+EventPtr EventFactory::createCameraModeChangedEvent(const std::string& name, int newMode, int oldMode) {
+    (void)name;
+    auto event = std::make_shared<CameraModeChangedEvent>(
+        static_cast<CameraModeChangedEvent::Mode>(newMode),
+        static_cast<CameraModeChangedEvent::Mode>(oldMode));
+    return std::static_pointer_cast<Event>(event);
+}
+
+EventPtr EventFactory::createCameraShakeEvent(const std::string& name, float duration, float intensity) {
+    (void)name;
+    auto event = std::make_shared<CameraShakeStartedEvent>(duration, intensity);
+    return std::static_pointer_cast<Event>(event);
+}
+
+EventPtr EventFactory::createResourceChangeEvent(const std::string& name,
+                                       uint32_t resourceId,
+                                       uint16_t resourceGen,
+                                       int oldQuantity,
+                                       int newQuantity,
+                                       const std::string& reason) {
+    (void)name; // Resource events don't use name parameter
+    HammerEngine::ResourceHandle handle(resourceId, resourceGen);
+    // Owner is unknown at factory-level, use nullptr
+    auto event = std::make_shared<ResourceChangeEvent>(nullptr, handle, oldQuantity, newQuantity, reason);
     return std::static_pointer_cast<Event>(event);
 }
 

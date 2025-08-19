@@ -48,6 +48,7 @@ set(SIMPLE_TESTS
     world_manager_tests
     world_manager_event_integration_tests
     ui_stress_test
+    event_manager_behavior_tests
 )
 
 # Complex tests (need mocks)
@@ -112,6 +113,8 @@ foreach(test_name ${SIMPLE_TESTS})
         set(test_source "world/WorldManagerTests.cpp")
     elseif(${test_name} STREQUAL "world_manager_event_integration_tests")
         set(test_source "world/WorldManagerEventIntegrationTests.cpp")
+    elseif(${test_name} STREQUAL "event_manager_behavior_tests")
+        set(test_source "events/EventManagerBehaviorTests.cpp")
     endif()
 
     add_executable(${test_name} ${test_source})
