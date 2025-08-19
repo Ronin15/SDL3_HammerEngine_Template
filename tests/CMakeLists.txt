@@ -12,26 +12,81 @@ endif()
 
 message(STATUS "Building tests with Boost Test support")
 
-# Use linked Boost.Test framework for proper symbol resolution
-# Tests use: #include <boost/test/unit_test.hpp>
-# Requires Boost unit_test_framework library
-
 include(FetchContent)
+
+# --- Source Groups for Tests ---
+set(HAMMER_ENGINE_SOURCES
+    ${PROJECT_SOURCE_DIR}/src/managers/EventManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/events/Event.cpp
+    ${PROJECT_SOURCE_DIR}/src/events/EventFactory.cpp
+    ${PROJECT_SOURCE_DIR}/src/events/NPCSpawnEvent.cpp
+    ${PROJECT_SOURCE_DIR}/src/events/WeatherEvent.cpp
+    ${PROJECT_SOURCE_DIR}/src/events/SceneChangeEvent.cpp
+    ${PROJECT_SOURCE_DIR}/src/events/ParticleEffectEvent.cpp
+    ${PROJECT_SOURCE_DIR}/src/events/ResourceChangeEvent.cpp
+    ${PROJECT_SOURCE_DIR}/src/events/HarvestResourceEvent.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/ResourceTemplateManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/ResourceFactory.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/WorldResourceManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/Resource.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/resources/ItemResources.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/resources/MaterialResources.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/resources/CurrencyAndGameResources.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/resources/InventoryComponent.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/WorldManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/world/WorldGenerator.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/AIManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/ai/AIBehavior.cpp
+    ${PROJECT_SOURCE_DIR}/src/ai/behaviors/ChaseBehavior.cpp
+    ${PROJECT_SOURCE_DIR}/src/ai/behaviors/IdleBehavior.cpp
+    ${PROJECT_SOURCE_DIR}/src/ai/behaviors/WanderBehavior.cpp
+    ${PROJECT_SOURCE_DIR}/src/ai/behaviors/PatrolBehavior.cpp
+    ${PROJECT_SOURCE_DIR}/src/ai/behaviors/FleeBehavior.cpp
+    ${PROJECT_SOURCE_DIR}/src/ai/behaviors/FollowBehavior.cpp
+    ${PROJECT_SOURCE_DIR}/src/ai/behaviors/GuardBehavior.cpp
+    ${PROJECT_SOURCE_DIR}/src/ai/behaviors/AttackBehavior.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/NPC.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/Player.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/playerStates/PlayerIdleState.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities/playerStates/PlayerRunningState.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/TextureManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/ParticleManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/SoundManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/FontManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/GameStateManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/InputManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/SaveGameManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/UIManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/core/GameEngine.cpp
+    ${PROJECT_SOURCE_DIR}/src/managers/EntityStateManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/utils/JsonReader.cpp
+    ${PROJECT_SOURCE_DIR}/src/utils/Camera.cpp
+    ${PROJECT_SOURCE_DIR}/src/core/GameTime.cpp
+    ${PROJECT_SOURCE_DIR}/src/core/TimestepManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/gameStates/AIDemoState.cpp
+    ${PROJECT_SOURCE_DIR}/src/gameStates/GamePlayState.cpp
+    ${PROJECT_SOURCE_DIR}/src/gameStates/MainMenuState.cpp
+    ${PROJECT_SOURCE_DIR}/src/gameStates/AdvancedAIDemoState.cpp
+    ${PROJECT_SOURCE_DIR}/src/gameStates/LogoState.cpp
+    ${PROJECT_SOURCE_DIR}/src/gameStates/EventDemoState.cpp
+    ${PROJECT_SOURCE_DIR}/src/gameStates/UIDemoState.cpp
+    ${PROJECT_SOURCE_DIR}/src/gameStates/OverlayDemoState.cpp
+    ${PROJECT_SOURCE_DIR}/src/gameStates/PauseState.cpp
+    ${PROJECT_SOURCE_DIR}/src/core/GameLoop.cpp
+)
+
+add_library(HammerEngine STATIC ${HAMMER_ENGINE_SOURCES})
+
+set(MOCK_SOURCES
+    mocks/MockAIBehavior.cpp
+    mocks/MockPlayer.cpp
+    mocks/MockNPC.cpp
+    mocks/MockGameEngine.cpp
+)
 
 # Include directories
 include_directories(
     ${PROJECT_SOURCE_DIR}/include
-    ${PROJECT_SOURCE_DIR}/include/core
-    ${PROJECT_SOURCE_DIR}/include/managers
-    ${PROJECT_SOURCE_DIR}/include/states
-    ${PROJECT_SOURCE_DIR}/include/entities
-    ${PROJECT_SOURCE_DIR}/include/entities/states
-    ${PROJECT_SOURCE_DIR}/include/ai
-    ${PROJECT_SOURCE_DIR}/include/ai/behaviors
-    ${PROJECT_SOURCE_DIR}/include/utils
-    ${PROJECT_SOURCE_DIR}/include/io
-    ${PROJECT_SOURCE_DIR}/include/ui
-    ${PROJECT_SOURCE_DIR}/include/events
     ${CMAKE_CURRENT_SOURCE_DIR}/mocks
     ${Boost_INCLUDE_DIRS}
     ${SDL3_SOURCE_DIR}/include
@@ -40,7 +95,8 @@ include_directories(
     ${SDL3_mixer_SOURCE_DIR}/include
 )
 
-# Add test executables
+# --- Test Executables ---
+
 add_executable(save_manager_tests
     SaveManagerTests.cpp
     mocks/MockPlayer.cpp
@@ -50,1062 +106,260 @@ add_executable(thread_system_tests
     ThreadSystemTests.cpp
 )
 
-# GameStateManager tests
 add_executable(game_state_manager_tests
     GameStateManagerTests.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/GameStateManager.cpp
 )
 
-# AI Optimization tests
 add_executable(ai_optimization_tests
     AIOptimizationTest.cpp
 )
 
-# AI scaling benchmark
 add_executable(ai_scaling_benchmark
     AIScalingBenchmark.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/AIManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/EventManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/ai/behaviors/ChaseBehavior.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/Event.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/NPCSpawnEvent.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/EventFactory.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/WeatherEvent.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/SceneChangeEvent.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/ParticleEffectEvent.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/ResourceChangeEvent.cpp
-    ${PROJECT_SOURCE_DIR}/src/entities/NPC.cpp
-    ${PROJECT_SOURCE_DIR}/src/entities/resources/InventoryComponent.cpp
-    ${PROJECT_SOURCE_DIR}/src/utils/Camera.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/TextureManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/ParticleManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/SoundManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/WorldManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/world/WorldGenerator.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/WorldResourceManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/ResourceTemplateManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/ResourceFactory.cpp
-    ${PROJECT_SOURCE_DIR}/src/entities/Resource.cpp
-    ${PROJECT_SOURCE_DIR}/src/entities/resources/ItemResources.cpp
-    ${PROJECT_SOURCE_DIR}/src/entities/resources/MaterialResources.cpp
-    ${PROJECT_SOURCE_DIR}/src/entities/resources/CurrencyAndGameResources.cpp
-    ${PROJECT_SOURCE_DIR}/src/utils/JsonReader.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/EventFactory.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/WeatherEvent.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/SceneChangeEvent.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/ParticleEffectEvent.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/ResourceChangeEvent.cpp
-    ${PROJECT_SOURCE_DIR}/src/entities/NPC.cpp
-    ${PROJECT_SOURCE_DIR}/src/entities/resources/InventoryComponent.cpp
-    ${PROJECT_SOURCE_DIR}/src/utils/Camera.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/TextureManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/ParticleManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/SoundManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/WorldManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/world/WorldGenerator.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/WorldResourceManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/ResourceTemplateManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/ResourceFactory.cpp
-    ${PROJECT_SOURCE_DIR}/src/entities/Resource.cpp
-    ${PROJECT_SOURCE_DIR}/src/entities/resources/ItemResources.cpp
-    ${PROJECT_SOURCE_DIR}/src/entities/resources/MaterialResources.cpp
-    ${PROJECT_SOURCE_DIR}/src/entities/resources/CurrencyAndGameResources.cpp
-    ${PROJECT_SOURCE_DIR}/src/utils/JsonReader.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/EventFactory.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/WeatherEvent.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/SceneChangeEvent.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/ParticleEffectEvent.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/ResourceChangeEvent.cpp
-    ${PROJECT_SOURCE_DIR}/src/entities/NPC.cpp
-    ${PROJECT_SOURCE_DIR}/src/entities/resources/InventoryComponent.cpp
-    ${PROJECT_SOURCE_DIR}/src/utils/Camera.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/TextureManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/ParticleManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/SoundManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/WorldManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/world/WorldGenerator.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/WorldResourceManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/ResourceTemplateManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/ResourceFactory.cpp
-    ${PROJECT_SOURCE_DIR}/src/entities/Resource.cpp
-    ${PROJECT_SOURCE_DIR}/src/entities/resources/ItemResources.cpp
-    ${PROJECT_SOURCE_DIR}/src/entities/resources/MaterialResources.cpp
-    ${PROJECT_SOURCE_DIR}/src/entities/resources/CurrencyAndGameResources.cpp
-    ${PROJECT_SOURCE_DIR}/src/utils/JsonReader.cpp
-    ${PROJECT_SOURCE_DIR}/src/core/GameTime.cpp
-    mocks/AIBehavior.cpp
+    ${MOCK_SOURCES}
 )
 
-# EventManager scaling benchmark
 add_executable(event_manager_scaling_benchmark
     EventManagerScalingBenchmark.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/EventManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/ParticleManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/SoundManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/Event.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/WeatherEvent.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/WorldManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/world/WorldGenerator.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/WorldResourceManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/ResourceTemplateManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/ResourceFactory.cpp
-    ${PROJECT_SOURCE_DIR}/src/entities/Resource.cpp
-    ${PROJECT_SOURCE_DIR}/src/entities/resources/ItemResources.cpp
-    ${PROJECT_SOURCE_DIR}/src/entities/resources/MaterialResources.cpp
-    ${PROJECT_SOURCE_DIR}/src/entities/resources/CurrencyAndGameResources.cpp
-    ${PROJECT_SOURCE_DIR}/src/utils/JsonReader.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/TextureManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/SceneChangeEvent.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/ParticleEffectEvent.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/ResourceChangeEvent.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/EventFactory.cpp
-    ${PROJECT_SOURCE_DIR}/src/core/GameTime.cpp
-    mocks/NPCSpawnEventTest.cpp
-    mocks/MockNPC.cpp
-    mocks/MockGameEngine.cpp
+    ${MOCK_SOURCES}
 )
 
-# Thread-safe AI Manager tests
 add_executable(thread_safe_ai_manager_tests
     ThreadSafeAIManagerTest.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/AIManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/EventManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/ai/behaviors/ChaseBehavior.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/Event.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/NPCSpawnEvent.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/EventFactory.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/WeatherEvent.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/SceneChangeEvent.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/ParticleEffectEvent.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/ResourceChangeEvent.cpp
-    ${PROJECT_SOURCE_DIR}/src/entities/NPC.cpp
-    ${PROJECT_SOURCE_DIR}/src/entities/resources/InventoryComponent.cpp
-    ${PROJECT_SOURCE_DIR}/src/utils/Camera.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/TextureManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/ParticleManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/SoundManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/WorldManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/world/WorldGenerator.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/WorldResourceManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/ResourceTemplateManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/ResourceFactory.cpp
-    ${PROJECT_SOURCE_DIR}/src/entities/Resource.cpp
-    ${PROJECT_SOURCE_DIR}/src/entities/resources/ItemResources.cpp
-    ${PROJECT_SOURCE_DIR}/src/entities/resources/MaterialResources.cpp
-    ${PROJECT_SOURCE_DIR}/src/entities/resources/CurrencyAndGameResources.cpp
-    ${PROJECT_SOURCE_DIR}/src/utils/JsonReader.cpp
-    ${PROJECT_SOURCE_DIR}/src/core/GameTime.cpp
-    mocks/AIBehavior.cpp
+    ${MOCK_SOURCES}
 )
 
-# Thread-safe AI Integration tests
 add_executable(thread_safe_ai_integration_tests
     ThreadSafeAIIntegrationTest.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/AIManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/EventManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/ai/behaviors/ChaseBehavior.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/Event.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/NPCSpawnEvent.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/EventFactory.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/WeatherEvent.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/SceneChangeEvent.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/ParticleEffectEvent.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/ResourceChangeEvent.cpp
-    ${PROJECT_SOURCE_DIR}/src/entities/NPC.cpp
-    ${PROJECT_SOURCE_DIR}/src/entities/resources/InventoryComponent.cpp
-    ${PROJECT_SOURCE_DIR}/src/utils/Camera.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/TextureManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/ParticleManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/SoundManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/WorldManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/world/WorldGenerator.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/WorldResourceManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/ResourceTemplateManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/ResourceFactory.cpp
-    ${PROJECT_SOURCE_DIR}/src/entities/Resource.cpp
-    ${PROJECT_SOURCE_DIR}/src/entities/resources/ItemResources.cpp
-    ${PROJECT_SOURCE_DIR}/src/entities/resources/MaterialResources.cpp
-    ${PROJECT_SOURCE_DIR}/src/entities/resources/CurrencyAndGameResources.cpp
-    ${PROJECT_SOURCE_DIR}/src/utils/JsonReader.cpp
-    ${PROJECT_SOURCE_DIR}/src/core/GameTime.cpp
-    mocks/AIBehavior.cpp
+    ${MOCK_SOURCES}
 )
 
-# Event Manager tests
 add_executable(event_manager_tests
     events/EventManagerTest.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/EventManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/ParticleManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/SoundManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/Event.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/WeatherEvent.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/WorldManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/world/WorldGenerator.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/WorldResourceManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/ResourceTemplateManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/ResourceFactory.cpp
-    ${PROJECT_SOURCE_DIR}/src/entities/Resource.cpp
-    ${PROJECT_SOURCE_DIR}/src/entities/resources/ItemResources.cpp
-    ${PROJECT_SOURCE_DIR}/src/entities/resources/MaterialResources.cpp
-    ${PROJECT_SOURCE_DIR}/src/entities/resources/CurrencyAndGameResources.cpp
-    ${PROJECT_SOURCE_DIR}/src/utils/JsonReader.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/TextureManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/SceneChangeEvent.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/ParticleEffectEvent.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/ResourceChangeEvent.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/EventFactory.cpp
-    ${PROJECT_SOURCE_DIR}/src/core/GameTime.cpp
-    mocks/MockPlayer.cpp
-    mocks/NPCSpawnEventTest.cpp
-    mocks/MockNPC.cpp
-    mocks/MockGameEngine.cpp
+    ${MOCK_SOURCES}
 )
 
-# Event Types tests
 add_executable(event_types_tests
     events/EventTypesTest.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/Event.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/WeatherEvent.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/WorldManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/world/WorldGenerator.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/WorldResourceManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/ResourceTemplateManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/ResourceFactory.cpp
-    ${PROJECT_SOURCE_DIR}/src/entities/Resource.cpp
-    ${PROJECT_SOURCE_DIR}/src/entities/resources/ItemResources.cpp
-    ${PROJECT_SOURCE_DIR}/src/entities/resources/MaterialResources.cpp
-    ${PROJECT_SOURCE_DIR}/src/entities/resources/CurrencyAndGameResources.cpp
-    ${PROJECT_SOURCE_DIR}/src/utils/JsonReader.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/EventManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/ParticleManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/SoundManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/TextureManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/SceneChangeEvent.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/ResourceChangeEvent.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/ParticleEffectEvent.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/EventFactory.cpp
-    ${PROJECT_SOURCE_DIR}/src/core/GameTime.cpp
-    mocks/NPCSpawnEventTest.cpp
-    mocks/MockNPC.cpp
-    mocks/MockGameEngine.cpp
+    ${MOCK_SOURCES}
 )
 
-# Particle Manager Core tests
 add_executable(particle_manager_core_tests
     particle/ParticleManagerCoreTest.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/ParticleManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/SoundManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/Event.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/WeatherEvent.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/WorldManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/world/WorldGenerator.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/WorldResourceManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/ResourceTemplateManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/ResourceFactory.cpp
-    ${PROJECT_SOURCE_DIR}/src/entities/Resource.cpp
-    ${PROJECT_SOURCE_DIR}/src/entities/resources/ItemResources.cpp
-    ${PROJECT_SOURCE_DIR}/src/entities/resources/MaterialResources.cpp
-    ${PROJECT_SOURCE_DIR}/src/entities/resources/CurrencyAndGameResources.cpp
-    ${PROJECT_SOURCE_DIR}/src/utils/JsonReader.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/EventManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/TextureManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/SceneChangeEvent.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/ParticleEffectEvent.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/ResourceChangeEvent.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/EventFactory.cpp
-    ${PROJECT_SOURCE_DIR}/src/core/GameTime.cpp
-    mocks/NPCSpawnEventTest.cpp
-    mocks/MockNPC.cpp
+    ${MOCK_SOURCES}
 )
 
-# Particle Manager Performance tests
 add_executable(particle_manager_performance_tests
     particle/ParticleManagerPerformanceTest.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/ParticleManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/SoundManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/Event.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/WeatherEvent.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/WorldManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/world/WorldGenerator.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/WorldResourceManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/ResourceTemplateManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/ResourceFactory.cpp
-    ${PROJECT_SOURCE_DIR}/src/entities/Resource.cpp
-    ${PROJECT_SOURCE_DIR}/src/entities/resources/ItemResources.cpp
-    ${PROJECT_SOURCE_DIR}/src/entities/resources/MaterialResources.cpp
-    ${PROJECT_SOURCE_DIR}/src/entities/resources/CurrencyAndGameResources.cpp
-    ${PROJECT_SOURCE_DIR}/src/utils/JsonReader.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/EventManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/TextureManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/SceneChangeEvent.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/ResourceChangeEvent.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/ParticleEffectEvent.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/EventFactory.cpp
-    ${PROJECT_SOURCE_DIR}/src/core/GameTime.cpp
-    mocks/NPCSpawnEventTest.cpp
-    mocks/MockNPC.cpp
+    ${MOCK_SOURCES}
 )
 
-# Particle Manager Weather tests
 add_executable(particle_manager_weather_tests
     particle/ParticleManagerWeatherTest.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/ParticleManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/SoundManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/Event.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/WeatherEvent.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/WorldManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/world/WorldGenerator.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/WorldResourceManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/ResourceTemplateManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/ResourceFactory.cpp
-    ${PROJECT_SOURCE_DIR}/src/entities/Resource.cpp
-    ${PROJECT_SOURCE_DIR}/src/entities/resources/ItemResources.cpp
-    ${PROJECT_SOURCE_DIR}/src/entities/resources/MaterialResources.cpp
-    ${PROJECT_SOURCE_DIR}/src/entities/resources/CurrencyAndGameResources.cpp
-    ${PROJECT_SOURCE_DIR}/src/utils/JsonReader.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/EventManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/TextureManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/SceneChangeEvent.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/ResourceChangeEvent.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/ParticleEffectEvent.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/EventFactory.cpp
-    ${PROJECT_SOURCE_DIR}/src/core/GameTime.cpp
-    mocks/NPCSpawnEventTest.cpp
-    mocks/MockNPC.cpp
+    ${MOCK_SOURCES}
 )
 
-# Particle Manager Threading tests
 add_executable(particle_manager_threading_tests
     particle/ParticleManagerThreadingTest.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/ParticleManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/SoundManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/Event.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/WeatherEvent.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/WorldManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/world/WorldGenerator.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/WorldResourceManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/ResourceTemplateManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/ResourceFactory.cpp
-    ${PROJECT_SOURCE_DIR}/src/entities/Resource.cpp
-    ${PROJECT_SOURCE_DIR}/src/entities/resources/ItemResources.cpp
-    ${PROJECT_SOURCE_DIR}/src/entities/resources/MaterialResources.cpp
-    ${PROJECT_SOURCE_DIR}/src/entities/resources/CurrencyAndGameResources.cpp
-    ${PROJECT_SOURCE_DIR}/src/utils/JsonReader.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/EventManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/TextureManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/SceneChangeEvent.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/ResourceChangeEvent.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/ParticleEffectEvent.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/EventFactory.cpp
-    ${PROJECT_SOURCE_DIR}/src/core/GameTime.cpp
-    mocks/NPCSpawnEventTest.cpp
-    mocks/MockNPC.cpp
+    ${MOCK_SOURCES}
 )
 
-# Weather Event tests
 add_executable(weather_event_tests
     events/WeatherEventTest.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/Event.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/WeatherEvent.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/WorldManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/world/WorldGenerator.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/WorldResourceManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/ResourceTemplateManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/ResourceFactory.cpp
-    ${PROJECT_SOURCE_DIR}/src/entities/Resource.cpp
-    ${PROJECT_SOURCE_DIR}/src/entities/resources/ItemResources.cpp
-    ${PROJECT_SOURCE_DIR}/src/entities/resources/MaterialResources.cpp
-    ${PROJECT_SOURCE_DIR}/src/entities/resources/CurrencyAndGameResources.cpp
-    ${PROJECT_SOURCE_DIR}/src/utils/JsonReader.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/EventManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/ParticleManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/SoundManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/TextureManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/SceneChangeEvent.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/ResourceChangeEvent.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/ParticleEffectEvent.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/EventFactory.cpp
-    ${PROJECT_SOURCE_DIR}/src/core/GameTime.cpp
-    mocks/NPCSpawnEventTest.cpp
-    mocks/MockNPC.cpp
+    ${MOCK_SOURCES}
 )
 
-# UI Stress Test executable (minimal dependencies)
 add_executable(ui_stress_test
     ui/ui_stress_test_main.cpp
 )
 
-# Buffer Utilization tests
 add_executable(buffer_utilization_tests
     BufferUtilizationTest.cpp
 )
 
-# Behavior Functionality tests - AI behavior testing with TestEntity 
 add_executable(behavior_functionality_tests
     BehaviorFunctionalityTest.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/AIManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/EventManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/ParticleManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/SoundManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/WorldManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/world/WorldGenerator.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/WorldResourceManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/ResourceTemplateManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/ResourceFactory.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/TextureManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/entities/Resource.cpp
-    ${PROJECT_SOURCE_DIR}/src/entities/resources/ItemResources.cpp
-    ${PROJECT_SOURCE_DIR}/src/entities/resources/MaterialResources.cpp
-    ${PROJECT_SOURCE_DIR}/src/entities/resources/CurrencyAndGameResources.cpp
-    ${PROJECT_SOURCE_DIR}/src/entities/resources/InventoryComponent.cpp
-    ${PROJECT_SOURCE_DIR}/src/entities/NPC.cpp
-    ${PROJECT_SOURCE_DIR}/src/utils/Camera.cpp
-    ${PROJECT_SOURCE_DIR}/src/utils/JsonReader.cpp
-    ${PROJECT_SOURCE_DIR}/src/ai/behaviors/IdleBehavior.cpp
-    ${PROJECT_SOURCE_DIR}/src/ai/behaviors/WanderBehavior.cpp
-    ${PROJECT_SOURCE_DIR}/src/ai/behaviors/PatrolBehavior.cpp
-    ${PROJECT_SOURCE_DIR}/src/ai/behaviors/ChaseBehavior.cpp
-    ${PROJECT_SOURCE_DIR}/src/ai/behaviors/FleeBehavior.cpp
-    ${PROJECT_SOURCE_DIR}/src/ai/behaviors/FollowBehavior.cpp
-    ${PROJECT_SOURCE_DIR}/src/ai/behaviors/GuardBehavior.cpp
-    ${PROJECT_SOURCE_DIR}/src/ai/behaviors/AttackBehavior.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/Event.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/WeatherEvent.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/SceneChangeEvent.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/ParticleEffectEvent.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/ResourceChangeEvent.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/NPCSpawnEvent.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/EventFactory.cpp
-    ${PROJECT_SOURCE_DIR}/src/core/GameTime.cpp
-    mocks/AIBehavior.cpp
+    ${MOCK_SOURCES}
 )
-# Resource Template Manager tests
+
 add_executable(resource_template_manager_tests
     resources/ResourceTemplateManagerTests.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/ResourceTemplateManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/ResourceFactory.cpp
-    ${PROJECT_SOURCE_DIR}/src/entities/Resource.cpp
-    ${PROJECT_SOURCE_DIR}/src/entities/resources/ItemResources.cpp
-    ${PROJECT_SOURCE_DIR}/src/entities/resources/MaterialResources.cpp
-    ${PROJECT_SOURCE_DIR}/src/entities/resources/CurrencyAndGameResources.cpp
-    ${PROJECT_SOURCE_DIR}/src/utils/JsonReader.cpp
 )
 
-# Resource Factory tests
 add_executable(resource_factory_tests
     resources/ResourceFactoryTests.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/ResourceFactory.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/ResourceTemplateManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/entities/Resource.cpp
-    ${PROJECT_SOURCE_DIR}/src/entities/resources/ItemResources.cpp
-    ${PROJECT_SOURCE_DIR}/src/entities/resources/MaterialResources.cpp
-    ${PROJECT_SOURCE_DIR}/src/entities/resources/CurrencyAndGameResources.cpp
-    ${PROJECT_SOURCE_DIR}/src/utils/JsonReader.cpp
 )
 
-# ResourceTemplateManager JSON tests
 add_executable(resource_template_manager_json_tests
     resources/ResourceTemplateManagerJsonTests.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/ResourceTemplateManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/ResourceFactory.cpp
-    ${PROJECT_SOURCE_DIR}/src/entities/Resource.cpp
-    ${PROJECT_SOURCE_DIR}/src/entities/resources/ItemResources.cpp
-    ${PROJECT_SOURCE_DIR}/src/entities/resources/MaterialResources.cpp
-    ${PROJECT_SOURCE_DIR}/src/entities/resources/CurrencyAndGameResources.cpp
-    ${PROJECT_SOURCE_DIR}/src/utils/JsonReader.cpp
 )
 
-# World Resource Manager tests
 add_executable(world_resource_manager_tests
     resources/WorldResourceManagerTests.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/ResourceTemplateManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/WorldResourceManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/WorldManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/EventManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/ParticleManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/SoundManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/TextureManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/ResourceFactory.cpp
-    ${PROJECT_SOURCE_DIR}/src/entities/Resource.cpp
-    ${PROJECT_SOURCE_DIR}/src/entities/NPC.cpp
-    ${PROJECT_SOURCE_DIR}/src/utils/Camera.cpp
-    ${PROJECT_SOURCE_DIR}/src/entities/resources/ItemResources.cpp
-    ${PROJECT_SOURCE_DIR}/src/entities/resources/MaterialResources.cpp
-    ${PROJECT_SOURCE_DIR}/src/entities/resources/CurrencyAndGameResources.cpp
-    ${PROJECT_SOURCE_DIR}/src/entities/resources/InventoryComponent.cpp
-    ${PROJECT_SOURCE_DIR}/src/core/GameTime.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/Event.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/WeatherEvent.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/SceneChangeEvent.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/ResourceChangeEvent.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/HarvestResourceEvent.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/NPCSpawnEvent.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/ParticleEffectEvent.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/EventFactory.cpp
-    ${PROJECT_SOURCE_DIR}/src/utils/JsonReader.cpp
-    ${PROJECT_SOURCE_DIR}/src/world/WorldGenerator.cpp
 )
 
-# Inventory Component tests
 add_executable(inventory_component_tests
     resources/InventoryComponentTests.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/ResourceTemplateManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/WorldResourceManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/WorldManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/EventManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/ParticleManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/SoundManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/TextureManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/ResourceFactory.cpp
-    ${PROJECT_SOURCE_DIR}/src/utils/JsonReader.cpp
-    ${PROJECT_SOURCE_DIR}/src/entities/Resource.cpp
-    ${PROJECT_SOURCE_DIR}/src/entities/NPC.cpp
-    ${PROJECT_SOURCE_DIR}/src/utils/Camera.cpp
-    ${PROJECT_SOURCE_DIR}/src/entities/resources/InventoryComponent.cpp
-    ${PROJECT_SOURCE_DIR}/src/entities/resources/ItemResources.cpp
-    ${PROJECT_SOURCE_DIR}/src/entities/resources/MaterialResources.cpp
-    ${PROJECT_SOURCE_DIR}/src/entities/resources/CurrencyAndGameResources.cpp
-    ${PROJECT_SOURCE_DIR}/src/core/GameTime.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/Event.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/WeatherEvent.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/SceneChangeEvent.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/ResourceChangeEvent.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/HarvestResourceEvent.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/NPCSpawnEvent.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/ParticleEffectEvent.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/EventFactory.cpp
-    ${PROJECT_SOURCE_DIR}/src/world/WorldGenerator.cpp
     mocks/MockPlayer.cpp
 )
 
-# Resource Change Event tests
 add_executable(resource_change_event_tests
     resources/ResourceChangeEventTests.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/ResourceTemplateManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/ResourceFactory.cpp
-    ${PROJECT_SOURCE_DIR}/src/utils/JsonReader.cpp
-    ${PROJECT_SOURCE_DIR}/src/entities/Resource.cpp
-    ${PROJECT_SOURCE_DIR}/src/entities/resources/ItemResources.cpp
-    ${PROJECT_SOURCE_DIR}/src/entities/resources/MaterialResources.cpp
-    ${PROJECT_SOURCE_DIR}/src/entities/resources/CurrencyAndGameResources.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/ResourceChangeEvent.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/Event.cpp
 )
 
-# Resource Integration tests
 add_executable(resource_integration_tests
     resources/ResourceIntegrationTests.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/ResourceTemplateManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/WorldResourceManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/WorldManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/EventManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/ParticleManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/SoundManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/TextureManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/ResourceFactory.cpp
-    ${PROJECT_SOURCE_DIR}/src/utils/JsonReader.cpp
-    ${PROJECT_SOURCE_DIR}/src/entities/Resource.cpp
-    ${PROJECT_SOURCE_DIR}/src/entities/NPC.cpp
-    ${PROJECT_SOURCE_DIR}/src/utils/Camera.cpp
-    ${PROJECT_SOURCE_DIR}/src/entities/resources/InventoryComponent.cpp
-    ${PROJECT_SOURCE_DIR}/src/entities/resources/ItemResources.cpp
-    ${PROJECT_SOURCE_DIR}/src/entities/resources/MaterialResources.cpp
-    ${PROJECT_SOURCE_DIR}/src/entities/resources/CurrencyAndGameResources.cpp
-    ${PROJECT_SOURCE_DIR}/src/core/GameTime.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/Event.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/WeatherEvent.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/SceneChangeEvent.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/ResourceChangeEvent.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/HarvestResourceEvent.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/NPCSpawnEvent.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/ParticleEffectEvent.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/EventFactory.cpp
-    ${PROJECT_SOURCE_DIR}/src/world/WorldGenerator.cpp
     mocks/MockPlayer.cpp
 )
 
-# Resource Edge Case tests
 add_executable(resource_edge_case_tests
     resources/ResourceEdgeCaseTests.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/ResourceTemplateManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/WorldResourceManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/WorldManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/EventManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/ParticleManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/SoundManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/TextureManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/ResourceFactory.cpp
-    ${PROJECT_SOURCE_DIR}/src/utils/JsonReader.cpp
-    ${PROJECT_SOURCE_DIR}/src/entities/Resource.cpp
-    ${PROJECT_SOURCE_DIR}/src/entities/NPC.cpp
-    ${PROJECT_SOURCE_DIR}/src/utils/Camera.cpp
-    ${PROJECT_SOURCE_DIR}/src/entities/resources/InventoryComponent.cpp
-    ${PROJECT_SOURCE_DIR}/src/entities/resources/ItemResources.cpp
-    ${PROJECT_SOURCE_DIR}/src/entities/resources/MaterialResources.cpp
-    ${PROJECT_SOURCE_DIR}/src/entities/resources/CurrencyAndGameResources.cpp
-    ${PROJECT_SOURCE_DIR}/src/core/GameTime.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/Event.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/WeatherEvent.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/SceneChangeEvent.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/ResourceChangeEvent.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/HarvestResourceEvent.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/NPCSpawnEvent.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/ParticleEffectEvent.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/EventFactory.cpp
-    ${PROJECT_SOURCE_DIR}/src/world/WorldGenerator.cpp
 )
 
-# JsonReader tests
 add_executable(json_reader_tests
     utils/JsonReaderTest.cpp
-    ${PROJECT_SOURCE_DIR}/src/utils/JsonReader.cpp
 )
 
-# WorldGenerator tests
 add_executable(world_generator_tests
     world/WorldGeneratorTests.cpp
-    ${PROJECT_SOURCE_DIR}/src/world/WorldGenerator.cpp
 )
 
-# WorldManager tests
 add_executable(world_manager_tests
     world/WorldManagerTests.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/WorldManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/world/WorldGenerator.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/WorldResourceManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/EventManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/ParticleManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/SoundManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/TextureManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/entities/Resource.cpp
-    ${PROJECT_SOURCE_DIR}/src/entities/NPC.cpp
-    ${PROJECT_SOURCE_DIR}/src/utils/Camera.cpp
-    ${PROJECT_SOURCE_DIR}/src/entities/resources/InventoryComponent.cpp
-    ${PROJECT_SOURCE_DIR}/src/entities/resources/ItemResources.cpp
-    ${PROJECT_SOURCE_DIR}/src/entities/resources/MaterialResources.cpp
-    ${PROJECT_SOURCE_DIR}/src/entities/resources/CurrencyAndGameResources.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/ResourceTemplateManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/ResourceFactory.cpp
-    ${PROJECT_SOURCE_DIR}/src/utils/JsonReader.cpp
-    ${PROJECT_SOURCE_DIR}/src/core/GameTime.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/Event.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/ResourceChangeEvent.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/HarvestResourceEvent.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/WeatherEvent.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/SceneChangeEvent.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/NPCSpawnEvent.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/ParticleEffectEvent.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/EventFactory.cpp
 )
 
-# WorldManager Event Integration tests  
 add_executable(world_manager_event_integration_tests
     world/WorldManagerEventIntegrationTests.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/WorldManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/world/WorldGenerator.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/WorldResourceManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/EventManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/ParticleManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/SoundManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/TextureManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/entities/Resource.cpp
-    ${PROJECT_SOURCE_DIR}/src/entities/NPC.cpp
-    ${PROJECT_SOURCE_DIR}/src/utils/Camera.cpp
-    ${PROJECT_SOURCE_DIR}/src/entities/resources/InventoryComponent.cpp
-    ${PROJECT_SOURCE_DIR}/src/entities/resources/ItemResources.cpp
-    ${PROJECT_SOURCE_DIR}/src/entities/resources/MaterialResources.cpp
-    ${PROJECT_SOURCE_DIR}/src/entities/resources/CurrencyAndGameResources.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/ResourceTemplateManager.cpp
-    ${PROJECT_SOURCE_DIR}/src/managers/ResourceFactory.cpp
-    ${PROJECT_SOURCE_DIR}/src/utils/JsonReader.cpp
-    ${PROJECT_SOURCE_DIR}/src/core/GameTime.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/Event.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/ResourceChangeEvent.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/HarvestResourceEvent.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/WeatherEvent.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/SceneChangeEvent.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/NPCSpawnEvent.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/ParticleEffectEvent.cpp
-    ${PROJECT_SOURCE_DIR}/src/events/EventFactory.cpp
 )
 
-# Add compile definitions for Boost.Test
-target_compile_definitions(save_manager_tests PRIVATE
-)
+# --- Compile Definitions ---
+target_compile_definitions(event_manager_tests PRIVATE RUNNING_TESTS)
+target_compile_definitions(event_types_tests PRIVATE RUNNING_TESTS)
+target_compile_definitions(ui_stress_test PRIVATE UI_STRESS_TEST_BUILD)
 
-target_compile_definitions(thread_system_tests PRIVATE
+# All Boost.Test executables need this definition
+foreach(test_name
+    save_manager_tests
+    thread_system_tests
+    game_state_manager_tests
+    ai_optimization_tests
+    ai_scaling_benchmark
+    event_manager_scaling_benchmark
+    thread_safe_ai_manager_tests
+    thread_safe_ai_integration_tests
+    event_manager_tests
+    event_types_tests
+    particle_manager_core_tests
+    particle_manager_performance_tests
+    particle_manager_weather_tests
+    particle_manager_threading_tests
+    weather_event_tests
+    buffer_utilization_tests
+    behavior_functionality_tests
+    resource_template_manager_tests
+    resource_factory_tests
+    resource_template_manager_json_tests
+    world_resource_manager_tests
+    inventory_component_tests
+    resource_change_event_tests
+    resource_integration_tests
+    resource_edge_case_tests
+    json_reader_tests
+    world_generator_tests
+    world_manager_tests
+    world_manager_event_integration_tests
 )
-
-# AI Optimization tests definitions
-target_compile_definitions(ai_optimization_tests PRIVATE
-)
-
-# AI Scaling benchmark definitions
-target_compile_definitions(ai_scaling_benchmark PRIVATE
-)
-
-target_compile_definitions(event_manager_scaling_benchmark PRIVATE
-)
-
-# Thread-safe AI Manager tests definitions
-target_compile_definitions(thread_safe_ai_manager_tests PRIVATE
-    BOOST_TEST_NO_SIGNAL_HANDLING
-)
-
-# Thread-safe AI Integration tests definitions
-target_compile_definitions(thread_safe_ai_integration_tests PRIVATE
-    BOOST_TEST_NO_SIGNAL_HANDLING
-)
-
-# Event Manager tests definitions
-target_compile_definitions(event_manager_tests PRIVATE
-    BOOST_TEST_NO_SIGNAL_HANDLING
-    RUNNING_TESTS
-)
-
-# Event Types tests definitions
-target_compile_definitions(event_types_tests PRIVATE
-    BOOST_TEST_NO_SIGNAL_HANDLING
-    RUNNING_TESTS
-)
-
-# Particle Manager Core tests definitions
-target_compile_definitions(particle_manager_core_tests PRIVATE
-    BOOST_TEST_NO_SIGNAL_HANDLING
-)
-
-# Particle Manager Performance tests definitions
-target_compile_definitions(particle_manager_performance_tests PRIVATE
-    BOOST_TEST_NO_SIGNAL_HANDLING
-)
-
-# Particle Manager Weather tests definitions
-target_compile_definitions(particle_manager_weather_tests PRIVATE
-    BOOST_TEST_NO_SIGNAL_HANDLING
-)
-
-# Particle Manager Threading tests definitions
-target_compile_definitions(particle_manager_threading_tests PRIVATE
-    BOOST_TEST_NO_SIGNAL_HANDLING
-)
-
-# Weather Event tests definitions
-target_compile_definitions(weather_event_tests PRIVATE
-    BOOST_TEST_NO_SIGNAL_HANDLING
-)
-
-# UI Stress Test definitions
-target_compile_definitions(ui_stress_test PRIVATE
-    UI_STRESS_TEST_BUILD
-)
-
-# Buffer Utilization tests definitions
-target_compile_definitions(buffer_utilization_tests PRIVATE
-)
-
-# Behavior Functionality tests definitions
-target_compile_definitions(behavior_functionality_tests PRIVATE
-    BOOST_TEST_NO_SIGNAL_HANDLING
-)
-# Resource Factory tests definitions
-target_compile_definitions(resource_factory_tests PRIVATE
-    BOOST_TEST_NO_SIGNAL_HANDLING
-)
-
-# ResourceTemplateManager JSON tests definitions
-target_compile_definitions(resource_template_manager_json_tests PRIVATE
-    BOOST_TEST_NO_SIGNAL_HANDLING
-)
-
-# Resource Manager tests definitions
-target_compile_definitions(resource_template_manager_tests PRIVATE
-    BOOST_TEST_NO_SIGNAL_HANDLING
-)
-
-# World Resource Manager tests definitions
-target_compile_definitions(world_resource_manager_tests PRIVATE
-    BOOST_TEST_NO_SIGNAL_HANDLING
-)
-
-# Inventory Component tests definitions
-target_compile_definitions(inventory_component_tests PRIVATE
-    BOOST_TEST_NO_SIGNAL_HANDLING
-)
-
-# Resource Change Event tests definitions
-target_compile_definitions(resource_change_event_tests PRIVATE
-    BOOST_TEST_NO_SIGNAL_HANDLING
-)
-
-# Resource Integration tests definitions
-target_compile_definitions(resource_integration_tests PRIVATE
-    BOOST_TEST_NO_SIGNAL_HANDLING
-)
-
-# JsonReader tests definitions
-target_compile_definitions(json_reader_tests PRIVATE
-    BOOST_TEST_NO_SIGNAL_HANDLING
-)
-
-# Resource Edge Case tests definitions
-target_compile_definitions(resource_edge_case_tests PRIVATE
-    BOOST_TEST_NO_SIGNAL_HANDLING
-)
+    target_compile_definitions(${test_name} PRIVATE BOOST_TEST_NO_SIGNAL_HANDLING)
+endforeach()
 
 
+# --- Link Libraries ---
 
-# Link with required libraries
-target_link_libraries(save_manager_tests PRIVATE
-    SDL3::SDL3
-    Boost::unit_test_framework
+set(FULL_ENGINE_TESTS
+    ai_scaling_benchmark
+    event_manager_scaling_benchmark
+    thread_safe_ai_manager_tests
+    thread_safe_ai_integration_tests
+    event_manager_tests
+    event_types_tests
+    particle_manager_core_tests
+    particle_manager_performance_tests
+    particle_manager_weather_tests
+    particle_manager_threading_tests
+    weather_event_tests
+    behavior_functionality_tests
+    world_resource_manager_tests
+    inventory_component_tests
+    resource_integration_tests
+    resource_edge_case_tests
+    world_manager_tests
+    world_manager_event_integration_tests
 )
 
-target_link_libraries(thread_system_tests PRIVATE
-    SDL3::SDL3
-    Boost::unit_test_framework
-)
+foreach(test_name ${FULL_ENGINE_TESTS})
+    target_link_libraries(${test_name} PRIVATE
+        HammerEngine
+        SDL3::SDL3
+        SDL3_image::SDL3_image
+        SDL3_ttf::SDL3_ttf
+        SDL3_mixer::SDL3_mixer
+        Boost::unit_test_framework
+    )
+endforeach()
 
-# Link GameStateManager tests with required libraries
-target_link_libraries(game_state_manager_tests PRIVATE
-    SDL3::SDL3
-    Boost::unit_test_framework
+foreach(test_name
+    save_manager_tests
+    thread_system_tests
+    game_state_manager_tests
+    ai_optimization_tests
+    ui_stress_test
+    buffer_utilization_tests
+    resource_template_manager_tests
+    resource_factory_tests
+    resource_template_manager_json_tests
+    resource_change_event_tests
+    json_reader_tests
+    world_generator_tests
 )
+    target_link_libraries(${test_name} PRIVATE
+        HammerEngine
+        SDL3::SDL3
+        Boost::unit_test_framework
+    )
+endforeach()
 
-# Link AI optimization tests with required libraries
-target_link_libraries(ai_optimization_tests PRIVATE
-    SDL3::SDL3
-    SDL3_image::SDL3_image
-    Boost::unit_test_framework
+# --- CTest Registration ---
+foreach(test_name
+    SaveManagerTests
+    ThreadSystemTests
+    GameStateManagerTests
+    AIOptimizationTests
+    AIScalingBenchmark
+    EventManagerScalingBenchmark
+    ThreadSafeAIManagerTests
+    ThreadSafeAIIntegrationTests
+    EventManagerTests
+    EventTypesTests
+    ParticleManagerCoreTests
+    ParticleManagerPerformanceTests
+    ParticleManagerWeatherTests
+    ParticleManagerThreadingTests
+    WeatherEventTests
+    BufferUtilizationTests
+    BehaviorFunctionalityTests
+    ResourceTemplateManagerTests
+    ResourceFactoryTests
+    ResourceTemplateManagerJsonTests
+    WorldResourceManagerTests
+    InventoryComponentTests
+    ResourceChangeEventTests
+    ResourceIntegrationTests
+    ResourceEdgeCaseTests
+    JsonReaderTests
+    WorldGeneratorTests
+    WorldManagerTests
+    WorldManagerEventIntegrationTests
 )
-
-# Link AI scaling benchmark with required libraries
-target_link_libraries(ai_scaling_benchmark PRIVATE
-    SDL3::SDL3
-    SDL3_image::SDL3_image
-    SDL3_mixer::SDL3_mixer
-    Boost::unit_test_framework
-)
-
-target_link_libraries(event_manager_scaling_benchmark PRIVATE
-    SDL3::SDL3
-    SDL3_image::SDL3_image
-    SDL3_mixer::SDL3_mixer
-    Boost::unit_test_framework
-)
-
-# Link Thread-safe AI Manager tests with required libraries
-target_link_libraries(thread_safe_ai_manager_tests PRIVATE
-    SDL3::SDL3
-    SDL3_image::SDL3_image
-    SDL3_mixer::SDL3_mixer
-    Boost::unit_test_framework
-)
-
-# Link Thread-safe AI Integration tests with required libraries
-target_link_libraries(thread_safe_ai_integration_tests PRIVATE
-    SDL3::SDL3
-    SDL3_image::SDL3_image
-    SDL3_mixer::SDL3_mixer
-    Boost::unit_test_framework
-)
-
-# Link Event Manager tests with required libraries
-target_link_libraries(event_manager_tests PRIVATE
-    SDL3::SDL3
-    SDL3_image::SDL3_image
-    SDL3_mixer::SDL3_mixer
-    Boost::unit_test_framework
-)
-
-# Link Event Types tests with required libraries
-target_link_libraries(event_types_tests PRIVATE
-    SDL3::SDL3
-    SDL3_image::SDL3_image
-    SDL3_mixer::SDL3_mixer
-    Boost::unit_test_framework
-)
-
-# Link Particle Manager Core tests with required libraries
-target_link_libraries(particle_manager_core_tests PRIVATE
-    SDL3::SDL3
-    SDL3_image::SDL3_image
-    SDL3_mixer::SDL3_mixer
-    Boost::unit_test_framework
-)
-
-# Link Particle Manager Performance tests with required libraries
-target_link_libraries(particle_manager_performance_tests PRIVATE
-    SDL3::SDL3
-    SDL3_image::SDL3_image
-    SDL3_mixer::SDL3_mixer
-    Boost::unit_test_framework
-)
-
-# Link Particle Manager Weather tests with required libraries
-target_link_libraries(particle_manager_weather_tests PRIVATE
-    SDL3::SDL3
-    SDL3_image::SDL3_image
-    SDL3_mixer::SDL3_mixer
-    Boost::unit_test_framework
-)
-
-# Link Particle Manager Threading tests with required libraries
-target_link_libraries(particle_manager_threading_tests PRIVATE
-    SDL3::SDL3
-    SDL3_image::SDL3_image
-    SDL3_mixer::SDL3_mixer
-    Boost::unit_test_framework
-)
-
-# Link Weather Event tests with required libraries
-target_link_libraries(weather_event_tests PRIVATE
-    SDL3::SDL3
-    SDL3_image::SDL3_image
-    SDL3_mixer::SDL3_mixer
-    Boost::unit_test_framework
-)
-
-# Link UI Stress Test with minimal libraries
-target_link_libraries(ui_stress_test PRIVATE
-    SDL3::SDL3
-    Boost::unit_test_framework
-)
-
-# Link Buffer Utilization tests with required libraries
-target_link_libraries(buffer_utilization_tests PRIVATE
-    SDL3::SDL3
-    Boost::unit_test_framework
-)
-
-# Link Behavior Functionality tests with required libraries
-target_link_libraries(behavior_functionality_tests PRIVATE
-    SDL3::SDL3
-    SDL3_image::SDL3_image
-    SDL3_mixer::SDL3_mixer
-    Boost::unit_test_framework
-)
-# Link Resource Manager tests with required libraries
-target_link_libraries(resource_template_manager_tests PRIVATE
-    SDL3::SDL3
-    Boost::unit_test_framework
-)
-
-target_link_libraries(resource_factory_tests PRIVATE
-    SDL3::SDL3
-    Boost::unit_test_framework
-)
-
-target_link_libraries(resource_template_manager_json_tests PRIVATE
-    SDL3::SDL3
-    Boost::unit_test_framework
-)
-
-# Link World Resource Manager tests with required libraries
-target_link_libraries(world_resource_manager_tests PRIVATE
-    SDL3::SDL3
-    SDL3_image::SDL3_image
-    SDL3_ttf::SDL3_ttf
-    SDL3_mixer::SDL3_mixer
-    Boost::unit_test_framework
-)
-
-# Link Inventory Component tests with required libraries
-target_link_libraries(inventory_component_tests PRIVATE
-    SDL3::SDL3
-    SDL3_image::SDL3_image
-    SDL3_ttf::SDL3_ttf
-    SDL3_mixer::SDL3_mixer
-    Boost::unit_test_framework
-)
-
-# Link Resource Change Event tests with required libraries
-target_link_libraries(resource_change_event_tests PRIVATE
-    SDL3::SDL3
-    Boost::unit_test_framework
-)
-
-# Link Resource Integration tests with required libraries
-target_link_libraries(resource_integration_tests PRIVATE
-    SDL3::SDL3
-    SDL3_image::SDL3_image
-    SDL3_ttf::SDL3_ttf
-    SDL3_mixer::SDL3_mixer
-    Boost::unit_test_framework
-)
-
-# Link Resource Edge Case tests with required libraries
-target_link_libraries(resource_edge_case_tests PRIVATE
-    SDL3::SDL3
-    SDL3_image::SDL3_image
-    SDL3_ttf::SDL3_ttf
-    SDL3_mixer::SDL3_mixer
-    Boost::unit_test_framework
-)
-
-# Link JsonReader tests with required libraries
-target_link_libraries(json_reader_tests PRIVATE
-    SDL3::SDL3
-    Boost::unit_test_framework
-)
-
-# Link WorldGenerator tests with required libraries
-target_link_libraries(world_generator_tests PRIVATE
-    SDL3::SDL3
-    Boost::unit_test_framework
-)
-
-# Link WorldManager tests with required libraries
-target_link_libraries(world_manager_tests PRIVATE
-    SDL3::SDL3
-    SDL3_image::SDL3_image
-    SDL3_ttf::SDL3_ttf
-    SDL3_mixer::SDL3_mixer
-    Boost::unit_test_framework
-)
-
-# Link WorldManager Event Integration tests with required libraries
-target_link_libraries(world_manager_event_integration_tests PRIVATE
-    SDL3::SDL3
-    SDL3_image::SDL3_image
-    SDL3_ttf::SDL3_ttf
-    SDL3_mixer::SDL3_mixer
-    Boost::unit_test_framework
-)
-
-# Add HAVE_BOOST_SERIALIZATION to ui_stress_test as well
-target_compile_definitions(ui_stress_test PRIVATE
-)
-
-# Add the tests to CTest
-add_test(NAME SaveManagerTests COMMAND save_manager_tests)
-add_test(NAME ThreadSystemTests COMMAND thread_system_tests)
-add_test(NAME GameStateManagerTests COMMAND game_state_manager_tests)
-add_test(NAME AIOptimizationTests COMMAND ai_optimization_tests)
-add_test(NAME AIScalingBenchmark COMMAND ai_scaling_benchmark)
-add_test(NAME EventManagerScalingBenchmark
-    COMMAND event_manager_scaling_benchmark)
-add_test(NAME ThreadSafeAIManagerTests
-    COMMAND thread_safe_ai_manager_tests)
-add_test(NAME ThreadSafeAIIntegrationTests
-    COMMAND thread_safe_ai_integration_tests)
-add_test(NAME EventManagerTests COMMAND event_manager_tests)
-add_test(NAME EventTypesTests COMMAND event_types_tests)
-add_test(NAME ParticleManagerCoreTests COMMAND particle_manager_core_tests)
-add_test(NAME ParticleManagerPerformanceTests COMMAND particle_manager_performance_tests)
-add_test(NAME ParticleManagerWeatherTests COMMAND particle_manager_weather_tests)
-add_test(NAME ParticleManagerThreadingTests COMMAND particle_manager_threading_tests)
-add_test(NAME WeatherEventTests COMMAND weather_event_tests)
-add_test(NAME BufferUtilizationTests COMMAND buffer_utilization_tests)
-add_test(NAME BehaviorFunctionalityTests COMMAND behavior_functionality_tests)
-add_test(NAME ResourceTemplateManagerTests COMMAND resource_template_manager_tests)
-add_test(NAME ResourceFactoryTests COMMAND resource_factory_tests)
-add_test(NAME ResourceTemplateManagerJsonTests COMMAND resource_template_manager_json_tests)
-add_test(NAME WorldResourceManagerTests COMMAND world_resource_manager_tests)
-add_test(NAME InventoryComponentTests COMMAND inventory_component_tests)
-add_test(NAME ResourceChangeEventTests COMMAND resource_change_event_tests)
-add_test(NAME ResourceIntegrationTests COMMAND resource_integration_tests)
-add_test(NAME ResourceEdgeCaseTests COMMAND resource_edge_case_tests)
-add_test(NAME JsonReaderTests COMMAND json_reader_tests)
-add_test(NAME WorldGeneratorTests COMMAND world_generator_tests)
-add_test(NAME WorldManagerTests COMMAND world_manager_tests)
-add_test(NAME WorldManagerEventIntegrationTests COMMAND world_manager_event_integration_tests)
+    string(TOLOWER ${test_name} test_command)
+    add_test(NAME ${test_name} COMMAND ${test_command})
+endforeach()
