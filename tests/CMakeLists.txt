@@ -5,6 +5,7 @@ set(CMAKE_CXX_STANDARD 20) # Match the main project's C++ standard
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # Check if we can build tests - require Boost Test for test framework
+find_package(Boost REQUIRED COMPONENTS container)
 if(NOT HAVE_BOOST_TEST)
     message(STATUS "Skipping all tests - Boost Test not found (required)")
     return()
@@ -76,24 +77,8 @@ set(HAMMER_ENGINE_SOURCES
 )
 
 add_library(HammerEngine STATIC ${HAMMER_ENGINE_SOURCES})
-
-set(MOCK_SOURCES
-    mocks/MockAIBehavior.cpp
-    mocks/MockPlayer.cpp
-    mocks/MockNPC.cpp
-    mocks/MockGameEngine.cpp
-)
-
-# Include directories
-include_directories(
-    ${PROJECT_SOURCE_DIR}/include
-    ${CMAKE_CURRENT_SOURCE_DIR}/mocks
-    ${Boost_INCLUDE_DIRS}
-    ${SDL3_SOURCE_DIR}/include
-    ${SDL3_image_SOURCE_DIR}/include
-    ${SDL3_ttf_SOURCE_DIR}/include
-    ${SDL3_mixer_SOURCE_DIR}/include
-)
+target_include_directories(HammerEngine PUBLIC ${PROJECT_SOURCE_DIR}/include)
+target_link_libraries(HammerEngine PUBLIC SDL3::SDL3 SDL3_image::SDL3_image SDL3_ttf::SDL3_ttf SDL3_mixer::SDL3_mixer)
 
 # --- Test Executables ---
 
@@ -116,57 +101,90 @@ add_executable(ai_optimization_tests
 
 add_executable(ai_scaling_benchmark
     AIScalingBenchmark.cpp
-    ${MOCK_SOURCES}
+    mocks/MockAIBehavior.cpp
+    mocks/MockPlayer.cpp
+    mocks/MockNPC.cpp
+    mocks/MockGameEngine.cpp
 )
 
 add_executable(event_manager_scaling_benchmark
     EventManagerScalingBenchmark.cpp
-    ${MOCK_SOURCES}
+    mocks/MockAIBehavior.cpp
+    mocks/MockPlayer.cpp
+    mocks/MockNPC.cpp
+    mocks/MockGameEngine.cpp
 )
 
 add_executable(thread_safe_ai_manager_tests
     ThreadSafeAIManagerTest.cpp
-    ${MOCK_SOURCES}
+    mocks/MockAIBehavior.cpp
+    mocks/MockPlayer.cpp
+    mocks/MockNPC.cpp
+    mocks/MockGameEngine.cpp
 )
 
 add_executable(thread_safe_ai_integration_tests
     ThreadSafeAIIntegrationTest.cpp
-    ${MOCK_SOURCES}
+    mocks/MockAIBehavior.cpp
+    mocks/MockPlayer.cpp
+    mocks/MockNPC.cpp
+    mocks/MockGameEngine.cpp
 )
 
 add_executable(event_manager_tests
     events/EventManagerTest.cpp
-    ${MOCK_SOURCES}
+    mocks/MockAIBehavior.cpp
+    mocks/MockPlayer.cpp
+    mocks/MockNPC.cpp
+    mocks/MockGameEngine.cpp
 )
 
 add_executable(event_types_tests
     events/EventTypesTest.cpp
-    ${MOCK_SOURCES}
+    mocks/MockAIBehavior.cpp
+    mocks/MockPlayer.cpp
+    mocks/MockNPC.cpp
+    mocks/MockGameEngine.cpp
 )
 
 add_executable(particle_manager_core_tests
     particle/ParticleManagerCoreTest.cpp
-    ${MOCK_SOURCES}
+    mocks/MockAIBehavior.cpp
+    mocks/MockPlayer.cpp
+    mocks/MockNPC.cpp
+    mocks/MockGameEngine.cpp
 )
 
 add_executable(particle_manager_performance_tests
     particle/ParticleManagerPerformanceTest.cpp
-    ${MOCK_SOURCES}
+    mocks/MockAIBehavior.cpp
+    mocks/MockPlayer.cpp
+    mocks/MockNPC.cpp
+    mocks/MockGameEngine.cpp
 )
 
 add_executable(particle_manager_weather_tests
     particle/ParticleManagerWeatherTest.cpp
-    ${MOCK_SOURCES}
+    mocks/MockAIBehavior.cpp
+    mocks/MockPlayer.cpp
+    mocks/MockNPC.cpp
+    mocks/MockGameEngine.cpp
 )
 
 add_executable(particle_manager_threading_tests
     particle/ParticleManagerThreadingTest.cpp
-    ${MOCK_SOURCES}
+    mocks/MockAIBehavior.cpp
+    mocks/MockPlayer.cpp
+    mocks/MockNPC.cpp
+    mocks/MockGameEngine.cpp
 )
 
 add_executable(weather_event_tests
     events/WeatherEventTest.cpp
-    ${MOCK_SOURCES}
+    mocks/MockAIBehavior.cpp
+    mocks/MockPlayer.cpp
+    mocks/MockNPC.cpp
+    mocks/MockGameEngine.cpp
 )
 
 add_executable(ui_stress_test
@@ -179,7 +197,10 @@ add_executable(buffer_utilization_tests
 
 add_executable(behavior_functionality_tests
     BehaviorFunctionalityTest.cpp
-    ${MOCK_SOURCES}
+    mocks/MockAIBehavior.cpp
+    mocks/MockPlayer.cpp
+    mocks/MockNPC.cpp
+    mocks/MockGameEngine.cpp
 )
 
 add_executable(resource_template_manager_tests
@@ -232,134 +253,58 @@ add_executable(world_manager_event_integration_tests
     world/WorldManagerEventIntegrationTests.cpp
 )
 
-# --- Compile Definitions ---
+# --- Target Properties ---
+set(ALL_TESTS
+    save_manager_tests
+    thread_system_tests
+    game_state_manager_tests
+    ai_optimization_tests
+    ai_scaling_benchmark
+    event_manager_scaling_benchmark
+    thread_safe_ai_manager_tests
+    thread_safe_ai_integration_tests
+    event_manager_tests
+    event_types_tests
+    particle_manager_core_tests
+    particle_manager_performance_tests
+    particle_manager_weather_tests
+    particle_manager_threading_tests
+    weather_event_tests
+    buffer_utilization_tests
+    behavior_functionality_tests
+    resource_template_manager_tests
+    resource_factory_tests
+    resource_template_manager_json_tests
+    world_resource_manager_tests
+    inventory_component_tests
+    resource_change_event_tests
+    resource_integration_tests
+    resource_edge_case_tests
+    json_reader_tests
+    world_generator_tests
+    world_manager_tests
+    world_manager_event_integration_tests
+)
+
+foreach(test_name ${ALL_TESTS})
+    target_link_libraries(${test_name} PRIVATE
+        HammerEngine
+        Boost::unit_test_framework
+    )
+    target_include_directories(${test_name} PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/mocks
+    )
+    target_compile_definitions(${test_name} PRIVATE BOOST_TEST_NO_SIGNAL_HANDLING)
+endforeach()
+
+target_link_libraries(ui_stress_test PRIVATE Boost::container)
+
 target_compile_definitions(event_manager_tests PRIVATE RUNNING_TESTS)
 target_compile_definitions(event_types_tests PRIVATE RUNNING_TESTS)
 target_compile_definitions(ui_stress_test PRIVATE UI_STRESS_TEST_BUILD)
 
-# All Boost.Test executables need this definition
-foreach(test_name
-    save_manager_tests
-    thread_system_tests
-    game_state_manager_tests
-    ai_optimization_tests
-    ai_scaling_benchmark
-    event_manager_scaling_benchmark
-    thread_safe_ai_manager_tests
-    thread_safe_ai_integration_tests
-    event_manager_tests
-    event_types_tests
-    particle_manager_core_tests
-    particle_manager_performance_tests
-    particle_manager_weather_tests
-    particle_manager_threading_tests
-    weather_event_tests
-    buffer_utilization_tests
-    behavior_functionality_tests
-    resource_template_manager_tests
-    resource_factory_tests
-    resource_template_manager_json_tests
-    world_resource_manager_tests
-    inventory_component_tests
-    resource_change_event_tests
-    resource_integration_tests
-    resource_edge_case_tests
-    json_reader_tests
-    world_generator_tests
-    world_manager_tests
-    world_manager_event_integration_tests
-)
-    target_compile_definitions(${test_name} PRIVATE BOOST_TEST_NO_SIGNAL_HANDLING)
-endforeach()
-
-
-# --- Link Libraries ---
-
-set(FULL_ENGINE_TESTS
-    ai_scaling_benchmark
-    event_manager_scaling_benchmark
-    thread_safe_ai_manager_tests
-    thread_safe_ai_integration_tests
-    event_manager_tests
-    event_types_tests
-    particle_manager_core_tests
-    particle_manager_performance_tests
-    particle_manager_weather_tests
-    particle_manager_threading_tests
-    weather_event_tests
-    behavior_functionality_tests
-    world_resource_manager_tests
-    inventory_component_tests
-    resource_integration_tests
-    resource_edge_case_tests
-    world_manager_tests
-    world_manager_event_integration_tests
-)
-
-foreach(test_name ${FULL_ENGINE_TESTS})
-    target_link_libraries(${test_name} PRIVATE
-        HammerEngine
-        SDL3::SDL3
-        SDL3_image::SDL3_image
-        SDL3_ttf::SDL3_ttf
-        SDL3_mixer::SDL3_mixer
-        Boost::unit_test_framework
-    )
-endforeach()
-
-foreach(test_name
-    save_manager_tests
-    thread_system_tests
-    game_state_manager_tests
-    ai_optimization_tests
-    ui_stress_test
-    buffer_utilization_tests
-    resource_template_manager_tests
-    resource_factory_tests
-    resource_template_manager_json_tests
-    resource_change_event_tests
-    json_reader_tests
-    world_generator_tests
-)
-    target_link_libraries(${test_name} PRIVATE
-        HammerEngine
-        SDL3::SDL3
-        Boost::unit_test_framework
-    )
-endforeach()
-
 # --- CTest Registration ---
-foreach(test_name
-    SaveManagerTests
-    ThreadSystemTests
-    GameStateManagerTests
-    AIOptimizationTests
-    AIScalingBenchmark
-    EventManagerScalingBenchmark
-    ThreadSafeAIManagerTests
-    ThreadSafeAIIntegrationTests
-    EventManagerTests
-    EventTypesTests
-    ParticleManagerCoreTests
-    ParticleManagerPerformanceTests
-    ParticleManagerWeatherTests
-    ParticleManagerThreadingTests
-    WeatherEventTests
-    BufferUtilizationTests
-    BehaviorFunctionalityTests
-    ResourceTemplateManagerTests
-    ResourceFactoryTests
-    ResourceTemplateManagerJsonTests
-    WorldResourceManagerTests
-    InventoryComponentTests
-    ResourceChangeEventTests
-    ResourceIntegrationTests
-    ResourceEdgeCaseTests
-    JsonReaderTests
-    WorldGeneratorTests
-    WorldManagerTests
-    WorldManagerEventIntegrationTests
-)
+foreach(test_name ${ALL_TESTS})
     string(TOLOWER ${test_name} test_command)
     add_test(NAME ${test_name} COMMAND ${test_command})
 endforeach()
