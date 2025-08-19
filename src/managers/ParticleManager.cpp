@@ -796,7 +796,6 @@ void ParticleManager::render(SDL_Renderer *renderer, float cameraX,
 
   // THREAD SAFETY: Get immutable snapshot of particle data for rendering
   const auto &particles = m_storage.getParticlesForRead();
-  int renderCount = 0;
   
   // IMPROVED FIX: Use safest available particle count for rendering
   // This allows partial rendering when buffers are mostly consistent
@@ -828,8 +827,6 @@ void ParticleManager::render(SDL_Renderer *renderer, float cameraX,
     if (alpha == 0) {
       continue;
     }
-
-    renderCount++;
 
     // Extract color components
     uint8_t r = (particles.colors[i] >> 24) & 0xFF;
