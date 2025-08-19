@@ -8,12 +8,13 @@
 #include "managers/InputManager.hpp"
 #include "managers/FontManager.hpp"
 #include "core/GameEngine.hpp"
-#include <iostream>
+#include "core/Logger.hpp"
+
 #include <thread>
 #include <chrono>
 
 bool MainMenuState::enter() {
-  std::cout << "Hammer Game Engine - Entering MAIN MENU State\n";
+  GAMESTATE_INFO("Entering MAIN MENU State");
 
   auto& ui = UIManager::Instance();
   auto& fontMgr = FontManager::Instance();
@@ -106,7 +107,7 @@ void MainMenuState::render() {
 }
 
 bool MainMenuState::exit() {
-  std::cout << "Hammer Game Engine - Exiting MAIN MENU State\n";
+  GAMESTATE_INFO("Exiting MAIN MENU State");
 
   // Clean up UI components using simplified method
   auto& ui = UIManager::Instance();

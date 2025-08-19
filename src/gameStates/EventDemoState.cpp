@@ -24,8 +24,7 @@
 #include <algorithm>
 #include <ctime>
 #include <iomanip>
-#include <iostream>
-#include <sstream>
+
 
 EventDemoState::EventDemoState() {
   // Initialize member variables that need explicit initialization
@@ -51,7 +50,7 @@ EventDemoState::~EventDemoState() {
 }
 
 bool EventDemoState::enter() {
-  std::cout << "Hammer Game Engine - Entering EventDemoState...\n";
+  GAMESTATE_INFO("Entering EventDemoState...");
 
   try {
     // Cache GameEngine reference for better performance
@@ -191,25 +190,20 @@ bool EventDemoState::enter() {
     initializeWorld();
     initializeCamera();
 
-    std::cout
-        << "Hammer Game Engine - EventDemoState initialized successfully\n";
+    GAMESTATE_INFO("EventDemoState initialized successfully");
     return true;
 
   } catch (const std::exception &e) {
-    std::cerr
-        << "Hammer Game Engine - ERROR: Exception in EventDemoState::enter(): "
-        << e.what() << std::endl;
+    GAMESTATE_ERROR("Exception in EventDemoState::enter(): " + std::string(e.what()));
     return false;
   } catch (...) {
-    std::cerr << "Hammer Game Engine - ERROR: Unknown exception in "
-                 "EventDemoState::enter()"
-              << std::endl;
+    GAMESTATE_ERROR("Unknown exception in EventDemoState::enter()");
     return false;
   }
 }
 
 bool EventDemoState::exit() {
-  std::cout << "Hammer Game Engine - Exiting EventDemoState...\n";
+  GAMESTATE_INFO("Exiting EventDemoState...");
 
   try {
     // Reset player
@@ -257,18 +251,14 @@ bool EventDemoState::exit() {
       worldMgr.unloadWorld();
     }
 
-    std::cout << "Hammer Game Engine - EventDemoState cleanup complete\n";
+    GAMESTATE_INFO("EventDemoState cleanup complete");
     return true;
 
   } catch (const std::exception &e) {
-    std::cerr
-        << "Hammer Game Engine - ERROR: Exception in EventDemoState::exit(): "
-        << e.what() << std::endl;
+    GAMESTATE_ERROR("Exception in EventDemoState::exit(): " + std::string(e.what()));
     return false;
   } catch (...) {
-    std::cerr << "Hammer Game Engine - ERROR: Unknown exception in "
-                 "EventDemoState::exit()"
-              << std::endl;
+    GAMESTATE_ERROR("Unknown exception in EventDemoState::exit()");
     return false;
   }
 }
@@ -533,16 +523,14 @@ void EventDemoState::render() {
 }
 
 void EventDemoState::setupEventSystem() {
-  std::cout << "Hammer Game Engine - EventDemoState: EventManager instance "
-               "obtained\n";
+  GAMESTATE_INFO("EventDemoState: EventManager instance obtained");
   addLogEntry("EventManager singleton obtained");
 
   // Cache EventManager reference for better performance
   // Note: EventManager is already initialized by GameEngine
   EventManager &eventMgr = EventManager::Instance();
 
-  std::cout << "Hammer Game Engine - EventDemoState: Using pre-initialized "
-               "EventManager\n";
+  GAMESTATE_INFO("EventDemoState: Using pre-initialized EventManager");
   addLogEntry("EventManager ready for use");
 
   // Register event handlers using token-based API for easy removal
@@ -566,8 +554,7 @@ void EventDemoState::setupEventSystem() {
         if (data.isActive()) onResourceChanged(data);
       }));
 
-  std::cout
-      << "Hammer Game Engine - EventDemoState: Event handlers registered\n";
+  GAMESTATE_INFO("EventDemoState: Event handlers registered");
   addLogEntry("Event System Setup Complete - All handlers registered");
 }
 
@@ -1454,8 +1441,7 @@ void EventDemoState::onResourceChanged(const EventData &data) {
 }
 
 void EventDemoState::setupAIBehaviors() {
-  std::cout
-      << "EventDemoState: Setting up AI behaviors for NPC integration...\n";
+  GAMESTATE_INFO("EventDemoState: Setting up AI behaviors for NPC integration...");
 
   // Cache AIManager reference for better performance
   AIManager &aiMgr = AIManager::Instance();
@@ -1465,7 +1451,7 @@ void EventDemoState::setupAIBehaviors() {
         WanderBehavior::WanderMode::MEDIUM_AREA, 80.0f);
     wanderBehavior->setScreenDimensions(m_worldWidth, m_worldHeight);
     aiMgr.registerBehavior("Wander", std::move(wanderBehavior));
-    std::cout << "EventDemoState: Registered Wander behavior\n";
+    GAMESTATE_INFO("EventDemoState: Registered Wander behavior");
   }
 
   if (!aiMgr.hasBehavior("SmallWander")) {
@@ -1473,7 +1459,7 @@ void EventDemoState::setupAIBehaviors() {
         WanderBehavior::WanderMode::SMALL_AREA, 60.0f);
     smallWanderBehavior->setScreenDimensions(m_worldWidth, m_worldHeight);
     aiMgr.registerBehavior("SmallWander", std::move(smallWanderBehavior));
-    std::cout << "EventDemoState: Registered SmallWander behavior\n";
+    GAMESTATE_INFO("EventDemoState: Registered SmallWander behavior");
   }
 
   if (!aiMgr.hasBehavior("LargeWander")) {
@@ -1481,7 +1467,7 @@ void EventDemoState::setupAIBehaviors() {
         WanderBehavior::WanderMode::LARGE_AREA, 100.0f);
     largeWanderBehavior->setScreenDimensions(m_worldWidth, m_worldHeight);
     aiMgr.registerBehavior("LargeWander", std::move(largeWanderBehavior));
-    std::cout << "EventDemoState: Registered LargeWander behavior\n";
+    GAMESTATE_INFO("EventDemoState: Registered LargeWander behavior");
   }
 
   if (!aiMgr.hasBehavior("EventWander")) {
@@ -1489,7 +1475,7 @@ void EventDemoState::setupAIBehaviors() {
         WanderBehavior::WanderMode::EVENT_TARGET, 70.0f);
     eventWanderBehavior->setScreenDimensions(m_worldWidth, m_worldHeight);
     aiMgr.registerBehavior("EventWander", std::move(eventWanderBehavior));
-    std::cout << "EventDemoState: Registered EventWander behavior\n";
+    GAMESTATE_INFO("EventDemoState: Registered EventWander behavior");
   }
 
   if (!aiMgr.hasBehavior("Patrol")) {
@@ -1497,7 +1483,7 @@ void EventDemoState::setupAIBehaviors() {
         PatrolBehavior::PatrolMode::FIXED_WAYPOINTS, 75.0f, true);
     patrolBehavior->setScreenDimensions(m_worldWidth, m_worldHeight);
     aiMgr.registerBehavior("Patrol", std::move(patrolBehavior));
-    std::cout << "EventDemoState: Registered Patrol behavior\n";
+    GAMESTATE_INFO("EventDemoState: Registered Patrol behavior");
   }
 
   if (!aiMgr.hasBehavior("RandomPatrol")) {
@@ -1505,7 +1491,7 @@ void EventDemoState::setupAIBehaviors() {
         PatrolBehavior::PatrolMode::RANDOM_AREA, 85.0f, false);
     randomPatrolBehavior->setScreenDimensions(m_worldWidth, m_worldHeight);
     aiMgr.registerBehavior("RandomPatrol", std::move(randomPatrolBehavior));
-    std::cout << "EventDemoState: Registered RandomPatrol behavior\n";
+    GAMESTATE_INFO("EventDemoState: Registered RandomPatrol behavior");
   }
 
   if (!aiMgr.hasBehavior("CirclePatrol")) {
@@ -1513,7 +1499,7 @@ void EventDemoState::setupAIBehaviors() {
         PatrolBehavior::PatrolMode::CIRCULAR_AREA, 90.0f, false);
     circlePatrolBehavior->setScreenDimensions(m_worldWidth, m_worldHeight);
     aiMgr.registerBehavior("CirclePatrol", std::move(circlePatrolBehavior));
-    std::cout << "EventDemoState: Registered CirclePatrol behavior\n";
+    GAMESTATE_INFO("EventDemoState: Registered CirclePatrol behavior");
   }
 
   if (!aiMgr.hasBehavior("EventTarget")) {
@@ -1521,14 +1507,13 @@ void EventDemoState::setupAIBehaviors() {
         PatrolBehavior::PatrolMode::EVENT_TARGET, 95.0f, false);
     eventTargetBehavior->setScreenDimensions(m_worldWidth, m_worldHeight);
     aiMgr.registerBehavior("EventTarget", std::move(eventTargetBehavior));
-    std::cout << "EventDemoState: Registered EventTarget behavior\n";
+    GAMESTATE_INFO("EventDemoState: Registered EventTarget behavior");
   }
 
   if (!aiMgr.hasBehavior("Chase")) {
     auto chaseBehavior = std::make_unique<ChaseBehavior>(120.0f, 500.0f, 50.0f);
     aiMgr.registerBehavior("Chase", std::move(chaseBehavior));
-    std::cout << "EventDemoState: Chase behavior registered (will use "
-                 "AIManager::getPlayerReference())\n";
+    GAMESTATE_INFO("EventDemoState: Chase behavior registered (will use AIManager::getPlayerReference())");
   }
 
   addLogEntry("AI Behaviors configured for NPC integration");
@@ -1562,12 +1547,10 @@ EventDemoState::createNPCAtPositionWithoutBehavior(const std::string &npcType,
 
     return npc;
   } catch (const std::exception &e) {
-    std::cerr << "EXCEPTION in createNPCAtPositionWithoutBehavior: " << e.what()
-              << std::endl;
+    GAMESTATE_ERROR("EXCEPTION in createNPCAtPositionWithoutBehavior: " + std::string(e.what()));
     return nullptr;
   } catch (...) {
-    std::cerr << "UNKNOWN EXCEPTION in createNPCAtPositionWithoutBehavior"
-              << std::endl;
+    GAMESTATE_ERROR("UNKNOWN EXCEPTION in createNPCAtPositionWithoutBehavior");
     return nullptr;
   }
 }
@@ -1614,9 +1597,9 @@ void EventDemoState::addLogEntry(const std::string &entry) {
     ui.addEventLogEntry("event_log", timestampedEntry);
 
     // Also log to console for debugging (avoid flushing)
-    std::cout << "EventDemo: " << timestampedEntry << '\n';
+    GAMESTATE_DEBUG("EventDemo: " + timestampedEntry);
   } catch (const std::exception &e) {
-    std::cerr << "Error adding log entry: " << e.what() << '\n';
+    GAMESTATE_ERROR("Error adding log entry: " + std::string(e.what()));
   }
 }
 
@@ -1769,13 +1752,10 @@ void EventDemoState::createNPCAtPosition(const std::string &npcType, float x,
 
     m_spawnedNPCs.push_back(npc);
   } catch (const std::exception &e) {
-    std::cerr << "EXCEPTION in createNPCAtPosition: " << e.what() << std::endl;
-    std::cerr << "NPC type: " << npcType << ", position: (" << x << ", " << y
-              << ")" << std::endl;
+    GAMESTATE_ERROR("EXCEPTION in createNPCAtPosition: " + std::string(e.what()) +
+                    ", NPC type: " + npcType + ", position: (" + std::to_string(x) + ", " + std::to_string(y) + ")");
   } catch (...) {
-    std::cerr << "UNKNOWN EXCEPTION in createNPCAtPosition" << std::endl;
-    std::cerr << "NPC type: " << npcType << ", position: (" << x << ", " << y
-              << ")" << std::endl;
+    GAMESTATE_ERROR(std::string("UNKNOWN EXCEPTION in createNPCAtPosition") + ", NPC type: " + npcType + ", position: (" + std::to_string(x) + ", " + std::to_string(y) + ")");
   }
 }
 
@@ -1929,10 +1909,10 @@ void EventDemoState::initializeWorld() {
   config.mountainLevel = 0.75f;
   
   if (!worldManager.loadNewWorld(config)) {
-    std::cerr << "Failed to load new world in EventDemoState" << std::endl;
+    GAMESTATE_ERROR("Failed to load new world in EventDemoState");
     // Continue anyway - event demo can function without world
   } else {
-    std::cout << "Successfully loaded event demo world with seed: " << config.seed << std::endl;
+    GAMESTATE_INFO("Successfully loaded event demo world with seed: " + std::to_string(config.seed));
     
     // Setup camera to work with the world (will be called in initializeCamera)
   }

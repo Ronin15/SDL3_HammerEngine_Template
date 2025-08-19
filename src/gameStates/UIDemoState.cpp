@@ -7,8 +7,9 @@
 #include "managers/UIManager.hpp"
 #include "managers/InputManager.hpp"
 #include "core/GameEngine.hpp"
-#include <iostream>
-#include <string>
+#include "core/Logger.hpp"
+
+
 #include <sstream>
 #include <iomanip>
 
@@ -18,7 +19,7 @@ UIExampleState::UIExampleState() {
 }
 
 bool UIExampleState::enter() {
-    std::cout << "Entering UI Example State\n";
+    GAMESTATE_INFO("Entering UI Example State");
 
     // Create UI components directly with UIManager using auto-detecting methods
     auto& ui = UIManager::Instance();
@@ -133,7 +134,7 @@ void UIExampleState::render() {
 }
 
 bool UIExampleState::exit() {
-    std::cout << "Exiting UI Example State\n";
+    GAMESTATE_INFO("Exiting UI Example State");
 
     // Clean up UI components using simplified method
     auto& ui = UIManager::Instance();
@@ -145,24 +146,24 @@ bool UIExampleState::exit() {
 void UIExampleState::handleSliderChange(float value) {
     m_sliderValue = value;
     updateSliderLabel(value);
-    std::cout << "Slider value changed: " << value << "\n";
+    GAMESTATE_DEBUG("Slider value changed: " + std::to_string(value));
 }
 
 void UIExampleState::handleCheckboxToggle() {
     m_checkboxValue = !m_checkboxValue;
-    std::cout << "Checkbox toggled: " << (m_checkboxValue ? "checked" : "unchecked") << "\n";
+    GAMESTATE_DEBUG("Checkbox toggled: " + std::string(m_checkboxValue ? "checked" : "unchecked"));
 }
 
 void UIExampleState::handleInputChange(const std::string& text) {
     m_inputText = text;
     updateInputLabel(text);
-    std::cout << "Input text changed: " << text << "\n";
+    GAMESTATE_DEBUG("Input text changed: " + text);
 }
 
 void UIExampleState::handleListSelection() {
     const auto& ui = UIManager::Instance();
     m_selectedListItem = ui.getSelectedListItem("uiexample_demo_list");
-    std::cout << "List item selected: " << m_selectedListItem << "\n";
+    GAMESTATE_DEBUG("List item selected: " + m_selectedListItem);
 }
 
 void UIExampleState::handleAnimation() {
@@ -178,13 +179,13 @@ void UIExampleState::handleAnimation() {
         ui.animateMove("uiexample_animate_btn", currentBounds, 0.5f);
     });
 
-    std::cout << "Animation triggered\n";
+    GAMESTATE_DEBUG("Animation triggered");
 }
 
 void UIExampleState::handleThemeChange() {
     m_darkTheme = !m_darkTheme;
     applyDarkTheme(m_darkTheme);
-    std::cout << "Theme changed to: " << (m_darkTheme ? "dark" : "light") << "\n";
+    GAMESTATE_DEBUG("Theme changed to: " + std::string(m_darkTheme ? "dark" : "light"));
 }
 
 void UIExampleState::handleInput() {

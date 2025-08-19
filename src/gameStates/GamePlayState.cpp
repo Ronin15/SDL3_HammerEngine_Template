@@ -15,7 +15,7 @@
 #include "world/WorldData.hpp"
 #include "utils/Camera.hpp"
 #include <algorithm>
-#include <iostream>
+
 #include <random>
 
 
@@ -210,11 +210,14 @@ void GamePlayState::handleInput() {
             if (worldMgr.isValidPosition(tileX, tileY)) {
                 const auto* tile = worldMgr.getTileAt(tileX, tileY);
                 if (tile) {
-                    // Log tile information for now
-                    // Later, this could trigger events or actions
-                    std::cout << "Clicked tile (" << tileX << ", " << tileY << ") - Biome: " 
-                              << static_cast<int>(tile->biome) << ", Obstacle: " 
-                              << static_cast<int>(tile->obstacleType) << std::endl;
+                    // Log tile information for debugging
+                    GAMEPLAY_DEBUG("Clicked tile (" + std::to_string(tileX) +
+                                   ", " + std::to_string(tileY) +
+                                   ") - Biome: " +
+                                   std::to_string(static_cast<int>(tile->biome)) +
+                                   ", Obstacle: " +
+                                   std::to_string(
+                                       static_cast<int>(tile->obstacleType)));
                 }
             }
         }

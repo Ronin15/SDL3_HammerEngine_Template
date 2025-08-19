@@ -847,15 +847,7 @@ void ParticleManager::render(SDL_Renderer *renderer, float cameraX,
     SDL_RenderFillRect(renderer, &rect);
   }
 
-  // Periodic summary logging (every 900 frames ~15 seconds)
-  uint64_t currentFrame =
-      m_frameCounter.fetch_add(1, std::memory_order_relaxed);
-  if (currentFrame % 900 == 0 && renderCount > 0) {
-    PARTICLE_DEBUG(
-        "Particle Summary - Total: " + std::to_string(safeParticleCount) +
-        ", Active: " + std::to_string(renderCount) +
-        ", Effects: " + std::to_string(m_effectInstances.size()));
-  }
+  
 
   auto endTime = std::chrono::high_resolution_clock::now();
   double timeMs =
