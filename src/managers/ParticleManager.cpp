@@ -10,6 +10,7 @@
 #include "core/WorkerBudget.hpp"
 #include "managers/EventManager.hpp"
 #include "events/ParticleEffectEvent.hpp"
+#include "events/WeatherEvent.hpp"
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -540,6 +541,14 @@ bool ParticleManager::init() {
         auto pe = std::dynamic_pointer_cast<ParticleEffectEvent>(data.event);
         if (pe) {
           pe->execute();
+        }
+      });
+      // Register handler for Weather events to drive weather effects
+      eventMgr.registerHandler(EventTypeId::Weather, [](const EventData &data) {
+        if (!data.isActive() || !data.event) return;
+        auto we = std::dynamic_pointer_cast<WeatherEvent>(data.event);
+        if (we) {
+          we->execute();
         }
       });
     }
