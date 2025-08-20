@@ -296,7 +296,7 @@ void WorldManager::fireTileChangedEvent(int x, int y, const HammerEngine::Tile& 
         }
 
         // Trigger world tile changed through EventManager (no registration)
-        EventManager& eventMgr = EventManager::Instance();
+        const EventManager& eventMgr = EventManager::Instance();
         (void)eventMgr.triggerTileChanged(x, y, changeType, EventManager::DispatchMode::Deferred);
 
         WORLD_MANAGER_DEBUG("TileChangedEvent fired for tile at (" + std::to_string(x) + ", " + std::to_string(y) + ")");
@@ -315,7 +315,7 @@ void WorldManager::fireWorldLoadedEvent(const std::string& worldId) {
         }
 
         // Trigger a world loaded event via EventManager (no registration)
-        EventManager& eventMgr = EventManager::Instance();
+        const EventManager& eventMgr = EventManager::Instance();
         (void)eventMgr.triggerWorldLoaded(worldId, width, height, EventManager::DispatchMode::Deferred);
 
         WORLD_MANAGER_INFO("WorldLoadedEvent registered and executed for world: " + worldId + " (" + std::to_string(width) + "x" + std::to_string(height) + ")");
@@ -327,7 +327,7 @@ void WorldManager::fireWorldLoadedEvent(const std::string& worldId) {
 void WorldManager::fireWorldUnloadedEvent(const std::string& worldId) {
     try {
         // Trigger world unloaded via EventManager (no registration)
-        EventManager& eventMgr = EventManager::Instance();
+        const EventManager& eventMgr = EventManager::Instance();
         (void)eventMgr.triggerWorldUnloaded(worldId, EventManager::DispatchMode::Deferred);
 
         WORLD_MANAGER_INFO("WorldUnloadedEvent fired for world: " + worldId);

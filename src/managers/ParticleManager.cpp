@@ -463,12 +463,6 @@ bool ParticleManager::LockFreeParticleStorage::needsCompaction() const {
 
     size_t inactiveCount = 0;
     for (size_t i = 0; i < flagsSize; ++i) {
-        // DEFENSIVE: This bounds check appears redundant but provides platform-specific 
-        // safety for edge cases in multithreaded environments
-        if (i >= activeParticles.flags.size()) {
-            break; // Exit safely if buffer changed
-        }
-        
         if (!(activeParticles.flags[i] & UnifiedParticle::FLAG_ACTIVE)) {
             inactiveCount++;
         }
@@ -1819,12 +1813,6 @@ size_t ParticleManager::getActiveParticleCount() const {
   
   size_t activeCount = 0;
   for (size_t i = 0; i < flagCount; ++i) {
-    // DEFENSIVE: This bounds check appears redundant but provides platform-specific
-    // safety for edge cases in multithreaded environments  
-    if (i >= particles.flags.size()) {
-      break; // Exit safely if buffer changed during iteration
-    }
-    
     if (particles.flags[i] & UnifiedParticle::FLAG_ACTIVE) {
       activeCount++;
     }

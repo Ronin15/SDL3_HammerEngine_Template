@@ -822,7 +822,7 @@ void EventDemoState::triggerWeatherDemoAuto() {
       (m_currentWeatherIndex + 1) % m_weatherSequence.size();
 
   // Use EventManager hub to change weather
-  EventManager &eventMgr = EventManager::Instance();
+  const EventManager &eventMgr = EventManager::Instance();
   if (newWeather == WeatherType::Custom && !customType.empty()) {
     // Custom type by string
     eventMgr.changeWeather(customType, m_weatherTransitionTime,
@@ -863,7 +863,7 @@ void EventDemoState::triggerWeatherDemoManual() {
   m_manualWeatherIndex = (m_manualWeatherIndex + 1) % m_weatherSequence.size();
 
   // Use EventManager hub to change weather
-  EventManager &eventMgr2 = EventManager::Instance();
+  const EventManager &eventMgr2 = EventManager::Instance();
   if (newWeather == WeatherType::Custom && !customType.empty()) {
     eventMgr2.changeWeather(customType, m_weatherTransitionTime,
                             EventManager::DispatchMode::Deferred);
@@ -904,7 +904,7 @@ void EventDemoState::triggerNPCSpawnDemo() {
   spawnY = std::max(100.0f, std::min(spawnY, m_worldHeight - 100.0f));
 
   // Use EventManager to spawn NPC via the unified event hub
-  EventManager &eventMgr = EventManager::Instance();
+  const EventManager &eventMgr = EventManager::Instance();
   eventMgr.spawnNPC(npcType, spawnX, spawnY);
   addLogEntry("Spawned NPC: " + npcType + " at (" +
               std::to_string((int)spawnX) + ", " + std::to_string((int)spawnY) +
@@ -925,7 +925,7 @@ void EventDemoState::triggerSceneTransitionDemo() {
       (t == TransitionType::Slide)      ? "slide" :
       (t == TransitionType::Dissolve)   ? "dissolve" : "wipe";
 
-  EventManager &eventMgr3 = EventManager::Instance();
+  const EventManager &eventMgr3 = EventManager::Instance();
   eventMgr3.changeScene(sceneName, transitionName, 2.0f,
                         EventManager::DispatchMode::Deferred);
 
@@ -939,7 +939,7 @@ void EventDemoState::triggerParticleEffectDemo() {
   Vector2D position = m_particleEffectPositions[m_particlePositionIndex];
 
   // Trigger particle effect via EventManager (deferred by default)
-  EventManager &eventMgr = EventManager::Instance();
+  const EventManager &eventMgr = EventManager::Instance();
   bool queued = eventMgr.triggerParticleEffect(effectName, position,
                                                1.2f, 5.0f, "demo_effects");
   if (queued) {
@@ -962,7 +962,7 @@ void EventDemoState::triggerResourceDemo() {
   }
 
   auto *inventory = m_player->getInventory();
-  auto &templateManager = ResourceTemplateManager::Instance();
+  const auto &templateManager = ResourceTemplateManager::Instance();
 
   if (!templateManager.isInitialized()) {
     addLogEntry(
@@ -1093,7 +1093,7 @@ void EventDemoState::triggerResourceDemo() {
                   std::to_string(quantity) + ")");
 
       // Trigger resource change via EventManager (deferred by default)
-      EventManager &eventMgr = EventManager::Instance();
+      const EventManager &eventMgr = EventManager::Instance();
       eventMgr.triggerResourceChange(m_player, handle, currentQuantity,
                                      newQuantity, "event_demo");
 
@@ -1117,7 +1117,7 @@ void EventDemoState::triggerResourceDemo() {
                     std::to_string(removeQuantity) + ")");
 
         // Trigger resource change via EventManager (deferred by default)
-        EventManager &eventMgr = EventManager::Instance();
+        const EventManager &eventMgr = EventManager::Instance();
         eventMgr.triggerResourceChange(m_player, handle, currentQuantity,
                                        newQuantity, "event_demo");
 

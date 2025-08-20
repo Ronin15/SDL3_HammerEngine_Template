@@ -407,7 +407,7 @@ Vector2D Camera::generateShakeOffset() const {
 // Event firing helper methods
 void Camera::firePositionChangedEvent(const Vector2D& oldPosition, const Vector2D& newPosition) {
     try {
-        EventManager& eventMgr = EventManager::Instance();
+        const EventManager& eventMgr = EventManager::Instance();
         (void)eventMgr.triggerCameraMoved(newPosition, oldPosition,
                                           EventManager::DispatchMode::Deferred);
     } catch (const std::exception& ex) {
@@ -417,7 +417,7 @@ void Camera::firePositionChangedEvent(const Vector2D& oldPosition, const Vector2
 
 void Camera::fireModeChangedEvent(Mode oldMode, Mode newMode) {
     try {
-        EventManager& eventMgr = EventManager::Instance();
+        const EventManager& eventMgr = EventManager::Instance();
         (void)eventMgr.triggerCameraModeChanged(static_cast<int>(newMode), static_cast<int>(oldMode),
                                                 EventManager::DispatchMode::Deferred);
     } catch (const std::exception& ex) {
@@ -427,7 +427,7 @@ void Camera::fireModeChangedEvent(Mode oldMode, Mode newMode) {
 
 void Camera::fireTargetChangedEvent(std::weak_ptr<Entity> oldTarget, std::weak_ptr<Entity> newTarget) {
     try {
-        EventManager& eventMgr = EventManager::Instance();
+        const EventManager& eventMgr = EventManager::Instance();
         (void)eventMgr.triggerCameraTargetChanged(newTarget, oldTarget,
                                                   EventManager::DispatchMode::Deferred);
     } catch (const std::exception& ex) {
@@ -437,7 +437,7 @@ void Camera::fireTargetChangedEvent(std::weak_ptr<Entity> oldTarget, std::weak_p
 
 void Camera::fireShakeStartedEvent(float duration, float intensity) {
     try {
-        EventManager& eventMgr = EventManager::Instance();
+        const EventManager& eventMgr = EventManager::Instance();
         (void)eventMgr.triggerCameraShakeStarted(duration, intensity,
                                                  EventManager::DispatchMode::Deferred);
     } catch (const std::exception& ex) {
@@ -447,7 +447,7 @@ void Camera::fireShakeStartedEvent(float duration, float intensity) {
 
 void Camera::fireShakeEndedEvent() {
     try {
-        EventManager& eventMgr = EventManager::Instance();
+        const EventManager& eventMgr = EventManager::Instance();
         (void)eventMgr.triggerCameraShakeEnded(EventManager::DispatchMode::Deferred);
     } catch (const std::exception& ex) {
         GAMEENGINE_ERROR("Failed to fire CameraShakeEndedEvent: " + std::string(ex.what()));

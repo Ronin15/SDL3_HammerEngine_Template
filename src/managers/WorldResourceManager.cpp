@@ -1018,7 +1018,7 @@ void WorldResourceManager::fireResourceChangeEvent(const WorldId& worldId,
     }
 
     // Trigger ResourceChange via EventManager hub (no registration needed)
-    EventManager& eventMgr = EventManager::Instance();
+    const EventManager& eventMgr = EventManager::Instance();
     eventMgr.triggerResourceChange(
         nullptr,  // world-level (no specific owner)
         resourceHandle,
