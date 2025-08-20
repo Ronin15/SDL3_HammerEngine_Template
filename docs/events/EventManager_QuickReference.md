@@ -97,17 +97,24 @@ EventManager::Instance().registerEvent(def.name, ev);
 
 ## Direct Event Triggering (No Pre-Registration)
 ```cpp
-// Immediate weather changes
-EventManager::Instance().changeWeather("Stormy", 2.0f);
-EventManager::Instance().triggerWeatherChange("Rainy", 3.0f);
+using DM = EventManager::DispatchMode;
 
-// Immediate scene transitions
+// Immediate weather/scene/NPC
+EventManager::Instance().changeWeather("Stormy", 2.0f, DM::Immediate);
 EventManager::Instance().changeScene("BattleScene", "fade", 1.5f);
-EventManager::Instance().triggerSceneChange("MainMenu", "dissolve", 1.0f);
-
-// Immediate NPC spawning
 EventManager::Instance().spawnNPC("Merchant", 100.0f, 200.0f);
-EventManager::Instance().triggerNPCSpawn("Guard", 250.0f, 150.0f);
+
+// Particle effects
+EventManager::Instance().triggerParticleEffect("Fire", 250.0f, 150.0f, 2.0f, 3.0f, "combat");
+
+// World events
+EventManager::Instance().triggerWorldLoaded("overworld", 512, 512);
+EventManager::Instance().triggerTileChanged(10, 20, "dig");
+
+// Camera events
+Vector2D newPos(100,120), oldPos(80,120);
+EventManager::Instance().triggerCameraMoved(newPos, oldPos);
+EventManager::Instance().triggerCameraShakeStarted(0.5f, 1.0f, DM::Immediate);
 ```
 
 ## Event Handlers
@@ -340,13 +347,12 @@ void createGameEvents() {
     EventManager::Instance().createWeatherEvent("MorningFog", "Foggy", 0.3f, 5.0f);
     EventManager::Instance().createWeatherEvent("AfternoonRain", "Rainy", 0.7f, 3.0f);
 
-    // Scene transitions
-    EventManager::Instance().createSceneChangeEvent("EnterTown", "TownScene", "fade", 2.0f);
-    EventManager::Instance().createAdvancedSceneChangeEvent("EnterDungeon", "DungeonScene", "dissolve", 1.5f, 7, false);
+// Scene transitions
+EventManager::Instance().createSceneChangeEvent("EnterTown", "TownScene", "fade", 2.0f);
+// For advanced parameters, use EventFactory definitions
 
-    // NPC spawning
-    EventManager::Instance().createNPCSpawnEvent("TownGuards", "Guard", 3, 50.0f);
-    EventManager::Instance().createAdvancedNPCSpawnEvent("Merchants", "Merchant", 2, 30.0f, 5, false);
+// NPC spawning
+EventManager::Instance().createNPCSpawnEvent("TownGuards", "Guard", 3, 50.0f);
 }
 ```
 
@@ -379,8 +385,7 @@ void createEventsBatch() {
         EventManager::Instance().createWeatherEvent(name, type, intensity, time);
     }
 
-    // Or use weather sequence
-    EventManager::Instance().createWeatherSequence("DailyWeather", weatherEvents, true);
+    // Or build a sequence via EventFactory definitions
 }
 ```
 
@@ -438,13 +443,10 @@ private:
         EventManager::Instance().createWeatherEvent("Rain", "Rainy", 0.7f, 3.0f);
         EventManager::Instance().createSceneChangeEvent("ToTown", "TownScene", "fade", 2.0f);
 
-        // Advanced events
-        EventManager::Instance().createAdvancedWeatherEvent("EpicStorm", "Stormy", 0.95f, 1.5f, 10, 60.0f, true, true);
-
-        // Custom events
-        std::unordered_map<std::string, std::string> params = {{"questId", "tutorial"}};
-        std::unordered_map<std::string, float> numParams = {{"reward", 100.0f}};
-        EventManager::Instance().createCustomEvent("Quest", "Tutorial", params, numParams, {});
+        // Custom events via EventFactory
+        EventDefinition q{.type="Quest", .name="Tutorial"};
+        auto qev = EventFactory::Instance().createEvent(q);
+        EventManager::Instance().registerEvent(q.name, qev);
     }
 };
 ```
