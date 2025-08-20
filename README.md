@@ -94,7 +94,7 @@ ninja -C build
 **📚 [Documentation Hub](docs/README.md)** – Full guides, API references, and best practices.
 
 - **AI System:** [Overview](docs/ai/AIManager.md), [Optimization](docs/ai/AIManager_Optimization_Summary.md), [Behaviors](docs/ai/BehaviorModes.md)
-- **Event System:** [Overview](docs/events/EventManager.md), [Quick Reference](docs/events/EventManager_QuickReference.md), [Examples](docs/events/EventManager_Examples.cpp)
+- **Event System:** [Overview](docs/events/EventManager.md), [Quick Reference](docs/events/EventManager_QuickReference.md), [Advanced](docs/events/EventManager_Advanced.md), [Examples](docs/events/EventManager_Examples.cpp), [EventFactory](docs/events/EventFactory.md)
 - **Threading:** [ThreadSystem](docs/ThreadSystem.md)
 - **Managers:** [ParticleManager](docs/managers/ParticleManager.md), [FontManager](docs/managers/FontManager.md), [TextureManager](docs/managers/TextureManager.md), [SoundManager](docs/managers/SoundManager.md), [ResourceTemplateManager](docs/managers/ResourceTemplateManager.md), [WorldResourceManager](docs/managers/WorldResourceManager.md)
 - **UI:** [UIManager Guide](docs/ui/UIManager_Guide.md), [Auto-Sizing](docs/ui/Auto_Sizing_System.md), [DPI-Aware Fonts](docs/ui/DPI_Aware_Font_System.md)

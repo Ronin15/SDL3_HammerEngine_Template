@@ -42,6 +42,7 @@ Comprehensive event management system with EventManager as the single source of 
 - **[EventManager Quick Reference](events/EventManager_QuickReference.md)** - Fast API lookup for all event functionality through EventManager
 - **[EventManager Advanced](events/EventManager_Advanced.md)** - Advanced topics like threading, performance optimization, and complex event patterns
 - **[EventManager Examples](events/EventManager_Examples.cpp)** - Comprehensive code examples and best practices
+- **[EventFactory](events/EventFactory.md)** - Definition-driven creation, custom creators, and event sequences
 
 ### UI System
 Comprehensive UI system with professional theming, animations, layouts, content-aware auto-sizing, and event handling for creating polished game interfaces.
