@@ -4,11 +4,10 @@
  */
 
 #include "entities/NPC.hpp"
-#include "ai/AIBehavior.hpp"
+
 #include "core/GameEngine.hpp"
 #include "core/Logger.hpp"
-#include "events/ResourceChangeEvent.hpp"
-#include "managers/AIManager.hpp"
+
 #include "managers/EventManager.hpp"
 #include "managers/ResourceTemplateManager.hpp"
 #include "managers/TextureManager.hpp"
@@ -113,8 +112,8 @@ void NPC::loadDimensionsFromTexture() {
 
 void NPC::update(float deltaTime) {
   // The NPC is responsible for its own physics and animation.
-  
-  // Apply acceleration and friction
+
+
   m_velocity += m_acceleration * deltaTime;
   const float stopThresholdSquared = 0.1f * 0.1f;
   if (m_velocity.lengthSquared() > stopThresholdSquared) {
@@ -123,10 +122,10 @@ void NPC::update(float deltaTime) {
   } else {
     m_velocity = Vector2D(0, 0);
   }
-  
+
   // Update position
   m_position += m_velocity * deltaTime;
-  
+
   // Reset acceleration for the next frame.
   m_acceleration = Vector2D(0, 0);
 
@@ -194,7 +193,7 @@ void NPC::render(const HammerEngine::Camera* camera) {
   float renderY = renderPosition.getY() - (m_height / 2.0f);
 
   // Render the NPC with the current animation frame using float precision
-  texMgr.drawFrameF(m_textureID, 
+  texMgr.drawFrameF(m_textureID,
                     renderX,        // Keep float precision for smooth camera movement
                     renderY,        // Keep float precision for smooth camera movement
                     m_frameWidth, m_height,
@@ -248,24 +247,13 @@ void NPC::initializeInventory() {
 void NPC::onResourceChanged(HammerEngine::ResourceHandle resourceHandle,
                             int oldQuantity, int newQuantity) {
   const std::string resourceId = resourceHandle.toString();
-
-  // Create and dispatch ResourceChangeEvent to EventManager
-  auto resourceEvent = std::make_shared<ResourceChangeEvent>(
-      shared_this(), resourceHandle, oldQuantity, newQuantity, "npc_action");
-
-  // Generate unique event name based on resource and timestamp
-  std::string eventName =
-      "npc_resource_change_" + resourceId + "_" +
-      std::to_string(
-          std::chrono::steady_clock::now().time_since_epoch().count());
-
-  // Register and dispatch the event to EventManager
-  EventManager::Instance().registerResourceChangeEvent(eventName,
-                                                       resourceEvent);
-
+  // Use EventManager hub to trigger a ResourceChange (no registration needed)
+  EventManager::Instance().triggerResourceChange(
+      shared_this(), resourceHandle, oldQuantity, newQuantity, "npc_action",
+      EventManager::DispatchMode::Deferred);
   NPC_DEBUG("Resource changed: " + resourceId + " from " +
             std::to_string(oldQuantity) + " to " + std::to_string(newQuantity) +
-            " - event dispatched to EventManager");
+            " - change triggered via EventManager");
 }
 
 // Resource management methods - removed, use getInventory() directly with

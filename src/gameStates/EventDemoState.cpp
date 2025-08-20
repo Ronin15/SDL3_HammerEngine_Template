@@ -821,29 +821,25 @@ void EventDemoState::triggerWeatherDemoAuto() {
   m_currentWeatherIndex =
       (m_currentWeatherIndex + 1) % m_weatherSequence.size();
 
-  // Create weather event - use custom type if specified
-  std::shared_ptr<WeatherEvent> weatherEvent;
+  // Use EventManager hub to change weather
+  EventManager &eventMgr = EventManager::Instance();
   if (newWeather == WeatherType::Custom && !customType.empty()) {
-    weatherEvent =
-        std::make_shared<WeatherEvent>("demo_auto_weather", customType);
+    // Custom type by string
+    eventMgr.changeWeather(customType, m_weatherTransitionTime,
+                           EventManager::DispatchMode::Deferred);
   } else {
-    weatherEvent =
-        std::make_shared<WeatherEvent>("demo_auto_weather", newWeather);
+    // Map enum to string name
+    const char *wt =
+        (newWeather == WeatherType::Clear)   ? "Clear" :
+        (newWeather == WeatherType::Cloudy)  ? "Cloudy" :
+        (newWeather == WeatherType::Rainy)   ? "Rainy" :
+        (newWeather == WeatherType::Stormy)  ? "Stormy" :
+        (newWeather == WeatherType::Foggy)   ? "Foggy" :
+        (newWeather == WeatherType::Snowy)   ? "Snowy" :
+        (newWeather == WeatherType::Windy)   ? "Windy" : "Custom";
+    eventMgr.changeWeather(wt, m_weatherTransitionTime,
+                           EventManager::DispatchMode::Deferred);
   }
-
-  // Get the default params (which include particle effects) and modify them
-  WeatherParams params = weatherEvent->getWeatherParams();
-  params.transitionTime = m_weatherTransitionTime;
-
-  // Set intensity based on weather type
-  if (customType == "HeavyRain" || customType == "HeavySnow") {
-    params.intensity = 0.9f; // High intensity for heavy weather
-  } else {
-    params.intensity = (newWeather == WeatherType::Clear) ? 0.0f : 0.8f;
-  }
-
-  weatherEvent->setWeatherParams(params);
-  weatherEvent->execute();
 
   m_currentWeather = newWeather;
   std::string weatherName =
@@ -866,31 +862,23 @@ void EventDemoState::triggerWeatherDemoManual() {
 
   m_manualWeatherIndex = (m_manualWeatherIndex + 1) % m_weatherSequence.size();
 
-  // Create weather event - use custom type if specified
-  std::shared_ptr<WeatherEvent> weatherEvent;
+  // Use EventManager hub to change weather
+  EventManager &eventMgr2 = EventManager::Instance();
   if (newWeather == WeatherType::Custom && !customType.empty()) {
-    weatherEvent =
-        std::make_shared<WeatherEvent>("demo_manual_weather", customType);
+    eventMgr2.changeWeather(customType, m_weatherTransitionTime,
+                            EventManager::DispatchMode::Deferred);
   } else {
-    weatherEvent =
-        std::make_shared<WeatherEvent>("demo_manual_weather", newWeather);
+    const char *wt =
+        (newWeather == WeatherType::Clear)   ? "Clear" :
+        (newWeather == WeatherType::Cloudy)  ? "Cloudy" :
+        (newWeather == WeatherType::Rainy)   ? "Rainy" :
+        (newWeather == WeatherType::Stormy)  ? "Stormy" :
+        (newWeather == WeatherType::Foggy)   ? "Foggy" :
+        (newWeather == WeatherType::Snowy)   ? "Snowy" :
+        (newWeather == WeatherType::Windy)   ? "Windy" : "Custom";
+    eventMgr2.changeWeather(wt, m_weatherTransitionTime,
+                            EventManager::DispatchMode::Deferred);
   }
-
-  // Get the default params (which include particle effects) and modify them
-  WeatherParams params = weatherEvent->getWeatherParams();
-  params.transitionTime = m_weatherTransitionTime;
-
-  // Set intensity based on weather type
-  if (customType == "HeavyRain" || customType == "HeavySnow") {
-    params.intensity = 0.9f; // High intensity for heavy weather
-    addLogEntry("Setting high intensity (0.9) for heavy weather: " +
-                customType);
-  } else {
-    params.intensity = (newWeather == WeatherType::Clear) ? 0.0f : 0.8f;
-  }
-
-  weatherEvent->setWeatherParams(params);
-  weatherEvent->execute();
 
   m_currentWeather = newWeather;
   std::string weatherName =
@@ -927,29 +915,22 @@ void EventDemoState::triggerSceneTransitionDemo() {
   std::string sceneName = m_sceneNames[m_currentSceneIndex];
   m_currentSceneIndex = (m_currentSceneIndex + 1) % m_sceneNames.size();
 
-  // Create and execute scene change event directly
-  auto sceneEvent =
-      std::make_shared<SceneChangeEvent>("demo_scene_change", sceneName);
-
+  // Use EventManager hub to change scenes
   std::vector<TransitionType> transitions = {
       TransitionType::Fade, TransitionType::Slide, TransitionType::Dissolve,
       TransitionType::Wipe};
-  TransitionType transitionType =
-      transitions[m_currentSceneIndex % transitions.size()];
+  TransitionType t = transitions[m_currentSceneIndex % transitions.size()];
+  const char *transitionName =
+      (t == TransitionType::Fade)       ? "fade" :
+      (t == TransitionType::Slide)      ? "slide" :
+      (t == TransitionType::Dissolve)   ? "dissolve" : "wipe";
 
-  sceneEvent->setTransitionType(transitionType);
-  TransitionParams params(2.0f, transitionType);
-  sceneEvent->setTransitionParams(params);
-  sceneEvent->execute();
+  EventManager &eventMgr3 = EventManager::Instance();
+  eventMgr3.changeScene(sceneName, transitionName, 2.0f,
+                        EventManager::DispatchMode::Deferred);
 
-  std::string transitionName =
-      (transitionType == TransitionType::Fade)       ? "fade"
-      : (transitionType == TransitionType::Slide)    ? "slide"
-      : (transitionType == TransitionType::Dissolve) ? "dissolve"
-                                                     : "wipe";
-
-  addLogEntry("Scene transition to: " + sceneName + " (" + transitionName +
-              ") executed directly");
+  addLogEntry("Scene transition to: " + sceneName + " (" + std::string(transitionName) +
+              ") via EventManager");
 }
 
 void EventDemoState::triggerParticleEffectDemo() {
@@ -1111,13 +1092,6 @@ void EventDemoState::triggerResourceDemo() {
                   std::to_string(newQuantity) + " (+" +
                   std::to_string(quantity) + ")");
 
-      // Create and register ResourceChangeEvent for demonstration
-      auto resourceEvent =
-          std::make_shared<ResourceChangeEvent>(m_player, handle,
-                                                currentQuantity, // old quantity
-                                                newQuantity,     // new quantity
-                                                "event_demo");
-
       // Trigger resource change via EventManager (deferred by default)
       EventManager &eventMgr = EventManager::Instance();
       eventMgr.triggerResourceChange(m_player, handle, currentQuantity,
@@ -1141,13 +1115,6 @@ void EventDemoState::triggerResourceDemo() {
         addLogEntry("AFTER REMOVE: " + resourceName + " = " +
                     std::to_string(newQuantity) + " (-" +
                     std::to_string(removeQuantity) + ")");
-
-        // Create and register ResourceChangeEvent for demonstration
-        auto resourceEvent = std::make_shared<ResourceChangeEvent>(
-            m_player, handle,
-            currentQuantity, // old quantity
-            newQuantity,     // new quantity
-            "event_demo");
 
         // Trigger resource change via EventManager (deferred by default)
         EventManager &eventMgr = EventManager::Instance();
@@ -1295,14 +1262,8 @@ void EventDemoState::triggerConvenienceMethodsDemo() {
     addLogEntry("Total events: " + std::to_string(totalEvents) +
                 " (Weather: " + std::to_string(weatherEvents) + ")");
 
-    // Create and execute weather event directly for demonstration
-    auto weatherEvent =
-        std::make_shared<WeatherEvent>("convenience_demo", WeatherType::Foggy);
-    WeatherParams params;
-    params.transitionTime = 2.5f;
-    params.intensity = 0.7f;
-    weatherEvent->setWeatherParams(params);
-    weatherEvent->execute();
+    // Trigger via EventManager for demonstration
+    eventMgr.changeWeather("Foggy", 2.5f, EventManager::DispatchMode::Deferred);
 
     m_currentWeather = WeatherType::Foggy;
     addLogEntry("Triggered fog weather to demonstrate functionality");
@@ -1317,14 +1278,9 @@ void EventDemoState::triggerConvenienceMethodsDemo() {
 void EventDemoState::resetAllEvents() {
   cleanupSpawnedNPCs();
 
-  // Create and execute clear weather event directly
-  auto weatherEvent =
-      std::make_shared<WeatherEvent>("reset_weather", WeatherType::Clear);
-  WeatherParams params;
-  params.transitionTime = 1.0f;
-  params.intensity = 0.0f;
-  weatherEvent->setWeatherParams(params);
-  weatherEvent->execute();
+  // Trigger clear weather via EventManager
+  EventManager::Instance().changeWeather("Clear", 1.0f,
+                                         EventManager::DispatchMode::Deferred);
 
   m_currentWeather = WeatherType::Clear;
 

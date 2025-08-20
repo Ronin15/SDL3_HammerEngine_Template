@@ -435,11 +435,34 @@ public:
   bool createWorldGeneratedEvent(const std::string &name, const std::string &worldId,
                                 int width, int height, float generationTime);
 
+  // World event triggers (no registration)
+  bool triggerWorldLoaded(const std::string &worldId, int width, int height,
+                          DispatchMode mode = DispatchMode::Deferred) const;
+  bool triggerWorldUnloaded(const std::string &worldId,
+                            DispatchMode mode = DispatchMode::Deferred) const;
+  bool triggerTileChanged(int x, int y, const std::string &changeType,
+                          DispatchMode mode = DispatchMode::Deferred) const;
+  bool triggerWorldGenerated(const std::string &worldId, int width, int height,
+                             float generationTime,
+                             DispatchMode mode = DispatchMode::Deferred) const;
+
   // Camera event convenience methods
   bool createCameraMovedEvent(const std::string &name, const Vector2D &newPos,
                              const Vector2D &oldPos);
   bool createCameraModeChangedEvent(const std::string &name, int newMode, int oldMode);
   bool createCameraShakeEvent(const std::string &name, float duration, float intensity);
+
+  // Camera event triggers (no registration)
+  bool triggerCameraMoved(const Vector2D &newPos, const Vector2D &oldPos,
+                          DispatchMode mode = DispatchMode::Deferred) const;
+  bool triggerCameraModeChanged(int newMode, int oldMode,
+                                DispatchMode mode = DispatchMode::Deferred) const;
+  bool triggerCameraShakeStarted(float duration, float intensity,
+                                 DispatchMode mode = DispatchMode::Deferred) const;
+  bool triggerCameraShakeEnded(DispatchMode mode = DispatchMode::Deferred) const;
+  bool triggerCameraTargetChanged(std::weak_ptr<Entity> newTarget,
+                                  std::weak_ptr<Entity> oldTarget,
+                                  DispatchMode mode = DispatchMode::Deferred) const;
 
   // Alternative trigger methods (aliases for compatibility)
   bool triggerWeatherChange(const std::string &weatherType,
