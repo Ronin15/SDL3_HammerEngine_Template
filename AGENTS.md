@@ -35,6 +35,7 @@
 - Memory: RAII with `std::unique_ptr`/`std::shared_ptr`; no raw `new/delete`.
 - Threading: Use `ThreadSystem` + WorkerBudget; avoid raw `std::thread`.
 - Logging: Use provided macros (`GAMEENGINE_ERROR`, etc.).
+- Performance: Prefer STL algorithms (e.g., `std::sort`, `std::find_if`, `std::transform`) over manual loops for better optimization.
 - Platform guards for OS-specific logic (`#ifdef __APPLE__`, `#ifdef WIN32`).
 
 ## Testing Guidelines
