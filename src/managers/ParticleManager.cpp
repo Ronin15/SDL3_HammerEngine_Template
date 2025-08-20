@@ -548,6 +548,10 @@ bool ParticleManager::init() {
         if (!data.isActive() || !data.event) return;
         auto we = std::dynamic_pointer_cast<WeatherEvent>(data.event);
         if (we) {
+          const auto &wp = we->getWeatherParams();
+          PARTICLE_INFO(std::string("Weather handler: ") + we->getWeatherTypeString() +
+                       ", intensity=" + std::to_string(wp.intensity) +
+                       ", transition=" + std::to_string(wp.transitionTime) + "s");
           we->execute();
         }
       });
