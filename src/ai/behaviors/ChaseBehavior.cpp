@@ -4,7 +4,6 @@
  */
 
 #include "ai/behaviors/ChaseBehavior.hpp"
-#include "core/Logger.hpp"
 #include "managers/AIManager.hpp"
 
 ChaseBehavior::ChaseBehavior(float chaseSpeed, float maxRange, float minRange)
