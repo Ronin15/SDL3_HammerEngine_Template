@@ -8,7 +8,6 @@
 
 #include "world/WorldGenerator.hpp"
 #include "world/WorldData.hpp"
-#include "core/Logger.hpp"
 #include <memory>
 
 using namespace HammerEngine;
