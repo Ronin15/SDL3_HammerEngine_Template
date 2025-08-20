@@ -79,7 +79,6 @@ public:
         m_width = 0;
         m_height = 0;
     }
-    EventTypeId getTypeId() const override { return EventTypeId::World; }
 
 private:
     std::string m_worldId;
@@ -105,7 +104,6 @@ public:
         WorldEvent::reset();
         m_worldId.clear();
     }
-    EventTypeId getTypeId() const override { return EventTypeId::World; }
 
 private:
     std::string m_worldId;
@@ -134,7 +132,6 @@ public:
         m_position = Vector2D{0, 0};
         m_changeType.clear();
     }
-    EventTypeId getTypeId() const override { return EventTypeId::World; }
 
 private:
     Vector2D m_position;
@@ -167,7 +164,6 @@ public:
         m_height = 0;
         m_generationTime = 0.0f;
     }
-    EventTypeId getTypeId() const override { return EventTypeId::World; }
 
 private:
     std::string m_worldId;
@@ -197,7 +193,6 @@ public:
         m_worldId.clear();
         m_savePath.clear();
     }
-    EventTypeId getTypeId() const override { return EventTypeId::World; }
 
 private:
     std::string m_worldId;
