@@ -4,6 +4,10 @@
 
 The Hammer Engine Template includes a fast, cross-platform, header-only binary serialization system that replaces Boost serialization. This system uses smart pointers internally for memory management and is designed for high-performance game save/load operations.
 
+See also:
+- [SaveGameManager](../managers/SaveGameManager.md) — integration and usage in saves/loads
+- [Logger](Logger.md) — logging macros used by serializer and save flows
+
 ## Key Features
 
 - **Header-only**: No external dependencies, just include the header
@@ -229,6 +233,8 @@ if (!success || !writer->good()) {
 
 ### Safe Operations
 
+For recommended logging patterns and macros, see [Logger](Logger.md).
+
 ```cpp
 bool saveGameSafe(const std::string& filename, const GameData& data) {
     auto writer = BinarySerial::Writer::createFileWriter(filename);
@@ -405,11 +411,11 @@ std::thread loadThread([&]() {
 });
 ```
 
-## Conclusion
-
 ## SaveGameManager Integration
 
 The Hammer Engine's SaveGameManager has been fully updated to use the BinarySerializer system, replacing the previous Boost serialization dependency.
+
+For full SaveGameManager documentation, see [SaveGameManager](../managers/SaveGameManager.md).
 
 ### How SaveGameManager Uses BinarySerializer
 
@@ -461,7 +467,7 @@ The BinarySerializer integration provides significant performance improvements:
 - **10x faster** primitive serialization vs Boost
 - **4x faster** string serialization vs Boost
 - **Automatic memory management** with smart pointers
-- **Integrated logging** with Forge logging system
+- **Integrated logging** via Hammer logging macros (see `include/core/Logger.hpp`)
 - **Type safety** with compile-time checks
 
 ### Usage Examples

@@ -40,9 +40,7 @@ public:
   // Clone method for creating unique behavior instances
   std::shared_ptr<AIBehavior> clone() const override;
 
-  // Staggering system overrides
-  bool useStaggering() const override { return true; }
-  uint32_t getUpdateFrequency() const override { return m_updateFrequency; }
+  
 
 protected:
   // Called when target is reached (within minimum range)
@@ -70,14 +68,7 @@ private:
   mutable EntityPtr m_cachedPlayerTarget{nullptr};
   mutable bool m_playerCacheValid{false};
 
-  // Staggering configuration
-  uint32_t m_updateFrequency{3}; // Update expensive calculations every 3 frames
-
-  // Cached state for staggered updates
-  mutable Vector2D m_cachedTargetPosition{0, 0};
-  mutable float m_cachedDistanceSquared{0.0f};
-  mutable bool m_cachedHasLineOfSight{false};
-  mutable bool m_cachedStateValid{false};
+  
 
   // Get cached player reference - optimized for 60fps calls
   EntityPtr getCachedPlayerTarget() const;
@@ -91,9 +82,7 @@ private:
   // Handle behavior when line of sight is lost
   void handleNoLineOfSight(EntityPtr entity);
 
-  // Staggered update methods
-  void updateCachedState(EntityPtr entity) const;
-  void executeLightweightLogic(EntityPtr entity) const;
+  
 };
 
 #endif // CHASE_BEHAVIOR_HPP

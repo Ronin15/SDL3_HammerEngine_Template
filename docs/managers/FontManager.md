@@ -228,8 +228,8 @@ std::vector<std::string> wrapTextToLines(const std::string& text, const std::str
 
 The FontManager works seamlessly with:
 - **[UIManager](../ui/UIManager_Guide.md)**: Dynamic text measurement for component auto-sizing and grow-only lists
-- **[GameEngine](../GameEngine.md)**: Cross-platform coordinate system and native resolution rendering
-- **[InputManager](../InputManager.md)**: Automatic font refresh during window resize events
+- **[GameEngine](../core/GameEngine.md)**: Cross-platform coordinate system and native resolution rendering
+- **[InputManager](InputManager.md)**: Automatic font refresh during window resize events
 - **[Auto-Sizing System](../ui/Auto_Sizing_System.md)**: Real-time text measurement for content-aware sizing
 
 The FontManager serves as the foundation for all text rendering in the engine, providing cross-platform font sizing, crisp rendering, and dynamic measurement capabilities that enable the UI system's advanced features like auto-sizing and resolution adaptation.

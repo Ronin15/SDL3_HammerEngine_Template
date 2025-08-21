@@ -8,6 +8,9 @@
 #include "core/Logger.hpp"
 #include "core/ThreadSystem.hpp"
 #include "core/WorkerBudget.hpp"
+#include "managers/EventManager.hpp"
+#include "events/ParticleEffectEvent.hpp"
+#include "events/WeatherEvent.hpp"
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -460,12 +463,6 @@ bool ParticleManager::LockFreeParticleStorage::needsCompaction() const {
 
     size_t inactiveCount = 0;
     for (size_t i = 0; i < flagsSize; ++i) {
-        // DEFENSIVE: This bounds check appears redundant but provides platform-specific 
-        // safety for edge cases in multithreaded environments
-        if (i >= activeParticles.flags.size()) {
-            break; // Exit safely if buffer changed
-        }
-        
         if (!(activeParticles.flags[i] & UnifiedParticle::FLAG_ACTIVE)) {
             inactiveCount++;
         }
@@ -529,6 +526,30 @@ bool ParticleManager::init() {
 
     m_initialized.store(true, std::memory_order_release);
     m_isShutdown = false;
+
+    // Register EventManager handler for ParticleEffect events
+    {
+      auto &eventMgr = EventManager::Instance();
+      eventMgr.registerHandler(EventTypeId::ParticleEffect, [](const EventData &data) {
+        if (!data.isActive() || !data.event) return;
+        auto pe = std::dynamic_pointer_cast<ParticleEffectEvent>(data.event);
+        if (pe) {
+          pe->execute();
+        }
+      });
+      // Register handler for Weather events to drive weather effects
+      eventMgr.registerHandler(EventTypeId::Weather, [](const EventData &data) {
+        if (!data.isActive() || !data.event) return;
+        auto we = std::dynamic_pointer_cast<WeatherEvent>(data.event);
+        if (we) {
+          const auto &wp = we->getWeatherParams();
+          PARTICLE_INFO(std::string("Weather handler: ") + we->getWeatherTypeString() +
+                       ", intensity=" + std::to_string(wp.intensity) +
+                       ", transition=" + std::to_string(wp.transitionTime) + "s");
+          we->execute();
+        }
+      });
+    }
 
     PARTICLE_INFO("ParticleManager initialized successfully");
     return true;
@@ -782,7 +803,6 @@ void ParticleManager::render(SDL_Renderer *renderer, float cameraX,
 
   // THREAD SAFETY: Get immutable snapshot of particle data for rendering
   const auto &particles = m_storage.getParticlesForRead();
-  int renderCount = 0;
   
   // IMPROVED FIX: Use safest available particle count for rendering
   // This allows partial rendering when buffers are mostly consistent
@@ -815,8 +835,6 @@ void ParticleManager::render(SDL_Renderer *renderer, float cameraX,
       continue;
     }
 
-    renderCount++;
-
     // Extract color components
     uint8_t r = (particles.colors[i] >> 24) & 0xFF;
     uint8_t g = (particles.colors[i] >> 16) & 0xFF;
@@ -833,15 +851,7 @@ void ParticleManager::render(SDL_Renderer *renderer, float cameraX,
     SDL_RenderFillRect(renderer, &rect);
   }
 
-  // Periodic summary logging (every 900 frames ~15 seconds)
-  uint64_t currentFrame =
-      m_frameCounter.fetch_add(1, std::memory_order_relaxed);
-  if (currentFrame % 900 == 0 && renderCount > 0) {
-    PARTICLE_DEBUG(
-        "Particle Summary - Total: " + std::to_string(safeParticleCount) +
-        ", Active: " + std::to_string(renderCount) +
-        ", Effects: " + std::to_string(m_effectInstances.size()));
-  }
+  
 
   auto endTime = std::chrono::high_resolution_clock::now();
   double timeMs =
@@ -1803,12 +1813,6 @@ size_t ParticleManager::getActiveParticleCount() const {
   
   size_t activeCount = 0;
   for (size_t i = 0; i < flagCount; ++i) {
-    // DEFENSIVE: This bounds check appears redundant but provides platform-specific
-    // safety for edge cases in multithreaded environments  
-    if (i >= particles.flags.size()) {
-      break; // Exit safely if buffer changed during iteration
-    }
-    
     if (particles.flags[i] & UnifiedParticle::FLAG_ACTIVE) {
       activeCount++;
     }

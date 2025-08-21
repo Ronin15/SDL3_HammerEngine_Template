@@ -7,6 +7,8 @@
 #include "core/Logger.hpp"
 #include "core/ThreadSystem.hpp"
 #include "core/WorkerBudget.hpp"
+#include "managers/EventManager.hpp"
+#include "events/NPCSpawnEvent.hpp"
 #include <algorithm>
 #include <cstring>
 
@@ -48,6 +50,8 @@ bool AIManager::init() {
 
     m_initialized.store(true, std::memory_order_release);
     m_isShutdown = false;
+
+    // No NPCSpawn handler in AIManager: state owns creation; AI manages behavior only.
 
     AI_LOG("AIManager initialized successfully");
     return true;
@@ -975,9 +979,7 @@ void AIManager::processBatch(size_t start, size_t end, float deltaTime,
       }
 
       if (shouldUpdate) {
-        // Execute behavior logic with staggering support
-        uint64_t currentFrame = m_frameCounter.load(std::memory_order_relaxed);
-        behavior->executeLogicWithStaggering(entity, currentFrame);
+        behavior->executeLogic(entity);
         
         // The entity is responsible for its own physics update.
         entity->update(deltaTime);

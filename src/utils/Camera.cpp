@@ -407,14 +407,9 @@ Vector2D Camera::generateShakeOffset() const {
 // Event firing helper methods
 void Camera::firePositionChangedEvent(const Vector2D& oldPosition, const Vector2D& newPosition) {
     try {
-        auto event = std::make_shared<CameraMovedEvent>(newPosition, oldPosition);
-        EventManager& eventMgr = EventManager::Instance();
-        
-        std::string eventName = "camera_moved_" + std::to_string(static_cast<int>(newPosition.getX())) + 
-                               "_" + std::to_string(static_cast<int>(newPosition.getY()));
-        
-        eventMgr.registerEvent(eventName, event);
-        eventMgr.executeEvent(eventName);
+        const EventManager& eventMgr = EventManager::Instance();
+        (void)eventMgr.triggerCameraMoved(newPosition, oldPosition,
+                                          EventManager::DispatchMode::Deferred);
     } catch (const std::exception& ex) {
         GAMEENGINE_ERROR("Failed to fire CameraMovedEvent: " + std::string(ex.what()));
     }
@@ -422,23 +417,9 @@ void Camera::firePositionChangedEvent(const Vector2D& oldPosition, const Vector2
 
 void Camera::fireModeChangedEvent(Mode oldMode, Mode newMode) {
     try {
-        // Convert Camera::Mode to CameraModeChangedEvent::Mode
-        auto convertMode = [](Mode mode) -> CameraModeChangedEvent::Mode {
-            switch (mode) {
-                case Mode::Free: return CameraModeChangedEvent::Mode::Free;
-                case Mode::Follow: return CameraModeChangedEvent::Mode::Follow;
-                case Mode::Fixed: return CameraModeChangedEvent::Mode::Fixed;
-                default: return CameraModeChangedEvent::Mode::Free;
-            }
-        };
-        
-        auto event = std::make_shared<CameraModeChangedEvent>(convertMode(newMode), convertMode(oldMode));
-        EventManager& eventMgr = EventManager::Instance();
-        
-        std::string eventName = "camera_mode_changed_" + std::to_string(static_cast<int>(newMode));
-        
-        eventMgr.registerEvent(eventName, event);
-        eventMgr.executeEvent(eventName);
+        const EventManager& eventMgr = EventManager::Instance();
+        (void)eventMgr.triggerCameraModeChanged(static_cast<int>(newMode), static_cast<int>(oldMode),
+                                                EventManager::DispatchMode::Deferred);
     } catch (const std::exception& ex) {
         GAMEENGINE_ERROR("Failed to fire CameraModeChangedEvent: " + std::string(ex.what()));
     }
@@ -446,13 +427,9 @@ void Camera::fireModeChangedEvent(Mode oldMode, Mode newMode) {
 
 void Camera::fireTargetChangedEvent(std::weak_ptr<Entity> oldTarget, std::weak_ptr<Entity> newTarget) {
     try {
-        auto event = std::make_shared<CameraTargetChangedEvent>(newTarget, oldTarget);
-        EventManager& eventMgr = EventManager::Instance();
-        
-        std::string eventName = "camera_target_changed";
-        
-        eventMgr.registerEvent(eventName, event);
-        eventMgr.executeEvent(eventName);
+        const EventManager& eventMgr = EventManager::Instance();
+        (void)eventMgr.triggerCameraTargetChanged(newTarget, oldTarget,
+                                                  EventManager::DispatchMode::Deferred);
     } catch (const std::exception& ex) {
         GAMEENGINE_ERROR("Failed to fire CameraTargetChangedEvent: " + std::string(ex.what()));
     }
@@ -460,13 +437,9 @@ void Camera::fireTargetChangedEvent(std::weak_ptr<Entity> oldTarget, std::weak_p
 
 void Camera::fireShakeStartedEvent(float duration, float intensity) {
     try {
-        auto event = std::make_shared<CameraShakeStartedEvent>(duration, intensity);
-        EventManager& eventMgr = EventManager::Instance();
-        
-        std::string eventName = "camera_shake_started";
-        
-        eventMgr.registerEvent(eventName, event);
-        eventMgr.executeEvent(eventName);
+        const EventManager& eventMgr = EventManager::Instance();
+        (void)eventMgr.triggerCameraShakeStarted(duration, intensity,
+                                                 EventManager::DispatchMode::Deferred);
     } catch (const std::exception& ex) {
         GAMEENGINE_ERROR("Failed to fire CameraShakeStartedEvent: " + std::string(ex.what()));
     }
@@ -474,13 +447,8 @@ void Camera::fireShakeStartedEvent(float duration, float intensity) {
 
 void Camera::fireShakeEndedEvent() {
     try {
-        auto event = std::make_shared<CameraShakeEndedEvent>();
-        EventManager& eventMgr = EventManager::Instance();
-        
-        std::string eventName = "camera_shake_ended";
-        
-        eventMgr.registerEvent(eventName, event);
-        eventMgr.executeEvent(eventName);
+        const EventManager& eventMgr = EventManager::Instance();
+        (void)eventMgr.triggerCameraShakeEnded(EventManager::DispatchMode::Deferred);
     } catch (const std::exception& ex) {
         GAMEENGINE_ERROR("Failed to fire CameraShakeEndedEvent: " + std::string(ex.what()));
     }

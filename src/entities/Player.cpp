@@ -8,14 +8,13 @@
 #include "core/Logger.hpp"
 #include "entities/playerStates/PlayerIdleState.hpp"
 #include "entities/playerStates/PlayerRunningState.hpp"
-#include "events/ResourceChangeEvent.hpp"
+
 #include "managers/EventManager.hpp"
 #include "managers/ResourceTemplateManager.hpp"
 #include "managers/TextureManager.hpp"
 #include "managers/WorldManager.hpp"
 #include "utils/Camera.hpp"
-#include <SDL3/SDL.h>
-#include <chrono>
+
 #include <algorithm>
 
 Player::Player() {
@@ -49,7 +48,7 @@ Player::Player() {
   // Set default state
   changeState("idle");
 
-  // std::cout << "Hammer Game Engine - Player created" << "\n";
+  // PLAYER_DEBUG("Player created");
 }
 
 // Helper method to get dimensions from the loaded texture
@@ -136,11 +135,11 @@ void Player::update(float deltaTime) {
 
   // Apply velocity to position AFTER state update
   Vector2D newPosition = m_position + m_velocity * deltaTime;
-  
+
   // Constrain player position to world boundaries
   const WorldManager& worldManager = WorldManager::Instance();
   float minX, minY, maxX, maxY;
-  
+
   if (worldManager.getWorldBounds(minX, minY, maxX, maxY)) {
     // Convert tile coordinates to pixel coordinates (32px per tile)
     const float TILE_SIZE = 32.0f;
@@ -148,33 +147,33 @@ void Player::update(float deltaTime) {
     float worldMinY = minY * TILE_SIZE;
     float worldMaxX = maxX * TILE_SIZE;
     float worldMaxY = maxY * TILE_SIZE;
-    
+
     // Use player sprite dimensions for proper boundary constraints
     // Player should be able to reach actual world boundaries
     const float HALF_SPRITE_WIDTH = m_frameWidth / 2.0f;   // Half of player sprite width
     const float HALF_SPRITE_HEIGHT = m_height / 2.0f;      // Half of player sprite height
-    
+
     // Constrain player to actual world boundaries (accounting for sprite size)
-    newPosition.setX(std::clamp(newPosition.getX(), 
-                               worldMinX + HALF_SPRITE_WIDTH, 
+    newPosition.setX(std::clamp(newPosition.getX(),
+                               worldMinX + HALF_SPRITE_WIDTH,
                                worldMaxX - HALF_SPRITE_WIDTH));
-    newPosition.setY(std::clamp(newPosition.getY(), 
-                               worldMinY + HALF_SPRITE_HEIGHT, 
+    newPosition.setY(std::clamp(newPosition.getY(),
+                               worldMinY + HALF_SPRITE_HEIGHT,
                                worldMaxY - HALF_SPRITE_HEIGHT));
   } else {
     // Fallback to default bounds if no world is loaded (matches GamePlayState.cpp)
     const float DEFAULT_WORLD_SIZE = 3200.0f; // 100 tiles * 32px
     const float HALF_SPRITE_WIDTH = m_frameWidth / 2.0f;
     const float HALF_SPRITE_HEIGHT = m_height / 2.0f;
-    
-    newPosition.setX(std::clamp(newPosition.getX(), 
-                               HALF_SPRITE_WIDTH, 
+
+    newPosition.setX(std::clamp(newPosition.getX(),
+                               HALF_SPRITE_WIDTH,
                                DEFAULT_WORLD_SIZE - HALF_SPRITE_WIDTH));
-    newPosition.setY(std::clamp(newPosition.getY(), 
-                               HALF_SPRITE_HEIGHT, 
+    newPosition.setY(std::clamp(newPosition.getY(),
+                               HALF_SPRITE_HEIGHT,
                                DEFAULT_WORLD_SIZE - HALF_SPRITE_HEIGHT));
   }
-  
+
   m_position = newPosition;
 
   // If the texture dimensions haven't been loaded yet, try loading them
@@ -272,20 +271,10 @@ void Player::initializeInventory() {
 void Player::onResourceChanged(HammerEngine::ResourceHandle resourceHandle,
                                int oldQuantity, int newQuantity) {
   const std::string resourceId = resourceHandle.toString();
-
-  // Create and dispatch ResourceChangeEvent to EventManager
-  auto resourceEvent = std::make_shared<ResourceChangeEvent>(
-      shared_this(), resourceHandle, oldQuantity, newQuantity, "player_action");
-
-  // Generate unique event name based on resource and timestamp
-  std::string eventName =
-      "player_resource_change_" + resourceId + "_" +
-      std::to_string(
-          std::chrono::steady_clock::now().time_since_epoch().count());
-
-  // Register and dispatch the event to EventManager
-  EventManager::Instance().registerResourceChangeEvent(eventName,
-                                                       resourceEvent);
+  // Use EventManager hub to trigger a ResourceChange (no registration needed)
+  EventManager::Instance().triggerResourceChange(
+      shared_this(), resourceHandle, oldQuantity, newQuantity, "player_action",
+      EventManager::DispatchMode::Deferred);
 
   PLAYER_DEBUG("Resource changed: " + resourceId + " from " +
                std::to_string(oldQuantity) + " to " +

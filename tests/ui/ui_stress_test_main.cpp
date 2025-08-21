@@ -3,7 +3,7 @@
  * Licensed under the MIT License - see LICENSE file for details
 */
 
-#include <SDL3/SDL.h>
+#include "SDL3/SDL.h"
 #include <iostream>
 #include <string>
 #include <cstring>

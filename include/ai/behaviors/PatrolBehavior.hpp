@@ -74,17 +74,11 @@ public:
   void setMinWaypointDistance(float distance);
   void setRandomSeed(unsigned int seed);
 
-public:
-  // --- Staggering system overrides ---
-  bool useStaggering() const override { return true; }
-  uint32_t getUpdateFrequency() const override { return m_updateFrequency; }
-  void setUpdateFrequency(uint32_t frequency) {
-    m_updateFrequency = frequency > 0 ? frequency : 1;
-  }
+
 
 private:
   std::vector<Vector2D> m_waypoints;
-  uint32_t m_updateFrequency{2}; // Default: update every 2 frames
+  
   size_t m_currentWaypoint{0};
   float m_moveSpeed{2.0f};
   float m_waypointRadius{25.0f}; // How close entity needs to be to "reach" a

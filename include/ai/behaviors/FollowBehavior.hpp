@@ -63,19 +63,10 @@ public:
   // Clone method for creating unique behavior instances
   std::shared_ptr<AIBehavior> clone() const override;
 
-public:
-  // --- Staggering system overrides ---
-  bool useStaggering() const override { return true; }
-  uint32_t getUpdateFrequency() const override { return m_updateFrequency; }
-  void setUpdateFrequency(uint32_t frequency) {
-    m_updateFrequency = frequency > 0 ? frequency : 1;
-  }
+
 
 private:
-  // Entity-specific state data
-  uint32_t m_updateFrequency{
-      2}; // Default: update every 2 frames  uint32_t m_updateFrequency{2}; //
-          // Default: update every 2 frames
+  
   struct EntityState {
     Vector2D lastTargetPosition{0, 0};
     Vector2D currentVelocity{0, 0};

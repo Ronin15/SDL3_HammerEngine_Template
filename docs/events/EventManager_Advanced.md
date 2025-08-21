@@ -1,5 +1,7 @@
 # EventManager Advanced Documentation
 
+Note: API examples that reference “createAdvanced*” methods on EventManager reflect older drafts. In the current architecture, advanced/definition-driven creation should use `EventFactory` (see EventManager.md and EventManager_QuickReference.md). Trigger helpers and handler/dispatch semantics described here remain valid.
+
 **Where to find the code:**
 - Implementation: `src/managers/EventManager.cpp`
 - Header: `include/managers/EventManager.hpp`
@@ -9,6 +11,23 @@
 ## Overview
 
 This document covers advanced EventManager topics including detailed threading integration, performance optimization, complex event patterns, and architectural considerations. The EventManager is the single source of truth for all operations discussed here.
+
+## Current API Snapshot
+
+For accuracy, the public EventManager API relevant to this document includes:
+
+- Initialization: `init()`, `isInitialized()`, `clean()`, `prepareForStateTransition()`, `update()`, `isShutdown()`
+- Registration: `registerEvent(...)`, and typed registrations for Weather/SceneChange/NPCSpawn/ResourceChange/World/Camera
+- Convenience creation: `createWeatherEvent(...)`, `createSceneChangeEvent(...)`, `createNPCSpawnEvent(...)`, particle/world/camera helpers
+- Triggers (no pre-registration): `changeWeather(...)`, `changeScene(...)`, `spawnNPC(...)`, `triggerParticleEffect(...)`, `triggerWorld*`, `triggerCamera*`, `triggerResourceChange(...)`
+- Handlers: type-safe `registerHandler(...)`, token-based `registerHandlerWithToken(...)`, per-name `registerHandlerForName(...)`, `removeHandler(token)`, `removeNameHandlers(...)`, `clearAllHandlers()`
+- Queries/management: `getEvent(...)`, `getEventsByType(...)`, `setEventActive(...)`, `isEventActive(...)`, `removeEvent(...)`, `hasEvent(...)`
+- Batch helpers: `updateWeatherEvents()`, `updateSceneChangeEvents()`, `updateNPCSpawnEvents()`, `updateResourceChangeEvents()`, `updateWorldEvents()`, `updateCameraEvents()`, `updateHarvestEvents()`, `updateCustomEvents()`
+- Performance/memory: `getPerformanceStats(...)`, `resetPerformanceStats()`, `getEventCount(...)`, `compactEventStorage()`, `clearEventPools()`
+
+Custom and definition-driven creation flows should use `EventFactory` via `EventFactory::Instance().createEvent(def)` and `registerCustomEventCreator(...)`.
+
+Migration note: earlier drafts referenced `createAdvanced*` and `createCustomEvent` methods on EventManager. Those have been replaced by the convenience methods above and by EventFactory definitions for advanced scenarios.
 
 ## Table of Contents
 
@@ -28,7 +47,7 @@ This document covers advanced EventManager topics including detailed threading i
 The EventManager integrates deeply with the ThreadSystem using WorkerBudget allocation and queue pressure monitoring:
 
 ```cpp
-// EventManager automatically allocates 30% of available worker threads
+// EventManager automatically allocates ~20% of available worker threads
 // Buffer threads are used when event count exceeds thresholds (100+ events)
 // Queue pressure monitoring prevents ThreadSystem overload
 
@@ -284,13 +303,15 @@ public:
 
 private:
     void transitionToWeather(const std::string& newWeather, float transitionTime) {
-        // Create transition event through EventManager
+        // Create transition event via EventFactory and register with priority
         std::string transitionName = "Transition_" + m_currentWeather + "_to_" + newWeather;
-
-        m_eventManager.createAdvancedWeatherEvent(
-            transitionName, newWeather, getWeatherIntensity(newWeather),
-            transitionTime, 7, 0.0f, false, true
-        );
+        EventDefinition def{.type="Weather", .name=transitionName,
+            .params={{"weatherType", newWeather}},
+            .numParams={{"intensity", getWeatherIntensity(newWeather)}, {"transitionTime", transitionTime}}};
+        if (auto ev = EventFactory::Instance().createEvent(def)) {
+            ev->setPriority(7);
+            m_eventManager.registerEvent(def.name, ev);
+        }
 
         m_eventManager.executeEvent(transitionName);
 
@@ -348,7 +369,11 @@ private:
         conditionalParams["event_type"] = eventType;
         conditionalParams["conditions"] = joinStrings(conditions, ",");
 
-        m_eventManager.createCustomEvent("Conditional", name, conditionalParams, {}, {});
+        // Build and register custom event via EventFactory
+        EventDefinition def{.type="Conditional", .name=name, .params=conditionalParams};
+        if (auto ev = EventFactory::Instance().createEvent(def)) {
+            m_eventManager.registerEvent(def.name, ev);
+        }
     }
 
     void handleConditionalEvent(const EventData& data) {
@@ -379,9 +404,12 @@ private:
 
         if (eventType == "Quest") {
             std::string questId = event->getParameter("questId");
-            // Trigger quest through EventManager
-            m_eventManager.createCustomEvent("Quest", questId + "_active",
-                                            {{"questId", questId}}, {{"reward", 500.0f}}, {});
+            // Trigger quest via EventFactory + registration
+            EventDefinition q{.type="Quest", .name=questId + "_active",
+                              .params={{"questId", questId}}, .numParams={{"reward", 500.0f}}};
+            if (auto ev = EventFactory::Instance().createEvent(q)) {
+                m_eventManager.registerEvent(q.name, ev);
+            }
         } else if (eventType == "NPCSpawn") {
             std::string npcType = event->getParameter("npcType");
             m_eventManager.spawnNPC(npcType, getPlayerX(), getPlayerY());
@@ -399,20 +427,53 @@ private:
 
 public:
     void createPriorityBasedEvents() {
-        // Critical events (priority 10) - processed first
-        m_eventManager.createAdvancedWeatherEvent("Emergency_Storm", "Stormy", 1.0f, 0.5f, 10, 0.0f, true, true);
+        // Critical event (priority 10)
+        if (auto ev = EventFactory::Instance().createEvent(
+                {.type="Weather", .name="Emergency_Storm",
+                 .params={{"weatherType","Stormy"}}, .numParams={{"intensity",1.0f},{"transitionTime",0.5f}}})) {
+            ev->setPriority(10);
+            ev->setOneTime(true);
+            m_eventManager.registerEvent("Emergency_Storm", ev);
+        }
 
-        // High priority events (priority 8-9)
-        m_eventManager.createAdvancedSceneChangeEvent("Combat_Start", "BattleScene", "fade", 0.8f, 9, false);
-        m_eventManager.createAdvancedNPCSpawnEvent("Boss_Spawn", "DragonBoss", 1, 0.0f, 8, true);
+        // High priority events (9 and 8)
+        if (auto ev = EventFactory::Instance().createEvent(
+                {.type="SceneChange", .name="Combat_Start",
+                 .params={{"targetScene","BattleScene"},{"transitionType","fade"}}, .numParams={{"duration",0.8f}}})) {
+            ev->setPriority(9);
+            m_eventManager.registerEvent("Combat_Start", ev);
+        }
+        if (auto ev = EventFactory::Instance().createEvent(
+                {.type="NPCSpawn", .name="Boss_Spawn",
+                 .params={{"npcType","DragonBoss"}}, .numParams={{"count",1.0f},{"spawnRadius",0.0f}}})) {
+            ev->setPriority(8);
+            m_eventManager.registerEvent("Boss_Spawn", ev);
+        }
 
-        // Normal priority events (priority 5-7)
-        m_eventManager.createAdvancedWeatherEvent("Weather_Change", "Rainy", 0.7f, 3.0f, 6, 10.0f, false, true);
-        m_eventManager.createAdvancedSceneChangeEvent("Area_Transition", "ForestScene", "dissolve", 2.0f, 5, false);
+        // Normal priority events (6 and 5)
+        if (auto ev = EventFactory::Instance().createEvent(
+                {.type="Weather", .name="Weather_Change",
+                 .params={{"weatherType","Rainy"}}, .numParams={{"intensity",0.7f},{"transitionTime",3.0f}}})) {
+            ev->setPriority(6);
+            m_eventManager.registerEvent("Weather_Change", ev);
+        }
+        if (auto ev = EventFactory::Instance().createEvent(
+                {.type="SceneChange", .name="Area_Transition",
+                 .params={{"targetScene","ForestScene"},{"transitionType","dissolve"}}, .numParams={{"duration",2.0f}}})) {
+            ev->setPriority(5);
+            m_eventManager.registerEvent("Area_Transition", ev);
+        }
 
-        // Low priority events (priority 1-4)
-        m_eventManager.createAdvancedNPCSpawnEvent("Ambient_NPCs", "Villager", 5, 50.0f, 3, false);
-        m_eventManager.createWeatherEvent("Ambient_Weather", "Cloudy", 0.8f, 8.0f); // Default priority 5
+        // Low priority spawn (3)
+        if (auto ev = EventFactory::Instance().createEvent(
+                {.type="NPCSpawn", .name="Ambient_NPCs",
+                 .params={{"npcType","Villager"}}, .numParams={{"count",5.0f},{"spawnRadius",50.0f}}})) {
+            ev->setPriority(3);
+            m_eventManager.registerEvent("Ambient_NPCs", ev);
+        }
+
+        // Ambient weather (default priority)
+        m_eventManager.createWeatherEvent("Ambient_Weather", "Cloudy", 0.8f, 8.0f);
     }
 
     void monitorPriorityExecution() {
@@ -453,11 +514,14 @@ public:
         // Deactivate current state events
         deactivateStateEvents(m_currentState);
 
-        // Create scene change event
-        m_eventManager.createAdvancedSceneChangeEvent(
-            "StateTransition_" + m_currentState + "_to_" + newState,
-            newState, "fade", 1.5f, 8, true
-        );
+        // Create scene change event via EventFactory and register
+        std::string name = "StateTransition_" + m_currentState + "_to_" + newState;
+        if (auto ev = EventFactory::Instance().createEvent(
+                {.type="SceneChange", .name=name,
+                 .params={{"targetScene",newState},{"transitionType","fade"}}, .numParams={{"duration",1.5f}}})) {
+            ev->setPriority(8);
+            m_eventManager.registerEvent(name, ev);
+        }
 
         // Activate new state events
         activateStateEvents(newState);
@@ -477,13 +541,28 @@ private:
     void createEventForState(const std::string& state, const std::string& eventName) {
         if (state == "GameWorld") {
             if (eventName == "AmbientWeather") {
-                m_eventManager.createAdvancedWeatherEvent(eventName, "Clear", 1.0f, 5.0f, 4, 30.0f, false, false);
+                if (auto ev = EventFactory::Instance().createEvent(
+                        {.type="Weather", .name=eventName,
+                         .params={{"weatherType","Clear"}}, .numParams={{"intensity",1.0f},{"transitionTime",5.0f}}})) {
+                    ev->setPriority(4);
+                    m_eventManager.registerEvent(eventName, ev);
+                }
             } else if (eventName == "RandomNPCs") {
-                m_eventManager.createAdvancedNPCSpawnEvent(eventName, "Villager", 3, 100.0f, 3, false);
+                if (auto ev = EventFactory::Instance().createEvent(
+                        {.type="NPCSpawn", .name=eventName,
+                         .params={{"npcType","Villager"}}, .numParams={{"count",3.0f},{"spawnRadius",100.0f}}})) {
+                    ev->setPriority(3);
+                    m_eventManager.registerEvent(eventName, ev);
+                }
             }
         } else if (state == "BattleState") {
             if (eventName == "EnemySpawns") {
-                m_eventManager.createAdvancedNPCSpawnEvent(eventName, "Enemy", 5, 80.0f, 7, false);
+                if (auto ev = EventFactory::Instance().createEvent(
+                        {.type="NPCSpawn", .name=eventName,
+                         .params={{"npcType","Enemy"}}, .numParams={{"count",5.0f},{"spawnRadius",80.0f}}})) {
+                    ev->setPriority(7);
+                    m_eventManager.registerEvent(eventName, ev);
+                }
             }
         }
         // More state-specific event creation...
@@ -540,7 +619,11 @@ private:
                 {"target_state", targetState}
             };
 
-            m_eventManager.createCustomEvent("StateBridge", trigger + "_bridge", params, {}, {});
+            // Create via EventFactory and register
+            EventDefinition def{.type="StateBridge", .name=trigger + "_bridge", .params=params};
+            if (auto ev = EventFactory::Instance().createEvent(def)) {
+                m_eventManager.registerEvent(def.name, ev);
+            }
         }
     }
 
@@ -555,11 +638,15 @@ private:
         std::string transitionType = getTransitionTypeForState(targetState);
         float transitionTime = getTransitionTimeForState(targetState);
 
-        m_eventManager.createAdvancedSceneChangeEvent(
-            "CrossState_" + trigger, targetState, transitionType, transitionTime, 9, true
-        );
+        std::string name = "CrossState_" + trigger;
+        if (auto ev = EventFactory::Instance().createEvent(
+                {.type="SceneChange", .name=name,
+                 .params={{"targetScene",targetState},{"transitionType",transitionType}}, .numParams={{"duration",transitionTime}}})) {
+            ev->setPriority(9);
+            m_eventManager.registerEvent(name, ev);
+        }
 
-        m_eventManager.executeEvent("CrossState_" + trigger);
+        m_eventManager.executeEvent(name);
     }
 
     std::string getTransitionTypeForState(const std::string& state) {

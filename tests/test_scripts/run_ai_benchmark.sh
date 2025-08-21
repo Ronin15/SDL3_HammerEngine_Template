@@ -12,8 +12,7 @@ NC='\033[0m' # No Color
 echo -e "${YELLOW}Running AI Scaling Benchmark...${NC}"
 
 # Navigate to project root directory (in case script is run from elsewhere)
-SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-cd "$SCRIPT_DIR"
+# Note: SCRIPT_DIR will be properly set later in the script
 
 # Create directory for test results
 mkdir -p ../../test_results

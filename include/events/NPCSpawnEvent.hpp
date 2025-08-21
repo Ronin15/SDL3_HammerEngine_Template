@@ -79,6 +79,7 @@ public:
     std::string getName() const override { return m_name; }
     std::string getType() const override { return "NPCSpawn"; }
     std::string getTypeName() const override { return "NPCSpawnEvent"; }
+    EventTypeId getTypeId() const override { return EventTypeId::NPCSpawn; }
 
     // Message handling for spawn requests
     void onMessage(const std::string& message) override;
@@ -91,6 +92,8 @@ public:
     void addSpawnPoint(float x, float y);
     void addSpawnPoint(const Vector2D& point);
     void clearSpawnPoints();
+    // Access spawn points
+    const std::vector<Vector2D>& getSpawnPoints() const { return m_spawnPoints; }
     void setSpawnArea(float x1, float y1, float x2, float y2); // Rectangular area
     void setSpawnArea(float centerX, float centerY, float radius); // Circular area
 

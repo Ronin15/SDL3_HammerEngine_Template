@@ -187,6 +187,38 @@ file(GLOB_RECURSE SOURCES
     "src/utils/*.cpp"
 )
 
+# Create object library for shared compilation
+add_library(HammerEngineObjects OBJECT ${SOURCES})
+target_include_directories(HammerEngineObjects PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/core
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/managers
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/gameStates
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/entities
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/events
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/entities/playerStates
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/ai
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/ai/behaviors
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/utils
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/ui
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/world
+)
+target_link_libraries(HammerEngineObjects PUBLIC
+    SDL3::SDL3
+    SDL3_image::SDL3_image
+    SDL3_ttf::SDL3_ttf
+    SDL3_mixer::SDL3_mixer
+)
+
+# Create shared library for tests
+add_library(HammerEngineLib STATIC $<TARGET_OBJECTS:HammerEngineObjects>)
+target_include_directories(HammerEngineLib PUBLIC
+    $<TARGET_PROPERTY:HammerEngineObjects,INTERFACE_INCLUDE_DIRECTORIES>
+)
+target_link_libraries(HammerEngineLib PUBLIC
+    $<TARGET_PROPERTY:HammerEngineObjects,INTERFACE_LINK_LIBRARIES>
+)
+
 # Create executable for your project with proper extensions
 if(WIN32)
     set(EXE_EXTENSION "")
@@ -197,7 +229,7 @@ else()
 endif()
 
 # Set the output name with proper extension
-add_executable(${PROJECT_NAME} ${SOURCES})
+add_executable(${PROJECT_NAME} $<TARGET_OBJECTS:HammerEngineObjects>)
 set_target_properties(${PROJECT_NAME} PROPERTIES
     OUTPUT_NAME "${PROJECT_NAME}${EXE_EXTENSION}"
 )
@@ -328,27 +360,12 @@ endif()
 
 # Link against SDL3 libraries
 target_link_libraries(${PROJECT_NAME} PRIVATE
-    SDL3::SDL3
-    SDL3_image::SDL3_image
-    SDL3_ttf::SDL3_ttf
-    SDL3_mixer::SDL3_mixer
+    $<TARGET_PROPERTY:HammerEngineObjects,INTERFACE_LINK_LIBRARIES>
 )
 
 # Specify include directories
 target_include_directories(${PROJECT_NAME} PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/include
-    ${CMAKE_CURRENT_SOURCE_DIR}/include/core
-    ${CMAKE_CURRENT_SOURCE_DIR}/include/managers
-    ${CMAKE_CURRENT_SOURCE_DIR}/include/gameStates
-    ${CMAKE_CURRENT_SOURCE_DIR}/include/entities
-    ${CMAKE_CURRENT_SOURCE_DIR}/include/events
-    ${CMAKE_CURRENT_SOURCE_DIR}/include/entities/playerStates
-    ${CMAKE_CURRENT_SOURCE_DIR}/include/events
-    ${CMAKE_CURRENT_SOURCE_DIR}/include/ai
-    ${CMAKE_CURRENT_SOURCE_DIR}/include/ai/behaviors
-    ${CMAKE_CURRENT_SOURCE_DIR}/include/utils
-    ${CMAKE_CURRENT_SOURCE_DIR}/include/ui
-    ${CMAKE_CURRENT_SOURCE_DIR}/include/world
+    $<TARGET_PROPERTY:HammerEngineObjects,INTERFACE_INCLUDE_DIRECTORIES>
 )
 
 # Copy SDL3 runtime libraries to build directory (Windows-specific)

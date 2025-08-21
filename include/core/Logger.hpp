@@ -259,6 +259,12 @@ inline std::mutex Logger::s_logMutex{};
 #define GAMESTATE_INFO(msg) HAMMER_INFO("GameStateManager", msg)
 #define GAMESTATE_DEBUG(msg) HAMMER_DEBUG("GameStateManager", msg)
 
+#define GAMEPLAY_CRITICAL(msg) HAMMER_CRITICAL("GamePlayState", msg)
+#define GAMEPLAY_ERROR(msg) HAMMER_ERROR("GamePlayState", msg)
+#define GAMEPLAY_WARN(msg) HAMMER_WARN("GamePlayState", msg)
+#define GAMEPLAY_INFO(msg) HAMMER_INFO("GamePlayState", msg)
+#define GAMEPLAY_DEBUG(msg) HAMMER_DEBUG("GamePlayState", msg)
+
 #define ENTITYSTATE_CRITICAL(msg) HAMMER_CRITICAL("EntityStateManager", msg)
 #define ENTITYSTATE_ERROR(msg) HAMMER_ERROR("EntityStateManager", msg)
 #define ENTITYSTATE_WARN(msg) HAMMER_WARN("EntityStateManager", msg)

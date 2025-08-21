@@ -26,18 +26,15 @@ std::mt19937 &getSharedRNG() {
 
 PatrolBehavior::PatrolBehavior(const std::vector<Vector2D> &waypoints,
                                float moveSpeed, bool includeOffscreenPoints)
-    : m_waypoints(waypoints), m_updateFrequency(2), m_currentWaypoint(0),
+    : m_waypoints(waypoints), m_currentWaypoint(0),
       m_moveSpeed(moveSpeed), m_waypointRadius(25.0f),
       m_includeOffscreenPoints(includeOffscreenPoints), m_needsReset(false),
       m_screenWidth(1280.0f), m_screenHeight(720.0f),
       m_patrolMode(PatrolMode::FIXED_WAYPOINTS), m_rng(getSharedRNG()),
-      m_seedSet(true) { // Default: every 2 frames  // Reserve capacity for
-                        // typical patrol routes (performance optimization)
+      m_seedSet(true) {
   m_waypoints.reserve(10);
 
-  // Ensure we have at least two waypoints
   if (m_waypoints.size() < 2) {
-    // Add a fallback waypoint if the list is too small
     m_waypoints.push_back(Vector2D(100, 100));
     m_waypoints.push_back(Vector2D(200, 200));
   }
@@ -45,27 +42,11 @@ PatrolBehavior::PatrolBehavior(const std::vector<Vector2D> &waypoints,
 
 PatrolBehavior::PatrolBehavior(PatrolMode mode, float moveSpeed,
                                bool includeOffscreenPoints)
-    : m_waypoints(), m_updateFrequency(2), m_currentWaypoint(0),
+    : m_waypoints(), m_currentWaypoint(0),
       m_moveSpeed(moveSpeed), m_waypointRadius(25.0f),
       m_includeOffscreenPoints(includeOffscreenPoints), m_needsReset(false),
       m_screenWidth(1280.0f), m_screenHeight(720.0f), m_patrolMode(mode),
-      m_rng(getSharedRNG()), m_seedSet(true) { // Default: every 2 frames
-  // Set sensible default update frequency per mode
-  switch (mode) {
-  case PatrolMode::FIXED_WAYPOINTS:
-    m_updateFrequency = 2;
-    break;
-  case PatrolMode::RANDOM_AREA:
-    m_updateFrequency = 4;
-    break;
-  case PatrolMode::CIRCULAR_AREA:
-    m_updateFrequency = 4;
-    break;
-  case PatrolMode::EVENT_TARGET:
-    m_updateFrequency =
-        4; // Reduced from 1 to match other modes for performance
-    break;
-  } // Set up the behavior based on the mode
+      m_rng(getSharedRNG()), m_seedSet(true) {
   setupModeDefaults(mode, m_screenWidth, m_screenHeight);
 }
 
@@ -73,18 +54,12 @@ void PatrolBehavior::init(EntityPtr entity) {
   if (!entity)
     return;
 
-  // Set initial target to the first waypoint
   m_currentWaypoint = 0;
 
-  // If entity is already near the first waypoint, move to the next one
   if (isAtWaypoint(entity->getPosition(), m_waypoints[m_currentWaypoint])) {
     m_currentWaypoint = (m_currentWaypoint + 1) % m_waypoints.size();
   }
 
-  // No direction tracking needed
-
-  // Disable bounds checking when off-screen movement is allowed
-  // Check if entity is an NPC that supports bounds checking control
   NPC *npc = dynamic_cast<NPC *>(entity.get());
   if (npc) {
     npc->setBoundsCheckEnabled(!m_includeOffscreenPoints);
@@ -96,30 +71,23 @@ void PatrolBehavior::executeLogic(EntityPtr entity) {
     return;
   }
 
-  // Safety check for valid waypoint index
   if (m_currentWaypoint >= m_waypoints.size()) {
     m_currentWaypoint = 0;
   }
 
-  // Get current entity position
   Vector2D position = entity->getPosition();
 
-  // Check if entity is well offscreen and needs to be reset
   if (m_needsReset && isWellOffscreen(position)) {
     resetEntityPosition(entity);
     m_needsReset = false;
     return;
   }
 
-  // Get the target waypoint
   Vector2D targetWaypoint = m_waypoints[m_currentWaypoint];
 
-  // Check if we've reached the current waypoint
   if (isAtWaypoint(position, targetWaypoint)) {
-    // Move to the next waypoint
     m_currentWaypoint = (m_currentWaypoint + 1) % m_waypoints.size();
 
-    // Check if we've completed a full cycle and need to regenerate waypoints
     if (m_currentWaypoint == 0 && m_autoRegenerate &&
         m_patrolMode != PatrolMode::FIXED_WAYPOINTS) {
       regenerateRandomWaypoints();
@@ -127,47 +95,37 @@ void PatrolBehavior::executeLogic(EntityPtr entity) {
 
     targetWaypoint = m_waypoints[m_currentWaypoint];
 
-    // If next waypoint is offscreen, mark for reset when entity goes offscreen
     if (m_includeOffscreenPoints && isOffscreen(targetWaypoint)) {
       m_needsReset = true;
     }
   }
 
-  // Get the direction to the current waypoint
   Vector2D direction = targetWaypoint - position;
 
-  // Normalize direction if not zero
   float length = direction.length();
   if (length > 0.1f) {
     direction = direction * (1.0f / length);
   } else {
-    // We're very close to target, move to next waypoint
     m_currentWaypoint = (m_currentWaypoint + 1) % m_waypoints.size();
     targetWaypoint = m_waypoints[m_currentWaypoint];
     direction = targetWaypoint - position;
-    direction = direction * (1.0f / direction.length());
+    direction.normalize();
   }
 
-  // Set entity velocity based on direction and speed
   Vector2D newVelocity = direction * m_moveSpeed;
   entity->setVelocity(newVelocity);
-
-  // NPC class now handles sprite flipping based on velocity
 }
 
 void PatrolBehavior::clean(EntityPtr entity) {
   if (entity) {
-    // Stop the entity's movement when cleaning up
     entity->setVelocity(Vector2D(0, 0));
 
-    // Re-enable bounds checking when behavior is cleaned up
     NPC *npc = dynamic_cast<NPC *>(entity.get());
     if (npc) {
       npc->setBoundsCheckEnabled(true);
     }
   }
 
-  // Reset internal state
   m_needsReset = false;
 }
 
@@ -182,18 +140,15 @@ void PatrolBehavior::onMessage(EntityPtr entity, const std::string &message) {
   } else if (message == "reverse") {
     reverseWaypoints();
   } else if (message == "release_entities") {
-    // Stop the entity and clean up when asked to release entities
     if (entity) {
       entity->setVelocity(Vector2D(0, 0));
 
-      // Re-enable bounds checking
       NPC *npc = dynamic_cast<NPC *>(entity.get());
       if (npc) {
         npc->setBoundsCheckEnabled(true);
       }
     }
 
-    // Reset internal state
     m_needsReset = false;
   }
 }
@@ -201,15 +156,11 @@ void PatrolBehavior::onMessage(EntityPtr entity, const std::string &message) {
 std::string PatrolBehavior::getName() const { return "Patrol"; }
 
 std::shared_ptr<AIBehavior> PatrolBehavior::clone() const {
-  // Performance optimization: for FIXED_WAYPOINTS, use mode constructor to
-  // avoid waypoint copying
   std::shared_ptr<PatrolBehavior> cloned;
   if (m_patrolMode == PatrolMode::FIXED_WAYPOINTS && !m_waypoints.empty()) {
-    // Use mode constructor which will regenerate standard waypoints efficiently
     cloned = std::make_shared<PatrolBehavior>(m_patrolMode, m_moveSpeed,
                                               m_includeOffscreenPoints);
   } else {
-    // For other modes or custom waypoints, use full constructor
     cloned = std::make_shared<PatrolBehavior>(m_waypoints, m_moveSpeed,
                                               m_includeOffscreenPoints);
   }
@@ -217,8 +168,6 @@ std::shared_ptr<AIBehavior> PatrolBehavior::clone() const {
   cloned->setScreenDimensions(m_screenWidth, m_screenHeight);
   cloned->setActive(m_active);
 
-  // Copy patrol mode and related settings (only if not already set by mode
-  // constructor)
   if (m_patrolMode != PatrolMode::FIXED_WAYPOINTS) {
     cloned->m_patrolMode = m_patrolMode;
     cloned->m_areaTopLeft = m_areaTopLeft;
@@ -264,7 +213,6 @@ void PatrolBehavior::setMoveSpeed(float speed) { m_moveSpeed = speed; }
 
 bool PatrolBehavior::isAtWaypoint(const Vector2D &position,
                                   const Vector2D &waypoint) const {
-  // Simple distance check
   Vector2D difference = position - waypoint;
   return difference.length() < m_waypointRadius;
 }
@@ -286,19 +234,16 @@ void PatrolBehavior::resetEntityPosition(EntityPtr entity) {
   if (!entity)
     return;
 
-  // Find an onscreen waypoint to teleport to
   for (size_t i = 0; i < m_waypoints.size(); i++) {
     size_t index = (m_currentWaypoint + i) % m_waypoints.size();
     if (!isOffscreen(m_waypoints[index])) {
-      // Found an onscreen waypoint, teleport to it
       entity->setPosition(m_waypoints[index]);
       m_currentWaypoint =
-          (index + 1) % m_waypoints.size(); // Move to next waypoint
+          (index + 1) % m_waypoints.size();
       return;
     }
   }
 
-  // If no onscreen waypoints found, reset to center of screen
   entity->setPosition(Vector2D(m_screenWidth / 2, m_screenHeight / 2));
 }
 
@@ -308,13 +253,11 @@ void PatrolBehavior::reverseWaypoints() {
 
   std::reverse(m_waypoints.begin(), m_waypoints.end());
 
-  // Adjust current waypoint index for the new order
   if (m_currentWaypoint > 0) {
     m_currentWaypoint = m_waypoints.size() - m_currentWaypoint;
   }
 }
 
-// Random area patrol methods
 void PatrolBehavior::setRandomPatrolArea(const Vector2D &topLeft,
                                          const Vector2D &bottomRight,
                                          int waypointCount) {
@@ -340,7 +283,6 @@ void PatrolBehavior::setRandomPatrolArea(const Vector2D &center, float radius,
   generateRandomWaypointsInCircle();
 }
 
-// Event target patrol methods
 void PatrolBehavior::setEventTarget(const Vector2D &target, float radius,
                                     int waypointCount) {
   m_patrolMode = PatrolMode::EVENT_TARGET;
@@ -356,11 +298,10 @@ void PatrolBehavior::updateEventTarget(const Vector2D &newTarget) {
   if (m_patrolMode == PatrolMode::EVENT_TARGET) {
     m_eventTarget = newTarget;
     generateWaypointsAroundTarget();
-    m_currentWaypoint = 0; // Reset to first waypoint
+    m_currentWaypoint = 0;
   }
 }
 
-// Utility methods
 void PatrolBehavior::regenerateRandomWaypoints() {
   if (m_patrolMode == PatrolMode::RANDOM_AREA) {
     if (m_useCircularArea) {
@@ -391,12 +332,10 @@ void PatrolBehavior::setRandomSeed(unsigned int seed) {
   m_seedSet = true;
 }
 
-// Private helper methods
 void PatrolBehavior::generateRandomWaypointsInRectangle() {
   ensureRandomSeed();
   m_waypoints.clear();
 
-  // Generate waypoints with minimum distance constraints
   for (int i = 0; i < m_waypointCount && m_waypoints.size() < 10; ++i) {
     Vector2D newPoint;
     int attempts = 0;
@@ -410,7 +349,6 @@ void PatrolBehavior::generateRandomWaypointsInRectangle() {
     m_waypoints.push_back(newPoint);
   }
 
-  // Ensure we have at least 2 waypoints
   if (m_waypoints.size() < 2) {
     Vector2D center = (m_areaTopLeft + m_areaBottomRight) * 0.5f;
     Vector2D size = m_areaBottomRight - m_areaTopLeft;
@@ -426,7 +364,6 @@ void PatrolBehavior::generateRandomWaypointsInCircle() {
   ensureRandomSeed();
   m_waypoints.clear();
 
-  // Generate waypoints with minimum distance constraints
   for (int i = 0; i < m_waypointCount && m_waypoints.size() < 10; ++i) {
     Vector2D newPoint;
     int attempts = 0;
@@ -440,7 +377,6 @@ void PatrolBehavior::generateRandomWaypointsInCircle() {
     m_waypoints.push_back(newPoint);
   }
 
-  // Ensure we have at least 2 waypoints
   if (m_waypoints.size() < 2) {
     m_waypoints.clear();
     m_waypoints.push_back(m_areaCenter + Vector2D(-m_areaRadius * 0.5f, 0));
@@ -452,10 +388,8 @@ void PatrolBehavior::generateWaypointsAroundTarget() {
   ensureRandomSeed();
   m_waypoints.clear();
 
-  // Optimize trigonometric calculations by pre-computing them
   float angleStep = 2.0f * M_PI / m_waypointCount;
 
-  // Pre-compute all angles and trigonometric values for better performance
   std::vector<float> cosValues, sinValues;
   cosValues.reserve(m_waypointCount);
   sinValues.reserve(m_waypointCount);
@@ -466,9 +400,7 @@ void PatrolBehavior::generateWaypointsAroundTarget() {
     sinValues.push_back(std::sin(angle));
   }
 
-  // Generate waypoints using pre-computed values
   for (int i = 0; i < m_waypointCount && m_waypoints.size() < 10; ++i) {
-    // Add some randomness to the radius (between 0.7 and 1.0 of target radius)
     std::uniform_real_distribution<float> radiusDist(0.7f, 1.0f);
     float randomRadius = m_eventTargetRadius * radiusDist(m_rng);
 
@@ -478,7 +410,6 @@ void PatrolBehavior::generateWaypointsAroundTarget() {
     m_waypoints.push_back(waypoint);
   }
 
-  // Ensure we have at least 2 waypoints
   if (m_waypoints.size() < 2) {
     m_waypoints.clear();
     m_waypoints.push_back(m_eventTarget + Vector2D(-m_eventTargetRadius, 0));
@@ -487,7 +418,6 @@ void PatrolBehavior::generateWaypointsAroundTarget() {
 }
 
 Vector2D PatrolBehavior::generateRandomPointInRectangle() const {
-  // Use uniform_real_distribution with actual area bounds for correct behavior
   std::uniform_real_distribution<float> xDist(m_areaTopLeft.getX(),
                                               m_areaBottomRight.getX());
   std::uniform_real_distribution<float> yDist(m_areaTopLeft.getY(),
@@ -500,8 +430,6 @@ Vector2D PatrolBehavior::generateRandomPointInRectangle() const {
 }
 
 Vector2D PatrolBehavior::generateRandomPointInCircle() const {
-  // Generate random point in circle using polar coordinates
-  // Use instance-specific distributions for correct behavior per patrol area
   std::uniform_real_distribution<float> angleDist(0.0f, 2.0f * M_PI);
   std::uniform_real_distribution<float> radiusDist(0.0f, 1.0f);
 
@@ -521,9 +449,7 @@ bool PatrolBehavior::isValidWaypointDistance(const Vector2D &newPoint) const {
                      });
 }
 
-void PatrolBehavior::ensureRandomSeed() const {
-  // No longer needed - using shared thread-local RNG for better performance
-}
+void PatrolBehavior::ensureRandomSeed() const {}
 
 void PatrolBehavior::setupModeDefaults(PatrolMode mode, float screenWidth,
                                        float screenHeight) {
@@ -533,10 +459,8 @@ void PatrolBehavior::setupModeDefaults(PatrolMode mode, float screenWidth,
 
   switch (mode) {
   case PatrolMode::FIXED_WAYPOINTS:
-    // Create default fixed waypoints if none exist
     if (m_waypoints.empty()) {
       float margin = 100.0f;
-      // Pre-allocate and use emplace_back for efficiency
       m_waypoints.reserve(4);
       m_waypoints.emplace_back(margin, margin);
       m_waypoints.emplace_back(screenWidth - margin, margin);
@@ -546,7 +470,6 @@ void PatrolBehavior::setupModeDefaults(PatrolMode mode, float screenWidth,
     break;
 
   case PatrolMode::RANDOM_AREA:
-    // Set up random rectangular area in left half of screen
     m_useCircularArea = false;
     m_areaTopLeft = Vector2D(50, 50);
     m_areaBottomRight = Vector2D(screenWidth * 0.4f, screenHeight - 50);
@@ -557,7 +480,6 @@ void PatrolBehavior::setupModeDefaults(PatrolMode mode, float screenWidth,
     break;
 
   case PatrolMode::EVENT_TARGET:
-    // Set up event target at screen center
     m_eventTarget = Vector2D(screenWidth * 0.5f, screenHeight * 0.5f);
     m_eventTargetRadius = 150.0f;
     m_waypointCount = 8;
@@ -565,7 +487,6 @@ void PatrolBehavior::setupModeDefaults(PatrolMode mode, float screenWidth,
     break;
 
   case PatrolMode::CIRCULAR_AREA:
-    // Set up circular area in right half of screen
     m_useCircularArea = true;
     m_areaCenter = Vector2D(screenWidth * 0.75f, screenHeight * 0.5f);
     m_areaRadius = 120.0f;
