@@ -10,7 +10,7 @@
 
 The AI Manager is a high-performance, unified system for managing autonomous behaviors for game entities. It provides a single, optimized framework for implementing and controlling various AI behaviors with advanced performance features:
 
-1. **Cross-Platform Performance** - Optimized for 4-6% CPU usage with 1000+ entities
+1. **Cross-Platform Performance** - Optimized for 4-6% CPU usage with 10,000 entities
 2. **Non-Blocking AI Processing** - Fire-and-forget threading prevents main thread blocking
 3. **Cache-Friendly Structure of Arrays (SoA)** - Hot/cold data separation for optimal cache efficiency
 4. **Distance-based optimization** - Pure distance culling for distant entities (no frame counting)
