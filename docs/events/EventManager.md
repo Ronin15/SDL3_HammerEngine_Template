@@ -13,7 +13,7 @@ The Hammer Game Engine EventManager provides a comprehensive, high-performance e
 1. **Type-indexed storage** - Fast O(1) event lookups using EventTypeId enumeration
 2. **Cache-friendly data structures** - Structure of Arrays (SoA) pattern with 32-byte alignment
 3. **Queue pressure monitoring** - 90% capacity threshold with graceful degradation to single-threaded processing
-4. **WorkerBudget integration** - 30% worker allocation with buffer scaling for high workloads
+4. **WorkerBudget integration** - ~20% worker allocation with buffer scaling for high workloads
 5. **Dynamic batch sizing** - Adjusts batch size (8-15 events) based on real-time queue pressure
 6. **Threading optimization** - Automatic scaling with 50+ event threshold
 7. **Performance monitoring** - Built-in statistics tracking per event type
@@ -469,7 +469,7 @@ EventManager uses intelligent threading decisions with queue pressure monitoring
 - **Automatic Threading**: Enabled when event count exceeds threshold (50+ events)
 - **Queue Pressure Monitoring**: 90% queue capacity threshold with graceful degradation
 - **Type-Based Batching**: Events processed by type for optimal cache usage
-- **WorkerBudget Integration**: Allocates 30% of available worker threads with buffer allocation
+- **WorkerBudget Integration**: Allocates ~20% of available worker threads with buffer allocation
 - **Dynamic Batch Sizing**: Adjusts batch size based on real-time queue pressure
 - **Lock-Free Operations**: Minimal locking for high-performance concurrent access
 - **Graceful Degradation**: Falls back to single-threaded processing under high queue pressure

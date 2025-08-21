@@ -56,7 +56,7 @@ Comprehensive UI system with professional theming, animations, layouts, content-
 High-performance multithreading framework with intelligent WorkerBudget allocation and priority-based task scheduling.
 
 - **[ThreadSystem](core/ThreadSystem.md)** - Complete threading system documentation with WorkerBudget allocation, buffer thread utilization, priority scheduling, engine integration, implementation details, and production best practices
-- **WorkerBudget System** - Tiered resource allocation strategy (Tier 1: single-threaded, Tier 2: minimal allocation, Tier 3: AI 60%/Events 30% of remaining workers)
+- **WorkerBudget System** - Tiered resource allocation strategy (Tier 1: single-threaded, Tier 2: minimal allocation, Tier 3: AI ~45% / Particles ~25% / Events ~20% of remaining workers; buffer retained for bursts)
 - **Priority-Based Scheduling** - Five-level priority system (Critical, High, Normal, Low, Idle) for optimal task ordering
 - **Buffer Thread Utilization** - Intelligent scaling based on workload thresholds (AI: >1000 entities, Events: >100 events)
 - **Hardware Adaptive** - Automatic scaling from ultra low-end (single-threaded) to high-end (multi-threaded) systems
@@ -202,7 +202,7 @@ The Hammer Game Engine provides several core systems that work together:
 ### Performance Optimized
 - **Scales to 10,000+ NPCs**: Linear performance scaling with distance optimization and WorkerBudget allocation
 - **Priority-Based Threading**: Critical tasks processed first with tiered worker allocation and optimal resource distribution
-- **WorkerBudget Allocation**: Intelligent tiered resource distribution (Engine: 1-2 workers, AI: 60% of remaining, Events: 30% of remaining, Buffer: dynamic scaling)
+- **WorkerBudget Allocation**: Intelligent tiered resource distribution (Engine: 1–2 workers, AI: ~45% of remaining, Particles: ~25%, Events: ~20%, Buffer: dynamic scaling)
 - **Efficient UI Rendering**: Only processes visible components with auto-sizing
 - **Memory Optimizations**: Smart pointers and cache-friendly data structures
 - **Batched Operations**: Bulk processing for better performance across all systems

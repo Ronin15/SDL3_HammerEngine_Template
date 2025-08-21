@@ -47,7 +47,7 @@ Migration note: earlier drafts referenced `createAdvanced*` and `createCustomEve
 The EventManager integrates deeply with the ThreadSystem using WorkerBudget allocation and queue pressure monitoring:
 
 ```cpp
-// EventManager automatically allocates 30% of available worker threads
+// EventManager automatically allocates ~20% of available worker threads
 // Buffer threads are used when event count exceeds thresholds (100+ events)
 // Queue pressure monitoring prevents ThreadSystem overload
 

@@ -25,6 +25,13 @@ The AI Manager is a high-performance, unified system for managing autonomous beh
 13. **Intelligent double buffering** - Only copies when needed, not every frame
 14. **Batch lock optimization** - Single lock per batch instead of per-entity
 
+See also:
+- [ThreadSystem](../core/ThreadSystem.md) — WorkerBudget, priorities, and batching
+- [GameEngine](../core/GameEngine.md) — Update integration and double buffering
+- [EventManager](../events/EventManager.md) — Coordinated updates and messaging
+- [Behavior Modes](BehaviorModes.md) — Detailed behavior configurations
+- [Quick Reference](BehaviorQuickReference.md) — Fast lookup for behaviors and modes
+
 ## Individual Behavior Instances Architecture
 
 ### Core Architecture Principle
@@ -160,9 +167,9 @@ public:
 - **Maintains Responsiveness**: Entities still move smoothly using cached data
 - **Configurable**: Can be tuned per behavior type or globally
 
-### Example: Staggering in ChaseBehavior and WanderBehavior
+### Example: Staggering in Idle and Wander
 
-All core AI behaviors (Wander, Patrol, Idle, Guard, Follow, Flee, Attack, and Chase) now support per-entity update staggering for optimal performance:
+Per-entity update staggering is currently implemented in Idle and Wander behaviors. Chase exposes a `setUpdateFrequency(...)` setter but does not use staggering internally yet; other behaviors update every frame.
 - Expensive calculations (e.g., line-of-sight, pathfinding, threat detection, attack logic) are distributed across frames
 - Direction changes, offscreen checks, and reset logic (Wander)
 - Patrol route updates (Patrol)
@@ -175,19 +182,11 @@ All core AI behaviors (Wander, Patrol, Idle, Guard, Follow, Flee, Attack, and Ch
 - Target tracking updates (Chase)
 
 ```cpp
-// ChaseBehavior: Default is every 3 frames
-chaseBehavior->setUpdateFrequency(3);  // ~67% CPU reduction
-
 // WanderBehavior: Default is every 1-4 frames depending on mode
 wanderBehavior->setUpdateFrequency(4); // For large groups, use 4+ for best performance
 
-// For high-priority entities: Update more frequently
-chaseBehavior->setUpdateFrequency(2);
-wanderBehavior->setUpdateFrequency(2);
-
-// For background entities: Update less frequently
-chaseBehavior->setUpdateFrequency(5);
-wanderBehavior->setUpdateFrequency(6);
+// IdleBehavior: Default is every 4 frames
+idleBehavior->setUpdateFrequency(2);   // Update more frequently for prominent NPCs
 ```
 
 ## Quick Start
@@ -199,14 +198,14 @@ wanderBehavior->setUpdateFrequency(6);
 AIManager::Instance().init();
 
 // Register mode-based behaviors
-auto wanderBehavior = std::make_unique<WanderBehavior>(WanderBehavior::WanderMode::MEDIUM_AREA, 2.0f);
-AIManager::Instance().registerBehavior("Wander", std::move(wanderBehavior));
+auto wanderBehavior = std::make_shared<WanderBehavior>(WanderBehavior::WanderMode::MEDIUM_AREA, 2.0f);
+AIManager::Instance().registerBehavior("Wander", wanderBehavior);
 
-auto patrolBehavior = std::make_unique<PatrolBehavior>(PatrolBehavior::PatrolMode::RANDOM_AREA, 1.5f);
-AIManager::Instance().registerBehavior("Patrol", std::move(patrolBehavior));
+auto patrolBehavior = std::make_shared<PatrolBehavior>(PatrolBehavior::PatrolMode::RANDOM_AREA, 1.5f);
+AIManager::Instance().registerBehavior("Patrol", patrolBehavior);
 
-// Create chase behavior (targeting the player)
-auto chaseBehavior = std::make_shared<ChaseBehavior>(player, 2.0f, 500.0f, 50.0f);
+// Create chase behavior (AIManager retrieves player reference internally)
+auto chaseBehavior = std::make_shared<ChaseBehavior>(2.0f, 500.0f, 50.0f);
 AIManager::Instance().registerBehavior("Chase", chaseBehavior);
 ```
 
@@ -317,8 +316,9 @@ The AIManager implements high-performance threading with **4-6% CPU usage** achi
 - **Optimal batching**: 2-4 large batches for maximum efficiency
 
 **WorkerBudget Resource Allocation:**
-- Receives **60% of available workers** from ThreadSystem's WorkerBudget system
-- Uses `budget.getOptimalWorkerCount()` with 1000 entity threshold for buffer allocation
+- Receives ~**45% of remaining workers** (after engine reservation) from the WorkerBudget system
+- Events receive ~20%, Particles ~25%, with remaining threads kept as buffer capacity
+- Uses `budget.getOptimalWorkerCount()` with a 1000-entity threshold for buffer allocation
 - Maintains system-wide resource coordination with EventManager and GameEngine
 - **Conservative buffer usage**: Only activates buffer workers for high workloads
 
@@ -444,7 +444,7 @@ while (completedTasks.load() < tasksSubmitted) {
 **Architecture Benefits:**
 - Maintains responsive gameplay while AI processes in background
 - Leverages ThreadSystem WorkerBudget for optimal resource allocation
-- Automatic threading threshold (200 entities) for best performance
+- Automatic threading threshold (500 entities) for best performance
 - Distance-based optimization ensures relevant entities get priority updates
 
 ## Performance Monitoring & Optimization Results
@@ -497,7 +497,7 @@ The AIManager has undergone significant performance optimizations including a cr
 | Entity Count | Threading Mode | Updates/Second | Performance Ratio |
 |--------------|----------------|----------------|-------------------|
 | 100 | Auto-Single | 170,000 | 1.00x (baseline) |
-| 200 | Auto-Threaded | 1,078,000 | 6.34x |
+| 500 | Auto-Threaded | 1,078,000 | 6.34x |
 | 1,000 | Auto-Threaded | 1,106,000 | 6.51x |
 | 5,000 | Auto-Threaded | 1,880,000 | 11.06x |
 | 100,000 | Auto-Threaded | 2,268,000 | 13.34x |
@@ -513,7 +513,7 @@ The AIManager has undergone significant performance optimizations including a cr
 
 **Production Performance Characteristics:**
 - Consistent 2M+ entity updates per second for large-scale scenarios
-- Automatic threading activation above 200 entities
+- Automatic threading activation above 500 entities
 - Hardware-adaptive scaling from single-core to multi-core systems
 - Stable performance without threading fallbacks under normal workloads
 
@@ -737,24 +737,24 @@ The AIManager integrates seamlessly with the engine's optimized threading archit
 5. **Architectural compliance** ensures system-wide coordination and stability
 
 **ThreadSystem & WorkerBudget Architecture (Enhanced):**
-1. **Centralized Resource Allocation**: Uses `Hammer::calculateWorkerBudget()` for coordinated distribution
-2. **AI Worker Budget**: Receives 60% of available workers with proper allocation limits
+1. **Centralized Resource Allocation**: Uses `HammerEngine::calculateWorkerBudget()` for coordinated distribution
+2. **AI Worker Budget**: Receives ~45% of remaining workers (after engine reservation); Events ~20%, Particles ~25%, remainder is buffer
 3. **Buffer Thread Access**: Utilizes buffer threads when entity count > 1000 for burst capacity
 4. **Dynamic Scaling**: Batch sizes scale with allocated workers (`entities / optimalWorkerCount`)
 5. **Queue Pressure Management**: Monitors ThreadSystem load to prevent resource contention
 6. **Architectural Coordination**: Maintains proper resource boundaries with EventManager and GameEngine
 
 **Optimized Performance Characteristics:**
-- **Threading Threshold**: 200 entities for automatic multi-threading activation
-- **Batch Size Scaling**: 200-600 entities per batch based on workload and worker availability
+- **Threading Threshold**: 500 entities for automatic multi-threading activation
+- **Batch Size Scaling**: 800-1500 entities per batch based on queue pressure; max 2-4 batches
 - **Cache Efficiency**: Optimized batch limits for L1/L2 cache friendliness
 - **Atomic Operations**: Reduced per-entity overhead with batch-level updates
 - **Lock Contention**: Minimized through periodic stats updates (every 60 frames)
 
 **Resource Scaling Examples (Optimized):**
-- **4-core/8-thread system (7 workers)**: GameLoop=2, AI=3, Events=1, Buffer=1
-- **8-core/16-thread system (15 workers)**: GameLoop=2, AI=8, Events=4, Buffer=1
-- **16-core/32-thread system (31 workers)**: GameLoop=2, AI=17, Events=9, Buffer=3
+- **4-core/8-thread system (7 workers)**: GameLoop=2, AI=2, Particles=1, Events=1, Buffer=1
+- **8-core/16-thread system (15 workers)**: GameLoop=2, AI=5, Particles=3, Events=2, Buffer=3
+- **16-core/32-thread system (31 workers)**: GameLoop=2, AI=13, Particles=7, Events=5, Buffer=4
 - **High-end systems**: Automatic scaling with buffer utilization for workloads >1000 entities
 
 **Performance Guarantees:**
@@ -766,7 +766,6 @@ The AIManager integrates seamlessly with the engine's optimized threading archit
 **Performance Coordination:**
 - **Queue Pressure Monitoring**: Respects ThreadSystem queue limits
 - **Priority-Based Task Submission**: Adjusts task priority based on workload size
-- **Frame-Rate Protection**: 16ms timeout ensures consistent frame rates
 - **Burst Capacity**: Buffer threads handle temporary workload spikes
 
 This architecture ensures optimal AI performance while maintaining system stability and fair resource allocation across all engine components.
