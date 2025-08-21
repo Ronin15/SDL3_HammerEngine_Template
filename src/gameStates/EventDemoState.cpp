@@ -120,19 +120,18 @@ bool EventDemoState::enter() {
     int windowWidth = ui.getLogicalWidth();
     int inventoryWidth = 280;
     int inventoryHeight = 400;  // Increased height dramatically
-    int inventoryX =
-        windowWidth - inventoryWidth - 20; // Right-aligned with 20px margin
+    int inventoryX = windowWidth - inventoryWidth - 20; // Right-aligned with 20px margin
     int inventoryY = 170;  // Moved down dramatically to avoid overlap
 
     ui.createPanel("inventory_panel",
                    {inventoryX, inventoryY, inventoryWidth, inventoryHeight});
     ui.setComponentVisible("inventory_panel", false);
-    
+
     ui.createTitle("inventory_title",
                    {inventoryX + 10, inventoryY + 25, inventoryWidth - 20, 35},  // Increased height from 30 to 35
                    "Player Inventory");
     ui.setComponentVisible("inventory_title", false);
-    
+
     ui.createLabel("inventory_status",
                    {inventoryX + 10, inventoryY + 75, inventoryWidth - 20, 25},  // Increased height from 20 to 25
                    "Capacity: 0/50");
@@ -160,7 +159,7 @@ bool EventDemoState::enter() {
         if (!m_player || !m_player->getInventory()) {
             return {"(Empty)"};
         }
-        
+
         const auto* inventory = m_player->getInventory();
         auto allResources = inventory->getAllResources();
 
@@ -182,7 +181,7 @@ bool EventDemoState::enter() {
         for (const auto& [resourceId, quantity] : sortedResources) {
             items.push_back(resourceId + " x" + std::to_string(quantity));
         }
-        
+
         return items;
     });
 
@@ -286,7 +285,7 @@ void EventDemoState::update(float deltaTime) {
   if (m_player) {
     m_player->update(deltaTime);
   }
-  
+
   // Update camera (follows player automatically)
   updateCamera(deltaTime);
 
@@ -461,7 +460,7 @@ void EventDemoState::render() {
     auto &worldMgr = WorldManager::Instance();
     if (worldMgr.isInitialized() && worldMgr.hasActiveWorld()) {
       // Use the SAME cameraView calculated above for consistency
-      worldMgr.render(renderer, 
+      worldMgr.render(renderer,
                      cameraView.x,
                      cameraView.y,
                      gameEngine.getLogicalWidth(),
@@ -1397,8 +1396,8 @@ void EventDemoState::onResourceChanged(const EventData &data) {
 }
 
 void EventDemoState::setupAIBehaviors() {
+  //TODO: need to make sure that this loigic is moved out of the gamestate. Maybe on AI Manager init. init/configure all availible behviors
   GAMESTATE_INFO("EventDemoState: Setting up AI behaviors for NPC integration...");
-
   // Cache AIManager reference for better performance
   AIManager &aiMgr = AIManager::Instance();
 
@@ -1853,7 +1852,7 @@ void EventDemoState::logResourceAnalytics(HammerEngine::ResourceHandle handle,
 void EventDemoState::initializeWorld() {
   // Create world manager and generate a world for event demo
   WorldManager& worldManager = WorldManager::Instance();
-  
+
   // Create a moderately-sized world configuration for event demo (focused on events, but with exploration)
   HammerEngine::WorldGenerationConfig config;
   config.width = 100;  // Increased from 50 to 100 for more exploration
@@ -1863,30 +1862,30 @@ void EventDemoState::initializeWorld() {
   config.humidityFrequency = 0.1f;
   config.waterLevel = 0.25f;
   config.mountainLevel = 0.75f;
-  
+
   if (!worldManager.loadNewWorld(config)) {
     GAMESTATE_ERROR("Failed to load new world in EventDemoState");
     // Continue anyway - event demo can function without world
   } else {
     GAMESTATE_INFO("Successfully loaded event demo world with seed: " + std::to_string(config.seed));
-    
+
     // Setup camera to work with the world (will be called in initializeCamera)
   }
 }
 
 void EventDemoState::initializeCamera() {
   const auto &gameEngine = GameEngine::Instance();
-  
+
   // Initialize camera at player's position to avoid any interpolation jitter
   Vector2D playerPosition = m_player ? m_player->getPosition() : Vector2D(0, 0);
-  
+
   // Create camera starting at player position
   m_camera = std::make_unique<HammerEngine::Camera>(
     playerPosition.getX(), playerPosition.getY(), // Start at player position
     static_cast<float>(gameEngine.getLogicalWidth()),
     static_cast<float>(gameEngine.getLogicalHeight())
   );
-  
+
   // Configure camera to follow player
   if (m_player && m_camera) {
     // Match GamePlayState: disable camera event firing for consistency
@@ -1896,7 +1895,7 @@ void EventDemoState::initializeCamera() {
     std::weak_ptr<Entity> playerAsEntity = std::static_pointer_cast<Entity>(m_player);
     m_camera->setTarget(playerAsEntity);
     m_camera->setMode(HammerEngine::Camera::Mode::Follow);
-    
+
     // Set up camera configuration for fast, smooth following (match GamePlayState)
     HammerEngine::Camera::Config config;
     config.followSpeed = 8.0f;         // Faster follow for action gameplay
@@ -1905,7 +1904,7 @@ void EventDemoState::initializeCamera() {
     config.maxFollowDistance = 9999.0f; // No distance limit
     config.clampToWorldBounds = true; // Keep camera within world
     m_camera->setConfig(config);
-    
+
     // Set up world bounds for demo
     setupCameraForWorld();
   }
@@ -1921,13 +1920,13 @@ void EventDemoState::setupCameraForWorld() {
   if (!m_camera) {
     return;
   }
-  
+
   // Get actual world bounds from WorldManager
   const WorldManager& worldManager = WorldManager::Instance();
-  
+
   HammerEngine::Camera::Bounds worldBounds;
   float minX, minY, maxX, maxY;
-  
+
   if (worldManager.getWorldBounds(minX, minY, maxX, maxY)) {
     // Convert tile coordinates to pixel coordinates (WorldManager returns tile coords)
     // TileRenderer uses 32px per tile
@@ -1945,7 +1944,7 @@ void EventDemoState::setupCameraForWorld() {
     worldBounds.maxX = 100.0f * TILE_SIZE;  // 100 tiles * 32px = 3200px
     worldBounds.maxY = 100.0f * TILE_SIZE;  // 100 tiles * 32px = 3200px
   }
-  
+
   m_camera->setWorldBounds(worldBounds);
 }
 
@@ -1953,7 +1952,7 @@ void EventDemoState::applyCameraTransformation() {
   if (!m_camera) {
     return;
   }
-  
+
   // Calculate camera offset for later use in rendering
   auto viewRect = m_camera->getViewRect();
   m_cameraOffsetX = viewRect.x;
