@@ -89,7 +89,7 @@ Core utility classes and helper systems used throughout the engine.
 - **[JsonReader](utils/JsonReader.md)** - RFC 8259 compliant JSON parser with type-safe accessors and robust error handling
 - **[JSON Resource Loading](utils/JSON_Resource_Loading_Guide.md)** - Complete guide to loading items, materials, currency, and game resources from JSON files with ResourceTemplateManager integration
 - **[Binary Serialization](utils/SERIALIZATION.md)** - Fast, header-only serialization system for game data
-- **[Performance Changelog](../hammer_engine_performance.md)** - Detailed performance optimization history and benchmarks
+- **[Performance Notes](../hammer_engine_performance.md)** - Detailed performance optimization history and benchmarks
 
 ## Resource System Integration
 
@@ -174,14 +174,14 @@ The Hammer Game Engine provides several core systems that work together:
 - **Manager Systems**: Resource management for fonts, textures, audio, and more
 
 ### Quick Links
-- **[GameEngine Setup](GameEngine.md#quick-start)** - Initialize the engine
-- **[GameLoop Setup](GameLoop.md#quick-start)** - Configure main game loop
-- **[TimestepManager Setup](TimestepManager.md#quick-start)** - Timing system configuration
+- **[GameEngine Setup](core/GameEngine.md#quick-start)** - Initialize the engine
+- **[GameLoop Setup](core/GameLoop.md#quick-start)** - Configure main game loop
+- **[TimestepManager Setup](managers/TimestepManager.md#quick-start)** - Timing system configuration
 
 - **[AI Quick Start](ai/BehaviorQuickReference.md)** - Set up AI behaviors in minutes
 - **[Event Quick Start](events/EventManager_QuickReference.md)** - Event system essentials with EventManager
 - **[UI Quick Start](ui/UIManager_Guide.md#quick-start)** - Create UI components with auto-sizing
-- **[Threading Setup](ThreadSystem.md#quick-start)** - Initialize multi-threading
+- **[Threading Setup](core/ThreadSystem.md#quick-start)** - Initialize multi-threading
 
 ## Key Features
 
@@ -225,14 +225,14 @@ The Hammer Game Engine provides several core systems that work together:
 ## Support and Troubleshooting
 
 For issues with specific systems, see the troubleshooting sections in each system's documentation:
-- Core engine issues: See [GameEngine Documentation](GameEngine.md)
-- Game loop issues: See [GameLoop Best Practices](GameLoop.md#best-practices)
-- Timing issues: See [TimestepManager Best Practices](TimestepManager.md#best-practices)
-- Logger issues: See [Logger Best Practices](Logger.md#best-practices)
+- Core engine issues: See [GameEngine Documentation](core/GameEngine.md)
+- Game loop issues: See [GameLoop Best Practices](core/GameLoop.md#best-practices)
+- Timing issues: See [TimestepManager Best Practices](managers/TimestepManager.md#best-practices)
+- Logger issues: See [Logger Best Practices](utils/Logger.md#best-practices)
 - AI issues: See [AI System Overview](ai/AIManager.md) and [Behavior Modes](ai/BehaviorModes.md)
 - Event issues: See [EventManager Overview](events/EventManager.md) and [EventManager Advanced](events/EventManager_Advanced.md)
 - UI issues: See [UIManager Guide](ui/UIManager_Guide.md), [Auto-Sizing System](ui/Auto_Sizing_System.md), and [DPI-Aware Font System](ui/DPI_Aware_Font_System.md)
-- Threading issues: See [ThreadSystem](ThreadSystem.md)
+- Threading issues: See [ThreadSystem](core/ThreadSystem.md)
 
 ---
 

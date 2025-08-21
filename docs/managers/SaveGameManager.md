@@ -980,6 +980,6 @@ For implementation examples, see the test files in `tests/SaveManagerTests.cpp` 
 ---
 
 *For related documentation, see:*
-- [SERIALIZATION.md](../SERIALIZATION.md) - BinarySerializer system details
+- [Binary Serialization](../utils/SERIALIZATION.md) - BinarySerializer system details
 - [README.md](../README.md#savegamemanager) - Quick overview and features
 - [tests/SaveManagerTests.cpp](../tests/SaveManagerTests.cpp) - Working examples and test cases

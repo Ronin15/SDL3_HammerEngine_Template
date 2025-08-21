@@ -154,7 +154,7 @@ enum mouse_buttons { LEFT = 0, MIDDLE = 1, RIGHT = 2 };
 ## Integration with Other Systems
 
 The InputManager works seamlessly with:
-- **[GameEngine](../GameEngine.md)**: Automatic initialization and coordinate system integration
+- **[GameEngine](../core/GameEngine.md)**: Automatic initialization and coordinate system integration
 - **[UIManager](../ui/UIManager_Guide.md)**: Coordinate conversion ensures perfect mouse accuracy
 - **[FontManager](FontManager.md)**: Window resize events trigger automatic font refresh
 - **Game States**: Direct integration for player input and UI interaction

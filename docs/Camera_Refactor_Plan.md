@@ -102,7 +102,7 @@ Transition the engine's rendering system to a robust, camera-centric architectur
 
 ## References
 
-- [docs/GameEngine.md](docs/GameEngine.md)
+- [docs/core/GameEngine.md](docs/core/GameEngine.md)
 - [docs/ui/UIManager_Guide.md](docs/ui/UIManager_Guide.md)
 - [docs/managers/ParticleManager.md](docs/managers/ParticleManager.md)
 - [docs/events/EventManager.md](docs/events/EventManager.md)
