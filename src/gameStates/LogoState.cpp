@@ -26,12 +26,12 @@ bool LogoState::enter() {
 
 void LogoState::update(float deltaTime) {
   m_stateTimer += deltaTime;
-  
+
   if (m_stateTimer > 3.0f) {
     // Cache GameEngine reference for better performance
     const auto& gameEngine = GameEngine::Instance();
     auto* gameStateManager = gameEngine.getGameStateManager();
-    
+
     // Use immediate state change - proper enter/exit sequencing handles timing
     if (gameStateManager && gameStateManager->hasState("MainMenuState")) {
       gameStateManager->changeState("MainMenuState");
@@ -93,7 +93,7 @@ void LogoState::render() {
   // Draw version text
   fontMgr.drawText(
 
-      "v0.2.0",
+      "v0.3.5",
       "fonts_Arial",
       windowWidth / 2,  // Center horizontally
       (windowHeight / 2) + 260,
