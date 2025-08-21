@@ -24,8 +24,8 @@ The Hammer Game Engine is a high-performance game development framework built on
 ### GameEngine & Core Systems
 Foundation systems that power the game engine architecture and timing.
 
-- **[GameEngine](GameEngine.md)** - Central engine singleton managing all systems and coordination
-- **[GameLoop](GameLoop.md)** - Industry-standard timing with fixed/variable timestep support
+- **[GameEngine](core/GameEngine.md)** - Central engine singleton managing all systems and coordination
+- **[GameLoop](core/GameLoop.md)** - Industry-standard timing with fixed/variable timestep support
 - **[TimestepManager](managers/TimestepManager.md)** - Simplified timing system with 1:1 frame mapping
 
 ### AI System
@@ -55,7 +55,7 @@ Comprehensive UI system with professional theming, animations, layouts, content-
 ### Threading System
 High-performance multithreading framework with intelligent WorkerBudget allocation and priority-based task scheduling.
 
-- **[ThreadSystem](ThreadSystem.md)** - Complete threading system documentation with WorkerBudget allocation, buffer thread utilization, priority scheduling, engine integration, implementation details, and production best practices
+- **[ThreadSystem](core/ThreadSystem.md)** - Complete threading system documentation with WorkerBudget allocation, buffer thread utilization, priority scheduling, engine integration, implementation details, and production best practices
 - **WorkerBudget System** - Tiered resource allocation strategy (Tier 1: single-threaded, Tier 2: minimal allocation, Tier 3: AI 60%/Events 30% of remaining workers)
 - **Priority-Based Scheduling** - Five-level priority system (Critical, High, Normal, Low, Idle) for optimal task ordering
 - **Buffer Thread Utilization** - Intelligent scaling based on workload thresholds (AI: >1000 entities, Events: >100 events)
@@ -85,11 +85,11 @@ Some managers (e.g., ParticleManager, SaveGameManager) are tightly integrated wi
 ### Utility Systems
 Core utility classes and helper systems used throughout the engine.
 
-- **[Logger System](Logger.md)** - Comprehensive logging system with debug/release optimization and system-specific macros
+- **[Logger System](utils/Logger.md)** - Comprehensive logging system with debug/release optimization and system-specific macros
 - **[JsonReader](utils/JsonReader.md)** - RFC 8259 compliant JSON parser with type-safe accessors and robust error handling
 - **[JSON Resource Loading](utils/JSON_Resource_Loading_Guide.md)** - Complete guide to loading items, materials, currency, and game resources from JSON files with ResourceTemplateManager integration
-- **[Binary Serialization](SERIALIZATION.md)** - Fast, header-only serialization system for game data
-- **[Performance Changelog](PERFORMANCE_CHANGELOG.md)** - Detailed performance optimization history and benchmarks
+- **[Binary Serialization](utils/SERIALIZATION.md)** - Fast, header-only serialization system for game data
+- **[Performance Changelog](../hammer_engine_performance.md)** - Detailed performance optimization history and benchmarks
 
 ## Resource System Integration
 
