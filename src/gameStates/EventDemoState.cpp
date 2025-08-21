@@ -24,8 +24,7 @@
 #include <algorithm>
 #include <ctime>
 #include <iomanip>
-#include <iostream>
-#include <sstream>
+
 
 EventDemoState::EventDemoState() {
   // Initialize member variables that need explicit initialization
@@ -51,7 +50,7 @@ EventDemoState::~EventDemoState() {
 }
 
 bool EventDemoState::enter() {
-  std::cout << "Hammer Game Engine - Entering EventDemoState...\n";
+  GAMESTATE_INFO("Entering EventDemoState...");
 
   try {
     // Cache GameEngine reference for better performance
@@ -191,25 +190,20 @@ bool EventDemoState::enter() {
     initializeWorld();
     initializeCamera();
 
-    std::cout
-        << "Hammer Game Engine - EventDemoState initialized successfully\n";
+    GAMESTATE_INFO("EventDemoState initialized successfully");
     return true;
 
   } catch (const std::exception &e) {
-    std::cerr
-        << "Hammer Game Engine - ERROR: Exception in EventDemoState::enter(): "
-        << e.what() << std::endl;
+    GAMESTATE_ERROR("Exception in EventDemoState::enter(): " + std::string(e.what()));
     return false;
   } catch (...) {
-    std::cerr << "Hammer Game Engine - ERROR: Unknown exception in "
-                 "EventDemoState::enter()"
-              << std::endl;
+    GAMESTATE_ERROR("Unknown exception in EventDemoState::enter()");
     return false;
   }
 }
 
 bool EventDemoState::exit() {
-  std::cout << "Hammer Game Engine - Exiting EventDemoState...\n";
+  GAMESTATE_INFO("Exiting EventDemoState...");
 
   try {
     // Reset player
@@ -227,12 +221,10 @@ bool EventDemoState::exit() {
     m_currentPhase = DemoPhase::Initialization;
     m_phaseTimer = 0.0f;
 
-    // Cache EventManager reference for better performance
-    EventManager &eventMgr = EventManager::Instance();
+    // Unregister our specific handlers via tokens
+    unregisterEventHandlers();
 
-    // Use EventManager's prepareForStateTransition for safer cleanup
-    // This handles clearing all handlers and events in one operation
-    eventMgr.prepareForStateTransition();
+    // Optional: leave global handlers intact for other states; no blanket clear here
 
     // Use AIManager's prepareForStateTransition for architectural consistency
     AIManager &aiMgr = AIManager::Instance();
@@ -259,19 +251,27 @@ bool EventDemoState::exit() {
       worldMgr.unloadWorld();
     }
 
-    std::cout << "Hammer Game Engine - EventDemoState cleanup complete\n";
+    GAMESTATE_INFO("EventDemoState cleanup complete");
     return true;
 
   } catch (const std::exception &e) {
-    std::cerr
-        << "Hammer Game Engine - ERROR: Exception in EventDemoState::exit(): "
-        << e.what() << std::endl;
+    GAMESTATE_ERROR("Exception in EventDemoState::exit(): " + std::string(e.what()));
     return false;
   } catch (...) {
-    std::cerr << "Hammer Game Engine - ERROR: Unknown exception in "
-                 "EventDemoState::exit()"
-              << std::endl;
+    GAMESTATE_ERROR("Unknown exception in EventDemoState::exit()");
     return false;
+  }
+}
+
+void EventDemoState::unregisterEventHandlers() {
+  try {
+    EventManager &eventMgr = EventManager::Instance();
+    for (const auto &tok : m_handlerTokens) {
+      (void)eventMgr.removeHandler(tok);
+    }
+    m_handlerTokens.clear();
+  } catch (...) {
+    // Swallow errors to avoid exit() failure
   }
 }
 
@@ -523,48 +523,38 @@ void EventDemoState::render() {
 }
 
 void EventDemoState::setupEventSystem() {
-  std::cout << "Hammer Game Engine - EventDemoState: EventManager instance "
-               "obtained\n";
+  GAMESTATE_INFO("EventDemoState: EventManager instance obtained");
   addLogEntry("EventManager singleton obtained");
 
   // Cache EventManager reference for better performance
   // Note: EventManager is already initialized by GameEngine
   EventManager &eventMgr = EventManager::Instance();
 
-  std::cout << "Hammer Game Engine - EventDemoState: Using pre-initialized "
-               "EventManager\n";
+  GAMESTATE_INFO("EventDemoState: Using pre-initialized EventManager");
   addLogEntry("EventManager ready for use");
 
-  // Register event handlers using new optimized API
-  eventMgr.registerHandler(EventTypeId::Weather, [this](const EventData &data) {
-    if (data.isActive()) {
-      onWeatherChanged("weather_changed");
-    }
-  });
+  // Register event handlers using token-based API for easy removal
+  m_handlerTokens.push_back(
+      eventMgr.registerHandlerWithToken(EventTypeId::Weather, [this](const EventData &data) {
+        if (data.isActive()) onWeatherChanged("weather_changed");
+      }));
 
-  eventMgr.registerHandler(EventTypeId::NPCSpawn,
-                           [this](const EventData &data) {
-                             if (data.isActive()) {
-                               onNPCSpawned("npc_spawned");
-                             }
-                           });
+  m_handlerTokens.push_back(
+      eventMgr.registerHandlerWithToken(EventTypeId::NPCSpawn, [this](const EventData &data) {
+        if (data.isActive()) onNPCSpawned(data);
+      }));
 
-  eventMgr.registerHandler(EventTypeId::SceneChange,
-                           [this](const EventData &data) {
-                             if (data.isActive()) {
-                               onSceneChanged("scene_changed");
-                             }
-                           });
+  m_handlerTokens.push_back(
+      eventMgr.registerHandlerWithToken(EventTypeId::SceneChange, [this](const EventData &data) {
+        if (data.isActive()) onSceneChanged("scene_changed");
+      }));
 
-  eventMgr.registerHandler(EventTypeId::ResourceChange,
-                           [this](const EventData &data) {
-                             if (data.isActive()) {
-                               onResourceChanged(data);
-                             }
-                           });
+  m_handlerTokens.push_back(
+      eventMgr.registerHandlerWithToken(EventTypeId::ResourceChange, [this](const EventData &data) {
+        if (data.isActive()) onResourceChanged(data);
+      }));
 
-  std::cout
-      << "Hammer Game Engine - EventDemoState: Event handlers registered\n";
+  GAMESTATE_INFO("EventDemoState: Event handlers registered");
   addLogEntry("Event System Setup Complete - All handlers registered");
 }
 
@@ -614,6 +604,10 @@ void EventDemoState::createTestEvents() {
   } else {
     addLogEntry("Some events failed to create - check logs");
   }
+
+  // Register per-name handlers for a few demo events to showcase the API
+  m_handlerTokens.push_back(eventMgr.registerHandlerForName("demo_forest", [this](const EventData &data){ if (data.isActive()) onSceneChanged("demo_forest"); }));
+  m_handlerTokens.push_back(eventMgr.registerHandlerForName("demo_rainy", [this](const EventData &data){ if (data.isActive()) onWeatherChanged("demo_rainy"); }));
 
   // Show current event counts by type for monitoring
   size_t weatherCount = eventMgr.getEventCount(EventTypeId::Weather);
@@ -708,20 +702,12 @@ void EventDemoState::handleInput() {
     addLogEntry("Manual custom event triggered");
     m_lastEventTriggerTime = m_totalDemoTime;
   }
-
-  if (inputMgr.wasKeyPressed(SDL_SCANCODE_4) &&
-      (m_totalDemoTime - m_lastEventTriggerTime) >= 0.2f) {
-    if (m_spawnedNPCs.size() < 100) {
-      if (m_autoMode && m_currentPhase == DemoPhase::CustomEventDemo) {
-        m_phaseTimer = 0.0f;
-      }
-      triggerCustomEventDemo();
-      addLogEntry("Manual custom event triggered");
-      m_lastEventTriggerTime = m_totalDemoTime;
-    } else {
-      addLogEntry(
-          "NPC limit reached (100) - press 'R' to reset or '5' to clear NPCs");
-    }
+  // Provide feedback when NPC cap reached
+  else if (inputMgr.wasKeyPressed(SDL_SCANCODE_4) &&
+           (m_totalDemoTime - m_lastEventTriggerTime) >= 0.2f &&
+           m_spawnedNPCs.size() >= 5000) {
+    addLogEntry(
+        "NPC limit reached (5000) - press 'R' to reset or '5' to clear NPCs");
   }
 
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_5)) {
@@ -835,29 +821,25 @@ void EventDemoState::triggerWeatherDemoAuto() {
   m_currentWeatherIndex =
       (m_currentWeatherIndex + 1) % m_weatherSequence.size();
 
-  // Create weather event - use custom type if specified
-  std::shared_ptr<WeatherEvent> weatherEvent;
+  // Use EventManager hub to change weather
+  const EventManager &eventMgr = EventManager::Instance();
   if (newWeather == WeatherType::Custom && !customType.empty()) {
-    weatherEvent =
-        std::make_shared<WeatherEvent>("demo_auto_weather", customType);
+    // Custom type by string
+    eventMgr.changeWeather(customType, m_weatherTransitionTime,
+                           EventManager::DispatchMode::Deferred);
   } else {
-    weatherEvent =
-        std::make_shared<WeatherEvent>("demo_auto_weather", newWeather);
+    // Map enum to string name
+    const char *wt =
+        (newWeather == WeatherType::Clear)   ? "Clear" :
+        (newWeather == WeatherType::Cloudy)  ? "Cloudy" :
+        (newWeather == WeatherType::Rainy)   ? "Rainy" :
+        (newWeather == WeatherType::Stormy)  ? "Stormy" :
+        (newWeather == WeatherType::Foggy)   ? "Foggy" :
+        (newWeather == WeatherType::Snowy)   ? "Snowy" :
+        (newWeather == WeatherType::Windy)   ? "Windy" : "Custom";
+    eventMgr.changeWeather(wt, m_weatherTransitionTime,
+                           EventManager::DispatchMode::Deferred);
   }
-
-  // Get the default params (which include particle effects) and modify them
-  WeatherParams params = weatherEvent->getWeatherParams();
-  params.transitionTime = m_weatherTransitionTime;
-
-  // Set intensity based on weather type
-  if (customType == "HeavyRain" || customType == "HeavySnow") {
-    params.intensity = 0.9f; // High intensity for heavy weather
-  } else {
-    params.intensity = (newWeather == WeatherType::Clear) ? 0.0f : 0.8f;
-  }
-
-  weatherEvent->setWeatherParams(params);
-  weatherEvent->execute();
 
   m_currentWeather = newWeather;
   std::string weatherName =
@@ -880,31 +862,23 @@ void EventDemoState::triggerWeatherDemoManual() {
 
   m_manualWeatherIndex = (m_manualWeatherIndex + 1) % m_weatherSequence.size();
 
-  // Create weather event - use custom type if specified
-  std::shared_ptr<WeatherEvent> weatherEvent;
+  // Use EventManager hub to change weather
+  const EventManager &eventMgr2 = EventManager::Instance();
   if (newWeather == WeatherType::Custom && !customType.empty()) {
-    weatherEvent =
-        std::make_shared<WeatherEvent>("demo_manual_weather", customType);
+    eventMgr2.changeWeather(customType, m_weatherTransitionTime,
+                            EventManager::DispatchMode::Deferred);
   } else {
-    weatherEvent =
-        std::make_shared<WeatherEvent>("demo_manual_weather", newWeather);
+    const char *wt =
+        (newWeather == WeatherType::Clear)   ? "Clear" :
+        (newWeather == WeatherType::Cloudy)  ? "Cloudy" :
+        (newWeather == WeatherType::Rainy)   ? "Rainy" :
+        (newWeather == WeatherType::Stormy)  ? "Stormy" :
+        (newWeather == WeatherType::Foggy)   ? "Foggy" :
+        (newWeather == WeatherType::Snowy)   ? "Snowy" :
+        (newWeather == WeatherType::Windy)   ? "Windy" : "Custom";
+    eventMgr2.changeWeather(wt, m_weatherTransitionTime,
+                            EventManager::DispatchMode::Deferred);
   }
-
-  // Get the default params (which include particle effects) and modify them
-  WeatherParams params = weatherEvent->getWeatherParams();
-  params.transitionTime = m_weatherTransitionTime;
-
-  // Set intensity based on weather type
-  if (customType == "HeavyRain" || customType == "HeavySnow") {
-    params.intensity = 0.9f; // High intensity for heavy weather
-    addLogEntry("Setting high intensity (0.9) for heavy weather: " +
-                customType);
-  } else {
-    params.intensity = (newWeather == WeatherType::Clear) ? 0.0f : 0.8f;
-  }
-
-  weatherEvent->setWeatherParams(params);
-  weatherEvent->execute();
 
   m_currentWeather = newWeather;
   std::string weatherName =
@@ -929,7 +903,9 @@ void EventDemoState::triggerNPCSpawnDemo() {
   spawnX = std::max(100.0f, std::min(spawnX, m_worldWidth - 100.0f));
   spawnY = std::max(100.0f, std::min(spawnY, m_worldHeight - 100.0f));
 
-  createNPCAtPosition(npcType, spawnX, spawnY);
+  // Use EventManager to spawn NPC via the unified event hub
+  const EventManager &eventMgr = EventManager::Instance();
+  eventMgr.spawnNPC(npcType, spawnX, spawnY);
   addLogEntry("Spawned NPC: " + npcType + " at (" +
               std::to_string((int)spawnX) + ", " + std::to_string((int)spawnY) +
               ")");
@@ -939,29 +915,22 @@ void EventDemoState::triggerSceneTransitionDemo() {
   std::string sceneName = m_sceneNames[m_currentSceneIndex];
   m_currentSceneIndex = (m_currentSceneIndex + 1) % m_sceneNames.size();
 
-  // Create and execute scene change event directly
-  auto sceneEvent =
-      std::make_shared<SceneChangeEvent>("demo_scene_change", sceneName);
-
+  // Use EventManager hub to change scenes
   std::vector<TransitionType> transitions = {
       TransitionType::Fade, TransitionType::Slide, TransitionType::Dissolve,
       TransitionType::Wipe};
-  TransitionType transitionType =
-      transitions[m_currentSceneIndex % transitions.size()];
+  TransitionType t = transitions[m_currentSceneIndex % transitions.size()];
+  const char *transitionName =
+      (t == TransitionType::Fade)       ? "fade" :
+      (t == TransitionType::Slide)      ? "slide" :
+      (t == TransitionType::Dissolve)   ? "dissolve" : "wipe";
 
-  sceneEvent->setTransitionType(transitionType);
-  TransitionParams params(2.0f, transitionType);
-  sceneEvent->setTransitionParams(params);
-  sceneEvent->execute();
+  const EventManager &eventMgr3 = EventManager::Instance();
+  eventMgr3.changeScene(sceneName, transitionName, 2.0f,
+                        EventManager::DispatchMode::Deferred);
 
-  std::string transitionName =
-      (transitionType == TransitionType::Fade)       ? "fade"
-      : (transitionType == TransitionType::Slide)    ? "slide"
-      : (transitionType == TransitionType::Dissolve) ? "dissolve"
-                                                     : "wipe";
-
-  addLogEntry("Scene transition to: " + sceneName + " (" + transitionName +
-              ") executed directly");
+  addLogEntry("Scene transition to: " + sceneName + " (" + std::string(transitionName) +
+              ") via EventManager");
 }
 
 void EventDemoState::triggerParticleEffectDemo() {
@@ -969,27 +938,16 @@ void EventDemoState::triggerParticleEffectDemo() {
   std::string effectName = m_particleEffectNames[m_particleEffectIndex];
   Vector2D position = m_particleEffectPositions[m_particlePositionIndex];
 
-  // Create ParticleEffectEvent using EventManager convenience method
-  EventManager &eventMgr = EventManager::Instance();
-
-  std::string eventName =
-      "particle_demo_" + effectName + "_" + std::to_string(m_particlePositionIndex);
-  bool success =
-      eventMgr.createParticleEffectEvent(eventName, effectName, position,
-                                         1.2f,          // intensity
-                                         5.0f,          // duration (5 seconds)
-                                         "demo_effects" // group tag
-      );
-
-  if (success) {
-    // Execute the created event
-    eventMgr.executeEvent(eventName);
-
-    addLogEntry("ParticleEffectEvent created and executed: " + effectName +
-                " at (" + std::to_string((int)position.getX()) + ", " +
-                std::to_string((int)position.getY()) + ") via EventManager");
+  // Trigger particle effect via EventManager (deferred by default)
+  const EventManager &eventMgr = EventManager::Instance();
+  bool queued = eventMgr.triggerParticleEffect(effectName, position,
+                                               1.2f, 5.0f, "demo_effects");
+  if (queued) {
+    addLogEntry("Particle effect queued: " + effectName + " at (" +
+                std::to_string((int)position.getX()) + ", " +
+                std::to_string((int)position.getY()) + ")");
   } else {
-    addLogEntry("Failed to create ParticleEffectEvent: " + effectName);
+    addLogEntry("No particle handlers registered; effect not queued");
   }
 
   // Advance to next effect and position
@@ -1004,7 +962,7 @@ void EventDemoState::triggerResourceDemo() {
   }
 
   auto *inventory = m_player->getInventory();
-  auto &templateManager = ResourceTemplateManager::Instance();
+  const auto &templateManager = ResourceTemplateManager::Instance();
 
   if (!templateManager.isInitialized()) {
     addLogEntry(
@@ -1134,22 +1092,12 @@ void EventDemoState::triggerResourceDemo() {
                   std::to_string(newQuantity) + " (+" +
                   std::to_string(quantity) + ")");
 
-      // Create and register ResourceChangeEvent for demonstration
-      auto resourceEvent =
-          std::make_shared<ResourceChangeEvent>(m_player, handle,
-                                                currentQuantity, // old quantity
-                                                newQuantity,     // new quantity
-                                                "event_demo");
+      // Trigger resource change via EventManager (deferred by default)
+      const EventManager &eventMgr = EventManager::Instance();
+      eventMgr.triggerResourceChange(m_player, handle, currentQuantity,
+                                     newQuantity, "event_demo");
 
-      // Register and execute the event to demonstrate event-based resource
-      // management
-      EventManager &eventMgr = EventManager::Instance();
-      std::string eventName =
-          "resource_demo_add_" + std::to_string(m_resourceDemonstrationStep);
-      eventMgr.registerEvent(eventName, resourceEvent);
-      eventMgr.executeEvent(eventName);
-
-      addLogEntry("ResourceChangeEvent executed for ADD operation");
+      addLogEntry("ResourceChangeEvent queued for ADD operation");
     } else {
       addLogEntry("FAILED to add " + resourceName + " - inventory may be full");
     }
@@ -1168,21 +1116,12 @@ void EventDemoState::triggerResourceDemo() {
                     std::to_string(newQuantity) + " (-" +
                     std::to_string(removeQuantity) + ")");
 
-        // Create and register ResourceChangeEvent for demonstration
-        auto resourceEvent = std::make_shared<ResourceChangeEvent>(
-            m_player, handle,
-            currentQuantity, // old quantity
-            newQuantity,     // new quantity
-            "event_demo");
+        // Trigger resource change via EventManager (deferred by default)
+        const EventManager &eventMgr = EventManager::Instance();
+        eventMgr.triggerResourceChange(m_player, handle, currentQuantity,
+                                       newQuantity, "event_demo");
 
-        // Register and execute the event
-        EventManager &eventMgr = EventManager::Instance();
-        std::string eventName =
-            "resource_demo_remove_" + std::to_string(m_resourceDemonstrationStep);
-        eventMgr.registerEvent(eventName, resourceEvent);
-        eventMgr.executeEvent(eventName);
-
-        addLogEntry("ResourceChangeEvent executed for REMOVE operation");
+        addLogEntry("ResourceChangeEvent queued for REMOVE operation");
       } else {
         addLogEntry("FAILED to remove " + resourceName + " from inventory");
       }
@@ -1323,14 +1262,8 @@ void EventDemoState::triggerConvenienceMethodsDemo() {
     addLogEntry("Total events: " + std::to_string(totalEvents) +
                 " (Weather: " + std::to_string(weatherEvents) + ")");
 
-    // Create and execute weather event directly for demonstration
-    auto weatherEvent =
-        std::make_shared<WeatherEvent>("convenience_demo", WeatherType::Foggy);
-    WeatherParams params;
-    params.transitionTime = 2.5f;
-    params.intensity = 0.7f;
-    weatherEvent->setWeatherParams(params);
-    weatherEvent->execute();
+    // Trigger via EventManager for demonstration
+    eventMgr.changeWeather("Foggy", 2.5f, EventManager::DispatchMode::Deferred);
 
     m_currentWeather = WeatherType::Foggy;
     addLogEntry("Triggered fog weather to demonstrate functionality");
@@ -1345,14 +1278,9 @@ void EventDemoState::triggerConvenienceMethodsDemo() {
 void EventDemoState::resetAllEvents() {
   cleanupSpawnedNPCs();
 
-  // Create and execute clear weather event directly
-  auto weatherEvent =
-      std::make_shared<WeatherEvent>("reset_weather", WeatherType::Clear);
-  WeatherParams params;
-  params.transitionTime = 1.0f;
-  params.intensity = 0.0f;
-  weatherEvent->setWeatherParams(params);
-  weatherEvent->execute();
+  // Trigger clear weather via EventManager
+  EventManager::Instance().changeWeather("Clear", 1.0f,
+                                         EventManager::DispatchMode::Deferred);
 
   m_currentWeather = WeatherType::Clear;
 
@@ -1370,8 +1298,62 @@ void EventDemoState::onWeatherChanged(const std::string &message) {
   addLogEntry("Weather Event Handler: " + message);
 }
 
-void EventDemoState::onNPCSpawned(const std::string &message) {
-  addLogEntry("NPC Event Handler: " + message);
+void EventDemoState::onNPCSpawned(const EventData &data) {
+  try {
+    if (!data.event) {
+      addLogEntry("Error: NPCSpawnEvent data is null");
+      return;
+    }
+
+    auto npcEvent = std::dynamic_pointer_cast<NPCSpawnEvent>(data.event);
+    if (!npcEvent) {
+      addLogEntry("Error: Event is not an NPCSpawnEvent");
+      return;
+    }
+
+    const auto &params = npcEvent->getSpawnParameters();
+    std::string npcType = params.npcType.empty() ? std::string("NPC") : params.npcType;
+    int count = std::max(1, params.count);
+
+    // Determine spawn anchors: event-provided points or player position
+    std::vector<Vector2D> anchors = npcEvent->getSpawnPoints();
+    if (anchors.empty()) {
+      Vector2D fallback = m_player ? m_player->getPosition()
+                                   : Vector2D(m_worldWidth * 0.5f, m_worldHeight * 0.5f);
+      anchors.push_back(fallback);
+    }
+
+    // Deterministic offset pattern based on radius/count for visible spread
+    float base = (params.spawnRadius > 0.0f) ? params.spawnRadius : 30.0f;
+    float stepX = 0.6f * base + 20.0f;
+    float stepY = 0.4f * base + 15.0f;
+
+    int spawned = 0;
+    AIManager &aiMgr = AIManager::Instance();
+
+    for (const auto &anchor : anchors) {
+      for (int i = 0; i < count; ++i) {
+        float offX = ((spawned % 8) - 4) * stepX;
+        float offY = (((spawned / 8) % 6) - 3) * stepY;
+
+        float x = std::clamp(anchor.getX() + offX, 100.0f, m_worldWidth - 100.0f);
+        float y = std::clamp(anchor.getY() + offY, 100.0f, m_worldHeight - 100.0f);
+
+        auto npc = createNPCAtPositionWithoutBehavior(npcType, x, y);
+        if (npc) {
+          std::string behavior = params.aiBehavior.empty()
+                                     ? determineBehaviorForNPCType(npcType)
+                                     : params.aiBehavior;
+          aiMgr.registerEntityForUpdates(npc, rand() % 9 + 1, behavior);
+          spawned++;
+        }
+      }
+    }
+
+    addLogEntry("NPCSpawn handled: " + npcType + " x" + std::to_string(spawned));
+  } catch (const std::exception &e) {
+    addLogEntry(std::string("Error in NPC spawn handler: ") + e.what());
+  }
 }
 
 void EventDemoState::onSceneChanged(const std::string &message) {
@@ -1415,8 +1397,7 @@ void EventDemoState::onResourceChanged(const EventData &data) {
 }
 
 void EventDemoState::setupAIBehaviors() {
-  std::cout
-      << "EventDemoState: Setting up AI behaviors for NPC integration...\n";
+  GAMESTATE_INFO("EventDemoState: Setting up AI behaviors for NPC integration...");
 
   // Cache AIManager reference for better performance
   AIManager &aiMgr = AIManager::Instance();
@@ -1426,7 +1407,7 @@ void EventDemoState::setupAIBehaviors() {
         WanderBehavior::WanderMode::MEDIUM_AREA, 80.0f);
     wanderBehavior->setScreenDimensions(m_worldWidth, m_worldHeight);
     aiMgr.registerBehavior("Wander", std::move(wanderBehavior));
-    std::cout << "EventDemoState: Registered Wander behavior\n";
+    GAMESTATE_INFO("EventDemoState: Registered Wander behavior");
   }
 
   if (!aiMgr.hasBehavior("SmallWander")) {
@@ -1434,7 +1415,7 @@ void EventDemoState::setupAIBehaviors() {
         WanderBehavior::WanderMode::SMALL_AREA, 60.0f);
     smallWanderBehavior->setScreenDimensions(m_worldWidth, m_worldHeight);
     aiMgr.registerBehavior("SmallWander", std::move(smallWanderBehavior));
-    std::cout << "EventDemoState: Registered SmallWander behavior\n";
+    GAMESTATE_INFO("EventDemoState: Registered SmallWander behavior");
   }
 
   if (!aiMgr.hasBehavior("LargeWander")) {
@@ -1442,7 +1423,7 @@ void EventDemoState::setupAIBehaviors() {
         WanderBehavior::WanderMode::LARGE_AREA, 100.0f);
     largeWanderBehavior->setScreenDimensions(m_worldWidth, m_worldHeight);
     aiMgr.registerBehavior("LargeWander", std::move(largeWanderBehavior));
-    std::cout << "EventDemoState: Registered LargeWander behavior\n";
+    GAMESTATE_INFO("EventDemoState: Registered LargeWander behavior");
   }
 
   if (!aiMgr.hasBehavior("EventWander")) {
@@ -1450,7 +1431,7 @@ void EventDemoState::setupAIBehaviors() {
         WanderBehavior::WanderMode::EVENT_TARGET, 70.0f);
     eventWanderBehavior->setScreenDimensions(m_worldWidth, m_worldHeight);
     aiMgr.registerBehavior("EventWander", std::move(eventWanderBehavior));
-    std::cout << "EventDemoState: Registered EventWander behavior\n";
+    GAMESTATE_INFO("EventDemoState: Registered EventWander behavior");
   }
 
   if (!aiMgr.hasBehavior("Patrol")) {
@@ -1458,7 +1439,7 @@ void EventDemoState::setupAIBehaviors() {
         PatrolBehavior::PatrolMode::FIXED_WAYPOINTS, 75.0f, true);
     patrolBehavior->setScreenDimensions(m_worldWidth, m_worldHeight);
     aiMgr.registerBehavior("Patrol", std::move(patrolBehavior));
-    std::cout << "EventDemoState: Registered Patrol behavior\n";
+    GAMESTATE_INFO("EventDemoState: Registered Patrol behavior");
   }
 
   if (!aiMgr.hasBehavior("RandomPatrol")) {
@@ -1466,7 +1447,7 @@ void EventDemoState::setupAIBehaviors() {
         PatrolBehavior::PatrolMode::RANDOM_AREA, 85.0f, false);
     randomPatrolBehavior->setScreenDimensions(m_worldWidth, m_worldHeight);
     aiMgr.registerBehavior("RandomPatrol", std::move(randomPatrolBehavior));
-    std::cout << "EventDemoState: Registered RandomPatrol behavior\n";
+    GAMESTATE_INFO("EventDemoState: Registered RandomPatrol behavior");
   }
 
   if (!aiMgr.hasBehavior("CirclePatrol")) {
@@ -1474,7 +1455,7 @@ void EventDemoState::setupAIBehaviors() {
         PatrolBehavior::PatrolMode::CIRCULAR_AREA, 90.0f, false);
     circlePatrolBehavior->setScreenDimensions(m_worldWidth, m_worldHeight);
     aiMgr.registerBehavior("CirclePatrol", std::move(circlePatrolBehavior));
-    std::cout << "EventDemoState: Registered CirclePatrol behavior\n";
+    GAMESTATE_INFO("EventDemoState: Registered CirclePatrol behavior");
   }
 
   if (!aiMgr.hasBehavior("EventTarget")) {
@@ -1482,14 +1463,13 @@ void EventDemoState::setupAIBehaviors() {
         PatrolBehavior::PatrolMode::EVENT_TARGET, 95.0f, false);
     eventTargetBehavior->setScreenDimensions(m_worldWidth, m_worldHeight);
     aiMgr.registerBehavior("EventTarget", std::move(eventTargetBehavior));
-    std::cout << "EventDemoState: Registered EventTarget behavior\n";
+    GAMESTATE_INFO("EventDemoState: Registered EventTarget behavior");
   }
 
   if (!aiMgr.hasBehavior("Chase")) {
     auto chaseBehavior = std::make_unique<ChaseBehavior>(120.0f, 500.0f, 50.0f);
     aiMgr.registerBehavior("Chase", std::move(chaseBehavior));
-    std::cout << "EventDemoState: Chase behavior registered (will use "
-                 "AIManager::getPlayerReference())\n";
+    GAMESTATE_INFO("EventDemoState: Chase behavior registered (will use AIManager::getPlayerReference())");
   }
 
   addLogEntry("AI Behaviors configured for NPC integration");
@@ -1523,12 +1503,10 @@ EventDemoState::createNPCAtPositionWithoutBehavior(const std::string &npcType,
 
     return npc;
   } catch (const std::exception &e) {
-    std::cerr << "EXCEPTION in createNPCAtPositionWithoutBehavior: " << e.what()
-              << std::endl;
+    GAMESTATE_ERROR("EXCEPTION in createNPCAtPositionWithoutBehavior: " + std::string(e.what()));
     return nullptr;
   } catch (...) {
-    std::cerr << "UNKNOWN EXCEPTION in createNPCAtPositionWithoutBehavior"
-              << std::endl;
+    GAMESTATE_ERROR("UNKNOWN EXCEPTION in createNPCAtPositionWithoutBehavior");
     return nullptr;
   }
 }
@@ -1574,10 +1552,10 @@ void EventDemoState::addLogEntry(const std::string &entry) {
     auto &ui = UIManager::Instance();
     ui.addEventLogEntry("event_log", timestampedEntry);
 
-    // Also log to console for debugging
-    std::cout << "EventDemo: " << timestampedEntry << std::endl;
+    // Also log to console for debugging (avoid flushing)
+    GAMESTATE_DEBUG("EventDemo: " + timestampedEntry);
   } catch (const std::exception &e) {
-    std::cerr << "Error adding log entry: " << e.what() << std::endl;
+    GAMESTATE_ERROR("Error adding log entry: " + std::string(e.what()));
   }
 }
 
@@ -1730,13 +1708,10 @@ void EventDemoState::createNPCAtPosition(const std::string &npcType, float x,
 
     m_spawnedNPCs.push_back(npc);
   } catch (const std::exception &e) {
-    std::cerr << "EXCEPTION in createNPCAtPosition: " << e.what() << std::endl;
-    std::cerr << "NPC type: " << npcType << ", position: (" << x << ", " << y
-              << ")" << std::endl;
+    GAMESTATE_ERROR("EXCEPTION in createNPCAtPosition: " + std::string(e.what()) +
+                    ", NPC type: " + npcType + ", position: (" + std::to_string(x) + ", " + std::to_string(y) + ")");
   } catch (...) {
-    std::cerr << "UNKNOWN EXCEPTION in createNPCAtPosition" << std::endl;
-    std::cerr << "NPC type: " << npcType << ", position: (" << x << ", " << y
-              << ")" << std::endl;
+    GAMESTATE_ERROR(std::string("UNKNOWN EXCEPTION in createNPCAtPosition") + ", NPC type: " + npcType + ", position: (" + std::to_string(x) + ", " + std::to_string(y) + ")");
   }
 }
 
@@ -1890,10 +1865,10 @@ void EventDemoState::initializeWorld() {
   config.mountainLevel = 0.75f;
   
   if (!worldManager.loadNewWorld(config)) {
-    std::cerr << "Failed to load new world in EventDemoState" << std::endl;
+    GAMESTATE_ERROR("Failed to load new world in EventDemoState");
     // Continue anyway - event demo can function without world
   } else {
-    std::cout << "Successfully loaded event demo world with seed: " << config.seed << std::endl;
+    GAMESTATE_INFO("Successfully loaded event demo world with seed: " + std::to_string(config.seed));
     
     // Setup camera to work with the world (will be called in initializeCamera)
   }

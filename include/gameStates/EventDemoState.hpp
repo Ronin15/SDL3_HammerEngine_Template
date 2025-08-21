@@ -44,6 +44,7 @@ private:
   // Demo management methods
   void setupEventSystem();
   void createTestEvents();
+  void unregisterEventHandlers();
   void updateDemoTimer(float deltaTime);
   void initializeWorld();
 
@@ -67,7 +68,7 @@ private:
 
   // Event handler methods
   void onWeatherChanged(const std::string &message);
-  void onNPCSpawned(const std::string &message);
+  void onNPCSpawned(const EventData &data);
   void onSceneChanged(const std::string &message);
   void onResourceChanged(
       const EventData &data); // NEW: Resource change event handler
@@ -217,6 +218,9 @@ private:
       Vector2D(300, 450), // Bottom-left
       Vector2D(500, 450), // Bottom-right
   };
+
+  // Registered handler tokens for cleanup
+  std::vector<EventManager::HandlerToken> m_handlerTokens{};
 };
 
 #endif // EVENT_DEMO_STATE_HPP

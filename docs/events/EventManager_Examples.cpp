@@ -99,23 +99,58 @@ void example2_ConvenienceMethodsCreation() {
 void example3_DirectTriggering() {
     std::cout << "\n=== Example 3: Direct Event Triggering ===" << std::endl;
 
+    using DM = EventManager::DispatchMode;
+
     // Direct weather changes (no pre-registration needed)
-    bool weatherSuccess1 = EventManager::Instance().changeWeather("Rainy", 3.0f);
-    bool weatherSuccess2 = EventManager::Instance().triggerWeatherChange("Stormy", 1.5f); // Alternative method name
+    bool weatherSuccess1 = EventManager::Instance().changeWeather("Rainy", 3.0f, DM::Deferred);
+    bool weatherSuccess2 = EventManager::Instance().changeWeather("Stormy", 1.5f, DM::Immediate);
 
     // Direct scene transitions
-    bool sceneSuccess1 = EventManager::Instance().changeScene("BattleScene", "fade", 2.0f);
-    bool sceneSuccess2 = EventManager::Instance().triggerSceneChange("MainMenu", "dissolve", 1.0f); // Alternative method name
+    bool sceneSuccess1 = EventManager::Instance().changeScene("BattleScene", "fade", 2.0f, DM::Deferred);
+    bool sceneSuccess2 = EventManager::Instance().changeScene("MainMenu", "dissolve", 1.0f, DM::Immediate);
 
     // Direct NPC spawning
-    bool npcSuccess1 = EventManager::Instance().spawnNPC("Merchant", 100.0f, 200.0f);
-    bool npcSuccess2 = EventManager::Instance().triggerNPCSpawn("Guard", 250.0f, 150.0f); // Alternative method name
+    bool npcSuccess1 = EventManager::Instance().spawnNPC("Merchant", 100.0f, 200.0f, DM::Deferred);
+    bool npcSuccess2 = EventManager::Instance().spawnNPC("Guard", 250.0f, 150.0f, DM::Immediate);
 
+    // Particle, World, Camera triggers (no pre-registration)
+    EventManager::Instance().triggerParticleEffect("Fire", 250.0f, 150.0f, 2.0f, 3.0f, "combat", DM::Deferred);
+    EventManager::Instance().triggerWorldLoaded("overworld", 512, 512, DM::Deferred);
+    Vector2D newPos(100, 120), oldPos(80, 120);
+    EventManager::Instance().triggerCameraMoved(newPos, oldPos, DM::Immediate);
 
     int successCount = weatherSuccess1 + weatherSuccess2 + sceneSuccess1 + sceneSuccess2 + npcSuccess1 + npcSuccess2;
-    std::cout << "Successfully triggered " << successCount << "/6 direct events" << std::endl;
+    std::cout << "Successfully triggered " << successCount << "/6 direct events (+extras)" << std::endl;
 
     std::cout << "Direct triggering allows immediate event execution without pre-registration" << std::endl;
+}
+
+//=============================================================================
+// Example X: EventFactory Basics (definition-driven creation)
+//=============================================================================
+
+void exampleX_EventFactoryBasics() {
+    std::cout << "\n=== Example X: EventFactory Basics ===" << std::endl;
+
+    // Build a weather event definition
+    EventDefinition def{.type="Weather", .name="FactoryStorm",
+                        .params={{"weatherType","Stormy"}},
+                        .numParams={{"intensity",0.9f},{"transitionTime",2.0f}}};
+    auto ev = EventFactory::Instance().createEvent(def);
+    if (ev) {
+        ev->setPriority(6);
+        ev->setOneTime(true);
+        EventManager::Instance().registerEvent(def.name, ev);
+    }
+
+    // Sequence via definitions
+    std::vector<EventDefinition> seq = {
+        {.type="Weather", .name="StartRain", .params={{"weatherType","Rainy"}}, .numParams={{"intensity",0.5f}}},
+        {.type="Weather", .name="GetStormy", .params={{"weatherType","Stormy"}}, .numParams={{"intensity",0.9f}}},
+        {.type="Weather", .name="ClearUp", .params={{"weatherType","Clear"}}},
+    };
+    auto events = EventFactory::Instance().createEventSequence("StoryWeather", seq, true);
+    for (auto &e : events) { EventManager::Instance().registerEvent(e->getName(), e); }
 }
 
 //=============================================================================

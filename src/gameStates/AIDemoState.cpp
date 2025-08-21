@@ -13,13 +13,12 @@
 #include "managers/AIManager.hpp"
 #include "managers/InputManager.hpp"
 #include "managers/UIManager.hpp"
-#include <SDL3/SDL.h>
-
-#include <iomanip>
-#include <iostream>
 #include <memory>
 #include <random>
 #include <sstream>
+#include <iomanip>
+
+
 
 AIDemoState::~AIDemoState() {
   // Don't call virtual functions from destructors
@@ -68,19 +67,18 @@ void AIDemoState::handleInput() {
     aiMgr.broadcastMessage(message, true);
 
     // Simple feedback
-    std::cout << "Hammer Game Engine - AI "
-              << (m_aiPaused ? "PAUSED" : "RESUMED") << std::endl;
+    GAMESTATE_INFO("AI " + std::string(m_aiPaused ? "PAUSED" : "RESUMED"));
   }
 
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_B)) {
-    std::cout << "Hammer Game Engine - Preparing to exit AIDemoState...\n";
+    GAMESTATE_INFO("Preparing to exit AIDemoState...");
     const GameEngine &gameEngine = GameEngine::Instance();
     gameEngine.getGameStateManager()->changeState("MainMenuState");
   }
 
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_1)) {
     // Assign Wander behavior to all NPCs
-    std::cout << "Hammer Game Engine - Switching all NPCs to WANDER behavior\n";
+    GAMESTATE_INFO("Switching all NPCs to WANDER behavior");
     AIManager &aiMgr = AIManager::Instance();
     for (auto &npc : m_npcs) {
       // Queue the behavior assignment for batch processing
@@ -90,20 +88,20 @@ void AIDemoState::handleInput() {
 
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_2)) {
     // Assign Patrol behavior to all NPCs
-    std::cout << "Hammer Game Engine - Switching " << m_npcs.size()
-              << " NPCs to PATROL behavior (batched processing)...\n";
+    GAMESTATE_INFO("Switching " + std::to_string(m_npcs.size()) +
+                   " NPCs to PATROL behavior (batched processing)...");
     AIManager &aiMgr = AIManager::Instance();
     for (auto &npc : m_npcs) {
       // Queue the behavior assignment for batch processing
       aiMgr.queueBehaviorAssignment(npc, "Patrol");
     }
-    std::cout << "Hammer Game Engine - Patrol assignments queued. Processing "
-                 "instantly in parallel for optimal performance.\n";
+    GAMESTATE_INFO("Patrol assignments queued. Processing "
+                   "instantly in parallel for optimal performance.");
   }
 
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_3)) {
     // Assign Chase behavior to all NPCs
-    std::cout << "Hammer Game Engine - Switching all NPCs to CHASE behavior\n";
+    GAMESTATE_INFO("Switching all NPCs to CHASE behavior");
 
     // Chase behavior target is automatically maintained by AIManager
     // No manual target updates needed
@@ -116,8 +114,7 @@ void AIDemoState::handleInput() {
 
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_4)) {
     // Assign SmallWander behavior to all NPCs
-    std::cout
-        << "Hammer Game Engine - Switching all NPCs to SMALL WANDER behavior\n";
+    GAMESTATE_INFO("Switching all NPCs to SMALL WANDER behavior");
     AIManager &aiMgr = AIManager::Instance();
     for (auto &npc : m_npcs) {
       // Queue the behavior assignment for batch processing
@@ -127,8 +124,7 @@ void AIDemoState::handleInput() {
 
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_5)) {
     // Assign LargeWander behavior to all NPCs
-    std::cout
-        << "Hammer Game Engine - Switching all NPCs to LARGE WANDER behavior\n";
+    GAMESTATE_INFO("Switching all NPCs to LARGE WANDER behavior");
     AIManager &aiMgr = AIManager::Instance();
     for (auto &npc : m_npcs) {
       // Queue the behavior assignment for batch processing
@@ -138,8 +134,7 @@ void AIDemoState::handleInput() {
 
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_6)) {
     // Assign EventWander behavior to all NPCs
-    std::cout
-        << "Hammer Game Engine - Switching all NPCs to EVENT WANDER behavior\n";
+    GAMESTATE_INFO("Switching all NPCs to EVENT WANDER behavior");
     AIManager &aiMgr = AIManager::Instance();
     for (auto &npc : m_npcs) {
       // Queue the behavior assignment for batch processing
@@ -149,8 +144,7 @@ void AIDemoState::handleInput() {
 
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_7)) {
     // Assign RandomPatrol behavior to all NPCs
-    std::cout << "Hammer Game Engine - Switching all NPCs to RANDOM PATROL "
-                 "behavior\n";
+    GAMESTATE_INFO("Switching all NPCs to RANDOM PATROL behavior");
     AIManager &aiMgr = AIManager::Instance();
     for (auto &npc : m_npcs) {
       // Queue the behavior assignment for batch processing
@@ -160,8 +154,7 @@ void AIDemoState::handleInput() {
 
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_8)) {
     // Assign CirclePatrol behavior to all NPCs
-    std::cout << "Hammer Game Engine - Switching all NPCs to CIRCLE PATROL "
-                 "behavior\n";
+    GAMESTATE_INFO("Switching all NPCs to CIRCLE PATROL behavior");
     AIManager &aiMgr = AIManager::Instance();
     for (auto &npc : m_npcs) {
       // Queue the behavior assignment for batch processing
@@ -171,8 +164,7 @@ void AIDemoState::handleInput() {
 
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_9)) {
     // Assign EventTarget behavior to all NPCs
-    std::cout
-        << "Hammer Game Engine - Switching all NPCs to EVENT TARGET behavior\n";
+    GAMESTATE_INFO("Switching all NPCs to EVENT TARGET behavior");
     AIManager &aiMgr = AIManager::Instance();
     for (auto &npc : m_npcs) {
       // Queue the behavior assignment for batch processing
@@ -182,7 +174,7 @@ void AIDemoState::handleInput() {
 }
 
 bool AIDemoState::enter() {
-  std::cout << "Hammer Game Engine - Entering AIDemoState...\n";
+  GAMESTATE_INFO("Entering AIDemoState...");
 
   try {
     // Cache GameEngine reference for better performance
@@ -211,8 +203,7 @@ bool AIDemoState::enter() {
     // getPlayerReference()
     auto chaseBehavior = std::make_unique<ChaseBehavior>(120.0f, 500.0f, 50.0f);
     aiMgr.registerBehavior("Chase", std::move(chaseBehavior));
-    std::cout << "Hammer Game Engine - Chase behavior registered (will use "
-                 "AIManager::getPlayerReference())\n";
+    GAMESTATE_INFO("Chase behavior registered (will use AIManager::getPlayerReference())");
 
     // Configure priority multiplier for proper distance progression (1.0 = full
     // distance thresholds)
@@ -238,25 +229,21 @@ bool AIDemoState::enter() {
                    "FPS: -- | Entities: -- | AI: RUNNING");
 
     // Log status
-    std::cout << "Hammer Game Engine - Created " << m_npcs.size()
-              << " NPCs with AI behaviors\n";
+    GAMESTATE_INFO("Created " + std::to_string(m_npcs.size()) +
+              " NPCs with AI behaviors");
 
     return true;
   } catch (const std::exception &e) {
-    std::cerr
-        << "Hammer Game Engine - ERROR: Exception in AIDemoState::enter(): "
-        << e.what() << std::endl;
+    GAMESTATE_ERROR("Exception in AIDemoState::enter(): " + std::string(e.what()));
     return false;
   } catch (...) {
-    std::cerr << "Hammer Game Engine - ERROR: Unknown exception in "
-                 "AIDemoState::enter()"
-              << std::endl;
+    GAMESTATE_ERROR("Unknown exception in AIDemoState::enter()");
     return false;
   }
 }
 
 bool AIDemoState::exit() {
-  std::cout << "Hammer Game Engine - Exiting AIDemoState...\n";
+  GAMESTATE_INFO("Exiting AIDemoState...");
 
   // Cache AIManager reference for better performance
   AIManager &aiMgr = AIManager::Instance();
@@ -287,7 +274,7 @@ bool AIDemoState::exit() {
   aiMgr.setGlobalPause(false);
   m_aiPaused = false;
 
-  std::cout << "Hammer Game Engine - AIDemoState exit complete\n";
+  GAMESTATE_INFO("AIDemoState exit complete");
   return true;
 }
 
@@ -309,19 +296,16 @@ void AIDemoState::update([[maybe_unused]] float deltaTime) {
 
     // Handle user input for the demo
   } catch (const std::exception &e) {
-    std::cerr
-        << "Hammer Game Engine - ERROR: Exception in AIDemoState::update(): "
-        << e.what() << std::endl;
+    GAMESTATE_ERROR("Exception in AIDemoState::update(): " + std::string(e.what()));
   } catch (...) {
-    std::cerr << "Hammer Game Engine - ERROR: Unknown exception in "
-                 "AIDemoState::update()"
-              << std::endl;
+    GAMESTATE_ERROR("Unknown exception in AIDemoState::update()");
   }
 
   // Game logic only - UI updates moved to render() for thread safety
 }
 
 void AIDemoState::render() {
+
   // Render all NPCs
   for (auto &npc : m_npcs) {
     npc->render(nullptr);  // No camera transformation needed in AI demo
@@ -352,8 +336,7 @@ void AIDemoState::render() {
 }
 
 void AIDemoState::setupAIBehaviors() {
-  std::cout << "AIDemoState: Setting up AI behaviors using EventDemoState "
-               "implementation...\n";
+  GAMESTATE_INFO("AIDemoState: Setting up AI behaviors using EventDemoState implementation...");
 
   // Cache AIManager reference for better performance
   AIManager &aiMgr = AIManager::Instance();
@@ -363,7 +346,7 @@ void AIDemoState::setupAIBehaviors() {
         WanderBehavior::WanderMode::MEDIUM_AREA, 80.0f);
     wanderBehavior->setScreenDimensions(m_worldWidth, m_worldHeight);
     aiMgr.registerBehavior("Wander", std::move(wanderBehavior));
-    std::cout << "AIDemoState: Registered Wander behavior\n";
+    GAMESTATE_INFO("AIDemoState: Registered Wander behavior");
   }
 
   if (!aiMgr.hasBehavior("SmallWander")) {
@@ -371,7 +354,7 @@ void AIDemoState::setupAIBehaviors() {
         WanderBehavior::WanderMode::SMALL_AREA, 60.0f);
     smallWanderBehavior->setScreenDimensions(m_worldWidth, m_worldHeight);
     aiMgr.registerBehavior("SmallWander", std::move(smallWanderBehavior));
-    std::cout << "AIDemoState: Registered SmallWander behavior\n";
+    GAMESTATE_INFO("AIDemoState: Registered SmallWander behavior");
   }
 
   if (!aiMgr.hasBehavior("LargeWander")) {
@@ -379,7 +362,7 @@ void AIDemoState::setupAIBehaviors() {
         WanderBehavior::WanderMode::LARGE_AREA, 100.0f);
     largeWanderBehavior->setScreenDimensions(m_worldWidth, m_worldHeight);
     aiMgr.registerBehavior("LargeWander", std::move(largeWanderBehavior));
-    std::cout << "AIDemoState: Registered LargeWander behavior\n";
+    GAMESTATE_INFO("AIDemoState: Registered LargeWander behavior");
   }
 
   if (!aiMgr.hasBehavior("EventWander")) {
@@ -387,7 +370,7 @@ void AIDemoState::setupAIBehaviors() {
         WanderBehavior::WanderMode::EVENT_TARGET, 70.0f);
     eventWanderBehavior->setScreenDimensions(m_worldWidth, m_worldHeight);
     aiMgr.registerBehavior("EventWander", std::move(eventWanderBehavior));
-    std::cout << "AIDemoState: Registered EventWander behavior\n";
+    GAMESTATE_INFO("AIDemoState: Registered EventWander behavior");
   }
 
   if (!aiMgr.hasBehavior("Patrol")) {
@@ -395,7 +378,7 @@ void AIDemoState::setupAIBehaviors() {
         PatrolBehavior::PatrolMode::FIXED_WAYPOINTS, 75.0f, true);
     patrolBehavior->setScreenDimensions(m_worldWidth, m_worldHeight);
     aiMgr.registerBehavior("Patrol", std::move(patrolBehavior));
-    std::cout << "AIDemoState: Registered Patrol behavior\n";
+    GAMESTATE_INFO("AIDemoState: Registered Patrol behavior");
   }
 
   if (!aiMgr.hasBehavior("RandomPatrol")) {
@@ -403,7 +386,7 @@ void AIDemoState::setupAIBehaviors() {
         PatrolBehavior::PatrolMode::RANDOM_AREA, 85.0f, false);
     randomPatrolBehavior->setScreenDimensions(m_worldWidth, m_worldHeight);
     aiMgr.registerBehavior("RandomPatrol", std::move(randomPatrolBehavior));
-    std::cout << "AIDemoState: Registered RandomPatrol behavior\n";
+    GAMESTATE_INFO("AIDemoState: Registered RandomPatrol behavior");
   }
 
   if (!aiMgr.hasBehavior("CirclePatrol")) {
@@ -411,7 +394,7 @@ void AIDemoState::setupAIBehaviors() {
         PatrolBehavior::PatrolMode::CIRCULAR_AREA, 90.0f, false);
     circlePatrolBehavior->setScreenDimensions(m_worldWidth, m_worldHeight);
     aiMgr.registerBehavior("CirclePatrol", std::move(circlePatrolBehavior));
-    std::cout << "AIDemoState: Registered CirclePatrol behavior\n";
+    GAMESTATE_INFO("AIDemoState: Registered CirclePatrol behavior");
   }
 
   if (!aiMgr.hasBehavior("EventTarget")) {
@@ -419,13 +402,13 @@ void AIDemoState::setupAIBehaviors() {
         PatrolBehavior::PatrolMode::EVENT_TARGET, 95.0f, false);
     eventTargetBehavior->setScreenDimensions(m_worldWidth, m_worldHeight);
     aiMgr.registerBehavior("EventTarget", std::move(eventTargetBehavior));
-    std::cout << "AIDemoState: Registered EventTarget behavior\n";
+    GAMESTATE_INFO("AIDemoState: Registered EventTarget behavior");
   }
 
   // Chase behavior will be set up after player is created in enter() method
   // This ensures the player reference is available for behaviors to use
 
-  std::cout << "AIDemoState: AI behaviors setup complete.\n";
+  GAMESTATE_INFO("AIDemoState: AI behaviors setup complete.");
 }
 
 void AIDemoState::createNPCs() {
@@ -458,8 +441,7 @@ void AIDemoState::createNPCs() {
 
         local_npcs.push_back(npc);
       } catch (const std::exception &e) {
-        std::cerr << "Hammer Game Engine - ERROR: Exception creating NPC " << i
-                  << ": " << e.what() << std::endl;
+        GAMESTATE_ERROR("Exception creating NPC " + std::to_string(i) + ": " + std::string(e.what()));
         continue;
       }
     }
@@ -479,10 +461,8 @@ void AIDemoState::createNPCs() {
     // No manual setup needed - target is set during
     // setupChaseBehaviorWithTarget()
   } catch (const std::exception &e) {
-    std::cerr << "Hammer Game Engine - ERROR: Exception in createNPCs(): "
-              << e.what() << std::endl;
+    GAMESTATE_ERROR("Exception in createNPCs(): " + std::string(e.what()));
   } catch (...) {
-    std::cerr << "Hammer Game Engine - ERROR: Unknown exception in createNPCs()"
-              << std::endl;
+    GAMESTATE_ERROR("Unknown exception in createNPCs()");
   }
 }

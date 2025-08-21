@@ -5,6 +5,7 @@
 
 #include "core/TimestepManager.hpp"
 #include <algorithm>
+#include <chrono>
 
 TimestepManager::TimestepManager(float targetFPS, float fixedTimestep)
     : m_targetFPS(targetFPS)
@@ -17,7 +18,7 @@ TimestepManager::TimestepManager(float targetFPS, float fixedTimestep)
     , m_shouldRender(true)
     , m_firstFrame(true)
 {
-    Uint64 currentTime = SDL_GetTicks();
+    auto currentTime = std::chrono::high_resolution_clock::now();
     m_frameStart = currentTime;
     m_lastFrameTime = currentTime;
     m_fpsLastUpdate = currentTime;
@@ -28,7 +29,7 @@ TimestepManager::TimestepManager(float targetFPS, float fixedTimestep)
 }
 
 void TimestepManager::startFrame() {
-    Uint64 currentTime = SDL_GetTicks();
+    auto currentTime = std::chrono::high_resolution_clock::now();
     
     if (m_firstFrame) {
         m_firstFrame = false;
@@ -38,7 +39,8 @@ void TimestepManager::startFrame() {
     }
     
     // Calculate frame delta time in seconds
-    double deltaTimeMs = static_cast<double>(currentTime - m_lastFrameTime);
+    auto deltaTimeNs = std::chrono::duration_cast<std::chrono::nanoseconds>(currentTime - m_lastFrameTime);
+    double deltaTimeMs = static_cast<double>(deltaTimeNs.count()) / 1000000.0;
     m_lastFrameTime = currentTime;
     m_frameStart = currentTime;
     
@@ -131,7 +133,7 @@ void TimestepManager::reset() {
     m_shouldRender = true;
     m_currentFPS = 0.0f;
     
-    Uint64 currentTime = SDL_GetTicks();
+    auto currentTime = std::chrono::high_resolution_clock::now();
     m_frameStart = currentTime;
     m_lastFrameTime = currentTime;
     m_fpsLastUpdate = currentTime;
@@ -144,9 +146,9 @@ void TimestepManager::reset() {
 }
 
 void TimestepManager::updateFPS() {
-    Uint64 currentTime = SDL_GetTicks();
-    double timeSinceLastUpdateMs = static_cast<double>(currentTime - m_fpsLastUpdate);
-    double timeSinceLastUpdate = timeSinceLastUpdateMs / 1000.0; // Convert to seconds
+    auto currentTime = std::chrono::high_resolution_clock::now();
+    auto timeSinceLastUpdateNs = std::chrono::duration_cast<std::chrono::nanoseconds>(currentTime - m_fpsLastUpdate);
+    double timeSinceLastUpdate = static_cast<double>(timeSinceLastUpdateNs.count()) / 1000000000.0; // Convert to seconds
     
     // Update FPS calculation every second
     if (timeSinceLastUpdate >= 1.0) {
@@ -162,9 +164,9 @@ void TimestepManager::limitFrameRate() const {
         return;
     }
 
-    Uint64 currentTime = SDL_GetTicks();
-    double frameTimeMs = static_cast<double>(currentTime - m_frameStart);
-    double frameTime = frameTimeMs / 1000.0; // Convert to seconds
+    auto currentTime = std::chrono::high_resolution_clock::now();
+    auto frameTimeNs = std::chrono::duration_cast<std::chrono::nanoseconds>(currentTime - m_frameStart);
+    double frameTime = static_cast<double>(frameTimeNs.count()) / 1000000000.0; // Convert to seconds
     
     // If we finished early, delay to meet target frame rate
     if (frameTime < m_targetFrameTime) {

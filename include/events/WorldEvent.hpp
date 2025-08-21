@@ -36,6 +36,7 @@ public:
     WorldEventType getEventType() const { return m_eventType; }
     
     std::string getTypeName() const override { return "WorldEvent"; }
+    EventTypeId getTypeId() const override { return EventTypeId::World; }
     
     // Required Event interface implementations
     void update() override {}

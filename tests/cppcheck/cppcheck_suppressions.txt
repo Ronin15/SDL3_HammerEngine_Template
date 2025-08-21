@@ -214,6 +214,18 @@ unreadVariable:*/InventoryComponent.cpp:547
 unreadVariable:*/InventoryComponent.cpp:792
 unreadVariable:*/InventoryComponent.cpp:813
 
+# Debug variables used in GAMEENGINE_DEBUG macros
+unreadVariable:*/GameEngine.cpp:650
+unreadVariable:*/GameEngine.cpp:658
+unreadVariable:*/GameEngine.cpp:262
+unreadVariable:*/GameEngine.cpp:263
+unreadVariable:*/GameEngine.cpp:292
+unreadVariable:*/GameEngine.cpp:293
+
+# Debug variables used in PLAYER_DEBUG and NPC_DEBUG macros
+unreadVariable:*/Player.cpp:273
+unreadVariable:*/NPC.cpp:249
+
 # Performance monitoring variables used in debug logging (conditionally compiled)
 unreadVariable:*/AIManager.cpp:259
 unreadVariable:*/AIManager.cpp:368

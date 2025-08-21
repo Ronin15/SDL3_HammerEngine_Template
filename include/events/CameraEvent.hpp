@@ -39,6 +39,7 @@ public:
     CameraEventType getEventType() const { return m_eventType; }
     
     std::string getTypeName() const override { return "CameraEvent"; }
+    EventTypeId getTypeId() const override { return EventTypeId::Camera; }
     
     // Required Event interface implementations
     void update() override {}

@@ -34,11 +34,16 @@ EventManager::Instance().setThreadingThreshold(50); // Lower threshold for event
 ## Event Types
 ```cpp
 enum class EventTypeId : uint8_t {
-    Weather = 0,      // Weather system events
-    SceneChange = 1,  // Scene transition events
-    NPCSpawn = 2,     // NPC creation events
-    Custom = 3,       // User-defined events
-    COUNT = 4         // Total count (internal use)
+    Weather = 0,
+    SceneChange = 1,
+    NPCSpawn = 2,
+    ParticleEffect = 3,
+    ResourceChange = 4,
+    World = 5,
+    Camera = 6,
+    Harvest = 7,
+    Custom = 8,
+    COUNT = 9
 };
 ```
 
@@ -72,59 +77,44 @@ EventManager::Instance().createNPCSpawnEvent("Merchant", "Merchant", 1, 0.0f);
 // Parameters: (name, npcType, count, spawnRadius)
 ```
 
-## Advanced Event Creation
+## Factory-Based Creation
 
-### Advanced Weather Events
-```cpp
-EventManager::Instance().createAdvancedWeatherEvent(
-    "EpicStorm",     // name
-    "Stormy",        // weatherType
-    0.95f,           // intensity
-    1.5f,            // transitionTime
-    10,              // priority (higher = processed first)
-    60.0f,           // cooldown in seconds
-    true,            // oneTime (can only trigger once)
-    true             // active (initially active)
-);
-```
+For advanced or definition-driven creation, use `EventFactory`:
 
-### Advanced Scene Change Events
 ```cpp
-EventManager::Instance().createAdvancedSceneChangeEvent(
-    "MagicPortal",   // name
-    "MagicRealm",    // targetScene
-    "dissolve",      // transitionType
-    3.0f,            // duration
-    8,               // priority
-    true             // oneTime
-);
-```
+#include "events/EventFactory.hpp"
 
-### Advanced NPC Spawn Events
-```cpp
-EventManager::Instance().createAdvancedNPCSpawnEvent(
-    "OrcInvasion",   // name
-    "OrcWarrior",    // npcType
-    10,              // count
-    100.0f,          // spawnRadius
-    9,               // priority
-    true             // oneTime
-);
+EventDefinition def{
+    .type = "Weather",
+    .name = "EpicStorm",
+    .params = {{"weatherType", "Stormy"}},
+    .numParams = {{"intensity", 0.95f}, {"transitionTime", 1.5f}},
+};
+
+auto ev = EventFactory::Instance().createEvent(def);
+EventManager::Instance().registerEvent(def.name, ev);
 ```
 
 ## Direct Event Triggering (No Pre-Registration)
 ```cpp
-// Immediate weather changes
-EventManager::Instance().changeWeather("Stormy", 2.0f);
-EventManager::Instance().triggerWeatherChange("Rainy", 3.0f);
+using DM = EventManager::DispatchMode;
 
-// Immediate scene transitions
+// Immediate weather/scene/NPC
+EventManager::Instance().changeWeather("Stormy", 2.0f, DM::Immediate);
 EventManager::Instance().changeScene("BattleScene", "fade", 1.5f);
-EventManager::Instance().triggerSceneChange("MainMenu", "dissolve", 1.0f);
-
-// Immediate NPC spawning
 EventManager::Instance().spawnNPC("Merchant", 100.0f, 200.0f);
-EventManager::Instance().triggerNPCSpawn("Guard", 250.0f, 150.0f);
+
+// Particle effects
+EventManager::Instance().triggerParticleEffect("Fire", 250.0f, 150.0f, 2.0f, 3.0f, "combat");
+
+// World events
+EventManager::Instance().triggerWorldLoaded("overworld", 512, 512);
+EventManager::Instance().triggerTileChanged(10, 20, "dig");
+
+// Camera events
+Vector2D newPos(100,120), oldPos(80,120);
+EventManager::Instance().triggerCameraMoved(newPos, oldPos);
+EventManager::Instance().triggerCameraShakeStarted(0.5f, 1.0f, DM::Immediate);
 ```
 
 ## Event Handlers
@@ -146,60 +136,35 @@ EventManager::Instance().registerHandler(EventTypeId::NPCSpawn,
     });
 ```
 
-## Event Sequences
+## Event Sequences (Factory)
 
-### Simple Event Sequences
 ```cpp
-// Create sequence from existing events
-std::vector<std::string> eventNames = {"StartRain", "GetStormy", "ClearUp"};
-EventManager::Instance().createEventSequence("WeatherStory", eventNames, true);
-// true = sequential execution, false = simultaneous
-```
+#include "events/EventFactory.hpp"
 
-### Weather Sequences
-```cpp
-// Create weather sequence with EventManager
-std::vector<std::tuple<std::string, std::string, float, float>> weatherEvents = {
-    {"MorningMist", "Foggy", 0.3f, 4.0f},
-    {"NoonStorm", "Stormy", 0.8f, 2.0f},
-    {"EveningClear", "Clear", 1.0f, 3.0f}
+std::vector<EventDefinition> story = {
+    {.type = "Weather", .name = "StartRain", .params={{"weatherType","Rainy"}}, .numParams={{"transitionTime",2.0f}}},
+    {.type = "Weather", .name = "GetStormy", .params={{"weatherType","Stormy"}}, .numParams={{"intensity",0.9f}}},
+    {.type = "Weather", .name = "ClearUp", .params={{"weatherType","Clear"}}},
 };
 
-EventManager::Instance().createWeatherSequence("DailyWeather", weatherEvents, true);
+auto events = EventFactory::Instance().createEventSequence("WeatherStory", story, true);
+for (auto &e : events) { EventManager::Instance().registerEvent(e->getName(), e); }
 ```
 
-## Custom Events
+## Custom Events (Factory)
 
-### Register Custom Event Type
 ```cpp
-// Register custom event type with EventManager
-EventManager::Instance().registerCustomEventType("Quest",
-    [](const std::string& name,
-       const std::unordered_map<std::string, std::string>& params,
-       const std::unordered_map<std::string, float>& numParams,
-       const std::unordered_map<std::string, bool>& boolParams) -> EventPtr {
-        std::string questId = params.count("questId") ? params.at("questId") : "";
-        int reward = static_cast<int>(numParams.count("reward") ? numParams.at("reward") : 0.0f);
-        return std::make_shared<QuestEvent>(name, questId, reward);
+// Register a custom creator and create an instance
+EventFactory::Instance().registerCustomEventCreator("Quest",
+    [](const EventDefinition& def) -> EventPtr {
+        std::string questId = def.params.count("questId") ? def.params.at("questId") : "";
+        int reward = static_cast<int>(def.numParams.count("reward") ? def.numParams.at("reward") : 0.0f);
+        return std::make_shared<QuestEvent>(def.name, questId, reward);
     });
-```
 
-### Create Custom Events
-```cpp
-// Create custom events through EventManager
-std::unordered_map<std::string, std::string> questParams = {
-    {"questId", "treasure_hunt"},
-    {"objective", "Find the hidden treasure"}
-};
-std::unordered_map<std::string, float> questNumParams = {
-    {"reward", 1000.0f}
-};
-std::unordered_map<std::string, bool> questBoolParams = {
-    {"repeatable", false}
-};
-
-EventManager::Instance().createCustomEvent("Quest", "FindTreasure",
-                                          questParams, questNumParams, questBoolParams);
+EventDefinition q{.type="Quest", .name="FindTreasure", .params={{"questId","treasure_hunt"}}, .numParams={{"reward",1000.0f}}};
+auto quest = EventFactory::Instance().createEvent(q);
+EventManager::Instance().registerEvent(q.name, quest);
 ```
 
 ## Event Management
@@ -219,6 +184,41 @@ int count = EventManager::Instance().executeEventsByType(EventTypeId::Weather);
 // Remove events
 EventManager::Instance().removeEvent("MyEvent");
 ```
+
+## Handlers & Dispatch
+```cpp
+// Type-safe handlers
+EventManager::Instance().registerHandler(EventTypeId::Weather,
+    [](const EventData& data) { /* handle weather */ });
+
+// Per-name handlers
+auto nameTok = EventManager::Instance().registerHandlerForName("demo_rainy",
+    [](const EventData& data) { /* handle named demo */ });
+
+// Remove per-name handlers in bulk
+EventManager::Instance().removeNameHandlers("demo_rainy");
+
+// Remove by token
+EventManager::Instance().removeHandler(nameTok);
+```
+
+### Dispatch Modes and Fallbacks
+- Immediate: Handlers invoked on the calling thread.
+- Deferred: Enqueued and drained during `EventManager::update()` with a small time budget.
+- No-handler fallback: For `changeWeather`, `changeScene`, `spawnNPC`, and `triggerParticleEffect`, sensible defaults execute when no handlers are registered (useful for demos and tests).
+
+## Factory Quick Guide
+- Particle: `EventFactory::Instance().createParticleEffectEvent(name, effectName, x, y, intensity, duration, groupTag, soundEffect)`
+- World:
+  - `createWorldLoadedEvent(name, worldId, width, height)`
+  - `createWorldUnloadedEvent(name, worldId)`
+  - `createTileChangedEvent(name, x, y, changeType)`
+  - `createWorldGeneratedEvent(name, worldId, width, height, generationTime)`
+- Camera:
+  - `createCameraMovedEvent(name, newX, newY, oldX, oldY)`
+  - `createCameraModeChangedEvent(name, newMode, oldMode)`
+  - `createCameraShakeEvent(name, duration, intensity)`
+- Resource: `createResourceChangeEvent(name, resourceId, resourceGen, oldQuantity, newQuantity, reason)`
 
 ## Event Queries
 ```cpp
@@ -290,7 +290,6 @@ struct EventData {
     EventPtr event;           // Smart pointer to event
     EventTypeId typeId;       // Type for fast dispatch
     uint32_t flags;           // Active, dirty, etc.
-    float lastUpdateTime;     // For delta time calculations
     uint32_t priority;        // Processing priority
 
     // Helper methods (internal use)
@@ -348,13 +347,12 @@ void createGameEvents() {
     EventManager::Instance().createWeatherEvent("MorningFog", "Foggy", 0.3f, 5.0f);
     EventManager::Instance().createWeatherEvent("AfternoonRain", "Rainy", 0.7f, 3.0f);
 
-    // Scene transitions
-    EventManager::Instance().createSceneChangeEvent("EnterTown", "TownScene", "fade", 2.0f);
-    EventManager::Instance().createAdvancedSceneChangeEvent("EnterDungeon", "DungeonScene", "dissolve", 1.5f, 7, false);
+// Scene transitions
+EventManager::Instance().createSceneChangeEvent("EnterTown", "TownScene", "fade", 2.0f);
+// For advanced parameters, use EventFactory definitions
 
-    // NPC spawning
-    EventManager::Instance().createNPCSpawnEvent("TownGuards", "Guard", 3, 50.0f);
-    EventManager::Instance().createAdvancedNPCSpawnEvent("Merchants", "Merchant", 2, 30.0f, 5, false);
+// NPC spawning
+EventManager::Instance().createNPCSpawnEvent("TownGuards", "Guard", 3, 50.0f);
 }
 ```
 
@@ -387,8 +385,7 @@ void createEventsBatch() {
         EventManager::Instance().createWeatherEvent(name, type, intensity, time);
     }
 
-    // Or use weather sequence
-    EventManager::Instance().createWeatherSequence("DailyWeather", weatherEvents, true);
+    // Or build a sequence via EventFactory definitions
 }
 ```
 
@@ -446,13 +443,10 @@ private:
         EventManager::Instance().createWeatherEvent("Rain", "Rainy", 0.7f, 3.0f);
         EventManager::Instance().createSceneChangeEvent("ToTown", "TownScene", "fade", 2.0f);
 
-        // Advanced events
-        EventManager::Instance().createAdvancedWeatherEvent("EpicStorm", "Stormy", 0.95f, 1.5f, 10, 60.0f, true, true);
-
-        // Custom events
-        std::unordered_map<std::string, std::string> params = {{"questId", "tutorial"}};
-        std::unordered_map<std::string, float> numParams = {{"reward", 100.0f}};
-        EventManager::Instance().createCustomEvent("Quest", "Tutorial", params, numParams, {});
+        // Custom events via EventFactory
+        EventDefinition q{.type="Quest", .name="Tutorial"};
+        auto qev = EventFactory::Instance().createEvent(q);
+        EventManager::Instance().registerEvent(q.name, qev);
     }
 };
 ```

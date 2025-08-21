@@ -16,7 +16,7 @@
 #include "events/WeatherEvent.hpp"
 #include "events/WorldEvent.hpp"
 #include "events/CameraEvent.hpp"
-#include "events/HarvestResourceEvent.hpp"
+
 #include <algorithm>
 #include <chrono>
 #include <future>
@@ -53,6 +53,11 @@ bool EventManager::init() {
 
   // Clear event pools
   clearEventPools();
+
+  // Configure event pools for common ephemeral triggers
+  m_weatherPool.setCreator([](){ return std::make_shared<WeatherEvent>("trigger_weather", WeatherType::Clear); });
+  m_sceneChangePool.setCreator([](){ return std::make_shared<SceneChangeEvent>("trigger_scene_change", ""); });
+  m_npcSpawnPool.setCreator([](){ return std::make_shared<NPCSpawnEvent>("trigger_npc_spawn", SpawnParameters{}); });
 
   // Reset performance stats
   resetPerformanceStats();
@@ -141,7 +146,7 @@ void EventManager::update() {
   auto startTime = getCurrentTimeNanos();
 
   // Update all event types in optimized batches
-  if (m_threadingEnabled.load() && getEventCount() > 50) {
+  if (m_threadingEnabled.load() && getEventCount() > m_threadingThreshold) {
     // Use threading for medium+ event counts (consistent with buffer threshold)
     updateEventTypeBatchThreaded(EventTypeId::Weather);
     updateEventTypeBatchThreaded(EventTypeId::SceneChange);
@@ -166,6 +171,9 @@ void EventManager::update() {
   }
 
   // Simplified performance tracking - reduce lock contention
+  // Drain deferred dispatch queue with budget after event updates
+  drainDispatchQueueWithBudget();
+
   auto endTime = getCurrentTimeNanos();
   double totalTimeMs = (endTime - startTime) / 1000000.0;
 
@@ -176,7 +184,7 @@ void EventManager::update() {
       size_t optimalWorkers = m_lastOptimalWorkerCount.load(std::memory_order_relaxed);
       size_t availableWorkers = m_lastAvailableWorkers.load(std::memory_order_relaxed);
       size_t eventBudget = m_lastEventBudget.load(std::memory_order_relaxed);
-      
+
       EVENT_DEBUG("EventManager update took " + std::to_string(totalTimeMs) +
                   "ms (slow frame) [Threaded: " + std::to_string(optimalWorkers) + "/" +
                   std::to_string(availableWorkers) + " workers, Budget: " +
@@ -229,6 +237,12 @@ bool EventManager::registerWorldEvent(const std::string &name,
                                EventTypeId::World);
 }
 
+bool EventManager::registerCameraEvent(const std::string &name,
+                                       std::shared_ptr<CameraEvent> event) {
+  return registerEventInternal(name, std::static_pointer_cast<Event>(event),
+                               EventTypeId::Camera);
+}
+
 bool EventManager::registerEventInternal(const std::string &name,
                                          EventPtr event, EventTypeId typeId) {
   if (!event) {
@@ -245,9 +259,9 @@ bool EventManager::registerEventInternal(const std::string &name,
   // Create event data
   EventData eventData;
   eventData.event = event;
+  eventData.name = name;
   eventData.typeId = typeId;
   eventData.setActive(true);
-  eventData.lastUpdateTime = 0.0f;
   eventData.priority = 0;
 
   // Add to type-indexed storage
@@ -303,26 +317,19 @@ std::vector<EventPtr> EventManager::getEventsByType(EventTypeId typeId) const {
 
 std::vector<EventPtr>
 EventManager::getEventsByType(const std::string &typeName) const {
-  EventTypeId typeId = EventTypeId::Custom;
-
-  if (typeName == "Weather")
-    typeId = EventTypeId::Weather;
-  else if (typeName == "SceneChange")
-    typeId = EventTypeId::SceneChange;
-  else if (typeName == "NPCSpawn")
-    typeId = EventTypeId::NPCSpawn;
-  else if (typeName == "ParticleEffect")
-    typeId = EventTypeId::ParticleEffect;
-  else if (typeName == "ResourceChange")
-    typeId = EventTypeId::ResourceChange;
-  else if (typeName == "World")
-    typeId = EventTypeId::World;
-  else if (typeName == "Camera")
-    typeId = EventTypeId::Camera;
-  else if (typeName == "Harvest")
-    typeId = EventTypeId::Harvest;
-
-  return getEventsByType(typeId);
+  static const std::unordered_map<std::string, EventTypeId> kMap = {
+      {"Weather", EventTypeId::Weather},
+      {"SceneChange", EventTypeId::SceneChange},
+      {"NPCSpawn", EventTypeId::NPCSpawn},
+      {"ParticleEffect", EventTypeId::ParticleEffect},
+      {"ResourceChange", EventTypeId::ResourceChange},
+      {"World", EventTypeId::World},
+      {"Camera", EventTypeId::Camera},
+      {"Harvest", EventTypeId::Harvest},
+      {"Custom", EventTypeId::Custom},
+  };
+  auto it = kMap.find(typeName);
+  return getEventsByType(it == kMap.end() ? EventTypeId::Custom : it->second);
 }
 
 bool EventManager::setEventActive(const std::string &name, bool active) {
@@ -406,42 +413,61 @@ bool EventManager::executeEvent(const std::string &eventName) const {
   }
 
   // Get the event's type ID to find the appropriate handlers
-  EventTypeId typeId = getEventTypeId(event);
-  
-  // Execute the event itself
-  event->execute();
-  
+  EventTypeId typeId = event->getTypeId();
   // Also trigger any registered handlers for this event type
   std::vector<FastEventHandler> localHandlers;
   {
     std::lock_guard<std::mutex> lock(m_handlersMutex);
     const auto &handlers = m_handlersByType[static_cast<size_t>(typeId)];
     localHandlers.reserve(handlers.size());
-    std::copy_if(handlers.begin(), handlers.end(),
-                 std::back_inserter(localHandlers),
-                 [](const auto &handler) { return handler != nullptr; });
+    std::copy_if(handlers.begin(), handlers.end(), std::back_inserter(localHandlers),
+                 [](const auto& h) { return h != nullptr; });
   }
-  
-  if (!localHandlers.empty()) {
+  if (localHandlers.empty()) {
+    // No handlers registered for this type: execute directly
+    try { event->execute(); }
+    catch (const std::exception &e) { EVENT_ERROR(std::string("Exception in executeEvent direct exec: ") + e.what()); }
+    catch (...) { EVENT_ERROR("Unknown exception in executeEvent direct exec"); }
+  } else {
     // Create a temporary EventData for handler execution
     EventData eventData;
     eventData.event = event;
     eventData.typeId = typeId;
     eventData.setActive(true);
-    
-    // Call all registered handlers
+
+    // Call all registered handlers (type)
     for (const auto &handler : localHandlers) {
       try {
         handler(eventData);
       } catch (const std::exception &e) {
-        EVENT_ERROR("Handler exception in executeEvent '" + eventName + "': " + 
+        EVENT_ERROR("Handler exception in executeEvent '" + eventName + "': " +
                     std::string(e.what()));
       } catch (...) {
         EVENT_ERROR("Unknown handler exception in executeEvent '" + eventName + "'");
       }
     }
   }
-  
+  // Per-name handlers
+  {
+    std::vector<FastEventHandler> nh;
+    {
+      std::lock_guard<std::mutex> lock(m_handlersMutex);
+      auto it = m_nameHandlers.find(eventName);
+      if (it != m_nameHandlers.end()) { 
+        std::copy_if(it->second.begin(), it->second.end(), std::back_inserter(nh),
+                     [](const auto& h) { return h != nullptr; });
+      }
+    }
+    if (!nh.empty()) {
+      EventData ed; ed.event = event; ed.typeId = typeId; ed.name = eventName; ed.setActive(true);
+      for (const auto &h : nh) {
+        try { h(ed); }
+        catch (const std::exception &e) { EVENT_ERROR("Name-handler exception in executeEvent: " + std::string(e.what())); }
+        catch (...) { EVENT_ERROR("Unknown name-handler exception in executeEvent"); }
+      }
+    }
+  }
+
   return true;
 }
 
@@ -482,22 +508,25 @@ int EventManager::executeEventsByType(const std::string &eventType) const {
 
 void EventManager::registerHandler(EventTypeId typeId,
                                    FastEventHandler handler) {
-  std::lock_guard<std::mutex> lock(m_handlersMutex);
-  auto &handlers = m_handlersByType[static_cast<size_t>(typeId)];
-
-  handlers.push_back(std::move(handler));
+  // Backward-compatible API: register and ignore token
+  (void)registerHandlerWithToken(typeId, std::move(handler));
 }
 
 void EventManager::removeHandlers(EventTypeId typeId) {
   std::lock_guard<std::mutex> lock(m_handlersMutex);
-  m_handlersByType[static_cast<size_t>(typeId)].clear();
+  const size_t idx = static_cast<size_t>(typeId);
+  m_handlersByType[idx].clear();
+  m_handlerIdsByType[idx].clear();
 }
 
 void EventManager::clearAllHandlers() {
   std::lock_guard<std::mutex> lock(m_handlersMutex);
-  for (auto &handlerContainer : m_handlersByType) {
-    handlerContainer.clear();
+  for (size_t i = 0; i < m_handlersByType.size(); ++i) {
+    m_handlersByType[i].clear();
+    m_handlerIdsByType[i].clear();
   }
+  m_nameHandlers.clear();
+  m_nameHandlerIds.clear();
   EVENT_INFO("All event handlers cleared");
 }
 
@@ -506,29 +535,71 @@ size_t EventManager::getHandlerCount(EventTypeId typeId) const {
   return m_handlersByType[static_cast<size_t>(typeId)].size();
 }
 
+EventManager::HandlerToken
+EventManager::registerHandlerWithToken(EventTypeId typeId, FastEventHandler handler) {
+  std::lock_guard<std::mutex> lock(m_handlersMutex);
+  const size_t idx = static_cast<size_t>(typeId);
+  uint64_t id = m_nextHandlerId.fetch_add(1, std::memory_order_relaxed);
+  m_handlersByType[idx].push_back(std::move(handler));
+  m_handlerIdsByType[idx].push_back(id);
+  return HandlerToken{typeId, id, false, {}};
+}
+
+bool EventManager::removeHandler(const HandlerToken &token) {
+  std::lock_guard<std::mutex> lock(m_handlersMutex);
+  if (token.forName) {
+    auto it = m_nameHandlerIds.find(token.name);
+    if (it == m_nameHandlerIds.end()) return false;
+    auto &ids = it->second;
+    auto &handlers = m_nameHandlers[token.name];
+    for (size_t i = 0; i < ids.size(); ++i) {
+      if (ids[i] == token.id) { handlers[i] = nullptr; ids[i] = 0; return true; }
+    }
+    return false;
+  } else {
+    const size_t idx = static_cast<size_t>(token.typeId);
+    if (idx >= m_handlersByType.size()) return false;
+    auto &ids = m_handlerIdsByType[idx];
+    auto &handlers = m_handlersByType[idx];
+    auto it = std::find(ids.begin(), ids.end(), token.id);
+    if (it != ids.end()) {
+      size_t index = std::distance(ids.begin(), it);
+      handlers[index] = nullptr;
+      *it = 0;
+      return true;
+    }
+    return false;
+  }
+}
+
+EventManager::HandlerToken
+EventManager::registerHandlerForName(const std::string &name, FastEventHandler handler) {
+  std::lock_guard<std::mutex> lock(m_handlersMutex);
+  uint64_t id = m_nextHandlerId.fetch_add(1, std::memory_order_relaxed);
+  auto &vec = m_nameHandlers[name];
+  auto &ids = m_nameHandlerIds[name];
+  vec.push_back(std::move(handler));
+  ids.push_back(id);
+  return HandlerToken{EventTypeId::Custom, id, true, name};
+}
+
 void EventManager::updateEventTypeBatch(EventTypeId typeId) {
   auto startTime = getCurrentTimeNanos();
 
-  // Copy events to local vector to minimize lock time
-  std::vector<EventData> localEvents;
+  // Copy events to local vector to minimize lock time (pointers only)
+  thread_local std::vector<EventPtr> localEvents;
   {
     std::shared_lock<std::shared_mutex> lock(m_eventsMutex);
-    auto &container = m_eventsByType[static_cast<size_t>(typeId)];
+    const auto &container = m_eventsByType[static_cast<size_t>(typeId)];
+    localEvents.clear();
     localEvents.reserve(container.size());
-
-    // Quick copy of active events using STL algorithm
-    std::copy_if(container.begin(), container.end(),
-                 std::back_inserter(localEvents), [](const auto &eventData) {
-                   return eventData.isActive() && eventData.event;
-                 });
+    for (const auto &ed : container) {
+      if (ed.isActive() && ed.event) localEvents.push_back(ed.event);
+    }
   }
 
   // Process events without holding lock
-  for (auto &eventData : localEvents) {
-    if (eventData.event) {
-      eventData.event->update();
-    }
-  }
+  for (auto &evt : localEvents) { evt->update(); }
 
   // Simplified performance recording - reduce overhead
   auto endTime = getCurrentTimeNanos();
@@ -558,20 +629,23 @@ void EventManager::updateEventTypeBatchThreaded(EventTypeId typeId) {
   auto startTime = getCurrentTimeNanos();
 
   // Copy events to local vector to minimize lock time
-  std::vector<EventData> localEvents;
+  // Note: use an automatic storage vector here since work is dispatched to
+  // worker threads and capturing a thread_local by reference is unsafe and
+  // triggers compiler warnings.
+  std::vector<EventPtr> localEvents;
   {
     std::shared_lock<std::shared_mutex> lock(m_eventsMutex);
-    auto &container = m_eventsByType[static_cast<size_t>(typeId)];
+    const auto &container = m_eventsByType[static_cast<size_t>(typeId)];
 
     if (container.empty()) {
       return;
     }
 
+    localEvents.clear();
     localEvents.reserve(container.size());
-    std::copy_if(container.begin(), container.end(),
-                 std::back_inserter(localEvents), [](const auto &eventData) {
-                   return eventData.isActive() && eventData.event;
-                 });
+    for (const auto &ed : container) {
+      if (ed.isActive() && ed.event) localEvents.push_back(ed.event);
+    }
   }
 
   if (localEvents.empty()) {
@@ -599,11 +673,7 @@ void EventManager::updateEventTypeBatchThreaded(EventTypeId typeId) {
                 std::to_string(queueCapacity) +
                 "), using single-threaded processing");
     m_lastWasThreaded.store(false, std::memory_order_relaxed);
-    for (auto &eventData : localEvents) {
-      if (eventData.event) {
-        eventData.event->update();
-      }
-    }
+    for (auto &evt : localEvents) { evt->update(); }
 
     // Record performance and return early
     auto endTime = getCurrentTimeNanos();
@@ -650,9 +720,9 @@ void EventManager::updateEventTypeBatchThreaded(EventTypeId typeId) {
   // Debug thread allocation info periodically
   static uint64_t debugFrameCounter = 0;
   if (++debugFrameCounter % 300 == 0 && !localEvents.empty()) {
-    EVENT_DEBUG("Event Thread Allocation - Workers: " + 
+    EVENT_DEBUG("Event Thread Allocation - Workers: " +
                 std::to_string(optimalWorkerCount) + "/" +
-                std::to_string(availableWorkers) + 
+                std::to_string(availableWorkers) +
                 ", Event Budget: " + std::to_string(eventWorkerBudget) +
                 ", Batches: " + std::to_string(batchCount));
   }
@@ -676,9 +746,7 @@ void EventManager::updateEventTypeBatchThreaded(EventTypeId typeId) {
       futures.push_back(threadSystem.enqueueTaskWithResult(
           [&localEvents, start, end]() {
             for (size_t j = start; j < end; ++j) {
-              if (localEvents[j].event) {
-                localEvents[j].event->update();
-              }
+              localEvents[j]->update();
             }
           },
           HammerEngine::TaskPriority::Normal, "Event_OptimalBatch"));
@@ -690,11 +758,7 @@ void EventManager::updateEventTypeBatchThreaded(EventTypeId typeId) {
     }
   } else {
     // Process single-threaded for small event counts
-    for (auto &eventData : localEvents) {
-      if (eventData.event) {
-        eventData.event->update();
-      }
-    }
+    for (auto &evt : localEvents) { evt->update(); }
   }
 
   // Simplified performance recording
@@ -721,170 +785,350 @@ void EventManager::processEventDirect(EventData &eventData) {
 }
 
 bool EventManager::changeWeather(const std::string &weatherType,
-                                 float transitionTime) const {
-  // Copy handlers to avoid holding lock during execution
-  std::vector<FastEventHandler> localHandlers;
+                                 float transitionTime,
+                                 DispatchMode mode) const {
+  // Fast check for handler existence
+  size_t handlerCount = 0;
   {
     std::lock_guard<std::mutex> lock(m_handlersMutex);
-    const auto &handlers =
-        m_handlersByType[static_cast<size_t>(EventTypeId::Weather)];
-    localHandlers.reserve(handlers.size());
-    std::copy_if(handlers.begin(), handlers.end(),
-                 std::back_inserter(localHandlers),
-                 [](const auto &handler) { return handler != nullptr; });
+    handlerCount = m_handlersByType[static_cast<size_t>(EventTypeId::Weather)].size();
+  }
+  // Build payload (use pool)
+  std::shared_ptr<WeatherEvent> weatherEvent = m_weatherPool.acquire();
+  if (!weatherEvent) weatherEvent = std::make_shared<WeatherEvent>("trigger_weather", weatherType);
+  else weatherEvent->setWeatherType(weatherType);
+  WeatherParams params = weatherEvent->getWeatherParams();
+  params.transitionTime = transitionTime;
+  weatherEvent->setWeatherParams(params);
+
+  if (handlerCount == 0) {
+    // Fallback: execute directly
+    try { weatherEvent->execute(); } catch (...) {}
+    m_weatherPool.release(weatherEvent);
+    return true;
   }
 
-  if (!localHandlers.empty()) {
-    EVENT_INFO("Triggering weather change to: " + weatherType +
-               " (transition: " + std::to_string(transitionTime) + "s)");
+  if (mode == DispatchMode::Immediate) {
+    std::vector<FastEventHandler> localHandlers;
+    {
+      std::lock_guard<std::mutex> lock(m_handlersMutex);
+      const auto &handlers =
+          m_handlersByType[static_cast<size_t>(EventTypeId::Weather)];
+      localHandlers.reserve(handlers.size());
+      std::copy_if(handlers.begin(), handlers.end(), std::back_inserter(localHandlers),
+                   [](const auto& h) { return h != nullptr; });
+    }
 
-    // Create a temporary EventData for handler execution
     EventData eventData;
     eventData.typeId = EventTypeId::Weather;
     eventData.setActive(true);
-
+    eventData.event = weatherEvent;
+    eventData.name = "trigger_weather";
     for (const auto &handler : localHandlers) {
       try {
         handler(eventData);
       } catch (const std::exception &e) {
-        EVENT_ERROR("Handler exception in changeWeather: " +
-                    std::string(e.what()));
+        EVENT_ERROR("Handler exception in changeWeather: " + std::string(e.what()));
       } catch (...) {
         EVENT_ERROR("Unknown handler exception in changeWeather");
       }
     }
+     // Name-based handlers
+     {
+       std::vector<FastEventHandler> nh;
+       {
+         std::lock_guard<std::mutex> lock(m_handlersMutex);
+         auto it = m_nameHandlers.find(eventData.name);
+         if (it != m_nameHandlers.end()) { 
+           std::copy_if(it->second.begin(), it->second.end(), std::back_inserter(nh), [](const auto& h) { return static_cast<bool>(h); });
+         }
+       }
+      for (const auto &h: nh) { try { h(eventData);} catch(...){} }
+    }
+    m_weatherPool.release(weatherEvent);
+    (void)weatherType;
+    (void)transitionTime;
+    return !localHandlers.empty();
   }
 
+  // Deferred: enqueue dispatch and return
+  EventData data;
+  data.typeId = EventTypeId::Weather;
+  data.setActive(true);
+  data.event = weatherEvent;
+  data.name = "trigger_weather";
+  data.onConsumed = [this, weatherEvent]() { m_weatherPool.release(weatherEvent); };
+  enqueueDispatch(EventTypeId::Weather, data);
   (void)weatherType;
-  (void)transitionTime; // Suppress unused warnings
-  return !localHandlers.empty();
+  (void)transitionTime;
+  return true;
 }
 
 bool EventManager::changeScene(const std::string &sceneId,
                                const std::string &transitionType,
-                               float transitionTime) const {
-  // Copy handlers to avoid holding lock during execution
-  std::vector<FastEventHandler> localHandlers;
+                               float transitionTime,
+                               DispatchMode mode) const {
+  size_t handlerCount = 0;
   {
     std::lock_guard<std::mutex> lock(m_handlersMutex);
-    const auto &handlers =
-        m_handlersByType[static_cast<size_t>(EventTypeId::SceneChange)];
-    localHandlers.reserve(handlers.size());
-    std::copy_if(handlers.begin(), handlers.end(),
-                 std::back_inserter(localHandlers),
-                 [](const auto &handler) { return handler != nullptr; });
+    handlerCount = m_handlersByType[static_cast<size_t>(EventTypeId::SceneChange)].size();
   }
 
-  if (!localHandlers.empty()) {
-    EVENT_INFO("Triggering scene change to: " + sceneId +
-               " (transition: " + transitionType +
-               ", duration: " + std::to_string(transitionTime) + "s)");
+  // Build payload
+  auto sceneEvent = m_sceneChangePool.acquire();
+  if (!sceneEvent) sceneEvent = std::make_shared<SceneChangeEvent>("trigger_scene_change", sceneId);
+  else sceneEvent->setTargetSceneID(sceneId);
+  // Map transition type string to enum
+  TransitionType t = TransitionType::Fade;
+  if (transitionType == "slide") t = TransitionType::Slide;
+  else if (transitionType == "dissolve") t = TransitionType::Dissolve;
+  else if (transitionType == "wipe") t = TransitionType::Wipe;
+  sceneEvent->setTransitionType(t);
+  TransitionParams params(transitionTime, t);
+  sceneEvent->setTransitionParams(params);
 
-    // Create a temporary EventData for handler execution
+  if (handlerCount == 0) {
+    try { sceneEvent->execute(); } catch (...) {}
+    m_sceneChangePool.release(sceneEvent);
+    return true;
+  }
+
+  if (mode == DispatchMode::Immediate) {
+    std::vector<FastEventHandler> localHandlers;
+    {
+      std::lock_guard<std::mutex> lock(m_handlersMutex);
+      const auto &handlers =
+          m_handlersByType[static_cast<size_t>(EventTypeId::SceneChange)];
+      localHandlers.reserve(handlers.size());
+      std::copy_if(handlers.begin(), handlers.end(), std::back_inserter(localHandlers), [](const auto& h) { return static_cast<bool>(h); });
+    }
     EventData eventData;
     eventData.typeId = EventTypeId::SceneChange;
     eventData.setActive(true);
-
+    eventData.event = sceneEvent;
+    eventData.name = "trigger_scene_change";
     for (const auto &handler : localHandlers) {
-      try {
-        handler(eventData);
-      } catch (const std::exception &e) {
-        EVENT_ERROR("Handler exception in changeScene: " +
-                    std::string(e.what()));
-      } catch (...) {
-        EVENT_ERROR("Unknown handler exception in changeScene");
-      }
+      try { handler(eventData); }
+      catch (const std::exception &e) { EVENT_ERROR("Handler exception in changeScene: " + std::string(e.what())); }
+       catch (...) { EVENT_ERROR("Unknown handler exception in changeScene"); }
+     }
+     {
+       std::vector<FastEventHandler> nh;
+       {
+         std::lock_guard<std::mutex> lock(m_handlersMutex);
+         auto it = m_nameHandlers.find(eventData.name);
+         if (it != m_nameHandlers.end()) { 
+           std::copy_if(it->second.begin(), it->second.end(), std::back_inserter(nh), [](const auto& h) { return static_cast<bool>(h); });
+         }
+       }
+      for (const auto &h: nh) { try { h(eventData);} catch(...){} }
     }
+    m_sceneChangePool.release(sceneEvent);
+    (void)sceneId; (void)transitionType; (void)transitionTime; return !localHandlers.empty();
   }
 
-  (void)sceneId;
-  (void)transitionType;
-  (void)transitionTime; // Suppress unused warnings
-  return !localHandlers.empty();
+  EventData data;
+  data.typeId = EventTypeId::SceneChange;
+  data.setActive(true);
+  data.event = sceneEvent;
+  data.name = "trigger_scene_change";
+  data.onConsumed = [this, sceneEvent]() { m_sceneChangePool.release(sceneEvent); };
+  enqueueDispatch(EventTypeId::SceneChange, data);
+  (void)sceneId; (void)transitionType; (void)transitionTime; return true;
 }
 
 bool EventManager::spawnNPC(const std::string &npcType, float x,
-                            float y) const {
-  // Copy handlers to avoid holding lock during execution
-  std::vector<FastEventHandler> localHandlers;
+                            float y, DispatchMode mode) const {
+  size_t handlerCount = 0;
   {
     std::lock_guard<std::mutex> lock(m_handlersMutex);
-    const auto &handlers =
-        m_handlersByType[static_cast<size_t>(EventTypeId::NPCSpawn)];
-    localHandlers.reserve(handlers.size());
-    std::copy_if(handlers.begin(), handlers.end(),
-                 std::back_inserter(localHandlers),
-                 [](const auto &handler) { return handler != nullptr; });
+    handlerCount = m_handlersByType[static_cast<size_t>(EventTypeId::NPCSpawn)].size();
+  }
+  if (handlerCount == 0) {
+    auto ev = m_npcSpawnPool.acquire();
+    if (!ev) ev = std::make_shared<NPCSpawnEvent>("trigger_npc_spawn", npcType);
+    else {
+      SpawnParameters p = ev->getSpawnParameters();
+      p.npcType = npcType;
+      ev->setSpawnParameters(p);
+    }
+    ev->addSpawnPoint(x, y);
+    try { ev->execute(); } catch (...) {}
+    m_npcSpawnPool.release(ev);
+    return true;
   }
 
-  if (!localHandlers.empty()) {
-    EVENT_INFO("Triggering NPC spawn: " + npcType + " at (" +
-               std::to_string(x) + ", " + std::to_string(y) + ")");
+  // Build payload
+  SpawnParameters params(npcType, 1, 0.0f);
+  auto npcEvent = m_npcSpawnPool.acquire();
+  if (!npcEvent) npcEvent = std::make_shared<NPCSpawnEvent>("trigger_npc_spawn", params);
+  else npcEvent->setSpawnParameters(params);
+  npcEvent->addSpawnPoint(x, y);
 
-    // Create a temporary EventData for handler execution
+  if (mode == DispatchMode::Immediate) {
+    std::vector<FastEventHandler> localHandlers;
+    {
+      std::lock_guard<std::mutex> lock(m_handlersMutex);
+      const auto &handlers =
+          m_handlersByType[static_cast<size_t>(EventTypeId::NPCSpawn)];
+      localHandlers.reserve(handlers.size());
+      std::copy_if(handlers.begin(), handlers.end(), std::back_inserter(localHandlers), [](const auto& h) { return static_cast<bool>(h); });
+    }
     EventData eventData;
     eventData.typeId = EventTypeId::NPCSpawn;
     eventData.setActive(true);
-
+    eventData.event = npcEvent;
+    eventData.name = "trigger_npc_spawn";
     for (const auto &handler : localHandlers) {
-      try {
-        handler(eventData);
-      } catch (const std::exception &e) {
-        EVENT_ERROR("Handler exception in spawnNPC: " + std::string(e.what()));
-      } catch (...) {
-        EVENT_ERROR("Unknown handler exception in spawnNPC");
-      }
+      try { handler(eventData); }
+      catch (const std::exception &e) { EVENT_ERROR("Handler exception in spawnNPC: " + std::string(e.what())); }
+       catch (...) { EVENT_ERROR("Unknown handler exception in spawnNPC"); }
+     }
+     {
+       std::vector<FastEventHandler> nh;
+       {
+         std::lock_guard<std::mutex> lock(m_handlersMutex);
+         auto it = m_nameHandlers.find(eventData.name);
+         if (it != m_nameHandlers.end()) { 
+           std::copy_if(it->second.begin(), it->second.end(), std::back_inserter(nh), [](const auto& h) { return static_cast<bool>(h); });
+         }
+       }
+      for (const auto &h: nh) { try { h(eventData);} catch(...){} }
     }
+    m_npcSpawnPool.release(npcEvent);
+    (void)npcType; (void)x; (void)y; return !localHandlers.empty();
   }
 
-  (void)npcType;
-  (void)x;
-  (void)y; // Suppress unused warnings
-  return !localHandlers.empty();
+  EventData data;
+  data.typeId = EventTypeId::NPCSpawn;
+  data.setActive(true);
+  data.event = npcEvent;
+  data.name = "trigger_npc_spawn";
+  data.onConsumed = [this, npcEvent]() { m_npcSpawnPool.release(npcEvent); };
+  enqueueDispatch(EventTypeId::NPCSpawn, data);
+  (void)npcType; (void)x; (void)y; return true;
+}
+
+bool EventManager::triggerParticleEffect(const std::string &effectName, float x, float y,
+                                         float intensity, float duration,
+                                         const std::string &groupTag,
+                                         DispatchMode mode) const {
+  // Fast check
+  size_t handlerCount = 0;
+  {
+    std::lock_guard<std::mutex> lock(m_handlersMutex);
+    handlerCount = m_handlersByType[static_cast<size_t>(EventTypeId::ParticleEffect)].size();
+  }
+  if (handlerCount == 0) {
+    // Fallback: execute effect directly
+    try {
+      auto pe = std::make_shared<ParticleEffectEvent>(
+          "trigger_particle_effect",
+          ParticleEffectEvent::stringToEffectType(effectName),
+          x, y, intensity, duration, groupTag, "");
+      pe->execute();
+    } catch (...) {}
+    return true;
+  }
+
+  ParticleEffectType effectType = ParticleEffectEvent::stringToEffectType(effectName);
+  auto pe = std::make_shared<ParticleEffectEvent>("trigger_particle_effect", effectType,
+                                                  x, y, intensity, duration, groupTag, "");
+  EventData data;
+  data.typeId = EventTypeId::ParticleEffect;
+  data.setActive(true);
+  data.event = pe;
+  data.name = "trigger_particle_effect";
+
+  if (mode == DispatchMode::Immediate) {
+    std::vector<FastEventHandler> localHandlers;
+    {
+      std::lock_guard<std::mutex> lock(m_handlersMutex);
+      const auto &handlers = m_handlersByType[static_cast<size_t>(EventTypeId::ParticleEffect)];
+      localHandlers.reserve(handlers.size());
+      std::copy_if(handlers.begin(), handlers.end(), std::back_inserter(localHandlers), [](const auto& h) { return static_cast<bool>(h); });
+    }
+    for (const auto &h : localHandlers) {
+      try { h(data); } catch (const std::exception &e) { EVENT_ERROR("Handler exception in triggerParticleEffect: " + std::string(e.what())); }
+      catch (...) { EVENT_ERROR("Unknown handler exception in triggerParticleEffect"); }
+    }
+    // Name-based
+    {
+      std::vector<FastEventHandler> nh;
+      {
+        std::lock_guard<std::mutex> lock(m_handlersMutex);
+        auto it = m_nameHandlers.find(data.name);
+        if (it != m_nameHandlers.end()) { 
+          std::copy_if(it->second.begin(), it->second.end(), std::back_inserter(nh), [](const auto& h) { return static_cast<bool>(h); });
+        }
+      }
+      for (const auto &h : nh) { try { h(data);} catch(...){} }
+    }
+    return !localHandlers.empty();
+  }
+
+  enqueueDispatch(EventTypeId::ParticleEffect, data);
+  return true;
+}
+
+bool EventManager::triggerParticleEffect(const std::string &effectName,
+                                         const Vector2D &position,
+                                         float intensity, float duration,
+                                         const std::string &groupTag,
+                                         DispatchMode mode) const {
+  return triggerParticleEffect(effectName, position.getX(), position.getY(),
+                               intensity, duration, groupTag, mode);
 }
 
 bool EventManager::triggerResourceChange(
     EntityPtr owner, HammerEngine::ResourceHandle resourceHandle,
-    int oldQuantity, int newQuantity, const std::string &changeReason) const {
-  // Copy handlers to avoid holding lock during execution
-  std::vector<FastEventHandler> localHandlers;
+    int oldQuantity, int newQuantity, const std::string &changeReason,
+    DispatchMode mode) const {
+  size_t handlerCount = 0;
   {
     std::lock_guard<std::mutex> lock(m_handlersMutex);
-    const auto &handlers =
-        m_handlersByType[static_cast<size_t>(EventTypeId::ResourceChange)];
-    localHandlers.reserve(handlers.size());
-    std::copy_if(handlers.begin(), handlers.end(),
-                 std::back_inserter(localHandlers),
-                 [](const auto &handler) { return handler != nullptr; });
+    handlerCount = m_handlersByType[static_cast<size_t>(EventTypeId::ResourceChange)].size();
   }
+  if (handlerCount == 0) { return false; }
 
-  if (!localHandlers.empty()) {
-    EVENT_INFO(
-        "Triggering resource change for handle: " + resourceHandle.toString() +
-        " from " + std::to_string(oldQuantity) + " to " +
-        std::to_string(newQuantity) + " (reason: " + changeReason + ")");
+  // Build EventData with concrete ResourceChangeEvent payload
+  EventData eventData;
+  eventData.typeId = EventTypeId::ResourceChange;
+  eventData.setActive(true);
+  eventData.event = std::make_shared<ResourceChangeEvent>(
+      owner, resourceHandle, oldQuantity, newQuantity, changeReason);
+  eventData.name = "trigger_resource_change";
 
-    // Create a temporary EventData for handler execution
-    EventData eventData;
-    eventData.typeId = EventTypeId::ResourceChange;
-    eventData.setActive(true);
-    // Create a temporary ResourceChangeEvent for the handler
-    eventData.event = std::make_shared<ResourceChangeEvent>(
-        owner, resourceHandle, oldQuantity, newQuantity, changeReason);
-
-    for (const auto &handler : localHandlers) {
-      try {
-        handler(eventData);
-      } catch (const std::exception &e) {
-        EVENT_ERROR("Handler exception in triggerResourceChange: " +
-                    std::string(e.what()));
-      } catch (...) {
-        EVENT_ERROR("Unknown handler exception in triggerResourceChange");
-      }
+  if (mode == DispatchMode::Immediate) {
+    std::vector<FastEventHandler> localHandlers;
+    {
+      std::lock_guard<std::mutex> lock(m_handlersMutex);
+      const auto &handlers =
+          m_handlersByType[static_cast<size_t>(EventTypeId::ResourceChange)];
+      localHandlers.reserve(handlers.size());
+      std::copy_if(handlers.begin(), handlers.end(), std::back_inserter(localHandlers), [](const auto& h) { return static_cast<bool>(h); });
     }
+    for (const auto &handler : localHandlers) {
+      try { handler(eventData); }
+      catch (const std::exception &e) { EVENT_ERROR("Handler exception in triggerResourceChange: " + std::string(e.what())); }
+       catch (...) { EVENT_ERROR("Unknown handler exception in triggerResourceChange"); }
+     }
+     {
+       std::vector<FastEventHandler> nh;
+       {
+         std::lock_guard<std::mutex> lock(m_handlersMutex);
+         auto it = m_nameHandlers.find(eventData.name);
+         if (it != m_nameHandlers.end()) { 
+           std::copy_if(it->second.begin(), it->second.end(), std::back_inserter(nh), [](const auto& h) { return static_cast<bool>(h); });
+         }
+       }
+      for (const auto &h : nh) { try { h(eventData);} catch(...){} }
+    }
+    return !localHandlers.empty();
   }
 
-  return !localHandlers.empty();
+  enqueueDispatch(EventTypeId::ResourceChange, eventData);
+  return true;
 }
 
 bool EventManager::createWeatherEvent(const std::string &name,
@@ -1054,6 +1298,113 @@ bool EventManager::createWorldGeneratedEvent(const std::string &name, const std:
   }
 }
 
+// World triggers (no registration)
+bool EventManager::triggerWorldLoaded(const std::string &worldId, int width, int height,
+                                      DispatchMode mode) const {
+  auto ev = std::make_shared<WorldLoadedEvent>(worldId, width, height);
+  EventData data; data.typeId = EventTypeId::World; data.setActive(true); data.event = ev; data.name = "trigger_world_loaded";
+  size_t handlerCount = 0; { std::lock_guard<std::mutex> lock(m_handlersMutex);
+    handlerCount = m_handlersByType[static_cast<size_t>(EventTypeId::World)].size(); }
+  if (handlerCount == 0) { try { ev->execute(); } catch (...) {} return true; }
+  if (mode == DispatchMode::Immediate) {
+    std::vector<FastEventHandler> localHandlers; {
+      std::lock_guard<std::mutex> lock(m_handlersMutex);
+      const auto &handlers = m_handlersByType[static_cast<size_t>(EventTypeId::World)];
+      localHandlers.reserve(handlers.size()); 
+      std::copy_if(handlers.begin(), handlers.end(), std::back_inserter(localHandlers), [](const auto& h) { return static_cast<bool>(h); });
+    }
+    for (const auto &h : localHandlers) { try { h(data);} catch (...) { EVENT_ERROR("Handler exception in triggerWorldLoaded"); } }
+    std::vector<FastEventHandler> nh; { std::lock_guard<std::mutex> lock(m_handlersMutex);
+      auto it = m_nameHandlers.find(data.name); 
+      if (it != m_nameHandlers.end()) {
+        std::copy_if(it->second.begin(), it->second.end(), std::back_inserter(nh), [](const auto& h) { return static_cast<bool>(h); });
+      }
+    }
+    for (const auto &h: nh) { try { h(data);} catch(...){} }
+    return !localHandlers.empty();
+  }
+  enqueueDispatch(EventTypeId::World, data); return true;
+}
+
+bool EventManager::triggerWorldUnloaded(const std::string &worldId, DispatchMode mode) const {
+  auto ev = std::make_shared<WorldUnloadedEvent>(worldId);
+  EventData data; data.typeId = EventTypeId::World; data.setActive(true); data.event = ev; data.name = "trigger_world_unloaded";
+  size_t handlerCount = 0; { std::lock_guard<std::mutex> lock(m_handlersMutex);
+    handlerCount = m_handlersByType[static_cast<size_t>(EventTypeId::World)].size(); }
+  if (handlerCount == 0) { try { ev->execute(); } catch (...) {} return true; }
+  if (mode == DispatchMode::Immediate) {
+    std::vector<FastEventHandler> localHandlers; {
+      std::lock_guard<std::mutex> lock(m_handlersMutex);
+      const auto &handlers = m_handlersByType[static_cast<size_t>(EventTypeId::World)];
+      localHandlers.reserve(handlers.size()); 
+      std::copy_if(handlers.begin(), handlers.end(), std::back_inserter(localHandlers), [](const auto& h) { return static_cast<bool>(h); });
+    }
+    for (const auto &h : localHandlers) { try { h(data);} catch (...) { EVENT_ERROR("Handler exception in triggerWorldUnloaded"); } }
+    std::vector<FastEventHandler> nh; { std::lock_guard<std::mutex> lock(m_handlersMutex);
+      auto it = m_nameHandlers.find(data.name); 
+      if (it != m_nameHandlers.end()) {
+        std::copy_if(it->second.begin(), it->second.end(), std::back_inserter(nh), [](const auto& h) { return static_cast<bool>(h); });
+      }
+    }
+    for (const auto &h: nh) { try { h(data);} catch(...){} }
+    return !localHandlers.empty();
+  }
+  enqueueDispatch(EventTypeId::World, data); return true;
+}
+
+bool EventManager::triggerTileChanged(int x, int y, const std::string &changeType, DispatchMode mode) const {
+  auto ev = std::make_shared<TileChangedEvent>(x, y, changeType);
+  EventData data; data.typeId = EventTypeId::World; data.setActive(true); data.event = ev; data.name = "trigger_tile_changed";
+  size_t handlerCount = 0; { std::lock_guard<std::mutex> lock(m_handlersMutex);
+    handlerCount = m_handlersByType[static_cast<size_t>(EventTypeId::World)].size(); }
+  if (handlerCount == 0) { try { ev->execute(); } catch (...) {} return true; }
+  if (mode == DispatchMode::Immediate) {
+    std::vector<FastEventHandler> localHandlers; {
+      std::lock_guard<std::mutex> lock(m_handlersMutex);
+      const auto &handlers = m_handlersByType[static_cast<size_t>(EventTypeId::World)];
+      localHandlers.reserve(handlers.size()); 
+      std::copy_if(handlers.begin(), handlers.end(), std::back_inserter(localHandlers), [](const auto& h) { return static_cast<bool>(h); });
+    }
+    for (const auto &h : localHandlers) { try { h(data);} catch (...) { EVENT_ERROR("Handler exception in triggerTileChanged"); } }
+    std::vector<FastEventHandler> nh; { std::lock_guard<std::mutex> lock(m_handlersMutex);
+      auto it = m_nameHandlers.find(data.name); 
+      if (it != m_nameHandlers.end()) {
+        std::copy_if(it->second.begin(), it->second.end(), std::back_inserter(nh), [](const auto& h) { return static_cast<bool>(h); });
+      }
+    }
+    for (const auto &h: nh) { try { h(data);} catch(...){} }
+    return !localHandlers.empty();
+  }
+  enqueueDispatch(EventTypeId::World, data); return true;
+}
+
+bool EventManager::triggerWorldGenerated(const std::string &worldId, int width, int height,
+                                         float generationTime, DispatchMode mode) const {
+  auto ev = std::make_shared<WorldGeneratedEvent>(worldId, width, height, generationTime);
+  EventData data; data.typeId = EventTypeId::World; data.setActive(true); data.event = ev; data.name = "trigger_world_generated";
+  size_t handlerCount = 0; { std::lock_guard<std::mutex> lock(m_handlersMutex);
+    handlerCount = m_handlersByType[static_cast<size_t>(EventTypeId::World)].size(); }
+  if (handlerCount == 0) { try { ev->execute(); } catch (...) {} return true; }
+  if (mode == DispatchMode::Immediate) {
+    std::vector<FastEventHandler> localHandlers; {
+      std::lock_guard<std::mutex> lock(m_handlersMutex);
+      const auto &handlers = m_handlersByType[static_cast<size_t>(EventTypeId::World)];
+      localHandlers.reserve(handlers.size()); 
+      std::copy_if(handlers.begin(), handlers.end(), std::back_inserter(localHandlers), [](const auto& h) { return static_cast<bool>(h); });
+    }
+    for (const auto &h : localHandlers) { try { h(data);} catch (...) { EVENT_ERROR("Handler exception in triggerWorldGenerated"); } }
+    std::vector<FastEventHandler> nh; { std::lock_guard<std::mutex> lock(m_handlersMutex);
+      auto it = m_nameHandlers.find(data.name); 
+      if (it != m_nameHandlers.end()) {
+        std::copy_if(it->second.begin(), it->second.end(), std::back_inserter(nh), [](const auto& h) { return static_cast<bool>(h); });
+      }
+    }
+    for (const auto &h: nh) { try { h(data);} catch(...){} }
+    return !localHandlers.empty();
+  }
+  enqueueDispatch(EventTypeId::World, data); return true;
+}
+
 PerformanceStats EventManager::getPerformanceStats(EventTypeId typeId) const {
   std::lock_guard<std::mutex> lock(m_perfMutex);
   return m_performanceStats[static_cast<size_t>(typeId)];
@@ -1106,12 +1457,12 @@ void EventManager::compactEventStorage() {
 
   for (size_t typeIdx = 0; typeIdx < m_eventsByType.size(); ++typeIdx) {
     const auto &container = m_eventsByType[typeIdx];
-
     for (size_t i = 0; i < container.size(); ++i) {
-      // This is a simplified rebuild - in practice, you'd need to store names
-      // For now, just update the type mapping
-      // m_nameToIndex[eventName] = i;
-      // m_nameToType[eventName] = typeId;
+      const auto &ed = container[i];
+      if (!ed.name.empty()) {
+        m_nameToIndex[ed.name] = i;
+        m_nameToType[ed.name] = static_cast<EventTypeId>(typeIdx);
+      }
     }
   }
 }
@@ -1121,6 +1472,8 @@ void EventManager::clearEventPools() {
   m_sceneChangePool.clear();
   m_npcSpawnPool.clear();
   m_resourceChangePool.clear();
+  m_worldPool.clear();
+  m_cameraPool.clear();
 }
 
 void EventManager::clearAllEvents() {
@@ -1132,33 +1485,7 @@ void EventManager::clearAllEvents() {
     m_nameToType.clear();
 }
 
-EventTypeId EventManager::getEventTypeId(const EventPtr &event) const {
-  if (std::dynamic_pointer_cast<WeatherEvent>(event)) {
-    return EventTypeId::Weather;
-  }
-  if (std::dynamic_pointer_cast<SceneChangeEvent>(event)) {
-    return EventTypeId::SceneChange;
-  }
-  if (std::dynamic_pointer_cast<NPCSpawnEvent>(event)) {
-    return EventTypeId::NPCSpawn;
-  }
-  if (std::dynamic_pointer_cast<ParticleEffectEvent>(event)) {
-    return EventTypeId::ParticleEffect;
-  }
-  if (std::dynamic_pointer_cast<ResourceChangeEvent>(event)) {
-    return EventTypeId::ResourceChange;
-  }
-  if (std::dynamic_pointer_cast<WorldEvent>(event)) {
-    return EventTypeId::World;
-  }
-  if (std::dynamic_pointer_cast<CameraEvent>(event)) {
-    return EventTypeId::Camera;
-  }
-  if (std::dynamic_pointer_cast<HarvestResourceEvent>(event)) {
-    return EventTypeId::Harvest;
-  }
-  return EventTypeId::Custom;
-}
+EventTypeId EventManager::getEventTypeId(const EventPtr &event) const { return event ? event->getTypeId() : EventTypeId::Custom; }
 
 std::string EventManager::getEventTypeName(EventTypeId typeId) const {
   switch (typeId) {
@@ -1234,4 +1561,275 @@ uint64_t EventManager::getCurrentTimeNanos() const {
   return std::chrono::duration_cast<std::chrono::nanoseconds>(
              std::chrono::high_resolution_clock::now().time_since_epoch())
       .count();
+}
+
+void EventManager::enqueueDispatch(EventTypeId typeId, const EventData &data) const {
+  std::lock_guard<std::mutex> lock(m_dispatchMutex);
+  if (m_pendingDispatch.size() >= m_maxDispatchQueue) {
+    m_pendingDispatch.pop_front();
+  }
+  m_pendingDispatch.push_back(PendingDispatch{typeId, data});
+}
+
+void EventManager::removeNameHandlers(const std::string &name) {
+  std::lock_guard<std::mutex> lock(m_handlersMutex);
+  m_nameHandlers.erase(name);
+  m_nameHandlerIds.erase(name);
+}
+
+void EventManager::drainDispatchQueueWithBudget() {
+  // Compute per-frame cap from worker budget
+  size_t maxToProcess = 64; // base
+  if (HammerEngine::ThreadSystem::Exists()) {
+    const auto &threadSystem = HammerEngine::ThreadSystem::Instance();
+    size_t workers = static_cast<size_t>(threadSystem.getThreadCount());
+    HammerEngine::WorkerBudget budget = HammerEngine::calculateWorkerBudget(workers);
+    maxToProcess = 32 + (budget.eventAllocated * 32);
+  }
+
+  const uint64_t start = getCurrentTimeNanos();
+  uint64_t timeBudgetNs = 2'000'000; // ~2ms
+
+  std::vector<PendingDispatch> local;
+  local.reserve(maxToProcess);
+  {
+    std::lock_guard<std::mutex> lock(m_dispatchMutex);
+    const size_t backlog = m_pendingDispatch.size();
+    if (backlog > m_maxDispatchQueue / 2) {
+      maxToProcess += std::min(backlog / 64, static_cast<size_t>(256));
+      timeBudgetNs += 500'000; // +0.5ms under heavy backlog
+    }
+    size_t toTake = std::min(maxToProcess, m_pendingDispatch.size());
+    for (size_t i = 0; i < toTake; ++i) {
+      local.push_back(std::move(m_pendingDispatch.front()));
+      m_pendingDispatch.pop_front();
+    }
+  }
+
+  for (const auto &pd : local) {
+    // Copy handlers locally per type
+    std::vector<FastEventHandler> handlers;
+    {
+      std::lock_guard<std::mutex> lock(m_handlersMutex);
+      const auto &src = m_handlersByType[static_cast<size_t>(pd.typeId)];
+      handlers.reserve(src.size());
+      std::copy_if(src.begin(), src.end(), std::back_inserter(handlers), [](const auto& h) { return static_cast<bool>(h); });
+    }
+
+    for (const auto &handler : handlers) {
+      try { handler(pd.data); }
+      catch (const std::exception &e) { EVENT_ERROR("Handler exception in deferred dispatch: " + std::string(e.what())); }
+      catch (...) { EVENT_ERROR("Unknown handler exception in deferred dispatch"); }
+    }
+
+    // Per-name handlers
+    if (!pd.data.name.empty()) {
+      std::vector<FastEventHandler> nameHandlers;
+      {
+        std::lock_guard<std::mutex> lock(m_handlersMutex);
+        auto it = m_nameHandlers.find(pd.data.name);
+        if (it != m_nameHandlers.end()) {
+          nameHandlers.reserve(it->second.size());
+          std::copy_if(it->second.begin(), it->second.end(), std::back_inserter(nameHandlers), [](const auto& h) { return static_cast<bool>(h); });
+        }
+      }
+      for (const auto &h : nameHandlers) {
+        try { h(pd.data); }
+        catch (const std::exception &e) { EVENT_ERROR("Name-handler exception in deferred dispatch: " + std::string(e.what())); }
+        catch (...) { EVENT_ERROR("Unknown name-handler exception in deferred dispatch"); }
+      }
+    }
+
+    if (pd.data.onConsumed) { pd.data.onConsumed(); }
+
+    if ((getCurrentTimeNanos() - start) > timeBudgetNs) {
+      break; // Defer remaining to next frame
+    }
+  }
+}
+
+// Camera event convenience methods
+bool EventManager::createCameraMovedEvent(const std::string &name, const Vector2D &newPos,
+                             const Vector2D &oldPos) {
+  try {
+    auto event = std::make_shared<CameraMovedEvent>(newPos, oldPos);
+    return registerEventInternal(name, std::static_pointer_cast<Event>(event), EventTypeId::Camera);
+  } catch (const std::exception &e) {
+    EVENT_ERROR("Exception creating CameraMovedEvent '" + name + "': " + e.what());
+    return false;
+  } catch (...) {
+    EVENT_ERROR("Unknown exception creating CameraMovedEvent: " + name);
+    return false;
+  }
+}
+
+bool EventManager::createCameraModeChangedEvent(const std::string &name, int newMode, int oldMode) {
+  try {
+    auto event = std::make_shared<CameraModeChangedEvent>(
+        static_cast<CameraModeChangedEvent::Mode>(newMode),
+        static_cast<CameraModeChangedEvent::Mode>(oldMode));
+    return registerEventInternal(name, std::static_pointer_cast<Event>(event), EventTypeId::Camera);
+  } catch (const std::exception &e) {
+    EVENT_ERROR("Exception creating CameraModeChangedEvent '" + name + "': " + e.what());
+    return false;
+  } catch (...) {
+    EVENT_ERROR("Unknown exception creating CameraModeChangedEvent: " + name);
+    return false;
+  }
+}
+
+bool EventManager::createCameraShakeEvent(const std::string &name, float duration, float intensity) {
+  try {
+    auto event = std::make_shared<CameraShakeStartedEvent>(duration, intensity);
+    return registerEventInternal(name, std::static_pointer_cast<Event>(event), EventTypeId::Camera);
+  } catch (const std::exception &e) {
+    EVENT_ERROR("Exception creating CameraShakeEvent '" + name + "': " + e.what());
+    return false;
+  } catch (...) {
+    EVENT_ERROR("Unknown exception creating CameraShakeEvent: " + name);
+    return false;
+  }
+}
+
+// Camera triggers (no registration)
+bool EventManager::triggerCameraMoved(const Vector2D &newPos, const Vector2D &oldPos,
+                                      DispatchMode mode) const {
+  auto ev = std::make_shared<CameraMovedEvent>(newPos, oldPos);
+  EventData data; data.typeId = EventTypeId::Camera; data.setActive(true); data.event = ev; data.name = "trigger_camera_moved";
+
+  size_t handlerCount = 0; {
+    std::lock_guard<std::mutex> lock(m_handlersMutex);
+    handlerCount = m_handlersByType[static_cast<size_t>(EventTypeId::Camera)].size();
+  }
+  if (handlerCount == 0) { try { ev->execute(); } catch (...) {} return true; }
+
+  if (mode == DispatchMode::Immediate) {
+    std::vector<FastEventHandler> localHandlers;
+    {
+      std::lock_guard<std::mutex> lock(m_handlersMutex);
+      const auto &handlers = m_handlersByType[static_cast<size_t>(EventTypeId::Camera)];
+      localHandlers.reserve(handlers.size());
+      std::copy_if(handlers.begin(), handlers.end(), std::back_inserter(localHandlers), [](const auto& h) { return static_cast<bool>(h); });
+    }
+    for (const auto &h : localHandlers) { try { h(data); } catch (...) { EVENT_ERROR("Handler exception in triggerCameraMoved"); } }
+    std::vector<FastEventHandler> nh;
+    {
+      std::lock_guard<std::mutex> lock(m_handlersMutex);
+      auto it = m_nameHandlers.find(data.name);
+      if (it != m_nameHandlers.end()) {
+        std::copy_if(it->second.begin(), it->second.end(), std::back_inserter(nh), [](const auto& h) { return static_cast<bool>(h); });
+      }
+    }
+    for (const auto &h: nh) { try { h(data);} catch(...){} }
+    return !localHandlers.empty();
+  }
+  enqueueDispatch(EventTypeId::Camera, data); return true;
+}
+
+bool EventManager::triggerCameraModeChanged(int newMode, int oldMode, DispatchMode mode) const {
+  auto ev = std::make_shared<CameraModeChangedEvent>(
+      static_cast<CameraModeChangedEvent::Mode>(newMode),
+      static_cast<CameraModeChangedEvent::Mode>(oldMode));
+  EventData data; data.typeId = EventTypeId::Camera; data.setActive(true); data.event = ev; data.name = "trigger_camera_mode_changed";
+  size_t handlerCount = 0; { std::lock_guard<std::mutex> lock(m_handlersMutex);
+    handlerCount = m_handlersByType[static_cast<size_t>(EventTypeId::Camera)].size(); }
+  if (handlerCount == 0) { try { ev->execute(); } catch (...) {} return true; }
+  if (mode == DispatchMode::Immediate) {
+    std::vector<FastEventHandler> localHandlers; {
+      std::lock_guard<std::mutex> lock(m_handlersMutex);
+      const auto &handlers = m_handlersByType[static_cast<size_t>(EventTypeId::Camera)];
+      localHandlers.reserve(handlers.size()); 
+      std::copy_if(handlers.begin(), handlers.end(), std::back_inserter(localHandlers), [](const auto& h) { return static_cast<bool>(h); });
+    }
+    for (const auto &h : localHandlers) { try { h(data);} catch (...) { EVENT_ERROR("Handler exception in triggerCameraModeChanged"); } }
+    std::vector<FastEventHandler> nh; { std::lock_guard<std::mutex> lock(m_handlersMutex);
+      auto it = m_nameHandlers.find(data.name); 
+      if (it != m_nameHandlers.end()) {
+        std::copy_if(it->second.begin(), it->second.end(), std::back_inserter(nh), [](const auto& h) { return static_cast<bool>(h); });
+      }
+    }
+    for (const auto &h: nh) { try { h(data);} catch(...){} }
+    return !localHandlers.empty();
+  }
+  enqueueDispatch(EventTypeId::Camera, data); return true;
+}
+
+bool EventManager::triggerCameraShakeStarted(float duration, float intensity, DispatchMode mode) const {
+  auto ev = std::make_shared<CameraShakeStartedEvent>(duration, intensity);
+  EventData data; data.typeId = EventTypeId::Camera; data.setActive(true); data.event = ev; data.name = "trigger_camera_shake_started";
+  size_t handlerCount = 0; { std::lock_guard<std::mutex> lock(m_handlersMutex);
+    handlerCount = m_handlersByType[static_cast<size_t>(EventTypeId::Camera)].size(); }
+  if (handlerCount == 0) { try { ev->execute(); } catch (...) {} return true; }
+  if (mode == DispatchMode::Immediate) {
+    std::vector<FastEventHandler> localHandlers; {
+      std::lock_guard<std::mutex> lock(m_handlersMutex);
+      const auto &handlers = m_handlersByType[static_cast<size_t>(EventTypeId::Camera)];
+      localHandlers.reserve(handlers.size()); 
+      std::copy_if(handlers.begin(), handlers.end(), std::back_inserter(localHandlers), [](const auto& h) { return static_cast<bool>(h); });
+    }
+    for (const auto &h : localHandlers) { try { h(data);} catch (...) { EVENT_ERROR("Handler exception in triggerCameraShakeStarted"); } }
+    std::vector<FastEventHandler> nh; { std::lock_guard<std::mutex> lock(m_handlersMutex);
+      auto it = m_nameHandlers.find(data.name); 
+      if (it != m_nameHandlers.end()) {
+        std::copy_if(it->second.begin(), it->second.end(), std::back_inserter(nh), [](const auto& h) { return static_cast<bool>(h); });
+      }
+    }
+    for (const auto &h: nh) { try { h(data);} catch(...){} }
+    return !localHandlers.empty();
+  }
+  enqueueDispatch(EventTypeId::Camera, data); return true;
+}
+
+bool EventManager::triggerCameraShakeEnded(DispatchMode mode) const {
+  auto ev = std::make_shared<CameraShakeEndedEvent>();
+  EventData data; data.typeId = EventTypeId::Camera; data.setActive(true); data.event = ev; data.name = "trigger_camera_shake_ended";
+  size_t handlerCount = 0; { std::lock_guard<std::mutex> lock(m_handlersMutex);
+    handlerCount = m_handlersByType[static_cast<size_t>(EventTypeId::Camera)].size(); }
+  if (handlerCount == 0) { try { ev->execute(); } catch (...) {} return true; }
+  if (mode == DispatchMode::Immediate) {
+    std::vector<FastEventHandler> localHandlers; {
+      std::lock_guard<std::mutex> lock(m_handlersMutex);
+      const auto &handlers = m_handlersByType[static_cast<size_t>(EventTypeId::Camera)];
+      localHandlers.reserve(handlers.size()); 
+      std::copy_if(handlers.begin(), handlers.end(), std::back_inserter(localHandlers), [](const auto& h) { return static_cast<bool>(h); });
+    }
+    for (const auto &h : localHandlers) { try { h(data);} catch (...) { EVENT_ERROR("Handler exception in triggerCameraShakeEnded"); } }
+    std::vector<FastEventHandler> nh; { std::lock_guard<std::mutex> lock(m_handlersMutex);
+      auto it = m_nameHandlers.find(data.name); 
+      if (it != m_nameHandlers.end()) {
+        std::copy_if(it->second.begin(), it->second.end(), std::back_inserter(nh), [](const auto& h) { return static_cast<bool>(h); });
+      }
+    }
+    for (const auto &h: nh) { try { h(data);} catch(...){} }
+    return !localHandlers.empty();
+  }
+  enqueueDispatch(EventTypeId::Camera, data); return true;
+}
+
+bool EventManager::triggerCameraTargetChanged(std::weak_ptr<Entity> newTarget,
+                                              std::weak_ptr<Entity> oldTarget,
+                                              DispatchMode mode) const {
+  auto ev = std::make_shared<CameraTargetChangedEvent>(newTarget, oldTarget);
+  EventData data; data.typeId = EventTypeId::Camera; data.setActive(true); data.event = ev; data.name = "trigger_camera_target_changed";
+  size_t handlerCount = 0; { std::lock_guard<std::mutex> lock(m_handlersMutex);
+    handlerCount = m_handlersByType[static_cast<size_t>(EventTypeId::Camera)].size(); }
+  if (handlerCount == 0) { try { ev->execute(); } catch (...) {} return true; }
+  if (mode == DispatchMode::Immediate) {
+    std::vector<FastEventHandler> localHandlers; {
+      std::lock_guard<std::mutex> lock(m_handlersMutex);
+      const auto &handlers = m_handlersByType[static_cast<size_t>(EventTypeId::Camera)];
+      localHandlers.reserve(handlers.size()); 
+      std::copy_if(handlers.begin(), handlers.end(), std::back_inserter(localHandlers), [](const auto& h) { return static_cast<bool>(h); });
+    }
+    for (const auto &h : localHandlers) { try { h(data);} catch (...) { EVENT_ERROR("Handler exception in triggerCameraTargetChanged"); } }
+    std::vector<FastEventHandler> nh; { std::lock_guard<std::mutex> lock(m_handlersMutex);
+      auto it = m_nameHandlers.find(data.name); 
+      if (it != m_nameHandlers.end()) {
+        std::copy_if(it->second.begin(), it->second.end(), std::back_inserter(nh), [](const auto& h) { return static_cast<bool>(h); });
+      }
+    }
+    for (const auto &h: nh) { try { h(data);} catch(...){} }
+    return !localHandlers.empty();
+  }
+  enqueueDispatch(EventTypeId::Camera, data); return true;
 }

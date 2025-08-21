@@ -160,7 +160,7 @@ bool isShutdown() const;
 
 The TextureManager works seamlessly with:
 - **[UIManager](../ui/UIManager_Guide.md)**: UI textures and icons
-- **[GameEngine](../GameEngine.md)**: Integrated into main game loop
+- **[GameEngine](../core/GameEngine.md)**: Integrated into main game loop
 - **GameStates**: State-specific texture loading and management
 
 The TextureManager provides essential graphics capabilities that enhance the game experience while maintaining efficient resource usage and easy integration with game logic.

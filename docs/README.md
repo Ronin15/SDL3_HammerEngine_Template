@@ -24,8 +24,8 @@ The Hammer Game Engine is a high-performance game development framework built on
 ### GameEngine & Core Systems
 Foundation systems that power the game engine architecture and timing.
 
-- **[GameEngine](GameEngine.md)** - Central engine singleton managing all systems and coordination
-- **[GameLoop](GameLoop.md)** - Industry-standard timing with fixed/variable timestep support
+- **[GameEngine](core/GameEngine.md)** - Central engine singleton managing all systems and coordination
+- **[GameLoop](core/GameLoop.md)** - Industry-standard timing with fixed/variable timestep support
 - **[TimestepManager](managers/TimestepManager.md)** - Simplified timing system with 1:1 frame mapping
 
 ### AI System
@@ -42,6 +42,7 @@ Comprehensive event management system with EventManager as the single source of 
 - **[EventManager Quick Reference](events/EventManager_QuickReference.md)** - Fast API lookup for all event functionality through EventManager
 - **[EventManager Advanced](events/EventManager_Advanced.md)** - Advanced topics like threading, performance optimization, and complex event patterns
 - **[EventManager Examples](events/EventManager_Examples.cpp)** - Comprehensive code examples and best practices
+- **[EventFactory](events/EventFactory.md)** - Definition-driven creation, custom creators, and event sequences
 
 ### UI System
 Comprehensive UI system with professional theming, animations, layouts, content-aware auto-sizing, and event handling for creating polished game interfaces.
@@ -54,8 +55,8 @@ Comprehensive UI system with professional theming, animations, layouts, content-
 ### Threading System
 High-performance multithreading framework with intelligent WorkerBudget allocation and priority-based task scheduling.
 
-- **[ThreadSystem](ThreadSystem.md)** - Complete threading system documentation with WorkerBudget allocation, buffer thread utilization, priority scheduling, engine integration, implementation details, and production best practices
-- **WorkerBudget System** - Tiered resource allocation strategy (Tier 1: single-threaded, Tier 2: minimal allocation, Tier 3: AI 60%/Events 30% of remaining workers)
+- **[ThreadSystem](core/ThreadSystem.md)** - Complete threading system documentation with WorkerBudget allocation, buffer thread utilization, priority scheduling, engine integration, implementation details, and production best practices
+- **WorkerBudget System** - Tiered resource allocation strategy (Tier 1: single-threaded, Tier 2: minimal allocation, Tier 3: AI ~45% / Particles ~25% / Events ~20% of remaining workers; buffer retained for bursts)
 - **Priority-Based Scheduling** - Five-level priority system (Critical, High, Normal, Low, Idle) for optimal task ordering
 - **Buffer Thread Utilization** - Intelligent scaling based on workload thresholds (AI: >1000 entities, Events: >100 events)
 - **Hardware Adaptive** - Automatic scaling from ultra low-end (single-threaded) to high-end (multi-threaded) systems
@@ -84,11 +85,11 @@ Some managers (e.g., ParticleManager, SaveGameManager) are tightly integrated wi
 ### Utility Systems
 Core utility classes and helper systems used throughout the engine.
 
-- **[Logger System](Logger.md)** - Comprehensive logging system with debug/release optimization and system-specific macros
+- **[Logger System](utils/Logger.md)** - Comprehensive logging system with debug/release optimization and system-specific macros
 - **[JsonReader](utils/JsonReader.md)** - RFC 8259 compliant JSON parser with type-safe accessors and robust error handling
 - **[JSON Resource Loading](utils/JSON_Resource_Loading_Guide.md)** - Complete guide to loading items, materials, currency, and game resources from JSON files with ResourceTemplateManager integration
-- **[Binary Serialization](SERIALIZATION.md)** - Fast, header-only serialization system for game data
-- **[Performance Changelog](PERFORMANCE_CHANGELOG.md)** - Detailed performance optimization history and benchmarks
+- **[Binary Serialization](utils/SERIALIZATION.md)** - Fast, header-only serialization system for game data
+- **[Performance Notes](../hammer_engine_performance.md)** - Detailed performance optimization history and benchmarks
 
 ## Resource System Integration
 
@@ -173,14 +174,14 @@ The Hammer Game Engine provides several core systems that work together:
 - **Manager Systems**: Resource management for fonts, textures, audio, and more
 
 ### Quick Links
-- **[GameEngine Setup](GameEngine.md#quick-start)** - Initialize the engine
-- **[GameLoop Setup](GameLoop.md#quick-start)** - Configure main game loop
-- **[TimestepManager Setup](TimestepManager.md#quick-start)** - Timing system configuration
+- **[GameEngine Setup](core/GameEngine.md#quick-start)** - Initialize the engine
+- **[GameLoop Setup](core/GameLoop.md#quick-start)** - Configure main game loop
+- **[TimestepManager Setup](managers/TimestepManager.md#quick-start)** - Timing system configuration
 
 - **[AI Quick Start](ai/BehaviorQuickReference.md)** - Set up AI behaviors in minutes
 - **[Event Quick Start](events/EventManager_QuickReference.md)** - Event system essentials with EventManager
 - **[UI Quick Start](ui/UIManager_Guide.md#quick-start)** - Create UI components with auto-sizing
-- **[Threading Setup](ThreadSystem.md#quick-start)** - Initialize multi-threading
+- **[Threading Setup](core/ThreadSystem.md#quick-start)** - Initialize multi-threading
 
 ## Key Features
 
@@ -201,7 +202,7 @@ The Hammer Game Engine provides several core systems that work together:
 ### Performance Optimized
 - **Scales to 10,000+ NPCs**: Linear performance scaling with distance optimization and WorkerBudget allocation
 - **Priority-Based Threading**: Critical tasks processed first with tiered worker allocation and optimal resource distribution
-- **WorkerBudget Allocation**: Intelligent tiered resource distribution (Engine: 1-2 workers, AI: 60% of remaining, Events: 30% of remaining, Buffer: dynamic scaling)
+- **WorkerBudget Allocation**: Intelligent tiered resource distribution (Engine: 1–2 workers, AI: ~45% of remaining, Particles: ~25%, Events: ~20%, Buffer: dynamic scaling)
 - **Efficient UI Rendering**: Only processes visible components with auto-sizing
 - **Memory Optimizations**: Smart pointers and cache-friendly data structures
 - **Batched Operations**: Bulk processing for better performance across all systems
@@ -224,14 +225,14 @@ The Hammer Game Engine provides several core systems that work together:
 ## Support and Troubleshooting
 
 For issues with specific systems, see the troubleshooting sections in each system's documentation:
-- Core engine issues: See [GameEngine Documentation](GameEngine.md)
-- Game loop issues: See [GameLoop Best Practices](GameLoop.md#best-practices)
-- Timing issues: See [TimestepManager Best Practices](TimestepManager.md#best-practices)
-- Logger issues: See [Logger Best Practices](Logger.md#best-practices)
+- Core engine issues: See [GameEngine Documentation](core/GameEngine.md)
+- Game loop issues: See [GameLoop Best Practices](core/GameLoop.md#best-practices)
+- Timing issues: See [TimestepManager Best Practices](managers/TimestepManager.md#best-practices)
+- Logger issues: See [Logger Best Practices](utils/Logger.md#best-practices)
 - AI issues: See [AI System Overview](ai/AIManager.md) and [Behavior Modes](ai/BehaviorModes.md)
 - Event issues: See [EventManager Overview](events/EventManager.md) and [EventManager Advanced](events/EventManager_Advanced.md)
 - UI issues: See [UIManager Guide](ui/UIManager_Guide.md), [Auto-Sizing System](ui/Auto_Sizing_System.md), and [DPI-Aware Font System](ui/DPI_Aware_Font_System.md)
-- Threading issues: See [ThreadSystem](ThreadSystem.md)
+- Threading issues: See [ThreadSystem](core/ThreadSystem.md)
 
 ---
 

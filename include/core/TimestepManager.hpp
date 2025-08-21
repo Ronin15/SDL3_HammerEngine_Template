@@ -7,6 +7,7 @@
 #define TIMESTEP_MANAGER_HPP
 
 #include <cstdint>
+#include <chrono>
 #include <SDL3/SDL.h>
 
 /**
@@ -113,9 +114,9 @@ private:
     float m_fixedTimestep;               // Fixed timestep for updates (seconds)
     float m_targetFrameTime;             // Target frame time (1/targetFPS)
     
-    // Frame timing (SDL_GetTicks() returns Uint64 milliseconds)
-    Uint64 m_frameStart;
-    Uint64 m_lastFrameTime;
+    // Frame timing (std::chrono for high precision, consistent with GameLoop)
+    std::chrono::high_resolution_clock::time_point m_frameStart;
+    std::chrono::high_resolution_clock::time_point m_lastFrameTime;
     
     // Simplified timing pattern (eliminates accumulator drift)
     double m_accumulator;                // Simple frame timing state
@@ -125,7 +126,7 @@ private:
     uint32_t m_lastFrameTimeMs;         // Last frame duration in milliseconds
     float m_currentFPS;                 // Current measured FPS
     uint32_t m_frameCount;              // Frame counter for FPS calculation
-    Uint64 m_fpsLastUpdate;             // Last FPS update time in milliseconds
+    std::chrono::high_resolution_clock::time_point m_fpsLastUpdate;             // Last FPS update time
     
     // State flags
     bool m_shouldRender;                // True when render should happen this frame

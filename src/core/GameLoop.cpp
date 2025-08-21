@@ -172,14 +172,13 @@ void GameLoop::runUpdateWorker(const HammerEngine::WorkerBudget& budget) {
 
     // System capability detection
     bool canUseParallelUpdates = (budget.engineReserved >= 2);
-    bool isHighEndSystem = (budget.totalWorkers > 4);
 
-    // Initial conservative sleep estimate
-    auto adaptiveSleepDuration = std::chrono::microseconds(
-        static_cast<long>(targetFrameTime.count() * 0.3f)
+    // Initial fixed sleep duration for consistent frame timing
+    const auto fixedSleepDuration = std::chrono::microseconds(
+        static_cast<long>(targetFrameTime.count() * 0.92f)
     );
 
-    while (m_updateTaskRunning.load(std::memory_order_relaxed) && !m_stopRequested.load(std::memory_order_relaxed)) {
+        while (m_updateTaskRunning.load(std::memory_order_relaxed) && !m_stopRequested.load(std::memory_order_relaxed)) {
         try {
             auto updateStart = std::chrono::high_resolution_clock::now();
 
@@ -207,26 +206,35 @@ void GameLoop::runUpdateWorker(const HammerEngine::WorkerBudget& budget) {
                 avgUpdateTime = (avgUpdateTime * (performanceSamples - 1) + updateDuration) / performanceSamples;
             }
 
-            // Calculate adaptive sleep duration
+            // WAYLAND FRAME TIMING STABILIZATION
+            // Calculate frame timing with consistent sleep to eliminate jitter
             auto frameTimeElapsed = std::chrono::duration_cast<std::chrono::microseconds>(
                 updateEnd - lastUpdateStart
             );
             auto remainingTime = targetFrameTime - frameTimeElapsed;
 
             if (remainingTime.count() > 0) {
-                // Adjust sleep based on system responsiveness
-                float sleepFactor = isHighEndSystem ? 0.95f : 0.85f; // High-end can sleep closer to deadline
-                adaptiveSleepDuration = std::chrono::microseconds(
-                    static_cast<long>(remainingTime.count() * sleepFactor)
-                );
-
-                // Ensure minimum sleep to avoid busy waiting
-                const auto minSleep = std::chrono::microseconds(100);
-                if (adaptiveSleepDuration < minSleep) {
-                    adaptiveSleepDuration = minSleep;
+                // Use FIXED sleep timing for consistent frame delivery on Wayland
+                // This eliminates the adaptive sleep variations that cause NPC bouncing
+                
+                // Only use fixed timing if we have sufficient remaining time
+                if (remainingTime >= fixedSleepDuration) {
+                    std::this_thread::sleep_for(fixedSleepDuration);
+                    
+                    // Micro-sleep for remaining time to hit precise timing
+                    auto afterSleep = std::chrono::high_resolution_clock::now();
+                    auto actualRemaining = targetFrameTime - std::chrono::duration_cast<std::chrono::microseconds>(
+                        afterSleep - lastUpdateStart
+                    );
+                    
+                    if (actualRemaining.count() > 50) { // Only micro-sleep if >50μs remaining
+                        std::this_thread::sleep_for(std::chrono::microseconds(actualRemaining.count() / 2));
+                    }
+                } else {
+                    // Fallback to shorter fixed sleep if running behind
+                    const auto shortSleep = std::chrono::microseconds(100);
+                    std::this_thread::sleep_for(shortSleep);
                 }
-
-                std::this_thread::sleep_for(adaptiveSleepDuration);
             } else {
                 // Running behind - yield to other threads
                 std::this_thread::yield();
