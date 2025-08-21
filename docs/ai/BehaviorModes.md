@@ -8,6 +8,11 @@
 
 The Hammer Game Engine AI system includes comprehensive mode-based behavior configuration for all AI behaviors. These modes provide automatic setup for common patterns, eliminating manual configuration while ensuring consistent behavior across different NPC types. The system supports 8 distinct behavior types, each with multiple modes for specialized use cases.
 
+See also:
+- [AIManager](AIManager.md) — overview, architecture, and performance
+- [ThreadSystem](../core/ThreadSystem.md) — priorities and WorkerBudget
+- [GameEngine](../core/GameEngine.md) — update integration and buffering
+
 ## Complete Behavior System
 
 | Behavior | Purpose | Complexity | Modes Available |
@@ -62,20 +67,20 @@ IdleBehavior provides minimal movement for entities that should remain mostly st
 ```cpp
 void setupIdleBehaviors() {
     // Stationary - completely still
-    auto stationary = std::make_unique<IdleBehavior>(IdleBehavior::IdleMode::STATIONARY);
-    AIManager::Instance().registerBehavior("Stationary", std::move(stationary));
+    auto stationary = std::make_shared<IdleBehavior>(IdleBehavior::IdleMode::STATIONARY);
+    AIManager::Instance().registerBehavior("Stationary", stationary);
 
     // Subtle sway - gentle life-like movement
-    auto subtleSway = std::make_unique<IdleBehavior>(IdleBehavior::IdleMode::SUBTLE_SWAY, 25.0f);
-    AIManager::Instance().registerBehavior("IdleSway", std::move(subtleSway));
+    auto subtleSway = std::make_shared<IdleBehavior>(IdleBehavior::IdleMode::SUBTLE_SWAY, 25.0f);
+    AIManager::Instance().registerBehavior("IdleSway", subtleSway);
 
     // Occasional turn - alert but stationary
-    auto occasionalTurn = std::make_unique<IdleBehavior>(IdleBehavior::IdleMode::OCCASIONAL_TURN);
-    AIManager::Instance().registerBehavior("IdleTurn", std::move(occasionalTurn));
+    auto occasionalTurn = std::make_shared<IdleBehavior>(IdleBehavior::IdleMode::OCCASIONAL_TURN);
+    AIManager::Instance().registerBehavior("IdleTurn", occasionalTurn);
 
     // Light fidget - nervous movement
-    auto lightFidget = std::make_unique<IdleBehavior>(IdleBehavior::IdleMode::LIGHT_FIDGET, 15.0f);
-    AIManager::Instance().registerBehavior("IdleFidget", std::move(lightFidget));
+    auto lightFidget = std::make_shared<IdleBehavior>(IdleBehavior::IdleMode::LIGHT_FIDGET, 15.0f);
+    AIManager::Instance().registerBehavior("IdleFidget", lightFidget);
 }
 ```
 
@@ -126,34 +131,34 @@ void setupWanderBehaviors() {
     float worldHeight = 720.0f;
 
     // Small area wander - minimal local movement
-    auto smallWander = std::make_unique<WanderBehavior>(
+    auto smallWander = std::make_shared<WanderBehavior>(
         WanderBehavior::WanderMode::SMALL_AREA, 1.5f
     );
     smallWander->setScreenDimensions(worldWidth, worldHeight);
-    AIManager::Instance().registerBehavior("SmallWander", std::move(smallWander));
+    AIManager::Instance().registerBehavior("SmallWander", smallWander);
 
     // Medium area wander - standard NPC behavior
-    auto mediumWander = std::make_unique<WanderBehavior>(
+    auto mediumWander = std::make_shared<WanderBehavior>(
         WanderBehavior::WanderMode::MEDIUM_AREA, 2.0f
     );
     mediumWander->setScreenDimensions(worldWidth, worldHeight);
-    AIManager::Instance().registerBehavior("Wander", std::move(mediumWander));
+    AIManager::Instance().registerBehavior("Wander", mediumWander);
 
     // Large area wander - wide exploration
-    auto largeWander = std::make_unique<WanderBehavior>(
+    auto largeWander = std::make_shared<WanderBehavior>(
         WanderBehavior::WanderMode::LARGE_AREA, 2.5f
     );
     largeWander->setScreenDimensions(worldWidth, worldHeight);
-    AIManager::Instance().registerBehavior("LargeWander", std::move(largeWander));
+    AIManager::Instance().registerBehavior("LargeWander", largeWander);
 
     // Event target wander - objective-based movement
-    auto eventWander = std::make_unique<WanderBehavior>(
+    auto eventWander = std::make_shared<WanderBehavior>(
         WanderBehavior::WanderMode::EVENT_TARGET, 2.0f
     );
     eventWander->setScreenDimensions(worldWidth, worldHeight);
     // Set target position after assignment to entity
     eventWander->setCenterPoint(Vector2D(400, 300)); // Custom target location
-    AIManager::Instance().registerBehavior("EventWander", std::move(eventWander));
+    AIManager::Instance().registerBehavior("EventWander", eventWander);
 }
 ```
 
@@ -206,34 +211,34 @@ void setupPatrolBehaviors() {
     float worldHeight = 720.0f;
 
     // Fixed waypoint patrol - traditional predefined routes
-    auto fixedPatrol = std::make_unique<PatrolBehavior>(
+    auto fixedPatrol = std::make_shared<PatrolBehavior>(
         PatrolBehavior::PatrolMode::FIXED_WAYPOINTS, 1.5f
     );
     fixedPatrol->setScreenDimensions(worldWidth, worldHeight);
-    AIManager::Instance().registerBehavior("Patrol", std::move(fixedPatrol));
+    AIManager::Instance().registerBehavior("Patrol", fixedPatrol);
 
     // Random area patrol - dynamic rectangular coverage
-    auto randomPatrol = std::make_unique<PatrolBehavior>(
+    auto randomPatrol = std::make_shared<PatrolBehavior>(
         PatrolBehavior::PatrolMode::RANDOM_AREA, 2.0f
     );
     randomPatrol->setScreenDimensions(worldWidth, worldHeight);
-    AIManager::Instance().registerBehavior("RandomPatrol", std::move(randomPatrol));
+    AIManager::Instance().registerBehavior("RandomPatrol", randomPatrol);
 
     // Circular area patrol - perimeter defense
-    auto circlePatrol = std::make_unique<PatrolBehavior>(
+    auto circlePatrol = std::make_shared<PatrolBehavior>(
         PatrolBehavior::PatrolMode::CIRCULAR_AREA, 1.8f
     );
     circlePatrol->setScreenDimensions(worldWidth, worldHeight);
-    AIManager::Instance().registerBehavior("CirclePatrol", std::move(circlePatrol));
+    AIManager::Instance().registerBehavior("CirclePatrol", circlePatrol);
 
     // Event target patrol - objective protection
-    auto eventPatrol = std::make_unique<PatrolBehavior>(
+    auto eventPatrol = std::make_shared<PatrolBehavior>(
         PatrolBehavior::PatrolMode::EVENT_TARGET, 2.2f
     );
     eventPatrol->setScreenDimensions(worldWidth, worldHeight);
     // Optional: Set custom event target position
     eventPatrol->setEventTarget(Vector2D(640, 360), 200.0f, 6);
-    AIManager::Instance().registerBehavior("EventTarget", std::move(eventPatrol));
+    AIManager::Instance().registerBehavior("EventTarget", eventPatrol);
 }
 ```
 
@@ -283,35 +288,35 @@ void setupFleeBehaviors() {
     float worldHeight = 720.0f;
 
     // Panic flee - erratic escape
-    auto panicFlee = std::make_unique<FleeBehavior>(
+    auto panicFlee = std::make_shared<FleeBehavior>(
         FleeBehavior::FleeMode::PANIC_FLEE, 4.0f, 400.0f
     );
     panicFlee->setScreenBounds(worldWidth, worldHeight);
-    AIManager::Instance().registerBehavior("PanicFlee", std::move(panicFlee));
+    AIManager::Instance().registerBehavior("PanicFlee", panicFlee);
 
     // Strategic retreat - calculated escape
-    auto strategicRetreat = std::make_unique<FleeBehavior>(
+    auto strategicRetreat = std::make_shared<FleeBehavior>(
         FleeBehavior::FleeMode::STRATEGIC_RETREAT, 3.5f, 350.0f
     );
     strategicRetreat->setScreenBounds(worldWidth, worldHeight);
-    AIManager::Instance().registerBehavior("Retreat", std::move(strategicRetreat));
+    AIManager::Instance().registerBehavior("Retreat", strategicRetreat);
 
     // Evasive maneuver - zigzag escape
-    auto evasiveManeuver = std::make_unique<FleeBehavior>(
+    auto evasiveManeuver = std::make_shared<FleeBehavior>(
         FleeBehavior::FleeMode::EVASIVE_MANEUVER, 4.2f, 400.0f
     );
     evasiveManeuver->setScreenBounds(worldWidth, worldHeight);
-    AIManager::Instance().registerBehavior("Evade", std::move(evasiveManeuver));
+    AIManager::Instance().registerBehavior("Evade", evasiveManeuver);
 
     // Seek cover - tactical escape
-    auto seekCover = std::make_unique<FleeBehavior>(
+    auto seekCover = std::make_shared<FleeBehavior>(
         FleeBehavior::FleeMode::SEEK_COVER, 3.8f, 380.0f
     );
     seekCover->setScreenBounds(worldWidth, worldHeight);
     // Add safe zones
     seekCover->addSafeZone(Vector2D(100, 100), 50.0f);
     seekCover->addSafeZone(Vector2D(600, 400), 75.0f);
-    AIManager::Instance().registerBehavior("SeekCover", std::move(seekCover));
+    AIManager::Instance().registerBehavior("SeekCover", seekCover);
 }
 ```
 
@@ -367,34 +372,34 @@ FollowBehavior provides sophisticated target following with different formation 
 ```cpp
 void setupFollowBehaviors() {
     // Close follow - pets and close companions
-    auto closeFollow = std::make_unique<FollowBehavior>(
+    auto closeFollow = std::make_shared<FollowBehavior>(
         FollowBehavior::FollowMode::CLOSE_FOLLOW, 2.5f
     );
-    AIManager::Instance().registerBehavior("FollowClose", std::move(closeFollow));
+    AIManager::Instance().registerBehavior("FollowClose", closeFollow);
 
     // Loose follow - standard companions
-    auto looseFollow = std::make_unique<FollowBehavior>(
+    auto looseFollow = std::make_shared<FollowBehavior>(
         FollowBehavior::FollowMode::LOOSE_FOLLOW, 2.2f
     );
-    AIManager::Instance().registerBehavior("Follow", std::move(looseFollow));
+    AIManager::Instance().registerBehavior("Follow", looseFollow);
 
     // Flanking follow - tactical positioning
-    auto flankingFollow = std::make_unique<FollowBehavior>(
+    auto flankingFollow = std::make_shared<FollowBehavior>(
         FollowBehavior::FollowMode::FLANKING_FOLLOW, 2.3f
     );
-    AIManager::Instance().registerBehavior("FollowFlank", std::move(flankingFollow));
+    AIManager::Instance().registerBehavior("FollowFlank", flankingFollow);
 
     // Rear guard - protection from behind
-    auto rearGuard = std::make_unique<FollowBehavior>(
+    auto rearGuard = std::make_shared<FollowBehavior>(
         FollowBehavior::FollowMode::REAR_GUARD, 2.0f
     );
-    AIManager::Instance().registerBehavior("RearGuard", std::move(rearGuard));
+    AIManager::Instance().registerBehavior("RearGuard", rearGuard);
 
     // Escort formation - multiple guard positions
-    auto escortFormation = std::make_unique<FollowBehavior>(
+    auto escortFormation = std::make_shared<FollowBehavior>(
         FollowBehavior::FollowMode::ESCORT_FORMATION, 2.4f
     );
-    AIManager::Instance().registerBehavior("EscortFormation", std::move(escortFormation));
+    AIManager::Instance().registerBehavior("EscortFormation", escortFormation);
 }
 ```
 
@@ -453,13 +458,13 @@ void setupGuardBehaviors() {
     float guardRadius = 150.0f;
 
     // Static guard - stationary post duty
-    auto staticGuard = std::make_unique<GuardBehavior>(
+    auto staticGuard = std::make_shared<GuardBehavior>(
         GuardBehavior::GuardMode::STATIC_GUARD, guardPost, guardRadius
     );
-    AIManager::Instance().registerBehavior("PostGuard", std::move(staticGuard));
+    AIManager::Instance().registerBehavior("PostGuard", staticGuard);
 
     // Patrol guard - route-based security
-    auto patrolGuard = std::make_unique<GuardBehavior>(
+    auto patrolGuard = std::make_shared<GuardBehavior>(
         GuardBehavior::GuardMode::PATROL_GUARD, guardPost, guardRadius
     );
     // Add patrol waypoints
@@ -467,27 +472,27 @@ void setupGuardBehaviors() {
     patrolGuard->addPatrolWaypoint(Vector2D(300, 100));
     patrolGuard->addPatrolWaypoint(Vector2D(300, 300));
     patrolGuard->addPatrolWaypoint(Vector2D(100, 300));
-    AIManager::Instance().registerBehavior("PatrolGuard", std::move(patrolGuard));
+    AIManager::Instance().registerBehavior("PatrolGuard", patrolGuard);
 
     // Area guard - zone protection
-    auto areaGuard = std::make_unique<GuardBehavior>(
+    auto areaGuard = std::make_shared<GuardBehavior>(
         GuardBehavior::GuardMode::AREA_GUARD, guardPost, guardRadius
     );
     areaGuard->setGuardArea(Vector2D(50, 50), Vector2D(350, 350)); // Rectangular area
-    AIManager::Instance().registerBehavior("AreaGuard", std::move(areaGuard));
+    AIManager::Instance().registerBehavior("AreaGuard", areaGuard);
 
     // Roaming guard - mobile security
-    auto roamingGuard = std::make_unique<GuardBehavior>(
+    auto roamingGuard = std::make_shared<GuardBehavior>(
         GuardBehavior::GuardMode::ROAMING_GUARD, guardPost, guardRadius
     );
-    AIManager::Instance().registerBehavior("RoamingGuard", std::move(roamingGuard));
+    AIManager::Instance().registerBehavior("RoamingGuard", roamingGuard);
 
     // Alert guard - high-security response
-    auto alertGuard = std::make_unique<GuardBehavior>(
+    auto alertGuard = std::make_shared<GuardBehavior>(
         GuardBehavior::GuardMode::ALERT_GUARD, guardPost, guardRadius
     );
     alertGuard->setThreatDetectionRange(300.0f);
-    AIManager::Instance().registerBehavior("AlertGuard", std::move(alertGuard));
+    AIManager::Instance().registerBehavior("AlertGuard", alertGuard);
 }
 ```
 
@@ -567,46 +572,46 @@ thy)
 ```cpp
 void setupAttackBehaviors() {
     // Melee attack - close combat
-    auto meleeAttack = std::make_unique<AttackBehavior>(
+    auto meleeAttack = std::make_shared<AttackBehavior>(
         AttackBehavior::AttackMode::MELEE_ATTACK, 80.0f, 15.0f
     );
-    AIManager::Instance().registerBehavior("Melee", std::move(meleeAttack));
+    AIManager::Instance().registerBehavior("Melee", meleeAttack);
 
     // Ranged attack - projectile combat
-    auto rangedAttack = std::make_unique<AttackBehavior>(
+    auto rangedAttack = std::make_shared<AttackBehavior>(
         AttackBehavior::AttackMode::RANGED_ATTACK, 250.0f, 12.0f
     );
-    AIManager::Instance().registerBehavior("Ranged", std::move(rangedAttack));
+    AIManager::Instance().registerBehavior("Ranged", rangedAttack);
 
     // Charge attack - powerful rush
-    auto chargeAttack = std::make_unique<AttackBehavior>(
+    auto chargeAttack = std::make_shared<AttackBehavior>(
         AttackBehavior::AttackMode::CHARGE_ATTACK, 120.0f, 20.0f
     );
-    AIManager::Instance().registerBehavior("Charge", std::move(chargeAttack));
+    AIManager::Instance().registerBehavior("Charge", chargeAttack);
 
     // Ambush attack - stealth strike
-    auto ambushAttack = std::make_unique<AttackBehavior>(
+    auto ambushAttack = std::make_shared<AttackBehavior>(
         AttackBehavior::AttackMode::AMBUSH_ATTACK, 60.0f, 18.0f
     );
-    AIManager::Instance().registerBehavior("Ambush", std::move(ambushAttack));
+    AIManager::Instance().registerBehavior("Ambush", ambushAttack);
 
     // Coordinated attack - team combat
-    auto coordinatedAttack = std::make_unique<AttackBehavior>(
+    auto coordinatedAttack = std::make_shared<AttackBehavior>(
         AttackBehavior::AttackMode::COORDINATED_ATTACK, 90.0f, 14.0f
     );
-    AIManager::Instance().registerBehavior("Coordinated", std::move(coordinatedAttack));
+    AIManager::Instance().registerBehavior("Coordinated", coordinatedAttack);
 
     // Hit and run - mobile combat
-    auto hitAndRun = std::make_unique<AttackBehavior>(
+    auto hitAndRun = std::make_shared<AttackBehavior>(
         AttackBehavior::AttackMode::HIT_AND_RUN, 100.0f, 13.0f
     );
-    AIManager::Instance().registerBehavior("HitAndRun", std::move(hitAndRun));
+    AIManager::Instance().registerBehavior("HitAndRun", hitAndRun);
 
     // Berserker attack - aggressive assault
-    auto berserkerAttack = std::make_unique<AttackBehavior>(
+    auto berserkerAttack = std::make_shared<AttackBehavior>(
         AttackBehavior::AttackMode::BERSERKER_ATTACK, 85.0f, 16.0f
     );
-    AIManager::Instance().registerBehavior("Berserker", std::move(berserkerAttack));
+    AIManager::Instance().registerBehavior("Berserker", berserkerAttack);
 }
 ```
 
@@ -618,12 +623,12 @@ ChaseBehavior provides target pursuit without modes (single configuration approa
 
 ```cpp
 void setupChaseBehavior() {
-    auto chase = std::make_unique<ChaseBehavior>(
+    auto chase = std::make_shared<ChaseBehavior>(
         3.0f,    // Chase speed
         500.0f,  // Max range
         50.0f    // Min range
     );
-    AIManager::Instance().registerBehavior("Chase", std::move(chase));
+    AIManager::Instance().registerBehavior("Chase", chase);
 }
 ```
 
@@ -849,7 +854,7 @@ void handleContextChange(EntityPtr entity, const std::string& newContext) {
 ```cpp
 // Override mode defaults with custom settings
 void setupCustomPatrolArea() {
-    auto customPatrol = std::make_unique<PatrolBehavior>(
+    auto customPatrol = std::make_shared<PatrolBehavior>(
         PatrolBehavior::PatrolMode::RANDOM_AREA, 2.0f
     );
     customPatrol->setScreenDimensions(1280.0f, 720.0f);
@@ -861,12 +866,12 @@ void setupCustomPatrolArea() {
     customPatrol->setMinWaypointDistance(120.0f);
     customPatrol->setAutoRegenerate(false); // Static waypoints
 
-    AIManager::Instance().registerBehavior("CustomPatrol", std::move(customPatrol));
+    AIManager::Instance().registerBehavior("CustomPatrol", customPatrol);
 }
 
 // Configure safe zones for flee behavior
 void setupSafeZones() {
-    auto fleeBehavior = std::make_unique<FleeBehavior>(
+    auto fleeBehavior = std::make_shared<FleeBehavior>(
         FleeBehavior::FleeMode::SEEK_COVER, 4.0f, 400.0f
     );
 
@@ -876,7 +881,7 @@ void setupSafeZones() {
     fleeBehavior->addSafeZone(Vector2D(300, 600), 60.0f);  // Shelter
     fleeBehavior->setScreenBounds(1280.0f, 720.0f);
 
-    AIManager::Instance().registerBehavior("FleeToSafety", std::move(fleeBehavior));
+    AIManager::Instance().registerBehavior("FleeToSafety", fleeBehavior);
 }
 ```
 
@@ -886,27 +891,27 @@ void setupSafeZones() {
 // Optimize for different performance scenarios
 void setupPerformanceOptimizedBehaviors() {
     // Low-performance mode - reduced computation
-    auto lightWander = std::make_unique<WanderBehavior>(
+    auto lightWander = std::make_shared<WanderBehavior>(
         WanderBehavior::WanderMode::SMALL_AREA, 1.0f
     );
     lightWander->setChangeDirectionInterval(5000.0f); // Less frequent updates
     lightWander->setOffscreenProbability(0.0f);       // Never go offscreen
-    AIManager::Instance().registerBehavior("LightWander", std::move(lightWander));
+    AIManager::Instance().registerBehavior("LightWander", lightWander);
 
     // High-performance mode - enhanced activity
-    auto activePatrol = std::make_unique<PatrolBehavior>(
+    auto activePatrol = std::make_shared<PatrolBehavior>(
         PatrolBehavior::PatrolMode::CIRCULAR_AREA, 3.0f
     );
     activePatrol->setAutoRegenerate(true);
     activePatrol->setMinWaypointDistance(40.0f);       // Tighter patterns
-    AIManager::Instance().registerBehavior("ActivePatrol", std::move(activePatrol));
+    AIManager::Instance().registerBehavior("ActivePatrol", activePatrol);
 
     // Memory-efficient idle behavior
-    auto efficientIdle = std::make_unique<IdleBehavior>(
+    auto efficientIdle = std::make_shared<IdleBehavior>(
         IdleBehavior::IdleMode::STATIONARY
     );
     efficientIdle->setMovementFrequency(0.0f);         // No movement calculations
-    AIManager::Instance().registerBehavior("EfficientIdle", std::move(efficientIdle));
+    AIManager::Instance().registerBehavior("EfficientIdle", efficientIdle);
 }
 ```
 
@@ -933,7 +938,7 @@ void setupPerformanceOptimizedBehaviors() {
 ```cpp
 // Always set screen dimensions first
 void setupBehavior() {
-    auto behavior = std::make_unique<WanderBehavior>(
+    auto behavior = std::make_shared<WanderBehavior>(
         WanderBehavior::WanderMode::MEDIUM_AREA, 2.0f
     );
     behavior->setScreenDimensions(worldWidth, worldHeight);

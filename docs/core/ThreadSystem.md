@@ -26,10 +26,10 @@ ThreadSystem (Singleton)
 │       ├── Exponential Backoff
 │       └── Exception Handling
 └── WorkerBudget System (Intelligent resource allocation)
-    ├── AI: 45% allocation
-    ├── Particles: 25% allocation
-    ├── Events: 20% allocation
-    ├── Engine: 1-2 workers reserved
+    ├── AI: ~45% of remaining workers
+    ├── Particles: ~25% of remaining workers
+    ├── Events: ~20% of remaining workers
+    ├── Engine: 1–2 workers reserved
     └── Buffer: Dynamic burst capacity
 ```
 
@@ -108,7 +108,7 @@ bool isStopping() const {
 │  └─────────────────┘                                        │
 │  ┌─────────────────────────────────────────────────────────┐│
 │  │            WorkerBudget Allocation                      ││
-│  │   Engine: 10% │ AI: 60% │ Events: 30% │ Buffer: Auto    ││
+│  │ Engine: 1–2 │ AI: ~45% │ Particles: ~25% │ Events: ~20% │ Buffer ││
 │  └─────────────────────────────────────────────────────────┘│
 └─────────────────────────────────────────────────────────────
 ```
@@ -121,7 +121,7 @@ bool isStopping() const {
 - **📊 Performance Monitoring**: Built-in profiling, statistics tracking, and performance analytics
 - **🛡️ Thread Safety**: Lock-free operations where possible with comprehensive synchronization
 - **🎯 Engine Integration**: Seamless integration with AIManager, EventManager, and core systems
-- **⚙️ WorkerBudget System**: Intelligent resource allocation across engine subsystems (60% AI, 30% Events, 10% Engine coordination)
+- **⚙️ WorkerBudget System**: Intelligent resource allocation across engine subsystems (AI ~45%, Particles ~25%, Events ~20%, 1–2 engine workers reserved)
 - **🔧 Clean Shutdown**: Graceful termination with proper resource cleanup
 
 ## Quick Start
@@ -264,16 +264,18 @@ The system uses a tiered allocation strategy that adapts to hardware capabilitie
 
 **Tier 3 (5+ workers)**: High-end systems
 - GameEngine: 2 workers (optimal for coordination)
-- AI: 60% of remaining workers after engine reservation
-- Events: 30% of remaining workers after engine reservation
+- AI: ~45% of remaining workers after engine reservation
+- Particles: ~25% of remaining workers after engine reservation
+- Events: ~20% of remaining workers after engine reservation
 - Buffer: Remaining workers for burst capacity
 
 ```cpp
 struct WorkerBudget {
     size_t totalWorkers;      // Total available worker threads
     size_t engineReserved;    // Reserved for critical engine operations
-    size_t aiAllocated;       // Allocated for AI subsystem (60% of remaining)
-    size_t eventAllocated;    // Allocated for event processing (30% of remaining)
+    size_t aiAllocated;       // ~45% of remaining (AI)
+    size_t particleAllocated; // ~25% of remaining (Particles)
+    size_t eventAllocated;    // ~20% of remaining (Events)
     size_t remaining;         // Buffer workers for burst capacity
 
     size_t getOptimalWorkerCount(size_t baseAllocation, size_t workloadSize, size_t workloadThreshold) const;
@@ -284,13 +286,13 @@ struct WorkerBudget {
 
 ### Hardware Tier Classification
 
-| Hardware Tier | CPU Cores/Threads | Worker Allocation | AI Workers | Event Workers | Engine Reserved | Buffer |
-|---------------|-------------------|-------------------|------------|---------------|-----------------|--------|
-| **Ultra Low-End** | 1-2 cores/2-4 threads | 1-3 workers | 0-1 | 0-1 | 1 | 0 |
-| **Low-End** | 2-4 cores/4-8 threads | 3-7 workers | 1-3 | 1 | 1-2 | 0-1 |
-| **Mid-Range** | 4-6 cores/8-12 threads | 7-11 workers | 3-6 | 1-3 | 2 | 1-2 |
-| **High-End** | 6-8 cores/12-16 threads | 11-15 workers | 5-7 | 2-4 | 2 | 2-3 |
-| **Enthusiast** | 8+ cores/16+ threads | 15+ workers | 8+ | 4+ | 2 | 3+ |
+| Hardware Tier | CPU Cores/Threads | Workers | AI Workers | Particle Workers | Event Workers | Engine Reserved | Buffer |
+|---------------|-------------------|---------|------------|------------------|---------------|-----------------|--------|
+| **Ultra Low-End** | 1-2 cores/2-4 threads | 1-3 | 0-1 | 0 | 0-1 | 1 | 0 |
+| **Low-End** | 2-4 cores/4-8 threads | 3-7 | 1-3 | 0-1 | 0-1 | 1-2 | 0-1 |
+| **Mid-Range** | 4-6 cores/8-12 threads | 7-11 | 3-5 | 1-3 | 1-2 | 2 | 1-2 |
+| **High-End** | 6-8 cores/12-16 threads | 11-15 | 4-6 | 2-4 | 1-3 | 2 | 2-3 |
+| **Enthusiast** | 8+ cores/16+ threads | 15+ | 5-8 | 3-5 | 2-4 | 2 | 3+ |
 
 ### Real-World Allocation Examples
 
@@ -299,18 +301,20 @@ struct WorkerBudget {
 WorkerBudget budget = {
     .totalWorkers = 7,
     .engineReserved = 2,     // 29% - Enhanced engine capacity for mid-tier systems
-    .aiAllocated = 3,        // 43% - AI processing (60% of remaining 5 workers)
-    .eventAllocated = 1,     // 14% - Event handling (30% of remaining 5 workers)
-    .remaining = 1           // 14% - Buffer for burst workloads
+    .aiAllocated = 2,        // 40% - ~45% of remaining 5 workers
+    .particleAllocated = 1,  // 20% - ~25% of remaining 5 workers
+    .eventAllocated = 1,     // 20% - ~20% of remaining 5 workers
+    .remaining = 1           // 20% - Buffer for burst workloads
 };
 
 // 8-core/16-thread system (15 workers available)
 WorkerBudget budget = {
     .totalWorkers = 15,
     .engineReserved = 2,     // 13% - Enhanced engine capacity
-    .aiAllocated = 7,        // 47% - AI processing (60% of remaining 13 workers)
-    .eventAllocated = 3,     // 20% - Event handling (30% of remaining 13 workers)
-    .remaining = 3           // 20% - Buffer for burst workloads
+    .aiAllocated = 5,        // 38% - ~45% of remaining 13 workers
+    .particleAllocated = 3,  // 23% - ~25% of remaining 13 workers
+    .eventAllocated = 2,     // 15% - ~20% of remaining 13 workers
+    .remaining = 3           // 23% - Buffer for burst workloads
 };
 
 // 2-core/4-thread system (3 workers available) - Low-end
@@ -318,6 +322,7 @@ WorkerBudget budget = {
     .totalWorkers = 3,
     .engineReserved = 1,     // 33% - Critical engine operations
     .aiAllocated = 1,        // 33% - Minimal AI processing
+    .particleAllocated = 0,  // 0%  - Single-threaded fallback
     .eventAllocated = 1,     // 33% - Minimal event handling
     .remaining = 0           // No buffer available
 };
@@ -326,9 +331,10 @@ WorkerBudget budget = {
 WorkerBudget budget = {
     .totalWorkers = 11,
     .engineReserved = 2,     // 18% - Enhanced engine capacity
-    .aiAllocated = 5,        // 45% - AI processing (60% of remaining 9 workers)
-    .eventAllocated = 2,     // 18% - Event handling (30% of remaining 9 workers)
-    .remaining = 2           // 18% - Buffer for burst workloads
+    .aiAllocated = 4,        // 36% - ~45% of remaining 9 workers
+    .particleAllocated = 2,  // 18% - ~25% of remaining 9 workers
+    .eventAllocated = 1,     // 9%  - ~20% of remaining 9 workers
+    .remaining = 2           // 22% - Buffer for burst workloads
 };
 ```
 
@@ -892,13 +898,22 @@ private:
     WorkerBudget calculateOptimalBudget() {
         size_t totalWorkers = ThreadSystem::Instance().getThreadCount();
 
-        return WorkerBudget{
-            .totalWorkers = totalWorkers,
-            .engineReserved = std::max(1UL, totalWorkers / 10),      // 10%
-            .aiAllocated = (totalWorkers * 6) / 10,                  // 60%
-            .eventAllocated = (totalWorkers * 3) / 10,               // 30%
-            .remaining = 0
-        };
+        WorkerBudget budget{};
+        budget.totalWorkers = totalWorkers;
+        // Engine reservation mirrors production logic: 1 for ≤4 workers, else 2
+        budget.engineReserved = (totalWorkers <= 4) ? 1 : 2;
+
+        size_t remaining = (totalWorkers > budget.engineReserved)
+                                ? (totalWorkers - budget.engineReserved)
+                                : 0;
+        budget.aiAllocated = (remaining * 45) / 100;       // ~45%
+        budget.particleAllocated = (remaining * 25) / 100; // ~25%
+        budget.eventAllocated = (remaining * 20) / 100;    // ~20%
+
+        size_t allocated =
+            budget.aiAllocated + budget.particleAllocated + budget.eventAllocated;
+        budget.remaining = (remaining > allocated) ? (remaining - allocated) : 0;
+        return budget;
     }
 
 public:

@@ -98,7 +98,7 @@ ninja -C build
 - **Threading:** [ThreadSystem](docs/core/ThreadSystem.md)
 - **Managers:** [ParticleManager](docs/managers/ParticleManager.md), [FontManager](docs/managers/FontManager.md), [TextureManager](docs/managers/TextureManager.md), [SoundManager](docs/managers/SoundManager.md), [ResourceTemplateManager](docs/managers/ResourceTemplateManager.md), [WorldResourceManager](docs/managers/WorldResourceManager.md)
 - **UI:** [UIManager Guide](docs/ui/UIManager_Guide.md), [Auto-Sizing](docs/ui/Auto_Sizing_System.md), [DPI-Aware Fonts](docs/ui/DPI_Aware_Font_System.md)
-- **Utilities:** [JsonReader](docs/utils/JsonReader.md), [JSON Resource Loading](docs/utils/JSON_Resource_Loading_Guide.md), [Serialization](docs/utils/SERIALIZATION.md), [Performance Changelog](hammer_engine_performance.md)
+- **Utilities:** [JsonReader](docs/utils/JsonReader.md), [JSON Resource Loading](docs/utils/JSON_Resource_Loading_Guide.md), [Serialization](docs/utils/SERIALIZATION.md), [Performance Notes](hammer_engine_performance.md)
 
 ---
 

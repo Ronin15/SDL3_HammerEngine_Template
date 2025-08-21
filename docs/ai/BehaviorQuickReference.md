@@ -17,6 +17,11 @@
 | **GuardBehavior** | 5 | Complex | 7-9 | Area defense |
 | **AttackBehavior** | 7 | Complex | 8-9 | Combat AI |
 
+See also:
+- [AIManager](AIManager.md) — behavior registration and update flow
+- [Behavior Modes](BehaviorModes.md) — detailed configuration per behavior
+- [ThreadSystem](../core/ThreadSystem.md) — priorities and batching
+
 ## Mode Quick Reference
 
 ### IdleBehavior Modes
@@ -75,18 +80,18 @@ void setupAIBehaviors() {
     float w = 1280.0f, h = 720.0f;
     
     // Simple behaviors
-    ai.registerBehavior("Idle", std::make_unique<IdleBehavior>(IdleBehavior::IdleMode::SUBTLE_SWAY));
+    ai.registerBehavior("Idle", std::make_shared<IdleBehavior>(IdleBehavior::IdleMode::SUBTLE_SWAY));
     
-    auto wander = std::make_unique<WanderBehavior>(WanderBehavior::WanderMode::MEDIUM_AREA, 2.0f);
+    auto wander = std::make_shared<WanderBehavior>(WanderBehavior::WanderMode::MEDIUM_AREA, 2.0f);
     wander->setScreenDimensions(w, h);
-    ai.registerBehavior("Wander", std::move(wander));
+    ai.registerBehavior("Wander", wander);
     
     // Complex behaviors
-    auto guard = std::make_unique<GuardBehavior>(GuardBehavior::GuardMode::STATIC_GUARD, Vector2D(100,100), 150.0f);
-    ai.registerBehavior("Guard", std::move(guard));
+    auto guard = std::make_shared<GuardBehavior>(GuardBehavior::GuardMode::STATIC_GUARD, Vector2D(100,100), 150.0f);
+    ai.registerBehavior("Guard", guard);
     
-    auto attack = std::make_unique<AttackBehavior>(AttackBehavior::AttackMode::MELEE_ATTACK, 80.0f, 15.0f);
-    ai.registerBehavior("Attack", std::move(attack));
+    auto attack = std::make_shared<AttackBehavior>(AttackBehavior::AttackMode::MELEE_ATTACK, 80.0f, 15.0f);
+    ai.registerBehavior("Attack", attack);
 }
 ```
 
