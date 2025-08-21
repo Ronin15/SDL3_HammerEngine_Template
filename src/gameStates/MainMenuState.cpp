@@ -29,8 +29,6 @@ bool MainMenuState::enter() {
     waitedMs += 1;
   }
 
-  // No overlay needed for main menu - keep clean appearance
-
   // Create title using auto-positioning
   ui.createTitleAtTop("mainmenu_title", "Hammer Game Engine - Main Menu", 60);
 

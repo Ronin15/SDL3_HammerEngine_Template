@@ -26,15 +26,8 @@ AIDemoState::~AIDemoState() {
   try {
     // Note: Proper cleanup should already have happened in exit()
     // This destructor is just a safety measure in case exit() wasn't called
-
-    // Chase behavior cleanup is now handled by AIManager
-
     // Reset AI behaviors first to clear entity references
     // Don't call unassignBehaviorFromEntity here - it uses shared_from_this()
-    // Cache AIManager reference for better performance
-    AIManager &aiMgr = AIManager::Instance();
-    aiMgr.resetBehaviors();
-
     // Clear NPCs without calling clean() on them
     m_npcs.clear();
 
@@ -278,7 +271,7 @@ bool AIDemoState::exit() {
   return true;
 }
 
-void AIDemoState::update([[maybe_unused]] float deltaTime) {
+void AIDemoState::update(float deltaTime) {
   try {
     // Update player
     if (m_player) {
@@ -286,22 +279,14 @@ void AIDemoState::update([[maybe_unused]] float deltaTime) {
     }
 
     // AI Manager is updated globally by GameEngine for optimal performance
-    // This hybrid architecture provides several benefits:
-    // 1. Consistent 60 FPS updates for all 10K+ AI entities across all states
-    // 2. Optimized threading with worker budget allocation
-    // 3. No redundant updates when switching between states
-    // 4. Better cache performance from centralized batch processing
     // Entity updates are handled by AIManager::update() in GameEngine
     // No need to manually update NPCs or AIManager here
 
-    // Handle user input for the demo
   } catch (const std::exception &e) {
     GAMESTATE_ERROR("Exception in AIDemoState::update(): " + std::string(e.what()));
   } catch (...) {
     GAMESTATE_ERROR("Unknown exception in AIDemoState::update()");
   }
-
-  // Game logic only - UI updates moved to render() for thread safety
 }
 
 void AIDemoState::render() {
@@ -337,7 +322,7 @@ void AIDemoState::render() {
 
 void AIDemoState::setupAIBehaviors() {
   GAMESTATE_INFO("AIDemoState: Setting up AI behaviors using EventDemoState implementation...");
-
+  //TODO: need to move all availible behaviors into the AIManager and Event Manager NPC creation with behavior
   // Cache AIManager reference for better performance
   AIManager &aiMgr = AIManager::Instance();
 

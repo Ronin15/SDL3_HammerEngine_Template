@@ -244,14 +244,15 @@ void AdvancedAIDemoState::update(float deltaTime) {
 }
 
 void AdvancedAIDemoState::render() {
-    
+
     // Render all NPCs
     for (auto& npc : m_npcs) {
         npc->render(nullptr);  // No camera transformation needed in advanced AI demo
-        
+
         // Render health bars for NPCs with combat attributes
         auto it = m_combatAttributes.find(npc);
         if (it != m_combatAttributes.end() && !it->second.isDead) {
+            //TODO:
             // Note: Health bar rendering would be implemented with the graphics system
             // const auto& combat = it->second;
             // Vector2D pos = npc->getPosition();
@@ -262,10 +263,11 @@ void AdvancedAIDemoState::render() {
     // Render player
     if (m_player) {
         m_player->render(nullptr);  // No camera transformation needed in advanced AI demo
-        
+
         // Render player health bar
         auto it = m_combatAttributes.find(m_player);
         if (it != m_combatAttributes.end()) {
+            //TODO:
             // Player health bar rendering would go here
         }
     }
@@ -293,7 +295,7 @@ void AdvancedAIDemoState::setupAdvancedAIBehaviors() {
 
     // Cache AIManager reference for better performance
     AIManager& aiMgr = AIManager::Instance();
-
+    //TODO: Need to see if we can move all of these behaviors into the AIManager and just have events trigger NPCs creation with behavior
     // Register Idle behavior
     if (!aiMgr.hasBehavior("Idle")) {
         auto idleBehavior = std::make_unique<IdleBehavior>(IdleBehavior::IdleMode::LIGHT_FIDGET, 50.0f);
@@ -333,6 +335,7 @@ void AdvancedAIDemoState::setupAdvancedAIBehaviors() {
 }
 
 void AdvancedAIDemoState::createAdvancedNPCs() {
+    //TODO: Make an event for advanced NPC's
     // Cache AIManager reference for better performance
     AIManager& aiMgr = AIManager::Instance();
 
@@ -348,7 +351,7 @@ void AdvancedAIDemoState::createAdvancedNPCs() {
             try {
                 // Create NPC with strategic positioning for behavior showcase
                 Vector2D position;
-                
+
                 // Position NPCs in different areas based on intended behavior
                 if (i < m_idleNPCCount) {
                     // Idle NPCs in corners
@@ -370,16 +373,13 @@ void AdvancedAIDemoState::createAdvancedNPCs() {
 
                 auto npc = std::make_shared<NPC>("npc", position, 64, 64);
 
-                // Set animation properties for smooth movement
-                // Use default 100ms animation timing for consistent animations
-
                 // Set wander area to keep NPCs on screen
                 npc->setWanderArea(0, 0, m_worldWidth, m_worldHeight);
                 npc->setBoundsCheckEnabled(false);
 
                 // Initialize with Follow behavior by default for smooth movement demonstration
                 aiMgr.registerEntityForUpdates(npc, 5, "Follow");
-
+                //TODO: should be moved into the entity and NPC class based on what type of entity.
                 // Setup combat attributes for this NPC
                 CombatAttributes combat;
                 combat.health = 100.0f;
@@ -389,7 +389,7 @@ void AdvancedAIDemoState::createAdvancedNPCs() {
                 combat.attackCooldown = 1.5f;
                 combat.lastAttackTime = 0.0f;
                 combat.isDead = false;
-                
+
                 m_combatAttributes[npc] = combat;
 
                 // Add to collection
@@ -409,6 +409,7 @@ void AdvancedAIDemoState::createAdvancedNPCs() {
 }
 
 void AdvancedAIDemoState::setupCombatAttributes() {
+    //TODO: Again should be consolidated into Player or Entity class
     // Setup player combat attributes
     if (m_player) {
         CombatAttributes playerCombat;
@@ -419,18 +420,19 @@ void AdvancedAIDemoState::setupCombatAttributes() {
         playerCombat.attackCooldown = 0.8f;
         playerCombat.lastAttackTime = 0.0f;
         playerCombat.isDead = false;
-        
+
         m_combatAttributes[m_player] = playerCombat;
     }
 }
 
 void AdvancedAIDemoState::updateCombatSystem(float deltaTime) {
+    //TODO: Move to AIMAnager or maybe seperate Combat Manager?
     // Simple combat system update
     // This is architecturally integrated but kept simple for demonstration
-    
+
     for (auto& [entity, combat] : m_combatAttributes) {
         if (combat.isDead) continue;
-        
+
         // Update attack cooldowns
         if (combat.lastAttackTime > 0) {
             combat.lastAttackTime -= deltaTime;
@@ -438,7 +440,7 @@ void AdvancedAIDemoState::updateCombatSystem(float deltaTime) {
                 combat.lastAttackTime = 0;
             }
         }
-        
+
         // Simple health regeneration for demo purposes
         if (combat.health < combat.maxHealth && combat.health > 0) {
             combat.health += 5.0f * deltaTime; // 5 HP per second regen
@@ -446,7 +448,7 @@ void AdvancedAIDemoState::updateCombatSystem(float deltaTime) {
                 combat.health = combat.maxHealth;
             }
         }
-        
+
         // Check if entity should be marked as dead
         if (combat.health <= 0 && !combat.isDead) {
             combat.isDead = true;
