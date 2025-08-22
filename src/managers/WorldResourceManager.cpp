@@ -5,9 +5,9 @@
 
 #include "managers/WorldResourceManager.hpp"
 #include "core/Logger.hpp"
-#include "managers/ResourceTemplateManager.hpp"
-#include "managers/EventManager.hpp"
 #include "events/WorldEvent.hpp"
+#include "managers/EventManager.hpp"
+#include "managers/ResourceTemplateManager.hpp"
 #include <algorithm>
 #include <cassert>
 
@@ -269,7 +269,8 @@ ResourceTransactionResult WorldResourceManager::addResource(
       worldResources[resourceHandle] = newQuantity;
 
       // Fire resource change event
-      fireResourceChangeEvent(worldId, resourceHandle, currentQuantity, newQuantity, "added");
+      fireResourceChangeEvent(worldId, resourceHandle, currentQuantity,
+                              newQuantity, "added");
 
       // Invalidate caches when resources change
       invalidateAggregateCache();
@@ -347,7 +348,8 @@ ResourceTransactionResult WorldResourceManager::removeResource(
     worldResources[resourceHandle] = newQuantity;
 
     // Fire resource change event
-    fireResourceChangeEvent(worldId, resourceHandle, currentQuantity, newQuantity, "removed");
+    fireResourceChangeEvent(worldId, resourceHandle, currentQuantity,
+                            newQuantity, "removed");
 
     updateStats(false, quantity);
 
@@ -658,7 +660,8 @@ bool WorldResourceManager::isValidResourceHandle(
   }
 
   // Then check if the template exists in the ResourceTemplateManager
-  return ResourceTemplateManager::Instance().getResourceTemplate(resourceHandle) != nullptr;
+  return ResourceTemplateManager::Instance().getResourceTemplate(
+             resourceHandle) != nullptr;
 }
 
 bool WorldResourceManager::isValidQuantity(Quantity quantity) const {
@@ -701,8 +704,6 @@ bool WorldResourceManager::validateParameters(
 
   return true;
 }
-
-
 
 // Cache management methods
 void WorldResourceManager::updateResourceCache(
@@ -915,10 +916,10 @@ bool WorldResourceManager::isPerformanceOptimal() const {
 
 void WorldResourceManager::registerEventHandlers() {
   try {
-    EventManager& eventMgr = EventManager::Instance();
+    EventManager &eventMgr = EventManager::Instance();
 
     // Register handler for world events (world loaded/unloaded)
-    eventMgr.registerHandler(EventTypeId::World, [this](const EventData& data) {
+    eventMgr.registerHandler(EventTypeId::World, [this](const EventData &data) {
       if (data.isActive() && data.event) {
         // Handle world-related events from WorldManager
         auto worldEvent = std::dynamic_pointer_cast<WorldEvent>(data.event);
@@ -929,8 +930,9 @@ void WorldResourceManager::registerEventHandlers() {
     });
 
     WORLD_RESOURCE_DEBUG("WorldResourceManager event handlers registered");
-  } catch (const std::exception& ex) {
-    WORLD_RESOURCE_ERROR("Failed to register event handlers: " + std::string(ex.what()));
+  } catch (const std::exception &ex) {
+    WORLD_RESOURCE_ERROR("Failed to register event handlers: " +
+                         std::string(ex.what()));
   }
 }
 
@@ -938,79 +940,86 @@ void WorldResourceManager::unregisterEventHandlers() {
   try {
     // EventManager handles cleanup automatically during shutdown
     WORLD_RESOURCE_DEBUG("WorldResourceManager event handlers unregistered");
-  } catch (const std::exception& ex) {
-    WORLD_RESOURCE_ERROR("Failed to unregister event handlers: " + std::string(ex.what()));
+  } catch (const std::exception &ex) {
+    WORLD_RESOURCE_ERROR("Failed to unregister event handlers: " +
+                         std::string(ex.what()));
   }
 }
 
-void WorldResourceManager::handleWorldEvent(std::shared_ptr<WorldEvent> worldEvent) {
+void WorldResourceManager::handleWorldEvent(
+    std::shared_ptr<WorldEvent> worldEvent) {
   try {
     switch (worldEvent->getEventType()) {
-      case WorldEventType::WorldLoaded: {
-        auto loadedEvent = std::dynamic_pointer_cast<WorldLoadedEvent>(worldEvent);
-        if (loadedEvent) {
-          const std::string& worldId = loadedEvent->getWorldId();
-          WORLD_RESOURCE_INFO("Received WorldLoadedEvent for: " + worldId);
+    case WorldEventType::WorldLoaded: {
+      auto loadedEvent =
+          std::dynamic_pointer_cast<WorldLoadedEvent>(worldEvent);
+      if (loadedEvent) {
+        const std::string &worldId = loadedEvent->getWorldId();
+        WORLD_RESOURCE_INFO("Received WorldLoadedEvent for: " + worldId);
 
-          // Check if world exists in resource tracking
-          bool worldExists = false;
-          {
-            std::shared_lock<std::shared_mutex> lock(m_resourceMutex);
-            worldExists = m_worldResources.find(worldId) != m_worldResources.end();
-          }
-
-          if (!worldExists) {
-            // Only create resource tracking for worlds that actually exist
-            // Verify the world actually exists in the WorldManager before creating tracking
-            // NOTE: Removed auto-creation to prevent spurious world creation from events
-            WORLD_RESOURCE_WARN("Received WorldLoadedEvent for non-existent world: " + worldId +
-                               " - skipping resource tracking creation");
-          } else {
-            WORLD_RESOURCE_INFO("World already tracked: " + worldId);
-          }
+        // Check if world exists in resource tracking
+        bool worldExists = false;
+        {
+          std::shared_lock<std::shared_mutex> lock(m_resourceMutex);
+          worldExists =
+              m_worldResources.find(worldId) != m_worldResources.end();
         }
-        break;
-      }
 
-      case WorldEventType::WorldUnloaded: {
-        auto unloadedEvent = std::dynamic_pointer_cast<WorldUnloadedEvent>(worldEvent);
-        if (unloadedEvent) {
-          const std::string& worldId = unloadedEvent->getWorldId();
-          WORLD_RESOURCE_INFO("Received WorldUnloadedEvent for: " + worldId);
-
-          // Optional: Remove world resources when unloaded
-          // For now, keep the data in case world is reloaded
-          // removeWorld(worldId);
+        if (!worldExists) {
+          // Only create resource tracking for worlds that actually exist
+          // Verify the world actually exists in the WorldManager before
+          // creating tracking NOTE: Removed auto-creation to prevent spurious
+          // world creation from events
+          WORLD_RESOURCE_WARN(
+              "Received WorldLoadedEvent for non-existent world: " + worldId +
+              " - skipping resource tracking creation");
+        } else {
+          WORLD_RESOURCE_INFO("World already tracked: " + worldId);
         }
-        break;
       }
-
-      case WorldEventType::TileChanged: {
-        auto tileEvent = std::dynamic_pointer_cast<TileChangedEvent>(worldEvent);
-        if (tileEvent) {
-          // Handle tile changes - could affect resource distributions
-          WORLD_RESOURCE_DEBUG("Tile changed at (" +
-                              std::to_string(tileEvent->getX()) + ", " +
-                              std::to_string(tileEvent->getY()) + ") - " +
-                              tileEvent->getChangeType());
-        }
-        break;
-      }
-
-      default:
-        // Handle other world event types as needed
-        WORLD_RESOURCE_DEBUG("Received world event: " + worldEvent->getName());
-        break;
+      break;
     }
-  } catch (const std::exception& ex) {
-    WORLD_RESOURCE_ERROR("Error handling world event: " + std::string(ex.what()));
+
+    case WorldEventType::WorldUnloaded: {
+      auto unloadedEvent =
+          std::dynamic_pointer_cast<WorldUnloadedEvent>(worldEvent);
+      if (unloadedEvent) {
+        const std::string &worldId = unloadedEvent->getWorldId();
+        WORLD_RESOURCE_INFO("Received WorldUnloadedEvent for: " + worldId);
+
+        // Optional: Remove world resources when unloaded
+        // For now, keep the data in case world is reloaded
+        // removeWorld(worldId);
+      }
+      break;
+    }
+
+    case WorldEventType::TileChanged: {
+      auto tileEvent = std::dynamic_pointer_cast<TileChangedEvent>(worldEvent);
+      if (tileEvent) {
+        // Handle tile changes - could affect resource distributions
+        WORLD_RESOURCE_DEBUG("Tile changed at (" +
+                             std::to_string(tileEvent->getX()) + ", " +
+                             std::to_string(tileEvent->getY()) + ") - " +
+                             tileEvent->getChangeType());
+      }
+      break;
+    }
+
+    default:
+      // Handle other world event types as needed
+      WORLD_RESOURCE_DEBUG("Received world event: " + worldEvent->getName());
+      break;
+    }
+  } catch (const std::exception &ex) {
+    WORLD_RESOURCE_ERROR("Error handling world event: " +
+                         std::string(ex.what()));
   }
 }
 
-void WorldResourceManager::fireResourceChangeEvent(const WorldId& worldId,
-                                                   const HammerEngine::ResourceHandle& resourceHandle,
-                                                   Quantity oldQuantity, Quantity newQuantity,
-                                                   const std::string& reason) {
+void WorldResourceManager::fireResourceChangeEvent(
+    const WorldId &worldId, const HammerEngine::ResourceHandle &resourceHandle,
+    Quantity oldQuantity, Quantity newQuantity, const std::string &reason) {
   try {
     // Only fire events for actual changes
     if (oldQuantity == newQuantity) {
@@ -1018,20 +1027,19 @@ void WorldResourceManager::fireResourceChangeEvent(const WorldId& worldId,
     }
 
     // Trigger ResourceChange via EventManager hub (no registration needed)
-    const EventManager& eventMgr = EventManager::Instance();
+    const EventManager &eventMgr = EventManager::Instance();
     eventMgr.triggerResourceChange(
-        nullptr,  // world-level (no specific owner)
-        resourceHandle,
-        static_cast<int>(oldQuantity),
-        static_cast<int>(newQuantity),
-        reason + "_world_" + worldId,
-        EventManager::DispatchMode::Deferred
-    );
+        nullptr, // world-level (no specific owner)
+        resourceHandle, static_cast<int>(oldQuantity),
+        static_cast<int>(newQuantity), reason + "_world_" + worldId,
+        EventManager::DispatchMode::Deferred);
 
-    WORLD_RESOURCE_DEBUG("ResourceChangeEvent fired for " + resourceHandle.toString() +
-                        " in world " + worldId + ": " + std::to_string(oldQuantity) +
-                        " -> " + std::to_string(newQuantity));
-  } catch (const std::exception& ex) {
-    WORLD_RESOURCE_ERROR("Failed to fire ResourceChangeEvent: " + std::string(ex.what()));
+    WORLD_RESOURCE_DEBUG("ResourceChangeEvent fired for " +
+                         resourceHandle.toString() + " in world " + worldId +
+                         ": " + std::to_string(oldQuantity) + " -> " +
+                         std::to_string(newQuantity));
+  } catch (const std::exception &ex) {
+    WORLD_RESOURCE_ERROR("Failed to fire ResourceChangeEvent: " +
+                         std::string(ex.what()));
   }
 }

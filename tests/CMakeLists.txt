@@ -188,4 +188,7 @@ target_include_directories(save_manager_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR
 set(ALL_TESTS ${SIMPLE_TESTS} ${MOCK_TESTS} ${INVENTORY_TESTS})
 foreach(test_name ${ALL_TESTS})
     add_test(NAME ${test_name} COMMAND ${test_name})
+    # Set working directory to project root so tests can find res/data/
+    set_tests_properties(${test_name} PROPERTIES 
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 endforeach()
