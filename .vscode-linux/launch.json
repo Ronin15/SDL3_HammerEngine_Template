@@ -1,0 +1,76 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Debug SDL3_Template",
+            "type": "lldb",
+            "request": "launch",
+            "program": "${workspaceFolder}/bin/debug/SDL3_Template",
+            "args": [],
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "LD_LIBRARY_PATH": "${workspaceFolder}/bin/debug:${env:LD_LIBRARY_PATH}"
+            },
+            "terminal": "integrated",
+            "preLaunchTask": "CMake: Build Debug",
+            "presentation": {
+                "hidden": false,
+                "group": "1_debug",
+                "order": 1
+            }
+        },
+        {
+            "name": "Debug SDL3_Template (No Build)",
+            "type": "lldb",
+            "request": "launch",
+            "program": "${workspaceFolder}/bin/debug/SDL3_Template",
+            "args": [],
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "LD_LIBRARY_PATH": "${workspaceFolder}/bin/debug:${env:LD_LIBRARY_PATH}"
+            },
+            "terminal": "integrated",
+            "presentation": {
+                "hidden": false,
+                "group": "1_debug",
+                "order": 2
+            }
+        },
+        {
+            "name": "Release SDL3_Template",
+            "type": "lldb",
+            "request": "launch",
+            "program": "${workspaceFolder}/bin/release/SDL3_Template",
+            "args": [],
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "LD_LIBRARY_PATH": "${workspaceFolder}/bin/release:${env:LD_LIBRARY_PATH}"
+            },
+            "terminal": "integrated",
+            "preLaunchTask": "CMake: Build Release",
+            "presentation": {
+                "hidden": false,
+                "group": "2_release",
+                "order": 1
+            }
+        },
+        {
+            "name": "Debug Current Test File",
+            "type": "lldb",
+            "request": "launch",
+            "program": "${workspaceFolder}/bin/debug/${fileBasenameNoExtension}",
+            "args": [],
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "LD_LIBRARY_PATH": "${workspaceFolder}/bin/debug:${env:LD_LIBRARY_PATH}"
+            },
+            "terminal": "integrated",
+            "preLaunchTask": "CMake: Build Debug",
+            "presentation": {
+                "hidden": false,
+                "group": "3_tests",
+                "order": 1
+            }
+        }
+    ]
+}
