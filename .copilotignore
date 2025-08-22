@@ -1,0 +1,16 @@
+# Files to exclude from GitHub Copilot context
+# (Empty - we want Copilot to have access to all project files including documentation)
+
+# Build artifacts
+.cache/**
+# Temporary files
+*.tmp
+*.temp
+.DS_Store
+
+# We explicitly want these files to be accessible to Copilot:
+# - AGENTS.md (project guidelines)
+# - README.md (project overview)
+# - .github/copilot-instructions.md (Copilot instructions)
+# - All source files (src/**, include/**)
+# - All documentation (docs/**)

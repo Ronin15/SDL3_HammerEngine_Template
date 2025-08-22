@@ -5,7 +5,9 @@
         "twxs.cmake",
         "ms-vscode.cpptools-extension-pack",
         "vadimcn.vscode-lldb",
-        "llvm-vs-code-extensions.vscode-clangd"
+        "llvm-vs-code-extensions.vscode-clangd",
+        "github.copilot",
+        "github.copilot-chat"
     ],
     "unwantedRecommendations": [
         "ms-vscode.cpptools-themes"

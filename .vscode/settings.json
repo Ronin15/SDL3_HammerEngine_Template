@@ -52,12 +52,29 @@
     "git.ignoreLimitWarning": true,
     // Terminal settings
     "terminal.integrated.cwd": "${workspaceFolder}",
+    // GitHub Copilot configuration
+    "github.copilot.enable": {
+        "*": true,
+        "yaml": false,
+        "plaintext": false
+    },
+    "github.copilot.advanced": {
+        "debug.overrideEngine": "copilot-codex"
+    },
+    
+    // GitHub Copilot Chat configuration
+    "github.copilot.chat.localeOverride": "en",
+    "github.copilot.chat.welcomeMessage": "always",
+    "github.copilot.chat.codeGeneration.useCodebaseContext": true,
+    
     // Extension recommendations
     "extensions.recommendations": [
         "ms-vscode.cpptools",
         "ms-vscode.cmake-tools",
         "twxs.cmake",
         "ms-vscode.cpptools-extension-pack",
-        "vadimcn.vscode-lldb"
+        "vadimcn.vscode-lldb",
+        "github.copilot",
+        "github.copilot-chat"
     ]
 }
