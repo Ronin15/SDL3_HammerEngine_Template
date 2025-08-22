@@ -1,0 +1,145 @@
+{
+    "configurations": [
+        {
+            "name": "Windows MSVC Debug",
+            "includePath": [
+                "${workspaceFolder}/include/**",
+                "${workspaceFolder}/src/**",
+                "${workspaceFolder}/build/_deps/*/include",
+                "${vcpkgRoot}/installed/${vcpkgTriplet}/include",
+                "C:/Program Files/Microsoft Visual Studio/2022/*/VC/Tools/MSVC/*/include",
+                "C:/Program Files (x86)/Windows Kits/10/Include/*/ucrt",
+                "C:/Program Files (x86)/Windows Kits/10/Include/*/um",
+                "C:/Program Files (x86)/Windows Kits/10/Include/*/shared"
+            ],
+            "defines": [
+                "DEBUG",
+                "_DEBUG",
+                "WIN32",
+                "_WINDOWS",
+                "_WIN32_WINNT=0x0A00",
+                "_CRT_SECURE_NO_WARNINGS"
+            ],
+            "compilerPath": "cl.exe",
+            "cStandard": "c17",
+            "cppStandard": "c++20",
+            "intelliSenseMode": "windows-msvc-x64",
+            "configurationProvider": "ms-vscode.cmake-tools",
+            "compileCommands": "${workspaceFolder}/compile_commands.json",
+            "browse": {
+                "path": [
+                    "${workspaceFolder}/include",
+                    "${workspaceFolder}/src",
+                    "${workspaceFolder}/build/_deps",
+                    "${vcpkgRoot}/installed/${vcpkgTriplet}/include"
+                ],
+                "limitSymbolsToIncludedHeaders": true,
+                "databaseFilename": "${workspaceFolder}/.vscode/browse.vc.db"
+            }
+        },
+        {
+            "name": "Windows MSVC Release",
+            "includePath": [
+                "${workspaceFolder}/include/**",
+                "${workspaceFolder}/src/**",
+                "${workspaceFolder}/build/_deps/*/include",
+                "${vcpkgRoot}/installed/${vcpkgTriplet}/include",
+                "C:/Program Files/Microsoft Visual Studio/2022/*/VC/Tools/MSVC/*/include",
+                "C:/Program Files (x86)/Windows Kits/10/Include/*/ucrt",
+                "C:/Program Files (x86)/Windows Kits/10/Include/*/um",
+                "C:/Program Files (x86)/Windows Kits/10/Include/*/shared"
+            ],
+            "defines": [
+                "NDEBUG",
+                "WIN32",
+                "_WINDOWS",
+                "_WIN32_WINNT=0x0A00",
+                "_CRT_SECURE_NO_WARNINGS"
+            ],
+            "compilerPath": "cl.exe",
+            "cStandard": "c17",
+            "cppStandard": "c++20",
+            "intelliSenseMode": "windows-msvc-x64",
+            "configurationProvider": "ms-vscode.cmake-tools",
+            "compileCommands": "${workspaceFolder}/compile_commands.json",
+            "browse": {
+                "path": [
+                    "${workspaceFolder}/include",
+                    "${workspaceFolder}/src",
+                    "${workspaceFolder}/build/_deps",
+                    "${vcpkgRoot}/installed/${vcpkgTriplet}/include"
+                ],
+                "limitSymbolsToIncludedHeaders": true,
+                "databaseFilename": "${workspaceFolder}/.vscode/browse.vc.db"
+            }
+        },
+        {
+            "name": "Windows MinGW Debug",
+            "includePath": [
+                "${workspaceFolder}/include/**",
+                "${workspaceFolder}/src/**",
+                "${workspaceFolder}/build/_deps/*/include",
+                "C:/mingw64/include",
+                "C:/msys64/mingw64/include"
+            ],
+            "defines": [
+                "DEBUG",
+                "_DEBUG",
+                "WIN32",
+                "_WINDOWS",
+                "__MINGW32__"
+            ],
+            "compilerPath": "C:/mingw64/bin/gcc.exe",
+            "cStandard": "c17",
+            "cppStandard": "c++20",
+            "intelliSenseMode": "windows-gcc-x64",
+            "configurationProvider": "ms-vscode.cmake-tools",
+            "compileCommands": "${workspaceFolder}/compile_commands.json",
+            "browse": {
+                "path": [
+                    "${workspaceFolder}/include",
+                    "${workspaceFolder}/src",
+                    "${workspaceFolder}/build/_deps",
+                    "C:/mingw64/include",
+                    "C:/msys64/mingw64/include"
+                ],
+                "limitSymbolsToIncludedHeaders": true,
+                "databaseFilename": "${workspaceFolder}/.vscode/browse.vc.db"
+            }
+        },
+        {
+            "name": "Windows MinGW Release",
+            "includePath": [
+                "${workspaceFolder}/include/**",
+                "${workspaceFolder}/src/**",
+                "${workspaceFolder}/build/_deps/*/include",
+                "C:/mingw64/include",
+                "C:/msys64/mingw64/include"
+            ],
+            "defines": [
+                "NDEBUG",
+                "WIN32",
+                "_WINDOWS",
+                "__MINGW32__"
+            ],
+            "compilerPath": "C:/mingw64/bin/gcc.exe",
+            "cStandard": "c17",
+            "cppStandard": "c++20",
+            "intelliSenseMode": "windows-gcc-x64",
+            "configurationProvider": "ms-vscode.cmake-tools",
+            "compileCommands": "${workspaceFolder}/compile_commands.json",
+            "browse": {
+                "path": [
+                    "${workspaceFolder}/include",
+                    "${workspaceFolder}/src",
+                    "${workspaceFolder}/build/_deps",
+                    "C:/mingw64/include",
+                    "C:/msys64/mingw64/include"
+                ],
+                "limitSymbolsToIncludedHeaders": true,
+                "databaseFilename": "${workspaceFolder}/.vscode/browse.vc.db"
+            }
+        }
+    ],
+    "version": 4
+}

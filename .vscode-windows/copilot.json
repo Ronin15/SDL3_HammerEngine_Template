@@ -1,0 +1,12 @@
+{
+    "github.copilot.chat.codeGeneration.instructions": [
+        {
+            "file": "AGENTS.md",
+            "text": "Follow the coding standards, architecture patterns, and development guidelines specified in this file"
+        },
+        {
+            "file": ".github/copilot-instructions.md",
+            "text": "Use the detailed coding conventions and patterns specified in this instruction file"
+        }
+    ]
+}
