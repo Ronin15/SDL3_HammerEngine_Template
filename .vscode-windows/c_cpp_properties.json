@@ -79,8 +79,9 @@
                 "${workspaceFolder}/include/**",
                 "${workspaceFolder}/src/**",
                 "${workspaceFolder}/build/_deps/*/include",
-                "C:/mingw64/include",
-                "C:/msys64/mingw64/include"
+                "C:/msys64/ucrt64/include",
+                "C:/msys64/ucrt64/include/c++/15.2.0",
+                "C:/msys64/ucrt64/include/c++/15.2.0/x86_64-w64-mingw32"
             ],
             "defines": [
                 "DEBUG",
@@ -89,7 +90,7 @@
                 "_WINDOWS",
                 "__MINGW32__"
             ],
-            "compilerPath": "C:/mingw64/bin/gcc.exe",
+            "compilerPath": "C:/msys64/ucrt64/bin/gcc.exe",
             "cStandard": "c17",
             "cppStandard": "c++20",
             "intelliSenseMode": "windows-gcc-x64",
@@ -100,8 +101,7 @@
                     "${workspaceFolder}/include",
                     "${workspaceFolder}/src",
                     "${workspaceFolder}/build/_deps",
-                    "C:/mingw64/include",
-                    "C:/msys64/mingw64/include"
+                    "C:/msys64/ucrt64/include"
                 ],
                 "limitSymbolsToIncludedHeaders": true,
                 "databaseFilename": "${workspaceFolder}/.vscode/browse.vc.db"
@@ -113,8 +113,9 @@
                 "${workspaceFolder}/include/**",
                 "${workspaceFolder}/src/**",
                 "${workspaceFolder}/build/_deps/*/include",
-                "C:/mingw64/include",
-                "C:/msys64/mingw64/include"
+                "C:/msys64/ucrt64/include",
+                "C:/msys64/ucrt64/include/c++/15.2.0",
+                "C:/msys64/ucrt64/include/c++/15.2.0/x86_64-w64-mingw32"
             ],
             "defines": [
                 "NDEBUG",
@@ -122,7 +123,7 @@
                 "_WINDOWS",
                 "__MINGW32__"
             ],
-            "compilerPath": "C:/mingw64/bin/gcc.exe",
+            "compilerPath": "C:/msys64/ucrt64/bin/gcc.exe",
             "cStandard": "c17",
             "cppStandard": "c++20",
             "intelliSenseMode": "windows-gcc-x64",
@@ -133,8 +134,7 @@
                     "${workspaceFolder}/include",
                     "${workspaceFolder}/src",
                     "${workspaceFolder}/build/_deps",
-                    "C:/mingw64/include",
-                    "C:/msys64/mingw64/include"
+                    "C:/msys64/ucrt64/include"
                 ],
                 "limitSymbolsToIncludedHeaders": true,
                 "databaseFilename": "${workspaceFolder}/.vscode/browse.vc.db"
