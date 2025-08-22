@@ -6,6 +6,7 @@
 #define BOOST_TEST_MODULE ResourceEdgeCaseTests
 #include <boost/test/unit_test.hpp>
 
+#include "core/Logger.hpp"
 #include "core/ThreadSystem.hpp"
 #include "entities/Resource.hpp"
 #include "entities/resources/InventoryComponent.hpp"
@@ -180,6 +181,9 @@ BOOST_AUTO_TEST_CASE(TestConcurrentHandleGeneration) {
     allHandles.insert(allHandles.end(), threadHandles.begin(),
                       threadHandles.end());
   }
+
+  // Process any events generated during handle creation
+  EventManager::Instance().update();
 
   // Verify all handles are unique (no race conditions in generation)
   std::set<ResourceHandle> uniqueHandles(allHandles.begin(), allHandles.end());
@@ -395,6 +399,9 @@ BOOST_AUTO_TEST_CASE(TestRapidOperationSequences) {
   worldManager->createWorld(worldId);
   const int RAPID_OPERATIONS = 10000;
 
+  // Enable benchmark mode to disable debug logging during performance test
+  HAMMER_ENABLE_BENCHMARK_MODE();
+
   auto startTime = std::chrono::high_resolution_clock::now();
 
   // Perform rapid add/remove sequences
@@ -403,11 +410,20 @@ BOOST_AUTO_TEST_CASE(TestRapidOperationSequences) {
     worldManager->removeResource(worldId, handle, 1);
   }
 
+  // Process all deferred events before measuring end time
+  EventManager::Instance().update();
+
   auto endTime = std::chrono::high_resolution_clock::now();
+
+  // Re-enable logging for test output
+  HAMMER_DISABLE_BENCHMARK_MODE();
+
   auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
       endTime - startTime);
 
-  // Should complete in reasonable time (less than 1 second for 10k operations)
+  // Should complete in reasonable time (restored original expectation of 1
+  // second) EventManager is designed for high performance with automatic
+  // threading and batching
   BOOST_CHECK_LT(duration.count(), 1000);
 
   // Final quantity should be 0
