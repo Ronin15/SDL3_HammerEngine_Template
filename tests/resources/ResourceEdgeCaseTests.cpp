@@ -6,18 +6,17 @@
 #define BOOST_TEST_MODULE ResourceEdgeCaseTests
 #include <boost/test/unit_test.hpp>
 
+#include "core/ThreadSystem.hpp"
 #include "entities/Resource.hpp"
 #include "entities/resources/InventoryComponent.hpp"
-#include "events/ResourceChangeEvent.hpp"
+#include "managers/EventManager.hpp"
 #include "managers/ResourceTemplateManager.hpp"
 #include "managers/WorldResourceManager.hpp"
 #include "utils/ResourceHandle.hpp"
-#include "core/ThreadSystem.hpp"
 
 #include <atomic>
 #include <chrono>
 #include <future>
-#include <iostream>
 #include <limits>
 #include <memory>
 #include <random>
@@ -37,7 +36,8 @@ struct ResourceEdgeCaseFixture {
     if (threadSystem->isShutdown() || threadSystem->getThreadCount() == 0) {
       bool initSuccess = threadSystem->init();
       if (!initSuccess && threadSystem->getThreadCount() == 0) {
-        throw std::runtime_error("Failed to initialize ThreadSystem for threading tests");
+        throw std::runtime_error(
+            "Failed to initialize ThreadSystem for threading tests");
       }
     }
 
@@ -52,7 +52,7 @@ struct ResourceEdgeCaseFixture {
     BOOST_REQUIRE(worldManager->init());
   }
 
-    ~ResourceEdgeCaseFixture() {
+  ~ResourceEdgeCaseFixture() {
     worldManager->clean();
     templateManager->clean();
     // Note: Don't clean ThreadSystem here as it's shared across tests
@@ -157,17 +157,19 @@ BOOST_AUTO_TEST_CASE(TestConcurrentHandleGeneration) {
 
   // Launch multiple tasks generating handles using ThreadSystem
   for (int t = 0; t < NUM_THREADS; ++t) {
-    auto future = threadSystem->enqueueTaskWithResult([=, this]() -> std::vector<ResourceHandle> {
-      std::vector<ResourceHandle> threadHandles;
-      threadHandles.reserve(HANDLES_PER_THREAD);
+    auto future = threadSystem->enqueueTaskWithResult(
+        [=, this]() -> std::vector<ResourceHandle> {
+          std::vector<ResourceHandle> threadHandles;
+          threadHandles.reserve(HANDLES_PER_THREAD);
 
-      for (int i = 0; i < HANDLES_PER_THREAD; ++i) {
-        auto handle = templateManager->generateHandle();
-        BOOST_CHECK(handle.isValid());
-        threadHandles.push_back(handle);
-      }
-      return threadHandles;
-    }, HammerEngine::TaskPriority::Normal, "HandleGenerationTask");
+          for (int i = 0; i < HANDLES_PER_THREAD; ++i) {
+            auto handle = templateManager->generateHandle();
+            BOOST_CHECK(handle.isValid());
+            threadHandles.push_back(handle);
+          }
+          return threadHandles;
+        },
+        HammerEngine::TaskPriority::Normal, "HandleGenerationTask");
 
     futures.push_back(std::move(future));
   }
@@ -213,35 +215,37 @@ BOOST_AUTO_TEST_CASE(TestConcurrentResourceOperations) {
 
   // Launch tasks performing concurrent operations using ThreadSystem
   for (int t = 0; t < NUM_THREADS; ++t) {
-    auto future = threadSystem->enqueueTaskWithResult([=, this, &totalAdded, &totalRemoved]() -> void {
-      std::random_device rd;
-      std::mt19937 gen(rd());
-      std::uniform_int_distribution<> amountDist(1, 10);
-      std::uniform_int_distribution<> operationDist(0, 1);
-      std::uniform_int_distribution<> resourceDist(0, 1);
+    auto future = threadSystem->enqueueTaskWithResult(
+        [=, this, &totalAdded, &totalRemoved]() -> void {
+          std::random_device rd;
+          std::mt19937 gen(rd());
+          std::uniform_int_distribution<> amountDist(1, 10);
+          std::uniform_int_distribution<> operationDist(0, 1);
+          std::uniform_int_distribution<> resourceDist(0, 1);
 
-      for (int i = 0; i < OPERATIONS_PER_THREAD; ++i) {
-        auto handle = (resourceDist(gen) == 0) ? goldHandle : silverHandle;
-        int amount = amountDist(gen);
+          for (int i = 0; i < OPERATIONS_PER_THREAD; ++i) {
+            auto handle = (resourceDist(gen) == 0) ? goldHandle : silverHandle;
+            int amount = amountDist(gen);
 
-        if (operationDist(gen) == 0) {
-          // Add operation
-          if (worldManager->addResource(worldId, handle, amount) ==
-              ResourceTransactionResult::Success) {
-            totalAdded.fetch_add(amount, std::memory_order_relaxed);
+            if (operationDist(gen) == 0) {
+              // Add operation
+              if (worldManager->addResource(worldId, handle, amount) ==
+                  ResourceTransactionResult::Success) {
+                totalAdded.fetch_add(amount, std::memory_order_relaxed);
+              }
+            } else {
+              // Remove operation
+              if (worldManager->removeResource(worldId, handle, amount) ==
+                  ResourceTransactionResult::Success) {
+                totalRemoved.fetch_add(amount, std::memory_order_relaxed);
+              }
+            }
+
+            // Small delay to increase chance of race conditions
+            std::this_thread::sleep_for(std::chrono::microseconds(1));
           }
-        } else {
-          // Remove operation
-          if (worldManager->removeResource(worldId, handle, amount) ==
-              ResourceTransactionResult::Success) {
-            totalRemoved.fetch_add(amount, std::memory_order_relaxed);
-          }
-        }
-
-        // Small delay to increase chance of race conditions
-        std::this_thread::sleep_for(std::chrono::microseconds(1));
-      }
-    }, HammerEngine::TaskPriority::Normal, "ConcurrentResourceOpsTask");
+        },
+        HammerEngine::TaskPriority::Normal, "ConcurrentResourceOpsTask");
 
     futures.push_back(std::move(future));
   }
@@ -484,6 +488,7 @@ BOOST_AUTO_TEST_CASE(TestCrossManagerConsistency) {
   auto resource = createTestResource("ConsistencyTest");
   auto handle = resource->getHandle();
   auto worldId = WorldResourceManager::WorldId("consistency_test");
+
   // Add to template manager only
   BOOST_REQUIRE(templateManager->registerResourceTemplate(resource));
   BOOST_CHECK(templateManager->getResourceTemplate(handle) != nullptr);
@@ -496,17 +501,28 @@ BOOST_AUTO_TEST_CASE(TestCrossManagerConsistency) {
   BOOST_CHECK(addResult == ResourceTransactionResult::Success);
   BOOST_CHECK_EQUAL(worldManager->getResourceQuantity(worldId, handle), 100);
 
+  // Allow EventManager to process any deferred events from the add operation
+  EventManager::Instance().update();
+  std::this_thread::sleep_for(std::chrono::milliseconds(50));
+
   // Remove from template manager (world quantities should remain)
   templateManager->removeResourceTemplate(handle);
   BOOST_CHECK(templateManager->getResourceTemplate(handle) == nullptr);
   BOOST_CHECK_EQUAL(worldManager->getResourceQuantity(worldId, handle),
                     100); // World data persists
 
+  // Allow EventManager to process any deferred events from the template removal
+  EventManager::Instance().update();
+  std::this_thread::sleep_for(std::chrono::milliseconds(50));
+
   // Operations on orphaned world data should fail
   auto addResult2 = worldManager->addResource(worldId, handle, 50);
-  BOOST_CHECK(addResult2 ==
-              ResourceTransactionResult::InvalidResourceHandle);
+  BOOST_CHECK(addResult2 == ResourceTransactionResult::InvalidResourceHandle);
   BOOST_CHECK_EQUAL(worldManager->getResourceQuantity(worldId, handle), 100);
+
+  // Final event processing to ensure clean state
+  EventManager::Instance().update();
+  std::this_thread::sleep_for(std::chrono::milliseconds(50));
 }
 
 BOOST_AUTO_TEST_SUITE_END()
