@@ -1,0 +1,121 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Debug SDL3_Template (Windows)",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/bin/debug/SDL3_Template.exe",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",
+            "environment": [
+                {
+                    "name": "PATH",
+                    "value": "${workspaceFolder}/bin/debug;${env:PATH}"
+                }
+            ],
+            "console": "integratedTerminal",
+            "preLaunchTask": "CMake: Build Debug (Windows)",
+            "presentation": {
+                "hidden": false,
+                "group": "1_debug",
+                "order": 1
+            }
+        },
+        {
+            "name": "Debug SDL3_Template (No Build - Windows)",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/bin/debug/SDL3_Template.exe",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",
+            "environment": [
+                {
+                    "name": "PATH",
+                    "value": "${workspaceFolder}/bin/debug;${env:PATH}"
+                }
+            ],
+            "console": "integratedTerminal",
+            "presentation": {
+                "hidden": false,
+                "group": "1_debug",
+                "order": 2
+            }
+        },
+        {
+            "name": "Debug SDL3_Template (MinGW)",
+            "type": "lldb",
+            "request": "launch",
+            "program": "${workspaceFolder}/bin/debug/SDL3_Template.exe",
+            "args": [],
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "PATH": "${workspaceFolder}/bin/debug;${env:PATH}"
+            },
+            "terminal": "integrated",
+            "preLaunchTask": "CMake: Build Debug (Windows)",
+            "presentation": {
+                "hidden": false,
+                "group": "1_debug",
+                "order": 3
+            }
+        },
+        {
+            "name": "Release SDL3_Template (Windows)",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/bin/release/SDL3_Template.exe",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",
+            "environment": [
+                {
+                    "name": "PATH",
+                    "value": "${workspaceFolder}/bin/release;${env:PATH}"
+                }
+            ],
+            "console": "integratedTerminal",
+            "preLaunchTask": "CMake: Build Release (Windows)",
+            "presentation": {
+                "hidden": false,
+                "group": "2_release",
+                "order": 1
+            }
+        },
+        {
+            "name": "Debug Current Test File (Windows)",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/bin/debug/${fileBasenameNoExtension}.exe",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",
+            "environment": [
+                {
+                    "name": "PATH",
+                    "value": "${workspaceFolder}/bin/debug;${env:PATH}"
+                }
+            ],
+            "console": "integratedTerminal",
+            "preLaunchTask": "CMake: Build Debug (Windows)",
+            "presentation": {
+                "hidden": false,
+                "group": "3_tests",
+                "order": 1
+            }
+        },
+        {
+            "name": "Attach to Process (Windows)",
+            "type": "cppvsdbg",
+            "request": "attach",
+            "processId": "${command:pickProcess}",
+            "presentation": {
+                "hidden": false,
+                "group": "4_attach",
+                "order": 1
+            }
+        }
+    ]
+}

@@ -1,0 +1,15 @@
+{
+    "recommendations": [
+        "ms-vscode.cpptools",
+        "ms-vscode.cmake-tools",
+        "twxs.cmake",
+        "ms-vscode.cpptools-extension-pack",
+        "vadimcn.vscode-lldb",
+        "github.copilot",
+        "github.copilot-chat",
+        "matepek.vscode-catch2-test-adapter"
+    ],
+    "unwantedRecommendations": [
+        "ms-vscode.cpptools-themes"
+    ]
+}

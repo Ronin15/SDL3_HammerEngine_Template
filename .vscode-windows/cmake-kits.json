@@ -1,0 +1,80 @@
+[
+    {
+        "name": "MSVC Debug",
+        "compilers": {
+            "C": "cl.exe",
+            "CXX": "cl.exe"
+        },
+        "preferredGenerator": {
+            "name": "Ninja"
+        },
+        "environmentVariables": {
+            "CMAKE_BUILD_TYPE": "Debug"
+        }
+    },
+    {
+        "name": "MSVC Release",
+        "compilers": {
+            "C": "cl.exe",
+            "CXX": "cl.exe"
+        },
+        "preferredGenerator": {
+            "name": "Ninja"
+        },
+        "environmentVariables": {
+            "CMAKE_BUILD_TYPE": "Release"
+        }
+    },
+    {
+        "name": "MinGW Debug",
+        "compilers": {
+            "C": "C:/mingw64/bin/gcc.exe",
+            "CXX": "C:/mingw64/bin/g++.exe"
+        },
+        "preferredGenerator": {
+            "name": "Ninja"
+        },
+        "environmentVariables": {
+            "CMAKE_BUILD_TYPE": "Debug"
+        }
+    },
+    {
+        "name": "MinGW Release",
+        "compilers": {
+            "C": "C:/mingw64/bin/gcc.exe",
+            "CXX": "C:/mingw64/bin/g++.exe"
+        },
+        "preferredGenerator": {
+            "name": "Ninja"
+        },
+        "environmentVariables": {
+            "CMAKE_BUILD_TYPE": "Release"
+        }
+    },
+    {
+        "name": "MSYS2 MinGW Debug",
+        "compilers": {
+            "C": "C:/msys64/mingw64/bin/gcc.exe",
+            "CXX": "C:/msys64/mingw64/bin/g++.exe"
+        },
+        "preferredGenerator": {
+            "name": "Ninja"
+        },
+        "environmentVariables": {
+            "CMAKE_BUILD_TYPE": "Debug"
+        }
+    },
+    {
+        "name": "MSYS2 MinGW Release",
+        "compilers": {
+            "C": "C:/msys64/mingw64/bin/gcc.exe",
+            "CXX": "C:/msys64/mingw64/bin/g++.exe"
+        },
+        "preferredGenerator": {
+            "name": "Ninja"
+        },
+        "environmentVariables": {
+            "CMAKE_BUILD_TYPE": "Release"
+        }
+    }
+]
