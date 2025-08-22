@@ -1,0 +1,85 @@
+{
+    // CMake configuration for macOS
+    "cmake.buildDirectory": "${workspaceFolder}/build",
+    "cmake.generator": "Ninja",
+    "cmake.configureOnOpen": true,
+    "cmake.buildBeforeRun": true,
+    "cmake.sourceDirectory": "${workspaceFolder}",
+    "cmake.installPrefix": "${workspaceFolder}/install",
+    // C/C++ configuration for macOS with Clang
+    "C_Cpp.default.configurationProvider": "ms-vscode.cmake-tools",
+    "C_Cpp.default.intelliSenseMode": "macos-clang-x64",
+    "C_Cpp.default.compileCommands": "${workspaceFolder}/compile_commands.json",
+    "C_Cpp.default.cppStandard": "c++20",
+    "C_Cpp.default.cStandard": "c17",
+    "C_Cpp.default.compilerPath": "/usr/bin/clang++",
+    "C_Cpp.errorSquiggles": "enabled",
+    "C_Cpp.autocomplete": "default",
+    "C_Cpp.suggestSnippets": true,
+    // Clangd configuration (recommended for better IntelliSense)
+    "clangd.arguments": [
+        "--compile-commands-dir=${workspaceFolder}",
+        "--header-insertion=never",
+        "--pch-storage=memory",
+        "--clang-tidy",
+        "--completion-style=detailed"
+    ],
+    "clangd.path": "/usr/bin/clangd",
+    // File associations
+    "files.associations": {
+        "*.hpp": "cpp",
+        "*.h": "c",
+        "*.cpp": "cpp",
+        "*.c": "c",
+        "*.tpp": "cpp",
+        "*.mm": "objective-cpp",
+        "*.m": "objective-c"
+    },
+    // Editor settings
+    "editor.tabSize": 4,
+    "editor.insertSpaces": true,
+    "editor.detectIndentation": false,
+    "editor.formatOnSave": true,
+    "editor.rulers": [
+        80,
+        120
+    ],
+    // Search settings
+    "search.exclude": {
+        "**/build/**": true,
+        "**/bin/**": true,
+        "**/.cache/**": true,
+        "**/test_results/**": true,
+        "**/_deps/**": true,
+        "**/*.dSYM/**": true,
+        "**/.DS_Store": true
+    },
+    // File watcher settings
+    "files.watcherExclude": {
+        "**/build/**": true,
+        "**/bin/**": true,
+        "**/.cache/**": true,
+        "**/test_results/**": true,
+        "**/_deps/**": true,
+        "**/*.dSYM/**": true,
+        "**/.DS_Store": true
+    },
+    // Git settings
+    "git.ignoreLimitWarning": true,
+    // Terminal settings
+    "terminal.integrated.cwd": "${workspaceFolder}",
+    "terminal.integrated.defaultProfile.osx": "zsh",
+    // macOS specific settings
+    "files.exclude": {
+        "**/.DS_Store": true
+    },
+    // Extension recommendations
+    "extensions.recommendations": [
+        "ms-vscode.cpptools",
+        "ms-vscode.cmake-tools",
+        "twxs.cmake",
+        "ms-vscode.cpptools-extension-pack",
+        "vadimcn.vscode-lldb",
+        "llvm-vs-code-extensions.vscode-clangd"
+    ]
+}

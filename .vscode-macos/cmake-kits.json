@@ -1,0 +1,87 @@
+[
+    {
+        "name": "Clang Debug",
+        "compilers": {
+            "C": "/usr/bin/clang",
+            "CXX": "/usr/bin/clang++"
+        },
+        "preferredGenerator": {
+            "name": "Ninja"
+        },
+        "environmentVariables": {
+            "CMAKE_BUILD_TYPE": "Debug"
+        }
+    },
+    {
+        "name": "Clang Release",
+        "compilers": {
+            "C": "/usr/bin/clang",
+            "CXX": "/usr/bin/clang++"
+        },
+        "preferredGenerator": {
+            "name": "Ninja"
+        },
+        "environmentVariables": {
+            "CMAKE_BUILD_TYPE": "Release"
+        }
+    },
+    {
+        "name": "Clang AppleSilicon Debug",
+        "compilers": {
+            "C": "/usr/bin/clang",
+            "CXX": "/usr/bin/clang++"
+        },
+        "preferredGenerator": {
+            "name": "Ninja"
+        },
+        "environmentVariables": {
+            "CMAKE_BUILD_TYPE": "Debug"
+        },
+        "toolchainFile": "",
+        "cmakeSettings": {
+            "CMAKE_OSX_ARCHITECTURES": "arm64"
+        }
+    },
+    {
+        "name": "Clang AppleSilicon Release",
+        "compilers": {
+            "C": "/usr/bin/clang",
+            "CXX": "/usr/bin/clang++"
+        },
+        "preferredGenerator": {
+            "name": "Ninja"
+        },
+        "environmentVariables": {
+            "CMAKE_BUILD_TYPE": "Release"
+        },
+        "cmakeSettings": {
+            "CMAKE_OSX_ARCHITECTURES": "arm64"
+        }
+    },
+    {
+        "name": "Homebrew Clang Debug",
+        "compilers": {
+            "C": "/opt/homebrew/bin/clang",
+            "CXX": "/opt/homebrew/bin/clang++"
+        },
+        "preferredGenerator": {
+            "name": "Ninja"
+        },
+        "environmentVariables": {
+            "CMAKE_BUILD_TYPE": "Debug"
+        }
+    },
+    {
+        "name": "Homebrew Clang Release",
+        "compilers": {
+            "C": "/opt/homebrew/bin/clang",
+            "CXX": "/opt/homebrew/bin/clang++"
+        },
+        "preferredGenerator": {
+            "name": "Ninja"
+        },
+        "environmentVariables": {
+            "CMAKE_BUILD_TYPE": "Release"
+        }
+    }
+]

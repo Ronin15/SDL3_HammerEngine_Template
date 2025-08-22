@@ -3,3 +3,4 @@ build/
 !cppcheck_suppressions.txt
 compile_commands.json
 .env
+.vscode/browse.vc.db
