@@ -1,0 +1,105 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Debug SDL3_Template (macOS)",
+            "type": "lldb",
+            "request": "launch",
+            "program": "${workspaceFolder}/bin/debug/SDL3_Template",
+            "args": [],
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "DYLD_LIBRARY_PATH": "${workspaceFolder}/bin/debug:${env:DYLD_LIBRARY_PATH}"
+            },
+            "terminal": "integrated",
+            "preLaunchTask": "CMake: Build Debug (macOS)",
+            "presentation": {
+                "hidden": false,
+                "group": "1_debug",
+                "order": 1
+            }
+        },
+        {
+            "name": "Debug SDL3_Template (No Build - macOS)",
+            "type": "lldb",
+            "request": "launch",
+            "program": "${workspaceFolder}/bin/debug/SDL3_Template",
+            "args": [],
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "DYLD_LIBRARY_PATH": "${workspaceFolder}/bin/debug:${env:DYLD_LIBRARY_PATH}"
+            },
+            "terminal": "integrated",
+            "presentation": {
+                "hidden": false,
+                "group": "1_debug",
+                "order": 2
+            }
+        },
+        {
+            "name": "Debug SDL3_Template.app (Bundle)",
+            "type": "lldb",
+            "request": "launch",
+            "program": "${workspaceFolder}/bin/debug/SDL3_Template.app/Contents/MacOS/SDL3_Template",
+            "args": [],
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "DYLD_LIBRARY_PATH": "${workspaceFolder}/bin/debug:${env:DYLD_LIBRARY_PATH}"
+            },
+            "terminal": "integrated",
+            "preLaunchTask": "CMake: Build Debug (macOS)",
+            "presentation": {
+                "hidden": false,
+                "group": "1_debug",
+                "order": 3
+            }
+        },
+        {
+            "name": "Release SDL3_Template (macOS)",
+            "type": "lldb",
+            "request": "launch",
+            "program": "${workspaceFolder}/bin/release/SDL3_Template",
+            "args": [],
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "DYLD_LIBRARY_PATH": "${workspaceFolder}/bin/release:${env:DYLD_LIBRARY_PATH}"
+            },
+            "terminal": "integrated",
+            "preLaunchTask": "CMake: Build Release (macOS)",
+            "presentation": {
+                "hidden": false,
+                "group": "2_release",
+                "order": 1
+            }
+        },
+        {
+            "name": "Debug Current Test File (macOS)",
+            "type": "lldb",
+            "request": "launch",
+            "program": "${workspaceFolder}/bin/debug/${fileBasenameNoExtension}",
+            "args": [],
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "DYLD_LIBRARY_PATH": "${workspaceFolder}/bin/debug:${env:DYLD_LIBRARY_PATH}"
+            },
+            "terminal": "integrated",
+            "preLaunchTask": "CMake: Build Debug (macOS)",
+            "presentation": {
+                "hidden": false,
+                "group": "3_tests",
+                "order": 1
+            }
+        },
+        {
+            "name": "Attach to Process (macOS)",
+            "type": "lldb",
+            "request": "attach",
+            "pid": "${command:pickProcess}",
+            "presentation": {
+                "hidden": false,
+                "group": "4_attach",
+                "order": 1
+            }
+        }
+    ]
+}
