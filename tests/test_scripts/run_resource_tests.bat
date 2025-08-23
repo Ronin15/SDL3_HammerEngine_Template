@@ -51,7 +51,9 @@ if /i "%~1"=="--help" (
     echo   - ResourceFactory tests
     echo   - InventoryComponent tests
     echo   - ResourceChangeEvent tests  
+    echo   - Resource Edge Case tests
     echo   - Resource Integration tests
+    echo   - Resource Architecture tests
     exit /b 0
 )
 shift
@@ -87,7 +89,9 @@ call :run_test_suite "resource_template_manager_json_tests" "ResourceTemplateMan
 call :run_test_suite "resource_factory_tests" "ResourceFactory"
 call :run_test_suite "inventory_component_tests" "InventoryComponent" 
 call :run_test_suite "resource_change_event_tests" "ResourceChangeEvent"
+call :run_test_suite "resource_edge_case_tests" "ResourceEdgeCase"
 call :run_test_suite "resource_integration_tests" "Resource Integration"
+call :run_test_suite "resource_architecture_tests" "Resource Architecture"
 
 goto :show_summary
 
