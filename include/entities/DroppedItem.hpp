@@ -56,7 +56,7 @@ public:
     
     // Entity property getters (implementing Entity interface)
     const Vector2D& getPosition() const { return m_position; }
-    void setPosition(const Vector2D& position) { m_position = position; }
+    void setPosition(const Vector2D& position) override { m_position = position; }
 
 protected:
     HammerEngine::ResourceHandle m_resourceHandle;
