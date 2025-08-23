@@ -49,10 +49,14 @@ public:
     bool removeQuantity(int amount);
     
     // Check if this item can be picked up
-    bool canPickup() const { return m_quantity > 0; }
+    bool canPickup() const { return m_quantity > 0 && m_canBePickedUp; }
     
     // Get the resource template (for properties like name, value, etc.)
     std::shared_ptr<Resource> getResourceTemplate() const;
+    
+    // Entity property getters (implementing Entity interface)
+    const Vector2D& getPosition() const { return m_position; }
+    void setPosition(const Vector2D& position) { m_position = position; }
 
 protected:
     HammerEngine::ResourceHandle m_resourceHandle;
@@ -60,6 +64,15 @@ protected:
     float m_pickupTimer;           // Timer for pickup availability
     float m_bobTimer;              // Timer for visual bobbing effect
     bool m_canBePickedUp;          // Whether this item can be picked up
+    
+    // Entity base properties (since we inherit from Entity)
+    Vector2D m_position;           // World position
+    std::string m_textureID;       // Texture identifier
+    int m_numFrames;               // Animation frames
+    int m_animSpeed;               // Animation speed
+    int m_currentFrame;            // Current animation frame
+    int m_width;                   // Entity width
+    int m_height;                  // Entity height
     
     // Visual effects
     void updateVisualEffects(float deltaTime);
