@@ -17,7 +17,7 @@
 // Mock Entity class for testing
 class TestEntity : public Entity {
 public:
-    TestEntity(float x = 0.0f, float y = 0.0f) : m_updateCount(0) {
+    TestEntity(float x = 0.0f, float y = 0.0f) : Entity(), m_updateCount(0) {
         setPosition(Vector2D(x, y));
     }
     

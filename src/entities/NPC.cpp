@@ -18,7 +18,7 @@
 
 NPC::NPC(const std::string &textureID, const Vector2D &startPosition,
          int frameWidth, int frameHeight)
-    : m_frameWidth(frameWidth), m_frameHeight(frameHeight) {
+    : Entity(), m_frameWidth(frameWidth), m_frameHeight(frameHeight) {
   // Initialize entity properties
   m_position = startPosition;
   m_velocity = Vector2D(0, 0);

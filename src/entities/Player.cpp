@@ -17,7 +17,7 @@
 
 #include <algorithm>
 
-Player::Player() {
+Player::Player() : Entity() {
   // Initialize player properties
   m_position =
       Vector2D(400, 300); // Start position in the middle of a typical screen

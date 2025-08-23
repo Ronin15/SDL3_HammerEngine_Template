@@ -9,6 +9,7 @@
 #include "ai/behaviors/PatrolBehavior.hpp"
 #include "ai/behaviors/WanderBehavior.hpp"
 #include "core/GameEngine.hpp"
+#include "core/Logger.hpp"
 #include "events/NPCSpawnEvent.hpp"
 #include "events/ResourceChangeEvent.hpp"
 #include "events/SceneChangeEvent.hpp"

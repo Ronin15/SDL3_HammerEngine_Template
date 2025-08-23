@@ -10,6 +10,9 @@
       "maxStackSize": 1,
       "consumable": false,
       "iconTextureId": "magic_sword_icon",
+      "worldTextureId": "magic_sword_world",
+      "numFrames": 2,
+      "animSpeed": 100,
       "properties": {
         "slot": "Weapon",
         "attackBonus": 25,
@@ -29,6 +32,9 @@
       "maxStackSize": 1,
       "consumable": false,
       "iconTextureId": "dragon_armor_icon",
+      "worldTextureId": "dragon_armor_world",
+      "numFrames": 2,
+      "animSpeed": 100,
       "properties": {
         "slot": "Chest",
         "attackBonus": 0,
@@ -48,6 +54,9 @@
       "maxStackSize": 20,
       "consumable": true,
       "iconTextureId": "super_health_potion_icon",
+      "worldTextureId": "health_potion_world",
+      "numFrames": 2,
+      "animSpeed": 100,
       "properties": {
         "effect": "HealHP",
         "effectPower": 100,
@@ -64,6 +73,9 @@
       "maxStackSize": 15,
       "consumable": true,
       "iconTextureId": "mana_elixir_icon",
+      "worldTextureId": "mana_elixir_world",
+      "numFrames": 2,
+      "animSpeed": 100,
       "properties": {
         "effect": "RestoreMP",
         "effectPower": 80,
@@ -80,6 +92,9 @@
       "maxStackSize": 1,
       "consumable": false,
       "iconTextureId": "ancient_key_icon",
+      "worldTextureId": "ancient_key_world",
+      "numFrames": 2,
+      "animSpeed": 100,
       "properties": {
         "questId": "ancient_temple_quest"
       }
@@ -94,6 +109,9 @@
       "maxStackSize": 1,
       "consumable": false,
       "iconTextureId": "mysterious_artifact_icon",
+      "worldTextureId": "mysterious_artifact_world",
+      "numFrames": 2,
+      "animSpeed": 100,
       "properties": {
         "questId": ""
       }
@@ -108,6 +126,9 @@
       "maxStackSize": 50,
       "consumable": true,
       "iconTextureId": "health_potion_icon",
+      "worldTextureId": "health_potion_world",
+      "numFrames": 2,
+      "animSpeed": 100,
       "properties": {
         "effect": "HealHP",
         "effectPower": 50,

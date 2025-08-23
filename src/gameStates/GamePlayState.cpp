@@ -5,6 +5,7 @@
 
 #include "gameStates/GamePlayState.hpp"
 #include "core/GameEngine.hpp"
+#include "core/Logger.hpp"
 #include "gameStates/PauseState.hpp"
 #include "managers/FontManager.hpp"
 #include "managers/GameStateManager.hpp"
