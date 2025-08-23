@@ -71,6 +71,7 @@ set(MOCK_TESTS
 set(INVENTORY_TESTS
     inventory_component_tests
     resource_integration_tests
+    resource_architecture_tests
 )
 
 # Create simple test executables
@@ -166,6 +167,8 @@ foreach(test_name ${INVENTORY_TESTS})
         set(test_source "resources/InventoryComponentTests.cpp")
     elseif(${test_name} STREQUAL "resource_integration_tests")
         set(test_source "resources/ResourceIntegrationTests.cpp")
+    elseif(${test_name} STREQUAL "resource_architecture_tests")
+        set(test_source "resources/ResourceArchitectureTests.cpp")
     endif()
 
     add_executable(${test_name} ${test_source} mocks/MockPlayer.cpp)

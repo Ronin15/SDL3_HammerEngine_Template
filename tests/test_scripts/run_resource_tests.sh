@@ -48,6 +48,10 @@ for arg in "$@"; do
       TEST_FILTER="resource_integration_tests"
       shift
       ;;
+    --architecture-test)
+      TEST_FILTER="resource_architecture_tests"
+      shift
+      ;;
     --help)
       echo -e "${BLUE}Resource Manager Test Runner${NC}"
       echo -e "Usage: ./run_resource_tests.sh [options]"
@@ -60,6 +64,7 @@ for arg in "$@"; do
       echo -e "  --inventory-test             Run only inventory component tests"
       echo -e "  --resource-event-test        Run only resource event tests"
       echo -e "  --integration-test           Run only resource integration tests"
+      echo -e "  --architecture-test          Run only resource architecture tests"
       echo -e "  --help                       Show this help message"
       echo -e "\nTest Suite Overview:"
       echo -e "  Resource Template Tests:       Core resource template/type definitions"
@@ -69,6 +74,7 @@ for arg in "$@"; do
       echo -e "  Inventory Component Tests:     Inventory operations and thread safety"
       echo -e "  Resource Event Tests:          Resource change event handling"
       echo -e "  Integration Tests:             Cross-system resource operations"
+      echo -e "  Architecture Tests:            Resource-Entity separation validation"
       echo -e "\nExecution Time:"
       echo -e "  Full test suite:               ~2-3 seconds"
       echo -e "  Individual tests:              ~200-500ms each"
@@ -103,6 +109,7 @@ else
         "inventory_component_tests"
         "resource_change_event_tests"
         "resource_integration_tests"
+        "resource_architecture_tests"
     )
 fi
 
