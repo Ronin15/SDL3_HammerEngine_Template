@@ -9,6 +9,7 @@ __attribute__((constructor)) static void print_startup() {
   fflush(stdout);
 }
 #define BOOST_TEST_MODULE ResourceIntegrationTests
+#include "core/Logger.hpp"
 #include "managers/ResourceTemplateManager.hpp"
 #include <boost/test/unit_test.hpp>
 
@@ -42,12 +43,9 @@ static ResourceTemplateManagerResetter resourceTemplateManagerResetterInstance;
 #include <string>
 #include <vector>
 
-#include "../mocks/MockPlayer.hpp"
-#include "core/Logger.hpp"
 #include "core/ThreadSystem.hpp"
 #include "entities/Resource.hpp"
 #include "entities/resources/InventoryComponent.hpp"
-#include "events/ResourceChangeEvent.hpp"
 #include "managers/ResourceTemplateManager.hpp"
 
 class ResourceIntegrationTestFixture {
@@ -58,7 +56,8 @@ public:
     if (threadSystem->isShutdown() || threadSystem->getThreadCount() == 0) {
       bool initSuccess = threadSystem->init();
       if (!initSuccess && threadSystem->getThreadCount() == 0) {
-        throw std::runtime_error("Failed to initialize ThreadSystem for threading tests");
+        throw std::runtime_error(
+            "Failed to initialize ThreadSystem for threading tests");
       }
     }
 
@@ -223,7 +222,7 @@ BOOST_AUTO_TEST_CASE(TestTradingScenario) {
 
   // Initial setup
   playerInventory->addResource(goldHandle, 500); // Player has gold
-  npcInventory->addResource(ironSwordHandle, 3);         // NPC has swords
+  npcInventory->addResource(ironSwordHandle, 3); // NPC has swords
 
   const int swordPrice = 100;
   const int swordsToTrade = 2;
@@ -234,8 +233,7 @@ BOOST_AUTO_TEST_CASE(TestTradingScenario) {
   BOOST_REQUIRE(npcInventory->hasResource(ironSwordHandle, swordsToTrade));
 
   // Execute trade: Player gives gold, receives swords
-  bool playerPaysGold =
-      playerInventory->removeResource(goldHandle, totalCost);
+  bool playerPaysGold = playerInventory->removeResource(goldHandle, totalCost);
   bool npcGivesSwords =
       npcInventory->removeResource(ironSwordHandle, swordsToTrade);
 
@@ -255,8 +253,7 @@ BOOST_AUTO_TEST_CASE(TestTradingScenario) {
                     500 - totalCost);
   BOOST_CHECK_EQUAL(playerInventory->getResourceQuantity(ironSwordHandle),
                     swordsToTrade);
-  BOOST_CHECK_EQUAL(npcInventory->getResourceQuantity(goldHandle),
-                    totalCost);
+  BOOST_CHECK_EQUAL(npcInventory->getResourceQuantity(goldHandle), totalCost);
   BOOST_CHECK_EQUAL(npcInventory->getResourceQuantity(ironSwordHandle),
                     3 - swordsToTrade);
 }
@@ -285,9 +282,9 @@ BOOST_AUTO_TEST_CASE(TestResourceManagement) {
 BOOST_AUTO_TEST_CASE(TestResourceByCategory) {
   // Setup: Add various resources to player inventory
   playerInventory->addResource(healthPotionHandle, 5); // Item/Consumable
-  playerInventory->addResource(ironSwordHandle, 1);         // Item/Equipment
-  playerInventory->addResource(ironOreHandle, 20);        // Material
-  playerInventory->addResource(goldHandle, 100);    // Currency
+  playerInventory->addResource(ironSwordHandle, 1);    // Item/Equipment
+  playerInventory->addResource(ironOreHandle, 20);     // Material
+  playerInventory->addResource(goldHandle, 100);       // Currency
 
   // Test getting resources by category
   auto itemResources =
@@ -353,8 +350,7 @@ BOOST_AUTO_TEST_CASE(TestResourceSerialization) {
   BOOST_CHECK_EQUAL(playerInventory->getResourceQuantity(healthPotionHandle),
                     10);
   BOOST_CHECK_EQUAL(playerInventory->getResourceQuantity(ironSwordHandle), 2);
-  BOOST_CHECK_EQUAL(playerInventory->getResourceQuantity(goldHandle),
-                    500);
+  BOOST_CHECK_EQUAL(playerInventory->getResourceQuantity(goldHandle), 500);
 
   // Test NPC inventory resources as well
   npcInventory->addResource(ironOreHandle, 25);
@@ -419,8 +415,7 @@ BOOST_AUTO_TEST_CASE(TestComplexTradingChain) {
   BOOST_CHECK_EQUAL(playerInventory->getResourceQuantity(ironSwordHandle),
                     swordsWanted);
 
-  BOOST_CHECK_EQUAL(npcInventory->getResourceQuantity(goldHandle),
-                    oreCost);
+  BOOST_CHECK_EQUAL(npcInventory->getResourceQuantity(goldHandle), oreCost);
   BOOST_CHECK_EQUAL(npcInventory->getResourceQuantity(ironOreHandle),
                     100 - oreQuantity);
 
@@ -448,25 +443,27 @@ BOOST_AUTO_TEST_CASE(TestConcurrentResourceOperations) {
   std::atomic<int> successfulNPCOps{0};
 
   for (int i = 0; i < NUM_THREADS; ++i) {
-    auto future = threadSystem->enqueueTaskWithResult([=, this, &successfulPlayerOps, &successfulNPCOps]() -> void {
-      for (int j = 0; j < OPERATIONS_PER_THREAD; ++j) {
-        // Test concurrent player operations
-        if (playerInventory->addResource(healthPotionHandle, 1)) {
-          if (playerInventory->removeResource(healthPotionHandle, 1)) {
-            successfulPlayerOps.fetch_add(1, std::memory_order_relaxed);
-          }
-        }
+    auto future = threadSystem->enqueueTaskWithResult(
+        [=, this, &successfulPlayerOps, &successfulNPCOps]() -> void {
+          for (int j = 0; j < OPERATIONS_PER_THREAD; ++j) {
+            // Test concurrent player operations
+            if (playerInventory->addResource(healthPotionHandle, 1)) {
+              if (playerInventory->removeResource(healthPotionHandle, 1)) {
+                successfulPlayerOps.fetch_add(1, std::memory_order_relaxed);
+              }
+            }
 
-        // Test concurrent NPC operations
-        if (npcInventory->addResource(ironSwordHandle, 1)) {
-          if (npcInventory->removeResource(ironSwordHandle, 1)) {
-            successfulNPCOps.fetch_add(1, std::memory_order_relaxed);
-          }
-        }
+            // Test concurrent NPC operations
+            if (npcInventory->addResource(ironSwordHandle, 1)) {
+              if (npcInventory->removeResource(ironSwordHandle, 1)) {
+                successfulNPCOps.fetch_add(1, std::memory_order_relaxed);
+              }
+            }
 
-        std::this_thread::sleep_for(std::chrono::microseconds(1));
-      }
-    }, HammerEngine::TaskPriority::Normal, "ResourceIntegrationTask");
+            std::this_thread::sleep_for(std::chrono::microseconds(1));
+          }
+        },
+        HammerEngine::TaskPriority::Normal, "ResourceIntegrationTask");
 
     futures.push_back(std::move(future));
   }
@@ -481,8 +478,7 @@ BOOST_AUTO_TEST_CASE(TestConcurrentResourceOperations) {
   BOOST_CHECK(successfulNPCOps.load() > 0);
 
   // Verify original resources are still intact
-  BOOST_CHECK_EQUAL(playerInventory->getResourceQuantity(goldHandle),
-                    10000);
+  BOOST_CHECK_EQUAL(playerInventory->getResourceQuantity(goldHandle), 10000);
   BOOST_CHECK_EQUAL(npcInventory->getResourceQuantity(ironOreHandle), 5000);
 }
 

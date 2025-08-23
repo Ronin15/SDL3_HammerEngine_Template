@@ -629,6 +629,20 @@ void ResourceFactory::setCommonProperties(ResourcePtr resource,
     resource->setIconTextureId(
         json["iconTextureId"].tryAsString().value_or(""));
   }
+
+  // Set visual properties for world rendering
+  if (json.hasKey("worldTextureId")) {
+    resource->setWorldTextureId(
+        json["worldTextureId"].tryAsString().value_or(""));
+  }
+
+  if (json.hasKey("numFrames")) {
+    resource->setNumFrames(json["numFrames"].tryAsInt().value_or(0));
+  }
+
+  if (json.hasKey("animSpeed")) {
+    resource->setAnimSpeed(json["animSpeed"].tryAsInt().value_or(0));
+  }
 }
 
 } // namespace HammerEngine
