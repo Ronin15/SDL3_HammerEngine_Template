@@ -13,62 +13,47 @@ Resource::Resource(HammerEngine::ResourceHandle handle, const std::string &id,
     : m_handle(handle), m_id(id), m_name(name), m_category(category),
       m_type(type) {
 
-  // Initialize base Entity properties (resources don't render by default)
-  m_position = Vector2D(0, 0);
-  m_velocity = Vector2D(0, 0);
-  m_acceleration = Vector2D(0, 0);
-  m_width = 0;
-  m_height = 0;
-  m_textureID = "";
-  m_currentFrame = 0;
-  m_currentRow = 0;
-  m_numFrames = 0;
-  m_animSpeed = 0;
-
   // Set default properties based on category
   switch (category) {
   case ResourceCategory::Item:
-    m_maxStackSize = 1;
-    m_isStackable = false;
+    m_value = 10.0f;
+    m_weight = 1.0f;
+    m_maxStackSize = 10;
+    m_isStackable = true;
+    m_isConsumable = false;
     break;
   case ResourceCategory::Material:
-    m_maxStackSize = 999;
+    m_value = 5.0f;
+    m_weight = 0.5f;
+    m_maxStackSize = 50;
     m_isStackable = true;
+    m_isConsumable = false;
     break;
   case ResourceCategory::Currency:
+    m_value = 1.0f;
+    m_weight = 0.01f;
     m_maxStackSize = 999999;
     m_isStackable = true;
+    m_isConsumable = false;
     break;
   case ResourceCategory::GameResource:
-    m_maxStackSize = 9999;
+    m_value = 1.0f;
+    m_weight = 0.0f;
+    m_maxStackSize = 100;
     m_isStackable = true;
+    m_isConsumable = true;
     break;
   default:
+    m_value = 1.0f;
+    m_weight = 1.0f;
     m_maxStackSize = 1;
     m_isStackable = false;
+    m_isConsumable = false;
     break;
   }
 
   RESOURCE_INFO("Created resource: " + m_name +
                 " (Handle: " + m_handle.toString() + ")");
-}
-
-void Resource::update(float) {
-  // Resources are templates - they don't update themselves
-  // Individual instances are managed by InventoryComponent
-}
-
-void Resource::render(const HammerEngine::Camera* camera) {
-  // Resources don't render themselves (they're templates)
-  // Individual instances are rendered by UI systems using the icon texture
-  // Camera parameter is ignored since resources don't have world positions
-  (void)camera; // Suppress unused parameter warning
-}
-
-void Resource::clean() {
-  // Clean up any resource-specific data
-  m_description.clear();
-  m_iconTextureId.clear();
 }
 
 std::string Resource::categoryToString(ResourceCategory category) {

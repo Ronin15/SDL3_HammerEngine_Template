@@ -4,7 +4,6 @@
  */
 
 #include "entities/resources/CurrencyAndGameResources.hpp"
-#include "core/Logger.hpp"
 #include <unordered_map>
 
 // Currency base class implementation
