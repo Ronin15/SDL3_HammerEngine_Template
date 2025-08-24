@@ -38,6 +38,30 @@
 - Performance: Prefer STL algorithms (e.g., `std::sort`, `std::find_if`, `std::transform`) over manual loops for better optimization.
 - Platform guards for OS-specific logic (`#ifdef __APPLE__`, `#ifdef WIN32`).
 
+## C++ Header vs Implementation
+- Keep headers minimal and stable:
+  - Prefer forward declarations over including other headers.
+  - Expose declarations only; avoid leaking dependencies.
+- Define in headers:
+  - Templates, `constexpr`, and header-only utilities by design.
+  - Trivial special members (`=default`/`=delete`) and trivial POD-like ctor/dtor.
+  - Tiny, non-throwing accessors (1–2 lines) that just read/set state.
+  - `inline` variables and constants.
+- Define in `.cpp` files:
+  - Any function with logic (control flow, logging, locking, allocation, exceptions).
+  - Constructors/destructors that do more than trivial init/cleanup.
+  - Singleton wiring and subsystems likely to change (reduces rebuild churn, stabilizes ABI).
+  - Enum stream operators and helpers (keep test output helpers out of headers).
+- Rationale: faster incremental builds, tighter compile-time hygiene, fewer ODR/ABI pitfalls; compilers/LTO can still inline across translation units when beneficial.
+
+## Large-Scale Organization
+- Public API surface lives under `include/` mirroring modules in `src/`.
+- Keep modules cohesive: one primary header in `include/<module>/` with a corresponding `.cpp` in `src/<module>/` for behavior.
+- Use forward declarations at API boundaries; include concrete types only in `.cpp`.
+- Keep hot-path, trivial accessors inline in headers; move all non-trivial logic to `.cpp`.
+- Central subsystems (managers, engine loop) expose minimal, stable interfaces; implementation details remain in `src/`.
+- Header-only utilities are exceptions and should be documented as such (e.g., items under `include/utils/`).
+
 ## Testing Guidelines
 - Framework: Boost.Test. Place tests under `tests/`; binaries output to `bin/debug/`.
 - Write focused/thorough tests (success and error paths). Clean up test artifacts.

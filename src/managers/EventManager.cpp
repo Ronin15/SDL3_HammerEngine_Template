@@ -21,6 +21,74 @@
 #include <chrono>
 #include <future>
 
+// ----------------------
+// EventData definitions
+// ----------------------
+// EventData small accessors are inline in the header per policy.
+
+// ---------------------------
+// EventManager core helpers
+// ---------------------------
+EventManager &EventManager::Instance()
+{
+  static EventManager instance;
+  return instance;
+}
+
+EventManager::~EventManager()
+{
+  if (!m_isShutdown) {
+    clean();
+  }
+}
+
+bool EventManager::isInitialized() const
+{
+  return m_initialized.load(std::memory_order_acquire);
+}
+
+bool EventManager::isShutdown() const
+{
+  return m_isShutdown;
+}
+
+void EventManager::enableThreading(bool enable)
+{
+  m_threadingEnabled.store(enable);
+}
+
+bool EventManager::isThreadingEnabled() const
+{
+  return m_threadingEnabled.load();
+}
+
+void EventManager::setThreadingThreshold(size_t threshold)
+{
+  m_threadingThreshold = threshold;
+}
+
+// --------------------------------------------
+// Convenience alias trigger method definitions
+// --------------------------------------------
+bool EventManager::triggerWeatherChange(const std::string &weatherType,
+                                        float transitionTime) const
+{
+  return changeWeather(weatherType, transitionTime);
+}
+
+bool EventManager::triggerSceneChange(const std::string &sceneId,
+                                      const std::string &transitionType,
+                                      float transitionTime) const
+{
+  return changeScene(sceneId, transitionType, transitionTime);
+}
+
+bool EventManager::triggerNPCSpawn(const std::string &npcType, float x,
+                                   float y) const
+{
+  return spawnNPC(npcType, x, y);
+}
+
 bool EventManager::init() {
   if (m_initialized.load()) {
     EVENT_WARN("EventManager already initialized");

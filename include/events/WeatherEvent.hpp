@@ -35,21 +35,8 @@ enum class WeatherType {
     Custom
 };
 
-// Stream operator for WeatherType enum to support Boost.Test output
-inline std::ostream& operator<<(std::ostream& os, const WeatherType& type) {
-    switch (type) {
-        case WeatherType::Clear: os << "Clear"; break;
-        case WeatherType::Cloudy: os << "Cloudy"; break;
-        case WeatherType::Rainy: os << "Rainy"; break;
-        case WeatherType::Stormy: os << "Stormy"; break;
-        case WeatherType::Foggy: os << "Foggy"; break;
-        case WeatherType::Snowy: os << "Snowy"; break;
-        case WeatherType::Windy: os << "Windy"; break;
-        case WeatherType::Custom: os << "Custom"; break;
-        default: os << "Unknown"; break;
-    }
-    return os;
-}
+// Stream operator declared here; defined in src/events/WeatherEvent.cpp
+std::ostream& operator<<(std::ostream& os, const WeatherType& type);
 
 struct WeatherParams {
     float intensity{1.0f};       // 0.0 to 1.0 intensity level
