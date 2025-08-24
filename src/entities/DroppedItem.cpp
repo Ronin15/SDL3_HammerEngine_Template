@@ -14,20 +14,20 @@ DroppedItem::DroppedItem(HammerEngine::ResourceHandle resourceHandle,
     : Entity(), m_resourceHandle(resourceHandle), m_quantity(quantity),
       m_pickupTimer(0.0f), m_bobTimer(0.0f), m_canBePickedUp(false) {
 
-  // Set position after construction
-  m_position = position;
+  // Set position using Entity's method
+  setPosition(position);
 
   // Get the resource template to copy visual properties
   auto resourceTemplate = getResourceTemplate();
   if (resourceTemplate) {
-    // Copy visual properties from the resource template
-    m_textureID = resourceTemplate->getWorldTextureId();
-    m_numFrames = resourceTemplate->getNumFrames();
-    m_animSpeed = resourceTemplate->getAnimSpeed();
+    // Copy visual properties from the resource template using Entity methods
+    setTextureID(resourceTemplate->getWorldTextureId());
+    setNumFrames(resourceTemplate->getNumFrames());
+    setAnimSpeed(resourceTemplate->getAnimSpeed());
 
     // Set default entity size (can be overridden)
-    m_width = 32;
-    m_height = 32;
+    setWidth(32);
+    setHeight(32);
 
     ENTITY_INFO(
         "Created DroppedItem for resource: " + resourceTemplate->getName() +
@@ -53,11 +53,11 @@ void DroppedItem::update(float deltaTime) {
   updateVisualEffects(deltaTime);
 
   // Update animation frame (manual implementation since Entity is pure virtual)
-  if (m_numFrames > 1 && m_animSpeed > 0) {
+  if (getNumFrames() > 1 && getAnimSpeed() > 0) {
     static float animTimer = 0.0f;
-    animTimer += deltaTime * m_animSpeed;
+    animTimer += deltaTime * getAnimSpeed();
     if (animTimer >= 100.0f) { // Reset at 100ms intervals
-      m_currentFrame = (m_currentFrame + 1) % m_numFrames;
+      setCurrentFrame((getCurrentFrame() + 1) % getNumFrames());
       animTimer = 0.0f;
     }
   }
@@ -91,13 +91,13 @@ void DroppedItem::clean() {
   m_bobTimer = 0.0f;
   m_canBePickedUp = false;
 
-  // Clean up Entity base properties
-  m_textureID.clear();
-  m_numFrames = 1;
-  m_animSpeed = 100;
-  m_currentFrame = 0;
-  m_width = 0;
-  m_height = 0;
+  // Clean up Entity base properties using Entity methods
+  setTextureID("");
+  setNumFrames(1);
+  setAnimSpeed(100);
+  setCurrentFrame(0);
+  setWidth(0);
+  setHeight(0);
 }
 
 bool DroppedItem::addQuantity(int amount) {
