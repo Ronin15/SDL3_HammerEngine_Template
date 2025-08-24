@@ -175,8 +175,10 @@ public:
   void update(float deltaTime);
 
   /**
-   * @brief Waits for all asynchronous AI update tasks from the last tick to complete.
-   * @details This is the synchronization point that ensures AI processing is finished before the next game logic step.
+   * @brief Waits for all asynchronous AI update tasks from the last tick to
+   * complete.
+   * @details This is the synchronization point that ensures AI processing is
+   * finished before the next game logic step.
    */
   void waitForUpdatesToComplete();
 
@@ -419,6 +421,10 @@ private:
 
   // Frame counter for periodic logging (thread-safe)
   std::atomic<uint64_t> m_frameCounter{0};
+
+  // Asynchronous assignment processing (non-blocking)
+  std::vector<std::future<void>> m_assignmentFutures;
+  std::atomic<bool> m_assignmentInProgress{false};
 
   // Frame throttling for task submission (thread-safe)
   std::atomic<uint64_t> m_lastFrameWithTasks{0};
