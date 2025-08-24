@@ -13,6 +13,23 @@
 #include <algorithm>
 #include <random>
 #include <cctype>
+#include <ostream>
+
+// Stream operator for WeatherType (moved from header)
+std::ostream& operator<<(std::ostream& os, const WeatherType& type) {
+  switch (type) {
+    case WeatherType::Clear:   os << "Clear"; break;
+    case WeatherType::Cloudy:  os << "Cloudy"; break;
+    case WeatherType::Rainy:   os << "Rainy"; break;
+    case WeatherType::Stormy:  os << "Stormy"; break;
+    case WeatherType::Foggy:   os << "Foggy"; break;
+    case WeatherType::Snowy:   os << "Snowy"; break;
+    case WeatherType::Windy:   os << "Windy"; break;
+    case WeatherType::Custom:  os << "Custom"; break;
+    default:                   os << "Unknown"; break;
+  }
+  return os;
+}
 
 // Helper for getting current game time (hour of day)
 // Helper for getting current game time of day (0-24)

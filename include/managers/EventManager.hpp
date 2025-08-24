@@ -69,25 +69,16 @@ struct EventData {
   static constexpr uint32_t FLAG_ACTIVE = 1 << 0;
   static constexpr uint32_t FLAG_DIRTY = 1 << 1;
   static constexpr uint32_t FLAG_PENDING_REMOVAL = 1 << 2;
-
   EventData()
       : event(nullptr), name(), flags(0), priority(0),
         typeId(EventTypeId::Custom) {}
-
   bool isActive() const { return flags & FLAG_ACTIVE; }
   void setActive(bool active) {
-    if (active)
-      flags |= FLAG_ACTIVE;
-    else
-      flags &= ~FLAG_ACTIVE;
+    if (active) flags |= FLAG_ACTIVE; else flags &= ~FLAG_ACTIVE;
   }
-
   bool isDirty() const { return flags & FLAG_DIRTY; }
   void setDirty(bool dirty) {
-    if (dirty)
-      flags |= FLAG_DIRTY;
-    else
-      flags &= ~FLAG_DIRTY;
+    if (dirty) flags |= FLAG_DIRTY; else flags &= ~FLAG_DIRTY;
   }
 };
 
@@ -185,10 +176,7 @@ struct PerformanceStats {
  */
 class EventManager {
 public:
-  static EventManager &Instance() {
-    static EventManager instance;
-    return instance;
-  }
+  static EventManager &Instance();
 
   // Dispatch control for handler execution
   enum class DispatchMode : uint8_t { Deferred = 0, Immediate = 1 };
@@ -203,9 +191,7 @@ public:
    * @brief Checks if the Event Manager has been initialized
    * @return true if initialized, false otherwise
    */
-  bool isInitialized() const {
-    return m_initialized.load(std::memory_order_acquire);
-  }
+  bool isInitialized() const;
 
   /**
    * @brief Cleans up all event resources
@@ -228,7 +214,7 @@ public:
    * @brief Checks if EventManager has been shut down
    * @return true if manager is shut down, false otherwise
    */
-  bool isShutdown() const { return m_isShutdown; }
+  bool isShutdown() const;
 
   /**
    * @brief Registers a generic event with the event system
@@ -379,11 +365,9 @@ public:
   void updateCustomEvents();
 
   // Threading control
-  void enableThreading(bool enable) { m_threadingEnabled.store(enable); }
-  bool isThreadingEnabled() const { return m_threadingEnabled.load(); }
-  void setThreadingThreshold(size_t threshold) {
-    m_threadingThreshold = threshold;
-  }
+  void enableThreading(bool enable);
+  bool isThreadingEnabled() const;
+  void setThreadingThreshold(size_t threshold);
 
   // High-level convenience methods
   bool changeWeather(const std::string &weatherType,
@@ -486,17 +470,11 @@ public:
 
   // Alternative trigger methods (aliases for compatibility)
   bool triggerWeatherChange(const std::string &weatherType,
-                            float transitionTime = 5.0f) const {
-    return changeWeather(weatherType, transitionTime);
-  }
+                            float transitionTime = 5.0f) const;
   bool triggerSceneChange(const std::string &sceneId,
                           const std::string &transitionType = "fade",
-                          float transitionTime = 1.0f) const {
-    return changeScene(sceneId, transitionType, transitionTime);
-  }
-  bool triggerNPCSpawn(const std::string &npcType, float x, float y) const {
-    return spawnNPC(npcType, x, y);
-  }
+                          float transitionTime = 1.0f) const;
+  bool triggerNPCSpawn(const std::string &npcType, float x, float y) const;
 
   // Resource change convenience method
   bool triggerResourceChange(EntityPtr owner,
@@ -523,11 +501,7 @@ private:
 
   // Shutdown state
   bool m_isShutdown{false};
-  ~EventManager() {
-    if (!m_isShutdown) {
-      clean();
-    }
-  }
+  ~EventManager();
   EventManager(const EventManager &) = delete;
   EventManager &operator=(const EventManager &) = delete;
 

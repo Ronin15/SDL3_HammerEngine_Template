@@ -5,6 +5,13 @@
 
 #include "events/EventFactory.hpp"
 #include "events/NPCSpawnEvent.hpp"
+#include "events/WeatherEvent.hpp"
+#include "events/SceneChangeEvent.hpp"
+#include "events/ParticleEffectEvent.hpp"
+#include "events/WorldEvent.hpp"
+#include "events/CameraEvent.hpp"
+#include "events/ResourceChangeEvent.hpp"
+#include "utils/Vector2D.hpp"
 #include "core/Logger.hpp"
 #include <algorithm>
 #include <cctype>

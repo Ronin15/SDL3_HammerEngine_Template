@@ -18,14 +18,8 @@
 #include <string>
 #include <unordered_map>
 #include <functional>
+#include <memory>
 #include "Event.hpp"
-#include "WeatherEvent.hpp"
-#include "SceneChangeEvent.hpp"
-#include "ParticleEffectEvent.hpp"
-#include "WorldEvent.hpp"
-#include "CameraEvent.hpp"
-#include "ResourceChangeEvent.hpp"
-#include "utils/Vector2D.hpp"
 
 
 // Simplify creation of event JSON definition
@@ -36,6 +30,10 @@ struct EventDefinition {
     std::unordered_map<std::string, float> numParams;     // Numeric parameters
     std::unordered_map<std::string, bool> boolParams;     // Boolean parameters
 };
+
+// Forward declarations to reduce header dependencies
+enum class WeatherType;
+enum class TransitionType;
 
 class EventFactory {
 public:

@@ -116,28 +116,23 @@ void AIManager::clean() {
     m_assignmentInProgress.store(false, std::memory_order_release);
   }
 
-  // Clean up any pending update futures from previous frames
-  if (!m_pendingFutures.empty()) {
-    AI_LOG("Waiting for " + std::to_string(m_pendingFutures.size()) +
-           " pending update futures to complete...");
-    
-    for (auto &future : m_pendingFutures) {
+  // Ensure any in-flight update futures are completed before clearing storage
+  if (!m_updateFutures.empty()) {
+    AI_LOG("Waiting for " + std::to_string(m_updateFutures.size()) +
+           " AI update futures to complete...");
+    for (auto &future : m_updateFutures) {
       if (future.valid()) {
         try {
-          auto status = future.wait_for(std::chrono::milliseconds(50));
-          if (status == std::future_status::ready) {
-            future.get();
-          } else {
-            AI_WARN("Pending update future did not complete within timeout during shutdown");
-          }
+          future.wait();
+          future.get();
         } catch (const std::exception &e) {
-          AI_ERROR("Exception in pending update future during shutdown: " + std::string(e.what()));
+          AI_ERROR("Exception in AI update future during shutdown: " + std::string(e.what()));
         } catch (...) {
-          AI_ERROR("Unknown exception in pending update future during shutdown");
+          AI_ERROR("Unknown exception in AI update future during shutdown");
         }
       }
     }
-    m_pendingFutures.clear();
+    m_updateFutures.clear();
   }
 
   {
@@ -240,16 +235,8 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
   auto startTime = std::chrono::high_resolution_clock::now();
 
   try {
-    // First, process any pending futures from previous frames (non-blocking check)
-    auto it = m_pendingFutures.begin();
-    while (it != m_pendingFutures.end()) {
-      if (it->valid() && it->wait_for(std::chrono::nanoseconds(0)) == std::future_status::ready) {
-        it->get(); // Collect completed result
-        it = m_pendingFutures.erase(it);
-      } else {
-        ++it;
-      }
-    }
+    // Do not carry over AI update futures across frames to avoid races with render.
+    // Any previous frame's update work must be completed within its frame.
 
     // First, synchronize all entity positions to the hot data cache.
     // This ensures distance calculations use the most up-to-date information.
@@ -314,6 +301,10 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
       // Check queue pressure before submitting tasks
       size_t queueSize = threadSystem.getQueueSize();
       size_t queueCapacity = threadSystem.getQueueCapacity();
+      if (queueCapacity == 0) {
+        // Defensive: treat as high pressure if capacity unknown
+        queueCapacity = 1;
+      }
       size_t pressureThreshold =
           (queueCapacity * 9) / 10; // 90% capacity threshold
 
@@ -329,37 +320,7 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
         if (nextBuffer != currentBuffer) {
           m_storage.currentBuffer.store(nextBuffer, std::memory_order_release);
         }
-
-        // Process message queue and continue with performance tracking
-        processMessageQueue();
-
-        auto endTime = std::chrono::high_resolution_clock::now();
-        auto duration =
-            std::chrono::duration<double, std::milli>(endTime - startTime)
-                .count();
-        currentFrame = m_frameCounter.fetch_add(1, std::memory_order_relaxed);
-
-        // Periodic cleanup and stats
-        if (currentFrame % 300 == 0) {
-          cleanupInactiveEntities();
-          m_lastCleanupFrame.store(currentFrame, std::memory_order_relaxed);
-
-          std::lock_guard<std::mutex> statsLock(m_statsMutex);
-          m_globalStats.addSample(duration, entityCount);
-
-          if (entityCount > 0) {
-            double avgDuration = m_globalStats.updateCount > 0
-                                     ? (m_globalStats.totalUpdateTime /
-                                        m_globalStats.updateCount)
-                                     : 0.0;
-            AI_DEBUG("AI Summary - Entities: " + std::to_string(entityCount) +
-                     ", Avg Update: " + std::to_string(avgDuration) + "ms" +
-                     ", Entities/sec: " +
-                     std::to_string(m_globalStats.entitiesPerSecond) +
-                     " [Single-threaded]");
-          }
-        }
-        return; // Exit early after single-threaded processing
+        // Single-threaded path completes within this frame; continue to stats
       }
 
       HammerEngine::WorkerBudget budget =
@@ -411,8 +372,7 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
       size_t entitiesPerBatch = entityCount / batchCount;
       size_t remainingEntities = entityCount % batchCount;
 
-      // Batch processing with futures to ensure completion before render
-      // Collect futures so we can synchronize within update() as per engine contract
+      // Batch processing with futures; synchronize before returning from update()
       m_updateFutures.clear();
       m_updateFutures.reserve(batchCount);
       for (size_t i = 0; i < batchCount; ++i) {
@@ -432,11 +392,16 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
                 },
                 HammerEngine::TaskPriority::High, "AI_OptimalBatch"));
       }
-      // Instead of blocking, move futures to pending queue for next frame
-      // This allows the main thread to continue immediately
+      // Wait for all batches to complete to maintain update->render safety
       for (auto &f : m_updateFutures) {
         if (f.valid()) {
-          m_pendingFutures.push_back(std::move(f));
+          try {
+            f.get();
+          } catch (const std::exception &e) {
+            AI_ERROR(std::string("Exception in AI batch future: ") + e.what());
+          } catch (...) {
+            AI_ERROR("Unknown exception in AI batch future");
+          }
         }
       }
       m_updateFutures.clear();

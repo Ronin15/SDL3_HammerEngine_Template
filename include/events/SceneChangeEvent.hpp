@@ -34,19 +34,8 @@ enum class TransitionType {
     Custom
 };
 
-// Stream operator for TransitionType enum to support Boost.Test output
-inline std::ostream& operator<<(std::ostream& os, const TransitionType& type) {
-    switch (type) {
-        case TransitionType::Fade: os << "Fade"; break;
-        case TransitionType::Dissolve: os << "Dissolve"; break;
-        case TransitionType::Wipe: os << "Wipe"; break;
-        case TransitionType::Slide: os << "Slide"; break;
-        case TransitionType::Instant: os << "Instant"; break;
-        case TransitionType::Custom: os << "Custom"; break;
-        default: os << "Unknown"; break;
-    }
-    return os;
-}
+// Stream operator declared here; defined in src/events/SceneChangeEvent.cpp
+std::ostream& operator<<(std::ostream& os, const TransitionType& type);
 
 struct TransitionParams {
     float duration{1.0f};        // Duration in seconds
@@ -72,27 +61,7 @@ struct TransitionParams {
     TransitionParams() = default;
     
     // Constructor with commonly used parameters
-    explicit TransitionParams(float duration, TransitionType type = TransitionType::Fade) 
-        : duration(duration) {
-        // Set default params based on type
-        switch(type) {
-            case TransitionType::Fade:
-                transitionEffect = "fade";
-                break;
-            case TransitionType::Dissolve:
-                transitionEffect = "dissolve";
-                break;
-            case TransitionType::Wipe:
-                transitionEffect = "wipe";
-                break;
-            case TransitionType::Slide:
-                transitionEffect = "slide";
-                break;
-            default:
-                transitionEffect = "fade";
-                break;
-        }
-    }
+    explicit TransitionParams(float duration, TransitionType type = TransitionType::Fade);
 };
 
 class SceneChangeEvent : public Event {
