@@ -376,8 +376,10 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
       size_t entitiesPerBatch = entityCount / batchCount;
       size_t remainingEntities = entityCount % batchCount;
 
-      // True fire-and-forget async processing for maximum performance
-      // This achieves 36+ million updates/sec by not blocking on completion
+      // Batch processing with futures to ensure completion before render
+      // Collect futures so we can synchronize within update() as per engine contract
+      m_updateFutures.clear();
+      m_updateFutures.reserve(batchCount);
       for (size_t i = 0; i < batchCount; ++i) {
         size_t start = i * entitiesPerBatch;
         size_t end = start + entitiesPerBatch;
@@ -387,13 +389,21 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
           end += remainingEntities;
         }
 
-        // Fire-and-forget: maximum performance async dispatch
-        threadSystem.enqueueTask(
-            [this, start, end, deltaTime, nextBuffer]() {
-              processBatch(start, end, deltaTime, nextBuffer);
-            },
-            HammerEngine::TaskPriority::High, "AI_OptimalBatch");
+        // Enqueue with result and retain the future for synchronization
+        m_updateFutures.push_back(
+            threadSystem.enqueueTaskWithResult(
+                [this, start, end, deltaTime, nextBuffer]() {
+                  processBatch(start, end, deltaTime, nextBuffer);
+                },
+                HammerEngine::TaskPriority::High, "AI_OptimalBatch"));
       }
+      // Ensure all AI updates complete before leaving update()
+      for (auto &f : m_updateFutures) {
+        if (f.valid()) {
+          f.get();
+        }
+      }
+      m_updateFutures.clear();
 
     } else {
       // Single-threaded processing
