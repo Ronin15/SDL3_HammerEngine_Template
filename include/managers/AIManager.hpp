@@ -445,6 +445,7 @@ private:
   mutable std::mutex m_messagesMutex;
   mutable std::mutex m_statsMutex;
   std::vector<std::future<void>> m_updateFutures;
+  std::vector<std::future<void>> m_pendingFutures; // Futures from previous frames
 
   // Optimized batch processing constants
   static constexpr size_t CACHE_LINE_SIZE = 64; // Standard cache line size

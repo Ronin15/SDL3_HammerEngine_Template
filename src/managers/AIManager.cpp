@@ -116,6 +116,30 @@ void AIManager::clean() {
     m_assignmentInProgress.store(false, std::memory_order_release);
   }
 
+  // Clean up any pending update futures from previous frames
+  if (!m_pendingFutures.empty()) {
+    AI_LOG("Waiting for " + std::to_string(m_pendingFutures.size()) +
+           " pending update futures to complete...");
+    
+    for (auto &future : m_pendingFutures) {
+      if (future.valid()) {
+        try {
+          auto status = future.wait_for(std::chrono::milliseconds(50));
+          if (status == std::future_status::ready) {
+            future.get();
+          } else {
+            AI_WARN("Pending update future did not complete within timeout during shutdown");
+          }
+        } catch (const std::exception &e) {
+          AI_ERROR("Exception in pending update future during shutdown: " + std::string(e.what()));
+        } catch (...) {
+          AI_ERROR("Unknown exception in pending update future during shutdown");
+        }
+      }
+    }
+    m_pendingFutures.clear();
+  }
+
   {
     std::unique_lock<std::shared_mutex> entitiesLock(m_entitiesMutex);
     std::unique_lock<std::shared_mutex> behaviorsLock(m_behaviorsMutex);
@@ -216,6 +240,17 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
   auto startTime = std::chrono::high_resolution_clock::now();
 
   try {
+    // First, process any pending futures from previous frames (non-blocking check)
+    auto it = m_pendingFutures.begin();
+    while (it != m_pendingFutures.end()) {
+      if (it->valid() && it->wait_for(std::chrono::nanoseconds(0)) == std::future_status::ready) {
+        it->get(); // Collect completed result
+        it = m_pendingFutures.erase(it);
+      } else {
+        ++it;
+      }
+    }
+
     // First, synchronize all entity positions to the hot data cache.
     // This ensures distance calculations use the most up-to-date information.
     {
@@ -397,10 +432,11 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
                 },
                 HammerEngine::TaskPriority::High, "AI_OptimalBatch"));
       }
-      // Ensure all AI updates complete before leaving update()
+      // Instead of blocking, move futures to pending queue for next frame
+      // This allows the main thread to continue immediately
       for (auto &f : m_updateFutures) {
         if (f.valid()) {
-          f.get();
+          m_pendingFutures.push_back(std::move(f));
         }
       }
       m_updateFutures.clear();
