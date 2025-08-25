@@ -24,50 +24,58 @@
 
 #include "utils/Vector2D.hpp"
 #include <SDL3/SDL.h>
-#include <algorithm>
 #include <array>
 #include <atomic>
 #include <cmath>
 #include <mutex>
+#include <new>
 #include <shared_mutex>
 #include <string>
 #include <unordered_map>
 #include <vector>
- #include <new>
 
 // Lightweight aligned allocator to support SIMD-friendly vector storage
-template <typename T, std::size_t Alignment>
-struct AlignedAllocator {
+template <typename T, std::size_t Alignment> struct AlignedAllocator {
   using value_type = T;
 
   AlignedAllocator() noexcept {}
   template <class U>
-  AlignedAllocator(const AlignedAllocator<U, Alignment>&) noexcept {}
+  AlignedAllocator(const AlignedAllocator<U, Alignment> &) noexcept {}
 
-  [[nodiscard]] T* allocate(std::size_t n) {
+  [[nodiscard]] T *allocate(std::size_t n) {
     if (n > static_cast<std::size_t>(-1) / sizeof(T)) {
       throw std::bad_array_new_length();
     }
-    void* p = ::operator new[](n * sizeof(T), std::align_val_t(Alignment));
-    if (!p) throw std::bad_alloc();
-    return static_cast<T*>(p);
+    void *p = ::operator new[](n * sizeof(T), std::align_val_t(Alignment));
+    if (!p)
+      throw std::bad_alloc();
+    return static_cast<T *>(p);
   }
 
-  void deallocate(T* p, std::size_t) noexcept {
+  void deallocate(T *p, std::size_t) noexcept {
     ::operator delete[](p, std::align_val_t(Alignment));
   }
 
-  template <class U>
-  struct rebind { using other = AlignedAllocator<U, Alignment>; };
+  template <class U> struct rebind {
+    using other = AlignedAllocator<U, Alignment>;
+  };
 };
 
 template <class T1, std::size_t A1, class T2, std::size_t A2>
-constexpr bool operator==(const AlignedAllocator<T1, A1>&, const AlignedAllocator<T2, A2>&) noexcept { return A1 == A2; }
+constexpr bool operator==(const AlignedAllocator<T1, A1> &,
+                          const AlignedAllocator<T2, A2> &) noexcept {
+  return A1 == A2;
+}
 template <class T1, std::size_t A1, class T2, std::size_t A2>
-constexpr bool operator!=(const AlignedAllocator<T1, A1>&, const AlignedAllocator<T2, A2>&) noexcept { return A1 != A2; }
+constexpr bool operator!=(const AlignedAllocator<T1, A1> &,
+                          const AlignedAllocator<T2, A2> &) noexcept {
+  return A1 != A2;
+}
 
 // SIMD support detection
-#if defined(__SSE2__) || (defined(_MSC_VER) && (defined(_M_X64) || defined(_M_IX86_FP) && _M_IX86_FP >= 2))
+#if defined(__SSE2__) ||                                                       \
+    (defined(_MSC_VER) &&                                                      \
+     (defined(_M_X64) || defined(_M_IX86_FP) && _M_IX86_FP >= 2))
 #define PARTICLE_SIMD_SSE2 1
 #include <emmintrin.h>
 #endif
@@ -257,7 +265,7 @@ struct UnifiedParticle {
       : position(0, 0), velocity(0, 0), acceleration(0, 0), life(0.0f),
         maxLife(1.0f), size(2.0f), rotation(0.0f), angularVelocity(0.0f),
         color(0xFFFFFFFF), textureIndex(0), flags(0), generationId(0),
-         effectType(ParticleEffectType::Custom), layer(RenderLayer::World) {}
+        effectType(ParticleEffectType::Custom), layer(RenderLayer::World) {}
 
   bool isActive() const;
   void setActive(bool active);
@@ -749,58 +757,61 @@ private:
   struct alignas(64) LockFreeParticleStorage {
     // SoA data layout for cache-friendly updates
     struct ParticleSoA {
-        using V2  = Vector2D;
-        using F32 = float;
-        using U32 = uint32_t;
-        using U16 = uint16_t;
-        using U8  = uint8_t;
+      using V2 = Vector2D;
+      using F32 = float;
+      using U32 = uint32_t;
+      using U16 = uint16_t;
+      using U8 = uint8_t;
 
-        // Existing Vector2D-based arrays (used by most code paths)
-        std::vector<V2,  AlignedAllocator<V2,  16>> positions;
-        std::vector<V2,  AlignedAllocator<V2,  16>> velocities;
-        std::vector<V2,  AlignedAllocator<V2,  16>> accelerations;
+      // Existing Vector2D-based arrays (used by most code paths)
+      std::vector<V2, AlignedAllocator<V2, 16>> positions;
+      std::vector<V2, AlignedAllocator<V2, 16>> velocities;
+      std::vector<V2, AlignedAllocator<V2, 16>> accelerations;
 
-        // SIMD-friendly SoA float lanes for the hot physics path (Phase 2)
-        std::vector<F32, AlignedAllocator<F32, 16>> posX;
-        std::vector<F32, AlignedAllocator<F32, 16>> posY;
-        std::vector<F32, AlignedAllocator<F32, 16>> velX;
-        std::vector<F32, AlignedAllocator<F32, 16>> velY;
-        std::vector<F32, AlignedAllocator<F32, 16>> accX;
-        std::vector<F32, AlignedAllocator<F32, 16>> accY;
+      // SIMD-friendly SoA float lanes for the hot physics path (Phase 2)
+      std::vector<F32, AlignedAllocator<F32, 16>> posX;
+      std::vector<F32, AlignedAllocator<F32, 16>> posY;
+      std::vector<F32, AlignedAllocator<F32, 16>> velX;
+      std::vector<F32, AlignedAllocator<F32, 16>> velY;
+      std::vector<F32, AlignedAllocator<F32, 16>> accX;
+      std::vector<F32, AlignedAllocator<F32, 16>> accY;
 
-        // Other particle attributes
-        std::vector<F32, AlignedAllocator<F32, 16>> lives;
-        std::vector<F32, AlignedAllocator<F32, 16>> maxLives;
-        std::vector<F32, AlignedAllocator<F32, 16>> sizes;
-        std::vector<F32, AlignedAllocator<F32, 16>> rotations;
-        std::vector<F32, AlignedAllocator<F32, 16>> angularVelocities;
-        std::vector<U32, AlignedAllocator<U32, 16>> colors;
-        std::vector<U16, AlignedAllocator<U16, 16>> textureIndices;
-        std::vector<U8,  AlignedAllocator<U8,  16>> flags;
-        std::vector<U8,  AlignedAllocator<U8,  16>> generationIds;
-        std::vector<ParticleEffectType, AlignedAllocator<ParticleEffectType, 16>> effectTypes;
-        std::vector<UnifiedParticle::RenderLayer, AlignedAllocator<UnifiedParticle::RenderLayer, 16>> layers;
+      // Other particle attributes
+      std::vector<F32, AlignedAllocator<F32, 16>> lives;
+      std::vector<F32, AlignedAllocator<F32, 16>> maxLives;
+      std::vector<F32, AlignedAllocator<F32, 16>> sizes;
+      std::vector<F32, AlignedAllocator<F32, 16>> rotations;
+      std::vector<F32, AlignedAllocator<F32, 16>> angularVelocities;
+      std::vector<U32, AlignedAllocator<U32, 16>> colors;
+      std::vector<U16, AlignedAllocator<U16, 16>> textureIndices;
+      std::vector<U8, AlignedAllocator<U8, 16>> flags;
+      std::vector<U8, AlignedAllocator<U8, 16>> generationIds;
+      std::vector<ParticleEffectType, AlignedAllocator<ParticleEffectType, 16>>
+          effectTypes;
+      std::vector<UnifiedParticle::RenderLayer,
+                  AlignedAllocator<UnifiedParticle::RenderLayer, 16>>
+          layers;
 
-        // CRITICAL: Unified SOA operations to prevent desynchronization
-        void resize(size_t newSize);
-        void reserve(size_t newCapacity);
-        void push_back(const UnifiedParticle& p);
-        void clear();
-        size_t size() const;
-        bool empty() const;
-        
-        // NEW: Safe erase operations for SOA consistency
-        void eraseParticle(size_t index);
-        void eraseParticleRange(size_t start, size_t end);
-        void compactInactive();
-        
-        // NEW: Comprehensive validation for Windows UCRT compatibility
-        bool isFullyConsistent() const;
-        size_t getSafeAccessCount() const;
-        
-        // NEW: Safe random access with bounds checking
-        bool isValidIndex(size_t index) const;
-        void swapParticles(size_t indexA, size_t indexB);
+      // CRITICAL: Unified SOA operations to prevent desynchronization
+      void resize(size_t newSize);
+      void reserve(size_t newCapacity);
+      void push_back(const UnifiedParticle &p);
+      void clear();
+      size_t size() const;
+      bool empty() const;
+
+      // NEW: Safe erase operations for SOA consistency
+      void eraseParticle(size_t index);
+      void eraseParticleRange(size_t start, size_t end);
+      void compactInactive();
+
+      // NEW: Comprehensive validation for Windows UCRT compatibility
+      bool isFullyConsistent() const;
+      size_t getSafeAccessCount() const;
+
+      // NEW: Safe random access with bounds checking
+      bool isValidIndex(size_t index) const;
+      void swapParticles(size_t indexA, size_t indexB);
     };
 
     // Double-buffered particle arrays for lock-free updates
@@ -851,7 +862,6 @@ private:
 
     // CRITICAL FIX: Check if compaction is needed with proper bounds checking
     bool needsCompaction() const;
-
 
     // Submit new particle (lock-free)
     bool submitNewParticle(const NewParticleRequest &request);
@@ -952,8 +962,6 @@ private:
   bool m_smokeActive{false};
   bool m_sparksActive{false};
 
-
-
   // Helper methods
   uint32_t generateEffectId();
   size_t allocateParticle();
@@ -977,14 +985,16 @@ private:
                                      size_t activeParticleCount);
   void updateParticleRange(LockFreeParticleStorage::ParticleSoA &particles,
                            size_t startIdx, size_t endIdx, float deltaTime);
-                           
+
   // SIMD-optimized batch physics update for high-performance processing
-  void updateParticlePhysicsSIMD(LockFreeParticleStorage::ParticleSoA &particles,
-                                size_t startIdx, size_t endIdx, float deltaTime);
-                                
+  void
+  updateParticlePhysicsSIMD(LockFreeParticleStorage::ParticleSoA &particles,
+                            size_t startIdx, size_t endIdx, float deltaTime);
+
   // Batch color processing for alpha fading and color transitions
-  void batchProcessParticleColors(LockFreeParticleStorage::ParticleSoA &particles,
-                                 size_t startIdx, size_t endIdx);
+  void
+  batchProcessParticleColors(LockFreeParticleStorage::ParticleSoA &particles,
+                             size_t startIdx, size_t endIdx);
   void updateParticleWithColdData(ParticleData &particle,
                                   const ParticleColdData &coldData,
                                   float deltaTime);
@@ -1003,19 +1013,23 @@ private:
   std::array<float, TRIG_LUT_SIZE> m_sinLUT{};
   std::array<float, TRIG_LUT_SIZE> m_cosLUT{};
   void initTrigLookupTables();
-  
+
   // Fast trigonometric functions using lookup tables
   inline float fastSin(float x) const {
     x = fmodf(x, 2.0f * 3.14159265f);
-    if (x < 0) x += 2.0f * 3.14159265f;
-    const size_t index = static_cast<size_t>(x * TRIG_LUT_SCALE) % TRIG_LUT_SIZE;
+    if (x < 0)
+      x += 2.0f * 3.14159265f;
+    const size_t index =
+        static_cast<size_t>(x * TRIG_LUT_SCALE) % TRIG_LUT_SIZE;
     return m_sinLUT[index];
   }
-  
+
   inline float fastCos(float x) const {
     x = fmodf(x, 2.0f * 3.14159265f);
-    if (x < 0) x += 2.0f * 3.14159265f;
-    const size_t index = static_cast<size_t>(x * TRIG_LUT_SCALE) % TRIG_LUT_SIZE;
+    if (x < 0)
+      x += 2.0f * 3.14159265f;
+    const size_t index =
+        static_cast<size_t>(x * TRIG_LUT_SCALE) % TRIG_LUT_SIZE;
     return m_cosLUT[index];
   }
 
