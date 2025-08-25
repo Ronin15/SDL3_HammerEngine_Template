@@ -183,7 +183,7 @@ void ParticleManager::LockFreeParticleStorage::ParticleSoA::resize(size_t newSiz
     rotations.resize(newSize);
     angularVelocities.resize(newSize);
     colors.resize(newSize);
-    textureIndices.resize(newSize);
+    // textureIndices removed
     flags.resize(newSize);
     generationIds.resize(newSize);
     effectTypes.resize(newSize);
@@ -209,7 +209,7 @@ void ParticleManager::LockFreeParticleStorage::ParticleSoA::reserve(size_t newCa
     rotations.reserve(newCapacity);
     angularVelocities.reserve(newCapacity);
     colors.reserve(newCapacity);
-    textureIndices.reserve(newCapacity);
+    // textureIndices removed
     flags.reserve(newCapacity);
     generationIds.reserve(newCapacity);
     effectTypes.reserve(newCapacity);
@@ -236,7 +236,7 @@ void ParticleManager::LockFreeParticleStorage::ParticleSoA::push_back(const Unif
     rotations.push_back(p.rotation);
     angularVelocities.push_back(p.angularVelocity);
     colors.push_back(p.color);
-    textureIndices.push_back(p.textureIndex);
+    // textureIndices removed
     flags.push_back(p.flags);
     generationIds.push_back(p.generationId);
     effectTypes.push_back(p.effectType);
@@ -262,7 +262,7 @@ void ParticleManager::LockFreeParticleStorage::ParticleSoA::clear() {
     rotations.clear();
     angularVelocities.clear();
     colors.clear();
-    textureIndices.clear();
+    // textureIndices removed
     flags.clear();
     generationIds.clear();
     effectTypes.clear();
@@ -283,9 +283,8 @@ size_t ParticleManager::LockFreeParticleStorage::ParticleSoA::size() const {
         lives.size() != baseSize || maxLives.size() != baseSize ||
         sizes.size() != baseSize || rotations.size() != baseSize ||
         angularVelocities.size() != baseSize || colors.size() != baseSize ||
-        textureIndices.size() != baseSize || flags.size() != baseSize ||
-        generationIds.size() != baseSize || effectTypes.size() != baseSize ||
-        layers.size() != baseSize) {
+        flags.size() != baseSize || generationIds.size() != baseSize ||
+        effectTypes.size() != baseSize || layers.size() != baseSize) {
         return 0; // Return 0 if ANY array is inconsistent
     }
     
@@ -306,9 +305,8 @@ bool ParticleManager::LockFreeParticleStorage::ParticleSoA::isFullyConsistent() 
             lives.size() == baseSize && maxLives.size() == baseSize &&
             sizes.size() == baseSize && rotations.size() == baseSize &&
             angularVelocities.size() == baseSize && colors.size() == baseSize &&
-            textureIndices.size() == baseSize && flags.size() == baseSize &&
-            generationIds.size() == baseSize && effectTypes.size() == baseSize &&
-            layers.size() == baseSize);
+            flags.size() == baseSize && generationIds.size() == baseSize &&
+            effectTypes.size() == baseSize && layers.size() == baseSize);
 }
 
 // NEW: Safe access count that works across all platforms
@@ -318,7 +316,7 @@ size_t ParticleManager::LockFreeParticleStorage::ParticleSoA::getSafeAccessCount
         positions.size(), velocities.size(), accelerations.size(),
         posX.size(), posY.size(), velX.size(), velY.size(), accX.size(), accY.size(),
         lives.size(), maxLives.size(), sizes.size(), rotations.size(),
-        angularVelocities.size(), colors.size(), textureIndices.size(),
+        angularVelocities.size(), colors.size(), /*textureIndices.size(),*/
         flags.size(), generationIds.size(), effectTypes.size(), layers.size()
     });
 }
@@ -354,7 +352,7 @@ void ParticleManager::LockFreeParticleStorage::ParticleSoA::eraseParticle(size_t
     rotations.pop_back();
     angularVelocities.pop_back();
     colors.pop_back();
-    textureIndices.pop_back();
+    // textureIndices removed
     flags.pop_back();
     generationIds.pop_back();
     effectTypes.pop_back();
@@ -381,51 +379,13 @@ void ParticleManager::LockFreeParticleStorage::ParticleSoA::swapParticles(size_t
     std::swap(rotations[indexA], rotations[indexB]);
     std::swap(angularVelocities[indexA], angularVelocities[indexB]);
     std::swap(colors[indexA], colors[indexB]);
-    std::swap(textureIndices[indexA], textureIndices[indexB]);
+    // textureIndices removed
     std::swap(flags[indexA], flags[indexB]);
     std::swap(generationIds[indexA], generationIds[indexB]);
     std::swap(effectTypes[indexA], effectTypes[indexB]);
     std::swap(layers[indexA], layers[indexB]);
 }
 
-// NEW: Efficient in-place compaction without iterator invalidation
-void ParticleManager::LockFreeParticleStorage::ParticleSoA::compactInactive() {
-    if (empty()) return;
-    
-    const size_t totalCount = getSafeAccessCount();
-    if (totalCount == 0) return;
-    
-    // FAST COMPACTION: Only copy essential data (8 fields instead of 18)
-    size_t writeIdx = 0;
-    
-    for (size_t readIdx = 0; readIdx < totalCount; ++readIdx) {
-        if (flags[readIdx] & UnifiedParticle::FLAG_ACTIVE) {
-            if (writeIdx != readIdx) {
-                // Only copy essential data for simple colored particles
-                posX[writeIdx] = posX[readIdx];
-                posY[writeIdx] = posY[readIdx];
-                velX[writeIdx] = velX[readIdx];
-                velY[writeIdx] = velY[readIdx];
-                lives[writeIdx] = lives[readIdx];
-                sizes[writeIdx] = sizes[readIdx];
-                colors[writeIdx] = colors[readIdx];
-                flags[writeIdx] = flags[readIdx];
-                
-                // Sync Vector2D arrays from SIMD data for compatibility
-                positions[writeIdx].setX(posX[readIdx]);
-                positions[writeIdx].setY(posY[readIdx]);
-                velocities[writeIdx].setX(velX[readIdx]);
-                velocities[writeIdx].setY(velY[readIdx]);
-            }
-            ++writeIdx;
-        }
-    }
-    
-    // Only resize if we freed significant memory
-    if (writeIdx < totalCount / 2) {
-        resize(writeIdx);
-    }
-}
 
 // LockFreeParticleStorage constructor implementation
 ParticleManager::LockFreeParticleStorage::LockFreeParticleStorage() : creationRing{} {
@@ -436,10 +396,10 @@ ParticleManager::LockFreeParticleStorage::LockFreeParticleStorage() : creationRi
 }
 
 // Lock-free particle creation implementation
-bool ParticleManager::LockFreeParticleStorage::tryCreateParticle(const Vector2D &pos, const Vector2D &vel,
-                       uint32_t color, float life, float size,
-                       uint8_t flags, uint8_t genId,
-                       ParticleEffectType effectType) {
+bool ParticleManager::LockFreeParticleStorage::tryCreateParticle(
+    const Vector2D &pos, const Vector2D &vel, const Vector2D &acc,
+    uint32_t color, float life, float size, /*uint16_t texIndex,*/ uint8_t flags,
+    uint8_t genId, ParticleEffectType effectType) {
     size_t head = creationHead.load(std::memory_order_acquire);
     size_t next = (head + 1) & (CREATION_RING_SIZE - 1);
 
@@ -450,6 +410,7 @@ bool ParticleManager::LockFreeParticleStorage::tryCreateParticle(const Vector2D 
     auto &req = creationRing[head];
     req.position = pos;
     req.velocity = vel;
+    req.acceleration = acc;
     req.color = color;
     req.life = life;
     req.size = size;
@@ -484,18 +445,59 @@ void ParticleManager::LockFreeParticleStorage::processCreationRequests() {
                 UnifiedParticle particle;
                 particle.position = req.position;
                 particle.velocity = req.velocity;
+                particle.acceleration = req.acceleration;
                 particle.color = req.color;
                 particle.life = req.life;
                 particle.maxLife = req.life;
                 particle.size = req.size;
-                particle.flags = req.flags;
+                particle.flags = static_cast<uint8_t>(req.flags | UnifiedParticle::FLAG_ACTIVE | UnifiedParticle::FLAG_VISIBLE);
                 particle.generationId = req.generationId;
                 particle.effectType = req.effectType;
+                // textureIndex removed
 
-                activeParticles.push_back(particle);
-                particleCount.fetch_add(1, std::memory_order_acq_rel);
+                // Prefer slot reuse: use a free index if available
+                if (!freeIndices.empty()) {
+                    const size_t idx = freeIndices.back();
+                    freeIndices.pop_back();
+                    if (idx < activeParticles.positions.size()) {
+                        // Write into both SIMD lanes and Vector2D arrays
+                        activeParticles.posX[idx] = particle.position.getX();
+                        activeParticles.posY[idx] = particle.position.getY();
+                        activeParticles.velX[idx] = particle.velocity.getX();
+                        activeParticles.velY[idx] = particle.velocity.getY();
+                        activeParticles.accX[idx] = particle.acceleration.getX();
+                        activeParticles.accY[idx] = particle.acceleration.getY();
+                        activeParticles.positions[idx] = particle.position;
+                        activeParticles.velocities[idx] = particle.velocity;
+                        activeParticles.accelerations[idx] = particle.acceleration;
+                        activeParticles.lives[idx] = particle.life;
+                        activeParticles.maxLives[idx] = particle.maxLife;
+                        activeParticles.sizes[idx] = particle.size;
+                        activeParticles.rotations[idx] = 0.0f;
+                        activeParticles.angularVelocities[idx] = 0.0f;
+                        activeParticles.colors[idx] = particle.color;
+                        activeParticles.flags[idx] = particle.flags;
+                        activeParticles.generationIds[idx] = particle.generationId;
+                        activeParticles.effectTypes[idx] = particle.effectType;
+                        activeParticles.layers[idx] = UnifiedParticle::RenderLayer::World;
+                        // Track upper bound of active indices
+                        if (idx > maxActiveIndex) maxActiveIndex = idx;
+                    } else {
+                        // Fallback: append if stale free index
+                        activeParticles.push_back(particle);
+                        size_t newIdx = activeParticles.positions.size() - 1;
+                        if (newIdx > maxActiveIndex) maxActiveIndex = newIdx;
+                    }
+                } else {
+                    // Append new slot
+                    activeParticles.push_back(particle);
+                    size_t newIdx = activeParticles.positions.size() - 1;
+                    if (newIdx > maxActiveIndex) maxActiveIndex = newIdx;
+                }
+                particleCount.store(activeParticles.size(), std::memory_order_release);
             }
 
+            // Mark as processed
             req.ready.store(false, std::memory_order_release);
         }
         tail = (tail + 1) & (CREATION_RING_SIZE - 1);
@@ -519,63 +521,23 @@ ParticleManager::LockFreeParticleStorage::getCurrentBuffer() {
 }
 
 // Check if compaction is needed implementation
-bool ParticleManager::LockFreeParticleStorage::needsCompaction() const {
-    const auto& activeParticles = getParticlesForRead();
-    
-    // BOUNDS SAFETY: Check for empty or inconsistent buffer
-    const size_t flagsSize = activeParticles.flags.size();
-    if (flagsSize == 0) return false;
-    
-    // Validate buffer consistency before checking compaction need
-    if (activeParticles.positions.size() != flagsSize ||
-        activeParticles.velocities.size() != flagsSize) {
-        return true; // Force compaction if buffer is inconsistent
-    }
-
-    size_t inactiveCount = 0;
-    for (size_t i = 0; i < flagsSize; ++i) {
-        if (!(activeParticles.flags[i] & UnifiedParticle::FLAG_ACTIVE)) {
-            inactiveCount++;
-        }
-    }
-    return inactiveCount > flagsSize * 0.5;
-}
 
 // Submit new particle implementation
-bool ParticleManager::LockFreeParticleStorage::submitNewParticle(const NewParticleRequest &request) {
-    return tryCreateParticle(request.position, request.velocity,
-                            request.color, request.life, request.size,
-                            UnifiedParticle::FLAG_ACTIVE |
-                                UnifiedParticle::FLAG_VISIBLE,
-                            0, request.effectType);
+bool ParticleManager::LockFreeParticleStorage::submitNewParticle(
+    const NewParticleRequest &request) {
+    return tryCreateParticle(
+        request.position, request.velocity, request.acceleration,
+        request.color, request.life, request.size, /*textureIndex*/
+        static_cast<uint8_t>(UnifiedParticle::FLAG_ACTIVE |
+                             UnifiedParticle::FLAG_VISIBLE),
+        0, request.effectType);
 }
 
 // Swap buffers implementation
 void ParticleManager::LockFreeParticleStorage::swapBuffers() {
-    size_t current = activeBuffer.load(std::memory_order_relaxed);
-    size_t next = 1 - current;
-
-    // CRITICAL FIX: Ensure buffer consistency before copying
-    const auto& currentParticles = particles[current];
-    auto& nextParticles = particles[next];
-    
-    // BOUNDS SAFETY: Validate source buffer before copying
-    const size_t currentSize = currentParticles.positions.size();
-    if (currentSize == 0 ||
-        currentParticles.velocities.size() != currentSize ||
-        currentParticles.flags.size() != currentSize) {
-        // Don't swap if current buffer is inconsistent
-        currentEpoch.fetch_add(1, std::memory_order_acq_rel);
-        return;
-    }
-
-    // Copy active particles to next buffer safely
-    nextParticles = currentParticles;
-
-    // Atomic swap
-    activeBuffer.store(next, std::memory_order_release);
-
-    // Advance epoch for memory reclamation
+    // Simplified: no deep copy, single-buffer model for stability
+    // GameEngine updates and renders sequentially, so a copy is unnecessary.
+    // Retain epoch advance for any potential readers relying on it.
     currentEpoch.fetch_add(1, std::memory_order_acq_rel);
 }
 
@@ -726,6 +688,7 @@ void ParticleManager::prepareForStateTransition() {
   for (size_t i = 0; i < particleCount; ++i) {
     if (activeParticles.flags[i] & UnifiedParticle::FLAG_ACTIVE) {
       activeParticles.flags[i] &= ~UnifiedParticle::FLAG_ACTIVE;
+      m_storage.freeIndices.push_back(i);
       activeParticles.lives[i] = 0.0f; // Ensure life is zero for double safety
       particlesCleared++;
     }
@@ -734,6 +697,7 @@ void ParticleManager::prepareForStateTransition() {
   // 3.5. IMMEDIATE COMPLETE CLEANUP - Remove ALL particles to ensure zero count
   activeParticles.clear(); // Complete clear to ensure zero particles
   m_storage.particles[1 - activeIdx].clear(); // Clear other buffer too
+  m_storage.freeIndices.clear();
   m_storage.particleCount.store(0, std::memory_order_release);
 
   PARTICLE_INFO("Complete particle cleanup: cleared " +
@@ -781,15 +745,25 @@ void ParticleManager::update(float deltaTime) {
     // Phase 2.5: Process newly created particles from effect instances
     m_storage.processCreationRequests();
 
-    // Phase 3: Get snapshot of particle count for threading decision
+    // Phase 3: Get snapshot of buffer size and active count
     const auto &particles = m_storage.getParticlesForRead();
-    size_t totalParticleCount = particles.positions.size();
-    if (totalParticleCount == 0) {
+    const size_t bufferSize = particles.positions.size();
+    if (bufferSize == 0) {
       return;
     }
 
+    // Count active particles for accurate threading decision
+    const size_t activeCount = getActiveParticleCount();
+    if (activeCount == 0) {
+      return;
+    }
+
+    // Advance and snapshot wind phase once per frame (thread-safe snapshot)
+    m_windPhase += deltaTime * 0.5f;
+
     // Phase 4: Update particle physics with optimal threading strategy
-    bool useThreading = (totalParticleCount >= m_threadingThreshold &&
+    // Gate threading on ACTIVE particle count, not buffer size
+    bool useThreading = (activeCount >= m_threadingThreshold &&
                          m_useThreading.load(std::memory_order_acquire) &&
                          HammerEngine::ThreadSystem::Exists());
 
@@ -797,28 +771,48 @@ void ParticleManager::update(float deltaTime) {
       // Use WorkerBudget system if enabled, otherwise fall back to legacy
       // threading
       if (m_useWorkerBudget.load(std::memory_order_acquire)) {
-        updateWithWorkerBudget(deltaTime, totalParticleCount);
+        // Limit range to the highest potentially-active index + 1
+        const size_t rangeEnd = std::min(bufferSize, m_storage.maxActiveIndex + 1);
+        updateWithWorkerBudget(deltaTime, rangeEnd);
       } else {
-        updateParticlesThreaded(deltaTime, totalParticleCount);
+        const size_t rangeEnd = std::min(bufferSize, m_storage.maxActiveIndex + 1);
+        updateParticlesThreaded(deltaTime, rangeEnd);
       }
     } else {
       m_lastWasThreaded.store(false, std::memory_order_relaxed);
-      updateParticlesSingleThreaded(deltaTime, totalParticleCount);
+      const size_t rangeEnd = std::min(bufferSize, m_storage.maxActiveIndex + 1);
+      updateParticlesSingleThreaded(deltaTime, rangeEnd);
     }
 
-    // Phase 5: Swap buffers for next frame (lock-free)
-    m_storage.swapBuffers();
+  // Phase 5: Swap buffers for next frame (lock-free)
+  m_storage.swapBuffers();
 
-    // Phase 6: Optimized memory management - much less aggressive
+  // Phase 5.5: Collect recently deactivated particles into the free-index pool
+  {
+    size_t activeIdx = m_storage.activeBuffer.load(std::memory_order_acquire);
+    auto &p = m_storage.particles[activeIdx];
+    const size_t n = p.flags.size();
+    size_t newMax = m_storage.maxActiveIndex;
+    for (size_t i = 0; i < n; ++i) {
+      if (!(p.flags[i] & UnifiedParticle::FLAG_ACTIVE) &&
+          (p.flags[i] & UnifiedParticle::FLAG_RECENTLY_DEACTIVATED)) {
+        m_storage.freeIndices.push_back(i);
+        p.flags[i] &= ~UnifiedParticle::FLAG_RECENTLY_DEACTIVATED;
+        if (i == newMax) {
+          // We'll tighten upper bound after the loop
+        }
+      }
+    }
+    // Tighten upper bound by scanning down from previous max
+    while (newMax > 0 && newMax < p.flags.size() && !(p.flags[newMax] & UnifiedParticle::FLAG_ACTIVE)) {
+      --newMax;
+    }
+    m_storage.maxActiveIndex = newMax;
+  }
+
+    // Phase 6: Frame counter and performance tracking (compaction disabled)
     uint64_t currentFrame =
         m_frameCounter.fetch_add(1, std::memory_order_relaxed);
-    if (currentFrame % 3600 == 0) { // Every 60 seconds at 60fps (was 10)
-      compactParticleStorageIfNeeded();
-    }
-
-    if (currentFrame % 18000 == 0) { // Every 5 minutes - deep cleanup (was 60 seconds)
-      compactParticleStorage();
-    }
 
     // Phase 7: Performance tracking (reduced overhead)
     auto endTime = std::chrono::high_resolution_clock::now();
@@ -1135,6 +1129,7 @@ void ParticleManager::stopWeatherEffects(float transitionTime) {
     for (size_t i = 0; i < particleCount; ++i) {
       if ((particles.flags[i] & UnifiedParticle::FLAG_ACTIVE) && (particles.flags[i] & UnifiedParticle::FLAG_WEATHER)) {
         particles.flags[i] &= ~UnifiedParticle::FLAG_ACTIVE;
+        particles.flags[i] |= UnifiedParticle::FLAG_RECENTLY_DEACTIVATED;
         affectedCount++;
       }
     }
@@ -1186,6 +1181,7 @@ void ParticleManager::clearWeatherGeneration(uint8_t generationId,
         if (fadeTime <= 0.0f) {
           // Immediate removal
           particles.flags[i] &= ~UnifiedParticle::FLAG_ACTIVE;
+          particles.flags[i] |= UnifiedParticle::FLAG_RECENTLY_DEACTIVATED;
         } else {
           // Set fade-out and limit life to fade time
           particles.flags[i] |= UnifiedParticle::FLAG_FADE_OUT;
@@ -1266,6 +1262,7 @@ void ParticleManager::triggerWeatherEffect(ParticleEffectType effectType,
     for (size_t i = 0; i < particleCount; ++i) {
       if ((particles.flags[i] & UnifiedParticle::FLAG_ACTIVE) && (particles.flags[i] & UnifiedParticle::FLAG_WEATHER)) {
         particles.flags[i] &= ~UnifiedParticle::FLAG_ACTIVE;
+        particles.flags[i] |= UnifiedParticle::FLAG_RECENTLY_DEACTIVATED;
         affectedCount++;
       }
     }
@@ -1617,7 +1614,7 @@ rain.emitterConfig.gravity =
     Vector2D(0.0f, 400.0f); // Moderate gravity for visibility
   rain.emitterConfig.windForce =
       Vector2D(5.0f, 0.0f); // Base wind - turbulence will add variation
-  rain.emitterConfig.textureID = "raindrop";
+  // textureID removed
   rain.emitterConfig.blendMode = ParticleBlendMode::Alpha;
   rain.emitterConfig.useWorldSpace = false;
   rain.emitterConfig.position.setY(0);
@@ -1648,7 +1645,7 @@ ParticleEffectDefinition ParticleManager::createHeavyRainEffect() {
       0.0f, 350.0f); // Base gravity - enhanced physics handle acceleration
   heavyRain.emitterConfig.windForce =
       Vector2D(8.0f, 0.0f); // More base wind for stormy conditions
-  heavyRain.emitterConfig.textureID = "raindrop";
+  // textureID removed
   heavyRain.emitterConfig.blendMode = ParticleBlendMode::Alpha;
   heavyRain.emitterConfig.useWorldSpace = false;
   heavyRain.emitterConfig.position.setY(0);
@@ -1678,7 +1675,7 @@ ParticleEffectDefinition ParticleManager::createSnowEffect() {
       60.0f); // More vertical fall with minimal wind drift for 2D isometric
   snow.emitterConfig.windForce =
       Vector2D(3.0f, 0.5f); // Very gentle wind for mostly downward snow
-  snow.emitterConfig.textureID = "snowflake";
+  // textureID removed
   snow.emitterConfig.blendMode = ParticleBlendMode::Alpha;
   snow.emitterConfig.useWorldSpace = false;
   snow.emitterConfig.position.setY(0);
@@ -1709,7 +1706,7 @@ ParticleEffectDefinition ParticleManager::createHeavySnowEffect() {
   heavySnow.emitterConfig.windForce = Vector2D(
       8.0f,
       2.0f); // Moderate wind for blizzard effect but still mostly downward
-  heavySnow.emitterConfig.textureID = "snowflake";
+  // textureID removed
   heavySnow.emitterConfig.blendMode = ParticleBlendMode::Alpha;
   heavySnow.emitterConfig.useWorldSpace = false;
   heavySnow.emitterConfig.position.setY(0);
@@ -1736,7 +1733,7 @@ ParticleEffectDefinition ParticleManager::createFogEffect() {
   fog.emitterConfig.gravity =
       Vector2D(3.0f, -2.0f); // Gentle horizontal drift + slight upward float
   fog.emitterConfig.windForce = Vector2D(8.0f, 1.0f); // Variable wind effect
-  fog.emitterConfig.textureID = "fog";
+  // textureID removed
   fog.emitterConfig.blendMode = ParticleBlendMode::Alpha;
   fog.emitterConfig.useWorldSpace = false;
   fog.intensityMultiplier = 0.9f; // Balanced intensity for fog
@@ -1768,7 +1765,7 @@ ParticleEffectDefinition ParticleManager::createCloudyEffect() {
       Vector2D(0.0f, 0.0f); // No gravity - clouds float and drift with wind
   cloudy.emitterConfig.windForce =
       Vector2D(25.0f, 0.0f); // Strong horizontal wind for sweeping motion
-  cloudy.emitterConfig.textureID = "cloud";
+  // textureID removed
   cloudy.emitterConfig.blendMode =
       ParticleBlendMode::Alpha;      // Standard alpha blending
   cloudy.emitterConfig.useWorldSpace = false;
@@ -1797,7 +1794,7 @@ ParticleEffectDefinition ParticleManager::createFireEffect() {
       Vector2D(0, -45.0f); // Stronger negative gravity for faster rise
   fire.emitterConfig.windForce =
       Vector2D(25.0f, 0); // Reduced wind for less horizontal sway
-  fire.emitterConfig.textureID = "fire_particle";
+  // textureID removed
   fire.emitterConfig.blendMode =
       ParticleBlendMode::Additive;     // Additive for glowing effect
   fire.emitterConfig.duration = -1.0f; // Infinite by default
@@ -1829,7 +1826,7 @@ ParticleEffectDefinition ParticleManager::createSmokeEffect() {
   smoke.emitterConfig.gravity = Vector2D(0, -30.0f); // Faster rise
   smoke.emitterConfig.windForce =
       Vector2D(30.0f, 0); // Moderate wind influence
-  smoke.emitterConfig.textureID = "smoke_particle";
+  // textureID removed
   smoke.emitterConfig.blendMode =
       ParticleBlendMode::Alpha;         // Standard alpha blending
   smoke.emitterConfig.duration = -1.0f; // Infinite by default
@@ -1860,7 +1857,7 @@ ParticleEffectDefinition ParticleManager::createSparksEffect() {
   sparks.emitterConfig.maxColor = 0xFF8C00FF;         // Orange
   sparks.emitterConfig.gravity = Vector2D(0, 120.0f); // Strong downward gravity
   sparks.emitterConfig.windForce = Vector2D(5.0f, 0); // Slight wind resistance
-  sparks.emitterConfig.textureID = "spark_particle";
+  // textureID removed
   sparks.emitterConfig.blendMode =
       ParticleBlendMode::Additive;             // Bright additive blending
   sparks.emitterConfig.duration = 2.0f;        // Short burst effect
@@ -1891,51 +1888,7 @@ size_t ParticleManager::getActiveParticleCount() const {
   return activeCount;
 }
 
-void ParticleManager::compactParticleStorage() {
-    if (!m_initialized.load(std::memory_order_acquire) || 
-        m_isShutdown.load(std::memory_order_acquire)) {
-        return;
-    }
-
-    // CRITICAL FIX: Use new safe compaction method
-    const size_t activeIdx = m_storage.activeBuffer.load(std::memory_order_acquire);
-    auto &particles = m_storage.particles[activeIdx];
-    
-    // Record original count for logging
-    const size_t originalCount = particles.getSafeAccessCount();
-    if (originalCount == 0) {
-        return;
-    }
-    
-    // THREAD SAFETY: Use atomic epoch for safe buffer management
-    const uint64_t currentEpoch = m_storage.currentEpoch.fetch_add(1, std::memory_order_acq_rel);
-    
-    // Use the new safe compaction method
-    particles.compactInactive();
-    
-    const size_t compactedCount = particles.getSafeAccessCount();
-    
-    // Update particle count atomically
-    m_storage.particleCount.store(compactedCount, std::memory_order_release);
-    
-    // Update safe epoch to signal completion
-    m_storage.safeEpoch.store(currentEpoch, std::memory_order_seq_cst);
-    
-    if (compactedCount < originalCount) {
-        size_t removedCount = originalCount - compactedCount;
-        PARTICLE_DEBUG("Safe compacted storage: removed " +
-                       std::to_string(removedCount) + " inactive/faded particles");
-    } else {
-        PARTICLE_DEBUG("No compaction needed - all particles are active");
-    }
-}
-
-// New helper method for more frequent, lightweight cleanup
-void ParticleManager::compactParticleStorageIfNeeded() {
-  if (m_storage.needsCompaction()) {
-    compactParticleStorage();
-  }
-}
+// Compaction removed: object pool reuse only
 
 void ParticleManager::resetPerformanceStats() {
   std::lock_guard<std::mutex> lock(m_statsMutex);
@@ -2007,7 +1960,7 @@ void ParticleManager::updateEffectInstances(float deltaTime) {
   }
 }
 void ParticleManager::updateParticlesThreaded(float deltaTime,
-                                               size_t activeParticleCount) {
+                                              size_t activeParticleCount) {
   // Use lock-free double buffering for threaded updates
   auto &currentBuffer = m_storage.getCurrentBuffer();
 
@@ -2103,8 +2056,8 @@ void ParticleManager::updateParticlesThreaded(float deltaTime,
     
     // Use async with futures but optimize the waiting pattern
     futures.push_back(threadSystem.enqueueTaskWithResult(
-        [this, &currentBuffer, startIdx, endIdx, deltaTime]() {
-          updateParticleRange(currentBuffer, startIdx, endIdx, deltaTime);
+        [this, &currentBuffer, startIdx, endIdx, deltaTime, windPhase = m_windPhase]() {
+          updateParticleRange(currentBuffer, startIdx, endIdx, deltaTime, windPhase);
         },
         HammerEngine::TaskPriority::Normal, "Particle_UpdateBatch"));
   }
@@ -2119,14 +2072,12 @@ void ParticleManager::updateParticlesThreaded(float deltaTime,
 void ParticleManager::updateParticlesSingleThreaded(
     float deltaTime, size_t activeParticleCount) {
   auto &currentBuffer = m_storage.getCurrentBuffer();
-  updateParticleRange(currentBuffer, 0, activeParticleCount, deltaTime);
+  updateParticleRange(currentBuffer, 0, activeParticleCount, deltaTime, m_windPhase);
 }
 
 void ParticleManager::updateParticleRange(
     LockFreeParticleStorage::ParticleSoA &particles, size_t startIdx, size_t endIdx,
-    float deltaTime) {
-  static float windPhase = 0.0f; // Static wind phase for natural variation
-  windPhase += deltaTime * 0.5f; // Slow wind variation
+    float deltaTime, float windPhase) {
 
   // PRODUCTION OPTIMIZATION: Pre-compute expensive operations
   const float windPhase0_8 = windPhase * 0.8f;
@@ -2353,7 +2304,10 @@ void ParticleManager::updateParticleRange(
     // Update life
     particles.lives[i] -= deltaTime;
     if (particles.lives[i] <= 0.0f) {
-      particles.flags[i] &= ~UnifiedParticle::FLAG_ACTIVE;
+      if (particles.flags[i] & UnifiedParticle::FLAG_ACTIVE) {
+        particles.flags[i] &= ~UnifiedParticle::FLAG_ACTIVE;
+        particles.flags[i] |= UnifiedParticle::FLAG_RECENTLY_DEACTIVATED;
+      }
       continue;
     }
 
@@ -2433,9 +2387,7 @@ void ParticleManager::createParticleForEffect(
                                       static_cast<float>(fast_rand()) / 32767.0f;
   request.size = config.minSize + (config.maxSize - config.minSize) *
                                       static_cast<float>(fast_rand()) / 32767.0f;
-  request.color =
-      interpolateColor(config.minColor, config.maxColor, naturalRand);
-  request.textureIndex = getTextureIndex(config.textureID);
+  request.color = interpolateColor(config.minColor, config.maxColor, naturalRand);
   request.blendMode = config.blendMode;
   request.effectType = effectDef.type;
 
@@ -2450,18 +2402,7 @@ void ParticleManager::createParticleForEffect(
   m_storage.submitNewParticle(request);
 }
 
-uint16_t ParticleManager::getTextureIndex(const std::string &textureID) {
-  auto it = m_textureIndices.find(textureID);
-  if (it != m_textureIndices.end()) {
-    return it->second;
-  }
-
-  // Add new texture ID
-  uint16_t index = static_cast<uint16_t>(m_textureIDs.size());
-  m_textureIDs.push_back(textureID);
-  m_textureIndices[textureID] = index;
-  return index;
-}
+// getTextureIndex removed: particles render as rects
 
 bool ParticleManager::isGloballyPaused() const {
   return m_globallyPaused.load(std::memory_order_acquire);
@@ -2679,11 +2620,13 @@ void ParticleManager::updateParticlePhysicsSIMD(
   // SIMD main loop - use aligned loads for maximum performance
   const size_t simdEnd = ((endIdx - i) / 4) * 4 + i;
   for (; i < simdEnd; i += 4) {
-    // Quick skip if none active - check 4 particles at once
-    const uint32_t flagMask = 
-      (particles.flags[i] | particles.flags[i+1] | 
-       particles.flags[i+2] | particles.flags[i+3]) & UnifiedParticle::FLAG_ACTIVE;
-    if (!flagMask) continue;
+    // SIMD flag check for 4 particles: skip if none active
+    const __m128i flagsv = _mm_loadu_si128(reinterpret_cast<const __m128i*>(&particles.flags[i]));
+    const __m128i activeMask = _mm_set1_epi8(static_cast<char>(UnifiedParticle::FLAG_ACTIVE));
+    const __m128i activev = _mm_and_si128(flagsv, activeMask);
+    const __m128i gt0 = _mm_cmpgt_epi8(activev, _mm_setzero_si128());
+    const int maskBits = _mm_movemask_epi8(gt0);
+    if ((maskBits & 0xF) == 0) continue;
 
     // Use aligned loads - AlignedAllocator guarantees 16-byte alignment
     __m128 posXv = _mm_load_ps(&particles.posX[i]);
