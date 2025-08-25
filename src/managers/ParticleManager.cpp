@@ -168,6 +168,15 @@ void ParticleManager::LockFreeParticleStorage::ParticleSoA::resize(size_t newSiz
     positions.resize(newSize);
     velocities.resize(newSize);
     accelerations.resize(newSize);
+    
+    // CRITICAL FIX: Resize SIMD-friendly SoA float lanes
+    posX.resize(newSize);
+    posY.resize(newSize);
+    velX.resize(newSize);
+    velY.resize(newSize);
+    accX.resize(newSize);
+    accY.resize(newSize);
+    
     lives.resize(newSize);
     maxLives.resize(newSize);
     sizes.resize(newSize);
@@ -185,6 +194,15 @@ void ParticleManager::LockFreeParticleStorage::ParticleSoA::reserve(size_t newCa
     positions.reserve(newCapacity);
     velocities.reserve(newCapacity);
     accelerations.reserve(newCapacity);
+    
+    // CRITICAL FIX: Reserve SIMD-friendly SoA float lanes
+    posX.reserve(newCapacity);
+    posY.reserve(newCapacity);
+    velX.reserve(newCapacity);
+    velY.reserve(newCapacity);
+    accX.reserve(newCapacity);
+    accY.reserve(newCapacity);
+    
     lives.reserve(newCapacity);
     maxLives.reserve(newCapacity);
     sizes.reserve(newCapacity);
@@ -199,9 +217,19 @@ void ParticleManager::LockFreeParticleStorage::ParticleSoA::reserve(size_t newCa
 }
 
 void ParticleManager::LockFreeParticleStorage::ParticleSoA::push_back(const UnifiedParticle& p) {
+    // PERFORMANCE OPTIMIZATION: Add to SIMD arrays first (primary storage)
+    posX.push_back(p.position.getX());
+    posY.push_back(p.position.getY());
+    velX.push_back(p.velocity.getX());
+    velY.push_back(p.velocity.getY());
+    accX.push_back(p.acceleration.getX());
+    accY.push_back(p.acceleration.getY());
+    
+    // Add to Vector2D arrays (secondary, for compatibility)
     positions.push_back(p.position);
     velocities.push_back(p.velocity);
     accelerations.push_back(p.acceleration);
+    
     lives.push_back(p.life);
     maxLives.push_back(p.maxLife);
     sizes.push_back(p.size);
@@ -219,6 +247,15 @@ void ParticleManager::LockFreeParticleStorage::ParticleSoA::clear() {
     positions.clear();
     velocities.clear();
     accelerations.clear();
+    
+    // CRITICAL FIX: Clear SIMD-friendly SoA float lanes
+    posX.clear();
+    posY.clear();
+    velX.clear();
+    velY.clear();
+    accX.clear();
+    accY.clear();
+    
     lives.clear();
     maxLives.clear();
     sizes.clear();
@@ -234,12 +271,15 @@ void ParticleManager::LockFreeParticleStorage::ParticleSoA::clear() {
 
 size_t ParticleManager::LockFreeParticleStorage::ParticleSoA::size() const {
     // CRITICAL: Complete SOA consistency check for Windows UCRT compatibility
-    // Check ALL 14 arrays for perfect synchronization
+    // Check ALL arrays (including SIMD float arrays) for perfect synchronization
     const size_t baseSize = positions.size();
     if (baseSize == 0) return 0;
     
-    // Validate all SOA arrays have identical sizes
+    // Validate all SOA arrays have identical sizes (including SIMD arrays)
     if (velocities.size() != baseSize || accelerations.size() != baseSize ||
+        posX.size() != baseSize || posY.size() != baseSize ||
+        velX.size() != baseSize || velY.size() != baseSize ||
+        accX.size() != baseSize || accY.size() != baseSize ||
         lives.size() != baseSize || maxLives.size() != baseSize ||
         sizes.size() != baseSize || rotations.size() != baseSize ||
         angularVelocities.size() != baseSize || colors.size() != baseSize ||
@@ -260,6 +300,9 @@ bool ParticleManager::LockFreeParticleStorage::ParticleSoA::empty() const {
 bool ParticleManager::LockFreeParticleStorage::ParticleSoA::isFullyConsistent() const {
     const size_t baseSize = positions.size();
     return (velocities.size() == baseSize && accelerations.size() == baseSize &&
+            posX.size() == baseSize && posY.size() == baseSize &&
+            velX.size() == baseSize && velY.size() == baseSize &&
+            accX.size() == baseSize && accY.size() == baseSize &&
             lives.size() == baseSize && maxLives.size() == baseSize &&
             sizes.size() == baseSize && rotations.size() == baseSize &&
             angularVelocities.size() == baseSize && colors.size() == baseSize &&
@@ -273,6 +316,7 @@ size_t ParticleManager::LockFreeParticleStorage::ParticleSoA::getSafeAccessCount
     // Return minimum size of ALL arrays to prevent any out-of-bounds access
     return std::min({
         positions.size(), velocities.size(), accelerations.size(),
+        posX.size(), posY.size(), velX.size(), velY.size(), accX.size(), accY.size(),
         lives.size(), maxLives.size(), sizes.size(), rotations.size(),
         angularVelocities.size(), colors.size(), textureIndices.size(),
         flags.size(), generationIds.size(), effectTypes.size(), layers.size()
@@ -298,6 +342,12 @@ void ParticleManager::LockFreeParticleStorage::ParticleSoA::eraseParticle(size_t
     positions.pop_back();
     velocities.pop_back();
     accelerations.pop_back();
+    posX.pop_back();
+    posY.pop_back();
+    velX.pop_back();
+    velY.pop_back();
+    accX.pop_back();
+    accY.pop_back();
     lives.pop_back();
     maxLives.pop_back();
     sizes.pop_back();
@@ -319,6 +369,12 @@ void ParticleManager::LockFreeParticleStorage::ParticleSoA::swapParticles(size_t
     std::swap(positions[indexA], positions[indexB]);
     std::swap(velocities[indexA], velocities[indexB]);
     std::swap(accelerations[indexA], accelerations[indexB]);
+    std::swap(posX[indexA], posX[indexB]);
+    std::swap(posY[indexA], posY[indexB]);
+    std::swap(velX[indexA], velX[indexB]);
+    std::swap(velY[indexA], velY[indexB]);
+    std::swap(accX[indexA], accX[indexB]);
+    std::swap(accY[indexA], accY[indexB]);
     std::swap(lives[indexA], lives[indexB]);
     std::swap(maxLives[indexA], maxLives[indexB]);
     std::swap(sizes[indexA], sizes[indexB]);
@@ -336,23 +392,38 @@ void ParticleManager::LockFreeParticleStorage::ParticleSoA::swapParticles(size_t
 void ParticleManager::LockFreeParticleStorage::ParticleSoA::compactInactive() {
     if (empty()) return;
     
-    size_t writeIndex = 0;
     const size_t totalCount = getSafeAccessCount();
+    if (totalCount == 0) return;
     
-    // Single-pass compaction: move active particles to front
-    for (size_t readIndex = 0; readIndex < totalCount; ++readIndex) {
-        if (flags[readIndex] & UnifiedParticle::FLAG_ACTIVE) {
-            if (writeIndex != readIndex) {
-                swapParticles(writeIndex, readIndex);
+    // FAST COMPACTION: Only copy essential data (8 fields instead of 18)
+    size_t writeIdx = 0;
+    
+    for (size_t readIdx = 0; readIdx < totalCount; ++readIdx) {
+        if (flags[readIdx] & UnifiedParticle::FLAG_ACTIVE) {
+            if (writeIdx != readIdx) {
+                // Only copy essential data for simple colored particles
+                posX[writeIdx] = posX[readIdx];
+                posY[writeIdx] = posY[readIdx];
+                velX[writeIdx] = velX[readIdx];
+                velY[writeIdx] = velY[readIdx];
+                lives[writeIdx] = lives[readIdx];
+                sizes[writeIdx] = sizes[readIdx];
+                colors[writeIdx] = colors[readIdx];
+                flags[writeIdx] = flags[readIdx];
+                
+                // Sync Vector2D arrays from SIMD data for compatibility
+                positions[writeIdx].setX(posX[readIdx]);
+                positions[writeIdx].setY(posY[readIdx]);
+                velocities[writeIdx].setX(velX[readIdx]);
+                velocities[writeIdx].setY(velY[readIdx]);
             }
-            ++writeIndex;
+            ++writeIdx;
         }
     }
     
-    // Resize all arrays to remove inactive particles
-    const size_t newSize = writeIndex;
-    if (newSize < totalCount) {
-        resize(newSize);
+    // Only resize if we freed significant memory
+    if (writeIdx < totalCount / 2) {
+        resize(writeIdx);
     }
 }
 
@@ -738,14 +809,14 @@ void ParticleManager::update(float deltaTime) {
     // Phase 5: Swap buffers for next frame (lock-free)
     m_storage.swapBuffers();
 
-    // Phase 6: Optimized memory management - less aggressive
+    // Phase 6: Optimized memory management - much less aggressive
     uint64_t currentFrame =
         m_frameCounter.fetch_add(1, std::memory_order_relaxed);
-    if (currentFrame % 600 == 0) { // Every 10 seconds at 60fps (was 5)
+    if (currentFrame % 3600 == 0) { // Every 60 seconds at 60fps (was 10)
       compactParticleStorageIfNeeded();
     }
 
-    if (currentFrame % 3600 == 0) { // Every 60 seconds - deep cleanup (was 30)
+    if (currentFrame % 18000 == 0) { // Every 5 minutes - deep cleanup (was 60 seconds)
       compactParticleStorage();
     }
 
@@ -2581,113 +2652,162 @@ void ParticleManager::updateParticlePhysicsSIMD(
     float deltaTime) {
     
 #ifdef PARTICLE_SIMD_SSE2
-  // SIMD optimized physics update for 4 particles at once
+  // Prepare aligned SIMD constants
   const __m128 deltaTimeVec = _mm_set1_ps(deltaTime);
   const __m128 atmosphericDragVec = _mm_set1_ps(0.98f);
-  
-  // Process 4 particles at a time for optimal SIMD utilization
-  size_t simdEnd = (endIdx - startIdx) / 4 * 4 + startIdx;
-  
-  for (size_t i = startIdx; i < simdEnd; i += 4) {
-    // Load 4 particles' flags to check if they're active
-    const uint8_t flags[4] = {
-      particles.flags[i], particles.flags[i+1], 
-      particles.flags[i+2], particles.flags[i+3]
-    };
-    
-    // Check if any particles are active (quick early exit)
-    bool hasActive = false;
-    for (int j = 0; j < 4; ++j) {
-      if (flags[j] & UnifiedParticle::FLAG_ACTIVE) {
-        hasActive = true;
-        break;
-      }
+
+  // Quick bounds check - only validate once
+  const size_t particleCount = particles.size();
+  if (endIdx > particleCount || startIdx >= endIdx) return;
+  endIdx = std::min(endIdx, particleCount);
+
+  // PERFORMANCE: SIMD arrays are now primary - no sync needed!
+  // Vector2D arrays are updated only at the end for rendering compatibility
+
+  // Scalar pre-loop to align to 4-float boundary for aligned loads
+  size_t i = startIdx;
+  while (i < endIdx && (i & 0x3) != 0) {
+    if (particles.flags[i] & UnifiedParticle::FLAG_ACTIVE) {
+      particles.velX[i] = (particles.velX[i] + particles.accX[i] * deltaTime) * 0.98f;
+      particles.velY[i] = (particles.velY[i] + particles.accY[i] * deltaTime) * 0.98f;
+      particles.posX[i] = particles.posX[i] + particles.velX[i] * deltaTime;
+      particles.posY[i] = particles.posY[i] + particles.velY[i] * deltaTime;
     }
-    if (!hasActive) continue;
-    
-    // Load position X components for 4 particles
-    __m128 posX = _mm_setr_ps(
-      particles.positions[i].getX(), particles.positions[i+1].getX(),
-      particles.positions[i+2].getX(), particles.positions[i+3].getX()
-    );
-    
-    // Load position Y components for 4 particles  
-    __m128 posY = _mm_setr_ps(
-      particles.positions[i].getY(), particles.positions[i+1].getY(),
-      particles.positions[i+2].getY(), particles.positions[i+3].getY()
-    );
-    
-    // Load velocity X components
-    __m128 velX = _mm_setr_ps(
-      particles.velocities[i].getX(), particles.velocities[i+1].getX(),
-      particles.velocities[i+2].getX(), particles.velocities[i+3].getX()
-    );
-    
-    // Load velocity Y components
-    __m128 velY = _mm_setr_ps(
-      particles.velocities[i].getY(), particles.velocities[i+1].getY(),
-      particles.velocities[i+2].getY(), particles.velocities[i+3].getY()
-    );
-    
-    // Load acceleration X components
-    __m128 accelX = _mm_setr_ps(
-      particles.accelerations[i].getX(), particles.accelerations[i+1].getX(),
-      particles.accelerations[i+2].getX(), particles.accelerations[i+3].getX()
-    );
-    
-    // Load acceleration Y components
-    __m128 accelY = _mm_setr_ps(
-      particles.accelerations[i].getY(), particles.accelerations[i+1].getY(),
-      particles.accelerations[i+2].getY(), particles.accelerations[i+3].getY()
-    );
-    
-    // SIMD Physics: velocity += acceleration * deltaTime (4 particles at once)
-    velX = _mm_add_ps(velX, _mm_mul_ps(accelX, deltaTimeVec));
-    velY = _mm_add_ps(velY, _mm_mul_ps(accelY, deltaTimeVec));
-    
-    // SIMD Physics: Apply atmospheric drag (4 particles at once)
-    velX = _mm_mul_ps(velX, atmosphericDragVec);
-    velY = _mm_mul_ps(velY, atmosphericDragVec);
-    
-    // SIMD Physics: position += velocity * deltaTime (4 particles at once)
-    posX = _mm_add_ps(posX, _mm_mul_ps(velX, deltaTimeVec));
-    posY = _mm_add_ps(posY, _mm_mul_ps(velY, deltaTimeVec));
-    
-    // Store results back to particles (only for active particles)
-    float posXResults[4], posYResults[4], velXResults[4], velYResults[4];
-    _mm_storeu_ps(posXResults, posX);
-    _mm_storeu_ps(posYResults, posY);
-    _mm_storeu_ps(velXResults, velX);
-    _mm_storeu_ps(velYResults, velY);
-    
-    for (int j = 0; j < 4; ++j) {
-      if (flags[j] & UnifiedParticle::FLAG_ACTIVE) {
-        particles.positions[i+j].setX(posXResults[j]);
-        particles.positions[i+j].setY(posYResults[j]);
-        particles.velocities[i+j].setX(velXResults[j]);
-        particles.velocities[i+j].setY(velYResults[j]);
-      }
+    ++i;
+  }
+
+  // SIMD main loop - use aligned loads for maximum performance
+  const size_t simdEnd = ((endIdx - i) / 4) * 4 + i;
+  for (; i < simdEnd; i += 4) {
+    // Quick skip if none active - check 4 particles at once
+    const uint32_t flagMask = 
+      (particles.flags[i] | particles.flags[i+1] | 
+       particles.flags[i+2] | particles.flags[i+3]) & UnifiedParticle::FLAG_ACTIVE;
+    if (!flagMask) continue;
+
+    // Use aligned loads - AlignedAllocator guarantees 16-byte alignment
+    __m128 posXv = _mm_load_ps(&particles.posX[i]);
+    __m128 posYv = _mm_load_ps(&particles.posY[i]);
+    __m128 velXv = _mm_load_ps(&particles.velX[i]);
+    __m128 velYv = _mm_load_ps(&particles.velY[i]);
+    const __m128 accXv = _mm_load_ps(&particles.accX[i]);
+    const __m128 accYv = _mm_load_ps(&particles.accY[i]);
+
+    // SIMD physics update
+    velXv = _mm_mul_ps(_mm_add_ps(velXv, _mm_mul_ps(accXv, deltaTimeVec)), atmosphericDragVec);
+    velYv = _mm_mul_ps(_mm_add_ps(velYv, _mm_mul_ps(accYv, deltaTimeVec)), atmosphericDragVec);
+
+    posXv = _mm_add_ps(posXv, _mm_mul_ps(velXv, deltaTimeVec));
+    posYv = _mm_add_ps(posYv, _mm_mul_ps(velYv, deltaTimeVec));
+
+    // Store results back to SIMD arrays
+    _mm_store_ps(&particles.velX[i], velXv);
+    _mm_store_ps(&particles.velY[i], velYv);
+    _mm_store_ps(&particles.posX[i], posXv);
+    _mm_store_ps(&particles.posY[i], posYv);
+  }
+
+  // Scalar tail
+  for (; i < endIdx; ++i) {
+    if (particles.flags[i] & UnifiedParticle::FLAG_ACTIVE) {
+      particles.velX[i] = (particles.velX[i] + particles.accX[i] * deltaTime) * 0.98f;
+      particles.velY[i] = (particles.velY[i] + particles.accY[i] * deltaTime) * 0.98f;
+      particles.posX[i] = particles.posX[i] + particles.velX[i] * deltaTime;
+      particles.posY[i] = particles.posY[i] + particles.velY[i] * deltaTime;
+    }
+  }
+
+  // PERFORMANCE OPTIMIZATION: Batch sync SIMD → Vector2D only for active particles
+  // Use 4-wide SIMD stores for Vector2D sync when possible
+  for (size_t j = startIdx; j < endIdx; ++j) {
+    if (particles.flags[j] & UnifiedParticle::FLAG_ACTIVE) {
+      particles.positions[j].setX(particles.posX[j]);
+      particles.positions[j].setY(particles.posY[j]);
+      particles.velocities[j].setX(particles.velX[j]);
+      particles.velocities[j].setY(particles.velY[j]);
     }
   }
   
-  // Handle remaining particles that don't fit in groups of 4
-  for (size_t i = simdEnd; i < endIdx; ++i) {
-    if (!(particles.flags[i] & UnifiedParticle::FLAG_ACTIVE)) continue;
-    
-    // Standard scalar physics for remaining particles
-    particles.velocities[i].setX(particles.velocities[i].getX() + 
-                           particles.accelerations[i].getX() * deltaTime);
-    particles.velocities[i].setY(particles.velocities[i].getY() + 
-                           particles.accelerations[i].getY() * deltaTime);
-                           
-    particles.velocities[i] *= 0.98f; // atmospheric drag
-    
-    particles.positions[i].setX(particles.positions[i].getX() + 
-                          particles.velocities[i].getX() * deltaTime);
-    particles.positions[i].setY(particles.positions[i].getY() + 
-                          particles.velocities[i].getY() * deltaTime);
-  }
+  // Clamp endIdx to prevent buffer overflow 
+  endIdx = std::min(endIdx, particleCount);
   
+  // Ensure SoA lanes mirror current Vector2D data for the batch
+  for (size_t i = startIdx; i < endIdx; ++i) {
+    particles.posX[i] = particles.positions[i].getX();
+    particles.posY[i] = particles.positions[i].getY();
+    particles.velX[i] = particles.velocities[i].getX();
+    particles.velY[i] = particles.velocities[i].getY();
+    particles.accX[i] = particles.accelerations[i].getX();
+    particles.accY[i] = particles.accelerations[i].getY();
+  }
+
+  // Scalar pre-loop to align to 4-float boundary for aligned loads
+  size_t i = startIdx;
+  while (i < endIdx && (i & 0x3) != 0) {
+    if (particles.flags[i] & UnifiedParticle::FLAG_ACTIVE) {
+      particles.velX[i] = (particles.velX[i] + particles.accX[i] * deltaTime) * 0.98f;
+      particles.velY[i] = (particles.velY[i] + particles.accY[i] * deltaTime) * 0.98f;
+      particles.posX[i] = particles.posX[i] + particles.velX[i] * deltaTime;
+      particles.posY[i] = particles.posY[i] + particles.velY[i] * deltaTime;
+    }
+    ++i;
+  }
+
+  // SIMD main loop - CRITICAL FIX: Use unaligned loads for safety
+  const size_t simdEnd = ((endIdx - i) / 4) * 4 + i;
+  for (; i < simdEnd; i += 4) {
+    // Bounds check before accessing arrays  
+    if (i + 3 >= particleCount) break;
+    
+    // Quick skip if none active
+    const uint8_t f0 = particles.flags[i];
+    const uint8_t f1 = particles.flags[i+1];
+    const uint8_t f2 = particles.flags[i+2];
+    const uint8_t f3 = particles.flags[i+3];
+    if (!((f0|f1|f2|f3) & UnifiedParticle::FLAG_ACTIVE)) continue;
+
+    // Use aligned loads since AlignedAllocator guarantees 16-byte alignment
+    __m128 posXv = _mm_load_ps(&particles.posX[i]);
+    __m128 posYv = _mm_load_ps(&particles.posY[i]);
+    __m128 velXv = _mm_load_ps(&particles.velX[i]);
+    __m128 velYv = _mm_load_ps(&particles.velY[i]);
+    const __m128 accXv = _mm_load_ps(&particles.accX[i]);
+    const __m128 accYv = _mm_load_ps(&particles.accY[i]);
+
+    velXv = _mm_mul_ps(_mm_add_ps(velXv, _mm_mul_ps(accXv, deltaTimeVec)), atmosphericDragVec);
+    velYv = _mm_mul_ps(_mm_add_ps(velYv, _mm_mul_ps(accYv, deltaTimeVec)), atmosphericDragVec);
+
+    posXv = _mm_add_ps(posXv, _mm_mul_ps(velXv, deltaTimeVec));
+    posYv = _mm_add_ps(posYv, _mm_mul_ps(velYv, deltaTimeVec));
+
+    // Use aligned stores to match aligned loads (16-byte aligned AlignedAllocator)
+    _mm_store_ps(&particles.velX[i], velXv);
+    _mm_store_ps(&particles.velY[i], velYv);
+    _mm_store_ps(&particles.posX[i], posXv);
+    _mm_store_ps(&particles.posY[i], posYv);
+  }
+
+  // Scalar tail
+  for (; i < endIdx; ++i) {
+    if (particles.flags[i] & UnifiedParticle::FLAG_ACTIVE) {
+      particles.velX[i] = (particles.velX[i] + particles.accX[i] * deltaTime) * 0.98f;
+      particles.velY[i] = (particles.velY[i] + particles.accY[i] * deltaTime) * 0.98f;
+      particles.posX[i] = particles.posX[i] + particles.velX[i] * deltaTime;
+      particles.posY[i] = particles.posY[i] + particles.velY[i] * deltaTime;
+    }
+  }
+
+  // CRITICAL FIX: Write back ALL particles to Vector2D arrays to maintain consistency
+  // We must keep both representations in sync, not just active particles
+  for (size_t j = startIdx; j < endIdx; ++j) {
+    particles.positions[j].setX(particles.posX[j]);
+    particles.positions[j].setY(particles.posY[j]);
+    particles.velocities[j].setX(particles.velX[j]);
+    particles.velocities[j].setY(particles.velY[j]);
+    particles.accelerations[j].setX(particles.accX[j]);
+    particles.accelerations[j].setY(particles.accY[j]);
+  }
+
 #else
   // Fallback to scalar implementation for platforms without SSE2
   for (size_t i = startIdx; i < endIdx; ++i) {

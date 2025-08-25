@@ -33,6 +33,38 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
+ #include <new>
+
+// Lightweight aligned allocator to support SIMD-friendly vector storage
+template <typename T, std::size_t Alignment>
+struct AlignedAllocator {
+  using value_type = T;
+
+  AlignedAllocator() noexcept {}
+  template <class U>
+  AlignedAllocator(const AlignedAllocator<U, Alignment>&) noexcept {}
+
+  [[nodiscard]] T* allocate(std::size_t n) {
+    if (n > static_cast<std::size_t>(-1) / sizeof(T)) {
+      throw std::bad_array_new_length();
+    }
+    void* p = ::operator new[](n * sizeof(T), std::align_val_t(Alignment));
+    if (!p) throw std::bad_alloc();
+    return static_cast<T*>(p);
+  }
+
+  void deallocate(T* p, std::size_t) noexcept {
+    ::operator delete[](p, std::align_val_t(Alignment));
+  }
+
+  template <class U>
+  struct rebind { using other = AlignedAllocator<U, Alignment>; };
+};
+
+template <class T1, std::size_t A1, class T2, std::size_t A2>
+constexpr bool operator==(const AlignedAllocator<T1, A1>&, const AlignedAllocator<T2, A2>&) noexcept { return A1 == A2; }
+template <class T1, std::size_t A1, class T2, std::size_t A2>
+constexpr bool operator!=(const AlignedAllocator<T1, A1>&, const AlignedAllocator<T2, A2>&) noexcept { return A1 != A2; }
 
 // SIMD support detection
 #if defined(__SSE2__) || (defined(_MSC_VER) && (defined(_M_X64) || defined(_M_IX86_FP) && _M_IX86_FP >= 2))
@@ -90,7 +122,7 @@ enum class ParticleBlendMode : uint8_t {
  * Hot data (frequently accessed) is separated from cold data for better cache
  * performance Optimized for 32-byte cache line alignment
  */
-struct alignas(32) ParticleData {
+struct alignas(16) ParticleData {
   // Hot data - accessed every frame (32 bytes)
   Vector2D position;     // Current position (8 bytes)
   Vector2D velocity;     // Velocity vector (8 bytes)
@@ -717,20 +749,37 @@ private:
   struct alignas(64) LockFreeParticleStorage {
     // SoA data layout for cache-friendly updates
     struct ParticleSoA {
-        std::vector<Vector2D> positions;
-        std::vector<Vector2D> velocities;
-        std::vector<Vector2D> accelerations;
-        std::vector<float> lives;
-        std::vector<float> maxLives;
-        std::vector<float> sizes;
-        std::vector<float> rotations;
-        std::vector<float> angularVelocities;
-        std::vector<uint32_t> colors;
-        std::vector<uint16_t> textureIndices;
-        std::vector<uint8_t> flags;
-        std::vector<uint8_t> generationIds;
-        std::vector<ParticleEffectType> effectTypes;
-        std::vector<UnifiedParticle::RenderLayer> layers;
+        using V2  = Vector2D;
+        using F32 = float;
+        using U32 = uint32_t;
+        using U16 = uint16_t;
+        using U8  = uint8_t;
+
+        // Existing Vector2D-based arrays (used by most code paths)
+        std::vector<V2,  AlignedAllocator<V2,  16>> positions;
+        std::vector<V2,  AlignedAllocator<V2,  16>> velocities;
+        std::vector<V2,  AlignedAllocator<V2,  16>> accelerations;
+
+        // SIMD-friendly SoA float lanes for the hot physics path (Phase 2)
+        std::vector<F32, AlignedAllocator<F32, 16>> posX;
+        std::vector<F32, AlignedAllocator<F32, 16>> posY;
+        std::vector<F32, AlignedAllocator<F32, 16>> velX;
+        std::vector<F32, AlignedAllocator<F32, 16>> velY;
+        std::vector<F32, AlignedAllocator<F32, 16>> accX;
+        std::vector<F32, AlignedAllocator<F32, 16>> accY;
+
+        // Other particle attributes
+        std::vector<F32, AlignedAllocator<F32, 16>> lives;
+        std::vector<F32, AlignedAllocator<F32, 16>> maxLives;
+        std::vector<F32, AlignedAllocator<F32, 16>> sizes;
+        std::vector<F32, AlignedAllocator<F32, 16>> rotations;
+        std::vector<F32, AlignedAllocator<F32, 16>> angularVelocities;
+        std::vector<U32, AlignedAllocator<U32, 16>> colors;
+        std::vector<U16, AlignedAllocator<U16, 16>> textureIndices;
+        std::vector<U8,  AlignedAllocator<U8,  16>> flags;
+        std::vector<U8,  AlignedAllocator<U8,  16>> generationIds;
+        std::vector<ParticleEffectType, AlignedAllocator<ParticleEffectType, 16>> effectTypes;
+        std::vector<UnifiedParticle::RenderLayer, AlignedAllocator<UnifiedParticle::RenderLayer, 16>> layers;
 
         // CRITICAL: Unified SOA operations to prevent desynchronization
         void resize(size_t newSize);
@@ -762,7 +811,7 @@ private:
     std::atomic<size_t> capacity{0};      // Current capacity
 
     // Lock-free ring buffer for new particle requests
-    struct alignas(32) ParticleCreationRequest {
+    struct alignas(16) ParticleCreationRequest {
       Vector2D position;
       Vector2D velocity;
       uint32_t color;
@@ -867,7 +916,7 @@ private:
   static constexpr float MIN_VISIBLE_SIZE = 0.5f;
 
   // Performance optimization structures
-  struct alignas(32) BatchUpdateData {
+  struct alignas(16) BatchUpdateData {
     float deltaTime;
     size_t startIndex;
     size_t endIndex;
