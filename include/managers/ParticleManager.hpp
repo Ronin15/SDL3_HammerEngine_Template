@@ -749,18 +749,11 @@ private:
   struct alignas(64) LockFreeParticleStorage {
     // SoA data layout for cache-friendly updates
     struct ParticleSoA {
-      using V2 = Vector2D;
       using F32 = float;
       using U32 = uint32_t;
-      using U16 = uint16_t;
       using U8 = uint8_t;
 
-      // Existing Vector2D-based arrays (used by most code paths)
-      std::vector<V2, AlignedAllocator<V2, 16>> positions;
-      std::vector<V2, AlignedAllocator<V2, 16>> velocities;
-      std::vector<V2, AlignedAllocator<V2, 16>> accelerations;
-
-      // SIMD-friendly SoA float lanes for the hot physics path (Phase 2)
+      // SIMD-friendly SoA float lanes (authoritative storage)
       std::vector<F32, AlignedAllocator<F32, 16>> posX;
       std::vector<F32, AlignedAllocator<F32, 16>> posY;
       std::vector<F32, AlignedAllocator<F32, 16>> velX;
@@ -788,18 +781,17 @@ private:
       void reserve(size_t newCapacity);
       void push_back(const UnifiedParticle &p);
       void clear();
-      size_t size() const;
+      size_t size() const; // authoritative size = flags.size()
       bool empty() const;
 
-      // NEW: Safe erase operations for SOA consistency
+      // Safe erase operations for SOA consistency
       void eraseParticle(size_t index);
-      // Compaction removed by design
 
-      // NEW: Comprehensive validation for Windows UCRT compatibility
+      // Validation helpers (debug-oriented)
       bool isFullyConsistent() const;
       size_t getSafeAccessCount() const;
 
-      // NEW: Safe random access with bounds checking
+      // Safe random access with bounds checking
       bool isValidIndex(size_t index) const;
       void swapParticles(size_t indexA, size_t indexB);
     };
@@ -905,6 +897,7 @@ private:
   std::atomic<size_t> m_lastAvailableWorkers{0};
   std::atomic<size_t> m_lastParticleBudget{0};
   std::atomic<bool> m_lastWasThreaded{false};
+  std::atomic<size_t> m_activeCount{0};
 
   // Camera and culling
   struct CameraViewport {
