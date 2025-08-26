@@ -446,3 +446,53 @@ BOOST_FIXTURE_TEST_CASE(TestDifferentEffectTypesPerformance,
     BOOST_CHECK_GT(particleCount, 0);
   }
 }
+
+// Ad-hoc high-count benchmarks for update cost at scale (Debug build)
+BOOST_FIXTURE_TEST_CASE(HighCountBenchmarks,
+                        ParticleManagerPerformanceFixture) {
+  // Targets and simple setup
+  std::vector<size_t> targets = {10000, 25000, 50000};
+  Vector2D basePosition(960, 120);
+
+  for (size_t target : targets) {
+    // Fresh state
+    if (manager->isInitialized()) manager->clean();
+    manager->init();
+    manager->registerBuiltInEffects();
+
+    // Create many effects to reach target more quickly
+    std::vector<uint32_t> effectIds;
+    const int maxEffects = 450; // limit to avoid excessive startup
+    for (int i = 0; i < maxEffects; ++i) {
+      float ox = static_cast<float>((i % 30) * 40 - 600);
+      float oy = static_cast<float>((i / 30) * 25);
+      Vector2D pos(basePosition.getX() + ox, basePosition.getY() + oy);
+      uint32_t id = manager->playEffect(ParticleEffectType::Rain, pos, 1.0f);
+      if (id != 0) effectIds.push_back(id);
+    }
+
+    // Let emission accumulate for a short period
+    for (int f = 0; f < 90; ++f) { // ~1.5s at 60 FPS
+      manager->update(0.016f);
+    }
+
+    size_t count = manager->getActiveParticleCount();
+    std::cout << "HighCountBench: target=" << target
+              << ", actual=" << count << ", effects=" << effectIds.size()
+              << std::endl;
+
+    // Measure average update time over several frames
+    const int samples = 10;
+    double totalMs = 0.0;
+    for (int i = 0; i < samples; ++i) {
+      totalMs += measureExecutionTime([&]() { manager->update(0.016f); });
+    }
+    double avgMs = totalMs / samples;
+    std::cout << "HighCountBench: update_avg_ms=" << avgMs
+              << " at particles=" << manager->getActiveParticleCount()
+              << std::endl;
+
+    // Non-failing sanity check
+    BOOST_CHECK_GT(manager->getActiveParticleCount(), 0);
+  }
+}

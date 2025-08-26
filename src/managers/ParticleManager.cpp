@@ -165,25 +165,19 @@ bool ParticleManager::isShutdown() const {
 
 // ParticleSoA method implementations
 void ParticleManager::LockFreeParticleStorage::ParticleSoA::resize(size_t newSize) {
-    positions.resize(newSize);
-    velocities.resize(newSize);
-    accelerations.resize(newSize);
-    
-    // CRITICAL FIX: Resize SIMD-friendly SoA float lanes
+    // Resize SIMD-friendly SoA float lanes
     posX.resize(newSize);
     posY.resize(newSize);
     velX.resize(newSize);
     velY.resize(newSize);
     accX.resize(newSize);
     accY.resize(newSize);
-    
     lives.resize(newSize);
     maxLives.resize(newSize);
     sizes.resize(newSize);
     rotations.resize(newSize);
     angularVelocities.resize(newSize);
     colors.resize(newSize);
-    // textureIndices removed
     flags.resize(newSize);
     generationIds.resize(newSize);
     effectTypes.resize(newSize);
@@ -191,25 +185,19 @@ void ParticleManager::LockFreeParticleStorage::ParticleSoA::resize(size_t newSiz
 }
 
 void ParticleManager::LockFreeParticleStorage::ParticleSoA::reserve(size_t newCapacity) {
-    positions.reserve(newCapacity);
-    velocities.reserve(newCapacity);
-    accelerations.reserve(newCapacity);
-    
-    // CRITICAL FIX: Reserve SIMD-friendly SoA float lanes
+    // Reserve SIMD-friendly SoA float lanes
     posX.reserve(newCapacity);
     posY.reserve(newCapacity);
     velX.reserve(newCapacity);
     velY.reserve(newCapacity);
     accX.reserve(newCapacity);
     accY.reserve(newCapacity);
-    
     lives.reserve(newCapacity);
     maxLives.reserve(newCapacity);
     sizes.reserve(newCapacity);
     rotations.reserve(newCapacity);
     angularVelocities.reserve(newCapacity);
     colors.reserve(newCapacity);
-    // textureIndices removed
     flags.reserve(newCapacity);
     generationIds.reserve(newCapacity);
     effectTypes.reserve(newCapacity);
@@ -217,26 +205,19 @@ void ParticleManager::LockFreeParticleStorage::ParticleSoA::reserve(size_t newCa
 }
 
 void ParticleManager::LockFreeParticleStorage::ParticleSoA::push_back(const UnifiedParticle& p) {
-    // PERFORMANCE OPTIMIZATION: Add to SIMD arrays first (primary storage)
+    // Add to SIMD arrays (authoritative storage)
     posX.push_back(p.position.getX());
     posY.push_back(p.position.getY());
     velX.push_back(p.velocity.getX());
     velY.push_back(p.velocity.getY());
     accX.push_back(p.acceleration.getX());
     accY.push_back(p.acceleration.getY());
-    
-    // Add to Vector2D arrays (secondary, for compatibility)
-    positions.push_back(p.position);
-    velocities.push_back(p.velocity);
-    accelerations.push_back(p.acceleration);
-    
     lives.push_back(p.life);
     maxLives.push_back(p.maxLife);
     sizes.push_back(p.size);
     rotations.push_back(p.rotation);
     angularVelocities.push_back(p.angularVelocity);
     colors.push_back(p.color);
-    // textureIndices removed
     flags.push_back(p.flags);
     generationIds.push_back(p.generationId);
     effectTypes.push_back(p.effectType);
@@ -244,25 +225,19 @@ void ParticleManager::LockFreeParticleStorage::ParticleSoA::push_back(const Unif
 }
 
 void ParticleManager::LockFreeParticleStorage::ParticleSoA::clear() {
-    positions.clear();
-    velocities.clear();
-    accelerations.clear();
-    
-    // CRITICAL FIX: Clear SIMD-friendly SoA float lanes
+    // Clear all arrays
     posX.clear();
     posY.clear();
     velX.clear();
     velY.clear();
     accX.clear();
     accY.clear();
-    
     lives.clear();
     maxLives.clear();
     sizes.clear();
     rotations.clear();
     angularVelocities.clear();
     colors.clear();
-    // textureIndices removed
     flags.clear();
     generationIds.clear();
     effectTypes.clear();
@@ -270,20 +245,16 @@ void ParticleManager::LockFreeParticleStorage::ParticleSoA::clear() {
 }
 
 size_t ParticleManager::LockFreeParticleStorage::ParticleSoA::size() const {
-    // CRITICAL: Complete SOA consistency check for Windows UCRT compatibility
-    // Check ALL arrays (including SIMD float arrays) for perfect synchronization
-    const size_t baseSize = positions.size();
+    // Authoritative size is flags.size(); ensure others are in sync
+    const size_t baseSize = flags.size();
     if (baseSize == 0) return 0;
-    
-    // Validate all SOA arrays have identical sizes (including SIMD arrays)
-    if (velocities.size() != baseSize || accelerations.size() != baseSize ||
-        posX.size() != baseSize || posY.size() != baseSize ||
+    if (posX.size() != baseSize || posY.size() != baseSize ||
         velX.size() != baseSize || velY.size() != baseSize ||
         accX.size() != baseSize || accY.size() != baseSize ||
         lives.size() != baseSize || maxLives.size() != baseSize ||
         sizes.size() != baseSize || rotations.size() != baseSize ||
         angularVelocities.size() != baseSize || colors.size() != baseSize ||
-        flags.size() != baseSize || generationIds.size() != baseSize ||
+        generationIds.size() != baseSize ||
         effectTypes.size() != baseSize || layers.size() != baseSize) {
         return 0; // Return 0 if ANY array is inconsistent
     }
@@ -292,20 +263,19 @@ size_t ParticleManager::LockFreeParticleStorage::ParticleSoA::size() const {
 }
 
 bool ParticleManager::LockFreeParticleStorage::ParticleSoA::empty() const {
-    return positions.empty();
+    return flags.empty();
 }
 
 // NEW: Complete SOA validation for cross-platform safety
 bool ParticleManager::LockFreeParticleStorage::ParticleSoA::isFullyConsistent() const {
-    const size_t baseSize = positions.size();
-    return (velocities.size() == baseSize && accelerations.size() == baseSize &&
-            posX.size() == baseSize && posY.size() == baseSize &&
+    const size_t baseSize = flags.size();
+    return (posX.size() == baseSize && posY.size() == baseSize &&
             velX.size() == baseSize && velY.size() == baseSize &&
             accX.size() == baseSize && accY.size() == baseSize &&
             lives.size() == baseSize && maxLives.size() == baseSize &&
             sizes.size() == baseSize && rotations.size() == baseSize &&
             angularVelocities.size() == baseSize && colors.size() == baseSize &&
-            flags.size() == baseSize && generationIds.size() == baseSize &&
+            generationIds.size() == baseSize &&
             effectTypes.size() == baseSize && layers.size() == baseSize);
 }
 
@@ -313,11 +283,9 @@ bool ParticleManager::LockFreeParticleStorage::ParticleSoA::isFullyConsistent() 
 size_t ParticleManager::LockFreeParticleStorage::ParticleSoA::getSafeAccessCount() const {
     // Return minimum size of ALL arrays to prevent any out-of-bounds access
     return std::min({
-        positions.size(), velocities.size(), accelerations.size(),
-        posX.size(), posY.size(), velX.size(), velY.size(), accX.size(), accY.size(),
+        flags.size(), posX.size(), posY.size(), velX.size(), velY.size(), accX.size(), accY.size(),
         lives.size(), maxLives.size(), sizes.size(), rotations.size(),
-        angularVelocities.size(), colors.size(), /*textureIndices.size(),*/
-        flags.size(), generationIds.size(), effectTypes.size(), layers.size()
+        angularVelocities.size(), colors.size(), generationIds.size(), effectTypes.size(), layers.size()
     });
 }
 
@@ -330,16 +298,13 @@ bool ParticleManager::LockFreeParticleStorage::ParticleSoA::isValidIndex(size_t 
 void ParticleManager::LockFreeParticleStorage::ParticleSoA::eraseParticle(size_t index) {
     if (!isValidIndex(index)) return;
     
-    const size_t lastIndex = positions.size() - 1;
+    const size_t lastIndex = flags.size() - 1;
     if (index != lastIndex) {
         // Swap with last element (all arrays must stay synchronized)
         swapParticles(index, lastIndex);
     }
     
     // Remove last element from ALL arrays atomically
-    positions.pop_back();
-    velocities.pop_back();
-    accelerations.pop_back();
     posX.pop_back();
     posY.pop_back();
     velX.pop_back();
@@ -352,7 +317,6 @@ void ParticleManager::LockFreeParticleStorage::ParticleSoA::eraseParticle(size_t
     rotations.pop_back();
     angularVelocities.pop_back();
     colors.pop_back();
-    // textureIndices removed
     flags.pop_back();
     generationIds.pop_back();
     effectTypes.pop_back();
@@ -364,9 +328,6 @@ void ParticleManager::LockFreeParticleStorage::ParticleSoA::swapParticles(size_t
     if (!isValidIndex(indexA) || !isValidIndex(indexB) || indexA == indexB) return;
     
     // Swap all particle data atomically
-    std::swap(positions[indexA], positions[indexB]);
-    std::swap(velocities[indexA], velocities[indexB]);
-    std::swap(accelerations[indexA], accelerations[indexB]);
     std::swap(posX[indexA], posX[indexB]);
     std::swap(posY[indexA], posY[indexB]);
     std::swap(velX[indexA], velX[indexB]);
@@ -379,7 +340,6 @@ void ParticleManager::LockFreeParticleStorage::ParticleSoA::swapParticles(size_t
     std::swap(rotations[indexA], rotations[indexB]);
     std::swap(angularVelocities[indexA], angularVelocities[indexB]);
     std::swap(colors[indexA], colors[indexB]);
-    // textureIndices removed
     std::swap(flags[indexA], flags[indexB]);
     std::swap(generationIds[indexA], generationIds[indexB]);
     std::swap(effectTypes[indexA], effectTypes[indexB]);
@@ -436,11 +396,11 @@ void ParticleManager::LockFreeParticleStorage::processCreationRequests() {
             auto &activeParticles = particles[activeIdx];
 
             const size_t currentCapacity = capacity.load(std::memory_order_relaxed);
-            const size_t currentSize = activeParticles.positions.size();
+            const size_t currentSize = activeParticles.flags.size();
             
             // CRITICAL FIX: Check buffer consistency before adding particles
             if (currentSize < currentCapacity &&
-                activeParticles.velocities.size() == currentSize &&
+                activeParticles.posX.size() == currentSize &&
                 activeParticles.flags.size() == currentSize) {
                 UnifiedParticle particle;
                 particle.position = req.position;
@@ -453,23 +413,19 @@ void ParticleManager::LockFreeParticleStorage::processCreationRequests() {
                 particle.flags = static_cast<uint8_t>(req.flags | UnifiedParticle::FLAG_ACTIVE | UnifiedParticle::FLAG_VISIBLE);
                 particle.generationId = req.generationId;
                 particle.effectType = req.effectType;
-                // textureIndex removed
 
                 // Prefer slot reuse: use a free index if available
                 if (!freeIndices.empty()) {
                     const size_t idx = freeIndices.back();
                     freeIndices.pop_back();
-                    if (idx < activeParticles.positions.size()) {
-                        // Write into both SIMD lanes and Vector2D arrays
+                    if (idx < activeParticles.flags.size()) {
+                        // Write into SIMD lanes and attribute arrays
                         activeParticles.posX[idx] = particle.position.getX();
                         activeParticles.posY[idx] = particle.position.getY();
                         activeParticles.velX[idx] = particle.velocity.getX();
                         activeParticles.velY[idx] = particle.velocity.getY();
                         activeParticles.accX[idx] = particle.acceleration.getX();
                         activeParticles.accY[idx] = particle.acceleration.getY();
-                        activeParticles.positions[idx] = particle.position;
-                        activeParticles.velocities[idx] = particle.velocity;
-                        activeParticles.accelerations[idx] = particle.acceleration;
                         activeParticles.lives[idx] = particle.life;
                         activeParticles.maxLives[idx] = particle.maxLife;
                         activeParticles.sizes[idx] = particle.size;
@@ -482,17 +438,23 @@ void ParticleManager::LockFreeParticleStorage::processCreationRequests() {
                         activeParticles.layers[idx] = UnifiedParticle::RenderLayer::World;
                         // Track upper bound of active indices
                         if (idx > maxActiveIndex) maxActiveIndex = idx;
+                        // Track active count
+                        // Index reused from pool implies previously inactive
+                        // Increment active count for newly activated slot
+                        ParticleManager::Instance().m_activeCount.fetch_add(1, std::memory_order_relaxed);
                     } else {
                         // Fallback: append if stale free index
                         activeParticles.push_back(particle);
-                        size_t newIdx = activeParticles.positions.size() - 1;
+                        size_t newIdx = activeParticles.flags.size() - 1;
                         if (newIdx > maxActiveIndex) maxActiveIndex = newIdx;
+                        ParticleManager::Instance().m_activeCount.fetch_add(1, std::memory_order_relaxed);
                     }
                 } else {
                     // Append new slot
                     activeParticles.push_back(particle);
-                    size_t newIdx = activeParticles.positions.size() - 1;
+                    size_t newIdx = activeParticles.flags.size() - 1;
                     if (newIdx > maxActiveIndex) maxActiveIndex = newIdx;
+                    ParticleManager::Instance().m_activeCount.fetch_add(1, std::memory_order_relaxed);
                 }
                 particleCount.store(activeParticles.size(), std::memory_order_release);
             }
@@ -610,6 +572,7 @@ void ParticleManager::clean() {
   m_storage.particles[1].clear();
   m_storage.particleCount.store(0, std::memory_order_release);
   m_storage.writeHead.store(0, std::memory_order_release);
+  m_activeCount.store(0, std::memory_order_release);
 
   m_effectDefinitions.clear();
   m_effectInstances.clear();
@@ -712,6 +675,8 @@ void ParticleManager::prepareForStateTransition() {
 
   // 5. Reset performance stats (safe operation)
   resetPerformanceStats();
+  // Reset active counter since storage is cleared
+  m_activeCount.store(0, std::memory_order_release);
 
   // Resume system (no lock to release with lock-free design)
   m_globallyPaused.store(false, std::memory_order_release);
@@ -747,7 +712,7 @@ void ParticleManager::update(float deltaTime) {
 
     // Phase 3: Get snapshot of buffer size and active count
     const auto &particles = m_storage.getParticlesForRead();
-    const size_t bufferSize = particles.positions.size();
+    const size_t bufferSize = particles.flags.size();
     if (bufferSize == 0) {
       return;
     }
@@ -868,53 +833,55 @@ void ParticleManager::render(SDL_Renderer *renderer, float cameraX,
 
   // THREAD SAFETY: Get immutable snapshot of particle data for rendering
   const auto &particles = m_storage.getParticlesForRead();
-  
-  // IMPROVED FIX: Use safest available particle count for rendering
-  // This allows partial rendering when buffers are mostly consistent
-  const size_t safeParticleCount = std::min({
-    particles.positions.size(),
-    particles.flags.size(), 
-    particles.colors.size(),
-    particles.sizes.size()
-  });
-  
-  // Only skip rendering if no particles are available
-  if (safeParticleCount == 0) {
-    return;
+  const size_t n = particles.getSafeAccessCount();
+  if (n == 0) return;
+
+  // Batch geometry rendering (indices-free: draw arrays for simplicity/safety)
+  constexpr size_t MAX_RECTS_PER_BATCH = 2048;
+  std::vector<float> xy; xy.reserve(MAX_RECTS_PER_BATCH * 6 * 2);     // 6 verts * 2 floats
+  std::vector<SDL_FColor> cols; cols.reserve(MAX_RECTS_PER_BATCH * 6); // 6 verts
+  size_t quadCount = 0;
+
+  auto flush = [&]() {
+    if (quadCount == 0) return;
+    SDL_RenderGeometryRaw(renderer, nullptr,
+                          xy.data(), sizeof(float) * 2,
+                          cols.data(), sizeof(SDL_FColor),
+                          nullptr, 0,
+                          static_cast<int>(quadCount * 6),
+                          nullptr, 0, 0);
+    xy.clear(); cols.clear(); quadCount = 0;
+  };
+
+  for (size_t i = 0; i < n; ++i) {
+    if (!(particles.flags[i] & UnifiedParticle::FLAG_ACTIVE) ||
+        !(particles.flags[i] & UnifiedParticle::FLAG_VISIBLE)) continue;
+    const uint32_t c = particles.colors[i];
+    const uint8_t a8 = c & 0xFF; if (a8 == 0) continue;
+    const float r = ((c >> 24) & 0xFF) / 255.0f;
+    const float g = ((c >> 16) & 0xFF) / 255.0f;
+    const float b = ((c >> 8) & 0xFF) / 255.0f;
+    const float a = a8 / 255.0f;
+
+    const float size = particles.sizes[i];
+    const float cx = particles.posX[i] - cameraX;
+    const float cy = particles.posY[i] - cameraY;
+    const float hx = size * 0.5f;
+    const float hy = size * 0.5f;
+
+    const float x0 = cx - hx, y0 = cy - hy;
+    const float x1 = cx + hx, y1 = cy - hy;
+    const float x2 = cx + hx, y2 = cy + hy;
+    const float x3 = cx - hx, y3 = cy + hy;
+
+    // Append vertices for two triangles (v0,v1,v2) and (v2,v3,v0)
+    xy.insert(xy.end(), {x0, y0, x1, y1, x2, y2,  x2, y2, x3, y3, x0, y0});
+    SDL_FColor col{r, g, b, a};
+    cols.insert(cols.end(), {col, col, col, col, col, col});
+    ++quadCount;
+    if (quadCount == MAX_RECTS_PER_BATCH) flush();
   }
-
-  for (size_t i = 0; i < safeParticleCount; ++i) {
-    // BOUNDS CHECK: Defensive programming for edge cases
-    if (i >= particles.flags.size() || i >= particles.colors.size() || 
-        i >= particles.sizes.size() || i >= particles.positions.size()) {
-      break; // Exit safely if we somehow exceed bounds
-    }
-    
-    if (!(particles.flags[i] & UnifiedParticle::FLAG_ACTIVE) || !(particles.flags[i] & UnifiedParticle::FLAG_VISIBLE)) {
-      continue;
-    }
-
-    // Skip particles that are completely transparent
-    uint8_t alpha = particles.colors[i] & 0xFF;
-    if (alpha == 0) {
-      continue;
-    }
-
-    // Extract color components
-    uint8_t r = (particles.colors[i] >> 24) & 0xFF;
-    uint8_t g = (particles.colors[i] >> 16) & 0xFF;
-    uint8_t b = (particles.colors[i] >> 8) & 0xFF;
-    SDL_SetRenderDrawColor(renderer, r, g, b, alpha);
-
-    // Get particle size
-    float size = particles.sizes[i];
-
-    // Render particle as a filled rectangle (accounting for camera offset)
-    SDL_FRect rect = {particles.positions[i].getX() - cameraX - size / 2,
-                      particles.positions[i].getY() - cameraY - size / 2, size,
-                      size};
-    SDL_RenderFillRect(renderer, &rect);
-  }
+  flush();
 
   
 
@@ -923,7 +890,7 @@ void ParticleManager::render(SDL_Renderer *renderer, float cameraX,
       std::chrono::duration_cast<std::chrono::microseconds>(endTime - startTime)
           .count() /
       1000.0;
-  recordPerformance(true, timeMs, safeParticleCount);
+  recordPerformance(true, timeMs, n);
 }
 
 void ParticleManager::renderBackground(SDL_Renderer *renderer, float cameraX,
@@ -935,46 +902,47 @@ void ParticleManager::renderBackground(SDL_Renderer *renderer, float cameraX,
 
   // THREAD SAFETY: Get immutable snapshot of particle data
   const auto &particles = m_storage.getParticlesForRead();
-  
-  // CRITICAL FIX: Use comprehensive bounds checking for Windows UCRT
-  const size_t safeParticleCount = particles.getSafeAccessCount();
-  
-  // Only skip rendering if no particles are available
-  if (safeParticleCount == 0) {
-    return;
+  const size_t n = particles.getSafeAccessCount();
+  if (n == 0) return;
+
+  constexpr size_t MAX_RECTS_PER_BATCH = 2048;
+  std::vector<float> xy; xy.reserve(MAX_RECTS_PER_BATCH * 6 * 2);
+  std::vector<SDL_FColor> cols; cols.reserve(MAX_RECTS_PER_BATCH * 6);
+  size_t quadCount = 0;
+  auto flush = [&]() {
+    if (quadCount == 0) return;
+    SDL_RenderGeometryRaw(renderer, nullptr,
+                          xy.data(), sizeof(float) * 2,
+                          cols.data(), sizeof(SDL_FColor),
+                          nullptr, 0,
+                          static_cast<int>(quadCount * 6),
+                          nullptr, 0, 0);
+    xy.clear(); cols.clear(); quadCount = 0;
+  };
+  for (size_t i = 0; i < n; ++i) {
+    if (!(particles.flags[i] & UnifiedParticle::FLAG_ACTIVE) ||
+        !(particles.flags[i] & UnifiedParticle::FLAG_VISIBLE) ||
+        particles.layers[i] != UnifiedParticle::RenderLayer::Background) continue;
+    const uint32_t c = particles.colors[i];
+    const uint8_t a8 = c & 0xFF; if (a8 == 0) continue;
+    const float r = ((c >> 24) & 0xFF) / 255.0f;
+    const float g = ((c >> 16) & 0xFF) / 255.0f;
+    const float b = ((c >> 8) & 0xFF) / 255.0f;
+    const float a = a8 / 255.0f;
+    const float size = particles.sizes[i];
+    const float cx = particles.posX[i] - cameraX;
+    const float cy = particles.posY[i] - cameraY;
+    const float hx = size * 0.5f, hy = size * 0.5f;
+    const float x0 = cx - hx, y0 = cy - hy;
+    const float x1 = cx + hx, y1 = cy - hy;
+    const float x2 = cx + hx, y2 = cy + hy;
+    const float x3 = cx - hx, y3 = cy + hy;
+    xy.insert(xy.end(), {x0, y0, x1, y1, x2, y2,  x2, y2, x3, y3, x0, y0});
+    SDL_FColor col{r, g, b, a};
+    cols.insert(cols.end(), {col, col, col, col, col, col});
+    if (++quadCount == MAX_RECTS_PER_BATCH) flush();
   }
-
-  for (size_t i = 0; i < safeParticleCount; ++i) {
-    // BOUNDS CHECK: Defensive programming for edge cases
-    if (i >= particles.flags.size() || i >= particles.colors.size() || 
-        i >= particles.sizes.size() || i >= particles.positions.size() ||
-        i >= particles.layers.size()) {
-      break; // Exit safely if we somehow exceed bounds
-    }
-    
-    if (!(particles.flags[i] & UnifiedParticle::FLAG_ACTIVE) || !(particles.flags[i] & UnifiedParticle::FLAG_VISIBLE) ||
-        particles.layers[i] != UnifiedParticle::RenderLayer::Background) {
-      continue;
-    }
-
-    // Extract color components
-    uint8_t r = (particles.colors[i] >> 24) & 0xFF;
-    uint8_t g = (particles.colors[i] >> 16) & 0xFF;
-    uint8_t b = (particles.colors[i] >> 8) & 0xFF;
-    uint8_t a = particles.colors[i] & 0xFF;
-
-    // Set particle color
-    SDL_SetRenderDrawColor(renderer, r, g, b, a);
-
-    // Use particle size directly without any size limits
-    float size = particles.sizes[i];
-
-    // Render particle as a filled rectangle (accounting for camera offset)
-    SDL_FRect rect = {particles.positions[i].getX() - cameraX - size / 2,
-                      particles.positions[i].getY() - cameraY - size / 2, size,
-                      size};
-    SDL_RenderFillRect(renderer, &rect);
-  }
+  flush();
 }
 
 void ParticleManager::renderForeground(SDL_Renderer *renderer, float cameraX,
@@ -986,46 +954,46 @@ void ParticleManager::renderForeground(SDL_Renderer *renderer, float cameraX,
 
   // THREAD SAFETY: Get immutable snapshot of particle data
   const auto &particles = m_storage.getParticlesForRead();
-  
-  // CRITICAL FIX: Use comprehensive bounds checking for Windows UCRT
-  const size_t safeParticleCount = particles.getSafeAccessCount();
-  
-  // Only skip rendering if no particles are available
-  if (safeParticleCount == 0) {
-    return;
+  const size_t n = particles.getSafeAccessCount();
+  if (n == 0) return;
+  constexpr size_t MAX_RECTS_PER_BATCH = 2048;
+  std::vector<float> xy; xy.reserve(MAX_RECTS_PER_BATCH * 6 * 2);
+  std::vector<SDL_FColor> cols; cols.reserve(MAX_RECTS_PER_BATCH * 6);
+  size_t quadCount = 0;
+  auto flush = [&]() {
+    if (quadCount == 0) return;
+    SDL_RenderGeometryRaw(renderer, nullptr,
+                          xy.data(), sizeof(float) * 2,
+                          cols.data(), sizeof(SDL_FColor),
+                          nullptr, 0,
+                          static_cast<int>(quadCount * 6),
+                          nullptr, 0, 0);
+    xy.clear(); cols.clear(); quadCount = 0;
+  };
+  for (size_t i = 0; i < n; ++i) {
+    if (!(particles.flags[i] & UnifiedParticle::FLAG_ACTIVE) ||
+        !(particles.flags[i] & UnifiedParticle::FLAG_VISIBLE) ||
+        particles.layers[i] != UnifiedParticle::RenderLayer::Foreground) continue;
+    const uint32_t c = particles.colors[i];
+    const uint8_t a8 = c & 0xFF; if (a8 == 0) continue;
+    const float r = ((c >> 24) & 0xFF) / 255.0f;
+    const float g = ((c >> 16) & 0xFF) / 255.0f;
+    const float b = ((c >> 8) & 0xFF) / 255.0f;
+    const float a = a8 / 255.0f;
+    const float size = particles.sizes[i];
+    const float cx = particles.posX[i] - cameraX;
+    const float cy = particles.posY[i] - cameraY;
+    const float hx = size * 0.5f, hy = size * 0.5f;
+    const float x0 = cx - hx, y0 = cy - hy;
+    const float x1 = cx + hx, y1 = cy - hy;
+    const float x2 = cx + hx, y2 = cy + hy;
+    const float x3 = cx - hx, y3 = cy + hy;
+    xy.insert(xy.end(), {x0, y0, x1, y1, x2, y2,  x2, y2, x3, y3, x0, y0});
+    SDL_FColor col{r, g, b, a};
+    cols.insert(cols.end(), {col, col, col, col, col, col});
+    if (++quadCount == MAX_RECTS_PER_BATCH) flush();
   }
-
-  for (size_t i = 0; i < safeParticleCount; ++i) {
-    // BOUNDS CHECK: Defensive programming for edge cases
-    if (i >= particles.flags.size() || i >= particles.colors.size() || 
-        i >= particles.sizes.size() || i >= particles.positions.size() ||
-        i >= particles.layers.size()) {
-      break; // Exit safely if we somehow exceed bounds
-    }
-
-    if (!(particles.flags[i] & UnifiedParticle::FLAG_ACTIVE) || !(particles.flags[i] & UnifiedParticle::FLAG_VISIBLE) ||
-        particles.layers[i] != UnifiedParticle::RenderLayer::Foreground) {
-      continue;
-    }
-
-    // Extract RGB components
-    uint8_t r = (particles.colors[i] >> 24) & 0xFF;
-    uint8_t g = (particles.colors[i] >> 16) & 0xFF;
-    uint8_t b = (particles.colors[i] >> 8) & 0xFF;
-    uint8_t a = particles.colors[i] & 0xFF;
-
-    // Set particle color
-    SDL_SetRenderDrawColor(renderer, r, g, b, a);
-
-    // Use particle size directly without any size limits
-    float size = particles.sizes[i];
-
-    // Render particle as a filled rectangle (accounting for camera offset)
-    SDL_FRect rect = {particles.positions[i].getX() - cameraX - size / 2,
-                      particles.positions[i].getY() - cameraY - size / 2, size,
-                      size};
-    SDL_RenderFillRect(renderer, &rect);
-  }
+  flush();
 }
 
 uint32_t ParticleManager::playEffect(ParticleEffectType effectType,
@@ -1869,23 +1837,19 @@ ParticleEffectDefinition ParticleManager::createSparksEffect() {
 }
 
 size_t ParticleManager::getActiveParticleCount() const {
-  if (!m_initialized.load(std::memory_order_acquire)) {
-    return 0;
-  }
-
-  // THREAD SAFETY: Get immutable snapshot of particle data
+  if (!m_initialized.load(std::memory_order_acquire)) return 0;
+  size_t cached = m_activeCount.load(std::memory_order_acquire);
+  if (cached != 0) return cached;
+  // Fallback: reconcile by scanning flags when cached is zero
   const auto &particles = m_storage.getParticlesForRead();
-  
-  // CRITICAL FIX: Cache flag vector size to avoid race conditions
-  const size_t flagCount = particles.flags.size();
-  
-  size_t activeCount = 0;
-  for (size_t i = 0; i < flagCount; ++i) {
-    if (particles.flags[i] & UnifiedParticle::FLAG_ACTIVE) {
-      activeCount++;
-    }
+  const size_t n = particles.flags.size();
+  size_t counted = 0;
+  for (size_t i = 0; i < n; ++i) {
+    if (particles.flags[i] & UnifiedParticle::FLAG_ACTIVE) ++counted;
   }
-  return activeCount;
+  // Best-effort update
+  const_cast<std::atomic<size_t>&>(m_activeCount).store(counted, std::memory_order_release);
+  return counted;
 }
 
 // Compaction removed: object pool reuse only
@@ -1965,11 +1929,12 @@ void ParticleManager::updateParticlesThreaded(float deltaTime,
   auto &currentBuffer = m_storage.getCurrentBuffer();
 
   // CRITICAL FIX: Validate buffer consistency before threading
-  const size_t bufferSize = currentBuffer.positions.size();
+  const size_t bufferSize = currentBuffer.flags.size();
   
   // BOUNDS SAFETY: Ensure all vectors have consistent sizes
   if (bufferSize == 0 ||
-      currentBuffer.velocities.size() != bufferSize ||
+      currentBuffer.posX.size() != bufferSize ||
+      currentBuffer.velX.size() != bufferSize ||
       currentBuffer.flags.size() != bufferSize ||
       currentBuffer.lives.size() != bufferSize) {
     // Buffer is inconsistent, fall back to single-threaded update
@@ -2087,9 +2052,9 @@ void ParticleManager::updateParticleRange(
   const float windPhase6_0 = windPhase * 6.0f;
 
   // CRITICAL FIX: Cache all buffer sizes and validate consistency before processing
-  const size_t positionsSize = particles.positions.size();
-  const size_t velocitiesSize = particles.velocities.size();
-  const size_t accelerationsSize = particles.accelerations.size();
+  const size_t positionsSize = particles.posX.size();
+  const size_t velocitiesSize = particles.velX.size();
+  const size_t accelerationsSize = particles.accX.size();
   const size_t livesSize = particles.lives.size();
   const size_t maxLivesSize = particles.maxLives.size();
   const size_t sizesSize = particles.sizes.size();
@@ -2144,22 +2109,22 @@ void ParticleManager::updateParticleRange(
     // OPTIMIZATION: Use switch statement for better branch prediction than nested if-else
     if (effectType == ParticleEffectType::Cloudy) {
       // Apply horizontal movement for cloud drift
-      particles.accelerations[i].setX(15.0f);
-      particles.accelerations[i].setY(0.0f);
+      particles.accX[i] = 15.0f;
+      particles.accY[i] = 0.0f;
 
       // PRODUCTION OPTIMIZATION: Pre-computed trigonometric values
       const float drift = fastSin(windPhase0_8 + particleOffset15) * 3.0f;
       const float verticalFloat = fastCos(windPhase1_2 + particleOffset) * 1.5f;
 
-      particles.velocities[i].setX(particles.velocities[i].getX() + drift * deltaTime);
-      particles.velocities[i].setY(particles.velocities[i].getY() + verticalFloat * deltaTime);
+      particles.velX[i] += drift * deltaTime;
+      particles.velY[i] += verticalFloat * deltaTime;
 
       atmosphericDrag = 1.0f;
     }
     // Apply wind variation for weather particles
     else if (particles.flags[i] & UnifiedParticle::FLAG_WEATHER) {
       // Add natural wind turbulence
-      particles.accelerations[i].setX(particles.accelerations[i].getX() + windVariation * 20.0f);
+      particles.accX[i] += windVariation * 20.0f;
 
       // Different atmospheric effects for different particle types
       
@@ -2168,7 +2133,7 @@ void ParticleManager::updateParticleRange(
         case ParticleEffectType::Snow:
         case ParticleEffectType::HeavySnow: {
           const float flutter = fastSin(windPhase3_0 + particleOffset2) * 8.0f;
-          particles.velocities[i].setX(particles.velocities[i].getX() + flutter * deltaTime);
+          particles.velX[i] += flutter * deltaTime;
           atmosphericDrag = 0.96f; // More air resistance for snow
           break;
         }
@@ -2180,13 +2145,12 @@ void ParticleManager::updateParticleRange(
           
           // Terminal velocity based on droplet size (larger drops fall faster)
           const float terminalVelocity = 200.0f + (sizeNormalized * 150.0f); // 200-350 range
-          const float currentVerticalSpeed = std::abs(particles.velocities[i].getY());
+          const float currentVerticalSpeed = std::fabs(particles.velY[i]);
           
           // Apply gravity only if below terminal velocity
           if (currentVerticalSpeed < terminalVelocity) {
             const float gravityScale = 1.0f - (currentVerticalSpeed / terminalVelocity);
-            particles.accelerations[i].setY(particles.accelerations[i].getY() + 
-                                       gravityScale * 80.0f); // Enhanced gravity
+            particles.accY[i] += gravityScale * 80.0f; // Enhanced gravity
           }
           
           // Safe division with zero check for life-based effects
@@ -2200,23 +2164,21 @@ void ParticleManager::updateParticleRange(
           
           // Apply horizontal wind forces (older drops are more susceptible to wind)
           const float windSusceptibility = 0.5f + (1.0f - lifeRatio) * 0.5f;
-          particles.velocities[i].setX(particles.velocities[i].getX() + 
-                                     (microGust + atmosphericTurbulence) * windSusceptibility * deltaTime);
+          particles.velX[i] += (microGust + atmosphericTurbulence) * windSusceptibility * deltaTime;
           
           // Size-dependent air resistance (larger drops are less affected)
           atmosphericDrag = 0.985f + (sizeNormalized * 0.01f); // 0.985-0.995 range
           
           // Add subtle vertical oscillation for realism (air currents)
           const float verticalOscillation = fastCos(windPhase * 3.0f + particleOffset25) * 2.0f;
-          particles.velocities[i].setY(particles.velocities[i].getY() + 
-                                     verticalOscillation * deltaTime);
+          particles.velY[i] += verticalOscillation * deltaTime;
           break;
         }
         default: { // Regular fog behavior (not clouds)
           const float drift = fastSin(windPhase0_8 + particleOffset15) * 15.0f;
           const float verticalDrift = fastCos(windPhase1_2 + particleOffset) * 3.0f * deltaTime;
-          particles.velocities[i].setX(particles.velocities[i].getX() + drift * deltaTime);
-          particles.velocities[i].setY(particles.velocities[i].getY() + verticalDrift);
+          particles.velX[i] += drift * deltaTime;
+          particles.velY[i] += verticalDrift;
           atmosphericDrag = 0.999f;
           break;
         }
@@ -2238,13 +2200,13 @@ void ParticleManager::updateParticleRange(
                                      (randomFactor - 0.5f) * 10.0f;
           const float heatRise = fastCos(windPhase6_0 + particleOffset25) * 10.0f;
 
-          particles.velocities[i].setX(particles.velocities[i].getX() + heatTurbulence * deltaTime);
-          particles.velocities[i].setY(particles.velocities[i].getY() + heatRise * deltaTime);
+          particles.velX[i] += heatTurbulence * deltaTime;
+          particles.velY[i] += heatRise * deltaTime;
 
           // Fire particles get more chaotic as they age (burns out)
           const float chaos = (1.0f - lifeRatio) * 25.0f;
           const float chaosValue = (randomFactor - 0.5f) * chaos * deltaTime;
-          particles.accelerations[i].setX(particles.accelerations[i].getX() + chaosValue);
+          particles.accX[i] += chaosValue;
 
           // Visuals: Fire particles use their initial random color and just fade with age
           particles.sizes[i] *= (lifeRatio * 0.99f);
@@ -2260,8 +2222,8 @@ void ParticleManager::updateParticleRange(
           float circleX = fastCos(angle + windPhase) * speed * (1.0f - lifeRatio);
           float circleY = fastSin(angle + windPhase) * speed * (1.0f - lifeRatio);
 
-          particles.velocities[i].setX(particles.velocities[i].getX() + circleX * deltaTime);
-          particles.velocities[i].setY(particles.velocities[i].getY() + circleY * deltaTime - (20.0f * deltaTime)); // Upward motion
+          particles.velX[i] += circleX * deltaTime;
+          particles.velY[i] += circleY * deltaTime - (20.0f * deltaTime);
 
           // Visuals: Shrink slightly over life
           particles.sizes[i] *= 0.998f;
@@ -2270,36 +2232,16 @@ void ParticleManager::updateParticleRange(
         }
         default: { // Other particles (sparks, magic, etc.) - use standard turbulence
           const float generalTurbulence = windVariation * 10.0f;
-          particles.velocities[i].setX(particles.velocities[i].getX() + generalTurbulence * deltaTime);
+          particles.velX[i] += generalTurbulence * deltaTime;
           atmosphericDrag = 0.97f;
           break;
         }
       }
     }
 
-    // PERFORMANCE OPTIMIZATION: Cache velocity and acceleration components to reduce Vector2D overhead
-    float velX = particles.velocities[i].getX();
-    float velY = particles.velocities[i].getY();
-    const float accelX = particles.accelerations[i].getX();
-    const float accelY = particles.accelerations[i].getY();
-    
-    // Apply atmospheric drag using cached values
-    velX *= atmosphericDrag;
-    velY *= atmosphericDrag;
-
-    // Update physics using cached values (reduces Vector2D overhead by ~70%)
-    velX += accelX * deltaTime;
-    velY += accelY * deltaTime;
-
-    // Cache position components for physics update
-    const float posX = particles.positions[i].getX() + velX * deltaTime;
-    const float posY = particles.positions[i].getY() + velY * deltaTime;
-    
-    // Batch update Vector2D components
-    particles.velocities[i].setX(velX);
-    particles.velocities[i].setY(velY);
-    particles.positions[i].setX(posX);
-    particles.positions[i].setY(posY);
+    // Apply atmospheric drag on velocity components
+    particles.velX[i] *= atmosphericDrag;
+    particles.velY[i] *= atmosphericDrag;
 
     // Update life
     particles.lives[i] -= deltaTime;
@@ -2307,6 +2249,7 @@ void ParticleManager::updateParticleRange(
       if (particles.flags[i] & UnifiedParticle::FLAG_ACTIVE) {
         particles.flags[i] &= ~UnifiedParticle::FLAG_ACTIVE;
         particles.flags[i] |= UnifiedParticle::FLAG_RECENTLY_DEACTIVATED;
+        ParticleManager::Instance().m_activeCount.fetch_sub(1, std::memory_order_relaxed);
       }
       continue;
     }
@@ -2318,11 +2261,9 @@ void ParticleManager::updateParticleRange(
     // rendering
    }
    
-   // PERFORMANCE OPTIMIZATION: Apply SIMD physics for eligible particles
-   // This significantly accelerates position/velocity updates for non-fire particles
-   #ifdef PARTICLE_SIMD_SSE2
+   // PERFORMANCE OPTIMIZATION: Apply physics integration for all platforms.
+   // The implementation uses SIMD when available, otherwise falls back to scalar.
    updateParticlePhysicsSIMD(particles, startIdx, endIdx, deltaTime);
-   #endif
    
    // PERFORMANCE OPTIMIZATION: Apply batch color processing for non-fire particles
    // This provides better cache utilization and eliminates redundant alpha calculations
@@ -2602,8 +2543,7 @@ void ParticleManager::updateParticlePhysicsSIMD(
   if (endIdx > particleCount || startIdx >= endIdx) return;
   endIdx = std::min(endIdx, particleCount);
 
-  // PERFORMANCE: SIMD arrays are now primary - no sync needed!
-  // Vector2D arrays are updated only at the end for rendering compatibility
+  // SIMD arrays are primary storage; operate directly on them
 
   // Scalar pre-loop to align to 4-float boundary for aligned loads
   size_t i = startIdx;
@@ -2660,47 +2600,16 @@ void ParticleManager::updateParticlePhysicsSIMD(
     }
   }
 
-  // PERFORMANCE OPTIMIZATION: Batch sync SIMD → Vector2D only for active particles
-  // Use 4-wide SIMD stores for Vector2D sync when possible
-  for (size_t j = startIdx; j < endIdx; ++j) {
-    if (particles.flags[j] & UnifiedParticle::FLAG_ACTIVE) {
-      particles.positions[j].setX(particles.posX[j]);
-      particles.positions[j].setY(particles.posY[j]);
-      particles.velocities[j].setX(particles.velX[j]);
-      particles.velocities[j].setY(particles.velY[j]);
-    }
-  }
-  
-  // Clamp endIdx to prevent buffer overflow 
-  endIdx = std::min(endIdx, particleCount);
-  
-  // CRITICAL FIX: Write back ALL particles to Vector2D arrays to maintain consistency
-  // We must keep both representations in sync, not just active particles
-  for (size_t j = startIdx; j < endIdx; ++j) {
-    particles.positions[j].setX(particles.posX[j]);
-    particles.positions[j].setY(particles.posY[j]);
-    particles.velocities[j].setX(particles.velX[j]);
-    particles.velocities[j].setY(particles.velY[j]);
-    particles.accelerations[j].setX(particles.accX[j]);
-    particles.accelerations[j].setY(particles.accY[j]);
-  }
+  // No Vector2D sync required
 
 #else
   // Fallback to scalar implementation for platforms without SSE2
   for (size_t i = startIdx; i < endIdx; ++i) {
     if (!(particles.flags[i] & UnifiedParticle::FLAG_ACTIVE)) continue;
-    
-    particles.velocities[i].setX(particles.velocities[i].getX() + 
-                           particles.accelerations[i].getX() * deltaTime);
-    particles.velocities[i].setY(particles.velocities[i].getY() + 
-                           particles.accelerations[i].getY() * deltaTime);
-                           
-    particles.velocities[i] *= 0.98f; // atmospheric drag
-    
-    particles.positions[i].setX(particles.positions[i].getX() + 
-                          particles.velocities[i].getX() * deltaTime);
-    particles.positions[i].setY(particles.positions[i].getY() + 
-                          particles.velocities[i].getY() * deltaTime);
+    particles.velX[i] = (particles.velX[i] + particles.accX[i] * deltaTime) * 0.98f;
+    particles.velY[i] = (particles.velY[i] + particles.accY[i] * deltaTime) * 0.98f;
+    particles.posX[i] += particles.velX[i] * deltaTime;
+    particles.posY[i] += particles.velY[i] * deltaTime;
   }
 #endif
 }
