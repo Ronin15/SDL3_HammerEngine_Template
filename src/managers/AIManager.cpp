@@ -242,10 +242,20 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
     // This ensures distance calculations use the most up-to-date information.
     {
       std::shared_lock<std::shared_mutex> lock(m_entitiesMutex);
+      // Count active entities while syncing positions to avoid extra passes
+      size_t activeCountLocal = 0;
       for (size_t i = 0; i < m_storage.size(); ++i) {
         if (m_storage.hotData[i].active && m_storage.entities[i]) {
           m_storage.hotData[i].position = m_storage.entities[i]->getPosition();
+          ++activeCountLocal;
         }
+      }
+      // If there are no active entities, skip heavy processing this frame
+      if (m_storage.size() > 0 && activeCountLocal == 0) {
+        // Still process any queued messages; no threading work
+        processMessageQueue();
+        m_lastWasThreaded.store(false, std::memory_order_relaxed);
+        return;
       }
     }
 
@@ -288,8 +298,19 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
       nextBuffer = currentBuffer;
     }
 
-    // Determine threading strategy
-    bool useThreading = (entityCount >= THREADING_THRESHOLD &&
+    // Determine threading strategy based on ACTIVE entity count instead of total
+    // storage size to avoid unnecessary threading after resets
+    // Count active entities quickly from the work buffer selection above
+    // Note: activeCountLocal is only available inside the earlier scoped lock,
+    // so recompute a lightweight count against hotData without additional locks.
+    size_t activeCount = 0;
+    for (size_t i = 0; i < entityCount; ++i) {
+      if (m_storage.hotData[i].active) {
+        ++activeCount;
+      }
+    }
+
+    bool useThreading = (activeCount >= THREADING_THRESHOLD &&
                          m_useThreading.load(std::memory_order_acquire) &&
                          HammerEngine::ThreadSystem::Exists());
 
