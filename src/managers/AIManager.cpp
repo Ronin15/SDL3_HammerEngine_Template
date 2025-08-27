@@ -238,34 +238,33 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
     // Do not carry over AI update futures across frames to avoid races with render.
     // Any previous frame's update work must be completed within its frame.
 
-    // First, synchronize all entity positions to the hot data cache.
-    // This ensures distance calculations use the most up-to-date information.
+    // Process pending assignments first so new entities are picked up this frame
+    processPendingBehaviorAssignments();
+
+    // Synchronize positions and count active entities
+    size_t entityCount = 0;
+    size_t activeCount = 0;
     {
       std::shared_lock<std::shared_mutex> lock(m_entitiesMutex);
-      // Count active entities while syncing positions to avoid extra passes
-      size_t activeCountLocal = 0;
-      for (size_t i = 0; i < m_storage.size(); ++i) {
+      entityCount = m_storage.size();
+      for (size_t i = 0; i < entityCount; ++i) {
         if (m_storage.hotData[i].active && m_storage.entities[i]) {
           m_storage.hotData[i].position = m_storage.entities[i]->getPosition();
-          ++activeCountLocal;
+          ++activeCount;
         }
-      }
-      // If there are no active entities, skip heavy processing this frame
-      if (m_storage.size() > 0 && activeCountLocal == 0) {
-        // Still process any queued messages; no threading work
-        processMessageQueue();
-        m_lastWasThreaded.store(false, std::memory_order_relaxed);
-        return;
       }
     }
 
-    // Process pending assignments
-    processPendingBehaviorAssignments();
-
-    // Get entity count without lock
-    size_t entityCount = m_storage.size();
-    if (entityCount == 0)
+    if (entityCount == 0) {
       return;
+    }
+
+    // If there are no active entities, skip heavy processing this frame
+    if (activeCount == 0) {
+      processMessageQueue();
+      m_lastWasThreaded.store(false, std::memory_order_relaxed);
+      return;
+    }
 
     // Lock-free double buffer swap
     int currentBuffer = m_storage.currentBuffer.load(std::memory_order_acquire);
@@ -300,16 +299,6 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
 
     // Determine threading strategy based on ACTIVE entity count instead of total
     // storage size to avoid unnecessary threading after resets
-    // Count active entities quickly from the work buffer selection above
-    // Note: activeCountLocal is only available inside the earlier scoped lock,
-    // so recompute a lightweight count against hotData without additional locks.
-    size_t activeCount = 0;
-    for (size_t i = 0; i < entityCount; ++i) {
-      if (m_storage.hotData[i].active) {
-        ++activeCount;
-      }
-    }
-
     bool useThreading = (activeCount >= THREADING_THRESHOLD &&
                          m_useThreading.load(std::memory_order_acquire) &&
                          HammerEngine::ThreadSystem::Exists());
