@@ -5,8 +5,10 @@ set(CMAKE_CXX_STANDARD 20) # Match the main project's C++ standard
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # Check if we can build tests - require Boost Test for test framework
-find_package(Boost REQUIRED COMPONENTS container)
-if(NOT HAVE_BOOST_TEST)
+# Try to find both the unit_test_framework (used by tests) and container components.
+# If the unit_test_framework component is not found, skip tests.
+find_package(Boost COMPONENTS unit_test_framework container)
+if(NOT Boost_UNIT_TEST_FRAMEWORK_FOUND)
     message(STATUS "Skipping all tests - Boost Test not found (required)")
     return()
 endif()
