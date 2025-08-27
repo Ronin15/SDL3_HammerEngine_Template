@@ -444,6 +444,11 @@ BOOST_AUTO_TEST_CASE(TestTaskStats) {
         future.wait();
     }
 
+    // Ensure worker threads have updated processed counters before sampling
+    for (int i = 0; i < 20 && HammerEngine::ThreadSystem::Instance().isBusy(); ++i) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+
     // Check that task statistics were updated
     size_t finalEnqueued = HammerEngine::ThreadSystem::Instance().getTotalTasksEnqueued();
     size_t finalProcessed = HammerEngine::ThreadSystem::Instance().getTotalTasksProcessed();
