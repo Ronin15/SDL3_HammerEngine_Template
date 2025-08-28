@@ -10,7 +10,6 @@
 #include "core/GameLoop.hpp" // IWYU pragma: keep - Required for GameLoop weak_ptr declaration
 #include "core/Logger.hpp"
 #include "core/ThreadSystem.hpp"
-#include "core/WorkerBudget.hpp"
 #include "gameStates/AIDemoState.hpp"
 #include "gameStates/AdvancedAIDemoState.hpp"
 #include "gameStates/EventDemoState.hpp"
@@ -62,7 +61,8 @@ bool GameEngine::init(const std::string_view title, const int width,
   SDL_SetHint("SDL_MOUSE_AUTO_CAPTURE", "0"); // Prevent mouse capture issues
 
   // Performance hints for rendering
-  SDL_SetHint("SDL_RENDER_SCALE_QUALITY", "0"); // Use nearest pixel sampling for crisp tiles
+  SDL_SetHint("SDL_RENDER_SCALE_QUALITY",
+              "0"); // Use nearest pixel sampling for crisp tiles
   SDL_SetHint("SDL_RENDER_BATCHING",
               "1"); // Enable render batching for performance
 
@@ -235,13 +235,17 @@ bool GameEngine::init(const std::string_view title, const int width,
   // Others: try enabling VSync; fall back to software limiting on failure
   if (m_isWayland) {
     if (!SDL_SetRenderVSync(mp_renderer.get(), 0)) {
-      GAMEENGINE_ERROR("Failed to disable VSync on Wayland: " + std::string(SDL_GetError()));
+      GAMEENGINE_ERROR("Failed to disable VSync on Wayland: " +
+                       std::string(SDL_GetError()));
     } else {
-      GAMEENGINE_INFO("Wayland detected: VSync disabled; using software frame limiting");
+      GAMEENGINE_INFO(
+          "Wayland detected: VSync disabled; using software frame limiting");
     }
   } else {
     if (!SDL_SetRenderVSync(mp_renderer.get(), 1)) {
-      GAMEENGINE_WARN("Failed to enable VSync; will rely on software frame limiting: " + std::string(SDL_GetError()));
+      GAMEENGINE_WARN(
+          "Failed to enable VSync; will rely on software frame limiting: " +
+          std::string(SDL_GetError()));
     } else {
       GAMEENGINE_INFO("VSync enabled successfully");
     }
@@ -277,8 +281,10 @@ bool GameEngine::init(const std::string_view title, const int width,
   SDL_RendererLogicalPresentation presentationMode =
       SDL_LOGICAL_PRESENTATION_LETTERBOX;
   if (!SDL_SetRenderLogicalPresentation(mp_renderer.get(), targetLogicalWidth,
-                                    targetLogicalHeight, presentationMode)) {
-    GAMEENGINE_ERROR("Failed to set render logical presentation: " + std::string(SDL_GetError()));
+                                        targetLogicalHeight,
+                                        presentationMode)) {
+    GAMEENGINE_ERROR("Failed to set render logical presentation: " +
+                     std::string(SDL_GetError()));
   }
 
   GAMEENGINE_INFO(
@@ -299,9 +305,10 @@ bool GameEngine::init(const std::string_view title, const int width,
   // Disable logical presentation to render at native resolution
   SDL_RendererLogicalPresentation presentationMode =
       SDL_LOGICAL_PRESENTATION_DISABLED;
-  if (!SDL_SetRenderLogicalPresentation(mp_renderer.get(), actualWidth, actualHeight,
-                                    presentationMode)) {
-    GAMEENGINE_ERROR("Failed to set render logical presentation: " + std::string(SDL_GetError()));
+  if (!SDL_SetRenderLogicalPresentation(mp_renderer.get(), actualWidth,
+                                        actualHeight, presentationMode)) {
+    GAMEENGINE_ERROR("Failed to set render logical presentation: " +
+                     std::string(SDL_GetError()));
   }
 
   GAMEENGINE_INFO("Using native resolution for crisp rendering: " +
@@ -345,7 +352,8 @@ bool GameEngine::init(const std::string_view title, const int width,
     // On other platforms, don't apply additional DPI scaling - SDL3 logical
     // presentation handles it
     dpiScale = 1.0f;
-    GAMEENGINE_INFO("Non-macOS: Using DPI scale 1.0 (SDL3 logical presentation handles scaling)");
+    GAMEENGINE_INFO("Non-macOS: Using DPI scale 1.0 (SDL3 logical presentation "
+                    "handles scaling)");
 #endif
   }
 
@@ -493,18 +501,18 @@ bool GameEngine::init(const std::string_view title, const int width,
 
   // Initialize Resource Template Manager in a separate thread - #8
   initTasks.push_back(
-      HammerEngine::ThreadSystem::Instance().enqueueTaskWithResult(
-          []() -> bool {
-            GAMEENGINE_INFO("Creating Resource Template Manager");
-            ResourceTemplateManager &resourceMgr =
-                ResourceTemplateManager::Instance();
-            if (!resourceMgr.init()) {
-              GAMEENGINE_CRITICAL("Failed to initialize Resource Template Manager");
-              return false;
-            }
-            GAMEENGINE_INFO("Resource Template Manager initialized successfully");
-            return true;
-          }));
+      HammerEngine::ThreadSystem::Instance().enqueueTaskWithResult([]()
+                                                                       -> bool {
+        GAMEENGINE_INFO("Creating Resource Template Manager");
+        ResourceTemplateManager &resourceMgr =
+            ResourceTemplateManager::Instance();
+        if (!resourceMgr.init()) {
+          GAMEENGINE_CRITICAL("Failed to initialize Resource Template Manager");
+          return false;
+        }
+        GAMEENGINE_INFO("Resource Template Manager initialized successfully");
+        return true;
+      }));
 
   // Initialize World Resource Manager for global resource tracking - #9
   initTasks.push_back(
@@ -634,7 +642,8 @@ bool GameEngine::init(const std::string_view title, const int width,
     // Validate World Manager before caching
     WorldManager &worldMgrTest = WorldManager::Instance();
     if (!worldMgrTest.isInitialized()) {
-      GAMEENGINE_CRITICAL("WorldManager not properly initialized before caching!");
+      GAMEENGINE_CRITICAL(
+          "WorldManager not properly initialized before caching!");
       return false;
     }
     mp_worldManager = &worldMgrTest;
@@ -675,19 +684,22 @@ bool GameEngine::init(const std::string_view title, const int width,
   // Step 3: Post-initialization setup that requires manager dependencies
   GAMEENGINE_INFO("Setting up manager cross-dependencies");
   try {
-    // Setup WorldManager event handlers now that EventManager is guaranteed to be ready
+    // Setup WorldManager event handlers now that EventManager is guaranteed to
+    // be ready
     WorldManager &worldMgr = WorldManager::Instance();
     if (worldMgr.isInitialized()) {
       worldMgr.setupEventHandlers();
       GAMEENGINE_INFO("WorldManager event handlers setup complete");
     } else {
-      GAMEENGINE_ERROR("WorldManager not initialized - cannot setup event handlers");
+      GAMEENGINE_ERROR(
+          "WorldManager not initialized - cannot setup event handlers");
       return false;
     }
-    
+
     GAMEENGINE_INFO("Manager cross-dependencies setup complete");
   } catch (const std::exception &e) {
-    GAMEENGINE_ERROR("Error setting up manager cross-dependencies: " + std::string(e.what()));
+    GAMEENGINE_ERROR("Error setting up manager cross-dependencies: " +
+                     std::string(e.what()));
     return false;
   }
 
@@ -707,7 +719,8 @@ bool GameEngine::init(const std::string_view title, const int width,
   m_lastRenderedFrame.store(0, std::memory_order_release);
 
   // NOTE: Initial state will be pushed after GameLoop setup is complete
-  // This ensures the game loop is ready to handle state updates before any state enters
+  // This ensures the game loop is ready to handle state updates before any
+  // state enters
 
   return true;
 }
@@ -855,7 +868,8 @@ void GameEngine::render() {
                      std::string(SDL_GetError()));
   }
 
-  // After presenting, mark the render buffer as consumed to avoid stale re-renders
+  // After presenting, mark the render buffer as consumed to avoid stale
+  // re-renders
   size_t renderIndex = m_renderBufferIndex.load(std::memory_order_acquire);
   m_bufferReady[renderIndex].store(false, std::memory_order_release);
 
@@ -872,8 +886,7 @@ void GameEngine::waitForUpdate() {
     const float targetFPS = gameLoop->getTargetFPS();
     if (targetFPS > 0) {
       // Set timeout to 2x the frame time as a responsive safety net
-      const auto frameTimeMs =
-          static_cast<long long>(1000.0 / targetFPS);
+      const auto frameTimeMs = static_cast<long long>(1000.0 / targetFPS);
       timeout = std::chrono::milliseconds(frameTimeMs * 2);
     }
   }
@@ -1095,14 +1108,14 @@ void GameEngine::clean() {
   GAMEENGINE_INFO("Destroying renderer...");
   renderer_to_destroy.reset();
   GAMEENGINE_INFO("Renderer destroyed successfully");
-  
+
   GAMEENGINE_INFO("Destroying window...");
   window_to_destroy.reset();
   GAMEENGINE_INFO("Window destroyed successfully");
-  
+
   GAMEENGINE_INFO("Calling SDL_Quit...");
   SDL_Quit();
-  
+
   GAMEENGINE_INFO("SDL resources cleaned!");
   GAMEENGINE_INFO("Shutdown complete!");
 }
