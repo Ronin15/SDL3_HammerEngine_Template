@@ -5,6 +5,7 @@
 
 #include "ai/behaviors/WanderBehavior.hpp"
 #include "managers/AIManager.hpp"
+#include "managers/WorldManager.hpp"
 #include <algorithm>
 #include <cmath>
 
@@ -94,9 +95,21 @@ void WanderBehavior::executeLogic(EntityPtr entity) {
   // Try to follow a short path towards the current direction destination
   if (state.movementStarted) {
     Uint64 now = SDL_GetTicks();
-    if (state.pathPoints.empty() || state.currentPathIndex >= state.pathPoints.size()) {
+    // Refresh short path periodically or when finished
+    if (state.pathPoints.empty() || state.currentPathIndex >= state.pathPoints.size() || (now - state.lastPathUpdate) > 2000) {
       // Pick a target ahead in the current direction
       Vector2D dest = entity->getPosition() + state.currentDirection * std::min(200.0f, m_areaRadius);
+      // Clamp destination to world bounds with a margin
+      float minX, minY, maxX, maxY;
+      if (WorldManager::Instance().getWorldBounds(minX, minY, maxX, maxY)) {
+        const float TILE = 32.0f; const float margin = 16.0f;
+        float worldMinX = minX * TILE + margin;
+        float worldMinY = minY * TILE + margin;
+        float worldMaxX = maxX * TILE - margin;
+        float worldMaxY = maxY * TILE - margin;
+        dest.setX(std::clamp(dest.getX(), worldMinX, worldMaxX));
+        dest.setY(std::clamp(dest.getY(), worldMinY, worldMaxY));
+      }
       AIManager::Instance().requestPath(entity, entity->getPosition(), dest);
       state.pathPoints = AIManager::Instance().getPath(entity);
       state.currentPathIndex = 0;
@@ -165,6 +178,25 @@ void WanderBehavior::updateWanderState(EntityPtr entity) {
     state.lastDirectionFlip = currentTime;
   }
 
+  // Stall detection: if speed remains very low for a short duration, pick a new direction
+  float speed = entity->getVelocity().length();
+  const float stallSpeed = 5.0f; // px/s
+  const Uint64 stallMillis = 600; // ms
+  if (speed < stallSpeed) {
+    if (state.stallStart == 0) state.stallStart = currentTime;
+    else if (currentTime - state.stallStart >= stallMillis) {
+      // Clear path and pick a fresh direction to break clumps
+      state.pathPoints.clear();
+      state.currentPathIndex = 0;
+      state.lastPathUpdate = currentTime;
+      chooseNewDirection(entity);
+      state.stallStart = 0;
+      return;
+    }
+  } else {
+    state.stallStart = 0;
+  }
+
   // Check if it's time to change direction
   if (currentTime - state.lastDirectionChangeTime >=
       m_changeDirectionInterval) {
@@ -173,6 +205,44 @@ void WanderBehavior::updateWanderState(EntityPtr entity) {
         (s_wanderOffscreenChance(getSharedRNG()) < m_offscreenProbability);
     chooseNewDirection(entity, shouldWanderOffscreen);
     state.lastDirectionChangeTime = currentTime;
+  }
+
+  // Micro-jitter to break small jams (when moving slowly but not stalled)
+  if (speed < 20.0f && speed >= stallSpeed) {
+    // Rotate current direction slightly
+    float jitter = (s_angleDistribution(getSharedRNG()) - static_cast<float>(M_PI)) * 0.1f; // ~±18deg
+    Vector2D dir = state.currentDirection;
+    float c = std::cos(jitter), s = std::sin(jitter);
+    Vector2D rotated(dir.getX() * c - dir.getY() * s, dir.getX() * s + dir.getY() * c);
+    if (rotated.length() > 0.001f) {
+      rotated.normalize();
+      state.currentDirection = rotated;
+      entity->setVelocity(state.currentDirection * m_speed);
+    }
+  }
+
+  // Edge avoidance: nudge direction inward if close to world edges
+  float minX, minY, maxX, maxY;
+  if (WorldManager::Instance().getWorldBounds(minX, minY, maxX, maxY)) {
+    const float TILE = 32.0f; const float margin = 24.0f;
+    float worldMinX = minX * TILE + margin;
+    float worldMinY = minY * TILE + margin;
+    float worldMaxX = maxX * TILE - margin;
+    float worldMaxY = maxY * TILE - margin;
+    Vector2D pos = entity->getPosition();
+    Vector2D push(0,0);
+    if (pos.getX() < worldMinX) push.setX(1.0f);
+    else if (pos.getX() > worldMaxX) push.setX(-1.0f);
+    if (pos.getY() < worldMinY) push.setY(1.0f);
+    else if (pos.getY() > worldMaxY) push.setY(-1.0f);
+    if (push.length() > 0.1f) {
+      push.normalize();
+      state.currentDirection = push;
+      state.pathPoints.clear();
+      state.currentPathIndex = 0;
+      entity->setVelocity(state.currentDirection * m_speed);
+      state.lastDirectionChangeTime = currentTime;
+    }
   }
 }
 

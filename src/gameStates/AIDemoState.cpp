@@ -183,6 +183,7 @@ bool AIDemoState::enter() {
 
     // Create player first (the chase behavior will need it)
     m_player = std::make_shared<Player>();
+    m_player->registerCollisionBody();
     m_player->initializeInventory(); // Initialize inventory after construction
     m_player->setPosition(Vector2D(m_worldWidth / 2, m_worldHeight / 2));
 
@@ -415,7 +416,7 @@ void AIDemoState::createNPCs() {
       try {
         // Create NPC with random position
         Vector2D position(xDist(gen), yDist(gen));
-        auto npc = std::make_shared<NPC>("npc", position, 64, 64);
+        auto npc = NPC::create("npc", position, 64, 64);
         npc->initializeInventory(); // Initialize inventory after construction
 
         // Set animation properties (adjust based on your actual sprite sheet)

@@ -40,9 +40,6 @@ Player::Player() : Entity() {
   // Set width and height based on texture dimensions if the texture is loaded
   loadDimensionsFromTexture();
 
-  // Register with collision system once we know dimensions
-  ensurePhysicsBodyRegistered();
-
   // Setup state manager and add states
   setupStates();
 
@@ -227,12 +224,18 @@ void Player::ensurePhysicsBodyRegistered() {
 
 void Player::setVelocity(const Vector2D& velocity) {
   m_velocity = velocity;
-  CollisionManager::Instance().setVelocity(getID(), velocity);
+  auto &cm = CollisionManager::Instance();
+  if (!cm.isSyncing()) {
+    cm.setVelocity(getID(), velocity);
+  }
 }
 
 void Player::setPosition(const Vector2D& position) {
   m_position = position;
-  CollisionManager::Instance().setKinematicPose(getID(), position);
+  auto &cm = CollisionManager::Instance();
+  if (!cm.isSyncing()) {
+    cm.setKinematicPose(getID(), position);
+  }
 }
 
 void Player::initializeInventory() {

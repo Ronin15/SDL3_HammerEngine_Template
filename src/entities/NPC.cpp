@@ -9,6 +9,7 @@
 #include "core/Logger.hpp"
 
 #include "managers/CollisionManager.hpp"
+#include "managers/WorldManager.hpp"
 #include "managers/EventManager.hpp"
 #include "managers/ResourceTemplateManager.hpp"
 #include "managers/TextureManager.hpp"
@@ -56,10 +57,7 @@ NPC::NPC(const std::string &textureID, const Vector2D &startPosition,
   // Initialize inventory system - NOTE: Do NOT call setupInventory() here
   // because it can trigger shared_this() during construction.
   // Call initializeInventory() after construction completes.
-  // Register with collision system now that size is known
-  ensurePhysicsBodyRegistered();
-  // Default faction/layer
-  setFaction(m_faction);
+  // Collision registration happens in NPC::create() after construction
   // NPC_DEBUG("NPC created at position: " + m_position.toString());
 }
 
@@ -119,21 +117,20 @@ void NPC::loadDimensionsFromTexture() {
 // State management removed - handled by AI Manager
 
 void NPC::update(float deltaTime) {
-  // The NPC is responsible for its own physics and animation.
-
-  m_velocity += m_acceleration * deltaTime;
-  const float stopThresholdSquared = 0.1f * 0.1f;
-  if (m_velocity.lengthSquared() > stopThresholdSquared) {
-    const float frictionCoefficient = 8.0f;
-    m_velocity -= m_velocity * frictionCoefficient * deltaTime;
-  } else {
-    m_velocity = Vector2D(0, 0);
+  // The AI drives velocity directly; apply it without additional damping.
+  Vector2D newPosition = m_position + m_velocity * deltaTime;
+  // Clamp into world bounds with a small margin to avoid edge stalls
+  float minX, minY, maxX, maxY;
+  if (WorldManager::Instance().getWorldBounds(minX, minY, maxX, maxY)) {
+    const float TILE = 32.0f; const float margin = 8.0f;
+    float worldMinX = minX * TILE + margin;
+    float worldMinY = minY * TILE + margin;
+    float worldMaxX = maxX * TILE - margin;
+    float worldMaxY = maxY * TILE - margin;
+    newPosition.setX(std::clamp(newPosition.getX(), worldMinX, worldMaxX));
+    newPosition.setY(std::clamp(newPosition.getY(), worldMinY, worldMaxY));
   }
-
-  // Update position
-  m_position += m_velocity * deltaTime;
-
-  // Reset acceleration for the next frame.
+  setPosition(newPosition);
   m_acceleration = Vector2D(0, 0);
 
   // Handle world boundaries
@@ -237,6 +234,22 @@ void NPC::clean() {
 
   // Remove from collision system
   CollisionManager::Instance().removeBody(getID());
+}
+
+void NPC::setVelocity(const Vector2D& velocity) {
+  m_velocity = velocity;
+  auto &cm = CollisionManager::Instance();
+  if (!cm.isSyncing()) {
+    cm.setVelocity(getID(), velocity);
+  }
+}
+
+void NPC::setPosition(const Vector2D& position) {
+  m_position = position;
+  auto &cm = CollisionManager::Instance();
+  if (!cm.isSyncing()) {
+    cm.setKinematicPose(getID(), position);
+  }
 }
 
 void NPC::initializeInventory() {

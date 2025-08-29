@@ -8,8 +8,9 @@
 namespace HammerEngine {
 
 bool AABB::intersects(const AABB& other) const {
-    if (right() < other.left() || other.right() < left()) return false;
-    if (bottom() < other.top() || other.bottom() < top()) return false;
+    // Use non-strict separation so edge-touching is NOT a collision
+    if (right() <= other.left() || other.right() <= left()) return false;
+    if (bottom() <= other.top() || other.bottom() <= top()) return false;
     return true;
 }
 
@@ -29,4 +30,3 @@ Vector2D AABB::closestPoint(const Vector2D& p) const {
 }
 
 } // namespace HammerEngine
-

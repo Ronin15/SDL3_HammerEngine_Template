@@ -66,6 +66,7 @@ bool EventDemoState::enter() {
 
     // Create player
     m_player = std::make_shared<Player>();
+    m_player->registerCollisionBody();
     m_player->initializeInventory(); // Initialize inventory after construction
     m_player->setPosition(Vector2D(m_worldWidth / 2, m_worldHeight / 2));
 
@@ -1493,7 +1494,7 @@ EventDemoState::createNPCAtPositionWithoutBehavior(const std::string &npcType,
     }
 
     Vector2D position(x, y);
-    auto npc = std::make_shared<NPC>(textureID, position, 64, 64);
+    auto npc = NPC::create(textureID, position, 64, 64);
     npc->initializeInventory(); // Initialize inventory after construction
 
     npc->setWanderArea(0.0f, 0.0f, m_worldWidth, m_worldHeight);
@@ -1691,7 +1692,7 @@ void EventDemoState::createNPCAtPosition(const std::string &npcType, float x,
     }
 
     Vector2D position(x, y);
-    auto npc = std::make_shared<NPC>(textureID, position, 64, 64);
+    auto npc = NPC::create(textureID, position, 64, 64);
     npc->initializeInventory(); // Initialize inventory after construction
 
     npc->setWanderArea(0.0f, 0.0f, m_worldWidth, m_worldHeight);
