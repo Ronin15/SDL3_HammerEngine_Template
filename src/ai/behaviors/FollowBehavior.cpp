@@ -135,12 +135,29 @@ void FollowBehavior::executeLogic(EntityPtr entity) {
     // Path-following to desired position if available
     auto tryFollowPath = [&](const Vector2D& desiredPos, float speed)->bool {
       Uint64 now = SDL_GetTicks();
-      if (state.pathPoints.empty() || state.currentPathIndex >= state.pathPoints.size() ||
-          now - state.lastPathUpdate > 500) {
+      // Refresh if TTL expired or no progress towards node
+      const Uint64 pathTTL = 1500; // ms
+      const Uint64 noProgressWindow = 300; // ms
+      bool needRefresh = state.pathPoints.empty() || state.currentPathIndex >= state.pathPoints.size();
+      if (!needRefresh && state.currentPathIndex < state.pathPoints.size()) {
+        float d = (state.pathPoints[state.currentPathIndex] - currentPos).length();
+        if (d + 1.0f < state.lastNodeDistance) { // progressed
+          state.lastNodeDistance = d;
+          state.lastProgressTime = now;
+        } else if (state.lastProgressTime == 0) {
+          state.lastProgressTime = now;
+        } else if (now - state.lastProgressTime > noProgressWindow) {
+          needRefresh = true;
+        }
+      }
+      if (now - state.lastPathUpdate > pathTTL) needRefresh = true;
+      if (needRefresh) {
         AIManager::Instance().requestPath(entity, currentPos, desiredPos);
         state.pathPoints = AIManager::Instance().getPath(entity);
         state.currentPathIndex = 0;
         state.lastPathUpdate = now;
+        state.lastNodeDistance = std::numeric_limits<float>::infinity();
+        state.lastProgressTime = now;
       }
       if (!state.pathPoints.empty() && state.currentPathIndex < state.pathPoints.size()) {
         Vector2D node = state.pathPoints[state.currentPathIndex];
@@ -150,8 +167,11 @@ void FollowBehavior::executeLogic(EntityPtr entity) {
           dir = dir * (1.0f / len);
           entity->setVelocity(dir * speed);
         }
-        if ((node - currentPos).length() <= 16.0f) {
+        float dist = (node - currentPos).length();
+        if (dist <= 16.0f) {
           ++state.currentPathIndex;
+          state.lastNodeDistance = std::numeric_limits<float>::infinity();
+          state.lastProgressTime = now;
         }
         return true;
       }

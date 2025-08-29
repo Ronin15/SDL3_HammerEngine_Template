@@ -1349,6 +1349,12 @@ uint32_t AIManager::requestPath(EntityPtr entity, const Vector2D &start,
   if (!m_pathGrid) {
     return 0;
   }
+  uint64_t id = entity->getID();
+  Uint64 now = SDL_GetTicks();
+  auto itCool = m_pathCooldownUntil.find(id);
+  if (itCool != m_pathCooldownUntil.end() && now < itCool->second) {
+    return 0; // backoff active
+  }
   // Faction-aware avoidance weights
   m_pathGrid->resetWeights(1.0f);
   // Determine requester's faction (Player = Friendly by default)
@@ -1396,11 +1402,13 @@ uint32_t AIManager::requestPath(EntityPtr entity, const Vector2D &start,
   std::vector<Vector2D> path;
   auto result = m_pathGrid->findPath(start, goal, path);
   if (result == HammerEngine::PathfindingResult::SUCCESS && !path.empty()) {
-    m_entityPaths[entity->getID()] = std::move(path);
+    m_entityPaths[id] = std::move(path);
     return 1;
   }
   // store empty to signal no path
-  m_entityPaths[entity->getID()] = {};
+  m_entityPaths[id] = {};
+  // apply cooldown on failure to avoid spamming
+  m_pathCooldownUntil[id] = now + 1000; // 1 second backoff
   return 0;
 }
 

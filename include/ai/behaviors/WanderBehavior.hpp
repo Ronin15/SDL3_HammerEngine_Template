@@ -88,13 +88,15 @@ private:
     size_t currentPathIndex{0};
     Uint64 lastPathUpdate{0};
     float navRadius{14.0f};
+    // Stall detection
+    Uint64 stallStart{0};
 
     // Constructor to ensure proper initialization
     EntityState()
         : currentDirection(0, 0), lastDirectionChangeTime(0),
           currentlyWanderingOffscreen(false), resetScheduled(false),
           lastDirectionFlip(0), startDelay(0), movementStarted(false),
-          pathPoints(), currentPathIndex(0), lastPathUpdate(0), navRadius(14.0f) {}
+          pathPoints(), currentPathIndex(0), lastPathUpdate(0), navRadius(14.0f), stallStart(0) {}
   };
 
   // Map to store per-entity state using shared_ptr as key

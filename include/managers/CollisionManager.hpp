@@ -130,9 +130,13 @@ private:
 public:
     PerfStats getPerfStats() const { return m_perf; }
     void resetPerfStats() { m_perf = PerfStats{}; }
+    void setVerboseLogging(bool enabled) { m_verboseLogs = enabled; }
 
 private:
     PerfStats m_perf{};
+    bool m_verboseLogs{false};
+    size_t m_logEveryNFrames{30};
+    size_t m_logFrame{0};
 
     // Helpers
     static inline bool isStatic(const CollisionBody& b) {

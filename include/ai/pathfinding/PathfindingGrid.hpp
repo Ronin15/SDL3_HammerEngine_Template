@@ -45,6 +45,9 @@ private:
     bool inBounds(int gx, int gy) const;
     std::pair<int,int> worldToGrid(const Vector2D& w) const;
     Vector2D gridToWorld(int gx, int gy) const;
+
+    // Helper: find nearest unblocked cell within maxRadius (grid units)
+    bool findNearestOpen(int gx, int gy, int maxRadius, int& outGX, int& outGY) const;
 };
 
 } // namespace HammerEngine

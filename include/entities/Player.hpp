@@ -66,6 +66,9 @@ public:
   // Initialization - call after construction to setup inventory
   void initializeInventory();
 
+  // Post-construction registration with CollisionManager
+  void registerCollisionBody() { ensurePhysicsBodyRegistered(); }
+
 private:
   void handleMovementInput(float deltaTime);
   void handleStateTransitions();

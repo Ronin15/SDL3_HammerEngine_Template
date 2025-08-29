@@ -87,10 +87,25 @@ void PatrolBehavior::executeLogic(EntityPtr entity) {
   Vector2D targetWaypoint = m_waypoints[m_currentWaypoint];
 
   // Request/refresh path to current waypoint if needed
-  if (m_navPath.empty() || m_navIndex >= m_navPath.size()) {
+  static thread_local Uint64 s_lastPathUpdate = 0;
+  static thread_local float s_lastNodeDist = std::numeric_limits<float>::infinity();
+  static thread_local Uint64 s_lastProgressTime = 0;
+  Uint64 now = SDL_GetTicks();
+  bool needRefresh = m_navPath.empty() || m_navIndex >= m_navPath.size();
+  if (!needRefresh && m_navIndex < m_navPath.size()) {
+    float d = (m_navPath[m_navIndex] - position).length();
+    if (d + 1.0f < s_lastNodeDist) { s_lastNodeDist = d; s_lastProgressTime = now; }
+    else if (s_lastProgressTime == 0) { s_lastProgressTime = now; }
+    else if (now - s_lastProgressTime > 300) { needRefresh = true; }
+  }
+  if (now - s_lastPathUpdate > 1500) needRefresh = true;
+  if (needRefresh) {
     AIManager::Instance().requestPath(entity, position, targetWaypoint);
     m_navPath = AIManager::Instance().getPath(entity);
     m_navIndex = 0;
+    s_lastPathUpdate = now;
+    s_lastNodeDist = std::numeric_limits<float>::infinity();
+    s_lastProgressTime = now;
   }
 
   if (isAtWaypoint(position, targetWaypoint)) {

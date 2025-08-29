@@ -419,6 +419,9 @@ private:
   std::atomic<bool> m_processingMessages{false};
   unsigned int m_maxThreads{0};
 
+  // Path cache and backoff
+  mutable std::unordered_map<uint64_t, Uint64> m_pathCooldownUntil; // next allowed request time (SDL ticks)
+
   // Behavior execution tracking
   std::atomic<size_t> m_totalBehaviorExecutions{0};
 

@@ -141,6 +141,7 @@ bool AdvancedAIDemoState::enter() {
 
         // Create player first (required for flee/follow/attack behaviors)
         m_player = std::make_shared<Player>();
+        m_player->registerCollisionBody();
         m_player->setPosition(Vector2D(m_worldWidth / 2, m_worldHeight / 2));
 
         // Setup combat attributes for player
@@ -371,7 +372,7 @@ void AdvancedAIDemoState::createAdvancedNPCs() {
                     position = Vector2D(xDist(gen), yDist(gen));
                 }
 
-                auto npc = std::make_shared<NPC>("npc", position, 64, 64);
+                auto npc = NPC::create("npc", position, 64, 64);
 
                 // Set wander area to keep NPCs on screen
                 npc->setWanderArea(0, 0, m_worldWidth, m_worldHeight);

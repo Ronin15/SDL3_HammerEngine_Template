@@ -40,6 +40,27 @@ Vector2D PathfindingGrid::gridToWorld(int gx, int gy) const {
     return Vector2D(wx, wy);
 }
 
+bool PathfindingGrid::findNearestOpen(int gx, int gy, int maxRadius, int& outGX, int& outGY) const {
+    if (inBounds(gx, gy) && !isBlocked(gx, gy)) { outGX = gx; outGY = gy; return true; }
+    for (int r = 1; r <= maxRadius; ++r) {
+        for (int dy = -r; dy <= r; ++dy) {
+            int y = gy + dy;
+            int x1 = gx - r;
+            int x2 = gx + r;
+            if (inBounds(x1, y) && !isBlocked(x1, y)) { outGX = x1; outGY = y; return true; }
+            if (inBounds(x2, y) && !isBlocked(x2, y)) { outGX = x2; outGY = y; return true; }
+        }
+        for (int dx = -r + 1; dx <= r - 1; ++dx) {
+            int x = gx + dx;
+            int y1 = gy - r;
+            int y2 = gy + r;
+            if (inBounds(x, y1) && !isBlocked(x, y1)) { outGX = x; outGY = y1; return true; }
+            if (inBounds(x, y2) && !isBlocked(x, y2)) { outGX = x; outGY = y2; return true; }
+        }
+    }
+    return false;
+}
+
 void PathfindingGrid::rebuildFromWorld() {
     const WorldManager& wm = WorldManager::Instance();
     const auto* world = wm.getWorldData();
@@ -69,13 +90,19 @@ PathfindingResult PathfindingGrid::findPath(const Vector2D& start, const Vector2
     auto [gx, gy] = worldToGrid(goal);
     if (!inBounds(sx, sy)) { PATHFIND_WARN("findPath(): invalid start grid"); return PathfindingResult::INVALID_START; }
     if (!inBounds(gx, gy)) { PATHFIND_WARN("findPath(): invalid goal grid"); return PathfindingResult::INVALID_GOAL; }
-    if (isBlocked(sx, sy) || isBlocked(gx, gy)) { PATHFIND_DEBUG("findPath(): start or goal blocked"); return PathfindingResult::NO_PATH_FOUND; }
+    // Nudge start/goal if blocked (common after collision resolution)
+    int nsx = sx, nsy = sy, ngx = gx, ngy = gy;
+    bool startOk = !isBlocked(sx, sy) || findNearestOpen(sx, sy, 4, nsx, nsy);
+    bool goalOk  = !isBlocked(gx, gy) || findNearestOpen(gx, gy, 6, ngx, ngy);
+    if (!startOk || !goalOk) { PATHFIND_DEBUG("findPath(): start or goal blocked"); return PathfindingResult::NO_PATH_FOUND; }
+    sx = nsx; sy = nsy; gx = ngx; gy = ngy;
 
     const int W = m_w, H = m_h;
     const size_t N = static_cast<size_t>(W * H);
     const float INF = std::numeric_limits<float>::infinity();
 
     std::vector<float> gScore(N, INF), fScore(N, INF);
+    std::vector<uint8_t> closed(N, 0);
     std::vector<int> parent(N, -1);
     auto idx = [&](int x, int y){ return y * W + x; };
     auto h = [&](int x, int y){
@@ -84,6 +111,15 @@ PathfindingResult PathfindingGrid::findPath(const Vector2D& start, const Vector2
         int dmin = std::min(dx, dy); int dmax = std::max(dx, dy);
         return m_costDiagonal * dmin + m_costStraight * (dmax - dmin);
     };
+
+    // Restrict search to a reasonable ROI around start/goal to prevent
+    // exploring the whole map on unreachable goals
+    int dxGoal = std::abs(sx - gx), dyGoal = std::abs(sy - gy);
+    int r = std::max(dxGoal, dyGoal) + 16; // margin tiles
+    int roiMinX = std::max(0, sx - r);
+    int roiMaxX = std::min(W - 1, sx + r);
+    int roiMinY = std::max(0, sy - r);
+    int roiMaxY = std::min(H - 1, sy + r);
 
     struct Node { int x; int y; float f; };
     struct Cmp { bool operator()(const Node& a, const Node& b) const { return a.f > b.f; } };
@@ -101,6 +137,9 @@ PathfindingResult PathfindingGrid::findPath(const Vector2D& start, const Vector2
 
     while (!open.empty() && iterations++ < m_maxIterations) {
         Node cur = open.top(); open.pop();
+        int cIndex = idx(cur.x, cur.y);
+        if (closed[cIndex]) continue;
+        closed[cIndex] = 1;
         if (cur.x == gx && cur.y == gy) {
             // reconstruct
             std::vector<Vector2D> rev;
@@ -121,8 +160,16 @@ PathfindingResult PathfindingGrid::findPath(const Vector2D& start, const Vector2
             int nx = cur.x + dx8[i];
             int ny = cur.y + dy8[i];
             if (!inBounds(nx, ny) || isBlocked(nx, ny)) continue;
+            if (nx < roiMinX || nx > roiMaxX || ny < roiMinY || ny > roiMaxY) continue;
+            // No-corner-cutting: if moving diagonally, both orthogonal neighbors must be open
+            if (m_allowDiagonal && i >= 4) {
+                int ox = cur.x + dx8[i]; int oy = cur.y;
+                int px = cur.x; int py = cur.y + dy8[i];
+                if (isBlocked(ox, oy) || isBlocked(px, py)) continue;
+            }
             float step = (i < 4) ? m_costStraight : m_costDiagonal;
             size_t nIndex = static_cast<size_t>(idx(nx, ny));
+            if (closed[nIndex]) continue;
             float weight = (nIndex < m_weight.size() && m_weight[nIndex] > 0.0f) ? m_weight[nIndex] : 1.0f;
             float tentative = gScore[static_cast<size_t>(idx(cur.x, cur.y))] + step * weight;
             if (tentative < gScore[nIndex]) {

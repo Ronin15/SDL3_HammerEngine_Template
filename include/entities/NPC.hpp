@@ -27,8 +27,11 @@ public:
   static std::shared_ptr<NPC> create(const std::string &textureID,
                                      const Vector2D &startPosition,
                                      int frameWidth = 0, int frameHeight = 0) {
-    return std::make_shared<NPC>(textureID, startPosition, frameWidth,
-                                 frameHeight);
+    auto npc = std::make_shared<NPC>(textureID, startPosition, frameWidth,
+                                     frameHeight);
+    npc->ensurePhysicsBodyRegistered();
+    npc->setFaction(npc->m_faction);
+    return npc;
   }
 
   void update(float deltaTime) override;
@@ -41,6 +44,10 @@ public:
 
   // NPC-specific setter methods
   void setFlip(SDL_FlipMode flip) override { m_flip = flip; }
+  
+  // Sync with CollisionManager (AI drives velocity/position)
+  void setVelocity(const Vector2D& velocity) override;
+  void setPosition(const Vector2D& position) override;
 
   // AI-specific methods
   void setWanderArea(float minX, float minY, float maxX, float maxY);
