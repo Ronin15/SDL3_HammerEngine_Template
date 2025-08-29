@@ -8,13 +8,14 @@
 #include "core/GameEngine.hpp"
 #include "core/Logger.hpp"
 
+#include "managers/CollisionManager.hpp"
 #include "managers/EventManager.hpp"
 #include "managers/ResourceTemplateManager.hpp"
 #include "managers/TextureManager.hpp"
 #include "utils/Camera.hpp"
 
-#include <set>
 #include <random>
+#include <set>
 
 NPC::NPC(const std::string &textureID, const Vector2D &startPosition,
          int frameWidth, int frameHeight)
@@ -55,6 +56,10 @@ NPC::NPC(const std::string &textureID, const Vector2D &startPosition,
   // Initialize inventory system - NOTE: Do NOT call setupInventory() here
   // because it can trigger shared_this() during construction.
   // Call initializeInventory() after construction completes.
+  // Register with collision system now that size is known
+  ensurePhysicsBodyRegistered();
+  // Default faction/layer
+  setFaction(m_faction);
   // NPC_DEBUG("NPC created at position: " + m_position.toString());
 }
 
@@ -98,6 +103,9 @@ void NPC::loadDimensionsFromTexture() {
 
         // Update height to be the height of a single frame
         m_height = frameHeight;
+
+        // Sync new dimensions to collision body if already registered
+        CollisionManager::Instance().resizeBody(getID(), m_frameWidth * 0.5f, m_height * 0.5f);
       } else {
         NPC_ERROR("Failed to query NPC texture dimensions: " +
                   std::string(SDL_GetError()));
@@ -112,7 +120,6 @@ void NPC::loadDimensionsFromTexture() {
 
 void NPC::update(float deltaTime) {
   // The NPC is responsible for its own physics and animation.
-
 
   m_velocity += m_acceleration * deltaTime;
   const float stopThresholdSquared = 0.1f * 0.1f;
@@ -173,7 +180,7 @@ void NPC::update(float deltaTime) {
   }
 }
 
-void NPC::render(const HammerEngine::Camera* camera) {
+void NPC::render(const HammerEngine::Camera *camera) {
   // Cache manager references for better performance
   TextureManager &texMgr = TextureManager::Instance();
   SDL_Renderer *renderer = GameEngine::Instance().getRenderer();
@@ -194,10 +201,10 @@ void NPC::render(const HammerEngine::Camera* camera) {
 
   // Render the NPC with the current animation frame using float precision
   texMgr.drawFrameF(m_textureID,
-                    renderX,        // Keep float precision for smooth camera movement
-                    renderY,        // Keep float precision for smooth camera movement
-                    m_frameWidth, m_height,
-                    m_currentRow, m_currentFrame, renderer, m_flip);
+                    renderX, // Keep float precision for smooth camera movement
+                    renderY, // Keep float precision for smooth camera movement
+                    m_frameWidth, m_height, m_currentRow, m_currentFrame,
+                    renderer, m_flip);
 }
 
 void NPC::clean() {
@@ -227,6 +234,9 @@ void NPC::clean() {
   if (m_inventory) {
     m_inventory->clearInventory();
   }
+
+  // Remove from collision system
+  CollisionManager::Instance().removeBody(getID());
 }
 
 void NPC::initializeInventory() {
@@ -444,4 +454,31 @@ void NPC::setWanderArea(float minX, float minY, float maxX, float maxY) {
   m_minY = minY;
   m_maxX = maxX;
   m_maxY = maxY;
+}
+
+void NPC::ensurePhysicsBodyRegistered() {
+  auto &cm = CollisionManager::Instance();
+  const float halfW = m_frameWidth > 0 ? m_frameWidth * 0.5f : 16.0f;
+  const float halfH = m_height > 0 ? m_height * 0.5f : 16.0f;
+  HammerEngine::AABB aabb(m_position.getX(), m_position.getY(), halfW, halfH);
+  cm.addBody(getID(), aabb, HammerEngine::BodyType::DYNAMIC);
+  cm.attachEntity(getID(), shared_this());
+}
+
+void NPC::setFaction(Faction f) {
+  m_faction = f;
+  auto &cm = CollisionManager::Instance();
+  uint32_t layer = HammerEngine::CollisionLayer::Layer_Default;
+  switch (m_faction) {
+  case Faction::Enemy:
+    layer = HammerEngine::CollisionLayer::Layer_Enemy;
+    break;
+  case Faction::Friendly:
+    layer = HammerEngine::CollisionLayer::Layer_Default;
+    break;
+  case Faction::Neutral:
+    layer = HammerEngine::CollisionLayer::Layer_Default;
+    break;
+  }
+  cm.setBodyLayer(getID(), layer, 0xFFFFFFFFu);
 }

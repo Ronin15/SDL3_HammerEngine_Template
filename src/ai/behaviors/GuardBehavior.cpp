@@ -686,14 +686,35 @@ void GuardBehavior::moveToPosition(EntityPtr entity, const Vector2D &targetPos,
                                    float speed) {
   if (!entity || speed <= 0.0f)
     return;
-
+  auto it = m_entityStates.find(entity);
+  if (it == m_entityStates.end()) return;
+  auto &state = it->second;
   Vector2D currentPos = entity->getPosition();
-  Vector2D direction = normalizeDirection(targetPos - currentPos);
 
-  if (direction.length() > 0.001f) {
-    Vector2D velocity = direction * speed;
-    entity->setVelocity(velocity);
+  // Try path-following first
+  Uint64 now = SDL_GetTicks();
+  if (state.pathPoints.empty() || state.currentPathIndex >= state.pathPoints.size() ||
+      now - state.lastPathUpdate > 500) {
+    AIManager::Instance().requestPath(entity, currentPos, targetPos);
+    state.pathPoints = AIManager::Instance().getPath(entity);
+    state.currentPathIndex = 0;
+    state.lastPathUpdate = now;
   }
+  if (!state.pathPoints.empty() && state.currentPathIndex < state.pathPoints.size()) {
+    Vector2D node = state.pathPoints[state.currentPathIndex];
+    Vector2D dir = normalizeDirection(node - currentPos);
+    if (dir.length() > 0.001f) {
+      entity->setVelocity(dir * speed);
+    }
+    if ((node - currentPos).length() <= state.navRadius) {
+      ++state.currentPathIndex;
+    }
+    return;
+  }
+
+  // Fallback: direct steering
+  Vector2D direction = normalizeDirection(targetPos - currentPos);
+  if (direction.length() > 0.001f) entity->setVelocity(direction * speed);
 }
 
 Vector2D GuardBehavior::getNextPatrolWaypoint(const EntityState &state) const {

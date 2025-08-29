@@ -122,6 +122,12 @@ private:
     Vector2D roamTarget{0, 0};
     Uint64 nextRoamTime{0};
 
+    // Pathfinding state
+    std::vector<Vector2D> pathPoints;
+    size_t currentPathIndex{0};
+    Uint64 lastPathUpdate{0};
+    float navRadius{16.0f};
+
     EntityState()
         : assignedPosition(0, 0), lastKnownThreatPosition(0, 0),
           investigationTarget(0, 0), currentPatrolTarget(0, 0),
@@ -131,7 +137,8 @@ private:
           lastPatrolMove(0), lastAlertDecay(0), currentPatrolIndex(0),
           currentHeading(0.0f), hasActiveThreat(false), isInvestigating(false),
           returningToPost(false), onDuty(true), alertRaised(false),
-          helpCalled(false), roamTarget(0, 0), nextRoamTime(0) {}
+          helpCalled(false), roamTarget(0, 0), nextRoamTime(0),
+          pathPoints(), currentPathIndex(0), lastPathUpdate(0), navRadius(16.0f) {}
   };
 
   // Map to store per-entity state

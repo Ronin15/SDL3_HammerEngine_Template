@@ -11,6 +11,7 @@
 #include <SDL3/SDL.h>
 #include <random>
 #include <unordered_map>
+#include <vector>
 
 class FollowBehavior : public AIBehavior {
 public:

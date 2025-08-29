@@ -18,9 +18,10 @@ enum class EventTypeId : uint8_t {
   World = 5,
   Camera = 6,
   Harvest = 7,
-  Custom = 8,
-  COUNT = 9
+  Collision = 8,
+  WorldTrigger = 9,
+  Custom = 10,
+  COUNT = 11
 };
 
 #endif // EVENT_TYPE_ID_HPP
-

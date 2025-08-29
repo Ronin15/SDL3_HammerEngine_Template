@@ -8,6 +8,7 @@
 
 #include "ai/AIBehavior.hpp"
 #include "utils/Vector2D.hpp"
+#include <vector>
 
 class ChaseBehavior : public AIBehavior {
 public:
@@ -81,6 +82,13 @@ private:
 
   // Handle behavior when line of sight is lost
   void handleNoLineOfSight(EntityPtr entity);
+
+  // Path-following state for chasing around obstacles
+  std::vector<Vector2D> m_navPath;
+  size_t m_navIndex{0};
+  float m_navRadius{18.0f};
+  int m_recalcCounter{0};
+  int m_recalcInterval{15}; // frames between path recalcs
 
   
 };

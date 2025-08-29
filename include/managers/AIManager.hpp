@@ -33,6 +33,9 @@
 #include <unordered_map>
 #include <vector>
 
+// Forward declarations for pathfinding system
+namespace HammerEngine { class PathfindingGrid; }
+
 // Conditional debug logging
 #ifdef AI_DEBUG_LOGGING
 #define AI_LOG(x)                                                              \
@@ -311,13 +314,16 @@ public:
   void broadcastMessage(const std::string &message, bool immediate = false);
   void processMessageQueue();
 
+  // Pathfinding API (synchronous for now)
+  uint32_t requestPath(EntityPtr entity, const Vector2D &start,
+                       const Vector2D &goal);
+  bool hasPath(EntityPtr entity) const;
+  std::vector<Vector2D> getPath(EntityPtr entity) const;
+  void clearPath(EntityPtr entity);
+
 private:
   AIManager() = default;
-  ~AIManager() {
-    if (!m_isShutdown) {
-      clean();
-    }
-  }
+  ~AIManager();
   AIManager(const AIManager &) = delete;
   AIManager &operator=(const AIManager &) = delete;
 
@@ -477,6 +483,11 @@ private:
 
   // Shutdown state
   bool m_isShutdown{false};
+
+  // Pathfinding grid (rebuilt on world events)
+  struct PathGridDeleter { void operator()(HammerEngine::PathfindingGrid*) const; };
+  std::unique_ptr<HammerEngine::PathfindingGrid, PathGridDeleter> m_pathGrid;
+  std::unordered_map<EntityID, std::vector<Vector2D>> m_entityPaths;
 };
 
 #endif // AI_MANAGER_HPP

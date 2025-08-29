@@ -35,12 +35,15 @@
 
 // Forward declarations
 class Event;
+namespace HammerEngine { struct CollisionInfo; }
 class WeatherEvent;
 class SceneChangeEvent;
 class NPCSpawnEvent;
 class ResourceChangeEvent;
 class WorldEvent;
 class CameraEvent;
+class CollisionEvent;
+class WorldTriggerEvent;
 class HarvestResourceEvent;
 class EventFactory;
 class Entity;
@@ -482,6 +485,14 @@ public:
                              int oldQuantity, int newQuantity,
                              const std::string &changeReason = "",
                              DispatchMode mode = DispatchMode::Deferred) const;
+
+  // Collision convenience method
+  bool triggerCollision(const HammerEngine::CollisionInfo &info,
+                        DispatchMode mode = DispatchMode::Deferred) const;
+
+  // World trigger convenience method (OnEnter style usage by CollisionManager)
+  bool triggerWorldTrigger(const WorldTriggerEvent &event,
+                           DispatchMode mode = DispatchMode::Deferred) const;
 
   // Performance monitoring
   PerformanceStats getPerformanceStats(EventTypeId typeId) const;

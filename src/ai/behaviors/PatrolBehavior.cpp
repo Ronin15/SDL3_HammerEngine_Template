@@ -6,6 +6,7 @@
 #include "ai/behaviors/PatrolBehavior.hpp"
 #include "entities/Entity.hpp"
 #include "entities/NPC.hpp"
+#include "managers/AIManager.hpp"
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -85,6 +86,13 @@ void PatrolBehavior::executeLogic(EntityPtr entity) {
 
   Vector2D targetWaypoint = m_waypoints[m_currentWaypoint];
 
+  // Request/refresh path to current waypoint if needed
+  if (m_navPath.empty() || m_navIndex >= m_navPath.size()) {
+    AIManager::Instance().requestPath(entity, position, targetWaypoint);
+    m_navPath = AIManager::Instance().getPath(entity);
+    m_navIndex = 0;
+  }
+
   if (isAtWaypoint(position, targetWaypoint)) {
     m_currentWaypoint = (m_currentWaypoint + 1) % m_waypoints.size();
 
@@ -98,22 +106,34 @@ void PatrolBehavior::executeLogic(EntityPtr entity) {
     if (m_includeOffscreenPoints && isOffscreen(targetWaypoint)) {
       m_needsReset = true;
     }
+
+    // Recompute path for next waypoint
+    AIManager::Instance().requestPath(entity, position, targetWaypoint);
+    m_navPath = AIManager::Instance().getPath(entity);
+    m_navIndex = 0;
   }
 
-  Vector2D direction = targetWaypoint - position;
-
-  float length = direction.length();
-  if (length > 0.1f) {
-    direction = direction * (1.0f / length);
+  // Follow nav path if available; otherwise, direct seek
+  if (!m_navPath.empty() && m_navIndex < m_navPath.size()) {
+    Vector2D target = m_navPath[m_navIndex];
+    Vector2D dir = target - position;
+    float len = dir.length();
+    if (len > 0.01f) {
+      dir = dir * (1.0f / len);
+      entity->setVelocity(dir * m_moveSpeed);
+    } else {
+      entity->setVelocity(Vector2D(0, 0));
+    }
+    if ((target - position).length() <= m_navRadius) {
+      ++m_navIndex;
+    }
   } else {
-    m_currentWaypoint = (m_currentWaypoint + 1) % m_waypoints.size();
-    targetWaypoint = m_waypoints[m_currentWaypoint];
-    direction = targetWaypoint - position;
-    direction.normalize();
+    Vector2D direction = targetWaypoint - position;
+    float length = direction.length();
+    if (length > 0.1f) direction = direction * (1.0f / length);
+    else direction.normalize();
+    entity->setVelocity(direction * m_moveSpeed);
   }
-
-  Vector2D newVelocity = direction * m_moveSpeed;
-  entity->setVelocity(newVelocity);
 }
 
 void PatrolBehavior::clean(EntityPtr entity) {
