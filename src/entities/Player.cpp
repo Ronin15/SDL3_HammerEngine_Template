@@ -10,6 +10,7 @@
 #include "entities/playerStates/PlayerRunningState.hpp"
 
 #include "managers/EventManager.hpp"
+#include "managers/CollisionManager.hpp"
 #include "managers/ResourceTemplateManager.hpp"
 #include "managers/TextureManager.hpp"
 #include "managers/WorldManager.hpp"
@@ -38,6 +39,9 @@ Player::Player() : Entity() {
 
   // Set width and height based on texture dimensions if the texture is loaded
   loadDimensionsFromTexture();
+
+  // Register with collision system once we know dimensions
+  ensurePhysicsBodyRegistered();
 
   // Setup state manager and add states
   setupStates();
@@ -85,6 +89,9 @@ void Player::loadDimensionsFromTexture() {
         // Update height to be the height of a single frame
         m_height = frameHeight;
 
+        // Sync new dimensions to collision body if already registered
+        CollisionManager::Instance().resizeBody(getID(), m_frameWidth * 0.5f, m_height * 0.5f);
+
         PLAYER_DEBUG("Loaded texture dimensions: " + std::to_string(m_width) +
                      "x" + std::to_string(height));
         PLAYER_DEBUG("Frame dimensions: " + std::to_string(m_frameWidth) + "x" +
@@ -130,51 +137,29 @@ std::string Player::getCurrentStateName() const {
 }
 
 void Player::update(float deltaTime) {
-  // Let the state machine handle ALL movement and input logic
+  // State machine handles input and sets velocity
   m_stateManager.update(deltaTime);
 
-  // Apply velocity to position AFTER state update
+  // Player integrates its own movement
   Vector2D newPosition = m_position + m_velocity * deltaTime;
 
-  // Constrain player position to world boundaries
+  // Constrain to world bounds (in pixels)
   const WorldManager& worldManager = WorldManager::Instance();
   float minX, minY, maxX, maxY;
-
   if (worldManager.getWorldBounds(minX, minY, maxX, maxY)) {
-    // Convert tile coordinates to pixel coordinates (32px per tile)
     const float TILE_SIZE = 32.0f;
     float worldMinX = minX * TILE_SIZE;
     float worldMinY = minY * TILE_SIZE;
     float worldMaxX = maxX * TILE_SIZE;
     float worldMaxY = maxY * TILE_SIZE;
-
-    // Use player sprite dimensions for proper boundary constraints
-    // Player should be able to reach actual world boundaries
-    const float HALF_SPRITE_WIDTH = m_frameWidth / 2.0f;   // Half of player sprite width
-    const float HALF_SPRITE_HEIGHT = m_height / 2.0f;      // Half of player sprite height
-
-    // Constrain player to actual world boundaries (accounting for sprite size)
-    newPosition.setX(std::clamp(newPosition.getX(),
-                               worldMinX + HALF_SPRITE_WIDTH,
-                               worldMaxX - HALF_SPRITE_WIDTH));
-    newPosition.setY(std::clamp(newPosition.getY(),
-                               worldMinY + HALF_SPRITE_HEIGHT,
-                               worldMaxY - HALF_SPRITE_HEIGHT));
-  } else {
-    // Fallback to default bounds if no world is loaded (matches GamePlayState.cpp)
-    const float DEFAULT_WORLD_SIZE = 3200.0f; // 100 tiles * 32px
     const float HALF_SPRITE_WIDTH = m_frameWidth / 2.0f;
     const float HALF_SPRITE_HEIGHT = m_height / 2.0f;
-
-    newPosition.setX(std::clamp(newPosition.getX(),
-                               HALF_SPRITE_WIDTH,
-                               DEFAULT_WORLD_SIZE - HALF_SPRITE_WIDTH));
-    newPosition.setY(std::clamp(newPosition.getY(),
-                               HALF_SPRITE_HEIGHT,
-                               DEFAULT_WORLD_SIZE - HALF_SPRITE_HEIGHT));
+    newPosition.setX(std::clamp(newPosition.getX(), worldMinX + HALF_SPRITE_WIDTH, worldMaxX - HALF_SPRITE_WIDTH));
+    newPosition.setY(std::clamp(newPosition.getY(), worldMinY + HALF_SPRITE_HEIGHT, worldMaxY - HALF_SPRITE_HEIGHT));
   }
 
-  m_position = newPosition;
+  // Update position and sync to collision body
+  setPosition(newPosition);
 
   // If the texture dimensions haven't been loaded yet, try loading them
   if (m_frameWidth == 0 &&
@@ -224,6 +209,30 @@ void Player::clean() {
 
   // Clear equipped items
   m_equippedItems.clear();
+
+  // Remove collision body
+  CollisionManager::Instance().removeBody(getID());
+}
+
+void Player::ensurePhysicsBodyRegistered() {
+  // Register a dynamic body for the player and attach this entity
+  auto &cm = CollisionManager::Instance();
+  const float halfW = m_frameWidth > 0 ? m_frameWidth * 0.5f : 16.0f;
+  const float halfH = m_height > 0 ? m_height * 0.5f : 16.0f;
+  HammerEngine::AABB aabb(m_position.getX(), m_position.getY(), halfW, halfH);
+  cm.addBody(getID(), aabb, HammerEngine::BodyType::DYNAMIC);
+  cm.attachEntity(getID(), shared_this());
+  cm.setBodyLayer(getID(), HammerEngine::CollisionLayer::Layer_Player, 0xFFFFFFFFu);
+}
+
+void Player::setVelocity(const Vector2D& velocity) {
+  m_velocity = velocity;
+  CollisionManager::Instance().setVelocity(getID(), velocity);
+}
+
+void Player::setPosition(const Vector2D& position) {
+  m_position = position;
+  CollisionManager::Instance().setKinematicPose(getID(), position);
 }
 
 void Player::initializeInventory() {

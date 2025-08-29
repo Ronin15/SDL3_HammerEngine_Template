@@ -13,6 +13,7 @@
 #include <memory>
 #include <random>
 #include <unordered_map>
+#include <vector>
 
 class WanderBehavior : public AIBehavior {
 public:
@@ -82,12 +83,18 @@ private:
     Uint64 lastDirectionFlip{0};
     Uint64 startDelay{0};        // Random delay before entity starts moving
     bool movementStarted{false}; // Flag to track if movement has started
+    // Path-following state
+    std::vector<Vector2D> pathPoints;
+    size_t currentPathIndex{0};
+    Uint64 lastPathUpdate{0};
+    float navRadius{14.0f};
 
     // Constructor to ensure proper initialization
     EntityState()
         : currentDirection(0, 0), lastDirectionChangeTime(0),
           currentlyWanderingOffscreen(false), resetScheduled(false),
-          lastDirectionFlip(0), startDelay(0), movementStarted(false) {}
+          lastDirectionFlip(0), startDelay(0), movementStarted(false),
+          pathPoints(), currentPathIndex(0), lastPathUpdate(0), navRadius(14.0f) {}
   };
 
   // Map to store per-entity state using shared_ptr as key

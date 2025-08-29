@@ -4,11 +4,15 @@
  */
 
 #include "managers/AIManager.hpp"
+#include "ai/pathfinding/PathfindingGrid.hpp"
 #include "core/Logger.hpp"
 #include "core/ThreadSystem.hpp"
 #include "core/WorkerBudget.hpp"
+#include "entities/NPC.hpp"
 #include "events/NPCSpawnEvent.hpp"
+#include "events/WorldEvent.hpp"
 #include "managers/EventManager.hpp"
+#include "managers/WorldManager.hpp"
 #include <algorithm>
 #include <cstring>
 
@@ -53,6 +57,39 @@ bool AIManager::init() {
 
     // No NPCSpawn handler in AIManager: state owns creation; AI manages
     // behavior only.
+
+    // Subscribe to world events to maintain pathfinding grid
+    {
+      auto &em = EventManager::Instance();
+      static std::vector<EventManager::HandlerToken> s_tokens;
+      s_tokens.push_back(em.registerHandlerWithToken(
+          EventTypeId::World, [this](const EventData &data) {
+            auto base = data.event;
+            if (!base)
+              return;
+            if (std::dynamic_pointer_cast<WorldLoadedEvent>(base) ||
+                std::dynamic_pointer_cast<WorldGeneratedEvent>(base)) {
+              const auto *world = WorldManager::Instance().getWorldData();
+              if (world) {
+                int h = static_cast<int>(world->grid.size());
+                int w = (h > 0) ? static_cast<int>(world->grid[0].size()) : 0;
+                m_pathGrid.reset(new HammerEngine::PathfindingGrid(
+                    w, h, 32.0f, Vector2D(0, 0)));
+                m_pathGrid->rebuildFromWorld();
+              }
+              return;
+            }
+            if (std::dynamic_pointer_cast<TileChangedEvent>(base)) {
+              if (m_pathGrid)
+                m_pathGrid->rebuildFromWorld();
+              return;
+            }
+            if (std::dynamic_pointer_cast<WorldUnloadedEvent>(base)) {
+              m_pathGrid.reset();
+              return;
+            }
+          }));
+    }
 
     AI_LOG("AIManager initialized successfully");
     return true;
@@ -126,7 +163,8 @@ void AIManager::clean() {
           future.wait();
           future.get();
         } catch (const std::exception &e) {
-          AI_ERROR("Exception in AI update future during shutdown: " + std::string(e.what()));
+          AI_ERROR("Exception in AI update future during shutdown: " +
+                   std::string(e.what()));
         } catch (...) {
           AI_ERROR("Unknown exception in AI update future during shutdown");
         }
@@ -235,10 +273,12 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
   auto startTime = std::chrono::high_resolution_clock::now();
 
   try {
-    // Do not carry over AI update futures across frames to avoid races with render.
-    // Any previous frame's update work must be completed within its frame.
+    // Do not carry over AI update futures across frames to avoid races with
+    // render. Any previous frame's update work must be completed within its
+    // frame.
 
-    // Process pending assignments first so new entities are picked up this frame
+    // Process pending assignments first so new entities are picked up this
+    // frame
     processPendingBehaviorAssignments();
 
     // Synchronize positions and count active entities
@@ -297,8 +337,8 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
       nextBuffer = currentBuffer;
     }
 
-    // Determine threading strategy based on ACTIVE entity count instead of total
-    // storage size to avoid unnecessary threading after resets
+    // Determine threading strategy based on ACTIVE entity count instead of
+    // total storage size to avoid unnecessary threading after resets
     bool useThreading = (activeCount >= THREADING_THRESHOLD &&
                          m_useThreading.load(std::memory_order_acquire) &&
                          HammerEngine::ThreadSystem::Exists());
@@ -382,7 +422,8 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
       size_t entitiesPerBatch = entityCount / batchCount;
       size_t remainingEntities = entityCount % batchCount;
 
-      // Batch processing with futures; synchronize before returning from update()
+      // Batch processing with futures; synchronize before returning from
+      // update()
       m_updateFutures.clear();
       m_updateFutures.reserve(batchCount);
       for (size_t i = 0; i < batchCount; ++i) {
@@ -395,12 +436,11 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
         }
 
         // Enqueue with result and retain the future for synchronization
-        m_updateFutures.push_back(
-            threadSystem.enqueueTaskWithResult(
-                [this, start, end, deltaTime, nextBuffer]() {
-                  processBatch(start, end, deltaTime, nextBuffer);
-                },
-                HammerEngine::TaskPriority::High, "AI_OptimalBatch"));
+        m_updateFutures.push_back(threadSystem.enqueueTaskWithResult(
+            [this, start, end, deltaTime, nextBuffer]() {
+              processBatch(start, end, deltaTime, nextBuffer);
+            },
+            HammerEngine::TaskPriority::High, "AI_OptimalBatch"));
       }
       // Wait for all batches to complete to maintain update->render safety
       for (auto &f : m_updateFutures) {
@@ -1299,4 +1339,100 @@ void AIManager::registerEntityForUpdates(EntityPtr entity, int priority,
 
   // Queue behavior assignment
   queueBehaviorAssignment(entity, behaviorName);
+}
+
+// ======================= Pathfinding API (synchronous) =======================
+uint32_t AIManager::requestPath(EntityPtr entity, const Vector2D &start,
+                                const Vector2D &goal) {
+  if (!entity)
+    return 0;
+  if (!m_pathGrid) {
+    return 0;
+  }
+  // Faction-aware avoidance weights
+  m_pathGrid->resetWeights(1.0f);
+  // Determine requester's faction (Player = Friendly by default)
+  enum class Faction { Friendly, Enemy, Neutral };
+  auto getFaction = [](EntityPtr e) {
+    if (!e)
+      return Faction::Neutral;
+    if (auto npc = std::dynamic_pointer_cast<class NPC>(e)) {
+      // Map NPC::Faction to local enum
+      switch (npc->getFaction()) {
+      case NPC::Faction::Friendly:
+        return Faction::Friendly;
+      case NPC::Faction::Enemy:
+        return Faction::Enemy;
+      case NPC::Faction::Neutral:
+      default:
+        return Faction::Neutral;
+      }
+    }
+    // Player or unknown: treat as Friendly
+    return Faction::Friendly;
+  };
+
+  Faction requester = getFaction(entity);
+
+  // Add avoidance around hostiles and a mild cost around allies to reduce
+  // clumping
+  {
+    std::shared_lock<std::shared_mutex> lock(m_entitiesMutex);
+    for (size_t i = 0; i < m_storage.size(); ++i) {
+      EntityPtr other = m_storage.entities[i];
+      if (!other || other.get() == entity.get())
+        continue;
+      Faction otherF = getFaction(other);
+      Vector2D pos = other->getPosition();
+      if ((requester == Faction::Friendly && otherF == Faction::Enemy) ||
+          (requester == Faction::Enemy && otherF == Faction::Friendly)) {
+        m_pathGrid->addWeightCircle(pos, 96.0f, 2.5f);
+      } else {
+        m_pathGrid->addWeightCircle(pos, 64.0f, 1.2f);
+      }
+    }
+  }
+
+  std::vector<Vector2D> path;
+  auto result = m_pathGrid->findPath(start, goal, path);
+  if (result == HammerEngine::PathfindingResult::SUCCESS && !path.empty()) {
+    m_entityPaths[entity->getID()] = std::move(path);
+    return 1;
+  }
+  // store empty to signal no path
+  m_entityPaths[entity->getID()] = {};
+  return 0;
+}
+
+bool AIManager::hasPath(EntityPtr entity) const {
+  if (!entity)
+    return false;
+  auto it = m_entityPaths.find(entity->getID());
+  return it != m_entityPaths.end() && !it->second.empty();
+}
+
+std::vector<Vector2D> AIManager::getPath(EntityPtr entity) const {
+  if (!entity)
+    return {};
+  auto it = m_entityPaths.find(entity->getID());
+  if (it != m_entityPaths.end())
+    return it->second;
+  return {};
+}
+
+void AIManager::clearPath(EntityPtr entity) {
+  if (!entity)
+    return;
+  m_entityPaths.erase(entity->getID());
+}
+
+AIManager::~AIManager() {
+  if (!m_isShutdown) {
+    clean();
+  }
+}
+// Define deleter for forward-declared PathfindingGrid
+void AIManager::PathGridDeleter::operator()(
+    HammerEngine::PathfindingGrid *p) const {
+  delete p;
 }

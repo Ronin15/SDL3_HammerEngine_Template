@@ -19,8 +19,13 @@ public:
   Player();
   ~Player() override;
 
-    void update(float deltaTime) override;
-    void render(const HammerEngine::Camera* camera) override;  void clean() override;
+  void update(float deltaTime) override;
+  void render(const HammerEngine::Camera *camera) override;
+  void clean() override;
+
+  // Sync movement with CollisionManager (player moves itself)
+  void setVelocity(const Vector2D& velocity) override;
+  void setPosition(const Vector2D& position) override;
 
   // State management
   void changeState(const std::string &stateName);
@@ -67,6 +72,7 @@ private:
   void loadDimensionsFromTexture();
   void setupStates();
   void setupInventory();
+  void ensurePhysicsBodyRegistered();
   void onResourceChanged(HammerEngine::ResourceHandle resourceHandle,
                          int oldQuantity, int newQuantity);
   EntityStateManager m_stateManager;

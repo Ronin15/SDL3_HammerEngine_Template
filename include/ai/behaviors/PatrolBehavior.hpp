@@ -139,6 +139,14 @@ private:
   // Mode setup helper
   void setupModeDefaults(PatrolMode mode, float screenWidth = 1280.0f,
                          float screenHeight = 720.0f);
+
+  // Path-following settings
+  void setPathFollowRadius(float r) { m_navRadius = r; }
+
+  // Path-following state (uses AIManager's grid)
+  std::vector<Vector2D> m_navPath;
+  size_t m_navIndex{0};
+  float m_navRadius{16.0f};
 };
 
 #endif // PATROL_BEHAVIOR_HPP

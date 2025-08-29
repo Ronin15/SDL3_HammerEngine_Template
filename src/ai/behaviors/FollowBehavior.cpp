@@ -132,22 +132,53 @@ void FollowBehavior::executeLogic(EntityPtr entity) {
   }
 
   if (state.isFollowing) {
+    // Path-following to desired position if available
+    auto tryFollowPath = [&](const Vector2D& desiredPos, float speed)->bool {
+      Uint64 now = SDL_GetTicks();
+      if (state.pathPoints.empty() || state.currentPathIndex >= state.pathPoints.size() ||
+          now - state.lastPathUpdate > 500) {
+        AIManager::Instance().requestPath(entity, currentPos, desiredPos);
+        state.pathPoints = AIManager::Instance().getPath(entity);
+        state.currentPathIndex = 0;
+        state.lastPathUpdate = now;
+      }
+      if (!state.pathPoints.empty() && state.currentPathIndex < state.pathPoints.size()) {
+        Vector2D node = state.pathPoints[state.currentPathIndex];
+        Vector2D dir = node - currentPos;
+        float len = dir.length();
+        if (len > 0.01f) {
+          dir = dir * (1.0f / len);
+          entity->setVelocity(dir * speed);
+        }
+        if ((node - currentPos).length() <= 16.0f) {
+          ++state.currentPathIndex;
+        }
+        return true;
+      }
+      return false;
+    };
+
     // Execute appropriate follow behavior based on mode
     switch (m_followMode) {
     case FollowMode::CLOSE_FOLLOW:
-      updateCloseFollow(entity, state);
+      if (!tryFollowPath(calculateDesiredPosition(entity, target, state), m_followSpeed))
+        updateCloseFollow(entity, state);
       break;
     case FollowMode::LOOSE_FOLLOW:
-      updateLooseFollow(entity, state);
+      if (!tryFollowPath(calculateDesiredPosition(entity, target, state), m_followSpeed))
+        updateLooseFollow(entity, state);
       break;
     case FollowMode::FLANKING_FOLLOW:
-      updateFlankingFollow(entity, state);
+      if (!tryFollowPath(calculateDesiredPosition(entity, target, state), m_followSpeed))
+        updateFlankingFollow(entity, state);
       break;
     case FollowMode::REAR_GUARD:
-      updateRearGuard(entity, state);
+      if (!tryFollowPath(calculateDesiredPosition(entity, target, state), m_followSpeed))
+        updateRearGuard(entity, state);
       break;
     case FollowMode::ESCORT_FORMATION:
-      updateEscortFormation(entity, state);
+      if (!tryFollowPath(calculateDesiredPosition(entity, target, state), m_followSpeed))
+        updateEscortFormation(entity, state);
       break;
     }
   }

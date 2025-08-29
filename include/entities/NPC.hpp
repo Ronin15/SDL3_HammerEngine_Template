@@ -17,6 +17,7 @@
 
 class NPC : public Entity {
 public:
+  enum class Faction { Friendly, Enemy, Neutral };
   NPC(const std::string &textureID, const Vector2D &startPosition,
       int frameWidth, int frameHeight);
   ~NPC() override;
@@ -30,9 +31,9 @@ public:
                                  frameHeight);
   }
 
-    void update(float deltaTime) override;
-    void render(const HammerEngine::Camera* camera) override;
-    void clean() override;
+  void update(float deltaTime) override;
+  void render(const HammerEngine::Camera *camera) override;
+  void clean() override;
   // No state management - handled by AI Manager
 
   // NPC-specific accessor methods
@@ -47,6 +48,10 @@ public:
   // Enable or disable screen bounds checking
   void setBoundsCheckEnabled(bool enabled) { m_boundsCheckEnabled = enabled; }
   bool isBoundsCheckEnabled() const { return m_boundsCheckEnabled; }
+
+  // Faction/layer control
+  void setFaction(Faction f);
+  Faction getFaction() const { return m_faction; }
 
   // Inventory management
   InventoryComponent *getInventory() { return m_inventory.get(); }
@@ -75,6 +80,7 @@ public:
 
 private:
   void loadDimensionsFromTexture();
+  void ensurePhysicsBodyRegistered();
   void setupInventory();
   void onResourceChanged(HammerEngine::ResourceHandle resourceHandle,
                          int oldQuantity, int newQuantity);
@@ -101,6 +107,8 @@ private:
   bool m_hasLootDrops{false};
   std::unordered_map<HammerEngine::ResourceHandle, float>
       m_dropRates; // itemHandle -> drop probability
+
+  Faction m_faction{Faction::Neutral};
 };
 
 #endif // NPC_HPP

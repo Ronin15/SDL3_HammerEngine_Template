@@ -182,6 +182,7 @@ file(GLOB_RECURSE SOURCES
     "src/gameStates/*.cpp"
     "src/entities/*.cpp"
     "src/events/*.cpp"
+    "src/collisions/*.cpp"
     "src/ai/*.cpp"
     "src/world/*.cpp"
     "src/utils/*.cpp"
@@ -202,6 +203,7 @@ target_include_directories(HammerEngineObjects PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include/utils
     ${CMAKE_CURRENT_SOURCE_DIR}/include/ui
     ${CMAKE_CURRENT_SOURCE_DIR}/include/world
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/collisions
 )
 target_link_libraries(HammerEngineObjects PUBLIC
     SDL3::SDL3

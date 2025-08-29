@@ -16,6 +16,8 @@
 #include "events/WeatherEvent.hpp"
 #include "events/WorldEvent.hpp"
 #include "events/CameraEvent.hpp"
+#include "events/CollisionEvent.hpp"
+#include "events/WorldTriggerEvent.hpp"
 
 #include <algorithm>
 #include <chrono>
@@ -225,6 +227,8 @@ void EventManager::update() {
     updateEventTypeBatchThreaded(EventTypeId::Camera);
     updateEventTypeBatchThreaded(EventTypeId::Harvest);
     updateEventTypeBatchThreaded(EventTypeId::Custom);
+    updateEventTypeBatchThreaded(EventTypeId::Collision);
+    updateEventTypeBatchThreaded(EventTypeId::WorldTrigger);
   } else {
     // Use single-threaded for small event counts (better performance)
     updateEventTypeBatch(EventTypeId::Weather);
@@ -236,6 +240,8 @@ void EventManager::update() {
     updateEventTypeBatch(EventTypeId::Camera);
     updateEventTypeBatch(EventTypeId::Harvest);
     updateEventTypeBatch(EventTypeId::Custom);
+    updateEventTypeBatch(EventTypeId::Collision);
+    updateEventTypeBatch(EventTypeId::WorldTrigger);
   }
 
   // Simplified performance tracking - reduce lock contention
@@ -1216,6 +1222,96 @@ bool EventManager::createWeatherEvent(const std::string &name,
   }
 
   return registerEvent(name, event);
+}
+
+bool EventManager::triggerCollision(const HammerEngine::CollisionInfo &info,
+                                    DispatchMode mode) const {
+  size_t handlerCount = 0;
+  {
+    std::lock_guard<std::mutex> lock(m_handlersMutex);
+    handlerCount = m_handlersByType[static_cast<size_t>(EventTypeId::Collision)].size();
+  }
+  if (handlerCount == 0) { return false; }
+
+  EventData eventData;
+  eventData.typeId = EventTypeId::Collision;
+  eventData.setActive(true);
+  eventData.event = std::make_shared<CollisionEvent>(info);
+  eventData.name = "trigger_collision";
+
+  if (mode == DispatchMode::Immediate) {
+    std::vector<FastEventHandler> localHandlers;
+    {
+      std::lock_guard<std::mutex> lock(m_handlersMutex);
+      const auto &handlers = m_handlersByType[static_cast<size_t>(EventTypeId::Collision)];
+      localHandlers.reserve(handlers.size());
+      std::copy_if(handlers.begin(), handlers.end(), std::back_inserter(localHandlers), [](const auto& h){ return static_cast<bool>(h); });
+    }
+    for (const auto &handler : localHandlers) {
+      try { handler(eventData); }
+      catch (const std::exception &e) { EVENT_ERROR(std::string("Handler exception in triggerCollision: ") + e.what()); }
+      catch (...) { EVENT_ERROR("Unknown handler exception in triggerCollision"); }
+    }
+    // Per-name handlers
+    std::vector<FastEventHandler> nameHandlers;
+    {
+      std::lock_guard<std::mutex> lock(m_handlersMutex);
+      auto it = m_nameHandlers.find(eventData.name);
+      if (it != m_nameHandlers.end()) {
+        std::copy_if(it->second.begin(), it->second.end(), std::back_inserter(nameHandlers), [](const auto& h){ return static_cast<bool>(h); });
+      }
+    }
+    for (const auto &h : nameHandlers) { try { h(eventData);} catch(...){} }
+    return !localHandlers.empty();
+  }
+
+  enqueueDispatch(EventTypeId::Collision, eventData);
+  return true;
+}
+
+bool EventManager::triggerWorldTrigger(const WorldTriggerEvent &event,
+                                       DispatchMode mode) const {
+  size_t handlerCount = 0;
+  {
+    std::lock_guard<std::mutex> lock(m_handlersMutex);
+    handlerCount = m_handlersByType[static_cast<size_t>(EventTypeId::WorldTrigger)].size();
+  }
+  if (handlerCount == 0) { return false; }
+
+  EventData eventData;
+  eventData.typeId = EventTypeId::WorldTrigger;
+  eventData.setActive(true);
+  eventData.event = std::make_shared<WorldTriggerEvent>(event);
+  eventData.name = "trigger_world_trigger";
+
+  if (mode == DispatchMode::Immediate) {
+    std::vector<FastEventHandler> localHandlers;
+    {
+      std::lock_guard<std::mutex> lock(m_handlersMutex);
+      const auto &handlers = m_handlersByType[static_cast<size_t>(EventTypeId::WorldTrigger)];
+      localHandlers.reserve(handlers.size());
+      std::copy_if(handlers.begin(), handlers.end(), std::back_inserter(localHandlers), [](const auto& h){ return static_cast<bool>(h); });
+    }
+    for (const auto &handler : localHandlers) {
+      try { handler(eventData); }
+      catch (const std::exception &e) { EVENT_ERROR(std::string("Handler exception in triggerWorldTrigger: ") + e.what()); }
+      catch (...) { EVENT_ERROR("Unknown handler exception in triggerWorldTrigger"); }
+    }
+    // Per-name handlers
+    std::vector<FastEventHandler> nameHandlers;
+    {
+      std::lock_guard<std::mutex> lock(m_handlersMutex);
+      auto it = m_nameHandlers.find(eventData.name);
+      if (it != m_nameHandlers.end()) {
+        std::copy_if(it->second.begin(), it->second.end(), std::back_inserter(nameHandlers), [](const auto& h){ return static_cast<bool>(h); });
+      }
+    }
+    for (const auto &h : nameHandlers) { try { h(eventData);} catch(...){} }
+    return !localHandlers.empty();
+  }
+
+  enqueueDispatch(EventTypeId::WorldTrigger, eventData);
+  return true;
 }
 
 bool EventManager::createSceneChangeEvent(const std::string &name,

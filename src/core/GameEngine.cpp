@@ -31,6 +31,7 @@
 #include "managers/UIManager.hpp"
 #include "managers/WorldManager.hpp"
 #include "managers/WorldResourceManager.hpp"
+#include "managers/CollisionManager.hpp"
 #include <atomic>
 #include <chrono>
 #include <cstdlib>
@@ -544,6 +545,20 @@ bool GameEngine::init(const std::string_view title, const int width,
             return true;
           }));
 
+  // Initialize Physics Manager - #11
+  initTasks.push_back(
+      HammerEngine::ThreadSystem::Instance().enqueueTaskWithResult(
+          []() -> bool {
+            GAMEENGINE_INFO("Creating Physics Manager");
+            auto &physicsMgr = CollisionManager::Instance();
+            if (!physicsMgr.init()) {
+              GAMEENGINE_CRITICAL("Failed to initialize Physics Manager");
+              return false;
+            }
+            GAMEENGINE_INFO("Physics Manager initialized successfully");
+            return true;
+          }));
+
   // Initialize game state manager (on main thread because it directly calls
   // rendering) - MAIN THREAD
   GAMEENGINE_INFO(
@@ -647,6 +662,15 @@ bool GameEngine::init(const std::string_view title, const int width,
       return false;
     }
     mp_worldManager = &worldMgrTest;
+
+    // Validate Physics Manager before caching
+    auto &physicsMgrTest = CollisionManager::Instance();
+    if (!physicsMgrTest.isInitialized()) {
+      GAMEENGINE_CRITICAL(
+          "CollisionManager not properly initialized before caching!");
+      return false;
+    }
+    mp_collisionManager = &physicsMgrTest;
 
     // InputManager not cached - handled in handleEvents() for proper SDL
     // architecture
@@ -800,6 +824,13 @@ void GameEngine::update(float deltaTime) {
     mp_aiManager->update(deltaTime);
   } else {
     GAMEENGINE_ERROR("AIManager cache is null!");
+  }
+
+  // Physics system - update after AI and before events/particles
+  if (mp_collisionManager) {
+    mp_collisionManager->update(deltaTime);
+  } else {
+    GAMEENGINE_ERROR("CollisionManager cache is null!");
   }
 
   // Event system - global game events and world simulation (cached reference

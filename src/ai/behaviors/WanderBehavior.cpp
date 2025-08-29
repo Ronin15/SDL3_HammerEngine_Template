@@ -4,6 +4,7 @@
  */
 
 #include "ai/behaviors/WanderBehavior.hpp"
+#include "managers/AIManager.hpp"
 #include <algorithm>
 #include <cmath>
 
@@ -90,8 +91,33 @@ void WanderBehavior::executeLogic(EntityPtr entity) {
   // frames.
   updateWanderState(entity);
 
-  // Always apply velocity (in case something external changed it)
-  entity->setVelocity(state.currentDirection * m_speed);
+  // Try to follow a short path towards the current direction destination
+  if (state.movementStarted) {
+    Uint64 now = SDL_GetTicks();
+    if (state.pathPoints.empty() || state.currentPathIndex >= state.pathPoints.size()) {
+      // Pick a target ahead in the current direction
+      Vector2D dest = entity->getPosition() + state.currentDirection * std::min(200.0f, m_areaRadius);
+      AIManager::Instance().requestPath(entity, entity->getPosition(), dest);
+      state.pathPoints = AIManager::Instance().getPath(entity);
+      state.currentPathIndex = 0;
+      state.lastPathUpdate = now;
+    }
+    if (!state.pathPoints.empty() && state.currentPathIndex < state.pathPoints.size()) {
+      Vector2D node = state.pathPoints[state.currentPathIndex];
+      Vector2D dir = node - entity->getPosition();
+      float len = dir.length();
+      if (len > 0.01f) {
+        dir = dir * (1.0f / len);
+        entity->setVelocity(dir * m_speed);
+      }
+      if ((node - entity->getPosition()).length() <= state.navRadius) {
+        ++state.currentPathIndex;
+      }
+    } else {
+      // Always apply base velocity (in case something external changed it)
+      entity->setVelocity(state.currentDirection * m_speed);
+    }
+  }
 }
 
 void WanderBehavior::updateWanderState(EntityPtr entity) {

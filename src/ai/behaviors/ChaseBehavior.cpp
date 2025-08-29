@@ -71,26 +71,39 @@ void ChaseBehavior::executeLogic(EntityPtr entity) {
   float distanceSquared = (targetPos - entityPos).lengthSquared();
 
   if (distanceSquared <= m_maxRange * m_maxRange) {
-    if (checkLineOfSight(entity, target)) {
-        m_hasLineOfSight = true;
-        if (distanceSquared > m_minRange * m_minRange) {
+    bool los = checkLineOfSight(entity, target);
+    m_hasLineOfSight = los;
+    // Recalculate path periodically or when no LOS
+    if (!los || (m_recalcCounter++ % m_recalcInterval == 0)) {
+        AIManager::Instance().requestPath(entity, entityPos, targetPos);
+        m_navPath = AIManager::Instance().getPath(entity);
+        m_navIndex = 0;
+    }
+    if (distanceSquared > m_minRange * m_minRange) {
+        // Follow path if available; else direct steer toward target
+        if (!m_navPath.empty() && m_navIndex < m_navPath.size()) {
+            Vector2D targetNode = m_navPath[m_navIndex];
+            Vector2D dir = targetNode - entityPos;
+            float len = dir.length();
+            if (len > 0.01f) {
+                dir = dir * (1.0f / len);
+                entity->setVelocity(dir * m_chaseSpeed);
+            }
+            if ((targetNode - entityPos).length() <= m_navRadius) {
+                ++m_navIndex;
+            }
+        } else {
             Vector2D direction = (targetPos - entityPos);
             direction.normalize();
             entity->setVelocity(direction * m_chaseSpeed);
-            m_isChasing = true;
-        } else {
-            if (m_isChasing) {
-                entity->setVelocity(Vector2D(0, 0));
-                m_isChasing = false;
-                onTargetReached(entity);
-            }
         }
+        m_isChasing = true;
     } else {
-        m_hasLineOfSight = false;
         if (m_isChasing) {
-            m_timeWithoutSight = 0;
+            entity->setVelocity(Vector2D(0, 0));
+            m_isChasing = false;
+            onTargetReached(entity);
         }
-        handleNoLineOfSight(entity);
     }
   } else {
     if (m_isChasing) {
