@@ -9,6 +9,7 @@
 #include <queue>
 #include <limits>
 #include <cmath>
+#include "core/Logger.hpp"
 
 namespace HammerEngine {
 
@@ -42,19 +43,23 @@ Vector2D PathfindingGrid::gridToWorld(int gx, int gy) const {
 void PathfindingGrid::rebuildFromWorld() {
     const WorldManager& wm = WorldManager::Instance();
     const auto* world = wm.getWorldData();
-    if (!world) return;
+    if (!world) { PATHFIND_WARN("rebuildFromWorld(): no active world"); return; }
     m_h = static_cast<int>(world->grid.size());
     m_w = m_h > 0 ? static_cast<int>(world->grid[0].size()) : 0;
     m_blocked.assign(static_cast<size_t>(m_w * m_h), 0);
     m_weight.assign(static_cast<size_t>(m_w * m_h), 1.0f);
+    int blockedCount = 0;
     for (int y = 0; y < m_h; ++y) {
         for (int x = 0; x < m_w; ++x) {
             const auto& tile = world->grid[y][x];
             bool blocked = tile.obstacleType != ObstacleType::NONE || tile.isWater;
             m_blocked[static_cast<size_t>(y * m_w + x)] = blocked ? 1 : 0;
+            if (blocked) ++blockedCount;
             // Optionally set weights per biome if needed later
         }
     }
+    PATHFIND_INFO("Grid rebuilt: " + std::to_string(m_w) + "x" + std::to_string(m_h) +
+                  ", blocked=" + std::to_string(blockedCount));
 }
 
 PathfindingResult PathfindingGrid::findPath(const Vector2D& start, const Vector2D& goal,
@@ -62,9 +67,9 @@ PathfindingResult PathfindingGrid::findPath(const Vector2D& start, const Vector2
     outPath.clear();
     auto [sx, sy] = worldToGrid(start);
     auto [gx, gy] = worldToGrid(goal);
-    if (!inBounds(sx, sy)) return PathfindingResult::INVALID_START;
-    if (!inBounds(gx, gy)) return PathfindingResult::INVALID_GOAL;
-    if (isBlocked(sx, sy) || isBlocked(gx, gy)) return PathfindingResult::NO_PATH_FOUND;
+    if (!inBounds(sx, sy)) { PATHFIND_WARN("findPath(): invalid start grid"); return PathfindingResult::INVALID_START; }
+    if (!inBounds(gx, gy)) { PATHFIND_WARN("findPath(): invalid goal grid"); return PathfindingResult::INVALID_GOAL; }
+    if (isBlocked(sx, sy) || isBlocked(gx, gy)) { PATHFIND_DEBUG("findPath(): start or goal blocked"); return PathfindingResult::NO_PATH_FOUND; }
 
     const int W = m_w, H = m_h;
     const size_t N = static_cast<size_t>(W * H);
@@ -108,6 +113,8 @@ PathfindingResult PathfindingGrid::findPath(const Vector2D& start, const Vector2
             }
             rev.push_back(gridToWorld(sx, sy));
             outPath.assign(rev.rbegin(), rev.rend());
+            PATHFIND_DEBUG("Path found in " + std::to_string(iterations) +
+                           " iters, length=" + std::to_string(outPath.size()));
             return PathfindingResult::SUCCESS;
         }
         for (int i = 0; i < dirs; ++i) {
@@ -126,6 +133,7 @@ PathfindingResult PathfindingGrid::findPath(const Vector2D& start, const Vector2
             }
         }
     }
+    PATHFIND_WARN("findPath(): timeout after " + std::to_string(iterations) + " iterations");
     return PathfindingResult::TIMEOUT;
 }
 

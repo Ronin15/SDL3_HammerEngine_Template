@@ -28,6 +28,7 @@ bool CollisionManager::init() {
     m_bodies.clear();
     m_hash.clear();
     subscribeWorldEvents();
+    COLLISION_INFO("Initialized: cleared bodies and spatial hash");
     // Forward collision notifications to EventManager
     addCollisionCallback([](const HammerEngine::CollisionInfo &info){
         EventManager::Instance().triggerCollision(info, EventManager::DispatchMode::Deferred);
@@ -44,6 +45,7 @@ void CollisionManager::clean() {
     m_hash.clear();
     m_callbacks.clear();
     m_initialized = false;
+    COLLISION_INFO("Cleaned and shut down");
 }
 
 void CollisionManager::setWorldBounds(float minX, float minY, float maxX, float maxY) {
@@ -52,6 +54,8 @@ void CollisionManager::setWorldBounds(float minX, float minY, float maxX, float 
     float hw = (maxX - minX) * 0.5f;
     float hh = (maxY - minY) * 0.5f;
     m_worldBounds = AABB(cx, cy, hw, hh);
+    COLLISION_DEBUG("World bounds set: [" + std::to_string(minX) + "," + std::to_string(minY) +
+                    "] - [" + std::to_string(maxX) + "," + std::to_string(maxY) + "]");
 }
 
 void CollisionManager::addBody(EntityID id, const AABB& aabb, BodyType type) {
@@ -85,16 +89,20 @@ void CollisionManager::attachEntity(EntityID id, EntityPtr entity) {
 void CollisionManager::removeBody(EntityID id) {
     m_bodies.erase(id);
     m_hash.remove(id);
+    COLLISION_DEBUG("removeBody id=" + std::to_string(id));
 }
 
 void CollisionManager::setBodyEnabled(EntityID id, bool enabled) {
     auto it = m_bodies.find(id);
     if (it != m_bodies.end()) it->second->enabled = enabled;
+    COLLISION_DEBUG("setBodyEnabled id=" + std::to_string(id) + " -> " + (enabled ? std::string("true") : std::string("false")));
 }
 
 void CollisionManager::setBodyLayer(EntityID id, uint32_t layerMask, uint32_t collideMask) {
     auto it = m_bodies.find(id);
     if (it != m_bodies.end()) { it->second->layer = layerMask; it->second->collidesWith = collideMask; }
+    COLLISION_DEBUG("setBodyLayer id=" + std::to_string(id) +
+                    ", layer=" + std::to_string(layerMask) + ", mask=" + std::to_string(collideMask));
 }
 
 void CollisionManager::setKinematicPose(EntityID id, const Vector2D& center) {
@@ -102,21 +110,27 @@ void CollisionManager::setKinematicPose(EntityID id, const Vector2D& center) {
     if (it == m_bodies.end()) return;
     it->second->aabb.center = center;
     m_hash.update(id, it->second->aabb);
+    COLLISION_DEBUG("setKinematicPose id=" + std::to_string(id) +
+                    ", center=(" + std::to_string(center.getX()) + "," + std::to_string(center.getY()) + ")");
 }
 
 void CollisionManager::setVelocity(EntityID id, const Vector2D& v) {
     auto it = m_bodies.find(id);
     if (it != m_bodies.end()) it->second->velocity = v;
+    COLLISION_DEBUG("setVelocity id=" + std::to_string(id) +
+                    ", v=(" + std::to_string(v.getX()) + "," + std::to_string(v.getY()) + ")");
 }
 
 void CollisionManager::setBodyTrigger(EntityID id, bool isTrigger) {
     auto it = m_bodies.find(id);
     if (it != m_bodies.end()) it->second->isTrigger = isTrigger;
+    COLLISION_DEBUG("setBodyTrigger id=" + std::to_string(id) + " -> " + (isTrigger ? std::string("true") : std::string("false")));
 }
 
 void CollisionManager::setBodyTriggerTag(EntityID id, HammerEngine::TriggerTag tag) {
     auto it = m_bodies.find(id);
     if (it != m_bodies.end()) it->second->triggerTag = tag;
+    COLLISION_DEBUG("setBodyTriggerTag id=" + std::to_string(id) + ", tag=" + std::to_string(static_cast<int>(tag)));
 }
 
 EntityID CollisionManager::createTriggerArea(const AABB& aabb,
@@ -150,6 +164,8 @@ void CollisionManager::resizeBody(EntityID id, float halfWidth, float halfHeight
     auto &body = *it->second;
     body.aabb.halfSize = Vector2D(halfWidth, halfHeight);
     m_hash.update(id, body.aabb);
+    COLLISION_DEBUG("resizeBody id=" + std::to_string(id) +
+                    ", halfW=" + std::to_string(halfWidth) + ", halfH=" + std::to_string(halfHeight));
 }
 
 bool CollisionManager::overlaps(EntityID a, EntityID b) const {
@@ -244,6 +260,9 @@ void CollisionManager::update(float dt) {
         resolve(c);
         for (auto& cb : m_callbacks) { cb(c); }
     }
+    if (!collisions.empty()) {
+        COLLISION_DEBUG("Resolved collisions: count=" + std::to_string(collisions.size()));
+    }
     // Reflect resolved poses back to entities so callers see corrected transforms
     m_isSyncing = true;
     for (auto& kv : m_bodies) {
@@ -293,6 +312,9 @@ void CollisionManager::update(float dt) {
                 WorldTriggerEvent evt(playerBody->id, triggerBody->id, triggerBody->triggerTag,
                                       playerBody->aabb.center, TriggerPhase::Enter);
                 EventManager::Instance().triggerWorldTrigger(evt, EventManager::DispatchMode::Deferred);
+                COLLISION_INFO("Trigger Enter: player=" + std::to_string(playerBody->id) +
+                               ", trigger=" + std::to_string(triggerBody->id) +
+                               ", tag=" + std::to_string(static_cast<int>(triggerBody->triggerTag)));
                 if (m_defaultTriggerCooldownSec > 0.0f) {
                     m_triggerCooldownUntil[triggerBody->id] = now + std::chrono::duration_cast<clock::duration>(std::chrono::duration<double>(m_defaultTriggerCooldownSec));
                 }
@@ -311,6 +333,9 @@ void CollisionManager::update(float dt) {
                 WorldTriggerEvent evt(playerId, triggerId, bt->second->triggerTag,
                                       bt->second->aabb.center, TriggerPhase::Exit);
                 EventManager::Instance().triggerWorldTrigger(evt, EventManager::DispatchMode::Deferred);
+                COLLISION_INFO("Trigger Exit: player=" + std::to_string(playerId) +
+                               ", trigger=" + std::to_string(triggerId) +
+                               ", tag=" + std::to_string(static_cast<int>(bt->second->triggerTag)));
             }
             it = m_activeTriggerPairs.erase(it);
         } else {
@@ -381,6 +406,7 @@ void CollisionManager::subscribeWorldEvents() {
                 const float TILE = 32.0f;
                 this->setWorldBounds(minX * TILE, minY * TILE, maxX * TILE, maxY * TILE);
             }
+            COLLISION_INFO("World loaded - rebuilding static colliders");
             this->rebuildStaticFromWorld();
             return;
         }
@@ -391,6 +417,7 @@ void CollisionManager::subscribeWorldEvents() {
                 const float TILE = 32.0f;
                 this->setWorldBounds(minX * TILE, minY * TILE, maxX * TILE, maxY * TILE);
             }
+            COLLISION_INFO("World generated - rebuilding static colliders");
             this->rebuildStaticFromWorld();
             return;
         }
@@ -399,6 +426,7 @@ void CollisionManager::subscribeWorldEvents() {
             std::vector<EntityID> toRemove;
             for (const auto& kv : m_bodies) if (isStatic(*kv.second)) toRemove.push_back(kv.first);
             for (auto id : toRemove) removeBody(id);
+            COLLISION_INFO("World unloaded - removed static colliders: " + std::to_string(toRemove.size()));
             return;
         }
         if (auto tileChanged = std::dynamic_pointer_cast<TileChangedEvent>(base)) {

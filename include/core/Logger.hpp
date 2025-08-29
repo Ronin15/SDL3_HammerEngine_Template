@@ -290,6 +290,19 @@ inline std::mutex Logger::s_logMutex{};
 #define NPC_INFO(msg) HAMMER_INFO("NPC", msg)
 #define NPC_DEBUG(msg) HAMMER_DEBUG("NPC", msg)
 
+// Collision and Pathfinding Systems
+#define COLLISION_CRITICAL(msg) HAMMER_CRITICAL("CollisionManager", msg)
+#define COLLISION_ERROR(msg) HAMMER_ERROR("CollisionManager", msg)
+#define COLLISION_WARN(msg) HAMMER_WARN("CollisionManager", msg)
+#define COLLISION_INFO(msg) HAMMER_INFO("CollisionManager", msg)
+#define COLLISION_DEBUG(msg) HAMMER_DEBUG("CollisionManager", msg)
+
+#define PATHFIND_CRITICAL(msg) HAMMER_CRITICAL("Pathfinding", msg)
+#define PATHFIND_ERROR(msg) HAMMER_ERROR("Pathfinding", msg)
+#define PATHFIND_WARN(msg) HAMMER_WARN("Pathfinding", msg)
+#define PATHFIND_INFO(msg) HAMMER_INFO("Pathfinding", msg)
+#define PATHFIND_DEBUG(msg) HAMMER_DEBUG("Pathfinding", msg)
+
 // Benchmark mode convenience macros
 #define HAMMER_ENABLE_BENCHMARK_MODE()                                         \
   HammerEngine::Logger::SetBenchmarkMode(true)
