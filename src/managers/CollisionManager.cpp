@@ -158,6 +158,38 @@ void CollisionManager::setTriggerCooldown(EntityID triggerId, float seconds) {
     m_triggerCooldownUntil[triggerId] = now + std::chrono::duration_cast<clock::duration>(std::chrono::duration<double>(seconds));
 }
 
+size_t CollisionManager::createTriggersForWaterTiles(HammerEngine::TriggerTag tag) {
+    const WorldManager& wm = WorldManager::Instance();
+    const auto* world = wm.getWorldData();
+    if (!world) return 0;
+    size_t created = 0;
+    const float tileSize = 32.0f;
+    const int h = static_cast<int>(world->grid.size());
+    for (int y = 0; y < h; ++y) {
+        const int w = static_cast<int>(world->grid[y].size());
+        for (int x = 0; x < w; ++x) {
+            const auto& tile = world->grid[y][x];
+            if (!tile.isWater) continue;
+            float cx = x * tileSize + tileSize * 0.5f;
+            float cy = y * tileSize + tileSize * 0.5f;
+            AABB aabb(cx, cy, tileSize * 0.5f, tileSize * 0.5f);
+            // Use a distinct prefix for triggers to avoid id collisions with static colliders
+            EntityID id = (static_cast<EntityID>(1ull) << 61) | (static_cast<EntityID>(y) << 31) | static_cast<EntityID>(x);
+            if (m_bodies.find(id) == m_bodies.end()) {
+                addBody(id, aabb, BodyType::STATIC);
+                setBodyLayer(id, CollisionLayer::Layer_Environment, 0xFFFFFFFFu);
+                setBodyTrigger(id, true);
+                setBodyTriggerTag(id, tag);
+                ++created;
+            }
+        }
+    }
+    if (created > 0) {
+        COLLISION_INFO("Created water triggers: count=" + std::to_string(created));
+    }
+    return created;
+}
+
 void CollisionManager::resizeBody(EntityID id, float halfWidth, float halfHeight) {
     auto it = m_bodies.find(id);
     if (it == m_bodies.end()) return;
@@ -252,14 +284,22 @@ void CollisionManager::resolve(const CollisionInfo& info) {
 void CollisionManager::update(float dt) {
     (void)dt;
     if (!m_initialized || m_isShutdown) return;
+    using clock = std::chrono::steady_clock;
+    auto t0 = clock::now();
+
     std::vector<std::pair<EntityID,EntityID>> pairs;
     broadphase(pairs);
+    auto t1 = clock::now();
+
     std::vector<CollisionInfo> collisions;
     narrowphase(pairs, collisions);
+    auto t2 = clock::now();
+
     for (const auto& c : collisions) {
         resolve(c);
         for (auto& cb : m_callbacks) { cb(c); }
     }
+    auto t3 = clock::now();
     if (!collisions.empty()) {
         COLLISION_DEBUG("Resolved collisions: count=" + std::to_string(collisions.size()));
     }
@@ -273,6 +313,7 @@ void CollisionManager::update(float dt) {
         }
     }
     m_isSyncing = false;
+    auto t4 = clock::now();
 
     // Trigger-only world events: Player vs Trigger OnEnter
     auto makeKey = [](EntityID a, EntityID b) -> uint64_t {
@@ -283,7 +324,6 @@ void CollisionManager::update(float dt) {
         return (x * 1469598103934665603ull) ^ (y + 1099511628211ull);
     };
 
-    using clock = std::chrono::steady_clock;
     auto now = clock::now();
     std::unordered_set<uint64_t> currentPairs;
     currentPairs.reserve(collisions.size());
@@ -342,6 +382,28 @@ void CollisionManager::update(float dt) {
             ++it;
         }
     }
+
+    // Perf metrics
+    auto d01 = std::chrono::duration<double, std::milli>(t1 - t0).count();
+    auto d12 = std::chrono::duration<double, std::milli>(t2 - t1).count();
+    auto d23 = std::chrono::duration<double, std::milli>(t3 - t2).count();
+    auto d34 = std::chrono::duration<double, std::milli>(t4 - t3).count();
+    auto d04 = std::chrono::duration<double, std::milli>(t4 - t0).count();
+    m_perf.lastBroadphaseMs = d01;
+    m_perf.lastNarrowphaseMs = d12;
+    m_perf.lastResolveMs = d23;
+    m_perf.lastSyncMs = d34;
+    m_perf.lastTotalMs = d04;
+    m_perf.lastPairs = pairs.size();
+    m_perf.lastCollisions = collisions.size();
+    m_perf.bodyCount = m_bodies.size();
+    m_perf.avgTotalMs = (m_perf.avgTotalMs * m_perf.frames + m_perf.lastTotalMs) / (m_perf.frames + 1);
+    m_perf.frames += 1;
+    if (m_perf.lastTotalMs > 5.0) {
+        COLLISION_WARN("Slow frame: totalMs=" + std::to_string(m_perf.lastTotalMs) +
+                       ", pairs=" + std::to_string(m_perf.lastPairs) +
+                       ", collisions=" + std::to_string(m_perf.lastCollisions));
+    }
 }
 
 void CollisionManager::addCollisionCallback(CollisionCB cb) { m_callbacks.push_back(std::move(cb)); }
@@ -372,6 +434,11 @@ void CollisionManager::rebuildStaticFromWorld() {
             setBodyLayer(id, CollisionLayer::Layer_Environment, 0xFFFFFFFFu);
         }
     }
+    // Optional: auto-create triggers for water
+    size_t created = createTriggersForWaterTiles(HammerEngine::TriggerTag::Water);
+    if (created > 0) {
+        COLLISION_INFO("Auto-created water triggers after rebuild: " + std::to_string(created));
+    }
 }
 
 void CollisionManager::onTileChanged(int x, int y) {
@@ -390,6 +457,18 @@ void CollisionManager::onTileChanged(int x, int y) {
             AABB aabb(cx, cy, tileSize * 0.5f, tileSize * 0.5f);
             addBody(id, aabb, BodyType::STATIC);
             setBodyLayer(id, CollisionLayer::Layer_Environment, 0xFFFFFFFFu);
+        }
+        // Update water trigger for this tile
+        EntityID trigId = (static_cast<EntityID>(1ull) << 61) | (static_cast<EntityID>(y) << 31) | static_cast<EntityID>(x);
+        removeBody(trigId);
+        if (tile.isWater) {
+            float cx = x * tileSize + tileSize * 0.5f;
+            float cy = y * tileSize + tileSize * 0.5f;
+            AABB aabb(cx, cy, tileSize * 0.5f, tileSize * 0.5f);
+            addBody(trigId, aabb, BodyType::STATIC);
+            setBodyLayer(trigId, CollisionLayer::Layer_Environment, 0xFFFFFFFFu);
+            setBodyTrigger(trigId, true);
+            setBodyTriggerTag(trigId, HammerEngine::TriggerTag::Water);
         }
     }
 }

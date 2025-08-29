@@ -65,6 +65,9 @@ public:
                                  uint32_t collideMask = 0xFFFFFFFFu);
     void setTriggerCooldown(EntityID triggerId, float seconds);
     void setDefaultTriggerCooldown(float seconds) { m_defaultTriggerCooldownSec = seconds; }
+
+    // World helpers: build triggers for water tiles (returns count created)
+    size_t createTriggersForWaterTiles(HammerEngine::TriggerTag tag = HammerEngine::TriggerTag::Water);
     void resizeBody(EntityID id, float halfWidth, float halfHeight);
 
     // Queries
@@ -109,6 +112,27 @@ private:
     std::unordered_map<uint64_t, std::pair<EntityID,EntityID>> m_activeTriggerPairs; // OnEnter/Exit filtering
     std::unordered_map<EntityID, std::chrono::steady_clock::time_point> m_triggerCooldownUntil;
     float m_defaultTriggerCooldownSec{0.0f};
+
+    // Performance metrics
+    struct PerfStats {
+        double lastBroadphaseMs{0.0};
+        double lastNarrowphaseMs{0.0};
+        double lastResolveMs{0.0};
+        double lastSyncMs{0.0};
+        double lastTotalMs{0.0};
+        double avgTotalMs{0.0};
+        uint64_t frames{0};
+        size_t lastPairs{0};
+        size_t lastCollisions{0};
+        size_t bodyCount{0};
+    };
+
+public:
+    PerfStats getPerfStats() const { return m_perf; }
+    void resetPerfStats() { m_perf = PerfStats{}; }
+
+private:
+    PerfStats m_perf{};
 
     // Helpers
     static inline bool isStatic(const CollisionBody& b) {
