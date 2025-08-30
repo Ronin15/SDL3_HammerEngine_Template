@@ -116,6 +116,10 @@ private:
       m_dropRates; // itemHandle -> drop probability
 
   Faction m_faction{Faction::Neutral};
+
+  // Texture flip smoothing
+  int m_lastFlipSign{1};
+  Uint64 m_lastFlipTime{0};
 };
 
 #endif // NPC_HPP

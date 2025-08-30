@@ -96,7 +96,8 @@ void WanderBehavior::executeLogic(EntityPtr entity) {
   if (state.movementStarted) {
     Uint64 now = SDL_GetTicks();
     // Refresh short path periodically or when finished
-    if (state.pathPoints.empty() || state.currentPathIndex >= state.pathPoints.size() || (now - state.lastPathUpdate) > 2000) {
+    const Uint64 pathTTL = 2500;
+    if ((state.pathPoints.empty() || state.currentPathIndex >= state.pathPoints.size() || (now - state.lastPathUpdate) > pathTTL) && now >= state.nextPathAllowed) {
       // Pick a target ahead in the current direction
       Vector2D dest = entity->getPosition() + state.currentDirection * std::min(200.0f, m_areaRadius);
       // Clamp destination to world bounds with a margin
@@ -114,6 +115,7 @@ void WanderBehavior::executeLogic(EntityPtr entity) {
       state.pathPoints = AIManager::Instance().getPath(entity);
       state.currentPathIndex = 0;
       state.lastPathUpdate = now;
+      state.nextPathAllowed = now + 800; // cooldown even on success
     }
     if (!state.pathPoints.empty() && state.currentPathIndex < state.pathPoints.size()) {
       Vector2D node = state.pathPoints[state.currentPathIndex];
@@ -178,23 +180,24 @@ void WanderBehavior::updateWanderState(EntityPtr entity) {
     state.lastDirectionFlip = currentTime;
   }
 
-  // Stall detection: if speed remains very low for a short duration, pick a new direction
+  // Stall detection: scale with configured wander speed to prevent constant false stalls
   float speed = entity->getVelocity().length();
-  const float stallSpeed = 5.0f; // px/s
+  const float stallSpeed = std::max(0.5f, m_speed * 0.5f); // px/s
   const Uint64 stallMillis = 600; // ms
-  if (speed < stallSpeed) {
-    if (state.stallStart == 0) state.stallStart = currentTime;
-    else if (currentTime - state.stallStart >= stallMillis) {
-      // Clear path and pick a fresh direction to break clumps
-      state.pathPoints.clear();
-      state.currentPathIndex = 0;
-      state.lastPathUpdate = currentTime;
-      chooseNewDirection(entity);
+    if (speed < stallSpeed) {
+      if (state.stallStart == 0) state.stallStart = currentTime;
+      else if (currentTime - state.stallStart >= stallMillis) {
+        // Clear path and pick a fresh direction to break clumps
+        state.pathPoints.clear();
+        state.currentPathIndex = 0;
+        state.lastPathUpdate = currentTime;
+        chooseNewDirection(entity);
+        state.nextPathAllowed = currentTime + 600; // prevent immediate re-request
+        state.stallStart = 0;
+        return;
+      }
+    } else {
       state.stallStart = 0;
-      return;
-    }
-  } else {
-    state.stallStart = 0;
   }
 
   // Check if it's time to change direction
@@ -207,8 +210,8 @@ void WanderBehavior::updateWanderState(EntityPtr entity) {
     state.lastDirectionChangeTime = currentTime;
   }
 
-  // Micro-jitter to break small jams (when moving slowly but not stalled)
-  if (speed < 20.0f && speed >= stallSpeed) {
+  // Micro-jitter to break small jams (when moving slower than expected but not stalled)
+  if (speed < (m_speed * 1.5f) && speed >= stallSpeed) {
     // Rotate current direction slightly
     float jitter = (s_angleDistribution(getSharedRNG()) - static_cast<float>(M_PI)) * 0.1f; // ~±18deg
     Vector2D dir = state.currentDirection;

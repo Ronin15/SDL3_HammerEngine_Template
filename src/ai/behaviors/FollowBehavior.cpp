@@ -7,6 +7,7 @@
 #include "managers/AIManager.hpp"
 #include <algorithm>
 #include <cmath>
+#include "managers/WorldManager.hpp"
 
 // Static member initialization
 int FollowBehavior::s_nextFormationSlot = 0;
@@ -133,8 +134,19 @@ void FollowBehavior::executeLogic(EntityPtr entity) {
 
   if (state.isFollowing) {
     // Path-following to desired position if available
-    auto tryFollowPath = [&](const Vector2D& desiredPos, float speed)->bool {
+    auto tryFollowPath = [&](Vector2D desiredPos, float speed)->bool {
       Uint64 now = SDL_GetTicks();
+      // Clamp desired to world bounds to avoid edge jams
+      float minX, minY, maxX, maxY;
+      if (WorldManager::Instance().getWorldBounds(minX, minY, maxX, maxY)) {
+        const float TILE = 32.0f; const float margin = 16.0f;
+        float worldMinX = minX * TILE + margin;
+        float worldMinY = minY * TILE + margin;
+        float worldMaxX = maxX * TILE - margin;
+        float worldMaxY = maxY * TILE - margin;
+        desiredPos.setX(std::clamp(desiredPos.getX(), worldMinX, worldMaxX));
+        desiredPos.setY(std::clamp(desiredPos.getY(), worldMinY, worldMaxY));
+      }
       // Refresh if TTL expired or no progress towards node
       const Uint64 pathTTL = 1500; // ms
       const Uint64 noProgressWindow = 300; // ms
@@ -177,6 +189,26 @@ void FollowBehavior::executeLogic(EntityPtr entity) {
       }
       return false;
     };
+
+    // Stall detection: scale threshold with configured follow speed to avoid false stalls at low speeds
+    float speedNow = entity->getVelocity().length();
+    const float stallSpeed = std::max(0.5f, m_followSpeed * 0.5f);
+    const Uint64 stallMs = 600;
+    if (speedNow < stallSpeed) {
+      if (state.lastProgressTime == 0) state.lastProgressTime = SDL_GetTicks();
+      else if (SDL_GetTicks() - state.lastProgressTime > stallMs) {
+        state.pathPoints.clear(); state.currentPathIndex = 0; state.lastPathUpdate = 0; // force refresh
+        // micro-jitter direction
+        float jitter = ((float)rand() / RAND_MAX - 0.5f) * 0.3f; // ~±17deg
+        Vector2D v = entity->getVelocity(); if (v.length() < 0.01f) v = Vector2D(1,0);
+        float c = std::cos(jitter), s = std::sin(jitter);
+        Vector2D rotated(v.getX()*c - v.getY()*s, v.getX()*s + v.getY()*c);
+        rotated.normalize(); entity->setVelocity(rotated * m_followSpeed);
+        state.lastProgressTime = SDL_GetTicks();
+      }
+    } else {
+      state.lastProgressTime = SDL_GetTicks();
+    }
 
     // Execute appropriate follow behavior based on mode
     switch (m_followMode) {

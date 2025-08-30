@@ -89,6 +89,10 @@ private:
   float m_navRadius{18.0f};
   int m_recalcCounter{0};
   int m_recalcInterval{15}; // frames between path recalcs
+  // Deviation detection
+  float m_lastNodeDistance{std::numeric_limits<float>::infinity()};
+  Uint64 m_lastProgressTime{0};
+  Uint64 m_lastPathUpdate{0};
 
   
 };

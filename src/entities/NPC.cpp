@@ -118,6 +118,8 @@ void NPC::loadDimensionsFromTexture() {
 
 void NPC::update(float deltaTime) {
   // The AI drives velocity directly; apply it without additional damping.
+  // Integrate intended motion
+  Vector2D prevPosition = m_position;
   Vector2D newPosition = m_position + m_velocity * deltaTime;
   // Clamp into world bounds with a small margin to avoid edge stalls
   float minX, minY, maxX, maxY;
@@ -127,10 +129,25 @@ void NPC::update(float deltaTime) {
     float worldMinY = minY * TILE + margin;
     float worldMaxX = maxX * TILE - margin;
     float worldMaxY = maxY * TILE - margin;
-    newPosition.setX(std::clamp(newPosition.getX(), worldMinX, worldMaxX));
-    newPosition.setY(std::clamp(newPosition.getY(), worldMinY, worldMaxY));
+    float clampedX = std::clamp(newPosition.getX(), worldMinX, worldMaxX);
+    float clampedY = std::clamp(newPosition.getY(), worldMinY, worldMaxY);
+    bool hitX = (clampedX != newPosition.getX());
+    bool hitY = (clampedY != newPosition.getY());
+    newPosition.setX(clampedX);
+    newPosition.setY(clampedY);
+    // Project velocity to interior to avoid artificial flip-flopping at edges
+    if (hitX) {
+      if (newPosition.getX() <= worldMinX && m_velocity.getX() < 0) m_velocity.setX(0.0f);
+      else if (newPosition.getX() >= worldMaxX && m_velocity.getX() > 0) m_velocity.setX(0.0f);
+    }
+    if (hitY) {
+      if (newPosition.getY() <= worldMinY && m_velocity.getY() < 0) m_velocity.setY(0.0f);
+      else if (newPosition.getY() >= worldMaxY && m_velocity.getY() > 0) m_velocity.setY(0.0f);
+    }
   }
   setPosition(newPosition);
+  // Sync velocity change if adjusted by bounce
+  setVelocity(m_velocity);
   m_acceleration = Vector2D(0, 0);
 
   // Handle world boundaries
@@ -154,16 +171,25 @@ void NPC::update(float deltaTime) {
 
   // --- Animation ---
   Uint64 currentTime = SDL_GetTicks();
-  if (m_velocity.lengthSquared() > 0.01f) {
+  // Use actual displacement to decide if we are moving (avoids animating when clamped)
+  float moveDist2 = (newPosition - prevPosition).lengthSquared();
+  if (moveDist2 > 0.04f) { // ~> 0.2px per frame at 60Hz
     if (currentTime > m_lastFrameTime + m_animSpeed) {
       m_currentFrame = (m_currentFrame + 1) % m_numFrames;
       m_lastFrameTime = currentTime;
     }
-    if (std::abs(m_velocity.getX()) > 0.5f) {
-      if (m_velocity.getX() < 0) {
-        m_flip = SDL_FLIP_HORIZONTAL;
+    // Smooth flip: require sufficient lateral speed and a minimum interval
+    const float flipSpeedThreshold = 15.0f; // px/s
+    if (std::abs(m_velocity.getX()) > flipSpeedThreshold) {
+      int newSign = (m_velocity.getX() < 0) ? -1 : 1;
+      if (newSign != m_lastFlipSign) {
+        if (currentTime - m_lastFlipTime >= 300) { // ms
+          m_flip = (newSign < 0) ? SDL_FLIP_HORIZONTAL : SDL_FLIP_NONE;
+          m_lastFlipSign = newSign;
+          m_lastFlipTime = currentTime;
+        }
       } else {
-        m_flip = SDL_FLIP_NONE;
+        m_flip = (newSign < 0) ? SDL_FLIP_HORIZONTAL : SDL_FLIP_NONE;
       }
     }
   } else {
