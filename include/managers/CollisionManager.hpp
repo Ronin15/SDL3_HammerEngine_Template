@@ -11,6 +11,7 @@
 #include <vector>
 #include <functional>
 #include <cstddef>
+#include <chrono>
 
 #include "entities/Entity.hpp" // EntityID
 #include "collisions/CollisionBody.hpp"
@@ -18,9 +19,6 @@
 #include "collisions/SpatialHash.hpp"
 #include "collisions/TriggerTag.hpp"
 #include "managers/EventManager.hpp"
-#include <unordered_set>
-#include <unordered_map>
-#include <chrono>
 
 using HammerEngine::AABB;
 using HammerEngine::BodyType;
@@ -135,8 +133,6 @@ public:
 private:
     PerfStats m_perf{};
     bool m_verboseLogs{false};
-    size_t m_logEveryNFrames{30};
-    size_t m_logFrame{0};
 
     // Helpers
     static inline bool isStatic(const CollisionBody& b) {
