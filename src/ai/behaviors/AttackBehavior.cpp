@@ -5,6 +5,7 @@
 
 #include "ai/behaviors/AttackBehavior.hpp"
 #include "managers/AIManager.hpp"
+#include "managers/WorldManager.hpp"
 #include <algorithm>
 
 AttackBehavior::AttackBehavior(float attackRange, float attackDamage,
@@ -856,12 +857,95 @@ void AttackBehavior::moveToPosition(EntityPtr entity, const Vector2D &targetPos,
   if (!entity || speed <= 0.0f)
     return;
 
-  Vector2D currentPos = entity->getPosition();
-  Vector2D direction = normalizeDirection(targetPos - currentPos);
+  // Access per-entity state
+  auto it = m_entityStates.find(entity);
+  if (it == m_entityStates.end()) return;
+  EntityState &state = it->second;
 
-  if (direction.length() > 0.001f) {
-    Vector2D velocity = direction * speed;
-    entity->setVelocity(velocity);
+  // Clamp target to world bounds to avoid chasing outside the map
+  Vector2D clampedTarget = targetPos;
+  float minX, minY, maxX, maxY;
+  if (WorldManager::Instance().getWorldBounds(minX, minY, maxX, maxY)) {
+    const float TILE = 32.0f; const float margin = 16.0f;
+    float worldMinX = minX * TILE + margin;
+    float worldMinY = minY * TILE + margin;
+    float worldMaxX = maxX * TILE - margin;
+    float worldMaxY = maxY * TILE - margin;
+    clampedTarget.setX(std::clamp(clampedTarget.getX(), worldMinX, worldMaxX));
+    clampedTarget.setY(std::clamp(clampedTarget.getY(), worldMinY, worldMaxY));
+  }
+
+  Vector2D currentPos = entity->getPosition();
+  Uint64 now = SDL_GetTicks();
+
+  // Refresh path if empty, expired, or no progress toward current node
+  const Uint64 pathTTL = 1500;         // ms
+  const Uint64 noProgressWindow = 300; // ms
+  bool needRefresh = state.pathPoints.empty() ||
+                     state.currentPathIndex >= state.pathPoints.size();
+
+  if (!needRefresh && state.currentPathIndex < state.pathPoints.size()) {
+    float d = (state.pathPoints[state.currentPathIndex] - currentPos).length();
+    if (d + 1.0f < state.lastNodeDistance) {
+      state.lastNodeDistance = d;
+      state.lastProgressTime = now;
+    } else if (state.lastProgressTime == 0) {
+      state.lastProgressTime = now;
+    } else if (now - state.lastProgressTime > noProgressWindow) {
+      needRefresh = true;
+    }
+  }
+  if (now - state.lastPathUpdate > pathTTL) needRefresh = true;
+
+  if (needRefresh) {
+    AIManager::Instance().requestPath(entity, currentPos, clampedTarget);
+    state.pathPoints = AIManager::Instance().getPath(entity);
+    state.currentPathIndex = 0;
+    state.lastPathUpdate = now;
+    state.lastNodeDistance = std::numeric_limits<float>::infinity();
+    state.lastProgressTime = now;
+  }
+
+  // Follow path if available; otherwise fall back to direct steering
+  if (!state.pathPoints.empty() &&
+      state.currentPathIndex < state.pathPoints.size()) {
+    Vector2D node = state.pathPoints[state.currentPathIndex];
+    Vector2D dir = node - currentPos;
+    float len = dir.length();
+    if (len > 0.01f) {
+      dir = dir * (1.0f / len);
+      entity->setVelocity(dir * speed);
+    }
+    if ((node - currentPos).length() <= state.navRadius) {
+      ++state.currentPathIndex;
+      state.lastNodeDistance = std::numeric_limits<float>::infinity();
+      state.lastProgressTime = now;
+    }
+  } else {
+    Vector2D direction = normalizeDirection(clampedTarget - currentPos);
+    if (direction.length() > 0.001f) entity->setVelocity(direction * speed);
+  }
+
+  // Stall detection scaled by configured speed
+  float spd = entity->getVelocity().length();
+  const float stallSpeed = std::max(0.5f, speed * 0.5f);
+  const Uint64 stallMs = 600;
+  if (spd < stallSpeed) {
+    if (state.lastProgressTime == 0) state.lastProgressTime = now;
+    else if (now - state.lastProgressTime > stallMs) {
+      // Force a refresh and small micro-jitter to break clumps
+      state.pathPoints.clear();
+      state.currentPathIndex = 0;
+      state.lastPathUpdate = 0;
+      state.lastProgressTime = now;
+      float jitter = ((float)rand() / RAND_MAX - 0.5f) * 0.3f;
+      Vector2D v = entity->getVelocity(); if (v.length() < 0.01f) v = Vector2D(1,0);
+      float c = std::cos(jitter), s = std::sin(jitter);
+      Vector2D rotated(v.getX()*c - v.getY()*s, v.getX()*s + v.getY()*c);
+      rotated.normalize(); entity->setVelocity(rotated * speed);
+    }
+  } else {
+    state.lastProgressTime = now;
   }
 }
 

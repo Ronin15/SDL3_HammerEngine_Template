@@ -98,26 +98,23 @@ void PatrolBehavior::executeLogic(EntityPtr entity) {
     targetWaypoint.setY(std::clamp(targetWaypoint.getY(), worldMinY, worldMaxY));
   }
 
-  // Request/refresh path to current waypoint if needed
-  static thread_local Uint64 s_lastPathUpdate = 0;
-  static thread_local float s_lastNodeDist = std::numeric_limits<float>::infinity();
-  static thread_local Uint64 s_lastProgressTime = 0;
+  // Request/refresh path to current waypoint if needed (per-instance state)
   Uint64 now = SDL_GetTicks();
   bool needRefresh = m_navPath.empty() || m_navIndex >= m_navPath.size();
   if (!needRefresh && m_navIndex < m_navPath.size()) {
     float d = (m_navPath[m_navIndex] - position).length();
-    if (d + 1.0f < s_lastNodeDist) { s_lastNodeDist = d; s_lastProgressTime = now; }
-    else if (s_lastProgressTime == 0) { s_lastProgressTime = now; }
-    else if (now - s_lastProgressTime > 300) { needRefresh = true; }
+    if (d + 1.0f < m_lastNodeDistance) { m_lastNodeDistance = d; m_lastProgressTime = now; }
+    else if (m_lastProgressTime == 0) { m_lastProgressTime = now; }
+    else if (now - m_lastProgressTime > 300) { needRefresh = true; }
   }
-  if (now - s_lastPathUpdate > 1500) needRefresh = true;
+  if (now - m_lastPathUpdate > 1500) needRefresh = true;
   if (needRefresh) {
     AIManager::Instance().requestPath(entity, position, targetWaypoint);
     m_navPath = AIManager::Instance().getPath(entity);
     m_navIndex = 0;
-    s_lastPathUpdate = now;
-    s_lastNodeDist = std::numeric_limits<float>::infinity();
-    s_lastProgressTime = now;
+    m_lastPathUpdate = now;
+    m_lastNodeDistance = std::numeric_limits<float>::infinity();
+    m_lastProgressTime = now;
   }
 
   if (isAtWaypoint(position, targetWaypoint)) {
@@ -163,11 +160,11 @@ void PatrolBehavior::executeLogic(EntityPtr entity) {
   }
 
   // Stall detection: if moving very slowly, reset path and advance waypoint
-  static thread_local Uint64 s_stallStart = 0; float spd = entity->getVelocity().length();
-  if (spd < 5.0f) { if (s_stallStart == 0) s_stallStart = SDL_GetTicks(); }
-  else s_stallStart = 0;
-  if (s_stallStart && SDL_GetTicks() - s_stallStart > 600) {
-    m_navPath.clear(); m_navIndex = 0; s_stallStart = 0;
+  float spd = entity->getVelocity().length();
+  if (spd < 5.0f) { if (m_stallStart == 0) m_stallStart = SDL_GetTicks(); }
+  else m_stallStart = 0;
+  if (m_stallStart && SDL_GetTicks() - m_stallStart > 600) {
+    m_navPath.clear(); m_navIndex = 0; m_stallStart = 0;
     m_currentWaypoint = (m_currentWaypoint + 1) % m_waypoints.size();
   }
 }

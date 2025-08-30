@@ -75,12 +75,24 @@ private:
     int zigzagDirection{1}; // For evasive maneuvers
     Uint64 lastZigzagTime{0};
 
+    // Optional path-following state for strategic/seek-cover modes
+    std::vector<Vector2D> pathPoints;
+    size_t currentPathIndex{0};
+    Uint64 lastPathUpdate{0};
+    Uint64 lastProgressTime{0};
+    float lastNodeDistance{std::numeric_limits<float>::infinity()};
+    float navRadius{16.0f};
+    Uint64 nextPathAllowed{0};
+
     EntityState()
         : lastThreatPosition(0, 0), fleeDirection(0, 0),
           lastKnownSafeDirection(0, 0), fleeStartTime(0),
           lastDirectionChange(0), panicEndTime(0), currentStamina(100.0f),
           isFleeing(false), isInPanic(false), hasValidThreat(false),
-          zigzagDirection(1), lastZigzagTime(0) {}
+          zigzagDirection(1), lastZigzagTime(0), pathPoints(),
+          currentPathIndex(0), lastPathUpdate(0), lastProgressTime(0),
+          lastNodeDistance(std::numeric_limits<float>::infinity()),
+          navRadius(16.0f), nextPathAllowed(0) {}
   };
 
   // Safe zone structure
