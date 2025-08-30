@@ -6,6 +6,7 @@
 #include "ai/behaviors/WanderBehavior.hpp"
 #include "managers/AIManager.hpp"
 #include "managers/WorldManager.hpp"
+#include "ai/internal/PathFollow.hpp"
 #include <algorithm>
 #include <cmath>
 
@@ -95,39 +96,34 @@ void WanderBehavior::executeLogic(EntityPtr entity) {
   // Try to follow a short path towards the current direction destination
   if (state.movementStarted) {
     Uint64 now = SDL_GetTicks();
-    // Refresh short path periodically or when finished
-    const Uint64 pathTTL = 2500;
-    if ((state.pathPoints.empty() || state.currentPathIndex >= state.pathPoints.size() || (now - state.lastPathUpdate) > pathTTL) && now >= state.nextPathAllowed) {
-      // Pick a target ahead in the current direction
-      Vector2D dest = entity->getPosition() + state.currentDirection * std::min(200.0f, m_areaRadius);
-      // Clamp destination to world bounds with a margin
-      float minX, minY, maxX, maxY;
-      if (WorldManager::Instance().getWorldBounds(minX, minY, maxX, maxY)) {
-        const float TILE = 32.0f; const float margin = 16.0f;
-        float worldMinX = minX * TILE + margin;
-        float worldMinY = minY * TILE + margin;
-        float worldMaxX = maxX * TILE - margin;
-        float worldMaxY = maxY * TILE - margin;
-        dest.setX(std::clamp(dest.getX(), worldMinX, worldMaxX));
-        dest.setY(std::clamp(dest.getY(), worldMinY, worldMaxY));
+    // Pick a target ahead in the current direction
+    Vector2D dest = entity->getPosition() + state.currentDirection * std::min(200.0f, m_areaRadius);
+    // Clamp destination
+    dest = AIInternal::ClampToWorld(dest);
+
+    // Refresh short path using policy when allowed
+    if (now >= state.nextPathAllowed) {
+      using namespace AIInternal;
+      PathPolicy policy;
+      policy.pathTTL = 2500;            // a bit lazier than combat
+      policy.noProgressWindow = 300;
+      policy.nodeRadius = state.navRadius;
+      policy.allowDetours = true;
+      policy.lateralBias = 0.0f;        // wandering is free-form
+      Uint64 prev = state.lastPathUpdate;
+      RefreshPathWithPolicy(entity, entity->getPosition(), dest,
+                            state.pathPoints, state.currentPathIndex,
+                            state.lastPathUpdate, state.lastProgressTime,
+                            state.lastNodeDistance, policy);
+      if (state.lastPathUpdate != prev) {
+        state.nextPathAllowed = now + 800; // cooldown even on success
       }
-      AIManager::Instance().requestPath(entity, entity->getPosition(), dest);
-      state.pathPoints = AIManager::Instance().getPath(entity);
-      state.currentPathIndex = 0;
-      state.lastPathUpdate = now;
-      state.nextPathAllowed = now + 800; // cooldown even on success
     }
     if (!state.pathPoints.empty() && state.currentPathIndex < state.pathPoints.size()) {
-      Vector2D node = state.pathPoints[state.currentPathIndex];
-      Vector2D dir = node - entity->getPosition();
-      float len = dir.length();
-      if (len > 0.01f) {
-        dir = dir * (1.0f / len);
-        entity->setVelocity(dir * m_speed);
-      }
-      if ((node - entity->getPosition()).length() <= state.navRadius) {
-        ++state.currentPathIndex;
-      }
+      using namespace AIInternal;
+      FollowPathStepWithPolicy(entity, entity->getPosition(), state.pathPoints,
+                               state.currentPathIndex, m_speed,
+                               state.navRadius, 0.0f);
     } else {
       // Always apply base velocity (in case something external changed it)
       entity->setVelocity(state.currentDirection * m_speed);
