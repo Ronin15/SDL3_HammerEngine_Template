@@ -98,6 +98,9 @@ add_custom_target(copy-compile-commands ALL
 # Include FetchContent module
 include(FetchContent)
 
+# Avoid network updates during configure; use existing cached deps
+set(FETCHCONTENT_UPDATES_DISCONNECTED ON)
+
 # Set CMake policy for Boost module (CMP0167)
 if(POLICY CMP0167)
     cmake_policy(SET CMP0167 NEW)

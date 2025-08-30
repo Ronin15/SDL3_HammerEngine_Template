@@ -5,6 +5,9 @@
 
 #include "ai/behaviors/GuardBehavior.hpp"
 #include "managers/AIManager.hpp"
+#include "managers/CollisionManager.hpp"
+#include "ai/internal/Crowd.hpp"
+#include "ai/internal/PathFollow.hpp"
 #include <algorithm>
 #include <cmath>
 
@@ -690,31 +693,56 @@ void GuardBehavior::moveToPosition(EntityPtr entity, const Vector2D &targetPos,
   if (it == m_entityStates.end()) return;
   auto &state = it->second;
   Vector2D currentPos = entity->getPosition();
-
-  // Try path-following first
   Uint64 now = SDL_GetTicks();
-  if (state.pathPoints.empty() || state.currentPathIndex >= state.pathPoints.size() ||
-      now - state.lastPathUpdate > 500) {
-    AIManager::Instance().requestPath(entity, currentPos, targetPos);
-    state.pathPoints = AIManager::Instance().getPath(entity);
-    state.currentPathIndex = 0;
-    state.lastPathUpdate = now;
-  }
-  if (!state.pathPoints.empty() && state.currentPathIndex < state.pathPoints.size()) {
-    Vector2D node = state.pathPoints[state.currentPathIndex];
-    Vector2D dir = normalizeDirection(node - currentPos);
-    if (dir.length() > 0.001f) {
-      entity->setVelocity(dir * speed);
-    }
-    if ((node - currentPos).length() <= state.navRadius) {
-      ++state.currentPathIndex;
-    }
-    return;
+
+  // Choose policy based on alert level/mode
+  using namespace AIInternal;
+  PathPolicy policy;
+  policy.nodeRadius = state.navRadius;
+  policy.lateralBias = 0.0f;
+  policy.allowDetours = true;
+  policy.pathTTL = 1500;
+  policy.noProgressWindow = 300;
+  if (state.currentAlertLevel >= AlertLevel::INVESTIGATING) {
+    policy.pathTTL = 1200;
+    policy.noProgressWindow = 250;
+    policy.detourRadii[0] = 48.0f;
+    policy.detourRadii[1] = 96.0f;
   }
 
-  // Fallback: direct steering
-  Vector2D direction = normalizeDirection(targetPos - currentPos);
-  if (direction.length() > 0.001f) entity->setVelocity(direction * speed);
+  // Refresh path and follow (honor backoff)
+  if (now >= state.backoffUntil) {
+    RefreshPathWithPolicy(entity, currentPos, targetPos,
+                          state.pathPoints, state.currentPathIndex,
+                          state.lastPathUpdate, state.lastProgressTime,
+                          state.lastNodeDistance, policy);
+  }
+  bool following = FollowPathStepWithPolicy(entity, currentPos,
+                        state.pathPoints, state.currentPathIndex,
+                        speed, policy.nodeRadius, policy.lateralBias);
+  if (following) { state.lastProgressTime = now; }
+  if (!following) {
+    // Fallback: direct steering
+    Vector2D direction = normalizeDirection(targetPos - currentPos);
+    if (direction.length() > 0.001f) { entity->setVelocity(direction * speed); state.lastProgressTime = now; }
+  }
+
+  // Dynamic backoff when stalled for a while
+  float spd = entity->getVelocity().length();
+  const float stallSpeed = std::max(0.5f, speed * 0.5f);
+  if (spd < stallSpeed) {
+    if (state.lastProgressTime != 0 && now - state.lastProgressTime > 600) {
+      state.backoffUntil = now + 250 + (entity->getID() % 400);
+      state.pathPoints.clear(); state.currentPathIndex = 0; state.lastPathUpdate = 0;
+    }
+  }
+
+  // Apply local separation to reduce on-top stacking when following
+  if (following) {
+    Vector2D adjusted = AIInternal::ApplySeparation(entity, currentPos,
+                          entity->getVelocity(), speed, 24.0f, 0.18f, 4);
+    entity->setVelocity(adjusted);
+  }
 }
 
 Vector2D GuardBehavior::getNextPatrolWaypoint(const EntityState &state) const {

@@ -216,6 +216,25 @@ void CollisionManager::queryArea(const AABB& area, std::vector<EntityID>& out) c
     m_hash.query(area, out);
 }
 
+bool CollisionManager::getBodyCenter(EntityID id, Vector2D& outCenter) const {
+    auto it = m_bodies.find(id);
+    if (it == m_bodies.end()) return false;
+    outCenter = it->second->aabb.center;
+    return true;
+}
+
+bool CollisionManager::isDynamic(EntityID id) const {
+    auto it = m_bodies.find(id);
+    if (it == m_bodies.end()) return false;
+    return it->second->type == BodyType::DYNAMIC;
+}
+
+bool CollisionManager::isTrigger(EntityID id) const {
+    auto it = m_bodies.find(id);
+    if (it == m_bodies.end()) return false;
+    return it->second->isTrigger;
+}
+
 void CollisionManager::broadphase(std::vector<std::pair<EntityID,EntityID>>& pairs) const {
     pairs.clear();
     std::vector<EntityID> candidates;

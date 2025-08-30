@@ -126,7 +126,10 @@ private:
     std::vector<Vector2D> pathPoints;
     size_t currentPathIndex{0};
     Uint64 lastPathUpdate{0};
-    float navRadius{16.0f};
+    Uint64 lastProgressTime{0};
+    float lastNodeDistance{std::numeric_limits<float>::infinity()};
+    float navRadius{18.0f};
+    Uint64 backoffUntil{0};
 
     EntityState()
         : assignedPosition(0, 0), lastKnownThreatPosition(0, 0),

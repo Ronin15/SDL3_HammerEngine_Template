@@ -101,8 +101,8 @@ void WanderBehavior::executeLogic(EntityPtr entity) {
     // Clamp destination
     dest = AIInternal::ClampToWorld(dest);
 
-    // Refresh short path using policy when allowed
-    if (now >= state.nextPathAllowed) {
+    // Refresh short path using unified cooldown system
+    if (state.cooldowns.canRequestPath(now)) {
       using namespace AIInternal;
       PathPolicy policy;
       policy.pathTTL = 2500;            // a bit lazier than combat
@@ -116,7 +116,7 @@ void WanderBehavior::executeLogic(EntityPtr entity) {
                             state.lastPathUpdate, state.lastProgressTime,
                             state.lastNodeDistance, policy);
       if (state.lastPathUpdate != prev) {
-        state.nextPathAllowed = now + 800; // cooldown even on success
+        state.cooldowns.applyPathCooldown(now, 800); // cooldown even on success
       }
     }
     if (!state.pathPoints.empty() && state.currentPathIndex < state.pathPoints.size()) {
@@ -135,7 +135,13 @@ void WanderBehavior::updateWanderState(EntityPtr entity) {
   if (!entity)
     return;
 
-  EntityState &state = m_entityStates[entity];
+  // Check if entity state exists before getting reference - prevents heap-use-after-free
+  auto stateIt = m_entityStates.find(entity);
+  if (stateIt == m_entityStates.end()) {
+    return; // Entity state doesn't exist, nothing to update
+  }
+  
+  EntityState &state = stateIt->second;
   Uint64 currentTime = SDL_GetTicks();
 
   Vector2D position = entity->getPosition();
@@ -188,7 +194,7 @@ void WanderBehavior::updateWanderState(EntityPtr entity) {
         state.currentPathIndex = 0;
         state.lastPathUpdate = currentTime;
         chooseNewDirection(entity);
-        state.nextPathAllowed = currentTime + 600; // prevent immediate re-request
+        state.cooldowns.applyPathCooldown(currentTime, 600); // prevent immediate re-request
         state.stallStart = 0;
         return;
       }

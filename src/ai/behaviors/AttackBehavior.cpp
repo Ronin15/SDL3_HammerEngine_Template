@@ -5,7 +5,9 @@
 
 #include "ai/behaviors/AttackBehavior.hpp"
 #include "managers/AIManager.hpp"
+#include "managers/CollisionManager.hpp"
 #include "managers/WorldManager.hpp"
+#include "ai/internal/Crowd.hpp"
 #include <algorithm>
 
 AttackBehavior::AttackBehavior(float attackRange, float attackDamage,
@@ -897,7 +899,7 @@ void AttackBehavior::moveToPosition(EntityPtr entity, const Vector2D &targetPos,
   }
   if (now - state.lastPathUpdate > pathTTL) needRefresh = true;
 
-  if (needRefresh) {
+  if (needRefresh && SDL_GetTicks() >= state.backoffUntil) {
     AIManager::Instance().requestPath(entity, currentPos, clampedTarget);
     state.pathPoints = AIManager::Instance().getPath(entity);
     state.currentPathIndex = 0;
@@ -914,7 +916,11 @@ void AttackBehavior::moveToPosition(EntityPtr entity, const Vector2D &targetPos,
     float len = dir.length();
     if (len > 0.01f) {
       dir = dir * (1.0f / len);
-      entity->setVelocity(dir * speed);
+      Vector2D intended = dir * speed;
+      Vector2D adjusted = AIInternal::ApplySeparation(entity, currentPos,
+                            intended, speed, 28.0f, 0.30f, 4);
+      entity->setVelocity(adjusted);
+      state.lastProgressTime = now;
     }
     if ((node - currentPos).length() <= state.navRadius) {
       ++state.currentPathIndex;
@@ -923,7 +929,7 @@ void AttackBehavior::moveToPosition(EntityPtr entity, const Vector2D &targetPos,
     }
   } else {
     Vector2D direction = normalizeDirection(clampedTarget - currentPos);
-    if (direction.length() > 0.001f) entity->setVelocity(direction * speed);
+    if (direction.length() > 0.001f) { entity->setVelocity(direction * speed); state.lastProgressTime = now; }
   }
 
   // Stall detection scaled by configured speed
@@ -933,8 +939,8 @@ void AttackBehavior::moveToPosition(EntityPtr entity, const Vector2D &targetPos,
   if (spd < stallSpeed) {
     if (state.lastProgressTime == 0) state.lastProgressTime = now;
     else if (now - state.lastProgressTime > stallMs) {
-      // Force a refresh and small micro-jitter to break clumps
-      state.pathPoints.clear();
+      // Force a refresh and small micro-jitter to break clumps; add short backoff
+      state.pathPoints.clear(); state.backoffUntil = now + 200 + (entity->getID() % 400);
       state.currentPathIndex = 0;
       state.lastPathUpdate = 0;
       state.lastProgressTime = now;

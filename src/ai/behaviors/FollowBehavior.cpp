@@ -5,6 +5,8 @@
 
 #include "ai/behaviors/FollowBehavior.hpp"
 #include "managers/AIManager.hpp"
+#include "managers/CollisionManager.hpp"
+#include "ai/internal/Crowd.hpp"
 #include "ai/internal/PathFollow.hpp"
 #include <algorithm>
 #include <cmath>
@@ -143,6 +145,14 @@ void FollowBehavior::executeLogic(EntityPtr entity) {
       policy.nodeRadius = 16.0f;
       policy.allowDetours = true;
       policy.lateralBias = 0.18f; // small lane bias for followers
+      // Dynamic backoff: if in a backoff window, don't refresh — just try to follow existing path
+      if (SDL_GetTicks() < state.backoffUntil) {
+        bool following = FollowPathStepWithPolicy(entity, currentPos,
+                            state.pathPoints, state.currentPathIndex,
+                            speed, policy.nodeRadius, policy.lateralBias);
+        if (following) { state.lastProgressTime = SDL_GetTicks(); }
+        return following;
+      }
       RefreshPathWithPolicy(entity, currentPos, desiredPos,
                             state.pathPoints, state.currentPathIndex,
                             state.lastPathUpdate, state.lastProgressTime,
@@ -150,6 +160,12 @@ void FollowBehavior::executeLogic(EntityPtr entity) {
       bool following = FollowPathStepWithPolicy(entity, currentPos,
                             state.pathPoints, state.currentPathIndex,
                             speed, policy.nodeRadius, policy.lateralBias);
+      if (following) { state.lastProgressTime = SDL_GetTicks(); }
+      if (following) {
+        Vector2D adjusted = AIInternal::ApplySeparation(entity, currentPos,
+                              entity->getVelocity(), speed, 26.0f, 0.22f, 4);
+        entity->setVelocity(adjusted);
+      }
       return following;
     };
 
@@ -160,14 +176,17 @@ void FollowBehavior::executeLogic(EntityPtr entity) {
     if (speedNow < stallSpeed) {
       if (state.lastProgressTime == 0) state.lastProgressTime = SDL_GetTicks();
       else if (SDL_GetTicks() - state.lastProgressTime > stallMs) {
-        state.pathPoints.clear(); state.currentPathIndex = 0; state.lastPathUpdate = 0; // force refresh
-        // micro-jitter direction
+        // Enter a brief backoff to reduce clumping; stagger per-entity
+        Uint64 now = SDL_GetTicks();
+        state.backoffUntil = now + 250 + (entity->getID() % 400); // 250-650ms
+        // Clear path and small micro-jitter to yield
+        state.pathPoints.clear(); state.currentPathIndex = 0; state.lastPathUpdate = 0;
         float jitter = ((float)rand() / RAND_MAX - 0.5f) * 0.3f; // ~±17deg
         Vector2D v = entity->getVelocity(); if (v.length() < 0.01f) v = Vector2D(1,0);
         float c = std::cos(jitter), s = std::sin(jitter);
         Vector2D rotated(v.getX()*c - v.getY()*s, v.getX()*s + v.getY()*c);
         rotated.normalize(); entity->setVelocity(rotated * m_followSpeed);
-        state.lastProgressTime = SDL_GetTicks();
+        state.lastProgressTime = now;
       }
     } else {
       state.lastProgressTime = SDL_GetTicks();

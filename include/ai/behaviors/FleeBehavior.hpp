@@ -81,8 +81,9 @@ private:
     Uint64 lastPathUpdate{0};
     Uint64 lastProgressTime{0};
     float lastNodeDistance{std::numeric_limits<float>::infinity()};
-    float navRadius{16.0f};
+    float navRadius{18.0f};
     Uint64 nextPathAllowed{0};
+    Uint64 backoffUntil{0};
 
     EntityState()
         : lastThreatPosition(0, 0), fleeDirection(0, 0),
@@ -92,7 +93,7 @@ private:
           zigzagDirection(1), lastZigzagTime(0), pathPoints(),
           currentPathIndex(0), lastPathUpdate(0), lastProgressTime(0),
           lastNodeDistance(std::numeric_limits<float>::infinity()),
-          navRadius(16.0f), nextPathAllowed(0) {}
+          navRadius(18.0f), nextPathAllowed(0), backoffUntil(0) {}
   };
 
   // Safe zone structure

@@ -120,6 +120,12 @@ void NPC::update(float deltaTime) {
   // The AI drives velocity directly; apply it without additional damping.
   // Integrate intended motion
   Vector2D prevPosition = m_position;
+  
+  // Safety check: ensure deltaTime is reasonable
+  if (deltaTime <= 0.0f || deltaTime > 0.1f) {
+    deltaTime = 1.0f / 60.0f; // Fallback to 60 FPS
+  }
+  
   Vector2D newPosition = m_position + m_velocity * deltaTime;
   // Clamp into world bounds with a small margin to avoid edge stalls
   float minX, minY, maxX, maxY;
@@ -149,30 +155,72 @@ void NPC::update(float deltaTime) {
   // Sync velocity change if adjusted by bounce
   setVelocity(m_velocity);
   m_acceleration = Vector2D(0, 0);
+  
+  // Additional safety: Force collision manager position sync if there's a mismatch
+  // Only check this occasionally to avoid performance impact
+  static Uint64 lastSyncCheck = 0;
+  Uint64 now = SDL_GetTicks();
+  if (now - lastSyncCheck > 1000) { // Check every second
+    lastSyncCheck = now;
+    auto &cm = CollisionManager::Instance();
+    if (!cm.isSyncing()) {
+      Vector2D cmPos;
+      if (cm.getBodyCenter(getID(), cmPos)) {
+        float posDiff = (cmPos - m_position).length();
+        if (posDiff > 5.0f) { // Only sync on significant mismatches
+          cm.setKinematicPose(getID(), m_position);
+          AI_DEBUG("NPC " + std::to_string(getID()) + " position sync: game=" + 
+                   std::to_string(m_position.getX()) + "," + std::to_string(m_position.getY()) + 
+                   " cm=" + std::to_string(cmPos.getX()) + "," + std::to_string(cmPos.getY()));
+        }
+      }
+    }
+  }
 
   // Handle world boundaries
+  bool boundaryCollision = false;
   if (m_boundsCheckEnabled) {
     const float bounceBuffer = 20.0f;
     if (m_position.getX() < m_minX - bounceBuffer) {
       m_position.setX(m_minX);
       m_velocity.setX(std::abs(m_velocity.getX()));
+      boundaryCollision = true;
     } else if (m_position.getX() + m_width > m_maxX + bounceBuffer) {
       m_position.setX(m_maxX - m_width);
       m_velocity.setX(-std::abs(m_velocity.getX()));
+      boundaryCollision = true;
     }
     if (m_position.getY() < m_minY - bounceBuffer) {
       m_position.setY(m_minY);
       m_velocity.setY(std::abs(m_velocity.getY()));
+      boundaryCollision = true;
     } else if (m_position.getY() + m_height > m_maxY + bounceBuffer) {
       m_position.setY(m_maxY - m_height);
       m_velocity.setY(-std::abs(m_velocity.getY()));
+      boundaryCollision = true;
     }
   }
 
   // --- Animation ---
   Uint64 currentTime = SDL_GetTicks();
-  // Use actual displacement to decide if we are moving (avoids animating when clamped)
-  float moveDist2 = (newPosition - prevPosition).lengthSquared();
+  // Use actual final displacement to decide if we are moving (after all bounds checks)
+  Vector2D finalPosition = m_position;
+  float moveDist2 = (finalPosition - prevPosition).lengthSquared();
+  
+  // Diagnostic: Check for stuck entities with velocity but no movement
+  // Skip stuck detection if we hit a boundary (that's not really "stuck")
+  float velocityMagnitude = m_velocity.length();
+  if (velocityMagnitude > 1.0f && moveDist2 <= 0.01f && !boundaryCollision) {
+    // NPC has velocity but isn't moving - this indicates a stuck condition
+    // Use instance-specific throttling instead of global static
+    if (currentTime - m_lastStuckLogTime > 5000) { // Log every 5 seconds per NPC
+      AI_DEBUG("NPC " + std::to_string(getID()) + " stuck: velocity=" + 
+               std::to_string(velocityMagnitude) + ", movement=" + std::to_string(std::sqrt(moveDist2)) +
+               ", pos=(" + std::to_string(m_position.getX()) + "," + std::to_string(m_position.getY()) + ")");
+      m_lastStuckLogTime = currentTime;
+    }
+  }
+  
   if (moveDist2 > 0.04f) { // ~> 0.2px per frame at 60Hz
     if (currentTime > m_lastFrameTime + m_animSpeed) {
       m_currentFrame = (m_currentFrame + 1) % m_numFrames;

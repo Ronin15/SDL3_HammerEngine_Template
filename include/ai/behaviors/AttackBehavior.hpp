@@ -142,6 +142,7 @@ private:
     Uint64 lastProgressTime{0};            // last time we made progress
     float lastNodeDistance{std::numeric_limits<float>::infinity()};
     float navRadius{18.0f};                // node snap radius
+    Uint64 backoffUntil{0};
 
     EntityState()
         : lastTargetPosition(0, 0), attackPosition(0, 0), retreatPosition(0, 0),
@@ -157,7 +158,7 @@ private:
           strafeDirectionInt(1), pathPoints(), currentPathIndex(0),
           lastPathUpdate(0), lastProgressTime(0),
           lastNodeDistance(std::numeric_limits<float>::infinity()),
-          navRadius(18.0f) {}
+          navRadius(18.0f), backoffUntil(0) {}
   };
 
   // Map to store per-entity state

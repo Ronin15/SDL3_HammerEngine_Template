@@ -321,6 +321,16 @@ public:
   std::vector<Vector2D> getPath(EntityPtr entity) const;
   void clearPath(EntityPtr entity);
 
+  // Emergency unstick mechanism
+  void forceUnstickEntity(EntityPtr entity);
+  
+  // Diagnostic and debugging
+  bool isEntityStalled(EntityPtr entity) const;
+  void logEntityDiagnostics(EntityPtr entity) const;
+  
+  // Anti-clumping system
+  size_t checkAndDisperseClusters(EntityPtr entity);
+
 private:
   AIManager() = default;
   ~AIManager();
