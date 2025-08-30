@@ -90,13 +90,15 @@ private:
     float navRadius{14.0f};
     // Stall detection
     Uint64 stallStart{0};
+    // Path request cooldown to avoid spamming
+    Uint64 nextPathAllowed{0};
 
     // Constructor to ensure proper initialization
     EntityState()
         : currentDirection(0, 0), lastDirectionChangeTime(0),
           currentlyWanderingOffscreen(false), resetScheduled(false),
           lastDirectionFlip(0), startDelay(0), movementStarted(false),
-          pathPoints(), currentPathIndex(0), lastPathUpdate(0), navRadius(14.0f), stallStart(0) {}
+          pathPoints(), currentPathIndex(0), lastPathUpdate(0), navRadius(14.0f), stallStart(0), nextPathAllowed(0) {}
   };
 
   // Map to store per-entity state using shared_ptr as key
@@ -121,7 +123,7 @@ private:
 
   // Flip stability properties
   Uint64 m_minimumFlipInterval{
-      400}; // Minimum time between flips (milliseconds)
+      800}; // Minimum time between flips (milliseconds)
 
   // Shared RNG optimization - use thread-local static RNG pool
   // instead of per-instance RNG to reduce memory overhead

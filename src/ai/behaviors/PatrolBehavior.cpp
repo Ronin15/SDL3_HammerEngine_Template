@@ -7,6 +7,7 @@
 #include "entities/Entity.hpp"
 #include "entities/NPC.hpp"
 #include "managers/AIManager.hpp"
+#include "managers/WorldManager.hpp"
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -85,6 +86,17 @@ void PatrolBehavior::executeLogic(EntityPtr entity) {
   }
 
   Vector2D targetWaypoint = m_waypoints[m_currentWaypoint];
+  // Clamp target to world bounds to avoid edge chasing
+  float minX, minY, maxX, maxY;
+  if (WorldManager::Instance().getWorldBounds(minX, minY, maxX, maxY)) {
+    const float TILE = 32.0f; const float margin = 16.0f;
+    float worldMinX = minX * TILE + margin;
+    float worldMinY = minY * TILE + margin;
+    float worldMaxX = maxX * TILE - margin;
+    float worldMaxY = maxY * TILE - margin;
+    targetWaypoint.setX(std::clamp(targetWaypoint.getX(), worldMinX, worldMaxX));
+    targetWaypoint.setY(std::clamp(targetWaypoint.getY(), worldMinY, worldMaxY));
+  }
 
   // Request/refresh path to current waypoint if needed
   static thread_local Uint64 s_lastPathUpdate = 0;
@@ -148,6 +160,15 @@ void PatrolBehavior::executeLogic(EntityPtr entity) {
     if (length > 0.1f) direction = direction * (1.0f / length);
     else direction.normalize();
     entity->setVelocity(direction * m_moveSpeed);
+  }
+
+  // Stall detection: if moving very slowly, reset path and advance waypoint
+  static thread_local Uint64 s_stallStart = 0; float spd = entity->getVelocity().length();
+  if (spd < 5.0f) { if (s_stallStart == 0) s_stallStart = SDL_GetTicks(); }
+  else s_stallStart = 0;
+  if (s_stallStart && SDL_GetTicks() - s_stallStart > 600) {
+    m_navPath.clear(); m_navIndex = 0; s_stallStart = 0;
+    m_currentWaypoint = (m_currentWaypoint + 1) % m_waypoints.size();
   }
 }
 
