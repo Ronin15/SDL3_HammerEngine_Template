@@ -89,10 +89,32 @@ private:
   float m_navRadius{18.0f};
   int m_recalcCounter{0};
   int m_recalcInterval{15}; // frames between path recalcs
-  // Deviation detection
+  // Improved stall detection
   float m_lastNodeDistance{std::numeric_limits<float>::infinity()};
   Uint64 m_lastProgressTime{0};
   Uint64 m_lastPathUpdate{0};
+  Uint64 m_stallStart{0};
+  Vector2D m_lastStallPosition{0, 0};
+  float m_stallPositionVariance{0.0f};
+  Uint64 m_lastUnstickTime{0};
+  // Unified cooldown management
+  struct {
+      Uint64 nextPathRequest{0};
+      Uint64 stallRecoveryUntil{0};
+      Uint64 behaviorChangeUntil{0};
+      
+      bool canRequestPath(Uint64 now) const {
+          return now >= nextPathRequest && now >= stallRecoveryUntil;
+      }
+      
+      void applyPathCooldown(Uint64 now, Uint64 cooldownMs = 600) {
+          nextPathRequest = now + cooldownMs;
+      }
+      
+      void applyStallCooldown(Uint64 now, Uint64 stallId = 0) {
+          stallRecoveryUntil = now + 200 + (stallId % 300);
+      }
+  } m_cooldowns;
 
   
 };

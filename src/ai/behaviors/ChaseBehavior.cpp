@@ -6,6 +6,9 @@
 #include "ai/behaviors/ChaseBehavior.hpp"
 #include "managers/AIManager.hpp"
 #include "ai/internal/PathFollow.hpp"
+#include "managers/CollisionManager.hpp"
+#include "ai/internal/Crowd.hpp"
+#include "core/Logger.hpp"
 
 ChaseBehavior::ChaseBehavior(float chaseSpeed, float maxRange, float minRange)
     : m_chaseSpeed(chaseSpeed), m_maxRange(maxRange), m_minRange(minRange),
@@ -74,21 +77,27 @@ void ChaseBehavior::executeLogic(EntityPtr entity) {
   if (distanceSquared <= m_maxRange * m_maxRange) {
     bool los = checkLineOfSight(entity, target);
     m_hasLineOfSight = los;
+    Uint64 now = SDL_GetTicks();
     // Refresh path with a chase-specific policy (direct, minimal detours)
     {
       using namespace AIInternal;
       PathPolicy policy;
-      policy.pathTTL = 1200;          // slightly more responsive
-      policy.noProgressWindow = 250;  // faster refresh when blocked
+      policy.pathTTL = 2500;          // Less frequent refresh for chase
+      policy.noProgressWindow = 600;  // More patience when blocked
       policy.nodeRadius = m_navRadius;
-      policy.allowDetours = false;    // keep chase assertive; fallback to direct
+      policy.allowDetours = true;     // allow small detours to slip around blocks
+      // Tighter detour ring for assertive chase
+      policy.detourRadii[0] = 48.0f;
+      policy.detourRadii[1] = 96.0f;
       policy.lateralBias = 0.0f;
-      RefreshPathWithPolicy(entity, entityPos, targetPos,
-                            m_navPath, m_navIndex, m_lastPathUpdate,
-                            m_lastProgressTime, m_lastNodeDistance,
-                            policy);
+      if (m_cooldowns.canRequestPath(now)) {
+        RefreshPathWithPolicy(entity, entityPos, targetPos,
+                              m_navPath, m_navIndex, m_lastPathUpdate,
+                              m_lastProgressTime, m_lastNodeDistance,
+                              policy);
+        m_cooldowns.applyPathCooldown(now, 600); // Apply cooldown after path request
+      }
     }
-    Uint64 now = SDL_GetTicks();
     if (distanceSquared > m_minRange * m_minRange) {
         // Follow path if available; else direct steer toward target
         if (!m_navPath.empty() && m_navIndex < m_navPath.size()) {
@@ -102,30 +111,65 @@ void ChaseBehavior::executeLogic(EntityPtr entity) {
                 entity->setVelocity(direction * m_chaseSpeed);
             } else {
                 m_lastProgressTime = now;
+                // Apply enhanced separation when following to reduce stacking (unified helper)
+                using namespace AIInternal::SeparationParams;
+                Vector2D adjusted = AIInternal::ApplySeparation(entity, entityPos,
+                                     entity->getVelocity(), m_chaseSpeed,
+                                     COMBAT_RADIUS, COMBAT_STRENGTH, COMBAT_MAX_NEIGHBORS);
+                entity->setVelocity(adjusted);
             }
         } else {
             Vector2D direction = (targetPos - entityPos);
             direction.normalize();
             entity->setVelocity(direction * m_chaseSpeed);
+            m_lastProgressTime = now;
         }
         m_isChasing = true;
-        // Stall detection for chase as well
+        // Improved stall detection for chase behavior
         float spd = entity->getVelocity().length();
-        // Scale stall threshold with configured chase speed
-        const float stallSpeed = std::max(0.5f, m_chaseSpeed * 0.5f);
+        const float stallSpeed = std::max(1.0f, m_chaseSpeed * 0.6f); // Improved threshold
+        const Uint64 stallMillis = static_cast<Uint64>(800 + (m_chaseSpeed * 100)); // Adaptive timing
+        
         if (spd < stallSpeed) {
-            if (m_lastProgressTime == 0) m_lastProgressTime = now;
-            else if (now - m_lastProgressTime > 600) {
-                // force path refresh and small jitter
-                m_navPath.clear(); m_navIndex = 0; m_lastPathUpdate = 0; m_lastProgressTime = now;
-                float jitter = ((float)rand() / RAND_MAX - 0.5f) * 0.3f;
-                Vector2D v = entity->getVelocity(); if (v.length() < 0.01f) v = Vector2D(1,0);
-                float c = std::cos(jitter), s = std::sin(jitter);
-                Vector2D rotated(v.getX()*c - v.getY()*s, v.getX()*s + v.getY()*c);
-                rotated.normalize(); entity->setVelocity(rotated * m_chaseSpeed);
+            if (m_stallStart == 0) {
+                m_stallStart = now;
+                m_lastStallPosition = entityPos;
+                m_stallPositionVariance = 0.0f;
+            } else {
+                // Calculate position variance to detect true stalls
+                float positionDiff = (entityPos - m_lastStallPosition).length();
+                m_stallPositionVariance = std::max(m_stallPositionVariance, positionDiff);
+                
+                if (now - m_stallStart >= stallMillis && m_stallPositionVariance < 10.0f) {
+                    // True stall detected - check if we need emergency unstick
+                    if (now - m_lastUnstickTime > 5000) { // Don't unstick too frequently
+                        AI_WARN("Chase entity " + std::to_string(entity->getID()) + " is truly stalled, applying emergency unstick");
+                        AIManager::Instance().forceUnstickEntity(entity);
+                        m_lastUnstickTime = now;
+                        return;
+                    } else {
+                        // Regular stall recovery
+                        m_navPath.clear();
+                        m_navIndex = 0;
+                        m_lastPathUpdate = 0;
+                        m_cooldowns.applyStallCooldown(now, entity->getID());
+                        
+                        // Apply jitter to break out of local minima
+                        float jitter = ((float)rand() / RAND_MAX - 0.5f) * 0.5f;
+                        Vector2D v = entity->getVelocity(); 
+                        if (v.length() < 0.01f) v = Vector2D(1, 0);
+                        float c = std::cos(jitter), s = std::sin(jitter);
+                        Vector2D rotated(v.getX()*c - v.getY()*s, v.getX()*s + v.getY()*c);
+                        rotated.normalize(); 
+                        entity->setVelocity(rotated * m_chaseSpeed);
+                    }
+                    m_stallStart = 0;
+                    m_stallPositionVariance = 0.0f;
+                }
             }
         } else {
-            m_lastProgressTime = now;
+            m_stallStart = 0;
+            m_stallPositionVariance = 0.0f;
         }
     } else {
         if (m_isChasing) {
@@ -147,6 +191,11 @@ void ChaseBehavior::clean(EntityPtr entity) {
   // Stop the entity's movement when cleaning up
   if (entity) {
     entity->setVelocity(Vector2D(0, 0));
+    
+    // Clear pathfinding state from AIManager
+    AIManager::Instance().clearPath(entity);
+    
+    AI_DEBUG("Cleaned ChaseBehavior for entity " + std::to_string(entity->getID()));
   }
 
   // Reset all state
@@ -154,6 +203,20 @@ void ChaseBehavior::clean(EntityPtr entity) {
   m_hasLineOfSight = false;
   m_lastKnownTargetPos = Vector2D(0, 0);
   m_timeWithoutSight = 0;
+  
+  // Clear path-following state
+  m_navPath.clear();
+  m_navIndex = 0;
+  m_lastPathUpdate = 0;
+  m_lastProgressTime = 0;
+  m_stallStart = 0;
+  m_stallPositionVariance = 0.0f;
+  m_lastUnstickTime = 0;
+  
+  // Reset cooldowns
+  m_cooldowns.nextPathRequest = 0;
+  m_cooldowns.stallRecoveryUntil = 0;
+  m_cooldowns.behaviorChangeUntil = 0;
 }
 
 void ChaseBehavior::onMessage(EntityPtr entity, const std::string &message) {

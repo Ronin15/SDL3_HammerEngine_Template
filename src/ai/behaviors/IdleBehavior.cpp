@@ -4,6 +4,8 @@
  */
 
 #include "ai/behaviors/IdleBehavior.hpp"
+#include "managers/CollisionManager.hpp"
+#include "ai/internal/Crowd.hpp"
 #include <cmath>
 
 IdleBehavior::IdleBehavior(IdleMode mode, float idleRadius)
@@ -179,6 +181,12 @@ void IdleBehavior::updateSubtleSway(EntityPtr entity, EntityState &state) {
     state.nextMovementTime = currentTime + getRandomMovementInterval();
   }
   // Keep velocity applied for smooth animation - don't reset to zero
+  // Apply very light separation so idlers don't stack perfectly
+  {
+    Vector2D adjusted = AIInternal::ApplySeparation(entity, entity->getPosition(),
+                          entity->getVelocity(), 20.0f, 20.0f, 0.12f, 3);
+    entity->setVelocity(adjusted);
+  }
 }
 
 void IdleBehavior::updateOccasionalTurn(EntityPtr entity, EntityState &state) {
@@ -210,7 +218,12 @@ void IdleBehavior::updateLightFidget(EntityPtr entity, EntityState &state) {
     state.lastMovementTime = currentTime;
     state.nextMovementTime = currentTime + getRandomMovementInterval();
   }
-  // Keep velocity applied for smooth animation
+  // Keep velocity applied for smooth animation and apply very light separation
+  {
+    Vector2D adjusted = AIInternal::ApplySeparation(entity, entity->getPosition(),
+                          entity->getVelocity(), 25.0f, 20.0f, 0.12f, 3);
+    entity->setVelocity(adjusted);
+  }
 
   // Handle turning
   if (m_turnFrequency > 0.0f && currentTime >= state.nextTurnTime) {

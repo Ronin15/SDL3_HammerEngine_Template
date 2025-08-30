@@ -146,13 +146,15 @@ private:
   // Path-following state (uses AIManager's grid)
   std::vector<Vector2D> m_navPath;
   size_t m_navIndex{0};
-  float m_navRadius{16.0f};
+  float m_navRadius{18.0f};
 
   // Per-instance progress and refresh tracking (fixes thread-local cross-entity interference)
   Uint64 m_lastPathUpdate{0};
   Uint64 m_lastProgressTime{0};
   float m_lastNodeDistance{std::numeric_limits<float>::infinity()};
   Uint64 m_stallStart{0};
+  Uint64 m_backoffUntil{0};
+  Uint64 m_lastWaypointTime{0}; // Prevent rapid waypoint switching
 };
 
 #endif // PATROL_BEHAVIOR_HPP

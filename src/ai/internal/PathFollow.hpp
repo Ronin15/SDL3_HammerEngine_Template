@@ -9,9 +9,36 @@
 
 namespace AIInternal {
 
+// Unified cooldown management to prevent overlapping backoffs
+struct CooldownState {
+    Uint64 nextPathRequest{0};
+    Uint64 stallRecoveryUntil{0};
+    Uint64 behaviorChangeUntil{0};
+    
+    bool canRequestPath(Uint64 now) const {
+        return now >= nextPathRequest && now >= stallRecoveryUntil;
+    }
+    
+    bool canChangeBehavior(Uint64 now) const {
+        return now >= behaviorChangeUntil;
+    }
+    
+    void applyPathCooldown(Uint64 now, Uint64 cooldownMs = 800) {
+        nextPathRequest = now + cooldownMs;
+    }
+    
+    void applyStallCooldown(Uint64 now, Uint64 stallId = 0) {
+        stallRecoveryUntil = now + 250 + (stallId % 400);
+    }
+    
+    void applyBehaviorCooldown(Uint64 now, Uint64 cooldownMs = 500) {
+        behaviorChangeUntil = now + cooldownMs;
+    }
+};
+
 struct PathPolicy {
-    Uint64 pathTTL{1500};            // ms
-    Uint64 noProgressWindow{300};    // ms
+    Uint64 pathTTL{3000};            // ms - increased from 1500 to reduce refresh frequency
+    Uint64 noProgressWindow{800};    // ms - increased from 300 to be more patient
     float nodeRadius{16.0f};
     bool allowDetours{true};
     // Detour sampling
@@ -19,6 +46,15 @@ struct PathPolicy {
     float detourRadii[2]{80.0f, 140.0f};
     // Lateral lane bias while following (0=off)
     float lateralBias{0.0f}; // 0.0..~0.25
+    
+    // Adaptive stall detection
+    float getStallThreshold(float entitySpeed) const {
+        return std::max(1.0f, entitySpeed * 0.6f);
+    }
+    
+    Uint64 getStallTimeThreshold(float entitySpeed) const {
+        return static_cast<Uint64>(800 + (entitySpeed * 100));
+    }
 };
 
 // Clamp a world-space point within current world bounds (with margin)

@@ -89,18 +89,40 @@ private:
     Uint64 lastPathUpdate{0};
     Uint64 lastProgressTime{0};
     float lastNodeDistance{std::numeric_limits<float>::infinity()};
-    float navRadius{14.0f};
-    // Stall detection
+    float navRadius{18.0f};
+    // Improved stall detection
     Uint64 stallStart{0};
-    // Path request cooldown to avoid spamming
-    Uint64 nextPathAllowed{0};
+    Vector2D lastStallPosition{0, 0};
+    float stallPositionVariance{0.0f};
+    Uint64 lastUnstickTime{0};
+    // Unified cooldown management
+    struct {
+        Uint64 nextPathRequest{0};
+        Uint64 stallRecoveryUntil{0};
+        Uint64 behaviorChangeUntil{0};
+        
+        bool canRequestPath(Uint64 now) const {
+            return now >= nextPathRequest && now >= stallRecoveryUntil;
+        }
+        
+        void applyPathCooldown(Uint64 now, Uint64 cooldownMs = 800) {
+            nextPathRequest = now + cooldownMs;
+        }
+        
+        void applyStallCooldown(Uint64 now, Uint64 stallId = 0) {
+            stallRecoveryUntil = now + 250 + (stallId % 400);
+        }
+    } cooldowns;
 
     // Constructor to ensure proper initialization
     EntityState()
         : currentDirection(0, 0), lastDirectionChangeTime(0),
           currentlyWanderingOffscreen(false), resetScheduled(false),
           lastDirectionFlip(0), startDelay(0), movementStarted(false),
-          pathPoints(), currentPathIndex(0), lastPathUpdate(0), navRadius(14.0f), stallStart(0), nextPathAllowed(0) {}
+          pathPoints(), currentPathIndex(0), lastPathUpdate(0), 
+          lastProgressTime(0), lastNodeDistance(std::numeric_limits<float>::infinity()),
+          navRadius(18.0f), stallStart(0), lastStallPosition(0, 0), 
+          stallPositionVariance(0.0f), lastUnstickTime(0) {}
   };
 
   // Map to store per-entity state using shared_ptr as key

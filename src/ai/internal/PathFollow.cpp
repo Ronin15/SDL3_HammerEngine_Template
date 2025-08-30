@@ -3,6 +3,7 @@
 #include "managers/WorldManager.hpp"
 #include <algorithm>
 #include <cmath>
+#include <unordered_map>
 
 namespace AIInternal {
 
@@ -54,9 +55,19 @@ bool RefreshPathWithPolicy(
     bool needRefresh = pathPoints.empty() || currentPathIndex >= pathPoints.size();
     if (!needRefresh && currentPathIndex < pathPoints.size()) {
         float d = (pathPoints[currentPathIndex] - currentPos).length();
-        if (d + 1.0f < lastNodeDistance) { lastNodeDistance = d; lastProgressTime = now; }
-        else if (lastProgressTime == 0) { lastProgressTime = now; }
-        else if (now - lastProgressTime > policy.noProgressWindow) { needRefresh = true; }
+        // More lenient progress detection - require meaningful distance reduction
+        if (d + 3.0f < lastNodeDistance) { // Increased threshold from 2.0f to 3.0f
+            lastNodeDistance = d; 
+            lastProgressTime = now; 
+        } else if (lastProgressTime == 0) { 
+            lastProgressTime = now; 
+        } else if (now - lastProgressTime > policy.noProgressWindow) { 
+            // Additional check: only refresh if we're not very close to the current node
+            // This prevents constant refreshing when entity is near but can't reach the exact node
+            if (d > policy.nodeRadius * 3.0f) { // Increased from 2.0f to 3.0f for more stability
+                needRefresh = true; 
+            }
+        }
     }
     if (now - lastPathUpdate > policy.pathTTL) needRefresh = true;
     if (!needRefresh) return false;
@@ -66,15 +77,34 @@ bool RefreshPathWithPolicy(
     requestTo(entity, currentPos, clampedGoal, pathPoints, currentPathIndex, lastPathUpdate, now, lastProgressTime, lastNodeDistance);
     if (!pathPoints.empty() || !policy.allowDetours) return true;
 
-    // Try detours around the goal
-    for (float r : policy.detourRadii) {
-        for (float a : policy.detourAngles) {
-            Vector2D offset(std::cos(a) * r, std::sin(a) * r);
-            Vector2D alt = ClampToWorld(clampedGoal + offset);
-            requestTo(entity, currentPos, alt, pathPoints, currentPathIndex, lastPathUpdate, now, lastProgressTime, lastNodeDistance);
-            if (!pathPoints.empty()) return true;
+    // Try detours around the goal, but only if we haven't tried too many times recently
+    static thread_local std::unordered_map<EntityID, Uint64> lastDetourAttempt;
+    EntityID entityId = entity->getID();
+    
+    if (now - lastDetourAttempt[entityId] > 2000) { // Don't spam detours
+        lastDetourAttempt[entityId] = now;
+        
+        for (float r : policy.detourRadii) {
+            for (float a : policy.detourAngles) {
+                Vector2D offset(std::cos(a) * r, std::sin(a) * r);
+                Vector2D alt = ClampToWorld(clampedGoal + offset);
+                requestTo(entity, currentPos, alt, pathPoints, currentPathIndex, lastPathUpdate, now, lastProgressTime, lastNodeDistance);
+                if (!pathPoints.empty()) return true;
+            }
         }
     }
+    
+    // If we still have no path, set a temporary fallback goal in the general direction
+    if (pathPoints.empty()) {
+        Vector2D direction = clampedGoal - currentPos;
+        if (direction.length() > 0.1f) {
+            direction.normalize();
+            Vector2D fallbackGoal = currentPos + direction * 100.0f; // Move 100px in the right direction
+            fallbackGoal = ClampToWorld(fallbackGoal);
+            requestTo(entity, currentPos, fallbackGoal, pathPoints, currentPathIndex, lastPathUpdate, now, lastProgressTime, lastNodeDistance);
+        }
+    }
+    
     return true; // refreshed, but path may still be empty
 }
 

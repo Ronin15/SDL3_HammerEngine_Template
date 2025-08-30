@@ -71,6 +71,11 @@ public:
     // Queries
     bool overlaps(EntityID a, EntityID b) const;
     void queryArea(const AABB& area, std::vector<EntityID>& out) const;
+    // Query a body's center by id; returns true if found
+    bool getBodyCenter(EntityID id, Vector2D& outCenter) const;
+    // Type/flags helpers for filtering
+    bool isDynamic(EntityID id) const;
+    bool isTrigger(EntityID id) const;
 
     // World coupling
     void rebuildStaticFromWorld();                // build colliders from WorldManager grid

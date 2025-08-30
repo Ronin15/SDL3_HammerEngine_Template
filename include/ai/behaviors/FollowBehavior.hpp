@@ -88,6 +88,7 @@ private:
     Uint64 lastPathUpdate{0};
     float lastNodeDistance{std::numeric_limits<float>::infinity()};
     Uint64 lastProgressTime{0};
+    Uint64 backoffUntil{0};
 
     EntityState()
         : lastTargetPosition(0, 0), currentVelocity(0, 0),
@@ -95,7 +96,7 @@ private:
           stationaryStartTime(0), currentSpeed(0.0f), currentHeading(0.0f),
           isFollowing(false), targetMoving(false), inFormation(true),
           formationSlot(0), currentPathIndex(0), lastPathUpdate(0),
-          lastNodeDistance(std::numeric_limits<float>::infinity()), lastProgressTime(0) {}
+          lastNodeDistance(std::numeric_limits<float>::infinity()), lastProgressTime(0), backoffUntil(0) {}
   };
 
   // Map to store per-entity state
