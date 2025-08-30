@@ -5,6 +5,7 @@
 
 #include "ai/behaviors/ChaseBehavior.hpp"
 #include "managers/AIManager.hpp"
+#include "ai/internal/PathFollow.hpp"
 
 ChaseBehavior::ChaseBehavior(float chaseSpeed, float maxRange, float minRange)
     : m_chaseSpeed(chaseSpeed), m_maxRange(maxRange), m_minRange(minRange),
@@ -73,41 +74,33 @@ void ChaseBehavior::executeLogic(EntityPtr entity) {
   if (distanceSquared <= m_maxRange * m_maxRange) {
     bool los = checkLineOfSight(entity, target);
     m_hasLineOfSight = los;
-    // Recalculate path with TTL or when no progress
+    // Refresh path with a chase-specific policy (direct, minimal detours)
+    {
+      using namespace AIInternal;
+      PathPolicy policy;
+      policy.pathTTL = 1200;          // slightly more responsive
+      policy.noProgressWindow = 250;  // faster refresh when blocked
+      policy.nodeRadius = m_navRadius;
+      policy.allowDetours = false;    // keep chase assertive; fallback to direct
+      policy.lateralBias = 0.0f;
+      RefreshPathWithPolicy(entity, entityPos, targetPos,
+                            m_navPath, m_navIndex, m_lastPathUpdate,
+                            m_lastProgressTime, m_lastNodeDistance,
+                            policy);
+    }
     Uint64 now = SDL_GetTicks();
-    const Uint64 pathTTL = 1500; // ms
-    const Uint64 noProgressWindow = 300; // ms
-    bool needRefresh = (!los);
-    if (!needRefresh && !m_navPath.empty() && m_navIndex < m_navPath.size()) {
-        float d = (m_navPath[m_navIndex] - entityPos).length();
-        if (d + 1.0f < m_lastNodeDistance) { m_lastNodeDistance = d; m_lastProgressTime = now; }
-        else if (m_lastProgressTime == 0) { m_lastProgressTime = now; }
-        else if (now - m_lastProgressTime > noProgressWindow) { needRefresh = true; }
-    } else if (m_navPath.empty() || m_navIndex >= m_navPath.size()) {
-        needRefresh = true;
-    }
-    if (now - m_lastPathUpdate > pathTTL) needRefresh = true;
-    if (needRefresh) {
-        AIManager::Instance().requestPath(entity, entityPos, targetPos);
-        m_navPath = AIManager::Instance().getPath(entity);
-        m_navIndex = 0;
-        m_lastPathUpdate = now;
-        m_lastNodeDistance = std::numeric_limits<float>::infinity();
-        m_lastProgressTime = now;
-    }
     if (distanceSquared > m_minRange * m_minRange) {
         // Follow path if available; else direct steer toward target
         if (!m_navPath.empty() && m_navIndex < m_navPath.size()) {
-            Vector2D targetNode = m_navPath[m_navIndex];
-            Vector2D dir = targetNode - entityPos;
-            float len = dir.length();
-            if (len > 0.01f) {
-                dir = dir * (1.0f / len);
-                entity->setVelocity(dir * m_chaseSpeed);
-            }
-            if ((targetNode - entityPos).length() <= m_navRadius) {
-                ++m_navIndex;
-                m_lastNodeDistance = std::numeric_limits<float>::infinity();
+            using namespace AIInternal;
+            bool following = FollowPathStepWithPolicy(entity, entityPos,
+                                 m_navPath, m_navIndex,
+                                 m_chaseSpeed, m_navRadius, 0.0f);
+            if (!following) {
+                Vector2D direction = (targetPos - entityPos);
+                direction.normalize();
+                entity->setVelocity(direction * m_chaseSpeed);
+            } else {
                 m_lastProgressTime = now;
             }
         } else {

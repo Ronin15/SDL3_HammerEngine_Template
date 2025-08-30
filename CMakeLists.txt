@@ -84,6 +84,11 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # Export compile commands for use with tools like clangd
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+# Internal-only headers live under src/. Expose that path privately to the
+# object library so implementation files can include ai/internal/* without
+# leaking into the public API surface.
+set(INTERNAL_SRC_INCLUDE "${CMAKE_CURRENT_SOURCE_DIR}/src")
+
 # Copy compile_commands.json to project root after build
 add_custom_target(copy-compile-commands ALL
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
@@ -204,6 +209,9 @@ target_include_directories(HammerEngineObjects PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include/ui
     ${CMAKE_CURRENT_SOURCE_DIR}/include/world
     ${CMAKE_CURRENT_SOURCE_DIR}/include/collisions
+)
+target_include_directories(HammerEngineObjects PRIVATE
+    ${INTERNAL_SRC_INCLUDE}
 )
 target_link_libraries(HammerEngineObjects PUBLIC
     SDL3::SDL3

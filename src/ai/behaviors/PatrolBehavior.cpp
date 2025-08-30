@@ -8,6 +8,7 @@
 #include "entities/NPC.hpp"
 #include "managers/AIManager.hpp"
 #include "managers/WorldManager.hpp"
+#include "ai/internal/PathFollow.hpp"
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -98,23 +99,19 @@ void PatrolBehavior::executeLogic(EntityPtr entity) {
     targetWaypoint.setY(std::clamp(targetWaypoint.getY(), worldMinY, worldMaxY));
   }
 
-  // Request/refresh path to current waypoint if needed (per-instance state)
-  Uint64 now = SDL_GetTicks();
-  bool needRefresh = m_navPath.empty() || m_navIndex >= m_navPath.size();
-  if (!needRefresh && m_navIndex < m_navPath.size()) {
-    float d = (m_navPath[m_navIndex] - position).length();
-    if (d + 1.0f < m_lastNodeDistance) { m_lastNodeDistance = d; m_lastProgressTime = now; }
-    else if (m_lastProgressTime == 0) { m_lastProgressTime = now; }
-    else if (now - m_lastProgressTime > 300) { needRefresh = true; }
-  }
-  if (now - m_lastPathUpdate > 1500) needRefresh = true;
-  if (needRefresh) {
-    AIManager::Instance().requestPath(entity, position, targetWaypoint);
-    m_navPath = AIManager::Instance().getPath(entity);
-    m_navIndex = 0;
-    m_lastPathUpdate = now;
-    m_lastNodeDistance = std::numeric_limits<float>::infinity();
-    m_lastProgressTime = now;
+  // Refresh path using shared policy (no lane bias for patrol)
+  {
+    using namespace AIInternal;
+    PathPolicy policy;
+    policy.pathTTL = 1500;
+    policy.noProgressWindow = 300;
+    policy.nodeRadius = m_navRadius;
+    policy.allowDetours = true;
+    policy.lateralBias = 0.0f;
+    RefreshPathWithPolicy(entity, position, targetWaypoint,
+                          m_navPath, m_navIndex, m_lastPathUpdate,
+                          m_lastProgressTime, m_lastNodeDistance,
+                          policy);
   }
 
   if (isAtWaypoint(position, targetWaypoint)) {
@@ -139,18 +136,9 @@ void PatrolBehavior::executeLogic(EntityPtr entity) {
 
   // Follow nav path if available; otherwise, direct seek
   if (!m_navPath.empty() && m_navIndex < m_navPath.size()) {
-    Vector2D target = m_navPath[m_navIndex];
-    Vector2D dir = target - position;
-    float len = dir.length();
-    if (len > 0.01f) {
-      dir = dir * (1.0f / len);
-      entity->setVelocity(dir * m_moveSpeed);
-    } else {
-      entity->setVelocity(Vector2D(0, 0));
-    }
-    if ((target - position).length() <= m_navRadius) {
-      ++m_navIndex;
-    }
+    using namespace AIInternal;
+    FollowPathStepWithPolicy(entity, position, m_navPath, m_navIndex,
+                             m_moveSpeed, m_navRadius, 0.0f);
   } else {
     Vector2D direction = targetWaypoint - position;
     float length = direction.length();

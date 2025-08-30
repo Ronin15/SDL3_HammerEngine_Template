@@ -87,6 +87,8 @@ private:
     std::vector<Vector2D> pathPoints;
     size_t currentPathIndex{0};
     Uint64 lastPathUpdate{0};
+    Uint64 lastProgressTime{0};
+    float lastNodeDistance{std::numeric_limits<float>::infinity()};
     float navRadius{14.0f};
     // Stall detection
     Uint64 stallStart{0};

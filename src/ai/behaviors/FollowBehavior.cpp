@@ -5,6 +5,7 @@
 
 #include "ai/behaviors/FollowBehavior.hpp"
 #include "managers/AIManager.hpp"
+#include "ai/internal/PathFollow.hpp"
 #include <algorithm>
 #include <cmath>
 #include "managers/WorldManager.hpp"
@@ -135,59 +136,21 @@ void FollowBehavior::executeLogic(EntityPtr entity) {
   if (state.isFollowing) {
     // Path-following to desired position if available
     auto tryFollowPath = [&](Vector2D desiredPos, float speed)->bool {
-      Uint64 now = SDL_GetTicks();
-      // Clamp desired to world bounds to avoid edge jams
-      float minX, minY, maxX, maxY;
-      if (WorldManager::Instance().getWorldBounds(minX, minY, maxX, maxY)) {
-        const float TILE = 32.0f; const float margin = 16.0f;
-        float worldMinX = minX * TILE + margin;
-        float worldMinY = minY * TILE + margin;
-        float worldMaxX = maxX * TILE - margin;
-        float worldMaxY = maxY * TILE - margin;
-        desiredPos.setX(std::clamp(desiredPos.getX(), worldMinX, worldMaxX));
-        desiredPos.setY(std::clamp(desiredPos.getY(), worldMinY, worldMaxY));
-      }
-      // Refresh if TTL expired or no progress towards node
-      const Uint64 pathTTL = 1500; // ms
-      const Uint64 noProgressWindow = 300; // ms
-      bool needRefresh = state.pathPoints.empty() || state.currentPathIndex >= state.pathPoints.size();
-      if (!needRefresh && state.currentPathIndex < state.pathPoints.size()) {
-        float d = (state.pathPoints[state.currentPathIndex] - currentPos).length();
-        if (d + 1.0f < state.lastNodeDistance) { // progressed
-          state.lastNodeDistance = d;
-          state.lastProgressTime = now;
-        } else if (state.lastProgressTime == 0) {
-          state.lastProgressTime = now;
-        } else if (now - state.lastProgressTime > noProgressWindow) {
-          needRefresh = true;
-        }
-      }
-      if (now - state.lastPathUpdate > pathTTL) needRefresh = true;
-      if (needRefresh) {
-        AIManager::Instance().requestPath(entity, currentPos, desiredPos);
-        state.pathPoints = AIManager::Instance().getPath(entity);
-        state.currentPathIndex = 0;
-        state.lastPathUpdate = now;
-        state.lastNodeDistance = std::numeric_limits<float>::infinity();
-        state.lastProgressTime = now;
-      }
-      if (!state.pathPoints.empty() && state.currentPathIndex < state.pathPoints.size()) {
-        Vector2D node = state.pathPoints[state.currentPathIndex];
-        Vector2D dir = node - currentPos;
-        float len = dir.length();
-        if (len > 0.01f) {
-          dir = dir * (1.0f / len);
-          entity->setVelocity(dir * speed);
-        }
-        float dist = (node - currentPos).length();
-        if (dist <= 16.0f) {
-          ++state.currentPathIndex;
-          state.lastNodeDistance = std::numeric_limits<float>::infinity();
-          state.lastProgressTime = now;
-        }
-        return true;
-      }
-      return false;
+      using namespace AIInternal;
+      PathPolicy policy;
+      policy.pathTTL = 1500;
+      policy.noProgressWindow = 300;
+      policy.nodeRadius = 16.0f;
+      policy.allowDetours = true;
+      policy.lateralBias = 0.18f; // small lane bias for followers
+      RefreshPathWithPolicy(entity, currentPos, desiredPos,
+                            state.pathPoints, state.currentPathIndex,
+                            state.lastPathUpdate, state.lastProgressTime,
+                            state.lastNodeDistance, policy);
+      bool following = FollowPathStepWithPolicy(entity, currentPos,
+                            state.pathPoints, state.currentPathIndex,
+                            speed, policy.nodeRadius, policy.lateralBias);
+      return following;
     };
 
     // Stall detection: scale threshold with configured follow speed to avoid false stalls at low speeds
