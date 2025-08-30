@@ -5,6 +5,7 @@
 
 #include "ai/behaviors/FleeBehavior.hpp"
 #include "managers/AIManager.hpp"
+#include "managers/WorldManager.hpp"
 #include <cmath>
 #include <algorithm>
 
@@ -363,25 +364,72 @@ void FleeBehavior::updateStrategicRetreat(EntityPtr entity, EntityState& state) 
     
     Vector2D currentPos = entity->getPosition();
     Uint64 currentTime = SDL_GetTicks();
-    
-    // Strategic retreat: plan a good escape route
+
+    // Strategic retreat: aim for a point away from threat (or toward nearest safe zone)
     if (currentTime - state.lastDirectionChange > 1000 || state.fleeDirection.length() < 0.001f) {
         state.fleeDirection = calculateFleeDirection(entity, threat, state);
-        
-        // Look for safe zones
+
+        // Blend with nearest safe zone direction if exists
         Vector2D safeZoneDirection = findNearestSafeZone(currentPos);
         if (safeZoneDirection.length() > 0.001f) {
-            // Blend flee direction with safe zone direction
             Vector2D blended = (state.fleeDirection * 0.6f + normalizeVector(safeZoneDirection) * 0.4f);
             state.fleeDirection = normalizeVector(blended);
         }
-        
         state.lastDirectionChange = currentTime;
     }
-    
+
+    // Compute a retreat destination several tiles ahead and clamp to world bounds
+    Vector2D dest = currentPos + state.fleeDirection * 220.0f;
+    float minX, minY, maxX, maxY;
+    if (WorldManager::Instance().getWorldBounds(minX, minY, maxX, maxY)) {
+        const float TILE = 32.0f; const float margin = 16.0f;
+        float worldMinX = minX * TILE + margin;
+        float worldMinY = minY * TILE + margin;
+        float worldMaxX = maxX * TILE - margin;
+        float worldMaxY = maxY * TILE - margin;
+        dest.setX(std::clamp(dest.getX(), worldMinX, worldMaxX));
+        dest.setY(std::clamp(dest.getY(), worldMinY, worldMaxY));
+    }
+
+    // Try to path toward the retreat destination with TTL and no-progress checks
+    auto tryFollowPath = [&](const Vector2D &goal, float speed)->bool {
+        Uint64 now = SDL_GetTicks();
+        const Uint64 pathTTL = 1500; const Uint64 noProgressWindow = 300;
+        bool needRefresh = state.pathPoints.empty() || state.currentPathIndex >= state.pathPoints.size();
+        if (!needRefresh && state.currentPathIndex < state.pathPoints.size()) {
+            float d = (state.pathPoints[state.currentPathIndex] - currentPos).length();
+            if (d + 1.0f < state.lastNodeDistance) { state.lastNodeDistance = d; state.lastProgressTime = now; }
+            else if (state.lastProgressTime == 0) { state.lastProgressTime = now; }
+            else if (now - state.lastProgressTime > noProgressWindow) { needRefresh = true; }
+        }
+        if (now - state.lastPathUpdate > pathTTL) needRefresh = true;
+        if (needRefresh && now >= state.nextPathAllowed) {
+            AIManager::Instance().requestPath(entity, currentPos, goal);
+            state.pathPoints = AIManager::Instance().getPath(entity);
+            state.currentPathIndex = 0;
+            state.lastPathUpdate = now;
+            state.lastNodeDistance = std::numeric_limits<float>::infinity();
+            state.lastProgressTime = now;
+            state.nextPathAllowed = now + 800; // cooldown
+        }
+        if (!state.pathPoints.empty() && state.currentPathIndex < state.pathPoints.size()) {
+            Vector2D node = state.pathPoints[state.currentPathIndex];
+            Vector2D dir = node - currentPos; float len = dir.length();
+            if (len > 0.01f) { dir = dir * (1.0f/len); entity->setVelocity(dir * speed); }
+            if ((node - currentPos).length() <= state.navRadius) {
+                ++state.currentPathIndex; state.lastNodeDistance = std::numeric_limits<float>::infinity(); state.lastProgressTime = now;
+            }
+            return true;
+        }
+        return false;
+    };
+
     float speedModifier = calculateFleeSpeedModifier(state);
-    Vector2D velocity = state.fleeDirection * m_fleeSpeed * speedModifier;
-    entity->setVelocity(velocity);
+    if (!tryFollowPath(dest, m_fleeSpeed * speedModifier)) {
+        // Fallback to direct flee when no path available
+        Vector2D velocity = state.fleeDirection * m_fleeSpeed * speedModifier;
+        entity->setVelocity(velocity);
+    }
 }
 
 void FleeBehavior::updateEvasiveManeuver(EntityPtr entity, EntityState& state) {
@@ -417,22 +465,73 @@ void FleeBehavior::updateEvasiveManeuver(EntityPtr entity, EntityState& state) {
 }
 
 void FleeBehavior::updateSeekCover(EntityPtr entity, EntityState& state) {
-    // Return to guard post  
+    // Move toward nearest safe zone using pathfinding when possible
     Vector2D currentPos = entity->getPosition();
     Vector2D safeZoneDirection = findNearestSafeZone(currentPos);
-    
+
+    Vector2D dest = currentPos;
     if (safeZoneDirection.length() > 0.001f) {
         state.fleeDirection = normalizeVector(safeZoneDirection);
+        dest = currentPos + state.fleeDirection * 240.0f;
     } else {
-        // No safe zones, use regular flee behavior
+        // No safe zones, move away from threat
         EntityPtr threat = getThreat();
         if (threat) {
             state.fleeDirection = calculateFleeDirection(entity, threat, state);
+            dest = currentPos + state.fleeDirection * 200.0f;
         }
     }
+
+    // Clamp destination within world bounds
+    float minX, minY, maxX, maxY;
+    if (WorldManager::Instance().getWorldBounds(minX, minY, maxX, maxY)) {
+        const float TILE = 32.0f; const float margin = 16.0f;
+        float worldMinX = minX * TILE + margin;
+        float worldMinY = minY * TILE + margin;
+        float worldMaxX = maxX * TILE - margin;
+        float worldMaxY = maxY * TILE - margin;
+        dest.setX(std::clamp(dest.getX(), worldMinX, worldMaxX));
+        dest.setY(std::clamp(dest.getY(), worldMinY, worldMaxY));
+    }
+
+    auto tryFollowPath = [&](const Vector2D &goal, float speed)->bool {
+        Uint64 now = SDL_GetTicks();
+        const Uint64 pathTTL = 1500; const Uint64 noProgressWindow = 300;
+        bool needRefresh = state.pathPoints.empty() || state.currentPathIndex >= state.pathPoints.size();
+        if (!needRefresh && state.currentPathIndex < state.pathPoints.size()) {
+            float d = (state.pathPoints[state.currentPathIndex] - currentPos).length();
+            if (d + 1.0f < state.lastNodeDistance) { state.lastNodeDistance = d; state.lastProgressTime = now; }
+            else if (state.lastProgressTime == 0) { state.lastProgressTime = now; }
+            else if (now - state.lastProgressTime > noProgressWindow) { needRefresh = true; }
+        }
+        if (now - state.lastPathUpdate > pathTTL) needRefresh = true;
+        if (needRefresh && now >= state.nextPathAllowed) {
+            AIManager::Instance().requestPath(entity, currentPos, goal);
+            state.pathPoints = AIManager::Instance().getPath(entity);
+            state.currentPathIndex = 0;
+            state.lastPathUpdate = now;
+            state.lastNodeDistance = std::numeric_limits<float>::infinity();
+            state.lastProgressTime = now;
+            state.nextPathAllowed = now + 800;
+        }
+        if (!state.pathPoints.empty() && state.currentPathIndex < state.pathPoints.size()) {
+            Vector2D node = state.pathPoints[state.currentPathIndex];
+            Vector2D dir = node - currentPos; float len = dir.length();
+            if (len > 0.01f) { dir = dir * (1.0f/len); entity->setVelocity(dir * speed); }
+            if ((node - currentPos).length() <= state.navRadius) {
+                ++state.currentPathIndex; state.lastNodeDistance = std::numeric_limits<float>::infinity(); state.lastProgressTime = now;
+            }
+            return true;
+        }
+        return false;
+    };
+
     float speedModifier = calculateFleeSpeedModifier(state);
-    Vector2D velocity = state.fleeDirection * m_fleeSpeed * speedModifier;
-    entity->setVelocity(velocity);
+    if (!tryFollowPath(dest, m_fleeSpeed * speedModifier)) {
+        // Fallback to straight-line movement
+        Vector2D velocity = state.fleeDirection * m_fleeSpeed * speedModifier;
+        entity->setVelocity(velocity);
+    }
 }
 
 void FleeBehavior::updateStamina(EntityState& state, float deltaTime, bool fleeing) {

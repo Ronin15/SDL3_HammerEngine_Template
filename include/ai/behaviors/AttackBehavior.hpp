@@ -135,6 +135,14 @@ private:
     float preferredAttackAngle{0.0f};
     int strafeDirectionInt{1}; // 1 for clockwise, -1 for counter-clockwise
 
+    // Lightweight per-entity path-following state
+    std::vector<Vector2D> pathPoints;      // queued path nodes
+    size_t currentPathIndex{0};            // current node index
+    Uint64 lastPathUpdate{0};              // last time we refreshed the path
+    Uint64 lastProgressTime{0};            // last time we made progress
+    float lastNodeDistance{std::numeric_limits<float>::infinity()};
+    float navRadius{18.0f};                // node snap radius
+
     EntityState()
         : lastTargetPosition(0, 0), attackPosition(0, 0), retreatPosition(0, 0),
           strafeVector(0, 0), currentState(AttackState::SEEKING),
@@ -146,7 +154,10 @@ private:
           isCharging(false), isRetreating(false), canAttack(true),
           lastAttackHit(false), specialAttackReady(false),
           circleStrafing(false), flanking(false), preferredAttackAngle(0.0f),
-          strafeDirectionInt(1) {}
+          strafeDirectionInt(1), pathPoints(), currentPathIndex(0),
+          lastPathUpdate(0), lastProgressTime(0),
+          lastNodeDistance(std::numeric_limits<float>::infinity()),
+          navRadius(18.0f) {}
   };
 
   // Map to store per-entity state
