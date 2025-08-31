@@ -153,20 +153,43 @@ void FollowBehavior::executeLogic(EntityPtr entity) {
         if (following) { state.lastProgressTime = SDL_GetTicks(); }
         return following;
       }
-      RefreshPathWithPolicy(entity, currentPos, desiredPos,
+
+      // Use async pathfinding if enabled
+      if (m_useAsyncPathfinding) {
+        int priority = 2; // Follow behavior is normal priority (0=Critical, 1=High, 2=Normal, 3=Low)
+        bool following = RefreshPathWithPolicyAsync(entity, currentPos, desiredPos,
                             state.pathPoints, state.currentPathIndex,
                             state.lastPathUpdate, state.lastProgressTime,
-                            state.lastNodeDistance, policy);
-      bool following = FollowPathStepWithPolicy(entity, currentPos,
+                            state.lastNodeDistance, policy, priority);
+        if (following) { state.lastProgressTime = SDL_GetTicks(); }
+        
+        bool pathStep = FollowPathStepWithPolicy(entity, currentPos,
                             state.pathPoints, state.currentPathIndex,
                             speed, policy.nodeRadius, policy.lateralBias);
-      if (following) { state.lastProgressTime = SDL_GetTicks(); }
-      if (following) {
-        Vector2D adjusted = AIInternal::ApplySeparation(entity, currentPos,
+        if (pathStep) { state.lastProgressTime = SDL_GetTicks(); }
+        
+        if (pathStep) {
+          Vector2D adjusted = AIInternal::ApplySeparation(entity, currentPos,
                               entity->getVelocity(), speed, 26.0f, 0.22f, 4);
-        entity->setVelocity(adjusted);
+          entity->setVelocity(adjusted);
+        }
+        return pathStep;
+      } else {
+        RefreshPathWithPolicy(entity, currentPos, desiredPos,
+                              state.pathPoints, state.currentPathIndex,
+                              state.lastPathUpdate, state.lastProgressTime,
+                              state.lastNodeDistance, policy);
+        bool following = FollowPathStepWithPolicy(entity, currentPos,
+                              state.pathPoints, state.currentPathIndex,
+                              speed, policy.nodeRadius, policy.lateralBias);
+        if (following) { state.lastProgressTime = SDL_GetTicks(); }
+        if (following) {
+          Vector2D adjusted = AIInternal::ApplySeparation(entity, currentPos,
+                                entity->getVelocity(), speed, 26.0f, 0.22f, 4);
+          entity->setVelocity(adjusted);
+        }
+        return following;
       }
-      return following;
     };
 
     // Stall detection: scale threshold with configured follow speed to avoid false stalls at low speeds
@@ -383,6 +406,7 @@ std::shared_ptr<AIBehavior> FollowBehavior::clone() const {
   clone->m_stopWhenTargetStops = m_stopWhenTargetStops;
   clone->m_predictiveFollowing = m_predictiveFollowing;
   clone->m_predictionTime = m_predictionTime;
+  clone->m_useAsyncPathfinding = m_useAsyncPathfinding;
   return clone;
 }
 

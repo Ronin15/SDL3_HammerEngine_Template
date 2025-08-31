@@ -162,9 +162,7 @@ void FleeBehavior::onMessage(EntityPtr entity, const std::string& message) {
     }
 }
 
-std::string FleeBehavior::getName() const {
-    return "Flee";
-}
+std::string FleeBehavior::getName() const { return "Flee"; }
 
 void FleeBehavior::setFleeSpeed(float speed) {
     m_fleeSpeed = std::max(0.1f, speed);
@@ -404,13 +402,28 @@ void FleeBehavior::updateStrategicRetreat(EntityPtr entity, EntityState& state) 
         }
         if (now - state.lastPathUpdate > pathTTL) needRefresh = true;
         if (needRefresh && now >= state.nextPathAllowed) {
-            AIManager::Instance().requestPath(entity, currentPos, goal);
-            state.pathPoints = AIManager::Instance().getPath(entity);
-            state.currentPathIndex = 0;
-            state.lastPathUpdate = now;
-            state.lastNodeDistance = std::numeric_limits<float>::infinity();
-            state.lastProgressTime = now;
-            state.nextPathAllowed = now + 800; // cooldown
+            if (m_useAsyncPathfinding) {
+                AIManager::Instance().requestPathAsync(entity, currentPos, goal, AIManager::PathPriority::High);
+                if (AIManager::Instance().hasAsyncPath(entity)) {
+                    state.pathPoints = AIManager::Instance().getAsyncPath(entity);
+                    state.currentPathIndex = 0;
+                    state.lastPathUpdate = now;
+                    state.lastNodeDistance = std::numeric_limits<float>::infinity();
+                    state.lastProgressTime = now;
+                    state.nextPathAllowed = now + 800; // cooldown
+                } else {
+                    // Async path not ready, apply cooldown to prevent spam
+                    state.nextPathAllowed = now + 600; // Shorter cooldown for flee (more urgent)
+                }
+            } else {
+                AIManager::Instance().requestPath(entity, currentPos, goal);
+                state.pathPoints = AIManager::Instance().getPath(entity);
+                state.currentPathIndex = 0;
+                state.lastPathUpdate = now;
+                state.lastNodeDistance = std::numeric_limits<float>::infinity();
+                state.lastProgressTime = now;
+                state.nextPathAllowed = now + 800; // cooldown
+            }
         }
         if (!state.pathPoints.empty() && state.currentPathIndex < state.pathPoints.size()) {
             Vector2D node = state.pathPoints[state.currentPathIndex];
@@ -506,13 +519,28 @@ void FleeBehavior::updateSeekCover(EntityPtr entity, EntityState& state) {
         }
         if (now - state.lastPathUpdate > pathTTL) needRefresh = true;
         if (needRefresh && now >= state.nextPathAllowed) {
-            AIManager::Instance().requestPath(entity, currentPos, goal);
-            state.pathPoints = AIManager::Instance().getPath(entity);
-            state.currentPathIndex = 0;
-            state.lastPathUpdate = now;
-            state.lastNodeDistance = std::numeric_limits<float>::infinity();
-            state.lastProgressTime = now;
-            state.nextPathAllowed = now + 800;
+            if (m_useAsyncPathfinding) {
+                AIManager::Instance().requestPathAsync(entity, currentPos, goal, AIManager::PathPriority::High);
+                if (AIManager::Instance().hasAsyncPath(entity)) {
+                    state.pathPoints = AIManager::Instance().getAsyncPath(entity);
+                    state.currentPathIndex = 0;
+                    state.lastPathUpdate = now;
+                    state.lastNodeDistance = std::numeric_limits<float>::infinity();
+                    state.lastProgressTime = now;
+                    state.nextPathAllowed = now + 800;
+                } else {
+                    // Async path not ready, apply cooldown to prevent spam
+                    state.nextPathAllowed = now + 600; // Shorter cooldown for flee (more urgent)
+                }
+            } else {
+                AIManager::Instance().requestPath(entity, currentPos, goal);
+                state.pathPoints = AIManager::Instance().getPath(entity);
+                state.currentPathIndex = 0;
+                state.lastPathUpdate = now;
+                state.lastNodeDistance = std::numeric_limits<float>::infinity();
+                state.lastProgressTime = now;
+                state.nextPathAllowed = now + 800;
+            }
         }
         if (!state.pathPoints.empty() && state.currentPathIndex < state.pathPoints.size()) {
             Vector2D node = state.pathPoints[state.currentPathIndex];

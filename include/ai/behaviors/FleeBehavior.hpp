@@ -136,6 +136,9 @@ private:
       -0.5f, 0.5f}; // Radians
   mutable std::uniform_real_distribution<float> m_panicVariation{0.8f, 1.2f};
 
+  // Async pathfinding support
+  bool m_useAsyncPathfinding{false};
+
   // Helper methods
   EntityPtr getThreat() const; // Gets player reference from AIManager
   bool isThreatInRange(EntityPtr entity, EntityPtr threat) const;
@@ -155,6 +158,10 @@ private:
   void updateStamina(EntityState &state, float deltaTime, bool fleeing);
   Vector2D normalizeVector(const Vector2D &direction) const;
   float calculateFleeSpeedModifier(const EntityState &state) const;
+
+public:
+  void setAsyncPathfinding(bool enabled) { m_useAsyncPathfinding = enabled; }
+  bool isAsyncPathfindingEnabled() const { return m_useAsyncPathfinding; }
 };
 
 #endif // FLEE_BEHAVIOR_HPP

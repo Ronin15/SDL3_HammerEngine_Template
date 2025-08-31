@@ -11,6 +11,7 @@
 #include "managers/CollisionManager.hpp"
 #include "ai/internal/Crowd.hpp"
 #include "ai/internal/PathFollow.hpp"
+#include "core/Logger.hpp"
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -76,12 +77,15 @@ void PatrolBehavior::executeLogic(EntityPtr entity) {
     return;
   }
 
+  // Ensure waypoint index is valid
   if (m_currentWaypoint >= m_waypoints.size()) {
     m_currentWaypoint = 0;
   }
 
   Vector2D position = entity->getPosition();
+  Uint64 now = SDL_GetTicks();
 
+  // Handle reset state - must complete before normal patrolling
   if (m_needsReset && isWellOffscreen(position)) {
     resetEntityPosition(entity);
     m_needsReset = false;
@@ -89,6 +93,7 @@ void PatrolBehavior::executeLogic(EntityPtr entity) {
   }
 
   Vector2D targetWaypoint = m_waypoints[m_currentWaypoint];
+  
   // Clamp target to world bounds to avoid edge chasing
   float minX, minY, maxX, maxY;
   if (WorldManager::Instance().getWorldBounds(minX, minY, maxX, maxY)) {
@@ -101,8 +106,41 @@ void PatrolBehavior::executeLogic(EntityPtr entity) {
     targetWaypoint.setY(std::clamp(targetWaypoint.getY(), worldMinY, worldMaxY));
   }
 
-  // Refresh path using shared policy (no lane bias for patrol)
-  {
+  // State: APPROACHING_WAYPOINT - Check if we've reached current waypoint
+  if (isAtWaypoint(position, targetWaypoint)) {
+    // Enforce minimum time between waypoint transitions to prevent oscillation
+    if (now - m_lastWaypointTime >= 750) { // Increased from 500ms to 750ms
+      m_lastWaypointTime = now;
+      
+      // Advance to next waypoint
+      m_currentWaypoint = (m_currentWaypoint + 1) % m_waypoints.size();
+
+      // Auto-regenerate waypoints if we completed a full cycle
+      if (m_currentWaypoint == 0 && m_autoRegenerate &&
+          m_patrolMode != PatrolMode::FIXED_WAYPOINTS) {
+        regenerateRandomWaypoints();
+      }
+
+      // Update target after waypoint advance
+      targetWaypoint = m_waypoints[m_currentWaypoint];
+
+      // Check if new target requires entity reset for offscreen points
+      if (m_includeOffscreenPoints && isOffscreen(targetWaypoint)) {
+        m_needsReset = true;
+        return; // Handle reset on next frame
+      }
+
+      // Clear path state when changing waypoints to force new pathfinding
+      m_navPath.clear();
+      m_navIndex = 0;
+      m_lastPathUpdate = 0;
+      m_stallStart = 0; // Reset stall detection
+    }
+    // If still in cooldown, continue toward current waypoint without advancing
+  }
+
+  // State: PATHFINDING - Refresh path if needed and not in backoff
+  if (now >= m_backoffUntil) {
     using namespace AIInternal;
     PathPolicy policy;
     policy.pathTTL = 1500;
@@ -110,8 +148,14 @@ void PatrolBehavior::executeLogic(EntityPtr entity) {
     policy.nodeRadius = m_navRadius;
     policy.allowDetours = true;
     policy.lateralBias = 0.0f;
-    // Dynamic backoff window
-    if (SDL_GetTicks() >= m_backoffUntil) {
+    
+    if (m_useAsyncPathfinding) {
+      int priority = 0; // Patrol behavior is normal priority
+      RefreshPathWithPolicyAsync(entity, position, targetWaypoint,
+                        m_navPath, m_navIndex, m_lastPathUpdate,
+                        m_lastProgressTime, m_lastNodeDistance,
+                        policy, priority);
+    } else {
       RefreshPathWithPolicy(entity, position, targetWaypoint,
                           m_navPath, m_navIndex, m_lastPathUpdate,
                           m_lastProgressTime, m_lastNodeDistance,
@@ -119,103 +163,78 @@ void PatrolBehavior::executeLogic(EntityPtr entity) {
     }
   }
 
-  if (isAtWaypoint(position, targetWaypoint)) {
-    // Add cooldown to prevent rapid waypoint switching
-    Uint64 now = SDL_GetTicks();
-    if (now - m_lastWaypointTime < 500) { // 500ms minimum between waypoint changes
-      // Too soon to switch waypoints, continue to current target
-      targetWaypoint = m_waypoints[m_currentWaypoint];
-    } else {
-      m_lastWaypointTime = now;
-      m_currentWaypoint = (m_currentWaypoint + 1) % m_waypoints.size();
-
-      if (m_currentWaypoint == 0 && m_autoRegenerate &&
-          m_patrolMode != PatrolMode::FIXED_WAYPOINTS) {
-        regenerateRandomWaypoints();
-      }
-
-      targetWaypoint = m_waypoints[m_currentWaypoint];
-
-      if (m_includeOffscreenPoints && isOffscreen(targetWaypoint)) {
-        m_needsReset = true;
-      }
-
-      // Clear existing path and force refresh on next frame
-      m_navPath.clear();
-      m_navIndex = 0;
-      m_lastPathUpdate = 0; // Force path refresh on next update
-    }
-  }
-
-  // Follow nav path if available; otherwise, direct seek
+  // State: FOLLOWING_PATH or DIRECT_MOVEMENT
   if (!m_navPath.empty() && m_navIndex < m_navPath.size()) {
+    // Following computed path
     using namespace AIInternal;
     bool following = FollowPathStepWithPolicy(entity, position, m_navPath, m_navIndex,
                              m_moveSpeed, m_navRadius, 0.0f);
-    if (following) { m_lastProgressTime = SDL_GetTicks(); }
-    // Apply local separation if following
-    if (following) {
+    if (following) { 
+      m_lastProgressTime = now;
+      // Apply separation to prevent clustering
       Vector2D adjusted = AIInternal::ApplySeparation(entity, position,
                             entity->getVelocity(), m_moveSpeed, 24.0f, 0.20f, 4);
       entity->setVelocity(adjusted);
     }
   } else {
+    // Direct movement to waypoint
     Vector2D direction = targetWaypoint - position;
     float length = direction.length();
-    if (length > 0.1f) direction = direction * (1.0f / length);
-    else direction.normalize();
+    if (length > 0.1f) {
+      direction = direction * (1.0f / length);
+    } else {
+      direction.normalize();
+    }
     entity->setVelocity(direction * m_moveSpeed);
-    m_lastProgressTime = SDL_GetTicks();
+    m_lastProgressTime = now;
   }
 
-  // Stall detection: if moving very slowly, attempt sidestep before advancing
-  float spd = entity->getVelocity().length();
-  if (spd < 5.0f) { if (m_stallStart == 0) m_stallStart = SDL_GetTicks(); }
-  else m_stallStart = 0;
-  if (m_stallStart && SDL_GetTicks() - m_stallStart > 1500) { // Increased from 600 to 1500ms
-    if (!m_navPath.empty() && m_navIndex < m_navPath.size()) {
-      Vector2D toNode = m_navPath[m_navIndex] - position;
-      float len = toNode.length();
-      if (len > 0.01f) {
-        Vector2D dir = toNode * (1.0f/len);
-        Vector2D perp(-dir.getY(), dir.getX());
-        float side = ((entity->getID() & 1) ? 1.0f : -1.0f);
-        Vector2D sidestep = position + perp * (96.0f * side);
-        AIManager::Instance().requestPath(entity, position, sidestep);
-        auto p = AIManager::Instance().getPath(entity);
-        if (!p.empty()) {
-          m_navPath = std::move(p); m_navIndex = 0; m_stallStart = 0; m_lastPathUpdate = SDL_GetTicks();
-        } else {
-          // Brief backoff to stagger retries
-          m_backoffUntil = SDL_GetTicks() + 500 + (entity->getID() % 600); // Increased backoff
-          m_navPath.clear(); m_navIndex = 0; m_stallStart = 0;
-          // Only advance waypoint if we've been at current one for reasonable time
-          Uint64 now = SDL_GetTicks();
-          if (now - m_lastWaypointTime > 2000) { // Don't advance waypoint too frequently
-            m_currentWaypoint = (m_currentWaypoint + 1) % m_waypoints.size();
-            m_lastWaypointTime = now;
+  // State: STALL_DETECTION - Handle entities that get stuck
+  float currentSpeed = entity->getVelocity().length();
+  const float stallThreshold = std::max(1.0f, m_moveSpeed * 0.3f);
+  
+  if (currentSpeed < stallThreshold) {
+    if (m_stallStart == 0) {
+      m_stallStart = now;
+    } else if (now - m_stallStart > 2000) { // 2 second stall detection
+      // Apply stall recovery: try sidestep maneuver or advance waypoint
+      if (!m_navPath.empty() && m_navIndex < m_navPath.size()) {
+        Vector2D toNode = m_navPath[m_navIndex] - position;
+        float len = toNode.length();
+        if (len > 0.01f) {
+          Vector2D dir = toNode * (1.0f/len);
+          Vector2D perp(-dir.getY(), dir.getX());
+          float side = ((entity->getID() & 1) ? 1.0f : -1.0f);
+          Vector2D sidestep = position + perp * (96.0f * side);
+          AIManager::Instance().requestPath(entity, position, sidestep);
+          auto p = AIManager::Instance().getPath(entity);
+          if (!p.empty()) {
+            m_navPath = std::move(p); 
+            m_navIndex = 0; 
+            m_lastPathUpdate = now;
+          } else {
+            // Fallback: advance waypoint and apply backoff
+            m_backoffUntil = now + 800 + (entity->getID() % 400);
+            m_navPath.clear(); 
+            m_navIndex = 0;
+            if (now - m_lastWaypointTime > 1500) {
+              m_currentWaypoint = (m_currentWaypoint + 1) % m_waypoints.size();
+              m_lastWaypointTime = now;
+            }
           }
         }
       } else {
-        m_backoffUntil = SDL_GetTicks() + 500 + (entity->getID() % 600);
-        m_navPath.clear(); m_navIndex = 0; m_stallStart = 0;
-        // Only advance waypoint if we've been at current one for reasonable time
-        Uint64 now = SDL_GetTicks();
-        if (now - m_lastWaypointTime > 2000) {
+        // No path available, advance waypoint
+        m_backoffUntil = now + 800 + (entity->getID() % 400);
+        if (now - m_lastWaypointTime > 1500) {
           m_currentWaypoint = (m_currentWaypoint + 1) % m_waypoints.size();
           m_lastWaypointTime = now;
         }
       }
-    } else {
-      m_backoffUntil = SDL_GetTicks() + 500 + (entity->getID() % 600);
-      m_navPath.clear(); m_navIndex = 0; m_stallStart = 0;
-      // Only advance waypoint if we've been at current one for reasonable time
-      Uint64 now = SDL_GetTicks();
-      if (now - m_lastWaypointTime > 2000) {
-        m_currentWaypoint = (m_currentWaypoint + 1) % m_waypoints.size();
-        m_lastWaypointTime = now;
-      }
+      m_stallStart = 0; // Reset stall timer after recovery attempt
     }
+  } else {
+    m_stallStart = 0; // Reset stall timer when moving normally
   }
 }
 
@@ -284,6 +303,8 @@ std::shared_ptr<AIBehavior> PatrolBehavior::clone() const {
     cloned->m_eventTarget = m_eventTarget;
     cloned->m_eventTargetRadius = m_eventTargetRadius;
   }
+
+  cloned->m_useAsyncPathfinding = m_useAsyncPathfinding;
 
   return cloned;
 }
@@ -565,7 +586,7 @@ bool PatrolBehavior::isValidWaypointDistance(const Vector2D &newPoint) const {
 void PatrolBehavior::ensureRandomSeed() const {}
 
 void PatrolBehavior::setupModeDefaults(PatrolMode mode, float screenWidth,
-                                       float screenHeight) {
+                                        float screenHeight) {
   m_patrolMode = mode;
   m_screenWidth = screenWidth;
   m_screenHeight = screenHeight;

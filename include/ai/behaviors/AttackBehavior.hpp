@@ -198,6 +198,9 @@ private:
   int m_maxCombo{3};
   float m_specialAttackChance{0.15f};
   float m_aoeRadius{0.0f};
+
+  // Async pathfinding support
+  bool m_useAsyncPathfinding{false};
   float m_chargeDamageMultiplier{1.5f};
 
   // Timing constants
@@ -296,6 +299,10 @@ private:
                                            EntityPtr target) const;
   [[maybe_unused]] std::vector<EntityPtr> getNearbyAllies(EntityPtr entity,
                                                           float radius) const;
+
+public:
+  void setAsyncPathfinding(bool enabled) { m_useAsyncPathfinding = enabled; }
+  bool isAsyncPathfindingEnabled() const { return m_useAsyncPathfinding; }
 };
 
 #endif // ATTACK_BEHAVIOR_HPP

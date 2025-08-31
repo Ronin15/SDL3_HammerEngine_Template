@@ -25,9 +25,11 @@
 #include "entities/Entity.hpp"
 #include <array>
 #include <atomic>
+#include <functional>
 #include <future>
 #include <memory>
 #include <mutex>
+#include <queue>
 #include <shared_mutex>
 #include <string>
 #include <unordered_map>
@@ -314,12 +316,55 @@ public:
   void broadcastMessage(const std::string &message, bool immediate = false);
   void processMessageQueue();
 
-  // Pathfinding API (synchronous for now)
+  // Pathfinding API (synchronous - legacy)
   uint32_t requestPath(EntityPtr entity, const Vector2D &start,
                        const Vector2D &goal);
   bool hasPath(EntityPtr entity) const;
   std::vector<Vector2D> getPath(EntityPtr entity) const;
   void clearPath(EntityPtr entity);
+
+  // Async Pathfinding API (performance optimized)
+  enum class PathPriority {
+    Critical = 0, // Player, combat situations
+    High = 1,     // Close NPCs, important behaviors  
+    Normal = 2,   // Regular NPC navigation
+    Low = 3       // Background/distant NPCs
+  };
+  
+  struct AsyncPathRequest {
+    EntityID entityId;
+    Vector2D start;
+    Vector2D goal;
+    PathPriority priority;
+    uint64_t requestTime;
+    std::function<void(EntityID, const std::vector<Vector2D>&)> callback;
+    
+    AsyncPathRequest(EntityID id, const Vector2D& s, const Vector2D& g, 
+                    PathPriority p = PathPriority::Normal,
+                    std::function<void(EntityID, const std::vector<Vector2D>&)> cb = nullptr)
+      : entityId(id), start(s), goal(g), priority(p), 
+        requestTime(SDL_GetTicks()), callback(cb) {}
+  };
+
+  // Async pathfinding methods
+  void requestPathAsync(EntityPtr entity, const Vector2D &start, const Vector2D &goal,
+                       PathPriority priority = PathPriority::Normal,
+                       std::function<void(EntityID, const std::vector<Vector2D>&)> callback = nullptr);
+  void requestPathAsync(EntityID entityId, const Vector2D &start, const Vector2D &goal,
+                       PathPriority priority = PathPriority::Normal,
+                       std::function<void(EntityID, const std::vector<Vector2D>&)> callback = nullptr);
+  bool hasAsyncPath(EntityPtr entity) const;
+  bool hasAsyncPath(EntityID entityId) const;
+  std::vector<Vector2D> getAsyncPath(EntityPtr entity) const;
+  std::vector<Vector2D> getAsyncPath(EntityID entityId) const;
+  void clearAsyncPath(EntityPtr entity);
+  void clearAsyncPath(EntityID entityId);
+  
+  // Pathfinding performance and control
+  void setAsyncPathfinding(bool enabled) { m_asyncPathfindingEnabled = enabled; }
+  bool isAsyncPathfindingEnabled() const { return m_asyncPathfindingEnabled; }
+  size_t getAsyncPathQueueSize() const;
+  void processAsyncPathResults();
 
   // Emergency unstick mechanism
   void forceUnstickEntity(EntityPtr entity);
@@ -482,6 +527,9 @@ private:
   void updateDistancesScalar(const Vector2D &playerPos);
   void recordPerformance(BehaviorType type, double timeMs, uint64_t entities);
   static uint64_t getCurrentTimeNanos();
+  
+  // Async pathfinding helpers
+  void processAsyncPathRequest(EntityID entityId, const Vector2D &start, const Vector2D &goal);
 
   // Lock-free message queue
   struct alignas(CACHE_LINE_SIZE) LockFreeMessage {
@@ -501,6 +549,16 @@ private:
   struct PathGridDeleter { void operator()(HammerEngine::PathfindingGrid*) const; };
   std::unique_ptr<HammerEngine::PathfindingGrid, PathGridDeleter> m_pathGrid;
   std::unordered_map<EntityID, std::vector<Vector2D>> m_entityPaths;
+  
+  // Async pathfinding system
+  std::atomic<bool> m_asyncPathfindingEnabled{true};
+  std::queue<AsyncPathRequest> m_asyncPathQueue;
+  std::unordered_map<EntityID, std::vector<Vector2D>> m_asyncEntityPaths;
+  std::unordered_map<EntityID, uint64_t> m_asyncPathTimestamps;
+  mutable std::mutex m_asyncPathMutex;
+  mutable std::mutex m_asyncQueueMutex;
+  std::atomic<size_t> m_asyncPathsProcessed{0};
+  std::atomic<size_t> m_asyncPathsRequested{0};
 };
 
 #endif // AI_MANAGER_HPP

@@ -116,6 +116,12 @@ private:
       }
   } m_cooldowns;
 
+  // Async pathfinding support
+  bool m_useAsyncPathfinding{false};
+
+public:
+  void setAsyncPathfinding(bool enabled) { m_useAsyncPathfinding = enabled; }
+  bool isAsyncPathfindingEnabled() const { return m_useAsyncPathfinding; }
   
 };
 

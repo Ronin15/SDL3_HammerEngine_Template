@@ -138,5 +138,132 @@ bool FollowPathStepWithPolicy(
     return true;
 }
 
+static void requestToAsync(EntityPtr entity,
+                           const Vector2D &from,
+                           const Vector2D &goal,
+                           std::vector<Vector2D> &outPath,
+                           size_t &idx,
+                           Uint64 &lastUpdate,
+                           Uint64 now,
+                           Uint64 &lastProgress,
+                           float &lastNodeDist,
+                           int priority) {
+    // Use static map to track async requests per entity to prevent spam
+    static std::unordered_map<EntityID, Uint64> lastAsyncRequest;
+    EntityID entityId = entity->getID();
+    
+    // Check if we recently made an async request for this entity
+    if (lastAsyncRequest[entityId] != 0 && (now - lastAsyncRequest[entityId]) < 800) {
+        // Still waiting for previous request, just check if result is ready
+        if (AIManager::Instance().hasAsyncPath(entity)) {
+            outPath = AIManager::Instance().getAsyncPath(entity);
+            idx = 0;
+            lastUpdate = now;
+            lastNodeDist = std::numeric_limits<float>::infinity();
+            lastProgress = now;
+            lastAsyncRequest[entityId] = 0; // Clear tracking when path received
+        }
+        return;
+    }
+    
+    AIManager::PathPriority asyncPriority = static_cast<AIManager::PathPriority>(priority);
+    AIManager::Instance().requestPathAsync(entity, from, goal, asyncPriority);
+    lastAsyncRequest[entityId] = now; // Track when we made the request
+    
+    // Check if async path is ready immediately (from previous request)
+    if (AIManager::Instance().hasAsyncPath(entity)) {
+        outPath = AIManager::Instance().getAsyncPath(entity);
+        idx = 0;
+        lastUpdate = now;
+        lastNodeDist = std::numeric_limits<float>::infinity();
+        lastProgress = now;
+        lastAsyncRequest[entityId] = 0; // Clear tracking when path received
+    }
+}
+
+bool RefreshPathWithPolicyAsync(
+    EntityPtr entity,
+    const Vector2D &currentPos,
+    const Vector2D &desiredGoal,
+    std::vector<Vector2D> &pathPoints,
+    size_t &currentPathIndex,
+    Uint64 &lastPathUpdate,
+    Uint64 &lastProgressTime,
+    float &lastNodeDistance,
+    const PathPolicy &policy,
+    int priority) {
+
+    Uint64 now = SDL_GetTicks();
+    bool needRefresh = pathPoints.empty() || currentPathIndex >= pathPoints.size();
+    
+    if (!needRefresh && currentPathIndex < pathPoints.size()) {
+        float d = (pathPoints[currentPathIndex] - currentPos).length();
+        // More lenient progress detection - require meaningful distance reduction
+        if (d + 3.0f < lastNodeDistance) { // Increased threshold from 2.0f to 3.0f
+            lastNodeDistance = d; 
+            lastProgressTime = now; 
+        } else if (lastProgressTime == 0) { 
+            lastProgressTime = now; 
+        } else if (now - lastProgressTime > policy.noProgressWindow) { 
+            // Additional check: only refresh if we're not very close to the current node
+            // This prevents constant refreshing when entity is near but can't reach the exact node
+            if (d > policy.nodeRadius * 3.0f) { // Increased from 2.0f to 3.0f for more stability
+                needRefresh = true; 
+            }
+        }
+    }
+    // Longer TTL for async paths to reduce refresh frequency
+    Uint64 pathTTL = policy.pathTTL * 2; // Double the TTL for async paths
+    if (now - lastPathUpdate > pathTTL) needRefresh = true;
+    
+    // If we need a refresh, request async path
+    if (needRefresh) {
+        Vector2D clampedGoal = ClampToWorld(desiredGoal);
+        requestToAsync(entity, currentPos, clampedGoal, pathPoints, currentPathIndex, 
+                      lastPathUpdate, now, lastProgressTime, lastNodeDistance, priority);
+        
+        // If no async path is ready yet, try detours if allowed
+        if (pathPoints.empty() && policy.allowDetours) {
+            // Try detours around the goal, but only if we haven't tried too many times recently
+            static std::unordered_map<EntityID, Uint64> lastDetourTimes;
+            static std::unordered_map<EntityID, size_t> detourCounts;
+            Uint64 entityId = entity->getID();
+            if (now - lastDetourTimes[entityId] > 2000) {
+                detourCounts[entityId] = 0;
+                lastDetourTimes[entityId] = now;
+            }
+            if (detourCounts[entityId] < 4) {
+                for (float angle : policy.detourAngles) {
+                    for (float radius : policy.detourRadii) {
+                        Vector2D offset(radius * cosf(angle), radius * sinf(angle));
+                        Vector2D detourGoal = ClampToWorld(clampedGoal + offset);
+                        requestToAsync(entity, currentPos, detourGoal, pathPoints, currentPathIndex,
+                                     lastPathUpdate, now, lastProgressTime, lastNodeDistance, priority);
+                        if (!pathPoints.empty()) {
+                            detourCounts[entityId]++;
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
+        return !pathPoints.empty();
+    }
+    
+    // Check if an async path became ready, but only if we don't have a recent valid path
+    // This prevents rapid path switching when paths are working fine
+    if (AIManager::Instance().hasAsyncPath(entity) && 
+        (pathPoints.empty() || (now - lastPathUpdate) > 1000)) {
+        pathPoints = AIManager::Instance().getAsyncPath(entity);
+        currentPathIndex = 0;
+        lastPathUpdate = now;
+        lastNodeDistance = std::numeric_limits<float>::infinity();
+        lastProgressTime = now;
+        return true;
+    }
+    
+    return !pathPoints.empty();
+}
+
 } // namespace AIInternal
 

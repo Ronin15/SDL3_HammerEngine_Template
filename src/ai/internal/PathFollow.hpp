@@ -82,6 +82,19 @@ bool FollowPathStepWithPolicy(
     float nodeRadius,
     float lateralBias);
 
+// Async pathfinding support - refresh path with async requests
+bool RefreshPathWithPolicyAsync(
+    EntityPtr entity,
+    const Vector2D &currentPos,
+    const Vector2D &desiredGoal,
+    std::vector<Vector2D> &pathPoints,
+    size_t &currentPathIndex,
+    Uint64 &lastPathUpdate,
+    Uint64 &lastProgressTime,
+    float &lastNodeDistance,
+    const PathPolicy &policy,
+    int priority = 1); // 0=Critical, 1=High, 2=Normal, 3=Low
+
 } // namespace AIInternal
 
 #endif // AI_INTERNAL_PATHFOLLOW_HPP
