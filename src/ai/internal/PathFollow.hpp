@@ -95,6 +95,76 @@ bool RefreshPathWithPolicyAsync(
     const PathPolicy &policy,
     int priority = 1); // 0=Critical, 1=High, 2=Normal, 3=Low
 
+// Yield and redirect behavior for face-offs
+struct YieldResult {
+    bool shouldYield{false};
+    bool shouldRedirect{false};
+    Vector2D redirectDirection{0, 0};
+    Uint64 yieldDuration{0}; // ms to wait
+};
+
+// Check if entity should yield to other NPCs or redirect around them
+YieldResult CheckYieldAndRedirect(
+    EntityPtr entity,
+    const Vector2D &currentPos,
+    const Vector2D &intendedDirection,
+    float intendedSpeed);
+
+// Apply yielding behavior - returns true if entity should stop/slow down
+bool ApplyYieldBehavior(
+    EntityPtr entity,
+    const YieldResult &yieldResult,
+    Uint64 &yieldStartTime,
+    Uint64 currentTime);
+
+// Dynamic stuck detection and escape system
+struct StuckDetectionState {
+    Vector2D lastPosition{0, 0};
+    Uint64 lastMovementTime{0};
+    Uint64 stuckStartTime{0};
+    bool isCurrentlyStuck{false};
+    int escapeAttempts{0};
+    
+    void updatePosition(const Vector2D& newPos, Uint64 currentTime) {
+        float movement = (newPos - lastPosition).length();
+        if (movement > 2.0f) { // Meaningful movement threshold
+            lastMovementTime = currentTime;
+            isCurrentlyStuck = false;
+            stuckStartTime = 0;
+            escapeAttempts = 0;
+        }
+        lastPosition = newPos;
+    }
+    
+    bool checkIfStuck(EntityPtr entity, Uint64 currentTime) {
+        if (!entity) return false;
+        
+        Vector2D currentVel = entity->getVelocity();
+        float velMagnitude = currentVel.length();
+        
+        // Has velocity but hasn't moved recently
+        if (velMagnitude > 5.0f && (currentTime - lastMovementTime) > 400) {
+            if (!isCurrentlyStuck) {
+                stuckStartTime = currentTime;
+                isCurrentlyStuck = true;
+            }
+            return true;
+        }
+        
+        return false;
+    }
+    
+    bool needsEscape(Uint64 currentTime) {
+        return isCurrentlyStuck && (currentTime - stuckStartTime) > static_cast<Uint64>(200 + escapeAttempts * 150);
+    }
+};
+
+// Check if entity is stuck and apply dynamic escape
+bool HandleDynamicStuckDetection(
+    EntityPtr entity,
+    StuckDetectionState &stuckState,
+    Uint64 currentTime);
+
 } // namespace AIInternal
 
 #endif // AI_INTERNAL_PATHFOLLOW_HPP

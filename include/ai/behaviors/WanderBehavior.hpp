@@ -50,12 +50,7 @@ public:
   // Set how often the direction changes
   void setChangeDirectionInterval(float interval);
 
-  // Set screen dimensions directly (more accurate than estimating from center
-  // point)
-  void setScreenDimensions(float width, float height);
 
-  // Set the probability of wandering offscreen
-  void setOffscreenProbability(float probability);
 
   // Set the update frequency for staggering (every N frames)
   void setUpdateFrequency(uint32_t frequency) {
@@ -78,8 +73,6 @@ private:
   struct EntityState {
     Vector2D currentDirection{0, 0};
     Uint64 lastDirectionChangeTime{0};
-    bool currentlyWanderingOffscreen{false};
-    bool resetScheduled{false};
     Uint64 lastDirectionFlip{0};
     Uint64 startDelay{0};        // Random delay before entity starts moving
     bool movementStarted{false}; // Flag to track if movement has started
@@ -117,7 +110,6 @@ private:
     // Constructor to ensure proper initialization
     EntityState()
         : currentDirection(0, 0), lastDirectionChangeTime(0),
-          currentlyWanderingOffscreen(false), resetScheduled(false),
           lastDirectionFlip(0), startDelay(0), movementStarted(false),
           pathPoints(), currentPathIndex(0), lastPathUpdate(0), 
           lastProgressTime(0), lastNodeDistance(std::numeric_limits<float>::infinity()),
@@ -137,14 +129,6 @@ private:
   // Staggering system
   uint32_t m_updateFrequency{1}; // Default: every frame, will be set by mode
 
-  // Screen dimensions - defaults that will be updated in setCenterPoint
-  float m_screenWidth{1280.0f};
-  float m_screenHeight{720.0f};
-
-  // Offscreen wandering properties
-  float m_offscreenProbability{
-      0.15f}; // 15% chance to wander offscreen when changing direction
-
   // Flip stability properties
   Uint64 m_minimumFlipInterval{
       800}; // Minimum time between flips (milliseconds)
@@ -153,22 +137,13 @@ private:
   // instead of per-instance RNG to reduce memory overhead
   static std::mt19937 &getSharedRNG();
   static thread_local std::uniform_real_distribution<float> s_angleDistribution;
-  static thread_local std::uniform_real_distribution<float>
-      s_wanderOffscreenChance;
   static thread_local std::uniform_int_distribution<Uint64> s_delayDistribution;
 
-  // Check if entity is well off screen (completely out of view)
-  bool isWellOffscreen(const Vector2D &position) const;
-
-  // Reset entity to a new position on the opposite side of the screen
-  void resetEntityPosition(EntityPtr entity);
-
   // Choose a new random direction for the entity
-  void chooseNewDirection(EntityPtr entity, bool wanderOffscreen = false);
+  void chooseNewDirection(EntityPtr entity);
 
   // Mode setup helper
-  void setupModeDefaults(WanderMode mode, float screenWidth = 1280.0f,
-                         float screenHeight = 720.0f);
+  void setupModeDefaults(WanderMode mode);
   
   // Async pathfinding support
   bool m_useAsyncPathfinding{false};

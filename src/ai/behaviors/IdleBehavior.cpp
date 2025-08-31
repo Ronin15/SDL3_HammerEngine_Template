@@ -176,7 +176,7 @@ void IdleBehavior::updateSubtleSway(EntityPtr entity, EntityState &state) {
     // Generate gentle swaying direction
     Vector2D swayDirection = generateRandomOffset();
     swayDirection.normalize();
-    entity->setVelocity(swayDirection * 20.0f); // Gentle sway speed
+    entity->setVelocity(swayDirection * 35.0f); // Increased from 20px for world-scale movement
     state.lastMovementTime = currentTime;
     state.nextMovementTime = currentTime + getRandomMovementInterval();
   }
@@ -184,7 +184,7 @@ void IdleBehavior::updateSubtleSway(EntityPtr entity, EntityState &state) {
   // Apply very light separation so idlers don't stack perfectly
   {
     Vector2D adjusted = AIInternal::ApplySeparation(entity, entity->getPosition(),
-                          entity->getVelocity(), 20.0f, 20.0f, 0.12f, 3);
+                          entity->getVelocity(), 35.0f, 30.0f, 0.15f, 4); // Increased for world scale
     entity->setVelocity(adjusted);
   }
 }
@@ -214,14 +214,14 @@ void IdleBehavior::updateLightFidget(EntityPtr entity, EntityState &state) {
     // Generate light fidgeting direction
     Vector2D fidgetDirection = generateRandomOffset();
     fidgetDirection.normalize();
-    entity->setVelocity(fidgetDirection * 25.0f); // Light fidget speed
+    entity->setVelocity(fidgetDirection * 40.0f); // Increased from 25px for world-scale fidgeting
     state.lastMovementTime = currentTime;
     state.nextMovementTime = currentTime + getRandomMovementInterval();
   }
   // Keep velocity applied for smooth animation and apply very light separation
   {
     Vector2D adjusted = AIInternal::ApplySeparation(entity, entity->getPosition(),
-                          entity->getVelocity(), 25.0f, 20.0f, 0.12f, 3);
+                          entity->getVelocity(), 40.0f, 30.0f, 0.15f, 4); // Increased for world scale
     entity->setVelocity(adjusted);
   }
 

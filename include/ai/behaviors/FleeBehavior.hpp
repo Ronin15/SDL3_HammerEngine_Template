@@ -46,7 +46,6 @@ public:
   // Safe zone management
   void addSafeZone(const Vector2D &center, float radius);
   void clearSafeZones();
-  void setScreenBounds(float width, float height); // For boundary avoidance
 
   // State queries
   bool isFleeing() const;
@@ -121,10 +120,8 @@ private:
 
   // Safe zones and boundaries
   std::vector<SafeZone> m_safeZones;
-  float m_screenWidth{1280.0f};
-  float m_screenHeight{720.0f};
   float m_boundaryPadding{
-      100.0f}; // Distance from screen edge to consider unsafe
+      100.0f}; // Distance from world edge to consider unsafe
 
   // Evasive maneuver parameters
   float m_zigzagAngle{45.0f};   // Degrees

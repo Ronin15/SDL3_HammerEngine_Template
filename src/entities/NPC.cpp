@@ -45,11 +45,21 @@ NPC::NPC(const std::string &textureID, const Vector2D &startPosition,
     m_height = m_frameHeight;
   }
 
-  // Set default wander area (can be changed later via setWanderArea)
-  m_minX = 0.0f;
-  m_minY = 0.0f;
-  m_maxX = 800.0f;
-  m_maxY = 600.0f;
+  // Set default wander area to world bounds (can be changed later via setWanderArea)
+  float worldMinX, worldMinY, worldMaxX, worldMaxY;
+  if (WorldManager::Instance().getWorldBounds(worldMinX, worldMinY, worldMaxX, worldMaxY)) {
+    const float TILE = 32.0f;
+    m_minX = worldMinX * TILE;
+    m_minY = worldMinY * TILE;
+    m_maxX = worldMaxX * TILE;
+    m_maxY = worldMaxY * TILE;
+  } else {
+    // Fallback to reasonable world bounds if WorldManager not available yet
+    m_minX = 0.0f;
+    m_minY = 0.0f;
+    m_maxX = 2048.0f;  // Larger default world area
+    m_maxY = 2048.0f;
+  }
 
   // Disable bounds checking by default
   m_boundsCheckEnabled = false;
