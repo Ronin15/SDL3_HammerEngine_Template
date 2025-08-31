@@ -51,6 +51,8 @@ set(SIMPLE_TESTS
     world_manager_event_integration_tests
     ui_stress_test
     event_manager_behavior_tests
+    collision_system_tests
+    pathfinding_system_tests
 )
 
 # Complex tests (need mocks)
@@ -67,6 +69,7 @@ set(MOCK_TESTS
     particle_manager_threading_tests
     weather_event_tests
     behavior_functionality_tests
+    collision_pathfinding_benchmark
 )
 
 # Tests that need special mock combinations
@@ -118,6 +121,10 @@ foreach(test_name ${SIMPLE_TESTS})
         set(test_source "world/WorldManagerEventIntegrationTests.cpp")
     elseif(${test_name} STREQUAL "event_manager_behavior_tests")
         set(test_source "events/EventManagerBehaviorTests.cpp")
+    elseif(${test_name} STREQUAL "collision_system_tests")
+        set(test_source "collisions/CollisionSystemTests.cpp")
+    elseif(${test_name} STREQUAL "pathfinding_system_tests")
+        set(test_source "pathfinding/PathfindingSystemTests.cpp")
     endif()
 
     add_executable(${test_name} ${test_source})
@@ -144,6 +151,8 @@ foreach(test_name ${MOCK_TESTS})
         set(test_source "events/WeatherEventTest.cpp")
     elseif(${test_name} STREQUAL "behavior_functionality_tests")
         set(test_source "BehaviorFunctionalityTest.cpp")
+    elseif(${test_name} STREQUAL "collision_pathfinding_benchmark")
+        set(test_source "CollisionPathfindingBenchmark.cpp")
     elseif(${test_name} MATCHES "^particle_manager_")
         string(REPLACE "particle_manager_" "" suffix ${test_name})
         string(REPLACE "_tests" "" suffix ${suffix})

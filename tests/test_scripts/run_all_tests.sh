@@ -55,8 +55,8 @@ for arg in "$@"; do
       echo -e "  --no-benchmarks   Run core tests but skip benchmarks"
       echo -e "  --help            Show this help message"
       echo -e "\nTest Categories:"
-      echo -e "  Core Tests:       Static analysis, Thread, AI, Behavior, GameState, Save, Event functionality tests"
-      echo -e "  Benchmarks:       AI scaling, EventManager scaling, and UI stress benchmarks"
+      echo -e "  Core Tests:       Static analysis, Thread, AI, Behavior, GameState, Save, Event, Collision, Pathfinding functionality tests"
+      echo -e "  Benchmarks:       AI scaling, EventManager scaling, UI stress, and Collision/Pathfinding performance benchmarks"
       echo -e "\nExecution Time:"
       echo -e "  Core tests:       ~2-5 minutes total"
       echo -e "  Benchmarks:       ~5-15 minutes total"
@@ -94,6 +94,8 @@ CORE_TEST_SCRIPTS=(
   "$SCRIPT_DIR/run_world_manager_tests.sh"
   "$SCRIPT_DIR/run_world_manager_event_integration_tests.sh"
   "$SCRIPT_DIR/run_world_resource_manager_tests.sh"
+  "$SCRIPT_DIR/run_collision_tests.sh"
+  "$SCRIPT_DIR/run_pathfinding_tests.sh"
 )
 
 # Performance scaling benchmarks (slow execution)
@@ -101,6 +103,7 @@ BENCHMARK_TEST_SCRIPTS=(
   "$SCRIPT_DIR/run_event_scaling_benchmark.sh"
   "$SCRIPT_DIR/run_ai_benchmark.sh"
   "$SCRIPT_DIR/run_ui_stress_tests.sh"
+  "$SCRIPT_DIR/run_collision_pathfinding_benchmark.sh"
 )
 
 # Build the test scripts array based on user selection
