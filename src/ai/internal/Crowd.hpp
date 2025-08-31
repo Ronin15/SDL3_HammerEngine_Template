@@ -4,6 +4,7 @@
 
 #include "entities/Entity.hpp"
 #include "utils/Vector2D.hpp"
+#include <vector>
 
 namespace AIInternal {
 
@@ -52,6 +53,23 @@ Vector2D SmoothVelocityTransition(const Vector2D &currentVel,
                                   const Vector2D &targetVel,
                                   float smoothingFactor = 0.15f,
                                   float maxChange = 50.0f);
+
+// Counts nearby entities within a given area, filtering for actual entities only
+// (excludes static objects, triggers, and self)
+// - entity: the querying entity (excluded from count)
+// - center: center of query area
+// - radius: query radius
+// Returns: count of nearby dynamic/kinematic entities
+int CountNearbyEntities(EntityPtr entity, const Vector2D &center, float radius);
+
+// Gets nearby entities with their positions for crowd analysis
+// - entity: the querying entity (excluded from results)
+// - center: center of query area
+// - radius: query radius
+// - outPositions: vector to fill with nearby entity positions
+// Returns: count of nearby entities (same as outPositions.size())
+int GetNearbyEntitiesWithPositions(EntityPtr entity, const Vector2D &center, float radius, 
+                                   std::vector<Vector2D> &outPositions);
 
 } // namespace AIInternal
 

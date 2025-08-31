@@ -101,11 +101,9 @@ void ChaseBehavior::executeLogic(EntityPtr entity) {
 
         // Check if target area is crowded - if so, pick nearby alternative position
         Vector2D goalPosition = targetPos;
-        AABB crowdCheck(targetPos.getX() - 60.0f, targetPos.getY() - 60.0f, 120.0f, 120.0f);
-        std::vector<EntityID> nearbyEntities;
-        CollisionManager::Instance().queryArea(crowdCheck, nearbyEntities);
+        int actualEntityCount = AIInternal::CountNearbyEntities(entity, targetPos, 60.0f);
         
-        if (nearbyEntities.size() >= 6) { // Target area is crowded
+        if (actualEntityCount >= 6) { // Target area is crowded
           // Pick alternative position near target but less crowded
           bool foundAlternative = false;
           for (float distance : {80.0f, 120.0f, 160.0f}) {
@@ -114,11 +112,9 @@ void ChaseBehavior::executeLogic(EntityPtr entity) {
               Vector2D altPosition = targetPos + offset;
               
               // Check if alternative position is less crowded
-              AABB altCheck(altPosition.getX() - 40.0f, altPosition.getY() - 40.0f, 80.0f, 80.0f);
-              std::vector<EntityID> altNearby;
-              CollisionManager::Instance().queryArea(altCheck, altNearby);
+              int altEntityCount = AIInternal::CountNearbyEntities(entity, altPosition, 40.0f);
               
-              if (altNearby.size() < nearbyEntities.size() / 2) {
+              if (altEntityCount < actualEntityCount / 2) {
                 goalPosition = altPosition;
                 foundAlternative = true;
                 break;
@@ -165,10 +161,11 @@ void ChaseBehavior::executeLogic(EntityPtr entity) {
           CollisionManager::Instance().queryArea(queryArea, nearbyIDs);
           
           int chaserCount = 0;
+          auto& cm = CollisionManager::Instance();
           for (auto id : nearbyIDs) {
-            if (id != entity->getID()) {
+            if (id != entity->getID() && (cm.isDynamic(id) || cm.isKinematic(id)) && !cm.isTrigger(id)) {
               Vector2D nearbyCenter;
-              if (CollisionManager::Instance().getBodyCenter(id, nearbyCenter)) {
+              if (cm.getBodyCenter(id, nearbyCenter)) {
                 // Check if this entity is likely also chasing (moving toward target)
                 Vector2D nearbyToTarget = targetPos - nearbyCenter;
                 float distToTarget = nearbyToTarget.length();
@@ -232,11 +229,7 @@ void ChaseBehavior::executeLogic(EntityPtr entity) {
         direction.normalize();
         
         // Apply crowd-aware positioning even in direct movement
-        AABB queryArea(entityPos.getX() - 100.0f, entityPos.getY() - 100.0f,
-                      entityPos.getX() + 100.0f, entityPos.getY() + 100.0f);
-        std::vector<EntityID> nearbyIDs;
-        CollisionManager::Instance().queryArea(queryArea, nearbyIDs);
-        int nearbyCount = static_cast<int>(nearbyIDs.size()) - 1; // Exclude self
+        int nearbyCount = AIInternal::CountNearbyEntities(entity, entityPos, 100.0f);
         
         if (nearbyCount > 2) {
           // High crowd density: use ring formation approach

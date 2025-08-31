@@ -39,7 +39,7 @@ Vector2D ApplySeparation(EntityPtr entity,
   
   for (EntityID id : queryResults) {
     if (id == entity->getID()) continue;
-    if (!cm.isDynamic(id) || cm.isTrigger(id)) continue;
+    if ((!cm.isDynamic(id) && !cm.isKinematic(id)) || cm.isTrigger(id)) continue;
     Vector2D other;
     if (!cm.getBodyCenter(id, other)) continue;
     Vector2D d = currentPos - other;
@@ -190,6 +190,58 @@ Vector2D SmoothVelocityTransition(const Vector2D &currentVel,
   }
   
   return result;
+}
+
+int CountNearbyEntities(EntityPtr entity, const Vector2D &center, float radius) {
+  if (!entity) return 0;
+  
+  auto &cm = CollisionManager::Instance();
+  
+  // Use thread-local vector to avoid repeated allocations
+  static thread_local std::vector<EntityID> queryResults;
+  queryResults.clear();
+  
+  HammerEngine::AABB area(center.getX() - radius, center.getY() - radius, 
+                          radius * 2.0f, radius * 2.0f);
+  cm.queryArea(area, queryResults);
+  
+  // Count only actual entities (dynamic/kinematic, non-trigger, excluding self)
+  int count = 0;
+  for (auto id : queryResults) {
+    if (id != entity->getID() && (cm.isDynamic(id) || cm.isKinematic(id)) && !cm.isTrigger(id)) {
+      count++;
+    }
+  }
+  
+  return count;
+}
+
+int GetNearbyEntitiesWithPositions(EntityPtr entity, const Vector2D &center, float radius, 
+                                   std::vector<Vector2D> &outPositions) {
+  outPositions.clear();
+  if (!entity) return 0;
+  
+  auto &cm = CollisionManager::Instance();
+  
+  // Use thread-local vector to avoid repeated allocations
+  static thread_local std::vector<EntityID> queryResults;
+  queryResults.clear();
+  
+  HammerEngine::AABB area(center.getX() - radius, center.getY() - radius, 
+                          radius * 2.0f, radius * 2.0f);
+  cm.queryArea(area, queryResults);
+  
+  // Collect positions of actual entities (dynamic/kinematic, non-trigger, excluding self)
+  for (auto id : queryResults) {
+    if (id != entity->getID() && (cm.isDynamic(id) || cm.isKinematic(id)) && !cm.isTrigger(id)) {
+      Vector2D entityPos;
+      if (cm.getBodyCenter(id, entityPos)) {
+        outPositions.push_back(entityPos);
+      }
+    }
+  }
+  
+  return static_cast<int>(outPositions.size());
 }
 
 } // namespace AIInternal
