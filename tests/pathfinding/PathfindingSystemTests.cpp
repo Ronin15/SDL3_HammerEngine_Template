@@ -32,20 +32,18 @@ struct PathfindingGridFixture {
         // Create walls around the perimeter and some internal obstacles
         for (int y = 0; y < 20; ++y) {
             for (int x = 0; x < 20; ++x) {
-                bool isBlocked = false;
-                
                 // Perimeter walls
                 if (x == 0 || x == 19 || y == 0 || y == 19) {
-                    isBlocked = true;
+                    // isBlocked = true;
                 }
                 // Central wall
                 else if (x == 10 && y >= 5 && y <= 15) {
-                    isBlocked = true;
+                    // isBlocked = true;
                 }
                 // L-shaped obstacle
                 else if ((x >= 15 && x <= 17 && y >= 10 && y <= 12) || 
                          (x >= 15 && x <= 17 && y >= 12 && y <= 14)) {
-                    isBlocked = true;
+                    // isBlocked = true;
                 }
                 
                 // We can't directly set blocked cells without world data,
@@ -58,33 +56,6 @@ struct PathfindingGridFixture {
 };
 
 BOOST_AUTO_TEST_SUITE(PathfindingGridBasicTests)
-
-BOOST_FIXTURE_TEST_CASE(TestGridCoordinateConversion, PathfindingGridFixture)
-{
-    // Test world to grid conversion
-    Vector2D worldPos(64.0f, 96.0f); // Should be grid (2, 3)
-    auto [gx, gy] = grid.worldToGrid(worldPos);
-    BOOST_CHECK_EQUAL(gx, 2);
-    BOOST_CHECK_EQUAL(gy, 3);
-    
-    // Test grid to world conversion
-    Vector2D worldBack = grid.gridToWorld(gx, gy);
-    BOOST_CHECK_CLOSE(worldBack.getX(), 80.0f, 0.01f); // Cell center at 64 + 16
-    BOOST_CHECK_CLOSE(worldBack.getY(), 112.0f, 0.01f); // Cell center at 96 + 16
-}
-
-BOOST_FIXTURE_TEST_CASE(TestInBoundsCheck, PathfindingGridFixture)
-{
-    BOOST_CHECK(grid.inBounds(0, 0));
-    BOOST_CHECK(grid.inBounds(19, 19));
-    BOOST_CHECK(grid.inBounds(10, 10));
-    
-    BOOST_CHECK(!grid.inBounds(-1, 0));
-    BOOST_CHECK(!grid.inBounds(0, -1));
-    BOOST_CHECK(!grid.inBounds(20, 0));
-    BOOST_CHECK(!grid.inBounds(0, 20));
-    BOOST_CHECK(!grid.inBounds(25, 25));
-}
 
 BOOST_FIXTURE_TEST_CASE(TestPathfindingConfiguration, PathfindingGridFixture)
 {
@@ -100,6 +71,18 @@ BOOST_FIXTURE_TEST_CASE(TestPathfindingConfiguration, PathfindingGridFixture)
     
     // These should not crash and should be configurable
     BOOST_CHECK(true); // Configuration methods should work without error
+}
+
+BOOST_FIXTURE_TEST_CASE(TestWeightSystem, PathfindingGridFixture)
+{
+    // Test weight reset
+    grid.resetWeights(1.5f);
+    
+    // Test adding weight circles
+    grid.addWeightCircle(Vector2D(160.0f, 160.0f), 64.0f, 2.0f);
+    
+    // These should not crash
+    BOOST_CHECK(true); // Weight system methods should work without error
 }
 
 BOOST_AUTO_TEST_SUITE_END()

@@ -43,6 +43,9 @@ declare -A TEST_EXECUTABLES=(
     ["resource_change_event"]="resource_change_event_tests"
     ["inventory_component"]="inventory_component_tests"
     ["resource_edge_case"]="resource_edge_case_tests"
+    ["collision_system"]="collision_system_tests"
+    ["pathfinding_system"]="pathfinding_system_tests"
+    ["collision_pathfinding_bench"]="collision_pathfinding_benchmark"
 )
 
 # Valgrind common options
