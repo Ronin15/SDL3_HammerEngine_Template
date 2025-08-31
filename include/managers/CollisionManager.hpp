@@ -35,6 +35,7 @@ public:
 
     bool init();
     void clean();
+    void prepareForStateTransition();
     bool isInitialized() const { return m_initialized; }
     bool isShutdown() const { return m_isShutdown; }
 

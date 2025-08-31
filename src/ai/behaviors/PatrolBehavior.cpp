@@ -33,7 +33,7 @@ std::mt19937 &getSharedRNG() {
 PatrolBehavior::PatrolBehavior(const std::vector<Vector2D> &waypoints,
                                float moveSpeed, bool includeOffscreenPoints)
     : m_waypoints(waypoints), m_currentWaypoint(0),
-      m_moveSpeed(moveSpeed), m_waypointRadius(25.0f),
+      m_moveSpeed(moveSpeed), m_waypointRadius(250.0f), // 10X larger
       m_includeOffscreenPoints(includeOffscreenPoints), m_needsReset(false),
       m_patrolMode(PatrolMode::FIXED_WAYPOINTS), m_rng(getSharedRNG()),
       m_seedSet(true) {
@@ -48,7 +48,7 @@ PatrolBehavior::PatrolBehavior(const std::vector<Vector2D> &waypoints,
 PatrolBehavior::PatrolBehavior(PatrolMode mode, float moveSpeed,
                                bool includeOffscreenPoints)
     : m_waypoints(), m_currentWaypoint(0),
-      m_moveSpeed(moveSpeed), m_waypointRadius(25.0f),
+      m_moveSpeed(moveSpeed), m_waypointRadius(250.0f), // 10X larger
       m_includeOffscreenPoints(includeOffscreenPoints), m_needsReset(false),
       m_patrolMode(mode), m_rng(getSharedRNG()), m_seedSet(true) {
   setupModeDefaults(mode);
@@ -66,7 +66,9 @@ void PatrolBehavior::init(EntityPtr entity) {
 
   NPC *npc = dynamic_cast<NPC *>(entity.get());
   if (npc) {
-    npc->setBoundsCheckEnabled(!m_includeOffscreenPoints);
+    // Disable bounds checking for AI-controlled entities to prevent artificial bouncing
+    // The pathfinding system will handle natural world boundaries
+    npc->setBoundsCheckEnabled(false);
   }
 }
 
@@ -229,7 +231,8 @@ void PatrolBehavior::clean(EntityPtr entity) {
 
     NPC *npc = dynamic_cast<NPC *>(entity.get());
     if (npc) {
-      npc->setBoundsCheckEnabled(true);
+      // Keep bounds checking disabled to prevent artificial bouncing
+      npc->setBoundsCheckEnabled(false);
     }
   }
 
@@ -252,7 +255,8 @@ void PatrolBehavior::onMessage(EntityPtr entity, const std::string &message) {
 
       NPC *npc = dynamic_cast<NPC *>(entity.get());
       if (npc) {
-        npc->setBoundsCheckEnabled(true);
+        // Keep bounds checking disabled to prevent artificial bouncing
+        npc->setBoundsCheckEnabled(false);
       }
     }
 
@@ -575,13 +579,13 @@ void PatrolBehavior::setupModeDefaults(PatrolMode mode) {
     m_areaBottomRight = Vector2D(worldMinX + worldWidth * 0.4f, worldMinY + worldHeight - 50);
     m_waypointCount = 6;
     m_autoRegenerate = true;
-    m_minWaypointDistance = 80.0f;
+    m_minWaypointDistance = 800.0f; // 10X larger for world scale
     generateRandomWaypointsInRectangle();
     break;
 
   case PatrolMode::EVENT_TARGET:
     m_eventTarget = Vector2D(worldMinX + worldWidth * 0.5f, worldMinY + worldHeight * 0.5f);
-    m_eventTargetRadius = 150.0f;
+    m_eventTargetRadius = 1500.0f; // 10X larger for world scale
     m_waypointCount = 8;
     generateWaypointsAroundTarget();
     break;
@@ -589,10 +593,10 @@ void PatrolBehavior::setupModeDefaults(PatrolMode mode) {
   case PatrolMode::CIRCULAR_AREA:
     m_useCircularArea = true;
     m_areaCenter = Vector2D(worldMinX + worldWidth * 0.75f, worldMinY + worldHeight * 0.5f);
-    m_areaRadius = 120.0f;
+    m_areaRadius = 1200.0f; // 10X larger for world scale
     m_waypointCount = 5;
     m_autoRegenerate = true;
-    m_minWaypointDistance = 60.0f;
+    m_minWaypointDistance = 600.0f; // 10X larger for world scale
     generateRandomWaypointsInCircle();
     break;
   }

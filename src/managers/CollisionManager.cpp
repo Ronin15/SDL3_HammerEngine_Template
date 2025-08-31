@@ -48,6 +48,46 @@ void CollisionManager::clean() {
     COLLISION_INFO("Cleaned and shut down");
 }
 
+void CollisionManager::prepareForStateTransition() {
+    COLLISION_INFO("Preparing CollisionManager for state transition...");
+    
+    if (!m_initialized || m_isShutdown) {
+        COLLISION_WARN("CollisionManager not initialized or already shutdown during state transition");
+        return;
+    }
+
+    // Clear all collision bodies (both dynamic and static)
+    size_t bodyCount = m_bodies.size();
+    m_bodies.clear();
+    
+    // Clear spatial hash completely 
+    m_hash.clear();
+    
+    // Clear trigger tracking state completely
+    m_activeTriggerPairs.clear();
+    m_triggerCooldownUntil.clear();
+    
+    // Reset trigger cooldown settings
+    m_defaultTriggerCooldownSec = 0.0f;
+    
+    // Clear all collision callbacks (these should be re-registered by new states)
+    m_callbacks.clear();
+    
+    // Reset performance stats for clean slate
+    m_perf = PerfStats{};
+    
+    // Reset world bounds to default
+    m_worldBounds = AABB(0, 0, 100000.0f, 100000.0f);
+    
+    // Reset syncing state
+    m_isSyncing = false;
+    
+    // Reset verbose logging to default
+    m_verboseLogs = false;
+    
+    COLLISION_INFO("CollisionManager state transition complete - removed " + std::to_string(bodyCount) + " bodies, cleared all state");
+}
+
 void CollisionManager::setWorldBounds(float minX, float minY, float maxX, float maxY) {
     float cx = (minX + maxX) * 0.5f;
     float cy = (minY + maxY) * 0.5f;

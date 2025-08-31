@@ -13,7 +13,7 @@
 class ChaseBehavior : public AIBehavior {
 public:
   explicit ChaseBehavior(float chaseSpeed = 3.0f, float maxRange = 500.0f,
-                         float minRange = 50.0f);
+                         float minRange = 10.0f); // Much closer approach distance
 
   void init(EntityPtr entity) override;
 

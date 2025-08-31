@@ -156,8 +156,7 @@ void WanderBehavior::executeLogic(EntityPtr entity) {
      }
     
     Vector2D dest = position + state.currentDirection * moveDistance;
-    // Clamp destination
-    dest = AIInternal::ClampToWorld(dest);
+    // No clamping - let pathfinding handle invalid destinations naturally (like PatrolBehavior)
 
     // Refresh short path using unified cooldown system
     if (state.cooldowns.canRequestPath(now)) {
@@ -280,29 +279,8 @@ void WanderBehavior::updateWanderState(EntityPtr entity) {
     }
   }
 
-  // Edge avoidance: nudge direction inward if close to world edges
-  float minX, minY, maxX, maxY;
-  if (WorldManager::Instance().getWorldBounds(minX, minY, maxX, maxY)) {
-    const float TILE = 32.0f; const float margin = 24.0f;
-    float worldMinX = minX * TILE + margin;
-    float worldMinY = minY * TILE + margin;
-    float worldMaxX = maxX * TILE - margin;
-    float worldMaxY = maxY * TILE - margin;
-    Vector2D pos = entity->getPosition();
-    Vector2D push(0,0);
-    if (pos.getX() < worldMinX) push.setX(1.0f);
-    else if (pos.getX() > worldMaxX) push.setX(-1.0f);
-    if (pos.getY() < worldMinY) push.setY(1.0f);
-    else if (pos.getY() > worldMaxY) push.setY(-1.0f);
-    if (push.length() > 0.1f) {
-      push.normalize();
-      state.currentDirection = push;
-      state.pathPoints.clear();
-      state.currentPathIndex = 0;
-      entity->setVelocity(state.currentDirection * m_speed);
-      state.lastDirectionChangeTime = currentTime;
-    }
-  }
+  // No edge avoidance - let entities wander naturally like PatrolBehavior
+  // The pathfinding system and world collision will handle actual boundaries
 }
 
 void WanderBehavior::clean(EntityPtr entity) {
@@ -414,26 +392,26 @@ void WanderBehavior::setupModeDefaults(WanderMode mode) {
 
   switch (mode) {
   case WanderMode::SMALL_AREA:
-    // Small personal space around current position
-    m_areaRadius = 120.0f;
+    // Small personal space around current position - 10X larger
+    m_areaRadius = 1200.0f;
     m_changeDirectionInterval = 1500.0f;
     break;
 
   case WanderMode::MEDIUM_AREA:
-    // Room/building sized area - much larger for world scale
-    m_areaRadius = 400.0f;
+    // Room/building sized area - 10X larger for world scale
+    m_areaRadius = 4000.0f;
     m_changeDirectionInterval = 2500.0f;
     break;
 
   case WanderMode::LARGE_AREA:
-    // Village/district sized - true world-scale wandering
-    m_areaRadius = 800.0f;
+    // Village/district sized - 10X larger for true world-scale wandering
+    m_areaRadius = 8000.0f;
     m_changeDirectionInterval = 3500.0f;
     break;
 
   case WanderMode::EVENT_TARGET:
-    // Wander around a specific target location
-    m_areaRadius = 250.0f;
+    // Wander around a specific target location - 10X larger
+    m_areaRadius = 2500.0f;
     m_changeDirectionInterval = 2000.0f;
     break;
   }

@@ -6,6 +6,7 @@
 #include "gameStates/AdvancedAIDemoState.hpp"
 #include "core/Logger.hpp"
 #include "managers/AIManager.hpp"
+#include "managers/CollisionManager.hpp"
 #include "SDL3/SDL_scancode.h"
 #include "ai/behaviors/IdleBehavior.hpp"
 #include "ai/behaviors/FleeBehavior.hpp"
@@ -189,8 +190,14 @@ bool AdvancedAIDemoState::exit() {
     // Cache AIManager reference for better performance
     AIManager& aiMgr = AIManager::Instance();
 
-    // Use the new prepareForStateTransition method for safer cleanup
+    // Use prepareForStateTransition methods for deterministic cleanup
     aiMgr.prepareForStateTransition();
+    
+    // Clean collision state
+    CollisionManager &collisionMgr = CollisionManager::Instance();
+    if (collisionMgr.isInitialized() && !collisionMgr.isShutdown()) {
+      collisionMgr.prepareForStateTransition();
+    }
 
     // Clean up NPCs
     for (auto& npc : m_npcs) {
