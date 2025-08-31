@@ -330,7 +330,6 @@ void AIDemoState::setupAIBehaviors() {
   if (!aiMgr.hasBehavior("Wander")) {
     auto wanderBehavior = std::make_unique<WanderBehavior>(
         WanderBehavior::WanderMode::MEDIUM_AREA, 80.0f);
-    wanderBehavior->setScreenDimensions(m_worldWidth, m_worldHeight);
     aiMgr.registerBehavior("Wander", std::move(wanderBehavior));
     GAMESTATE_INFO("AIDemoState: Registered Wander behavior");
   }
@@ -338,7 +337,6 @@ void AIDemoState::setupAIBehaviors() {
   if (!aiMgr.hasBehavior("SmallWander")) {
     auto smallWanderBehavior = std::make_unique<WanderBehavior>(
         WanderBehavior::WanderMode::SMALL_AREA, 60.0f);
-    smallWanderBehavior->setScreenDimensions(m_worldWidth, m_worldHeight);
     aiMgr.registerBehavior("SmallWander", std::move(smallWanderBehavior));
     GAMESTATE_INFO("AIDemoState: Registered SmallWander behavior");
   }
@@ -346,7 +344,6 @@ void AIDemoState::setupAIBehaviors() {
   if (!aiMgr.hasBehavior("LargeWander")) {
     auto largeWanderBehavior = std::make_unique<WanderBehavior>(
         WanderBehavior::WanderMode::LARGE_AREA, 100.0f);
-    largeWanderBehavior->setScreenDimensions(m_worldWidth, m_worldHeight);
     aiMgr.registerBehavior("LargeWander", std::move(largeWanderBehavior));
     GAMESTATE_INFO("AIDemoState: Registered LargeWander behavior");
   }
@@ -354,7 +351,6 @@ void AIDemoState::setupAIBehaviors() {
   if (!aiMgr.hasBehavior("EventWander")) {
     auto eventWanderBehavior = std::make_unique<WanderBehavior>(
         WanderBehavior::WanderMode::EVENT_TARGET, 70.0f);
-    eventWanderBehavior->setScreenDimensions(m_worldWidth, m_worldHeight);
     aiMgr.registerBehavior("EventWander", std::move(eventWanderBehavior));
     GAMESTATE_INFO("AIDemoState: Registered EventWander behavior");
   }
@@ -362,7 +358,6 @@ void AIDemoState::setupAIBehaviors() {
   if (!aiMgr.hasBehavior("Patrol")) {
     auto patrolBehavior = std::make_unique<PatrolBehavior>(
         PatrolBehavior::PatrolMode::FIXED_WAYPOINTS, 75.0f, true);
-    patrolBehavior->setScreenDimensions(m_worldWidth, m_worldHeight);
     aiMgr.registerBehavior("Patrol", std::move(patrolBehavior));
     GAMESTATE_INFO("AIDemoState: Registered Patrol behavior");
   }
@@ -370,7 +365,6 @@ void AIDemoState::setupAIBehaviors() {
   if (!aiMgr.hasBehavior("RandomPatrol")) {
     auto randomPatrolBehavior = std::make_unique<PatrolBehavior>(
         PatrolBehavior::PatrolMode::RANDOM_AREA, 85.0f, false);
-    randomPatrolBehavior->setScreenDimensions(m_worldWidth, m_worldHeight);
     aiMgr.registerBehavior("RandomPatrol", std::move(randomPatrolBehavior));
     GAMESTATE_INFO("AIDemoState: Registered RandomPatrol behavior");
   }
@@ -378,7 +372,6 @@ void AIDemoState::setupAIBehaviors() {
   if (!aiMgr.hasBehavior("CirclePatrol")) {
     auto circlePatrolBehavior = std::make_unique<PatrolBehavior>(
         PatrolBehavior::PatrolMode::CIRCULAR_AREA, 90.0f, false);
-    circlePatrolBehavior->setScreenDimensions(m_worldWidth, m_worldHeight);
     aiMgr.registerBehavior("CirclePatrol", std::move(circlePatrolBehavior));
     GAMESTATE_INFO("AIDemoState: Registered CirclePatrol behavior");
   }
@@ -386,7 +379,6 @@ void AIDemoState::setupAIBehaviors() {
   if (!aiMgr.hasBehavior("EventTarget")) {
     auto eventTargetBehavior = std::make_unique<PatrolBehavior>(
         PatrolBehavior::PatrolMode::EVENT_TARGET, 95.0f, false);
-    eventTargetBehavior->setScreenDimensions(m_worldWidth, m_worldHeight);
     aiMgr.registerBehavior("EventTarget", std::move(eventTargetBehavior));
     GAMESTATE_INFO("AIDemoState: Registered EventTarget behavior");
   }

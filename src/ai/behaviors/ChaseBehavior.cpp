@@ -99,13 +99,42 @@ void ChaseBehavior::executeLogic(EntityPtr entity) {
         policy.detourRadii[1] = 96.0f;
         policy.lateralBias = 0.0f;
 
+        // Check if target area is crowded - if so, pick nearby alternative position
+        Vector2D goalPosition = targetPos;
+        AABB crowdCheck(targetPos.getX() - 60.0f, targetPos.getY() - 60.0f, 120.0f, 120.0f);
+        std::vector<EntityID> nearbyEntities;
+        CollisionManager::Instance().queryArea(crowdCheck, nearbyEntities);
+        
+        if (nearbyEntities.size() >= 6) { // Target area is crowded
+          // Pick alternative position near target but less crowded
+          bool foundAlternative = false;
+          for (float distance : {80.0f, 120.0f, 160.0f}) {
+            for (float angle : {0.0f, 1.57f, 3.14f, 4.71f}) {
+              Vector2D offset(distance * cosf(angle), distance * sinf(angle));
+              Vector2D altPosition = targetPos + offset;
+              
+              // Check if alternative position is less crowded
+              AABB altCheck(altPosition.getX() - 40.0f, altPosition.getY() - 40.0f, 80.0f, 80.0f);
+              std::vector<EntityID> altNearby;
+              CollisionManager::Instance().queryArea(altCheck, altNearby);
+              
+              if (altNearby.size() < nearbyEntities.size() / 2) {
+                goalPosition = altPosition;
+                foundAlternative = true;
+                break;
+              }
+            }
+            if (foundAlternative) break;
+          }
+        }
+
         if (m_useAsyncPathfinding) {
-          RefreshPathWithPolicyAsync(entity, entityPos, targetPos,
+          RefreshPathWithPolicyAsync(entity, entityPos, goalPosition,
                                     m_navPath, m_navIndex, m_lastPathUpdate,
                                     m_lastProgressTime, m_lastNodeDistance,
                                     policy, 1); // High priority for chase
         } else {
-          RefreshPathWithPolicy(entity, entityPos, targetPos,
+          RefreshPathWithPolicy(entity, entityPos, goalPosition,
                               m_navPath, m_navIndex, m_lastPathUpdate,
                               m_lastProgressTime, m_lastNodeDistance,
                               policy);
@@ -113,32 +142,118 @@ void ChaseBehavior::executeLogic(EntityPtr entity) {
         m_cooldowns.applyPathCooldown(now, 600);
       }
 
-      // State: PATH_FOLLOWING or DIRECT_MOVEMENT
+      // State: PATH_FOLLOWING or DIRECT_MOVEMENT with dynamic spacing
       if (!m_navPath.empty() && m_navIndex < m_navPath.size()) {
-        // Following computed path
+        // Following computed path with enhanced separation
         using namespace AIInternal;
         bool following = FollowPathStepWithPolicy(entity, entityPos,
                              m_navPath, m_navIndex,
                              m_chaseSpeed, m_navRadius, 0.0f);
         if (following) {
           m_lastProgressTime = now;
-          // Apply enhanced separation for combat scenarios
+          // Apply enhanced separation for combat scenarios with dynamic adjustment
           using namespace AIInternal::SeparationParams;
+          float dynamicRadius = COMBAT_RADIUS;
+          float dynamicStrength = COMBAT_STRENGTH;
+          
+          // Use queryArea to find nearby entities for crowd analysis
+          AABB queryArea(entityPos.getX() - COMBAT_RADIUS * 2.0f, 
+                        entityPos.getY() - COMBAT_RADIUS * 2.0f,
+                        entityPos.getX() + COMBAT_RADIUS * 2.0f, 
+                        entityPos.getY() + COMBAT_RADIUS * 2.0f);
+          std::vector<EntityID> nearbyIDs;
+          CollisionManager::Instance().queryArea(queryArea, nearbyIDs);
+          
+          int chaserCount = 0;
+          for (auto id : nearbyIDs) {
+            if (id != entity->getID()) {
+              Vector2D nearbyCenter;
+              if (CollisionManager::Instance().getBodyCenter(id, nearbyCenter)) {
+                // Check if this entity is likely also chasing (moving toward target)
+                Vector2D nearbyToTarget = targetPos - nearbyCenter;
+                float distToTarget = nearbyToTarget.length();
+                if (distToTarget < m_maxRange * 1.5f) { // Within reasonable chase range
+                  chaserCount++;
+                }
+              }
+            }
+          }
+          
+          // Dynamic adjustment based on crowd density
+          if (chaserCount > 2) {
+            // High density: increase separation and add lateral spreading
+            dynamicRadius = COMBAT_RADIUS * 1.8f;
+            dynamicStrength = COMBAT_STRENGTH * 2.0f;
+            
+            // Add lateral bias to spread chasers around target in rings
+            Vector2D toTarget = (targetPos - entityPos).normalized();
+            Vector2D lateral(-toTarget.getY(), toTarget.getX()); // Perpendicular vector
+            
+            // Create ring formation around target based on entity ID and crowd size
+            float ringRadius = 80.0f + (chaserCount * 25.0f); // Larger rings for more chasers
+            float angleStep = (2.0f * M_PI) / std::max(3.0f, (float)chaserCount);
+            float entityAngle = (entity->getID() % chaserCount) * angleStep;
+            
+            // Calculate position in ring formation
+            Vector2D ringOffset(std::cos(entityAngle) * ringRadius, std::sin(entityAngle) * ringRadius);
+            Vector2D adjustedTarget = targetPos + ringOffset;
+            
+            // Path toward ring position instead of directly to target
+            Vector2D newDir = (adjustedTarget - entityPos).normalized();
+            entity->setVelocity(newDir * m_chaseSpeed);
+          } else if (chaserCount > 0) {
+            // Medium density: moderate separation increase with simple lateral bias
+            dynamicRadius = COMBAT_RADIUS * 1.3f;
+            dynamicStrength = COMBAT_STRENGTH * 1.5f;
+            
+            // Simple lateral offset to prevent stacking
+            Vector2D toTarget = (targetPos - entityPos).normalized();
+            Vector2D lateral(-toTarget.getY(), toTarget.getX());
+            float lateralBias = ((float)(entity->getID() % 3) - 1.0f) * 40.0f; // -40, 0, or +40
+            Vector2D adjustedTarget = targetPos + lateral * lateralBias;
+            Vector2D newDir = (adjustedTarget - entityPos).normalized();
+            entity->setVelocity(newDir * m_chaseSpeed);
+          }
+          
           Vector2D adjusted = AIInternal::ApplySeparation(entity, entityPos,
                                entity->getVelocity(), m_chaseSpeed,
-                               COMBAT_RADIUS, COMBAT_STRENGTH, COMBAT_MAX_NEIGHBORS);
+                               dynamicRadius, dynamicStrength, COMBAT_MAX_NEIGHBORS + chaserCount);
           entity->setVelocity(adjusted);
         } else {
-          // Fallback to direct movement
+          // Fallback to direct movement with crowd awareness
           Vector2D direction = (targetPos - entityPos);
           direction.normalize();
           entity->setVelocity(direction * m_chaseSpeed);
           m_lastProgressTime = now;
         }
       } else {
-        // Direct movement toward target
+        // Direct movement toward target with crowd awareness
         Vector2D direction = (targetPos - entityPos);
         direction.normalize();
+        
+        // Apply crowd-aware positioning even in direct movement
+        AABB queryArea(entityPos.getX() - 100.0f, entityPos.getY() - 100.0f,
+                      entityPos.getX() + 100.0f, entityPos.getY() + 100.0f);
+        std::vector<EntityID> nearbyIDs;
+        CollisionManager::Instance().queryArea(queryArea, nearbyIDs);
+        int nearbyCount = static_cast<int>(nearbyIDs.size()) - 1; // Exclude self
+        
+        if (nearbyCount > 2) {
+          // High crowd density: use ring formation approach
+          float ringRadius = 60.0f + (nearbyCount * 20.0f);
+          float angleStep = (2.0f * M_PI) / std::max(3.0f, (float)nearbyCount);
+          float entityAngle = (entity->getID() % nearbyCount) * angleStep;
+          Vector2D ringOffset(std::cos(entityAngle) * ringRadius, std::sin(entityAngle) * ringRadius);
+          Vector2D ringTarget = targetPos + ringOffset;
+          direction = (ringTarget - entityPos).normalized();
+        } else if (nearbyCount > 0) {
+          // Medium density: add slight lateral offset to prevent perfect overlap
+          Vector2D lateral(-direction.getY(), direction.getX());
+          float offset = ((float)(entity->getID() % 5) - 2.0f) * 35.0f; // -70 to +70 range  
+          direction = direction + lateral * (offset / 200.0f); // Small lateral bias
+          direction.normalize();
+        }
+        
         entity->setVelocity(direction * m_chaseSpeed);
         m_lastProgressTime = now;
       }

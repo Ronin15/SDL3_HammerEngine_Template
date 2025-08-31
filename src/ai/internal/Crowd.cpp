@@ -20,15 +20,20 @@ Vector2D ApplySeparation(EntityPtr entity,
   static thread_local std::vector<EntityID> queryResults;
   queryResults.clear();
 
-  // Larger query area for better early separation
-  float queryRadius = radius * 1.4f;
+  // Much larger query area for world-scale separation
+  // Scale separation radius based on speed for dynamic behavior
+  float baseRadius = std::max(radius, 64.0f); // Minimum 64px separation
+  float speedMultiplier = std::clamp(speed / 100.0f, 1.0f, 3.0f); // Scale 1x-3x based on speed
+  float queryRadius = baseRadius * speedMultiplier * 2.0f; // Much larger search area
+  
   HammerEngine::AABB area(currentPos.getX() - queryRadius, currentPos.getY() - queryRadius, 
                           queryRadius * 2.0f, queryRadius * 2.0f);
   cm.queryArea(area, queryResults);
 
   Vector2D sep(0, 0);
   Vector2D avoidance(0, 0);
-  float closest = radius;
+  Vector2D longRangeSep(0, 0); // New: long-range separation for world spreading
+  float closest = queryRadius;
   size_t counted = 0;
   size_t criticalNeighbors = 0;
   
@@ -39,6 +44,7 @@ Vector2D ApplySeparation(EntityPtr entity,
     if (!cm.getBodyCenter(id, other)) continue;
     Vector2D d = currentPos - other;
     float dist = d.length();
+    
     if (dist < 0.5f) {
       // Handle extreme overlap with emergency push
       d = Vector2D((rand() % 200 - 100) / 100.0f, (rand() % 200 - 100) / 100.0f);
@@ -49,59 +55,107 @@ Vector2D ApplySeparation(EntityPtr entity,
     
     closest = std::min(closest, dist);
     
-    // Multi-layer separation with different behaviors at different distances
+    // Multi-layer separation with world-scale awareness
     Vector2D dir = d * (1.0f / dist);
     
-    if (dist < radius * 0.5f) {
+    if (dist < baseRadius * 0.5f) {
       // Critical range - strong repulsion
-      float criticalWeight = (radius * 0.5f - dist) / (radius * 0.5f);
-      avoidance = avoidance + dir * (criticalWeight * criticalWeight * 2.0f);
+      float criticalWeight = (baseRadius * 0.5f - dist) / (baseRadius * 0.5f);
+      avoidance = avoidance + dir * (criticalWeight * criticalWeight * 3.0f); // Increased strength
       criticalNeighbors++;
-    } else if (dist < radius) {
+    } else if (dist < baseRadius) {
       // Normal separation range
-      float normalWeight = (radius - dist) / radius;
+      float normalWeight = (baseRadius - dist) / baseRadius;
       sep = sep + dir * normalWeight;
+    } else if (dist < baseRadius * 3.0f) {
+      // Medium-range gentle separation for world spreading
+      float mediumWeight = (baseRadius * 3.0f - dist) / (baseRadius * 2.0f);
+      longRangeSep = longRangeSep + dir * (mediumWeight * 0.4f);
     } else {
-      // Early warning range - gentle nudging
-      float earlyWeight = (queryRadius - dist) / (queryRadius - radius);
-      sep = sep + dir * (earlyWeight * 0.3f);
+      // Long-range awareness for early spread behavior
+      float longWeight = (queryRadius - dist) / (queryRadius - baseRadius * 3.0f);
+      longRangeSep = longRangeSep + dir * (longWeight * 0.1f);
     }
     
-    if (++counted >= maxNeighbors) break;
+    if (++counted >= maxNeighbors * 2) break; // Allow more neighbors for world-scale
   }
 
   Vector2D out = intendedVel;
   float il = out.length();
   
-  if ((sep.length() > 0.001f || avoidance.length() > 0.001f) && il > 0.001f) {
-    // Emergency avoidance takes priority
+  if ((sep.length() > 0.001f || avoidance.length() > 0.001f || longRangeSep.length() > 0.001f) && il > 0.001f) {
+    Vector2D intendedDir = out * (1.0f / il);
+    
+    // Emergency avoidance with pathfinding preservation
     if (criticalNeighbors > 0 && avoidance.length() > 0.001f) {
-      // Strong avoidance with some forward momentum preservation
-      Vector2D emergencyVel = avoidance * speed * 1.5f + out * 0.2f;
+      // Instead of abandoning the path, find perpendicular avoidance that preserves forward progress
+      Vector2D avoidDir = avoidance.normalized();
+      Vector2D perpendicular(-intendedDir.getY(), intendedDir.getX());
+      
+      // Choose perpendicular direction that aligns better with avoidance
+      if (avoidDir.dot(perpendicular) < 0) {
+        perpendicular = Vector2D(intendedDir.getY(), -intendedDir.getX());
+      }
+      
+      // Blend forward movement with perpendicular avoidance
+      Vector2D emergencyVel = intendedDir * 0.6f + perpendicular * 0.8f; // Preserve 60% forward progress
       float emLen = emergencyVel.length();
       if (emLen > 0.01f) {
         out = emergencyVel * (speed / emLen);
       }
-    } else if (sep.length() > 0.001f) {
-      // Enhanced separation blending with momentum preservation
+    } else {
+      // Pathfinding-aware separation that preserves goal direction
       float adaptiveStrength = strength;
       
-      // Increase strength based on crowding
+      // Dynamic strength adjustment based on crowd density
       if (counted >= maxNeighbors) {
-        adaptiveStrength *= 1.5f;
+        adaptiveStrength = std::min(adaptiveStrength * 1.5f, 0.6f); // Cap max separation influence
       }
-      if (closest < radius * 0.7f) {
-        adaptiveStrength *= 1.3f;
+      if (closest < baseRadius * 0.7f) {
+        adaptiveStrength = std::min(adaptiveStrength * 1.3f, 0.5f);
       }
       
-      // Preserve some forward momentum while adding separation
-      Vector2D forwardBias = out * (1.0f - adaptiveStrength);
-      Vector2D separationForce = sep * adaptiveStrength * speed;
-      Vector2D blended = forwardBias + separationForce;
+      // Pathfinding-preserving separation strategy
+      if (sep.length() > 0.001f) {
+        Vector2D sepDir = sep.normalized();
+        
+        // Check if separation conflicts with intended direction
+        float directionConflict = -sepDir.dot(intendedDir); // How much separation opposes forward movement
+        
+        if (directionConflict > 0.7f) {
+          // High conflict: apply lateral redirection instead of opposing force
+          Vector2D lateral(-intendedDir.getY(), intendedDir.getX());
+          if (sepDir.dot(lateral) < 0) {
+            lateral = Vector2D(intendedDir.getY(), -intendedDir.getX());
+          }
+          
+          // Blend forward movement with lateral avoidance
+          Vector2D redirected = intendedDir * 0.75f + lateral * adaptiveStrength * 2.0f;
+          float redirLen = redirected.length();
+          if (redirLen > 0.01f) {
+            out = redirected * (speed / redirLen);
+          }
+        } else {
+          // Low conflict: apply gentle separation with strong forward bias
+          Vector2D forwardBias = out * (1.0f - adaptiveStrength * 0.5f); // Preserve more forward momentum
+          Vector2D separationForce = sep * adaptiveStrength * speed * 0.7f; // Reduce separation strength
+          Vector2D blended = forwardBias + separationForce;
+          
+          float bl = blended.length();
+          if (bl > 0.01f) {
+            out = blended * (speed / bl);
+          }
+        }
+      }
       
-      float bl = blended.length();
-      if (bl > 0.01f) {
-        out = blended * (speed / bl);
+      // Apply world-scale spreading as gentle bias only
+      if (longRangeSep.length() > 0.001f) {
+        Vector2D spreadBias = longRangeSep * 0.15f * speed; // Much gentler influence
+        out = out + spreadBias;
+        float finalLen = out.length();
+        if (finalLen > speed) {
+          out = out * (speed / finalLen);
+        }
       }
     }
   }

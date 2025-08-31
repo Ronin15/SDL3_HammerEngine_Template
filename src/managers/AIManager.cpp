@@ -292,6 +292,12 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
       for (size_t i = 0; i < entityCount; ++i) {
         if (m_storage.hotData[i].active && m_storage.entities[i]) {
           m_storage.hotData[i].position = m_storage.entities[i]->getPosition();
+          
+          // Increment frame counter for each active entity (with overflow protection)
+          if (m_storage.hotData[i].frameCounter < UINT16_MAX) {
+            m_storage.hotData[i].frameCounter++;
+          }
+          
           ++activeCount;
         }
       }
@@ -478,60 +484,9 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
 
     currentFrame = m_frameCounter.fetch_add(1, std::memory_order_relaxed);
 
-    // Periodic cleanup, stall detection, and stats (balanced frequency)
+    // Periodic cleanup and stats (balanced frequency)
     if (currentFrame % 300 == 0) {
       cleanupInactiveEntities();
-      
-      // Check for stalled entities and apply emergency unstick if needed
-      size_t stalledCount = 0;
-      size_t clusterCount = 0;
-      {
-        std::shared_lock<std::shared_mutex> lock(m_entitiesMutex);
-        for (size_t i = 0; i < m_storage.size(); ++i) {
-          if (m_storage.hotData[i].active && m_storage.entities[i]) {
-            if (isEntityStalled(m_storage.entities[i])) {
-              stalledCount++;
-              // Log diagnostics for stalled entities (throttled)
-              if (currentFrame % 1800 == 0) { // Every 30 seconds at 60 FPS
-                logEntityDiagnostics(m_storage.entities[i]);
-              }
-            }
-            
-            // Anti-clumping check - detect entities that are too close to many neighbors
-            if (currentFrame % 60 == i % 60) { // Stagger checks across frames
-              clusterCount += checkAndDisperseClusters(m_storage.entities[i]);
-            }
-            
-            // Check for entities with velocity but no movement (stuck in place) - less frequent
-            if (currentFrame % 600 == i % 600) { // Every 10 seconds, staggered
-              Vector2D entityVel = m_storage.entities[i]->getVelocity();
-              Vector2D currentPos = m_storage.entities[i]->getPosition();
-              Vector2D lastPos = m_storage.hotData[i].lastPosition;
-              
-              float velocityMag = entityVel.length();
-              float actualMovement = (currentPos - lastPos).length();
-              
-              // More conservative detection - only for truly stuck entities
-              if (velocityMag > 3.0f && actualMovement < 0.5f) {
-                // Only log, don't automatically nudge (let the existing unstick handle it)
-                AI_DEBUG("AIManager detected persistently stuck entity " + std::to_string(m_storage.entities[i]->getID()));
-                
-                // Instead of nudging, trigger the proper unstick mechanism
-                if (isEntityStalled(m_storage.entities[i])) {
-                  forceUnstickEntity(m_storage.entities[i]);
-                }
-              }
-            }
-          }
-        }
-      }
-      
-      if (stalledCount > 0) {
-        AI_DEBUG("Found " + std::to_string(stalledCount) + " potentially stalled entities");
-      }
-      if (clusterCount > 0) {
-        AI_DEBUG("Dispersed " + std::to_string(clusterCount) + " entity clusters");
-      }
       
       m_lastCleanupFrame.store(currentFrame, std::memory_order_relaxed);
 
@@ -1602,70 +1557,24 @@ void AIManager::forceUnstickEntity(EntityPtr entity) {
   EntityID entityId = entity->getID();
   AI_WARN("Force unsticking entity " + std::to_string(entityId));
 
-  // Clear all pathfinding state
+  // Simple approach: clear pathfinding state and give velocity nudge
   clearPath(entity);
   m_pathCooldownUntil.erase(entityId);
 
-  // Clear entity from AIManager storage if present
-  {
-    std::unique_lock<std::shared_mutex> lock(m_entitiesMutex);
-    auto it = m_entityToIndex.find(entity);
-    if (it != m_entityToIndex.end()) {
-      size_t index = it->second;
-      if (index < m_storage.size()) {
-        // Clear path-related state
-        m_storage.hotData[index].shouldUpdate = true;
-        m_storage.hotData[index].active = true;
-        
-        // Clean and reinitialize the behavior
-        if (m_storage.behaviors[index]) {
-          try {
-            std::string behaviorName = m_storage.behaviors[index]->getName();
-            m_storage.behaviors[index]->clean(entity);
-            
-            // Instead of teleporting, apply a gentle velocity nudge
-            Vector2D currentVel = entity->getVelocity();
-            float angle = static_cast<float>((entityId % 360) * M_PI / 180.0);
-            Vector2D nudge(std::cos(angle) * 2.0f, std::sin(angle) * 2.0f);
-            
-            // Apply gentle nudge instead of position teleport
-            entity->setVelocity(currentVel + nudge);
-            
-            // Force collision manager sync to prevent position desync
-            auto& cm = CollisionManager::Instance();
-            if (!cm.isSyncing()) {
-              cm.setKinematicPose(entity->getID(), entity->getPosition());
-            }
-            
-            // Reinitialize behavior
-            m_storage.behaviors[index]->init(entity);
-            
-            AI_INFO("Successfully unstuck entity " + std::to_string(entityId) + 
-                    " with behavior " + behaviorName);
-          } catch (const std::exception& e) {
-            AI_ERROR("Exception during unstick operation: " + std::string(e.what()));
-          }
-        }
-      }
-    }
-  }
+  // Apply simple random velocity nudge
+  float angle = ((entityId * 17) % 360) * M_PI / 180.0f;
+  Vector2D nudgeVel(cosf(angle) * 50.0f, sinf(angle) * 50.0f);
+  entity->setVelocity(nudgeVel);
+  
+  AI_INFO("Simple unstick applied to entity " + std::to_string(entityId));
 }
 
 bool AIManager::isEntityStalled(EntityPtr entity) const {
   if (!entity) return false;
-
-  std::shared_lock<std::shared_mutex> lock(m_entitiesMutex);
-  auto it = m_entityToIndex.find(entity);
-  if (it != m_entityToIndex.end() && it->second < m_storage.size()) {
-    const auto& hotData = m_storage.hotData[it->second];
-    Vector2D velocity = entity->getVelocity();
-    float speed = velocity.length();
-    
-    // Consider stalled if velocity is very low and position hasn't changed much
-    float distanceMoved = (hotData.position - hotData.lastPosition).length();
-    return (speed < 1.0f && distanceMoved < 5.0f);
-  }
-  return false;
+  
+  // Simplified stall detection - just check velocity
+  Vector2D velocity = entity->getVelocity();
+  return velocity.length() < 0.5f;
 }
 
 void AIManager::logEntityDiagnostics(EntityPtr entity) const {
@@ -1714,14 +1623,14 @@ size_t AIManager::checkAndDisperseClusters(EntityPtr entity) {
   static thread_local std::vector<EntityID> queryResults;
   queryResults.clear();
   
-  const float CLUSTER_RADIUS = 40.0f;
+  const float CLUSTER_RADIUS = 60.0f; // Reasonable detection radius
   HammerEngine::AABB area(entityPos.getX() - CLUSTER_RADIUS, entityPos.getY() - CLUSTER_RADIUS,
                           CLUSTER_RADIUS * 2.0f, CLUSTER_RADIUS * 2.0f);
   cm.queryArea(area, queryResults);
   
   // Count entities in close proximity
   size_t closeNeighbors = 0;
-  const float CLOSE_DISTANCE = 25.0f;
+  const float CLOSE_DISTANCE = 40.0f;
   for (EntityID id : queryResults) {
     if (id == entity->getID()) continue;
     if (!cm.isDynamic(id) || cm.isTrigger(id)) continue;
@@ -1733,49 +1642,13 @@ size_t AIManager::checkAndDisperseClusters(EntityPtr entity) {
     }
   }
   
-  // If too many close neighbors, apply dispersion
-  if (closeNeighbors >= 4) {
-    // Calculate dispersion vector away from cluster center
-    Vector2D clusterCenter(0, 0);
-    size_t validNeighbors = 0;
-    
-    for (EntityID id : queryResults) {
-      if (id == entity->getID()) continue;
-      Vector2D other;
-      if (!cm.getBodyCenter(id, other)) continue;
-      float dist = (entityPos - other).length();
-      if (dist < CLUSTER_RADIUS) {
-        clusterCenter = clusterCenter + other;
-        validNeighbors++;
-      }
-    }
-    
-    if (validNeighbors > 0) {
-      clusterCenter = clusterCenter * (1.0f / validNeighbors);
-      Vector2D dispersionDir = entityPos - clusterCenter;
-      if (dispersionDir.length() < 5.0f) {
-        // Use random direction if at cluster center
-        float angle = static_cast<float>((entity->getID() % 360) * M_PI / 180.0);
-        dispersionDir = Vector2D(std::cos(angle), std::sin(angle)) * 30.0f;
-      } else {
-        dispersionDir.normalize();
-        dispersionDir = dispersionDir * 25.0f; // Gentle push
-      }
-      
-      // Apply gentle nudge to entity's current velocity
-      Vector2D currentVel = entity->getVelocity();
-      Vector2D dispersedVel = currentVel + dispersionDir * 0.3f;
-      
-      // Maintain original speed but change direction slightly
-      if (currentVel.length() > 0.1f) {
-        float originalSpeed = currentVel.length();
-        dispersedVel.normalize();
-        dispersedVel = dispersedVel * originalSpeed;
-      }
-      
-      entity->setVelocity(dispersedVel);
-      return 1; // Dispersed one cluster
-    }
+  // If clustered, signal that this entity needs target adjustment
+  // Don't force movement - let behaviors handle target selection
+  if (closeNeighbors >= 5) {
+    // Mark this entity as needing target diversification
+    // This will be handled by individual behaviors through PathFollow system
+    AI_DEBUG("Entity " + std::to_string(entity->getID()) + " is in cluster of " + std::to_string(closeNeighbors) + " - needs target adjustment");
+    return 1; // Detected cluster that needs addressing
   }
   
   return 0;

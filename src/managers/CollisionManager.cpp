@@ -237,34 +237,42 @@ bool CollisionManager::isTrigger(EntityID id) const {
 
 void CollisionManager::broadphase(std::vector<std::pair<EntityID,EntityID>>& pairs) const {
     pairs.clear();
-    std::vector<EntityID> candidates;
-    auto keyOf = [](EntityID a, EntityID b){
-        uint64_t x = static_cast<uint64_t>(a);
-        uint64_t y = static_cast<uint64_t>(b);
-        if (x > y) std::swap(x, y);
-        return (x * 1469598103934665603ull) ^ (y + 1099511628211ull);
-    };
-    std::unordered_set<uint64_t> seen;
+    pairs.reserve(m_bodies.size() * 2); // Pre-allocate for better performance
+    
+    // Use thread-local storage for candidates to avoid repeated allocations
+    thread_local std::vector<EntityID> candidates;
+    candidates.clear();
+    candidates.reserve(32);
+    
+    // Fast pair deduplication using simpler bit manipulation
+    thread_local std::unordered_set<uint64_t> seen;
+    seen.clear();
     seen.reserve(m_bodies.size());
+    
     for (const auto& kv : m_bodies) {
         const CollisionBody& b = *kv.second;
-        if (!b.enabled) continue;
-        if (b.type == BodyType::STATIC) continue; // only moving bodies generate queries
+        if (!b.enabled || b.type == BodyType::STATIC) continue;
+        
         candidates.clear();
         m_hash.query(b.aabb, candidates);
+        
         for (EntityID otherId : candidates) {
             if (otherId == b.id) continue;
+            
             auto it = m_bodies.find(otherId);
             if (it == m_bodies.end()) continue;
+            
             const CollisionBody& o = *it->second;
-            if (!o.enabled) continue;
-            if (!b.shouldCollideWith(o)) continue;
-            // Ensure one canonical ordering to avoid duplicates
-            EntityID aId = b.id;
-            EntityID bId = otherId;
-            if (aId > bId) std::swap(aId, bId);
-            uint64_t k = keyOf(aId, bId);
-            if (seen.insert(k).second) {
+            if (!o.enabled || !b.shouldCollideWith(o)) continue;
+            
+            // Create canonical pair key (smaller ID first)
+            EntityID aId = std::min(b.id, otherId);
+            EntityID bId = std::max(b.id, otherId);
+            
+            // Simple, fast hash for pair deduplication
+            uint64_t pairKey = (static_cast<uint64_t>(aId) << 32) | static_cast<uint64_t>(bId);
+            
+            if (seen.insert(pairKey).second) {
                 pairs.emplace_back(aId, bId);
             }
         }

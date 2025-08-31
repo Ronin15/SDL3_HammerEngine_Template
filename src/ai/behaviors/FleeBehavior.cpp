@@ -6,6 +6,8 @@
 #include "ai/behaviors/FleeBehavior.hpp"
 #include "managers/AIManager.hpp"
 #include "managers/WorldManager.hpp"
+#include "managers/CollisionManager.hpp"
+#include "collisions/AABB.hpp"
 #include <cmath>
 #include <algorithm>
 
@@ -198,11 +200,6 @@ void FleeBehavior::clearSafeZones() {
     m_safeZones.clear();
 }
 
-void FleeBehavior::setScreenBounds(float width, float height) {
-    m_screenWidth = width;
-    m_screenHeight = height;
-}
-
 bool FleeBehavior::isFleeing() const {
     return std::any_of(m_entityStates.begin(), m_entityStates.end(),
                       [](const auto& pair) { return pair.second.isFleeing; });
@@ -234,8 +231,6 @@ std::shared_ptr<AIBehavior> FleeBehavior::clone() const {
     clone->m_maxStamina = m_maxStamina;
     clone->m_staminaDrain = m_staminaDrain;
     clone->m_safeZones = m_safeZones;
-    clone->m_screenWidth = m_screenWidth;
-    clone->m_screenHeight = m_screenHeight;
     return clone;
 }
 
@@ -302,26 +297,68 @@ Vector2D FleeBehavior::findNearestSafeZone(const Vector2D& position) const {
 }
 
 [[maybe_unused]] bool FleeBehavior::isNearBoundary(const Vector2D& position) const {
-    return (position.getX() < m_boundaryPadding || 
-            position.getX() > m_screenWidth - m_boundaryPadding ||
-            position.getY() < m_boundaryPadding || 
-            position.getY() > m_screenHeight - m_boundaryPadding);
+    // Use world bounds for boundary detection
+    float minX, minY, maxX, maxY;
+    if (WorldManager::Instance().getWorldBounds(minX, minY, maxX, maxY)) {
+        const float TILE = 32.0f;
+        float worldMinX = minX * TILE + m_boundaryPadding;
+        float worldMinY = minY * TILE + m_boundaryPadding;
+        float worldMaxX = maxX * TILE - m_boundaryPadding;
+        float worldMaxY = maxY * TILE - m_boundaryPadding;
+        
+        return (position.getX() < worldMinX || 
+                position.getX() > worldMaxX ||
+                position.getY() < worldMinY || 
+                position.getY() > worldMaxY);
+    } else {
+        // Fallback: assume a large world if bounds unavailable
+        const float defaultWorldSize = 3200.0f;
+        return (position.getX() < m_boundaryPadding || 
+                position.getX() > defaultWorldSize - m_boundaryPadding ||
+                position.getY() < m_boundaryPadding || 
+                position.getY() > defaultWorldSize - m_boundaryPadding);
+    }
 }
 
 Vector2D FleeBehavior::avoidBoundaries(const Vector2D& position, const Vector2D& direction) const {
     Vector2D adjustedDir = direction;
     
-    // Check boundaries and adjust direction
-    if (position.getX() < m_boundaryPadding && direction.getX() < 0) {
-        adjustedDir.setX(std::abs(direction.getX())); // Force rightward
-    } else if (position.getX() > m_screenWidth - m_boundaryPadding && direction.getX() > 0) {
-        adjustedDir.setX(-std::abs(direction.getX())); // Force leftward
-    }
-    
-    if (position.getY() < m_boundaryPadding && direction.getY() < 0) {
-        adjustedDir.setY(std::abs(direction.getY())); // Force downward
-    } else if (position.getY() > m_screenHeight - m_boundaryPadding && direction.getY() > 0) {
-        adjustedDir.setY(-std::abs(direction.getY())); // Force upward
+    // Use world bounds for boundary avoidance with world-scale padding
+    float minX, minY, maxX, maxY;
+    if (WorldManager::Instance().getWorldBounds(minX, minY, maxX, maxY)) {
+        const float TILE = 32.0f;
+        const float worldPadding = 80.0f; // Increased padding for world-scale movement
+        float worldMinX = minX * TILE + worldPadding;
+        float worldMinY = minY * TILE + worldPadding;
+        float worldMaxX = maxX * TILE - worldPadding;
+        float worldMaxY = maxY * TILE - worldPadding;
+        
+        // Check world boundaries and adjust direction
+        if (position.getX() < worldMinX && direction.getX() < 0) {
+            adjustedDir.setX(std::abs(direction.getX())); // Force rightward
+        } else if (position.getX() > worldMaxX && direction.getX() > 0) {
+            adjustedDir.setX(-std::abs(direction.getX())); // Force leftward
+        }
+        
+        if (position.getY() < worldMinY && direction.getY() < 0) {
+            adjustedDir.setY(std::abs(direction.getY())); // Force downward
+        } else if (position.getY() > worldMaxY && direction.getY() > 0) {
+            adjustedDir.setY(-std::abs(direction.getY())); // Force upward
+        }
+    } else {
+        // Fallback: assume a large world if bounds unavailable
+        const float defaultWorldSize = 3200.0f;
+        if (position.getX() < m_boundaryPadding && direction.getX() < 0) {
+            adjustedDir.setX(std::abs(direction.getX())); // Force rightward
+        } else if (position.getX() > defaultWorldSize - m_boundaryPadding && direction.getX() > 0) {
+            adjustedDir.setX(-std::abs(direction.getX())); // Force leftward
+        }
+        
+        if (position.getY() < m_boundaryPadding && direction.getY() < 0) {
+            adjustedDir.setY(std::abs(direction.getY())); // Force downward
+        } else if (position.getY() > defaultWorldSize - m_boundaryPadding && direction.getY() > 0) {
+            adjustedDir.setY(-std::abs(direction.getY())); // Force upward
+        }
     }
     
     return adjustedDir;
@@ -333,12 +370,12 @@ void FleeBehavior::updatePanicFlee(EntityPtr entity, EntityState& state) {
     
     Uint64 currentTime = SDL_GetTicks();
     
-    // In panic mode, change direction more frequently
+    // In panic mode, change direction more frequently and use longer distances
     if (currentTime - state.lastDirectionChange > 200 || state.fleeDirection.length() < 0.001f) {
         state.fleeDirection = calculateFleeDirection(entity, threat, state);
         
-        // Add some randomness to panic movement
-        float randomAngle = m_angleVariation(m_rng);
+        // Add more randomness to panic movement for world-scale escape
+        float randomAngle = m_angleVariation(m_rng) * 0.8f; // Increased randomness
         float cos_a = std::cos(randomAngle);
         float sin_a = std::sin(randomAngle);
         
@@ -349,6 +386,22 @@ void FleeBehavior::updatePanicFlee(EntityPtr entity, EntityState& state) {
         
         state.fleeDirection = rotated;
         state.lastDirectionChange = currentTime;
+        
+        // In panic, try to flee much further to break out of small areas
+        Vector2D currentPos = entity->getPosition();
+        Vector2D panicDest = currentPos + state.fleeDirection * 1000.0f; // Much longer panic flee distance
+        
+        // Clamp to world bounds
+        float minX, minY, maxX, maxY;
+        if (WorldManager::Instance().getWorldBounds(minX, minY, maxX, maxY)) {
+            const float TILE = 32.0f; const float margin = 32.0f;
+            float worldMinX = minX * TILE + margin;
+            float worldMinY = minY * TILE + margin;
+            float worldMaxX = maxX * TILE - margin;
+            float worldMaxY = maxY * TILE - margin;
+            panicDest.setX(std::clamp(panicDest.getX(), worldMinX, worldMaxX));
+            panicDest.setY(std::clamp(panicDest.getY(), worldMinY, worldMaxY));
+        }
     }
     
     float speedModifier = calculateFleeSpeedModifier(state);
@@ -376,8 +429,33 @@ void FleeBehavior::updateStrategicRetreat(EntityPtr entity, EntityState& state) 
         state.lastDirectionChange = currentTime;
     }
 
-    // Compute a retreat destination several tiles ahead and clamp to world bounds
-    Vector2D dest = currentPos + state.fleeDirection * 220.0f;
+    // Dynamic retreat distance based on local entity density
+    float baseRetreatDistance = 800.0f; // Increased base for world scale
+    int nearbyCount = 0;
+    
+    // Check for other fleeing entities to avoid clustering in same escape routes
+    AABB queryArea(currentPos.getX() - 100.0f, currentPos.getY() - 100.0f,
+                   currentPos.getX() + 100.0f, currentPos.getY() + 100.0f);
+    std::vector<EntityID> nearbyIDs;
+    CollisionManager::Instance().queryArea(queryArea, nearbyIDs);
+    nearbyCount = static_cast<int>(nearbyIDs.size()) - 1; // Exclude self
+    
+    float retreatDistance = baseRetreatDistance;
+    if (nearbyCount > 2) {
+        // High density: encourage longer retreat to spread fleeing entities
+        retreatDistance = baseRetreatDistance * 1.8f; // Up to 1440px retreat
+        
+        // Also add lateral bias to prevent all entities fleeing in same direction
+        Vector2D lateral(-state.fleeDirection.getY(), state.fleeDirection.getX());
+        float lateralBias = ((float)(entity->getID() % 5) - 2.0f) * 0.3f; // -0.6 to +0.6
+        state.fleeDirection = (state.fleeDirection + lateral * lateralBias).normalized();
+    } else if (nearbyCount > 0) {
+        // Medium density: moderate expansion
+        retreatDistance = baseRetreatDistance * 1.3f;
+    }
+
+    // Compute a retreat destination further ahead and clamp to world bounds
+    Vector2D dest = currentPos + state.fleeDirection * retreatDistance;
     float minX, minY, maxX, maxY;
     if (WorldManager::Instance().getWorldBounds(minX, minY, maxX, maxY)) {
         const float TILE = 32.0f; const float margin = 16.0f;
@@ -482,16 +560,36 @@ void FleeBehavior::updateSeekCover(EntityPtr entity, EntityState& state) {
     Vector2D currentPos = entity->getPosition();
     Vector2D safeZoneDirection = findNearestSafeZone(currentPos);
 
+    // Dynamic cover seeking distance based on entity density
+    float baseCoverDistance = 720.0f; // Increased base for world scale
+    int nearbyCount = 0;
+    
+    // Check for clustering of other cover-seekers
+    AABB queryArea(currentPos.getX() - 90.0f, currentPos.getY() - 90.0f,
+                   currentPos.getX() + 90.0f, currentPos.getY() + 90.0f);
+    std::vector<EntityID> nearbyIDs;
+    CollisionManager::Instance().queryArea(queryArea, nearbyIDs);
+    nearbyCount = static_cast<int>(nearbyIDs.size()) - 1; // Exclude self
+    
+    float coverDistance = baseCoverDistance;
+    if (nearbyCount > 2) {
+        // High density: seek cover further away to spread entities
+        coverDistance = baseCoverDistance * 1.6f; // Up to 1152px
+    } else if (nearbyCount > 0) {
+        // Medium density: moderate expansion
+        coverDistance = baseCoverDistance * 1.2f;
+    }
+
     Vector2D dest = currentPos;
     if (safeZoneDirection.length() > 0.001f) {
         state.fleeDirection = normalizeVector(safeZoneDirection);
-        dest = currentPos + state.fleeDirection * 240.0f;
+        dest = currentPos + state.fleeDirection * coverDistance;
     } else {
-        // No safe zones, move away from threat
+        // No safe zones, move away from threat with larger distance
         EntityPtr threat = getThreat();
         if (threat) {
             state.fleeDirection = calculateFleeDirection(entity, threat, state);
-            dest = currentPos + state.fleeDirection * 200.0f;
+            dest = currentPos + state.fleeDirection * coverDistance;
         }
     }
 

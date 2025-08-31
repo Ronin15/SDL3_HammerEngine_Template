@@ -44,9 +44,6 @@ public:
   // Enable or disable offscreen waypoints
   void setIncludeOffscreenPoints(bool include);
 
-  // Set screen dimensions for offscreen detection
-  void setScreenDimensions(float width, float height);
-
   // Get current waypoints
   const std::vector<Vector2D> &getWaypoints() const;
 
@@ -90,10 +87,6 @@ private:
       false};               // Whether patrol route can include offscreen points
   bool m_needsReset{false}; // Flag to track if entity needs to be reset
 
-  // Screen dimensions - defaults that will be updated by setScreenDimensions
-  float m_screenWidth{1280.0f};
-  float m_screenHeight{720.0f};
-
   // Random patrol and event target system
   PatrolMode m_patrolMode{PatrolMode::FIXED_WAYPOINTS};
 
@@ -118,12 +111,6 @@ private:
   // Check if entity has reached the current waypoint
   bool isAtWaypoint(const Vector2D &position, const Vector2D &waypoint) const;
 
-  // Check if a position is offscreen
-  bool isOffscreen(const Vector2D &position) const;
-
-  // Check if entity is well off screen (completely out of view)
-  bool isWellOffscreen(const Vector2D &position) const;
-
   // Reset entity to a new position on screen edge
   void resetEntityPosition(EntityPtr entity);
 
@@ -139,9 +126,13 @@ private:
   bool isValidWaypointDistance(const Vector2D &newPoint) const;
   void ensureRandomSeed() const;
 
+  // Adaptive area management for crowd control
+  void expandPatrolAreaIfCrowded(const Vector2D& entityPos);
+  bool isAreaOvercrowded(const Vector2D& center, float radius) const;
+  float calculateOptimalAreaSize(const Vector2D& center) const;
+
   // Mode setup helper
-  void setupModeDefaults(PatrolMode mode, float screenWidth = 1280.0f,
-                         float screenHeight = 720.0f);
+  void setupModeDefaults(PatrolMode mode);
 
   // State validation and debugging
   bool validateState(EntityPtr entity) const;
@@ -162,6 +153,7 @@ private:
   Uint64 m_stallStart{0};
   Uint64 m_backoffUntil{0};
   Uint64 m_lastWaypointTime{0}; // Prevent rapid waypoint switching
+  Uint64 m_lastCrowdCheck{0}; // Timer for crowd density checks
   
   // Async pathfinding control
   bool m_useAsyncPathfinding{false};

@@ -1,26 +1,49 @@
 #include "ai/internal/PathFollow.hpp"
 #include "managers/AIManager.hpp"
 #include "managers/WorldManager.hpp"
+#include "managers/CollisionManager.hpp"
+#include "collisions/AABB.hpp"
 #include <algorithm>
 #include <cmath>
 #include <unordered_map>
 
 namespace AIInternal {
 
-Vector2D ClampToWorld(const Vector2D &p, float margin) {
+// Cache for expensive world bounds calculations
+struct WorldBoundsCache {
+    bool valid = false;
     float minX, minY, maxX, maxY;
-    if (WorldManager::Instance().getWorldBounds(minX, minY, maxX, maxY)) {
-        const float TILE = 32.0f;
-        float worldMinX = minX * TILE + margin;
-        float worldMinY = minY * TILE + margin;
-        float worldMaxX = maxX * TILE - margin;
-        float worldMaxY = maxY * TILE - margin;
-        Vector2D clamped(
-            std::clamp(p.getX(), worldMinX, worldMaxX),
-            std::clamp(p.getY(), worldMinY, worldMaxY));
-        return clamped;
+    float worldMinX, worldMinY, worldMaxX, worldMaxY;
+    static constexpr float TILE = 32.0f;
+    
+    void update() {
+        if (WorldManager::Instance().getWorldBounds(minX, minY, maxX, maxY)) {
+            worldMinX = minX * TILE;
+            worldMinY = minY * TILE; 
+            worldMaxX = maxX * TILE;
+            worldMaxY = maxY * TILE;
+            valid = true;
+        } else {
+            valid = false;
+        }
     }
-    return p;
+    
+    Vector2D clamp(const Vector2D& p, float margin) const {
+        if (!valid) return p;
+        return Vector2D(
+            std::clamp(p.getX(), worldMinX + margin, worldMaxX - margin),
+            std::clamp(p.getY(), worldMinY + margin, worldMaxY - margin)
+        );
+    }
+};
+
+static thread_local WorldBoundsCache g_boundsCache;
+
+Vector2D ClampToWorld(const Vector2D &p, float margin) {
+    if (!g_boundsCache.valid) {
+        g_boundsCache.update();
+    }
+    return g_boundsCache.clamp(p, margin);
 }
 
 static void requestTo(EntityPtr entity,
@@ -56,7 +79,7 @@ bool RefreshPathWithPolicy(
     if (!needRefresh && currentPathIndex < pathPoints.size()) {
         float d = (pathPoints[currentPathIndex] - currentPos).length();
         // More lenient progress detection - require meaningful distance reduction
-        if (d + 3.0f < lastNodeDistance) { // Increased threshold from 2.0f to 3.0f
+        if (d + 8.0f < lastNodeDistance) { // World-scale movement requires larger progress threshold
             lastNodeDistance = d; 
             lastProgressTime = now; 
         } else if (lastProgressTime == 0) { 
@@ -81,15 +104,48 @@ bool RefreshPathWithPolicy(
     static thread_local std::unordered_map<EntityID, Uint64> lastDetourAttempt;
     EntityID entityId = entity->getID();
     
-    if (now - lastDetourAttempt[entityId] > 2000) { // Don't spam detours
+    if (now - lastDetourAttempt[entityId] > 1500) { // Reduced from 2000ms for faster adaptation
         lastDetourAttempt[entityId] = now;
         
-        for (float r : policy.detourRadii) {
-            for (float a : policy.detourAngles) {
-                Vector2D offset(std::cos(a) * r, std::sin(a) * r);
-                Vector2D alt = ClampToWorld(clampedGoal + offset);
-                requestTo(entity, currentPos, alt, pathPoints, currentPathIndex, lastPathUpdate, now, lastProgressTime, lastNodeDistance);
-                if (!pathPoints.empty()) return true;
+        // Check if we're in a crowded area - if so, try alternative targets instead of detours
+        AABB crowdCheck(currentPos.getX() - 50.0f, currentPos.getY() - 50.0f, 100.0f, 100.0f);
+        std::vector<EntityID> nearbyEntities;
+        CollisionManager::Instance().queryArea(crowdCheck, nearbyEntities);
+        
+        bool inCrowdedArea = false;
+        int neighborCount = 0;
+        for (EntityID id : nearbyEntities) {
+            if (id != entityId) neighborCount++;
+        }
+        inCrowdedArea = (neighborCount >= 4); // Crowded if 4+ nearby NPCs
+        
+        if (inCrowdedArea) {
+            // Try alternative targets at increasing distances from original goal
+            for (float distance : {150.0f, 250.0f, 400.0f}) {
+                for (float angle : {0.0f, 1.57f, 3.14f, 4.71f, 0.78f, 2.35f, 3.92f, 5.49f}) {
+                    Vector2D offset(distance * cosf(angle), distance * sinf(angle));
+                    Vector2D alternativeGoal = ClampToWorld(clampedGoal + offset);
+                    
+                    // Check if alternative goal is less crowded
+                    AABB altCheck(alternativeGoal.getX() - 40.0f, alternativeGoal.getY() - 40.0f, 80.0f, 80.0f);
+                    std::vector<EntityID> altNearby;
+                    CollisionManager::Instance().queryArea(altCheck, altNearby);
+                    
+                    if (altNearby.size() < nearbyEntities.size() / 2) { // Less crowded area
+                        requestTo(entity, currentPos, alternativeGoal, pathPoints, currentPathIndex, lastPathUpdate, now, lastProgressTime, lastNodeDistance);
+                        if (!pathPoints.empty()) return true;
+                    }
+                }
+            }
+        } else {
+            // Standard detour behavior for non-crowded areas
+            for (float r : policy.detourRadii) {
+                for (float a : policy.detourAngles) {
+                    Vector2D offset(std::cos(a) * r, std::sin(a) * r);
+                    Vector2D alt = ClampToWorld(clampedGoal + offset);
+                    requestTo(entity, currentPos, alt, pathPoints, currentPathIndex, lastPathUpdate, now, lastProgressTime, lastNodeDistance);
+                    if (!pathPoints.empty()) return true;
+                }
             }
         }
     }
@@ -138,6 +194,15 @@ bool FollowPathStepWithPolicy(
     return true;
 }
 
+// Optimized async request tracking with per-entity state management
+struct AsyncRequestState {
+    Uint64 lastRequestTime = 0;
+    bool hasValidPath = false;
+    static constexpr Uint64 MIN_REQUEST_INTERVAL = 800;
+};
+
+static std::unordered_map<EntityID, AsyncRequestState> g_asyncStates;
+
 static void requestToAsync(EntityPtr entity,
                            const Vector2D &from,
                            const Vector2D &goal,
@@ -148,12 +213,11 @@ static void requestToAsync(EntityPtr entity,
                            Uint64 &lastProgress,
                            float &lastNodeDist,
                            int priority) {
-    // Use static map to track async requests per entity to prevent spam
-    static std::unordered_map<EntityID, Uint64> lastAsyncRequest;
     EntityID entityId = entity->getID();
+    AsyncRequestState& state = g_asyncStates[entityId];
     
     // Check if we recently made an async request for this entity
-    if (lastAsyncRequest[entityId] != 0 && (now - lastAsyncRequest[entityId]) < 800) {
+    if (state.lastRequestTime != 0 && (now - state.lastRequestTime) < AsyncRequestState::MIN_REQUEST_INTERVAL) {
         // Still waiting for previous request, just check if result is ready
         if (AIManager::Instance().hasAsyncPath(entity)) {
             outPath = AIManager::Instance().getAsyncPath(entity);
@@ -161,14 +225,15 @@ static void requestToAsync(EntityPtr entity,
             lastUpdate = now;
             lastNodeDist = std::numeric_limits<float>::infinity();
             lastProgress = now;
-            lastAsyncRequest[entityId] = 0; // Clear tracking when path received
+            state.lastRequestTime = 0; // Clear tracking when path received
+            state.hasValidPath = true;
         }
         return;
     }
     
     AIManager::PathPriority asyncPriority = static_cast<AIManager::PathPriority>(priority);
     AIManager::Instance().requestPathAsync(entity, from, goal, asyncPriority);
-    lastAsyncRequest[entityId] = now; // Track when we made the request
+    state.lastRequestTime = now; // Track when we made the request
     
     // Check if async path is ready immediately (from previous request)
     if (AIManager::Instance().hasAsyncPath(entity)) {
@@ -177,7 +242,8 @@ static void requestToAsync(EntityPtr entity,
         lastUpdate = now;
         lastNodeDist = std::numeric_limits<float>::infinity();
         lastProgress = now;
-        lastAsyncRequest[entityId] = 0; // Clear tracking when path received
+        state.lastRequestTime = 0; // Clear tracking when path received
+        state.hasValidPath = true;
     }
 }
 
@@ -199,7 +265,7 @@ bool RefreshPathWithPolicyAsync(
     if (!needRefresh && currentPathIndex < pathPoints.size()) {
         float d = (pathPoints[currentPathIndex] - currentPos).length();
         // More lenient progress detection - require meaningful distance reduction
-        if (d + 3.0f < lastNodeDistance) { // Increased threshold from 2.0f to 3.0f
+        if (d + 8.0f < lastNodeDistance) { // World-scale movement requires larger progress threshold
             lastNodeDistance = d; 
             lastProgressTime = now; 
         } else if (lastProgressTime == 0) { 
@@ -224,23 +290,31 @@ bool RefreshPathWithPolicyAsync(
         
         // If no async path is ready yet, try detours if allowed
         if (pathPoints.empty() && policy.allowDetours) {
-            // Try detours around the goal, but only if we haven't tried too many times recently
-            static std::unordered_map<EntityID, Uint64> lastDetourTimes;
-            static std::unordered_map<EntityID, size_t> detourCounts;
-            Uint64 entityId = entity->getID();
-            if (now - lastDetourTimes[entityId] > 2000) {
-                detourCounts[entityId] = 0;
-                lastDetourTimes[entityId] = now;
+            // Optimized detour tracking with reduced memory overhead
+            static thread_local std::unordered_map<EntityID, std::pair<Uint64, uint8_t>> detourTracking;
+            
+            EntityID entityId = entity->getID();
+            auto& [lastDetourTime, detourCount] = detourTracking[entityId];
+            
+            if (now - lastDetourTime > 2000) {
+                detourCount = 0;
+                lastDetourTime = now;
             }
-            if (detourCounts[entityId] < 4) {
-                for (float angle : policy.detourAngles) {
+            
+            if (detourCount < 4) {
+                // Try most promising detour angles first (cardinal and diagonal directions)
+                static const float priorityAngles[] = {0.0f, 1.57f, 3.14f, 4.71f, 0.78f, 2.35f, 3.92f, 5.49f};
+                
+                for (float angle : priorityAngles) {
+                    if (detourCount >= 4) break;
+                    
                     for (float radius : policy.detourRadii) {
                         Vector2D offset(radius * cosf(angle), radius * sinf(angle));
                         Vector2D detourGoal = ClampToWorld(clampedGoal + offset);
                         requestToAsync(entity, currentPos, detourGoal, pathPoints, currentPathIndex,
                                      lastPathUpdate, now, lastProgressTime, lastNodeDistance, priority);
                         if (!pathPoints.empty()) {
-                            detourCounts[entityId]++;
+                            detourCount++;
                             return true;
                         }
                     }
@@ -263,6 +337,174 @@ bool RefreshPathWithPolicyAsync(
     }
     
     return !pathPoints.empty();
+}
+
+AIInternal::YieldResult CheckYieldAndRedirect(
+    EntityPtr entity,
+    const Vector2D &currentPos,
+    const Vector2D &intendedDirection,
+    float intendedSpeed) {
+    
+    AIInternal::YieldResult result;
+    if (!entity || intendedDirection.length() < 0.01f) return result;
+    
+    Vector2D normalizedDir = intendedDirection.normalized();
+    
+    // Query entities in front of this entity
+    float queryRadius = std::max(64.0f, intendedSpeed * 2.0f);
+    Vector2D frontCenter = currentPos + normalizedDir * queryRadius * 0.5f;
+    HammerEngine::AABB queryArea(frontCenter.getX() - queryRadius, frontCenter.getY() - queryRadius,
+                   queryRadius * 2.0f, queryRadius * 2.0f);
+    
+    std::vector<EntityID> nearbyEntities;
+    CollisionManager::Instance().queryArea(queryArea, nearbyEntities);
+    
+    int entitiesInPath = 0;
+    int slowMovingInPath = 0;
+    Vector2D crowdCenter(0, 0);
+    
+    for (EntityID id : nearbyEntities) {
+        if (id == entity->getID()) continue;
+        
+        Vector2D entityPos;
+        if (!CollisionManager::Instance().getBodyCenter(id, entityPos)) continue;
+        
+        Vector2D toEntity = entityPos - currentPos;
+        float distToEntity = toEntity.length();
+        if (distToEntity > queryRadius) continue;
+        
+        // Check if entity is in our intended path (within 30 degree cone)
+        float alignment = toEntity.normalized().dot(normalizedDir);
+        if (alignment > 0.8f) { // ~36 degree cone
+            entitiesInPath++;
+            crowdCenter = crowdCenter + entityPos;
+            
+            // Check if the blocking entity is moving slowly
+            // (This would require getting entity velocity, simplified for now)
+            if (distToEntity < 48.0f) {
+                slowMovingInPath++;
+            }
+        }
+    }
+    
+    if (entitiesInPath > 0) {
+        crowdCenter = crowdCenter / static_cast<float>(entitiesInPath);
+        
+        // Determine yield vs redirect strategy
+        if (slowMovingInPath >= 2 || entitiesInPath >= 3) {
+            // Multiple slow entities ahead - yield briefly then redirect
+            result.shouldYield = true;
+            result.yieldDuration = 200 + (entity->getID() % 300); // Staggered yield times
+            
+            // Calculate redirect direction - perpendicular to intended direction
+            Vector2D perpendicular(-normalizedDir.getY(), normalizedDir.getX());
+            Vector2D awayFromCrowd = (currentPos - crowdCenter).normalized();
+            
+            // Choose perpendicular direction that moves away from crowd
+            if (perpendicular.dot(awayFromCrowd) < 0) {
+                perpendicular = Vector2D(normalizedDir.getY(), -normalizedDir.getX());
+            }
+            
+            result.shouldRedirect = true;
+            result.redirectDirection = normalizedDir * 0.6f + perpendicular * 0.8f;
+            result.redirectDirection.normalize();
+        } else if (entitiesInPath == 1) {
+            // Single entity ahead - brief yield to let them pass
+            result.shouldYield = true;
+            result.yieldDuration = 150 + (entity->getID() % 200);
+        }
+    }
+    
+    return result;
+}
+
+bool ApplyYieldBehavior(
+    EntityPtr entity,
+    const AIInternal::YieldResult &yieldResult,
+    Uint64 &yieldStartTime,
+    Uint64 currentTime) {
+    
+    if (!yieldResult.shouldYield) {
+        yieldStartTime = 0;
+        return false;
+    }
+    
+    // Start yielding if not already
+    if (yieldStartTime == 0) {
+        yieldStartTime = currentTime;
+    }
+    
+    // Check if yield period is over
+    if (currentTime - yieldStartTime >= yieldResult.yieldDuration) {
+        yieldStartTime = 0;
+        return false;
+    }
+    
+    // Apply yielding behavior - slow down or stop
+    Vector2D currentVel = entity->getVelocity();
+    Vector2D reducedVel = currentVel * 0.2f; // Slow to 20% speed
+    entity->setVelocity(reducedVel);
+    
+    return true; // Currently yielding
+}
+
+bool HandleDynamicStuckDetection(
+    EntityPtr entity,
+    StuckDetectionState &stuckState,
+    Uint64 currentTime) {
+    
+    if (!entity) return false;
+    
+    Vector2D currentPos = entity->getPosition();
+    stuckState.updatePosition(currentPos, currentTime);
+    
+    // Check if stuck and needs immediate escape
+    if (stuckState.checkIfStuck(entity, currentTime) && stuckState.needsEscape(currentTime)) {
+        // Find immediate escape direction
+        AABB queryArea(currentPos.getX() - 80.0f, currentPos.getY() - 80.0f, 160.0f, 160.0f);
+        std::vector<EntityID> nearbyEntities;
+        CollisionManager::Instance().queryArea(queryArea, nearbyEntities);
+        
+        // Calculate crowd center to escape from
+        Vector2D crowdCenter = currentPos; // Default to current position
+        int entityCount = 0;
+        
+        for (EntityID id : nearbyEntities) {
+            if (id == entity->getID()) continue;
+            Vector2D entityPos;
+            if (CollisionManager::Instance().getBodyCenter(id, entityPos)) {
+                crowdCenter = crowdCenter + entityPos;
+                entityCount++;
+            }
+        }
+        
+        if (entityCount > 0) {
+            crowdCenter = crowdCenter / static_cast<float>(entityCount + 1); // +1 for self
+        }
+        
+        // Calculate escape direction away from crowd
+        Vector2D escapeDir = (currentPos - crowdCenter).normalized();
+        
+        // Add randomization based on entity ID and escape attempts to prevent sync
+        float randomAngle = ((entity->getID() * 7 + stuckState.escapeAttempts * 3) % 180 - 90) * M_PI / 180.0f;
+        float cosAngle = cosf(randomAngle);
+        float sinAngle = sinf(randomAngle);
+        Vector2D rotatedEscape(
+            escapeDir.getX() * cosAngle - escapeDir.getY() * sinAngle,
+            escapeDir.getX() * sinAngle + escapeDir.getY() * cosAngle
+        );
+        
+        // Apply immediate escape velocity
+        float escapeSpeed = 80.0f + stuckState.escapeAttempts * 20.0f; // Increase speed with attempts
+        entity->setVelocity(rotatedEscape * escapeSpeed);
+        
+        stuckState.escapeAttempts++;
+        stuckState.stuckStartTime = currentTime; // Reset timer for next escape attempt
+        
+        return true; // Applied escape behavior
+    }
+    
+    return false; // No escape needed
 }
 
 } // namespace AIInternal
