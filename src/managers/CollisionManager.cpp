@@ -10,6 +10,7 @@
 #include "managers/EventManager.hpp"
 #include "events/WorldEvent.hpp"
 #include "events/WorldTriggerEvent.hpp"
+#include "ai/internal/PathFollow.hpp"
 #include <unordered_set>
 #include <unordered_map>
 #include <chrono>
@@ -525,6 +526,16 @@ void CollisionManager::update(float dt) {
                        ", pairs=" + std::to_string(m_perf.lastPairs) +
                        ", collisions=" + std::to_string(m_perf.lastCollisions));
     }
+
+    // Periodic collision statistics (every 300 frames like AIManager)
+    if (m_perf.frames % 300 == 0 && m_perf.bodyCount > 0) {
+        COLLISION_DEBUG("Collision Summary - Bodies: " + std::to_string(m_perf.bodyCount) +
+                       ", Avg Total: " + std::to_string(m_perf.avgTotalMs) + "ms" +
+                       ", Broadphase: " + std::to_string(m_perf.lastBroadphaseMs) + "ms" +
+                       ", Narrowphase: " + std::to_string(m_perf.lastNarrowphaseMs) + "ms" +
+                       ", Last Pairs: " + std::to_string(m_perf.lastPairs) +
+                       ", Last Collisions: " + std::to_string(m_perf.lastCollisions));
+    }
 }
 
 void CollisionManager::addCollisionCallback(CollisionCB cb) { m_callbacks.push_back(std::move(cb)); }
@@ -577,10 +588,9 @@ void CollisionManager::subscribeWorldEvents() {
         if (!base) return;
         if (auto loaded = std::dynamic_pointer_cast<WorldLoadedEvent>(base)) {
             (void)loaded;
-            float minX, minY, maxX, maxY;
-            if (WorldManager::Instance().getWorldBounds(minX, minY, maxX, maxY)) {
-                const float TILE = 32.0f;
-                this->setWorldBounds(minX * TILE, minY * TILE, maxX * TILE, maxY * TILE);
+            auto bounds = AIInternal::GetWorldBoundsInPixels();
+            if (bounds.valid) {
+                this->setWorldBounds(bounds.minX, bounds.minY, bounds.maxX, bounds.maxY);
             }
             COLLISION_INFO("World loaded - rebuilding static colliders");
             this->rebuildStaticFromWorld();
@@ -588,10 +598,9 @@ void CollisionManager::subscribeWorldEvents() {
         }
         if (auto generated = std::dynamic_pointer_cast<WorldGeneratedEvent>(base)) {
             (void)generated;
-            float minX, minY, maxX, maxY;
-            if (WorldManager::Instance().getWorldBounds(minX, minY, maxX, maxY)) {
-                const float TILE = 32.0f;
-                this->setWorldBounds(minX * TILE, minY * TILE, maxX * TILE, maxY * TILE);
+            auto bounds = AIInternal::GetWorldBoundsInPixels();
+            if (bounds.valid) {
+                this->setWorldBounds(bounds.minX, bounds.minY, bounds.maxX, bounds.maxY);
             }
             COLLISION_INFO("World generated - rebuilding static colliders");
             this->rebuildStaticFromWorld();

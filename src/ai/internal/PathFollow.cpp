@@ -46,6 +46,20 @@ Vector2D ClampToWorld(const Vector2D &p, float margin) {
     return g_boundsCache.clamp(p, margin);
 }
 
+WorldBoundsPixels GetWorldBoundsInPixels() {
+    WorldBoundsPixels result{0, 0, 0, 0, false};
+    float minX, minY, maxX, maxY;
+    if (WorldManager::Instance().getWorldBounds(minX, minY, maxX, maxY)) {
+        const float TILE = 32.0f;
+        result.minX = minX * TILE;
+        result.minY = minY * TILE;
+        result.maxX = maxX * TILE;
+        result.maxY = maxY * TILE;
+        result.valid = true;
+    }
+    return result;
+}
+
 static void requestTo(EntityPtr entity,
                       const Vector2D &from,
                       const Vector2D &goal,
@@ -95,9 +109,10 @@ bool RefreshPathWithPolicy(
     if (now - lastPathUpdate > policy.pathTTL) needRefresh = true;
     if (!needRefresh) return false;
 
-    // Clamp desired goal first
+    // Clamp both current position and desired goal to world bounds
+    Vector2D clampedCurrentPos = ClampToWorld(currentPos);
     Vector2D clampedGoal = ClampToWorld(desiredGoal);
-    requestTo(entity, currentPos, clampedGoal, pathPoints, currentPathIndex, lastPathUpdate, now, lastProgressTime, lastNodeDistance);
+    requestTo(entity, clampedCurrentPos, clampedGoal, pathPoints, currentPathIndex, lastPathUpdate, now, lastProgressTime, lastNodeDistance);
     if (!pathPoints.empty() || !policy.allowDetours) return true;
 
     // Try detours around the goal, but only if we haven't tried too many times recently
@@ -259,6 +274,20 @@ bool RefreshPathWithPolicyAsync(
     const PathPolicy &policy,
     int priority) {
 
+    // Distance-based path segmentation for long journeys
+    Vector2D clampedCurrentPos = ClampToWorld(currentPos);
+    Vector2D clampedGoal = ClampToWorld(desiredGoal);
+    float directDistance = (clampedGoal - clampedCurrentPos).length();
+    const float MAX_PATH_DISTANCE = 1200.0f; // ~37 tiles at 32px/tile
+    
+    Vector2D effectiveGoal = clampedGoal;
+    if (directDistance > MAX_PATH_DISTANCE) {
+        // Create intermediate waypoint toward goal
+        Vector2D direction = (clampedGoal - clampedCurrentPos).normalized();
+        effectiveGoal = clampedCurrentPos + direction * MAX_PATH_DISTANCE;
+        effectiveGoal = ClampToWorld(effectiveGoal);
+    }
+
     Uint64 now = SDL_GetTicks();
     bool needRefresh = pathPoints.empty() || currentPathIndex >= pathPoints.size();
     
@@ -284,8 +313,7 @@ bool RefreshPathWithPolicyAsync(
     
     // If we need a refresh, request async path
     if (needRefresh) {
-        Vector2D clampedGoal = ClampToWorld(desiredGoal);
-        requestToAsync(entity, currentPos, clampedGoal, pathPoints, currentPathIndex, 
+        requestToAsync(entity, clampedCurrentPos, effectiveGoal, pathPoints, currentPathIndex, 
                       lastPathUpdate, now, lastProgressTime, lastNodeDistance, priority);
         
         // If no async path is ready yet, try detours if allowed
@@ -310,7 +338,7 @@ bool RefreshPathWithPolicyAsync(
                     
                     for (float radius : policy.detourRadii) {
                         Vector2D offset(radius * cosf(angle), radius * sinf(angle));
-                        Vector2D detourGoal = ClampToWorld(clampedGoal + offset);
+                        Vector2D detourGoal = ClampToWorld(effectiveGoal + offset);
                         requestToAsync(entity, currentPos, detourGoal, pathPoints, currentPathIndex,
                                      lastPathUpdate, now, lastProgressTime, lastNodeDistance, priority);
                         if (!pathPoints.empty()) {

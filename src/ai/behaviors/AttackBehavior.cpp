@@ -8,6 +8,7 @@
 #include "managers/CollisionManager.hpp"
 #include "managers/WorldManager.hpp"
 #include "ai/internal/Crowd.hpp"
+#include "ai/internal/PathFollow.hpp"
 #include <algorithm>
 
 AttackBehavior::AttackBehavior(float attackRange, float attackDamage,
@@ -865,19 +866,10 @@ void AttackBehavior::moveToPosition(EntityPtr entity, const Vector2D &targetPos,
   EntityState &state = it->second;
 
   // Clamp target to world bounds to avoid chasing outside the map
-  Vector2D clampedTarget = targetPos;
-  float minX, minY, maxX, maxY;
-  if (WorldManager::Instance().getWorldBounds(minX, minY, maxX, maxY)) {
-    const float TILE = 32.0f; const float margin = 16.0f;
-    float worldMinX = minX * TILE + margin;
-    float worldMinY = minY * TILE + margin;
-    float worldMaxX = maxX * TILE - margin;
-    float worldMaxY = maxY * TILE - margin;
-    clampedTarget.setX(std::clamp(clampedTarget.getX(), worldMinX, worldMaxX));
-    clampedTarget.setY(std::clamp(clampedTarget.getY(), worldMinY, worldMaxY));
-  }
+  Vector2D clampedTarget = AIInternal::ClampToWorld(targetPos);
 
-  Vector2D currentPos = entity->getPosition();
+  Vector2D currentPos = AIInternal::ClampToWorld(entity->getPosition());
+  
   Uint64 now = SDL_GetTicks();
 
   // Refresh path if empty, expired, or no progress toward current node

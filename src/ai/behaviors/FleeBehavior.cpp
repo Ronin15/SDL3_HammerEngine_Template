@@ -5,6 +5,7 @@
 
 #include "ai/behaviors/FleeBehavior.hpp"
 #include "ai/internal/Crowd.hpp"
+#include "ai/internal/PathFollow.hpp"
 #include "managers/AIManager.hpp"
 #include "managers/WorldManager.hpp"
 #include "managers/CollisionManager.hpp"
@@ -392,17 +393,8 @@ void FleeBehavior::updatePanicFlee(EntityPtr entity, EntityState& state) {
         Vector2D currentPos = entity->getPosition();
         Vector2D panicDest = currentPos + state.fleeDirection * 1000.0f; // Much longer panic flee distance
         
-        // Clamp to world bounds
-        float minX, minY, maxX, maxY;
-        if (WorldManager::Instance().getWorldBounds(minX, minY, maxX, maxY)) {
-            const float TILE = 32.0f; const float margin = 32.0f;
-            float worldMinX = minX * TILE + margin;
-            float worldMinY = minY * TILE + margin;
-            float worldMaxX = maxX * TILE - margin;
-            float worldMaxY = maxY * TILE - margin;
-            panicDest.setX(std::clamp(panicDest.getX(), worldMinX, worldMaxX));
-            panicDest.setY(std::clamp(panicDest.getY(), worldMinY, worldMaxY));
-        }
+        // Clamp to world bounds with larger margin for panic mode
+        panicDest = AIInternal::ClampToWorld(panicDest, 32.0f);
     }
     
     float speedModifier = calculateFleeSpeedModifier(state);
@@ -452,17 +444,7 @@ void FleeBehavior::updateStrategicRetreat(EntityPtr entity, EntityState& state) 
     }
 
     // Compute a retreat destination further ahead and clamp to world bounds
-    Vector2D dest = currentPos + state.fleeDirection * retreatDistance;
-    float minX, minY, maxX, maxY;
-    if (WorldManager::Instance().getWorldBounds(minX, minY, maxX, maxY)) {
-        const float TILE = 32.0f; const float margin = 16.0f;
-        float worldMinX = minX * TILE + margin;
-        float worldMinY = minY * TILE + margin;
-        float worldMaxX = maxX * TILE - margin;
-        float worldMaxY = maxY * TILE - margin;
-        dest.setX(std::clamp(dest.getX(), worldMinX, worldMaxX));
-        dest.setY(std::clamp(dest.getY(), worldMinY, worldMaxY));
-    }
+    Vector2D dest = AIInternal::ClampToWorld(currentPos + state.fleeDirection * retreatDistance);
 
     // Try to path toward the retreat destination with TTL and no-progress checks
     auto tryFollowPath = [&](const Vector2D &goal, float speed)->bool {
@@ -478,7 +460,7 @@ void FleeBehavior::updateStrategicRetreat(EntityPtr entity, EntityState& state) 
         if (now - state.lastPathUpdate > pathTTL) needRefresh = true;
         if (needRefresh && now >= state.nextPathAllowed) {
             if (m_useAsyncPathfinding) {
-                AIManager::Instance().requestPathAsync(entity, currentPos, goal, AIManager::PathPriority::High);
+                AIManager::Instance().requestPathAsync(entity, AIInternal::ClampToWorld(currentPos), goal, AIManager::PathPriority::High);
                 if (AIManager::Instance().hasAsyncPath(entity)) {
                     state.pathPoints = AIManager::Instance().getAsyncPath(entity);
                     state.currentPathIndex = 0;
@@ -491,7 +473,7 @@ void FleeBehavior::updateStrategicRetreat(EntityPtr entity, EntityState& state) 
                     state.nextPathAllowed = now + 600; // Shorter cooldown for flee (more urgent)
                 }
             } else {
-                AIManager::Instance().requestPath(entity, currentPos, goal);
+                AIManager::Instance().requestPath(entity, AIInternal::ClampToWorld(currentPos), goal);
                 state.pathPoints = AIManager::Instance().getPath(entity);
                 state.currentPathIndex = 0;
                 state.lastPathUpdate = now;
@@ -587,16 +569,7 @@ void FleeBehavior::updateSeekCover(EntityPtr entity, EntityState& state) {
     }
 
     // Clamp destination within world bounds
-    float minX, minY, maxX, maxY;
-    if (WorldManager::Instance().getWorldBounds(minX, minY, maxX, maxY)) {
-        const float TILE = 32.0f; const float margin = 16.0f;
-        float worldMinX = minX * TILE + margin;
-        float worldMinY = minY * TILE + margin;
-        float worldMaxX = maxX * TILE - margin;
-        float worldMaxY = maxY * TILE - margin;
-        dest.setX(std::clamp(dest.getX(), worldMinX, worldMaxX));
-        dest.setY(std::clamp(dest.getY(), worldMinY, worldMaxY));
-    }
+    dest = AIInternal::ClampToWorld(dest);
 
     auto tryFollowPath = [&](const Vector2D &goal, float speed)->bool {
         Uint64 now = SDL_GetTicks();
@@ -611,7 +584,7 @@ void FleeBehavior::updateSeekCover(EntityPtr entity, EntityState& state) {
         if (now - state.lastPathUpdate > pathTTL) needRefresh = true;
         if (needRefresh && now >= state.nextPathAllowed) {
             if (m_useAsyncPathfinding) {
-                AIManager::Instance().requestPathAsync(entity, currentPos, goal, AIManager::PathPriority::High);
+                AIManager::Instance().requestPathAsync(entity, AIInternal::ClampToWorld(currentPos), goal, AIManager::PathPriority::High);
                 if (AIManager::Instance().hasAsyncPath(entity)) {
                     state.pathPoints = AIManager::Instance().getAsyncPath(entity);
                     state.currentPathIndex = 0;
@@ -624,7 +597,7 @@ void FleeBehavior::updateSeekCover(EntityPtr entity, EntityState& state) {
                     state.nextPathAllowed = now + 600; // Shorter cooldown for flee (more urgent)
                 }
             } else {
-                AIManager::Instance().requestPath(entity, currentPos, goal);
+                AIManager::Instance().requestPath(entity, AIInternal::ClampToWorld(currentPos), goal);
                 state.pathPoints = AIManager::Instance().getPath(entity);
                 state.currentPathIndex = 0;
                 state.lastPathUpdate = now;

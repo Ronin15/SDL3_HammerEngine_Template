@@ -44,15 +44,32 @@ public:
     void resetWeights(float defaultWeight = 1.0f);
     void addWeightCircle(const Vector2D& worldCenter, float worldRadius, float weightMultiplier);
 
+    // Statistics
+    struct PathfindingStats {
+        uint64_t totalRequests{0};
+        uint64_t successfulPaths{0}; 
+        uint64_t timeouts{0};
+        uint64_t invalidStarts{0};
+        uint64_t invalidGoals{0};
+        uint64_t totalIterations{0};
+        uint32_t avgPathLength{0};
+        uint32_t framesSinceReset{0};
+    };
+    
+    void resetStats() { m_stats = PathfindingStats{}; }
+    PathfindingStats getStats() const { return m_stats; }
+
 private:
     int m_w, m_h; float m_cell; Vector2D m_offset;
     std::vector<uint8_t> m_blocked; // 0 walkable, 1 blocked
     std::vector<float> m_weight;    // movement multipliers per cell
 
     bool m_allowDiagonal{true};
-    int m_maxIterations{8000};  // Reduced from 20000 to prevent long stalls
+    int m_maxIterations{12000};  // Balanced limit for complex terrain navigation
     float m_costStraight{1.0f};
     float m_costDiagonal{1.41421356f};
+
+    PathfindingStats m_stats{};
 
     bool isBlocked(int gx, int gy) const;
     bool inBounds(int gx, int gy) const;
@@ -61,6 +78,10 @@ private:
 
     // Helper: find nearest unblocked cell within maxRadius (grid units)
     bool findNearestOpen(int gx, int gy, int maxRadius, int& outGX, int& outGY) const;
+    
+    // Path smoothing functions
+    void smoothPath(std::vector<Vector2D>& path);
+    bool hasLineOfSight(const Vector2D& start, const Vector2D& end);
 };
 
 } // namespace HammerEngine
