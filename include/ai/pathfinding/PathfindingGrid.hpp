@@ -9,11 +9,24 @@
 #include <vector>
 #include <utility>
 #include <cstdint>
+#include <ostream>
 #include "utils/Vector2D.hpp"
 
 namespace HammerEngine {
 
 enum class PathfindingResult { SUCCESS, NO_PATH_FOUND, INVALID_START, INVALID_GOAL, TIMEOUT };
+
+// Stream operator for PathfindingResult to support test output
+inline std::ostream& operator<<(std::ostream& os, const PathfindingResult& result) {
+    switch (result) {
+        case PathfindingResult::SUCCESS: return os << "SUCCESS";
+        case PathfindingResult::NO_PATH_FOUND: return os << "NO_PATH_FOUND";
+        case PathfindingResult::INVALID_START: return os << "INVALID_START";
+        case PathfindingResult::INVALID_GOAL: return os << "INVALID_GOAL";
+        case PathfindingResult::TIMEOUT: return os << "TIMEOUT";
+        default: return os << "UNKNOWN";
+    }
+}
 
 class PathfindingGrid {
 public:
