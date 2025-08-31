@@ -82,8 +82,18 @@ void NPCSpawnEvent::execute() {
         m_cooldownTimer = 0.0f;
     }
 
-    // NPCSpawnEvent is now just for event coordination and demonstration
     EVENT_INFO("NPCSpawnEvent triggered: " + m_name + " (" + m_spawnParams.npcType + ")");
+    
+    // Display area constraint information if configured
+    if (m_constrainToArea) {
+        EVENT_INFO("  - Area constraints: (" + std::to_string(m_constraintMinX) + "," + 
+                   std::to_string(m_constraintMinY) + ") to (" + std::to_string(m_constraintMaxX) + 
+                   "," + std::to_string(m_constraintMaxY) + ")");
+        EVENT_INFO("  - NPCs will be constrained to this area using intelligent redirection");
+    } else {
+        EVENT_INFO("  - No area constraints - NPCs can wander freely across the world");
+    }
+    
     EVENT_INFO("  - Event serves as coordination/messaging demonstration");
     EVENT_INFO("  - GameStates handle actual entity creation and ownership");
 
@@ -119,6 +129,10 @@ void NPCSpawnEvent::reset() {
 
     // Clear any transient conditions
     m_conditions.clear();
+
+    // Reset area constraints
+    m_constrainToArea = false;
+    m_constraintMinX = m_constraintMinY = m_constraintMaxX = m_constraintMaxY = 0.0f;
 
     // Clear spawned-entity tracking and counters
     clearSpawnedEntities();
@@ -291,9 +305,8 @@ EntityPtr NPCSpawnEvent::forceSpawnNPC(const std::string& npcType, float x, floa
         Vector2D position(x, y);
         auto npc = NPC::create(textureID, position, 64, 64);
 
-        // Set basic wander area around spawn point
-        npc->setWanderArea(x - 50.0f, y - 50.0f, x + 50.0f, y + 50.0f);
-        npc->setBoundsCheckEnabled(true);
+        // By default, allow free wandering across the entire world
+        npc->setBoundsCheckEnabled(false);
 
         EVENT_INFO("Force-spawned " + npcType + " at (" + std::to_string(x) + ", " + std::to_string(y) + ")");
         return std::static_pointer_cast<Entity>(npc);
@@ -321,13 +334,11 @@ std::vector<EntityPtr> NPCSpawnEvent::forceSpawnNPCs(const SpawnParameters& para
             Vector2D spawnPos(x + offsetX, y + offsetY);
             auto npc = NPC::create(textureID, spawnPos, 64, 64);
 
-            // Configure wander area
-            float wanderRadius = params.spawnRadius > 0 ? params.spawnRadius : 50.0f;
-            npc->setWanderArea(
-                x - wanderRadius, y - wanderRadius,
-                x + wanderRadius, y + wanderRadius
-            );
-            npc->setBoundsCheckEnabled(true);
+            // Allow free wandering across the entire world - no artificial boundaries
+            npc->setBoundsCheckEnabled(false);
+            
+            // Note: For area-constrained NPCs (villages/events), create an NPCSpawnEvent
+            // with setAreaConstraints() and let the GameState handle the actual spawning
 
             spawnedNPCs.push_back(std::static_pointer_cast<Entity>(npc));
             EVENT_INFO("  - NPC " + std::to_string(i+1) + " spawned successfully");
@@ -485,3 +496,4 @@ void NPCSpawnEvent::cleanDeadEntities() {
     m_spawnedEntities.clear();
     // Keep m_currentSpawnCount for demonstration purposes
 }
+

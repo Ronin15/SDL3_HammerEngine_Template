@@ -115,7 +115,7 @@ PathfindingResult PathfindingGrid::findPath(const Vector2D& start, const Vector2
     // Restrict search to a reasonable ROI around start/goal to prevent
     // exploring the whole map on unreachable goals
     int dxGoal = std::abs(sx - gx), dyGoal = std::abs(sy - gy);
-    int r = std::max(dxGoal, dyGoal) + 16; // margin tiles
+    int r = std::max(dxGoal, dyGoal) + 12; // Reduced margin from 16 to 12 tiles
     int roiMinX = std::max(0, sx - r);
     int roiMaxX = std::min(W - 1, sx + r);
     int roiMinY = std::max(0, sy - r);
@@ -135,7 +135,10 @@ PathfindingResult PathfindingGrid::findPath(const Vector2D& start, const Vector2
     const int dx8[8] = {1,-1,0,0, 1,1,-1,-1};
     const int dy8[8] = {0,0,1,-1, 1,-1,1,-1};
 
-    while (!open.empty() && iterations++ < m_maxIterations) {
+    // Dynamic iteration limit based on distance - closer targets get fewer iterations
+    int dynamicMaxIters = std::min(m_maxIterations, std::max(500, (dxGoal + dyGoal) * 50));
+
+    while (!open.empty() && iterations++ < dynamicMaxIters) {
         Node cur = open.top(); open.pop();
         int cIndex = idx(cur.x, cur.y);
         if (closed[cIndex]) continue;

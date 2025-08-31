@@ -226,10 +226,65 @@ void AIManager::prepareForStateTransition() {
   // Pause AI processing to prevent new tasks
   m_globallyPaused.store(true, std::memory_order_release);
 
-  // Process any pending messages
-  processMessageQueue();
+  // Wait for any in-flight operations to complete
+  if (!m_updateFutures.empty()) {
+    AI_DEBUG("Waiting for " + std::to_string(m_updateFutures.size()) + " AI update futures to complete...");
+    for (auto &future : m_updateFutures) {
+      if (future.valid()) {
+        try {
+          future.get();
+        } catch (const std::exception &e) {
+          AI_ERROR("Exception in AI update future during state transition: " + std::string(e.what()));
+        }
+      }
+    }
+    m_updateFutures.clear();
+  }
 
-  // Clean up all entities safely and clear managed entities list in one lock
+  // Wait for async assignments to complete
+  if (!m_assignmentFutures.empty()) {
+    AI_DEBUG("Waiting for " + std::to_string(m_assignmentFutures.size()) + " async assignments to complete...");
+    for (auto &future : m_assignmentFutures) {
+      if (future.valid()) {
+        try {
+          auto status = future.wait_for(std::chrono::milliseconds(100));
+          if (status == std::future_status::ready) {
+            future.get();
+          } else {
+            AI_WARN("Async assignment did not complete within timeout during state transition");
+          }
+        } catch (const std::exception &e) {
+          AI_ERROR("Exception in async assignment during state transition: " + std::string(e.what()));
+        }
+      }
+    }
+    m_assignmentFutures.clear();
+    m_assignmentInProgress.store(false, std::memory_order_release);
+  }
+
+  // Process and clear any pending messages
+  processMessageQueue();
+  
+  // Clear message queues completely
+  {
+    std::lock_guard<std::mutex> lock(m_messagesMutex);
+    m_messageQueue.clear();
+    // Reset lock-free message indices
+    m_messageReadIndex.store(0, std::memory_order_relaxed);
+    m_messageWriteIndex.store(0, std::memory_order_relaxed);
+    for (auto &msg : m_lockFreeMessages) {
+      msg.ready.store(false, std::memory_order_relaxed);
+    }
+  }
+
+  // Clear assignment queues
+  {
+    std::lock_guard<std::mutex> lock(m_assignmentsMutex);
+    m_pendingAssignments.clear();
+    m_pendingAssignmentIndex.clear();
+  }
+
+  // Clean up all entities safely and clear managed entities list
   {
     std::unique_lock<std::shared_mutex> lock(m_entitiesMutex);
 
@@ -238,18 +293,25 @@ void AIManager::prepareForStateTransition() {
       if (m_storage.behaviors[i] && m_storage.entities[i]) {
         try {
           m_storage.behaviors[i]->clean(m_storage.entities[i]);
+          AI_DEBUG("Cleaned " + m_storage.behaviors[i]->getName() + " for entity " + 
+                   std::to_string(m_storage.entities[i]->getID()));
         } catch (const std::exception &e) {
           AI_ERROR("Exception cleaning behavior: " + std::string(e.what()));
         }
       }
     }
 
-    // Clear all storage
+    // Clear all storage completely
     m_storage.hotData.clear();
     m_storage.entities.clear();
     m_storage.behaviors.clear();
     m_storage.lastUpdateTimes.clear();
     m_entityToIndex.clear();
+    
+    // Clear double buffers to prevent stale data
+    m_storage.doubleBuffer[0].clear();
+    m_storage.doubleBuffer[1].clear();
+    m_storage.currentBuffer.store(0, std::memory_order_release);
 
     // Clear managed entities list
     m_managedEntities.clear();
@@ -257,13 +319,66 @@ void AIManager::prepareForStateTransition() {
     AI_DEBUG("Cleaned up all entities for state transition");
   }
 
-  // Reset behaviors
-  resetBehaviors();
+  // Clear pathfinding state completely
+  m_entityPaths.clear();
+  m_pathCooldownUntil.clear();
+  
+  // Clear async pathfinding state
+  {
+    std::lock_guard<std::mutex> lock(m_asyncPathMutex);
+    m_asyncEntityPaths.clear();
+    m_asyncPathTimestamps.clear();
+  }
+  {
+    std::lock_guard<std::mutex> lock(m_asyncQueueMutex);
+    // Clear the queue properly
+    std::queue<AsyncPathRequest> empty;
+    m_asyncPathQueue.swap(empty);
+  }
+  
+  // Reset async pathfinding counters
+  m_asyncPathsRequested.store(0, std::memory_order_relaxed);
+  m_asyncPathsProcessed.store(0, std::memory_order_relaxed);
+
+  // Reset all counters and stats
+  m_totalBehaviorExecutions.store(0, std::memory_order_relaxed);
+  m_totalAssignmentCount.store(0, std::memory_order_relaxed);
+  m_frameCounter.store(0, std::memory_order_relaxed);
+  m_lastCleanupFrame.store(0, std::memory_order_relaxed);
+  
+  // Reset performance tracking
+  {
+    std::lock_guard<std::mutex> lock(m_statsMutex);
+    m_globalStats = AIPerformanceStats{};
+    for (auto& stat : m_behaviorStats) {
+      stat = AIPerformanceStats{};
+    }
+  }
+
+  // Clear player reference completely
+  {
+    std::lock_guard<std::shared_mutex> lock(m_entitiesMutex);
+    m_playerEntity.reset();
+  }
+
+  // Reset threading state
+  m_lastWasThreaded.store(false, std::memory_order_relaxed);
+  m_lastOptimalWorkerCount.store(0, std::memory_order_relaxed);
+  m_lastAvailableWorkers.store(0, std::memory_order_relaxed);
+  m_lastAIBudget.store(0, std::memory_order_relaxed);
+
+  // Don't call resetBehaviors() as we've already done comprehensive cleanup above
+  // Just clear the behavior caches
+  {
+    std::lock_guard<std::shared_mutex> lock(m_behaviorsMutex);
+    m_behaviorCache.clear();
+    m_behaviorTypeCache.clear();
+  }
 
   // Reset pause state to false so next state starts unpaused
   m_globallyPaused.store(false, std::memory_order_release);
 
-  AI_LOG("AIManager prepared for state transition");
+  AI_LOG("AIManager state transition complete - all state cleared and reset");
 }
 
 void AIManager::update([[maybe_unused]] float deltaTime) {

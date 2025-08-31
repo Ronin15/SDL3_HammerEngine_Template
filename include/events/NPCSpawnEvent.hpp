@@ -125,6 +125,18 @@ public:
     // Direct spawn control (for scripting)
     static EntityPtr forceSpawnNPC(const std::string& npcType, float x, float y);
     static std::vector<EntityPtr> forceSpawnNPCs(const SpawnParameters& params, float x, float y);
+    
+    // Area constraint configuration for the spawn event
+    void setAreaConstraints(float minX, float minY, float maxX, float maxY) {
+        m_constrainToArea = true;
+        m_constraintMinX = minX;
+        m_constraintMinY = minY;
+        m_constraintMaxX = maxX;
+        m_constraintMaxY = maxY;
+    }
+    
+    void enableAreaConstraints(bool enable) { m_constrainToArea = enable; }
+    bool hasAreaConstraints() const { return m_constrainToArea; }
 
 private:
     std::string m_name;
@@ -167,6 +179,11 @@ private:
 
     // Tracking spawned entities (for counting/statistics only - not ownership)
     std::vector<EntityWeakPtr> m_spawnedEntities;
+    
+    // Area constraint system for village/event confinement
+    bool m_constrainToArea{false};
+    float m_constraintMinX{0.0f}, m_constraintMinY{0.0f};
+    float m_constraintMaxX{0.0f}, m_constraintMaxY{0.0f};
 
     // Helper methods
     bool checkProximityCondition() const;

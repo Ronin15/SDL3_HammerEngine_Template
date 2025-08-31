@@ -51,6 +51,13 @@ public:
 
   // AI-specific methods
   void setWanderArea(float minX, float minY, float maxX, float maxY);
+  
+  // Area constraint system for villages/events
+  void enableAreaConstraints(bool enabled) { m_boundsCheckEnabled = enabled; }
+  void setConstrainedArea(float minX, float minY, float maxX, float maxY) {
+    setWanderArea(minX, minY, maxX, maxY);
+    m_boundsCheckEnabled = true;
+  }
 
   // Enable or disable screen bounds checking
   void setBoundsCheckEnabled(bool enabled) { m_boundsCheckEnabled = enabled; }

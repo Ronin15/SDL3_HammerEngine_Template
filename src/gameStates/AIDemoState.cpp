@@ -11,6 +11,7 @@
 #include "core/GameEngine.hpp"
 #include "core/Logger.hpp"
 #include "managers/AIManager.hpp"
+#include "managers/CollisionManager.hpp"
 #include "managers/InputManager.hpp"
 #include "managers/UIManager.hpp"
 #include <memory>
@@ -242,8 +243,14 @@ bool AIDemoState::exit() {
   // Cache AIManager reference for better performance
   AIManager &aiMgr = AIManager::Instance();
 
-  // Use the new prepareForStateTransition method for safer cleanup
+  // Use prepareForStateTransition methods for deterministic cleanup
   aiMgr.prepareForStateTransition();
+  
+  // Clean collision state
+  CollisionManager &collisionMgr = CollisionManager::Instance();
+  if (collisionMgr.isInitialized() && !collisionMgr.isShutdown()) {
+    collisionMgr.prepareForStateTransition();
+  }
 
   // Clean up NPCs
   for (auto &npc : m_npcs) {

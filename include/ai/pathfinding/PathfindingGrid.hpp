@@ -37,7 +37,7 @@ private:
     std::vector<float> m_weight;    // movement multipliers per cell
 
     bool m_allowDiagonal{true};
-    int m_maxIterations{20000};
+    int m_maxIterations{8000};  // Reduced from 20000 to prevent long stalls
     float m_costStraight{1.0f};
     float m_costDiagonal{1.41421356f};
 

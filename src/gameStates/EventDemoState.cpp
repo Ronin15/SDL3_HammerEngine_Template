@@ -15,6 +15,7 @@
 #include "events/SceneChangeEvent.hpp"
 #include "events/WeatherEvent.hpp"
 #include "managers/AIManager.hpp"
+#include "managers/CollisionManager.hpp"
 #include "managers/EventManager.hpp"
 #include "managers/InputManager.hpp"
 #include "managers/ParticleManager.hpp"
@@ -227,9 +228,15 @@ bool EventDemoState::exit() {
 
     // Optional: leave global handlers intact for other states; no blanket clear here
 
-    // Use AIManager's prepareForStateTransition for architectural consistency
+    // Use manager prepareForStateTransition methods for deterministic cleanup
     AIManager &aiMgr = AIManager::Instance();
     aiMgr.prepareForStateTransition();
+
+    // Clean collision state before other systems
+    CollisionManager &collisionMgr = CollisionManager::Instance();
+    if (collisionMgr.isInitialized() && !collisionMgr.isShutdown()) {
+      collisionMgr.prepareForStateTransition();
+    }
 
     // Simple particle cleanup - let prepareForStateTransition handle everything
     ParticleManager &particleMgr = ParticleManager::Instance();

@@ -99,30 +99,8 @@ void ChaseBehavior::executeLogic(EntityPtr entity) {
         policy.detourRadii[1] = 96.0f;
         policy.lateralBias = 0.0f;
 
-        // Check if target area is crowded - if so, pick nearby alternative position
+        // Direct chase - always target the player position for aggressive pursuit
         Vector2D goalPosition = targetPos;
-        int actualEntityCount = AIInternal::CountNearbyEntities(entity, targetPos, 60.0f);
-        
-        if (actualEntityCount >= 6) { // Target area is crowded
-          // Pick alternative position near target but less crowded
-          bool foundAlternative = false;
-          for (float distance : {80.0f, 120.0f, 160.0f}) {
-            for (float angle : {0.0f, 1.57f, 3.14f, 4.71f}) {
-              Vector2D offset(distance * cosf(angle), distance * sinf(angle));
-              Vector2D altPosition = targetPos + offset;
-              
-              // Check if alternative position is less crowded
-              int altEntityCount = AIInternal::CountNearbyEntities(entity, altPosition, 40.0f);
-              
-              if (altEntityCount < actualEntityCount / 2) {
-                goalPosition = altPosition;
-                foundAlternative = true;
-                break;
-              }
-            }
-            if (foundAlternative) break;
-          }
-        }
 
         if (m_useAsyncPathfinding) {
           RefreshPathWithPolicyAsync(entity, entityPos, goalPosition,
@@ -176,37 +154,16 @@ void ChaseBehavior::executeLogic(EntityPtr entity) {
             }
           }
           
-          // Dynamic adjustment based on crowd density
-          if (chaserCount > 2) {
-            // High density: increase separation and add lateral spreading
-            dynamicRadius = COMBAT_RADIUS * 1.8f;
-            dynamicStrength = COMBAT_STRENGTH * 2.0f;
+          // Simple crowd management - maintain direct pursuit with minimal spreading
+          if (chaserCount > 3) {
+            // High density: slight lateral spread but still pursue directly
+            dynamicRadius = COMBAT_RADIUS * 1.2f;
+            dynamicStrength = COMBAT_STRENGTH * 1.3f;
             
-            // Add lateral bias to spread chasers around target in rings
-            Vector2D toTarget = (targetPos - entityPos).normalized();
-            Vector2D lateral(-toTarget.getY(), toTarget.getX()); // Perpendicular vector
-            
-            // Create ring formation around target based on entity ID and crowd size
-            float ringRadius = 80.0f + (chaserCount * 25.0f); // Larger rings for more chasers
-            float angleStep = (2.0f * M_PI) / std::max(3.0f, (float)chaserCount);
-            float entityAngle = (entity->getID() % chaserCount) * angleStep;
-            
-            // Calculate position in ring formation
-            Vector2D ringOffset(std::cos(entityAngle) * ringRadius, std::sin(entityAngle) * ringRadius);
-            Vector2D adjustedTarget = targetPos + ringOffset;
-            
-            // Path toward ring position instead of directly to target
-            Vector2D newDir = (adjustedTarget - entityPos).normalized();
-            entity->setVelocity(newDir * m_chaseSpeed);
-          } else if (chaserCount > 0) {
-            // Medium density: moderate separation increase with simple lateral bias
-            dynamicRadius = COMBAT_RADIUS * 1.3f;
-            dynamicStrength = COMBAT_STRENGTH * 1.5f;
-            
-            // Simple lateral offset to prevent stacking
+            // Small lateral offset to reduce clumping
             Vector2D toTarget = (targetPos - entityPos).normalized();
             Vector2D lateral(-toTarget.getY(), toTarget.getX());
-            float lateralBias = ((float)(entity->getID() % 3) - 1.0f) * 40.0f; // -40, 0, or +40
+            float lateralBias = ((float)(entity->getID() % 3) - 1.0f) * 15.0f; // Small spread: -15, 0, or +15
             Vector2D adjustedTarget = targetPos + lateral * lateralBias;
             Vector2D newDir = (adjustedTarget - entityPos).normalized();
             entity->setVelocity(newDir * m_chaseSpeed);
@@ -228,22 +185,14 @@ void ChaseBehavior::executeLogic(EntityPtr entity) {
         Vector2D direction = (targetPos - entityPos);
         direction.normalize();
         
-        // Apply crowd-aware positioning even in direct movement
-        int nearbyCount = AIInternal::CountNearbyEntities(entity, entityPos, 100.0f);
+        // Simple crowd awareness - minor lateral spread for direct pursuit
+        int nearbyCount = AIInternal::CountNearbyEntities(entity, entityPos, 80.0f);
         
-        if (nearbyCount > 2) {
-          // High crowd density: use ring formation approach
-          float ringRadius = 60.0f + (nearbyCount * 20.0f);
-          float angleStep = (2.0f * M_PI) / std::max(3.0f, (float)nearbyCount);
-          float entityAngle = (entity->getID() % nearbyCount) * angleStep;
-          Vector2D ringOffset(std::cos(entityAngle) * ringRadius, std::sin(entityAngle) * ringRadius);
-          Vector2D ringTarget = targetPos + ringOffset;
-          direction = (ringTarget - entityPos).normalized();
-        } else if (nearbyCount > 0) {
-          // Medium density: add slight lateral offset to prevent perfect overlap
+        if (nearbyCount > 1) {
+          // Add minimal lateral offset to reduce perfect stacking while maintaining chase
           Vector2D lateral(-direction.getY(), direction.getX());
-          float offset = ((float)(entity->getID() % 5) - 2.0f) * 35.0f; // -70 to +70 range  
-          direction = direction + lateral * (offset / 200.0f); // Small lateral bias
+          float offset = ((float)(entity->getID() % 3) - 1.0f) * 20.0f; // Small spread: -20 to +20
+          direction = direction + lateral * (offset / 400.0f); // Very small lateral bias
           direction.normalize();
         }
         

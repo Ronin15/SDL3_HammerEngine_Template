@@ -173,26 +173,44 @@ void NPC::update(float deltaTime) {
   // Position sync is handled by setPosition() calls - no need for periodic checks
   // This prevents visual glitching from position corrections during rendering
 
-  // Handle world boundaries
+  // Handle area constraints - redirect instead of bounce when enabled
   bool boundaryCollision = false;
   if (m_boundsCheckEnabled) {
-    const float bounceBuffer = 20.0f;
-    if (m_position.getX() < m_minX - bounceBuffer) {
-      m_position.setX(m_minX);
-      m_velocity.setX(std::abs(m_velocity.getX()));
-      boundaryCollision = true;
-    } else if (m_position.getX() + m_width > m_maxX + bounceBuffer) {
-      m_position.setX(m_maxX - m_width);
-      m_velocity.setX(-std::abs(m_velocity.getX()));
-      boundaryCollision = true;
+    const float margin = 8.0f;
+    bool hitBoundary = false;
+    Vector2D redirectedVel = m_velocity;
+    
+    // Check boundaries and redirect velocity inward
+    if (m_position.getX() < m_minX + margin) {
+      m_position.setX(m_minX + margin);
+      if (m_velocity.getX() < 0) {
+        redirectedVel.setX(std::abs(m_velocity.getX()) * 0.8f); // Redirect inward with slight damping
+        hitBoundary = true;
+      }
+    } else if (m_position.getX() + m_width > m_maxX - margin) {
+      m_position.setX(m_maxX - m_width - margin);
+      if (m_velocity.getX() > 0) {
+        redirectedVel.setX(-std::abs(m_velocity.getX()) * 0.8f); // Redirect inward with slight damping
+        hitBoundary = true;
+      }
     }
-    if (m_position.getY() < m_minY - bounceBuffer) {
-      m_position.setY(m_minY);
-      m_velocity.setY(std::abs(m_velocity.getY()));
-      boundaryCollision = true;
-    } else if (m_position.getY() + m_height > m_maxY + bounceBuffer) {
-      m_position.setY(m_maxY - m_height);
-      m_velocity.setY(-std::abs(m_velocity.getY()));
+    
+    if (m_position.getY() < m_minY + margin) {
+      m_position.setY(m_minY + margin);
+      if (m_velocity.getY() < 0) {
+        redirectedVel.setY(std::abs(m_velocity.getY()) * 0.8f); // Redirect inward with slight damping
+        hitBoundary = true;
+      }
+    } else if (m_position.getY() + m_height > m_maxY - margin) {
+      m_position.setY(m_maxY - m_height - margin);
+      if (m_velocity.getY() > 0) {
+        redirectedVel.setY(-std::abs(m_velocity.getY()) * 0.8f); // Redirect inward with slight damping
+        hitBoundary = true;
+      }
+    }
+    
+    if (hitBoundary) {
+      m_velocity = redirectedVel;
       boundaryCollision = true;
     }
   }
