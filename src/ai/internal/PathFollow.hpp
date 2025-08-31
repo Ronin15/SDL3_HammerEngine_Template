@@ -60,6 +60,10 @@ struct PathPolicy {
 // Clamp a world-space point within current world bounds (with margin)
 Vector2D ClampToWorld(const Vector2D &p, float margin = 16.0f);
 
+// Get world bounds in pixel coordinates (converts tile bounds to world bounds)
+struct WorldBoundsPixels { float minX, minY, maxX, maxY; bool valid; };
+WorldBoundsPixels GetWorldBoundsInPixels();
+
 // Refresh path with policy: returns true if a (possibly new) path is ready.
 bool RefreshPathWithPolicy(
     EntityPtr entity,

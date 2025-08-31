@@ -1101,6 +1101,9 @@ void GameEngine::clean() {
   GAMEENGINE_INFO("Cleaning up AI Manager...");
   AIManager::Instance().clean();
 
+  GAMEENGINE_INFO("Cleaning up Collision Manager...");
+  CollisionManager::Instance().clean();
+
   GAMEENGINE_INFO("Cleaning up Save Game Manager...");
   SaveGameManager::Instance().clean();
 
@@ -1124,6 +1127,7 @@ void GameEngine::clean() {
   mp_aiManager = nullptr;
   mp_eventManager = nullptr;
   mp_particleManager = nullptr;
+  mp_collisionManager = nullptr;
   mp_resourceTemplateManager = nullptr;
   mp_worldResourceManager = nullptr;
   mp_worldManager = nullptr;
