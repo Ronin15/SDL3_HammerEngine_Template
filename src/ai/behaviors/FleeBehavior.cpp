@@ -4,6 +4,7 @@
 */
 
 #include "ai/behaviors/FleeBehavior.hpp"
+#include "ai/internal/Crowd.hpp"
 #include "managers/AIManager.hpp"
 #include "managers/WorldManager.hpp"
 #include "managers/CollisionManager.hpp"
@@ -434,11 +435,7 @@ void FleeBehavior::updateStrategicRetreat(EntityPtr entity, EntityState& state) 
     int nearbyCount = 0;
     
     // Check for other fleeing entities to avoid clustering in same escape routes
-    AABB queryArea(currentPos.getX() - 100.0f, currentPos.getY() - 100.0f,
-                   currentPos.getX() + 100.0f, currentPos.getY() + 100.0f);
-    std::vector<EntityID> nearbyIDs;
-    CollisionManager::Instance().queryArea(queryArea, nearbyIDs);
-    nearbyCount = static_cast<int>(nearbyIDs.size()) - 1; // Exclude self
+    nearbyCount = AIInternal::CountNearbyEntities(entity, currentPos, 100.0f);
     
     float retreatDistance = baseRetreatDistance;
     if (nearbyCount > 2) {
@@ -565,11 +562,7 @@ void FleeBehavior::updateSeekCover(EntityPtr entity, EntityState& state) {
     int nearbyCount = 0;
     
     // Check for clustering of other cover-seekers
-    AABB queryArea(currentPos.getX() - 90.0f, currentPos.getY() - 90.0f,
-                   currentPos.getX() + 90.0f, currentPos.getY() + 90.0f);
-    std::vector<EntityID> nearbyIDs;
-    CollisionManager::Instance().queryArea(queryArea, nearbyIDs);
-    nearbyCount = static_cast<int>(nearbyIDs.size()) - 1; // Exclude self
+    nearbyCount = AIInternal::CountNearbyEntities(entity, currentPos, 90.0f);
     
     float coverDistance = baseCoverDistance;
     if (nearbyCount > 2) {

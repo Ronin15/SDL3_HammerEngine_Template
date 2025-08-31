@@ -4,11 +4,10 @@
  */
 
 #include "ai/behaviors/WanderBehavior.hpp"
+#include "ai/internal/Crowd.hpp"
 #include "managers/AIManager.hpp"
 #include "managers/WorldManager.hpp"
-#include "managers/CollisionManager.hpp"
 #include "ai/internal/PathFollow.hpp"
-#include "collisions/AABB.hpp"
 #include <algorithm>
 #include <cmath>
 
@@ -102,40 +101,26 @@ void WanderBehavior::executeLogic(EntityPtr entity) {
     
     // Check local entity density for dynamic area expansion
     Vector2D position = entity->getPosition();
-    int nearbyCount = 0;
     float queryRadius = 120.0f;
     
-    // Quick density check using collision manager
-    AABB queryArea(position.getX() - queryRadius, position.getY() - queryRadius,
-                   position.getX() + queryRadius, position.getY() + queryRadius);
-    std::vector<EntityID> nearbyEntities;
-    CollisionManager::Instance().queryArea(queryArea, nearbyEntities);
-    nearbyCount = static_cast<int>(nearbyEntities.size()) - 1; // Exclude self
+    // Get nearby entities and their positions for crowd analysis
+    std::vector<Vector2D> nearbyPositions;
+    int nearbyCount = AIInternal::GetNearbyEntitiesWithPositions(entity, position, queryRadius, nearbyPositions);
     
      // Dynamic distance adjustment based on crowding
      float moveDistance = baseDistance;
-     bool needsAlternativeTarget = false;
      
      if (nearbyCount > 5) {
        // Very high density: pick completely different target away from cluster
-       needsAlternativeTarget = true;
        moveDistance = baseDistance * 3.0f; // Very long distance to escape cluster
        
        // Calculate cluster center and move in opposite direction
-       Vector2D crowdCenter(0, 0);
-       int validPositions = 0;
-       for (auto id : nearbyEntities) {
-         if (id != entity->getID()) {
-           Vector2D entityCenter;
-           if (CollisionManager::Instance().getBodyCenter(id, entityCenter)) {
-             crowdCenter = crowdCenter + entityCenter;
-             validPositions++;
-           }
+       if (!nearbyPositions.empty()) {
+         Vector2D crowdCenter(0, 0);
+         for (const auto &pos : nearbyPositions) {
+           crowdCenter = crowdCenter + pos;
          }
-       }
-       
-       if (validPositions > 0) {
-         crowdCenter = crowdCenter / static_cast<float>(validPositions);
+         crowdCenter = crowdCenter / static_cast<float>(nearbyPositions.size());
          Vector2D escapeDirection = (position - crowdCenter).normalized();
          
          // Add some randomness to prevent all NPCs picking same escape route
@@ -155,20 +140,12 @@ void WanderBehavior::executeLogic(EntityPtr entity) {
        moveDistance = baseDistance * 2.0f; // Up to 1200px movement for spreading
        
        // Also bias direction away from crowd center
-       Vector2D crowdCenter(0, 0);
-       int validPositions = 0;
-       for (auto id : nearbyEntities) {
-         if (id != entity->getID()) {
-           Vector2D entityCenter;
-           if (CollisionManager::Instance().getBodyCenter(id, entityCenter)) {
-             crowdCenter = crowdCenter + entityCenter;
-             validPositions++;
-           }
+       if (!nearbyPositions.empty()) {
+         Vector2D crowdCenter(0, 0);
+         for (const auto &pos : nearbyPositions) {
+           crowdCenter = crowdCenter + pos;
          }
-       }
-       
-       if (validPositions > 0) {
-         crowdCenter = crowdCenter / static_cast<float>(validPositions);
+         crowdCenter = crowdCenter / static_cast<float>(nearbyPositions.size());
          Vector2D awayFromCrowd = (position - crowdCenter).normalized();
          // Blend current direction with anti-crowd direction
          state.currentDirection = (state.currentDirection * 0.6f + awayFromCrowd * 0.4f).normalized();
@@ -232,7 +209,6 @@ void WanderBehavior::updateWanderState(EntityPtr entity) {
   EntityState &state = stateIt->second;
   Uint64 currentTime = SDL_GetTicks();
 
-  Vector2D position = entity->getPosition();
   Vector2D previousVelocity = entity->getVelocity();
 
   // Control sprite flipping to avoid rapid flips
@@ -432,8 +408,8 @@ void WanderBehavior::setupModeDefaults(WanderMode mode) {
     // Set center point to world center
     m_centerPoint = Vector2D(worldWidth * 0.5f, worldHeight * 0.5f);
   } else {
-    // Fallback center point if world bounds unavailable
-    m_centerPoint = Vector2D(1600.0f, 1600.0f); // Default center for a large world
+    // Use a reasonable default center for a medium-sized world
+    m_centerPoint = Vector2D(1000.0f, 1000.0f);
   }
 
   switch (mode) {

@@ -137,28 +137,32 @@ void NPC::update(float deltaTime) {
   }
   
   Vector2D newPosition = m_position + m_velocity * deltaTime;
-  // Clamp into world bounds with a small margin to avoid edge stalls
-  float minX, minY, maxX, maxY;
-  if (WorldManager::Instance().getWorldBounds(minX, minY, maxX, maxY)) {
-    const float TILE = 32.0f; const float margin = 8.0f;
-    float worldMinX = minX * TILE + margin;
-    float worldMinY = minY * TILE + margin;
-    float worldMaxX = maxX * TILE - margin;
-    float worldMaxY = maxY * TILE - margin;
-    float clampedX = std::clamp(newPosition.getX(), worldMinX, worldMaxX);
-    float clampedY = std::clamp(newPosition.getY(), worldMinY, worldMaxY);
-    bool hitX = (clampedX != newPosition.getX());
-    bool hitY = (clampedY != newPosition.getY());
-    newPosition.setX(clampedX);
-    newPosition.setY(clampedY);
-    // Project velocity to interior to avoid artificial flip-flopping at edges
-    if (hitX) {
-      if (newPosition.getX() <= worldMinX && m_velocity.getX() < 0) m_velocity.setX(0.0f);
-      else if (newPosition.getX() >= worldMaxX && m_velocity.getX() > 0) m_velocity.setX(0.0f);
-    }
-    if (hitY) {
-      if (newPosition.getY() <= worldMinY && m_velocity.getY() < 0) m_velocity.setY(0.0f);
-      else if (newPosition.getY() >= worldMaxY && m_velocity.getY() > 0) m_velocity.setY(0.0f);
+  
+  // Only apply world bounds clamping if bounds checking is enabled
+  // This prevents AI pathfinding conflicts while still allowing manual boundary control
+  if (m_boundsCheckEnabled) {
+    float minX, minY, maxX, maxY;
+    if (WorldManager::Instance().getWorldBounds(minX, minY, maxX, maxY)) {
+      const float TILE = 32.0f; const float margin = 8.0f;
+      float worldMinX = minX * TILE + margin;
+      float worldMinY = minY * TILE + margin;
+      float worldMaxX = maxX * TILE - margin;
+      float worldMaxY = maxY * TILE - margin;
+      float clampedX = std::clamp(newPosition.getX(), worldMinX, worldMaxX);
+      float clampedY = std::clamp(newPosition.getY(), worldMinY, worldMaxY);
+      bool hitX = (clampedX != newPosition.getX());
+      bool hitY = (clampedY != newPosition.getY());
+      newPosition.setX(clampedX);
+      newPosition.setY(clampedY);
+      // Project velocity to interior to avoid artificial flip-flopping at edges
+      if (hitX) {
+        if (newPosition.getX() <= worldMinX && m_velocity.getX() < 0) m_velocity.setX(0.0f);
+        else if (newPosition.getX() >= worldMaxX && m_velocity.getX() > 0) m_velocity.setX(0.0f);
+      }
+      if (hitY) {
+        if (newPosition.getY() <= worldMinY && m_velocity.getY() < 0) m_velocity.setY(0.0f);
+        else if (newPosition.getY() >= worldMaxY && m_velocity.getY() > 0) m_velocity.setY(0.0f);
+      }
     }
   }
   setPosition(newPosition);
@@ -166,26 +170,8 @@ void NPC::update(float deltaTime) {
   setVelocity(m_velocity);
   m_acceleration = Vector2D(0, 0);
   
-  // Additional safety: Force collision manager position sync if there's a mismatch
-  // Only check this occasionally to avoid performance impact
-  static Uint64 lastSyncCheck = 0;
-  Uint64 now = SDL_GetTicks();
-  if (now - lastSyncCheck > 1000) { // Check every second
-    lastSyncCheck = now;
-    auto &cm = CollisionManager::Instance();
-    if (!cm.isSyncing()) {
-      Vector2D cmPos;
-      if (cm.getBodyCenter(getID(), cmPos)) {
-        float posDiff = (cmPos - m_position).length();
-        if (posDiff > 5.0f) { // Only sync on significant mismatches
-          cm.setKinematicPose(getID(), m_position);
-          AI_DEBUG("NPC " + std::to_string(getID()) + " position sync: game=" + 
-                   std::to_string(m_position.getX()) + "," + std::to_string(m_position.getY()) + 
-                   " cm=" + std::to_string(cmPos.getX()) + "," + std::to_string(cmPos.getY()));
-        }
-      }
-    }
-  }
+  // Position sync is handled by setPosition() calls - no need for periodic checks
+  // This prevents visual glitching from position corrections during rendering
 
   // Handle world boundaries
   bool boundaryCollision = false;
@@ -558,7 +544,7 @@ void NPC::ensurePhysicsBodyRegistered() {
   const float halfW = m_frameWidth > 0 ? m_frameWidth * 0.5f : 16.0f;
   const float halfH = m_height > 0 ? m_height * 0.5f : 16.0f;
   HammerEngine::AABB aabb(m_position.getX(), m_position.getY(), halfW, halfH);
-  cm.addBody(getID(), aabb, HammerEngine::BodyType::DYNAMIC);
+  cm.addBody(getID(), aabb, HammerEngine::BodyType::KINEMATIC);
   cm.attachEntity(getID(), shared_this());
 }
 

@@ -74,8 +74,8 @@ public:
      * @brief Viewport structure for rendering calculations
      */
     struct Viewport {
-        float width{800.0f};
-        float height{600.0f};
+        float width{1920.0f};
+        float height{1080.0f};
         
         bool isValid() const {
             return width > 0.0f && height > 0.0f;

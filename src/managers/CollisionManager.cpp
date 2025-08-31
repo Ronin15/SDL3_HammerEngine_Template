@@ -229,6 +229,12 @@ bool CollisionManager::isDynamic(EntityID id) const {
     return it->second->type == BodyType::DYNAMIC;
 }
 
+bool CollisionManager::isKinematic(EntityID id) const {
+    auto it = m_bodies.find(id);
+    if (it == m_bodies.end()) return false;
+    return it->second->type == BodyType::KINEMATIC;
+}
+
 bool CollisionManager::isTrigger(EntityID id) const {
     auto it = m_bodies.find(id);
     if (it == m_bodies.end()) return false;
@@ -376,12 +382,15 @@ void CollisionManager::update(float dt) {
         COLLISION_DEBUG("Resolved collisions: count=" + std::to_string(collisions.size()));
     }
     // Reflect resolved poses back to entities so callers see corrected transforms
+    // Skip kinematic bodies since they manage their own positions through AI/input
     m_isSyncing = true;
     for (auto& kv : m_bodies) {
         auto& b = *kv.second;
-        if (auto ent = b.entityWeak.lock()) {
-            ent->setPosition(b.aabb.center);
-            ent->setVelocity(b.velocity);
+        if (b.type != HammerEngine::BodyType::KINEMATIC) {
+            if (auto ent = b.entityWeak.lock()) {
+                ent->setPosition(b.aabb.center);
+                ent->setVelocity(b.velocity);
+            }
         }
     }
     m_isSyncing = false;

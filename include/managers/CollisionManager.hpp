@@ -75,6 +75,7 @@ public:
     bool getBodyCenter(EntityID id, Vector2D& outCenter) const;
     // Type/flags helpers for filtering
     bool isDynamic(EntityID id) const;
+    bool isKinematic(EntityID id) const;
     bool isTrigger(EntityID id) const;
 
     // World coupling
