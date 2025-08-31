@@ -64,6 +64,10 @@ public:
   // Clone method for creating unique behavior instances
   std::shared_ptr<AIBehavior> clone() const override;
 
+  // Async pathfinding control
+  void setAsyncPathfinding(bool enabled) { m_useAsyncPathfinding = enabled; }
+  bool isAsyncPathfindingEnabled() const { return m_useAsyncPathfinding; }
+
 
 
 private:
@@ -136,6 +140,9 @@ private:
   mutable std::mt19937 m_rng{std::random_device{}()};
   mutable std::uniform_real_distribution<float> m_offsetVariation{-10.0f,
                                                                   10.0f};
+
+  // Async pathfinding control
+  bool m_useAsyncPathfinding{false};
 
   // Helper methods
   EntityPtr getTarget() const; // Gets player reference from AIManager

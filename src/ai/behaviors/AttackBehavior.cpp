@@ -900,12 +900,26 @@ void AttackBehavior::moveToPosition(EntityPtr entity, const Vector2D &targetPos,
   if (now - state.lastPathUpdate > pathTTL) needRefresh = true;
 
   if (needRefresh && SDL_GetTicks() >= state.backoffUntil) {
-    AIManager::Instance().requestPath(entity, currentPos, clampedTarget);
-    state.pathPoints = AIManager::Instance().getPath(entity);
-    state.currentPathIndex = 0;
-    state.lastPathUpdate = now;
-    state.lastNodeDistance = std::numeric_limits<float>::infinity();
-    state.lastProgressTime = now;
+    if (m_useAsyncPathfinding) {
+      AIManager::Instance().requestPathAsync(entity, currentPos, clampedTarget, AIManager::PathPriority::Critical);
+      if (AIManager::Instance().hasAsyncPath(entity)) {
+        state.pathPoints = AIManager::Instance().getAsyncPath(entity);
+        state.currentPathIndex = 0;
+        state.lastPathUpdate = now;
+        state.lastNodeDistance = std::numeric_limits<float>::infinity();
+        state.lastProgressTime = now;
+      } else {
+        // Async path not ready, apply minimal backoff to prevent spam and continue with existing path
+        state.backoffUntil = now + 200 + (entity->getID() % 300);
+      }
+    } else {
+      AIManager::Instance().requestPath(entity, currentPos, clampedTarget);
+      state.pathPoints = AIManager::Instance().getPath(entity);
+      state.currentPathIndex = 0;
+      state.lastPathUpdate = now;
+      state.lastNodeDistance = std::numeric_limits<float>::infinity();
+      state.lastProgressTime = now;
+    }
   }
 
   // Follow path if available; otherwise fall back to direct steering

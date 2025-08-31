@@ -169,6 +169,13 @@ private:
   // Mode setup helper
   void setupModeDefaults(WanderMode mode, float screenWidth = 1280.0f,
                          float screenHeight = 720.0f);
+  
+  // Async pathfinding support
+  bool m_useAsyncPathfinding{false};
+
+public:
+  void setAsyncPathfinding(bool enabled) { m_useAsyncPathfinding = enabled; }
+  bool isAsyncPathfindingEnabled() const { return m_useAsyncPathfinding; }
 };
 
 #endif // WANDER_BEHAVIOR_HPP

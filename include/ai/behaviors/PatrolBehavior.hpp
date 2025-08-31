@@ -74,6 +74,9 @@ public:
   void setMinWaypointDistance(float distance);
   void setRandomSeed(unsigned int seed);
 
+  // Async pathfinding control
+  void setAsyncPathfinding(bool enabled) { m_useAsyncPathfinding = enabled; }
+  bool isAsyncPathfindingEnabled() const { return m_useAsyncPathfinding; }
 
 
 private:
@@ -140,6 +143,10 @@ private:
   void setupModeDefaults(PatrolMode mode, float screenWidth = 1280.0f,
                          float screenHeight = 720.0f);
 
+  // State validation and debugging
+  bool validateState(EntityPtr entity) const;
+  void resetState(EntityPtr entity);
+
   // Path-following settings
   void setPathFollowRadius(float r) { m_navRadius = r; }
 
@@ -155,6 +162,9 @@ private:
   Uint64 m_stallStart{0};
   Uint64 m_backoffUntil{0};
   Uint64 m_lastWaypointTime{0}; // Prevent rapid waypoint switching
+  
+  // Async pathfinding control
+  bool m_useAsyncPathfinding{false};
 };
 
 #endif // PATROL_BEHAVIOR_HPP

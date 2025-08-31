@@ -1488,6 +1488,111 @@ void AIManager::clearPath(EntityPtr entity) {
   m_entityPaths.erase(entity->getID());
 }
 
+// ======================= Async Pathfinding API =======================
+
+void AIManager::requestPathAsync(EntityPtr entity, const Vector2D &start, const Vector2D &goal,
+                                  PathPriority priority, 
+                                  std::function<void(EntityID, const std::vector<Vector2D>&)> callback) {
+  if (!entity) return;
+  requestPathAsync(entity->getID(), start, goal, priority, callback);
+}
+
+void AIManager::requestPathAsync(EntityID entityId, const Vector2D &start, const Vector2D &goal,
+                                 PathPriority priority,
+                                 std::function<void(EntityID, const std::vector<Vector2D>&)> callback) {
+  if (!m_asyncPathfindingEnabled.load()) {
+    // Fall back to synchronous pathfinding if async is disabled
+    // Find entity by scanning storage (temporary until we add proper lookup)
+    EntityPtr entity = nullptr;
+    {
+      std::shared_lock<std::shared_mutex> lock(m_entitiesMutex);
+      for (size_t i = 0; i < m_storage.size(); ++i) {
+        if (m_storage.entities[i] && m_storage.entities[i]->getID() == entityId) {
+          entity = m_storage.entities[i];
+          break;
+        }
+      }
+    }
+    if (entity) {
+      requestPath(entity, start, goal);
+    }
+    return;
+  }
+
+  // Check cooldown
+  Uint64 now = SDL_GetTicks();
+  auto cooldownIt = m_pathCooldownUntil.find(entityId);
+  if (cooldownIt != m_pathCooldownUntil.end() && now < cooldownIt->second) {
+    return; // Still in cooldown
+  }
+
+  {
+    std::lock_guard<std::mutex> lock(m_asyncQueueMutex);
+    m_asyncPathQueue.emplace(entityId, start, goal, priority, callback);
+    m_asyncPathsRequested.fetch_add(1, std::memory_order_relaxed);
+  }
+
+  // Submit pathfinding task to ThreadSystem with appropriate priority
+  HammerEngine::TaskPriority taskPriority;
+  switch (priority) {
+    case PathPriority::Critical: taskPriority = HammerEngine::TaskPriority::Critical; break;
+    case PathPriority::High: taskPriority = HammerEngine::TaskPriority::High; break;
+    case PathPriority::Normal: taskPriority = HammerEngine::TaskPriority::Normal; break;
+    case PathPriority::Low: taskPriority = HammerEngine::TaskPriority::Low; break;
+  }
+
+  // Capture entityId for the task description
+  std::string taskDesc = "AsyncPathfinding_" + std::to_string(entityId);
+  
+  HammerEngine::ThreadSystem::Instance().enqueueTask(
+    [this, entityId, start, goal]() { 
+      this->processAsyncPathRequest(entityId, start, goal); 
+    },
+    taskPriority,
+    taskDesc
+  );
+}
+
+bool AIManager::hasAsyncPath(EntityPtr entity) const {
+  return entity ? hasAsyncPath(entity->getID()) : false;
+}
+
+bool AIManager::hasAsyncPath(EntityID entityId) const {
+  std::lock_guard<std::mutex> lock(m_asyncPathMutex);
+  auto it = m_asyncEntityPaths.find(entityId);
+  return it != m_asyncEntityPaths.end() && !it->second.empty();
+}
+
+std::vector<Vector2D> AIManager::getAsyncPath(EntityPtr entity) const {
+  return entity ? getAsyncPath(entity->getID()) : std::vector<Vector2D>{};
+}
+
+std::vector<Vector2D> AIManager::getAsyncPath(EntityID entityId) const {
+  std::lock_guard<std::mutex> lock(m_asyncPathMutex);
+  auto it = m_asyncEntityPaths.find(entityId);
+  return it != m_asyncEntityPaths.end() ? it->second : std::vector<Vector2D>{};
+}
+
+void AIManager::clearAsyncPath(EntityPtr entity) {
+  if (entity) clearAsyncPath(entity->getID());
+}
+
+void AIManager::clearAsyncPath(EntityID entityId) {
+  std::lock_guard<std::mutex> lock(m_asyncPathMutex);
+  m_asyncEntityPaths.erase(entityId);
+  m_asyncPathTimestamps.erase(entityId);
+}
+
+size_t AIManager::getAsyncPathQueueSize() const {
+  std::lock_guard<std::mutex> lock(m_asyncQueueMutex);
+  return m_asyncPathQueue.size();
+}
+
+void AIManager::processAsyncPathResults() {
+  // This method is called from the main thread to handle any callbacks
+  // The actual pathfinding work is done in processAsyncPathBatch()
+}
+
 void AIManager::forceUnstickEntity(EntityPtr entity) {
   if (!entity) {
     AI_ERROR("Cannot unstick null entity");
@@ -1674,6 +1779,80 @@ size_t AIManager::checkAndDisperseClusters(EntityPtr entity) {
   }
   
   return 0;
+}
+
+// ======================= Async Pathfinding Processing =======================
+
+void AIManager::processAsyncPathRequest(EntityID entityId, const Vector2D &start, const Vector2D &goal) {
+  if (!m_pathGrid) return;
+  
+  // Faction-aware pathfinding (same logic as sync version but with EntityID)
+  m_pathGrid->resetWeights(1.0f);
+  
+  // Since we only have EntityID, we need to find the entity for faction checking
+  EntityPtr requestingEntity = nullptr;
+  NPC::Faction requesterFaction = NPC::Faction::Neutral;
+  
+  {
+    std::shared_lock<std::shared_mutex> lock(m_entitiesMutex);
+    for (size_t i = 0; i < m_storage.size(); ++i) {
+      if (m_storage.entities[i] && m_storage.entities[i]->getID() == entityId) {
+        requestingEntity = m_storage.entities[i];
+        if (auto npc = std::dynamic_pointer_cast<NPC>(requestingEntity)) {
+          requesterFaction = npc->getFaction();
+        }
+        break;
+      }
+    }
+  }
+
+  // Add avoidance weights for hostile entities
+  if (requestingEntity) {
+    std::shared_lock<std::shared_mutex> lock(m_entitiesMutex);
+    for (size_t i = 0; i < m_storage.size(); ++i) {
+      EntityPtr other = m_storage.entities[i];
+      if (!other || other.get() == requestingEntity.get()) continue;
+      
+      Vector2D pos = other->getPosition();
+      
+      if (auto otherNPC = std::dynamic_pointer_cast<NPC>(other)) {
+        NPC::Faction otherFaction = otherNPC->getFaction();
+        if ((requesterFaction == NPC::Faction::Friendly && otherFaction == NPC::Faction::Enemy) ||
+            (requesterFaction == NPC::Faction::Enemy && otherFaction == NPC::Faction::Friendly)) {
+          m_pathGrid->addWeightCircle(pos, 96.0f, 2.5f); // Strong avoidance for hostiles
+        } else {
+          m_pathGrid->addWeightCircle(pos, 64.0f, 1.2f); // Mild avoidance for allies
+        }
+      } else {
+        // Player or unknown entity - treat as friendly  
+        if (requesterFaction == NPC::Faction::Enemy) {
+          m_pathGrid->addWeightCircle(pos, 96.0f, 2.5f);
+        } else {
+          m_pathGrid->addWeightCircle(pos, 64.0f, 1.2f);
+        }
+      }
+    }
+  }
+
+  // Perform pathfinding
+  std::vector<Vector2D> path;
+  auto result = m_pathGrid->findPath(start, goal, path);
+  
+  // Store result
+  {
+    std::lock_guard<std::mutex> lock(m_asyncPathMutex);
+    if (result == HammerEngine::PathfindingResult::SUCCESS && !path.empty()) {
+      m_asyncEntityPaths[entityId] = std::move(path);
+      m_asyncPathTimestamps[entityId] = SDL_GetTicks();
+    } else {
+      // Store empty path to indicate failure
+      m_asyncEntityPaths[entityId] = {};
+      // Apply cooldown for failed requests
+      Uint64 now = SDL_GetTicks();
+      m_pathCooldownUntil[entityId] = now + 1000; // 1 second backoff
+    }
+    m_asyncPathsProcessed.fetch_add(1, std::memory_order_relaxed);
+  }
 }
 
 AIManager::~AIManager() {
