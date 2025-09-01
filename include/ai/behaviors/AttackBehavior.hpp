@@ -200,7 +200,8 @@ private:
   float m_aoeRadius{0.0f};
 
   // Async pathfinding support
-  bool m_useAsyncPathfinding{false};
+  // PATHFINDING CONSOLIDATION: Removed - all pathfinding now uses PathfindingScheduler
+  // bool m_useAsyncPathfinding removed
   float m_chargeDamageMultiplier{1.5f};
 
   // Timing constants
@@ -301,8 +302,9 @@ private:
                                                           float radius) const;
 
 public:
-  void setAsyncPathfinding(bool enabled) { m_useAsyncPathfinding = enabled; }
-  bool isAsyncPathfindingEnabled() const { return m_useAsyncPathfinding; }
+  // PATHFINDING CONSOLIDATION: Deprecated methods - all pathfinding now uses PathfindingScheduler
+  void setAsyncPathfinding(bool enabled) { /* deprecated - no-op */ }
+  bool isAsyncPathfindingEnabled() const { return true; /* always async now */ }
 };
 
 #endif // ATTACK_BEHAVIOR_HPP

@@ -171,17 +171,11 @@ void WanderBehavior::executeLogic(EntityPtr entity) {
       policy.allowDetours = true;
       policy.lateralBias = 0.0f;        // wandering is free-form
       Uint64 prev = state.lastPathUpdate;
-      if (m_useAsyncPathfinding) {
-        RefreshPathWithPolicyAsync(entity, entity->getPosition(), dest,
-                                 state.pathPoints, state.currentPathIndex,
-                                 state.lastPathUpdate, state.lastProgressTime,
-                                 state.lastNodeDistance, policy, 3); // Low priority for wander
-      } else {
-        RefreshPathWithPolicy(entity, entity->getPosition(), dest,
-                            state.pathPoints, state.currentPathIndex,
-                            state.lastPathUpdate, state.lastProgressTime,
-                            state.lastNodeDistance, policy);
-      }
+      // PATHFINDING CONSOLIDATION: All wander requests now use PathfindingScheduler pathway
+      RefreshPathWithPolicy(entity, entity->getPosition(), dest,
+                          state.pathPoints, state.currentPathIndex,
+                          state.lastPathUpdate, state.lastProgressTime,
+                          state.lastNodeDistance, policy);
       if (state.lastPathUpdate != prev) {
         state.cooldowns.applyPathCooldown(now, 800); // cooldown even on success
       }

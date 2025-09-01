@@ -5,6 +5,8 @@
 
 #include "managers/AIManager.hpp"
 #include "ai/pathfinding/PathfindingGrid.hpp"
+#include "ai/internal/PathfindingScheduler.hpp"
+#include "ai/internal/PathCache.hpp"
 #include "core/Logger.hpp"
 #include "core/ThreadSystem.hpp"
 #include "managers/CollisionManager.hpp"
@@ -104,6 +106,10 @@ bool AIManager::init() {
             }
           }));
     }
+
+    // Initialize PathfindingScheduler (Phase 1)
+    m_pathScheduler.reset(new AIInternal::PathfindingScheduler());
+    AI_INFO("PathfindingScheduler initialized");
 
     AI_LOG("AIManager initialized successfully");
     return true;
@@ -224,6 +230,13 @@ void AIManager::clean() {
     m_messageQueue.clear();
   }
 
+  // Shutdown PathfindingScheduler (Phase 1)
+  if (m_pathScheduler) {
+    m_pathScheduler->shutdown();
+    m_pathScheduler.reset();
+    AI_INFO("PathfindingScheduler shutdown complete");
+  }
+
   // Reset all counters
   m_totalBehaviorExecutions.store(0, std::memory_order_relaxed);
   m_totalAssignmentCount.store(0, std::memory_order_relaxed);
@@ -336,7 +349,6 @@ void AIManager::prepareForStateTransition() {
   }
 
   // Clear pathfinding state completely
-  m_entityPaths.clear();
   m_pathCooldownUntil.clear();
   
   // Clear async pathfinding state
@@ -350,9 +362,6 @@ void AIManager::prepareForStateTransition() {
     // Clear the queue properly
     std::queue<AsyncPathRequest> empty;
     m_asyncPathQueue.swap(empty);
-    // Clear batch buffer - keep lock for cleanup safety
-    m_pathBatchBuffer.clear();
-    m_lastBatchProcessFrame.store(0, std::memory_order_relaxed);
   }
   
   // Reset async pathfinding counters
@@ -417,8 +426,17 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
     // frame
     processPendingBehaviorAssignments();
     
-    // Process batched pathfinding requests
-    processBatchedPathfinding();
+    // Process batched pathfinding requests using PathfindingScheduler (Phase 1)
+    if (m_pathScheduler) {
+      Vector2D playerPos = getPlayerPosition();
+      m_pathScheduler->update(deltaTime, playerPos);
+      
+      // Extract pending requests and process them with our pathfinding grid
+      auto pendingRequests = m_pathScheduler->extractPendingRequests(8); // Reduced from 15 to 8
+      if (!pendingRequests.empty() && m_pathGrid) {
+        processScheduledPathfinding(pendingRequests);
+      }
+    }
 
     // Synchronize positions and count active entities
     size_t entityCount = 0;
@@ -639,7 +657,6 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
         // Include pathfinding statistics
         size_t pathsRequested = m_asyncPathsRequested.load(std::memory_order_relaxed);
         size_t pathsProcessed = m_asyncPathsProcessed.load(std::memory_order_relaxed);
-        size_t activePaths = m_entityPaths.size();
         size_t asyncPaths = 0;
         {
           std::lock_guard<std::mutex> lock(m_asyncPathMutex);
@@ -674,8 +691,18 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
         std::string pathfindingStatsStr = "Pathfinding Summary - Requested: " + std::to_string(pathsRequested) +
                  ", Processed: " + std::to_string(pathsProcessed) +
                  ", Queue: " + std::to_string(queueSize) +
-                 ", Active Sync Paths: " + std::to_string(activePaths) +
                  ", Active Async Paths: " + std::to_string(asyncPaths);
+        
+        // Include PathCache statistics if available
+        if (m_pathScheduler) {
+          auto cacheStats = m_pathScheduler->getPathCacheStats();
+          if (cacheStats.totalQueries > 0) {
+            pathfindingStatsStr += ", Cache - Queries: " + std::to_string(cacheStats.totalQueries) +
+                                  ", Hits: " + std::to_string(cacheStats.totalHits) +
+                                  ", Hit Rate: " + std::to_string(static_cast<int>(cacheStats.hitRate * 100)) + "%" +
+                                  ", Cached Paths: " + std::to_string(cacheStats.totalPaths);
+          }
+        }
         
         // Include PathfindingGrid statistics if available
         if (m_pathGrid) {
@@ -696,6 +723,11 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
         }
         
         AI_DEBUG(pathfindingStatsStr);
+        
+        // Log consolidated pathfinding scheduler statistics (ParticleManager style)
+        if (m_pathScheduler) {
+          m_pathScheduler->logPathfindingStats();
+        }
       }
     }
 
@@ -1523,98 +1555,6 @@ void AIManager::registerEntityForUpdates(EntityPtr entity, int priority,
   queueBehaviorAssignment(entity, behaviorName);
 }
 
-// ======================= Pathfinding API (synchronous) =======================
-uint32_t AIManager::requestPath(EntityPtr entity, const Vector2D &start,
-                                const Vector2D &goal) {
-  if (!entity)
-    return 0;
-  if (!m_pathGrid) {
-    return 0;
-  }
-  uint64_t id = entity->getID();
-  Uint64 now = SDL_GetTicks();
-  auto itCool = m_pathCooldownUntil.find(id);
-  if (itCool != m_pathCooldownUntil.end() && now < itCool->second) {
-    return 0; // backoff active
-  }
-  // Faction-aware avoidance weights
-  m_pathGrid->resetWeights(1.0f);
-  // Determine requester's faction (Player = Friendly by default)
-  enum class Faction { Friendly, Enemy, Neutral };
-  auto getFaction = [](EntityPtr e) {
-    if (!e)
-      return Faction::Neutral;
-    if (auto npc = std::dynamic_pointer_cast<class NPC>(e)) {
-      // Map NPC::Faction to local enum
-      switch (npc->getFaction()) {
-      case NPC::Faction::Friendly:
-        return Faction::Friendly;
-      case NPC::Faction::Enemy:
-        return Faction::Enemy;
-      case NPC::Faction::Neutral:
-      default:
-        return Faction::Neutral;
-      }
-    }
-    // Player or unknown: treat as Friendly
-    return Faction::Friendly;
-  };
-
-  Faction requester = getFaction(entity);
-
-  // Add avoidance around hostiles and a mild cost around allies to reduce
-  // clumping
-  {
-    std::shared_lock<std::shared_mutex> lock(m_entitiesMutex);
-    for (size_t i = 0; i < m_storage.size(); ++i) {
-      EntityPtr other = m_storage.entities[i];
-      if (!other || other.get() == entity.get())
-        continue;
-      Faction otherF = getFaction(other);
-      Vector2D pos = other->getPosition();
-      if ((requester == Faction::Friendly && otherF == Faction::Enemy) ||
-          (requester == Faction::Enemy && otherF == Faction::Friendly)) {
-        m_pathGrid->addWeightCircle(pos, 96.0f, 2.5f);
-      } else {
-        m_pathGrid->addWeightCircle(pos, 64.0f, 1.2f);
-      }
-    }
-  }
-
-  std::vector<Vector2D> path;
-  auto result = m_pathGrid->findPath(start, goal, path);
-  if (result == HammerEngine::PathfindingResult::SUCCESS && !path.empty()) {
-    m_entityPaths[id] = std::move(path);
-    return 1;
-  }
-  // store empty to signal no path
-  m_entityPaths[id] = {};
-  // apply cooldown on failure to avoid spamming
-  m_pathCooldownUntil[id] = now + 1000; // 1 second backoff
-  return 0;
-}
-
-bool AIManager::hasPath(EntityPtr entity) const {
-  if (!entity)
-    return false;
-  auto it = m_entityPaths.find(entity->getID());
-  return it != m_entityPaths.end() && !it->second.empty();
-}
-
-std::vector<Vector2D> AIManager::getPath(EntityPtr entity) const {
-  if (!entity)
-    return {};
-  auto it = m_entityPaths.find(entity->getID());
-  if (it != m_entityPaths.end())
-    return it->second;
-  return {};
-}
-
-void AIManager::clearPath(EntityPtr entity) {
-  if (!entity)
-    return;
-  m_entityPaths.erase(entity->getID());
-}
 
 // ======================= Async Pathfinding API =======================
 
@@ -1628,36 +1568,22 @@ void AIManager::requestPathAsync(EntityPtr entity, const Vector2D &start, const 
 void AIManager::requestPathAsync(EntityID entityId, const Vector2D &start, const Vector2D &goal,
                                  PathPriority priority,
                                  std::function<void(EntityID, const std::vector<Vector2D>&)> callback) {
-  if (!m_asyncPathfindingEnabled.load()) {
-    // Fall back to synchronous pathfinding if async is disabled
-    // Find entity by scanning storage (temporary until we add proper lookup)
-    EntityPtr entity = nullptr;
-    {
-      std::shared_lock<std::shared_mutex> lock(m_entitiesMutex);
-      for (size_t i = 0; i < m_storage.size(); ++i) {
-        if (m_storage.entities[i] && m_storage.entities[i]->getID() == entityId) {
-          entity = m_storage.entities[i];
-          break;
-        }
-      }
-    }
-    if (entity) {
-      requestPath(entity, start, goal);
-    }
+  // PATHFINDING CONSOLIDATION: Always use PathfindingScheduler even when async flag is disabled
+  // This ensures all pathfinding goes through PathCache for optimal performance
+
+  // Phase 1: Route requests through PathfindingScheduler
+  if (m_pathScheduler) {
+    // Convert PathPriority to AIInternal::PathPriority
+    AIInternal::PathPriority schedulerPriority = static_cast<AIInternal::PathPriority>(priority);
+    m_pathScheduler->requestPath(entityId, start, goal, schedulerPriority, callback);
+    m_asyncPathsRequested.fetch_add(1, std::memory_order_relaxed);
     return;
   }
 
-  // Check cooldown
-  Uint64 now = SDL_GetTicks();
-  auto cooldownIt = m_pathCooldownUntil.find(entityId);
-  if (cooldownIt != m_pathCooldownUntil.end() && now < cooldownIt->second) {
-    return; // Still in cooldown
-  }
-
-  // Add request to batch instead of immediately processing
-  AsyncPathRequest request(entityId, start, goal, priority, callback);
-  addToBatch(request);
-  m_asyncPathsRequested.fetch_add(1, std::memory_order_relaxed);
+  // Legacy fallback: Direct processing since we no longer have batch system
+  // This path should not normally be reached as PathfindingScheduler should always exist
+  AI_WARN("PathfindingScheduler not available - async pathfinding request ignored for entity " + std::to_string(entityId));
+  return;
 }
 
 bool AIManager::hasAsyncPath(EntityPtr entity) const {
@@ -1665,6 +1591,12 @@ bool AIManager::hasAsyncPath(EntityPtr entity) const {
 }
 
 bool AIManager::hasAsyncPath(EntityID entityId) const {
+  // Phase 1: Check PathfindingScheduler first
+  if (m_pathScheduler && m_pathScheduler->hasPath(entityId)) {
+    return true;
+  }
+  
+  // Legacy fallback: Check old async path system
   std::lock_guard<std::mutex> lock(m_asyncPathMutex);
   auto it = m_asyncEntityPaths.find(entityId);
   return it != m_asyncEntityPaths.end() && !it->second.empty();
@@ -1675,6 +1607,12 @@ std::vector<Vector2D> AIManager::getAsyncPath(EntityPtr entity) const {
 }
 
 std::vector<Vector2D> AIManager::getAsyncPath(EntityID entityId) const {
+  // Phase 1: Check PathfindingScheduler first
+  if (m_pathScheduler && m_pathScheduler->hasPath(entityId)) {
+    return m_pathScheduler->getPath(entityId);
+  }
+  
+  // Legacy fallback: Check old async path system
   std::lock_guard<std::mutex> lock(m_asyncPathMutex);
   auto it = m_asyncEntityPaths.find(entityId);
   return it != m_asyncEntityPaths.end() ? it->second : std::vector<Vector2D>{};
@@ -1685,6 +1623,12 @@ void AIManager::clearAsyncPath(EntityPtr entity) {
 }
 
 void AIManager::clearAsyncPath(EntityID entityId) {
+  // Phase 1: Clear from PathfindingScheduler
+  if (m_pathScheduler) {
+    m_pathScheduler->clearPath(entityId);
+  }
+  
+  // Also clear from legacy system
   std::lock_guard<std::mutex> lock(m_asyncPathMutex);
   m_asyncEntityPaths.erase(entityId);
   m_asyncPathTimestamps.erase(entityId);
@@ -1710,7 +1654,7 @@ void AIManager::forceUnstickEntity(EntityPtr entity) {
   // Force unstick tracked in periodic statistics
 
   // Simple approach: clear pathfinding state and give velocity nudge
-  clearPath(entity);
+  clearAsyncPath(entity);
   m_pathCooldownUntil.erase(entityId);
 
   // Apply simple random velocity nudge
@@ -1755,11 +1699,11 @@ void AIManager::logEntityDiagnostics(EntityPtr entity) const {
     AI_DEBUG("  Distance to Player: " + std::to_string(std::sqrt(hotData.distanceSquared)));
     
     // Check if entity has a path
-    bool hasActivePath = hasPath(entity);
+    bool hasActivePath = hasAsyncPath(entity);
     AI_DEBUG("  Has Path: " + std::string(hasActivePath ? "true" : "false"));
     
     if (hasActivePath) {
-      auto path = getPath(entity);
+      auto path = getAsyncPath(entity);
       AI_DEBUG("  Path Length: " + std::to_string(path.size()));
     }
   }
@@ -1885,130 +1829,67 @@ AIManager::~AIManager() {
     clean();
   }
 }
-// ======================= Batch Pathfinding Implementation =======================
 
-void AIManager::addToBatch(const AsyncPathRequest& request) {
-  // No lock needed - called only from main thread during update
-  m_pathBatchBuffer.push_back(request);
-  
-  // Process batch if it's full or if enough frames have passed
-  uint64_t currentFrame = m_frameCounter.load(std::memory_order_relaxed);
-  bool shouldProcess = (m_pathBatchBuffer.size() >= MAX_BATCH_SIZE) ||
-                       (currentFrame - m_lastBatchProcessFrame.load(std::memory_order_relaxed) >= BATCH_FRAME_INTERVAL);
-  
-  if (shouldProcess && !m_pathBatchBuffer.empty()) {
-    // Move current batch to processing
-    std::vector<AsyncPathRequest> batchToProcess = std::move(m_pathBatchBuffer);
-    m_pathBatchBuffer.clear();
-    m_lastBatchProcessFrame.store(currentFrame, std::memory_order_relaxed);
-    
-    // Sort by spatial locality for better cache performance
-    std::sort(batchToProcess.begin(), batchToProcess.end(), spatialComparator);
-    
-    // Submit batch as single threaded task
-    HammerEngine::ThreadSystem::Instance().enqueueTask(
-      [this, batch = std::move(batchToProcess)]() mutable { 
-        this->processPathBatch(batch); 
-      },
-      HammerEngine::TaskPriority::High,
-      "BatchPathfinding_" + std::to_string(batchToProcess.size())
-    );
+void AIManager::processScheduledPathfinding(const std::vector<AIInternal::PathRequest>& requests) {
+  if (m_isShutdown || !m_pathGrid || requests.empty()) {
+    return;
   }
-}
-
-void AIManager::processPathBatch(std::vector<AsyncPathRequest>& batch) {
-  if (!m_pathGrid || batch.empty()) return;
   
-  // Reset grid state once for the entire batch
-  m_pathGrid->resetWeights(1.0f);
+  // Individual request processing removed - logging now handled by consolidated stats in update()
   
-  // Process each request in the batch
-  for (auto& request : batch) {
-    if (m_isShutdown) break;
-    
-    // Perform pathfinding
-    std::vector<Vector2D> path;
-    auto result = m_pathGrid->findPath(request.start, request.goal, path);
-    
-    // Store result
-    {
-      std::lock_guard<std::mutex> lock(m_asyncPathMutex);
-      if (result == HammerEngine::PathfindingResult::SUCCESS && !path.empty()) {
-        m_asyncEntityPaths[request.entityId] = std::move(path);
-        m_asyncPathTimestamps[request.entityId] = SDL_GetTicks();
-      } else {
-        // Clear any existing path on failure
-        m_asyncEntityPaths.erase(request.entityId);
-        m_asyncPathTimestamps.erase(request.entityId);
+  // Process requests on background thread to avoid blocking main update
+  HammerEngine::ThreadSystem::Instance().enqueueTask(
+    [this, requests]() mutable {
+      for (const auto& request : requests) {
+        if (m_isShutdown) {
+          break;
+        }
+        
+        try {
+          std::vector<Vector2D> path;
+          [[maybe_unused]] auto result = m_pathGrid->findPath(request.start, request.goal, path);
+          
+          // Store result in scheduler
+          if (m_pathScheduler) {
+            m_pathScheduler->storePathResult(request.entityId, path);
+          }
+          
+          // Call callback if provided
+          if (request.callback) {
+            request.callback(request.entityId, path);
+          }
+          
+          // Individual completion logging removed - handled by consolidated pathfinding stats
+                  
+        } catch (const std::exception& e) {
+          AI_ERROR("AIManager: Exception in scheduled pathfinding for entity " + 
+                   std::to_string(request.entityId) + ": " + e.what());
+          
+          // Store empty result on failure
+          if (m_pathScheduler) {
+            m_pathScheduler->storePathResult(request.entityId, std::vector<Vector2D>{});
+          }
+          
+          // Call callback with empty path
+          if (request.callback) {
+            request.callback(request.entityId, std::vector<Vector2D>{});
+          }
+        }
       }
-    }
-    
-    // Execute callback if provided
-    if (request.callback) {
-      auto pathIt = m_asyncEntityPaths.find(request.entityId);
-      if (pathIt != m_asyncEntityPaths.end()) {
-        request.callback(request.entityId, pathIt->second);
-      } else {
-        request.callback(request.entityId, std::vector<Vector2D>{}); // Empty path on failure
-      }
-    }
-    
-    m_asyncPathsProcessed.fetch_add(1, std::memory_order_relaxed);
-  }
-}
-
-void AIManager::processBatchedPathfinding() {
-  // This method can be called periodically to force batch processing
-  // even if batch isn't full (e.g., during low activity periods)
-  // No lock needed - called only from main thread during update
-  
-  if (!m_pathBatchBuffer.empty()) {
-    uint64_t currentFrame = m_frameCounter.load(std::memory_order_relaxed);
-    
-    // Global rate limiting: max 15 requests per frame to prevent spam
-    const size_t MAX_REQUESTS_PER_FRAME = 15;
-    size_t requestsToProcess = std::min(m_pathBatchBuffer.size(), MAX_REQUESTS_PER_FRAME);
-    
-    std::vector<AsyncPathRequest> batchToProcess;
-    batchToProcess.reserve(requestsToProcess);
-    
-    // Take only the first N requests
-    std::move(m_pathBatchBuffer.begin(), m_pathBatchBuffer.begin() + requestsToProcess, 
-              std::back_inserter(batchToProcess));
-    
-    // Remove processed requests from buffer
-    m_pathBatchBuffer.erase(m_pathBatchBuffer.begin(), m_pathBatchBuffer.begin() + requestsToProcess);
-    
-    m_lastBatchProcessFrame.store(currentFrame, std::memory_order_relaxed);
-    
-    // Sort by spatial locality
-    std::sort(batchToProcess.begin(), batchToProcess.end(), spatialComparator);
-    
-    // Submit batch
-    HammerEngine::ThreadSystem::Instance().enqueueTask(
-      [this, batch = std::move(batchToProcess)]() mutable { 
-        this->processPathBatch(batch); 
-      },
-      HammerEngine::TaskPriority::High,
-      "BatchPathfinding_Periodic_" + std::to_string(batchToProcess.size())
-    );
-  }
-}
-
-bool AIManager::spatialComparator(const AsyncPathRequest& a, const AsyncPathRequest& b) {
-  // Sort by start position for spatial locality (Morton order approximation)
-  float ax = a.start.getX(), ay = a.start.getY();
-  float bx = b.start.getX(), by = b.start.getY();
-  
-  // Simple spatial ordering: sort by Y first, then X
-  if (std::abs(ay - by) > 32.0f) { // Grid cell size threshold
-    return ay < by;
-  }
-  return ax < bx;
+    },
+    HammerEngine::TaskPriority::High,
+    "ScheduledPathfinding_" + std::to_string(requests.size())
+  );
 }
 
 // Define deleter for forward-declared PathfindingGrid
 void AIManager::PathGridDeleter::operator()(
     HammerEngine::PathfindingGrid *p) const {
+  delete p;
+}
+
+// Define deleter for forward-declared PathfindingScheduler
+void AIManager::PathSchedulerDeleter::operator()(
+    AIInternal::PathfindingScheduler *p) const {
   delete p;
 }

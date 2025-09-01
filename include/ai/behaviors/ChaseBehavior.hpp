@@ -116,12 +116,13 @@ private:
       }
   } m_cooldowns;
 
-  // Async pathfinding support
-  bool m_useAsyncPathfinding{false};
+  // PATHFINDING CONSOLIDATION: Removed - all pathfinding now uses PathfindingScheduler
+  // bool m_useAsyncPathfinding removed
 
 public:
-  void setAsyncPathfinding(bool enabled) { m_useAsyncPathfinding = enabled; }
-  bool isAsyncPathfindingEnabled() const { return m_useAsyncPathfinding; }
+  // PATHFINDING CONSOLIDATION: Deprecated methods - all pathfinding now uses PathfindingScheduler
+  void setAsyncPathfinding(bool enabled) { /* deprecated - no-op */ }
+  bool isAsyncPathfindingEnabled() const { return true; /* always async now */ }
   
 };
 

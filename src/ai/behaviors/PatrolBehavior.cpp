@@ -127,18 +127,12 @@ void PatrolBehavior::executeLogic(EntityPtr entity) {
     policy.allowDetours = true;
     policy.lateralBias = 0.0f;
     
-    if (m_useAsyncPathfinding) {
-      int priority = 0; // Patrol behavior is normal priority
-      RefreshPathWithPolicyAsync(entity, position, targetWaypoint,
-                        m_navPath, m_navIndex, m_lastPathUpdate,
-                        m_lastProgressTime, m_lastNodeDistance,
-                        policy, priority);
-    } else {
-      RefreshPathWithPolicy(entity, position, targetWaypoint,
-                          m_navPath, m_navIndex, m_lastPathUpdate,
-                          m_lastProgressTime, m_lastNodeDistance,
-                          policy);
-    }
+    // PATHFINDING CONSOLIDATION: All requests now use PathfindingScheduler via async pathway
+    int priority = 0; // Patrol behavior is normal priority  
+    RefreshPathWithPolicyAsync(entity, position, targetWaypoint,
+                      m_navPath, m_navIndex, m_lastPathUpdate,
+                      m_lastProgressTime, m_lastNodeDistance,
+                      policy, priority);
   }
 
   // State: FOLLOWING_PATH or DIRECT_MOVEMENT
@@ -184,13 +178,27 @@ void PatrolBehavior::executeLogic(EntityPtr entity) {
           Vector2D perp(-dir.getY(), dir.getX());
           float side = ((entity->getID() & 1) ? 1.0f : -1.0f);
           Vector2D sidestep = AIInternal::ClampToWorld(position + perp * (96.0f * side), 100.0f);
-          AIManager::Instance().requestPath(entity, AIInternal::ClampToWorld(position, 100.0f), sidestep);
-          auto p = AIManager::Instance().getPath(entity);
-          if (!p.empty()) {
-            m_navPath = std::move(p); 
-            m_navIndex = 0; 
-            m_lastPathUpdate = now;
-          } else {
+          AIManager::Instance().requestPathAsync(entity, AIInternal::ClampToWorld(position, 100.0f), sidestep, 
+                                                 AIManager::PathPriority::Normal,
+                                                 [this](EntityID id, const std::vector<Vector2D>& path) {
+            if (!path.empty()) {
+              m_navPath = path; 
+              m_navIndex = 0; 
+              m_lastPathUpdate = SDL_GetTicks();
+            }
+          });
+          
+          // Check if we already have an async path available
+          if (AIManager::Instance().hasAsyncPath(entity)) {
+            auto p = AIManager::Instance().getAsyncPath(entity);
+            if (!p.empty()) {
+              m_navPath = std::move(p); 
+              m_navIndex = 0; 
+              m_lastPathUpdate = now;
+            }
+          }
+          
+          if (m_navPath.empty()) {
             // Fallback: advance waypoint and apply backoff
             m_backoffUntil = now + 800 + (entity->getID() % 400);
             m_navPath.clear(); 
@@ -283,7 +291,7 @@ std::shared_ptr<AIBehavior> PatrolBehavior::clone() const {
     cloned->m_eventTargetRadius = m_eventTargetRadius;
   }
 
-  cloned->m_useAsyncPathfinding = m_useAsyncPathfinding;
+  // PATHFINDING CONSOLIDATION: Removed async flag - always uses PathfindingScheduler now
 
   return cloned;
 }

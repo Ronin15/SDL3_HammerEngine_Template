@@ -71,9 +71,9 @@ public:
   void setMinWaypointDistance(float distance);
   void setRandomSeed(unsigned int seed);
 
-  // Async pathfinding control
-  void setAsyncPathfinding(bool enabled) { m_useAsyncPathfinding = enabled; }
-  bool isAsyncPathfindingEnabled() const { return m_useAsyncPathfinding; }
+  // PATHFINDING CONSOLIDATION: Deprecated methods - all pathfinding now uses PathfindingScheduler
+  void setAsyncPathfinding(bool enabled) { /* deprecated - no-op */ }
+  bool isAsyncPathfindingEnabled() const { return true; /* always async now */ }
 
 
 private:
@@ -156,7 +156,8 @@ private:
   Uint64 m_lastCrowdCheck{0}; // Timer for crowd density checks
   
   // Async pathfinding control
-  bool m_useAsyncPathfinding{false};
+  // PATHFINDING CONSOLIDATION: Removed - all pathfinding now uses PathfindingScheduler
+  // bool m_useAsyncPathfinding removed
 };
 
 #endif // PATROL_BEHAVIOR_HPP

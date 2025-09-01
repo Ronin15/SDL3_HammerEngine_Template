@@ -392,7 +392,7 @@ std::shared_ptr<AIBehavior> GuardBehavior::clone() const {
   clone->m_canCallForHelp = m_canCallForHelp;
   clone->m_helpCallRadius = m_helpCallRadius;
   clone->m_guardGroup = m_guardGroup;
-  clone->m_useAsyncPathfinding = m_useAsyncPathfinding;
+  // PATHFINDING CONSOLIDATION: Removed async flag - always uses PathfindingScheduler now
   return clone;
 }
 
@@ -713,19 +713,12 @@ void GuardBehavior::moveToPosition(EntityPtr entity, const Vector2D &targetPos,
 
   // Refresh path and follow (honor backoff)
   if (now >= state.backoffUntil) {
-    // Use async pathfinding if enabled
-    if (m_useAsyncPathfinding) {
-      int priority = (state.currentAlertLevel >= AlertLevel::INVESTIGATING) ? 1 : 2; // High priority when investigating, Normal otherwise
-      RefreshPathWithPolicyAsync(entity, currentPos, targetPos,
-                            state.pathPoints, state.currentPathIndex,
-                            state.lastPathUpdate, state.lastProgressTime,
-                            state.lastNodeDistance, policy, priority);
-    } else {
-      RefreshPathWithPolicy(entity, currentPos, targetPos,
-                            state.pathPoints, state.currentPathIndex,
-                            state.lastPathUpdate, state.lastProgressTime,
-                            state.lastNodeDistance, policy);
-    }
+    // PATHFINDING CONSOLIDATION: All requests now use PathfindingScheduler via async pathway
+    int priority = (state.currentAlertLevel >= AlertLevel::INVESTIGATING) ? 1 : 2; // High priority when investigating, Normal otherwise
+    RefreshPathWithPolicyAsync(entity, currentPos, targetPos,
+                          state.pathPoints, state.currentPathIndex,
+                          state.lastPathUpdate, state.lastProgressTime,
+                          state.lastNodeDistance, policy, priority);
   }
   bool following = FollowPathStepWithPolicy(entity, currentPos,
                         state.pathPoints, state.currentPathIndex,
