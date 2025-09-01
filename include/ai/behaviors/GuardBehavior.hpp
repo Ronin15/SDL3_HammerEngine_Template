@@ -89,9 +89,9 @@ public:
   // Clone method for creating unique behavior instances
   std::shared_ptr<AIBehavior> clone() const override;
 
-  // Async pathfinding control
-  void setAsyncPathfinding(bool enabled) { m_useAsyncPathfinding = enabled; }
-  bool isAsyncPathfindingEnabled() const { return m_useAsyncPathfinding; }
+  // PATHFINDING CONSOLIDATION: Deprecated methods - all pathfinding now uses PathfindingScheduler
+  void setAsyncPathfinding(bool enabled) { /* deprecated - no-op */ }
+  bool isAsyncPathfindingEnabled() const { return true; /* always async now */ }
 
 
 
@@ -198,8 +198,8 @@ private:
   mutable std::uniform_real_distribution<float> m_radiusDistribution{0.3f,
                                                                       1.0f};
 
-  // Async pathfinding control
-  bool m_useAsyncPathfinding{false};
+  // PATHFINDING CONSOLIDATION: Removed - all pathfinding now uses PathfindingScheduler
+  // bool m_useAsyncPathfinding removed
 
   // Helper methods
   EntityPtr detectThreat(EntityPtr entity, const EntityState &state) const;

@@ -69,8 +69,10 @@ static void requestTo(EntityPtr entity,
                       Uint64 now,
                       Uint64 &lastProgress,
                       float &lastNodeDist) {
-    AIManager::Instance().requestPath(entity, from, goal);
-    outPath = AIManager::Instance().getPath(entity);
+    // PATHFINDING CONSOLIDATION: Route all requests through async PathfindingScheduler 
+    // to utilize PathCache and improve timeout rates
+    AIManager::Instance().requestPathAsync(entity, from, goal, AIManager::PathPriority::Normal);
+    outPath = AIManager::Instance().getAsyncPath(entity);
     idx = 0;
     lastUpdate = now;
     lastNodeDist = std::numeric_limits<float>::infinity();
@@ -109,6 +111,7 @@ bool RefreshPathWithPolicy(
     if (now - lastPathUpdate > policy.pathTTL) needRefresh = true;
     if (!needRefresh) return false;
 
+    // PATHFINDING CONSOLIDATION: All requests now go through PathfindingScheduler via async pathway
     // Clamp both current position and desired goal to world bounds (use 100px margin to match pathfinding boundary requirements)
     Vector2D clampedCurrentPos = ClampToWorld(currentPos, 100.0f);
     Vector2D clampedGoal = ClampToWorld(desiredGoal, 100.0f);

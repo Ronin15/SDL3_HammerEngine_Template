@@ -102,17 +102,11 @@ void ChaseBehavior::executeLogic(EntityPtr entity) {
         // Direct chase - always target the player position for aggressive pursuit
         Vector2D goalPosition = targetPos;
 
-        if (m_useAsyncPathfinding) {
-          RefreshPathWithPolicyAsync(entity, entityPos, goalPosition,
-                                    m_navPath, m_navIndex, m_lastPathUpdate,
-                                    m_lastProgressTime, m_lastNodeDistance,
-                                    policy, 1); // High priority for chase
-        } else {
-          RefreshPathWithPolicy(entity, entityPos, goalPosition,
-                              m_navPath, m_navIndex, m_lastPathUpdate,
-                              m_lastProgressTime, m_lastNodeDistance,
-                              policy);
-        }
+        // PATHFINDING CONSOLIDATION: All requests now use PathfindingScheduler via async pathway
+        RefreshPathWithPolicyAsync(entity, entityPos, goalPosition,
+                                  m_navPath, m_navIndex, m_lastPathUpdate,
+                                  m_lastProgressTime, m_lastNodeDistance,
+                                  policy, 1); // High priority for chase
         m_cooldowns.applyPathCooldown(now, 600);
       }
 
@@ -282,7 +276,7 @@ void ChaseBehavior::clean(EntityPtr entity) {
     entity->setVelocity(Vector2D(0, 0));
     
     // Clear pathfinding state from AIManager
-    AIManager::Instance().clearPath(entity);
+    AIManager::Instance().clearAsyncPath(entity);
     
     // ChaseBehavior cleanup completed
   }

@@ -145,12 +145,13 @@ private:
   // Mode setup helper
   void setupModeDefaults(WanderMode mode);
   
-  // Async pathfinding support
-  bool m_useAsyncPathfinding{false};
+  // PATHFINDING CONSOLIDATION: All pathfinding now uses PathfindingScheduler pathway
+  // (removed m_useAsyncPathfinding flag as it's no longer needed)
 
 public:
-  void setAsyncPathfinding(bool enabled) { m_useAsyncPathfinding = enabled; }
-  bool isAsyncPathfindingEnabled() const { return m_useAsyncPathfinding; }
+  // PATHFINDING CONSOLIDATION: Deprecated methods - all pathfinding now uses PathfindingScheduler
+  void setAsyncPathfinding(bool enabled) { /* deprecated - no-op */ }
+  bool isAsyncPathfindingEnabled() const { return true; /* always async now */ }
 };
 
 #endif // WANDER_BEHAVIOR_HPP

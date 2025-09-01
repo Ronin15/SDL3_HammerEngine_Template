@@ -37,6 +37,10 @@
 
 // Forward declarations for pathfinding system
 namespace HammerEngine { class PathfindingGrid; }
+namespace AIInternal { 
+    class PathfindingScheduler; 
+    struct PathRequest;
+}
 
 // Conditional debug logging
 #ifdef AI_DEBUG_LOGGING
@@ -316,12 +320,6 @@ public:
   void broadcastMessage(const std::string &message, bool immediate = false);
   void processMessageQueue();
 
-  // Pathfinding API (synchronous - legacy)
-  uint32_t requestPath(EntityPtr entity, const Vector2D &start,
-                       const Vector2D &goal);
-  bool hasPath(EntityPtr entity) const;
-  std::vector<Vector2D> getPath(EntityPtr entity) const;
-  void clearPath(EntityPtr entity);
 
   // Async Pathfinding API (performance optimized)
   enum class PathPriority {
@@ -531,11 +529,8 @@ private:
   // Async pathfinding helpers
   void processAsyncPathRequest(EntityID entityId, const Vector2D &start, const Vector2D &goal);
   
-  // Batching system for pathfinding optimization
-  void addToBatch(const AsyncPathRequest& request);
-  void processPathBatch(std::vector<AsyncPathRequest>& batch);
-  void processBatchedPathfinding();
-  static bool spatialComparator(const AsyncPathRequest& a, const AsyncPathRequest& b);
+  // PathfindingScheduler processing
+  void processScheduledPathfinding(const std::vector<AIInternal::PathRequest>& requests);
 
   // Lock-free message queue
   struct alignas(CACHE_LINE_SIZE) LockFreeMessage {
@@ -554,7 +549,6 @@ private:
   // Pathfinding grid (rebuilt on world events)
   struct PathGridDeleter { void operator()(HammerEngine::PathfindingGrid*) const; };
   std::unique_ptr<HammerEngine::PathfindingGrid, PathGridDeleter> m_pathGrid;
-  std::unordered_map<EntityID, std::vector<Vector2D>> m_entityPaths;
   
   // Async pathfinding system
   std::atomic<bool> m_asyncPathfindingEnabled{true};
@@ -566,11 +560,10 @@ private:
   std::atomic<size_t> m_asyncPathsProcessed{0};
   std::atomic<size_t> m_asyncPathsRequested{0};
   
-  // Batch processing for pathfinding optimization
-  std::vector<AsyncPathRequest> m_pathBatchBuffer;
-  std::atomic<uint64_t> m_lastBatchProcessFrame{0};
-  static constexpr int BATCH_FRAME_INTERVAL = 1;  // Process batches every frame
-  static constexpr size_t MAX_BATCH_SIZE = 32;
+  
+  // Phase 1: PathfindingScheduler integration
+  struct PathSchedulerDeleter { void operator()(AIInternal::PathfindingScheduler*) const; };
+  std::unique_ptr<AIInternal::PathfindingScheduler, PathSchedulerDeleter> m_pathScheduler;
 };
 
 #endif // AI_MANAGER_HPP

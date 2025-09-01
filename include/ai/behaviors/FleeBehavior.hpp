@@ -133,8 +133,8 @@ private:
       -0.5f, 0.5f}; // Radians
   mutable std::uniform_real_distribution<float> m_panicVariation{0.8f, 1.2f};
 
-  // Async pathfinding support
-  bool m_useAsyncPathfinding{false};
+  // PATHFINDING CONSOLIDATION: All pathfinding now uses PathfindingScheduler pathway
+  // (removed m_useAsyncPathfinding flag as it's no longer needed)
 
   // Helper methods
   EntityPtr getThreat() const; // Gets player reference from AIManager
@@ -157,8 +157,9 @@ private:
   float calculateFleeSpeedModifier(const EntityState &state) const;
 
 public:
-  void setAsyncPathfinding(bool enabled) { m_useAsyncPathfinding = enabled; }
-  bool isAsyncPathfindingEnabled() const { return m_useAsyncPathfinding; }
+  // PATHFINDING CONSOLIDATION: Deprecated methods - all pathfinding now uses PathfindingScheduler
+  void setAsyncPathfinding(bool enabled) { /* deprecated - no-op */ }
+  bool isAsyncPathfindingEnabled() const { return true; /* always async now */ }
 };
 
 #endif // FLEE_BEHAVIOR_HPP

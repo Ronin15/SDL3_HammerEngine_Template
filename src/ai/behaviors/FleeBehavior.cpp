@@ -461,27 +461,18 @@ void FleeBehavior::updateStrategicRetreat(EntityPtr entity, EntityState& state) 
         }
         if (now - state.lastPathUpdate > pathTTL) needRefresh = true;
         if (needRefresh && now >= state.nextPathAllowed) {
-            if (m_useAsyncPathfinding) {
-                AIManager::Instance().requestPathAsync(entity, AIInternal::ClampToWorld(currentPos, 100.0f), goal, AIManager::PathPriority::High);
-                if (AIManager::Instance().hasAsyncPath(entity)) {
-                    state.pathPoints = AIManager::Instance().getAsyncPath(entity);
-                    state.currentPathIndex = 0;
-                    state.lastPathUpdate = now;
-                    state.lastNodeDistance = std::numeric_limits<float>::infinity();
-                    state.lastProgressTime = now;
-                    state.nextPathAllowed = now + 800; // cooldown
-                } else {
-                    // Async path not ready, apply cooldown to prevent spam
-                    state.nextPathAllowed = now + 600; // Shorter cooldown for flee (more urgent)
-                }
-            } else {
-                AIManager::Instance().requestPath(entity, AIInternal::ClampToWorld(currentPos, 100.0f), goal);
-                state.pathPoints = AIManager::Instance().getPath(entity);
+            // PATHFINDING CONSOLIDATION: All requests now use PathfindingScheduler for cache utilization
+            AIManager::Instance().requestPathAsync(entity, AIInternal::ClampToWorld(currentPos, 100.0f), goal, AIManager::PathPriority::High);
+            if (AIManager::Instance().hasAsyncPath(entity)) {
+                state.pathPoints = AIManager::Instance().getAsyncPath(entity);
                 state.currentPathIndex = 0;
                 state.lastPathUpdate = now;
                 state.lastNodeDistance = std::numeric_limits<float>::infinity();
                 state.lastProgressTime = now;
                 state.nextPathAllowed = now + 800; // cooldown
+            } else {
+                // Async path not ready, apply cooldown to prevent spam
+                state.nextPathAllowed = now + 600; // Shorter cooldown for flee (more urgent)
             }
         }
         if (!state.pathPoints.empty() && state.currentPathIndex < state.pathPoints.size()) {
@@ -589,27 +580,18 @@ void FleeBehavior::updateSeekCover(EntityPtr entity, EntityState& state) {
         }
         if (now - state.lastPathUpdate > pathTTL) needRefresh = true;
         if (needRefresh && now >= state.nextPathAllowed) {
-            if (m_useAsyncPathfinding) {
-                AIManager::Instance().requestPathAsync(entity, AIInternal::ClampToWorld(currentPos, 100.0f), goal, AIManager::PathPriority::High);
-                if (AIManager::Instance().hasAsyncPath(entity)) {
-                    state.pathPoints = AIManager::Instance().getAsyncPath(entity);
-                    state.currentPathIndex = 0;
-                    state.lastPathUpdate = now;
-                    state.lastNodeDistance = std::numeric_limits<float>::infinity();
-                    state.lastProgressTime = now;
-                    state.nextPathAllowed = now + 800;
-                } else {
-                    // Async path not ready, apply cooldown to prevent spam
-                    state.nextPathAllowed = now + 600; // Shorter cooldown for flee (more urgent)
-                }
-            } else {
-                AIManager::Instance().requestPath(entity, AIInternal::ClampToWorld(currentPos, 100.0f), goal);
-                state.pathPoints = AIManager::Instance().getPath(entity);
+            // PATHFINDING CONSOLIDATION: All requests now use PathfindingScheduler for cache utilization  
+            AIManager::Instance().requestPathAsync(entity, AIInternal::ClampToWorld(currentPos, 100.0f), goal, AIManager::PathPriority::High);
+            if (AIManager::Instance().hasAsyncPath(entity)) {
+                state.pathPoints = AIManager::Instance().getAsyncPath(entity);
                 state.currentPathIndex = 0;
                 state.lastPathUpdate = now;
                 state.lastNodeDistance = std::numeric_limits<float>::infinity();
                 state.lastProgressTime = now;
-                state.nextPathAllowed = now + 800;
+                state.nextPathAllowed = now + 800; // cooldown
+            } else {
+                // Async path not ready, apply cooldown to prevent spam
+                state.nextPathAllowed = now + 600; // Shorter cooldown for flee (more urgent)
             }
         }
         if (!state.pathPoints.empty() && state.currentPathIndex < state.pathPoints.size()) {
