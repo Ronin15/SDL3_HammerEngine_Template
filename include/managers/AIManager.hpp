@@ -530,6 +530,12 @@ private:
   
   // Async pathfinding helpers
   void processAsyncPathRequest(EntityID entityId, const Vector2D &start, const Vector2D &goal);
+  
+  // Batching system for pathfinding optimization
+  void addToBatch(const AsyncPathRequest& request);
+  void processPathBatch(std::vector<AsyncPathRequest>& batch);
+  void processBatchedPathfinding();
+  static bool spatialComparator(const AsyncPathRequest& a, const AsyncPathRequest& b);
 
   // Lock-free message queue
   struct alignas(CACHE_LINE_SIZE) LockFreeMessage {
@@ -559,6 +565,12 @@ private:
   mutable std::mutex m_asyncQueueMutex;
   std::atomic<size_t> m_asyncPathsProcessed{0};
   std::atomic<size_t> m_asyncPathsRequested{0};
+  
+  // Batch processing for pathfinding optimization
+  std::vector<AsyncPathRequest> m_pathBatchBuffer;
+  std::atomic<uint64_t> m_lastBatchProcessFrame{0};
+  static constexpr int BATCH_FRAME_INTERVAL = 1;  // Process batches every frame
+  static constexpr size_t MAX_BATCH_SIZE = 32;
 };
 
 #endif // AI_MANAGER_HPP

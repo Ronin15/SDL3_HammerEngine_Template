@@ -350,6 +350,9 @@ void AIManager::prepareForStateTransition() {
     // Clear the queue properly
     std::queue<AsyncPathRequest> empty;
     m_asyncPathQueue.swap(empty);
+    // Clear batch buffer - keep lock for cleanup safety
+    m_pathBatchBuffer.clear();
+    m_lastBatchProcessFrame.store(0, std::memory_order_relaxed);
   }
   
   // Reset async pathfinding counters
@@ -413,6 +416,9 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
     // Process pending assignments first so new entities are picked up this
     // frame
     processPendingBehaviorAssignments();
+    
+    // Process batched pathfinding requests
+    processBatchedPathfinding();
 
     // Synchronize positions and count active entities
     size_t entityCount = 0;
@@ -1648,31 +1654,10 @@ void AIManager::requestPathAsync(EntityID entityId, const Vector2D &start, const
     return; // Still in cooldown
   }
 
-  {
-    std::lock_guard<std::mutex> lock(m_asyncQueueMutex);
-    m_asyncPathQueue.emplace(entityId, start, goal, priority, callback);
-    m_asyncPathsRequested.fetch_add(1, std::memory_order_relaxed);
-  }
-
-  // Submit pathfinding task to ThreadSystem with appropriate priority
-  HammerEngine::TaskPriority taskPriority;
-  switch (priority) {
-    case PathPriority::Critical: taskPriority = HammerEngine::TaskPriority::Critical; break;
-    case PathPriority::High: taskPriority = HammerEngine::TaskPriority::High; break;
-    case PathPriority::Normal: taskPriority = HammerEngine::TaskPriority::Normal; break;
-    case PathPriority::Low: taskPriority = HammerEngine::TaskPriority::Low; break;
-  }
-
-  // Capture entityId for the task description
-  std::string taskDesc = "AsyncPathfinding_" + std::to_string(entityId);
-  
-  HammerEngine::ThreadSystem::Instance().enqueueTask(
-    [this, entityId, start, goal]() { 
-      this->processAsyncPathRequest(entityId, start, goal); 
-    },
-    taskPriority,
-    taskDesc
-  );
+  // Add request to batch instead of immediately processing
+  AsyncPathRequest request(entityId, start, goal, priority, callback);
+  addToBatch(request);
+  m_asyncPathsRequested.fetch_add(1, std::memory_order_relaxed);
 }
 
 bool AIManager::hasAsyncPath(EntityPtr entity) const {
@@ -1900,6 +1885,128 @@ AIManager::~AIManager() {
     clean();
   }
 }
+// ======================= Batch Pathfinding Implementation =======================
+
+void AIManager::addToBatch(const AsyncPathRequest& request) {
+  // No lock needed - called only from main thread during update
+  m_pathBatchBuffer.push_back(request);
+  
+  // Process batch if it's full or if enough frames have passed
+  uint64_t currentFrame = m_frameCounter.load(std::memory_order_relaxed);
+  bool shouldProcess = (m_pathBatchBuffer.size() >= MAX_BATCH_SIZE) ||
+                       (currentFrame - m_lastBatchProcessFrame.load(std::memory_order_relaxed) >= BATCH_FRAME_INTERVAL);
+  
+  if (shouldProcess && !m_pathBatchBuffer.empty()) {
+    // Move current batch to processing
+    std::vector<AsyncPathRequest> batchToProcess = std::move(m_pathBatchBuffer);
+    m_pathBatchBuffer.clear();
+    m_lastBatchProcessFrame.store(currentFrame, std::memory_order_relaxed);
+    
+    // Sort by spatial locality for better cache performance
+    std::sort(batchToProcess.begin(), batchToProcess.end(), spatialComparator);
+    
+    // Submit batch as single threaded task
+    HammerEngine::ThreadSystem::Instance().enqueueTask(
+      [this, batch = std::move(batchToProcess)]() mutable { 
+        this->processPathBatch(batch); 
+      },
+      HammerEngine::TaskPriority::High,
+      "BatchPathfinding_" + std::to_string(batchToProcess.size())
+    );
+  }
+}
+
+void AIManager::processPathBatch(std::vector<AsyncPathRequest>& batch) {
+  if (!m_pathGrid || batch.empty()) return;
+  
+  // Reset grid state once for the entire batch
+  m_pathGrid->resetWeights(1.0f);
+  
+  // Process each request in the batch
+  for (auto& request : batch) {
+    if (m_isShutdown) break;
+    
+    // Perform pathfinding
+    std::vector<Vector2D> path;
+    auto result = m_pathGrid->findPath(request.start, request.goal, path);
+    
+    // Store result
+    {
+      std::lock_guard<std::mutex> lock(m_asyncPathMutex);
+      if (result == HammerEngine::PathfindingResult::SUCCESS && !path.empty()) {
+        m_asyncEntityPaths[request.entityId] = std::move(path);
+        m_asyncPathTimestamps[request.entityId] = SDL_GetTicks();
+      } else {
+        // Clear any existing path on failure
+        m_asyncEntityPaths.erase(request.entityId);
+        m_asyncPathTimestamps.erase(request.entityId);
+      }
+    }
+    
+    // Execute callback if provided
+    if (request.callback) {
+      auto pathIt = m_asyncEntityPaths.find(request.entityId);
+      if (pathIt != m_asyncEntityPaths.end()) {
+        request.callback(request.entityId, pathIt->second);
+      } else {
+        request.callback(request.entityId, std::vector<Vector2D>{}); // Empty path on failure
+      }
+    }
+    
+    m_asyncPathsProcessed.fetch_add(1, std::memory_order_relaxed);
+  }
+}
+
+void AIManager::processBatchedPathfinding() {
+  // This method can be called periodically to force batch processing
+  // even if batch isn't full (e.g., during low activity periods)
+  // No lock needed - called only from main thread during update
+  
+  if (!m_pathBatchBuffer.empty()) {
+    uint64_t currentFrame = m_frameCounter.load(std::memory_order_relaxed);
+    
+    // Global rate limiting: max 15 requests per frame to prevent spam
+    const size_t MAX_REQUESTS_PER_FRAME = 15;
+    size_t requestsToProcess = std::min(m_pathBatchBuffer.size(), MAX_REQUESTS_PER_FRAME);
+    
+    std::vector<AsyncPathRequest> batchToProcess;
+    batchToProcess.reserve(requestsToProcess);
+    
+    // Take only the first N requests
+    std::move(m_pathBatchBuffer.begin(), m_pathBatchBuffer.begin() + requestsToProcess, 
+              std::back_inserter(batchToProcess));
+    
+    // Remove processed requests from buffer
+    m_pathBatchBuffer.erase(m_pathBatchBuffer.begin(), m_pathBatchBuffer.begin() + requestsToProcess);
+    
+    m_lastBatchProcessFrame.store(currentFrame, std::memory_order_relaxed);
+    
+    // Sort by spatial locality
+    std::sort(batchToProcess.begin(), batchToProcess.end(), spatialComparator);
+    
+    // Submit batch
+    HammerEngine::ThreadSystem::Instance().enqueueTask(
+      [this, batch = std::move(batchToProcess)]() mutable { 
+        this->processPathBatch(batch); 
+      },
+      HammerEngine::TaskPriority::High,
+      "BatchPathfinding_Periodic_" + std::to_string(batchToProcess.size())
+    );
+  }
+}
+
+bool AIManager::spatialComparator(const AsyncPathRequest& a, const AsyncPathRequest& b) {
+  // Sort by start position for spatial locality (Morton order approximation)
+  float ax = a.start.getX(), ay = a.start.getY();
+  float bx = b.start.getX(), by = b.start.getY();
+  
+  // Simple spatial ordering: sort by Y first, then X
+  if (std::abs(ay - by) > 32.0f) { // Grid cell size threshold
+    return ay < by;
+  }
+  return ax < bx;
+}
+
 // Define deleter for forward-declared PathfindingGrid
 void AIManager::PathGridDeleter::operator()(
     HammerEngine::PathfindingGrid *p) const {
