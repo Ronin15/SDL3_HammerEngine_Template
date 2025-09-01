@@ -300,8 +300,27 @@ void CollisionManager::broadphase(std::vector<std::pair<EntityID,EntityID>>& pai
         const CollisionBody& b = *kv.second;
         if (!b.enabled || b.type == BodyType::STATIC) continue;
         
+        // Skip collision checks for bodies that haven't moved significantly
+        if (b.type == BodyType::KINEMATIC && b.lastPosition.getX() != -1.0f) {
+            Vector2D currentPos = b.aabb.center;
+            Vector2D lastPos = b.lastPosition;
+            float distanceMoved = (currentPos - lastPos).lengthSquared();
+            if (distanceMoved < 4.0f) { // 2 pixels threshold
+                continue; // Skip collision check for barely-moved bodies
+            }
+        }
+        
+        // Frame-rate based collision frequency optimization
+        if (b.type == BodyType::KINEMATIC) {
+            // Check kinematic bodies every 2nd frame (30fps collision for NPCs)
+            if ((b.id + m_frameCounter) % 2 != 0) continue;
+        }
+        
         candidates.clear();
         m_hash.query(b.aabb, candidates);
+        
+        // Update position tracking for movement optimization
+        const_cast<CollisionBody&>(b).lastPosition = b.aabb.center;
         
         for (EntityID otherId : candidates) {
             if (otherId == b.id) continue;
@@ -403,24 +422,30 @@ void CollisionManager::resolve(const CollisionInfo& info) {
 void CollisionManager::update(float dt) {
     (void)dt;
     if (!m_initialized || m_isShutdown) return;
+    
+    // Frame-based collision optimization - not all bodies need every frame
+    m_frameCounter++;
+    
+    // Initialize object pools for this frame
+    m_collisionPool.ensureCapacity(m_bodies.size());
+    m_collisionPool.resetFrame();
+    
     using clock = std::chrono::steady_clock;
     auto t0 = clock::now();
 
-    std::vector<std::pair<EntityID,EntityID>> pairs;
-    broadphase(pairs);
+    broadphase(m_collisionPool.pairBuffer);
     auto t1 = clock::now();
 
-    std::vector<CollisionInfo> collisions;
-    narrowphase(pairs, collisions);
+    narrowphase(m_collisionPool.pairBuffer, m_collisionPool.collisionBuffer);
     auto t2 = clock::now();
 
-    for (const auto& c : collisions) {
+    for (const auto& c : m_collisionPool.collisionBuffer) {
         resolve(c);
         for (auto& cb : m_callbacks) { cb(c); }
     }
     auto t3 = clock::now();
-    if (m_verboseLogs && !collisions.empty()) {
-        COLLISION_DEBUG("Resolved collisions: count=" + std::to_string(collisions.size()));
+    if (m_verboseLogs && !m_collisionPool.collisionBuffer.empty()) {
+        COLLISION_DEBUG("Resolved collisions: count=" + std::to_string(m_collisionPool.collisionBuffer.size()));
     }
     // Reflect resolved poses back to entities so callers see corrected transforms
     // Skip kinematic bodies since they manage their own positions through AI/input
@@ -448,8 +473,8 @@ void CollisionManager::update(float dt) {
 
     auto now = clock::now();
     std::unordered_set<uint64_t> currentPairs;
-    currentPairs.reserve(collisions.size());
-    for (const auto &c : collisions) {
+    currentPairs.reserve(m_collisionPool.collisionBuffer.size());
+    for (const auto &c : m_collisionPool.collisionBuffer) {
         auto ita = m_bodies.find(c.a);
         auto itb = m_bodies.find(c.b);
         if (ita == m_bodies.end() || itb == m_bodies.end()) continue;
@@ -516,8 +541,8 @@ void CollisionManager::update(float dt) {
     m_perf.lastResolveMs = d23;
     m_perf.lastSyncMs = d34;
     m_perf.lastTotalMs = d04;
-    m_perf.lastPairs = pairs.size();
-    m_perf.lastCollisions = collisions.size();
+    m_perf.lastPairs = m_collisionPool.pairBuffer.size();
+    m_perf.lastCollisions = m_collisionPool.collisionBuffer.size();
     m_perf.bodyCount = m_bodies.size();
     m_perf.avgTotalMs = (m_perf.avgTotalMs * m_perf.frames + m_perf.lastTotalMs) / (m_perf.frames + 1);
     m_perf.frames += 1;

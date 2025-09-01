@@ -10,6 +10,9 @@
 #include <utility>
 #include <cstdint>
 #include <ostream>
+#include <queue>
+#include <limits>
+#include <algorithm>
 #include "utils/Vector2D.hpp"
 
 namespace HammerEngine {
@@ -82,6 +85,43 @@ private:
     // Path smoothing functions
     void smoothPath(std::vector<Vector2D>& path);
     bool hasLineOfSight(const Vector2D& start, const Vector2D& end);
+
+private:
+    // Object pools for memory optimization
+    struct NodePool {
+        struct Node { int x; int y; float f; };
+        struct Cmp { bool operator()(const Node& a, const Node& b) const { return a.f > b.f; } };
+        
+        // Pre-allocated containers to avoid repeated allocation/deallocation
+        std::priority_queue<Node, std::vector<Node>, Cmp> openQueue;
+        std::vector<float> gScoreBuffer;
+        std::vector<float> fScoreBuffer;
+        std::vector<int> parentBuffer;
+        std::vector<Vector2D> pathBuffer;
+        
+        void ensureCapacity(int gridSize) {
+            if (gScoreBuffer.size() < static_cast<size_t>(gridSize)) {
+                gScoreBuffer.resize(gridSize);
+                fScoreBuffer.resize(gridSize);
+                parentBuffer.resize(gridSize);
+                pathBuffer.reserve(std::max(128, gridSize / 10)); // Reasonable path length estimate
+            }
+        }
+        
+        void reset() {
+            // Clear but don't deallocate
+            while (!openQueue.empty()) openQueue.pop();
+            // Only reset if buffers are properly sized
+            if (!gScoreBuffer.empty()) {
+                std::fill(gScoreBuffer.begin(), gScoreBuffer.end(), std::numeric_limits<float>::infinity());
+                std::fill(fScoreBuffer.begin(), fScoreBuffer.end(), std::numeric_limits<float>::infinity());
+                std::fill(parentBuffer.begin(), parentBuffer.end(), -1);
+            }
+            pathBuffer.clear();
+        }
+    };
+    
+    mutable NodePool m_nodePool; // Thread-local pooling for pathfinding data
 };
 
 } // namespace HammerEngine

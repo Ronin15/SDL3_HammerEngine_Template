@@ -117,6 +117,34 @@ private:
     std::unordered_map<uint64_t, std::pair<EntityID,EntityID>> m_activeTriggerPairs; // OnEnter/Exit filtering
     std::unordered_map<EntityID, std::chrono::steady_clock::time_point> m_triggerCooldownUntil;
     float m_defaultTriggerCooldownSec{0.0f};
+    
+    // Optimization tracking
+    mutable uint32_t m_frameCounter{0};
+    
+    // Object pools for collision processing
+    struct CollisionPool {
+        std::vector<std::pair<EntityID, EntityID>> pairBuffer;
+        std::vector<EntityID> candidateBuffer;
+        std::vector<CollisionInfo> collisionBuffer;
+        
+        void ensureCapacity(size_t bodyCount) {
+            size_t expectedPairs = bodyCount * 4; // Conservative estimate
+            if (pairBuffer.capacity() < expectedPairs) {
+                pairBuffer.reserve(expectedPairs);
+                candidateBuffer.reserve(bodyCount * 2);
+                collisionBuffer.reserve(expectedPairs / 4);
+            }
+        }
+        
+        void resetFrame() {
+            pairBuffer.clear();
+            candidateBuffer.clear();
+            collisionBuffer.clear();
+            // Vectors retain capacity
+        }
+    };
+    
+    mutable CollisionPool m_collisionPool;
 
     // Performance metrics
     struct PerfStats {
