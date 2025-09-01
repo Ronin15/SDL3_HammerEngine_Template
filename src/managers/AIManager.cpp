@@ -301,16 +301,20 @@ void AIManager::prepareForStateTransition() {
     std::unique_lock<std::shared_mutex> lock(m_entitiesMutex);
 
     // Clean all behaviors
+    size_t cleanedCount = 0;
     for (size_t i = 0; i < m_storage.size(); ++i) {
       if (m_storage.behaviors[i] && m_storage.entities[i]) {
         try {
           m_storage.behaviors[i]->clean(m_storage.entities[i]);
-          AI_DEBUG("Cleaned " + m_storage.behaviors[i]->getName() + " for entity " + 
-                   std::to_string(m_storage.entities[i]->getID()));
+          cleanedCount++;
         } catch (const std::exception &e) {
           AI_ERROR("Exception cleaning behavior: " + std::string(e.what()));
         }
       }
+    }
+    
+    if (cleanedCount > 0) {
+      AI_INFO("Cleaned " + std::to_string(cleanedCount) + " AI behaviors");
     }
 
     // Clear all storage completely

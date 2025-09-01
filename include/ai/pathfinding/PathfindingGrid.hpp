@@ -121,7 +121,7 @@ private:
         }
     };
     
-    mutable NodePool m_nodePool; // Thread-local pooling for pathfinding data
+    // NodePool will be thread_local within findPath function
 };
 
 } // namespace HammerEngine

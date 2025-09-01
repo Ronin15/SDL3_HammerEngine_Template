@@ -284,7 +284,7 @@ void ChaseBehavior::clean(EntityPtr entity) {
     // Clear pathfinding state from AIManager
     AIManager::Instance().clearPath(entity);
     
-    AI_DEBUG("Cleaned ChaseBehavior for entity " + std::to_string(entity->getID()));
+    // ChaseBehavior cleanup completed
   }
 
   // Reset all state

@@ -866,9 +866,9 @@ void AttackBehavior::moveToPosition(EntityPtr entity, const Vector2D &targetPos,
   EntityState &state = it->second;
 
   // Clamp target to world bounds to avoid chasing outside the map
-  Vector2D clampedTarget = AIInternal::ClampToWorld(targetPos);
+  Vector2D clampedTarget = AIInternal::ClampToWorld(targetPos, 100.0f);
 
-  Vector2D currentPos = AIInternal::ClampToWorld(entity->getPosition());
+  Vector2D currentPos = AIInternal::ClampToWorld(entity->getPosition(), 100.0f);
   
   Uint64 now = SDL_GetTicks();
 

@@ -14,6 +14,8 @@
 
 namespace HammerEngine {
 
+// NodePool will be thread_local within findPath function
+
 PathfindingGrid::PathfindingGrid(int width, int height, float cellSize, const Vector2D& worldOffset)
     : m_w(width), m_h(height), m_cell(cellSize), m_offset(worldOffset) {
     m_blocked.assign(static_cast<size_t>(m_w * m_h), 0);
@@ -239,16 +241,17 @@ PathfindingResult PathfindingGrid::findPath(const Vector2D& start, const Vector2
     int roiMinY = std::max(0, sy - r);
     int roiMaxY = std::min(H - 1, sy + r);
 
-    // A* pathfinding using object pooling for memory optimization
+    // A* pathfinding using thread-local object pooling for memory optimization
+    thread_local NodePool nodePool;
     int gridSize = m_w * m_h;
-    m_nodePool.ensureCapacity(gridSize);
-    m_nodePool.reset();
+    nodePool.ensureCapacity(gridSize);
+    nodePool.reset();
     
     // Use pooled containers
-    auto& open = m_nodePool.openQueue;
-    auto& gScore = m_nodePool.gScoreBuffer;
-    auto& fScore = m_nodePool.fScoreBuffer;
-    auto& parent = m_nodePool.parentBuffer;
+    auto& open = nodePool.openQueue;
+    auto& gScore = nodePool.gScoreBuffer;
+    auto& fScore = nodePool.fScoreBuffer;
+    auto& parent = nodePool.parentBuffer;
 
     size_t sIdx = static_cast<size_t>(idx(sx, sy));
     if (sIdx >= gScore.size()) {
