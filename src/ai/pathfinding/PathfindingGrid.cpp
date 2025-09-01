@@ -197,16 +197,18 @@ PathfindingResult PathfindingGrid::findPath(const Vector2D& start, const Vector2
         return PathfindingResult::INVALID_GOAL; 
     }
     
-    // Reject goals too close to boundaries (likely problematic)
-    if (gx <= 2 || gy <= 2 || gx >= m_w-3 || gy >= m_h-3) {
-        m_stats.totalRequests++;
-        m_stats.invalidGoals++;
-        static uint32_t boundaryGoalCount = 0;
-        if (++boundaryGoalCount % 10 == 0) {
-            PATHFIND_WARN("Rejecting boundary goal: world(" + std::to_string(goal.getX()) + "," + std::to_string(goal.getY()) + 
-                          ") -> grid(" + std::to_string(gx) + "," + std::to_string(gy) + ") - too close to edge");
+    // Only reject goals that are actually blocked or truly invalid
+    // Allow boundary goals if they're not blocked - many valid paths exist near edges
+    if (isBlocked(gx, gy)) {
+        // Try to find a nearby unblocked cell instead of rejecting outright
+        int nearGx = gx, nearGy = gy;
+        if (findNearestOpen(gx, gy, 3, nearGx, nearGy)) {
+            gx = nearGx; gy = nearGy; // Use the nearby open cell
+        } else {
+            m_stats.totalRequests++;
+            m_stats.invalidGoals++;
+            return PathfindingResult::INVALID_GOAL;
         }
-        return PathfindingResult::INVALID_GOAL;
     }
     // Nudge start/goal if blocked (common after collision resolution)
     int nsx = sx, nsy = sy, ngx = gx, ngy = gy;
@@ -215,31 +217,53 @@ PathfindingResult PathfindingGrid::findPath(const Vector2D& start, const Vector2
     if (!startOk || !goalOk) { PATHFIND_DEBUG("findPath(): start or goal blocked"); return PathfindingResult::NO_PATH_FOUND; }
     sx = nsx; sy = nsy; gx = ngx; gy = ngy;
 
+    // Early success: if start equals goal after nudging
+    if (sx == gx && sy == gy) {
+        outPath.push_back(gridToWorld(gx, gy));
+        m_stats.totalRequests++;
+        m_stats.successfulPaths++;
+        m_stats.totalIterations += 1; // Minimal iteration count
+        return PathfindingResult::SUCCESS;
+    }
+
+    // Line-of-sight shortcut: Check direct path for simple terrain
+    Vector2D worldStart = gridToWorld(sx, sy);
+    Vector2D worldGoal = gridToWorld(gx, gy);
+    if (hasLineOfSight(worldStart, worldGoal)) {
+        // Direct path available - create simple 2-point path
+        outPath.push_back(worldStart);
+        outPath.push_back(worldGoal);
+        m_stats.totalRequests++;
+        m_stats.successfulPaths++;
+        m_stats.totalIterations += 2; // Minimal iteration count for line-of-sight
+        return PathfindingResult::SUCCESS;
+    }
+
     const int W = m_w, H = m_h;
     const size_t N = static_cast<size_t>(W * H);
-    const float INF = std::numeric_limits<float>::infinity();
 
     std::vector<uint8_t> closed(N, 0);
     auto idx = [&](int x, int y){ return y * W + x; };
     auto h = [&](int x, int y){
-        // Octile distance with terrain complexity adjustment  
+        // Octile distance - keep heuristic admissible for optimal A*
         int dx = std::abs(x - gx); int dy = std::abs(y - gy);
         int dmin = std::min(dx, dy); int dmax = std::max(dx, dy);
         float baseDistance = m_costDiagonal * dmin + m_costStraight * (dmax - dmin);
-        // Scale heuristic slightly lower for heavily blocked terrain to encourage exploration
-        return baseDistance * 0.95f;
+        // Keep heuristic admissible (never overestimate) for efficient pathfinding
+        return baseDistance;
     };
 
-    // Restrict search to a reasonable ROI around start/goal to prevent
+    // Restrict search to a reasonable ROI around start AND goal to prevent
     // exploring the whole map on unreachable goals
     int dxGoal = std::abs(sx - gx), dyGoal = std::abs(sy - gy);
     int baseDistance = std::max(dxGoal, dyGoal);
-    // More generous ROI: allow detours up to 1.5x the direct distance + base margin
-    int r = std::max(20, static_cast<int>(baseDistance * 1.5f + 16));
-    int roiMinX = std::max(0, sx - r);
-    int roiMaxX = std::min(W - 1, sx + r);
-    int roiMinY = std::max(0, sy - r);
-    int roiMaxY = std::min(H - 1, sy + r);
+    // More generous ROI: allow detours up to 2x the direct distance + margin
+    int r = std::max(25, static_cast<int>(baseDistance * 2.0f + 20));
+    // ROI that encompasses both start and goal with buffer
+    int roiMinX = std::max(0, std::min(sx, gx) - r);
+    int roiMaxX = std::min(W - 1, std::max(sx, gx) + r);
+    int roiMinY = std::max(0, std::min(sy, gy) - r);
+    int roiMaxY = std::min(H - 1, std::max(sy, gy) + r);
 
     // A* pathfinding using thread-local object pooling for memory optimization
     thread_local NodePool nodePool;
@@ -268,11 +292,19 @@ PathfindingResult PathfindingGrid::findPath(const Vector2D& start, const Vector2
     const int dx8[8] = {1,-1,0,0, 1,1,-1,-1};
     const int dy8[8] = {0,0,1,-1, 1,-1,1,-1};
 
-    // More generous dynamic iteration limits with adaptive scaling  
-    int baseIters = std::max(2000, baseDistance * 150); // Higher base for complex terrain
-    int dynamicMaxIters = std::min(m_maxIterations, baseIters + 1000); // Large 1000 iteration buffer
+    // Generous iteration limits - better to succeed than timeout
+    int baseIters = std::max(1000, baseDistance * 80); // Increased back up
+    int dynamicMaxIters = std::min(m_maxIterations, baseIters + 3000); // Larger buffer
+    
+    // Early termination if open queue gets too large (indicates poor pathfinding conditions)
+    const size_t maxOpenQueueSize = std::max(static_cast<size_t>(1000), static_cast<size_t>(baseDistance * 50));
 
     while (!open.empty() && iterations++ < dynamicMaxIters) {
+        // Early termination if queue becomes too large
+        if (open.size() > maxOpenQueueSize) {
+            PATHFIND_DEBUG("Early termination: queue size " + std::to_string(open.size()) + " exceeded limit");
+            break;
+        }
         NodePool::Node cur = open.top(); open.pop();
         int cIndex = idx(cur.x, cur.y);
         if (closed[cIndex]) continue;
@@ -305,19 +337,26 @@ PathfindingResult PathfindingGrid::findPath(const Vector2D& start, const Vector2
         for (int i = 0; i < dirs; ++i) {
             int nx = cur.x + dx8[i];
             int ny = cur.y + dy8[i];
-            if (!inBounds(nx, ny) || isBlocked(nx, ny)) continue;
-            if (nx < roiMinX || nx > roiMaxX || ny < roiMinY || ny > roiMaxY) continue;
+            
+            // Combined bounds and ROI check for efficiency
+            if (nx < roiMinX || nx > roiMaxX || ny < roiMinY || ny > roiMaxY || 
+                nx < 0 || nx >= W || ny < 0 || ny >= H) continue;
+                
+            size_t nIndex = static_cast<size_t>(idx(nx, ny));
+            if (closed[nIndex] || isBlocked(nx, ny)) continue;
+            
             // No-corner-cutting: if moving diagonally, both orthogonal neighbors must be open
             if (m_allowDiagonal && i >= 4) {
                 int ox = cur.x + dx8[i]; int oy = cur.y;
                 int px = cur.x; int py = cur.y + dy8[i];
                 if (isBlocked(ox, oy) || isBlocked(px, py)) continue;
             }
+            
             float step = (i < 4) ? m_costStraight : m_costDiagonal;
-            size_t nIndex = static_cast<size_t>(idx(nx, ny));
-            if (closed[nIndex]) continue;
             float weight = (nIndex < m_weight.size() && m_weight[nIndex] > 0.0f) ? m_weight[nIndex] : 1.0f;
             float tentative = gScore[static_cast<size_t>(idx(cur.x, cur.y))] + step * weight;
+            
+            // Only add to queue if we found a better path
             if (tentative < gScore[nIndex]) {
                 parent[nIndex] = idx(cur.x, cur.y);
                 gScore[nIndex] = tentative;
@@ -353,7 +392,7 @@ PathfindingResult PathfindingGrid::findPath(const Vector2D& start, const Vector2
         }
         
         // Flag suspicious boundary goals
-        if (gx <= 2 || gy <= 2 || gx >= m_w-3 || gy >= m_h-3) {
+        if (gx <= 1 || gy <= 1 || gx >= m_w-2 || gy >= m_h-2) {
             PATHFIND_WARN("BOUNDARY GOAL DETECTED: " + goalKey + " - near world edge");
         }
     }

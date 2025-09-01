@@ -398,8 +398,10 @@ void FleeBehavior::updatePanicFlee(EntityPtr entity, EntityState& state) {
     }
     
     float speedModifier = calculateFleeSpeedModifier(state);
-    Vector2D velocity = state.fleeDirection * m_fleeSpeed * speedModifier;
-    entity->setVelocity(velocity);
+    Vector2D intended = state.fleeDirection * m_fleeSpeed * speedModifier;
+    Vector2D adjusted = AIInternal::ApplySeparation(entity, entity->getPosition(),
+                          intended, m_fleeSpeed * speedModifier, 26.0f, 0.25f, 4);
+    entity->setVelocity(adjusted);
 }
 
 void FleeBehavior::updateStrategicRetreat(EntityPtr entity, EntityState& state) {
@@ -497,8 +499,10 @@ void FleeBehavior::updateStrategicRetreat(EntityPtr entity, EntityState& state) 
     float speedModifier = calculateFleeSpeedModifier(state);
     if (!tryFollowPath(dest, m_fleeSpeed * speedModifier)) {
         // Fallback to direct flee when no path available
-        Vector2D velocity = state.fleeDirection * m_fleeSpeed * speedModifier;
-        entity->setVelocity(velocity);
+        Vector2D intended = state.fleeDirection * m_fleeSpeed * speedModifier;
+        Vector2D adjusted = AIInternal::ApplySeparation(entity, entity->getPosition(),
+                              intended, m_fleeSpeed * speedModifier, 26.0f, 0.25f, 4);
+        entity->setVelocity(adjusted);
     }
 }
 
@@ -530,8 +534,10 @@ void FleeBehavior::updateEvasiveManeuver(EntityPtr entity, EntityState& state) {
     state.fleeDirection = normalizeVector(zigzagDir);
     
     float speedModifier = calculateFleeSpeedModifier(state);
-    Vector2D velocity = state.fleeDirection * m_fleeSpeed * speedModifier;
-    entity->setVelocity(velocity);
+    Vector2D intended = state.fleeDirection * m_fleeSpeed * speedModifier;
+    Vector2D adjusted = AIInternal::ApplySeparation(entity, entity->getPosition(),
+                          intended, m_fleeSpeed * speedModifier, 26.0f, 0.25f, 4);
+    entity->setVelocity(adjusted);
 }
 
 void FleeBehavior::updateSeekCover(EntityPtr entity, EntityState& state) {
@@ -621,8 +627,10 @@ void FleeBehavior::updateSeekCover(EntityPtr entity, EntityState& state) {
     float speedModifier = calculateFleeSpeedModifier(state);
     if (!tryFollowPath(dest, m_fleeSpeed * speedModifier)) {
         // Fallback to straight-line movement
-        Vector2D velocity = state.fleeDirection * m_fleeSpeed * speedModifier;
-        entity->setVelocity(velocity);
+        Vector2D intended = state.fleeDirection * m_fleeSpeed * speedModifier;
+        Vector2D adjusted = AIInternal::ApplySeparation(entity, entity->getPosition(),
+                              intended, m_fleeSpeed * speedModifier, 26.0f, 0.25f, 4);
+        entity->setVelocity(adjusted);
     }
 }
 

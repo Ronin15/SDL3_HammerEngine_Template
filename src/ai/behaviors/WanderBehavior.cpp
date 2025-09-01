@@ -80,7 +80,10 @@ void WanderBehavior::executeLogic(EntityPtr entity) {
   if (!state.movementStarted) {
     if (currentTime - state.lastDirectionChangeTime >= state.startDelay) {
       state.movementStarted = true;
-      entity->setVelocity(state.currentDirection * m_speed);
+      Vector2D intended = state.currentDirection * m_speed;
+      Vector2D adjusted = AIInternal::ApplySeparation(entity, entity->getPosition(),
+                            intended, m_speed, 28.0f, 0.30f, 6);
+      entity->setVelocity(adjusted);
     }
     return;
   }
@@ -190,7 +193,10 @@ void WanderBehavior::executeLogic(EntityPtr entity) {
                                state.navRadius, 0.0f);
     } else {
       // Always apply base velocity (in case something external changed it)
-      entity->setVelocity(state.currentDirection * m_speed);
+      Vector2D intended = state.currentDirection * m_speed;
+      Vector2D adjusted = AIInternal::ApplySeparation(entity, entity->getPosition(),
+                            intended, m_speed, 28.0f, 0.30f, 6);
+      entity->setVelocity(adjusted);
     }
   }
 }
@@ -231,8 +237,10 @@ void WanderBehavior::updateWanderState(EntityPtr entity) {
     stableVelocity.normalize();
     stableVelocity = stableVelocity * m_speed;
 
-    // Apply the stable velocity
-    entity->setVelocity(stableVelocity);
+    // Apply the stable velocity with separation
+    Vector2D adjusted = AIInternal::ApplySeparation(entity, entity->getPosition(),
+                          stableVelocity, m_speed, 28.0f, 0.30f, 6);
+    entity->setVelocity(adjusted);
   } else if (wouldFlip) {
     // Record the time of this flip
     state.lastDirectionFlip = currentTime;
@@ -275,7 +283,10 @@ void WanderBehavior::updateWanderState(EntityPtr entity) {
     if (rotated.length() > 0.001f) {
       rotated.normalize();
       state.currentDirection = rotated;
-      entity->setVelocity(state.currentDirection * m_speed);
+      Vector2D intended = state.currentDirection * m_speed;
+      Vector2D adjusted = AIInternal::ApplySeparation(entity, entity->getPosition(),
+                            intended, m_speed, 28.0f, 0.30f, 6);
+      entity->setVelocity(adjusted);
     }
   }
 
@@ -369,7 +380,10 @@ void WanderBehavior::chooseNewDirection(EntityPtr entity) {
 
   // Apply the new direction to the entity only if movement has started
   if (applyVelocity) {
-    entity->setVelocity(state.currentDirection * m_speed);
+    Vector2D intended = state.currentDirection * m_speed;
+    Vector2D adjusted = AIInternal::ApplySeparation(entity, entity->getPosition(),
+                          intended, m_speed, 28.0f, 0.30f, 6);
+    entity->setVelocity(adjusted);
   }
 
   // NPC class now handles sprite flipping based on velocity

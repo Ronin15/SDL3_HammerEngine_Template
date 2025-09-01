@@ -119,7 +119,7 @@ bool RefreshPathWithPolicy(
     static thread_local std::unordered_map<EntityID, Uint64> lastDetourAttempt;
     EntityID entityId = entity->getID();
     
-    if (now - lastDetourAttempt[entityId] > 1500) { // Reduced from 2000ms for faster adaptation
+    if (now - lastDetourAttempt[entityId] > 4000) { // Increased cooldown to reduce spam
         lastDetourAttempt[entityId] = now;
         
         // Check if we're in a crowded area - if so, try alternative targets instead of detours
@@ -213,7 +213,7 @@ bool FollowPathStepWithPolicy(
 struct AsyncRequestState {
     Uint64 lastRequestTime = 0;
     bool hasValidPath = false;
-    static constexpr Uint64 MIN_REQUEST_INTERVAL = 800;
+    static constexpr Uint64 MIN_REQUEST_INTERVAL = 2500;
 };
 
 static std::unordered_map<EntityID, AsyncRequestState> g_asyncStates;
@@ -324,7 +324,7 @@ bool RefreshPathWithPolicyAsync(
             EntityID entityId = entity->getID();
             auto& [lastDetourTime, detourCount] = detourTracking[entityId];
             
-            if (now - lastDetourTime > 2000) {
+            if (now - lastDetourTime > 5000) {
                 detourCount = 0;
                 lastDetourTime = now;
             }
@@ -355,7 +355,7 @@ bool RefreshPathWithPolicyAsync(
     // Check if an async path became ready, but only if we don't have a recent valid path
     // This prevents rapid path switching when paths are working fine
     if (AIManager::Instance().hasAsyncPath(entity) && 
-        (pathPoints.empty() || (now - lastPathUpdate) > 1000)) {
+        (pathPoints.empty() || (now - lastPathUpdate) > 3000)) {
         pathPoints = AIManager::Instance().getAsyncPath(entity);
         currentPathIndex = 0;
         lastPathUpdate = now;

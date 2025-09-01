@@ -25,6 +25,7 @@ ninja -C build
 ### Running the Application
 - Debug: `./bin/debug/SDL3_Template`
 - Release: `./bin/release/SDL3_Template`
+- Testing: `timeout 25s ./bin/debug/SDL3_Template` (25 second timeout for behavior testing)
 
 ## Testing
 
