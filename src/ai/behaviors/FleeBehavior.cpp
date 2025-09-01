@@ -394,7 +394,7 @@ void FleeBehavior::updatePanicFlee(EntityPtr entity, EntityState& state) {
         Vector2D panicDest = currentPos + state.fleeDirection * 1000.0f; // Much longer panic flee distance
         
         // Clamp to world bounds with larger margin for panic mode
-        panicDest = AIInternal::ClampToWorld(panicDest, 32.0f);
+        panicDest = AIInternal::ClampToWorld(panicDest, 100.0f);
     }
     
     float speedModifier = calculateFleeSpeedModifier(state);
@@ -444,7 +444,7 @@ void FleeBehavior::updateStrategicRetreat(EntityPtr entity, EntityState& state) 
     }
 
     // Compute a retreat destination further ahead and clamp to world bounds
-    Vector2D dest = AIInternal::ClampToWorld(currentPos + state.fleeDirection * retreatDistance);
+    Vector2D dest = AIInternal::ClampToWorld(currentPos + state.fleeDirection * retreatDistance, 100.0f);
 
     // Try to path toward the retreat destination with TTL and no-progress checks
     auto tryFollowPath = [&](const Vector2D &goal, float speed)->bool {
@@ -460,7 +460,7 @@ void FleeBehavior::updateStrategicRetreat(EntityPtr entity, EntityState& state) 
         if (now - state.lastPathUpdate > pathTTL) needRefresh = true;
         if (needRefresh && now >= state.nextPathAllowed) {
             if (m_useAsyncPathfinding) {
-                AIManager::Instance().requestPathAsync(entity, AIInternal::ClampToWorld(currentPos), goal, AIManager::PathPriority::High);
+                AIManager::Instance().requestPathAsync(entity, AIInternal::ClampToWorld(currentPos, 100.0f), goal, AIManager::PathPriority::High);
                 if (AIManager::Instance().hasAsyncPath(entity)) {
                     state.pathPoints = AIManager::Instance().getAsyncPath(entity);
                     state.currentPathIndex = 0;
@@ -473,7 +473,7 @@ void FleeBehavior::updateStrategicRetreat(EntityPtr entity, EntityState& state) 
                     state.nextPathAllowed = now + 600; // Shorter cooldown for flee (more urgent)
                 }
             } else {
-                AIManager::Instance().requestPath(entity, AIInternal::ClampToWorld(currentPos), goal);
+                AIManager::Instance().requestPath(entity, AIInternal::ClampToWorld(currentPos, 100.0f), goal);
                 state.pathPoints = AIManager::Instance().getPath(entity);
                 state.currentPathIndex = 0;
                 state.lastPathUpdate = now;
@@ -569,7 +569,7 @@ void FleeBehavior::updateSeekCover(EntityPtr entity, EntityState& state) {
     }
 
     // Clamp destination within world bounds
-    dest = AIInternal::ClampToWorld(dest);
+    dest = AIInternal::ClampToWorld(dest, 100.0f);
 
     auto tryFollowPath = [&](const Vector2D &goal, float speed)->bool {
         Uint64 now = SDL_GetTicks();
@@ -584,7 +584,7 @@ void FleeBehavior::updateSeekCover(EntityPtr entity, EntityState& state) {
         if (now - state.lastPathUpdate > pathTTL) needRefresh = true;
         if (needRefresh && now >= state.nextPathAllowed) {
             if (m_useAsyncPathfinding) {
-                AIManager::Instance().requestPathAsync(entity, AIInternal::ClampToWorld(currentPos), goal, AIManager::PathPriority::High);
+                AIManager::Instance().requestPathAsync(entity, AIInternal::ClampToWorld(currentPos, 100.0f), goal, AIManager::PathPriority::High);
                 if (AIManager::Instance().hasAsyncPath(entity)) {
                     state.pathPoints = AIManager::Instance().getAsyncPath(entity);
                     state.currentPathIndex = 0;
@@ -597,7 +597,7 @@ void FleeBehavior::updateSeekCover(EntityPtr entity, EntityState& state) {
                     state.nextPathAllowed = now + 600; // Shorter cooldown for flee (more urgent)
                 }
             } else {
-                AIManager::Instance().requestPath(entity, AIInternal::ClampToWorld(currentPos), goal);
+                AIManager::Instance().requestPath(entity, AIInternal::ClampToWorld(currentPos, 100.0f), goal);
                 state.pathPoints = AIManager::Instance().getPath(entity);
                 state.currentPathIndex = 0;
                 state.lastPathUpdate = now;

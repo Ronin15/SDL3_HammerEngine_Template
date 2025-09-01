@@ -88,7 +88,7 @@ void PatrolBehavior::executeLogic(EntityPtr entity) {
   Vector2D targetWaypoint = m_waypoints[m_currentWaypoint];
   
   // Clamp target to world bounds to avoid edge chasing
-  targetWaypoint = AIInternal::ClampToWorld(targetWaypoint);
+  targetWaypoint = AIInternal::ClampToWorld(targetWaypoint, 100.0f);
 
   // State: APPROACHING_WAYPOINT - Check if we've reached current waypoint
   if (isAtWaypoint(position, targetWaypoint)) {
@@ -183,8 +183,8 @@ void PatrolBehavior::executeLogic(EntityPtr entity) {
           Vector2D dir = toNode * (1.0f/len);
           Vector2D perp(-dir.getY(), dir.getX());
           float side = ((entity->getID() & 1) ? 1.0f : -1.0f);
-          Vector2D sidestep = AIInternal::ClampToWorld(position + perp * (96.0f * side));
-          AIManager::Instance().requestPath(entity, AIInternal::ClampToWorld(position), sidestep);
+          Vector2D sidestep = AIInternal::ClampToWorld(position + perp * (96.0f * side), 100.0f);
+          AIManager::Instance().requestPath(entity, AIInternal::ClampToWorld(position, 100.0f), sidestep);
           auto p = AIManager::Instance().getPath(entity);
           if (!p.empty()) {
             m_navPath = std::move(p); 

@@ -109,9 +109,9 @@ bool RefreshPathWithPolicy(
     if (now - lastPathUpdate > policy.pathTTL) needRefresh = true;
     if (!needRefresh) return false;
 
-    // Clamp both current position and desired goal to world bounds
-    Vector2D clampedCurrentPos = ClampToWorld(currentPos);
-    Vector2D clampedGoal = ClampToWorld(desiredGoal);
+    // Clamp both current position and desired goal to world bounds (use 100px margin to match pathfinding boundary requirements)
+    Vector2D clampedCurrentPos = ClampToWorld(currentPos, 100.0f);
+    Vector2D clampedGoal = ClampToWorld(desiredGoal, 100.0f);
     requestTo(entity, clampedCurrentPos, clampedGoal, pathPoints, currentPathIndex, lastPathUpdate, now, lastProgressTime, lastNodeDistance);
     if (!pathPoints.empty() || !policy.allowDetours) return true;
 
@@ -139,7 +139,7 @@ bool RefreshPathWithPolicy(
             for (float distance : {150.0f, 250.0f, 400.0f}) {
                 for (float angle : {0.0f, 1.57f, 3.14f, 4.71f, 0.78f, 2.35f, 3.92f, 5.49f}) {
                     Vector2D offset(distance * cosf(angle), distance * sinf(angle));
-                    Vector2D alternativeGoal = ClampToWorld(clampedGoal + offset);
+                    Vector2D alternativeGoal = ClampToWorld(clampedGoal + offset, 100.0f);
                     
                     // Check if alternative goal is less crowded
                     AABB altCheck(alternativeGoal.getX() - 40.0f, alternativeGoal.getY() - 40.0f, 80.0f, 80.0f);
@@ -157,7 +157,7 @@ bool RefreshPathWithPolicy(
             for (float r : policy.detourRadii) {
                 for (float a : policy.detourAngles) {
                     Vector2D offset(std::cos(a) * r, std::sin(a) * r);
-                    Vector2D alt = ClampToWorld(clampedGoal + offset);
+                    Vector2D alt = ClampToWorld(clampedGoal + offset, 100.0f);
                     requestTo(entity, currentPos, alt, pathPoints, currentPathIndex, lastPathUpdate, now, lastProgressTime, lastNodeDistance);
                     if (!pathPoints.empty()) return true;
                 }
@@ -171,7 +171,7 @@ bool RefreshPathWithPolicy(
         if (direction.length() > 0.1f) {
             direction.normalize();
             Vector2D fallbackGoal = currentPos + direction * 100.0f; // Move 100px in the right direction
-            fallbackGoal = ClampToWorld(fallbackGoal);
+            fallbackGoal = ClampToWorld(fallbackGoal, 100.0f);
             requestTo(entity, currentPos, fallbackGoal, pathPoints, currentPathIndex, lastPathUpdate, now, lastProgressTime, lastNodeDistance);
         }
     }
@@ -274,9 +274,9 @@ bool RefreshPathWithPolicyAsync(
     const PathPolicy &policy,
     int priority) {
 
-    // Distance-based path segmentation for long journeys
-    Vector2D clampedCurrentPos = ClampToWorld(currentPos);
-    Vector2D clampedGoal = ClampToWorld(desiredGoal);
+    // Distance-based path segmentation for long journeys (use 100px margin to match pathfinding boundary requirements)
+    Vector2D clampedCurrentPos = ClampToWorld(currentPos, 100.0f);
+    Vector2D clampedGoal = ClampToWorld(desiredGoal, 100.0f);
     float directDistance = (clampedGoal - clampedCurrentPos).length();
     const float MAX_PATH_DISTANCE = 1200.0f; // ~37 tiles at 32px/tile
     
@@ -285,7 +285,7 @@ bool RefreshPathWithPolicyAsync(
         // Create intermediate waypoint toward goal
         Vector2D direction = (clampedGoal - clampedCurrentPos).normalized();
         effectiveGoal = clampedCurrentPos + direction * MAX_PATH_DISTANCE;
-        effectiveGoal = ClampToWorld(effectiveGoal);
+        effectiveGoal = ClampToWorld(effectiveGoal, 100.0f);
     }
 
     Uint64 now = SDL_GetTicks();
@@ -338,7 +338,7 @@ bool RefreshPathWithPolicyAsync(
                     
                     for (float radius : policy.detourRadii) {
                         Vector2D offset(radius * cosf(angle), radius * sinf(angle));
-                        Vector2D detourGoal = ClampToWorld(effectiveGoal + offset);
+                        Vector2D detourGoal = ClampToWorld(effectiveGoal + offset, 100.0f);
                         requestToAsync(entity, currentPos, detourGoal, pathPoints, currentPathIndex,
                                      lastPathUpdate, now, lastProgressTime, lastNodeDistance, priority);
                         if (!pathPoints.empty()) {

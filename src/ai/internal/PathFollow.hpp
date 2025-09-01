@@ -58,7 +58,7 @@ struct PathPolicy {
 };
 
 // Clamp a world-space point within current world bounds (with margin)
-Vector2D ClampToWorld(const Vector2D &p, float margin = 16.0f);
+Vector2D ClampToWorld(const Vector2D &p, float margin = 100.0f);
 
 // Get world bounds in pixel coordinates (converts tile bounds to world bounds)
 struct WorldBoundsPixels { float minX, minY, maxX, maxY; bool valid; };
