@@ -30,6 +30,7 @@ struct CollisionBody {
     AABB aabb{};
     Vector2D velocity{0,0};
     Vector2D acceleration{0,0};
+    Vector2D lastPosition{-1.0f, -1.0f}; // Track previous position for movement optimization
     EntityWeakPtr entityWeak; // optional back-reference for syncing
     BodyType type{BodyType::DYNAMIC};
     uint32_t layer{Layer_Default};

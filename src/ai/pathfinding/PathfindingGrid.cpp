@@ -217,9 +217,7 @@ PathfindingResult PathfindingGrid::findPath(const Vector2D& start, const Vector2
     const size_t N = static_cast<size_t>(W * H);
     const float INF = std::numeric_limits<float>::infinity();
 
-    std::vector<float> gScore(N, INF), fScore(N, INF);
     std::vector<uint8_t> closed(N, 0);
-    std::vector<int> parent(N, -1);
     auto idx = [&](int x, int y){ return y * W + x; };
     auto h = [&](int x, int y){
         // Octile distance with terrain complexity adjustment  
@@ -241,14 +239,26 @@ PathfindingResult PathfindingGrid::findPath(const Vector2D& start, const Vector2
     int roiMinY = std::max(0, sy - r);
     int roiMaxY = std::min(H - 1, sy + r);
 
-    struct Node { int x; int y; float f; };
-    struct Cmp { bool operator()(const Node& a, const Node& b) const { return a.f > b.f; } };
-    std::priority_queue<Node, std::vector<Node>, Cmp> open;
+    // A* pathfinding using object pooling for memory optimization
+    int gridSize = m_w * m_h;
+    m_nodePool.ensureCapacity(gridSize);
+    m_nodePool.reset();
+    
+    // Use pooled containers
+    auto& open = m_nodePool.openQueue;
+    auto& gScore = m_nodePool.gScoreBuffer;
+    auto& fScore = m_nodePool.fScoreBuffer;
+    auto& parent = m_nodePool.parentBuffer;
 
     size_t sIdx = static_cast<size_t>(idx(sx, sy));
+    if (sIdx >= gScore.size()) {
+        PATHFIND_ERROR("Buffer size mismatch: index " + std::to_string(sIdx) + 
+                       " >= buffer size " + std::to_string(gScore.size()));
+        return PathfindingResult::INVALID_START;
+    }
     gScore[sIdx] = 0.0f;
     fScore[sIdx] = static_cast<float>(h(sx, sy));
-    open.push({sx, sy, fScore[sIdx]});
+    open.push(NodePool::Node{sx, sy, fScore[sIdx]});
 
     int iterations = 0;
     const int dirs = m_allowDiagonal ? 8 : 4;
@@ -260,7 +270,7 @@ PathfindingResult PathfindingGrid::findPath(const Vector2D& start, const Vector2
     int dynamicMaxIters = std::min(m_maxIterations, baseIters + 1000); // Large 1000 iteration buffer
 
     while (!open.empty() && iterations++ < dynamicMaxIters) {
-        Node cur = open.top(); open.pop();
+        NodePool::Node cur = open.top(); open.pop();
         int cIndex = idx(cur.x, cur.y);
         if (closed[cIndex]) continue;
         closed[cIndex] = 1;
@@ -309,7 +319,7 @@ PathfindingResult PathfindingGrid::findPath(const Vector2D& start, const Vector2
                 parent[nIndex] = idx(cur.x, cur.y);
                 gScore[nIndex] = tentative;
                 fScore[nIndex] = tentative + h(nx, ny);
-                open.push({nx, ny, fScore[nIndex]});
+                open.push(NodePool::Node{nx, ny, fScore[nIndex]});
             }
         }
     }

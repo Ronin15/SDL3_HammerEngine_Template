@@ -21,9 +21,17 @@ public:
     void setX(float x) { m_x = x; }
     void setY(float y) { m_y = y; }
 
-    // Vector operations
-    float length() const { return sqrt(m_x * m_x + m_y * m_y); }
-        float lengthSquared() const { return m_x * m_x + m_y * m_y; }
+    // Vector operations (cache-friendly implementations)
+    float length() const { return sqrt(lengthSquared()); }
+    float lengthSquared() const { return m_x * m_x + m_y * m_y; }
+    
+    // Fast normalized vector (avoids sqrt when possible) 
+    Vector2D normalized() const {
+        float lenSq = lengthSquared();
+        if (lenSq < 0.0001f) return Vector2D(1.0f, 0.0f); // Default direction
+        float invLen = 1.0f / sqrt(lenSq);
+        return Vector2D(m_x * invLen, m_y * invLen);
+    }
 
     float dot(const Vector2D& v2) const {
         return m_x * v2.m_x + m_y * v2.m_y;
@@ -78,8 +86,19 @@ public:
         }
     }
     
-    // Return a normalized copy of the vector
-    Vector2D normalized() const {
+    // Cache-friendly static utility functions
+    static float distanceSquared(const Vector2D& a, const Vector2D& b) {
+        float dx = a.m_x - b.m_x;
+        float dy = a.m_y - b.m_y; 
+        return dx * dx + dy * dy;
+    }
+    
+    static float distance(const Vector2D& a, const Vector2D& b) {
+        return sqrt(distanceSquared(a, b));
+    }
+    
+    // Return a normalized copy of the vector (keeping existing implementation for compatibility)
+    Vector2D normalizedLegacy() const {
         Vector2D v = *this;
         float l = length();
         if (l > 0) {
