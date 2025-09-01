@@ -277,8 +277,8 @@ BOOST_FIXTURE_TEST_CASE(TestPathfindingIterationLimits, PathfindingGridFixture)
     // Test with very low iteration limits
     grid.setMaxIterations(100);
     
-    Vector2D start(48.0f, 48.0f);
-    Vector2D distantGoal(560.0f, 560.0f); // Far away goal
+    Vector2D start(128.0f, 128.0f);      // Grid (4,4) - safely inside boundary
+    Vector2D distantGoal(448.0f, 448.0f); // Grid (14,14) - safely inside boundary, far away goal
     
     std::vector<Vector2D> path;
     auto startTime = std::chrono::high_resolution_clock::now();
@@ -393,9 +393,9 @@ BOOST_FIXTURE_TEST_CASE(TestExtremeDistances, PathfindingGridFixture)
     std::vector<Vector2D> shortPath;
     PathfindingResult shortResult = grid.findPath(closeStart, closeGoal, shortPath);
     
-    // Test maximum distance within grid
-    Vector2D farStart(48.0f, 48.0f);
-    Vector2D farGoal(592.0f, 592.0f);
+    // Test maximum distance within grid (respecting boundary requirements: 3 tiles = 96px from edge)
+    Vector2D farStart(128.0f, 128.0f);  // Grid (4,4) - safely inside boundary  
+    Vector2D farGoal(480.0f, 480.0f);   // Grid (15,15) - safely inside boundary
     
     std::vector<Vector2D> longPath;
     PathfindingResult longResult = grid.findPath(farStart, farGoal, longPath);
