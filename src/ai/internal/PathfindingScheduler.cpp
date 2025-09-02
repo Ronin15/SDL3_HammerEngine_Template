@@ -10,11 +10,13 @@
 #include "../pathfinding/PathfindingGrid.hpp"
 #include "../../core/Logger.hpp"
 #include "PathCache.hpp"
+#include "SpatialPriority.hpp"
 
 namespace AIInternal {
 
 PathfindingScheduler::PathfindingScheduler()
     : m_lastPlayerPos(0.0f, 0.0f)
+    , m_spatialPriority(nullptr)
     , m_pathCache(std::make_unique<PathCache>())
 {
     AI_INFO("PathfindingScheduler initialized with PathCache");
@@ -386,6 +388,14 @@ void PathfindingScheduler::cleanupExpiredRequests()
 PathPriority PathfindingScheduler::adjustPriorityByDistance(const PathRequest& request, 
                                                            const Vector2D& playerPos) const
 {
+    // Use SpatialPriority system if available (Phase 2 integration)
+    if (m_spatialPriority) {
+        PathPriority spatialPriority = m_spatialPriority->getEntityPriority(request.entityId, request.start, playerPos);
+        // Respect the original request priority but adjust based on spatial distance
+        return std::max(request.priority, spatialPriority);
+    }
+    
+    // Fallback to original distance calculation if SpatialPriority not available
     float distanceToPlayer = calculateDistanceToPlayer(request.start, playerPos);
     
     // Spatial priority zones based on distance from player
@@ -548,6 +558,16 @@ void PathfindingScheduler::logPathfindingStats() const
             ", Success: " + std::to_string(static_cast<int>(successRate)) + "%" +
             ", Cached: " + std::to_string(pathsFromCache) + 
             ", Avg: " + std::to_string(static_cast<int>(avgComputeTime)) + "ms" + cacheInfo);
+}
+
+void PathfindingScheduler::setSpatialPriority(SpatialPriority* spatialPriority)
+{
+    m_spatialPriority = spatialPriority;
+    if (m_spatialPriority) {
+        AI_INFO("PathfindingScheduler: SpatialPriority system connected");
+    } else {
+        AI_INFO("PathfindingScheduler: SpatialPriority system disconnected");
+    }
 }
 
 } // namespace AIInternal

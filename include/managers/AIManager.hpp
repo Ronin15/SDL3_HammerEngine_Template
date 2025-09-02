@@ -39,6 +39,7 @@
 namespace HammerEngine { class PathfindingGrid; }
 namespace AIInternal { 
     class PathfindingScheduler; 
+    class SpatialPriority;
     struct PathRequest;
 }
 
@@ -373,6 +374,34 @@ public:
   
   // Anti-clumping system
   size_t checkAndDisperseClusters(EntityPtr entity);
+  
+  // Centralized pathfinding utilities (replaces PathFollow.cpp thread_local functions)
+  Vector2D clampToWorld(const Vector2D& position, float margin = 100.0f) const;
+  bool updateEntityPathfindingState(EntityID entityId, uint64_t currentTime);
+  bool canEntityMakeDetour(EntityID entityId, uint64_t currentTime) const;
+  void resetEntityDetourCount(EntityID entityId, uint64_t currentTime);
+  
+  // Centralized async request state management (replaces g_asyncStates static map)
+  bool canEntityMakeAsyncRequest(EntityID entityId, uint64_t currentTime) const;
+  void updateAsyncRequestTime(EntityID entityId, uint64_t currentTime);
+  void setEntityHasValidPath(EntityID entityId, bool hasPath);
+  
+  // Centralized TTL system (replaces scattered timeout values)
+  struct PathTTLConfig {
+    static constexpr uint64_t STANDARD_PATH_TTL_MS = 2000;        // Standard path lifetime
+    static constexpr uint64_t ASYNC_PATH_TTL_MS = 4000;          // Async paths get longer TTL
+    static constexpr uint64_t NO_PROGRESS_WINDOW_MS = 3000;      // Time before declaring no progress
+    static constexpr uint64_t MIN_ASYNC_REQUEST_INTERVAL_MS = 2500; // Min time between async requests
+  };
+
+  // Phase 3: Direct PathScheduler access for optimal performance
+  /**
+   * @brief Get direct access to PathfindingScheduler for optimal pathfinding performance
+   * @return Pointer to PathfindingScheduler instance, or nullptr if not initialized
+   * @details Enables direct routing to PathScheduler, bypassing legacy pathways for full 
+   *          PathCache benefits and consistent priority handling
+   */
+  AIInternal::PathfindingScheduler* getPathScheduler() const;
 
 private:
   AIManager() = default;
@@ -561,9 +590,44 @@ private:
   std::atomic<size_t> m_asyncPathsRequested{0};
   
   
+  // Centralized pathfinding state management (replaces thread_local maps in PathFollow.cpp)
+  struct WorldBoundsCache {
+    bool valid = false;
+    float worldMinX, worldMinY, worldMaxX, worldMaxY;
+    uint64_t lastUpdateTime = 0;
+    static constexpr uint64_t CACHE_LIFETIME_MS = 1000; // 1 second cache
+    static constexpr float TILE_SIZE = 32.0f;
+  };
+  mutable WorldBoundsCache m_worldBoundsCache;
+  mutable std::mutex m_worldBoundsMutex;
+  
+  // Entity-specific pathfinding state (replaces thread_local maps)
+  struct EntityPathfindingState {
+    uint64_t lastDetourAttempt = 0;
+    uint8_t detourCount = 0;
+    uint64_t lastDetourReset = 0;
+    static constexpr uint64_t DETOUR_COOLDOWN_MS = 4000;
+    static constexpr uint64_t DETOUR_RESET_INTERVAL_MS = 5000;
+    static constexpr uint8_t MAX_DETOUR_COUNT = 4;
+  };
+  std::unordered_map<EntityID, EntityPathfindingState> m_entityPathfindingStates;
+  mutable std::mutex m_entityStatesMutex;
+  
+  // Async request state management (replaces static g_asyncStates)
+  struct AsyncRequestState {
+    uint64_t lastRequestTime = 0;
+    bool hasValidPath = false;
+  };
+  std::unordered_map<EntityID, AsyncRequestState> m_asyncRequestStates;
+  mutable std::mutex m_asyncRequestMutex;
+  
   // Phase 1: PathfindingScheduler integration
   struct PathSchedulerDeleter { void operator()(AIInternal::PathfindingScheduler*) const; };
   std::unique_ptr<AIInternal::PathfindingScheduler, PathSchedulerDeleter> m_pathScheduler;
+  
+  // Phase 2: SpatialPriority integration
+  struct SpatialPriorityDeleter { void operator()(AIInternal::SpatialPriority*) const; };
+  std::unique_ptr<AIInternal::SpatialPriority, SpatialPriorityDeleter> m_spatialPriority;
 };
 
 #endif // AI_MANAGER_HPP
