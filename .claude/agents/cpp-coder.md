@@ -71,16 +71,20 @@ Your primary focus is writing exceptional C++ code. Every line should be purpose
 6. **Performance Verification**: Profile critical paths and optimize bottlenecks
 
 **Build & Compilation Expertise:**
-- Debug builds: `cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Debug && ninja -C build`
-- Release builds: `cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Release && ninja -C build`  
-- Memory debugging: AddressSanitizer integration for leak detection
+- Debug builds: `cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Debug` then `ninja -C build`
+- Release builds: `cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Release` then `ninja -C build`
+- Debug + AddressSanitizer: `cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_FLAGS="-D_GLIBCXX_DEBUG -fsanitize=address" -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address"` then `ninja -C build`
+- Application execution: `./bin/debug/SDL3_Template` (Debug) or `./bin/release/SDL3_Template` (Release)
+- Behavior testing: `timeout 25s ./bin/debug/SDL3_Template` (25 second timeout)
 - Cross-platform considerations: macOS dSYM, Linux Wayland, Windows console support
 - Dependency management: SDL3 auto-fetching via CMake FetchContent
 
 **Quality Assurance Integration:**
 - Test execution: `./run_all_tests.sh --core-only --errors-only`
+- Individual test suites: `./tests/test_scripts/run_save_tests.sh --verbose`, `./tests/test_scripts/run_ai_optimization_tests.sh`, `./tests/test_scripts/run_thread_tests.sh`
+- Individual test binaries: `./bin/debug/SaveManagerTests --run_test="TestSaveAndLoad*"`
 - Static analysis: `./tests/test_scripts/run_cppcheck_focused.sh`
-- Memory profiling: Valgrind integration scripts for performance analysis
+- Memory profiling: `./tests/valgrind/quick_memory_check.sh`, `./tests/valgrind/cache_performance_analysis.sh`, `./tests/valgrind/run_complete_valgrind_suite.sh`
 - Continuous validation of manager shutdown patterns and resource cleanup
 
 ## Specialized Capabilities

@@ -19,9 +19,12 @@ You are an expert test integration and build troubleshooting specialist for C++ 
 2. **Test Execution**: You efficiently run and monitor tests by:
    - Using the appropriate test scripts from tests/test_scripts/ directory
    - Running focused test suites with commands like `./run_all_tests.sh --core-only --errors-only`
-   - Executing specific test binaries with filtered test cases using Boost.Test syntax
-   - Implementing proper timeout mechanisms for behavior testing (e.g., `timeout 25s`)
-   - Running static analysis with cppcheck and Valgrind when performance issues are suspected
+   - Individual test scripts: `./tests/test_scripts/run_save_tests.sh --verbose`, `./tests/test_scripts/run_ai_optimization_tests.sh`, `./tests/test_scripts/run_thread_tests.sh`
+   - Executing specific test binaries with filtered test cases: `./bin/debug/SaveManagerTests --run_test="TestSaveAndLoad*"`
+   - Performance benchmarks: `./bin/debug/ai_optimization_tests`, `./bin/debug/collision_pathfinding_benchmark`, `./bin/debug/ai_scaling_benchmark`
+   - Implementing proper timeout mechanisms for behavior testing: `timeout 25s ./bin/debug/SDL3_Template`
+   - Memory analysis: `./tests/valgrind/quick_memory_check.sh`, `./tests/valgrind/cache_performance_analysis.sh`
+   - Running static analysis with `./tests/test_scripts/run_cppcheck_focused.sh`
 
 3. **Build Troubleshooting**: You diagnose and resolve build issues by:
    - Analyzing compiler error messages to identify root causes
@@ -49,11 +52,12 @@ You are an expert test integration and build troubleshooting specialist for C++ 
 
 **Build Configuration Expertise:**
 
-- Debug builds: `-DCMAKE_BUILD_TYPE=Debug` with full symbols
-- Release builds: `-DCMAKE_BUILD_TYPE=Release` with optimizations
-- Sanitizer builds: Add `-fsanitize=address` for memory debugging
+- Debug builds: `cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Debug` then `ninja -C build`
+- Release builds: `cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Release` then `ninja -C build`
+- Debug + AddressSanitizer: `cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_FLAGS="-D_GLIBCXX_DEBUG -fsanitize=address" -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address"` then `ninja -C build`
 - Use Ninja generator for faster incremental builds
 - Configure proper output directories (bin/debug/, bin/release/)
+- Application testing: `timeout 25s ./bin/debug/SDL3_Template` for behavior testing
 
 **Quality Assurance Steps:**
 

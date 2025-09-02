@@ -64,9 +64,11 @@
 - **Build Artifacts:** [new executables/tests]
 
 ## Build Status
-- **Debug Build:** ✅/❌ [cmake + ninja status]
-- **Test Results:** [./run_all_tests.sh output summary]
+- **Debug Build:** ✅/❌ [`cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Debug` then `ninja -C build` status]
+- **Release Build:** ✅/❌ [`cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Release` then `ninja -C build` status]
+- **Test Results:** [`./run_all_tests.sh --core-only --errors-only` output summary]
 - **Compilation Warnings:** [count and severity]
+- **Application Test:** [`timeout 25s ./bin/debug/SDL3_Template` behavior validation]
 
 ## Integration Points
 - **Manager Dependencies:** [AIManager, CollisionManager, etc.]
@@ -106,10 +108,11 @@
 - **Frame Time:** [<16.67ms target]
 
 ## Benchmarks Required
-- [ ] AI system performance: `./bin/debug/ai_optimization_tests`
-- [ ] Collision pathfinding: `./bin/debug/collision_pathfinding_benchmark`
+- [ ] AI system performance: `./bin/debug/ai_optimization_tests`, `./bin/debug/ai_scaling_benchmark`
+- [ ] Pathfinding performance: `./tests/test_scripts/run_pathfinding_tests.sh`, `./bin/debug/collision_pathfinding_benchmark`
 - [ ] Full system test: `timeout 25s ./bin/debug/SDL3_Template`
-- [ ] Memory analysis: `./tests/valgrind/quick_memory_check.sh`
+- [ ] Memory analysis: `./tests/valgrind/quick_memory_check.sh`, `./tests/valgrind/cache_performance_analysis.sh`
+- [ ] Thread safety: `./tests/test_scripts/run_thread_tests.sh`
 
 ## Integration Validation
 - **Manager Interaction:** [optimized patterns implemented]
