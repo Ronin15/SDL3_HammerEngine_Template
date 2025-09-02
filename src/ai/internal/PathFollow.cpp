@@ -4,6 +4,7 @@
 #include "managers/WorldManager.hpp"
 #include "managers/CollisionManager.hpp"
 #include "collisions/AABB.hpp"
+#include "core/Logger.hpp"
 #include <algorithm>
 #include <cmath>
 #include <unordered_map>
@@ -203,21 +204,16 @@ static void requestToAsync(EntityPtr entity,
     // Check if we can make an async request using centralized state management
     if (!AIManager::Instance().canEntityMakeAsyncRequest(entityId, now)) {
         // Still waiting for previous request, just check if result is ready
-        // PHASE 3 MIGRATION: Check both scheduler and legacy pathways for path availability
-        bool hasPath = false;
-        if (auto* scheduler = AIManager::Instance().getPathScheduler()) {
-            hasPath = scheduler->hasPath(entityId);
-            if (hasPath) {
-                outPath = scheduler->getPath(entityId);
-            }
-        } else {
-            hasPath = AIManager::Instance().hasAsyncPath(entity);
-            if (hasPath) {
-                outPath = AIManager::Instance().getAsyncPath(entity);
-            }
+        // PHASE 3 MIGRATION COMPLETE: Check PathfindingScheduler exclusively
+        auto* scheduler = AIManager::Instance().getPathScheduler();
+        if (!scheduler) {
+            GAMEENGINE_ERROR("PathfindingScheduler not available - cannot check async path for entity " + std::to_string(entityId));
+            return;
         }
         
+        bool hasPath = scheduler->hasPath(entityId);
         if (hasPath) {
+            outPath = scheduler->getPath(entityId);
             idx = 0;
             lastUpdate = now;
             lastNodeDist = std::numeric_limits<float>::infinity();
@@ -227,36 +223,25 @@ static void requestToAsync(EntityPtr entity,
         return;
     }
     
-    // PHASE 3 MIGRATION: Route directly through PathfindingScheduler for full optimization benefits
-    if (auto* scheduler = AIManager::Instance().getPathScheduler()) {
-        AIInternal::PathPriority schedulerPriority = static_cast<AIInternal::PathPriority>(priority);
-        scheduler->requestPath(entityId, from, goal, schedulerPriority);
-        AIManager::Instance().updateAsyncRequestTime(entityId, now);
-        
-        // Check if path is ready immediately (from PathCache)
-        if (scheduler->hasPath(entityId)) {
-            outPath = scheduler->getPath(entityId);
-            idx = 0;
-            lastUpdate = now;
-            lastNodeDist = std::numeric_limits<float>::infinity();
-            lastProgress = now;
-            AIManager::Instance().setEntityHasValidPath(entityId, true);
-        }
-    } else {
-        // Fallback to legacy pathway if scheduler not available
-        AIManager::PathPriority asyncPriority = static_cast<AIManager::PathPriority>(priority);
-        AIManager::Instance().requestPathAsync(entity, from, goal, asyncPriority);
-        AIManager::Instance().updateAsyncRequestTime(entityId, now);
-        
-        // Check if async path is ready immediately (from previous request)
-        if (AIManager::Instance().hasAsyncPath(entity)) {
-            outPath = AIManager::Instance().getAsyncPath(entity);
-            idx = 0;
-            lastUpdate = now;
-            lastNodeDist = std::numeric_limits<float>::infinity();
-            lastProgress = now;
-            AIManager::Instance().setEntityHasValidPath(entityId, true);
-        }
+    // PHASE 3 MIGRATION COMPLETE: Route directly through PathfindingScheduler for full optimization benefits
+    auto* scheduler = AIManager::Instance().getPathScheduler();
+    if (!scheduler) {
+        GAMEENGINE_ERROR("PathfindingScheduler not available - async pathfinding request failed for entity " + std::to_string(entityId));
+        return;
+    }
+    
+    AIInternal::PathPriority schedulerPriority = static_cast<AIInternal::PathPriority>(priority);
+    scheduler->requestPath(entityId, from, goal, schedulerPriority);
+    AIManager::Instance().updateAsyncRequestTime(entityId, now);
+    
+    // Check if path is ready immediately (from PathCache)
+    if (scheduler->hasPath(entityId)) {
+        outPath = scheduler->getPath(entityId);
+        idx = 0;
+        lastUpdate = now;
+        lastNodeDist = std::numeric_limits<float>::infinity();
+        lastProgress = now;
+        AIManager::Instance().setEntityHasValidPath(entityId, true);
     }
 }
 
@@ -340,18 +325,16 @@ bool RefreshPathWithPolicyAsync(
     
     // Check if an async path became ready, but only if we don't have a recent valid path
     // This prevents rapid path switching when paths are working fine
-    // PHASE 3 MIGRATION: Check both scheduler and legacy pathways for path availability
-    bool hasNewPath = false;
-    if (auto* scheduler = AIManager::Instance().getPathScheduler()) {
-        hasNewPath = scheduler->hasPath(entity->getID());
-        if (hasNewPath && (pathPoints.empty() || (now - lastPathUpdate) > AIManager::PathTTLConfig::NO_PROGRESS_WINDOW_MS)) {
-            pathPoints = scheduler->getPath(entity->getID());
-        }
-    } else {
-        hasNewPath = AIManager::Instance().hasAsyncPath(entity);
-        if (hasNewPath && (pathPoints.empty() || (now - lastPathUpdate) > AIManager::PathTTLConfig::NO_PROGRESS_WINDOW_MS)) {
-            pathPoints = AIManager::Instance().getAsyncPath(entity);
-        }
+    // PHASE 3 MIGRATION COMPLETE: Check PathfindingScheduler exclusively
+    auto* scheduler = AIManager::Instance().getPathScheduler();
+    if (!scheduler) {
+        GAMEENGINE_ERROR("PathfindingScheduler not available - cannot check for new async path for entity " + std::to_string(entity->getID()));
+        return !pathPoints.empty();
+    }
+    
+    bool hasNewPath = scheduler->hasPath(entity->getID());
+    if (hasNewPath && (pathPoints.empty() || (now - lastPathUpdate) > AIManager::PathTTLConfig::NO_PROGRESS_WINDOW_MS)) {
+        pathPoints = scheduler->getPath(entity->getID());
     }
     
     if (hasNewPath && (pathPoints.empty() || (now - lastPathUpdate) > AIManager::PathTTLConfig::NO_PROGRESS_WINDOW_MS)) {
