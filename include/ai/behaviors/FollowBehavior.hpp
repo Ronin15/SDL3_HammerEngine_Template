@@ -64,11 +64,6 @@ public:
   // Clone method for creating unique behavior instances
   std::shared_ptr<AIBehavior> clone() const override;
 
-  // PATHFINDING CONSOLIDATION: Deprecated methods - all pathfinding now uses PathfindingScheduler
-  void setAsyncPathfinding(bool enabled) { /* deprecated - no-op */ }
-  bool isAsyncPathfindingEnabled() const { return true; /* always async now */ }
-
-
 
 private:
   

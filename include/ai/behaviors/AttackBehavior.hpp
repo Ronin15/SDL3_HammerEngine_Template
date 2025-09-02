@@ -302,9 +302,6 @@ private:
                                                           float radius) const;
 
 public:
-  // PATHFINDING CONSOLIDATION: Deprecated methods - all pathfinding now uses PathfindingScheduler
-  void setAsyncPathfinding(bool enabled) { /* deprecated - no-op */ }
-  bool isAsyncPathfindingEnabled() const { return true; /* always async now */ }
 };
 
 #endif // ATTACK_BEHAVIOR_HPP

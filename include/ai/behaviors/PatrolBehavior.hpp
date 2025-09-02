@@ -71,9 +71,6 @@ public:
   void setMinWaypointDistance(float distance);
   void setRandomSeed(unsigned int seed);
 
-  // PATHFINDING CONSOLIDATION: Deprecated methods - all pathfinding now uses PathfindingScheduler
-  void setAsyncPathfinding(bool enabled) { /* deprecated - no-op */ }
-  bool isAsyncPathfindingEnabled() const { return true; /* always async now */ }
 
 
 private:

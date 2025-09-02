@@ -4,14 +4,12 @@
  */
 
 #include "ai/behaviors/PatrolBehavior.hpp"
+#include "ai/internal/Crowd.hpp"
+#include "ai/internal/PathFollow.hpp"
 #include "entities/Entity.hpp"
 #include "entities/NPC.hpp"
 #include "managers/AIManager.hpp"
 #include "managers/WorldManager.hpp"
-#include "managers/CollisionManager.hpp"
-#include "ai/internal/Crowd.hpp"
-#include "ai/internal/PathFollow.hpp"
-#include "core/Logger.hpp"
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -32,8 +30,8 @@ std::mt19937 &getSharedRNG() {
 
 PatrolBehavior::PatrolBehavior(const std::vector<Vector2D> &waypoints,
                                float moveSpeed, bool includeOffscreenPoints)
-    : m_waypoints(waypoints), m_currentWaypoint(0),
-      m_moveSpeed(moveSpeed), m_waypointRadius(250.0f), // 10X larger
+    : m_waypoints(waypoints), m_currentWaypoint(0), m_moveSpeed(moveSpeed),
+      m_waypointRadius(250.0f), // 10X larger
       m_includeOffscreenPoints(includeOffscreenPoints), m_needsReset(false),
       m_patrolMode(PatrolMode::FIXED_WAYPOINTS), m_rng(getSharedRNG()),
       m_seedSet(true) {
@@ -47,8 +45,8 @@ PatrolBehavior::PatrolBehavior(const std::vector<Vector2D> &waypoints,
 
 PatrolBehavior::PatrolBehavior(PatrolMode mode, float moveSpeed,
                                bool includeOffscreenPoints)
-    : m_waypoints(), m_currentWaypoint(0),
-      m_moveSpeed(moveSpeed), m_waypointRadius(250.0f), // 10X larger
+    : m_waypoints(), m_currentWaypoint(0), m_moveSpeed(moveSpeed),
+      m_waypointRadius(250.0f), // 10X larger
       m_includeOffscreenPoints(includeOffscreenPoints), m_needsReset(false),
       m_patrolMode(mode), m_rng(getSharedRNG()), m_seedSet(true) {
   setupModeDefaults(mode);
@@ -66,8 +64,8 @@ void PatrolBehavior::init(EntityPtr entity) {
 
   NPC *npc = dynamic_cast<NPC *>(entity.get());
   if (npc) {
-    // Disable bounds checking for AI-controlled entities to prevent artificial bouncing
-    // The pathfinding system will handle natural world boundaries
+    // Disable bounds checking for AI-controlled entities to prevent artificial
+    // bouncing The pathfinding system will handle natural world boundaries
     npc->setBoundsCheckEnabled(false);
   }
 }
@@ -86,7 +84,7 @@ void PatrolBehavior::executeLogic(EntityPtr entity) {
   Uint64 now = SDL_GetTicks();
 
   Vector2D targetWaypoint = m_waypoints[m_currentWaypoint];
-  
+
   // Clamp target to world bounds to avoid edge chasing
   targetWaypoint = AIInternal::ClampToWorld(targetWaypoint, 100.0f);
 
@@ -95,7 +93,7 @@ void PatrolBehavior::executeLogic(EntityPtr entity) {
     // Enforce minimum time between waypoint transitions to prevent oscillation
     if (now - m_lastWaypointTime >= 750) { // Increased from 500ms to 750ms
       m_lastWaypointTime = now;
-      
+
       // Advance to next waypoint
       m_currentWaypoint = (m_currentWaypoint + 1) % m_waypoints.size();
 
@@ -126,26 +124,28 @@ void PatrolBehavior::executeLogic(EntityPtr entity) {
     policy.nodeRadius = m_navRadius;
     policy.allowDetours = true;
     policy.lateralBias = 0.0f;
-    
-    // PATHFINDING CONSOLIDATION: All requests now use PathfindingScheduler via async pathway
-    int priority = 0; // Patrol behavior is normal priority  
-    RefreshPathWithPolicyAsync(entity, position, targetWaypoint,
-                      m_navPath, m_navIndex, m_lastPathUpdate,
-                      m_lastProgressTime, m_lastNodeDistance,
-                      policy, priority);
+
+    // PATHFINDING CONSOLIDATION: All requests now use PathfindingScheduler via
+    // async pathway
+    int priority = 0; // Patrol behavior is normal priority
+    RefreshPathWithPolicyAsync(entity, position, targetWaypoint, m_navPath,
+                               m_navIndex, m_lastPathUpdate, m_lastProgressTime,
+                               m_lastNodeDistance, policy, priority);
   }
 
   // State: FOLLOWING_PATH or DIRECT_MOVEMENT
   if (!m_navPath.empty() && m_navIndex < m_navPath.size()) {
     // Following computed path
     using namespace AIInternal;
-    bool following = FollowPathStepWithPolicy(entity, position, m_navPath, m_navIndex,
-                             m_moveSpeed, m_navRadius, 0.0f);
-    if (following) { 
+    bool following =
+        FollowPathStepWithPolicy(entity, position, m_navPath, m_navIndex,
+                                 m_moveSpeed, m_navRadius, 0.0f);
+    if (following) {
       m_lastProgressTime = now;
       // Apply separation to prevent clustering
-      Vector2D adjusted = AIInternal::ApplySeparation(entity, position,
-                            entity->getVelocity(), m_moveSpeed, 24.0f, 0.20f, 4);
+      Vector2D adjusted =
+          AIInternal::ApplySeparation(entity, position, entity->getVelocity(),
+                                      m_moveSpeed, 24.0f, 0.20f, 4);
       entity->setVelocity(adjusted);
     }
   } else {
@@ -164,7 +164,7 @@ void PatrolBehavior::executeLogic(EntityPtr entity) {
   // State: STALL_DETECTION - Handle entities that get stuck
   float currentSpeed = entity->getVelocity().length();
   const float stallThreshold = std::max(1.0f, m_moveSpeed * 0.3f);
-  
+
   if (currentSpeed < stallThreshold) {
     if (m_stallStart == 0) {
       m_stallStart = now;
@@ -174,34 +174,36 @@ void PatrolBehavior::executeLogic(EntityPtr entity) {
         Vector2D toNode = m_navPath[m_navIndex] - position;
         float len = toNode.length();
         if (len > 0.01f) {
-          Vector2D dir = toNode * (1.0f/len);
+          Vector2D dir = toNode * (1.0f / len);
           Vector2D perp(-dir.getY(), dir.getX());
           float side = ((entity->getID() & 1) ? 1.0f : -1.0f);
-          Vector2D sidestep = AIInternal::ClampToWorld(position + perp * (96.0f * side), 100.0f);
-          AIManager::Instance().requestPathAsync(entity, AIInternal::ClampToWorld(position, 100.0f), sidestep, 
-                                                 AIManager::PathPriority::Normal,
-                                                 [this](EntityID id, const std::vector<Vector2D>& path) {
-            if (!path.empty()) {
-              m_navPath = path; 
-              m_navIndex = 0; 
-              m_lastPathUpdate = SDL_GetTicks();
-            }
-          });
-          
+          Vector2D sidestep = AIInternal::ClampToWorld(
+              position + perp * (96.0f * side), 100.0f);
+          AIManager::Instance().requestPathAsync(
+              entity, AIInternal::ClampToWorld(position, 100.0f), sidestep,
+              AIManager::PathPriority::Normal,
+              [this](EntityID, const std::vector<Vector2D> &path) {
+                if (!path.empty()) {
+                  m_navPath = path;
+                  m_navIndex = 0;
+                  m_lastPathUpdate = SDL_GetTicks();
+                }
+              });
+
           // Check if we already have an async path available
           if (AIManager::Instance().hasAsyncPath(entity)) {
             auto p = AIManager::Instance().getAsyncPath(entity);
             if (!p.empty()) {
-              m_navPath = std::move(p); 
-              m_navIndex = 0; 
+              m_navPath = std::move(p);
+              m_navIndex = 0;
               m_lastPathUpdate = now;
             }
           }
-          
+
           if (m_navPath.empty()) {
             // Fallback: advance waypoint and apply backoff
             m_backoffUntil = now + 800 + (entity->getID() % 400);
-            m_navPath.clear(); 
+            m_navPath.clear();
             m_navIndex = 0;
             if (now - m_lastWaypointTime > 1500) {
               m_currentWaypoint = (m_currentWaypoint + 1) % m_waypoints.size();
@@ -291,7 +293,8 @@ std::shared_ptr<AIBehavior> PatrolBehavior::clone() const {
     cloned->m_eventTargetRadius = m_eventTargetRadius;
   }
 
-  // PATHFINDING CONSOLIDATION: Removed async flag - always uses PathfindingScheduler now
+  // PATHFINDING CONSOLIDATION: Removed async flag - always uses
+  // PathfindingScheduler now
 
   return cloned;
 }
@@ -318,18 +321,18 @@ const std::vector<Vector2D> &PatrolBehavior::getWaypoints() const {
 void PatrolBehavior::setMoveSpeed(float speed) { m_moveSpeed = speed; }
 
 bool PatrolBehavior::isAtWaypoint(const Vector2D &position,
-                                   const Vector2D &waypoint) const {
+                                  const Vector2D &waypoint) const {
   Vector2D difference = position - waypoint;
   float distance = difference.length();
-  
+
   // Use a more forgiving radius when moving fast to prevent oscillation
   float dynamicRadius = m_waypointRadius;
-  
+
   // Add speed-based tolerance (approximation)
   if (m_moveSpeed > 50.0f) {
     dynamicRadius *= 1.5f; // Larger radius for fast-moving entities
   }
-  
+
   return distance < dynamicRadius;
 }
 
@@ -551,9 +554,11 @@ void PatrolBehavior::ensureRandomSeed() const {}
 void PatrolBehavior::setupModeDefaults(PatrolMode mode) {
   m_patrolMode = mode;
 
-  // Use world bounds instead of screen dimensions for true world-scale patrolling
+  // Use world bounds instead of screen dimensions for true world-scale
+  // patrolling
   float minX, minY, maxX, maxY;
-  bool hasWorldBounds = WorldManager::Instance().getWorldBounds(minX, minY, maxX, maxY);
+  bool hasWorldBounds =
+      WorldManager::Instance().getWorldBounds(minX, minY, maxX, maxY);
   const float TILE = 32.0f;
   float worldWidth = hasWorldBounds ? (maxX - minX) * TILE : 3200.0f;
   float worldHeight = hasWorldBounds ? (maxY - minY) * TILE : 3200.0f;
@@ -566,16 +571,20 @@ void PatrolBehavior::setupModeDefaults(PatrolMode mode) {
       float margin = 100.0f;
       m_waypoints.reserve(4);
       m_waypoints.emplace_back(worldMinX + margin, worldMinY + margin);
-      m_waypoints.emplace_back(worldMinX + worldWidth - margin, worldMinY + margin);
-      m_waypoints.emplace_back(worldMinX + worldWidth - margin, worldMinY + worldHeight - margin);
-      m_waypoints.emplace_back(worldMinX + margin, worldMinY + worldHeight - margin);
+      m_waypoints.emplace_back(worldMinX + worldWidth - margin,
+                               worldMinY + margin);
+      m_waypoints.emplace_back(worldMinX + worldWidth - margin,
+                               worldMinY + worldHeight - margin);
+      m_waypoints.emplace_back(worldMinX + margin,
+                               worldMinY + worldHeight - margin);
     }
     break;
 
   case PatrolMode::RANDOM_AREA:
     m_useCircularArea = false;
     m_areaTopLeft = Vector2D(worldMinX + 50, worldMinY + 50);
-    m_areaBottomRight = Vector2D(worldMinX + worldWidth * 0.4f, worldMinY + worldHeight - 50);
+    m_areaBottomRight =
+        Vector2D(worldMinX + worldWidth * 0.4f, worldMinY + worldHeight - 50);
     m_waypointCount = 6;
     m_autoRegenerate = true;
     m_minWaypointDistance = 800.0f; // 10X larger for world scale
@@ -583,7 +592,8 @@ void PatrolBehavior::setupModeDefaults(PatrolMode mode) {
     break;
 
   case PatrolMode::EVENT_TARGET:
-    m_eventTarget = Vector2D(worldMinX + worldWidth * 0.5f, worldMinY + worldHeight * 0.5f);
+    m_eventTarget =
+        Vector2D(worldMinX + worldWidth * 0.5f, worldMinY + worldHeight * 0.5f);
     m_eventTargetRadius = 1500.0f; // 10X larger for world scale
     m_waypointCount = 8;
     generateWaypointsAroundTarget();
@@ -591,7 +601,8 @@ void PatrolBehavior::setupModeDefaults(PatrolMode mode) {
 
   case PatrolMode::CIRCULAR_AREA:
     m_useCircularArea = true;
-    m_areaCenter = Vector2D(worldMinX + worldWidth * 0.75f, worldMinY + worldHeight * 0.5f);
+    m_areaCenter = Vector2D(worldMinX + worldWidth * 0.75f,
+                            worldMinY + worldHeight * 0.5f);
     m_areaRadius = 1200.0f; // 10X larger for world scale
     m_waypointCount = 5;
     m_autoRegenerate = true;

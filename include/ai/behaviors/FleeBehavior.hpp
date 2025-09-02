@@ -157,9 +157,6 @@ private:
   float calculateFleeSpeedModifier(const EntityState &state) const;
 
 public:
-  // PATHFINDING CONSOLIDATION: Deprecated methods - all pathfinding now uses PathfindingScheduler
-  void setAsyncPathfinding(bool enabled) { /* deprecated - no-op */ }
-  bool isAsyncPathfindingEnabled() const { return true; /* always async now */ }
 };
 
 #endif // FLEE_BEHAVIOR_HPP
