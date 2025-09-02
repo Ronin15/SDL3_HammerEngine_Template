@@ -215,28 +215,63 @@ The engine uses a Manager singleton pattern with:
 - ThreadSystem integration with `TaskPriority::High` for pathfinding
 - Current public interface: `requestPathAsync()`, `hasAsyncPath()`, `getAsyncPath()`
 
-### Phase 1: Foundation Integration (Day 1-3)
+### Phase 1: Foundation Integration ✅ COMPLETED
 **Goal: Replace current hack fixes with proper architecture**
 
-- [ ] Create `src/ai/internal/PathfindingScheduler.hpp/cpp` 
-- [ ] Add `std::unique_ptr<PathfindingScheduler> m_pathScheduler;` to AIManager private members
-- [ ] Replace current `processBatchedPathfinding()` rate limiting with proper scheduling
-- [ ] Implement priority queue: `std::priority_queue<PathRequest>` with spatial comparator
-- [ ] Use existing ThreadSystem patterns: `HammerEngine::ThreadSystem::Instance().enqueueTask()`
-- [ ] Maintain backward compatibility: existing `requestPathAsync()` calls PathfindingScheduler
+- [x] ✅ Create `src/ai/internal/PathfindingScheduler.hpp/cpp` 
+- [x] ✅ Add `std::unique_ptr<PathfindingScheduler> m_pathScheduler;` to AIManager private members
+- [x] ✅ Replace current `processBatchedPathfinding()` rate limiting with proper scheduling
+- [x] ✅ Implement priority queue: `std::priority_queue<PathRequest>` with spatial comparator
+- [x] ✅ Use existing ThreadSystem patterns: `HammerEngine::ThreadSystem::Instance().enqueueTask()`
+- [x] ✅ Maintain backward compatibility: existing `requestPathAsync()` calls PathfindingScheduler
+- [x] ✅ Integrate PathCache for path reuse and performance optimization
 
-### Phase 2: Enhanced Pathfinding (Day 4-7)
-- [ ] Add SpatialPriority class using CollisionManager spatial queries
-- [ ] Implement PathCache with CollisionManager integration for congestion detection
-- [ ] Enhanced A* with hierarchical waypoints for long distances
-- [ ] Add dynamic obstacle detection using cm.queryArea() for real-time path invalidation
-- [ ] Integrate with existing PathfindingGrid class
+**Status**: Phase 1 is COMPLETE. PathfindingScheduler is fully integrated into AIManager with:
+- Priority-based request queuing with spatial sorting
+- PathCache integration for path reuse (64px tolerance)
+- CollisionManager integration for area congestion detection  
+- Proper cleanup and shutdown handling
+- Thread-safe request/result management
+- Performance statistics and logging
 
-### Phase 3: Behavior Migration (Day 8-14)
-- [ ] Add navigation helpers to AIBehavior base class
-- [ ] Migrate behaviors one-by-one from PathFollow.cpp functions
-- [ ] Replace thread_local maps with AIManager-managed state
+### Phase 2: Enhanced Pathfinding 🔄 IN PROGRESS  
+**Goal: Complete spatial priority system and hierarchical pathfinding**
+
+- [x] ✅ Implement PathCache with CollisionManager integration for congestion detection
+- [x] ✅ Add dynamic obstacle detection using cm.queryArea() for real-time path invalidation
+- [x] ✅ Integrate with existing PathfindingGrid class
+- [ ] 🔄 **CURRENT TASK**: Add SpatialPriority class using CollisionManager spatial queries
+- [ ] Enhanced A* with hierarchical waypoints for long distances  
+- [ ] Predictive pathfinding for high-priority entities
+
+**Status**: Phase 2 is PARTIALLY COMPLETE. PathCache is fully implemented with:
+- Smart path similarity detection (64px tolerance)  
+- LRU cache eviction (256 path limit)
+- Congestion-aware cache eviction using CollisionManager queries
+- Statistics tracking (hit rates, evictions, etc.)
+- Spatial hash-based path quantization for clustering
+
+**REMAINING WORK**: 
+- Create dedicated `SpatialPriority` class to formalize distance-based priority zones
+- Currently spatial priority is handled inline in PathfindingScheduler::adjustPriorityByDistance()
+- Need hierarchical pathfinding for long-distance navigation (>1200px)
+
+### Phase 3: Behavior Migration ⚠️ CRITICAL PRIORITY
+**Goal: Eliminate thread_local memory leaks and uncoordinated entity pathfinding**
+
+- [ ] 🔴 **CRITICAL**: Remove thread_local maps causing memory leaks in PathFollow.cpp
+  - Line 40: `static thread_local WorldBoundsCache g_boundsCache;`
+  - Line 122: `static thread_local std::unordered_map<EntityID, Uint64> lastDetourAttempt;`
+  - Line 325: `static thread_local std::unordered_map<EntityID, std::pair<Uint64, uint8_t>> detourTracking;`
+- [ ] Add navigation helpers to AIBehavior base class to replace PathFollow functions
+- [ ] Migrate behaviors one-by-one from PathFollow.cpp functions to use PathfindingScheduler directly
+- [ ] Centralize all pathfinding state in AIManager instead of per-thread storage
 - [ ] Remove PathFollow.cpp after full migration
+
+**Status**: URGENT - Thread-local maps are causing memory fragmentation and preventing scalability.
+Current PathFollow.cpp still routes through the old requestPathAsync() pathway, which works but
+bypasses many of the optimizations in PathfindingScheduler. The thread_local state prevents 
+proper coordination between entities.
 
 ### Phase 4: Performance Optimization (Day 15-21)
 - [ ] Add performance counters using existing stats system
@@ -301,6 +336,64 @@ include/ai/                         # AI system headers
 - Follow existing module organization and naming conventions
 - **CollisionManager integration**: Reuse existing spatial hash for all spatial queries
 - **Crowd.hpp/cpp preserved**: No changes needed, already well-integrated
+
+---
+
+## Current Implementation Analysis (January 2025)
+
+### ✅ COMPLETED COMPONENTS
+
+#### PathfindingScheduler (Phase 1) 
+- **Location**: `src/ai/internal/PathfindingScheduler.hpp/cpp` (553 lines)
+- **Integration**: Fully integrated into AIManager with proper singleton pattern
+- **Features**:
+  - Priority queue with spatial sorting for cache efficiency
+  - Distance-based priority adjustment (Near: 0-800px, Medium: 800-1600px, Far: 1600-3200px, Culled: 3200px+)
+  - Request rate limiting (MAX_REQUESTS_PER_FRAME = 8)
+  - Thread-safe request extraction and result storage
+  - Performance statistics tracking
+  - Proper shutdown handling with m_isShutdown guard
+
+#### PathCache (Phase 2 Partial)
+- **Location**: `src/ai/internal/PathCache.hpp/cpp` (377 lines)
+- **Features**:
+  - Smart path similarity detection with 64px tolerance
+  - LRU cache eviction (MAX_CACHED_PATHS = 256)
+  - Congestion-aware cache eviction using CollisionManager
+  - Spatial quantization for better path clustering
+  - Statistics tracking (hit rate, evictions, total queries)
+  - CollisionManager integration for dynamic obstacle detection
+
+### 🔄 PARTIALLY COMPLETED
+
+#### Spatial Priority System
+- **Current**: Basic distance-based priority in PathfindingScheduler::adjustPriorityByDistance()
+- **Missing**: Dedicated SpatialPriority class for more sophisticated zone management
+- **Needed**: Formal priority zone system with dynamic adjustments based on player movement
+
+### 🔴 CRITICAL ISSUES REMAINING
+
+#### Thread-Local Memory Leaks in PathFollow.cpp
+- **Line 40**: `static thread_local WorldBoundsCache g_boundsCache;` - Memory leak per thread
+- **Line 122**: `static thread_local std::unordered_map<EntityID, Uint64> lastDetourAttempt;` - Grows indefinitely  
+- **Line 325**: `static thread_local std::unordered_map<EntityID, std::pair<Uint64, uint8_t>> detourTracking;` - Per-thread entity state
+
+#### Bypassed Optimizations
+- PathFollow.cpp still uses old `AIManager::requestPathAsync()` pathway
+- Misses PathCache benefits and spatial priority optimizations
+- Uncoordinated pathfinding spam (estimated 85 requests/frame for 100 entities)
+
+### 📊 PERFORMANCE STATUS
+- **Pathfinding Tests**: All 15 test cases passing ✅
+- **Performance**: 50 requests in 33 microseconds (0 μs per request)
+- **Success Rate**: 100% for simple paths, 2 waypoints average
+- **Memory Usage**: Tests passing for 200 operations
+
+### 🎯 IMMEDIATE PRIORITIES
+1. **CRITICAL**: Fix thread_local memory leaks in PathFollow.cpp
+2. **HIGH**: Create formal SpatialPriority class  
+3. **MEDIUM**: Add hierarchical pathfinding for long distances
+4. **LOW**: Fine-tune performance metrics and logging
 
 ## Migration Strategy
 

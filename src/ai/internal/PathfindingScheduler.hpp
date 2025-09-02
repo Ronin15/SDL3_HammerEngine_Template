@@ -13,11 +13,12 @@
 #include "../../entities/Entity.hpp" // For EntityID type
 
 // Forward declarations to minimize dependencies
-namespace HammerEngine { class AABB; }
+namespace HammerEngine { struct AABB; }
 class CollisionManager;
 
 namespace AIInternal { 
     class PathCache; 
+    class SpatialPriority;
     struct PathCacheStats; 
 }
 
@@ -111,6 +112,9 @@ public:
     
     // Shutdown method following engine patterns
     void shutdown();
+    
+    // SpatialPriority integration (Phase 2)
+    void setSpatialPriority(SpatialPriority* spatialPriority);
 
 private:
     // Request management
@@ -121,6 +125,7 @@ private:
     
     // Spatial priority system
     Vector2D m_lastPlayerPos;
+    SpatialPriority* m_spatialPriority; // Non-owning pointer to AIManager's SpatialPriority system
     
     // Path caching system
     std::unique_ptr<PathCache> m_pathCache;

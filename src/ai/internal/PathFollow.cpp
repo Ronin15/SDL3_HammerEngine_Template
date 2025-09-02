@@ -1,4 +1,5 @@
 #include "ai/internal/PathFollow.hpp"
+#include "ai/internal/PathfindingScheduler.hpp" // For Phase 3 migration
 #include "managers/AIManager.hpp"
 #include "managers/WorldManager.hpp"
 #include "managers/CollisionManager.hpp"
@@ -9,41 +10,9 @@
 
 namespace AIInternal {
 
-// Cache for expensive world bounds calculations
-struct WorldBoundsCache {
-    bool valid = false;
-    float minX, minY, maxX, maxY;
-    float worldMinX, worldMinY, worldMaxX, worldMaxY;
-    static constexpr float TILE = 32.0f;
-    
-    void update() {
-        if (WorldManager::Instance().getWorldBounds(minX, minY, maxX, maxY)) {
-            worldMinX = minX * TILE;
-            worldMinY = minY * TILE; 
-            worldMaxX = maxX * TILE;
-            worldMaxY = maxY * TILE;
-            valid = true;
-        } else {
-            valid = false;
-        }
-    }
-    
-    Vector2D clamp(const Vector2D& p, float margin) const {
-        if (!valid) return p;
-        return Vector2D(
-            std::clamp(p.getX(), worldMinX + margin, worldMaxX - margin),
-            std::clamp(p.getY(), worldMinY + margin, worldMaxY - margin)
-        );
-    }
-};
-
-static thread_local WorldBoundsCache g_boundsCache;
-
+// Use centralized world bounds caching via AIManager (replaces thread_local cache)
 Vector2D ClampToWorld(const Vector2D &p, float margin) {
-    if (!g_boundsCache.valid) {
-        g_boundsCache.update();
-    }
-    return g_boundsCache.clamp(p, margin);
+    return AIManager::Instance().clampToWorld(p, margin);
 }
 
 WorldBoundsPixels GetWorldBoundsInPixels() {
@@ -69,10 +38,16 @@ static void requestTo(EntityPtr entity,
                       Uint64 now,
                       Uint64 &lastProgress,
                       float &lastNodeDist) {
-    // PATHFINDING CONSOLIDATION: Route all requests through async PathfindingScheduler 
-    // to utilize PathCache and improve timeout rates
-    AIManager::Instance().requestPathAsync(entity, from, goal, AIManager::PathPriority::Normal);
-    outPath = AIManager::Instance().getAsyncPath(entity);
+    // PHASE 3 MIGRATION: Route directly through PathfindingScheduler for full optimization benefits
+    // This enables PathCache utilization and consistent priority handling
+    if (auto* scheduler = AIManager::Instance().getPathScheduler()) {
+        scheduler->requestPath(entity->getID(), from, goal, AIInternal::PathPriority::Normal);
+        outPath = scheduler->getPath(entity->getID());
+    } else {
+        // Fallback to legacy pathway if scheduler not available
+        AIManager::Instance().requestPathAsync(entity, from, goal, AIManager::PathPriority::Normal);
+        outPath = AIManager::Instance().getAsyncPath(entity);
+    }
     idx = 0;
     lastUpdate = now;
     lastNodeDist = std::numeric_limits<float>::infinity();
@@ -118,12 +93,11 @@ bool RefreshPathWithPolicy(
     requestTo(entity, clampedCurrentPos, clampedGoal, pathPoints, currentPathIndex, lastPathUpdate, now, lastProgressTime, lastNodeDistance);
     if (!pathPoints.empty() || !policy.allowDetours) return true;
 
-    // Try detours around the goal, but only if we haven't tried too many times recently
-    static thread_local std::unordered_map<EntityID, Uint64> lastDetourAttempt;
+    // Try detours around the goal, using centralized state management
     EntityID entityId = entity->getID();
     
-    if (now - lastDetourAttempt[entityId] > 4000) { // Increased cooldown to reduce spam
-        lastDetourAttempt[entityId] = now;
+    if (AIManager::Instance().canEntityMakeDetour(entityId, now)) {
+        AIManager::Instance().resetEntityDetourCount(entityId, now);
         
         // Check if we're in a crowded area - if so, try alternative targets instead of detours
         AABB crowdCheck(currentPos.getX() - 50.0f, currentPos.getY() - 50.0f, 100.0f, 100.0f);
@@ -212,14 +186,7 @@ bool FollowPathStepWithPolicy(
     return true;
 }
 
-// Optimized async request tracking with per-entity state management
-struct AsyncRequestState {
-    Uint64 lastRequestTime = 0;
-    bool hasValidPath = false;
-    static constexpr Uint64 MIN_REQUEST_INTERVAL = 2500;
-};
-
-static std::unordered_map<EntityID, AsyncRequestState> g_asyncStates;
+// AsyncRequestState now managed centrally by AIManager (no more static maps)
 
 static void requestToAsync(EntityPtr entity,
                            const Vector2D &from,
@@ -232,36 +199,64 @@ static void requestToAsync(EntityPtr entity,
                            float &lastNodeDist,
                            int priority) {
     EntityID entityId = entity->getID();
-    AsyncRequestState& state = g_asyncStates[entityId];
     
-    // Check if we recently made an async request for this entity
-    if (state.lastRequestTime != 0 && (now - state.lastRequestTime) < AsyncRequestState::MIN_REQUEST_INTERVAL) {
+    // Check if we can make an async request using centralized state management
+    if (!AIManager::Instance().canEntityMakeAsyncRequest(entityId, now)) {
         // Still waiting for previous request, just check if result is ready
+        // PHASE 3 MIGRATION: Check both scheduler and legacy pathways for path availability
+        bool hasPath = false;
+        if (auto* scheduler = AIManager::Instance().getPathScheduler()) {
+            hasPath = scheduler->hasPath(entityId);
+            if (hasPath) {
+                outPath = scheduler->getPath(entityId);
+            }
+        } else {
+            hasPath = AIManager::Instance().hasAsyncPath(entity);
+            if (hasPath) {
+                outPath = AIManager::Instance().getAsyncPath(entity);
+            }
+        }
+        
+        if (hasPath) {
+            idx = 0;
+            lastUpdate = now;
+            lastNodeDist = std::numeric_limits<float>::infinity();
+            lastProgress = now;
+            AIManager::Instance().setEntityHasValidPath(entityId, true);
+        }
+        return;
+    }
+    
+    // PHASE 3 MIGRATION: Route directly through PathfindingScheduler for full optimization benefits
+    if (auto* scheduler = AIManager::Instance().getPathScheduler()) {
+        AIInternal::PathPriority schedulerPriority = static_cast<AIInternal::PathPriority>(priority);
+        scheduler->requestPath(entityId, from, goal, schedulerPriority);
+        AIManager::Instance().updateAsyncRequestTime(entityId, now);
+        
+        // Check if path is ready immediately (from PathCache)
+        if (scheduler->hasPath(entityId)) {
+            outPath = scheduler->getPath(entityId);
+            idx = 0;
+            lastUpdate = now;
+            lastNodeDist = std::numeric_limits<float>::infinity();
+            lastProgress = now;
+            AIManager::Instance().setEntityHasValidPath(entityId, true);
+        }
+    } else {
+        // Fallback to legacy pathway if scheduler not available
+        AIManager::PathPriority asyncPriority = static_cast<AIManager::PathPriority>(priority);
+        AIManager::Instance().requestPathAsync(entity, from, goal, asyncPriority);
+        AIManager::Instance().updateAsyncRequestTime(entityId, now);
+        
+        // Check if async path is ready immediately (from previous request)
         if (AIManager::Instance().hasAsyncPath(entity)) {
             outPath = AIManager::Instance().getAsyncPath(entity);
             idx = 0;
             lastUpdate = now;
             lastNodeDist = std::numeric_limits<float>::infinity();
             lastProgress = now;
-            state.lastRequestTime = 0; // Clear tracking when path received
-            state.hasValidPath = true;
+            AIManager::Instance().setEntityHasValidPath(entityId, true);
         }
-        return;
-    }
-    
-    AIManager::PathPriority asyncPriority = static_cast<AIManager::PathPriority>(priority);
-    AIManager::Instance().requestPathAsync(entity, from, goal, asyncPriority);
-    state.lastRequestTime = now; // Track when we made the request
-    
-    // Check if async path is ready immediately (from previous request)
-    if (AIManager::Instance().hasAsyncPath(entity)) {
-        outPath = AIManager::Instance().getAsyncPath(entity);
-        idx = 0;
-        lastUpdate = now;
-        lastNodeDist = std::numeric_limits<float>::infinity();
-        lastProgress = now;
-        state.lastRequestTime = 0; // Clear tracking when path received
-        state.hasValidPath = true;
     }
 }
 
@@ -310,9 +305,8 @@ bool RefreshPathWithPolicyAsync(
             }
         }
     }
-    // Longer TTL for async paths to reduce refresh frequency
-    Uint64 pathTTL = policy.pathTTL * 2; // Double the TTL for async paths
-    if (now - lastPathUpdate > pathTTL) needRefresh = true;
+    // Use centralized TTL for async paths
+    if (now - lastPathUpdate > AIManager::PathTTLConfig::ASYNC_PATH_TTL_MS) needRefresh = true;
     
     // If we need a refresh, request async path
     if (needRefresh) {
@@ -321,31 +315,20 @@ bool RefreshPathWithPolicyAsync(
         
         // If no async path is ready yet, try detours if allowed
         if (pathPoints.empty() && policy.allowDetours) {
-            // Optimized detour tracking with reduced memory overhead
-            static thread_local std::unordered_map<EntityID, std::pair<Uint64, uint8_t>> detourTracking;
-            
             EntityID entityId = entity->getID();
-            auto& [lastDetourTime, detourCount] = detourTracking[entityId];
             
-            if (now - lastDetourTime > 5000) {
-                detourCount = 0;
-                lastDetourTime = now;
-            }
-            
-            if (detourCount < 4) {
+            // Use centralized state management instead of thread_local maps
+            if (AIManager::Instance().updateEntityPathfindingState(entityId, now)) {
                 // Try most promising detour angles first (cardinal and diagonal directions)
                 static const float priorityAngles[] = {0.0f, 1.57f, 3.14f, 4.71f, 0.78f, 2.35f, 3.92f, 5.49f};
                 
                 for (float angle : priorityAngles) {
-                    if (detourCount >= 4) break;
-                    
                     for (float radius : policy.detourRadii) {
                         Vector2D offset(radius * cosf(angle), radius * sinf(angle));
                         Vector2D detourGoal = ClampToWorld(effectiveGoal + offset, 100.0f);
                         requestToAsync(entity, currentPos, detourGoal, pathPoints, currentPathIndex,
                                      lastPathUpdate, now, lastProgressTime, lastNodeDistance, priority);
                         if (!pathPoints.empty()) {
-                            detourCount++;
                             return true;
                         }
                     }
@@ -357,9 +340,21 @@ bool RefreshPathWithPolicyAsync(
     
     // Check if an async path became ready, but only if we don't have a recent valid path
     // This prevents rapid path switching when paths are working fine
-    if (AIManager::Instance().hasAsyncPath(entity) && 
-        (pathPoints.empty() || (now - lastPathUpdate) > 3000)) {
-        pathPoints = AIManager::Instance().getAsyncPath(entity);
+    // PHASE 3 MIGRATION: Check both scheduler and legacy pathways for path availability
+    bool hasNewPath = false;
+    if (auto* scheduler = AIManager::Instance().getPathScheduler()) {
+        hasNewPath = scheduler->hasPath(entity->getID());
+        if (hasNewPath && (pathPoints.empty() || (now - lastPathUpdate) > AIManager::PathTTLConfig::NO_PROGRESS_WINDOW_MS)) {
+            pathPoints = scheduler->getPath(entity->getID());
+        }
+    } else {
+        hasNewPath = AIManager::Instance().hasAsyncPath(entity);
+        if (hasNewPath && (pathPoints.empty() || (now - lastPathUpdate) > AIManager::PathTTLConfig::NO_PROGRESS_WINDOW_MS)) {
+            pathPoints = AIManager::Instance().getAsyncPath(entity);
+        }
+    }
+    
+    if (hasNewPath && (pathPoints.empty() || (now - lastPathUpdate) > AIManager::PathTTLConfig::NO_PROGRESS_WINDOW_MS)) {
         currentPathIndex = 0;
         lastPathUpdate = now;
         lastNodeDistance = std::numeric_limits<float>::infinity();
