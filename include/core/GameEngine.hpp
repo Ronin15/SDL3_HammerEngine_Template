@@ -20,6 +20,7 @@ class AIManager;
 class EventManager;
 class InputManager;
 class ParticleManager;
+class PathfinderManager;
 class ResourceTemplateManager;
 class WorldResourceManager;
 class WorldManager;
@@ -278,6 +279,7 @@ private:
   AIManager *mp_aiManager{nullptr};
   EventManager *mp_eventManager{nullptr};
   ParticleManager *mp_particleManager{nullptr};
+  PathfinderManager *mp_pathfinderManager{nullptr};
   ResourceTemplateManager *mp_resourceTemplateManager{nullptr};
   WorldResourceManager *mp_worldResourceManager{nullptr};
   WorldManager *mp_worldManager{nullptr};

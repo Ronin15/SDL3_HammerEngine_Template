@@ -7,7 +7,8 @@
 #include "managers/AIManager.hpp"
 #include "managers/CollisionManager.hpp"
 #include "ai/internal/Crowd.hpp"
-#include "ai/internal/PathFollow.hpp"
+#include "managers/PathfinderManager.hpp"
+#include "ai/internal/PathfindingCompat.hpp"
 #include <algorithm>
 #include <cmath>
 

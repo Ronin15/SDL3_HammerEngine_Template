@@ -5,7 +5,8 @@
 
 #include "ai/behaviors/PatrolBehavior.hpp"
 #include "ai/internal/Crowd.hpp"
-#include "ai/internal/PathFollow.hpp"
+#include "managers/PathfinderManager.hpp"
+#include "ai/internal/PathfindingCompat.hpp"
 #include "entities/Entity.hpp"
 #include "entities/NPC.hpp"
 #include "managers/AIManager.hpp"
@@ -179,9 +180,9 @@ void PatrolBehavior::executeLogic(EntityPtr entity) {
           float side = ((entity->getID() & 1) ? 1.0f : -1.0f);
           Vector2D sidestep = AIInternal::ClampToWorld(
               position + perp * (96.0f * side), 100.0f);
-          AIManager::Instance().requestPathAsync(
-              entity, AIInternal::ClampToWorld(position, 100.0f), sidestep,
-              AIManager::PathPriority::Normal,
+          PathfinderManager::Instance().requestPath(
+              entity->getID(), AIInternal::ClampToWorld(position, 100.0f), sidestep,
+              AIInternal::PathPriority::Normal,
               [this](EntityID, const std::vector<Vector2D> &path) {
                 if (!path.empty()) {
                   m_navPath = path;
@@ -189,16 +190,6 @@ void PatrolBehavior::executeLogic(EntityPtr entity) {
                   m_lastPathUpdate = SDL_GetTicks();
                 }
               });
-
-          // Check if we already have an async path available
-          if (AIManager::Instance().hasAsyncPath(entity)) {
-            auto p = AIManager::Instance().getAsyncPath(entity);
-            if (!p.empty()) {
-              m_navPath = std::move(p);
-              m_navIndex = 0;
-              m_lastPathUpdate = now;
-            }
-          }
 
           if (m_navPath.empty()) {
             // Fallback: advance waypoint and apply backoff

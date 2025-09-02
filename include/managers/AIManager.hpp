@@ -35,13 +35,8 @@
 #include <unordered_map>
 #include <vector>
 
-// Forward declarations for pathfinding system
-namespace HammerEngine { class PathfindingGrid; }
-namespace AIInternal { 
-    class PathfindingScheduler; 
-    class SpatialPriority;
-    struct PathRequest;
-}
+// PathfinderManager available for centralized pathfinding services
+class PathfinderManager;
 
 // Conditional debug logging
 #ifdef AI_DEBUG_LOGGING
@@ -322,86 +317,15 @@ public:
   void processMessageQueue();
 
 
-  // Async Pathfinding API (performance optimized)
-  enum class PathPriority {
-    Critical = 0, // Player, combat situations
-    High = 1,     // Close NPCs, important behaviors  
-    Normal = 2,   // Regular NPC navigation
-    Low = 3       // Background/distant NPCs
-  };
-  
-  struct AsyncPathRequest {
-    EntityID entityId;
-    Vector2D start;
-    Vector2D goal;
-    PathPriority priority;
-    uint64_t requestTime;
-    std::function<void(EntityID, const std::vector<Vector2D>&)> callback;
-    
-    AsyncPathRequest(EntityID id, const Vector2D& s, const Vector2D& g, 
-                    PathPriority p = PathPriority::Normal,
-                    std::function<void(EntityID, const std::vector<Vector2D>&)> cb = nullptr)
-      : entityId(id), start(s), goal(g), priority(p), 
-        requestTime(SDL_GetTicks()), callback(cb) {}
-  };
-
-  // Async pathfinding methods
-  void requestPathAsync(EntityPtr entity, const Vector2D &start, const Vector2D &goal,
-                       PathPriority priority = PathPriority::Normal,
-                       std::function<void(EntityID, const std::vector<Vector2D>&)> callback = nullptr);
-  void requestPathAsync(EntityID entityId, const Vector2D &start, const Vector2D &goal,
-                       PathPriority priority = PathPriority::Normal,
-                       std::function<void(EntityID, const std::vector<Vector2D>&)> callback = nullptr);
-  bool hasAsyncPath(EntityPtr entity) const;
-  bool hasAsyncPath(EntityID entityId) const;
-  std::vector<Vector2D> getAsyncPath(EntityPtr entity) const;
-  std::vector<Vector2D> getAsyncPath(EntityID entityId) const;
-  void clearAsyncPath(EntityPtr entity);
-  void clearAsyncPath(EntityID entityId);
-  
-  // Pathfinding performance and control
-  void setAsyncPathfinding(bool enabled) { m_asyncPathfindingEnabled = enabled; }
-  bool isAsyncPathfindingEnabled() const { return m_asyncPathfindingEnabled; }
-  size_t getAsyncPathQueueSize() const;
-  void processAsyncPathResults();
-
-  // Emergency unstick mechanism
-  void forceUnstickEntity(EntityPtr entity);
-  
-  // Diagnostic and debugging
-  bool isEntityStalled(EntityPtr entity) const;
-  void logEntityDiagnostics(EntityPtr entity) const;
-  
-  // Anti-clumping system
-  size_t checkAndDisperseClusters(EntityPtr entity);
-  
-  // Centralized pathfinding utilities (replaces PathFollow.cpp thread_local functions)
-  Vector2D clampToWorld(const Vector2D& position, float margin = 100.0f) const;
-  bool updateEntityPathfindingState(EntityID entityId, uint64_t currentTime);
-  bool canEntityMakeDetour(EntityID entityId, uint64_t currentTime) const;
-  void resetEntityDetourCount(EntityID entityId, uint64_t currentTime);
-  
-  // Centralized async request state management (replaces g_asyncStates static map)
-  bool canEntityMakeAsyncRequest(EntityID entityId, uint64_t currentTime) const;
-  void updateAsyncRequestTime(EntityID entityId, uint64_t currentTime);
-  void setEntityHasValidPath(EntityID entityId, bool hasPath);
-  
-  // Centralized TTL system (replaces scattered timeout values)
-  struct PathTTLConfig {
-    static constexpr uint64_t STANDARD_PATH_TTL_MS = 2000;        // Standard path lifetime
-    static constexpr uint64_t ASYNC_PATH_TTL_MS = 4000;          // Async paths get longer TTL
-    static constexpr uint64_t NO_PROGRESS_WINDOW_MS = 3000;      // Time before declaring no progress
-    static constexpr uint64_t MIN_ASYNC_REQUEST_INTERVAL_MS = 2500; // Min time between async requests
-  };
-
-  // Phase 3: Direct PathScheduler access for optimal performance
   /**
-   * @brief Get direct access to PathfindingScheduler for optimal pathfinding performance
-   * @return Pointer to PathfindingScheduler instance, or nullptr if not initialized
-   * @details Enables direct routing to PathScheduler, bypassing legacy pathways for full 
-   *          PathCache benefits and consistent priority handling
+   * @brief Get direct access to PathfinderManager for optimal pathfinding performance
+   * @return Reference to PathfinderManager instance
+   * @details Provides access to centralized pathfinding service for all AI entities
+   * 
+   * All pathfinding functionality has been moved to PathfinderManager.
+   * Use PathfinderManager::Instance() to access pathfinding services.
    */
-  AIInternal::PathfindingScheduler* getPathScheduler() const;
+  PathfinderManager& getPathfinderManager() const;
 
 private:
   AIManager() = default;
@@ -501,8 +425,7 @@ private:
   std::atomic<bool> m_processingMessages{false};
   unsigned int m_maxThreads{0};
 
-  // Path cache and backoff
-  mutable std::unordered_map<uint64_t, Uint64> m_pathCooldownUntil; // next allowed request time (SDL ticks)
+  // Legacy pathfinding state removed - all pathfinding handled by PathfinderManager
 
   // Behavior execution tracking
   std::atomic<size_t> m_totalBehaviorExecutions{0};
@@ -555,11 +478,7 @@ private:
   void recordPerformance(BehaviorType type, double timeMs, uint64_t entities);
   static uint64_t getCurrentTimeNanos();
   
-  // Async pathfinding helpers
-  void processAsyncPathRequest(EntityID entityId, const Vector2D &start, const Vector2D &goal);
-  
-  // PathfindingScheduler processing
-  void processScheduledPathfinding(const std::vector<AIInternal::PathRequest>& requests);
+  // Legacy pathfinding methods removed - use PathfinderManager instead
 
   // Lock-free message queue
   struct alignas(CACHE_LINE_SIZE) LockFreeMessage {
@@ -575,59 +494,7 @@ private:
   // Shutdown state
   bool m_isShutdown{false};
 
-  // Pathfinding grid (rebuilt on world events)
-  struct PathGridDeleter { void operator()(HammerEngine::PathfindingGrid*) const; };
-  std::unique_ptr<HammerEngine::PathfindingGrid, PathGridDeleter> m_pathGrid;
-  
-  // Async pathfinding system
-  std::atomic<bool> m_asyncPathfindingEnabled{true};
-  std::queue<AsyncPathRequest> m_asyncPathQueue;
-  std::unordered_map<EntityID, std::vector<Vector2D>> m_asyncEntityPaths;
-  std::unordered_map<EntityID, uint64_t> m_asyncPathTimestamps;
-  mutable std::mutex m_asyncPathMutex;
-  mutable std::mutex m_asyncQueueMutex;
-  std::atomic<size_t> m_asyncPathsProcessed{0};
-  std::atomic<size_t> m_asyncPathsRequested{0};
-  
-  
-  // Centralized pathfinding state management (replaces thread_local maps in PathFollow.cpp)
-  struct WorldBoundsCache {
-    bool valid = false;
-    float worldMinX, worldMinY, worldMaxX, worldMaxY;
-    uint64_t lastUpdateTime = 0;
-    static constexpr uint64_t CACHE_LIFETIME_MS = 1000; // 1 second cache
-    static constexpr float TILE_SIZE = 32.0f;
-  };
-  mutable WorldBoundsCache m_worldBoundsCache;
-  mutable std::mutex m_worldBoundsMutex;
-  
-  // Entity-specific pathfinding state (replaces thread_local maps)
-  struct EntityPathfindingState {
-    uint64_t lastDetourAttempt = 0;
-    uint8_t detourCount = 0;
-    uint64_t lastDetourReset = 0;
-    static constexpr uint64_t DETOUR_COOLDOWN_MS = 4000;
-    static constexpr uint64_t DETOUR_RESET_INTERVAL_MS = 5000;
-    static constexpr uint8_t MAX_DETOUR_COUNT = 4;
-  };
-  std::unordered_map<EntityID, EntityPathfindingState> m_entityPathfindingStates;
-  mutable std::mutex m_entityStatesMutex;
-  
-  // Async request state management (replaces static g_asyncStates)
-  struct AsyncRequestState {
-    uint64_t lastRequestTime = 0;
-    bool hasValidPath = false;
-  };
-  std::unordered_map<EntityID, AsyncRequestState> m_asyncRequestStates;
-  mutable std::mutex m_asyncRequestMutex;
-  
-  // Phase 1: PathfindingScheduler integration
-  struct PathSchedulerDeleter { void operator()(AIInternal::PathfindingScheduler*) const; };
-  std::unique_ptr<AIInternal::PathfindingScheduler, PathSchedulerDeleter> m_pathScheduler;
-  
-  // Phase 2: SpatialPriority integration
-  struct SpatialPriorityDeleter { void operator()(AIInternal::SpatialPriority*) const; };
-  std::unique_ptr<AIInternal::SpatialPriority, SpatialPriorityDeleter> m_spatialPriority;
+  // All pathfinding functionality moved to PathfinderManager
 };
 
 #endif // AI_MANAGER_HPP

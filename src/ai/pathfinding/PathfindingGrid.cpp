@@ -197,8 +197,7 @@ PathfindingResult PathfindingGrid::findPath(const Vector2D& start, const Vector2
         return PathfindingResult::INVALID_GOAL; 
     }
     
-    // Only reject goals that are actually blocked or truly invalid
-    // Allow boundary goals if they're not blocked - many valid paths exist near edges
+    // Enhanced goal validation - reject problematic goals early
     if (isBlocked(gx, gy)) {
         // Try to find a nearby unblocked cell instead of rejecting outright
         int nearGx = gx, nearGy = gy;
@@ -208,6 +207,44 @@ PathfindingResult PathfindingGrid::findPath(const Vector2D& start, const Vector2
             m_stats.totalRequests++;
             m_stats.invalidGoals++;
             return PathfindingResult::INVALID_GOAL;
+        }
+    }
+    
+    // Quick reachability test - if goal is in a completely isolated area, reject early
+    int dxGoal = std::abs(sx - gx), dyGoal = std::abs(sy - gy);
+    int directDistance = std::max(dxGoal, dyGoal);
+    
+    // For very long distances, do a quick connectivity check
+    if (directDistance > 75) {
+        // Sample a few points along the direct line to check for major barriers
+        int samples = std::min(8, directDistance / 10);
+        int blockedSamples = 0;
+        
+        for (int i = 1; i < samples; ++i) {
+            float t = static_cast<float>(i) / static_cast<float>(samples);
+            int mx = sx + static_cast<int>((gx - sx) * t);
+            int my = sy + static_cast<int>((gy - sy) * t);
+            
+            // Check if this sample point has any open neighbors (basic connectivity)
+            bool hasOpenNeighbor = false;
+            for (int dx = -1; dx <= 1 && !hasOpenNeighbor; dx++) {
+                for (int dy = -1; dy <= 1 && !hasOpenNeighbor; dy++) {
+                    int nx = mx + dx, ny = my + dy;
+                    if (inBounds(nx, ny) && !isBlocked(nx, ny)) {
+                        hasOpenNeighbor = true;
+                    }
+                }
+            }
+            
+            if (!hasOpenNeighbor) blockedSamples++;
+        }
+        
+        // If more than 50% of samples are in completely blocked areas, likely unreachable
+        if (blockedSamples > samples / 2) {
+            m_stats.totalRequests++;
+            m_stats.invalidGoals++;
+            PATHFIND_DEBUG("Goal rejected: appears unreachable based on connectivity test");
+            return PathfindingResult::NO_PATH_FOUND;
         }
     }
     // Nudge start/goal if blocked (common after collision resolution)
@@ -253,13 +290,19 @@ PathfindingResult PathfindingGrid::findPath(const Vector2D& start, const Vector2
         return baseDistance;
     };
 
-    // Restrict search to a reasonable ROI around start AND goal to prevent
-    // exploring the whole map on unreachable goals
-    int dxGoal = std::abs(sx - gx), dyGoal = std::abs(sy - gy);
-    int baseDistance = std::max(dxGoal, dyGoal);
-    // More generous ROI: allow detours up to 2x the direct distance + margin
-    int r = std::max(25, static_cast<int>(baseDistance * 2.0f + 20));
-    // ROI that encompasses both start and goal with buffer
+    // Restrict search to a tighter ROI to prevent excessive exploration
+    // (reuse variables from earlier)
+    int baseDistance = directDistance;
+    
+    // Much tighter ROI: only allow detours up to 1.5x the direct distance + small margin
+    int r = std::max(15, static_cast<int>(baseDistance * 1.5f + 10));
+    
+    // Further limit ROI based on distance - prevent huge search areas
+    if (baseDistance > 50) {
+        r = std::min(r, baseDistance + 25);  // Cap ROI growth for long distances
+    }
+    
+    // ROI that encompasses both start and goal with minimal buffer
     int roiMinX = std::max(0, std::min(sx, gx) - r);
     int roiMaxX = std::min(W - 1, std::max(sx, gx) + r);
     int roiMinY = std::max(0, std::min(sy, gy) - r);
@@ -292,17 +335,30 @@ PathfindingResult PathfindingGrid::findPath(const Vector2D& start, const Vector2
     const int dx8[8] = {1,-1,0,0, 1,1,-1,-1};
     const int dy8[8] = {0,0,1,-1, 1,-1,1,-1};
 
-    // Generous iteration limits - better to succeed than timeout
-    int baseIters = std::max(1000, baseDistance * 80); // Increased back up
-    int dynamicMaxIters = std::min(m_maxIterations, baseIters + 3000); // Larger buffer
+    // Conservative iteration limits to prevent timeouts - fail fast on difficult paths
+    int baseIters = std::max(500, baseDistance * 25);  // Much more conservative
+    int dynamicMaxIters = std::min(m_maxIterations, baseIters + 1000); // Smaller buffer
+    
+    // Hard cap on iterations based on distance to prevent runaway pathfinding
+    if (baseDistance < 10) {
+        dynamicMaxIters = std::min(dynamicMaxIters, 1000);
+    } else if (baseDistance < 30) {
+        dynamicMaxIters = std::min(dynamicMaxIters, 2500);
+    } else {
+        dynamicMaxIters = std::min(dynamicMaxIters, 5000);
+    }
     
     // Early termination if open queue gets too large (indicates poor pathfinding conditions)
-    const size_t maxOpenQueueSize = std::max(static_cast<size_t>(1000), static_cast<size_t>(baseDistance * 50));
+    const size_t maxOpenQueueSize = std::max(static_cast<size_t>(500), static_cast<size_t>(baseDistance * 20));
+    
+    // Additional hard cap on queue size to prevent memory explosion
+    const size_t maxAbsoluteQueueSize = 2000;
 
     while (!open.empty() && iterations++ < dynamicMaxIters) {
         // Early termination if queue becomes too large
-        if (open.size() > maxOpenQueueSize) {
-            PATHFIND_DEBUG("Early termination: queue size " + std::to_string(open.size()) + " exceeded limit");
+        if (open.size() > maxOpenQueueSize || open.size() > maxAbsoluteQueueSize) {
+            PATHFIND_DEBUG("Early termination: queue size " + std::to_string(open.size()) + 
+                          " exceeded limit (max: " + std::to_string(maxOpenQueueSize) + ")");
             break;
         }
         NodePool::Node cur = open.top(); open.pop();
@@ -371,18 +427,23 @@ PathfindingResult PathfindingGrid::findPath(const Vector2D& start, const Vector2
     m_stats.timeouts++;
     m_stats.totalIterations += iterations;
     
-    // Diagnostic logging for timeout patterns
+    // Enhanced diagnostic logging for timeout patterns
     static uint32_t timeoutCount = 0;
     static std::unordered_map<std::string, int> problematicGoals;
     
-    if (++timeoutCount % 10 == 0) {
+    if (++timeoutCount % 5 == 0) {  // Report more frequently to catch patterns
         std::string goalKey = "(" + std::to_string(gx) + "," + std::to_string(gy) + ")";
         problematicGoals[goalKey]++;
         
+        float timeoutRate = (m_stats.totalRequests > 0) ? 
+            (static_cast<float>(m_stats.timeouts) / static_cast<float>(m_stats.totalRequests) * 100.0f) : 0.0f;
+            
         PATHFIND_WARN("Pathfinding timeouts: " + std::to_string(m_stats.timeouts) + 
-                      " of " + std::to_string(m_stats.totalRequests) + " requests. " +
+                      " of " + std::to_string(m_stats.totalRequests) + " requests (" + 
+                      std::to_string(static_cast<int>(timeoutRate)) + "%). " +
                       "Last timeout: distance=" + std::to_string(baseDistance) + 
                       " tiles, iters=" + std::to_string(iterations) + "/" + std::to_string(dynamicMaxIters) +
+                      ", ROI=" + std::to_string((roiMaxX-roiMinX+1) * (roiMaxY-roiMinY+1)) + " cells" +
                       ", start=(" + std::to_string(sx) + "," + std::to_string(sy) + ")" +
                       ", goal=" + goalKey);
                       
