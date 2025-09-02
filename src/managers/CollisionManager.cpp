@@ -10,7 +10,7 @@
 #include "managers/EventManager.hpp"
 #include "events/WorldEvent.hpp"
 #include "events/WorldTriggerEvent.hpp"
-#include "ai/internal/PathFollow.hpp"
+#include "ai/internal/PathfindingCompat.hpp"
 #include <unordered_set>
 #include <unordered_map>
 #include <chrono>

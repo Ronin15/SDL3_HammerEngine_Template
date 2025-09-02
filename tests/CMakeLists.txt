@@ -53,6 +53,7 @@ set(SIMPLE_TESTS
     event_manager_behavior_tests
     collision_system_tests
     pathfinding_system_tests
+    pathfinder_manager_tests
 )
 
 # Complex tests (need mocks)
@@ -125,6 +126,8 @@ foreach(test_name ${SIMPLE_TESTS})
         set(test_source "collisions/CollisionSystemTests.cpp")
     elseif(${test_name} STREQUAL "pathfinding_system_tests")
         set(test_source "pathfinding/PathfindingSystemTests.cpp")
+    elseif(${test_name} STREQUAL "pathfinder_manager_tests")
+        set(test_source "PathfinderManagerTests.cpp")
     endif()
 
     add_executable(${test_name} ${test_source})

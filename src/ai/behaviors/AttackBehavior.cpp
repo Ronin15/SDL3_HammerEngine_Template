@@ -8,7 +8,8 @@
 #include "managers/CollisionManager.hpp"
 #include "managers/WorldManager.hpp"
 #include "ai/internal/Crowd.hpp"
-#include "ai/internal/PathFollow.hpp"
+#include "managers/PathfinderManager.hpp"
+#include "ai/internal/PathfindingCompat.hpp"
 #include <algorithm>
 
 AttackBehavior::AttackBehavior(float attackRange, float attackDamage,
@@ -892,15 +893,24 @@ void AttackBehavior::moveToPosition(EntityPtr entity, const Vector2D &targetPos,
   if (now - state.lastPathUpdate > pathTTL) needRefresh = true;
 
   if (needRefresh && SDL_GetTicks() >= state.backoffUntil) {
-    // PATHFINDING CONSOLIDATION: All requests now use PathfindingScheduler via async pathway
-    AIManager::Instance().requestPathAsync(entity, currentPos, clampedTarget, AIManager::PathPriority::Critical);
-    if (AIManager::Instance().hasAsyncPath(entity)) {
-      state.pathPoints = AIManager::Instance().getAsyncPath(entity);
-      state.currentPathIndex = 0;
-      state.lastPathUpdate = now;
-      state.lastNodeDistance = std::numeric_limits<float>::infinity();
-      state.lastProgressTime = now;
-    } else {
+    // PATHFINDING CONSOLIDATION: All requests now use PathfinderManager
+    PathfinderManager::Instance().requestPath(
+        entity->getID(), currentPos, clampedTarget, AIInternal::PathPriority::Critical,
+        [this, entity](EntityID, const std::vector<Vector2D>& path) {
+          if (!path.empty()) {
+            // Find the behavior state for this entity
+            auto it = m_entityStates.find(entity);
+            if (it != m_entityStates.end()) {
+              it->second.pathPoints = path;
+              it->second.currentPathIndex = 0;
+              it->second.lastPathUpdate = SDL_GetTicks();
+              it->second.lastNodeDistance = std::numeric_limits<float>::infinity();
+              it->second.lastProgressTime = SDL_GetTicks();
+            }
+          }
+        });
+    // Remove the synchronous path check since we're using callback-based async path
+    {
       // Async path not ready, apply minimal backoff to prevent spam and continue with existing path
       state.backoffUntil = now + 200 + (entity->getID() % 300);
     }

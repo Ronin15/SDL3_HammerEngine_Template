@@ -4,10 +4,7 @@
  */
 
 #include "managers/AIManager.hpp"
-#include "ai/pathfinding/PathfindingGrid.hpp"
-#include "ai/internal/PathfindingScheduler.hpp"
-#include "ai/internal/SpatialPriority.hpp"
-#include "ai/internal/PathCache.hpp"
+#include "managers/PathfinderManager.hpp"
 #include "core/Logger.hpp"
 #include "core/ThreadSystem.hpp"
 #include "managers/CollisionManager.hpp"
@@ -63,62 +60,13 @@ bool AIManager::init() {
     // No NPCSpawn handler in AIManager: state owns creation; AI manages
     // behavior only.
 
-    // Subscribe to world events to maintain pathfinding grid
-    {
-      auto &em = EventManager::Instance();
-      static std::vector<EventManager::HandlerToken> s_tokens;
-      s_tokens.push_back(em.registerHandlerWithToken(
-          EventTypeId::World, [this](const EventData &data) {
-            auto base = data.event;
-            if (!base)
-              return;
-            if (std::dynamic_pointer_cast<WorldLoadedEvent>(base) ||
-                std::dynamic_pointer_cast<WorldGeneratedEvent>(base)) {
-              const auto *world = WorldManager::Instance().getWorldData();
-              if (world) {
-                int h = static_cast<int>(world->grid.size());
-                int w = (h > 0) ? static_cast<int>(world->grid[0].size()) : 0;
-                
-                // Get proper world bounds for coordinate conversion
-                float minX, minY, maxX, maxY;
-                Vector2D worldOffset(0.0f, 0.0f);
-                if (WorldManager::Instance().getWorldBounds(minX, minY, maxX, maxY)) {
-                  // Convert tile bounds to world coordinates
-                  worldOffset = Vector2D(minX * 32.0f, minY * 32.0f);
-                }
-                
-                m_pathGrid.reset(new HammerEngine::PathfindingGrid(
-                    w, h, 32.0f, worldOffset));
-                m_pathGrid->rebuildFromWorld();
-                AI_INFO("PathfindingGrid initialized: " + std::to_string(w) + "x" + std::to_string(h) + 
-                        " cells, offset=(" + std::to_string(worldOffset.getX()) + "," + 
-                        std::to_string(worldOffset.getY()) + ")");
-              }
-              return;
-            }
-            if (std::dynamic_pointer_cast<TileChangedEvent>(base)) {
-              if (m_pathGrid)
-                m_pathGrid->rebuildFromWorld();
-              return;
-            }
-            if (std::dynamic_pointer_cast<WorldUnloadedEvent>(base)) {
-              m_pathGrid.reset();
-              return;
-            }
-          }));
-    }
-
-    // Initialize PathfindingScheduler (Phase 1)
-    m_pathScheduler.reset(new AIInternal::PathfindingScheduler());
-    AI_INFO("PathfindingScheduler initialized");
-
-    // Initialize SpatialPriority (Phase 2)
-    m_spatialPriority.reset(new AIInternal::SpatialPriority());
-    AI_INFO("SpatialPriority system initialized");
-
-    // Wire up SpatialPriority with PathfindingScheduler
-    if (m_pathScheduler && m_spatialPriority) {
-      m_pathScheduler->setSpatialPriority(m_spatialPriority.get());
+    // Initialize PathfinderManager (centralized pathfinding service)
+    if (!PathfinderManager::Instance().isInitialized()) {
+      if (!PathfinderManager::Instance().init()) {
+        AI_ERROR("Failed to initialize PathfinderManager");
+        return false;
+      }
+      AI_INFO("PathfinderManager initialized successfully");
     }
 
     AI_LOG("AIManager initialized successfully");
@@ -240,18 +188,7 @@ void AIManager::clean() {
     m_messageQueue.clear();
   }
 
-  // Shutdown PathfindingScheduler (Phase 1)
-  if (m_pathScheduler) {
-    m_pathScheduler->shutdown();
-    m_pathScheduler.reset();
-    AI_INFO("PathfindingScheduler shutdown complete");
-  }
-
-  // Shutdown SpatialPriority (Phase 2)
-  if (m_spatialPriority) {
-    m_spatialPriority.reset();
-    AI_INFO("SpatialPriority shutdown complete");
-  }
+  // Note: PathfinderManager is a singleton and will be shut down separately
 
   // Reset all counters
   m_totalBehaviorExecutions.store(0, std::memory_order_relaxed);
@@ -364,25 +301,7 @@ void AIManager::prepareForStateTransition() {
     AI_DEBUG("Cleaned up all entities for state transition");
   }
 
-  // Clear pathfinding state completely
-  m_pathCooldownUntil.clear();
-  
-  // Clear async pathfinding state
-  {
-    std::lock_guard<std::mutex> lock(m_asyncPathMutex);
-    m_asyncEntityPaths.clear();
-    m_asyncPathTimestamps.clear();
-  }
-  {
-    std::lock_guard<std::mutex> lock(m_asyncQueueMutex);
-    // Clear the queue properly
-    std::queue<AsyncPathRequest> empty;
-    m_asyncPathQueue.swap(empty);
-  }
-  
-  // Reset async pathfinding counters
-  m_asyncPathsRequested.store(0, std::memory_order_relaxed);
-  m_asyncPathsProcessed.store(0, std::memory_order_relaxed);
+  // Legacy pathfinding state cleared - all pathfinding now handled by PathfinderManager
 
   // Reset all counters and stats
   m_totalBehaviorExecutions.store(0, std::memory_order_relaxed);
@@ -442,23 +361,8 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
     // frame
     processPendingBehaviorAssignments();
     
-    // Process batched pathfinding requests using PathfindingScheduler (Phase 1)
-    if (m_pathScheduler) {
-      Vector2D playerPos = getPlayerPosition();
-      m_pathScheduler->update(deltaTime, playerPos);
-
-      // Update SpatialPriority frame tracking (Phase 2)
-      if (m_spatialPriority) {
-        uint64_t currentFrame = m_frameCounter.load(std::memory_order_relaxed);
-        m_spatialPriority->updateFrameSkipping(currentFrame);
-      }
-      
-      // Extract pending requests and process them with our pathfinding grid
-      auto pendingRequests = m_pathScheduler->extractPendingRequests(8); // Reduced from 15 to 8
-      if (!pendingRequests.empty() && m_pathGrid) {
-        processScheduledPathfinding(pendingRequests);
-      }
-    }
+    // Update PathfinderManager (centralized pathfinding service)
+    PathfinderManager::Instance().update(deltaTime);
 
     // Synchronize positions and count active entities
     size_t entityCount = 0;
@@ -676,15 +580,7 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
                 ? (m_globalStats.totalUpdateTime / m_globalStats.updateCount)
                 : 0.0;
 
-        // Include pathfinding statistics
-        size_t pathsRequested = m_asyncPathsRequested.load(std::memory_order_relaxed);
-        size_t pathsProcessed = m_asyncPathsProcessed.load(std::memory_order_relaxed);
-        size_t asyncPaths = 0;
-        {
-          std::lock_guard<std::mutex> lock(m_asyncPathMutex);
-          asyncPaths = m_asyncEntityPaths.size();
-        }
-        size_t queueSize = getAsyncPathQueueSize();
+        // All pathfinding now handled by PathfinderManager
 
         bool wasThreaded = m_lastWasThreaded.load(std::memory_order_relaxed);
         if (wasThreaded) {
@@ -709,47 +605,8 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
                    " [Single-threaded]");
         }
 
-        // Enhanced pathfinding performance statistics including PathfindingGrid stats
-        std::string pathfindingStatsStr = "Pathfinding Summary - Requested: " + std::to_string(pathsRequested) +
-                 ", Processed: " + std::to_string(pathsProcessed) +
-                 ", Queue: " + std::to_string(queueSize) +
-                 ", Active Async Paths: " + std::to_string(asyncPaths);
-        
-        // Include PathCache statistics if available
-        if (m_pathScheduler) {
-          auto cacheStats = m_pathScheduler->getPathCacheStats();
-          if (cacheStats.totalQueries > 0) {
-            pathfindingStatsStr += ", Cache - Queries: " + std::to_string(cacheStats.totalQueries) +
-                                  ", Hits: " + std::to_string(cacheStats.totalHits) +
-                                  ", Hit Rate: " + std::to_string(static_cast<int>(cacheStats.hitRate * 100)) + "%" +
-                                  ", Cached Paths: " + std::to_string(cacheStats.totalPaths);
-          }
-        }
-        
-        // Include PathfindingGrid statistics if available
-        if (m_pathGrid) {
-          auto gridStats = m_pathGrid->getStats();
-          pathfindingStatsStr += ", Grid Stats - Total: " + std::to_string(gridStats.totalRequests) +
-                                ", Success: " + std::to_string(gridStats.successfulPaths) +
-                                ", Timeouts: " + std::to_string(gridStats.timeouts);
-          
-          if (gridStats.invalidStarts > 0 || gridStats.invalidGoals > 0) {
-            pathfindingStatsStr += ", Invalid Start: " + std::to_string(gridStats.invalidStarts) +
-                                  ", Invalid Goal: " + std::to_string(gridStats.invalidGoals);
-          }
-          
-          if (gridStats.successfulPaths > 0) {
-            pathfindingStatsStr += ", Avg Path Length: " + std::to_string(gridStats.avgPathLength) +
-                                  ", Avg Iterations: " + std::to_string(gridStats.totalIterations / gridStats.totalRequests);
-          }
-        }
-        
-        AI_DEBUG(pathfindingStatsStr);
-        
-        // Log consolidated pathfinding scheduler statistics (ParticleManager style)
-        if (m_pathScheduler) {
-          m_pathScheduler->logPathfindingStats();
-        }
+        // Pathfinding statistics now handled by PathfinderManager
+        // No legacy pathfinding statistics in AIManager
       }
     }
 
@@ -1578,273 +1435,9 @@ void AIManager::registerEntityForUpdates(EntityPtr entity, int priority,
 }
 
 
-// ======================= Async Pathfinding API =======================
-
-void AIManager::requestPathAsync(EntityPtr entity, const Vector2D &start, const Vector2D &goal,
-                                  PathPriority priority, 
-                                  std::function<void(EntityID, const std::vector<Vector2D>&)> callback) {
-  if (!entity) return;
-  requestPathAsync(entity->getID(), start, goal, priority, callback);
-}
-
-void AIManager::requestPathAsync(EntityID entityId, const Vector2D &start, const Vector2D &goal,
-                                 PathPriority priority,
-                                 std::function<void(EntityID, const std::vector<Vector2D>&)> callback) {
-  // PATHFINDING CONSOLIDATION: Always use PathfindingScheduler even when async flag is disabled
-  // This ensures all pathfinding goes through PathCache for optimal performance
-
-  // Phase 1: Route requests through PathfindingScheduler
-  if (m_pathScheduler) {
-    // Convert PathPriority to AIInternal::PathPriority
-    AIInternal::PathPriority schedulerPriority = static_cast<AIInternal::PathPriority>(priority);
-    m_pathScheduler->requestPath(entityId, start, goal, schedulerPriority, callback);
-    m_asyncPathsRequested.fetch_add(1, std::memory_order_relaxed);
-    return;
-  }
-
-  // Legacy fallback: Direct processing since we no longer have batch system
-  // This path should not normally be reached as PathfindingScheduler should always exist
-  AI_WARN("PathfindingScheduler not available - async pathfinding request ignored for entity " + std::to_string(entityId));
-  return;
-}
-
-bool AIManager::hasAsyncPath(EntityPtr entity) const {
-  return entity ? hasAsyncPath(entity->getID()) : false;
-}
-
-bool AIManager::hasAsyncPath(EntityID entityId) const {
-  // Phase 1: Check PathfindingScheduler first
-  if (m_pathScheduler && m_pathScheduler->hasPath(entityId)) {
-    return true;
-  }
-  
-  // Legacy fallback: Check old async path system
-  std::lock_guard<std::mutex> lock(m_asyncPathMutex);
-  auto it = m_asyncEntityPaths.find(entityId);
-  return it != m_asyncEntityPaths.end() && !it->second.empty();
-}
-
-std::vector<Vector2D> AIManager::getAsyncPath(EntityPtr entity) const {
-  return entity ? getAsyncPath(entity->getID()) : std::vector<Vector2D>{};
-}
-
-std::vector<Vector2D> AIManager::getAsyncPath(EntityID entityId) const {
-  // Phase 1: Check PathfindingScheduler first
-  if (m_pathScheduler && m_pathScheduler->hasPath(entityId)) {
-    return m_pathScheduler->getPath(entityId);
-  }
-  
-  // Legacy fallback: Check old async path system
-  std::lock_guard<std::mutex> lock(m_asyncPathMutex);
-  auto it = m_asyncEntityPaths.find(entityId);
-  return it != m_asyncEntityPaths.end() ? it->second : std::vector<Vector2D>{};
-}
-
-void AIManager::clearAsyncPath(EntityPtr entity) {
-  if (entity) clearAsyncPath(entity->getID());
-}
-
-void AIManager::clearAsyncPath(EntityID entityId) {
-  // Phase 1: Clear from PathfindingScheduler
-  if (m_pathScheduler) {
-    m_pathScheduler->clearPath(entityId);
-  }
-  
-  // Also clear from legacy system
-  std::lock_guard<std::mutex> lock(m_asyncPathMutex);
-  m_asyncEntityPaths.erase(entityId);
-  m_asyncPathTimestamps.erase(entityId);
-}
-
-size_t AIManager::getAsyncPathQueueSize() const {
-  std::lock_guard<std::mutex> lock(m_asyncQueueMutex);
-  return m_asyncPathQueue.size();
-}
-
-void AIManager::processAsyncPathResults() {
-  // This method is called from the main thread to handle any callbacks
-  // The actual pathfinding work is done in processAsyncPathBatch()
-}
-
-void AIManager::forceUnstickEntity(EntityPtr entity) {
-  if (!entity) {
-    AI_ERROR("Cannot unstick null entity");
-    return;
-  }
-
-  EntityID entityId = entity->getID();
-  // Force unstick tracked in periodic statistics
-
-  // Simple approach: clear pathfinding state and give velocity nudge
-  clearAsyncPath(entity);
-  m_pathCooldownUntil.erase(entityId);
-
-  // Apply simple random velocity nudge
-  float angle = ((entityId * 17) % 360) * M_PI / 180.0f;
-  Vector2D nudgeVel(cosf(angle) * 50.0f, sinf(angle) * 50.0f);
-  entity->setVelocity(nudgeVel);
-  
-  // Unstick applied - tracked in periodic statistics
-}
-
-bool AIManager::isEntityStalled(EntityPtr entity) const {
-  if (!entity) return false;
-  
-  // Simplified stall detection - just check velocity
-  Vector2D velocity = entity->getVelocity();
-  return velocity.length() < 0.5f;
-}
-
-void AIManager::logEntityDiagnostics(EntityPtr entity) const {
-  if (!entity) return;
-
-  std::shared_lock<std::shared_mutex> lock(m_entitiesMutex);
-  auto it = m_entityToIndex.find(entity);
-  if (it != m_entityToIndex.end() && it->second < m_storage.size()) {
-    size_t index = it->second;
-    const auto& hotData = m_storage.hotData[index];
-    Vector2D velocity = entity->getVelocity();
-    
-    std::string behaviorName = "Unknown";
-    if (m_storage.behaviors[index]) {
-      behaviorName = m_storage.behaviors[index]->getName();
-    }
-    
-    AI_DEBUG("Entity " + std::to_string(entity->getID()) + " Diagnostics:");
-    AI_DEBUG("  Behavior: " + behaviorName);
-    AI_DEBUG("  Position: (" + std::to_string(hotData.position.getX()) + ", " + 
-             std::to_string(hotData.position.getY()) + ")");
-    AI_DEBUG("  Velocity: (" + std::to_string(velocity.getX()) + ", " + 
-             std::to_string(velocity.getY()) + ") Speed: " + std::to_string(velocity.length()));
-    AI_DEBUG("  Active: " + std::string(hotData.active ? "true" : "false"));
-    AI_DEBUG("  Priority: " + std::to_string(hotData.priority));
-    AI_DEBUG("  Distance to Player: " + std::to_string(std::sqrt(hotData.distanceSquared)));
-    
-    // Check if entity has a path
-    bool hasActivePath = hasAsyncPath(entity);
-    AI_DEBUG("  Has Path: " + std::string(hasActivePath ? "true" : "false"));
-    
-    if (hasActivePath) {
-      auto path = getAsyncPath(entity);
-      AI_DEBUG("  Path Length: " + std::to_string(path.size()));
-    }
-  }
-}
-
-size_t AIManager::checkAndDisperseClusters(EntityPtr entity) {
-  if (!entity) return 0;
-
-  auto& cm = CollisionManager::Instance();
-  Vector2D entityPos = entity->getPosition();
-  
-  // Query for nearby entities
-  static thread_local std::vector<EntityID> queryResults;
-  queryResults.clear();
-  
-  const float CLUSTER_RADIUS = 60.0f; // Reasonable detection radius
-  HammerEngine::AABB area(entityPos.getX() - CLUSTER_RADIUS, entityPos.getY() - CLUSTER_RADIUS,
-                          CLUSTER_RADIUS * 2.0f, CLUSTER_RADIUS * 2.0f);
-  cm.queryArea(area, queryResults);
-  
-  // Count entities in close proximity
-  size_t closeNeighbors = 0;
-  const float CLOSE_DISTANCE = 40.0f;
-  for (EntityID id : queryResults) {
-    if (id == entity->getID()) continue;
-    if (!cm.isDynamic(id) || cm.isTrigger(id)) continue;
-    Vector2D other;
-    if (!cm.getBodyCenter(id, other)) continue;
-    float dist = (entityPos - other).length();
-    if (dist < CLOSE_DISTANCE) {
-      closeNeighbors++;
-    }
-  }
-  
-  // If clustered, signal that this entity needs target adjustment
-  // Don't force movement - let behaviors handle target selection
-  if (closeNeighbors >= 5) {
-    // Mark this entity as needing target diversification
-    // This will be handled by individual behaviors through PathFollow system
-    // Cluster detection tracked in periodic statistics
-    return 1; // Detected cluster that needs addressing
-  }
-  
-  return 0;
-}
-
-// ======================= Async Pathfinding Processing =======================
-
-void AIManager::processAsyncPathRequest(EntityID entityId, const Vector2D &start, const Vector2D &goal) {
-  if (!m_pathGrid) return;
-  
-  // Faction-aware pathfinding (same logic as sync version but with EntityID)
-  m_pathGrid->resetWeights(1.0f);
-  
-  // Since we only have EntityID, we need to find the entity for faction checking
-  EntityPtr requestingEntity = nullptr;
-  NPC::Faction requesterFaction = NPC::Faction::Neutral;
-  
-  {
-    std::shared_lock<std::shared_mutex> lock(m_entitiesMutex);
-    for (size_t i = 0; i < m_storage.size(); ++i) {
-      if (m_storage.entities[i] && m_storage.entities[i]->getID() == entityId) {
-        requestingEntity = m_storage.entities[i];
-        if (auto npc = std::dynamic_pointer_cast<NPC>(requestingEntity)) {
-          requesterFaction = npc->getFaction();
-        }
-        break;
-      }
-    }
-  }
-
-  // Add avoidance weights for hostile entities
-  if (requestingEntity) {
-    std::shared_lock<std::shared_mutex> lock(m_entitiesMutex);
-    for (size_t i = 0; i < m_storage.size(); ++i) {
-      EntityPtr other = m_storage.entities[i];
-      if (!other || other.get() == requestingEntity.get()) continue;
-      
-      Vector2D pos = other->getPosition();
-      
-      if (auto otherNPC = std::dynamic_pointer_cast<NPC>(other)) {
-        NPC::Faction otherFaction = otherNPC->getFaction();
-        if ((requesterFaction == NPC::Faction::Friendly && otherFaction == NPC::Faction::Enemy) ||
-            (requesterFaction == NPC::Faction::Enemy && otherFaction == NPC::Faction::Friendly)) {
-          m_pathGrid->addWeightCircle(pos, 96.0f, 2.5f); // Strong avoidance for hostiles
-        } else {
-          m_pathGrid->addWeightCircle(pos, 64.0f, 1.2f); // Mild avoidance for allies
-        }
-      } else {
-        // Player or unknown entity - treat as friendly  
-        if (requesterFaction == NPC::Faction::Enemy) {
-          m_pathGrid->addWeightCircle(pos, 96.0f, 2.5f);
-        } else {
-          m_pathGrid->addWeightCircle(pos, 64.0f, 1.2f);
-        }
-      }
-    }
-  }
-
-  // Perform pathfinding
-  std::vector<Vector2D> path;
-  auto result = m_pathGrid->findPath(start, goal, path);
-  
-  // Store result
-  {
-    std::lock_guard<std::mutex> lock(m_asyncPathMutex);
-    if (result == HammerEngine::PathfindingResult::SUCCESS && !path.empty()) {
-      m_asyncEntityPaths[entityId] = std::move(path);
-      m_asyncPathTimestamps[entityId] = SDL_GetTicks();
-    } else {
-      // Store empty path to indicate failure
-      m_asyncEntityPaths[entityId] = {};
-      // Apply cooldown for failed requests
-      Uint64 now = SDL_GetTicks();
-      m_pathCooldownUntil[entityId] = now + 1000; // 1 second backoff
-    }
-    m_asyncPathsProcessed.fetch_add(1, std::memory_order_relaxed);
-  }
-}
+// ======================= Legacy Pathfinding Code Removed =======================
+// All pathfinding functionality is now handled by PathfinderManager.
+// Use PathfinderManager::Instance() to access pathfinding services.
 
 AIManager::~AIManager() {
   if (!m_isShutdown) {
@@ -1852,183 +1445,18 @@ AIManager::~AIManager() {
   }
 }
 
-void AIManager::processScheduledPathfinding(const std::vector<AIInternal::PathRequest>& requests) {
-  if (m_isShutdown || !m_pathGrid || requests.empty()) {
-    return;
-  }
-  
-  // Individual request processing removed - logging now handled by consolidated stats in update()
-  
-  // Process requests on background thread to avoid blocking main update
-  HammerEngine::ThreadSystem::Instance().enqueueTask(
-    [this, requests]() mutable {
-      for (const auto& request : requests) {
-        if (m_isShutdown) {
-          break;
-        }
-        
-        try {
-          std::vector<Vector2D> path;
-          [[maybe_unused]] auto result = m_pathGrid->findPath(request.start, request.goal, path);
-          
-          // Store result in scheduler
-          if (m_pathScheduler) {
-            m_pathScheduler->storePathResult(request.entityId, path);
-          }
-          
-          // Call callback if provided
-          if (request.callback) {
-            request.callback(request.entityId, path);
-          }
-          
-          // Individual completion logging removed - handled by consolidated pathfinding stats
-                  
-        } catch (const std::exception& e) {
-          AI_ERROR("AIManager: Exception in scheduled pathfinding for entity " + 
-                   std::to_string(request.entityId) + ": " + e.what());
-          
-          // Store empty result on failure
-          if (m_pathScheduler) {
-            m_pathScheduler->storePathResult(request.entityId, std::vector<Vector2D>{});
-          }
-          
-          // Call callback with empty path
-          if (request.callback) {
-            request.callback(request.entityId, std::vector<Vector2D>{});
-          }
-        }
-      }
-    },
-    HammerEngine::TaskPriority::High,
-    "ScheduledPathfinding_" + std::to_string(requests.size())
-  );
-}
+// processScheduledPathfinding method removed - all pathfinding now handled by PathfinderManager
 
-// Centralized pathfinding utilities (replaces PathFollow.cpp thread_local functions)
-Vector2D AIManager::clampToWorld(const Vector2D& position, float margin) const {
-    std::lock_guard<std::mutex> lock(m_worldBoundsMutex);
-    
-    uint64_t currentTime = SDL_GetTicks();
-    
-    // Update cache if expired or invalid
-    if (!m_worldBoundsCache.valid || 
-        (currentTime - m_worldBoundsCache.lastUpdateTime) > WorldBoundsCache::CACHE_LIFETIME_MS) {
-        
-        // Update cache with fresh world bounds
-        float minX, minY, maxX, maxY;
-        if (WorldManager::Instance().getWorldBounds(minX, minY, maxX, maxY)) {
-            m_worldBoundsCache.worldMinX = minX * WorldBoundsCache::TILE_SIZE;
-            m_worldBoundsCache.worldMinY = minY * WorldBoundsCache::TILE_SIZE;
-            m_worldBoundsCache.worldMaxX = maxX * WorldBoundsCache::TILE_SIZE;
-            m_worldBoundsCache.worldMaxY = maxY * WorldBoundsCache::TILE_SIZE;
-            m_worldBoundsCache.valid = true;
-            m_worldBoundsCache.lastUpdateTime = currentTime;
-        } else {
-            // Fallback to default bounds if WorldManager fails
-            m_worldBoundsCache.worldMinX = 0.0f;
-            m_worldBoundsCache.worldMinY = 0.0f;
-            m_worldBoundsCache.worldMaxX = 1000.0f * WorldBoundsCache::TILE_SIZE;
-            m_worldBoundsCache.worldMaxY = 1000.0f * WorldBoundsCache::TILE_SIZE;
-            m_worldBoundsCache.valid = false;
-            m_worldBoundsCache.lastUpdateTime = currentTime;
-        }
-    }
-    
-    // Clamp position to world bounds with margin
-    if (m_worldBoundsCache.valid) {
-        return Vector2D(
-            std::clamp(position.getX(), m_worldBoundsCache.worldMinX + margin, m_worldBoundsCache.worldMaxX - margin),
-            std::clamp(position.getY(), m_worldBoundsCache.worldMinY + margin, m_worldBoundsCache.worldMaxY - margin)
-        );
-    }
-    
-    return position; // Return unchanged if no valid bounds
-}
-
-bool AIManager::updateEntityPathfindingState(EntityID entityId, uint64_t currentTime) {
-    std::lock_guard<std::mutex> lock(m_entityStatesMutex);
-    
-    EntityPathfindingState& state = m_entityPathfindingStates[entityId];
-    
-    // Reset detour count if enough time has passed
-    if (currentTime - state.lastDetourReset > EntityPathfindingState::DETOUR_RESET_INTERVAL_MS) {
-        state.detourCount = 0;
-        state.lastDetourReset = currentTime;
-    }
-    
-    return state.detourCount < EntityPathfindingState::MAX_DETOUR_COUNT;
-}
-
-bool AIManager::canEntityMakeDetour(EntityID entityId, uint64_t currentTime) const {
-    std::lock_guard<std::mutex> lock(m_entityStatesMutex);
-    
-    auto it = m_entityPathfindingStates.find(entityId);
-    if (it == m_entityPathfindingStates.end()) {
-        return true; // New entity, allow detour
-    }
-    
-    const EntityPathfindingState& state = it->second;
-    return (currentTime - state.lastDetourAttempt) > EntityPathfindingState::DETOUR_COOLDOWN_MS;
-}
-
-void AIManager::resetEntityDetourCount(EntityID entityId, uint64_t currentTime) {
-    std::lock_guard<std::mutex> lock(m_entityStatesMutex);
-    
-    EntityPathfindingState& state = m_entityPathfindingStates[entityId];
-    state.lastDetourAttempt = currentTime;
-    state.detourCount++;
-}
+// All pathfinding functionality has been moved to PathfinderManager
+// This section previously contained orphaned pathfinding methods that are no longer needed
 
 // Centralized async request state management (replaces g_asyncStates static map)
-bool AIManager::canEntityMakeAsyncRequest(EntityID entityId, uint64_t currentTime) const {
-    std::lock_guard<std::mutex> lock(m_asyncRequestMutex);
-    
-    auto it = m_asyncRequestStates.find(entityId);
-    if (it == m_asyncRequestStates.end()) {
-        return true; // New entity, allow request
-    }
-    
-    const AsyncRequestState& state = it->second;
-    return (state.lastRequestTime == 0) || 
-           ((currentTime - state.lastRequestTime) >= PathTTLConfig::MIN_ASYNC_REQUEST_INTERVAL_MS);
+// Legacy pathfinding state management methods removed
+// All pathfinding functionality now handled by PathfinderManager
+
+// Direct PathfinderManager access for optimal performance
+PathfinderManager& AIManager::getPathfinderManager() const {
+    return PathfinderManager::Instance();
 }
 
-void AIManager::updateAsyncRequestTime(EntityID entityId, uint64_t currentTime) {
-    std::lock_guard<std::mutex> lock(m_asyncRequestMutex);
-    
-    AsyncRequestState& state = m_asyncRequestStates[entityId];
-    state.lastRequestTime = currentTime;
-}
-
-void AIManager::setEntityHasValidPath(EntityID entityId, bool hasPath) {
-    std::lock_guard<std::mutex> lock(m_asyncRequestMutex);
-    
-    AsyncRequestState& state = m_asyncRequestStates[entityId];
-    state.hasValidPath = hasPath;
-    if (hasPath) {
-        state.lastRequestTime = 0; // Clear tracking when path is received
-    }
-}
-
-// Phase 3: Direct PathScheduler access for optimal performance
-AIInternal::PathfindingScheduler* AIManager::getPathScheduler() const {
-    return m_pathScheduler.get();
-}
-
-// Define deleter for forward-declared PathfindingGrid
-void AIManager::PathGridDeleter::operator()(
-    HammerEngine::PathfindingGrid *p) const {
-  delete p;
-}
-
-// Define deleter for forward-declared PathfindingScheduler
-void AIManager::PathSchedulerDeleter::operator()(
-    AIInternal::PathfindingScheduler *p) const {
-  delete p;
-}
-
-// Define deleter for forward-declared SpatialPriority
-void AIManager::SpatialPriorityDeleter::operator()(
-    AIInternal::SpatialPriority *p) const {
-  delete p;
-}
+// All pathfinding components are now managed by PathfinderManager

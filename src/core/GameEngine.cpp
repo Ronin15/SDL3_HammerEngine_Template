@@ -24,6 +24,7 @@
 #include "managers/GameStateManager.hpp"
 #include "managers/InputManager.hpp"
 #include "managers/ParticleManager.hpp"
+#include "managers/PathfinderManager.hpp"
 #include "managers/ResourceTemplateManager.hpp"
 #include "managers/SaveGameManager.hpp"
 #include "managers/SoundManager.hpp"
@@ -481,7 +482,21 @@ bool GameEngine::init(const std::string_view title, const int width,
             return true;
           }));
 
-  // Initialize Particle Manager in a separate thread - #7
+  // Initialize Pathfinder Manager in a separate thread - #7
+  initTasks.push_back(
+      HammerEngine::ThreadSystem::Instance().enqueueTaskWithResult(
+          []() -> bool {
+            GAMEENGINE_INFO("Creating Pathfinder Manager");
+            PathfinderManager &pathfinderMgr = PathfinderManager::Instance();
+            if (!pathfinderMgr.init()) {
+              GAMEENGINE_CRITICAL("Failed to initialize Pathfinder Manager");
+              return false;
+            }
+            GAMEENGINE_INFO("Pathfinder Manager initialized successfully");
+            return true;
+          }));
+
+  // Initialize Particle Manager in a separate thread - #8
   initTasks.push_back(
       HammerEngine::ThreadSystem::Instance().enqueueTaskWithResult([]()
                                                                        -> bool {
@@ -633,6 +648,15 @@ bool GameEngine::init(const std::string_view title, const int width,
       return false;
     }
     mp_particleManager = &particleMgrTest;
+
+    // Validate Pathfinder Manager before caching
+    PathfinderManager &pathfinderMgrTest = PathfinderManager::Instance();
+    if (!pathfinderMgrTest.isInitialized()) {
+      GAMEENGINE_CRITICAL(
+          "PathfinderManager not properly initialized before caching!");
+      return false;
+    }
+    mp_pathfinderManager = &pathfinderMgrTest;
 
     // Validate Resource Manager before caching
     ResourceTemplateManager &resourceMgrTest =
@@ -824,6 +848,13 @@ void GameEngine::update(float deltaTime) {
     mp_aiManager->update(deltaTime);
   } else {
     GAMEENGINE_ERROR("AIManager cache is null!");
+  }
+
+  // Pathfinding system - centralized pathfinding service for AI entities
+  if (mp_pathfinderManager) {
+    mp_pathfinderManager->update(deltaTime);
+  } else {
+    GAMEENGINE_ERROR("PathfinderManager cache is null!");
   }
 
   // Physics system - update after AI and before events/particles

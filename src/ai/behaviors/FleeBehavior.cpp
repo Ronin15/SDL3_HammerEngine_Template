@@ -5,7 +5,8 @@
 
 #include "ai/behaviors/FleeBehavior.hpp"
 #include "ai/internal/Crowd.hpp"
-#include "ai/internal/PathFollow.hpp"
+#include "managers/PathfinderManager.hpp"
+#include "ai/internal/PathfindingCompat.hpp"
 #include "managers/AIManager.hpp"
 #include "managers/WorldManager.hpp"
 #include "managers/CollisionManager.hpp"
@@ -461,10 +462,15 @@ void FleeBehavior::updateStrategicRetreat(EntityPtr entity, EntityState& state) 
         }
         if (now - state.lastPathUpdate > pathTTL) needRefresh = true;
         if (needRefresh && now >= state.nextPathAllowed) {
-            // PATHFINDING CONSOLIDATION: All requests now use PathfindingScheduler for cache utilization
-            AIManager::Instance().requestPathAsync(entity, AIInternal::ClampToWorld(currentPos, 100.0f), goal, AIManager::PathPriority::High);
-            if (AIManager::Instance().hasAsyncPath(entity)) {
-                state.pathPoints = AIManager::Instance().getAsyncPath(entity);
+            // Use PathfinderManager for pathfinding requests
+            auto& pathfinder = PathfinderManager::Instance();
+            pathfinder.requestPath(entity->getID(), AIInternal::ClampToWorld(currentPos, 100.0f), goal, AIInternal::PathPriority::High,
+                [&state](EntityID id, const std::vector<Vector2D>& path) {
+                    state.pathPoints = path;
+                    state.currentPathIndex = 0;
+                });
+            // Note: Path will be set via callback when ready
+            if (!state.pathPoints.empty()) {
                 state.currentPathIndex = 0;
                 state.lastPathUpdate = now;
                 state.lastNodeDistance = std::numeric_limits<float>::infinity();
@@ -580,16 +586,25 @@ void FleeBehavior::updateSeekCover(EntityPtr entity, EntityState& state) {
         }
         if (now - state.lastPathUpdate > pathTTL) needRefresh = true;
         if (needRefresh && now >= state.nextPathAllowed) {
-            // PATHFINDING CONSOLIDATION: All requests now use PathfindingScheduler for cache utilization  
-            AIManager::Instance().requestPathAsync(entity, AIInternal::ClampToWorld(currentPos, 100.0f), goal, AIManager::PathPriority::High);
-            if (AIManager::Instance().hasAsyncPath(entity)) {
-                state.pathPoints = AIManager::Instance().getAsyncPath(entity);
-                state.currentPathIndex = 0;
-                state.lastPathUpdate = now;
-                state.lastNodeDistance = std::numeric_limits<float>::infinity();
-                state.lastProgressTime = now;
-                state.nextPathAllowed = now + 800; // cooldown
-            } else {
+            // PATHFINDING CONSOLIDATION: All requests now use PathfinderManager
+            PathfinderManager::Instance().requestPath(
+                entity->getID(), AIInternal::ClampToWorld(currentPos, 100.0f), goal, AIInternal::PathPriority::High,
+                [this, entity](EntityID, const std::vector<Vector2D>& path) {
+                  if (!path.empty()) {
+                    // Find the behavior state for this entity
+                    auto it = m_entityStates.find(entity);
+                    if (it != m_entityStates.end()) {
+                      it->second.pathPoints = path;
+                      it->second.currentPathIndex = 0;
+                      it->second.lastPathUpdate = SDL_GetTicks();
+                      it->second.lastNodeDistance = std::numeric_limits<float>::infinity();
+                      it->second.lastProgressTime = SDL_GetTicks();
+                      it->second.nextPathAllowed = SDL_GetTicks() + 800; // cooldown
+                    }
+                  }
+                });
+            // Remove the synchronous path check since we're using callback-based async path
+            {
                 // Async path not ready, apply cooldown to prevent spam
                 state.nextPathAllowed = now + 600; // Shorter cooldown for flee (more urgent)
             }
