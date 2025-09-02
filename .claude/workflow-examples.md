@@ -30,8 +30,10 @@
   - `src/events/WeaponEvent.cpp` (new)
 
 ## Build Status
-- **Debug Build:** ✅ Clean compilation
-- **Test Results:** Basic weapon creation/destruction tests pass
+- **Debug Build:** ✅ `cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Debug` then `ninja -C build` - Clean compilation
+- **Release Build:** ✅ `cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Release` then `ninja -C build` - Clean compilation
+- **Test Results:** `./run_all_tests.sh --core-only --errors-only` - Basic weapon creation/destruction tests pass
+- **Application Test:** `timeout 25s ./bin/debug/SDL3_Template` - Basic functionality validated
 - **Compilation Warnings:** 0
 
 ## Integration Points
@@ -78,10 +80,11 @@
 - **Frame Time:** No frame time impact
 
 ## Benchmarks Required
-- [ ] AI combat behavior performance with 1000 armed NPCs
-- [ ] Collision detection with weapon range queries
-- [ ] Event processing throughput with weapon events
-- [ ] Memory allocation patterns during combat scenarios
+- [ ] AI combat behavior: `./bin/debug/ai_optimization_tests`, `./bin/debug/ai_scaling_benchmark` with 1000 armed NPCs
+- [ ] Collision + pathfinding: `./bin/debug/collision_pathfinding_benchmark` with weapon range queries
+- [ ] Event processing: Custom weapon event throughput test
+- [ ] Memory stability: `./tests/valgrind/quick_memory_check.sh` during combat scenarios
+- [ ] Thread safety: `./tests/test_scripts/run_thread_tests.sh` with weapon system
 
 ## Next Steps for performance-analyst
 - [ ] Validate weapon system performance under combat load
@@ -193,9 +196,10 @@ Feature ready for production use. Excellent integration with existing systems wh
 - **Pattern:** Followed RAII principles with smart_ptr texture management
 
 ## Build Status
-- **AddressSanitizer Build:** ✅ No leaks detected
-- **Extended Test:** 2-hour gameplay test shows stable memory usage
-- **Memory Growth:** <1MB over 2 hours (within normal bounds)
+- **Debug + AddressSanitizer Build:** ✅ `cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_FLAGS="-D_GLIBCXX_DEBUG -fsanitize=address" -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address"` then `ninja -C build` - No leaks detected
+- **Extended Test:** `timeout 25s ./bin/debug/SDL3_Template` run multiple times over 2 hours - stable memory usage
+- **Memory Analysis:** `./tests/valgrind/quick_memory_check.sh` - <1MB growth over 2 hours (within normal bounds)
+- **Test Suite:** `./run_all_tests.sh --core-only --errors-only` - All tests pass
 
 ## Next Steps for system-optimizer
 - [ ] Review particle system memory patterns across all managers
@@ -219,8 +223,9 @@ Feature ready for production use. Excellent integration with existing systems wh
 - **Memory Efficiency:** Particle pool reuse improved by 15%
 
 ## Validation Required
-- [ ] Extended memory stability testing
-- [ ] Performance impact under high particle load
+- [ ] Extended memory stability testing with `./tests/valgrind/run_complete_valgrind_suite.sh`
+- [ ] Performance impact under high particle load using `timeout 25s ./bin/debug/SDL3_Template`
+- [ ] Cache performance analysis with `./tests/valgrind/cache_performance_analysis.sh`
 ```
 
 #### Phase 3: performance-analyst Extended Validation
