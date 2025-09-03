@@ -3,6 +3,7 @@
 #include <SDL3/SDL.h>
 #include <algorithm>
 #include <cassert>
+#include <map>
 
 #include "../../core/ThreadSystem.hpp"
 #include "../../managers/CollisionManager.hpp"
@@ -78,16 +79,24 @@ void PathfindingScheduler::requestPath(EntityID entityId, const Vector2D& start,
         std::lock_guard<std::mutex> lock(m_resultsMutex);
         auto it = m_pathResults.find(entityId);
         if (it != m_pathResults.end() && 
-            (currentTime - it->second.computeTime) < 1000 && // Increased to 1000ms cache to reduce duplicate requests
-            it->second.isValid) 
+            (currentTime - it->second.computeTime) < 1000) // Check for ANY recent result
         {
-            // Return cached path immediately
-            if (callback) {
-                callback(entityId, it->second.path);
+            if (it->second.isValid) {
+                // Return cached SUCCESSFUL path immediately
+                if (callback) {
+                    callback(entityId, it->second.path);
+                }
+                return;
+            } else {
+                // Don't retry failed paths immediately - wait for cache to expire
+                if (callback) {
+                    callback(entityId, std::vector<Vector2D>{}); // Return empty path for failed retry
+                }
+                return;
             }
-            return;
         }
     }
+
 
     // Create new request with adjusted priority based on distance to player
     PathRequest request(entityId, start, goal, priority, callback);

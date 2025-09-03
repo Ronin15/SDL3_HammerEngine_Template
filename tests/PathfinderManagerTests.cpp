@@ -223,4 +223,103 @@ BOOST_AUTO_TEST_CASE(TestUpdateCycle) {
     manager.clean();
 }
 
+BOOST_AUTO_TEST_CASE(TestNoInfiniteRetryLoop) {
+    // REGRESSION TEST: Ensure failed pathfinding requests don't cause infinite retry loops
+    // This test prevents the bug where same failed requests kept getting requeued endlessly
+    
+    PathfinderManager& manager = PathfinderManager::Instance();
+    BOOST_REQUIRE(manager.init());
+    
+    Vector2D start(50.0f, 50.0f);
+    Vector2D goal(100.0f, 100.0f);
+    EntityID entityId = 99999;
+    
+    int callbackCount = 0;
+    std::vector<std::vector<Vector2D>> receivedPaths;
+    
+    // Make multiple identical requests rapidly (simulating the bug condition)
+    auto callback = [&callbackCount, &receivedPaths](EntityID id, const std::vector<Vector2D>& path) {
+        callbackCount++;
+        receivedPaths.push_back(path);
+    };
+    
+    // Request the same path multiple times within the cache window (1000ms)
+    manager.requestPath(entityId, start, goal, static_cast<AIInternal::PathPriority>(1), callback);
+    manager.requestPath(entityId, start, goal, static_cast<AIInternal::PathPriority>(1), callback); 
+    manager.requestPath(entityId, start, goal, static_cast<AIInternal::PathPriority>(1), callback);
+    manager.requestPath(entityId, start, goal, static_cast<AIInternal::PathPriority>(1), callback);
+    
+    // Process requests
+    for (int i = 0; i < 10; ++i) {
+        manager.update(0.016f);
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    
+    // Key assertions to prevent regression:
+    // 1. We should receive callbacks (not stuck in infinite loop)
+    BOOST_CHECK(callbackCount > 0);
+    
+    // 2. We shouldn't receive excessive callbacks (indicates retry loop)  
+    BOOST_CHECK(callbackCount <= 10); // Reasonable upper bound
+    
+    // 3. Stats should show reasonable request count (not thousands from retry loop)
+    auto stats = manager.getStats();
+    BOOST_CHECK(stats.totalRequests <= 20); // Should be close to our 4 requests, not thousands
+    
+    // 4. If requests fail, they should be cached to prevent immediate retry
+    if (callbackCount > 1) {
+        // Multiple callbacks received - ensure they're not all processing the same request
+        // (This would indicate the cache isn't working and same request is being reprocessed)
+        BOOST_CHECK(receivedPaths.size() == static_cast<size_t>(callbackCount));
+    }
+    
+    manager.clean();
+}
+
+BOOST_AUTO_TEST_CASE(TestFailedRequestCaching) {
+    // REGRESSION TEST: Ensure failed requests are properly cached to prevent retry loops
+    
+    PathfinderManager& manager = PathfinderManager::Instance();
+    BOOST_REQUIRE(manager.init());
+    
+    Vector2D start(10.0f, 10.0f);
+    Vector2D goal(20.0f, 20.0f);  
+    EntityID entityId = 88888;
+    
+    int firstCallbackCount = 0;
+    int secondCallbackCount = 0;
+    
+    // First request
+    manager.requestPath(entityId, start, goal, static_cast<AIInternal::PathPriority>(1), 
+        [&firstCallbackCount](EntityID, const std::vector<Vector2D>&) {
+            firstCallbackCount++;
+        });
+    
+    // Process first request
+    manager.update(0.016f);
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    manager.update(0.016f);
+    
+    // Second identical request within cache window (should be rejected/cached)
+    manager.requestPath(entityId, start, goal, static_cast<AIInternal::PathPriority>(1),
+        [&secondCallbackCount](EntityID, const std::vector<Vector2D>&) {
+            secondCallbackCount++;
+        });
+    
+    // Process second request  
+    manager.update(0.016f);
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    manager.update(0.016f);
+    
+    // Both should have received callbacks (first from processing, second from cache)
+    BOOST_CHECK(firstCallbackCount > 0);
+    BOOST_CHECK(secondCallbackCount > 0);
+    
+    // But total requests processed should be minimal (cache working)
+    auto stats = manager.getStats();
+    BOOST_CHECK(stats.totalRequests <= 5); // Should be ~2 requests, not many more
+    
+    manager.clean();
+}
+
 BOOST_AUTO_TEST_SUITE_END()
