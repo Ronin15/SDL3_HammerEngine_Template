@@ -181,6 +181,15 @@ PathfindingResult PathfindingGrid::findPath(const Vector2D& start, const Vector2
     outPath.clear();
     auto [sx, sy] = worldToGrid(start);
     auto [gx, gy] = worldToGrid(goal);
+    
+    // Clamp grid coordinates to ensure they're away from exact boundaries
+    // This prevents problematic boundary pathfinding even if world-space clamping fails
+    const int GRID_MARGIN = 8; // Much larger margin to avoid near-boundary pathfinding issues
+    gx = std::clamp(gx, GRID_MARGIN, m_w - 1 - GRID_MARGIN);
+    gy = std::clamp(gy, GRID_MARGIN, m_h - 1 - GRID_MARGIN);
+    sx = std::clamp(sx, GRID_MARGIN, m_w - 1 - GRID_MARGIN);
+    sy = std::clamp(sy, GRID_MARGIN, m_h - 1 - GRID_MARGIN);
+    
     if (!inBounds(sx, sy)) { 
         m_stats.totalRequests++;
         m_stats.invalidStarts++; 
@@ -307,13 +316,16 @@ PathfindingResult PathfindingGrid::findPath(const Vector2D& start, const Vector2
     // (reuse variables from earlier)
     int baseDistance = directDistance;
     
-    // Much tighter ROI: only allow detours up to 1.5x the direct distance + small margin
-    int r = std::max(15, static_cast<int>(baseDistance * 1.5f + 10));
+    // Balanced ROI: allow reasonable detours without full-grid searches
+    int r = std::max(20, static_cast<int>(baseDistance * 1.8f + 15));  // Slightly more generous
     
-    // Further limit ROI based on distance - prevent huge search areas
-    if (baseDistance > 50) {
-        r = std::min(r, baseDistance + 25);  // Cap ROI growth for long distances
+    // Prevent excessive ROI for long distances while allowing complex paths
+    if (baseDistance > 40) {
+        r = std::min(r, baseDistance + 35);  // More generous cap for complex terrain
     }
+    
+    // Very aggressive ROI limit to force highly focused pathfinding
+    r = std::min(r, 30);  // Much tighter cap to eliminate large ROI searches
     
     // ROI that encompasses both start and goal with minimal buffer
     int roiMinX = std::max(0, std::min(sx, gx) - r);
@@ -348,24 +360,24 @@ PathfindingResult PathfindingGrid::findPath(const Vector2D& start, const Vector2
     const int dx8[8] = {1,-1,0,0, 1,1,-1,-1};
     const int dy8[8] = {0,0,1,-1, 1,-1,1,-1};
 
-    // Conservative iteration limits to prevent timeouts - fail fast on difficult paths
-    int baseIters = std::max(500, baseDistance * 25);  // Much more conservative
-    int dynamicMaxIters = std::min(m_maxIterations, baseIters + 1000); // Smaller buffer
+    // Highly optimized iteration limits for production 100x100 grid
+    int baseIters = std::max(1200, baseDistance * 60);  // Much more generous for complex terrain
+    int dynamicMaxIters = std::min(m_maxIterations, baseIters + 3000); // Large buffer for edge cases
     
-    // Hard cap on iterations based on distance to prevent runaway pathfinding
+    // Very generous caps to handle worst-case scenarios
     if (baseDistance < 10) {
-        dynamicMaxIters = std::min(dynamicMaxIters, 1000);
+        dynamicMaxIters = std::min(dynamicMaxIters, 3500);  // Generous for short paths
     } else if (baseDistance < 30) {
-        dynamicMaxIters = std::min(dynamicMaxIters, 2500);
+        dynamicMaxIters = std::min(dynamicMaxIters, 8000);  // Much higher for medium paths
     } else {
-        dynamicMaxIters = std::min(dynamicMaxIters, 5000);
+        dynamicMaxIters = std::min(dynamicMaxIters, 12000); // High limit for long paths
     }
     
-    // Early termination if open queue gets too large (indicates poor pathfinding conditions)
-    const size_t maxOpenQueueSize = std::max(static_cast<size_t>(500), static_cast<size_t>(baseDistance * 20));
+    // Much more generous queue limits - the algorithm needs room to work
+    const size_t maxOpenQueueSize = std::max(static_cast<size_t>(2000), static_cast<size_t>(baseDistance * 50));
     
-    // Additional hard cap on queue size to prevent memory explosion
-    const size_t maxAbsoluteQueueSize = 2000;
+    // Higher absolute cap to allow complex pathfinding scenarios
+    const size_t maxAbsoluteQueueSize = 8000;
 
     while (!open.empty() && iterations++ < dynamicMaxIters) {
         // Early termination if queue becomes too large

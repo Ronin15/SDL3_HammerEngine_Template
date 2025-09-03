@@ -245,7 +245,7 @@ private:
     int m_maxPathsPerFrame{5};
     float m_cacheExpirationTime{5.0f};
     bool m_allowDiagonal{true};
-    int m_maxIterations{20000};
+    int m_maxIterations{50000};
     float m_cellSize{32.0f};
 
     // State management

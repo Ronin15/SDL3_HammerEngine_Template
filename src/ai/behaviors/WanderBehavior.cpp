@@ -160,7 +160,16 @@ void WanderBehavior::executeLogic(EntityPtr entity) {
      }
     
     Vector2D dest = position + state.currentDirection * moveDistance;
-    // No clamping - let pathfinding handle invalid destinations naturally (like PatrolBehavior)
+    
+    // Clamp destination to world bounds to prevent invalid pathfinding requests
+    float minX, minY, maxX, maxY;
+    if (WorldManager::Instance().getWorldBounds(minX, minY, maxX, maxY)) {
+        // Add large margin to prevent entities from getting stuck near world edges
+        // This corresponds to ~8 grid cells margin (8 * 32 = 256 pixels)
+        const float MARGIN = 256.0f;
+        dest.setX(std::clamp(dest.getX(), minX + MARGIN, maxX - MARGIN));
+        dest.setY(std::clamp(dest.getY(), minY + MARGIN, maxY - MARGIN));
+    }
 
     // Refresh short path using unified cooldown system
     if (state.cooldowns.canRequestPath(now)) {
