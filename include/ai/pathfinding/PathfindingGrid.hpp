@@ -68,7 +68,7 @@ private:
     std::vector<float> m_weight;    // movement multipliers per cell
 
     bool m_allowDiagonal{true};
-    int m_maxIterations{8000}; // Performance-tuned: reduced from 15K to 8K to prevent timeout delays
+    int m_maxIterations{12000}; // Performance-tuned: increased from 8K to 12K for better success rate
     float m_costStraight{1.0f};
     float m_costDiagonal{1.41421356f};
 
