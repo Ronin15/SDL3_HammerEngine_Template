@@ -433,11 +433,12 @@ bool WorldManager::getWorldBounds(float& minX, float& minY, float& maxX, float& 
         return false;
     }
 
-    // World bounds in tile coordinates (assuming each tile is 1x1 unit)
+    // World bounds in pixel coordinates - convert from tile count to pixels
+    const float TILE_SIZE = 32.0f; // Match WorldManager::TILE_SIZE
     minX = 0.0f;
     minY = 0.0f;
-    maxX = static_cast<float>(width);
-    maxY = static_cast<float>(height);
+    maxX = static_cast<float>(width) * TILE_SIZE;   // Convert tiles to pixels
+    maxY = static_cast<float>(height) * TILE_SIZE;  // Convert tiles to pixels
 
     return true;
 }

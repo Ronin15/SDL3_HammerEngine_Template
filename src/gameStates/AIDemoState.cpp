@@ -14,6 +14,7 @@
 #include "managers/CollisionManager.hpp"
 #include "managers/InputManager.hpp"
 #include "managers/UIManager.hpp"
+#include "managers/WorldManager.hpp"
 #include <memory>
 #include <random>
 #include <sstream>
@@ -174,10 +175,16 @@ bool AIDemoState::enter() {
     // Cache GameEngine reference for better performance
     const GameEngine &gameEngine = GameEngine::Instance();
 
-    // Setup world size using logical dimensions for proper cross-platform
-    // rendering
-    m_worldWidth = gameEngine.getLogicalWidth();
-    m_worldHeight = gameEngine.getLogicalHeight();
+    // Setup world size using actual world bounds instead of screen dimensions
+    float worldMinX, worldMinY, worldMaxX, worldMaxY;
+    if (WorldManager::Instance().getWorldBounds(worldMinX, worldMinY, worldMaxX, worldMaxY)) {
+        m_worldWidth = worldMaxX;
+        m_worldHeight = worldMaxY;
+    } else {
+        // Fallback to screen dimensions if world not loaded
+        m_worldWidth = gameEngine.getLogicalWidth();
+        m_worldHeight = gameEngine.getLogicalHeight();
+    }
 
     // Texture has to be loaded by NPC or Player can't be loaded here
     setupAIBehaviors();

@@ -22,22 +22,18 @@ Vector2D ClampToWorld(const Vector2D& position, float margin) {
     float minX, minY, maxX, maxY;
     
     if (worldManager.getWorldBounds(minX, minY, maxX, maxY)) {
-        const float TILE_SIZE = 32.0f;
-        float worldMinX = minX * TILE_SIZE;
-        float worldMinY = minY * TILE_SIZE;  
-        float worldMaxX = maxX * TILE_SIZE;
-        float worldMaxY = maxY * TILE_SIZE;
-        
+        // getWorldBounds() already returns pixel coordinates, no need to multiply by TILE_SIZE
         return Vector2D(
-            std::clamp(position.getX(), worldMinX + margin, worldMaxX - margin),
-            std::clamp(position.getY(), worldMinY + margin, worldMaxY - margin)
+            std::clamp(position.getX(), minX + margin, maxX - margin),
+            std::clamp(position.getY(), minY + margin, maxY - margin)
         );
     }
     
-    // Fallback bounds if WorldManager fails
+    // Fallback bounds if WorldManager fails - use generous margins
+    const float fallbackMargin = std::max(margin, 256.0f);
     return Vector2D(
-        std::clamp(position.getX(), 0.0f + margin, 32000.0f - margin),
-        std::clamp(position.getY(), 0.0f + margin, 32000.0f - margin)
+        std::clamp(position.getX(), 0.0f + fallbackMargin, 3200.0f - fallbackMargin),
+        std::clamp(position.getY(), 0.0f + fallbackMargin, 3200.0f - fallbackMargin)
     );
 }
 
@@ -180,18 +176,12 @@ WorldBounds GetWorldBoundsInPixels() {
     
     float minX, minY, maxX, maxY;
     if (worldManager.getWorldBounds(minX, minY, maxX, maxY)) {
-        // Convert tile coordinates to pixel coordinates (assuming 32 pixel tiles)
-        constexpr float TILE_SIZE = 32.0f;
-        return WorldBounds(
-            minX * TILE_SIZE,
-            minY * TILE_SIZE,
-            maxX * TILE_SIZE,
-            maxY * TILE_SIZE
-        );
+        // getWorldBounds() already returns pixel coordinates, no need to multiply by TILE_SIZE
+        return WorldBounds(minX, minY, maxX, maxY);
     }
     
-    // Return invalid bounds if world bounds not available
-    return WorldBounds();
+    // Return default bounds if world bounds not available
+    return WorldBounds(0.0f, 0.0f, 3200.0f, 3200.0f);
 }
 
 // Compatibility functions for legacy AIManager calls

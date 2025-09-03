@@ -68,7 +68,7 @@ private:
     std::vector<float> m_weight;    // movement multipliers per cell
 
     bool m_allowDiagonal{true};
-    int m_maxIterations{20000};  // Increased limit for long-distance pathfinding
+    int m_maxIterations{50000};  // Production-grade limit for complex 100x100 grids
     float m_costStraight{1.0f};
     float m_costDiagonal{1.41421356f};
 

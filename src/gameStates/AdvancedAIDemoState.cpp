@@ -7,6 +7,7 @@
 #include "core/Logger.hpp"
 #include "managers/AIManager.hpp"
 #include "managers/CollisionManager.hpp"
+#include "managers/WorldManager.hpp"
 #include "SDL3/SDL_scancode.h"
 #include "ai/behaviors/IdleBehavior.hpp"
 #include "ai/behaviors/FleeBehavior.hpp"
@@ -130,9 +131,16 @@ bool AdvancedAIDemoState::enter() {
         // Cache GameEngine reference for better performance
         const GameEngine& gameEngine = GameEngine::Instance();
 
-        // Setup world size using logical dimensions for proper cross-platform rendering
-        m_worldWidth = gameEngine.getLogicalWidth();
-        m_worldHeight = gameEngine.getLogicalHeight();
+        // Setup world size using actual world bounds instead of screen dimensions
+        float worldMinX, worldMinY, worldMaxX, worldMaxY;
+        if (WorldManager::Instance().getWorldBounds(worldMinX, worldMinY, worldMaxX, worldMaxY)) {
+            m_worldWidth = worldMaxX;
+            m_worldHeight = worldMaxY;
+        } else {
+            // Fallback to screen dimensions if world not loaded
+            m_worldWidth = gameEngine.getLogicalWidth();
+            m_worldHeight = gameEngine.getLogicalHeight();
+        }
 
         // Initialize game time
         m_gameTime = 0.0f;

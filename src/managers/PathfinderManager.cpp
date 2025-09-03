@@ -502,8 +502,13 @@ bool PathfinderManager::ensureGridInitialized() {
     }
 
     // Calculate grid dimensions in cells
-    int gridWidth = static_cast<int>(worldWidth / m_cellSize);
-    int gridHeight = static_cast<int>(worldHeight / m_cellSize);
+    // NOTE: worldWidth/Height from WorldManager are in tile count, not pixels
+    // Convert to pixels first: tileCount * TILE_SIZE = pixelDimensions
+    const float TILE_SIZE = 32.0f; // Match WorldManager::TILE_SIZE
+    float worldPixelWidth = worldWidth * TILE_SIZE;
+    float worldPixelHeight = worldHeight * TILE_SIZE;
+    int gridWidth = static_cast<int>(worldPixelWidth / m_cellSize);
+    int gridHeight = static_cast<int>(worldPixelHeight / m_cellSize);
 
     // Ensure minimum grid size
     if (gridWidth <= 0 || gridHeight <= 0) {
