@@ -100,6 +100,9 @@ public:
     // Store pathfinding results computed by AIManager
     void storePathResult(EntityID entityId, const std::vector<Vector2D>& path);
     
+    // Cache a successful path for reuse (NEW METHOD)
+    void cacheSuccessfulPath(const Vector2D& start, const Vector2D& goal, const std::vector<Vector2D>& path);
+    
     // Performance monitoring
     size_t getQueueSize() const;
     size_t getActiveRequestCount() const;

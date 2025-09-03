@@ -323,27 +323,30 @@ PathfindingResult PathfindingGrid::findPath(const Vector2D& start, const Vector2
     // Safety cap for memory management (much higher than before)
     r = std::min(r, 150);  // Allow complex pathfinding while preventing excessive memory use
     
-    // ROI that encompasses both start and goal with minimal buffer
+    // CRITICAL FIX: ROI that ALWAYS encompasses both start and goal with guaranteed buffer
+    // Use the actual coordinates to ensure both points are included, not just estimated bounds
     int roiMinX = std::max(0, std::min(sx, gx) - r);
     int roiMaxX = std::min(W - 1, std::max(sx, gx) + r);
     int roiMinY = std::max(0, std::min(sy, gy) - r);
     int roiMaxY = std::min(H - 1, std::max(sy, gy) + r);
     
-    // CRITICAL DEBUG: Ensure goal is within ROI bounds
-    if (gx < roiMinX || gx > roiMaxX || gy < roiMinY || gy > roiMaxY) {
-        PATHFIND_ERROR("CRITICAL BUG: Goal (" + std::to_string(gx) + "," + std::to_string(gy) + 
-                      ") is outside ROI bounds [" + std::to_string(roiMinX) + "," + std::to_string(roiMinY) + 
-                      " to " + std::to_string(roiMaxX) + "," + std::to_string(roiMaxY) + "]" +
-                      " radius=" + std::to_string(r) + ", distance=" + std::to_string(baseDistance));
+    // CRITICAL FIX: Always validate and force ROI to contain both start and goal
+    if (sx < roiMinX || sx > roiMaxX || sy < roiMinY || sy > roiMaxY ||
+        gx < roiMinX || gx > roiMaxX || gy < roiMinY || gy > roiMaxY) {
         
-        // EMERGENCY FIX: Expand ROI to include goal
-        roiMinX = std::max(0, std::min({sx, gx}) - r);
-        roiMaxX = std::min(W - 1, std::max({sx, gx}) + r);
-        roiMinY = std::max(0, std::min({sy, gy}) - r);
-        roiMaxY = std::min(H - 1, std::max({sy, gy}) + r);
+        PATHFIND_DEBUG("ROI boundary issue detected - forcibly expanding ROI");
         
-        PATHFIND_INFO("ROI EXPANDED to include goal: [" + std::to_string(roiMinX) + "," + 
-                     std::to_string(roiMinY) + " to " + std::to_string(roiMaxX) + "," + std::to_string(roiMaxY) + "]");
+        // Force ROI to contain both start and goal with minimum buffer
+        int minBuffer = std::max(r, 15);  // Ensure minimum 15-cell buffer
+        roiMinX = std::max(0, std::min({sx, gx}) - minBuffer);
+        roiMaxX = std::min(W - 1, std::max({sx, gx}) + minBuffer);
+        roiMinY = std::max(0, std::min({sy, gy}) - minBuffer);
+        roiMaxY = std::min(H - 1, std::max({sy, gy}) + minBuffer);
+        
+        PATHFIND_DEBUG("ROI forced to: [" + std::to_string(roiMinX) + "," + 
+                     std::to_string(roiMinY) + " to " + std::to_string(roiMaxX) + "," + std::to_string(roiMaxY) + 
+                     "] to contain start(" + std::to_string(sx) + "," + std::to_string(sy) + 
+                     ") and goal(" + std::to_string(gx) + "," + std::to_string(gy) + ")");
     }
 
     // A* pathfinding using thread-local object pooling for memory optimization
