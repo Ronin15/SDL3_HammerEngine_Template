@@ -11,6 +11,7 @@
 #include "managers/CollisionManager.hpp"
 #include "managers/WorldManager.hpp"
 #include "core/ThreadSystem.hpp"
+#include "core/WorkerBudget.hpp"
 #include "core/Logger.hpp"
 #include <chrono>
 #include <future>
@@ -179,22 +180,33 @@ uint64_t PathfinderManager::requestPath(
         return 0;
     }
 
-    uint64_t requestId = m_nextRequestId.fetch_add(1);
-    
-    AIInternal::PathRequest request(entityId, start, goal, priority, callback);
-    request.requestTime = std::chrono::steady_clock::now().time_since_epoch().count();
-
+    // CRITICAL FIX: Direct to scheduler only, eliminate double queueing
+    // Check for too many pending requests per entity (emergency brake)
+    uint64_t pendingCount = 0;
     {
         std::lock_guard<std::mutex> lock(m_requestMutex);
-        m_pendingRequests.insert(std::make_pair(requestId, request));
-        m_requestQueue.push(request);
+        for (const auto& pair : m_pendingRequests) {
+            if (pair.second.entityId == entityId) {
+                pendingCount++;
+                if (pendingCount >= 3) {
+                    // Entity has 3+ requests already - reject to prevent overflow
+                    return 0;
+                }
+            }
+        }
     }
 
-    // Update stats
+    uint64_t requestId = m_nextRequestId.fetch_add(1);
+    
+    // Pass directly to scheduler - no local queue
+    if (m_scheduler) {
+        m_scheduler->requestPath(entityId, start, goal, priority, callback);
+    }
+
+    // Update stats only
     {
         std::lock_guard<std::mutex> lock(m_statsMutex);
         m_stats.totalRequests++;
-        m_stats.pendingRequests = m_requestQueue.size();
     }
 
     return requestId;
@@ -397,13 +409,101 @@ void PathfinderManager::processSchedulerRequests(const std::vector<AIInternal::P
         return;
     }
 
-    // Process each request directly using our grid
-    for (const auto& request : requests) {
+    size_t requestCount = requests.size();
+    
+    // CRITICAL FIX: Use ThreadSystem batching like AIManager for massive performance boost
+    // Get ThreadSystem for parallel processing
+    auto& threadSystem = HammerEngine::ThreadSystem::Instance();
+    size_t availableWorkers = static_cast<size_t>(threadSystem.getThreadCount());
+    
+    // Use WorkerBudget system for optimal thread allocation
+    HammerEngine::WorkerBudget budget = HammerEngine::calculateWorkerBudget(availableWorkers);
+    
+    // Determine if parallel processing is beneficial (like AIManager logic)
+    const size_t PARALLEL_THRESHOLD = 8; // Minimum requests for parallel processing
+    
+    if (requestCount >= PARALLEL_THRESHOLD && availableWorkers > 1) {
+        // PARALLEL PATHFINDING - Process multiple paths simultaneously
+        
+        size_t optimalWorkerCount = budget.getOptimalWorkerCount(budget.aiAllocated, requestCount, 100);
+        
+        // Dynamic batch sizing based on request load
+        size_t minRequestsPerBatch = 4;   // Minimum requests per batch
+        size_t maxBatches = 8;            // Maximum parallel batches
+        
+        // Adjust batch strategy based on queue pressure (similar to AIManager)
+        if (requestCount > 50) {
+            // High load: use fewer, larger batches to reduce overhead
+            minRequestsPerBatch = 8;
+            maxBatches = 4;
+        } else if (requestCount <= 16) {
+            // Low load: can use more batches for better parallelization
+            minRequestsPerBatch = 2;
+            maxBatches = 8;
+        }
+        
+        size_t batchCount = std::min(optimalWorkerCount, requestCount / minRequestsPerBatch);
+        batchCount = std::max(size_t(1), std::min(batchCount, maxBatches));
+        
+        size_t requestsPerBatch = requestCount / batchCount;
+        size_t remainingRequests = requestCount % batchCount;
+        
+        // Process batches in parallel using ThreadSystem
+        std::vector<std::future<void>> pathfindingFutures;
+        pathfindingFutures.reserve(batchCount);
+        
+        for (size_t i = 0; i < batchCount; ++i) {
+            size_t start = i * requestsPerBatch;
+            size_t end = start + requestsPerBatch;
+            
+            // Add remaining requests to last batch
+            if (i == batchCount - 1) {
+                end += remainingRequests;
+            }
+            
+            // Submit batch to ThreadSystem for parallel processing
+            pathfindingFutures.push_back(threadSystem.enqueueTaskWithResult(
+                [this, &requests, start, end]() {
+                    processPathfindingBatch(requests, start, end);
+                },
+                HammerEngine::TaskPriority::High, "Pathfinding_Batch"));
+        }
+        
+        // Wait for all pathfinding batches to complete
+        for (auto& future : pathfindingFutures) {
+            if (future.valid()) {
+                try {
+                    future.get();
+                } catch (const std::exception& e) {
+                    GAMEENGINE_ERROR("Exception in pathfinding batch: " + std::string(e.what()));
+                } catch (...) {
+                    GAMEENGINE_ERROR("Unknown exception in pathfinding batch");
+                }
+            }
+        }
+        
+        GAMEENGINE_DEBUG("Processed " + std::to_string(requestCount) + 
+                        " pathfinding requests in " + std::to_string(batchCount) + 
+                        " parallel batches using " + std::to_string(optimalWorkerCount) + " workers");
+        
+    } else {
+        // SINGLE-THREADED PATHFINDING - For small request counts
+        processPathfindingBatch(requests, 0, requestCount);
+    }
+}
+
+void PathfinderManager::processPathfindingBatch(const std::vector<AIInternal::PathRequest>& requests, 
+                                               size_t startIndex, size_t endIndex) {
+    // Process a batch of pathfinding requests (called from both parallel and single-threaded paths)
+    for (size_t i = startIndex; i < endIndex; ++i) {
+        const auto& request = requests[i];
         std::vector<Vector2D> path;
+        
+        // Perform A* pathfinding for this request
         auto result = m_grid->findPath(request.start, request.goal, path);
         
         if (result == HammerEngine::PathfindingResult::SUCCESS) {
-            // Store result in scheduler
+            // Store successful result in scheduler
             m_scheduler->storePathResult(request.entityId, path);
             
             // Call callback if provided
@@ -411,9 +511,11 @@ void PathfinderManager::processSchedulerRequests(const std::vector<AIInternal::P
                 request.callback(request.entityId, path);
             }
             
-            // Update local stats
-            std::lock_guard<std::mutex> lock(m_statsMutex);
-            m_stats.completedRequests++;
+            // Update local stats (thread-safe)
+            {
+                std::lock_guard<std::mutex> lock(m_statsMutex);
+                m_stats.completedRequests++;
+            }
         } else {
             // Store empty result for failed paths
             m_scheduler->storePathResult(request.entityId, std::vector<Vector2D>{});
@@ -423,10 +525,12 @@ void PathfinderManager::processSchedulerRequests(const std::vector<AIInternal::P
                 request.callback(request.entityId, std::vector<Vector2D>{});
             }
             
-            // Update local stats
-            std::lock_guard<std::mutex> lock(m_statsMutex);
-            if (result == HammerEngine::PathfindingResult::TIMEOUT) {
-                m_stats.timedOutRequests++;
+            // Update local stats (thread-safe)
+            {
+                std::lock_guard<std::mutex> lock(m_statsMutex);
+                if (result == HammerEngine::PathfindingResult::TIMEOUT) {
+                    m_stats.timedOutRequests++;
+                }
             }
         }
     }
@@ -446,12 +550,57 @@ void PathfinderManager::updateStatistics() {
     std::lock_guard<std::mutex> lock(m_statsMutex);
     m_stats.pendingRequests = m_requestQueue.size();
     
-    // Get grid statistics if available
+    // Get grid statistics if available and update consolidated stats
+    uint32_t totalRequests = 0;
+    uint32_t successfulPaths = 0;
+    uint32_t timeouts = 0;
+    uint32_t invalidGoals = 0;
+    float avgPathLength = 0.0f;
+    float successRate = 0.0f;
+    float timeoutRate = 0.0f;
+    
     if (m_grid) {
         auto gridStats = m_grid->getStats();
+        totalRequests = gridStats.totalRequests;
+        successfulPaths = gridStats.successfulPaths;
+        timeouts = gridStats.timeouts;
+        invalidGoals = gridStats.invalidGoals;
+        
         if (gridStats.successfulPaths > 0) {
-            m_stats.averagePathLength = static_cast<float>(gridStats.avgPathLength);
+            avgPathLength = static_cast<float>(gridStats.avgPathLength);
+            m_stats.averagePathLength = avgPathLength;
         }
+        
+        if (totalRequests > 0) {
+            successRate = (static_cast<float>(successfulPaths) / static_cast<float>(totalRequests)) * 100.0f;
+            timeoutRate = (static_cast<float>(timeouts) / static_cast<float>(totalRequests)) * 100.0f;
+        }
+    }
+    
+    // Periodic consolidated status reporting (every 5 seconds, like AIManager)
+    static auto lastDebugTime = std::chrono::steady_clock::now();
+    auto currentTime = std::chrono::steady_clock::now();
+    auto timeSinceLastDebug = std::chrono::duration_cast<std::chrono::seconds>(currentTime - lastDebugTime);
+    
+    if (timeSinceLastDebug.count() >= 5 && totalRequests > 0) {
+        lastDebugTime = currentTime;
+        
+        // Get cache statistics
+        float cacheHitRate = m_stats.cacheHitRate * 100.0f;
+        uint32_t cacheHits = m_stats.cacheHits;
+        uint32_t cacheMisses = m_stats.cacheMisses;
+        uint32_t activeThreads = m_stats.activeThreads;
+        uint32_t pendingRequests = static_cast<uint32_t>(m_stats.pendingRequests);
+        
+        GAMEENGINE_DEBUG("Pathfinder Summary - Requests: " + std::to_string(totalRequests) +
+                        ", Success: " + std::to_string(successfulPaths) + " (" + std::to_string(static_cast<int>(successRate)) + "%)" +
+                        ", Timeouts: " + std::to_string(timeouts) + " (" + std::to_string(static_cast<int>(timeoutRate)) + "%)" +
+                        ", Invalid: " + std::to_string(invalidGoals) +
+                        ", Pending: " + std::to_string(pendingRequests) +
+                        ", Cache: " + std::to_string(cacheHits) + "/" + std::to_string(cacheHits + cacheMisses) + 
+                        " (" + std::to_string(static_cast<int>(cacheHitRate)) + "%)" +
+                        ", Avg Path: " + std::to_string(static_cast<int>(avgPathLength)) + " nodes" +
+                        ", Threads: " + std::to_string(activeThreads));
     }
 }
 

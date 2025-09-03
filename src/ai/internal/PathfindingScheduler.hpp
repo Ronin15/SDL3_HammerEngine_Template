@@ -120,6 +120,7 @@ private:
     // Request management
     std::priority_queue<PathRequest> m_requestQueue;
     std::unordered_map<EntityID, PathResult> m_pathResults;
+    std::unordered_map<EntityID, int> m_pendingEntityRequests; // Track pending requests per entity
     mutable std::mutex m_queueMutex;
     mutable std::mutex m_resultsMutex;
     
@@ -130,9 +131,9 @@ private:
     // Path caching system
     std::unique_ptr<PathCache> m_pathCache;
     
-    // Performance controls
-    static constexpr size_t MAX_REQUESTS_PER_FRAME = 8;
-    static constexpr size_t MAX_BATCH_SIZE = 16;
+    // Performance controls - CRITICAL FIX: Increase from 8 to handle overflow
+    static constexpr size_t MAX_REQUESTS_PER_FRAME = 32;
+    static constexpr size_t MAX_BATCH_SIZE = 32;
     static constexpr uint64_t REQUEST_TIMEOUT_MS = 5000; // 5 second timeout
     std::atomic<bool> m_isShutdown{false};
     

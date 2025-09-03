@@ -193,29 +193,13 @@ PathfindingResult PathfindingGrid::findPath(const Vector2D& start, const Vector2
     if (!inBounds(sx, sy)) { 
         m_stats.totalRequests++;
         m_stats.invalidStarts++; 
-        // Periodic warning with coordinate diagnostics
-        static uint32_t invalidStartCount = 0;
-        if (++invalidStartCount % 20 == 0) {
-            PATHFIND_WARN("Invalid start positions: " + std::to_string(m_stats.invalidStarts) + 
-                          " of " + std::to_string(m_stats.totalRequests) + " requests. " +
-                          "Latest: world(" + std::to_string(start.getX()) + "," + std::to_string(start.getY()) + 
-                          ") -> grid(" + std::to_string(sx) + "," + std::to_string(sy) + 
-                          "), bounds=[0,0 to " + std::to_string(m_w-1) + "," + std::to_string(m_h-1) + "]");
-        }
+        // Invalid start warnings removed - covered in PathfinderManager status reporting
         return PathfindingResult::INVALID_START; 
     }
     if (!inBounds(gx, gy)) { 
         m_stats.totalRequests++;
         m_stats.invalidGoals++; 
-        // Periodic warning with coordinate diagnostics
-        static uint32_t invalidGoalCount = 0;
-        if (++invalidGoalCount % 20 == 0) {
-            PATHFIND_WARN("Invalid goal positions: " + std::to_string(m_stats.invalidGoals) + 
-                          " of " + std::to_string(m_stats.totalRequests) + " requests. " +
-                          "Latest: world(" + std::to_string(goal.getX()) + "," + std::to_string(goal.getY()) + 
-                          ") -> grid(" + std::to_string(gx) + "," + std::to_string(gy) + 
-                          "), bounds=[0,0 to " + std::to_string(m_w-1) + "," + std::to_string(m_h-1) + "]");
-        }
+        // Invalid goal warnings removed - covered in PathfinderManager status reporting
         return PathfindingResult::INVALID_GOAL; 
     }
     
@@ -312,26 +296,55 @@ PathfindingResult PathfindingGrid::findPath(const Vector2D& start, const Vector2
         return baseDistance;
     };
 
-    // Restrict search to a tighter ROI to prevent excessive exploration
-    // (reuse variables from earlier)
+    // CLUSTER-AWARE ROI CALCULATION - Fix for 77% timeout rate
+    // Adaptive ROI that scales with distance and handles clustered scenarios
     int baseDistance = directDistance;
     
-    // Balanced ROI: allow reasonable detours without full-grid searches
-    int r = std::max(20, static_cast<int>(baseDistance * 1.8f + 15));  // Slightly more generous
+    // Dynamic ROI calculation for cluster scenarios
+    int r;
     
-    // Prevent excessive ROI for long distances while allowing complex paths
-    if (baseDistance > 40) {
-        r = std::min(r, baseDistance + 35);  // More generous cap for complex terrain
+    if (baseDistance <= 15) {
+        // Short paths: generous buffer for obstacle avoidance
+        r = std::max(25, baseDistance * 2 + 10);
+    } else if (baseDistance <= 30) {
+        // Medium paths: moderate expansion for complex terrain  
+        r = std::max(40, static_cast<int>(baseDistance * 1.6f + 20));
+    } else if (baseDistance <= 60) {
+        // Long paths: proportional expansion with cluster handling
+        r = std::max(70, static_cast<int>(baseDistance * 1.4f + 25));
+    } else {
+        // Very long paths: capped but generous for complex pathfinding
+        r = std::min(120, static_cast<int>(baseDistance * 1.2f + 30));
     }
     
-    // Very aggressive ROI limit to force highly focused pathfinding
-    r = std::min(r, 30);  // Much tighter cap to eliminate large ROI searches
+    // CRITICAL FIX: Remove artificial 30-tile cap that was causing mass failures
+    // Old code: r = std::min(r, 30); // This was the primary cause of timeouts!
+    
+    // Safety cap for memory management (much higher than before)
+    r = std::min(r, 150);  // Allow complex pathfinding while preventing excessive memory use
     
     // ROI that encompasses both start and goal with minimal buffer
     int roiMinX = std::max(0, std::min(sx, gx) - r);
     int roiMaxX = std::min(W - 1, std::max(sx, gx) + r);
     int roiMinY = std::max(0, std::min(sy, gy) - r);
     int roiMaxY = std::min(H - 1, std::max(sy, gy) + r);
+    
+    // CRITICAL DEBUG: Ensure goal is within ROI bounds
+    if (gx < roiMinX || gx > roiMaxX || gy < roiMinY || gy > roiMaxY) {
+        PATHFIND_ERROR("CRITICAL BUG: Goal (" + std::to_string(gx) + "," + std::to_string(gy) + 
+                      ") is outside ROI bounds [" + std::to_string(roiMinX) + "," + std::to_string(roiMinY) + 
+                      " to " + std::to_string(roiMaxX) + "," + std::to_string(roiMaxY) + "]" +
+                      " radius=" + std::to_string(r) + ", distance=" + std::to_string(baseDistance));
+        
+        // EMERGENCY FIX: Expand ROI to include goal
+        roiMinX = std::max(0, std::min({sx, gx}) - r);
+        roiMaxX = std::min(W - 1, std::max({sx, gx}) + r);
+        roiMinY = std::max(0, std::min({sy, gy}) - r);
+        roiMaxY = std::min(H - 1, std::max({sy, gy}) + r);
+        
+        PATHFIND_INFO("ROI EXPANDED to include goal: [" + std::to_string(roiMinX) + "," + 
+                     std::to_string(roiMinY) + " to " + std::to_string(roiMaxX) + "," + std::to_string(roiMaxY) + "]");
+    }
 
     // A* pathfinding using thread-local object pooling for memory optimization
     thread_local NodePool nodePool;
@@ -360,9 +373,9 @@ PathfindingResult PathfindingGrid::findPath(const Vector2D& start, const Vector2
     const int dx8[8] = {1,-1,0,0, 1,1,-1,-1};
     const int dy8[8] = {0,0,1,-1, 1,-1,1,-1};
 
-    // Highly optimized iteration limits for production 100x100 grid
-    int baseIters = std::max(1200, baseDistance * 60);  // Much more generous for complex terrain
-    int dynamicMaxIters = std::min(m_maxIterations, baseIters + 3000); // Large buffer for edge cases
+    // Optimized iteration limits - balanced for performance and reliability
+    int baseIters = std::max(1500, baseDistance * 75);  // More generous base for reliability  
+    int dynamicMaxIters = std::min(m_maxIterations, baseIters + 2500); // Balanced buffer
     
     // Very generous caps to handle worst-case scenarios
     if (baseDistance < 10) {
@@ -373,20 +386,35 @@ PathfindingResult PathfindingGrid::findPath(const Vector2D& start, const Vector2
         dynamicMaxIters = std::min(dynamicMaxIters, 12000); // High limit for long paths
     }
     
-    // Much more generous queue limits - the algorithm needs room to work
-    const size_t maxOpenQueueSize = std::max(static_cast<size_t>(2000), static_cast<size_t>(baseDistance * 50));
+    // CRITICAL FIX: Much higher queue limits to prevent premature termination
+    // The original limits were causing 77% timeout rate with early termination at 400-500 iterations
+    const size_t maxOpenQueueSize = std::max(static_cast<size_t>(8000), static_cast<size_t>(baseDistance * 120));
     
-    // Higher absolute cap to allow complex pathfinding scenarios
-    const size_t maxAbsoluteQueueSize = 8000;
+    // Emergency brake only for extreme memory situations
+    const size_t maxAbsoluteQueueSize = 20000;
 
     while (!open.empty() && iterations++ < dynamicMaxIters) {
-        // Early termination if queue becomes too large
-        if (open.size() > maxOpenQueueSize || open.size() > maxAbsoluteQueueSize) {
-            PATHFIND_DEBUG("Early termination: queue size " + std::to_string(open.size()) + 
-                          " exceeded limit (max: " + std::to_string(maxOpenQueueSize) + ")");
+        // Only terminate on truly excessive memory usage, not normal pathfinding complexity
+        if (open.size() > maxAbsoluteQueueSize) {
+            PATHFIND_DEBUG("Emergency termination: queue size " + std::to_string(open.size()) + 
+                          " exceeded emergency limit (max: " + std::to_string(maxAbsoluteQueueSize) + ")");
             break;
         }
+        
+        // Log queue growth patterns to identify true problems vs normal pathfinding
+        if (iterations % 1000 == 0 && open.size() > maxOpenQueueSize) {
+            PATHFIND_DEBUG("Large queue at iteration " + std::to_string(iterations) + 
+                          ": size=" + std::to_string(open.size()) + ", distance=" + std::to_string(baseDistance));
+        }
         NodePool::Node cur = open.top(); open.pop();
+        
+        // DEBUG: Track when we get suspiciously few iterations
+        if (iterations <= 5) {
+            PATHFIND_DEBUG("Iteration " + std::to_string(iterations) + 
+                          ": Processing node (" + std::to_string(cur.x) + "," + std::to_string(cur.y) + 
+                          "), queue size=" + std::to_string(open.size()) +
+                          ", goal=(" + std::to_string(gx) + "," + std::to_string(gy) + ")");
+        }
         int cIndex = idx(cur.x, cur.y);
         if (closed[cIndex]) continue;
         closed[cIndex] = 1;
@@ -420,8 +448,29 @@ PathfindingResult PathfindingGrid::findPath(const Vector2D& start, const Vector2
             int ny = cur.y + dy8[i];
             
             // Combined bounds and ROI check for efficiency
-            if (nx < roiMinX || nx > roiMaxX || ny < roiMinY || ny > roiMaxY || 
-                nx < 0 || nx >= W || ny < 0 || ny >= H) continue;
+            bool outsideROI = (nx < roiMinX || nx > roiMaxX || ny < roiMinY || ny > roiMaxY);
+            bool outsideBounds = (nx < 0 || nx >= W || ny < 0 || ny >= H);
+            
+            if (outsideBounds) continue;  // Always reject out-of-bounds
+            
+            // CRITICAL FIX: Only apply ROI restriction if we're far from the goal
+            // Allow more exploration near the goal to prevent premature termination
+            if (outsideROI) {
+                // Calculate distance to goal to decide if ROI restriction should apply
+                int distanceToGoal = std::abs(nx - gx) + std::abs(ny - gy);
+                int currentToGoal = std::abs(cur.x - gx) + std::abs(cur.y - gy);
+                
+                // If we're getting closer to goal, allow ROI expansion
+                if (distanceToGoal > currentToGoal + 3) {  // Only reject if moving significantly away from goal
+                    continue;
+                }
+                
+                // DEBUG: Track ROI bypasses
+                if (iterations <= 10) {
+                    PATHFIND_DEBUG("ROI bypass: node (" + std::to_string(nx) + "," + std::to_string(ny) + 
+                                  ") outside ROI but closer to goal (" + std::to_string(gx) + "," + std::to_string(gy) + ")");
+                }
+            }
                 
             size_t nIndex = static_cast<size_t>(idx(nx, ny));
             if (closed[nIndex] || isBlocked(nx, ny)) continue;
@@ -452,36 +501,8 @@ PathfindingResult PathfindingGrid::findPath(const Vector2D& start, const Vector2
     m_stats.timeouts++;
     m_stats.totalIterations += iterations;
     
-    // Enhanced diagnostic logging for timeout patterns
-    static uint32_t timeoutCount = 0;
-    static std::unordered_map<std::string, int> problematicGoals;
-    
-    if (++timeoutCount % 5 == 0) {  // Report more frequently to catch patterns
-        std::string goalKey = "(" + std::to_string(gx) + "," + std::to_string(gy) + ")";
-        problematicGoals[goalKey]++;
-        
-        float timeoutRate = (m_stats.totalRequests > 0) ? 
-            (static_cast<float>(m_stats.timeouts) / static_cast<float>(m_stats.totalRequests) * 100.0f) : 0.0f;
-            
-        PATHFIND_WARN("Pathfinding timeouts: " + std::to_string(m_stats.timeouts) + 
-                      " of " + std::to_string(m_stats.totalRequests) + " requests (" + 
-                      std::to_string(static_cast<int>(timeoutRate)) + "%). " +
-                      "Last timeout: distance=" + std::to_string(baseDistance) + 
-                      " tiles, iters=" + std::to_string(iterations) + "/" + std::to_string(dynamicMaxIters) +
-                      ", ROI=" + std::to_string((roiMaxX-roiMinX+1) * (roiMaxY-roiMinY+1)) + " cells" +
-                      ", start=(" + std::to_string(sx) + "," + std::to_string(sy) + ")" +
-                      ", goal=" + goalKey);
-                      
-        if (problematicGoals[goalKey] >= 3) {
-            PATHFIND_WARN("REPEATED PROBLEMATIC GOAL: " + goalKey + " failed " + 
-                          std::to_string(problematicGoals[goalKey]) + " times");
-        }
-        
-        // Flag suspicious boundary goals
-        if (gx <= 1 || gy <= 1 || gx >= m_w-2 || gy >= m_h-2) {
-            PATHFIND_WARN("BOUNDARY GOAL DETECTED: " + goalKey + " - near world edge");
-        }
-    }
+    // Individual timeout warnings removed - comprehensive status reporting now handled by PathfinderManager
+    // Statistics are still tracked in m_stats for consolidated reporting
     
     return PathfindingResult::TIMEOUT;
 }

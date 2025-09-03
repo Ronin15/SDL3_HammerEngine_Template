@@ -54,12 +54,33 @@ void PathfindingScheduler::requestPath(EntityID entityId, const Vector2D& start,
         return;
     }
     
+    // CRITICAL FIX: Fast duplicate request tracking
+    // Use efficient map instead of expensive queue scan
+    {
+        std::lock_guard<std::mutex> lock(m_queueMutex);
+        
+        // Track pending request count per entity efficiently
+        auto it = m_pendingEntityRequests.find(entityId);
+        if (it != m_pendingEntityRequests.end() && it->second >= 1) {
+            // Entity already has pending request - reject to prevent overflow
+            AI_WARN("PathfindingScheduler: Entity " + std::to_string(entityId) + 
+                   " already has pending request - rejecting duplicate");
+            if (callback) {
+                callback(entityId, std::vector<Vector2D>{}); // Empty path on failure
+            }
+            return;
+        }
+        
+        // Track this request
+        m_pendingEntityRequests[entityId]++;
+    }
+    
     // Check if we already have a recent path for this entity
     {
         std::lock_guard<std::mutex> lock(m_resultsMutex);
         auto it = m_pathResults.find(entityId);
         if (it != m_pathResults.end() && 
-            (currentTime - it->second.computeTime) < 500 && // 500ms cache
+            (currentTime - it->second.computeTime) < 1000 && // Increased to 1000ms cache to reduce duplicate requests
             it->second.isValid) 
         {
             // Return cached path immediately
@@ -79,6 +100,17 @@ void PathfindingScheduler::requestPath(EntityID entityId, const Vector2D& start,
 
     {
         std::lock_guard<std::mutex> lock(m_queueMutex);
+        
+        // QUEUE OVERFLOW PROTECTION: Reject requests if queue is too large
+        if (m_requestQueue.size() > 500) {
+            AI_WARN("PathfindingScheduler: Request queue overflow (" + std::to_string(m_requestQueue.size()) + 
+                   " requests) - rejecting new request for entity " + std::to_string(entityId));
+            if (callback) {
+                callback(entityId, std::vector<Vector2D>{}); // Empty path on failure
+            }
+            return;
+        }
+        
         m_requestQueue.push(request);
     }
 
@@ -187,6 +219,7 @@ void PathfindingScheduler::shutdown()
             // Clear priority queue by creating new empty one
             std::priority_queue<PathRequest> empty;
             m_requestQueue.swap(empty);
+            m_pendingEntityRequests.clear();
         }
         
         {
@@ -232,8 +265,18 @@ std::vector<PathRequest> PathfindingScheduler::extractPendingRequests(size_t max
         
         // Extract requests from priority queue
         for (size_t i = 0; i < requestsToTake && !m_requestQueue.empty(); ++i) {
-            batchToProcess.push_back(m_requestQueue.top());
+            PathRequest request = m_requestQueue.top();
+            batchToProcess.push_back(request);
             m_requestQueue.pop();
+            
+            // Decrement pending request count for this entity
+            auto it = m_pendingEntityRequests.find(request.entityId);
+            if (it != m_pendingEntityRequests.end()) {
+                it->second--;
+                if (it->second <= 0) {
+                    m_pendingEntityRequests.erase(it);
+                }
+            }
         }
     }
     
