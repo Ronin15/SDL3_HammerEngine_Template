@@ -103,6 +103,9 @@ public:
     // Cache a successful path for reuse (NEW METHOD)
     void cacheSuccessfulPath(const Vector2D& start, const Vector2D& goal, const std::vector<Vector2D>& path);
     
+    // Get cached path for batch processing
+    std::optional<std::vector<Vector2D>> getCachedPath(const Vector2D& start, const Vector2D& goal, float tolerance) const;
+    
     // Performance monitoring
     size_t getQueueSize() const;
     size_t getActiveRequestCount() const;
