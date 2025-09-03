@@ -246,6 +246,7 @@ private:
     float m_cacheExpirationTime{5.0f};
     bool m_allowDiagonal{true};
     int m_maxIterations{20000};
+    float m_cellSize{32.0f};
 
     // State management
     std::atomic<bool> m_initialized{false};
@@ -268,6 +269,7 @@ private:
     void cleanupCache();
     void integrateCollisionData();
     void integrateWorldData();
+    bool ensureGridInitialized(); // Lazy initialization helper
 };
 
 #endif // PATHFINDER_MANAGER_HPP

@@ -10,6 +10,7 @@
 #include <limits>
 #include <cmath>
 #include <unordered_map>
+#include <stdexcept>
 #include "core/Logger.hpp"
 
 namespace HammerEngine {
@@ -18,6 +19,18 @@ namespace HammerEngine {
 
 PathfindingGrid::PathfindingGrid(int width, int height, float cellSize, const Vector2D& worldOffset)
     : m_w(width), m_h(height), m_cell(cellSize), m_offset(worldOffset) {
+    
+    // Validate grid dimensions to prevent 0x0 grids
+    if (m_w <= 0 || m_h <= 0) {
+        throw std::invalid_argument("PathfindingGrid dimensions must be positive: " + 
+                                    std::to_string(width) + "x" + std::to_string(height));
+    }
+    
+    if (cellSize <= 0.0f) {
+        throw std::invalid_argument("PathfindingGrid cell size must be positive: " + 
+                                    std::to_string(cellSize));
+    }
+    
     m_blocked.assign(static_cast<size_t>(m_w * m_h), 0);
     m_weight.assign(static_cast<size_t>(m_w * m_h), 1.0f);
 }
