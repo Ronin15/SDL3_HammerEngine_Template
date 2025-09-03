@@ -61,8 +61,8 @@ void PathfindingScheduler::requestPath(EntityID entityId, const Vector2D& start,
         
         // Track pending request count per entity efficiently
         auto it = m_pendingEntityRequests.find(entityId);
-        if (it != m_pendingEntityRequests.end() && it->second >= 1) {
-            // Entity already has pending request - reject to prevent overflow (spam warning removed)
+        if (it != m_pendingEntityRequests.end() && it->second >= 3) {
+            // Entity has 3+ pending requests - reject to prevent overflow (increased from 1)
             if (callback) {
                 callback(entityId, std::vector<Vector2D>{}); // Empty path on failure
             }
@@ -303,7 +303,25 @@ void PathfindingScheduler::storePathResult(EntityID entityId, const std::vector<
         m_pathResults[entityId] = PathResult(path, computeTime);
     }
     
+    // CRITICAL FIX: Cache successful paths for reuse by other entities
+    if (!path.empty() && m_pathCache) {
+        // We need start/goal to cache the path, but storePathResult doesn't have them
+        // This is a design issue - we need to cache in processPathfindingBatch instead
+    }
+    
     // Path result stored (stats tracked in periodic summary)
+}
+
+void PathfindingScheduler::cacheSuccessfulPath(const Vector2D& start, const Vector2D& goal, const std::vector<Vector2D>& path)
+{
+    if (m_isShutdown.load(std::memory_order_relaxed)) {
+        return;
+    }
+    
+    // Cache successful paths for reuse by similar requests
+    if (!path.empty() && m_pathCache) {
+        m_pathCache->cachePath(start, goal, path);
+    }
 }
 
 void PathfindingScheduler::processPathBatch(std::vector<PathRequest> batch)

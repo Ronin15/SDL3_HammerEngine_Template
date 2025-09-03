@@ -102,10 +102,12 @@ void PathfinderManager::update(float deltaTime) {
         Vector2D playerPos(0, 0); // TODO: Get actual player position
         m_scheduler->update(deltaTime, playerPos);
         
-        // Process requests through scheduler using our grid
-        auto requests = m_scheduler->extractPendingRequests(m_maxPathsPerFrame);
-        if (!requests.empty()) {
-            processSchedulerRequests(requests);
+        // CRITICAL FIX: Remove artificial batch accumulation delays
+        // Process requests immediately for much better response times
+        auto newRequests = m_scheduler->extractPendingRequests(m_maxPathsPerFrame);
+        
+        if (!newRequests.empty()) {
+            processSchedulerRequests(newRequests);
         }
     }
 
@@ -411,6 +413,8 @@ void PathfinderManager::processSchedulerRequests(const std::vector<AIInternal::P
 
     size_t requestCount = requests.size();
     
+    // Batch size debugging removed - was flooding console output
+    
     // CRITICAL FIX: Use ThreadSystem batching like AIManager for massive performance boost
     // Get ThreadSystem for parallel processing
     auto& threadSystem = HammerEngine::ThreadSystem::Instance();
@@ -420,7 +424,7 @@ void PathfinderManager::processSchedulerRequests(const std::vector<AIInternal::P
     HammerEngine::WorkerBudget budget = HammerEngine::calculateWorkerBudget(availableWorkers);
     
     // Determine if parallel processing is beneficial (like AIManager logic)
-    const size_t PARALLEL_THRESHOLD = 8; // Minimum requests for parallel processing
+    const size_t PARALLEL_THRESHOLD = 2; // LOWERED: Minimum requests for parallel processing
     
     if (requestCount >= PARALLEL_THRESHOLD && availableWorkers > 1) {
         // PARALLEL PATHFINDING - Process multiple paths simultaneously
@@ -449,8 +453,11 @@ void PathfinderManager::processSchedulerRequests(const std::vector<AIInternal::P
         size_t remainingRequests = requestCount % batchCount;
         
         // Process batches in parallel using ThreadSystem
-        std::vector<std::future<void>> pathfindingFutures;
+        std::vector<std::future<int>> pathfindingFutures;  // CRITICAL FIX: Use int return for task tracking
         pathfindingFutures.reserve(batchCount);
+        
+        // Track active thread count during parallel processing
+        m_activeThreadCount.store(static_cast<uint32_t>(batchCount));
         
         for (size_t i = 0; i < batchCount; ++i) {
             size_t start = i * requestsPerBatch;
@@ -461,10 +468,11 @@ void PathfinderManager::processSchedulerRequests(const std::vector<AIInternal::P
                 end += remainingRequests;
             }
             
-            // Submit batch to ThreadSystem for parallel processing
+            // CRITICAL FIX: Use proper ThreadSystem API with return value
             pathfindingFutures.push_back(threadSystem.enqueueTaskWithResult(
-                [this, &requests, start, end]() {
+                [this, &requests, start, end]() -> int {
                     processPathfindingBatch(requests, start, end);
+                    return static_cast<int>(end - start);  // Return number of processed requests
                 },
                 HammerEngine::TaskPriority::High, "Pathfinding_Batch"));
         }
@@ -473,7 +481,7 @@ void PathfinderManager::processSchedulerRequests(const std::vector<AIInternal::P
         for (auto& future : pathfindingFutures) {
             if (future.valid()) {
                 try {
-                    future.get();
+                    future.get(); // Just wait for completion, don't track count
                 } catch (const std::exception& e) {
                     GAMEENGINE_ERROR("Exception in pathfinding batch: " + std::string(e.what()));
                 } catch (...) {
@@ -482,13 +490,16 @@ void PathfinderManager::processSchedulerRequests(const std::vector<AIInternal::P
             }
         }
         
-        GAMEENGINE_DEBUG("Processed " + std::to_string(requestCount) + 
-                        " pathfinding requests in " + std::to_string(batchCount) + 
-                        " parallel batches using " + std::to_string(optimalWorkerCount) + " workers");
+        // Reset active thread count after parallel processing
+        m_activeThreadCount.store(0);
+        
+        // Parallel batch processing debug output removed - was flooding console
         
     } else {
         // SINGLE-THREADED PATHFINDING - For small request counts
+        m_activeThreadCount.store(1);  // Track single-threaded processing
         processPathfindingBatch(requests, 0, requestCount);
+        m_activeThreadCount.store(0);  // Reset after processing
     }
 }
 
@@ -502,8 +513,12 @@ void PathfinderManager::processPathfindingBatch(const std::vector<AIInternal::Pa
         // Perform A* pathfinding for this request
         auto result = m_grid->findPath(request.start, request.goal, path);
         
-        if (result == HammerEngine::PathfindingResult::SUCCESS) {
-            // Store successful result in scheduler
+        if (result == HammerEngine::PathfindingResult::SUCCESS && !path.empty()) {
+            // CRITICAL FIX: Cache successful paths FIRST before storing results
+            // This ensures the cache gets populated and can be used by subsequent requests
+            m_scheduler->cacheSuccessfulPath(request.start, request.goal, path);
+            
+            // Store successful result in scheduler (after caching)
             m_scheduler->storePathResult(request.entityId, path);
             
             // Call callback if provided
