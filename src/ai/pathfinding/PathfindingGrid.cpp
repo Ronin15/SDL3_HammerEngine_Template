@@ -408,13 +408,7 @@ PathfindingResult PathfindingGrid::findPath(const Vector2D& start, const Vector2
         }
         NodePool::Node cur = open.top(); open.pop();
         
-        // DEBUG: Track when we get suspiciously few iterations
-        if (iterations <= 5) {
-            PATHFIND_DEBUG("Iteration " + std::to_string(iterations) + 
-                          ": Processing node (" + std::to_string(cur.x) + "," + std::to_string(cur.y) + 
-                          "), queue size=" + std::to_string(open.size()) +
-                          ", goal=(" + std::to_string(gx) + "," + std::to_string(gy) + ")");
-        }
+        // Verbose iteration debugging removed - spammed console output
         int cIndex = idx(cur.x, cur.y);
         if (closed[cIndex]) continue;
         closed[cIndex] = 1;
