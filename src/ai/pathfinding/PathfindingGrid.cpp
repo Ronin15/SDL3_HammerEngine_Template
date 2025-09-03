@@ -220,8 +220,8 @@ PathfindingResult PathfindingGrid::findPath(const Vector2D& start, const Vector2
     int dxGoal = std::abs(sx - gx), dyGoal = std::abs(sy - gy);
     int directDistance = std::max(dxGoal, dyGoal);
     
-    // For very long distances, do a quick connectivity check
-    if (directDistance > 75) {
+    // For very long distances, do a quick connectivity check (reduced threshold to be less aggressive)
+    if (directDistance > 120) {
         // Sample a few points along the direct line to check for major barriers
         int samples = std::min(8, directDistance / 10);
         int blockedSamples = 0;
@@ -245,8 +245,8 @@ PathfindingResult PathfindingGrid::findPath(const Vector2D& start, const Vector2
             if (!hasOpenNeighbor) blockedSamples++;
         }
         
-        // If more than 50% of samples are in completely blocked areas, likely unreachable
-        if (blockedSamples > samples / 2) {
+        // If more than 75% of samples are in completely blocked areas, likely unreachable (more lenient threshold)
+        if (blockedSamples > (samples * 3) / 4) {
             m_stats.totalRequests++;
             m_stats.invalidGoals++;
             PATHFIND_DEBUG("Goal rejected: appears unreachable based on connectivity test");
@@ -328,9 +328,9 @@ PathfindingResult PathfindingGrid::findPath(const Vector2D& start, const Vector2
     const int dx8[8] = {1,-1,0,0, 1,1,-1,-1};
     const int dy8[8] = {0,0,1,-1, 1,-1,1,-1};
 
-    // Performance-focused: Dynamic iteration limits based on distance
-    int baseIters = std::max(1000, baseDistance * 25); // Reasonable base iterations  
-    int dynamicMaxIters = std::min(m_maxIterations, baseIters + 2000); // Small buffer for complex paths
+    // Performance-focused: Dynamic iteration limits based on distance (optimized for better success rate)
+    int baseIters = std::max(500, baseDistance * 20); // Reduced base to start faster
+    int dynamicMaxIters = std::min(m_maxIterations, baseIters + 1500); // Tighter buffer for quick resolution
     
     // Performance-focused: Reasonable queue limits to balance memory and success rate
     
