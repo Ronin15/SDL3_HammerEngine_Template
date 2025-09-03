@@ -461,12 +461,10 @@ void PathfinderManager::processPathfindingBatch(const std::vector<AIInternal::Pa
         std::vector<Vector2D> path;
         
         // FIRST: Check cache for similar paths before expensive A* computation
-        bool cacheHit = false;
         if (m_scheduler) {
             // Check PathCache for similar paths (64px tolerance)
             if (auto cachedPath = m_scheduler->getCachedPath(request.start, request.goal, 64.0f)) {
                 path = cachedPath.value();
-                cacheHit = true;
                 
                 // Store cached result
                 m_scheduler->storePathResult(request.entityId, path);
@@ -694,4 +692,61 @@ bool PathfinderManager::ensureGridInitialized() {
         m_grid.reset();
         return false;
     }
+}
+
+Vector2D PathfinderManager::clampToWorldBounds(const Vector2D& position, float margin) const {
+    // Get world bounds from WorldManager
+    auto& worldManager = WorldManager::Instance();
+    float minX, minY, maxX, maxY;
+    
+    if (worldManager.getWorldBounds(minX, minY, maxX, maxY)) {
+        // getWorldBounds() already returns pixel coordinates
+        return Vector2D(
+            std::clamp(position.getX(), minX + margin, maxX - margin),
+            std::clamp(position.getY(), minY + margin, maxY - margin)
+        );
+    }
+    
+    // Fallback bounds if WorldManager fails - use generous margins
+    const float fallbackMargin = std::max(margin, 256.0f);
+    return Vector2D(
+        std::clamp(position.getX(), 0.0f + fallbackMargin, 3200.0f - fallbackMargin),
+        std::clamp(position.getY(), 0.0f + fallbackMargin, 3200.0f - fallbackMargin)
+    );
+}
+
+bool PathfinderManager::followPathStep(EntityPtr entity, const Vector2D& currentPos,
+                                      std::vector<Vector2D>& path, size_t& pathIndex,
+                                      float speed, float nodeRadius) const {
+    if (!entity || path.empty() || pathIndex >= path.size()) {
+        return false;
+    }
+    
+    Vector2D targetNode = path[pathIndex];
+    Vector2D toNode = targetNode - currentPos;
+    float distToNode = toNode.length();
+    
+    if (distToNode <= nodeRadius) {
+        // Reached current node, advance to next
+        pathIndex++;
+        if (pathIndex >= path.size()) {
+            // Path complete
+            path.clear();
+            pathIndex = 0;
+            return false;
+        }
+        // Continue to next node
+        targetNode = path[pathIndex];
+        toNode = targetNode - currentPos;
+        distToNode = toNode.length();
+    }
+    
+    if (distToNode > 0.1f) {
+        // Move toward current path node
+        Vector2D direction = toNode / distToNode; // normalized
+        entity->setVelocity(direction * speed);
+        return true;
+    }
+    
+    return false;
 }

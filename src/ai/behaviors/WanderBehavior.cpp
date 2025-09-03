@@ -8,7 +8,7 @@
 #include "managers/AIManager.hpp"
 #include "managers/WorldManager.hpp"
 #include "managers/PathfinderManager.hpp"
-#include "ai/internal/PathfindingCompat.hpp"
+#include "ai/internal/PathfindingScheduler.hpp"
 #include <algorithm>
 #include <cmath>
 
@@ -173,28 +173,24 @@ void WanderBehavior::executeLogic(EntityPtr entity) {
 
     // Refresh short path using unified cooldown system
     if (state.cooldowns.canRequestPath(now)) {
-      using namespace AIInternal;
-      PathPolicy policy;
-      policy.pathTTL = 2500;            // a bit lazier than combat
-      policy.noProgressWindow = 300;
-      policy.nodeRadius = state.navRadius;
-      policy.allowDetours = true;
-      policy.lateralBias = 0.0f;        // wandering is free-form
-      Uint64 prev = state.lastPathUpdate;
-      // PATHFINDING CONSOLIDATION: All wander requests now use PathfindingScheduler pathway
-      RefreshPathWithPolicy(entity, entity->getPosition(), dest,
-                          state.pathPoints, state.currentPathIndex,
-                          state.lastPathUpdate, state.lastProgressTime,
-                          state.lastNodeDistance, policy);
-      if (state.lastPathUpdate != prev) {
-        state.cooldowns.applyPathCooldown(now, 800); // cooldown even on success
-      }
+      // PATHFINDING CONSOLIDATION: All wander requests now use PathfinderManager
+      PathfinderManager::Instance().requestPath(
+          entity->getID(), entity->getPosition(), dest,
+          AIInternal::PathPriority::Normal,
+          [this, entity](EntityID, const std::vector<Vector2D>& path) {
+            auto stateIt = m_entityStates.find(entity);
+            if (stateIt != m_entityStates.end() && !path.empty()) {
+              stateIt->second.pathPoints = path;
+              stateIt->second.currentPathIndex = 0;
+              stateIt->second.lastPathUpdate = SDL_GetTicks();
+            }
+          });
+      state.cooldowns.applyPathCooldown(now, 800); // cooldown after request
     }
     if (!state.pathPoints.empty() && state.currentPathIndex < state.pathPoints.size()) {
-      using namespace AIInternal;
-      FollowPathStepWithPolicy(entity, entity->getPosition(), state.pathPoints,
+      PathfinderManager::Instance().followPathStep(entity, entity->getPosition(), state.pathPoints,
                                state.currentPathIndex, m_speed,
-                               state.navRadius, 0.0f);
+                               state.navRadius);
     } else {
       // Always apply base velocity (in case something external changed it)
       Vector2D intended = state.currentDirection * m_speed;

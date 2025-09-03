@@ -189,6 +189,30 @@ public:
      */
     void setMaxIterations(int maxIterations);
 
+    // ===== Utility Functions =====
+
+    /**
+     * @brief Clamp position to world bounds with safety margin
+     * @param position Position to clamp
+     * @param margin Safety margin from world edges
+     * @return Clamped position within world bounds
+     */
+    Vector2D clampToWorldBounds(const Vector2D& position, float margin = 100.0f) const;
+
+    /**
+     * @brief Follow a path step for entity movement
+     * @param entity Entity to move
+     * @param currentPos Current entity position
+     * @param path Path to follow (will be modified as nodes are reached)
+     * @param pathIndex Current path index (will be modified)
+     * @param speed Movement speed
+     * @param nodeRadius Radius for reaching path nodes
+     * @return true if successfully following path, false if path complete
+     */
+    bool followPathStep(EntityPtr entity, const Vector2D& currentPos,
+                       std::vector<Vector2D>& path, size_t& pathIndex,
+                       float speed, float nodeRadius = 32.0f) const;
+
     // ===== Statistics =====
 
     struct PathfinderStats {

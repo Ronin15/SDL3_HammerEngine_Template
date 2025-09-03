@@ -8,7 +8,7 @@
 #include "managers/CollisionManager.hpp"
 #include "ai/internal/Crowd.hpp"
 #include "managers/PathfinderManager.hpp"
-#include "ai/internal/PathfindingCompat.hpp"
+#include "ai/internal/PathfindingScheduler.hpp"
 #include <algorithm>
 #include <cmath>
 #include "managers/WorldManager.hpp"
@@ -139,33 +139,32 @@ void FollowBehavior::executeLogic(EntityPtr entity) {
   if (state.isFollowing) {
     // Path-following to desired position if available
     auto tryFollowPath = [&](Vector2D desiredPos, float speed)->bool {
-      using namespace AIInternal;
-      PathPolicy policy;
-      policy.pathTTL = 1500;
-      policy.noProgressWindow = 300;
-      policy.nodeRadius = 16.0f;
-      policy.allowDetours = true;
-      policy.lateralBias = 0.18f; // small lane bias for followers
+      const float nodeRadius = 16.0f;
+      const uint64_t pathTTL = 1500;
+      
       // Dynamic backoff: if in a backoff window, don't refresh — just try to follow existing path
       if (SDL_GetTicks() < state.backoffUntil) {
-        bool following = FollowPathStepWithPolicy(entity, currentPos,
+        bool following = PathfinderManager::Instance().followPathStep(entity, currentPos,
                             state.pathPoints, state.currentPathIndex,
-                            speed, policy.nodeRadius, policy.lateralBias);
+                            speed, nodeRadius);
         if (following) { state.lastProgressTime = SDL_GetTicks(); }
         return following;
       }
 
-      // PATHFINDING CONSOLIDATION: All requests now use PathfindingScheduler via async pathway
-      int priority = 2; // Follow behavior is normal priority (0=Critical, 1=High, 2=Normal, 3=Low)
-      bool following = RefreshPathWithPolicyAsync(entity, currentPos, desiredPos,
-                          state.pathPoints, state.currentPathIndex,
-                          state.lastPathUpdate, state.lastProgressTime,
-                          state.lastNodeDistance, policy, priority);
-      if (following) { state.lastProgressTime = SDL_GetTicks(); }
+      // PATHFINDING CONSOLIDATION: Use PathfinderManager for new path requests
+      if (SDL_GetTicks() - state.lastPathUpdate > pathTTL) {
+        auto& pathfinder = PathfinderManager::Instance();
+        pathfinder.requestPath(entity->getID(), currentPos, desiredPos, AIInternal::PathPriority::Normal,
+          [&state](EntityID /* id */, const std::vector<Vector2D>& path) {
+            state.pathPoints = path;
+            state.currentPathIndex = 0;
+            state.lastPathUpdate = SDL_GetTicks();
+          });
+      }
       
-      bool pathStep = FollowPathStepWithPolicy(entity, currentPos,
+      bool pathStep = PathfinderManager::Instance().followPathStep(entity, currentPos,
                           state.pathPoints, state.currentPathIndex,
-                          speed, policy.nodeRadius, policy.lateralBias);
+                          speed, nodeRadius);
       if (pathStep) { state.lastProgressTime = SDL_GetTicks(); }
       
       if (pathStep) {

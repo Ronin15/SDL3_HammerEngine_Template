@@ -238,7 +238,7 @@ BOOST_AUTO_TEST_CASE(TestNoInfiniteRetryLoop) {
     std::vector<std::vector<Vector2D>> receivedPaths;
     
     // Make multiple identical requests rapidly (simulating the bug condition)
-    auto callback = [&callbackCount, &receivedPaths](EntityID id, const std::vector<Vector2D>& path) {
+    auto callback = [&callbackCount, &receivedPaths](EntityID, const std::vector<Vector2D>& path) {
         callbackCount++;
         receivedPaths.push_back(path);
     };
