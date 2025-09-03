@@ -8,7 +8,7 @@
 #include "managers/CollisionManager.hpp"
 #include "ai/internal/Crowd.hpp"
 #include "managers/PathfinderManager.hpp"
-#include "ai/internal/PathfindingCompat.hpp"
+#include "ai/internal/PathfindingScheduler.hpp"
 #include <algorithm>
 #include <cmath>
 
@@ -697,33 +697,25 @@ void GuardBehavior::moveToPosition(EntityPtr entity, const Vector2D &targetPos,
   Vector2D currentPos = entity->getPosition();
   Uint64 now = SDL_GetTicks();
 
-  // Choose policy based on alert level/mode
-  using namespace AIInternal;
-  PathPolicy policy;
-  policy.nodeRadius = state.navRadius;
-  policy.lateralBias = 0.0f;
-  policy.allowDetours = true;
-  policy.pathTTL = 1500;
-  policy.noProgressWindow = 300;
-  if (state.currentAlertLevel >= AlertLevel::INVESTIGATING) {
-    policy.pathTTL = 1200;
-    policy.noProgressWindow = 250;
-    policy.detourRadii[0] = 48.0f;
-    policy.detourRadii[1] = 96.0f;
-  }
-
   // Refresh path and follow (honor backoff)
   if (now >= state.backoffUntil) {
-    // PATHFINDING CONSOLIDATION: All requests now use PathfindingScheduler via async pathway
-    int priority = (state.currentAlertLevel >= AlertLevel::INVESTIGATING) ? 1 : 2; // High priority when investigating, Normal otherwise
-    RefreshPathWithPolicyAsync(entity, currentPos, targetPos,
-                          state.pathPoints, state.currentPathIndex,
-                          state.lastPathUpdate, state.lastProgressTime,
-                          state.lastNodeDistance, policy, priority);
+    // PATHFINDING CONSOLIDATION: All requests now use PathfinderManager
+    AIInternal::PathPriority priority = (state.currentAlertLevel >= AlertLevel::INVESTIGATING) ? 
+        AIInternal::PathPriority::High : AIInternal::PathPriority::Normal;
+    PathfinderManager::Instance().requestPath(
+        entity->getID(), currentPos, targetPos, priority,
+        [this, entity](EntityID, const std::vector<Vector2D>& path) {
+          auto it = m_entityStates.find(entity);
+          if (it != m_entityStates.end() && !path.empty()) {
+            it->second.pathPoints = path;
+            it->second.currentPathIndex = 0;
+            it->second.lastPathUpdate = SDL_GetTicks();
+          }
+        });
   }
-  bool following = FollowPathStepWithPolicy(entity, currentPos,
+  bool following = PathfinderManager::Instance().followPathStep(entity, currentPos,
                         state.pathPoints, state.currentPathIndex,
-                        speed, policy.nodeRadius, policy.lateralBias);
+                        speed, state.navRadius);
   if (following) { state.lastProgressTime = now; }
   if (!following) {
     // Fallback: direct steering

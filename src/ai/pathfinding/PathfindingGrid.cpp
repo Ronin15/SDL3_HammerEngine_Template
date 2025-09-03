@@ -300,10 +300,6 @@ PathfindingResult PathfindingGrid::findPath(const Vector2D& start, const Vector2
     int baseDistance = directDistance;
     
     // Allow full grid access for reliable pathfinding
-    int roiMinX = 0;
-    int roiMaxX = W - 1;
-    int roiMinY = 0;
-    int roiMaxY = H - 1;
 
     // A* pathfinding using thread-local object pooling for memory optimization
     thread_local NodePool nodePool;
@@ -337,7 +333,6 @@ PathfindingResult PathfindingGrid::findPath(const Vector2D& start, const Vector2
     int dynamicMaxIters = std::min(m_maxIterations, baseIters + 2000); // Small buffer for complex paths
     
     // Performance-focused: Reasonable queue limits to balance memory and success rate
-    const size_t maxOpenQueueSize = std::max(static_cast<size_t>(2000), static_cast<size_t>(baseDistance * 15));
     
     // Memory protection for very complex pathfinding scenarios
     const size_t maxAbsoluteQueueSize = 5000;

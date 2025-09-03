@@ -6,7 +6,7 @@
 #include "ai/behaviors/ChaseBehavior.hpp"
 #include "managers/AIManager.hpp"
 #include "managers/PathfinderManager.hpp"
-#include "ai/internal/PathfindingCompat.hpp"
+#include "ai/internal/PathfindingScheduler.hpp"
 #include "managers/CollisionManager.hpp"
 #include "ai/internal/Crowd.hpp"
 #include "core/Logger.hpp"
@@ -90,16 +90,6 @@ void ChaseBehavior::executeLogic(EntityPtr entity) {
     if (distanceSquared > minRangeSquared) {
       // Refresh pathfinding with chase-specific policy
       if (m_cooldowns.canRequestPath(now)) {
-        using namespace AIInternal;
-        PathPolicy policy;
-        policy.pathTTL = 2500;          // Less frequent refresh for chase
-        policy.noProgressWindow = 600;  // More patience when blocked
-        policy.nodeRadius = m_navRadius;
-        policy.allowDetours = true;     // Allow small detours around obstacles
-        policy.detourRadii[0] = 48.0f;  // Tighter detour ring for assertive chase
-        policy.detourRadii[1] = 96.0f;
-        policy.lateralBias = 0.0f;
-
         // Direct chase - always target the player position for aggressive pursuit
         Vector2D goalPosition = targetPos;
 
@@ -107,7 +97,7 @@ void ChaseBehavior::executeLogic(EntityPtr entity) {
         auto& pathfinder = PathfinderManager::Instance();
         pathfinder.requestPath(entity->getID(), entityPos, goalPosition, 
                              AIInternal::PathPriority::High,
-                             [this](EntityID entityId, const std::vector<Vector2D>& path) {
+                             [this](EntityID, const std::vector<Vector2D>& path) {
                                // Update path when received
                                m_navPath = path;
                                m_navIndex = 0;
@@ -240,7 +230,10 @@ void ChaseBehavior::executeLogic(EntityPtr entity) {
             // True stall detected - apply recovery
             if (now - m_lastUnstickTime > 4000) { // Emergency unstick
               AI_WARN("Chase entity " + std::to_string(entity->getID()) + " is stalled, applying emergency unstick");
-              AIInternal::ForceUnstickEntity(entity);
+              // Simple unstick: small random movement
+              float randomAngle = ((float)rand() / RAND_MAX) * 2.0f * M_PI;
+              Vector2D unstickDir(std::cos(randomAngle), std::sin(randomAngle));
+              entity->setVelocity(unstickDir * m_chaseSpeed);
               m_lastUnstickTime = now;
               m_stallStart = 0;
               return;

@@ -6,7 +6,7 @@
 #include "ai/behaviors/PatrolBehavior.hpp"
 #include "ai/internal/Crowd.hpp"
 #include "managers/PathfinderManager.hpp"
-#include "ai/internal/PathfindingCompat.hpp"
+#include "ai/internal/PathfindingScheduler.hpp"
 #include "entities/Entity.hpp"
 #include "entities/NPC.hpp"
 #include "managers/AIManager.hpp"
@@ -87,7 +87,7 @@ void PatrolBehavior::executeLogic(EntityPtr entity) {
   Vector2D targetWaypoint = m_waypoints[m_currentWaypoint];
 
   // Clamp target to world bounds to avoid edge chasing
-  targetWaypoint = AIInternal::ClampToWorld(targetWaypoint, 100.0f);
+  targetWaypoint = PathfinderManager::Instance().clampToWorldBounds(targetWaypoint, 100.0f);
 
   // State: APPROACHING_WAYPOINT - Check if we've reached current waypoint
   if (isAtWaypoint(position, targetWaypoint)) {
@@ -118,20 +118,17 @@ void PatrolBehavior::executeLogic(EntityPtr entity) {
 
   // State: PATHFINDING - Refresh path if needed and not in backoff
   if (now >= m_backoffUntil) {
-    using namespace AIInternal;
-    PathPolicy policy;
-    policy.pathTTL = 1500;
-    policy.noProgressWindow = 300;
-    policy.nodeRadius = m_navRadius;
-    policy.allowDetours = true;
-    policy.lateralBias = 0.0f;
-
-    // PATHFINDING CONSOLIDATION: All requests now use PathfindingScheduler via
-    // async pathway
-    int priority = 0; // Patrol behavior is normal priority
-    RefreshPathWithPolicyAsync(entity, position, targetWaypoint, m_navPath,
-                               m_navIndex, m_lastPathUpdate, m_lastProgressTime,
-                               m_lastNodeDistance, policy, priority);
+    // PATHFINDING CONSOLIDATION: All requests now use PathfinderManager
+    PathfinderManager::Instance().requestPath(
+        entity->getID(), PathfinderManager::Instance().clampToWorldBounds(position, 100.0f), targetWaypoint,
+        AIInternal::PathPriority::Normal,
+        [this, entity](EntityID, const std::vector<Vector2D>& path) {
+          if (!path.empty()) {
+            m_navPath = path;
+            m_navIndex = 0;
+            m_lastPathUpdate = SDL_GetTicks();
+          }
+        });
   }
 
   // State: FOLLOWING_PATH or DIRECT_MOVEMENT
@@ -139,8 +136,8 @@ void PatrolBehavior::executeLogic(EntityPtr entity) {
     // Following computed path
     using namespace AIInternal;
     bool following =
-        FollowPathStepWithPolicy(entity, position, m_navPath, m_navIndex,
-                                 m_moveSpeed, m_navRadius, 0.0f);
+        PathfinderManager::Instance().followPathStep(entity, position, m_navPath, m_navIndex,
+                                 m_moveSpeed, m_navRadius);
     if (following) {
       m_lastProgressTime = now;
       // Apply separation to prevent clustering
@@ -178,10 +175,10 @@ void PatrolBehavior::executeLogic(EntityPtr entity) {
           Vector2D dir = toNode * (1.0f / len);
           Vector2D perp(-dir.getY(), dir.getX());
           float side = ((entity->getID() & 1) ? 1.0f : -1.0f);
-          Vector2D sidestep = AIInternal::ClampToWorld(
+          Vector2D sidestep = PathfinderManager::Instance().clampToWorldBounds(
               position + perp * (96.0f * side), 100.0f);
           PathfinderManager::Instance().requestPath(
-              entity->getID(), AIInternal::ClampToWorld(position, 100.0f), sidestep,
+              entity->getID(), PathfinderManager::Instance().clampToWorldBounds(position, 100.0f), sidestep,
               AIInternal::PathPriority::Normal,
               [this](EntityID, const std::vector<Vector2D> &path) {
                 if (!path.empty()) {

@@ -6,7 +6,7 @@
 #include "ai/behaviors/FleeBehavior.hpp"
 #include "ai/internal/Crowd.hpp"
 #include "managers/PathfinderManager.hpp"
-#include "ai/internal/PathfindingCompat.hpp"
+#include "ai/internal/PathfindingScheduler.hpp"
 #include "managers/AIManager.hpp"
 #include "managers/WorldManager.hpp"
 #include "managers/CollisionManager.hpp"
@@ -395,7 +395,7 @@ void FleeBehavior::updatePanicFlee(EntityPtr entity, EntityState& state) {
         Vector2D panicDest = currentPos + state.fleeDirection * 1000.0f; // Much longer panic flee distance
         
         // Clamp to world bounds with larger margin for panic mode
-        panicDest = AIInternal::ClampToWorld(panicDest, 100.0f);
+        panicDest = PathfinderManager::Instance().clampToWorldBounds(panicDest, 100.0f);
     }
     
     float speedModifier = calculateFleeSpeedModifier(state);
@@ -447,7 +447,7 @@ void FleeBehavior::updateStrategicRetreat(EntityPtr entity, EntityState& state) 
     }
 
     // Compute a retreat destination further ahead and clamp to world bounds
-    Vector2D dest = AIInternal::ClampToWorld(currentPos + state.fleeDirection * retreatDistance, 100.0f);
+    Vector2D dest = PathfinderManager::Instance().clampToWorldBounds(currentPos + state.fleeDirection * retreatDistance, 100.0f);
 
     // Try to path toward the retreat destination with TTL and no-progress checks
     auto tryFollowPath = [&](const Vector2D &goal, float speed)->bool {
@@ -464,7 +464,7 @@ void FleeBehavior::updateStrategicRetreat(EntityPtr entity, EntityState& state) 
         if (needRefresh && now >= state.nextPathAllowed) {
             // Use PathfinderManager for pathfinding requests
             auto& pathfinder = PathfinderManager::Instance();
-            pathfinder.requestPath(entity->getID(), AIInternal::ClampToWorld(currentPos, 100.0f), goal, AIInternal::PathPriority::High,
+            pathfinder.requestPath(entity->getID(), pathfinder.clampToWorldBounds(currentPos, 100.0f), goal, AIInternal::PathPriority::High,
                 [&state](EntityID /* id */, const std::vector<Vector2D>& path) {
                     state.pathPoints = path;
                     state.currentPathIndex = 0;
@@ -572,7 +572,7 @@ void FleeBehavior::updateSeekCover(EntityPtr entity, EntityState& state) {
     }
 
     // Clamp destination within world bounds
-    dest = AIInternal::ClampToWorld(dest, 100.0f);
+    dest = PathfinderManager::Instance().clampToWorldBounds(dest, 100.0f);
 
     auto tryFollowPath = [&](const Vector2D &goal, float speed)->bool {
         Uint64 now = SDL_GetTicks();
@@ -588,7 +588,7 @@ void FleeBehavior::updateSeekCover(EntityPtr entity, EntityState& state) {
         if (needRefresh && now >= state.nextPathAllowed) {
             // PATHFINDING CONSOLIDATION: All requests now use PathfinderManager
             PathfinderManager::Instance().requestPath(
-                entity->getID(), AIInternal::ClampToWorld(currentPos, 100.0f), goal, AIInternal::PathPriority::High,
+                entity->getID(), PathfinderManager::Instance().clampToWorldBounds(currentPos, 100.0f), goal, AIInternal::PathPriority::High,
                 [this, entity](EntityID, const std::vector<Vector2D>& path) {
                   if (!path.empty()) {
                     // Find the behavior state for this entity

@@ -10,7 +10,7 @@
 #include "managers/EventManager.hpp"
 #include "events/WorldEvent.hpp"
 #include "events/WorldTriggerEvent.hpp"
-#include "ai/internal/PathfindingCompat.hpp"
+#include "managers/WorldManager.hpp"
 #include <unordered_set>
 #include <unordered_map>
 #include <chrono>
@@ -613,9 +613,10 @@ void CollisionManager::subscribeWorldEvents() {
         if (!base) return;
         if (auto loaded = std::dynamic_pointer_cast<WorldLoadedEvent>(base)) {
             (void)loaded;
-            auto bounds = AIInternal::GetWorldBoundsInPixels();
-            if (bounds.valid) {
-                this->setWorldBounds(bounds.minX, bounds.minY, bounds.maxX, bounds.maxY);
+            auto& worldManager = WorldManager::Instance();
+            float minX, minY, maxX, maxY;
+            if (worldManager.getWorldBounds(minX, minY, maxX, maxY)) {
+                this->setWorldBounds(minX, minY, maxX, maxY);
             }
             COLLISION_INFO("World loaded - rebuilding static colliders");
             this->rebuildStaticFromWorld();
@@ -623,9 +624,10 @@ void CollisionManager::subscribeWorldEvents() {
         }
         if (auto generated = std::dynamic_pointer_cast<WorldGeneratedEvent>(base)) {
             (void)generated;
-            auto bounds = AIInternal::GetWorldBoundsInPixels();
-            if (bounds.valid) {
-                this->setWorldBounds(bounds.minX, bounds.minY, bounds.maxX, bounds.maxY);
+            auto& worldManager = WorldManager::Instance();
+            float minX, minY, maxX, maxY;
+            if (worldManager.getWorldBounds(minX, minY, maxX, maxY)) {
+                this->setWorldBounds(minX, minY, maxX, maxY);
             }
             COLLISION_INFO("World generated - rebuilding static colliders");
             this->rebuildStaticFromWorld();

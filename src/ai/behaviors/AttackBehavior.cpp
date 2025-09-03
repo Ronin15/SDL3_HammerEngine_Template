@@ -9,7 +9,7 @@
 #include "managers/WorldManager.hpp"
 #include "ai/internal/Crowd.hpp"
 #include "managers/PathfinderManager.hpp"
-#include "ai/internal/PathfindingCompat.hpp"
+#include "ai/internal/PathfindingScheduler.hpp"
 #include <algorithm>
 
 AttackBehavior::AttackBehavior(float attackRange, float attackDamage,
@@ -867,9 +867,9 @@ void AttackBehavior::moveToPosition(EntityPtr entity, const Vector2D &targetPos,
   EntityState &state = it->second;
 
   // Clamp target to world bounds to avoid chasing outside the map
-  Vector2D clampedTarget = AIInternal::ClampToWorld(targetPos, 100.0f);
+  Vector2D clampedTarget = PathfinderManager::Instance().clampToWorldBounds(targetPos, 100.0f);
 
-  Vector2D currentPos = AIInternal::ClampToWorld(entity->getPosition(), 100.0f);
+  Vector2D currentPos = PathfinderManager::Instance().clampToWorldBounds(entity->getPosition(), 100.0f);
   
   Uint64 now = SDL_GetTicks();
 
