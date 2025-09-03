@@ -465,7 +465,7 @@ void FleeBehavior::updateStrategicRetreat(EntityPtr entity, EntityState& state) 
             // Use PathfinderManager for pathfinding requests
             auto& pathfinder = PathfinderManager::Instance();
             pathfinder.requestPath(entity->getID(), AIInternal::ClampToWorld(currentPos, 100.0f), goal, AIInternal::PathPriority::High,
-                [&state](EntityID id, const std::vector<Vector2D>& path) {
+                [&state](EntityID /* id */, const std::vector<Vector2D>& path) {
                     state.pathPoints = path;
                     state.currentPathIndex = 0;
                 });

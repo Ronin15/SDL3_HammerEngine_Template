@@ -8,6 +8,7 @@
 #include <mutex>
 #include <functional>
 #include <memory>
+#include <optional>
 
 #include "../../utils/Vector2D.hpp"
 #include "../../entities/Entity.hpp" // For EntityID type
