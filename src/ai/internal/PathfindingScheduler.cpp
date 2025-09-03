@@ -589,7 +589,20 @@ PathCacheStats PathfindingScheduler::getPathCacheStats() const
         return PathCacheStats{};
     }
     
-    return m_pathCache->getStats();
+    // Get base stats from PathCache
+    auto stats = m_pathCache->getStats();
+    
+    // Update with scheduler's tracked cache hits/misses
+    uint64_t totalRequests = m_totalRequestsProcessed.load(std::memory_order_relaxed);
+    uint64_t cacheHits = m_pathsFromCache.load(std::memory_order_relaxed);
+    uint64_t cacheMisses = totalRequests > cacheHits ? (totalRequests - cacheHits) : 0;
+    
+    // Update stats with accurate hit/miss counts
+    stats.totalHits = cacheHits;
+    stats.totalMisses = cacheMisses;
+    stats.hitRate = (totalRequests > 0) ? static_cast<float>(cacheHits) / static_cast<float>(totalRequests) : 0.0f;
+    
+    return stats;
 }
 
 void PathfindingScheduler::logPathfindingStats() const
