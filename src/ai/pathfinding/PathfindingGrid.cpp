@@ -296,58 +296,14 @@ PathfindingResult PathfindingGrid::findPath(const Vector2D& start, const Vector2
         return baseDistance;
     };
 
-    // CLUSTER-AWARE ROI CALCULATION - Fix for 77% timeout rate
-    // Adaptive ROI that scales with distance and handles clustered scenarios
+    // Keep baseDistance for iteration calculations  
     int baseDistance = directDistance;
     
-    // Dynamic ROI calculation for cluster scenarios
-    int r;
-    
-    if (baseDistance <= 15) {
-        // Short paths: generous buffer for obstacle avoidance
-        r = std::max(25, baseDistance * 2 + 10);
-    } else if (baseDistance <= 30) {
-        // Medium paths: moderate expansion for complex terrain  
-        r = std::max(40, static_cast<int>(baseDistance * 1.6f + 20));
-    } else if (baseDistance <= 60) {
-        // Long paths: proportional expansion with cluster handling
-        r = std::max(70, static_cast<int>(baseDistance * 1.4f + 25));
-    } else {
-        // Very long paths: capped but generous for complex pathfinding
-        r = std::min(120, static_cast<int>(baseDistance * 1.2f + 30));
-    }
-    
-    // CRITICAL FIX: Remove artificial 30-tile cap that was causing mass failures
-    // Old code: r = std::min(r, 30); // This was the primary cause of timeouts!
-    
-    // Safety cap for memory management (much higher than before)
-    r = std::min(r, 150);  // Allow complex pathfinding while preventing excessive memory use
-    
-    // CRITICAL FIX: ROI that ALWAYS encompasses both start and goal with guaranteed buffer
-    // Use the actual coordinates to ensure both points are included, not just estimated bounds
-    int roiMinX = std::max(0, std::min(sx, gx) - r);
-    int roiMaxX = std::min(W - 1, std::max(sx, gx) + r);
-    int roiMinY = std::max(0, std::min(sy, gy) - r);
-    int roiMaxY = std::min(H - 1, std::max(sy, gy) + r);
-    
-    // CRITICAL FIX: Always validate and force ROI to contain both start and goal
-    if (sx < roiMinX || sx > roiMaxX || sy < roiMinY || sy > roiMaxY ||
-        gx < roiMinX || gx > roiMaxX || gy < roiMinY || gy > roiMaxY) {
-        
-        PATHFIND_DEBUG("ROI boundary issue detected - forcibly expanding ROI");
-        
-        // Force ROI to contain both start and goal with minimum buffer
-        int minBuffer = std::max(r, 15);  // Ensure minimum 15-cell buffer
-        roiMinX = std::max(0, std::min({sx, gx}) - minBuffer);
-        roiMaxX = std::min(W - 1, std::max({sx, gx}) + minBuffer);
-        roiMinY = std::max(0, std::min({sy, gy}) - minBuffer);
-        roiMaxY = std::min(H - 1, std::max({sy, gy}) + minBuffer);
-        
-        PATHFIND_DEBUG("ROI forced to: [" + std::to_string(roiMinX) + "," + 
-                     std::to_string(roiMinY) + " to " + std::to_string(roiMaxX) + "," + std::to_string(roiMaxY) + 
-                     "] to contain start(" + std::to_string(sx) + "," + std::to_string(sy) + 
-                     ") and goal(" + std::to_string(gx) + "," + std::to_string(gy) + ")");
-    }
+    // Allow full grid access for reliable pathfinding
+    int roiMinX = 0;
+    int roiMaxX = W - 1;
+    int roiMinY = 0;
+    int roiMaxY = H - 1;
 
     // A* pathfinding using thread-local object pooling for memory optimization
     thread_local NodePool nodePool;
@@ -376,18 +332,12 @@ PathfindingResult PathfindingGrid::findPath(const Vector2D& start, const Vector2
     const int dx8[8] = {1,-1,0,0, 1,1,-1,-1};
     const int dy8[8] = {0,0,1,-1, 1,-1,1,-1};
 
-    // Optimized iteration limits - balanced for performance and reliability
-    int baseIters = std::max(1500, baseDistance * 75);  // More generous base for reliability  
-    int dynamicMaxIters = std::min(m_maxIterations, baseIters + 2500); // Balanced buffer
+    // EMERGENCY: Massively increased iteration limits to fix 94% timeout crisis
+    int baseIters = std::max(5000, baseDistance * 150); // Triple the base iterations  
+    int dynamicMaxIters = std::min(m_maxIterations, baseIters + 10000); // Much larger buffer
     
-    // Very generous caps to handle worst-case scenarios
-    if (baseDistance < 10) {
-        dynamicMaxIters = std::min(dynamicMaxIters, 3500);  // Generous for short paths
-    } else if (baseDistance < 30) {
-        dynamicMaxIters = std::min(dynamicMaxIters, 8000);  // Much higher for medium paths
-    } else {
-        dynamicMaxIters = std::min(dynamicMaxIters, 12000); // High limit for long paths
-    }
+    // EMERGENCY: Remove all caps - use full maxIterations for reliability
+    dynamicMaxIters = m_maxIterations; // Use full 100,000 iteration limit
     
     // CRITICAL FIX: Much higher queue limits to prevent premature termination
     // The original limits were causing 77% timeout rate with early termination at 400-500 iterations
@@ -404,11 +354,6 @@ PathfindingResult PathfindingGrid::findPath(const Vector2D& start, const Vector2
             break;
         }
         
-        // Log queue growth patterns to identify true problems vs normal pathfinding
-        if (iterations % 1000 == 0 && open.size() > maxOpenQueueSize) {
-            PATHFIND_DEBUG("Large queue at iteration " + std::to_string(iterations) + 
-                          ": size=" + std::to_string(open.size()) + ", distance=" + std::to_string(baseDistance));
-        }
         NodePool::Node cur = open.top(); open.pop();
         
         // Verbose iteration debugging removed - spammed console output
@@ -428,6 +373,7 @@ PathfindingResult PathfindingGrid::findPath(const Vector2D& start, const Vector2
             rev.push_back(gridToWorld(sx, sy));
             outPath.assign(rev.rbegin(), rev.rend());
             
+            
             // Apply path smoothing to reduce unnecessary waypoints
             smoothPath(outPath);
             
@@ -444,30 +390,10 @@ PathfindingResult PathfindingGrid::findPath(const Vector2D& start, const Vector2
             int nx = cur.x + dx8[i];
             int ny = cur.y + dy8[i];
             
-            // Combined bounds and ROI check for efficiency
-            bool outsideROI = (nx < roiMinX || nx > roiMaxX || ny < roiMinY || ny > roiMaxY);
+            // EMERGENCY FIX: Only check bounds, no ROI restrictions
             bool outsideBounds = (nx < 0 || nx >= W || ny < 0 || ny >= H);
             
-            if (outsideBounds) continue;  // Always reject out-of-bounds
-            
-            // CRITICAL FIX: Only apply ROI restriction if we're far from the goal
-            // Allow more exploration near the goal to prevent premature termination
-            if (outsideROI) {
-                // Calculate distance to goal to decide if ROI restriction should apply
-                int distanceToGoal = std::abs(nx - gx) + std::abs(ny - gy);
-                int currentToGoal = std::abs(cur.x - gx) + std::abs(cur.y - gy);
-                
-                // If we're getting closer to goal, allow ROI expansion
-                if (distanceToGoal > currentToGoal + 3) {  // Only reject if moving significantly away from goal
-                    continue;
-                }
-                
-                // DEBUG: Track ROI bypasses
-                if (iterations <= 10) {
-                    PATHFIND_DEBUG("ROI bypass: node (" + std::to_string(nx) + "," + std::to_string(ny) + 
-                                  ") outside ROI but closer to goal (" + std::to_string(gx) + "," + std::to_string(gy) + ")");
-                }
-            }
+            if (outsideBounds) continue;  // Only reject actual out-of-bounds cells
                 
             size_t nIndex = static_cast<size_t>(idx(nx, ny));
             if (closed[nIndex] || isBlocked(nx, ny)) continue;
