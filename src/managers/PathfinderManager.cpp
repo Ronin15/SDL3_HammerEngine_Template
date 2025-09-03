@@ -592,15 +592,16 @@ void PathfinderManager::updateStatistics() {
         uint32_t activeThreads = m_stats.activeThreads;
         uint32_t pendingRequests = static_cast<uint32_t>(m_stats.pendingRequests);
         
-        GAMEENGINE_DEBUG("Pathfinder Summary - Requests: " + std::to_string(totalRequests) +
-                        ", Success: " + std::to_string(successfulPaths) + " (" + std::to_string(static_cast<int>(successRate)) + "%)" +
-                        ", Timeouts: " + std::to_string(timeouts) + " (" + std::to_string(static_cast<int>(timeoutRate)) + "%)" +
+        GAMEENGINE_INFO("PathfinderManager Status - Requests: " + std::to_string(totalRequests) +
+                        ", SUCCESS RATE: " + std::to_string(static_cast<int>(successRate)) + "%" +
+                        ", TIMEOUT RATE: " + std::to_string(static_cast<int>(timeoutRate)) + "%" +
+                        " (" + std::to_string(timeouts) + " timeouts)" +
                         ", Invalid: " + std::to_string(invalidGoals) +
                         ", Pending: " + std::to_string(pendingRequests) +
-                        ", Cache: " + std::to_string(cacheHits) + "/" + std::to_string(cacheHits + cacheMisses) + 
-                        " (" + std::to_string(static_cast<int>(cacheHitRate)) + "%)" +
-                        ", Avg Path: " + std::to_string(static_cast<int>(avgPathLength)) + " nodes" +
-                        ", Threads: " + std::to_string(activeThreads));
+                        ", Cache Hit Rate: " + std::to_string(static_cast<int>(cacheHitRate)) + "%" +
+                        " (" + std::to_string(cacheHits) + "/" + std::to_string(cacheHits + cacheMisses) + ")" +
+                        ", Avg Path Length: " + std::to_string(static_cast<int>(avgPathLength)) + " nodes" +
+                        ", Active Threads: " + std::to_string(activeThreads));
     }
 }
 
