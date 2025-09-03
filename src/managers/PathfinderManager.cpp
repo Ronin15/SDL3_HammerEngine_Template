@@ -41,20 +41,10 @@ bool PathfinderManager::init() {
     try {
         GAMEENGINE_INFO("Initializing PathfinderManager");
 
-        // Get world dimensions from WorldManager
-        auto& worldManager = WorldManager::Instance();
-        int worldWidth = 1280;  // Default dimensions
-        int worldHeight = 1280;
-        worldManager.getWorldDimensions(worldWidth, worldHeight);
+        // Don't initialize grid immediately - wait for world to be loaded
+        // Grid will be created lazily when first needed and world is available
         float cellSize = 32.0f; // Default cell size, could be configurable
-
-        // Initialize pathfinding grid
-        m_grid = std::make_unique<HammerEngine::PathfindingGrid>(
-            worldWidth / cellSize, 
-            worldHeight / cellSize, 
-            cellSize, 
-            Vector2D(0, 0)
-        );
+        m_cellSize = cellSize;
 
         // PathCache is now managed by PathfindingScheduler
         // m_cache = std::make_unique<AIInternal::PathCache>();
@@ -65,9 +55,7 @@ bool PathfinderManager::init() {
         // Initialize pathfinding scheduler
         m_scheduler = std::make_unique<AIInternal::PathfindingScheduler>();
 
-        // Configure grid settings
-        m_grid->setAllowDiagonal(m_allowDiagonal);
-        m_grid->setMaxIterations(m_maxIterations);
+        // Grid configuration will be applied when grid is created
 
         // Skip initial grid rebuild - will happen when world is loaded
         // rebuildGrid();
@@ -217,7 +205,12 @@ HammerEngine::PathfindingResult PathfinderManager::findPathImmediate(
     const Vector2D& goal,
     std::vector<Vector2D>& outPath
 ) {
-    if (!m_initialized.load() || m_isShutdown || !m_grid) {
+    if (!m_initialized.load() || m_isShutdown) {
+        return HammerEngine::PathfindingResult::NO_PATH_FOUND;
+    }
+
+    // Ensure grid is initialized before pathfinding
+    if (!ensureGridInitialized()) {
         return HammerEngine::PathfindingResult::NO_PATH_FOUND;
     }
 
@@ -281,13 +274,8 @@ void PathfinderManager::cancelEntityRequests(EntityID entityId) {
 }
 
 void PathfinderManager::rebuildGrid() {
-    if (!m_grid) {
-        return;
-    }
-
-    // Only rebuild if there's an active world
-    auto& worldManager = WorldManager::Instance();
-    if (!worldManager.hasActiveWorld()) {
+    // Ensure grid is initialized (this also checks for active world)
+    if (!ensureGridInitialized()) {
         return;
     }
 
@@ -298,13 +286,8 @@ void PathfinderManager::rebuildGrid() {
 }
 
 void PathfinderManager::updateDynamicObstacles() {
-    if (!m_grid) {
-        return;
-    }
-
-    // Only update if there's an active world
-    auto& worldManager = WorldManager::Instance();
-    if (!worldManager.hasActiveWorld()) {
+    // Ensure grid is initialized (this also checks for active world)
+    if (!ensureGridInitialized()) {
         return;
     }
 
@@ -326,7 +309,7 @@ void PathfinderManager::updateDynamicObstacles() {
 }
 
 void PathfinderManager::addTemporaryWeightField(const Vector2D& center, float radius, float weight) {
-    if (!m_grid) {
+    if (!ensureGridInitialized()) {
         return;
     }
 
@@ -334,7 +317,7 @@ void PathfinderManager::addTemporaryWeightField(const Vector2D& center, float ra
 }
 
 void PathfinderManager::clearWeightFields() {
-    if (!m_grid) {
+    if (!ensureGridInitialized()) {
         return;
     }
 
@@ -405,7 +388,12 @@ void PathfinderManager::resetStats() {
 // Method removed - functionality moved to processSchedulerRequests
 
 void PathfinderManager::processSchedulerRequests(const std::vector<AIInternal::PathRequest>& requests) {
-    if (requests.empty() || !m_grid || !m_scheduler) {
+    if (requests.empty() || !m_scheduler) {
+        return;
+    }
+
+    // Ensure grid is initialized before processing requests
+    if (!ensureGridInitialized()) {
         return;
     }
 
@@ -484,4 +472,74 @@ void PathfinderManager::integrateCollisionData() {
 void PathfinderManager::integrateWorldData() {
     // Already handled by rebuildGrid() which calls grid->rebuildFromWorld()
     // This method is here for future expansion if needed
+}
+
+bool PathfinderManager::ensureGridInitialized() {
+    if (m_grid) {
+        return true; // Grid already exists
+    }
+
+    // Check if we have an active world to get dimensions from
+    auto& worldManager = WorldManager::Instance();
+    if (!worldManager.hasActiveWorld()) {
+        GAMEENGINE_DEBUG("Cannot initialize pathfinding grid - no active world");
+        return false;
+    }
+
+    // Get world dimensions
+    int worldWidth = 0;
+    int worldHeight = 0;
+    if (!worldManager.getWorldDimensions(worldWidth, worldHeight)) {
+        GAMEENGINE_WARN("Cannot get world dimensions for pathfinding grid initialization");
+        return false;
+    }
+
+    // Validate dimensions to prevent 0x0 grids
+    if (worldWidth <= 0 || worldHeight <= 0) {
+        GAMEENGINE_WARN("Invalid world dimensions for pathfinding grid: " + 
+                        std::to_string(worldWidth) + "x" + std::to_string(worldHeight));
+        return false;
+    }
+
+    // Calculate grid dimensions in cells
+    int gridWidth = static_cast<int>(worldWidth / m_cellSize);
+    int gridHeight = static_cast<int>(worldHeight / m_cellSize);
+
+    // Ensure minimum grid size
+    if (gridWidth <= 0 || gridHeight <= 0) {
+        GAMEENGINE_WARN("Calculated grid dimensions too small: " + 
+                        std::to_string(gridWidth) + "x" + std::to_string(gridHeight) + 
+                        " (world: " + std::to_string(worldWidth) + "x" + std::to_string(worldHeight) + 
+                        ", cellSize: " + std::to_string(m_cellSize) + ")");
+        return false;
+    }
+
+    try {
+        // Create the pathfinding grid
+        m_grid = std::make_unique<HammerEngine::PathfindingGrid>(
+            gridWidth,
+            gridHeight,
+            m_cellSize,
+            Vector2D(0, 0)
+        );
+
+        // Apply configuration settings
+        m_grid->setAllowDiagonal(m_allowDiagonal);
+        m_grid->setMaxIterations(m_maxIterations);
+
+        // Build the grid from world data
+        m_grid->rebuildFromWorld();
+
+        GAMEENGINE_INFO("Pathfinding grid initialized: " + 
+                        std::to_string(gridWidth) + "x" + std::to_string(gridHeight) + 
+                        " cells (world: " + std::to_string(worldWidth) + "x" + std::to_string(worldHeight) + 
+                        ", cellSize: " + std::to_string(m_cellSize) + ")");
+        
+        return true;
+    }
+    catch (const std::exception& e) {
+        GAMEENGINE_ERROR("Failed to create pathfinding grid: " + std::string(e.what()));
+        m_grid.reset();
+        return false;
+    }
 }
