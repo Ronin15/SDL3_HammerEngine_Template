@@ -415,7 +415,7 @@ void PathfinderManager::processSchedulerRequests(const std::vector<AIInternal::P
     
     // Use proper WorkerBudget threading like AIManager/ParticleManager
     auto& threadSystem = HammerEngine::ThreadSystem::Instance();
-    if (!HammerEngine::ThreadSystem::Exists() || requestCount < 10) {
+    if (!HammerEngine::ThreadSystem::Exists() || requestCount < 5) { // Reasonable threshold
         // Small batches: process synchronously
         m_activeThreadCount.store(1);
         processPathfindingBatch(requests, 0, requestCount);
