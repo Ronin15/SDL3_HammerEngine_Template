@@ -368,13 +368,10 @@ PathfinderManager::PathfinderStats PathfinderManager::getStats() const {
     if (m_scheduler) {
         auto cacheStats = m_scheduler->getPathCacheStats();
         // Update our stats with the scheduler's cache stats
-        uint64_t schedulerHits = static_cast<uint64_t>(cacheStats.totalHits);
-        uint64_t schedulerMisses = static_cast<uint64_t>(cacheStats.totalMisses);
-        
-        // Use the scheduler's stats as the authoritative cache stats
-        m_stats.cacheHits = schedulerHits;
-        m_stats.cacheMisses = schedulerMisses;
+        m_stats.cacheHits = static_cast<uint64_t>(cacheStats.totalHits);
+        m_stats.cacheMisses = static_cast<uint64_t>(cacheStats.totalMisses);
         m_stats.cacheHitRate = cacheStats.hitRate;
+        
     } else {
         // No scheduler available - calculate from local stats
         if ((m_stats.cacheHits + m_stats.cacheMisses) > 0) {
@@ -469,6 +466,9 @@ void PathfinderManager::processPathfindingBatch(const std::vector<AIInternal::Pa
             // Store successful result in scheduler
             m_scheduler->storePathResult(request.entityId, path);
             
+            // Cache successful path for future reuse
+            m_scheduler->cacheSuccessfulPath(request.start, request.goal, path);
+            
             // Call callback if provided
             if (request.callback) {
                 request.callback(request.entityId, path);
@@ -511,7 +511,7 @@ void PathfinderManager::updateStatistics() {
     // This method updates local manager stats
     
     std::lock_guard<std::mutex> lock(m_statsMutex);
-    m_stats.pendingRequests = m_requestQueue.size();
+    m_stats.pendingRequests = m_scheduler ? m_scheduler->getQueueSize() : 0;
     
     // Get grid statistics if available and update consolidated stats
     uint32_t totalRequests = 0;
