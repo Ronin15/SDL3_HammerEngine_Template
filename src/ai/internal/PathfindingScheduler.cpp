@@ -333,6 +333,22 @@ void PathfindingScheduler::cacheSuccessfulPath(const Vector2D& start, const Vect
     }
 }
 
+std::optional<std::vector<Vector2D>> PathfindingScheduler::getCachedPath(const Vector2D& start, const Vector2D& goal, float tolerance) const
+{
+    if (m_isShutdown.load(std::memory_order_relaxed) || !m_pathCache) {
+        return std::nullopt;
+    }
+    
+    auto cachedPath = m_pathCache->findSimilarPath(start, goal, tolerance);
+    if (cachedPath) {
+        // Track cache hit for statistics
+        m_pathsFromCache.fetch_add(1, std::memory_order_relaxed);
+        m_totalRequestsProcessed.fetch_add(1, std::memory_order_relaxed);
+    }
+    
+    return cachedPath;
+}
+
 void PathfindingScheduler::processPathBatch(std::vector<PathRequest> batch)
 {
     if (m_isShutdown.load(std::memory_order_relaxed)) {
@@ -601,6 +617,7 @@ PathCacheStats PathfindingScheduler::getPathCacheStats() const
     stats.totalHits = cacheHits;
     stats.totalMisses = cacheMisses;
     stats.hitRate = (totalRequests > 0) ? static_cast<float>(cacheHits) / static_cast<float>(totalRequests) : 0.0f;
+    
     
     return stats;
 }

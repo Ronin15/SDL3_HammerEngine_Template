@@ -332,19 +332,15 @@ PathfindingResult PathfindingGrid::findPath(const Vector2D& start, const Vector2
     const int dx8[8] = {1,-1,0,0, 1,1,-1,-1};
     const int dy8[8] = {0,0,1,-1, 1,-1,1,-1};
 
-    // EMERGENCY: Massively increased iteration limits to fix 94% timeout crisis
-    int baseIters = std::max(5000, baseDistance * 150); // Triple the base iterations  
-    int dynamicMaxIters = std::min(m_maxIterations, baseIters + 10000); // Much larger buffer
+    // Performance-focused: Dynamic iteration limits based on distance
+    int baseIters = std::max(1000, baseDistance * 25); // Reasonable base iterations  
+    int dynamicMaxIters = std::min(m_maxIterations, baseIters + 2000); // Small buffer for complex paths
     
-    // EMERGENCY: Remove all caps - use full maxIterations for reliability
-    dynamicMaxIters = m_maxIterations; // Use full 100,000 iteration limit
+    // Performance-focused: Reasonable queue limits to balance memory and success rate
+    const size_t maxOpenQueueSize = std::max(static_cast<size_t>(2000), static_cast<size_t>(baseDistance * 15));
     
-    // CRITICAL FIX: Much higher queue limits to prevent premature termination
-    // The original limits were causing 77% timeout rate with early termination at 400-500 iterations
-    const size_t maxOpenQueueSize = std::max(static_cast<size_t>(8000), static_cast<size_t>(baseDistance * 120));
-    
-    // Emergency brake only for extreme memory situations
-    const size_t maxAbsoluteQueueSize = 20000;
+    // Memory protection for very complex pathfinding scenarios
+    const size_t maxAbsoluteQueueSize = 5000;
 
     while (!open.empty() && iterations++ < dynamicMaxIters) {
         // Only terminate on truly excessive memory usage, not normal pathfinding complexity

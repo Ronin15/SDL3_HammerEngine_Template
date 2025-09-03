@@ -367,6 +367,7 @@ PathfinderManager::PathfinderStats PathfinderManager::getStats() const {
     // Get cache statistics from scheduler
     if (m_scheduler) {
         auto cacheStats = m_scheduler->getPathCacheStats();
+        
         // Update our stats with the scheduler's cache stats
         m_stats.cacheHits = static_cast<uint64_t>(cacheStats.totalHits);
         m_stats.cacheMisses = static_cast<uint64_t>(cacheStats.totalMisses);
@@ -459,7 +460,32 @@ void PathfinderManager::processPathfindingBatch(const std::vector<AIInternal::Pa
         const auto& request = requests[i];
         std::vector<Vector2D> path;
         
-        // Perform A* pathfinding for this request
+        // FIRST: Check cache for similar paths before expensive A* computation
+        bool cacheHit = false;
+        if (m_scheduler) {
+            // Check PathCache for similar paths (64px tolerance)
+            if (auto cachedPath = m_scheduler->getCachedPath(request.start, request.goal, 64.0f)) {
+                path = cachedPath.value();
+                cacheHit = true;
+                
+                // Store cached result
+                m_scheduler->storePathResult(request.entityId, path);
+                
+                // Call callback if provided
+                if (request.callback) {
+                    request.callback(request.entityId, path);
+                }
+                
+                // Update local stats (thread-safe)
+                {
+                    std::lock_guard<std::mutex> lock(m_statsMutex);
+                    m_stats.completedRequests++;
+                }
+                continue; // Skip A* computation
+            }
+        }
+        
+        // Cache miss - perform expensive A* pathfinding
         auto result = m_grid->findPath(request.start, request.goal, path);
         
         if (result == HammerEngine::PathfindingResult::SUCCESS && !path.empty()) {
@@ -548,7 +574,15 @@ void PathfinderManager::updateStatistics() {
     if (timeSinceLastDebug.count() >= 5 && totalRequests > 0) {
         lastDebugTime = currentTime;
         
-        // Get cache statistics
+        // Get fresh cache statistics directly from scheduler before displaying
+        if (m_scheduler) {
+            auto cacheStats = m_scheduler->getPathCacheStats();
+            m_stats.cacheHits = static_cast<uint64_t>(cacheStats.totalHits);
+            m_stats.cacheMisses = static_cast<uint64_t>(cacheStats.totalMisses);
+            m_stats.cacheHitRate = cacheStats.hitRate;
+        }
+        
+        // Get cache statistics  
         float cacheHitRate = m_stats.cacheHitRate * 100.0f;
         uint32_t cacheHits = m_stats.cacheHits;
         uint32_t cacheMisses = m_stats.cacheMisses;
