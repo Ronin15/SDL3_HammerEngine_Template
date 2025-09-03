@@ -245,8 +245,8 @@ PathfindingResult PathfindingGrid::findPath(const Vector2D& start, const Vector2
             if (!hasOpenNeighbor) blockedSamples++;
         }
         
-        // If more than 75% of samples are in completely blocked areas, likely unreachable (more lenient threshold)
-        if (blockedSamples > (samples * 3) / 4) {
+        // If more than 70% of samples are in completely blocked areas, likely unreachable (balanced threshold)
+        if (blockedSamples > (samples * 7) / 10) {
             m_stats.totalRequests++;
             m_stats.invalidGoals++;
             PATHFIND_DEBUG("Goal rejected: appears unreachable based on connectivity test");
@@ -329,13 +329,13 @@ PathfindingResult PathfindingGrid::findPath(const Vector2D& start, const Vector2
     const int dy8[8] = {0,0,1,-1, 1,-1,1,-1};
 
     // Performance-focused: Dynamic iteration limits based on distance (optimized for better success rate)
-    int baseIters = std::max(500, baseDistance * 20); // Reduced base to start faster
-    int dynamicMaxIters = std::min(m_maxIterations, baseIters + 1500); // Tighter buffer for quick resolution
+    int baseIters = std::max(800, baseDistance * 25); // Increased base for complex paths
+    int dynamicMaxIters = std::min(m_maxIterations, baseIters + 2500); // Increased buffer for better success
     
     // Performance-focused: Reasonable queue limits to balance memory and success rate
     
     // Memory protection for very complex pathfinding scenarios
-    const size_t maxAbsoluteQueueSize = 5000;
+    const size_t maxAbsoluteQueueSize = 8000;
 
     while (!open.empty() && iterations++ < dynamicMaxIters) {
         // Only terminate on truly excessive memory usage, not normal pathfinding complexity
