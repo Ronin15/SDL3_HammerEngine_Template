@@ -241,8 +241,8 @@ private:
     std::vector<std::future<void>> m_activeTasks;
     std::atomic<uint32_t> m_activeThreadCount{0};
     
-    // Configuration
-    int m_maxPathsPerFrame{5};
+    // Configuration - CRITICAL FIX: Increase from 5 to handle queue overflow
+    int m_maxPathsPerFrame{32};
     float m_cacheExpirationTime{5.0f};
     bool m_allowDiagonal{true};
     int m_maxIterations{50000};
@@ -264,6 +264,8 @@ private:
 
     // Internal methods
     void processSchedulerRequests(const std::vector<AIInternal::PathRequest>& requests);
+    void processPathfindingBatch(const std::vector<AIInternal::PathRequest>& requests, 
+                                size_t startIndex, size_t endIndex); // Parallel batch processing
     void processRequestBatch(std::vector<AIInternal::PathRequest>& batch); // Legacy compatibility
     void updateStatistics();
     void cleanupCache();

@@ -237,21 +237,24 @@ void PathCache::shutdown()
 
 uint64_t PathCache::hashPath(const Vector2D& start, const Vector2D& goal) const
 {
-    // Use spatial quantization to group nearby paths
-    // Round coordinates to nearest 32-pixel grid for better clustering
-    static constexpr float QUANTIZATION_SIZE = 32.0f;
+    // CRITICAL FIX: Align quantization with spatial tolerance (64px) to prevent cache misses
+    // Old 32px quantization was too fine, causing cache misses for similar paths
+    static constexpr float QUANTIZATION_SIZE = 64.0f;  // Match DEFAULT_SPATIAL_TOLERANCE
     
-    uint32_t startX = static_cast<uint32_t>(std::floor(start.getX() / QUANTIZATION_SIZE));
-    uint32_t startY = static_cast<uint32_t>(std::floor(start.getY() / QUANTIZATION_SIZE));
-    uint32_t goalX = static_cast<uint32_t>(std::floor(goal.getX() / QUANTIZATION_SIZE));
-    uint32_t goalY = static_cast<uint32_t>(std::floor(goal.getY() / QUANTIZATION_SIZE));
+    // Use more robust quantization to handle clustered entities
+    uint32_t startX = static_cast<uint32_t>(std::floor(start.getX() / QUANTIZATION_SIZE + 0.5f));
+    uint32_t startY = static_cast<uint32_t>(std::floor(start.getY() / QUANTIZATION_SIZE + 0.5f));
+    uint32_t goalX = static_cast<uint32_t>(std::floor(goal.getX() / QUANTIZATION_SIZE + 0.5f));
+    uint32_t goalY = static_cast<uint32_t>(std::floor(goal.getY() / QUANTIZATION_SIZE + 0.5f));
     
-    // Combine coordinates into 64-bit hash
-    uint64_t hash = 0;
-    hash |= static_cast<uint64_t>(startX) << 48;
-    hash |= static_cast<uint64_t>(startY) << 32;
-    hash |= static_cast<uint64_t>(goalX) << 16;
-    hash |= static_cast<uint64_t>(goalY);
+    // Improved hash combining to reduce collisions in clustered scenarios
+    // Use FNV-1a-like hash mixing for better distribution
+    uint64_t hash = 14695981039346656037ULL; // FNV offset basis
+    
+    hash ^= startX; hash *= 1099511628211ULL; // FNV prime
+    hash ^= startY; hash *= 1099511628211ULL;
+    hash ^= goalX; hash *= 1099511628211ULL;
+    hash ^= goalY; hash *= 1099511628211ULL;
     
     return hash;
 }
