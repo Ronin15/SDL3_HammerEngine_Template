@@ -6,7 +6,6 @@
 #include "managers/PathfinderManager.hpp"
 #include "ai/pathfinding/PathfindingGrid.hpp"
 #include "../ai/internal/PathCache.hpp"
-#include "../ai/internal/PathfindingScheduler.hpp"
 #include "../ai/internal/SpatialPriority.hpp"
 #include "managers/CollisionManager.hpp"
 #include "managers/WorldManager.hpp"
@@ -47,14 +46,13 @@ bool PathfinderManager::init() {
         float cellSize = 32.0f; // Default cell size, could be configurable
         m_cellSize = cellSize;
 
-        // PathCache is now managed by PathfindingScheduler
-        // m_cache = std::make_unique<AIInternal::PathCache>();
+        // Initialize PathCache directly
+        m_cache = std::make_unique<AIInternal::PathCache>();
 
         // Initialize spatial priority system
         m_spatialPriority = std::make_unique<AIInternal::SpatialPriority>();
 
-        // Initialize pathfinding scheduler
-        m_scheduler = std::make_unique<AIInternal::PathfindingScheduler>();
+        PATHFIND_INFO("PathfinderManager: PathCache initialized");
 
         // Grid configuration will be applied when grid is created
 
@@ -96,19 +94,10 @@ void PathfinderManager::update(float deltaTime) {
         m_cacheCleanupTimer = 0.0f;
     }
 
-    // Update scheduler (handles request distribution and processing)
-    // Need player position - for now use origin, later get from game state
-    if (m_scheduler) {
+    // Periodic cache cleanup
+    if (m_cache) {
         Vector2D playerPos(0, 0); // TODO: Get actual player position
-        m_scheduler->update(deltaTime, playerPos);
-        
-        // CRITICAL FIX: Remove artificial batch accumulation delays
-        // Process requests immediately for much better response times
-        auto newRequests = m_scheduler->extractPendingRequests(m_maxPathsPerFrame);
-        
-        if (!newRequests.empty()) {
-            processSchedulerRequests(newRequests);
-        }
+        m_cache->evictPathsInCrowdedAreas(playerPos);
     }
 
     // Update statistics
@@ -122,19 +111,12 @@ void PathfinderManager::clean() {
 
     PATHFIND_INFO("Cleaning up PathfinderManager");
 
-    // Cancel all pending requests (now handled by scheduler)
-    if (m_scheduler) {
-        // PathfindingScheduler will handle cleanup in its shutdown method
+    // Clear cache
+    if (m_cache) {
+        m_cache->clear();
     }
     
-    // Clear any remaining local request data
-    {
-        std::lock_guard<std::mutex> lock(m_requestMutex);
-        while (!m_requestQueue.empty()) {
-            m_requestQueue.pop();
-        }
-        // m_pendingRequests no longer used - removed double tracking
-    }
+    // Clear any remaining local request data - no queues in direct async mode
 
     // Wait for active threads to complete
     for (auto& task : m_activeTasks) {
@@ -145,13 +127,12 @@ void PathfinderManager::clean() {
     m_activeTasks.clear();
 
     // Clean up components
-    if (m_scheduler) {
-        m_scheduler->shutdown();
+    if (m_cache) {
+        m_cache->shutdown();
     }
 
-    m_scheduler.reset();
+    m_cache.reset();
     m_spatialPriority.reset();
-    // m_cache is now managed by PathfindingScheduler
     m_grid.reset();
 
     m_initialized.store(false);
@@ -171,35 +152,8 @@ bool PathfinderManager::isShutdown() const {
     return m_isShutdown;
 }
 
-uint64_t PathfinderManager::requestPath(
-    EntityID entityId,
-    const Vector2D& start,
-    const Vector2D& goal,
-    AIInternal::PathPriority priority,
-    std::function<void(EntityID, const std::vector<Vector2D>&)> callback
-) {
-    if (!m_initialized.load() || m_isShutdown) {
-        return 0;
-    }
 
-    // CRITICAL FIX: Pass directly to scheduler - no double tracking
-    // Scheduler handles its own request limits and tracking
-    if (m_scheduler) {
-        m_scheduler->requestPath(entityId, start, goal, priority, callback);
-        
-        // Update stats only
-        {
-            std::lock_guard<std::mutex> lock(m_statsMutex);
-            m_stats.totalRequests++;
-        }
-        
-        return m_nextRequestId.fetch_add(1);
-    }
-
-    return 0;
-}
-
-// ASYNC PATHFINDING: High-performance background processing
+// ASYNC PATHFINDING: Direct ThreadSystem submission for true async processing  
 uint64_t PathfinderManager::requestPathAsync(
     EntityID entityId,
     const Vector2D& start,
@@ -212,9 +166,34 @@ uint64_t PathfinderManager::requestPathAsync(
         return 0;
     }
 
-    // ASYNC PROCESSING: Use enhanced scheduler with ThreadSystem integration
-    if (m_scheduler) {
-        m_scheduler->requestPathAsync(entityId, start, goal, priority, aiManagerPriority, callback);
+    // Ensure grid is initialized before pathfinding
+    if (!ensureGridInitialized()) {
+        // Return a valid request ID but callback with empty path
+        if (callback) {
+            callback(entityId, std::vector<Vector2D>());
+        }
+        return m_nextRequestId.fetch_add(1);
+    }
+
+    // TRUE ASYNC: Submit directly to ThreadSystem without queueing
+    if (m_grid) {
+        // TRUE ASYNC: Submit directly to ThreadSystem  
+        auto work = [this, entityId, start, goal, callback]() {
+            // Perform pathfinding directly on background thread
+            std::vector<Vector2D> path;
+            m_grid->findPath(start, goal, path);
+            
+            // Execute callback with result
+            callback(entityId, path);
+        };
+        
+        // Convert aiManagerPriority to TaskPriority
+        HammerEngine::TaskPriority taskPriority = HammerEngine::TaskPriority::Normal;
+        if (aiManagerPriority >= 8) taskPriority = HammerEngine::TaskPriority::High;
+        else if (aiManagerPriority >= 6) taskPriority = HammerEngine::TaskPriority::Normal;
+        else taskPriority = HammerEngine::TaskPriority::Low;
+        
+        HammerEngine::ThreadSystem::Instance().enqueueTask(work, taskPriority, "PathfindingAsync");
         
         // Update stats only
         {
@@ -244,9 +223,9 @@ HammerEngine::PathfindingResult PathfinderManager::findPathImmediate(
 
     // CRITICAL FIX: Restore cache functionality for immediate requests
     // Check cache first before expensive A* computation
-    if (m_scheduler) {
-        if (auto cachedPath = m_scheduler->getCachedPath(start, goal, 64.0f)) {
-            outPath = cachedPath.value();
+    if (m_cache) {
+        if (auto cachedPath = m_cache->findSimilarPath(start, goal, 64.0f)) {
+            outPath = *cachedPath;
             
             // Update statistics for cache hit
             {
@@ -263,8 +242,8 @@ HammerEngine::PathfindingResult PathfinderManager::findPathImmediate(
     auto result = m_grid->findPath(start, goal, outPath);
     
     // Cache successful paths for future reuse
-    if (result == HammerEngine::PathfindingResult::SUCCESS && !outPath.empty() && m_scheduler) {
-        m_scheduler->cacheSuccessfulPath(start, goal, outPath);
+    if (result == HammerEngine::PathfindingResult::SUCCESS && !outPath.empty() && m_cache) {
+        m_cache->cachePath(start, goal, outPath);
     }
     
     // Update statistics
@@ -348,9 +327,9 @@ void PathfinderManager::updateDynamicObstacles() {
         lastWorldVersion = currentWorldVersion;
         lastRebuildTime = rebuildTimer;
         
-        // Clear cache in scheduler since grid changed
-        if (m_scheduler) {
-            // PathfindingScheduler will handle cache invalidation
+        // Clear cache since grid changed
+        if (m_cache) {
+            m_cache->clear();
         }
     }
 
@@ -400,17 +379,17 @@ void PathfinderManager::setMaxIterations(int maxIterations) {
 PathfinderManager::PathfinderStats PathfinderManager::getStats() const {
     std::lock_guard<std::mutex> lock(m_statsMutex);
     
-    // Get cache statistics from scheduler
-    if (m_scheduler) {
-        auto cacheStats = m_scheduler->getPathCacheStats();
+    // Get cache statistics directly from cache
+    if (m_cache) {
+        auto cacheStats = m_cache->getStats();
         
-        // Update our stats with the scheduler's cache stats
+        // Update our stats with the cache stats
         m_stats.cacheHits = static_cast<uint64_t>(cacheStats.totalHits);
         m_stats.cacheMisses = static_cast<uint64_t>(cacheStats.totalMisses);
         m_stats.cacheHitRate = cacheStats.hitRate;
         
     } else {
-        // No scheduler available - calculate from local stats
+        // No cache available - calculate from local stats
         if ((m_stats.cacheHits + m_stats.cacheMisses) > 0) {
             m_stats.cacheHitRate = static_cast<float>(m_stats.cacheHits) / 
                                    static_cast<float>(m_stats.cacheHits + m_stats.cacheMisses);
@@ -433,145 +412,13 @@ void PathfinderManager::resetStats() {
     }
 }
 
-// Method removed - functionality moved to processSchedulerRequests
-
-void PathfinderManager::processSchedulerRequests(const std::vector<AIInternal::PathRequest>& requests) {
-    if (requests.empty() || !m_scheduler) {
-        return;
-    }
-
-    // Ensure grid is initialized before processing requests
-    if (!ensureGridInitialized()) {
-        return;
-    }
-
-    size_t requestCount = requests.size();
-    
-    // Use proper WorkerBudget threading like AIManager/ParticleManager
-    auto& threadSystem = HammerEngine::ThreadSystem::Instance();
-    if (!HammerEngine::ThreadSystem::Exists() || requestCount < 5) { // Reasonable threshold
-        // Small batches: process synchronously
-        m_activeThreadCount.store(1);
-        processPathfindingBatch(requests, 0, requestCount);
-        m_activeThreadCount.store(0);
-        return;
-    }
-    
-    // Large batches: use WorkerBudget threading like successful systems
-    size_t availableWorkers = static_cast<size_t>(threadSystem.getThreadCount());
-    HammerEngine::WorkerBudget budget = HammerEngine::calculateWorkerBudget(availableWorkers);
-    size_t optimalWorkers = budget.getOptimalWorkerCount(2, requestCount, 100); // Use 2 workers base allocation
-    size_t batchSize = (requestCount + optimalWorkers - 1) / optimalWorkers;
-    
-    m_activeThreadCount.store(static_cast<int>(optimalWorkers));
-    
-    std::vector<std::future<int>> futures;
-    futures.reserve(optimalWorkers);
-    
-    for (size_t i = 0; i < requestCount; i += batchSize) {
-        size_t endIdx = std::min(i + batchSize, requestCount);
-        
-        futures.push_back(threadSystem.enqueueTaskWithResult(
-            [this, &requests, i, endIdx]() -> int {
-                processPathfindingBatch(requests, i, endIdx);
-                return static_cast<int>(endIdx - i);
-            },
-            HammerEngine::TaskPriority::High, "Pathfinding_Batch"));
-    }
-    
-    // Wait for all batches to complete and update budget
-    for (auto& future : futures) {
-        future.wait();
-    }
-    
-    // WorkerBudget is automatically managed by ThreadSystem
-    
-    m_activeThreadCount.store(0);
-}
-
-void PathfinderManager::processPathfindingBatch(const std::vector<AIInternal::PathRequest>& requests, 
-                                               size_t startIndex, size_t endIndex) {
-    // Process a batch of pathfinding requests (called from both parallel and single-threaded paths)
-    for (size_t i = startIndex; i < endIndex; ++i) {
-        const auto& request = requests[i];
-        std::vector<Vector2D> path;
-        
-        // FIRST: Check cache for similar paths before expensive A* computation
-        if (m_scheduler) {
-            // Check PathCache for similar paths (64px tolerance)
-            if (auto cachedPath = m_scheduler->getCachedPath(request.start, request.goal, 64.0f)) {
-                path = cachedPath.value();
-                
-                // Store cached result
-                m_scheduler->storePathResult(request.entityId, path);
-                
-                // Call callback if provided
-                if (request.callback) {
-                    request.callback(request.entityId, path);
-                }
-                
-                // Update local stats (thread-safe)
-                {
-                    std::lock_guard<std::mutex> lock(m_statsMutex);
-                    m_stats.completedRequests++;
-                }
-                continue; // Skip A* computation
-            }
-        }
-        
-        // Cache miss - perform expensive A* pathfinding
-        auto result = m_grid->findPath(request.start, request.goal, path);
-        
-        if (result == HammerEngine::PathfindingResult::SUCCESS && !path.empty()) {
-            // Store successful result in scheduler
-            m_scheduler->storePathResult(request.entityId, path);
-            
-            // Cache successful path for future reuse
-            m_scheduler->cacheSuccessfulPath(request.start, request.goal, path);
-            
-            // Call callback if provided
-            if (request.callback) {
-                request.callback(request.entityId, path);
-            }
-            
-            // Update local stats (thread-safe)
-            {
-                std::lock_guard<std::mutex> lock(m_statsMutex);
-                m_stats.completedRequests++;
-            }
-        } else {
-            // Store empty result for failed paths
-            m_scheduler->storePathResult(request.entityId, std::vector<Vector2D>{});
-            
-            // Call callback with empty path
-            if (request.callback) {
-                request.callback(request.entityId, std::vector<Vector2D>{});
-            }
-            
-            // Update local stats (thread-safe)
-            {
-                std::lock_guard<std::mutex> lock(m_statsMutex);
-                if (result == HammerEngine::PathfindingResult::TIMEOUT) {
-                    m_stats.timedOutRequests++;
-                }
-            }
-        }
-    }
-}
-
-// This method is no longer used - replaced by processSchedulerRequests
-// Kept for potential future use or interface compatibility
-void PathfinderManager::processRequestBatch(std::vector<AIInternal::PathRequest>& batch) {
-    // Delegate to the new method
-    processSchedulerRequests(batch);
-}
 
 void PathfinderManager::updateStatistics() {
     // Statistics are now primarily managed by PathfindingScheduler
     // This method updates local manager stats
     
     std::lock_guard<std::mutex> lock(m_statsMutex);
-    m_stats.pendingRequests = m_scheduler ? m_scheduler->getQueueSize() : 0;
+    m_stats.pendingRequests = 0; // No pending requests in direct async mode
     
     // Get grid statistics if available and update consolidated stats
     uint32_t totalRequests = 0;
@@ -608,9 +455,9 @@ void PathfinderManager::updateStatistics() {
     if (timeSinceLastDebug.count() >= 5 && totalRequests > 0) {
         lastDebugTime = currentTime;
         
-        // Get fresh cache statistics directly from scheduler before displaying
-        if (m_scheduler) {
-            auto cacheStats = m_scheduler->getPathCacheStats();
+        // Get fresh cache statistics directly from cache before displaying
+        if (m_cache) {
+            auto cacheStats = m_cache->getStats();
             m_stats.cacheHits = static_cast<uint64_t>(cacheStats.totalHits);
             m_stats.cacheMisses = static_cast<uint64_t>(cacheStats.totalMisses);
             m_stats.cacheHitRate = cacheStats.hitRate;
@@ -639,8 +486,9 @@ void PathfinderManager::updateStatistics() {
 void PathfinderManager::cleanupCache() {
     // Cache cleanup is now handled by PathfindingScheduler
     // This method is kept for interface compatibility
-    if (m_scheduler) {
-        // Scheduler handles cache cleanup in its update() method
+    if (m_cache) {
+        // Perform cache cleanup using PathCache directly
+        m_cache->cleanup();
     }
 }
 

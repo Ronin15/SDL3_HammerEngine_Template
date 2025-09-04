@@ -39,9 +39,7 @@ namespace HammerEngine {
 
 namespace AIInternal {
     class PathCache;
-    class PathfindingScheduler;
     class SpatialPriority;
-    struct PathRequest;
     struct PathResult;
     enum class PathPriority;
 }
@@ -96,23 +94,6 @@ public:
 
     // ===== Pathfinding Request Interface =====
 
-    /**
-     * @brief Request a path for an entity with optional callback
-     * @param entityId The entity requesting the path
-     * @param start Starting position in world coordinates
-     * @param goal Goal position in world coordinates
-     * @param priority Priority level for request scheduling
-     * @param callback Optional callback when path is ready
-     * @return Request ID for tracking (0 if failed)
-     */
-    uint64_t requestPath(
-        EntityID entityId,
-        const Vector2D& start,
-        const Vector2D& goal,
-        AIInternal::PathPriority priority,
-        std::function<void(EntityID, const std::vector<Vector2D>&)> callback = nullptr
-    );
-    
     /**
      * @brief Request a path asynchronously with priority information (PERFORMANCE BOOST)
      * @param entityId The entity requesting the path  
@@ -277,14 +258,12 @@ private:
 
     // Core components
     std::unique_ptr<HammerEngine::PathfindingGrid> m_grid;
-    // PathCache is now managed by PathfindingScheduler
-    std::unique_ptr<AIInternal::PathfindingScheduler> m_scheduler;
+    // PathCache for caching pathfinding results
+    std::unique_ptr<AIInternal::PathCache> m_cache;
     std::unique_ptr<AIInternal::SpatialPriority> m_spatialPriority;
 
     // Request management
     std::atomic<uint64_t> m_nextRequestId{1};
-    std::unordered_map<uint64_t, AIInternal::PathRequest> m_pendingRequests;
-    std::priority_queue<AIInternal::PathRequest> m_requestQueue;
     std::mutex m_requestMutex;
 
     // Thread management
@@ -313,10 +292,6 @@ private:
     static constexpr float CACHE_CLEANUP_INTERVAL = 2.0f; // seconds
 
     // Internal methods
-    void processSchedulerRequests(const std::vector<AIInternal::PathRequest>& requests);
-    void processPathfindingBatch(const std::vector<AIInternal::PathRequest>& requests, 
-                                size_t startIndex, size_t endIndex); // Parallel batch processing
-    void processRequestBatch(std::vector<AIInternal::PathRequest>& batch); // Legacy compatibility
     void updateStatistics();
     void cleanupCache();
     void integrateCollisionData();
