@@ -6,7 +6,7 @@
 #include "ai/behaviors/ChaseBehavior.hpp"
 #include "managers/AIManager.hpp"
 #include "managers/PathfinderManager.hpp"
-#include "ai/internal/PathfindingScheduler.hpp"
+#include "ai/internal/SpatialPriority.hpp"
 #include "managers/CollisionManager.hpp"
 #include "ai/internal/Crowd.hpp"
 #include "core/Logger.hpp"
