@@ -402,7 +402,6 @@ BOOST_AUTO_TEST_CASE(BenchmarkPathfindingWithWeights)
     
     // Benchmark weighted pathfinding
     int successfulPaths = 0;
-    int totalPathNodes = 0;
     
     auto start = std::chrono::high_resolution_clock::now();
     
@@ -412,7 +411,6 @@ BOOST_AUTO_TEST_CASE(BenchmarkPathfindingWithWeights)
         
         if (result == PathfindingResult::SUCCESS) {
             successfulPaths++;
-            totalPathNodes += path.size();
         }
     }
     

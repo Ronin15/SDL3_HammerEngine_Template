@@ -367,7 +367,7 @@ bool PathCache::pathIntersectsCongestion(const std::vector<Vector2D>& path,
     }
 }
 
-void PathCache::updatePathUsage(uint64_t pathKey, CachedPath& path)
+void PathCache::updatePathUsage(uint64_t /* pathKey */, CachedPath& path)
 {
     // Update last used time and increment use count
     path.lastUsedTime = SDL_GetTicks();
