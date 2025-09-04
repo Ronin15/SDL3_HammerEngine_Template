@@ -125,6 +125,7 @@ private:
         std::vector<float> gScoreBuffer;
         std::vector<float> fScoreBuffer;
         std::vector<int> parentBuffer;
+        std::vector<uint8_t> closedBuffer; // moved from local to pooled to avoid per-call allocations
         std::vector<Vector2D> pathBuffer;
         
         void ensureCapacity(int gridSize) {
@@ -132,6 +133,7 @@ private:
                 gScoreBuffer.resize(gridSize);
                 fScoreBuffer.resize(gridSize);
                 parentBuffer.resize(gridSize);
+                closedBuffer.resize(gridSize);
                 pathBuffer.reserve(std::max(128, gridSize / 10)); // Reasonable path length estimate
             }
         }
@@ -144,6 +146,7 @@ private:
                 std::fill(gScoreBuffer.begin(), gScoreBuffer.end(), std::numeric_limits<float>::infinity());
                 std::fill(fScoreBuffer.begin(), fScoreBuffer.end(), std::numeric_limits<float>::infinity());
                 std::fill(parentBuffer.begin(), parentBuffer.end(), -1);
+                std::fill(closedBuffer.begin(), closedBuffer.end(), 0);
             }
             pathBuffer.clear();
         }

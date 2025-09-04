@@ -31,8 +31,21 @@ std::optional<std::vector<Vector2D>> PathCache::findSimilarPath(const Vector2D& 
     m_totalQueries.fetch_add(1, std::memory_order_relaxed);
 
     std::lock_guard<std::mutex> lock(m_cacheMutex);
-    
-    // Search through cached paths for similar routes
+
+    // Fast path: try quantized key bucket first
+    uint64_t key = hashPath(start, goal);
+    if (auto it = m_cachedPaths.find(key); it != m_cachedPaths.end()) {
+        auto& cachedPath = it->second;
+        if (cachedPath.isValid && isPathSimilar(cachedPath, start, goal, tolerance)) {
+            updatePathUsage(key, cachedPath);
+            auto adjustedPath = adjustPathToRequest(cachedPath.waypoints, start, goal);
+            m_totalHits.fetch_add(1, std::memory_order_relaxed);
+            return adjustedPath;
+        }
+        // If entry exists but not similar (or negative), fall through to neighborhood scan
+    }
+
+    // Fallback: search through cached paths for similar routes
     for (auto& [pathKey, cachedPath] : m_cachedPaths) {
         if (!cachedPath.isValid) {
             continue;
@@ -59,17 +72,40 @@ std::optional<std::vector<Vector2D>> PathCache::findSimilarPath(const Vector2D& 
     return std::nullopt;
 }
 
+bool PathCache::hasNegativeCached(const Vector2D& start,
+                                  const Vector2D& goal,
+                                  float tolerance)
+{
+    if (m_isShutdown.load(std::memory_order_relaxed)) {
+        return false;
+    }
+
+    std::lock_guard<std::mutex> lock(m_cacheMutex);
+
+    // Check exact bucket first
+    uint64_t key = hashPath(start, goal);
+    if (auto it = m_cachedPaths.find(key); it != m_cachedPaths.end()) {
+        const auto& cachedPath = it->second;
+        if (!cachedPath.isValid && isPathSimilar(cachedPath, start, goal, tolerance)) {
+            return true;
+        }
+    }
+
+    // Fallback scan for similar negative entries
+    for (const auto& [pathKey, cachedPath] : m_cachedPaths) {
+        if (!cachedPath.isValid && isPathSimilar(cachedPath, start, goal, tolerance)) {
+            return true;
+        }
+    }
+    return false;
+}
+
 void PathCache::cachePath(const Vector2D& start, const Vector2D& goal, const std::vector<Vector2D>& path)
 {
     if (m_isShutdown.load(std::memory_order_relaxed)) {
         return;
     }
     
-    if (path.empty()) {
-        // Empty path not cached (tracked in eviction stats)
-        return;
-    }
-
     uint64_t currentTime = SDL_GetTicks();
     uint64_t pathKey = hashPath(start, goal);
     
@@ -80,7 +116,10 @@ void PathCache::cachePath(const Vector2D& start, const Vector2D& goal, const std
         evictLRU();
     }
     
-    // Create new cached path entry
+    // Create new cached path entry (valid)
+    if (path.empty()) {
+        return; // Do not cache empty through this API; use cacheNegative instead
+    }
     CachedPath newPath(start, goal, path, currentTime);
     m_cachedPaths[pathKey] = std::move(newPath);
     m_lruQueue.push(pathKey);
@@ -259,11 +298,11 @@ uint64_t PathCache::hashPath(const Vector2D& start, const Vector2D& goal) const
     return hash;
 }
 
-float PathCache::calculateDistance(const Vector2D& a, const Vector2D& b) const
+float PathCache::calculateDistanceSquared(const Vector2D& a, const Vector2D& b) const
 {
     float dx = a.getX() - b.getX();
     float dy = a.getY() - b.getY();
-    return std::sqrt(dx * dx + dy * dy);
+    return dx * dx + dy * dy;
 }
 
 bool PathCache::isPathSimilar(const CachedPath& cached, 
@@ -272,10 +311,11 @@ bool PathCache::isPathSimilar(const CachedPath& cached,
                              float tolerance) const
 {
     // Check if start and goal positions are within tolerance
-    float startDistance = calculateDistance(cached.start, requestStart);
-    float goalDistance = calculateDistance(cached.goal, requestGoal);
+    float startDistance2 = calculateDistanceSquared(cached.start, requestStart);
+    float goalDistance2 = calculateDistanceSquared(cached.goal, requestGoal);
+    float tol2 = tolerance * tolerance;
     
-    return (startDistance <= tolerance) && (goalDistance <= tolerance);
+    return (startDistance2 <= tol2) && (goalDistance2 <= tol2);
 }
 
 std::vector<Vector2D> PathCache::adjustPathToRequest(const std::vector<Vector2D>& cachedPath,
@@ -336,7 +376,7 @@ bool PathCache::pathIntersectsCongestion(const std::vector<Vector2D>& path,
             const Vector2D& waypoint = path[i];
             
             // Skip waypoints too far from congestion center
-            if (calculateDistance(waypoint, congestionCenter) > congestionRadius * 2.0f) {
+            if (calculateDistanceSquared(waypoint, congestionCenter) > (congestionRadius * 2.0f) * (congestionRadius * 2.0f)) {
                 continue;
             }
             
@@ -378,4 +418,31 @@ void PathCache::updatePathUsage(uint64_t /* pathKey */, CachedPath& path)
     // Usage frequency is tracked by useCount and lastUsedTime
 }
 
+void PathCache::cacheNegative(const Vector2D& start, const Vector2D& goal)
+{
+    if (m_isShutdown.load(std::memory_order_relaxed)) {
+        return;
+    }
+
+    uint64_t currentTime = SDL_GetTicks();
+    uint64_t pathKey = hashPath(start, goal);
+
+    std::lock_guard<std::mutex> lock(m_cacheMutex);
+
+    // Check LRU capacity and evict if needed
+    if (m_cachedPaths.size() >= MAX_CACHED_PATHS) {
+        evictLRU();
+    }
+
+    CachedPath neg;
+    neg.start = start;
+    neg.goal = goal;
+    neg.creationTime = currentTime;
+    neg.lastUsedTime = currentTime;
+    neg.useCount = 1;
+    neg.isValid = false; // marks as negative result
+
+    m_cachedPaths[pathKey] = std::move(neg);
+    m_lruQueue.push(pathKey);
+}
 } // namespace AIInternal
