@@ -142,29 +142,12 @@ void ChaseBehavior::executeLogic(EntityPtr entity) {
         m_cooldowns.applyPathCooldown(now, 1200); // Increased cooldown from 600ms to 1.2s
       }
 
-      // State: PATH_FOLLOWING or DIRECT_MOVEMENT with dynamic spacing
+      // State: PATH_FOLLOWING using optimized PathfinderManager method
       if (!m_navPath.empty() && m_navIndex < m_navPath.size()) {
-        // Following computed path with enhanced separation
-        Vector2D targetNode = m_navPath[m_navIndex];
-        Vector2D toNode = targetNode - entityPos;
-        float distToNode = toNode.length();
+        // Use standardized path following for consistency and performance
+        bool following = PathfinderManager::Instance().followPathStep(
+            entity, entityPos, m_navPath, m_navIndex, m_chaseSpeed, m_navRadius);
         
-        bool following = false;
-        if (distToNode > m_navRadius) {
-          // Move toward current path node
-          Vector2D direction = toNode / distToNode; // normalized
-          entity->setVelocity(direction * m_chaseSpeed);
-          following = true;
-        } else {
-          // Reached current node, advance to next
-          m_navIndex++;
-          if (m_navIndex >= m_navPath.size()) {
-            // Path complete
-            m_navPath.clear();
-            m_navIndex = 0;
-          }
-          following = (m_navIndex < m_navPath.size());
-        }
         if (following) {
           m_lastProgressTime = now;
           // Apply enhanced separation for combat scenarios with dynamic adjustment
