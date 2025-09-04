@@ -464,7 +464,7 @@ void FleeBehavior::updateStrategicRetreat(EntityPtr entity, EntityState& state) 
         if (needRefresh && now >= state.nextPathAllowed) {
             // Use PathfinderManager for pathfinding requests
             auto& pathfinder = PathfinderManager::Instance();
-            pathfinder.requestPath(entity->getID(), pathfinder.clampToWorldBounds(currentPos, 100.0f), goal, AIInternal::PathPriority::High,
+            pathfinder.requestPathAsync(entity->getID(), pathfinder.clampToWorldBounds(currentPos, 100.0f), goal, AIInternal::PathPriority::High, 8, // High priority for flee
                 [&state](EntityID /* id */, const std::vector<Vector2D>& path) {
                     state.pathPoints = path;
                     state.currentPathIndex = 0;
@@ -587,8 +587,8 @@ void FleeBehavior::updateSeekCover(EntityPtr entity, EntityState& state) {
         if (now - state.lastPathUpdate > pathTTL) needRefresh = true;
         if (needRefresh && now >= state.nextPathAllowed) {
             // PATHFINDING CONSOLIDATION: All requests now use PathfinderManager
-            PathfinderManager::Instance().requestPath(
-                entity->getID(), PathfinderManager::Instance().clampToWorldBounds(currentPos, 100.0f), goal, AIInternal::PathPriority::High,
+            PathfinderManager::Instance().requestPathAsync(
+                entity->getID(), PathfinderManager::Instance().clampToWorldBounds(currentPos, 100.0f), goal, AIInternal::PathPriority::High, 8, // High priority for flee
                 [this, entity](EntityID, const std::vector<Vector2D>& path) {
                   if (!path.empty()) {
                     // Find the behavior state for this entity

@@ -702,8 +702,9 @@ void GuardBehavior::moveToPosition(EntityPtr entity, const Vector2D &targetPos,
     // PATHFINDING CONSOLIDATION: All requests now use PathfinderManager
     AIInternal::PathPriority priority = (state.currentAlertLevel >= AlertLevel::INVESTIGATING) ? 
         AIInternal::PathPriority::High : AIInternal::PathPriority::Normal;
-    PathfinderManager::Instance().requestPath(
-        entity->getID(), currentPos, targetPos, priority,
+    int aiManagerPriority = (state.currentAlertLevel >= AlertLevel::INVESTIGATING) ? 7 : 5; // High/Medium priority
+    PathfinderManager::Instance().requestPathAsync(
+        entity->getID(), currentPos, targetPos, priority, aiManagerPriority,
         [this, entity](EntityID, const std::vector<Vector2D>& path) {
           auto it = m_entityStates.find(entity);
           if (it != m_entityStates.end() && !path.empty()) {

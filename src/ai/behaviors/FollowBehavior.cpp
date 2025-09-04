@@ -154,7 +154,7 @@ void FollowBehavior::executeLogic(EntityPtr entity) {
       // PATHFINDING CONSOLIDATION: Use PathfinderManager for new path requests
       if (SDL_GetTicks() - state.lastPathUpdate > pathTTL) {
         auto& pathfinder = PathfinderManager::Instance();
-        pathfinder.requestPath(entity->getID(), currentPos, desiredPos, AIInternal::PathPriority::Normal,
+        pathfinder.requestPathAsync(entity->getID(), currentPos, desiredPos, AIInternal::PathPriority::Normal, 6, // Medium-high priority for follow
           [&state](EntityID /* id */, const std::vector<Vector2D>& path) {
             state.pathPoints = path;
             state.currentPathIndex = 0;
