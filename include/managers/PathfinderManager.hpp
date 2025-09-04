@@ -271,7 +271,7 @@ private:
     int m_maxPathsPerFrame{32};
     float m_cacheExpirationTime{5.0f};
     bool m_allowDiagonal{true};
-    int m_maxIterations{50000};
+    int m_maxIterations{120000};
     float m_cellSize{64.0f}; // Optimized for 4x fewer pathfinding nodes
 
     // State management

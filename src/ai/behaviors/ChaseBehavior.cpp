@@ -194,15 +194,27 @@ void ChaseBehavior::executeLogic(EntityPtr entity) {
             entity->setVelocity(newDir * m_chaseSpeed);
           }
           
-          Vector2D adjusted = AIInternal::ApplySeparation(entity, entityPos,
-                               entity->getVelocity(), m_chaseSpeed,
-                               dynamicRadius, dynamicStrength, COMBAT_MAX_NEIGHBORS + chaserCount);
-          entity->setVelocity(adjusted);
+          // Separation decimation: compute at most every 2 ticks
+          if (now - m_lastSepTick >= 2) {
+            m_lastSepVelocity = AIInternal::ApplySeparation(
+                entity, entityPos, entity->getVelocity(), m_chaseSpeed,
+                dynamicRadius, dynamicStrength,
+                COMBAT_MAX_NEIGHBORS + chaserCount);
+            m_lastSepTick = now;
+          }
+          entity->setVelocity(m_lastSepVelocity);
         } else {
           // Fallback to direct movement with crowd awareness
           Vector2D direction = (targetPos - entityPos);
           direction.normalize();
-          entity->setVelocity(direction * m_chaseSpeed);
+          // Apply decimated separation on direct movement too
+          Vector2D intended = direction * m_chaseSpeed;
+          if (now - m_lastSepTick >= 2) {
+            m_lastSepVelocity = AIInternal::ApplySeparation(
+                entity, entityPos, intended, m_chaseSpeed, 26.0f, 0.22f, 4);
+            m_lastSepTick = now;
+          }
+          entity->setVelocity(m_lastSepVelocity);
           m_lastProgressTime = now;
         }
       } else {
@@ -221,7 +233,14 @@ void ChaseBehavior::executeLogic(EntityPtr entity) {
           direction.normalize();
         }
         
-        entity->setVelocity(direction * m_chaseSpeed);
+        // Decimated separation on direct pursuit
+        Vector2D intended = direction * m_chaseSpeed;
+        if (now - m_lastSepTick >= 2) {
+          m_lastSepVelocity = AIInternal::ApplySeparation(
+              entity, entityPos, intended, m_chaseSpeed, 26.0f, 0.22f, 4);
+          m_lastSepTick = now;
+        }
+        entity->setVelocity(m_lastSepVelocity);
         m_lastProgressTime = now;
       }
 

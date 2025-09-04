@@ -159,8 +159,8 @@ void PatrolBehavior::executeLogic(EntityPtr entity) {
             m_lastPathUpdate = SDL_GetTicks();
           }
         });
-    // Staggered per-instance backoff to prevent bursty re-requests
-    m_backoffUntil = now + 300 + (entity->getID() % 300);
+    // Staggered per-instance backoff to prevent bursty re-requests (more conservative)
+    m_backoffUntil = now + 1200 + (entity->getID() % 600);
   }
 
   // State: FOLLOWING_PATH or DIRECT_MOVEMENT
@@ -172,11 +172,14 @@ void PatrolBehavior::executeLogic(EntityPtr entity) {
                                  m_moveSpeed, m_navRadius);
     if (following) {
       m_lastProgressTime = now;
-      // Apply separation to prevent clustering
-      Vector2D adjusted =
-          AIInternal::ApplySeparation(entity, position, entity->getVelocity(),
+      // Separation decimation: compute at most every 2 ticks
+      Uint64 nowTicks = SDL_GetTicks();
+      if (nowTicks - m_lastSepTick >= 2) {
+        m_lastSepVelocity = AIInternal::ApplySeparation(entity, position, entity->getVelocity(),
                                       m_moveSpeed, 24.0f, 0.20f, 4);
-      entity->setVelocity(adjusted);
+        m_lastSepTick = nowTicks;
+      }
+      entity->setVelocity(m_lastSepVelocity);
     }
   } else {
     // Direct movement to waypoint

@@ -151,6 +151,9 @@ private:
   Uint64 m_backoffUntil{0};
   Uint64 m_lastWaypointTime{0}; // Prevent rapid waypoint switching
   Uint64 m_lastCrowdCheck{0}; // Timer for crowd density checks
+  // Separation decimation
+  Uint64 m_lastSepTick{0};
+  Vector2D m_lastSepVelocity{0, 0};
   
   // Async pathfinding control
   // PATHFINDING CONSOLIDATION: Removed - all pathfinding now uses PathfindingScheduler

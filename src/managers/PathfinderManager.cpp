@@ -178,7 +178,7 @@ uint64_t PathfinderManager::requestPathAsync(
 
     // Pre-check cache and negative cache to avoid scheduling work when possible
     const float dist2 = (goal - start).dot(goal - start);
-    const float tol = (dist2 > (512.0f * 512.0f)) ? 128.0f : 64.0f;
+    const float tol = (dist2 > (1200.0f * 1200.0f)) ? 128.0f : 96.0f;
     if (m_cache) {
         if (auto cached = m_cache->findSimilarPath(start, goal, tol)) {
             if (callback) callback(entityId, *cached);
@@ -267,19 +267,34 @@ uint64_t PathfinderManager::requestPathAsync(
                 float distance2 = dist2;
                 HammerEngine::PathfindingResult result;
                 
-                if (distance2 > (800.0f * 800.0f)) {
-                    // Use hierarchical pathfinding for long distances
+                if (distance2 > (1200.0f * 1200.0f)) {
+                    // Prefer hierarchical for long distances
                     result = m_grid->findPathHierarchical(start, goal, path);
-                    
-                    // Update hierarchical statistics
-                    std::lock_guard<std::mutex> lock(m_statsMutex);
-                    m_stats.hierarchicalRequests++;
-                }
-                else {
-                    // Use direct pathfinding for short distances
+
+                    // Fallback: if hierarchical fails or times out, try direct
+                    if (result != HammerEngine::PathfindingResult::SUCCESS || path.empty()) {
+                        std::vector<Vector2D> directPath;
+                        auto directRes = m_grid->findPath(start, goal, directPath);
+                        if (directRes == HammerEngine::PathfindingResult::SUCCESS && !directPath.empty()) {
+                            path.swap(directPath);
+                            result = directRes;
+                        }
+                    }
+
+                    // Update hierarchical/direct statistics
+                    {
+                        std::lock_guard<std::mutex> lock(m_statsMutex);
+                        if (result == HammerEngine::PathfindingResult::SUCCESS) {
+                            m_stats.hierarchicalRequests++;
+                        } else {
+                            // Count toward direct attempts when fallback used
+                            m_stats.hierarchicalRequests++;
+                        }
+                    }
+                } else {
+                    // Direct pathfinding for short distances
                     result = m_grid->findPath(start, goal, path);
-                    
-                    // Update direct statistics
+
                     std::lock_guard<std::mutex> lock(m_statsMutex);
                     m_stats.directRequests++;
                 }
@@ -407,19 +422,27 @@ HammerEngine::PathfindingResult PathfinderManager::findPathImmediate(
     float distance2 = (goal - start).dot(goal - start);
     HammerEngine::PathfindingResult result;
     
-    if (distance2 > (800.0f * 800.0f)) {
-        // Long distance: Use hierarchical pathfinding for 10x speedup
+    if (distance2 > (1200.0f * 1200.0f)) {
+        // Prefer hierarchical for long distances
         result = m_grid->findPathHierarchical(start, goal, outPath);
-        
-        // Log hierarchical pathfinding usage for monitoring
+
+        // Fallback: if hierarchical fails or times out, try direct
+        if (result != HammerEngine::PathfindingResult::SUCCESS || outPath.empty()) {
+            std::vector<Vector2D> directPath;
+            auto directRes = m_grid->findPath(start, goal, directPath);
+            if (directRes == HammerEngine::PathfindingResult::SUCCESS && !directPath.empty()) {
+                outPath.swap(directPath);
+                result = directRes;
+            }
+        }
+
+        // Stats
         std::lock_guard<std::mutex> lock(m_statsMutex);
         m_stats.hierarchicalRequests++;
-    }
-    else {
-        // Short distance: Use direct pathfinding for precision
+    } else {
+        // Direct pathfinding for short distances
         result = m_grid->findPath(start, goal, outPath);
-        
-        // Log direct pathfinding usage
+
         std::lock_guard<std::mutex> lock(m_statsMutex);
         m_stats.directRequests++;
     }
@@ -503,7 +526,7 @@ void PathfinderManager::updateDynamicObstacles() {
     
     // Rebuild when version changed or every 30 seconds as a fallback
     bool worldChanged = (currentWorldVersion != lastWorldVersion);
-    bool shouldRebuild = worldChanged || (secondsSinceLastRebuild >= 30.0f);
+    bool shouldRebuild = worldChanged || (secondsSinceLastRebuild >= 60.0f);
     
     if (shouldRebuild) {
         // PERFORMANCE OPTIMIZATION: Move expensive grid rebuild to background thread
@@ -512,12 +535,7 @@ void PathfinderManager::updateDynamicObstacles() {
             if (m_grid) {
                 m_grid->rebuildFromWorld();
                 
-                // Only clear cache when the world actually changed; keep cache on safety refresh
-                if (worldChanged) {
-                    if (m_cache) {
-                        m_cache->clear();
-                    }
-                }
+                // Do not clear the cache on rebuild; rely on pathfinding corrections
                 
                 GAMEENGINE_INFO("Async grid rebuild completed");
             }
@@ -616,35 +634,28 @@ void PathfinderManager::resetStats() {
 
 
 void PathfinderManager::updateStatistics() {
-    // Consolidate manager and grid-level statistics
-    
+    // Consolidate manager-level statistics (includes hierarchical + direct)
     std::lock_guard<std::mutex> lock(m_statsMutex);
-    m_stats.pendingRequests = 0; // No pending requests in direct async mode
-    
-    // Get grid statistics if available and update consolidated stats
-    uint32_t totalRequests = 0;
-    uint32_t successfulPaths = 0;
-    uint32_t timeouts = 0;
-    uint32_t invalidGoals = 0;
-    float avgPathLength = 0.0f;
+    m_stats.pendingRequests = 0; // No internal queue
+
+    // Use manager-tracked totals for success/timeout rates (more accurate across strategies)
+    uint64_t totalReqs = m_stats.totalRequests;
+    uint64_t totalCompleted = m_stats.completedRequests;
+    uint64_t totalTimeouts = m_stats.timedOutRequests;
     float successRate = 0.0f;
     float timeoutRate = 0.0f;
-    
+    if (totalReqs > 0) {
+        successRate = (static_cast<float>(totalCompleted) / static_cast<float>(totalReqs)) * 100.0f;
+        timeoutRate = (static_cast<float>(totalTimeouts) / static_cast<float>(totalReqs)) * 100.0f;
+    }
+
+    // Keep avg path length from fine grid when available (informational)
+    float avgPathLength = m_stats.averagePathLength;
     if (m_grid) {
         auto gridStats = m_grid->getStats();
-        totalRequests = gridStats.totalRequests;
-        successfulPaths = gridStats.successfulPaths;
-        timeouts = gridStats.timeouts;
-        invalidGoals = gridStats.invalidGoals;
-        
         if (gridStats.successfulPaths > 0) {
             avgPathLength = static_cast<float>(gridStats.avgPathLength);
             m_stats.averagePathLength = avgPathLength;
-        }
-        
-        if (totalRequests > 0) {
-            successRate = (static_cast<float>(successfulPaths) / static_cast<float>(totalRequests)) * 100.0f;
-            timeoutRate = (static_cast<float>(timeouts) / static_cast<float>(totalRequests)) * 100.0f;
         }
     }
     
@@ -653,7 +664,7 @@ void PathfinderManager::updateStatistics() {
     auto currentTime = std::chrono::steady_clock::now();
     auto timeSinceLastDebug = std::chrono::duration_cast<std::chrono::seconds>(currentTime - lastDebugTime);
     
-    if (timeSinceLastDebug.count() >= 5 && totalRequests > 0) {
+    if (timeSinceLastDebug.count() >= 5 && totalReqs > 0) {
         lastDebugTime = currentTime;
         
         // Get fresh cache statistics directly from cache before displaying
@@ -663,13 +674,21 @@ void PathfinderManager::updateStatistics() {
             m_stats.cacheMisses = static_cast<uint64_t>(cacheStats.totalMisses);
             m_stats.cacheHitRate = cacheStats.hitRate;
         }
+        // Refresh activeThreads from in-flight map to reflect real activity
+        {
+            std::lock_guard<std::mutex> inflightLock(m_inflightMutex);
+            m_stats.activeThreads = static_cast<uint32_t>(m_inflight.size());
+        }
         
-        // Get cache statistics  
+        // Get cache statistics
         float cacheHitRate = m_stats.cacheHitRate * 100.0f;
         uint32_t cacheHits = m_stats.cacheHits;
         uint32_t cacheMisses = m_stats.cacheMisses;
         uint32_t activeThreads = m_stats.activeThreads;
         uint32_t pendingRequests = static_cast<uint32_t>(m_stats.pendingRequests);
+        uint64_t totalNoPath = (totalReqs > (totalCompleted + totalTimeouts)) ?
+                               (totalReqs - (totalCompleted + totalTimeouts)) : 0;
+        float failRate = (totalReqs > 0) ? (100.0f * static_cast<float>(totalNoPath) / static_cast<float>(totalReqs)) : 0.0f;
         
         // Calculate hierarchical pathfinding ratio
         uint64_t hierarchicalRequests = m_stats.hierarchicalRequests;
@@ -678,18 +697,20 @@ void PathfinderManager::updateStatistics() {
         float hierarchicalRatio = (totalPathRequests > 0) ? 
             (100.0f * hierarchicalRequests) / totalPathRequests : 0.0f;
         
-        PATHFIND_INFO("PathfinderManager Status - Requests: " + std::to_string(totalRequests) +
+        PATHFIND_INFO("PathfinderManager Status - Requests: " + std::to_string(totalReqs) +
                         ", SUCCESS RATE: " + std::to_string(static_cast<int>(successRate)) + "%" +
                         ", TIMEOUT RATE: " + std::to_string(static_cast<int>(timeoutRate)) + "%" +
-                        " (" + std::to_string(timeouts) + " timeouts)" +
-                        ", Invalid: " + std::to_string(invalidGoals) +
+                        " (" + std::to_string(totalTimeouts) + " timeouts)" +
+                        ", FAIL RATE: " + std::to_string(static_cast<int>(failRate)) + "%" +
+                        " (" + std::to_string(totalNoPath) + " no-path)" +
                         ", Pending: " + std::to_string(pendingRequests) +
                         ", Cache Hit Rate: " + std::to_string(static_cast<int>(cacheHitRate)) + "%" +
                         " (" + std::to_string(cacheHits) + "/" + std::to_string(cacheHits + cacheMisses) + ")" +
                         ", Avg Path Length: " + std::to_string(static_cast<int>(avgPathLength)) + " nodes" +
                         ", Hierarchical: " + std::to_string(static_cast<int>(hierarchicalRatio)) + "%" +
                         " (" + std::to_string(hierarchicalRequests) + "/" + std::to_string(totalPathRequests) + ")" +
-                        ", Active Threads: " + std::to_string(activeThreads));
+                        ", Active Threads: " + std::to_string(activeThreads) +
+                        ", InFlight: " + std::to_string(m_stats.activeThreads));
     }
 }
 

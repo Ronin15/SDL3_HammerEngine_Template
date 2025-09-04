@@ -83,6 +83,9 @@ private:
     float navRadius{18.0f};
     Uint64 nextPathAllowed{0};
     Uint64 backoffUntil{0};
+    // Separation decimation
+    Uint64 lastSepTick{0};
+    Vector2D lastSepVelocity{0, 0};
 
     EntityState()
         : lastThreatPosition(0, 0), fleeDirection(0, 0),

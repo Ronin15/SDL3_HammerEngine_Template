@@ -933,9 +933,13 @@ void AttackBehavior::moveToPosition(EntityPtr entity, const Vector2D &targetPos,
     if (len > 0.01f) {
       dir = dir * (1.0f / len);
       Vector2D intended = dir * speed;
-      Vector2D adjusted = AIInternal::ApplySeparation(entity, currentPos,
-                            intended, speed, 28.0f, 0.30f, 4);
-      entity->setVelocity(adjusted);
+      // Separation decimation: compute at most every 2 ticks per entity
+      if (SDL_GetTicks() - state.lastSepTick >= 2) {
+        state.lastSepVelocity = AIInternal::ApplySeparation(entity, currentPos,
+                              intended, speed, 28.0f, 0.30f, 4);
+        state.lastSepTick = SDL_GetTicks();
+      }
+      entity->setVelocity(state.lastSepVelocity);
       state.lastProgressTime = now;
     }
     if ((node - currentPos).length() <= state.navRadius) {

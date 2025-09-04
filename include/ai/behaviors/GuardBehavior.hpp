@@ -129,6 +129,9 @@ private:
     float lastNodeDistance{std::numeric_limits<float>::infinity()};
     float navRadius{18.0f};
     Uint64 backoffUntil{0};
+    // Separation decimation
+    Uint64 lastSepTick{0};
+    Vector2D lastSepVelocity{0, 0};
 
     EntityState()
         : assignedPosition(0, 0), lastKnownThreatPosition(0, 0),
