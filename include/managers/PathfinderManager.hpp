@@ -26,6 +26,7 @@
 #include <functional>
 #include <memory>
 #include <mutex>
+#include <unordered_map>
 #include <vector>
 
 // Forward declarations
@@ -251,6 +252,7 @@ public:
     ~PathfinderManager();
 
 private:
+    using PathCallback = std::function<void(EntityID, const std::vector<Vector2D>&)>;
     // Singleton implementation
     PathfinderManager() = default;
     PathfinderManager(const PathfinderManager&) = delete;
@@ -292,6 +294,11 @@ private:
     void integrateCollisionData();
     void integrateWorldData();
     bool ensureGridInitialized(); // Lazy initialization helper
+
+    // In-flight request coalescing
+    uint64_t computeKey(const Vector2D& start, const Vector2D& goal, float quant) const;
+    mutable std::mutex m_inflightMutex;
+    std::unordered_map<uint64_t, std::vector<std::pair<EntityID, PathCallback>>> m_inflight;
 };
 
 #endif // PATHFINDER_MANAGER_HPP

@@ -152,7 +152,15 @@ void FollowBehavior::executeLogic(EntityPtr entity) {
       }
 
       // PATHFINDING CONSOLIDATION: Use PathfinderManager for new path requests
-      if (SDL_GetTicks() - state.lastPathUpdate > pathTTL) {
+      // Request only if path is stale or goal changed significantly
+      const float GOAL_CHANGE_THRESH = 64.0f;
+      bool stale = (SDL_GetTicks() - state.lastPathUpdate) > pathTTL;
+      bool goalChanged = true;
+      if (!state.pathPoints.empty()) {
+        Vector2D lastGoal = state.pathPoints.back();
+        goalChanged = ((desiredPos - lastGoal).length() > GOAL_CHANGE_THRESH);
+      }
+      if (stale || goalChanged) {
         auto& pathfinder = PathfinderManager::Instance();
         pathfinder.requestPathAsync(entity->getID(), currentPos, desiredPos, AIInternal::PathPriority::Normal, 6, // Medium-high priority for follow
           [&state](EntityID /* id */, const std::vector<Vector2D>& path) {
