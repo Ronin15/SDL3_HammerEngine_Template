@@ -137,11 +137,8 @@ void PatrolBehavior::executeLogic(EntityPtr entity) {
     }
   }
   
-  // Add cooldown system (was missing in PatrolBehavior!)
-  static uint64_t lastPatrolRequest = 0;
-  constexpr uint64_t PATROL_COOLDOWN = 1500; // 1.5 second cooldown
-  
-  if (needsNewPath && now >= m_backoffUntil && (now - lastPatrolRequest) >= PATROL_COOLDOWN) {
+  // Per-instance cooldown via m_backoffUntil; no global static throttle
+  if (needsNewPath && now >= m_backoffUntil) {
     // GOAL VALIDATION: Don't request path if already at waypoint
     float distanceToWaypoint = (targetWaypoint - position).length();
     if (distanceToWaypoint < m_waypointRadius) { // Already at waypoint
@@ -162,7 +159,8 @@ void PatrolBehavior::executeLogic(EntityPtr entity) {
             m_lastPathUpdate = SDL_GetTicks();
           }
         });
-    lastPatrolRequest = now;
+    // Staggered per-instance backoff to prevent bursty re-requests
+    m_backoffUntil = now + 300 + (entity->getID() % 300);
   }
 
   // State: FOLLOWING_PATH or DIRECT_MOVEMENT
