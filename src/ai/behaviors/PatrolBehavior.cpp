@@ -174,12 +174,9 @@ void PatrolBehavior::executeLogic(EntityPtr entity) {
       m_lastProgressTime = now;
       // Separation decimation: compute at most every 2 ticks
       Uint64 nowTicks = SDL_GetTicks();
-      if (nowTicks - m_lastSepTick >= 2) {
-        m_lastSepVelocity = AIInternal::ApplySeparation(entity, position, entity->getVelocity(),
-                                      m_moveSpeed, 24.0f, 0.20f, 4);
-        m_lastSepTick = nowTicks;
-      }
-      entity->setVelocity(m_lastSepVelocity);
+      applyDecimatedSeparation(entity, position, entity->getVelocity(),
+                               m_moveSpeed, 24.0f, 0.20f, 4, m_lastSepTick,
+                               m_lastSepVelocity);
     }
   } else {
     // Direct movement to waypoint

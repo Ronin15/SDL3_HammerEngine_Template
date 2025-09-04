@@ -182,12 +182,9 @@ void IdleBehavior::updateSubtleSway(EntityPtr entity, EntityState &state) {
   }
   // Keep velocity applied for smooth animation - don't reset to zero
   // Apply very light separation (decimated) so idlers don't stack perfectly
-  if (SDL_GetTicks() - state.lastSepTick >= 2) {
-    state.lastSepVelocity = AIInternal::ApplySeparation(entity, entity->getPosition(),
-                          entity->getVelocity(), 35.0f, 30.0f, 0.15f, 4);
-    state.lastSepTick = SDL_GetTicks();
-  }
-  entity->setVelocity(state.lastSepVelocity);
+  applyDecimatedSeparation(entity, entity->getPosition(), entity->getVelocity(),
+                           35.0f, 30.0f, 0.15f, 4, state.lastSepTick,
+                           state.lastSepVelocity);
 }
 
 void IdleBehavior::updateOccasionalTurn(EntityPtr entity, EntityState &state) {
@@ -220,12 +217,9 @@ void IdleBehavior::updateLightFidget(EntityPtr entity, EntityState &state) {
     state.nextMovementTime = currentTime + getRandomMovementInterval();
   }
   // Keep velocity applied for smooth animation and apply very light separation (decimated)
-  if (SDL_GetTicks() - state.lastSepTick >= 2) {
-    state.lastSepVelocity = AIInternal::ApplySeparation(entity, entity->getPosition(),
-                          entity->getVelocity(), 40.0f, 30.0f, 0.15f, 4);
-    state.lastSepTick = SDL_GetTicks();
-  }
-  entity->setVelocity(state.lastSepVelocity);
+  applyDecimatedSeparation(entity, entity->getPosition(), entity->getVelocity(),
+                           40.0f, 30.0f, 0.15f, 4, state.lastSepTick,
+                           state.lastSepVelocity);
 
   // Handle turning
   if (m_turnFrequency > 0.0f && currentTime >= state.nextTurnTime) {

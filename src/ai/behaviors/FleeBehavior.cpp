@@ -401,13 +401,9 @@ void FleeBehavior::updatePanicFlee(EntityPtr entity, EntityState& state) {
     float speedModifier = calculateFleeSpeedModifier(state);
     Vector2D intended = state.fleeDirection * m_fleeSpeed * speedModifier;
     // Separation decimation: compute at most every 2 ticks per entity
-    if (currentTime - state.lastSepTick >= 2) {
-        state.lastSepVelocity = AIInternal::ApplySeparation(
-            entity, entity->getPosition(), intended,
-            m_fleeSpeed * speedModifier, 26.0f, 0.25f, 4);
-        state.lastSepTick = currentTime;
-    }
-    entity->setVelocity(state.lastSepVelocity);
+    applyDecimatedSeparation(entity, entity->getPosition(), intended,
+                             m_fleeSpeed * speedModifier, 26.0f, 0.25f, 4,
+                             state.lastSepTick, state.lastSepVelocity);
 }
 
 void FleeBehavior::updateStrategicRetreat(EntityPtr entity, EntityState& state) {
@@ -514,13 +510,9 @@ void FleeBehavior::updateStrategicRetreat(EntityPtr entity, EntityState& state) 
         // Fallback to direct flee when no path available
         Vector2D intended2 = state.fleeDirection * m_fleeSpeed * speedModifier;
         Uint64 nowTicks = SDL_GetTicks();
-        if (nowTicks - state.lastSepTick >= 2) {
-            state.lastSepVelocity = AIInternal::ApplySeparation(
-                entity, entity->getPosition(), intended2,
-                m_fleeSpeed * speedModifier, 26.0f, 0.25f, 4);
-            state.lastSepTick = nowTicks;
-        }
-        entity->setVelocity(state.lastSepVelocity);
+        applyDecimatedSeparation(entity, entity->getPosition(), intended2,
+                                 m_fleeSpeed * speedModifier, 26.0f, 0.25f, 4,
+                                 state.lastSepTick, state.lastSepVelocity);
     }
 }
 
@@ -553,13 +545,9 @@ void FleeBehavior::updateEvasiveManeuver(EntityPtr entity, EntityState& state) {
     
     float speedModifier = calculateFleeSpeedModifier(state);
     Vector2D intended3 = state.fleeDirection * m_fleeSpeed * speedModifier;
-    if (currentTime - state.lastSepTick >= 2) {
-        state.lastSepVelocity = AIInternal::ApplySeparation(
-            entity, entity->getPosition(), intended3,
-            m_fleeSpeed * speedModifier, 26.0f, 0.25f, 4);
-        state.lastSepTick = currentTime;
-    }
-    entity->setVelocity(state.lastSepVelocity);
+    applyDecimatedSeparation(entity, entity->getPosition(), intended3,
+                             m_fleeSpeed * speedModifier, 26.0f, 0.25f, 4,
+                             state.lastSepTick, state.lastSepVelocity);
 }
 
 void FleeBehavior::updateSeekCover(EntityPtr entity, EntityState& state) {
@@ -662,13 +650,9 @@ void FleeBehavior::updateSeekCover(EntityPtr entity, EntityState& state) {
         // Fallback to straight-line movement
         Vector2D intended4 = state.fleeDirection * m_fleeSpeed * speedModifier;
         Uint64 nowTicks2 = SDL_GetTicks();
-        if (nowTicks2 - state.lastSepTick >= 2) {
-            state.lastSepVelocity = AIInternal::ApplySeparation(
-                entity, entity->getPosition(), intended4,
-                m_fleeSpeed * speedModifier, 26.0f, 0.25f, 4);
-            state.lastSepTick = nowTicks2;
-        }
-        entity->setVelocity(state.lastSepVelocity);
+        applyDecimatedSeparation(entity, entity->getPosition(), intended4,
+                                 m_fleeSpeed * speedModifier, 26.0f, 0.25f, 4,
+                                 state.lastSepTick, state.lastSepVelocity);
     }
 }
 
