@@ -355,16 +355,15 @@ PathfindingResult PathfindingGrid::findPath(const Vector2D& start, const Vector2
     const int dx8[8] = {1,-1,0,0, 1,1,-1,-1};
     const int dy8[8] = {0,0,1,-1, 1,-1,1,-1};
 
-    // PERFORMANCE TUNED: Balanced iteration limits based on world complexity
-    // With 35% blocked world, need more iterations for complex paths  
-    int baseIters = std::max(2000, baseDistance * 50); // Generous base for complex terrain
-    int dynamicMaxIters = std::min(m_maxIterations, baseIters + 8000); // Large buffer for blocked terrain
+    // PERFORMANCE TUNING: Increase iteration budget to reduce timeouts in dense maps
+    int baseIters = std::max(4000, baseDistance * 80);
+    int dynamicMaxIters = std::min(m_maxIterations, baseIters + 12000);
     
     // Performance-focused: Reasonable queue limits to balance memory and success rate
     
     // Memory protection for very complex pathfinding scenarios  
     // Increased queue size limit for better success rate with complex paths
-    const size_t maxAbsoluteQueueSize = 15000;
+    const size_t maxAbsoluteQueueSize = 30000;
 
     while (!open.empty() && iterations++ < dynamicMaxIters) {
         // Only terminate on truly excessive memory usage, not normal pathfinding complexity

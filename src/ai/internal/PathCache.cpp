@@ -13,6 +13,8 @@ namespace AIInternal {
 PathCache::PathCache()
 {
     AI_INFO("PathCache initialized");
+    // Reserve to reduce rehashing at runtime
+    m_cachedPaths.reserve(1024);
 }
 
 PathCache::~PathCache()
@@ -45,24 +47,28 @@ std::optional<std::vector<Vector2D>> PathCache::findSimilarPath(const Vector2D& 
         // If entry exists but not similar (or negative), fall through to neighborhood scan
     }
 
-    // Fallback: search through cached paths for similar routes
-    for (auto& [pathKey, cachedPath] : m_cachedPaths) {
-        if (!cachedPath.isValid) {
-            continue;
-        }
-        
-        if (isPathSimilar(cachedPath, start, goal, tolerance)) {
-            // Update usage statistics
-            updatePathUsage(pathKey, cachedPath);
-            
-            // Return adjusted path matching exact request
-            auto adjustedPath = adjustPathToRequest(cachedPath.waypoints, start, goal);
-            
-            m_totalHits.fetch_add(1, std::memory_order_relaxed);
-            
-            // Cache hit (stats tracked in PathfindingScheduler)
-            
-            return adjustedPath;
+    // Neighbor-bucket scan: check 3x3 buckets around start and goal to avoid O(N) scan
+    // Use the same 64px stride as hash quantization to align buckets
+    const float QUANT = 64.0f;
+    for (int dsx = -1; dsx <= 1; ++dsx) {
+        for (int dsy = -1; dsy <= 1; ++dsy) {
+            for (int dgx = -1; dgx <= 1; ++dgx) {
+                for (int dgy = -1; dgy <= 1; ++dgy) {
+                    Vector2D ns = Vector2D(start.getX() + dsx * QUANT, start.getY() + dsy * QUANT);
+                    Vector2D ng = Vector2D(goal.getX() + dgx * QUANT,  goal.getY() + dgy * QUANT);
+                    uint64_t nkey = hashPath(ns, ng);
+                    auto nit = m_cachedPaths.find(nkey);
+                    if (nit != m_cachedPaths.end()) {
+                        auto &cp = nit->second;
+                        if (cp.isValid && isPathSimilar(cp, start, goal, tolerance)) {
+                            updatePathUsage(nkey, cp);
+                            auto adjustedPath = adjustPathToRequest(cp.waypoints, start, goal);
+                            m_totalHits.fetch_add(1, std::memory_order_relaxed);
+                            return adjustedPath;
+                        }
+                    }
+                }
+            }
         }
     }
     
@@ -91,10 +97,25 @@ bool PathCache::hasNegativeCached(const Vector2D& start,
         }
     }
 
-    // Fallback scan for similar negative entries
-    for (const auto& [pathKey, cachedPath] : m_cachedPaths) {
-        if (!cachedPath.isValid && isPathSimilar(cachedPath, start, goal, tolerance)) {
-            return true;
+    // Neighbor-bucket scan (3x3) to avoid O(N)
+    // Use 64px stride to match hash quantization
+    const float QUANT = 64.0f;
+    for (int dsx = -1; dsx <= 1; ++dsx) {
+        for (int dsy = -1; dsy <= 1; ++dsy) {
+            for (int dgx = -1; dgx <= 1; ++dgx) {
+                for (int dgy = -1; dgy <= 1; ++dgy) {
+                    Vector2D ns = Vector2D(start.getX() + dsx * QUANT, start.getY() + dsy * QUANT);
+                    Vector2D ng = Vector2D(goal.getX() + dgx * QUANT,  goal.getY() + dgy * QUANT);
+                    uint64_t nkey = hashPath(ns, ng);
+                    auto nit = m_cachedPaths.find(nkey);
+                    if (nit != m_cachedPaths.end()) {
+                        const auto &cp = nit->second;
+                        if (!cp.isValid && isPathSimilar(cp, start, goal, tolerance)) {
+                            return true;
+                        }
+                    }
+                }
+            }
         }
     }
     return false;

@@ -267,7 +267,7 @@ uint64_t PathfinderManager::requestPathAsync(
                 float distance2 = dist2;
                 HammerEngine::PathfindingResult result;
                 
-                if (distance2 > (512.0f * 512.0f)) {
+                if (distance2 > (800.0f * 800.0f)) {
                     // Use hierarchical pathfinding for long distances
                     result = m_grid->findPathHierarchical(start, goal, path);
                     
@@ -285,11 +285,14 @@ uint64_t PathfinderManager::requestPathAsync(
                 }
                 
                 // Cache successful paths for future reuse
-                if (result == HammerEngine::PathfindingResult::SUCCESS && !path.empty() && m_cache) {
-                    m_cache->cachePath(start, goal, path);
-                } else if (m_cache) {
-                    // Cache negative outcome to prevent thrashing
-                    m_cache->cacheNegative(start, goal);
+                if (m_cache) {
+                    if (result == HammerEngine::PathfindingResult::SUCCESS && !path.empty()) {
+                        m_cache->cachePath(start, goal, path);
+                    } else if (result == HammerEngine::PathfindingResult::INVALID_GOAL ||
+                               result == HammerEngine::PathfindingResult::NO_PATH_FOUND) {
+                        // Cache only definitive negatives; avoid caching timeouts
+                        m_cache->cacheNegative(start, goal);
+                    }
                 }
                 
                 // Update cache miss and completion statistics
@@ -404,7 +407,7 @@ HammerEngine::PathfindingResult PathfinderManager::findPathImmediate(
     float distance2 = (goal - start).dot(goal - start);
     HammerEngine::PathfindingResult result;
     
-    if (distance2 > (512.0f * 512.0f)) {
+    if (distance2 > (800.0f * 800.0f)) {
         // Long distance: Use hierarchical pathfinding for 10x speedup
         result = m_grid->findPathHierarchical(start, goal, outPath);
         
@@ -425,8 +428,9 @@ HammerEngine::PathfindingResult PathfinderManager::findPathImmediate(
     if (m_cache) {
         if (result == HammerEngine::PathfindingResult::SUCCESS && !outPath.empty()) {
             m_cache->cachePath(start, goal, outPath);
-        } else {
-            // Negative cache to suppress immediate retries
+        } else if (result == HammerEngine::PathfindingResult::INVALID_GOAL ||
+                   result == HammerEngine::PathfindingResult::NO_PATH_FOUND) {
+            // Cache only definitive negatives; avoid caching timeouts
             m_cache->cacheNegative(start, goal);
         }
     }
@@ -592,12 +596,10 @@ PathfinderManager::PathfinderStats PathfinderManager::getStats() const {
         }
     }
     
-    // Reflect thread activity roughly based on ThreadSystem state
-    if (!HammerEngine::ThreadSystem::Instance().isShutdown() &&
-        HammerEngine::ThreadSystem::Instance().isBusy()) {
-        m_stats.activeThreads = HammerEngine::ThreadSystem::Instance().getThreadCount();
-    } else {
-        m_stats.activeThreads = 0;
+    // Report in-flight requests as 'active threads' to reflect real activity
+    {
+        std::lock_guard<std::mutex> inflightLock(m_inflightMutex);
+        m_stats.activeThreads = static_cast<uint32_t>(m_inflight.size());
     }
     
     return m_stats;
