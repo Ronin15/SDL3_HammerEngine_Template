@@ -361,8 +361,6 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
     // frame
     processPendingBehaviorAssignments();
     
-    // Update PathfinderManager (centralized pathfinding service)
-    PathfinderManager::Instance().update(deltaTime);
 
     // Synchronize positions and count active entities
     size_t entityCount = 0;
