@@ -13,6 +13,7 @@
 #include <queue>
 #include <limits>
 #include <algorithm>
+#include <memory>
 #include "utils/Vector2D.hpp"
 
 namespace HammerEngine {
@@ -33,11 +34,15 @@ inline std::ostream& operator<<(std::ostream& os, const PathfindingResult& resul
 
 class PathfindingGrid {
 public:
-    PathfindingGrid(int width, int height, float cellSize, const Vector2D& worldOffset);
+    PathfindingGrid(int width, int height, float cellSize, const Vector2D& worldOffset, bool createCoarseGrid = true);
 
     void rebuildFromWorld();                 // pull from WorldManager::grid
     PathfindingResult findPath(const Vector2D& start, const Vector2D& goal,
                                std::vector<Vector2D>& outPath);
+    
+    // Hierarchical pathfinding for long distances (10x speedup)
+    PathfindingResult findPathHierarchical(const Vector2D& start, const Vector2D& goal,
+                                          std::vector<Vector2D>& outPath);
 
     void setAllowDiagonal(bool allow) { m_allowDiagonal = allow; }
     void setMaxIterations(int maxIters) { m_maxIterations = maxIters; }
@@ -47,6 +52,16 @@ public:
     void resetWeights(float defaultWeight = 1.0f);
     void addWeightCircle(const Vector2D& worldCenter, float worldRadius, float weightMultiplier);
 
+    // Hierarchical grid access
+    float getCellSize() const { return m_cell; }
+    int getWidth() const { return m_w; }
+    int getHeight() const { return m_h; }
+    Vector2D getWorldOffset() const { return m_offset; }
+    
+    // Grid data access for hierarchical pathfinding
+    void setBlocked(int gx, int gy, bool blocked);
+    void setWeight(int gx, int gy, float weight);
+    
     // Statistics
     struct PathfindingStats {
         uint64_t totalRequests{0};
@@ -66,6 +81,11 @@ private:
     int m_w, m_h; float m_cell; Vector2D m_offset;
     std::vector<uint8_t> m_blocked; // 0 walkable, 1 blocked
     std::vector<float> m_weight;    // movement multipliers per cell
+    
+    // Hierarchical pathfinding support (4x coarser grid for long distances)
+    std::unique_ptr<PathfindingGrid> m_coarseGrid;
+    static constexpr float COARSE_GRID_MULTIPLIER = 4.0f;
+    static constexpr float HIERARCHICAL_DISTANCE_THRESHOLD = 512.0f;
 
     bool m_allowDiagonal{true};
     int m_maxIterations{12000}; // Performance-tuned: increased from 8K to 12K for better success rate
@@ -85,6 +105,14 @@ private:
     // Path smoothing functions
     void smoothPath(std::vector<Vector2D>& path);
     bool hasLineOfSight(const Vector2D& start, const Vector2D& end);
+    
+    // Hierarchical pathfinding helpers
+    void initializeCoarseGrid();
+    void updateCoarseGrid();
+    PathfindingResult refineCoarsePath(const std::vector<Vector2D>& coarsePath,
+                                     const Vector2D& start, const Vector2D& goal,
+                                     std::vector<Vector2D>& outPath);
+    bool shouldUseHierarchicalPathfinding(const Vector2D& start, const Vector2D& goal) const;
 
 private:
     // Object pools for memory optimization

@@ -9,6 +9,7 @@
 #include <queue>
 #include <limits>
 #include <cmath>
+#include <memory>
 #include <unordered_map>
 #include <stdexcept>
 #include "core/Logger.hpp"
@@ -17,7 +18,7 @@ namespace HammerEngine {
 
 // NodePool will be thread_local within findPath function
 
-PathfindingGrid::PathfindingGrid(int width, int height, float cellSize, const Vector2D& worldOffset)
+PathfindingGrid::PathfindingGrid(int width, int height, float cellSize, const Vector2D& worldOffset, bool createCoarseGrid)
     : m_w(width), m_h(height), m_cell(cellSize), m_offset(worldOffset) {
     
     // Validate grid dimensions to prevent 0x0 grids
@@ -33,6 +34,11 @@ PathfindingGrid::PathfindingGrid(int width, int height, float cellSize, const Ve
     
     m_blocked.assign(static_cast<size_t>(m_w * m_h), 0);
     m_weight.assign(static_cast<size_t>(m_w * m_h), 1.0f);
+    
+    // Initialize coarse grid for hierarchical pathfinding (4x larger cells)
+    if (createCoarseGrid) {
+        initializeCoarseGrid();
+    }
 }
 
 bool PathfindingGrid::inBounds(int gx, int gy) const {
@@ -104,6 +110,29 @@ void PathfindingGrid::rebuildFromWorld() {
     PATHFIND_INFO("Grid rebuilt: " + std::to_string(m_w) + "x" + std::to_string(m_h) +
                   ", blocked=" + std::to_string(blockedCount) + "/" + std::to_string(m_w * m_h) +
                   " (" + std::to_string((100.0f * blockedCount) / (m_w * m_h)) + "% blocked)");
+    
+    // Update coarse grid for hierarchical pathfinding
+    if (m_coarseGrid) {
+        updateCoarseGrid();
+        
+        // Log coarse grid statistics for debugging
+        int coarseW = m_coarseGrid->getWidth();
+        int coarseH = m_coarseGrid->getHeight();
+        int coarseBlockedCount = 0;
+        for (int cy = 0; cy < coarseH; ++cy) {
+            for (int cx = 0; cx < coarseW; ++cx) {
+                if (m_coarseGrid->isBlocked(cx, cy)) {
+                    coarseBlockedCount++;
+                }
+            }
+        }
+        float coarseBlockedPercent = (coarseW * coarseH > 0) ? 
+            (100.0f * coarseBlockedCount) / (coarseW * coarseH) : 0.0f;
+        
+        PATHFIND_INFO("Coarse grid updated: " + std::to_string(coarseW) + "x" + std::to_string(coarseH) +
+                     ", blocked=" + std::to_string(coarseBlockedCount) + "/" + std::to_string(coarseW * coarseH) +
+                     " (" + std::to_string(coarseBlockedPercent) + "% blocked)");
+    }
 }
 
 void PathfindingGrid::smoothPath(std::vector<Vector2D>& path) {
@@ -455,6 +484,215 @@ void PathfindingGrid::addWeightCircle(const Vector2D& worldCenter, float worldRa
                 size_t i = static_cast<size_t>(y * m_w + x);
                 if (i < m_weight.size()) m_weight[i] = std::max(m_weight[i], weightMultiplier);
             }
+        }
+    }
+}
+
+// ===== Hierarchical Pathfinding Implementation =====
+
+void PathfindingGrid::initializeCoarseGrid() {
+    // Skip coarse grid initialization if main grid is too small
+    if (m_w < static_cast<int>(COARSE_GRID_MULTIPLIER) || m_h < static_cast<int>(COARSE_GRID_MULTIPLIER)) {
+        PATHFIND_INFO("Grid too small for hierarchical pathfinding (" + std::to_string(m_w) + 
+                     "x" + std::to_string(m_h) + "), skipping coarse grid");
+        m_coarseGrid = nullptr;
+        return;
+    }
+    
+    // Create coarse grid with 4x larger cells for long-distance pathfinding
+    float coarseCellSize = m_cell * COARSE_GRID_MULTIPLIER;
+    int coarseWidth = std::max(1, static_cast<int>(m_w / COARSE_GRID_MULTIPLIER));
+    int coarseHeight = std::max(1, static_cast<int>(m_h / COARSE_GRID_MULTIPLIER));
+    
+    // Validate coarse grid dimensions
+    if (coarseWidth <= 0 || coarseHeight <= 0) {
+        PATHFIND_WARN("Invalid coarse grid dimensions: " + std::to_string(coarseWidth) + 
+                     "x" + std::to_string(coarseHeight));
+        m_coarseGrid = nullptr;
+        return;
+    }
+    
+    try {
+        m_coarseGrid = std::make_unique<PathfindingGrid>(coarseWidth, coarseHeight, 
+                                                        coarseCellSize, m_offset, false);
+        // Set more aggressive settings for coarse grid (speed over precision)
+        m_coarseGrid->setMaxIterations(m_maxIterations / 4); // Quarter the iterations
+        m_coarseGrid->setAllowDiagonal(true); // Always allow diagonal for speed
+        
+        PATHFIND_INFO("Hierarchical coarse grid initialized: " + std::to_string(coarseWidth) + 
+                     "x" + std::to_string(coarseHeight) + ", cell size: " + std::to_string(coarseCellSize));
+    }
+    catch (const std::exception& e) {
+        PATHFIND_WARN("Failed to initialize coarse grid: " + std::string(e.what()));
+        m_coarseGrid = nullptr;
+    }
+}
+
+void PathfindingGrid::updateCoarseGrid() {
+    if (!m_coarseGrid) {
+        return;
+    }
+    
+    // Downsample fine grid to coarse grid (4x4 fine cells -> 1 coarse cell)
+    int coarseW = m_coarseGrid->getWidth();
+    int coarseH = m_coarseGrid->getHeight();
+    
+    for (int cy = 0; cy < coarseH; ++cy) {
+        for (int cx = 0; cx < coarseW; ++cx) {
+            // Sample 4x4 region in fine grid with improved strategy
+            int blockedCount = 0;
+            int totalCount = 0;
+            float avgWeight = 0.0f;
+            int sampleCount = 0;
+            
+            int fineStartX = cx * static_cast<int>(COARSE_GRID_MULTIPLIER);
+            int fineStartY = cy * static_cast<int>(COARSE_GRID_MULTIPLIER);
+            
+            // Sample the 4x4 region
+            for (int fy = fineStartY; fy < fineStartY + static_cast<int>(COARSE_GRID_MULTIPLIER) && fy < m_h; ++fy) {
+                for (int fx = fineStartX; fx < fineStartX + static_cast<int>(COARSE_GRID_MULTIPLIER) && fx < m_w; ++fx) {
+                    if (inBounds(fx, fy)) {
+                        totalCount++;
+                        if (isBlocked(fx, fy)) {
+                            blockedCount++;
+                        }
+                        size_t fineIdx = static_cast<size_t>(fy * m_w + fx);
+                        if (fineIdx < m_weight.size()) {
+                            avgWeight += m_weight[fineIdx];
+                            sampleCount++;
+                        }
+                    }
+                }
+            }
+            
+            // IMPROVED: Only block coarse cell if majority (>75%) of fine cells are blocked
+            // This allows pathfinding through areas with partial obstacles
+            bool coarseBlocked = (totalCount > 0) && (static_cast<float>(blockedCount) / static_cast<float>(totalCount) > 0.75f);
+            
+            // Update coarse grid cell using safe setter methods
+            m_coarseGrid->setBlocked(cx, cy, coarseBlocked);
+            if (sampleCount > 0) {
+                // Increase weight for areas with some obstacles (but not fully blocked)
+                float blockageRatio = (totalCount > 0) ? static_cast<float>(blockedCount) / static_cast<float>(totalCount) : 0.0f;
+                float adjustedWeight = (avgWeight / static_cast<float>(sampleCount)) * (1.0f + blockageRatio * 2.0f);
+                m_coarseGrid->setWeight(cx, cy, adjustedWeight);
+            } else {
+                m_coarseGrid->setWeight(cx, cy, 1.0f); // Default weight
+            }
+        }
+    }
+}
+
+bool PathfindingGrid::shouldUseHierarchicalPathfinding(const Vector2D& start, const Vector2D& goal) const {
+    if (!m_coarseGrid) {
+        return false; // No coarse grid available
+    }
+    
+    float distance = (goal - start).length();
+    return distance > HIERARCHICAL_DISTANCE_THRESHOLD;
+}
+
+PathfindingResult PathfindingGrid::findPathHierarchical(const Vector2D& start, const Vector2D& goal,
+                                                      std::vector<Vector2D>& outPath) {
+    if (!m_coarseGrid) {
+        // Fallback to regular pathfinding
+        return findPath(start, goal, outPath);
+    }
+    
+    // Note: Coarse grid is updated in rebuildFromWorld() and should be current
+    
+    // Step 1: Find coarse path on low-resolution grid
+    std::vector<Vector2D> coarsePath;
+    auto coarseResult = m_coarseGrid->findPath(start, goal, coarsePath);
+    
+    if (coarseResult != PathfindingResult::SUCCESS) {
+        // Coarse pathfinding failed, try direct pathfinding as fallback
+        static int failureCount = 0;
+        failureCount++;
+        
+        // Only log every 10th failure to reduce spam
+        if (failureCount % 10 == 1) {
+            PATHFIND_INFO("Coarse pathfinding result: " + std::to_string(static_cast<int>(coarseResult)) + 
+                         ", attempting direct pathfinding (" + std::to_string(failureCount) + " failures)");
+        }
+        return findPath(start, goal, outPath);
+    }
+    
+    if (coarsePath.size() < 2) {
+        // Coarse path too short (start == goal?), use direct pathfinding
+        return findPath(start, goal, outPath);
+    }
+    
+    // Step 2: Refine coarse path segments on fine grid
+    return refineCoarsePath(coarsePath, start, goal, outPath);
+}
+
+PathfindingResult PathfindingGrid::refineCoarsePath(const std::vector<Vector2D>& coarsePath,
+                                                  const Vector2D& start, const Vector2D& goal,
+                                                  std::vector<Vector2D>& outPath) {
+    outPath.clear();
+    outPath.reserve(coarsePath.size() * 4); // Estimate refined path size
+    
+    // Add start point
+    outPath.push_back(start);
+    
+    // Refine each segment of the coarse path
+    Vector2D currentPoint = start;
+    
+    for (size_t i = 1; i < coarsePath.size(); ++i) {
+        Vector2D segmentGoal = coarsePath[i];
+        
+        // Check if we can directly connect to this coarse waypoint
+        if (hasLineOfSight(currentPoint, segmentGoal)) {
+            // Direct line of sight - no need for detailed pathfinding
+            outPath.push_back(segmentGoal);
+            currentPoint = segmentGoal;
+        }
+        else {
+            // Need detailed pathfinding for this segment
+            std::vector<Vector2D> segmentPath;
+            auto result = findPath(currentPoint, segmentGoal, segmentPath);
+            
+            if (result != PathfindingResult::SUCCESS || segmentPath.empty()) {
+                PATHFIND_WARN("Segment refinement failed, using direct line");
+                outPath.push_back(segmentGoal);
+                currentPoint = segmentGoal;
+            }
+            else {
+                // Add refined segment (skip first point to avoid duplicates)
+                for (size_t j = 1; j < segmentPath.size(); ++j) {
+                    outPath.push_back(segmentPath[j]);
+                }
+                currentPoint = segmentPath.back();
+            }
+        }
+    }
+    
+    // Ensure we end at the exact goal
+    if (outPath.empty() || (outPath.back() - goal).length() > m_cell * 0.5f) {
+        outPath.push_back(goal);
+    }
+    
+    // Apply path smoothing to the final result
+    smoothPath(outPath);
+    
+    return PathfindingResult::SUCCESS;
+}
+
+void PathfindingGrid::setBlocked(int gx, int gy, bool blocked) {
+    if (inBounds(gx, gy)) {
+        size_t idx = static_cast<size_t>(gy * m_w + gx);
+        if (idx < m_blocked.size()) {
+            m_blocked[idx] = blocked ? 1 : 0;
+        }
+    }
+}
+
+void PathfindingGrid::setWeight(int gx, int gy, float weight) {
+    if (inBounds(gx, gy)) {
+        size_t idx = static_cast<size_t>(gy * m_w + gx);
+        if (idx < m_weight.size()) {
+            m_weight[idx] = weight;
         }
     }
 }

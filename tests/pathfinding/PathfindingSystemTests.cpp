@@ -18,8 +18,12 @@ using namespace HammerEngine;
 
 // Test fixture for pathfinding grid
 struct PathfindingGridFixture {
+    // NOTE: Unit tests use 32px for algorithm precision testing
+    // PathfinderManager uses 64px for production performance optimization
+    static constexpr float CELL_SIZE = 32.0f; 
+    
     PathfindingGridFixture() 
-        : grid(20, 20, 32.0f, Vector2D(0.0f, 0.0f))
+        : grid(20, 20, CELL_SIZE, Vector2D(0.0f, 0.0f))
     {
         // Create a simple test world with some obstacles
         setupSimpleWorld();
@@ -109,12 +113,12 @@ BOOST_FIXTURE_TEST_CASE(TestSimplePathfinding, PathfindingGridFixture)
         // First point should be near start
         float startDistance = std::sqrt(std::pow(path[0].getX() - start.getX(), 2) + 
                                        std::pow(path[0].getY() - start.getY(), 2));
-        BOOST_CHECK_LT(startDistance, 50.0f);
+        BOOST_CHECK_LT(startDistance, 50.0f); // Unit test tolerance
         
         // Last point should be near goal
         float goalDistance = std::sqrt(std::pow(path.back().getX() - goal.getX(), 2) + 
                                       std::pow(path.back().getY() - goal.getY(), 2));
-        BOOST_CHECK_LT(goalDistance, 50.0f);
+        BOOST_CHECK_LT(goalDistance, 50.0f); // Unit test tolerance
     }
 }
 
