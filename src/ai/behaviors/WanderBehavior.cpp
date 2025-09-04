@@ -161,7 +161,7 @@ void WanderBehavior::executeLogic(EntityPtr entity) {
     
     Vector2D dest = position + state.currentDirection * moveDistance;
     
-    // Clamp destination to world bounds to prevent invalid pathfinding requests
+    // SMART GOAL VALIDATION: Clamp and validate destination  
     float minX, minY, maxX, maxY;
     if (WorldManager::Instance().getWorldBounds(minX, minY, maxX, maxY)) {
         // Add large margin to prevent entities from getting stuck near world edges
@@ -169,23 +169,44 @@ void WanderBehavior::executeLogic(EntityPtr entity) {
         const float MARGIN = 256.0f;
         dest.setX(std::clamp(dest.getX(), minX + MARGIN, maxX - MARGIN));
         dest.setY(std::clamp(dest.getY(), minY + MARGIN, maxY - MARGIN));
+        
+        // Additional validation: don't pathfind to current position
+        float distanceToGoal = (dest - position).length();
+        if (distanceToGoal < 64.0f) { // Too close to current position
+          return; // Skip pathfinding request entirely
+        }
     }
 
-    // Refresh short path using unified cooldown system
-    if (state.cooldowns.canRequestPath(now)) {
-      // PATHFINDING CONSOLIDATION: All wander requests now use PathfinderManager
-      PathfinderManager::Instance().requestPath(
-          entity->getID(), entity->getPosition(), dest,
-          AIInternal::PathPriority::Normal,
-          [this, entity](EntityID, const std::vector<Vector2D>& path) {
-            auto stateIt = m_entityStates.find(entity);
-            if (stateIt != m_entityStates.end() && !path.empty()) {
-              stateIt->second.pathPoints = path;
-              stateIt->second.currentPathIndex = 0;
-              stateIt->second.lastPathUpdate = SDL_GetTicks();
-            }
-          });
-      state.cooldowns.applyPathCooldown(now, 800); // cooldown after request
+    // CACHE-AWARE PATHFINDING: Check for existing path first
+    bool needsNewPath = state.pathPoints.empty() || 
+                       state.currentPathIndex >= state.pathPoints.size() ||
+                       (now - state.lastPathUpdate) > 10000; // Only refresh after 10 seconds
+    
+    if (needsNewPath && state.cooldowns.canRequestPath(now)) {
+      // SMART REQUEST: Only request if goal significantly different from last request
+      static constexpr float MIN_GOAL_CHANGE = 200.0f; // Minimum distance change to justify new request
+      bool goalChanged = true;
+      if (!state.pathPoints.empty()) {
+        Vector2D lastGoal = state.pathPoints.back();
+        float goalDistance = (dest - lastGoal).length();
+        goalChanged = (goalDistance >= MIN_GOAL_CHANGE);
+      }
+      
+      if (goalChanged) {
+        // PATHFINDING CONSOLIDATION: All wander requests now use PathfinderManager  
+        PathfinderManager::Instance().requestPath(
+            entity->getID(), entity->getPosition(), dest,
+            AIInternal::PathPriority::Normal,
+            [this, entity](EntityID, const std::vector<Vector2D>& path) {
+              auto stateIt = m_entityStates.find(entity);
+              if (stateIt != m_entityStates.end() && !path.empty()) {
+                stateIt->second.pathPoints = path;
+                stateIt->second.currentPathIndex = 0;
+                stateIt->second.lastPathUpdate = SDL_GetTicks();
+              }
+            });
+        state.cooldowns.applyPathCooldown(now, 2000); // Increased cooldown from 800ms to 2s
+      }
     }
     if (!state.pathPoints.empty() && state.currentPathIndex < state.pathPoints.size()) {
       PathfinderManager::Instance().followPathStep(entity, entity->getPosition(), state.pathPoints,
