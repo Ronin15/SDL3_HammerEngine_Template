@@ -24,8 +24,13 @@
 
 namespace AIInternal {
 
-// Forward declaration - PathPriority is defined in PathfindingScheduler.hpp
-enum class PathPriority;
+// PERFORMANCE FIX: PathPriority moved here since PathfindingScheduler was removed
+enum class PathPriority {
+    Critical = 0, // Player, combat situations
+    High = 1,     // Close NPCs, important behaviors  
+    Normal = 2,   // Regular NPC navigation
+    Low = 3       // Background/distant NPCs
+};
 
 /**
  * @brief Spatial priority system for managing pathfinding requests based on distance

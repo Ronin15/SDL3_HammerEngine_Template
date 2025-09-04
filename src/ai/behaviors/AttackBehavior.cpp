@@ -9,7 +9,7 @@
 #include "managers/WorldManager.hpp"
 #include "ai/internal/Crowd.hpp"
 #include "managers/PathfinderManager.hpp"
-#include "ai/internal/PathfindingScheduler.hpp"
+#include "ai/internal/SpatialPriority.hpp"  // For PathPriority enum
 #include <algorithm>
 
 AttackBehavior::AttackBehavior(float attackRange, float attackDamage,

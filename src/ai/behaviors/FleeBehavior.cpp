@@ -6,7 +6,7 @@
 #include "ai/behaviors/FleeBehavior.hpp"
 #include "ai/internal/Crowd.hpp"
 #include "managers/PathfinderManager.hpp"
-#include "ai/internal/PathfindingScheduler.hpp"
+#include "ai/internal/SpatialPriority.hpp"  // For PathPriority enum
 #include "managers/AIManager.hpp"
 #include "managers/WorldManager.hpp"
 #include "managers/CollisionManager.hpp"
