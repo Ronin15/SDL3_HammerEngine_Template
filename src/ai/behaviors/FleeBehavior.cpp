@@ -400,9 +400,14 @@ void FleeBehavior::updatePanicFlee(EntityPtr entity, EntityState& state) {
     
     float speedModifier = calculateFleeSpeedModifier(state);
     Vector2D intended = state.fleeDirection * m_fleeSpeed * speedModifier;
-    Vector2D adjusted = AIInternal::ApplySeparation(entity, entity->getPosition(),
-                          intended, m_fleeSpeed * speedModifier, 26.0f, 0.25f, 4);
-    entity->setVelocity(adjusted);
+    // Separation decimation: compute at most every 2 ticks per entity
+    if (currentTime - state.lastSepTick >= 2) {
+        state.lastSepVelocity = AIInternal::ApplySeparation(
+            entity, entity->getPosition(), intended,
+            m_fleeSpeed * speedModifier, 26.0f, 0.25f, 4);
+        state.lastSepTick = currentTime;
+    }
+    entity->setVelocity(state.lastSepVelocity);
 }
 
 void FleeBehavior::updateStrategicRetreat(EntityPtr entity, EntityState& state) {
@@ -462,6 +467,16 @@ void FleeBehavior::updateStrategicRetreat(EntityPtr entity, EntityState& state) 
         }
         if (now - state.lastPathUpdate > pathTTL) needRefresh = true;
         if (needRefresh && now >= state.nextPathAllowed) {
+            // Gate refresh on significant goal change to avoid thrash
+            bool goalChanged = true;
+            if (!state.pathPoints.empty()) {
+                Vector2D lastGoal = state.pathPoints.back();
+                goalChanged = ((goal - lastGoal).length() > 96.0f);
+            }
+            if (!goalChanged && !state.pathPoints.empty()) {
+                // Keep following existing path; skip request
+                goto follow_existing;
+            }
             // Use PathfinderManager for pathfinding requests
             auto& pathfinder = PathfinderManager::Instance();
             pathfinder.requestPathAsync(entity->getID(), pathfinder.clampToWorldBounds(currentPos, 100.0f), goal, AIInternal::PathPriority::High, 8, // High priority for flee
@@ -481,6 +496,7 @@ void FleeBehavior::updateStrategicRetreat(EntityPtr entity, EntityState& state) 
                 state.nextPathAllowed = now + 600; // Shorter cooldown for flee (more urgent)
             }
         }
+        follow_existing:
         if (!state.pathPoints.empty() && state.currentPathIndex < state.pathPoints.size()) {
             Vector2D node = state.pathPoints[state.currentPathIndex];
             Vector2D dir = node - currentPos; float len = dir.length();
@@ -496,10 +512,15 @@ void FleeBehavior::updateStrategicRetreat(EntityPtr entity, EntityState& state) 
     float speedModifier = calculateFleeSpeedModifier(state);
     if (!tryFollowPath(dest, m_fleeSpeed * speedModifier)) {
         // Fallback to direct flee when no path available
-        Vector2D intended = state.fleeDirection * m_fleeSpeed * speedModifier;
-        Vector2D adjusted = AIInternal::ApplySeparation(entity, entity->getPosition(),
-                              intended, m_fleeSpeed * speedModifier, 26.0f, 0.25f, 4);
-        entity->setVelocity(adjusted);
+        Vector2D intended2 = state.fleeDirection * m_fleeSpeed * speedModifier;
+        Uint64 nowTicks = SDL_GetTicks();
+        if (nowTicks - state.lastSepTick >= 2) {
+            state.lastSepVelocity = AIInternal::ApplySeparation(
+                entity, entity->getPosition(), intended2,
+                m_fleeSpeed * speedModifier, 26.0f, 0.25f, 4);
+            state.lastSepTick = nowTicks;
+        }
+        entity->setVelocity(state.lastSepVelocity);
     }
 }
 
@@ -531,10 +552,14 @@ void FleeBehavior::updateEvasiveManeuver(EntityPtr entity, EntityState& state) {
     state.fleeDirection = normalizeVector(zigzagDir);
     
     float speedModifier = calculateFleeSpeedModifier(state);
-    Vector2D intended = state.fleeDirection * m_fleeSpeed * speedModifier;
-    Vector2D adjusted = AIInternal::ApplySeparation(entity, entity->getPosition(),
-                          intended, m_fleeSpeed * speedModifier, 26.0f, 0.25f, 4);
-    entity->setVelocity(adjusted);
+    Vector2D intended3 = state.fleeDirection * m_fleeSpeed * speedModifier;
+    if (currentTime - state.lastSepTick >= 2) {
+        state.lastSepVelocity = AIInternal::ApplySeparation(
+            entity, entity->getPosition(), intended3,
+            m_fleeSpeed * speedModifier, 26.0f, 0.25f, 4);
+        state.lastSepTick = currentTime;
+    }
+    entity->setVelocity(state.lastSepVelocity);
 }
 
 void FleeBehavior::updateSeekCover(EntityPtr entity, EntityState& state) {
@@ -586,6 +611,16 @@ void FleeBehavior::updateSeekCover(EntityPtr entity, EntityState& state) {
         }
         if (now - state.lastPathUpdate > pathTTL) needRefresh = true;
         if (needRefresh && now >= state.nextPathAllowed) {
+            // Gate refresh on significant goal change to avoid thrash
+            bool goalChanged = true;
+            if (!state.pathPoints.empty()) {
+                Vector2D lastGoal = state.pathPoints.back();
+                goalChanged = ((goal - lastGoal).length() > 96.0f);
+            }
+            if (!goalChanged && !state.pathPoints.empty()) {
+                // Keep following existing path; skip request
+                goto follow_existing2;
+            }
             // PATHFINDING CONSOLIDATION: All requests now use PathfinderManager
             PathfinderManager::Instance().requestPathAsync(
                 entity->getID(), PathfinderManager::Instance().clampToWorldBounds(currentPos, 100.0f), goal, AIInternal::PathPriority::High, 8, // High priority for flee
@@ -609,6 +644,7 @@ void FleeBehavior::updateSeekCover(EntityPtr entity, EntityState& state) {
                 state.nextPathAllowed = now + 600; // Shorter cooldown for flee (more urgent)
             }
         }
+        follow_existing2:
         if (!state.pathPoints.empty() && state.currentPathIndex < state.pathPoints.size()) {
             Vector2D node = state.pathPoints[state.currentPathIndex];
             Vector2D dir = node - currentPos; float len = dir.length();
@@ -624,10 +660,15 @@ void FleeBehavior::updateSeekCover(EntityPtr entity, EntityState& state) {
     float speedModifier = calculateFleeSpeedModifier(state);
     if (!tryFollowPath(dest, m_fleeSpeed * speedModifier)) {
         // Fallback to straight-line movement
-        Vector2D intended = state.fleeDirection * m_fleeSpeed * speedModifier;
-        Vector2D adjusted = AIInternal::ApplySeparation(entity, entity->getPosition(),
-                              intended, m_fleeSpeed * speedModifier, 26.0f, 0.25f, 4);
-        entity->setVelocity(adjusted);
+        Vector2D intended4 = state.fleeDirection * m_fleeSpeed * speedModifier;
+        Uint64 nowTicks2 = SDL_GetTicks();
+        if (nowTicks2 - state.lastSepTick >= 2) {
+            state.lastSepVelocity = AIInternal::ApplySeparation(
+                entity, entity->getPosition(), intended4,
+                m_fleeSpeed * speedModifier, 26.0f, 0.25f, 4);
+            state.lastSepTick = nowTicks2;
+        }
+        entity->setVelocity(state.lastSepVelocity);
     }
 }
 

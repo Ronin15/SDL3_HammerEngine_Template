@@ -88,6 +88,9 @@ private:
     Vector2D lastStallPosition{0, 0};
     float stallPositionVariance{0.0f};
     Uint64 lastUnstickTime{0};
+    // Separation decimation
+    Uint64 lastSepTick{0};
+    Vector2D lastSepVelocity{0, 0};
     // Unified cooldown management
     struct {
         Uint64 nextPathRequest{0};

@@ -771,9 +771,15 @@ void GuardBehavior::moveToPosition(EntityPtr entity, const Vector2D &targetPos,
 
   // Apply local separation to reduce on-top stacking when following
   if (following) {
-    Vector2D adjusted = AIInternal::ApplySeparation(entity, currentPos,
-                          entity->getVelocity(), speed, 24.0f, 0.18f, 4);
-    entity->setVelocity(adjusted);
+    // Separation decimation: compute at most every 2 ticks per entity
+    Uint64 nowTicks = SDL_GetTicks();
+    auto &st = state;
+    if (nowTicks - st.lastSepTick >= 2) {
+      st.lastSepVelocity = AIInternal::ApplySeparation(entity, currentPos,
+                            entity->getVelocity(), speed, 24.0f, 0.18f, 4);
+      st.lastSepTick = nowTicks;
+    }
+    entity->setVelocity(st.lastSepVelocity);
   }
 }
 

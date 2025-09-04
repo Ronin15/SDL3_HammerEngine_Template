@@ -22,9 +22,11 @@ Vector2D ApplySeparation(EntityPtr entity,
 
   // Much larger query area for world-scale separation
   // Scale separation radius based on speed for dynamic behavior
-  float baseRadius = std::max(radius, 64.0f); // Minimum 64px separation
-  float speedMultiplier = std::clamp(speed / 100.0f, 1.0f, 3.0f); // Scale 1x-3x based on speed
-  float queryRadius = baseRadius * speedMultiplier * 2.0f; // Much larger search area
+  // Tighter, capped query radius to reduce broad-phase load
+  // Tight separation window to cut cost and preserve forward motion
+  float baseRadius = std::max(radius, 24.0f);
+  float speedMultiplier = std::clamp(speed / 120.0f, 1.0f, 1.5f);
+  float queryRadius = std::min(baseRadius * speedMultiplier, 96.0f);
   
   HammerEngine::AABB area(currentPos.getX() - queryRadius, currentPos.getY() - queryRadius, 
                           queryRadius * 2.0f, queryRadius * 2.0f);
@@ -32,7 +34,7 @@ Vector2D ApplySeparation(EntityPtr entity,
 
   Vector2D sep(0, 0);
   Vector2D avoidance(0, 0);
-  Vector2D longRangeSep(0, 0); // New: long-range separation for world spreading
+  // Removed far-range spreading for performance
   float closest = queryRadius;
   size_t counted = 0;
   size_t criticalNeighbors = 0;
@@ -67,23 +69,16 @@ Vector2D ApplySeparation(EntityPtr entity,
       // Normal separation range
       float normalWeight = (baseRadius - dist) / baseRadius;
       sep = sep + dir * normalWeight;
-    } else if (dist < baseRadius * 3.0f) {
-      // Medium-range gentle separation for world spreading
-      float mediumWeight = (baseRadius * 3.0f - dist) / (baseRadius * 2.0f);
-      longRangeSep = longRangeSep + dir * (mediumWeight * 0.4f);
-    } else {
-      // Long-range awareness for early spread behavior
-      float longWeight = (queryRadius - dist) / (queryRadius - baseRadius * 3.0f);
-      longRangeSep = longRangeSep + dir * (longWeight * 0.1f);
     }
     
-    if (++counted >= maxNeighbors * 2) break; // Allow more neighbors for world-scale
+    // Limit neighbor processing (hard cap) for performance
+    if (++counted >= std::min(maxNeighbors, static_cast<size_t>(6))) break;
   }
 
   Vector2D out = intendedVel;
   float il = out.length();
   
-  if ((sep.length() > 0.001f || avoidance.length() > 0.001f || longRangeSep.length() > 0.001f) && il > 0.001f) {
+  if ((sep.length() > 0.001f || avoidance.length() > 0.001f) && il > 0.001f) {
     Vector2D intendedDir = out * (1.0f / il);
     
     // Emergency avoidance with pathfinding preservation
@@ -130,15 +125,15 @@ Vector2D ApplySeparation(EntityPtr entity,
           }
           
           // Blend forward movement with lateral avoidance
-          Vector2D redirected = intendedDir * 0.75f + lateral * adaptiveStrength * 2.0f;
+          Vector2D redirected = intendedDir * 0.85f + lateral * adaptiveStrength * 1.2f;
           float redirLen = redirected.length();
           if (redirLen > 0.01f) {
             out = redirected * (speed / redirLen);
           }
         } else {
           // Low conflict: apply gentle separation with strong forward bias
-          Vector2D forwardBias = out * (1.0f - adaptiveStrength * 0.5f); // Preserve more forward momentum
-          Vector2D separationForce = sep * adaptiveStrength * speed * 0.7f; // Reduce separation strength
+          Vector2D forwardBias = out * (1.0f - adaptiveStrength * 0.35f);
+          Vector2D separationForce = sep * adaptiveStrength * speed * 0.5f;
           Vector2D blended = forwardBias + separationForce;
           
           float bl = blended.length();
@@ -148,15 +143,7 @@ Vector2D ApplySeparation(EntityPtr entity,
         }
       }
       
-      // Apply world-scale spreading as gentle bias only
-      if (longRangeSep.length() > 0.001f) {
-        Vector2D spreadBias = longRangeSep * 0.15f * speed; // Much gentler influence
-        out = out + spreadBias;
-        float finalLen = out.length();
-        if (finalLen > speed) {
-          out = out * (speed / finalLen);
-        }
-      }
+      // No far-range spreading to reduce overhead
     }
   }
   
@@ -245,4 +232,3 @@ int GetNearbyEntitiesWithPositions(EntityPtr entity, const Vector2D &center, flo
 }
 
 } // namespace AIInternal
-

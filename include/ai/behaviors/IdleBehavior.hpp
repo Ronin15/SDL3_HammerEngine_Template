@@ -64,6 +64,9 @@ private:
     Uint64 nextTurnTime{0};
     float currentAngle{0.0f};
     bool initialized{false};
+    // Separation decimation (for idle crowding)
+    Uint64 lastSepTick{0};
+    Vector2D lastSepVelocity{0, 0};
 
     EntityState()
         : originalPosition(0, 0), currentOffset(0, 0), lastMovementTime(0),

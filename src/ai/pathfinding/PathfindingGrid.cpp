@@ -213,7 +213,7 @@ PathfindingResult PathfindingGrid::findPath(const Vector2D& start, const Vector2
     
     // Clamp grid coordinates to ensure they're away from exact boundaries
     // This prevents problematic boundary pathfinding even if world-space clamping fails
-    const int GRID_MARGIN = 8; // Much larger margin to avoid near-boundary pathfinding issues
+    const int GRID_MARGIN = 2; // Reduced margin; avoid over-restricting valid goals near edges
     gx = std::clamp(gx, GRID_MARGIN, m_w - 1 - GRID_MARGIN);
     gy = std::clamp(gy, GRID_MARGIN, m_h - 1 - GRID_MARGIN);
     sx = std::clamp(sx, GRID_MARGIN, m_w - 1 - GRID_MARGIN);
@@ -284,8 +284,8 @@ PathfindingResult PathfindingGrid::findPath(const Vector2D& start, const Vector2
     }
     // Nudge start/goal if blocked (common after collision resolution)
     int nsx = sx, nsy = sy, ngx = gx, ngy = gy;
-    bool startOk = !isBlocked(sx, sy) || findNearestOpen(sx, sy, 4, nsx, nsy);
-    bool goalOk  = !isBlocked(gx, gy) || findNearestOpen(gx, gy, 6, ngx, ngy);
+    bool startOk = !isBlocked(sx, sy) || findNearestOpen(sx, sy, 10, nsx, nsy);
+    bool goalOk  = !isBlocked(gx, gy) || findNearestOpen(gx, gy, 14, ngx, ngy);
     if (!startOk || !goalOk) { PATHFIND_DEBUG("findPath(): start or goal blocked"); return PathfindingResult::NO_PATH_FOUND; }
     sx = nsx; sy = nsy; gx = ngx; gy = ngy;
 
@@ -448,15 +448,18 @@ PathfindingResult PathfindingGrid::findPath(const Vector2D& start, const Vector2
         }
     }
     
-    // Update statistics for timeout case
+    // Determine termination reason: exhausted search vs. iteration cap
+    bool exhaustedQueue = open.empty();
+    bool hitIterationCap = !exhaustedQueue; // loop ended due to iteration count
+
     m_stats.totalRequests++;
-    m_stats.timeouts++;
     m_stats.totalIterations += iterations;
-    
-    // Individual timeout warnings removed - comprehensive status reporting now handled by PathfinderManager
-    // Statistics are still tracked in m_stats for consolidated reporting
-    
-    return PathfindingResult::TIMEOUT;
+    if (hitIterationCap) {
+        m_stats.timeouts++;
+        return PathfindingResult::TIMEOUT;
+    }
+    // No path found within explored region
+    return PathfindingResult::NO_PATH_FOUND;
 }
 
 void PathfindingGrid::resetWeights(float defaultWeight) {
@@ -513,7 +516,8 @@ void PathfindingGrid::initializeCoarseGrid() {
         m_coarseGrid = std::make_unique<PathfindingGrid>(coarseWidth, coarseHeight, 
                                                         coarseCellSize, m_offset, false);
         // Set more aggressive settings for coarse grid (speed over precision)
-        m_coarseGrid->setMaxIterations(m_maxIterations / 4); // Quarter the iterations
+        // Allow generous iteration budget on coarse grid (still far cheaper than fine)
+        m_coarseGrid->setMaxIterations(std::max(1000, m_maxIterations / 2));
         m_coarseGrid->setAllowDiagonal(true); // Always allow diagonal for speed
         
         PATHFIND_INFO("Hierarchical coarse grid initialized: " + std::to_string(coarseWidth) + 
@@ -562,9 +566,9 @@ void PathfindingGrid::updateCoarseGrid() {
                 }
             }
             
-            // IMPROVED: Only block coarse cell if majority (>75%) of fine cells are blocked
-            // This allows pathfinding through areas with partial obstacles
-            bool coarseBlocked = (totalCount > 0) && (static_cast<float>(blockedCount) / static_cast<float>(totalCount) > 0.75f);
+            // IMPROVED: Mark coarse cell as blocked if >50% of fine cells are blocked
+            // Better reflects dense obstacles and improves refinement reliability
+            bool coarseBlocked = (totalCount > 0) && (static_cast<float>(blockedCount) / static_cast<float>(totalCount) > 0.50f);
             
             // Update coarse grid cell using safe setter methods
             m_coarseGrid->setBlocked(cx, cy, coarseBlocked);
