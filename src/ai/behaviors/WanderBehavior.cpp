@@ -83,12 +83,9 @@ void WanderBehavior::executeLogic(EntityPtr entity) {
       state.movementStarted = true;
       Vector2D intended = state.currentDirection * m_speed;
       // Separation decimation: compute at most every 2 ticks
-      if (currentTime - state.lastSepTick >= 2) {
-        state.lastSepVelocity = AIInternal::ApplySeparation(
-            entity, entity->getPosition(), intended, m_speed, 28.0f, 0.30f, 6);
-        state.lastSepTick = currentTime;
-      }
-      entity->setVelocity(state.lastSepVelocity);
+      applyDecimatedSeparation(entity, entity->getPosition(), intended,
+                               m_speed, 28.0f, 0.30f, 6, state.lastSepTick,
+                               state.lastSepVelocity);
     }
     return;
   }
@@ -221,23 +218,16 @@ void WanderBehavior::executeLogic(EntityPtr entity) {
       if (following) {
         // Apply decimated separation while following
         Uint64 nowTicks = SDL_GetTicks();
-        if (nowTicks - state.lastSepTick >= 2) {
-          state.lastSepVelocity = AIInternal::ApplySeparation(
-              entity, entity->getPosition(), entity->getVelocity(), m_speed,
-              28.0f, 0.30f, 6);
-          state.lastSepTick = nowTicks;
-        }
-        entity->setVelocity(state.lastSepVelocity);
+        applyDecimatedSeparation(entity, entity->getPosition(),
+                                 entity->getVelocity(), m_speed, 28.0f, 0.30f,
+                                 6, state.lastSepTick, state.lastSepVelocity);
       }
     } else {
       // Always apply base velocity (in case something external changed it)
       Vector2D intended = state.currentDirection * m_speed;
-      if (now - state.lastSepTick >= 2) {
-        state.lastSepVelocity = AIInternal::ApplySeparation(
-            entity, entity->getPosition(), intended, m_speed, 28.0f, 0.30f, 6);
-        state.lastSepTick = now;
-      }
-      entity->setVelocity(state.lastSepVelocity);
+      applyDecimatedSeparation(entity, entity->getPosition(), intended,
+                               m_speed, 28.0f, 0.30f, 6, state.lastSepTick,
+                               state.lastSepVelocity);
     }
   }
 }
@@ -279,13 +269,9 @@ void WanderBehavior::updateWanderState(EntityPtr entity) {
     stableVelocity = stableVelocity * m_speed;
 
     // Apply the stable velocity with separation
-    if (currentTime - state.lastSepTick >= 2) {
-      state.lastSepVelocity = AIInternal::ApplySeparation(
-          entity, entity->getPosition(), stableVelocity, m_speed,
-          28.0f, 0.30f, 6);
-      state.lastSepTick = currentTime;
-    }
-    entity->setVelocity(state.lastSepVelocity);
+    applyDecimatedSeparation(entity, entity->getPosition(), stableVelocity,
+                             m_speed, 28.0f, 0.30f, 6, state.lastSepTick,
+                             state.lastSepVelocity);
   } else if (wouldFlip) {
     // Record the time of this flip
     state.lastDirectionFlip = currentTime;
@@ -329,12 +315,9 @@ void WanderBehavior::updateWanderState(EntityPtr entity) {
       rotated.normalize();
       state.currentDirection = rotated;
       Vector2D intended = state.currentDirection * m_speed;
-      if (currentTime - state.lastSepTick >= 2) {
-        state.lastSepVelocity = AIInternal::ApplySeparation(
-            entity, entity->getPosition(), intended, m_speed, 28.0f, 0.30f, 6);
-        state.lastSepTick = currentTime;
-      }
-      entity->setVelocity(state.lastSepVelocity);
+      applyDecimatedSeparation(entity, entity->getPosition(), intended,
+                               m_speed, 28.0f, 0.30f, 6, state.lastSepTick,
+                               state.lastSepVelocity);
     }
   }
 
@@ -429,12 +412,9 @@ void WanderBehavior::chooseNewDirection(EntityPtr entity) {
   // Apply the new direction to the entity only if movement has started
   if (applyVelocity) {
     Vector2D intended = state.currentDirection * m_speed;
-    if (SDL_GetTicks() - state.lastSepTick >= 2) {
-      state.lastSepVelocity = AIInternal::ApplySeparation(
-          entity, entity->getPosition(), intended, m_speed, 28.0f, 0.30f, 6);
-      state.lastSepTick = SDL_GetTicks();
-    }
-    entity->setVelocity(state.lastSepVelocity);
+    applyDecimatedSeparation(entity, entity->getPosition(), intended,
+                             m_speed, 28.0f, 0.30f, 6, state.lastSepTick,
+                             state.lastSepVelocity);
   }
 
   // NPC class now handles sprite flipping based on velocity

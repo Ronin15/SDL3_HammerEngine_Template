@@ -179,12 +179,9 @@ void FollowBehavior::executeLogic(EntityPtr entity) {
         // Separation decimation: compute at most every 2 ticks per entity
         Uint64 nowTicks = SDL_GetTicks();
         auto &st = state; // alias
-        if (nowTicks - st.lastSepTick >= 2) {
-          st.lastSepVelocity = AIInternal::ApplySeparation(entity, currentPos,
-                                  entity->getVelocity(), speed, 26.0f, 0.22f, 4);
-          st.lastSepTick = nowTicks;
-        }
-        entity->setVelocity(st.lastSepVelocity);
+        applyDecimatedSeparation(entity, currentPos, entity->getVelocity(),
+                                 speed, 26.0f, 0.22f, 4, st.lastSepTick,
+                                 st.lastSepVelocity);
       }
       return pathStep;
     };
