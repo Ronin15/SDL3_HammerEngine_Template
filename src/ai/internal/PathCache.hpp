@@ -93,6 +93,14 @@ public:
                                                         float tolerance = 64.0f);
 
     /**
+     * Check if a failed (negative) path result is cached for similar start/goal.
+     * When true, callers may skip expensive searches and treat as no-path-found.
+     */
+    bool hasNegativeCached(const Vector2D& start,
+                           const Vector2D& goal,
+                           float tolerance = 64.0f);
+
+    /**
      * Cache a successful pathfinding result for future reuse.
      * Uses LRU eviction if cache exceeds maximum size limit.
      * 
@@ -101,6 +109,12 @@ public:
      * @param path Vector of waypoints forming the computed path
      */
     void cachePath(const Vector2D& start, const Vector2D& goal, const std::vector<Vector2D>& path);
+
+    /**
+     * Cache a negative result (no path found / invalid) for short-term suppression of retries.
+     * Stored with isValid=false and cleared by normal cleanup policies.
+     */
+    void cacheNegative(const Vector2D& start, const Vector2D& goal);
 
     /**
      * Remove cached paths that pass through high-congestion areas.
@@ -159,7 +173,7 @@ private:
     mutable std::mutex m_cacheMutex;
     
     // Configuration constants
-    static constexpr size_t MAX_CACHED_PATHS = 256;
+    static constexpr size_t MAX_CACHED_PATHS = 1024;
     static constexpr float DEFAULT_SPATIAL_TOLERANCE = 64.0f;
     static constexpr uint64_t DEFAULT_MAX_AGE_MS = 30000; // 30 seconds
     static constexpr uint32_t DEFAULT_MIN_USE_COUNT = 2;
@@ -186,7 +200,7 @@ private:
      * Calculate distance between two 2D points.
      * Used for spatial tolerance matching.
      */
-    float calculateDistance(const Vector2D& a, const Vector2D& b) const;
+    float calculateDistanceSquared(const Vector2D& a, const Vector2D& b) const;
     
     /**
      * Check if two paths are similar within spatial tolerance.

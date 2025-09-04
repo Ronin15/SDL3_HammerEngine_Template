@@ -165,10 +165,12 @@ uint64_t PathfinderManager::requestPathAsync(
             // FIXED: Check cache first, even in async pathfinding
             std::vector<Vector2D> path;
             bool cacheHit = false;
+            const float dist2 = (goal - start).dot(goal - start);
+            const float tol = (dist2 > (512.0f * 512.0f)) ? 128.0f : 64.0f;
             
             // Check cache first
             if (m_cache) {
-                if (auto cachedPath = m_cache->findSimilarPath(start, goal, 64.0f)) {
+                if (auto cachedPath = m_cache->findSimilarPath(start, goal, tol)) {
                     path = *cachedPath;
                     cacheHit = true;
                     
@@ -181,12 +183,21 @@ uint64_t PathfinderManager::requestPathAsync(
                 }
             }
             
-            // If no cache hit, perform pathfinding
+            // If no cache hit, consider negative cache then perform pathfinding
             if (!cacheHit) {
-                float distance = (goal - start).length();
+                // Negative cache check to avoid repeated expensive searches
+                if (m_cache && m_cache->hasNegativeCached(start, goal, tol)) {
+                    // Immediately respond with empty path (negative cache hit)
+                    if (callback) {
+                        callback(entityId, path);
+                    }
+                    return;
+                }
+
+                float distance2 = dist2;
                 HammerEngine::PathfindingResult result;
                 
-                if (distance > 512.0f) {
+                if (distance2 > (512.0f * 512.0f)) {
                     // Use hierarchical pathfinding for long distances
                     result = m_grid->findPathHierarchical(start, goal, path);
                     
@@ -206,6 +217,9 @@ uint64_t PathfinderManager::requestPathAsync(
                 // Cache successful paths for future reuse
                 if (result == HammerEngine::PathfindingResult::SUCCESS && !path.empty() && m_cache) {
                     m_cache->cachePath(start, goal, path);
+                } else if (m_cache) {
+                    // Cache negative outcome to prevent thrashing
+                    m_cache->cacheNegative(start, goal);
                 }
                 
                 // Update cache miss and completion statistics
@@ -284,7 +298,9 @@ HammerEngine::PathfindingResult PathfinderManager::findPathImmediate(
     // CRITICAL FIX: Restore cache functionality for immediate requests
     // Check cache first before expensive A* computation
     if (m_cache) {
-        if (auto cachedPath = m_cache->findSimilarPath(start, goal, 64.0f)) {
+        const float dist2 = (goal - start).dot(goal - start);
+        const float tol = (dist2 > (512.0f * 512.0f)) ? 128.0f : 64.0f;
+        if (auto cachedPath = m_cache->findSimilarPath(start, goal, tol)) {
             outPath = *cachedPath;
             
             // Update statistics for cache hit
@@ -295,14 +311,21 @@ HammerEngine::PathfindingResult PathfinderManager::findPathImmediate(
             }
             
             return HammerEngine::PathfindingResult::SUCCESS;
+        } else if (m_cache->hasNegativeCached(start, goal, tol)) {
+            // Negative cache hit: return gracefully without recomputing
+            {
+                std::lock_guard<std::mutex> lock(m_statsMutex);
+                m_stats.cacheHits++;
+            }
+            return HammerEngine::PathfindingResult::NO_PATH_FOUND;
         }
     }
     
     // Cache miss - compute path using intelligent hierarchical pathfinding
-    float distance = (goal - start).length();
+    float distance2 = (goal - start).dot(goal - start);
     HammerEngine::PathfindingResult result;
     
-    if (distance > 512.0f) {
+    if (distance2 > (512.0f * 512.0f)) {
         // Long distance: Use hierarchical pathfinding for 10x speedup
         result = m_grid->findPathHierarchical(start, goal, outPath);
         
@@ -319,9 +342,14 @@ HammerEngine::PathfindingResult PathfinderManager::findPathImmediate(
         m_stats.directRequests++;
     }
     
-    // Cache successful paths for future reuse
-    if (result == HammerEngine::PathfindingResult::SUCCESS && !outPath.empty() && m_cache) {
-        m_cache->cachePath(start, goal, outPath);
+    // Cache result for future reuse
+    if (m_cache) {
+        if (result == HammerEngine::PathfindingResult::SUCCESS && !outPath.empty()) {
+            m_cache->cachePath(start, goal, outPath);
+        } else {
+            // Negative cache to suppress immediate retries
+            m_cache->cacheNegative(start, goal);
+        }
     }
     
     // Update cache miss statistics (since we didn't hit cache and had to compute)
@@ -391,18 +419,21 @@ void PathfinderManager::updateDynamicObstacles() {
     uint64_t currentWorldVersion = worldManager.getWorldVersion();
     
     // Rebuild when version changed or every 30 seconds as a fallback
-    bool shouldRebuild = (currentWorldVersion != lastWorldVersion) || (secondsSinceLastRebuild >= 30.0f);
+    bool worldChanged = (currentWorldVersion != lastWorldVersion);
+    bool shouldRebuild = worldChanged || (secondsSinceLastRebuild >= 30.0f);
     
     if (shouldRebuild) {
         // PERFORMANCE OPTIMIZATION: Move expensive grid rebuild to background thread
         // This prevents blocking the main AI update loop
-        auto rebuildTask = [this]() {
+        auto rebuildTask = [this, worldChanged]() {
             if (m_grid) {
                 m_grid->rebuildFromWorld();
                 
-                // Clear cache since grid changed (thread-safe operation)
-                if (m_cache) {
-                    m_cache->clear();
+                // Only clear cache when the world actually changed; keep cache on safety refresh
+                if (worldChanged) {
+                    if (m_cache) {
+                        m_cache->clear();
+                    }
                 }
                 
                 GAMEENGINE_INFO("Async grid rebuild completed");

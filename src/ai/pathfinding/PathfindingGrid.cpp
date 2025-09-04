@@ -312,9 +312,6 @@ PathfindingResult PathfindingGrid::findPath(const Vector2D& start, const Vector2
     }
 
     const int W = m_w, H = m_h;
-    const size_t N = static_cast<size_t>(W * H);
-
-    std::vector<uint8_t> closed(N, 0);
     auto idx = [&](int x, int y){ return y * W + x; };
     auto h = [&](int x, int y){
         // OPTIMIZED HEURISTIC: More focused search with perfect admissible heuristic
@@ -341,6 +338,7 @@ PathfindingResult PathfindingGrid::findPath(const Vector2D& start, const Vector2
     auto& gScore = nodePool.gScoreBuffer;
     auto& fScore = nodePool.fScoreBuffer;
     auto& parent = nodePool.parentBuffer;
+    auto& closed = nodePool.closedBuffer;
 
     size_t sIdx = static_cast<size_t>(idx(sx, sy));
     if (sIdx >= gScore.size()) {

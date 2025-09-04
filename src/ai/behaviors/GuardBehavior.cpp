@@ -697,23 +697,58 @@ void GuardBehavior::moveToPosition(EntityPtr entity, const Vector2D &targetPos,
   Vector2D currentPos = entity->getPosition();
   Uint64 now = SDL_GetTicks();
 
-  // Refresh path and follow (honor backoff)
-  if (now >= state.backoffUntil) {
+  // Determine if a fresh path is actually needed
+  const Uint64 PATH_TTL = 1800; // ms
+  bool needsNewPath = state.pathPoints.empty() || state.currentPathIndex >= state.pathPoints.size();
+
+  if (!needsNewPath && state.lastPathUpdate > 0 && (now - state.lastPathUpdate) > PATH_TTL) {
+    needsNewPath = true; // Stale path
+  }
+
+  if (!needsNewPath && !state.pathPoints.empty()) {
+    // Only refresh when goal changed significantly
+    const float GOAL_CHANGE_THRESH = 64.0f; // px
+    Vector2D currentGoal = state.pathPoints.back();
+    float goalDelta = (targetPos - currentGoal).length();
+    if (goalDelta > GOAL_CHANGE_THRESH) {
+      needsNewPath = true;
+    }
+  }
+
+  // Skip pathfinding if we’re basically at the goal already
+  float distanceToTarget = (targetPos - currentPos).length();
+  if (distanceToTarget <= state.navRadius * 1.1f) {
+    needsNewPath = false;
+  }
+
+  // Respect backoff to avoid spamming requests
+  if (needsNewPath && now >= state.backoffUntil) {
     // PATHFINDING CONSOLIDATION: All requests now use PathfinderManager
     AIInternal::PathPriority priority = (state.currentAlertLevel >= AlertLevel::INVESTIGATING) ? 
         AIInternal::PathPriority::High : AIInternal::PathPriority::Normal;
     int aiManagerPriority = (state.currentAlertLevel >= AlertLevel::INVESTIGATING) ? 7 : 5; // High/Medium priority
+
+    Vector2D clampedStart = PathfinderManager::Instance().clampToWorldBounds(currentPos, 100.0f);
+    Vector2D clampedGoal  = PathfinderManager::Instance().clampToWorldBounds(targetPos, 100.0f);
+
     PathfinderManager::Instance().requestPathAsync(
-        entity->getID(), currentPos, targetPos, priority, aiManagerPriority,
+        entity->getID(), clampedStart, clampedGoal, priority, aiManagerPriority,
         [this, entity](EntityID, const std::vector<Vector2D>& path) {
           auto it = m_entityStates.find(entity);
           if (it != m_entityStates.end() && !path.empty()) {
             it->second.pathPoints = path;
             it->second.currentPathIndex = 0;
             it->second.lastPathUpdate = SDL_GetTicks();
+            it->second.lastNodeDistance = std::numeric_limits<float>::infinity();
+            it->second.lastProgressTime = SDL_GetTicks();
           }
         });
+
+    // Gentle staggered backoff to prevent per-frame re-requests
+    state.backoffUntil = now + 300 + (entity->getID() % 300);
   }
+
+  // Follow existing path if available; fallback to direct steering
   bool following = PathfinderManager::Instance().followPathStep(entity, currentPos,
                         state.pathPoints, state.currentPathIndex,
                         speed, state.navRadius);
