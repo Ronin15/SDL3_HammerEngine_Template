@@ -24,11 +24,8 @@
 #include "entities/Entity.hpp"
 #include <atomic>
 #include <functional>
-#include <future>
 #include <memory>
 #include <mutex>
-#include <queue>
-#include <unordered_map>
 #include <vector>
 
 // Forward declarations
@@ -39,7 +36,6 @@ namespace HammerEngine {
 
 namespace AIInternal {
     class PathCache;
-    class SpatialPriority;
     struct PathResult;
     enum class PathPriority;
 }
@@ -264,15 +260,10 @@ private:
     std::unique_ptr<HammerEngine::PathfindingGrid> m_grid;
     // PathCache for caching pathfinding results
     std::unique_ptr<AIInternal::PathCache> m_cache;
-    std::unique_ptr<AIInternal::SpatialPriority> m_spatialPriority;
 
     // Request management
     std::atomic<uint64_t> m_nextRequestId{1};
-    std::mutex m_requestMutex;
-
-    // Thread management
-    std::vector<std::future<void>> m_activeTasks;
-    std::atomic<uint32_t> m_activeThreadCount{0};
+    // No local request/queue bookkeeping in direct async mode
     
     // Configuration - CRITICAL FIX: Increase from 5 to handle queue overflow
     int m_maxPathsPerFrame{32};

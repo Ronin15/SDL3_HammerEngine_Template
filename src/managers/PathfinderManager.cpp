@@ -6,14 +6,11 @@
 #include "managers/PathfinderManager.hpp"
 #include "ai/pathfinding/PathfindingGrid.hpp"
 #include "../ai/internal/PathCache.hpp"
-#include "../ai/internal/SpatialPriority.hpp"
-#include "managers/CollisionManager.hpp"
+#include "../ai/internal/SpatialPriority.hpp" // for AIInternal::PathPriority enum
 #include "managers/WorldManager.hpp"
 #include "core/ThreadSystem.hpp"
-#include "core/WorkerBudget.hpp"
 #include "core/Logger.hpp"
 #include <chrono>
-#include <future>
 
 // Static instance for singleton
 static std::unique_ptr<PathfinderManager> s_instance;
@@ -48,9 +45,6 @@ bool PathfinderManager::init() {
 
         // Initialize PathCache directly
         m_cache = std::make_unique<AIInternal::PathCache>();
-
-        // Initialize spatial priority system
-        m_spatialPriority = std::make_unique<AIInternal::SpatialPriority>();
 
         PATHFIND_INFO("PathfinderManager: PathCache initialized");
 
@@ -88,16 +82,14 @@ void PathfinderManager::update(float deltaTime) {
         m_gridUpdateTimer = 0.0f;
     }
 
-    // Periodic cache cleanup
+    // Periodic cache maintenance (cleanup + congestion-aware eviction)
     if (m_cacheCleanupTimer >= CACHE_CLEANUP_INTERVAL) {
         cleanupCache();
+        if (m_cache) {
+            Vector2D playerPos(0, 0); // TODO: replace with actual player position
+            m_cache->evictPathsInCrowdedAreas(playerPos);
+        }
         m_cacheCleanupTimer = 0.0f;
-    }
-
-    // Periodic cache cleanup
-    if (m_cache) {
-        Vector2D playerPos(0, 0); // TODO: Get actual player position
-        m_cache->evictPathsInCrowdedAreas(playerPos);
     }
 
     // Update statistics
@@ -118,21 +110,12 @@ void PathfinderManager::clean() {
     
     // Clear any remaining local request data - no queues in direct async mode
 
-    // Wait for active threads to complete
-    for (auto& task : m_activeTasks) {
-        if (task.valid()) {
-            task.wait();
-        }
-    }
-    m_activeTasks.clear();
-
     // Clean up components
     if (m_cache) {
         m_cache->shutdown();
     }
 
     m_cache.reset();
-    m_spatialPriority.reset();
     m_grid.reset();
 
     m_initialized.store(false);
@@ -158,7 +141,7 @@ uint64_t PathfinderManager::requestPathAsync(
     EntityID entityId,
     const Vector2D& start,
     const Vector2D& goal,
-    AIInternal::PathPriority /* priority */,
+    AIInternal::PathPriority priority,
     int aiManagerPriority,
     std::function<void(EntityID, const std::vector<Vector2D>&)> callback
 ) {
@@ -193,6 +176,7 @@ uint64_t PathfinderManager::requestPathAsync(
                     {
                         std::lock_guard<std::mutex> lock(m_statsMutex);
                         m_stats.cacheHits++;
+                        m_stats.completedRequests++;
                     }
                 }
             }
@@ -224,23 +208,45 @@ uint64_t PathfinderManager::requestPathAsync(
                     m_cache->cachePath(start, goal, path);
                 }
                 
-                // Update cache miss statistics
+                // Update cache miss and completion statistics
                 {
                     std::lock_guard<std::mutex> lock(m_statsMutex);
                     m_stats.cacheMisses++;
+                    if (result == HammerEngine::PathfindingResult::SUCCESS) {
+                        m_stats.completedRequests++;
+                    } else if (result == HammerEngine::PathfindingResult::TIMEOUT) {
+                        m_stats.timedOutRequests++;
+                    }
                 }
             }
             
             // Execute callback with result
-            callback(entityId, path);
+            if (callback) {
+                callback(entityId, path);
+            }
         };
         
-        // Convert aiManagerPriority to TaskPriority
-        HammerEngine::TaskPriority taskPriority = HammerEngine::TaskPriority::Normal;
-        if (aiManagerPriority >= 8) taskPriority = HammerEngine::TaskPriority::High;
-        else if (aiManagerPriority >= 6) taskPriority = HammerEngine::TaskPriority::Normal;
-        else taskPriority = HammerEngine::TaskPriority::Low;
-        
+        // Convert AI path priority and AI manager priority to ThreadSystem priority (take higher priority)
+        auto mapPathPrio = [](AIInternal::PathPriority p) {
+            switch (p) {
+                case AIInternal::PathPriority::Critical:
+                case AIInternal::PathPriority::High:   return HammerEngine::TaskPriority::High;
+                case AIInternal::PathPriority::Normal: return HammerEngine::TaskPriority::Normal;
+                case AIInternal::PathPriority::Low:    return HammerEngine::TaskPriority::Low;
+            }
+            return HammerEngine::TaskPriority::Normal;
+        };
+        auto mapAIMgrPrio = [](int p) {
+            if (p >= 8) return HammerEngine::TaskPriority::High;
+            if (p >= 6) return HammerEngine::TaskPriority::Normal;
+            return HammerEngine::TaskPriority::Low;
+        };
+        auto pickHigher = [](HammerEngine::TaskPriority a, HammerEngine::TaskPriority b) {
+            // Lower enum value means higher priority
+            return (static_cast<int>(a) < static_cast<int>(b)) ? a : b;
+        };
+        HammerEngine::TaskPriority taskPriority = pickHigher(mapPathPrio(priority), mapAIMgrPrio(aiManagerPriority));
+
         HammerEngine::ThreadSystem::Instance().enqueueTask(work, taskPriority, "PathfindingAsync");
         
         // Update stats only
@@ -267,6 +273,12 @@ HammerEngine::PathfindingResult PathfinderManager::findPathImmediate(
     // Ensure grid is initialized before pathfinding
     if (!ensureGridInitialized()) {
         return HammerEngine::PathfindingResult::NO_PATH_FOUND;
+    }
+
+    // Track request statistics
+    {
+        std::lock_guard<std::mutex> lock(m_statsMutex);
+        m_stats.totalRequests++;
     }
 
     // CRITICAL FIX: Restore cache functionality for immediate requests
@@ -356,8 +368,11 @@ void PathfinderManager::rebuildGrid() {
 
     m_grid->rebuildFromWorld();
     
-    // PathfindingScheduler handles its own cache clearing when needed
-    GAMEENGINE_INFO("Grid rebuilt manually, PathfindingScheduler will handle cache invalidation");
+    // Grid changed; clear cache to avoid stale paths
+    if (m_cache) {
+        m_cache->clear();
+    }
+    GAMEENGINE_INFO("Grid rebuilt manually and cache invalidated");
 }
 
 void PathfinderManager::updateDynamicObstacles() {
@@ -366,28 +381,17 @@ void PathfinderManager::updateDynamicObstacles() {
         return;
     }
 
-    // CRITICAL FIX: Smart grid rebuilding to minimize cache invalidation
-    // Only rebuild grid when world has actually changed
+    // Smart grid rebuilding: Only rebuild when world has changed or a safety interval elapsed
     static uint64_t lastWorldVersion = 0;
-    static float lastRebuildTime = 0.0f;
-    static float rebuildTimer = 0.0f;
-    rebuildTimer += (1.0f/60.0f); // Approximate deltaTime
+    static float secondsSinceLastRebuild = 0.0f;
+    secondsSinceLastRebuild += GRID_UPDATE_INTERVAL; // Called on a fixed cadence (see update())
     
     // Check if world has changed by getting version from WorldManager
     auto& worldManager = WorldManager::Instance();
     uint64_t currentWorldVersion = worldManager.getWorldVersion();
     
-    // Only rebuild if:
-    // 1. World version changed (world actually modified), OR
-    // 2. More than 30 seconds have passed (safety fallback)
-    bool shouldRebuild = false;
-    if (currentWorldVersion != lastWorldVersion) {
-        shouldRebuild = true;
-        GAMEENGINE_INFO("Grid rebuilt (world changed)");
-    } else if ((rebuildTimer - lastRebuildTime) >= 30.0f) {
-        shouldRebuild = true;
-        GAMEENGINE_INFO("Grid rebuilt (30s safety fallback)");
-    }
+    // Rebuild when version changed or every 30 seconds as a fallback
+    bool shouldRebuild = (currentWorldVersion != lastWorldVersion) || (secondsSinceLastRebuild >= 30.0f);
     
     if (shouldRebuild) {
         // PERFORMANCE OPTIMIZATION: Move expensive grid rebuild to background thread
@@ -410,7 +414,7 @@ void PathfinderManager::updateDynamicObstacles() {
         
         // Update tracking variables immediately to prevent duplicate rebuilds
         lastWorldVersion = currentWorldVersion;
-        lastRebuildTime = rebuildTimer;
+        secondsSinceLastRebuild = 0.0f;
     }
 
     // Always integrate dynamic collision data (entities moving around)
@@ -478,7 +482,13 @@ PathfinderManager::PathfinderStats PathfinderManager::getStats() const {
         }
     }
     
-    m_stats.activeThreads = m_activeThreadCount.load();
+    // Reflect thread activity roughly based on ThreadSystem state
+    if (!HammerEngine::ThreadSystem::Instance().isShutdown() &&
+        HammerEngine::ThreadSystem::Instance().isBusy()) {
+        m_stats.activeThreads = HammerEngine::ThreadSystem::Instance().getThreadCount();
+    } else {
+        m_stats.activeThreads = 0;
+    }
     
     return m_stats;
 }
@@ -494,8 +504,7 @@ void PathfinderManager::resetStats() {
 
 
 void PathfinderManager::updateStatistics() {
-    // Statistics are now primarily managed by PathfindingScheduler
-    // This method updates local manager stats
+    // Consolidate manager and grid-level statistics
     
     std::lock_guard<std::mutex> lock(m_statsMutex);
     m_stats.pendingRequests = 0; // No pending requests in direct async mode
@@ -573,11 +582,9 @@ void PathfinderManager::updateStatistics() {
 }
 
 void PathfinderManager::cleanupCache() {
-    // Cache cleanup is now handled by PathfindingScheduler
-    // This method is kept for interface compatibility
     if (m_cache) {
-        // Perform cache cleanup using PathCache directly
-        m_cache->cleanup();
+        const uint64_t maxAgeMs = static_cast<uint64_t>(m_cacheExpirationTime * 1000.0f);
+        m_cache->cleanup(maxAgeMs);
     }
 }
 
