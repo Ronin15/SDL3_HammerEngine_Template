@@ -62,8 +62,8 @@ void PathfindingScheduler::requestPath(EntityID entityId, const Vector2D& start,
         
         // Track pending request count per entity efficiently
         auto it = m_pendingEntityRequests.find(entityId);
-        if (it != m_pendingEntityRequests.end() && it->second >= 3) {
-            // Entity has 3+ pending requests - reject to prevent overflow (increased from 1)
+        if (it != m_pendingEntityRequests.end() && it->second >= 1) {
+            // Entity has 1+ pending requests - reject to prevent request spamming
             if (callback) {
                 callback(entityId, std::vector<Vector2D>{}); // Empty path on failure
             }
