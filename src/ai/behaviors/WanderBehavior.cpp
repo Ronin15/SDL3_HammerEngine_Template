@@ -8,7 +8,7 @@
 #include "managers/AIManager.hpp"
 #include "managers/WorldManager.hpp"
 #include "managers/PathfinderManager.hpp"
-#include "ai/internal/PathfindingScheduler.hpp"
+#include "ai/internal/SpatialPriority.hpp"
 #include <algorithm>
 #include <cmath>
 

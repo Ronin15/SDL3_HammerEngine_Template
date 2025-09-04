@@ -6,7 +6,7 @@
 #include "ai/behaviors/PatrolBehavior.hpp"
 #include "ai/internal/Crowd.hpp"
 #include "managers/PathfinderManager.hpp"
-#include "ai/internal/PathfindingScheduler.hpp"
+#include "ai/internal/SpatialPriority.hpp"
 #include "entities/Entity.hpp"
 #include "entities/NPC.hpp"
 #include "managers/AIManager.hpp"
