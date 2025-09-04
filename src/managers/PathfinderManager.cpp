@@ -390,14 +390,27 @@ void PathfinderManager::updateDynamicObstacles() {
     }
     
     if (shouldRebuild) {
-        m_grid->rebuildFromWorld();
+        // PERFORMANCE OPTIMIZATION: Move expensive grid rebuild to background thread
+        // This prevents blocking the main AI update loop
+        auto rebuildTask = [this]() {
+            if (m_grid) {
+                m_grid->rebuildFromWorld();
+                
+                // Clear cache since grid changed (thread-safe operation)
+                if (m_cache) {
+                    m_cache->clear();
+                }
+                
+                GAMEENGINE_INFO("Async grid rebuild completed");
+            }
+        };
+        
+        // Submit to ThreadSystem with normal priority (not blocking critical AI tasks)
+        HammerEngine::ThreadSystem::Instance().enqueueTask(rebuildTask, HammerEngine::TaskPriority::Normal);
+        
+        // Update tracking variables immediately to prevent duplicate rebuilds
         lastWorldVersion = currentWorldVersion;
         lastRebuildTime = rebuildTimer;
-        
-        // Clear cache since grid changed
-        if (m_cache) {
-            m_cache->clear();
-        }
     }
 
     // Always integrate dynamic collision data (entities moving around)
