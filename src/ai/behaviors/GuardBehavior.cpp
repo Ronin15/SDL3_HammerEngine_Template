@@ -8,7 +8,7 @@
 #include "managers/CollisionManager.hpp"
 #include "ai/internal/Crowd.hpp"
 #include "managers/PathfinderManager.hpp"
-#include "ai/internal/PathfindingScheduler.hpp"
+#include "ai/internal/SpatialPriority.hpp"  // For PathPriority enum
 #include <algorithm>
 #include <cmath>
 

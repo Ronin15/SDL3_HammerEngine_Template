@@ -1,5 +1,5 @@
 #include "SpatialPriority.hpp"
-#include "PathfindingScheduler.hpp"
+// PERFORMANCE FIX: PathfindingScheduler removed
 
 #include <algorithm>
 #include <sstream>
