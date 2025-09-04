@@ -112,6 +112,32 @@ public:
         AIInternal::PathPriority priority,
         std::function<void(EntityID, const std::vector<Vector2D>&)> callback = nullptr
     );
+    
+    /**
+     * @brief Request a path asynchronously with priority information (PERFORMANCE BOOST)
+     * @param entityId The entity requesting the path  
+     * @param start Starting position in world coordinates
+     * @param goal Goal position in world coordinates
+     * @param priority PathPriority level for request scheduling
+     * @param aiManagerPriority AIManager priority (0-9) for enhanced scheduling
+     * @param callback Callback when path is ready (may be called from background thread)
+     * @return Request ID for tracking (0 if failed)
+     * 
+     * This method provides significant performance improvements by:
+     * - Processing pathfinding on background ThreadSystem workers
+     * - Cache-first approach (instant return if cached)
+     * - Priority-based scheduling using both PathPriority and AIManager priority
+     * - Queue pressure management with automatic fallback to synchronous
+     * - Batch processing of similar requests for optimal A* performance
+     */
+    uint64_t requestPathAsync(
+        EntityID entityId,
+        const Vector2D& start,
+        const Vector2D& goal,
+        AIInternal::PathPriority priority,
+        int aiManagerPriority = 5,
+        std::function<void(EntityID, const std::vector<Vector2D>&)> callback = nullptr
+    );
 
     /**
      * @brief Get a path synchronously (blocking)

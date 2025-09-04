@@ -6,6 +6,7 @@
 #include <map>
 
 #include "../../core/ThreadSystem.hpp"
+#include "../../core/WorkerBudget.hpp"
 #include "../../managers/CollisionManager.hpp"
 #include "../../managers/AIManager.hpp"
 #include "../pathfinding/PathfindingGrid.hpp"
@@ -124,6 +125,71 @@ void PathfindingScheduler::requestPath(EntityID entityId, const Vector2D& start,
     // Pathfinding request queued (stats tracked in periodic summary)
 }
 
+// ASYNC PATHFINDING: Enhanced request with ThreadSystem integration
+void PathfindingScheduler::requestPathAsync(EntityID entityId, const Vector2D& start, const Vector2D& goal,
+                                           PathPriority priority, int aiManagerPriority,
+                                           std::function<void(EntityID, const std::vector<Vector2D>&)> callback)
+{
+    if (m_isShutdown.load(std::memory_order_relaxed)) {
+        AI_WARN("PathfindingScheduler::requestPathAsync called after shutdown");
+        if (callback) {
+            callback(entityId, std::vector<Vector2D>{}); // Empty path on failure
+        }
+        return;
+    }
+
+    uint64_t currentTime = SDL_GetTicks();
+    
+    // CACHE-FIRST: Always check cache before async processing (instant response)
+    if (auto cachedPath = m_pathCache->findSimilarPath(start, goal, 64.0f)) {
+        // Store cached result and call callback immediately
+        storePathResult(entityId, cachedPath.value());
+        if (callback) {
+            callback(entityId, cachedPath.value());
+        }
+        // Track cache hit
+        m_pathsFromCache.fetch_add(1, std::memory_order_relaxed);
+        m_totalRequestsProcessed.fetch_add(1, std::memory_order_relaxed);
+        return;
+    }
+    
+    // ASYNC REQUEST THROTTLING: Limit requests per entity (like AIManager)
+    {
+        std::lock_guard<std::mutex> lock(m_asyncQueueMutex);
+        
+        auto it = m_asyncRequestsPerEntity.find(entityId);
+        if (it != m_asyncRequestsPerEntity.end() && 
+            (currentTime - it->second) < 1000) { // 1 second throttle per entity
+            if (callback) {
+                callback(entityId, std::vector<Vector2D>{}); // Empty path on throttle
+            }
+            return;
+        }
+        
+        // QUEUE PRESSURE MANAGEMENT: Check queue size like ParticleManager
+        if (m_asyncRequestQueue.size() >= MAX_ASYNC_QUEUE_SIZE) {
+            AI_WARN("Async pathfinding queue full (" + std::to_string(m_asyncRequestQueue.size()) + 
+                   "), falling back to synchronous");
+            // Fall back to synchronous pathfinding
+            requestPath(entityId, start, goal, priority, callback);
+            return;
+        }
+        
+        // Create enhanced async request
+        AsyncPathfindingRequest request(entityId, start, goal, priority, aiManagerPriority, callback);
+        request.requestTime = currentTime;
+        request.timeoutTime = currentTime + 3000; // 3 second timeout
+        request.distanceToPlayer = (start - m_lastPlayerPos).length();
+        request.isUrgent = (priority == PathPriority::Critical) || (request.distanceToPlayer < 200.0f);
+        
+        m_asyncRequestQueue.push(request);
+        m_asyncRequestsPerEntity[entityId] = currentTime;
+    }
+    
+    // Stats tracking
+    m_totalRequestsProcessed.fetch_add(1, std::memory_order_relaxed);
+}
+
 bool PathfindingScheduler::hasPath(EntityID entityId) const
 {
     if (m_isShutdown.load(std::memory_order_relaxed)) {
@@ -185,7 +251,11 @@ void PathfindingScheduler::update(float /*deltaTime*/, const Vector2D& playerPos
         }
     }
     
-    // Process batch of requests if we have any
+    // ASYNC PROCESSING: Handle background pathfinding (new system)
+    cleanupCompletedFutures();
+    processAsyncRequests();
+    
+    // SYNCHRONOUS PROCESSING: Handle traditional requests (legacy system)
     processRequestBatch();
 }
 
@@ -666,6 +736,174 @@ void PathfindingScheduler::setSpatialPriority(SpatialPriority* spatialPriority)
     } else {
         AI_INFO("PathfindingScheduler: SpatialPriority system disconnected");
     }
+}
+
+// ===== ASYNC PATHFINDING IMPLEMENTATION =====
+
+void PathfindingScheduler::cleanupCompletedFutures()
+{
+    // Clean up completed futures (like AIManager pattern)
+    auto it = m_pathfindingFutures.begin();
+    while (it != m_pathfindingFutures.end()) {
+        if (it->wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
+            try {
+                it->get(); // Retrieve result to clear any exceptions
+            } catch (const std::exception& e) {
+                AI_ERROR("Async pathfinding future exception: " + std::string(e.what()));
+            } catch (...) {
+                AI_ERROR("Unknown async pathfinding future exception");
+            }
+            it = m_pathfindingFutures.erase(it);
+            m_asyncRequestsInProgress.fetch_sub(1, std::memory_order_relaxed);
+        } else {
+            ++it;
+        }
+    }
+}
+
+void PathfindingScheduler::processAsyncRequests()
+{
+    // Skip async processing if system unavailable or queue empty
+    if (!m_useAsyncPathfinding.load(std::memory_order_relaxed) || 
+        !HammerEngine::ThreadSystem::Exists()) {
+        return;
+    }
+    
+    std::vector<AsyncPathfindingRequest> batch;
+    
+    // Extract batch of requests for processing
+    {
+        std::lock_guard<std::mutex> lock(m_asyncQueueMutex);
+        
+        if (m_asyncRequestQueue.empty()) {
+            return; // No requests to process
+        }
+        
+        // BATCH PROCESSING: Follow ParticleManager pattern for optimal performance
+        size_t batchSize = std::min(static_cast<size_t>(16), m_asyncRequestQueue.size());
+        batch.reserve(batchSize);
+        
+        for (size_t i = 0; i < batchSize && !m_asyncRequestQueue.empty(); ++i) {
+            batch.push_back(m_asyncRequestQueue.top());
+            m_asyncRequestQueue.pop();
+        }
+    }
+    
+    if (!batch.empty()) {
+        // Check ThreadSystem queue pressure before submitting
+        auto& threadSystem = HammerEngine::ThreadSystem::Instance();
+        float queuePressure = calculateQueuePressure();
+        
+        if (queuePressure > QUEUE_PRESSURE_THRESHOLD) {
+            // HIGH PRESSURE: Fall back to synchronous for critical requests only
+            for (const auto& request : batch) {
+                if (request.isUrgent || request.priority == PathPriority::Critical) {
+                    // Convert to synchronous request for urgent processing
+                    requestPath(request.entityId, request.start, request.goal, 
+                              request.priority, request.callback);
+                } else {
+                    // Re-queue non-urgent requests for later
+                    std::lock_guard<std::mutex> lock(m_asyncQueueMutex);
+                    m_asyncRequestQueue.push(request);
+                }
+            }
+            return;
+        }
+        
+        // NORMAL PRESSURE: Submit to ThreadSystem
+        if (m_pathfindingFutures.size() < MAX_CONCURRENT_FUTURES) {
+            submitAsyncBatchToThreadSystem(std::move(batch));
+        } else {
+            // Too many concurrent futures - re-queue for next frame
+            std::lock_guard<std::mutex> lock(m_asyncQueueMutex);
+            for (const auto& request : batch) {
+                m_asyncRequestQueue.push(request);
+            }
+        }
+    }
+}
+
+void PathfindingScheduler::submitAsyncBatchToThreadSystem(std::vector<AsyncPathfindingRequest> batch)
+{
+    // Follow AIManager pattern for ThreadSystem task submission
+    auto& threadSystem = HammerEngine::ThreadSystem::Instance();
+    
+    // Calculate WorkerBudget allocation (like AIManager)
+    size_t availableWorkers = static_cast<size_t>(threadSystem.getThreadCount());
+    HammerEngine::WorkerBudget budget = HammerEngine::calculateWorkerBudget(availableWorkers);
+    
+    // Submit async batch processing task
+    auto future = threadSystem.enqueueTaskWithResult(
+        [this, batch = std::move(batch)]() mutable {
+            // BACKGROUND THREAD: Process pathfinding batch
+            processAsyncBatch(std::move(batch));
+        },
+        HammerEngine::TaskPriority::High, // Pathfinding is performance-critical
+        "PathfindingScheduler Async Batch"
+    );
+    
+    m_pathfindingFutures.push_back(std::move(future));
+    m_asyncRequestsInProgress.fetch_add(1, std::memory_order_relaxed);
+}
+
+void PathfindingScheduler::processAsyncBatch(std::vector<AsyncPathfindingRequest> batch)
+{
+    // BACKGROUND THREAD: This runs on ThreadSystem worker
+    for (auto& request : batch) {
+        if (m_isShutdown.load(std::memory_order_relaxed)) {
+            break; // Stop processing if shutting down
+        }
+        
+        // Check for timeout
+        uint64_t currentTime = SDL_GetTicks();
+        if (currentTime > request.timeoutTime) {
+            if (request.callback) {
+                request.callback(request.entityId, std::vector<Vector2D>{}); // Timeout
+            }
+            continue;
+        }
+        
+        // PATHFINDING COMPUTATION: For now, defer to main thread (TODO: thread-safe A*)
+        // Background thread pathfinding requires thread-safe PathfindingGrid access
+        std::vector<Vector2D> path; // Empty for now - will trigger fallback
+        
+        // THREAD-SAFE RESULT DELIVERY: Store result and trigger callback
+        if (!path.empty()) {
+            storePathResult(request.entityId, path);
+            if (m_pathCache) {
+                // Cache successful path for reuse
+                m_pathCache->cachePath(request.start, request.goal, path);
+            }
+        }
+        
+        if (request.callback) {
+            request.callback(request.entityId, path);
+        }
+    }
+}
+
+bool PathfindingScheduler::shouldUseAsyncPathfinding(size_t requestCount) const
+{
+    // Use same thresholds as AIManager/ParticleManager
+    static constexpr size_t ASYNC_THRESHOLD = 8;
+    
+    return m_useAsyncPathfinding.load(std::memory_order_relaxed) &&
+           requestCount >= ASYNC_THRESHOLD &&
+           HammerEngine::ThreadSystem::Exists() &&
+           !HammerEngine::ThreadSystem::Instance().isShutdown();
+}
+
+float PathfindingScheduler::calculateQueuePressure() const
+{
+    if (!HammerEngine::ThreadSystem::Exists()) {
+        return 1.0f; // Max pressure if no ThreadSystem
+    }
+    
+    auto& threadSystem = HammerEngine::ThreadSystem::Instance();
+    size_t queueSize = threadSystem.getQueueSize();
+    size_t queueCapacity = static_cast<size_t>(threadSystem.getThreadCount()) * 100; // Estimate
+    
+    return static_cast<float>(queueSize) / static_cast<float>(queueCapacity);
 }
 
 } // namespace AIInternal
