@@ -218,7 +218,7 @@ public:
      */
     bool followPathStep(EntityPtr entity, const Vector2D& currentPos,
                        std::vector<Vector2D>& path, size_t& pathIndex,
-                       float speed, float nodeRadius = 32.0f) const;
+                       float speed, float nodeRadius = 64.0f) const;
 
     // ===== Statistics =====
 
@@ -234,6 +234,10 @@ public:
         uint32_t pendingRequests{0};
         uint32_t activeThreads{0};
         float cacheHitRate{0.0f};
+        
+        // Hierarchical pathfinding statistics
+        uint64_t hierarchicalRequests{0}; // Long-distance paths using coarse-to-fine
+        uint64_t directRequests{0};       // Short-distance paths using direct pathfinding
     };
 
     /**
@@ -275,7 +279,7 @@ private:
     float m_cacheExpirationTime{5.0f};
     bool m_allowDiagonal{true};
     int m_maxIterations{50000};
-    float m_cellSize{32.0f};
+    float m_cellSize{64.0f}; // Optimized for 4x fewer pathfinding nodes
 
     // State management
     std::atomic<bool> m_initialized{false};
