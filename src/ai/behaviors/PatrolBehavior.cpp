@@ -116,11 +116,44 @@ void PatrolBehavior::executeLogic(EntityPtr entity) {
     // If still in cooldown, continue toward current waypoint without advancing
   }
 
-  // State: PATHFINDING - Refresh path if needed and not in backoff
-  if (now >= m_backoffUntil) {
-    // PATHFINDING CONSOLIDATION: All requests now use PathfinderManager
+  // CACHE-AWARE PATROL: Smart pathfinding with cooldown system
+  bool needsNewPath = false;
+  
+  // Only request new path if:
+  // 1. No current path exists, OR
+  // 2. Path is completed, OR
+  // 3. Path is stale (>5 seconds), OR
+  // 4. We changed waypoints
+  if (m_navPath.empty() || m_navIndex >= m_navPath.size()) {
+    needsNewPath = true;
+  } else if (now - m_lastPathUpdate > 5000) { // Path older than 5 seconds
+    needsNewPath = true;  
+  } else {
+    // Check if we're targeting a different waypoint than when path was computed
+    if (!m_navPath.empty()) {
+      Vector2D pathGoal = m_navPath.back();
+      float waypointChange = (targetWaypoint - pathGoal).length();
+      needsNewPath = (waypointChange > 50.0f); // Waypoint changed significantly
+    }
+  }
+  
+  // Add cooldown system (was missing in PatrolBehavior!)
+  static uint64_t lastPatrolRequest = 0;
+  constexpr uint64_t PATROL_COOLDOWN = 1500; // 1.5 second cooldown
+  
+  if (needsNewPath && now >= m_backoffUntil && (now - lastPatrolRequest) >= PATROL_COOLDOWN) {
+    // GOAL VALIDATION: Don't request path if already at waypoint
+    float distanceToWaypoint = (targetWaypoint - position).length();
+    if (distanceToWaypoint < m_waypointRadius) { // Already at waypoint
+      return; // Skip pathfinding request
+    }
+    
+    // PATHFINDING CONSOLIDATION: All requests now use PathfinderManager  
+    Vector2D clampedStart = PathfinderManager::Instance().clampToWorldBounds(position, 100.0f);
+    Vector2D clampedGoal = PathfinderManager::Instance().clampToWorldBounds(targetWaypoint, 100.0f);
+    
     PathfinderManager::Instance().requestPath(
-        entity->getID(), PathfinderManager::Instance().clampToWorldBounds(position, 100.0f), targetWaypoint,
+        entity->getID(), clampedStart, clampedGoal,
         AIInternal::PathPriority::Normal,
         [this, entity](EntityID, const std::vector<Vector2D>& path) {
           if (!path.empty()) {
@@ -129,6 +162,7 @@ void PatrolBehavior::executeLogic(EntityPtr entity) {
             m_lastPathUpdate = SDL_GetTicks();
           }
         });
+    lastPatrolRequest = now;
   }
 
   // State: FOLLOWING_PATH or DIRECT_MOVEMENT

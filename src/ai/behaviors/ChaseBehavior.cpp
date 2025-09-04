@@ -88,10 +88,45 @@ void ChaseBehavior::executeLogic(EntityPtr entity) {
 
     // State: APPROACHING_TARGET - Move toward target if not too close
     if (distanceSquared > minRangeSquared) {
-      // Refresh pathfinding with chase-specific policy
-      if (m_cooldowns.canRequestPath(now)) {
-        // Direct chase - always target the player position for aggressive pursuit
+      // CACHE-AWARE CHASE: Smart pathfinding with target tracking
+      bool needsNewPath = false;
+      
+      // Only request new path if:
+      // 1. No current path exists, OR
+      // 2. Target moved significantly (>100px), OR  
+      // 3. Path is getting stale (>3 seconds old)
+      if (m_navPath.empty() || m_navIndex >= m_navPath.size()) {
+        needsNewPath = true;
+      } else if (now - m_lastPathUpdate > 3000) { // Path older than 3 seconds
+        needsNewPath = true;
+      } else {
+        // Check if target moved significantly from when path was computed
+        Vector2D pathGoal = m_navPath.back();
+        float targetMovement = (targetPos - pathGoal).length();
+        needsNewPath = (targetMovement > 100.0f); // Target moved >100px
+      }
+      
+      if (needsNewPath && m_cooldowns.canRequestPath(now)) {
+        // GOAL VALIDATION: Don't pathfind if already very close to target
+        float distanceToTarget = std::sqrt(distanceSquared);
+        if (distanceToTarget < (m_minRange * 1.5f)) { // Already close enough
+          return; // Skip pathfinding request
+        }
+        
+        // SMART CHASE: Predict target movement for more accurate paths
         Vector2D goalPosition = targetPos;
+        
+        // Simple target prediction based on velocity (if available)
+        if (auto targetEntity = target) {
+          Vector2D targetVel = targetEntity->getVelocity();
+          float predictionTime = 0.5f; // Predict 0.5 seconds ahead
+          if (targetVel.length() > 10.0f) { // Only predict if target is moving
+            goalPosition = targetPos + targetVel * predictionTime;
+            
+            // Validate predicted position is within reasonable bounds
+            goalPosition = PathfinderManager::Instance().clampToWorldBounds(goalPosition, 100.0f);
+          }
+        }
 
         // Use PathfinderManager for all pathfinding requests
         auto& pathfinder = PathfinderManager::Instance();
@@ -103,7 +138,7 @@ void ChaseBehavior::executeLogic(EntityPtr entity) {
                                m_navIndex = 0;
                                m_lastPathUpdate = SDL_GetTicks();
                              });
-        m_cooldowns.applyPathCooldown(now, 600);
+        m_cooldowns.applyPathCooldown(now, 1200); // Increased cooldown from 600ms to 1.2s
       }
 
       // State: PATH_FOLLOWING or DIRECT_MOVEMENT with dynamic spacing
