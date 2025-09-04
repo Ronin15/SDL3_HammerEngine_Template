@@ -873,7 +873,7 @@ void AttackBehavior::moveToPosition(EntityPtr entity, const Vector2D &targetPos,
   
   Uint64 now = SDL_GetTicks();
 
-  // Refresh path if empty, expired, or no progress toward current node
+  // Refresh path if empty, expired, goal changed, or no progress toward current node
   const Uint64 pathTTL = 1500;         // ms
   const Uint64 noProgressWindow = 300; // ms
   bool needRefresh = state.pathPoints.empty() ||
@@ -891,6 +891,14 @@ void AttackBehavior::moveToPosition(EntityPtr entity, const Vector2D &targetPos,
     }
   }
   if (now - state.lastPathUpdate > pathTTL) needRefresh = true;
+
+  // Only refresh if goal changed significantly
+  if (!needRefresh && !state.pathPoints.empty()) {
+    const float GOAL_CHANGE_THRESH = 64.0f;
+    Vector2D lastGoal = state.pathPoints.back();
+    float goalDelta = (clampedTarget - lastGoal).length();
+    if (goalDelta > GOAL_CHANGE_THRESH) needRefresh = true;
+  }
 
   if (needRefresh && SDL_GetTicks() >= state.backoffUntil) {
     // PATHFINDING CONSOLIDATION: All requests now use PathfinderManager

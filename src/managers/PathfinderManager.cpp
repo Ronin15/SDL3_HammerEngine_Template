@@ -135,6 +135,24 @@ bool PathfinderManager::isShutdown() const {
     return m_isShutdown;
 }
 
+// Quantize start/goal by 'quant' and mix via FNV-1a style
+uint64_t PathfinderManager::computeKey(const Vector2D& start, const Vector2D& goal, float quant) const {
+    const float q = (quant > 0.0f) ? quant : 64.0f;
+    auto qcoord = [q](float v) -> uint32_t {
+        return static_cast<uint32_t>(std::floor(v / q + 0.5f));
+    };
+    uint32_t sx = qcoord(start.getX());
+    uint32_t sy = qcoord(start.getY());
+    uint32_t gx = qcoord(goal.getX());
+    uint32_t gy = qcoord(goal.getY());
+    uint64_t h = 14695981039346656037ULL;
+    h ^= sx; h *= 1099511628211ULL;
+    h ^= sy; h *= 1099511628211ULL;
+    h ^= gx; h *= 1099511628211ULL;
+    h ^= gy; h *= 1099511628211ULL;
+    return h;
+}
+
 
 // ASYNC PATHFINDING: Direct ThreadSystem submission for true async processing  
 uint64_t PathfinderManager::requestPathAsync(
@@ -158,15 +176,57 @@ uint64_t PathfinderManager::requestPathAsync(
         return m_nextRequestId.fetch_add(1);
     }
 
+    // Pre-check cache and negative cache to avoid scheduling work when possible
+    const float dist2 = (goal - start).dot(goal - start);
+    const float tol = (dist2 > (512.0f * 512.0f)) ? 128.0f : 64.0f;
+    if (m_cache) {
+        if (auto cached = m_cache->findSimilarPath(start, goal, tol)) {
+            if (callback) callback(entityId, *cached);
+            {
+                std::lock_guard<std::mutex> lock(m_statsMutex);
+                m_stats.totalRequests++;
+                m_stats.completedRequests++;
+                m_stats.cacheHits++;
+            }
+            return m_nextRequestId.fetch_add(1);
+        }
+        if (m_cache->hasNegativeCached(start, goal, tol)) {
+            if (callback) callback(entityId, {});
+            {
+                std::lock_guard<std::mutex> lock(m_statsMutex);
+                m_stats.totalRequests++;
+                m_stats.cacheHits++;
+            }
+            return m_nextRequestId.fetch_add(1);
+        }
+    }
+
+    // In-flight deduplication: coalesce identical requests
+    const uint64_t key = computeKey(start, goal, tol);
+    {
+        std::lock_guard<std::mutex> inflightLock(m_inflightMutex);
+        auto it = m_inflight.find(key);
+        if (it != m_inflight.end()) {
+            if (callback) it->second.emplace_back(entityId, callback);
+            {
+                std::lock_guard<std::mutex> lock(m_statsMutex);
+                m_stats.totalRequests++;
+            }
+            return m_nextRequestId.fetch_add(1);
+        } else {
+            // Create entry and proceed to schedule a single task
+            if (callback) m_inflight[key].emplace_back(entityId, callback);
+            else m_inflight[key]; // ensure presence
+        }
+    }
+
     // TRUE ASYNC: Submit directly to ThreadSystem without queueing
     if (m_grid) {
         // TRUE ASYNC: Submit directly to ThreadSystem  
-        auto work = [this, entityId, start, goal, callback]() {
+        auto work = [this, entityId, start, goal, tol, key, dist2]() {
             // FIXED: Check cache first, even in async pathfinding
             std::vector<Vector2D> path;
             bool cacheHit = false;
-            const float dist2 = (goal - start).dot(goal - start);
-            const float tol = (dist2 > (512.0f * 512.0f)) ? 128.0f : 64.0f;
             
             // Check cache first
             if (m_cache) {
@@ -188,8 +248,18 @@ uint64_t PathfinderManager::requestPathAsync(
                 // Negative cache check to avoid repeated expensive searches
                 if (m_cache && m_cache->hasNegativeCached(start, goal, tol)) {
                     // Immediately respond with empty path (negative cache hit)
-                    if (callback) {
-                        callback(entityId, path);
+                    // fan-out to inflight callbacks
+                    std::vector<std::pair<EntityID, PathCallback>> callbacks;
+                    {
+                        std::lock_guard<std::mutex> inflightLock(m_inflightMutex);
+                        auto it = m_inflight.find(key);
+                        if (it != m_inflight.end()) {
+                            callbacks.swap(it->second);
+                            m_inflight.erase(it);
+                        }
+                    }
+                    for (auto &cb : callbacks) {
+                        if (cb.second) cb.second(cb.first, path);
                     }
                     return;
                 }
@@ -234,9 +304,18 @@ uint64_t PathfinderManager::requestPathAsync(
                 }
             }
             
-            // Execute callback with result
-            if (callback) {
-                callback(entityId, path);
+            // Fan-out to all coalesced callbacks
+            std::vector<std::pair<EntityID, PathCallback>> callbacks;
+            {
+                std::lock_guard<std::mutex> inflightLock(m_inflightMutex);
+                auto it = m_inflight.find(key);
+                if (it != m_inflight.end()) {
+                    callbacks.swap(it->second);
+                    m_inflight.erase(it);
+                }
+            }
+            for (auto &cb : callbacks) {
+                if (cb.second) cb.second(cb.first, path);
             }
         };
         
