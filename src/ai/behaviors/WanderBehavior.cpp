@@ -193,10 +193,11 @@ void WanderBehavior::executeLogic(EntityPtr entity) {
       }
       
       if (goalChanged) {
-        // PATHFINDING CONSOLIDATION: All wander requests now use PathfinderManager  
-        PathfinderManager::Instance().requestPath(
+        // ASYNC PATHFINDING: Use background processing for wandering behavior
+        PathfinderManager::Instance().requestPathAsync(
             entity->getID(), entity->getPosition(), dest,
             AIInternal::PathPriority::Normal,
+            3, // Medium AIManager priority for wander behavior
             [this, entity](EntityID, const std::vector<Vector2D>& path) {
               auto stateIt = m_entityStates.find(entity);
               if (stateIt != m_entityStates.end() && !path.empty()) {

@@ -199,6 +199,35 @@ uint64_t PathfinderManager::requestPath(
     return 0;
 }
 
+// ASYNC PATHFINDING: High-performance background processing
+uint64_t PathfinderManager::requestPathAsync(
+    EntityID entityId,
+    const Vector2D& start,
+    const Vector2D& goal,
+    AIInternal::PathPriority priority,
+    int aiManagerPriority,
+    std::function<void(EntityID, const std::vector<Vector2D>&)> callback
+) {
+    if (!m_initialized.load() || m_isShutdown) {
+        return 0;
+    }
+
+    // ASYNC PROCESSING: Use enhanced scheduler with ThreadSystem integration
+    if (m_scheduler) {
+        m_scheduler->requestPathAsync(entityId, start, goal, priority, aiManagerPriority, callback);
+        
+        // Update stats only
+        {
+            std::lock_guard<std::mutex> lock(m_statsMutex);
+            m_stats.totalRequests++;
+        }
+        
+        return m_nextRequestId.fetch_add(1);
+    }
+
+    return 0;
+}
+
 HammerEngine::PathfindingResult PathfinderManager::findPathImmediate(
     const Vector2D& start,
     const Vector2D& goal,
