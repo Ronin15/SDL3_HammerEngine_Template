@@ -152,9 +152,9 @@ void PatrolBehavior::executeLogic(EntityPtr entity) {
     Vector2D clampedStart = PathfinderManager::Instance().clampToWorldBounds(position, 100.0f);
     Vector2D clampedGoal = PathfinderManager::Instance().clampToWorldBounds(targetWaypoint, 100.0f);
     
-    PathfinderManager::Instance().requestPath(
+    PathfinderManager::Instance().requestPathAsync(
         entity->getID(), clampedStart, clampedGoal,
-        AIInternal::PathPriority::Normal,
+        AIInternal::PathPriority::Normal, 5, // Mid priority for patrol
         [this, entity](EntityID, const std::vector<Vector2D>& path) {
           if (!path.empty()) {
             m_navPath = path;
@@ -211,9 +211,9 @@ void PatrolBehavior::executeLogic(EntityPtr entity) {
           float side = ((entity->getID() & 1) ? 1.0f : -1.0f);
           Vector2D sidestep = PathfinderManager::Instance().clampToWorldBounds(
               position + perp * (96.0f * side), 100.0f);
-          PathfinderManager::Instance().requestPath(
+          PathfinderManager::Instance().requestPathAsync(
               entity->getID(), PathfinderManager::Instance().clampToWorldBounds(position, 100.0f), sidestep,
-              AIInternal::PathPriority::Normal,
+              AIInternal::PathPriority::Normal, 5, // Mid priority for patrol avoidance
               [this](EntityID, const std::vector<Vector2D> &path) {
                 if (!path.empty()) {
                   m_navPath = path;

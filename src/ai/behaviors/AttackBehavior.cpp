@@ -894,8 +894,8 @@ void AttackBehavior::moveToPosition(EntityPtr entity, const Vector2D &targetPos,
 
   if (needRefresh && SDL_GetTicks() >= state.backoffUntil) {
     // PATHFINDING CONSOLIDATION: All requests now use PathfinderManager
-    PathfinderManager::Instance().requestPath(
-        entity->getID(), currentPos, clampedTarget, AIInternal::PathPriority::Critical,
+    PathfinderManager::Instance().requestPathAsync(
+        entity->getID(), currentPos, clampedTarget, AIInternal::PathPriority::Critical, 9, // Highest priority for attack
         [this, entity](EntityID, const std::vector<Vector2D>& path) {
           if (!path.empty()) {
             // Find the behavior state for this entity
