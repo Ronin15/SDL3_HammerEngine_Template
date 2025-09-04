@@ -284,6 +284,9 @@ bool WorldManager::updateTile(int x, int y, const HammerEngine::Tile& newTile) {
 }
 
 void WorldManager::fireTileChangedEvent(int x, int y, const HammerEngine::Tile& tile) {
+    // Increment world version for change tracking by other systems (PathfinderManager, etc.)
+    m_worldVersion.fetch_add(1, std::memory_order_release);
+    
     try {
         // Use tile information to determine change type based on tile properties
         std::string changeType = "tile_modified";
@@ -306,6 +309,9 @@ void WorldManager::fireTileChangedEvent(int x, int y, const HammerEngine::Tile& 
 }
 
 void WorldManager::fireWorldLoadedEvent(const std::string& worldId) {
+    // Increment world version when world is loaded (major change for other systems)
+    m_worldVersion.fetch_add(1, std::memory_order_release);
+    
     try {
         // Get world dimensions
         int width, height;

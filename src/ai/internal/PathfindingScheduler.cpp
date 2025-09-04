@@ -791,7 +791,6 @@ void PathfindingScheduler::processAsyncRequests()
     
     if (!batch.empty()) {
         // Check ThreadSystem queue pressure before submitting
-        auto& threadSystem = HammerEngine::ThreadSystem::Instance();
         float queuePressure = calculateQueuePressure();
         
         if (queuePressure > QUEUE_PRESSURE_THRESHOLD) {
@@ -828,9 +827,28 @@ void PathfindingScheduler::submitAsyncBatchToThreadSystem(std::vector<AsyncPathf
     // Follow AIManager pattern for ThreadSystem task submission
     auto& threadSystem = HammerEngine::ThreadSystem::Instance();
     
-    // Calculate WorkerBudget allocation (like AIManager)
+    // Calculate WorkerBudget allocation for pathfinding (following AIManager pattern)
     size_t availableWorkers = static_cast<size_t>(threadSystem.getThreadCount());
     HammerEngine::WorkerBudget budget = HammerEngine::calculateWorkerBudget(availableWorkers);
+    
+    // PathfindingScheduler uses remaining/buffer capacity since it's not a primary subsystem
+    // like AI, Particles, or Events - it supplements AI system with async pathfinding
+    size_t pathfindingWorkers = budget.getOptimalWorkerCount(
+        budget.remaining > 0 ? 1 : 0,  // Base allocation: use 1 worker from buffer if available
+        batch.size(),                   // Workload size: number of path requests
+        16                             // Threshold: use buffer for batches > 16 requests
+    );
+    
+    // Only proceed with async processing if we have worker capacity
+    if (pathfindingWorkers == 0) {
+        // No worker capacity - fall back to synchronous processing
+        for (const auto& request : batch) {
+            // Convert async request back to synchronous processing
+            requestPath(request.entityId, request.start, request.goal, 
+                       request.priority, request.callback);
+        }
+        return;
+    }
     
     // Submit async batch processing task
     auto future = threadSystem.enqueueTaskWithResult(

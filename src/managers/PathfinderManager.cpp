@@ -158,7 +158,7 @@ uint64_t PathfinderManager::requestPathAsync(
     EntityID entityId,
     const Vector2D& start,
     const Vector2D& goal,
-    AIInternal::PathPriority priority,
+    AIInternal::PathPriority /* priority */,
     int aiManagerPriority,
     std::function<void(EntityID, const std::vector<Vector2D>&)> callback
 ) {
@@ -259,7 +259,7 @@ HammerEngine::PathfindingResult PathfinderManager::findPathImmediate(
     return result;
 }
 
-void PathfinderManager::cancelRequest(uint64_t requestId) {
+void PathfinderManager::cancelRequest(uint64_t /* requestId */) {
     // Cancellation is now handled by PathfindingScheduler
     // This method is kept for interface compatibility
     
@@ -269,7 +269,7 @@ void PathfinderManager::cancelRequest(uint64_t requestId) {
     }
 }
 
-void PathfinderManager::cancelEntityRequests(EntityID entityId) {
+void PathfinderManager::cancelEntityRequests(EntityID /* entityId */) {
     // Cancellation is now handled by PathfindingScheduler
     // This method is kept for interface compatibility
     
@@ -308,7 +308,7 @@ void PathfinderManager::updateDynamicObstacles() {
     
     // Check if world has changed by getting version from WorldManager
     auto& worldManager = WorldManager::Instance();
-    uint64_t currentWorldVersion = 0; // Default if no version available
+    uint64_t currentWorldVersion = worldManager.getWorldVersion();
     
     // Only rebuild if:
     // 1. World version changed (world actually modified), OR
