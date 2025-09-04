@@ -373,8 +373,9 @@ void PathCache::updatePathUsage(uint64_t pathKey, CachedPath& path)
     path.lastUsedTime = SDL_GetTicks();
     path.useCount++;
     
-    // Move to end of LRU queue (mark as recently used)
-    m_lruQueue.push(pathKey);
+    // CRITICAL FIX: Don't keep adding to LRU queue - it causes unbounded growth
+    // The LRU queue should only track insertion order, not every access
+    // Usage frequency is tracked by useCount and lastUsedTime
 }
 
 } // namespace AIInternal

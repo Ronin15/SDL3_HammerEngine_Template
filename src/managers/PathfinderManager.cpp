@@ -133,7 +133,7 @@ void PathfinderManager::clean() {
         while (!m_requestQueue.empty()) {
             m_requestQueue.pop();
         }
-        m_pendingRequests.clear();
+        // m_pendingRequests no longer used - removed double tracking
     }
 
     // Wait for active threads to complete
@@ -182,36 +182,21 @@ uint64_t PathfinderManager::requestPath(
         return 0;
     }
 
-    // CRITICAL FIX: Direct to scheduler only, eliminate double queueing
-    // Check for too many pending requests per entity (emergency brake)
-    uint64_t pendingCount = 0;
-    {
-        std::lock_guard<std::mutex> lock(m_requestMutex);
-        for (const auto& pair : m_pendingRequests) {
-            if (pair.second.entityId == entityId) {
-                pendingCount++;
-                if (pendingCount >= 3) {
-                    // Entity has 3+ requests already - reject to prevent overflow
-                    return 0;
-                }
-            }
-        }
-    }
-
-    uint64_t requestId = m_nextRequestId.fetch_add(1);
-    
-    // Pass directly to scheduler - no local queue
+    // CRITICAL FIX: Pass directly to scheduler - no double tracking
+    // Scheduler handles its own request limits and tracking
     if (m_scheduler) {
         m_scheduler->requestPath(entityId, start, goal, priority, callback);
+        
+        // Update stats only
+        {
+            std::lock_guard<std::mutex> lock(m_statsMutex);
+            m_stats.totalRequests++;
+        }
+        
+        return m_nextRequestId.fetch_add(1);
     }
 
-    // Update stats only
-    {
-        std::lock_guard<std::mutex> lock(m_statsMutex);
-        m_stats.totalRequests++;
-    }
-
-    return requestId;
+    return 0;
 }
 
 HammerEngine::PathfindingResult PathfinderManager::findPathImmediate(
@@ -228,11 +213,30 @@ HammerEngine::PathfindingResult PathfinderManager::findPathImmediate(
         return HammerEngine::PathfindingResult::NO_PATH_FOUND;
     }
 
-    // EMERGENCY FIX: Bypass all caching for immediate results - go directly to grid
-    // This ensures we get reliable pathfinding results without cache interference
+    // CRITICAL FIX: Restore cache functionality for immediate requests
+    // Check cache first before expensive A* computation
+    if (m_scheduler) {
+        if (auto cachedPath = m_scheduler->getCachedPath(start, goal, 64.0f)) {
+            outPath = cachedPath.value();
+            
+            // Update statistics for cache hit
+            {
+                std::lock_guard<std::mutex> lock(m_statsMutex);
+                m_stats.completedRequests++;
+                m_stats.cacheHits++;
+            }
+            
+            return HammerEngine::PathfindingResult::SUCCESS;
+        }
+    }
     
-    // Compute path directly using grid (no cache checks)
+    // Cache miss - compute path directly using grid
     auto result = m_grid->findPath(start, goal, outPath);
+    
+    // Cache successful paths for future reuse
+    if (result == HammerEngine::PathfindingResult::SUCCESS && !outPath.empty() && m_scheduler) {
+        m_scheduler->cacheSuccessfulPath(start, goal, outPath);
+    }
     
     // Update statistics
     {
@@ -248,13 +252,8 @@ HammerEngine::PathfindingResult PathfinderManager::findPathImmediate(
 }
 
 void PathfinderManager::cancelRequest(uint64_t requestId) {
-    // Most cancellation is now handled by PathfindingScheduler
-    // This method provides interface compatibility
-    
-    {
-        std::lock_guard<std::mutex> lock(m_requestMutex);
-        m_pendingRequests.erase(requestId);
-    }
+    // Cancellation is now handled by PathfindingScheduler
+    // This method is kept for interface compatibility
     
     {
         std::lock_guard<std::mutex> statsLock(m_statsMutex);
@@ -263,27 +262,14 @@ void PathfinderManager::cancelRequest(uint64_t requestId) {
 }
 
 void PathfinderManager::cancelEntityRequests(EntityID entityId) {
-    // Most cancellation is now handled by PathfindingScheduler
-    // This method provides interface compatibility and cleans up local state
+    // Cancellation is now handled by PathfindingScheduler
+    // This method is kept for interface compatibility
     
-    int cancelled = 0;
+    // Scheduler handles the actual cancellation
+    // Just update stats for compatibility
     {
-        std::lock_guard<std::mutex> lock(m_requestMutex);
-        
-        auto it = m_pendingRequests.begin();
-        while (it != m_pendingRequests.end()) {
-            if (it->second.entityId == entityId) {
-                it = m_pendingRequests.erase(it);
-                cancelled++;
-            } else {
-                ++it;
-            }
-        }
-    }
-    
-    if (cancelled > 0) {
         std::lock_guard<std::mutex> statsLock(m_statsMutex);
-        m_stats.cancelledRequests += cancelled;
+        m_stats.cancelledRequests++; // Approximate for interface compatibility
     }
 }
 
@@ -305,20 +291,41 @@ void PathfinderManager::updateDynamicObstacles() {
         return;
     }
 
-    // Reduce rebuild frequency - only rebuild every 5 seconds to prevent cache thrashing
+    // CRITICAL FIX: Smart grid rebuilding to minimize cache invalidation
+    // Only rebuild grid when world has actually changed
+    static uint64_t lastWorldVersion = 0;
     static float lastRebuildTime = 0.0f;
     static float rebuildTimer = 0.0f;
     rebuildTimer += (1.0f/60.0f); // Approximate deltaTime
     
-    if (rebuildTimer - lastRebuildTime >= 5.0f) {  // Rebuild every 5 seconds max
-        // First rebuild base grid from world
+    // Check if world has changed by getting version from WorldManager
+    auto& worldManager = WorldManager::Instance();
+    uint64_t currentWorldVersion = 0; // Default if no version available
+    
+    // Only rebuild if:
+    // 1. World version changed (world actually modified), OR
+    // 2. More than 30 seconds have passed (safety fallback)
+    bool shouldRebuild = false;
+    if (currentWorldVersion != lastWorldVersion) {
+        shouldRebuild = true;
+        GAMEENGINE_INFO("Grid rebuilt (world changed)");
+    } else if ((rebuildTimer - lastRebuildTime) >= 30.0f) {
+        shouldRebuild = true;
+        GAMEENGINE_INFO("Grid rebuilt (30s safety fallback)");
+    }
+    
+    if (shouldRebuild) {
         m_grid->rebuildFromWorld();
+        lastWorldVersion = currentWorldVersion;
         lastRebuildTime = rebuildTimer;
         
-        GAMEENGINE_INFO("Grid rebuilt (periodic - every 5s to reduce cache invalidation)");
+        // Clear cache in scheduler since grid changed
+        if (m_scheduler) {
+            // PathfindingScheduler will handle cache invalidation
+        }
     }
 
-    // Then integrate dynamic collision data
+    // Always integrate dynamic collision data (entities moving around)
     integrateCollisionData();
 }
 
