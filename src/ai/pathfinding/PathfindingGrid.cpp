@@ -250,9 +250,9 @@ PathfindingResult PathfindingGrid::findPath(const Vector2D& start, const Vector2
     int directDistance = std::max(dxGoal, dyGoal);
     
     // For very long distances, do a quick connectivity check (increased threshold to be less restrictive)
-    if (directDistance > 200) {
+    if (directDistance > 400) {
         // Sample a few points along the direct line to check for major barriers
-        int samples = std::min(8, directDistance / 10);
+        int samples = std::min(8, directDistance / 8);
         int blockedSamples = 0;
         
         for (int i = 1; i < samples; ++i) {
@@ -275,7 +275,8 @@ PathfindingResult PathfindingGrid::findPath(const Vector2D& start, const Vector2
         }
         
         // If more than 70% of samples are in completely blocked areas, likely unreachable (balanced threshold)
-        if (blockedSamples > (samples * 7) / 10) {
+        // Relax to 80% to avoid false negatives; prefer attempting search
+        if (blockedSamples > (samples * 8) / 10) {
             m_stats.totalRequests++;
             m_stats.invalidGoals++;
             PATHFIND_DEBUG("Goal rejected: appears unreachable based on connectivity test");
@@ -284,8 +285,9 @@ PathfindingResult PathfindingGrid::findPath(const Vector2D& start, const Vector2
     }
     // Nudge start/goal if blocked (common after collision resolution)
     int nsx = sx, nsy = sy, ngx = gx, ngy = gy;
-    bool startOk = !isBlocked(sx, sy) || findNearestOpen(sx, sy, 10, nsx, nsy);
-    bool goalOk  = !isBlocked(gx, gy) || findNearestOpen(gx, gy, 14, ngx, ngy);
+    // Increase radii to reduce spurious NO_PATH_FOUND when endpoints are near blocked cells
+    bool startOk = !isBlocked(sx, sy) || findNearestOpen(sx, sy, 16, nsx, nsy);
+    bool goalOk  = !isBlocked(gx, gy) || findNearestOpen(gx, gy, 20, ngx, ngy);
     if (!startOk || !goalOk) { PATHFIND_DEBUG("findPath(): start or goal blocked"); return PathfindingResult::NO_PATH_FOUND; }
     sx = nsx; sy = nsy; gx = ngx; gy = ngy;
 
@@ -655,7 +657,11 @@ PathfindingResult PathfindingGrid::refineCoarsePath(const std::vector<Vector2D>&
             auto result = findPath(currentPoint, segmentGoal, segmentPath);
             
             if (result != PathfindingResult::SUCCESS || segmentPath.empty()) {
-                PATHFIND_WARN("Segment refinement failed, using direct line");
+                // Throttle refinement failure logging to reduce spam in dense scenes
+                static thread_local unsigned int s_refineFailLogCounter = 0;
+                if ((s_refineFailLogCounter++ % 20u) == 0u) {
+                    PATHFIND_WARN("Segment refinement failed, using direct line");
+                }
                 outPath.push_back(segmentGoal);
                 currentPoint = segmentGoal;
             }
