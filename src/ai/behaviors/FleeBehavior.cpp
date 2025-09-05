@@ -509,7 +509,6 @@ void FleeBehavior::updateStrategicRetreat(EntityPtr entity, EntityState& state) 
     if (!tryFollowPath(dest, m_fleeSpeed * speedModifier)) {
         // Fallback to direct flee when no path available
         Vector2D intended2 = state.fleeDirection * m_fleeSpeed * speedModifier;
-        Uint64 nowTicks = SDL_GetTicks();
         applyDecimatedSeparation(entity, entity->getPosition(), intended2,
                                  m_fleeSpeed * speedModifier, 26.0f, 0.25f, 4,
                                  state.lastSepTick, state.lastSepVelocity);
@@ -649,7 +648,6 @@ void FleeBehavior::updateSeekCover(EntityPtr entity, EntityState& state) {
     if (!tryFollowPath(dest, m_fleeSpeed * speedModifier)) {
         // Fallback to straight-line movement
         Vector2D intended4 = state.fleeDirection * m_fleeSpeed * speedModifier;
-        Uint64 nowTicks2 = SDL_GetTicks();
         applyDecimatedSeparation(entity, entity->getPosition(), intended4,
                                  m_fleeSpeed * speedModifier, 26.0f, 0.25f, 4,
                                  state.lastSepTick, state.lastSepVelocity);
