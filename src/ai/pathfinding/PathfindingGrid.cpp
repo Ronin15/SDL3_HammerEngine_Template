@@ -348,8 +348,9 @@ PathfindingResult PathfindingGrid::findPath(const Vector2D& start, const Vector2
 
     int iterations = 0;
     const int dirs = m_allowDiagonal ? 8 : 4;
-    const int dx8[8] = {1,-1,0,0, 1,1,-1,-1};
-    const int dy8[8] = {0,0,1,-1, 1,-1,1,-1};
+    // Static direction tables to avoid re-initialization overhead per call
+    static constexpr int dx8[8] = {1,-1,0,0, 1,1,-1,-1};
+    static constexpr int dy8[8] = {0,0,1,-1, 1,-1,1,-1};
 
     // PERFORMANCE TUNING: Tighter iteration budget to cap worst-case CPU
     int baseIters = std::max(4000, baseDistance * 40);
@@ -380,9 +381,9 @@ PathfindingResult PathfindingGrid::findPath(const Vector2D& start, const Vector2
         }
         
         NodePool::Node cur = open.top(); open.pop();
-        
-        // Verbose iteration debugging removed - spammed console output
-        int cIndex = idx(cur.x, cur.y);
+
+        // Compute and cache current node's linear index once
+        const int cIndex = idx(cur.x, cur.y);
         if (closed[cIndex]) continue;
         closed[cIndex] = 1;
         if (cur.x == gx && cur.y == gy) {
@@ -411,32 +412,37 @@ PathfindingResult PathfindingGrid::findPath(const Vector2D& start, const Vector2
             
             return PathfindingResult::SUCCESS;
         }
+        // Cache current node gScore for reuse across neighbors
+        const float gCur = gScore[static_cast<size_t>(cIndex)];
+
         for (int i = 0; i < dirs; ++i) {
-            int nx = cur.x + dx8[i];
-            int ny = cur.y + dy8[i];
+            const int nx = cur.x + dx8[i];
+            const int ny = cur.y + dy8[i];
             
             // EMERGENCY FIX: Only check bounds, no ROI restrictions
-            bool outsideBounds = (nx < 0 || nx >= W || ny < 0 || ny >= H);
+            const bool outsideBounds = (nx < 0 || nx >= W || ny < 0 || ny >= H);
             
             if (outsideBounds) continue;  // Only reject actual out-of-bounds cells
                 
-            size_t nIndex = static_cast<size_t>(idx(nx, ny));
+            // Compute neighbor's linear index relative to current node to avoid idx() calls
+            const int nIndexInt = cIndex + dx8[i] + dy8[i] * W;
+            const size_t nIndex = static_cast<size_t>(nIndexInt);
             if (closed[nIndex] || isBlocked(nx, ny)) continue;
             
             // No-corner-cutting: if moving diagonally, both orthogonal neighbors must be open
             if (m_allowDiagonal && i >= 4) {
-                int ox = cur.x + dx8[i]; int oy = cur.y;
-                int px = cur.x; int py = cur.y + dy8[i];
+                const int ox = cur.x + dx8[i]; const int oy = cur.y;
+                const int px = cur.x; const int py = cur.y + dy8[i];
                 if (isBlocked(ox, oy) || isBlocked(px, py)) continue;
             }
             
-            float step = (i < 4) ? m_costStraight : m_costDiagonal;
-            float weight = (nIndex < m_weight.size() && m_weight[nIndex] > 0.0f) ? m_weight[nIndex] : 1.0f;
-            float tentative = gScore[static_cast<size_t>(idx(cur.x, cur.y))] + step * weight;
+            const float step = (i < 4) ? m_costStraight : m_costDiagonal;
+            const float weight = (m_weight[nIndex] > 0.0f) ? m_weight[nIndex] : 1.0f;
+            const float tentative = gCur + step * weight;
             
             // Only add to queue if we found a better path
             if (tentative < gScore[nIndex]) {
-                parent[nIndex] = idx(cur.x, cur.y);
+                parent[nIndex] = cIndex;
                 gScore[nIndex] = tentative;
                 fScore[nIndex] = tentative + h(nx, ny);
                 open.push(NodePool::Node{nx, ny, fScore[nIndex]});

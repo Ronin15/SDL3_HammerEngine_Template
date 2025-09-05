@@ -12,6 +12,7 @@
 #include "core/Logger.hpp"
 #include <chrono>
 #include <algorithm>
+#include <cmath>
 
 // Static instance for singleton
 static std::unique_ptr<PathfinderManager> s_instance;
@@ -970,9 +971,10 @@ bool PathfinderManager::followPathStep(EntityPtr entity, const Vector2D& current
     
     Vector2D targetNode = path[pathIndex];
     Vector2D toNode = targetNode - currentPos;
-    float distToNode = toNode.length();
-    
-    if (distToNode <= nodeRadius) {
+    const float radius2 = nodeRadius * nodeRadius;
+    float dist2 = toNode.dot(toNode);
+
+    if (dist2 <= radius2) {
         // Reached current node, advance to next
         pathIndex++;
         if (pathIndex >= path.size()) {
@@ -984,15 +986,16 @@ bool PathfinderManager::followPathStep(EntityPtr entity, const Vector2D& current
         // Continue to next node
         targetNode = path[pathIndex];
         toNode = targetNode - currentPos;
-        distToNode = toNode.length();
+        dist2 = toNode.dot(toNode);
     }
-    
-    if (distToNode > 0.1f) {
+
+    if (dist2 > 0.01f) { // equivalent to previous 0.1f threshold squared
         // Move toward current path node
-        Vector2D direction = toNode / distToNode; // normalized
+        float invLen = 1.0f / std::sqrt(dist2);
+        Vector2D direction = toNode * invLen; // normalized
         entity->setVelocity(direction * speed);
         return true;
     }
-    
+
     return false;
 }
