@@ -56,8 +56,8 @@ public:
 
 protected:
   bool m_active{true};
-  // Shared separation decimation interval (~20 frames at 60 FPS)
-  static constexpr Uint32 kSeparationIntervalMs = 320;
+  // Shared separation decimation interval (~30 frames at 60 FPS)
+  static constexpr Uint32 kSeparationIntervalMs = 480;
 
   // Apply separation at most every kSeparationIntervalMs, reusing last velocity
   inline void applyDecimatedSeparation(EntityPtr entity,
