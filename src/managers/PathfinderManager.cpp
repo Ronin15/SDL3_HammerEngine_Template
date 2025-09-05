@@ -11,6 +11,7 @@
 #include "core/ThreadSystem.hpp"
 #include "core/Logger.hpp"
 #include <chrono>
+#include <algorithm>
 
 // Static instance for singleton
 static std::unique_ptr<PathfinderManager> s_instance;
@@ -153,6 +154,34 @@ uint64_t PathfinderManager::computeKey(const Vector2D& start, const Vector2D& go
     return h;
 }
 
+uint64_t PathfinderManager::computeCorridorKey(const Vector2D& start, const Vector2D& goal) const {
+    // Use coarse grid world size (cellSize * 4) for corridor grouping
+    float coarse = std::max(32.0f, m_cellSize * 4.0f);
+    auto qcoord = [coarse](float v) -> int64_t {
+        return static_cast<int64_t>(std::floor(v / coarse + 0.5f));
+    };
+    uint64_t sx = static_cast<uint64_t>(qcoord(start.getX()));
+    uint64_t sy = static_cast<uint64_t>(qcoord(start.getY()));
+    uint64_t gx = static_cast<uint64_t>(qcoord(goal.getX()));
+    uint64_t gy = static_cast<uint64_t>(qcoord(goal.getY()));
+    uint64_t a = (sx << 32) ^ sy;
+    uint64_t b = (gx << 32) ^ gy;
+    // Order-independent mix to maximize reuse
+    uint64_t lo = std::min(a, b);
+    uint64_t hi = std::max(a, b);
+    return (lo * 0x9E3779B185EBCA87ULL) ^ (hi + 0x85EBCA6B);
+}
+
+std::vector<Vector2D> PathfinderManager::adjustPathEndpoints(const std::vector<Vector2D>& path,
+                                                             const Vector2D& reqStart,
+                                                             const Vector2D& reqGoal) {
+    if (path.empty()) return path;
+    std::vector<Vector2D> out = path;
+    out.front() = reqStart;
+    out.back() = reqGoal;
+    return out;
+}
+
 
 // ASYNC PATHFINDING: Direct ThreadSystem submission for true async processing  
 uint64_t PathfinderManager::requestPathAsync(
@@ -201,29 +230,50 @@ uint64_t PathfinderManager::requestPathAsync(
         }
     }
 
-    // In-flight deduplication: coalesce identical requests
+    // In-flight coalescing: prefer corridor-level coalescing for long routes
     const uint64_t key = computeKey(start, goal, tol);
+    const bool isLongRoute = (dist2 > (1200.0f * 1200.0f));
+    uint64_t corridorKey = 0;
+    bool scheduledByCorridor = false;
     {
         std::lock_guard<std::mutex> inflightLock(m_inflightMutex);
-        auto it = m_inflight.find(key);
-        if (it != m_inflight.end()) {
-            if (callback) it->second.emplace_back(entityId, callback);
-            {
-                std::lock_guard<std::mutex> lock(m_statsMutex);
-                m_stats.totalRequests++;
+        if (isLongRoute) {
+            corridorKey = computeCorridorKey(start, goal);
+            auto itc = m_inflightCorridor.find(corridorKey);
+            if (itc != m_inflightCorridor.end()) {
+                // Attach to existing corridor job
+                m_inflightCorridor[corridorKey].push_back({entityId, start, goal, callback});
+                {
+                    std::lock_guard<std::mutex> lock(m_statsMutex);
+                    m_stats.totalRequests++;
+                }
+                return m_nextRequestId.fetch_add(1);
+            } else {
+                // Create new corridor job
+                m_inflightCorridor[corridorKey].push_back({entityId, start, goal, callback});
+                scheduledByCorridor = true;
             }
-            return m_nextRequestId.fetch_add(1);
         } else {
-            // Create entry and proceed to schedule a single task
-            if (callback) m_inflight[key].emplace_back(entityId, callback);
-            else m_inflight[key]; // ensure presence
+            // Fine-grained deduplication for short routes
+            auto it = m_inflight.find(key);
+            if (it != m_inflight.end()) {
+                if (callback) it->second.emplace_back(entityId, callback);
+                {
+                    std::lock_guard<std::mutex> lock(m_statsMutex);
+                    m_stats.totalRequests++;
+                }
+                return m_nextRequestId.fetch_add(1);
+            } else {
+                if (callback) m_inflight[key].emplace_back(entityId, callback);
+                else m_inflight[key];
+            }
         }
     }
 
     // TRUE ASYNC: Submit directly to ThreadSystem without queueing
     if (m_grid) {
         // TRUE ASYNC: Submit directly to ThreadSystem  
-        auto work = [this, entityId, start, goal, tol, key, dist2]() {
+        auto work = [this, entityId, start, goal, tol, key, dist2, scheduledByCorridor, corridorKey]() {
             // FIXED: Check cache first, even in async pathfinding
             std::vector<Vector2D> path;
             bool cacheHit = false;
@@ -310,30 +360,61 @@ uint64_t PathfinderManager::requestPathAsync(
                     }
                 }
                 
-                // Update cache miss and completion statistics
+                // Update cache miss and timeout statistics
                 {
                     std::lock_guard<std::mutex> lock(m_statsMutex);
                     m_stats.cacheMisses++;
-                    if (result == HammerEngine::PathfindingResult::SUCCESS) {
-                        m_stats.completedRequests++;
-                    } else if (result == HammerEngine::PathfindingResult::TIMEOUT) {
+                    if (result == HammerEngine::PathfindingResult::TIMEOUT) {
                         m_stats.timedOutRequests++;
                     }
                 }
             }
             
-            // Fan-out to all coalesced callbacks
-            std::vector<std::pair<EntityID, PathCallback>> callbacks;
-            {
-                std::lock_guard<std::mutex> inflightLock(m_inflightMutex);
-                auto it = m_inflight.find(key);
-                if (it != m_inflight.end()) {
-                    callbacks.swap(it->second);
-                    m_inflight.erase(it);
+            if (scheduledByCorridor) {
+                // Fan-out with per-request endpoint adjustment
+                std::vector<CorridorCallback> items;
+                {
+                    std::lock_guard<std::mutex> inflightLock(m_inflightMutex);
+                    auto itc = m_inflightCorridor.find(corridorKey);
+                    if (itc != m_inflightCorridor.end()) {
+                        items.swap(itc->second);
+                        m_inflightCorridor.erase(itc);
+                    }
                 }
-            }
-            for (auto &cb : callbacks) {
-                if (cb.second) cb.second(cb.first, path);
+                for (auto &it : items) {
+                    if (it.cb) {
+                        auto adj = adjustPathEndpoints(path, it.start, it.goal);
+                        // Opportunistic cache insert for adjusted endpoints to lift reuse
+                        if (m_cache && !adj.empty()) {
+                            m_cache->cachePath(it.start, it.goal, adj);
+                        }
+                        it.cb(it.id, adj);
+                    }
+                }
+                // Count successes per-callback to keep success rate accurate
+                if (!path.empty()) {
+                    std::lock_guard<std::mutex> lock(m_statsMutex);
+                    m_stats.completedRequests += static_cast<uint64_t>(items.size());
+                }
+            } else {
+                // Fan-out original coalesced requests
+                std::vector<std::pair<EntityID, PathCallback>> callbacks;
+                {
+                    std::lock_guard<std::mutex> inflightLock(m_inflightMutex);
+                    auto it = m_inflight.find(key);
+                    if (it != m_inflight.end()) {
+                        callbacks.swap(it->second);
+                        m_inflight.erase(it);
+                    }
+                }
+                for (auto &cb : callbacks) {
+                    if (cb.second) cb.second(cb.first, path);
+                }
+                // Count successes per-callback to keep success rate accurate
+                if (!path.empty()) {
+                    std::lock_guard<std::mutex> lock(m_statsMutex);
+                    m_stats.completedRequests += static_cast<uint64_t>(callbacks.size());
+                }
             }
         };
         
@@ -677,13 +758,22 @@ void PathfinderManager::updateStatistics() {
         // Refresh activeThreads from in-flight map to reflect real activity
         {
             std::lock_guard<std::mutex> inflightLock(m_inflightMutex);
-            m_stats.activeThreads = static_cast<uint32_t>(m_inflight.size());
+            m_stats.activeThreads = static_cast<uint32_t>(m_inflight.size() + m_inflightCorridor.size());
         }
         
         // Get cache statistics
         float cacheHitRate = m_stats.cacheHitRate * 100.0f;
         uint32_t cacheHits = m_stats.cacheHits;
         uint32_t cacheMisses = m_stats.cacheMisses;
+        size_t cacheSize = 0;
+        size_t cacheEvicted = 0;
+        size_t cacheCongestionEvictions = 0;
+        if (m_cache) {
+            auto cacheStats = m_cache->getStats();
+            cacheSize = cacheStats.totalPaths;
+            cacheEvicted = cacheStats.evictedPaths;
+            cacheCongestionEvictions = cacheStats.congestionEvictions;
+        }
         uint32_t activeThreads = m_stats.activeThreads;
         uint32_t pendingRequests = static_cast<uint32_t>(m_stats.pendingRequests);
         uint64_t totalNoPath = (totalReqs > (totalCompleted + totalTimeouts)) ?
@@ -706,6 +796,9 @@ void PathfinderManager::updateStatistics() {
                         ", Pending: " + std::to_string(pendingRequests) +
                         ", Cache Hit Rate: " + std::to_string(static_cast<int>(cacheHitRate)) + "%" +
                         " (" + std::to_string(cacheHits) + "/" + std::to_string(cacheHits + cacheMisses) + ")" +
+                        ", Cache Size: " + std::to_string(cacheSize) +
+                        ", Evicted: " + std::to_string(cacheEvicted) + 
+                        ", Congestion Evictions: " + std::to_string(cacheCongestionEvictions) +
                         ", Avg Path Length: " + std::to_string(static_cast<int>(avgPathLength)) + " nodes" +
                         ", Hierarchical: " + std::to_string(static_cast<int>(hierarchicalRatio)) + "%" +
                         " (" + std::to_string(hierarchicalRequests) + "/" + std::to_string(totalPathRequests) + ")" +

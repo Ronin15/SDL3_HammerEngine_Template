@@ -13,8 +13,8 @@ namespace AIInternal {
 PathCache::PathCache()
 {
     AI_INFO("PathCache initialized");
-    // Reserve to reduce rehashing at runtime
-    m_cachedPaths.reserve(1024);
+    // Reserve to reduce rehashing at runtime (align with MAX_CACHED_PATHS)
+    m_cachedPaths.reserve(MAX_CACHED_PATHS);
 }
 
 PathCache::~PathCache()
@@ -217,9 +217,24 @@ void PathCache::cleanup(uint64_t maxAgeMs, uint32_t minUseCount)
         m_cachedPaths.erase(pathKey);
         m_evictedPaths.fetch_add(1, std::memory_order_relaxed);
     }
-    
-    if (!pathsToRemove.empty()) {
-        // Cleanup completed (eviction count tracked in stats)
+
+    // Rebuild LRU queue to drop stale keys and bound memory
+    if (!m_cachedPaths.empty()) {
+        std::vector<std::pair<uint64_t, uint64_t>> ordered; // key, creationTime
+        ordered.reserve(m_cachedPaths.size());
+        for (const auto& kv : m_cachedPaths) {
+            ordered.emplace_back(kv.first, kv.second.creationTime);
+        }
+        std::sort(ordered.begin(), ordered.end(),
+                  [](const auto& a, const auto& b){ return a.second < b.second; });
+        std::queue<uint64_t> rebuilt;
+        for (const auto& p : ordered) {
+            rebuilt.push(p.first);
+        }
+        m_lruQueue.swap(rebuilt);
+    } else {
+        std::queue<uint64_t> empty;
+        m_lruQueue.swap(empty);
     }
 }
 
