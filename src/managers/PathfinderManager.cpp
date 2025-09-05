@@ -273,7 +273,7 @@ uint64_t PathfinderManager::requestPathAsync(
     // TRUE ASYNC: Submit directly to ThreadSystem without queueing
     if (m_grid) {
         // TRUE ASYNC: Submit directly to ThreadSystem  
-        auto work = [this, entityId, start, goal, tol, key, dist2, scheduledByCorridor, corridorKey]() {
+        auto work = [this, start, goal, tol, key, dist2, scheduledByCorridor, corridorKey]() {
             // FIXED: Check cache first, even in async pathfinding
             std::vector<Vector2D> path;
             bool cacheHit = false;
@@ -612,7 +612,7 @@ void PathfinderManager::updateDynamicObstacles() {
     if (shouldRebuild) {
         // PERFORMANCE OPTIMIZATION: Move expensive grid rebuild to background thread
         // This prevents blocking the main AI update loop
-        auto rebuildTask = [this, worldChanged]() {
+        auto rebuildTask = [this]() {
             if (m_grid) {
                 m_grid->rebuildFromWorld();
                 
