@@ -297,8 +297,21 @@ private:
 
     // In-flight request coalescing
     uint64_t computeKey(const Vector2D& start, const Vector2D& goal, float quant) const;
+    uint64_t computeCorridorKey(const Vector2D& start, const Vector2D& goal) const;
     mutable std::mutex m_inflightMutex;
     std::unordered_map<uint64_t, std::vector<std::pair<EntityID, PathCallback>>> m_inflight;
+    struct CorridorCallback {
+        EntityID id;
+        Vector2D start;
+        Vector2D goal;
+        PathCallback cb;
+    };
+    std::unordered_map<uint64_t, std::vector<CorridorCallback>> m_inflightCorridor;
+
+    // Helper: adjust a computed path's endpoints for per-request start/goal
+    static std::vector<Vector2D> adjustPathEndpoints(const std::vector<Vector2D>& path,
+                                                     const Vector2D& reqStart,
+                                                     const Vector2D& reqGoal);
 };
 
 #endif // PATHFINDER_MANAGER_HPP

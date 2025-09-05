@@ -173,7 +173,7 @@ private:
     mutable std::mutex m_cacheMutex;
     
     // Configuration constants
-    static constexpr size_t MAX_CACHED_PATHS = 1024;
+    static constexpr size_t MAX_CACHED_PATHS = 2048;
     static constexpr float DEFAULT_SPATIAL_TOLERANCE = 64.0f;
     static constexpr uint64_t DEFAULT_MAX_AGE_MS = 30000; // 30 seconds
     static constexpr uint32_t DEFAULT_MIN_USE_COUNT = 2;
