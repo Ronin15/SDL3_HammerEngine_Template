@@ -217,7 +217,6 @@ void WanderBehavior::executeLogic(EntityPtr entity) {
           m_speed, state.navRadius);
       if (following) {
         // Apply decimated separation while following
-        Uint64 nowTicks = SDL_GetTicks();
         applyDecimatedSeparation(entity, entity->getPosition(),
                                  entity->getVelocity(), m_speed, 28.0f, 0.30f,
                                  6, state.lastSepTick, state.lastSepVelocity);
