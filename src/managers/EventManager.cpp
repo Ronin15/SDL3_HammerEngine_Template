@@ -1640,14 +1640,7 @@ void EventManager::clearEventPools() {
   m_cameraPool.clear();
 }
 
-void EventManager::clearAllEvents() {
-    std::lock_guard<std::shared_mutex> lock(m_eventsMutex);
-    for (auto& event_list : m_eventsByType) {
-        event_list.clear();
-    }
-    m_nameToIndex.clear();
-    m_nameToType.clear();
-}
+// clearAllEvents removed from public API; tests call clean()+init() via EventManagerTestAccess
 
 EventTypeId EventManager::getEventTypeId(const EventPtr &event) const { return event ? event->getTypeId() : EventTypeId::Custom; }
 

@@ -504,8 +504,6 @@ public:
   void compactEventStorage();
   void clearEventPools();
 
-  // Test-only methods
-  void clearAllEvents();
 
 private:
   EventManager() = default;
