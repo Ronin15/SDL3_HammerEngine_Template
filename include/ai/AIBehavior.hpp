@@ -13,13 +13,10 @@
 
 // Forward declare separation to avoid pulling internal headers here
 namespace AIInternal {
-  Vector2D ApplySeparation(EntityPtr entity,
-                           const Vector2D &position,
-                           const Vector2D &intendedVelocity,
-                           float speed,
-                           float queryRadius,
-                           float strength,
-                           size_t maxNeighbors);
+Vector2D ApplySeparation(EntityPtr entity, const Vector2D &position,
+                         const Vector2D &intendedVelocity, float speed,
+                         float queryRadius, float strength,
+                         size_t maxNeighbors);
 }
 #include <string>
 
@@ -43,8 +40,6 @@ public:
   virtual bool isActive() const { return m_active; }
   virtual void setActive(bool active) { m_active = active; }
 
-  
-
   // Entity range checks (behavior-specific logic)
   virtual bool isEntityInRange([[maybe_unused]] EntityPtr entity) const {
     return true;
@@ -61,30 +56,26 @@ public:
 
 protected:
   bool m_active{true};
-  // Shared separation decimation interval (~10 frames at 60 FPS)
-  static constexpr Uint32 kSeparationIntervalMs = 160;
+  // Shared separation decimation interval (~20 frames at 60 FPS)
+  static constexpr Uint32 kSeparationIntervalMs = 320;
 
   // Apply separation at most every kSeparationIntervalMs, reusing last velocity
   inline void applyDecimatedSeparation(EntityPtr entity,
                                        const Vector2D &position,
                                        const Vector2D &intendedVelocity,
-                                       float speed,
-                                       float queryRadius,
-                                       float strength,
-                                       int maxNeighbors,
+                                       float speed, float queryRadius,
+                                       float strength, int maxNeighbors,
                                        Uint64 &lastSepTick,
                                        Vector2D &lastSepVelocity) const {
     Uint64 now = SDL_GetTicks();
     if (now - lastSepTick >= kSeparationIntervalMs) {
-      lastSepVelocity = AIInternal::ApplySeparation(entity, position,
-                                                    intendedVelocity, speed,
-                                                    queryRadius, strength,
-                                                    static_cast<size_t>(maxNeighbors));
+      lastSepVelocity = AIInternal::ApplySeparation(
+          entity, position, intendedVelocity, speed, queryRadius, strength,
+          static_cast<size_t>(maxNeighbors));
       lastSepTick = now;
     }
     entity->setVelocity(lastSepVelocity);
   }
-  
 };
 
 #endif // AI_BEHAVIOR_HPP

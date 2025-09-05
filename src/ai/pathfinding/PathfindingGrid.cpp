@@ -129,7 +129,7 @@ void PathfindingGrid::rebuildFromWorld() {
         float coarseBlockedPercent = (coarseW * coarseH > 0) ? 
             (100.0f * coarseBlockedCount) / (coarseW * coarseH) : 0.0f;
         
-        PATHFIND_INFO("Coarse grid updated: " + std::to_string(coarseW) + "x" + std::to_string(coarseH) +
+        PATHFIND_DEBUG("Coarse grid updated: " + std::to_string(coarseW) + "x" + std::to_string(coarseH) +
                      ", blocked=" + std::to_string(coarseBlockedCount) + "/" + std::to_string(coarseW * coarseH) +
                      " (" + std::to_string(coarseBlockedPercent) + "% blocked)");
     }
@@ -232,25 +232,22 @@ PathfindingResult PathfindingGrid::findPath(const Vector2D& start, const Vector2
         return PathfindingResult::INVALID_GOAL; 
     }
     
-    // Enhanced goal validation - reject problematic goals early
+    // Enhanced goal validation: try a small nudge but do not early-return
+    // Let the later broader nudge (radius 20) handle difficult endpoints
     if (isBlocked(gx, gy)) {
-        // Try to find a nearby unblocked cell instead of rejecting outright
         int nearGx = gx, nearGy = gy;
-        if (findNearestOpen(gx, gy, 3, nearGx, nearGy)) {
-            gx = nearGx; gy = nearGy; // Use the nearby open cell
-        } else {
-            m_stats.totalRequests++;
-            m_stats.invalidGoals++;
-            return PathfindingResult::INVALID_GOAL;
+        if (findNearestOpen(gx, gy, 8, nearGx, nearGy)) {
+            gx = nearGx; gy = nearGy;
         }
+        // else: keep as-is; broader nudge below will attempt again
     }
     
     // Quick reachability test - if goal is in a completely isolated area, reject early
     int dxGoal = std::abs(sx - gx), dyGoal = std::abs(sy - gy);
     int directDistance = std::max(dxGoal, dyGoal);
     
-    // For very long distances, do a quick connectivity check (increased threshold to be less restrictive)
-    if (directDistance > 400) {
+    // For very long distances, do a lightweight connectivity check (less restrictive)
+    if (directDistance > 800) {
         // Sample a few points along the direct line to check for major barriers
         int samples = std::min(8, directDistance / 8);
         int blockedSamples = 0;
@@ -274,13 +271,10 @@ PathfindingResult PathfindingGrid::findPath(const Vector2D& start, const Vector2
             if (!hasOpenNeighbor) blockedSamples++;
         }
         
-        // If more than 70% of samples are in completely blocked areas, likely unreachable (balanced threshold)
-        // Relax to 80% to avoid false negatives; prefer attempting search
-        if (blockedSamples > (samples * 8) / 10) {
-            m_stats.totalRequests++;
-            m_stats.invalidGoals++;
-            PATHFIND_DEBUG("Goal rejected: appears unreachable based on connectivity test");
-            return PathfindingResult::NO_PATH_FOUND;
+        // If more than 90% of samples lack open neighbors, it's probably unreachable,
+        // but do not early-return: allow A* to attempt within iteration limits.
+        if (blockedSamples > (samples * 9) / 10) {
+            PATHFIND_DEBUG("Connectivity check: likely unreachable, proceeding conservatively");
         }
     }
     // Nudge start/goal if blocked (common after collision resolution)
@@ -357,9 +351,9 @@ PathfindingResult PathfindingGrid::findPath(const Vector2D& start, const Vector2
     const int dx8[8] = {1,-1,0,0, 1,1,-1,-1};
     const int dy8[8] = {0,0,1,-1, 1,-1,1,-1};
 
-    // PERFORMANCE TUNING: Increase iteration budget to reduce timeouts in dense maps
-    int baseIters = std::max(4000, baseDistance * 80);
-    int dynamicMaxIters = std::min(m_maxIterations, baseIters + 12000);
+    // PERFORMANCE TUNING: Tighter iteration budget to cap worst-case CPU
+    int baseIters = std::max(4000, baseDistance * 40);
+    int dynamicMaxIters = std::min(m_maxIterations, baseIters + 6000);
     
     // Performance-focused: Reasonable queue limits to balance memory and success rate
     
