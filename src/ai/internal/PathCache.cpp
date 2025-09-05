@@ -47,13 +47,15 @@ std::optional<std::vector<Vector2D>> PathCache::findSimilarPath(const Vector2D& 
         // If entry exists but not similar (or negative), fall through to neighborhood scan
     }
 
-    // Neighbor-bucket scan: check 3x3 buckets around start and goal to avoid O(N) scan
+    // Neighbor-bucket scan: adapt radius for long routes to improve hit rate
     // Use the same 64px stride as hash quantization to align buckets
     const float QUANT = 64.0f;
-    for (int dsx = -1; dsx <= 1; ++dsx) {
-        for (int dsy = -1; dsy <= 1; ++dsy) {
-            for (int dgx = -1; dgx <= 1; ++dgx) {
-                for (int dgy = -1; dgy <= 1; ++dgy) {
+    const float d2 = calculateDistanceSquared(start, goal);
+    const int radius = (d2 > (2000.0f * 2000.0f)) ? 2 : 1; // 5x5 for ultra-long routes
+    for (int dsx = -radius; dsx <= radius; ++dsx) {
+        for (int dsy = -radius; dsy <= radius; ++dsy) {
+            for (int dgx = -radius; dgx <= radius; ++dgx) {
+                for (int dgy = -radius; dgy <= radius; ++dgy) {
                     Vector2D ns = Vector2D(start.getX() + dsx * QUANT, start.getY() + dsy * QUANT);
                     Vector2D ng = Vector2D(goal.getX() + dgx * QUANT,  goal.getY() + dgy * QUANT);
                     uint64_t nkey = hashPath(ns, ng);
@@ -97,13 +99,14 @@ bool PathCache::hasNegativeCached(const Vector2D& start,
         }
     }
 
-    // Neighbor-bucket scan (3x3) to avoid O(N)
-    // Use 64px stride to match hash quantization
+    // Neighbor-bucket scan with adaptive radius (see findSimilarPath)
     const float QUANT = 64.0f;
-    for (int dsx = -1; dsx <= 1; ++dsx) {
-        for (int dsy = -1; dsy <= 1; ++dsy) {
-            for (int dgx = -1; dgx <= 1; ++dgx) {
-                for (int dgy = -1; dgy <= 1; ++dgy) {
+    const float d2 = calculateDistanceSquared(start, goal);
+    const int radius = (d2 > (2000.0f * 2000.0f)) ? 2 : 1;
+    for (int dsx = -radius; dsx <= radius; ++dsx) {
+        for (int dsy = -radius; dsy <= radius; ++dsy) {
+            for (int dgx = -radius; dgx <= radius; ++dgx) {
+                for (int dgy = -radius; dgy <= radius; ++dgy) {
                     Vector2D ns = Vector2D(start.getX() + dsx * QUANT, start.getY() + dsy * QUANT);
                     Vector2D ng = Vector2D(goal.getX() + dgx * QUANT,  goal.getY() + dgy * QUANT);
                     uint64_t nkey = hashPath(ns, ng);
@@ -160,7 +163,20 @@ void PathCache::evictPathsInCrowdedAreas(const Vector2D& playerPos,
     
     std::vector<uint64_t> pathsToEvict;
     
-    for (const auto& [pathKey, cachedPath] : m_cachedPaths) {
+    // SAMPLE-BASED EVICTION: Limit expensive congestion checks per tick
+    const size_t total = m_cachedPaths.size();
+    const size_t sampleTarget = std::min<size_t>(256, std::max<size_t>(32, total / 8));
+    const size_t stride = std::max<size_t>(1, (total > 0 ? total / sampleTarget : 1));
+    size_t index = 0;
+    
+    for (const auto& kv : m_cachedPaths) {
+        const uint64_t pathKey = kv.first;
+        const auto& cachedPath = kv.second;
+        
+        // Only inspect roughly sampleTarget entries this pass
+        if ((index++ % stride) != 0) {
+            continue;
+        }
         if (!cachedPath.isValid) {
             continue;
         }
@@ -168,6 +184,9 @@ void PathCache::evictPathsInCrowdedAreas(const Vector2D& playerPos,
         // Check if path intersects with congested area around player
         if (pathIntersectsCongestion(cachedPath.waypoints, playerPos, congestionRadius, maxCongestion)) {
             pathsToEvict.push_back(pathKey);
+            if (pathsToEvict.size() >= sampleTarget) {
+                break; // Bound work per pass
+            }
         }
     }
     

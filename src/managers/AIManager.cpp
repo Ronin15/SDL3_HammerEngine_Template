@@ -4,17 +4,12 @@
  */
 
 #include "managers/AIManager.hpp"
-#include "managers/PathfinderManager.hpp"
 #include "core/Logger.hpp"
 #include "core/ThreadSystem.hpp"
-#include "managers/CollisionManager.hpp"
-#include "collisions/AABB.hpp"
 #include "core/WorkerBudget.hpp"
-#include "entities/NPC.hpp"
 #include "events/NPCSpawnEvent.hpp"
-#include "events/WorldEvent.hpp"
 #include "managers/EventManager.hpp"
-#include "managers/WorldManager.hpp"
+#include "managers/PathfinderManager.hpp"
 #include <algorithm>
 #include <cstring>
 
@@ -206,13 +201,15 @@ void AIManager::prepareForStateTransition() {
 
   // Wait for any in-flight operations to complete
   if (!m_updateFutures.empty()) {
-    AI_DEBUG("Waiting for " + std::to_string(m_updateFutures.size()) + " AI update futures to complete...");
+    AI_DEBUG("Waiting for " + std::to_string(m_updateFutures.size()) +
+             " AI update futures to complete...");
     for (auto &future : m_updateFutures) {
       if (future.valid()) {
         try {
           future.get();
         } catch (const std::exception &e) {
-          AI_ERROR("Exception in AI update future during state transition: " + std::string(e.what()));
+          AI_ERROR("Exception in AI update future during state transition: " +
+                   std::string(e.what()));
         }
       }
     }
@@ -221,7 +218,8 @@ void AIManager::prepareForStateTransition() {
 
   // Wait for async assignments to complete
   if (!m_assignmentFutures.empty()) {
-    AI_DEBUG("Waiting for " + std::to_string(m_assignmentFutures.size()) + " async assignments to complete...");
+    AI_DEBUG("Waiting for " + std::to_string(m_assignmentFutures.size()) +
+             " async assignments to complete...");
     for (auto &future : m_assignmentFutures) {
       if (future.valid()) {
         try {
@@ -229,10 +227,12 @@ void AIManager::prepareForStateTransition() {
           if (status == std::future_status::ready) {
             future.get();
           } else {
-            AI_WARN("Async assignment did not complete within timeout during state transition");
+            AI_WARN("Async assignment did not complete within timeout during "
+                    "state transition");
           }
         } catch (const std::exception &e) {
-          AI_ERROR("Exception in async assignment during state transition: " + std::string(e.what()));
+          AI_ERROR("Exception in async assignment during state transition: " +
+                   std::string(e.what()));
         }
       }
     }
@@ -242,7 +242,7 @@ void AIManager::prepareForStateTransition() {
 
   // Process and clear any pending messages
   processMessageQueue();
-  
+
   // Clear message queues completely
   {
     std::lock_guard<std::mutex> lock(m_messagesMutex);
@@ -278,7 +278,7 @@ void AIManager::prepareForStateTransition() {
         }
       }
     }
-    
+
     if (cleanedCount > 0) {
       AI_INFO("Cleaned " + std::to_string(cleanedCount) + " AI behaviors");
     }
@@ -289,7 +289,7 @@ void AIManager::prepareForStateTransition() {
     m_storage.behaviors.clear();
     m_storage.lastUpdateTimes.clear();
     m_entityToIndex.clear();
-    
+
     // Clear double buffers to prevent stale data
     m_storage.doubleBuffer[0].clear();
     m_storage.doubleBuffer[1].clear();
@@ -301,19 +301,20 @@ void AIManager::prepareForStateTransition() {
     AI_DEBUG("Cleaned up all entities for state transition");
   }
 
-  // Legacy pathfinding state cleared - all pathfinding now handled by PathfinderManager
+  // Legacy pathfinding state cleared - all pathfinding now handled by
+  // PathfinderManager
 
   // Reset all counters and stats
   m_totalBehaviorExecutions.store(0, std::memory_order_relaxed);
   m_totalAssignmentCount.store(0, std::memory_order_relaxed);
   m_frameCounter.store(0, std::memory_order_relaxed);
   m_lastCleanupFrame.store(0, std::memory_order_relaxed);
-  
+
   // Reset performance tracking
   {
     std::lock_guard<std::mutex> lock(m_statsMutex);
     m_globalStats = AIPerformanceStats{};
-    for (auto& stat : m_behaviorStats) {
+    for (auto &stat : m_behaviorStats) {
       stat = AIPerformanceStats{};
     }
   }
@@ -330,8 +331,8 @@ void AIManager::prepareForStateTransition() {
   m_lastAvailableWorkers.store(0, std::memory_order_relaxed);
   m_lastAIBudget.store(0, std::memory_order_relaxed);
 
-  // Don't call resetBehaviors() as we've already done comprehensive cleanup above
-  // Just clear the behavior caches
+  // Don't call resetBehaviors() as we've already done comprehensive cleanup
+  // above Just clear the behavior caches
   {
     std::lock_guard<std::shared_mutex> lock(m_behaviorsMutex);
     m_behaviorCache.clear();
@@ -360,7 +361,6 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
     // Process pending assignments first so new entities are picked up this
     // frame
     processPendingBehaviorAssignments();
-    
 
     // Synchronize positions and count active entities
     size_t entityCount = 0;
@@ -371,12 +371,13 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
       for (size_t i = 0; i < entityCount; ++i) {
         if (m_storage.hotData[i].active && m_storage.entities[i]) {
           m_storage.hotData[i].position = m_storage.entities[i]->getPosition();
-          
-          // Increment frame counter for each active entity (with overflow protection)
+
+          // Increment frame counter for each active entity (with overflow
+          // protection)
           if (m_storage.hotData[i].frameCounter < UINT16_MAX) {
             m_storage.hotData[i].frameCounter++;
           }
-          
+
           ++activeCount;
         }
       }
@@ -566,7 +567,7 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
     // Periodic cleanup and stats (balanced frequency)
     if (currentFrame % 300 == 0) {
       cleanupInactiveEntities();
-      
+
       m_lastCleanupFrame.store(currentFrame, std::memory_order_relaxed);
 
       std::lock_guard<std::mutex> statsLock(m_statsMutex);
@@ -1432,10 +1433,10 @@ void AIManager::registerEntityForUpdates(EntityPtr entity, int priority,
   queueBehaviorAssignment(entity, behaviorName);
 }
 
-
-// ======================= Legacy Pathfinding Code Removed =======================
-// All pathfinding functionality is now handled by PathfinderManager.
-// Use PathfinderManager::Instance() to access pathfinding services.
+// ======================= Legacy Pathfinding Code Removed
+// ======================= All pathfinding functionality is now handled by
+// PathfinderManager. Use PathfinderManager::Instance() to access pathfinding
+// services.
 
 AIManager::~AIManager() {
   if (!m_isShutdown) {
@@ -1443,18 +1444,20 @@ AIManager::~AIManager() {
   }
 }
 
-// processScheduledPathfinding method removed - all pathfinding now handled by PathfinderManager
+// processScheduledPathfinding method removed - all pathfinding now handled by
+// PathfinderManager
 
 // All pathfinding functionality has been moved to PathfinderManager
-// This section previously contained orphaned pathfinding methods that are no longer needed
+// This section previously contained orphaned pathfinding methods that are no
+// longer needed
 
-// Centralized async request state management (replaces g_asyncStates static map)
-// Legacy pathfinding state management methods removed
-// All pathfinding functionality now handled by PathfinderManager
+// Centralized async request state management (replaces g_asyncStates static
+// map) Legacy pathfinding state management methods removed All pathfinding
+// functionality now handled by PathfinderManager
 
 // Direct PathfinderManager access for optimal performance
-PathfinderManager& AIManager::getPathfinderManager() const {
-    return PathfinderManager::Instance();
+PathfinderManager &AIManager::getPathfinderManager() const {
+  return PathfinderManager::Instance();
 }
 
 // All pathfinding components are now managed by PathfinderManager

@@ -25,11 +25,9 @@
 #include "entities/Entity.hpp"
 #include <array>
 #include <atomic>
-#include <functional>
 #include <future>
 #include <memory>
 #include <mutex>
-#include <queue>
 #include <shared_mutex>
 #include <string>
 #include <unordered_map>
@@ -316,16 +314,17 @@ public:
   void broadcastMessage(const std::string &message, bool immediate = false);
   void processMessageQueue();
 
-
   /**
-   * @brief Get direct access to PathfinderManager for optimal pathfinding performance
+   * @brief Get direct access to PathfinderManager for optimal pathfinding
+   * performance
    * @return Reference to PathfinderManager instance
-   * @details Provides access to centralized pathfinding service for all AI entities
-   * 
+   * @details Provides access to centralized pathfinding service for all AI
+   * entities
+   *
    * All pathfinding functionality has been moved to PathfinderManager.
    * Use PathfinderManager::Instance() to access pathfinding services.
    */
-  PathfinderManager& getPathfinderManager() const;
+  PathfinderManager &getPathfinderManager() const;
 
 private:
   AIManager() = default;
@@ -425,7 +424,8 @@ private:
   std::atomic<bool> m_processingMessages{false};
   unsigned int m_maxThreads{0};
 
-  // Legacy pathfinding state removed - all pathfinding handled by PathfinderManager
+  // Legacy pathfinding state removed - all pathfinding handled by
+  // PathfinderManager
 
   // Behavior execution tracking
   std::atomic<size_t> m_totalBehaviorExecutions{0};
@@ -459,7 +459,8 @@ private:
   mutable std::mutex m_messagesMutex;
   mutable std::mutex m_statsMutex;
   std::vector<std::future<void>> m_updateFutures;
-  std::vector<std::future<void>> m_pendingFutures; // Futures from previous frames
+  std::vector<std::future<void>>
+      m_pendingFutures; // Futures from previous frames
 
   // Optimized batch processing constants
   static constexpr size_t CACHE_LINE_SIZE = 64; // Standard cache line size
@@ -477,7 +478,7 @@ private:
   void updateDistancesScalar(const Vector2D &playerPos);
   void recordPerformance(BehaviorType type, double timeMs, uint64_t entities);
   static uint64_t getCurrentTimeNanos();
-  
+
   // Legacy pathfinding methods removed - use PathfinderManager instead
 
   // Lock-free message queue

@@ -207,7 +207,14 @@ uint64_t PathfinderManager::requestPathAsync(
 
     // Pre-check cache and negative cache to avoid scheduling work when possible
     const float dist2 = (goal - start).dot(goal - start);
-    const float tol = (dist2 > (1200.0f * 1200.0f)) ? 128.0f : 96.0f;
+    float tol;
+    if (dist2 > (2000.0f * 2000.0f)) {
+        tol = 192.0f; // Ultra-long routes: be lenient to boost reuse
+    } else if (dist2 > (1200.0f * 1200.0f)) {
+        tol = 144.0f; // Long routes: moderate tolerance
+    } else {
+        tol = 96.0f;  // Local routes: tighter reuse
+    }
     if (m_cache) {
         if (auto cached = m_cache->findSimilarPath(start, goal, tol)) {
             if (callback) callback(entityId, *cached);
@@ -267,6 +274,30 @@ uint64_t PathfinderManager::requestPathAsync(
                 if (callback) m_inflight[key].emplace_back(entityId, callback);
                 else m_inflight[key];
             }
+        }
+    }
+
+    // Lightweight backpressure: avoid flooding workers with low-priority work
+    {
+        size_t inflightCount = 0;
+        {
+            std::lock_guard<std::mutex> inflightLock(m_inflightMutex);
+            inflightCount = m_inflight.size() + m_inflightCorridor.size();
+        }
+        const size_t queueSize = HammerEngine::ThreadSystem::Instance().getQueueSize();
+        const bool pressureHigh = (queueSize > 1024) || (inflightCount > 512);
+        const bool notUrgent = (priority == AIInternal::PathPriority::Low) ||
+                               (priority == AIInternal::PathPriority::Normal && aiManagerPriority <= 5);
+        if (pressureHigh && notUrgent) {
+            // Defer non-urgent work under pressure; behaviors have TTL/backoff
+            if (callback) {
+                callback(entityId, std::vector<Vector2D>());
+            }
+            {
+                std::lock_guard<std::mutex> lock(m_statsMutex);
+                m_stats.totalRequests++;
+            }
+            return m_nextRequestId.fetch_add(1);
         }
     }
 
@@ -477,7 +508,16 @@ HammerEngine::PathfindingResult PathfinderManager::findPathImmediate(
     // Check cache first before expensive A* computation
     if (m_cache) {
         const float dist2 = (goal - start).dot(goal - start);
-        const float tol = (dist2 > (512.0f * 512.0f)) ? 128.0f : 64.0f;
+        float tol;
+        if (dist2 > (2000.0f * 2000.0f)) {
+            tol = 192.0f;
+        } else if (dist2 > (1200.0f * 1200.0f)) {
+            tol = 144.0f;
+        } else if (dist2 > (512.0f * 512.0f)) {
+            tol = 128.0f;
+        } else {
+            tol = 64.0f;
+        }
         if (auto cachedPath = m_cache->findSimilarPath(start, goal, tol)) {
             outPath = *cachedPath;
             

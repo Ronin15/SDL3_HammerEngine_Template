@@ -5,6 +5,8 @@
 
 #include "collisions/SpatialHash.hpp"
 #include <unordered_set>
+#include <algorithm> // std::remove
+#include <cmath>     // std::floor
 
 namespace HammerEngine {
 
