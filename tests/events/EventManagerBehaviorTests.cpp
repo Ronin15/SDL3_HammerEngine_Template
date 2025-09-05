@@ -6,11 +6,11 @@
 #define BOOST_TEST_MODULE EventManagerBehaviorTests
 #include <boost/test/unit_test.hpp>
 
-#include "managers/EventManager.hpp"
+#include "EventManagerTestAccess.hpp"
 #include "core/ThreadSystem.hpp"
-#include "events/Event.hpp"
-#include "events/WeatherEvent.hpp"
 #include "events/CameraEvent.hpp"
+#include "events/Event.hpp"
+#include "managers/EventManager.hpp"
 
 namespace {
 
@@ -37,9 +37,7 @@ private:
 struct EventFixture {
   EventFixture() {
     HammerEngine::ThreadSystem::Instance().init();
-    EventManager::Instance().init();
-    EventManager::Instance().clearAllHandlers();
-    EventManager::Instance().clearAllEvents();
+    EventManagerTestAccess::reset();
   }
   ~EventFixture() {
     // Clean after each test
@@ -84,21 +82,26 @@ BOOST_AUTO_TEST_CASE(SpawnNPC_FallbackWithoutHandlers) {
 }
 
 BOOST_AUTO_TEST_CASE(TriggerParticleEffect_FallbackWithoutHandlers) {
-  bool ok = EventManager::Instance().triggerParticleEffect("Fire", 100.0f, 200.0f);
+  bool ok =
+      EventManager::Instance().triggerParticleEffect("Fire", 100.0f, 200.0f);
   BOOST_CHECK(ok);
 }
 
 BOOST_AUTO_TEST_CASE(RegisterCameraEvent_StoresEvent) {
-  auto camEvent = std::make_shared<CameraMovedEvent>(Vector2D(10, 10), Vector2D(0, 0));
-  BOOST_CHECK(EventManager::Instance().registerCameraEvent("cam_move_test", camEvent));
+  auto camEvent =
+      std::make_shared<CameraMovedEvent>(Vector2D(10, 10), Vector2D(0, 0));
+  BOOST_CHECK(
+      EventManager::Instance().registerCameraEvent("cam_move_test", camEvent));
   auto stored = EventManager::Instance().getEvent("cam_move_test");
   BOOST_CHECK(stored != nullptr);
 }
 
 BOOST_AUTO_TEST_CASE(RemoveNameHandlers_RemovesHandlers) {
   // Register a per-name handler
-  EventManager::Instance().registerHandlerForName("TestName",
-      [](const EventData &) { BOOST_CHECK_MESSAGE(false, "Handler should have been removed"); });
+  EventManager::Instance().registerHandlerForName(
+      "TestName", [](const EventData &) {
+        BOOST_CHECK_MESSAGE(false, "Handler should have been removed");
+      });
 
   // Remove it
   EventManager::Instance().removeNameHandlers("TestName");

@@ -21,11 +21,13 @@ set(MOCK_SOURCES
     mocks/MockPlayer.cpp
     mocks/MockNPC.cpp
     mocks/MockGameEngine.cpp
+    events/EventManagerTestAccess.cpp
 )
 
 add_library(TestMocks STATIC ${MOCK_SOURCES})
 target_include_directories(TestMocks PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/mocks
+    ${CMAKE_CURRENT_SOURCE_DIR}/events
     ${PROJECT_SOURCE_DIR}/include
 )
 target_link_libraries(TestMocks PUBLIC HammerEngineLib)
@@ -196,6 +198,7 @@ target_link_libraries(ui_stress_test PRIVATE Boost::container)
 target_compile_definitions(event_manager_tests PRIVATE RUNNING_TESTS)
 target_compile_definitions(event_types_tests PRIVATE RUNNING_TESTS)
 target_compile_definitions(ui_stress_test PRIVATE UI_STRESS_TEST_BUILD)
+target_link_libraries(event_manager_behavior_tests PRIVATE TestMocks)
 
 # Add save_manager_tests special mock
 target_sources(save_manager_tests PRIVATE mocks/MockPlayer.cpp)
@@ -209,3 +212,5 @@ foreach(test_name ${ALL_TESTS})
     set_tests_properties(${test_name} PROPERTIES 
         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 endforeach()
+# resource_factory_tests uses test access helper from tests/resources
+target_sources(resource_factory_tests PRIVATE resources/ResourceTestAccess.cpp)

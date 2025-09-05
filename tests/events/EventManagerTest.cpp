@@ -24,6 +24,7 @@
 #include "events/WeatherEvent.hpp"
 #include "managers/EventManager.hpp"
 #include "utils/ResourceHandle.hpp"
+#include "EventManagerTestAccess.hpp"
 
 // Mock Event class for testing
 class MockEvent : public Event {
@@ -85,8 +86,7 @@ BOOST_GLOBAL_FIXTURE(GlobalEventTestFixture);
 struct EventManagerFixture {
   EventManagerFixture() {
     // Don't reinitialize ThreadSystem - use the global one
-    resetEventManager();
-    BOOST_CHECK(EventManager::Instance().init());
+    EventManagerTestAccess::reset();
   }
 
   ~EventManagerFixture() {
@@ -95,15 +95,10 @@ struct EventManagerFixture {
     std::this_thread::sleep_for(std::chrono::milliseconds(20));
 
     // Clean up the EventManager
-    resetEventManager();
     EventManager::Instance().clean();
   }
 
-  void resetEventManager() {
-    EventManager::Instance().prepareForStateTransition();
-    EventManager::Instance().clearAllEvents();
-    EventManager::Instance().clearAllHandlers();
-  }
+  void resetEventManager() {}
 };
 
 // Test basic initialization and cleanup
@@ -1337,7 +1332,7 @@ BOOST_FIXTURE_TEST_CASE(MemoryManagementEventPools, EventManagerFixture) {
   BOOST_CHECK_GE(EventManager::Instance().getEventCount(), 0);
   
   // Test clearing all events
-  EventManager::Instance().clearAllEvents();
+  EventManagerTestAccess::reset();
   BOOST_CHECK_EQUAL(EventManager::Instance().getEventCount(), 0);
   BOOST_CHECK(!EventManager::Instance().hasEvent("MemTest0"));
 }

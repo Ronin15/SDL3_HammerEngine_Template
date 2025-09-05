@@ -7,7 +7,7 @@
 #include <boost/test/unit_test.hpp>
 
 #include "managers/AIManager.hpp"
-#include "ai/AIBehaviors.hpp"
+#include "AIBehaviors.hpp" // from tests/mocks
 #include "entities/Entity.hpp"
 #include <memory>
 #include <vector>
