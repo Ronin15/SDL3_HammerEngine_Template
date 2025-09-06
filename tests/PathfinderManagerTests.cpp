@@ -94,11 +94,11 @@ BOOST_AUTO_TEST_CASE(TestAsyncPathfinding) {
     BOOST_CHECK(requestId > 0); // Valid request ID
     
     // Update to process requests
-    manager.update(0.016f); // ~60 FPS
+    manager.update(); // ~60 FPS
     
     // Give it some time to process (async operation)
     std::this_thread::sleep_for(std::chrono::milliseconds(50));
-    manager.update(0.016f);
+    manager.update();
     
     // The callback should have been called (even if path is empty due to no world)
     // Note: This might not always be true in a real environment without proper world setup
@@ -136,7 +136,7 @@ BOOST_AUTO_TEST_CASE(TestBasicFunctionality) {
     BOOST_CHECK(requestId > 0);
     
     // Process requests
-    manager.update(0.016f);
+    manager.update();
     
     // Check that we have pending work initially
     BOOST_CHECK(manager.hasPendingWork() || manager.getQueueSize() == 0); // Either has work or processed quickly
@@ -214,7 +214,7 @@ BOOST_AUTO_TEST_CASE(TestUpdateCycle) {
     
     // Test multiple update cycles
     for (int i = 0; i < 10; ++i) {
-        manager.update(0.016f); // ~60 FPS
+        manager.update(); // ~60 FPS
     }
     
     // Should not crash
@@ -250,7 +250,7 @@ BOOST_AUTO_TEST_CASE(TestNoInfiniteRetryLoop) {
     
     // Process requests
     for (int i = 0; i < 10; ++i) {
-        manager.update(0.016f);
+        manager.update();
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
     
@@ -295,9 +295,9 @@ BOOST_AUTO_TEST_CASE(TestFailedRequestCaching) {
         });
     
     // Process first request
-    manager.update(0.016f);
+    manager.update();
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
-    manager.update(0.016f);
+    manager.update();
     
     // Second identical request within cache window (should be rejected/cached)
     manager.requestPathAsync(entityId, start, goal, static_cast<AIInternal::PathPriority>(1),
@@ -306,9 +306,9 @@ BOOST_AUTO_TEST_CASE(TestFailedRequestCaching) {
         });
     
     // Process second request  
-    manager.update(0.016f);
+    manager.update();
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
-    manager.update(0.016f);
+    manager.update();
     
     // Both should have received callbacks (first from processing, second from cache)
     BOOST_CHECK(firstCallbackCount > 0);

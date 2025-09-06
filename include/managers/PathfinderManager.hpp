@@ -65,9 +65,8 @@ public:
 
     /**
      * @brief Updates pathfinding systems and processes pending requests
-     * @param deltaTime Time since last update in seconds
      */
-    void update(float deltaTime);
+    void update();
 
     /**
      * @brief Cleans up all pathfinding resources

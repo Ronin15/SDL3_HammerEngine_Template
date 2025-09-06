@@ -62,7 +62,7 @@ bool PathfinderManager::isInitialized() const {
     return m_initialized.load();
 }
 
-void PathfinderManager::update(float deltaTime) {
+void PathfinderManager::update() {
     if (!m_initialized.load() || m_isShutdown) {
         return;
     }
@@ -122,7 +122,7 @@ uint64_t PathfinderManager::requestPath(
     EntityID entityId,
     const Vector2D& start,
     const Vector2D& goal,
-    AIInternal::PathPriority priority,
+    AIInternal::PathPriority /* priority */,
     std::function<void(EntityID, const std::vector<Vector2D>&)> callback
 ) {
     if (!m_initialized.load() || m_isShutdown) {
@@ -157,7 +157,7 @@ uint64_t PathfinderManager::requestPath(
         
         // Compute path if cache miss
         if (!cacheHit) {
-            HammerEngine::PathfindingResult result = findPathImmediate(start, goal, path);
+            findPathImmediate(start, goal, path);
         }
         
         // Always re-cache the path (whether from cache hit or new computation)
