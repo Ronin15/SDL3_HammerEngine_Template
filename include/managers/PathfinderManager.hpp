@@ -34,9 +34,6 @@ namespace HammerEngine {
     enum class PathfindingResult;
 }
 
-namespace AIInternal {
-    class RequestQueue;
-}
 
 #include "../ai/internal/PathPriority.hpp"
 
@@ -260,9 +257,7 @@ private:
     // Core components - Clean Architecture
     // Shared grid allows atomic updates during processing
     std::shared_ptr<HammerEngine::PathfindingGrid> m_grid;
-    // Lock-free request queue for ultra-fast enqueuing
-    std::shared_ptr<AIInternal::RequestQueue> m_requestQueue;
-    // No cache - direct pathfinding for simplicity
+    // Direct ThreadSystem processing - no queue needed
 
     // Request management - simplified
     std::atomic<uint64_t> m_nextRequestId{1};
