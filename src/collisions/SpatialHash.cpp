@@ -10,12 +10,17 @@
 
 namespace HammerEngine {
 
-SpatialHash::SpatialHash(float cellSize) : m_cellSize(cellSize) {}
+SpatialHash::SpatialHash(float cellSize, float movementThreshold) 
+    : m_cellSize(cellSize), m_movementThreshold(movementThreshold) {}
 
 void SpatialHash::insert(EntityID id, const AABB& aabb) {
     m_aabbs[id] = aabb;
     forEachOverlappingCell(aabb, [&](CellCoord c){ 
         auto& cell = m_cells[c];
+        // Reserve space in cell vector to reduce reallocations
+        if (cell.capacity() == 0) {
+            cell.reserve(8); // Typical cell has 4-8 entities
+        }
         cell.push_back(id); 
     });
 }
@@ -53,6 +58,12 @@ void SpatialHash::update(EntityID id, const AABB& newAABB) {
     const int newMaxX = static_cast<int>(std::floor(newAABB.right() / m_cellSize));
     const int newMinY = static_cast<int>(std::floor(newAABB.top() / m_cellSize));
     const int newMaxY = static_cast<int>(std::floor(newAABB.bottom() / m_cellSize));
+    
+    // OPTIMIZATION #3: Movement threshold - check if entity moved significantly before expensive cell updates
+    if (!hasMovedSignificantly(oldAABB, newAABB)) {
+        it->second = newAABB;  // Update stored AABB but don't rehash spatial cells
+        return;
+    }
     
     // Early exit if entity didn't change cells
     if (oldMinX == newMinX && oldMaxX == newMaxX && oldMinY == newMinY && oldMaxY == newMaxY) {
@@ -95,8 +106,14 @@ void SpatialHash::update(EntityID id, const AABB& newAABB) {
 void SpatialHash::query(const AABB& area, std::vector<EntityID>& out) const {
     out.clear();
     
-    // Pre-allocate reasonable capacity to reduce reallocation
-    out.reserve(64);
+    // OPTIMIZATION #4: Pre-reserve space based on estimated cell count
+    // Each cell typically has 2-8 entities, area covers multiple cells
+    float areaWidth = area.right() - area.left();
+    float areaHeight = area.bottom() - area.top();
+    int cellsX = std::max(1, static_cast<int>(std::ceil(areaWidth / m_cellSize)));
+    int cellsY = std::max(1, static_cast<int>(std::ceil(areaHeight / m_cellSize)));
+    size_t estimatedEntities = cellsX * cellsY * 4; // Assume avg 4 entities per cell
+    out.reserve(estimatedEntities);
     
     // Use a smaller temporary set for deduplication when we expect many overlaps
     thread_local std::unordered_set<EntityID> seenIds;
@@ -130,6 +147,33 @@ void SpatialHash::forEachOverlappingCell(const AABB& aabb, const std::function<v
             fn(CellCoord{x, y});
         }
     }
+}
+
+// OPTIMIZATION #1 & #3: Helper methods for object pooling and movement threshold
+SpatialHash::CellVector SpatialHash::getPooledVector() const {
+    if (!m_vectorPool.empty()) {
+        CellVector vec = std::move(const_cast<std::queue<CellVector>&>(m_vectorPool).front());
+        const_cast<std::queue<CellVector>&>(m_vectorPool).pop();
+        vec.clear(); // Reuse existing capacity
+        return vec;
+    }
+    return CellVector{}; // Create new if pool empty
+}
+
+void SpatialHash::returnPooledVector(CellVector&& vec) const {
+    if (m_vectorPool.size() < MAX_POOLED_VECTORS) {
+        vec.clear(); // Keep capacity, clear contents
+        const_cast<std::queue<CellVector>&>(m_vectorPool).push(std::move(vec));
+    }
+    // If pool is full, let vector be destroyed naturally
+}
+
+bool SpatialHash::hasMovedSignificantly(const AABB& oldAABB, const AABB& newAABB) const {
+    // Check if center moved more than threshold
+    Vector2D oldCenter = oldAABB.center;
+    Vector2D newCenter = newAABB.center;
+    float distanceSquared = (newCenter - oldCenter).lengthSquared();
+    return distanceSquared > (m_movementThreshold * m_movementThreshold);
 }
 
 } // namespace HammerEngine
