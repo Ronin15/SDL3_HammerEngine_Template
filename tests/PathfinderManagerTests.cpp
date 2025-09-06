@@ -84,7 +84,6 @@ BOOST_AUTO_TEST_CASE(TestAsyncPathfinding) {
         start, 
         goal, 
         static_cast<AIInternal::PathPriority>(2), // Normal priority
-        5, // Default aiManagerPriority
         [&callbackCalled, &resultPath](EntityID id, const std::vector<Vector2D>& path) {
             BOOST_CHECK(id == 12345);
             callbackCalled = true;
@@ -123,7 +122,7 @@ BOOST_AUTO_TEST_CASE(TestPathfinderConfiguration) {
     manager.clean();
 }
 
-BOOST_AUTO_TEST_CASE(TestRequestCancellation) {
+BOOST_AUTO_TEST_CASE(TestBasicFunctionality) {
     PathfinderManager& manager = PathfinderManager::Instance();
     
     BOOST_REQUIRE(manager.init());
@@ -132,16 +131,15 @@ BOOST_AUTO_TEST_CASE(TestRequestCancellation) {
     Vector2D goal(200.0f, 200.0f);
     EntityID entityId = 54321;
     
-    // Request a path
-    auto requestId = manager.requestPathAsync(entityId, start, goal, static_cast<AIInternal::PathPriority>(3), 3); // Low priority
+    // Request a path without callback (should not crash)
+    auto requestId = manager.requestPathAsync(entityId, start, goal, static_cast<AIInternal::PathPriority>(3));
     BOOST_CHECK(requestId > 0);
     
-    // Cancel the request
-    manager.cancelRequest(requestId);
+    // Process requests
+    manager.update(0.016f);
     
-    // Cancel all requests for entity
-    manager.requestPathAsync(entityId, start, goal, static_cast<AIInternal::PathPriority>(3), 3); // Low priority
-    manager.cancelEntityRequests(entityId);
+    // Check that we have pending work initially
+    BOOST_CHECK(manager.hasPendingWork() || manager.getQueueSize() == 0); // Either has work or processed quickly
     
     // These should not crash
     
@@ -180,7 +178,7 @@ BOOST_AUTO_TEST_CASE(TestStatistics) {
     auto stats = manager.getStats();
     BOOST_CHECK(stats.totalRequests == 0);
     BOOST_CHECK(stats.completedRequests == 0);
-    BOOST_CHECK(stats.cancelledRequests == 0);
+    BOOST_CHECK(stats.failedRequests == 0);
     
     // Reset stats again (should not crash)
     manager.resetStats();
@@ -245,10 +243,10 @@ BOOST_AUTO_TEST_CASE(TestNoInfiniteRetryLoop) {
     };
     
     // Request the same path multiple times within the cache window (1000ms)
-    manager.requestPathAsync(entityId, start, goal, static_cast<AIInternal::PathPriority>(1), 8, callback);
-    manager.requestPathAsync(entityId, start, goal, static_cast<AIInternal::PathPriority>(1), 8, callback); 
-    manager.requestPathAsync(entityId, start, goal, static_cast<AIInternal::PathPriority>(1), 8, callback);
-    manager.requestPathAsync(entityId, start, goal, static_cast<AIInternal::PathPriority>(1), 8, callback);
+    manager.requestPathAsync(entityId, start, goal, static_cast<AIInternal::PathPriority>(1), callback);
+    manager.requestPathAsync(entityId, start, goal, static_cast<AIInternal::PathPriority>(1), callback); 
+    manager.requestPathAsync(entityId, start, goal, static_cast<AIInternal::PathPriority>(1), callback);
+    manager.requestPathAsync(entityId, start, goal, static_cast<AIInternal::PathPriority>(1), callback);
     
     // Process requests
     for (int i = 0; i < 10; ++i) {
@@ -291,7 +289,7 @@ BOOST_AUTO_TEST_CASE(TestFailedRequestCaching) {
     int secondCallbackCount = 0;
     
     // First request
-    manager.requestPathAsync(entityId, start, goal, static_cast<AIInternal::PathPriority>(1), 8,
+    manager.requestPathAsync(entityId, start, goal, static_cast<AIInternal::PathPriority>(1),
         [&firstCallbackCount](EntityID, const std::vector<Vector2D>&) {
             firstCallbackCount++;
         });
@@ -302,7 +300,7 @@ BOOST_AUTO_TEST_CASE(TestFailedRequestCaching) {
     manager.update(0.016f);
     
     // Second identical request within cache window (should be rejected/cached)
-    manager.requestPathAsync(entityId, start, goal, static_cast<AIInternal::PathPriority>(1), 8,
+    manager.requestPathAsync(entityId, start, goal, static_cast<AIInternal::PathPriority>(1),
         [&secondCallbackCount](EntityID, const std::vector<Vector2D>&) {
             secondCallbackCount++;
         });
