@@ -70,15 +70,10 @@ void PathfinderManager::update(float deltaTime) {
     // Check for grid updates periodically
     checkForGridUpdates(deltaTime);
 
-    // Report statistics periodically
-    if (m_lastStatsTime.time_since_epoch().count() == 0) {
-        m_lastStatsTime = std::chrono::steady_clock::now();
-    }
-    auto currentTime = std::chrono::steady_clock::now();
-    auto timeSinceStats = std::chrono::duration_cast<std::chrono::seconds>(currentTime - m_lastStatsTime);
-    
-    if (timeSinceStats.count() >= STATS_REPORT_INTERVAL) {
-        m_lastStatsTime = currentTime;
+    // Report statistics periodically - simplified frame counting
+    static int statsFrameCounter = 0;
+    if (++statsFrameCounter >= 600) { // ~10 seconds at 60 FPS
+        statsFrameCounter = 0;
         reportStatistics();
     }
 }
@@ -137,8 +132,6 @@ uint64_t PathfinderManager::requestPath(
 
     // Process directly on ThreadSystem - no queue overhead
     auto work = [this, entityId, start, goal, callback]() {
-        auto startTime = std::chrono::high_resolution_clock::now();
-        
         std::vector<Vector2D> path;
         bool cacheHit = false;
         
@@ -174,12 +167,8 @@ uint64_t PathfinderManager::requestPath(
             
             PathCacheEntry entry;
             entry.path = path; // Copy for cache
-            entry.timestamp = std::chrono::steady_clock::now();
             m_pathCache[cacheKey] = std::move(entry);
         }
-        
-        auto endTime = std::chrono::high_resolution_clock::now();
-        auto durationMs = std::chrono::duration<double, std::milli>(endTime - startTime).count();
         
         // Update statistics - simplified success check
         if (!path.empty()) {
@@ -188,8 +177,7 @@ uint64_t PathfinderManager::requestPath(
             m_failedRequests.fetch_add(1, std::memory_order_relaxed);
         }
         
-        // Update timing statistics
-        m_totalProcessingTime.fetch_add(durationMs, std::memory_order_relaxed);
+        // Update basic processing count (no timing overhead)
         m_processedCount.fetch_add(1, std::memory_order_relaxed);
         
         if (callback) {
@@ -370,17 +358,9 @@ PathfinderManager::PathfinderStats PathfinderManager::getStats() const {
     stats.completedRequests = m_completedRequests.load(std::memory_order_relaxed);
     stats.failedRequests = m_failedRequests.load(std::memory_order_relaxed);
     
-    // Calculate average processing time
-    uint64_t processedCount = m_processedCount.load(std::memory_order_relaxed);
-    if (processedCount > 0) {
-        double totalTime = m_totalProcessingTime.load(std::memory_order_relaxed);
-        stats.averageProcessingTimeMs = totalTime / processedCount;
-        
-        // Calculate requests per second based on total processing time
-        if (totalTime > 0) {
-            stats.requestsPerSecond = (processedCount * 1000.0) / totalTime;
-        }
-    }
+    // No timing statistics to eliminate overhead
+    stats.averageProcessingTimeMs = 0.0;
+    stats.requestsPerSecond = 0.0;
     
     // Cache statistics
     stats.cacheHits = m_cacheHits.load(std::memory_order_relaxed);
@@ -424,7 +404,6 @@ void PathfinderManager::resetStats() {
     m_failedRequests.store(0, std::memory_order_relaxed);
     m_cacheHits.store(0, std::memory_order_relaxed);
     m_cacheMisses.store(0, std::memory_order_relaxed);
-    m_totalProcessingTime.store(0.0, std::memory_order_relaxed);
     m_processedCount.store(0, std::memory_order_relaxed);
     
     // Fast cache clear - unordered_map::clear() is O(1) for small caches
