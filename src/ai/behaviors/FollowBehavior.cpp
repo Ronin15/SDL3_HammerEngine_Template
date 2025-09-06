@@ -162,7 +162,7 @@ void FollowBehavior::executeLogic(EntityPtr entity) {
       }
       if (stale || goalChanged) {
         auto& pathfinder = PathfinderManager::Instance();
-        pathfinder.requestPathAsync(entity->getID(), currentPos, desiredPos, AIInternal::PathPriority::Normal, 6, // Medium-high priority for follow
+        pathfinder.requestPath(entity->getID(), currentPos, desiredPos, AIInternal::PathPriority::Normal,
           [&state](EntityID /* id */, const std::vector<Vector2D>& path) {
             state.pathPoints = path;
             state.currentPathIndex = 0;

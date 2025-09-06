@@ -104,13 +104,22 @@ void WanderBehavior::executeLogic(EntityPtr entity) {
     // Dynamic movement distance based on local density and world scale
     float baseDistance = std::min(600.0f, m_areaRadius * 1.5f); // Increased base distance
     
-    // Check local entity density for dynamic area expansion
+    // PERFORMANCE FIX: Check local entity density less frequently to avoid expensive CollisionManager calls
     Vector2D position = entity->getPosition();
     float queryRadius = 120.0f;
     
-    // Get nearby entities and their positions for crowd analysis
-    std::vector<Vector2D> nearbyPositions;
-    int nearbyCount = AIInternal::GetNearbyEntitiesWithPositions(entity, position, queryRadius, nearbyPositions);
+    // Cache crowd analysis results to avoid expensive collision queries every frame
+    int nearbyCount = state.cachedNearbyCount;
+    std::vector<Vector2D> nearbyPositions = state.cachedNearbyPositions;
+    
+    // Only update crowd analysis every 20-30 frames (333-500ms at 60 FPS) + entity staggering  
+    Uint32 frameInterval = 333 + (entity->getID() % 10) * 17; // 333-500ms range
+    if (now - state.lastCrowdAnalysis > frameInterval) {
+      nearbyCount = AIInternal::GetNearbyEntitiesWithPositions(entity, position, queryRadius, nearbyPositions);
+      state.cachedNearbyCount = nearbyCount;
+      state.cachedNearbyPositions = nearbyPositions;
+      state.lastCrowdAnalysis = now;
+    }
     
      // Dynamic distance adjustment based on crowding
      float moveDistance = baseDistance;
@@ -162,26 +171,39 @@ void WanderBehavior::executeLogic(EntityPtr entity) {
     
     Vector2D dest = position + state.currentDirection * moveDistance;
     
-    // SMART GOAL VALIDATION: Clamp and validate destination  
-    float minX, minY, maxX, maxY;
-    if (WorldManager::Instance().getWorldBounds(minX, minY, maxX, maxY)) {
-        // Add large margin to prevent entities from getting stuck near world edges
-        // This corresponds to ~8 grid cells margin (8 * 32 = 256 pixels)
-        const float MARGIN = 256.0f;
-        dest.setX(std::clamp(dest.getX(), minX + MARGIN, maxX - MARGIN));
-        dest.setY(std::clamp(dest.getY(), minY + MARGIN, maxY - MARGIN));
-        
-        // Additional validation: don't pathfind to current position
-        float distanceToGoal = (dest - position).length();
-        if (distanceToGoal < 64.0f) { // Too close to current position
-          return; // Skip pathfinding request entirely
-        }
+    // PERFORMANCE FIX: Use cached world bounds instead of expensive WorldManager call
+    // Cache world bounds in entity state to avoid repeated WorldManager calls
+    if (state.cachedBounds.maxX == 0.0f) { // Initialize cached bounds once
+      float minX, minY, maxX, maxY;
+      if (WorldManager::Instance().getWorldBounds(minX, minY, maxX, maxY)) {
+        state.cachedBounds.minX = minX;
+        state.cachedBounds.minY = minY;
+        state.cachedBounds.maxX = maxX;
+        state.cachedBounds.maxY = maxY;
+      } else {
+        // Fallback bounds for performance
+        state.cachedBounds.minX = 0.0f;
+        state.cachedBounds.minY = 0.0f;
+        state.cachedBounds.maxX = 3200.0f;
+        state.cachedBounds.maxY = 3200.0f;
+      }
+    }
+    
+    // Use cached bounds for validation
+    const float MARGIN = 256.0f;
+    dest.setX(std::clamp(dest.getX(), state.cachedBounds.minX + MARGIN, state.cachedBounds.maxX - MARGIN));
+    dest.setY(std::clamp(dest.getY(), state.cachedBounds.minY + MARGIN, state.cachedBounds.maxY - MARGIN));
+    
+    // Additional validation: don't pathfind to current position
+    float distanceToGoal = (dest - position).length();
+    if (distanceToGoal < 64.0f) { // Too close to current position
+      return; // Skip pathfinding request entirely
     }
 
     // CACHE-AWARE PATHFINDING: Check for existing path first
     bool needsNewPath = state.pathPoints.empty() || 
                        state.currentPathIndex >= state.pathPoints.size() ||
-                       (now - state.lastPathUpdate) > 10000; // Only refresh after 10 seconds
+                       (now - state.lastPathUpdate) > 15000; // Only refresh after 15 seconds
     
     if (needsNewPath && state.cooldowns.canRequestPath(now)) {
       // SMART REQUEST: Only request if goal significantly different from last request
@@ -195,10 +217,9 @@ void WanderBehavior::executeLogic(EntityPtr entity) {
       
       if (goalChanged) {
         // ASYNC PATHFINDING: Use background processing for wandering behavior
-        PathfinderManager::Instance().requestPathAsync(
+        PathfinderManager::Instance().requestPath(
             entity->getID(), entity->getPosition(), dest,
             AIInternal::PathPriority::Normal,
-            3, // Medium AIManager priority for wander behavior
             [this, entity](EntityID, const std::vector<Vector2D>& path) {
               auto stateIt = m_entityStates.find(entity);
               if (stateIt != m_entityStates.end() && !path.empty()) {
@@ -207,7 +228,7 @@ void WanderBehavior::executeLogic(EntityPtr entity) {
                 stateIt->second.lastPathUpdate = SDL_GetTicks();
               }
             });
-        state.cooldowns.applyPathCooldown(now, 2000); // Increased cooldown from 800ms to 2s
+        state.cooldowns.applyPathCooldown(now, 5000); // Aggressive cooldown: 5 seconds between path requests
       }
     }
     if (!state.pathPoints.empty() && state.currentPathIndex < state.pathPoints.size()) {

@@ -56,10 +56,10 @@ public:
 
 protected:
   bool m_active{true};
-  // Shared separation decimation interval (~30 frames at 60 FPS)
-  static constexpr Uint32 kSeparationIntervalMs = 480;
+  // PERFORMANCE FIX: Dramatically increased separation decimation interval (2 seconds)
+  static constexpr Uint32 kSeparationIntervalMs = 2000;
 
-  // Apply separation at most every kSeparationIntervalMs, reusing last velocity
+  // Apply separation at most every kSeparationIntervalMs, with entity-based staggering
   inline void applyDecimatedSeparation(EntityPtr entity,
                                        const Vector2D &position,
                                        const Vector2D &intendedVelocity,
@@ -68,7 +68,14 @@ protected:
                                        Uint64 &lastSepTick,
                                        Vector2D &lastSepVelocity) const {
     Uint64 now = SDL_GetTicks();
-    if (now - lastSepTick >= kSeparationIntervalMs) {
+    
+    // PERFORMANCE FIX: Entity-based staggered separation to prevent all entities 
+    // from doing expensive separation calculations on the same frame
+    Uint32 entityStaggerOffset = (entity->getID() % 200) * 10; // Stagger by up to 2 seconds
+    Uint32 effectiveInterval = kSeparationIntervalMs + entityStaggerOffset;
+    
+    if (now - lastSepTick >= effectiveInterval) {
+      // Only do the expensive separation calculation when absolutely necessary
       lastSepVelocity = AIInternal::ApplySeparation(
           entity, position, intendedVelocity, speed, queryRadius, strength,
           static_cast<size_t>(maxNeighbors));
