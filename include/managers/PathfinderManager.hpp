@@ -23,6 +23,7 @@
 #include "utils/Vector2D.hpp"
 #include "entities/Entity.hpp"
 #include <atomic>
+#include <chrono>
 #include <functional>
 #include <memory>
 #include <mutex>
@@ -259,7 +260,9 @@ private:
     PathfinderManager& operator=(const PathfinderManager&) = delete;
 
     // Core components
-    std::unique_ptr<HammerEngine::PathfindingGrid> m_grid;
+    // Shared grid allows readers (pathfinding tasks) to hold a snapshot
+    // while the manager atomically swaps in rebuilt grids.
+    std::shared_ptr<HammerEngine::PathfindingGrid> m_grid;
     // PathCache for caching pathfinding results
     std::unique_ptr<AIInternal::PathCache> m_cache;
 
@@ -279,15 +282,26 @@ private:
     std::atomic<bool> m_initialized{false};
     bool m_isShutdown{false};
     
-    // Statistics
-    mutable PathfinderStats m_stats;
-    mutable std::mutex m_statsMutex;
+    // Statistics counters (lock-free updates)
+    std::atomic<uint64_t> m_totalRequests{0};
+    std::atomic<uint64_t> m_completedRequests{0};
+    std::atomic<uint64_t> m_cancelledRequests{0};
+    std::atomic<uint64_t> m_timedOutRequests{0};
+    std::atomic<uint64_t> m_cacheHits{0};
+    std::atomic<uint64_t> m_cacheMisses{0};
+    std::atomic<uint64_t> m_hierarchicalRequests{0};
+    std::atomic<uint64_t> m_directRequests{0};
 
     // Update timers
     float m_gridUpdateTimer{0.0f};
     float m_cacheCleanupTimer{0.0f};
     static constexpr float GRID_UPDATE_INTERVAL = 1.0f;  // seconds
     static constexpr float CACHE_CLEANUP_INTERVAL = 2.0f; // seconds
+
+    // Non-static state for periodic tasks/logging
+    uint64_t m_lastWorldVersion{0};
+    float m_secondsSinceLastRebuild{0.0f};
+    std::chrono::steady_clock::time_point m_lastDebugTime{};
 
     // Internal methods
     void updateStatistics();

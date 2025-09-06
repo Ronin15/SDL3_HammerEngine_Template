@@ -32,17 +32,26 @@ std::optional<std::vector<Vector2D>> PathCache::findSimilarPath(const Vector2D& 
 
     m_totalQueries.fetch_add(1, std::memory_order_relaxed);
 
-    std::lock_guard<std::mutex> lock(m_cacheMutex);
+    std::shared_lock<std::shared_mutex> readLock(m_cacheMutex);
 
     // Fast path: try quantized key bucket first
     uint64_t key = hashPath(start, goal);
     if (auto it = m_cachedPaths.find(key); it != m_cachedPaths.end()) {
         auto& cachedPath = it->second;
         if (cachedPath.isValid && isPathSimilar(cachedPath, start, goal, tolerance)) {
-            updatePathUsage(key, cachedPath);
-            auto adjustedPath = adjustPathToRequest(cachedPath.waypoints, start, goal);
-            m_totalHits.fetch_add(1, std::memory_order_relaxed);
-            return adjustedPath;
+            // Upgrade to exclusive lock to update usage
+            readLock.unlock();
+            std::unique_lock<std::shared_mutex> writeLock(m_cacheMutex);
+            auto it2 = m_cachedPaths.find(key);
+            if (it2 != m_cachedPaths.end() && it2->second.isValid && isPathSimilar(it2->second, start, goal, tolerance)) {
+                updatePathUsage(key, it2->second);
+                auto adjustedPath = adjustPathToRequest(it2->second.waypoints, start, goal);
+                m_totalHits.fetch_add(1, std::memory_order_relaxed);
+                return adjustedPath;
+            }
+            // Fall through to neighbor scan with a fresh shared lock
+            writeLock.unlock();
+            readLock.lock();
         }
         // If entry exists but not similar (or negative), fall through to neighborhood scan
     }
@@ -63,10 +72,19 @@ std::optional<std::vector<Vector2D>> PathCache::findSimilarPath(const Vector2D& 
                     if (nit != m_cachedPaths.end()) {
                         auto &cp = nit->second;
                         if (cp.isValid && isPathSimilar(cp, start, goal, tolerance)) {
-                            updatePathUsage(nkey, cp);
-                            auto adjustedPath = adjustPathToRequest(cp.waypoints, start, goal);
-                            m_totalHits.fetch_add(1, std::memory_order_relaxed);
-                            return adjustedPath;
+                            // Upgrade to exclusive lock to update usage
+                            readLock.unlock();
+                            std::unique_lock<std::shared_mutex> writeLock(m_cacheMutex);
+                            auto nit2 = m_cachedPaths.find(nkey);
+                            if (nit2 != m_cachedPaths.end() && nit2->second.isValid && isPathSimilar(nit2->second, start, goal, tolerance)) {
+                                updatePathUsage(nkey, nit2->second);
+                                auto adjustedPath = adjustPathToRequest(nit2->second.waypoints, start, goal);
+                                m_totalHits.fetch_add(1, std::memory_order_relaxed);
+                                return adjustedPath;
+                            }
+                            // Restore shared lock and continue probing
+                            writeLock.unlock();
+                            readLock.lock();
                         }
                     }
                 }
@@ -88,7 +106,7 @@ bool PathCache::hasNegativeCached(const Vector2D& start,
         return false;
     }
 
-    std::lock_guard<std::mutex> lock(m_cacheMutex);
+    std::shared_lock<std::shared_mutex> readLock(m_cacheMutex);
 
     // Check exact bucket first
     uint64_t key = hashPath(start, goal);
@@ -133,7 +151,7 @@ void PathCache::cachePath(const Vector2D& start, const Vector2D& goal, const std
     uint64_t currentTime = SDL_GetTicks();
     uint64_t pathKey = hashPath(start, goal);
     
-    std::lock_guard<std::mutex> lock(m_cacheMutex);
+    std::unique_lock<std::shared_mutex> lock(m_cacheMutex);
     
     // Check if we need to evict before adding new path
     if (m_cachedPaths.size() >= MAX_CACHED_PATHS) {
@@ -159,7 +177,7 @@ void PathCache::evictPathsInCrowdedAreas(const Vector2D& playerPos,
         return;
     }
 
-    std::lock_guard<std::mutex> lock(m_cacheMutex);
+    std::unique_lock<std::shared_mutex> lock(m_cacheMutex);
     
     std::vector<uint64_t> pathsToEvict;
     
@@ -209,7 +227,7 @@ void PathCache::cleanup(uint64_t maxAgeMs, uint32_t minUseCount)
 
     uint64_t currentTime = SDL_GetTicks();
     
-    std::lock_guard<std::mutex> lock(m_cacheMutex);
+    std::unique_lock<std::shared_mutex> lock(m_cacheMutex);
     
     std::vector<uint64_t> pathsToRemove;
     
@@ -270,7 +288,7 @@ PathCacheStats PathCache::getStats() const
     
     // Get cache size with lock
     {
-        std::lock_guard<std::mutex> lock(m_cacheMutex);
+        std::shared_lock<std::shared_mutex> lock(m_cacheMutex);
         stats.totalPaths = m_cachedPaths.size();
     }
     
@@ -286,7 +304,7 @@ void PathCache::clear()
         return;
     }
 
-    std::lock_guard<std::mutex> lock(m_cacheMutex);
+    std::unique_lock<std::shared_mutex> lock(m_cacheMutex);
     
     m_cachedPaths.clear();
     
@@ -310,7 +328,7 @@ size_t PathCache::size() const
         return 0;
     }
 
-    std::lock_guard<std::mutex> lock(m_cacheMutex);
+    std::shared_lock<std::shared_mutex> lock(m_cacheMutex);
     return m_cachedPaths.size();
 }
 
@@ -333,7 +351,7 @@ uint64_t PathCache::hashPath(const Vector2D& start, const Vector2D& goal) const
 {
     // CRITICAL FIX: Align quantization with spatial tolerance (64px) to prevent cache misses
     // Old 32px quantization was too fine, causing cache misses for similar paths
-    static constexpr float QUANTIZATION_SIZE = 64.0f;  // Match DEFAULT_SPATIAL_TOLERANCE
+    const float QUANTIZATION_SIZE = 64.0f;  // Match DEFAULT_SPATIAL_TOLERANCE
     
     // Use more robust quantization to handle clustered entities
     uint32_t startX = static_cast<uint32_t>(std::floor(start.getX() / QUANTIZATION_SIZE + 0.5f));
@@ -482,7 +500,7 @@ void PathCache::cacheNegative(const Vector2D& start, const Vector2D& goal)
     uint64_t currentTime = SDL_GetTicks();
     uint64_t pathKey = hashPath(start, goal);
 
-    std::lock_guard<std::mutex> lock(m_cacheMutex);
+    std::unique_lock<std::shared_mutex> lock(m_cacheMutex);
 
     // Check LRU capacity and evict if needed
     if (m_cachedPaths.size() >= MAX_CACHED_PATHS) {
