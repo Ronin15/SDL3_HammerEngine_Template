@@ -362,26 +362,24 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
     // frame
     processPendingBehaviorAssignments();
 
-    // Synchronize positions and count active entities
+    // Count active entities and sync positions less frequently for performance
     size_t entityCount = 0;
     size_t activeCount = 0;
+    uint64_t currentFrame = m_frameCounter.load(std::memory_order_relaxed);
+    
     {
       std::shared_lock<std::shared_mutex> lock(m_entitiesMutex);
       entityCount = m_storage.size();
       for (size_t i = 0; i < entityCount; ++i) {
         if (m_storage.hotData[i].active && m_storage.entities[i]) {
-          m_storage.hotData[i].position = m_storage.entities[i]->getPosition();
-
-          // Increment frame counter for each active entity (with overflow
-          // protection)
-          if (m_storage.hotData[i].frameCounter < UINT16_MAX) {
-            m_storage.hotData[i].frameCounter++;
-          }
-
+          // Remove expensive position sync - entities update positions directly
+          // Position sync moved to only when absolutely necessary for distance calculations
+          
           ++activeCount;
         }
       }
     }
+
 
     if (entityCount == 0) {
       return;
@@ -402,9 +400,18 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
     // reduce CPU usage)
     EntityPtr player = m_playerEntity.lock();
     bool distancesUpdated = false;
-    uint64_t currentFrame = m_frameCounter.load(std::memory_order_relaxed);
     if (player && (currentFrame % 4 == 0)) {
       Vector2D playerPos = player->getPosition();
+      
+      // Sync positions only when needed for distance calculations
+      {
+        std::shared_lock<std::shared_mutex> lock(m_entitiesMutex);
+        for (size_t i = 0; i < entityCount; ++i) {
+          if (m_storage.hotData[i].active && m_storage.entities[i]) {
+            m_storage.hotData[i].position = m_storage.entities[i]->getPosition();
+          }
+        }
+      }
 
       // Simple scalar distance updates (more efficient for scattered memory
       // access)
@@ -444,7 +451,7 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
         queueCapacity = 1;
       }
       size_t pressureThreshold =
-          (queueCapacity * 9) / 10; // 90% capacity threshold
+          static_cast<size_t>(queueCapacity * HammerEngine::QUEUE_PRESSURE_CRITICAL); // Use unified threshold
 
       if (queueSize > pressureThreshold) {
         // Graceful degradation: fallback to single-threaded processing
@@ -475,20 +482,25 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
       m_lastAIBudget.store(budget.aiAllocated, std::memory_order_relaxed);
       m_lastWasThreaded.store(true, std::memory_order_relaxed);
 
-      // Dynamic batch sizing based on queue pressure for optimal performance
+      // Dynamic batch sizing based on queue pressure and pathfinding load for optimal performance
       size_t minEntitiesPerBatch = 1000;
       size_t maxBatches = 4;
+      
+      // Skip pathfinding coordination for small entity counts to avoid overhead
+      if (activeCount > THREADING_THRESHOLD / 2) {
+        // Removed pathfinding load coordination
+      }
 
-      // Adjust batch strategy based on queue pressure
+      // Adjust batch strategy based on queue pressure using unified thresholds
       double queuePressure = static_cast<double>(queueSize) / queueCapacity;
-      if (queuePressure > 0.5) {
+      if (queuePressure > HammerEngine::QUEUE_PRESSURE_WARNING) {
         // High pressure: use fewer, larger batches to reduce queue overhead
         minEntitiesPerBatch = 1500;
         maxBatches = 2;
         AI_DEBUG("High queue pressure (" +
                  std::to_string(static_cast<int>(queuePressure * 100)) +
                  "%), using larger batches");
-      } else if (queuePressure < 0.25) {
+      } else if (queuePressure < (1.0 - HammerEngine::QUEUE_PRESSURE_WARNING)) {
         // Low pressure: can use more batches for better parallelization
         minEntitiesPerBatch = 800;
         maxBatches = 4;
@@ -566,7 +578,7 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
 
     // Periodic cleanup and stats (balanced frequency)
     if (currentFrame % 300 == 0) {
-      cleanupInactiveEntities();
+      // cleanupInactiveEntities() moved to GameEngine background processing
 
       m_lastCleanupFrame.store(currentFrame, std::memory_order_relaxed);
 
@@ -895,6 +907,11 @@ size_t AIManager::processPendingBehaviorAssignments() {
 
   size_t minAssignmentsPerBatch = 1000;
   size_t maxBatches = 4;
+  
+  // Skip pathfinding coordination for small entity counts to avoid overhead
+  if (assignmentCount > THREADING_THRESHOLD / 2) {
+    // Removed pathfinding load coordination
+  }
   if (queuePressure > 0.5) {
     minAssignmentsPerBatch = 1500;
     maxBatches = 2;
@@ -1459,5 +1476,6 @@ AIManager::~AIManager() {
 PathfinderManager &AIManager::getPathfinderManager() const {
   return PathfinderManager::Instance();
 }
+
 
 // All pathfinding components are now managed by PathfinderManager

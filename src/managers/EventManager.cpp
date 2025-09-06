@@ -739,7 +739,7 @@ void EventManager::updateEventTypeBatchThreaded(EventTypeId typeId) {
   // Check queue pressure before submitting tasks
   size_t queueSize = threadSystem.getQueueSize();
   size_t queueCapacity = threadSystem.getQueueCapacity();
-  size_t pressureThreshold = (queueCapacity * 9) / 10; // 90% capacity threshold
+  size_t pressureThreshold = static_cast<size_t>(queueCapacity * HammerEngine::QUEUE_PRESSURE_CRITICAL); // Use unified threshold
 
   if (queueSize > pressureThreshold) {
     // Graceful degradation: fallback to single-threaded processing
@@ -770,16 +770,16 @@ void EventManager::updateEventTypeBatchThreaded(EventTypeId typeId) {
   size_t minEventsPerBatch = 10;
   size_t maxBatches = 4;
 
-  // Adjust batch strategy based on queue pressure
+  // Adjust batch strategy based on queue pressure using unified thresholds
   double queuePressure = static_cast<double>(queueSize) / queueCapacity;
-  if (queuePressure > 0.5) {
+  if (queuePressure > HammerEngine::QUEUE_PRESSURE_WARNING) {
     // High pressure: use fewer, larger batches to reduce queue overhead
     minEventsPerBatch = 15;
     maxBatches = 2;
     EVENT_DEBUG("High queue pressure (" +
                 std::to_string(static_cast<int>(queuePressure * 100)) +
                 "%), using larger batches");
-  } else if (queuePressure < 0.25) {
+  } else if (queuePressure < (1.0 - HammerEngine::QUEUE_PRESSURE_WARNING)) {
     // Low pressure: can use more batches for better parallelization
     minEventsPerBatch = 8;
     maxBatches = 4;

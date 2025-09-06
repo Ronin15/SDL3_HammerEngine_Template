@@ -1972,13 +1972,13 @@ void ParticleManager::updateParticlesThreaded(float deltaTime,
   size_t minParticlesPerBatch = 500;
   size_t maxBatches = 8;
 
-  // Adjust batch strategy based on queue pressure
+  // Adjust batch strategy based on queue pressure using unified thresholds
   double queuePressure = static_cast<double>(queueSize) / queueCapacity;
-  if (queuePressure > 0.5) {
+  if (queuePressure > HammerEngine::QUEUE_PRESSURE_WARNING) {
     // High pressure: use fewer, larger batches to reduce queue overhead
     minParticlesPerBatch = 1000;
     maxBatches = 4;
-  } else if (queuePressure < 0.25) {
+  } else if (queuePressure < (1.0 - HammerEngine::QUEUE_PRESSURE_WARNING)) {
     // Low pressure: can use more batches for better parallelization
     minParticlesPerBatch = 300;
     maxBatches = 8;
