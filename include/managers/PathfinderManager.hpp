@@ -280,13 +280,11 @@ private:
     mutable std::atomic<uint64_t> m_failedRequests{0};
     mutable std::atomic<uint64_t> m_cacheHits{0};
     mutable std::atomic<uint64_t> m_cacheMisses{0};
-    mutable std::atomic<double> m_totalProcessingTime{0.0};
     mutable std::atomic<uint64_t> m_processedCount{0};
     
     // Simple path cache
     struct PathCacheEntry {
         std::vector<Vector2D> path;
-        std::chrono::steady_clock::time_point timestamp;
     };
     mutable std::unordered_map<uint64_t, PathCacheEntry> m_pathCache;
     mutable std::mutex m_cacheMutex;
@@ -297,9 +295,7 @@ private:
     float m_timeSinceLastRebuild{0.0f};
     static constexpr float GRID_UPDATE_INTERVAL = 5.0f;  // seconds
     
-    // Statistics reporting
-    std::chrono::steady_clock::time_point m_lastStatsTime{};
-    static constexpr float STATS_REPORT_INTERVAL = 10.0f; // seconds
+    // No timing statistics to reduce overhead
 
     // Internal methods - simplified
     void processQueuedRequests();
