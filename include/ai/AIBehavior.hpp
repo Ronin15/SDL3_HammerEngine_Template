@@ -11,6 +11,9 @@
 #include <SDL3/SDL.h>
 #include <cstddef>
 
+// Forward declarations
+class PathfinderManager;
+
 // Forward declare separation to avoid pulling internal headers here
 namespace AIInternal {
 Vector2D ApplySeparation(EntityPtr entity, const Vector2D &position,
@@ -51,6 +54,7 @@ public:
   // Clone method for creating unique behavior instances
   virtual std::shared_ptr<AIBehavior> clone() const = 0;
 
+
   // Expose to AIManager for behavior management
   friend class AIManager;
 
@@ -58,6 +62,10 @@ protected:
   bool m_active{true};
   // PERFORMANCE FIX: Dramatically increased separation decimation interval (2 seconds)
   static constexpr Uint32 kSeparationIntervalMs = 2000;
+  
+  // Cached PathfinderManager reference for all behaviors to eliminate Instance() calls
+  PathfinderManager& pathfinder() const;
+  
 
   // Apply separation at most every kSeparationIntervalMs, with entity-based staggering
   inline void applyDecimatedSeparation(EntityPtr entity,

@@ -73,7 +73,7 @@ void WanderBehavior::executeLogic(EntityPtr entity) {
   if (!entity || !m_active)
     return;
 
-  // Get entity state
+  // Get entity state  
   EntityState &state = m_entityStates[entity];
   Uint64 currentTime = SDL_GetTicks();
 
@@ -217,7 +217,7 @@ void WanderBehavior::executeLogic(EntityPtr entity) {
       
       if (goalChanged) {
         // ASYNC PATHFINDING: Use background processing for wandering behavior
-        PathfinderManager::Instance().requestPath(
+        pathfinder().requestPath(
             entity->getID(), entity->getPosition(), dest,
             AIInternal::PathPriority::Normal,
             [this, entity](EntityID, const std::vector<Vector2D>& path) {
@@ -233,7 +233,7 @@ void WanderBehavior::executeLogic(EntityPtr entity) {
     }
     if (!state.pathPoints.empty() && state.currentPathIndex < state.pathPoints.size()) {
       // Follow current path; velocity will be updated inside followPathStep
-      bool following = PathfinderManager::Instance().followPathStep(
+      bool following = pathfinder().followPathStep(
           entity, entity->getPosition(), state.pathPoints, state.currentPathIndex,
           m_speed, state.navRadius);
       if (following) {

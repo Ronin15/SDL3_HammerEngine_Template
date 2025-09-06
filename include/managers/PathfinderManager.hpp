@@ -295,7 +295,9 @@ private:
     float m_timeSinceLastRebuild{0.0f};
     static constexpr float GRID_UPDATE_INTERVAL = 5.0f;  // seconds
     
-    // No timing statistics to reduce overhead
+    // Frame counters for reduced frequency operations (no static vars)
+    int m_gridUpdateCounter{0};
+    int m_statsFrameCounter{0};
 
     // Internal methods - simplified
     void processQueuedRequests();
