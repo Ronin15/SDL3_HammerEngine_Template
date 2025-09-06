@@ -852,7 +852,7 @@ void GameEngine::update(float deltaTime) {
 
   // Pathfinding system - centralized pathfinding service for AI entities
   if (mp_pathfinderManager) {
-    mp_pathfinderManager->update(deltaTime);
+    mp_pathfinderManager->update();
   } else {
     GAMEENGINE_ERROR("PathfinderManager cache is null!");
   }
