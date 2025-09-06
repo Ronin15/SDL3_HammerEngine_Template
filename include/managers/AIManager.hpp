@@ -467,7 +467,7 @@ private:
   static constexpr size_t BATCH_SIZE =
       256; // Larger batches for better throughput
   static constexpr size_t THREADING_THRESHOLD =
-      500; // Higher threshold due to improved efficiency
+      100; // Higher threshold - threading overhead not worth it for smaller counts
 
   // Optimized helper methods
   BehaviorType inferBehaviorType(const std::string &behaviorName) const;

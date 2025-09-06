@@ -72,6 +72,16 @@ static constexpr size_t ENGINE_MIN_WORKERS = 1;        // Minimum workers for Ga
 static constexpr size_t ENGINE_OPTIMAL_WORKERS = 2;    // Optimal workers for GameEngine on higher-end systems
 
 /**
+ * @brief Unified queue pressure management thresholds
+ * 
+ * Consistent queue pressure thresholds across all managers to eliminate
+ * performance inconsistencies and ensure proper thread coordination.
+ */
+static constexpr float QUEUE_PRESSURE_WARNING = 0.70f;       // Early adaptation threshold (70%)
+static constexpr float QUEUE_PRESSURE_CRITICAL = 0.90f;     // Fallback trigger for AI/Event managers (90%)
+static constexpr float QUEUE_PRESSURE_PATHFINDING = 0.75f;  // PathfinderManager threshold (75%)
+
+/**
  * @brief Calculate optimal worker budget allocation with hardware-adaptive scaling
  *
  * @param availableWorkers Total workers available in ThreadSystem
