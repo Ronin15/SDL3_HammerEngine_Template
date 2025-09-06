@@ -67,13 +67,17 @@ void PathfinderManager::update(float deltaTime) {
         return;
     }
 
-    // Check for grid updates periodically
-    checkForGridUpdates(deltaTime);
-
-    // Report statistics periodically - simplified frame counting
-    static int statsFrameCounter = 0;
-    if (++statsFrameCounter >= 600) { // ~10 seconds at 60 FPS
-        statsFrameCounter = 0;
+    // Check for grid updates and report statistics - reduced frequency to eliminate per-frame overhead
+    
+    // Grid updates every 5 seconds (300 frames at 60 FPS)
+    if (++m_gridUpdateCounter >= 300) {
+        m_gridUpdateCounter = 0;
+        checkForGridUpdates(GRID_UPDATE_INTERVAL); // Pass fixed interval since we control timing
+    }
+    
+    // Statistics every 10 seconds (600 frames at 60 FPS)
+    if (++m_statsFrameCounter >= 600) {
+        m_statsFrameCounter = 0;
         reportStatistics();
     }
 }
@@ -160,9 +164,9 @@ uint64_t PathfinderManager::requestPath(
         if (!path.empty()) {
             std::lock_guard<std::mutex> lock(m_cacheMutex);
             
-            // FIFO eviction if needed
+            // Simple cache size management - clear when full (better than expensive FIFO)
             if (m_pathCache.size() >= MAX_CACHE_ENTRIES) {
-                m_pathCache.erase(m_pathCache.begin());
+                m_pathCache.clear(); // O(1) operation, starts fresh
             }
             
             PathCacheEntry entry;
@@ -574,7 +578,7 @@ bool PathfinderManager::ensureGridInitialized() {
 void PathfinderManager::checkForGridUpdates(float deltaTime) {
     m_timeSinceLastRebuild += deltaTime;
     
-    // Only check for updates every GRID_UPDATE_INTERVAL seconds
+    // Only check for updates every GRID_UPDATE_INTERVAL seconds  
     if (m_timeSinceLastRebuild < GRID_UPDATE_INTERVAL) {
         return;
     }
