@@ -11,6 +11,7 @@
 #include <cmath>
 #include <memory>
 #include <unordered_map>
+#include <atomic>
 #include <stdexcept>
 #include "core/Logger.hpp"
 
@@ -87,29 +88,68 @@ void PathfindingGrid::rebuildFromWorld() {
     const WorldManager& wm = WorldManager::Instance();
     const auto* world = wm.getWorldData();
     if (!world) { PATHFIND_WARN("rebuildFromWorld(): no active world"); return; }
-    m_h = static_cast<int>(world->grid.size());
-    m_w = m_h > 0 ? static_cast<int>(world->grid[0].size()) : 0;
-    m_blocked.assign(static_cast<size_t>(m_w * m_h), 0);
-    m_weight.assign(static_cast<size_t>(m_w * m_h), 1.0f);
+
+    // Keep m_w/m_h as constructed (cell-resolution grid). Sample world tiles into cells.
+    const int cellsW = m_w;
+    const int cellsH = m_h;
+    if (cellsW <= 0 || cellsH <= 0) { PATHFIND_WARN("rebuildFromWorld(): invalid grid dims"); return; }
+
+    m_blocked.assign(static_cast<size_t>(cellsW * cellsH), 0);
+    m_weight.assign(static_cast<size_t>(cellsW * cellsH), 1.0f);
+
+    const int tilesH = static_cast<int>(world->grid.size());
+    const int tilesW = tilesH > 0 ? static_cast<int>(world->grid[0].size()) : 0;
+    if (tilesW <= 0 || tilesH <= 0) { PATHFIND_WARN("rebuildFromWorld(): world has no tiles"); return; }
+
+    const float TILE_SIZE = 32.0f;
     int blockedCount = 0;
-    for (int y = 0; y < m_h; ++y) {
-        for (int x = 0; x < m_w; ++x) {
-            const auto& tile = world->grid[y][x];
-            bool blocked = tile.obstacleType != ObstacleType::NONE; // Allow movement through water
-            m_blocked[static_cast<size_t>(y * m_w + x)] = blocked ? 1 : 0;
-            if (blocked) ++blockedCount;
-            
-            // Set movement weights - water is slower but not impassable
-            float weight = 1.0f;
-            if (tile.isWater) {
-                weight = 2.0f; // Water takes 2x longer to traverse
+
+    for (int cy = 0; cy < cellsH; ++cy) {
+        for (int cx = 0; cx < cellsW; ++cx) {
+            // Compute the world-space rect covered by this cell
+            float x0 = m_offset.getX() + cx * m_cell;
+            float y0 = m_offset.getY() + cy * m_cell;
+            float x1 = x0 + m_cell;
+            float y1 = y0 + m_cell;
+
+            int tx0 = static_cast<int>(std::floor(x0 / TILE_SIZE));
+            int ty0 = static_cast<int>(std::floor(y0 / TILE_SIZE));
+            int tx1 = static_cast<int>(std::floor((x1 - 1.0f) / TILE_SIZE));
+            int ty1 = static_cast<int>(std::floor((y1 - 1.0f) / TILE_SIZE));
+
+            tx0 = std::clamp(tx0, 0, tilesW - 1);
+            ty0 = std::clamp(ty0, 0, tilesH - 1);
+            tx1 = std::clamp(tx1, 0, tilesW - 1);
+            ty1 = std::clamp(ty1, 0, tilesH - 1);
+
+            int totalTiles = 0;
+            int blockedTiles = 0;
+            float weightSum = 0.0f;
+
+            for (int ty = ty0; ty <= ty1; ++ty) {
+                for (int tx = tx0; tx <= tx1; ++tx) {
+                    const auto& tile = world->grid[ty][tx];
+                    bool blocked = tile.obstacleType != ObstacleType::NONE; // Allow movement through water
+                    if (blocked) blockedTiles++;
+                    float tw = tile.isWater ? 2.0f : 1.0f;
+                    weightSum += tw;
+                    totalTiles++;
+                }
             }
-            m_weight[static_cast<size_t>(y * m_w + x)] = weight;
+
+            bool cellBlocked = (totalTiles > 0) && (static_cast<float>(blockedTiles) / static_cast<float>(totalTiles) > 0.50f);
+            float cellWeight = (totalTiles > 0) ? (weightSum / static_cast<float>(totalTiles)) : 1.0f;
+
+            size_t cidx = static_cast<size_t>(cy * cellsW + cx);
+            m_blocked[cidx] = cellBlocked ? 1 : 0;
+            if (cellBlocked) ++blockedCount;
+            m_weight[cidx] = cellWeight;
         }
     }
-    PATHFIND_INFO("Grid rebuilt: " + std::to_string(m_w) + "x" + std::to_string(m_h) +
-                  ", blocked=" + std::to_string(blockedCount) + "/" + std::to_string(m_w * m_h) +
-                  " (" + std::to_string((100.0f * blockedCount) / (m_w * m_h)) + "% blocked)");
+
+    PATHFIND_INFO("Grid rebuilt (sampled): " + std::to_string(cellsW) + "x" + std::to_string(cellsH) +
+                  ", blocked=" + std::to_string(blockedCount) + "/" + std::to_string(cellsW * cellsH) +
+                  " (" + std::to_string((100.0f * blockedCount) / (cellsW * cellsH)) + "% blocked)");
     
     // Update coarse grid for hierarchical pathfinding
     if (m_coarseGrid) {
@@ -348,9 +388,9 @@ PathfindingResult PathfindingGrid::findPath(const Vector2D& start, const Vector2
 
     int iterations = 0;
     const int dirs = m_allowDiagonal ? 8 : 4;
-    // Static direction tables to avoid re-initialization overhead per call
-    static constexpr int dx8[8] = {1,-1,0,0, 1,1,-1,-1};
-    static constexpr int dy8[8] = {0,0,1,-1, 1,-1,1,-1};
+    // Direction tables
+    constexpr int dx8[8] = {1,-1,0,0, 1,1,-1,-1};
+    constexpr int dy8[8] = {0,0,1,-1, 1,-1,1,-1};
 
     // PERFORMANCE TUNING: Tighter iteration budget to cap worst-case CPU
     int baseIters = std::max(4000, baseDistance * 40);
@@ -609,15 +649,9 @@ PathfindingResult PathfindingGrid::findPathHierarchical(const Vector2D& start, c
     auto coarseResult = m_coarseGrid->findPath(start, goal, coarsePath);
     
     if (coarseResult != PathfindingResult::SUCCESS) {
-        // Coarse pathfinding failed, try direct pathfinding as fallback
-        static int failureCount = 0;
-        failureCount++;
-        
-        // Only log every 10th failure to reduce spam
-        if (failureCount % 10 == 1) {
-            PATHFIND_INFO("Coarse pathfinding result: " + std::to_string(static_cast<int>(coarseResult)) + 
-                         ", attempting direct pathfinding (" + std::to_string(failureCount) + " failures)");
-        }
+        // Coarse pathfinding failed, try direct pathfinding as fallback (no static counters)
+        PATHFIND_INFO("Coarse pathfinding result: " + std::to_string(static_cast<int>(coarseResult)) +
+                     ", attempting direct pathfinding");
         return findPath(start, goal, outPath);
     }
     
@@ -642,6 +676,7 @@ PathfindingResult PathfindingGrid::refineCoarsePath(const std::vector<Vector2D>&
     // Refine each segment of the coarse path
     Vector2D currentPoint = start;
     
+    bool loggedFailure = false;
     for (size_t i = 1; i < coarsePath.size(); ++i) {
         Vector2D segmentGoal = coarsePath[i];
         
@@ -657,10 +692,9 @@ PathfindingResult PathfindingGrid::refineCoarsePath(const std::vector<Vector2D>&
             auto result = findPath(currentPoint, segmentGoal, segmentPath);
             
             if (result != PathfindingResult::SUCCESS || segmentPath.empty()) {
-                // Throttle refinement failure logging to reduce spam in dense scenes
-                static thread_local unsigned int s_refineFailLogCounter = 0;
-                if ((s_refineFailLogCounter++ % 20u) == 0u) {
+                if (!loggedFailure) {
                     PATHFIND_WARN("Segment refinement failed, using direct line");
+                    loggedFailure = true;
                 }
                 outPath.push_back(segmentGoal);
                 currentPoint = segmentGoal;

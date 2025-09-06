@@ -7,6 +7,7 @@
 #include <optional>
 #include <atomic>
 #include <mutex>
+#include <shared_mutex>
 #include <cstdint>
 
 #include "../../utils/Vector2D.hpp"
@@ -170,7 +171,7 @@ private:
     // Cache storage and management
     std::unordered_map<uint64_t, CachedPath> m_cachedPaths;
     std::queue<uint64_t> m_lruQueue; // For LRU eviction order
-    mutable std::mutex m_cacheMutex;
+    mutable std::shared_mutex m_cacheMutex;
     
     // Configuration constants
     static constexpr size_t MAX_CACHED_PATHS = 2048;
