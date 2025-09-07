@@ -147,6 +147,47 @@ performance-analyst → system-optimizer → [STOP]
 8. senior-developer-reviewer (final approval)
 ```
 
+## HammerEngine-Specific Workflows
+
+### **New Manager Implementation:**
+```
+1. project-planner (design manager architecture)
+   ↓
+2. cpp-coder (implement Meyer's singleton pattern)
+   ↓
+3. test-integration-runner (create and integrate tests)
+   ↓
+4. system-optimizer (analyze manager integration with existing systems)
+   ↓
+5. performance-analyst (validate performance impact)
+```
+
+### **PathfinderManager + CollisionManager Integration:**
+```
+1. system-optimizer (analyze current spatial query overlap)
+   ↓
+2. project-planner (design unified spatial query approach)
+   ↓
+3. cpp-coder (implement optimized integration)
+   ↓
+4. performance-analyst (benchmark collision_pathfinding_benchmark)
+   ↓
+5. test-integration-runner (validate both systems work correctly)
+```
+
+### **SDL3 System Integration:**
+```
+1. general-purpose (research SDL3 APIs and patterns)
+   ↓
+2. cpp-build-specialist (configure SDL3 dependencies)
+   ↓
+3. cpp-coder (implement SDL3 integration code)
+   ↓
+4. test-integration-runner (test SDL3 functionality)
+   ↓
+5. system-optimizer (optimize SDL3 resource usage across systems)
+```
+
 ## Task Classification Decision Tree
 
 ### **Step 1: Determine Task Complexity**
@@ -154,14 +195,31 @@ performance-analyst → system-optimizer → [STOP]
 - **Moderate**: Multi-step implementation or optimization (3-5 agents)
 - **Complex**: Architectural changes or major features (full team)
 
-### **Step 2: Identify Primary Domain**
-- **Research/Investigation**: Start with general-purpose
-- **Planning/Architecture**: Start with project-planner  
-- **Build/Compilation**: Start with cpp-build-specialist
-- **Implementation**: Start with cpp-coder
-- **Performance**: Start with performance-analyst
-- **Integration**: Start with system-optimizer
-- **Quality**: Start with senior-developer-reviewer
+### **Step 2: Identify Primary Domain Using Enhanced Triggers**
+
+**Research/Investigation**: Start with general-purpose
+- Keywords: 'search for', 'find', 'investigate', 'understand codebase'
+
+**Planning/Architecture**: Start with project-planner  
+- Keywords: 'plan implementation', 'break down feature', 'architectural analysis', 'development roadmap', 'strategy design'
+
+**Build/Compilation**: Start with cpp-build-specialist
+- Keywords: 'CMake configuration', 'build system', 'linker errors', 'SDL3 dependencies', 'compile_commands.json', 'AddressSanitizer setup'
+
+**Implementation**: Start with cpp-coder
+- Keywords: 'create new Manager', 'implement singleton', 'SDL3 integration', 'write C++ code', 'RAII patterns', 'memory management'
+
+**Performance**: Start with performance-analyst
+- Keywords: 'benchmark performance', 'FPS analysis', 'ai_optimization_tests', 'collision_pathfinding_benchmark', 'Valgrind analysis', 'frame drops'
+
+**Cross-System Integration**: Start with system-optimizer
+- Keywords: 'system integration', 'AI + collision integration', 'PathfinderManager + CollisionManager', 'rendering pipeline optimization', 'manager synchronization'
+
+**Testing**: Start with test-integration-runner
+- Keywords: 'run tests', 'test failures', 'CMakeLists.txt test', 'Boost.Test', 'test integration'
+
+**Quality**: Start with senior-developer-reviewer
+- Keywords: 'code review', 'architectural review', 'design patterns'
 
 ### **Step 3: Map to Workflow Sequence**
 - Use appropriate workflow sequence from above
