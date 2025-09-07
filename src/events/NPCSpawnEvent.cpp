@@ -305,8 +305,8 @@ EntityPtr NPCSpawnEvent::forceSpawnNPC(const std::string& npcType, float x, floa
         Vector2D position(x, y);
         auto npc = NPC::create(textureID, position, 64, 64);
 
-        // By default, allow free wandering across the entire world
-        npc->setBoundsCheckEnabled(false);
+        // Enforce world bounds by default for spawned NPCs
+        npc->setBoundsCheckEnabled(true);
 
         EVENT_INFO("Force-spawned " + npcType + " at (" + std::to_string(x) + ", " + std::to_string(y) + ")");
         return std::static_pointer_cast<Entity>(npc);
@@ -334,8 +334,8 @@ std::vector<EntityPtr> NPCSpawnEvent::forceSpawnNPCs(const SpawnParameters& para
             Vector2D spawnPos(x + offsetX, y + offsetY);
             auto npc = NPC::create(textureID, spawnPos, 64, 64);
 
-            // Allow free wandering across the entire world - no artificial boundaries
-            npc->setBoundsCheckEnabled(false);
+            // Enforce world bounds for spawned NPCs
+            npc->setBoundsCheckEnabled(true);
             
             // Note: For area-constrained NPCs (villages/events), create an NPCSpawnEvent
             // with setAreaConstraints() and let the GameState handle the actual spawning
@@ -496,4 +496,3 @@ void NPCSpawnEvent::cleanDeadEntities() {
     m_spawnedEntities.clear();
     // Keep m_currentSpawnCount for demonstration purposes
 }
-

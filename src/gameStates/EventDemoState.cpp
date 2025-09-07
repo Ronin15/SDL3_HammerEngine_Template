@@ -1497,7 +1497,7 @@ EventDemoState::createNPCAtPositionWithoutBehavior(const std::string &npcType,
     npc->initializeInventory(); // Initialize inventory after construction
 
     npc->setWanderArea(0.0f, 0.0f, m_worldWidth, m_worldHeight);
-    npc->setBoundsCheckEnabled(false);
+    npc->setBoundsCheckEnabled(true);
 
     m_spawnedNPCs.push_back(npc);
 
@@ -1695,7 +1695,7 @@ void EventDemoState::createNPCAtPosition(const std::string &npcType, float x,
     npc->initializeInventory(); // Initialize inventory after construction
 
     npc->setWanderArea(0.0f, 0.0f, m_worldWidth, m_worldHeight);
-    npc->setBoundsCheckEnabled(false);
+    npc->setBoundsCheckEnabled(true);
 
     std::string behaviorName = determineBehaviorForNPCType(npcType);
 
@@ -1871,6 +1871,12 @@ void EventDemoState::initializeWorld() {
     GAMESTATE_INFO("Successfully loaded event demo world with seed: " + std::to_string(config.seed));
 
     // Setup camera to work with the world (will be called in initializeCamera)
+    // Update demo world dimensions to match generated world (pixels)
+    float minX = 0.0f, minY = 0.0f, maxX = 0.0f, maxY = 0.0f;
+    if (worldManager.getWorldBounds(minX, minY, maxX, maxY)) {
+      m_worldWidth = std::max(0.0f, maxX - minX);
+      m_worldHeight = std::max(0.0f, maxY - minY);
+    }
   }
 }
 
@@ -1906,8 +1912,7 @@ void EventDemoState::initializeCamera() {
     config.clampToWorldBounds = true; // Keep camera within world
     m_camera->setConfig(config);
 
-    // Set up world bounds for demo
-    setupCameraForWorld();
+    // Camera auto-synchronizes world bounds on update
   }
 }
 
@@ -1917,37 +1922,7 @@ void EventDemoState::updateCamera(float deltaTime) {
   }
 }
 
-void EventDemoState::setupCameraForWorld() {
-  if (!m_camera) {
-    return;
-  }
-
-  // Get actual world bounds from WorldManager
-  const WorldManager& worldManager = WorldManager::Instance();
-
-  HammerEngine::Camera::Bounds worldBounds;
-  float minX, minY, maxX, maxY;
-
-  if (worldManager.getWorldBounds(minX, minY, maxX, maxY)) {
-    // Convert tile coordinates to pixel coordinates (WorldManager returns tile coords)
-    // TileRenderer uses 32px per tile
-    const float TILE_SIZE = 32.0f;
-    worldBounds.minX = minX * TILE_SIZE;
-    worldBounds.minY = minY * TILE_SIZE;
-    worldBounds.maxX = maxX * TILE_SIZE;
-    worldBounds.maxY = maxY * TILE_SIZE;
-  } else {
-    // Fall back to demo world dimensions if no world is loaded
-    // EventDemoState uses 100x100 tiles
-    const float TILE_SIZE = 32.0f;
-    worldBounds.minX = 0.0f;
-    worldBounds.minY = 0.0f;
-    worldBounds.maxX = 100.0f * TILE_SIZE;  // 100 tiles * 32px = 3200px
-    worldBounds.maxY = 100.0f * TILE_SIZE;  // 100 tiles * 32px = 3200px
-  }
-
-  m_camera->setWorldBounds(worldBounds);
-}
+// Removed setupCameraForWorld(): camera manages world bounds itself
 
 void EventDemoState::applyCameraTransformation() {
   if (!m_camera) {

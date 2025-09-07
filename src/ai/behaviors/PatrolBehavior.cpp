@@ -65,9 +65,8 @@ void PatrolBehavior::init(EntityPtr entity) {
 
   NPC *npc = dynamic_cast<NPC *>(entity.get());
   if (npc) {
-    // Disable bounds checking for AI-controlled entities to prevent artificial
-    // bouncing The pathfinding system will handle natural world boundaries
-    npc->setBoundsCheckEnabled(false);
+    // Ensure NPCs respect world bounds while patrolling
+    npc->setBoundsCheckEnabled(true);
   }
 }
 

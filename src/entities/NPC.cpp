@@ -48,11 +48,11 @@ NPC::NPC(const std::string &textureID, const Vector2D &startPosition,
   // Set default wander area to world bounds (can be changed later via setWanderArea)
   float worldMinX, worldMinY, worldMaxX, worldMaxY;
   if (WorldManager::Instance().getWorldBounds(worldMinX, worldMinY, worldMaxX, worldMaxY)) {
-    const float TILE = 32.0f;
-    m_minX = worldMinX * TILE;
-    m_minY = worldMinY * TILE;
-    m_maxX = worldMaxX * TILE;
-    m_maxY = worldMaxY * TILE;
+    // WorldManager returns bounds in PIXELS; apply directly
+    m_minX = worldMinX;
+    m_minY = worldMinY;
+    m_maxX = worldMaxX;
+    m_maxY = worldMaxY;
   } else {
     // Fallback to reasonable world bounds if WorldManager not available yet
     m_minX = 0.0f;
@@ -141,13 +141,15 @@ void NPC::update(float deltaTime) {
   // Only apply world bounds clamping if bounds checking is enabled
   // This prevents AI pathfinding conflicts while still allowing manual boundary control
   if (m_boundsCheckEnabled) {
-    float minX, minY, maxX, maxY;
-    if (WorldManager::Instance().getWorldBounds(minX, minY, maxX, maxY)) {
-      const float TILE = 32.0f; const float margin = 8.0f;
-      float worldMinX = minX * TILE + margin;
-      float worldMinY = minY * TILE + margin;
-      float worldMaxX = maxX * TILE - margin;
-      float worldMaxY = maxY * TILE - margin;
+    float bminX, bminY, bmaxX, bmaxY;
+    if (WorldManager::Instance().getWorldBounds(bminX, bminY, bmaxX, bmaxY)) {
+      // WorldManager returns bounds in PIXELS; clamp using half sprite extents
+      const float halfW = (m_frameWidth > 0 ? m_frameWidth * 0.5f : 16.0f);
+      const float halfH = (m_height > 0 ? m_height * 0.5f : 16.0f);
+      const float worldMinX = bminX + halfW;
+      const float worldMinY = bminY + halfH;
+      const float worldMaxX = bmaxX - halfW;
+      const float worldMaxY = bmaxY - halfH;
       float clampedX = std::clamp(newPosition.getX(), worldMinX, worldMaxX);
       float clampedY = std::clamp(newPosition.getY(), worldMinY, worldMaxY);
       bool hitX = (clampedX != newPosition.getX());

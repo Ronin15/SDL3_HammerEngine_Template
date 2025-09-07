@@ -429,8 +429,7 @@ void GamePlayState::initializeCamera() {
     config.clampToWorldBounds = true;  // ENABLE clamping - player is now bounded so no jitter
     m_camera->setConfig(config);
 
-    // Set up world bounds for camera (called after world is loaded)
-    setupCameraForWorld();
+    // Camera auto-synchronizes world bounds on update
   }
 }
 
@@ -440,35 +439,7 @@ void GamePlayState::updateCamera(float deltaTime) {
   }
 }
 
-void GamePlayState::setupCameraForWorld() {
-  if (!m_camera) {
-    return;
-  }
-
-  // Get actual world bounds from WorldManager
-  const WorldManager& worldManager = WorldManager::Instance();
-
-  HammerEngine::Camera::Bounds worldBounds;
-  float minX, minY, maxX, maxY;
-
-  if (worldManager.getWorldBounds(minX, minY, maxX, maxY)) {
-    // Convert tile coordinates to pixel coordinates (WorldManager returns tile coords)
-    // TileRenderer uses 32px per tile
-    const float TILE_SIZE = 32.0f;
-    worldBounds.minX = minX * TILE_SIZE;
-    worldBounds.minY = minY * TILE_SIZE;
-    worldBounds.maxX = maxX * TILE_SIZE;
-    worldBounds.maxY = maxY * TILE_SIZE;
-  } else {
-    // Fall back to default bounds if no world is loaded
-    worldBounds.minX = 0.0f;
-    worldBounds.minY = 0.0f;
-    worldBounds.maxX = 3200.0f;  // 100 tiles * 32px = 3200px
-    worldBounds.maxY = 3200.0f;  // 100 tiles * 32px = 3200px
-  }
-
-  m_camera->setWorldBounds(worldBounds);
-}
+// Removed setupCameraForWorld(): camera manages world bounds itself
 
 void GamePlayState::applyCameraTransformation() {
   if (!m_camera) {

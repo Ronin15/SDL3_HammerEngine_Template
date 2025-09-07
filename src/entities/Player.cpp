@@ -144,11 +144,11 @@ void Player::update(float deltaTime) {
   const WorldManager& worldManager = WorldManager::Instance();
   float minX, minY, maxX, maxY;
   if (worldManager.getWorldBounds(minX, minY, maxX, maxY)) {
-    const float TILE_SIZE = 32.0f;
-    float worldMinX = minX * TILE_SIZE;
-    float worldMinY = minY * TILE_SIZE;
-    float worldMaxX = maxX * TILE_SIZE;
-    float worldMaxY = maxY * TILE_SIZE;
+    // WorldManager returns bounds in PIXELS; clamp using half sprite extents
+    float worldMinX = minX;
+    float worldMinY = minY;
+    float worldMaxX = maxX;
+    float worldMaxY = maxY;
     const float HALF_SPRITE_WIDTH = m_frameWidth / 2.0f;
     const float HALF_SPRITE_HEIGHT = m_height / 2.0f;
     newPosition.setX(std::clamp(newPosition.getX(), worldMinX + HALF_SPRITE_WIDTH, worldMaxX - HALF_SPRITE_WIDTH));

@@ -59,7 +59,7 @@ private:
   void initializeWorld();
   void initializeCamera();
   void updateCamera(float deltaTime);
-  void setupCameraForWorld();
+  // Camera auto-manages world bounds; no state-level setup needed
   void applyCameraTransformation();
 };
 
