@@ -3,7 +3,7 @@
  * Licensed under the MIT License - see LICENSE file for details
  */
 
-#define BOOST_TEST_MODULE CollisionPathfindingBenchmark
+#define BOOST_TEST_MODULE Collisions
 #include <boost/test/unit_test.hpp>
 #include <boost/test/tools/old/interface.hpp>
 
@@ -77,9 +77,9 @@ public:
             file << result.testName << ","
                  << result.entityCount << ","
                  << result.operationCount << ","
-                 << result.averageTimeUs << ","
-                 << result.totalTimeMs << ","
-                 << result.operationsPerSecond << ","
+                 << std::fixed << std::setprecision(2) << result.averageTimeUs << ","
+                 << std::fixed << std::setprecision(2) << result.totalTimeMs << ","
+                 << std::fixed << std::setprecision(0) << result.operationsPerSecond << ","
                  << result.additionalInfo << "\n";
         }
         
@@ -139,7 +139,11 @@ BOOST_AUTO_TEST_CASE(BenchmarkSpatialHashInsertion)
         result.averageTimeUs = avgUs;
         result.totalTimeMs = totalMs;
         result.operationsPerSecond = opsPerSec;
-        result.additionalInfo = "Cell size: " + std::to_string(CELL_SIZE);
+        {
+            std::ostringstream oss;
+            oss << "Cell size: " << std::fixed << std::setprecision(0) << CELL_SIZE;
+            result.additionalInfo = oss.str();
+        }
         
         g_reporter.addResult(result);
         
@@ -203,8 +207,12 @@ BOOST_AUTO_TEST_CASE(BenchmarkSpatialHashQuery)
         result.averageTimeUs = avgUs;
         result.totalTimeMs = totalMs;
         result.operationsPerSecond = opsPerSec;
-        result.additionalInfo = "Avg found: " + std::to_string(totalFound / NUM_QUERIES) + 
-                                ", Query size: " + std::to_string(QUERY_SIZE);
+        {
+            std::ostringstream oss;
+            oss << "Avg found: " << (totalFound / NUM_QUERIES)
+                << ", Query size: " << std::fixed << std::setprecision(0) << QUERY_SIZE;
+            result.additionalInfo = oss.str();
+        }
         
         g_reporter.addResult(result);
         
@@ -281,7 +289,11 @@ BOOST_AUTO_TEST_CASE(BenchmarkSpatialHashUpdate)
         result.averageTimeUs = avgUs;
         result.totalTimeMs = totalMs;
         result.operationsPerSecond = opsPerSec;
-        result.additionalInfo = "Movement range: ±" + std::to_string(MOVEMENT_RANGE);
+        {
+            std::ostringstream oss;
+            oss << "Movement range: ±" << std::fixed << std::setprecision(0) << MOVEMENT_RANGE;
+            result.additionalInfo = oss.str();
+        }
         
         g_reporter.addResult(result);
         
@@ -519,5 +531,5 @@ BOOST_AUTO_TEST_SUITE_END()
 BOOST_AUTO_TEST_CASE(BenchmarkSummary)
 {
     g_reporter.printSummary();
-    g_reporter.saveToCsv("test_results/collision_pathfinding_benchmark.csv");
+    g_reporter.saveToCsv("test_results/collisions.csv");
 }
