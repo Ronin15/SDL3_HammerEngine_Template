@@ -1132,6 +1132,10 @@ void GameEngine::clean() {
   GAMEENGINE_INFO("Cleaning up AI Manager...");
   AIManager::Instance().clean();
 
+  // Ensure PathfinderManager is shut down after AI to avoid dangling tasks and late logs
+  GAMEENGINE_INFO("Shutting down Pathfinder Manager...");
+  PathfinderManager::shutdown();
+
   GAMEENGINE_INFO("Cleaning up Collision Manager...");
   CollisionManager::Instance().clean();
 
@@ -1158,6 +1162,7 @@ void GameEngine::clean() {
   mp_aiManager = nullptr;
   mp_eventManager = nullptr;
   mp_particleManager = nullptr;
+  mp_pathfinderManager = nullptr;
   mp_collisionManager = nullptr;
   mp_resourceTemplateManager = nullptr;
   mp_worldResourceManager = nullptr;
