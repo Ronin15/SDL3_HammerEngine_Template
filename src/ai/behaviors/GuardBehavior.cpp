@@ -727,10 +727,10 @@ void GuardBehavior::moveToPosition(EntityPtr entity, const Vector2D &targetPos,
     AIInternal::PathPriority priority = (state.currentAlertLevel >= AlertLevel::INVESTIGATING) ? 
         AIInternal::PathPriority::High : AIInternal::PathPriority::Normal;
 
-    Vector2D clampedStart = PathfinderManager::Instance().clampToWorldBounds(currentPos, 100.0f);
-    Vector2D clampedGoal  = PathfinderManager::Instance().clampToWorldBounds(targetPos, 100.0f);
+    Vector2D clampedStart = pathfinder().clampToWorldBounds(currentPos, 100.0f);
+    Vector2D clampedGoal  = pathfinder().clampToWorldBounds(targetPos, 100.0f);
 
-    PathfinderManager::Instance().requestPath(
+    pathfinder().requestPath(
         entity->getID(), clampedStart, clampedGoal, priority,
         [this, entity](EntityID, const std::vector<Vector2D>& path) {
           auto it = m_entityStates.find(entity);
@@ -748,7 +748,7 @@ void GuardBehavior::moveToPosition(EntityPtr entity, const Vector2D &targetPos,
   }
 
   // Follow existing path if available; fallback to direct steering
-  bool following = PathfinderManager::Instance().followPathStep(entity, currentPos,
+  bool following = pathfinder().followPathStep(entity, currentPos,
                         state.pathPoints, state.currentPathIndex,
                         speed, state.navRadius);
   if (following) { state.lastProgressTime = now; }

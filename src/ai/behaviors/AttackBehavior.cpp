@@ -867,9 +867,9 @@ void AttackBehavior::moveToPosition(EntityPtr entity, const Vector2D &targetPos,
   EntityState &state = it->second;
 
   // Clamp target to world bounds to avoid chasing outside the map
-  Vector2D clampedTarget = PathfinderManager::Instance().clampToWorldBounds(targetPos, 100.0f);
+  Vector2D clampedTarget = pathfinder().clampToWorldBounds(targetPos, 100.0f);
 
-  Vector2D currentPos = PathfinderManager::Instance().clampToWorldBounds(entity->getPosition(), 100.0f);
+  Vector2D currentPos = pathfinder().clampToWorldBounds(entity->getPosition(), 100.0f);
   
   Uint64 now = SDL_GetTicks();
 
@@ -902,7 +902,7 @@ void AttackBehavior::moveToPosition(EntityPtr entity, const Vector2D &targetPos,
 
   if (needRefresh && SDL_GetTicks() >= state.backoffUntil) {
     // PATHFINDING CONSOLIDATION: All requests now use PathfinderManager
-    PathfinderManager::Instance().requestPath(
+    pathfinder().requestPath(
         entity->getID(), currentPos, clampedTarget, AIInternal::PathPriority::Critical,
         [this, entity](EntityID, const std::vector<Vector2D>& path) {
           if (!path.empty()) {

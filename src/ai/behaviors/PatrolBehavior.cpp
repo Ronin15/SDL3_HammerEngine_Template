@@ -87,7 +87,7 @@ void PatrolBehavior::executeLogic(EntityPtr entity) {
   Vector2D targetWaypoint = m_waypoints[m_currentWaypoint];
 
   // Clamp target to world bounds to avoid edge chasing
-  targetWaypoint = PathfinderManager::Instance().clampToWorldBounds(targetWaypoint, 100.0f);
+  targetWaypoint = pathfinder().clampToWorldBounds(targetWaypoint, 100.0f);
 
   // State: APPROACHING_WAYPOINT - Check if we've reached current waypoint
   if (isAtWaypoint(position, targetWaypoint)) {
@@ -146,10 +146,10 @@ void PatrolBehavior::executeLogic(EntityPtr entity) {
     }
     
     // PATHFINDING CONSOLIDATION: All requests now use PathfinderManager  
-    Vector2D clampedStart = PathfinderManager::Instance().clampToWorldBounds(position, 100.0f);
-    Vector2D clampedGoal = PathfinderManager::Instance().clampToWorldBounds(targetWaypoint, 100.0f);
+    Vector2D clampedStart = pathfinder().clampToWorldBounds(position, 100.0f);
+    Vector2D clampedGoal = pathfinder().clampToWorldBounds(targetWaypoint, 100.0f);
     
-    PathfinderManager::Instance().requestPath(
+    pathfinder().requestPath(
         entity->getID(), clampedStart, clampedGoal,
         AIInternal::PathPriority::Normal,
         [this, entity](EntityID, const std::vector<Vector2D>& path) {
@@ -168,7 +168,7 @@ void PatrolBehavior::executeLogic(EntityPtr entity) {
     // Following computed path
     using namespace AIInternal;
     bool following =
-        PathfinderManager::Instance().followPathStep(entity, position, m_navPath, m_navIndex,
+        pathfinder().followPathStep(entity, position, m_navPath, m_navIndex,
                                  m_moveSpeed, m_navRadius);
     if (following) {
       m_lastProgressTime = now;
@@ -206,10 +206,10 @@ void PatrolBehavior::executeLogic(EntityPtr entity) {
           Vector2D dir = toNode * (1.0f / len);
           Vector2D perp(-dir.getY(), dir.getX());
           float side = ((entity->getID() & 1) ? 1.0f : -1.0f);
-          Vector2D sidestep = PathfinderManager::Instance().clampToWorldBounds(
+          Vector2D sidestep = pathfinder().clampToWorldBounds(
               position + perp * (96.0f * side), 100.0f);
-          PathfinderManager::Instance().requestPath(
-              entity->getID(), PathfinderManager::Instance().clampToWorldBounds(position, 100.0f), sidestep,
+          pathfinder().requestPath(
+              entity->getID(), pathfinder().clampToWorldBounds(position, 100.0f), sidestep,
               AIInternal::PathPriority::Normal,
               [this](EntityID, const std::vector<Vector2D> &path) {
                 if (!path.empty()) {

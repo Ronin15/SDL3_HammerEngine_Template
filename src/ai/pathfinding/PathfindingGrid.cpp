@@ -248,9 +248,29 @@ bool PathfindingGrid::hasLineOfSight(const Vector2D& start, const Vector2D& end)
 PathfindingResult PathfindingGrid::findPath(const Vector2D& start, const Vector2D& goal,
                                             std::vector<Vector2D>& outPath) {
     outPath.clear();
-    auto [sx, sy] = worldToGrid(start);
-    auto [gx, gy] = worldToGrid(goal);
-    
+    auto [sx_raw, sy_raw] = worldToGrid(start);
+    auto [gx_raw, gy_raw] = worldToGrid(goal);
+
+    // Validate original grid indices before any clamping
+    if (!inBounds(sx_raw, sy_raw)) {
+        m_stats.totalRequests++;
+        m_stats.invalidStarts++; 
+        // Invalid start warnings removed - covered in PathfinderManager status reporting
+        return PathfindingResult::INVALID_START; 
+    }
+    if (!inBounds(gx_raw, gy_raw)) {
+        m_stats.totalRequests++;
+        m_stats.invalidGoals++; 
+        // Invalid goal warnings removed - covered in PathfinderManager status reporting
+        return PathfindingResult::INVALID_GOAL; 
+    }
+
+    // Start from validated indices and then clamp to keep away from exact edges
+    int sx = sx_raw;
+    int sy = sy_raw;
+    int gx = gx_raw;
+    int gy = gy_raw;
+
     // Clamp grid coordinates to ensure they're away from exact boundaries
     // This prevents problematic boundary pathfinding even if world-space clamping fails
     const int GRID_MARGIN = 2; // Reduced margin; avoid over-restricting valid goals near edges
@@ -258,19 +278,6 @@ PathfindingResult PathfindingGrid::findPath(const Vector2D& start, const Vector2
     gy = std::clamp(gy, GRID_MARGIN, m_h - 1 - GRID_MARGIN);
     sx = std::clamp(sx, GRID_MARGIN, m_w - 1 - GRID_MARGIN);
     sy = std::clamp(sy, GRID_MARGIN, m_h - 1 - GRID_MARGIN);
-    
-    if (!inBounds(sx, sy)) { 
-        m_stats.totalRequests++;
-        m_stats.invalidStarts++; 
-        // Invalid start warnings removed - covered in PathfinderManager status reporting
-        return PathfindingResult::INVALID_START; 
-    }
-    if (!inBounds(gx, gy)) { 
-        m_stats.totalRequests++;
-        m_stats.invalidGoals++; 
-        // Invalid goal warnings removed - covered in PathfinderManager status reporting
-        return PathfindingResult::INVALID_GOAL; 
-    }
     
     // Enhanced goal validation: try a small nudge but do not early-return
     // Let the later broader nudge (radius 20) handle difficult endpoints

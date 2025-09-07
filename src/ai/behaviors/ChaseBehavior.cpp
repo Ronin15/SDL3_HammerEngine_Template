@@ -124,13 +124,13 @@ void ChaseBehavior::executeLogic(EntityPtr entity) {
             goalPosition = targetPos + targetVel * predictionTime;
             
             // Validate predicted position is within reasonable bounds
-            goalPosition = PathfinderManager::Instance().clampToWorldBounds(goalPosition, 100.0f);
+            goalPosition = pathfinder().clampToWorldBounds(goalPosition, 100.0f);
           }
         }
 
         // ASYNC PATHFINDING: Use high-performance background processing for chasing
-        auto& pathfinder = PathfinderManager::Instance();
-        pathfinder.requestPath(entity->getID(), entityPos, goalPosition, 
+        auto& pf = this->pathfinder();
+        pf.requestPath(entity->getID(), entityPos, goalPosition, 
                               AIInternal::PathPriority::High,
                               [this](EntityID, const std::vector<Vector2D>& path) {
                                 // Update path when received (may be from background thread)
@@ -144,7 +144,7 @@ void ChaseBehavior::executeLogic(EntityPtr entity) {
       // State: PATH_FOLLOWING using optimized PathfinderManager method
       if (!m_navPath.empty() && m_navIndex < m_navPath.size()) {
         // Use standardized path following for consistency and performance
-        bool following = PathfinderManager::Instance().followPathStep(
+        bool following = pathfinder().followPathStep(
             entity, entityPos, m_navPath, m_navIndex, m_chaseSpeed, m_navRadius);
         
         if (following) {
