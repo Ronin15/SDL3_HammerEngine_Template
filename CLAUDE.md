@@ -10,6 +10,11 @@ cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Debug
 ninja -C build
 ```
 
+### Debug Build with Warning/Error Filtering
+```bash
+ninja -C build -v 2>&1 | grep -E "(warning|unused|error)" | head -n 100
+```
+
 ### Release Build
 ```bash
 cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Release  
@@ -22,6 +27,10 @@ cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_FLAGS="-D_GLIBCXX_
 ninja -C build
 ```
 
+### Build System Notes
+- **Compile Commands**: `compile_commands.json` is automatically generated and copied to the project root for tooling support (e.g., `clangd`)
+- **Output Directories**: Debug builds output to `bin/debug/`, Release builds to `bin/release/`
+
 ### Running the Application
 - Debug: `./bin/debug/SDL3_Template`
 - Release: `./bin/release/SDL3_Template`
@@ -29,10 +38,16 @@ ninja -C build
 
 ## Testing
 
+**Framework**: Uses Boost.Test framework. Test binaries are placed in `bin/debug/` and write focused, thorough tests covering both success and error paths. Clean up test artifacts after execution.
+
+**Extensive Test Suite**: The project includes 68+ specialized test executables covering all systems (AI, collision, pathfinding, threading, events, particles, resources, etc.). When working on a specific system, use targeted tests rather than the full suite for faster iteration.
+
 ### Run All Tests
 ```bash
 ./run_all_tests.sh --core-only --errors-only
 ```
+
+**Note**: Use targeted tests when developing specific systems to avoid running the entire suite unnecessarily. Only run the full test suite when needed for comprehensive validation.
 
 ### Run Specific Tests
 ```bash
@@ -96,6 +111,7 @@ src/
 
 include/            # Public headers mirroring src/ structure
 tests/              # Boost.Test framework with test scripts
+res/                # Game assets (fonts, images, audio, data files)
 ```
 
 ## Coding Standards
@@ -105,11 +121,18 @@ tests/              # Boost.Test framework with test scripts
 - **Style**: 4-space indentation, Allman-style braces
 - **Memory**: RAII with smart pointers, no raw new/delete
 - **Threading**: Use ThreadSystem, avoid raw std::thread
+- **Copyright**: All files must include the standard copyright header:
+  ```cpp
+  /* Copyright (c) 2025 Hammer Forged Games
+   * All rights reserved.
+   * Licensed under the MIT License - see LICENSE file for details
+  */
+  ```
 
 ### Naming Conventions
 - **Classes/Enums**: UpperCamelCase (`GameEngine`, `EventType`)
 - **Functions/Variables**: lowerCamelCase (`updateGame`, `playerHealth`) 
-- **Member Variables**: `m_` prefix (`m_isRunning`, `m_playerPosition`)
+- **Member Variables**: `m_` prefix (`m_isRunning`, `m_playerPosition`), `mp_` prefix for pointers (`mp_window`, `mp_renderer`)
 - **Constants**: ALL_CAPS (`MAX_PLAYERS`, `DEFAULT_SPEED`)
 
 ### Header/Implementation Guidelines
@@ -123,12 +146,15 @@ All managers follow this singleton pattern:
 ```cpp
 class ExampleManager {
 private:
-    static std::unique_ptr<ExampleManager> m_instance;
     std::atomic<bool> m_isShutdown{false};
     
 public:
-    static ExampleManager& getInstance();
-    static void shutdown();
+    static ExampleManager& Instance() {
+        static ExampleManager instance;
+        return instance;
+    }
+    
+    void shutdown();
 };
 ```
 
@@ -137,6 +163,10 @@ public:
 - **Render Loop**: Main thread only, double-buffered
 - **Background Work**: Use ThreadSystem with WorkerBudget priorities
 - **No Cross-Thread Rendering**: All drawing happens on main thread
+
+### Performance Guidelines
+- **STL Algorithms**: Prefer STL algorithms (`std::sort`, `std::find_if`, `std::transform`) over manual loops for better optimization
+- **Platform Guards**: Use platform-specific logic guards (`#ifdef __APPLE__`, `#ifdef WIN32`) for OS-specific code
 
 ### Logging
 Use provided macros for consistent logging:
@@ -187,14 +217,28 @@ Use provided macros for consistent logging:
 ## Important Implementation Details
 
 ### GameEngine Update/Render Flow
-1. **Update**: Mutex-protected, updates all managers and current game state
-2. **Buffer Swap**: `hasNewFrameToRender()` and `swapBuffers()` coordinate double buffering  
-3. **Render**: Main thread renders world, entities, particles, UI using stable buffer
+
+**GameLoop Architecture**: Drives three callbacks — events (main thread), fixed-timestep updates, and rendering. Target FPS and fixed timestep are configured in `HammerMain.cpp` via `GameLoop`.
+
+**Update Phase (thread-safe)**: `GameEngine::update(deltaTime)` runs under a mutex to guarantee completion before any render. It updates global systems (AIManager, EventManager, ParticleManager), then delegates to the current `GameStateManager::update`.
+
+**Double Buffering**: `GameEngine` maintains `m_currentBufferIndex` (update) and `m_renderBufferIndex` (render) with `m_bufferReady[]`. The main loop calls `hasNewFrameToRender()` and `swapBuffers()` before each update, allowing render to consume a stable buffer from the previous tick.
+
+**Render Phase (main thread)**: `GameEngine::render()` clears the renderer and calls `GameStateManager::render()`. States render world, entities, particles, and UI in a deterministic order using the current camera view.
+
+**Threading Guidelines**:
+- No rendering from background threads. AI/particles may schedule work but all drawing occurs during `GameEngine::render()` on the main thread.
+- Do not introduce additional synchronization between managers for rendering; rely on `GameEngine`'s mutexed update and double-buffer swap.
+- When adding a new state, snapshot camera/view once per render pass and reuse it for all world-space systems.
 
 ### Entity Rendering
 - Use `Entity::render(const Camera*)` for world-to-screen conversion
 - Do not compute per-entity camera offsets outside this pattern
 - Camera view is computed once per render pass and reused
+
+### World Tiles Rendering
+- `WorldManager::render(renderer, cameraX, cameraY, viewportW, viewportH)` renders visible tiles using the same camera view for consistent alignment with entities
+- Keep camera-aware rendering centralized; avoid ad-hoc camera math inside managers that don't own presentation
 
 ### Resource Loading
 - JSON-based configuration for items, materials, currency
@@ -202,3 +246,25 @@ Use provided macros for consistent logging:
 - Handle-based access pattern for performance and safety
 
 This architecture supports rapid prototyping while maintaining production-ready performance and code quality.
+
+## Critical System Patterns
+
+### InputManager SDL Cleanup Pattern
+
+**CRITICAL:** The InputManager has a very specific SDL gamepad subsystem cleanup pattern that must be maintained exactly as implemented. Do NOT modify this pattern without extreme caution.
+
+**The Issue:** When no gamepads are detected during initialization, the SDL gamepad subsystem is still initialized via `SDL_InitSubSystem(SDL_INIT_GAMEPAD)` but if not properly cleaned up, it causes a "trace trap" crash during `SDL_Quit()` on macOS.
+
+**The Correct Pattern:**
+1. In `initializeGamePad()`: Use `SDL_InitSubSystem(SDL_INIT_GAMEPAD)` to initialize the subsystem
+2. If no gamepads are found: Immediately call `SDL_QuitSubSystem(SDL_INIT_GAMEPAD)` before returning
+3. If gamepads are found: Set `m_gamePadInitialized = true` and let normal cleanup handle it
+4. In `clean()`: Only call `SDL_QuitSubSystem(SDL_INIT_GAMEPAD)` if `m_gamePadInitialized` is true
+
+**What NOT to do:**
+- Do NOT call `SDL_QuitSubSystem()` in both initialization and cleanup paths
+- Do NOT use platform-specific `#ifdef` blocks to skip SDL cleanup
+- Do NOT rely solely on `SDL_Quit()` to clean up subsystems if they were individually initialized
+- Do NOT remove or modify the `m_gamePadInitialized` flag logic
+
+This pattern has been broken multiple times by well-meaning "fixes" that cause crashes. The current implementation is correct and tested.
