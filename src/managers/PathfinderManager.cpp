@@ -48,6 +48,8 @@ bool PathfinderManager::init() {
         
         PATHFIND_INFO("PathfinderManager initialized successfully");
 
+        // ThreadSystem initialization is managed by the application/tests
+
         m_initialized.store(true);
         PATHFIND_INFO("PathfinderManager initialized successfully with clean architecture");
         return true;
@@ -189,10 +191,10 @@ uint64_t PathfinderManager::requestPath(
         }
     };
 
-    // Submit pathfinding work directly to ThreadSystem
+    // Submit pathfinding work to ThreadSystem (tests/app should ensure it's initialized)
     HammerEngine::ThreadSystem::Instance().enqueueTask(
-        work, 
-        HammerEngine::TaskPriority::Normal, 
+        work,
+        HammerEngine::TaskPriority::Normal,
         "PathfindingComputation"
     );
     

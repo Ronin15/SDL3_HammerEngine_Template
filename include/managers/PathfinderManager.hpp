@@ -289,6 +289,8 @@ private:
     mutable std::mutex m_cacheMutex;
     static constexpr size_t MAX_CACHE_ENTRIES = 512;
 
+    
+
     // Grid update tracking
     uint64_t m_lastWorldVersion{0};
     float m_timeSinceLastRebuild{0.0f};
@@ -299,7 +301,6 @@ private:
     int m_statsFrameCounter{0};
 
     // Internal methods - simplified
-    void processQueuedRequests();
     void reportStatistics();
     bool ensureGridInitialized(); // Lazy initialization helper
     void checkForGridUpdates(float deltaTime);

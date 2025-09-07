@@ -10,7 +10,6 @@
 #include <vector>
 #include <cstdint>
 #include <functional>
-#include <queue>
 #include "collisions/AABB.hpp"
 #include "entities/Entity.hpp"
 
@@ -42,20 +41,14 @@ private:
 
     // Performance optimizations
     using CellVector = std::vector<EntityID>;
-    
+
     float m_cellSize{32.0f};
     float m_movementThreshold{4.0f}; // Only update spatial hash if entity moves this far
     std::unordered_map<EntityID, AABB> m_aabbs; // latest bounds per id
     std::unordered_map<CellCoord, CellVector, CellCoordHash, CellCoordEq> m_cells;
     
-    // Object pool for cell vectors to reduce allocations
-    mutable std::queue<CellVector> m_vectorPool;
-    static constexpr size_t MAX_POOLED_VECTORS = 64; // Limit pool size
-    
     // Helper methods
     void forEachOverlappingCell(const AABB& aabb, const std::function<void(CellCoord)>& fn) const;
-    CellVector getPooledVector() const;
-    void returnPooledVector(CellVector&& vec) const;
     bool hasMovedSignificantly(const AABB& oldAABB, const AABB& newAABB) const;
 };
 

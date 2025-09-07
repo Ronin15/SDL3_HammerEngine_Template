@@ -149,25 +149,6 @@ void SpatialHash::forEachOverlappingCell(const AABB& aabb, const std::function<v
     }
 }
 
-// OPTIMIZATION #1 & #3: Helper methods for object pooling and movement threshold
-SpatialHash::CellVector SpatialHash::getPooledVector() const {
-    if (!m_vectorPool.empty()) {
-        CellVector vec = std::move(const_cast<std::queue<CellVector>&>(m_vectorPool).front());
-        const_cast<std::queue<CellVector>&>(m_vectorPool).pop();
-        vec.clear(); // Reuse existing capacity
-        return vec;
-    }
-    return CellVector{}; // Create new if pool empty
-}
-
-void SpatialHash::returnPooledVector(CellVector&& vec) const {
-    if (m_vectorPool.size() < MAX_POOLED_VECTORS) {
-        vec.clear(); // Keep capacity, clear contents
-        const_cast<std::queue<CellVector>&>(m_vectorPool).push(std::move(vec));
-    }
-    // If pool is full, let vector be destroyed naturally
-}
-
 bool SpatialHash::hasMovedSignificantly(const AABB& oldAABB, const AABB& newAABB) const {
     // Check if center moved more than threshold
     Vector2D oldCenter = oldAABB.center;

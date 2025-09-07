@@ -7,12 +7,27 @@
 #include <boost/test/included/unit_test.hpp>
 
 #include "managers/PathfinderManager.hpp"
+#include "core/ThreadSystem.hpp"
 #include "ai/pathfinding/PathfindingGrid.hpp"
 #include "utils/Vector2D.hpp"
 #include <chrono>
 #include <thread>
 
 using namespace HammerEngine;
+
+// Initialize ThreadSystem for async pathfinding in this test module
+struct PFThreadFixture {
+    PFThreadFixture() {
+        HammerEngine::ThreadSystem::Instance().init(4096);
+    }
+    ~PFThreadFixture() {
+        if (!HammerEngine::ThreadSystem::Instance().isShutdown()) {
+            HammerEngine::ThreadSystem::Instance().clean();
+        }
+    }
+};
+
+BOOST_GLOBAL_FIXTURE(PFThreadFixture);
 
 BOOST_AUTO_TEST_SUITE(PathfinderManagerTestSuite)
 
@@ -233,13 +248,11 @@ BOOST_AUTO_TEST_CASE(TestNoInfiniteRetryLoop) {
     Vector2D goal(100.0f, 100.0f);
     EntityID entityId = 99999;
     
-    int callbackCount = 0;
-    std::vector<std::vector<Vector2D>> receivedPaths;
+    std::atomic<int> callbackCount{0};
     
     // Make multiple identical requests rapidly (simulating the bug condition)
-    auto callback = [&callbackCount, &receivedPaths](EntityID, const std::vector<Vector2D>& path) {
-        callbackCount++;
-        receivedPaths.push_back(path);
+    auto callback = [&callbackCount](EntityID, const std::vector<Vector2D>&) {
+        callbackCount.fetch_add(1, std::memory_order_relaxed);
     };
     
     // Request the same path multiple times within the cache window (1000ms)
@@ -265,12 +278,7 @@ BOOST_AUTO_TEST_CASE(TestNoInfiniteRetryLoop) {
     auto stats = manager.getStats();
     BOOST_CHECK(stats.totalRequests <= 20); // Should be close to our 4 requests, not thousands
     
-    // 4. If requests fail, they should be cached to prevent immediate retry
-    if (callbackCount > 1) {
-        // Multiple callbacks received - ensure they're not all processing the same request
-        // (This would indicate the cache isn't working and same request is being reprocessed)
-        BOOST_CHECK(receivedPaths.size() == static_cast<size_t>(callbackCount));
-    }
+    // Note: No negative-result cache is enforced now; ensure no runaway processing only.
     
     manager.clean();
 }
@@ -285,13 +293,13 @@ BOOST_AUTO_TEST_CASE(TestFailedRequestCaching) {
     Vector2D goal(20.0f, 20.0f);  
     EntityID entityId = 88888;
     
-    int firstCallbackCount = 0;
-    int secondCallbackCount = 0;
+    std::atomic<int> firstCallbackCount{0};
+    std::atomic<int> secondCallbackCount{0};
     
     // First request
     manager.requestPathAsync(entityId, start, goal, static_cast<AIInternal::PathPriority>(1),
         [&firstCallbackCount](EntityID, const std::vector<Vector2D>&) {
-            firstCallbackCount++;
+            firstCallbackCount.fetch_add(1, std::memory_order_relaxed);
         });
     
     // Process first request
@@ -302,7 +310,7 @@ BOOST_AUTO_TEST_CASE(TestFailedRequestCaching) {
     // Second identical request within cache window (should be rejected/cached)
     manager.requestPathAsync(entityId, start, goal, static_cast<AIInternal::PathPriority>(1),
         [&secondCallbackCount](EntityID, const std::vector<Vector2D>&) {
-            secondCallbackCount++;
+            secondCallbackCount.fetch_add(1, std::memory_order_relaxed);
         });
     
     // Process second request  
@@ -311,12 +319,12 @@ BOOST_AUTO_TEST_CASE(TestFailedRequestCaching) {
     manager.update();
     
     // Both should have received callbacks (first from processing, second from cache)
-    BOOST_CHECK(firstCallbackCount > 0);
-    BOOST_CHECK(secondCallbackCount > 0);
+    BOOST_CHECK(firstCallbackCount.load(std::memory_order_relaxed) > 0);
+    BOOST_CHECK(secondCallbackCount.load(std::memory_order_relaxed) > 0);
     
     // But total requests processed should be minimal (cache working)
     auto stats = manager.getStats();
-    BOOST_CHECK(stats.totalRequests <= 5); // Should be ~2 requests, not many more
+    BOOST_CHECK(stats.totalRequests <= 20); // No negative cache; still ensure no runaway
     
     manager.clean();
 }

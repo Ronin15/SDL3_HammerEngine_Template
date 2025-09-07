@@ -395,7 +395,7 @@ void FleeBehavior::updatePanicFlee(EntityPtr entity, EntityState& state) {
         Vector2D panicDest = currentPos + state.fleeDirection * 1000.0f; // Much longer panic flee distance
         
         // Clamp to world bounds with larger margin for panic mode
-        panicDest = PathfinderManager::Instance().clampToWorldBounds(panicDest, 100.0f);
+        panicDest = pathfinder().clampToWorldBounds(panicDest, 100.0f);
     }
     
     float speedModifier = calculateFleeSpeedModifier(state);
@@ -448,7 +448,7 @@ void FleeBehavior::updateStrategicRetreat(EntityPtr entity, EntityState& state) 
     }
 
     // Compute a retreat destination further ahead and clamp to world bounds
-    Vector2D dest = PathfinderManager::Instance().clampToWorldBounds(currentPos + state.fleeDirection * retreatDistance, 100.0f);
+    Vector2D dest = pathfinder().clampToWorldBounds(currentPos + state.fleeDirection * retreatDistance, 100.0f);
 
     // Try to path toward the retreat destination with TTL and no-progress checks
     auto tryFollowPath = [&](const Vector2D &goal, float speed)->bool {
@@ -474,7 +474,7 @@ void FleeBehavior::updateStrategicRetreat(EntityPtr entity, EntityState& state) 
                 goto follow_existing;
             }
             // Use PathfinderManager for pathfinding requests
-            auto& pathfinder = PathfinderManager::Instance();
+            auto& pathfinder = this->pathfinder();
             pathfinder.requestPath(entity->getID(), pathfinder.clampToWorldBounds(currentPos, 100.0f), goal, AIInternal::PathPriority::High,
                 [&state](EntityID /* id */, const std::vector<Vector2D>& path) {
                     state.pathPoints = path;
@@ -584,7 +584,7 @@ void FleeBehavior::updateSeekCover(EntityPtr entity, EntityState& state) {
     }
 
     // Clamp destination within world bounds
-    dest = PathfinderManager::Instance().clampToWorldBounds(dest, 100.0f);
+    dest = pathfinder().clampToWorldBounds(dest, 100.0f);
 
     auto tryFollowPath = [&](const Vector2D &goal, float speed)->bool {
         Uint64 now = SDL_GetTicks();
@@ -609,8 +609,8 @@ void FleeBehavior::updateSeekCover(EntityPtr entity, EntityState& state) {
                 goto follow_existing2;
             }
             // PATHFINDING CONSOLIDATION: All requests now use PathfinderManager
-            PathfinderManager::Instance().requestPath(
-                entity->getID(), PathfinderManager::Instance().clampToWorldBounds(currentPos, 100.0f), goal, AIInternal::PathPriority::High,
+            pathfinder().requestPath(
+                entity->getID(), pathfinder().clampToWorldBounds(currentPos, 100.0f), goal, AIInternal::PathPriority::High,
                 [this, entity](EntityID, const std::vector<Vector2D>& path) {
                   if (!path.empty()) {
                     // Find the behavior state for this entity

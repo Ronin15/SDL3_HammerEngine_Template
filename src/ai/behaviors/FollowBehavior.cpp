@@ -144,7 +144,7 @@ void FollowBehavior::executeLogic(EntityPtr entity) {
       
       // Dynamic backoff: if in a backoff window, don't refresh — just try to follow existing path
       if (SDL_GetTicks() < state.backoffUntil) {
-        bool following = PathfinderManager::Instance().followPathStep(entity, currentPos,
+        bool following = pathfinder().followPathStep(entity, currentPos,
                             state.pathPoints, state.currentPathIndex,
                             speed, nodeRadius);
         if (following) { state.lastProgressTime = SDL_GetTicks(); }
@@ -161,8 +161,8 @@ void FollowBehavior::executeLogic(EntityPtr entity) {
         goalChanged = ((desiredPos - lastGoal).length() > GOAL_CHANGE_THRESH);
       }
       if (stale || goalChanged) {
-        auto& pathfinder = PathfinderManager::Instance();
-        pathfinder.requestPath(entity->getID(), currentPos, desiredPos, AIInternal::PathPriority::Normal,
+        auto& pf = this->pathfinder();
+        pf.requestPath(entity->getID(), currentPos, desiredPos, AIInternal::PathPriority::Normal,
           [&state](EntityID /* id */, const std::vector<Vector2D>& path) {
             state.pathPoints = path;
             state.currentPathIndex = 0;
@@ -170,7 +170,7 @@ void FollowBehavior::executeLogic(EntityPtr entity) {
           });
       }
       
-      bool pathStep = PathfinderManager::Instance().followPathStep(entity, currentPos,
+      bool pathStep = pathfinder().followPathStep(entity, currentPos,
                           state.pathPoints, state.currentPathIndex,
                           speed, nodeRadius);
       if (pathStep) { state.lastProgressTime = SDL_GetTicks(); }
