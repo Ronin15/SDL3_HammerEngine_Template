@@ -196,6 +196,23 @@ public:
      */
     Vector2D clampToWorldBounds(const Vector2D& position, float margin = 100.0f) const;
 
+    // Clamp using entity half-extents (pixels)
+    Vector2D clampInsideExtents(const Vector2D& position, float halfW, float halfH, float extraMargin = 0.0f) const;
+
+    // Adjust spawn to valid navigable position inside world
+    Vector2D adjustSpawnToNavigable(const Vector2D& desired, float halfW = 16.0f, float halfH = 16.0f, float interiorMargin = 150.0f) const;
+    // Area-constrained spawn adjustment
+    Vector2D adjustSpawnToNavigableInRect(const Vector2D& desired,
+                                          float halfW, float halfH,
+                                          float interiorMargin,
+                                          float minX, float minY,
+                                          float maxX, float maxY) const;
+    Vector2D adjustSpawnToNavigableInCircle(const Vector2D& desired,
+                                            float halfW, float halfH,
+                                            float interiorMargin,
+                                            const Vector2D& center,
+                                            float radius) const;
+
     /**
      * @brief Follow a path step for entity movement
      * @param entity Entity to move
@@ -257,6 +274,18 @@ private:
     // Shared grid allows atomic updates during processing
     std::shared_ptr<HammerEngine::PathfindingGrid> m_grid;
     // Direct ThreadSystem processing - no queue needed
+
+    // Pending request coalescing
+    mutable std::mutex m_pendingMutex;
+    struct PendingCallbacks { std::vector<PathCallback> callbacks; };
+    std::unordered_map<uint64_t, PendingCallbacks> m_pending;
+
+    // Helpers
+    Vector2D quantize128(const Vector2D& p) const {
+        return Vector2D(std::round(p.getX() / 128.0f) * 128.0f,
+                        std::round(p.getY() / 128.0f) * 128.0f);
+    }
+    void normalizeEndpoints(Vector2D& start, Vector2D& goal) const;
 
     // Request management - simplified
     std::atomic<uint64_t> m_nextRequestId{1};

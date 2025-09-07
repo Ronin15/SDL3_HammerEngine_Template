@@ -283,6 +283,9 @@ public:
                                 const std::string &behaviorName);
   void unregisterEntityFromUpdates(EntityPtr entity);
 
+  // Update extents for an entity if its sprite/physics size changes
+  void updateEntityExtents(EntityPtr entity, float halfW, float halfH);
+
   // Global controls
   void setGlobalPause(bool paused);
   bool isGloballyPaused() const;
@@ -341,6 +344,8 @@ private:
     std::vector<EntityPtr> entities;
     std::vector<std::shared_ptr<AIBehavior>> behaviors;
     std::vector<float> lastUpdateTimes;
+    std::vector<float> halfWidths;  // entity half extents for clamp
+    std::vector<float> halfHeights; // entity half extents for clamp
 
     // Double buffering for lock-free updates
     std::atomic<int> currentBuffer{0};
@@ -352,6 +357,8 @@ private:
       entities.reserve(capacity);
       behaviors.reserve(capacity);
       lastUpdateTimes.reserve(capacity);
+      halfWidths.reserve(capacity);
+      halfHeights.reserve(capacity);
       doubleBuffer[0].reserve(capacity);
       doubleBuffer[1].reserve(capacity);
     }

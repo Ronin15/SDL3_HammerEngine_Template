@@ -61,6 +61,12 @@ struct SpawnParameters {
     // Constructor with commonly used parameters
     explicit SpawnParameters(const std::string& type, int count = 1, float radius = 0.0f)
         : npcType(type), count(count), spawnRadius(radius) {}
+
+    // Optional area constraints for spawns
+    bool useAreaRect{false};
+    float areaMinX{0.0f}, areaMinY{0.0f}, areaMaxX{0.0f}, areaMaxY{0.0f};
+    bool useAreaCircle{false};
+    float areaCenterX{0.0f}, areaCenterY{0.0f}, areaRadius{0.0f};
 };
 
 class NPCSpawnEvent : public Event {

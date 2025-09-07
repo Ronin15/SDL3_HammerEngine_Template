@@ -61,6 +61,10 @@ public:
     // Grid data access for hierarchical pathfinding
     void setBlocked(int gx, int gy, bool blocked);
     void setWeight(int gx, int gy, float weight);
+
+    // World-space convenience helpers
+    Vector2D snapToNearestOpenWorld(const Vector2D& pos, float maxWorldRadius) const;
+    bool isWorldBlocked(const Vector2D& pos) const;
     
     // Statistics
     struct PathfindingStats {

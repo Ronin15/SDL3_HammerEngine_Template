@@ -84,6 +84,21 @@ bool PathfindingGrid::findNearestOpen(int gx, int gy, int maxRadius, int& outGX,
     return false;
 }
 
+Vector2D PathfindingGrid::snapToNearestOpenWorld(const Vector2D& pos, float maxWorldRadius) const {
+    auto [gx, gy] = worldToGrid(pos);
+    int maxR = std::max(1, static_cast<int>(std::ceil(maxWorldRadius / m_cell)));
+    int outGX = gx, outGY = gy;
+    if (findNearestOpen(gx, gy, maxR, outGX, outGY)) {
+        return gridToWorld(outGX, outGY);
+    }
+    return pos;
+}
+
+bool PathfindingGrid::isWorldBlocked(const Vector2D& pos) const {
+    auto [gx, gy] = worldToGrid(pos);
+    return isBlocked(gx, gy);
+}
+
 void PathfindingGrid::rebuildFromWorld() {
     const WorldManager& wm = WorldManager::Instance();
     const auto* world = wm.getWorldData();
@@ -689,9 +704,9 @@ PathfindingResult PathfindingGrid::findPathHierarchical(const Vector2D& start, c
     auto coarseResult = m_coarseGrid->findPath(start, goal, coarsePath);
     
     if (coarseResult != PathfindingResult::SUCCESS) {
-        // Coarse pathfinding failed, try direct pathfinding as fallback (no static counters)
-        PATHFIND_INFO("Coarse pathfinding result: " + std::to_string(static_cast<int>(coarseResult)) +
-                     ", attempting direct pathfinding");
+        // Coarse pathfinding failed, try direct pathfinding as fallback
+        PATHFIND_DEBUG("Coarse pathfinding result: " + std::to_string(static_cast<int>(coarseResult)) +
+                       ", attempting direct pathfinding");
         return findPath(start, goal, outPath);
     }
     

@@ -51,17 +51,6 @@ public:
 
   // AI-specific methods
   void setWanderArea(float minX, float minY, float maxX, float maxY);
-  
-  // Area constraint system for villages/events
-  void enableAreaConstraints(bool enabled) { m_boundsCheckEnabled = enabled; }
-  void setConstrainedArea(float minX, float minY, float maxX, float maxY) {
-    setWanderArea(minX, minY, maxX, maxY);
-    m_boundsCheckEnabled = true;
-  }
-
-  // Enable or disable screen bounds checking
-  void setBoundsCheckEnabled(bool enabled) { m_boundsCheckEnabled = enabled; }
-  bool isBoundsCheckEnabled() const { return m_boundsCheckEnabled; }
 
   // Faction/layer control
   void setFaction(Faction f);
@@ -107,14 +96,11 @@ private:
   Uint64 m_lastFrameTime{0};          // Time of last animation frame change
   SDL_FlipMode m_flip{SDL_FLIP_NONE}; // Default flip direction
 
-  // Wander area bounds
+  // Wander area bounds (still used for area-based behaviors if needed)
   float m_minX{0.0f};
   float m_minY{0.0f};
   float m_maxX{800.0f};
   float m_maxY{600.0f};
-
-  // Flag to control bounds checking behavior
-  bool m_boundsCheckEnabled{false};
 
   // Trading and loot configuration
   bool m_canTrade{false};

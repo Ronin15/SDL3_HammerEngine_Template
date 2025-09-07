@@ -12,6 +12,8 @@
 #include "core/GameTime.hpp"
 #include <random>
 #include <algorithm>
+#include "managers/WorldManager.hpp"
+#include "managers/PathfinderManager.hpp"
 
 
 
@@ -26,6 +28,8 @@ static Vector2D getPlayerPosition() {
 // Random number generation
 static std::random_device rd;
 static std::mt19937 gen(rd());
+
+// Helper removed: use PathfinderManager::adjustSpawnToNavigable
 
 NPCSpawnEvent::NPCSpawnEvent(const std::string& name, const std::string& npcType)
     : m_name(name) {
@@ -303,10 +307,10 @@ EntityPtr NPCSpawnEvent::forceSpawnNPC(const std::string& npcType, float x, floa
 
         // Create the NPC
         Vector2D position(x, y);
+        position = PathfinderManager::Instance().adjustSpawnToNavigable(position, 32.0f, 32.0f, 150.0f);
         auto npc = NPC::create(textureID, position, 64, 64);
 
-        // Enforce world bounds by default for spawned NPCs
-        npc->setBoundsCheckEnabled(true);
+        // Bounds are enforced centrally by AIManager/PathfinderManager
 
         EVENT_INFO("Force-spawned " + npcType + " at (" + std::to_string(x) + ", " + std::to_string(y) + ")");
         return std::static_pointer_cast<Entity>(npc);
@@ -332,10 +336,20 @@ std::vector<EntityPtr> NPCSpawnEvent::forceSpawnNPCs(const SpawnParameters& para
             float offsetY = params.spawnRadius > 0 ? offsetDist(gen) : 0.0f;
 
             Vector2D spawnPos(x + offsetX, y + offsetY);
+            if (params.useAreaRect) {
+                spawnPos = PathfinderManager::Instance().adjustSpawnToNavigableInRect(
+                    spawnPos, 32.0f, 32.0f, 150.0f,
+                    params.areaMinX, params.areaMinY, params.areaMaxX, params.areaMaxY);
+            } else if (params.useAreaCircle) {
+                spawnPos = PathfinderManager::Instance().adjustSpawnToNavigableInCircle(
+                    spawnPos, 32.0f, 32.0f, 150.0f,
+                    Vector2D(params.areaCenterX, params.areaCenterY), params.areaRadius);
+            } else {
+                spawnPos = PathfinderManager::Instance().adjustSpawnToNavigable(spawnPos, 32.0f, 32.0f, 150.0f);
+            }
             auto npc = NPC::create(textureID, spawnPos, 64, 64);
 
-            // Enforce world bounds for spawned NPCs
-            npc->setBoundsCheckEnabled(true);
+            // Bounds are enforced centrally by AIManager/PathfinderManager
             
             // Note: For area-constrained NPCs (villages/events), create an NPCSpawnEvent
             // with setAreaConstraints() and let the GameState handle the actual spawning

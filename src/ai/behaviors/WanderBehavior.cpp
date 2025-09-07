@@ -444,10 +444,10 @@ void WanderBehavior::setupModeDefaults(WanderMode mode) {
   // Use world bounds to set center point for world-scale wandering
   float minX, minY, maxX, maxY;
   if (WorldManager::Instance().getWorldBounds(minX, minY, maxX, maxY)) {
-    const float TILE = 32.0f;
-    float worldWidth = (maxX - minX) * TILE;
-    float worldHeight = (maxY - minY) * TILE;
-    
+    // WorldManager returns bounds in PIXELS; use directly
+    float worldWidth = (maxX - minX);
+    float worldHeight = (maxY - minY);
+
     // Set center point to world center
     m_centerPoint = Vector2D(worldWidth * 0.5f, worldHeight * 0.5f);
   } else {

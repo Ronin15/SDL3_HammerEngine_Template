@@ -1497,7 +1497,6 @@ EventDemoState::createNPCAtPositionWithoutBehavior(const std::string &npcType,
     npc->initializeInventory(); // Initialize inventory after construction
 
     npc->setWanderArea(0.0f, 0.0f, m_worldWidth, m_worldHeight);
-    npc->setBoundsCheckEnabled(true);
 
     m_spawnedNPCs.push_back(npc);
 
@@ -1695,7 +1694,6 @@ void EventDemoState::createNPCAtPosition(const std::string &npcType, float x,
     npc->initializeInventory(); // Initialize inventory after construction
 
     npc->setWanderArea(0.0f, 0.0f, m_worldWidth, m_worldHeight);
-    npc->setBoundsCheckEnabled(true);
 
     std::string behaviorName = determineBehaviorForNPCType(npcType);
 
