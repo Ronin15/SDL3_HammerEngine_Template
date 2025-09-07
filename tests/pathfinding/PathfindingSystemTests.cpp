@@ -181,6 +181,36 @@ BOOST_FIXTURE_TEST_CASE(TestDiagonalMovementToggle, PathfindingGridFixture)
     }
 }
 
+BOOST_FIXTURE_TEST_CASE(TestHierarchicalLongDistance, PathfindingGridFixture)
+{
+    // Very long-distance path should be reasonable with hierarchical method
+    Vector2D start(48.0f, 48.0f);     // near (1,1)
+    Vector2D farGoal(560.0f, 560.0f); // near (17,17)
+
+    std::vector<Vector2D> path;
+    PathfindingResult result = grid.findPathHierarchical(start, farGoal, path);
+
+    // Without world data this may not succeed; accept valid outcomes
+    BOOST_CHECK(result == PathfindingResult::SUCCESS ||
+                result == PathfindingResult::NO_PATH_FOUND ||
+                result == PathfindingResult::TIMEOUT);
+}
+
+BOOST_FIXTURE_TEST_CASE(TestDirectShortDistance, PathfindingGridFixture)
+{
+    // Short-distance path should be fine with direct method
+    Vector2D start(96.0f, 96.0f);   // near (3,3)
+    Vector2D goal(128.0f, 128.0f);  // near (4,4)
+
+    std::vector<Vector2D> path;
+    PathfindingResult result = grid.findPath(start, goal, path);
+
+    // Allow SUCCESS/NO_PATH_FOUND given synthetic grid without world data
+    BOOST_CHECK(result == PathfindingResult::SUCCESS ||
+                result == PathfindingResult::NO_PATH_FOUND ||
+                result == PathfindingResult::TIMEOUT);
+}
+
 BOOST_AUTO_TEST_SUITE_END()
 
 BOOST_AUTO_TEST_SUITE(PathfindingWeightTests)

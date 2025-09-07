@@ -29,6 +29,8 @@
 #include "core/ThreadSystem.hpp"
 #include "entities/Entity.hpp"
 #include "managers/AIManager.hpp"
+#include "managers/PathfinderManager.hpp"
+#include "ai/internal/PathPriority.hpp"
 
 // Simple test entity
 class TestEntity : public Entity {
@@ -539,6 +541,45 @@ BOOST_FIXTURE_TEST_CASE(TestThreadSafeBehaviorRegistration,
   // Cleanup
   AIManager::Instance().resetBehaviors();
   std::cout << "TestThreadSafeBehaviorRegistration completed" << std::endl;
+}
+
+// Test that async path requests still complete under worker load
+BOOST_FIXTURE_TEST_CASE(TestAsyncPathRequestsUnderWorkerLoad,
+                        ThreadedAITestFixture) {
+  auto &threadSystem = HammerEngine::ThreadSystem::Instance();
+
+  // Enqueue background load
+  constexpr int LOAD_TASKS = 1500;
+  for (int i = 0; i < LOAD_TASKS; ++i) {
+    threadSystem.enqueueTask([]() {
+      volatile int x = 0; for (int k = 0; k < 200; ++k) x += k;
+    }, HammerEngine::TaskPriority::Low);
+  }
+
+  // Initialize pathfinder and issue multiple async requests
+  PathfinderManager &pf = PathfinderManager::Instance();
+  BOOST_REQUIRE(pf.init());
+
+  std::atomic<int> callbacks{0};
+  const int REQUESTS = 24;
+  for (int i = 0; i < REQUESTS; ++i) {
+    Vector2D start(16.0f + i, 20.0f + i);
+    Vector2D goal(220.0f + i, 180.0f + i);
+    pf.requestPath(static_cast<EntityID>(5000 + i), start, goal,
+                   AIInternal::PathPriority::Normal,
+                   [&callbacks](EntityID, const std::vector<Vector2D>&) {
+                     callbacks.fetch_add(1, std::memory_order_relaxed);
+                   });
+  }
+
+  // Wait briefly for callbacks to arrive under load
+  for (int i = 0; i < 25 && callbacks.load(std::memory_order_relaxed) == 0; ++i) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(20));
+  }
+
+  BOOST_CHECK(callbacks.load(std::memory_order_relaxed) > 0);
+
+  // Let the fixture/global fixture handle cleanup ordering for managers
 }
 
 // Test case for thread-safe entity assignment

@@ -143,6 +143,43 @@ BOOST_AUTO_TEST_CASE(TestSpatialHashUpdate)
     BOOST_CHECK(std::find(newResults.begin(), newResults.end(), id1) != newResults.end());
 }
 
+BOOST_AUTO_TEST_CASE(TestSpatialHashSmallAndLargeMovement)
+{
+    // Configure a higher movement threshold to make small moves a clear no-op
+    const float CELL_SIZE = 32.0f;
+    const float MOVE_THRESHOLD = 6.0f;
+    SpatialHash spatialHash(CELL_SIZE, MOVE_THRESHOLD);
+
+    EntityID id = 42;
+    AABB aabb(64.0f, 64.0f, 8.0f, 8.0f); // starts near center of a cell
+    spatialHash.insert(id, aabb);
+
+    // Small movement below threshold: should not disturb spatial membership
+    AABB smallMove(66.0f, 64.0f, 8.0f, 8.0f); // move by 2px in X
+    spatialHash.update(id, smallMove);
+
+    // Query both original and slightly shifted area should still find the entity
+    std::vector<EntityID> results1, results2;
+    spatialHash.query(aabb, results1);
+    spatialHash.query(smallMove, results2);
+    BOOST_CHECK(std::find(results1.begin(), results1.end(), id) != results1.end());
+    BOOST_CHECK(std::find(results2.begin(), results2.end(), id) != results2.end());
+
+    // Large movement beyond threshold into a different cell range
+    AABB bigMove(160.0f, 160.0f, 8.0f, 8.0f);
+    spatialHash.update(id, bigMove);
+
+    // Should not be found near the original area anymore
+    std::vector<EntityID> results3;
+    spatialHash.query(aabb, results3);
+    BOOST_CHECK(std::find(results3.begin(), results3.end(), id) == results3.end());
+
+    // Should be found at the new location
+    std::vector<EntityID> results4;
+    spatialHash.query(bigMove, results4);
+    BOOST_CHECK(std::find(results4.begin(), results4.end(), id) != results4.end());
+}
+
 BOOST_AUTO_TEST_CASE(TestSpatialHashClear)
 {
     SpatialHash spatialHash(32.0f);
