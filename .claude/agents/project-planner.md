@@ -1,6 +1,6 @@
 ---
 name: project-planner
-description: Strategic planning agent that analyzes requirements, creates implementation strategies, and designs architectural approaches for SDL3 HammerEngine development tasks. Use this agent when you need thorough analysis and planning before implementation begins. Examples - breaking down complex features into manageable phases, analyzing architectural impact, creating development roadmaps, identifying dependencies and risks.
+description: Strategic planning agent that analyzes requirements, creates implementation strategies, and designs architectural approaches for SDL3 HammerEngine development tasks. Best for: 'plan implementation', 'break down feature', 'architectural analysis', 'development roadmap', 'identify risks', 'requirements analysis', 'phased approach', 'complex feature planning', 'strategy design', 'dependencies mapping'. Use this agent when you need thorough analysis and planning before implementation begins. Examples - breaking down complex features into manageable phases, analyzing architectural impact, creating development roadmaps, identifying dependencies and risks.
 model: opus
 color: green
 ---
