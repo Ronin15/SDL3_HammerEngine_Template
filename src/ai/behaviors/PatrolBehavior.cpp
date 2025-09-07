@@ -63,11 +63,7 @@ void PatrolBehavior::init(EntityPtr entity) {
     m_currentWaypoint = (m_currentWaypoint + 1) % m_waypoints.size();
   }
 
-  NPC *npc = dynamic_cast<NPC *>(entity.get());
-  if (npc) {
-    // Ensure NPCs respect world bounds while patrolling
-    npc->setBoundsCheckEnabled(true);
-  }
+  // Bounds are enforced centrally by AIManager; no per-entity toggles needed
 }
 
 void PatrolBehavior::executeLogic(EntityPtr entity) {
@@ -85,8 +81,7 @@ void PatrolBehavior::executeLogic(EntityPtr entity) {
 
   Vector2D targetWaypoint = m_waypoints[m_currentWaypoint];
 
-  // Clamp target to world bounds to avoid edge chasing
-  targetWaypoint = pathfinder().clampToWorldBounds(targetWaypoint, 100.0f);
+  // Use behavior-defined target; managers will normalize for pathfinding
 
   // State: APPROACHING_WAYPOINT - Check if we've reached current waypoint
   if (isAtWaypoint(position, targetWaypoint)) {
@@ -145,8 +140,8 @@ void PatrolBehavior::executeLogic(EntityPtr entity) {
     }
     
     // PATHFINDING CONSOLIDATION: All requests now use PathfinderManager  
-    Vector2D clampedStart = pathfinder().clampToWorldBounds(position, 100.0f);
-    Vector2D clampedGoal = pathfinder().clampToWorldBounds(targetWaypoint, 100.0f);
+    Vector2D clampedStart = position;
+    Vector2D clampedGoal = targetWaypoint;
     
     pathfinder().requestPath(
         entity->getID(), clampedStart, clampedGoal,
@@ -247,12 +242,6 @@ void PatrolBehavior::executeLogic(EntityPtr entity) {
 void PatrolBehavior::clean(EntityPtr entity) {
   if (entity) {
     entity->setVelocity(Vector2D(0, 0));
-
-    NPC *npc = dynamic_cast<NPC *>(entity.get());
-    if (npc) {
-      // Keep bounds checking disabled to prevent artificial bouncing
-      npc->setBoundsCheckEnabled(false);
-    }
   }
 
   m_needsReset = false;
@@ -271,12 +260,6 @@ void PatrolBehavior::onMessage(EntityPtr entity, const std::string &message) {
   } else if (message == "release_entities") {
     if (entity) {
       entity->setVelocity(Vector2D(0, 0));
-
-      NPC *npc = dynamic_cast<NPC *>(entity.get());
-      if (npc) {
-        // Keep bounds checking disabled to prevent artificial bouncing
-        npc->setBoundsCheckEnabled(false);
-      }
     }
 
     m_needsReset = false;

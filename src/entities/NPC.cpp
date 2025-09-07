@@ -61,8 +61,7 @@ NPC::NPC(const std::string &textureID, const Vector2D &startPosition,
     m_maxY = 2048.0f;
   }
 
-  // Disable bounds checking by default
-  m_boundsCheckEnabled = false;
+  // Bounds are enforced centrally by AIManager/PathfinderManager
 
   // Initialize inventory system - NOTE: Do NOT call setupInventory() here
   // because it can trigger shared_this() during construction.
@@ -138,35 +137,7 @@ void NPC::update(float deltaTime) {
   
   Vector2D newPosition = m_position + m_velocity * deltaTime;
   
-  // Only apply world bounds clamping if bounds checking is enabled
-  // This prevents AI pathfinding conflicts while still allowing manual boundary control
-  if (m_boundsCheckEnabled) {
-    float bminX, bminY, bmaxX, bmaxY;
-    if (WorldManager::Instance().getWorldBounds(bminX, bminY, bmaxX, bmaxY)) {
-      // WorldManager returns bounds in PIXELS; clamp using half sprite extents
-      const float halfW = (m_frameWidth > 0 ? m_frameWidth * 0.5f : 16.0f);
-      const float halfH = (m_height > 0 ? m_height * 0.5f : 16.0f);
-      const float worldMinX = bminX + halfW;
-      const float worldMinY = bminY + halfH;
-      const float worldMaxX = bmaxX - halfW;
-      const float worldMaxY = bmaxY - halfH;
-      float clampedX = std::clamp(newPosition.getX(), worldMinX, worldMaxX);
-      float clampedY = std::clamp(newPosition.getY(), worldMinY, worldMaxY);
-      bool hitX = (clampedX != newPosition.getX());
-      bool hitY = (clampedY != newPosition.getY());
-      newPosition.setX(clampedX);
-      newPosition.setY(clampedY);
-      // Project velocity to interior to avoid artificial flip-flopping at edges
-      if (hitX) {
-        if (newPosition.getX() <= worldMinX && m_velocity.getX() < 0) m_velocity.setX(0.0f);
-        else if (newPosition.getX() >= worldMaxX && m_velocity.getX() > 0) m_velocity.setX(0.0f);
-      }
-      if (hitY) {
-        if (newPosition.getY() <= worldMinY && m_velocity.getY() < 0) m_velocity.setY(0.0f);
-        else if (newPosition.getY() >= worldMaxY && m_velocity.getY() > 0) m_velocity.setY(0.0f);
-      }
-    }
-  }
+  // Bounds handled centrally by AIManager
   setPosition(newPosition);
   // Sync velocity change if adjusted by bounce
   setVelocity(m_velocity);
@@ -175,47 +146,7 @@ void NPC::update(float deltaTime) {
   // Position sync is handled by setPosition() calls - no need for periodic checks
   // This prevents visual glitching from position corrections during rendering
 
-  // Handle area constraints - redirect instead of bounce when enabled
-  bool boundaryCollision = false;
-  if (m_boundsCheckEnabled) {
-    const float margin = 8.0f;
-    bool hitBoundary = false;
-    Vector2D redirectedVel = m_velocity;
-    
-    // Check boundaries and redirect velocity inward
-    if (m_position.getX() < m_minX + margin) {
-      m_position.setX(m_minX + margin);
-      if (m_velocity.getX() < 0) {
-        redirectedVel.setX(std::abs(m_velocity.getX()) * 0.8f); // Redirect inward with slight damping
-        hitBoundary = true;
-      }
-    } else if (m_position.getX() + m_width > m_maxX - margin) {
-      m_position.setX(m_maxX - m_width - margin);
-      if (m_velocity.getX() > 0) {
-        redirectedVel.setX(-std::abs(m_velocity.getX()) * 0.8f); // Redirect inward with slight damping
-        hitBoundary = true;
-      }
-    }
-    
-    if (m_position.getY() < m_minY + margin) {
-      m_position.setY(m_minY + margin);
-      if (m_velocity.getY() < 0) {
-        redirectedVel.setY(std::abs(m_velocity.getY()) * 0.8f); // Redirect inward with slight damping
-        hitBoundary = true;
-      }
-    } else if (m_position.getY() + m_height > m_maxY - margin) {
-      m_position.setY(m_maxY - m_height - margin);
-      if (m_velocity.getY() > 0) {
-        redirectedVel.setY(-std::abs(m_velocity.getY()) * 0.8f); // Redirect inward with slight damping
-        hitBoundary = true;
-      }
-    }
-    
-    if (hitBoundary) {
-      m_velocity = redirectedVel;
-      boundaryCollision = true;
-    }
-  }
+  // Area constraints handling removed; behaviors and managers coordinate movement
 
   // --- Animation ---
   Uint64 currentTime = SDL_GetTicks();
@@ -224,9 +155,8 @@ void NPC::update(float deltaTime) {
   float moveDist2 = (finalPosition - prevPosition).lengthSquared();
   
   // Diagnostic: Check for stuck entities with velocity but no movement
-  // Skip stuck detection if we hit a boundary (that's not really "stuck")
   float velocityMagnitude = m_velocity.length();
-  if (velocityMagnitude > 1.0f && moveDist2 <= 0.01f && !boundaryCollision) {
+  if (velocityMagnitude > 1.0f && moveDist2 <= 0.01f) {
     // NPC has velocity but isn't moving - this indicates a stuck condition
     // Use instance-specific throttling instead of global static
     if (currentTime - m_lastStuckLogTime > 5000) { // Log every 5 seconds per NPC

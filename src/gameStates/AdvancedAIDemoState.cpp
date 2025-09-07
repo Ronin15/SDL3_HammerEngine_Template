@@ -391,7 +391,6 @@ void AdvancedAIDemoState::createAdvancedNPCs() {
 
                 // Set wander area to keep NPCs on screen
                 npc->setWanderArea(0, 0, m_worldWidth, m_worldHeight);
-                npc->setBoundsCheckEnabled(false);
 
                 // Initialize with Follow behavior by default for smooth movement demonstration
                 aiMgr.registerEntityForUpdates(npc, 5, "Follow");

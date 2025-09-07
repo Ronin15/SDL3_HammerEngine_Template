@@ -512,42 +512,47 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
                  ", Batches: " + std::to_string(batchCount));
       }
 
-      size_t entitiesPerBatch = entityCount / batchCount;
-      size_t remainingEntities = entityCount % batchCount;
+      if (batchCount <= 1) {
+        // Avoid thread overhead when only one batch would run
+        m_lastWasThreaded.store(false, std::memory_order_relaxed);
+        processBatch(0, entityCount, deltaTime, nextBuffer);
+      } else {
+        size_t entitiesPerBatch = entityCount / batchCount;
+        size_t remainingEntities = entityCount % batchCount;
 
-      // Batch processing with futures; synchronize before returning from
-      // update()
-      m_updateFutures.clear();
-      m_updateFutures.reserve(batchCount);
-      for (size_t i = 0; i < batchCount; ++i) {
-        size_t start = i * entitiesPerBatch;
-        size_t end = start + entitiesPerBatch;
+        // Batch processing with futures; synchronize before returning from update()
+        m_updateFutures.clear();
+        m_updateFutures.reserve(batchCount);
+        for (size_t i = 0; i < batchCount; ++i) {
+          size_t start = i * entitiesPerBatch;
+          size_t end = start + entitiesPerBatch;
 
-        // Add remaining entities to last batch
-        if (i == batchCount - 1) {
-          end += remainingEntities;
+          // Add remaining entities to last batch
+          if (i == batchCount - 1) {
+            end += remainingEntities;
+          }
+
+          // Enqueue with result and retain the future for synchronization
+          m_updateFutures.push_back(threadSystem.enqueueTaskWithResult(
+              [this, start, end, deltaTime, nextBuffer]() {
+                processBatch(start, end, deltaTime, nextBuffer);
+              },
+              HammerEngine::TaskPriority::High, "AI_OptimalBatch"));
         }
-
-        // Enqueue with result and retain the future for synchronization
-        m_updateFutures.push_back(threadSystem.enqueueTaskWithResult(
-            [this, start, end, deltaTime, nextBuffer]() {
-              processBatch(start, end, deltaTime, nextBuffer);
-            },
-            HammerEngine::TaskPriority::High, "AI_OptimalBatch"));
-      }
-      // Wait for all batches to complete to maintain update->render safety
-      for (auto &f : m_updateFutures) {
-        if (f.valid()) {
-          try {
-            f.get();
-          } catch (const std::exception &e) {
-            AI_ERROR(std::string("Exception in AI batch future: ") + e.what());
-          } catch (...) {
-            AI_ERROR("Unknown exception in AI batch future");
+        // Wait for all batches to complete to maintain update->render safety
+        for (auto &f : m_updateFutures) {
+          if (f.valid()) {
+            try {
+              f.get();
+            } catch (const std::exception &e) {
+              AI_ERROR(std::string("Exception in AI batch future: ") + e.what());
+            } catch (...) {
+              AI_ERROR("Unknown exception in AI batch future");
+            }
           }
         }
+        m_updateFutures.clear();
       }
-      m_updateFutures.clear();
 
     } else {
       // Single-threaded processing
@@ -712,6 +717,14 @@ void AIManager::assignBehaviorToEntity(EntityPtr entity,
           static_cast<uint8_t>(inferBehaviorType(behaviorName));
       m_storage.hotData[index].active = true;
 
+      // Refresh extents
+      float halfW = std::max(1.0f, entity->getWidth() * 0.5f);
+      float halfH = std::max(1.0f, entity->getHeight() * 0.5f);
+      if (index < m_storage.halfWidths.size()) {
+        m_storage.halfWidths[index] = halfW;
+        m_storage.halfHeights[index] = halfH;
+      }
+
       AI_LOG("Updated behavior for existing entity to: " + behaviorName);
     }
   } else {
@@ -734,6 +747,8 @@ void AIManager::assignBehaviorToEntity(EntityPtr entity,
     m_storage.entities.push_back(entity);
     m_storage.behaviors.push_back(behavior);
     m_storage.lastUpdateTimes.push_back(0.0f);
+    m_storage.halfWidths.push_back(std::max(1.0f, entity->getWidth() * 0.5f));
+    m_storage.halfHeights.push_back(std::max(1.0f, entity->getHeight() * 0.5f));
 
     // Update index map
     m_entityToIndex[entity] = newIndex;
@@ -1258,6 +1273,29 @@ void AIManager::processBatch(size_t start, size_t end, float deltaTime,
     }
   }
 
+  // Pre-cache per-entity extents (half widths/heights) to avoid map lookups/locks in hot loop
+  std::vector<float> batchHalfW; batchHalfW.reserve(batchEntities.size());
+  std::vector<float> batchHalfH; batchHalfH.reserve(batchEntities.size());
+  {
+    std::shared_lock<std::shared_mutex> lock(m_entitiesMutex);
+    for (size_t idx = 0; idx < batchEntities.size(); ++idx) {
+      size_t gi = start + idx;
+      if (gi < m_storage.halfWidths.size()) {
+        batchHalfW.push_back(std::max(1.0f, m_storage.halfWidths[gi]));
+        batchHalfH.push_back(std::max(1.0f, m_storage.halfHeights[gi]));
+      } else {
+        EntityPtr e = batchEntities[idx];
+        if (e) {
+          batchHalfW.push_back(std::max(1.0f, e->getWidth() * 0.5f));
+          batchHalfH.push_back(std::max(1.0f, e->getHeight() * 0.5f));
+        } else {
+          batchHalfW.push_back(16.0f);
+          batchHalfH.push_back(16.0f);
+        }
+      }
+    }
+  }
+
   // Process entities without locks
   for (size_t idx = 0; idx < batchEntities.size(); ++idx) {
     size_t i = start + idx;
@@ -1292,9 +1330,26 @@ void AIManager::processBatch(size_t start, size_t end, float deltaTime,
       if (shouldUpdate) {
         behavior->executeLogic(entity);
 
-        // PERFORMANCE FIX: The entity is responsible for its own physics update.
-        // This call may be expensive - consider decimating it
+        // Entity updates integrate their own movement
         entity->update(deltaTime);
+
+        // Centralized clamp pass using PathfinderManager cached bounds
+        float halfW = (idx < batchHalfW.size() ? batchHalfW[idx] : 16.0f);
+        float halfH = (idx < batchHalfH.size() ? batchHalfH[idx] : 16.0f);
+
+        auto &pf = PathfinderManager::Instance();
+        Vector2D pos = entity->getPosition();
+        Vector2D clamped = pf.clampInsideExtents(pos, halfW, halfH, 0.0f);
+        if (clamped.getX() != pos.getX() || clamped.getY() != pos.getY()) {
+          // Adjust position and project velocity inward
+          entity->setPosition(clamped);
+          Vector2D vel = entity->getVelocity();
+          if (clamped.getX() < pos.getX() && vel.getX() < 0) vel.setX(0.0f);
+          if (clamped.getX() > pos.getX() && vel.getX() > 0) vel.setX(0.0f);
+          if (clamped.getY() < pos.getY() && vel.getY() < 0) vel.setY(0.0f);
+          if (clamped.getY() > pos.getY() && vel.getY() > 0) vel.setY(0.0f);
+          entity->setVelocity(vel);
+        }
 
         batchExecutions++;
       } else {
@@ -1382,6 +1437,12 @@ void AIManager::cleanupInactiveEntities() {
     m_storage.entities.pop_back();
     m_storage.behaviors.pop_back();
     m_storage.lastUpdateTimes.pop_back();
+    if (!m_storage.halfWidths.empty()) {
+      m_storage.halfWidths.pop_back();
+    }
+    if (!m_storage.halfHeights.empty()) {
+      m_storage.halfHeights.pop_back();
+    }
   }
 
   AI_DEBUG("Cleaned up " + std::to_string(toRemove.size()) +
@@ -1426,6 +1487,19 @@ uint64_t AIManager::getCurrentTimeNanos() {
   return std::chrono::duration_cast<std::chrono::nanoseconds>(
              std::chrono::high_resolution_clock::now().time_since_epoch())
       .count();
+}
+
+void AIManager::updateEntityExtents(EntityPtr entity, float halfW, float halfH) {
+  if (!entity) return;
+  std::unique_lock<std::shared_mutex> lock(m_entitiesMutex);
+  auto it = m_entityToIndex.find(entity);
+  if (it != m_entityToIndex.end()) {
+    size_t index = it->second;
+    if (index < m_storage.halfWidths.size()) {
+      m_storage.halfWidths[index] = std::max(1.0f, halfW);
+      m_storage.halfHeights[index] = std::max(1.0f, halfH);
+    }
+  }
 }
 
 int AIManager::getEntityPriority(EntityPtr entity) const {

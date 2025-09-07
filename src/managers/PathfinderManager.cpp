@@ -131,18 +131,37 @@ uint64_t PathfinderManager::requestPath(
         return 0;
     }
 
+    // Normalize endpoints (clamp/snap/quantize)
+    Vector2D nStart = start;
+    Vector2D nGoal = goal;
+    normalizeEndpoints(nStart, nGoal);
+
+    uint64_t cacheKey = computeCacheKey(nStart, nGoal);
+
     // Generate unique request ID
     const uint64_t requestId = m_nextRequestId.fetch_add(1);
-    
     m_enqueuedRequests.fetch_add(1, std::memory_order_relaxed);
 
+    // Coalesce in-flight requests
+    {
+        std::lock_guard<std::mutex> lock(m_pendingMutex);
+        auto it = m_pending.find(cacheKey);
+        if (it != m_pending.end()) {
+            if (callback) it->second.callbacks.push_back(callback);
+            return requestId; // Will be fulfilled when the in-flight request completes
+        } else {
+            PendingCallbacks pc;
+            if (callback) pc.callbacks.push_back(callback);
+            m_pending.emplace(cacheKey, std::move(pc));
+        }
+    }
+
     // Process directly on ThreadSystem - no queue overhead
-    auto work = [this, entityId, start, goal, callback]() {
+    auto work = [this, entityId, nStart, nGoal, cacheKey]() {
         std::vector<Vector2D> path;
         bool cacheHit = false;
         
         // Ultra-fast cache: check and swap in single operation
-        uint64_t cacheKey = computeCacheKey(start, goal);
         
         {
             std::lock_guard<std::mutex> lock(m_cacheMutex);
@@ -159,7 +178,7 @@ uint64_t PathfinderManager::requestPath(
         
         // Compute path if cache miss
         if (!cacheHit) {
-            findPathImmediate(start, goal, path);
+            findPathImmediate(nStart, nGoal, path);
         }
         
         // Always re-cache the path (whether from cache hit or new computation)
@@ -186,8 +205,18 @@ uint64_t PathfinderManager::requestPath(
         // Update basic processing count (no timing overhead)
         m_processedCount.fetch_add(1, std::memory_order_relaxed);
         
-        if (callback) {
-            callback(entityId, path);
+        // Fan out to all pending callbacks for this key
+        std::vector<PathCallback> callbacks;
+        {
+            std::lock_guard<std::mutex> lock(m_pendingMutex);
+            auto it = m_pending.find(cacheKey);
+            if (it != m_pending.end()) {
+                callbacks.swap(it->second.callbacks);
+                m_pending.erase(it);
+            }
+        }
+        for (auto &cb : callbacks) {
+            if (cb) cb(entityId, path);
         }
     };
 
@@ -210,6 +239,11 @@ HammerEngine::PathfindingResult PathfinderManager::findPathImmediate(
         return HammerEngine::PathfindingResult::NO_PATH_FOUND;
     }
 
+    // Normalize endpoints for safe and cache-friendly pathfinding
+    Vector2D nStart = start;
+    Vector2D nGoal = goal;
+    normalizeEndpoints(nStart, nGoal);
+
     // Ensure grid is initialized before pathfinding
     if (!ensureGridInitialized()) {
         return HammerEngine::PathfindingResult::NO_PATH_FOUND;
@@ -222,17 +256,17 @@ HammerEngine::PathfindingResult PathfinderManager::findPathImmediate(
     }
 
     // Determine which pathfinding algorithm to use based on distance
-    float distance2 = (goal - start).dot(goal - start);
+    float distance2 = (nGoal - nStart).dot(nGoal - nStart);
     HammerEngine::PathfindingResult result;
     
     if (distance2 > (1200.0f * 1200.0f)) {
         // Long distance - try hierarchical first
-        result = gridSnapshot->findPathHierarchical(start, goal, outPath);
+        result = gridSnapshot->findPathHierarchical(nStart, nGoal, outPath);
         
         // Fallback to direct if hierarchical fails
         if (result != HammerEngine::PathfindingResult::SUCCESS || outPath.empty()) {
             std::vector<Vector2D> directPath;
-            auto directResult = gridSnapshot->findPath(start, goal, directPath);
+            auto directResult = gridSnapshot->findPath(nStart, nGoal, directPath);
             if (directResult == HammerEngine::PathfindingResult::SUCCESS && !directPath.empty()) {
                 outPath = std::move(directPath);
                 result = directResult;
@@ -240,7 +274,7 @@ HammerEngine::PathfindingResult PathfinderManager::findPathImmediate(
         }
     } else {
         // Short to medium distance - use direct pathfinding
-        result = gridSnapshot->findPath(start, goal, outPath);
+        result = gridSnapshot->findPath(nStart, nGoal, outPath);
     }
 
     return result;
@@ -444,6 +478,145 @@ Vector2D PathfinderManager::clampToWorldBounds(const Vector2D& position, float m
         std::clamp(position.getX(), 0.0f + fallbackMargin, 3200.0f - fallbackMargin),
         std::clamp(position.getY(), 0.0f + fallbackMargin, 3200.0f - fallbackMargin)
     );
+}
+
+Vector2D PathfinderManager::clampInsideExtents(const Vector2D& position, float halfW, float halfH, float extraMargin) const {
+    auto grid = std::atomic_load(&m_grid);
+    if (grid) {
+        const float gridCellSize = 64.0f;
+        const float worldWidth = grid->getWidth() * gridCellSize;
+        const float worldHeight = grid->getHeight() * gridCellSize;
+        float minX = halfW + extraMargin;
+        float minY = halfH + extraMargin;
+        float maxX = worldWidth - halfW - extraMargin;
+        float maxY = worldHeight - halfH - extraMargin;
+        return Vector2D(
+            std::clamp(position.getX(), minX, maxX),
+            std::clamp(position.getY(), minY, maxY)
+        );
+    }
+    // Fallback
+    float fallbackW = 3200.0f;
+    float fallbackH = 3200.0f;
+    return Vector2D(
+        std::clamp(position.getX(), halfW, fallbackW - halfW),
+        std::clamp(position.getY(), halfH, fallbackH - halfH)
+    );
+}
+
+Vector2D PathfinderManager::adjustSpawnToNavigable(const Vector2D& desired, float halfW, float halfH, float interiorMargin) const {
+    Vector2D pos = clampInsideExtents(desired, halfW, halfH, interiorMargin);
+    auto grid = std::atomic_load(&m_grid);
+    if (grid) {
+        // Snap within ~2 cells
+        Vector2D snapped = grid->snapToNearestOpenWorld(pos, grid->getCellSize() * 2.0f);
+        // Prefer interior if snapped remains blocked (defensive)
+        if (!grid->isWorldBlocked(snapped)) return snapped;
+    }
+    // Fallback: pull to center a bit
+    auto &wm = WorldManager::Instance();
+    float minX=0, minY=0, maxX=0, maxY=0;
+    if (wm.getWorldBounds(minX, minY, maxX, maxY)) {
+        Vector2D center((minX + maxX) * 0.5f, (minY + maxY) * 0.5f);
+        Vector2D dir = center - pos;
+        if (dir.length() > 0.001f) {
+            dir.normalize();
+            return clampInsideExtents(pos + dir * 256.0f, halfW, halfH, interiorMargin);
+        }
+    }
+    return pos;
+}
+
+static inline bool pointInRect(const Vector2D& p, float minX, float minY, float maxX, float maxY) {
+    return p.getX() >= minX && p.getX() <= maxX && p.getY() >= minY && p.getY() <= maxY;
+}
+
+Vector2D PathfinderManager::adjustSpawnToNavigableInRect(const Vector2D& desired,
+                                                         float halfW, float halfH,
+                                                         float interiorMargin,
+                                                         float minX, float minY,
+                                                         float maxX, float maxY) const {
+    // Clamp area by extents + interior margin
+    float aminX = minX + halfW + interiorMargin;
+    float aminY = minY + halfH + interiorMargin;
+    float amaxX = maxX - halfW - interiorMargin;
+    float amaxY = maxY - halfH - interiorMargin;
+
+    Vector2D pos = clampInsideExtents(desired, halfW, halfH, interiorMargin);
+    // Clamp to area rect
+    pos.setX(std::clamp(pos.getX(), aminX, amaxX));
+    pos.setY(std::clamp(pos.getY(), aminY, amaxY));
+
+    if (auto grid = std::atomic_load(&m_grid)) {
+        // Try snap within area (rings of ~cell size)
+        float cell = grid->getCellSize();
+        for (int r = 0; r <= 2; ++r) {
+            float rad = (r+1) * cell;
+            for (int i = 0; i < 16; ++i) {
+                float ang = static_cast<float>(i) * (static_cast<float>(M_PI) * 2.0f / 16.0f);
+                Vector2D cand = Vector2D(pos.getX() + std::cos(ang) * rad,
+                                         pos.getY() + std::sin(ang) * rad);
+                // Keep inside area
+                cand.setX(std::clamp(cand.getX(), aminX, amaxX));
+                cand.setY(std::clamp(cand.getY(), aminY, amaxY));
+                if (!grid->isWorldBlocked(cand)) return cand;
+            }
+        }
+    }
+    return pos;
+}
+
+Vector2D PathfinderManager::adjustSpawnToNavigableInCircle(const Vector2D& desired,
+                                                           float halfW, float halfH,
+                                                           float interiorMargin,
+                                                           const Vector2D& center,
+                                                           float radius) const {
+    float effectiveR = std::max(0.0f, radius - std::max(halfW, halfH) - interiorMargin);
+    Vector2D pos = clampInsideExtents(desired, halfW, halfH, interiorMargin);
+    Vector2D to = pos - center;
+    float d = to.length();
+    if (d > effectiveR && d > 0.001f) {
+        to = to * (effectiveR / d);
+        pos = center + to;
+    }
+    if (auto grid = std::atomic_load(&m_grid)) {
+        float cell = grid->getCellSize();
+        for (int r = 0; r <= 2; ++r) {
+            float rad = (r+1) * cell;
+            for (int i = 0; i < 16; ++i) {
+                float ang = static_cast<float>(i) * (static_cast<float>(M_PI) * 2.0f / 16.0f);
+                Vector2D cand = Vector2D(pos.getX() + std::cos(ang) * rad,
+                                         pos.getY() + std::sin(ang) * rad);
+                // Project back to circle if outside
+                Vector2D tc = cand - center;
+                float cd = tc.length();
+                if (cd > effectiveR && cd > 0.001f) {
+                    tc = tc * (effectiveR / cd);
+                    cand = center + tc;
+                }
+                if (!grid->isWorldBlocked(cand)) return cand;
+            }
+        }
+    }
+    return pos;
+}
+
+void PathfinderManager::normalizeEndpoints(Vector2D& start, Vector2D& goal) const {
+    // Clamp to world bounds with a modest interior margin
+    const float margin = 96.0f;
+    start = clampToWorldBounds(start, margin);
+    goal = clampToWorldBounds(goal, margin);
+
+    // Snap to nearest open cells if grid available
+    if (auto grid = std::atomic_load(&m_grid)) {
+        float r = grid->getCellSize() * 2.0f;
+        start = grid->snapToNearestOpenWorld(start, r);
+        goal = grid->snapToNearestOpenWorld(goal, r);
+    }
+
+    // Quantize to improve cache hits
+    start = quantize128(start);
+    goal = quantize128(goal);
 }
 
 bool PathfinderManager::followPathStep(EntityPtr entity, const Vector2D& currentPos,
