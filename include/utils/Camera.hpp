@@ -9,6 +9,7 @@
 #include "utils/Vector2D.hpp"
 #include <memory>
 #include <functional>
+#include <cstdint>
 
 // Forward declarations
 class Entity;
@@ -364,6 +365,10 @@ private:
     bool m_eventFiringEnabled{false};      // Whether to fire events on state changes
     Vector2D m_lastPosition{400.0f, 300.0f}; // Last position for movement events
     
+    // World sync (auto-correct camera bounds when world changes)
+    bool m_autoSyncWorldBounds{true};
+    uint64_t m_lastWorldVersion{0};
+
     // Internal helper methods
     void updateFollowMode(float deltaTime);
     void updateCameraShake(float deltaTime);
