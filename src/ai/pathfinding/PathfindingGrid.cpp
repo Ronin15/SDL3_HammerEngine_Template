@@ -637,9 +637,42 @@ bool PathfindingGrid::shouldUseHierarchicalPathfinding(const Vector2D& start, co
     if (!m_coarseGrid) {
         return false; // No coarse grid available
     }
-    
+
     float distance = (goal - start).length();
-    return distance > HIERARCHICAL_DISTANCE_THRESHOLD;
+    if (distance <= HIERARCHICAL_DISTANCE_THRESHOLD) {
+        return false;
+    }
+
+    // Edge-aware gating: avoid hierarchical near borders or blocked coarse cells
+    // Map start/goal to coarse grid coordinates
+    auto sg = m_coarseGrid->worldToGrid(start);
+    auto gg = m_coarseGrid->worldToGrid(goal);
+
+    // Coarse grid interior threshold (cells)
+    const int edgeBand = 2; // within 2 coarse cells of border, prefer direct pathfinding
+
+    // Fetch dimensions
+    const int cw = m_coarseGrid->m_w;
+    const int ch = m_coarseGrid->m_h;
+
+    auto nearBorder = [&](int gx, int gy) {
+        return (gx < edgeBand || gy < edgeBand || gx >= (cw - edgeBand) || gy >= (ch - edgeBand));
+    };
+
+    // If either start/goal is near border, skip hierarchical
+    if (nearBorder(sg.first, sg.second) || nearBorder(gg.first, gg.second)) {
+        return false;
+    }
+
+    // If either coarse cell is blocked, skip hierarchical
+    if (m_coarseGrid->inBounds(sg.first, sg.second) && m_coarseGrid->isBlocked(sg.first, sg.second)) {
+        return false;
+    }
+    if (m_coarseGrid->inBounds(gg.first, gg.second) && m_coarseGrid->isBlocked(gg.first, gg.second)) {
+        return false;
+    }
+
+    return true;
 }
 
 PathfindingResult PathfindingGrid::findPathHierarchical(const Vector2D& start, const Vector2D& goal,
