@@ -91,40 +91,40 @@ void ChaseBehavior::executeLogic(EntityPtr entity) {
       // CACHE-AWARE CHASE: Smart pathfinding with target tracking
       bool needsNewPath = false;
       
+      // OPTIMIZED: Further reduced pathfinding frequency for better performance
       // Only request new path if:
       // 1. No current path exists, OR
-      // 2. Target moved significantly (>100px), OR  
-      // 3. Path is getting stale (>3 seconds old)
+      // 2. Target moved very significantly (>300px), OR  
+      // 3. Path is getting quite stale (>8 seconds old)
+      constexpr float PATH_INVALIDATION_DISTANCE = 300.0f; // Further increased threshold
+      constexpr Uint64 PATH_REFRESH_INTERVAL = 8000; // Further increased interval
+      
       if (m_navPath.empty() || m_navIndex >= m_navPath.size()) {
         needsNewPath = true;
-      } else if (now - m_lastPathUpdate > 3000) { // Path older than 3 seconds
+      } else if (now - m_lastPathUpdate > PATH_REFRESH_INTERVAL) {
         needsNewPath = true;
       } else {
         // Check if target moved significantly from when path was computed
         Vector2D pathGoal = m_navPath.back();
-        float targetMovement = (targetPos - pathGoal).length();
-        needsNewPath = (targetMovement > 100.0f); // Target moved >100px
+        float targetMovementSquared = (targetPos - pathGoal).lengthSquared();
+        needsNewPath = (targetMovementSquared > PATH_INVALIDATION_DISTANCE * PATH_INVALIDATION_DISTANCE);
       }
       
       if (needsNewPath && m_cooldowns.canRequestPath(now)) {
-        // GOAL VALIDATION: Don't pathfind if already very close to target
-        float distanceToTarget = std::sqrt(distanceSquared);
-        if (distanceToTarget < (m_minRange * 1.5f)) { // Already close enough
+        // PERFORMANCE: Use squared distance to avoid expensive sqrt
+        float minRangeCheckSquared = (m_minRange * 1.5f) * (m_minRange * 1.5f);
+        if (distanceSquared < minRangeCheckSquared) { // Already close enough
           return; // Skip pathfinding request
         }
         
-        // SMART CHASE: Predict target movement for more accurate paths
+        // SIMPLIFIED: Basic target prediction for better performance
         Vector2D goalPosition = targetPos;
         
-        // Simple target prediction based on velocity (if available)
+        // Light prediction only for fast-moving targets
         if (auto targetEntity = target) {
           Vector2D targetVel = targetEntity->getVelocity();
-          float predictionTime = 0.5f; // Predict 0.5 seconds ahead
-          if (targetVel.length() > 10.0f) { // Only predict if target is moving
-            goalPosition = targetPos + targetVel * predictionTime;
-            
-            // Validate predicted position is within reasonable bounds
-            goalPosition = pathfinder().clampToWorldBounds(goalPosition, 100.0f);
+          if (targetVel.length() > 30.0f) { // Only predict for fast movement
+            goalPosition = targetPos + targetVel * 0.3f; // Shorter prediction time
           }
         }
 
@@ -138,7 +138,7 @@ void ChaseBehavior::executeLogic(EntityPtr entity) {
                                 m_navIndex = 0;
                                 m_lastPathUpdate = SDL_GetTicks();
                               });
-        m_cooldowns.applyPathCooldown(now, 1200); // Increased cooldown from 600ms to 1.2s
+        m_cooldowns.applyPathCooldown(now, 3000); // Further increased cooldown to 3s for better performance
       }
 
       // State: PATH_FOLLOWING using optimized PathfinderManager method
@@ -154,28 +154,18 @@ void ChaseBehavior::executeLogic(EntityPtr entity) {
           float dynamicRadius = COMBAT_RADIUS;
           float dynamicStrength = COMBAT_STRENGTH;
           
-          // Use queryArea to find nearby entities for crowd analysis
-          AABB queryArea(entityPos.getX() - COMBAT_RADIUS * 2.0f, 
-                        entityPos.getY() - COMBAT_RADIUS * 2.0f,
-                        entityPos.getX() + COMBAT_RADIUS * 2.0f, 
-                        entityPos.getY() + COMBAT_RADIUS * 2.0f);
-          std::vector<EntityID> nearbyIDs;
-          CollisionManager::Instance().queryArea(queryArea, nearbyIDs);
-          
+          // OPTIMIZED: Use AIManager's spatial partitioning instead of expensive collision queries
           int chaserCount = 0;
-          auto& cm = CollisionManager::Instance();
-          for (auto id : nearbyIDs) {
-            if (id != entity->getID() && (cm.isDynamic(id) || cm.isKinematic(id)) && !cm.isTrigger(id)) {
-              Vector2D nearbyCenter;
-              if (cm.getBodyCenter(id, nearbyCenter)) {
-                // Check if this entity is likely also chasing (moving toward target)
-                Vector2D nearbyToTarget = targetPos - nearbyCenter;
-                float distToTarget = nearbyToTarget.length();
-                if (distToTarget < m_maxRange * 1.5f) { // Within reasonable chase range
-                  chaserCount++;
-                }
-              }
-            }
+          constexpr Uint64 CROWD_CHECK_INTERVAL = 2000; // Reduced frequency: check every 2 seconds
+          
+          if (now - m_lastCrowdCheckTime > CROWD_CHECK_INTERVAL) {
+            // Use AIManager's optimized spatial counting instead of collision queries
+            chaserCount = AIInternal::CountNearbyEntities(entity, entityPos, COMBAT_RADIUS * 2.0f);
+            m_lastCrowdCheckTime = now;
+            m_cachedChaserCount = chaserCount;
+          } else {
+            // Use cached value between checks
+            chaserCount = m_cachedChaserCount;
           }
           
           // Simple crowd management - maintain direct pursuit with minimal spreading
@@ -238,53 +228,31 @@ void ChaseBehavior::executeLogic(EntityPtr entity) {
         m_isChasing = true;
       }
 
-      // State: STALL_DETECTION - Handle movement blockages
+      // SIMPLIFIED: Basic stall detection without complex variance tracking
       float currentSpeed = entity->getVelocity().length();
-      const float stallThreshold = std::max(1.0f, m_chaseSpeed * 0.6f);
-      const Uint64 stallTimeLimit = static_cast<Uint64>(800 + (m_chaseSpeed * 10));
+      const float stallThreshold = std::max(1.0f, m_chaseSpeed * 0.5f);
+      const Uint64 stallTimeLimit = 2000; // Fixed 2-second timeout
       
       if (currentSpeed < stallThreshold) {
         if (m_stallStart == 0) {
           m_stallStart = now;
-          m_lastStallPosition = entityPos;
-          m_stallPositionVariance = 0.0f;
-        } else {
-          // Track position variance to detect true stalls vs normal slow movement
-          float positionDiff = (entityPos - m_lastStallPosition).length();
-          m_stallPositionVariance = std::max(m_stallPositionVariance, positionDiff);
+        } else if (now - m_stallStart >= stallTimeLimit) {
+          // Simple stall recovery: clear path and request new one
+          m_navPath.clear();
+          m_navIndex = 0;
+          m_lastPathUpdate = 0;
+          m_stallStart = 0;
           
-          if (now - m_stallStart >= stallTimeLimit && m_stallPositionVariance < 8.0f) {
-            // True stall detected - apply recovery
-            if (now - m_lastUnstickTime > 4000) { // Emergency unstick
-              AI_WARN("Chase entity " + std::to_string(entity->getID()) + " is stalled, applying emergency unstick");
-              // Simple unstick: small random movement
-              float randomAngle = ((float)rand() / RAND_MAX) * 2.0f * M_PI;
-              Vector2D unstickDir(std::cos(randomAngle), std::sin(randomAngle));
-              entity->setVelocity(unstickDir * m_chaseSpeed);
-              m_lastUnstickTime = now;
-              m_stallStart = 0;
-              return;
-            } else {
-              // Regular stall recovery: clear path and apply jitter
-              m_navPath.clear();
-              m_navIndex = 0;
-              m_lastPathUpdate = 0;
-              m_cooldowns.applyStallCooldown(now, entity->getID());
-              
-              // Apply random jitter to break deadlock
-              float jitter = ((float)rand() / RAND_MAX - 0.5f) * 0.4f;
-              Vector2D direction = (targetPos - entityPos).normalized();
-              float c = std::cos(jitter), s = std::sin(jitter);
-              Vector2D rotated(direction.getX()*c - direction.getY()*s, 
-                             direction.getX()*s + direction.getY()*c);
-              entity->setVelocity(rotated * m_chaseSpeed);
-              m_stallStart = 0;
-            }
-          }
+          // Light jitter to avoid deadlock
+          float jitter = ((float)rand() / RAND_MAX - 0.5f) * 0.2f;
+          Vector2D direction = (targetPos - entityPos).normalized();
+          float c = std::cos(jitter), s = std::sin(jitter);
+          Vector2D rotated(direction.getX()*c - direction.getY()*s, 
+                         direction.getX()*s + direction.getY()*c);
+          entity->setVelocity(rotated * m_chaseSpeed);
         }
       } else {
         m_stallStart = 0; // Reset when moving normally
-        m_stallPositionVariance = 0.0f;
       }
 
     } else {
@@ -419,19 +387,17 @@ void ChaseBehavior::onTargetLost(EntityPtr entity) {
 }
 
 bool ChaseBehavior::checkLineOfSight(EntityPtr entity, EntityPtr target) const {
-  // For a more complex implementation, you would do raycasting here
-  // This simplified version just checks distance
+  // PERFORMANCE: Use squared distance to avoid sqrt
   if (!entity || !target)
     return false;
 
   Vector2D entityPos = entity->getPosition();
   Vector2D targetPos = target->getPosition();
-  float distance = (targetPos - entityPos).length();
+  float distanceSquared = (targetPos - entityPos).lengthSquared();
+  float maxRangeSquared = m_maxRange * m_maxRange;
 
-  // Always report in range for testing purposes
-  // Simple line of sight check - would be replaced with raycasting in a real
-  // game
-  return distance <= m_maxRange;
+  // Simple line of sight check - would be replaced with raycasting in a real game
+  return distanceSquared <= maxRangeSquared;
 }
 
 void ChaseBehavior::handleNoLineOfSight(EntityPtr entity) {

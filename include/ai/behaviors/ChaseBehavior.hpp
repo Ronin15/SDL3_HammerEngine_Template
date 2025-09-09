@@ -122,6 +122,10 @@ private:
   // PATHFINDING CONSOLIDATION: Removed - all pathfinding now uses PathfindingScheduler
   // bool m_useAsyncPathfinding removed
 
+  // PERFORMANCE OPTIMIZATIONS: Crowd detection throttling
+  mutable Uint64 m_lastCrowdCheckTime{0};
+  mutable int m_cachedChaserCount{0};
+
 public:
   
 };
