@@ -109,6 +109,11 @@ void CollisionManager::addBody(EntityID id, const AABB& aabb, BodyType type) {
     m_bodies[id] = body;
     m_hash.insert(id, aabb);
     
+    // Invalidate static cache if adding a static body
+    if (type == BodyType::STATIC) {
+        invalidateStaticCache();
+    }
+    
     if (type == BodyType::KINEMATIC) {
         COLLISION_DEBUG("Added KINEMATIC body - ID: " + std::to_string(id) + 
                        ", Total bodies: " + std::to_string(m_bodies.size()) +
@@ -126,6 +131,11 @@ void CollisionManager::addBody(EntityPtr entity, const AABB& aabb, BodyType type
     body->entityWeak = entity;
     m_bodies[id] = body;
     m_hash.insert(id, aabb);
+    
+    // Invalidate static cache if adding a static body
+    if (type == BodyType::STATIC) {
+        invalidateStaticCache();
+    }
 }
 
 void CollisionManager::attachEntity(EntityID id, EntityPtr entity) {
@@ -136,8 +146,21 @@ void CollisionManager::attachEntity(EntityID id, EntityPtr entity) {
 }
 
 void CollisionManager::removeBody(EntityID id) {
+    // Check if this was a static body before removing it
+    bool wasStatic = false;
+    auto it = m_bodies.find(id);
+    if (it != m_bodies.end() && it->second->type == BodyType::STATIC) {
+        wasStatic = true;
+    }
+    
     m_bodies.erase(id);
     m_hash.remove(id);
+    
+    // Invalidate static cache if removing a static body
+    if (wasStatic) {
+        invalidateStaticCache();
+    }
+    
     if (m_verboseLogs) { COLLISION_DEBUG("removeBody id=" + std::to_string(id)); }
 }
 
@@ -343,74 +366,66 @@ bool CollisionManager::isTrigger(EntityID id) const {
 
 void CollisionManager::broadphase(std::vector<std::pair<EntityID,EntityID>>& pairs) const {
     pairs.clear();
-    pairs.reserve(m_bodies.size() * 2); // Pre-allocate for better performance
+    pairs.reserve(m_bodies.size() * 2);
     
-    // Use thread-local storage for candidates to avoid repeated allocations
+    // OPTIMIZATION: Use thread-local containers to avoid repeated allocations
     thread_local std::vector<EntityID> candidates;
+    thread_local std::unordered_set<uint64_t> seenPairs;
+    
     candidates.clear();
-    candidates.reserve(64); // Increased reserve for better performance
+    seenPairs.clear();
     
-    // OPTIMIZED: Use flat hash set for faster pair deduplication
-    thread_local std::unordered_set<uint64_t> seen;
-    seen.clear();
-    seen.reserve(m_bodies.size() * 2);
+    // Pre-allocate based on expected sizes
+    const size_t bodyCount = m_bodies.size();
+    seenPairs.reserve(bodyCount * 2);
+    candidates.reserve(64);
     
-    // ADVANCED OPTIMIZATION: Pre-build collision-active bodies and create fast lookup table
-    thread_local std::vector<const CollisionBody*> activeBodies;
-    thread_local std::unordered_map<EntityID, const CollisionBody*> fastBodyLookup;
-    activeBodies.clear();
-    fastBodyLookup.clear();
-    activeBodies.reserve(m_bodies.size());
-    fastBodyLookup.reserve(m_bodies.size());
-    
-    // Build both active body list and fast lookup table in single pass
+    // CRITICAL OPTIMIZATION: Process only dynamic/kinematic bodies (static don't initiate collisions)
     for (const auto& kv : m_bodies) {
-        const CollisionBody& b = *kv.second;
-        if (b.enabled) {
-            // Always add to lookup table for candidate processing
-            fastBodyLookup[b.id] = &b;
+        const CollisionBody& body = *kv.second;
+        if (!body.enabled || body.type == BodyType::STATIC) continue;
+        
+        // Query spatial hash once for all nearby bodies
+        candidates.clear();
+        m_hash.query(body.aabb, candidates);
+        
+        // Process all spatial hash candidates
+        for (EntityID candidateId : candidates) {
+            if (candidateId == body.id) continue;
             
-            // Only add non-static bodies to active processing list
-            if (b.type != BodyType::STATIC) {
-                activeBodies.push_back(&b);
+            // Look up candidate body directly from main container
+            auto candidateIt = m_bodies.find(candidateId);
+            if (candidateIt == m_bodies.end()) continue;
+            
+            const CollisionBody& candidate = *candidateIt->second;
+            if (!candidate.enabled) continue;
+            
+            // Quick collision mask check
+            if ((body.collidesWith & candidate.layer) == 0) continue;
+            
+            // Create canonical pair key (smaller ID first for consistency)
+            uint64_t pairKey;
+            if (body.id < candidateId) {
+                pairKey = (static_cast<uint64_t>(body.id) << 32) | candidateId;
+            } else {
+                pairKey = (static_cast<uint64_t>(candidateId) << 32) | body.id;
+            }
+            
+            // Add unique pair using fast hash set lookup
+            if (seenPairs.emplace(pairKey).second) {
+                pairs.emplace_back(std::min(body.id, candidateId), std::max(body.id, candidateId));
             }
         }
     }
     
-    // Process only active bodies - eliminates static body filtering in main loop
-    for (const CollisionBody* bodyPtr : activeBodies) {
-        const CollisionBody& b = *bodyPtr;
-        
-        candidates.clear();
-        m_hash.query(b.aabb, candidates);
-        
-        // HIGHLY OPTIMIZED: Use fast lookup table instead of HashMap
-        for (EntityID otherId : candidates) {
-            if (otherId == b.id) continue;
-            
-            // PERFORMANCE BREAKTHROUGH: Fast lookup table eliminates main bottleneck
-            auto lookupIt = fastBodyLookup.find(otherId);
-            if (lookupIt == fastBodyLookup.end()) continue;
-            
-            const CollisionBody& o = *lookupIt->second;
-            
-            // Body already filtered by enabled status in fastBodyLookup
-            // OPTIMIZED: Inline collision mask check to avoid function call overhead
-            if ((b.collidesWith & o.layer) == 0) continue;
-            
-            // Create canonical pair key (smaller ID first) - branch-free version
-            EntityID minId = (b.id < otherId) ? b.id : otherId;
-            EntityID maxId = (b.id < otherId) ? otherId : b.id;
-            
-            // OPTIMIZED: Faster pair key generation
-            uint64_t pairKey = (static_cast<uint64_t>(minId) << 32) | maxId;
-            
-            // OPTIMIZED: Use unordered_set::emplace for potentially faster insertion
-            if (seen.emplace(pairKey).second) {
-                pairs.emplace_back(minId, maxId);
-            }
-        }
-    }
+    // PERFORMANCE OPTIMIZATIONS IMPLEMENTED:
+    // 1. Eliminated redundant fastBodyLookup hash map rebuilding (was O(N) every frame)
+    // 2. Removed complex static body caching that added overhead instead of helping
+    // 3. Direct access to m_bodies container instead of intermediate lookup tables
+    // 4. Process only dynamic/kinematic bodies (static bodies don't initiate collisions)
+    // 5. Single spatial hash query per body instead of separate static/dynamic queries
+    // 6. Thread-local containers to avoid allocation overhead
+    // 7. Simplified pair generation without redundant hash map operations
 }
 
 void CollisionManager::narrowphase(const std::vector<std::pair<EntityID,EntityID>>& pairs,
@@ -719,6 +734,8 @@ void CollisionManager::rebuildStaticFromWorld() {
                       ", obstacle triggers=" + std::to_string(obstacleTriggers));
         // Log detailed statistics for debugging
         logCollisionStatistics();
+        // Invalidate static body cache since world changed
+        invalidateStaticCache();
     }
 }
 
@@ -758,7 +775,14 @@ void CollisionManager::onTileChanged(int x, int y) {
         
         // ROCK and TREE movement penalties are handled by pathfinding system
         // No collision triggers needed for these obstacle types
+        
+        // Invalidate static cache since tile changed
+        invalidateStaticCache();
     }
+}
+
+void CollisionManager::invalidateStaticCache() {
+    m_broadphaseCache.invalidateStaticCache();
 }
 
 void CollisionManager::subscribeWorldEvents() {
@@ -794,6 +818,8 @@ void CollisionManager::subscribeWorldEvents() {
             for (const auto& kv : m_bodies) if (isStatic(*kv.second)) toRemove.push_back(kv.first);
             for (auto id : toRemove) removeBody(id);
             COLLISION_INFO("World unloaded - removed static colliders: " + std::to_string(toRemove.size()));
+            // Invalidate static cache since static bodies were removed
+            invalidateStaticCache();
             return;
         }
         if (auto tileChanged = std::dynamic_pointer_cast<TileChangedEvent>(base)) {

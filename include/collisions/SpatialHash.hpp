@@ -17,13 +17,16 @@ namespace HammerEngine {
 
 class SpatialHash {
 public:
-    explicit SpatialHash(float cellSize = 32.0f, float movementThreshold = 4.0f);
+    explicit SpatialHash(float cellSize = 64.0f, float movementThreshold = 2.0f);
 
     void insert(EntityID id, const AABB& aabb);
     void remove(EntityID id);
     void update(EntityID id, const AABB& aabb);
     void query(const AABB& area, std::vector<EntityID>& out) const;
     void clear();
+    
+    // Getter for cell size
+    float getCellSize() const { return m_cellSize; }
 
 private:
     struct CellCoord { int x; int y; };
@@ -42,8 +45,8 @@ private:
     // Performance optimizations
     using CellVector = std::vector<EntityID>;
 
-    float m_cellSize{32.0f};
-    float m_movementThreshold{4.0f}; // Only update spatial hash if entity moves this far
+    float m_cellSize{64.0f};
+    float m_movementThreshold{2.0f}; // Only update spatial hash if entity moves this far
     std::unordered_map<EntityID, AABB> m_aabbs; // latest bounds per id
     std::unordered_map<CellCoord, CellVector, CellCoordHash, CellCoordEq> m_cells;
     

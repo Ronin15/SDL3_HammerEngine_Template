@@ -8,6 +8,7 @@
 
 #include <memory>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 #include <functional>
 #include <cstddef>
@@ -85,6 +86,7 @@ public:
     void rebuildStaticFromWorld();                // build colliders from WorldManager grid
     void onTileChanged(int x, int y);             // update a specific cell
     void setWorldBounds(float minX, float minY, float maxX, float maxY);
+    void invalidateStaticCache();                 // call when world geometry changes
 
     // Callbacks
     using CollisionCB = std::function<void(const CollisionInfo&)>;
@@ -118,7 +120,7 @@ private:
 
     // storage
     std::unordered_map<EntityID, std::shared_ptr<CollisionBody>> m_bodies;
-    SpatialHash m_hash{32.0f, 0.1f}; // Use 0.1f movement threshold to prevent desync
+    SpatialHash m_hash{64.0f, 2.0f}; // Optimized: 64px cells, 2px movement threshold for better performance
     std::vector<CollisionCB> m_callbacks;
     std::vector<EventManager::HandlerToken> m_handlerTokens;
     std::unordered_map<uint64_t, std::pair<EntityID,EntityID>> m_activeTriggerPairs; // OnEnter/Exit filtering
@@ -152,6 +154,42 @@ private:
     };
     
     mutable CollisionPool m_collisionPool;
+    
+    // Broadphase optimization: persistent containers to avoid allocations
+    struct BroadphaseCache {
+        std::unordered_set<uint64_t> seenPairs;
+        std::unordered_map<EntityID, const CollisionBody*> fastBodyLookup;
+        
+        // Static body query cache - cache spatial queries for static bodies
+        struct StaticQueryCache {
+            std::vector<EntityID> staticBodies;
+            Vector2D lastQueryCenter;
+            float maxQueryDistance;
+        };
+        std::unordered_map<EntityID, StaticQueryCache> staticCache;
+        uint64_t staticCacheVersion{0}; // Incremented when static bodies change
+        
+        void ensureCapacity(size_t bodyCount) {
+            if (fastBodyLookup.size() == 0) {
+                fastBodyLookup.reserve(bodyCount);
+                seenPairs.reserve(bodyCount * 2);
+                staticCache.reserve(bodyCount / 4); // Estimate dynamic bodies that need static caching
+            }
+        }
+        
+        void resetFrame() {
+            fastBodyLookup.clear();
+            seenPairs.clear();
+            // staticCache persists across frames
+        }
+        
+        void invalidateStaticCache() {
+            staticCache.clear();
+            staticCacheVersion++;
+        }
+    };
+    
+    mutable BroadphaseCache m_broadphaseCache;
 
     // Performance metrics
     struct PerfStats {
