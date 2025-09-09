@@ -106,30 +106,46 @@ void SpatialHash::update(EntityID id, const AABB& newAABB) {
 void SpatialHash::query(const AABB& area, std::vector<EntityID>& out) const {
     out.clear();
     
-    // OPTIMIZATION #4: Pre-reserve space based on estimated cell count
-    // Each cell typically has 2-8 entities, area covers multiple cells
+    // OPTIMIZED: Improved estimation based on cell density analysis
     float areaWidth = area.right() - area.left();
     float areaHeight = area.bottom() - area.top();
     int cellsX = std::max(1, static_cast<int>(std::ceil(areaWidth / m_cellSize)));
     int cellsY = std::max(1, static_cast<int>(std::ceil(areaHeight / m_cellSize)));
-    size_t estimatedEntities = cellsX * cellsY * 4; // Assume avg 4 entities per cell
+    size_t estimatedEntities = cellsX * cellsY * 6; // Increased estimate for better pre-allocation
     out.reserve(estimatedEntities);
     
-    // Use a smaller temporary set for deduplication when we expect many overlaps
+    // OPTIMIZED: Use thread-local set with better initial capacity
     thread_local std::unordered_set<EntityID> seenIds;
     seenIds.clear();
+    seenIds.reserve(estimatedEntities);
     
-    forEachOverlappingCell(area, [&](CellCoord c){
-        auto it = m_cells.find(c);
-        if (it == m_cells.end()) return;
-        
-        const auto& cellEntities = it->second;
-        for (EntityID id : cellEntities) {
-            if (seenIds.insert(id).second) {
-                out.push_back(id);
+    // OPTIMIZED: Manual cell iteration for better cache locality
+    const int minX = static_cast<int>(std::floor(area.left() / m_cellSize));
+    const int maxX = static_cast<int>(std::floor(area.right() / m_cellSize));
+    const int minY = static_cast<int>(std::floor(area.top() / m_cellSize));
+    const int maxY = static_cast<int>(std::floor(area.bottom() / m_cellSize));
+    
+    // PERFORMANCE: Direct iteration instead of lambda callback reduces function call overhead
+    for (int y = minY; y <= maxY; ++y) {
+        for (int x = minX; x <= maxX; ++x) {
+            CellCoord cellCoord{x, y};
+            auto it = m_cells.find(cellCoord);
+            if (it == m_cells.end()) continue;
+            
+            const auto& cellEntities = it->second;
+            // OPTIMIZED: Reserve space if needed to avoid reallocations
+            if (out.capacity() < out.size() + cellEntities.size()) {
+                out.reserve(out.size() + cellEntities.size() + 16);
+            }
+            
+            for (EntityID id : cellEntities) {
+                // OPTIMIZED: Use emplace instead of insert for potentially better performance
+                if (seenIds.emplace(id).second) {
+                    out.push_back(id);
+                }
             }
         }
-    });
+    }
 }
 
 void SpatialHash::clear() {
