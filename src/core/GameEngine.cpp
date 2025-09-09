@@ -857,7 +857,7 @@ void GameEngine::update(float deltaTime) {
     GAMEENGINE_ERROR("PathfinderManager cache is null!");
   }
 
-  // Physics system - update after AI and before events/particles
+  // Physics system - update after AI to apply collision constraints
   if (mp_collisionManager) {
     mp_collisionManager->update(deltaTime);
   } else {

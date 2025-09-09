@@ -65,8 +65,10 @@ public:
     void setTriggerCooldown(EntityID triggerId, float seconds);
     void setDefaultTriggerCooldown(float seconds) { m_defaultTriggerCooldownSec = seconds; }
 
-    // World helpers: build triggers for water tiles (returns count created)
+    // World helpers: build collision bodies and triggers from world data
     size_t createTriggersForWaterTiles(HammerEngine::TriggerTag tag = HammerEngine::TriggerTag::Water);
+    size_t createTriggersForObstacles(); // Create triggers for ROCK, TREE with movement penalties
+    size_t createStaticObstacleBodies();
     void resizeBody(EntityID id, float halfWidth, float halfHeight);
 
     // Queries
@@ -92,6 +94,11 @@ public:
     // Metrics
     size_t getBodyCount() const { return m_bodies.size(); }
     bool isSyncing() const { return m_isSyncing; }
+    
+    // Debug utilities
+    void logCollisionStatistics() const;
+    size_t getStaticBodyCount() const;
+    size_t getKinematicBodyCount() const;
 
 private:
     CollisionManager() = default;
@@ -111,7 +118,7 @@ private:
 
     // storage
     std::unordered_map<EntityID, std::shared_ptr<CollisionBody>> m_bodies;
-    SpatialHash m_hash{32.0f};
+    SpatialHash m_hash{32.0f, 0.1f}; // Use 0.1f movement threshold to prevent desync
     std::vector<CollisionCB> m_callbacks;
     std::vector<EventManager::HandlerToken> m_handlerTokens;
     std::unordered_map<uint64_t, std::pair<EntityID,EntityID>> m_activeTriggerPairs; // OnEnter/Exit filtering

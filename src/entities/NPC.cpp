@@ -13,6 +13,7 @@
 #include "managers/EventManager.hpp"
 #include "managers/ResourceTemplateManager.hpp"
 #include "managers/TextureManager.hpp"
+#include "managers/AIManager.hpp"
 #include "utils/Camera.hpp"
 
 #include <random>
@@ -265,11 +266,15 @@ void NPC::setVelocity(const Vector2D& velocity) {
 }
 
 void NPC::setPosition(const Vector2D& position) {
-  m_position = position;
   auto &cm = CollisionManager::Instance();
+  
+  // Update collision body position
   if (!cm.isSyncing()) {
     cm.setKinematicPose(getID(), position);
   }
+  
+  // Update entity position
+  m_position = position;
 }
 
 void NPC::initializeInventory() {
@@ -494,24 +499,25 @@ void NPC::ensurePhysicsBodyRegistered() {
   const float halfW = m_frameWidth > 0 ? m_frameWidth * 0.5f : 16.0f;
   const float halfH = m_height > 0 ? m_height * 0.5f : 16.0f;
   HammerEngine::AABB aabb(m_position.getX(), m_position.getY(), halfW, halfH);
+  
+  NPC_DEBUG("Registering collision body - ID: " + std::to_string(getID()) + 
+            ", Position: (" + std::to_string(m_position.getX()) + "," + std::to_string(m_position.getY()) + ")" +
+            ", Size: " + std::to_string(halfW*2) + "x" + std::to_string(halfH*2));
+  
   cm.addBody(getID(), aabb, HammerEngine::BodyType::KINEMATIC);
   cm.attachEntity(getID(), shared_this());
+  
+  NPC_DEBUG("Collision body registered successfully - KINEMATIC type");
 }
 
 void NPC::setFaction(Faction f) {
   m_faction = f;
   auto &cm = CollisionManager::Instance();
-  uint32_t layer = HammerEngine::CollisionLayer::Layer_Default;
-  switch (m_faction) {
-  case Faction::Enemy:
-    layer = HammerEngine::CollisionLayer::Layer_Enemy;
-    break;
-  case Faction::Friendly:
-    layer = HammerEngine::CollisionLayer::Layer_Default;
-    break;
-  case Faction::Neutral:
-    layer = HammerEngine::CollisionLayer::Layer_Default;
-    break;
-  }
-  cm.setBodyLayer(getID(), layer, 0xFFFFFFFFu);
+  
+  // All NPCs are on Layer_Enemy to ensure they don't collide with each other
+  uint32_t layer = HammerEngine::CollisionLayer::Layer_Enemy;
+  // NPCs collide with everything EXCEPT other NPCs (Layer_Enemy)
+  uint32_t mask = 0xFFFFFFFFu & ~HammerEngine::CollisionLayer::Layer_Enemy;
+  
+  cm.setBodyLayer(getID(), layer, mask);
 }

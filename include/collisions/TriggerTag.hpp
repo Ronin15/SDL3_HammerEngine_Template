@@ -18,6 +18,8 @@ enum class TriggerTag {
   Portal,
   AreaEnter,
   AreaExit,
+  Rock,         // Movement penalty trigger
+  Tree,         // Movement penalty trigger
   Custom1,
   Custom2
 };

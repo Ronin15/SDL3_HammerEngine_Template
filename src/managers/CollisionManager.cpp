@@ -13,11 +13,13 @@
 #include "managers/WorldManager.hpp"
 #include <unordered_set>
 #include <unordered_map>
+#include <map>
 #include <chrono>
 #include "utils/UniqueID.hpp"
 
 using ::WorldManager;
 using ::EventManager;
+using ::HammerEngine::ObstacleType;
 using ::WorldLoadedEvent;
 using ::WorldGeneratedEvent;
 using ::WorldUnloadedEvent;
@@ -106,6 +108,12 @@ void CollisionManager::addBody(EntityID id, const AABB& aabb, BodyType type) {
     body->type = type;
     m_bodies[id] = body;
     m_hash.insert(id, aabb);
+    
+    if (type == BodyType::KINEMATIC) {
+        COLLISION_DEBUG("Added KINEMATIC body - ID: " + std::to_string(id) + 
+                       ", Total bodies: " + std::to_string(m_bodies.size()) +
+                       ", Kinematic count should now be: " + std::to_string(getKinematicBodyCount()));
+    }
 }
 
 void CollisionManager::addBody(EntityPtr entity, const AABB& aabb, BodyType type) {
@@ -171,13 +179,16 @@ void CollisionManager::setVelocity(EntityID id, const Vector2D& v) {
 void CollisionManager::setBodyTrigger(EntityID id, bool isTrigger) {
     auto it = m_bodies.find(id);
     if (it != m_bodies.end()) it->second->isTrigger = isTrigger;
-    COLLISION_DEBUG("setBodyTrigger id=" + std::to_string(id) + " -> " + (isTrigger ? std::string("true") : std::string("false")));
+    // Reduced debug spam - only log for non-world triggers  
+    if (id < (1ull << 61)) { // Only log for non-world objects (player, NPCs, etc.)
+        COLLISION_DEBUG("setBodyTrigger id=" + std::to_string(id) + " -> " + (isTrigger ? std::string("true") : std::string("false")));
+    }
 }
 
 void CollisionManager::setBodyTriggerTag(EntityID id, HammerEngine::TriggerTag tag) {
     auto it = m_bodies.find(id);
     if (it != m_bodies.end()) it->second->triggerTag = tag;
-    COLLISION_DEBUG("setBodyTriggerTag id=" + std::to_string(id) + ", tag=" + std::to_string(static_cast<int>(tag)));
+    // Removed debug spam - too many trigger tags created during world build
 }
 
 EntityID CollisionManager::createTriggerArea(const AABB& aabb,
@@ -233,6 +244,54 @@ size_t CollisionManager::createTriggersForWaterTiles(HammerEngine::TriggerTag ta
     }
     if (created > 0) {
         COLLISION_INFO("Created water triggers: count=" + std::to_string(created));
+    }
+    return created;
+}
+
+size_t CollisionManager::createTriggersForObstacles() {
+    // ROCK and TREE movement penalties are now handled by pathfinding system
+    // This avoids creating thousands of trigger bodies that cause performance issues
+    return 0;
+}
+
+size_t CollisionManager::createStaticObstacleBodies() {
+    const WorldManager& wm = WorldManager::Instance();
+    const auto* world = wm.getWorldData();
+    if (!world) return 0;
+    
+    size_t created = 0;
+    const float tileSize = 32.0f;
+    const int h = static_cast<int>(world->grid.size());
+    
+    for (int y = 0; y < h; ++y) {
+        const int w = static_cast<int>(world->grid[y].size());
+        for (int x = 0; x < w; ++x) {
+            const auto& tile = world->grid[y][x];
+            
+            // Create solid collision bodies for BUILDING obstacles only
+            // ROCK, TREE, WATER are handled as triggers with movement penalties
+            if (tile.obstacleType == ObstacleType::BUILDING) {
+                
+                float cx = x * tileSize + tileSize * 0.5f;
+                float cy = y * tileSize + tileSize * 0.5f;
+                AABB aabb(cx, cy, tileSize * 0.5f, tileSize * 0.5f);
+                
+                // Use a different prefix for obstacle bodies to avoid conflicts with triggers
+                EntityID id = (static_cast<EntityID>(2ull) << 61) | (static_cast<EntityID>(y) << 31) | static_cast<EntityID>(x);
+                
+                if (m_bodies.find(id) == m_bodies.end()) {
+                    addBody(id, aabb, BodyType::STATIC);
+                    setBodyLayer(id, CollisionLayer::Layer_Environment, 0xFFFFFFFFu);
+                    // These are solid bodies, not triggers
+                    setBodyTrigger(id, false);
+                    ++created;
+                }
+            }
+        }
+    }
+    
+    if (created > 0) {
+        COLLISION_INFO("Created obstacle bodies: count=" + std::to_string(created));
     }
     return created;
 }
@@ -300,27 +359,10 @@ void CollisionManager::broadphase(std::vector<std::pair<EntityID,EntityID>>& pai
         const CollisionBody& b = *kv.second;
         if (!b.enabled || b.type == BodyType::STATIC) continue;
         
-        // Skip collision checks for bodies that haven't moved significantly
-        if (b.type == BodyType::KINEMATIC && b.lastPosition.getX() != -1.0f) {
-            Vector2D currentPos = b.aabb.center;
-            Vector2D lastPos = b.lastPosition;
-            float distanceMoved = (currentPos - lastPos).lengthSquared();
-            if (distanceMoved < 4.0f) { // 2 pixels threshold
-                continue; // Skip collision check for barely-moved bodies
-            }
-        }
-        
-        // Frame-rate based collision frequency optimization
-        if (b.type == BodyType::KINEMATIC) {
-            // Check kinematic bodies every 2nd frame (30fps collision for NPCs)
-            if ((b.id + m_frameCounter) % 2 != 0) continue;
-        }
+        // AI Manager's distance-based culling provides sufficient performance optimization
         
         candidates.clear();
         m_hash.query(b.aabb, candidates);
-        
-        // Update position tracking for movement optimization
-        const_cast<CollisionBody&>(b).lastPosition = b.aabb.center;
         
         for (EntityID otherId : candidates) {
             if (otherId == b.id) continue;
@@ -375,6 +417,8 @@ void CollisionManager::resolve(const CollisionInfo& info) {
     CollisionBody& A = *ita->second;
     CollisionBody& B = *itb->second;
     const float push = info.penetration * 0.5f;
+    
+    // Apply position corrections (including to kinematic bodies)
     if (A.type != BodyType::STATIC && B.type != BodyType::STATIC) {
         A.aabb.center += info.normal * (-push);
         B.aabb.center += info.normal * ( push);
@@ -382,6 +426,19 @@ void CollisionManager::resolve(const CollisionInfo& info) {
         A.aabb.center += info.normal * (-info.penetration);
     } else if (B.type != BodyType::STATIC) {
         B.aabb.center += info.normal * ( info.penetration);
+    }
+    
+    // Immediately sync position corrections back to kinematic entities
+    // This ensures AI system sees the corrected positions
+    if (A.type == BodyType::KINEMATIC) {
+        if (auto ent = A.entityWeak.lock()) {
+            ent->setPosition(A.aabb.center);
+        }
+    }
+    if (B.type == BodyType::KINEMATIC) {
+        if (auto ent = B.entityWeak.lock()) {
+            ent->setPosition(B.aabb.center);
+        }
     }
     auto dampen = [&](CollisionBody& body) {
         float nx = info.normal.getX();
@@ -423,8 +480,7 @@ void CollisionManager::update(float dt) {
     (void)dt;
     if (!m_initialized || m_isShutdown) return;
     
-    // Frame-based collision optimization - not all bodies need every frame
-    m_frameCounter++;
+    // Initialize collision detection for this frame
     
     // Initialize object pools for this frame
     m_collisionPool.ensureCapacity(m_bodies.size());
@@ -448,6 +504,7 @@ void CollisionManager::update(float dt) {
         COLLISION_DEBUG("Resolved collisions: count=" + std::to_string(m_collisionPool.collisionBuffer.size()));
     }
     // Reflect resolved poses back to entities so callers see corrected transforms
+    // Synchronize collision results back to entities
     // Skip kinematic bodies since they manage their own positions through AI/input
     m_isSyncing = true;
     for (auto& kv : m_bodies) {
@@ -565,21 +622,77 @@ void CollisionManager::update(float dt) {
 
 void CollisionManager::addCollisionCallback(CollisionCB cb) { m_callbacks.push_back(std::move(cb)); }
 
+void CollisionManager::logCollisionStatistics() const {
+    size_t staticBodies = getStaticBodyCount();
+    size_t kinematicBodies = getKinematicBodyCount();
+    size_t dynamicBodies = getBodyCount() - staticBodies - kinematicBodies;
+    
+    COLLISION_INFO("Collision Statistics:");
+    COLLISION_INFO("  Total Bodies: " + std::to_string(getBodyCount()));
+    COLLISION_INFO("  Static Bodies: " + std::to_string(staticBodies) + " (obstacles + triggers)");
+    COLLISION_INFO("  Kinematic Bodies: " + std::to_string(kinematicBodies) + " (NPCs)");
+    COLLISION_INFO("  Dynamic Bodies: " + std::to_string(dynamicBodies) + " (player, projectiles)");
+    
+    // Count bodies by layer
+    std::map<uint32_t, size_t> layerCounts;
+    for (const auto& kv : m_bodies) {
+        const auto& body = *kv.second;
+        layerCounts[body.layer]++;
+    }
+    
+    COLLISION_INFO("  Layer Distribution:");
+    for (const auto& layerCount : layerCounts) {
+        std::string layerName = "Unknown";
+        switch (layerCount.first) {
+            case CollisionLayer::Layer_Default: layerName = "Default"; break;
+            case CollisionLayer::Layer_Player: layerName = "Player"; break;
+            case CollisionLayer::Layer_Enemy: layerName = "Enemy"; break;
+            case CollisionLayer::Layer_Environment: layerName = "Environment"; break;
+            case CollisionLayer::Layer_Projectile: layerName = "Projectile"; break;
+            case CollisionLayer::Layer_Trigger: layerName = "Trigger"; break;
+        }
+        COLLISION_INFO("    " + layerName + ": " + std::to_string(layerCount.second));
+    }
+}
+
+size_t CollisionManager::getStaticBodyCount() const {
+    size_t count = 0;
+    for (const auto& kv : m_bodies) {
+        if (kv.second->type == BodyType::STATIC) count++;
+    }
+    return count;
+}
+
+size_t CollisionManager::getKinematicBodyCount() const {
+    size_t count = 0;
+    for (const auto& kv : m_bodies) {
+        if (kv.second->type == BodyType::KINEMATIC) count++;
+    }
+    return count;
+}
+
 void CollisionManager::rebuildStaticFromWorld() {
     const WorldManager& wm = WorldManager::Instance();
     const auto* world = wm.getWorldData();
     if (!world) return;
-    // Remove any existing STATIC world bodies (we do not process world tile collisions unless trigger)
+    // Remove any existing STATIC world bodies
     std::vector<EntityID> toRemove;
     for (const auto& kv : m_bodies) {
         if (isStatic(*kv.second)) toRemove.push_back(kv.first);
     }
     for (auto id : toRemove) removeBody(id);
 
-    // Only create trigger volumes (e.g., water) — no solid tiles
-    size_t created = createTriggersForWaterTiles(HammerEngine::TriggerTag::Water);
-    if (created > 0) {
-        COLLISION_INFO("World triggers built: water count=" + std::to_string(created));
+    // Create solid collision bodies for obstacles and triggers for movement penalties
+    size_t solidBodies = createStaticObstacleBodies();
+    size_t waterTriggers = createTriggersForWaterTiles(HammerEngine::TriggerTag::Water);
+    size_t obstacleTriggers = createTriggersForObstacles();
+    
+    if (solidBodies > 0 || waterTriggers > 0 || obstacleTriggers > 0) {
+        COLLISION_INFO("World colliders built: solid=" + std::to_string(solidBodies) + 
+                      ", water triggers=" + std::to_string(waterTriggers) +
+                      ", obstacle triggers=" + std::to_string(obstacleTriggers));
+        // Log detailed statistics for debugging
+        logCollisionStatistics();
     }
 }
 
@@ -588,9 +701,10 @@ void CollisionManager::onTileChanged(int x, int y) {
     const auto* world = wm.getWorldData();
     if (!world) return;
     const float tileSize = 32.0f;
-    // Update only trigger for this tile; no solid world body
+    
     if (y >= 0 && y < static_cast<int>(world->grid.size()) && x >= 0 && x < static_cast<int>(world->grid[y].size())) {
         const auto& tile = world->grid[y][x];
+        
         // Update water trigger for this tile
         EntityID trigId = (static_cast<EntityID>(1ull) << 61) | (static_cast<EntityID>(y) << 31) | static_cast<EntityID>(x);
         removeBody(trigId);
@@ -603,6 +717,21 @@ void CollisionManager::onTileChanged(int x, int y) {
             setBodyTrigger(trigId, true);
             setBodyTriggerTag(trigId, HammerEngine::TriggerTag::Water);
         }
+        
+        // Update solid obstacle collision body for this tile (BUILDING only)
+        EntityID obstacleId = (static_cast<EntityID>(2ull) << 61) | (static_cast<EntityID>(y) << 31) | static_cast<EntityID>(x);
+        removeBody(obstacleId);
+        if (tile.obstacleType == ObstacleType::BUILDING) {
+            float cx = x * tileSize + tileSize * 0.5f;
+            float cy = y * tileSize + tileSize * 0.5f;
+            AABB aabb(cx, cy, tileSize * 0.5f, tileSize * 0.5f);
+            addBody(obstacleId, aabb, BodyType::STATIC);
+            setBodyLayer(obstacleId, CollisionLayer::Layer_Environment, 0xFFFFFFFFu);
+            setBodyTrigger(obstacleId, false);
+        }
+        
+        // ROCK and TREE movement penalties are handled by pathfinding system
+        // No collision triggers needed for these obstacle types
     }
 }
 
