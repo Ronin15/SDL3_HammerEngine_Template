@@ -139,8 +139,8 @@ void FollowBehavior::executeLogic(EntityPtr entity) {
   if (state.isFollowing) {
     // Path-following to desired position if available
     auto tryFollowPath = [&](Vector2D desiredPos, float speed)->bool {
-      const float nodeRadius = 16.0f;
-      const uint64_t pathTTL = 1500;
+      const float nodeRadius = 20.0f; // Increased for faster path following
+      const uint64_t pathTTL = 3000; // Increased from 1500ms to 3s
       
       // Dynamic backoff: if in a backoff window, don't refresh — just try to follow existing path
       if (SDL_GetTicks() < state.backoffUntil) {
@@ -151,14 +151,14 @@ void FollowBehavior::executeLogic(EntityPtr entity) {
         return following;
       }
 
-      // PATHFINDING CONSOLIDATION: Use PathfinderManager for new path requests
-      // Request only if path is stale or goal changed significantly
-      const float GOAL_CHANGE_THRESH = 64.0f;
+      // PERFORMANCE: Reduce path request frequency with higher thresholds
+      const float GOAL_CHANGE_THRESH_SQUARED = 150.0f * 150.0f; // Increased from 64px to 150px
       bool stale = (SDL_GetTicks() - state.lastPathUpdate) > pathTTL;
       bool goalChanged = true;
       if (!state.pathPoints.empty()) {
         Vector2D lastGoal = state.pathPoints.back();
-        goalChanged = ((desiredPos - lastGoal).length() > GOAL_CHANGE_THRESH);
+        // Use squared distance for performance
+        goalChanged = ((desiredPos - lastGoal).lengthSquared() > GOAL_CHANGE_THRESH_SQUARED);
       }
       if (stale || goalChanged) {
         auto& pf = this->pathfinder();
@@ -371,9 +371,12 @@ float FollowBehavior::getDistanceToTarget() const {
   auto it =
       std::find_if(m_entityStates.begin(), m_entityStates.end(),
                    [](const auto &pair) { return pair.second.isFollowing; });
-  return (it != m_entityStates.end())
-             ? (it->first->getPosition() - target->getPosition()).length()
-             : -1.0f;
+  if (it != m_entityStates.end()) {
+    // PERFORMANCE: Only compute sqrt when actually returning distance
+    float distSquared = (it->first->getPosition() - target->getPosition()).lengthSquared();
+    return std::sqrt(distSquared);
+  }
+  return -1.0f;
 }
 
 FollowBehavior::FollowMode FollowBehavior::getFollowMode() const {
@@ -472,8 +475,10 @@ bool FollowBehavior::isTargetMoving(EntityPtr target,
     return false;
 
   Vector2D currentPos = AIManager::Instance().getPlayerPosition();
-  float movementDistance = (currentPos - state.lastTargetPosition).length();
-  return movementDistance > m_minimumMovementThreshold;
+  // PERFORMANCE: Use squared distance
+  float movementDistanceSquared = (currentPos - state.lastTargetPosition).lengthSquared();
+  float thresholdSquared = m_minimumMovementThreshold * m_minimumMovementThreshold;
+  return movementDistanceSquared > thresholdSquared;
 }
 
 bool FollowBehavior::shouldCatchUp(float distanceToTarget) const {
@@ -557,9 +562,13 @@ void FollowBehavior::updateCloseFollow(EntityPtr entity, EntityState &state) {
 
   Vector2D currentPos = entity->getPosition();
   Vector2D desiredPos = calculateDesiredPosition(entity, target, state);
-  float distanceToDesired = (currentPos - desiredPos).length();
+  // PERFORMANCE: Use squared distance
+  float distanceToDesiredSquared = (currentPos - desiredPos).lengthSquared();
+  float thresholdSquared = (m_followDistance * 0.3f) * (m_followDistance * 0.3f);
 
-  if (distanceToDesired > m_followDistance * 0.3f) {
+  if (distanceToDesiredSquared > thresholdSquared) {
+    // Compute actual distance only when needed for speed calculation
+    float distanceToDesired = std::sqrt(distanceToDesiredSquared);
     float speed = calculateFollowSpeed(entity, state, distanceToDesired);
     Vector2D direction = normalizeVector(desiredPos - currentPos);
 
@@ -581,10 +590,14 @@ void FollowBehavior::updateLooseFollow(EntityPtr entity, EntityState &state) {
 
   Vector2D currentPos = entity->getPosition();
   Vector2D desiredPos = calculateDesiredPosition(entity, target, state);
-  float distanceToDesired = (currentPos - desiredPos).length();
+  // PERFORMANCE: Use squared distance
+  float distanceToDesiredSquared = (currentPos - desiredPos).lengthSquared();
+  float followDistanceSquared = m_followDistance * m_followDistance;
 
   // Only move if outside the follow distance
-  if (distanceToDesired > m_followDistance) {
+  if (distanceToDesiredSquared > followDistanceSquared) {
+    // Compute actual distance only when needed for speed calculation
+    float distanceToDesired = std::sqrt(distanceToDesiredSquared);
     float speed = calculateFollowSpeed(entity, state, distanceToDesired);
     Vector2D direction = normalizeVector(desiredPos - currentPos);
 

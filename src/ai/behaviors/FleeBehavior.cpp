@@ -102,9 +102,10 @@ void FleeBehavior::executeLogic(EntityPtr entity) {
         state.hasValidThreat = true;
         state.lastThreatPosition = threat->getPosition();
     } else if (state.isFleeing) {
-        // Check if we're at safe distance
-        float distanceToThreat = (entity->getPosition() - threat->getPosition()).length();
-        if (distanceToThreat >= m_safeDistance) {
+        // PERFORMANCE: Use squared distance for comparison
+        float distanceToThreatSquared = (entity->getPosition() - threat->getPosition()).lengthSquared();
+        float safeDistanceSquared = m_safeDistance * m_safeDistance;
+        if (distanceToThreatSquared >= safeDistanceSquared) {
             state.isFleeing = false;
             state.isInPanic = false;
             state.hasValidThreat = false;
@@ -218,8 +219,12 @@ float FleeBehavior::getDistanceToThreat() const {
     if (!threat) return -1.0f;
     auto it = std::find_if(m_entityStates.begin(), m_entityStates.end(),
                           [](const auto& pair) { return pair.second.isFleeing; });
-    return (it != m_entityStates.end()) ? 
-           (it->first->getPosition() - threat->getPosition()).length() : -1.0f;
+    if (it != m_entityStates.end()) {
+        // PERFORMANCE: Only compute sqrt when actually returning distance
+        float distSquared = (it->first->getPosition() - threat->getPosition()).lengthSquared();
+        return std::sqrt(distSquared);
+    }
+    return -1.0f;
 }
 
 FleeBehavior::FleeMode FleeBehavior::getFleeMode() const {
@@ -244,8 +249,10 @@ EntityPtr FleeBehavior::getThreat() const {
 bool FleeBehavior::isThreatInRange(EntityPtr entity, EntityPtr threat) const {
     if (!entity || !threat) return false;
     
-    float distance = (entity->getPosition() - threat->getPosition()).length();
-    return distance <= m_detectionRange;
+    // PERFORMANCE: Use squared distance
+    float distanceSquared = (entity->getPosition() - threat->getPosition()).lengthSquared();
+    float detectionRangeSquared = m_detectionRange * m_detectionRange;
+    return distanceSquared <= detectionRangeSquared;
 }
 
 Vector2D FleeBehavior::calculateFleeDirection(EntityPtr entity, EntityPtr threat, const EntityState& state) {
@@ -281,9 +288,10 @@ Vector2D FleeBehavior::findNearestSafeZone(const Vector2D& position) const {
     float minDistance = std::numeric_limits<float>::max();
     
     for (const auto& zone : m_safeZones) {
-        float distance = (position - zone.center).length();
-        if (distance < minDistance) {
-            minDistance = distance;
+        // PERFORMANCE: Use squared distance for comparison
+        float distanceSquared = (position - zone.center).lengthSquared();
+        if (distanceSquared < minDistance * minDistance) {
+            minDistance = std::sqrt(distanceSquared); // Only compute sqrt when updating minimum
             nearest = &zone;
         }
     }
@@ -295,8 +303,10 @@ Vector2D FleeBehavior::findNearestSafeZone(const Vector2D& position) const {
     EntityPtr threat = getThreat();
     if (!threat) return true;
     
-    float distanceToThreat = (position - threat->getPosition()).length();
-    return distanceToThreat >= m_safeDistance;
+    // PERFORMANCE: Use squared distance
+    float distanceToThreatSquared = (position - threat->getPosition()).lengthSquared();
+    float safeDistanceSquared = m_safeDistance * m_safeDistance;
+    return distanceToThreatSquared >= safeDistanceSquared;
 }
 
 [[maybe_unused]] bool FleeBehavior::isNearBoundary(const Vector2D& position) const {
@@ -453,7 +463,8 @@ void FleeBehavior::updateStrategicRetreat(EntityPtr entity, EntityState& state) 
     // Try to path toward the retreat destination with TTL and no-progress checks
     auto tryFollowPath = [&](const Vector2D &goal, float speed)->bool {
         Uint64 now = SDL_GetTicks();
-        const Uint64 pathTTL = 1500; const Uint64 noProgressWindow = 300;
+        // PERFORMANCE: Increase TTL to reduce pathfinding frequency
+        const Uint64 pathTTL = 2500; const Uint64 noProgressWindow = 400;
         bool needRefresh = state.pathPoints.empty() || state.currentPathIndex >= state.pathPoints.size();
         if (!needRefresh && state.currentPathIndex < state.pathPoints.size()) {
             float d = (state.pathPoints[state.currentPathIndex] - currentPos).length();
@@ -464,10 +475,12 @@ void FleeBehavior::updateStrategicRetreat(EntityPtr entity, EntityState& state) 
         if (now - state.lastPathUpdate > pathTTL) needRefresh = true;
         if (needRefresh && now >= state.nextPathAllowed) {
             // Gate refresh on significant goal change to avoid thrash
+            // PERFORMANCE: Use squared distance and higher threshold
             bool goalChanged = true;
             if (!state.pathPoints.empty()) {
                 Vector2D lastGoal = state.pathPoints.back();
-                goalChanged = ((goal - lastGoal).length() > 96.0f);
+                const float GOAL_CHANGE_THRESH_SQUARED = 180.0f * 180.0f; // Increased from 96px
+                goalChanged = ((goal - lastGoal).lengthSquared() > GOAL_CHANGE_THRESH_SQUARED);
             }
             if (!goalChanged && !state.pathPoints.empty()) {
                 // Keep following existing path; skip request
@@ -588,7 +601,8 @@ void FleeBehavior::updateSeekCover(EntityPtr entity, EntityState& state) {
 
     auto tryFollowPath = [&](const Vector2D &goal, float speed)->bool {
         Uint64 now = SDL_GetTicks();
-        const Uint64 pathTTL = 1500; const Uint64 noProgressWindow = 300;
+        // PERFORMANCE: Increase TTL to reduce pathfinding frequency
+        const Uint64 pathTTL = 2500; const Uint64 noProgressWindow = 400;
         bool needRefresh = state.pathPoints.empty() || state.currentPathIndex >= state.pathPoints.size();
         if (!needRefresh && state.currentPathIndex < state.pathPoints.size()) {
             float d = (state.pathPoints[state.currentPathIndex] - currentPos).length();
@@ -599,10 +613,12 @@ void FleeBehavior::updateSeekCover(EntityPtr entity, EntityState& state) {
         if (now - state.lastPathUpdate > pathTTL) needRefresh = true;
         if (needRefresh && now >= state.nextPathAllowed) {
             // Gate refresh on significant goal change to avoid thrash
+            // PERFORMANCE: Use squared distance and higher threshold
             bool goalChanged = true;
             if (!state.pathPoints.empty()) {
                 Vector2D lastGoal = state.pathPoints.back();
-                goalChanged = ((goal - lastGoal).length() > 96.0f);
+                const float GOAL_CHANGE_THRESH_SQUARED = 180.0f * 180.0f; // Increased from 96px
+                goalChanged = ((goal - lastGoal).lengthSquared() > GOAL_CHANGE_THRESH_SQUARED);
             }
             if (!goalChanged && !state.pathPoints.empty()) {
                 // Keep following existing path; skip request
