@@ -243,8 +243,12 @@ public:
         bool processorActive{true};
         float cacheHitRate{0.0f};
         
+        // Simplified cache metrics
+        float totalHitRate{0.0f};
+        
         // Cache memory usage
         size_t cacheSize{0};
+        size_t segmentCacheSize{0};
         size_t negativeCacheSize{0};
         double memoryUsageKB{0.0};
     };
@@ -310,13 +314,17 @@ private:
     mutable std::atomic<uint64_t> m_cacheMisses{0};
     mutable std::atomic<uint64_t> m_processedCount{0};
     
-    // Simple path cache
+    // High-performance single-tier cache with smart quantization
     struct PathCacheEntry {
         std::vector<Vector2D> path;
+        std::chrono::steady_clock::time_point lastUsed;
+        uint32_t useCount{1};
     };
+    
     mutable std::unordered_map<uint64_t, PathCacheEntry> m_pathCache;
     mutable std::mutex m_cacheMutex;
-    static constexpr size_t MAX_CACHE_ENTRIES = 512;
+    
+    static constexpr size_t MAX_CACHE_ENTRIES = 1024; // Increased capacity for better hit rates
 
     
 
@@ -334,9 +342,7 @@ private:
     bool ensureGridInitialized(); // Lazy initialization helper
     void checkForGridUpdates(float deltaTime);
     uint64_t computeCacheKey(const Vector2D& start, const Vector2D& goal) const;
+    void evictOldestCacheEntry();
 };
-
-// Legacy compatibility - redirect old method to new method
-#define requestPathAsync requestPath
 
 #endif // PATHFINDER_MANAGER_HPP
