@@ -94,7 +94,7 @@ BOOST_AUTO_TEST_CASE(TestAsyncPathfinding) {
     std::vector<Vector2D> resultPath;
     
     // Test async pathfinding with callback
-    auto requestId = manager.requestPathAsync(
+    auto requestId = manager.requestPath(
         entityId, 
         start, 
         goal, 
@@ -147,7 +147,7 @@ BOOST_AUTO_TEST_CASE(TestBasicFunctionality) {
     EntityID entityId = 54321;
     
     // Request a path without callback (should not crash)
-    auto requestId = manager.requestPathAsync(entityId, start, goal, static_cast<AIInternal::PathPriority>(3));
+    auto requestId = manager.requestPath(entityId, start, goal, static_cast<AIInternal::PathPriority>(3));
     BOOST_CHECK(requestId > 0);
     
     // Process requests
@@ -256,10 +256,10 @@ BOOST_AUTO_TEST_CASE(TestNoInfiniteRetryLoop) {
     };
     
     // Request the same path multiple times within the cache window (1000ms)
-    manager.requestPathAsync(entityId, start, goal, static_cast<AIInternal::PathPriority>(1), callback);
-    manager.requestPathAsync(entityId, start, goal, static_cast<AIInternal::PathPriority>(1), callback); 
-    manager.requestPathAsync(entityId, start, goal, static_cast<AIInternal::PathPriority>(1), callback);
-    manager.requestPathAsync(entityId, start, goal, static_cast<AIInternal::PathPriority>(1), callback);
+    manager.requestPath(entityId, start, goal, static_cast<AIInternal::PathPriority>(1), callback);
+    manager.requestPath(entityId, start, goal, static_cast<AIInternal::PathPriority>(1), callback); 
+    manager.requestPath(entityId, start, goal, static_cast<AIInternal::PathPriority>(1), callback);
+    manager.requestPath(entityId, start, goal, static_cast<AIInternal::PathPriority>(1), callback);
     
     // Process requests
     for (int i = 0; i < 10; ++i) {
@@ -297,7 +297,7 @@ BOOST_AUTO_TEST_CASE(TestFailedRequestCaching) {
     std::atomic<int> secondCallbackCount{0};
     
     // First request
-    manager.requestPathAsync(entityId, start, goal, static_cast<AIInternal::PathPriority>(1),
+    manager.requestPath(entityId, start, goal, static_cast<AIInternal::PathPriority>(1),
         [&firstCallbackCount](EntityID, const std::vector<Vector2D>&) {
             firstCallbackCount.fetch_add(1, std::memory_order_relaxed);
         });
@@ -308,7 +308,7 @@ BOOST_AUTO_TEST_CASE(TestFailedRequestCaching) {
     manager.update();
     
     // Second identical request within cache window (should be rejected/cached)
-    manager.requestPathAsync(entityId, start, goal, static_cast<AIInternal::PathPriority>(1),
+    manager.requestPath(entityId, start, goal, static_cast<AIInternal::PathPriority>(1),
         [&secondCallbackCount](EntityID, const std::vector<Vector2D>&) {
             secondCallbackCount.fetch_add(1, std::memory_order_relaxed);
         });

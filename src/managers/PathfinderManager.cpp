@@ -161,17 +161,19 @@ uint64_t PathfinderManager::requestPath(
         std::vector<Vector2D> path;
         bool cacheHit = false;
         
-        // Ultra-fast cache: check and swap in single operation
-        
+        // Fast cache lookup - primary cache only for maximum performance
         {
             std::lock_guard<std::mutex> lock(m_cacheMutex);
             auto it = m_pathCache.find(cacheKey);
             if (it != m_pathCache.end()) {
-                // Move from cache - cache entry becomes empty but stays for reuse
-                path = std::move(it->second.path);
+                // Cache hit - update usage tracking
+                path = it->second.path;
+                it->second.lastUsed = std::chrono::steady_clock::now();
+                it->second.useCount++;
                 cacheHit = true;
                 m_cacheHits.fetch_add(1, std::memory_order_relaxed);
             } else {
+                // Cache miss - will need full pathfinding
                 m_cacheMisses.fetch_add(1, std::memory_order_relaxed);
             }
         }
@@ -181,17 +183,20 @@ uint64_t PathfinderManager::requestPath(
             findPathImmediate(nStart, nGoal, path);
         }
         
-        // Always re-cache the path (whether from cache hit or new computation)
+        // Cache path (whether from cache hit or new computation)
         if (!path.empty()) {
             std::lock_guard<std::mutex> lock(m_cacheMutex);
             
-            // Simple cache size management - clear when full (better than expensive FIFO)
+            // Smart cache management with LRU eviction
             if (m_pathCache.size() >= MAX_CACHE_ENTRIES) {
-                m_pathCache.clear(); // O(1) operation, starts fresh
+                evictOldestCacheEntry();
             }
             
+            // Cache the full path
             PathCacheEntry entry;
-            entry.path = path; // Copy for cache
+            entry.path = path;
+            entry.lastUsed = std::chrono::steady_clock::now();
+            entry.useCount = 1;
             m_pathCache[cacheKey] = std::move(entry);
         }
         
@@ -411,6 +416,7 @@ PathfinderManager::PathfinderStats PathfinderManager::getStats() const {
     {
         std::lock_guard<std::mutex> cacheLock(m_cacheMutex);
         stats.cacheSize = m_pathCache.size();
+        stats.segmentCacheSize = 0; // Segment cache removed for performance
     }
     stats.negativeCacheSize = 0;
     
@@ -422,16 +428,19 @@ PathfinderManager::PathfinderStats PathfinderManager::getStats() const {
     }
     
     // Cache memory usage (approximate)
-    size_t cacheMemory = stats.cacheSize * (sizeof(PathCacheEntry) + 50); // ~50 bytes per path estimate
+    size_t cacheMemory = stats.cacheSize * (sizeof(PathCacheEntry) + 50) + 
+                        0; // Segment cache removed for performance
     
     stats.memoryUsageKB = (gridMemory + cacheMemory) / 1024.0;
     
-    // Calculate cache hit rate
+    // Calculate cache hit rates
     uint64_t totalCacheChecks = stats.cacheHits + stats.cacheMisses;
     if (totalCacheChecks > 0) {
         stats.cacheHitRate = static_cast<float>(stats.cacheHits) / static_cast<float>(totalCacheChecks);
+        stats.totalHitRate = stats.cacheHitRate;
     } else {
         stats.cacheHitRate = 0.0f;
+        stats.totalHitRate = 0.0f;
     }
     
     return stats;
@@ -449,7 +458,7 @@ void PathfinderManager::resetStats() {
     // Fast cache clear - unordered_map::clear() is O(1) for small caches
     {
         std::lock_guard<std::mutex> cacheLock(m_cacheMutex);
-        m_pathCache.clear(); // Fast operation for 512 entries
+        m_pathCache.clear(); // Fast operation for cache entries
     }
     
     // No queue statistics to reset
@@ -614,9 +623,11 @@ void PathfinderManager::normalizeEndpoints(Vector2D& start, Vector2D& goal) cons
         goal = grid->snapToNearestOpenWorld(goal, r);
     }
 
-    // Quantize to improve cache hits
-    start = quantize128(start);
-    goal = quantize128(goal);
+    // Quantize to improve cache hits - use 256-pixel quantization
+    start = Vector2D(std::round(start.getX() / 256.0f) * 256.0f,
+                     std::round(start.getY() / 256.0f) * 256.0f);
+    goal = Vector2D(std::round(goal.getX() / 256.0f) * 256.0f,
+                    std::round(goal.getY() / 256.0f) * 256.0f);
 }
 
 bool PathfinderManager::followPathStep(EntityPtr entity, const Vector2D& currentPos,
@@ -774,12 +785,12 @@ void PathfinderManager::checkForGridUpdates(float deltaTime) {
 }
 
 uint64_t PathfinderManager::computeCacheKey(const Vector2D& start, const Vector2D& goal) const {
-    // Quantize positions to 128-pixel grid for better cache coherence
-    // Larger quantization = more cache hits for nearby positions
-    int sx = static_cast<int>(start.getX() / 128.0f);
-    int sy = static_cast<int>(start.getY() / 128.0f);
-    int gx = static_cast<int>(goal.getX() / 128.0f);
-    int gy = static_cast<int>(goal.getY() / 128.0f);
+    // Coarser quantization: 256-pixel grid for better cache hit rates
+    // Trade some spatial precision for much higher cache reuse
+    int sx = static_cast<int>(start.getX() / 256.0f);
+    int sy = static_cast<int>(start.getY() / 256.0f);
+    int gx = static_cast<int>(goal.getX() / 256.0f);
+    int gy = static_cast<int>(goal.getY() / 256.0f);
     
     // Pack into 64-bit key: sx(16) | sy(16) | gx(16) | gy(16)
     return (static_cast<uint64_t>(sx & 0xFFFF) << 48) |
@@ -788,4 +799,17 @@ uint64_t PathfinderManager::computeCacheKey(const Vector2D& start, const Vector2
            static_cast<uint64_t>(gy & 0xFFFF);
 }
 
-// End of file - no legacy methods remain
+
+void PathfinderManager::evictOldestCacheEntry() {
+    if (m_pathCache.empty()) return;
+    
+    auto oldest = m_pathCache.begin();
+    for (auto it = m_pathCache.begin(); it != m_pathCache.end(); ++it) {
+        if (it->second.lastUsed < oldest->second.lastUsed) {
+            oldest = it;
+        }
+    }
+    m_pathCache.erase(oldest);
+}
+
+// End of file - optimized single-tier cache implementation
