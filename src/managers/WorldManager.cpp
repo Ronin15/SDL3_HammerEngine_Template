@@ -504,10 +504,9 @@ void WorldManager::initializeWorldResources() {
         return;
     }
 
-    // Calculate base resource quantities based on world size
-    int baseAmount = std::max(10, totalTiles / 20); // Scale with world size
-
     try {
+        // Calculate base resource quantities based on world size
+        int baseAmount = std::max(10, totalTiles / 20); // Scale with world size
         // Basic resources available everywhere
         auto woodHandle = resourceMgr.getHandleById("wood");
         auto ironHandle = resourceMgr.getHandleById("iron_ore");

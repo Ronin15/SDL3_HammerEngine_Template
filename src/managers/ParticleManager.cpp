@@ -789,10 +789,10 @@ void ParticleManager::update(float deltaTime) {
     // Only track performance every 1200 frames (20 seconds) to minimize
     // overhead
     if (currentFrame % 1200 == 0) {
-      size_t activeCount = countActiveParticles();
-      recordPerformance(false, timeMs, activeCount);
+      size_t currentActiveCount = countActiveParticles();
+      recordPerformance(false, timeMs, currentActiveCount);
 
-      if (activeCount > 0) {
+      if (currentActiveCount > 0) {
         bool wasThreaded = m_lastWasThreaded.load(std::memory_order_relaxed);
         if (wasThreaded) {
           size_t optimalWorkers = m_lastOptimalWorkerCount.load(std::memory_order_relaxed);

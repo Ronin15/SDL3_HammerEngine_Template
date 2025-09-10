@@ -40,7 +40,7 @@ template <typename T, std::size_t Alignment> struct AlignedAllocator {
 
   AlignedAllocator() noexcept {}
   template <class U>
-  AlignedAllocator(const AlignedAllocator<U, Alignment> &) noexcept {}
+  explicit AlignedAllocator(const AlignedAllocator<U, Alignment> &) noexcept {}
 
   [[nodiscard]] T *allocate(std::size_t n) {
     if (n > static_cast<std::size_t>(-1) / sizeof(T)) {

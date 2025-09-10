@@ -60,7 +60,6 @@ private:
   void initializeCamera();
   void updateCamera(float deltaTime);
   // Camera auto-manages world bounds; no state-level setup needed
-  void applyCameraTransformation();
 };
 
 #endif // GAME_PLAY_STATE_HPP

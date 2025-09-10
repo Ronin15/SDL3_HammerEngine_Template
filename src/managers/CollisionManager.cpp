@@ -13,6 +13,7 @@
 #include "managers/WorldManager.hpp"
 #include <unordered_set>
 #include <unordered_map>
+#include <algorithm>
 #include <map>
 #include <chrono>
 #include "utils/UniqueID.hpp"
@@ -560,7 +561,7 @@ void CollisionManager::update(float dt) {
 
     for (const auto& c : m_collisionPool.collisionBuffer) {
         resolve(c);
-        for (auto& cb : m_callbacks) { cb(c); }
+        for (const auto& cb : m_callbacks) { cb(c); }
     }
     auto t3 = clock::now();
     if (m_verboseLogs && !m_collisionPool.collisionBuffer.empty()) {
@@ -705,7 +706,7 @@ void CollisionManager::logCollisionStatistics() const {
     
     COLLISION_INFO("  Layer Distribution:");
     for (const auto& layerCount : layerCounts) {
-        std::string layerName = "Unknown";
+        std::string layerName;
         switch (layerCount.first) {
             case CollisionLayer::Layer_Default: layerName = "Default"; break;
             case CollisionLayer::Layer_Player: layerName = "Player"; break;
@@ -713,25 +714,20 @@ void CollisionManager::logCollisionStatistics() const {
             case CollisionLayer::Layer_Environment: layerName = "Environment"; break;
             case CollisionLayer::Layer_Projectile: layerName = "Projectile"; break;
             case CollisionLayer::Layer_Trigger: layerName = "Trigger"; break;
+            default: layerName = "Unknown"; break;
         }
         COLLISION_INFO("    " + layerName + ": " + std::to_string(layerCount.second));
     }
 }
 
 size_t CollisionManager::getStaticBodyCount() const {
-    size_t count = 0;
-    for (const auto& kv : m_bodies) {
-        if (kv.second->type == BodyType::STATIC) count++;
-    }
-    return count;
+    return std::count_if(m_bodies.begin(), m_bodies.end(),
+                         [](const auto& kv) { return kv.second->type == BodyType::STATIC; });
 }
 
 size_t CollisionManager::getKinematicBodyCount() const {
-    size_t count = 0;
-    for (const auto& kv : m_bodies) {
-        if (kv.second->type == BodyType::KINEMATIC) count++;
-    }
-    return count;
+    return std::count_if(m_bodies.begin(), m_bodies.end(),
+                         [](const auto& kv) { return kv.second->type == BodyType::KINEMATIC; });
 }
 
 void CollisionManager::rebuildStaticFromWorld() {
@@ -814,7 +810,7 @@ void CollisionManager::subscribeWorldEvents() {
         if (!base) return;
         if (auto loaded = std::dynamic_pointer_cast<WorldLoadedEvent>(base)) {
             (void)loaded;
-            auto& worldManager = WorldManager::Instance();
+            const auto& worldManager = WorldManager::Instance();
             float minX, minY, maxX, maxY;
             if (worldManager.getWorldBounds(minX, minY, maxX, maxY)) {
                 this->setWorldBounds(minX, minY, maxX, maxY);
@@ -825,7 +821,7 @@ void CollisionManager::subscribeWorldEvents() {
         }
         if (auto generated = std::dynamic_pointer_cast<WorldGeneratedEvent>(base)) {
             (void)generated;
-            auto& worldManager = WorldManager::Instance();
+            const auto& worldManager = WorldManager::Instance();
             float minX, minY, maxX, maxY;
             if (worldManager.getWorldBounds(minX, minY, maxX, maxY)) {
                 this->setWorldBounds(minX, minY, maxX, maxY);

@@ -121,11 +121,9 @@ void ChaseBehavior::executeLogic(EntityPtr entity) {
         Vector2D goalPosition = targetPos;
         
         // Light prediction only for fast-moving targets
-        if (auto targetEntity = target) {
-          Vector2D targetVel = targetEntity->getVelocity();
-          if (targetVel.length() > 30.0f) { // Only predict for fast movement
-            goalPosition = targetPos + targetVel * 0.3f; // Shorter prediction time
-          }
+        Vector2D targetVel = target->getVelocity();
+        if (targetVel.length() > 30.0f) { // Only predict for fast movement
+          goalPosition = targetPos + targetVel * 0.3f; // Shorter prediction time
         }
 
         // ASYNC PATHFINDING: Use high-performance background processing for chasing
@@ -224,9 +222,7 @@ void ChaseBehavior::executeLogic(EntityPtr entity) {
       }
 
       // Update chase state
-      if (!m_isChasing) {
-        m_isChasing = true;
-      }
+      m_isChasing = true;
 
       // SIMPLIFIED: Basic stall detection without complex variance tracking
       float currentSpeed = entity->getVelocity().length();
@@ -426,3 +422,4 @@ void ChaseBehavior::handleNoLineOfSight(EntityPtr entity) {
     }
   }
 }
+

@@ -302,27 +302,18 @@ void AttackBehavior::setChargeDamageMultiplier(float multiplier) {
 }
 
 bool AttackBehavior::isInCombat() const {
-  // OPTIMIZED: Early exit instead of scanning all entities
-  for (const auto& pair : m_entityStates) {
-    if (pair.second.inCombat) return true;
-  }
-  return false;
+  return std::any_of(m_entityStates.begin(), m_entityStates.end(),
+                     [](const auto& pair) { return pair.second.inCombat; });
 }
 
 bool AttackBehavior::isAttacking() const {
-  // OPTIMIZED: Early exit instead of scanning all entities
-  for (const auto& pair : m_entityStates) {
-    if (pair.second.currentState == AttackState::ATTACKING) return true;
-  }
-  return false;
+  return std::any_of(m_entityStates.begin(), m_entityStates.end(),
+                     [](const auto& pair) { return pair.second.currentState == AttackState::ATTACKING; });
 }
 
 bool AttackBehavior::canAttack() const {
-  // OPTIMIZED: Early exit instead of scanning all entities  
-  for (const auto& pair : m_entityStates) {
-    if (pair.second.canAttack) return true;
-  }
-  return false;
+  return std::any_of(m_entityStates.begin(), m_entityStates.end(),
+                     [](const auto& pair) { return pair.second.canAttack; });
 }
 
 AttackBehavior::AttackState AttackBehavior::getCurrentAttackState() const {

@@ -124,11 +124,9 @@ void PatrolBehavior::executeLogic(EntityPtr entity) {
     needsNewPath = true;  
   } else {
     // Check if we're targeting a different waypoint than when path was computed
-    if (!m_navPath.empty()) {
-      Vector2D pathGoal = m_navPath.back();
-      float waypointChange = (targetWaypoint - pathGoal).length();
-      needsNewPath = (waypointChange > 50.0f); // Waypoint changed significantly
-    }
+    Vector2D pathGoal = m_navPath.back();
+    float waypointChange = (targetWaypoint - pathGoal).length();
+    needsNewPath = (waypointChange > 50.0f); // Waypoint changed significantly
   }
   
   // Per-instance cooldown via m_backoffUntil; no global static throttle

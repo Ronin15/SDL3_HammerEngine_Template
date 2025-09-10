@@ -351,7 +351,7 @@ void Camera::clampToWorldBounds() {
     // Auto-sync world bounds with WorldManager if enabled
     if (m_autoSyncWorldBounds) {
         try {
-            auto &wm = WorldManager::Instance();
+            const auto &wm = WorldManager::Instance();
             if (wm.hasActiveWorld()) {
                 uint64_t currentVersion = wm.getWorldVersion();
                 if (currentVersion != m_lastWorldVersion) {

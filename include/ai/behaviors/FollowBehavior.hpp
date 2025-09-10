@@ -155,10 +155,6 @@ private:
   float calculateFollowSpeed(EntityPtr entity, const EntityState &state,
                              float distanceToTarget) const;
 
-  // Movement and pathfinding
-  Vector2D calculateSteeringForce(EntityPtr entity,
-                                  const Vector2D &desiredPosition,
-                                  const EntityState &state);
   Vector2D avoidObstacles(EntityPtr entity,
                           const Vector2D &desiredVelocity) const;
   Vector2D smoothPath(const Vector2D &currentPos, const Vector2D &targetPos,
@@ -173,9 +169,6 @@ private:
 
   // Utility methods
   Vector2D normalizeVector(const Vector2D &vector) const;
-  float angleDifference(float angle1, float angle2) const;
-  float clampAngle(float angle) const;
-  Vector2D rotateVector(const Vector2D &vector, float angle) const;
 
   // Formation setup
   void initializeFormationOffsets();

@@ -324,9 +324,11 @@ void SpatialPriority::performEntityCleanup(uint64_t currentFrame, bool forceAggr
             std::vector<std::pair<uint64_t, EntityID>> entityFrames;
             entityFrames.reserve(m_entityFrameStates.size());
             
-            for (const auto& pair : m_entityFrameStates) {
-                entityFrames.emplace_back(pair.second.lastProcessedFrame, pair.first);
-            }
+            std::transform(m_entityFrameStates.begin(), m_entityFrameStates.end(),
+                          std::back_inserter(entityFrames),
+                          [](const auto& pair) {
+                              return std::make_pair(pair.second.lastProcessedFrame, pair.first);
+                          });
             
             // Sort by frame (oldest first)
             std::sort(entityFrames.begin(), entityFrames.end());
