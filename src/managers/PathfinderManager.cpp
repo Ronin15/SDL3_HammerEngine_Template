@@ -275,27 +275,29 @@ uint64_t PathfinderManager::requestPath(
             findPathImmediate(nStart, nGoal, path);
         }
         
-        // Cache path (whether from cache hit or new computation)
+        // Cache path and update statistics
         if (!path.empty()) {
-            std::lock_guard<std::mutex> lock(m_cacheMutex);
-            
-            // Smart cache management with LRU eviction
-            if (m_pathCache.size() >= MAX_CACHE_ENTRIES) {
-                evictOldestCacheEntry();
+            // Cache the successful path
+            {
+                std::lock_guard<std::mutex> lock(m_cacheMutex);
+                
+                // Smart cache management with LRU eviction
+                if (m_pathCache.size() >= MAX_CACHE_ENTRIES) {
+                    evictOldestCacheEntry();
+                }
+                
+                // Cache the full path
+                PathCacheEntry entry;
+                entry.path = path;
+                entry.lastUsed = std::chrono::steady_clock::now();
+                entry.useCount = 1;
+                m_pathCache[cacheKey] = std::move(entry);
             }
             
-            // Cache the full path
-            PathCacheEntry entry;
-            entry.path = path;
-            entry.lastUsed = std::chrono::steady_clock::now();
-            entry.useCount = 1;
-            m_pathCache[cacheKey] = std::move(entry);
-        }
-        
-        // Update statistics - simplified success check
-        if (!path.empty()) {
+            // Update success statistics
             m_completedRequests.fetch_add(1, std::memory_order_relaxed);
         } else {
+            // Update failure statistics
             m_failedRequests.fetch_add(1, std::memory_order_relaxed);
         }
         
@@ -312,7 +314,7 @@ uint64_t PathfinderManager::requestPath(
                 m_pending.erase(it);
             }
         }
-        for (auto &cb : callbacks) {
+        for (const auto &cb : callbacks) {
             if (cb) cb(entityId, path);
         }
     };
@@ -395,7 +397,7 @@ bool PathfinderManager::hasPendingWork() const {
 
 void PathfinderManager::rebuildGrid() {
     // Build a new grid from current world data and swap atomically
-    auto& worldManager = WorldManager::Instance();
+    const auto& worldManager = WorldManager::Instance();
     if (!worldManager.hasActiveWorld()) {
         PATHFIND_DEBUG("Cannot rebuild grid - no active world");
         return;
@@ -623,7 +625,7 @@ Vector2D PathfinderManager::adjustSpawnToNavigable(const Vector2D& desired, floa
         if (!grid->isWorldBlocked(snapped)) return snapped;
     }
     // Fallback: pull to center a bit
-    auto &wm = WorldManager::Instance();
+    const auto &wm = WorldManager::Instance();
     float minX=0, minY=0, maxX=0, maxY=0;
     if (wm.getWorldBounds(minX, minY, maxX, maxY)) {
         Vector2D center((minX + maxX) * 0.5f, (minY + maxY) * 0.5f);
@@ -792,7 +794,7 @@ bool PathfinderManager::ensureGridInitialized() {
     }
 
     // Check if we have an active world to get dimensions from
-    auto& worldManager = WorldManager::Instance();
+    const auto& worldManager = WorldManager::Instance();
     if (!worldManager.hasActiveWorld()) {
         PATHFIND_DEBUG("Cannot initialize pathfinding grid - no active world");
         return false;
@@ -870,7 +872,7 @@ void PathfinderManager::checkForGridUpdates(float deltaTime) {
     }
     
     // Check if world has changed by getting version from WorldManager
-    auto& worldManager = WorldManager::Instance();
+    const auto& worldManager = WorldManager::Instance();
     uint64_t currentWorldVersion = worldManager.getWorldVersion();
     
     // Rebuild when version changed or every 30 seconds as a fallback
@@ -903,12 +905,10 @@ uint64_t PathfinderManager::computeCacheKey(const Vector2D& start, const Vector2
 void PathfinderManager::evictOldestCacheEntry() {
     if (m_pathCache.empty()) return;
     
-    auto oldest = m_pathCache.begin();
-    for (auto it = m_pathCache.begin(); it != m_pathCache.end(); ++it) {
-        if (it->second.lastUsed < oldest->second.lastUsed) {
-            oldest = it;
-        }
-    }
+    auto oldest = std::min_element(m_pathCache.begin(), m_pathCache.end(),
+                                   [](const auto& a, const auto& b) {
+                                       return a.second.lastUsed < b.second.lastUsed;
+                                   });
     m_pathCache.erase(oldest);
 }
 

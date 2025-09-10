@@ -503,29 +503,6 @@ float FollowBehavior::calculateFollowSpeed(EntityPtr /*entity*/,
   return speed;
 }
 
-[[maybe_unused]] Vector2D FollowBehavior::calculateSteeringForce(EntityPtr entity,
-                                                const Vector2D &desiredPosition,
-                                                const EntityState &state) {
-  if (!entity)
-    return Vector2D(0, 0);
-
-  Vector2D currentPos = entity->getPosition();
-  Vector2D desiredVelocity = (desiredPosition - currentPos);
-
-  if (desiredVelocity.length() < 0.001f) {
-    return Vector2D(0, 0);
-  }
-
-  desiredVelocity = normalizeVector(desiredVelocity);
-
-  // Apply obstacle avoidance
-  desiredVelocity = avoidObstacles(entity, desiredVelocity);
-
-  // Calculate steering force
-  Vector2D steeringForce = desiredVelocity - state.currentVelocity;
-
-  return steeringForce;
-}
 
 Vector2D FollowBehavior::avoidObstacles(EntityPtr /*entity*/,
                                         const Vector2D &desiredVelocity) const {
@@ -689,31 +666,6 @@ Vector2D FollowBehavior::normalizeVector(const Vector2D &vector) const {
   return vector / magnitude;
 }
 
-[[maybe_unused]] float FollowBehavior::angleDifference(float angle1, float angle2) const {
-  float diff = angle2 - angle1;
-  while (diff > M_PI)
-    diff -= 2.0f * M_PI;
-  while (diff < -M_PI)
-    diff += 2.0f * M_PI;
-  return diff;
-}
-
-[[maybe_unused]] float FollowBehavior::clampAngle(float angle) const {
-  while (angle > M_PI)
-    angle -= 2.0f * M_PI;
-  while (angle < -M_PI)
-    angle += 2.0f * M_PI;
-  return angle;
-}
-
-[[maybe_unused]] Vector2D FollowBehavior::rotateVector(const Vector2D &vector,
-                                      float angle) const {
-  float cos_a = std::cos(angle);
-  float sin_a = std::sin(angle);
-
-  return Vector2D(vector.getX() * cos_a - vector.getY() * sin_a,
-                  vector.getX() * sin_a + vector.getY() * cos_a);
-}
 
 void FollowBehavior::initializeFormationOffsets() {
   if (s_escortFormationOffsets.empty()) {

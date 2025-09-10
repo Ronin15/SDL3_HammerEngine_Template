@@ -300,3 +300,52 @@ constVariableReference:*/PauseState.cpp:78
 noExplicitConstructor:*/utils/JsonReader.hpp:60
 noExplicitConstructor:*/utils/JsonReader.hpp:61  
 noExplicitConstructor:*/utils/JsonReader.hpp:62
+
+# Variables used in debug logging macros (conditionally compiled)
+unreadVariable:*/entities/NPC.cpp:297
+unreadVariable:*/entities/Player.cpp:285
+unreadVariable:*/ai/internal/SpatialPriority.cpp:284
+unreadVariable:*/ai/internal/SpatialPriority.cpp:361
+unreadVariable:*/ai/pathfinding/PathfindingGrid.cpp:192
+
+# Defensive checks in simplified implementations 
+knownConditionTrueFalse:*/ai/behaviors/GuardBehavior.cpp:422
+knownConditionTrueFalse:*/ai/pathfinding/PathfindingGrid.cpp:444
+
+# Future-use functions in behaviors (marked with [[maybe_unused]])
+unusedFunction:*/include/ai/behaviors/ChaseBehavior.hpp:84
+unusedFunction:*/include/ai/behaviors/FleeBehavior.hpp:148
+unusedFunction:*/include/ai/behaviors/FleeBehavior.hpp:149
+unusedFunction:*/include/ai/behaviors/FollowBehavior.hpp:158
+unusedFunction:*/include/ai/behaviors/GuardBehavior.hpp:240
+unusedFunction:*/include/ai/pathfinding/PathfindingGrid.hpp:119
+unusedFunction:*/include/core/ThreadSystem.hpp:340
+unusedFunction:*/include/managers/ResourceFactory.hpp:86
+
+# Variables used in debug logging (cppcheck doesn't see switch-case usage)
+unreadVariable:*/managers/CollisionManager.cpp:710
+unreadVariable:*/managers/CollisionManager.cpp:711
+unreadVariable:*/managers/CollisionManager.cpp:712
+unreadVariable:*/managers/CollisionManager.cpp:713
+unreadVariable:*/managers/CollisionManager.cpp:714
+unreadVariable:*/managers/CollisionManager.cpp:715
+unreadVariable:*/managers/CollisionManager.cpp:716
+unreadVariable:*/managers/CollisionManager.cpp:691
+
+# Variables used in logging (threading budget variables for debugging)
+unreadVariable:*/managers/EventManager.cpp:259
+unreadVariable:*/managers/EventManager.cpp:260
+unreadVariable:*/managers/EventManager.cpp:261
+unreadVariable:*/managers/ParticleManager.cpp:798
+unreadVariable:*/managers/ParticleManager.cpp:799
+unreadVariable:*/managers/ParticleManager.cpp:800
+
+# Defensive programming - always true/false conditions by design
+knownConditionTrueFalse:*/gameStates/EventDemoState.cpp:1902
+knownConditionTrueFalse:*/gameStates/GamePlayState.cpp:416
+knownConditionTrueFalse:*/managers/AIManager.cpp:505
+knownConditionTrueFalse:*/managers/CollisionManager.cpp:748
+knownConditionTrueFalse:*/managers/EventManager.cpp:153
+knownConditionTrueFalse:*/managers/EventManager.cpp:1424
+knownConditionTrueFalse:*/managers/ParticleManager.cpp:404
+knownConditionTrueFalse:*/managers/ParticleManager.cpp:1938

@@ -638,9 +638,9 @@ bool EventManager::removeHandler(const HandlerToken &token) {
     const size_t idx = static_cast<size_t>(token.typeId);
     if (idx >= m_handlersByType.size()) return false;
     auto &ids = m_handlerIdsByType[idx];
-    auto &handlers = m_handlersByType[idx];
     auto it = std::find(ids.begin(), ids.end(), token.id);
     if (it != ids.end()) {
+      auto &handlers = m_handlersByType[idx];
       size_t index = std::distance(ids.begin(), it);
       handlers[index] = nullptr;
       *it = 0;

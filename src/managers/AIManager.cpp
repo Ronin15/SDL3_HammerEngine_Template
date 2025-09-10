@@ -314,9 +314,7 @@ void AIManager::prepareForStateTransition() {
   {
     std::lock_guard<std::mutex> lock(m_statsMutex);
     m_globalStats = AIPerformanceStats{};
-    for (auto &stat : m_behaviorStats) {
-      stat = AIPerformanceStats{};
-    }
+    std::fill(m_behaviorStats.begin(), m_behaviorStats.end(), AIPerformanceStats{});
   }
 
   // Clear player reference completely
@@ -718,9 +716,9 @@ void AIManager::assignBehaviorToEntity(EntityPtr entity,
       m_storage.hotData[index].active = true;
 
       // Refresh extents
-      float halfW = std::max(1.0f, entity->getWidth() * 0.5f);
-      float halfH = std::max(1.0f, entity->getHeight() * 0.5f);
       if (index < m_storage.halfWidths.size()) {
+        float halfW = std::max(1.0f, entity->getWidth() * 0.5f);
+        float halfH = std::max(1.0f, entity->getHeight() * 0.5f);
         m_storage.halfWidths[index] = halfW;
         m_storage.halfHeights[index] = halfH;
       }
@@ -1337,7 +1335,7 @@ void AIManager::processBatch(size_t start, size_t end, float deltaTime,
         float halfW = (idx < batchHalfW.size() ? batchHalfW[idx] : 16.0f);
         float halfH = (idx < batchHalfH.size() ? batchHalfH[idx] : 16.0f);
 
-        auto &pf = PathfinderManager::Instance();
+        const auto &pf = PathfinderManager::Instance();
         Vector2D pos = entity->getPosition();
         Vector2D clamped = pf.clampInsideExtents(pos, halfW, halfH, 0.0f);
         if (clamped.getX() != pos.getX() || clamped.getY() != pos.getY()) {

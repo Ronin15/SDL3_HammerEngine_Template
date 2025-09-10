@@ -72,6 +72,7 @@ private:
   // Entity-specific state data
   struct EntityState {
     Vector2D currentDirection{0, 0};
+    Vector2D previousVelocity{0, 0}; // Store previous frame velocity for flip detection
     Uint64 lastDirectionChangeTime{0};
     Uint64 lastDirectionFlip{0};
     Uint64 startDelay{0};        // Random delay before entity starts moving
@@ -122,7 +123,7 @@ private:
 
     // Constructor to ensure proper initialization
     EntityState()
-        : currentDirection(0, 0), lastDirectionChangeTime(0),
+        : currentDirection(0, 0), previousVelocity(0, 0), lastDirectionChangeTime(0),
           lastDirectionFlip(0), startDelay(0), movementStarted(false),
           pathPoints(), currentPathIndex(0), lastPathUpdate(0), 
           lastProgressTime(0), lastNodeDistance(std::numeric_limits<float>::infinity()),

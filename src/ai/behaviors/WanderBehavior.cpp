@@ -11,6 +11,7 @@
 #include "ai/internal/SpatialPriority.hpp"
 #include <algorithm>
 #include <cmath>
+#include <numeric>
 
 // Static thread-local RNG pool for memory optimization
 thread_local std::uniform_real_distribution<float>
@@ -106,7 +107,6 @@ void WanderBehavior::executeLogic(EntityPtr entity) {
     
     // PERFORMANCE FIX: Check local entity density less frequently to avoid expensive CollisionManager calls
     Vector2D position = entity->getPosition();
-    float queryRadius = 120.0f;
     
     // Cache crowd analysis results to avoid expensive collision queries every frame
     int nearbyCount = state.cachedNearbyCount;
@@ -115,6 +115,7 @@ void WanderBehavior::executeLogic(EntityPtr entity) {
     // Only update crowd analysis every 20-30 frames (333-500ms at 60 FPS) + entity staggering  
     Uint32 frameInterval = 333 + (entity->getID() % 10) * 17; // 333-500ms range
     if (now - state.lastCrowdAnalysis > frameInterval) {
+      float queryRadius = 120.0f;
       nearbyCount = AIInternal::GetNearbyEntitiesWithPositions(entity, position, queryRadius, nearbyPositions);
       state.cachedNearbyCount = nearbyCount;
       state.cachedNearbyPositions = nearbyPositions;
@@ -130,10 +131,7 @@ void WanderBehavior::executeLogic(EntityPtr entity) {
        
        // Calculate cluster center and move in opposite direction
        if (!nearbyPositions.empty()) {
-         Vector2D crowdCenter(0, 0);
-         for (const auto &pos : nearbyPositions) {
-           crowdCenter = crowdCenter + pos;
-         }
+         Vector2D crowdCenter = std::accumulate(nearbyPositions.begin(), nearbyPositions.end(), Vector2D(0, 0));
          crowdCenter = crowdCenter / static_cast<float>(nearbyPositions.size());
          Vector2D escapeDirection = (position - crowdCenter).normalized();
          
@@ -155,10 +153,7 @@ void WanderBehavior::executeLogic(EntityPtr entity) {
        
        // Also bias direction away from crowd center
        if (!nearbyPositions.empty()) {
-         Vector2D crowdCenter(0, 0);
-         for (const auto &pos : nearbyPositions) {
-           crowdCenter = crowdCenter + pos;
-         }
+         Vector2D crowdCenter = std::accumulate(nearbyPositions.begin(), nearbyPositions.end(), Vector2D(0, 0));
          crowdCenter = crowdCenter / static_cast<float>(nearbyPositions.size());
          Vector2D awayFromCrowd = (position - crowdCenter).normalized();
          // Blend current direction with anti-crowd direction
@@ -265,10 +260,9 @@ void WanderBehavior::updateWanderState(EntityPtr entity) {
   EntityState &state = stateIt->second;
   Uint64 currentTime = SDL_GetTicks();
 
-  Vector2D previousVelocity = entity->getVelocity();
-
-  // Control sprite flipping to avoid rapid flips
+  // Get current velocity and compare with stored previous velocity
   Vector2D currentVelocity = entity->getVelocity();
+  Vector2D previousVelocity = state.previousVelocity;
 
   // Check if there was a direction change that would cause a flip
   bool wouldFlip =
@@ -343,6 +337,9 @@ void WanderBehavior::updateWanderState(EntityPtr entity) {
 
   // No edge avoidance - let entities wander naturally like PatrolBehavior
   // The pathfinding system and world collision will handle actual boundaries
+  
+  // Update previous velocity for next frame's flip detection
+  state.previousVelocity = currentVelocity;
 }
 
 void WanderBehavior::clean(EntityPtr entity) {
