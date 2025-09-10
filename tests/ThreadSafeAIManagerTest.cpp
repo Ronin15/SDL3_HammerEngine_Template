@@ -30,7 +30,6 @@
 #include "entities/Entity.hpp"
 #include "managers/AIManager.hpp"
 #include "managers/PathfinderManager.hpp"
-#include "ai/internal/PathPriority.hpp"
 
 // Simple test entity
 class TestEntity : public Entity {
@@ -566,7 +565,7 @@ BOOST_FIXTURE_TEST_CASE(TestAsyncPathRequestsUnderWorkerLoad,
     Vector2D start(16.0f + i, 20.0f + i);
     Vector2D goal(220.0f + i, 180.0f + i);
     pf.requestPath(static_cast<EntityID>(5000 + i), start, goal,
-                   AIInternal::PathPriority::Normal,
+                   PathfinderManager::Priority::Normal,
                    [&callbacks](EntityID, const std::vector<Vector2D>&) {
                      callbacks.fetch_add(1, std::memory_order_relaxed);
                    });

@@ -100,7 +100,7 @@ BOOST_AUTO_TEST_CASE(TestAsyncPathfinding) {
         entityId, 
         start, 
         goal, 
-        2, // Normal priority
+        PathfinderManager::Priority::Normal, // Normal priority
         [&callbackCalled, &resultPath](EntityID id, const std::vector<Vector2D>& path) {
             BOOST_CHECK(id == 12345);
             callbackCalled = true;
@@ -149,7 +149,7 @@ BOOST_AUTO_TEST_CASE(TestBasicFunctionality) {
     EntityID entityId = 54321;
     
     // Request a path without callback (should not crash)
-    auto requestId = manager.requestPath(entityId, start, goal, 3);
+    auto requestId = manager.requestPath(entityId, start, goal, PathfinderManager::Priority::Low);
     BOOST_CHECK(requestId > 0);
     
     // Process requests
@@ -258,10 +258,10 @@ BOOST_AUTO_TEST_CASE(TestNoInfiniteRetryLoop) {
     };
     
     // Request the same path multiple times within the cache window (1000ms)
-    manager.requestPath(entityId, start, goal, 1, callback);
-    manager.requestPath(entityId, start, goal, 1, callback); 
-    manager.requestPath(entityId, start, goal, 1, callback);
-    manager.requestPath(entityId, start, goal, 1, callback);
+    manager.requestPath(entityId, start, goal, PathfinderManager::Priority::High, callback);
+    manager.requestPath(entityId, start, goal, PathfinderManager::Priority::High, callback); 
+    manager.requestPath(entityId, start, goal, PathfinderManager::Priority::High, callback);
+    manager.requestPath(entityId, start, goal, PathfinderManager::Priority::High, callback);
     
     // Process requests
     for (int i = 0; i < 10; ++i) {
@@ -299,7 +299,7 @@ BOOST_AUTO_TEST_CASE(TestFailedRequestCaching) {
     std::atomic<int> secondCallbackCount{0};
     
     // First request
-    manager.requestPath(entityId, start, goal, 1,
+    manager.requestPath(entityId, start, goal, PathfinderManager::Priority::High,
         [&firstCallbackCount](EntityID, const std::vector<Vector2D>&) {
             firstCallbackCount.fetch_add(1, std::memory_order_relaxed);
         });
@@ -310,7 +310,7 @@ BOOST_AUTO_TEST_CASE(TestFailedRequestCaching) {
     manager.update();
     
     // Second identical request within cache window (should be rejected/cached)
-    manager.requestPath(entityId, start, goal, 1,
+    manager.requestPath(entityId, start, goal, PathfinderManager::Priority::High,
         [&secondCallbackCount](EntityID, const std::vector<Vector2D>&) {
             secondCallbackCount.fetch_add(1, std::memory_order_relaxed);
         });
@@ -399,10 +399,10 @@ BOOST_FIXTURE_TEST_CASE(TestPathfinderCacheInvalidationOnCollisionChange, Pathfi
     
     // Request some paths (they may fail due to no world, but will be cached)
     PathfinderManager::Instance().requestPath(1001, start1, goal1, 
-        1,
+        PathfinderManager::Priority::High,
         [](EntityID, const std::vector<Vector2D>&){ /* no-op */ });
     PathfinderManager::Instance().requestPath(1002, start2, goal2,
-        1,
+        PathfinderManager::Priority::High,
         [](EntityID, const std::vector<Vector2D>&){ /* no-op */ });
     
     // Let processing complete
@@ -425,7 +425,7 @@ BOOST_FIXTURE_TEST_CASE(TestPathfinderCacheInvalidationOnCollisionChange, Pathfi
     
     // Request the same paths again - they should be processed again if cache was invalidated
     PathfinderManager::Instance().requestPath(1003, start1, goal1,
-        1,
+        PathfinderManager::Priority::High,
         [this](EntityID, const std::vector<Vector2D>&){ 
             cacheInvalidationCount++; 
         });
