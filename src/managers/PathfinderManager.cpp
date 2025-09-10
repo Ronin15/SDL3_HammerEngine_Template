@@ -139,6 +139,66 @@ void PathfinderManager::clean() {
     PATHFIND_INFO("PathfinderManager cleaned up");
 }
 
+void PathfinderManager::prepareForStateTransition() {
+    PATHFIND_INFO("Preparing PathfinderManager for state transition...");
+    
+    if (!m_initialized.load() || m_isShutdown) {
+        PATHFIND_WARN("PathfinderManager not initialized or already shutdown during state transition");
+        return;
+    }
+
+    // Clear path cache completely for fresh state
+    {
+        std::lock_guard<std::mutex> cacheLock(m_cacheMutex);
+        size_t cacheSize = m_pathCache.size();
+        m_pathCache.clear();
+        if (cacheSize > 0) {
+            PATHFIND_DEBUG("Cleared " + std::to_string(cacheSize) + " cached paths");
+        }
+    }
+    
+    // Clear pending requests to avoid callbacks to old game state
+    {
+        std::lock_guard<std::mutex> lock(m_pendingMutex);
+        size_t pendingSize = m_pending.size();
+        m_pending.clear();
+        if (pendingSize > 0) {
+            PATHFIND_DEBUG("Cleared " + std::to_string(pendingSize) + " pending requests");
+        }
+    }
+    
+    // Reset statistics for clean slate
+    m_enqueuedRequests.store(0);
+    m_enqueueFailures.store(0);
+    m_completedRequests.store(0);
+    m_failedRequests.store(0);
+    m_cacheHits.store(0);
+    m_cacheMisses.store(0);
+    m_processedCount.store(0);
+    
+    // Reset frame counters
+    m_gridUpdateCounter = 0;
+    m_statsFrameCounter = 0;
+    
+    // Reset grid update tracking
+    m_timeSinceLastRebuild = 0.0f;
+    m_lastWorldVersion = 0;
+    m_lastCollisionVersion.store(0);
+    
+    // Keep grid instance but invalidate any cached data within it
+    // Grid will be rebuilt when needed by new state
+    if (m_grid) {
+        // Clear any temporary weight fields that might be state-specific
+        clearWeightFields();
+    }
+    
+    // Re-subscribe to events to ensure fresh event handlers for new state
+    unsubscribeFromEvents();
+    subscribeToEvents();
+    
+    PATHFIND_INFO("PathfinderManager state transition complete - cleared transient data, kept manager initialized");
+}
+
 void PathfinderManager::shutdown() {
     std::lock_guard<std::mutex> lock(s_instanceMutex);
     if (s_instance) {

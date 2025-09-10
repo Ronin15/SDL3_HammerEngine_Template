@@ -19,6 +19,7 @@
 #include "managers/EventManager.hpp"
 #include "managers/InputManager.hpp"
 #include "managers/ParticleManager.hpp"
+#include "managers/PathfinderManager.hpp"
 #include "managers/ResourceTemplateManager.hpp"
 #include "managers/UIManager.hpp"
 #include "managers/WorldManager.hpp"
@@ -236,6 +237,12 @@ bool EventDemoState::exit() {
     CollisionManager &collisionMgr = CollisionManager::Instance();
     if (collisionMgr.isInitialized() && !collisionMgr.isShutdown()) {
       collisionMgr.prepareForStateTransition();
+    }
+
+    // Clean pathfinding state for fresh start
+    PathfinderManager &pathfinderMgr = PathfinderManager::Instance();
+    if (pathfinderMgr.isInitialized() && !pathfinderMgr.isShutdown()) {
+      pathfinderMgr.prepareForStateTransition();
     }
 
     // Simple particle cleanup - let prepareForStateTransition handle everything

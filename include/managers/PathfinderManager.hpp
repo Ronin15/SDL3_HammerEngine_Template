@@ -86,6 +86,12 @@ public:
     void clean();
 
     /**
+     * @brief Prepares PathfinderManager for state transition
+     * Clears transient data while keeping the manager initialized
+     */
+    void prepareForStateTransition();
+
+    /**
      * @brief Shuts down the PathfinderManager
      */
     static void shutdown();
