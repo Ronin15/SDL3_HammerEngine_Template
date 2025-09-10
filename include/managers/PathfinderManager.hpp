@@ -22,6 +22,7 @@
 
 #include "utils/Vector2D.hpp"
 #include "entities/Entity.hpp"
+#include "managers/EventManager.hpp"
 #include <atomic>
 #include <chrono>
 #include <functional>
@@ -33,7 +34,6 @@ namespace HammerEngine {
     class PathfindingGrid;
     enum class PathfindingResult;
 }
-
 
 #include "../ai/internal/PathPriority.hpp"
 
@@ -330,12 +330,16 @@ private:
 
     // Grid update tracking
     uint64_t m_lastWorldVersion{0};
+    std::atomic<uint64_t> m_lastCollisionVersion{0};
     float m_timeSinceLastRebuild{0.0f};
     static constexpr float GRID_UPDATE_INTERVAL = 5.0f;  // seconds
     
     // Frame counters for reduced frequency operations (no static vars)
     int m_gridUpdateCounter{0};
     int m_statsFrameCounter{0};
+    
+    // Event subscription tracking
+    std::vector<EventManager::HandlerToken> m_eventHandlerTokens;
 
     // Internal methods - simplified
     void reportStatistics();
@@ -343,6 +347,9 @@ private:
     void checkForGridUpdates(float deltaTime);
     uint64_t computeCacheKey(const Vector2D& start, const Vector2D& goal) const;
     void evictOldestCacheEntry();
+    void subscribeToEvents(); // Subscribe to collision and world events
+    void unsubscribeFromEvents(); // Unsubscribe from events
+    void onCollisionObstacleChanged(const Vector2D& position, float radius, const std::string& description);
 };
 
 #endif // PATHFINDER_MANAGER_HPP

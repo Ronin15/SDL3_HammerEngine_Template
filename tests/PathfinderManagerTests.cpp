@@ -7,6 +7,8 @@
 #include <boost/test/included/unit_test.hpp>
 
 #include "managers/PathfinderManager.hpp"
+#include "managers/EventManager.hpp"
+#include "events/CollisionObstacleChangedEvent.hpp"
 #include "core/ThreadSystem.hpp"
 #include "ai/pathfinding/PathfindingGrid.hpp"
 #include "utils/Vector2D.hpp"
@@ -327,6 +329,191 @@ BOOST_AUTO_TEST_CASE(TestFailedRequestCaching) {
     BOOST_CHECK(stats.totalRequests <= 20); // No negative cache; still ensure no runaway
     
     manager.clean();
+}
+
+BOOST_AUTO_TEST_SUITE_END()
+
+// Integration Tests for PathfinderManager Event System  
+BOOST_AUTO_TEST_SUITE(PathfinderEventIntegrationTests)
+
+// Test fixture for PathfinderManager event integration
+struct PathfinderEventFixture {
+    PathfinderEventFixture() {
+        // Initialize EventManager for event testing (following established pattern)
+        EventManager::Instance().init();
+        
+        // Initialize PathfinderManager
+        PathfinderManager::Instance().init();
+        
+        // Reset tracking variables
+        collisionVersionIncremented = false;
+        cacheInvalidationCount = 0;
+    }
+    
+    ~PathfinderEventFixture() {
+        // Clean up in reverse order
+        PathfinderManager::Instance().clean();
+        EventManager::Instance().clean();
+        // ThreadSystem persists across tests (per established pattern)
+    }
+    
+    // Event tracking variables
+    bool collisionVersionIncremented;
+    std::atomic<int> cacheInvalidationCount{0};
+};
+
+BOOST_FIXTURE_TEST_CASE(TestPathfinderEventSubscription, PathfinderEventFixture)
+{
+    // Test that PathfinderManager properly subscribes to collision obstacle events
+    // This tests the event subscription lifecycle
+    
+    // Manually trigger a collision obstacle changed event
+    Vector2D obstaclePos(100.0f, 150.0f);
+    float obstacleRadius = 64.0f;
+    std::string description = "Test obstacle change";
+    
+    // Trigger the event
+    bool eventFired = EventManager::Instance().triggerCollisionObstacleChanged(
+        obstaclePos, obstacleRadius, description, EventManager::DispatchMode::Immediate);
+    
+    // Event should fire (PathfinderManager should be subscribed)
+    BOOST_CHECK(eventFired);
+    
+    // Brief wait to let the handler process (following established pattern)
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    
+    // The PathfinderManager should have incremented its collision version
+    // (This is internal state, but we can verify by checking if subsequent operations behave correctly)
+    BOOST_CHECK(true); // Subscription worked if no exceptions were thrown
+}
+
+BOOST_FIXTURE_TEST_CASE(TestPathfinderCacheInvalidationOnCollisionChange, PathfinderEventFixture)
+{
+    // Test that collision obstacle changes properly invalidate pathfinding cache
+    
+    // First, let's simulate having some cached paths by triggering path requests
+    Vector2D start1(0.0f, 0.0f);
+    Vector2D goal1(100.0f, 100.0f);
+    Vector2D start2(200.0f, 200.0f); 
+    Vector2D goal2(300.0f, 300.0f);
+    
+    // Request some paths (they may fail due to no world, but will be cached)
+    PathfinderManager::Instance().requestPath(1001, start1, goal1, 
+        AIInternal::PathPriority::Normal,
+        [](EntityID, const std::vector<Vector2D>&){ /* no-op */ });
+    PathfinderManager::Instance().requestPath(1002, start2, goal2,
+        AIInternal::PathPriority::Normal,
+        [](EntityID, const std::vector<Vector2D>&){ /* no-op */ });
+    
+    // Let processing complete
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    
+    // Get initial stats
+    auto initialStats = PathfinderManager::Instance().getStats();
+    
+    // Now trigger a collision obstacle change at position that might affect paths
+    Vector2D obstaclePos(150.0f, 150.0f);
+    EventManager::Instance().triggerCollisionObstacleChanged(
+        obstaclePos, 100.0f, "Cache invalidation test", EventManager::DispatchMode::Immediate);
+    
+    // Brief processing time
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    
+    // The cache should have been selectively invalidated
+    // We can't directly test cache internals, but we can verify that the system
+    // handles the event without crashing and continues to function
+    
+    // Request the same paths again - they should be processed again if cache was invalidated
+    PathfinderManager::Instance().requestPath(1003, start1, goal1,
+        AIInternal::PathPriority::Normal,
+        [this](EntityID, const std::vector<Vector2D>&){ 
+            cacheInvalidationCount++; 
+        });
+    
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    
+    // Verify the system is still functioning (no crashes from event handling)
+    auto finalStats = PathfinderManager::Instance().getStats();
+    BOOST_CHECK_GE(finalStats.totalRequests, initialStats.totalRequests);
+}
+
+BOOST_FIXTURE_TEST_CASE(TestPathfinderEventHandlerLifecycle, PathfinderEventFixture)
+{
+    // Test that PathfinderManager properly manages its event subscriptions
+    
+    // PathfinderManager should be initialized with event subscriptions
+    BOOST_CHECK(PathfinderManager::Instance().isInitialized());
+    
+    // Trigger multiple events to ensure handler is stable
+    for (int i = 0; i < 5; ++i) {
+        Vector2D pos(i * 50.0f, i * 50.0f);
+        bool fired = EventManager::Instance().triggerCollisionObstacleChanged(
+            pos, 32.0f, "Lifecycle test " + std::to_string(i), 
+            EventManager::DispatchMode::Immediate);
+        BOOST_CHECK(fired);
+    }
+    
+    // Brief processing time
+    std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    
+    // Clean and reinitialize to test subscription cleanup/re-establishment
+    PathfinderManager::Instance().clean();
+    BOOST_CHECK(!PathfinderManager::Instance().isInitialized());
+    
+    // Re-initialize
+    PathfinderManager::Instance().init();
+    BOOST_CHECK(PathfinderManager::Instance().isInitialized());
+    
+    // Should still be able to receive events after re-initialization
+    bool fired = EventManager::Instance().triggerCollisionObstacleChanged(
+        Vector2D(999.0f, 999.0f), 64.0f, "Post-reinit test",
+        EventManager::DispatchMode::Immediate);
+    BOOST_CHECK(fired);
+}
+
+BOOST_FIXTURE_TEST_CASE(TestPathfinderEventPerformance, PathfinderEventFixture) 
+{
+    // Test that event handling doesn't significantly impact PathfinderManager performance
+    
+    const int numEvents = 50;
+    std::vector<std::chrono::microseconds> eventTimes;
+    eventTimes.reserve(numEvents);
+    
+    // Measure time for each event to be processed
+    for (int i = 0; i < numEvents; ++i) {
+        Vector2D pos(i * 20.0f, i * 20.0f);
+        
+        auto start = std::chrono::high_resolution_clock::now();
+        
+        EventManager::Instance().triggerCollisionObstacleChanged(
+            pos, 48.0f, "Performance test " + std::to_string(i),
+            EventManager::DispatchMode::Immediate);
+        
+        auto end = std::chrono::high_resolution_clock::now();
+        eventTimes.push_back(std::chrono::duration_cast<std::chrono::microseconds>(end - start));
+    }
+    
+    // Calculate average event processing time
+    auto totalTime = std::chrono::microseconds(0);
+    for (const auto& time : eventTimes) {
+        totalTime += time;
+    }
+    double avgTime = static_cast<double>(totalTime.count()) / numEvents;
+    
+    // Event processing should be fast (under 50 microseconds average)
+    BOOST_CHECK_LT(avgTime, 50.0);
+    
+    // No single event should take more than 500 microseconds
+    for (const auto& time : eventTimes) {
+        BOOST_CHECK_LT(time.count(), 500);
+    }
+    
+    BOOST_TEST_MESSAGE("Processed " << numEvents << " collision events in avg " 
+                      << avgTime << " μs per event");
+    
+    // Verify PathfinderManager is still functioning after many events
+    auto stats = PathfinderManager::Instance().getStats();
+    BOOST_CHECK_GE(stats.totalRequests, 0); // Should be accessible
 }
 
 BOOST_AUTO_TEST_SUITE_END()

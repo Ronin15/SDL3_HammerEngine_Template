@@ -18,6 +18,7 @@
 #include "events/CameraEvent.hpp"
 #include "events/CollisionEvent.hpp"
 #include "events/WorldTriggerEvent.hpp"
+#include "events/CollisionObstacleChangedEvent.hpp"
 
 #include <algorithm>
 #include <chrono>
@@ -1311,6 +1312,64 @@ bool EventManager::triggerWorldTrigger(const WorldTriggerEvent &event,
   }
 
   enqueueDispatch(EventTypeId::WorldTrigger, eventData);
+  return true;
+}
+
+bool EventManager::triggerCollisionObstacleChanged(const Vector2D& position, 
+                                                  float radius,
+                                                  const std::string& description,
+                                                  DispatchMode mode) const {
+  size_t handlerCount = 0;
+  {
+    std::lock_guard<std::mutex> lock(m_handlersMutex);
+    handlerCount = m_handlersByType[static_cast<size_t>(EventTypeId::CollisionObstacleChanged)].size();
+  }
+  if (handlerCount == 0) { return false; }
+
+  EventData eventData;
+  eventData.typeId = EventTypeId::CollisionObstacleChanged;
+  eventData.setActive(true);
+  // Create a copy to avoid reference issues with make_shared
+  Vector2D posCopy = position;
+  float radiusCopy = radius;
+  std::string descCopy = description;
+  eventData.event = std::make_shared<CollisionObstacleChangedEvent>(
+    CollisionObstacleChangedEvent::ChangeType::MODIFIED, posCopy, radiusCopy, descCopy);
+  eventData.name = "collision_obstacle_changed";
+
+  if (mode == DispatchMode::Immediate) {
+    std::vector<FastEventHandler> localHandlers;
+    {
+      std::lock_guard<std::mutex> lock(m_handlersMutex);
+      const auto &handlers = m_handlersByType[static_cast<size_t>(EventTypeId::CollisionObstacleChanged)];
+      localHandlers.reserve(handlers.size());
+      std::copy_if(handlers.begin(), handlers.end(), std::back_inserter(localHandlers), 
+                   [](const auto& h){ return static_cast<bool>(h); });
+    }
+    for (const auto &handler : localHandlers) {
+      try { handler(eventData); }
+      catch (const std::exception &e) { 
+        EVENT_ERROR(std::string("Handler exception in triggerCollisionObstacleChanged: ") + e.what()); 
+      }
+      catch (...) { 
+        EVENT_ERROR("Unknown handler exception in triggerCollisionObstacleChanged"); 
+      }
+    }
+    // Per-name handlers
+    std::vector<FastEventHandler> nameHandlers;
+    {
+      std::lock_guard<std::mutex> lock(m_handlersMutex);
+      auto it = m_nameHandlers.find(eventData.name);
+      if (it != m_nameHandlers.end()) {
+        std::copy_if(it->second.begin(), it->second.end(), std::back_inserter(nameHandlers), 
+                     [](const auto& h){ return static_cast<bool>(h); });
+      }
+    }
+    for (const auto &h : nameHandlers) { try { h(eventData);} catch(...){} }
+    return !localHandlers.empty();
+  }
+
+  enqueueDispatch(EventTypeId::CollisionObstacleChanged, eventData);
   return true;
 }
 
