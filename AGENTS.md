@@ -174,6 +174,12 @@ Use provided macros for consistent logging:
 - `GAMEENGINE_WARN(message)`  
 - `GAMEENGINE_INFO(message)`
 
+### Strings & Text Handling
+- Prefer `std::string_view` for input-only string parameters in C++ APIs to avoid copies.
+- Use `std::string` when taking ownership or returning strings. Do not return `std::string_view` to temporaries or short-lived buffers.
+- Avoid raw `char*`/`const char*` in C++ interfaces. Only use C strings at strict C/SDL/OS boundaries; convert at the boundary via `.c_str()` or safe adapter utilities.
+- Never persist `std::string_view` beyond the lifetime of the referenced data. If persistence is needed, copy into a `std::string`.
+
 ### Header/Implementation Guidelines
 - **Headers**: Minimal, stable interface with forward declarations
 - **Implementation**: All non-trivial logic goes in .cpp files
