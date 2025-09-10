@@ -127,9 +127,6 @@ private:
     std::unordered_map<EntityID, std::chrono::steady_clock::time_point> m_triggerCooldownUntil;
     float m_defaultTriggerCooldownSec{0.0f};
     
-    // Optimization tracking
-    mutable uint32_t m_frameCounter{0};
-    
     // Object pools for collision processing
     struct CollisionPool {
         std::vector<std::pair<EntityID, EntityID>> pairBuffer;

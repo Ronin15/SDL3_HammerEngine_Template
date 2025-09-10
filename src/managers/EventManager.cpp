@@ -401,6 +401,9 @@ EventManager::getEventsByType(const std::string &typeName) const {
       {"World", EventTypeId::World},
       {"Camera", EventTypeId::Camera},
       {"Harvest", EventTypeId::Harvest},
+      {"Collision", EventTypeId::Collision},
+      {"WorldTrigger", EventTypeId::WorldTrigger},
+      {"CollisionObstacleChanged", EventTypeId::CollisionObstacleChanged},
       {"Custom", EventTypeId::Custom},
   };
   auto it = kMap.find(typeName);
@@ -1721,6 +1724,12 @@ std::string EventManager::getEventTypeName(EventTypeId typeId) const {
     return "Camera";
   case EventTypeId::Harvest:
     return "Harvest";
+  case EventTypeId::Collision:
+    return "Collision";
+  case EventTypeId::WorldTrigger:
+    return "WorldTrigger";
+  case EventTypeId::CollisionObstacleChanged:
+    return "CollisionObstacleChanged";
   case EventTypeId::Custom:
     return "Custom";
   default:

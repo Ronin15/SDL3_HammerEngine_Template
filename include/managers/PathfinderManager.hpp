@@ -28,6 +28,9 @@
 #include <functional>
 #include <memory>
 #include <vector>
+#include <unordered_map>
+#include <mutex>
+#include <cmath>
 
 // Forward declarations
 namespace HammerEngine {
@@ -35,10 +38,13 @@ namespace HammerEngine {
     enum class PathfindingResult;
 }
 
-#include "../ai/internal/PathPriority.hpp"
+// Do not include internal AI headers here; keep public API stable and minimal.
 
 class CollisionManager;
 class WorldManager;
+
+// Forward declaration to avoid exposing internal headers in public API
+namespace AIInternal { enum class PathPriority : int; }
 
 /**
  * @brief Centralized pathfinding manager following singleton pattern
@@ -106,7 +112,16 @@ public:
         EntityID entityId,
         const Vector2D& start,
         const Vector2D& goal,
-        AIInternal::PathPriority priority = AIInternal::PathPriority::Normal,
+        int priority = 1,
+        std::function<void(EntityID, const std::vector<Vector2D>&)> callback = nullptr
+    );
+
+    // Backward-compatible overload for existing call sites using enum class
+    uint64_t requestPath(
+        EntityID entityId,
+        const Vector2D& start,
+        const Vector2D& goal,
+        AIInternal::PathPriority priority,
         std::function<void(EntityID, const std::vector<Vector2D>&)> callback = nullptr
     );
 

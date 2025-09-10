@@ -32,6 +32,8 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
+#include <limits>
+#include <algorithm>
 
 // Forward declarations
 class Event;
