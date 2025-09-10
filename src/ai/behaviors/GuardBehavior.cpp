@@ -724,8 +724,8 @@ void GuardBehavior::moveToPosition(EntityPtr entity, const Vector2D &targetPos,
   // Respect backoff to avoid spamming requests
   if (needsNewPath && now >= state.backoffUntil) {
     // PATHFINDING CONSOLIDATION: All requests now use PathfinderManager
-    AIInternal::PathPriority priority = (state.currentAlertLevel >= AlertLevel::INVESTIGATING) ? 
-        AIInternal::PathPriority::High : AIInternal::PathPriority::Normal;
+    auto priority = (state.currentAlertLevel >= AlertLevel::INVESTIGATING) ?
+        PathfinderManager::Priority::High : PathfinderManager::Priority::Normal;
 
     Vector2D clampedStart = pathfinder().clampToWorldBounds(currentPos, 100.0f);
     Vector2D clampedGoal  = pathfinder().clampToWorldBounds(targetPos, 100.0f);

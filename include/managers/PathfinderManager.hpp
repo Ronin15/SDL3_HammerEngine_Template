@@ -43,14 +43,20 @@ namespace HammerEngine {
 class CollisionManager;
 class WorldManager;
 
-// Forward declaration to avoid exposing internal headers in public API
-namespace AIInternal { enum class PathPriority : int; }
+// Int-based priority keeps public API independent of internal enums
 
 /**
  * @brief Centralized pathfinding manager following singleton pattern
  */
 class PathfinderManager {
 public:
+    // Public request priority (stable API)
+    enum class Priority : int {
+        Critical = 0,
+        High     = 1,
+        Normal   = 2,
+        Low      = 3
+    };
     /**
      * @brief Gets the singleton instance of PathfinderManager
      * @return Reference to the PathfinderManager instance
@@ -112,18 +118,11 @@ public:
         EntityID entityId,
         const Vector2D& start,
         const Vector2D& goal,
-        int priority = 1,
+        Priority priority = Priority::High,
         std::function<void(EntityID, const std::vector<Vector2D>&)> callback = nullptr
     );
 
-    // Backward-compatible overload for existing call sites using enum class
-    uint64_t requestPath(
-        EntityID entityId,
-        const Vector2D& start,
-        const Vector2D& goal,
-        AIInternal::PathPriority priority,
-        std::function<void(EntityID, const std::vector<Vector2D>&)> callback = nullptr
-    );
+    
 
     /**
      * @brief Get a path synchronously (blocking)

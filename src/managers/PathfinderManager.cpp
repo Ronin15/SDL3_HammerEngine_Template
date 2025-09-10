@@ -8,7 +8,6 @@
 #include "managers/WorldManager.hpp"
 #include "managers/EventManager.hpp" // Must include for HandlerToken definition
 #include "events/CollisionObstacleChangedEvent.hpp"
-#include "ai/internal/PathPriority.hpp"
 #include <string_view>
 #include "core/Logger.hpp"
 #include "core/ThreadSystem.hpp"
@@ -36,31 +35,24 @@ PathfinderManager::~PathfinderManager() {
 
 // Internal priority mapping helpers (implementation-only)
 namespace {
-    inline AIInternal::PathPriority mapPriorityIntToEnum(int p) {
-        if (p <= 0) return AIInternal::PathPriority::Critical;
-        if (p == 1) return AIInternal::PathPriority::High;
-        if (p == 2) return AIInternal::PathPriority::Normal;
-        return AIInternal::PathPriority::Low; // p >= 3
-    }
-
-    inline HammerEngine::TaskPriority mapEnumToTaskPriority(AIInternal::PathPriority p) {
+    inline HammerEngine::TaskPriority mapEnumToTaskPriority(PathfinderManager::Priority p) {
         switch (p) {
-            case AIInternal::PathPriority::Critical: return HammerEngine::TaskPriority::Critical;
-            case AIInternal::PathPriority::High:     return HammerEngine::TaskPriority::High;
-            case AIInternal::PathPriority::Normal:   return HammerEngine::TaskPriority::Normal;
-            case AIInternal::PathPriority::Low:      return HammerEngine::TaskPriority::Low;
-            default:                                 return HammerEngine::TaskPriority::Normal;
+            case PathfinderManager::Priority::Critical: return HammerEngine::TaskPriority::Critical;
+            case PathfinderManager::Priority::High:     return HammerEngine::TaskPriority::High;
+            case PathfinderManager::Priority::Normal:   return HammerEngine::TaskPriority::Normal;
+            case PathfinderManager::Priority::Low:      return HammerEngine::TaskPriority::Low;
+            default:                                    return HammerEngine::TaskPriority::Normal;
         }
     }
 
-    inline std::string_view priorityLabel(AIInternal::PathPriority p) {
+    inline std::string_view priorityLabel(PathfinderManager::Priority p) {
         using namespace std::literals;
         switch (p) {
-            case AIInternal::PathPriority::Critical: return "Critical"sv;
-            case AIInternal::PathPriority::High:     return "High"sv;
-            case AIInternal::PathPriority::Normal:   return "Normal"sv;
-            case AIInternal::PathPriority::Low:      return "Low"sv;
-            default:                                 return "Normal"sv;
+            case PathfinderManager::Priority::Critical: return "Critical"sv;
+            case PathfinderManager::Priority::High:     return "High"sv;
+            case PathfinderManager::Priority::Normal:   return "Normal"sv;
+            case PathfinderManager::Priority::Low:      return "Low"sv;
+            default:                                    return "Normal"sv;
         }
     }
 }
@@ -164,7 +156,7 @@ uint64_t PathfinderManager::requestPath(
     EntityID entityId,
     const Vector2D& start,
     const Vector2D& goal,
-    int priority,
+    Priority priority,
     std::function<void(EntityID, const std::vector<Vector2D>&)> callback
 ) {
     if (!m_initialized.load() || m_isShutdown) {
@@ -266,9 +258,8 @@ uint64_t PathfinderManager::requestPath(
     };
 
     // Submit pathfinding work to ThreadSystem with mapped priority
-    const AIInternal::PathPriority priEnum = mapPriorityIntToEnum(priority);
-    const auto taskPri = mapEnumToTaskPriority(priEnum);
-    const auto priLabel = priorityLabel(priEnum);
+    const auto taskPri = mapEnumToTaskPriority(priority);
+    const auto priLabel = priorityLabel(priority);
     std::string taskDesc;
     taskDesc.reserve(24 + priLabel.size());
     taskDesc = "PathfindingComputation/";
@@ -282,16 +273,7 @@ uint64_t PathfinderManager::requestPath(
     return requestId;
 }
 
-// Backward-compatible overload (enum class → int mapping)
-uint64_t PathfinderManager::requestPath(
-    EntityID entityId,
-    const Vector2D& start,
-    const Vector2D& goal,
-    AIInternal::PathPriority priority,
-    std::function<void(EntityID, const std::vector<Vector2D>&)> callback
-) {
-    return requestPath(entityId, start, goal, static_cast<int>(priority), std::move(callback));
-}
+// (Backward-compat overload removed to keep public API minimal during development)
 
 HammerEngine::PathfindingResult PathfinderManager::findPathImmediate(
     const Vector2D& start,

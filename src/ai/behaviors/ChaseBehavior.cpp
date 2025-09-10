@@ -131,7 +131,7 @@ void ChaseBehavior::executeLogic(EntityPtr entity) {
         // ASYNC PATHFINDING: Use high-performance background processing for chasing
         auto& pf = this->pathfinder();
         pf.requestPath(entity->getID(), entityPos, goalPosition, 
-                              AIInternal::PathPriority::High,
+                              PathfinderManager::Priority::High,
                               [this](EntityID, const std::vector<Vector2D>& path) {
                                 // Update path when received (may be from background thread)
                                 m_navPath = path;

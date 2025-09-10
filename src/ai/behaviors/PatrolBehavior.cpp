@@ -145,7 +145,7 @@ void PatrolBehavior::executeLogic(EntityPtr entity) {
     
     pathfinder().requestPath(
         entity->getID(), clampedStart, clampedGoal,
-        AIInternal::PathPriority::Normal,
+        PathfinderManager::Priority::Normal,
         [this, entity](EntityID, const std::vector<Vector2D>& path) {
           if (!path.empty()) {
             m_navPath = path;
@@ -204,7 +204,7 @@ void PatrolBehavior::executeLogic(EntityPtr entity) {
               position + perp * (96.0f * side), 100.0f);
           pathfinder().requestPath(
               entity->getID(), pathfinder().clampToWorldBounds(position, 100.0f), sidestep,
-              AIInternal::PathPriority::Normal,
+              PathfinderManager::Priority::Normal,
               [this](EntityID, const std::vector<Vector2D> &path) {
                 if (!path.empty()) {
                   m_navPath = path;

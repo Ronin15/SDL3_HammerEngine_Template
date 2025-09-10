@@ -219,7 +219,7 @@ void WanderBehavior::executeLogic(EntityPtr entity) {
         // ASYNC PATHFINDING: Use background processing for wandering behavior
         pathfinder().requestPath(
             entity->getID(), entity->getPosition(), dest,
-            AIInternal::PathPriority::Normal,
+            PathfinderManager::Priority::Normal,
             [this, entity](EntityID, const std::vector<Vector2D>& path) {
               auto stateIt = m_entityStates.find(entity);
               if (stateIt != m_entityStates.end() && !path.empty()) {
