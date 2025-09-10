@@ -11,11 +11,16 @@
 #include "collisions/SpatialHash.hpp"
 #include "collisions/CollisionInfo.hpp"
 #include "collisions/CollisionBody.hpp"
+#include "managers/CollisionManager.hpp"
+#include "managers/EventManager.hpp"
+#include "events/CollisionObstacleChangedEvent.hpp"
+#include "core/ThreadSystem.hpp"
 #include "utils/Vector2D.hpp"
 #include <vector>
 #include <chrono>
 #include <random>
 #include <unordered_set>
+#include <atomic>
 
 using namespace HammerEngine;
 
@@ -434,6 +439,200 @@ BOOST_AUTO_TEST_CASE(TestBoundaryConditions)
     bool foundInSecond = std::find(results2.begin(), results2.end(), id2) != results2.end();
     
     BOOST_CHECK(foundInFirst || foundInSecond); // Should be found in at least one
+}
+
+BOOST_AUTO_TEST_SUITE_END()
+
+// Integration Tests for CollisionManager Event System
+BOOST_AUTO_TEST_SUITE(CollisionIntegrationTests)
+
+// Test fixture for manager integration tests
+struct CollisionIntegrationFixture {
+    CollisionIntegrationFixture() {
+        // Initialize ThreadSystem first (following established pattern)
+        if (!HammerEngine::ThreadSystem::Exists()) {
+            HammerEngine::ThreadSystem::Instance().init(4);
+        }
+        
+        // Initialize EventManager for event testing
+        EventManager::Instance().init();
+        
+        // Initialize CollisionManager
+        CollisionManager::Instance().init();
+        
+        eventCount = 0;
+        lastEventPosition = Vector2D(0, 0);
+        lastEventRadius = 0.0f;
+        lastEventDescription = "";
+    }
+    
+    ~CollisionIntegrationFixture() {
+        // Clean up in reverse order (following established pattern)
+        CollisionManager::Instance().clean();
+        EventManager::Instance().clean();
+        // Note: Don't clean ThreadSystem as it's shared across tests
+    }
+    
+    // Event tracking variables
+    std::atomic<int> eventCount{0};
+    Vector2D lastEventPosition;
+    float lastEventRadius;
+    std::string lastEventDescription;
+};
+
+BOOST_FIXTURE_TEST_CASE(TestCollisionManagerEventNotification, CollisionIntegrationFixture)
+{
+    // Subscribe to collision obstacle changed events
+    auto token = EventManager::Instance().registerHandlerWithToken(
+        EventTypeId::CollisionObstacleChanged,
+        [this](const EventData& data) {
+            if (data.isActive() && data.event) {
+                auto obstacleEvent = std::dynamic_pointer_cast<CollisionObstacleChangedEvent>(data.event);
+                if (obstacleEvent) {
+                    eventCount++;
+                    lastEventPosition = obstacleEvent->getPosition();
+                    lastEventRadius = obstacleEvent->getRadius();
+                    lastEventDescription = obstacleEvent->getDescription();
+                }
+            }
+        });
+    
+    // Test 1: Adding a static body should trigger an event
+    EntityID staticId = 1000;
+    Vector2D staticPos(100.0f, 200.0f);
+    AABB staticAABB(staticPos.getX(), staticPos.getY(), 32.0f, 32.0f);
+    
+    CollisionManager::Instance().addBody(staticId, staticAABB, BodyType::STATIC);
+    
+    // Events are fired in deferred mode by CollisionManager, 
+    // but for testing we don't need to explicitly dispatch them
+    // since they're processed immediately in our event handler
+    std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    
+    // Should have received 1 event for the static body
+    BOOST_CHECK_EQUAL(eventCount.load(), 1);
+    BOOST_CHECK_CLOSE(lastEventPosition.getX(), staticPos.getX(), 0.01f);
+    BOOST_CHECK_CLOSE(lastEventPosition.getY(), staticPos.getY(), 0.01f);
+    BOOST_CHECK_GT(lastEventRadius, 32.0f); // Should be radius + safety margin
+    BOOST_CHECK(lastEventDescription.find("Static obstacle added") != std::string::npos);
+    
+    // Test 2: Adding a kinematic body should NOT trigger an event
+    EntityID kinematicId = 1001;
+    AABB kinematicAABB(150.0f, 250.0f, 16.0f, 16.0f);
+    int previousEventCount = eventCount.load();
+    
+    CollisionManager::Instance().addBody(kinematicId, kinematicAABB, BodyType::KINEMATIC);
+    std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    
+    // Event count should not have changed
+    BOOST_CHECK_EQUAL(eventCount.load(), previousEventCount);
+    
+    // Test 3: Removing a static body should trigger an event
+    CollisionManager::Instance().removeBody(staticId);
+    std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    
+    // Should have received another event for removal
+    BOOST_CHECK_EQUAL(eventCount.load(), 2);
+    BOOST_CHECK(lastEventDescription.find("Static obstacle removed") != std::string::npos);
+    
+    // Clean up
+    EventManager::Instance().removeHandler(token);
+}
+
+BOOST_FIXTURE_TEST_CASE(TestCollisionEventRadiusCalculation, CollisionIntegrationFixture)
+{
+    // Subscribe to events
+    auto token = EventManager::Instance().registerHandlerWithToken(
+        EventTypeId::CollisionObstacleChanged,
+        [this](const EventData& data) {
+            if (data.isActive() && data.event) {
+                auto obstacleEvent = std::dynamic_pointer_cast<CollisionObstacleChangedEvent>(data.event);
+                if (obstacleEvent) {
+                    eventCount++;
+                    lastEventRadius = obstacleEvent->getRadius();
+                }
+            }
+        });
+    
+    // Test different sized obstacles produce appropriate radii
+    EntityID smallId = 2000;
+    EntityID largeId = 2001;
+    
+    // Small obstacle: 10x10
+    AABB smallAABB(0.0f, 0.0f, 5.0f, 5.0f);
+    CollisionManager::Instance().addBody(smallId, smallAABB, BodyType::STATIC);
+    std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    
+    float smallRadius = lastEventRadius;
+    BOOST_CHECK_GT(smallRadius, 5.0f); // Should be larger than half-size
+    BOOST_CHECK_LT(smallRadius, 50.0f); // But reasonable
+    
+    // Large obstacle: 100x100  
+    AABB largeAABB(200.0f, 200.0f, 50.0f, 50.0f);
+    CollisionManager::Instance().addBody(largeId, largeAABB, BodyType::STATIC);
+    std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    
+    float largeRadius = lastEventRadius;
+    BOOST_CHECK_GT(largeRadius, smallRadius); // Large should have larger radius
+    BOOST_CHECK_GT(largeRadius, 50.0f); // Should be larger than half-size + margin
+    
+    // Clean up
+    CollisionManager::Instance().removeBody(smallId);
+    CollisionManager::Instance().removeBody(largeId);
+    EventManager::Instance().removeHandler(token);
+}
+
+BOOST_FIXTURE_TEST_CASE(TestCollisionEventPerformanceImpact, CollisionIntegrationFixture)
+{
+    // Test that event firing doesn't significantly impact collision performance
+    std::atomic<int> eventCount{0};
+    
+    // Subscribe to events but don't do heavy work
+    auto token = EventManager::Instance().registerHandlerWithToken(
+        EventTypeId::CollisionObstacleChanged,
+        [&eventCount](const EventData& data) {
+            if (data.isActive() && data.event) {
+                eventCount++;
+            }
+        });
+    
+    const int numBodies = 100;
+    std::vector<EntityID> bodies;
+    
+    // Measure time to add many static bodies (which trigger events)
+    auto start = std::chrono::high_resolution_clock::now();
+    
+    for (int i = 0; i < numBodies; ++i) {
+        EntityID id = 3000 + i;
+        AABB aabb(i * 10.0f, i * 10.0f, 16.0f, 16.0f);
+        CollisionManager::Instance().addBody(id, aabb, BodyType::STATIC);
+        bodies.push_back(id);
+    }
+    
+    // Allow events to be processed
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    
+    auto end = std::chrono::high_resolution_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
+    
+    // Should have fired events for all static bodies
+    BOOST_CHECK_EQUAL(eventCount.load(), numBodies);
+    
+    // Performance check: shouldn't take more than 15ms total (generous for test environment)
+    BOOST_CHECK_LT(duration.count(), 15000); // 15ms = 15,000 microseconds
+    
+    // Average time per body should be reasonable  
+    double avgTimePerBody = static_cast<double>(duration.count()) / numBodies;
+    BOOST_CHECK_LT(avgTimePerBody, 150.0); // 150 microseconds per body max
+    
+    BOOST_TEST_MESSAGE("Added " << numBodies << " static bodies with events in " 
+                      << duration.count() << " μs (" << avgTimePerBody << " μs/body)");
+    
+    // Clean up
+    for (EntityID id : bodies) {
+        CollisionManager::Instance().removeBody(id);
+    }
+    EventManager::Instance().removeHandler(token);
 }
 
 BOOST_AUTO_TEST_SUITE_END()

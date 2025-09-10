@@ -7,6 +7,8 @@
 #include "ai/pathfinding/PathfindingGrid.hpp"
 #include "../ai/internal/SpatialPriority.hpp" // for AIInternal::PathPriority enum
 #include "managers/WorldManager.hpp"
+#include "managers/EventManager.hpp" // Must include for HandlerToken definition
+#include "events/CollisionObstacleChangedEvent.hpp"
 #include "core/Logger.hpp"
 #include "core/ThreadSystem.hpp"
 #include <chrono>
@@ -49,6 +51,9 @@ bool PathfinderManager::init() {
         PATHFIND_INFO("PathfinderManager initialized successfully");
 
         // ThreadSystem initialization is managed by the application/tests
+        
+        // Subscribe to collision obstacle change events for cache invalidation
+        subscribeToEvents();
 
         m_initialized.store(true);
         PATHFIND_INFO("PathfinderManager initialized successfully with clean architecture");
@@ -91,6 +96,9 @@ void PathfinderManager::clean() {
     }
 
     PATHFIND_INFO("Cleaning up PathfinderManager");
+    
+    // Unsubscribe from events
+    unsubscribeFromEvents();
 
     // Clear cache (shutdown - can clear all at once since frame timing doesn't matter)
     {
@@ -812,4 +820,88 @@ void PathfinderManager::evictOldestCacheEntry() {
     m_pathCache.erase(oldest);
 }
 
-// End of file - optimized single-tier cache implementation
+void PathfinderManager::subscribeToEvents() {
+    if (!EventManager::Instance().isInitialized()) {
+        PATHFIND_WARN("EventManager not initialized, delaying event subscription");
+        return;
+    }
+    
+    try {
+        auto& eventMgr = EventManager::Instance();
+        
+        // Subscribe to collision obstacle changed events
+        auto token = eventMgr.registerHandlerWithToken(EventTypeId::CollisionObstacleChanged, 
+            [this](const EventData& data) {
+                if (data.isActive() && data.event) {
+                    auto obstacleEvent = std::dynamic_pointer_cast<CollisionObstacleChangedEvent>(data.event);
+                    if (obstacleEvent) {
+                        onCollisionObstacleChanged(obstacleEvent->getPosition(), 
+                                                  obstacleEvent->getRadius(),
+                                                  obstacleEvent->getDescription());
+                    }
+                }
+            });
+        
+        m_eventHandlerTokens.push_back(token);
+        PATHFIND_DEBUG("PathfinderManager subscribed to CollisionObstacleChanged events");
+        
+    } catch (const std::exception& e) {
+        PATHFIND_ERROR("Failed to subscribe to events: " + std::string(e.what()));
+    }
+}
+
+void PathfinderManager::unsubscribeFromEvents() {
+    if (!EventManager::Instance().isInitialized()) {
+        return;
+    }
+    
+    try {
+        auto& eventMgr = EventManager::Instance();
+        for (const auto& token : m_eventHandlerTokens) {
+            eventMgr.removeHandler(token);
+        }
+        m_eventHandlerTokens.clear();
+        PATHFIND_DEBUG("PathfinderManager unsubscribed from all events");
+        
+    } catch (const std::exception& e) {
+        PATHFIND_ERROR("Failed to unsubscribe from events: " + std::string(e.what()));
+    }
+}
+
+void PathfinderManager::onCollisionObstacleChanged(const Vector2D& position, float radius, const std::string& description) {
+    // Increment collision version to trigger cache invalidation
+    m_lastCollisionVersion.fetch_add(1, std::memory_order_release);
+    
+    // Selective cache invalidation: remove paths that pass through the affected area
+    {
+        std::lock_guard<std::mutex> cacheLock(m_cacheMutex);
+        
+        size_t removedCount = 0;
+        for (auto it = m_pathCache.begin(); it != m_pathCache.end(); ) {
+            bool pathIntersectsArea = false;
+            
+            // Check if any point in the cached path is within the affected radius
+            for (const auto& pathPoint : it->second.path) {
+                float distance2 = (pathPoint - position).dot(pathPoint - position);
+                if (distance2 <= (radius * radius)) {
+                    pathIntersectsArea = true;
+                    break;
+                }
+            }
+            
+            if (pathIntersectsArea) {
+                it = m_pathCache.erase(it);
+                removedCount++;
+            } else {
+                ++it;
+            }
+        }
+        
+        if (removedCount > 0) {
+            PATHFIND_DEBUG("Invalidated " + std::to_string(removedCount) + 
+                          " cached paths due to obstacle change: " + description);
+        }
+    }
+}
+
+// End of file - optimized single-tier cache implementation with collision integration

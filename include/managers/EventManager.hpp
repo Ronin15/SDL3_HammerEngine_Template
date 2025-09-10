@@ -45,6 +45,7 @@ class CameraEvent;
 class CollisionEvent;
 class WorldTriggerEvent;
 class HarvestResourceEvent;
+class CollisionObstacleChangedEvent;
 class EventFactory;
 class Entity;
 
@@ -493,6 +494,12 @@ public:
   // World trigger convenience method (OnEnter style usage by CollisionManager)
   bool triggerWorldTrigger(const WorldTriggerEvent &event,
                            DispatchMode mode = DispatchMode::Deferred) const;
+
+  // Collision obstacle change notification for PathfinderManager
+  bool triggerCollisionObstacleChanged(const Vector2D& position, 
+                                      float radius = 64.0f,
+                                      const std::string& description = "",
+                                      DispatchMode mode = DispatchMode::Deferred) const;
 
   // Performance monitoring
   PerformanceStats getPerformanceStats(EventTypeId typeId) const;

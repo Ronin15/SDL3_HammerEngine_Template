@@ -112,6 +112,15 @@ void CollisionManager::addBody(EntityID id, const AABB& aabb, BodyType type) {
     // Invalidate static cache if adding a static body
     if (type == BodyType::STATIC) {
         invalidateStaticCache();
+        
+        // Notify PathfinderManager of static obstacle changes
+        // Use immediate mode for reliable event delivery
+        EventManager::Instance().triggerCollisionObstacleChanged(
+            aabb.center, 
+            std::max(aabb.halfSize.getX(), aabb.halfSize.getY()) + 32.0f,
+            "Static obstacle added (ID: " + std::to_string(id) + ")",
+            EventManager::DispatchMode::Immediate
+        );
     }
     
     if (type == BodyType::KINEMATIC) {
@@ -148,9 +157,13 @@ void CollisionManager::attachEntity(EntityID id, EntityPtr entity) {
 void CollisionManager::removeBody(EntityID id) {
     // Check if this was a static body before removing it
     bool wasStatic = false;
+    Vector2D bodyCenter;
+    float bodyRadius = 32.0f;
     auto it = m_bodies.find(id);
     if (it != m_bodies.end() && it->second->type == BodyType::STATIC) {
         wasStatic = true;
+        bodyCenter = it->second->aabb.center;
+        bodyRadius = std::max(it->second->aabb.halfSize.getX(), it->second->aabb.halfSize.getY()) + 32.0f;
     }
     
     m_bodies.erase(id);
@@ -159,6 +172,15 @@ void CollisionManager::removeBody(EntityID id) {
     // Invalidate static cache if removing a static body
     if (wasStatic) {
         invalidateStaticCache();
+        
+        // Notify PathfinderManager of static obstacle removal
+        // Use immediate mode for reliable event delivery
+        EventManager::Instance().triggerCollisionObstacleChanged(
+            bodyCenter, 
+            bodyRadius,
+            "Static obstacle removed (ID: " + std::to_string(id) + ")",
+            EventManager::DispatchMode::Immediate
+        );
     }
     
     if (m_verboseLogs) { COLLISION_DEBUG("removeBody id=" + std::to_string(id)); }
