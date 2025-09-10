@@ -5,10 +5,11 @@
 
 #include "managers/PathfinderManager.hpp"
 #include "ai/pathfinding/PathfindingGrid.hpp"
-#include "../ai/internal/SpatialPriority.hpp" // for AIInternal::PathPriority enum
 #include "managers/WorldManager.hpp"
 #include "managers/EventManager.hpp" // Must include for HandlerToken definition
 #include "events/CollisionObstacleChangedEvent.hpp"
+#include "ai/internal/PathPriority.hpp"
+#include <string_view>
 #include "core/Logger.hpp"
 #include "core/ThreadSystem.hpp"
 #include <chrono>
@@ -30,6 +31,37 @@ PathfinderManager& PathfinderManager::Instance() {
 PathfinderManager::~PathfinderManager() {
     if (!m_isShutdown) {
         clean();
+    }
+}
+
+// Internal priority mapping helpers (implementation-only)
+namespace {
+    inline AIInternal::PathPriority mapPriorityIntToEnum(int p) {
+        if (p <= 0) return AIInternal::PathPriority::Critical;
+        if (p == 1) return AIInternal::PathPriority::High;
+        if (p == 2) return AIInternal::PathPriority::Normal;
+        return AIInternal::PathPriority::Low; // p >= 3
+    }
+
+    inline HammerEngine::TaskPriority mapEnumToTaskPriority(AIInternal::PathPriority p) {
+        switch (p) {
+            case AIInternal::PathPriority::Critical: return HammerEngine::TaskPriority::Critical;
+            case AIInternal::PathPriority::High:     return HammerEngine::TaskPriority::High;
+            case AIInternal::PathPriority::Normal:   return HammerEngine::TaskPriority::Normal;
+            case AIInternal::PathPriority::Low:      return HammerEngine::TaskPriority::Low;
+            default:                                 return HammerEngine::TaskPriority::Normal;
+        }
+    }
+
+    inline std::string_view priorityLabel(AIInternal::PathPriority p) {
+        using namespace std::literals;
+        switch (p) {
+            case AIInternal::PathPriority::Critical: return "Critical"sv;
+            case AIInternal::PathPriority::High:     return "High"sv;
+            case AIInternal::PathPriority::Normal:   return "Normal"sv;
+            case AIInternal::PathPriority::Low:      return "Low"sv;
+            default:                                 return "Normal"sv;
+        }
     }
 }
 
@@ -132,7 +164,7 @@ uint64_t PathfinderManager::requestPath(
     EntityID entityId,
     const Vector2D& start,
     const Vector2D& goal,
-    AIInternal::PathPriority /* priority */,
+    int priority,
     std::function<void(EntityID, const std::vector<Vector2D>&)> callback
 ) {
     if (!m_initialized.load() || m_isShutdown) {
@@ -233,14 +265,32 @@ uint64_t PathfinderManager::requestPath(
         }
     };
 
-    // Submit pathfinding work to ThreadSystem (tests/app should ensure it's initialized)
+    // Submit pathfinding work to ThreadSystem with mapped priority
+    const AIInternal::PathPriority priEnum = mapPriorityIntToEnum(priority);
+    const auto taskPri = mapEnumToTaskPriority(priEnum);
+    const auto priLabel = priorityLabel(priEnum);
+    std::string taskDesc;
+    taskDesc.reserve(24 + priLabel.size());
+    taskDesc = "PathfindingComputation/";
+    taskDesc.append(priLabel);
     HammerEngine::ThreadSystem::Instance().enqueueTask(
         work,
-        HammerEngine::TaskPriority::Normal,
-        "PathfindingComputation"
+        taskPri,
+        taskDesc
     );
     
     return requestId;
+}
+
+// Backward-compatible overload (enum class → int mapping)
+uint64_t PathfinderManager::requestPath(
+    EntityID entityId,
+    const Vector2D& start,
+    const Vector2D& goal,
+    AIInternal::PathPriority priority,
+    std::function<void(EntityID, const std::vector<Vector2D>&)> callback
+) {
+    return requestPath(entityId, start, goal, static_cast<int>(priority), std::move(callback));
 }
 
 HammerEngine::PathfindingResult PathfinderManager::findPathImmediate(
@@ -305,13 +355,13 @@ void PathfinderManager::rebuildGrid() {
     // Build a new grid from current world data and swap atomically
     auto& worldManager = WorldManager::Instance();
     if (!worldManager.hasActiveWorld()) {
-        GAMEENGINE_DEBUG("Cannot rebuild grid - no active world");
+        PATHFIND_DEBUG("Cannot rebuild grid - no active world");
         return;
     }
 
     int worldWidth = 0, worldHeight = 0;
     if (!worldManager.getWorldDimensions(worldWidth, worldHeight) || worldWidth <= 0 || worldHeight <= 0) {
-        GAMEENGINE_WARN("Invalid world dimensions during rebuild");
+        PATHFIND_WARN("Invalid world dimensions during rebuild");
         return;
     }
 
@@ -321,7 +371,7 @@ void PathfinderManager::rebuildGrid() {
     int gridWidth = static_cast<int>(worldPixelWidth / m_cellSize);
     int gridHeight = static_cast<int>(worldPixelHeight / m_cellSize);
     if (gridWidth <= 0 || gridHeight <= 0) {
-        GAMEENGINE_WARN("Calculated grid too small during rebuild");
+        PATHFIND_WARN("Calculated grid too small during rebuild");
         return;
     }
 
@@ -342,9 +392,9 @@ void PathfinderManager::rebuildGrid() {
             m_pathCache.clear();
         }
 
-        GAMEENGINE_INFO("Grid rebuilt successfully");
+        PATHFIND_INFO("Grid rebuilt successfully");
     } catch (const std::exception& e) {
-        GAMEENGINE_ERROR("Grid rebuild failed: " + std::string(e.what()));
+        PATHFIND_ERROR("Grid rebuild failed: " + std::string(e.what()));
     }
 }
 
@@ -544,7 +594,7 @@ Vector2D PathfinderManager::adjustSpawnToNavigable(const Vector2D& desired, floa
     return pos;
 }
 
-static inline bool pointInRect(const Vector2D& p, float minX, float minY, float maxX, float maxY) {
+[[maybe_unused]] static inline bool pointInRect(const Vector2D& p, float minX, float minY, float maxX, float maxY) {
     return p.getX() >= minX && p.getX() <= maxX && p.getY() >= minY && p.getY() <= maxY;
 }
 
@@ -702,7 +752,7 @@ bool PathfinderManager::ensureGridInitialized() {
     // Check if we have an active world to get dimensions from
     auto& worldManager = WorldManager::Instance();
     if (!worldManager.hasActiveWorld()) {
-        GAMEENGINE_DEBUG("Cannot initialize pathfinding grid - no active world");
+        PATHFIND_DEBUG("Cannot initialize pathfinding grid - no active world");
         return false;
     }
 
@@ -710,13 +760,13 @@ bool PathfinderManager::ensureGridInitialized() {
     int worldWidth = 0;
     int worldHeight = 0;
     if (!worldManager.getWorldDimensions(worldWidth, worldHeight)) {
-        GAMEENGINE_WARN("Cannot get world dimensions for pathfinding grid initialization");
+        PATHFIND_WARN("Cannot get world dimensions for pathfinding grid initialization");
         return false;
     }
 
     // Validate dimensions to prevent 0x0 grids
     if (worldWidth <= 0 || worldHeight <= 0) {
-        GAMEENGINE_WARN("Invalid world dimensions for pathfinding grid: " + 
+        PATHFIND_WARN("Invalid world dimensions for pathfinding grid: " + 
                         std::to_string(worldWidth) + "x" + std::to_string(worldHeight));
         return false;
     }
@@ -730,7 +780,7 @@ bool PathfinderManager::ensureGridInitialized() {
 
     // Ensure minimum grid size
     if (gridWidth <= 0 || gridHeight <= 0) {
-        GAMEENGINE_WARN("Calculated grid dimensions too small: " + 
+        PATHFIND_WARN("Calculated grid dimensions too small: " + 
                         std::to_string(gridWidth) + "x" + std::to_string(gridHeight) + 
                         " (world: " + std::to_string(worldWidth) + "x" + std::to_string(worldHeight) + 
                         ", cellSize: " + std::to_string(m_cellSize) + ")");
@@ -755,7 +805,7 @@ bool PathfinderManager::ensureGridInitialized() {
 
         std::atomic_store(&m_grid, newGrid);
 
-        GAMEENGINE_INFO("Pathfinding grid initialized: " + 
+        PATHFIND_INFO("Pathfinding grid initialized: " + 
                         std::to_string(gridWidth) + "x" + std::to_string(gridHeight) + 
                         " cells (world: " + std::to_string(worldWidth) + "x" + std::to_string(worldHeight) + 
                         ", cellSize: " + std::to_string(m_cellSize) + ")");
@@ -763,7 +813,7 @@ bool PathfinderManager::ensureGridInitialized() {
         return true;
     }
     catch (const std::exception& e) {
-        GAMEENGINE_ERROR("Failed to create pathfinding grid: " + std::string(e.what()));
+        PATHFIND_ERROR("Failed to create pathfinding grid: " + std::string(e.what()));
         std::atomic_store(&m_grid, std::shared_ptr<HammerEngine::PathfindingGrid>());
         return false;
     }
