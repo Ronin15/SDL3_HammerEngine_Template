@@ -490,15 +490,7 @@ void SoundManager::clean() {
   m_activeMusicTracks.clear();
   m_trackToAudioMap.clear();
 
-  // Free all audio
-  for (auto &pair : m_audioMap) {
-    if (pair.second) {
-      MIX_DestroyAudio(pair.second);
-    }
-  }
-  m_audioMap.clear();
-
-  // Destroy groups
+  // Destroy groups first to ensure no references to audio
   if (m_sfxGroup) {
     MIX_DestroyGroup(m_sfxGroup);
     m_sfxGroup = nullptr;
@@ -508,11 +500,23 @@ void SoundManager::clean() {
     m_musicGroup = nullptr;
   }
 
-  // Destroy mixer
+  // Free all audio objects while mixer is still active
+  for (auto &pair : m_audioMap) {
+    if (pair.second) {
+      MIX_DestroyAudio(pair.second);
+      pair.second = nullptr;
+    }
+  }
+  m_audioMap.clear();
+
+  // Destroy mixer after all audio is freed
   if (m_mixer) {
     MIX_DestroyMixer(m_mixer);
     m_mixer = nullptr;
   }
+
+  // Quit SDL3_mixer library after everything is destroyed
+  MIX_Quit();
 
   // Quit SDL audio subsystem if we initialized it
   if (SDL_WasInit(SDL_INIT_AUDIO)) {
