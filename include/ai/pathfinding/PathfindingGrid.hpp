@@ -43,6 +43,9 @@ public:
     // Hierarchical pathfinding for long distances (10x speedup)
     PathfindingResult findPathHierarchical(const Vector2D& start, const Vector2D& goal,
                                           std::vector<Vector2D>& outPath);
+                                          
+    // Decision function for choosing between direct and hierarchical pathfinding
+    bool shouldUseHierarchicalPathfinding(const Vector2D& start, const Vector2D& goal) const;
 
     void setAllowDiagonal(bool allow) { m_allowDiagonal = allow; }
     void setMaxIterations(int maxIters) { m_maxIterations = maxIters; }
@@ -116,7 +119,6 @@ private:
     PathfindingResult refineCoarsePath(const std::vector<Vector2D>& coarsePath,
                                      const Vector2D& start, const Vector2D& goal,
                                      std::vector<Vector2D>& outPath);
-    bool shouldUseHierarchicalPathfinding(const Vector2D& start, const Vector2D& goal) const;
 
 private:
     // Object pools for memory optimization

@@ -233,15 +233,15 @@ void CollisionManager::updateKinematicBatch(const std::vector<KinematicUpdate>& 
     spatialUpdates.reserve(updates.size());
     
     size_t validUpdates = 0;
-    for (const auto& update : updates) {
-        auto it = m_bodies.find(update.id);
+    for (const auto& kinematicUpdate : updates) {
+        auto it = m_bodies.find(kinematicUpdate.id);
         if (it != m_bodies.end() && it->second->type == BodyType::KINEMATIC) {
             // Update position and velocity
-            it->second->aabb.center = update.position;
-            it->second->velocity = update.velocity;
+            it->second->aabb.center = kinematicUpdate.position;
+            it->second->velocity = kinematicUpdate.velocity;
             
             // Queue for spatial hash update
-            spatialUpdates.emplace_back(update.id, it->second->aabb);
+            spatialUpdates.emplace_back(kinematicUpdate.id, it->second->aabb);
             validUpdates++;
         }
     }
@@ -783,9 +783,9 @@ void CollisionManager::rebuildStaticFromWorld() {
     // Create solid collision bodies for obstacles and triggers for movement penalties
     size_t solidBodies = createStaticObstacleBodies();
     size_t waterTriggers = createTriggersForWaterTiles(HammerEngine::TriggerTag::Water);
-    size_t obstacleTriggers = createTriggersForObstacles();
+    size_t obstacleTriggers = createTriggersForObstacles(); // Always returns 0 - obstacle penalties handled by pathfinding
     
-    if (solidBodies > 0 || waterTriggers > 0 || obstacleTriggers > 0) {
+    if (solidBodies > 0 || waterTriggers > 0) {
         COLLISION_INFO("World colliders built: solid=" + std::to_string(solidBodies) + 
                       ", water triggers=" + std::to_string(waterTriggers) +
                       ", obstacle triggers=" + std::to_string(obstacleTriggers));
