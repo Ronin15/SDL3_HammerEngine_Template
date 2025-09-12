@@ -35,6 +35,7 @@
 
 // PathfinderManager available for centralized pathfinding services
 class PathfinderManager;
+class CollisionManager;
 
 // Conditional debug logging
 #ifdef AI_DEBUG_LOGGING
@@ -335,6 +336,16 @@ private:
   AIManager(const AIManager &) = delete;
   AIManager &operator=(const AIManager &) = delete;
 
+  // Batch collision update structure for performance optimization
+  struct KinematicUpdateBatch {
+    EntityID id;
+    Vector2D position;
+    Vector2D velocity;
+    
+    KinematicUpdateBatch(EntityID entityId, const Vector2D& pos, const Vector2D& vel)
+        : id(entityId), position(pos), velocity(vel) {}
+  };
+
   // Cache-efficient storage using Structure of Arrays (SoA)
   struct EntityStorage {
     // Hot data arrays - tightly packed for cache efficiency
@@ -350,6 +361,9 @@ private:
     // Double buffering for lock-free updates
     std::atomic<int> currentBuffer{0};
     std::array<std::vector<AIEntityData::HotData>, 2> doubleBuffer;
+    
+    // Batch update buffer for collision system optimization
+    std::vector<KinematicUpdateBatch> kinematicUpdates;
 
     size_t size() const { return entities.size(); }
     void reserve(size_t capacity) {
@@ -361,6 +375,7 @@ private:
       halfHeights.reserve(capacity);
       doubleBuffer[0].reserve(capacity);
       doubleBuffer[1].reserve(capacity);
+      kinematicUpdates.reserve(capacity); // Reserve for batch collision updates
     }
   };
 

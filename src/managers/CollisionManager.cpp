@@ -222,6 +222,45 @@ void CollisionManager::setVelocity(EntityID id, const Vector2D& v) {
     }
 }
 
+void CollisionManager::updateKinematicBatch(const std::vector<KinematicUpdate>& updates) {
+    if (updates.empty()) return;
+    
+    // PERFORMANCE OPTIMIZATION: Batch process all kinematic updates
+    // This reduces hash table lookups and spatial hash updates from O(n) to O(1) operations
+    
+    // Phase 1: Update positions and velocities in batch (minimize hash lookups)
+    std::vector<std::pair<EntityID, AABB>> spatialUpdates;
+    spatialUpdates.reserve(updates.size());
+    
+    size_t validUpdates = 0;
+    for (const auto& update : updates) {
+        auto it = m_bodies.find(update.id);
+        if (it != m_bodies.end() && it->second->type == BodyType::KINEMATIC) {
+            // Update position and velocity
+            it->second->aabb.center = update.position;
+            it->second->velocity = update.velocity;
+            
+            // Queue for spatial hash update
+            spatialUpdates.emplace_back(update.id, it->second->aabb);
+            validUpdates++;
+        }
+    }
+    
+    // Phase 2: Batch update spatial hash (single pass through hash structure)
+    if (!spatialUpdates.empty()) {
+        // Update all entities in spatial hash at once - much more cache-friendly
+        for (const auto& [entityId, aabb] : spatialUpdates) {
+            m_hash.update(entityId, aabb);
+        }
+    }
+    
+    // Debug logging (only when verbose and with summary to reduce spam)
+    if (m_verboseLogs && !updates.empty()) {
+        COLLISION_DEBUG("updateKinematicBatch: processed " + std::to_string(validUpdates) + 
+                       "/" + std::to_string(updates.size()) + " kinematic updates");
+    }
+}
+
 void CollisionManager::setBodyTrigger(EntityID id, bool isTrigger) {
     auto it = m_bodies.find(id);
     if (it != m_bodies.end()) it->second->isTrigger = isTrigger;

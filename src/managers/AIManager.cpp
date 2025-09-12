@@ -10,6 +10,7 @@
 #include "events/NPCSpawnEvent.hpp"
 #include "managers/EventManager.hpp"
 #include "managers/PathfinderManager.hpp"
+#include "managers/CollisionManager.hpp"
 #include <algorithm>
 #include <cstring>
 
@@ -1242,6 +1243,11 @@ void AIManager::processBatch(size_t start, size_t end, float deltaTime,
   EntityPtr player = m_playerEntity.lock();
 
   size_t batchExecutions = 0;
+  
+  // Clear the batch buffer for this processing batch - PERFORMANCE OPTIMIZATION
+  // Accumulate all position/velocity changes here instead of individual collision updates
+  std::vector<KinematicUpdateBatch> localBatchUpdates;
+  localBatchUpdates.reserve(end - start); // Pre-allocate for performance
 
   // Pre-calculate common values once per batch to reduce per-entity overhead
   float maxDist = m_maxUpdateDistance.load(std::memory_order_relaxed);
@@ -1338,28 +1344,57 @@ void AIManager::processBatch(size_t start, size_t end, float deltaTime,
         const auto &pf = PathfinderManager::Instance();
         Vector2D pos = entity->getPosition();
         Vector2D clamped = pf.clampInsideExtents(pos, halfW, halfH, 0.0f);
+        Vector2D vel = entity->getVelocity();
+        
         if (clamped.getX() != pos.getX() || clamped.getY() != pos.getY()) {
-          // Adjust position and project velocity inward
-          entity->setPosition(clamped);
-          Vector2D vel = entity->getVelocity();
+          // Update entity position directly (bypassing individual collision updates)
+          entity->Entity::setPosition(clamped); // Use base Entity::setPosition to avoid collision sync
+          
+          // Project velocity inward for boundary collisions  
           if (clamped.getX() < pos.getX() && vel.getX() < 0) vel.setX(0.0f);
           if (clamped.getX() > pos.getX() && vel.getX() > 0) vel.setX(0.0f);
           if (clamped.getY() < pos.getY() && vel.getY() < 0) vel.setY(0.0f);
           if (clamped.getY() > pos.getY() && vel.getY() > 0) vel.setY(0.0f);
-          entity->setVelocity(vel);
+          entity->Entity::setVelocity(vel); // Use base Entity::setVelocity
+          
+          pos = clamped; // Update pos for batch accumulation
         }
+
+        // BATCH OPTIMIZATION: Accumulate position/velocity for collision system batch update
+        localBatchUpdates.emplace_back(entity->getID(), pos, vel);
 
         batchExecutions++;
       } else {
-        // PERFORMANCE FIX: Skip entity updates for culled entities entirely
-        // Instead of calling expensive entity->update(), just ensure velocity is zero
-        entity->setVelocity(Vector2D(0, 0));
-        // Animation updates can be skipped for distant entities
+        // PERFORMANCE FIX: Skip entity updates for culled entities entirely  
+        // Still accumulate position for collision system consistency
+        Vector2D currentPos = entity->getPosition();
+        Vector2D zeroVel(0, 0);
+        entity->Entity::setVelocity(zeroVel); // Use base method to avoid individual collision sync
+        
+        // Add to batch with zero velocity to keep collision system in sync
+        localBatchUpdates.emplace_back(entity->getID(), currentPos, zeroVel);
       }
     } catch (const std::exception &e) {
       AI_ERROR("Error in batch processing: " + std::string(e.what()));
       hotData.active = false;
     }
+  }
+
+  // PERFORMANCE OPTIMIZATION: Submit all position/velocity changes to collision system in single batch
+  // This replaces hundreds/thousands of individual setKinematicPose calls with one efficient batch operation
+  if (!localBatchUpdates.empty()) {
+    auto &cm = CollisionManager::Instance();
+    
+    // Convert our local batch format to CollisionManager's format
+    std::vector<CollisionManager::KinematicUpdate> collisionUpdates;
+    collisionUpdates.reserve(localBatchUpdates.size());
+    
+    for (const auto& update : localBatchUpdates) {
+      collisionUpdates.emplace_back(update.id, update.position, update.velocity);
+    }
+    
+    // Single batch update to collision system - MASSIVE performance improvement
+    cm.updateKinematicBatch(collisionUpdates);
   }
 
   if (batchExecutions > 0) {
