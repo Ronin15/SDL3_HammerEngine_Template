@@ -334,6 +334,11 @@ private:
     mutable std::atomic<uint64_t> m_cacheMisses{0};
     mutable std::atomic<uint64_t> m_processedCount{0};
     
+    // Lightweight timing statistics (minimal overhead)
+    mutable std::atomic<double> m_totalProcessingTimeMs{0.0};
+    mutable std::chrono::steady_clock::time_point m_lastStatsUpdate{std::chrono::steady_clock::now()};
+    mutable double m_lastRequestsPerSecond{0.0};
+    
     // High-performance single-tier cache with smart quantization
     struct PathCacheEntry {
         std::vector<Vector2D> path;

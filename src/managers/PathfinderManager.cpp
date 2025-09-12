@@ -346,6 +346,9 @@ HammerEngine::PathfindingResult PathfinderManager::findPathImmediate(
         return HammerEngine::PathfindingResult::NO_PATH_FOUND;
     }
 
+    // Start timing for performance statistics
+    auto startTime = std::chrono::steady_clock::now();
+
     // Normalize endpoints for safe and cache-friendly pathfinding
     Vector2D nStart = start;
     Vector2D nGoal = goal;
@@ -353,12 +356,20 @@ HammerEngine::PathfindingResult PathfinderManager::findPathImmediate(
 
     // Ensure grid is initialized before pathfinding
     if (!ensureGridInitialized()) {
+        // Record timing even for failed requests
+        auto endTime = std::chrono::steady_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::microseconds>(endTime - startTime);
+        m_totalProcessingTimeMs.fetch_add(duration.count() / 1000.0, std::memory_order_relaxed);
         return HammerEngine::PathfindingResult::NO_PATH_FOUND;
     }
 
     // Take a snapshot of the grid to avoid races with background rebuilds
     auto gridSnapshot = std::atomic_load(&m_grid);
     if (!gridSnapshot) {
+        // Record timing even for failed requests
+        auto endTime = std::chrono::steady_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::microseconds>(endTime - startTime);
+        m_totalProcessingTimeMs.fetch_add(duration.count() / 1000.0, std::memory_order_relaxed);
         return HammerEngine::PathfindingResult::NO_PATH_FOUND;
     }
 
@@ -383,6 +394,11 @@ HammerEngine::PathfindingResult PathfinderManager::findPathImmediate(
         result = gridSnapshot->findPath(nStart, nGoal, outPath);
     }
 
+    // Record timing for all completed requests
+    auto endTime = std::chrono::steady_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::microseconds>(endTime - startTime);
+    m_totalProcessingTimeMs.fetch_add(duration.count() / 1000.0, std::memory_order_relaxed);
+    
     return result;
 }
 
@@ -504,9 +520,30 @@ PathfinderManager::PathfinderStats PathfinderManager::getStats() const {
     stats.completedRequests = m_completedRequests.load(std::memory_order_relaxed);
     stats.failedRequests = m_failedRequests.load(std::memory_order_relaxed);
     
-    // No timing statistics to eliminate overhead
-    stats.averageProcessingTimeMs = 0.0;
-    stats.requestsPerSecond = 0.0;
+    // Calculate average processing time and requests per second
+    uint64_t totalRequests = stats.completedRequests + stats.failedRequests;
+    if (totalRequests > 0) {
+        double totalTimeMs = m_totalProcessingTimeMs.load(std::memory_order_relaxed);
+        stats.averageProcessingTimeMs = totalTimeMs / totalRequests;
+    } else {
+        stats.averageProcessingTimeMs = 0.0;
+    }
+    
+    // Calculate requests per second using time since last stats update
+    auto now = std::chrono::steady_clock::now();
+    auto timeDiff = std::chrono::duration_cast<std::chrono::milliseconds>(now - m_lastStatsUpdate);
+    if (timeDiff.count() > 1000) { // Update RPS every second
+        double secondsSinceLastUpdate = timeDiff.count() / 1000.0;
+        uint64_t currentTotalRequests = m_enqueuedRequests.load(std::memory_order_relaxed);
+        
+        if (m_lastStatsUpdate != std::chrono::steady_clock::time_point{}) {
+            // Calculate RPS based on request increase since last update
+            m_lastRequestsPerSecond = currentTotalRequests / secondsSinceLastUpdate;
+        }
+        
+        m_lastStatsUpdate = now;
+    }
+    stats.requestsPerSecond = m_lastRequestsPerSecond;
     
     // Cache statistics
     stats.cacheHits = m_cacheHits.load(std::memory_order_relaxed);
