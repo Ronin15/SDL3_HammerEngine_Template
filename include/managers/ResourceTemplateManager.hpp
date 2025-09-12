@@ -9,7 +9,6 @@
 #include "entities/Resource.hpp"
 #include "utils/ResourceHandle.hpp"
 #include <atomic>
-#include <memory>
 #include <mutex>
 #include <shared_mutex>
 #include <string>
