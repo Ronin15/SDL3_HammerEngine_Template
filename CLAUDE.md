@@ -230,6 +230,7 @@ Use provided macros for consistent logging:
 - No rendering from background threads. AI/particles may schedule work but all drawing occurs during `GameEngine::render()` on the main thread.
 - Do not introduce additional synchronization between managers for rendering; rely on `GameEngine`'s mutexed update and double-buffer swap.
 - When adding a new state, snapshot camera/view once per render pass and reuse it for all world-space systems.
+- **NEVER use static variables in threaded code** - they create race conditions and data corruption. Use instance variables, thread_local storage, or atomic operations instead.
 
 ### Entity Rendering
 - Use `Entity::render(const Camera*)` for world-to-screen conversion

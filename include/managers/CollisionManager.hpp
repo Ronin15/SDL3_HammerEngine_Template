@@ -52,6 +52,18 @@ public:
     void setBodyLayer(EntityID id, uint32_t layerMask, uint32_t collideMask);
     void setKinematicPose(EntityID id, const Vector2D& center);
     void setVelocity(EntityID id, const Vector2D& v);
+    
+    // Batch updates for performance optimization (AI entities)
+    struct KinematicUpdate {
+        EntityID id;
+        Vector2D position;
+        Vector2D velocity;
+        
+        KinematicUpdate(EntityID entityId, const Vector2D& pos, const Vector2D& vel = Vector2D(0, 0))
+            : id(entityId), position(pos), velocity(vel) {}
+    };
+    void updateKinematicBatch(const std::vector<KinematicUpdate>& updates);
+    
     void setBodyTrigger(EntityID id, bool isTrigger);
     void setBodyTriggerTag(EntityID id, HammerEngine::TriggerTag tag);
     // Convenience methods for triggers
