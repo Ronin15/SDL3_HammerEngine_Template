@@ -362,12 +362,11 @@ HammerEngine::PathfindingResult PathfinderManager::findPathImmediate(
         return HammerEngine::PathfindingResult::NO_PATH_FOUND;
     }
 
-    // Determine which pathfinding algorithm to use based on distance
-    float distance2 = (nGoal - nStart).dot(nGoal - nStart);
+    // Determine which pathfinding algorithm to use based on sophisticated heuristics
     HammerEngine::PathfindingResult result;
     
-    if (distance2 > (1200.0f * 1200.0f)) {
-        // Long distance - try hierarchical first
+    if (gridSnapshot->shouldUseHierarchicalPathfinding(nStart, nGoal)) {
+        // Use hierarchical pathfinding - try hierarchical first
         result = gridSnapshot->findPathHierarchical(nStart, nGoal, outPath);
         
         // Fallback to direct if hierarchical fails
@@ -380,7 +379,7 @@ HammerEngine::PathfindingResult PathfinderManager::findPathImmediate(
             }
         }
     } else {
-        // Short to medium distance - use direct pathfinding
+        // Use direct pathfinding for optimal performance
         result = gridSnapshot->findPath(nStart, nGoal, outPath);
     }
 

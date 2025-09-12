@@ -503,7 +503,7 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
       batchCount = std::max(size_t(1), std::min(batchCount, maxBatches));
 
       // Debug thread allocation info periodically
-      if (currentFrame % 300 == 0 && entityCount > 0) {
+      if (currentFrame % 300 == 0) {
         AI_DEBUG("Thread Allocation - Workers: " +
                  std::to_string(optimalWorkerCount) + "/" +
                  std::to_string(availableWorkers) +
@@ -1389,9 +1389,11 @@ void AIManager::processBatch(size_t start, size_t end, float deltaTime,
     std::vector<CollisionManager::KinematicUpdate> collisionUpdates;
     collisionUpdates.reserve(localBatchUpdates.size());
     
-    for (const auto& update : localBatchUpdates) {
-      collisionUpdates.emplace_back(update.id, update.position, update.velocity);
-    }
+    std::transform(localBatchUpdates.begin(), localBatchUpdates.end(),
+                   std::back_inserter(collisionUpdates),
+                   [](const auto& batchUpdate) {
+                     return CollisionManager::KinematicUpdate{batchUpdate.id, batchUpdate.position, batchUpdate.velocity};
+                   });
     
     // Single batch update to collision system - MASSIVE performance improvement
     cm.updateKinematicBatch(collisionUpdates);
