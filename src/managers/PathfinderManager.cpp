@@ -175,6 +175,8 @@ void PathfinderManager::prepareForStateTransition() {
     m_cacheHits.store(0);
     m_cacheMisses.store(0);
     m_processedCount.store(0);
+    m_lastRequestsPerSecond = 0.0;
+    m_lastTotalRequests = 0;
     
     // Reset frame counters
     m_gridUpdateCounter = 0;
@@ -537,10 +539,12 @@ PathfinderManager::PathfinderStats PathfinderManager::getStats() const {
         uint64_t currentTotalRequests = m_enqueuedRequests.load(std::memory_order_relaxed);
         
         if (m_lastStatsUpdate != std::chrono::steady_clock::time_point{}) {
-            // Calculate RPS based on request increase since last update
-            m_lastRequestsPerSecond = currentTotalRequests / secondsSinceLastUpdate;
+            // Calculate RPS based on request DELTA since last update (not total)
+            uint64_t deltaRequests = currentTotalRequests - m_lastTotalRequests;
+            m_lastRequestsPerSecond = deltaRequests / secondsSinceLastUpdate;
         }
         
+        m_lastTotalRequests = currentTotalRequests;
         m_lastStatsUpdate = now;
     }
     stats.requestsPerSecond = m_lastRequestsPerSecond;
@@ -592,6 +596,8 @@ void PathfinderManager::resetStats() {
     m_cacheHits.store(0, std::memory_order_relaxed);
     m_cacheMisses.store(0, std::memory_order_relaxed);
     m_processedCount.store(0, std::memory_order_relaxed);
+    m_lastRequestsPerSecond = 0.0;
+    m_lastTotalRequests = 0;
     
     // Fast cache clear - unordered_map::clear() is O(1) for small caches
     {
