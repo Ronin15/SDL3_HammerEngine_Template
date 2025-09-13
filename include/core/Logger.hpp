@@ -20,11 +20,11 @@
 
 namespace HammerEngine {
 enum class LogLevel : uint8_t {
-  CRITICAL = 0,   // Always logs (even in release for crashes)
-  ERROR = 1,      // Debug only
-  WARNING = 2,    // Debug only
-  INFO = 3,       // Debug only
-  DEBUG_LEVEL = 4 // Debug only (renamed to avoid macro conflicts)
+  CRITICAL = 0,     // Always logs (even in release for crashes)
+  ERROR_LEVEL = 1,  // Debug only (renamed to avoid macro conflicts)
+  WARNING = 2,      // Debug only
+  INFO = 3,         // Debug only
+  DEBUG_LEVEL = 4   // Debug only (renamed to avoid macro conflicts)
 };
 
 #ifdef DEBUG
@@ -72,7 +72,7 @@ private:
     switch (level) {
     case LogLevel::CRITICAL:
       return "CRITICAL";
-    case LogLevel::ERROR:
+    case LogLevel::ERROR_LEVEL:
       return "ERROR";
     case LogLevel::WARNING:
       return "WARNING";
@@ -90,7 +90,7 @@ private:
 #define HAMMER_CRITICAL(system, msg)                                           \
   HammerEngine::Logger::Log(HammerEngine::LogLevel::CRITICAL, system, msg)
 #define HAMMER_ERROR(system, msg)                                              \
-  HammerEngine::Logger::Log(HammerEngine::LogLevel::ERROR, system, msg)
+  HammerEngine::Logger::Log(HammerEngine::LogLevel::ERROR_LEVEL, system, msg)
 #define HAMMER_WARN(system, msg)                                               \
   HammerEngine::Logger::Log(HammerEngine::LogLevel::WARNING, system, msg)
 #define HAMMER_INFO(system, msg)                                               \
