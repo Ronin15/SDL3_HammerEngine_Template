@@ -295,6 +295,51 @@ void WorldGenerator::distributeObstacles(WorldData &world,
       }
     }
   }
+
+  // Second pass: Add buildings with low probability in suitable biomes
+  for (int y = 0; y < height; ++y) {
+    for (int x = 0; x < width; ++x) {
+      Tile &tile = world.grid[y][x];
+
+      // Skip if tile already has an obstacle or is water
+      if (tile.obstacleType != ObstacleType::NONE || tile.isWater) {
+        continue;
+      }
+
+      float buildingChance = 0.0f;
+
+      switch (tile.biome) {
+      case Biome::FOREST:
+        buildingChance = 0.02f; // 2% chance in forest
+        break;
+      case Biome::HAUNTED:
+        buildingChance = 0.025f; // 2.5% chance in haunted areas
+        break;
+      case Biome::DESERT:
+        buildingChance = 0.01f; // 1% chance in desert
+        break;
+      case Biome::SWAMP:
+        buildingChance = 0.01f; // 1% chance in swamp
+        break;
+      case Biome::CELESTIAL:
+        buildingChance = 0.015f; // 1.5% chance in celestial
+        break;
+      case Biome::MOUNTAIN:
+        // No buildings in mountains - they're already blocked terrain
+        break;
+      case Biome::OCEAN:
+        // No buildings in ocean
+        break;
+      default:
+        buildingChance = 0.01f; // 1% default chance
+        break;
+      }
+
+      if (buildingChance > 0.0f && dist(rng) < buildingChance) {
+        tile.obstacleType = ObstacleType::BUILDING;
+      }
+    }
+  }
 }
 
 void WorldGenerator::calculateInitialResources(const WorldData &world) {

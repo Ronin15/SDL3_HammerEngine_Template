@@ -144,8 +144,8 @@ void PathfindingGrid::rebuildFromWorld() {
             for (int ty = ty0; ty <= ty1; ++ty) {
                 for (int tx = tx0; tx <= tx1; ++tx) {
                     const auto& tile = world->grid[ty][tx];
-                    // Only BUILDING obstacles are truly blocked, ROCK/TREE have movement penalties
-                    bool blocked = tile.obstacleType == ObstacleType::BUILDING;
+                    // BUILDING obstacles and MOUNTAIN biome tiles are truly blocked, ROCK/TREE have movement penalties
+                    bool blocked = tile.obstacleType == ObstacleType::BUILDING || tile.biome == Biome::MOUNTAIN;
                     if (blocked) blockedTiles++;
                     
                     // Movement weight penalties: BUILDING=blocked, WATER=2.0x, ROCK/TREE=2.5x, normal=1.0x
