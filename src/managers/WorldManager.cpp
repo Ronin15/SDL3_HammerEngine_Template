@@ -633,7 +633,7 @@ void HammerEngine::TileRenderer::renderVisibleTiles(const HammerEngine::WorldDat
                     case HammerEngine::ObstacleType::TREE:    textureID = "obstacle_tree"; break;
                     case HammerEngine::ObstacleType::ROCK:    textureID = "obstacle_rock"; break;
                     case HammerEngine::ObstacleType::WATER:   textureID = "obstacle_water"; break;
-                    case HammerEngine::ObstacleType::BUILDING: textureID = "obstacle_building"; break;
+                    case HammerEngine::ObstacleType::BUILDING: textureID = "obstacle_building_solid"; break;
                     default:                    textureID = "biome_default"; break;
                 }
             } else if (tile.isWater) {
@@ -727,7 +727,7 @@ std::string HammerEngine::TileRenderer::getObstacleTexture(HammerEngine::Obstacl
         case HammerEngine::ObstacleType::TREE:    return "obstacle_tree";
         case HammerEngine::ObstacleType::ROCK:    return "obstacle_rock";
         case HammerEngine::ObstacleType::WATER:   return "obstacle_water";
-        case HammerEngine::ObstacleType::BUILDING: return "obstacle_building";
+        case HammerEngine::ObstacleType::BUILDING: return "obstacle_building_solid";
         default:                    return "biome_default";
     }
 }
