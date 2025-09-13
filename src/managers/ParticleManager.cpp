@@ -135,8 +135,11 @@ void ParticlePerformanceStats::addUpdateSample(double timeMs, size_t particleCou
     totalUpdateTime += timeMs;
     updateCount++;
     activeParticles = particleCount;
-    if (totalUpdateTime > 0) {
-        particlesPerSecond = (activeParticles * updateCount * 1000.0) / totalUpdateTime;
+    
+    // Use simple instantaneous rate calculation instead of cumulative average
+    // This prevents the ever-increasing rate issue seen in other managers
+    if (timeMs > 0) {
+        particlesPerSecond = (particleCount * 1000.0) / timeMs; // particles processed per second in this frame
     }
 }
 

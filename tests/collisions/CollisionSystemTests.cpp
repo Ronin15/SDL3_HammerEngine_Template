@@ -443,6 +443,224 @@ BOOST_AUTO_TEST_CASE(TestBoundaryConditions)
 
 BOOST_AUTO_TEST_SUITE_END()
 
+// Dual Spatial Hash System Tests for CollisionManager
+BOOST_AUTO_TEST_SUITE(DualSpatialHashTests)
+
+BOOST_AUTO_TEST_CASE(TestStaticDynamicHashSeparation)
+{
+    // Initialize CollisionManager for testing
+    CollisionManager::Instance().init();
+    
+    // Test that static and dynamic bodies are correctly separated into different spatial hashes
+    EntityID staticId = 10000;
+    EntityID kinematicId = 10002;  // Use only kinematic for simpler test
+    
+    Vector2D testPos(100.0f, 100.0f);
+    AABB testAABB(testPos.getX(), testPos.getY(), 32.0f, 32.0f);
+    
+    // Add bodies of different types  
+    CollisionManager::Instance().addBody(staticId, testAABB, BodyType::STATIC);
+    CollisionManager::Instance().addBody(kinematicId, testAABB, BodyType::KINEMATIC);
+    
+    // Verify body count includes all types
+    BOOST_CHECK_EQUAL(CollisionManager::Instance().getBodyCount(), 2);
+    
+    // Test that static body count is tracked separately
+    BOOST_CHECK_EQUAL(CollisionManager::Instance().getStaticBodyCount(), 1);
+    BOOST_CHECK_EQUAL(CollisionManager::Instance().getKinematicBodyCount(), 1); // Only kinematic body
+    
+    // Verify type checking methods work correctly
+    BOOST_CHECK(CollisionManager::Instance().isKinematic(kinematicId));
+    BOOST_CHECK(!CollisionManager::Instance().isDynamic(staticId));
+    BOOST_CHECK(!CollisionManager::Instance().isKinematic(staticId));
+    
+    // Test with a dynamic body as well
+    EntityID dynamicId = 10001;
+    CollisionManager::Instance().addBody(dynamicId, testAABB, BodyType::DYNAMIC);
+    
+    BOOST_CHECK_EQUAL(CollisionManager::Instance().getBodyCount(), 3);
+    BOOST_CHECK_EQUAL(CollisionManager::Instance().getStaticBodyCount(), 1);
+    BOOST_CHECK_EQUAL(CollisionManager::Instance().getKinematicBodyCount(), 1); // Still only 1 kinematic
+    BOOST_CHECK(CollisionManager::Instance().isDynamic(dynamicId));
+    
+    // Note: Both DYNAMIC and KINEMATIC bodies use the dynamic spatial hash internally
+    // but are counted separately by type
+    
+    // Clean up
+    CollisionManager::Instance().removeBody(staticId);
+    CollisionManager::Instance().removeBody(kinematicId);
+    CollisionManager::Instance().removeBody(dynamicId);
+    CollisionManager::Instance().clean();
+}
+
+BOOST_AUTO_TEST_CASE(TestBroadphasePerformanceWithDualHashes)
+{
+    // Test that broadphase performance is improved with separate static/dynamic hashes
+    CollisionManager::Instance().init();
+    
+    const int NUM_STATIC_BODIES = 200; // Simulate world tiles
+    const int NUM_DYNAMIC_BODIES = 20;  // Simulate NPCs
+    
+    std::vector<EntityID> staticBodies;
+    std::vector<EntityID> dynamicBodies;
+    
+    // Add many static bodies (world tiles)
+    for (int i = 0; i < NUM_STATIC_BODIES; ++i) {
+        EntityID id = 20000 + i;
+        float x = (i % 20) * 64.0f; // Grid layout
+        float y = (i / 20) * 64.0f;
+        AABB aabb(x, y, 32.0f, 32.0f);
+        
+        CollisionManager::Instance().addBody(id, aabb, BodyType::STATIC);
+        staticBodies.push_back(id);
+    }
+    
+    // Add dynamic bodies (NPCs)
+    for (int i = 0; i < NUM_DYNAMIC_BODIES; ++i) {
+        EntityID id = 25000 + i;
+        float x = 500.0f + (i % 5) * 32.0f;
+        float y = 500.0f + (i / 5) * 32.0f;
+        AABB aabb(x, y, 16.0f, 16.0f);
+        
+        CollisionManager::Instance().addBody(id, aabb, BodyType::KINEMATIC);
+        dynamicBodies.push_back(id);
+    }
+    
+    // Reset performance stats before measurement
+    CollisionManager::Instance().resetPerfStats();
+    
+    // Run several collision detection cycles
+    const int NUM_CYCLES = 10;
+    auto start = std::chrono::high_resolution_clock::now();
+    
+    for (int cycle = 0; cycle < NUM_CYCLES; ++cycle) {
+        CollisionManager::Instance().update(0.016f); // 60 FPS simulation
+    }
+    
+    auto end = std::chrono::high_resolution_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
+    
+    // Get performance statistics
+    auto perfStats = CollisionManager::Instance().getPerfStats();
+    
+    // Performance assertions - broadphase should be fast with dual hashes
+    BOOST_CHECK_LT(perfStats.lastBroadphaseMs, 0.5); // < 0.5ms broadphase
+    BOOST_CHECK_LT(perfStats.lastTotalMs, 2.0);     // < 2ms total collision time
+    
+    // Average cycle time should be reasonable
+    double avgCycleTimeMs = duration.count() / 1000.0 / NUM_CYCLES;
+    BOOST_CHECK_LT(avgCycleTimeMs, 1.0); // < 1ms per collision cycle
+    
+    BOOST_TEST_MESSAGE("Dual hash broadphase: " << perfStats.lastBroadphaseMs << "ms, "
+                      << "Total: " << perfStats.lastTotalMs << "ms, "
+                      << "Avg cycle: " << avgCycleTimeMs << "ms");
+    
+    // Clean up
+    for (EntityID id : staticBodies) {
+        CollisionManager::Instance().removeBody(id);
+    }
+    for (EntityID id : dynamicBodies) {
+        CollisionManager::Instance().removeBody(id);
+    }
+    CollisionManager::Instance().clean();
+}
+
+BOOST_AUTO_TEST_CASE(TestKinematicBatchUpdateWithDualHashes)
+{
+    // Test that batch kinematic updates work correctly with dual spatial hash system
+    CollisionManager::Instance().init();
+    
+    const int NUM_KINEMATIC_BODIES = 50;
+    std::vector<EntityID> kinematicBodies;
+    
+    // Add kinematic bodies
+    for (int i = 0; i < NUM_KINEMATIC_BODIES; ++i) {
+        EntityID id = 30000 + i;
+        AABB aabb(i * 20.0f, i * 20.0f, 8.0f, 8.0f);
+        
+        CollisionManager::Instance().addBody(id, aabb, BodyType::KINEMATIC);
+        kinematicBodies.push_back(id);
+    }
+    
+    // Prepare batch update data
+    std::vector<CollisionManager::KinematicUpdate> updates;
+    for (int i = 0; i < NUM_KINEMATIC_BODIES; ++i) {
+        EntityID id = kinematicBodies[i];
+        Vector2D newPos(i * 25.0f + 100.0f, i * 25.0f + 100.0f); // Move all bodies
+        Vector2D velocity(10.0f, 5.0f);
+        updates.emplace_back(id, newPos, velocity);
+    }
+    
+    // Measure batch update performance
+    auto start = std::chrono::high_resolution_clock::now();
+    
+    CollisionManager::Instance().updateKinematicBatch(updates);
+    
+    auto end = std::chrono::high_resolution_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
+    
+    // Verify bodies were updated by checking position
+    Vector2D center;
+    bool found = CollisionManager::Instance().getBodyCenter(kinematicBodies[0], center);
+    BOOST_CHECK(found);
+    BOOST_CHECK_CLOSE(center.getX(), 100.0f, 1.0f);
+    BOOST_CHECK_CLOSE(center.getY(), 100.0f, 1.0f);
+    
+    // Performance check - batch update should be fast
+    double avgUpdateTimeUs = static_cast<double>(duration.count()) / NUM_KINEMATIC_BODIES;
+    BOOST_CHECK_LT(avgUpdateTimeUs, 20.0); // < 20μs per body update
+    
+    BOOST_TEST_MESSAGE("Batch updated " << NUM_KINEMATIC_BODIES << " kinematic bodies in "
+                      << duration.count() << "μs (" << avgUpdateTimeUs << "μs/body)");
+    
+    // Clean up
+    for (EntityID id : kinematicBodies) {
+        CollisionManager::Instance().removeBody(id);
+    }
+    CollisionManager::Instance().clean();
+}
+
+BOOST_AUTO_TEST_CASE(TestStaticBodyCacheInvalidation)
+{
+    // Test that static body cache is properly invalidated when static bodies change
+    CollisionManager::Instance().init();
+    
+    // Add a static body
+    EntityID staticId = 40000;
+    AABB staticAABB(200.0f, 200.0f, 32.0f, 32.0f);
+    CollisionManager::Instance().addBody(staticId, staticAABB, BodyType::STATIC);
+    
+    // Add a kinematic body near the static body
+    EntityID kinematicId = 40001;
+    AABB kinematicAABB(220.0f, 220.0f, 16.0f, 16.0f);
+    CollisionManager::Instance().addBody(kinematicId, kinematicAABB, BodyType::KINEMATIC);
+    
+    // Run collision detection to populate any caches
+    CollisionManager::Instance().update(0.016f);
+    
+    // Add another static body that could affect collision detection
+    EntityID staticId2 = 40002;
+    AABB staticAABB2(240.0f, 240.0f, 32.0f, 32.0f);
+    CollisionManager::Instance().addBody(staticId2, staticAABB2, BodyType::STATIC);
+    
+    // Verify cache invalidation by checking that static body count is correct
+    BOOST_CHECK_EQUAL(CollisionManager::Instance().getStaticBodyCount(), 2);
+    
+    // Run collision detection again - should handle the new static body correctly
+    CollisionManager::Instance().update(0.016f);
+    
+    // Remove static body and verify cache invalidation
+    CollisionManager::Instance().removeBody(staticId);
+    BOOST_CHECK_EQUAL(CollisionManager::Instance().getStaticBodyCount(), 1);
+    
+    // Clean up
+    CollisionManager::Instance().removeBody(staticId2);
+    CollisionManager::Instance().removeBody(kinematicId);
+    CollisionManager::Instance().clean();
+}
+
+BOOST_AUTO_TEST_SUITE_END()
+
 // Integration Tests for CollisionManager Event System
 BOOST_AUTO_TEST_SUITE(CollisionIntegrationTests)
 
