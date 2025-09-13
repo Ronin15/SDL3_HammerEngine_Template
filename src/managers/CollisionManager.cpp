@@ -391,23 +391,30 @@ size_t CollisionManager::createStaticObstacleBodies() {
         for (int x = 0; x < w; ++x) {
             const auto& tile = world->grid[y][x];
             
-            // Create solid collision bodies for BUILDING obstacles only
+            // Create solid collision bodies for BUILDING obstacles only (64x64 per building)
             // ROCK, TREE, WATER are handled as triggers with movement penalties
             if (tile.obstacleType == ObstacleType::BUILDING) {
+                // Only create collision body from the top-left tile of each building
+                bool isTopLeft = true;
+                if (x > 0 && world->grid[y][x - 1].buildingId == tile.buildingId) isTopLeft = false;
+                if (y > 0 && world->grid[y - 1][x].buildingId == tile.buildingId) isTopLeft = false;
                 
-                float cx = x * tileSize + tileSize * 0.5f;
-                float cy = y * tileSize + tileSize * 0.5f;
-                AABB aabb(cx, cy, tileSize * 0.5f, tileSize * 0.5f);
-                
-                // Use a different prefix for obstacle bodies to avoid conflicts with triggers
-                EntityID id = (static_cast<EntityID>(2ull) << 61) | (static_cast<EntityID>(y) << 31) | static_cast<EntityID>(x);
-                
-                if (m_bodies.find(id) == m_bodies.end()) {
-                    addBody(id, aabb, BodyType::STATIC);
-                    setBodyLayer(id, CollisionLayer::Layer_Environment, 0xFFFFFFFFu);
-                    // These are solid bodies, not triggers
-                    setBodyTrigger(id, false);
-                    ++created;
+                if (isTopLeft) {
+                    // Create 64x64 collision body for the entire building (2x2 tiles)
+                    float cx = x * tileSize + tileSize; // Center at 1 tile offset (64px / 2)
+                    float cy = y * tileSize + tileSize; // Center at 1 tile offset (64px / 2)
+                    AABB aabb(cx, cy, tileSize, tileSize); // 64x64 collision box (tileSize * 2 / 2 = tileSize)
+                    
+                    // Use building ID for collision body to ensure uniqueness per building
+                    EntityID id = (static_cast<EntityID>(3ull) << 61) | static_cast<EntityID>(tile.buildingId);
+                    
+                    if (m_bodies.find(id) == m_bodies.end()) {
+                        addBody(id, aabb, BodyType::STATIC);
+                        setBodyLayer(id, CollisionLayer::Layer_Environment, 0xFFFFFFFFu);
+                        // These are solid bodies, not triggers
+                        setBodyTrigger(id, false);
+                        ++created;
+                    }
                 }
             }
         }
@@ -939,15 +946,32 @@ void CollisionManager::onTileChanged(int x, int y) {
         }
         
         // Update solid obstacle collision body for this tile (BUILDING only)
-        EntityID obstacleId = (static_cast<EntityID>(2ull) << 61) | (static_cast<EntityID>(y) << 31) | static_cast<EntityID>(x);
-        removeBody(obstacleId);
-        if (tile.obstacleType == ObstacleType::BUILDING) {
-            float cx = x * tileSize + tileSize * 0.5f;
-            float cy = y * tileSize + tileSize * 0.5f;
-            AABB aabb(cx, cy, tileSize * 0.5f, tileSize * 0.5f);
-            addBody(obstacleId, aabb, BodyType::STATIC);
-            setBodyLayer(obstacleId, CollisionLayer::Layer_Environment, 0xFFFFFFFFu);
-            setBodyTrigger(obstacleId, false);
+        // Remove old per-tile collision body (legacy)
+        EntityID oldObstacleId = (static_cast<EntityID>(2ull) << 61) | (static_cast<EntityID>(y) << 31) | static_cast<EntityID>(x);
+        removeBody(oldObstacleId);
+        
+        if (tile.obstacleType == ObstacleType::BUILDING && tile.buildingId > 0) {
+            // Only create collision body from the top-left tile of each building
+            bool isTopLeft = true;
+            if (x > 0 && world->grid[y][x - 1].buildingId == tile.buildingId) isTopLeft = false;
+            if (y > 0 && world->grid[y - 1][x].buildingId == tile.buildingId) isTopLeft = false;
+            
+            if (isTopLeft) {
+                // Create 64x64 collision body for the entire building using building ID
+                EntityID buildingId = (static_cast<EntityID>(3ull) << 61) | static_cast<EntityID>(tile.buildingId);
+                removeBody(buildingId); // Remove existing building collision body if any
+                
+                float cx = x * tileSize + tileSize; // Center at 1 tile offset
+                float cy = y * tileSize + tileSize; // Center at 1 tile offset
+                AABB aabb(cx, cy, tileSize, tileSize); // 64x64 collision box
+                addBody(buildingId, aabb, BodyType::STATIC);
+                setBodyLayer(buildingId, CollisionLayer::Layer_Environment, 0xFFFFFFFFu);
+                setBodyTrigger(buildingId, false);
+            }
+        } else if (tile.obstacleType != ObstacleType::BUILDING && tile.buildingId > 0) {
+            // Tile was a building but no longer is - remove the building collision body
+            EntityID buildingId = (static_cast<EntityID>(3ull) << 61) | static_cast<EntityID>(tile.buildingId);
+            removeBody(buildingId);
         }
         
         // ROCK and TREE movement penalties are handled by pathfinding system
