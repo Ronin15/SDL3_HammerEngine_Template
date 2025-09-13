@@ -25,6 +25,7 @@
 #include "entities/Entity.hpp"
 #include <array>
 #include <atomic>
+#include <chrono>
 #include <future>
 #include <memory>
 #include <mutex>
@@ -110,8 +111,11 @@ struct AIPerformanceStats {
     totalUpdateTime += timeMs;
     updateCount++;
     entitiesProcessed += entities;
-    if (totalUpdateTime > 0) {
-      entitiesPerSecond = (entitiesProcessed * 1000.0) / totalUpdateTime;
+    
+    // Use simple instantaneous rate calculation to avoid per-frame timing overhead
+    // This is much faster than time-windowed calculations
+    if (timeMs > 0) {
+      entitiesPerSecond = (entities * 1000.0) / timeMs; // entities processed per second in this frame
     }
   }
 

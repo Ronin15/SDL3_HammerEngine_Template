@@ -132,7 +132,11 @@ private:
 
     // storage
     std::unordered_map<EntityID, std::shared_ptr<CollisionBody>> m_bodies;
-    SpatialHash m_hash{64.0f, 2.0f}; // Optimized: 64px cells, 2px movement threshold for better performance
+    
+    // PERFORMANCE OPTIMIZATION: Separate spatial hashes for static vs dynamic bodies
+    // This prevents dynamic bodies from checking against every static tile
+    SpatialHash m_staticHash{64.0f, 2.0f};   // Static bodies (world tiles, buildings)
+    SpatialHash m_dynamicHash{64.0f, 2.0f};  // Dynamic/kinematic bodies (NPCs, player)
     std::vector<CollisionCB> m_callbacks;
     std::vector<EventManager::HandlerToken> m_handlerTokens;
     std::unordered_map<uint64_t, std::pair<EntityID,EntityID>> m_activeTriggerPairs; // OnEnter/Exit filtering
@@ -144,6 +148,8 @@ private:
         std::vector<std::pair<EntityID, EntityID>> pairBuffer;
         std::vector<EntityID> candidateBuffer;
         std::vector<CollisionInfo> collisionBuffer;
+        std::vector<EntityID> dynamicCandidates;  // For broadphase dynamic queries
+        std::vector<EntityID> staticCandidates;   // For broadphase static queries
         
         void ensureCapacity(size_t bodyCount) {
             size_t expectedPairs = bodyCount * 4; // Conservative estimate
@@ -151,6 +157,8 @@ private:
                 pairBuffer.reserve(expectedPairs);
                 candidateBuffer.reserve(bodyCount * 2);
                 collisionBuffer.reserve(expectedPairs / 4);
+                dynamicCandidates.reserve(32);    // Fewer dynamic bodies expected
+                staticCandidates.reserve(128);     // More static bodies expected
             }
         }
         
@@ -158,6 +166,8 @@ private:
             pairBuffer.clear();
             candidateBuffer.clear();
             collisionBuffer.clear();
+            dynamicCandidates.clear();
+            staticCandidates.clear();
             // Vectors retain capacity
         }
     };
@@ -212,6 +222,18 @@ private:
         size_t lastPairs{0};
         size_t lastCollisions{0};
         size_t bodyCount{0};
+        
+        // High-performance exponential moving average (no loops, O(1))
+        static constexpr double ALPHA = 0.01; // ~100 frame average, much faster than windowing
+        
+        void updateAverage(double newTotalMs) {
+            if (frames == 0) {
+                avgTotalMs = newTotalMs; // Initialize with first value
+            } else {
+                // Exponential moving average: O(1) operation, no memory overhead
+                avgTotalMs = ALPHA * newTotalMs + (1.0 - ALPHA) * avgTotalMs;
+            }
+        }
     };
 
 public:
