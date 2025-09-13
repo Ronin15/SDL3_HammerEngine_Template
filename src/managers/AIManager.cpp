@@ -16,7 +16,7 @@
 
 bool AIManager::init() {
   if (m_initialized.load(std::memory_order_acquire)) {
-    AI_LOG("AIManager already initialized");
+    AI_INFO("AIManager already initialized");
     return true;
   }
 
@@ -65,7 +65,7 @@ bool AIManager::init() {
       AI_INFO("PathfinderManager initialized successfully");
     }
 
-    AI_LOG("AIManager initialized successfully");
+    AI_INFO("AIManager initialized successfully");
     return true;
 
   } catch (const std::exception &e) {
@@ -79,7 +79,7 @@ void AIManager::clean() {
     return;
   }
 
-  AI_LOG("AIManager shutting down...");
+  AI_INFO("AIManager shutting down...");
 
   // Mark as shutting down
   m_isShutdown = true;
@@ -91,7 +91,7 @@ void AIManager::clean() {
   // Clean up all entities and behaviors
   // Wait for any pending async assignments to complete before shutdown
   if (!m_assignmentFutures.empty()) {
-    AI_LOG("Waiting for " + std::to_string(m_assignmentFutures.size()) +
+    AI_INFO("Waiting for " + std::to_string(m_assignmentFutures.size()) +
            " async assignment batches to complete...");
 
     // Check if ThreadSystem still exists - if not, futures are invalid
@@ -129,7 +129,7 @@ void AIManager::clean() {
 
   // Ensure any in-flight update futures are completed before clearing storage
   if (!m_updateFutures.empty()) {
-    AI_LOG("Waiting for " + std::to_string(m_updateFutures.size()) +
+    AI_INFO("Waiting for " + std::to_string(m_updateFutures.size()) +
            " AI update futures to complete...");
     for (auto &future : m_updateFutures) {
       if (future.valid()) {
@@ -191,11 +191,11 @@ void AIManager::clean() {
   m_totalAssignmentCount.store(0, std::memory_order_relaxed);
   m_frameCounter.store(0, std::memory_order_relaxed);
 
-  AI_LOG("AIManager shutdown complete");
+  AI_INFO("AIManager shutdown complete");
 }
 
 void AIManager::prepareForStateTransition() {
-  AI_LOG("Preparing AIManager for state transition...");
+  AI_INFO("Preparing AIManager for state transition...");
 
   // Pause AI processing to prevent new tasks
   m_globallyPaused.store(true, std::memory_order_release);
@@ -341,7 +341,7 @@ void AIManager::prepareForStateTransition() {
   // Reset pause state to false so next state starts unpaused
   m_globallyPaused.store(false, std::memory_order_release);
 
-  AI_LOG("AIManager state transition complete - all state cleared and reset");
+  AI_INFO("AIManager state transition complete - all state cleared and reset");
 }
 
 void AIManager::update([[maybe_unused]] float deltaTime) {
@@ -652,7 +652,7 @@ void AIManager::registerBehavior(const std::string &name,
   m_behaviorCache.clear();
   m_behaviorTypeCache.clear();
 
-  AI_LOG("Registered behavior: " + name);
+  AI_INFO("Registered behavior: " + name);
 }
 
 bool AIManager::hasBehavior(const std::string &name) const {
@@ -724,7 +724,7 @@ void AIManager::assignBehaviorToEntity(EntityPtr entity,
         m_storage.halfHeights[index] = halfH;
       }
 
-      AI_LOG("Updated behavior for existing entity to: " + behaviorName);
+      AI_INFO("Updated behavior for existing entity to: " + behaviorName);
     }
   } else {
     // Add new entity
@@ -752,7 +752,7 @@ void AIManager::assignBehaviorToEntity(EntityPtr entity,
     // Update index map
     m_entityToIndex[entity] = newIndex;
 
-    AI_LOG("Added new entity with behavior: " + behaviorName);
+    AI_INFO("Added new entity with behavior: " + behaviorName);
   }
 
   m_totalAssignmentCount.fetch_add(1, std::memory_order_relaxed);
@@ -1055,7 +1055,7 @@ void AIManager::unregisterEntityFromUpdates(EntityPtr entity) {
 
 void AIManager::setGlobalPause(bool paused) {
   m_globallyPaused.store(paused, std::memory_order_release);
-  AI_LOG((paused ? "AI processing paused" : "AI processing resumed"));
+  AI_INFO((paused ? "AI processing paused" : "AI processing resumed"));
 }
 
 bool AIManager::isGloballyPaused() const {
@@ -1063,7 +1063,7 @@ bool AIManager::isGloballyPaused() const {
 }
 
 void AIManager::resetBehaviors() {
-  AI_LOG("Resetting all AI behaviors");
+  AI_INFO("Resetting all AI behaviors");
 
   std::unique_lock<std::shared_mutex> entitiesLock(m_entitiesMutex);
   std::unique_lock<std::shared_mutex> behaviorsLock(m_behaviorsMutex);
@@ -1099,7 +1099,7 @@ void AIManager::configureThreading(bool useThreading, unsigned int maxThreads) {
     m_maxThreads = maxThreads;
   }
 
-  AI_LOG("Threading configured: " +
+  AI_INFO("Threading configured: " +
          std::string(useThreading ? "enabled" : "disabled") +
          " with max threads: " + std::to_string(m_maxThreads));
 }

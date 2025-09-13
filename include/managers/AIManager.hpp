@@ -25,7 +25,6 @@
 #include "entities/Entity.hpp"
 #include <array>
 #include <atomic>
-#include <chrono>
 #include <future>
 #include <memory>
 #include <mutex>
@@ -37,14 +36,6 @@
 // PathfinderManager available for centralized pathfinding services
 class PathfinderManager;
 class CollisionManager;
-
-// Conditional debug logging
-#ifdef AI_DEBUG_LOGGING
-#define AI_LOG(x)                                                              \
-  std::cout << "Hammer Game Engine - [AI Manager] " << x << std::endl
-#else
-#define AI_LOG(x)
-#endif
 
 // Performance configuration constants
 namespace AIConfig {
@@ -493,7 +484,7 @@ private:
   static constexpr size_t BATCH_SIZE =
       256; // Larger batches for better throughput
   static constexpr size_t THREADING_THRESHOLD =
-      100; // Higher threshold - threading overhead not worth it for smaller counts
+      500; // Higher threshold - threading overhead not worth it for smaller counts
 
   // Optimized helper methods
   BehaviorType inferBehaviorType(const std::string &behaviorName) const;
