@@ -633,7 +633,17 @@ void HammerEngine::TileRenderer::renderVisibleTiles(const HammerEngine::WorldDat
                     case HammerEngine::ObstacleType::TREE:    textureID = "obstacle_tree"; break;
                     case HammerEngine::ObstacleType::ROCK:    textureID = "obstacle_rock"; break;
                     case HammerEngine::ObstacleType::WATER:   textureID = "obstacle_water"; break;
-                    case HammerEngine::ObstacleType::BUILDING: textureID = "obstacle_building_solid"; break;
+                    case HammerEngine::ObstacleType::BUILDING: {
+                        // Choose texture based on building size
+                        switch (tile.buildingSize) {
+                            case 1: textureID = "building_hut"; break;
+                            case 2: textureID = "building_house"; break;
+                            case 3: textureID = "building_large"; break;
+                            case 4: textureID = "building_cityhall"; break;
+                            default: textureID = "building_hut"; break;
+                        }
+                        break;
+                    }
                     default:                    textureID = "biome_default"; break;
                 }
             } else if (tile.isWater) {
@@ -652,8 +662,22 @@ void HammerEngine::TileRenderer::renderVisibleTiles(const HammerEngine::WorldDat
                 }
             }
 
-            // Use TextureManager's tile-optimized float precision rendering
-            TextureManager::Instance().drawTileF(textureID, screenX, screenY, TILE_SIZE, TILE_SIZE, renderer);
+            // Handle building rendering specially - they are 64x64 (2x2 tiles)
+            if (tile.obstacleType == HammerEngine::ObstacleType::BUILDING) {
+                // Only render from the top-left tile of each building to avoid overdraw
+                bool isTopLeft = true;
+                if (x > 0 && world.grid[y][x - 1].buildingId == tile.buildingId) isTopLeft = false;
+                if (y > 0 && world.grid[y - 1][x].buildingId == tile.buildingId) isTopLeft = false;
+                
+                if (isTopLeft) {
+                    // Render building as 64x64 block (2x2 tiles)
+                    TextureManager::Instance().drawTileF(textureID, screenX, screenY, TILE_SIZE * 2, TILE_SIZE * 2, renderer);
+                }
+                // Skip rendering for non-top-left building tiles
+            } else {
+                // Normal tile rendering for non-building tiles
+                TextureManager::Instance().drawTileF(textureID, screenX, screenY, TILE_SIZE, TILE_SIZE, renderer);
+            }
         }
     }
 }
@@ -727,7 +751,7 @@ std::string HammerEngine::TileRenderer::getObstacleTexture(HammerEngine::Obstacl
         case HammerEngine::ObstacleType::TREE:    return "obstacle_tree";
         case HammerEngine::ObstacleType::ROCK:    return "obstacle_rock";
         case HammerEngine::ObstacleType::WATER:   return "obstacle_water";
-        case HammerEngine::ObstacleType::BUILDING: return "obstacle_building_solid";
+        case HammerEngine::ObstacleType::BUILDING: return "building_hut"; // Default to hut texture
         default:                    return "biome_default";
     }
 }

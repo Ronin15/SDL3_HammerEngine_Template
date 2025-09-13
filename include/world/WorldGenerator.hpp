@@ -47,6 +47,29 @@ private:
     static void calculateInitialResources(
         const WorldData& world
     );
+    
+    // Building generation helpers
+    static void generateBuildings(
+        WorldData& world,
+        std::default_random_engine& rng
+    );
+    
+    static bool canPlaceBuilding(
+        const WorldData& world,
+        int x, int y
+    );
+    
+    static uint32_t createBuilding(
+        WorldData& world,
+        int x, int y,
+        uint32_t& nextBuildingId
+    );
+    
+    static void tryConnectBuildings(
+        WorldData& world,
+        int x, int y,
+        uint32_t buildingId
+    );
 
 public:
     static std::unique_ptr<WorldData> generateWorld(const WorldGenerationConfig& config);
