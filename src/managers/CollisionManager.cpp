@@ -16,6 +16,7 @@
 #include <algorithm>
 #include <map>
 #include <chrono>
+#include <cassert>
 #include "utils/UniqueID.hpp"
 
 using ::WorldManager;
@@ -355,7 +356,7 @@ size_t CollisionManager::createTriggersForWaterTiles(HammerEngine::TriggerTag ta
             float cy = y * tileSize + tileSize * 0.5f;
             AABB aabb(cx, cy, tileSize * 0.5f, tileSize * 0.5f);
             // Use a distinct prefix for triggers to avoid id collisions with static colliders
-            EntityID id = (static_cast<EntityID>(1ull) << 61) | (static_cast<EntityID>(y) << 31) | static_cast<EntityID>(x);
+            EntityID id = (static_cast<EntityID>(1ull) << 61) | (static_cast<EntityID>(static_cast<uint32_t>(y)) << 31) | static_cast<EntityID>(static_cast<uint32_t>(x));
             if (m_bodies.find(id) == m_bodies.end()) {
                 addBody(id, aabb, BodyType::STATIC);
                 setBodyLayer(id, CollisionLayer::Layer_Environment, 0xFFFFFFFFu);
@@ -933,7 +934,7 @@ void CollisionManager::onTileChanged(int x, int y) {
         const auto& tile = world->grid[y][x];
         
         // Update water trigger for this tile
-        EntityID trigId = (static_cast<EntityID>(1ull) << 61) | (static_cast<EntityID>(y) << 31) | static_cast<EntityID>(x);
+        EntityID trigId = (static_cast<EntityID>(1ull) << 61) | (static_cast<EntityID>(static_cast<uint32_t>(y)) << 31) | static_cast<EntityID>(static_cast<uint32_t>(x));
         removeBody(trigId);
         if (tile.isWater) {
             float cx = x * tileSize + tileSize * 0.5f;
@@ -947,7 +948,7 @@ void CollisionManager::onTileChanged(int x, int y) {
         
         // Update solid obstacle collision body for this tile (BUILDING only)
         // Remove old per-tile collision body (legacy)
-        EntityID oldObstacleId = (static_cast<EntityID>(2ull) << 61) | (static_cast<EntityID>(y) << 31) | static_cast<EntityID>(x);
+        EntityID oldObstacleId = (static_cast<EntityID>(2ull) << 61) | (static_cast<EntityID>(static_cast<uint32_t>(y)) << 31) | static_cast<EntityID>(static_cast<uint32_t>(x));
         removeBody(oldObstacleId);
         
         if (tile.obstacleType == ObstacleType::BUILDING && tile.buildingId > 0) {
@@ -958,7 +959,7 @@ void CollisionManager::onTileChanged(int x, int y) {
             
             if (isTopLeft) {
                 // Create 64x64 collision body for the entire building using building ID
-                EntityID buildingId = (static_cast<EntityID>(3ull) << 61) | static_cast<EntityID>(tile.buildingId);
+                EntityID buildingId = (static_cast<EntityID>(3ull) << 61) | static_cast<EntityID>(static_cast<uint32_t>(tile.buildingId));
                 removeBody(buildingId); // Remove existing building collision body if any
                 
                 float cx = x * tileSize + tileSize; // Center at 1 tile offset
@@ -970,7 +971,7 @@ void CollisionManager::onTileChanged(int x, int y) {
             }
         } else if (tile.obstacleType != ObstacleType::BUILDING && tile.buildingId > 0) {
             // Tile was a building but no longer is - remove the building collision body
-            EntityID buildingId = (static_cast<EntityID>(3ull) << 61) | static_cast<EntityID>(tile.buildingId);
+            EntityID buildingId = (static_cast<EntityID>(3ull) << 61) | static_cast<EntityID>(static_cast<uint32_t>(tile.buildingId));
             removeBody(buildingId);
         }
         
