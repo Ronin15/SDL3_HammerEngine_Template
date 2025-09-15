@@ -11,26 +11,119 @@
 The AI Manager is a high-performance, unified system for managing autonomous behaviors for game entities. It provides a single, optimized framework for implementing and controlling various AI behaviors with advanced performance features:
 
 1. **Cross-Platform Performance** - Optimized for 4-6% CPU usage with 10,000 entities
-2. **Non-Blocking AI Processing** - Fire-and-forget threading prevents main thread blocking
-3. **Cache-Friendly Structure of Arrays (SoA)** - Hot/cold data separation for optimal cache efficiency
-4. **Distance-based optimization** - Pure distance culling for distant entities (no frame counting)
-5. **Priority-based management** - Higher priority entities get larger distance thresholds (0-9 scale)
-6. **Individual behavior instances** - Each entity gets its own behavior state via clone()
-7. **Threading & Batching** - Optimal 2-4 large batches with WorkerBudget integration
-8. **Type-indexed behaviors** - Fast behavior dispatch using enumerated types (BehaviorType enum)
-9. **Lock-free message queue** - Zero-contention communication with behaviors
-10. **Global AI pause/resume** - Complete halt of all AI processing with thread-safe controls
-11. **Performance monitoring** - Built-in statistics tracking per behavior type and globally
-12. **Optimized distance calculations** - Reduced frequency and efficient computation
-13. **Intelligent double buffering** - Only copies when needed, not every frame
-14. **Batch lock optimization** - Single lock per batch instead of per-entity
+2. **Collision System Integration** - Centralized batch updates to CollisionManager for massive performance gains
+3. **PathfinderManager Integration** - Centralized pathfinding service with automatic initialization
+4. **Cache-Friendly Structure of Arrays (SoA)** - Hot/cold data separation for optimal cache efficiency
+5. **Distance-based optimization** - Pure distance culling for distant entities (no frame counting)
+6. **Priority-based management** - Higher priority entities get larger distance thresholds (0-9 scale)
+7. **Individual behavior instances** - Each entity gets its own behavior state via clone()
+8. **Threading & Batching** - Optimal 2-4 large batches with WorkerBudget integration
+9. **Type-indexed behaviors** - Fast behavior dispatch using enumerated types (BehaviorType enum)
+10. **Lock-free message queue** - Zero-contention communication with behaviors
+11. **Global AI pause/resume** - Complete halt of all AI processing with thread-safe controls
+12. **Performance monitoring** - Built-in statistics tracking per behavior type and globally
+13. **Optimized distance calculations** - Reduced frequency and efficient computation
+14. **Intelligent double buffering** - Only copies when needed, not every frame
+15. **Batch lock optimization** - Single lock per batch instead of per-entity
+16. **Async Assignment Processing** - Non-blocking behavior assignment with future-based synchronization
+17. **Kinematic Batch Updates** - Single-call collision system updates for entire AI batches
 
 See also:
 - [ThreadSystem](../core/ThreadSystem.md) — WorkerBudget, priorities, and batching
 - [GameEngine](../core/GameEngine.md) — Update integration and double buffering
 - [EventManager](../events/EventManager.md) — Coordinated updates and messaging
+- [CollisionManager](../managers/CollisionManager.md) — Batch collision updates and kinematic integration
+- [PathfinderManager](../managers/PathfinderManager.md) — Centralized pathfinding service
 - [Behavior Modes](BehaviorModes.md) — Detailed behavior configurations
 - [Quick Reference](BehaviorQuickReference.md) — Fast lookup for behaviors and modes
+
+## System Integration Optimizations
+
+### CollisionManager Integration
+
+The AIManager now features tight integration with the CollisionManager for optimal performance:
+
+#### Kinematic Batch Updates
+Instead of individual collision updates per entity, the AIManager accumulates all position and velocity changes during batch processing and submits them as a single batch operation:
+
+```cpp
+// OLD: Individual updates (slow)
+for (auto& entity : entities) {
+    entity.update(deltaTime);
+    CollisionManager::Instance().setKinematicPose(entity.getId(), entity.getPosition());
+    CollisionManager::Instance().setVelocity(entity.getId(), entity.getVelocity());
+}
+
+// NEW: Batch updates (fast)
+std::vector<CollisionManager::KinematicUpdate> updates;
+for (auto& entity : entities) {
+    entity.update(deltaTime);
+    updates.emplace_back(entity.getId(), entity.getPosition(), entity.getVelocity());
+}
+CollisionManager::Instance().updateKinematicBatch(updates);
+```
+
+#### Performance Benefits
+- **Lock Contention**: Single lock acquisition instead of hundreds/thousands
+- **Cache Efficiency**: Sequential memory access patterns for collision data
+- **SIMD Opportunities**: Batch processing enables vectorization optimizations
+- **Throughput**: 10-50x improvement in collision update performance
+
+### PathfinderManager Integration
+
+AIManager automatically initializes and coordinates with the PathfinderManager:
+
+#### Automatic Initialization
+```cpp
+bool AIManager::init() {
+    // ... existing initialization ...
+
+    // Initialize PathfinderManager (centralized pathfinding service)
+    if (!PathfinderManager::Instance().isInitialized()) {
+        if (!PathfinderManager::Instance().init()) {
+            AI_ERROR("Failed to initialize PathfinderManager");
+            return false;
+        }
+        AI_INFO("PathfinderManager initialized successfully");
+    }
+
+    return true;
+}
+```
+
+#### Boundary Clamping Optimization
+```cpp
+// Efficient world boundary clamping using PathfinderManager cached bounds
+const auto& pf = PathfinderManager::Instance();
+Vector2D pos = entity->getPosition();
+Vector2D clamped = pf.clampInsideExtents(pos, halfW, halfH, 0.0f);
+```
+
+### Async Assignment Processing
+
+Large behavior assignment operations are now processed asynchronously to prevent main thread blocking:
+
+#### Future-Based Synchronization
+```cpp
+// Start async assignment processing
+m_assignmentInProgress.store(true, std::memory_order_release);
+m_assignmentFutures.push_back(threadSystem.enqueueTaskWithResult(...));
+
+// Check completion on subsequent frames
+for (auto it = m_assignmentFutures.begin(); it != m_assignmentFutures.end();) {
+    if (it->wait_for(std::chrono::nanoseconds(0)) == std::future_status::ready) {
+        it->get(); // Retrieve result
+        it = m_assignmentFutures.erase(it);
+    } else {
+        ++it;
+    }
+}
+```
+
+#### Smart Processing Thresholds
+- **Small batches (≤100)**: Process synchronously on main thread
+- **Medium batches (100-1000)**: Process synchronously to avoid overhead
+- **Large batches (>1000)**: Process asynchronously with optimal batching
 
 ## Individual Behavior Instances Architecture
 
