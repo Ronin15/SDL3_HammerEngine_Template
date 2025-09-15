@@ -89,6 +89,17 @@ struct EventData {
 };
 
 /**
+ * @brief Event priority constants for priority-based processing
+ */
+struct EventPriority {
+  static constexpr uint32_t CRITICAL = 1000;  // Critical system events (collisions, core engine)
+  static constexpr uint32_t HIGH = 800;       // Important gameplay events (combat, AI decisions)
+  static constexpr uint32_t NORMAL = 500;     // Standard gameplay events (movement, interactions)
+  static constexpr uint32_t LOW = 200;        // Background events (weather, ambient effects)
+  static constexpr uint32_t DEFERRED = 0;     // Non-time-sensitive events (resource changes, UI updates)
+};
+
+/**
  * @brief Fast event handler function type
  */
 using FastEventHandler = std::function<void(const EventData &)>;
@@ -595,7 +606,7 @@ private:
 
   // Internal registration helper
   bool registerEventInternal(const std::string &name, EventPtr event,
-                             EventTypeId typeId);
+                             EventTypeId typeId, uint32_t priority = EventPriority::NORMAL);
 };
 
 #endif // EVENT_MANAGER_HPP
