@@ -5,6 +5,7 @@
 - [Core Systems](#core-systems)
   - [GameEngine & Core Systems](#gameengine--core-systems)
   - [AI System](#ai-system)
+  - [Collision System](#collision-system)
   - [Event System](#event-system)
   - [UI System](#ui-system)
   - [Threading System](#threading-system)
@@ -13,6 +14,7 @@
 - [Getting Started](#getting-started)
 - [Key Features](#key-features)
 - [Development Workflow](#development-workflow)
+- [Roadmaps & Known Issues](#roadmaps--known-issues)
 - [Support and Troubleshooting](#support-and-troubleshooting)
 
 ## Overview
@@ -34,6 +36,13 @@ The AI system provides flexible, thread-safe behavior management for game entiti
 - **[AI System Overview](ai/AIManager.md)** - Complete AI system documentation with unified architecture, performance optimization, and threading support
 - **[Behavior Modes](ai/BehaviorModes.md)** - Comprehensive documentation for all 8 AI behaviors with 32 total modes, configuration examples, and best practices
 - **[Behavior Quick Reference](ai/BehaviorQuickReference.md)** - Streamlined quick lookup for all behaviors, modes, and setup patterns
+- **[Pathfinding System](ai/PathfindingSystem.md)** - Deep dive into grid navigation, heuristics, and multi-threaded job scheduling for large path queries
+
+### Collision System
+High-performance spatial hashing, broadphase queries, and pathfinding integration for world interactions.
+
+- **[Collision System](collisions/CollisionSystem.md)** - Spatial hash design, broadphase/narrowphase processing, and debug visualization tooling
+- **[CollisionManager](managers/CollisionManager.md)** - Runtime collision component registration, query utilities, and integration hooks
 
 ### Event System
 Comprehensive event management system with EventManager as the single source of truth for weather events, NPC spawning, scene transitions, and custom events.
@@ -51,6 +60,7 @@ Comprehensive UI system with professional theming, animations, layouts, content-
 - **[Auto-Sizing System](ui/Auto_Sizing_System.md)** - Content-aware component sizing with multi-line text support and font-based measurements
 - **[DPI-Aware Font System](ui/DPI_Aware_Font_System.md)** - Automatic display detection and font scaling for crisp text on all display types
 - **[SDL3 Logical Presentation](ui/SDL3_Logical_Presentation_Modes.md)** - SDL3 presentation system integration and coordinate handling
+- **[Minimap Implementation](ui/Minimap_Implementation.md)** - Design blueprint for the minimap renderer, layer compositing, and interaction hooks
 
 ### Threading System
 High-performance multithreading framework with intelligent WorkerBudget allocation and priority-based task scheduling.
@@ -70,12 +80,17 @@ See the [Manager Documentation Index](managers/README.md) for a complete, alphab
 - **[FontManager](managers/FontManager.md)** – Centralized font loading, management, and text rendering with DPI-aware scaling and UI integration.
 - **[GameStateManager](managers/GameStateManager.md)** – Handles the collection and switching of game states/screens, ensuring only one is active at a time.
 - **[InputManager](managers/InputManager.md)** – Centralized input handling for keyboard, mouse, and gamepad, with event-driven detection and coordinate conversion.
+- **[CollisionManager](managers/CollisionManager.md)** – Spatial hash registration, overlap queries, and collision channel filtering for entities and world tiles.
 - **[ParticleManager](managers/ParticleManager.md)** – High-performance particle system for real-time visual effects, weather, and custom effects.
+- **[PathfinderManager](managers/PathfinderManager.md)** – Centralized A* job submission, multi-thread scheduling, and result caching for path queries.
+- **[ResourceFactory](managers/ResourceFactory.md)** – Blueprint-driven instantiation pipeline for complex game objects with dependency resolution.
 - **[ResourceTemplateManager](managers/ResourceTemplateManager.md)** – Registers, indexes, and instantiates resource templates (items, blueprints) with thread safety and statistics.
 - **[SaveGameManager](managers/SaveGameManager.md)** – Comprehensive save/load system with binary format, slot management, and robust error handling.
 - **[SoundManager](managers/SoundManager.md)** – Centralized audio system for sound effects and music playback, supporting multiple formats and volume control.
 - **[TextureManager](managers/TextureManager.md)** – Handles loading, management, and rendering of textures (PNG), with batch loading and animation support.
 - **[TimestepManager](managers/TimestepManager.md)** – Provides consistent game timing with fixed timestep updates and variable timestep rendering.
+- **[WorldManager](managers/WorldManager.md)** – Oversees world generation, streaming, and region management with tight integration to collision and AI systems.
+- **[WorldManager Implementation Plan](managers/WorldManager_Implementation_Plan.md)** – High-level roadmap for upcoming streaming, biome, and chunk optimizations.
 - **[WorldResourceManager](managers/WorldResourceManager.md)** – Tracks and manipulates resource quantities across multiple worlds, supporting thread-safe operations and statistics.
 
 Some managers (e.g., ParticleManager, SaveGameManager) are tightly integrated with other systems and may have additional documentation in other folders. See the [Manager Documentation Index](managers/README.md) for details.
@@ -89,6 +104,7 @@ Core utility classes and helper systems used throughout the engine.
 - **[JsonReader](utils/JsonReader.md)** - RFC 8259 compliant JSON parser with type-safe accessors and robust error handling
 - **[JSON Resource Loading](utils/JSON_Resource_Loading_Guide.md)** - Complete guide to loading items, materials, currency, and game resources from JSON files with ResourceTemplateManager integration
 - **[Binary Serialization](utils/SERIALIZATION.md)** - Fast, header-only serialization system for game data
+- **[ResourceHandle System](utils/ResourceHandle_System.md)** - Lightweight, type-safe handle indirection for resource lookups across modules
 - **[Performance Notes](../hammer_engine_performance.md)** - Detailed performance optimization history and benchmarks
 
 ## Resource System Integration
@@ -222,6 +238,11 @@ The Hammer Game Engine provides several core systems that work together:
 4. **Use debug tools** to monitor performance
 5. **Follow best practices** for optimal results
 
+## Roadmaps & Known Issues
+
+- **Camera Pipeline:** [Camera Refactor Plan](Camera_Refactor_Plan.md) – Upcoming renderer/camera modernization roadmap aligned with SDL3 logical presentation updates.
+- **macOS SDL Cleanup:** [SDL3 macOS Cleanup Issue](issues/SDL3_MACOS_CLEANUP_ISSUE.md) – Platform-specific guidance for maintaining stable shutdown paths.
+
 ## Support and Troubleshooting
 
 For issues with specific systems, see the troubleshooting sections in each system's documentation:
@@ -233,6 +254,7 @@ For issues with specific systems, see the troubleshooting sections in each syste
 - Event issues: See [EventManager Overview](events/EventManager.md) and [EventManager Advanced](events/EventManager_Advanced.md)
 - UI issues: See [UIManager Guide](ui/UIManager_Guide.md), [Auto-Sizing System](ui/Auto_Sizing_System.md), and [DPI-Aware Font System](ui/DPI_Aware_Font_System.md)
 - Threading issues: See [ThreadSystem](core/ThreadSystem.md)
+- SDL shutdown crashes (macOS): See [SDL3 macOS Cleanup Issue](issues/SDL3_MACOS_CLEANUP_ISSUE.md)
 
 ---
 
