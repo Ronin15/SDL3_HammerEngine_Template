@@ -1812,8 +1812,7 @@ void EventManager::drainDispatchQueueWithBudget() {
     maxToProcess = 32 + (budget.eventAllocated * 32);
   }
 
-  const uint64_t start = getCurrentTimeNanos();
-  uint64_t timeBudgetNs = 2'000'000; // ~2ms
+  // Removed timing budget - process all events for reliability
 
   std::vector<PendingDispatch> local;
   local.reserve(maxToProcess);
@@ -1822,7 +1821,6 @@ void EventManager::drainDispatchQueueWithBudget() {
     const size_t backlog = m_pendingDispatch.size();
     if (backlog > m_maxDispatchQueue / 2) {
       maxToProcess += std::min(backlog / 64, static_cast<size_t>(256));
-      timeBudgetNs += 500'000; // +0.5ms under heavy backlog
     }
     size_t toTake = std::min(maxToProcess, m_pendingDispatch.size());
     for (size_t i = 0; i < toTake; ++i) {
@@ -1867,18 +1865,7 @@ void EventManager::drainDispatchQueueWithBudget() {
 
     if (pd.data.onConsumed) { pd.data.onConsumed(); }
 
-    // PERFORMANCE FIX: Don't use arbitrary time budgets that cause events to be lost
-    // Instead, process all events but track performance for optimization opportunities
-    uint64_t currentTime = getCurrentTimeNanos();
-    if ((currentTime - start) > timeBudgetNs) {
-      // Log slow performance for optimization but don't break event processing
-      static uint64_t lastSlowWarning = 0;
-      if (currentTime - lastSlowWarning > 1000000000) { // Warn once per second max
-        EVENT_WARN("Deferred event processing exceeded time budget: " +
-                   std::to_string((currentTime - start) / 1000000.0) + "ms");
-        lastSlowWarning = currentTime;
-      }
-    }
+    // Process all events without arbitrary time budget limits
   }
 }
 
