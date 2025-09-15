@@ -8,9 +8,10 @@
 namespace HammerEngine {
 
 bool AABB::intersects(const AABB& other) const {
-    // Use non-strict separation so edge-touching is NOT a collision
-    if (right() <= other.left() || other.right() <= left()) return false;
-    if (bottom() <= other.top() || other.bottom() <= top()) return false;
+    // Use epsilon tolerance for cross-platform floating-point consistency
+    const float epsilon = 0.001f;
+    if (right() < other.left() - epsilon || other.right() < left() - epsilon) return false;
+    if (bottom() < other.top() - epsilon || other.bottom() < top() - epsilon) return false;
     return true;
 }
 

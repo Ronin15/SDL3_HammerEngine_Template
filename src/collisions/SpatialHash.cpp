@@ -114,9 +114,8 @@ void SpatialHash::query(const AABB& area, std::vector<EntityID>& out) const {
     size_t estimatedEntities = cellsX * cellsY * 6; // Increased estimate for better pre-allocation
     out.reserve(estimatedEntities);
     
-    // OPTIMIZED: Use thread-local set with better initial capacity
-    thread_local std::unordered_set<EntityID> seenIds;
-    seenIds.clear();
+    // FIXED: Use local set instead of thread_local for Windows MSYS/MinGW compatibility
+    std::unordered_set<EntityID> seenIds;
     seenIds.reserve(estimatedEntities);
     
     // OPTIMIZED: Manual cell iteration for better cache locality

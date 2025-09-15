@@ -509,11 +509,8 @@ bool CollisionManager::overlaps(EntityID a, EntityID b) const {
 void CollisionManager::queryArea(const AABB &area,
                                  std::vector<EntityID> &out) const {
   // Query both static and dynamic hashes, combining results
-  thread_local std::vector<EntityID> staticResults;
-  thread_local std::vector<EntityID> dynamicResults;
-
-  staticResults.clear();
-  dynamicResults.clear();
+  std::vector<EntityID> staticResults;
+  std::vector<EntityID> dynamicResults;
 
   m_staticHash.query(area, staticResults);
   m_dynamicHash.query(area, dynamicResults);
