@@ -126,13 +126,6 @@ void CollisionManager::addBody(EntityID id, const AABB &aabb, BodyType type) {
   // Insert into appropriate spatial hash based on body type
   if (type == BodyType::STATIC) {
     m_staticHash.insert(id, aabb);
-    // DEBUG: Log static body addition
-    COLLISION_DEBUG("Added STATIC body - ID: " + std::to_string(id) +
-                    ", center: (" + std::to_string(aabb.center.getX()) + "," +
-                    std::to_string(aabb.center.getY()) + ")" +
-                    ", halfSize: (" + std::to_string(aabb.halfSize.getX()) + "," +
-                    std::to_string(aabb.halfSize.getY()) + ")" +
-                    ", Total static bodies: " + std::to_string(getStaticBodyCount()));
   } else {
     m_dynamicHash.insert(id, aabb);
   }
@@ -623,13 +616,6 @@ void CollisionManager::broadphase(
     // 2. Query static hash for dynamic-vs-static collisions (with caching)
     staticCandidates.clear();
 
-    // DEBUG: Log static body queries for troubleshooting
-    if (m_verboseLogs) {
-      COLLISION_DEBUG("Querying static bodies for entity " + std::to_string(body.id) +
-                      " at (" + std::to_string(body.aabb.center.getX()) + "," +
-                      std::to_string(body.aabb.center.getY()) + ")");
-    }
-
     // Check if we have cached static bodies for this entity
     auto cacheIt = m_broadphaseCache.staticCache.find(body.id);
     bool useCache = (cacheIt != m_broadphaseCache.staticCache.end());
@@ -651,12 +637,6 @@ void CollisionManager::broadphase(
     if (!useCache) {
       // Query spatial hash and update cache
       m_staticHash.query(body.aabb, staticCandidates);
-
-      // DEBUG: Log static candidates found
-      if (m_verboseLogs) {
-        COLLISION_DEBUG("Found " + std::to_string(staticCandidates.size()) +
-                        " static candidates for entity " + std::to_string(body.id));
-      }
 
       // Update cache for next frame
       auto &cachedQuery = m_broadphaseCache.staticCache[body.id];
@@ -683,12 +663,6 @@ void CollisionManager::broadphase(
       // No need for pair deduplication with static bodies since we don't
       // reverse check
       pairs.emplace_back(body.id, staticId);
-
-      // DEBUG: Log static collision pairs
-      if (m_verboseLogs) {
-        COLLISION_DEBUG("Added static collision pair: " + std::to_string(body.id) +
-                        " vs " + std::to_string(staticId));
-      }
     }
   }
 
@@ -716,25 +690,8 @@ void CollisionManager::narrowphase(
       continue;
     const CollisionBody &A = *ita->second;
     const CollisionBody &B = *itb->second;
-
-    // DEBUG: Log static collision narrowphase checks
-    bool isStaticCollision = (A.type == BodyType::STATIC || B.type == BodyType::STATIC);
-    if (m_verboseLogs && isStaticCollision) {
-      COLLISION_DEBUG("Narrowphase check: " + std::to_string(aId) + " vs " + std::to_string(bId) +
-                      " (A type: " + std::to_string(static_cast<int>(A.type)) +
-                      ", B type: " + std::to_string(static_cast<int>(B.type)) + ")");
-    }
-
-    if (!A.aabb.intersects(B.aabb)) {
-      if (m_verboseLogs && isStaticCollision) {
-        COLLISION_DEBUG("No intersection between " + std::to_string(aId) + " and " + std::to_string(bId));
-      }
+    if (!A.aabb.intersects(B.aabb))
       continue;
-    }
-
-    if (m_verboseLogs && isStaticCollision) {
-      COLLISION_DEBUG("Collision detected between " + std::to_string(aId) + " and " + std::to_string(bId));
-    }
     float dxLeft = B.aabb.right() - A.aabb.left();
     float dxRight = A.aabb.right() - B.aabb.left();
     float dyTop = B.aabb.bottom() - A.aabb.top();
@@ -767,16 +724,6 @@ void CollisionManager::resolve(const CollisionInfo &info) {
     return;
   CollisionBody &A = *ita->second;
   CollisionBody &B = *itb->second;
-
-  // DEBUG: Log static collision resolution
-  bool isStaticCollision = (A.type == BodyType::STATIC || B.type == BodyType::STATIC);
-  if (m_verboseLogs && isStaticCollision) {
-    COLLISION_DEBUG("Resolving collision: " + std::to_string(info.a) + " vs " + std::to_string(info.b) +
-                    " (penetration: " + std::to_string(info.penetration) +
-                    ", A type: " + std::to_string(static_cast<int>(A.type)) +
-                    ", B type: " + std::to_string(static_cast<int>(B.type)) + ")");
-  }
-
   const float push = info.penetration * 0.5f;
 
   // Apply position corrections (including to kinematic bodies)
