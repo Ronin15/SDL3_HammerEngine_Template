@@ -14,29 +14,31 @@ The ParticleManager is a high-performance, production-ready particle system desi
 
 ### Core Design Philosophy
 
-The ParticleManager follows a **Unified Particle Architecture** approach combined with **WorkerBudget threading** and **intelligent memory management** for maximum performance:
+The ParticleManager follows a **SIMD-Optimized Structure of Arrays (SoA)** approach combined with **WorkerBudget threading** and **intelligent memory management** for maximum performance:
 
-- **Unified Storage**: Single-structure particles eliminate data synchronization issues
+- **SIMD-Friendly SoA Storage**: Separate arrays for X/Y components enable vectorization optimizations
 - **Lock-Free Updates**: Worker threads use lock-free batch processing with shared_mutex synchronization
 - **WorkerBudget Integration**: Intelligent threading allocation with queue pressure management
 - **EventManager Integration**: Seamless weather effects triggered by game events
+- **Vector Optimization**: Cache-friendly sequential memory access patterns
 
 ### System Architecture
 
 ```
 ParticleManager (Singleton)
-├── Unified Particle Storage System
-│   ├── UnifiedParticle Structure
-│   │   ├── Position, Velocity, Acceleration (Vector2D)
-│   │   ├── Life, MaxLife, Size (float)
-│   │   ├── Rotation, Angular Velocity (float)
-│   │   ├── Color (RGBA packed uint32_t)
-│   │   ├── Texture Index (uint16_t)
-│   │   ├── Flags (active, visible, weather, fade)
-│   │   └── Generation ID (uint8_t)
-│   ├── Contiguous Vector Storage
-│   │   ├── std::vector<UnifiedParticle>
-│   │   └── Reserve-based allocation
+├── SIMD-Optimized SoA Storage System
+│   ├── ParticleSoA Structure (SIMD-friendly)
+│   │   ├── Position Components (posX[], posY[])
+│   │   ├── Velocity Components (velX[], velY[])
+│   │   ├── Acceleration Components (accX[], accY[])
+│   │   ├── Life Properties (life[], maxLife[], size[])
+│   │   ├── Rotation Properties (rotation[], angularVelocity[])
+│   │   ├── Color (RGBA packed uint32_t[])
+│   │   ├── Flags (active, visible, weather, fade[])
+│   │   └── Generation ID (uint8_t[])
+│   ├── Vector-Optimized Storage
+│   │   ├── Separate arrays for SIMD processing
+│   │   └── Cache-aligned memory layout
 │   └── Automatic Memory Management
 │       ├── Cleanup every 100 particles
 │       └── Compaction every 300 frames
@@ -68,11 +70,13 @@ ParticleManager (Singleton)
 ## Key Features
 
 ### 🚀 High Performance
-- **Unified Particle Architecture**: Single-structure design eliminates data synchronization issues
-- **SIMD-Ready Batch Processing**: Optimized loops with 512-particle batches for vectorization
+- **SIMD-Optimized SoA Architecture**: Structure of Arrays with separate X/Y component storage enables automatic vectorization
+- **Cache-Friendly Memory Layout**: Sequential access patterns optimized for modern CPU cache hierarchies
+- **Vector Processing**: Position, velocity, and acceleration updates leverage SIMD instructions (SSE/AVX)
 - **Lock-Free Worker Threads**: Shared_mutex with try-lock mechanisms prevent deadlocks
 - **WorkerBudget Threading**: Queue pressure management with graceful degradation
 - **Automatic Memory Management**: Intelligent cleanup and compaction prevent memory leaks
+- **Performance Statistics**: Instantaneous rate calculation prevents metric overflow issues
 
 ### 🌦️ Weather System Integration
 - **EventManager Integration**: Automatic weather effects triggered by game events
@@ -96,6 +100,75 @@ ParticleManager (Singleton)
 - **Real-Time Statistics**: Update/render times, throughput, particle counts
 - **Performance Profiling**: Detailed timing analysis and bottleneck identification
 - **Memory Tracking**: Active particle counts and memory usage monitoring
+
+## SIMD Optimization Details
+
+The ParticleManager has been extensively optimized for SIMD (Single Instruction, Multiple Data) processing to maximize throughput on modern CPUs:
+
+### Structure of Arrays (SoA) Layout
+
+#### SIMD-Friendly Component Storage
+```cpp
+struct ParticleSoA {
+    // Separate arrays for SIMD processing (4-8 particles per instruction)
+    std::vector<float> posX, posY;        // Position components
+    std::vector<float> velX, velY;        // Velocity components
+    std::vector<float> accX, accY;        // Acceleration components
+    std::vector<float> lives, maxLives, sizes;
+    std::vector<float> rotations, angularVelocities;
+    std::vector<uint32_t> colors;
+    std::vector<uint8_t> flags, generationIds;
+    std::vector<EffectType> effectTypes;
+    std::vector<uint8_t> priorities;
+};
+```
+
+#### Performance Benefits
+- **Vectorization**: Modern compilers can automatically vectorize loops operating on separate component arrays
+- **Cache Efficiency**: Sequential memory access patterns optimize cache utilization
+- **SIMD Instructions**: Position updates can process 4-8 particles simultaneously with SSE/AVX instructions
+- **Memory Bandwidth**: Better utilization of memory bandwidth with predictable access patterns
+
+### Batch Processing Optimization
+
+#### Vector Update Loops
+```cpp
+// SIMD-optimized update loop (compiler auto-vectorizes)
+for (size_t i = 0; i < particleCount; ++i) {
+    // Position updates (vectorizable)
+    posX[i] += velX[i] * deltaTime;
+    posY[i] += velY[i] * deltaTime;
+
+    // Velocity updates (vectorizable)
+    velX[i] += accX[i] * deltaTime;
+    velY[i] += accY[i] * deltaTime;
+
+    // Life updates (vectorizable)
+    lives[i] -= deltaTime;
+}
+```
+
+#### Performance Improvements
+- **2-4x Throughput**: SIMD processing can handle 2-4x more particles per CPU cycle
+- **Reduced Memory Pressure**: Better cache utilization reduces memory bandwidth requirements
+- **Compiler Optimization**: Modern compilers automatically generate vectorized code for SoA layouts
+
+### Memory Layout Optimization
+
+#### Cache-Friendly Access Patterns
+```cpp
+// OLD: Array of Structures (AoS) - poor cache utilization
+struct Particle { Vector2D pos, vel; float life; };
+std::vector<Particle> particles; // Scattered memory access
+
+// NEW: Structure of Arrays (SoA) - optimal cache utilization
+std::vector<float> posX, posY, velX, velY, lives; // Sequential access
+```
+
+#### Performance Statistics Improvements
+- **Instantaneous Rate Calculation**: Prevents metric overflow issues seen in cumulative averaging
+- **Frame-Based Metrics**: Accurate per-frame performance measurement
+- **SIMD-Aware Profiling**: Performance counters account for vectorized operations
 
 ## Core Classes and Structures
 
