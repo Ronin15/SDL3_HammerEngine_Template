@@ -23,6 +23,7 @@
 #include <algorithm>
 #include <chrono>
 #include <future>
+#include <unordered_set>
 
 // ----------------------
 // EventData definitions
@@ -285,13 +286,13 @@ bool EventManager::registerEvent(const std::string &name, EventPtr event) {
 bool EventManager::registerWeatherEvent(const std::string &name,
                                         std::shared_ptr<WeatherEvent> event) {
   return registerEventInternal(name, std::static_pointer_cast<Event>(event),
-                               EventTypeId::Weather);
+                               EventTypeId::Weather, EventPriority::LOW);
 }
 
 bool EventManager::registerSceneChangeEvent(
     const std::string &name, std::shared_ptr<SceneChangeEvent> event) {
   return registerEventInternal(name, std::static_pointer_cast<Event>(event),
-                               EventTypeId::SceneChange);
+                               EventTypeId::SceneChange, EventPriority::LOW);
 }
 
 bool EventManager::registerNPCSpawnEvent(const std::string &name,
@@ -303,13 +304,13 @@ bool EventManager::registerNPCSpawnEvent(const std::string &name,
 bool EventManager::registerResourceChangeEvent(
     const std::string &name, std::shared_ptr<ResourceChangeEvent> event) {
   return registerEventInternal(name, std::static_pointer_cast<Event>(event),
-                               EventTypeId::ResourceChange);
+                               EventTypeId::ResourceChange, EventPriority::DEFERRED);
 }
 
 bool EventManager::registerWorldEvent(const std::string &name,
                                       std::shared_ptr<WorldEvent> event) {
   return registerEventInternal(name, std::static_pointer_cast<Event>(event),
-                               EventTypeId::World);
+                               EventTypeId::World, EventPriority::HIGH);
 }
 
 bool EventManager::registerCameraEvent(const std::string &name,
@@ -319,7 +320,7 @@ bool EventManager::registerCameraEvent(const std::string &name,
 }
 
 bool EventManager::registerEventInternal(const std::string &name,
-                                         EventPtr event, EventTypeId typeId) {
+                                         EventPtr event, EventTypeId typeId, uint32_t priority) {
   if (!event) {
     return false;
   }
@@ -337,7 +338,7 @@ bool EventManager::registerEventInternal(const std::string &name,
   eventData.name = name;
   eventData.typeId = typeId;
   eventData.setActive(true);
-  eventData.priority = 0;
+  eventData.priority = priority;
 
   // Add to type-indexed storage
   auto &container = m_eventsByType[static_cast<size_t>(typeId)];
@@ -1240,6 +1241,7 @@ bool EventManager::triggerCollision(const HammerEngine::CollisionInfo &info,
   EventData eventData;
   eventData.typeId = EventTypeId::Collision;
   eventData.setActive(true);
+  eventData.priority = EventPriority::CRITICAL;
   eventData.event = std::make_shared<CollisionEvent>(info);
   eventData.name = "trigger_collision";
 
@@ -1332,6 +1334,7 @@ bool EventManager::triggerCollisionObstacleChanged(const Vector2D& position,
   EventData eventData;
   eventData.typeId = EventTypeId::CollisionObstacleChanged;
   eventData.setActive(true);
+  eventData.priority = EventPriority::CRITICAL;
   // Create a copy to avoid reference issues with make_shared
   Vector2D posCopy = position;
   float radiusCopy = radius;
@@ -1829,37 +1832,71 @@ void EventManager::drainDispatchQueueWithBudget() {
     }
   }
 
+  // OPTIMIZATION: Sort events by priority (higher priority = processed first)
+  std::sort(local.begin(), local.end(), [](const PendingDispatch& a, const PendingDispatch& b) {
+    return a.data.priority > b.data.priority; // Higher priority first
+  });
+
+  // OPTIMIZATION: Minimize mutex locking by collecting all handlers in one pass
+  std::unordered_map<EventTypeId, std::vector<FastEventHandler>> typeHandlers;
+  std::unordered_map<std::string, std::vector<FastEventHandler>> nameHandlerCache;
+
+  // Group events by type for efficient processing
+  std::unordered_map<EventTypeId, std::vector<const PendingDispatch*>> eventsByType;
+  std::unordered_set<std::string> uniqueNames;
+
   for (const auto &pd : local) {
-    // Copy handlers locally per type
-    std::vector<FastEventHandler> handlers;
-    {
-      std::lock_guard<std::mutex> lock(m_handlersMutex);
-      const auto &src = m_handlersByType[static_cast<size_t>(pd.typeId)];
+    eventsByType[pd.typeId].push_back(&pd);
+    if (!pd.data.name.empty()) {
+      uniqueNames.insert(pd.data.name);
+    }
+  }
+
+  // Single mutex lock to collect all required handlers
+  {
+    std::lock_guard<std::mutex> lock(m_handlersMutex);
+
+    // Copy type handlers once per unique event type
+    for (const auto &[typeId, events] : eventsByType) {
+      const auto &src = m_handlersByType[static_cast<size_t>(typeId)];
+      auto &handlers = typeHandlers[typeId];
       handlers.reserve(src.size());
       std::copy_if(src.begin(), src.end(), std::back_inserter(handlers), [](const auto& h) { return static_cast<bool>(h); });
     }
 
-    for (const auto &handler : handlers) {
-      try { handler(pd.data); }
-      catch (const std::exception &e) { EVENT_ERROR("Handler exception in deferred dispatch: " + std::string(e.what())); }
-      catch (...) { EVENT_ERROR("Unknown handler exception in deferred dispatch"); }
-    }
-
-    // Per-name handlers
-    if (!pd.data.name.empty()) {
-      std::vector<FastEventHandler> nameHandlers;
-      {
-        std::lock_guard<std::mutex> lock(m_handlersMutex);
-        auto it = m_nameHandlers.find(pd.data.name);
-        if (it != m_nameHandlers.end()) {
-          nameHandlers.reserve(it->second.size());
-          std::copy_if(it->second.begin(), it->second.end(), std::back_inserter(nameHandlers), [](const auto& h) { return static_cast<bool>(h); });
-        }
+    // Copy name handlers once per unique name
+    for (const auto &name : uniqueNames) {
+      auto it = m_nameHandlers.find(name);
+      if (it != m_nameHandlers.end()) {
+        auto &handlers = nameHandlerCache[name];
+        handlers.reserve(it->second.size());
+        std::copy_if(it->second.begin(), it->second.end(), std::back_inserter(handlers), [](const auto& h) { return static_cast<bool>(h); });
       }
-      for (const auto &h : nameHandlers) {
-        try { h(pd.data); }
-        catch (const std::exception &e) { EVENT_ERROR("Name-handler exception in deferred dispatch: " + std::string(e.what())); }
-        catch (...) { EVENT_ERROR("Unknown name-handler exception in deferred dispatch"); }
+    }
+  }
+
+  // Process type handlers (no mutex locks needed)
+  for (const auto &[typeId, events] : eventsByType) {
+    const auto &handlers = typeHandlers[typeId];
+    for (const auto *pd : events) {
+      for (const auto &handler : handlers) {
+        try { handler(pd->data); }
+        catch (const std::exception &e) { EVENT_ERROR("Handler exception in deferred dispatch: " + std::string(e.what())); }
+        catch (...) { EVENT_ERROR("Unknown handler exception in deferred dispatch"); }
+      }
+    }
+  }
+
+  // Process name handlers (no mutex locks needed)
+  for (const auto &pd : local) {
+    if (!pd.data.name.empty()) {
+      auto it = nameHandlerCache.find(pd.data.name);
+      if (it != nameHandlerCache.end()) {
+        for (const auto &handler : it->second) {
+          try { handler(pd.data); }
+          catch (const std::exception &e) { EVENT_ERROR("Name-handler exception in deferred dispatch: " + std::string(e.what())); }
+          catch (...) { EVENT_ERROR("Unknown name-handler exception in deferred dispatch"); }
+        }
       }
     }
 
