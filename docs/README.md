@@ -90,7 +90,6 @@ See the [Manager Documentation Index](managers/README.md) for a complete, alphab
 - **[TextureManager](managers/TextureManager.md)** – Handles loading, management, and rendering of textures (PNG), with batch loading and animation support.
 - **[TimestepManager](managers/TimestepManager.md)** – Provides consistent game timing with fixed timestep updates and variable timestep rendering.
 - **[WorldManager](managers/WorldManager.md)** – Oversees world generation, streaming, and region management with tight integration to collision and AI systems.
-- **[WorldManager Implementation Plan](managers/WorldManager_Implementation_Plan.md)** – High-level roadmap for upcoming streaming, biome, and chunk optimizations.
 - **[WorldResourceManager](managers/WorldResourceManager.md)** – Tracks and manipulates resource quantities across multiple worlds, supporting thread-safe operations and statistics.
 
 Some managers (e.g., ParticleManager, SaveGameManager) are tightly integrated with other systems and may have additional documentation in other folders. See the [Manager Documentation Index](managers/README.md) for details.
