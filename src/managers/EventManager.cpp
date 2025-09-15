@@ -1867,8 +1867,17 @@ void EventManager::drainDispatchQueueWithBudget() {
 
     if (pd.data.onConsumed) { pd.data.onConsumed(); }
 
-    if ((getCurrentTimeNanos() - start) > timeBudgetNs) {
-      break; // Defer remaining to next frame
+    // PERFORMANCE FIX: Don't use arbitrary time budgets that cause events to be lost
+    // Instead, process all events but track performance for optimization opportunities
+    uint64_t currentTime = getCurrentTimeNanos();
+    if ((currentTime - start) > timeBudgetNs) {
+      // Log slow performance for optimization but don't break event processing
+      static uint64_t lastSlowWarning = 0;
+      if (currentTime - lastSlowWarning > 1000000000) { // Warn once per second max
+        EVENT_WARN("Deferred event processing exceeded time budget: " +
+                   std::to_string((currentTime - start) / 1000000.0) + "ms");
+        lastSlowWarning = currentTime;
+      }
     }
   }
 }
