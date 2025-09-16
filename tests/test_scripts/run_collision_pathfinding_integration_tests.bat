@@ -4,6 +4,9 @@ REM This script runs comprehensive integration tests for collision and pathfindi
 
 setlocal enabledelayedexpansion
 
+REM Navigate to script directory
+cd /d "%~dp0"
+
 REM Get the directory where this script is located
 set "SCRIPT_DIR=%~dp0"
 set "PROJECT_DIR=%SCRIPT_DIR%..\.."
@@ -13,12 +16,12 @@ set "VERBOSE=false"
 
 :parse_args
 if "%~1"=="" goto :done_parsing
-if "%~1"=="--verbose" (
+if /i "%~1"=="--verbose" (
     set "VERBOSE=true"
     shift
     goto :parse_args
 )
-if "%~1"=="--help" (
+if /i "%~1"=="--help" (
     echo Collision Pathfinding Integration Tests Runner
     echo Usage: run_collision_pathfinding_integration_tests.bat [options]
     echo.
@@ -36,7 +39,7 @@ if "%~1"=="--help" (
     echo   • Collision layer integration
     goto :eof
 )
-echo Unknown argument: %~1
+echo Unknown option: %~1
 echo Use --help for usage information
 exit /b 1
 
