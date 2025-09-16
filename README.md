@@ -128,6 +128,7 @@ Contributions welcome!
 - Player and NPC controls: mouse, keyboard, controller (see `InputManager`)
 - Template can be adapted for 3D (see `GameEngine.cpp` and `TextureManager`)
 - For advanced usage, see [docs/README.md](docs/README.md)
+- SDL3 is working great, but there are some issues with SDL3 Mixer. Mixer is requiring SDL3 main branch so issues fluctuate a bit. When SDL3 mixer gets a stable release, then things will calm down.
 
 ---
 
