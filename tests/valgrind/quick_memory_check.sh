@@ -41,6 +41,7 @@ declare -A QUICK_TESTS=(
     ["world_mgr"]="world_manager_tests"
     ["collision_sys"]="collision_system_tests"
     ["pathfinding_sys"]="pathfinding_system_tests"
+    ["collision_pathfinding_integration"]="collision_pathfinding_integration_tests"
 )
 
 echo -e "${BLUE}========================================${NC}"
