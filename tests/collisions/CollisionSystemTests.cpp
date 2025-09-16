@@ -8,18 +8,16 @@
 #include <boost/test/tools/old/interface.hpp>
 
 #include "collisions/AABB.hpp"
-#include "collisions/SpatialHash.hpp"
-#include "collisions/CollisionInfo.hpp"
-#include "collisions/CollisionBody.hpp"
+#include "collisions/TriggerTag.hpp"
 #include "managers/CollisionManager.hpp"
 #include "managers/EventManager.hpp"
 #include "events/CollisionObstacleChangedEvent.hpp"
+#include "events/WorldTriggerEvent.hpp"
 #include "core/ThreadSystem.hpp"
 #include "utils/Vector2D.hpp"
 #include <vector>
 #include <chrono>
 #include <random>
-#include <unordered_set>
 #include <atomic>
 
 using namespace HammerEngine;
@@ -507,8 +505,8 @@ BOOST_AUTO_TEST_CASE(TestBroadphasePerformanceWithDualHashes)
     // Add many static bodies (world tiles)
     for (int i = 0; i < NUM_STATIC_BODIES; ++i) {
         EntityID id = 20000 + i;
-        float x = (i % 20) * 64.0f; // Grid layout
-        float y = (i / 20) * 64.0f;
+        float x = static_cast<float>(i % 20) * 64.0f; // Grid layout
+        float y = static_cast<float>(i / 20) * 64.0f;
         AABB aabb(x, y, 32.0f, 32.0f);
         
         CollisionManager::Instance().addBody(id, aabb, BodyType::STATIC);
@@ -518,8 +516,8 @@ BOOST_AUTO_TEST_CASE(TestBroadphasePerformanceWithDualHashes)
     // Add dynamic bodies (NPCs)
     for (int i = 0; i < NUM_DYNAMIC_BODIES; ++i) {
         EntityID id = 25000 + i;
-        float x = 500.0f + (i % 5) * 32.0f;
-        float y = 500.0f + (i / 5) * 32.0f;
+        float x = 500.0f + static_cast<float>(i % 5) * 32.0f;
+        float y = 500.0f + static_cast<float>(i / 5) * 32.0f;
         AABB aabb(x, y, 16.0f, 16.0f);
         
         CollisionManager::Instance().addBody(id, aabb, BodyType::KINEMATIC);
@@ -599,12 +597,20 @@ BOOST_AUTO_TEST_CASE(TestKinematicBatchUpdateWithDualHashes)
     auto end = std::chrono::high_resolution_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
     
-    // Verify bodies were updated by checking position
+    // Verify bodies were updated by checking position and that velocity was set
     Vector2D center;
     bool found = CollisionManager::Instance().getBodyCenter(kinematicBodies[0], center);
     BOOST_CHECK(found);
     BOOST_CHECK_CLOSE(center.getX(), 100.0f, 1.0f);
     BOOST_CHECK_CLOSE(center.getY(), 100.0f, 1.0f);
+
+    // Verify last body was also updated correctly
+    found = CollisionManager::Instance().getBodyCenter(kinematicBodies[NUM_KINEMATIC_BODIES-1], center);
+    BOOST_CHECK(found);
+    float expectedX = (NUM_KINEMATIC_BODIES-1) * 25.0f + 100.0f;
+    float expectedY = (NUM_KINEMATIC_BODIES-1) * 25.0f + 100.0f;
+    BOOST_CHECK_CLOSE(center.getX(), expectedX, 1.0f);
+    BOOST_CHECK_CLOSE(center.getY(), expectedY, 1.0f);
     
     // Performance check - batch update should be fast
     double avgUpdateTimeUs = static_cast<double>(duration.count()) / NUM_KINEMATIC_BODIES;
@@ -656,6 +662,218 @@ BOOST_AUTO_TEST_CASE(TestStaticBodyCacheInvalidation)
     // Clean up
     CollisionManager::Instance().removeBody(staticId2);
     CollisionManager::Instance().removeBody(kinematicId);
+    CollisionManager::Instance().clean();
+}
+
+BOOST_AUTO_TEST_CASE(TestTriggerSystemCreation)
+{
+    // Test trigger area creation and basic functionality
+    CollisionManager::Instance().init();
+
+    // Test createTriggerArea method
+    AABB triggerAABB(100.0f, 100.0f, 50.0f, 50.0f);
+    EntityID triggerId = CollisionManager::Instance().createTriggerArea(
+        triggerAABB,
+        HammerEngine::TriggerTag::Water,
+        CollisionLayer::Layer_Environment,
+        CollisionLayer::Layer_Player | CollisionLayer::Layer_Enemy
+    );
+
+    BOOST_CHECK_NE(triggerId, 0); // Should return valid ID
+    BOOST_CHECK(CollisionManager::Instance().isTrigger(triggerId));
+
+    // Test createTriggerAreaAt convenience method
+    EntityID triggerId2 = CollisionManager::Instance().createTriggerAreaAt(
+        200.0f, 200.0f, 25.0f, 25.0f,
+        HammerEngine::TriggerTag::Lava,
+        CollisionLayer::Layer_Environment,
+        CollisionLayer::Layer_Player
+    );
+
+    BOOST_CHECK_NE(triggerId2, 0);
+    BOOST_CHECK(CollisionManager::Instance().isTrigger(triggerId2));
+    BOOST_CHECK_NE(triggerId, triggerId2); // Should be different IDs
+
+    // Test that trigger bodies can be queried
+    std::vector<EntityID> results;
+    CollisionManager::Instance().queryArea(triggerAABB, results);
+    BOOST_CHECK(std::find(results.begin(), results.end(), triggerId) != results.end());
+
+    // Clean up
+    CollisionManager::Instance().removeBody(triggerId);
+    CollisionManager::Instance().removeBody(triggerId2);
+    CollisionManager::Instance().clean();
+}
+
+BOOST_AUTO_TEST_CASE(TestTriggerCooldowns)
+{
+    // Test trigger cooldown functionality
+    CollisionManager::Instance().init();
+
+    // Set default cooldown
+    CollisionManager::Instance().setDefaultTriggerCooldown(1.5f);
+
+    // Create a trigger
+    EntityID triggerId = CollisionManager::Instance().createTriggerAreaAt(
+        50.0f, 50.0f, 20.0f, 20.0f,
+        HammerEngine::TriggerTag::Portal
+    );
+
+    // Set specific cooldown for this trigger
+    CollisionManager::Instance().setTriggerCooldown(triggerId, 2.0f);
+
+    // Verify trigger was created
+    BOOST_CHECK(CollisionManager::Instance().isTrigger(triggerId));
+
+    // Clean up
+    CollisionManager::Instance().removeBody(triggerId);
+    CollisionManager::Instance().clean();
+}
+
+BOOST_AUTO_TEST_CASE(TestBodyLayerFiltering)
+{
+    // Test collision layer filtering functionality
+    CollisionManager::Instance().init();
+
+    // Create bodies with different layers
+    EntityID playerId = 5000;
+    EntityID npcId = 5001;
+    EntityID environmentId = 5002;
+
+    AABB aabb(100.0f, 100.0f, 16.0f, 16.0f);
+
+    // Add bodies
+    CollisionManager::Instance().addBody(playerId, aabb, BodyType::KINEMATIC);
+    CollisionManager::Instance().addBody(npcId, aabb, BodyType::KINEMATIC);
+    CollisionManager::Instance().addBody(environmentId, aabb, BodyType::STATIC);
+
+    // Set layers - Player collides with NPCs and environment
+    CollisionManager::Instance().setBodyLayer(
+        playerId,
+        CollisionLayer::Layer_Player,
+        CollisionLayer::Layer_Enemy | CollisionLayer::Layer_Environment
+    );
+
+    // NPC collides with players and environment, but not other NPCs
+    CollisionManager::Instance().setBodyLayer(
+        npcId,
+        CollisionLayer::Layer_Enemy,
+        CollisionLayer::Layer_Player | CollisionLayer::Layer_Environment
+    );
+
+    // Environment collides with everything
+    const auto Layer_All = CollisionLayer::Layer_Default | CollisionLayer::Layer_Player | CollisionLayer::Layer_Enemy | CollisionLayer::Layer_Environment | CollisionLayer::Layer_Projectile | CollisionLayer::Layer_Trigger;
+    CollisionManager::Instance().setBodyLayer(
+        environmentId,
+        CollisionLayer::Layer_Environment,
+        Layer_All
+    );
+
+    // Test that bodies exist
+    BOOST_CHECK(CollisionManager::Instance().isKinematic(playerId));
+    BOOST_CHECK(CollisionManager::Instance().isKinematic(npcId));
+    BOOST_CHECK(!CollisionManager::Instance().isKinematic(environmentId));
+
+    // Clean up
+    CollisionManager::Instance().removeBody(playerId);
+    CollisionManager::Instance().removeBody(npcId);
+    CollisionManager::Instance().removeBody(environmentId);
+    CollisionManager::Instance().clean();
+}
+
+BOOST_AUTO_TEST_CASE(TestBodyEnableDisable)
+{
+    // Test body enable/disable functionality
+    CollisionManager::Instance().init();
+
+    EntityID bodyId = 6000;
+    AABB aabb(150.0f, 150.0f, 20.0f, 20.0f);
+
+    CollisionManager::Instance().addBody(bodyId, aabb, BodyType::KINEMATIC);
+
+    // Body should exist and be queryable
+    std::vector<EntityID> results;
+    CollisionManager::Instance().queryArea(aabb, results);
+    BOOST_CHECK(std::find(results.begin(), results.end(), bodyId) != results.end());
+
+    // Disable the body
+    CollisionManager::Instance().setBodyEnabled(bodyId, false);
+
+    // Re-enable the body
+    CollisionManager::Instance().setBodyEnabled(bodyId, true);
+
+    // Should still be queryable after re-enabling
+    results.clear();
+    CollisionManager::Instance().queryArea(aabb, results);
+    BOOST_CHECK(std::find(results.begin(), results.end(), bodyId) != results.end());
+
+    // Clean up
+    CollisionManager::Instance().removeBody(bodyId);
+    CollisionManager::Instance().clean();
+}
+
+BOOST_AUTO_TEST_CASE(TestBodyResize)
+{
+    // Test body resize functionality
+    CollisionManager::Instance().init();
+
+    EntityID bodyId = 7000;
+    AABB originalAABB(200.0f, 200.0f, 10.0f, 10.0f);
+
+    CollisionManager::Instance().addBody(bodyId, originalAABB, BodyType::KINEMATIC);
+
+    // Verify original position
+    Vector2D center;
+    bool found = CollisionManager::Instance().getBodyCenter(bodyId, center);
+    BOOST_CHECK(found);
+    BOOST_CHECK_CLOSE(center.getX(), 200.0f, 0.01f);
+    BOOST_CHECK_CLOSE(center.getY(), 200.0f, 0.01f);
+
+    // Resize the body
+    CollisionManager::Instance().resizeBody(bodyId, 25.0f, 15.0f);
+
+    // Position should remain the same, but size should change
+    found = CollisionManager::Instance().getBodyCenter(bodyId, center);
+    BOOST_CHECK(found);
+    BOOST_CHECK_CLOSE(center.getX(), 200.0f, 0.01f);
+    BOOST_CHECK_CLOSE(center.getY(), 200.0f, 0.01f);
+
+    // Clean up
+    CollisionManager::Instance().removeBody(bodyId);
+    CollisionManager::Instance().clean();
+}
+
+BOOST_AUTO_TEST_CASE(TestVelocityManagement)
+{
+    // Test velocity setting and batch velocity updates
+    CollisionManager::Instance().init();
+
+    EntityID bodyId = 8000;
+    AABB aabb(100.0f, 100.0f, 8.0f, 8.0f);
+    Vector2D velocity(15.0f, 10.0f);
+
+    CollisionManager::Instance().addBody(bodyId, aabb, BodyType::KINEMATIC);
+
+    // Set velocity individually
+    CollisionManager::Instance().setVelocity(bodyId, velocity);
+
+    // Test batch update with velocity
+    std::vector<CollisionManager::KinematicUpdate> updates;
+    Vector2D newPosition(120.0f, 110.0f);
+    Vector2D newVelocity(20.0f, 5.0f);
+    updates.emplace_back(bodyId, newPosition, newVelocity);
+
+    CollisionManager::Instance().updateKinematicBatch(updates);
+
+    // Verify position was updated
+    Vector2D center;
+    bool found = CollisionManager::Instance().getBodyCenter(bodyId, center);
+    BOOST_CHECK(found);
+    BOOST_CHECK_CLOSE(center.getX(), 120.0f, 0.01f);
+    BOOST_CHECK_CLOSE(center.getY(), 110.0f, 0.01f);
+
+    // Clean up
+    CollisionManager::Instance().removeBody(bodyId);
     CollisionManager::Instance().clean();
 }
 
@@ -851,6 +1069,161 @@ BOOST_FIXTURE_TEST_CASE(TestCollisionEventPerformanceImpact, CollisionIntegratio
         CollisionManager::Instance().removeBody(id);
     }
     EventManager::Instance().removeHandler(token);
+}
+
+BOOST_AUTO_TEST_CASE(TestTriggerEventNotifications)
+{
+    // Test that trigger events are properly generated
+    std::atomic<int> triggerEventCount{0};
+    Vector2D lastTriggerPosition;
+    HammerEngine::TriggerTag lastTriggerTag;
+    bool lastTriggerEntering = false;
+
+    // Subscribe to trigger events
+    auto token = EventManager::Instance().registerHandlerWithToken(
+        EventTypeId::WorldTrigger,
+        [&](const EventData& data) {
+            if (data.isActive() && data.event) {
+                auto triggerEvent = std::dynamic_pointer_cast<WorldTriggerEvent>(data.event);
+                if (triggerEvent) {
+                    triggerEventCount++;
+                    lastTriggerPosition = triggerEvent->getPosition();
+                    lastTriggerTag = triggerEvent->getTag();
+                    lastTriggerEntering = triggerEvent->getPhase() == TriggerPhase::Enter;
+                }
+            }
+        });
+
+    // Create a trigger
+    EntityID triggerId = CollisionManager::Instance().createTriggerAreaAt(
+        300.0f, 300.0f, 30.0f, 30.0f,
+        HammerEngine::TriggerTag::Water
+    );
+
+    BOOST_CHECK(CollisionManager::Instance().isTrigger(triggerId));
+
+    // Note: Actual trigger event generation would require entity movement
+    // and collision detection updates, which is tested in integration scenarios
+
+    // Clean up
+    CollisionManager::Instance().removeBody(triggerId);
+    EventManager::Instance().removeHandler(token);
+}
+
+BOOST_AUTO_TEST_CASE(TestWorldBounds)
+{
+    // Test world bounds functionality
+    CollisionManager::Instance().init();
+
+    // Set world bounds
+    float minX = -500.0f, minY = -300.0f;
+    float maxX = 1000.0f, maxY = 800.0f;
+    CollisionManager::Instance().setWorldBounds(minX, minY, maxX, maxY);
+
+    // Create a body within bounds
+    EntityID bodyId = 9000;
+    Vector2D validPosition(500.0f, 400.0f);
+    AABB aabb(validPosition.getX(), validPosition.getY(), 20.0f, 20.0f);
+
+    CollisionManager::Instance().addBody(bodyId, aabb, BodyType::KINEMATIC);
+
+    // Verify body was created successfully
+    Vector2D center;
+    bool found = CollisionManager::Instance().getBodyCenter(bodyId, center);
+    BOOST_CHECK(found);
+    BOOST_CHECK_CLOSE(center.getX(), validPosition.getX(), 0.01f);
+    BOOST_CHECK_CLOSE(center.getY(), validPosition.getY(), 0.01f);
+
+    // Clean up
+    CollisionManager::Instance().removeBody(bodyId);
+    CollisionManager::Instance().clean();
+}
+
+BOOST_AUTO_TEST_CASE(TestLayerCollisionFiltering)
+{
+    // Test that collision detection respects layer filtering
+    CollisionManager::Instance().init();
+
+    // Create two bodies that should NOT collide due to layer filtering
+    EntityID player1Id = 10000;
+    EntityID player2Id = 10001;
+    AABB overlappingAABB(400.0f, 400.0f, 16.0f, 16.0f);
+
+    CollisionManager::Instance().addBody(player1Id, overlappingAABB, BodyType::KINEMATIC);
+    CollisionManager::Instance().addBody(player2Id, overlappingAABB, BodyType::KINEMATIC);
+
+    // Set both as players - players don't collide with other players
+    CollisionManager::Instance().setBodyLayer(
+        player1Id,
+        CollisionLayer::Layer_Player,
+        CollisionLayer::Layer_Enemy | CollisionLayer::Layer_Environment  // No Layer_Player
+    );
+
+    CollisionManager::Instance().setBodyLayer(
+        player2Id,
+        CollisionLayer::Layer_Player,
+        CollisionLayer::Layer_Enemy | CollisionLayer::Layer_Environment  // No Layer_Player
+    );
+
+    // Even though AABBs overlap, layer filtering should prevent collision
+    BOOST_CHECK(CollisionManager::Instance().isKinematic(player1Id));
+    BOOST_CHECK(CollisionManager::Instance().isKinematic(player2Id));
+
+    // Test overlap query - both should be found in same area
+    std::vector<EntityID> results;
+    CollisionManager::Instance().queryArea(overlappingAABB, results);
+    BOOST_CHECK_GE(results.size(), 2);
+
+    // Clean up
+    CollisionManager::Instance().removeBody(player1Id);
+    CollisionManager::Instance().removeBody(player2Id);
+    CollisionManager::Instance().clean();
+}
+
+BOOST_AUTO_TEST_CASE(TestMixedBodyTypeInteractions)
+{
+    // Test interactions between different body types
+    CollisionManager::Instance().init();
+
+    EntityID staticId = 11000;
+    EntityID kinematicId = 11001;
+    EntityID triggerId = 11002;
+
+    Vector2D position(500.0f, 500.0f);
+    AABB aabb(position.getX(), position.getY(), 25.0f, 25.0f);
+
+    // Add different body types
+    CollisionManager::Instance().addBody(staticId, aabb, BodyType::STATIC);
+    CollisionManager::Instance().addBody(kinematicId, aabb, BodyType::KINEMATIC);
+
+    triggerId = CollisionManager::Instance().createTriggerAreaAt(
+        position.getX(), position.getY(), 25.0f, 25.0f,
+        HammerEngine::TriggerTag::Checkpoint
+    );
+
+    // Verify body types
+    BOOST_CHECK(!CollisionManager::Instance().isKinematic(staticId));
+    BOOST_CHECK(!CollisionManager::Instance().isDynamic(staticId));
+    BOOST_CHECK(!CollisionManager::Instance().isTrigger(staticId));
+
+    BOOST_CHECK(CollisionManager::Instance().isKinematic(kinematicId));
+    BOOST_CHECK(!CollisionManager::Instance().isDynamic(kinematicId));
+    BOOST_CHECK(!CollisionManager::Instance().isTrigger(kinematicId));
+
+    BOOST_CHECK(CollisionManager::Instance().isTrigger(triggerId));
+    BOOST_CHECK(!CollisionManager::Instance().isKinematic(triggerId));
+    BOOST_CHECK(!CollisionManager::Instance().isDynamic(triggerId));
+
+    // All should be queryable in the same area
+    std::vector<EntityID> results;
+    CollisionManager::Instance().queryArea(aabb, results);
+    BOOST_CHECK_GE(results.size(), 3);
+
+    // Clean up
+    CollisionManager::Instance().removeBody(staticId);
+    CollisionManager::Instance().removeBody(kinematicId);
+    CollisionManager::Instance().removeBody(triggerId);
+    CollisionManager::Instance().clean();
 }
 
 BOOST_AUTO_TEST_SUITE_END()

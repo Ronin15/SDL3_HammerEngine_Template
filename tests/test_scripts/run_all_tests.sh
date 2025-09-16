@@ -96,6 +96,7 @@ CORE_TEST_SCRIPTS=(
   "$SCRIPT_DIR/run_world_resource_manager_tests.sh"
   "$SCRIPT_DIR/run_collision_tests.sh"
   "$SCRIPT_DIR/run_pathfinding_tests.sh"
+  "$SCRIPT_DIR/run_collision_pathfinding_integration_tests.sh"
 )
 
 # Performance scaling benchmarks (slow execution)
