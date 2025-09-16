@@ -237,7 +237,7 @@ private:
     };
 
 public:
-    PerfStats getPerfStats() const { return m_perf; }
+    const PerfStats& getPerfStats() const { return m_perf; }
     void resetPerfStats() { m_perf = PerfStats{}; }
     void setVerboseLogging(bool enabled) { m_verboseLogs = enabled; }
 

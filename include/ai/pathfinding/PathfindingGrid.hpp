@@ -82,7 +82,7 @@ public:
     };
     
     void resetStats() { m_stats = PathfindingStats{}; }
-    PathfindingStats getStats() const { return m_stats; }
+    const PathfindingStats& getStats() const { return m_stats; }
 
 private:
     int m_w, m_h; float m_cell; Vector2D m_offset;
