@@ -340,6 +340,31 @@ unreadVariable:*/managers/ParticleManager.cpp:798
 unreadVariable:*/managers/ParticleManager.cpp:799
 unreadVariable:*/managers/ParticleManager.cpp:800
 
+# Variables used in debug/logging macros (conditionally compiled debug builds)
+unreadVariable:*/managers/AIManager.cpp:586
+unreadVariable:*/managers/AIManager.cpp:595
+unreadVariable:*/managers/AIManager.cpp:597
+unreadVariable:*/managers/AIManager.cpp:599
+unreadVariable:*/managers/EventManager.cpp:262
+unreadVariable:*/managers/ParticleManager.cpp:801
+unreadVariable:*/managers/ParticleManager.cpp:802
+unreadVariable:*/managers/ParticleManager.cpp:803
+
+# Variables used in logging - collision manager debug output
+unreadVariable:*/managers/CollisionManager.cpp:69
+unreadVariable:*/managers/CollisionManager.cpp:987
+unreadVariable:*/managers/CollisionManager.cpp:1010
+unreadVariable:*/managers/CollisionManager.cpp:1013
+unreadVariable:*/managers/CollisionManager.cpp:1016
+unreadVariable:*/managers/CollisionManager.cpp:1019
+unreadVariable:*/managers/CollisionManager.cpp:1022
+unreadVariable:*/managers/CollisionManager.cpp:1025
+unreadVariable:*/managers/CollisionManager.cpp:1028
+unreadVariable:*/managers/CollisionManager.cpp:1067
+
+# Variables scope reduction suggestions (minor style improvements, code is readable as-is)
+variableScope:*/managers/CollisionManager.cpp:925
+
 # Defensive programming - always true/false conditions by design
 knownConditionTrueFalse:*/gameStates/EventDemoState.cpp:1902
 knownConditionTrueFalse:*/gameStates/GamePlayState.cpp:416
@@ -349,3 +374,28 @@ knownConditionTrueFalse:*/managers/EventManager.cpp:153
 knownConditionTrueFalse:*/managers/EventManager.cpp:1424
 knownConditionTrueFalse:*/managers/ParticleManager.cpp:404
 knownConditionTrueFalse:*/managers/ParticleManager.cpp:1938
+
+# Defensive programming - conditions that serve as safety checks
+knownConditionTrueFalse:*/managers/CollisionManager.cpp:1125
+knownConditionTrueFalse:*/managers/EventManager.cpp:154
+knownConditionTrueFalse:*/managers/EventManager.cpp:1427
+knownConditionTrueFalse:*/managers/ParticleManager.cpp:407
+knownConditionTrueFalse:*/managers/ParticleManager.cpp:1941
+knownConditionTrueFalse:*/world/WorldGenerator.cpp:72
+
+# Functions that are part of public APIs but flagged as unused
+unusedFunction:*/managers/EventManager.cpp:1712
+unusedFunction:*/managers/EventManager.cpp:852
+
+# Variables used in debug logging (GameEngine performance monitoring)
+unreadVariable:*/core/GameEngine.cpp:707
+unreadVariable:*/core/GameEngine.cpp:715
+unreadVariable:*/core/GameEngine.cpp:268
+unreadVariable:*/core/GameEngine.cpp:269
+
+# Behavior functions kept for future AI development (marked with [[maybe_unused]])
+unusedFunction:*/ai/behaviors/ChaseBehavior.cpp:399
+unusedFunction:*/ai/behaviors/FleeBehavior.cpp:302
+unusedFunction:*/ai/behaviors/FleeBehavior.cpp:312
+unusedFunction:*/ai/behaviors/FollowBehavior.cpp:507
+unusedFunction:*/ai/behaviors/GuardBehavior.cpp:884

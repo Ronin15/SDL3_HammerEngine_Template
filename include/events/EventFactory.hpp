@@ -173,7 +173,6 @@ private:
       m_eventCreators;
 
   // Helper methods for event creation
-  WeatherType getWeatherTypeFromString(const std::string &weatherType);
   TransitionType getTransitionTypeFromString(const std::string &transitionType);
 };
 

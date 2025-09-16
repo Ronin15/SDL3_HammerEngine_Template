@@ -176,22 +176,6 @@ void ResourceFactory::clear() {
   RESOURCE_DEBUG("ResourceFactory::clear - Cleared all resource creators");
 }
 
-ResourcePtr
-ResourceFactory::createBaseResource(HammerEngine::ResourceHandle handle,
-                                    const JsonValue &json) {
-  std::string id = json["id"].asString();
-  std::string name = json["name"].asString();
-  std::string categoryStr = json["category"].asString();
-  std::string typeStr = json["type"].asString();
-
-  ResourceCategory category = Resource::stringToCategory(categoryStr);
-  ResourceType type = Resource::stringToType(typeStr);
-
-  auto resource = std::make_shared<Resource>(handle, id, name, category, type);
-  setCommonProperties(resource, json);
-
-  return resource;
-}
 
 ResourcePtr
 ResourceFactory::createEquipment(HammerEngine::ResourceHandle handle,

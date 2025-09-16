@@ -305,10 +305,6 @@ private:
     std::unordered_map<uint64_t, PendingCallbacks> m_pending;
 
     // Helpers
-    Vector2D quantize128(const Vector2D& p) const {
-        return Vector2D(std::round(p.getX() / 128.0f) * 128.0f,
-                        std::round(p.getY() / 128.0f) * 128.0f);
-    }
     void normalizeEndpoints(Vector2D& start, Vector2D& goal) const;
 
     // Request management - simplified
