@@ -57,6 +57,7 @@ declare -A CACHE_TESTS=(
     ["collision_system"]="collision_system_tests"
     ["pathfinding_system"]="pathfinding_system_tests"
     ["collision_pathfinding_bench"]="collision_pathfinding_benchmark"
+    ["collision_pathfinding_integration"]="collision_pathfinding_integration_tests"
 )
 
 # Industry benchmark data for comparison

@@ -43,6 +43,7 @@ declare -A THREAD_TESTS=(
     ["resource_edge_case"]="resource_edge_case_tests"
     ["collision_system"]="collision_system_tests"
     ["pathfinding_system"]="pathfinding_system_tests"
+    ["collision_pathfinding_integration"]="collision_pathfinding_integration_tests"
 )
 
 run_helgrind_test() {
