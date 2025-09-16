@@ -9,18 +9,16 @@
 
 #include "managers/CollisionManager.hpp"
 #include "managers/PathfinderManager.hpp"
+#include "collisions/AABB.hpp"
 #include "managers/EventManager.hpp"
 #include "managers/WorldManager.hpp"
 #include "core/ThreadSystem.hpp"
-#include "collisions/AABB.hpp"
 #include "utils/Vector2D.hpp"
-#include "events/CollisionObstacleChangedEvent.hpp"
 #include "ai/pathfinding/PathfindingGrid.hpp"
 #include "world/WorldData.hpp"
 #include <chrono>
 #include <thread>
 #include <vector>
-#include <atomic>
 
 using namespace HammerEngine;
 
@@ -218,7 +216,6 @@ BOOST_FIXTURE_TEST_CASE(TestConcurrentCollisionPathfindingOperations, CollisionP
     // Test concurrent collision and pathfinding operations
 
     const int NUM_CONCURRENT_REQUESTS = 10;
-    std::atomic<int> completedRequests{0};
 
     // Test multiple concurrent immediate pathfinding requests
     int successfulPaths = 0;
@@ -273,8 +270,8 @@ BOOST_FIXTURE_TEST_CASE(TestPerformanceUnderLoad, CollisionPathfindingFixture)
     // Add many collision bodies
     for (int i = 0; i < NUM_COLLISION_BODIES; ++i) {
         EntityID bodyId = 8000 + i;
-        float x = 200.0f + (i % 10) * 80.0f;
-        float y = 200.0f + (i / 10) * 80.0f;
+        float x = 200.0f + static_cast<float>(i % 10) * 80.0f;
+        float y = 200.0f + static_cast<float>(i / 10) * 80.0f;
         AABB bodyAABB(x, y, 16.0f, 16.0f);
 
         CollisionManager::Instance().addBody(bodyId, bodyAABB, BodyType::KINEMATIC);
