@@ -83,8 +83,6 @@ private:
     return s_creators;
   }
   // Helper methods for creating specific resource types
-  static ResourcePtr createBaseResource(HammerEngine::ResourceHandle handle,
-                                        const JsonValue &json);
   static ResourcePtr createEquipment(HammerEngine::ResourceHandle handle,
                                      const JsonValue &json);
   static ResourcePtr createConsumable(HammerEngine::ResourceHandle handle,

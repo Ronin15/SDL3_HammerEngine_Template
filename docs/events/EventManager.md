@@ -148,8 +148,9 @@ enum class EventTypeId : uint8_t {
     World = 5,
     Camera = 6,
     Harvest = 7,
-    Custom = 8,
-    COUNT = 9
+    Collision = 8,        // New: Collision and obstacle events
+    Custom = 9,
+    COUNT = 10
 };
 ```
 
@@ -197,6 +198,70 @@ EventDefinition n{.type="NPCSpawn", .name="OrcInvasion", .params={{"npcType","Or
 auto nptr = EventFactory::Instance().createEvent(n);
 EventManager::Instance().registerEvent(n.name, nptr);
 ```
+
+### Collision Events
+Handle collision detection, trigger events, and obstacle changes for integration with CollisionManager and PathfinderManager:
+
+#### Collision Detection Events
+```cpp
+// Triggered automatically by CollisionManager
+EventManager::Instance().triggerCollision(collisionInfo, DispatchMode::Deferred);
+
+// Listen for collisions
+EventManager::Instance().subscribe<CollisionEvent>(
+    [](const CollisionEvent& event) {
+        handleEntityCollision(event.entityA, event.entityB);
+    }
+);
+```
+
+#### World Trigger Events
+```cpp
+// Triggered when entities enter/exit trigger areas
+struct WorldTriggerEvent {
+    EntityID triggerId;
+    EntityID entityId;
+    HammerEngine::TriggerTag tag;    // Water, Fire, Portal, etc.
+    Vector2D triggerCenter;
+    bool isEntering;                 // true = enter, false = exit
+    float deltaTime;
+};
+
+// Example trigger handling
+EventManager::Instance().subscribe<WorldTriggerEvent>(
+    [](const WorldTriggerEvent& event) {
+        if (event.tag == HammerEngine::TriggerTag::Water && event.isEntering) {
+            applyWaterEffects(event.entityId);
+        }
+    }
+);
+```
+
+#### Collision Obstacle Changed Events
+```cpp
+// Notifies PathfinderManager of collision world changes
+EventManager::Instance().triggerCollisionObstacleChanged(
+    center,                              // Vector2D position
+    radius,                              // float affected radius
+    "Static obstacle added",             // string description
+    EventManager::DispatchMode::Immediate
+);
+
+// Listen for obstacle changes
+EventManager::Instance().subscribe<CollisionObstacleChangedEvent>(
+    [](const CollisionObstacleChangedEvent& event) {
+        // Invalidate pathfinding cache for affected area
+        pathfindingManager.invalidateArea(event.getPosition(), event.getRadius());
+    }
+);
+```
+
+**Change Types**:
+- `ADDED`: New obstacle created
+- `REMOVED`: Existing obstacle destroyed
+- `MODIFIED`: Obstacle properties changed
+
+**Integration**: These events automatically coordinate between CollisionManager, PathfinderManager, and other systems for optimal performance.
 
 ### Particle Effect Events
 Control visual effects and particle systems through EventManager with ParticleManager integration:

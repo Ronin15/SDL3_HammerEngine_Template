@@ -6,8 +6,6 @@
 #ifndef RESOURCE_HPP
 #define RESOURCE_HPP
 
-#include "entities/Entity.hpp"
-#include "utils/BinarySerializer.hpp"
 #include "utils/ResourceHandle.hpp"
 #include <memory>
 #include <string>
@@ -56,23 +54,18 @@ enum class ResourceType : uint8_t {
 };
 
 /**
- * @brief Base resource entity class that all resources inherit from
- *
- * Resources are immutable templates that define the properties of items,
- * materials, currency, and game resources. Individual instances are managed by
- * InventoryComponent.
+ * @brief Pure data class for resource templates.
+ * 
+ * Resources are immutable data definitions that specify properties
+ * of items, materials, currency, and game resources. They do NOT
+ * inherit from Entity and have no world state or behavior.
  */
-class Resource : public Entity {
+class Resource {
 public:
   Resource(HammerEngine::ResourceHandle handle, const std::string &id,
            const std::string &name, ResourceCategory category,
            ResourceType type);
-  virtual ~Resource() override = default;
-
-  // Entity interface implementation
-    void update(float deltaTime) override;
-    void render(const HammerEngine::Camera* camera) override;
-    void clean() override;
+  virtual ~Resource() = default;
   // Resource properties (immutable)
   HammerEngine::ResourceHandle getHandle() const { return m_handle; }
   const std::string &getId() const { return m_id; }
@@ -84,13 +77,18 @@ public:
   int getMaxStackSize() const { return m_maxStackSize; }
   bool isStackable() const { return m_isStackable; }
   bool isConsumable() const { return m_isConsumable; }
+  float getWeight() const { return m_weight; }
   const std::string &getIconTextureId() const { return m_iconTextureId; }
+  const std::string &getWorldTextureId() const { return m_worldTextureId; }
+  int getNumFrames() const { return m_numFrames; }
+  int getAnimSpeed() const { return m_animSpeed; }
 
   // Property setters (for initialization only)
   void setDescription(const std::string &description) {
     m_description = description;
   }
   void setValue(float value) { m_value = value; }
+  void setWeight(float weightValue) { m_weight = weightValue; }
   void setMaxStackSize(int maxStack) {
     m_maxStackSize = maxStack;
     m_isStackable = (maxStack > 1);
@@ -98,6 +96,15 @@ public:
   void setConsumable(bool consumable) { m_isConsumable = consumable; }
   void setIconTextureId(const std::string &textureId) {
     m_iconTextureId = textureId;
+  }
+  void setWorldTextureId(const std::string &textureId) {
+    m_worldTextureId = textureId;
+  }
+  void setNumFrames(int frames) {
+    m_numFrames = frames;
+  }
+  void setAnimSpeed(int speed) {
+    m_animSpeed = speed;
   }
 
   // Factory method for proper shared_ptr creation
@@ -126,10 +133,14 @@ protected:
   ResourceCategory m_category;           // Resource category
   ResourceType m_type;                   // Specific resource type
   float m_value{0.0f};                   // Base value/cost
+  float m_weight{0.0f};                  // Weight for encumbrance
   int m_maxStackSize{1};                 // Maximum stack size
   bool m_isStackable{false};             // Can be stacked
   bool m_isConsumable{false};            // Can be consumed/used
-  std::string m_iconTextureId{""};       // Texture ID for icon
+  std::string m_iconTextureId{""};       // Texture ID for UI icon
+  std::string m_worldTextureId{""};      // Texture ID for world rendering
+  int m_numFrames{1};                    // Animation frames for rendering
+  int m_animSpeed{100};                  // Animation speed for rendering
 };
 
 #endif // RESOURCE_HPP

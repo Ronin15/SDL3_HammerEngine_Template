@@ -15,6 +15,7 @@
 #include "entities/resources/MaterialResources.hpp"
 #include "managers/ResourceFactory.hpp"
 #include "managers/ResourceTemplateManager.hpp"
+#include "ResourceTestAccess.hpp"
 #include "utils/JsonReader.hpp"
 
 using namespace HammerEngine;
@@ -22,14 +23,14 @@ using namespace HammerEngine;
 class ResourceFactoryTestFixture {
 public:
   ResourceFactoryTestFixture() {
-    // Initialize the factory with default creators
+    // Ensure isolation, then initialize the factory with default creators
+    ResourceTestAccess::resetFactory();
     ResourceFactory::initialize();
   }
 
   ~ResourceFactoryTestFixture() {
-    // Clean up factory for test isolation
-    // This is safe in tests, but should NEVER be called from production code
-    ResourceFactory::clear();
+    // Clean up for isolation using test helper
+    ResourceTestAccess::resetFactory();
   }
 
 protected:

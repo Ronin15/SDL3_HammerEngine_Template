@@ -17,6 +17,7 @@
 
 class NPC : public Entity {
 public:
+  enum class Faction { Friendly, Enemy, Neutral };
   NPC(const std::string &textureID, const Vector2D &startPosition,
       int frameWidth, int frameHeight);
   ~NPC() override;
@@ -26,13 +27,16 @@ public:
   static std::shared_ptr<NPC> create(const std::string &textureID,
                                      const Vector2D &startPosition,
                                      int frameWidth = 0, int frameHeight = 0) {
-    return std::make_shared<NPC>(textureID, startPosition, frameWidth,
-                                 frameHeight);
+    auto npc = std::make_shared<NPC>(textureID, startPosition, frameWidth,
+                                     frameHeight);
+    npc->ensurePhysicsBodyRegistered();
+    npc->setFaction(npc->m_faction);
+    return npc;
   }
 
-    void update(float deltaTime) override;
-    void render(const HammerEngine::Camera* camera) override;
-    void clean() override;
+  void update(float deltaTime) override;
+  void render(const HammerEngine::Camera *camera) override;
+  void clean() override;
   // No state management - handled by AI Manager
 
   // NPC-specific accessor methods
@@ -40,13 +44,17 @@ public:
 
   // NPC-specific setter methods
   void setFlip(SDL_FlipMode flip) override { m_flip = flip; }
+  
+  // Sync with CollisionManager (AI drives velocity/position)
+  void setVelocity(const Vector2D& velocity) override;
+  void setPosition(const Vector2D& position) override;
 
   // AI-specific methods
   void setWanderArea(float minX, float minY, float maxX, float maxY);
 
-  // Enable or disable screen bounds checking
-  void setBoundsCheckEnabled(bool enabled) { m_boundsCheckEnabled = enabled; }
-  bool isBoundsCheckEnabled() const { return m_boundsCheckEnabled; }
+  // Faction/layer control
+  void setFaction(Faction f);
+  Faction getFaction() const { return m_faction; }
 
   // Inventory management
   InventoryComponent *getInventory() { return m_inventory.get(); }
@@ -75,6 +83,7 @@ public:
 
 private:
   void loadDimensionsFromTexture();
+  void ensurePhysicsBodyRegistered();
   void setupInventory();
   void onResourceChanged(HammerEngine::ResourceHandle resourceHandle,
                          int oldQuantity, int newQuantity);
@@ -87,20 +96,26 @@ private:
   Uint64 m_lastFrameTime{0};          // Time of last animation frame change
   SDL_FlipMode m_flip{SDL_FLIP_NONE}; // Default flip direction
 
-  // Wander area bounds
+  // Wander area bounds (still used for area-based behaviors if needed)
   float m_minX{0.0f};
   float m_minY{0.0f};
   float m_maxX{800.0f};
   float m_maxY{600.0f};
-
-  // Flag to control bounds checking behavior
-  bool m_boundsCheckEnabled{false};
 
   // Trading and loot configuration
   bool m_canTrade{false};
   bool m_hasLootDrops{false};
   std::unordered_map<HammerEngine::ResourceHandle, float>
       m_dropRates; // itemHandle -> drop probability
+
+  Faction m_faction{Faction::Neutral};
+
+  // Texture flip smoothing
+  int m_lastFlipSign{1};
+  Uint64 m_lastFlipTime{0};
+  
+  // Diagnostic throttling
+  Uint64 m_lastStuckLogTime{0};
 };
 
 #endif // NPC_HPP

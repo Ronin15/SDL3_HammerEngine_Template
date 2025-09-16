@@ -8,17 +8,20 @@
 #include "core/GameEngine.hpp"
 #include "core/Logger.hpp"
 
+#include "managers/CollisionManager.hpp"
+#include "managers/WorldManager.hpp"
 #include "managers/EventManager.hpp"
 #include "managers/ResourceTemplateManager.hpp"
 #include "managers/TextureManager.hpp"
+#include "managers/AIManager.hpp"
 #include "utils/Camera.hpp"
 
-#include <set>
 #include <random>
+#include <set>
 
 NPC::NPC(const std::string &textureID, const Vector2D &startPosition,
          int frameWidth, int frameHeight)
-    : m_frameWidth(frameWidth), m_frameHeight(frameHeight) {
+    : Entity(), m_frameWidth(frameWidth), m_frameHeight(frameHeight) {
   // Initialize entity properties
   m_position = startPosition;
   m_velocity = Vector2D(0, 0);
@@ -43,18 +46,28 @@ NPC::NPC(const std::string &textureID, const Vector2D &startPosition,
     m_height = m_frameHeight;
   }
 
-  // Set default wander area (can be changed later via setWanderArea)
-  m_minX = 0.0f;
-  m_minY = 0.0f;
-  m_maxX = 800.0f;
-  m_maxY = 600.0f;
+  // Set default wander area to world bounds (can be changed later via setWanderArea)
+  float worldMinX, worldMinY, worldMaxX, worldMaxY;
+  if (WorldManager::Instance().getWorldBounds(worldMinX, worldMinY, worldMaxX, worldMaxY)) {
+    // WorldManager returns bounds in PIXELS; apply directly
+    m_minX = worldMinX;
+    m_minY = worldMinY;
+    m_maxX = worldMaxX;
+    m_maxY = worldMaxY;
+  } else {
+    // Fallback to reasonable world bounds if WorldManager not available yet
+    m_minX = 0.0f;
+    m_minY = 0.0f;
+    m_maxX = 2048.0f;  // Larger default world area
+    m_maxY = 2048.0f;
+  }
 
-  // Disable bounds checking by default
-  m_boundsCheckEnabled = false;
+  // Bounds are enforced centrally by AIManager/PathfinderManager
 
   // Initialize inventory system - NOTE: Do NOT call setupInventory() here
   // because it can trigger shared_this() during construction.
   // Call initializeInventory() after construction completes.
+  // Collision registration happens in NPC::create() after construction
   // NPC_DEBUG("NPC created at position: " + m_position.toString());
 }
 
@@ -98,6 +111,9 @@ void NPC::loadDimensionsFromTexture() {
 
         // Update height to be the height of a single frame
         m_height = frameHeight;
+
+        // Sync new dimensions to collision body if already registered
+        CollisionManager::Instance().resizeBody(getID(), m_frameWidth * 0.5f, m_height * 0.5f);
       } else {
         NPC_ERROR("Failed to query NPC texture dimensions: " +
                   std::string(SDL_GetError()));
@@ -111,55 +127,64 @@ void NPC::loadDimensionsFromTexture() {
 // State management removed - handled by AI Manager
 
 void NPC::update(float deltaTime) {
-  // The NPC is responsible for its own physics and animation.
-
-
-  m_velocity += m_acceleration * deltaTime;
-  const float stopThresholdSquared = 0.1f * 0.1f;
-  if (m_velocity.lengthSquared() > stopThresholdSquared) {
-    const float frictionCoefficient = 8.0f;
-    m_velocity -= m_velocity * frictionCoefficient * deltaTime;
-  } else {
-    m_velocity = Vector2D(0, 0);
+  // The AI drives velocity directly; apply it without additional damping.
+  // Integrate intended motion
+  Vector2D prevPosition = m_position;
+  
+  // Safety check: ensure deltaTime is reasonable
+  if (deltaTime <= 0.0f || deltaTime > 0.1f) {
+    deltaTime = 1.0f / 60.0f; // Fallback to 60 FPS
   }
-
-  // Update position
-  m_position += m_velocity * deltaTime;
-
-  // Reset acceleration for the next frame.
+  
+  Vector2D newPosition = m_position + m_velocity * deltaTime;
+  
+  // Bounds handled centrally by AIManager
+  setPosition(newPosition);
+  // Sync velocity change if adjusted by bounce
+  setVelocity(m_velocity);
   m_acceleration = Vector2D(0, 0);
+  
+  // Position sync is handled by setPosition() calls - no need for periodic checks
+  // This prevents visual glitching from position corrections during rendering
 
-  // Handle world boundaries
-  if (m_boundsCheckEnabled) {
-    const float bounceBuffer = 20.0f;
-    if (m_position.getX() < m_minX - bounceBuffer) {
-      m_position.setX(m_minX);
-      m_velocity.setX(std::abs(m_velocity.getX()));
-    } else if (m_position.getX() + m_width > m_maxX + bounceBuffer) {
-      m_position.setX(m_maxX - m_width);
-      m_velocity.setX(-std::abs(m_velocity.getX()));
-    }
-    if (m_position.getY() < m_minY - bounceBuffer) {
-      m_position.setY(m_minY);
-      m_velocity.setY(std::abs(m_velocity.getY()));
-    } else if (m_position.getY() + m_height > m_maxY + bounceBuffer) {
-      m_position.setY(m_maxY - m_height);
-      m_velocity.setY(-std::abs(m_velocity.getY()));
-    }
-  }
+  // Area constraints handling removed; behaviors and managers coordinate movement
 
   // --- Animation ---
   Uint64 currentTime = SDL_GetTicks();
-  if (m_velocity.lengthSquared() > 0.01f) {
+  // Use actual final displacement to decide if we are moving (after all bounds checks)
+  Vector2D finalPosition = m_position;
+  float moveDist2 = (finalPosition - prevPosition).lengthSquared();
+  
+  // Diagnostic: Check for stuck entities with velocity but no movement
+  float velocityMagnitude = m_velocity.length();
+  if (velocityMagnitude > 1.0f && moveDist2 <= 0.01f) {
+    // NPC has velocity but isn't moving - this indicates a stuck condition
+    // Use instance-specific throttling instead of global static
+    if (currentTime - m_lastStuckLogTime > 5000) { // Log every 5 seconds per NPC
+      AI_DEBUG("NPC " + std::to_string(getID()) + " stuck: velocity=" + 
+               std::to_string(velocityMagnitude) + ", movement=" + std::to_string(std::sqrt(moveDist2)) +
+               ", pos=(" + std::to_string(m_position.getX()) + "," + std::to_string(m_position.getY()) + ")");
+      m_lastStuckLogTime = currentTime;
+    }
+  }
+  
+  if (moveDist2 > 0.04f) { // ~> 0.2px per frame at 60Hz
     if (currentTime > m_lastFrameTime + m_animSpeed) {
       m_currentFrame = (m_currentFrame + 1) % m_numFrames;
       m_lastFrameTime = currentTime;
     }
-    if (std::abs(m_velocity.getX()) > 0.5f) {
-      if (m_velocity.getX() < 0) {
-        m_flip = SDL_FLIP_HORIZONTAL;
+    // Smooth flip: require sufficient lateral speed and a minimum interval
+    const float flipSpeedThreshold = 15.0f; // px/s
+    if (std::abs(m_velocity.getX()) > flipSpeedThreshold) {
+      int newSign = (m_velocity.getX() < 0) ? -1 : 1;
+      if (newSign != m_lastFlipSign) {
+        if (currentTime - m_lastFlipTime >= 300) { // ms
+          m_flip = (newSign < 0) ? SDL_FLIP_HORIZONTAL : SDL_FLIP_NONE;
+          m_lastFlipSign = newSign;
+          m_lastFlipTime = currentTime;
+        }
       } else {
-        m_flip = SDL_FLIP_NONE;
+        m_flip = (newSign < 0) ? SDL_FLIP_HORIZONTAL : SDL_FLIP_NONE;
       }
     }
   } else {
@@ -173,7 +198,7 @@ void NPC::update(float deltaTime) {
   }
 }
 
-void NPC::render(const HammerEngine::Camera* camera) {
+void NPC::render(const HammerEngine::Camera *camera) {
   // Cache manager references for better performance
   TextureManager &texMgr = TextureManager::Instance();
   SDL_Renderer *renderer = GameEngine::Instance().getRenderer();
@@ -194,10 +219,10 @@ void NPC::render(const HammerEngine::Camera* camera) {
 
   // Render the NPC with the current animation frame using float precision
   texMgr.drawFrameF(m_textureID,
-                    renderX,        // Keep float precision for smooth camera movement
-                    renderY,        // Keep float precision for smooth camera movement
-                    m_frameWidth, m_height,
-                    m_currentRow, m_currentFrame, renderer, m_flip);
+                    renderX, // Keep float precision for smooth camera movement
+                    renderY, // Keep float precision for smooth camera movement
+                    m_frameWidth, m_height, m_currentRow, m_currentFrame,
+                    renderer, m_flip);
 }
 
 void NPC::clean() {
@@ -227,6 +252,29 @@ void NPC::clean() {
   if (m_inventory) {
     m_inventory->clearInventory();
   }
+
+  // Remove from collision system
+  CollisionManager::Instance().removeBody(getID());
+}
+
+void NPC::setVelocity(const Vector2D& velocity) {
+  m_velocity = velocity;
+  auto &cm = CollisionManager::Instance();
+  if (!cm.isSyncing()) {
+    cm.setVelocity(getID(), velocity);
+  }
+}
+
+void NPC::setPosition(const Vector2D& position) {
+  auto &cm = CollisionManager::Instance();
+  
+  // Update collision body position
+  if (!cm.isSyncing()) {
+    cm.setKinematicPose(getID(), position);
+  }
+  
+  // Update entity position
+  m_position = position;
 }
 
 void NPC::initializeInventory() {
@@ -444,4 +492,32 @@ void NPC::setWanderArea(float minX, float minY, float maxX, float maxY) {
   m_minY = minY;
   m_maxX = maxX;
   m_maxY = maxY;
+}
+
+void NPC::ensurePhysicsBodyRegistered() {
+  auto &cm = CollisionManager::Instance();
+  const float halfW = m_frameWidth > 0 ? m_frameWidth * 0.5f : 16.0f;
+  const float halfH = m_height > 0 ? m_height * 0.5f : 16.0f;
+  HammerEngine::AABB aabb(m_position.getX(), m_position.getY(), halfW, halfH);
+  
+  NPC_DEBUG("Registering collision body - ID: " + std::to_string(getID()) + 
+            ", Position: (" + std::to_string(m_position.getX()) + "," + std::to_string(m_position.getY()) + ")" +
+            ", Size: " + std::to_string(halfW*2) + "x" + std::to_string(halfH*2));
+  
+  cm.addBody(getID(), aabb, HammerEngine::BodyType::KINEMATIC);
+  cm.attachEntity(getID(), shared_this());
+  
+  NPC_DEBUG("Collision body registered successfully - KINEMATIC type");
+}
+
+void NPC::setFaction(Faction f) {
+  m_faction = f;
+  auto &cm = CollisionManager::Instance();
+  
+  // All NPCs are on Layer_Enemy to ensure they don't collide with each other
+  uint32_t layer = HammerEngine::CollisionLayer::Layer_Enemy;
+  // NPCs collide with everything EXCEPT other NPCs (Layer_Enemy)
+  uint32_t mask = 0xFFFFFFFFu & ~HammerEngine::CollisionLayer::Layer_Enemy;
+  
+  cm.setBodyLayer(getID(), layer, mask);
 }

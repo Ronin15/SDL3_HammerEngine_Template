@@ -7,6 +7,46 @@
 #include "utils/Vector2D.hpp"
 #include "core/Logger.hpp"
 #include <algorithm>
+#include <ostream>
+
+// Stream operator for TransitionType (moved from header)
+std::ostream& operator<<(std::ostream& os, const TransitionType& type) {
+    switch (type) {
+        case TransitionType::Fade: os << "Fade"; break;
+        case TransitionType::Dissolve: os << "Dissolve"; break;
+        case TransitionType::Wipe: os << "Wipe"; break;
+        case TransitionType::Slide: os << "Slide"; break;
+        case TransitionType::Instant: os << "Instant"; break;
+        case TransitionType::Custom: os << "Custom"; break;
+        default: os << "Unknown"; break;
+    }
+    return os;
+}
+
+// TransitionParams constructor (moved from header)
+TransitionParams::TransitionParams(float durationIn, TransitionType type)
+    : duration(durationIn)
+{
+    switch(type) {
+        case TransitionType::Fade:
+            transitionEffect = "fade";
+            break;
+        case TransitionType::Dissolve:
+            transitionEffect = "dissolve";
+            break;
+        case TransitionType::Wipe:
+            transitionEffect = "wipe";
+            break;
+        case TransitionType::Slide:
+            transitionEffect = "slide";
+            break;
+        case TransitionType::Instant:
+        case TransitionType::Custom:
+        default:
+            transitionEffect = "fade";
+            break;
+    }
+}
 
 // Helper function to get player position
 static Vector2D getPlayerPosition() {

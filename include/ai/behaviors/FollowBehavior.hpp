@@ -11,6 +11,7 @@
 #include <SDL3/SDL.h>
 #include <random>
 #include <unordered_map>
+#include <vector>
 
 class FollowBehavior : public AIBehavior {
 public:
@@ -64,7 +65,6 @@ public:
   std::shared_ptr<AIBehavior> clone() const override;
 
 
-
 private:
   
   struct EntityState {
@@ -85,13 +85,20 @@ private:
     std::vector<Vector2D> pathPoints;
     size_t currentPathIndex{0};
     Uint64 lastPathUpdate{0};
+    float lastNodeDistance{std::numeric_limits<float>::infinity()};
+    Uint64 lastProgressTime{0};
+    Uint64 backoffUntil{0};
+    // Separation decimation
+    Uint64 lastSepTick{0};
+    Vector2D lastSepVelocity{0, 0};
 
     EntityState()
         : lastTargetPosition(0, 0), currentVelocity(0, 0),
           desiredPosition(0, 0), formationOffset(0, 0), lastTargetMoveTime(0),
           stationaryStartTime(0), currentSpeed(0.0f), currentHeading(0.0f),
           isFollowing(false), targetMoving(false), inFormation(true),
-          formationSlot(0), currentPathIndex(0), lastPathUpdate(0) {}
+          formationSlot(0), currentPathIndex(0), lastPathUpdate(0),
+          lastNodeDistance(std::numeric_limits<float>::infinity()), lastProgressTime(0), backoffUntil(0) {}
   };
 
   // Map to store per-entity state
@@ -132,6 +139,9 @@ private:
   mutable std::uniform_real_distribution<float> m_offsetVariation{-10.0f,
                                                                   10.0f};
 
+  // PATHFINDING CONSOLIDATION: Removed - all pathfinding now uses PathfindingScheduler
+  // bool m_useAsyncPathfinding removed
+
   // Helper methods
   EntityPtr getTarget() const; // Gets player reference from AIManager
   Vector2D calculateDesiredPosition(EntityPtr entity, EntityPtr target,
@@ -145,10 +155,6 @@ private:
   float calculateFollowSpeed(EntityPtr entity, const EntityState &state,
                              float distanceToTarget) const;
 
-  // Movement and pathfinding
-  Vector2D calculateSteeringForce(EntityPtr entity,
-                                  const Vector2D &desiredPosition,
-                                  const EntityState &state);
   Vector2D avoidObstacles(EntityPtr entity,
                           const Vector2D &desiredVelocity) const;
   Vector2D smoothPath(const Vector2D &currentPos, const Vector2D &targetPos,
@@ -163,9 +169,6 @@ private:
 
   // Utility methods
   Vector2D normalizeVector(const Vector2D &vector) const;
-  float angleDifference(float angle1, float angle2) const;
-  float clampAngle(float angle) const;
-  Vector2D rotateVector(const Vector2D &vector, float angle) const;
 
   // Formation setup
   void initializeFormationOffsets();

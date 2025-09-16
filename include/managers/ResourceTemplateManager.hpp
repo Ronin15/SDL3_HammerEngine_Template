@@ -9,7 +9,6 @@
 #include "entities/Resource.hpp"
 #include "utils/ResourceHandle.hpp"
 #include <atomic>
-#include <memory>
 #include <mutex>
 #include <shared_mutex>
 #include <string>
@@ -181,8 +180,6 @@ private:
   void updateIdIndex(HammerEngine::ResourceHandle handle,
                      const std::string &id);
   void removeFromIndexes(HammerEngine::ResourceHandle handle);
-  void rebuildIndexes();
-  bool isValidResourceHandle(HammerEngine::ResourceHandle handle) const;
   bool checkForDuplicateName(const std::string &name,
                              HammerEngine::ResourceHandle currentHandle) const;
 

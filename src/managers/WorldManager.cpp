@@ -284,6 +284,9 @@ bool WorldManager::updateTile(int x, int y, const HammerEngine::Tile& newTile) {
 }
 
 void WorldManager::fireTileChangedEvent(int x, int y, const HammerEngine::Tile& tile) {
+    // Increment world version for change tracking by other systems (PathfinderManager, etc.)
+    m_worldVersion.fetch_add(1, std::memory_order_release);
+    
     try {
         // Use tile information to determine change type based on tile properties
         std::string changeType = "tile_modified";
@@ -306,6 +309,9 @@ void WorldManager::fireTileChangedEvent(int x, int y, const HammerEngine::Tile& 
 }
 
 void WorldManager::fireWorldLoadedEvent(const std::string& worldId) {
+    // Increment world version when world is loaded (major change for other systems)
+    m_worldVersion.fetch_add(1, std::memory_order_release);
+    
     try {
         // Get world dimensions
         int width, height;
@@ -433,11 +439,12 @@ bool WorldManager::getWorldBounds(float& minX, float& minY, float& maxX, float& 
         return false;
     }
 
-    // World bounds in tile coordinates (assuming each tile is 1x1 unit)
+    // World bounds in pixel coordinates - convert from tile count to pixels
+    const float TILE_SIZE = 32.0f; // Match WorldManager::TILE_SIZE
     minX = 0.0f;
     minY = 0.0f;
-    maxX = static_cast<float>(width);
-    maxY = static_cast<float>(height);
+    maxX = static_cast<float>(width) * TILE_SIZE;   // Convert tiles to pixels
+    maxY = static_cast<float>(height) * TILE_SIZE;  // Convert tiles to pixels
 
     return true;
 }
@@ -497,10 +504,9 @@ void WorldManager::initializeWorldResources() {
         return;
     }
 
-    // Calculate base resource quantities based on world size
-    int baseAmount = std::max(10, totalTiles / 20); // Scale with world size
-
     try {
+        // Calculate base resource quantities based on world size
+        int baseAmount = std::max(10, totalTiles / 20); // Scale with world size
         // Basic resources available everywhere
         auto woodHandle = resourceMgr.getHandleById("wood");
         auto ironHandle = resourceMgr.getHandleById("iron_ore");
@@ -627,7 +633,17 @@ void HammerEngine::TileRenderer::renderVisibleTiles(const HammerEngine::WorldDat
                     case HammerEngine::ObstacleType::TREE:    textureID = "obstacle_tree"; break;
                     case HammerEngine::ObstacleType::ROCK:    textureID = "obstacle_rock"; break;
                     case HammerEngine::ObstacleType::WATER:   textureID = "obstacle_water"; break;
-                    case HammerEngine::ObstacleType::BUILDING: textureID = "obstacle_building"; break;
+                    case HammerEngine::ObstacleType::BUILDING: {
+                        // Choose texture based on building size
+                        switch (tile.buildingSize) {
+                            case 1: textureID = "building_hut"; break;
+                            case 2: textureID = "building_house"; break;
+                            case 3: textureID = "building_large"; break;
+                            case 4: textureID = "building_cityhall"; break;
+                            default: textureID = "building_hut"; break;
+                        }
+                        break;
+                    }
                     default:                    textureID = "biome_default"; break;
                 }
             } else if (tile.isWater) {
@@ -646,8 +662,22 @@ void HammerEngine::TileRenderer::renderVisibleTiles(const HammerEngine::WorldDat
                 }
             }
 
-            // Use TextureManager's tile-optimized float precision rendering
-            TextureManager::Instance().drawTileF(textureID, screenX, screenY, TILE_SIZE, TILE_SIZE, renderer);
+            // Handle building rendering specially - they are 64x64 (2x2 tiles)
+            if (tile.obstacleType == HammerEngine::ObstacleType::BUILDING) {
+                // Only render from the top-left tile of each building to avoid overdraw
+                bool isTopLeft = true;
+                if (x > 0 && world.grid[y][x - 1].buildingId == tile.buildingId) isTopLeft = false;
+                if (y > 0 && world.grid[y - 1][x].buildingId == tile.buildingId) isTopLeft = false;
+                
+                if (isTopLeft) {
+                    // Render building as 64x64 block (2x2 tiles)
+                    TextureManager::Instance().drawTileF(textureID, screenX, screenY, TILE_SIZE * 2, TILE_SIZE * 2, renderer);
+                }
+                // Skip rendering for non-top-left building tiles
+            } else {
+                // Normal tile rendering for non-building tiles
+                TextureManager::Instance().drawTileF(textureID, screenX, screenY, TILE_SIZE, TILE_SIZE, renderer);
+            }
         }
     }
 }
@@ -721,7 +751,7 @@ std::string HammerEngine::TileRenderer::getObstacleTexture(HammerEngine::Obstacl
         case HammerEngine::ObstacleType::TREE:    return "obstacle_tree";
         case HammerEngine::ObstacleType::ROCK:    return "obstacle_rock";
         case HammerEngine::ObstacleType::WATER:   return "obstacle_water";
-        case HammerEngine::ObstacleType::BUILDING: return "obstacle_building";
+        case HammerEngine::ObstacleType::BUILDING: return "building_hut"; // Default to hut texture
         default:                    return "biome_default";
     }
 }

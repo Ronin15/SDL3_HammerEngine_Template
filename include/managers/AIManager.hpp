@@ -33,13 +33,9 @@
 #include <unordered_map>
 #include <vector>
 
-// Conditional debug logging
-#ifdef AI_DEBUG_LOGGING
-#define AI_LOG(x)                                                              \
-  std::cout << "Hammer Game Engine - [AI Manager] " << x << std::endl
-#else
-#define AI_LOG(x)
-#endif
+// PathfinderManager available for centralized pathfinding services
+class PathfinderManager;
+class CollisionManager;
 
 // Performance configuration constants
 namespace AIConfig {
@@ -106,8 +102,11 @@ struct AIPerformanceStats {
     totalUpdateTime += timeMs;
     updateCount++;
     entitiesProcessed += entities;
-    if (totalUpdateTime > 0) {
-      entitiesPerSecond = (entitiesProcessed * 1000.0) / totalUpdateTime;
+    
+    // Use simple instantaneous rate calculation to avoid per-frame timing overhead
+    // This is much faster than time-windowed calculations
+    if (timeMs > 0) {
+      entitiesPerSecond = (entities * 1000.0) / timeMs; // entities processed per second in this frame
     }
   }
 
@@ -175,8 +174,10 @@ public:
   void update(float deltaTime);
 
   /**
-   * @brief Waits for all asynchronous AI update tasks from the last tick to complete.
-   * @details This is the synchronization point that ensures AI processing is finished before the next game logic step.
+   * @brief Waits for all asynchronous AI update tasks from the last tick to
+   * complete.
+   * @details This is the synchronization point that ensures AI processing is
+   * finished before the next game logic step.
    */
   void waitForUpdatesToComplete();
 
@@ -278,6 +279,9 @@ public:
                                 const std::string &behaviorName);
   void unregisterEntityFromUpdates(EntityPtr entity);
 
+  // Update extents for an entity if its sprite/physics size changes
+  void updateEntityExtents(EntityPtr entity, float halfW, float halfH);
+
   // Global controls
   void setGlobalPause(bool paused);
   bool isGloballyPaused() const;
@@ -309,15 +313,33 @@ public:
   void broadcastMessage(const std::string &message, bool immediate = false);
   void processMessageQueue();
 
+  /**
+   * @brief Get direct access to PathfinderManager for optimal pathfinding
+   * performance
+   * @return Reference to PathfinderManager instance
+   * @details Provides access to centralized pathfinding service for all AI
+   * entities
+   *
+   * All pathfinding functionality has been moved to PathfinderManager.
+   * Use PathfinderManager::Instance() to access pathfinding services.
+   */
+  PathfinderManager &getPathfinderManager() const;
+
 private:
   AIManager() = default;
-  ~AIManager() {
-    if (!m_isShutdown) {
-      clean();
-    }
-  }
+  ~AIManager();
   AIManager(const AIManager &) = delete;
   AIManager &operator=(const AIManager &) = delete;
+
+  // Batch collision update structure for performance optimization
+  struct KinematicUpdateBatch {
+    EntityID id;
+    Vector2D position;
+    Vector2D velocity;
+    
+    KinematicUpdateBatch(EntityID entityId, const Vector2D& pos, const Vector2D& vel)
+        : id(entityId), position(pos), velocity(vel) {}
+  };
 
   // Cache-efficient storage using Structure of Arrays (SoA)
   struct EntityStorage {
@@ -328,10 +350,15 @@ private:
     std::vector<EntityPtr> entities;
     std::vector<std::shared_ptr<AIBehavior>> behaviors;
     std::vector<float> lastUpdateTimes;
+    std::vector<float> halfWidths;  // entity half extents for clamp
+    std::vector<float> halfHeights; // entity half extents for clamp
 
     // Double buffering for lock-free updates
     std::atomic<int> currentBuffer{0};
     std::array<std::vector<AIEntityData::HotData>, 2> doubleBuffer;
+    
+    // Batch update buffer for collision system optimization
+    std::vector<KinematicUpdateBatch> kinematicUpdates;
 
     size_t size() const { return entities.size(); }
     void reserve(size_t capacity) {
@@ -339,8 +366,11 @@ private:
       entities.reserve(capacity);
       behaviors.reserve(capacity);
       lastUpdateTimes.reserve(capacity);
+      halfWidths.reserve(capacity);
+      halfHeights.reserve(capacity);
       doubleBuffer[0].reserve(capacity);
       doubleBuffer[1].reserve(capacity);
+      kinematicUpdates.reserve(capacity); // Reserve for batch collision updates
     }
   };
 
@@ -411,6 +441,9 @@ private:
   std::atomic<bool> m_processingMessages{false};
   unsigned int m_maxThreads{0};
 
+  // Legacy pathfinding state removed - all pathfinding handled by
+  // PathfinderManager
+
   // Behavior execution tracking
   std::atomic<size_t> m_totalBehaviorExecutions{0};
 
@@ -419,6 +452,10 @@ private:
 
   // Frame counter for periodic logging (thread-safe)
   std::atomic<uint64_t> m_frameCounter{0};
+
+  // Asynchronous assignment processing (non-blocking)
+  std::vector<std::future<void>> m_assignmentFutures;
+  std::atomic<bool> m_assignmentInProgress{false};
 
   // Frame throttling for task submission (thread-safe)
   std::atomic<uint64_t> m_lastFrameWithTasks{0};
@@ -439,13 +476,15 @@ private:
   mutable std::mutex m_messagesMutex;
   mutable std::mutex m_statsMutex;
   std::vector<std::future<void>> m_updateFutures;
+  std::vector<std::future<void>>
+      m_pendingFutures; // Futures from previous frames
 
   // Optimized batch processing constants
   static constexpr size_t CACHE_LINE_SIZE = 64; // Standard cache line size
   static constexpr size_t BATCH_SIZE =
       256; // Larger batches for better throughput
   static constexpr size_t THREADING_THRESHOLD =
-      500; // Higher threshold due to improved efficiency
+      500; // Higher threshold - threading overhead not worth it for smaller counts
 
   // Optimized helper methods
   BehaviorType inferBehaviorType(const std::string &behaviorName) const;
@@ -456,6 +495,8 @@ private:
   void updateDistancesScalar(const Vector2D &playerPos);
   void recordPerformance(BehaviorType type, double timeMs, uint64_t entities);
   static uint64_t getCurrentTimeNanos();
+
+  // Legacy pathfinding methods removed - use PathfinderManager instead
 
   // Lock-free message queue
   struct alignas(CACHE_LINE_SIZE) LockFreeMessage {
@@ -470,6 +511,8 @@ private:
 
   // Shutdown state
   bool m_isShutdown{false};
+
+  // All pathfinding functionality moved to PathfinderManager
 };
 
 #endif // AI_MANAGER_HPP

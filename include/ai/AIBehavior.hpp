@@ -7,6 +7,20 @@
 #define AI_BEHAVIOR_HPP
 
 #include "entities/Entity.hpp"
+#include "utils/Vector2D.hpp"
+#include <SDL3/SDL.h>
+#include <cstddef>
+
+// Forward declarations
+class PathfinderManager;
+
+// Forward declare separation to avoid pulling internal headers here
+namespace AIInternal {
+Vector2D ApplySeparation(EntityPtr entity, const Vector2D &position,
+                         const Vector2D &intendedVelocity, float speed,
+                         float queryRadius, float strength,
+                         size_t maxNeighbors);
+}
 #include <string>
 
 class AIBehavior {
@@ -29,8 +43,6 @@ public:
   virtual bool isActive() const { return m_active; }
   virtual void setActive(bool active) { m_active = active; }
 
-  
-
   // Entity range checks (behavior-specific logic)
   virtual bool isEntityInRange([[maybe_unused]] EntityPtr entity) const {
     return true;
@@ -42,13 +54,43 @@ public:
   // Clone method for creating unique behavior instances
   virtual std::shared_ptr<AIBehavior> clone() const = 0;
 
+
   // Expose to AIManager for behavior management
   friend class AIManager;
 
 protected:
   bool m_active{true};
-
+  // PERFORMANCE FIX: Dramatically increased separation decimation interval (2 seconds)
+  static constexpr Uint32 kSeparationIntervalMs = 2000;
   
+  // Cached PathfinderManager reference for all behaviors to eliminate Instance() calls
+  PathfinderManager& pathfinder() const;
+  
+
+  // Apply separation at most every kSeparationIntervalMs, with entity-based staggering
+  inline void applyDecimatedSeparation(EntityPtr entity,
+                                       const Vector2D &position,
+                                       const Vector2D &intendedVelocity,
+                                       float speed, float queryRadius,
+                                       float strength, int maxNeighbors,
+                                       Uint64 &lastSepTick,
+                                       Vector2D &lastSepVelocity) const {
+    Uint64 now = SDL_GetTicks();
+    
+    // PERFORMANCE FIX: Entity-based staggered separation to prevent all entities 
+    // from doing expensive separation calculations on the same frame
+    Uint32 entityStaggerOffset = (entity->getID() % 200) * 10; // Stagger by up to 2 seconds
+    Uint32 effectiveInterval = kSeparationIntervalMs + entityStaggerOffset;
+    
+    if (now - lastSepTick >= effectiveInterval) {
+      // Only do the expensive separation calculation when absolutely necessary
+      lastSepVelocity = AIInternal::ApplySeparation(
+          entity, position, intendedVelocity, speed, queryRadius, strength,
+          static_cast<size_t>(maxNeighbors));
+      lastSepTick = now;
+    }
+    entity->setVelocity(lastSepVelocity);
+  }
 };
 
 #endif // AI_BEHAVIOR_HPP

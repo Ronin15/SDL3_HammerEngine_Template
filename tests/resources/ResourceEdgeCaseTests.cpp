@@ -165,7 +165,8 @@ BOOST_AUTO_TEST_CASE(TestConcurrentHandleGeneration) {
 
           for (int i = 0; i < HANDLES_PER_THREAD; ++i) {
             auto handle = templateManager->generateHandle();
-            BOOST_CHECK(handle.isValid());
+            // Validate handles after threads complete to avoid
+            // multithreaded Boost test assertions
             threadHandles.push_back(handle);
           }
           return threadHandles;
@@ -184,6 +185,11 @@ BOOST_AUTO_TEST_CASE(TestConcurrentHandleGeneration) {
 
   // Process any events generated during handle creation
   EventManager::Instance().update();
+
+  // Validate all handles are valid (done on main thread after all threads complete)
+  for (const auto& handle : allHandles) {
+    BOOST_CHECK(handle.isValid());
+  }
 
   // Verify all handles are unique (no race conditions in generation)
   std::set<ResourceHandle> uniqueHandles(allHandles.begin(), allHandles.end());

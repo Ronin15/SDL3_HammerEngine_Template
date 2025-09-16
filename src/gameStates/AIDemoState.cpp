@@ -11,8 +11,10 @@
 #include "core/GameEngine.hpp"
 #include "core/Logger.hpp"
 #include "managers/AIManager.hpp"
+#include "managers/CollisionManager.hpp"
 #include "managers/InputManager.hpp"
 #include "managers/UIManager.hpp"
+#include "managers/WorldManager.hpp"
 #include <memory>
 #include <random>
 #include <sstream>
@@ -173,16 +175,23 @@ bool AIDemoState::enter() {
     // Cache GameEngine reference for better performance
     const GameEngine &gameEngine = GameEngine::Instance();
 
-    // Setup world size using logical dimensions for proper cross-platform
-    // rendering
-    m_worldWidth = gameEngine.getLogicalWidth();
-    m_worldHeight = gameEngine.getLogicalHeight();
+    // Setup world size using actual world bounds instead of screen dimensions
+    float worldMinX, worldMinY, worldMaxX, worldMaxY;
+    if (WorldManager::Instance().getWorldBounds(worldMinX, worldMinY, worldMaxX, worldMaxY)) {
+        m_worldWidth = worldMaxX;
+        m_worldHeight = worldMaxY;
+    } else {
+        // Fallback to screen dimensions if world not loaded
+        m_worldWidth = gameEngine.getLogicalWidth();
+        m_worldHeight = gameEngine.getLogicalHeight();
+    }
 
     // Texture has to be loaded by NPC or Player can't be loaded here
     setupAIBehaviors();
 
     // Create player first (the chase behavior will need it)
     m_player = std::make_shared<Player>();
+    m_player->registerCollisionBody();
     m_player->initializeInventory(); // Initialize inventory after construction
     m_player->setPosition(Vector2D(m_worldWidth / 2, m_worldHeight / 2));
 
@@ -241,8 +250,14 @@ bool AIDemoState::exit() {
   // Cache AIManager reference for better performance
   AIManager &aiMgr = AIManager::Instance();
 
-  // Use the new prepareForStateTransition method for safer cleanup
+  // Use prepareForStateTransition methods for deterministic cleanup
   aiMgr.prepareForStateTransition();
+  
+  // Clean collision state
+  CollisionManager &collisionMgr = CollisionManager::Instance();
+  if (collisionMgr.isInitialized() && !collisionMgr.isShutdown()) {
+    collisionMgr.prepareForStateTransition();
+  }
 
   // Clean up NPCs
   for (auto &npc : m_npcs) {
@@ -329,7 +344,6 @@ void AIDemoState::setupAIBehaviors() {
   if (!aiMgr.hasBehavior("Wander")) {
     auto wanderBehavior = std::make_unique<WanderBehavior>(
         WanderBehavior::WanderMode::MEDIUM_AREA, 80.0f);
-    wanderBehavior->setScreenDimensions(m_worldWidth, m_worldHeight);
     aiMgr.registerBehavior("Wander", std::move(wanderBehavior));
     GAMESTATE_INFO("AIDemoState: Registered Wander behavior");
   }
@@ -337,7 +351,6 @@ void AIDemoState::setupAIBehaviors() {
   if (!aiMgr.hasBehavior("SmallWander")) {
     auto smallWanderBehavior = std::make_unique<WanderBehavior>(
         WanderBehavior::WanderMode::SMALL_AREA, 60.0f);
-    smallWanderBehavior->setScreenDimensions(m_worldWidth, m_worldHeight);
     aiMgr.registerBehavior("SmallWander", std::move(smallWanderBehavior));
     GAMESTATE_INFO("AIDemoState: Registered SmallWander behavior");
   }
@@ -345,7 +358,6 @@ void AIDemoState::setupAIBehaviors() {
   if (!aiMgr.hasBehavior("LargeWander")) {
     auto largeWanderBehavior = std::make_unique<WanderBehavior>(
         WanderBehavior::WanderMode::LARGE_AREA, 100.0f);
-    largeWanderBehavior->setScreenDimensions(m_worldWidth, m_worldHeight);
     aiMgr.registerBehavior("LargeWander", std::move(largeWanderBehavior));
     GAMESTATE_INFO("AIDemoState: Registered LargeWander behavior");
   }
@@ -353,7 +365,6 @@ void AIDemoState::setupAIBehaviors() {
   if (!aiMgr.hasBehavior("EventWander")) {
     auto eventWanderBehavior = std::make_unique<WanderBehavior>(
         WanderBehavior::WanderMode::EVENT_TARGET, 70.0f);
-    eventWanderBehavior->setScreenDimensions(m_worldWidth, m_worldHeight);
     aiMgr.registerBehavior("EventWander", std::move(eventWanderBehavior));
     GAMESTATE_INFO("AIDemoState: Registered EventWander behavior");
   }
@@ -361,7 +372,6 @@ void AIDemoState::setupAIBehaviors() {
   if (!aiMgr.hasBehavior("Patrol")) {
     auto patrolBehavior = std::make_unique<PatrolBehavior>(
         PatrolBehavior::PatrolMode::FIXED_WAYPOINTS, 75.0f, true);
-    patrolBehavior->setScreenDimensions(m_worldWidth, m_worldHeight);
     aiMgr.registerBehavior("Patrol", std::move(patrolBehavior));
     GAMESTATE_INFO("AIDemoState: Registered Patrol behavior");
   }
@@ -369,7 +379,6 @@ void AIDemoState::setupAIBehaviors() {
   if (!aiMgr.hasBehavior("RandomPatrol")) {
     auto randomPatrolBehavior = std::make_unique<PatrolBehavior>(
         PatrolBehavior::PatrolMode::RANDOM_AREA, 85.0f, false);
-    randomPatrolBehavior->setScreenDimensions(m_worldWidth, m_worldHeight);
     aiMgr.registerBehavior("RandomPatrol", std::move(randomPatrolBehavior));
     GAMESTATE_INFO("AIDemoState: Registered RandomPatrol behavior");
   }
@@ -377,7 +386,6 @@ void AIDemoState::setupAIBehaviors() {
   if (!aiMgr.hasBehavior("CirclePatrol")) {
     auto circlePatrolBehavior = std::make_unique<PatrolBehavior>(
         PatrolBehavior::PatrolMode::CIRCULAR_AREA, 90.0f, false);
-    circlePatrolBehavior->setScreenDimensions(m_worldWidth, m_worldHeight);
     aiMgr.registerBehavior("CirclePatrol", std::move(circlePatrolBehavior));
     GAMESTATE_INFO("AIDemoState: Registered CirclePatrol behavior");
   }
@@ -385,7 +393,6 @@ void AIDemoState::setupAIBehaviors() {
   if (!aiMgr.hasBehavior("EventTarget")) {
     auto eventTargetBehavior = std::make_unique<PatrolBehavior>(
         PatrolBehavior::PatrolMode::EVENT_TARGET, 95.0f, false);
-    eventTargetBehavior->setScreenDimensions(m_worldWidth, m_worldHeight);
     aiMgr.registerBehavior("EventTarget", std::move(eventTargetBehavior));
     GAMESTATE_INFO("AIDemoState: Registered EventTarget behavior");
   }
@@ -415,7 +422,7 @@ void AIDemoState::createNPCs() {
       try {
         // Create NPC with random position
         Vector2D position(xDist(gen), yDist(gen));
-        auto npc = std::make_shared<NPC>("npc", position, 64, 64);
+        auto npc = NPC::create("npc", position, 64, 64);
         npc->initializeInventory(); // Initialize inventory after construction
 
         // Set animation properties (adjust based on your actual sprite sheet)

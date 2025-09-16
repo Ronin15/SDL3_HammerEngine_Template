@@ -537,8 +537,6 @@ private:
                               SDL_Color textColor, SDL_Renderer *renderer,
                               int alignment, bool useBackground,
                               SDL_Color backgroundColor, int padding);
-  UIRect calculateTextBounds(const std::string &text, const std::string &fontID,
-                             const UIRect &container, UIAlignment alignment);
   SDL_Color interpolateColor(const SDL_Color &start, const SDL_Color &end,
                              float t);
   UIRect interpolateRect(const UIRect &start, const UIRect &end, float t);

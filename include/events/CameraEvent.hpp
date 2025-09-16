@@ -109,14 +109,7 @@ public:
     Mode getNewMode() const { return m_newMode; }
     Mode getOldMode() const { return m_oldMode; }
     
-    std::string getModeString(Mode mode) const {
-        switch (mode) {
-            case Mode::Free: return "Free";
-            case Mode::Follow: return "Follow";
-            case Mode::Fixed: return "Fixed";
-            default: return "Unknown";
-        }
-    }
+    std::string getModeString(Mode mode) const;
     
     std::string getTypeName() const override { return "CameraModeChangedEvent"; }
     std::string getName() const override { return "CameraModeChangedEvent"; }

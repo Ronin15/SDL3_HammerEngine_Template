@@ -22,7 +22,7 @@ namespace HammerEngine {
 class MockNPC : public Entity {
 public:
     MockNPC(const std::string& textureID, const Vector2D& position, int width, int height)
-        : m_wanderArea{0.0f, 0.0f, 0.0f, 0.0f}
+        : Entity(), m_wanderArea{0.0f, 0.0f, 0.0f, 0.0f}
         , m_boundsCheckEnabled(false) {
         setTextureID(textureID);
         setPosition(position);

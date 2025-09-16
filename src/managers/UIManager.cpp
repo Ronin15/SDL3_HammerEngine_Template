@@ -2650,37 +2650,6 @@ void UIManager::drawTextWithBackground(const std::string &text,
   SDL_RenderTexture(renderer, texture.get(), nullptr, &dstRect);
 }
 
-UIRect UIManager::calculateTextBounds(const std::string &text,
-                                      const std::string & /* fontID */,
-                                      const UIRect &container,
-                                      UIAlignment alignment) {
-  // Simplified text bounds calculation
-  int textWidth = static_cast<int>(text.length() * 8); // Approximate
-  int textHeight = 16;                                 // Approximate
-
-  UIRect bounds = container;
-
-  switch (alignment) {
-  case UIAlignment::CENTER_CENTER:
-    bounds.x = container.x + (container.width - textWidth) / 2;
-    bounds.y = container.y + (container.height - textHeight) / 2;
-    break;
-  case UIAlignment::CENTER_LEFT:
-    bounds.x = container.x;
-    bounds.y = container.y + (container.height - textHeight) / 2;
-    break;
-  case UIAlignment::CENTER_RIGHT:
-    bounds.x = container.x + container.width - textWidth;
-    bounds.y = container.y + (container.height - textHeight) / 2;
-    break;
-  default:
-    break;
-  }
-
-  bounds.width = textWidth;
-  bounds.height = textHeight;
-  return bounds;
-}
 
 SDL_Color UIManager::interpolateColor(const SDL_Color &start,
                                       const SDL_Color &end, float t) {

@@ -7,7 +7,7 @@
 #include <boost/test/unit_test.hpp>
 
 #include "managers/AIManager.hpp"
-#include "ai/AIBehaviors.hpp"
+#include "AIBehaviors.hpp" // from tests/mocks
 #include "entities/Entity.hpp"
 #include <memory>
 #include <vector>
@@ -17,7 +17,7 @@
 // Mock Entity class for testing
 class TestEntity : public Entity {
 public:
-    TestEntity(float x = 0.0f, float y = 0.0f) : m_updateCount(0) {
+    TestEntity(float x = 0.0f, float y = 0.0f) : Entity(), m_updateCount(0) {
         setPosition(Vector2D(x, y));
     }
     

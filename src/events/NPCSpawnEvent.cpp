@@ -12,6 +12,8 @@
 #include "core/GameTime.hpp"
 #include <random>
 #include <algorithm>
+#include "managers/WorldManager.hpp"
+#include "managers/PathfinderManager.hpp"
 
 
 
@@ -26,6 +28,8 @@ static Vector2D getPlayerPosition() {
 // Random number generation
 static std::random_device rd;
 static std::mt19937 gen(rd());
+
+// Helper removed: use PathfinderManager::adjustSpawnToNavigable
 
 NPCSpawnEvent::NPCSpawnEvent(const std::string& name, const std::string& npcType)
     : m_name(name) {
@@ -82,8 +86,18 @@ void NPCSpawnEvent::execute() {
         m_cooldownTimer = 0.0f;
     }
 
-    // NPCSpawnEvent is now just for event coordination and demonstration
     EVENT_INFO("NPCSpawnEvent triggered: " + m_name + " (" + m_spawnParams.npcType + ")");
+    
+    // Display area constraint information if configured
+    if (m_constrainToArea) {
+        EVENT_INFO("  - Area constraints: (" + std::to_string(m_constraintMinX) + "," + 
+                   std::to_string(m_constraintMinY) + ") to (" + std::to_string(m_constraintMaxX) + 
+                   "," + std::to_string(m_constraintMaxY) + ")");
+        EVENT_INFO("  - NPCs will be constrained to this area using intelligent redirection");
+    } else {
+        EVENT_INFO("  - No area constraints - NPCs can wander freely across the world");
+    }
+    
     EVENT_INFO("  - Event serves as coordination/messaging demonstration");
     EVENT_INFO("  - GameStates handle actual entity creation and ownership");
 
@@ -119,6 +133,10 @@ void NPCSpawnEvent::reset() {
 
     // Clear any transient conditions
     m_conditions.clear();
+
+    // Reset area constraints
+    m_constrainToArea = false;
+    m_constraintMinX = m_constraintMinY = m_constraintMaxX = m_constraintMaxY = 0.0f;
 
     // Clear spawned-entity tracking and counters
     clearSpawnedEntities();
@@ -289,11 +307,10 @@ EntityPtr NPCSpawnEvent::forceSpawnNPC(const std::string& npcType, float x, floa
 
         // Create the NPC
         Vector2D position(x, y);
+        position = PathfinderManager::Instance().adjustSpawnToNavigable(position, 32.0f, 32.0f, 150.0f);
         auto npc = NPC::create(textureID, position, 64, 64);
 
-        // Set basic wander area around spawn point
-        npc->setWanderArea(x - 50.0f, y - 50.0f, x + 50.0f, y + 50.0f);
-        npc->setBoundsCheckEnabled(true);
+        // Bounds are enforced centrally by AIManager/PathfinderManager
 
         EVENT_INFO("Force-spawned " + npcType + " at (" + std::to_string(x) + ", " + std::to_string(y) + ")");
         return std::static_pointer_cast<Entity>(npc);
@@ -319,15 +336,23 @@ std::vector<EntityPtr> NPCSpawnEvent::forceSpawnNPCs(const SpawnParameters& para
             float offsetY = params.spawnRadius > 0 ? offsetDist(gen) : 0.0f;
 
             Vector2D spawnPos(x + offsetX, y + offsetY);
+            if (params.useAreaRect) {
+                spawnPos = PathfinderManager::Instance().adjustSpawnToNavigableInRect(
+                    spawnPos, 32.0f, 32.0f, 150.0f,
+                    params.areaMinX, params.areaMinY, params.areaMaxX, params.areaMaxY);
+            } else if (params.useAreaCircle) {
+                spawnPos = PathfinderManager::Instance().adjustSpawnToNavigableInCircle(
+                    spawnPos, 32.0f, 32.0f, 150.0f,
+                    Vector2D(params.areaCenterX, params.areaCenterY), params.areaRadius);
+            } else {
+                spawnPos = PathfinderManager::Instance().adjustSpawnToNavigable(spawnPos, 32.0f, 32.0f, 150.0f);
+            }
             auto npc = NPC::create(textureID, spawnPos, 64, 64);
 
-            // Configure wander area
-            float wanderRadius = params.spawnRadius > 0 ? params.spawnRadius : 50.0f;
-            npc->setWanderArea(
-                x - wanderRadius, y - wanderRadius,
-                x + wanderRadius, y + wanderRadius
-            );
-            npc->setBoundsCheckEnabled(true);
+            // Bounds are enforced centrally by AIManager/PathfinderManager
+            
+            // Note: For area-constrained NPCs (villages/events), create an NPCSpawnEvent
+            // with setAreaConstraints() and let the GameState handle the actual spawning
 
             spawnedNPCs.push_back(std::static_pointer_cast<Entity>(npc));
             EVENT_INFO("  - NPC " + std::to_string(i+1) + " spawned successfully");

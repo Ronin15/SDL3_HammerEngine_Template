@@ -5,6 +5,13 @@
 
 #include "events/EventFactory.hpp"
 #include "events/NPCSpawnEvent.hpp"
+#include "events/WeatherEvent.hpp"
+#include "events/SceneChangeEvent.hpp"
+#include "events/ParticleEffectEvent.hpp"
+#include "events/WorldEvent.hpp"
+#include "events/CameraEvent.hpp"
+#include "events/ResourceChangeEvent.hpp"
+#include "utils/Vector2D.hpp"
 #include "core/Logger.hpp"
 #include <algorithm>
 #include <cctype>
@@ -398,23 +405,6 @@ std::vector<EventPtr> EventFactory::createEventSequence(const std::string& name,
     return createdEvents;
 }
 
-WeatherType EventFactory::getWeatherTypeFromString(const std::string& weatherType) {
-    // Convert string to lowercase for case-insensitive comparison
-    std::string type = weatherType;
-    std::transform(type.begin(), type.end(), type.begin(),
-                  [](unsigned char c) { return std::tolower(c); });
-
-    if (type == "clear") return WeatherType::Clear;
-    if (type == "cloudy") return WeatherType::Cloudy;
-    if (type == "rainy") return WeatherType::Rainy;
-    if (type == "stormy") return WeatherType::Stormy;
-    if (type == "foggy") return WeatherType::Foggy;
-    if (type == "snowy") return WeatherType::Snowy;
-    if (type == "windy") return WeatherType::Windy;
-
-    // Default to custom type
-    return WeatherType::Custom;
-}
 
 TransitionType EventFactory::getTransitionTypeFromString(const std::string& transitionType) {
     // Convert string to lowercase for case-insensitive comparison

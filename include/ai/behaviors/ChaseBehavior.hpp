@@ -8,11 +8,12 @@
 
 #include "ai/AIBehavior.hpp"
 #include "utils/Vector2D.hpp"
+#include <vector>
 
 class ChaseBehavior : public AIBehavior {
 public:
   explicit ChaseBehavior(float chaseSpeed = 3.0f, float maxRange = 500.0f,
-                         float minRange = 50.0f);
+                         float minRange = 10.0f); // Much closer approach distance
 
   void init(EntityPtr entity) override;
 
@@ -82,6 +83,50 @@ private:
   // Handle behavior when line of sight is lost
   void handleNoLineOfSight(EntityPtr entity);
 
+  // Path-following state for chasing around obstacles
+  std::vector<Vector2D> m_navPath;
+  size_t m_navIndex{0};
+  float m_navRadius{18.0f};
+  int m_recalcCounter{0};
+  int m_recalcInterval{15}; // frames between path recalcs
+  // Improved stall detection
+  float m_lastNodeDistance{std::numeric_limits<float>::infinity()};
+  Uint64 m_lastProgressTime{0};
+  Uint64 m_lastPathUpdate{0};
+  Uint64 m_stallStart{0};
+  Vector2D m_lastStallPosition{0, 0};
+  float m_stallPositionVariance{0.0f};
+  Uint64 m_lastUnstickTime{0};
+  // Separation decimation
+  Uint64 m_lastSepTick{0};
+  Vector2D m_lastSepVelocity{0, 0};
+  // Unified cooldown management
+  struct {
+      Uint64 nextPathRequest{0};
+      Uint64 stallRecoveryUntil{0};
+      Uint64 behaviorChangeUntil{0};
+      
+      bool canRequestPath(Uint64 now) const {
+          return now >= nextPathRequest && now >= stallRecoveryUntil;
+      }
+      
+      void applyPathCooldown(Uint64 now, Uint64 cooldownMs = 600) {
+          nextPathRequest = now + cooldownMs;
+      }
+      
+      void applyStallCooldown(Uint64 now, Uint64 stallId = 0) {
+          stallRecoveryUntil = now + 200 + (stallId % 300);
+      }
+  } m_cooldowns;
+
+  // PATHFINDING CONSOLIDATION: Removed - all pathfinding now uses PathfindingScheduler
+  // bool m_useAsyncPathfinding removed
+
+  // PERFORMANCE OPTIMIZATIONS: Crowd detection throttling
+  mutable Uint64 m_lastCrowdCheckTime{0};
+  mutable int m_cachedChaserCount{0};
+
+public:
   
 };
 

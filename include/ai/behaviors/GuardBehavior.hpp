@@ -90,7 +90,6 @@ public:
   std::shared_ptr<AIBehavior> clone() const override;
 
 
-
 private:
   
   struct EntityState {
@@ -122,6 +121,18 @@ private:
     Vector2D roamTarget{0, 0};
     Uint64 nextRoamTime{0};
 
+    // Pathfinding state
+    std::vector<Vector2D> pathPoints;
+    size_t currentPathIndex{0};
+    Uint64 lastPathUpdate{0};
+    Uint64 lastProgressTime{0};
+    float lastNodeDistance{std::numeric_limits<float>::infinity()};
+    float navRadius{18.0f};
+    Uint64 backoffUntil{0};
+    // Separation decimation
+    Uint64 lastSepTick{0};
+    Vector2D lastSepVelocity{0, 0};
+
     EntityState()
         : assignedPosition(0, 0), lastKnownThreatPosition(0, 0),
           investigationTarget(0, 0), currentPatrolTarget(0, 0),
@@ -131,7 +142,8 @@ private:
           lastPatrolMove(0), lastAlertDecay(0), currentPatrolIndex(0),
           currentHeading(0.0f), hasActiveThreat(false), isInvestigating(false),
           returningToPost(false), onDuty(true), alertRaised(false),
-          helpCalled(false), roamTarget(0, 0), nextRoamTime(0) {}
+          helpCalled(false), roamTarget(0, 0), nextRoamTime(0),
+          pathPoints(), currentPathIndex(0), lastPathUpdate(0), navRadius(16.0f) {}
   };
 
   // Map to store per-entity state
@@ -182,7 +194,10 @@ private:
   mutable std::uniform_real_distribution<float> m_angleDistribution{
       0.0f, 2.0f * M_PI};
   mutable std::uniform_real_distribution<float> m_radiusDistribution{0.3f,
-                                                                     1.0f};
+                                                                      1.0f};
+
+  // PATHFINDING CONSOLIDATION: Removed - all pathfinding now uses PathfindingScheduler
+  // bool m_useAsyncPathfinding removed
 
   // Helper methods
   EntityPtr detectThreat(EntityPtr entity, const EntityState &state) const;

@@ -295,6 +295,9 @@ void WorldGenerator::distributeObstacles(WorldData &world,
       }
     }
   }
+
+  // Second pass: Generate multi-tile buildings with connection logic
+  generateBuildings(world, rng);
 }
 
 void WorldGenerator::calculateInitialResources(const WorldData &world) {
@@ -325,6 +328,193 @@ void WorldGenerator::calculateInitialResources(const WorldData &world) {
   GAMEENGINE_INFO("Initial resources - Trees: " + std::to_string(treeCount) +
                   ", Rocks: " + std::to_string(rockCount) +
                   ", Water: " + std::to_string(waterCount));
+}
+
+void WorldGenerator::generateBuildings(WorldData& world, std::default_random_engine& rng) {
+  int height = static_cast<int>(world.grid.size());
+  int width = height > 0 ? static_cast<int>(world.grid[0].size()) : 0;
+  
+  if (width <= 2 || height <= 2) return; // Need at least 3x3 to place 2x2 buildings
+  
+  std::uniform_real_distribution<float> dist(0.0f, 1.0f);
+  uint32_t nextBuildingId = 1;
+
+  // Iterate through potential building sites (leaving room for 2x2 structures)
+  for (int y = 0; y < height - 1; ++y) {
+    for (int x = 0; x < width - 1; ++x) {
+      // Skip if this tile already has a building
+      if (world.grid[y][x].buildingId > 0) {
+        continue;
+      }
+
+      // Check if we can place a building here
+      if (!canPlaceBuilding(world, x, y)) {
+        continue;
+      }
+
+      // Determine building chance based on biome
+      float buildingChance = 0.0f;
+      const Tile& tile = world.grid[y][x];
+      
+      switch (tile.biome) {
+      case Biome::FOREST:
+        buildingChance = 0.025f; // Increased for better visibility
+        break;
+      case Biome::HAUNTED:
+        buildingChance = 0.03f; // Increased for better visibility
+        break;
+      case Biome::DESERT:
+        buildingChance = 0.015f; // Increased for better visibility
+        break;
+      case Biome::SWAMP:
+        buildingChance = 0.015f; // Increased for better visibility
+        break;
+      case Biome::CELESTIAL:
+        buildingChance = 0.02f; // Increased for better visibility
+        break;
+      case Biome::MOUNTAIN:
+      case Biome::OCEAN:
+        // No buildings in these biomes
+        continue;
+      default:
+        buildingChance = 0.015f; // Increased default chance
+        break;
+      }
+
+      if (buildingChance > 0.0f && dist(rng) < buildingChance) {
+        // Create a new building at this location
+        uint32_t newBuildingId = createBuilding(world, x, y, nextBuildingId);
+        
+        // Try to connect to adjacent buildings
+        tryConnectBuildings(world, x, y, newBuildingId);
+      }
+    }
+  }
+}
+
+bool WorldGenerator::canPlaceBuilding(const WorldData& world, int x, int y) {
+  int height = static_cast<int>(world.grid.size());
+  int width = height > 0 ? static_cast<int>(world.grid[0].size()) : 0;
+
+  // Check bounds for 2x2 building
+  if (x < 0 || y < 0 || x >= width - 1 || y >= height - 1) {
+    return false;
+  }
+
+  // Check all 4 tiles of the 2x2 area
+  for (int dy = 0; dy < 2; ++dy) {
+    for (int dx = 0; dx < 2; ++dx) {
+      const Tile& tile = world.grid[y + dy][x + dx];
+      
+      // Can't place on water, existing obstacles, or mountain biome
+      if (tile.isWater || 
+          tile.obstacleType != ObstacleType::NONE ||
+          tile.biome == Biome::MOUNTAIN ||
+          tile.biome == Biome::OCEAN ||
+          tile.buildingId > 0) {
+        return false;
+      }
+    }
+  }
+
+  return true;
+}
+
+uint32_t WorldGenerator::createBuilding(WorldData& world, int x, int y, uint32_t& nextBuildingId) {
+  uint32_t buildingId = nextBuildingId++;
+
+  // Mark all 4 tiles as part of this building (2x2)
+  for (int dy = 0; dy < 2; ++dy) {
+    for (int dx = 0; dx < 2; ++dx) {
+      Tile& tile = world.grid[y + dy][x + dx];
+      tile.obstacleType = ObstacleType::BUILDING;
+      tile.buildingId = buildingId;
+      tile.buildingSize = 1; // Start as size 1 (hut)
+    }
+  }
+
+  return buildingId;
+}
+
+void WorldGenerator::tryConnectBuildings(WorldData& world, int x, int y, uint32_t buildingId) {
+  int height = static_cast<int>(world.grid.size());
+  int width = height > 0 ? static_cast<int>(world.grid[0].size()) : 0;
+
+  std::vector<uint32_t> connectedBuildings;
+  connectedBuildings.push_back(buildingId);
+
+  // Check for adjacent buildings to connect to (check all sides of the 2x2 building)
+  // For a 2x2 building at (x,y), check where other 2x2 buildings would be adjacent
+  
+  // Check left side - building at (x-2, y) would be directly adjacent
+  if (x >= 2) {
+    for (int dy = 0; dy < 2; ++dy) {
+      if (y + dy < height) {
+        const Tile& leftTile = world.grid[y + dy][x - 1]; // Check the edge tile
+        if (leftTile.buildingId > 0 && leftTile.buildingId != buildingId) {
+          if (std::find(connectedBuildings.begin(), connectedBuildings.end(), leftTile.buildingId) == connectedBuildings.end()) {
+            connectedBuildings.push_back(leftTile.buildingId);
+          }
+        }
+      }
+    }
+  }
+
+  // Check right side - building at (x+2, y) would be directly adjacent
+  if (x + 2 < width) {
+    for (int dy = 0; dy < 2; ++dy) {
+      if (y + dy < height) {
+        const Tile& rightTile = world.grid[y + dy][x + 2]; // Check the edge tile
+        if (rightTile.buildingId > 0 && rightTile.buildingId != buildingId) {
+          if (std::find(connectedBuildings.begin(), connectedBuildings.end(), rightTile.buildingId) == connectedBuildings.end()) {
+            connectedBuildings.push_back(rightTile.buildingId);
+          }
+        }
+      }
+    }
+  }
+
+  // Check top side - building at (x, y-2) would be directly adjacent
+  if (y >= 1) {
+    for (int dx = 0; dx < 2; ++dx) {
+      if (x + dx < width) {
+        const Tile& topTile = world.grid[y - 1][x + dx]; // Check the edge tile
+        if (topTile.buildingId > 0 && topTile.buildingId != buildingId) {
+          if (std::find(connectedBuildings.begin(), connectedBuildings.end(), topTile.buildingId) == connectedBuildings.end()) {
+            connectedBuildings.push_back(topTile.buildingId);
+          }
+        }
+      }
+    }
+  }
+
+  // Check bottom side - building at (x, y+2) would be directly adjacent
+  if (y + 2 < height) {
+    for (int dx = 0; dx < 2; ++dx) {
+      if (x + dx < width) {
+        const Tile& bottomTile = world.grid[y + 2][x + dx]; // Check the edge tile
+        if (bottomTile.buildingId > 0 && bottomTile.buildingId != buildingId) {
+          if (std::find(connectedBuildings.begin(), connectedBuildings.end(), bottomTile.buildingId) == connectedBuildings.end()) {
+            connectedBuildings.push_back(bottomTile.buildingId);
+          }
+        }
+      }
+    }
+  }
+
+  // Update building sizes for all connected buildings
+  uint8_t newSize = static_cast<uint8_t>(std::min(4u, static_cast<uint32_t>(connectedBuildings.size())));
+  
+  for (uint32_t connectedId : connectedBuildings) {
+    // Update all tiles belonging to each connected building
+    for (int row = 0; row < height; ++row) {
+      for (int col = 0; col < width; ++col) {
+        if (world.grid[row][col].buildingId == connectedId) {
+          world.grid[row][col].buildingSize = newSize;
+        }
+      }
+    }
+  }
 }
 
 } // namespace HammerEngine

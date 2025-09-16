@@ -5,6 +5,11 @@
 
 #include "ai/behaviors/AttackBehavior.hpp"
 #include "managers/AIManager.hpp"
+#include "managers/CollisionManager.hpp"
+#include "managers/WorldManager.hpp"
+#include "ai/internal/Crowd.hpp"
+#include "managers/PathfinderManager.hpp"
+#include "ai/internal/SpatialPriority.hpp"  // For PathPriority enum
 #include <algorithm>
 
 AttackBehavior::AttackBehavior(float attackRange, float attackDamage,
@@ -107,8 +112,9 @@ void AttackBehavior::executeLogic(EntityPtr entity) {
   if (target) {
     state.hasTarget = true;
     state.lastTargetPosition = target->getPosition();
-    state.targetDistance =
-        (entity->getPosition() - target->getPosition()).length();
+    // PERFORMANCE: Store squared distance and compute actual distance only when needed
+    float distSquared = (entity->getPosition() - target->getPosition()).lengthSquared();
+    state.targetDistance = std::sqrt(distSquared); // Only compute sqrt when actually needed
 
     if (!state.inCombat && state.targetDistance <= m_attackRange * 1.2f) {
       state.inCombat = true;
@@ -297,19 +303,17 @@ void AttackBehavior::setChargeDamageMultiplier(float multiplier) {
 
 bool AttackBehavior::isInCombat() const {
   return std::any_of(m_entityStates.begin(), m_entityStates.end(),
-                     [](const auto &pair) { return pair.second.inCombat; });
+                     [](const auto& pair) { return pair.second.inCombat; });
 }
 
 bool AttackBehavior::isAttacking() const {
-  return std::any_of(
-      m_entityStates.begin(), m_entityStates.end(), [](const auto &pair) {
-        return pair.second.currentState == AttackState::ATTACKING;
-      });
+  return std::any_of(m_entityStates.begin(), m_entityStates.end(),
+                     [](const auto& pair) { return pair.second.currentState == AttackState::ATTACKING; });
 }
 
 bool AttackBehavior::canAttack() const {
   return std::any_of(m_entityStates.begin(), m_entityStates.end(),
-                     [](const auto &pair) { return pair.second.canAttack; });
+                     [](const auto& pair) { return pair.second.canAttack; });
 }
 
 AttackBehavior::AttackState AttackBehavior::getCurrentAttackState() const {
@@ -390,8 +394,10 @@ bool AttackBehavior::isTargetInRange(EntityPtr entity, EntityPtr target) const {
   if (!entity || !target)
     return false;
 
-  float distance = (entity->getPosition() - target->getPosition()).length();
-  return distance <= m_attackRange;
+  // PERFORMANCE: Use squared distance to avoid sqrt
+  float distanceSquared = (entity->getPosition() - target->getPosition()).lengthSquared();
+  float attackRangeSquared = m_attackRange * m_attackRange;
+  return distanceSquared <= attackRangeSquared;
 }
 
 bool AttackBehavior::isTargetInAttackRange(EntityPtr entity,
@@ -399,8 +405,11 @@ bool AttackBehavior::isTargetInAttackRange(EntityPtr entity,
   if (!entity || !target)
     return false;
 
-  float distance = (entity->getPosition() - target->getPosition()).length();
-  return distance <= calculateEffectiveRange(m_entityStates.at(entity));
+  // PERFORMANCE: Use squared distance to avoid sqrt
+  float distanceSquared = (entity->getPosition() - target->getPosition()).lengthSquared();
+  float effectiveRange = calculateEffectiveRange(m_entityStates.at(entity));
+  float effectiveRangeSquared = effectiveRange * effectiveRange;
+  return distanceSquared <= effectiveRangeSquared;
 }
 
 bool AttackBehavior::canReachTarget(EntityPtr entity, EntityPtr target) const {
@@ -856,12 +865,113 @@ void AttackBehavior::moveToPosition(EntityPtr entity, const Vector2D &targetPos,
   if (!entity || speed <= 0.0f)
     return;
 
-  Vector2D currentPos = entity->getPosition();
-  Vector2D direction = normalizeDirection(targetPos - currentPos);
+  // Access per-entity state
+  auto it = m_entityStates.find(entity);
+  if (it == m_entityStates.end()) return;
+  EntityState &state = it->second;
 
-  if (direction.length() > 0.001f) {
-    Vector2D velocity = direction * speed;
-    entity->setVelocity(velocity);
+  // Clamp target to world bounds to avoid chasing outside the map
+  Vector2D clampedTarget = pathfinder().clampToWorldBounds(targetPos, 100.0f);
+
+  Vector2D currentPos = pathfinder().clampToWorldBounds(entity->getPosition(), 100.0f);
+  
+  Uint64 now = SDL_GetTicks();
+
+  // PERFORMANCE: Increase path TTL and reduce refresh frequency
+  const Uint64 pathTTL = 3000;         // Increased from 1500ms to 3s
+  const Uint64 noProgressWindow = 500; // Increased from 300ms to 500ms
+  bool needRefresh = state.pathPoints.empty() ||
+                     state.currentPathIndex >= state.pathPoints.size();
+
+  if (!needRefresh && state.currentPathIndex < state.pathPoints.size()) {
+    float d = (state.pathPoints[state.currentPathIndex] - currentPos).length();
+    if (d + 1.0f < state.lastNodeDistance) {
+      state.lastNodeDistance = d;
+      state.lastProgressTime = now;
+    } else if (state.lastProgressTime == 0) {
+      state.lastProgressTime = now;
+    } else if (now - state.lastProgressTime > noProgressWindow) {
+      needRefresh = true;
+    }
+  }
+  if (now - state.lastPathUpdate > pathTTL) needRefresh = true;
+
+  // PERFORMANCE: Use squared distance and increase threshold
+  if (!needRefresh && !state.pathPoints.empty()) {
+    const float GOAL_CHANGE_THRESH_SQUARED = 150.0f * 150.0f; // Increased from 64px to 150px
+    Vector2D lastGoal = state.pathPoints.back();
+    float goalDeltaSquared = (clampedTarget - lastGoal).lengthSquared();
+    if (goalDeltaSquared > GOAL_CHANGE_THRESH_SQUARED) needRefresh = true;
+  }
+
+  if (needRefresh && SDL_GetTicks() >= state.backoffUntil) {
+    // PATHFINDING CONSOLIDATION: All requests now use PathfinderManager
+    pathfinder().requestPath(
+        entity->getID(), currentPos, clampedTarget, PathfinderManager::Priority::Critical,
+        [this, entity](EntityID, const std::vector<Vector2D>& path) {
+          if (!path.empty()) {
+            // Find the behavior state for this entity
+            auto it = m_entityStates.find(entity);
+            if (it != m_entityStates.end()) {
+              it->second.pathPoints = path;
+              it->second.currentPathIndex = 0;
+              it->second.lastPathUpdate = SDL_GetTicks();
+              it->second.lastNodeDistance = std::numeric_limits<float>::infinity();
+              it->second.lastProgressTime = SDL_GetTicks();
+            }
+          }
+        });
+    // Remove the synchronous path check since we're using callback-based async path
+    {
+      // Async path not ready, apply minimal backoff to prevent spam and continue with existing path
+      state.backoffUntil = now + 200 + (entity->getID() % 300);
+    }
+  }
+
+  // Follow path if available; otherwise fall back to direct steering
+  if (!state.pathPoints.empty() &&
+      state.currentPathIndex < state.pathPoints.size()) {
+    Vector2D node = state.pathPoints[state.currentPathIndex];
+    Vector2D dir = node - currentPos;
+    float len = dir.length();
+    if (len > 0.01f) {
+      dir = dir * (1.0f / len);
+      Vector2D intended = dir * speed;
+      applyDecimatedSeparation(entity, currentPos, intended, speed, 28.0f,
+                               0.30f, 4, state.lastSepTick,
+                               state.lastSepVelocity);
+      state.lastProgressTime = now;
+    }
+    if ((node - currentPos).length() <= state.navRadius) {
+      ++state.currentPathIndex;
+      state.lastNodeDistance = std::numeric_limits<float>::infinity();
+      state.lastProgressTime = now;
+    }
+  } else {
+    Vector2D direction = normalizeDirection(clampedTarget - currentPos);
+    if (direction.length() > 0.001f) { entity->setVelocity(direction * speed); state.lastProgressTime = now; }
+  }
+
+  // Stall detection scaled by configured speed
+  float spd = entity->getVelocity().length();
+  const float stallSpeed = std::max(0.5f, speed * 0.5f);
+  const Uint64 stallMs = 600;
+  if (spd < stallSpeed) {
+    if (state.lastProgressTime == 0) state.lastProgressTime = now;
+    else if (now - state.lastProgressTime > stallMs) {
+      // Force a refresh and small micro-jitter to break clumps; add short backoff
+      state.pathPoints.clear(); state.backoffUntil = now + 200 + (entity->getID() % 400);
+      state.currentPathIndex = 0;
+      state.lastPathUpdate = 0;
+      state.lastProgressTime = now;
+      float jitter = ((float)rand() / RAND_MAX - 0.5f) * 0.3f;
+      Vector2D v = entity->getVelocity(); if (v.length() < 0.01f) v = Vector2D(1,0);
+      float c = std::cos(jitter), s = std::sin(jitter);
+      Vector2D rotated(v.getX()*c - v.getY()*s, v.getX()*s + v.getY()*c);
+      rotated.normalize(); entity->setVelocity(rotated * speed);
+    }
+  } else {
+    state.lastProgressTime = now;
   }
 }
 
@@ -872,9 +982,14 @@ void AttackBehavior::maintainDistance(EntityPtr entity, EntityPtr target,
 
   Vector2D entityPos = entity->getPosition();
   Vector2D targetPos = target->getPosition();
-  float currentDistance = (entityPos - targetPos).length();
-
-  if (std::abs(currentDistance - desiredDistance) > 10.0f) {
+  
+  // PERFORMANCE: Use squared distance for comparison
+  float currentDistanceSquared = (entityPos - targetPos).lengthSquared();
+  float desiredDistanceSquared = desiredDistance * desiredDistance;
+  float toleranceSquared = 100.0f; // 10.0f * 10.0f
+  
+  float difference = std::abs(currentDistanceSquared - desiredDistanceSquared);
+  if (difference > toleranceSquared) {
     Vector2D direction = normalizeDirection(entityPos - targetPos);
     Vector2D desiredPos = targetPos + direction * desiredDistance;
     moveToPosition(entity, desiredPos, m_movementSpeed);
@@ -942,8 +1057,11 @@ bool AttackBehavior::isValidAttackPosition(const Vector2D &position,
   if (!target)
     return false;
 
-  float distance = (position - target->getPosition()).length();
-  return distance >= m_minimumRange && distance <= m_attackRange;
+  // PERFORMANCE: Use squared distance
+  float distanceSquared = (position - target->getPosition()).lengthSquared();
+  float minRangeSquared = m_minimumRange * m_minimumRange;
+  float maxRangeSquared = m_attackRange * m_attackRange;
+  return distanceSquared >= minRangeSquared && distanceSquared <= maxRangeSquared;
 }
 
 float AttackBehavior::calculateEffectiveRange(const EntityState &state) const {

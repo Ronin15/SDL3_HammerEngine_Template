@@ -5,6 +5,10 @@
 
 #include "ai/behaviors/GuardBehavior.hpp"
 #include "managers/AIManager.hpp"
+#include "managers/CollisionManager.hpp"
+#include "ai/internal/Crowd.hpp"
+#include "managers/PathfinderManager.hpp"
+#include "ai/internal/SpatialPriority.hpp"  // For PathPriority enum
 #include <algorithm>
 #include <cmath>
 
@@ -389,6 +393,7 @@ std::shared_ptr<AIBehavior> GuardBehavior::clone() const {
   clone->m_canCallForHelp = m_canCallForHelp;
   clone->m_helpCallRadius = m_helpCallRadius;
   clone->m_guardGroup = m_guardGroup;
+  // PATHFINDING CONSOLIDATION: Removed async flag - always uses PathfindingScheduler now
   return clone;
 }
 
@@ -686,13 +691,89 @@ void GuardBehavior::moveToPosition(EntityPtr entity, const Vector2D &targetPos,
                                    float speed) {
   if (!entity || speed <= 0.0f)
     return;
-
+  auto it = m_entityStates.find(entity);
+  if (it == m_entityStates.end()) return;
+  auto &state = it->second;
   Vector2D currentPos = entity->getPosition();
-  Vector2D direction = normalizeDirection(targetPos - currentPos);
+  Uint64 now = SDL_GetTicks();
 
-  if (direction.length() > 0.001f) {
-    Vector2D velocity = direction * speed;
-    entity->setVelocity(velocity);
+  // Determine if a fresh path is actually needed
+  const Uint64 PATH_TTL = 1800; // ms
+  bool needsNewPath = state.pathPoints.empty() || state.currentPathIndex >= state.pathPoints.size();
+
+  if (!needsNewPath && state.lastPathUpdate > 0 && (now - state.lastPathUpdate) > PATH_TTL) {
+    needsNewPath = true; // Stale path
+  }
+
+  if (!needsNewPath && !state.pathPoints.empty()) {
+    // Only refresh when goal changed significantly
+    const float GOAL_CHANGE_THRESH = 64.0f; // px
+    Vector2D currentGoal = state.pathPoints.back();
+    float goalDelta = (targetPos - currentGoal).length();
+    if (goalDelta > GOAL_CHANGE_THRESH) {
+      needsNewPath = true;
+    }
+  }
+
+  // Skip pathfinding if we’re basically at the goal already
+  float distanceToTarget = (targetPos - currentPos).length();
+  if (distanceToTarget <= state.navRadius * 1.1f) {
+    needsNewPath = false;
+  }
+
+  // Respect backoff to avoid spamming requests
+  if (needsNewPath && now >= state.backoffUntil) {
+    // PATHFINDING CONSOLIDATION: All requests now use PathfinderManager
+    auto priority = (state.currentAlertLevel >= AlertLevel::INVESTIGATING) ?
+        PathfinderManager::Priority::High : PathfinderManager::Priority::Normal;
+
+    Vector2D clampedStart = pathfinder().clampToWorldBounds(currentPos, 100.0f);
+    Vector2D clampedGoal  = pathfinder().clampToWorldBounds(targetPos, 100.0f);
+
+    pathfinder().requestPath(
+        entity->getID(), clampedStart, clampedGoal, priority,
+        [this, entity](EntityID, const std::vector<Vector2D>& path) {
+          auto it = m_entityStates.find(entity);
+          if (it != m_entityStates.end() && !path.empty()) {
+            it->second.pathPoints = path;
+            it->second.currentPathIndex = 0;
+            it->second.lastPathUpdate = SDL_GetTicks();
+            it->second.lastNodeDistance = std::numeric_limits<float>::infinity();
+            it->second.lastProgressTime = SDL_GetTicks();
+          }
+        });
+
+    // Gentle staggered backoff to prevent per-frame re-requests
+    state.backoffUntil = now + 300 + (entity->getID() % 300);
+  }
+
+  // Follow existing path if available; fallback to direct steering
+  bool following = pathfinder().followPathStep(entity, currentPos,
+                        state.pathPoints, state.currentPathIndex,
+                        speed, state.navRadius);
+  if (following) { state.lastProgressTime = now; }
+  if (!following) {
+    // Fallback: direct steering
+    Vector2D direction = normalizeDirection(targetPos - currentPos);
+    if (direction.length() > 0.001f) { entity->setVelocity(direction * speed); state.lastProgressTime = now; }
+  }
+
+  // Dynamic backoff when stalled for a while
+  float spd = entity->getVelocity().length();
+  const float stallSpeed = std::max(0.5f, speed * 0.5f);
+  if (spd < stallSpeed) {
+    if (state.lastProgressTime != 0 && now - state.lastProgressTime > 600) {
+      state.backoffUntil = now + 250 + (entity->getID() % 400);
+      state.pathPoints.clear(); state.currentPathIndex = 0; state.lastPathUpdate = 0;
+    }
+  }
+
+  // Apply local separation to reduce on-top stacking when following
+  if (following) {
+    auto &st = state;
+    applyDecimatedSeparation(entity, currentPos, entity->getVelocity(), speed,
+                             24.0f, 0.18f, 4, st.lastSepTick,
+                             st.lastSepVelocity);
   }
 }
 
