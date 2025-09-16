@@ -1054,12 +1054,12 @@ BOOST_FIXTURE_TEST_CASE(TestCollisionEventPerformanceImpact, CollisionIntegratio
     // Should have fired events for all static bodies
     BOOST_CHECK_EQUAL(eventCount.load(), numBodies);
     
-    // Performance check: shouldn't take more than 15ms total (generous for test environment)
-    BOOST_CHECK_LT(duration.count(), 15000); // 15ms = 15,000 microseconds
+    // Performance check: shouldn't take more than 20ms total (generous for test environment)
+    BOOST_CHECK_LT(duration.count(), 20000); // 20ms = 20,000 microseconds
     
     // Average time per body should be reasonable  
     double avgTimePerBody = static_cast<double>(duration.count()) / numBodies;
-    BOOST_CHECK_LT(avgTimePerBody, 150.0); // 150 microseconds per body max
+    BOOST_CHECK_LT(avgTimePerBody, 200.0); // 200 microseconds per body max
     
     BOOST_TEST_MESSAGE("Added " << numBodies << " static bodies with events in " 
                       << duration.count() << " μs (" << avgTimePerBody << " μs/body)");

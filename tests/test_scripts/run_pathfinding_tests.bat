@@ -59,9 +59,9 @@ echo Pathfinding System Tests - %DATE% %TIME% > "%RESULTS_FILE%"
 
 if "%VERBOSE%"=="true" (
     echo Verbose mode enabled
-    "%TEST_EXECUTABLE%" --log_level=all >> "%RESULTS_FILE%" 2>&1
+    "%TEST_EXECUTABLE%" --log_level=all --report_level=detailed --catch_system_errors=no >> "%RESULTS_FILE%" 2>&1
 ) else (
-    "%TEST_EXECUTABLE%" --log_level=test_suite >> "%RESULTS_FILE%" 2>&1
+    "%TEST_EXECUTABLE%" --log_level=test_suite --report_level=detailed --catch_system_errors=no >> "%RESULTS_FILE%" 2>&1
 )
 
 set TEST_RESULT=%ERRORLEVEL%

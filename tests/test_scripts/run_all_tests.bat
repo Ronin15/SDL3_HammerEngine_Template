@@ -91,7 +91,7 @@ goto :parse_args
 
 :: Define test categories
 :: Core functionality tests (fast execution)
-set CORE_TEST_COUNT=21
+set CORE_TEST_COUNT=22
 :: Performance scaling benchmarks (slow execution)
 set BENCHMARK_TEST_COUNT=4
 
@@ -165,6 +165,7 @@ if "%RUN_CORE%"=="true" (
     call :run_single_test "run_world_resource_manager_tests.bat" false
     call :run_single_test "run_collision_tests.bat" false
     call :run_single_test "run_pathfinding_tests.bat" false
+    call :run_single_test "run_collision_pathfinding_integration_tests.bat" false
 )
 
 :: Run benchmark tests last
