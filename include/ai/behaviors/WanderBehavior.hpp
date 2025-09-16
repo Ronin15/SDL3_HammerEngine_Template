@@ -13,6 +13,7 @@
 #include <memory>
 #include <random>
 #include <unordered_map>
+#include <vector>
 
 class WanderBehavior : public AIBehavior {
 public:
@@ -49,12 +50,7 @@ public:
   // Set how often the direction changes
   void setChangeDirectionInterval(float interval);
 
-  // Set screen dimensions directly (more accurate than estimating from center
-  // point)
-  void setScreenDimensions(float width, float height);
 
-  // Set the probability of wandering offscreen
-  void setOffscreenProbability(float probability);
 
   // Set the update frequency for staggering (every N frames)
   void setUpdateFrequency(uint32_t frequency) {
@@ -76,18 +72,63 @@ private:
   // Entity-specific state data
   struct EntityState {
     Vector2D currentDirection{0, 0};
+    Vector2D previousVelocity{0, 0}; // Store previous frame velocity for flip detection
     Uint64 lastDirectionChangeTime{0};
-    bool currentlyWanderingOffscreen{false};
-    bool resetScheduled{false};
     Uint64 lastDirectionFlip{0};
     Uint64 startDelay{0};        // Random delay before entity starts moving
     bool movementStarted{false}; // Flag to track if movement has started
+    // Path-following state
+    std::vector<Vector2D> pathPoints;
+    size_t currentPathIndex{0};
+    Uint64 lastPathUpdate{0};
+    Uint64 lastProgressTime{0};
+    float lastNodeDistance{std::numeric_limits<float>::infinity()};
+    float navRadius{18.0f};
+    // Improved stall detection
+    Uint64 stallStart{0};
+    Vector2D lastStallPosition{0, 0};
+    float stallPositionVariance{0.0f};
+    Uint64 lastUnstickTime{0};
+    // Separation decimation
+    Uint64 lastSepTick{0};
+    Vector2D lastSepVelocity{0, 0};
+    // Unified cooldown management
+    struct {
+        Uint64 nextPathRequest{0};
+        Uint64 stallRecoveryUntil{0};
+        Uint64 behaviorChangeUntil{0};
+        
+        bool canRequestPath(Uint64 now) const {
+            return now >= nextPathRequest && now >= stallRecoveryUntil;
+        }
+        
+        void applyPathCooldown(Uint64 now, Uint64 cooldownMs = 800) {
+            nextPathRequest = now + cooldownMs;
+        }
+        
+        void applyStallCooldown(Uint64 now, Uint64 stallId = 0) {
+            stallRecoveryUntil = now + 250 + (stallId % 400);
+        }
+    } cooldowns;
+    
+    // Performance optimization: cached world bounds to avoid repeated WorldManager calls
+    struct {
+      float minX{0.0f}, minY{0.0f}, maxX{0.0f}, maxY{0.0f};
+    } cachedBounds;
+    
+    // Performance optimization: cached crowd analysis to avoid expensive CollisionManager calls
+    int cachedNearbyCount{0};
+    std::vector<Vector2D> cachedNearbyPositions;
+    Uint64 lastCrowdAnalysis{0};
 
     // Constructor to ensure proper initialization
     EntityState()
-        : currentDirection(0, 0), lastDirectionChangeTime(0),
-          currentlyWanderingOffscreen(false), resetScheduled(false),
-          lastDirectionFlip(0), startDelay(0), movementStarted(false) {}
+        : currentDirection(0, 0), previousVelocity(0, 0), lastDirectionChangeTime(0),
+          lastDirectionFlip(0), startDelay(0), movementStarted(false),
+          pathPoints(), currentPathIndex(0), lastPathUpdate(0), 
+          lastProgressTime(0), lastNodeDistance(std::numeric_limits<float>::infinity()),
+          navRadius(18.0f), stallStart(0), lastStallPosition(0, 0), 
+          stallPositionVariance(0.0f), lastUnstickTime(0) {}
   };
 
   // Map to store per-entity state using shared_ptr as key
@@ -102,38 +143,26 @@ private:
   // Staggering system
   uint32_t m_updateFrequency{1}; // Default: every frame, will be set by mode
 
-  // Screen dimensions - defaults that will be updated in setCenterPoint
-  float m_screenWidth{1280.0f};
-  float m_screenHeight{720.0f};
-
-  // Offscreen wandering properties
-  float m_offscreenProbability{
-      0.15f}; // 15% chance to wander offscreen when changing direction
-
   // Flip stability properties
   Uint64 m_minimumFlipInterval{
-      400}; // Minimum time between flips (milliseconds)
+      800}; // Minimum time between flips (milliseconds)
 
   // Shared RNG optimization - use thread-local static RNG pool
   // instead of per-instance RNG to reduce memory overhead
   static std::mt19937 &getSharedRNG();
   static thread_local std::uniform_real_distribution<float> s_angleDistribution;
-  static thread_local std::uniform_real_distribution<float>
-      s_wanderOffscreenChance;
   static thread_local std::uniform_int_distribution<Uint64> s_delayDistribution;
 
-  // Check if entity is well off screen (completely out of view)
-  bool isWellOffscreen(const Vector2D &position) const;
-
-  // Reset entity to a new position on the opposite side of the screen
-  void resetEntityPosition(EntityPtr entity);
-
   // Choose a new random direction for the entity
-  void chooseNewDirection(EntityPtr entity, bool wanderOffscreen = false);
+  void chooseNewDirection(EntityPtr entity);
 
   // Mode setup helper
-  void setupModeDefaults(WanderMode mode, float screenWidth = 1280.0f,
-                         float screenHeight = 720.0f);
+  void setupModeDefaults(WanderMode mode);
+  
+  // PATHFINDING CONSOLIDATION: All pathfinding now uses PathfindingScheduler pathway
+  // (removed m_useAsyncPathfinding flag as it's no longer needed)
+
+public:
 };
 
 #endif // WANDER_BEHAVIOR_HPP

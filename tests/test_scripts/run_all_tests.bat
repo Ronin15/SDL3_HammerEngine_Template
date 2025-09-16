@@ -68,13 +68,13 @@ if /i "%~1"=="--help" (
     echo   --help            Show this help message
     echo.
     echo Test Categories:
-    echo   Core Tests:       Static analysis, Thread, AI, Behavior, GameState, Save, Event, ParticleManager, Resource Manager, World functionality tests
-    echo   Benchmarks:       AI scaling, EventManager scaling, UI stress, and ParticleManager performance benchmarks
+    echo   Core Tests:       Static analysis, Thread, AI, Behavior, GameState, Save, Event, Collision, Pathfinding, ParticleManager, Resource Manager, World functionality tests
+    echo   Benchmarks:       AI scaling, EventManager scaling, UI stress, ParticleManager, and Collision/Pathfinding performance benchmarks
     echo.
     echo Execution Time:
-    echo   Core tests:       ~3-7 minutes total
-    echo   Benchmarks:       ~5-15 minutes total
-    echo   All tests:        ~8-22 minutes total
+    echo   Core tests:       ~4-8 minutes total
+    echo   Benchmarks:       ~6-18 minutes total
+    echo   All tests:        ~10-26 minutes total
     echo.
     echo Examples:
     echo   run_all_tests.bat                 # Run all tests
@@ -91,9 +91,9 @@ goto :parse_args
 
 :: Define test categories
 :: Core functionality tests (fast execution)
-set CORE_TEST_COUNT=19
+set CORE_TEST_COUNT=22
 :: Performance scaling benchmarks (slow execution)
-set BENCHMARK_TEST_COUNT=3
+set BENCHMARK_TEST_COUNT=4
 
 :: Build the test scripts array based on user selection
 set TOTAL_COUNT=0
@@ -163,6 +163,9 @@ if "%RUN_CORE%"=="true" (
     call :run_single_test "run_world_manager_event_integration_tests.bat" false
     call :run_single_test "run_world_manager_tests.bat" false
     call :run_single_test "run_world_resource_manager_tests.bat" false
+    call :run_single_test "run_collision_tests.bat" false
+    call :run_single_test "run_pathfinding_tests.bat" false
+    call :run_single_test "run_collision_pathfinding_integration_tests.bat" false
 )
 
 :: Run benchmark tests last
@@ -172,6 +175,7 @@ if "%RUN_BENCHMARKS%"=="true" (
     call :run_single_test "run_event_scaling_benchmark.bat" true
     call :run_single_test "run_ai_benchmark.bat" true
     call :run_single_test "run_ui_stress_tests.bat" true
+    call :run_single_test "run_collision_pathfinding_benchmark.bat" true
 )
 
 :: Print summary

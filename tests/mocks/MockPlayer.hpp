@@ -21,7 +21,7 @@ namespace HammerEngine {
 // A mock player that extends Entity for testing SaveGameManager
 class MockPlayer : public Entity, public ISerializable {
 public:
-    MockPlayer() : m_currentStateName("idle") {
+    MockPlayer() : Entity(), m_currentStateName("idle") {
         setPosition(Vector2D(100.0f, 200.0f));
         setVelocity(Vector2D(0.0f, 0.0f));
         setTextureID("mock_player");

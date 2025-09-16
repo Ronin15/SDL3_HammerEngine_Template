@@ -67,6 +67,10 @@ struct Tile {
     float elevation = 0.0f;
     bool isWater = false;
     HammerEngine::ResourceHandle resourceHandle;
+    
+    // Building support for multi-tile structures
+    uint32_t buildingId = 0;        // 0 = no building, >0 = unique building ID
+    uint8_t buildingSize = 0;       // 0 = no building, 1-4 = connected building count
 };
 
 struct WorldData {

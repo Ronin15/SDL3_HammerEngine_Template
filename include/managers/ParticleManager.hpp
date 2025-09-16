@@ -24,18 +24,58 @@
 
 #include "utils/Vector2D.hpp"
 #include <SDL3/SDL.h>
-#include <algorithm>
 #include <array>
 #include <atomic>
 #include <cmath>
 #include <mutex>
+#include <new>
 #include <shared_mutex>
 #include <string>
 #include <unordered_map>
 #include <vector>
 
+// Lightweight aligned allocator to support SIMD-friendly vector storage
+template <typename T, std::size_t Alignment> struct AlignedAllocator {
+  using value_type = T;
+
+  AlignedAllocator() noexcept {}
+  template <class U>
+  explicit AlignedAllocator(const AlignedAllocator<U, Alignment> &) noexcept {}
+
+  [[nodiscard]] T *allocate(std::size_t n) {
+    if (n > static_cast<std::size_t>(-1) / sizeof(T)) {
+      throw std::bad_array_new_length();
+    }
+    void *p = ::operator new[](n * sizeof(T), std::align_val_t(Alignment));
+    if (!p)
+      throw std::bad_alloc();
+    return static_cast<T *>(p);
+  }
+
+  void deallocate(T *p, std::size_t) noexcept {
+    ::operator delete[](p, std::align_val_t(Alignment));
+  }
+
+  template <class U> struct rebind {
+    using other = AlignedAllocator<U, Alignment>;
+  };
+};
+
+template <class T1, std::size_t A1, class T2, std::size_t A2>
+constexpr bool operator==(const AlignedAllocator<T1, A1> &,
+                          const AlignedAllocator<T2, A2> &) noexcept {
+  return A1 == A2;
+}
+template <class T1, std::size_t A1, class T2, std::size_t A2>
+constexpr bool operator!=(const AlignedAllocator<T1, A1> &,
+                          const AlignedAllocator<T2, A2> &) noexcept {
+  return A1 != A2;
+}
+
 // SIMD support detection
-#if defined(__SSE2__) || (defined(_MSC_VER) && (defined(_M_X64) || defined(_M_IX86_FP) && _M_IX86_FP >= 2))
+#if defined(__SSE2__) ||                                                       \
+    (defined(_MSC_VER) &&                                                      \
+     (defined(_M_X64) || defined(_M_IX86_FP) && _M_IX86_FP >= 2))
 #define PARTICLE_SIMD_SSE2 1
 #include <emmintrin.h>
 #endif
@@ -90,14 +130,13 @@ enum class ParticleBlendMode : uint8_t {
  * Hot data (frequently accessed) is separated from cold data for better cache
  * performance Optimized for 32-byte cache line alignment
  */
-struct alignas(32) ParticleData {
+struct alignas(16) ParticleData {
   // Hot data - accessed every frame (32 bytes)
   Vector2D position;     // Current position (8 bytes)
   Vector2D velocity;     // Velocity vector (8 bytes)
   float life;            // Current life (4 bytes)
   float maxLife;         // Maximum life (4 bytes)
   uint32_t color;        // RGBA color packed (4 bytes)
-  uint16_t textureIndex; // Texture index (2 bytes)
   uint8_t flags;         // Active, visible, etc. (1 byte)
   uint8_t generationId;  // Generation/wave ID for batch clearing (1 byte)
 
@@ -109,10 +148,12 @@ struct alignas(32) ParticleData {
   static constexpr uint8_t FLAG_WEATHER = 1 << 4; // Mark as weather particle
   static constexpr uint8_t FLAG_FADE_OUT =
       1 << 5; // Particle is in fade-out phase
+  static constexpr uint8_t FLAG_RECENTLY_DEACTIVATED =
+      1 << 6; // Marks particle for pool collection (single-thread)
 
   ParticleData()
       : position(0, 0), velocity(0, 0), life(0.0f), maxLife(1.0f),
-        color(0xFFFFFFFF), textureIndex(0), flags(0), generationId(0) {}
+        color(0xFFFFFFFF), flags(0), generationId(0) {}
 
   bool isActive() const;
   void setActive(bool active);
@@ -165,7 +206,7 @@ struct ParticleEmitterConfig {
   Vector2D windForce{0, 0};      // Wind force
   bool loops{true};              // Whether emitter loops
   float duration{-1.0f};         // Emitter duration (-1 for infinite)
-  std::string textureID{""};     // Texture identifier
+  // Removed textureID; particles render as SDL rects (no textures)
   ParticleBlendMode blendMode{ParticleBlendMode::Alpha}; // Blend mode
 
   // Advanced properties
@@ -206,7 +247,6 @@ struct UnifiedParticle {
   float rotation;
   float angularVelocity;
   uint32_t color;
-  uint16_t textureIndex;
   uint8_t flags;
   uint8_t generationId;
   ParticleEffectType effectType; // Effect type for this particle
@@ -220,12 +260,14 @@ struct UnifiedParticle {
   static constexpr uint8_t FLAG_COLLISION = 1 << 3;
   static constexpr uint8_t FLAG_WEATHER = 1 << 4;
   static constexpr uint8_t FLAG_FADE_OUT = 1 << 5;
+  static constexpr uint8_t FLAG_RECENTLY_DEACTIVATED =
+      1 << 6; // Marks particle for pool collection (single-thread)
 
   UnifiedParticle()
       : position(0, 0), velocity(0, 0), acceleration(0, 0), life(0.0f),
         maxLife(1.0f), size(2.0f), rotation(0.0f), angularVelocity(0.0f),
-        color(0xFFFFFFFF), textureIndex(0), flags(0), generationId(0),
-         effectType(ParticleEffectType::Custom), layer(RenderLayer::World) {}
+        color(0xFFFFFFFF), flags(0), generationId(0),
+        effectType(ParticleEffectType::Custom), layer(RenderLayer::World) {}
 
   bool isActive() const;
   void setActive(bool active);
@@ -249,7 +291,7 @@ struct ParticleEffectDefinition {
   std::string name;
   ParticleEffectType type;
   ParticleEmitterConfig emitterConfig;
-  std::vector<std::string> textureIDs; // Multiple textures for variety
+  // Removed textureIDs; particles render as SDL rects
   float intensityMultiplier{1.0f};     // Effect intensity scaling
   bool autoTriggerOnWeather{false};    // Auto-trigger on weather events
   UnifiedParticle::RenderLayer layer{
@@ -637,16 +679,7 @@ public:
   size_t getMaxParticleCapacity() const;
 
   // Memory Management
-  /**
-   * @brief Compacts particle storage to optimize memory usage
-   */
-  void compactParticleStorage();
-
-  /**
-   * @brief Performs lightweight storage compaction if needed (based on
-   * thresholds)
-   */
-  void compactParticleStorageIfNeeded();
+  // Compaction removed: object pool reuse handles memory efficiently
 
   /**
    * @brief Sets the maximum number of particles
@@ -707,7 +740,6 @@ private:
     float life;
     float size;
     uint32_t color;
-    uint16_t textureIndex;
     ParticleBlendMode blendMode;
     ParticleEffectType effectType;
     uint8_t flags;
@@ -717,41 +749,51 @@ private:
   struct alignas(64) LockFreeParticleStorage {
     // SoA data layout for cache-friendly updates
     struct ParticleSoA {
-        std::vector<Vector2D> positions;
-        std::vector<Vector2D> velocities;
-        std::vector<Vector2D> accelerations;
-        std::vector<float> lives;
-        std::vector<float> maxLives;
-        std::vector<float> sizes;
-        std::vector<float> rotations;
-        std::vector<float> angularVelocities;
-        std::vector<uint32_t> colors;
-        std::vector<uint16_t> textureIndices;
-        std::vector<uint8_t> flags;
-        std::vector<uint8_t> generationIds;
-        std::vector<ParticleEffectType> effectTypes;
-        std::vector<UnifiedParticle::RenderLayer> layers;
+      using F32 = float;
+      using U32 = uint32_t;
+      using U8 = uint8_t;
 
-        // CRITICAL: Unified SOA operations to prevent desynchronization
-        void resize(size_t newSize);
-        void reserve(size_t newCapacity);
-        void push_back(const UnifiedParticle& p);
-        void clear();
-        size_t size() const;
-        bool empty() const;
-        
-        // NEW: Safe erase operations for SOA consistency
-        void eraseParticle(size_t index);
-        void eraseParticleRange(size_t start, size_t end);
-        void compactInactive();
-        
-        // NEW: Comprehensive validation for Windows UCRT compatibility
-        bool isFullyConsistent() const;
-        size_t getSafeAccessCount() const;
-        
-        // NEW: Safe random access with bounds checking
-        bool isValidIndex(size_t index) const;
-        void swapParticles(size_t indexA, size_t indexB);
+      // SIMD-friendly SoA float lanes (authoritative storage)
+      std::vector<F32, AlignedAllocator<F32, 16>> posX;
+      std::vector<F32, AlignedAllocator<F32, 16>> posY;
+      std::vector<F32, AlignedAllocator<F32, 16>> velX;
+      std::vector<F32, AlignedAllocator<F32, 16>> velY;
+      std::vector<F32, AlignedAllocator<F32, 16>> accX;
+      std::vector<F32, AlignedAllocator<F32, 16>> accY;
+
+      // Other particle attributes
+      std::vector<F32, AlignedAllocator<F32, 16>> lives;
+      std::vector<F32, AlignedAllocator<F32, 16>> maxLives;
+      std::vector<F32, AlignedAllocator<F32, 16>> sizes;
+      std::vector<F32, AlignedAllocator<F32, 16>> rotations;
+      std::vector<F32, AlignedAllocator<F32, 16>> angularVelocities;
+      std::vector<U32, AlignedAllocator<U32, 16>> colors;
+      std::vector<U8, AlignedAllocator<U8, 16>> flags;
+      std::vector<U8, AlignedAllocator<U8, 16>> generationIds;
+      std::vector<ParticleEffectType, AlignedAllocator<ParticleEffectType, 16>>
+          effectTypes;
+      std::vector<UnifiedParticle::RenderLayer,
+                  AlignedAllocator<UnifiedParticle::RenderLayer, 16>>
+          layers;
+
+      // CRITICAL: Unified SOA operations to prevent desynchronization
+      void resize(size_t newSize);
+      void reserve(size_t newCapacity);
+      void push_back(const UnifiedParticle &p);
+      void clear();
+      size_t size() const; // authoritative size = flags.size()
+      bool empty() const;
+
+      // Safe erase operations for SOA consistency
+      void eraseParticle(size_t index);
+
+      // Validation helpers (debug-oriented)
+      bool isFullyConsistent() const;
+      size_t getSafeAccessCount() const;
+
+      // Safe random access with bounds checking
+      bool isValidIndex(size_t index) const;
+      void swapParticles(size_t indexA, size_t indexB);
     };
 
     // Double-buffered particle arrays for lock-free updates
@@ -761,10 +803,16 @@ private:
     std::atomic<size_t> writeHead{0};     // Next write position
     std::atomic<size_t> capacity{0};      // Current capacity
 
+    // Object pool: free-index list for slot reuse (LIFO for cache locality)
+    std::vector<size_t> freeIndices;
+    // Upper bound of currently active indices (last index that may be active)
+    size_t maxActiveIndex{0};
+
     // Lock-free ring buffer for new particle requests
-    struct alignas(32) ParticleCreationRequest {
+    struct alignas(16) ParticleCreationRequest {
       Vector2D position;
       Vector2D velocity;
+      Vector2D acceleration;
       uint32_t color;
       float life;
       float size;
@@ -787,8 +835,8 @@ private:
 
     // Lock-free particle creation
     bool tryCreateParticle(const Vector2D &pos, const Vector2D &vel,
-                           uint32_t color, float life, float size,
-                           uint8_t flags, uint8_t genId,
+                           const Vector2D &acc, uint32_t color, float life,
+                           float size, uint8_t flags, uint8_t genId,
                            ParticleEffectType effectType);
 
     // Process creation requests (called from update thread)
@@ -800,15 +848,22 @@ private:
     // Get writable access to particles (for updates)
     ParticleSoA &getCurrentBuffer();
 
-    // CRITICAL FIX: Check if compaction is needed with proper bounds checking
-    bool needsCompaction() const;
-
+    // Compaction removed
 
     // Submit new particle (lock-free)
     bool submitNewParticle(const NewParticleRequest &request);
 
     // Swap buffers for lock-free updates
     void swapBuffers();
+
+    // Pool helpers
+    inline bool hasFreeIndex() const { return !freeIndices.empty(); }
+    inline size_t popFreeIndex() {
+      const size_t idx = freeIndices.back();
+      freeIndices.pop_back();
+      return idx;
+    }
+    inline void pushFreeIndex(size_t idx) { freeIndices.push_back(idx); }
   };
 
   // Core storage - now lock-free
@@ -819,8 +874,7 @@ private:
   std::unordered_map<uint32_t, size_t> m_effectIdToIndex;
 
   // Texture management
-  std::unordered_map<std::string, uint16_t> m_textureIndices;
-  std::vector<std::string> m_textureIDs;
+  // Removed texture index map/IDs; particles are rects
 
   // Performance tracking
   ParticlePerformanceStats m_performanceStats;
@@ -843,6 +897,7 @@ private:
   std::atomic<size_t> m_lastAvailableWorkers{0};
   std::atomic<size_t> m_lastParticleBudget{0};
   std::atomic<bool> m_lastWasThreaded{false};
+  std::atomic<size_t> m_activeCount{0};
 
   // Camera and culling
   struct CameraViewport {
@@ -867,7 +922,7 @@ private:
   static constexpr float MIN_VISIBLE_SIZE = 0.5f;
 
   // Performance optimization structures
-  struct alignas(32) BatchUpdateData {
+  struct alignas(16) BatchUpdateData {
     float deltaTime;
     size_t startIndex;
     size_t endIndex;
@@ -903,8 +958,6 @@ private:
   bool m_smokeActive{false};
   bool m_sparksActive{false};
 
-
-
   // Helper methods
   uint32_t generateEffectId();
   size_t allocateParticle();
@@ -927,15 +980,18 @@ private:
   void updateParticlesSingleThreaded(float deltaTime,
                                      size_t activeParticleCount);
   void updateParticleRange(LockFreeParticleStorage::ParticleSoA &particles,
-                           size_t startIdx, size_t endIdx, float deltaTime);
-                           
+                           size_t startIdx, size_t endIdx, float deltaTime,
+                           float windPhase);
+
   // SIMD-optimized batch physics update for high-performance processing
-  void updateParticlePhysicsSIMD(LockFreeParticleStorage::ParticleSoA &particles,
-                                size_t startIdx, size_t endIdx, float deltaTime);
-                                
+  void
+  updateParticlePhysicsSIMD(LockFreeParticleStorage::ParticleSoA &particles,
+                            size_t startIdx, size_t endIdx, float deltaTime);
+
   // Batch color processing for alpha fading and color transitions
-  void batchProcessParticleColors(LockFreeParticleStorage::ParticleSoA &particles,
-                                 size_t startIdx, size_t endIdx);
+  void
+  batchProcessParticleColors(LockFreeParticleStorage::ParticleSoA &particles,
+                             size_t startIdx, size_t endIdx);
   void updateParticleWithColdData(ParticleData &particle,
                                   const ParticleColdData &coldData,
                                   float deltaTime);
@@ -943,7 +999,6 @@ private:
   void createParticleForEffect(const ParticleEffectDefinition &effectDef,
                                const Vector2D &position,
                                bool isWeatherEffect = false);
-  uint16_t getTextureIndex(const std::string &textureID);
   uint32_t interpolateColor(uint32_t color1, uint32_t color2, float factor);
   void recordPerformance(bool isRender, double timeMs, size_t particleCount);
   uint64_t getCurrentTimeNanos() const;
@@ -954,19 +1009,25 @@ private:
   std::array<float, TRIG_LUT_SIZE> m_sinLUT{};
   std::array<float, TRIG_LUT_SIZE> m_cosLUT{};
   void initTrigLookupTables();
-  
+  // Per-frame wind phase advanced once in update() and snapshot passed to workers
+  float m_windPhase{0.0f};
+
   // Fast trigonometric functions using lookup tables
   inline float fastSin(float x) const {
     x = fmodf(x, 2.0f * 3.14159265f);
-    if (x < 0) x += 2.0f * 3.14159265f;
-    const size_t index = static_cast<size_t>(x * TRIG_LUT_SCALE) % TRIG_LUT_SIZE;
+    if (x < 0)
+      x += 2.0f * 3.14159265f;
+    const size_t index =
+        static_cast<size_t>(x * TRIG_LUT_SCALE) % TRIG_LUT_SIZE;
     return m_sinLUT[index];
   }
-  
+
   inline float fastCos(float x) const {
     x = fmodf(x, 2.0f * 3.14159265f);
-    if (x < 0) x += 2.0f * 3.14159265f;
-    const size_t index = static_cast<size_t>(x * TRIG_LUT_SCALE) % TRIG_LUT_SIZE;
+    if (x < 0)
+      x += 2.0f * 3.14159265f;
+    const size_t index =
+        static_cast<size_t>(x * TRIG_LUT_SCALE) % TRIG_LUT_SIZE;
     return m_cosLUT[index];
   }
 

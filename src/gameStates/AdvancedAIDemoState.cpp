@@ -6,6 +6,8 @@
 #include "gameStates/AdvancedAIDemoState.hpp"
 #include "core/Logger.hpp"
 #include "managers/AIManager.hpp"
+#include "managers/CollisionManager.hpp"
+#include "managers/WorldManager.hpp"
 #include "SDL3/SDL_scancode.h"
 #include "ai/behaviors/IdleBehavior.hpp"
 #include "ai/behaviors/FleeBehavior.hpp"
@@ -129,9 +131,16 @@ bool AdvancedAIDemoState::enter() {
         // Cache GameEngine reference for better performance
         const GameEngine& gameEngine = GameEngine::Instance();
 
-        // Setup world size using logical dimensions for proper cross-platform rendering
-        m_worldWidth = gameEngine.getLogicalWidth();
-        m_worldHeight = gameEngine.getLogicalHeight();
+        // Setup world size using actual world bounds instead of screen dimensions
+        float worldMinX, worldMinY, worldMaxX, worldMaxY;
+        if (WorldManager::Instance().getWorldBounds(worldMinX, worldMinY, worldMaxX, worldMaxY)) {
+            m_worldWidth = worldMaxX;
+            m_worldHeight = worldMaxY;
+        } else {
+            // Fallback to screen dimensions if world not loaded
+            m_worldWidth = gameEngine.getLogicalWidth();
+            m_worldHeight = gameEngine.getLogicalHeight();
+        }
 
         // Initialize game time
         m_gameTime = 0.0f;
@@ -141,6 +150,7 @@ bool AdvancedAIDemoState::enter() {
 
         // Create player first (required for flee/follow/attack behaviors)
         m_player = std::make_shared<Player>();
+        m_player->registerCollisionBody();
         m_player->setPosition(Vector2D(m_worldWidth / 2, m_worldHeight / 2));
 
         // Setup combat attributes for player
@@ -188,8 +198,14 @@ bool AdvancedAIDemoState::exit() {
     // Cache AIManager reference for better performance
     AIManager& aiMgr = AIManager::Instance();
 
-    // Use the new prepareForStateTransition method for safer cleanup
+    // Use prepareForStateTransition methods for deterministic cleanup
     aiMgr.prepareForStateTransition();
+    
+    // Clean collision state
+    CollisionManager &collisionMgr = CollisionManager::Instance();
+    if (collisionMgr.isInitialized() && !collisionMgr.isShutdown()) {
+      collisionMgr.prepareForStateTransition();
+    }
 
     // Clean up NPCs
     for (auto& npc : m_npcs) {
@@ -371,11 +387,10 @@ void AdvancedAIDemoState::createAdvancedNPCs() {
                     position = Vector2D(xDist(gen), yDist(gen));
                 }
 
-                auto npc = std::make_shared<NPC>("npc", position, 64, 64);
+                auto npc = NPC::create("npc", position, 64, 64);
 
                 // Set wander area to keep NPCs on screen
                 npc->setWanderArea(0, 0, m_worldWidth, m_worldHeight);
-                npc->setBoundsCheckEnabled(false);
 
                 // Initialize with Follow behavior by default for smooth movement demonstration
                 aiMgr.registerEntityForUpdates(npc, 5, "Follow");

@@ -44,8 +44,16 @@ for arg in "$@"; do
       TEST_FILTER="resource_change_event_tests"
       shift
       ;;
+    --edge-case-test)
+      TEST_FILTER="resource_edge_case_tests"
+      shift
+      ;;
     --integration-test)
       TEST_FILTER="resource_integration_tests"
+      shift
+      ;;
+    --architecture-test)
+      TEST_FILTER="resource_architecture_tests"
       shift
       ;;
     --help)
@@ -59,7 +67,9 @@ for arg in "$@"; do
       echo -e "  --world-resource-test        Run only world resource manager tests"
       echo -e "  --inventory-test             Run only inventory component tests"
       echo -e "  --resource-event-test        Run only resource event tests"
+      echo -e "  --edge-case-test             Run only resource edge case tests"
       echo -e "  --integration-test           Run only resource integration tests"
+      echo -e "  --architecture-test          Run only resource architecture tests"
       echo -e "  --help                       Show this help message"
       echo -e "\nTest Suite Overview:"
       echo -e "  Resource Template Tests:       Core resource template/type definitions"
@@ -68,7 +78,9 @@ for arg in "$@"; do
       echo -e "  World Resource Tests:          Global resource quantity tracking"
       echo -e "  Inventory Component Tests:     Inventory operations and thread safety"
       echo -e "  Resource Event Tests:          Resource change event handling"
+      echo -e "  Edge Case Tests:               Resource boundary and error conditions"
       echo -e "  Integration Tests:             Cross-system resource operations"
+      echo -e "  Architecture Tests:            Resource-Entity separation validation"
       echo -e "\nExecution Time:"
       echo -e "  Full test suite:               ~2-3 seconds"
       echo -e "  Individual tests:              ~200-500ms each"
@@ -102,7 +114,9 @@ else
         "world_resource_manager_tests"
         "inventory_component_tests"
         "resource_change_event_tests"
+        "resource_edge_case_tests"
         "resource_integration_tests"
+        "resource_architecture_tests"
     )
 fi
 

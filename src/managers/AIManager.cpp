@@ -7,14 +7,16 @@
 #include "core/Logger.hpp"
 #include "core/ThreadSystem.hpp"
 #include "core/WorkerBudget.hpp"
-#include "managers/EventManager.hpp"
 #include "events/NPCSpawnEvent.hpp"
+#include "managers/EventManager.hpp"
+#include "managers/PathfinderManager.hpp"
+#include "managers/CollisionManager.hpp"
 #include <algorithm>
 #include <cstring>
 
 bool AIManager::init() {
   if (m_initialized.load(std::memory_order_acquire)) {
-    AI_LOG("AIManager already initialized");
+    AI_INFO("AIManager already initialized");
     return true;
   }
 
@@ -51,9 +53,19 @@ bool AIManager::init() {
     m_initialized.store(true, std::memory_order_release);
     m_isShutdown = false;
 
-    // No NPCSpawn handler in AIManager: state owns creation; AI manages behavior only.
+    // No NPCSpawn handler in AIManager: state owns creation; AI manages
+    // behavior only.
 
-    AI_LOG("AIManager initialized successfully");
+    // Initialize PathfinderManager (centralized pathfinding service)
+    if (!PathfinderManager::Instance().isInitialized()) {
+      if (!PathfinderManager::Instance().init()) {
+        AI_ERROR("Failed to initialize PathfinderManager");
+        return false;
+      }
+      AI_INFO("PathfinderManager initialized successfully");
+    }
+
+    AI_INFO("AIManager initialized successfully");
     return true;
 
   } catch (const std::exception &e) {
@@ -67,7 +79,7 @@ void AIManager::clean() {
     return;
   }
 
-  AI_LOG("AIManager shutting down...");
+  AI_INFO("AIManager shutting down...");
 
   // Mark as shutting down
   m_isShutdown = true;
@@ -77,11 +89,83 @@ void AIManager::clean() {
   m_globallyPaused.store(true, std::memory_order_release);
 
   // Clean up all entities and behaviors
+  // Wait for any pending async assignments to complete before shutdown
+  if (!m_assignmentFutures.empty()) {
+    AI_INFO("Waiting for " + std::to_string(m_assignmentFutures.size()) +
+           " async assignment batches to complete...");
+
+    // Check if ThreadSystem still exists - if not, futures are invalid
+    if (HammerEngine::ThreadSystem::Exists() &&
+        !HammerEngine::ThreadSystem::Instance().isShutdown()) {
+      for (auto &future : m_assignmentFutures) {
+        if (future.valid()) {
+          try {
+            // Use a short timeout instead of blocking indefinitely
+            auto status = future.wait_for(std::chrono::milliseconds(50));
+            if (status == std::future_status::ready) {
+              future.get();
+            } else {
+              AI_WARN("Async assignment batch did not complete within timeout "
+                      "during shutdown");
+            }
+          } catch (const std::exception &e) {
+            AI_ERROR("Exception in async assignment batch during shutdown: " +
+                     std::string(e.what()));
+          } catch (...) {
+            AI_ERROR(
+                "Unknown exception in async assignment batch during shutdown");
+          }
+        }
+      }
+    } else {
+      AI_WARN("ThreadSystem already shutdown - abandoning " +
+              std::to_string(m_assignmentFutures.size()) +
+              " pending assignment futures");
+    }
+
+    m_assignmentFutures.clear();
+    m_assignmentInProgress.store(false, std::memory_order_release);
+  }
+
+  // Ensure any in-flight update futures are completed before clearing storage
+  if (!m_updateFutures.empty()) {
+    AI_INFO("Waiting for " + std::to_string(m_updateFutures.size()) +
+           " AI update futures to complete...");
+    for (auto &future : m_updateFutures) {
+      if (future.valid()) {
+        try {
+          future.wait();
+          future.get();
+        } catch (const std::exception &e) {
+          AI_ERROR("Exception in AI update future during shutdown: " +
+                   std::string(e.what()));
+        } catch (...) {
+          AI_ERROR("Unknown exception in AI update future during shutdown");
+        }
+      }
+    }
+    m_updateFutures.clear();
+  }
+
   {
     std::unique_lock<std::shared_mutex> entitiesLock(m_entitiesMutex);
     std::unique_lock<std::shared_mutex> behaviorsLock(m_behaviorsMutex);
     std::lock_guard<std::mutex> assignmentsLock(m_assignmentsMutex);
     std::lock_guard<std::mutex> messagesLock(m_messagesMutex);
+
+    // Clean all behaviors first (with exception handling)
+    for (size_t i = 0; i < m_storage.size(); ++i) {
+      if (m_storage.behaviors[i] && m_storage.entities[i]) {
+        try {
+          m_storage.behaviors[i]->clean(m_storage.entities[i]);
+        } catch (const std::exception &e) {
+          AI_ERROR("Exception cleaning behavior during shutdown: " +
+                   std::string(e.what()));
+        } catch (...) {
+          AI_ERROR("Unknown exception cleaning behavior during shutdown");
+        }
+      }
+    }
 
     // Clear all storage
     m_storage.hotData.clear();
@@ -100,58 +184,164 @@ void AIManager::clean() {
     m_messageQueue.clear();
   }
 
+  // Note: PathfinderManager is a singleton and will be shut down separately
+
   // Reset all counters
   m_totalBehaviorExecutions.store(0, std::memory_order_relaxed);
   m_totalAssignmentCount.store(0, std::memory_order_relaxed);
   m_frameCounter.store(0, std::memory_order_relaxed);
 
-  AI_LOG("AIManager shutdown complete");
+  AI_INFO("AIManager shutdown complete");
 }
 
 void AIManager::prepareForStateTransition() {
-  AI_LOG("Preparing AIManager for state transition...");
+  AI_INFO("Preparing AIManager for state transition...");
 
   // Pause AI processing to prevent new tasks
   m_globallyPaused.store(true, std::memory_order_release);
 
-  // Process any pending messages
+  // Wait for any in-flight operations to complete
+  if (!m_updateFutures.empty()) {
+    AI_DEBUG("Waiting for " + std::to_string(m_updateFutures.size()) +
+             " AI update futures to complete...");
+    for (auto &future : m_updateFutures) {
+      if (future.valid()) {
+        try {
+          future.get();
+        } catch (const std::exception &e) {
+          AI_ERROR("Exception in AI update future during state transition: " +
+                   std::string(e.what()));
+        }
+      }
+    }
+    m_updateFutures.clear();
+  }
+
+  // Wait for async assignments to complete
+  if (!m_assignmentFutures.empty()) {
+    AI_DEBUG("Waiting for " + std::to_string(m_assignmentFutures.size()) +
+             " async assignments to complete...");
+    for (auto &future : m_assignmentFutures) {
+      if (future.valid()) {
+        try {
+          auto status = future.wait_for(std::chrono::milliseconds(100));
+          if (status == std::future_status::ready) {
+            future.get();
+          } else {
+            AI_WARN("Async assignment did not complete within timeout during "
+                    "state transition");
+          }
+        } catch (const std::exception &e) {
+          AI_ERROR("Exception in async assignment during state transition: " +
+                   std::string(e.what()));
+        }
+      }
+    }
+    m_assignmentFutures.clear();
+    m_assignmentInProgress.store(false, std::memory_order_release);
+  }
+
+  // Process and clear any pending messages
   processMessageQueue();
 
-  // Clean up all entities safely and clear managed entities list in one lock
+  // Clear message queues completely
+  {
+    std::lock_guard<std::mutex> lock(m_messagesMutex);
+    m_messageQueue.clear();
+    // Reset lock-free message indices
+    m_messageReadIndex.store(0, std::memory_order_relaxed);
+    m_messageWriteIndex.store(0, std::memory_order_relaxed);
+    for (auto &msg : m_lockFreeMessages) {
+      msg.ready.store(false, std::memory_order_relaxed);
+    }
+  }
+
+  // Clear assignment queues
+  {
+    std::lock_guard<std::mutex> lock(m_assignmentsMutex);
+    m_pendingAssignments.clear();
+    m_pendingAssignmentIndex.clear();
+  }
+
+  // Clean up all entities safely and clear managed entities list
   {
     std::unique_lock<std::shared_mutex> lock(m_entitiesMutex);
-    
+
     // Clean all behaviors
+    size_t cleanedCount = 0;
     for (size_t i = 0; i < m_storage.size(); ++i) {
       if (m_storage.behaviors[i] && m_storage.entities[i]) {
         try {
           m_storage.behaviors[i]->clean(m_storage.entities[i]);
+          cleanedCount++;
         } catch (const std::exception &e) {
           AI_ERROR("Exception cleaning behavior: " + std::string(e.what()));
         }
       }
     }
 
-    // Clear all storage
+    if (cleanedCount > 0) {
+      AI_INFO("Cleaned " + std::to_string(cleanedCount) + " AI behaviors");
+    }
+
+    // Clear all storage completely
     m_storage.hotData.clear();
     m_storage.entities.clear();
     m_storage.behaviors.clear();
     m_storage.lastUpdateTimes.clear();
     m_entityToIndex.clear();
-    
+
+    // Clear double buffers to prevent stale data
+    m_storage.doubleBuffer[0].clear();
+    m_storage.doubleBuffer[1].clear();
+    m_storage.currentBuffer.store(0, std::memory_order_release);
+
     // Clear managed entities list
     m_managedEntities.clear();
-    
+
     AI_DEBUG("Cleaned up all entities for state transition");
   }
 
-  // Reset behaviors
-  resetBehaviors();
+  // Legacy pathfinding state cleared - all pathfinding now handled by
+  // PathfinderManager
+
+  // Reset all counters and stats
+  m_totalBehaviorExecutions.store(0, std::memory_order_relaxed);
+  m_totalAssignmentCount.store(0, std::memory_order_relaxed);
+  m_frameCounter.store(0, std::memory_order_relaxed);
+  m_lastCleanupFrame.store(0, std::memory_order_relaxed);
+
+  // Reset performance tracking
+  {
+    std::lock_guard<std::mutex> lock(m_statsMutex);
+    m_globalStats = AIPerformanceStats{};
+    std::fill(m_behaviorStats.begin(), m_behaviorStats.end(), AIPerformanceStats{});
+  }
+
+  // Clear player reference completely
+  {
+    std::lock_guard<std::shared_mutex> lock(m_entitiesMutex);
+    m_playerEntity.reset();
+  }
+
+  // Reset threading state
+  m_lastWasThreaded.store(false, std::memory_order_relaxed);
+  m_lastOptimalWorkerCount.store(0, std::memory_order_relaxed);
+  m_lastAvailableWorkers.store(0, std::memory_order_relaxed);
+  m_lastAIBudget.store(0, std::memory_order_relaxed);
+
+  // Don't call resetBehaviors() as we've already done comprehensive cleanup
+  // above Just clear the behavior caches
+  {
+    std::lock_guard<std::shared_mutex> lock(m_behaviorsMutex);
+    m_behaviorCache.clear();
+    m_behaviorTypeCache.clear();
+  }
 
   // Reset pause state to false so next state starts unpaused
   m_globallyPaused.store(false, std::memory_order_release);
 
-  AI_LOG("AIManager prepared for state transition");
+  AI_INFO("AIManager state transition complete - all state cleared and reset");
 }
 
 void AIManager::update([[maybe_unused]] float deltaTime) {
@@ -163,39 +353,60 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
   auto startTime = std::chrono::high_resolution_clock::now();
 
   try {
-    // First, synchronize all entity positions to the hot data cache.
-    // This ensures distance calculations use the most up-to-date information.
-    {
-        std::shared_lock<std::shared_mutex> lock(m_entitiesMutex);
-        for (size_t i = 0; i < m_storage.size(); ++i) {
-            if (m_storage.hotData[i].active && m_storage.entities[i]) {
-                m_storage.hotData[i].position = m_storage.entities[i]->getPosition();
-            }
-        }
-    }
+    // Do not carry over AI update futures across frames to avoid races with
+    // render. Any previous frame's update work must be completed within its
+    // frame.
 
-    // Process pending assignments
+    // Process pending assignments first so new entities are picked up this
+    // frame
     processPendingBehaviorAssignments();
 
-    // Get entity count without lock
-    size_t entityCount = m_storage.size();
-    if (entityCount == 0)
+    // Count active entities and sync positions less frequently for performance
+    size_t entityCount = 0;
+    size_t activeCount = 0;
+    uint64_t currentFrame = m_frameCounter.load(std::memory_order_relaxed);
+    
+    {
+      std::shared_lock<std::shared_mutex> lock(m_entitiesMutex);
+      entityCount = m_storage.size();
+      for (size_t i = 0; i < entityCount; ++i) {
+        if (m_storage.hotData[i].active && m_storage.entities[i]) {
+          // Remove expensive position sync - entities update positions directly
+          // Position sync moved to only when absolutely necessary for distance calculations
+          
+          ++activeCount;
+        }
+      }
+    }
+
+
+    if (entityCount == 0) {
       return;
+    }
+
+    // If there are no active entities, skip heavy processing this frame
+    if (activeCount == 0) {
+      processMessageQueue();
+      m_lastWasThreaded.store(false, std::memory_order_relaxed);
+      return;
+    }
 
     // Lock-free double buffer swap
     int currentBuffer = m_storage.currentBuffer.load(std::memory_order_acquire);
     int nextBuffer = 1 - currentBuffer;
 
-    // Get player position for distance calculations (only every 4th frame to
-    // reduce CPU usage)
+    // Get player position for distance calculations (only every 8th frame to
+    // reduce CPU usage significantly)
     EntityPtr player = m_playerEntity.lock();
     bool distancesUpdated = false;
-    uint64_t currentFrame = m_frameCounter.load(std::memory_order_relaxed);
-    if (player && (currentFrame % 4 == 0)) {
+    if (player && (currentFrame % 8 == 0)) {
       Vector2D playerPos = player->getPosition();
-
-      // Simple scalar distance updates (more efficient for scattered memory
-      // access)
+      
+      // PERFORMANCE FIX: Remove expensive position sync - entities update their own positions
+      // Only sync positions if we absolutely need distance calculations this frame
+      // This removes the expensive lock acquisition and iteration
+      
+      // Simple scalar distance updates without position sync
       updateDistancesScalar(playerPos);
       distancesUpdated = true;
     }
@@ -213,8 +424,9 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
       nextBuffer = currentBuffer;
     }
 
-    // Determine threading strategy
-    bool useThreading = (entityCount >= THREADING_THRESHOLD &&
+    // Determine threading strategy based on ACTIVE entity count instead of
+    // total storage size to avoid unnecessary threading after resets
+    bool useThreading = (activeCount >= THREADING_THRESHOLD &&
                          m_useThreading.load(std::memory_order_acquire) &&
                          HammerEngine::ThreadSystem::Exists());
 
@@ -226,8 +438,12 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
       // Check queue pressure before submitting tasks
       size_t queueSize = threadSystem.getQueueSize();
       size_t queueCapacity = threadSystem.getQueueCapacity();
+      if (queueCapacity == 0) {
+        // Defensive: treat as high pressure if capacity unknown
+        queueCapacity = 1;
+      }
       size_t pressureThreshold =
-          (queueCapacity * 9) / 10; // 90% capacity threshold
+          static_cast<size_t>(queueCapacity * HammerEngine::QUEUE_PRESSURE_CRITICAL); // Use unified threshold
 
       if (queueSize > pressureThreshold) {
         // Graceful degradation: fallback to single-threaded processing
@@ -241,37 +457,7 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
         if (nextBuffer != currentBuffer) {
           m_storage.currentBuffer.store(nextBuffer, std::memory_order_release);
         }
-
-        // Process message queue and continue with performance tracking
-        processMessageQueue();
-
-        auto endTime = std::chrono::high_resolution_clock::now();
-        auto duration =
-            std::chrono::duration<double, std::milli>(endTime - startTime)
-                .count();
-        currentFrame = m_frameCounter.fetch_add(1, std::memory_order_relaxed);
-
-        // Periodic cleanup and stats
-        if (currentFrame % 300 == 0) {
-          cleanupInactiveEntities();
-          m_lastCleanupFrame.store(currentFrame, std::memory_order_relaxed);
-
-          std::lock_guard<std::mutex> statsLock(m_statsMutex);
-          m_globalStats.addSample(duration, entityCount);
-
-          if (entityCount > 0) {
-            double avgDuration = m_globalStats.updateCount > 0
-                                     ? (m_globalStats.totalUpdateTime /
-                                        m_globalStats.updateCount)
-                                     : 0.0;
-            AI_DEBUG("AI Summary - Entities: " + std::to_string(entityCount) +
-                     ", Avg Update: " + std::to_string(avgDuration) + "ms" +
-                     ", Entities/sec: " +
-                     std::to_string(m_globalStats.entitiesPerSecond) +
-                     " [Single-threaded]");
-          }
-        }
-        return; // Exit early after single-threaded processing
+        // Single-threaded path completes within this frame; continue to stats
       }
 
       HammerEngine::WorkerBudget budget =
@@ -282,25 +468,31 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
           budget.getOptimalWorkerCount(budget.aiAllocated, entityCount, 1000);
 
       // Store thread allocation info for debug output
-      m_lastOptimalWorkerCount.store(optimalWorkerCount, std::memory_order_relaxed);
+      m_lastOptimalWorkerCount.store(optimalWorkerCount,
+                                     std::memory_order_relaxed);
       m_lastAvailableWorkers.store(availableWorkers, std::memory_order_relaxed);
       m_lastAIBudget.store(budget.aiAllocated, std::memory_order_relaxed);
       m_lastWasThreaded.store(true, std::memory_order_relaxed);
 
-      // Dynamic batch sizing based on queue pressure for optimal performance
+      // Dynamic batch sizing based on queue pressure and pathfinding load for optimal performance
       size_t minEntitiesPerBatch = 1000;
       size_t maxBatches = 4;
+      
+      // Skip pathfinding coordination for small entity counts to avoid overhead
+      if (activeCount > THREADING_THRESHOLD / 2) {
+        // Removed pathfinding load coordination
+      }
 
-      // Adjust batch strategy based on queue pressure
+      // Adjust batch strategy based on queue pressure using unified thresholds
       double queuePressure = static_cast<double>(queueSize) / queueCapacity;
-      if (queuePressure > 0.5) {
+      if (queuePressure > HammerEngine::QUEUE_PRESSURE_WARNING) {
         // High pressure: use fewer, larger batches to reduce queue overhead
         minEntitiesPerBatch = 1500;
         maxBatches = 2;
         AI_DEBUG("High queue pressure (" +
                  std::to_string(static_cast<int>(queuePressure * 100)) +
                  "%), using larger batches");
-      } else if (queuePressure < 0.25) {
+      } else if (queuePressure < (1.0 - HammerEngine::QUEUE_PRESSURE_WARNING)) {
         // Low pressure: can use more batches for better parallelization
         minEntitiesPerBatch = 800;
         maxBatches = 4;
@@ -311,33 +503,54 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
       batchCount = std::max(size_t(1), std::min(batchCount, maxBatches));
 
       // Debug thread allocation info periodically
-      if (currentFrame % 300 == 0 && entityCount > 0) {
-        AI_DEBUG("Thread Allocation - Workers: " + std::to_string(optimalWorkerCount) + "/" +
-                 std::to_string(availableWorkers) + 
+      if (currentFrame % 300 == 0) {
+        AI_DEBUG("Thread Allocation - Workers: " +
+                 std::to_string(optimalWorkerCount) + "/" +
+                 std::to_string(availableWorkers) +
                  ", AI Budget: " + std::to_string(budget.aiAllocated) +
                  ", Batches: " + std::to_string(batchCount));
       }
 
-      size_t entitiesPerBatch = entityCount / batchCount;
-      size_t remainingEntities = entityCount % batchCount;
+      if (batchCount <= 1) {
+        // Avoid thread overhead when only one batch would run
+        m_lastWasThreaded.store(false, std::memory_order_relaxed);
+        processBatch(0, entityCount, deltaTime, nextBuffer);
+      } else {
+        size_t entitiesPerBatch = entityCount / batchCount;
+        size_t remainingEntities = entityCount % batchCount;
 
-      // True fire-and-forget async processing for maximum performance
-      // This achieves 36+ million updates/sec by not blocking on completion
-      for (size_t i = 0; i < batchCount; ++i) {
-        size_t start = i * entitiesPerBatch;
-        size_t end = start + entitiesPerBatch;
+        // Batch processing with futures; synchronize before returning from update()
+        m_updateFutures.clear();
+        m_updateFutures.reserve(batchCount);
+        for (size_t i = 0; i < batchCount; ++i) {
+          size_t start = i * entitiesPerBatch;
+          size_t end = start + entitiesPerBatch;
 
-        // Add remaining entities to last batch
-        if (i == batchCount - 1) {
-          end += remainingEntities;
+          // Add remaining entities to last batch
+          if (i == batchCount - 1) {
+            end += remainingEntities;
+          }
+
+          // Enqueue with result and retain the future for synchronization
+          m_updateFutures.push_back(threadSystem.enqueueTaskWithResult(
+              [this, start, end, deltaTime, nextBuffer]() {
+                processBatch(start, end, deltaTime, nextBuffer);
+              },
+              HammerEngine::TaskPriority::High, "AI_OptimalBatch"));
         }
-
-        // Fire-and-forget: maximum performance async dispatch
-        threadSystem.enqueueTask(
-            [this, start, end, deltaTime, nextBuffer]() {
-              processBatch(start, end, deltaTime, nextBuffer);
-            },
-            HammerEngine::TaskPriority::High, "AI_OptimalBatch");
+        // Wait for all batches to complete to maintain update->render safety
+        for (auto &f : m_updateFutures) {
+          if (f.valid()) {
+            try {
+              f.get();
+            } catch (const std::exception &e) {
+              AI_ERROR(std::string("Exception in AI batch future: ") + e.what());
+            } catch (...) {
+              AI_ERROR("Unknown exception in AI batch future");
+            }
+          }
+        }
+        m_updateFutures.clear();
       }
 
     } else {
@@ -362,7 +575,8 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
 
     // Periodic cleanup and stats (balanced frequency)
     if (currentFrame % 300 == 0) {
-      cleanupInactiveEntities();
+      // cleanupInactiveEntities() moved to GameEngine background processing
+
       m_lastCleanupFrame.store(currentFrame, std::memory_order_relaxed);
 
       std::lock_guard<std::mutex> statsLock(m_statsMutex);
@@ -373,25 +587,34 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
             m_globalStats.updateCount > 0
                 ? (m_globalStats.totalUpdateTime / m_globalStats.updateCount)
                 : 0.0;
-        
+
+        // All pathfinding now handled by PathfinderManager
+
         bool wasThreaded = m_lastWasThreaded.load(std::memory_order_relaxed);
         if (wasThreaded) {
-          size_t optimalWorkers = m_lastOptimalWorkerCount.load(std::memory_order_relaxed);
-          size_t availableWorkers = m_lastAvailableWorkers.load(std::memory_order_relaxed);
+          size_t optimalWorkers =
+              m_lastOptimalWorkerCount.load(std::memory_order_relaxed);
+          size_t availableWorkers =
+              m_lastAvailableWorkers.load(std::memory_order_relaxed);
           size_t aiBudget = m_lastAIBudget.load(std::memory_order_relaxed);
-          
+
           AI_DEBUG("AI Summary - Entities: " + std::to_string(entityCount) +
                    ", Avg Update: " + std::to_string(avgDuration) + "ms" +
-                   ", Entities/sec: " + std::to_string(m_globalStats.entitiesPerSecond) +
+                   ", Entities/sec: " +
+                   std::to_string(m_globalStats.entitiesPerSecond) +
                    " [Threaded: " + std::to_string(optimalWorkers) + "/" +
-                   std::to_string(availableWorkers) + " workers, Budget: " +
-                   std::to_string(aiBudget) + "]");
+                   std::to_string(availableWorkers) +
+                   " workers, Budget: " + std::to_string(aiBudget) + "]");
         } else {
           AI_DEBUG("AI Summary - Entities: " + std::to_string(entityCount) +
                    ", Avg Update: " + std::to_string(avgDuration) + "ms" +
-                   ", Entities/sec: " + std::to_string(m_globalStats.entitiesPerSecond) +
+                   ", Entities/sec: " +
+                   std::to_string(m_globalStats.entitiesPerSecond) +
                    " [Single-threaded]");
         }
+
+        // Pathfinding statistics now handled by PathfinderManager
+        // No legacy pathfinding statistics in AIManager
       }
     }
 
@@ -406,7 +629,7 @@ void AIManager::waitForUpdatesToComplete() {
   }
 
   // Wait for all futures from the last update to complete
-  for (auto& future : m_updateFutures) {
+  for (auto &future : m_updateFutures) {
     if (future.valid()) {
       future.get();
     }
@@ -429,7 +652,7 @@ void AIManager::registerBehavior(const std::string &name,
   m_behaviorCache.clear();
   m_behaviorTypeCache.clear();
 
-  AI_LOG("Registered behavior: " + name);
+  AI_INFO("Registered behavior: " + name);
 }
 
 bool AIManager::hasBehavior(const std::string &name) const {
@@ -493,7 +716,15 @@ void AIManager::assignBehaviorToEntity(EntityPtr entity,
           static_cast<uint8_t>(inferBehaviorType(behaviorName));
       m_storage.hotData[index].active = true;
 
-      AI_LOG("Updated behavior for existing entity to: " + behaviorName);
+      // Refresh extents
+      if (index < m_storage.halfWidths.size()) {
+        float halfW = std::max(1.0f, entity->getWidth() * 0.5f);
+        float halfH = std::max(1.0f, entity->getHeight() * 0.5f);
+        m_storage.halfWidths[index] = halfW;
+        m_storage.halfHeights[index] = halfH;
+      }
+
+      AI_INFO("Updated behavior for existing entity to: " + behaviorName);
     }
   } else {
     // Add new entity
@@ -515,11 +746,13 @@ void AIManager::assignBehaviorToEntity(EntityPtr entity,
     m_storage.entities.push_back(entity);
     m_storage.behaviors.push_back(behavior);
     m_storage.lastUpdateTimes.push_back(0.0f);
+    m_storage.halfWidths.push_back(std::max(1.0f, entity->getWidth() * 0.5f));
+    m_storage.halfHeights.push_back(std::max(1.0f, entity->getHeight() * 0.5f));
 
     // Update index map
     m_entityToIndex[entity] = newIndex;
 
-    AI_LOG("Added new entity with behavior: " + behaviorName);
+    AI_INFO("Added new entity with behavior: " + behaviorName);
   }
 
   m_totalAssignmentCount.fetch_add(1, std::memory_order_relaxed);
@@ -581,6 +814,37 @@ void AIManager::queueBehaviorAssignment(EntityPtr entity,
 }
 
 size_t AIManager::processPendingBehaviorAssignments() {
+  // First, check if any previous async assignments have completed
+  if (!m_assignmentFutures.empty()) {
+    auto it = m_assignmentFutures.begin();
+    while (it != m_assignmentFutures.end()) {
+      if (it->wait_for(std::chrono::nanoseconds(0)) ==
+          std::future_status::ready) {
+        try {
+          it->get(); // This won't block since we know it's ready
+        } catch (const std::exception &e) {
+          AI_ERROR("Exception in async assignment batch: " +
+                   std::string(e.what()));
+        } catch (...) {
+          AI_ERROR("Unknown exception in async assignment batch");
+        }
+        it = m_assignmentFutures.erase(it);
+      } else {
+        ++it;
+      }
+    }
+
+    // If all futures completed, reset the flag
+    if (m_assignmentFutures.empty()) {
+      m_assignmentInProgress.store(false, std::memory_order_release);
+    }
+  }
+
+  // If we're still processing previous assignments, don't start new ones
+  if (m_assignmentInProgress.load(std::memory_order_acquire)) {
+    return 0; // Come back next frame
+  }
+
   std::vector<PendingAssignment> toProcess;
   {
     std::lock_guard<std::mutex> lock(m_assignmentsMutex);
@@ -593,71 +857,125 @@ size_t AIManager::processPendingBehaviorAssignments() {
     m_pendingAssignmentIndex.clear();
   }
 
-  size_t processed = 0;
   size_t assignmentCount = toProcess.size();
+  if (assignmentCount == 0) {
+    return 0;
+  }
 
-  // Threaded batch assignment using WorkerBudget
-  bool useThreading = m_useThreading.load(std::memory_order_acquire) &&
-                      HammerEngine::ThreadSystem::Exists();
-  if (useThreading && assignmentCount > 1000) {
-    auto &threadSystem = HammerEngine::ThreadSystem::Instance();
-    size_t availableWorkers =
-        static_cast<size_t>(threadSystem.getThreadCount());
-    size_t queueSize = threadSystem.getQueueSize();
-    size_t queueCapacity = threadSystem.getQueueCapacity();
-    double queuePressure = static_cast<double>(queueSize) / queueCapacity;
-
-    HammerEngine::WorkerBudget budget =
-        HammerEngine::calculateWorkerBudget(availableWorkers);
-    size_t optimalWorkerCount =
-        budget.getOptimalWorkerCount(budget.aiAllocated, assignmentCount, 1000);
-
-    size_t minAssignmentsPerBatch = 1000;
-    size_t maxBatches = 4;
-    if (queuePressure > 0.5) {
-      minAssignmentsPerBatch = 1500;
-      maxBatches = 2;
-    } else if (queuePressure < 0.25) {
-      minAssignmentsPerBatch = 800;
-      maxBatches = 4;
-    }
-    size_t batchCount =
-        std::min(optimalWorkerCount, assignmentCount / minAssignmentsPerBatch);
-    batchCount = std::max(size_t(1), std::min(batchCount, maxBatches));
-    size_t assignmentsPerBatch = assignmentCount / batchCount;
-    size_t remaining = assignmentCount % batchCount;
-
-    std::vector<std::future<void>> futures;
-    size_t start = 0;
-    for (size_t i = 0; i < batchCount; ++i) {
-      size_t end =
-          start + assignmentsPerBatch + (i == batchCount - 1 ? remaining : 0);
-      futures.push_back(threadSystem.enqueueTaskWithResult(
-          [this, &toProcess, start, end]() {
-            for (size_t j = start; j < end && j < toProcess.size(); ++j) {
-              if (toProcess[j].entity) {
-                assignBehaviorToEntity(toProcess[j].entity,
-                                       toProcess[j].behaviorName);
-              }
-            }
-          },
-          HammerEngine::TaskPriority::High, "AI_AssignmentBatch"));
-      start = end;
-    }
-    // Wait for all assignment batches to complete
-    for (auto &f : futures)
-      f.get();
-    processed = assignmentCount;
-  } else {
-    // Single-threaded fallback
+  // For small batches, process synchronously on main thread
+  if (assignmentCount <= 100) {
     for (const auto &assignment : toProcess) {
       if (assignment.entity) {
         assignBehaviorToEntity(assignment.entity, assignment.behaviorName);
-        processed++;
       }
     }
+    return assignmentCount;
   }
-  return processed;
+
+  // For large batches, process asynchronously
+  bool useThreading = m_useThreading.load(std::memory_order_acquire) &&
+                      HammerEngine::ThreadSystem::Exists();
+
+  if (!useThreading) {
+    // Fall back to synchronous processing
+    for (const auto &assignment : toProcess) {
+      if (assignment.entity) {
+        assignBehaviorToEntity(assignment.entity, assignment.behaviorName);
+      }
+    }
+    return assignmentCount;
+  }
+
+  // Async processing for large batches
+  auto &threadSystem = HammerEngine::ThreadSystem::Instance();
+  size_t availableWorkers = static_cast<size_t>(threadSystem.getThreadCount());
+  size_t queueSize = threadSystem.getQueueSize();
+  size_t queueCapacity = threadSystem.getQueueCapacity();
+  double queuePressure = static_cast<double>(queueSize) / queueCapacity;
+
+  // Safety check: If queue is too full, process synchronously
+  if (queuePressure > 0.7) {
+    AI_DEBUG("ThreadSystem queue pressure high (" +
+             std::to_string(queuePressure * 100) +
+             "%) - processing assignments synchronously");
+    for (const auto &assignment : toProcess) {
+      if (assignment.entity) {
+        assignBehaviorToEntity(assignment.entity, assignment.behaviorName);
+      }
+    }
+    return assignmentCount;
+  }
+
+  // Calculate optimal batching
+  HammerEngine::WorkerBudget budget =
+      HammerEngine::calculateWorkerBudget(availableWorkers);
+  size_t optimalWorkerCount =
+      budget.getOptimalWorkerCount(budget.aiAllocated, assignmentCount, 1000);
+
+  size_t minAssignmentsPerBatch = 1000;
+  size_t maxBatches = 4;
+  
+  // Skip pathfinding coordination for small entity counts to avoid overhead
+  if (assignmentCount > THREADING_THRESHOLD / 2) {
+    // Removed pathfinding load coordination
+  }
+  if (queuePressure > 0.5) {
+    minAssignmentsPerBatch = 1500;
+    maxBatches = 2;
+  } else if (queuePressure < 0.25) {
+    minAssignmentsPerBatch = 800;
+    maxBatches = 4;
+  }
+
+  size_t batchCount =
+      std::min(optimalWorkerCount, assignmentCount / minAssignmentsPerBatch);
+  batchCount = std::max(size_t(1), std::min(batchCount, maxBatches));
+  size_t assignmentsPerBatch = assignmentCount / batchCount;
+  size_t remaining = assignmentCount % batchCount;
+
+  // Set the flag to indicate async processing is starting
+  m_assignmentInProgress.store(true, std::memory_order_release);
+
+  // Clear any old futures (should be empty at this point)
+  m_assignmentFutures.clear();
+
+  // Submit async batches - NO BLOCKING WAITS
+  size_t start = 0;
+  for (size_t i = 0; i < batchCount; ++i) {
+    size_t end =
+        start + assignmentsPerBatch + (i == batchCount - 1 ? remaining : 0);
+
+    // Copy the batch data (we need to own this data for async processing)
+    std::vector<PendingAssignment> batchData(toProcess.begin() + start,
+                                             toProcess.begin() + end);
+
+    m_assignmentFutures.push_back(threadSystem.enqueueTaskWithResult(
+        [this, batchData = std::move(batchData)]() {
+          // Check if AIManager is shutting down
+          if (m_isShutdown) {
+            return; // Don't process assignments during shutdown
+          }
+
+          for (const auto &assignment : batchData) {
+            if (assignment.entity) {
+              try {
+                assignBehaviorToEntity(assignment.entity,
+                                       assignment.behaviorName);
+              } catch (const std::exception &e) {
+                AI_ERROR("Exception during async behavior assignment: " +
+                         std::string(e.what()));
+              } catch (...) {
+                AI_ERROR("Unknown exception during async behavior assignment");
+              }
+            }
+          }
+        },
+        HammerEngine::TaskPriority::High, "AI_AssignmentBatch"));
+    start = end;
+  }
+
+  // Async assignment processing statistics are now tracked in periodic summary
+  return assignmentCount; // Return immediately, don't wait
 }
 
 void AIManager::setPlayerForDistanceOptimization(EntityPtr player) {
@@ -737,7 +1055,7 @@ void AIManager::unregisterEntityFromUpdates(EntityPtr entity) {
 
 void AIManager::setGlobalPause(bool paused) {
   m_globallyPaused.store(paused, std::memory_order_release);
-  AI_LOG((paused ? "AI processing paused" : "AI processing resumed"));
+  AI_INFO((paused ? "AI processing paused" : "AI processing resumed"));
 }
 
 bool AIManager::isGloballyPaused() const {
@@ -745,7 +1063,7 @@ bool AIManager::isGloballyPaused() const {
 }
 
 void AIManager::resetBehaviors() {
-  AI_LOG("Resetting all AI behaviors");
+  AI_INFO("Resetting all AI behaviors");
 
   std::unique_lock<std::shared_mutex> entitiesLock(m_entitiesMutex);
   std::unique_lock<std::shared_mutex> behaviorsLock(m_behaviorsMutex);
@@ -781,7 +1099,7 @@ void AIManager::configureThreading(bool useThreading, unsigned int maxThreads) {
     m_maxThreads = maxThreads;
   }
 
-  AI_LOG("Threading configured: " +
+  AI_INFO("Threading configured: " +
          std::string(useThreading ? "enabled" : "disabled") +
          " with max threads: " + std::to_string(m_maxThreads));
 }
@@ -925,25 +1243,60 @@ void AIManager::processBatch(size_t start, size_t end, float deltaTime,
   EntityPtr player = m_playerEntity.lock();
 
   size_t batchExecutions = 0;
+  
+  // Clear the batch buffer for this processing batch - PERFORMANCE OPTIMIZATION
+  // Accumulate all position/velocity changes here instead of individual collision updates
+  std::vector<KinematicUpdateBatch> localBatchUpdates;
+  localBatchUpdates.reserve(end - start); // Pre-allocate for performance
 
   // Pre-calculate common values once per batch to reduce per-entity overhead
   float maxDist = m_maxUpdateDistance.load(std::memory_order_relaxed);
   float maxDistSquared = maxDist * maxDist;
   bool hasPlayer = (player != nullptr);
 
-  // Pre-cache entities and behaviors for the entire batch to reduce lock
-  // contention
+  // PERFORMANCE FIX: Minimize lock contention by caching only what we need
+  // Use double buffer data which is already thread-safe
   std::vector<EntityPtr> batchEntities;
   std::vector<std::shared_ptr<AIBehavior>> batchBehaviors;
   batchEntities.reserve(end - start);
   batchBehaviors.reserve(end - start);
 
-  // Single lock acquisition for the entire batch
+  // Single very fast lock acquisition for the entire batch
   {
     std::shared_lock<std::shared_mutex> lock(m_entitiesMutex);
+    // Only cache entities we actually need to process
     for (size_t i = start; i < end && i < m_storage.size(); ++i) {
-      batchEntities.push_back(m_storage.entities[i]);
-      batchBehaviors.push_back(m_storage.behaviors[i]);
+      if (i < workBuffer.size() && workBuffer[i].active) {
+        batchEntities.push_back(m_storage.entities[i]);
+        batchBehaviors.push_back(m_storage.behaviors[i]);
+      } else {
+        // Add nulls to maintain index alignment
+        batchEntities.push_back(nullptr);
+        batchBehaviors.push_back(nullptr);
+      }
+    }
+  }
+
+  // Pre-cache per-entity extents (half widths/heights) to avoid map lookups/locks in hot loop
+  std::vector<float> batchHalfW; batchHalfW.reserve(batchEntities.size());
+  std::vector<float> batchHalfH; batchHalfH.reserve(batchEntities.size());
+  {
+    std::shared_lock<std::shared_mutex> lock(m_entitiesMutex);
+    for (size_t idx = 0; idx < batchEntities.size(); ++idx) {
+      size_t gi = start + idx;
+      if (gi < m_storage.halfWidths.size()) {
+        batchHalfW.push_back(std::max(1.0f, m_storage.halfWidths[gi]));
+        batchHalfH.push_back(std::max(1.0f, m_storage.halfHeights[gi]));
+      } else {
+        EntityPtr e = batchEntities[idx];
+        if (e) {
+          batchHalfW.push_back(std::max(1.0f, e->getWidth() * 0.5f));
+          batchHalfH.push_back(std::max(1.0f, e->getHeight() * 0.5f));
+        } else {
+          batchHalfW.push_back(16.0f);
+          batchHalfH.push_back(16.0f);
+        }
+      }
     }
   }
 
@@ -980,22 +1333,70 @@ void AIManager::processBatch(size_t start, size_t end, float deltaTime,
 
       if (shouldUpdate) {
         behavior->executeLogic(entity);
-        
-        // The entity is responsible for its own physics update.
+
+        // Entity updates integrate their own movement
         entity->update(deltaTime);
+
+        // Centralized clamp pass using PathfinderManager cached bounds
+        float halfW = (idx < batchHalfW.size() ? batchHalfW[idx] : 16.0f);
+        float halfH = (idx < batchHalfH.size() ? batchHalfH[idx] : 16.0f);
+
+        const auto &pf = PathfinderManager::Instance();
+        Vector2D pos = entity->getPosition();
+        Vector2D clamped = pf.clampInsideExtents(pos, halfW, halfH, 0.0f);
+        Vector2D vel = entity->getVelocity();
         
+        if (clamped.getX() != pos.getX() || clamped.getY() != pos.getY()) {
+          // Update entity position directly (bypassing individual collision updates)
+          entity->Entity::setPosition(clamped); // Use base Entity::setPosition to avoid collision sync
+          
+          // Project velocity inward for boundary collisions  
+          if (clamped.getX() < pos.getX() && vel.getX() < 0) vel.setX(0.0f);
+          if (clamped.getX() > pos.getX() && vel.getX() > 0) vel.setX(0.0f);
+          if (clamped.getY() < pos.getY() && vel.getY() < 0) vel.setY(0.0f);
+          if (clamped.getY() > pos.getY() && vel.getY() > 0) vel.setY(0.0f);
+          entity->Entity::setVelocity(vel); // Use base Entity::setVelocity
+          
+          pos = clamped; // Update pos for batch accumulation
+        }
+
+        // BATCH OPTIMIZATION: Accumulate position/velocity for collision system batch update
+        localBatchUpdates.emplace_back(entity->getID(), pos, vel);
+
         batchExecutions++;
       } else {
-        // If culled, explicitly stop the entity to prevent ghost movement.
-        entity->setVelocity(Vector2D(0, 0));
-        // We still call update to apply friction (which will do nothing at zero velocity)
-        // and to ensure the animation state is correctly reset to idle.
-        entity->update(deltaTime);
+        // PERFORMANCE FIX: Skip entity updates for culled entities entirely  
+        // Still accumulate position for collision system consistency
+        Vector2D currentPos = entity->getPosition();
+        Vector2D zeroVel(0, 0);
+        entity->Entity::setVelocity(zeroVel); // Use base method to avoid individual collision sync
+        
+        // Add to batch with zero velocity to keep collision system in sync
+        localBatchUpdates.emplace_back(entity->getID(), currentPos, zeroVel);
       }
     } catch (const std::exception &e) {
       AI_ERROR("Error in batch processing: " + std::string(e.what()));
       hotData.active = false;
     }
+  }
+
+  // PERFORMANCE OPTIMIZATION: Submit all position/velocity changes to collision system in single batch
+  // This replaces hundreds/thousands of individual setKinematicPose calls with one efficient batch operation
+  if (!localBatchUpdates.empty()) {
+    auto &cm = CollisionManager::Instance();
+    
+    // Convert our local batch format to CollisionManager's format
+    std::vector<CollisionManager::KinematicUpdate> collisionUpdates;
+    collisionUpdates.reserve(localBatchUpdates.size());
+    
+    std::transform(localBatchUpdates.begin(), localBatchUpdates.end(),
+                   std::back_inserter(collisionUpdates),
+                   [](const auto& batchUpdate) {
+                     return CollisionManager::KinematicUpdate{batchUpdate.id, batchUpdate.position, batchUpdate.velocity};
+                   });
+    
+    // Single batch update to collision system - MASSIVE performance improvement
+    cm.updateKinematicBatch(collisionUpdates);
   }
 
   if (batchExecutions > 0) {
@@ -1007,14 +1408,19 @@ void AIManager::processBatch(size_t start, size_t end, float deltaTime,
 void AIManager::updateDistancesScalar(const Vector2D &playerPos) {
   size_t entityCount = m_storage.hotData.size();
 
-  // Simple scalar implementation - only update active entities
-  // Skip inactive entities to reduce CPU usage significantly
+  // PERFORMANCE FIX: Use entity positions directly instead of synced positions
+  // This avoids the expensive position sync loop in update()
+  std::shared_lock<std::shared_mutex> lock(m_entitiesMutex);
   size_t updatedCount = 0;
   for (size_t i = 0; i < entityCount; ++i) {
     auto &hotData = m_storage.hotData[i];
-    if (hotData.active) {
-      Vector2D diff = hotData.position - playerPos;
+    if (hotData.active && m_storage.entities[i]) {
+      // Get position directly from entity - this is more accurate than cached position
+      Vector2D entityPos = m_storage.entities[i]->getPosition();
+      Vector2D diff = entityPos - playerPos;
       hotData.distanceSquared = diff.lengthSquared();
+      // Update cached position for next frame
+      hotData.position = entityPos;
       updatedCount++;
     }
   }
@@ -1066,6 +1472,12 @@ void AIManager::cleanupInactiveEntities() {
     m_storage.entities.pop_back();
     m_storage.behaviors.pop_back();
     m_storage.lastUpdateTimes.pop_back();
+    if (!m_storage.halfWidths.empty()) {
+      m_storage.halfWidths.pop_back();
+    }
+    if (!m_storage.halfHeights.empty()) {
+      m_storage.halfHeights.pop_back();
+    }
   }
 
   AI_DEBUG("Cleaned up " + std::to_string(toRemove.size()) +
@@ -1112,6 +1524,19 @@ uint64_t AIManager::getCurrentTimeNanos() {
       .count();
 }
 
+void AIManager::updateEntityExtents(EntityPtr entity, float halfW, float halfH) {
+  if (!entity) return;
+  std::unique_lock<std::shared_mutex> lock(m_entitiesMutex);
+  auto it = m_entityToIndex.find(entity);
+  if (it != m_entityToIndex.end()) {
+    size_t index = it->second;
+    if (index < m_storage.halfWidths.size()) {
+      m_storage.halfWidths[index] = std::max(1.0f, halfW);
+      m_storage.halfHeights[index] = std::max(1.0f, halfH);
+    }
+  }
+}
+
 int AIManager::getEntityPriority(EntityPtr entity) const {
   if (!entity)
     return DEFAULT_PRIORITY;
@@ -1137,3 +1562,33 @@ void AIManager::registerEntityForUpdates(EntityPtr entity, int priority,
   // Queue behavior assignment
   queueBehaviorAssignment(entity, behaviorName);
 }
+
+// ======================= Legacy Pathfinding Code Removed
+// ======================= All pathfinding functionality is now handled by
+// PathfinderManager. Use PathfinderManager::Instance() to access pathfinding
+// services.
+
+AIManager::~AIManager() {
+  if (!m_isShutdown) {
+    clean();
+  }
+}
+
+// processScheduledPathfinding method removed - all pathfinding now handled by
+// PathfinderManager
+
+// All pathfinding functionality has been moved to PathfinderManager
+// This section previously contained orphaned pathfinding methods that are no
+// longer needed
+
+// Centralized async request state management (replaces g_asyncStates static
+// map) Legacy pathfinding state management methods removed All pathfinding
+// functionality now handled by PathfinderManager
+
+// Direct PathfinderManager access for optimal performance
+PathfinderManager &AIManager::getPathfinderManager() const {
+  return PathfinderManager::Instance();
+}
+
+
+// All pathfinding components are now managed by PathfinderManager

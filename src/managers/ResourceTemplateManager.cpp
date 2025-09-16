@@ -8,7 +8,6 @@
 #include "managers/ResourceFactory.hpp"
 #include "utils/JsonReader.hpp"
 #include <algorithm>
-#include <unordered_set>
 
 using HammerEngine::JsonReader;
 using HammerEngine::JsonValue;
@@ -290,24 +289,11 @@ void ResourceTemplateManager::releaseHandle(
 
   auto id = handle.getId();
 
-  // PERFORMANCE OPTIMIZATION: Use unordered_set for O(1) duplicate checking
-  // instead of O(n) linear search through vector
-  static thread_local std::unordered_set<HammerEngine::ResourceHandle::HandleId>
-      freedSet;
-
-  // Only add if not already in the freed list (avoid duplicates)
-  if (freedSet.find(id) == freedSet.end()) {
+  // Check if already in the freed list to avoid duplicates
+  // Use std::find since the vector should be relatively small
+  auto it = std::find(m_freedHandleIds.begin(), m_freedHandleIds.end(), id);
+  if (it == m_freedHandleIds.end()) {
     m_freedHandleIds.push_back(id);
-    freedSet.insert(id);
-
-    // Periodically clean up the set if it grows too large
-    if (freedSet.size() > 1000) {
-      freedSet.clear();
-      // Rebuild set from current vector
-      for (const auto &freedId : m_freedHandleIds) {
-        freedSet.insert(freedId);
-      }
-    }
   }
 }
 
@@ -683,41 +669,6 @@ void ResourceTemplateManager::removeFromIndexes(
   }
 }
 
-void ResourceTemplateManager::rebuildIndexes() {
-  std::lock_guard<std::mutex> lock(m_indexMutex);
-
-  // Clear existing indexes
-  m_categoryIndex.clear();
-  m_typeIndex.clear();
-  m_nameIndex.clear();
-  m_idIndex.clear();
-
-  // Initialize empty vectors for all categories and types
-  for (int i = 0; i < static_cast<int>(ResourceCategory::COUNT); ++i) {
-    m_categoryIndex[static_cast<ResourceCategory>(i)] =
-        std::vector<HammerEngine::ResourceHandle>();
-  }
-
-  for (int i = 0; i < static_cast<int>(ResourceType::COUNT); ++i) {
-    m_typeIndex[static_cast<ResourceType>(i)] =
-        std::vector<HammerEngine::ResourceHandle>();
-  }
-
-  // Rebuild indexes from current resources
-  for (const auto &[handle, resource] : m_resourceTemplates) {
-    if (resource) {
-      m_categoryIndex[resource->getCategory()].push_back(handle);
-      m_typeIndex[resource->getType()].push_back(handle);
-      m_nameIndex[resource->getName()] = handle;
-      m_idIndex[resource->getId()] = handle;
-    }
-  }
-}
-
-bool ResourceTemplateManager::isValidResourceHandle(
-    HammerEngine::ResourceHandle handle) const {
-  return handle.isValid();
-}
 
 bool ResourceTemplateManager::checkForDuplicateName(
     const std::string &name, HammerEngine::ResourceHandle currentHandle) const {

@@ -5,8 +5,10 @@ set(CMAKE_CXX_STANDARD 20) # Match the main project's C++ standard
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # Check if we can build tests - require Boost Test for test framework
-find_package(Boost REQUIRED COMPONENTS container)
-if(NOT HAVE_BOOST_TEST)
+# Try to find both the unit_test_framework (used by tests) and container components.
+# If the unit_test_framework component is not found, skip tests.
+find_package(Boost COMPONENTS unit_test_framework container)
+if(NOT Boost_UNIT_TEST_FRAMEWORK_FOUND)
     message(STATUS "Skipping all tests - Boost Test not found (required)")
     return()
 endif()
@@ -19,11 +21,13 @@ set(MOCK_SOURCES
     mocks/MockPlayer.cpp
     mocks/MockNPC.cpp
     mocks/MockGameEngine.cpp
+    events/EventManagerTestAccess.cpp
 )
 
 add_library(TestMocks STATIC ${MOCK_SOURCES})
 target_include_directories(TestMocks PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/mocks
+    ${CMAKE_CURRENT_SOURCE_DIR}/events
     ${PROJECT_SOURCE_DIR}/include
 )
 target_link_libraries(TestMocks PUBLIC HammerEngineLib)
@@ -49,6 +53,9 @@ set(SIMPLE_TESTS
     world_manager_event_integration_tests
     ui_stress_test
     event_manager_behavior_tests
+    collision_system_tests
+    pathfinding_system_tests
+    pathfinder_manager_tests
 )
 
 # Complex tests (need mocks)
@@ -65,12 +72,15 @@ set(MOCK_TESTS
     particle_manager_threading_tests
     weather_event_tests
     behavior_functionality_tests
+    collision_pathfinding_benchmark
+    collision_pathfinding_integration_tests
 )
 
 # Tests that need special mock combinations
 set(INVENTORY_TESTS
     inventory_component_tests
     resource_integration_tests
+    resource_architecture_tests
 )
 
 # Create simple test executables
@@ -115,6 +125,12 @@ foreach(test_name ${SIMPLE_TESTS})
         set(test_source "world/WorldManagerEventIntegrationTests.cpp")
     elseif(${test_name} STREQUAL "event_manager_behavior_tests")
         set(test_source "events/EventManagerBehaviorTests.cpp")
+    elseif(${test_name} STREQUAL "collision_system_tests")
+        set(test_source "collisions/CollisionSystemTests.cpp")
+    elseif(${test_name} STREQUAL "pathfinding_system_tests")
+        set(test_source "pathfinding/PathfindingSystemTests.cpp")
+    elseif(${test_name} STREQUAL "pathfinder_manager_tests")
+        set(test_source "PathfinderManagerTests.cpp")
     endif()
 
     add_executable(${test_name} ${test_source})
@@ -141,6 +157,10 @@ foreach(test_name ${MOCK_TESTS})
         set(test_source "events/WeatherEventTest.cpp")
     elseif(${test_name} STREQUAL "behavior_functionality_tests")
         set(test_source "BehaviorFunctionalityTest.cpp")
+    elseif(${test_name} STREQUAL "collision_pathfinding_benchmark")
+        set(test_source "CollisionPathfindingBenchmark.cpp")
+    elseif(${test_name} STREQUAL "collision_pathfinding_integration_tests")
+        set(test_source "CollisionPathfindingIntegrationTests.cpp")
     elseif(${test_name} MATCHES "^particle_manager_")
         string(REPLACE "particle_manager_" "" suffix ${test_name})
         string(REPLACE "_tests" "" suffix ${suffix})
@@ -166,6 +186,8 @@ foreach(test_name ${INVENTORY_TESTS})
         set(test_source "resources/InventoryComponentTests.cpp")
     elseif(${test_name} STREQUAL "resource_integration_tests")
         set(test_source "resources/ResourceIntegrationTests.cpp")
+    elseif(${test_name} STREQUAL "resource_architecture_tests")
+        set(test_source "resources/ResourceArchitectureTests.cpp")
     endif()
 
     add_executable(${test_name} ${test_source} mocks/MockPlayer.cpp)
@@ -179,6 +201,7 @@ target_link_libraries(ui_stress_test PRIVATE Boost::container)
 target_compile_definitions(event_manager_tests PRIVATE RUNNING_TESTS)
 target_compile_definitions(event_types_tests PRIVATE RUNNING_TESTS)
 target_compile_definitions(ui_stress_test PRIVATE UI_STRESS_TEST_BUILD)
+target_link_libraries(event_manager_behavior_tests PRIVATE TestMocks)
 
 # Add save_manager_tests special mock
 target_sources(save_manager_tests PRIVATE mocks/MockPlayer.cpp)
@@ -192,3 +215,5 @@ foreach(test_name ${ALL_TESTS})
     set_tests_properties(${test_name} PROPERTIES 
         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 endforeach()
+# resource_factory_tests uses test access helper from tests/resources
+target_sources(resource_factory_tests PRIVATE resources/ResourceTestAccess.cpp)

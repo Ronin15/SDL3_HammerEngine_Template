@@ -9,6 +9,7 @@
 #include "events/WeatherEvent.hpp"
 #include "managers/WorldManager.hpp"
 #include "managers/EventManager.hpp"
+#include "EventManagerTestAccess.hpp"
 #include "world/WorldData.hpp"
 #include <memory>
 #include <string>
@@ -21,18 +22,12 @@
 struct WeatherEventFixture {
     WeatherEventFixture() {
         // Initialize managers used by region tests if not already
-        EventManager::Instance().prepareForStateTransition();
-        EventManager::Instance().clearAllEvents();
-        EventManager::Instance().clearAllHandlers();
-        EventManager::Instance().init();
+        EventManagerTestAccess::reset();
         WorldManager::Instance().init();
     }
 
     ~WeatherEventFixture() {
         // Cleanup after tests
-        EventManager::Instance().prepareForStateTransition();
-        EventManager::Instance().clearAllEvents();
-        EventManager::Instance().clearAllHandlers();
         EventManager::Instance().clean();
         WorldManager::Instance().clean();
     }

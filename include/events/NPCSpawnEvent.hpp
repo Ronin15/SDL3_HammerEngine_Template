@@ -61,6 +61,12 @@ struct SpawnParameters {
     // Constructor with commonly used parameters
     explicit SpawnParameters(const std::string& type, int count = 1, float radius = 0.0f)
         : npcType(type), count(count), spawnRadius(radius) {}
+
+    // Optional area constraints for spawns
+    bool useAreaRect{false};
+    float areaMinX{0.0f}, areaMinY{0.0f}, areaMaxX{0.0f}, areaMaxY{0.0f};
+    bool useAreaCircle{false};
+    float areaCenterX{0.0f}, areaCenterY{0.0f}, areaRadius{0.0f};
 };
 
 class NPCSpawnEvent : public Event {
@@ -125,6 +131,18 @@ public:
     // Direct spawn control (for scripting)
     static EntityPtr forceSpawnNPC(const std::string& npcType, float x, float y);
     static std::vector<EntityPtr> forceSpawnNPCs(const SpawnParameters& params, float x, float y);
+    
+    // Area constraint configuration for the spawn event
+    void setAreaConstraints(float minX, float minY, float maxX, float maxY) {
+        m_constrainToArea = true;
+        m_constraintMinX = minX;
+        m_constraintMinY = minY;
+        m_constraintMaxX = maxX;
+        m_constraintMaxY = maxY;
+    }
+    
+    void enableAreaConstraints(bool enable) { m_constrainToArea = enable; }
+    bool hasAreaConstraints() const { return m_constrainToArea; }
 
 private:
     std::string m_name;
@@ -167,6 +185,11 @@ private:
 
     // Tracking spawned entities (for counting/statistics only - not ownership)
     std::vector<EntityWeakPtr> m_spawnedEntities;
+    
+    // Area constraint system for village/event confinement
+    bool m_constrainToArea{false};
+    float m_constraintMinX{0.0f}, m_constraintMinY{0.0f};
+    float m_constraintMaxX{0.0f}, m_constraintMaxY{0.0f};
 
     // Helper methods
     bool checkProximityCondition() const;

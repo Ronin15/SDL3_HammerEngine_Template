@@ -43,7 +43,6 @@ declare -A PROFILE_TESTS=(
     ["buffer_utilization"]="buffer_utilization_tests"
     ["thread_safe_ai"]="thread_safe_ai_manager_tests"
     ["thread_safe_ai_integration"]="thread_safe_ai_integration_tests"
-    ["thread_system"]="thread_system_tests"
     ["save_manager"]="save_manager_tests"
     ["ui_stress"]="ui_stress_test"
     ["resource_manager"]="resource_manager_tests"
@@ -59,6 +58,10 @@ declare -A PROFILE_TESTS=(
     ["resource_factory"]="resource_factory_tests"
     ["resource_template_json"]="resource_template_manager_json_tests"
     ["resource_edge_case"]="resource_edge_case_tests"
+    ["collision_system"]="collision_system_tests"
+    ["pathfinding_system"]="pathfinding_system_tests"
+    ["collision_pathfinding_bench"]="collision_pathfinding_benchmark"
+    ["collision_pathfinding_integration"]="collision_pathfinding_integration_tests"
 )
 
 # Performance tracking
@@ -510,7 +513,7 @@ EOF
 EOF
 
     # Add performance systems analysis
-    for test_name in "particle_core" "particle_performance" "particle_threading" "particle_weather" "buffer_utilization" "thread_system" "save_manager" "ui_stress"; do
+    for test_name in "particle_core" "particle_performance" "particle_threading" "particle_weather" "buffer_utilization" "save_manager" "ui_stress"; do
         if [[ -n "${PROFILE_TESTS[$test_name]}" ]]; then
             local summary_file="${RESULTS_DIR}/summaries/${test_name}_summary.txt"
             if [[ -f "${summary_file}" ]]; then
@@ -660,7 +663,7 @@ run_targeted_profiling() {
             ;;
         "performance"|"perf")
             section_header "PERFORMANCE CRITICAL PROFILING ANALYSIS"
-            for test_name in "particle_core" "particle_performance" "particle_threading" "particle_weather" "buffer_utilization" "thread_system" "save_manager" "ui_stress"; do
+            for test_name in "particle_core" "particle_performance" "particle_threading" "particle_weather" "buffer_utilization" "save_manager" "ui_stress"; do
                 if [[ -n "${PROFILE_TESTS[$test_name]}" ]]; then
                     run_callgrind_profiling "${test_name}" "${PROFILE_TESTS[$test_name]}"
                     echo ""

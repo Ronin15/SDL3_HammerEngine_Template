@@ -20,11 +20,11 @@
 
 namespace HammerEngine {
 enum class LogLevel : uint8_t {
-  CRITICAL = 0,   // Always logs (even in release for crashes)
-  ERROR = 1,      // Debug only
-  WARNING = 2,    // Debug only
-  INFO = 3,       // Debug only
-  DEBUG_LEVEL = 4 // Debug only (renamed to avoid macro conflicts)
+  CRITICAL = 0,     // Always logs (even in release for crashes)
+  ERROR_LEVEL = 1,  // Debug only (renamed to avoid macro conflicts)
+  WARNING = 2,      // Debug only
+  INFO = 3,         // Debug only
+  DEBUG_LEVEL = 4   // Debug only (renamed to avoid macro conflicts)
 };
 
 #ifdef DEBUG
@@ -72,7 +72,7 @@ private:
     switch (level) {
     case LogLevel::CRITICAL:
       return "CRITICAL";
-    case LogLevel::ERROR:
+    case LogLevel::ERROR_LEVEL:
       return "ERROR";
     case LogLevel::WARNING:
       return "WARNING";
@@ -90,7 +90,7 @@ private:
 #define HAMMER_CRITICAL(system, msg)                                           \
   HammerEngine::Logger::Log(HammerEngine::LogLevel::CRITICAL, system, msg)
 #define HAMMER_ERROR(system, msg)                                              \
-  HammerEngine::Logger::Log(HammerEngine::LogLevel::ERROR, system, msg)
+  HammerEngine::Logger::Log(HammerEngine::LogLevel::ERROR_LEVEL, system, msg)
 #define HAMMER_WARN(system, msg)                                               \
   HammerEngine::Logger::Log(HammerEngine::LogLevel::WARNING, system, msg)
 #define HAMMER_INFO(system, msg)                                               \
@@ -289,6 +289,19 @@ inline std::mutex Logger::s_logMutex{};
 #define NPC_WARN(msg) HAMMER_WARN("NPC", msg)
 #define NPC_INFO(msg) HAMMER_INFO("NPC", msg)
 #define NPC_DEBUG(msg) HAMMER_DEBUG("NPC", msg)
+
+// Collision and Pathfinding Systems
+#define COLLISION_CRITICAL(msg) HAMMER_CRITICAL("CollisionManager", msg)
+#define COLLISION_ERROR(msg) HAMMER_ERROR("CollisionManager", msg)
+#define COLLISION_WARN(msg) HAMMER_WARN("CollisionManager", msg)
+#define COLLISION_INFO(msg) HAMMER_INFO("CollisionManager", msg)
+#define COLLISION_DEBUG(msg) HAMMER_DEBUG("CollisionManager", msg)
+
+#define PATHFIND_CRITICAL(msg) HAMMER_CRITICAL("Pathfinding", msg)
+#define PATHFIND_ERROR(msg) HAMMER_ERROR("Pathfinding", msg)
+#define PATHFIND_WARN(msg) HAMMER_WARN("Pathfinding", msg)
+#define PATHFIND_INFO(msg) HAMMER_INFO("Pathfinding", msg)
+#define PATHFIND_DEBUG(msg) HAMMER_DEBUG("Pathfinding", msg)
 
 // Benchmark mode convenience macros
 #define HAMMER_ENABLE_BENCHMARK_MODE()                                         \

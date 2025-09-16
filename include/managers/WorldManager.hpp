@@ -102,6 +102,12 @@ public:
     const HammerEngine::WorldData* getWorldData() const { return m_currentWorld.get(); }
     
     /**
+     * @brief Gets the current world version for change detection
+     * @return Current world version (increments on tile changes)
+     */
+    uint64_t getWorldVersion() const { return m_worldVersion.load(std::memory_order_acquire); }
+    
+    /**
      * @brief Gets the world dimensions in tiles
      * @param width Output world width
      * @param height Output world height  
@@ -143,6 +149,9 @@ private:
     mutable std::shared_mutex m_worldMutex;
     std::atomic<bool> m_initialized{false};
     bool m_isShutdown{false};
+    
+    // World version tracking for change detection by other systems
+    std::atomic<uint64_t> m_worldVersion{0};
     
     bool m_renderingEnabled{true};
     int m_cameraX{0};

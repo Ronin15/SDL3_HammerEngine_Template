@@ -4,6 +4,8 @@
  */
 
 #include "ai/behaviors/IdleBehavior.hpp"
+#include "managers/CollisionManager.hpp"
+#include "ai/internal/Crowd.hpp"
 #include <cmath>
 
 IdleBehavior::IdleBehavior(IdleMode mode, float idleRadius)
@@ -174,11 +176,15 @@ void IdleBehavior::updateSubtleSway(EntityPtr entity, EntityState &state) {
     // Generate gentle swaying direction
     Vector2D swayDirection = generateRandomOffset();
     swayDirection.normalize();
-    entity->setVelocity(swayDirection * 20.0f); // Gentle sway speed
+    entity->setVelocity(swayDirection * 35.0f); // Increased from 20px for world-scale movement
     state.lastMovementTime = currentTime;
     state.nextMovementTime = currentTime + getRandomMovementInterval();
   }
   // Keep velocity applied for smooth animation - don't reset to zero
+  // Apply very light separation (decimated) so idlers don't stack perfectly
+  applyDecimatedSeparation(entity, entity->getPosition(), entity->getVelocity(),
+                           35.0f, 30.0f, 0.15f, 4, state.lastSepTick,
+                           state.lastSepVelocity);
 }
 
 void IdleBehavior::updateOccasionalTurn(EntityPtr entity, EntityState &state) {
@@ -206,11 +212,14 @@ void IdleBehavior::updateLightFidget(EntityPtr entity, EntityState &state) {
     // Generate light fidgeting direction
     Vector2D fidgetDirection = generateRandomOffset();
     fidgetDirection.normalize();
-    entity->setVelocity(fidgetDirection * 25.0f); // Light fidget speed
+    entity->setVelocity(fidgetDirection * 40.0f); // Increased from 25px for world-scale fidgeting
     state.lastMovementTime = currentTime;
     state.nextMovementTime = currentTime + getRandomMovementInterval();
   }
-  // Keep velocity applied for smooth animation
+  // Keep velocity applied for smooth animation and apply very light separation (decimated)
+  applyDecimatedSeparation(entity, entity->getPosition(), entity->getVelocity(),
+                           40.0f, 30.0f, 0.15f, 4, state.lastSepTick,
+                           state.lastSepVelocity);
 
   // Handle turning
   if (m_turnFrequency > 0.0f && currentTime >= state.nextTurnTime) {

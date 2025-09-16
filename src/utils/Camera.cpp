@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <cmath>
 #include <random>
+#include "managers/WorldManager.hpp"
 
 namespace HammerEngine {
 
@@ -111,7 +112,12 @@ void Camera::update(float deltaTime) {
 
             m_position.setX(newX);
             m_position.setY(newY);
-        }
+    }
+}
+
+    // Ensure final camera position respects world bounds across all modes
+    if (m_config.clampToWorldBounds) {
+        clampToWorldBounds();
     }
 }
 
@@ -342,6 +348,28 @@ void Camera::updateFollowMode(float deltaTime) {
 }
 
 void Camera::clampToWorldBounds() {
+    // Auto-sync world bounds with WorldManager if enabled
+    if (m_autoSyncWorldBounds) {
+        try {
+            const auto &wm = WorldManager::Instance();
+            if (wm.hasActiveWorld()) {
+                uint64_t currentVersion = wm.getWorldVersion();
+                if (currentVersion != m_lastWorldVersion) {
+                    float minX = 0.0f, minY = 0.0f, maxX = 0.0f, maxY = 0.0f;
+                    if (wm.getWorldBounds(minX, minY, maxX, maxY)) {
+                        m_worldBounds.minX = minX;
+                        m_worldBounds.minY = minY;
+                        m_worldBounds.maxX = maxX;
+                        m_worldBounds.maxY = maxY;
+                        m_lastWorldVersion = currentVersion;
+                    }
+                }
+            }
+        } catch (...) {
+            // If WorldManager is unavailable, keep current bounds
+        }
+    }
+
     float halfViewWidth = m_viewport.halfWidth();
     float halfViewHeight = m_viewport.halfHeight();
     

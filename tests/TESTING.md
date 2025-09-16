@@ -2,7 +2,7 @@
 
 This document provides a comprehensive guide to the testing framework used in the Hammer Game Engine project. All tests use the Boost Test Framework for consistency and are organized by component.
 
-**Current Test Coverage:** 21+ individual test suites covering AI systems, AI behaviors, UI performance, core systems, event management, particle systems, and utility components with both functional validation and performance benchmarking.
+**Current Test Coverage:** 24+ individual test suites covering AI systems, AI behaviors, UI performance, core systems, collision detection, pathfinding, event management, particle systems, and utility components with both functional validation and performance benchmarking.
 
 ## Test Suites Overview
 
@@ -30,13 +30,26 @@ The Hammer Game Engine has the following test suites:
    - Event Manager Scaling Benchmark: Performance testing for event system scalability
    - Particle Manager Tests: Comprehensive particle system validation covering core functionality, weather integration, performance, and threading
 
-4. **Utility System Tests**
+4. **Collision System Tests**
+   - AABB Tests: Validate axis-aligned bounding box intersection, containment, and closest point calculations
+   - SpatialHash Tests: Test spatial hash insertion, removal, updating, and querying with deduplication
+   - Collision Performance Tests: Benchmark insertion, query, and update operations with up to 10K entities
+   - Collision Stress Tests: High-density collision detection and boundary condition testing
+
+5. **Pathfinding System Tests**
+   - PathfindingGrid Tests: Validate A* pathfinding algorithm with grid coordinate conversion
+   - Pathfinding Configuration Tests: Test diagonal movement, cost configuration, and iteration limits
+   - Dynamic Weight Tests: Validate weight-based avoidance areas and path cost modification
+   - Pathfinding Performance Tests: Benchmark pathfinding across various grid sizes (50x50 to 200x200)
+   - Edge Case Tests: Test blocked start/goal positions, extreme distances, and nearest open cell finding
+
+6. **Utility System Tests**
    - JsonReader Tests: RFC 8259 compliant JSON parser validation with comprehensive error handling and type safety testing
 
 **Test Execution Categories:**
-- **Core Tests** (8 suites): Fast functional validation (~3-6 minutes total)
-- **Benchmarks** (3 suites): Performance and scalability testing (~5-15 minutes total)
-- **Total Coverage**: 17+ test executables with comprehensive automation scripts
+- **Core Tests** (11 suites): Fast functional validation (~4-8 minutes total)
+- **Benchmarks** (4 suites): Performance and scalability testing (~6-18 minutes total)
+- **Total Coverage**: 24+ test executables with comprehensive automation scripts
 
 ## Running Tests
 
@@ -56,11 +69,14 @@ Each test suite has dedicated scripts in the `tests/test_scripts/` directory:
 ./tests/test_scripts/run_save_tests.sh                  # Save manager and BinarySerializer tests
 ./tests/test_scripts/run_event_tests.sh                 # Event manager tests
 ./tests/test_scripts/run_json_reader_tests.sh           # JSON parser validation tests
+./tests/test_scripts/run_collision_tests.sh             # Collision system and spatial hash tests
+./tests/test_scripts/run_pathfinding_tests.sh           # Pathfinding algorithm and grid tests
 
 # Performance scaling benchmarks (slow execution)
 ./tests/test_scripts/run_event_scaling_benchmark.sh     # Event manager scaling benchmark
 ./tests/test_scripts/run_ai_benchmark.sh                # AI scaling benchmark with realistic automatic threading
 ./tests/test_scripts/run_ui_stress_tests.sh             # UI stress and performance tests
+./tests/test_scripts/run_collision_pathfinding_benchmark.sh # Collision and pathfinding performance benchmarks
 
 # Run all tests
 ./tests/test_scripts/run_all_tests.sh                   # Run all test scripts sequentially
@@ -104,12 +120,16 @@ tests/test_scripts/run_behavior_functionality_tests.bat # Comprehensive AI behav
 tests/test_scripts/run_ai_benchmark.bat                 # AI scaling benchmark with realistic automatic threading
 tests/test_scripts/run_save_tests.bat                   # Save manager and BinarySerializer tests
 tests/test_scripts/run_event_tests.bat                  # Event manager tests
+tests/test_scripts/run_collision_tests.bat              # Collision system and spatial hash tests
+tests/test_scripts/run_pathfinding_tests.bat            # Pathfinding algorithm and grid tests
+
 tests/test_scripts/run_json_reader_tests.bat            # JSON parser validation tests
 
 # Performance scaling benchmarks (slow execution)
 tests/test_scripts/run_event_scaling_benchmark.bat      # Event manager scaling benchmark
 tests/test_scripts/run_ai_benchmark.bat                 # AI scaling benchmark
 tests/test_scripts/run_ui_stress_tests.bat              # UI stress and performance tests
+tests/test_scripts/run_collision_pathfinding_benchmark.bat # Collision and pathfinding performance benchmarks
 
 # Run all tests
 tests/test_scripts/run_all_tests.bat                    # Run all test scripts sequentially
@@ -585,6 +605,137 @@ The particle manager tests are integrated into the main test runner:
 # Core functionality only (includes particle manager core tests)
 ./tests/test_scripts/run_all_tests.sh --core-only
 ```
+
+### Collision System Tests
+
+Located in `tests/collisions/CollisionSystemTests.cpp`, these tests comprehensively validate the spatial hash collision system:
+
+#### Test Coverage
+
+1. **AABB Tests** (`AABBTests` suite):
+   - Basic bounding box properties (left, right, top, bottom)
+   - Intersection detection between AABBs
+   - Point containment testing
+   - Closest point calculation for AABBs
+
+2. **SpatialHash Tests** (`SpatialHashTests` suite):
+   - Entity insertion and spatial partitioning
+   - Entity removal and cell cleanup
+   - Position updates with cell transitions
+   - Query operations with result deduplication
+   - Clear operations for spatial hash cleanup
+
+3. **Performance Tests** (`CollisionPerformanceTests` suite):
+   - Insertion performance with up to 10,000 entities
+   - Query performance across various entity densities
+   - Update performance during entity movement
+   - Scalability benchmarking with performance assertions
+
+4. **Stress Tests** (`CollisionStressTests` suite):
+   - High-density collision detection (20 entities per cell)
+   - Boundary condition handling
+   - Large entity spanning multiple cells
+   - Edge case validation
+
+#### Running Collision Tests
+
+```bash
+# Linux/macOS
+./tests/test_scripts/run_collision_tests.sh [--verbose]
+
+# Windows
+tests/test_scripts/run_collision_tests.bat [--verbose]
+```
+
+**Performance Targets:**
+- SpatialHash insertion: < 50μs per entity
+- SpatialHash query: < 100μs per query  
+- SpatialHash update: < 75μs per update
+
+### Pathfinding System Tests
+
+Located in `tests/pathfinding/PathfindingSystemTests.cpp`, these tests validate the A* pathfinding implementation:
+
+#### Test Coverage
+
+1. **PathfindingGrid Basic Tests** (`PathfindingGridBasicTests` suite):
+   - Grid coordinate conversion (world ↔ grid)
+   - Bounds checking for grid coordinates
+   - Pathfinding system configuration (diagonal movement, costs, iteration limits)
+
+2. **Algorithm Tests** (`PathfindingAlgorithmTests` suite):
+   - A* pathfinding correctness validation
+   - Invalid start/goal position handling
+   - Same start/goal position edge cases
+   - Diagonal vs orthogonal movement comparison
+
+3. **Weight System Tests** (`PathfindingWeightTests` suite):
+   - Dynamic weight area application
+   - Weight circle placement and overlapping
+   - Path cost modification through weight systems
+
+4. **Performance Tests** (`PathfindingPerformanceTests` suite):
+   - Pathfinding across various grid sizes (50x50 to 200x200)
+   - Iteration limit impact on performance
+   - Memory usage validation through stress testing
+
+5. **Edge Cases** (`PathfindingEdgeCaseTests` suite):
+   - Nearest open cell finding for blocked positions
+   - Pathfinding with dynamic weight areas
+   - Extreme distance pathfinding
+
+#### Running Pathfinding Tests
+
+```bash
+# Linux/macOS
+./tests/test_scripts/run_pathfinding_tests.sh [--verbose]
+
+# Windows
+tests/test_scripts/run_pathfinding_tests.bat [--verbose]
+```
+
+**Performance Targets:**
+- Small grids (≤100x100): < 10ms per pathfinding request
+- Large grids (≤200x200): < 50ms per pathfinding request
+- Iteration limits prevent indefinite stalls
+
+### Collision & Pathfinding Performance Benchmark
+
+Located in `tests/CollisionPathfindingBenchmark.cpp`, this comprehensive benchmark suite measures performance across multiple scenarios:
+
+#### Benchmark Coverage
+
+1. **SpatialHash Benchmarks**:
+   - Insertion scaling (100 to 10,000 entities)
+   - Query performance with varying entity densities
+   - Update performance during entity movement
+
+2. **Pathfinding Benchmarks**:
+   - Grid size scaling (50x50 to 200x200)
+   - Weighted pathfinding with avoidance areas
+   - Iteration limit impact analysis
+
+3. **Data Collection**:
+   - CSV export for detailed analysis
+   - Operations per second metrics
+   - Average time per operation
+   - Success rate tracking
+
+#### Running Performance Benchmarks
+
+```bash
+# Linux/macOS
+./tests/test_scripts/run_collision_pathfinding_benchmark.sh [--verbose]
+
+# Windows
+tests/test_scripts/run_collision_pathfinding_benchmark.bat [--verbose]
+```
+
+**Estimated Runtime:** 2-5 minutes for complete benchmark suite
+
+**Output Files:**
+- `test_results/collision_pathfinding_benchmark.csv` - Detailed metrics for analysis
+- `test_results/collision_pathfinding_benchmark_results.txt` - Human-readable results
 
 #### Test Status Summary
 

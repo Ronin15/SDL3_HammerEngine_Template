@@ -9,14 +9,17 @@
 #include "ai/behaviors/PatrolBehavior.hpp"
 #include "ai/behaviors/WanderBehavior.hpp"
 #include "core/GameEngine.hpp"
+#include "core/Logger.hpp"
 #include "events/NPCSpawnEvent.hpp"
 #include "events/ResourceChangeEvent.hpp"
 #include "events/SceneChangeEvent.hpp"
 #include "events/WeatherEvent.hpp"
 #include "managers/AIManager.hpp"
+#include "managers/CollisionManager.hpp"
 #include "managers/EventManager.hpp"
 #include "managers/InputManager.hpp"
 #include "managers/ParticleManager.hpp"
+#include "managers/PathfinderManager.hpp"
 #include "managers/ResourceTemplateManager.hpp"
 #include "managers/UIManager.hpp"
 #include "managers/WorldManager.hpp"
@@ -65,6 +68,7 @@ bool EventDemoState::enter() {
 
     // Create player
     m_player = std::make_shared<Player>();
+    m_player->registerCollisionBody();
     m_player->initializeInventory(); // Initialize inventory after construction
     m_player->setPosition(Vector2D(m_worldWidth / 2, m_worldHeight / 2));
 
@@ -225,9 +229,21 @@ bool EventDemoState::exit() {
 
     // Optional: leave global handlers intact for other states; no blanket clear here
 
-    // Use AIManager's prepareForStateTransition for architectural consistency
+    // Use manager prepareForStateTransition methods for deterministic cleanup
     AIManager &aiMgr = AIManager::Instance();
     aiMgr.prepareForStateTransition();
+
+    // Clean collision state before other systems
+    CollisionManager &collisionMgr = CollisionManager::Instance();
+    if (collisionMgr.isInitialized() && !collisionMgr.isShutdown()) {
+      collisionMgr.prepareForStateTransition();
+    }
+
+    // Clean pathfinding state for fresh start
+    PathfinderManager &pathfinderMgr = PathfinderManager::Instance();
+    if (pathfinderMgr.isInitialized() && !pathfinderMgr.isShutdown()) {
+      pathfinderMgr.prepareForStateTransition();
+    }
 
     // Simple particle cleanup - let prepareForStateTransition handle everything
     ParticleManager &particleMgr = ParticleManager::Instance();
@@ -1404,7 +1420,6 @@ void EventDemoState::setupAIBehaviors() {
   if (!aiMgr.hasBehavior("Wander")) {
     auto wanderBehavior = std::make_unique<WanderBehavior>(
         WanderBehavior::WanderMode::MEDIUM_AREA, 80.0f);
-    wanderBehavior->setScreenDimensions(m_worldWidth, m_worldHeight);
     aiMgr.registerBehavior("Wander", std::move(wanderBehavior));
     GAMESTATE_INFO("EventDemoState: Registered Wander behavior");
   }
@@ -1412,7 +1427,6 @@ void EventDemoState::setupAIBehaviors() {
   if (!aiMgr.hasBehavior("SmallWander")) {
     auto smallWanderBehavior = std::make_unique<WanderBehavior>(
         WanderBehavior::WanderMode::SMALL_AREA, 60.0f);
-    smallWanderBehavior->setScreenDimensions(m_worldWidth, m_worldHeight);
     aiMgr.registerBehavior("SmallWander", std::move(smallWanderBehavior));
     GAMESTATE_INFO("EventDemoState: Registered SmallWander behavior");
   }
@@ -1420,7 +1434,6 @@ void EventDemoState::setupAIBehaviors() {
   if (!aiMgr.hasBehavior("LargeWander")) {
     auto largeWanderBehavior = std::make_unique<WanderBehavior>(
         WanderBehavior::WanderMode::LARGE_AREA, 100.0f);
-    largeWanderBehavior->setScreenDimensions(m_worldWidth, m_worldHeight);
     aiMgr.registerBehavior("LargeWander", std::move(largeWanderBehavior));
     GAMESTATE_INFO("EventDemoState: Registered LargeWander behavior");
   }
@@ -1428,7 +1441,6 @@ void EventDemoState::setupAIBehaviors() {
   if (!aiMgr.hasBehavior("EventWander")) {
     auto eventWanderBehavior = std::make_unique<WanderBehavior>(
         WanderBehavior::WanderMode::EVENT_TARGET, 70.0f);
-    eventWanderBehavior->setScreenDimensions(m_worldWidth, m_worldHeight);
     aiMgr.registerBehavior("EventWander", std::move(eventWanderBehavior));
     GAMESTATE_INFO("EventDemoState: Registered EventWander behavior");
   }
@@ -1436,7 +1448,6 @@ void EventDemoState::setupAIBehaviors() {
   if (!aiMgr.hasBehavior("Patrol")) {
     auto patrolBehavior = std::make_unique<PatrolBehavior>(
         PatrolBehavior::PatrolMode::FIXED_WAYPOINTS, 75.0f, true);
-    patrolBehavior->setScreenDimensions(m_worldWidth, m_worldHeight);
     aiMgr.registerBehavior("Patrol", std::move(patrolBehavior));
     GAMESTATE_INFO("EventDemoState: Registered Patrol behavior");
   }
@@ -1444,7 +1455,6 @@ void EventDemoState::setupAIBehaviors() {
   if (!aiMgr.hasBehavior("RandomPatrol")) {
     auto randomPatrolBehavior = std::make_unique<PatrolBehavior>(
         PatrolBehavior::PatrolMode::RANDOM_AREA, 85.0f, false);
-    randomPatrolBehavior->setScreenDimensions(m_worldWidth, m_worldHeight);
     aiMgr.registerBehavior("RandomPatrol", std::move(randomPatrolBehavior));
     GAMESTATE_INFO("EventDemoState: Registered RandomPatrol behavior");
   }
@@ -1452,7 +1462,6 @@ void EventDemoState::setupAIBehaviors() {
   if (!aiMgr.hasBehavior("CirclePatrol")) {
     auto circlePatrolBehavior = std::make_unique<PatrolBehavior>(
         PatrolBehavior::PatrolMode::CIRCULAR_AREA, 90.0f, false);
-    circlePatrolBehavior->setScreenDimensions(m_worldWidth, m_worldHeight);
     aiMgr.registerBehavior("CirclePatrol", std::move(circlePatrolBehavior));
     GAMESTATE_INFO("EventDemoState: Registered CirclePatrol behavior");
   }
@@ -1460,7 +1469,6 @@ void EventDemoState::setupAIBehaviors() {
   if (!aiMgr.hasBehavior("EventTarget")) {
     auto eventTargetBehavior = std::make_unique<PatrolBehavior>(
         PatrolBehavior::PatrolMode::EVENT_TARGET, 95.0f, false);
-    eventTargetBehavior->setScreenDimensions(m_worldWidth, m_worldHeight);
     aiMgr.registerBehavior("EventTarget", std::move(eventTargetBehavior));
     GAMESTATE_INFO("EventDemoState: Registered EventTarget behavior");
   }
@@ -1492,11 +1500,10 @@ EventDemoState::createNPCAtPositionWithoutBehavior(const std::string &npcType,
     }
 
     Vector2D position(x, y);
-    auto npc = std::make_shared<NPC>(textureID, position, 64, 64);
+    auto npc = NPC::create(textureID, position, 64, 64);
     npc->initializeInventory(); // Initialize inventory after construction
 
     npc->setWanderArea(0.0f, 0.0f, m_worldWidth, m_worldHeight);
-    npc->setBoundsCheckEnabled(false);
 
     m_spawnedNPCs.push_back(npc);
 
@@ -1690,11 +1697,10 @@ void EventDemoState::createNPCAtPosition(const std::string &npcType, float x,
     }
 
     Vector2D position(x, y);
-    auto npc = std::make_shared<NPC>(textureID, position, 64, 64);
+    auto npc = NPC::create(textureID, position, 64, 64);
     npc->initializeInventory(); // Initialize inventory after construction
 
     npc->setWanderArea(0.0f, 0.0f, m_worldWidth, m_worldHeight);
-    npc->setBoundsCheckEnabled(false);
 
     std::string behaviorName = determineBehaviorForNPCType(npcType);
 
@@ -1870,6 +1876,12 @@ void EventDemoState::initializeWorld() {
     GAMESTATE_INFO("Successfully loaded event demo world with seed: " + std::to_string(config.seed));
 
     // Setup camera to work with the world (will be called in initializeCamera)
+    // Update demo world dimensions to match generated world (pixels)
+    float minX = 0.0f, minY = 0.0f, maxX = 0.0f, maxY = 0.0f;
+    if (worldManager.getWorldBounds(minX, minY, maxX, maxY)) {
+      m_worldWidth = std::max(0.0f, maxX - minX);
+      m_worldHeight = std::max(0.0f, maxY - minY);
+    }
   }
 }
 
@@ -1905,8 +1917,7 @@ void EventDemoState::initializeCamera() {
     config.clampToWorldBounds = true; // Keep camera within world
     m_camera->setConfig(config);
 
-    // Set up world bounds for demo
-    setupCameraForWorld();
+    // Camera auto-synchronizes world bounds on update
   }
 }
 
@@ -1916,37 +1927,7 @@ void EventDemoState::updateCamera(float deltaTime) {
   }
 }
 
-void EventDemoState::setupCameraForWorld() {
-  if (!m_camera) {
-    return;
-  }
-
-  // Get actual world bounds from WorldManager
-  const WorldManager& worldManager = WorldManager::Instance();
-
-  HammerEngine::Camera::Bounds worldBounds;
-  float minX, minY, maxX, maxY;
-
-  if (worldManager.getWorldBounds(minX, minY, maxX, maxY)) {
-    // Convert tile coordinates to pixel coordinates (WorldManager returns tile coords)
-    // TileRenderer uses 32px per tile
-    const float TILE_SIZE = 32.0f;
-    worldBounds.minX = minX * TILE_SIZE;
-    worldBounds.minY = minY * TILE_SIZE;
-    worldBounds.maxX = maxX * TILE_SIZE;
-    worldBounds.maxY = maxY * TILE_SIZE;
-  } else {
-    // Fall back to demo world dimensions if no world is loaded
-    // EventDemoState uses 100x100 tiles
-    const float TILE_SIZE = 32.0f;
-    worldBounds.minX = 0.0f;
-    worldBounds.minY = 0.0f;
-    worldBounds.maxX = 100.0f * TILE_SIZE;  // 100 tiles * 32px = 3200px
-    worldBounds.maxY = 100.0f * TILE_SIZE;  // 100 tiles * 32px = 3200px
-  }
-
-  m_camera->setWorldBounds(worldBounds);
-}
+// Removed setupCameraForWorld(): camera manages world bounds itself
 
 void EventDemoState::applyCameraTransformation() {
   if (!m_camera) {

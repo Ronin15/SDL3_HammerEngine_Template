@@ -305,7 +305,8 @@ findstr /i "failure FAILED error.*in.*:" "%OUTPUT_FILE%" | findstr /n "^" | find
 if %ERRORLEVEL% neq 0 (
     echo No specific failure details found in output
     echo This may indicate a runtime crash or early termination
-)echo FAILED: %exec_name% (exit code: %test_result%) >> "%COMBINED_RESULTS%"
+)
+echo FAILED: %exec_name% (exit code: %test_result%) >> "%COMBINED_RESULTS%"
 set OVERALL_SUCCESS=false
 set /a FAILED_COUNT+=1
 

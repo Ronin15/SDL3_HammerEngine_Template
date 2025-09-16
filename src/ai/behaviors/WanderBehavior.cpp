@@ -4,14 +4,18 @@
  */
 
 #include "ai/behaviors/WanderBehavior.hpp"
+#include "ai/internal/Crowd.hpp"
+#include "managers/AIManager.hpp"
+#include "managers/WorldManager.hpp"
+#include "managers/PathfinderManager.hpp"
+#include "ai/internal/SpatialPriority.hpp"
 #include <algorithm>
 #include <cmath>
+#include <numeric>
 
 // Static thread-local RNG pool for memory optimization
 thread_local std::uniform_real_distribution<float>
     WanderBehavior::s_angleDistribution{0.0f, 2.0f * M_PI};
-thread_local std::uniform_real_distribution<float>
-    WanderBehavior::s_wanderOffscreenChance{0.0f, 1.0f};
 thread_local std::uniform_int_distribution<Uint64>
     WanderBehavior::s_delayDistribution{0, 5000};
 
@@ -63,14 +67,14 @@ void WanderBehavior::init(EntityPtr entity) {
   state.movementStarted = false;
 
   // Choose initial direction
-  chooseNewDirection(entity, false);
+  chooseNewDirection(entity);
 }
 
 void WanderBehavior::executeLogic(EntityPtr entity) {
   if (!entity || !m_active)
     return;
 
-  // Get entity state
+  // Get entity state  
   EntityState &state = m_entityStates[entity];
   Uint64 currentTime = SDL_GetTicks();
 
@@ -78,7 +82,11 @@ void WanderBehavior::executeLogic(EntityPtr entity) {
   if (!state.movementStarted) {
     if (currentTime - state.lastDirectionChangeTime >= state.startDelay) {
       state.movementStarted = true;
-      entity->setVelocity(state.currentDirection * m_speed);
+      Vector2D intended = state.currentDirection * m_speed;
+      // Separation decimation: compute at most every 2 ticks
+      applyDecimatedSeparation(entity, entity->getPosition(), intended,
+                               m_speed, 28.0f, 0.30f, 6, state.lastSepTick,
+                               state.lastSepVelocity);
     }
     return;
   }
@@ -90,29 +98,171 @@ void WanderBehavior::executeLogic(EntityPtr entity) {
   // frames.
   updateWanderState(entity);
 
-  // Always apply velocity (in case something external changed it)
-  entity->setVelocity(state.currentDirection * m_speed);
+  // Try to follow a short path towards the current direction destination
+  if (state.movementStarted) {
+    Uint64 now = SDL_GetTicks();
+    
+    // Dynamic movement distance based on local density and world scale
+    float baseDistance = std::min(600.0f, m_areaRadius * 1.5f); // Increased base distance
+    
+    // PERFORMANCE FIX: Check local entity density less frequently to avoid expensive CollisionManager calls
+    Vector2D position = entity->getPosition();
+    
+    // Cache crowd analysis results to avoid expensive collision queries every frame
+    int nearbyCount = state.cachedNearbyCount;
+    std::vector<Vector2D> nearbyPositions = state.cachedNearbyPositions;
+    
+    // Only update crowd analysis every 20-30 frames (333-500ms at 60 FPS) + entity staggering  
+    Uint32 frameInterval = 333 + (entity->getID() % 10) * 17; // 333-500ms range
+    if (now - state.lastCrowdAnalysis > frameInterval) {
+      float queryRadius = 120.0f;
+      nearbyCount = AIInternal::GetNearbyEntitiesWithPositions(entity, position, queryRadius, nearbyPositions);
+      state.cachedNearbyCount = nearbyCount;
+      state.cachedNearbyPositions = nearbyPositions;
+      state.lastCrowdAnalysis = now;
+    }
+    
+     // Dynamic distance adjustment based on crowding
+     float moveDistance = baseDistance;
+     
+     if (nearbyCount > 5) {
+       // Very high density: pick completely different target away from cluster
+       moveDistance = baseDistance * 3.0f; // Very long distance to escape cluster
+       
+       // Calculate cluster center and move in opposite direction
+       if (!nearbyPositions.empty()) {
+         Vector2D crowdCenter = std::accumulate(nearbyPositions.begin(), nearbyPositions.end(), Vector2D(0, 0));
+         crowdCenter = crowdCenter / static_cast<float>(nearbyPositions.size());
+         Vector2D escapeDirection = (position - crowdCenter).normalized();
+         
+         // Add some randomness to prevent all NPCs picking same escape route
+         float randomAngle = ((entity->getID() % 180) - 90) * M_PI / 180.0f; // -90 to +90 degrees
+         float cosAngle = cosf(randomAngle);
+         float sinAngle = sinf(randomAngle);
+         Vector2D rotatedEscape(
+           escapeDirection.getX() * cosAngle - escapeDirection.getY() * sinAngle,
+           escapeDirection.getX() * sinAngle + escapeDirection.getY() * cosAngle
+         );
+         
+         // Override current direction with escape direction
+         state.currentDirection = rotatedEscape;
+       }
+     } else if (nearbyCount > 3) {
+       // High density: encourage longer wandering to spread out
+       moveDistance = baseDistance * 2.0f; // Up to 1200px movement for spreading
+       
+       // Also bias direction away from crowd center
+       if (!nearbyPositions.empty()) {
+         Vector2D crowdCenter = std::accumulate(nearbyPositions.begin(), nearbyPositions.end(), Vector2D(0, 0));
+         crowdCenter = crowdCenter / static_cast<float>(nearbyPositions.size());
+         Vector2D awayFromCrowd = (position - crowdCenter).normalized();
+         // Blend current direction with anti-crowd direction
+         state.currentDirection = (state.currentDirection * 0.6f + awayFromCrowd * 0.4f).normalized();
+       }
+     } else if (nearbyCount > 1) {
+       // Medium density: moderate expansion
+       moveDistance = baseDistance * 1.3f;
+     }
+    
+    Vector2D dest = position + state.currentDirection * moveDistance;
+    
+    // PERFORMANCE FIX: Use cached world bounds instead of expensive WorldManager call
+    // Cache world bounds in entity state to avoid repeated WorldManager calls
+    if (state.cachedBounds.maxX == 0.0f) { // Initialize cached bounds once
+      float minX, minY, maxX, maxY;
+      if (WorldManager::Instance().getWorldBounds(minX, minY, maxX, maxY)) {
+        state.cachedBounds.minX = minX;
+        state.cachedBounds.minY = minY;
+        state.cachedBounds.maxX = maxX;
+        state.cachedBounds.maxY = maxY;
+      } else {
+        // Fallback bounds for performance
+        state.cachedBounds.minX = 0.0f;
+        state.cachedBounds.minY = 0.0f;
+        state.cachedBounds.maxX = 3200.0f;
+        state.cachedBounds.maxY = 3200.0f;
+      }
+    }
+    
+    // Use cached bounds for validation
+    const float MARGIN = 256.0f;
+    dest.setX(std::clamp(dest.getX(), state.cachedBounds.minX + MARGIN, state.cachedBounds.maxX - MARGIN));
+    dest.setY(std::clamp(dest.getY(), state.cachedBounds.minY + MARGIN, state.cachedBounds.maxY - MARGIN));
+    
+    // Additional validation: don't pathfind to current position
+    float distanceToGoal = (dest - position).length();
+    if (distanceToGoal < 64.0f) { // Too close to current position
+      return; // Skip pathfinding request entirely
+    }
+
+    // CACHE-AWARE PATHFINDING: Check for existing path first
+    bool needsNewPath = state.pathPoints.empty() || 
+                       state.currentPathIndex >= state.pathPoints.size() ||
+                       (now - state.lastPathUpdate) > 15000; // Only refresh after 15 seconds
+    
+    if (needsNewPath && state.cooldowns.canRequestPath(now)) {
+      // SMART REQUEST: Only request if goal significantly different from last request
+      static constexpr float MIN_GOAL_CHANGE = 200.0f; // Minimum distance change to justify new request
+      bool goalChanged = true;
+      if (!state.pathPoints.empty()) {
+        Vector2D lastGoal = state.pathPoints.back();
+        float goalDistance = (dest - lastGoal).length();
+        goalChanged = (goalDistance >= MIN_GOAL_CHANGE);
+      }
+      
+      if (goalChanged) {
+        // ASYNC PATHFINDING: Use background processing for wandering behavior
+        pathfinder().requestPath(
+            entity->getID(), entity->getPosition(), dest,
+            PathfinderManager::Priority::Normal,
+            [this, entity](EntityID, const std::vector<Vector2D>& path) {
+              auto stateIt = m_entityStates.find(entity);
+              if (stateIt != m_entityStates.end() && !path.empty()) {
+                stateIt->second.pathPoints = path;
+                stateIt->second.currentPathIndex = 0;
+                stateIt->second.lastPathUpdate = SDL_GetTicks();
+              }
+            });
+        state.cooldowns.applyPathCooldown(now, 5000); // Aggressive cooldown: 5 seconds between path requests
+      }
+    }
+    if (!state.pathPoints.empty() && state.currentPathIndex < state.pathPoints.size()) {
+      // Follow current path; velocity will be updated inside followPathStep
+      bool following = pathfinder().followPathStep(
+          entity, entity->getPosition(), state.pathPoints, state.currentPathIndex,
+          m_speed, state.navRadius);
+      if (following) {
+        // Apply decimated separation while following
+        applyDecimatedSeparation(entity, entity->getPosition(),
+                                 entity->getVelocity(), m_speed, 28.0f, 0.30f,
+                                 6, state.lastSepTick, state.lastSepVelocity);
+      }
+    } else {
+      // Always apply base velocity (in case something external changed it)
+      Vector2D intended = state.currentDirection * m_speed;
+      applyDecimatedSeparation(entity, entity->getPosition(), intended,
+                               m_speed, 28.0f, 0.30f, 6, state.lastSepTick,
+                               state.lastSepVelocity);
+    }
+  }
 }
 
 void WanderBehavior::updateWanderState(EntityPtr entity) {
   if (!entity)
     return;
 
-  EntityState &state = m_entityStates[entity];
+  // Check if entity state exists before getting reference - prevents heap-use-after-free
+  auto stateIt = m_entityStates.find(entity);
+  if (stateIt == m_entityStates.end()) {
+    return; // Entity state doesn't exist, nothing to update
+  }
+  
+  EntityState &state = stateIt->second;
   Uint64 currentTime = SDL_GetTicks();
 
-  Vector2D position = entity->getPosition();
-  Vector2D previousVelocity = entity->getVelocity();
-
-  // Check if entity is well offscreen and reset if needed
-  if (state.resetScheduled && isWellOffscreen(position)) {
-    resetEntityPosition(entity);
-    state.resetScheduled = false;
-    return;
-  }
-
-  // Control sprite flipping to avoid rapid flips
+  // Get current velocity and compare with stored previous velocity
   Vector2D currentVelocity = entity->getVelocity();
+  Vector2D previousVelocity = state.previousVelocity;
 
   // Check if there was a direction change that would cause a flip
   bool wouldFlip =
@@ -132,22 +282,64 @@ void WanderBehavior::updateWanderState(EntityPtr entity) {
     stableVelocity.normalize();
     stableVelocity = stableVelocity * m_speed;
 
-    // Apply the stable velocity
-    entity->setVelocity(stableVelocity);
+    // Apply the stable velocity with separation
+    applyDecimatedSeparation(entity, entity->getPosition(), stableVelocity,
+                             m_speed, 28.0f, 0.30f, 6, state.lastSepTick,
+                             state.lastSepVelocity);
   } else if (wouldFlip) {
     // Record the time of this flip
     state.lastDirectionFlip = currentTime;
   }
 
+  // Stall detection: scale with configured wander speed to prevent constant false stalls
+  float speed = entity->getVelocity().length();
+  const float stallSpeed = std::max(0.5f, m_speed * 0.5f); // px/s
+  const Uint64 stallMillis = 600; // ms
+    if (speed < stallSpeed) {
+      if (state.stallStart == 0) state.stallStart = currentTime;
+      else if (currentTime - state.stallStart >= stallMillis) {
+        // Clear path and pick a fresh direction to break clumps
+        state.pathPoints.clear();
+        state.currentPathIndex = 0;
+        state.lastPathUpdate = currentTime;
+        chooseNewDirection(entity);
+        state.cooldowns.applyPathCooldown(currentTime, 600); // prevent immediate re-request
+        state.stallStart = 0;
+        return;
+      }
+    } else {
+      state.stallStart = 0;
+  }
+
   // Check if it's time to change direction
   if (currentTime - state.lastDirectionChangeTime >=
       m_changeDirectionInterval) {
-    // Decide if we should wander offscreen
-    bool shouldWanderOffscreen =
-        (s_wanderOffscreenChance(getSharedRNG()) < m_offscreenProbability);
-    chooseNewDirection(entity, shouldWanderOffscreen);
+    chooseNewDirection(entity);
     state.lastDirectionChangeTime = currentTime;
   }
+
+  // Micro-jitter to break small jams (when moving slower than expected but not stalled)
+  if (speed < (m_speed * 1.5f) && speed >= stallSpeed) {
+    // Rotate current direction slightly
+    float jitter = (s_angleDistribution(getSharedRNG()) - static_cast<float>(M_PI)) * 0.1f; // ~±18deg
+    Vector2D dir = state.currentDirection;
+    float c = std::cos(jitter), s = std::sin(jitter);
+    Vector2D rotated(dir.getX() * c - dir.getY() * s, dir.getX() * s + dir.getY() * c);
+    if (rotated.length() > 0.001f) {
+      rotated.normalize();
+      state.currentDirection = rotated;
+      Vector2D intended = state.currentDirection * m_speed;
+      applyDecimatedSeparation(entity, entity->getPosition(), intended,
+                               m_speed, 28.0f, 0.30f, 6, state.lastSepTick,
+                               state.lastSepVelocity);
+    }
+  }
+
+  // No edge avoidance - let entities wander naturally like PatrolBehavior
+  // The pathfinding system and world collision will handle actual boundaries
+  
+  // Update previous velocity for next frame's flip detection
+  state.previousVelocity = currentVelocity;
 }
 
 void WanderBehavior::clean(EntityPtr entity) {
@@ -199,19 +391,12 @@ std::shared_ptr<AIBehavior> WanderBehavior::clone() const {
   auto cloned = std::make_shared<WanderBehavior>(
       m_speed, m_changeDirectionInterval, m_areaRadius);
   cloned->setCenterPoint(m_centerPoint);
-  cloned->setScreenDimensions(m_screenWidth, m_screenHeight);
-  cloned->setOffscreenProbability(m_offscreenProbability);
   cloned->setActive(m_active);
   return cloned;
 }
 
 void WanderBehavior::setCenterPoint(const Vector2D &centerPoint) {
   m_centerPoint = centerPoint;
-
-  // Estimate screen dimensions based on center point
-  // (We'll assume the center is roughly in the middle of the screen)
-  m_screenWidth = m_centerPoint.getX() * 2.0f;
-  m_screenHeight = m_centerPoint.getY() * 2.0f;
 }
 
 void WanderBehavior::setAreaRadius(float radius) { m_areaRadius = radius; }
@@ -222,164 +407,74 @@ void WanderBehavior::setChangeDirectionInterval(float interval) {
   m_changeDirectionInterval = interval;
 }
 
-void WanderBehavior::setScreenDimensions(float width, float height) {
-  m_screenWidth = width;
-  m_screenHeight = height;
-}
-
-void WanderBehavior::setOffscreenProbability(float probability) {
-  m_offscreenProbability = std::max(0.0f, std::min(1.0f, probability));
-}
-
-bool WanderBehavior::isWellOffscreen(const Vector2D &position) const {
-  const float buffer =
-      100.0f; // Distance past the edge to consider "well offscreen"
-  return position.getX() < -buffer ||
-         position.getX() > m_screenWidth + buffer ||
-         position.getY() < -buffer || position.getY() > m_screenHeight + buffer;
-}
-
-void WanderBehavior::resetEntityPosition(EntityPtr entity) {
-  if (!entity)
-    return;
-
-  // Ensure entity state exists
-  m_entityStates.try_emplace(entity, EntityState{});
-
-  // Calculate entry point on the opposite side of the screen
-  Vector2D position = entity->getPosition();
-  Vector2D newPosition(0.0f, 0.0f);
-
-  // Determine which side to come in from (opposite of where the entity exited)
-  if (position.getX() < 0) {
-    // Went off left side, come in from right using shared RNG
-    newPosition.setX(m_screenWidth - 50.0f);
-    newPosition.setY(s_wanderOffscreenChance(getSharedRNG()) * m_screenHeight);
-  } else if (position.getX() > m_screenWidth) {
-    // Went off right side, come in from left using shared RNG
-    newPosition.setX(50.0f);
-    newPosition.setY(s_wanderOffscreenChance(getSharedRNG()) * m_screenHeight);
-  } else if (position.getY() < 0) {
-    // Went off top, come in from bottom using shared RNG
-    newPosition.setX(s_wanderOffscreenChance(getSharedRNG()) * m_screenWidth);
-    newPosition.setY(m_screenHeight - 50.0f);
-  } else {
-    // Went off bottom, come in from top using shared RNG
-    newPosition.setX(s_wanderOffscreenChance(getSharedRNG()) * m_screenWidth);
-    newPosition.setY(50.0f);
-  }
-  // Set new position and choose a new direction
-  entity->setPosition(newPosition);
-  chooseNewDirection(entity, false);
-}
-
-void WanderBehavior::chooseNewDirection(EntityPtr entity,
-                                        bool wanderOffscreen) {
+void WanderBehavior::chooseNewDirection(EntityPtr entity) {
   if (!entity)
     return;
 
   // Get entity-specific state
   EntityState &state = m_entityStates[entity];
 
-  // Track if we're currently wandering offscreen
-  state.currentlyWanderingOffscreen = wanderOffscreen;
-
-  // If movement hasn't started yet, just set the direction but don't apply
-  // velocity
+  // If movement hasn't started yet, just set the direction but don't apply velocity
   bool applyVelocity = state.movementStarted;
 
-  if (wanderOffscreen) {
-    // Start wandering toward edge of screen by picking a direction toward
-    // nearest edge
-    Vector2D position = entity->getPosition();
+  // Generate a random angle using shared RNG
+  float angle = s_angleDistribution(getSharedRNG());
+  // Convert angle to direction vector
+  float x = std::cos(angle);
+  float y = std::sin(angle);
 
-    // Find closest edge and set direction toward it
-    float distToLeft = position.getX();
-    float distToRight = m_screenWidth - position.getX();
-    float distToTop = position.getY();
-    float distToBottom = m_screenHeight - position.getY();
-
-    // Find minimum distance to edge
-    float minDist =
-        std::min({distToLeft, distToRight, distToTop, distToBottom});
-
-    // Set direction toward closest edge
-    if (minDist == distToLeft) {
-      state.currentDirection = Vector2D(-1.0f, 0.0f);
-    } else if (minDist == distToRight) {
-      state.currentDirection = Vector2D(1.0f, 0.0f);
-    } else if (minDist == distToTop) {
-      state.currentDirection = Vector2D(0.0f, -1.0f);
-    } else {
-      state.currentDirection = Vector2D(0.0f, 1.0f);
-    }
-
-    // Add some randomness to the direction
-    float randomAngle = (s_angleDistribution(getSharedRNG()) - M_PI) *
-                        0.2f; // Small angle variation
-    float x = state.currentDirection.getX() * std::cos(randomAngle) -
-              state.currentDirection.getY() * std::sin(randomAngle);
-    float y = state.currentDirection.getX() * std::sin(randomAngle) +
-              state.currentDirection.getY() * std::cos(randomAngle);
-    state.currentDirection = Vector2D(x, y);
-    state.currentDirection.normalize();
-
-    // Schedule a reset once we go offscreen
-    state.resetScheduled = true;
-  } else {
-    // Generate a random angle using shared RNG
-    float angle = s_angleDistribution(getSharedRNG());
-    // Convert angle to direction vector
-    float x = std::cos(angle);
-    float y = std::sin(angle);
-
-    // Set the new direction
-    state.currentDirection = Vector2D(x, y);
-  }
+  // Set the new direction
+  state.currentDirection = Vector2D(x, y);
 
   // Apply the new direction to the entity only if movement has started
   if (applyVelocity) {
-    entity->setVelocity(state.currentDirection * m_speed);
+    Vector2D intended = state.currentDirection * m_speed;
+    applyDecimatedSeparation(entity, entity->getPosition(), intended,
+                             m_speed, 28.0f, 0.30f, 6, state.lastSepTick,
+                             state.lastSepVelocity);
   }
 
   // NPC class now handles sprite flipping based on velocity
 }
 
-void WanderBehavior::setupModeDefaults(WanderMode mode, float screenWidth,
-                                       float screenHeight) {
-  m_screenWidth = screenWidth;
-  m_screenHeight = screenHeight;
+void WanderBehavior::setupModeDefaults(WanderMode mode) {
+  // Use world bounds to set center point for world-scale wandering
+  float minX, minY, maxX, maxY;
+  if (WorldManager::Instance().getWorldBounds(minX, minY, maxX, maxY)) {
+    // WorldManager returns bounds in PIXELS; use directly
+    float worldWidth = (maxX - minX);
+    float worldHeight = (maxY - minY);
 
-  // Set center point to screen center by default
-  m_centerPoint = Vector2D(screenWidth * 0.5f, screenHeight * 0.5f);
+    // Set center point to world center
+    m_centerPoint = Vector2D(worldWidth * 0.5f, worldHeight * 0.5f);
+  } else {
+    // Use a reasonable default center for a medium-sized world
+    m_centerPoint = Vector2D(1000.0f, 1000.0f);
+  }
 
   switch (mode) {
   case WanderMode::SMALL_AREA:
-    // Small wander area - personal space around position
-    m_areaRadius = 75.0f;
-    m_changeDirectionInterval = 1500.0f; // Change direction more frequently
-    m_offscreenProbability = 0.05f;      // Very low chance to go offscreen
+    // Small personal space around current position - 10X larger
+    m_areaRadius = 1200.0f;
+    m_changeDirectionInterval = 1500.0f;
     break;
 
   case WanderMode::MEDIUM_AREA:
-    // Medium wander area - room/building sized
-    m_areaRadius = 200.0f;
-    m_changeDirectionInterval = 2500.0f; // Moderate direction changes
-    m_offscreenProbability = 0.10f;      // Low chance to go offscreen
+    // Room/building sized area - 10X larger for world scale
+    m_areaRadius = 4000.0f;
+    m_changeDirectionInterval = 2500.0f;
     break;
 
   case WanderMode::LARGE_AREA:
-    // Large wander area - village/district sized
-    m_areaRadius = 450.0f;
-    m_changeDirectionInterval = 3500.0f; // Less frequent direction changes
-    m_offscreenProbability = 0.20f;      // Higher chance to explore offscreen
+    // Village/district sized - 10X larger for true world-scale wandering
+    m_areaRadius = 8000.0f;
+    m_changeDirectionInterval = 3500.0f;
     break;
 
   case WanderMode::EVENT_TARGET:
-    // Wander around a specific target location (will be set later)
-    m_areaRadius = 150.0f;
-    m_changeDirectionInterval = 2000.0f; // Standard direction changes
-    m_offscreenProbability = 0.05f;      // Stay near the target
+    // Wander around a specific target location - 10X larger
+    m_areaRadius = 2500.0f;
+    m_changeDirectionInterval = 2000.0f;
     break;
   }
 }

@@ -5,8 +5,13 @@
 
 #include "ai/behaviors/FollowBehavior.hpp"
 #include "managers/AIManager.hpp"
+#include "managers/CollisionManager.hpp"
+#include "ai/internal/Crowd.hpp"
+#include "managers/PathfinderManager.hpp"
+#include "ai/internal/SpatialPriority.hpp"  // For PathPriority enum
 #include <algorithm>
 #include <cmath>
+#include "managers/WorldManager.hpp"
 
 // Static member initialization
 int FollowBehavior::s_nextFormationSlot = 0;
@@ -132,22 +137,98 @@ void FollowBehavior::executeLogic(EntityPtr entity) {
   }
 
   if (state.isFollowing) {
+    // Path-following to desired position if available
+    auto tryFollowPath = [&](Vector2D desiredPos, float speed)->bool {
+      const float nodeRadius = 20.0f; // Increased for faster path following
+      const uint64_t pathTTL = 3000; // Increased from 1500ms to 3s
+      
+      // Dynamic backoff: if in a backoff window, don't refresh — just try to follow existing path
+      if (SDL_GetTicks() < state.backoffUntil) {
+        bool following = pathfinder().followPathStep(entity, currentPos,
+                            state.pathPoints, state.currentPathIndex,
+                            speed, nodeRadius);
+        if (following) { state.lastProgressTime = SDL_GetTicks(); }
+        return following;
+      }
+
+      // PERFORMANCE: Reduce path request frequency with higher thresholds
+      const float GOAL_CHANGE_THRESH_SQUARED = 150.0f * 150.0f; // Increased from 64px to 150px
+      bool stale = (SDL_GetTicks() - state.lastPathUpdate) > pathTTL;
+      bool goalChanged = true;
+      if (!state.pathPoints.empty()) {
+        Vector2D lastGoal = state.pathPoints.back();
+        // Use squared distance for performance
+        goalChanged = ((desiredPos - lastGoal).lengthSquared() > GOAL_CHANGE_THRESH_SQUARED);
+      }
+      if (stale || goalChanged) {
+        auto& pf = this->pathfinder();
+        pf.requestPath(entity->getID(), currentPos, desiredPos, PathfinderManager::Priority::Normal,
+          [&state](EntityID /* id */, const std::vector<Vector2D>& path) {
+            state.pathPoints = path;
+            state.currentPathIndex = 0;
+            state.lastPathUpdate = SDL_GetTicks();
+          });
+      }
+      
+      bool pathStep = pathfinder().followPathStep(entity, currentPos,
+                          state.pathPoints, state.currentPathIndex,
+                          speed, nodeRadius);
+      if (pathStep) { state.lastProgressTime = SDL_GetTicks(); }
+      
+      if (pathStep) {
+        // Separation decimation: compute at most every 2 ticks per entity
+        auto &st = state; // alias
+        applyDecimatedSeparation(entity, currentPos, entity->getVelocity(),
+                                 speed, 26.0f, 0.22f, 4, st.lastSepTick,
+                                 st.lastSepVelocity);
+      }
+      return pathStep;
+    };
+
+    // Stall detection: scale threshold with configured follow speed to avoid false stalls at low speeds
+    float speedNow = entity->getVelocity().length();
+    const float stallSpeed = std::max(0.5f, m_followSpeed * 0.5f);
+    const Uint64 stallMs = 600;
+    if (speedNow < stallSpeed) {
+      if (state.lastProgressTime == 0) state.lastProgressTime = SDL_GetTicks();
+      else if (SDL_GetTicks() - state.lastProgressTime > stallMs) {
+        // Enter a brief backoff to reduce clumping; stagger per-entity
+        Uint64 now = SDL_GetTicks();
+        state.backoffUntil = now + 250 + (entity->getID() % 400); // 250-650ms
+        // Clear path and small micro-jitter to yield
+        state.pathPoints.clear(); state.currentPathIndex = 0; state.lastPathUpdate = 0;
+        float jitter = ((float)rand() / RAND_MAX - 0.5f) * 0.3f; // ~±17deg
+        Vector2D v = entity->getVelocity(); if (v.length() < 0.01f) v = Vector2D(1,0);
+        float c = std::cos(jitter), s = std::sin(jitter);
+        Vector2D rotated(v.getX()*c - v.getY()*s, v.getX()*s + v.getY()*c);
+        rotated.normalize(); entity->setVelocity(rotated * m_followSpeed);
+        state.lastProgressTime = now;
+      }
+    } else {
+      state.lastProgressTime = SDL_GetTicks();
+    }
+
     // Execute appropriate follow behavior based on mode
     switch (m_followMode) {
     case FollowMode::CLOSE_FOLLOW:
-      updateCloseFollow(entity, state);
+      if (!tryFollowPath(calculateDesiredPosition(entity, target, state), m_followSpeed))
+        updateCloseFollow(entity, state);
       break;
     case FollowMode::LOOSE_FOLLOW:
-      updateLooseFollow(entity, state);
+      if (!tryFollowPath(calculateDesiredPosition(entity, target, state), m_followSpeed))
+        updateLooseFollow(entity, state);
       break;
     case FollowMode::FLANKING_FOLLOW:
-      updateFlankingFollow(entity, state);
+      if (!tryFollowPath(calculateDesiredPosition(entity, target, state), m_followSpeed))
+        updateFlankingFollow(entity, state);
       break;
     case FollowMode::REAR_GUARD:
-      updateRearGuard(entity, state);
+      if (!tryFollowPath(calculateDesiredPosition(entity, target, state), m_followSpeed))
+        updateRearGuard(entity, state);
       break;
     case FollowMode::ESCORT_FORMATION:
-      updateEscortFormation(entity, state);
+      if (!tryFollowPath(calculateDesiredPosition(entity, target, state), m_followSpeed))
+        updateEscortFormation(entity, state);
       break;
     }
   }
@@ -290,9 +371,12 @@ float FollowBehavior::getDistanceToTarget() const {
   auto it =
       std::find_if(m_entityStates.begin(), m_entityStates.end(),
                    [](const auto &pair) { return pair.second.isFollowing; });
-  return (it != m_entityStates.end())
-             ? (it->first->getPosition() - target->getPosition()).length()
-             : -1.0f;
+  if (it != m_entityStates.end()) {
+    // PERFORMANCE: Only compute sqrt when actually returning distance
+    float distSquared = (it->first->getPosition() - target->getPosition()).lengthSquared();
+    return std::sqrt(distSquared);
+  }
+  return -1.0f;
 }
 
 FollowBehavior::FollowMode FollowBehavior::getFollowMode() const {
@@ -318,6 +402,7 @@ std::shared_ptr<AIBehavior> FollowBehavior::clone() const {
   clone->m_stopWhenTargetStops = m_stopWhenTargetStops;
   clone->m_predictiveFollowing = m_predictiveFollowing;
   clone->m_predictionTime = m_predictionTime;
+  // PATHFINDING CONSOLIDATION: Removed async flag - always uses PathfindingScheduler now
   return clone;
 }
 
@@ -390,8 +475,10 @@ bool FollowBehavior::isTargetMoving(EntityPtr target,
     return false;
 
   Vector2D currentPos = AIManager::Instance().getPlayerPosition();
-  float movementDistance = (currentPos - state.lastTargetPosition).length();
-  return movementDistance > m_minimumMovementThreshold;
+  // PERFORMANCE: Use squared distance
+  float movementDistanceSquared = (currentPos - state.lastTargetPosition).lengthSquared();
+  float thresholdSquared = m_minimumMovementThreshold * m_minimumMovementThreshold;
+  return movementDistanceSquared > thresholdSquared;
 }
 
 bool FollowBehavior::shouldCatchUp(float distanceToTarget) const {
@@ -416,29 +503,6 @@ float FollowBehavior::calculateFollowSpeed(EntityPtr /*entity*/,
   return speed;
 }
 
-[[maybe_unused]] Vector2D FollowBehavior::calculateSteeringForce(EntityPtr entity,
-                                                const Vector2D &desiredPosition,
-                                                const EntityState &state) {
-  if (!entity)
-    return Vector2D(0, 0);
-
-  Vector2D currentPos = entity->getPosition();
-  Vector2D desiredVelocity = (desiredPosition - currentPos);
-
-  if (desiredVelocity.length() < 0.001f) {
-    return Vector2D(0, 0);
-  }
-
-  desiredVelocity = normalizeVector(desiredVelocity);
-
-  // Apply obstacle avoidance
-  desiredVelocity = avoidObstacles(entity, desiredVelocity);
-
-  // Calculate steering force
-  Vector2D steeringForce = desiredVelocity - state.currentVelocity;
-
-  return steeringForce;
-}
 
 Vector2D FollowBehavior::avoidObstacles(EntityPtr /*entity*/,
                                         const Vector2D &desiredVelocity) const {
@@ -475,9 +539,13 @@ void FollowBehavior::updateCloseFollow(EntityPtr entity, EntityState &state) {
 
   Vector2D currentPos = entity->getPosition();
   Vector2D desiredPos = calculateDesiredPosition(entity, target, state);
-  float distanceToDesired = (currentPos - desiredPos).length();
+  // PERFORMANCE: Use squared distance
+  float distanceToDesiredSquared = (currentPos - desiredPos).lengthSquared();
+  float thresholdSquared = (m_followDistance * 0.3f) * (m_followDistance * 0.3f);
 
-  if (distanceToDesired > m_followDistance * 0.3f) {
+  if (distanceToDesiredSquared > thresholdSquared) {
+    // Compute actual distance only when needed for speed calculation
+    float distanceToDesired = std::sqrt(distanceToDesiredSquared);
     float speed = calculateFollowSpeed(entity, state, distanceToDesired);
     Vector2D direction = normalizeVector(desiredPos - currentPos);
 
@@ -499,10 +567,14 @@ void FollowBehavior::updateLooseFollow(EntityPtr entity, EntityState &state) {
 
   Vector2D currentPos = entity->getPosition();
   Vector2D desiredPos = calculateDesiredPosition(entity, target, state);
-  float distanceToDesired = (currentPos - desiredPos).length();
+  // PERFORMANCE: Use squared distance
+  float distanceToDesiredSquared = (currentPos - desiredPos).lengthSquared();
+  float followDistanceSquared = m_followDistance * m_followDistance;
 
   // Only move if outside the follow distance
-  if (distanceToDesired > m_followDistance) {
+  if (distanceToDesiredSquared > followDistanceSquared) {
+    // Compute actual distance only when needed for speed calculation
+    float distanceToDesired = std::sqrt(distanceToDesiredSquared);
     float speed = calculateFollowSpeed(entity, state, distanceToDesired);
     Vector2D direction = normalizeVector(desiredPos - currentPos);
 
@@ -594,31 +666,6 @@ Vector2D FollowBehavior::normalizeVector(const Vector2D &vector) const {
   return vector / magnitude;
 }
 
-[[maybe_unused]] float FollowBehavior::angleDifference(float angle1, float angle2) const {
-  float diff = angle2 - angle1;
-  while (diff > M_PI)
-    diff -= 2.0f * M_PI;
-  while (diff < -M_PI)
-    diff += 2.0f * M_PI;
-  return diff;
-}
-
-[[maybe_unused]] float FollowBehavior::clampAngle(float angle) const {
-  while (angle > M_PI)
-    angle -= 2.0f * M_PI;
-  while (angle < -M_PI)
-    angle += 2.0f * M_PI;
-  return angle;
-}
-
-[[maybe_unused]] Vector2D FollowBehavior::rotateVector(const Vector2D &vector,
-                                      float angle) const {
-  float cos_a = std::cos(angle);
-  float sin_a = std::sin(angle);
-
-  return Vector2D(vector.getX() * cos_a - vector.getY() * sin_a,
-                  vector.getX() * sin_a + vector.getY() * cos_a);
-}
 
 void FollowBehavior::initializeFormationOffsets() {
   if (s_escortFormationOffsets.empty()) {

@@ -46,7 +46,6 @@ public:
   // Safe zone management
   void addSafeZone(const Vector2D &center, float radius);
   void clearSafeZones();
-  void setScreenBounds(float width, float height); // For boundary avoidance
 
   // State queries
   bool isFleeing() const;
@@ -75,12 +74,28 @@ private:
     int zigzagDirection{1}; // For evasive maneuvers
     Uint64 lastZigzagTime{0};
 
+    // Optional path-following state for strategic/seek-cover modes
+    std::vector<Vector2D> pathPoints;
+    size_t currentPathIndex{0};
+    Uint64 lastPathUpdate{0};
+    Uint64 lastProgressTime{0};
+    float lastNodeDistance{std::numeric_limits<float>::infinity()};
+    float navRadius{18.0f};
+    Uint64 nextPathAllowed{0};
+    Uint64 backoffUntil{0};
+    // Separation decimation
+    Uint64 lastSepTick{0};
+    Vector2D lastSepVelocity{0, 0};
+
     EntityState()
         : lastThreatPosition(0, 0), fleeDirection(0, 0),
           lastKnownSafeDirection(0, 0), fleeStartTime(0),
           lastDirectionChange(0), panicEndTime(0), currentStamina(100.0f),
           isFleeing(false), isInPanic(false), hasValidThreat(false),
-          zigzagDirection(1), lastZigzagTime(0) {}
+          zigzagDirection(1), lastZigzagTime(0), pathPoints(),
+          currentPathIndex(0), lastPathUpdate(0), lastProgressTime(0),
+          lastNodeDistance(std::numeric_limits<float>::infinity()),
+          navRadius(18.0f), nextPathAllowed(0), backoffUntil(0) {}
   };
 
   // Safe zone structure
@@ -108,10 +123,8 @@ private:
 
   // Safe zones and boundaries
   std::vector<SafeZone> m_safeZones;
-  float m_screenWidth{1280.0f};
-  float m_screenHeight{720.0f};
   float m_boundaryPadding{
-      100.0f}; // Distance from screen edge to consider unsafe
+      100.0f}; // Distance from world edge to consider unsafe
 
   // Evasive maneuver parameters
   float m_zigzagAngle{45.0f};   // Degrees
@@ -122,6 +135,9 @@ private:
   mutable std::uniform_real_distribution<float> m_angleVariation{
       -0.5f, 0.5f}; // Radians
   mutable std::uniform_real_distribution<float> m_panicVariation{0.8f, 1.2f};
+
+  // PATHFINDING CONSOLIDATION: All pathfinding now uses PathfindingScheduler pathway
+  // (removed m_useAsyncPathfinding flag as it's no longer needed)
 
   // Helper methods
   EntityPtr getThreat() const; // Gets player reference from AIManager
@@ -142,6 +158,8 @@ private:
   void updateStamina(EntityState &state, float deltaTime, bool fleeing);
   Vector2D normalizeVector(const Vector2D &direction) const;
   float calculateFleeSpeedModifier(const EntityState &state) const;
+
+public:
 };
 
 #endif // FLEE_BEHAVIOR_HPP

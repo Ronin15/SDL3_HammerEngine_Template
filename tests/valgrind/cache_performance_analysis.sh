@@ -54,6 +54,10 @@ declare -A CACHE_TESTS=(
     ["resource_factory"]="resource_factory_tests"
     ["resource_template_json"]="resource_template_manager_json_tests"
     ["resource_edge_case"]="resource_edge_case_tests"
+    ["collision_system"]="collision_system_tests"
+    ["pathfinding_system"]="pathfinding_system_tests"
+    ["collision_pathfinding_bench"]="collision_pathfinding_benchmark"
+    ["collision_pathfinding_integration"]="collision_pathfinding_integration_tests"
 )
 
 # Industry benchmark data for comparison

@@ -39,6 +39,9 @@ declare -A QUICK_TESTS=(
     ["world_gen"]="world_generator_tests"
     ["world_mgr_evt"]="world_manager_event_integration_tests"
     ["world_mgr"]="world_manager_tests"
+    ["collision_sys"]="collision_system_tests"
+    ["pathfinding_sys"]="pathfinding_system_tests"
+    ["collision_pathfinding_integration"]="collision_pathfinding_integration_tests"
 )
 
 echo -e "${BLUE}========================================${NC}"
