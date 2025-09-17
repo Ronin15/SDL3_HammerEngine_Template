@@ -129,6 +129,7 @@ Contributions welcome!
 - Template can be adapted for 3D (see `GameEngine.cpp` and `TextureManager`)
 - For advanced usage, see [docs/README.md](docs/README.md)
 - SDL3 is working great, but there are some issues with SDL3 Mixer. Mixer is requiring SDL3 main branch so issues fluctuate a bit. When SDL3 mixer gets a stable release, then things will calm down.
+- This is a work in progress and most art is placeholder for now. Ants and Armadillo are too large for the art assets. Will replace wit 32x32 sprites at some point.
 
 ---
 
