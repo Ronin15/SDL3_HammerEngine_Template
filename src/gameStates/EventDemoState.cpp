@@ -1500,7 +1500,7 @@ EventDemoState::createNPCAtPositionWithoutBehavior(const std::string &npcType,
     }
 
     Vector2D position(x, y);
-    auto npc = NPC::create(textureID, position, 64, 64);
+    auto npc = NPC::create(textureID, position);
     npc->initializeInventory(); // Initialize inventory after construction
 
     npc->setWanderArea(0.0f, 0.0f, m_worldWidth, m_worldHeight);
@@ -1697,7 +1697,7 @@ void EventDemoState::createNPCAtPosition(const std::string &npcType, float x,
     }
 
     Vector2D position(x, y);
-    auto npc = NPC::create(textureID, position, 64, 64);
+    auto npc = NPC::create(textureID, position);
     npc->initializeInventory(); // Initialize inventory after construction
 
     npc->setWanderArea(0.0f, 0.0f, m_worldWidth, m_worldHeight);

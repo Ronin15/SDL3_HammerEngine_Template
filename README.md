@@ -133,6 +133,12 @@ Contributions welcome!
 
 ---
 
+## Art
+
+- World Tiles : [Pipoya](https://pipoya.itch.io/pipoya-rpg-tileset-32x32)
+- Slimes [patvanmackelberg](https://opengameart.org/users/patvanmackelberg)
+- Player Abigail [adythewolf](https://opengameart.org/users/adythewolf)
+
 ## License
 
 [MIT License](LICENSE)
