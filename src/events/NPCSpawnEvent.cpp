@@ -308,7 +308,7 @@ EntityPtr NPCSpawnEvent::forceSpawnNPC(const std::string& npcType, float x, floa
         // Create the NPC
         Vector2D position(x, y);
         position = PathfinderManager::Instance().adjustSpawnToNavigable(position, 32.0f, 32.0f, 150.0f);
-        auto npc = NPC::create(textureID, position, 64, 64);
+        auto npc = NPC::create(textureID, position);
 
         // Bounds are enforced centrally by AIManager/PathfinderManager
 
@@ -347,7 +347,7 @@ std::vector<EntityPtr> NPCSpawnEvent::forceSpawnNPCs(const SpawnParameters& para
             } else {
                 spawnPos = PathfinderManager::Instance().adjustSpawnToNavigable(spawnPos, 32.0f, 32.0f, 150.0f);
             }
-            auto npc = NPC::create(textureID, spawnPos, 64, 64);
+            auto npc = NPC::create(textureID, spawnPos);
 
             // Bounds are enforced centrally by AIManager/PathfinderManager
             

@@ -387,7 +387,7 @@ void AdvancedAIDemoState::createAdvancedNPCs() {
                     position = Vector2D(xDist(gen), yDist(gen));
                 }
 
-                auto npc = NPC::create("npc", position, 64, 64);
+                auto npc = NPC::create("npc", position);
 
                 // Set wander area to keep NPCs on screen
                 npc->setWanderArea(0, 0, m_worldWidth, m_worldHeight);

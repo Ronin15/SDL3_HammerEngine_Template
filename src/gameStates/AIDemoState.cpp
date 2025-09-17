@@ -422,7 +422,7 @@ void AIDemoState::createNPCs() {
       try {
         // Create NPC with random position
         Vector2D position(xDist(gen), yDist(gen));
-        auto npc = NPC::create("npc", position, 64, 64);
+        auto npc = NPC::create("npc", position);
         npc->initializeInventory(); // Initialize inventory after construction
 
         // Set animation properties (adjust based on your actual sprite sheet)
