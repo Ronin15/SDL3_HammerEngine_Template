@@ -5,6 +5,7 @@
 
 #include "managers/CollisionManager.hpp"
 #include "core/Logger.hpp"
+#include "core/ThreadSystem.hpp"
 #include "events/WorldEvent.hpp"
 #include "events/WorldTriggerEvent.hpp"
 #include "managers/EventManager.hpp"
@@ -41,6 +42,11 @@ bool CollisionManager::init() {
   });
   m_initialized = true;
   m_isShutdown = false;
+  m_lastWasThreaded.store(false, std::memory_order_relaxed);
+  m_lastThreadBatchCount.store(1, std::memory_order_relaxed);
+  m_lastOptimalWorkerCount.store(0, std::memory_order_relaxed);
+  m_lastAvailableWorkers.store(0, std::memory_order_relaxed);
+  m_lastCollisionBudget.store(0, std::memory_order_relaxed);
   return true;
 }
 
@@ -90,6 +96,11 @@ void CollisionManager::prepareForStateTransition() {
 
   // Reset performance stats for clean slate
   m_perf = PerfStats{};
+  m_lastWasThreaded.store(false, std::memory_order_relaxed);
+  m_lastThreadBatchCount.store(1, std::memory_order_relaxed);
+  m_lastOptimalWorkerCount.store(0, std::memory_order_relaxed);
+  m_lastAvailableWorkers.store(0, std::memory_order_relaxed);
+  m_lastCollisionBudget.store(0, std::memory_order_relaxed);
 
   // Reset world bounds to default
   m_worldBounds = AABB(0, 0, 100000.0f, 100000.0f);
@@ -679,6 +690,190 @@ void CollisionManager::broadphase(
   // 7. Expected 20x performance improvement for world with many static tiles
 }
 
+bool CollisionManager::broadphaseThreaded(
+    std::vector<std::pair<EntityID, EntityID>> &pairs,
+    ThreadingStats &stats) {
+  pairs.clear();
+
+  if (!HammerEngine::ThreadSystem::Exists()) {
+    broadphase(pairs);
+    return false;
+  }
+
+  std::vector<EntityID> dynamicIds;
+  dynamicIds.reserve(m_bodies.size());
+  for (const auto &kv : m_bodies) {
+    const CollisionBody &body = *kv.second;
+    if (body.enabled && body.type != BodyType::STATIC) {
+      dynamicIds.push_back(body.id);
+    }
+  }
+
+  if (dynamicIds.empty()) {
+    return false;
+  }
+
+  auto &threadSystem = HammerEngine::ThreadSystem::Instance();
+  size_t availableWorkers = static_cast<size_t>(threadSystem.getThreadCount());
+  size_t queueSize = threadSystem.getQueueSize();
+  size_t queueCapacity = threadSystem.getQueueCapacity();
+  if (queueCapacity == 0) {
+    queueCapacity = 1;
+  }
+
+  HammerEngine::WorkerBudget budget =
+      HammerEngine::calculateWorkerBudget(availableWorkers);
+  size_t collisionBudget = std::max<size_t>(1, budget.remaining);
+
+  size_t threadingThresholdValue =
+      std::max<size_t>(1, m_threadingThreshold.load(std::memory_order_acquire));
+  size_t optimalWorkers = budget.getOptimalWorkerCount(
+      collisionBudget, dynamicIds.size(), threadingThresholdValue);
+  optimalWorkers = std::max<size_t>(1, optimalWorkers);
+  if (m_maxThreads > 0) {
+    optimalWorkers =
+        std::min(optimalWorkers, static_cast<size_t>(m_maxThreads));
+  }
+
+  double queuePressure = static_cast<double>(queueSize) / queueCapacity;
+  size_t baseBatchSize =
+      std::max(threadingThresholdValue / 2, static_cast<size_t>(64));
+  size_t minBodiesPerBatch = baseBatchSize;
+  size_t maxBatches = std::max<size_t>(2, optimalWorkers);
+
+  if (queuePressure > HammerEngine::QUEUE_PRESSURE_WARNING) {
+    minBodiesPerBatch =
+        std::min(baseBatchSize * 2, threadingThresholdValue * 2);
+    size_t highPressureMax = std::max<size_t>(2, optimalWorkers / 2);
+    maxBatches = std::max<size_t>(1, highPressureMax);
+  } else if (queuePressure < (1.0 - HammerEngine::QUEUE_PRESSURE_WARNING)) {
+    size_t minLowPressure =
+        std::max(threadingThresholdValue / 4, static_cast<size_t>(32));
+    minBodiesPerBatch =
+        std::max({baseBatchSize / 2, minLowPressure, static_cast<size_t>(32)});
+    maxBatches = std::max<size_t>(4, optimalWorkers);
+  }
+
+  size_t desiredBatchCount =
+      (dynamicIds.size() + minBodiesPerBatch - 1) / minBodiesPerBatch;
+  size_t batchCount = std::min(optimalWorkers, desiredBatchCount);
+  batchCount = std::min(batchCount, maxBatches);
+  batchCount = std::max<size_t>(1, batchCount);
+
+  if (batchCount <= 1) {
+    broadphase(pairs);
+    return false;
+  }
+
+  size_t bodiesPerBatch = dynamicIds.size() / batchCount;
+  size_t remainingBodies = dynamicIds.size() % batchCount;
+
+  std::vector<std::future<std::vector<std::pair<EntityID, EntityID>>>> futures;
+  futures.reserve(batchCount);
+
+  for (size_t i = 0; i < batchCount; ++i) {
+    size_t start = i * bodiesPerBatch;
+    size_t end = start + bodiesPerBatch;
+    if (i == batchCount - 1) {
+      end += remainingBodies;
+    }
+
+    futures.push_back(threadSystem.enqueueTaskWithResult(
+        [this, start, end, &dynamicIds]() {
+          std::vector<std::pair<EntityID, EntityID>> localPairs;
+          localPairs.reserve((end > start ? end - start : 0) * 4);
+          std::unordered_set<uint64_t> localSeen;
+          localSeen.reserve((end > start ? end - start : 0) * 4);
+
+          std::vector<EntityID> dynamicCandidates;
+          dynamicCandidates.reserve(32);
+          std::vector<EntityID> staticCandidates;
+          staticCandidates.reserve(64);
+
+          for (size_t idx = start; idx < end; ++idx) {
+            EntityID bodyId = dynamicIds[idx];
+            auto bodyIt = m_bodies.find(bodyId);
+            if (bodyIt == m_bodies.end()) {
+              continue;
+            }
+            const CollisionBody &body = *bodyIt->second;
+            if (!body.enabled) {
+              continue;
+            }
+
+            dynamicCandidates.clear();
+            m_dynamicHash.query(body.aabb, dynamicCandidates);
+            for (EntityID candidateId : dynamicCandidates) {
+              if (candidateId == body.id) {
+                continue;
+              }
+              auto candidateIt = m_bodies.find(candidateId);
+              if (candidateIt == m_bodies.end()) {
+                continue;
+              }
+              const CollisionBody &candidate = *candidateIt->second;
+              if (!candidate.enabled) {
+                continue;
+              }
+              if ((body.collidesWith & candidate.layer) == 0) {
+                continue;
+              }
+
+              EntityID a = std::min(body.id, candidateId);
+              EntityID b = std::max(body.id, candidateId);
+              uint64_t key = (static_cast<uint64_t>(a) << 32) |
+                             static_cast<uint64_t>(b);
+              if (localSeen.emplace(key).second) {
+                localPairs.emplace_back(a, b);
+              }
+            }
+
+            staticCandidates.clear();
+            m_staticHash.query(body.aabb, staticCandidates);
+            for (EntityID staticId : staticCandidates) {
+              auto staticIt = m_bodies.find(staticId);
+              if (staticIt == m_bodies.end()) {
+                continue;
+              }
+              const CollisionBody &staticBody = *staticIt->second;
+              if (!staticBody.enabled) {
+                continue;
+              }
+              if ((body.collidesWith & staticBody.layer) == 0) {
+                continue;
+              }
+              localPairs.emplace_back(body.id, staticId);
+            }
+          }
+
+          return localPairs;
+        },
+        HammerEngine::TaskPriority::High, "Collision_BroadphaseBatch"));
+  }
+
+  std::unordered_set<uint64_t> globalSeen;
+  globalSeen.reserve(dynamicIds.size() * 4);
+  for (auto &future : futures) {
+    auto localPairs = future.get();
+    for (auto &pair : localPairs) {
+      EntityID a = pair.first;
+      EntityID b = pair.second;
+      uint64_t key = (static_cast<uint64_t>(std::min(a, b)) << 32) |
+                     static_cast<uint64_t>(std::max(a, b));
+      if (globalSeen.emplace(key).second) {
+        pairs.emplace_back(a, b);
+      }
+    }
+  }
+
+  stats.optimalWorkers = optimalWorkers;
+  stats.availableWorkers = availableWorkers;
+  stats.budget = collisionBudget;
+  stats.batchCount = batchCount;
+
+  return true;
+}
+
 void CollisionManager::narrowphase(
     const std::vector<std::pair<EntityID, EntityID>> &pairs,
     std::vector<CollisionInfo> &collisions) const {
@@ -713,6 +908,137 @@ void CollisionManager::narrowphase(
     collisions.push_back(
         CollisionInfo{aId, bId, normal, minPen, (A.isTrigger || B.isTrigger)});
   }
+}
+
+bool CollisionManager::narrowphaseThreaded(
+    const std::vector<std::pair<EntityID, EntityID>> &pairs,
+    std::vector<CollisionInfo> &collisions, ThreadingStats &stats) {
+  collisions.clear();
+
+  if (pairs.empty()) {
+    return false;
+  }
+
+  auto &threadSystem = HammerEngine::ThreadSystem::Instance();
+  size_t availableWorkers = static_cast<size_t>(threadSystem.getThreadCount());
+  size_t queueSize = threadSystem.getQueueSize();
+  size_t queueCapacity = threadSystem.getQueueCapacity();
+  if (queueCapacity == 0) {
+    queueCapacity = 1;
+  }
+
+  HammerEngine::WorkerBudget budget =
+      HammerEngine::calculateWorkerBudget(availableWorkers);
+  size_t collisionBudget = std::max<size_t>(1, budget.remaining);
+
+  size_t threadingThreshold =
+      std::max<size_t>(1, m_threadingThreshold.load(std::memory_order_acquire));
+  size_t optimalWorkers = budget.getOptimalWorkerCount(
+      collisionBudget, pairs.size(), threadingThreshold);
+
+  optimalWorkers = std::max<size_t>(1, optimalWorkers);
+  if (m_maxThreads > 0) {
+    optimalWorkers = std::min(optimalWorkers, static_cast<size_t>(m_maxThreads));
+  }
+
+  double queuePressure = static_cast<double>(queueSize) / queueCapacity;
+  size_t baseBatchSize =
+      std::max(threadingThreshold / 2, static_cast<size_t>(64));
+  size_t minPairsPerBatch = baseBatchSize;
+  size_t maxBatches = std::max<size_t>(2, optimalWorkers);
+
+  if (queuePressure > HammerEngine::QUEUE_PRESSURE_WARNING) {
+    minPairsPerBatch = std::min(baseBatchSize * 2, threadingThreshold * 2);
+    size_t highPressureMax = std::max<size_t>(2, optimalWorkers / 2);
+    maxBatches = std::max<size_t>(1, highPressureMax);
+  } else if (queuePressure < (1.0 - HammerEngine::QUEUE_PRESSURE_WARNING)) {
+    size_t minLowPressure =
+        std::max(threadingThreshold / 4, static_cast<size_t>(32));
+    minPairsPerBatch =
+        std::max({baseBatchSize / 2, minLowPressure, static_cast<size_t>(32)});
+    maxBatches = std::max<size_t>(4, optimalWorkers);
+  }
+
+  size_t desiredBatchCount =
+      (pairs.size() + minPairsPerBatch - 1) / minPairsPerBatch;
+  size_t batchCount = std::min(optimalWorkers, desiredBatchCount);
+  batchCount = std::min(batchCount, maxBatches);
+  batchCount = std::max<size_t>(1, batchCount);
+
+  if (batchCount == 1) {
+    return false;
+  }
+
+  size_t pairsPerBatch = pairs.size() / batchCount;
+  size_t remainingPairs = pairs.size() % batchCount;
+
+  std::vector<std::future<std::vector<CollisionInfo>>> futures;
+  futures.reserve(batchCount);
+
+  for (size_t i = 0; i < batchCount; ++i) {
+    size_t start = i * pairsPerBatch;
+    size_t end = start + pairsPerBatch;
+    if (i == batchCount - 1) {
+      end += remainingPairs;
+    }
+
+    futures.push_back(threadSystem.enqueueTaskWithResult(
+        [this, &pairs, start, end]() {
+          std::vector<CollisionInfo> localCollisions;
+          localCollisions.reserve(end > start ? end - start : 0);
+          for (size_t idx = start; idx < end; ++idx) {
+            auto [aId, bId] = pairs[idx];
+            const auto ita = m_bodies.find(aId);
+            const auto itb = m_bodies.find(bId);
+            if (ita == m_bodies.end() || itb == m_bodies.end())
+              continue;
+            const CollisionBody &A = *ita->second;
+            const CollisionBody &B = *itb->second;
+            if (!A.aabb.intersects(B.aabb))
+              continue;
+
+            float dxLeft = B.aabb.right() - A.aabb.left();
+            float dxRight = A.aabb.right() - B.aabb.left();
+            float dyTop = B.aabb.bottom() - A.aabb.top();
+            float dyBottom = A.aabb.bottom() - B.aabb.top();
+            float minPen = dxLeft;
+            Vector2D normal(-1, 0);
+            if (dxRight < minPen) {
+              minPen = dxRight;
+              normal = Vector2D(1, 0);
+            }
+            if (dyTop < minPen) {
+              minPen = dyTop;
+              normal = Vector2D(0, -1);
+            }
+            if (dyBottom < minPen) {
+              minPen = dyBottom;
+              normal = Vector2D(0, 1);
+            }
+
+            localCollisions.push_back(CollisionInfo{
+                aId, bId, normal, minPen, (A.isTrigger || B.isTrigger)});
+          }
+          return localCollisions;
+        },
+        HammerEngine::TaskPriority::High, "Collision_NarrowphaseBatch"));
+  }
+
+  collisions.clear();
+  collisions.reserve(pairs.size());
+  for (auto &future : futures) {
+    auto local = future.get();
+    collisions.insert(collisions.end(),
+                      std::make_move_iterator(local.begin()),
+                      std::make_move_iterator(local.end()));
+  }
+
+  stats.optimalWorkers = optimalWorkers;
+  stats.availableWorkers = availableWorkers;
+  stats.budget = collisionBudget;
+  stats.batchCount = batchCount;
+
+  return true;
 }
 
 void CollisionManager::resolve(const CollisionInfo &info) {
@@ -815,13 +1141,67 @@ void CollisionManager::update(float dt) {
   m_broadphaseCache
       .resetFrame(); // Clear per-frame tracking (keeps static cache)
 
+  ThreadingStats summaryStats{};
+  bool summaryThreaded = false;
+
   using clock = std::chrono::steady_clock;
   auto t0 = clock::now();
+  size_t threadingThresholdValue =
+      std::max<size_t>(1, m_threadingThreshold.load(std::memory_order_acquire));
 
-  broadphase(m_collisionPool.pairBuffer);
+  bool threadingEnabled =
+      m_useThreading.load(std::memory_order_acquire) &&
+      HammerEngine::ThreadSystem::Exists();
+
+  bool broadphaseUsedThreading = false;
+  bool attemptedBroadphaseThreading = false;
+  if (threadingEnabled) {
+    size_t dynamicBodyCount = 0;
+    for (const auto &kv : m_bodies) {
+      const CollisionBody &body = *kv.second;
+      if (body.enabled && body.type != BodyType::STATIC) {
+        ++dynamicBodyCount;
+      }
+    }
+
+    if (dynamicBodyCount >= threadingThresholdValue) {
+      attemptedBroadphaseThreading = true;
+      ThreadingStats stats;
+      broadphaseUsedThreading = broadphaseThreaded(m_collisionPool.pairBuffer, stats);
+      if (broadphaseUsedThreading) {
+        summaryThreaded = true;
+        summaryStats = stats;
+      }
+    } else {
+      broadphase(m_collisionPool.pairBuffer);
+    }
+  }
+  if (!threadingEnabled) {
+    broadphase(m_collisionPool.pairBuffer);
+  } else if (!attemptedBroadphaseThreading) {
+    // Already executed sequential broadphase in the branch above
+  } else if (!broadphaseUsedThreading && m_collisionPool.pairBuffer.empty()) {
+    // Threading was attempted but skipped due to insufficient work; ensure pairs populated
+    broadphase(m_collisionPool.pairBuffer);
+  }
   auto t1 = clock::now();
 
-  narrowphase(m_collisionPool.pairBuffer, m_collisionPool.collisionBuffer);
+  const size_t pairCount = m_collisionPool.pairBuffer.size();
+  bool narrowThreaded = false;
+  if (pairCount >= threadingThresholdValue && threadingEnabled) {
+    ThreadingStats stats;
+    narrowThreaded =
+        narrowphaseThreaded(m_collisionPool.pairBuffer,
+                            m_collisionPool.collisionBuffer, stats);
+    if (narrowThreaded) {
+      summaryThreaded = true;
+      summaryStats = stats;
+    }
+  }
+
+  if (!narrowThreaded) {
+    narrowphase(m_collisionPool.pairBuffer, m_collisionPool.collisionBuffer);
+  }
   auto t2 = clock::now();
 
   for (const auto &c : m_collisionPool.collisionBuffer) {
@@ -965,16 +1345,81 @@ void CollisionManager::update(float dt) {
                    ", collisions=" + std::to_string(m_perf.lastCollisions));
   }
 
+  if (summaryThreaded) {
+    m_lastWasThreaded.store(true, std::memory_order_relaxed);
+    m_lastThreadBatchCount.store(summaryStats.batchCount,
+                                 std::memory_order_relaxed);
+    m_lastOptimalWorkerCount.store(summaryStats.optimalWorkers,
+                                   std::memory_order_relaxed);
+    m_lastAvailableWorkers.store(summaryStats.availableWorkers,
+                                 std::memory_order_relaxed);
+    m_lastCollisionBudget.store(summaryStats.budget,
+                                std::memory_order_relaxed);
+  } else {
+    m_lastWasThreaded.store(false, std::memory_order_relaxed);
+    m_lastThreadBatchCount.store(1, std::memory_order_relaxed);
+    m_lastOptimalWorkerCount.store(0, std::memory_order_relaxed);
+    m_lastAvailableWorkers.store(0, std::memory_order_relaxed);
+    m_lastCollisionBudget.store(0, std::memory_order_relaxed);
+  }
+
   // Periodic collision statistics (every 300 frames like AIManager)
   if (m_perf.frames % 300 == 0 && m_perf.bodyCount > 0) {
-    COLLISION_DEBUG(
-        "Collision Summary - Bodies: " + std::to_string(m_perf.bodyCount) +
-        ", Avg Total: " + std::to_string(m_perf.avgTotalMs) + "ms" +
-        ", Broadphase: " + std::to_string(m_perf.lastBroadphaseMs) + "ms" +
-        ", Narrowphase: " + std::to_string(m_perf.lastNarrowphaseMs) + "ms" +
-        ", Last Pairs: " + std::to_string(m_perf.lastPairs) +
-        ", Last Collisions: " + std::to_string(m_perf.lastCollisions));
+    bool wasThreaded = m_lastWasThreaded.load(std::memory_order_relaxed);
+    if (wasThreaded) {
+      size_t optimalWorkers =
+          m_lastOptimalWorkerCount.load(std::memory_order_relaxed);
+      size_t availableWorkers =
+          m_lastAvailableWorkers.load(std::memory_order_relaxed);
+      size_t collisionBudget =
+          m_lastCollisionBudget.load(std::memory_order_relaxed);
+      size_t batchCount =
+          std::max<size_t>(1, m_lastThreadBatchCount.load(std::memory_order_relaxed));
+
+      COLLISION_DEBUG(
+          "Collision Summary - Bodies: " + std::to_string(m_perf.bodyCount) +
+          ", Avg Total: " + std::to_string(m_perf.avgTotalMs) + "ms" +
+          ", Broadphase: " + std::to_string(m_perf.lastBroadphaseMs) + "ms" +
+          ", Narrowphase: " + std::to_string(m_perf.lastNarrowphaseMs) +
+          "ms" + ", Last Pairs: " + std::to_string(m_perf.lastPairs) +
+          ", Last Collisions: " + std::to_string(m_perf.lastCollisions) +
+          " [Threaded: " + std::to_string(optimalWorkers) + "/" +
+          std::to_string(availableWorkers) + " workers, Budget: " +
+          std::to_string(collisionBudget) + ", Batches: " +
+          std::to_string(batchCount) + "]");
+    } else {
+      COLLISION_DEBUG(
+          "Collision Summary - Bodies: " + std::to_string(m_perf.bodyCount) +
+          ", Avg Total: " + std::to_string(m_perf.avgTotalMs) + "ms" +
+          ", Broadphase: " + std::to_string(m_perf.lastBroadphaseMs) + "ms" +
+          ", Narrowphase: " + std::to_string(m_perf.lastNarrowphaseMs) +
+          "ms" + ", Last Pairs: " + std::to_string(m_perf.lastPairs) +
+          ", Last Collisions: " + std::to_string(m_perf.lastCollisions) +
+          " [Single-threaded]");
+    }
   }
+}
+
+void CollisionManager::configureThreading(bool useThreading,
+                                          unsigned int maxThreads) {
+  m_useThreading.store(useThreading, std::memory_order_release);
+  if (maxThreads > 0) {
+    m_maxThreads = maxThreads;
+  }
+  COLLISION_INFO("Threading configured: " +
+                 std::string(useThreading ? "enabled" : "disabled") +
+                 " with max threads: " + std::to_string(m_maxThreads));
+}
+
+void CollisionManager::setThreadingThreshold(size_t threshold) {
+  threshold = std::max<size_t>(1, threshold);
+  m_threadingThreshold.store(threshold, std::memory_order_release);
+  COLLISION_INFO("Threading threshold set to " + std::to_string(threshold) +
+                 " collision pairs");
+}
+
+size_t CollisionManager::getThreadingThreshold() const {
+  return m_threadingThreshold.load(std::memory_order_acquire);
 }
 
 void CollisionManager::addCollisionCallback(CollisionCB cb) {
