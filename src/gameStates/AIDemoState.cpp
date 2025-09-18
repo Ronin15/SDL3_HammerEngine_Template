@@ -203,7 +203,7 @@ bool AIDemoState::enter() {
 
     // Create and register chase behavior - behaviors can get player via
     // getPlayerReference()
-    auto chaseBehavior = std::make_unique<ChaseBehavior>(120.0f, 500.0f, 50.0f);
+    auto chaseBehavior = std::make_unique<ChaseBehavior>(90.0f, 500.0f, 50.0f);
     aiMgr.registerBehavior("Chase", std::move(chaseBehavior));
     GAMESTATE_INFO("Chase behavior registered (will use AIManager::getPlayerReference())");
 
@@ -343,28 +343,28 @@ void AIDemoState::setupAIBehaviors() {
 
   if (!aiMgr.hasBehavior("Wander")) {
     auto wanderBehavior = std::make_unique<WanderBehavior>(
-        WanderBehavior::WanderMode::MEDIUM_AREA, 80.0f);
+        WanderBehavior::WanderMode::MEDIUM_AREA, 60.0f);
     aiMgr.registerBehavior("Wander", std::move(wanderBehavior));
     GAMESTATE_INFO("AIDemoState: Registered Wander behavior");
   }
 
   if (!aiMgr.hasBehavior("SmallWander")) {
     auto smallWanderBehavior = std::make_unique<WanderBehavior>(
-        WanderBehavior::WanderMode::SMALL_AREA, 60.0f);
+        WanderBehavior::WanderMode::SMALL_AREA, 45.0f);
     aiMgr.registerBehavior("SmallWander", std::move(smallWanderBehavior));
     GAMESTATE_INFO("AIDemoState: Registered SmallWander behavior");
   }
 
   if (!aiMgr.hasBehavior("LargeWander")) {
     auto largeWanderBehavior = std::make_unique<WanderBehavior>(
-        WanderBehavior::WanderMode::LARGE_AREA, 100.0f);
+        WanderBehavior::WanderMode::LARGE_AREA, 75.0f);
     aiMgr.registerBehavior("LargeWander", std::move(largeWanderBehavior));
     GAMESTATE_INFO("AIDemoState: Registered LargeWander behavior");
   }
 
   if (!aiMgr.hasBehavior("EventWander")) {
     auto eventWanderBehavior = std::make_unique<WanderBehavior>(
-        WanderBehavior::WanderMode::EVENT_TARGET, 70.0f);
+        WanderBehavior::WanderMode::EVENT_TARGET, 52.5f);
     aiMgr.registerBehavior("EventWander", std::move(eventWanderBehavior));
     GAMESTATE_INFO("AIDemoState: Registered EventWander behavior");
   }
