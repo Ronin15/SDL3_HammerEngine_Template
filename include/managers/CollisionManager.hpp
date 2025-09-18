@@ -15,6 +15,7 @@
 #include <chrono>
 
 #include "entities/Entity.hpp" // EntityID
+#include "core/WorkerBudget.hpp"
 #include "collisions/CollisionBody.hpp"
 #include "collisions/CollisionInfo.hpp"
 #include "collisions/SpatialHash.hpp"
@@ -108,7 +109,10 @@ public:
     // Metrics
     size_t getBodyCount() const { return m_bodies.size(); }
     bool isSyncing() const { return m_isSyncing; }
-    
+    void configureThreading(bool useThreading, unsigned int maxThreads = 0);
+    void setThreadingThreshold(size_t threshold);
+    size_t getThreadingThreshold() const;
+
     // Debug utilities
     void logCollisionStatistics() const;
     size_t getStaticBodyCount() const;
@@ -120,9 +124,22 @@ private:
     CollisionManager(const CollisionManager&) = delete;
     CollisionManager& operator=(const CollisionManager&) = delete;
 
+    struct ThreadingStats {
+        size_t optimalWorkers{0};
+        size_t availableWorkers{0};
+        size_t budget{0};
+        size_t batchCount{1};
+    };
+
     void broadphase(std::vector<std::pair<EntityID,EntityID>>& pairs) const;
+    bool broadphaseThreaded(std::vector<std::pair<EntityID, EntityID>>& pairs,
+                            ThreadingStats& stats);
     void narrowphase(const std::vector<std::pair<EntityID,EntityID>>& pairs,
                      std::vector<CollisionInfo>& collisions) const;
+    bool narrowphaseThreaded(
+        const std::vector<std::pair<EntityID, EntityID>>& pairs,
+        std::vector<CollisionInfo>& collisions,
+        ThreadingStats& stats);
     void resolve(const CollisionInfo& info);
     void subscribeWorldEvents(); // hook to world events (future)
 
@@ -252,6 +269,16 @@ private:
 
     // Guard to avoid feedback when syncing entity transforms
     bool m_isSyncing{false};
+
+    // Threading configuration
+    std::atomic<bool> m_useThreading{true};
+    std::atomic<size_t> m_threadingThreshold{400};
+    unsigned int m_maxThreads{0};
+    std::atomic<size_t> m_lastOptimalWorkerCount{0};
+    std::atomic<size_t> m_lastAvailableWorkers{0};
+    std::atomic<size_t> m_lastCollisionBudget{0};
+    std::atomic<size_t> m_lastThreadBatchCount{0};
+    std::atomic<bool> m_lastWasThreaded{false};
 };
 
 #endif // COLLISION_MANAGER_HPP
