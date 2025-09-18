@@ -515,20 +515,17 @@ void NPC::ensurePhysicsBodyRegistered() {
             std::to_string(m_position.getY()) + ")" + ", Size: " +
             std::to_string(halfW * 2) + "x" + std::to_string(halfH * 2));
 
-  cm.addBody(getID(), aabb, HammerEngine::BodyType::KINEMATIC);
+  // All NPCs use Layer_Enemy and collide with everything except other NPCs
+  uint32_t layer = HammerEngine::CollisionLayer::Layer_Enemy;
+  uint32_t mask = 0xFFFFFFFFu & ~HammerEngine::CollisionLayer::Layer_Enemy;
+
+  cm.addBody(getID(), aabb, HammerEngine::BodyType::KINEMATIC, layer, mask);
   cm.attachEntity(getID(), shared_this());
 
-  NPC_DEBUG("Collision body registered successfully - KINEMATIC type");
+  NPC_DEBUG("Collision body registered successfully - KINEMATIC type with Layer_Enemy");
 }
 
 void NPC::setFaction(Faction f) {
   m_faction = f;
-  auto &cm = CollisionManager::Instance();
-
-  // All NPCs are on Layer_Enemy to ensure they don't collide with each other
-  uint32_t layer = HammerEngine::CollisionLayer::Layer_Enemy;
-  // NPCs collide with everything EXCEPT other NPCs (Layer_Enemy)
-  uint32_t mask = 0xFFFFFFFFu & ~HammerEngine::CollisionLayer::Layer_Enemy;
-
-  cm.setBodyLayer(getID(), layer, mask);
+  // Collision layers are now set atomically in ensurePhysicsBodyRegistered()
 }
