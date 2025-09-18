@@ -321,14 +321,14 @@ void AdvancedAIDemoState::setupAdvancedAIBehaviors() {
 
     // Register Flee behavior
     if (!aiMgr.hasBehavior("Flee")) {
-        auto fleeBehavior = std::make_unique<FleeBehavior>(80.0f, 150.0f, 200.0f); // speed, detection range, safe distance
+    auto fleeBehavior = std::make_unique<FleeBehavior>(60.0f, 150.0f, 200.0f); // speed, detection range, safe distance
         aiMgr.registerBehavior("Flee", std::move(fleeBehavior));
         GAMESTATE_INFO("AdvancedAIDemoState: Registered Flee behavior");
     }
 
     // Register Follow behavior
     if (!aiMgr.hasBehavior("Follow")) {
-        auto followBehavior = std::make_unique<FollowBehavior>(75.0f, 50.0f, 90.0f); // follow speed, follow distance, max distance
+    auto followBehavior = std::make_unique<FollowBehavior>(56.25f, 50.0f, 90.0f); // follow speed, follow distance, max distance
         aiMgr.registerBehavior("Follow", std::move(followBehavior));
         GAMESTATE_INFO("AdvancedAIDemoState: Registered Follow behavior");
     }
@@ -342,7 +342,7 @@ void AdvancedAIDemoState::setupAdvancedAIBehaviors() {
 
     // Register Attack behavior
     if (!aiMgr.hasBehavior("Attack")) {
-        auto attackBehavior = std::make_unique<AttackBehavior>(80.0f, 1.0f, 85.0f); // range, cooldown, speed
+    auto attackBehavior = std::make_unique<AttackBehavior>(80.0f, 1.0f, 63.75f); // range, cooldown, speed
         aiMgr.registerBehavior("Attack", std::move(attackBehavior));
         GAMESTATE_INFO("AdvancedAIDemoState: Registered Attack behavior");
     }

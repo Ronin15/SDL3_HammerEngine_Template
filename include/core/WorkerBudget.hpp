@@ -8,6 +8,7 @@
 
 #include <cstddef>
 #include <algorithm>
+#include <cmath>
 
 namespace HammerEngine {
 
@@ -21,12 +22,13 @@ namespace HammerEngine {
  * workload exceeds what their base allocation can efficiently handle.
  */
 struct WorkerBudget {
-    size_t totalWorkers;      // Total available worker threads
-    size_t engineReserved;    // Workers reserved for GameEngine critical tasks
-    size_t aiAllocated;       // Workers allocated to AIManager
-    size_t particleAllocated; // Workers allocated to ParticleManager
-    size_t eventAllocated;    // Workers allocated to EventManager
-    size_t remaining;         // Buffer workers available for burst capacity
+    size_t totalWorkers;       // Total available worker threads
+    size_t engineReserved;     // Workers reserved for GameEngine critical tasks
+    size_t aiAllocated;        // Workers allocated to AIManager
+    size_t particleAllocated;  // Workers allocated to ParticleManager
+    size_t eventAllocated;     // Workers allocated to EventManager
+    size_t collisionAllocated; // Workers allocated to CollisionManager
+    size_t remaining;          // Buffer workers available for burst capacity
 
     /**
      * @brief Calculate optimal worker count for a subsystem based on workload
@@ -65,9 +67,10 @@ struct WorkerBudget {
 /**
  * @brief Worker allocation percentages and limits
  */
-static constexpr size_t AI_WORKER_PERCENTAGE = 45;        // 45% of remaining workers
-static constexpr size_t PARTICLE_WORKER_PERCENTAGE = 25;   // 25% of remaining workers
-static constexpr size_t EVENT_WORKER_PERCENTAGE = 20;      // 20% of remaining workers
+static constexpr size_t AI_WORKER_WEIGHT = 6;
+static constexpr size_t PARTICLE_WORKER_WEIGHT = 3;
+static constexpr size_t EVENT_WORKER_WEIGHT = 2;
+static constexpr size_t COLLISION_WORKER_WEIGHT = 3;
 static constexpr size_t ENGINE_MIN_WORKERS = 1;        // Minimum workers for GameEngine
 static constexpr size_t ENGINE_OPTIMAL_WORKERS = 2;    // Optimal workers for GameEngine on higher-end systems
 
@@ -106,6 +109,7 @@ inline WorkerBudget calculateWorkerBudget(size_t availableWorkers) {
         budget.aiAllocated = 0;         // Single-threaded fallback
         budget.particleAllocated = 0;   // Single-threaded fallback
         budget.eventAllocated = 0;      // Single-threaded fallback
+        budget.collisionAllocated = 0;  // Single-threaded fallback
         budget.remaining = 0;
         return budget;
     }
@@ -126,34 +130,85 @@ inline WorkerBudget calculateWorkerBudget(size_t availableWorkers) {
 
     if (availableWorkers <= 4) {
         // Tier 2: Low-end systems (2-4 workers) - Conservative allocation
-        if (availableWorkers == 3) {
-            // Special case: 3 workers should use all available (no buffer)
-            budget.aiAllocated = 1;
-            budget.particleAllocated = 1;  // Use remaining worker
-            budget.eventAllocated = 0;     // Single-threaded fallback
-        } else {
-            budget.aiAllocated = (remainingWorkers >= 1) ? 1 : 0;
-            budget.particleAllocated = 0;  // Single-threaded fallback
-            budget.eventAllocated = 0;     // Single-threaded fallback
-        }
+        budget.aiAllocated = (remainingWorkers >= 1) ? 1 : 0;
+        budget.particleAllocated = (remainingWorkers >= 3) ? 1 : 0;
+        budget.eventAllocated = 0; // Remains single-threaded on low-end
+        budget.collisionAllocated = (remainingWorkers >= 2) ? 1 : 0;
     } else {
-        // Tier 3: High-end systems (5+ workers) - Full multi-threading with percentages
-        budget.aiAllocated = std::max(size_t(1), (remainingWorkers * AI_WORKER_PERCENTAGE) / 100);
-        budget.particleAllocated = std::max(size_t(1), (remainingWorkers * PARTICLE_WORKER_PERCENTAGE) / 100);
-        budget.eventAllocated = std::max(size_t(1), (remainingWorkers * EVENT_WORKER_PERCENTAGE) / 100);
+        // Tier 3: High-end systems (5+ workers) - Weighted distribution
+        const size_t totalWeight = AI_WORKER_WEIGHT + PARTICLE_WORKER_WEIGHT +
+                                   EVENT_WORKER_WEIGHT + COLLISION_WORKER_WEIGHT;
+
+        std::array<size_t, 4> weights = {AI_WORKER_WEIGHT, PARTICLE_WORKER_WEIGHT,
+                                         EVENT_WORKER_WEIGHT, COLLISION_WORKER_WEIGHT};
+        std::array<double, 4> rawShares{};
+        std::array<size_t, 4> shares{};
+
+        for (size_t i = 0; i < weights.size(); ++i) {
+            if (weights[i] == 0 || totalWeight == 0 || remainingWorkers == 0) {
+                rawShares[i] = 0.0;
+                shares[i] = 0;
+            } else {
+                rawShares[i] = (static_cast<double>(weights[i]) /
+                                static_cast<double>(totalWeight)) *
+                               static_cast<double>(remainingWorkers);
+                shares[i] = static_cast<size_t>(std::floor(rawShares[i]));
+            }
+        }
+
+        size_t used = shares[0] + shares[1] + shares[2] + shares[3];
+
+        std::array<size_t, 4> priorityOrder = {0, 3, 1, 2}; // AI, Collision, Particle, Event
+        for (size_t index : priorityOrder) {
+            if (weights[index] > 0 && shares[index] == 0 && used < remainingWorkers) {
+                shares[index] = 1;
+                ++used;
+            }
+        }
+
+        size_t leftover = (used < remainingWorkers) ? (remainingWorkers - used) : 0;
+        while (leftover > 0) {
+            bool assigned = false;
+            for (size_t index : priorityOrder) {
+                if (leftover == 0) {
+                    break;
+                }
+                if (weights[index] == 0) {
+                    continue;
+                }
+                shares[index] += 1;
+                --leftover;
+                assigned = true;
+                if (leftover == 0) {
+                    break;
+                }
+            }
+            if (!assigned) {
+                break;
+            }
+        }
+
+        budget.aiAllocated = shares[0];
+        budget.particleAllocated = shares[1];
+        budget.eventAllocated = shares[2];
+        budget.collisionAllocated = shares[3];
     }
 
     // Calculate truly remaining workers (buffer for other tasks)
-    size_t allocated = budget.aiAllocated + budget.particleAllocated + budget.eventAllocated;
+    size_t allocated = budget.aiAllocated + budget.particleAllocated +
+                       budget.eventAllocated + budget.collisionAllocated;
     budget.remaining = (remainingWorkers > allocated) ? remainingWorkers - allocated : 0;
 
     // Validation: Ensure we never over-allocate
-    size_t totalAllocated = budget.engineReserved + budget.aiAllocated + budget.particleAllocated + budget.eventAllocated;
+    size_t totalAllocated = budget.engineReserved + budget.aiAllocated +
+                            budget.particleAllocated + budget.eventAllocated +
+                            budget.collisionAllocated;
     if (totalAllocated > availableWorkers) {
         // Emergency fallback - should never happen with correct logic above
         budget.aiAllocated = 0;
         budget.particleAllocated = 0;
         budget.eventAllocated = 0;
+        budget.collisionAllocated = 0;
         budget.remaining = availableWorkers - budget.engineReserved;
     }
 
