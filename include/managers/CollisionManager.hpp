@@ -45,7 +45,9 @@ public:
     void update(float dt);
 
     // Bodies
-    void addBody(EntityID id, const AABB& aabb, BodyType type);
+    void addBody(EntityID id, const AABB& aabb, BodyType type,
+                 uint32_t layer = CollisionLayer::Layer_Default,
+                 uint32_t collidesWith = 0xFFFFFFFFu);
     void addBody(EntityPtr entity, const AABB& aabb, BodyType type);
     void attachEntity(EntityID id, EntityPtr entity);
     void removeBody(EntityID id);

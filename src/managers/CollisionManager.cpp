@@ -127,11 +127,14 @@ void CollisionManager::setWorldBounds(float minX, float minY, float maxX,
                   std::to_string(maxY) + "]");
 }
 
-void CollisionManager::addBody(EntityID id, const AABB &aabb, BodyType type) {
+void CollisionManager::addBody(EntityID id, const AABB &aabb, BodyType type,
+                                uint32_t layer, uint32_t collidesWith) {
   auto body = std::make_shared<CollisionBody>();
   body->id = id;
   body->aabb = aabb;
   body->type = type;
+  body->layer = layer;
+  body->collidesWith = collidesWith;
   m_bodies[id] = body;
 
   // Insert into appropriate spatial hash based on body type
@@ -294,38 +297,32 @@ void CollisionManager::updateKinematicBatch(
   // PERFORMANCE OPTIMIZATION: Batch process all kinematic updates
   // This reduces hash table lookups and spatial hash updates from O(n) to O(1)
   // operations
-
-  // Phase 1: Update positions and velocities in batch (minimize hash lookups)
-  std::vector<std::pair<EntityID, AABB>> spatialUpdates;
-  spatialUpdates.reserve(updates.size());
+  //
+  // CRITICAL FIX: Update both AABB and spatial hash atomically to prevent
+  // race conditions between broadphase (spatial hash) and narrowphase (AABB)
 
   size_t validUpdates = 0;
   for (const auto &kinematicUpdate : updates) {
     auto it = m_bodies.find(kinematicUpdate.id);
     if (it != m_bodies.end() && it->second->type == BodyType::KINEMATIC) {
-      // Update position and velocity
+      // ATOMIC UPDATE: Update position, velocity, and spatial hash together
+      // This prevents race condition where broadphase sees old position
+      // but narrowphase sees new position (or vice versa)
+
+      // Update position and velocity in collision body
       it->second->aabb.center = kinematicUpdate.position;
       it->second->velocity = kinematicUpdate.velocity;
 
-      // Queue for spatial hash update
-      spatialUpdates.emplace_back(kinematicUpdate.id, it->second->aabb);
-      validUpdates++;
-    }
-  }
-
-  // Phase 2: Batch update spatial hash (single pass through hash structure)
-  if (!spatialUpdates.empty()) {
-    // Update all entities in spatial hash at once - much more cache-friendly
-    for (const auto &[entityId, aabb] : spatialUpdates) {
-      auto bodyIt = m_bodies.find(entityId);
-      if (bodyIt != m_bodies.end()) {
-        // Update the appropriate spatial hash based on body type
-        if (bodyIt->second->type == BodyType::STATIC) {
-          m_staticHash.update(entityId, aabb);
-        } else {
-          m_dynamicHash.update(entityId, aabb);
-        }
+      // Ensure body stays enabled - prevent corruption
+      if (!it->second->enabled) {
+        it->second->enabled = true;
       }
+
+      // Immediately update spatial hash with new AABB - CRITICAL for consistency
+      // Note: updateKinematicBatch only updates KINEMATIC bodies, which are always in dynamic hash
+      m_dynamicHash.update(kinematicUpdate.id, it->second->aabb);
+
+      validUpdates++;
     }
   }
 
@@ -621,6 +618,7 @@ void CollisionManager::broadphase(
       if (seenPairs.emplace(pairKey).second) {
         pairs.emplace_back(std::min(body.id, candidateId),
                            std::max(body.id, candidateId));
+
       }
     }
 
@@ -674,6 +672,7 @@ void CollisionManager::broadphase(
       // No need for pair deduplication with static bodies since we don't
       // reverse check
       pairs.emplace_back(body.id, staticId);
+
     }
   }
 
@@ -885,6 +884,7 @@ void CollisionManager::narrowphase(
       continue;
     const CollisionBody &A = *ita->second;
     const CollisionBody &B = *itb->second;
+
     if (!A.aabb.intersects(B.aabb))
       continue;
     float dxLeft = B.aabb.right() - A.aabb.left();

@@ -217,9 +217,11 @@ void Player::ensurePhysicsBodyRegistered() {
   const float halfW = m_frameWidth > 0 ? m_frameWidth * 0.5f : 16.0f;
   const float halfH = m_height > 0 ? m_height * 0.5f : 16.0f;
   HammerEngine::AABB aabb(m_position.getX(), m_position.getY(), halfW, halfH);
-  cm.addBody(getID(), aabb, HammerEngine::BodyType::DYNAMIC);
+
+  // Set Layer_Player atomically during body creation to eliminate timing window
+  cm.addBody(getID(), aabb, HammerEngine::BodyType::DYNAMIC,
+             HammerEngine::CollisionLayer::Layer_Player, 0xFFFFFFFFu);
   cm.attachEntity(getID(), shared_this());
-  cm.setBodyLayer(getID(), HammerEngine::CollisionLayer::Layer_Player, 0xFFFFFFFFu);
 }
 
 void Player::setVelocity(const Vector2D& velocity) {

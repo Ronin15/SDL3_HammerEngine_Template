@@ -30,7 +30,8 @@ public:
     auto npc = std::make_shared<NPC>(textureID, startPosition, frameWidth,
                                      frameHeight);
     npc->ensurePhysicsBodyRegistered();
-    npc->setFaction(npc->m_faction);
+    // Collision layers are set atomically in ensurePhysicsBodyRegistered()
+    // No need to call setFaction as m_faction defaults to Neutral
     return npc;
   }
 
