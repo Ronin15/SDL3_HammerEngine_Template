@@ -385,6 +385,7 @@ public:
   void enableThreading(bool enable);
   bool isThreadingEnabled() const;
   void setThreadingThreshold(size_t threshold);
+  size_t getThreadingThreshold() const;
 
   // High-level convenience methods
   bool changeWeather(const std::string &weatherType,

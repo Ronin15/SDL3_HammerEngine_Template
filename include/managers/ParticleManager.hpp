@@ -612,6 +612,7 @@ public:
    * @param threshold Particle count threshold
    */
   void setThreadingThreshold(size_t threshold);
+  size_t getThreadingThreshold() const;
 
   /**
    * @brief Enables WorkerBudget-aware threading with intelligent resource

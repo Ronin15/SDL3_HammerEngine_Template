@@ -1024,13 +1024,10 @@ bool CollisionManager::narrowphaseThreaded(
         HammerEngine::TaskPriority::High, "Collision_NarrowphaseBatch"));
   }
 
-  collisions.clear();
-  collisions.reserve(pairs.size());
   for (auto &future : futures) {
-    auto local = future.get();
-    collisions.insert(collisions.end(),
-                      std::make_move_iterator(local.begin()),
-                      std::make_move_iterator(local.end()));
+    auto localCollisions = future.get();
+    collisions.insert(collisions.end(), localCollisions.begin(),
+                      localCollisions.end());
   }
 
   stats.optimalWorkers = optimalWorkers;
@@ -1062,18 +1059,6 @@ void CollisionManager::resolve(const CollisionInfo &info) {
     B.aabb.center += info.normal * (info.penetration);
   }
 
-  // Immediately sync position corrections back to kinematic entities
-  // This ensures AI system sees the corrected positions
-  if (A.type == BodyType::KINEMATIC) {
-    if (auto ent = A.entityWeak.lock()) {
-      ent->setPosition(A.aabb.center);
-    }
-  }
-  if (B.type == BodyType::KINEMATIC) {
-    if (auto ent = B.entityWeak.lock()) {
-      ent->setPosition(B.aabb.center);
-    }
-  }
   auto dampen = [&](CollisionBody &body) {
     float nx = info.normal.getX();
     float ny = info.normal.getY();
@@ -1187,19 +1172,16 @@ void CollisionManager::update(float dt) {
   auto t1 = clock::now();
 
   const size_t pairCount = m_collisionPool.pairBuffer.size();
-  bool narrowThreaded = false;
-  if (pairCount >= threadingThresholdValue && threadingEnabled) {
-    ThreadingStats stats;
-    narrowThreaded =
-        narrowphaseThreaded(m_collisionPool.pairBuffer,
-                            m_collisionPool.collisionBuffer, stats);
-    if (narrowThreaded) {
+  if (threadingEnabled && pairCount >= threadingThresholdValue) {
+    ThreadingStats narrowStats;
+    bool narrowphaseUsedThreading = narrowphaseThreaded(m_collisionPool.pairBuffer, m_collisionPool.collisionBuffer, narrowStats);
+    if (narrowphaseUsedThreading) {
       summaryThreaded = true;
-      summaryStats = stats;
+      summaryStats = narrowStats; // Use narrowphase stats if it was threaded
+    } else {
+      narrowphase(m_collisionPool.pairBuffer, m_collisionPool.collisionBuffer);
     }
-  }
-
-  if (!narrowThreaded) {
+  } else {
     narrowphase(m_collisionPool.pairBuffer, m_collisionPool.collisionBuffer);
   }
   auto t2 = clock::now();
@@ -1392,34 +1374,11 @@ void CollisionManager::update(float dt) {
           "Collision Summary - Bodies: " + std::to_string(m_perf.bodyCount) +
           ", Avg Total: " + std::to_string(m_perf.avgTotalMs) + "ms" +
           ", Broadphase: " + std::to_string(m_perf.lastBroadphaseMs) + "ms" +
-          ", Narrowphase: " + std::to_string(m_perf.lastNarrowphaseMs) +
-          "ms" + ", Last Pairs: " + std::to_string(m_perf.lastPairs) +
-          ", Last Collisions: " + std::to_string(m_perf.lastCollisions) +
-          " [Single-threaded]");
+          ", Narrowphase: " + std::to_string(m_perf.lastNarrowphaseMs) + "ms" +
+          ", Last Pairs: " + std::to_string(m_perf.lastPairs) +
+          ", Last Collisions: " + std::to_string(m_perf.lastCollisions));
     }
   }
-}
-
-void CollisionManager::configureThreading(bool useThreading,
-                                          unsigned int maxThreads) {
-  m_useThreading.store(useThreading, std::memory_order_release);
-  if (maxThreads > 0) {
-    m_maxThreads = maxThreads;
-  }
-  COLLISION_INFO("Threading configured: " +
-                 std::string(useThreading ? "enabled" : "disabled") +
-                 " with max threads: " + std::to_string(m_maxThreads));
-}
-
-void CollisionManager::setThreadingThreshold(size_t threshold) {
-  threshold = std::max<size_t>(1, threshold);
-  m_threadingThreshold.store(threshold, std::memory_order_release);
-  COLLISION_INFO("Threading threshold set to " + std::to_string(threshold) +
-                 " collision pairs");
-}
-
-size_t CollisionManager::getThreadingThreshold() const {
-  return m_threadingThreshold.load(std::memory_order_acquire);
 }
 
 void CollisionManager::addCollisionCallback(CollisionCB cb) {
@@ -1657,4 +1616,24 @@ void CollisionManager::subscribeWorldEvents() {
         }
       });
   m_handlerTokens.push_back(token);
+}
+
+void CollisionManager::configureThreading(bool useThreading,
+                                          unsigned int maxThreads) {
+  m_useThreading.store(useThreading, std::memory_order_release);
+  m_maxThreads = maxThreads;
+  COLLISION_INFO("Collision threading " +
+                 std::string(useThreading ? "enabled" : "disabled") +
+                 " with max threads: " + std::to_string(m_maxThreads));
+}
+
+void CollisionManager::setThreadingThreshold(size_t threshold) {
+  threshold = std::max(static_cast<size_t>(1), threshold);
+  m_threadingThreshold.store(threshold, std::memory_order_release);
+  COLLISION_INFO("Collision threading threshold set to " + std::to_string(threshold) +
+          " bodies");
+}
+
+size_t CollisionManager::getThreadingThreshold() const {
+  return m_threadingThreshold.load(std::memory_order_acquire);
 }

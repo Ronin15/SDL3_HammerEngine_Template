@@ -71,6 +71,11 @@ void EventManager::setThreadingThreshold(size_t threshold)
   m_threadingThreshold = threshold;
 }
 
+size_t EventManager::getThreadingThreshold() const
+{
+  return m_threadingThreshold;
+}
+
 // --------------------------------------------
 // Convenience alias trigger method definitions
 // --------------------------------------------

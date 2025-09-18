@@ -2459,6 +2459,10 @@ void ParticleManager::setThreadingThreshold(size_t threshold) {
                 " particles");
 }
 
+size_t ParticleManager::getThreadingThreshold() const {
+  return m_threadingThreshold;
+}
+
 // Helper methods for enum-based classification system
 ParticleEffectType
 ParticleManager::weatherStringToEnum(const std::string &weatherType,
