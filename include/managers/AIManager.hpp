@@ -296,6 +296,8 @@ public:
 
   // Threading configuration
   void configureThreading(bool useThreading, unsigned int maxThreads = 0);
+  void setThreadingThreshold(size_t threshold);
+  size_t getThreadingThreshold() const;
   void configurePriorityMultiplier(float multiplier = 1.0f);
 
   // Performance monitoring
@@ -394,6 +396,7 @@ private:
   std::atomic<size_t> m_lastOptimalWorkerCount{0};
   std::atomic<size_t> m_lastAvailableWorkers{0};
   std::atomic<size_t> m_lastAIBudget{0};
+  std::atomic<size_t> m_lastThreadBatchCount{0};
   std::atomic<bool> m_lastWasThreaded{false};
 
   // Player reference
@@ -483,8 +486,7 @@ private:
   static constexpr size_t CACHE_LINE_SIZE = 64; // Standard cache line size
   static constexpr size_t BATCH_SIZE =
       256; // Larger batches for better throughput
-  static constexpr size_t THREADING_THRESHOLD =
-      500; // Higher threshold - threading overhead not worth it for smaller counts
+  std::atomic<size_t> m_threadingThreshold{500};
 
   // Optimized helper methods
   BehaviorType inferBehaviorType(const std::string &behaviorName) const;

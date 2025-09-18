@@ -150,7 +150,7 @@ All original features have been preserved:
 The public API remains unchanged, so existing code using AIManager will continue to work without modifications. The improvements are entirely internal.
 
 ### Key Constants Updated
-- `THREADING_THRESHOLD`: 200 → 500 (due to improved efficiency)
+- `threadingThreshold`: 200 → 500 (due to improved efficiency)
 - **Distance Update Frequency**: Every frame → Every 4th frame (75% reduction)
 - **Batch Strategy**: Multiple small batches → 2-4 large batches (1000+ entities each)
 - **Lock Strategy**: Per-entity → Per-batch (massive contention reduction)

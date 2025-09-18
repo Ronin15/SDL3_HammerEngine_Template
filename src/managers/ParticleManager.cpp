@@ -748,6 +748,7 @@ void ParticleManager::update(float deltaTime) {
       }
     } else {
       m_lastWasThreaded.store(false, std::memory_order_relaxed);
+      m_lastThreadBatchCount.store(1, std::memory_order_relaxed);
       const size_t rangeEnd = std::min(bufferSize, m_storage.maxActiveIndex + 1);
       updateParticlesSingleThreaded(deltaTime, rangeEnd);
     }
@@ -801,6 +802,8 @@ void ParticleManager::update(float deltaTime) {
           size_t optimalWorkers = m_lastOptimalWorkerCount.load(std::memory_order_relaxed);
           size_t availableWorkers = m_lastAvailableWorkers.load(std::memory_order_relaxed);
           size_t particleBudget = m_lastParticleBudget.load(std::memory_order_relaxed);
+          size_t batchCount = std::max<size_t>(
+              1, m_lastThreadBatchCount.load(std::memory_order_relaxed));
           
           PARTICLE_DEBUG(
               "Particle Summary - Count: " + std::to_string(activeCount) +
@@ -808,7 +811,8 @@ void ParticleManager::update(float deltaTime) {
               ", Effects: " + std::to_string(m_effectInstances.size()) +
               " [Threaded: " + std::to_string(optimalWorkers) + "/" +
               std::to_string(availableWorkers) + " workers, Budget: " +
-              std::to_string(particleBudget) + "]");
+              std::to_string(particleBudget) + ", Batches: " +
+              std::to_string(batchCount) + "]");
         } else {
           PARTICLE_DEBUG(
               "Particle Summary - Count: " + std::to_string(activeCount) +
@@ -1941,6 +1945,8 @@ void ParticleManager::updateParticlesThreaded(float deltaTime,
       currentBuffer.flags.size() != bufferSize ||
       currentBuffer.lives.size() != bufferSize) {
     // Buffer is inconsistent, fall back to single-threaded update
+    m_lastWasThreaded.store(false, std::memory_order_relaxed);
+    m_lastThreadBatchCount.store(1, std::memory_order_relaxed);
     updateParticlesSingleThreaded(deltaTime, activeParticleCount);
     return;
   }
@@ -1972,34 +1978,38 @@ void ParticleManager::updateParticlesThreaded(float deltaTime,
 
   // Dynamic batch sizing based on queue pressure for optimal performance
   // This prevents overwhelming the ThreadSystem when other subsystems are busy
-  size_t minParticlesPerBatch = 500;
-  size_t maxBatches = 8;
+  const size_t threshold = std::max(m_threadingThreshold.load(std::memory_order_relaxed),
+                                    static_cast<size_t>(1));
+  const size_t baseBatchSize =
+      std::max(threshold / 2, static_cast<size_t>(64));
+  size_t minParticlesPerBatch = baseBatchSize;
+  size_t maxBatches = std::max(static_cast<size_t>(2), optimalWorkerCount);
 
   // Adjust batch strategy based on queue pressure using unified thresholds
   double queuePressure = static_cast<double>(queueSize) / queueCapacity;
   if (queuePressure > HammerEngine::QUEUE_PRESSURE_WARNING) {
     // High pressure: use fewer, larger batches to reduce queue overhead
-    minParticlesPerBatch = 1000;
-    maxBatches = 4;
+    minParticlesPerBatch =
+        std::min(baseBatchSize * 2, std::max(threshold, static_cast<size_t>(1)) * 2);
+    size_t highPressureMax =
+        std::max(static_cast<size_t>(2), optimalWorkerCount / 2);
+    maxBatches = std::max(highPressureMax, static_cast<size_t>(1));
   } else if (queuePressure < (1.0 - HammerEngine::QUEUE_PRESSURE_WARNING)) {
     // Low pressure: can use more batches for better parallelization
-    minParticlesPerBatch = 300;
-    maxBatches = 8;
+    size_t minLowPressure =
+        std::max(threshold / 4, static_cast<size_t>(32));
+    minParticlesPerBatch =
+        std::max({baseBatchSize / 2, minLowPressure, static_cast<size_t>(32)});
+    maxBatches = std::max(static_cast<size_t>(4), optimalWorkerCount);
   }
 
-  size_t batchCount =
-      std::min(optimalWorkerCount, activeParticleCount / minParticlesPerBatch);
-  batchCount = std::max(size_t(1), std::min(batchCount, maxBatches));
+  optimalWorkerCount = std::max(static_cast<size_t>(1), optimalWorkerCount);
 
-  // Debug thread allocation info periodically
-  uint64_t currentFrame = m_frameCounter.load(std::memory_order_relaxed);
-  if (currentFrame % 300 == 0 && activeParticleCount > 0) {
-    PARTICLE_DEBUG("Particle Thread Allocation - Workers: " + 
-                   std::to_string(optimalWorkerCount) + "/" +
-                   std::to_string(availableWorkers) + 
-                   ", Particle Budget: " + std::to_string(budget.particleAllocated) +
-                   ", Batches: " + std::to_string(batchCount));
-  }
+  size_t desiredBatchCount =
+      (activeParticleCount + minParticlesPerBatch - 1) / minParticlesPerBatch;
+  size_t batchCount = std::min(optimalWorkerCount, desiredBatchCount);
+  batchCount = std::min(batchCount, maxBatches);
+  batchCount = std::max(static_cast<size_t>(1), batchCount);
 
   size_t particlesPerBatch = activeParticleCount / batchCount;
   size_t remainingParticles = activeParticleCount % batchCount;
@@ -2035,6 +2045,8 @@ void ParticleManager::updateParticlesThreaded(float deltaTime,
   for (auto &future : futures) {
     future.get(); // Must wait - particle system needs sync before buffer swap
   }
+
+  m_lastThreadBatchCount.store(batchCount, std::memory_order_relaxed);
 }
 
 void ParticleManager::updateParticlesSingleThreaded(
@@ -2420,6 +2432,8 @@ void ParticleManager::updateWithWorkerBudget(float deltaTime,
       particleCount < m_threadingThreshold ||
       !HammerEngine::ThreadSystem::Exists()) {
     // Fall back to regular single-threaded update
+    m_lastWasThreaded.store(false, std::memory_order_relaxed);
+    m_lastThreadBatchCount.store(1, std::memory_order_relaxed);
     updateParticlesSingleThreaded(deltaTime, particleCount);
     return;
   }

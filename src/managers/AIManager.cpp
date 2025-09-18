@@ -426,7 +426,9 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
 
     // Determine threading strategy based on ACTIVE entity count instead of
     // total storage size to avoid unnecessary threading after resets
-    bool useThreading = (activeCount >= THREADING_THRESHOLD &&
+    const size_t threadingThreshold = std::max<size_t>(
+        1, m_threadingThreshold.load(std::memory_order_acquire));
+    bool useThreading = (activeCount >= threadingThreshold &&
                          m_useThreading.load(std::memory_order_acquire) &&
                          HammerEngine::ThreadSystem::Exists());
 
@@ -451,6 +453,7 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
                  std::to_string(queueCapacity) +
                  "), using single-threaded processing");
         m_lastWasThreaded.store(false, std::memory_order_relaxed);
+        m_lastThreadBatchCount.store(1, std::memory_order_relaxed);
         processBatch(0, entityCount, deltaTime, nextBuffer);
 
         // Swap buffers atomically
@@ -464,8 +467,8 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
           HammerEngine::calculateWorkerBudget(availableWorkers);
 
       // Use WorkerBudget system properly with threshold-based buffer allocation
-      size_t optimalWorkerCount =
-          budget.getOptimalWorkerCount(budget.aiAllocated, entityCount, 1000);
+      size_t optimalWorkerCount = budget.getOptimalWorkerCount(
+          budget.aiAllocated, entityCount, threadingThreshold);
 
       // Store thread allocation info for debug output
       m_lastOptimalWorkerCount.store(optimalWorkerCount,
@@ -475,14 +478,14 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
       m_lastWasThreaded.store(true, std::memory_order_relaxed);
 
       // Dynamic batch sizing based on queue pressure and pathfinding load for optimal performance
-      const size_t threshold = static_cast<size_t>(THREADING_THRESHOLD);
+      const size_t threshold = threadingThreshold;
       const size_t baseBatchSize =
           std::max(threshold / 2, static_cast<size_t>(64));
       size_t minEntitiesPerBatch = baseBatchSize;
       size_t maxBatches = std::max(static_cast<size_t>(2), optimalWorkerCount);
       
       // Skip pathfinding coordination for small entity counts to avoid overhead
-      if (activeCount > THREADING_THRESHOLD / 2) {
+      if (activeCount > threshold / 2) {
         // Removed pathfinding load coordination
       }
 
@@ -491,7 +494,7 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
       if (queuePressure > HammerEngine::QUEUE_PRESSURE_WARNING) {
         // High pressure: use fewer, larger batches to reduce queue overhead
         minEntitiesPerBatch =
-            std::min(baseBatchSize * 2, std::max(threshold, static_cast<size_t>(1)) * 2);
+            std::min(baseBatchSize * 2, threshold * 2);
         size_t highPressureMax = std::max(static_cast<size_t>(2), optimalWorkerCount / 2);
         maxBatches = std::max(highPressureMax, static_cast<size_t>(1));
         AI_DEBUG("High queue pressure (" +
@@ -515,17 +518,10 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
       batchCount = std::max(static_cast<size_t>(1), batchCount);
 
       // Debug thread allocation info periodically
-      if (currentFrame % 300 == 0) {
-        AI_DEBUG("Thread Allocation - Workers: " +
-                 std::to_string(optimalWorkerCount) + "/" +
-                 std::to_string(availableWorkers) +
-                 ", AI Budget: " + std::to_string(budget.aiAllocated) +
-                 ", Batches: " + std::to_string(batchCount));
-      }
-
       if (batchCount <= 1) {
         // Avoid thread overhead when only one batch would run
         m_lastWasThreaded.store(false, std::memory_order_relaxed);
+        m_lastThreadBatchCount.store(1, std::memory_order_relaxed);
         processBatch(0, entityCount, deltaTime, nextBuffer);
       } else {
         size_t entitiesPerBatch = entityCount / batchCount;
@@ -565,8 +561,11 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
         m_updateFutures.clear();
       }
 
+      m_lastThreadBatchCount.store(batchCount, std::memory_order_relaxed);
+
     } else {
       // Single-threaded processing
+      m_lastThreadBatchCount.store(1, std::memory_order_relaxed);
       processBatch(0, entityCount, deltaTime, nextBuffer);
     }
 
@@ -609,6 +608,9 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
           size_t availableWorkers =
               m_lastAvailableWorkers.load(std::memory_order_relaxed);
           size_t aiBudget = m_lastAIBudget.load(std::memory_order_relaxed);
+          size_t batchCountLogged = std::max(
+              static_cast<size_t>(1),
+              m_lastThreadBatchCount.load(std::memory_order_relaxed));
 
           AI_DEBUG("AI Summary - Entities: " + std::to_string(entityCount) +
                    ", Avg Update: " + std::to_string(avgDuration) + "ms" +
@@ -616,7 +618,8 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
                    std::to_string(m_globalStats.entitiesPerSecond) +
                    " [Threaded: " + std::to_string(optimalWorkers) + "/" +
                    std::to_string(availableWorkers) +
-                   " workers, Budget: " + std::to_string(aiBudget) + "]");
+                   " workers, Budget: " + std::to_string(aiBudget) +
+                   ", Batches: " + std::to_string(batchCountLogged) + "]");
         } else {
           AI_DEBUG("AI Summary - Entities: " + std::to_string(entityCount) +
                    ", Avg Update: " + std::to_string(avgDuration) + "ms" +
@@ -928,7 +931,9 @@ size_t AIManager::processPendingBehaviorAssignments() {
   size_t maxBatches = 4;
   
   // Skip pathfinding coordination for small entity counts to avoid overhead
-  if (assignmentCount > THREADING_THRESHOLD / 2) {
+  size_t assignmentThreadingThreshold =
+      std::max<size_t>(1, m_threadingThreshold.load(std::memory_order_acquire));
+  if (assignmentCount > assignmentThreadingThreshold / 2) {
     // Removed pathfinding load coordination
   }
   if (queuePressure > 0.5) {
@@ -1114,6 +1119,17 @@ void AIManager::configureThreading(bool useThreading, unsigned int maxThreads) {
   AI_INFO("Threading configured: " +
          std::string(useThreading ? "enabled" : "disabled") +
          " with max threads: " + std::to_string(m_maxThreads));
+}
+
+void AIManager::setThreadingThreshold(size_t threshold) {
+  threshold = std::max(static_cast<size_t>(1), threshold);
+  m_threadingThreshold.store(threshold, std::memory_order_release);
+  AI_INFO("AI threading threshold set to " + std::to_string(threshold) +
+          " entities");
+}
+
+size_t AIManager::getThreadingThreshold() const {
+  return m_threadingThreshold.load(std::memory_order_acquire);
 }
 
 void AIManager::configurePriorityMultiplier(float multiplier) {

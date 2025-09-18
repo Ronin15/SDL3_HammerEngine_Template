@@ -772,39 +772,52 @@ void EventManager::updateEventTypeBatchThreaded(EventTypeId typeId) {
   m_lastWasThreaded.store(true, std::memory_order_relaxed);
 
   // Dynamic batch sizing based on queue pressure for optimal performance
-  size_t minEventsPerBatch = 10;
-  size_t maxBatches = 4;
+  const size_t threshold = std::max(m_threadingThreshold, static_cast<size_t>(1));
+  const size_t baseBatchSize =
+      std::max(threshold / 2, static_cast<size_t>(4));
+  size_t minEventsPerBatch = baseBatchSize;
+  size_t maxBatches = std::max(static_cast<size_t>(2), optimalWorkerCount);
 
   // Adjust batch strategy based on queue pressure using unified thresholds
   double queuePressure = static_cast<double>(queueSize) / queueCapacity;
   if (queuePressure > HammerEngine::QUEUE_PRESSURE_WARNING) {
     // High pressure: use fewer, larger batches to reduce queue overhead
-    minEventsPerBatch = 15;
-    maxBatches = 2;
+    minEventsPerBatch =
+        std::min(baseBatchSize * 2, std::max(threshold, static_cast<size_t>(1)) * 2);
+    size_t highPressureMax =
+        std::max(static_cast<size_t>(2), optimalWorkerCount / 2);
+    maxBatches = std::max(highPressureMax, static_cast<size_t>(1));
     EVENT_DEBUG("High queue pressure (" +
                 std::to_string(static_cast<int>(queuePressure * 100)) +
                 "%), using larger batches");
   } else if (queuePressure < (1.0 - HammerEngine::QUEUE_PRESSURE_WARNING)) {
     // Low pressure: can use more batches for better parallelization
-    minEventsPerBatch = 8;
-    maxBatches = 4;
+    size_t minLowPressure =
+        std::max(threshold / 4, static_cast<size_t>(4));
+    minEventsPerBatch =
+        std::max({baseBatchSize / 2, minLowPressure, static_cast<size_t>(4)});
+    maxBatches = std::max(static_cast<size_t>(4), optimalWorkerCount);
   }
+
+  optimalWorkerCount = std::max(static_cast<size_t>(1), optimalWorkerCount);
+
+  size_t desiredBatchCount =
+      (localEvents.size() + minEventsPerBatch - 1) / minEventsPerBatch;
+  size_t batchCount = std::min(optimalWorkerCount, desiredBatchCount);
+  batchCount = std::min(batchCount, maxBatches);
+  batchCount = std::max(static_cast<size_t>(1), batchCount);
 
   // Simple batch processing without complex spin-wait
-  if (optimalWorkerCount > 1 && localEvents.size() > 20) {
-  size_t batchCount =
-      std::min(optimalWorkerCount, localEvents.size() / minEventsPerBatch);
-  batchCount = std::max(size_t(1), std::min(batchCount, maxBatches));
-
-  // Debug thread allocation info periodically
-  static uint64_t debugFrameCounter = 0;
-  if (++debugFrameCounter % 300 == 0 && !localEvents.empty()) {
-    EVENT_DEBUG("Event Thread Allocation - Workers: " +
-                std::to_string(optimalWorkerCount) + "/" +
-                std::to_string(availableWorkers) +
-                ", Event Budget: " + std::to_string(eventWorkerBudget) +
-                ", Batches: " + std::to_string(batchCount));
-  }
+  if (batchCount > 1) {
+    // Debug thread allocation info periodically
+    static uint64_t debugFrameCounter = 0;
+    if (++debugFrameCounter % 300 == 0 && !localEvents.empty()) {
+      EVENT_DEBUG("Event Thread Allocation - Workers: " +
+                  std::to_string(optimalWorkerCount) + "/" +
+                  std::to_string(availableWorkers) +
+                  ", Event Budget: " + std::to_string(eventWorkerBudget) +
+                  ", Batches: " + std::to_string(batchCount));
+    }
 
     size_t batchSize = localEvents.size() / batchCount;
     size_t remainingEvents = localEvents.size() % batchCount;
