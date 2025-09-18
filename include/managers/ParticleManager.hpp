@@ -896,6 +896,7 @@ private:
   std::atomic<size_t> m_lastOptimalWorkerCount{0};
   std::atomic<size_t> m_lastAvailableWorkers{0};
   std::atomic<size_t> m_lastParticleBudget{0};
+  std::atomic<size_t> m_lastThreadBatchCount{0};
   std::atomic<bool> m_lastWasThreaded{false};
   std::atomic<size_t> m_activeCount{0};
 
